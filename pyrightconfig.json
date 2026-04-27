@@ -1,0 +1,15 @@
+{
+  "include": [
+    "src",
+    "tests",
+    "train.py"
+  ],
+  "executionEnvironments": [
+    {
+      "root": ".",
+      "extraPaths": [
+        "src"
+      ]
+    }
+  ]
+}

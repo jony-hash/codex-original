@@ -1,0 +1,268 @@
+from __future__ import annotations
+
+import importlib.util
+import json
+from pathlib import Path
+import tempfile
+import unittest
+from unittest import mock
+import warnings
+
+
+def load_train_module():
+    train_path = Path(__file__).resolve().parents[1] / "train.py"
+    spec = importlib.util.spec_from_file_location("train_script_under_test", train_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Unable to load train.py from {train_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class TrainScriptStepTests(unittest.TestCase):
+    def test_resolve_logged_step_resets_global_step_per_train_round(self) -> None:
+        resolve_logged_step = load_train_module().resolve_logged_step
+
+        first_epoch_last = resolve_logged_step(batch_index=625, stage_step=625)
+        next_epoch_first = resolve_logged_step(batch_index=0, stage_step=626)
+
+        self.assertEqual(first_epoch_last["global_step"], 625)
+        self.assertEqual(first_epoch_last["stage_step"], 625)
+        self.assertEqual(next_epoch_first["global_step"], 0)
+        self.assertEqual(next_epoch_first["stage_step"], 626)
+
+    def test_resolve_logged_step_rejects_negative_values(self) -> None:
+        resolve_logged_step = load_train_module().resolve_logged_step
+
+        with self.assertRaises(ValueError):
+            resolve_logged_step(batch_index=-1, stage_step=0)
+
+        with self.assertRaises(ValueError):
+            resolve_logged_step(batch_index=0, stage_step=-1)
+
+    def test_resolve_stage_epoch_plan_matches_requested_mode(self) -> None:
+        resolve_stage_epoch_plan = load_train_module().resolve_stage_epoch_plan
+
+        self.assertEqual(
+            resolve_stage_epoch_plan(stage="full", first_stage_epochs=10, diffusion_epochs=20),
+            {"first_stage": 10, "diffusion": 20},
+        )
+        self.assertEqual(
+            resolve_stage_epoch_plan(stage="first_stage", first_stage_epochs=10, diffusion_epochs=20),
+            {"first_stage": 10, "diffusion": 0},
+        )
+        self.assertEqual(
+            resolve_stage_epoch_plan(stage="diffusion", first_stage_epochs=10, diffusion_epochs=20),
+            {"first_stage": 0, "diffusion": 20},
+        )
+
+        with self.assertRaises(ValueError):
+            resolve_stage_epoch_plan(stage="full", first_stage_epochs=-1, diffusion_epochs=20)
+
+        with self.assertRaises(ValueError):
+            resolve_stage_epoch_plan(stage="unknown", first_stage_epochs=10, diffusion_epochs=20)
+
+
+@unittest.skipUnless(importlib.util.find_spec("torch"), "torch is required for train main smoke tests")
+class TrainMainValidationTests(unittest.TestCase):
+    def test_main_records_train_val_metadata_and_validation_history(self) -> None:
+        import sys
+        import io
+
+        import torch
+        import torch.nn as nn
+        import torch.nn.functional as F
+        from torch.utils.data import DataLoader, TensorDataset
+
+        import ldm_project
+        from ldm_project.config import DataConfig, DiffusionConfig, FirstStageConfig, PhysicsConfig, TrainingConfig
+        from ldm_project.data import DatasetBundle, DatasetSplits
+
+        train_module = load_train_module()
+
+        class DummyFirstStage(nn.Module):
+            def __init__(self, physics, config) -> None:
+                super().__init__()
+                self.weight = nn.Parameter(torch.tensor(0.5))
+                self.latent_channels = config.latent_channels
+                self.image_size = config.image_size
+
+            def forward(self, batch):
+                scaled = batch * self.weight
+                zeros = torch.zeros_like(batch)
+                return {
+                    "electronic_pattern": scaled,
+                    "slm_phase": zeros,
+                    "pf2_intensity": scaled,
+                    "x_hat": scaled,
+                    "image_recon": scaled,
+                    "camera_plane": scaled,
+                    "chip_amplitude": scaled.abs(),
+                    "chip_phase": zeros,
+                    "probe_plane": scaled,
+                    "mu": zeros,
+                    "logvar": zeros,
+                }
+
+            def encode(self, batch):
+                spatial_size = max(1, self.image_size // 8)
+                base = batch.mean(dim=(-2, -1), keepdim=True)
+                z = base.expand(batch.shape[0], self.latent_channels, spatial_size, spatial_size) * self.weight
+                return {"mu": z, "z": z}
+
+            def decode_with_intermediates(self, latents):
+                image = latents.mean(dim=1, keepdim=True)
+                image = F.interpolate(image, size=(self.image_size, self.image_size), mode="nearest")
+                zeros = torch.zeros_like(image)
+                return {
+                    "image_recon": image,
+                    "chip_real": image,
+                    "chip_imag": zeros,
+                    "chip_amplitude": image.abs(),
+                    "chip_phase": zeros,
+                    "probe_plane": image,
+                    "camera_plane": image,
+                }
+
+        class DummyDiffusionModel(nn.Module):
+            def __init__(self, latent_channels, config) -> None:
+                super().__init__()
+                self.weight = nn.Parameter(torch.tensor(0.25))
+                self.config = config
+
+            def conditioning_metadata(self):
+                return {
+                    "type": "mnist_class",
+                    "num_classes": self.config.num_classes,
+                    "context_dim": self.config.context_dim,
+                    "cond_dropout_prob": self.config.cond_dropout_prob,
+                }
+
+            def encode_condition(self, class_labels, dropout_prob=None, force_unconditional=False):
+                return torch.zeros((class_labels.shape[0], 1), device=class_labels.device)
+
+            def forward(self, noisy_latents, timesteps, context):
+                return torch.zeros_like(noisy_latents) + self.weight
+
+        class DummyScheduler:
+            def __init__(self, timesteps=2, beta_start=1.0e-4, beta_end=2.0e-2) -> None:
+                self.timesteps = timesteps
+
+            def to(self, device):
+                return self
+
+            def add_noise(self, clean, noise, timesteps):
+                return clean + noise
+
+            def step(self, model_output, timesteps, sample):
+                return sample
+
+        images = torch.rand(8, 1, 8, 8)
+        labels = torch.arange(8, dtype=torch.long)
+        train_dataset = TensorDataset(images[:4], labels[:4])
+        validation_dataset = TensorDataset(images[4:], labels[4:])
+        splits = DatasetSplits(
+            train=DatasetBundle(
+                dataset=train_dataset,
+                loader=DataLoader(train_dataset, batch_size=2, shuffle=False),
+                effective_size=4,
+                total_size=4,
+            ),
+            validation=DatasetBundle(
+                dataset=validation_dataset,
+                loader=DataLoader(validation_dataset, batch_size=2, shuffle=False),
+                effective_size=4,
+                total_size=4,
+            ),
+            total_size=8,
+        )
+        train_config = TrainingConfig(
+            mode="full",
+            batch_size=2,
+            first_stage_epochs=1,
+            diffusion_epochs=1,
+            data=DataConfig(
+                dataset="mnist",
+                root="data",
+                download=False,
+                subset_fraction=1.0,
+                validation_fraction=0.5,
+                validation_split_seed=9,
+                num_workers=0,
+                pin_memory=False,
+            ),
+            first_stage=FirstStageConfig(
+                image_size=8,
+                latent_channels=1,
+                encoder_channels=(4, 8, 16),
+            ),
+            diffusion=DiffusionConfig(
+                timesteps=2,
+                base_channels=4,
+                channel_multipliers=(1,),
+                attention_levels=(),
+                context_dim=4,
+                num_classes=10,
+            ),
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir, \
+            mock.patch.object(ldm_project, "load_physics_config", return_value=PhysicsConfig()), \
+            mock.patch.object(ldm_project, "load_training_config", return_value=train_config), \
+            mock.patch.object(ldm_project, "build_train_validation_loaders", return_value=splits), \
+            mock.patch.object(ldm_project, "OpticalPathVAE", DummyFirstStage), \
+            mock.patch.object(ldm_project, "LatentDiffusionUNet", DummyDiffusionModel), \
+            mock.patch.object(ldm_project, "LinearNoiseScheduler", DummyScheduler), \
+            mock.patch.object(sys, "argv", ["train.py", "--device", "cpu", "--output-root", tmpdir, "--stage", "full"]), \
+            mock.patch("sys.stdout", new_callable=io.StringIO) as stdout_buffer:
+            train_module.main()
+
+            run_dirs = list(Path(tmpdir).iterdir())
+            self.assertEqual(len(run_dirs), 1)
+            run_dir = run_dirs[0]
+            meta = json.loads((run_dir / "run_meta.json").read_text(encoding="utf-8"))
+            history = json.loads((run_dir / "training_history.json").read_text(encoding="utf-8"))
+            post_train_config = json.loads((run_dir / "configs" / "post_train_sample_config.json").read_text(encoding="utf-8"))
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", FutureWarning)
+                post_train_tensors = torch.load(run_dir / "artifacts" / "post_train_sample_tensors.pt", map_location="cpu")
+            stdout_text = stdout_buffer.getvalue()
+
+        self.assertEqual(meta["dataset_total_size"], 8)
+        self.assertEqual(meta["train_split_size"], 4)
+        self.assertEqual(meta["train_effective_size"], 4)
+        self.assertEqual(meta["validation_size"], 4)
+        self.assertAlmostEqual(meta["validation_fraction"], 0.5, places=6)
+        self.assertEqual(meta["validation_split_seed"], 9)
+        self.assertEqual(meta["subset_fraction_applies_to"], "train_only")
+        self.assertEqual(meta["planned_first_stage_epochs"], 1)
+        self.assertEqual(meta["planned_diffusion_epochs"], 1)
+        self.assertEqual(meta["first_stage_model_version"], "physical_first_hybrid_vae_v2")
+        self.assertEqual(meta["diffusion_latent_source"], "mu")
+        self.assertAlmostEqual(meta["diffusion_guidance_scale"], 3.0, places=6)
+        self.assertIn("first_stage_validation", history)
+        self.assertIn("diffusion_validation", history)
+        self.assertEqual(len(history["first_stage_validation"]), 1)
+        self.assertEqual(len(history["diffusion_validation"]), 1)
+        self.assertEqual(history["first_stage_validation"][0]["epoch"], 1)
+        self.assertEqual(history["diffusion_validation"][0]["epoch"], 1)
+        self.assertIn("image_recon_loss", history["first_stage_validation"][0])
+        self.assertIn("camera_recon_loss", history["first_stage_validation"][0])
+        self.assertEqual(post_train_config["reference_labels"], list(range(8)))
+        self.assertEqual(post_train_config["reference_source"], "validation_then_train_fallback")
+        self.assertIn("reference_images", post_train_tensors)
+        self.assertIn("reference_labels", post_train_tensors)
+        self.assertIn("generated_camera", post_train_tensors)
+        self.assertIn("generated_image", post_train_tensors)
+        self.assertIn("chip_amplitude", post_train_tensors)
+        self.assertIn("chip_phase", post_train_tensors)
+        self.assertEqual(tuple(post_train_tensors["reference_images"].shape), (8, 1, 8, 8))
+        self.assertEqual(post_train_tensors["reference_labels"].tolist(), list(range(8)))
+        self.assertEqual(post_train_tensors["reference_source"], "validation_then_train_fallback")
+        self.assertEqual(tuple(post_train_tensors["generated_camera"].shape), (8, 1, 8, 8))
+        self.assertEqual(tuple(post_train_tensors["generated_image"].shape), (8, 1, 8, 8))
+        self.assertIn("planned epochs: first_stage=1 diffusion=1", stdout_text)
+
+
+if __name__ == "__main__":
+    unittest.main()

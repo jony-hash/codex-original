@@ -1,0 +1,29 @@
+optics:
+  # 采用米制单位存储；5.32e-7 m 即 532 nm。
+  wavelength: 5.32e-7
+  pixel_size: 3.0e-6
+
+geometry:
+  grid_size: 200
+  prop_dist: 1.0e-3
+
+readout:
+  primary_plane: camera
+  save_camera_plane: true
+  normalize_percentile: 99.5
+
+macro_optics:
+  dist_laser_to_m1: 0.115
+  dist_m1_to_m2: 0.215
+  dist_m2_to_pf1: 0.215
+  dist_pf1_to_pbs: 0.115
+  dist_pbs_to_bs: 0.088
+  dist_bs_to_slm: 0.038
+  dist_slm_to_m3: 0.140
+  dist_m3_to_4f: 0.063
+  f_4f: 0.100
+  dist_4f_to_pf2: 0.088
+  dist_chip_to_plane: 0.003
+  dist_plane_to_lens: 0.105
+  f_relay: 0.075
+  dist_lens_to_cam: 0.260

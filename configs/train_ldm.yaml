@@ -1,0 +1,70 @@
+training:
+  mode: first_stage
+  batch_size: 32
+  learning_rate: 1.0e-4
+  # 终端与 training_history 都按每轮 train 内的 step 间隔记录，同时保留每个 epoch 末尾一条。
+  step_log_interval: 100
+  # 按 epoch 控制训练时长；当前 subset_fraction=0.1667 且 batch_size=16 时，约 626 step/epoch。
+  visual_save_epoch_interval: 1
+  first_stage_epochs: 30
+  diffusion_epochs: 40
+
+data:
+  dataset: mnist
+  root: data
+  download: true
+  # 只在官方 train=60000 内切分验证集，避免训练中碰到官方 test。
+  validation_fraction: 0.1
+  validation_split_seed: 42
+  subset_fraction: 0.1667
+  subset_seed: 42
+  num_workers: 0
+  pin_memory: true
+
+first_stage:
+  type: optical_path_vae
+  image_size: 200
+  latent_channels: 4
+  encoder_channels: [64, 128, 256]
+  readout_plane: camera
+  latent_position: post_encoder_pre_ols
+  ols:
+    kind: pointwise_tanh
+  # 物理优先 encoder：只从 PF2 光学读出编码，减少原图直通捷径。
+  encoder_fusion_mode: optical_only
+  # decoder 直接输出数字图，同时输出复 chip 场的实部/虚部。
+  optical_field_mode: complex_cartesian
+  primary_output: camera
+  freeze_after_pretrain: true
+  kl_beta: 1.0e-4
+  kl_warmup_ratio: 0.1
+  # 前景/背景权重仍保留；主重建切到 camera_plane，image_recon 退为辅助诊断项。
+  recon_foreground_threshold: 0.05
+  recon_foreground_weight: 4.0
+  recon_background_weight: 1.0
+  image_recon_weight: 0.25
+  camera_recon_weight: 1.0
+  electronic_domain:
+    # 默认恢复为复振幅 SLM，让前向光路不再被固定零相位限制住。
+    mode: mnist_complex_slm
+    background_floor: 0.05
+    gamma: 1.0
+    polarity: non_inverted
+    phase_scale_rad: 3.141592653589793
+    phase_bias_rad: 0.0
+
+diffusion:
+  # 这里的 1000 指扩散噪声日程长度，不是训练优化步数。
+  timesteps: 1000
+  beta_start: 1.0e-4
+  beta_end: 0.02
+  base_channels: 64
+  channel_multipliers: [1, 2, 4]
+  num_res_blocks: 2
+  attention_levels: [1, 2]
+  num_heads: 4
+  context_dim: 128
+  num_classes: 10
+  cond_dropout_prob: 0.1
+  latent_source: mu
+  guidance_scale: 3.0
