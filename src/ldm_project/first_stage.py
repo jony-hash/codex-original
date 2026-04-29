@@ -4,12 +4,13 @@ from typing import Any, Mapping
 
 import torch
 from torch import nn
+import torch.nn.functional as F
 
 from .config import FirstStageConfig, PhysicsConfig
 from .optics import BackOpticalPath, FrontOpticalPath
 
 
-FIRST_STAGE_MODEL_VERSION = "physical_first_hybrid_vae_v2"
+FIRST_STAGE_MODEL_VERSION = "physical_first_hybrid_vae_v3"
 
 
 class ConvBlock(nn.Module):
@@ -25,16 +26,17 @@ class ConvBlock(nn.Module):
         return self.block(x)
 
 
-class DeconvBlock(nn.Module):
+class UpsampleConvBlock(nn.Module):
     def __init__(self, in_channels: int, out_channels: int) -> None:
         super().__init__()
         self.block = nn.Sequential(
-            nn.ConvTranspose2d(in_channels, out_channels, kernel_size=4, stride=2, padding=1),
+            nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
             nn.GroupNorm(8, out_channels),
             nn.SiLU(),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = F.interpolate(x, scale_factor=2, mode="bilinear", align_corners=False)
         return self.block(x)
 
 
@@ -66,7 +68,7 @@ class MetasurfaceEncoder(nn.Module):
 
 
 class MetasurfaceDecoder(nn.Module):
-    def __init__(self, channels: tuple[int, int, int], latent_channels: int) -> None:
+    def __init__(self, channels: tuple[int, int, int], latent_channels: int, tail_channels: int = 32) -> None:
         super().__init__()
         c1, c2, c3 = channels
         self.project = nn.Sequential(
@@ -74,11 +76,11 @@ class MetasurfaceDecoder(nn.Module):
             nn.GroupNorm(8, c3),
             nn.SiLU(),
         )
-        self.up1 = DeconvBlock(c3, c2)
-        self.up2 = DeconvBlock(c2, c1)
-        self.up3 = DeconvBlock(c1, 32)
-        self.image_head = nn.Conv2d(32, 1, kernel_size=3, padding=1)
-        self.optical_field_head = nn.Conv2d(32, 2, kernel_size=3, padding=1)
+        self.up1 = UpsampleConvBlock(c3, c2)
+        self.up2 = UpsampleConvBlock(c2, c1)
+        self.up3 = UpsampleConvBlock(c1, tail_channels)
+        self.image_head = nn.Conv2d(tail_channels, 1, kernel_size=3, padding=1)
+        self.optical_field_head = nn.Conv2d(tail_channels, 2, kernel_size=3, padding=1)
 
     def forward(self, z: torch.Tensor) -> dict[str, torch.Tensor]:
         h = self.project(z)
@@ -103,15 +105,23 @@ class OpticalPathVAE(nn.Module):
         self.front_path = FrontOpticalPath(physics)
         self.optical_encoder = MetasurfaceEncoder(self.config.encoder_channels)
         encoder_out_channels = self.config.encoder_channels[-1]
-        if self.config.encoder_fusion_mode == "dual_path_concat":
+        self.image_fusion_weight = 0.0
+        self.image_encoder: MetasurfaceEncoder | None
+        if self.config.encoder_fusion_mode in {"dual_path_concat", "gated_dual_path"}:
             self.image_encoder = MetasurfaceEncoder(self.config.encoder_channels)
+        else:
+            self.image_encoder = None
+        self.encoder_fusion: nn.Module
+        if self.config.encoder_fusion_mode == "dual_path_concat":
             self.encoder_fusion = nn.Sequential(
                 nn.Conv2d(encoder_out_channels * 2, encoder_out_channels, kernel_size=1),
                 nn.GroupNorm(8, encoder_out_channels),
                 nn.SiLU(),
             )
+        elif self.config.encoder_fusion_mode == "gated_dual_path":
+            self.encoder_fusion = nn.Identity()
+            self.set_image_fusion_weight(self.config.image_fusion_start_weight)
         else:
-            self.image_encoder = None
             self.encoder_fusion = nn.Identity()
         self.mu_head = nn.Conv2d(encoder_out_channels, self.config.latent_channels, kernel_size=1)
         self.logvar_head = nn.Conv2d(encoder_out_channels, self.config.latent_channels, kernel_size=1)
@@ -119,6 +129,7 @@ class OpticalPathVAE(nn.Module):
         self.metasurface_decoder = MetasurfaceDecoder(
             self.config.encoder_channels,
             self.config.latent_channels,
+            self.config.decoder_tail_channels,
         )
         self.back_path = BackOpticalPath(physics)
 
@@ -128,10 +139,26 @@ class OpticalPathVAE(nn.Module):
         return (self.config.latent_channels, downsampled, downsampled)
 
     def _validate_model_config(self) -> None:
-        if self.config.encoder_fusion_mode not in {"dual_path_concat", "optical_only"}:
+        if self.config.encoder_fusion_mode not in {"dual_path_concat", "optical_only", "gated_dual_path"}:
             raise ValueError(
                 "Unsupported encoder_fusion_mode: "
-                f"{self.config.encoder_fusion_mode}; expected dual_path_concat or optical_only."
+                f"{self.config.encoder_fusion_mode}; expected dual_path_concat, gated_dual_path, or optical_only."
+            )
+        for name, value in (
+            ("image_fusion_start_weight", self.config.image_fusion_start_weight),
+            ("image_fusion_end_weight", self.config.image_fusion_end_weight),
+        ):
+            if not 0.0 <= value <= 1.0:
+                raise ValueError(f"{name} must be within [0, 1], got {value}")
+        if self.config.image_fusion_decay_epochs < 0:
+            raise ValueError(
+                "image_fusion_decay_epochs must be non-negative, "
+                f"got {self.config.image_fusion_decay_epochs}"
+            )
+        if self.config.image_fusion_schedule not in {"linear", "cosine"}:
+            raise ValueError(
+                "Unsupported image_fusion_schedule: "
+                f"{self.config.image_fusion_schedule}; expected linear or cosine."
             )
         if self.config.optical_field_mode != "complex_cartesian":
             raise ValueError(
@@ -146,6 +173,26 @@ class OpticalPathVAE(nn.Module):
             raise ValueError(f"camera_recon_weight must be non-negative, got {self.config.camera_recon_weight}")
         if self.config.image_recon_weight + self.config.camera_recon_weight <= 0.0:
             raise ValueError("At least one first-stage reconstruction weight must be positive.")
+        if self.config.decoder_tail_channels <= 0:
+            raise ValueError(f"decoder_tail_channels must be positive, got {self.config.decoder_tail_channels}")
+        if self.config.structure_recon_weight < 0.0:
+            raise ValueError(f"structure_recon_weight must be non-negative, got {self.config.structure_recon_weight}")
+        if self.config.shape_recon_weight < 0.0:
+            raise ValueError(f"shape_recon_weight must be non-negative, got {self.config.shape_recon_weight}")
+        if self.config.field_smoothness_weight < 0.0:
+            raise ValueError(f"field_smoothness_weight must be non-negative, got {self.config.field_smoothness_weight}")
+        if self.config.phase_smoothness_weight < 0.0:
+            raise ValueError(f"phase_smoothness_weight must be non-negative, got {self.config.phase_smoothness_weight}")
+        if self.config.background_leakage_weight < 0.0:
+            raise ValueError(
+                "background_leakage_weight must be non-negative, "
+                f"got {self.config.background_leakage_weight}"
+            )
+
+    def set_image_fusion_weight(self, weight: float) -> None:
+        if not 0.0 <= weight <= 1.0:
+            raise ValueError(f"image_fusion_weight must be within [0, 1], got {weight}")
+        self.image_fusion_weight = float(weight)
 
     def _validate_electronic_domain_config(self) -> None:
         electronic_cfg = self.config.electronic_domain
@@ -190,8 +237,8 @@ class OpticalPathVAE(nn.Module):
         eps = torch.randn_like(std)
         return mu + eps * std
 
-    def encode(self, input_batch: torch.Tensor) -> dict[str, torch.Tensor]:
-        # 物理优先模式只从 PF2 光学读出编码，避免原图特征绕开前级光路。
+    def encode(self, input_batch: torch.Tensor, deterministic: bool | None = None) -> dict[str, torch.Tensor]:
+        # 物理优先模式只从 PF2 光学读出编码；gated 模式只在早期用原图特征扶一把。
         electronic_pattern = self.to_electronic_pattern(input_batch)
         slm_phase = self.to_slm_phase(electronic_pattern)
         slm_transfer = self.to_slm_transfer(electronic_pattern, slm_phase)
@@ -202,11 +249,17 @@ class OpticalPathVAE(nn.Module):
                 raise RuntimeError("image_encoder is required for dual_path_concat mode.")
             image_features = self.image_encoder(input_batch)
             fused_features = self.encoder_fusion(torch.cat([optical_features, image_features], dim=1))
+        elif self.config.encoder_fusion_mode == "gated_dual_path":
+            if self.image_encoder is None:
+                raise RuntimeError("image_encoder is required for gated_dual_path mode.")
+            image_features = self.image_encoder(input_batch)
+            fused_features = optical_features + self.image_fusion_weight * image_features
         else:
             fused_features = self.encoder_fusion(optical_features)
         mu = self.mu_head(fused_features)
         logvar = self.logvar_head(fused_features)
-        z = self.reparameterize(mu, logvar)
+        use_deterministic = not self.training if deterministic is None else deterministic
+        z = mu if use_deterministic else self.reparameterize(mu, logvar)
         return {
             "mu": mu,
             "logvar": logvar,
@@ -237,14 +290,15 @@ class OpticalPathVAE(nn.Module):
     def decode(self, z: torch.Tensor) -> torch.Tensor:
         return self._primary_output(self.decode_with_intermediates(z))
 
-    def forward(self, input_batch: torch.Tensor) -> dict[str, torch.Tensor]:
+    def forward(self, input_batch: torch.Tensor, deterministic: bool | None = None) -> dict[str, torch.Tensor]:
         # 第一阶段训练时，x_hat 跟随 primary_output；物理优先默认直接监督 camera_plane。
-        encoded = self.encode(input_batch)
+        encoded = self.encode(input_batch, deterministic=deterministic)
         decoded = self.decode_with_intermediates(encoded["z"])
         return {
             "x_hat": self._primary_output(decoded),
             "image_recon": decoded["image_recon"],
             "camera_plane": decoded["camera_plane"],
+            "camera_plane_loss": decoded["camera_plane_loss"],
             "mu": encoded["mu"],
             "logvar": encoded["logvar"],
             "z": encoded["z"],
@@ -256,6 +310,7 @@ class OpticalPathVAE(nn.Module):
             "chip_amplitude": decoded["chip_amplitude"],
             "chip_phase": decoded["chip_phase"],
             "probe_plane": decoded["probe_plane"],
+            "probe_plane_loss": decoded["probe_plane_loss"],
         }
 
 

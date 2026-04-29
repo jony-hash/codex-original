@@ -56,6 +56,8 @@ class OpticalPathVAESmokeTests(unittest.TestCase):
         self.assertEqual(outputs["chip_amplitude"].shape, (2, 1, 200, 200))
         self.assertEqual(outputs["chip_phase"].shape, (2, 1, 200, 200))
         self.assertEqual(outputs["probe_plane"].shape, (2, 1, 200, 200))
+        self.assertEqual(outputs["probe_plane_loss"].shape, (2, 1, 200, 200))
+        self.assertEqual(outputs["camera_plane_loss"].shape, (2, 1, 200, 200))
         self.assertEqual(outputs["slm_phase"].shape, (2, 1, 200, 200))
         self.assertTrue(torch.equal(outputs["x_hat"], outputs["camera_plane"]))
 
@@ -78,8 +80,46 @@ class OpticalPathVAESmokeTests(unittest.TestCase):
 
         self.assertTrue(torch.equal(outputs["x_hat"], outputs["image_recon"]))
 
+    def test_gated_dual_path_can_decay_to_optical_only(self) -> None:
+        import torch
+
+        from ldm_project.config import FirstStageConfig, PhysicsConfig
+        from ldm_project.first_stage import OpticalPathVAE
+
+        model = OpticalPathVAE(
+            PhysicsConfig(),
+            FirstStageConfig(
+                encoder_fusion_mode="gated_dual_path",
+                image_fusion_start_weight=1.0,
+                image_fusion_end_weight=0.0,
+            ),
+        )
+        model.set_image_fusion_weight(0.0)
+        x = torch.rand(2, 1, 200, 200)
+        outputs = model(x)
+
+        self.assertEqual(model.image_fusion_weight, 0.0)
+        self.assertEqual(outputs["mu"].shape, (2, 4, 25, 25))
+
+    def test_eval_forward_uses_deterministic_mu_latent(self) -> None:
+        import torch
+
+        from ldm_project.config import FirstStageConfig, PhysicsConfig
+        from ldm_project.first_stage import OpticalPathVAE
+
+        model = OpticalPathVAE(PhysicsConfig(), FirstStageConfig()).eval()
+        x = torch.rand(2, 1, 200, 200)
+
+        with torch.no_grad():
+            first = model(x)
+            second = model(x)
+
+        self.assertTrue(torch.allclose(first["z"], first["mu"]))
+        self.assertTrue(torch.allclose(first["z"], second["z"]))
+
     def test_decode_with_intermediates_exposes_digit_and_optical_diagnostics(self) -> None:
         import torch
+        import torch.nn as nn
 
         from ldm_project.config import FirstStageConfig, PhysicsConfig
         from ldm_project.first_stage import OpticalPathVAE
@@ -95,7 +135,9 @@ class OpticalPathVAESmokeTests(unittest.TestCase):
         self.assertEqual(decoded["chip_amplitude"].shape, (2, 1, 200, 200))
         self.assertEqual(decoded["chip_phase"].shape, (2, 1, 200, 200))
         self.assertEqual(decoded["probe_plane"].shape, (2, 1, 200, 200))
+        self.assertEqual(decoded["probe_plane_loss"].shape, (2, 1, 200, 200))
         self.assertEqual(decoded["camera_plane"].shape, (2, 1, 200, 200))
+        self.assertEqual(decoded["camera_plane_loss"].shape, (2, 1, 200, 200))
 
         for key in (
             "image_recon",
@@ -104,9 +146,12 @@ class OpticalPathVAESmokeTests(unittest.TestCase):
             "chip_amplitude",
             "chip_phase",
             "probe_plane",
+            "probe_plane_loss",
             "camera_plane",
+            "camera_plane_loss",
         ):
             self.assertTrue(torch.isfinite(decoded[key]).all().item(), key)
+        self.assertFalse(any(isinstance(module, nn.ConvTranspose2d) for module in model.modules()))
 
     def test_to_electronic_pattern_and_complex_slm_transfer_follow_formula(self) -> None:
         import torch

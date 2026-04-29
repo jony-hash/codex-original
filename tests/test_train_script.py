@@ -62,6 +62,62 @@ class TrainScriptStepTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             resolve_stage_epoch_plan(stage="unknown", first_stage_epochs=10, diffusion_epochs=20)
 
+    def test_resolve_image_fusion_weight_decays_for_gated_mode(self) -> None:
+        from ldm_project.config import FirstStageConfig
+
+        train_module = load_train_module()
+        compute_first_stage_balanced_metrics = train_module.compute_first_stage_balanced_metrics
+        is_best_optical_candidate = train_module.is_best_optical_candidate
+        resolve_image_fusion_weight = train_module.resolve_image_fusion_weight
+        should_update_best_optical = train_module.should_update_best_optical
+        config = FirstStageConfig(
+            encoder_fusion_mode="gated_dual_path",
+            image_fusion_start_weight=1.0,
+            image_fusion_end_weight=0.0,
+            image_fusion_decay_epochs=3,
+        )
+
+        self.assertAlmostEqual(resolve_image_fusion_weight(config, 0), 1.0, places=6)
+        self.assertAlmostEqual(resolve_image_fusion_weight(config, 1), 0.5, places=6)
+        self.assertAlmostEqual(resolve_image_fusion_weight(config, 2), 0.0, places=6)
+        self.assertAlmostEqual(resolve_image_fusion_weight(config, 5), 0.0, places=6)
+        cosine_config = FirstStageConfig(
+            encoder_fusion_mode="gated_dual_path",
+            image_fusion_start_weight=1.0,
+            image_fusion_end_weight=0.0,
+            image_fusion_decay_epochs=5,
+            image_fusion_schedule="cosine",
+        )
+        self.assertAlmostEqual(resolve_image_fusion_weight(cosine_config, 0), 1.0, places=6)
+        self.assertAlmostEqual(resolve_image_fusion_weight(cosine_config, 2), 0.5, places=6)
+        self.assertAlmostEqual(resolve_image_fusion_weight(cosine_config, 4), 0.0, places=6)
+        self.assertAlmostEqual(resolve_image_fusion_weight(FirstStageConfig(), 0), 0.0, places=6)
+        self.assertFalse(is_best_optical_candidate(config, 0.5))
+        self.assertTrue(is_best_optical_candidate(config, 0.0))
+        self.assertTrue(is_best_optical_candidate(FirstStageConfig(encoder_fusion_mode="optical_only"), 1.0))
+        self.assertTrue(should_update_best_optical(0.8, None))
+        self.assertTrue(should_update_best_optical(0.8, 0.7))
+        self.assertFalse(should_update_best_optical(0.7, 0.8))
+        balanced = compute_first_stage_balanced_metrics(
+            {"camera_corr": 0.8, "camera_edge_corr": 0.6},
+            {"2": {"camera_corr": 0.5}, "7": {"camera_corr": 0.9}},
+        )
+        self.assertAlmostEqual(balanced["min_class_camera_corr"], 0.5, places=6)
+        self.assertAlmostEqual(balanced["camera_balanced_score"], 0.68, places=6)
+
+    def test_should_validate_epoch_keeps_first_interval_and_last_epoch(self) -> None:
+        should_validate_epoch = load_train_module().should_validate_epoch
+
+        self.assertTrue(should_validate_epoch(0, 10, 5))
+        self.assertFalse(should_validate_epoch(1, 10, 5))
+        self.assertTrue(should_validate_epoch(4, 10, 5))
+        self.assertFalse(should_validate_epoch(7, 10, 5))
+        self.assertTrue(should_validate_epoch(9, 10, 5))
+        with self.assertRaisesRegex(ValueError, "validation_epoch_interval"):
+            should_validate_epoch(0, 10, 0)
+        with self.assertRaisesRegex(ValueError, "total_epochs"):
+            should_validate_epoch(0, 0, 1)
+
 
 @unittest.skipUnless(importlib.util.find_spec("torch"), "torch is required for train main smoke tests")
 class TrainMainValidationTests(unittest.TestCase):
@@ -222,10 +278,17 @@ class TrainMainValidationTests(unittest.TestCase):
             run_dir = run_dirs[0]
             meta = json.loads((run_dir / "run_meta.json").read_text(encoding="utf-8"))
             history = json.loads((run_dir / "training_history.json").read_text(encoding="utf-8"))
+            first_stage_visual_config = json.loads(
+                (run_dir / "configs" / "first_stage_visual_config.json").read_text(encoding="utf-8")
+            )
             post_train_config = json.loads((run_dir / "configs" / "post_train_sample_config.json").read_text(encoding="utf-8"))
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", FutureWarning)
                 post_train_tensors = torch.load(run_dir / "artifacts" / "post_train_sample_tensors.pt", map_location="cpu")
+                best_first_stage = torch.load(
+                    run_dir / "checkpoints" / "first_stage_best_optical.pt",
+                    map_location="cpu",
+                )
             stdout_text = stdout_buffer.getvalue()
 
         self.assertEqual(meta["dataset_total_size"], 8)
@@ -237,17 +300,60 @@ class TrainMainValidationTests(unittest.TestCase):
         self.assertEqual(meta["subset_fraction_applies_to"], "train_only")
         self.assertEqual(meta["planned_first_stage_epochs"], 1)
         self.assertEqual(meta["planned_diffusion_epochs"], 1)
-        self.assertEqual(meta["first_stage_model_version"], "physical_first_hybrid_vae_v2")
+        self.assertEqual(meta["visual_save_epoch_interval"], 1)
+        self.assertEqual(meta["validation_epoch_interval"], 1)
+        self.assertEqual(meta["first_stage_model_version"], "physical_first_hybrid_vae_v3")
+        self.assertEqual(
+            meta["first_stage_best_optical_checkpoint"],
+            str(run_dir / "checkpoints" / "first_stage_best_optical.pt"),
+        )
+        self.assertEqual(meta["first_stage_best_optical_epoch"], 1)
+        self.assertEqual(meta["first_stage_best_optical_metric"], "camera_balanced_score")
+        self.assertIsNotNone(meta["first_stage_best_optical_score"])
+        self.assertTrue(meta["first_stage_best_optical_loaded_for_diffusion"])
         self.assertEqual(meta["diffusion_latent_source"], "mu")
         self.assertAlmostEqual(meta["diffusion_guidance_scale"], 3.0, places=6)
         self.assertIn("first_stage_validation", history)
+        self.assertIn("first_stage_validation_per_class", history)
+        self.assertIn("first_stage_best_optical", history)
         self.assertIn("diffusion_validation", history)
         self.assertEqual(len(history["first_stage_validation"]), 1)
+        self.assertEqual(len(history["first_stage_validation_per_class"]), 1)
+        self.assertEqual(len(history["first_stage_best_optical"]), 1)
         self.assertEqual(len(history["diffusion_validation"]), 1)
         self.assertEqual(history["first_stage_validation"][0]["epoch"], 1)
+        self.assertEqual(history["first_stage_validation_per_class"][0]["epoch"], 1)
+        self.assertTrue(history["first_stage_best_optical"][0]["eligible"])
+        self.assertTrue(history["first_stage_best_optical"][0]["updated"])
+        self.assertEqual(history["first_stage_best_optical"][0]["selection_metric"], "camera_balanced_score")
+        self.assertEqual(
+            history["first_stage_best_optical"][0]["checkpoint"],
+            str(run_dir / "checkpoints" / "first_stage_best_optical.pt"),
+        )
         self.assertEqual(history["diffusion_validation"][0]["epoch"], 1)
         self.assertIn("image_recon_loss", history["first_stage_validation"][0])
         self.assertIn("camera_recon_loss", history["first_stage_validation"][0])
+        self.assertIn("structure_loss", history["first_stage_validation"][0])
+        self.assertIn("shape_loss", history["first_stage_validation"][0])
+        self.assertIn("field_smoothness_loss", history["first_stage_validation"][0])
+        self.assertIn("phase_tv", history["first_stage_validation"][0])
+        self.assertIn("background_leakage_loss", history["first_stage_validation"][0])
+        self.assertIn("camera_saturation_ratio", history["first_stage_validation"][0])
+        self.assertIn("camera_corr", history["first_stage_validation"][0])
+        self.assertIn("camera_edge_corr", history["first_stage_validation"][0])
+        self.assertIn("min_class_camera_corr", history["first_stage_validation"][0])
+        self.assertIn("camera_balanced_score", history["first_stage_validation"][0])
+        self.assertEqual(first_stage_visual_config["class_labels"], list(range(8)))
+        self.assertEqual(first_stage_visual_config["reference_source"], "validation_then_train_fallback")
+        self.assertEqual(sorted(history["first_stage_validation_per_class"][0]["classes"].keys()), ["4", "5", "6", "7"])
+        self.assertIn(
+            "camera_fg_mse",
+            history["first_stage_validation_per_class"][0]["classes"]["4"],
+        )
+        self.assertIn(
+            "camera_corr",
+            history["first_stage_validation_per_class"][0]["classes"]["4"],
+        )
         self.assertEqual(post_train_config["reference_labels"], list(range(8)))
         self.assertEqual(post_train_config["reference_source"], "validation_then_train_fallback")
         self.assertIn("reference_images", post_train_tensors)
@@ -261,7 +367,12 @@ class TrainMainValidationTests(unittest.TestCase):
         self.assertEqual(post_train_tensors["reference_source"], "validation_then_train_fallback")
         self.assertEqual(tuple(post_train_tensors["generated_camera"].shape), (8, 1, 8, 8))
         self.assertEqual(tuple(post_train_tensors["generated_image"].shape), (8, 1, 8, 8))
+        self.assertEqual(best_first_stage["epoch"], 1)
+        self.assertEqual(best_first_stage["selection_metric"], "camera_balanced_score")
+        self.assertIn("validation_metrics", best_first_stage)
+        self.assertIn("image_fusion_weight", best_first_stage)
         self.assertIn("planned epochs: first_stage=1 diffusion=1", stdout_text)
+        self.assertIn("loaded best optical first stage for diffusion", stdout_text)
 
 
 if __name__ == "__main__":

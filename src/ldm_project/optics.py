@@ -9,19 +9,28 @@ from torch import nn
 from .config import PhysicsConfig
 
 
-def normalize_intensity(field: torch.Tensor, normalize_percentile: float = 100.0) -> torch.Tensor:
+def normalize_intensity(
+    field: torch.Tensor,
+    normalize_percentile: float = 100.0,
+    clamp: bool = True,
+) -> torch.Tensor:
     intensity = field.abs().pow(2)
-    return normalize_real_intensity(intensity, normalize_percentile)
+    return normalize_real_intensity(intensity, normalize_percentile, clamp=clamp)
 
 
-def normalize_real_intensity(intensity: torch.Tensor, normalize_percentile: float = 100.0) -> torch.Tensor:
+def normalize_real_intensity(
+    intensity: torch.Tensor,
+    normalize_percentile: float = 100.0,
+    clamp: bool = True,
+) -> torch.Tensor:
     if normalize_percentile >= 100.0:
         scale = intensity.amax(dim=(-2, -1), keepdim=True)
     else:
         quantile = normalize_percentile / 100.0
         # 按每个样本/通道的空间分位数归一化，避免极少数尖峰把整幅图压得过暗。
         scale = torch.quantile(intensity.flatten(-2), quantile, dim=-1, keepdim=True).unsqueeze(-1)
-    return (intensity / scale.clamp_min(1e-6)).clamp(0.0, 1.0)
+    normalized = intensity / scale.clamp_min(1e-6)
+    return normalized.clamp(0.0, 1.0) if clamp else normalized
 
 
 def _frequency_grid(height: int, width: int, pixel_size: float, device: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
@@ -247,6 +256,7 @@ class BackOpticalPath(nn.Module):
 
         field = chip_field.to(torch.complex64)
         probe_field = fresnel_propagate(field, macro.dist_chip_to_plane, optics.wavelength, optics.pixel_size)
+        probe_plane_loss = normalize_intensity(probe_field, normalize_percentile, clamp=False)
         camera_field = ideal_image_field(probe_field, self.camera_magnification, self.camera_magnification_blend)
         camera_sigma_px = _camera_blur_sigma_pixels(
             self.camera_magnification,
@@ -256,9 +266,12 @@ class BackOpticalPath(nn.Module):
         )
         # 模糊放在强度域，表示传感器看到的是失焦后的能量扩散，而不是再引入一段额外复场传播。
         camera_intensity = _gaussian_blur_intensity(camera_field.abs().pow(2), camera_sigma_px)
+        camera_plane_loss = normalize_real_intensity(camera_intensity, normalize_percentile, clamp=False)
         return {
             "chip_amplitude": field.abs(),
             "chip_phase": torch.angle(field),
-            "probe_plane": normalize_intensity(probe_field, normalize_percentile),
-            "camera_plane": normalize_real_intensity(camera_intensity, normalize_percentile),
+            "probe_plane": probe_plane_loss.clamp(0.0, 1.0),
+            "probe_plane_loss": probe_plane_loss,
+            "camera_plane": camera_plane_loss.clamp(0.0, 1.0),
+            "camera_plane_loss": camera_plane_loss,
         }

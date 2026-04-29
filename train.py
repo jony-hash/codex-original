@@ -1,12 +1,19 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Callable
 import math
 import sys
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import torch
 
 
 DEFAULT_FINAL_SAMPLE_COUNT = 8
 DEFAULT_LATENT_SCALE_BATCHES = 4
+FIRST_STAGE_BEST_OPTICAL_CHECKPOINT = "first_stage_best_optical.pt"
+FIRST_STAGE_BEST_OPTICAL_METRIC = "camera_balanced_score"
 
 
 def parse_args() -> argparse.Namespace:
@@ -61,11 +68,80 @@ def should_save_epoch_visual(epoch_index: int, interval: int) -> bool:
     return epoch_index == 0 or (epoch_index + 1) % interval == 0
 
 
+def should_validate_epoch(epoch_index: int, total_epochs: int, interval: int) -> bool:
+    if total_epochs <= 0:
+        raise ValueError(f"total_epochs must be positive, got {total_epochs}")
+    if interval <= 0:
+        raise ValueError(f"validation_epoch_interval must be positive, got {interval}")
+    return epoch_index == 0 or epoch_index == total_epochs - 1 or (epoch_index + 1) % interval == 0
+
+
 def should_log_step(step_index: int, interval: int, is_epoch_last_batch: bool) -> bool:
     if interval <= 0:
         raise ValueError(f"step_log_interval must be positive, got {interval}")
     # 首步、固定间隔和每个 epoch 的最后一步都保留，既方便看趋势，也避免日志过密。
     return step_index == 0 or (step_index + 1) % interval == 0 or is_epoch_last_batch
+
+
+def resolve_image_fusion_weight(first_stage_config, epoch_index: int) -> float:
+    if epoch_index < 0:
+        raise ValueError(f"epoch_index must be non-negative, got {epoch_index}")
+    if first_stage_config.encoder_fusion_mode != "gated_dual_path":
+        return 0.0
+    decay_epochs = first_stage_config.image_fusion_decay_epochs
+    if decay_epochs <= 1:
+        return float(first_stage_config.image_fusion_end_weight)
+    progress = min(float(epoch_index) / float(decay_epochs - 1), 1.0)
+    start = float(first_stage_config.image_fusion_start_weight)
+    end = float(first_stage_config.image_fusion_end_weight)
+    schedule = getattr(first_stage_config, "image_fusion_schedule", "linear")
+    if schedule == "linear":
+        decay_factor = progress
+    elif schedule == "cosine":
+        decay_factor = 0.5 - 0.5 * math.cos(math.pi * progress)
+    else:
+        raise ValueError(f"Unsupported image_fusion_schedule: {schedule}; expected linear or cosine.")
+    return start + (end - start) * decay_factor
+
+
+def set_first_stage_image_fusion_weight(first_stage, weight: float) -> None:
+    if hasattr(first_stage, "set_image_fusion_weight"):
+        first_stage.set_image_fusion_weight(weight)
+
+
+def is_best_optical_candidate(first_stage_config, image_fusion_weight: float) -> bool:
+    if first_stage_config.encoder_fusion_mode == "optical_only":
+        return True
+    return math.isclose(
+        float(image_fusion_weight),
+        float(first_stage_config.image_fusion_end_weight),
+        rel_tol=0.0,
+        abs_tol=1.0e-8,
+    )
+
+
+def should_update_best_optical(score: float, best_score: float | None) -> bool:
+    return best_score is None or score > best_score
+
+
+def compute_first_stage_balanced_metrics(
+    validation_metrics: dict[str, float],
+    per_class_metrics: dict[str, dict[str, float | int]],
+) -> dict[str, float]:
+    camera_corr = float(validation_metrics["camera_corr"])
+    camera_edge_corr = float(validation_metrics["camera_edge_corr"])
+    class_scores = [
+        float(metrics["camera_corr"])
+        for metrics in per_class_metrics.values()
+        if "camera_corr" in metrics
+    ]
+    min_class_camera_corr = min(class_scores) if class_scores else camera_corr
+    # 兼顾整体相似度、边缘结构和最弱类别，避免只优化容易数字。
+    camera_balanced_score = 0.5 * camera_corr + 0.3 * camera_edge_corr + 0.2 * min_class_camera_corr
+    return {
+        "min_class_camera_corr": min_class_camera_corr,
+        "camera_balanced_score": camera_balanced_score,
+    }
 
 
 def resolve_logged_step(batch_index: int, stage_step: int) -> dict[str, int]:
@@ -129,9 +205,13 @@ def _resolve_label_value(label) -> int:
     return int(label)
 
 
-def _collect_reference_images_from_dataset(torch_module, dataset, requested_labels: list[int]) -> dict[int, object]:
+def _collect_reference_images_from_dataset(
+    torch_module,
+    dataset,
+    requested_labels: list[int],
+) -> dict[int, torch.Tensor]:
     requested_set = set(requested_labels)
-    found_images: dict[int, object] = {}
+    found_images: dict[int, torch.Tensor] = {}
     for index in range(len(dataset)):
         image, label = dataset[index]
         label_value = _resolve_label_value(label)
@@ -143,6 +223,14 @@ def _collect_reference_images_from_dataset(torch_module, dataset, requested_labe
     return found_images
 
 
+def _collect_label_values_from_dataset(dataset) -> set[int]:
+    label_values: set[int] = set()
+    for index in range(len(dataset)):
+        _, label = dataset[index]
+        label_values.add(_resolve_label_value(label))
+    return label_values
+
+
 def select_reference_images_for_labels(
     torch_module,
     class_labels,
@@ -151,7 +239,7 @@ def select_reference_images_for_labels(
     device,
 ):
     label_values = [_resolve_label_value(label) for label in class_labels.detach().cpu()]
-    validation_found: dict[int, object] = {}
+    validation_found: dict[int, torch.Tensor] = {}
     if validation_bundle is not None:
         validation_found = _collect_reference_images_from_dataset(
             torch_module,
@@ -183,6 +271,41 @@ def select_reference_images_for_labels(
     else:
         reference_source = "validation_then_train_fallback"
     return reference_images, reference_labels, reference_source
+
+
+def select_first_stage_visual_batch(
+    torch_module,
+    validation_bundle,
+    train_bundle,
+    num_classes: int,
+    device,
+):
+    # 固定 0-9 验证样本，避免每个 epoch 因训练 batch 变化而误判结构改进。
+    visual_labels = build_visualization_labels(torch_module, num_classes, num_classes, device)
+    try:
+        return select_reference_images_for_labels(
+            torch_module,
+            visual_labels,
+            validation_bundle,
+            train_bundle,
+            device,
+        )
+    except ValueError:
+        available_labels = set()
+        if validation_bundle is not None:
+            available_labels.update(_collect_label_values_from_dataset(validation_bundle.dataset))
+        available_labels.update(_collect_label_values_from_dataset(train_bundle.dataset))
+        fallback_labels = sorted(label for label in available_labels if 0 <= label < num_classes)
+        if not fallback_labels:
+            raise
+        fallback_tensor = torch_module.tensor(fallback_labels, device=device, dtype=torch_module.long)
+        return select_reference_images_for_labels(
+            torch_module,
+            fallback_tensor,
+            validation_bundle,
+            train_bundle,
+            device,
+        )
 
 
 def validate_stage_requirements(stage: str, first_stage_checkpoint: str | None) -> None:
@@ -219,10 +342,51 @@ def average_scalar_metrics(metric_totals: dict[str, float], example_count: int) 
     return {name: total / float(example_count) for name, total in metric_totals.items()}
 
 
+def _mean_flattened_correlation(prediction: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    prediction_flat = prediction.detach().float().flatten(1)
+    target_flat = target.detach().float().flatten(1)
+    prediction_centered = prediction_flat - prediction_flat.mean(dim=1, keepdim=True)
+    target_centered = target_flat - target_flat.mean(dim=1, keepdim=True)
+    numerator = (prediction_centered * target_centered).mean(dim=1)
+    denominator = (
+        prediction_centered.pow(2).mean(dim=1).sqrt() * target_centered.pow(2).mean(dim=1).sqrt()
+    ).clamp_min(1.0e-6)
+    return (numerator / denominator).mean()
+
+
+def _edge_magnitude_like(torch_module, tensor: torch.Tensor) -> torch.Tensor:
+    tensor = tensor.detach().float()
+    edge = torch_module.zeros_like(tensor)
+    diff_y = (tensor[..., 1:, :] - tensor[..., :-1, :]).abs()
+    diff_x = (tensor[..., :, 1:] - tensor[..., :, :-1]).abs()
+    edge[..., 1:, :] = edge[..., 1:, :] + diff_y
+    edge[..., :-1, :] = edge[..., :-1, :] + diff_y
+    edge[..., :, 1:] = edge[..., :, 1:] + diff_x
+    edge[..., :, :-1] = edge[..., :, :-1] + diff_x
+    return edge
+
+
+def first_stage_quality_metrics(
+    torch_module,
+    outputs: dict[str, torch.Tensor],
+    input_batch: torch.Tensor,
+) -> dict[str, torch.Tensor]:
+    camera_plane = outputs["camera_plane"]
+    image_recon = outputs["image_recon"]
+    return {
+        "camera_corr": _mean_flattened_correlation(camera_plane, input_batch),
+        "image_corr": _mean_flattened_correlation(image_recon, input_batch),
+        "camera_edge_corr": _mean_flattened_correlation(
+            _edge_magnitude_like(torch_module, camera_plane),
+            _edge_magnitude_like(torch_module, input_batch),
+        ),
+    }
+
+
 def evaluate_first_stage(
     torch_module,
     first_stage,
-    first_stage_loss_fn,
+    first_stage_loss_fn: Callable[..., dict[str, torch.Tensor]],
     loader,
     device,
     use_pin_memory: bool,
@@ -230,6 +394,31 @@ def evaluate_first_stage(
     total_steps: int,
     train_cfg,
 ) -> dict[str, float]:
+    overall_metrics, _ = evaluate_first_stage_with_per_class(
+        torch_module,
+        first_stage,
+        first_stage_loss_fn,
+        loader,
+        device,
+        use_pin_memory,
+        stage_step,
+        total_steps,
+        train_cfg,
+    )
+    return overall_metrics
+
+
+def evaluate_first_stage_with_per_class(
+    torch_module,
+    first_stage,
+    first_stage_loss_fn: Callable[..., dict[str, torch.Tensor]],
+    loader,
+    device,
+    use_pin_memory: bool,
+    stage_step: int,
+    total_steps: int,
+    train_cfg,
+) -> tuple[dict[str, float], dict[str, dict[str, float | int]]]:
     metric_names = (
         "loss",
         "recon_loss",
@@ -239,18 +428,46 @@ def evaluate_first_stage(
         "camera_recon_loss",
         "camera_fg_mse",
         "camera_bg_mse",
+        "structure_loss",
+        "image_structure_loss",
+        "camera_structure_loss",
+        "shape_loss",
+        "image_shape_loss",
+        "camera_shape_loss",
+        "field_smoothness_loss",
+        "field_tv",
+        "phase_smoothness_loss",
+        "phase_tv",
+        "background_leakage_loss",
+        "camera_saturation_ratio",
         "kl_loss",
         "fg_pixel_ratio",
         "pred_fg_energy_ratio",
         "beta",
+        "camera_corr",
+        "image_corr",
+        "camera_edge_corr",
+    )
+    per_class_metric_names = (
+        "camera_fg_mse",
+        "image_fg_mse",
+        "camera_recon_loss",
+        "image_recon_loss",
+        "camera_corr",
+        "image_corr",
+        "camera_edge_corr",
     )
     metric_totals = {name: 0.0 for name in metric_names}
     example_count = 0
+    class_count = train_cfg.diffusion.num_classes
+    class_metric_totals = {label: {name: 0.0 for name in per_class_metric_names} for label in range(class_count)}
+    class_counts = {label: 0 for label in range(class_count)}
     validation_step = max(stage_step - 1, 0)
     first_stage.eval()
     with torch_module.no_grad():
-        for images, _ in loader:
+        for images, labels in loader:
             input_batch = images.to(device, non_blocking=use_pin_memory)
+            class_labels = labels.to(device, non_blocking=use_pin_memory)
             outputs = first_stage(input_batch)
             losses = first_stage_loss_fn(
                 outputs,
@@ -264,12 +481,90 @@ def evaluate_first_stage(
                 background_weight=train_cfg.first_stage.recon_background_weight,
                 image_recon_weight=train_cfg.first_stage.image_recon_weight,
                 camera_recon_weight=train_cfg.first_stage.camera_recon_weight,
+                structure_recon_weight=train_cfg.first_stage.structure_recon_weight,
+                shape_recon_weight=train_cfg.first_stage.shape_recon_weight,
+                field_smoothness_weight=train_cfg.first_stage.field_smoothness_weight,
+                phase_smoothness_weight=train_cfg.first_stage.phase_smoothness_weight,
+                background_leakage_weight=train_cfg.first_stage.background_leakage_weight,
             )
+            quality_metrics = first_stage_quality_metrics(torch_module, outputs, input_batch)
             batch_size = input_batch.shape[0]
             for name in metric_names:
+                if name in quality_metrics:
+                    metric_totals[name] += quality_metrics[name].item() * batch_size
+                    continue
                 metric_totals[name] += losses[name].item() * batch_size
             example_count += batch_size
-    return average_scalar_metrics(metric_totals, example_count)
+            for label in range(class_count):
+                mask = class_labels == label
+                count = int(mask.sum().item())
+                if count == 0:
+                    continue
+                label_losses = first_stage_loss_fn(
+                    {key: value[mask] for key, value in outputs.items()},
+                    input_batch[mask],
+                    global_step=validation_step,
+                    total_steps=total_steps,
+                    target_beta=train_cfg.first_stage.kl_beta,
+                    warmup_ratio=train_cfg.first_stage.kl_warmup_ratio,
+                    foreground_threshold=train_cfg.first_stage.recon_foreground_threshold,
+                    foreground_weight=train_cfg.first_stage.recon_foreground_weight,
+                    background_weight=train_cfg.first_stage.recon_background_weight,
+                    image_recon_weight=train_cfg.first_stage.image_recon_weight,
+                    camera_recon_weight=train_cfg.first_stage.camera_recon_weight,
+                    structure_recon_weight=train_cfg.first_stage.structure_recon_weight,
+                    shape_recon_weight=train_cfg.first_stage.shape_recon_weight,
+                    field_smoothness_weight=train_cfg.first_stage.field_smoothness_weight,
+                    phase_smoothness_weight=train_cfg.first_stage.phase_smoothness_weight,
+                    background_leakage_weight=train_cfg.first_stage.background_leakage_weight,
+                )
+                label_quality_metrics = first_stage_quality_metrics(
+                    torch_module,
+                    {key: value[mask] for key, value in outputs.items()},
+                    input_batch[mask],
+                )
+                class_counts[label] += count
+                for name in per_class_metric_names:
+                    if name in label_quality_metrics:
+                        class_metric_totals[label][name] += label_quality_metrics[name].item() * count
+                    else:
+                        class_metric_totals[label][name] += label_losses[name].item() * count
+
+    per_class: dict[str, dict[str, float | int]] = {}
+    for label in range(class_count):
+        count = class_counts[label]
+        if count == 0:
+            continue
+        per_class[str(label)] = {
+            "count": count,
+            **{name: class_metric_totals[label][name] / float(count) for name in per_class_metric_names},
+        }
+    return average_scalar_metrics(metric_totals, example_count), per_class
+
+
+def evaluate_first_stage_per_class(
+    torch_module,
+    first_stage,
+    first_stage_loss_fn: Callable[..., dict[str, torch.Tensor]],
+    loader,
+    device,
+    use_pin_memory: bool,
+    stage_step: int,
+    total_steps: int,
+    train_cfg,
+) -> dict[str, dict[str, float | int]]:
+    _, per_class = evaluate_first_stage_with_per_class(
+        torch_module,
+        first_stage,
+        first_stage_loss_fn,
+        loader,
+        device,
+        use_pin_memory,
+        stage_step,
+        total_steps,
+        train_cfg,
+    )
+    return per_class
 
 
 def evaluate_diffusion(
@@ -277,7 +572,7 @@ def evaluate_diffusion(
     first_stage,
     diffusion_model,
     scheduler,
-    diffusion_loss_fn,
+    diffusion_loss_fn: Callable[..., torch.Tensor],
     loader,
     device,
     use_pin_memory: bool,
@@ -478,43 +773,69 @@ def main() -> None:
     )
     train_bundle = dataset_splits.train
     validation_bundle = dataset_splits.validation
+    first_stage_visual_batch = None
+    first_stage_visual_labels = None
+    first_stage_visual_source = None
+    if train_cfg.mode in {"first_stage", "full"}:
+        first_stage_visual_batch, first_stage_visual_labels, first_stage_visual_source = select_first_stage_visual_batch(
+            torch,
+            validation_bundle,
+            train_bundle,
+            train_cfg.diffusion.num_classes,
+            device,
+        )
 
     run_manager.save_config_snapshot("physics_config", physics)
     run_manager.save_config_snapshot("train_config", train_cfg)
+    if first_stage_visual_labels is not None:
+        run_manager.save_config_snapshot(
+            "first_stage_visual_config",
+            {
+                "class_labels": first_stage_visual_labels.detach().cpu().tolist(),
+                "reference_source": first_stage_visual_source,
+                "source": "train.py_fixed_first_stage_visualization",
+            },
+        )
     epoch_plan = resolve_stage_epoch_plan(
         train_cfg.mode,
         train_cfg.first_stage_epochs,
         train_cfg.diffusion_epochs,
     )
-    run_manager.write_meta(
-        {
-            "script": "train.py",
-            "argv": sys.argv,
-            "device": str(device),
-            "mode": train_cfg.mode,
-            "physics_config_path": args.physics_config,
-            "train_config_path": args.train_config,
-            "first_stage_checkpoint": args.first_stage_checkpoint,
-            "run_dir": run_manager.run_dir,
-            "dataset": train_cfg.data.dataset,
-            "dataset_root": train_cfg.data.root,
-            "dataset_total_size": dataset_splits.total_size,
-            "dataset_effective_size": train_bundle.effective_size,
-            "train_split_size": train_bundle.total_size,
-            "train_effective_size": train_bundle.effective_size,
-            "validation_size": 0 if validation_bundle is None else validation_bundle.effective_size,
-            "validation_fraction": train_cfg.data.validation_fraction,
-            "validation_split_seed": train_cfg.data.validation_split_seed,
-            "subset_fraction": train_cfg.data.subset_fraction,
-            "subset_fraction_applies_to": "train_only",
-            "planned_first_stage_epochs": epoch_plan["first_stage"],
-            "planned_diffusion_epochs": epoch_plan["diffusion"],
-            "first_stage_model_version": FIRST_STAGE_MODEL_VERSION,
-            "diffusion_latent_source": train_cfg.diffusion.latent_source,
-            "diffusion_guidance_scale": train_cfg.diffusion.guidance_scale,
-            "conditioning": diffusion_model.conditioning_metadata(),
-        }
-    )
+    run_meta = {
+        "script": "train.py",
+        "argv": sys.argv,
+        "device": str(device),
+        "mode": train_cfg.mode,
+        "physics_config_path": args.physics_config,
+        "train_config_path": args.train_config,
+        "first_stage_checkpoint": args.first_stage_checkpoint,
+        "run_dir": run_manager.run_dir,
+        "dataset": train_cfg.data.dataset,
+        "dataset_root": train_cfg.data.root,
+        "dataset_total_size": dataset_splits.total_size,
+        "dataset_effective_size": train_bundle.effective_size,
+        "train_split_size": train_bundle.total_size,
+        "train_effective_size": train_bundle.effective_size,
+        "validation_size": 0 if validation_bundle is None else validation_bundle.effective_size,
+        "validation_fraction": train_cfg.data.validation_fraction,
+        "validation_split_seed": train_cfg.data.validation_split_seed,
+        "subset_fraction": train_cfg.data.subset_fraction,
+        "subset_fraction_applies_to": "train_only",
+        "planned_first_stage_epochs": epoch_plan["first_stage"],
+        "planned_diffusion_epochs": epoch_plan["diffusion"],
+        "visual_save_epoch_interval": train_cfg.visual_save_epoch_interval,
+        "validation_epoch_interval": train_cfg.validation_epoch_interval,
+        "first_stage_model_version": FIRST_STAGE_MODEL_VERSION,
+        "first_stage_best_optical_checkpoint": None,
+        "first_stage_best_optical_epoch": None,
+        "first_stage_best_optical_metric": FIRST_STAGE_BEST_OPTICAL_METRIC,
+        "first_stage_best_optical_score": None,
+        "first_stage_best_optical_loaded_for_diffusion": False,
+        "diffusion_latent_source": train_cfg.diffusion.latent_source,
+        "diffusion_guidance_scale": train_cfg.diffusion.guidance_scale,
+        "conditioning": diffusion_model.conditioning_metadata(),
+    }
+    run_manager.write_meta(run_meta)
     print(
         f"planned epochs: first_stage={epoch_plan['first_stage']} "
         f"diffusion={epoch_plan['diffusion']}"
@@ -529,10 +850,12 @@ def main() -> None:
             train_cfg.first_stage_epochs,
         )
         first_stage_stage_step = 0
+        best_optical_score = None
+        best_optical_checkpoint_path = None
         for epoch_index in range(train_cfg.first_stage_epochs):
             epoch_number = epoch_index + 1
-            last_batch = None
-            last_outputs = None
+            image_fusion_weight = resolve_image_fusion_weight(train_cfg.first_stage, epoch_index)
+            set_first_stage_image_fusion_weight(first_stage, image_fusion_weight)
             for batch_index, (images, _) in enumerate(train_bundle.loader):
                 # 物理优先训练把 camera_plane 作为主读出，image_recon 仅保留为辅助诊断。
                 input_batch = images.to(device, non_blocking=use_pin_memory)
@@ -550,6 +873,11 @@ def main() -> None:
                     background_weight=train_cfg.first_stage.recon_background_weight,
                     image_recon_weight=train_cfg.first_stage.image_recon_weight,
                     camera_recon_weight=train_cfg.first_stage.camera_recon_weight,
+                    structure_recon_weight=train_cfg.first_stage.structure_recon_weight,
+                    shape_recon_weight=train_cfg.first_stage.shape_recon_weight,
+                    field_smoothness_weight=train_cfg.first_stage.field_smoothness_weight,
+                    phase_smoothness_weight=train_cfg.first_stage.phase_smoothness_weight,
+                    background_leakage_weight=train_cfg.first_stage.background_leakage_weight,
                 )
                 losses["loss"].backward()
                 optimizer.step()
@@ -568,6 +896,12 @@ def main() -> None:
                         f"camera_recon={losses['camera_recon_loss'].item():.6f} "
                         f"image_fg_mse={losses['image_fg_mse'].item():.6f} "
                         f"camera_fg_mse={losses['camera_fg_mse'].item():.6f} "
+                        f"structure={losses['structure_loss'].item():.6f} "
+                        f"shape={losses['shape_loss'].item():.6f} "
+                        f"field={losses['field_smoothness_loss'].item():.6f} "
+                        f"phase_tv={losses['phase_tv'].item():.6f} "
+                        f"sat={losses['camera_saturation_ratio'].item():.4f} "
+                        f"image_fusion={image_fusion_weight:.4f} "
                         f"kl={losses['kl_loss'].item():.6f}"
                     )
                     run_manager.append_history(
@@ -583,32 +917,51 @@ def main() -> None:
                             "camera_recon_loss": losses["camera_recon_loss"].item(),
                             "camera_fg_mse": losses["camera_fg_mse"].item(),
                             "camera_bg_mse": losses["camera_bg_mse"].item(),
+                            "structure_loss": losses["structure_loss"].item(),
+                            "image_structure_loss": losses["image_structure_loss"].item(),
+                            "camera_structure_loss": losses["camera_structure_loss"].item(),
+                            "shape_loss": losses["shape_loss"].item(),
+                            "image_shape_loss": losses["image_shape_loss"].item(),
+                            "camera_shape_loss": losses["camera_shape_loss"].item(),
+                            "field_smoothness_loss": losses["field_smoothness_loss"].item(),
+                            "field_tv": losses["field_tv"].item(),
+                            "phase_smoothness_loss": losses["phase_smoothness_loss"].item(),
+                            "phase_tv": losses["phase_tv"].item(),
+                            "background_leakage_loss": losses["background_leakage_loss"].item(),
+                            "camera_saturation_ratio": losses["camera_saturation_ratio"].item(),
                             "kl_loss": losses["kl_loss"].item(),
                             "fg_pixel_ratio": losses["fg_pixel_ratio"].item(),
                             "pred_fg_energy_ratio": losses["pred_fg_energy_ratio"].item(),
                             "beta": losses["beta"].item(),
+                            "image_fusion_weight": image_fusion_weight,
                         },
                     )
-                last_batch = input_batch
-                last_outputs = outputs
                 first_stage_stage_step += 1
 
-            # 仅在 epoch 结束时保存一张代表图，避免再暴露 step-based 可视化语义。
+            # 仅在 epoch 结束时保存固定验证样本，方便横向观察复杂数字结构是否改善。
             if (
-                last_batch is not None
-                and last_outputs is not None
+                first_stage_visual_batch is not None
                 and should_save_epoch_visual(epoch_index, train_cfg.visual_save_epoch_interval)
             ):
-                run_manager.save_tensor_grid(
-                    build_first_stage_visualization_tensors(last_batch, last_outputs),
-                    run_manager.first_stage_images_dir / f"epoch_{epoch_number:04d}.png",
-                    title=format_output_title(
-                        f"images/first_stage/epoch_{epoch_number:04d}.png",
-                        f"first_stage epoch {epoch_number}",
-                    ),
-                )
-            if validation_bundle is not None:
-                validation_metrics = evaluate_first_stage(
+                first_stage.eval()
+                with torch.no_grad():
+                    visual_outputs = first_stage(first_stage_visual_batch)
+                    run_manager.save_tensor_grid(
+                        build_first_stage_visualization_tensors(first_stage_visual_batch, visual_outputs),
+                        run_manager.first_stage_images_dir / f"epoch_{epoch_number:04d}.png",
+                        title=format_output_title(
+                            f"images/first_stage/epoch_{epoch_number:04d}.png",
+                            f"first_stage epoch {epoch_number}",
+                        ),
+                        max_items=first_stage_visual_batch.shape[0],
+                    )
+                first_stage.train()
+            if validation_bundle is not None and should_validate_epoch(
+                epoch_index,
+                train_cfg.first_stage_epochs,
+                train_cfg.validation_epoch_interval,
+            ):
+                validation_metrics, per_class_metrics = evaluate_first_stage_with_per_class(
                     torch,
                     first_stage,
                     first_stage_loss,
@@ -619,6 +972,9 @@ def main() -> None:
                     first_stage_total_steps,
                     train_cfg,
                 )
+                validation_metrics.update(
+                    compute_first_stage_balanced_metrics(validation_metrics, per_class_metrics)
+                )
                 print(
                     f"[first_stage][val] epoch={epoch_number} loss={validation_metrics['loss']:.6f} "
                     f"recon_w={validation_metrics['recon_loss']:.6f} "
@@ -626,6 +982,15 @@ def main() -> None:
                     f"camera_recon={validation_metrics['camera_recon_loss']:.6f} "
                     f"image_fg_mse={validation_metrics['image_fg_mse']:.6f} "
                     f"camera_fg_mse={validation_metrics['camera_fg_mse']:.6f} "
+                    f"structure={validation_metrics['structure_loss']:.6f} "
+                    f"shape={validation_metrics['shape_loss']:.6f} "
+                    f"field={validation_metrics['field_smoothness_loss']:.6f} "
+                    f"phase_tv={validation_metrics['phase_tv']:.6f} "
+                    f"sat={validation_metrics['camera_saturation_ratio']:.4f} "
+                    f"camera_corr={validation_metrics['camera_corr']:.4f} "
+                    f"camera_edge_corr={validation_metrics['camera_edge_corr']:.4f} "
+                    f"min_class_corr={validation_metrics['min_class_camera_corr']:.4f} "
+                    f"balanced={validation_metrics['camera_balanced_score']:.4f} "
                     f"kl={validation_metrics['kl_loss']:.6f}"
                 )
                 run_manager.append_history(
@@ -633,6 +998,54 @@ def main() -> None:
                     {
                         "epoch": epoch_number,
                         **validation_metrics,
+                    },
+                )
+                run_manager.append_history(
+                    "first_stage_validation_per_class",
+                    {
+                        "epoch": epoch_number,
+                        "classes": per_class_metrics,
+                    },
+                )
+                optical_candidate = is_best_optical_candidate(train_cfg.first_stage, image_fusion_weight)
+                selection_score = validation_metrics[FIRST_STAGE_BEST_OPTICAL_METRIC]
+                updated_best = optical_candidate and should_update_best_optical(selection_score, best_optical_score)
+                if updated_best:
+                    best_optical_score = selection_score
+                    best_optical_checkpoint_path = run_manager.save_checkpoint(
+                        FIRST_STAGE_BEST_OPTICAL_CHECKPOINT,
+                        {
+                            "model_state_dict": first_stage.state_dict(),
+                            "stage": "first_stage",
+                            "model_version": FIRST_STAGE_MODEL_VERSION,
+                            "physics_config": physics,
+                            "train_config": train_cfg,
+                            "epoch": epoch_number,
+                            "selection_metric": FIRST_STAGE_BEST_OPTICAL_METRIC,
+                            "selection_score": selection_score,
+                            "validation_metrics": validation_metrics,
+                            "image_fusion_weight": image_fusion_weight,
+                        },
+                    )
+                    run_meta.update(
+                        {
+                            "first_stage_best_optical_checkpoint": best_optical_checkpoint_path,
+                            "first_stage_best_optical_epoch": epoch_number,
+                            "first_stage_best_optical_score": best_optical_score,
+                        }
+                    )
+                    run_manager.write_meta(run_meta)
+                run_manager.append_history(
+                    "first_stage_best_optical",
+                    {
+                        "epoch": epoch_number,
+                        "eligible": optical_candidate,
+                        "updated": updated_best,
+                        "selection_metric": FIRST_STAGE_BEST_OPTICAL_METRIC,
+                        "selection_score": selection_score,
+                        "best_score": best_optical_score,
+                        "image_fusion_weight": image_fusion_weight,
+                        "checkpoint": best_optical_checkpoint_path,
                     },
                 )
                 first_stage.train()
@@ -649,7 +1062,19 @@ def main() -> None:
         )
 
     if train_cfg.mode in {"diffusion", "full"}:
+        if train_cfg.mode == "full":
+            best_checkpoint_path = run_meta.get("first_stage_best_optical_checkpoint")
+            if best_checkpoint_path is not None:
+                # full 训练的第二阶段必须使用验证集上最好的纯 optical first stage。
+                best_first_stage_payload = torch.load(best_checkpoint_path, map_location=device)
+                load_first_stage_checkpoint(first_stage, best_first_stage_payload)
+                run_meta["first_stage_best_optical_loaded_for_diffusion"] = True
+                run_manager.write_meta(run_meta)
+                print(f"loaded best optical first stage for diffusion: {best_checkpoint_path}")
+            else:
+                print("best optical first stage checkpoint unavailable; diffusion will use current first stage.")
         first_stage.eval()
+        set_first_stage_image_fusion_weight(first_stage, train_cfg.first_stage.image_fusion_end_weight)
         if train_cfg.first_stage.freeze_after_pretrain:
             for param in first_stage.parameters():
                 param.requires_grad_(False)
@@ -665,7 +1090,7 @@ def main() -> None:
         optimizer = torch.optim.Adam(diffusion_model.parameters(), lr=train_cfg.learning_rate)
         diffusion_model.train()
         loader_length = len(train_bundle.loader)
-        diffusion_total_steps = resolve_stage_total_steps(
+        resolve_stage_total_steps(
             loader_length,
             train_cfg.diffusion_epochs,
         )
@@ -745,7 +1170,11 @@ def main() -> None:
                             f"diffusion epoch {epoch_number}",
                         ),
                     )
-            if validation_bundle is not None:
+            if validation_bundle is not None and should_validate_epoch(
+                epoch_index,
+                train_cfg.diffusion_epochs,
+                train_cfg.validation_epoch_interval,
+            ):
                 validation_metrics = evaluate_diffusion(
                     torch,
                     first_stage,

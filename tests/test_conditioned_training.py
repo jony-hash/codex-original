@@ -35,12 +35,172 @@ class ConditionedTrainingSmokeTests(unittest.TestCase):
             "camera_recon_loss",
             "camera_fg_mse",
             "camera_bg_mse",
+            "structure_loss",
+            "image_structure_loss",
+            "camera_structure_loss",
+            "shape_loss",
+            "image_shape_loss",
+            "camera_shape_loss",
+            "field_smoothness_loss",
+            "field_tv",
+            "phase_smoothness_loss",
+            "phase_tv",
+            "background_leakage_loss",
+            "camera_saturation_ratio",
             "kl_loss",
             "fg_pixel_ratio",
             "pred_fg_energy_ratio",
         ):
             self.assertEqual(losses[key].ndim, 0, key)
             self.assertTrue(torch.isfinite(losses[key]).item(), key)
+
+    def test_first_stage_loss_adds_weighted_structure_term(self) -> None:
+        import torch
+
+        from ldm_project.training import first_stage_loss
+
+        input_batch = torch.zeros((1, 1, 5, 5), dtype=torch.float32)
+        input_batch[:, :, 1:4, 1:4] = 1.0
+        prediction = torch.zeros_like(input_batch)
+        outputs = {
+            "x_hat": prediction,
+            "image_recon": prediction,
+            "camera_plane": prediction,
+            "mu": torch.zeros_like(input_batch),
+            "logvar": torch.zeros_like(input_batch),
+        }
+
+        base_losses = first_stage_loss(
+            outputs,
+            input_batch,
+            global_step=0,
+            total_steps=1,
+            target_beta=0.0,
+            warmup_ratio=0.1,
+            image_recon_weight=0.5,
+            camera_recon_weight=1.0,
+            structure_recon_weight=0.0,
+        )
+        structure_losses = first_stage_loss(
+            outputs,
+            input_batch,
+            global_step=0,
+            total_steps=1,
+            target_beta=0.0,
+            warmup_ratio=0.1,
+            image_recon_weight=0.5,
+            camera_recon_weight=1.0,
+            structure_recon_weight=0.2,
+        )
+
+        self.assertGreater(structure_losses["image_structure_loss"].item(), 0.0)
+        self.assertGreater(structure_losses["camera_structure_loss"].item(), 0.0)
+        self.assertGreater(structure_losses["structure_loss"].item(), 0.0)
+        self.assertAlmostEqual(
+            structure_losses["loss"].item(),
+            base_losses["loss"].item() + structure_losses["structure_loss"].item(),
+            places=6,
+        )
+
+    def test_first_stage_loss_adds_weighted_shape_term(self) -> None:
+        import torch
+
+        from ldm_project.training import first_stage_loss
+
+        input_batch = torch.zeros((1, 1, 5, 5), dtype=torch.float32)
+        input_batch[:, :, 1:4, 1:4] = 1.0
+        prediction = torch.zeros_like(input_batch)
+        outputs = {
+            "x_hat": prediction,
+            "image_recon": prediction,
+            "camera_plane": prediction,
+            "mu": torch.zeros_like(input_batch),
+            "logvar": torch.zeros_like(input_batch),
+        }
+
+        base_losses = first_stage_loss(
+            outputs,
+            input_batch,
+            global_step=0,
+            total_steps=1,
+            target_beta=0.0,
+            warmup_ratio=0.1,
+            image_recon_weight=0.5,
+            camera_recon_weight=1.0,
+            shape_recon_weight=0.0,
+        )
+        shape_losses = first_stage_loss(
+            outputs,
+            input_batch,
+            global_step=0,
+            total_steps=1,
+            target_beta=0.0,
+            warmup_ratio=0.1,
+            image_recon_weight=0.5,
+            camera_recon_weight=1.0,
+            shape_recon_weight=0.2,
+        )
+
+        self.assertGreater(shape_losses["image_shape_loss"].item(), 0.0)
+        self.assertGreater(shape_losses["camera_shape_loss"].item(), 0.0)
+        self.assertGreater(shape_losses["shape_loss"].item(), 0.0)
+        self.assertAlmostEqual(
+            shape_losses["loss"].item(),
+            base_losses["loss"].item() + shape_losses["shape_loss"].item(),
+            places=6,
+        )
+
+    def test_first_stage_loss_adds_field_phase_and_background_terms(self) -> None:
+        import torch
+
+        from ldm_project.training import first_stage_loss
+
+        input_batch = torch.zeros((1, 1, 4, 4), dtype=torch.float32)
+        camera_plane = torch.zeros_like(input_batch)
+        camera_plane[:, :, :, 2:] = 0.5
+        chip_real = torch.zeros_like(input_batch)
+        chip_real[:, :, :, 2:] = 1.0
+        chip_imag = torch.zeros_like(input_batch)
+        chip_phase = torch.zeros_like(input_batch)
+        chip_phase[:, :, 2:, :] = torch.pi
+        outputs = {
+            "x_hat": camera_plane,
+            "image_recon": torch.zeros_like(input_batch),
+            "camera_plane": camera_plane,
+            "chip_real": chip_real,
+            "chip_imag": chip_imag,
+            "chip_phase": chip_phase,
+            "mu": torch.zeros_like(input_batch),
+            "logvar": torch.zeros_like(input_batch),
+        }
+
+        base_losses = first_stage_loss(
+            outputs,
+            input_batch,
+            global_step=0,
+            total_steps=1,
+            target_beta=0.0,
+            warmup_ratio=0.1,
+        )
+        regularized_losses = first_stage_loss(
+            outputs,
+            input_batch,
+            global_step=0,
+            total_steps=1,
+            target_beta=0.0,
+            warmup_ratio=0.1,
+            field_smoothness_weight=0.2,
+            phase_smoothness_weight=0.3,
+            background_leakage_weight=0.4,
+        )
+
+        self.assertGreater(regularized_losses["field_smoothness_loss"].item(), 0.0)
+        self.assertGreater(regularized_losses["phase_smoothness_loss"].item(), 0.0)
+        self.assertGreater(regularized_losses["background_leakage_loss"].item(), 0.0)
+        self.assertGreater(regularized_losses["field_tv"].item(), 0.0)
+        self.assertGreater(regularized_losses["phase_tv"].item(), 0.0)
+        self.assertGreaterEqual(regularized_losses["camera_saturation_ratio"].item(), 0.0)
+        self.assertGreater(regularized_losses["loss"].item(), base_losses["loss"].item())
 
     def test_conditioned_diffusion_loss_smoke(self) -> None:
         import torch

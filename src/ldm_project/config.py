@@ -63,6 +63,10 @@ class FirstStageConfig:
     latent_position: str = "post_encoder_pre_ols"
     ols_kind: str = "pointwise_tanh"
     encoder_fusion_mode: str = "optical_only"
+    image_fusion_start_weight: float = 1.0
+    image_fusion_end_weight: float = 0.0
+    image_fusion_decay_epochs: int = 20
+    image_fusion_schedule: str = "linear"
     optical_field_mode: str = "complex_cartesian"
     primary_output: str = "camera"
     freeze_after_pretrain: bool = True
@@ -73,6 +77,12 @@ class FirstStageConfig:
     recon_background_weight: float = 1.0
     image_recon_weight: float = 0.25
     camera_recon_weight: float = 1.0
+    decoder_tail_channels: int = 32
+    structure_recon_weight: float = 0.0
+    shape_recon_weight: float = 0.5
+    field_smoothness_weight: float = 0.02
+    phase_smoothness_weight: float = 0.01
+    background_leakage_weight: float = 0.02
     electronic_domain: "ElectronicDomainConfig" = field(default_factory=lambda: ElectronicDomainConfig())
 
 
@@ -123,6 +133,7 @@ class TrainingConfig:
     learning_rate: float = 1.0e-4
     step_log_interval: int = 100
     visual_save_epoch_interval: int = 1
+    validation_epoch_interval: int = 1
     first_stage_epochs: int = 10
     diffusion_epochs: int = 20
     data: DataConfig = field(default_factory=DataConfig)
@@ -207,6 +218,10 @@ def load_training_config(path: str | Path | None = None) -> TrainingConfig:
         visual_save_epoch_interval=training_data.get(
             "visual_save_epoch_interval",
             TrainingConfig.visual_save_epoch_interval,
+        ),
+        validation_epoch_interval=training_data.get(
+            "validation_epoch_interval",
+            TrainingConfig.validation_epoch_interval,
         ),
         first_stage_epochs=training_data.get("first_stage_epochs", TrainingConfig.first_stage_epochs),
         diffusion_epochs=training_data.get("diffusion_epochs", TrainingConfig.diffusion_epochs),

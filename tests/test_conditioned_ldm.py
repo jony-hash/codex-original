@@ -26,15 +26,26 @@ class DiffusionConfigTests(unittest.TestCase):
 training:
   mode: diffusion
   visual_save_epoch_interval: 3
+  validation_epoch_interval: 4
 first_stage:
   recon_foreground_threshold: 0.08
   recon_foreground_weight: 5.0
   recon_background_weight: 0.5
-  encoder_fusion_mode: optical_only
+  encoder_fusion_mode: gated_dual_path
+  image_fusion_start_weight: 0.8
+  image_fusion_end_weight: 0.1
+  image_fusion_decay_epochs: 12
+  image_fusion_schedule: cosine
   optical_field_mode: complex_cartesian
   primary_output: camera
+  decoder_tail_channels: 48
   image_recon_weight: 0.2
   camera_recon_weight: 1.3
+  structure_recon_weight: 0.3
+  shape_recon_weight: 0.4
+  field_smoothness_weight: 0.02
+  phase_smoothness_weight: 0.01
+  background_leakage_weight: 0.03
   electronic_domain:
     phase_scale_rad: 1.57
     phase_bias_rad: 0.25
@@ -68,16 +79,27 @@ diffusion:
         self.assertAlmostEqual(loaded.diffusion.guidance_scale, 2.5, places=6)
         self.assertEqual(loaded.diffusion.timesteps, 1000)
         self.assertEqual(loaded.visual_save_epoch_interval, 3)
+        self.assertEqual(loaded.validation_epoch_interval, 4)
         self.assertAlmostEqual(loaded.data.validation_fraction, 0.1, places=6)
         self.assertEqual(loaded.data.validation_split_seed, 42)
         self.assertAlmostEqual(loaded.first_stage.recon_foreground_threshold, 0.08, places=6)
         self.assertAlmostEqual(loaded.first_stage.recon_foreground_weight, 5.0, places=6)
         self.assertAlmostEqual(loaded.first_stage.recon_background_weight, 0.5, places=6)
-        self.assertEqual(loaded.first_stage.encoder_fusion_mode, "optical_only")
+        self.assertEqual(loaded.first_stage.encoder_fusion_mode, "gated_dual_path")
+        self.assertAlmostEqual(loaded.first_stage.image_fusion_start_weight, 0.8, places=6)
+        self.assertAlmostEqual(loaded.first_stage.image_fusion_end_weight, 0.1, places=6)
+        self.assertEqual(loaded.first_stage.image_fusion_decay_epochs, 12)
+        self.assertEqual(loaded.first_stage.image_fusion_schedule, "cosine")
         self.assertEqual(loaded.first_stage.optical_field_mode, "complex_cartesian")
         self.assertEqual(loaded.first_stage.primary_output, "camera")
+        self.assertEqual(loaded.first_stage.decoder_tail_channels, 48)
         self.assertAlmostEqual(loaded.first_stage.image_recon_weight, 0.2, places=6)
         self.assertAlmostEqual(loaded.first_stage.camera_recon_weight, 1.3, places=6)
+        self.assertAlmostEqual(loaded.first_stage.structure_recon_weight, 0.3, places=6)
+        self.assertAlmostEqual(loaded.first_stage.shape_recon_weight, 0.4, places=6)
+        self.assertAlmostEqual(loaded.first_stage.field_smoothness_weight, 0.02, places=6)
+        self.assertAlmostEqual(loaded.first_stage.phase_smoothness_weight, 0.01, places=6)
+        self.assertAlmostEqual(loaded.first_stage.background_leakage_weight, 0.03, places=6)
         self.assertEqual(loaded.first_stage.electronic_domain.mode, "mnist_complex_slm")
         self.assertEqual(loaded.first_stage.electronic_domain.background_floor, 0.05)
         self.assertEqual(loaded.first_stage.electronic_domain.gamma, 1.0)
@@ -96,6 +118,7 @@ diffusion:
 
         self.assertEqual(training_cfg.mode, "first_stage")
         self.assertEqual(training_cfg.visual_save_epoch_interval, 1)
+        self.assertEqual(training_cfg.validation_epoch_interval, 1)
         self.assertEqual(training_cfg.first_stage_epochs, 10)
         self.assertEqual(training_cfg.diffusion_epochs, 20)
         self.assertAlmostEqual(training_cfg.data.validation_fraction, 0.1, places=6)
@@ -104,10 +127,20 @@ diffusion:
         self.assertAlmostEqual(training_cfg.first_stage.recon_foreground_weight, 4.0, places=6)
         self.assertAlmostEqual(training_cfg.first_stage.recon_background_weight, 1.0, places=6)
         self.assertEqual(training_cfg.first_stage.encoder_fusion_mode, "optical_only")
+        self.assertAlmostEqual(training_cfg.first_stage.image_fusion_start_weight, 1.0, places=6)
+        self.assertAlmostEqual(training_cfg.first_stage.image_fusion_end_weight, 0.0, places=6)
+        self.assertEqual(training_cfg.first_stage.image_fusion_decay_epochs, 20)
+        self.assertEqual(training_cfg.first_stage.image_fusion_schedule, "linear")
         self.assertEqual(training_cfg.first_stage.optical_field_mode, "complex_cartesian")
         self.assertEqual(training_cfg.first_stage.primary_output, "camera")
+        self.assertEqual(training_cfg.first_stage.decoder_tail_channels, 32)
         self.assertAlmostEqual(training_cfg.first_stage.image_recon_weight, 0.25, places=6)
         self.assertAlmostEqual(training_cfg.first_stage.camera_recon_weight, 1.0, places=6)
+        self.assertAlmostEqual(training_cfg.first_stage.structure_recon_weight, 0.0, places=6)
+        self.assertAlmostEqual(training_cfg.first_stage.shape_recon_weight, 0.5, places=6)
+        self.assertAlmostEqual(training_cfg.first_stage.field_smoothness_weight, 0.02, places=6)
+        self.assertAlmostEqual(training_cfg.first_stage.phase_smoothness_weight, 0.01, places=6)
+        self.assertAlmostEqual(training_cfg.first_stage.background_leakage_weight, 0.02, places=6)
         self.assertEqual(diffusion_cfg.latent_source, "mu")
         self.assertAlmostEqual(diffusion_cfg.guidance_scale, 3.0, places=6)
         self.assertEqual(diffusion_cfg.timesteps, 1000)
@@ -235,6 +268,7 @@ data:
         build_first_stage_visualization_tensors = train_module.build_first_stage_visualization_tensors
         build_diffusion_visualization_tensors = train_module.build_diffusion_visualization_tensors
         resolve_stage_total_steps = train_module.resolve_stage_total_steps
+        select_first_stage_visual_batch = train_module.select_first_stage_visual_batch
         select_reference_images_for_labels = train_module.select_reference_images_for_labels
         should_save_epoch_visual = train_module.should_save_epoch_visual
         validate_stage_requirements = train_module.validate_stage_requirements
@@ -327,6 +361,17 @@ data:
         self.assertTrue(torch.equal(reference_images[2], train_images[1]))
         self.assertTrue(torch.equal(reference_images[3], train_images[0]))
 
+        visual_images, visual_labels, visual_source = select_first_stage_visual_batch(
+            torch,
+            validation_bundle,
+            train_bundle,
+            4,
+            torch.device("cpu"),
+        )
+        self.assertEqual(visual_labels.tolist(), [0, 1, 2, 3])
+        self.assertEqual(visual_source, "validation_then_train_fallback")
+        self.assertEqual(tuple(visual_images.shape), (4, 1, 4, 4))
+
         self.assertEqual(resolve_stage_total_steps(loader_length=4, epochs=2), 8)
         with self.assertRaisesRegex(ValueError, "stage epochs"):
             resolve_stage_total_steps(loader_length=4, epochs=0)
@@ -382,8 +427,6 @@ class CheckpointCompatibilityTests(unittest.TestCase):
             load_diffusion_checkpoint(model, old_payload, FIRST_STAGE_MODEL_VERSION)
 
     def test_old_first_stage_checkpoint_raises_clear_error(self) -> None:
-        import torch
-
         from ldm_project.config import FirstStageConfig, PhysicsConfig
         from ldm_project.first_stage import OpticalPathVAE, load_first_stage_checkpoint
 

@@ -48,6 +48,69 @@ def _weighted_reconstruction_metrics(
     }
 
 
+def _sobel_magnitude(tensor: torch.Tensor) -> torch.Tensor:
+    channels = tensor.shape[1]
+    sobel_x = tensor.new_tensor(
+        [
+            [-1.0, 0.0, 1.0],
+            [-2.0, 0.0, 2.0],
+            [-1.0, 0.0, 1.0],
+        ]
+    ).view(1, 1, 3, 3)
+    sobel_y = tensor.new_tensor(
+        [
+            [-1.0, -2.0, -1.0],
+            [0.0, 0.0, 0.0],
+            [1.0, 2.0, 1.0],
+        ]
+    ).view(1, 1, 3, 3)
+    grad_x = F.conv2d(tensor, sobel_x.expand(channels, 1, 3, 3), padding=1, groups=channels)
+    grad_y = F.conv2d(tensor, sobel_y.expand(channels, 1, 3, 3), padding=1, groups=channels)
+    return torch.sqrt(grad_x.pow(2) + grad_y.pow(2) + 1.0e-12)
+
+
+def _structure_reconstruction_loss(prediction: torch.Tensor, input_batch: torch.Tensor) -> torch.Tensor:
+    return F.mse_loss(_sobel_magnitude(prediction), _sobel_magnitude(input_batch))
+
+
+def _foreground_shape_loss(prediction: torch.Tensor, input_batch: torch.Tensor, foreground_mask: torch.Tensor) -> torch.Tensor:
+    prediction_soft = prediction.clamp(0.0, 1.0)
+    dims = tuple(range(1, prediction_soft.ndim))
+    intersection = (prediction_soft * foreground_mask).sum(dim=dims)
+    denominator = prediction_soft.sum(dim=dims) + foreground_mask.sum(dim=dims)
+    dice_score = (2.0 * intersection + 1.0e-6) / (denominator + 1.0e-6)
+    return 1.0 - dice_score.mean()
+
+
+def _total_variation(tensor: torch.Tensor) -> torch.Tensor:
+    diff_y = (tensor[..., 1:, :] - tensor[..., :-1, :]).abs().mean()
+    diff_x = (tensor[..., :, 1:] - tensor[..., :, :-1]).abs().mean()
+    return diff_x + diff_y
+
+
+def _zero_like_loss(reference: torch.Tensor) -> torch.Tensor:
+    return reference.new_zeros(())
+
+
+def _field_smoothness_loss(outputs: dict[str, torch.Tensor], reference: torch.Tensor) -> torch.Tensor:
+    if "chip_real" not in outputs or "chip_imag" not in outputs:
+        return _zero_like_loss(reference)
+    return _total_variation(outputs["chip_real"]) + _total_variation(outputs["chip_imag"])
+
+
+def _phase_smoothness_loss(outputs: dict[str, torch.Tensor], reference: torch.Tensor) -> torch.Tensor:
+    chip_phase = outputs.get("chip_phase")
+    if chip_phase is None:
+        return _zero_like_loss(reference)
+    # 用 sin/cos 避免相位在 -pi/pi wrap 边界附近产生虚假的大跳变。
+    return _total_variation(torch.sin(chip_phase)) + _total_variation(torch.cos(chip_phase))
+
+
+def _camera_saturation_ratio(camera_prediction: torch.Tensor) -> torch.Tensor:
+    saturated = (camera_prediction >= 0.99) | (camera_prediction <= 0.01)
+    return saturated.float().mean()
+
+
 def first_stage_loss(
     outputs: dict[str, torch.Tensor],
     input_batch: torch.Tensor,
@@ -60,9 +123,15 @@ def first_stage_loss(
     background_weight: float = 1.0,
     image_recon_weight: float = 0.25,
     camera_recon_weight: float = 1.0,
+    structure_recon_weight: float = 0.0,
+    shape_recon_weight: float = 0.0,
+    field_smoothness_weight: float = 0.0,
+    phase_smoothness_weight: float = 0.0,
+    background_leakage_weight: float = 0.0,
 ) -> dict[str, torch.Tensor]:
     foreground_mask = (input_batch > foreground_threshold).float()
     background_mask = 1.0 - foreground_mask
+    camera_prediction = outputs.get("camera_plane_loss", outputs["camera_plane"])
     image_metrics = _weighted_reconstruction_metrics(
         outputs["image_recon"],
         input_batch,
@@ -72,7 +141,7 @@ def first_stage_loss(
         background_weight,
     )
     camera_metrics = _weighted_reconstruction_metrics(
-        outputs["camera_plane"],
+        camera_prediction,
         input_batch,
         foreground_mask,
         background_mask,
@@ -82,7 +151,20 @@ def first_stage_loss(
     kl = kl_divergence(outputs["mu"], outputs["logvar"])
     beta = kl_beta(global_step, total_steps, target_beta, warmup_ratio)
     recon = image_recon_weight * image_metrics["recon_loss"] + camera_recon_weight * camera_metrics["recon_loss"]
-    total = recon + beta * kl
+    image_structure = _structure_reconstruction_loss(outputs["image_recon"], input_batch)
+    camera_structure = _structure_reconstruction_loss(camera_prediction, input_batch)
+    structure_base = image_recon_weight * image_structure + camera_recon_weight * camera_structure
+    structure = structure_recon_weight * structure_base
+    image_shape = _foreground_shape_loss(outputs["image_recon"], input_batch, foreground_mask)
+    camera_shape = _foreground_shape_loss(camera_prediction, input_batch, foreground_mask)
+    shape_base = image_recon_weight * image_shape + camera_recon_weight * camera_shape
+    shape = shape_recon_weight * shape_base
+    field_tv = _field_smoothness_loss(outputs, input_batch)
+    field_smoothness = field_smoothness_weight * field_tv
+    phase_tv = _phase_smoothness_loss(outputs, input_batch)
+    phase_smoothness = phase_smoothness_weight * phase_tv
+    background_leakage = background_leakage_weight * _masked_mean(camera_prediction.clamp_min(0.0), background_mask)
+    total = recon + beta * kl + structure + shape + field_smoothness + phase_smoothness + background_leakage
     x_hat_detached = outputs["x_hat"].detach()
     pred_fg_energy_ratio = (x_hat_detached * foreground_mask).sum() / x_hat_detached.sum().clamp_min(1e-6)
     return {
@@ -94,6 +176,18 @@ def first_stage_loss(
         "camera_recon_loss": camera_metrics["recon_loss"].detach(),
         "camera_fg_mse": camera_metrics["fg_mse"],
         "camera_bg_mse": camera_metrics["bg_mse"],
+        "structure_loss": structure.detach(),
+        "image_structure_loss": image_structure.detach(),
+        "camera_structure_loss": camera_structure.detach(),
+        "shape_loss": shape.detach(),
+        "image_shape_loss": image_shape.detach(),
+        "camera_shape_loss": camera_shape.detach(),
+        "field_smoothness_loss": field_smoothness.detach(),
+        "field_tv": field_tv.detach(),
+        "phase_smoothness_loss": phase_smoothness.detach(),
+        "phase_tv": phase_tv.detach(),
+        "background_leakage_loss": background_leakage.detach(),
+        "camera_saturation_ratio": _camera_saturation_ratio(camera_prediction.detach()),
         "kl_loss": kl.detach(),
         "fg_pixel_ratio": foreground_mask.mean(),
         "pred_fg_energy_ratio": pred_fg_energy_ratio,
