@@ -1,3 +1,5 @@
+## 传播方法使用Fresnel 近似（菲涅耳近似）##
+
 ## First stage
 
 20260501_130225_040890_train_fs_complex_optical_v3_subset020
