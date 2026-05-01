@@ -1,13 +1,15 @@
 training:
+  # 先修 first stage 的 camera_hat 可读性，通过短跑门槛后再单独训练 diffusion。
   mode: first_stage
   batch_size: 32
   learning_rate: 1.0e-4
   # 终端与 training_history 都按每轮 train 内的 step 间隔记录，同时保留每个 epoch 末尾一条。
   step_log_interval: 100
-  # 按 epoch 控制训练时长；当前 subset_fraction=0.1667 且 batch_size=16 时，约 626 step/epoch。
-  visual_save_epoch_interval: 1
-  first_stage_epochs: 30
-  diffusion_epochs: 40
+  # 按 epoch 控制训练时长；当前 subset_fraction=0.1667 且 batch_size=32 时，约 282 step/epoch。
+  visual_save_epoch_interval: 5
+  validation_epoch_interval: 5
+  first_stage_epochs: 35
+  diffusion_epochs: 0
 
 data:
   dataset: mnist
@@ -24,26 +26,41 @@ data:
 first_stage:
   type: optical_path_vae
   image_size: 200
-  latent_channels: 4
+  latent_channels: 8
   encoder_channels: [64, 128, 256]
+  decoder_tail_channels: 64
   readout_plane: camera
   latent_position: post_encoder_pre_ols
   ols:
     kind: pointwise_tanh
-  # 物理优先 encoder：只从 PF2 光学读出编码，减少原图直通捷径。
+  # strict optical-only：只从可测 PF2 intensity 读出，不接原图分支。
   encoder_fusion_mode: optical_only
+  optical_encoder_input_mode: pf2_intensity_multiscale_v2
+  optical_encoder_arch: global_context
+  image_fusion_start_weight: 0.0
+  image_fusion_end_weight: 0.0
+  image_fusion_decay_epochs: 1
   # decoder 直接输出数字图，同时输出复 chip 场的实部/虚部。
   optical_field_mode: complex_cartesian
   primary_output: camera
   freeze_after_pretrain: true
-  kl_beta: 1.0e-4
+  kl_beta: 5.0e-5
   kl_warmup_ratio: 0.1
-  # 前景/背景权重仍保留；主重建切到 camera_plane，image_recon 退为辅助诊断项。
+  # 强化前景笔画，同时让 image_recon 提供更强 latent 语义约束。
   recon_foreground_threshold: 0.05
-  recon_foreground_weight: 4.0
+  recon_foreground_weight: 3.0
   recon_background_weight: 1.0
-  image_recon_weight: 0.25
+  image_recon_weight: 0.05
   camera_recon_weight: 1.0
+  # Sobel 边缘 + 前景 Dice + 复场平滑约束，减少块状亮斑和相位散斑替代真实笔画。
+  structure_recon_weight: 0.25
+  shape_recon_weight: 1.0
+  field_smoothness_weight: 0.01
+  phase_smoothness_weight: 0.005
+  background_leakage_weight: 0.2
+  camera_hotspot_weight: 0.25
+  camera_topology_weight: 0.15
+  camera_saturation_weight: 0.05
   electronic_domain:
     # 默认恢复为复振幅 SLM，让前向光路不再被固定零相位限制住。
     mode: mnist_complex_slm
@@ -67,4 +84,5 @@ diffusion:
   num_classes: 10
   cond_dropout_prob: 0.1
   latent_source: mu
-  guidance_scale: 3.0
+  # diffusion-only 对照先试 2.0；若类别语义不足，再和 3.0 做同配置对比。
+  guidance_scale: 2.0

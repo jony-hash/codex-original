@@ -31,3 +31,5 @@
 和 `diffusion` 图含义一样，只是它不是某个训练 epoch 的中间可视化，而是训练结束后的最终采样结果。
 
 所以看结果时优先级可以简单记：`first_stage` 看 `input` vs `camera_hat`；`diffusion/samples` 看 `reference` vs `generated_camera`。`image_hat` / `generated_image` 现在主要用于辅助判断 latent 数字语义，而不是最终物理读出质量。
+
+训练 loss 现在会额外使用未 clamp 的 `camera_plane_loss` / `probe_plane_loss` 内部张量来惩罚过亮热点和边框伪影；这些 loss 专用张量不会作为图像列展示。图里仍然展示 clamp 到 `[0, 1]` 的 `camera_hat` / `probe`，方便肉眼对比。

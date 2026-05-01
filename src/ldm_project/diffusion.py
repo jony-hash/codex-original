@@ -88,6 +88,7 @@ class ResBlock(nn.Module):
         self.time_proj = nn.Linear(time_channels, out_channels)
         self.norm2 = nn.GroupNorm(_num_groups(out_channels), out_channels)
         self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1)
+        self.skip: nn.Module
         if in_channels == out_channels:
             self.skip = nn.Identity()
         else:

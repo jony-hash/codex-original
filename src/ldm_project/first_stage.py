@@ -13,12 +13,19 @@ from .optics import BackOpticalPath, FrontOpticalPath
 FIRST_STAGE_MODEL_VERSION = "physical_first_hybrid_vae_v3"
 
 
+def _group_norm(channels: int) -> nn.GroupNorm:
+    group_count = min(8, channels)
+    while channels % group_count != 0:
+        group_count -= 1
+    return nn.GroupNorm(group_count, channels)
+
+
 class ConvBlock(nn.Module):
     def __init__(self, in_channels: int, out_channels: int, stride: int = 2) -> None:
         super().__init__()
         self.block = nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1),
-            nn.GroupNorm(8, out_channels),
+            _group_norm(out_channels),
             nn.SiLU(),
         )
 
@@ -31,7 +38,7 @@ class UpsampleConvBlock(nn.Module):
         super().__init__()
         self.block = nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
-            nn.GroupNorm(8, out_channels),
+            _group_norm(out_channels),
             nn.SiLU(),
         )
 
@@ -54,11 +61,12 @@ class PointwiseOLS(nn.Module):
 
 
 class MetasurfaceEncoder(nn.Module):
-    def __init__(self, channels: tuple[int, int, int]) -> None:
+    def __init__(self, channels: tuple[int, int, int], input_channels: int = 1) -> None:
         super().__init__()
         c1, c2, c3 = channels
+        self.input_channels = input_channels
         self.net = nn.Sequential(
-            ConvBlock(1, c1),
+            ConvBlock(input_channels, c1),
             ConvBlock(c1, c2),
             ConvBlock(c2, c3),
         )
@@ -67,13 +75,81 @@ class MetasurfaceEncoder(nn.Module):
         return self.net(x)
 
 
+class DilatedContextBlock(nn.Module):
+    def __init__(self, channels: int, dilation: int = 2) -> None:
+        super().__init__()
+        self.block = nn.Sequential(
+            nn.Conv2d(channels, channels, kernel_size=5, padding=2, groups=channels),
+            _group_norm(channels),
+            nn.SiLU(),
+            nn.Conv2d(
+                channels,
+                channels,
+                kernel_size=3,
+                padding=dilation,
+                dilation=dilation,
+                groups=channels,
+            ),
+            _group_norm(channels),
+            nn.SiLU(),
+            nn.Conv2d(channels, channels, kernel_size=1),
+            _group_norm(channels),
+        )
+        self.activation = nn.SiLU()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.activation(x + self.block(x))
+
+
+class ChannelAttention(nn.Module):
+    def __init__(self, channels: int) -> None:
+        super().__init__()
+        hidden_channels = max(8, channels // 8)
+        self.net = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Conv2d(channels, hidden_channels, kernel_size=1),
+            nn.SiLU(),
+            nn.Conv2d(hidden_channels, channels, kernel_size=1),
+            nn.Sigmoid(),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return x * self.net(x)
+
+
+class GlobalContextMetasurfaceEncoder(nn.Module):
+    def __init__(self, channels: tuple[int, int, int], input_channels: int = 1) -> None:
+        super().__init__()
+        c1, c2, c3 = channels
+        self.input_channels = input_channels
+        self.down1 = ConvBlock(input_channels, c1)
+        self.down2 = ConvBlock(c1, c2)
+        self.context50 = nn.Sequential(
+            DilatedContextBlock(c2, dilation=2),
+            ChannelAttention(c2),
+        )
+        self.down3 = ConvBlock(c2, c3)
+        self.context25 = nn.Sequential(
+            DilatedContextBlock(c3, dilation=2),
+            DilatedContextBlock(c3, dilation=4),
+            ChannelAttention(c3),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.down1(x)
+        x = self.down2(x)
+        x = self.context50(x)
+        x = self.down3(x)
+        return self.context25(x)
+
+
 class MetasurfaceDecoder(nn.Module):
     def __init__(self, channels: tuple[int, int, int], latent_channels: int, tail_channels: int = 32) -> None:
         super().__init__()
         c1, c2, c3 = channels
         self.project = nn.Sequential(
             nn.Conv2d(latent_channels, c3, kernel_size=1),
-            nn.GroupNorm(8, c3),
+            _group_norm(c3),
             nn.SiLU(),
         )
         self.up1 = UpsampleConvBlock(c3, c2)
@@ -103,7 +179,8 @@ class OpticalPathVAE(nn.Module):
         self.config = config or FirstStageConfig()
         self._validate_model_config()
         self.front_path = FrontOpticalPath(physics)
-        self.optical_encoder = MetasurfaceEncoder(self.config.encoder_channels)
+        self.optical_encoder_input_channels = self._resolve_optical_encoder_input_channels()
+        self.optical_encoder = self._build_optical_encoder()
         encoder_out_channels = self.config.encoder_channels[-1]
         self.image_fusion_weight = 0.0
         self.image_encoder: MetasurfaceEncoder | None
@@ -115,7 +192,7 @@ class OpticalPathVAE(nn.Module):
         if self.config.encoder_fusion_mode == "dual_path_concat":
             self.encoder_fusion = nn.Sequential(
                 nn.Conv2d(encoder_out_channels * 2, encoder_out_channels, kernel_size=1),
-                nn.GroupNorm(8, encoder_out_channels),
+                _group_norm(encoder_out_channels),
                 nn.SiLU(),
             )
         elif self.config.encoder_fusion_mode == "gated_dual_path":
@@ -165,6 +242,22 @@ class OpticalPathVAE(nn.Module):
                 "Unsupported optical_field_mode: "
                 f"{self.config.optical_field_mode}; expected complex_cartesian."
             )
+        valid_input_modes = {
+            "pf2_intensity",
+            "pf2_intensity_multiscale",
+            "pf2_intensity_multiscale_v2",
+        }
+        if self.config.optical_encoder_input_mode not in valid_input_modes:
+            raise ValueError(
+                "Unsupported optical_encoder_input_mode: "
+                f"{self.config.optical_encoder_input_mode}; expected "
+                "pf2_intensity, pf2_intensity_multiscale, or pf2_intensity_multiscale_v2."
+            )
+        if self.config.optical_encoder_arch not in {"conv", "global_context"}:
+            raise ValueError(
+                "Unsupported optical_encoder_arch: "
+                f"{self.config.optical_encoder_arch}; expected conv or global_context."
+            )
         if self.config.primary_output not in {"image", "camera"}:
             raise ValueError(f"Unsupported primary_output: {self.config.primary_output}; expected image or camera.")
         if self.config.image_recon_weight < 0.0:
@@ -188,11 +281,82 @@ class OpticalPathVAE(nn.Module):
                 "background_leakage_weight must be non-negative, "
                 f"got {self.config.background_leakage_weight}"
             )
+        if self.config.camera_hotspot_weight < 0.0:
+            raise ValueError(f"camera_hotspot_weight must be non-negative, got {self.config.camera_hotspot_weight}")
+        if self.config.camera_topology_weight < 0.0:
+            raise ValueError(f"camera_topology_weight must be non-negative, got {self.config.camera_topology_weight}")
+        if self.config.camera_saturation_weight < 0.0:
+            raise ValueError(f"camera_saturation_weight must be non-negative, got {self.config.camera_saturation_weight}")
 
     def set_image_fusion_weight(self, weight: float) -> None:
         if not 0.0 <= weight <= 1.0:
             raise ValueError(f"image_fusion_weight must be within [0, 1], got {weight}")
         self.image_fusion_weight = float(weight)
+
+    def _resolve_optical_encoder_input_channels(self) -> int:
+        if self.config.optical_encoder_input_mode == "pf2_intensity_multiscale_v2":
+            return 8
+        if self.config.optical_encoder_input_mode == "pf2_intensity_multiscale":
+            return 4
+        return 1
+
+    def _build_optical_encoder(self) -> nn.Module:
+        if self.config.optical_encoder_arch == "global_context":
+            return GlobalContextMetasurfaceEncoder(
+                self.config.encoder_channels,
+                input_channels=self.optical_encoder_input_channels,
+            )
+        return MetasurfaceEncoder(
+            self.config.encoder_channels,
+            input_channels=self.optical_encoder_input_channels,
+        )
+
+    def build_optical_encoder_input(self, pf2_intensity: torch.Tensor) -> torch.Tensor:
+        if self.config.optical_encoder_input_mode == "pf2_intensity":
+            return pf2_intensity
+
+        # 只从可测 PF2 intensity 构造多尺度读出，不把原图或复场信息接进 encoder。
+        local_lowpass = F.avg_pool2d(pf2_intensity, kernel_size=5, stride=1, padding=2)
+        broad_lowpass = F.avg_pool2d(pf2_intensity, kernel_size=15, stride=1, padding=7)
+        diff_y = F.pad(
+            pf2_intensity[..., 1:, :] - pf2_intensity[..., :-1, :],
+            (0, 0, 1, 0),
+        )
+        diff_x = F.pad(
+            pf2_intensity[..., :, 1:] - pf2_intensity[..., :, :-1],
+            (1, 0, 0, 0),
+        )
+        edge_magnitude = (diff_x.square() + diff_y.square()).sqrt()
+        if self.config.optical_encoder_input_mode == "pf2_intensity_multiscale":
+            return torch.cat([pf2_intensity, local_lowpass, broad_lowpass, edge_magnitude], dim=1)
+
+        log_intensity = torch.log1p(pf2_intensity.clamp_min(0.0))
+        log_intensity = log_intensity / log_intensity.amax(dim=(-2, -1), keepdim=True).clamp_min(1.0e-6)
+        local_contrast = pf2_intensity - local_lowpass
+        dog_bandpass = local_lowpass - broad_lowpass
+        dog_diff_y = F.pad(
+            dog_bandpass[..., 1:, :] - dog_bandpass[..., :-1, :],
+            (0, 0, 1, 0),
+        )
+        dog_diff_x = F.pad(
+            dog_bandpass[..., :, 1:] - dog_bandpass[..., :, :-1],
+            (1, 0, 0, 0),
+        )
+        dog_edge = (dog_diff_x.square() + dog_diff_y.square()).sqrt()
+        # v2 仍只读 PF2 intensity，把动态范围、局部残差和带通边缘显式交给 encoder。
+        return torch.cat(
+            [
+                pf2_intensity,
+                local_lowpass,
+                broad_lowpass,
+                edge_magnitude,
+                log_intensity,
+                local_contrast,
+                dog_bandpass,
+                dog_edge,
+            ],
+            dim=1,
+        )
 
     def _validate_electronic_domain_config(self) -> None:
         electronic_cfg = self.config.electronic_domain
@@ -243,7 +407,8 @@ class OpticalPathVAE(nn.Module):
         slm_phase = self.to_slm_phase(electronic_pattern)
         slm_transfer = self.to_slm_transfer(electronic_pattern, slm_phase)
         pf2_intensity = self.front_path(slm_transfer)
-        optical_features = self.optical_encoder(pf2_intensity)
+        optical_encoder_input = self.build_optical_encoder_input(pf2_intensity)
+        optical_features = self.optical_encoder(optical_encoder_input)
         if self.config.encoder_fusion_mode == "dual_path_concat":
             if self.image_encoder is None:
                 raise RuntimeError("image_encoder is required for dual_path_concat mode.")
@@ -267,6 +432,7 @@ class OpticalPathVAE(nn.Module):
             "electronic_pattern": electronic_pattern,
             "slm_phase": slm_phase,
             "pf2_intensity": pf2_intensity,
+            "optical_encoder_input": optical_encoder_input,
         }
 
     def decode_with_intermediates(self, z: torch.Tensor) -> dict[str, torch.Tensor]:
@@ -305,6 +471,7 @@ class OpticalPathVAE(nn.Module):
             "electronic_pattern": encoded["electronic_pattern"],
             "slm_phase": encoded["slm_phase"],
             "pf2_intensity": encoded["pf2_intensity"],
+            "optical_encoder_input": encoded["optical_encoder_input"],
             "chip_real": decoded["chip_real"],
             "chip_imag": decoded["chip_imag"],
             "chip_amplitude": decoded["chip_amplitude"],

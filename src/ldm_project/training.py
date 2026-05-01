@@ -7,6 +7,10 @@ from .diffusion import LatentDiffusionUNet, LinearNoiseScheduler
 from .first_stage import OpticalPathVAE
 
 
+DEFAULT_DENOISING_TRACE_TIMESTEPS = (750, 500, 250, 100, 50, 0)
+REFERENCE_DENOISING_TIMESTEPS = 1000
+
+
 def kl_divergence(mu: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
     return -0.5 * torch.mean(1.0 + logvar - mu.pow(2) - logvar.exp())
 
@@ -39,12 +43,13 @@ def _weighted_reconstruction_metrics(
     background_weight: float,
 ) -> dict[str, torch.Tensor]:
     squared_error = (prediction - input_batch).pow(2)
-    weights = foreground_mask * foreground_weight + background_mask * background_weight
-    recon = (weights * squared_error).sum() / weights.sum().clamp_min(1e-6)
+    fg_mse = _masked_mean(squared_error, foreground_mask)
+    bg_mse = _masked_mean(squared_error, background_mask)
+    recon = foreground_weight * fg_mse + background_weight * bg_mse
     return {
         "recon_loss": recon,
-        "fg_mse": _masked_mean(squared_error.detach(), foreground_mask),
-        "bg_mse": _masked_mean(squared_error.detach(), background_mask),
+        "fg_mse": fg_mse.detach(),
+        "bg_mse": bg_mse.detach(),
     }
 
 
@@ -73,13 +78,34 @@ def _structure_reconstruction_loss(prediction: torch.Tensor, input_batch: torch.
     return F.mse_loss(_sobel_magnitude(prediction), _sobel_magnitude(input_batch))
 
 
+def _camera_topology_loss(
+    prediction: torch.Tensor,
+    input_batch: torch.Tensor,
+    foreground_mask: torch.Tensor,
+) -> torch.Tensor:
+    prediction_soft = prediction.clamp(0.0, 1.0)
+    target = input_batch.clamp(0.0, 1.0)
+    # 复杂数字主要输在笔画连接和弯折，先在前景邻域内约束边缘与局部形状。
+    foreground_context = F.max_pool2d(foreground_mask, kernel_size=5, stride=1, padding=2)
+    edge_error = (_sobel_magnitude(prediction_soft) - _sobel_magnitude(target)).abs()
+    edge_loss = _masked_mean(edge_error, foreground_context)
+    local_prediction = F.avg_pool2d(prediction_soft, kernel_size=3, stride=1, padding=1)
+    local_target = F.avg_pool2d(target, kernel_size=3, stride=1, padding=1)
+    local_shape_loss = _masked_mean((local_prediction - local_target).abs(), foreground_context)
+    return edge_loss + 0.5 * local_shape_loss
+
+
 def _foreground_shape_loss(prediction: torch.Tensor, input_batch: torch.Tensor, foreground_mask: torch.Tensor) -> torch.Tensor:
+    return 1.0 - _foreground_dice_score(prediction, foreground_mask)
+
+
+def _foreground_dice_score(prediction: torch.Tensor, foreground_mask: torch.Tensor) -> torch.Tensor:
     prediction_soft = prediction.clamp(0.0, 1.0)
     dims = tuple(range(1, prediction_soft.ndim))
     intersection = (prediction_soft * foreground_mask).sum(dim=dims)
     denominator = prediction_soft.sum(dim=dims) + foreground_mask.sum(dim=dims)
     dice_score = (2.0 * intersection + 1.0e-6) / (denominator + 1.0e-6)
-    return 1.0 - dice_score.mean()
+    return dice_score.mean()
 
 
 def _total_variation(tensor: torch.Tensor) -> torch.Tensor:
@@ -111,6 +137,18 @@ def _camera_saturation_ratio(camera_prediction: torch.Tensor) -> torch.Tensor:
     return saturated.float().mean()
 
 
+def _camera_hotspot_loss(camera_prediction: torch.Tensor) -> torch.Tensor:
+    return F.relu(camera_prediction - 1.0).pow(2).mean()
+
+
+def _camera_hotspot_ratio(camera_prediction: torch.Tensor) -> torch.Tensor:
+    return (camera_prediction > 1.0).float().mean()
+
+
+def _camera_saturation_loss(camera_prediction: torch.Tensor) -> torch.Tensor:
+    return F.relu(camera_prediction - 0.95).pow(2).mean()
+
+
 def first_stage_loss(
     outputs: dict[str, torch.Tensor],
     input_batch: torch.Tensor,
@@ -128,10 +166,14 @@ def first_stage_loss(
     field_smoothness_weight: float = 0.0,
     phase_smoothness_weight: float = 0.0,
     background_leakage_weight: float = 0.0,
+    camera_hotspot_weight: float = 0.0,
+    camera_topology_weight: float = 0.0,
+    camera_saturation_weight: float = 0.0,
 ) -> dict[str, torch.Tensor]:
     foreground_mask = (input_batch > foreground_threshold).float()
     background_mask = 1.0 - foreground_mask
-    camera_prediction = outputs.get("camera_plane_loss", outputs["camera_plane"])
+    camera_prediction = outputs["camera_plane"]
+    camera_loss_prediction = outputs.get("camera_plane_loss", camera_prediction)
     image_metrics = _weighted_reconstruction_metrics(
         outputs["image_recon"],
         input_batch,
@@ -163,10 +205,29 @@ def first_stage_loss(
     field_smoothness = field_smoothness_weight * field_tv
     phase_tv = _phase_smoothness_loss(outputs, input_batch)
     phase_smoothness = phase_smoothness_weight * phase_tv
-    background_leakage = background_leakage_weight * _masked_mean(camera_prediction.clamp_min(0.0), background_mask)
-    total = recon + beta * kl + structure + shape + field_smoothness + phase_smoothness + background_leakage
+    camera_background_leakage = _masked_mean(camera_prediction.clamp_min(0.0), background_mask)
+    background_leakage = background_leakage_weight * camera_background_leakage
+    camera_hotspot_base = _camera_hotspot_loss(camera_loss_prediction)
+    camera_hotspot = camera_hotspot_weight * camera_hotspot_base
+    camera_topology_base = _camera_topology_loss(camera_prediction, input_batch, foreground_mask)
+    camera_topology = camera_topology_weight * camera_topology_base
+    camera_saturation_base = _camera_saturation_loss(camera_loss_prediction)
+    camera_saturation = camera_saturation_weight * camera_saturation_base
+    total = (
+        recon
+        + beta * kl
+        + structure
+        + shape
+        + field_smoothness
+        + phase_smoothness
+        + background_leakage
+        + camera_hotspot
+        + camera_topology
+        + camera_saturation
+    )
     x_hat_detached = outputs["x_hat"].detach()
     pred_fg_energy_ratio = (x_hat_detached * foreground_mask).sum() / x_hat_detached.sum().clamp_min(1e-6)
+    camera_foreground_dice = _foreground_dice_score(camera_prediction.detach(), foreground_mask)
     return {
         "loss": total,
         "recon_loss": recon.detach(),
@@ -182,12 +243,21 @@ def first_stage_loss(
         "shape_loss": shape.detach(),
         "image_shape_loss": image_shape.detach(),
         "camera_shape_loss": camera_shape.detach(),
+        "camera_foreground_dice_loss": camera_shape.detach(),
+        "camera_foreground_dice": camera_foreground_dice,
         "field_smoothness_loss": field_smoothness.detach(),
         "field_tv": field_tv.detach(),
         "phase_smoothness_loss": phase_smoothness.detach(),
         "phase_tv": phase_tv.detach(),
         "background_leakage_loss": background_leakage.detach(),
+        "camera_background_leakage": camera_background_leakage.detach(),
+        "camera_hotspot_loss": camera_hotspot.detach(),
+        "camera_hotspot_ratio": _camera_hotspot_ratio(camera_loss_prediction.detach()),
         "camera_saturation_ratio": _camera_saturation_ratio(camera_prediction.detach()),
+        "camera_topology_loss": camera_topology.detach(),
+        "camera_topology_base": camera_topology_base.detach(),
+        "camera_saturation_loss": camera_saturation.detach(),
+        "camera_saturation_penalty": camera_saturation_base.detach(),
         "kl_loss": kl.detach(),
         "fg_pixel_ratio": foreground_mask.mean(),
         "pred_fg_energy_ratio": pred_fg_energy_ratio,
@@ -231,15 +301,45 @@ def diffusion_loss(
     return F.mse_loss(predicted_noise, noise)
 
 
-@torch.no_grad()
-def sample_latents(
-    diffusion_model: LatentDiffusionUNet,
-    scheduler: LinearNoiseScheduler,
+def resolve_denoising_trace_steps(
+    total_timesteps: int,
+    trace_timesteps: tuple[int, ...] = DEFAULT_DENOISING_TRACE_TIMESTEPS,
+) -> list[dict[str, int | str]]:
+    if total_timesteps <= 0:
+        raise ValueError(f"total_timesteps must be positive, got {total_timesteps}")
+
+    steps: list[dict[str, int | str]] = []
+    used_actual_timesteps: set[int] = set()
+    for nominal_timestep in trace_timesteps:
+        if nominal_timestep < 0:
+            raise ValueError(f"trace timestep must be non-negative, got {nominal_timestep}")
+        actual_timestep = int(
+            round(nominal_timestep * float(total_timesteps - 1) / float(REFERENCE_DENOISING_TIMESTEPS - 1))
+        )
+        actual_timestep = max(0, min(total_timesteps - 1, actual_timestep))
+        if nominal_timestep != 0 and actual_timestep == 0:
+            continue
+        if actual_timestep in used_actual_timesteps:
+            continue
+        used_actual_timesteps.add(actual_timestep)
+        steps.append(
+            {
+                "label": f"t{nominal_timestep:03d}",
+                "nominal_timestep": nominal_timestep,
+                "actual_timestep": actual_timestep,
+            }
+        )
+
+    if 0 not in used_actual_timesteps:
+        steps.append({"label": "t000", "nominal_timestep": 0, "actual_timestep": 0})
+    return steps
+
+
+def _validate_sampling_inputs(
     shape: tuple[int, int, int, int],
-    device: torch.device,
     class_labels: torch.Tensor,
-    guidance_scale: float = 3.0,
-) -> torch.Tensor:
+    guidance_scale: float,
+) -> None:
     if guidance_scale < 0.0:
         raise ValueError(f"guidance_scale must be >= 0, got {guidance_scale}")
     if class_labels.shape[0] != shape[0]:
@@ -247,7 +347,28 @@ def sample_latents(
             f"class_labels batch size ({class_labels.shape[0]}) must match sample batch size ({shape[0]})."
         )
 
+
+def _sample_latents_impl(
+    diffusion_model: LatentDiffusionUNet,
+    scheduler: LinearNoiseScheduler,
+    shape: tuple[int, int, int, int],
+    device: torch.device,
+    class_labels: torch.Tensor,
+    guidance_scale: float,
+    trace_timesteps: tuple[int, ...] | None,
+) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+    _validate_sampling_inputs(shape, class_labels, guidance_scale)
+
     sample = torch.randn(shape, device=device)
+    trace: dict[str, torch.Tensor] = {}
+    trace_steps_by_timestep: dict[int, str] = {}
+    if trace_timesteps is not None:
+        trace["noise"] = sample.detach().clone()
+        trace_steps_by_timestep = {
+            int(step["actual_timestep"]): str(step["label"])
+            for step in resolve_denoising_trace_steps(scheduler.timesteps, trace_timesteps)
+        }
+
     conditioned_context = diffusion_model.encode_condition(class_labels, dropout_prob=0.0)
     unconditioned_context = diffusion_model.encode_condition(
         class_labels,
@@ -267,4 +388,49 @@ def sample_latents(
                 guidance_scale,
             )
         sample = scheduler.step(predicted_noise, current_t, sample)
+        trace_label = trace_steps_by_timestep.get(timestep)
+        if trace_label is not None:
+            trace[trace_label] = sample.detach().clone()
+    return sample, trace
+
+
+@torch.no_grad()
+def sample_latents(
+    diffusion_model: LatentDiffusionUNet,
+    scheduler: LinearNoiseScheduler,
+    shape: tuple[int, int, int, int],
+    device: torch.device,
+    class_labels: torch.Tensor,
+    guidance_scale: float = 3.0,
+) -> torch.Tensor:
+    sample, _ = _sample_latents_impl(
+        diffusion_model,
+        scheduler,
+        shape,
+        device,
+        class_labels,
+        guidance_scale,
+        trace_timesteps=None,
+    )
     return sample
+
+
+@torch.no_grad()
+def sample_latents_with_trace(
+    diffusion_model: LatentDiffusionUNet,
+    scheduler: LinearNoiseScheduler,
+    shape: tuple[int, int, int, int],
+    device: torch.device,
+    class_labels: torch.Tensor,
+    guidance_scale: float = 3.0,
+    trace_timesteps: tuple[int, ...] = DEFAULT_DENOISING_TRACE_TIMESTEPS,
+) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+    return _sample_latents_impl(
+        diffusion_model,
+        scheduler,
+        shape,
+        device,
+        class_labels,
+        guidance_scale,
+        trace_timesteps=trace_timesteps,
+    )

@@ -67,6 +67,8 @@ class FirstStageConfig:
     image_fusion_end_weight: float = 0.0
     image_fusion_decay_epochs: int = 20
     image_fusion_schedule: str = "linear"
+    optical_encoder_input_mode: str = "pf2_intensity"
+    optical_encoder_arch: str = "conv"
     optical_field_mode: str = "complex_cartesian"
     primary_output: str = "camera"
     freeze_after_pretrain: bool = True
@@ -83,6 +85,9 @@ class FirstStageConfig:
     field_smoothness_weight: float = 0.02
     phase_smoothness_weight: float = 0.01
     background_leakage_weight: float = 0.02
+    camera_hotspot_weight: float = 0.0
+    camera_topology_weight: float = 0.0
+    camera_saturation_weight: float = 0.0
     electronic_domain: "ElectronicDomainConfig" = field(default_factory=lambda: ElectronicDomainConfig())
 
 

@@ -287,6 +287,68 @@ class OpticalPathVAESmokeTests(unittest.TestCase):
 
         self.assertLess(self._total_variation(defocused_camera).item(), self._total_variation(focused_camera).item() * 0.85)
 
+    def test_pf2_intensity_multiscale_uses_four_encoder_channels(self) -> None:
+        import torch
+
+        from ldm_project.config import FirstStageConfig, PhysicsConfig
+        from ldm_project.first_stage import MetasurfaceEncoder, OpticalPathVAE
+
+        config = FirstStageConfig(optical_encoder_input_mode="pf2_intensity_multiscale")
+        model = OpticalPathVAE(PhysicsConfig(), config)
+        x = torch.rand(2, 1, 200, 200)
+
+        outputs = model(x)
+
+        self.assertIsInstance(model.optical_encoder, MetasurfaceEncoder)
+        self.assertEqual(model.optical_encoder.input_channels, 4)
+        self.assertEqual(outputs["optical_encoder_input"].shape, (2, 4, 200, 200))
+        self.assertEqual(outputs["pf2_intensity"].shape, (2, 1, 200, 200))
+        self.assertEqual(outputs["mu"].shape, (2, 4, 25, 25))
+        self.assertEqual(outputs["x_hat"].shape, (2, 1, 200, 200))
+
+    def test_global_context_encoder_preserves_forward_shapes(self) -> None:
+        import torch
+
+        from ldm_project.config import FirstStageConfig, PhysicsConfig
+        from ldm_project.first_stage import GlobalContextMetasurfaceEncoder, OpticalPathVAE
+
+        config = FirstStageConfig(
+            optical_encoder_input_mode="pf2_intensity_multiscale",
+            optical_encoder_arch="global_context",
+        )
+        model = OpticalPathVAE(PhysicsConfig(), config)
+        x = torch.rand(1, 1, 200, 200)
+
+        outputs = model(x)
+
+        self.assertIsInstance(model.optical_encoder, GlobalContextMetasurfaceEncoder)
+        self.assertEqual(model.optical_encoder.input_channels, 4)
+        self.assertEqual(outputs["optical_encoder_input"].shape, (1, 4, 200, 200))
+        self.assertEqual(outputs["mu"].shape, (1, 4, 25, 25))
+        self.assertEqual(outputs["x_hat"].shape, (1, 1, 200, 200))
+
+    def test_pf2_intensity_multiscale_v2_uses_eight_global_context_channels(self) -> None:
+        import torch
+
+        from ldm_project.config import FirstStageConfig, PhysicsConfig
+        from ldm_project.first_stage import GlobalContextMetasurfaceEncoder, OpticalPathVAE
+
+        config = FirstStageConfig(
+            optical_encoder_input_mode="pf2_intensity_multiscale_v2",
+            optical_encoder_arch="global_context",
+        )
+        model = OpticalPathVAE(PhysicsConfig(), config)
+        x = torch.rand(1, 1, 200, 200)
+
+        outputs = model(x)
+
+        self.assertIsInstance(model.optical_encoder, GlobalContextMetasurfaceEncoder)
+        self.assertEqual(model.optical_encoder.input_channels, 8)
+        self.assertEqual(outputs["optical_encoder_input"].shape, (1, 8, 200, 200))
+        self.assertEqual(outputs["pf2_intensity"].shape, (1, 1, 200, 200))
+        self.assertEqual(outputs["mu"].shape, (1, 4, 25, 25))
+        self.assertEqual(outputs["x_hat"].shape, (1, 1, 200, 200))
+
     def test_legacy_amplitude_slm_mode_keeps_zero_phase(self) -> None:
         import torch
 

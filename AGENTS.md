@@ -34,6 +34,9 @@ Primary execution contract for this repo. If this file conflicts with any docume
 - Python 3.11
 - Stack: PyTorch, torchvision, PyYAML, matplotlib
 - Environment: WSL2 Linux shell, Conda + pip, VS Code Remote / terminal friendly
+- Default Conda environment: `optical-generative-models`
+- Verified PyTorch baseline: CUDA build `torch 2.5.1+cu121`
+- Training contract: activate `optical-generative-models` first, then run training with explicit `--device cuda`
 - Commands must be bash-compatible inside WSL2; do not use PowerShell or CMD syntax
 - Imports must use `pip install -e .`; do not mutate `sys.path`
 - Source: `src/ldm_project/`
@@ -51,7 +54,11 @@ Primary execution contract for this repo. If this file conflicts with any docume
 - Test single file: `pytest tests/test_scheduler.py -q`
 - Lint: `ruff check src tests *.py`
 - Typecheck: `mypy src`
-- Run locally: `source "$(conda info --base)/etc/profile.d/conda.sh" && conda activate optical-generative-models && python train.py --stage full`
+- Run first stage: `source "$(conda info --base)/etc/profile.d/conda.sh" && conda activate optical-generative-models && python train.py --stage first_stage --device cuda`
+- Run diffusion stage: `source "$(conda info --base)/etc/profile.d/conda.sh" && conda activate optical-generative-models && python train.py --stage diffusion --device cuda --first-stage-checkpoint outputs/runs/.../checkpoints/first_stage_latest.pt`
+- Run full pipeline: `source "$(conda info --base)/etc/profile.d/conda.sh" && conda activate optical-generative-models && python train.py --stage full --device cuda`
+
+Use `--device auto` only for compatibility checks or temporary debugging. Use `--device cpu` only for local smoke tests; it is not the default training path.
 
 Prefer single-test or single-file verification during iteration. Use the full suite only for the final pass.
 
@@ -84,4 +91,7 @@ Proceed without asking when:
 
 - Use simple Python one-liners for file reads when needed; avoid shell-specific file-reading tricks that are fragile across terminals.
 - Every new terminal session must activate the `optical-generative-models` Conda environment inside WSL2 before running project commands.
+- Every new terminal session should verify `torch.cuda.is_available()` before formal training; if it is `False`, first debug WSL2 / driver / CUDA visibility instead of silently falling back to CPU long runs.
+- In Codex, sandboxed checks may report `torch.cuda.is_available() == False` or NVML errors even when the user's Anaconda training environment has working CUDA. Treat sandbox results as sandbox visibility only, not as the final environment verdict. Before telling the user CUDA is unavailable, re-check in the same Conda environment with a non-sandbox command and state clearly whether the issue is sandbox-only or a real environment problem.
 - Prefer bash-compatible commands and Linux paths in examples, scripts, and debugging steps.
+- Long CUDA training or other long-running experiments should be prepared by Codex but launched by the user. Codex should provide the exact command, expected output directory pattern, and post-run verification script/checklist instead of keeping the chat session open for the whole training run, unless the user explicitly asks Codex to run it.

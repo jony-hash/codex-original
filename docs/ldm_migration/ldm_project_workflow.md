@@ -14,6 +14,14 @@
 
 当前仓库 `.vscode/settings.json` 指向的 Conda 解释器实际版本是 `Python 3.11.14`，因此新项目默认锁定到 `Python 3.11.x`。
 
+当前仓库的环境基线定义为：
+
+- Conda 环境名：`optical-generative-models`
+- Python：`3.11.x`
+- PyTorch：CUDA 版 `torch 2.5.1+cu121`
+
+这里记录的是当前验证过的环境基线，不代表代码层面硬锁版本；后续升级时应同步更新文档，但不要把某台机器的绝对解释器路径写进规范。
+
 ## 2. Project Context
 
 ```md
@@ -23,19 +31,21 @@
 - Language and version: Python 3.11
 - Framework(s): PyTorch, torchvision, PyYAML, matplotlib
 - Package manager: pip inside a Conda environment
-- Runtime / deployment target: Local single-machine training/inference, GPU-first (CUDA if available), CPU-compatible for smoke tests, Windows/VS Code friendly
+- Runtime / deployment target: Local single-machine training/inference, default single-machine GPU training with explicit `--device cuda`; CPU is retained only for smoke tests and compatibility checks, Windows/VS Code friendly
 
 ### Commands
-- Install: `conda create -n ldm-project python=3.11 -y && conda activate ldm-project && pip install -r requirements.txt`
+- Install: `conda create -n optical-generative-models python=3.11 -y && source "$(conda info --base)/etc/profile.d/conda.sh" && conda activate optical-generative-models && pip install -r requirements.txt && pip install -e .`
 - Build: `python -m compileall src tests`
 - Test (all): `pytest -q`
 - Test (single file): `pytest tests/test_scheduler.py -q`
 - Lint: `ruff check src tests *.py`
 - Typecheck: `mypy src`
 - Run locally:
-  - `python train.py --stage first_stage`
-  - `python train.py --stage diffusion --first-stage-checkpoint outputs/runs/.../checkpoints/first_stage_latest.pt`
-  - `python train.py --stage full` 仅作为可选便捷模式
+  - `source "$(conda info --base)/etc/profile.d/conda.sh" && conda activate optical-generative-models && python train.py --stage first_stage --device cuda`
+  - `source "$(conda info --base)/etc/profile.d/conda.sh" && conda activate optical-generative-models && python train.py --stage diffusion --device cuda --first-stage-checkpoint outputs/runs/.../checkpoints/first_stage_latest.pt`
+  - `source "$(conda info --base)/etc/profile.d/conda.sh" && conda activate optical-generative-models && python train.py --stage full --device cuda` 仅作为联调 / 一键串联便捷模式
+
+`--device auto` 仅用于兼容性检查或临时排错；`--device cpu` 仅用于本地 smoke test，不是默认训练口径。
 
 Prefer single-file or single-test runs during iteration. Full suites are for the final verification pass.
 
@@ -74,6 +84,7 @@ Prefer single-file or single-test runs during iteration. Full suites are for the
 - 当前仓库没有统一依赖清单，也没有 lint/typecheck 入口，因此新项目需要补齐最小工程约束
 - 当前仓库依赖 `.vscode` 的解释器与 `TEMP/TMP` 设置，说明环境假设过于隐式，新项目要把这部分转成显式工作流
 - 当前仓库的 smoke test 更接近“脚本验证”，新项目则应把它标准化为 `pytest` 驱动
+- 当前训练口径需要从“CUDA 可用时优先”收紧为“正式训练命令显式写 `--device cuda`”，这样团队不会在 `auto` 和 `cpu` 回退上反复猜测
 
 ## 5. 验证方式
 
@@ -83,9 +94,10 @@ Prefer single-file or single-test runs during iteration. Full suites are for the
 - `python -m compileall src tests` 可通过
 - `pytest -q` 可通过
 - 可以单独执行 `pytest tests/test_scheduler.py -q`
-- `python train.py --stage first_stage` 能完成第一阶段本地 smoke run
-- `python train.py --stage diffusion --first-stage-checkpoint ...` 能完成第二阶段本地 smoke run，并自动生成最终 sample 可视化
-- `python train.py --stage full` 仍可作为联调便捷模式运行
+- `source "$(conda info --base)/etc/profile.d/conda.sh" && conda activate optical-generative-models && python train.py --stage first_stage --device cuda` 能完成第一阶段正式训练
+- `source "$(conda info --base)/etc/profile.d/conda.sh" && conda activate optical-generative-models && python train.py --stage diffusion --device cuda --first-stage-checkpoint ...` 能完成第二阶段正式训练，并自动生成最终 sample 可视化
+- `source "$(conda info --base)/etc/profile.d/conda.sh" && conda activate optical-generative-models && python train.py --stage full --device cuda` 仍可作为联调便捷模式运行
+- 若当前终端 `torch.cuda.is_available()` 为 `False`，应先视为 GPU 可见性异常并排查 WSL2 / 驱动 / CUDA 暴露问题，而不是直接把 CPU 回退当作正式训练流程
 
 ## 6. 与当前仓库的关系
 

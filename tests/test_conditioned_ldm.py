@@ -36,6 +36,8 @@ first_stage:
   image_fusion_end_weight: 0.1
   image_fusion_decay_epochs: 12
   image_fusion_schedule: cosine
+  optical_encoder_input_mode: pf2_intensity_multiscale_v2
+  optical_encoder_arch: global_context
   optical_field_mode: complex_cartesian
   primary_output: camera
   decoder_tail_channels: 48
@@ -46,6 +48,9 @@ first_stage:
   field_smoothness_weight: 0.02
   phase_smoothness_weight: 0.01
   background_leakage_weight: 0.03
+  camera_hotspot_weight: 0.07
+  camera_topology_weight: 0.11
+  camera_saturation_weight: 0.13
   electronic_domain:
     phase_scale_rad: 1.57
     phase_bias_rad: 0.25
@@ -90,6 +95,8 @@ diffusion:
         self.assertAlmostEqual(loaded.first_stage.image_fusion_end_weight, 0.1, places=6)
         self.assertEqual(loaded.first_stage.image_fusion_decay_epochs, 12)
         self.assertEqual(loaded.first_stage.image_fusion_schedule, "cosine")
+        self.assertEqual(loaded.first_stage.optical_encoder_input_mode, "pf2_intensity_multiscale_v2")
+        self.assertEqual(loaded.first_stage.optical_encoder_arch, "global_context")
         self.assertEqual(loaded.first_stage.optical_field_mode, "complex_cartesian")
         self.assertEqual(loaded.first_stage.primary_output, "camera")
         self.assertEqual(loaded.first_stage.decoder_tail_channels, 48)
@@ -100,6 +107,9 @@ diffusion:
         self.assertAlmostEqual(loaded.first_stage.field_smoothness_weight, 0.02, places=6)
         self.assertAlmostEqual(loaded.first_stage.phase_smoothness_weight, 0.01, places=6)
         self.assertAlmostEqual(loaded.first_stage.background_leakage_weight, 0.03, places=6)
+        self.assertAlmostEqual(loaded.first_stage.camera_hotspot_weight, 0.07, places=6)
+        self.assertAlmostEqual(loaded.first_stage.camera_topology_weight, 0.11, places=6)
+        self.assertAlmostEqual(loaded.first_stage.camera_saturation_weight, 0.13, places=6)
         self.assertEqual(loaded.first_stage.electronic_domain.mode, "mnist_complex_slm")
         self.assertEqual(loaded.first_stage.electronic_domain.background_floor, 0.05)
         self.assertEqual(loaded.first_stage.electronic_domain.gamma, 1.0)
@@ -131,6 +141,8 @@ diffusion:
         self.assertAlmostEqual(training_cfg.first_stage.image_fusion_end_weight, 0.0, places=6)
         self.assertEqual(training_cfg.first_stage.image_fusion_decay_epochs, 20)
         self.assertEqual(training_cfg.first_stage.image_fusion_schedule, "linear")
+        self.assertEqual(training_cfg.first_stage.optical_encoder_input_mode, "pf2_intensity")
+        self.assertEqual(training_cfg.first_stage.optical_encoder_arch, "conv")
         self.assertEqual(training_cfg.first_stage.optical_field_mode, "complex_cartesian")
         self.assertEqual(training_cfg.first_stage.primary_output, "camera")
         self.assertEqual(training_cfg.first_stage.decoder_tail_channels, 32)
@@ -141,6 +153,9 @@ diffusion:
         self.assertAlmostEqual(training_cfg.first_stage.field_smoothness_weight, 0.02, places=6)
         self.assertAlmostEqual(training_cfg.first_stage.phase_smoothness_weight, 0.01, places=6)
         self.assertAlmostEqual(training_cfg.first_stage.background_leakage_weight, 0.02, places=6)
+        self.assertAlmostEqual(training_cfg.first_stage.camera_hotspot_weight, 0.0, places=6)
+        self.assertAlmostEqual(training_cfg.first_stage.camera_topology_weight, 0.0, places=6)
+        self.assertAlmostEqual(training_cfg.first_stage.camera_saturation_weight, 0.0, places=6)
         self.assertEqual(diffusion_cfg.latent_source, "mu")
         self.assertAlmostEqual(diffusion_cfg.guidance_scale, 3.0, places=6)
         self.assertEqual(diffusion_cfg.timesteps, 1000)
@@ -266,9 +281,11 @@ data:
 
         train_module = load_train_module()
         build_first_stage_visualization_tensors = train_module.build_first_stage_visualization_tensors
+        build_denoising_trace_visualization_tensors = train_module.build_denoising_trace_visualization_tensors
         build_diffusion_visualization_tensors = train_module.build_diffusion_visualization_tensors
         resolve_stage_total_steps = train_module.resolve_stage_total_steps
         select_first_stage_visual_batch = train_module.select_first_stage_visual_batch
+        select_post_train_sample_batch = train_module.select_post_train_sample_batch
         select_reference_images_for_labels = train_module.select_reference_images_for_labels
         should_save_epoch_visual = train_module.should_save_epoch_visual
         validate_stage_requirements = train_module.validate_stage_requirements
@@ -316,6 +333,14 @@ data:
                 "probe (探测平面)",
             ],
         )
+        trace_visuals = build_denoising_trace_visualization_tensors(
+            torch.rand(2, 1, 4, 4),
+            {
+                "noise": torch.rand(2, 1, 4, 4),
+                "t000": torch.rand(2, 1, 4, 4),
+            },
+        )
+        self.assertEqual(list(trace_visuals.keys()), ["reference (参考)", "noise", "t000"])
         self.assertEqual(
             train_module.format_output_title("images/first_stage/epoch_0001.png", "first_stage epoch 1"),
             "images/first_stage/epoch_0001.png | first_stage epoch 1",
@@ -371,6 +396,30 @@ data:
         self.assertEqual(visual_labels.tolist(), [0, 1, 2, 3])
         self.assertEqual(visual_source, "validation_then_train_fallback")
         self.assertEqual(tuple(visual_images.shape), (4, 1, 4, 4))
+
+        sample_labels, sample_images, sample_reference_labels, sample_source = select_post_train_sample_batch(
+            torch,
+            validation_bundle,
+            train_bundle,
+            4,
+            torch.device("cpu"),
+        )
+        self.assertEqual(sample_labels.tolist(), [0, 1, 2, 3])
+        self.assertEqual(sample_reference_labels.tolist(), [0, 1, 2, 3])
+        self.assertEqual(sample_source, "validation_then_train_fallback")
+        self.assertEqual(tuple(sample_images.shape), (4, 1, 4, 4))
+
+        fallback_labels, fallback_images, fallback_reference_labels, fallback_source = select_post_train_sample_batch(
+            torch,
+            validation_bundle,
+            train_bundle,
+            5,
+            torch.device("cpu"),
+        )
+        self.assertEqual(fallback_labels.tolist(), [0, 1, 2, 3])
+        self.assertEqual(fallback_reference_labels.tolist(), [0, 1, 2, 3])
+        self.assertEqual(fallback_source, "validation_then_train_fallback")
+        self.assertEqual(tuple(fallback_images.shape), (4, 1, 4, 4))
 
         self.assertEqual(resolve_stage_total_steps(loader_length=4, epochs=2), 8)
         with self.assertRaisesRegex(ValueError, "stage epochs"):

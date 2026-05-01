@@ -41,12 +41,21 @@ class ConditionedTrainingSmokeTests(unittest.TestCase):
             "shape_loss",
             "image_shape_loss",
             "camera_shape_loss",
+            "camera_foreground_dice_loss",
+            "camera_foreground_dice",
             "field_smoothness_loss",
             "field_tv",
             "phase_smoothness_loss",
             "phase_tv",
             "background_leakage_loss",
+            "camera_background_leakage",
+            "camera_hotspot_loss",
+            "camera_hotspot_ratio",
             "camera_saturation_ratio",
+            "camera_topology_loss",
+            "camera_topology_base",
+            "camera_saturation_loss",
+            "camera_saturation_penalty",
             "kl_loss",
             "fg_pixel_ratio",
             "pred_fg_energy_ratio",
@@ -150,6 +159,66 @@ class ConditionedTrainingSmokeTests(unittest.TestCase):
             places=6,
         )
 
+    def test_first_stage_loss_adds_topology_and_saturation_terms(self) -> None:
+        import torch
+
+        from ldm_project.training import first_stage_loss
+
+        input_batch = torch.zeros((1, 1, 16, 16), dtype=torch.float32)
+        input_batch[:, :, 3:13, 4:6] = 1.0
+        input_batch[:, :, 3:5, 4:12] = 1.0
+        input_batch[:, :, 8:10, 4:12] = 1.0
+        input_batch[:, :, 11:13, 4:12] = 1.0
+        shifted_prediction = torch.roll(input_batch, shifts=3, dims=-1)
+        mu = torch.zeros((1, 1, 2, 2), dtype=torch.float32)
+        logvar = torch.zeros_like(mu)
+        matching_outputs = {
+            "x_hat": input_batch,
+            "image_recon": input_batch,
+            "camera_plane": input_batch,
+            "camera_plane_loss": input_batch,
+            "mu": mu,
+            "logvar": logvar,
+        }
+        shifted_outputs = {
+            "x_hat": shifted_prediction,
+            "image_recon": shifted_prediction,
+            "camera_plane": shifted_prediction,
+            "camera_plane_loss": shifted_prediction + 0.4,
+            "mu": mu,
+            "logvar": logvar,
+        }
+
+        matching_losses = first_stage_loss(
+            matching_outputs,
+            input_batch,
+            global_step=0,
+            total_steps=1,
+            target_beta=0.0,
+            warmup_ratio=0.1,
+            camera_topology_weight=0.5,
+            camera_saturation_weight=0.25,
+        )
+        shifted_losses = first_stage_loss(
+            shifted_outputs,
+            input_batch,
+            global_step=0,
+            total_steps=1,
+            target_beta=0.0,
+            warmup_ratio=0.1,
+            camera_topology_weight=0.5,
+            camera_saturation_weight=0.25,
+        )
+
+        for key in ("camera_topology_loss", "camera_topology_base", "camera_saturation_loss", "camera_saturation_penalty"):
+            self.assertTrue(torch.isfinite(shifted_losses[key]).item(), key)
+        self.assertGreater(shifted_losses["camera_topology_base"].item(), matching_losses["camera_topology_base"].item())
+        self.assertGreater(
+            shifted_losses["camera_saturation_penalty"].item(),
+            matching_losses["camera_saturation_penalty"].item(),
+        )
+        self.assertGreater(shifted_losses["loss"].item(), matching_losses["loss"].item())
+
     def test_first_stage_loss_adds_field_phase_and_background_terms(self) -> None:
         import torch
 
@@ -158,6 +227,8 @@ class ConditionedTrainingSmokeTests(unittest.TestCase):
         input_batch = torch.zeros((1, 1, 4, 4), dtype=torch.float32)
         camera_plane = torch.zeros_like(input_batch)
         camera_plane[:, :, :, 2:] = 0.5
+        camera_plane_loss = camera_plane.clone()
+        camera_plane_loss[:, :, :, 3:] = 1.5
         chip_real = torch.zeros_like(input_batch)
         chip_real[:, :, :, 2:] = 1.0
         chip_imag = torch.zeros_like(input_batch)
@@ -167,6 +238,7 @@ class ConditionedTrainingSmokeTests(unittest.TestCase):
             "x_hat": camera_plane,
             "image_recon": torch.zeros_like(input_batch),
             "camera_plane": camera_plane,
+            "camera_plane_loss": camera_plane_loss,
             "chip_real": chip_real,
             "chip_imag": chip_imag,
             "chip_phase": chip_phase,
@@ -192,15 +264,63 @@ class ConditionedTrainingSmokeTests(unittest.TestCase):
             field_smoothness_weight=0.2,
             phase_smoothness_weight=0.3,
             background_leakage_weight=0.4,
+            camera_hotspot_weight=0.5,
+            camera_saturation_weight=0.6,
         )
 
         self.assertGreater(regularized_losses["field_smoothness_loss"].item(), 0.0)
         self.assertGreater(regularized_losses["phase_smoothness_loss"].item(), 0.0)
         self.assertGreater(regularized_losses["background_leakage_loss"].item(), 0.0)
+        self.assertGreater(regularized_losses["camera_hotspot_loss"].item(), 0.0)
+        self.assertGreater(regularized_losses["camera_saturation_loss"].item(), 0.0)
+        self.assertGreater(regularized_losses["camera_background_leakage"].item(), 0.0)
+        self.assertGreater(regularized_losses["camera_hotspot_ratio"].item(), 0.0)
         self.assertGreater(regularized_losses["field_tv"].item(), 0.0)
         self.assertGreater(regularized_losses["phase_tv"].item(), 0.0)
         self.assertGreaterEqual(regularized_losses["camera_saturation_ratio"].item(), 0.0)
         self.assertGreater(regularized_losses["loss"].item(), base_losses["loss"].item())
+
+    def test_first_stage_loss_uses_clamped_camera_for_mnist_reconstruction(self) -> None:
+        import torch
+
+        from ldm_project.training import first_stage_loss
+
+        input_batch = torch.ones((1, 1, 2, 2), dtype=torch.float32)
+        outputs = {
+            "x_hat": torch.ones_like(input_batch),
+            "image_recon": torch.ones_like(input_batch),
+            "camera_plane": torch.ones_like(input_batch),
+            "camera_plane_loss": torch.full_like(input_batch, 2.0),
+            "mu": torch.zeros_like(input_batch),
+            "logvar": torch.zeros_like(input_batch),
+        }
+
+        losses = first_stage_loss(
+            outputs,
+            input_batch,
+            global_step=0,
+            total_steps=1,
+            target_beta=0.0,
+            warmup_ratio=0.1,
+            image_recon_weight=0.0,
+            camera_recon_weight=1.0,
+            camera_hotspot_weight=0.0,
+        )
+        hotspot_losses = first_stage_loss(
+            outputs,
+            input_batch,
+            global_step=0,
+            total_steps=1,
+            target_beta=0.0,
+            warmup_ratio=0.1,
+            image_recon_weight=0.0,
+            camera_recon_weight=1.0,
+            camera_hotspot_weight=0.5,
+        )
+
+        self.assertEqual(losses["camera_recon_loss"].item(), 0.0)
+        self.assertGreater(hotspot_losses["camera_hotspot_loss"].item(), 0.0)
+        self.assertGreater(hotspot_losses["loss"].item(), losses["loss"].item())
 
     def test_conditioned_diffusion_loss_smoke(self) -> None:
         import torch
@@ -231,7 +351,7 @@ class ConditionedTrainingSmokeTests(unittest.TestCase):
         from ldm_project.config import DiffusionConfig, FirstStageConfig, PhysicsConfig
         from ldm_project.diffusion import LatentDiffusionUNet, LinearNoiseScheduler
         from ldm_project.first_stage import OpticalPathVAE
-        from ldm_project.training import estimate_latent_scale, sample_latents
+        from ldm_project.training import estimate_latent_scale, sample_latents, sample_latents_with_trace
 
         first_stage = OpticalPathVAE(PhysicsConfig(), FirstStageConfig())
         diffusion_model = LatentDiffusionUNet(4, DiffusionConfig()).eval()
@@ -254,6 +374,20 @@ class ConditionedTrainingSmokeTests(unittest.TestCase):
 
         self.assertEqual(latents.shape, latent_shape)
         self.assertEqual(decoded.shape, (2, 1, 200, 200))
+
+        traced_latents, trace = sample_latents_with_trace(
+            diffusion_model,
+            scheduler,
+            latent_shape,
+            torch.device("cpu"),
+            labels,
+            guidance_scale=2.0,
+        )
+
+        self.assertEqual(traced_latents.shape, latent_shape)
+        self.assertEqual(list(trace.keys()), ["noise", "t750", "t500", "t250", "t100", "t050", "t000"])
+        for trace_latents in trace.values():
+            self.assertEqual(trace_latents.shape, latent_shape)
 
     def test_first_stage_loss_weights_foreground_errors_more_than_background(self) -> None:
         import torch

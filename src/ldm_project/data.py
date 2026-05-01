@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sized
 from dataclasses import dataclass
 
 import torch
@@ -23,9 +24,15 @@ class DatasetSplits:
     total_size: int
 
 
+def _dataset_len(dataset: Dataset) -> int:
+    if not isinstance(dataset, Sized):
+        raise TypeError("Dataset must provide __len__ for train/validation splitting.")
+    return len(dataset)
+
+
 def _build_mnist_dataset(root: str, train: bool, image_size: int, download: bool) -> Dataset:
     try:
-        from torchvision import datasets, transforms
+        from torchvision import datasets, transforms  # type: ignore[import-untyped]
     except ImportError as exc:
         raise RuntimeError("torchvision is required to load the MNIST dataset.") from exc
 
@@ -44,9 +51,10 @@ def _apply_subset(dataset: Dataset, subset_fraction: float, subset_seed: int) ->
     if subset_fraction >= 1.0:
         return dataset
 
-    subset_size = max(1, int(len(dataset) * subset_fraction))
+    dataset_size = _dataset_len(dataset)
+    subset_size = max(1, int(dataset_size * subset_fraction))
     generator = torch.Generator().manual_seed(subset_seed)
-    indices = torch.randperm(len(dataset), generator=generator)[:subset_size].tolist()
+    indices = torch.randperm(dataset_size, generator=generator)[:subset_size].tolist()
     return Subset(dataset, indices)
 
 
@@ -101,7 +109,7 @@ def build_train_validation_loaders(
         image_size=first_stage_config.image_size,
         download=data_config.download,
     )
-    total_size = len(dataset)
+    total_size = _dataset_len(dataset)
     train_indices, validation_indices = _build_split_indices(
         total_size=total_size,
         validation_fraction=data_config.validation_fraction,
@@ -175,7 +183,7 @@ def build_training_loader(
         image_size=first_stage_config.image_size,
         download=data_config.download,
     )
-    total_size = len(dataset)
+    total_size = _dataset_len(dataset)
     dataset = _apply_subset(dataset, data_config.subset_fraction, data_config.subset_seed)
     loader = DataLoader(
         dataset,
@@ -188,6 +196,6 @@ def build_training_loader(
     return DatasetBundle(
         dataset=dataset,
         loader=loader,
-        effective_size=len(dataset),
+        effective_size=_dataset_len(dataset),
         total_size=total_size,
     )
