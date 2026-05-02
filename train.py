@@ -23,6 +23,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--stage", choices=["first_stage", "diffusion", "full"], default=None)
     parser.add_argument("--batch-size", type=int, default=None)
     parser.add_argument("--subset-fraction", type=float, default=None, help="Override dataset subset fraction, e.g. 0.1667")
+    parser.add_argument("--subset-size", type=int, default=None, help="Override exact train subset size, e.g. 2000")
     parser.add_argument("--validation-fraction", type=float, default=None, help="Override validation split fraction.")
     parser.add_argument("--first-stage-epochs", type=int, default=None, help="Override first-stage training epochs.")
     parser.add_argument("--diffusion-epochs", type=int, default=None, help="Override diffusion training epochs.")
@@ -40,15 +41,21 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--optical-encoder-input-mode",
-        choices=["pf2_intensity", "pf2_intensity_multiscale", "pf2_intensity_multiscale_v2"],
+        choices=["pf2_intensity", "pf2_intensity_multiscale", "pf2_intensity_multiscale_v2", "pf2_complex_field"],
         default=None,
         help="Override first-stage optical encoder input built from PF2 intensity.",
     )
     parser.add_argument(
         "--optical-encoder-arch",
-        choices=["conv", "global_context"],
+        choices=["conv", "global_context", "linear_metasurface"],
         default=None,
         help="Override first-stage optical encoder architecture.",
+    )
+    parser.add_argument(
+        "--metasurface-decoder-arch",
+        choices=["conv", "linear_metasurface"],
+        default=None,
+        help="Override first-stage metasurface decoder architecture.",
     )
     parser.add_argument("--device", default="auto", help="Device: auto, cuda, cuda:0, or cpu")
     parser.add_argument("--output-root", default="outputs/runs", help="Root directory for timestamped run outputs")
@@ -504,6 +511,11 @@ def apply_cli_overrides(train_cfg, args) -> None:
         train_cfg.batch_size = args.batch_size
     if args.subset_fraction is not None:
         train_cfg.data.subset_fraction = args.subset_fraction
+    subset_size = getattr(args, "subset_size", None)
+    if subset_size is not None:
+        if subset_size <= 0:
+            raise ValueError(f"data.subset_size must be positive, got {subset_size}")
+        train_cfg.data.subset_size = subset_size
     if args.validation_fraction is not None:
         if args.validation_fraction < 0.0 or args.validation_fraction >= 1.0:
             raise ValueError(
@@ -534,6 +546,9 @@ def apply_cli_overrides(train_cfg, args) -> None:
     optical_encoder_arch = getattr(args, "optical_encoder_arch", None)
     if optical_encoder_arch is not None:
         train_cfg.first_stage.optical_encoder_arch = optical_encoder_arch
+    metasurface_decoder_arch = getattr(args, "metasurface_decoder_arch", None)
+    if metasurface_decoder_arch is not None:
+        train_cfg.first_stage.metasurface_decoder_arch = metasurface_decoder_arch
 
 
 def average_scalar_metrics(metric_totals: dict[str, float], example_count: int) -> dict[str, float]:
@@ -679,6 +694,8 @@ def evaluate_first_stage_with_per_class(
         "field_tv",
         "phase_smoothness_loss",
         "phase_tv",
+        "field_energy_loss",
+        "field_energy",
         "background_leakage_loss",
         "camera_background_leakage",
         "camera_hotspot_loss",
@@ -746,6 +763,7 @@ def evaluate_first_stage_with_per_class(
                 field_smoothness_weight=train_cfg.first_stage.field_smoothness_weight,
                 phase_smoothness_weight=train_cfg.first_stage.phase_smoothness_weight,
                 background_leakage_weight=train_cfg.first_stage.background_leakage_weight,
+                field_energy_weight=train_cfg.first_stage.field_energy_weight,
                 camera_hotspot_weight=train_cfg.first_stage.camera_hotspot_weight,
                 camera_topology_weight=train_cfg.first_stage.camera_topology_weight,
                 camera_saturation_weight=train_cfg.first_stage.camera_saturation_weight,
@@ -801,6 +819,7 @@ def evaluate_first_stage_with_per_class(
                     field_smoothness_weight=train_cfg.first_stage.field_smoothness_weight,
                     phase_smoothness_weight=train_cfg.first_stage.phase_smoothness_weight,
                     background_leakage_weight=train_cfg.first_stage.background_leakage_weight,
+                    field_energy_weight=train_cfg.first_stage.field_energy_weight,
                     camera_hotspot_weight=train_cfg.first_stage.camera_hotspot_weight,
                     camera_topology_weight=train_cfg.first_stage.camera_topology_weight,
                     camera_saturation_weight=train_cfg.first_stage.camera_saturation_weight,
@@ -1172,6 +1191,7 @@ def main() -> None:
         "validation_fraction": train_cfg.data.validation_fraction,
         "validation_split_seed": train_cfg.data.validation_split_seed,
         "subset_fraction": train_cfg.data.subset_fraction,
+        "subset_size": train_cfg.data.subset_size,
         "subset_fraction_applies_to": "train_only",
         "planned_first_stage_epochs": epoch_plan["first_stage"],
         "planned_diffusion_epochs": epoch_plan["diffusion"],
@@ -1181,6 +1201,10 @@ def main() -> None:
         "first_stage_encoder_fusion_mode": train_cfg.first_stage.encoder_fusion_mode,
         "first_stage_optical_encoder_input_mode": train_cfg.first_stage.optical_encoder_input_mode,
         "first_stage_optical_encoder_arch": train_cfg.first_stage.optical_encoder_arch,
+        "first_stage_metasurface_decoder_arch": train_cfg.first_stage.metasurface_decoder_arch,
+        "first_stage_linear_metasurface_grid_size": train_cfg.first_stage.linear_metasurface_grid_size,
+        "first_stage_linear_metasurface_layer_spacing": train_cfg.first_stage.linear_metasurface_layer_spacing,
+        "first_stage_field_energy_weight": train_cfg.first_stage.field_energy_weight,
         "image_fusion_start_weight": train_cfg.first_stage.image_fusion_start_weight,
         "image_fusion_end_weight": train_cfg.first_stage.image_fusion_end_weight,
         "image_fusion_decay_epochs": train_cfg.first_stage.image_fusion_decay_epochs,
@@ -1236,6 +1260,7 @@ def main() -> None:
                     field_smoothness_weight=train_cfg.first_stage.field_smoothness_weight,
                     phase_smoothness_weight=train_cfg.first_stage.phase_smoothness_weight,
                     background_leakage_weight=train_cfg.first_stage.background_leakage_weight,
+                    field_energy_weight=train_cfg.first_stage.field_energy_weight,
                     camera_hotspot_weight=train_cfg.first_stage.camera_hotspot_weight,
                     camera_topology_weight=train_cfg.first_stage.camera_topology_weight,
                     camera_saturation_weight=train_cfg.first_stage.camera_saturation_weight,
@@ -1264,6 +1289,7 @@ def main() -> None:
                         f"shape={losses['shape_loss'].item():.6f} "
                         f"field={losses['field_smoothness_loss'].item():.6f} "
                         f"phase_tv={losses['phase_tv'].item():.6f} "
+                        f"field_energy={losses['field_energy'].item():.6f} "
                         f"sat={losses['camera_saturation_ratio'].item():.4f} "
                         f"image_fusion={image_fusion_weight:.4f} "
                         f"kl={losses['kl_loss'].item():.6f}"
@@ -1293,6 +1319,8 @@ def main() -> None:
                             "field_tv": losses["field_tv"].item(),
                             "phase_smoothness_loss": losses["phase_smoothness_loss"].item(),
                             "phase_tv": losses["phase_tv"].item(),
+                            "field_energy_loss": losses["field_energy_loss"].item(),
+                            "field_energy": losses["field_energy"].item(),
                             "background_leakage_loss": losses["background_leakage_loss"].item(),
                             "camera_background_leakage": losses["camera_background_leakage"].item(),
                             "camera_hotspot_loss": losses["camera_hotspot_loss"].item(),
@@ -1362,6 +1390,7 @@ def main() -> None:
                     f"shape={validation_metrics['shape_loss']:.6f} "
                     f"field={validation_metrics['field_smoothness_loss']:.6f} "
                     f"phase_tv={validation_metrics['phase_tv']:.6f} "
+                    f"field_energy={validation_metrics['field_energy']:.6f} "
                     f"sat={validation_metrics['camera_saturation_ratio']:.4f} "
                     f"camera_corr={validation_metrics['camera_corr']:.4f} "
                     f"camera_edge_corr={validation_metrics['camera_edge_corr']:.4f} "

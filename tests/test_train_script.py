@@ -291,6 +291,7 @@ class TrainScriptStepTests(unittest.TestCase):
                 stage="first_stage",
                 batch_size=8,
                 subset_fraction=0.002,
+                subset_size=2000,
                 validation_fraction=0.0,
                 first_stage_epochs=30,
                 diffusion_epochs=0,
@@ -298,18 +299,21 @@ class TrainScriptStepTests(unittest.TestCase):
                 image_fusion_weight=0.0,
                 optical_encoder_input_mode="pf2_intensity_multiscale_v2",
                 optical_encoder_arch="global_context",
+                metasurface_decoder_arch="conv",
             ),
         )
 
         self.assertEqual(config.mode, "first_stage")
         self.assertEqual(config.batch_size, 8)
         self.assertAlmostEqual(config.data.subset_fraction, 0.002, places=6)
+        self.assertEqual(config.data.subset_size, 2000)
         self.assertAlmostEqual(config.data.validation_fraction, 0.0, places=6)
         self.assertEqual(config.first_stage_epochs, 30)
         self.assertEqual(config.diffusion_epochs, 0)
         self.assertEqual(config.first_stage.encoder_fusion_mode, "optical_only")
         self.assertEqual(config.first_stage.optical_encoder_input_mode, "pf2_intensity_multiscale_v2")
         self.assertEqual(config.first_stage.optical_encoder_arch, "global_context")
+        self.assertEqual(config.first_stage.metasurface_decoder_arch, "conv")
         self.assertAlmostEqual(config.first_stage.image_fusion_start_weight, 0.0, places=6)
         self.assertAlmostEqual(config.first_stage.image_fusion_end_weight, 0.0, places=6)
         self.assertEqual(config.first_stage.image_fusion_decay_epochs, 1)
@@ -329,6 +333,7 @@ class TrainScriptStepTests(unittest.TestCase):
                             stage=None,
                             batch_size=None,
                             subset_fraction=None,
+                            subset_size=None,
                             validation_fraction=None,
                             first_stage_epochs=None,
                             diffusion_epochs=None,
@@ -336,6 +341,7 @@ class TrainScriptStepTests(unittest.TestCase):
                             image_fusion_weight=invalid_weight,
                             optical_encoder_input_mode=None,
                             optical_encoder_arch=None,
+                            metasurface_decoder_arch=None,
                         ),
                     )
 
@@ -530,10 +536,15 @@ class TrainMainValidationTests(unittest.TestCase):
         self.assertEqual(meta["planned_diffusion_epochs"], 1)
         self.assertEqual(meta["visual_save_epoch_interval"], 1)
         self.assertEqual(meta["validation_epoch_interval"], 1)
-        self.assertEqual(meta["first_stage_model_version"], "physical_first_hybrid_vae_v3")
+        self.assertEqual(meta["first_stage_model_version"], "physical_first_linear_metasurface_vae_v4")
         self.assertEqual(meta["first_stage_encoder_fusion_mode"], "optical_only")
         self.assertEqual(meta["first_stage_optical_encoder_input_mode"], "pf2_intensity")
         self.assertEqual(meta["first_stage_optical_encoder_arch"], "conv")
+        self.assertEqual(meta["first_stage_metasurface_decoder_arch"], "conv")
+        self.assertEqual(meta["first_stage_linear_metasurface_grid_size"], 50)
+        self.assertAlmostEqual(meta["first_stage_linear_metasurface_layer_spacing"], 0.003, places=6)
+        self.assertAlmostEqual(meta["first_stage_field_energy_weight"], 0.0, places=6)
+        self.assertIsNone(meta["subset_size"])
         self.assertAlmostEqual(meta["image_fusion_start_weight"], 1.0, places=6)
         self.assertAlmostEqual(meta["image_fusion_end_weight"], 0.0, places=6)
         self.assertEqual(meta["image_fusion_decay_epochs"], 20)
@@ -571,6 +582,8 @@ class TrainMainValidationTests(unittest.TestCase):
         self.assertIn("shape_loss", history["first_stage_validation"][0])
         self.assertIn("field_smoothness_loss", history["first_stage_validation"][0])
         self.assertIn("phase_tv", history["first_stage_validation"][0])
+        self.assertIn("field_energy", history["first_stage_validation"][0])
+        self.assertIn("field_energy_loss", history["first_stage_validation"][0])
         self.assertIn("background_leakage_loss", history["first_stage_validation"][0])
         self.assertIn("camera_background_leakage", history["first_stage_validation"][0])
         self.assertIn("camera_hotspot_loss", history["first_stage_validation"][0])

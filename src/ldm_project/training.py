@@ -124,6 +124,13 @@ def _field_smoothness_loss(outputs: dict[str, torch.Tensor], reference: torch.Te
     return _total_variation(outputs["chip_real"]) + _total_variation(outputs["chip_imag"])
 
 
+def _field_energy_loss(outputs: dict[str, torch.Tensor], reference: torch.Tensor) -> torch.Tensor:
+    if "chip_real" not in outputs or "chip_imag" not in outputs:
+        return _zero_like_loss(reference)
+    field_energy = outputs["chip_real"].pow(2) + outputs["chip_imag"].pow(2)
+    return (field_energy.mean() - 1.0).pow(2)
+
+
 def _phase_smoothness_loss(outputs: dict[str, torch.Tensor], reference: torch.Tensor) -> torch.Tensor:
     chip_phase = outputs.get("chip_phase")
     if chip_phase is None:
@@ -166,6 +173,7 @@ def first_stage_loss(
     field_smoothness_weight: float = 0.0,
     phase_smoothness_weight: float = 0.0,
     background_leakage_weight: float = 0.0,
+    field_energy_weight: float = 0.0,
     camera_hotspot_weight: float = 0.0,
     camera_topology_weight: float = 0.0,
     camera_saturation_weight: float = 0.0,
@@ -205,6 +213,8 @@ def first_stage_loss(
     field_smoothness = field_smoothness_weight * field_tv
     phase_tv = _phase_smoothness_loss(outputs, input_batch)
     phase_smoothness = phase_smoothness_weight * phase_tv
+    field_energy_base = _field_energy_loss(outputs, input_batch)
+    field_energy = field_energy_weight * field_energy_base
     camera_background_leakage = _masked_mean(camera_prediction.clamp_min(0.0), background_mask)
     background_leakage = background_leakage_weight * camera_background_leakage
     camera_hotspot_base = _camera_hotspot_loss(camera_loss_prediction)
@@ -220,6 +230,7 @@ def first_stage_loss(
         + shape
         + field_smoothness
         + phase_smoothness
+        + field_energy
         + background_leakage
         + camera_hotspot
         + camera_topology
@@ -249,6 +260,8 @@ def first_stage_loss(
         "field_tv": field_tv.detach(),
         "phase_smoothness_loss": phase_smoothness.detach(),
         "phase_tv": phase_tv.detach(),
+        "field_energy_loss": field_energy.detach(),
+        "field_energy": field_energy_base.detach(),
         "background_leakage_loss": background_leakage.detach(),
         "camera_background_leakage": camera_background_leakage.detach(),
         "camera_hotspot_loss": camera_hotspot.detach(),

@@ -27,6 +27,8 @@ training:
   mode: diffusion
   visual_save_epoch_interval: 3
   validation_epoch_interval: 4
+data:
+  subset_size: 2000
 first_stage:
   recon_foreground_threshold: 0.08
   recon_foreground_weight: 5.0
@@ -38,6 +40,9 @@ first_stage:
   image_fusion_schedule: cosine
   optical_encoder_input_mode: pf2_intensity_multiscale_v2
   optical_encoder_arch: global_context
+  metasurface_decoder_arch: conv
+  linear_metasurface_grid_size: 32
+  linear_metasurface_layer_spacing: 0.004
   optical_field_mode: complex_cartesian
   primary_output: camera
   decoder_tail_channels: 48
@@ -47,6 +52,7 @@ first_stage:
   shape_recon_weight: 0.4
   field_smoothness_weight: 0.02
   phase_smoothness_weight: 0.01
+  field_energy_weight: 0.09
   background_leakage_weight: 0.03
   camera_hotspot_weight: 0.07
   camera_topology_weight: 0.11
@@ -87,6 +93,7 @@ diffusion:
         self.assertEqual(loaded.validation_epoch_interval, 4)
         self.assertAlmostEqual(loaded.data.validation_fraction, 0.1, places=6)
         self.assertEqual(loaded.data.validation_split_seed, 42)
+        self.assertEqual(loaded.data.subset_size, 2000)
         self.assertAlmostEqual(loaded.first_stage.recon_foreground_threshold, 0.08, places=6)
         self.assertAlmostEqual(loaded.first_stage.recon_foreground_weight, 5.0, places=6)
         self.assertAlmostEqual(loaded.first_stage.recon_background_weight, 0.5, places=6)
@@ -97,6 +104,9 @@ diffusion:
         self.assertEqual(loaded.first_stage.image_fusion_schedule, "cosine")
         self.assertEqual(loaded.first_stage.optical_encoder_input_mode, "pf2_intensity_multiscale_v2")
         self.assertEqual(loaded.first_stage.optical_encoder_arch, "global_context")
+        self.assertEqual(loaded.first_stage.metasurface_decoder_arch, "conv")
+        self.assertEqual(loaded.first_stage.linear_metasurface_grid_size, 32)
+        self.assertAlmostEqual(loaded.first_stage.linear_metasurface_layer_spacing, 0.004, places=6)
         self.assertEqual(loaded.first_stage.optical_field_mode, "complex_cartesian")
         self.assertEqual(loaded.first_stage.primary_output, "camera")
         self.assertEqual(loaded.first_stage.decoder_tail_channels, 48)
@@ -106,6 +116,7 @@ diffusion:
         self.assertAlmostEqual(loaded.first_stage.shape_recon_weight, 0.4, places=6)
         self.assertAlmostEqual(loaded.first_stage.field_smoothness_weight, 0.02, places=6)
         self.assertAlmostEqual(loaded.first_stage.phase_smoothness_weight, 0.01, places=6)
+        self.assertAlmostEqual(loaded.first_stage.field_energy_weight, 0.09, places=6)
         self.assertAlmostEqual(loaded.first_stage.background_leakage_weight, 0.03, places=6)
         self.assertAlmostEqual(loaded.first_stage.camera_hotspot_weight, 0.07, places=6)
         self.assertAlmostEqual(loaded.first_stage.camera_topology_weight, 0.11, places=6)
@@ -143,6 +154,9 @@ diffusion:
         self.assertEqual(training_cfg.first_stage.image_fusion_schedule, "linear")
         self.assertEqual(training_cfg.first_stage.optical_encoder_input_mode, "pf2_intensity")
         self.assertEqual(training_cfg.first_stage.optical_encoder_arch, "conv")
+        self.assertEqual(training_cfg.first_stage.metasurface_decoder_arch, "conv")
+        self.assertEqual(training_cfg.first_stage.linear_metasurface_grid_size, 50)
+        self.assertAlmostEqual(training_cfg.first_stage.linear_metasurface_layer_spacing, 0.003, places=6)
         self.assertEqual(training_cfg.first_stage.optical_field_mode, "complex_cartesian")
         self.assertEqual(training_cfg.first_stage.primary_output, "camera")
         self.assertEqual(training_cfg.first_stage.decoder_tail_channels, 32)
@@ -152,6 +166,7 @@ diffusion:
         self.assertAlmostEqual(training_cfg.first_stage.shape_recon_weight, 0.5, places=6)
         self.assertAlmostEqual(training_cfg.first_stage.field_smoothness_weight, 0.02, places=6)
         self.assertAlmostEqual(training_cfg.first_stage.phase_smoothness_weight, 0.01, places=6)
+        self.assertAlmostEqual(training_cfg.first_stage.field_energy_weight, 0.0, places=6)
         self.assertAlmostEqual(training_cfg.first_stage.background_leakage_weight, 0.02, places=6)
         self.assertAlmostEqual(training_cfg.first_stage.camera_hotspot_weight, 0.0, places=6)
         self.assertAlmostEqual(training_cfg.first_stage.camera_topology_weight, 0.0, places=6)

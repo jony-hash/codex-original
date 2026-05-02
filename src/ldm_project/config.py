@@ -69,6 +69,9 @@ class FirstStageConfig:
     image_fusion_schedule: str = "linear"
     optical_encoder_input_mode: str = "pf2_intensity"
     optical_encoder_arch: str = "conv"
+    metasurface_decoder_arch: str = "conv"
+    linear_metasurface_grid_size: int = 50
+    linear_metasurface_layer_spacing: float = 0.003
     optical_field_mode: str = "complex_cartesian"
     primary_output: str = "camera"
     freeze_after_pretrain: bool = True
@@ -85,6 +88,7 @@ class FirstStageConfig:
     field_smoothness_weight: float = 0.02
     phase_smoothness_weight: float = 0.01
     background_leakage_weight: float = 0.02
+    field_energy_weight: float = 0.0
     camera_hotspot_weight: float = 0.0
     camera_topology_weight: float = 0.0
     camera_saturation_weight: float = 0.0
@@ -124,6 +128,7 @@ class DataConfig:
     root: str = "data"
     download: bool = True
     subset_fraction: float = 1.0
+    subset_size: int | None = None
     subset_seed: int = 42
     validation_fraction: float = 0.1
     validation_split_seed: int = 42

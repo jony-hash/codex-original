@@ -53,6 +53,22 @@ def fresnel_propagate(field: torch.Tensor, distance: float, wavelength: float, p
     return torch.fft.ifft2(spectrum * phase)
 
 
+def angular_spectrum_propagate(field: torch.Tensor, distance: float, wavelength: float, pixel_size: float) -> torch.Tensor:
+    if distance == 0.0:
+        return field
+
+    height, width = field.shape[-2:]
+    fy, fx = _frequency_grid(height, width, pixel_size, field.device)
+    frequency_radius = (wavelength * fx).pow(2) + (wavelength * fy).pow(2)
+    propagating = frequency_radius <= 1.0
+    phase_root = (1.0 - frequency_radius).clamp_min(0.0).sqrt()
+    phase_angle = 2.0 * math.pi * distance * phase_root / wavelength
+    transfer = torch.exp(1j * phase_angle).to(field.dtype)
+    transfer = torch.where(propagating, transfer, torch.zeros_like(transfer))
+    spectrum = torch.fft.fft2(field)
+    return torch.fft.ifft2(spectrum * transfer)
+
+
 def apply_thin_lens(field: torch.Tensor, focal_length: float, wavelength: float, pixel_size: float) -> torch.Tensor:
     if focal_length == 0.0:
         return field
@@ -154,12 +170,13 @@ class Ideal4fRelay(nn.Module):
         self.wavelength = wavelength
         self.pixel_size = pixel_size
 
-    def forward(self, field: torch.Tensor) -> torch.Tensor:
-        field = fresnel_propagate(field, self.focal_length, self.wavelength, self.pixel_size)
+    def forward(self, field: torch.Tensor, propagation_method: str = "fresnel") -> torch.Tensor:
+        propagate = _resolve_propagator(propagation_method)
+        field = propagate(field, self.focal_length, self.wavelength, self.pixel_size)
         field = apply_thin_lens(field, self.focal_length, self.wavelength, self.pixel_size)
-        field = fresnel_propagate(field, 2.0 * self.focal_length, self.wavelength, self.pixel_size)
+        field = propagate(field, 2.0 * self.focal_length, self.wavelength, self.pixel_size)
         field = apply_thin_lens(field, self.focal_length, self.wavelength, self.pixel_size)
-        field = fresnel_propagate(field, self.focal_length, self.wavelength, self.pixel_size)
+        field = propagate(field, self.focal_length, self.wavelength, self.pixel_size)
         return field
 
 
@@ -172,6 +189,17 @@ class IdealRelayLens(nn.Module):
 
     def forward(self, field: torch.Tensor) -> torch.Tensor:
         return apply_thin_lens(field, self.focal_length, self.wavelength, self.pixel_size)
+
+
+def _resolve_propagator(propagation_method: str):
+    if propagation_method == "fresnel":
+        return fresnel_propagate
+    if propagation_method == "angular_spectrum":
+        return angular_spectrum_propagate
+    raise ValueError(
+        "Unsupported propagation_method: "
+        f"{propagation_method}; expected fresnel or angular_spectrum."
+    )
 
 
 class FrontOpticalPath(nn.Module):
@@ -197,38 +225,45 @@ class FrontOpticalPath(nn.Module):
         )
         self.pf2 = IdealIdentityElement("pf2")
 
-    def forward(self, slm_transfer: torch.Tensor) -> torch.Tensor:
+    def forward_field(self, slm_transfer: torch.Tensor, propagation_method: str = "fresnel") -> torch.Tensor:
         macro = self.physics.macro_optics
         optics = self.physics.optics
+        propagate = _resolve_propagator(propagation_method)
 
         field = torch.ones_like(slm_transfer, dtype=torch.complex64)
-        field = fresnel_propagate(field, macro.dist_laser_to_m1, optics.wavelength, optics.pixel_size)
+        field = propagate(field, macro.dist_laser_to_m1, optics.wavelength, optics.pixel_size)
         field = self.m1(field)
         field = self.beam_expander(field)
-        field = fresnel_propagate(field, macro.dist_m1_to_m2, optics.wavelength, optics.pixel_size)
+        field = propagate(field, macro.dist_m1_to_m2, optics.wavelength, optics.pixel_size)
         field = self.m2(field)
-        field = fresnel_propagate(field, macro.dist_m2_to_pf1, optics.wavelength, optics.pixel_size)
+        field = propagate(field, macro.dist_m2_to_pf1, optics.wavelength, optics.pixel_size)
         field = self.pf1(field)
-        field = fresnel_propagate(field, macro.dist_pf1_to_pbs, optics.wavelength, optics.pixel_size)
+        field = propagate(field, macro.dist_pf1_to_pbs, optics.wavelength, optics.pixel_size)
         field = self.pbs(field)
-        field = fresnel_propagate(field, macro.dist_pbs_to_bs, optics.wavelength, optics.pixel_size)
+        field = propagate(field, macro.dist_pbs_to_bs, optics.wavelength, optics.pixel_size)
         field = self.bs_in(field)
-        field = fresnel_propagate(field, macro.dist_bs_to_slm, optics.wavelength, optics.pixel_size)
+        field = propagate(field, macro.dist_bs_to_slm, optics.wavelength, optics.pixel_size)
         field = self.slm(slm_transfer, field)
         field = self.bs_out(field)
-        field = fresnel_propagate(field, macro.dist_slm_to_m3, optics.wavelength, optics.pixel_size)
+        field = propagate(field, macro.dist_slm_to_m3, optics.wavelength, optics.pixel_size)
         field = self.m3(field)
-        field = fresnel_propagate(field, macro.dist_m3_to_4f, optics.wavelength, optics.pixel_size)
-        field = self.relay_4f(field)
-        field = fresnel_propagate(field, macro.dist_4f_to_pf2, optics.wavelength, optics.pixel_size)
+        field = propagate(field, macro.dist_m3_to_4f, optics.wavelength, optics.pixel_size)
+        field = self.relay_4f(field, propagation_method=propagation_method)
+        field = propagate(field, macro.dist_4f_to_pf2, optics.wavelength, optics.pixel_size)
         field = self.pf2(field)
+        return field
+
+    def forward(self, slm_transfer: torch.Tensor) -> torch.Tensor:
+        field = self.forward_field(slm_transfer, propagation_method="fresnel")
         return normalize_intensity(field, self.physics.readout.normalize_percentile)
 
 
 class BackOpticalPath(nn.Module):
-    def __init__(self, physics: PhysicsConfig) -> None:
+    def __init__(self, physics: PhysicsConfig, propagation_method: str = "fresnel") -> None:
         super().__init__()
         self.physics = physics
+        self.propagation_method = propagation_method
+        _resolve_propagator(propagation_method)
         macro = physics.macro_optics
         readout = physics.readout
         if macro.dist_plane_to_lens == 0.0:
@@ -253,9 +288,10 @@ class BackOpticalPath(nn.Module):
         macro = self.physics.macro_optics
         optics = self.physics.optics
         normalize_percentile = self.physics.readout.normalize_percentile
+        propagate = _resolve_propagator(self.propagation_method)
 
         field = chip_field.to(torch.complex64)
-        probe_field = fresnel_propagate(field, macro.dist_chip_to_plane, optics.wavelength, optics.pixel_size)
+        probe_field = propagate(field, macro.dist_chip_to_plane, optics.wavelength, optics.pixel_size)
         probe_plane_loss = normalize_intensity(probe_field, normalize_percentile, clamp=False)
         camera_field = ideal_image_field(probe_field, self.camera_magnification, self.camera_magnification_blend)
         camera_sigma_px = _camera_blur_sigma_pixels(
