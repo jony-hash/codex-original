@@ -349,6 +349,73 @@ class OpticalPathVAESmokeTests(unittest.TestCase):
         self.assertEqual(outputs["mu"].shape, (1, 4, 25, 25))
         self.assertEqual(outputs["x_hat"].shape, (1, 1, 200, 200))
 
+    def test_angular_spectrum_propagate_preserves_shape_dtype_and_finiteness(self) -> None:
+        import torch
+
+        from ldm_project.optics import angular_spectrum_propagate
+
+        real = torch.rand(2, 1, 16, 16)
+        imag = torch.rand(2, 1, 16, 16)
+        field = torch.complex(real, imag)
+        propagated = angular_spectrum_propagate(
+            field,
+            distance=0.003,
+            wavelength=532.0e-9,
+            pixel_size=3.0e-6,
+        )
+
+        self.assertEqual(propagated.shape, field.shape)
+        self.assertEqual(propagated.dtype, field.dtype)
+        self.assertTrue(torch.isfinite(propagated.real).all().item())
+        self.assertTrue(torch.isfinite(propagated.imag).all().item())
+
+    def test_linear_metasurface_replaces_encoder_ols_decoder_with_linear_layers(self) -> None:
+        import torch
+        import torch.nn as nn
+
+        from ldm_project.config import FirstStageConfig, PhysicsConfig
+        from ldm_project.first_stage import (
+            ConfigurableOLS,
+            LinearMetasurfaceDecoder,
+            LinearMetasurfaceEncoder,
+            OpticalPathVAE,
+        )
+
+        config = FirstStageConfig(
+            image_size=32,
+            latent_channels=2,
+            optical_encoder_input_mode="pf2_complex_field",
+            optical_encoder_arch="linear_metasurface",
+            metasurface_decoder_arch="linear_metasurface",
+            linear_metasurface_grid_size=8,
+            linear_metasurface_layer_spacing=0.003,
+            ols_kind="gelu",
+            image_recon_weight=0.0,
+            camera_recon_weight=1.0,
+        )
+        model = OpticalPathVAE(PhysicsConfig(), config)
+        x = torch.rand(2, 1, 32, 32)
+
+        outputs = model(x)
+
+        self.assertIsInstance(model.optical_encoder, LinearMetasurfaceEncoder)
+        self.assertIsInstance(model.ols, ConfigurableOLS)
+        self.assertIsInstance(model.metasurface_decoder, LinearMetasurfaceDecoder)
+        self.assertEqual(sum(isinstance(module, nn.Linear) for module in model.optical_encoder.modules()), 2)
+        self.assertEqual(sum(isinstance(module, nn.Linear) for module in model.metasurface_decoder.modules()), 4)
+        self.assertEqual(outputs["mu"].shape, (2, 2, 4, 4))
+        self.assertEqual(outputs["logvar"].shape, (2, 2, 4, 4))
+        self.assertEqual(outputs["z"].shape, (2, 2, 4, 4))
+        self.assertEqual(outputs["optical_encoder_input"].shape, (2, 2, 32, 32))
+        self.assertEqual(outputs["image_recon"].shape, (2, 1, 32, 32))
+        self.assertEqual(outputs["camera_plane"].shape, (2, 1, 32, 32))
+        self.assertEqual(outputs["chip_real"].shape, (2, 1, 32, 32))
+        self.assertEqual(outputs["chip_imag"].shape, (2, 1, 32, 32))
+        self.assertTrue(torch.equal(outputs["z"], outputs["mu"]))
+        self.assertTrue(torch.equal(outputs["image_recon"], outputs["chip_real"]))
+        for key in ("image_recon", "camera_plane", "chip_real", "chip_imag"):
+            self.assertTrue(torch.isfinite(outputs[key]).all().item(), key)
+
     def test_legacy_amplitude_slm_mode_keeps_zero_phase(self) -> None:
         import torch
 

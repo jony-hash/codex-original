@@ -69,6 +69,34 @@ class DatasetSplitTests(unittest.TestCase):
         self.assertEqual(splits.train.effective_size, 6)
         self.assertIsNone(splits.validation)
 
+    def test_subset_size_overrides_fraction_for_train_split(self) -> None:
+        from torch.utils.data import Subset
+
+        from ldm_project.config import DataConfig, FirstStageConfig
+        from ldm_project.data import build_train_validation_loaders
+
+        dataset = self._build_fake_dataset(size=30)
+        data_config = DataConfig(
+            subset_fraction=0.5,
+            subset_size=7,
+            subset_seed=5,
+            validation_fraction=0.2,
+            validation_split_seed=13,
+            pin_memory=False,
+        )
+
+        with mock.patch("ldm_project.data._build_mnist_dataset", return_value=dataset):
+            first = build_train_validation_loaders(data_config, FirstStageConfig(), batch_size=4)
+            second = build_train_validation_loaders(data_config, FirstStageConfig(), batch_size=4)
+
+        self.assertEqual(first.train.total_size, 24)
+        self.assertEqual(first.train.effective_size, 7)
+        self.assertIsNotNone(first.validation)
+        assert first.validation is not None
+        first_train_subset = cast(Subset, first.train.dataset)
+        second_train_subset = cast(Subset, second.train.dataset)
+        self.assertEqual(first_train_subset.indices, second_train_subset.indices)
+
 
 if __name__ == "__main__":
     unittest.main()

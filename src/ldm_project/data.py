@@ -45,16 +45,26 @@ def _build_mnist_dataset(root: str, train: bool, image_size: int, download: bool
     return datasets.MNIST(root=root, train=train, download=download, transform=transform)
 
 
-def _apply_subset(dataset: Dataset, subset_fraction: float, subset_seed: int) -> Dataset:
+def _resolve_subset_size(total_size: int, subset_fraction: float, subset_size: int | None) -> int:
+    if subset_size is not None:
+        if subset_size <= 0:
+            raise ValueError(f"subset_size must be positive, got {subset_size}")
+        if subset_size > total_size:
+            raise ValueError(f"subset_size must be <= dataset size ({total_size}), got {subset_size}")
+        return subset_size
     if subset_fraction <= 0.0 or subset_fraction > 1.0:
         raise ValueError(f"subset_fraction must be in (0, 1], got {subset_fraction}")
-    if subset_fraction >= 1.0:
+    return max(1, int(total_size * subset_fraction))
+
+
+def _apply_subset(dataset: Dataset, subset_fraction: float, subset_seed: int, subset_size: int | None = None) -> Dataset:
+    dataset_size = _dataset_len(dataset)
+    resolved_subset_size = _resolve_subset_size(dataset_size, subset_fraction, subset_size)
+    if resolved_subset_size >= dataset_size:
         return dataset
 
-    dataset_size = _dataset_len(dataset)
-    subset_size = max(1, int(dataset_size * subset_fraction))
     generator = torch.Generator().manual_seed(subset_seed)
-    indices = torch.randperm(dataset_size, generator=generator)[:subset_size].tolist()
+    indices = torch.randperm(dataset_size, generator=generator)[:resolved_subset_size].tolist()
     return Subset(dataset, indices)
 
 
@@ -81,15 +91,18 @@ def _build_split_indices(total_size: int, validation_fraction: float, validation
     return training_indices, validation_indices
 
 
-def _apply_subset_to_indices(indices: list[int], subset_fraction: float, subset_seed: int) -> list[int]:
-    if subset_fraction <= 0.0 or subset_fraction > 1.0:
-        raise ValueError(f"subset_fraction must be in (0, 1], got {subset_fraction}")
-    if subset_fraction >= 1.0:
+def _apply_subset_to_indices(
+    indices: list[int],
+    subset_fraction: float,
+    subset_seed: int,
+    subset_size: int | None = None,
+) -> list[int]:
+    resolved_subset_size = _resolve_subset_size(len(indices), subset_fraction, subset_size)
+    if resolved_subset_size >= len(indices):
         return indices
 
-    subset_size = max(1, int(len(indices) * subset_fraction))
     generator = torch.Generator().manual_seed(subset_seed)
-    selected_offsets = torch.randperm(len(indices), generator=generator)[:subset_size].tolist()
+    selected_offsets = torch.randperm(len(indices), generator=generator)[:resolved_subset_size].tolist()
     # 训练子集在 split 之后再抽，确保验证集稳定且不受 subset_fraction 影响。
     return [indices[offset] for offset in selected_offsets]
 
@@ -119,6 +132,7 @@ def build_train_validation_loaders(
         train_indices,
         subset_fraction=data_config.subset_fraction,
         subset_seed=data_config.subset_seed,
+        subset_size=data_config.subset_size,
     )
 
     train_dataset = Subset(dataset, effective_train_indices)
@@ -184,7 +198,12 @@ def build_training_loader(
         download=data_config.download,
     )
     total_size = _dataset_len(dataset)
-    dataset = _apply_subset(dataset, data_config.subset_fraction, data_config.subset_seed)
+    dataset = _apply_subset(
+        dataset,
+        data_config.subset_fraction,
+        data_config.subset_seed,
+        subset_size=data_config.subset_size,
+    )
     loader = DataLoader(
         dataset,
         batch_size=batch_size,
