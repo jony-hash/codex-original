@@ -264,6 +264,7 @@ class ConditionedTrainingSmokeTests(unittest.TestCase):
             field_smoothness_weight=0.2,
             phase_smoothness_weight=0.3,
             background_leakage_weight=0.4,
+            field_energy_weight=0.7,
             camera_hotspot_weight=0.5,
             camera_saturation_weight=0.6,
         )
@@ -271,11 +272,13 @@ class ConditionedTrainingSmokeTests(unittest.TestCase):
         self.assertGreater(regularized_losses["field_smoothness_loss"].item(), 0.0)
         self.assertGreater(regularized_losses["phase_smoothness_loss"].item(), 0.0)
         self.assertGreater(regularized_losses["background_leakage_loss"].item(), 0.0)
+        self.assertGreater(regularized_losses["field_energy_loss"].item(), 0.0)
         self.assertGreater(regularized_losses["camera_hotspot_loss"].item(), 0.0)
         self.assertGreater(regularized_losses["camera_saturation_loss"].item(), 0.0)
         self.assertGreater(regularized_losses["camera_background_leakage"].item(), 0.0)
         self.assertGreater(regularized_losses["camera_hotspot_ratio"].item(), 0.0)
         self.assertGreater(regularized_losses["field_tv"].item(), 0.0)
+        self.assertGreater(regularized_losses["field_energy"].item(), 0.0)
         self.assertGreater(regularized_losses["phase_tv"].item(), 0.0)
         self.assertGreaterEqual(regularized_losses["camera_saturation_ratio"].item(), 0.0)
         self.assertGreater(regularized_losses["loss"].item(), base_losses["loss"].item())

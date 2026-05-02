@@ -7,10 +7,10 @@ from torch import nn
 import torch.nn.functional as F
 
 from .config import FirstStageConfig, PhysicsConfig
-from .optics import BackOpticalPath, FrontOpticalPath
+from .optics import BackOpticalPath, FrontOpticalPath, angular_spectrum_propagate, normalize_intensity
 
 
-FIRST_STAGE_MODEL_VERSION = "physical_first_hybrid_vae_v3"
+FIRST_STAGE_MODEL_VERSION = "physical_first_linear_metasurface_vae_v4"
 
 
 def _group_norm(channels: int) -> nn.GroupNorm:
@@ -47,7 +47,7 @@ class UpsampleConvBlock(nn.Module):
         return self.block(x)
 
 
-class PointwiseOLS(nn.Module):
+class ConfigurableOLS(nn.Module):
     def __init__(self, kind: str = "pointwise_tanh") -> None:
         super().__init__()
         self.kind = kind
@@ -57,7 +57,19 @@ class PointwiseOLS(nn.Module):
             return torch.tanh(z)
         if self.kind == "sigmoid":
             return torch.sigmoid(z)
+        if self.kind == "silu":
+            return F.silu(z)
+        if self.kind == "gelu":
+            return F.gelu(z)
+        if self.kind == "relu":
+            return F.relu(z)
+        if self.kind == "identity":
+            return z
         raise ValueError(f"Unsupported OLS kind: {self.kind}")
+
+
+class PointwiseOLS(ConfigurableOLS):
+    pass
 
 
 class MetasurfaceEncoder(nn.Module):
@@ -172,6 +184,148 @@ class MetasurfaceDecoder(nn.Module):
         }
 
 
+def _resize_complex_field(field: torch.Tensor, size: tuple[int, int]) -> torch.Tensor:
+    real = F.interpolate(field.real, size=size, mode="bilinear", align_corners=False)
+    imag = F.interpolate(field.imag, size=size, mode="bilinear", align_corners=False)
+    return torch.complex(real, imag)
+
+
+def _flatten_complex_field(field: torch.Tensor) -> torch.Tensor:
+    return torch.cat([field.real.flatten(1), field.imag.flatten(1)], dim=1)
+
+
+def _vector_to_complex_field(vector: torch.Tensor, grid_size: int) -> torch.Tensor:
+    batch_size = vector.shape[0]
+    half_width = grid_size * grid_size
+    real = vector[:, :half_width].reshape(batch_size, 1, grid_size, grid_size)
+    imag = vector[:, half_width:].reshape(batch_size, 1, grid_size, grid_size)
+    return torch.complex(real, imag)
+
+
+def _linear_grid_pixel_size(physics: PhysicsConfig, image_size: int, grid_size: int) -> float:
+    return physics.optics.pixel_size * float(image_size) / float(grid_size)
+
+
+class LinearMetasurfaceEncoder(nn.Module):
+    def __init__(
+        self,
+        physics: PhysicsConfig,
+        image_size: int,
+        latent_channels: int,
+        latent_spatial_size: int,
+        grid_size: int,
+        layer_spacing: float,
+    ) -> None:
+        super().__init__()
+        self.input_channels = 2
+        self.image_size = image_size
+        self.latent_channels = latent_channels
+        self.latent_spatial_size = latent_spatial_size
+        self.grid_size = grid_size
+        self.layer_spacing = layer_spacing
+        self.wavelength = physics.optics.wavelength
+        self.pixel_size = _linear_grid_pixel_size(physics, image_size, grid_size)
+        self.normalize_percentile = physics.readout.normalize_percentile
+        grid_features = 2 * grid_size * grid_size
+        latent_features = latent_channels * latent_spatial_size * latent_spatial_size
+        self.layers = nn.ModuleList(
+            [
+                nn.Linear(grid_features, grid_features, bias=False),
+                nn.Linear(grid_features, 2 * latent_features, bias=False),
+            ]
+        )
+        self._initialize_layers()
+
+    def _initialize_layers(self) -> None:
+        for layer in self.layers:
+            nn.init.xavier_uniform_(layer.weight, gain=0.5)
+
+    def forward(self, pf2_field: torch.Tensor) -> dict[str, torch.Tensor]:
+        field = _resize_complex_field(pf2_field, (self.grid_size, self.grid_size))
+        hidden = self.layers[0](_flatten_complex_field(field))
+        hidden_field = _vector_to_complex_field(hidden, self.grid_size)
+        hidden_field = angular_spectrum_propagate(
+            hidden_field,
+            self.layer_spacing,
+            self.wavelength,
+            self.pixel_size,
+        )
+        latent_stats = self.layers[1](_flatten_complex_field(hidden_field))
+        latent_features = self.latent_channels * self.latent_spatial_size * self.latent_spatial_size
+        mu = latent_stats[:, :latent_features].reshape(
+            -1,
+            self.latent_channels,
+            self.latent_spatial_size,
+            self.latent_spatial_size,
+        )
+        logvar = latent_stats[:, latent_features:].reshape(
+            -1,
+            self.latent_channels,
+            self.latent_spatial_size,
+            self.latent_spatial_size,
+        )
+        return {"mu": mu, "logvar": logvar}
+
+
+class LinearMetasurfaceDecoder(nn.Module):
+    def __init__(
+        self,
+        physics: PhysicsConfig,
+        image_size: int,
+        latent_channels: int,
+        latent_spatial_size: int,
+        grid_size: int,
+        layer_spacing: float,
+    ) -> None:
+        super().__init__()
+        self.image_size = image_size
+        self.latent_channels = latent_channels
+        self.latent_spatial_size = latent_spatial_size
+        self.grid_size = grid_size
+        self.layer_spacing = layer_spacing
+        self.wavelength = physics.optics.wavelength
+        self.pixel_size = _linear_grid_pixel_size(physics, image_size, grid_size)
+        self.normalize_percentile = physics.readout.normalize_percentile
+        latent_features = latent_channels * latent_spatial_size * latent_spatial_size
+        grid_features = 2 * grid_size * grid_size
+        self.layers = nn.ModuleList(
+            [
+                nn.Linear(latent_features, grid_features, bias=False),
+                nn.Linear(grid_features, grid_features, bias=False),
+                nn.Linear(grid_features, grid_features, bias=False),
+                nn.Linear(grid_features, grid_features, bias=False),
+            ]
+        )
+        self._initialize_layers()
+
+    def _initialize_layers(self) -> None:
+        for layer in self.layers:
+            nn.init.xavier_uniform_(layer.weight, gain=0.5)
+
+    def _propagate_vector(self, vector: torch.Tensor) -> torch.Tensor:
+        field = _vector_to_complex_field(vector, self.grid_size)
+        field = angular_spectrum_propagate(
+            field,
+            self.layer_spacing,
+            self.wavelength,
+            self.pixel_size,
+        )
+        return _flatten_complex_field(field)
+
+    def forward(self, z: torch.Tensor) -> dict[str, torch.Tensor]:
+        h = z.flatten(1)
+        h = self._propagate_vector(self.layers[0](h))
+        h = self._propagate_vector(self.layers[1](h))
+        h = self._propagate_vector(self.layers[2](h))
+        chip_grid = _vector_to_complex_field(self.layers[3](h), self.grid_size)
+        chip_field = _resize_complex_field(chip_grid, (self.image_size, self.image_size))
+        return {
+            "image_recon": chip_field.real,
+            "chip_real": chip_field.real,
+            "chip_imag": chip_field.imag,
+        }
+
+
 class OpticalPathVAE(nn.Module):
     def __init__(self, physics: PhysicsConfig, config: FirstStageConfig | None = None) -> None:
         super().__init__()
@@ -179,36 +333,44 @@ class OpticalPathVAE(nn.Module):
         self.config = config or FirstStageConfig()
         self._validate_model_config()
         self.front_path = FrontOpticalPath(physics)
+        self.uses_linear_metasurface = self.config.optical_encoder_arch == "linear_metasurface"
         self.optical_encoder_input_channels = self._resolve_optical_encoder_input_channels()
         self.optical_encoder = self._build_optical_encoder()
-        encoder_out_channels = self.config.encoder_channels[-1]
         self.image_fusion_weight = 0.0
         self.image_encoder: MetasurfaceEncoder | None
-        if self.config.encoder_fusion_mode in {"dual_path_concat", "gated_dual_path"}:
-            self.image_encoder = MetasurfaceEncoder(self.config.encoder_channels)
-        else:
-            self.image_encoder = None
         self.encoder_fusion: nn.Module
-        if self.config.encoder_fusion_mode == "dual_path_concat":
-            self.encoder_fusion = nn.Sequential(
-                nn.Conv2d(encoder_out_channels * 2, encoder_out_channels, kernel_size=1),
-                _group_norm(encoder_out_channels),
-                nn.SiLU(),
-            )
-        elif self.config.encoder_fusion_mode == "gated_dual_path":
+        self.mu_head: nn.Module
+        self.logvar_head: nn.Module
+        if self.uses_linear_metasurface:
+            self.image_encoder = None
             self.encoder_fusion = nn.Identity()
-            self.set_image_fusion_weight(self.config.image_fusion_start_weight)
+            self.mu_head = nn.Identity()
+            self.logvar_head = nn.Identity()
         else:
-            self.encoder_fusion = nn.Identity()
-        self.mu_head = nn.Conv2d(encoder_out_channels, self.config.latent_channels, kernel_size=1)
-        self.logvar_head = nn.Conv2d(encoder_out_channels, self.config.latent_channels, kernel_size=1)
-        self.ols = PointwiseOLS(self.config.ols_kind)
-        self.metasurface_decoder = MetasurfaceDecoder(
-            self.config.encoder_channels,
-            self.config.latent_channels,
-            self.config.decoder_tail_channels,
+            encoder_out_channels = self.config.encoder_channels[-1]
+            if self.config.encoder_fusion_mode in {"dual_path_concat", "gated_dual_path"}:
+                self.image_encoder = MetasurfaceEncoder(self.config.encoder_channels)
+            else:
+                self.image_encoder = None
+            if self.config.encoder_fusion_mode == "dual_path_concat":
+                self.encoder_fusion = nn.Sequential(
+                    nn.Conv2d(encoder_out_channels * 2, encoder_out_channels, kernel_size=1),
+                    _group_norm(encoder_out_channels),
+                    nn.SiLU(),
+                )
+            elif self.config.encoder_fusion_mode == "gated_dual_path":
+                self.encoder_fusion = nn.Identity()
+                self.set_image_fusion_weight(self.config.image_fusion_start_weight)
+            else:
+                self.encoder_fusion = nn.Identity()
+            self.mu_head = nn.Conv2d(encoder_out_channels, self.config.latent_channels, kernel_size=1)
+            self.logvar_head = nn.Conv2d(encoder_out_channels, self.config.latent_channels, kernel_size=1)
+        self.ols = ConfigurableOLS(self.config.ols_kind)
+        self.metasurface_decoder = self._build_metasurface_decoder()
+        self.back_path = BackOpticalPath(
+            physics,
+            propagation_method="angular_spectrum" if self.uses_linear_metasurface else "fresnel",
         )
-        self.back_path = BackOpticalPath(physics)
 
     @property
     def latent_shape(self) -> tuple[int, int, int]:
@@ -246,17 +408,40 @@ class OpticalPathVAE(nn.Module):
             "pf2_intensity",
             "pf2_intensity_multiscale",
             "pf2_intensity_multiscale_v2",
+            "pf2_complex_field",
         }
         if self.config.optical_encoder_input_mode not in valid_input_modes:
             raise ValueError(
                 "Unsupported optical_encoder_input_mode: "
                 f"{self.config.optical_encoder_input_mode}; expected "
-                "pf2_intensity, pf2_intensity_multiscale, or pf2_intensity_multiscale_v2."
+                "pf2_intensity, pf2_intensity_multiscale, pf2_intensity_multiscale_v2, "
+                "or pf2_complex_field."
             )
-        if self.config.optical_encoder_arch not in {"conv", "global_context"}:
+        if self.config.optical_encoder_arch not in {"conv", "global_context", "linear_metasurface"}:
             raise ValueError(
                 "Unsupported optical_encoder_arch: "
-                f"{self.config.optical_encoder_arch}; expected conv or global_context."
+                f"{self.config.optical_encoder_arch}; expected conv, global_context, or linear_metasurface."
+            )
+        if self.config.metasurface_decoder_arch not in {"conv", "linear_metasurface"}:
+            raise ValueError(
+                "Unsupported metasurface_decoder_arch: "
+                f"{self.config.metasurface_decoder_arch}; expected conv or linear_metasurface."
+            )
+        if (self.config.optical_encoder_arch == "linear_metasurface") != (
+            self.config.metasurface_decoder_arch == "linear_metasurface"
+        ):
+            raise ValueError("linear_metasurface encoder and decoder must be enabled together.")
+        if self.config.optical_encoder_arch == "linear_metasurface":
+            if self.config.encoder_fusion_mode != "optical_only":
+                raise ValueError("linear_metasurface first stage only supports encoder_fusion_mode=optical_only.")
+            if self.config.optical_encoder_input_mode != "pf2_complex_field":
+                raise ValueError("linear_metasurface first stage requires optical_encoder_input_mode=pf2_complex_field.")
+        elif self.config.optical_encoder_input_mode == "pf2_complex_field":
+            raise ValueError("pf2_complex_field input requires optical_encoder_arch=linear_metasurface.")
+        if self.config.ols_kind not in {"pointwise_tanh", "tanh", "sigmoid", "silu", "gelu", "relu", "identity"}:
+            raise ValueError(
+                "Unsupported OLS kind: "
+                f"{self.config.ols_kind}; expected tanh, sigmoid, silu, gelu, relu, or identity."
             )
         if self.config.primary_output not in {"image", "camera"}:
             raise ValueError(f"Unsupported primary_output: {self.config.primary_output}; expected image or camera.")
@@ -287,6 +472,18 @@ class OpticalPathVAE(nn.Module):
             raise ValueError(f"camera_topology_weight must be non-negative, got {self.config.camera_topology_weight}")
         if self.config.camera_saturation_weight < 0.0:
             raise ValueError(f"camera_saturation_weight must be non-negative, got {self.config.camera_saturation_weight}")
+        if self.config.field_energy_weight < 0.0:
+            raise ValueError(f"field_energy_weight must be non-negative, got {self.config.field_energy_weight}")
+        if self.config.linear_metasurface_grid_size <= 0:
+            raise ValueError(
+                "linear_metasurface_grid_size must be positive, "
+                f"got {self.config.linear_metasurface_grid_size}"
+            )
+        if self.config.linear_metasurface_layer_spacing <= 0.0:
+            raise ValueError(
+                "linear_metasurface_layer_spacing must be positive, "
+                f"got {self.config.linear_metasurface_layer_spacing}"
+            )
 
     def set_image_fusion_weight(self, weight: float) -> None:
         if not 0.0 <= weight <= 1.0:
@@ -294,6 +491,8 @@ class OpticalPathVAE(nn.Module):
         self.image_fusion_weight = float(weight)
 
     def _resolve_optical_encoder_input_channels(self) -> int:
+        if self.config.optical_encoder_input_mode == "pf2_complex_field":
+            return 2
         if self.config.optical_encoder_input_mode == "pf2_intensity_multiscale_v2":
             return 8
         if self.config.optical_encoder_input_mode == "pf2_intensity_multiscale":
@@ -301,6 +500,15 @@ class OpticalPathVAE(nn.Module):
         return 1
 
     def _build_optical_encoder(self) -> nn.Module:
+        if self.config.optical_encoder_arch == "linear_metasurface":
+            return LinearMetasurfaceEncoder(
+                self.physics,
+                self.config.image_size,
+                self.config.latent_channels,
+                self.config.image_size // 8,
+                self.config.linear_metasurface_grid_size,
+                self.config.linear_metasurface_layer_spacing,
+            )
         if self.config.optical_encoder_arch == "global_context":
             return GlobalContextMetasurfaceEncoder(
                 self.config.encoder_channels,
@@ -311,7 +519,31 @@ class OpticalPathVAE(nn.Module):
             input_channels=self.optical_encoder_input_channels,
         )
 
-    def build_optical_encoder_input(self, pf2_intensity: torch.Tensor) -> torch.Tensor:
+    def _build_metasurface_decoder(self) -> nn.Module:
+        if self.config.metasurface_decoder_arch == "linear_metasurface":
+            return LinearMetasurfaceDecoder(
+                self.physics,
+                self.config.image_size,
+                self.config.latent_channels,
+                self.config.image_size // 8,
+                self.config.linear_metasurface_grid_size,
+                self.config.linear_metasurface_layer_spacing,
+            )
+        return MetasurfaceDecoder(
+            self.config.encoder_channels,
+            self.config.latent_channels,
+            self.config.decoder_tail_channels,
+        )
+
+    def build_optical_encoder_input(
+        self,
+        pf2_intensity: torch.Tensor,
+        pf2_field: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        if self.config.optical_encoder_input_mode == "pf2_complex_field":
+            if pf2_field is None:
+                raise ValueError("pf2_field is required for pf2_complex_field encoder input.")
+            return torch.cat([pf2_field.real, pf2_field.imag], dim=1)
         if self.config.optical_encoder_input_mode == "pf2_intensity":
             return pf2_intensity
 
@@ -406,24 +638,35 @@ class OpticalPathVAE(nn.Module):
         electronic_pattern = self.to_electronic_pattern(input_batch)
         slm_phase = self.to_slm_phase(electronic_pattern)
         slm_transfer = self.to_slm_transfer(electronic_pattern, slm_phase)
-        pf2_intensity = self.front_path(slm_transfer)
-        optical_encoder_input = self.build_optical_encoder_input(pf2_intensity)
-        optical_features = self.optical_encoder(optical_encoder_input)
-        if self.config.encoder_fusion_mode == "dual_path_concat":
-            if self.image_encoder is None:
-                raise RuntimeError("image_encoder is required for dual_path_concat mode.")
-            image_features = self.image_encoder(input_batch)
-            fused_features = self.encoder_fusion(torch.cat([optical_features, image_features], dim=1))
-        elif self.config.encoder_fusion_mode == "gated_dual_path":
-            if self.image_encoder is None:
-                raise RuntimeError("image_encoder is required for gated_dual_path mode.")
-            image_features = self.image_encoder(input_batch)
-            fused_features = optical_features + self.image_fusion_weight * image_features
+        if self.uses_linear_metasurface:
+            pf2_field = self.front_path.forward_field(slm_transfer, propagation_method="angular_spectrum")
+            pf2_intensity = normalize_intensity(pf2_field, self.physics.readout.normalize_percentile)
+            optical_encoder_input = self.build_optical_encoder_input(pf2_intensity, pf2_field=pf2_field)
+            encoded_stats = self.optical_encoder(pf2_field)
+            mu = encoded_stats["mu"]
+            logvar = encoded_stats["logvar"]
         else:
-            fused_features = self.encoder_fusion(optical_features)
-        mu = self.mu_head(fused_features)
-        logvar = self.logvar_head(fused_features)
-        use_deterministic = not self.training if deterministic is None else deterministic
+            pf2_intensity = self.front_path(slm_transfer)
+            optical_encoder_input = self.build_optical_encoder_input(pf2_intensity)
+            optical_features = self.optical_encoder(optical_encoder_input)
+            if self.config.encoder_fusion_mode == "dual_path_concat":
+                if self.image_encoder is None:
+                    raise RuntimeError("image_encoder is required for dual_path_concat mode.")
+                image_features = self.image_encoder(input_batch)
+                fused_features = self.encoder_fusion(torch.cat([optical_features, image_features], dim=1))
+            elif self.config.encoder_fusion_mode == "gated_dual_path":
+                if self.image_encoder is None:
+                    raise RuntimeError("image_encoder is required for gated_dual_path mode.")
+                image_features = self.image_encoder(input_batch)
+                fused_features = optical_features + self.image_fusion_weight * image_features
+            else:
+                fused_features = self.encoder_fusion(optical_features)
+            mu = self.mu_head(fused_features)
+            logvar = self.logvar_head(fused_features)
+        if deterministic is None:
+            use_deterministic = self.uses_linear_metasurface or not self.training
+        else:
+            use_deterministic = deterministic
         z = mu if use_deterministic else self.reparameterize(mu, logvar)
         return {
             "mu": mu,
