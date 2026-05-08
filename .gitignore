@@ -23,7 +23,9 @@ env/
 .idea/
 
 # 训练输出与临时文件
-outputs/
+outputs/*
+!outputs/final_pt/
+!outputs/final_pt/**
 .tmp/
 
 # 本地数据集与缓存

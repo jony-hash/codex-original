@@ -37,13 +37,14 @@ Primary execution contract for this repo. If this file conflicts with any docume
 - Default Conda environment: `optical-generative-models`
 - Verified PyTorch baseline: CUDA build `torch 2.5.1+cu121`
 - Training contract: activate `optical-generative-models` first, then run training with explicit `--device cuda`
+- 当前项目训练的最终验收结果默认放置在 `outputs/final_pt/`，该 final pt 目录可根据验收需求动态调整。
 - Commands must be bash-compatible inside WSL2; do not use PowerShell or CMD syntax
 - Imports must use `pip install -e .`; do not mutate `sys.path`
 - Source: `src/ldm_project/`
 - Tests: `tests/`
 - Entry scripts: `train.py`
 - Detailed design docs: `docs/ldm_migration/`
-- Do not modify: `outputs/`, `data/raw/`, `.tmp/`, `legacy/`, generated checkpoints, generated plots, cached artifacts
+- Do not modify: `outputs/` except configured final acceptance artifacts under `outputs/final_pt/`, `data/raw/`, `.tmp/`, `legacy/`, generated checkpoints/plots/cached artifacts outside that final pt directory
 - New `legacy` references must stay outside the LDM core package
 
 ## 5. Commands
@@ -66,7 +67,7 @@ Prefer single-test or single-file verification during iteration. Use the full su
 
 - Do not hardcode interpreter paths, Conda paths, Windows paths, or machine-specific directories.
 - Do not rely on editor settings as the only runtime configuration source.
-- Do not write outputs or checkpoints outside managed `outputs/runs/...` directories.
+- Do not write outputs or checkpoints outside managed `outputs/runs/...` directories, except final acceptance artifacts placed under the configured final pt directory.
 - Do not import project modules by mutating `sys.path`.
 - Do not mix `legacy` optical VAE code directly into the new LDM core package.
 - Do not use full-dataset or full-epoch runs for routine iteration.

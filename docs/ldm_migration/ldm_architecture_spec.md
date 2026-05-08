@@ -93,7 +93,7 @@ LDM v1 采用以下生成架构：
 
 ### 4.3.1 最终验收 first-stage 结构
 
-最终验收模型版本为 `physical_first_linear_metasurface_vae_v5`，对应 checkpoint 为 `final pt/first_stage_best_optical.pt`。
+最终验收模型版本为 `physical_first_linear_metasurface_vae_v5`，对应 checkpoint 为 `outputs/final_pt/first_stage_best_optical.pt`。
 
 | 模块 | 层数 | 结构 | 输入维度 | 输出维度 | 参数量 |
 |---|---:|---|---:|---:|---:|

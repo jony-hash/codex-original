@@ -6,8 +6,8 @@
 
 最终交付 checkpoint 已复制到：
 
-- `final pt/first_stage_best_optical.pt`
-- `final pt/diffusion_best.pt`
+- `outputs/final_pt/first_stage_best_optical.pt`
+- `outputs/final_pt/diffusion_best.pt`
 
 原始来源如下：
 
@@ -61,8 +61,8 @@ python train.py \
   --train-config configs/train_first_stage_linear_metasurface_2000_grid32.yaml \
   --stage sample \
   --device cuda \
-  --first-stage-checkpoint "final pt/first_stage_best_optical.pt" \
-  --diffusion-checkpoint "final pt/diffusion_best.pt" \
+  --first-stage-checkpoint "outputs/final_pt/first_stage_best_optical.pt" \
+  --diffusion-checkpoint "outputs/final_pt/diffusion_best.pt" \
   --guidance-scale 4.5 \
   --sample-class-labels 0 1 2 3 4 5 6 7 8 9 \
   --sample-repeats-per-class 4 \

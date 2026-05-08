@@ -7,9 +7,9 @@ This record pins the current accepted optical LDM checkpoint and the GPU sample 
 - Diffusion checkpoint: `outputs/runs/20260507_011608_845740_train_diffusion_grid32_ols1ch_artifact_w055_s20k_b128_w4_wc4x300_g45_e30_weak345n16/checkpoints/diffusion_best.pt`
 - First-stage checkpoint: `outputs/runs/20260504_134132_767348_train_first_stage_grid32_ols1ch_artifact_w055_e8/checkpoints/first_stage_best_optical.pt`
 - Acceptance sample run: `outputs/runs/20260507_081830_752705_train_sample_grid32_ols1ch_artifact_w055_cw4x300_all_g45_n4_nn_metrics`
-- Final copied checkpoint folder: `final pt/`
-  - `final pt/first_stage_best_optical.pt`
-  - `final pt/diffusion_best.pt`
+- Final copied checkpoint folder: `outputs/final_pt/`
+  - `outputs/final_pt/first_stage_best_optical.pt`
+  - `outputs/final_pt/diffusion_best.pt`
 
 ## Acceptance Metrics
 
@@ -48,7 +48,7 @@ The diffusion training epoch visualization was separately smoke-tested so that g
 - `configs/diffusion_visual_config.json` records `reference_labels == [0,1,2,3,4,5,6,7,8,9]`
 - Generated diffusion epoch figure: `images/diffusion/epoch_0001.png`
 
-This smoke run is only a visualization-path check. Its one-epoch checkpoints are not final model checkpoints and must not replace `final pt/`.
+This smoke run is only a visualization-path check. Its one-epoch checkpoints are not final model checkpoints and must not replace `outputs/final_pt/`.
 
 ## Reproduction Command
 
