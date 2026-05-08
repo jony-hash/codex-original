@@ -32,7 +32,7 @@ first_stage:
   readout_plane: camera
   latent_position: post_encoder_pre_ols
   ols:
-    kind: identity
+    kind: gelu
   # strict optical-only：只从 PF2 复场进入线性超表面 encoder，不接原图分支。
   encoder_fusion_mode: optical_only
   optical_encoder_input_mode: pf2_complex_field
