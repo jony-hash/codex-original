@@ -44,7 +44,7 @@ Primary execution contract for this repo. If this file conflicts with any docume
 - Tests: `tests/`
 - Entry scripts: `train.py`
 - Detailed design docs: `docs/ldm_migration/`
-- Do not modify: `outputs/`, `data/raw/`, `.tmp/`, `legacy/`, generated checkpoints, generated plots, cached artifacts
+- Do not modify: `outputs/` except configured final acceptance artifacts under `outputs/final_pt/`, `data/raw/`, `.tmp/`, `legacy/`, generated checkpoints/plots/cached artifacts outside that final pt directory
 - New `legacy` references must stay outside the LDM core package
 
 ## 5. Commands
