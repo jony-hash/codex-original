@@ -57,7 +57,7 @@ Prefer single-file or single-test runs during iteration. Full suites are for the
 - `src/ldm_project/evaluation.py` owns first-stage quality metrics, balanced validation metrics, and diffusion validation summaries
 - `src/ldm_project/train_utils.py` owns pure training utilities such as stage plans, logging/validation intervals, image-fusion weights, and checkpoint helper decisions
 - Tests live in: `tests/`
-- Do not modify: `outputs/`, `data/raw/`, `.tmp/`, `legacy/`, generated checkpoints, generated plots, cached artifacts
+- Do not modify: `outputs/`, `data/raw/`, `.tmp/`, `legacy/`, generated checkpoints, generated plots, cached artifacts, except configured final acceptance artifacts under `outputs/final_pt/`
 
 ### Conventions specific to this repo
 - Naming: `snake_case` for files/functions/modules, `PascalCase` for classes, explicit entrypoint names like `train.py`
@@ -68,7 +68,7 @@ Prefer single-file or single-test runs during iteration. Full suites are for the
 ### Forbidden
 - Do not hardcode interpreter paths, Conda paths, or machine-specific directories in code
 - Do not rely on `.vscode` settings as the only source of runtime configuration
-- Do not write outputs/checkpoints outside managed `outputs/runs/...` directories
+- Do not write outputs/checkpoints outside managed `outputs/runs/...` directories, except final acceptance artifacts placed under the configured `outputs/final_pt/` directory
 - Do not import project modules by mutating `sys.path`
 - Do not mix `legacy` optical VAE code directly into the new LDM core package
 - Do not use full-dataset or full-epoch runs for routine iteration; use fast configs and single-test runs first
@@ -112,7 +112,7 @@ Prefer single-file or single-test runs during iteration. Full suites are for the
 - Diffusion checkpoint: `outputs/runs/20260507_011608_845740_train_diffusion_grid32_ols1ch_artifact_w055_s20k_b128_w4_wc4x300_g45_e30_weak345n16/checkpoints/diffusion_best.pt`
 - Acceptance sample run: `outputs/runs/20260507_081830_752705_train_sample_grid32_ols1ch_artifact_w055_cw4x300_all_g45_n4_nn_metrics`
 - Latest CUDA acceptance recheck: `outputs/runs/20260508_144922_456260_train_sample_grid32_ols1ch_artifact_w055_cw4x300_all_g45_n4_diffusion_visual_fix_recheck`
-- Final copied checkpoint folder: `final pt/`
+- Final copied checkpoint folder: `outputs/final_pt/`
 - Acceptance metric source: `artifacts/post_train_sample_metrics.json`
 - Acceptance device: `run_meta.device == "cuda"`
 - Acceptance thresholds: `overall_nearest_dice >= 0.80` and `min_class_nearest_dice >= 0.75`
