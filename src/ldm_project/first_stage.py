@@ -7,10 +7,10 @@ from torch import nn
 import torch.nn.functional as F
 
 from .config import FirstStageConfig, PhysicsConfig
-from .optics import BackOpticalPath, FrontOpticalPath, angular_spectrum_propagate, normalize_intensity
+from .optics import BackOpticalPath, FrontOpticalPath, normalize_intensity
 
 
-FIRST_STAGE_MODEL_VERSION = "physical_first_linear_metasurface_vae_v4"
+FIRST_STAGE_MODEL_VERSION = "physical_first_linear_metasurface_vae_v5"
 
 
 def _group_norm(channels: int) -> nn.GroupNorm:
@@ -66,10 +66,6 @@ class ConfigurableOLS(nn.Module):
         if self.kind == "identity":
             return z
         raise ValueError(f"Unsupported OLS kind: {self.kind}")
-
-
-class PointwiseOLS(ConfigurableOLS):
-    pass
 
 
 class MetasurfaceEncoder(nn.Module):
@@ -202,10 +198,6 @@ def _vector_to_complex_field(vector: torch.Tensor, grid_size: int) -> torch.Tens
     return torch.complex(real, imag)
 
 
-def _linear_grid_pixel_size(physics: PhysicsConfig, image_size: int, grid_size: int) -> float:
-    return physics.optics.pixel_size * float(image_size) / float(grid_size)
-
-
 class LinearMetasurfaceEncoder(nn.Module):
     def __init__(
         self,
@@ -223,34 +215,19 @@ class LinearMetasurfaceEncoder(nn.Module):
         self.latent_spatial_size = latent_spatial_size
         self.grid_size = grid_size
         self.layer_spacing = layer_spacing
-        self.wavelength = physics.optics.wavelength
-        self.pixel_size = _linear_grid_pixel_size(physics, image_size, grid_size)
         self.normalize_percentile = physics.readout.normalize_percentile
         grid_features = 2 * grid_size * grid_size
         latent_features = latent_channels * latent_spatial_size * latent_spatial_size
-        self.layers = nn.ModuleList(
-            [
-                nn.Linear(grid_features, grid_features, bias=False),
-                nn.Linear(grid_features, 2 * latent_features, bias=False),
-            ]
-        )
+        # 线性 metasurface encoder 暂定只保留一层纯线性映射，非线性只交给 OLS。
+        self.linear = nn.Linear(grid_features, 2 * latent_features, bias=False)
         self._initialize_layers()
 
     def _initialize_layers(self) -> None:
-        for layer in self.layers:
-            nn.init.xavier_uniform_(layer.weight, gain=0.5)
+        nn.init.xavier_uniform_(self.linear.weight, gain=0.5)
 
     def forward(self, pf2_field: torch.Tensor) -> dict[str, torch.Tensor]:
         field = _resize_complex_field(pf2_field, (self.grid_size, self.grid_size))
-        hidden = self.layers[0](_flatten_complex_field(field))
-        hidden_field = _vector_to_complex_field(hidden, self.grid_size)
-        hidden_field = angular_spectrum_propagate(
-            hidden_field,
-            self.layer_spacing,
-            self.wavelength,
-            self.pixel_size,
-        )
-        latent_stats = self.layers[1](_flatten_complex_field(hidden_field))
+        latent_stats = self.linear(_flatten_complex_field(field))
         latent_features = self.latent_channels * self.latent_spatial_size * self.latent_spatial_size
         mu = latent_stats[:, :latent_features].reshape(
             -1,
@@ -283,41 +260,18 @@ class LinearMetasurfaceDecoder(nn.Module):
         self.latent_spatial_size = latent_spatial_size
         self.grid_size = grid_size
         self.layer_spacing = layer_spacing
-        self.wavelength = physics.optics.wavelength
-        self.pixel_size = _linear_grid_pixel_size(physics, image_size, grid_size)
         self.normalize_percentile = physics.readout.normalize_percentile
         latent_features = latent_channels * latent_spatial_size * latent_spatial_size
         grid_features = 2 * grid_size * grid_size
-        self.layers = nn.ModuleList(
-            [
-                nn.Linear(latent_features, grid_features, bias=False),
-                nn.Linear(grid_features, grid_features, bias=False),
-                nn.Linear(grid_features, grid_features, bias=False),
-                nn.Linear(grid_features, grid_features, bias=False),
-            ]
-        )
+        # decoder 同样只保留一层纯线性映射，避免在 OLS 之外引入可学习非线性。
+        self.linear = nn.Linear(latent_features, grid_features, bias=False)
         self._initialize_layers()
 
     def _initialize_layers(self) -> None:
-        for layer in self.layers:
-            nn.init.xavier_uniform_(layer.weight, gain=0.5)
-
-    def _propagate_vector(self, vector: torch.Tensor) -> torch.Tensor:
-        field = _vector_to_complex_field(vector, self.grid_size)
-        field = angular_spectrum_propagate(
-            field,
-            self.layer_spacing,
-            self.wavelength,
-            self.pixel_size,
-        )
-        return _flatten_complex_field(field)
+        nn.init.xavier_uniform_(self.linear.weight, gain=0.5)
 
     def forward(self, z: torch.Tensor) -> dict[str, torch.Tensor]:
-        h = z.flatten(1)
-        h = self._propagate_vector(self.layers[0](h))
-        h = self._propagate_vector(self.layers[1](h))
-        h = self._propagate_vector(self.layers[2](h))
-        chip_grid = _vector_to_complex_field(self.layers[3](h), self.grid_size)
+        chip_grid = _vector_to_complex_field(self.linear(z.flatten(1)), self.grid_size)
         chip_field = _resize_complex_field(chip_grid, (self.image_size, self.image_size))
         return {
             "image_recon": chip_field.real,
@@ -436,6 +390,10 @@ class OpticalPathVAE(nn.Module):
                 raise ValueError("linear_metasurface first stage only supports encoder_fusion_mode=optical_only.")
             if self.config.optical_encoder_input_mode != "pf2_complex_field":
                 raise ValueError("linear_metasurface first stage requires optical_encoder_input_mode=pf2_complex_field.")
+            if self.config.latent_channels != 1:
+                raise ValueError(
+                    "linear_metasurface first stage requires latent_channels=1 so OLS stays single-channel."
+                )
         elif self.config.optical_encoder_input_mode == "pf2_complex_field":
             raise ValueError("pf2_complex_field input requires optical_encoder_arch=linear_metasurface.")
         if self.config.ols_kind not in {"pointwise_tanh", "tanh", "sigmoid", "silu", "gelu", "relu", "identity"}:

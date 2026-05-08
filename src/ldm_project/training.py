@@ -156,6 +156,31 @@ def _camera_saturation_loss(camera_prediction: torch.Tensor) -> torch.Tensor:
     return F.relu(camera_prediction - 0.95).pow(2).mean()
 
 
+def _camera_artifact_metrics(
+    camera_prediction: torch.Tensor,
+    input_batch: torch.Tensor,
+    foreground_mask: torch.Tensor,
+) -> dict[str, torch.Tensor]:
+    prediction = camera_prediction.clamp(0.0, 1.0)
+    target = input_batch.clamp(0.0, 1.0)
+    local_target = F.avg_pool2d(target, kernel_size=5, stride=1, padding=2)
+    foreground_density = F.avg_pool2d(foreground_mask, kernel_size=5, stride=1, padding=2)
+    # 只压前景笔画内部，降低对真实数字边缘的过度抹平。
+    interior_weight = foreground_mask * foreground_density.pow(2)
+    hole_depth = F.relu(local_target * 0.75 - prediction)
+    foreground_hole_loss = _masked_mean(hole_depth.pow(2), interior_weight)
+    foreground_hole_ratio = _masked_mean((hole_depth > 0.10).float(), interior_weight)
+    local_prediction = F.avg_pool2d(prediction, kernel_size=5, stride=1, padding=2)
+    foreground_roughness = _masked_mean((prediction - local_prediction).abs(), interior_weight)
+    artifact_base = foreground_hole_loss + 0.25 * foreground_roughness
+    return {
+        "artifact_base": artifact_base,
+        "foreground_hole_loss": foreground_hole_loss,
+        "foreground_hole_ratio": foreground_hole_ratio,
+        "foreground_roughness": foreground_roughness,
+    }
+
+
 def first_stage_loss(
     outputs: dict[str, torch.Tensor],
     input_batch: torch.Tensor,
@@ -177,6 +202,7 @@ def first_stage_loss(
     camera_hotspot_weight: float = 0.0,
     camera_topology_weight: float = 0.0,
     camera_saturation_weight: float = 0.0,
+    camera_artifact_weight: float = 0.0,
 ) -> dict[str, torch.Tensor]:
     foreground_mask = (input_batch > foreground_threshold).float()
     background_mask = 1.0 - foreground_mask
@@ -223,6 +249,8 @@ def first_stage_loss(
     camera_topology = camera_topology_weight * camera_topology_base
     camera_saturation_base = _camera_saturation_loss(camera_loss_prediction)
     camera_saturation = camera_saturation_weight * camera_saturation_base
+    camera_artifact_metrics = _camera_artifact_metrics(camera_prediction, input_batch, foreground_mask)
+    camera_artifact = camera_artifact_weight * camera_artifact_metrics["artifact_base"]
     total = (
         recon
         + beta * kl
@@ -235,6 +263,7 @@ def first_stage_loss(
         + camera_hotspot
         + camera_topology
         + camera_saturation
+        + camera_artifact
     )
     x_hat_detached = outputs["x_hat"].detach()
     pred_fg_energy_ratio = (x_hat_detached * foreground_mask).sum() / x_hat_detached.sum().clamp_min(1e-6)
@@ -271,6 +300,10 @@ def first_stage_loss(
         "camera_topology_base": camera_topology_base.detach(),
         "camera_saturation_loss": camera_saturation.detach(),
         "camera_saturation_penalty": camera_saturation_base.detach(),
+        "camera_artifact_loss": camera_artifact.detach(),
+        "camera_foreground_hole_loss": camera_artifact_metrics["foreground_hole_loss"].detach(),
+        "camera_foreground_hole_ratio": camera_artifact_metrics["foreground_hole_ratio"].detach(),
+        "camera_foreground_roughness": camera_artifact_metrics["foreground_roughness"].detach(),
         "kl_loss": kl.detach(),
         "fg_pixel_ratio": foreground_mask.mean(),
         "pred_fg_energy_ratio": pred_fg_energy_ratio,
@@ -293,7 +326,7 @@ def apply_classifier_free_guidance(
     return unconditioned_prediction + guidance_scale * (conditioned_prediction - unconditioned_prediction)
 
 
-def diffusion_loss(
+def diffusion_per_sample_losses(
     first_stage: OpticalPathVAE,
     diffusion_model: LatentDiffusionUNet,
     scheduler: LinearNoiseScheduler,
@@ -311,7 +344,46 @@ def diffusion_loss(
     noisy_latents = scheduler.add_noise(latents, noise, timesteps)
     context = diffusion_model.encode_condition(class_labels)
     predicted_noise = diffusion_model(noisy_latents, timesteps, context)
-    return F.mse_loss(predicted_noise, noise)
+    return F.mse_loss(predicted_noise, noise, reduction="none").flatten(1).mean(dim=1)
+
+
+def _resolve_diffusion_loss_weights(
+    class_labels: torch.Tensor,
+    class_weight_labels: tuple[int, ...] = (),
+    class_weight: float = 1.0,
+) -> torch.Tensor:
+    weights = torch.ones(class_labels.shape[0], device=class_labels.device, dtype=torch.float32)
+    if not class_weight_labels or class_weight == 1.0:
+        return weights
+
+    weak_class_mask = torch.zeros_like(class_labels, dtype=torch.bool)
+    for label in class_weight_labels:
+        weak_class_mask |= class_labels == int(label)
+    return torch.where(weak_class_mask, weights.new_full((), float(class_weight)), weights)
+
+
+def diffusion_loss(
+    first_stage: OpticalPathVAE,
+    diffusion_model: LatentDiffusionUNet,
+    scheduler: LinearNoiseScheduler,
+    batch: torch.Tensor,
+    class_labels: torch.Tensor,
+    latent_scale: torch.Tensor,
+    latent_source: str = "mu",
+    class_weight_labels: tuple[int, ...] = (),
+    class_weight: float = 1.0,
+) -> torch.Tensor:
+    per_sample_losses = diffusion_per_sample_losses(
+        first_stage,
+        diffusion_model,
+        scheduler,
+        batch,
+        class_labels,
+        latent_scale,
+        latent_source=latent_source,
+    )
+    weights = _resolve_diffusion_loss_weights(class_labels, class_weight_labels, class_weight)
+    return (per_sample_losses * weights).sum() / weights.sum().clamp_min(1.0)
 
 
 def resolve_denoising_trace_steps(

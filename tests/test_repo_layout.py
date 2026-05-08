@@ -18,7 +18,11 @@ class RepoLayoutTests(unittest.TestCase):
             ROOT / "src" / "ldm_project" / "data.py",
             ROOT / "src" / "ldm_project" / "first_stage.py",
             ROOT / "src" / "ldm_project" / "diffusion.py",
+            ROOT / "src" / "ldm_project" / "evaluation.py",
             ROOT / "src" / "ldm_project" / "run_manager.py",
+            ROOT / "src" / "ldm_project" / "sampling.py",
+            ROOT / "src" / "ldm_project" / "stage_runners.py",
+            ROOT / "src" / "ldm_project" / "train_utils.py",
         ]
         for path in expected:
             self.assertTrue(path.exists(), f"missing expected file: {path}")
@@ -31,6 +35,14 @@ class RepoLayoutTests(unittest.TestCase):
         content = architecture_doc.read_text(encoding="utf-8")
         self.assertIn("OpticalPathVAE", content)
         self.assertIn("classifier-free guidance", content)
+
+    def test_workflow_doc_records_final_acceptance(self) -> None:
+        workflow_doc = ROOT / "docs" / "ldm_migration" / "ldm_project_workflow.md"
+        content = workflow_doc.read_text(encoding="utf-8")
+        self.assertIn("diffusion_best.pt", content)
+        self.assertIn("nearest_neighbor", content)
+        self.assertIn("overall_nearest_dice=0.8503", content)
+        self.assertIn("--device cuda", content)
 
     def test_train_config_defaults_to_mnist_subset(self) -> None:
         config_path = ROOT / "configs" / "train_ldm.yaml"

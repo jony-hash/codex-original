@@ -100,6 +100,11 @@ class RunManager:
         torch.save(dict(payload), path)
         return path
 
+    def save_artifact_json(self, name: str, payload: Mapping[str, Any] | list[Any]) -> Path:
+        path = self.artifacts_dir / f"{name}.json"
+        _write_json_atomic(path, payload)
+        return path
+
     def save_tensor_grid(
         self,
         tensor_map: Mapping[str, Any],

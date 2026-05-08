@@ -26,7 +26,7 @@ data:
 first_stage:
   type: optical_path_vae
   image_size: 200
-  latent_channels: 4
+  latent_channels: 1
   encoder_channels: [64, 128, 256]
   decoder_tail_channels: 64
   readout_plane: camera
@@ -43,7 +43,7 @@ first_stage:
   image_fusion_start_weight: 0.0
   image_fusion_end_weight: 0.0
   image_fusion_decay_epochs: 1
-  # decoder 由 4 层线性超表面代理输出复 chip 场；image_recon 仅作诊断。
+  # decoder 由 1 层纯线性代理输出复 chip 场；image_recon 仅作诊断。
   optical_field_mode: complex_cartesian
   primary_output: camera
   freeze_after_pretrain: true

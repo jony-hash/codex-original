@@ -180,17 +180,6 @@ class Ideal4fRelay(nn.Module):
         return field
 
 
-class IdealRelayLens(nn.Module):
-    def __init__(self, focal_length: float, wavelength: float, pixel_size: float) -> None:
-        super().__init__()
-        self.focal_length = focal_length
-        self.wavelength = wavelength
-        self.pixel_size = pixel_size
-
-    def forward(self, field: torch.Tensor) -> torch.Tensor:
-        return apply_thin_lens(field, self.focal_length, self.wavelength, self.pixel_size)
-
-
 def _resolve_propagator(propagation_method: str):
     if propagation_method == "fresnel":
         return fresnel_propagate

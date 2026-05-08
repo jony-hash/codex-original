@@ -383,7 +383,7 @@ class OpticalPathVAESmokeTests(unittest.TestCase):
 
         config = FirstStageConfig(
             image_size=32,
-            latent_channels=2,
+            latent_channels=1,
             optical_encoder_input_mode="pf2_complex_field",
             optical_encoder_arch="linear_metasurface",
             metasurface_decoder_arch="linear_metasurface",
@@ -401,11 +401,25 @@ class OpticalPathVAESmokeTests(unittest.TestCase):
         self.assertIsInstance(model.optical_encoder, LinearMetasurfaceEncoder)
         self.assertIsInstance(model.ols, ConfigurableOLS)
         self.assertIsInstance(model.metasurface_decoder, LinearMetasurfaceDecoder)
-        self.assertEqual(sum(isinstance(module, nn.Linear) for module in model.optical_encoder.modules()), 2)
-        self.assertEqual(sum(isinstance(module, nn.Linear) for module in model.metasurface_decoder.modules()), 4)
-        self.assertEqual(outputs["mu"].shape, (2, 2, 4, 4))
-        self.assertEqual(outputs["logvar"].shape, (2, 2, 4, 4))
-        self.assertEqual(outputs["z"].shape, (2, 2, 4, 4))
+        nonlinear_modules = (
+            nn.ELU,
+            nn.GELU,
+            nn.GroupNorm,
+            nn.LeakyReLU,
+            nn.ReLU,
+            nn.SELU,
+            nn.SiLU,
+            nn.Sigmoid,
+            nn.Tanh,
+        )
+        self.assertEqual(sum(isinstance(module, nn.Linear) for module in model.optical_encoder.modules()), 1)
+        self.assertEqual(sum(isinstance(module, nn.Linear) for module in model.metasurface_decoder.modules()), 1)
+        self.assertFalse(any(isinstance(module, nonlinear_modules) for module in model.optical_encoder.modules()))
+        self.assertFalse(any(isinstance(module, nonlinear_modules) for module in model.metasurface_decoder.modules()))
+        self.assertEqual(model.latent_shape, (1, 4, 4))
+        self.assertEqual(outputs["mu"].shape, (2, 1, 4, 4))
+        self.assertEqual(outputs["logvar"].shape, (2, 1, 4, 4))
+        self.assertEqual(outputs["z"].shape, (2, 1, 4, 4))
         self.assertEqual(outputs["optical_encoder_input"].shape, (2, 2, 32, 32))
         self.assertEqual(outputs["image_recon"].shape, (2, 1, 32, 32))
         self.assertEqual(outputs["camera_plane"].shape, (2, 1, 32, 32))
@@ -415,6 +429,23 @@ class OpticalPathVAESmokeTests(unittest.TestCase):
         self.assertTrue(torch.equal(outputs["image_recon"], outputs["chip_real"]))
         for key in ("image_recon", "camera_plane", "chip_real", "chip_imag"):
             self.assertTrue(torch.isfinite(outputs[key]).all().item(), key)
+
+    def test_linear_metasurface_requires_single_channel_ols(self) -> None:
+        from ldm_project.config import FirstStageConfig, PhysicsConfig
+        from ldm_project.first_stage import OpticalPathVAE
+
+        config = FirstStageConfig(
+            image_size=32,
+            latent_channels=2,
+            optical_encoder_input_mode="pf2_complex_field",
+            optical_encoder_arch="linear_metasurface",
+            metasurface_decoder_arch="linear_metasurface",
+            image_recon_weight=0.0,
+            camera_recon_weight=1.0,
+        )
+
+        with self.assertRaisesRegex(ValueError, "latent_channels=1"):
+            OpticalPathVAE(PhysicsConfig(), config)
 
     def test_legacy_amplitude_slm_mode_keeps_zero_phase(self) -> None:
         import torch

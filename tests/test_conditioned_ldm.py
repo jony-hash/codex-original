@@ -57,6 +57,7 @@ first_stage:
   camera_hotspot_weight: 0.07
   camera_topology_weight: 0.11
   camera_saturation_weight: 0.13
+  camera_artifact_weight: 0.17
   electronic_domain:
     phase_scale_rad: 1.57
     phase_bias_rad: 0.25
@@ -71,6 +72,10 @@ diffusion:
   cond_dropout_prob: 0.25
   latent_source: mu
   guidance_scale: 2.5
+  sample_class_labels: [3, 4, 5]
+  sample_repeats_per_class: 4
+  class_weight_labels: [3, 4, 5]
+  class_weight: 1.5
 """
         with tempfile.TemporaryDirectory() as tmpdir:
             config_path = Path(tmpdir) / "train.yaml"
@@ -88,6 +93,10 @@ diffusion:
         self.assertEqual(loaded.diffusion.cond_dropout_prob, 0.25)
         self.assertEqual(loaded.diffusion.latent_source, "mu")
         self.assertAlmostEqual(loaded.diffusion.guidance_scale, 2.5, places=6)
+        self.assertEqual(loaded.diffusion.sample_class_labels, (3, 4, 5))
+        self.assertEqual(loaded.diffusion.sample_repeats_per_class, 4)
+        self.assertEqual(loaded.diffusion.class_weight_labels, (3, 4, 5))
+        self.assertAlmostEqual(loaded.diffusion.class_weight, 1.5, places=6)
         self.assertEqual(loaded.diffusion.timesteps, 1000)
         self.assertEqual(loaded.visual_save_epoch_interval, 3)
         self.assertEqual(loaded.validation_epoch_interval, 4)
@@ -121,6 +130,7 @@ diffusion:
         self.assertAlmostEqual(loaded.first_stage.camera_hotspot_weight, 0.07, places=6)
         self.assertAlmostEqual(loaded.first_stage.camera_topology_weight, 0.11, places=6)
         self.assertAlmostEqual(loaded.first_stage.camera_saturation_weight, 0.13, places=6)
+        self.assertAlmostEqual(loaded.first_stage.camera_artifact_weight, 0.17, places=6)
         self.assertEqual(loaded.first_stage.electronic_domain.mode, "mnist_complex_slm")
         self.assertEqual(loaded.first_stage.electronic_domain.background_floor, 0.05)
         self.assertEqual(loaded.first_stage.electronic_domain.gamma, 1.0)
@@ -171,6 +181,7 @@ diffusion:
         self.assertAlmostEqual(training_cfg.first_stage.camera_hotspot_weight, 0.0, places=6)
         self.assertAlmostEqual(training_cfg.first_stage.camera_topology_weight, 0.0, places=6)
         self.assertAlmostEqual(training_cfg.first_stage.camera_saturation_weight, 0.0, places=6)
+        self.assertAlmostEqual(training_cfg.first_stage.camera_artifact_weight, 0.0, places=6)
         self.assertEqual(diffusion_cfg.latent_source, "mu")
         self.assertAlmostEqual(diffusion_cfg.guidance_scale, 3.0, places=6)
         self.assertEqual(diffusion_cfg.timesteps, 1000)
@@ -255,31 +266,27 @@ data:
             with self.assertRaisesRegex(ValueError, "data.validation_fraction"):
                 load_training_config(config_path)
 
-    def test_resolve_class_labels_broadcasts_and_validates(self) -> None:
+    def test_label_helpers_validate_and_build_visualization_labels(self) -> None:
         import torch
 
         train_module = load_train_module()
+        build_post_train_sample_labels = train_module.build_post_train_sample_labels
         build_visualization_labels = train_module.build_visualization_labels
-        resolve_class_labels = train_module.resolve_class_labels
         resolve_device = train_module.resolve_device
+        validate_class_label_values = train_module.validate_class_label_values
 
-        labels, source = resolve_class_labels(torch, [2], num_samples=3, num_classes=10, device=torch.device("cpu"))
-        self.assertEqual(labels.tolist(), [2, 2, 2])
-        self.assertEqual(source, "user_provided")
-
-        random_labels, random_source = resolve_class_labels(
+        sample_labels = build_post_train_sample_labels(
             torch,
-            None,
-            num_samples=4,
             num_classes=10,
             device=torch.device("cpu"),
+            sample_class_labels=(2,),
+            sample_repeats_per_class=3,
         )
-        self.assertEqual(random_labels.shape, (4,))
-        self.assertTrue(torch.all((random_labels >= 0) & (random_labels < 10)).item())
-        self.assertEqual(random_source, "random_uniform")
+        self.assertEqual(sample_labels.tolist(), [2, 2, 2])
 
-        with self.assertRaisesRegex(ValueError, "class-labels"):
-            resolve_class_labels(torch, [1, 2], num_samples=3, num_classes=10, device=torch.device("cpu"))
+        self.assertEqual(validate_class_label_values([1, 2], 10, "labels"), (1, 2))
+        with self.assertRaisesRegex(ValueError, "labels"):
+            validate_class_label_values([10], 10, "labels")
 
         resolved_device = resolve_device(torch, "auto")
         expected_type = "cuda" if torch.cuda.is_available() else "cpu"
@@ -340,12 +347,12 @@ data:
         self.assertEqual(
             list(diffusion_visuals.keys()),
             [
-                "reference (参考)",
-                "generated_camera (生成相机)",
-                "generated_image (生成图像)",
-                "chip_amplitude (芯片振幅)",
-                "chip_phase (芯片相位)",
-                "probe (探测平面)",
+                "reference",
+                "generated_camera",
+                "generated_image",
+                "chip_amplitude",
+                "chip_phase",
+                "probe",
             ],
         )
         trace_visuals = build_denoising_trace_visualization_tensors(
@@ -355,7 +362,7 @@ data:
                 "t000": torch.rand(2, 1, 4, 4),
             },
         )
-        self.assertEqual(list(trace_visuals.keys()), ["reference (参考)", "noise", "t000"])
+        self.assertEqual(list(trace_visuals.keys()), ["reference", "noise", "t000"])
         self.assertEqual(
             train_module.format_output_title("images/first_stage/epoch_0001.png", "first_stage epoch 1"),
             "images/first_stage/epoch_0001.png | first_stage epoch 1",

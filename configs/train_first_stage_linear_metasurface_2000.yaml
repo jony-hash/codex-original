@@ -24,7 +24,7 @@ data:
 first_stage:
   type: optical_path_vae
   image_size: 200
-  latent_channels: 4
+  latent_channels: 1
   encoder_channels: [64, 128, 256]
   decoder_tail_channels: 64
   readout_plane: camera

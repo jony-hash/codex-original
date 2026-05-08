@@ -92,6 +92,7 @@ class FirstStageConfig:
     camera_hotspot_weight: float = 0.0
     camera_topology_weight: float = 0.0
     camera_saturation_weight: float = 0.0
+    camera_artifact_weight: float = 0.0
     electronic_domain: "ElectronicDomainConfig" = field(default_factory=lambda: ElectronicDomainConfig())
 
 
@@ -120,6 +121,10 @@ class DiffusionConfig:
     cond_dropout_prob: float = 0.1
     latent_source: str = "mu"
     guidance_scale: float = 3.0
+    sample_class_labels: tuple[int, ...] = ()
+    sample_repeats_per_class: int = 1
+    class_weight_labels: tuple[int, ...] = ()
+    class_weight: float = 1.0
 
 
 @dataclass
@@ -213,6 +218,10 @@ def load_training_config(path: str | Path | None = None) -> TrainingConfig:
         diffusion_data["channel_multipliers"] = tuple(diffusion_data["channel_multipliers"])
     if "attention_levels" in diffusion_data:
         diffusion_data["attention_levels"] = tuple(diffusion_data["attention_levels"])
+    if "sample_class_labels" in diffusion_data:
+        diffusion_data["sample_class_labels"] = tuple(diffusion_data["sample_class_labels"])
+    if "class_weight_labels" in diffusion_data:
+        diffusion_data["class_weight_labels"] = tuple(diffusion_data["class_weight_labels"])
     data_config = DataConfig(**data_cfg)
     if data_config.validation_fraction < 0.0 or data_config.validation_fraction >= 1.0:
         raise ValueError(

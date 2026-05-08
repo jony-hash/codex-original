@@ -56,6 +56,10 @@ class ConditionedTrainingSmokeTests(unittest.TestCase):
             "camera_topology_base",
             "camera_saturation_loss",
             "camera_saturation_penalty",
+            "camera_artifact_loss",
+            "camera_foreground_hole_loss",
+            "camera_foreground_hole_ratio",
+            "camera_foreground_roughness",
             "kl_loss",
             "fg_pixel_ratio",
             "pred_fg_energy_ratio",
@@ -219,6 +223,79 @@ class ConditionedTrainingSmokeTests(unittest.TestCase):
         )
         self.assertGreater(shifted_losses["loss"].item(), matching_losses["loss"].item())
 
+    def test_first_stage_loss_adds_foreground_artifact_term(self) -> None:
+        import torch
+
+        from ldm_project.training import first_stage_loss
+
+        input_batch = torch.zeros((1, 1, 16, 16), dtype=torch.float32)
+        input_batch[:, :, 4:12, 4:12] = 1.0
+        smooth_prediction = input_batch * 0.85
+        artifact_prediction = smooth_prediction.clone()
+        artifact_prediction[:, :, 7:9, 7:9] = 0.0
+        artifact_prediction[:, :, 4:12, 5:12:2] *= 0.2
+        mu = torch.zeros((1, 1, 2, 2), dtype=torch.float32)
+        logvar = torch.zeros_like(mu)
+
+        def make_outputs(camera_plane: torch.Tensor) -> dict[str, torch.Tensor]:
+            return {
+                "x_hat": camera_plane,
+                "image_recon": camera_plane,
+                "camera_plane": camera_plane,
+                "mu": mu,
+                "logvar": logvar,
+            }
+
+        default_losses = first_stage_loss(
+            make_outputs(artifact_prediction),
+            input_batch,
+            global_step=0,
+            total_steps=1,
+            target_beta=0.0,
+            warmup_ratio=0.1,
+            image_recon_weight=0.0,
+            camera_recon_weight=0.0,
+        )
+        smooth_losses = first_stage_loss(
+            make_outputs(smooth_prediction),
+            input_batch,
+            global_step=0,
+            total_steps=1,
+            target_beta=0.0,
+            warmup_ratio=0.1,
+            image_recon_weight=0.0,
+            camera_recon_weight=0.0,
+            camera_artifact_weight=0.5,
+        )
+        artifact_losses = first_stage_loss(
+            make_outputs(artifact_prediction),
+            input_batch,
+            global_step=0,
+            total_steps=1,
+            target_beta=0.0,
+            warmup_ratio=0.1,
+            image_recon_weight=0.0,
+            camera_recon_weight=0.0,
+            camera_artifact_weight=0.5,
+        )
+
+        self.assertEqual(default_losses["camera_artifact_loss"].item(), 0.0)
+        self.assertEqual(default_losses["loss"].item(), 0.0)
+        self.assertGreater(artifact_losses["camera_artifact_loss"].item(), smooth_losses["camera_artifact_loss"].item())
+        self.assertGreater(
+            artifact_losses["camera_foreground_hole_ratio"].item(),
+            smooth_losses["camera_foreground_hole_ratio"].item(),
+        )
+        self.assertGreater(
+            artifact_losses["camera_foreground_roughness"].item(),
+            smooth_losses["camera_foreground_roughness"].item(),
+        )
+        self.assertAlmostEqual(
+            artifact_losses["loss"].item(),
+            artifact_losses["camera_artifact_loss"].item(),
+            places=6,
+        )
+
     def test_first_stage_loss_adds_field_phase_and_background_terms(self) -> None:
         import torch
 
@@ -347,6 +424,39 @@ class ConditionedTrainingSmokeTests(unittest.TestCase):
 
         self.assertEqual(loss.ndim, 0)
         self.assertTrue(torch.isfinite(loss).item())
+
+    def test_diffusion_loss_upweights_requested_classes(self) -> None:
+        from unittest import mock
+
+        import torch
+
+        import ldm_project.training as training
+
+        labels = torch.tensor([3, 4], dtype=torch.long)
+        per_sample_losses = torch.tensor([1.0, 2.0])
+        with mock.patch.object(training, "diffusion_per_sample_losses", return_value=per_sample_losses):
+            unweighted = training.diffusion_loss(
+                first_stage=None,
+                diffusion_model=None,
+                scheduler=None,
+                batch=torch.zeros((2, 1, 2, 2)),
+                class_labels=labels,
+                latent_scale=torch.tensor(1.0),
+            )
+            weighted = training.diffusion_loss(
+                first_stage=None,
+                diffusion_model=None,
+                scheduler=None,
+                batch=torch.zeros((2, 1, 2, 2)),
+                class_labels=labels,
+                latent_scale=torch.tensor(1.0),
+                class_weight_labels=(4,),
+                class_weight=3.0,
+            )
+
+        self.assertAlmostEqual(unweighted.item(), 1.5, places=6)
+        self.assertAlmostEqual(weighted.item(), 1.75, places=6)
+        self.assertGreater(weighted.item(), unweighted.item())
 
     def test_conditioned_sampling_and_decode_smoke(self) -> None:
         import torch

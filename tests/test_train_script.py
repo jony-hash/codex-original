@@ -55,6 +55,10 @@ class TrainScriptStepTests(unittest.TestCase):
             resolve_stage_epoch_plan(stage="diffusion", first_stage_epochs=10, diffusion_epochs=20),
             {"first_stage": 0, "diffusion": 20},
         )
+        self.assertEqual(
+            resolve_stage_epoch_plan(stage="sample", first_stage_epochs=10, diffusion_epochs=20),
+            {"first_stage": 0, "diffusion": 0},
+        )
 
         with self.assertRaises(ValueError):
             resolve_stage_epoch_plan(stage="full", first_stage_epochs=-1, diffusion_epochs=20)
@@ -172,6 +176,42 @@ class TrainScriptStepTests(unittest.TestCase):
         self.assertGreater(scores[1].item(), scores[0].item())
         self.assertEqual(complex_mask.tolist(), [False, True])
 
+    @unittest.skipUnless(importlib.util.find_spec("torch"), "torch is required for sample metric tests")
+    def test_sample_quality_metrics_include_nearest_neighbor_bank(self) -> None:
+        import torch
+
+        train_module = load_train_module()
+        generated = torch.zeros((2, 1, 4, 4), dtype=torch.float32)
+        generated[0, 0, :, 0] = 1.0
+        generated[1, 0, :, 3] = 1.0
+        fixed_reference = torch.zeros_like(generated)
+        fixed_reference[0, 0, :, 3] = 1.0
+        fixed_reference[1, 0, :, 0] = 1.0
+        reference_bank = {
+            4: torch.stack(
+                [
+                    generated[0],
+                    generated[1],
+                ]
+            )
+        }
+
+        metrics = train_module.compute_sample_quality_metrics(
+            generated,
+            fixed_reference,
+            torch.tensor([4, 4], dtype=torch.long),
+            reference_image_bank=reference_bank,
+            reference_bank_source="validation_only",
+        )
+
+        self.assertAlmostEqual(metrics["overall"]["dice"], 0.0, places=6)
+        nearest = metrics["nearest_neighbor"]
+        self.assertEqual(nearest["reference_source"], "validation_only")
+        self.assertEqual(nearest["reference_counts"], {"4": 2})
+        self.assertAlmostEqual(nearest["overall"]["dice"], 1.0, places=6)
+        self.assertAlmostEqual(nearest["per_class"]["4"]["dice"], 1.0, places=6)
+        self.assertEqual(nearest["per_class"]["4"]["reference_count"], 2)
+
     @unittest.skipUnless(importlib.util.find_spec("torch"), "torch is required for post-train sample tests")
     def test_post_train_samples_use_full_sample_count_for_grids(self) -> None:
         import torch
@@ -185,8 +225,10 @@ class TrainScriptStepTests(unittest.TestCase):
 
         class RecordingRunManager:
             def __init__(self) -> None:
+                self.run_dir = Path(".")
                 self.samples_dir = Path("images/samples")
                 self.grid_calls = []
+                self.metrics_payload = None
 
             def save_config_snapshot(self, name, data):
                 return name, data
@@ -197,6 +239,10 @@ class TrainScriptStepTests(unittest.TestCase):
 
             def save_tensor_bundle(self, name, payload):
                 return name, payload
+
+            def save_artifact_json(self, name, payload):
+                self.metrics_payload = payload
+                return Path("artifacts") / f"{name}.json"
 
         class DummyFirstStage:
             def decode_with_intermediates(self, latents):
@@ -256,6 +302,50 @@ class TrainScriptStepTests(unittest.TestCase):
         self.assertEqual(run_manager.grid_calls[0][1], 3)
         self.assertEqual(run_manager.grid_calls[1][0], "post_train_denoising_camera_trace.png")
         self.assertEqual(run_manager.grid_calls[1][1], 3)
+        self.assertEqual(run_manager.metrics_payload["overall"]["count"], 3)
+        self.assertEqual(sorted(run_manager.metrics_payload["per_class"].keys()), ["0", "1", "2"])
+        self.assertEqual(run_manager.metrics_payload["nearest_neighbor"]["reference_source"], "train_only")
+        self.assertEqual(run_manager.metrics_payload["nearest_neighbor"]["overall"]["count"], 3)
+        self.assertEqual(
+            sorted(run_manager.metrics_payload["nearest_neighbor"]["per_class"].keys()),
+            ["0", "1", "2"],
+        )
+
+    @unittest.skipUnless(importlib.util.find_spec("torch"), "torch is required for post-train sample tests")
+    def test_post_train_sample_labels_support_weak_class_repeats(self) -> None:
+        import torch
+
+        train_module = load_train_module()
+        labels = train_module.build_post_train_sample_labels(
+            torch,
+            num_classes=10,
+            device=torch.device("cpu"),
+            sample_class_labels=(3, 4, 5),
+            sample_repeats_per_class=4,
+        )
+        default_labels = train_module.build_post_train_sample_labels(
+            torch,
+            num_classes=10,
+            device=torch.device("cpu"),
+        )
+
+        self.assertEqual(labels.tolist(), [3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5])
+        self.assertEqual(default_labels.tolist(), list(range(10)))
+        with self.assertRaisesRegex(ValueError, "sample_repeats_per_class"):
+            train_module.build_post_train_sample_labels(
+                torch,
+                num_classes=10,
+                device=torch.device("cpu"),
+                sample_class_labels=(3,),
+                sample_repeats_per_class=0,
+            )
+        with self.assertRaisesRegex(ValueError, "sample_class_labels"):
+            train_module.build_post_train_sample_labels(
+                torch,
+                num_classes=10,
+                device=torch.device("cpu"),
+                sample_class_labels=(10,),
+            )
 
     def test_should_validate_epoch_keeps_first_interval_and_last_epoch(self) -> None:
         should_validate_epoch = load_train_module().should_validate_epoch
@@ -278,6 +368,15 @@ class TrainScriptStepTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "strict optical-only first-stage best checkpoint"):
             train_module.require_strict_optical_best_checkpoint(None)
 
+    def test_validate_stage_requirements_enforces_sample_checkpoints(self) -> None:
+        validate_stage_requirements = load_train_module().validate_stage_requirements
+
+        validate_stage_requirements("sample", "first.pt", "diffusion.pt")
+        with self.assertRaisesRegex(ValueError, "first-stage-checkpoint"):
+            validate_stage_requirements("sample", None, "diffusion.pt")
+        with self.assertRaisesRegex(ValueError, "diffusion-checkpoint"):
+            validate_stage_requirements("sample", "first.pt", None)
+
     def test_apply_cli_overrides_updates_training_config(self) -> None:
         from argparse import Namespace
 
@@ -293,8 +392,16 @@ class TrainScriptStepTests(unittest.TestCase):
                 subset_fraction=0.002,
                 subset_size=2000,
                 validation_fraction=0.0,
+                num_workers=4,
                 first_stage_epochs=30,
                 diffusion_epochs=0,
+                guidance_scale=3.5,
+                cond_dropout_prob=0.05,
+                sample_class_labels=[3, 4, 5],
+                sample_repeats_per_class=4,
+                diffusion_class_weight_labels=[3, 4, 5],
+                diffusion_class_weight=1.5,
+                camera_artifact_weight=0.25,
                 encoder_fusion_mode="optical_only",
                 image_fusion_weight=0.0,
                 optical_encoder_input_mode="pf2_intensity_multiscale_v2",
@@ -308,8 +415,16 @@ class TrainScriptStepTests(unittest.TestCase):
         self.assertAlmostEqual(config.data.subset_fraction, 0.002, places=6)
         self.assertEqual(config.data.subset_size, 2000)
         self.assertAlmostEqual(config.data.validation_fraction, 0.0, places=6)
+        self.assertEqual(config.data.num_workers, 4)
         self.assertEqual(config.first_stage_epochs, 30)
         self.assertEqual(config.diffusion_epochs, 0)
+        self.assertAlmostEqual(config.diffusion.guidance_scale, 3.5, places=6)
+        self.assertAlmostEqual(config.diffusion.cond_dropout_prob, 0.05, places=6)
+        self.assertEqual(config.diffusion.sample_class_labels, (3, 4, 5))
+        self.assertEqual(config.diffusion.sample_repeats_per_class, 4)
+        self.assertEqual(config.diffusion.class_weight_labels, (3, 4, 5))
+        self.assertAlmostEqual(config.diffusion.class_weight, 1.5, places=6)
+        self.assertAlmostEqual(config.first_stage.camera_artifact_weight, 0.25, places=6)
         self.assertEqual(config.first_stage.encoder_fusion_mode, "optical_only")
         self.assertEqual(config.first_stage.optical_encoder_input_mode, "pf2_intensity_multiscale_v2")
         self.assertEqual(config.first_stage.optical_encoder_arch, "global_context")
@@ -335,8 +450,16 @@ class TrainScriptStepTests(unittest.TestCase):
                             subset_fraction=None,
                             subset_size=None,
                             validation_fraction=None,
+                            num_workers=None,
                             first_stage_epochs=None,
                             diffusion_epochs=None,
+                            guidance_scale=None,
+                            cond_dropout_prob=None,
+                            sample_class_labels=None,
+                            sample_repeats_per_class=None,
+                            diffusion_class_weight_labels=None,
+                            diffusion_class_weight=None,
+                            camera_artifact_weight=None,
                             encoder_fusion_mode=None,
                             image_fusion_weight=invalid_weight,
                             optical_encoder_input_mode=None,
@@ -344,6 +467,90 @@ class TrainScriptStepTests(unittest.TestCase):
                             metasurface_decoder_arch=None,
                         ),
                     )
+
+    def test_apply_cli_overrides_rejects_invalid_diffusion_overrides(self) -> None:
+        from argparse import Namespace
+
+        from ldm_project.config import TrainingConfig
+
+        train_module = load_train_module()
+
+        def args_with(**overrides):
+            values = {
+                "stage": None,
+                "batch_size": None,
+                "subset_fraction": None,
+                "subset_size": None,
+                "validation_fraction": None,
+                "num_workers": None,
+                "first_stage_epochs": None,
+                "diffusion_epochs": None,
+                "guidance_scale": None,
+                "cond_dropout_prob": None,
+                "sample_class_labels": None,
+                "sample_repeats_per_class": None,
+                "diffusion_class_weight_labels": None,
+                "diffusion_class_weight": None,
+                "camera_artifact_weight": None,
+                "encoder_fusion_mode": None,
+                "image_fusion_weight": None,
+                "optical_encoder_input_mode": None,
+                "optical_encoder_arch": None,
+                "metasurface_decoder_arch": None,
+            }
+            values.update(overrides)
+            return Namespace(**values)
+
+        with self.assertRaisesRegex(ValueError, "guidance_scale"):
+            train_module.apply_cli_overrides(TrainingConfig(), args_with(guidance_scale=-1.0))
+        for invalid_dropout in (-0.1, 1.5):
+            with self.subTest(invalid_dropout=invalid_dropout):
+                with self.assertRaisesRegex(ValueError, "cond_dropout_prob"):
+                    train_module.apply_cli_overrides(
+                        TrainingConfig(),
+                        args_with(cond_dropout_prob=invalid_dropout),
+                    )
+        with self.assertRaisesRegex(ValueError, "sample_class_labels"):
+            train_module.apply_cli_overrides(TrainingConfig(), args_with(sample_class_labels=[10]))
+        with self.assertRaisesRegex(ValueError, "sample_repeats_per_class"):
+            train_module.apply_cli_overrides(TrainingConfig(), args_with(sample_repeats_per_class=0))
+        with self.assertRaisesRegex(ValueError, "diffusion_class_weight_labels"):
+            train_module.apply_cli_overrides(TrainingConfig(), args_with(diffusion_class_weight_labels=[10]))
+        with self.assertRaisesRegex(ValueError, "class_weight"):
+            train_module.apply_cli_overrides(TrainingConfig(), args_with(diffusion_class_weight=0.0))
+
+    def test_apply_cli_overrides_rejects_invalid_camera_artifact_weight(self) -> None:
+        from argparse import Namespace
+
+        from ldm_project.config import TrainingConfig
+
+        train_module = load_train_module()
+        with self.assertRaisesRegex(ValueError, "camera_artifact_weight"):
+            train_module.apply_cli_overrides(
+                TrainingConfig(),
+                Namespace(
+                    stage=None,
+                    batch_size=None,
+                    subset_fraction=None,
+                    subset_size=None,
+                    validation_fraction=None,
+                    num_workers=None,
+                    first_stage_epochs=None,
+                    diffusion_epochs=None,
+                    guidance_scale=None,
+                    cond_dropout_prob=None,
+                    sample_class_labels=None,
+                    sample_repeats_per_class=None,
+                    diffusion_class_weight_labels=None,
+                    diffusion_class_weight=None,
+                    camera_artifact_weight=-0.01,
+                    encoder_fusion_mode=None,
+                    image_fusion_weight=None,
+                    optical_encoder_input_mode=None,
+                    optical_encoder_arch=None,
+                    metasurface_decoder_arch=None,
+                ),
+            )
 
 
 @unittest.skipUnless(importlib.util.find_spec("torch"), "torch is required for train main smoke tests")
@@ -362,6 +569,7 @@ class TrainMainValidationTests(unittest.TestCase):
         from ldm_project.data import DatasetBundle, DatasetSplits
 
         train_module = load_train_module()
+        grid_calls = []
 
         class DummyFirstStage(nn.Module):
             def __init__(self, physics, config) -> None:
@@ -440,6 +648,12 @@ class TrainMainValidationTests(unittest.TestCase):
             def step(self, model_output, timesteps, sample):
                 return sample
 
+        original_save_tensor_grid = ldm_project.RunManager.save_tensor_grid
+
+        def capture_save_tensor_grid(self, tensor_map, destination, title="", max_items=4):
+            grid_calls.append((Path(destination).name, max_items, list(tensor_map.keys())))
+            return original_save_tensor_grid(self, tensor_map, destination, title=title, max_items=max_items)
+
         images = torch.rand(10, 1, 8, 8)
         labels = torch.arange(10, dtype=torch.long)
         train_dataset = TensorDataset(images[:5], labels[:5])
@@ -496,6 +710,7 @@ class TrainMainValidationTests(unittest.TestCase):
             mock.patch.object(ldm_project, "OpticalPathVAE", DummyFirstStage), \
             mock.patch.object(ldm_project, "LatentDiffusionUNet", DummyDiffusionModel), \
             mock.patch.object(ldm_project, "LinearNoiseScheduler", DummyScheduler), \
+            mock.patch.object(ldm_project.RunManager, "save_tensor_grid", capture_save_tensor_grid), \
             mock.patch.object(sys, "argv", ["train.py", "--device", "cpu", "--output-root", tmpdir, "--stage", "full"]), \
             mock.patch("sys.stdout", new_callable=io.StringIO) as stdout_buffer:
             train_module.main()
@@ -508,9 +723,15 @@ class TrainMainValidationTests(unittest.TestCase):
             first_stage_visual_config = json.loads(
                 (run_dir / "configs" / "first_stage_visual_config.json").read_text(encoding="utf-8")
             )
+            diffusion_visual_config = json.loads(
+                (run_dir / "configs" / "diffusion_visual_config.json").read_text(encoding="utf-8")
+            )
             post_train_config = json.loads((run_dir / "configs" / "post_train_sample_config.json").read_text(encoding="utf-8"))
             trace_config = json.loads(
                 (run_dir / "configs" / "post_train_denoising_trace_config.json").read_text(encoding="utf-8")
+            )
+            sample_metrics = json.loads(
+                (run_dir / "artifacts" / "post_train_sample_metrics.json").read_text(encoding="utf-8")
             )
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", FutureWarning)
@@ -521,6 +742,10 @@ class TrainMainValidationTests(unittest.TestCase):
                 )
                 best_first_stage = torch.load(
                     run_dir / "checkpoints" / "first_stage_best_optical.pt",
+                    map_location="cpu",
+                )
+                best_diffusion = torch.load(
+                    run_dir / "checkpoints" / "diffusion_best.pt",
                     map_location="cpu",
                 )
             stdout_text = stdout_buffer.getvalue()
@@ -536,7 +761,7 @@ class TrainMainValidationTests(unittest.TestCase):
         self.assertEqual(meta["planned_diffusion_epochs"], 1)
         self.assertEqual(meta["visual_save_epoch_interval"], 1)
         self.assertEqual(meta["validation_epoch_interval"], 1)
-        self.assertEqual(meta["first_stage_model_version"], "physical_first_linear_metasurface_vae_v4")
+        self.assertEqual(meta["first_stage_model_version"], "physical_first_linear_metasurface_vae_v5")
         self.assertEqual(meta["first_stage_encoder_fusion_mode"], "optical_only")
         self.assertEqual(meta["first_stage_optical_encoder_input_mode"], "pf2_intensity")
         self.assertEqual(meta["first_stage_optical_encoder_arch"], "conv")
@@ -558,14 +783,31 @@ class TrainMainValidationTests(unittest.TestCase):
         self.assertTrue(meta["first_stage_best_optical_loaded_for_diffusion"])
         self.assertEqual(meta["diffusion_latent_source"], "mu")
         self.assertAlmostEqual(meta["diffusion_guidance_scale"], 3.0, places=6)
+        self.assertEqual(meta["diffusion_class_weight_labels"], [])
+        self.assertAlmostEqual(meta["diffusion_class_weight"], 1.0, places=6)
+        self.assertEqual(meta["sample_class_labels"], [])
+        self.assertEqual(meta["sample_repeats_per_class"], 1)
+        self.assertEqual(
+            meta["diffusion_best_checkpoint"],
+            str(run_dir / "checkpoints" / "diffusion_best.pt"),
+        )
+        self.assertEqual(meta["diffusion_best_epoch"], 1)
+        self.assertEqual(meta["diffusion_best_metric"], "diffusion_validation.loss")
+        self.assertAlmostEqual(meta["diffusion_best_loss"], history["diffusion_validation"][0]["loss"], places=6)
+        self.assertTrue(meta["diffusion_best_loaded_for_sampling"])
+        self.assertEqual(meta["sample_metric_source"], "artifacts/post_train_sample_metrics.json")
         self.assertIn("first_stage_validation", history)
         self.assertIn("first_stage_validation_per_class", history)
         self.assertIn("first_stage_best_optical", history)
         self.assertIn("diffusion_validation", history)
+        self.assertIn("diffusion_validation_per_class", history)
+        self.assertIn("diffusion_best", history)
         self.assertEqual(len(history["first_stage_validation"]), 1)
         self.assertEqual(len(history["first_stage_validation_per_class"]), 1)
         self.assertEqual(len(history["first_stage_best_optical"]), 1)
         self.assertEqual(len(history["diffusion_validation"]), 1)
+        self.assertEqual(len(history["diffusion_validation_per_class"]), 1)
+        self.assertEqual(len(history["diffusion_best"]), 1)
         self.assertEqual(history["first_stage_validation"][0]["epoch"], 1)
         self.assertEqual(history["first_stage_validation_per_class"][0]["epoch"], 1)
         self.assertTrue(history["first_stage_best_optical"][0]["eligible"])
@@ -576,6 +818,15 @@ class TrainMainValidationTests(unittest.TestCase):
             str(run_dir / "checkpoints" / "first_stage_best_optical.pt"),
         )
         self.assertEqual(history["diffusion_validation"][0]["epoch"], 1)
+        self.assertEqual(history["diffusion_validation_per_class"][0]["epoch"], 1)
+        self.assertEqual(history["diffusion_validation_per_class"][0]["classes"]["5"]["count"], 1)
+        self.assertIsNotNone(history["diffusion_validation_per_class"][0]["classes"]["5"]["loss"])
+        self.assertTrue(history["diffusion_best"][0]["updated"])
+        self.assertEqual(history["diffusion_best"][0]["selection_metric"], "diffusion_validation.loss")
+        self.assertEqual(
+            history["diffusion_best"][0]["checkpoint"],
+            str(run_dir / "checkpoints" / "diffusion_best.pt"),
+        )
         self.assertIn("image_recon_loss", history["first_stage_validation"][0])
         self.assertIn("camera_recon_loss", history["first_stage_validation"][0])
         self.assertIn("structure_loss", history["first_stage_validation"][0])
@@ -594,6 +845,10 @@ class TrainMainValidationTests(unittest.TestCase):
         self.assertIn("camera_topology_base", history["first_stage_validation"][0])
         self.assertIn("camera_saturation_loss", history["first_stage_validation"][0])
         self.assertIn("camera_saturation_penalty", history["first_stage_validation"][0])
+        self.assertIn("camera_artifact_loss", history["first_stage_validation"][0])
+        self.assertIn("camera_foreground_hole_loss", history["first_stage_validation"][0])
+        self.assertIn("camera_foreground_hole_ratio", history["first_stage_validation"][0])
+        self.assertIn("camera_foreground_roughness", history["first_stage_validation"][0])
         self.assertIn("camera_corr", history["first_stage_validation"][0])
         self.assertIn("camera_edge_corr", history["first_stage_validation"][0])
         self.assertIn("min_class_camera_corr", history["first_stage_validation"][0])
@@ -608,6 +863,15 @@ class TrainMainValidationTests(unittest.TestCase):
         self.assertIn("camera_complex_balanced_mnist_score", history["first_stage_validation"][0])
         self.assertEqual(first_stage_visual_config["class_labels"], list(range(10)))
         self.assertEqual(first_stage_visual_config["reference_source"], "validation_then_train_fallback")
+        self.assertEqual(diffusion_visual_config["class_labels"], list(range(10)))
+        self.assertEqual(diffusion_visual_config["reference_labels"], list(range(10)))
+        self.assertEqual(diffusion_visual_config["reference_source"], "validation_then_train_fallback")
+        diffusion_epoch_grids = [
+            call for call in grid_calls
+            if call[0] == "epoch_0001.png" and "generated_camera" in call[2]
+        ]
+        self.assertEqual(len(diffusion_epoch_grids), 1)
+        self.assertEqual(diffusion_epoch_grids[0][1], 10)
         self.assertEqual(
             sorted(history["first_stage_validation_per_class"][0]["classes"].keys()),
             ["5", "6", "7", "8", "9"],
@@ -638,6 +902,14 @@ class TrainMainValidationTests(unittest.TestCase):
         self.assertEqual(tuple(post_train_tensors["generated_camera"].shape), (10, 1, 8, 8))
         self.assertEqual(tuple(post_train_tensors["generated_image"].shape), (10, 1, 8, 8))
         self.assertEqual(trace_config["reference_labels"], list(range(10)))
+        self.assertEqual(sample_metrics["overall"]["count"], 10)
+        self.assertEqual(sorted(sample_metrics["per_class"].keys()), [str(label) for label in range(10)])
+        self.assertEqual(sample_metrics["nearest_neighbor"]["reference_source"], "validation_then_train_fallback")
+        self.assertEqual(sample_metrics["nearest_neighbor"]["overall"]["count"], 10)
+        self.assertEqual(
+            sorted(sample_metrics["nearest_neighbor"]["per_class"].keys()),
+            [str(label) for label in range(10)],
+        )
         self.assertEqual(trace_config["trace_columns"], ["reference", "noise", "t750", "t000"])
         self.assertEqual([step["label"] for step in trace_config["trace_steps"]], ["t750", "t000"])
         self.assertEqual(trace_tensors["reference_labels"].tolist(), list(range(10)))
@@ -648,9 +920,244 @@ class TrainMainValidationTests(unittest.TestCase):
         self.assertEqual(best_first_stage["epoch"], 1)
         self.assertEqual(best_first_stage["selection_metric"], "camera_complex_balanced_mnist_score")
         self.assertIn("validation_metrics", best_first_stage)
+        self.assertEqual(best_diffusion["epoch"], 1)
+        self.assertEqual(best_diffusion["selection_metric"], "diffusion_validation.loss")
+        self.assertAlmostEqual(best_diffusion["selection_loss"], history["diffusion_validation"][0]["loss"], places=6)
+        self.assertIn("validation_metrics", best_diffusion)
         self.assertIn("image_fusion_weight", best_first_stage)
         self.assertIn("planned epochs: first_stage=1 diffusion=1", stdout_text)
         self.assertIn("loaded best optical first stage for diffusion", stdout_text)
+
+    def test_main_sample_mode_loads_checkpoints_and_skips_training_history(self) -> None:
+        import sys
+        import io
+
+        import torch
+        import torch.nn as nn
+        import torch.nn.functional as F
+        from torch.utils.data import DataLoader, TensorDataset
+
+        import ldm_project
+        from ldm_project import FIRST_STAGE_MODEL_VERSION
+        from ldm_project.config import DataConfig, DiffusionConfig, FirstStageConfig, PhysicsConfig, TrainingConfig
+        from ldm_project.data import DatasetBundle, DatasetSplits
+        from ldm_project.diffusion import DIFFUSION_MODEL_VERSION
+
+        train_module = load_train_module()
+
+        class DummyFirstStage(nn.Module):
+            def __init__(self, physics, config) -> None:
+                super().__init__()
+                self.weight = nn.Parameter(torch.tensor(0.5))
+                self.latent_channels = config.latent_channels
+                self.image_size = config.image_size
+
+            def set_image_fusion_weight(self, weight) -> None:
+                self.image_fusion_weight = float(weight)
+
+            def decode_with_intermediates(self, latents):
+                image = latents.mean(dim=1, keepdim=True)
+                image = F.interpolate(image, size=(self.image_size, self.image_size), mode="nearest")
+                zeros = torch.zeros_like(image)
+                return {
+                    "image_recon": image,
+                    "chip_real": image,
+                    "chip_imag": zeros,
+                    "chip_amplitude": image.abs(),
+                    "chip_phase": zeros,
+                    "probe_plane": image,
+                    "camera_plane": image,
+                }
+
+        class DummyDiffusionModel(nn.Module):
+            def __init__(self, latent_channels, config) -> None:
+                super().__init__()
+                self.weight = nn.Parameter(torch.tensor(0.25))
+                self.config = config
+
+            def conditioning_metadata(self):
+                return {
+                    "type": "mnist_class",
+                    "num_classes": self.config.num_classes,
+                    "context_dim": self.config.context_dim,
+                    "cond_dropout_prob": self.config.cond_dropout_prob,
+                }
+
+            def encode_condition(self, class_labels, dropout_prob=None, force_unconditional=False):
+                return torch.zeros((class_labels.shape[0], 1), device=class_labels.device)
+
+            def forward(self, sample, timesteps, context):
+                return torch.zeros_like(sample) + self.weight
+
+        class DummyScheduler:
+            def __init__(self, timesteps=2, beta_start=1.0e-4, beta_end=2.0e-2) -> None:
+                self.timesteps = timesteps
+
+            def to(self, device):
+                return self
+
+            def step(self, model_output, timesteps, sample):
+                return sample
+
+        images = torch.rand(10, 1, 8, 8)
+        labels = torch.arange(10, dtype=torch.long)
+        train_dataset = TensorDataset(images[:5], labels[:5])
+        validation_dataset = TensorDataset(images[5:], labels[5:])
+        splits = DatasetSplits(
+            train=DatasetBundle(
+                dataset=train_dataset,
+                loader=DataLoader(train_dataset, batch_size=2, shuffle=False),
+                effective_size=5,
+                total_size=5,
+            ),
+            validation=DatasetBundle(
+                dataset=validation_dataset,
+                loader=DataLoader(validation_dataset, batch_size=2, shuffle=False),
+                effective_size=5,
+                total_size=5,
+            ),
+            total_size=10,
+        )
+        train_config = TrainingConfig(
+            mode="first_stage",
+            batch_size=2,
+            data=DataConfig(
+                dataset="mnist",
+                root="data",
+                download=False,
+                subset_fraction=1.0,
+                validation_fraction=0.5,
+                num_workers=0,
+                pin_memory=False,
+            ),
+            first_stage=FirstStageConfig(
+                image_size=8,
+                latent_channels=1,
+                encoder_channels=(4, 8, 16),
+            ),
+            diffusion=DiffusionConfig(
+                timesteps=2,
+                base_channels=4,
+                channel_multipliers=(1,),
+                attention_levels=(),
+                context_dim=4,
+                num_classes=10,
+            ),
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_root = Path(tmpdir) / "runs"
+            checkpoint_root = Path(tmpdir) / "checkpoints"
+            checkpoint_root.mkdir()
+            physics = PhysicsConfig()
+            first_stage_checkpoint = checkpoint_root / "first_stage.pt"
+            diffusion_checkpoint = checkpoint_root / "diffusion.pt"
+            torch.save(
+                {
+                    "model_state_dict": DummyFirstStage(physics, train_config.first_stage).state_dict(),
+                    "stage": "first_stage",
+                    "model_version": FIRST_STAGE_MODEL_VERSION,
+                    "physics_config": physics,
+                    "train_config": train_config,
+                },
+                first_stage_checkpoint,
+            )
+            torch.save(
+                {
+                    "model_state_dict": DummyDiffusionModel(
+                        train_config.first_stage.latent_channels,
+                        train_config.diffusion,
+                    ).state_dict(),
+                    "latent_scale": torch.tensor(0.75),
+                    "latent_source": train_config.diffusion.latent_source,
+                    "stage": "diffusion",
+                    "model_version": DIFFUSION_MODEL_VERSION,
+                    "first_stage_model_version": FIRST_STAGE_MODEL_VERSION,
+                    "conditioning": {
+                        "type": "mnist_class",
+                        "num_classes": train_config.diffusion.num_classes,
+                        "context_dim": train_config.diffusion.context_dim,
+                        "cond_dropout_prob": train_config.diffusion.cond_dropout_prob,
+                    },
+                    "physics_config": physics,
+                    "train_config": train_config,
+                },
+                diffusion_checkpoint,
+            )
+
+            argv = [
+                "train.py",
+                "--device",
+                "cpu",
+                "--output-root",
+                str(output_root),
+                "--stage",
+                "sample",
+                "--first-stage-checkpoint",
+                str(first_stage_checkpoint),
+                "--diffusion-checkpoint",
+                str(diffusion_checkpoint),
+                "--guidance-scale",
+                "3.5",
+                "--sample-class-labels",
+                "3",
+                "4",
+                "5",
+                "--sample-repeats-per-class",
+                "4",
+            ]
+            with mock.patch.object(ldm_project, "load_physics_config", return_value=physics), \
+                mock.patch.object(ldm_project, "load_training_config", return_value=train_config), \
+                mock.patch.object(ldm_project, "build_train_validation_loaders", return_value=splits), \
+                mock.patch.object(ldm_project, "OpticalPathVAE", DummyFirstStage), \
+                mock.patch.object(ldm_project, "LatentDiffusionUNet", DummyDiffusionModel), \
+                mock.patch.object(ldm_project, "LinearNoiseScheduler", DummyScheduler), \
+                mock.patch.object(sys, "argv", argv), \
+                mock.patch("sys.stdout", new_callable=io.StringIO) as stdout_buffer:
+                train_module.main()
+
+            run_dirs = list(output_root.iterdir())
+            self.assertEqual(len(run_dirs), 1)
+            run_dir = run_dirs[0]
+            meta = json.loads((run_dir / "run_meta.json").read_text(encoding="utf-8"))
+            post_train_config = json.loads(
+                (run_dir / "configs" / "post_train_sample_config.json").read_text(encoding="utf-8")
+            )
+            sample_metrics = json.loads(
+                (run_dir / "artifacts" / "post_train_sample_metrics.json").read_text(encoding="utf-8")
+            )
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", FutureWarning)
+                post_train_tensors = torch.load(
+                    run_dir / "artifacts" / "post_train_sample_tensors.pt",
+                    map_location="cpu",
+                )
+            stdout_text = stdout_buffer.getvalue()
+            history_exists = (run_dir / "training_history.json").exists()
+
+        self.assertEqual(meta["mode"], "sample")
+        self.assertEqual(meta["planned_first_stage_epochs"], 0)
+        self.assertEqual(meta["planned_diffusion_epochs"], 0)
+        self.assertEqual(meta["diffusion_checkpoint"], str(diffusion_checkpoint))
+        self.assertAlmostEqual(meta["diffusion_guidance_scale"], 3.5, places=6)
+        self.assertEqual(meta["sample_class_labels"], [3, 4, 5])
+        self.assertEqual(meta["sample_repeats_per_class"], 4)
+        self.assertEqual(meta["sample_metric_source"], "artifacts/post_train_sample_metrics.json")
+        self.assertEqual(meta["latent_scale_source"], "diffusion_checkpoint")
+        self.assertTrue(meta["diffusion_best_loaded_for_sampling"])
+        self.assertFalse(history_exists)
+        self.assertEqual(post_train_config["class_labels"], [3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5])
+        self.assertEqual(post_train_config["reference_labels"], [3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5])
+        self.assertEqual(post_train_config["sample_class_labels"], [3, 4, 5])
+        self.assertEqual(post_train_config["sample_repeats_per_class"], 4)
+        self.assertEqual(sample_metrics["overall"]["count"], 12)
+        self.assertEqual(sorted(sample_metrics["per_class"].keys()), ["3", "4", "5"])
+        self.assertEqual(sample_metrics["nearest_neighbor"]["reference_source"], "validation_then_train_fallback")
+        self.assertEqual(sample_metrics["nearest_neighbor"]["overall"]["count"], 12)
+        self.assertEqual(sorted(sample_metrics["nearest_neighbor"]["per_class"].keys()), ["3", "4", "5"])
+        self.assertAlmostEqual(float(post_train_tensors["guidance_scale"].item()), 3.5, places=6)
+        self.assertEqual(tuple(post_train_tensors["generated_camera"].shape), (12, 1, 8, 8))
+        self.assertIn("loaded diffusion checkpoint for sampling", stdout_text)
 
     def test_main_rejects_full_diffusion_without_strict_optical_best(self) -> None:
         import sys

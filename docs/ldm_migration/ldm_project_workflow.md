@@ -51,6 +51,11 @@ Prefer single-file or single-test runs during iteration. Full suites are for the
 
 ### Layout
 - Source lives in: `src/ldm_project/` with root entry script `train.py`
+- `train.py` remains the CLI and high-level orchestration entry; reusable helpers live in package modules
+- `src/ldm_project/stage_runners.py` owns sample, first-stage training, and diffusion training execution loops
+- `src/ldm_project/sampling.py` owns sample label selection, reference images/banks, final sample artifacts, and nearest-neighbor sample metrics
+- `src/ldm_project/evaluation.py` owns first-stage quality metrics, balanced validation metrics, and diffusion validation summaries
+- `src/ldm_project/train_utils.py` owns pure training utilities such as stage plans, logging/validation intervals, image-fusion weights, and checkpoint helper decisions
 - Tests live in: `tests/`
 - Do not modify: `outputs/`, `data/raw/`, `.tmp/`, `legacy/`, generated checkpoints, generated plots, cached artifacts
 
@@ -99,7 +104,51 @@ Prefer single-file or single-test runs during iteration. Full suites are for the
 - `source "$(conda info --base)/etc/profile.d/conda.sh" && conda activate optical-generative-models && python train.py --stage full --device cuda` 仍可作为联调便捷模式运行
 - 若当前终端 `torch.cuda.is_available()` 为 `False`，应先视为 GPU 可见性异常并排查 WSL2 / 驱动 / CUDA 暴露问题，而不是直接把 CPU 回退当作正式训练流程
 
-## 6. 与当前仓库的关系
+## 6. 当前最终验收记录
+
+当前仓库的模型验收已经完成，不应继续盲目追加训练。正式验收口径如下：
+
+- First-stage checkpoint: `outputs/runs/20260504_134132_767348_train_first_stage_grid32_ols1ch_artifact_w055_e8/checkpoints/first_stage_best_optical.pt`
+- Diffusion checkpoint: `outputs/runs/20260507_011608_845740_train_diffusion_grid32_ols1ch_artifact_w055_s20k_b128_w4_wc4x300_g45_e30_weak345n16/checkpoints/diffusion_best.pt`
+- Acceptance sample run: `outputs/runs/20260507_081830_752705_train_sample_grid32_ols1ch_artifact_w055_cw4x300_all_g45_n4_nn_metrics`
+- Latest CUDA acceptance recheck: `outputs/runs/20260508_144922_456260_train_sample_grid32_ols1ch_artifact_w055_cw4x300_all_g45_n4_diffusion_visual_fix_recheck`
+- Final copied checkpoint folder: `final pt/`
+- Acceptance metric source: `artifacts/post_train_sample_metrics.json`
+- Acceptance device: `run_meta.device == "cuda"`
+- Acceptance thresholds: `overall_nearest_dice >= 0.80` and `min_class_nearest_dice >= 0.75`
+- Accepted metrics: `overall_nearest_dice=0.8503`, `overall_nearest_corr=0.8662`, `min_class_nearest_dice=0.7857`
+- Latest recheck metrics: `overall_nearest_dice=0.8492`, `overall_nearest_corr=0.8675`, `min_class_nearest_dice=0.7815`
+
+正式验收使用 `nearest_neighbor` 指标，因为手写数字生成结果可以与同类样本形态不同，但仍然有效。旧的 fixed-reference `overall` / `per_class` / `per_sample` 指标继续保留在 `post_train_sample_metrics.json` 中，用于连续性和诊断，但不作为最终是否通过的唯一依据。
+
+第二阶段训练过程图的全类别显示也已经单独验证：
+
+- Visualization smoke run: `outputs/runs/20260508_145449_512992_train_smoke_diffusion_visual_0_9_check`
+- Smoke purpose: 验证 `images/diffusion/epoch_XXXX.png` 使用固定 `0-9` 标签，而不是最后一个训练 batch 的随机子集
+- Smoke config: `configs/diffusion_visual_config.json`
+- Expected labels: `class_labels == [0,1,2,3,4,5,6,7,8,9]` and `reference_labels == [0,1,2,3,4,5,6,7,8,9]`
+- Smoke output: `images/diffusion/epoch_0001.png`
+
+该 smoke run 只证明可视化路径正确；它的 `first_stage_best_optical.pt` 和 `diffusion_best.pt` 来自 1 epoch 短训，不作为最终 checkpoint。
+
+复现验收 sample 的命令必须显式使用 CUDA：
+
+```bash
+source "$(conda info --base)/etc/profile.d/conda.sh" && conda activate optical-generative-models && python train.py \
+  --train-config configs/train_first_stage_linear_metasurface_2000_grid32.yaml \
+  --stage sample \
+  --device cuda \
+  --first-stage-checkpoint outputs/runs/20260504_134132_767348_train_first_stage_grid32_ols1ch_artifact_w055_e8/checkpoints/first_stage_best_optical.pt \
+  --diffusion-checkpoint outputs/runs/20260507_011608_845740_train_diffusion_grid32_ols1ch_artifact_w055_s20k_b128_w4_wc4x300_g45_e30_weak345n16/checkpoints/diffusion_best.pt \
+  --guidance-scale 4.5 \
+  --sample-class-labels 0 1 2 3 4 5 6 7 8 9 \
+  --sample-repeats-per-class 4 \
+  --run-name sample_grid32_ols1ch_artifact_w055_cw4x300_all_g45_n4_acceptance_recheck
+```
+
+后续工作默认从这个验收 checkpoint 出发：先做工程收尾、文档化和小步结构优化；只有当新的验收目标明确改变时，才启动新一轮 GPU 训练。
+
+## 7. 与当前仓库的关系
 
 当前仓库中的以下内容是新工作流的来源，但不应原样继承：
 
@@ -111,6 +160,6 @@ Prefer single-file or single-test runs during iteration. Full suites are for the
 
 新项目应保留的是“单机研究型脚本驱动”的节奏，而不是保留 `legacy` optical VAE 的目录耦合、`sys.path` 处理和环境隐式约定。
 
-## 7. 一句话结论
+## 8. 一句话结论
 
 新 `LDM` 项目默认采用：`Conda + pip`、`Python 3.11`、`src/ldm_project + tests`、`train.py` 单入口、`pytest + ruff + mypy` 的轻量标准化研究工作流。
