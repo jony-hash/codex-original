@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from pathlib import Path
 
 
 DEFAULT_LATENT_SCALE_BATCHES = 4
@@ -117,6 +118,55 @@ def validate_stage_requirements(
             raise ValueError("--stage sample requires --first-stage-checkpoint to load a trained first stage.")
         if diffusion_checkpoint is None:
             raise ValueError("--stage sample requires --diffusion-checkpoint to load a trained diffusion model.")
+
+
+def _resolve_checkpoint_from_final_pt(
+    explicit_checkpoint: str | None,
+    final_pt_dir: str | Path,
+    checkpoint_name: str,
+) -> tuple[str | None, str | None]:
+    if explicit_checkpoint is not None:
+        return explicit_checkpoint, "cli"
+
+    candidate = Path(final_pt_dir) / checkpoint_name
+    if candidate.is_file():
+        return str(candidate), "final_pt"
+    return None, None
+
+
+def resolve_final_pt_stage_checkpoints(
+    stage: str,
+    first_stage_checkpoint: str | None,
+    diffusion_checkpoint: str | None,
+    final_pt_dir: str | Path,
+    first_stage_checkpoint_name: str,
+    diffusion_checkpoint_name: str,
+) -> dict[str, str | None]:
+    resolved_first_stage = first_stage_checkpoint
+    resolved_first_stage_source = "cli" if first_stage_checkpoint is not None else None
+    resolved_diffusion = diffusion_checkpoint
+    resolved_diffusion_source = "cli" if diffusion_checkpoint is not None else None
+
+    if stage in {"diffusion", "sample"}:
+        # 缺省 checkpoint 优先从最终验收目录取，避免误用旧 run 或重复传路径。
+        resolved_first_stage, resolved_first_stage_source = _resolve_checkpoint_from_final_pt(
+            first_stage_checkpoint,
+            final_pt_dir,
+            first_stage_checkpoint_name,
+        )
+    if stage == "sample":
+        resolved_diffusion, resolved_diffusion_source = _resolve_checkpoint_from_final_pt(
+            diffusion_checkpoint,
+            final_pt_dir,
+            diffusion_checkpoint_name,
+        )
+
+    return {
+        "first_stage_checkpoint": resolved_first_stage,
+        "first_stage_checkpoint_source": resolved_first_stage_source,
+        "diffusion_checkpoint": resolved_diffusion,
+        "diffusion_checkpoint_source": resolved_diffusion_source,
+    }
 
 
 def resolve_stage_total_steps(loader_length: int, epochs: int) -> int:

@@ -36,7 +36,8 @@ def build_post_train_sample_labels(
         return build_visualization_labels(torch_module, num_classes, num_classes, device)
 
     labels = validate_class_label_values(requested_labels, num_classes, "sample_class_labels")
-    repeated_labels = [label for label in labels for _ in range(sample_repeats_per_class)]
+    # 多次采样时按“0-9 一组”循环排列，最终网格更容易逐组横向比较。
+    repeated_labels = [label for _ in range(sample_repeats_per_class) for label in labels]
     return torch_module.tensor(repeated_labels, device=device, dtype=torch_module.long)
 
 

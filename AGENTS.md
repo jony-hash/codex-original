@@ -38,6 +38,7 @@ Primary execution contract for this repo. If this file conflicts with any docume
 - Verified PyTorch baseline: CUDA build `torch 2.5.1+cu121`
 - Training contract: activate `optical-generative-models` first, then run training with explicit `--device cuda`
 - 当前项目训练的最终验收结果默认放置在 `outputs/final_pt/`，该 final pt 目录可根据验收需求动态调整。
+- `outputs/final_pt/` 是最高优先级的验收权重来源：在判断已训练权重缺失、给出续训/采样命令、或运行 `train.py --stage diffusion|sample` 前，必须优先检查该目录。默认文件名为 `first_stage_best_optical.pt` 和 `diffusion_best.pt`；显式 CLI checkpoint 是用户直接指定路径，应被尊重。
 - Commands must be bash-compatible inside WSL2; do not use PowerShell or CMD syntax
 - Imports must use `pip install -e .`; do not mutate `sys.path`
 - Source: `src/ldm_project/`
@@ -56,10 +57,12 @@ Primary execution contract for this repo. If this file conflicts with any docume
 - Lint: `ruff check src tests *.py`
 - Typecheck: `mypy src`
 - Run first stage: `source "$(conda info --base)/etc/profile.d/conda.sh" && conda activate optical-generative-models && python train.py --stage first_stage --device cuda`
-- Run diffusion stage: `source "$(conda info --base)/etc/profile.d/conda.sh" && conda activate optical-generative-models && python train.py --stage diffusion --device cuda --first-stage-checkpoint outputs/runs/.../checkpoints/first_stage_latest.pt`
+- Run diffusion stage: `source "$(conda info --base)/etc/profile.d/conda.sh" && conda activate optical-generative-models && python train.py --stage diffusion --device cuda`
+- Run sample stage: `source "$(conda info --base)/etc/profile.d/conda.sh" && conda activate optical-generative-models && python train.py --stage sample --device cuda`
 - Run full pipeline: `source "$(conda info --base)/etc/profile.d/conda.sh" && conda activate optical-generative-models && python train.py --stage full --device cuda`
 
 Use `--device auto` only for compatibility checks or temporary debugging. Use `--device cpu` only for local smoke tests; it is not the default training path.
+For diffusion/sample, omitted checkpoint arguments are auto-filled from `--final-pt-dir` (default `outputs/final_pt`) when the required best checkpoint files exist there.
 
 Prefer single-test or single-file verification during iteration. Use the full suite only for the final pass.
 

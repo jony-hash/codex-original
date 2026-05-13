@@ -47,6 +47,7 @@ from ldm_project.train_utils import (
     load_latent_scale_from_diffusion_checkpoint,
     require_strict_optical_best_checkpoint,
     resolve_device,
+    resolve_final_pt_stage_checkpoints,
     resolve_image_fusion_weight,
     resolve_logged_step,
     resolve_stage_epoch_plan,
@@ -92,6 +93,7 @@ __all__ = [
     "parse_args",
     "require_strict_optical_best_checkpoint",
     "resolve_device",
+    "resolve_final_pt_stage_checkpoints",
     "resolve_image_fusion_weight",
     "resolve_logged_step",
     "resolve_stage_epoch_plan",
@@ -192,6 +194,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--device", default="auto", help="Device: auto, cuda, cuda:0, or cpu")
     parser.add_argument("--output-root", default="outputs/runs", help="Root directory for timestamped run outputs")
+    parser.add_argument(
+        "--final-pt-dir",
+        default="outputs/final_pt",
+        help="Final accepted checkpoint directory used to auto-fill missing diffusion/sample checkpoints.",
+    )
     parser.add_argument("--run-name", default=None, help="Optional suffix for the timestamped run directory")
     parser.add_argument(
         "--first-stage-checkpoint",
@@ -238,6 +245,16 @@ def main() -> None:
     train_cfg = load_training_config(args.train_config)
     apply_cli_overrides(train_cfg, args)
 
+    checkpoint_resolution = resolve_final_pt_stage_checkpoints(
+        train_cfg.mode,
+        args.first_stage_checkpoint,
+        args.diffusion_checkpoint,
+        args.final_pt_dir,
+        FIRST_STAGE_BEST_OPTICAL_CHECKPOINT,
+        DIFFUSION_BEST_CHECKPOINT,
+    )
+    args.first_stage_checkpoint = checkpoint_resolution["first_stage_checkpoint"]
+    args.diffusion_checkpoint = checkpoint_resolution["diffusion_checkpoint"]
     validate_stage_requirements(train_cfg.mode, args.first_stage_checkpoint, args.diffusion_checkpoint)
 
     device = resolve_device(torch, args.device)
@@ -260,6 +277,8 @@ def main() -> None:
     if args.first_stage_checkpoint is not None:
         first_stage_payload = torch.load(args.first_stage_checkpoint, map_location=device, weights_only=False)
         load_first_stage_checkpoint(first_stage, first_stage_payload)
+        if checkpoint_resolution["first_stage_checkpoint_source"] == "final_pt":
+            print(f"using final_pt first-stage checkpoint: {args.first_stage_checkpoint}")
 
     dataset_splits = build_train_validation_loaders(
         data_config=train_cfg.data,
@@ -330,8 +349,11 @@ def main() -> None:
         "mode": train_cfg.mode,
         "physics_config_path": args.physics_config,
         "train_config_path": args.train_config,
+        "final_pt_dir": args.final_pt_dir,
         "first_stage_checkpoint": args.first_stage_checkpoint,
+        "first_stage_checkpoint_source": checkpoint_resolution["first_stage_checkpoint_source"],
         "diffusion_checkpoint": args.diffusion_checkpoint,
+        "diffusion_checkpoint_source": checkpoint_resolution["diffusion_checkpoint_source"],
         "run_dir": run_manager.run_dir,
         "dataset": train_cfg.data.dataset,
         "dataset_root": train_cfg.data.root,
@@ -387,6 +409,8 @@ def main() -> None:
     )
 
     if train_cfg.mode == "sample":
+        if checkpoint_resolution["diffusion_checkpoint_source"] == "final_pt":
+            print(f"using final_pt diffusion checkpoint: {args.diffusion_checkpoint}")
         run_sample_stage(
             torch,
             first_stage=first_stage,

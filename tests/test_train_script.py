@@ -329,7 +329,7 @@ class TrainScriptStepTests(unittest.TestCase):
             device=torch.device("cpu"),
         )
 
-        self.assertEqual(labels.tolist(), [3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5])
+        self.assertEqual(labels.tolist(), [3, 4, 5, 3, 4, 5, 3, 4, 5, 3, 4, 5])
         self.assertEqual(default_labels.tolist(), list(range(10)))
         with self.assertRaisesRegex(ValueError, "sample_repeats_per_class"):
             train_module.build_post_train_sample_labels(
@@ -376,6 +376,53 @@ class TrainScriptStepTests(unittest.TestCase):
             validate_stage_requirements("sample", None, "diffusion.pt")
         with self.assertRaisesRegex(ValueError, "diffusion-checkpoint"):
             validate_stage_requirements("sample", "first.pt", None)
+
+    def test_final_pt_checkpoint_resolution_fills_missing_stage_inputs(self) -> None:
+        train_module = load_train_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            final_pt_dir = Path(tmpdir) / "final_pt"
+            final_pt_dir.mkdir()
+            first_stage_path = final_pt_dir / "first_stage_best_optical.pt"
+            diffusion_path = final_pt_dir / "diffusion_best.pt"
+            first_stage_path.write_text("first", encoding="utf-8")
+            diffusion_path.write_text("diffusion", encoding="utf-8")
+
+            resolved = train_module.resolve_final_pt_stage_checkpoints(
+                "sample",
+                None,
+                None,
+                final_pt_dir,
+                "first_stage_best_optical.pt",
+                "diffusion_best.pt",
+            )
+            self.assertEqual(resolved["first_stage_checkpoint"], str(first_stage_path))
+            self.assertEqual(resolved["first_stage_checkpoint_source"], "final_pt")
+            self.assertEqual(resolved["diffusion_checkpoint"], str(diffusion_path))
+            self.assertEqual(resolved["diffusion_checkpoint_source"], "final_pt")
+
+            explicit_first = train_module.resolve_final_pt_stage_checkpoints(
+                "sample",
+                "manual_first.pt",
+                None,
+                final_pt_dir,
+                "first_stage_best_optical.pt",
+                "diffusion_best.pt",
+            )
+            self.assertEqual(explicit_first["first_stage_checkpoint"], "manual_first.pt")
+            self.assertEqual(explicit_first["first_stage_checkpoint_source"], "cli")
+            self.assertEqual(explicit_first["diffusion_checkpoint"], str(diffusion_path))
+            self.assertEqual(explicit_first["diffusion_checkpoint_source"], "final_pt")
+
+            diffusion_only = train_module.resolve_final_pt_stage_checkpoints(
+                "diffusion",
+                None,
+                None,
+                final_pt_dir,
+                "first_stage_best_optical.pt",
+                "diffusion_best.pt",
+            )
+            self.assertEqual(diffusion_only["first_stage_checkpoint"], str(first_stage_path))
+            self.assertIsNone(diffusion_only["diffusion_checkpoint"])
 
     def test_apply_cli_overrides_updates_training_config(self) -> None:
         from argparse import Namespace
@@ -1146,8 +1193,8 @@ class TrainMainValidationTests(unittest.TestCase):
         self.assertEqual(meta["latent_scale_source"], "diffusion_checkpoint")
         self.assertTrue(meta["diffusion_best_loaded_for_sampling"])
         self.assertFalse(history_exists)
-        self.assertEqual(post_train_config["class_labels"], [3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5])
-        self.assertEqual(post_train_config["reference_labels"], [3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5])
+        self.assertEqual(post_train_config["class_labels"], [3, 4, 5, 3, 4, 5, 3, 4, 5, 3, 4, 5])
+        self.assertEqual(post_train_config["reference_labels"], [3, 4, 5, 3, 4, 5, 3, 4, 5, 3, 4, 5])
         self.assertEqual(post_train_config["sample_class_labels"], [3, 4, 5])
         self.assertEqual(post_train_config["sample_repeats_per_class"], 4)
         self.assertEqual(sample_metrics["overall"]["count"], 12)
