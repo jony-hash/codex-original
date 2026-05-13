@@ -143,6 +143,9 @@ class OneShotConfig:
     recon_background_weight: float = 1.0
     slm_smoothness_weight: float = 0.0
     camera_saturation_weight: float = 0.0
+    code_diversity_weight: float = 0.0
+    teacher_pairwise_diversity_weight: float = 0.0
+    diversity_min_teacher_mse: float = 1.0e-4
     sample_class_labels: tuple[int, ...] = ()
     sample_repeats_per_class: int = 1
 

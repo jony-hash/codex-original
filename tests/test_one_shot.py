@@ -122,6 +122,9 @@ class OneShotConfigTests(unittest.TestCase):
         export_config = load_training_config(Path("configs/export_teacher_distill_mnist_2k.yaml"))
         train_config = load_training_config(Path("configs/train_one_shot_distill_mnist_2k_grid16.yaml"))
         sat_config = load_training_config(Path("configs/train_one_shot_distill_mnist_2k_grid16_sat.yaml"))
+        div_light_config = load_training_config(Path("configs/train_one_shot_distill_mnist_2k_grid16_div_w003.yaml"))
+        div_config = load_training_config(Path("configs/train_one_shot_distill_mnist_2k_grid16_div_w010.yaml"))
+        div_sat_config = load_training_config(Path("configs/train_one_shot_distill_mnist_2k_grid16_div_w010_sat.yaml"))
 
         self.assertEqual(export_config.mode, "teacher_distill_export")
         self.assertEqual(export_config.distillation.samples_per_class, 200)
@@ -134,6 +137,12 @@ class OneShotConfigTests(unittest.TestCase):
         self.assertEqual(sat_config.one_shot.metasurface_grid_size, 16)
         self.assertAlmostEqual(sat_config.one_shot.slm_smoothness_weight, 5.0e-4, places=8)
         self.assertAlmostEqual(sat_config.one_shot.camera_saturation_weight, 1.0e-2, places=8)
+        self.assertAlmostEqual(div_light_config.one_shot.code_diversity_weight, 3.0e-2, places=8)
+        self.assertAlmostEqual(div_light_config.one_shot.teacher_pairwise_diversity_weight, 5.0e-3, places=8)
+        self.assertAlmostEqual(div_config.one_shot.code_diversity_weight, 1.0e-1, places=8)
+        self.assertAlmostEqual(div_config.one_shot.teacher_pairwise_diversity_weight, 2.0e-2, places=8)
+        self.assertAlmostEqual(div_sat_config.one_shot.camera_saturation_weight, 1.0e-2, places=8)
+        self.assertAlmostEqual(div_sat_config.one_shot.code_diversity_weight, 1.0e-1, places=8)
 
     def test_one_shot_visualization_includes_raw_and_display_camera(self) -> None:
         import torch
@@ -194,3 +203,36 @@ class OneShotConfigTests(unittest.TestCase):
         self.assertIsNotNone(metrics["overall"]["teacher_pairwise_mse"])
         self.assertIsNotNone(metrics["overall"]["student_pairwise_mse"])
         self.assertIsNotNone(metrics["overall"]["diversity_ratio"])
+
+    def test_one_shot_loss_penalizes_same_class_code_collapse(self) -> None:
+        import torch
+
+        from ldm_project.training import one_shot_loss
+
+        target = torch.tensor(
+            [
+                [[[0.0, 1.0], [0.0, 1.0]]],
+                [[[1.0, 0.0], [1.0, 0.0]]],
+            ],
+            dtype=torch.float32,
+        )
+        collapsed = torch.full_like(target, 0.5, requires_grad=True)
+        outputs = {
+            "camera_plane": collapsed,
+            "slm_amplitude": torch.ones_like(target),
+        }
+        labels = torch.tensor([0, 0], dtype=torch.long)
+
+        losses = one_shot_loss(
+            outputs,
+            target,
+            class_labels=labels,
+            code_diversity_weight=0.1,
+            teacher_pairwise_diversity_weight=0.02,
+            diversity_min_teacher_mse=1.0e-4,
+        )
+
+        self.assertGreater(losses["code_diversity_penalty"].item(), 0.0)
+        self.assertGreater(losses["teacher_pairwise_mse"].item(), losses["student_pairwise_mse"].item())
+        losses["loss"].backward()
+        self.assertIsNotNone(collapsed.grad)

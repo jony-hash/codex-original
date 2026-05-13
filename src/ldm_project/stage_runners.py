@@ -91,6 +91,9 @@ def _one_shot_loss_kwargs(train_cfg) -> dict[str, float]:
         "background_weight": train_cfg.one_shot.recon_background_weight,
         "slm_smoothness_weight": train_cfg.one_shot.slm_smoothness_weight,
         "camera_saturation_weight": train_cfg.one_shot.camera_saturation_weight,
+        "code_diversity_weight": train_cfg.one_shot.code_diversity_weight,
+        "teacher_pairwise_diversity_weight": train_cfg.one_shot.teacher_pairwise_diversity_weight,
+        "diversity_min_teacher_mse": train_cfg.one_shot.diversity_min_teacher_mse,
     }
 
 
@@ -126,7 +129,7 @@ def _evaluate_one_shot(
             class_labels = labels.to(device, non_blocking=use_pin_memory)
             codes = _sample_one_shot_codes(torch_module, target_batch.shape[0], train_cfg, device)
             outputs = one_shot_model(codes, class_labels)
-            losses = one_shot_loss_fn(outputs, target_batch, **_one_shot_loss_kwargs(train_cfg))
+            losses = one_shot_loss_fn(outputs, target_batch, class_labels=class_labels, **_one_shot_loss_kwargs(train_cfg))
             batch_size = int(target_batch.shape[0])
             count += batch_size
             for key, value in losses.items():
@@ -230,7 +233,7 @@ def _evaluate_one_shot_distill(
             class_labels = labels.to(device, non_blocking=use_pin_memory)
             target_batch = targets.to(device, non_blocking=use_pin_memory)
             outputs = one_shot_model(code_batch, class_labels)
-            losses = one_shot_loss_fn(outputs, target_batch, **_one_shot_loss_kwargs(train_cfg))
+            losses = one_shot_loss_fn(outputs, target_batch, class_labels=class_labels, **_one_shot_loss_kwargs(train_cfg))
             batch_size = int(target_batch.shape[0])
             count += batch_size
             for key, value in losses.items():
@@ -799,7 +802,7 @@ def run_one_shot_training(
             codes = _sample_one_shot_codes(torch_module, target_batch.shape[0], train_cfg, device)
             optimizer.zero_grad(set_to_none=True)
             outputs = one_shot_model(codes, class_labels)
-            losses = one_shot_loss_fn(outputs, target_batch, **_one_shot_loss_kwargs(train_cfg))
+            losses = one_shot_loss_fn(outputs, target_batch, class_labels=class_labels, **_one_shot_loss_kwargs(train_cfg))
             losses["loss"].backward()
             optimizer.step()
             step_record = resolve_logged_step(batch_index, one_shot_stage_step)
@@ -817,7 +820,8 @@ def run_one_shot_training(
                     f"camera_fg_mse={losses['camera_fg_mse'].item():.6f} "
                     f"camera_dice={losses['camera_foreground_dice'].item():.4f} "
                     f"slm_tv={losses['slm_tv'].item():.6f} "
-                    f"sat={losses['camera_saturation_ratio'].item():.4f}"
+                    f"sat={losses['camera_saturation_ratio'].item():.4f} "
+                    f"div={losses['code_diversity_penalty'].item():.4f}"
                 )
                 run_manager.append_history(
                     "one_shot",
@@ -833,6 +837,13 @@ def run_one_shot_training(
                         "slm_tv": losses["slm_tv"].item(),
                         "camera_saturation_loss": losses["camera_saturation_loss"].item(),
                         "camera_saturation_ratio": losses["camera_saturation_ratio"].item(),
+                        "code_diversity_loss": losses["code_diversity_loss"].item(),
+                        "code_diversity_penalty": losses["code_diversity_penalty"].item(),
+                        "teacher_pairwise_diversity_loss": losses["teacher_pairwise_diversity_loss"].item(),
+                        "teacher_pairwise_diversity_penalty": losses["teacher_pairwise_diversity_penalty"].item(),
+                        "teacher_pairwise_mse": losses["teacher_pairwise_mse"].item(),
+                        "student_pairwise_mse": losses["student_pairwise_mse"].item(),
+                        "diversity_pair_count": losses["diversity_pair_count"].item(),
                         "fg_pixel_ratio": losses["fg_pixel_ratio"].item(),
                     },
                 )
@@ -874,7 +885,8 @@ def run_one_shot_training(
                 f"camera_recon={validation_metrics['camera_recon_loss']:.6f} "
                 f"camera_dice={validation_metrics['camera_foreground_dice']:.4f} "
                 f"slm_tv={validation_metrics['slm_tv']:.6f} "
-                f"sat={validation_metrics['camera_saturation_ratio']:.4f}"
+                f"sat={validation_metrics['camera_saturation_ratio']:.4f} "
+                f"div={validation_metrics['code_diversity_penalty']:.4f}"
             )
             run_manager.append_history(
                 "one_shot_validation",
@@ -994,7 +1006,7 @@ def run_one_shot_distill_training(
             target_batch = targets.to(device, non_blocking=use_pin_memory)
             optimizer.zero_grad(set_to_none=True)
             outputs = one_shot_model(code_batch, class_labels)
-            losses = one_shot_loss_fn(outputs, target_batch, **_one_shot_loss_kwargs(train_cfg))
+            losses = one_shot_loss_fn(outputs, target_batch, class_labels=class_labels, **_one_shot_loss_kwargs(train_cfg))
             losses["loss"].backward()
             optimizer.step()
             step_record = resolve_logged_step(batch_index, stage_step)

@@ -144,6 +144,84 @@ def _camera_saturation_ratio(camera_prediction: torch.Tensor) -> torch.Tensor:
     return saturated.float().mean()
 
 
+def _one_shot_pairwise_diversity_metrics(
+    camera_prediction: torch.Tensor,
+    target_batch: torch.Tensor,
+    class_labels: torch.Tensor | None,
+    min_teacher_mse: float,
+) -> dict[str, torch.Tensor]:
+    zero = _zero_like_loss(camera_prediction)
+    if class_labels is None or camera_prediction.shape[0] < 2:
+        return {
+            "code_diversity_base": zero,
+            "teacher_pairwise_diversity_base": zero,
+            "teacher_pairwise_mse": zero,
+            "student_pairwise_mse": zero,
+            "diversity_pair_count": zero,
+        }
+
+    labels = class_labels.detach().reshape(-1)
+    if labels.shape[0] != camera_prediction.shape[0]:
+        raise ValueError("class_labels must match one_shot_loss batch size when diversity weights are enabled.")
+
+    prediction_flat = camera_prediction.flatten(1)
+    target_flat = target_batch.detach().flatten(1)
+    student_distances = []
+    teacher_distances = []
+    for label in labels.unique(sorted=True):
+        indices = torch.nonzero(labels == label, as_tuple=False).flatten()
+        if indices.numel() < 2:
+            continue
+        student_class = prediction_flat.index_select(0, indices)
+        teacher_class = target_flat.index_select(0, indices)
+        student_pairwise = (student_class[:, None, :] - student_class[None, :, :]).pow(2).mean(dim=-1)
+        teacher_pairwise = (teacher_class[:, None, :] - teacher_class[None, :, :]).pow(2).mean(dim=-1)
+        pair_mask = torch.triu(
+            torch.ones(indices.numel(), indices.numel(), dtype=torch.bool, device=camera_prediction.device),
+            diagonal=1,
+        )
+        student_distances.append(student_pairwise[pair_mask])
+        teacher_distances.append(teacher_pairwise[pair_mask])
+
+    if not student_distances:
+        return {
+            "code_diversity_base": zero,
+            "teacher_pairwise_diversity_base": zero,
+            "teacher_pairwise_mse": zero,
+            "student_pairwise_mse": zero,
+            "diversity_pair_count": zero,
+        }
+
+    student_distance = torch.cat(student_distances)
+    teacher_distance = torch.cat(teacher_distances)
+    active = teacher_distance >= float(min_teacher_mse)
+    if not active.any():
+        return {
+            "code_diversity_base": zero,
+            "teacher_pairwise_diversity_base": zero,
+            "teacher_pairwise_mse": teacher_distance.mean().detach(),
+            "student_pairwise_mse": student_distance.mean().detach(),
+            "diversity_pair_count": zero,
+        }
+
+    active_student = student_distance[active]
+    active_teacher = teacher_distance[active].clamp_min(1.0e-8)
+    # 只在 teacher 自身存在差异的同类样本对上惩罚塌缩，避免鼓励无意义噪声。
+    diversity_ratio = active_student / active_teacher
+    code_diversity_base = F.relu(1.0 - diversity_ratio).pow(2).mean()
+    teacher_pairwise_base = F.smooth_l1_loss(
+        torch.log(active_student.clamp_min(1.0e-8)),
+        torch.log(active_teacher),
+    )
+    return {
+        "code_diversity_base": code_diversity_base,
+        "teacher_pairwise_diversity_base": teacher_pairwise_base,
+        "teacher_pairwise_mse": active_teacher.mean().detach(),
+        "student_pairwise_mse": active_student.mean().detach(),
+        "diversity_pair_count": active.float().sum().detach(),
+    }
+
+
 def _camera_hotspot_loss(camera_prediction: torch.Tensor) -> torch.Tensor:
     return F.relu(camera_prediction - 1.0).pow(2).mean()
 
@@ -314,11 +392,15 @@ def first_stage_loss(
 def one_shot_loss(
     outputs: dict[str, torch.Tensor],
     target_batch: torch.Tensor,
+    class_labels: torch.Tensor | None = None,
     foreground_threshold: float = 0.05,
     foreground_weight: float = 3.0,
     background_weight: float = 1.0,
     slm_smoothness_weight: float = 0.0,
     camera_saturation_weight: float = 0.0,
+    code_diversity_weight: float = 0.0,
+    teacher_pairwise_diversity_weight: float = 0.0,
+    diversity_min_teacher_mse: float = 1.0e-4,
 ) -> dict[str, torch.Tensor]:
     foreground_mask = (target_batch > foreground_threshold).float()
     background_mask = 1.0 - foreground_mask
@@ -336,7 +418,17 @@ def one_shot_loss(
     slm_smoothness = slm_smoothness_weight * slm_tv
     camera_saturation_base = _camera_saturation_loss(camera_loss_prediction)
     camera_saturation = camera_saturation_weight * camera_saturation_base
-    total = camera_metrics["recon_loss"] + slm_smoothness + camera_saturation
+    diversity_metrics = _one_shot_pairwise_diversity_metrics(
+        camera_prediction,
+        target_batch,
+        class_labels,
+        diversity_min_teacher_mse,
+    )
+    code_diversity = code_diversity_weight * diversity_metrics["code_diversity_base"]
+    teacher_pairwise_diversity = (
+        teacher_pairwise_diversity_weight * diversity_metrics["teacher_pairwise_diversity_base"]
+    )
+    total = camera_metrics["recon_loss"] + slm_smoothness + camera_saturation + code_diversity + teacher_pairwise_diversity
     return {
         "loss": total,
         "camera_recon_loss": camera_metrics["recon_loss"].detach(),
@@ -348,6 +440,13 @@ def one_shot_loss(
         "camera_saturation_penalty": camera_saturation_base.detach(),
         "camera_saturation_ratio": _camera_saturation_ratio(camera_prediction.detach()),
         "camera_foreground_dice": _foreground_dice_score(camera_prediction.detach(), foreground_mask),
+        "code_diversity_loss": code_diversity.detach(),
+        "code_diversity_penalty": diversity_metrics["code_diversity_base"].detach(),
+        "teacher_pairwise_diversity_loss": teacher_pairwise_diversity.detach(),
+        "teacher_pairwise_diversity_penalty": diversity_metrics["teacher_pairwise_diversity_base"].detach(),
+        "teacher_pairwise_mse": diversity_metrics["teacher_pairwise_mse"].detach(),
+        "student_pairwise_mse": diversity_metrics["student_pairwise_mse"].detach(),
+        "diversity_pair_count": diversity_metrics["diversity_pair_count"].detach(),
         "fg_pixel_ratio": foreground_mask.mean(),
     }
 
