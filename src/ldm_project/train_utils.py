@@ -5,6 +5,39 @@ from pathlib import Path
 
 
 DEFAULT_LATENT_SCALE_BATCHES = 4
+STAGE_ALIASES = {
+    "first_stage": "teacher_first_stage",
+    "diffusion": "teacher_diffusion",
+    "full": "teacher_full",
+    "sample": "teacher_sample",
+}
+CANONICAL_STAGES = {
+    "teacher_first_stage",
+    "teacher_diffusion",
+    "teacher_full",
+    "teacher_sample",
+    "teacher_distill_export",
+    "one_shot",
+    "one_shot_distill",
+    "one_shot_distill_eval",
+    "one_shot_sample",
+}
+CLI_STAGE_CHOICES = tuple(sorted(CANONICAL_STAGES | set(STAGE_ALIASES)))
+
+
+def canonicalize_stage(stage: str) -> str:
+    canonical_stage = STAGE_ALIASES.get(stage, stage)
+    if canonical_stage not in CANONICAL_STAGES:
+        raise ValueError(f"Unsupported stage mode: {stage}")
+    return canonical_stage
+
+
+def is_teacher_first_stage_mode(stage: str) -> bool:
+    return canonicalize_stage(stage) in {"teacher_first_stage", "teacher_full"}
+
+
+def is_teacher_diffusion_mode(stage: str) -> bool:
+    return canonicalize_stage(stage) in {"teacher_diffusion", "teacher_full"}
 
 
 def resolve_device(torch_module, requested: str):
@@ -110,14 +143,21 @@ def validate_stage_requirements(
     stage: str,
     first_stage_checkpoint: str | None,
     diffusion_checkpoint: str | None = None,
+    one_shot_checkpoint: str | None = None,
+    distill_dataset: str | None = None,
 ) -> None:
-    if stage == "diffusion" and first_stage_checkpoint is None:
-        raise ValueError("--stage diffusion requires --first-stage-checkpoint to load a trained first stage.")
-    if stage == "sample":
+    canonical_stage = canonicalize_stage(stage)
+    if canonical_stage == "teacher_diffusion" and first_stage_checkpoint is None:
+        raise ValueError("--stage teacher_diffusion requires --first-stage-checkpoint to load a trained first stage.")
+    if canonical_stage in {"teacher_sample", "teacher_distill_export"}:
         if first_stage_checkpoint is None:
-            raise ValueError("--stage sample requires --first-stage-checkpoint to load a trained first stage.")
+            raise ValueError(f"--stage {canonical_stage} requires --first-stage-checkpoint to load a trained first stage.")
         if diffusion_checkpoint is None:
-            raise ValueError("--stage sample requires --diffusion-checkpoint to load a trained diffusion model.")
+            raise ValueError(f"--stage {canonical_stage} requires --diffusion-checkpoint to load a trained diffusion model.")
+    if canonical_stage in {"one_shot_sample", "one_shot_distill_eval"} and one_shot_checkpoint is None:
+        raise ValueError(f"--stage {canonical_stage} requires --one-shot-checkpoint to load a trained one-shot model.")
+    if canonical_stage in {"one_shot_distill", "one_shot_distill_eval"} and distill_dataset is None:
+        raise ValueError(f"--stage {canonical_stage} requires --distill-dataset to load teacher distillation targets.")
 
 
 def _resolve_checkpoint_from_final_pt(
@@ -142,19 +182,20 @@ def resolve_final_pt_stage_checkpoints(
     first_stage_checkpoint_name: str,
     diffusion_checkpoint_name: str,
 ) -> dict[str, str | None]:
+    canonical_stage = canonicalize_stage(stage)
     resolved_first_stage = first_stage_checkpoint
     resolved_first_stage_source = "cli" if first_stage_checkpoint is not None else None
     resolved_diffusion = diffusion_checkpoint
     resolved_diffusion_source = "cli" if diffusion_checkpoint is not None else None
 
-    if stage in {"diffusion", "sample"}:
+    if canonical_stage in {"teacher_diffusion", "teacher_sample", "teacher_distill_export"}:
         # 缺省 checkpoint 优先从最终验收目录取，避免误用旧 run 或重复传路径。
         resolved_first_stage, resolved_first_stage_source = _resolve_checkpoint_from_final_pt(
             first_stage_checkpoint,
             final_pt_dir,
             first_stage_checkpoint_name,
         )
-    if stage == "sample":
+    if canonical_stage in {"teacher_sample", "teacher_distill_export"}:
         resolved_diffusion, resolved_diffusion_source = _resolve_checkpoint_from_final_pt(
             diffusion_checkpoint,
             final_pt_dir,
@@ -177,26 +218,38 @@ def resolve_stage_total_steps(loader_length: int, epochs: int) -> int:
     return loader_length * epochs
 
 
-def resolve_stage_epoch_plan(stage: str, first_stage_epochs: int, diffusion_epochs: int) -> dict[str, int]:
+def resolve_stage_epoch_plan(
+    stage: str,
+    first_stage_epochs: int,
+    diffusion_epochs: int,
+    one_shot_epochs: int = 0,
+) -> dict[str, int]:
     if first_stage_epochs < 0:
         raise ValueError(f"first_stage_epochs must be non-negative, got {first_stage_epochs}")
     if diffusion_epochs < 0:
         raise ValueError(f"diffusion_epochs must be non-negative, got {diffusion_epochs}")
+    if one_shot_epochs < 0:
+        raise ValueError(f"one_shot_epochs must be non-negative, got {one_shot_epochs}")
 
-    if stage == "first_stage":
-        return {"first_stage": first_stage_epochs, "diffusion": 0}
-    if stage == "diffusion":
-        return {"first_stage": 0, "diffusion": diffusion_epochs}
-    if stage == "full":
-        return {"first_stage": first_stage_epochs, "diffusion": diffusion_epochs}
-    if stage == "sample":
-        return {"first_stage": 0, "diffusion": 0}
+    canonical_stage = canonicalize_stage(stage)
+    if canonical_stage == "teacher_first_stage":
+        return {"first_stage": first_stage_epochs, "diffusion": 0, "one_shot": 0}
+    if canonical_stage == "teacher_diffusion":
+        return {"first_stage": 0, "diffusion": diffusion_epochs, "one_shot": 0}
+    if canonical_stage == "teacher_full":
+        return {"first_stage": first_stage_epochs, "diffusion": diffusion_epochs, "one_shot": 0}
+    if canonical_stage in {"teacher_sample", "teacher_distill_export", "one_shot_sample", "one_shot_distill_eval"}:
+        return {"first_stage": 0, "diffusion": 0, "one_shot": 0}
+    if canonical_stage in {"one_shot", "one_shot_distill"}:
+        return {"first_stage": 0, "diffusion": 0, "one_shot": one_shot_epochs}
     raise ValueError(f"Unsupported stage mode: {stage}")
 
 
 def apply_cli_overrides(train_cfg, args) -> None:
     if args.stage is not None:
-        train_cfg.mode = args.stage
+        train_cfg.mode = canonicalize_stage(args.stage)
+    else:
+        train_cfg.mode = canonicalize_stage(train_cfg.mode)
     if args.batch_size is not None:
         train_cfg.batch_size = args.batch_size
     if args.subset_fraction is not None:
@@ -222,6 +275,25 @@ def apply_cli_overrides(train_cfg, args) -> None:
         train_cfg.first_stage_epochs = args.first_stage_epochs
     if args.diffusion_epochs is not None:
         train_cfg.diffusion_epochs = args.diffusion_epochs
+    one_shot_epochs = getattr(args, "one_shot_epochs", None)
+    if one_shot_epochs is not None:
+        train_cfg.one_shot_epochs = one_shot_epochs
+    distill_samples_per_class = getattr(args, "distill_samples_per_class", None)
+    if distill_samples_per_class is not None:
+        if distill_samples_per_class <= 0:
+            raise ValueError(
+                "distillation.samples_per_class must be positive, "
+                f"got {distill_samples_per_class}"
+            )
+        train_cfg.distillation.samples_per_class = distill_samples_per_class
+    distill_total_samples = getattr(args, "distill_total_samples", None)
+    if distill_total_samples is not None:
+        if distill_total_samples <= 0:
+            raise ValueError(f"distillation.total_samples must be positive, got {distill_total_samples}")
+        train_cfg.distillation.total_samples = distill_total_samples
+    distill_output = getattr(args, "distill_output", None)
+    if distill_output is not None:
+        train_cfg.distillation.output_path = distill_output
     guidance_scale = getattr(args, "guidance_scale", None)
     if guidance_scale is not None:
         if guidance_scale < 0.0:

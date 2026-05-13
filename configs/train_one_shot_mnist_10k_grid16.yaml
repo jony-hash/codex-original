@@ -1,0 +1,56 @@
+training:
+  mode: one_shot
+  batch_size: 64
+  learning_rate: 1.0e-4
+  step_log_interval: 20
+  visual_save_epoch_interval: 2
+  validation_epoch_interval: 1
+  first_stage_epochs: 0
+  diffusion_epochs: 0
+  one_shot_epochs: 20
+
+data:
+  dataset: mnist
+  root: data
+  download: true
+  validation_fraction: 0.1
+  validation_split_seed: 42
+  subset_size: 10000
+  subset_seed: 42
+  num_workers: 0
+  pin_memory: true
+
+first_stage:
+  type: optical_path_vae
+  image_size: 64
+  latent_channels: 1
+  encoder_channels: [16, 32, 64]
+  decoder_tail_channels: 16
+  primary_output: camera
+
+diffusion:
+  timesteps: 10
+  base_channels: 16
+  channel_multipliers: [1, 2]
+  num_res_blocks: 1
+  attention_levels: []
+  num_heads: 1
+  context_dim: 32
+  num_classes: 10
+
+one_shot:
+  code_dim: 128
+  label_embed_dim: 32
+  hidden_dim: 256
+  num_classes: 10
+  slm_background_floor: 0.05
+  ols_kind: gelu
+  metasurface_grid_size: 16
+  layer_spacing: 0.003
+  recon_foreground_threshold: 0.05
+  recon_foreground_weight: 3.0
+  recon_background_weight: 1.0
+  slm_smoothness_weight: 0.0
+  camera_saturation_weight: 0.0
+  sample_class_labels: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+  sample_repeats_per_class: 2

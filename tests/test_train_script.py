@@ -45,19 +45,50 @@ class TrainScriptStepTests(unittest.TestCase):
 
         self.assertEqual(
             resolve_stage_epoch_plan(stage="full", first_stage_epochs=10, diffusion_epochs=20),
-            {"first_stage": 10, "diffusion": 20},
+            {"first_stage": 10, "diffusion": 20, "one_shot": 0},
         )
         self.assertEqual(
             resolve_stage_epoch_plan(stage="first_stage", first_stage_epochs=10, diffusion_epochs=20),
-            {"first_stage": 10, "diffusion": 0},
+            {"first_stage": 10, "diffusion": 0, "one_shot": 0},
         )
         self.assertEqual(
             resolve_stage_epoch_plan(stage="diffusion", first_stage_epochs=10, diffusion_epochs=20),
-            {"first_stage": 0, "diffusion": 20},
+            {"first_stage": 0, "diffusion": 20, "one_shot": 0},
         )
         self.assertEqual(
             resolve_stage_epoch_plan(stage="sample", first_stage_epochs=10, diffusion_epochs=20),
-            {"first_stage": 0, "diffusion": 0},
+            {"first_stage": 0, "diffusion": 0, "one_shot": 0},
+        )
+        self.assertEqual(
+            resolve_stage_epoch_plan(stage="teacher_distill_export", first_stage_epochs=10, diffusion_epochs=20),
+            {"first_stage": 0, "diffusion": 0, "one_shot": 0},
+        )
+        self.assertEqual(
+            resolve_stage_epoch_plan(
+                stage="one_shot_distill_eval",
+                first_stage_epochs=10,
+                diffusion_epochs=20,
+                one_shot_epochs=4,
+            ),
+            {"first_stage": 0, "diffusion": 0, "one_shot": 0},
+        )
+        self.assertEqual(
+            resolve_stage_epoch_plan(
+                stage="one_shot",
+                first_stage_epochs=10,
+                diffusion_epochs=20,
+                one_shot_epochs=3,
+            ),
+            {"first_stage": 0, "diffusion": 0, "one_shot": 3},
+        )
+        self.assertEqual(
+            resolve_stage_epoch_plan(
+                stage="one_shot_distill",
+                first_stage_epochs=10,
+                diffusion_epochs=20,
+                one_shot_epochs=4,
+            ),
+            {"first_stage": 0, "diffusion": 0, "one_shot": 4},
         )
 
         with self.assertRaises(ValueError):
@@ -372,10 +403,22 @@ class TrainScriptStepTests(unittest.TestCase):
         validate_stage_requirements = load_train_module().validate_stage_requirements
 
         validate_stage_requirements("sample", "first.pt", "diffusion.pt")
+        validate_stage_requirements("teacher_sample", "first.pt", "diffusion.pt")
+        validate_stage_requirements("teacher_distill_export", "first.pt", "diffusion.pt")
+        validate_stage_requirements("one_shot_distill", "first.pt", "diffusion.pt", None, "distill.pt")
+        validate_stage_requirements("one_shot_distill_eval", "first.pt", "diffusion.pt", "one_shot.pt", "distill.pt")
         with self.assertRaisesRegex(ValueError, "first-stage-checkpoint"):
             validate_stage_requirements("sample", None, "diffusion.pt")
         with self.assertRaisesRegex(ValueError, "diffusion-checkpoint"):
             validate_stage_requirements("sample", "first.pt", None)
+        with self.assertRaisesRegex(ValueError, "one-shot-checkpoint"):
+            validate_stage_requirements("one_shot_sample", "first.pt", "diffusion.pt", None)
+        with self.assertRaisesRegex(ValueError, "distill-dataset"):
+            validate_stage_requirements("one_shot_distill", "first.pt", "diffusion.pt", None, None)
+        with self.assertRaisesRegex(ValueError, "one-shot-checkpoint"):
+            validate_stage_requirements("one_shot_distill_eval", "first.pt", "diffusion.pt", None, "distill.pt")
+        with self.assertRaisesRegex(ValueError, "distill-dataset"):
+            validate_stage_requirements("one_shot_distill_eval", "first.pt", "diffusion.pt", "one_shot.pt", None)
 
     def test_final_pt_checkpoint_resolution_fills_missing_stage_inputs(self) -> None:
         train_module = load_train_module()
@@ -424,6 +467,17 @@ class TrainScriptStepTests(unittest.TestCase):
             self.assertEqual(diffusion_only["first_stage_checkpoint"], str(first_stage_path))
             self.assertIsNone(diffusion_only["diffusion_checkpoint"])
 
+            distill_export = train_module.resolve_final_pt_stage_checkpoints(
+                "teacher_distill_export",
+                None,
+                None,
+                final_pt_dir,
+                "first_stage_best_optical.pt",
+                "diffusion_best.pt",
+            )
+            self.assertEqual(distill_export["first_stage_checkpoint"], str(first_stage_path))
+            self.assertEqual(distill_export["diffusion_checkpoint"], str(diffusion_path))
+
     def test_apply_cli_overrides_updates_training_config(self) -> None:
         from argparse import Namespace
 
@@ -442,6 +496,7 @@ class TrainScriptStepTests(unittest.TestCase):
                 num_workers=4,
                 first_stage_epochs=30,
                 diffusion_epochs=0,
+                one_shot_epochs=2,
                 guidance_scale=3.5,
                 cond_dropout_prob=0.05,
                 sample_class_labels=[3, 4, 5],
@@ -454,10 +509,13 @@ class TrainScriptStepTests(unittest.TestCase):
                 optical_encoder_input_mode="pf2_intensity_multiscale_v2",
                 optical_encoder_arch="global_context",
                 metasurface_decoder_arch="conv",
+                distill_samples_per_class=7,
+                distill_total_samples=70,
+                distill_output="outputs/runs/distill.pt",
             ),
         )
 
-        self.assertEqual(config.mode, "first_stage")
+        self.assertEqual(config.mode, "teacher_first_stage")
         self.assertEqual(config.batch_size, 8)
         self.assertAlmostEqual(config.data.subset_fraction, 0.002, places=6)
         self.assertEqual(config.data.subset_size, 2000)
@@ -465,6 +523,7 @@ class TrainScriptStepTests(unittest.TestCase):
         self.assertEqual(config.data.num_workers, 4)
         self.assertEqual(config.first_stage_epochs, 30)
         self.assertEqual(config.diffusion_epochs, 0)
+        self.assertEqual(config.one_shot_epochs, 2)
         self.assertAlmostEqual(config.diffusion.guidance_scale, 3.5, places=6)
         self.assertAlmostEqual(config.diffusion.cond_dropout_prob, 0.05, places=6)
         self.assertEqual(config.diffusion.sample_class_labels, (3, 4, 5))
@@ -476,6 +535,9 @@ class TrainScriptStepTests(unittest.TestCase):
         self.assertEqual(config.first_stage.optical_encoder_input_mode, "pf2_intensity_multiscale_v2")
         self.assertEqual(config.first_stage.optical_encoder_arch, "global_context")
         self.assertEqual(config.first_stage.metasurface_decoder_arch, "conv")
+        self.assertEqual(config.distillation.samples_per_class, 7)
+        self.assertEqual(config.distillation.total_samples, 70)
+        self.assertEqual(config.distillation.output_path, "outputs/runs/distill.pt")
         self.assertAlmostEqual(config.first_stage.image_fusion_start_weight, 0.0, places=6)
         self.assertAlmostEqual(config.first_stage.image_fusion_end_weight, 0.0, places=6)
         self.assertEqual(config.first_stage.image_fusion_decay_epochs, 1)
@@ -1182,7 +1244,7 @@ class TrainMainValidationTests(unittest.TestCase):
             stdout_text = stdout_buffer.getvalue()
             history_exists = (run_dir / "training_history.json").exists()
 
-        self.assertEqual(meta["mode"], "sample")
+        self.assertEqual(meta["mode"], "teacher_sample")
         self.assertEqual(meta["planned_first_stage_epochs"], 0)
         self.assertEqual(meta["planned_diffusion_epochs"], 0)
         self.assertEqual(meta["diffusion_checkpoint"], str(diffusion_checkpoint))

@@ -5,97 +5,105 @@
 
 Primary execution contract for this repo. If this file conflicts with any document under `docs/`, follow this file.
 
-## 1. Non-negotiables
+## 1. Core Rules
 
 1. No filler. Start with the answer or the action.
 2. Never fabricate. Read files, run commands, or say you do not know.
 3. Ask only when ambiguity materially changes the output.
 4. Touch only the requested scope. No unrelated refactors or cleanup.
 5. Do not claim success without verification.
+6. Briefly state the plan before editing.
+7. Read the files you will change and the code that calls them.
+8. Match existing patterns; prefer the smallest correct change.
+9. Add concise Chinese comments only when they explain non-obvious logic.
 
-## 2. Working Rules
+## 2. Project Contract
 
-- Briefly state the plan before editing.
-- Read the files you will change and the code that calls them.
-- Match existing project patterns unless the user explicitly asks to replace them.
-- Prefer the smallest change that solves the stated problem.
-- Surface assumptions explicitly.
-- When generating or modifying code, add concise Chinese comments where they improve readability or explain non-obvious logic. Do not add redundant comments for obvious code.
+This project is a single-exposure optical generative model distilled from an LDM teacher.
 
-## 3. Verification
+Final inference path: `noise/code + optional label -> generator_e -> amplitude SLM command -> encoder metasurface -> OLS/fiber -> decoder metasurface -> CMOS single exposure -> generated image`.
+- LDM is teacher infrastructure: trained prior, teacher targets, distillation export, and baseline comparison.
+- Final optical inference must not require diffusion U-Net denoising, iterative latent sampling, or software-only VAE decoding.
+- Main flow: `teacher_first_stage/teacher_diffusion -> teacher_distill_export -> one_shot_distill -> one_shot_sample`.
+- Single-shot design source: `docs/ldm_migration/single_shot_ldm_distillation.md`.
+- Direct MNIST `one_shot` is baseline/smoke only, not the main research path.
+- Keep teacher LDM, one-shot student, and future hardware calibration responsibilities separate.
 
-- Define success in a verifiable way before changing code.
-- Prefer running a single test, smoke script, or single-file check during iteration.
-- Use full-suite verification only for the final pass.
-- Fix root causes, not symptoms.
+## 3. Repo Map
 
-## 4. Project Context
+- Python 3.11; stack: PyTorch, torchvision, PyYAML, matplotlib.
+- Environment: WSL2 Linux shell, Conda + pip, VS Code Remote friendly; Conda env: `optical-generative-models`.
+- PyTorch baseline: CUDA build `torch 2.5.1+cu121`.
+- Source: `src/ldm_project/`; tests: `tests/`; entry: `train.py`; configs: `configs/`; docs: `docs/ldm_migration/`.
+- Key files: `src/ldm_project/one_shot.py`, `src/ldm_project/train_utils.py`, `src/ldm_project/stage_runners.py`
+- Teacher stages: `teacher_first_stage`, `teacher_diffusion`, `teacher_full`, `teacher_sample`, `teacher_distill_export`
+- Student stages: `one_shot_distill`, `one_shot_sample`; baseline: `one_shot`.
+- Compatibility aliases: `first_stage`, `diffusion`, `full`, `sample`.
 
-- Python 3.11
-- Stack: PyTorch, torchvision, PyYAML, matplotlib
-- Environment: WSL2 Linux shell, Conda + pip, VS Code Remote / terminal friendly
-- Default Conda environment: `optical-generative-models`
-- Verified PyTorch baseline: CUDA build `torch 2.5.1+cu121`
-- Training contract: activate `optical-generative-models` first, then run training with explicit `--device cuda`
-- 当前项目训练的最终验收结果默认放置在 `outputs/final_pt/`，该 final pt 目录可根据验收需求动态调整。
-- `outputs/final_pt/` 是最高优先级的验收权重来源：在判断已训练权重缺失、给出续训/采样命令、或运行 `train.py --stage diffusion|sample` 前，必须优先检查该目录。默认文件名为 `first_stage_best_optical.pt` 和 `diffusion_best.pt`；显式 CLI checkpoint 是用户直接指定路径，应被尊重。
-- Commands must be bash-compatible inside WSL2; do not use PowerShell or CMD syntax
-- Imports must use `pip install -e .`; do not mutate `sys.path`
-- Source: `src/ldm_project/`
-- Tests: `tests/`
-- Entry scripts: `train.py`
-- Detailed design docs: `docs/ldm_migration/`
-- Do not modify: `outputs/` except configured final acceptance artifacts under `outputs/final_pt/`, `data/raw/`, `.tmp/`, `legacy/`, generated checkpoints/plots/cached artifacts outside that final pt directory
-- New `legacy` references must stay outside the LDM core package
+## 4. Optical Model
 
-## 5. Commands
+- `generator_e` is an electronic generator that maps `noise/code + label` to an amplitude SLM command.
+- The SLM is amplitude-controlled. Do not silently reinterpret its command as phase-only or complex-amplitude control.
+- Encoder and decoder metasurfaces are thin complex modulation layers: trainable in simulation, manufacturability-constrained, or fixed after fabrication.
+- OLS must stay behind a replaceable interface: `complex field in -> OLS/fiber module -> complex field out`.
+- GELU proxy, single-mode fiber, multimode fiber, calibrated matrix, and camera-in-the-loop modules must occupy the same OLS interface.
+- CMOS output is the primary student output; digital-twin code must represent real `SLM command -> CMOS image` behavior, not just ideal equations.
+
+## 5. Checkpoints And Artifacts
+
+- Explicit CLI checkpoint paths always win.
+- `outputs/final_pt/` is the highest-priority source for omitted teacher checkpoints: `first_stage_best_optical.pt`, `diffusion_best.pt`.
+- One-shot sampling requires an explicit student checkpoint unless a documented resolver exists.
+- Preferred student checkpoints: `one_shot_distill_best.pt` for distilled runs, `one_shot_best.pt` for baseline runs.
+- New run artifacts should be written under managed `outputs/runs/...` directories.
+- Do not modify `outputs/` except configured final acceptance artifacts; do not modify `data/raw/`, `.tmp/`, `legacy/`, generated checkpoints/plots/caches outside final acceptance.
+
+## 6. Commands
 
 - Install: `conda create -n optical-generative-models python=3.11 -y && source "$(conda info --base)/etc/profile.d/conda.sh" && conda activate optical-generative-models && pip install -r requirements.txt && pip install -e .`
 - Build: `python -m compileall src tests`
 - Test all: `pytest -q`
-- Test single file: `pytest tests/test_scheduler.py -q`
+- Targeted tests: `pytest tests/test_train_script.py tests/test_one_shot.py -q`
 - Lint: `ruff check src tests *.py`
 - Typecheck: `mypy src`
-- Run first stage: `source "$(conda info --base)/etc/profile.d/conda.sh" && conda activate optical-generative-models && python train.py --stage first_stage --device cuda`
-- Run diffusion stage: `source "$(conda info --base)/etc/profile.d/conda.sh" && conda activate optical-generative-models && python train.py --stage diffusion --device cuda`
-- Run sample stage: `source "$(conda info --base)/etc/profile.d/conda.sh" && conda activate optical-generative-models && python train.py --stage sample --device cuda`
-- Run full pipeline: `source "$(conda info --base)/etc/profile.d/conda.sh" && conda activate optical-generative-models && python train.py --stage full --device cuda`
+- Command prefix: `source "$(conda info --base)/etc/profile.d/conda.sh" && conda activate optical-generative-models &&`
+- Teacher first stage: `<prefix> python train.py --stage teacher_first_stage --device cuda`
+- Teacher diffusion: `<prefix> python train.py --stage teacher_diffusion --device cuda`
+- Teacher sample: `<prefix> python train.py --stage teacher_sample --device cuda`
+- Export distill data: `<prefix> python train.py --train-config configs/export_teacher_distill_mnist_2k.yaml --stage teacher_distill_export --device cuda --run-name teacher_distill_mnist_2k`
+- Train distilled student: `<prefix> python train.py --train-config configs/train_one_shot_distill_mnist_2k_grid16.yaml --stage one_shot_distill --device cuda --distill-dataset outputs/runs/.../artifacts/teacher_distill_dataset.pt --run-name one_shot_distill_mnist_2k_grid16`
+- Sample student: `<prefix> python train.py --train-config configs/train_one_shot_distill_mnist_2k_grid16.yaml --stage one_shot_sample --device cuda --one-shot-checkpoint outputs/runs/.../checkpoints/one_shot_distill_best.pt`
+- Baseline smoke: `<prefix> python train.py --train-config configs/train_one_shot_smoke.yaml --stage one_shot --device cuda`
+- Use `--device auto` only for compatibility checks; use `--device cpu` only for local smoke tests.
 
-Use `--device auto` only for compatibility checks or temporary debugging. Use `--device cpu` only for local smoke tests; it is not the default training path.
-For diffusion/sample, omitted checkpoint arguments are auto-filled from `--final-pt-dir` (default `outputs/final_pt`) when the required best checkpoint files exist there.
+## 7. Verification And CUDA
 
-Prefer single-test or single-file verification during iteration. Use the full suite only for the final pass.
+- Docs-only verification: `git diff --check`.
+- Prefer targeted tests during iteration; use full suite only for final/shared changes.
+- For training changes, verify arguments, stage routing, checkpoint selection, and artifact paths.
+- For one-shot changes, verify shapes, finite values, device placement, and checkpoint compatibility.
+- Before formal training, activate Conda and verify `torch.cuda.is_available()` in that environment.
+- Codex sandbox CUDA failures may be sandbox-only; state that clearly and provide the exact WSL2 CUDA command.
+- Long CUDA training or hardware experiments should usually be prepared by Codex and launched by the user.
 
-## 6. Forbidden
+## 8. Forbidden
 
 - Do not hardcode interpreter paths, Conda paths, Windows paths, or machine-specific directories.
-- Do not rely on editor settings as the only runtime configuration source.
-- Do not write outputs or checkpoints outside managed `outputs/runs/...` directories, except final acceptance artifacts placed under the configured final pt directory.
-- Do not import project modules by mutating `sys.path`.
-- Do not mix `legacy` optical VAE code directly into the new LDM core package.
-- Do not use full-dataset or full-epoch runs for routine iteration.
-- Do not use PowerShell-only or Windows-only shell commands in examples, scripts, or instructions unless the user explicitly asks for them.
+- Do not rely on editor settings as the only runtime config; do not mutate `sys.path`, use `pip install -e .`.
+- Do not mix `legacy` optical VAE code directly into the LDM core package.
+- Do not write outputs/checkpoints outside `outputs/runs/...`, except configured final acceptance artifacts.
+- Do not use full-dataset/full-epoch runs for routine iteration; do not use PowerShell/Windows shell syntax unless explicitly asked.
+- Do not present teacher LDM image quality as final student hardware readiness.
+- Do not call an optical result single-exposure if it still depends on iterative software denoising or optimization at inference time.
 
-## 7. When To Ask
+## 9. When To Ask
 
 Ask before proceeding when:
 
-- there are two plausible interpretations with materially different outputs
-- the change affects load-bearing paths, migration boundaries, or public interfaces
+- two plausible interpretations materially change the output
+- the change affects stages, checkpoints, output dirs, public CLI, or teacher/student boundaries
+- the change affects SLM type, metasurface trainability, OLS/fiber behavior, CMOS calibration, or hardware feedback
 - the user's stated goal conflicts with the literal request
-- a secret, credential, or inaccessible external resource is required
+- a secret, credential, hardware access, or inaccessible external resource is required
 
-Proceed without asking when:
-
-- the task is trivial and reversible
-- the ambiguity can be resolved by reading code or running a command
-- the user already answered the same question in the current session
-
-## 8. Project Learnings
-
-- Use simple Python one-liners for file reads when needed; avoid shell-specific file-reading tricks that are fragile across terminals.
-- Every new terminal session must activate the `optical-generative-models` Conda environment inside WSL2 before running project commands.
-- Every new terminal session should verify `torch.cuda.is_available()` before formal training; if it is `False`, first debug WSL2 / driver / CUDA visibility instead of silently falling back to CPU long runs.
-- In Codex, sandboxed checks may report `torch.cuda.is_available() == False` or NVML errors even when the user's Anaconda training environment has working CUDA. Treat sandbox results as sandbox visibility only, not as the final environment verdict. Before telling the user CUDA is unavailable, re-check in the same Conda environment with a non-sandbox command and state clearly whether the issue is sandbox-only or a real environment problem.
-- Prefer bash-compatible commands and Linux paths in examples, scripts, and debugging steps.
-- Long CUDA training or other long-running experiments should be prepared by Codex but launched by the user. Codex should provide the exact command, expected output directory pattern, and post-run verification script/checklist instead of keeping the chat session open for the whole training run, unless the user explicitly asks Codex to run it.
+Proceed without asking when ambiguity is resolvable by reading/running, the change is trivial and reversible, or the user already answered.

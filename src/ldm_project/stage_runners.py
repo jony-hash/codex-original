@@ -1,11 +1,18 @@
 from __future__ import annotations
 
+import math
+from pathlib import Path
+
 from .evaluation import compute_first_stage_balanced_metrics, evaluate_diffusion_with_per_class, evaluate_first_stage_with_per_class
 from .sampling import (
     build_diffusion_visualization_tensors,
     build_first_stage_visualization_tensors,
+    build_one_shot_visualization_tensors,
+    compute_sample_quality_metrics,
+    enhance_camera_for_display,
     format_output_title,
     save_post_train_samples,
+    select_post_train_sample_batch,
 )
 from .train_utils import (
     estimate_latent_scale_from_loader,
@@ -20,6 +27,7 @@ from .train_utils import (
     should_save_epoch_visual,
     should_update_best_optical,
     should_validate_epoch,
+    validate_class_label_values,
 )
 
 
@@ -27,6 +35,384 @@ FIRST_STAGE_BEST_OPTICAL_CHECKPOINT = "first_stage_best_optical.pt"
 FIRST_STAGE_BEST_OPTICAL_METRIC = "camera_complex_balanced_mnist_score"
 DIFFUSION_BEST_CHECKPOINT = "diffusion_best.pt"
 DIFFUSION_BEST_METRIC = "diffusion_validation.loss"
+ONE_SHOT_BEST_CHECKPOINT = "one_shot_best.pt"
+ONE_SHOT_BEST_METRIC = "one_shot_validation.loss"
+ONE_SHOT_DISTILL_BEST_CHECKPOINT = "one_shot_distill_best.pt"
+ONE_SHOT_DISTILL_LATEST_CHECKPOINT = "one_shot_distill_latest.pt"
+ONE_SHOT_DISTILL_BEST_METRIC = "one_shot_distill_validation.loss"
+
+
+def _sample_one_shot_codes(torch_module, batch_size: int, train_cfg, device):
+    return torch_module.randn(batch_size, train_cfg.one_shot.code_dim, device=device)
+
+
+def _sample_one_shot_codes_with_seed(torch_module, sample_count: int, code_dim: int, seed: int, device):
+    generator = torch_module.Generator().manual_seed(int(seed))
+    return torch_module.randn(sample_count, code_dim, generator=generator).to(device)
+
+
+def _distill_class_label_sequence(torch_module, train_cfg, device):
+    requested_labels = tuple(train_cfg.distillation.class_labels)
+    if requested_labels:
+        class_labels = validate_class_label_values(
+            requested_labels,
+            train_cfg.diffusion.num_classes,
+            "distillation.class_labels",
+        )
+    else:
+        class_labels = tuple(range(train_cfg.diffusion.num_classes))
+    labels = [label for label in class_labels for _ in range(train_cfg.distillation.samples_per_class)]
+    if train_cfg.distillation.total_samples is not None:
+        if not labels:
+            raise ValueError("distillation.class_labels must not be empty when total_samples is set.")
+        repeated = []
+        while len(repeated) < train_cfg.distillation.total_samples:
+            repeated.extend(class_labels)
+        labels = repeated[: train_cfg.distillation.total_samples]
+    if not labels:
+        raise ValueError("Teacher distillation export resolved to zero labels.")
+    return torch_module.tensor(labels, device=device, dtype=torch_module.long)
+
+
+def _project_codes_to_teacher_noise(torch_module, codes, sample_shape: tuple[int, int, int, int], projection_seed: int, device):
+    if codes.ndim != 2:
+        raise ValueError(f"codes must be [batch, code_dim], got shape {tuple(codes.shape)}")
+    flat_size = int(math.prod(sample_shape[1:]))
+    generator = torch_module.Generator().manual_seed(int(projection_seed))
+    projection = torch_module.randn(codes.shape[1], flat_size, generator=generator, dtype=codes.dtype)
+    projected = codes.detach().cpu() @ (projection / math.sqrt(float(codes.shape[1])))
+    return projected.to(device=device).reshape(sample_shape)
+
+
+def _one_shot_loss_kwargs(train_cfg) -> dict[str, float]:
+    return {
+        "foreground_threshold": train_cfg.one_shot.recon_foreground_threshold,
+        "foreground_weight": train_cfg.one_shot.recon_foreground_weight,
+        "background_weight": train_cfg.one_shot.recon_background_weight,
+        "slm_smoothness_weight": train_cfg.one_shot.slm_smoothness_weight,
+        "camera_saturation_weight": train_cfg.one_shot.camera_saturation_weight,
+    }
+
+
+def _select_one_shot_visual_batch(torch_module, validation_bundle, train_bundle, train_cfg, device):
+    sample_labels, reference_images, _, _ = select_post_train_sample_batch(
+        torch_module,
+        validation_bundle,
+        train_bundle,
+        train_cfg.one_shot.num_classes,
+        device,
+        sample_class_labels=train_cfg.one_shot.sample_class_labels,
+        sample_repeats_per_class=1,
+    )
+    visual_codes = _sample_one_shot_codes(torch_module, int(sample_labels.shape[0]), train_cfg, device)
+    return visual_codes, sample_labels, reference_images
+
+
+def _evaluate_one_shot(
+    torch_module,
+    one_shot_model,
+    one_shot_loss_fn,
+    loader,
+    train_cfg,
+    device,
+    use_pin_memory: bool,
+) -> dict[str, float]:
+    totals: dict[str, float] = {}
+    count = 0
+    one_shot_model.eval()
+    with torch_module.no_grad():
+        for images, labels in loader:
+            target_batch = images.to(device, non_blocking=use_pin_memory)
+            class_labels = labels.to(device, non_blocking=use_pin_memory)
+            codes = _sample_one_shot_codes(torch_module, target_batch.shape[0], train_cfg, device)
+            outputs = one_shot_model(codes, class_labels)
+            losses = one_shot_loss_fn(outputs, target_batch, **_one_shot_loss_kwargs(train_cfg))
+            batch_size = int(target_batch.shape[0])
+            count += batch_size
+            for key, value in losses.items():
+                totals[key] = totals.get(key, 0.0) + float(value.detach().item()) * batch_size
+    if count <= 0:
+        raise ValueError("Validation loader is empty.")
+    return {key: value / float(count) for key, value in totals.items()}
+
+
+def _load_distill_payload(torch_module, distill_dataset: str | Path) -> dict[str, object]:
+    path = Path(distill_dataset)
+    if not path.is_file():
+        raise FileNotFoundError(f"Distillation dataset does not exist: {path}")
+    payload = torch_module.load(path, map_location="cpu", weights_only=False)
+    required = ("codes", "class_labels", "teacher_camera")
+    for key in required:
+        if key not in payload:
+            raise ValueError(f"Distillation dataset is missing required tensor: {key}")
+    return payload
+
+
+def _validated_distill_tensors(torch_module, payload: dict[str, object], train_cfg):
+    codes = payload["codes"].float()
+    labels = payload["class_labels"].long()
+    targets = payload["teacher_camera"].float()
+    if codes.ndim != 2:
+        raise ValueError(f"distill codes must be [N, code_dim], got {tuple(codes.shape)}")
+    if codes.shape[1] != train_cfg.one_shot.code_dim:
+        raise ValueError(
+            "distill code_dim does not match one_shot.code_dim: "
+            f"{codes.shape[1]} != {train_cfg.one_shot.code_dim}"
+        )
+    if labels.ndim != 1 or labels.shape[0] != codes.shape[0] or targets.shape[0] != codes.shape[0]:
+        raise ValueError("distill codes, class_labels, and teacher_camera must share the same batch dimension.")
+    expected_target_shape = (1, train_cfg.first_stage.image_size, train_cfg.first_stage.image_size)
+    if tuple(targets.shape[1:]) != expected_target_shape:
+        raise ValueError(
+            "distill teacher_camera shape does not match configured one-shot image size: "
+            f"{tuple(targets.shape[1:])} != {expected_target_shape}"
+        )
+    validate_class_label_values(tuple(int(label) for label in labels.tolist()), train_cfg.one_shot.num_classes, "class_labels")
+    return codes, labels, targets
+
+
+def _build_distill_loaders(torch_module, payload: dict[str, object], train_cfg, use_pin_memory: bool):
+    codes, labels, targets = _validated_distill_tensors(torch_module, payload, train_cfg)
+    dataset = torch_module.utils.data.TensorDataset(codes, labels, targets)
+    total_size = len(dataset)
+    validation_size = int(total_size * train_cfg.data.validation_fraction)
+    if validation_size >= total_size:
+        validation_size = total_size - 1
+    train_size = total_size - validation_size
+    if train_size <= 0:
+        raise ValueError("Distillation dataset must leave at least one training sample.")
+    generator = torch_module.Generator().manual_seed(train_cfg.data.validation_split_seed)
+    if validation_size > 0:
+        train_dataset, validation_dataset = torch_module.utils.data.random_split(
+            dataset,
+            (train_size, validation_size),
+            generator=generator,
+        )
+    else:
+        train_dataset = dataset
+        validation_dataset = None
+    train_loader = torch_module.utils.data.DataLoader(
+        train_dataset,
+        batch_size=train_cfg.batch_size,
+        shuffle=True,
+        num_workers=train_cfg.data.num_workers,
+        pin_memory=use_pin_memory,
+        drop_last=False,
+    )
+    validation_loader = None
+    if validation_dataset is not None:
+        validation_loader = torch_module.utils.data.DataLoader(
+            validation_dataset,
+            batch_size=train_cfg.batch_size,
+            shuffle=False,
+            num_workers=train_cfg.data.num_workers,
+            pin_memory=use_pin_memory,
+            drop_last=False,
+        )
+    return train_loader, validation_loader, total_size, train_size, validation_size
+
+
+def _evaluate_one_shot_distill(
+    torch_module,
+    one_shot_model,
+    one_shot_loss_fn,
+    loader,
+    train_cfg,
+    device,
+    use_pin_memory: bool,
+) -> dict[str, float]:
+    totals: dict[str, float] = {}
+    count = 0
+    one_shot_model.eval()
+    with torch_module.no_grad():
+        for codes, labels, targets in loader:
+            code_batch = codes.to(device, non_blocking=use_pin_memory)
+            class_labels = labels.to(device, non_blocking=use_pin_memory)
+            target_batch = targets.to(device, non_blocking=use_pin_memory)
+            outputs = one_shot_model(code_batch, class_labels)
+            losses = one_shot_loss_fn(outputs, target_batch, **_one_shot_loss_kwargs(train_cfg))
+            batch_size = int(target_batch.shape[0])
+            count += batch_size
+            for key, value in losses.items():
+                totals[key] = totals.get(key, 0.0) + float(value.detach().item()) * batch_size
+    if count <= 0:
+        raise ValueError("Distillation validation loader is empty.")
+    return {key: value / float(count) for key, value in totals.items()}
+
+
+def _eval_correlation(torch_module, prediction, target):
+    prediction_flat = prediction.detach().float().flatten(1)
+    target_flat = target.detach().float().flatten(1)
+    prediction_centered = prediction_flat - prediction_flat.mean(dim=1, keepdim=True)
+    target_centered = target_flat - target_flat.mean(dim=1, keepdim=True)
+    denominator = prediction_centered.pow(2).mean(dim=1).sqrt() * target_centered.pow(2).mean(dim=1).sqrt()
+    return ((prediction_centered * target_centered).mean(dim=1) / denominator.clamp_min(1.0e-8)).mean()
+
+
+def _eval_foreground_dice(prediction, target, threshold: float = 0.2):
+    prediction_mask = prediction.detach().float().clamp(0.0, 1.0) > threshold
+    target_mask = target.detach().float().clamp(0.0, 1.0) > threshold
+    dims = tuple(range(1, prediction_mask.ndim))
+    intersection = (prediction_mask & target_mask).float().sum(dim=dims)
+    denominator = prediction_mask.float().sum(dim=dims) + target_mask.float().sum(dim=dims)
+    return (2.0 * intersection / denominator.clamp_min(1.0)).mean()
+
+
+def _eval_camera_saturation_ratio(camera_prediction):
+    camera = camera_prediction.detach().float()
+    saturated = (camera >= 0.99) | (camera <= 0.01)
+    return saturated.float().mean()
+
+
+def _eval_total_variation(tensor):
+    diff_y = (tensor[..., 1:, :] - tensor[..., :-1, :]).abs().mean()
+    diff_x = (tensor[..., :, 1:] - tensor[..., :, :-1]).abs().mean()
+    return diff_x + diff_y
+
+
+def _mean_pairwise_mse(torch_module, samples) -> float | None:
+    sample_count = int(samples.shape[0])
+    if sample_count < 2:
+        return None
+    flattened = samples.detach().float().flatten(1)
+    pairwise = (flattened[:, None, :] - flattened[None, :, :]).pow(2).mean(dim=-1)
+    upper = torch_module.triu(torch_module.ones(sample_count, sample_count, dtype=torch_module.bool), diagonal=1)
+    return float(pairwise[upper].mean().item())
+
+
+def _mean_pairwise_corr(torch_module, samples) -> float | None:
+    sample_count = int(samples.shape[0])
+    if sample_count < 2:
+        return None
+    flattened = samples.detach().float().flatten(1)
+    centered = flattened - flattened.mean(dim=1, keepdim=True)
+    rms = centered.pow(2).mean(dim=1, keepdim=True).sqrt().clamp_min(1.0e-8)
+    normalized = centered / rms
+    pairwise = (normalized[:, None, :] * normalized[None, :, :]).mean(dim=-1)
+    upper = torch_module.triu(torch_module.ones(sample_count, sample_count, dtype=torch_module.bool), diagonal=1)
+    return float(pairwise[upper].mean().item())
+
+
+def _select_distill_eval_indices(torch_module, labels, train_cfg) -> tuple[list[int], dict[str, object]]:
+    label_values = labels.detach().cpu()
+    requested = tuple(train_cfg.one_shot.sample_class_labels)
+    if requested:
+        class_labels = validate_class_label_values(requested, train_cfg.one_shot.num_classes, "one_shot.sample_class_labels")
+    else:
+        class_labels = tuple(sorted({int(label) for label in label_values.tolist()}))
+    samples_per_class = max(5, int(train_cfg.one_shot.sample_repeats_per_class))
+    total_size = int(label_values.shape[0])
+    validation_size = int(total_size * train_cfg.data.validation_fraction)
+    if validation_size >= total_size:
+        validation_size = total_size - 1
+    train_size = total_size - validation_size
+    generator = torch_module.Generator().manual_seed(train_cfg.data.validation_split_seed)
+    permutation = torch_module.randperm(total_size, generator=generator).tolist()
+    validation_indices = set(permutation[train_size:]) if validation_size > 0 else set()
+
+    selected: list[int] = []
+    per_class: dict[str, dict[str, int]] = {}
+    used_train_fallback = False
+    for label in class_labels:
+        all_for_label = [index for index, item in enumerate(label_values.tolist()) if int(item) == int(label)]
+        if not all_for_label:
+            raise ValueError(f"Distillation dataset has no samples for requested eval class label: {label}")
+        validation_for_label = [index for index in all_for_label if index in validation_indices]
+        chosen = validation_for_label[:samples_per_class]
+        if len(chosen) < min(samples_per_class, len(all_for_label)):
+            fallback = [index for index in all_for_label if index not in set(chosen)]
+            chosen.extend(fallback[: samples_per_class - len(chosen)])
+            used_train_fallback = True
+        selected.extend(chosen)
+        per_class[str(label)] = {
+            "available": len(all_for_label),
+            "selected": len(chosen),
+            "validation_selected": min(len(validation_for_label), len(chosen)),
+        }
+
+    return selected, {
+        "class_labels": list(class_labels),
+        "requested_samples_per_class": samples_per_class,
+        "selected_count": len(selected),
+        "validation_size": validation_size,
+        "used_train_fallback": used_train_fallback,
+        "per_class": per_class,
+    }
+
+
+def compute_one_shot_distill_eval_metrics(
+    torch_module,
+    *,
+    teacher_camera,
+    student_camera,
+    slm_amplitude,
+    class_labels,
+    foreground_threshold: float = 0.2,
+) -> dict[str, object]:
+    teacher = teacher_camera.detach().float().clamp(0.0, 1.0).cpu()
+    student = student_camera.detach().float().clamp(0.0, 1.0).cpu()
+    slm = slm_amplitude.detach().float().cpu()
+    labels = [int(label) for label in class_labels.detach().cpu().tolist()]
+    if teacher.shape != student.shape:
+        raise ValueError(f"teacher_camera and student_camera must share shape, got {teacher.shape} != {student.shape}")
+    if teacher.shape[0] != len(labels):
+        raise ValueError("teacher_camera and class_labels must share batch size.")
+
+    mse = float((student - teacher).pow(2).mean().item())
+    corr = float(_eval_correlation(torch_module, student, teacher).item())
+    dice = float(_eval_foreground_dice(student, teacher, threshold=foreground_threshold).item())
+    saturation = float(_eval_camera_saturation_ratio(student).item())
+    slm_tv = float(_eval_total_variation(slm).item())
+
+    per_class: dict[str, dict[str, float | int | None]] = {}
+    teacher_diversities: list[float] = []
+    student_diversities: list[float] = []
+    ratios: list[float] = []
+    for label in sorted(set(labels)):
+        indices = [index for index, item in enumerate(labels) if item == label]
+        index_tensor = torch_module.tensor(indices, dtype=torch_module.long)
+        teacher_class = teacher.index_select(0, index_tensor)
+        student_class = student.index_select(0, index_tensor)
+        slm_class = slm.index_select(0, index_tensor)
+        teacher_pairwise_mse = _mean_pairwise_mse(torch_module, teacher_class)
+        student_pairwise_mse = _mean_pairwise_mse(torch_module, student_class)
+        teacher_pairwise_corr = _mean_pairwise_corr(torch_module, teacher_class)
+        student_pairwise_corr = _mean_pairwise_corr(torch_module, student_class)
+        diversity_ratio = None
+        if teacher_pairwise_mse is not None and student_pairwise_mse is not None:
+            diversity_ratio = student_pairwise_mse / max(teacher_pairwise_mse, 1.0e-8)
+            teacher_diversities.append(teacher_pairwise_mse)
+            student_diversities.append(student_pairwise_mse)
+            ratios.append(diversity_ratio)
+        per_class[str(label)] = {
+            "count": len(indices),
+            "paired_mse": float((student_class - teacher_class).pow(2).mean().item()),
+            "paired_corr": float(_eval_correlation(torch_module, student_class, teacher_class).item()),
+            "paired_dice": float(_eval_foreground_dice(student_class, teacher_class, threshold=foreground_threshold).item()),
+            "student_saturation_ratio": float(_eval_camera_saturation_ratio(student_class).item()),
+            "slm_tv": float(_eval_total_variation(slm_class).item()),
+            "teacher_pairwise_mse": teacher_pairwise_mse,
+            "student_pairwise_mse": student_pairwise_mse,
+            "diversity_ratio": diversity_ratio,
+            "teacher_pairwise_corr": teacher_pairwise_corr,
+            "student_pairwise_corr": student_pairwise_corr,
+        }
+
+    return {
+        "foreground_threshold": foreground_threshold,
+        "overall": {
+            "count": len(labels),
+            "paired_mse": mse,
+            "paired_corr": corr,
+            "paired_dice": dice,
+            "student_saturation_ratio": saturation,
+            "slm_tv": slm_tv,
+            "teacher_pairwise_mse": sum(teacher_diversities) / len(teacher_diversities) if teacher_diversities else None,
+            "student_pairwise_mse": sum(student_diversities) / len(student_diversities) if student_diversities else None,
+            "diversity_ratio": sum(ratios) / len(ratios) if ratios else None,
+        },
+        "per_class": per_class,
+    }
 
 
 def run_sample_stage(
@@ -79,6 +465,672 @@ def run_sample_stage(
     )
     run_meta.update(sample_artifacts)
     run_manager.write_meta(run_meta)
+
+
+def run_teacher_distill_export(
+    torch_module,
+    *,
+    first_stage,
+    diffusion_model,
+    scheduler,
+    train_cfg,
+    run_manager,
+    run_meta: dict[str, object],
+    device,
+    diffusion_checkpoint: str,
+    first_stage_model_version: str,
+    load_diffusion_checkpoint_fn,
+    sample_latents_fn,
+) -> None:
+    first_stage.eval()
+    set_first_stage_image_fusion_weight(first_stage, train_cfg.first_stage.image_fusion_end_weight)
+    diffusion_payload = torch_module.load(diffusion_checkpoint, map_location=device, weights_only=False)
+    load_diffusion_checkpoint_fn(diffusion_model, diffusion_payload, first_stage_model_version)
+    latent_scale = load_latent_scale_from_diffusion_checkpoint(torch_module, diffusion_payload, device)
+    diffusion_model.eval()
+    sample_labels = _distill_class_label_sequence(torch_module, train_cfg, device)
+    sample_count = int(sample_labels.shape[0])
+    codes = _sample_one_shot_codes_with_seed(
+        torch_module,
+        sample_count,
+        train_cfg.one_shot.code_dim,
+        train_cfg.distillation.code_seed,
+        device,
+    )
+    sample_shape = (
+        sample_count,
+        train_cfg.first_stage.latent_channels,
+        train_cfg.first_stage.image_size // 8,
+        train_cfg.first_stage.image_size // 8,
+    )
+    teacher_latents = []
+    teacher_initial_noise = []
+    teacher_camera = []
+    teacher_image = []
+    batch_size = train_cfg.batch_size
+    with torch_module.no_grad():
+        for start in range(0, sample_count, batch_size):
+            end = min(start + batch_size, sample_count)
+            batch_labels = sample_labels[start:end]
+            batch_codes = codes[start:end]
+            batch_shape = (end - start, *sample_shape[1:])
+            initial_noise = _project_codes_to_teacher_noise(
+                torch_module,
+                batch_codes,
+                batch_shape,
+                train_cfg.distillation.code_projection_seed,
+                device,
+            )
+            batch_latents = sample_latents_fn(
+                diffusion_model,
+                scheduler,
+                batch_shape,
+                device,
+                batch_labels,
+                guidance_scale=train_cfg.diffusion.guidance_scale,
+                initial_noise=initial_noise,
+            )
+            outputs = first_stage.decode_with_intermediates(batch_latents * latent_scale)
+            teacher_initial_noise.append(initial_noise.detach().cpu())
+            teacher_latents.append(batch_latents.detach().cpu())
+            teacher_camera.append(outputs["camera_plane"].detach().cpu())
+            teacher_image.append(outputs["image_recon"].detach().cpu())
+            print(f"[teacher_distill_export] generated {end}/{sample_count}")
+
+    payload = {
+        "codes": codes.detach().cpu(),
+        "class_labels": sample_labels.detach().cpu(),
+        "teacher_camera": torch_module.cat(teacher_camera, dim=0),
+        "teacher_image": torch_module.cat(teacher_image, dim=0),
+        "teacher_latents": torch_module.cat(teacher_latents, dim=0),
+        "teacher_initial_noise": torch_module.cat(teacher_initial_noise, dim=0),
+        "guidance_scale": torch_module.tensor(train_cfg.diffusion.guidance_scale),
+        "latent_scale": latent_scale.detach().cpu(),
+        "config": {
+            "samples_per_class": train_cfg.distillation.samples_per_class,
+            "total_samples": train_cfg.distillation.total_samples,
+            "class_labels": list(train_cfg.distillation.class_labels),
+            "code_dim": train_cfg.one_shot.code_dim,
+            "code_seed": train_cfg.distillation.code_seed,
+            "code_projection_seed": train_cfg.distillation.code_projection_seed,
+            "teacher_sample_shape": sample_shape,
+        },
+    }
+    run_manager.save_config_snapshot(
+        "teacher_distill_export_config",
+        {
+            **payload["config"],
+            "num_samples": sample_count,
+            "source": "train.py_teacher_distill_export",
+        },
+    )
+    artifact_path: Path
+    if train_cfg.distillation.output_path:
+        artifact_path = Path(train_cfg.distillation.output_path)
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        torch_module.save(payload, artifact_path)
+    else:
+        artifact_path = run_manager.save_tensor_bundle("teacher_distill_dataset.pt", payload)
+    run_manager.save_tensor_grid(
+        {
+            "teacher_camera_raw": payload["teacher_camera"],
+            "teacher_camera_display": enhance_camera_for_display(payload["teacher_camera"]),
+            "teacher_image": payload["teacher_image"],
+        },
+        run_manager.images_dir / "teacher_distill_export.png",
+        title=format_output_title("images/teacher_distill_export.png", "teacher distillation targets"),
+        max_items=min(sample_count, 20),
+    )
+    run_meta.update(
+        {
+            "latent_scale_source": "diffusion_checkpoint",
+            "diffusion_best_loaded_for_sampling": True,
+            "teacher_distill_dataset": str(artifact_path),
+            "teacher_distill_sample_count": sample_count,
+        }
+    )
+    run_manager.write_meta(run_meta)
+
+
+def run_one_shot_sample_stage(
+    torch_module,
+    *,
+    one_shot_model,
+    train_bundle,
+    validation_bundle,
+    train_cfg,
+    run_manager,
+    run_meta: dict[str, object],
+    device,
+    one_shot_checkpoint: str,
+    load_one_shot_checkpoint_fn,
+) -> None:
+    one_shot_payload = torch_module.load(one_shot_checkpoint, map_location=device, weights_only=False)
+    load_one_shot_checkpoint_fn(one_shot_model, one_shot_payload)
+    one_shot_model.eval()
+    print(f"loaded one-shot checkpoint for sampling: {one_shot_checkpoint}")
+    sample_labels, reference_images, reference_labels, reference_source = select_post_train_sample_batch(
+        torch_module,
+        validation_bundle,
+        train_bundle,
+        train_cfg.one_shot.num_classes,
+        device,
+        sample_class_labels=train_cfg.one_shot.sample_class_labels,
+        sample_repeats_per_class=train_cfg.one_shot.sample_repeats_per_class,
+    )
+    sample_count = int(sample_labels.shape[0])
+    codes = _sample_one_shot_codes(torch_module, sample_count, train_cfg, device)
+    with torch_module.no_grad():
+        sample_outputs = one_shot_model(codes, sample_labels)
+    run_manager.save_config_snapshot(
+        "one_shot_sample_config",
+        {
+            "num_samples": sample_count,
+            "class_labels": sample_labels.detach().cpu().tolist(),
+            "reference_labels": reference_labels.detach().cpu().tolist(),
+            "reference_source": reference_source,
+            "sample_class_labels": list(train_cfg.one_shot.sample_class_labels),
+            "sample_repeats_per_class": train_cfg.one_shot.sample_repeats_per_class,
+            "source": "train.py_one_shot_sample",
+        },
+    )
+    run_manager.save_tensor_grid(
+        build_one_shot_visualization_tensors(reference_images, sample_outputs),
+        run_manager.images_dir / "one_shot_sample.png",
+        title=format_output_title("images/one_shot_sample.png", "one-shot sample outputs"),
+        max_items=sample_count,
+    )
+    run_manager.save_tensor_bundle(
+        "one_shot_sample_tensors.pt",
+        {
+            "codes": codes.detach().cpu(),
+            "class_labels": sample_labels.detach().cpu(),
+            "reference_images": reference_images.detach().cpu(),
+            "reference_labels": reference_labels.detach().cpu(),
+            "reference_source": reference_source,
+            "generated_camera": sample_outputs["camera_plane"].detach().cpu(),
+            "generated_camera_raw": sample_outputs["camera_plane"].detach().cpu(),
+            "generated_camera_display": enhance_camera_for_display(sample_outputs["camera_plane"]).detach().cpu(),
+            "slm_amplitude": sample_outputs["slm_amplitude"].detach().cpu(),
+            "chip_amplitude": sample_outputs["chip_amplitude"].detach().cpu(),
+            "chip_phase": sample_outputs["chip_phase"].detach().cpu(),
+        },
+    )
+    sample_metrics = compute_sample_quality_metrics(sample_outputs["camera_plane"], reference_images, sample_labels)
+    metrics_path = run_manager.save_artifact_json("one_shot_sample_metrics", sample_metrics)
+    run_meta.update(
+        {
+            "one_shot_checkpoint": one_shot_checkpoint,
+            "one_shot_sample_metric_source": str(metrics_path.relative_to(run_manager.run_dir)),
+        }
+    )
+    run_manager.write_meta(run_meta)
+
+
+def run_one_shot_distill_eval_stage(
+    torch_module,
+    *,
+    one_shot_model,
+    train_cfg,
+    run_manager,
+    run_meta: dict[str, object],
+    device,
+    one_shot_checkpoint: str,
+    distill_dataset: str,
+    load_one_shot_checkpoint_fn,
+) -> None:
+    payload = _load_distill_payload(torch_module, distill_dataset)
+    codes, labels, teacher_camera = _validated_distill_tensors(torch_module, payload, train_cfg)
+    selected_indices, selection_summary = _select_distill_eval_indices(torch_module, labels, train_cfg)
+    if not selected_indices:
+        raise ValueError("one_shot_distill_eval selected zero samples.")
+
+    index_tensor = torch_module.tensor(selected_indices, dtype=torch_module.long)
+    eval_codes = codes.index_select(0, index_tensor)
+    eval_labels = labels.index_select(0, index_tensor)
+    eval_teacher = teacher_camera.index_select(0, index_tensor)
+
+    one_shot_payload = torch_module.load(one_shot_checkpoint, map_location=device, weights_only=False)
+    load_one_shot_checkpoint_fn(one_shot_model, one_shot_payload)
+    one_shot_model.eval()
+    print(f"loaded one-shot checkpoint for distill eval: {one_shot_checkpoint}")
+    with torch_module.no_grad():
+        eval_outputs = one_shot_model(eval_codes.to(device), eval_labels.to(device))
+    student_camera = eval_outputs["camera_plane"].detach().cpu()
+    slm_amplitude = eval_outputs["slm_amplitude"].detach().cpu()
+    abs_error = (student_camera - eval_teacher).abs()
+    metrics = compute_one_shot_distill_eval_metrics(
+        torch_module,
+        teacher_camera=eval_teacher,
+        student_camera=student_camera,
+        slm_amplitude=slm_amplitude,
+        class_labels=eval_labels,
+    )
+    metrics["selection"] = selection_summary
+
+    run_manager.save_config_snapshot(
+        "one_shot_distill_eval_config",
+        {
+            "distill_dataset": distill_dataset,
+            "one_shot_checkpoint": one_shot_checkpoint,
+            "selection": selection_summary,
+            "source": "train.py_one_shot_distill_eval",
+        },
+    )
+    run_manager.save_tensor_grid(
+        {
+            "teacher_camera_display": enhance_camera_for_display(eval_teacher),
+            "student_camera_raw": student_camera,
+            "student_camera_display": enhance_camera_for_display(student_camera),
+            "abs_error": abs_error,
+            "slm_amplitude": slm_amplitude,
+        },
+        run_manager.images_dir / "one_shot_distill_eval.png",
+        title=format_output_title("images/one_shot_distill_eval.png", "one-shot distill paired eval"),
+        max_items=int(eval_labels.shape[0]),
+    )
+    tensor_path = run_manager.save_tensor_bundle(
+        "one_shot_distill_eval_tensors.pt",
+        {
+            "indices": index_tensor,
+            "codes": eval_codes,
+            "class_labels": eval_labels,
+            "teacher_camera": eval_teacher,
+            "teacher_camera_display": enhance_camera_for_display(eval_teacher),
+            "student_camera_raw": student_camera,
+            "student_camera_display": enhance_camera_for_display(student_camera),
+            "abs_error": abs_error,
+            "slm_amplitude": slm_amplitude,
+        },
+    )
+    metrics_path = run_manager.save_artifact_json("one_shot_distill_eval_metrics", metrics)
+    overall = metrics["overall"]
+    print(
+        "[one_shot_distill_eval] "
+        f"mse={overall['paired_mse']:.6f} corr={overall['paired_corr']:.4f} "
+        f"dice={overall['paired_dice']:.4f} sat={overall['student_saturation_ratio']:.4f} "
+        f"slm_tv={overall['slm_tv']:.6f} diversity_ratio={overall['diversity_ratio']}"
+    )
+    run_meta.update(
+        {
+            "one_shot_checkpoint": one_shot_checkpoint,
+            "distill_dataset": distill_dataset,
+            "one_shot_distill_eval_metric_source": str(metrics_path.relative_to(run_manager.run_dir)),
+            "one_shot_distill_eval_tensor_source": str(tensor_path.relative_to(run_manager.run_dir)),
+        }
+    )
+    run_manager.write_meta(run_meta)
+
+
+def run_one_shot_training(
+    torch_module,
+    *,
+    one_shot_model,
+    one_shot_loss_fn,
+    run_manager,
+    train_bundle,
+    validation_bundle,
+    train_cfg,
+    run_meta: dict[str, object],
+    physics,
+    device,
+    use_pin_memory: bool,
+    one_shot_model_version: str,
+) -> None:
+    optimizer = torch_module.optim.Adam(one_shot_model.parameters(), lr=train_cfg.learning_rate)
+    loader_length = len(train_bundle.loader)
+    total_steps = resolve_stage_total_steps(loader_length, train_cfg.one_shot_epochs)
+    visual_codes, visual_labels, visual_references = _select_one_shot_visual_batch(
+        torch_module,
+        validation_bundle,
+        train_bundle,
+        train_cfg,
+        device,
+    )
+    one_shot_stage_step = 0
+    best_validation_loss = None
+    best_checkpoint_path = None
+    one_shot_model.train()
+    for epoch_index in range(train_cfg.one_shot_epochs):
+        epoch_number = epoch_index + 1
+        for batch_index, (images, labels) in enumerate(train_bundle.loader):
+            target_batch = images.to(device, non_blocking=use_pin_memory)
+            class_labels = labels.to(device, non_blocking=use_pin_memory)
+            codes = _sample_one_shot_codes(torch_module, target_batch.shape[0], train_cfg, device)
+            optimizer.zero_grad(set_to_none=True)
+            outputs = one_shot_model(codes, class_labels)
+            losses = one_shot_loss_fn(outputs, target_batch, **_one_shot_loss_kwargs(train_cfg))
+            losses["loss"].backward()
+            optimizer.step()
+            step_record = resolve_logged_step(batch_index, one_shot_stage_step)
+            should_record = should_log_step(
+                step_record["global_step"],
+                train_cfg.step_log_interval,
+                is_epoch_last_batch=batch_index == loader_length - 1,
+            )
+            if should_record:
+                print(
+                    f"[one_shot] epoch={epoch_number} global_step={step_record['global_step']} "
+                    f"stage_step={step_record['stage_step']} "
+                    f"loss={losses['loss'].item():.6f} "
+                    f"camera_recon={losses['camera_recon_loss'].item():.6f} "
+                    f"camera_fg_mse={losses['camera_fg_mse'].item():.6f} "
+                    f"camera_dice={losses['camera_foreground_dice'].item():.4f} "
+                    f"slm_tv={losses['slm_tv'].item():.6f} "
+                    f"sat={losses['camera_saturation_ratio'].item():.4f}"
+                )
+                run_manager.append_history(
+                    "one_shot",
+                    {
+                        "epoch": epoch_number,
+                        **step_record,
+                        "loss": losses["loss"].item(),
+                        "camera_recon_loss": losses["camera_recon_loss"].item(),
+                        "camera_fg_mse": losses["camera_fg_mse"].item(),
+                        "camera_bg_mse": losses["camera_bg_mse"].item(),
+                        "camera_foreground_dice": losses["camera_foreground_dice"].item(),
+                        "slm_smoothness_loss": losses["slm_smoothness_loss"].item(),
+                        "slm_tv": losses["slm_tv"].item(),
+                        "camera_saturation_loss": losses["camera_saturation_loss"].item(),
+                        "camera_saturation_ratio": losses["camera_saturation_ratio"].item(),
+                        "fg_pixel_ratio": losses["fg_pixel_ratio"].item(),
+                    },
+                )
+            one_shot_stage_step += 1
+
+        if should_save_epoch_visual(epoch_index, train_cfg.visual_save_epoch_interval):
+            one_shot_model.eval()
+            with torch_module.no_grad():
+                visual_outputs = one_shot_model(visual_codes, visual_labels)
+                run_manager.save_tensor_grid(
+                    build_one_shot_visualization_tensors(visual_references, visual_outputs),
+                    run_manager.images_dir / "one_shot" / f"epoch_{epoch_number:04d}.png",
+                    title=format_output_title(
+                        f"images/one_shot/epoch_{epoch_number:04d}.png",
+                        f"one_shot epoch {epoch_number}",
+                    ),
+                    max_items=visual_labels.shape[0],
+                )
+            one_shot_model.train()
+
+        if validation_bundle is not None and should_validate_epoch(
+            epoch_index,
+            train_cfg.one_shot_epochs,
+            train_cfg.validation_epoch_interval,
+        ):
+            validation_metrics = _evaluate_one_shot(
+                torch_module,
+                one_shot_model,
+                one_shot_loss_fn,
+                validation_bundle.loader,
+                train_cfg,
+                device,
+                use_pin_memory,
+            )
+            selection_loss = validation_metrics["loss"]
+            updated_best = best_validation_loss is None or selection_loss < best_validation_loss
+            print(
+                f"[one_shot][val] epoch={epoch_number} loss={validation_metrics['loss']:.6f} "
+                f"camera_recon={validation_metrics['camera_recon_loss']:.6f} "
+                f"camera_dice={validation_metrics['camera_foreground_dice']:.4f} "
+                f"slm_tv={validation_metrics['slm_tv']:.6f} "
+                f"sat={validation_metrics['camera_saturation_ratio']:.4f}"
+            )
+            run_manager.append_history(
+                "one_shot_validation",
+                {
+                    "epoch": epoch_number,
+                    **validation_metrics,
+                },
+            )
+            if updated_best:
+                best_validation_loss = selection_loss
+                best_checkpoint_path = run_manager.save_checkpoint(
+                    ONE_SHOT_BEST_CHECKPOINT,
+                    {
+                        "model_state_dict": one_shot_model.state_dict(),
+                        "stage": "one_shot",
+                        "model_version": one_shot_model_version,
+                        "physics_config": physics,
+                        "train_config": train_cfg,
+                        "epoch": epoch_number,
+                        "selection_metric": ONE_SHOT_BEST_METRIC,
+                        "selection_loss": selection_loss,
+                        "validation_metrics": validation_metrics,
+                    },
+                )
+                run_meta.update(
+                    {
+                        "one_shot_best_checkpoint": best_checkpoint_path,
+                        "one_shot_best_epoch": epoch_number,
+                        "one_shot_best_loss": best_validation_loss,
+                    }
+                )
+                run_manager.write_meta(run_meta)
+            run_manager.append_history(
+                "one_shot_best",
+                {
+                    "epoch": epoch_number,
+                    "updated": updated_best,
+                    "selection_metric": ONE_SHOT_BEST_METRIC,
+                    "selection_loss": selection_loss,
+                    "best_loss": best_validation_loss,
+                    "checkpoint": best_checkpoint_path,
+                },
+            )
+            one_shot_model.train()
+
+    run_manager.save_checkpoint(
+        "one_shot_latest.pt",
+        {
+            "model_state_dict": one_shot_model.state_dict(),
+            "stage": "one_shot",
+            "model_version": one_shot_model_version,
+            "physics_config": physics,
+            "train_config": train_cfg,
+            "total_steps": total_steps,
+        },
+    )
+
+
+def run_one_shot_distill_training(
+    torch_module,
+    *,
+    one_shot_model,
+    one_shot_loss_fn,
+    run_manager,
+    train_cfg,
+    run_meta: dict[str, object],
+    physics,
+    device,
+    use_pin_memory: bool,
+    one_shot_model_version: str,
+    distill_dataset: str,
+) -> None:
+    payload = _load_distill_payload(torch_module, distill_dataset)
+    train_loader, validation_loader, total_size, train_size, validation_size = _build_distill_loaders(
+        torch_module,
+        payload,
+        train_cfg,
+        use_pin_memory,
+    )
+    optimizer = torch_module.optim.Adam(one_shot_model.parameters(), lr=train_cfg.learning_rate)
+    loader_length = len(train_loader)
+    total_steps = resolve_stage_total_steps(loader_length, train_cfg.one_shot_epochs)
+    visual_source = validation_loader if validation_loader is not None else train_loader
+    visual_codes, visual_labels, visual_references = next(iter(visual_source))
+    visual_codes = visual_codes.to(device, non_blocking=use_pin_memory)
+    visual_labels = visual_labels.to(device, non_blocking=use_pin_memory)
+    visual_references = visual_references.to(device, non_blocking=use_pin_memory)
+    stage_step = 0
+    best_validation_loss = None
+    best_checkpoint_path = None
+    run_manager.save_config_snapshot(
+        "one_shot_distill_config",
+        {
+            "distill_dataset": distill_dataset,
+            "dataset_total_size": total_size,
+            "train_size": train_size,
+            "validation_size": validation_size,
+            "source": "train.py_one_shot_distill",
+        },
+    )
+    run_meta.update(
+        {
+            "distill_dataset": distill_dataset,
+            "distill_dataset_total_size": total_size,
+            "distill_train_size": train_size,
+            "distill_validation_size": validation_size,
+        }
+    )
+    run_manager.write_meta(run_meta)
+
+    one_shot_model.train()
+    for epoch_index in range(train_cfg.one_shot_epochs):
+        epoch_number = epoch_index + 1
+        for batch_index, (codes, labels, targets) in enumerate(train_loader):
+            code_batch = codes.to(device, non_blocking=use_pin_memory)
+            class_labels = labels.to(device, non_blocking=use_pin_memory)
+            target_batch = targets.to(device, non_blocking=use_pin_memory)
+            optimizer.zero_grad(set_to_none=True)
+            outputs = one_shot_model(code_batch, class_labels)
+            losses = one_shot_loss_fn(outputs, target_batch, **_one_shot_loss_kwargs(train_cfg))
+            losses["loss"].backward()
+            optimizer.step()
+            step_record = resolve_logged_step(batch_index, stage_step)
+            should_record = should_log_step(
+                step_record["global_step"],
+                train_cfg.step_log_interval,
+                is_epoch_last_batch=batch_index == loader_length - 1,
+            )
+            if should_record:
+                print(
+                    f"[one_shot_distill] epoch={epoch_number} global_step={step_record['global_step']} "
+                    f"stage_step={step_record['stage_step']} "
+                    f"loss={losses['loss'].item():.6f} "
+                    f"camera_recon={losses['camera_recon_loss'].item():.6f} "
+                    f"camera_fg_mse={losses['camera_fg_mse'].item():.6f} "
+                    f"camera_dice={losses['camera_foreground_dice'].item():.4f} "
+                    f"slm_tv={losses['slm_tv'].item():.6f} "
+                    f"sat={losses['camera_saturation_ratio'].item():.4f}"
+                )
+                run_manager.append_history(
+                    "one_shot_distill",
+                    {
+                        "epoch": epoch_number,
+                        **step_record,
+                        "loss": losses["loss"].item(),
+                        "camera_recon_loss": losses["camera_recon_loss"].item(),
+                        "camera_fg_mse": losses["camera_fg_mse"].item(),
+                        "camera_bg_mse": losses["camera_bg_mse"].item(),
+                        "camera_foreground_dice": losses["camera_foreground_dice"].item(),
+                        "slm_smoothness_loss": losses["slm_smoothness_loss"].item(),
+                        "slm_tv": losses["slm_tv"].item(),
+                        "camera_saturation_loss": losses["camera_saturation_loss"].item(),
+                        "camera_saturation_ratio": losses["camera_saturation_ratio"].item(),
+                        "fg_pixel_ratio": losses["fg_pixel_ratio"].item(),
+                    },
+                )
+            stage_step += 1
+
+        if should_save_epoch_visual(epoch_index, train_cfg.visual_save_epoch_interval):
+            one_shot_model.eval()
+            with torch_module.no_grad():
+                visual_outputs = one_shot_model(visual_codes, visual_labels)
+                run_manager.save_tensor_grid(
+                    build_one_shot_visualization_tensors(visual_references, visual_outputs),
+                    run_manager.images_dir / "one_shot_distill" / f"epoch_{epoch_number:04d}.png",
+                    title=format_output_title(
+                        f"images/one_shot_distill/epoch_{epoch_number:04d}.png",
+                        f"one_shot_distill epoch {epoch_number}",
+                    ),
+                    max_items=visual_labels.shape[0],
+                )
+            one_shot_model.train()
+
+        if validation_loader is not None and should_validate_epoch(
+            epoch_index,
+            train_cfg.one_shot_epochs,
+            train_cfg.validation_epoch_interval,
+        ):
+            validation_metrics = _evaluate_one_shot_distill(
+                torch_module,
+                one_shot_model,
+                one_shot_loss_fn,
+                validation_loader,
+                train_cfg,
+                device,
+                use_pin_memory,
+            )
+            selection_loss = validation_metrics["loss"]
+            updated_best = best_validation_loss is None or selection_loss < best_validation_loss
+            print(
+                f"[one_shot_distill][val] epoch={epoch_number} loss={validation_metrics['loss']:.6f} "
+                f"camera_recon={validation_metrics['camera_recon_loss']:.6f} "
+                f"camera_dice={validation_metrics['camera_foreground_dice']:.4f} "
+                f"slm_tv={validation_metrics['slm_tv']:.6f} "
+                f"sat={validation_metrics['camera_saturation_ratio']:.4f}"
+            )
+            run_manager.append_history(
+                "one_shot_distill_validation",
+                {
+                    "epoch": epoch_number,
+                    **validation_metrics,
+                },
+            )
+            if updated_best:
+                best_validation_loss = selection_loss
+                best_checkpoint_path = run_manager.save_checkpoint(
+                    ONE_SHOT_DISTILL_BEST_CHECKPOINT,
+                    {
+                        "model_state_dict": one_shot_model.state_dict(),
+                        "stage": "one_shot_distill",
+                        "model_version": one_shot_model_version,
+                        "physics_config": physics,
+                        "train_config": train_cfg,
+                        "epoch": epoch_number,
+                        "selection_metric": ONE_SHOT_DISTILL_BEST_METRIC,
+                        "selection_loss": selection_loss,
+                        "validation_metrics": validation_metrics,
+                        "distill_dataset": distill_dataset,
+                    },
+                )
+                run_meta.update(
+                    {
+                        "one_shot_best_checkpoint": best_checkpoint_path,
+                        "one_shot_best_epoch": epoch_number,
+                        "one_shot_best_loss": best_validation_loss,
+                        "one_shot_distill_best_checkpoint": best_checkpoint_path,
+                        "one_shot_distill_best_epoch": epoch_number,
+                        "one_shot_distill_best_loss": best_validation_loss,
+                    }
+                )
+                run_manager.write_meta(run_meta)
+            run_manager.append_history(
+                "one_shot_distill_best",
+                {
+                    "epoch": epoch_number,
+                    "updated": updated_best,
+                    "selection_metric": ONE_SHOT_DISTILL_BEST_METRIC,
+                    "selection_loss": selection_loss,
+                    "best_loss": best_validation_loss,
+                    "checkpoint": best_checkpoint_path,
+                },
+            )
+            one_shot_model.train()
+
+    run_manager.save_checkpoint(
+        ONE_SHOT_DISTILL_LATEST_CHECKPOINT,
+        {
+            "model_state_dict": one_shot_model.state_dict(),
+            "stage": "one_shot_distill",
+            "model_version": one_shot_model_version,
+            "physics_config": physics,
+            "train_config": train_cfg,
+            "total_steps": total_steps,
+            "distill_dataset": distill_dataset,
+        },
+    )
 
 
 def run_first_stage_training(
@@ -379,7 +1431,7 @@ def run_diffusion_training(
     sample_latents_with_trace_fn,
     resolve_denoising_trace_steps_fn,
 ) -> None:
-    if train_cfg.mode == "full":
+    if train_cfg.mode == "teacher_full":
         best_checkpoint_path = require_strict_optical_best_checkpoint(
             run_meta.get("first_stage_best_optical_checkpoint")
         )

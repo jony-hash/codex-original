@@ -47,6 +47,19 @@ def _normalize_for_visualization(tensor):
     return (tensor - min_value) / (max_value - min_value).clamp_min(1e-6)
 
 
+def enhance_camera_for_display(tensor, lower_quantile: float = 0.01, upper_quantile: float = 0.995, gamma: float = 0.75):
+    if lower_quantile < 0.0 or upper_quantile > 1.0 or lower_quantile >= upper_quantile:
+        raise ValueError("display quantiles must satisfy 0 <= lower < upper <= 1")
+    if gamma <= 0.0:
+        raise ValueError(f"display gamma must be positive, got {gamma}")
+    raw = tensor.detach().float()
+    flat = raw.flatten(start_dim=-2)
+    low = flat.quantile(lower_quantile, dim=-1, keepdim=True).unsqueeze(-1)
+    high = flat.quantile(upper_quantile, dim=-1, keepdim=True).unsqueeze(-1)
+    scaled = (raw - low) / (high - low).clamp_min(1e-6)
+    return scaled.clamp(0.0, 1.0).pow(gamma)
+
+
 def format_output_title(relative_path: str, label: str) -> str:
     return f"{relative_path} | {label}"
 
@@ -73,6 +86,19 @@ def build_diffusion_visualization_tensors(reference_images, sample_outputs):
         "chip_amplitude": _normalize_for_visualization(sample_outputs["chip_amplitude"]),
         "chip_phase": ((sample_outputs["chip_phase"] / math.pi) + 1.0).clamp(0.0, 2.0) * 0.5,
         "probe": sample_outputs["probe_plane"],
+    }
+
+
+def build_one_shot_visualization_tensors(reference_images, sample_outputs):
+    # one-shot 阶段直接看单次光路 camera，同时保留 SLM 和 chip 诊断。
+    camera_raw = sample_outputs["camera_plane"]
+    return {
+        "reference": reference_images,
+        "generated_camera_raw": camera_raw,
+        "generated_camera_display": enhance_camera_for_display(camera_raw),
+        "slm_amplitude": sample_outputs["slm_amplitude"],
+        "chip_amplitude": _normalize_for_visualization(sample_outputs["chip_amplitude"]),
+        "chip_phase": ((sample_outputs["chip_phase"] / math.pi) + 1.0).clamp(0.0, 2.0) * 0.5,
     }
 
 

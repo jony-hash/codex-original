@@ -128,6 +128,36 @@ class DiffusionConfig:
 
 
 @dataclass
+class OneShotConfig:
+    code_dim: int = 128
+    label_embed_dim: int = 32
+    hidden_dim: int = 256
+    num_classes: int = 10
+    slm_background_floor: float = 0.05
+    slm_residual_phase_scale_rad: float = 0.0
+    ols_kind: str = "gelu"
+    metasurface_grid_size: int = 40
+    layer_spacing: float = 0.003
+    recon_foreground_threshold: float = 0.05
+    recon_foreground_weight: float = 3.0
+    recon_background_weight: float = 1.0
+    slm_smoothness_weight: float = 0.0
+    camera_saturation_weight: float = 0.0
+    sample_class_labels: tuple[int, ...] = ()
+    sample_repeats_per_class: int = 1
+
+
+@dataclass
+class DistillationConfig:
+    samples_per_class: int = 200
+    total_samples: int | None = None
+    class_labels: tuple[int, ...] = ()
+    output_path: str | None = None
+    code_seed: int = 1234
+    code_projection_seed: int = 2026
+
+
+@dataclass
 class DataConfig:
     dataset: str = "mnist"
     root: str = "data"
@@ -151,9 +181,12 @@ class TrainingConfig:
     validation_epoch_interval: int = 1
     first_stage_epochs: int = 10
     diffusion_epochs: int = 20
+    one_shot_epochs: int = 1
     data: DataConfig = field(default_factory=DataConfig)
     first_stage: FirstStageConfig = field(default_factory=FirstStageConfig)
     diffusion: DiffusionConfig = field(default_factory=DiffusionConfig)
+    one_shot: OneShotConfig = field(default_factory=OneShotConfig)
+    distillation: DistillationConfig = field(default_factory=DistillationConfig)
 
 
 def _load_yaml_file(path: str | Path) -> dict[str, Any]:
@@ -205,6 +238,8 @@ def load_training_config(path: str | Path | None = None) -> TrainingConfig:
     data_cfg = data.get("data", {})
     first_stage_data = data.get("first_stage", {}).copy()
     diffusion_data = data.get("diffusion", {})
+    one_shot_data = data.get("one_shot", {}).copy()
+    distillation_data = data.get("distillation", {}).copy()
     electronic_domain_data = first_stage_data.pop("electronic_domain", {})
 
     ols_data = first_stage_data.pop("ols", {})
@@ -222,6 +257,10 @@ def load_training_config(path: str | Path | None = None) -> TrainingConfig:
         diffusion_data["sample_class_labels"] = tuple(diffusion_data["sample_class_labels"])
     if "class_weight_labels" in diffusion_data:
         diffusion_data["class_weight_labels"] = tuple(diffusion_data["class_weight_labels"])
+    if "sample_class_labels" in one_shot_data:
+        one_shot_data["sample_class_labels"] = tuple(one_shot_data["sample_class_labels"])
+    if "class_labels" in distillation_data:
+        distillation_data["class_labels"] = tuple(distillation_data["class_labels"])
     data_config = DataConfig(**data_cfg)
     if data_config.validation_fraction < 0.0 or data_config.validation_fraction >= 1.0:
         raise ValueError(
@@ -244,10 +283,13 @@ def load_training_config(path: str | Path | None = None) -> TrainingConfig:
         ),
         first_stage_epochs=training_data.get("first_stage_epochs", TrainingConfig.first_stage_epochs),
         diffusion_epochs=training_data.get("diffusion_epochs", TrainingConfig.diffusion_epochs),
+        one_shot_epochs=training_data.get("one_shot_epochs", TrainingConfig.one_shot_epochs),
         data=data_config,
         first_stage=FirstStageConfig(
             electronic_domain=ElectronicDomainConfig(**electronic_domain_data),
             **first_stage_data,
         ),
         diffusion=DiffusionConfig(**diffusion_data),
+        one_shot=OneShotConfig(**one_shot_data),
+        distillation=DistillationConfig(**distillation_data),
     )

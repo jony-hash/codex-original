@@ -311,6 +311,47 @@ def first_stage_loss(
     }
 
 
+def one_shot_loss(
+    outputs: dict[str, torch.Tensor],
+    target_batch: torch.Tensor,
+    foreground_threshold: float = 0.05,
+    foreground_weight: float = 3.0,
+    background_weight: float = 1.0,
+    slm_smoothness_weight: float = 0.0,
+    camera_saturation_weight: float = 0.0,
+) -> dict[str, torch.Tensor]:
+    foreground_mask = (target_batch > foreground_threshold).float()
+    background_mask = 1.0 - foreground_mask
+    camera_prediction = outputs["camera_plane"]
+    camera_loss_prediction = outputs.get("camera_plane_loss", camera_prediction)
+    camera_metrics = _weighted_reconstruction_metrics(
+        camera_prediction,
+        target_batch,
+        foreground_mask,
+        background_mask,
+        foreground_weight,
+        background_weight,
+    )
+    slm_tv = _total_variation(outputs["slm_amplitude"])
+    slm_smoothness = slm_smoothness_weight * slm_tv
+    camera_saturation_base = _camera_saturation_loss(camera_loss_prediction)
+    camera_saturation = camera_saturation_weight * camera_saturation_base
+    total = camera_metrics["recon_loss"] + slm_smoothness + camera_saturation
+    return {
+        "loss": total,
+        "camera_recon_loss": camera_metrics["recon_loss"].detach(),
+        "camera_fg_mse": camera_metrics["fg_mse"],
+        "camera_bg_mse": camera_metrics["bg_mse"],
+        "slm_smoothness_loss": slm_smoothness.detach(),
+        "slm_tv": slm_tv.detach(),
+        "camera_saturation_loss": camera_saturation.detach(),
+        "camera_saturation_penalty": camera_saturation_base.detach(),
+        "camera_saturation_ratio": _camera_saturation_ratio(camera_prediction.detach()),
+        "camera_foreground_dice": _foreground_dice_score(camera_prediction.detach(), foreground_mask),
+        "fg_pixel_ratio": foreground_mask.mean(),
+    }
+
+
 @torch.no_grad()
 def estimate_latent_scale(first_stage: OpticalPathVAE, batch: torch.Tensor, latent_source: str = "mu") -> torch.Tensor:
     encoded = first_stage.encode(batch)
@@ -441,10 +482,16 @@ def _sample_latents_impl(
     class_labels: torch.Tensor,
     guidance_scale: float,
     trace_timesteps: tuple[int, ...] | None,
+    initial_noise: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
     _validate_sampling_inputs(shape, class_labels, guidance_scale)
 
-    sample = torch.randn(shape, device=device)
+    if initial_noise is None:
+        sample = torch.randn(shape, device=device)
+    else:
+        if tuple(initial_noise.shape) != tuple(shape):
+            raise ValueError(f"initial_noise shape must match sample shape {shape}, got {tuple(initial_noise.shape)}")
+        sample = initial_noise.to(device=device)
     trace: dict[str, torch.Tensor] = {}
     trace_steps_by_timestep: dict[int, str] = {}
     if trace_timesteps is not None:
@@ -487,6 +534,7 @@ def sample_latents(
     device: torch.device,
     class_labels: torch.Tensor,
     guidance_scale: float = 3.0,
+    initial_noise: torch.Tensor | None = None,
 ) -> torch.Tensor:
     sample, _ = _sample_latents_impl(
         diffusion_model,
@@ -496,6 +544,7 @@ def sample_latents(
         class_labels,
         guidance_scale,
         trace_timesteps=None,
+        initial_noise=initial_noise,
     )
     return sample
 
@@ -509,6 +558,7 @@ def sample_latents_with_trace(
     class_labels: torch.Tensor,
     guidance_scale: float = 3.0,
     trace_timesteps: tuple[int, ...] = DEFAULT_DENOISING_TRACE_TIMESTEPS,
+    initial_noise: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
     return _sample_latents_impl(
         diffusion_model,
@@ -518,4 +568,5 @@ def sample_latents_with_trace(
         class_labels,
         guidance_scale,
         trace_timesteps=trace_timesteps,
+        initial_noise=initial_noise,
     )

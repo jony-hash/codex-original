@@ -1,9 +1,11 @@
 from .config import (
     DataConfig,
     DiffusionConfig,
+    DistillationConfig,
     ElectronicDomainConfig,
     FirstStageConfig,
     MacroOpticsConfig,
+    OneShotConfig,
     PhysicsConfig,
     TrainingConfig,
     load_physics_config,
@@ -14,9 +16,11 @@ from .run_manager import RunManager
 __all__ = [
     "DataConfig",
     "DiffusionConfig",
+    "DistillationConfig",
     "ElectronicDomainConfig",
     "FirstStageConfig",
     "MacroOpticsConfig",
+    "OneShotConfig",
     "PhysicsConfig",
     "RunManager",
     "TrainingConfig",
@@ -44,6 +48,13 @@ try:
         load_first_stage_checkpoint as load_first_stage_checkpoint,
         validate_first_stage_checkpoint_payload as validate_first_stage_checkpoint_payload,
     )
+    from .one_shot import (
+        ONE_SHOT_MODEL_VERSION as ONE_SHOT_MODEL_VERSION,
+        ElectronicGeneratorE as ElectronicGeneratorE,
+        OneShotOpticalGenerator as OneShotOpticalGenerator,
+        load_one_shot_checkpoint as load_one_shot_checkpoint,
+        validate_one_shot_checkpoint_payload as validate_one_shot_checkpoint_payload,
+    )
     from .evaluation import (
         compute_first_stage_balanced_metrics as compute_first_stage_balanced_metrics,
         evaluate_diffusion_with_per_class as evaluate_diffusion_with_per_class,
@@ -60,6 +71,7 @@ try:
     )
     from .train_utils import (
         apply_cli_overrides as apply_cli_overrides,
+        canonicalize_stage as canonicalize_stage,
         resolve_device as resolve_device,
         resolve_stage_epoch_plan as resolve_stage_epoch_plan,
         validate_stage_requirements as validate_stage_requirements,
@@ -76,20 +88,25 @@ else:
             "DIFFUSION_MODEL_VERSION",
             "DatasetBundle",
             "DatasetSplits",
+            "ElectronicGeneratorE",
             "FIRST_STAGE_MODEL_VERSION",
             "LatentDiffusionUNet",
             "LinearNoiseScheduler",
+            "ONE_SHOT_MODEL_VERSION",
             "OpticalPathVAE",
+            "OneShotOpticalGenerator",
             "apply_cli_overrides",
             "build_post_train_sample_labels",
             "build_train_validation_loaders",
             "build_training_loader",
+            "canonicalize_stage",
             "compute_first_stage_balanced_metrics",
             "compute_sample_quality_metrics",
             "evaluate_diffusion_with_per_class",
             "evaluate_first_stage_with_per_class",
             "load_diffusion_checkpoint",
             "load_first_stage_checkpoint",
+            "load_one_shot_checkpoint",
             "resolve_device",
             "resolve_stage_epoch_plan",
             "save_post_train_samples",
@@ -97,5 +114,6 @@ else:
             "select_post_train_sample_batch",
             "validate_stage_requirements",
             "validate_first_stage_checkpoint_payload",
+            "validate_one_shot_checkpoint_payload",
         ]
     )
