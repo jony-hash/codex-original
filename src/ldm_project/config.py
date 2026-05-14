@@ -141,6 +141,10 @@ class OneShotConfig:
     recon_foreground_threshold: float = 0.05
     recon_foreground_weight: float = 3.0
     recon_background_weight: float = 1.0
+    class_recon_weight_labels: tuple[int, ...] = ()
+    class_recon_weight: float = 1.0
+    shape_loss_weight: float = 0.0
+    edge_loss_weight: float = 0.0
     slm_smoothness_weight: float = 0.0
     camera_saturation_weight: float = 0.0
     code_diversity_weight: float = 0.0
@@ -262,6 +266,8 @@ def load_training_config(path: str | Path | None = None) -> TrainingConfig:
         diffusion_data["class_weight_labels"] = tuple(diffusion_data["class_weight_labels"])
     if "sample_class_labels" in one_shot_data:
         one_shot_data["sample_class_labels"] = tuple(one_shot_data["sample_class_labels"])
+    if "class_recon_weight_labels" in one_shot_data:
+        one_shot_data["class_recon_weight_labels"] = tuple(one_shot_data["class_recon_weight_labels"])
     if "class_labels" in distillation_data:
         distillation_data["class_labels"] = tuple(distillation_data["class_labels"])
     data_config = DataConfig(**data_cfg)

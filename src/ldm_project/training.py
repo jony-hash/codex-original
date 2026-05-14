@@ -34,6 +34,16 @@ def _masked_mean(values: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
     return (values * mask).sum() / mask.sum().clamp_min(1e-6)
 
 
+def _masked_mean_per_sample(values: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+    dims = tuple(range(1, values.ndim))
+    return (values * mask).sum(dim=dims) / mask.sum(dim=dims).clamp_min(1e-6)
+
+
+def _weighted_sample_mean(values: torch.Tensor, sample_weights: torch.Tensor) -> torch.Tensor:
+    weights = sample_weights.to(device=values.device, dtype=values.dtype)
+    return (values * weights).sum() / weights.sum().clamp_min(1e-6)
+
+
 def _weighted_reconstruction_metrics(
     prediction: torch.Tensor,
     input_batch: torch.Tensor,
@@ -50,6 +60,26 @@ def _weighted_reconstruction_metrics(
         "recon_loss": recon,
         "fg_mse": fg_mse.detach(),
         "bg_mse": bg_mse.detach(),
+    }
+
+
+def _weighted_reconstruction_metrics_for_samples(
+    prediction: torch.Tensor,
+    input_batch: torch.Tensor,
+    foreground_mask: torch.Tensor,
+    background_mask: torch.Tensor,
+    foreground_weight: float,
+    background_weight: float,
+    sample_weights: torch.Tensor,
+) -> dict[str, torch.Tensor]:
+    squared_error = (prediction - input_batch).pow(2)
+    fg_mse_samples = _masked_mean_per_sample(squared_error, foreground_mask)
+    bg_mse_samples = _masked_mean_per_sample(squared_error, background_mask)
+    recon_samples = foreground_weight * fg_mse_samples + background_weight * bg_mse_samples
+    return {
+        "recon_loss": _weighted_sample_mean(recon_samples, sample_weights),
+        "fg_mse": fg_mse_samples.mean().detach(),
+        "bg_mse": bg_mse_samples.mean().detach(),
     }
 
 
@@ -97,6 +127,19 @@ def _camera_topology_loss(
 
 def _foreground_shape_loss(prediction: torch.Tensor, input_batch: torch.Tensor, foreground_mask: torch.Tensor) -> torch.Tensor:
     return 1.0 - _foreground_dice_score(prediction, foreground_mask)
+
+
+def _foreground_shape_loss_for_samples(
+    prediction: torch.Tensor,
+    foreground_mask: torch.Tensor,
+    sample_weights: torch.Tensor,
+) -> torch.Tensor:
+    prediction_soft = prediction.clamp(0.0, 1.0)
+    dims = tuple(range(1, prediction_soft.ndim))
+    intersection = (prediction_soft * foreground_mask).sum(dim=dims)
+    denominator = prediction_soft.sum(dim=dims) + foreground_mask.sum(dim=dims)
+    dice_score = (2.0 * intersection + 1.0e-6) / (denominator + 1.0e-6)
+    return _weighted_sample_mean(1.0 - dice_score, sample_weights)
 
 
 def _foreground_dice_score(prediction: torch.Tensor, foreground_mask: torch.Tensor) -> torch.Tensor:
@@ -228,6 +271,42 @@ def _camera_hotspot_loss(camera_prediction: torch.Tensor) -> torch.Tensor:
 
 def _camera_hotspot_ratio(camera_prediction: torch.Tensor) -> torch.Tensor:
     return (camera_prediction > 1.0).float().mean()
+
+
+def _resolve_sample_weights(
+    reference: torch.Tensor,
+    class_labels: torch.Tensor | None,
+    class_weight_labels: tuple[int, ...],
+    class_weight: float,
+) -> torch.Tensor:
+    weights = torch.ones(reference.shape[0], device=reference.device, dtype=reference.dtype)
+    if class_labels is None or not class_weight_labels or class_weight == 1.0:
+        return weights
+    labels = class_labels.detach().reshape(-1).to(device=reference.device)
+    if labels.shape[0] != reference.shape[0]:
+        raise ValueError("class_labels must match one_shot_loss batch size when class weighting is enabled.")
+    weak_mask = torch.zeros_like(labels, dtype=torch.bool)
+    for label in class_weight_labels:
+        weak_mask |= labels == int(label)
+    return torch.where(weak_mask, weights * float(class_weight), weights)
+
+
+def _one_shot_edge_shape_loss(
+    prediction: torch.Tensor,
+    target: torch.Tensor,
+    foreground_mask: torch.Tensor,
+    sample_weights: torch.Tensor,
+) -> torch.Tensor:
+    prediction_soft = prediction.clamp(0.0, 1.0)
+    target_soft = target.clamp(0.0, 1.0)
+    foreground_context = F.max_pool2d(foreground_mask, kernel_size=5, stride=1, padding=2)
+    edge_error = (_sobel_magnitude(prediction_soft) - _sobel_magnitude(target_soft)).abs()
+    local_prediction = F.avg_pool2d(prediction_soft, kernel_size=3, stride=1, padding=1)
+    local_target = F.avg_pool2d(target_soft, kernel_size=3, stride=1, padding=1)
+    local_error = (local_prediction - local_target).abs()
+    edge_samples = _masked_mean_per_sample(edge_error, foreground_context)
+    local_samples = _masked_mean_per_sample(local_error, foreground_context)
+    return _weighted_sample_mean(edge_samples + 0.5 * local_samples, sample_weights)
 
 
 def _camera_saturation_loss(camera_prediction: torch.Tensor) -> torch.Tensor:
@@ -396,6 +475,10 @@ def one_shot_loss(
     foreground_threshold: float = 0.05,
     foreground_weight: float = 3.0,
     background_weight: float = 1.0,
+    class_recon_weight_labels: tuple[int, ...] = (),
+    class_recon_weight: float = 1.0,
+    shape_loss_weight: float = 0.0,
+    edge_loss_weight: float = 0.0,
     slm_smoothness_weight: float = 0.0,
     camera_saturation_weight: float = 0.0,
     code_diversity_weight: float = 0.0,
@@ -406,14 +489,45 @@ def one_shot_loss(
     background_mask = 1.0 - foreground_mask
     camera_prediction = outputs["camera_plane"]
     camera_loss_prediction = outputs.get("camera_plane_loss", camera_prediction)
-    camera_metrics = _weighted_reconstruction_metrics(
-        camera_prediction,
+    sample_weights = _resolve_sample_weights(
         target_batch,
-        foreground_mask,
-        background_mask,
-        foreground_weight,
-        background_weight,
+        class_labels,
+        class_recon_weight_labels,
+        class_recon_weight,
     )
+    has_class_weights = class_labels is not None and bool(class_recon_weight_labels) and class_recon_weight != 1.0
+    if has_class_weights:
+        camera_metrics = _weighted_reconstruction_metrics_for_samples(
+            camera_prediction,
+            target_batch,
+            foreground_mask,
+            background_mask,
+            foreground_weight,
+            background_weight,
+            sample_weights,
+        )
+    else:
+        camera_metrics = _weighted_reconstruction_metrics(
+            camera_prediction,
+            target_batch,
+            foreground_mask,
+            background_mask,
+            foreground_weight,
+            background_weight,
+        )
+    zero = _zero_like_loss(camera_prediction)
+    shape_base = (
+        _foreground_shape_loss_for_samples(camera_prediction, foreground_mask, sample_weights)
+        if shape_loss_weight != 0.0
+        else zero
+    )
+    shape_loss = shape_loss_weight * shape_base
+    edge_base = (
+        _one_shot_edge_shape_loss(camera_prediction, target_batch, foreground_mask, sample_weights)
+        if edge_loss_weight != 0.0
+        else zero
+    )
+    edge_loss = edge_loss_weight * edge_base
     slm_tv = _total_variation(outputs["slm_amplitude"])
     slm_smoothness = slm_smoothness_weight * slm_tv
     camera_saturation_base = _camera_saturation_loss(camera_loss_prediction)
@@ -428,12 +542,24 @@ def one_shot_loss(
     teacher_pairwise_diversity = (
         teacher_pairwise_diversity_weight * diversity_metrics["teacher_pairwise_diversity_base"]
     )
-    total = camera_metrics["recon_loss"] + slm_smoothness + camera_saturation + code_diversity + teacher_pairwise_diversity
+    total = (
+        camera_metrics["recon_loss"]
+        + shape_loss
+        + edge_loss
+        + slm_smoothness
+        + camera_saturation
+        + code_diversity
+        + teacher_pairwise_diversity
+    )
     return {
         "loss": total,
         "camera_recon_loss": camera_metrics["recon_loss"].detach(),
         "camera_fg_mse": camera_metrics["fg_mse"],
         "camera_bg_mse": camera_metrics["bg_mse"],
+        "shape_loss": shape_loss.detach(),
+        "shape_penalty": shape_base.detach(),
+        "edge_loss": edge_loss.detach(),
+        "edge_penalty": edge_base.detach(),
         "slm_smoothness_loss": slm_smoothness.detach(),
         "slm_tv": slm_tv.detach(),
         "camera_saturation_loss": camera_saturation.detach(),
@@ -447,6 +573,7 @@ def one_shot_loss(
         "teacher_pairwise_mse": diversity_metrics["teacher_pairwise_mse"].detach(),
         "student_pairwise_mse": diversity_metrics["student_pairwise_mse"].detach(),
         "diversity_pair_count": diversity_metrics["diversity_pair_count"].detach(),
+        "class_weight_mean": sample_weights.mean().detach(),
         "fg_pixel_ratio": foreground_mask.mean(),
     }
 

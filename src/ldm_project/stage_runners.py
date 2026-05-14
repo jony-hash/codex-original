@@ -84,11 +84,15 @@ def _project_codes_to_teacher_noise(torch_module, codes, sample_shape: tuple[int
     return projected.to(device=device).reshape(sample_shape)
 
 
-def _one_shot_loss_kwargs(train_cfg) -> dict[str, float]:
+def _one_shot_loss_kwargs(train_cfg) -> dict[str, object]:
     return {
         "foreground_threshold": train_cfg.one_shot.recon_foreground_threshold,
         "foreground_weight": train_cfg.one_shot.recon_foreground_weight,
         "background_weight": train_cfg.one_shot.recon_background_weight,
+        "class_recon_weight_labels": train_cfg.one_shot.class_recon_weight_labels,
+        "class_recon_weight": train_cfg.one_shot.class_recon_weight,
+        "shape_loss_weight": train_cfg.one_shot.shape_loss_weight,
+        "edge_loss_weight": train_cfg.one_shot.edge_loss_weight,
         "slm_smoothness_weight": train_cfg.one_shot.slm_smoothness_weight,
         "camera_saturation_weight": train_cfg.one_shot.camera_saturation_weight,
         "code_diversity_weight": train_cfg.one_shot.code_diversity_weight,
@@ -1023,6 +1027,8 @@ def run_one_shot_distill_training(
                     f"camera_recon={losses['camera_recon_loss'].item():.6f} "
                     f"camera_fg_mse={losses['camera_fg_mse'].item():.6f} "
                     f"camera_dice={losses['camera_foreground_dice'].item():.4f} "
+                    f"shape={losses['shape_penalty'].item():.4f} "
+                    f"edge={losses['edge_penalty'].item():.4f} "
                     f"slm_tv={losses['slm_tv'].item():.6f} "
                     f"sat={losses['camera_saturation_ratio'].item():.4f}"
                 )
@@ -1036,6 +1042,11 @@ def run_one_shot_distill_training(
                         "camera_fg_mse": losses["camera_fg_mse"].item(),
                         "camera_bg_mse": losses["camera_bg_mse"].item(),
                         "camera_foreground_dice": losses["camera_foreground_dice"].item(),
+                        "shape_loss": losses["shape_loss"].item(),
+                        "shape_penalty": losses["shape_penalty"].item(),
+                        "edge_loss": losses["edge_loss"].item(),
+                        "edge_penalty": losses["edge_penalty"].item(),
+                        "class_weight_mean": losses["class_weight_mean"].item(),
                         "slm_smoothness_loss": losses["slm_smoothness_loss"].item(),
                         "slm_tv": losses["slm_tv"].item(),
                         "camera_saturation_loss": losses["camera_saturation_loss"].item(),
@@ -1080,6 +1091,8 @@ def run_one_shot_distill_training(
                 f"[one_shot_distill][val] epoch={epoch_number} loss={validation_metrics['loss']:.6f} "
                 f"camera_recon={validation_metrics['camera_recon_loss']:.6f} "
                 f"camera_dice={validation_metrics['camera_foreground_dice']:.4f} "
+                f"shape={validation_metrics['shape_penalty']:.4f} "
+                f"edge={validation_metrics['edge_penalty']:.4f} "
                 f"slm_tv={validation_metrics['slm_tv']:.6f} "
                 f"sat={validation_metrics['camera_saturation_ratio']:.4f}"
             )

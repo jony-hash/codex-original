@@ -125,6 +125,16 @@ class OneShotConfigTests(unittest.TestCase):
         div_light_config = load_training_config(Path("configs/train_one_shot_distill_mnist_2k_grid16_div_w003.yaml"))
         div_config = load_training_config(Path("configs/train_one_shot_distill_mnist_2k_grid16_div_w010.yaml"))
         div_sat_config = load_training_config(Path("configs/train_one_shot_distill_mnist_2k_grid16_div_w010_sat.yaml"))
+        shape_config = load_training_config(Path("configs/train_one_shot_distill_mnist_2k_grid16_shape_w003.yaml"))
+        shape_class_config = load_training_config(
+            Path("configs/train_one_shot_distill_mnist_2k_grid16_shape_class.yaml")
+        )
+        shape_class_smooth_config = load_training_config(
+            Path("configs/train_one_shot_distill_mnist_2k_grid16_shape_class_smooth.yaml")
+        )
+        grid32_shape_class_config = load_training_config(
+            Path("configs/train_one_shot_distill_mnist_2k_grid32_shape_class.yaml")
+        )
 
         self.assertEqual(export_config.mode, "teacher_distill_export")
         self.assertEqual(export_config.distillation.samples_per_class, 200)
@@ -143,6 +153,16 @@ class OneShotConfigTests(unittest.TestCase):
         self.assertAlmostEqual(div_config.one_shot.teacher_pairwise_diversity_weight, 2.0e-2, places=8)
         self.assertAlmostEqual(div_sat_config.one_shot.camera_saturation_weight, 1.0e-2, places=8)
         self.assertAlmostEqual(div_sat_config.one_shot.code_diversity_weight, 1.0e-1, places=8)
+        self.assertAlmostEqual(shape_config.one_shot.shape_loss_weight, 5.0e-2, places=8)
+        self.assertAlmostEqual(shape_config.one_shot.edge_loss_weight, 1.0e-2, places=8)
+        self.assertEqual(shape_class_config.one_shot.class_recon_weight_labels, (3, 4, 5, 6))
+        self.assertAlmostEqual(shape_class_config.one_shot.class_recon_weight, 2.0, places=8)
+        self.assertAlmostEqual(shape_class_smooth_config.one_shot.slm_smoothness_weight, 5.0e-4, places=8)
+        self.assertAlmostEqual(shape_class_smooth_config.one_shot.shape_loss_weight, 5.0e-2, places=8)
+        self.assertEqual(grid32_shape_class_config.one_shot.metasurface_grid_size, 32)
+        self.assertEqual(grid32_shape_class_config.one_shot.class_recon_weight_labels, (3, 4, 5, 6))
+        self.assertAlmostEqual(grid32_shape_class_config.one_shot.code_diversity_weight, 3.0e-2, places=8)
+        self.assertAlmostEqual(grid32_shape_class_config.one_shot.shape_loss_weight, 0.0, places=8)
 
     def test_one_shot_visualization_includes_raw_and_display_camera(self) -> None:
         import torch
@@ -236,3 +256,36 @@ class OneShotConfigTests(unittest.TestCase):
         self.assertGreater(losses["teacher_pairwise_mse"].item(), losses["student_pairwise_mse"].item())
         losses["loss"].backward()
         self.assertIsNotNone(collapsed.grad)
+
+    def test_one_shot_loss_supports_weak_class_shape_and_edge_terms(self) -> None:
+        import torch
+
+        from ldm_project.training import one_shot_loss
+
+        target = torch.ones(2, 1, 4, 4, dtype=torch.float32)
+        prediction = target.clone()
+        prediction[0] = 0.0
+        prediction.requires_grad_(True)
+        outputs = {
+            "camera_plane": prediction,
+            "slm_amplitude": torch.linspace(0.0, 1.0, steps=32, dtype=torch.float32).reshape(2, 1, 4, 4),
+        }
+        labels = torch.tensor([3, 0], dtype=torch.long)
+
+        unweighted = one_shot_loss(outputs, target, class_labels=labels)
+        weighted = one_shot_loss(
+            outputs,
+            target,
+            class_labels=labels,
+            class_recon_weight_labels=(3,),
+            class_recon_weight=3.0,
+            shape_loss_weight=0.1,
+            edge_loss_weight=0.01,
+        )
+
+        self.assertGreater(weighted["camera_recon_loss"].item(), unweighted["camera_recon_loss"].item())
+        self.assertGreater(weighted["shape_loss"].item(), 0.0)
+        self.assertGreaterEqual(weighted["edge_loss"].item(), 0.0)
+        self.assertGreater(weighted["class_weight_mean"].item(), 1.0)
+        weighted["loss"].backward()
+        self.assertIsNotNone(prediction.grad)
