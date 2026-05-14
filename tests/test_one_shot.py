@@ -120,6 +120,7 @@ class OneShotConfigTests(unittest.TestCase):
         from ldm_project.config import load_training_config
 
         export_config = load_training_config(Path("configs/export_teacher_distill_mnist_2k.yaml"))
+        export_3k_fast200_config = load_training_config(Path("configs/export_teacher_distill_mnist_3k_fast200.yaml"))
         export_5k_config = load_training_config(Path("configs/export_teacher_distill_mnist_5k.yaml"))
         train_config = load_training_config(Path("configs/train_one_shot_distill_mnist_2k_grid16.yaml"))
         train_5k_config = load_training_config(Path("configs/train_one_shot_distill_mnist_5k_grid16_shape_class.yaml"))
@@ -144,6 +145,9 @@ class OneShotConfigTests(unittest.TestCase):
         self.assertEqual(export_config.mode, "teacher_distill_export")
         self.assertEqual(export_config.distillation.samples_per_class, 200)
         self.assertEqual(export_config.one_shot.code_dim, 128)
+        self.assertEqual(export_3k_fast200_config.mode, "teacher_distill_export")
+        self.assertEqual(export_3k_fast200_config.distillation.samples_per_class, 300)
+        self.assertEqual(export_3k_fast200_config.distillation.sampling_steps, 200)
         self.assertEqual(export_5k_config.mode, "teacher_distill_export")
         self.assertEqual(export_5k_config.distillation.samples_per_class, 500)
         self.assertEqual(export_5k_config.distillation.sampling_steps, 100)
