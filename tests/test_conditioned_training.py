@@ -502,6 +502,19 @@ class ConditionedTrainingSmokeTests(unittest.TestCase):
         for trace_latents in trace.values():
             self.assertEqual(trace_latents.shape, latent_shape)
 
+        fast_latents = sample_latents(
+            diffusion_model,
+            scheduler,
+            latent_shape,
+            torch.device("cpu"),
+            labels,
+            guidance_scale=2.0,
+            sampling_steps=4,
+        )
+
+        self.assertEqual(fast_latents.shape, latent_shape)
+        self.assertTrue(torch.isfinite(fast_latents).all().item())
+
     def test_first_stage_loss_weights_foreground_errors_more_than_background(self) -> None:
         import torch
 

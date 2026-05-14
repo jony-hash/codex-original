@@ -99,3 +99,4 @@ distillation:
   class_labels: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
   code_seed: 1234
   code_projection_seed: 2026
+  sampling_steps: 100

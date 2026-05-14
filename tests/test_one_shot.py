@@ -146,6 +146,7 @@ class OneShotConfigTests(unittest.TestCase):
         self.assertEqual(export_config.one_shot.code_dim, 128)
         self.assertEqual(export_5k_config.mode, "teacher_distill_export")
         self.assertEqual(export_5k_config.distillation.samples_per_class, 500)
+        self.assertEqual(export_5k_config.distillation.sampling_steps, 100)
         self.assertEqual(export_5k_config.batch_size, 96)
         self.assertEqual(train_config.mode, "one_shot_distill")
         self.assertEqual(train_config.one_shot.metasurface_grid_size, 16)

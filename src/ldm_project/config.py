@@ -162,6 +162,7 @@ class DistillationConfig:
     output_path: str | None = None
     code_seed: int = 1234
     code_projection_seed: int = 2026
+    sampling_steps: int | None = None
 
 
 @dataclass

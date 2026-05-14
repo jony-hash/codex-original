@@ -536,6 +536,7 @@ def run_teacher_distill_export(
                 batch_labels,
                 guidance_scale=train_cfg.diffusion.guidance_scale,
                 initial_noise=initial_noise,
+                sampling_steps=train_cfg.distillation.sampling_steps,
             )
             outputs = first_stage.decode_with_intermediates(batch_latents * latent_scale)
             teacher_initial_noise.append(initial_noise.detach().cpu())
@@ -560,6 +561,7 @@ def run_teacher_distill_export(
             "code_dim": train_cfg.one_shot.code_dim,
             "code_seed": train_cfg.distillation.code_seed,
             "code_projection_seed": train_cfg.distillation.code_projection_seed,
+            "sampling_steps": train_cfg.distillation.sampling_steps,
             "teacher_sample_shape": sample_shape,
         },
     }

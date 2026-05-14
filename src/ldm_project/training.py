@@ -709,8 +709,11 @@ def _sample_latents_impl(
     guidance_scale: float,
     trace_timesteps: tuple[int, ...] | None,
     initial_noise: torch.Tensor | None = None,
+    sampling_steps: int | None = None,
 ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
     _validate_sampling_inputs(shape, class_labels, guidance_scale)
+    timestep_sequence = _resolve_sampling_timestep_sequence(scheduler.timesteps, sampling_steps)
+    use_full_ddpm_steps = len(timestep_sequence) == scheduler.timesteps
 
     if initial_noise is None:
         sample = torch.randn(shape, device=device)
@@ -733,7 +736,7 @@ def _sample_latents_impl(
         force_unconditional=True,
         dropout_prob=0.0,
     )
-    for timestep in reversed(range(scheduler.timesteps)):
+    for index, timestep in enumerate(timestep_sequence):
         current_t = torch.full((shape[0],), timestep, device=device, dtype=torch.long)
         conditioned_noise = diffusion_model(sample, current_t, conditioned_context)
         if guidance_scale == 1.0:
@@ -745,11 +748,56 @@ def _sample_latents_impl(
                 unconditioned_noise,
                 guidance_scale,
             )
-        sample = scheduler.step(predicted_noise, current_t, sample)
+        if use_full_ddpm_steps:
+            sample = scheduler.step(predicted_noise, current_t, sample)
+        else:
+            next_timestep = timestep_sequence[index + 1] if index + 1 < len(timestep_sequence) else -1
+            sample = _ddim_step_to_timestep(scheduler, predicted_noise, current_t, next_timestep, sample)
         trace_label = trace_steps_by_timestep.get(timestep)
         if trace_label is not None:
             trace[trace_label] = sample.detach().clone()
     return sample, trace
+
+
+def _resolve_sampling_timestep_sequence(total_timesteps: int, sampling_steps: int | None) -> list[int]:
+    if sampling_steps is None or sampling_steps >= total_timesteps:
+        return list(range(total_timesteps - 1, -1, -1))
+    if sampling_steps < 2:
+        raise ValueError(f"sampling_steps must be at least 2 when set, got {sampling_steps}")
+    raw_steps = torch.linspace(total_timesteps - 1, 0, steps=sampling_steps).round().long().tolist()
+    sequence: list[int] = []
+    seen: set[int] = set()
+    for step in raw_steps:
+        step = int(step)
+        if step not in seen:
+            sequence.append(step)
+            seen.add(step)
+    if sequence[-1] != 0:
+        sequence.append(0)
+    return sequence
+
+
+def _expand_scheduler_scalar(value: torch.Tensor, reference: torch.Tensor) -> torch.Tensor:
+    while value.ndim < reference.ndim:
+        value = value.unsqueeze(-1)
+    return value
+
+
+def _ddim_step_to_timestep(
+    scheduler: LinearNoiseScheduler,
+    model_output: torch.Tensor,
+    timesteps: torch.Tensor,
+    next_timestep: int,
+    sample: torch.Tensor,
+) -> torch.Tensor:
+    alpha_bar_t = _expand_scheduler_scalar(scheduler.alphas_cumprod[timesteps], sample)
+    if next_timestep >= 0:
+        alpha_bar_prev = scheduler.alphas_cumprod[next_timestep].expand(sample.shape[0])
+    else:
+        alpha_bar_prev = scheduler.alphas_cumprod.new_ones((sample.shape[0],))
+    alpha_bar_prev = _expand_scheduler_scalar(alpha_bar_prev.to(device=sample.device), sample)
+    pred_x0 = (sample - torch.sqrt(1.0 - alpha_bar_t) * model_output) / torch.sqrt(alpha_bar_t)
+    return torch.sqrt(alpha_bar_prev) * pred_x0 + torch.sqrt(1.0 - alpha_bar_prev) * model_output
 
 
 @torch.no_grad()
@@ -761,6 +809,7 @@ def sample_latents(
     class_labels: torch.Tensor,
     guidance_scale: float = 3.0,
     initial_noise: torch.Tensor | None = None,
+    sampling_steps: int | None = None,
 ) -> torch.Tensor:
     sample, _ = _sample_latents_impl(
         diffusion_model,
@@ -771,6 +820,7 @@ def sample_latents(
         guidance_scale,
         trace_timesteps=None,
         initial_noise=initial_noise,
+        sampling_steps=sampling_steps,
     )
     return sample
 
@@ -785,6 +835,7 @@ def sample_latents_with_trace(
     guidance_scale: float = 3.0,
     trace_timesteps: tuple[int, ...] = DEFAULT_DENOISING_TRACE_TIMESTEPS,
     initial_noise: torch.Tensor | None = None,
+    sampling_steps: int | None = None,
 ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
     return _sample_latents_impl(
         diffusion_model,
@@ -795,4 +846,5 @@ def sample_latents_with_trace(
         guidance_scale,
         trace_timesteps=trace_timesteps,
         initial_noise=initial_noise,
+        sampling_steps=sampling_steps,
     )
