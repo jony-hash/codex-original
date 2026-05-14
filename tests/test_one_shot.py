@@ -130,6 +130,12 @@ class OneShotConfigTests(unittest.TestCase):
         train_3k_sat1e2_config = load_training_config(
             Path("configs/train_one_shot_distill_mnist_3k_fast200_grid16_shape_class_sat1e2.yaml")
         )
+        train_3k_quality_config = load_training_config(
+            Path("configs/train_one_shot_distill_mnist_3k_fast200_grid16_shape_class_quality.yaml")
+        )
+        train_3k_sat5e3_quality_config = load_training_config(
+            Path("configs/train_one_shot_distill_mnist_3k_fast200_grid16_shape_class_sat5e3_quality.yaml")
+        )
         sat_config = load_training_config(Path("configs/train_one_shot_distill_mnist_2k_grid16_sat.yaml"))
         div_light_config = load_training_config(Path("configs/train_one_shot_distill_mnist_2k_grid16_div_w003.yaml"))
         div_config = load_training_config(Path("configs/train_one_shot_distill_mnist_2k_grid16_div_w010.yaml"))
@@ -176,6 +182,12 @@ class OneShotConfigTests(unittest.TestCase):
         self.assertAlmostEqual(train_3k_sat1e2_config.one_shot.camera_saturation_weight, 1.0e-2, places=8)
         self.assertEqual(train_3k_sat1e2_config.one_shot.class_recon_weight_labels, (3, 4, 5, 6))
         self.assertAlmostEqual(train_3k_sat1e2_config.one_shot.code_diversity_weight, 3.0e-2, places=8)
+        self.assertEqual(train_3k_quality_config.one_shot.checkpoint_selection_metric, "quality")
+        self.assertEqual(train_3k_quality_config.distillation.samples_per_class, 300)
+        self.assertAlmostEqual(train_3k_quality_config.one_shot.camera_saturation_weight, 1.0e-3, places=8)
+        self.assertEqual(train_3k_sat5e3_quality_config.one_shot.checkpoint_selection_metric, "quality")
+        self.assertEqual(train_3k_sat5e3_quality_config.distillation.samples_per_class, 300)
+        self.assertAlmostEqual(train_3k_sat5e3_quality_config.one_shot.camera_saturation_weight, 5.0e-3, places=8)
         self.assertEqual(sat_config.mode, "one_shot_distill")
         self.assertEqual(sat_config.one_shot.metasurface_grid_size, 16)
         self.assertAlmostEqual(sat_config.one_shot.slm_smoothness_weight, 5.0e-4, places=8)
@@ -200,6 +212,38 @@ class OneShotConfigTests(unittest.TestCase):
         self.assertAlmostEqual(grid32_shape_class_slm_config.one_shot.slm_smoothness_weight, 1.0e-3, places=8)
         self.assertAlmostEqual(grid32_shape_class_slm_config.one_shot.camera_saturation_weight, 1.0e-3, places=8)
         self.assertAlmostEqual(grid32_shape_class_slm_config.one_shot.edge_loss_weight, 0.0, places=8)
+
+    def test_one_shot_distill_quality_selection_score(self) -> None:
+        from ldm_project.stage_runners import (
+            ONE_SHOT_DISTILL_BEST_METRIC,
+            ONE_SHOT_DISTILL_QUALITY_METRIC,
+            _one_shot_distill_quality_score,
+            _resolve_one_shot_distill_selection,
+        )
+
+        one_shot = type("OneShotSelectionConfig", (), {"checkpoint_selection_metric": "quality"})()
+        train_cfg = type("TrainingSelectionConfig", (), {"one_shot": one_shot})()
+        metrics = {
+            "loss": 0.5,
+            "camera_recon_loss": 0.1,
+            "camera_foreground_dice": 0.8,
+            "camera_saturation_ratio": 0.4,
+            "slm_tv": 0.2,
+        }
+
+        score, metric = _resolve_one_shot_distill_selection(train_cfg, metrics)
+
+        self.assertEqual(metric, ONE_SHOT_DISTILL_QUALITY_METRIC)
+        self.assertAlmostEqual(score, 0.191, places=6)
+        self.assertAlmostEqual(metrics["quality_score"], 0.191, places=6)
+        self.assertAlmostEqual(_one_shot_distill_quality_score(metrics), 0.191, places=6)
+
+        one_shot.checkpoint_selection_metric = "loss"
+        score, metric = _resolve_one_shot_distill_selection(train_cfg, metrics)
+
+        self.assertEqual(metric, ONE_SHOT_DISTILL_BEST_METRIC)
+        self.assertAlmostEqual(score, 0.5, places=6)
+
 
     def test_one_shot_visualization_includes_raw_and_display_camera(self) -> None:
         import torch

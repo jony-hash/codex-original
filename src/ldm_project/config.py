@@ -150,6 +150,7 @@ class OneShotConfig:
     code_diversity_weight: float = 0.0
     teacher_pairwise_diversity_weight: float = 0.0
     diversity_min_teacher_mse: float = 1.0e-4
+    checkpoint_selection_metric: str = "loss"
     sample_class_labels: tuple[int, ...] = ()
     sample_repeats_per_class: int = 1
 

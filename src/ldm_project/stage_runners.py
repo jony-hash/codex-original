@@ -40,6 +40,8 @@ ONE_SHOT_BEST_METRIC = "one_shot_validation.loss"
 ONE_SHOT_DISTILL_BEST_CHECKPOINT = "one_shot_distill_best.pt"
 ONE_SHOT_DISTILL_LATEST_CHECKPOINT = "one_shot_distill_latest.pt"
 ONE_SHOT_DISTILL_BEST_METRIC = "one_shot_distill_validation.loss"
+ONE_SHOT_DISTILL_QUALITY_METRIC = "one_shot_distill_validation.quality"
+ONE_SHOT_DISTILL_QUALITY_SATURATION_TARGET = 0.325
 
 
 def _sample_one_shot_codes(torch_module, batch_size: int, train_cfg, device):
@@ -99,6 +101,33 @@ def _one_shot_loss_kwargs(train_cfg) -> dict[str, object]:
         "teacher_pairwise_diversity_weight": train_cfg.one_shot.teacher_pairwise_diversity_weight,
         "diversity_min_teacher_mse": train_cfg.one_shot.diversity_min_teacher_mse,
     }
+
+
+def _one_shot_distill_quality_score(validation_metrics: dict[str, float]) -> float:
+    saturation_overage = max(
+        0.0,
+        validation_metrics["camera_saturation_ratio"] - ONE_SHOT_DISTILL_QUALITY_SATURATION_TARGET,
+    )
+    return (
+        validation_metrics["camera_recon_loss"]
+        + 0.03 * (1.0 - validation_metrics["camera_foreground_dice"])
+        + saturation_overage
+        + 0.05 * validation_metrics["slm_tv"]
+    )
+
+
+def _resolve_one_shot_distill_selection(train_cfg, validation_metrics: dict[str, float]) -> tuple[float, str]:
+    selection_metric = train_cfg.one_shot.checkpoint_selection_metric
+    if selection_metric == "loss":
+        return validation_metrics["loss"], ONE_SHOT_DISTILL_BEST_METRIC
+    if selection_metric == "quality":
+        quality_score = _one_shot_distill_quality_score(validation_metrics)
+        validation_metrics["quality_score"] = quality_score
+        return quality_score, ONE_SHOT_DISTILL_QUALITY_METRIC
+    raise ValueError(
+        "one_shot.checkpoint_selection_metric must be 'loss' or 'quality', "
+        f"got {selection_metric!r}"
+    )
 
 
 def _select_one_shot_visual_batch(torch_module, validation_bundle, train_bundle, train_cfg, device):
@@ -981,7 +1010,7 @@ def run_one_shot_distill_training(
     visual_labels = visual_labels.to(device, non_blocking=use_pin_memory)
     visual_references = visual_references.to(device, non_blocking=use_pin_memory)
     stage_step = 0
-    best_validation_loss = None
+    best_selection_score = None
     best_checkpoint_path = None
     run_manager.save_config_snapshot(
         "one_shot_distill_config",
@@ -1087,8 +1116,8 @@ def run_one_shot_distill_training(
                 device,
                 use_pin_memory,
             )
-            selection_loss = validation_metrics["loss"]
-            updated_best = best_validation_loss is None or selection_loss < best_validation_loss
+            selection_score, selection_metric = _resolve_one_shot_distill_selection(train_cfg, validation_metrics)
+            updated_best = best_selection_score is None or selection_score < best_selection_score
             print(
                 f"[one_shot_distill][val] epoch={epoch_number} loss={validation_metrics['loss']:.6f} "
                 f"camera_recon={validation_metrics['camera_recon_loss']:.6f} "
@@ -1096,7 +1125,8 @@ def run_one_shot_distill_training(
                 f"shape={validation_metrics['shape_penalty']:.4f} "
                 f"edge={validation_metrics['edge_penalty']:.4f} "
                 f"slm_tv={validation_metrics['slm_tv']:.6f} "
-                f"sat={validation_metrics['camera_saturation_ratio']:.4f}"
+                f"sat={validation_metrics['camera_saturation_ratio']:.4f} "
+                f"selection={selection_score:.6f} ({selection_metric})"
             )
             run_manager.append_history(
                 "one_shot_distill_validation",
@@ -1106,7 +1136,7 @@ def run_one_shot_distill_training(
                 },
             )
             if updated_best:
-                best_validation_loss = selection_loss
+                best_selection_score = selection_score
                 best_checkpoint_path = run_manager.save_checkpoint(
                     ONE_SHOT_DISTILL_BEST_CHECKPOINT,
                     {
@@ -1116,8 +1146,9 @@ def run_one_shot_distill_training(
                         "physics_config": physics,
                         "train_config": train_cfg,
                         "epoch": epoch_number,
-                        "selection_metric": ONE_SHOT_DISTILL_BEST_METRIC,
-                        "selection_loss": selection_loss,
+                        "selection_metric": selection_metric,
+                        "selection_loss": selection_score,
+                        "selection_score": selection_score,
                         "validation_metrics": validation_metrics,
                         "distill_dataset": distill_dataset,
                     },
@@ -1126,10 +1157,13 @@ def run_one_shot_distill_training(
                     {
                         "one_shot_best_checkpoint": best_checkpoint_path,
                         "one_shot_best_epoch": epoch_number,
-                        "one_shot_best_loss": best_validation_loss,
+                        "one_shot_best_loss": best_selection_score,
+                        "one_shot_best_score": best_selection_score,
                         "one_shot_distill_best_checkpoint": best_checkpoint_path,
                         "one_shot_distill_best_epoch": epoch_number,
-                        "one_shot_distill_best_loss": best_validation_loss,
+                        "one_shot_distill_best_loss": best_selection_score,
+                        "one_shot_distill_best_score": best_selection_score,
+                        "one_shot_distill_best_metric": selection_metric,
                     }
                 )
                 run_manager.write_meta(run_meta)
@@ -1138,9 +1172,11 @@ def run_one_shot_distill_training(
                 {
                     "epoch": epoch_number,
                     "updated": updated_best,
-                    "selection_metric": ONE_SHOT_DISTILL_BEST_METRIC,
-                    "selection_loss": selection_loss,
-                    "best_loss": best_validation_loss,
+                    "selection_metric": selection_metric,
+                    "selection_loss": selection_score,
+                    "selection_score": selection_score,
+                    "best_loss": best_selection_score,
+                    "best_score": best_selection_score,
                     "checkpoint": best_checkpoint_path,
                 },
             )
