@@ -135,6 +135,9 @@ class OneShotConfigTests(unittest.TestCase):
         grid32_shape_class_config = load_training_config(
             Path("configs/train_one_shot_distill_mnist_2k_grid32_shape_class.yaml")
         )
+        grid32_shape_class_slm_config = load_training_config(
+            Path("configs/train_one_shot_distill_mnist_2k_grid32_shape_class_slm1e3.yaml")
+        )
 
         self.assertEqual(export_config.mode, "teacher_distill_export")
         self.assertEqual(export_config.distillation.samples_per_class, 200)
@@ -163,6 +166,10 @@ class OneShotConfigTests(unittest.TestCase):
         self.assertEqual(grid32_shape_class_config.one_shot.class_recon_weight_labels, (3, 4, 5, 6))
         self.assertAlmostEqual(grid32_shape_class_config.one_shot.code_diversity_weight, 3.0e-2, places=8)
         self.assertAlmostEqual(grid32_shape_class_config.one_shot.shape_loss_weight, 0.0, places=8)
+        self.assertEqual(grid32_shape_class_slm_config.one_shot.metasurface_grid_size, 32)
+        self.assertAlmostEqual(grid32_shape_class_slm_config.one_shot.slm_smoothness_weight, 1.0e-3, places=8)
+        self.assertAlmostEqual(grid32_shape_class_slm_config.one_shot.camera_saturation_weight, 1.0e-3, places=8)
+        self.assertAlmostEqual(grid32_shape_class_slm_config.one_shot.edge_loss_weight, 0.0, places=8)
 
     def test_one_shot_visualization_includes_raw_and_display_camera(self) -> None:
         import torch
