@@ -80,6 +80,98 @@ Current execution responsibilities:
 - `src/ldm_project/train_utils.py`: stage plan, logging intervals, checkpoint helper decisions, latent-scale helpers
 - `tests/`: CPU-friendly unit and smoke tests for the core workflow
 
+## 8. One-Shot Student Acceptance
+
+### 8.1 Architecture
+
+One-Shot Student (`OneShotOpticalGenerator`) 使用单层线性超表面 encoder/decoder，保留完整复光场（振幅+相位）信息：
+
+| 模块 | 层数 | 结构 | 输入维度 | 输出维度 | 参数量 |
+|---|---:|---|---:|---:|---:|
+| Encoder | 1 | `Linear(bias=False)` | `512 = 2 * 16 * 16` | `512 = 2 * 16 * 16` | `262,144` |
+| OLS | 1 | pointwise `GELU` | `1 * 16 * 16` complex | `1 * 16 * 16` complex | `0` |
+| Decoder | 1 | `Linear(bias=False)` | `512 = 2 * 16 * 16` | `512 = 2 * 16 * 16` | `262,144` |
+
+- 空间通道 C=1，`2*G²` 中的 `2` 是复光场实虚部拼接
+- `metasurface_grid_size = 16`（grid16 在所有指标上优于 grid32）
+
+### 8.2 Checkpoints
+
+| 文件 | 来源 |
+|---|---|
+| Student (quality v2) | `outputs/runs/20260515_161215_855773_train_one_shot_distill_quality_v2/checkpoints/one_shot_distill_best.pt` |
+| Student (baseline v0) | `outputs/runs/20260515_152205_925342_train_one_shot_distill_grid16_acceptance/checkpoints/one_shot_distill_best.pt` |
+| Teacher distill dataset | `outputs/runs/20260514_161039_737798_train_teacher_distill_mnist_3k_b96_fast200/artifacts/teacher_distill_dataset.pt` |
+
+### 8.3 Quality Improvements (v0 → v2)
+
+v2 改进点：`hidden_dim` 256→512、新增 `camera_topology_loss` + `camera_artifact_loss`、训练 60 epochs。
+
+#### Sample Metrics 对比
+
+| 指标 | Baseline v0 | Quality v2 | 变化 |
+|---|---:|---:|---|
+| `overall dice` | 0.6811 | **0.7031** | +3.2% |
+| `overall hole_proxy` | 0.2385 | **0.1918** | **-19.6%** |
+| `class 3 dice` | 0.4807 | **0.5464** | **+13.7%** |
+| `class 3 hole` | 0.3692 | **0.2689** | **-27.2%** |
+| `class 4 hole` | 0.3871 | **0.2925** | **-24.4%** |
+| `class 5 dice` | 0.6527 | **0.6922** | +6.1% |
+
+#### Distill Eval (v2, paired teacher-student)
+
+Run: `outputs/runs/20260515_162453_319064_train_one_shot_distill_eval_quality_v2`
+
+| 指标 | 结果 | 阈值 | 状态 |
+|---|---:|---:|---|
+| `paired_dice` | **0.8506** | ≥ 0.85 | ✅ |
+| `paired_corr` | **0.9141** | ≥ 0.90 | ✅ |
+| `min_class_paired_dice` | **0.7709** (class 7) | ≥ 0.75 | ✅ |
+| `diversity_ratio` | **0.5770** | ≥ 0.20 | ✅ |
+| `saturation_ratio` | **0.3517** | ≤ 0.40 | ✅ |
+
+#### Sample (v2)
+
+Run: `outputs/runs/20260515_162552_977757_train_one_shot_sample_quality_v2`
+
+| 指标 | 结果 | 阈值 | 状态 |
+|---|---:|---:|---|
+| `sample_dice` | **0.7031** | ≥ 0.65 | ✅ |
+| `sample_corr` | **0.6698** | — | — |
+| `hole_proxy` | **0.1918** | ≤ 0.25 | ✅ |
+
+### 8.4 Reproduction Commands
+
+```bash
+source "$(conda info --base)/etc/profile.d/conda.sh"
+conda activate optical-generative-models
+
+# Train quality v2
+python train.py \
+  --train-config configs/train_one_shot_distill_mnist_3k_grid16_quality_v2.yaml \
+  --stage one_shot_distill \
+  --device cuda \
+  --distill-dataset outputs/runs/20260514_161039_737798_train_teacher_distill_mnist_3k_b96_fast200/artifacts/teacher_distill_dataset.pt \
+  --run-name one_shot_distill_quality_v2
+
+# Distill Eval
+python train.py \
+  --train-config configs/train_one_shot_distill_mnist_3k_grid16_quality_v2.yaml \
+  --stage one_shot_distill_eval \
+  --device cuda \
+  --one-shot-checkpoint outputs/runs/20260515_161215_855773_train_one_shot_distill_quality_v2/checkpoints/one_shot_distill_best.pt \
+  --distill-dataset outputs/runs/20260514_161039_737798_train_teacher_distill_mnist_3k_b96_fast200/artifacts/teacher_distill_dataset.pt \
+  --run-name one_shot_distill_eval_quality_v2_recheck
+
+# Sample
+python train.py \
+  --train-config configs/train_one_shot_distill_mnist_3k_grid16_quality_v2.yaml \
+  --stage one_shot_sample \
+  --device cuda \
+  --one-shot-checkpoint outputs/runs/20260515_161215_855773_train_one_shot_distill_quality_v2/checkpoints/one_shot_distill_best.pt \
+  --run-name one_shot_sample_quality_v2_recheck
+```
+
 ## 7. Final Checks
 
 Before handoff, run:

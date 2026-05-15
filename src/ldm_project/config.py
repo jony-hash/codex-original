@@ -147,6 +147,8 @@ class OneShotConfig:
     edge_loss_weight: float = 0.0
     slm_smoothness_weight: float = 0.0
     camera_saturation_weight: float = 0.0
+    camera_topology_weight: float = 0.0
+    camera_artifact_weight: float = 0.0
     code_diversity_weight: float = 0.0
     teacher_pairwise_diversity_weight: float = 0.0
     diversity_min_teacher_mse: float = 1.0e-4
@@ -164,6 +166,10 @@ class DistillationConfig:
     code_seed: int = 1234
     code_projection_seed: int = 2026
     sampling_steps: int | None = None
+    filter_keep_per_class: int = 200
+    filter_foreground_trim_fraction: float = 0.05
+    filter_contrast_drop_fraction: float = 0.10
+    filter_foreground_threshold: float = 0.2
 
 
 @dataclass

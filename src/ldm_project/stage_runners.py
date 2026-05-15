@@ -97,6 +97,8 @@ def _one_shot_loss_kwargs(train_cfg) -> dict[str, object]:
         "edge_loss_weight": train_cfg.one_shot.edge_loss_weight,
         "slm_smoothness_weight": train_cfg.one_shot.slm_smoothness_weight,
         "camera_saturation_weight": train_cfg.one_shot.camera_saturation_weight,
+        "camera_topology_weight": train_cfg.one_shot.camera_topology_weight,
+        "camera_artifact_weight": train_cfg.one_shot.camera_artifact_weight,
         "code_diversity_weight": train_cfg.one_shot.code_diversity_weight,
         "teacher_pairwise_diversity_weight": train_cfg.one_shot.teacher_pairwise_diversity_weight,
         "diversity_min_teacher_mse": train_cfg.one_shot.diversity_min_teacher_mse,
@@ -205,6 +207,165 @@ def _validated_distill_tensors(torch_module, payload: dict[str, object], train_c
         )
     validate_class_label_values(tuple(int(label) for label in labels.tolist()), train_cfg.one_shot.num_classes, "class_labels")
     return codes, labels, targets
+
+
+def compute_teacher_distill_filter_metrics(
+    torch_module,
+    teacher_camera,
+    *,
+    foreground_threshold: float = 0.2,
+) -> dict[str, object]:
+    camera = teacher_camera.detach().float().clamp(0.0, 1.0).cpu()
+    if camera.ndim != 4:
+        raise ValueError(f"teacher_camera must be [N, C, H, W], got {tuple(camera.shape)}")
+    flattened = camera.flatten(1)
+    foreground_mask = camera > float(foreground_threshold)
+    mask_flattened = foreground_mask.float().flatten(1)
+    mask = foreground_mask.float()
+    mask_tv_y = (mask[..., 1:, :] - mask[..., :-1, :]).abs().flatten(1).mean(dim=1)
+    mask_tv_x = (mask[..., :, 1:] - mask[..., :, :-1]).abs().flatten(1).mean(dim=1)
+    return {
+        "foreground_ratio": mask_flattened.mean(dim=1),
+        "saturation_ratio": ((camera >= 0.99) | (camera <= 0.01)).float().flatten(1).mean(dim=1),
+        "mask_tv": mask_tv_x + mask_tv_y,
+        "contrast_std": flattened.std(dim=1, unbiased=False),
+    }
+
+
+def _metric_summary(values) -> dict[str, float]:
+    values = values.detach().float().cpu()
+    if values.numel() == 0:
+        return {"min": 0.0, "mean": 0.0, "max": 0.0}
+    return {
+        "min": float(values.min().item()),
+        "mean": float(values.mean().item()),
+        "max": float(values.max().item()),
+    }
+
+
+def _class_relative_minmax(values):
+    values = values.detach().float()
+    spread = values.max() - values.min()
+    if float(spread.item()) <= 1.0e-8:
+        return values.new_zeros(values.shape)
+    return (values - values.min()) / spread
+
+
+def _select_teacher_distill_filter_indices(torch_module, labels, metric_tensors: dict[str, object], train_cfg):
+    keep_per_class = int(train_cfg.distillation.filter_keep_per_class)
+    if keep_per_class <= 0:
+        raise ValueError(f"distillation.filter_keep_per_class must be positive, got {keep_per_class}")
+    trim_fraction = float(train_cfg.distillation.filter_foreground_trim_fraction)
+    contrast_drop_fraction = float(train_cfg.distillation.filter_contrast_drop_fraction)
+    if trim_fraction < 0.0 or trim_fraction >= 0.5:
+        raise ValueError("distillation.filter_foreground_trim_fraction must be in [0.0, 0.5).")
+    if contrast_drop_fraction < 0.0 or contrast_drop_fraction >= 1.0:
+        raise ValueError("distillation.filter_contrast_drop_fraction must be in [0.0, 1.0).")
+
+    labels_cpu = labels.detach().long().cpu()
+    requested_labels = tuple(train_cfg.distillation.class_labels)
+    if requested_labels:
+        class_labels = validate_class_label_values(
+            requested_labels,
+            train_cfg.one_shot.num_classes,
+            "distillation.class_labels",
+        )
+    else:
+        class_labels = tuple(sorted({int(label) for label in labels_cpu.tolist()}))
+
+    selected_indices: list[int] = []
+    per_class: dict[str, dict[str, object]] = {}
+    for label in class_labels:
+        class_indices = torch_module.nonzero(labels_cpu == int(label), as_tuple=False).flatten()
+        class_count = int(class_indices.numel())
+        if class_count < keep_per_class:
+            raise ValueError(
+                f"Class {label} has only {class_count} teacher samples; "
+                f"cannot keep {keep_per_class} filtered samples."
+            )
+
+        fg = metric_tensors["foreground_ratio"].index_select(0, class_indices)
+        sat = metric_tensors["saturation_ratio"].index_select(0, class_indices)
+        mask_tv = metric_tensors["mask_tv"].index_select(0, class_indices)
+        contrast = metric_tensors["contrast_std"].index_select(0, class_indices)
+        fg_low = torch_module.quantile(fg, trim_fraction)
+        fg_high = torch_module.quantile(fg, 1.0 - trim_fraction)
+        contrast_floor = torch_module.quantile(contrast, contrast_drop_fraction)
+        candidate_mask = (fg >= fg_low) & (fg <= fg_high) & (contrast >= contrast_floor)
+        candidate_indices = class_indices[candidate_mask]
+        relaxed_filters = False
+        if int(candidate_indices.numel()) < keep_per_class:
+            candidate_indices = class_indices
+            relaxed_filters = True
+
+        candidate_sat = metric_tensors["saturation_ratio"].index_select(0, candidate_indices)
+        candidate_tv = metric_tensors["mask_tv"].index_select(0, candidate_indices)
+        candidate_contrast = metric_tensors["contrast_std"].index_select(0, candidate_indices)
+        score = (
+            _class_relative_minmax(candidate_sat)
+            + _class_relative_minmax(candidate_tv)
+            + (1.0 - _class_relative_minmax(candidate_contrast))
+        )
+        order = torch_module.argsort(score)
+        chosen = candidate_indices.index_select(0, order[:keep_per_class])
+        selected_indices.extend(int(index) for index in chosen.tolist())
+
+        selected_local = torch_module.isin(class_indices, chosen)
+        per_class[str(label)] = {
+            "available": class_count,
+            "kept": int(chosen.numel()),
+            "candidate_count": int(candidate_indices.numel()),
+            "relaxed_filters": relaxed_filters,
+            "foreground_low_threshold": float(fg_low.item()),
+            "foreground_high_threshold": float(fg_high.item()),
+            "contrast_floor": float(contrast_floor.item()),
+            "rejected_by_foreground_trim": int(((fg < fg_low) | (fg > fg_high)).sum().item()),
+            "rejected_by_contrast": int((contrast < contrast_floor).sum().item()),
+            "rejected_total": class_count - int(chosen.numel()),
+            "before": {
+                "foreground_ratio": _metric_summary(fg),
+                "saturation_ratio": _metric_summary(sat),
+                "mask_tv": _metric_summary(mask_tv),
+                "contrast_std": _metric_summary(contrast),
+            },
+            "after": {
+                "foreground_ratio": _metric_summary(fg[selected_local]),
+                "saturation_ratio": _metric_summary(sat[selected_local]),
+                "mask_tv": _metric_summary(mask_tv[selected_local]),
+                "contrast_std": _metric_summary(contrast[selected_local]),
+            },
+        }
+
+    return selected_indices, {
+        "class_labels": list(class_labels),
+        "keep_per_class": keep_per_class,
+        "selected_count": len(selected_indices),
+        "foreground_trim_fraction": trim_fraction,
+        "contrast_drop_fraction": contrast_drop_fraction,
+        "per_class": per_class,
+    }
+
+
+def _filter_distill_payload_by_indices(torch_module, payload: dict[str, object], indices, *, source_size: int):
+    index_tensor = torch_module.tensor(indices, dtype=torch_module.long)
+    filtered: dict[str, object] = {}
+    for key, value in payload.items():
+        if isinstance(value, torch_module.Tensor) and value.ndim >= 1 and int(value.shape[0]) == source_size:
+            filtered[key] = value.index_select(0, index_tensor).clone()
+        else:
+            filtered[key] = value
+    return filtered, index_tensor
+
+
+def _balanced_preview_indices(torch_module, labels, *, max_per_class: int = 2, max_total: int = 20):
+    labels_cpu = labels.detach().long().cpu()
+    preview: list[int] = []
+    for label in sorted({int(item) for item in labels_cpu.tolist()}):
+        class_indices = torch_module.nonzero(labels_cpu == label, as_tuple=False).flatten().tolist()
+        preview.extend(int(index) for index in class_indices[:max_per_class])
+        if len(preview) >= max_total:
+            break
+    return torch_module.tensor(preview[:max_total], dtype=torch_module.long)
 
 
 def _build_distill_loaders(torch_module, payload: dict[str, object], train_cfg, use_pin_memory: bool):
@@ -625,6 +786,115 @@ def run_teacher_distill_export(
             "diffusion_best_loaded_for_sampling": True,
             "teacher_distill_dataset": str(artifact_path),
             "teacher_distill_sample_count": sample_count,
+        }
+    )
+    run_manager.write_meta(run_meta)
+
+
+def run_teacher_distill_filter(
+    torch_module,
+    *,
+    train_cfg,
+    run_manager,
+    run_meta: dict[str, object],
+    distill_dataset: str,
+) -> None:
+    payload = _load_distill_payload(torch_module, distill_dataset)
+    codes, labels, teacher_camera = _validated_distill_tensors(torch_module, payload, train_cfg)
+    metric_tensors = compute_teacher_distill_filter_metrics(
+        torch_module,
+        teacher_camera,
+        foreground_threshold=train_cfg.distillation.filter_foreground_threshold,
+    )
+    selected_indices, selection_summary = _select_teacher_distill_filter_indices(
+        torch_module,
+        labels,
+        metric_tensors,
+        train_cfg,
+    )
+    filtered_payload, index_tensor = _filter_distill_payload_by_indices(
+        torch_module,
+        payload,
+        selected_indices,
+        source_size=int(codes.shape[0]),
+    )
+    filtered_metrics = {
+        key: value.index_select(0, index_tensor)
+        for key, value in metric_tensors.items()
+    }
+    source_config = payload.get("config", {})
+    filtered_config = dict(source_config) if isinstance(source_config, dict) else {"source_config": source_config}
+    filtered_config["filter"] = {
+        "source_dataset": distill_dataset,
+        "source_count": int(codes.shape[0]),
+        "selected_count": len(selected_indices),
+        "keep_per_class": train_cfg.distillation.filter_keep_per_class,
+        "foreground_threshold": train_cfg.distillation.filter_foreground_threshold,
+        "foreground_trim_fraction": train_cfg.distillation.filter_foreground_trim_fraction,
+        "contrast_drop_fraction": train_cfg.distillation.filter_contrast_drop_fraction,
+    }
+    filtered_payload["config"] = filtered_config
+    filtered_payload["filter_indices"] = index_tensor
+
+    before_summary = {
+        key: _metric_summary(value)
+        for key, value in metric_tensors.items()
+    }
+    after_summary = {
+        key: _metric_summary(value)
+        for key, value in filtered_metrics.items()
+    }
+    class_counts = {
+        str(label): int((filtered_payload["class_labels"].long() == int(label)).sum().item())
+        for label in sorted({int(label) for label in filtered_payload["class_labels"].long().tolist()})
+    }
+    metrics_payload = {
+        "source_dataset": distill_dataset,
+        "source_count": int(codes.shape[0]),
+        "selected_count": len(selected_indices),
+        "class_counts": class_counts,
+        "before": before_summary,
+        "after": after_summary,
+        **selection_summary,
+    }
+
+    run_manager.save_config_snapshot(
+        "teacher_distill_filter_config",
+        {
+            "distill_dataset": distill_dataset,
+            "filter": filtered_config["filter"],
+            "source": "train.py_teacher_distill_filter",
+        },
+    )
+    artifact_path = run_manager.save_tensor_bundle("teacher_distill_dataset_filtered.pt", filtered_payload)
+    metrics_path = run_manager.save_artifact_json("teacher_distill_filter_metrics", metrics_payload)
+    source_preview = _balanced_preview_indices(torch_module, labels)
+    filtered_preview = _balanced_preview_indices(torch_module, filtered_payload["class_labels"])
+    run_manager.save_tensor_grid(
+        {
+            "source_teacher_camera_display": enhance_camera_for_display(
+                teacher_camera.index_select(0, source_preview)
+            ),
+            "filtered_teacher_camera_display": enhance_camera_for_display(
+                filtered_payload["teacher_camera"].index_select(0, filtered_preview)
+            ),
+        },
+        run_manager.images_dir / "teacher_distill_filter_before_after.png",
+        title=format_output_title("images/teacher_distill_filter_before_after.png", "teacher distill filter"),
+        max_items=min(20, len(selected_indices)),
+    )
+    print(
+        "[teacher_distill_filter] "
+        f"selected {len(selected_indices)}/{int(codes.shape[0])} samples "
+        f"to {artifact_path}"
+    )
+    run_meta.update(
+        {
+            "teacher_distill_source_dataset": distill_dataset,
+            "teacher_distill_filtered_dataset": str(artifact_path),
+            "teacher_distill_filter_metric_source": str(metrics_path.relative_to(run_manager.run_dir)),
+            "teacher_distill_filter_sample_count": len(selected_indices),
+            "teacher_distill_filter_class_counts": class_counts,
         }
     )
     run_manager.write_meta(run_meta)

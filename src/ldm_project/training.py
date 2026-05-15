@@ -481,6 +481,8 @@ def one_shot_loss(
     edge_loss_weight: float = 0.0,
     slm_smoothness_weight: float = 0.0,
     camera_saturation_weight: float = 0.0,
+    camera_topology_weight: float = 0.0,
+    camera_artifact_weight: float = 0.0,
     code_diversity_weight: float = 0.0,
     teacher_pairwise_diversity_weight: float = 0.0,
     diversity_min_teacher_mse: float = 1.0e-4,
@@ -532,6 +534,24 @@ def one_shot_loss(
     slm_smoothness = slm_smoothness_weight * slm_tv
     camera_saturation_base = _camera_saturation_loss(camera_loss_prediction)
     camera_saturation = camera_saturation_weight * camera_saturation_base
+    # 拓扑约束：保持笔画连接和弯折的结构，对复杂数字(3/4/5)尤为重要。
+    camera_topology_base = (
+        _camera_topology_loss(camera_prediction, target_batch, foreground_mask)
+        if camera_topology_weight != 0.0
+        else zero
+    )
+    camera_topology = camera_topology_weight * camera_topology_base
+    # 抗黑斑：惩罚前景笔画内部的暗斑和粗糙纹理。
+    if camera_artifact_weight != 0.0:
+        artifact_metrics = _camera_artifact_metrics(
+            camera_loss_prediction, target_batch, foreground_mask
+        )
+        camera_artifact_base = artifact_metrics["artifact_base"]
+        foreground_hole_ratio = artifact_metrics["foreground_hole_ratio"]
+    else:
+        camera_artifact_base = zero
+        foreground_hole_ratio = zero
+    camera_artifact = camera_artifact_weight * camera_artifact_base
     diversity_metrics = _one_shot_pairwise_diversity_metrics(
         camera_prediction,
         target_batch,
@@ -548,6 +568,8 @@ def one_shot_loss(
         + edge_loss
         + slm_smoothness
         + camera_saturation
+        + camera_topology
+        + camera_artifact
         + code_diversity
         + teacher_pairwise_diversity
     )
@@ -565,6 +587,9 @@ def one_shot_loss(
         "camera_saturation_loss": camera_saturation.detach(),
         "camera_saturation_penalty": camera_saturation_base.detach(),
         "camera_saturation_ratio": _camera_saturation_ratio(camera_prediction.detach()),
+        "camera_topology_loss": camera_topology.detach(),
+        "camera_artifact_loss": camera_artifact.detach(),
+        "foreground_hole_ratio": foreground_hole_ratio.detach() if hasattr(foreground_hole_ratio, 'detach') else foreground_hole_ratio,
         "camera_foreground_dice": _foreground_dice_score(camera_prediction.detach(), foreground_mask),
         "code_diversity_loss": code_diversity.detach(),
         "code_diversity_penalty": diversity_metrics["code_diversity_base"].detach(),
