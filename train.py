@@ -48,6 +48,7 @@ from ldm_project.stage_runners import (
     run_one_shot_training,
     run_sample_stage,
     run_teacher_distill_export,
+    run_teacher_distill_filter,
 )
 from ldm_project.train_utils import (
     CLI_STAGE_CHOICES,
@@ -128,6 +129,7 @@ __all__ = [
     "run_one_shot_training",
     "run_sample_stage",
     "run_teacher_distill_export",
+    "run_teacher_distill_filter",
     "save_post_train_samples",
     "select_complex_subset_mask",
     "select_first_stage_visual_batch",
@@ -537,6 +539,15 @@ def main() -> None:
             first_stage_model_version=FIRST_STAGE_MODEL_VERSION,
             load_diffusion_checkpoint_fn=load_diffusion_checkpoint,
             sample_latents_fn=sample_latents,
+        )
+
+    if train_cfg.mode == "teacher_distill_filter":
+        run_teacher_distill_filter(
+            torch,
+            train_cfg=train_cfg,
+            run_manager=run_manager,
+            run_meta=run_meta,
+            distill_dataset=args.distill_dataset,
         )
 
     if train_cfg.mode == "one_shot_sample":

@@ -64,6 +64,10 @@ class TrainScriptStepTests(unittest.TestCase):
             {"first_stage": 0, "diffusion": 0, "one_shot": 0},
         )
         self.assertEqual(
+            resolve_stage_epoch_plan(stage="teacher_distill_filter", first_stage_epochs=10, diffusion_epochs=20),
+            {"first_stage": 0, "diffusion": 0, "one_shot": 0},
+        )
+        self.assertEqual(
             resolve_stage_epoch_plan(
                 stage="one_shot_distill_eval",
                 first_stage_epochs=10,
@@ -405,6 +409,7 @@ class TrainScriptStepTests(unittest.TestCase):
         validate_stage_requirements("sample", "first.pt", "diffusion.pt")
         validate_stage_requirements("teacher_sample", "first.pt", "diffusion.pt")
         validate_stage_requirements("teacher_distill_export", "first.pt", "diffusion.pt")
+        validate_stage_requirements("teacher_distill_filter", None, None, None, "distill.pt")
         validate_stage_requirements("one_shot_distill", "first.pt", "diffusion.pt", None, "distill.pt")
         validate_stage_requirements("one_shot_distill_eval", "first.pt", "diffusion.pt", "one_shot.pt", "distill.pt")
         with self.assertRaisesRegex(ValueError, "first-stage-checkpoint"):
@@ -415,6 +420,8 @@ class TrainScriptStepTests(unittest.TestCase):
             validate_stage_requirements("one_shot_sample", "first.pt", "diffusion.pt", None)
         with self.assertRaisesRegex(ValueError, "distill-dataset"):
             validate_stage_requirements("one_shot_distill", "first.pt", "diffusion.pt", None, None)
+        with self.assertRaisesRegex(ValueError, "distill-dataset"):
+            validate_stage_requirements("teacher_distill_filter", None, None, None, None)
         with self.assertRaisesRegex(ValueError, "one-shot-checkpoint"):
             validate_stage_requirements("one_shot_distill_eval", "first.pt", "diffusion.pt", None, "distill.pt")
         with self.assertRaisesRegex(ValueError, "distill-dataset"):
@@ -477,6 +484,17 @@ class TrainScriptStepTests(unittest.TestCase):
             )
             self.assertEqual(distill_export["first_stage_checkpoint"], str(first_stage_path))
             self.assertEqual(distill_export["diffusion_checkpoint"], str(diffusion_path))
+
+            distill_filter = train_module.resolve_final_pt_stage_checkpoints(
+                "teacher_distill_filter",
+                None,
+                None,
+                final_pt_dir,
+                "first_stage_best_optical.pt",
+                "diffusion_best.pt",
+            )
+            self.assertIsNone(distill_filter["first_stage_checkpoint"])
+            self.assertIsNone(distill_filter["diffusion_checkpoint"])
 
     def test_apply_cli_overrides_updates_training_config(self) -> None:
         from argparse import Namespace

@@ -17,6 +17,7 @@ CANONICAL_STAGES = {
     "teacher_full",
     "teacher_sample",
     "teacher_distill_export",
+    "teacher_distill_filter",
     "one_shot",
     "one_shot_distill",
     "one_shot_distill_eval",
@@ -156,7 +157,7 @@ def validate_stage_requirements(
             raise ValueError(f"--stage {canonical_stage} requires --diffusion-checkpoint to load a trained diffusion model.")
     if canonical_stage in {"one_shot_sample", "one_shot_distill_eval"} and one_shot_checkpoint is None:
         raise ValueError(f"--stage {canonical_stage} requires --one-shot-checkpoint to load a trained one-shot model.")
-    if canonical_stage in {"one_shot_distill", "one_shot_distill_eval"} and distill_dataset is None:
+    if canonical_stage in {"one_shot_distill", "one_shot_distill_eval", "teacher_distill_filter"} and distill_dataset is None:
         raise ValueError(f"--stage {canonical_stage} requires --distill-dataset to load teacher distillation targets.")
 
 
@@ -238,7 +239,13 @@ def resolve_stage_epoch_plan(
         return {"first_stage": 0, "diffusion": diffusion_epochs, "one_shot": 0}
     if canonical_stage == "teacher_full":
         return {"first_stage": first_stage_epochs, "diffusion": diffusion_epochs, "one_shot": 0}
-    if canonical_stage in {"teacher_sample", "teacher_distill_export", "one_shot_sample", "one_shot_distill_eval"}:
+    if canonical_stage in {
+        "teacher_sample",
+        "teacher_distill_export",
+        "teacher_distill_filter",
+        "one_shot_sample",
+        "one_shot_distill_eval",
+    }:
         return {"first_stage": 0, "diffusion": 0, "one_shot": 0}
     if canonical_stage in {"one_shot", "one_shot_distill"}:
         return {"first_stage": 0, "diffusion": 0, "one_shot": one_shot_epochs}

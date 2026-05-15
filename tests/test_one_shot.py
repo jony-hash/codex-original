@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+import tempfile
 import unittest
 
 
@@ -122,8 +123,15 @@ class OneShotConfigTests(unittest.TestCase):
         export_config = load_training_config(Path("configs/export_teacher_distill_mnist_2k.yaml"))
         export_3k_fast200_config = load_training_config(Path("configs/export_teacher_distill_mnist_3k_fast200.yaml"))
         export_5k_config = load_training_config(Path("configs/export_teacher_distill_mnist_5k.yaml"))
+        filter_config = load_training_config(Path("configs/filter_teacher_distill_mnist_3k_fast200_top2k.yaml"))
         train_config = load_training_config(Path("configs/train_one_shot_distill_mnist_2k_grid16.yaml"))
         train_5k_config = load_training_config(Path("configs/train_one_shot_distill_mnist_5k_grid16_shape_class.yaml"))
+        train_filtered_config = load_training_config(
+            Path("configs/train_one_shot_distill_mnist_filtered2k_grid16_shape_class.yaml")
+        )
+        train_filtered_quality_config = load_training_config(
+            Path("configs/train_one_shot_distill_mnist_filtered2k_grid16_shape_class_quality.yaml")
+        )
         train_3k_sat5e3_config = load_training_config(
             Path("configs/train_one_shot_distill_mnist_3k_fast200_grid16_shape_class_sat5e3.yaml")
         )
@@ -164,6 +172,12 @@ class OneShotConfigTests(unittest.TestCase):
         self.assertEqual(export_5k_config.distillation.samples_per_class, 500)
         self.assertEqual(export_5k_config.distillation.sampling_steps, 100)
         self.assertEqual(export_5k_config.batch_size, 96)
+        self.assertEqual(filter_config.mode, "teacher_distill_filter")
+        self.assertEqual(filter_config.distillation.samples_per_class, 300)
+        self.assertEqual(filter_config.distillation.filter_keep_per_class, 200)
+        self.assertAlmostEqual(filter_config.distillation.filter_foreground_trim_fraction, 0.05, places=8)
+        self.assertAlmostEqual(filter_config.distillation.filter_contrast_drop_fraction, 0.10, places=8)
+        self.assertAlmostEqual(filter_config.distillation.filter_foreground_threshold, 0.2, places=8)
         self.assertEqual(train_config.mode, "one_shot_distill")
         self.assertEqual(train_config.one_shot.metasurface_grid_size, 16)
         self.assertAlmostEqual(train_config.one_shot.slm_smoothness_weight, 1.0e-4, places=8)
@@ -172,6 +186,10 @@ class OneShotConfigTests(unittest.TestCase):
         self.assertEqual(train_5k_config.distillation.samples_per_class, 500)
         self.assertEqual(train_5k_config.one_shot.metasurface_grid_size, 16)
         self.assertEqual(train_5k_config.one_shot.class_recon_weight_labels, (3, 4, 5, 6))
+        self.assertEqual(train_filtered_config.distillation.samples_per_class, 200)
+        self.assertEqual(train_filtered_config.one_shot.class_recon_weight_labels, (3, 4, 5, 6))
+        self.assertEqual(train_filtered_quality_config.distillation.samples_per_class, 200)
+        self.assertEqual(train_filtered_quality_config.one_shot.checkpoint_selection_metric, "quality")
         self.assertEqual(train_3k_sat5e3_config.mode, "one_shot_distill")
         self.assertEqual(train_3k_sat5e3_config.one_shot.metasurface_grid_size, 16)
         self.assertAlmostEqual(train_3k_sat5e3_config.one_shot.camera_saturation_weight, 5.0e-3, places=8)
@@ -244,6 +262,106 @@ class OneShotConfigTests(unittest.TestCase):
         self.assertEqual(metric, ONE_SHOT_DISTILL_BEST_METRIC)
         self.assertAlmostEqual(score, 0.5, places=6)
 
+    def test_teacher_distill_filter_preserves_bundle_and_balances_classes(self) -> None:
+        import torch
+
+        from ldm_project.config import (
+            DataConfig,
+            DiffusionConfig,
+            DistillationConfig,
+            FirstStageConfig,
+            OneShotConfig,
+            TrainingConfig,
+        )
+        from ldm_project.stage_runners import run_teacher_distill_filter
+
+        class RecordingRunManager:
+            def __init__(self, run_dir: Path) -> None:
+                self.run_dir = run_dir
+                self.images_dir = run_dir / "images"
+                self.artifacts_dir = run_dir / "artifacts"
+                self.configs_dir = run_dir / "configs"
+                self.meta_payload = None
+                self.metrics_payload = None
+                self.bundle_path = None
+
+            def write_meta(self, meta):
+                self.meta_payload = dict(meta)
+
+            def save_config_snapshot(self, name, data):
+                path = self.configs_dir / f"{name}.json"
+                path.parent.mkdir(parents=True, exist_ok=True)
+                return path
+
+            def save_tensor_bundle(self, name, payload):
+                path = self.artifacts_dir / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                torch.save(dict(payload), path)
+                self.bundle_path = path
+                return path
+
+            def save_artifact_json(self, name, payload):
+                self.metrics_payload = payload
+                path = self.artifacts_dir / f"{name}.json"
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("{}", encoding="utf-8")
+                return path
+
+            def save_tensor_grid(self, tensor_map, destination, title="", max_items=4):
+                path = Path(destination)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                return path
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            run_dir = Path(tmpdir)
+            source_path = run_dir / "source_distill.pt"
+            torch.manual_seed(7)
+            labels = torch.tensor([0] * 10 + [1] * 10, dtype=torch.long)
+            teacher_camera = torch.rand(20, 1, 8, 8, dtype=torch.float32) * 0.8 + 0.1
+            payload = {
+                "codes": torch.randn(20, 4),
+                "class_labels": labels,
+                "teacher_camera": teacher_camera,
+                "teacher_image": teacher_camera.clone(),
+                "teacher_latents": torch.randn(20, 1, 1, 1),
+                "teacher_initial_noise": torch.randn(20, 1, 1, 1),
+                "guidance_scale": torch.tensor(2.0),
+                "latent_scale": torch.tensor(1.0),
+                "config": {"source": "unit-test"},
+            }
+            torch.save(payload, source_path)
+            train_cfg = TrainingConfig(
+                data=DataConfig(validation_fraction=0.1),
+                first_stage=FirstStageConfig(image_size=8, latent_channels=1),
+                diffusion=DiffusionConfig(num_classes=2),
+                one_shot=OneShotConfig(code_dim=4, num_classes=2),
+                distillation=DistillationConfig(
+                    samples_per_class=10,
+                    class_labels=(0, 1),
+                    filter_keep_per_class=4,
+                    filter_foreground_threshold=0.2,
+                ),
+            )
+            run_manager = RecordingRunManager(run_dir)
+            run_meta = {}
+
+            run_teacher_distill_filter(
+                torch,
+                train_cfg=train_cfg,
+                run_manager=run_manager,
+                run_meta=run_meta,
+                distill_dataset=str(source_path),
+            )
+
+            filtered = torch.load(run_manager.bundle_path, map_location="cpu", weights_only=False)
+            self.assertEqual(tuple(filtered["codes"].shape), (8, 4))
+            self.assertEqual(tuple(filtered["teacher_camera"].shape), (8, 1, 8, 8))
+            self.assertEqual(tuple(filtered["teacher_initial_noise"].shape), (8, 1, 1, 1))
+            self.assertIn("filter", filtered["config"])
+            self.assertEqual((filtered["class_labels"] == 0).sum().item(), 4)
+            self.assertEqual((filtered["class_labels"] == 1).sum().item(), 4)
+            self.assertEqual(run_manager.metrics_payload["class_counts"], {"0": 4, "1": 4})
+            self.assertEqual(run_manager.meta_payload["teacher_distill_filter_sample_count"], 8)
 
     def test_one_shot_visualization_includes_raw_and_display_camera(self) -> None:
         import torch
