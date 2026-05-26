@@ -59,6 +59,7 @@ class ElectronicGeneratorE(nn.Module):
     def __init__(
         self,
         image_size: int,
+        grid_size: int,
         code_dim: int,
         num_classes: int,
         label_embed_dim: int,
@@ -66,6 +67,7 @@ class ElectronicGeneratorE(nn.Module):
     ) -> None:
         super().__init__()
         self.image_size = image_size
+        self.grid_size = grid_size
         self.code_dim = code_dim
         self.num_classes = num_classes
         self.label_embedding = nn.Embedding(num_classes, label_embed_dim)
@@ -87,7 +89,8 @@ class ElectronicGeneratorE(nn.Module):
             raise ValueError(f"class_labels must be in [0, {self.num_classes - 1}].")
         label_features = self.label_embedding(labels)
         slm_logits = self.net(torch.cat([code, label_features], dim=1))
-        return torch.sigmoid(slm_logits.reshape(code.shape[0], 1, self.image_size, self.image_size))
+        slm_grid = torch.sigmoid(slm_logits.reshape(code.shape[0], 1, self.image_size, self.image_size))
+        return slm_grid
 
 
 class IdealAmplitudeSLMModel(nn.Module):
@@ -124,6 +127,7 @@ class OneShotOpticalGenerator(nn.Module):
         self._validate_config()
         self.generator_e = ElectronicGeneratorE(
             image_size=image_size,
+            grid_size=self.config.metasurface_grid_size,
             code_dim=self.config.code_dim,
             num_classes=self.config.num_classes,
             label_embed_dim=self.config.label_embed_dim,
@@ -195,8 +199,21 @@ class OneShotOpticalGenerator(nn.Module):
             "slm_amplitude": slm_outputs["slm_amplitude"],
             "slm_phase": slm_outputs["slm_phase"],
             "encoder_input_amplitude": encoder_input_field.abs(),
+            "encoder_input_phase": torch.angle(encoder_input_field),
+            "encoder_input_grid_amplitude": encoder_grid.abs(),
+            "encoder_input_grid_phase": torch.angle(encoder_grid),
             "encoded_amplitude": encoded_field.abs(),
+            "encoded_phase": torch.angle(encoded_field),
+            "ols_input_amplitude": encoded_field.abs(),
+            "ols_input_phase": torch.angle(encoded_field),
+            "ols_output_amplitude": ols_field.abs(),
+            "ols_output_phase": torch.angle(ols_field),
             "ols_amplitude": ols_field.abs(),
+            "ols_phase": torch.angle(ols_field),
+            "decoder_input_amplitude": ols_field.abs(),
+            "decoder_input_phase": torch.angle(ols_field),
+            "decoder_output_amplitude": chip_grid.abs(),
+            "decoder_output_phase": torch.angle(chip_grid),
             "chip_real": chip_field.real,
             "chip_imag": chip_field.imag,
             **optical_readout,

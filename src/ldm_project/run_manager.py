@@ -111,6 +111,9 @@ class RunManager:
         destination: str | Path,
         title: str = "",
         max_items: int = 4,
+        row_labels: list[str] | tuple[str, ...] | None = None,
+        cmap: str = "gray",
+        phase_colorbar: bool = False,
     ) -> Path:
         path = self.run_dir / destination if not isinstance(destination, Path) else destination
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -120,6 +123,8 @@ class RunManager:
 
             matplotlib.use("Agg")
             import matplotlib.pyplot as plt
+            from matplotlib.cm import ScalarMappable
+            from matplotlib.colors import Normalize
         except ImportError:
             relative = path.with_suffix(".pt").relative_to(self.run_dir)
             return self.save_tensor_bundle(str(relative), tensor_map)
@@ -136,20 +141,60 @@ class RunManager:
         if not prepared or rows == 0:
             raise ValueError("No visualizable tensors were provided.")
 
-        figure, axes = plt.subplots(rows, len(prepared), squeeze=False, figsize=(3.2 * len(prepared), 3.2 * rows))
+        cell_width_inches = 1.55
+        cell_height_inches = 1.05
+        figure, axes = plt.subplots(
+            rows,
+            len(prepared),
+            squeeze=False,
+            figsize=(cell_width_inches * len(prepared), cell_height_inches * rows),
+            constrained_layout=True,
+        )
+        display_cmap = cmap
+        if phase_colorbar:
+            import matplotlib.pyplot as plt
+            cmap_obj = plt.get_cmap(cmap).copy()
+            cmap_obj.set_bad("white", 0.0)
+            display_cmap = cmap_obj
+        label_values = list(row_labels or [])[:rows]
         for col, (name, images) in enumerate(prepared):
-            axes[0][col].set_title(name, fontsize=9)
+            axes[0][col].set_title(name.replace("_", " "), fontsize=8, pad=4)
             for row in range(rows):
                 axis = axes[row][col]
-                axis.axis("off")
+                axis.set_xticks([])
+                axis.set_yticks([])
+                for spine in axis.spines.values():
+                    spine.set_visible(False)
+                if col == 0 and row < len(label_values):
+                    axis.text(
+                        -0.14,
+                        0.5,
+                        label_values[row],
+                        transform=axis.transAxes,
+                        ha="right",
+                        va="center",
+                        fontsize=8,
+                    )
                 if row >= len(images):
                     continue
-                axis.imshow(images[row], cmap="gray", vmin=0.0, vmax=1.0)
+                axis.imshow(images[row], cmap=display_cmap, vmin=0.0, vmax=1.0)
 
         if title:
             figure.suptitle(title)
-        figure.tight_layout()
-        figure.savefig(path, dpi=150)
+        if phase_colorbar:
+            scalar = ScalarMappable(norm=Normalize(vmin=0.0, vmax=1.0), cmap=cmap_obj)
+            scalar.set_array([])
+            colorbar = figure.colorbar(
+                scalar,
+                ax=axes.ravel().tolist(),
+                orientation="horizontal",
+                shrink=0.88,
+                pad=0.04,
+                ticks=(0.0, 0.5, 1.0),
+            )
+            colorbar.ax.set_xticklabels(("0", "π", "2π"))
+            colorbar.set_label("phase", fontsize=8)
+        figure.savefig(path, dpi=100)
         plt.close(figure)
         return path
 

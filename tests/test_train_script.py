@@ -78,6 +78,15 @@ class TrainScriptStepTests(unittest.TestCase):
         )
         self.assertEqual(
             resolve_stage_epoch_plan(
+                stage="one_shot_distill_eval_diagnostics",
+                first_stage_epochs=10,
+                diffusion_epochs=20,
+                one_shot_epochs=4,
+            ),
+            {"first_stage": 0, "diffusion": 0, "one_shot": 0},
+        )
+        self.assertEqual(
+            resolve_stage_epoch_plan(
                 stage="one_shot",
                 first_stage_epochs=10,
                 diffusion_epochs=20,
@@ -268,8 +277,8 @@ class TrainScriptStepTests(unittest.TestCase):
             def save_config_snapshot(self, name, data):
                 return name, data
 
-            def save_tensor_grid(self, tensor_map, destination, title="", max_items=4):
-                self.grid_calls.append((Path(destination).name, max_items, list(tensor_map.keys())))
+            def save_tensor_grid(self, tensor_map, destination, title="", max_items=4, **kwargs):
+                self.grid_calls.append((Path(destination).name, max_items, list(tensor_map.keys()), dict(kwargs)))
                 return destination
 
             def save_tensor_bundle(self, name, payload):
@@ -333,14 +342,17 @@ class TrainScriptStepTests(unittest.TestCase):
             resolve_trace_steps_fn=lambda *_args: [{"label": "t000", "nominal_timestep": 0, "actual_timestep": 0}],
         )
 
-        self.assertEqual(run_manager.grid_calls[0][0], "post_train_sample_grid.png")
-        self.assertEqual(run_manager.grid_calls[0][1], 3)
-        self.assertEqual(run_manager.grid_calls[1][0], "post_train_denoising_camera_trace.png")
-        self.assertEqual(run_manager.grid_calls[1][1], 3)
-        self.assertEqual(run_manager.metrics_payload["overall"]["count"], 3)
+        self.assertEqual(run_manager.grid_calls[0][0], "post_train_sample_amplitude.png")
+        self.assertEqual(run_manager.grid_calls[0][1], 6)
+        self.assertEqual(run_manager.grid_calls[0][3]["row_labels"], ["0", "0", "1", "1", "2", "2"])
+        self.assertEqual(run_manager.grid_calls[1][0], "post_train_sample_phase.png")
+        self.assertEqual(run_manager.grid_calls[1][1], 6)
+        self.assertEqual(run_manager.grid_calls[2][0], "post_train_denoising_camera_trace.png")
+        self.assertEqual(run_manager.grid_calls[2][1], 6)
+        self.assertEqual(run_manager.metrics_payload["overall"]["count"], 6)
         self.assertEqual(sorted(run_manager.metrics_payload["per_class"].keys()), ["0", "1", "2"])
         self.assertEqual(run_manager.metrics_payload["nearest_neighbor"]["reference_source"], "train_only")
-        self.assertEqual(run_manager.metrics_payload["nearest_neighbor"]["overall"]["count"], 3)
+        self.assertEqual(run_manager.metrics_payload["nearest_neighbor"]["overall"]["count"], 6)
         self.assertEqual(
             sorted(run_manager.metrics_payload["nearest_neighbor"]["per_class"].keys()),
             ["0", "1", "2"],
@@ -364,8 +376,8 @@ class TrainScriptStepTests(unittest.TestCase):
             device=torch.device("cpu"),
         )
 
-        self.assertEqual(labels.tolist(), [3, 4, 5, 3, 4, 5, 3, 4, 5, 3, 4, 5])
-        self.assertEqual(default_labels.tolist(), list(range(10)))
+        self.assertEqual(labels.tolist(), [3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5])
+        self.assertEqual(default_labels.tolist(), [label for label in range(10) for _ in range(1)])
         with self.assertRaisesRegex(ValueError, "sample_repeats_per_class"):
             train_module.build_post_train_sample_labels(
                 torch,
@@ -412,6 +424,7 @@ class TrainScriptStepTests(unittest.TestCase):
         validate_stage_requirements("teacher_distill_filter", None, None, None, "distill.pt")
         validate_stage_requirements("one_shot_distill", "first.pt", "diffusion.pt", None, "distill.pt")
         validate_stage_requirements("one_shot_distill_eval", "first.pt", "diffusion.pt", "one_shot.pt", "distill.pt")
+        validate_stage_requirements("one_shot_distill_eval_diagnostics", None, None, None, None)
         with self.assertRaisesRegex(ValueError, "first-stage-checkpoint"):
             validate_stage_requirements("sample", None, "diffusion.pt")
         with self.assertRaisesRegex(ValueError, "diffusion-checkpoint"):
@@ -546,6 +559,8 @@ class TrainScriptStepTests(unittest.TestCase):
         self.assertAlmostEqual(config.diffusion.cond_dropout_prob, 0.05, places=6)
         self.assertEqual(config.diffusion.sample_class_labels, (3, 4, 5))
         self.assertEqual(config.diffusion.sample_repeats_per_class, 4)
+        self.assertEqual(config.one_shot.sample_class_labels, (3, 4, 5))
+        self.assertEqual(config.one_shot.sample_repeats_per_class, 4)
         self.assertEqual(config.diffusion.class_weight_labels, (3, 4, 5))
         self.assertAlmostEqual(config.diffusion.class_weight, 1.5, places=6)
         self.assertAlmostEqual(config.first_stage.camera_artifact_weight, 0.25, places=6)
@@ -559,6 +574,63 @@ class TrainScriptStepTests(unittest.TestCase):
         self.assertAlmostEqual(config.first_stage.image_fusion_start_weight, 0.0, places=6)
         self.assertAlmostEqual(config.first_stage.image_fusion_end_weight, 0.0, places=6)
         self.assertEqual(config.first_stage.image_fusion_decay_epochs, 1)
+
+    def test_cli_sample_overrides_drive_one_shot_distill_eval_selection(self) -> None:
+        from argparse import Namespace
+
+        import torch
+
+        from ldm_project.config import OneShotConfig, TrainingConfig
+        from ldm_project.stage_runners import _select_distill_eval_indices
+
+        train_module = load_train_module()
+        config = TrainingConfig(
+            one_shot=OneShotConfig(
+                num_classes=3,
+                sample_class_labels=(0,),
+                sample_repeats_per_class=1,
+            ),
+        )
+        train_module.apply_cli_overrides(
+            config,
+            Namespace(
+                stage="one_shot_distill_eval",
+                batch_size=None,
+                subset_fraction=None,
+                subset_size=None,
+                validation_fraction=None,
+                num_workers=None,
+                first_stage_epochs=None,
+                diffusion_epochs=None,
+                one_shot_epochs=None,
+                guidance_scale=None,
+                cond_dropout_prob=None,
+                sample_class_labels=[1, 2],
+                sample_repeats_per_class=3,
+                diffusion_class_weight_labels=None,
+                diffusion_class_weight=None,
+                camera_artifact_weight=None,
+                encoder_fusion_mode=None,
+                image_fusion_weight=None,
+                optical_encoder_input_mode=None,
+                optical_encoder_arch=None,
+                metasurface_decoder_arch=None,
+                distill_samples_per_class=None,
+                distill_total_samples=None,
+                distill_output=None,
+            ),
+        )
+
+        labels = torch.tensor([0, 0, 0, 1, 1, 1, 2, 2, 2], dtype=torch.long)
+        selected, summary = _select_distill_eval_indices(torch, labels, config)
+
+        self.assertEqual(config.one_shot.sample_class_labels, (1, 2))
+        self.assertEqual(config.one_shot.sample_repeats_per_class, 3)
+        self.assertEqual(len(selected), 6)
+        self.assertEqual(summary["requested_samples_per_class"], 3)
+        self.assertEqual(summary["selected_count"], 6)
+        self.assertEqual(summary["per_class"]["1"]["selected"], 3)
+        self.assertEqual(summary["per_class"]["2"]["selected"], 3)
 
     def test_apply_cli_overrides_rejects_invalid_image_fusion_weight(self) -> None:
         from argparse import Namespace
@@ -777,9 +849,16 @@ class TrainMainValidationTests(unittest.TestCase):
 
         original_save_tensor_grid = ldm_project.RunManager.save_tensor_grid
 
-        def capture_save_tensor_grid(self, tensor_map, destination, title="", max_items=4):
-            grid_calls.append((Path(destination).name, max_items, list(tensor_map.keys())))
-            return original_save_tensor_grid(self, tensor_map, destination, title=title, max_items=max_items)
+        def capture_save_tensor_grid(self, tensor_map, destination, title="", max_items=4, **kwargs):
+            grid_calls.append((Path(destination).name, max_items, list(tensor_map.keys()), dict(kwargs)))
+            return original_save_tensor_grid(
+                self,
+                tensor_map,
+                destination,
+                title=title,
+                max_items=max_items,
+                **kwargs,
+            )
 
         images = torch.rand(10, 1, 8, 8)
         labels = torch.arange(10, dtype=torch.long)
@@ -913,7 +992,9 @@ class TrainMainValidationTests(unittest.TestCase):
         self.assertEqual(meta["diffusion_class_weight_labels"], [])
         self.assertAlmostEqual(meta["diffusion_class_weight"], 1.0, places=6)
         self.assertEqual(meta["sample_class_labels"], [])
-        self.assertEqual(meta["sample_repeats_per_class"], 1)
+        self.assertEqual(meta["sample_repeats_per_class"], 2)
+        self.assertEqual(meta["one_shot_sample_class_labels"], [])
+        self.assertEqual(meta["one_shot_sample_repeats_per_class"], 2)
         self.assertEqual(
             meta["diffusion_best_checkpoint"],
             str(run_dir / "checkpoints" / "diffusion_best.pt"),
@@ -988,17 +1069,19 @@ class TrainMainValidationTests(unittest.TestCase):
         self.assertIn("complex_camera_foreground_dice", history["first_stage_validation"][0])
         self.assertIn("complex_camera_mnist_score", history["first_stage_validation"][0])
         self.assertIn("camera_complex_balanced_mnist_score", history["first_stage_validation"][0])
-        self.assertEqual(first_stage_visual_config["class_labels"], list(range(10)))
+        expected_visual_labels = [label for label in range(10) for _ in range(2)]
+        self.assertEqual(first_stage_visual_config["class_labels"], expected_visual_labels)
         self.assertEqual(first_stage_visual_config["reference_source"], "validation_then_train_fallback")
-        self.assertEqual(diffusion_visual_config["class_labels"], list(range(10)))
-        self.assertEqual(diffusion_visual_config["reference_labels"], list(range(10)))
+        self.assertEqual(diffusion_visual_config["class_labels"], expected_visual_labels)
+        self.assertEqual(diffusion_visual_config["reference_labels"], expected_visual_labels)
         self.assertEqual(diffusion_visual_config["reference_source"], "validation_then_train_fallback")
         diffusion_epoch_grids = [
             call for call in grid_calls
-            if call[0] == "epoch_0001.png" and "generated_camera" in call[2]
+            if call[0] == "epoch_0001_amplitude.png" and "reference" in call[2]
         ]
         self.assertEqual(len(diffusion_epoch_grids), 1)
-        self.assertEqual(diffusion_epoch_grids[0][1], 10)
+        self.assertEqual(diffusion_epoch_grids[0][1], 20)
+        self.assertEqual(diffusion_epoch_grids[0][3]["row_labels"], [str(label) for label in expected_visual_labels])
         self.assertEqual(
             sorted(history["first_stage_validation_per_class"][0]["classes"].keys()),
             ["5", "6", "7", "8", "9"],
@@ -1015,7 +1098,8 @@ class TrainMainValidationTests(unittest.TestCase):
             "camera_foreground_dice",
             history["first_stage_validation_per_class"][0]["classes"]["5"],
         )
-        self.assertEqual(post_train_config["reference_labels"], list(range(10)))
+        self.assertEqual(post_train_config["class_labels"], expected_visual_labels)
+        self.assertEqual(post_train_config["reference_labels"], expected_visual_labels)
         self.assertEqual(post_train_config["reference_source"], "validation_then_train_fallback")
         self.assertIn("reference_images", post_train_tensors)
         self.assertIn("reference_labels", post_train_tensors)
@@ -1023,27 +1107,27 @@ class TrainMainValidationTests(unittest.TestCase):
         self.assertIn("generated_image", post_train_tensors)
         self.assertIn("chip_amplitude", post_train_tensors)
         self.assertIn("chip_phase", post_train_tensors)
-        self.assertEqual(tuple(post_train_tensors["reference_images"].shape), (10, 1, 8, 8))
-        self.assertEqual(post_train_tensors["reference_labels"].tolist(), list(range(10)))
+        self.assertEqual(tuple(post_train_tensors["reference_images"].shape), (20, 1, 8, 8))
+        self.assertEqual(post_train_tensors["reference_labels"].tolist(), expected_visual_labels)
         self.assertEqual(post_train_tensors["reference_source"], "validation_then_train_fallback")
-        self.assertEqual(tuple(post_train_tensors["generated_camera"].shape), (10, 1, 8, 8))
-        self.assertEqual(tuple(post_train_tensors["generated_image"].shape), (10, 1, 8, 8))
-        self.assertEqual(trace_config["reference_labels"], list(range(10)))
-        self.assertEqual(sample_metrics["overall"]["count"], 10)
+        self.assertEqual(tuple(post_train_tensors["generated_camera"].shape), (20, 1, 8, 8))
+        self.assertEqual(tuple(post_train_tensors["generated_image"].shape), (20, 1, 8, 8))
+        self.assertEqual(trace_config["reference_labels"], expected_visual_labels)
+        self.assertEqual(sample_metrics["overall"]["count"], 20)
         self.assertEqual(sorted(sample_metrics["per_class"].keys()), [str(label) for label in range(10)])
         self.assertEqual(sample_metrics["nearest_neighbor"]["reference_source"], "validation_then_train_fallback")
-        self.assertEqual(sample_metrics["nearest_neighbor"]["overall"]["count"], 10)
+        self.assertEqual(sample_metrics["nearest_neighbor"]["overall"]["count"], 20)
         self.assertEqual(
             sorted(sample_metrics["nearest_neighbor"]["per_class"].keys()),
             [str(label) for label in range(10)],
         )
         self.assertEqual(trace_config["trace_columns"], ["reference", "noise", "t750", "t000"])
         self.assertEqual([step["label"] for step in trace_config["trace_steps"]], ["t750", "t000"])
-        self.assertEqual(trace_tensors["reference_labels"].tolist(), list(range(10)))
+        self.assertEqual(trace_tensors["reference_labels"].tolist(), expected_visual_labels)
         self.assertEqual(list(trace_tensors["latent_trace"].keys()), ["noise", "t750", "t000"])
         self.assertEqual(list(trace_tensors["camera_trace"].keys()), ["noise", "t750", "t000"])
         for camera_trace in trace_tensors["camera_trace"].values():
-            self.assertEqual(tuple(camera_trace.shape), (10, 1, 8, 8))
+            self.assertEqual(tuple(camera_trace.shape), (20, 1, 8, 8))
         self.assertEqual(best_first_stage["epoch"], 1)
         self.assertEqual(best_first_stage["selection_metric"], "camera_complex_balanced_mnist_score")
         self.assertIn("validation_metrics", best_first_stage)
@@ -1269,12 +1353,15 @@ class TrainMainValidationTests(unittest.TestCase):
         self.assertAlmostEqual(meta["diffusion_guidance_scale"], 3.5, places=6)
         self.assertEqual(meta["sample_class_labels"], [3, 4, 5])
         self.assertEqual(meta["sample_repeats_per_class"], 4)
+        self.assertEqual(meta["one_shot_sample_class_labels"], [3, 4, 5])
+        self.assertEqual(meta["one_shot_sample_repeats_per_class"], 4)
         self.assertEqual(meta["sample_metric_source"], "artifacts/post_train_sample_metrics.json")
         self.assertEqual(meta["latent_scale_source"], "diffusion_checkpoint")
         self.assertTrue(meta["diffusion_best_loaded_for_sampling"])
         self.assertFalse(history_exists)
-        self.assertEqual(post_train_config["class_labels"], [3, 4, 5, 3, 4, 5, 3, 4, 5, 3, 4, 5])
-        self.assertEqual(post_train_config["reference_labels"], [3, 4, 5, 3, 4, 5, 3, 4, 5, 3, 4, 5])
+        expected_sample_labels = [3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5]
+        self.assertEqual(post_train_config["class_labels"], expected_sample_labels)
+        self.assertEqual(post_train_config["reference_labels"], expected_sample_labels)
         self.assertEqual(post_train_config["sample_class_labels"], [3, 4, 5])
         self.assertEqual(post_train_config["sample_repeats_per_class"], 4)
         self.assertEqual(sample_metrics["overall"]["count"], 12)

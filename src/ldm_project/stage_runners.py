@@ -1,17 +1,30 @@
 from __future__ import annotations
 
+import json
 import math
 from pathlib import Path
 
 from .evaluation import compute_first_stage_balanced_metrics, evaluate_diffusion_with_per_class, evaluate_first_stage_with_per_class
 from .sampling import (
+    VISUALIZATION_AMPLITUDE_KEY,
+    VISUALIZATION_PHASE_KEY,
+    _load_original_mnist_digits,
     build_diffusion_visualization_tensors,
+    build_code_visualization_tensor,
     build_first_stage_visualization_tensors,
+    build_one_shot_display_diagnostic_tensors,
+    build_one_shot_eval_shared_scale_visualization_tensors,
+    build_one_shot_eval_visualization_tensors,
+    build_one_shot_shared_scale_visualization_tensors,
+    build_one_shot_visual_diagnostics,
     build_one_shot_visualization_tensors,
     compute_sample_quality_metrics,
     enhance_camera_for_display,
     format_output_title,
+    labels_for_visual_rows,
     save_post_train_samples,
+    save_visualization_grids,
+    select_balanced_visual_preview_indices,
     select_post_train_sample_batch,
 )
 from .train_utils import (
@@ -41,7 +54,70 @@ ONE_SHOT_DISTILL_BEST_CHECKPOINT = "one_shot_distill_best.pt"
 ONE_SHOT_DISTILL_LATEST_CHECKPOINT = "one_shot_distill_latest.pt"
 ONE_SHOT_DISTILL_BEST_METRIC = "one_shot_distill_validation.loss"
 ONE_SHOT_DISTILL_QUALITY_METRIC = "one_shot_distill_validation.quality"
+ONE_SHOT_DISTILL_BALANCED_QUALITY_METRIC = "one_shot_distill_validation.balanced_quality"
+ONE_SHOT_DISTILL_STRICT_BALANCED_QUALITY_METRIC = "one_shot_distill_validation.strict_balanced_quality"
 ONE_SHOT_DISTILL_QUALITY_SATURATION_TARGET = 0.325
+ONE_SHOT_DISTILL_BALANCED_QUALITY_SATURATION_TARGET = 0.39
+ONE_SHOT_DISTILL_STRICT_BALANCED_QUALITY_SATURATION_TARGET = 0.36
+ONE_SHOT_RAW_DIAGNOSTIC_TENSOR_KEYS = (
+    "slm_command",
+    "slm_amplitude",
+    "slm_phase",
+    "encoder_input_amplitude",
+    "encoder_input_phase",
+    "encoder_input_grid_amplitude",
+    "encoder_input_grid_phase",
+    "encoded_amplitude",
+    "encoded_phase",
+    "ols_input_amplitude",
+    "ols_input_phase",
+    "ols_output_amplitude",
+    "ols_output_phase",
+    "ols_amplitude",
+    "ols_phase",
+    "decoder_input_amplitude",
+    "decoder_input_phase",
+    "decoder_output_amplitude",
+    "decoder_output_phase",
+    "chip_amplitude",
+    "chip_phase",
+    "camera_phase",
+)
+ONE_SHOT_DISPLAY_DIAGNOSTIC_TENSOR_KEYS = (
+    "slm_phase_display",
+    "encoder_input_amplitude_display",
+    "encoder_input_phase_display",
+    "encoder_input_grid_amplitude_display",
+    "encoder_input_grid_phase_display",
+    "encoded_amplitude_display",
+    "encoded_phase_display",
+    "ols_input_amplitude_display",
+    "ols_input_phase_display",
+    "ols_output_amplitude_display",
+    "ols_output_phase_display",
+    "ols_amplitude_display",
+    "ols_phase_display",
+    "decoder_input_amplitude_display",
+    "decoder_input_phase_display",
+    "decoder_output_amplitude_display",
+    "decoder_output_phase_display",
+    "chip_field_amplitude_display",
+    "chip_intensity_display",
+    "chip_phase_display",
+)
+ONE_SHOT_DISTILL_EVAL_PREVIEW_PER_CLASS = 2
+ONE_SHOT_DISTILL_EVAL_FOCUS_TENSOR_KEYS = (
+    "teacher_camera_display",
+    "student_camera_display",
+    "abs_error",
+    "chip_field_amplitude_display",
+    "chip_intensity_display",
+    "chip_phase_display",
+)
+
+
+def _detach_cpu_tensors(tensor_map, keys: tuple[str, ...]) -> dict[str, object]:
+    return {key: tensor_map[key].detach().cpu() for key in keys}
 
 
 def _sample_one_shot_codes(torch_module, batch_size: int, train_cfg, device):
@@ -96,6 +172,7 @@ def _one_shot_loss_kwargs(train_cfg) -> dict[str, object]:
         "shape_loss_weight": train_cfg.one_shot.shape_loss_weight,
         "edge_loss_weight": train_cfg.one_shot.edge_loss_weight,
         "slm_smoothness_weight": train_cfg.one_shot.slm_smoothness_weight,
+        "slm_contrast_weight": train_cfg.one_shot.slm_contrast_weight,
         "camera_saturation_weight": train_cfg.one_shot.camera_saturation_weight,
         "camera_topology_weight": train_cfg.one_shot.camera_topology_weight,
         "camera_artifact_weight": train_cfg.one_shot.camera_artifact_weight,
@@ -118,6 +195,34 @@ def _one_shot_distill_quality_score(validation_metrics: dict[str, float]) -> flo
     )
 
 
+def _one_shot_distill_balanced_quality_score(validation_metrics: dict[str, float]) -> float:
+    saturation_overage = max(
+        0.0,
+        validation_metrics["camera_saturation_ratio"] - ONE_SHOT_DISTILL_BALANCED_QUALITY_SATURATION_TARGET,
+    )
+    return (
+        validation_metrics["camera_recon_loss"]
+        + 0.05 * (1.0 - validation_metrics["camera_foreground_dice"])
+        + 0.15 * validation_metrics.get("foreground_hole_ratio", 0.0)
+        + 0.4 * saturation_overage
+        + 0.03 * validation_metrics["slm_tv"]
+    )
+
+
+def _one_shot_distill_strict_balanced_quality_score(validation_metrics: dict[str, float]) -> float:
+    saturation_overage = max(
+        0.0,
+        validation_metrics["camera_saturation_ratio"] - ONE_SHOT_DISTILL_STRICT_BALANCED_QUALITY_SATURATION_TARGET,
+    )
+    return (
+        validation_metrics["camera_recon_loss"]
+        + 0.05 * (1.0 - validation_metrics["camera_foreground_dice"])
+        + 0.15 * validation_metrics.get("foreground_hole_ratio", 0.0)
+        + 0.4 * saturation_overage
+        + 0.03 * validation_metrics["slm_tv"]
+    )
+
+
 def _resolve_one_shot_distill_selection(train_cfg, validation_metrics: dict[str, float]) -> tuple[float, str]:
     selection_metric = train_cfg.one_shot.checkpoint_selection_metric
     if selection_metric == "loss":
@@ -126,8 +231,17 @@ def _resolve_one_shot_distill_selection(train_cfg, validation_metrics: dict[str,
         quality_score = _one_shot_distill_quality_score(validation_metrics)
         validation_metrics["quality_score"] = quality_score
         return quality_score, ONE_SHOT_DISTILL_QUALITY_METRIC
+    if selection_metric == "balanced_quality":
+        balanced_quality_score = _one_shot_distill_balanced_quality_score(validation_metrics)
+        validation_metrics["balanced_quality_score"] = balanced_quality_score
+        return balanced_quality_score, ONE_SHOT_DISTILL_BALANCED_QUALITY_METRIC
+    if selection_metric == "strict_balanced_quality":
+        strict_balanced_quality_score = _one_shot_distill_strict_balanced_quality_score(validation_metrics)
+        validation_metrics["strict_balanced_quality_score"] = strict_balanced_quality_score
+        return strict_balanced_quality_score, ONE_SHOT_DISTILL_STRICT_BALANCED_QUALITY_METRIC
     raise ValueError(
-        "one_shot.checkpoint_selection_metric must be 'loss' or 'quality', "
+        "one_shot.checkpoint_selection_metric must be 'loss', 'quality', 'balanced_quality', "
+        "or 'strict_balanced_quality', "
         f"got {selection_metric!r}"
     )
 
@@ -140,7 +254,7 @@ def _select_one_shot_visual_batch(torch_module, validation_bundle, train_bundle,
         train_cfg.one_shot.num_classes,
         device,
         sample_class_labels=train_cfg.one_shot.sample_class_labels,
-        sample_repeats_per_class=1,
+        sample_repeats_per_class=ONE_SHOT_DISTILL_EVAL_PREVIEW_PER_CLASS,
     )
     visual_codes = _sample_one_shot_codes(torch_module, int(sample_labels.shape[0]), train_cfg, device)
     return visual_codes, sample_labels, reference_images
@@ -461,6 +575,25 @@ def _eval_camera_saturation_ratio(camera_prediction):
     return saturated.float().mean()
 
 
+def _eval_camera_low_saturation_ratio(camera_prediction):
+    camera = camera_prediction.detach().float()
+    return (camera <= 0.01).float().mean()
+
+
+def _eval_camera_high_saturation_ratio(camera_prediction):
+    camera = camera_prediction.detach().float()
+    return (camera >= 0.99).float().mean()
+
+
+def _eval_foreground_hole_ratio(prediction, target, threshold: float = 0.2, hole_threshold: float = 0.1):
+    prediction_mask = prediction.detach().float().clamp(0.0, 1.0) < hole_threshold
+    target_mask = target.detach().float().clamp(0.0, 1.0) > threshold
+    dims = tuple(range(1, target_mask.ndim))
+    holes = (prediction_mask & target_mask).float().sum(dim=dims)
+    foreground = target_mask.float().sum(dim=dims)
+    return (holes / foreground.clamp_min(1.0)).mean()
+
+
 def _eval_total_variation(tensor):
     diff_y = (tensor[..., 1:, :] - tensor[..., :-1, :]).abs().mean()
     diff_x = (tensor[..., :, 1:] - tensor[..., :, :-1]).abs().mean()
@@ -497,7 +630,12 @@ def _select_distill_eval_indices(torch_module, labels, train_cfg) -> tuple[list[
         class_labels = validate_class_label_values(requested, train_cfg.one_shot.num_classes, "one_shot.sample_class_labels")
     else:
         class_labels = tuple(sorted({int(label) for label in label_values.tolist()}))
-    samples_per_class = max(5, int(train_cfg.one_shot.sample_repeats_per_class))
+    samples_per_class = int(train_cfg.one_shot.sample_repeats_per_class)
+    if samples_per_class <= 0:
+        raise ValueError(
+            "one_shot.sample_repeats_per_class must be positive for one_shot_distill_eval, "
+            f"got {samples_per_class}"
+        )
     total_size = int(label_values.shape[0])
     validation_size = int(total_size * train_cfg.data.validation_fraction)
     if validation_size >= total_size:
@@ -559,6 +697,9 @@ def compute_one_shot_distill_eval_metrics(
     corr = float(_eval_correlation(torch_module, student, teacher).item())
     dice = float(_eval_foreground_dice(student, teacher, threshold=foreground_threshold).item())
     saturation = float(_eval_camera_saturation_ratio(student).item())
+    low_saturation = float(_eval_camera_low_saturation_ratio(student).item())
+    high_saturation = float(_eval_camera_high_saturation_ratio(student).item())
+    foreground_holes = float(_eval_foreground_hole_ratio(student, teacher, threshold=foreground_threshold).item())
     slm_tv = float(_eval_total_variation(slm).item())
 
     per_class: dict[str, dict[str, float | int | None]] = {}
@@ -587,6 +728,11 @@ def compute_one_shot_distill_eval_metrics(
             "paired_corr": float(_eval_correlation(torch_module, student_class, teacher_class).item()),
             "paired_dice": float(_eval_foreground_dice(student_class, teacher_class, threshold=foreground_threshold).item()),
             "student_saturation_ratio": float(_eval_camera_saturation_ratio(student_class).item()),
+            "student_low_saturation_ratio": float(_eval_camera_low_saturation_ratio(student_class).item()),
+            "student_high_saturation_ratio": float(_eval_camera_high_saturation_ratio(student_class).item()),
+            "foreground_hole_ratio": float(
+                _eval_foreground_hole_ratio(student_class, teacher_class, threshold=foreground_threshold).item()
+            ),
             "slm_tv": float(_eval_total_variation(slm_class).item()),
             "teacher_pairwise_mse": teacher_pairwise_mse,
             "student_pairwise_mse": student_pairwise_mse,
@@ -603,6 +749,9 @@ def compute_one_shot_distill_eval_metrics(
             "paired_corr": corr,
             "paired_dice": dice,
             "student_saturation_ratio": saturation,
+            "student_low_saturation_ratio": low_saturation,
+            "student_high_saturation_ratio": high_saturation,
+            "foreground_hole_ratio": foreground_holes,
             "slm_tv": slm_tv,
             "teacher_pairwise_mse": sum(teacher_diversities) / len(teacher_diversities) if teacher_diversities else None,
             "student_pairwise_mse": sum(student_diversities) / len(student_diversities) if student_diversities else None,
@@ -610,6 +759,186 @@ def compute_one_shot_distill_eval_metrics(
         },
         "per_class": per_class,
     }
+
+
+def run_one_shot_distill_eval_diagnostics_stage(
+    torch_module,
+    *,
+    run_manager,
+    run_meta: dict[str, object],
+    eval_tensor_bundle: str,
+    eval_metrics: str,
+    diagnostic_class_labels,
+    diagnostic_max_per_class: int,
+) -> None:
+    tensor_payload = torch_module.load(eval_tensor_bundle, map_location="cpu", weights_only=False)
+    if "class_labels" not in tensor_payload:
+        raise ValueError("one-shot eval tensor bundle is missing class_labels.")
+    missing_keys = [key for key in ONE_SHOT_DISTILL_EVAL_FOCUS_TENSOR_KEYS if key not in tensor_payload]
+    if missing_keys:
+        raise ValueError(f"one-shot eval tensor bundle is missing diagnostic tensors: {missing_keys}")
+
+    metrics_path = Path(eval_metrics)
+    with metrics_path.open("r", encoding="utf-8") as handle:
+        source_metrics = json.load(handle)
+
+    labels = tensor_payload["class_labels"].detach().cpu()
+    visual_max_per_class = min(diagnostic_max_per_class, ONE_SHOT_DISTILL_EVAL_PREVIEW_PER_CLASS)
+    preview_indices, preview_summary = select_balanced_visual_preview_indices(
+        labels,
+        max_per_class=visual_max_per_class,
+        class_labels=diagnostic_class_labels,
+    )
+    if not preview_indices:
+        raise ValueError("one-shot eval diagnostics selected zero samples.")
+    preview_index_tensor = torch_module.tensor(preview_indices, dtype=torch_module.long)
+    preview_labels = labels.index_select(0, preview_index_tensor)
+
+    def _selected_tensor(key: str):
+        tensor = tensor_payload[key]
+        if tensor.shape[0] != labels.shape[0]:
+            raise ValueError(
+                f"diagnostic tensor {key} batch size {tensor.shape[0]} does not match labels {labels.shape[0]}"
+            )
+        return tensor.detach().cpu().index_select(0, preview_index_tensor)
+
+    label_suffix = "_".join(str(label) for label in preview_summary["class_labels"])
+    image_name = f"one_shot_distill_eval_focus_{label_suffix}.png"
+    run_manager.save_config_snapshot(
+        "one_shot_distill_eval_diagnostics_config",
+        {
+            "eval_tensor_bundle": eval_tensor_bundle,
+            "eval_metrics": eval_metrics,
+            "diagnostic_class_labels": preview_summary["class_labels"],
+            "diagnostic_max_per_class": diagnostic_max_per_class,
+            "visual_max_per_class": visual_max_per_class,
+            "visual_preview_count": preview_summary["visual_preview_count"],
+            "visual_preview_indices": preview_summary["visual_preview_indices"],
+            "visual_preview_labels": preview_summary["visual_preview_labels"],
+            "visual_preview": preview_summary,
+            "source": "train.py_one_shot_distill_eval_diagnostics",
+        },
+    )
+    selected_tensors = {key: _selected_tensor(key) for key in ONE_SHOT_DISTILL_EVAL_FOCUS_TENSOR_KEYS}
+    optional_focus_keys = (
+        "codes_display",
+        "slm_phase_display",
+        "encoder_input_amplitude_display",
+        "encoder_input_phase_display",
+        "encoder_input_grid_amplitude_display",
+        "encoder_input_grid_phase_display",
+        "encoded_amplitude_display",
+        "encoded_phase_display",
+        "ols_input_amplitude_display",
+        "ols_input_phase_display",
+        "ols_output_amplitude_display",
+        "ols_output_phase_display",
+        "decoder_input_amplitude_display",
+        "decoder_input_phase_display",
+        "decoder_output_amplitude_display",
+        "decoder_output_phase_display",
+    )
+    selected_tensors.update(
+        {
+            key: _selected_tensor(key)
+            for key in optional_focus_keys
+            if key in tensor_payload
+        }
+    )
+    amplitude_tensors = {
+        "teacher": selected_tensors["teacher_camera_display"],
+        "student": selected_tensors["student_camera_display"],
+        "abs error": selected_tensors["abs_error"],
+        "chip amp": selected_tensors["chip_field_amplitude_display"],
+        "chip I": selected_tensors["chip_intensity_display"],
+    }
+    if "codes_display" in selected_tensors:
+        amplitude_tensors = {
+            "noise code": selected_tensors["codes_display"],
+            "teacher": selected_tensors["teacher_camera_display"],
+            "encoder in amp": selected_tensors["encoder_input_amplitude_display"],
+            "encoder grid in amp": selected_tensors["encoder_input_grid_amplitude_display"],
+            "encoder out / ols in amp": selected_tensors["encoded_amplitude_display"],
+            "ols out / decoder in amp": selected_tensors["ols_output_amplitude_display"],
+            "decoder out amp": selected_tensors["decoder_output_amplitude_display"],
+            "chip amp": selected_tensors["chip_field_amplitude_display"],
+            "chip I": selected_tensors["chip_intensity_display"],
+            "student": selected_tensors["student_camera_display"],
+            "abs error": selected_tensors["abs_error"],
+        }
+    phase_tensors = {"chip phase": selected_tensors["chip_phase_display"]}
+    if "encoder_input_phase_display" in selected_tensors:
+        phase_tensors = {
+            "encoder in phase": selected_tensors["encoder_input_phase_display"],
+            "encoder grid in phase": selected_tensors["encoder_input_grid_phase_display"],
+            "encoder out / ols in phase": selected_tensors["encoded_phase_display"],
+            "ols out / decoder in phase": selected_tensors["ols_output_phase_display"],
+            "decoder out phase": selected_tensors["decoder_output_phase_display"],
+            "chip phase": selected_tensors["chip_phase_display"],
+        }
+        if "slm_phase_display" in selected_tensors:
+            phase_tensors = {"slm out phase": selected_tensors["slm_phase_display"], **phase_tensors}
+    image_paths = save_visualization_grids(
+        run_manager,
+        {
+            "amplitude": amplitude_tensors,
+            "phase": phase_tensors,
+        },
+        run_manager.images_dir / image_name,
+        title_label=None,
+        max_items=int(preview_summary["visual_preview_count"]),
+        row_labels=labels_for_visual_rows(preview_labels),
+    )
+
+    source_per_class = source_metrics.get("per_class", {})
+    focus_classes = {}
+    for label in preview_summary["class_labels"]:
+        class_metrics = source_per_class.get(str(label), {})
+        focus_classes[str(label)] = {
+            "selected": preview_summary["per_class"][str(label)]["selected"],
+            "preview_indices": preview_summary["per_class"][str(label)]["preview_indices"],
+            "paired_dice": class_metrics.get("paired_dice"),
+            "paired_corr": class_metrics.get("paired_corr"),
+            "foreground_hole_ratio": class_metrics.get("foreground_hole_ratio"),
+            "student_saturation_ratio": class_metrics.get("student_saturation_ratio"),
+            "student_low_saturation_ratio": class_metrics.get("student_low_saturation_ratio"),
+            "student_high_saturation_ratio": class_metrics.get("student_high_saturation_ratio"),
+            "diversity_ratio": class_metrics.get("diversity_ratio"),
+        }
+    diagnostics_payload = {
+        "source_eval_tensor_bundle": eval_tensor_bundle,
+        "source_eval_metrics": eval_metrics,
+        "images": {
+            name: str(path.relative_to(run_manager.run_dir))
+            for name, path in image_paths.items()
+        },
+        "selection": preview_summary,
+        "overall": source_metrics.get("overall", {}),
+        "classes": focus_classes,
+        "visual_diagnostics": build_one_shot_visual_diagnostics(selected_tensors),
+    }
+    diagnostics_path = run_manager.save_artifact_json("one_shot_distill_eval_focus_diagnostics", diagnostics_payload)
+    print(
+        "[one_shot_distill_eval_diagnostics] "
+        f"selected={preview_summary['visual_preview_count']} "
+        f"classes={preview_summary['class_labels']} images={image_paths}"
+    )
+    run_meta.update(
+        {
+            "one_shot_distill_eval_diagnostics_source_tensor_bundle": eval_tensor_bundle,
+            "one_shot_distill_eval_diagnostics_source_metrics": eval_metrics,
+            "one_shot_distill_eval_diagnostics_images": {
+                name: str(path.relative_to(run_manager.run_dir))
+                for name, path in image_paths.items()
+            },
+            "one_shot_distill_eval_diagnostics_metric_source": str(
+                diagnostics_path.relative_to(run_manager.run_dir)
+            ),
+            "one_shot_distill_eval_diagnostics_count": preview_summary["visual_preview_count"],
+            "one_shot_distill_eval_diagnostics_class_labels": preview_summary["class_labels"],
+        }
+    )
+    run_manager.write_meta(run_meta)
 
 
 def run_sample_stage(
@@ -930,6 +1259,14 @@ def run_one_shot_sample_stage(
     codes = _sample_one_shot_codes(torch_module, sample_count, train_cfg, device)
     with torch_module.no_grad():
         sample_outputs = one_shot_model(codes, sample_labels)
+    sample_visuals = build_one_shot_visualization_tensors(reference_images, sample_outputs, codes=codes)
+    sample_shared_scale_visuals = build_one_shot_shared_scale_visualization_tensors(
+        reference_images,
+        sample_outputs,
+        codes=codes,
+    )
+    sample_display_diagnostics = build_one_shot_display_diagnostic_tensors(sample_outputs)
+    sample_visual_diagnostics = build_one_shot_visual_diagnostics(sample_outputs, sample_display_diagnostics)
     run_manager.save_config_snapshot(
         "one_shot_sample_config",
         {
@@ -942,16 +1279,27 @@ def run_one_shot_sample_stage(
             "source": "train.py_one_shot_sample",
         },
     )
-    run_manager.save_tensor_grid(
-        build_one_shot_visualization_tensors(reference_images, sample_outputs),
+    save_visualization_grids(
+        run_manager,
+        {VISUALIZATION_AMPLITUDE_KEY: sample_visuals[VISUALIZATION_AMPLITUDE_KEY]},
         run_manager.images_dir / "one_shot_sample.png",
-        title=format_output_title("images/one_shot_sample.png", "one-shot sample outputs"),
+        title_label="one-shot sample outputs",
         max_items=sample_count,
+        row_labels=labels_for_visual_rows(sample_labels),
+    )
+    save_visualization_grids(
+        run_manager,
+        {VISUALIZATION_PHASE_KEY: sample_shared_scale_visuals[VISUALIZATION_PHASE_KEY]},
+        run_manager.images_dir / "one_shot_sample_shared_scale.png",
+        title_label="one-shot sample shared-scale diagnostics",
+        max_items=sample_count,
+        row_labels=labels_for_visual_rows(sample_labels),
     )
     run_manager.save_tensor_bundle(
         "one_shot_sample_tensors.pt",
         {
             "codes": codes.detach().cpu(),
+            "codes_display": build_code_visualization_tensor(codes).detach().cpu(),
             "class_labels": sample_labels.detach().cpu(),
             "reference_images": reference_images.detach().cpu(),
             "reference_labels": reference_labels.detach().cpu(),
@@ -959,10 +1307,14 @@ def run_one_shot_sample_stage(
             "generated_camera": sample_outputs["camera_plane"].detach().cpu(),
             "generated_camera_raw": sample_outputs["camera_plane"].detach().cpu(),
             "generated_camera_display": enhance_camera_for_display(sample_outputs["camera_plane"]).detach().cpu(),
-            "slm_amplitude": sample_outputs["slm_amplitude"].detach().cpu(),
-            "chip_amplitude": sample_outputs["chip_amplitude"].detach().cpu(),
-            "chip_phase": sample_outputs["chip_phase"].detach().cpu(),
+            **_detach_cpu_tensors(sample_outputs, ONE_SHOT_RAW_DIAGNOSTIC_TENSOR_KEYS),
+            **_detach_cpu_tensors(sample_display_diagnostics, ONE_SHOT_DISPLAY_DIAGNOSTIC_TENSOR_KEYS),
         },
+    )
+    run_manager.save_artifact_json("one_shot_sample_visual_diagnostics", sample_visual_diagnostics)
+    run_manager.save_artifact_json(
+        "one_shot_sample_shared_scale_diagnostics",
+        sample_shared_scale_visuals["diagnostics"],
     )
     sample_metrics = compute_sample_quality_metrics(sample_outputs["camera_plane"], reference_images, sample_labels)
     metrics_path = run_manager.save_artifact_json("one_shot_sample_metrics", sample_metrics)
@@ -1005,8 +1357,23 @@ def run_one_shot_distill_eval_stage(
     with torch_module.no_grad():
         eval_outputs = one_shot_model(eval_codes.to(device), eval_labels.to(device))
     student_camera = eval_outputs["camera_plane"].detach().cpu()
+    eval_original_digits = _load_original_mnist_digits(
+        eval_labels, train_cfg.first_stage.image_size, root=train_cfg.data.root
+    )
+    eval_display_diagnostics = build_one_shot_display_diagnostic_tensors(eval_outputs)
+    eval_visual_diagnostics = build_one_shot_visual_diagnostics(eval_outputs, eval_display_diagnostics)
     slm_amplitude = eval_outputs["slm_amplitude"].detach().cpu()
     abs_error = (student_camera - eval_teacher).abs()
+    eval_visuals = build_one_shot_eval_visualization_tensors(
+        eval_teacher, eval_outputs, abs_error, codes=eval_codes, original_images=eval_original_digits,
+    )
+    eval_shared_scale_visuals = build_one_shot_eval_shared_scale_visualization_tensors(
+        eval_teacher,
+        eval_outputs,
+        abs_error,
+        codes=eval_codes,
+        original_images=eval_original_digits,
+    )
     metrics = compute_one_shot_distill_eval_metrics(
         torch_module,
         teacher_camera=eval_teacher,
@@ -1015,6 +1382,34 @@ def run_one_shot_distill_eval_stage(
         class_labels=eval_labels,
     )
     metrics["selection"] = selection_summary
+    visual_preview_indices, visual_preview_summary = select_balanced_visual_preview_indices(eval_labels)
+    visual_preview_index_tensor = torch_module.tensor(visual_preview_indices, dtype=torch_module.long)
+
+    def _preview_tensor(tensor):
+        return tensor.detach().cpu().index_select(0, visual_preview_index_tensor)
+
+    eval_preview_visuals = {
+        "amplitude": {
+            key: _preview_tensor(value)
+            for key, value in eval_visuals["amplitude"].items()
+        },
+        "phase": {
+            key: _preview_tensor(value)
+            for key, value in eval_visuals["phase"].items()
+        },
+    }
+    eval_preview_shared_scale_visuals = {
+        "amplitude": {
+            key: _preview_tensor(value)
+            for key, value in eval_shared_scale_visuals["amplitude"].items()
+        },
+        "phase": {
+            key: _preview_tensor(value)
+            for key, value in eval_shared_scale_visuals["phase"].items()
+        },
+        "diagnostics": eval_shared_scale_visuals["diagnostics"],
+    }
+    preview_labels = eval_labels.index_select(0, visual_preview_index_tensor)
 
     run_manager.save_config_snapshot(
         "one_shot_distill_eval_config",
@@ -1022,34 +1417,51 @@ def run_one_shot_distill_eval_stage(
             "distill_dataset": distill_dataset,
             "one_shot_checkpoint": one_shot_checkpoint,
             "selection": selection_summary,
+            "visual_preview_count": visual_preview_summary["visual_preview_count"],
+            "visual_preview_indices": visual_preview_summary["visual_preview_indices"],
+            "visual_preview_labels": visual_preview_summary["visual_preview_labels"],
+            "visual_preview": visual_preview_summary,
             "source": "train.py_one_shot_distill_eval",
         },
     )
-    run_manager.save_tensor_grid(
-        {
-            "teacher_camera_display": enhance_camera_for_display(eval_teacher),
-            "student_camera_raw": student_camera,
-            "student_camera_display": enhance_camera_for_display(student_camera),
-            "abs_error": abs_error,
-            "slm_amplitude": slm_amplitude,
-        },
+    save_visualization_grids(
+        run_manager,
+        {VISUALIZATION_AMPLITUDE_KEY: eval_preview_visuals[VISUALIZATION_AMPLITUDE_KEY]},
         run_manager.images_dir / "one_shot_distill_eval.png",
-        title=format_output_title("images/one_shot_distill_eval.png", "one-shot distill paired eval"),
-        max_items=int(eval_labels.shape[0]),
+        title_label="one-shot distill paired eval",
+        max_items=int(visual_preview_summary["visual_preview_count"]),
+        row_labels=labels_for_visual_rows(preview_labels),
+    )
+    save_visualization_grids(
+        run_manager,
+        {VISUALIZATION_PHASE_KEY: eval_preview_shared_scale_visuals[VISUALIZATION_PHASE_KEY]},
+        run_manager.images_dir / "one_shot_distill_eval_shared_scale.png",
+        title_label="one-shot distill paired eval shared-scale diagnostics",
+        max_items=int(visual_preview_summary["visual_preview_count"]),
+        row_labels=labels_for_visual_rows(preview_labels),
     )
     tensor_path = run_manager.save_tensor_bundle(
         "one_shot_distill_eval_tensors.pt",
         {
             "indices": index_tensor,
+            "visual_preview_indices": visual_preview_index_tensor,
             "codes": eval_codes,
+            "codes_display": build_code_visualization_tensor(eval_codes),
             "class_labels": eval_labels,
             "teacher_camera": eval_teacher,
             "teacher_camera_display": enhance_camera_for_display(eval_teacher),
             "student_camera_raw": student_camera,
             "student_camera_display": enhance_camera_for_display(student_camera),
+            "original_digits": eval_original_digits,
             "abs_error": abs_error,
-            "slm_amplitude": slm_amplitude,
+            **_detach_cpu_tensors(eval_outputs, ONE_SHOT_RAW_DIAGNOSTIC_TENSOR_KEYS),
+            **_detach_cpu_tensors(eval_display_diagnostics, ONE_SHOT_DISPLAY_DIAGNOSTIC_TENSOR_KEYS),
         },
+    )
+    run_manager.save_artifact_json("one_shot_distill_eval_visual_diagnostics", eval_visual_diagnostics)
+    run_manager.save_artifact_json(
+        "one_shot_distill_eval_shared_scale_diagnostics",
+        eval_shared_scale_visuals["diagnostics"],
     )
     metrics_path = run_manager.save_artifact_json("one_shot_distill_eval_metrics", metrics)
     overall = metrics["overall"]
@@ -1158,14 +1570,13 @@ def run_one_shot_training(
             one_shot_model.eval()
             with torch_module.no_grad():
                 visual_outputs = one_shot_model(visual_codes, visual_labels)
-                run_manager.save_tensor_grid(
-                    build_one_shot_visualization_tensors(visual_references, visual_outputs),
+                save_visualization_grids(
+                    run_manager,
+                    build_one_shot_visualization_tensors(visual_references, visual_outputs, codes=visual_codes),
                     run_manager.images_dir / "one_shot" / f"epoch_{epoch_number:04d}.png",
-                    title=format_output_title(
-                        f"images/one_shot/epoch_{epoch_number:04d}.png",
-                        f"one_shot epoch {epoch_number}",
-                    ),
+                    title_label=f"one_shot epoch {epoch_number}",
                     max_items=visual_labels.shape[0],
+                    row_labels=labels_for_visual_rows(visual_labels),
                 )
             one_shot_model.train()
 
@@ -1274,8 +1685,17 @@ def run_one_shot_distill_training(
     optimizer = torch_module.optim.Adam(one_shot_model.parameters(), lr=train_cfg.learning_rate)
     loader_length = len(train_loader)
     total_steps = resolve_stage_total_steps(loader_length, train_cfg.one_shot_epochs)
-    visual_source = validation_loader if validation_loader is not None else train_loader
-    visual_codes, visual_labels, visual_references = next(iter(visual_source))
+    distill_codes, distill_labels, distill_targets = _validated_distill_tensors(torch_module, payload, train_cfg)
+    visual_indices, visual_summary = select_balanced_visual_preview_indices(
+        distill_labels,
+        class_labels=tuple(range(train_cfg.one_shot.num_classes)),
+    )
+    if not visual_indices:
+        raise ValueError("one_shot_distill visualization selected zero samples.")
+    visual_index_tensor = torch_module.tensor(visual_indices, dtype=torch_module.long)
+    visual_codes = distill_codes.index_select(0, visual_index_tensor)
+    visual_labels = distill_labels.index_select(0, visual_index_tensor)
+    visual_references = distill_targets.index_select(0, visual_index_tensor)
     visual_codes = visual_codes.to(device, non_blocking=use_pin_memory)
     visual_labels = visual_labels.to(device, non_blocking=use_pin_memory)
     visual_references = visual_references.to(device, non_blocking=use_pin_memory)
@@ -1289,6 +1709,7 @@ def run_one_shot_distill_training(
             "dataset_total_size": total_size,
             "train_size": train_size,
             "validation_size": validation_size,
+            "visual_preview": visual_summary,
             "source": "train.py_one_shot_distill",
         },
     )
@@ -1361,14 +1782,13 @@ def run_one_shot_distill_training(
             one_shot_model.eval()
             with torch_module.no_grad():
                 visual_outputs = one_shot_model(visual_codes, visual_labels)
-                run_manager.save_tensor_grid(
-                    build_one_shot_visualization_tensors(visual_references, visual_outputs),
+                save_visualization_grids(
+                    run_manager,
+                    build_one_shot_visualization_tensors(visual_references, visual_outputs, codes=visual_codes),
                     run_manager.images_dir / "one_shot_distill" / f"epoch_{epoch_number:04d}.png",
-                    title=format_output_title(
-                        f"images/one_shot_distill/epoch_{epoch_number:04d}.png",
-                        f"one_shot_distill epoch {epoch_number}",
-                    ),
+                    title_label=f"one_shot_distill epoch {epoch_number}",
                     max_items=visual_labels.shape[0],
+                    row_labels=labels_for_visual_rows(visual_labels),
                 )
             one_shot_model.train()
 
@@ -1472,6 +1892,7 @@ def run_first_stage_training(
     first_stage,
     first_stage_loss_fn,
     first_stage_visual_batch,
+    first_stage_visual_labels,
     run_manager,
     train_bundle,
     validation_bundle,
@@ -1612,14 +2033,15 @@ def run_first_stage_training(
             first_stage.eval()
             with torch_module.no_grad():
                 visual_outputs = first_stage(first_stage_visual_batch)
-                run_manager.save_tensor_grid(
+                save_visualization_grids(
+                    run_manager,
                     build_first_stage_visualization_tensors(first_stage_visual_batch, visual_outputs),
                     run_manager.first_stage_images_dir / f"epoch_{epoch_number:04d}.png",
-                    title=format_output_title(
-                        f"images/first_stage/epoch_{epoch_number:04d}.png",
-                        f"first_stage epoch {epoch_number}",
-                    ),
+                    title_label=f"first_stage epoch {epoch_number}",
                     max_items=first_stage_visual_batch.shape[0],
+                    row_labels=labels_for_visual_rows(first_stage_visual_labels)
+                    if first_stage_visual_labels is not None
+                    else None,
                 )
             first_stage.train()
         if validation_bundle is not None and should_validate_epoch(
@@ -1862,14 +2284,13 @@ def run_diffusion_training(
                     guidance_scale=train_cfg.diffusion.guidance_scale,
                 )
                 sample_outputs = first_stage.decode_with_intermediates(sample_batch * latent_scale)
-                run_manager.save_tensor_grid(
+                save_visualization_grids(
+                    run_manager,
                     build_diffusion_visualization_tensors(diffusion_visual_reference_images, sample_outputs),
                     run_manager.diffusion_images_dir / f"epoch_{epoch_number:04d}.png",
-                    title=format_output_title(
-                        f"images/diffusion/epoch_{epoch_number:04d}.png",
-                        f"diffusion epoch {epoch_number}",
-                    ),
+                    title_label=f"diffusion epoch {epoch_number}",
                     max_items=sample_count,
+                    row_labels=labels_for_visual_rows(diffusion_visual_labels),
                 )
         if validation_bundle is not None and should_validate_epoch(
             epoch_index,

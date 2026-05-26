@@ -325,13 +325,22 @@ data:
                 "image_recon": torch.rand(2, 1, 4, 4),
                 "chip_amplitude": torch.rand(2, 1, 4, 4),
                 "chip_phase": torch.rand(2, 1, 4, 4) * math.pi,
+                "slm_phase": torch.rand(2, 1, 4, 4) * math.pi,
                 "probe_plane": torch.rand(2, 1, 4, 4),
                 "camera_plane": torch.rand(2, 1, 4, 4),
             },
         )
         self.assertEqual(
             list(visuals.keys()),
-            ["input", "camera_hat", "image_hat", "pf2", "chip_amplitude", "chip_phase", "probe"],
+            ["amplitude", "phase"],
+        )
+        self.assertEqual(
+            list(visuals["amplitude"].keys()),
+            ["input", "camera", "image", "pf2", "chip amp", "probe"],
+        )
+        self.assertEqual(
+            list(visuals["phase"].keys()),
+            ["slm phase", "chip phase"],
         )
 
         diffusion_visuals = build_diffusion_visualization_tensors(
@@ -346,15 +355,19 @@ data:
         )
         self.assertEqual(
             list(diffusion_visuals.keys()),
+            ["amplitude", "phase"],
+        )
+        self.assertEqual(
+            list(diffusion_visuals["amplitude"].keys()),
             [
                 "reference",
-                "generated_camera",
-                "generated_image",
-                "chip_amplitude",
-                "chip_phase",
+                "camera",
+                "image",
+                "chip amp",
                 "probe",
             ],
         )
+        self.assertEqual(list(diffusion_visuals["phase"].keys()), ["chip phase"])
         trace_visuals = build_denoising_trace_visualization_tensors(
             torch.rand(2, 1, 4, 4),
             {
@@ -415,9 +428,9 @@ data:
             4,
             torch.device("cpu"),
         )
-        self.assertEqual(visual_labels.tolist(), [0, 1, 2, 3])
+        self.assertEqual(visual_labels.tolist(), [0, 0, 1, 1, 2, 2, 3, 3])
         self.assertEqual(visual_source, "validation_then_train_fallback")
-        self.assertEqual(tuple(visual_images.shape), (4, 1, 4, 4))
+        self.assertEqual(tuple(visual_images.shape), (8, 1, 4, 4))
 
         sample_labels, sample_images, sample_reference_labels, sample_source = select_post_train_sample_batch(
             torch,

@@ -21,6 +21,7 @@ CANONICAL_STAGES = {
     "one_shot",
     "one_shot_distill",
     "one_shot_distill_eval",
+    "one_shot_distill_eval_diagnostics",
     "one_shot_sample",
 }
 CLI_STAGE_CHOICES = tuple(sorted(CANONICAL_STAGES | set(STAGE_ALIASES)))
@@ -245,6 +246,7 @@ def resolve_stage_epoch_plan(
         "teacher_distill_filter",
         "one_shot_sample",
         "one_shot_distill_eval",
+        "one_shot_distill_eval_diagnostics",
     }:
         return {"first_stage": 0, "diffusion": 0, "one_shot": 0}
     if canonical_stage in {"one_shot", "one_shot_distill"}:
@@ -252,19 +254,30 @@ def resolve_stage_epoch_plan(
     raise ValueError(f"Unsupported stage mode: {stage}")
 
 
+def _optional_arg(args, name: str):
+    return getattr(args, name, None)
+
+
+def _set_optional(target, attribute: str, value) -> None:
+    if value is not None:
+        setattr(target, attribute, value)
+
+
+def _require_positive(value, message_prefix: str) -> None:
+    if value <= 0:
+        raise ValueError(f"{message_prefix} must be positive, got {value}")
+
+
 def apply_cli_overrides(train_cfg, args) -> None:
     if args.stage is not None:
         train_cfg.mode = canonicalize_stage(args.stage)
     else:
         train_cfg.mode = canonicalize_stage(train_cfg.mode)
-    if args.batch_size is not None:
-        train_cfg.batch_size = args.batch_size
-    if args.subset_fraction is not None:
-        train_cfg.data.subset_fraction = args.subset_fraction
-    subset_size = getattr(args, "subset_size", None)
+    _set_optional(train_cfg, "batch_size", args.batch_size)
+    _set_optional(train_cfg.data, "subset_fraction", args.subset_fraction)
+    subset_size = _optional_arg(args, "subset_size")
     if subset_size is not None:
-        if subset_size <= 0:
-            raise ValueError(f"data.subset_size must be positive, got {subset_size}")
+        _require_positive(subset_size, "data.subset_size")
         train_cfg.data.subset_size = subset_size
     if args.validation_fraction is not None:
         if args.validation_fraction < 0.0 or args.validation_fraction >= 1.0:
@@ -273,40 +286,29 @@ def apply_cli_overrides(train_cfg, args) -> None:
                 f"got {args.validation_fraction}"
             )
         train_cfg.data.validation_fraction = args.validation_fraction
-    num_workers = getattr(args, "num_workers", None)
+    num_workers = _optional_arg(args, "num_workers")
     if num_workers is not None:
         if num_workers < 0:
             raise ValueError(f"data.num_workers must be non-negative, got {num_workers}")
         train_cfg.data.num_workers = num_workers
-    if args.first_stage_epochs is not None:
-        train_cfg.first_stage_epochs = args.first_stage_epochs
-    if args.diffusion_epochs is not None:
-        train_cfg.diffusion_epochs = args.diffusion_epochs
-    one_shot_epochs = getattr(args, "one_shot_epochs", None)
-    if one_shot_epochs is not None:
-        train_cfg.one_shot_epochs = one_shot_epochs
-    distill_samples_per_class = getattr(args, "distill_samples_per_class", None)
+    _set_optional(train_cfg, "first_stage_epochs", args.first_stage_epochs)
+    _set_optional(train_cfg, "diffusion_epochs", args.diffusion_epochs)
+    _set_optional(train_cfg, "one_shot_epochs", _optional_arg(args, "one_shot_epochs"))
+    distill_samples_per_class = _optional_arg(args, "distill_samples_per_class")
     if distill_samples_per_class is not None:
-        if distill_samples_per_class <= 0:
-            raise ValueError(
-                "distillation.samples_per_class must be positive, "
-                f"got {distill_samples_per_class}"
-            )
+        _require_positive(distill_samples_per_class, "distillation.samples_per_class")
         train_cfg.distillation.samples_per_class = distill_samples_per_class
-    distill_total_samples = getattr(args, "distill_total_samples", None)
+    distill_total_samples = _optional_arg(args, "distill_total_samples")
     if distill_total_samples is not None:
-        if distill_total_samples <= 0:
-            raise ValueError(f"distillation.total_samples must be positive, got {distill_total_samples}")
+        _require_positive(distill_total_samples, "distillation.total_samples")
         train_cfg.distillation.total_samples = distill_total_samples
-    distill_output = getattr(args, "distill_output", None)
-    if distill_output is not None:
-        train_cfg.distillation.output_path = distill_output
-    guidance_scale = getattr(args, "guidance_scale", None)
+    _set_optional(train_cfg.distillation, "output_path", _optional_arg(args, "distill_output"))
+    guidance_scale = _optional_arg(args, "guidance_scale")
     if guidance_scale is not None:
         if guidance_scale < 0.0:
             raise ValueError(f"diffusion.guidance_scale must be non-negative, got {guidance_scale}")
         train_cfg.diffusion.guidance_scale = guidance_scale
-    cond_dropout_prob = getattr(args, "cond_dropout_prob", None)
+    cond_dropout_prob = _optional_arg(args, "cond_dropout_prob")
     if cond_dropout_prob is not None:
         if cond_dropout_prob < 0.0 or cond_dropout_prob > 1.0:
             raise ValueError(
@@ -314,34 +316,37 @@ def apply_cli_overrides(train_cfg, args) -> None:
                 f"got {cond_dropout_prob}"
             )
         train_cfg.diffusion.cond_dropout_prob = cond_dropout_prob
-    sample_class_labels = getattr(args, "sample_class_labels", None)
+    sample_class_labels = _optional_arg(args, "sample_class_labels")
     if sample_class_labels is not None:
-        train_cfg.diffusion.sample_class_labels = validate_class_label_values(
+        diffusion_sample_class_labels = validate_class_label_values(
             sample_class_labels,
             train_cfg.diffusion.num_classes,
             "sample_class_labels",
         )
-    sample_repeats_per_class = getattr(args, "sample_repeats_per_class", None)
+        one_shot_sample_class_labels = validate_class_label_values(
+            sample_class_labels,
+            train_cfg.one_shot.num_classes,
+            "one_shot.sample_class_labels",
+        )
+        train_cfg.diffusion.sample_class_labels = diffusion_sample_class_labels
+        train_cfg.one_shot.sample_class_labels = one_shot_sample_class_labels
+    sample_repeats_per_class = _optional_arg(args, "sample_repeats_per_class")
     if sample_repeats_per_class is not None:
-        if sample_repeats_per_class <= 0:
-            raise ValueError(
-                "diffusion.sample_repeats_per_class must be positive, "
-                f"got {sample_repeats_per_class}"
-            )
+        _require_positive(sample_repeats_per_class, "sample_repeats_per_class")
         train_cfg.diffusion.sample_repeats_per_class = sample_repeats_per_class
-    diffusion_class_weight_labels = getattr(args, "diffusion_class_weight_labels", None)
+        train_cfg.one_shot.sample_repeats_per_class = sample_repeats_per_class
+    diffusion_class_weight_labels = _optional_arg(args, "diffusion_class_weight_labels")
     if diffusion_class_weight_labels is not None:
         train_cfg.diffusion.class_weight_labels = validate_class_label_values(
             diffusion_class_weight_labels,
             train_cfg.diffusion.num_classes,
             "diffusion_class_weight_labels",
         )
-    diffusion_class_weight = getattr(args, "diffusion_class_weight", None)
+    diffusion_class_weight = _optional_arg(args, "diffusion_class_weight")
     if diffusion_class_weight is not None:
-        if diffusion_class_weight <= 0.0:
-            raise ValueError(f"diffusion.class_weight must be positive, got {diffusion_class_weight}")
+        _require_positive(diffusion_class_weight, "diffusion.class_weight")
         train_cfg.diffusion.class_weight = diffusion_class_weight
-    camera_artifact_weight = getattr(args, "camera_artifact_weight", None)
+    camera_artifact_weight = _optional_arg(args, "camera_artifact_weight")
     if camera_artifact_weight is not None:
         if camera_artifact_weight < 0.0:
             raise ValueError(
@@ -349,10 +354,8 @@ def apply_cli_overrides(train_cfg, args) -> None:
                 f"got {camera_artifact_weight}"
             )
         train_cfg.first_stage.camera_artifact_weight = camera_artifact_weight
-    encoder_fusion_mode = getattr(args, "encoder_fusion_mode", None)
-    if encoder_fusion_mode is not None:
-        train_cfg.first_stage.encoder_fusion_mode = encoder_fusion_mode
-    image_fusion_weight = getattr(args, "image_fusion_weight", None)
+    _set_optional(train_cfg.first_stage, "encoder_fusion_mode", _optional_arg(args, "encoder_fusion_mode"))
+    image_fusion_weight = _optional_arg(args, "image_fusion_weight")
     if image_fusion_weight is not None:
         if image_fusion_weight < 0.0 or image_fusion_weight > 1.0:
             raise ValueError(
@@ -362,15 +365,9 @@ def apply_cli_overrides(train_cfg, args) -> None:
         train_cfg.first_stage.image_fusion_start_weight = image_fusion_weight
         train_cfg.first_stage.image_fusion_end_weight = image_fusion_weight
         train_cfg.first_stage.image_fusion_decay_epochs = 1
-    optical_encoder_input_mode = getattr(args, "optical_encoder_input_mode", None)
-    if optical_encoder_input_mode is not None:
-        train_cfg.first_stage.optical_encoder_input_mode = optical_encoder_input_mode
-    optical_encoder_arch = getattr(args, "optical_encoder_arch", None)
-    if optical_encoder_arch is not None:
-        train_cfg.first_stage.optical_encoder_arch = optical_encoder_arch
-    metasurface_decoder_arch = getattr(args, "metasurface_decoder_arch", None)
-    if metasurface_decoder_arch is not None:
-        train_cfg.first_stage.metasurface_decoder_arch = metasurface_decoder_arch
+    _set_optional(train_cfg.first_stage, "optical_encoder_input_mode", _optional_arg(args, "optical_encoder_input_mode"))
+    _set_optional(train_cfg.first_stage, "optical_encoder_arch", _optional_arg(args, "optical_encoder_arch"))
+    _set_optional(train_cfg.first_stage, "metasurface_decoder_arch", _optional_arg(args, "metasurface_decoder_arch"))
 
 
 def estimate_latent_scale_from_loader(

@@ -297,6 +297,9 @@ class BackOpticalPath(nn.Module):
             "chip_phase": torch.angle(field),
             "probe_plane": probe_plane_loss.clamp(0.0, 1.0),
             "probe_plane_loss": probe_plane_loss,
+            "camera_field_real": camera_field.real,
+            "camera_field_imag": camera_field.imag,
+            "camera_phase": torch.angle(camera_field),
             "camera_plane": camera_plane_loss.clamp(0.0, 1.0),
             "camera_plane_loss": camera_plane_loss,
         }

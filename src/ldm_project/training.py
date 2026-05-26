@@ -480,6 +480,7 @@ def one_shot_loss(
     shape_loss_weight: float = 0.0,
     edge_loss_weight: float = 0.0,
     slm_smoothness_weight: float = 0.0,
+    slm_contrast_weight: float = 0.0,
     camera_saturation_weight: float = 0.0,
     camera_topology_weight: float = 0.0,
     camera_artifact_weight: float = 0.0,
@@ -532,6 +533,21 @@ def one_shot_loss(
     edge_loss = edge_loss_weight * edge_base
     slm_tv = _total_variation(outputs["slm_amplitude"])
     slm_smoothness = slm_smoothness_weight * slm_tv
+    slm_amplitude = outputs["slm_amplitude"]
+    if slm_contrast_weight != 0.0:
+        grid_tensor = outputs.get("encoder_input_grid_amplitude")
+        if grid_tensor is not None:
+            grid_h, grid_w = grid_tensor.shape[-2:]
+            slm_grid = F.interpolate(slm_amplitude, size=(grid_h, grid_w), mode="area")
+        else:
+            slm_grid = slm_amplitude
+        per_sample_slm_std = slm_grid.reshape(slm_amplitude.shape[0], -1).std(dim=1)
+        slm_contrast_base = F.relu(0.12 - per_sample_slm_std).mean()
+        slm_contrast = slm_contrast_weight * slm_contrast_base
+    else:
+        per_sample_slm_std = slm_amplitude.reshape(slm_amplitude.shape[0], -1).std(dim=1)
+        slm_contrast_base = zero
+        slm_contrast = zero
     camera_saturation_base = _camera_saturation_loss(camera_loss_prediction)
     camera_saturation = camera_saturation_weight * camera_saturation_base
     # 拓扑约束：保持笔画连接和弯折的结构，对复杂数字(3/4/5)尤为重要。
@@ -567,6 +583,7 @@ def one_shot_loss(
         + shape_loss
         + edge_loss
         + slm_smoothness
+        + slm_contrast
         + camera_saturation
         + camera_topology
         + camera_artifact
@@ -584,6 +601,10 @@ def one_shot_loss(
         "edge_penalty": edge_base.detach(),
         "slm_smoothness_loss": slm_smoothness.detach(),
         "slm_tv": slm_tv.detach(),
+        "slm_contrast_loss": slm_contrast.detach(),
+        "slm_contrast_penalty": slm_contrast_base.detach(),
+        "slm_per_sample_std_mean": per_sample_slm_std.mean().detach(),
+        "slm_per_sample_std_min": per_sample_slm_std.min().detach(),
         "camera_saturation_loss": camera_saturation.detach(),
         "camera_saturation_penalty": camera_saturation_base.detach(),
         "camera_saturation_ratio": _camera_saturation_ratio(camera_prediction.detach()),

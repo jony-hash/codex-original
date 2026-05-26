@@ -122,7 +122,7 @@ class DiffusionConfig:
     latent_source: str = "mu"
     guidance_scale: float = 3.0
     sample_class_labels: tuple[int, ...] = ()
-    sample_repeats_per_class: int = 1
+    sample_repeats_per_class: int = 2
     class_weight_labels: tuple[int, ...] = ()
     class_weight: float = 1.0
 
@@ -146,6 +146,7 @@ class OneShotConfig:
     shape_loss_weight: float = 0.0
     edge_loss_weight: float = 0.0
     slm_smoothness_weight: float = 0.0
+    slm_contrast_weight: float = 0.0
     camera_saturation_weight: float = 0.0
     camera_topology_weight: float = 0.0
     camera_artifact_weight: float = 0.0
@@ -154,7 +155,7 @@ class OneShotConfig:
     diversity_min_teacher_mse: float = 1.0e-4
     checkpoint_selection_metric: str = "loss"
     sample_class_labels: tuple[int, ...] = ()
-    sample_repeats_per_class: int = 1
+    sample_repeats_per_class: int = 2
 
 
 @dataclass

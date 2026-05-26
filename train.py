@@ -40,6 +40,7 @@ from ldm_project.stage_runners import (
     ONE_SHOT_BEST_METRIC,
     ONE_SHOT_DISTILL_BEST_CHECKPOINT,
     ONE_SHOT_DISTILL_BEST_METRIC,
+    run_one_shot_distill_eval_diagnostics_stage,
     run_one_shot_distill_eval_stage,
     run_diffusion_training,
     run_first_stage_training,
@@ -121,6 +122,7 @@ __all__ = [
     "resolve_logged_step",
     "resolve_stage_epoch_plan",
     "resolve_stage_total_steps",
+    "run_one_shot_distill_eval_diagnostics_stage",
     "run_one_shot_distill_eval_stage",
     "run_diffusion_training",
     "run_first_stage_training",
@@ -267,7 +269,403 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Required for --stage one_shot_distill to load offline teacher targets.",
     )
+    parser.add_argument(
+        "--eval-tensor-bundle",
+        default=None,
+        help="Required for --stage one_shot_distill_eval_diagnostics to load eval tensor artifacts.",
+    )
+    parser.add_argument(
+        "--eval-metrics",
+        default=None,
+        help="Required for --stage one_shot_distill_eval_diagnostics to load eval metric JSON.",
+    )
+    parser.add_argument(
+        "--diagnostic-class-labels",
+        nargs="+",
+        type=int,
+        default=list(range(10)),
+        help="Class labels to include in one-shot eval focus diagnostics.",
+    )
+    parser.add_argument(
+        "--diagnostic-max-per-class",
+        type=int,
+        default=2,
+        help="Maximum samples per class in one-shot eval focus diagnostics.",
+    )
     return parser.parse_args()
+
+
+def _validate_diagnostics_args(args, train_cfg) -> tuple[int, ...]:
+    if args.eval_tensor_bundle is None:
+        raise ValueError("--stage one_shot_distill_eval_diagnostics requires --eval-tensor-bundle.")
+    if args.eval_metrics is None:
+        raise ValueError("--stage one_shot_distill_eval_diagnostics requires --eval-metrics.")
+    if args.diagnostic_max_per_class <= 0:
+        raise ValueError(
+            "diagnostic_max_per_class must be positive, "
+            f"got {args.diagnostic_max_per_class}"
+        )
+    return validate_class_label_values(
+        args.diagnostic_class_labels,
+        train_cfg.one_shot.num_classes,
+        "diagnostic_class_labels",
+    )
+
+
+def _create_diagnostics_run(torch_module, *, args, physics, train_cfg, device, run_manager_cls) -> None:
+    diagnostic_labels = _validate_diagnostics_args(args, train_cfg)
+    run_manager = run_manager_cls.create(
+        output_root=args.output_root,
+        purpose="train",
+        run_name=args.run_name or train_cfg.mode,
+    )
+    run_meta = {
+        "script": "train.py",
+        "argv": sys.argv,
+        "device": str(device),
+        "mode": train_cfg.mode,
+        "physics_config_path": args.physics_config,
+        "train_config_path": args.train_config,
+        "eval_tensor_bundle": args.eval_tensor_bundle,
+        "eval_metrics": args.eval_metrics,
+        "diagnostic_class_labels": list(diagnostic_labels),
+        "diagnostic_max_per_class": args.diagnostic_max_per_class,
+        "run_dir": run_manager.run_dir,
+    }
+    run_manager.write_meta(run_meta)
+    run_manager.save_config_snapshot("physics_config", physics)
+    run_manager.save_config_snapshot("train_config", train_cfg)
+    run_one_shot_distill_eval_diagnostics_stage(
+        torch_module,
+        run_manager=run_manager,
+        run_meta=run_meta,
+        eval_tensor_bundle=args.eval_tensor_bundle,
+        eval_metrics=args.eval_metrics,
+        diagnostic_class_labels=diagnostic_labels,
+        diagnostic_max_per_class=args.diagnostic_max_per_class,
+    )
+    print(f"run outputs saved to: {run_manager.run_dir}")
+
+
+def _save_visual_config_snapshots(
+    run_manager,
+    physics,
+    train_cfg,
+    *,
+    first_stage_visual_labels,
+    first_stage_visual_source,
+    diffusion_visual_labels,
+    diffusion_visual_reference_labels,
+    diffusion_visual_source,
+) -> None:
+    run_manager.save_config_snapshot("physics_config", physics)
+    run_manager.save_config_snapshot("train_config", train_cfg)
+    if first_stage_visual_labels is not None:
+        run_manager.save_config_snapshot(
+            "first_stage_visual_config",
+            {
+                "class_labels": first_stage_visual_labels.detach().cpu().tolist(),
+                "reference_source": first_stage_visual_source,
+                "source": "train.py_fixed_first_stage_visualization",
+            },
+        )
+    if diffusion_visual_labels is not None:
+        run_manager.save_config_snapshot(
+            "diffusion_visual_config",
+            {
+                "class_labels": diffusion_visual_labels.detach().cpu().tolist(),
+                "reference_labels": diffusion_visual_reference_labels.detach().cpu().tolist(),
+                "reference_source": diffusion_visual_source,
+                "source": "train.py_fixed_diffusion_visualization",
+            },
+        )
+
+
+def _build_run_meta(
+    *,
+    args,
+    train_cfg,
+    device,
+    checkpoint_resolution,
+    dataset_splits,
+    train_bundle,
+    validation_bundle,
+    epoch_plan,
+    run_manager,
+    diffusion_model,
+    first_stage_model_version,
+    one_shot_model_version,
+) -> dict[str, object]:
+    return {
+        "script": "train.py",
+        "argv": sys.argv,
+        "device": str(device),
+        "mode": train_cfg.mode,
+        "physics_config_path": args.physics_config,
+        "train_config_path": args.train_config,
+        "final_pt_dir": args.final_pt_dir,
+        "first_stage_checkpoint": args.first_stage_checkpoint,
+        "first_stage_checkpoint_source": checkpoint_resolution["first_stage_checkpoint_source"],
+        "diffusion_checkpoint": args.diffusion_checkpoint,
+        "diffusion_checkpoint_source": checkpoint_resolution["diffusion_checkpoint_source"],
+        "one_shot_checkpoint": args.one_shot_checkpoint,
+        "distill_dataset": args.distill_dataset,
+        "run_dir": run_manager.run_dir,
+        "dataset": train_cfg.data.dataset,
+        "dataset_root": train_cfg.data.root,
+        "dataset_total_size": dataset_splits.total_size,
+        "dataset_effective_size": train_bundle.effective_size,
+        "train_split_size": train_bundle.total_size,
+        "train_effective_size": train_bundle.effective_size,
+        "validation_size": 0 if validation_bundle is None else validation_bundle.effective_size,
+        "validation_fraction": train_cfg.data.validation_fraction,
+        "validation_split_seed": train_cfg.data.validation_split_seed,
+        "subset_fraction": train_cfg.data.subset_fraction,
+        "subset_size": train_cfg.data.subset_size,
+        "subset_fraction_applies_to": "train_only",
+        "planned_first_stage_epochs": epoch_plan["first_stage"],
+        "planned_diffusion_epochs": epoch_plan["diffusion"],
+        "planned_one_shot_epochs": epoch_plan["one_shot"],
+        "visual_save_epoch_interval": train_cfg.visual_save_epoch_interval,
+        "validation_epoch_interval": train_cfg.validation_epoch_interval,
+        "first_stage_model_version": first_stage_model_version,
+        "first_stage_encoder_fusion_mode": train_cfg.first_stage.encoder_fusion_mode,
+        "first_stage_optical_encoder_input_mode": train_cfg.first_stage.optical_encoder_input_mode,
+        "first_stage_optical_encoder_arch": train_cfg.first_stage.optical_encoder_arch,
+        "first_stage_metasurface_decoder_arch": train_cfg.first_stage.metasurface_decoder_arch,
+        "first_stage_linear_metasurface_grid_size": train_cfg.first_stage.linear_metasurface_grid_size,
+        "first_stage_linear_metasurface_layer_spacing": train_cfg.first_stage.linear_metasurface_layer_spacing,
+        "first_stage_field_energy_weight": train_cfg.first_stage.field_energy_weight,
+        "image_fusion_start_weight": train_cfg.first_stage.image_fusion_start_weight,
+        "image_fusion_end_weight": train_cfg.first_stage.image_fusion_end_weight,
+        "image_fusion_decay_epochs": train_cfg.first_stage.image_fusion_decay_epochs,
+        "first_stage_best_optical_checkpoint": None,
+        "first_stage_best_optical_epoch": None,
+        "first_stage_best_optical_metric": FIRST_STAGE_BEST_OPTICAL_METRIC,
+        "first_stage_best_optical_score": None,
+        "first_stage_best_optical_loaded_for_diffusion": False,
+        "diffusion_latent_source": train_cfg.diffusion.latent_source,
+        "diffusion_guidance_scale": train_cfg.diffusion.guidance_scale,
+        "diffusion_class_weight_labels": list(train_cfg.diffusion.class_weight_labels),
+        "diffusion_class_weight": train_cfg.diffusion.class_weight,
+        "diffusion_best_checkpoint": None,
+        "diffusion_best_epoch": None,
+        "diffusion_best_metric": DIFFUSION_BEST_METRIC,
+        "diffusion_best_loss": None,
+        "diffusion_best_loaded_for_sampling": False,
+        "latent_scale_source": None,
+        "sample_class_labels": list(train_cfg.diffusion.sample_class_labels),
+        "sample_repeats_per_class": train_cfg.diffusion.sample_repeats_per_class,
+        "sample_metric_source": None,
+        "conditioning": diffusion_model.conditioning_metadata(),
+        "one_shot_model_version": one_shot_model_version,
+        "one_shot_code_dim": train_cfg.one_shot.code_dim,
+        "one_shot_num_classes": train_cfg.one_shot.num_classes,
+        "one_shot_ols_kind": train_cfg.one_shot.ols_kind,
+        "one_shot_metasurface_grid_size": train_cfg.one_shot.metasurface_grid_size,
+        "one_shot_sample_class_labels": list(train_cfg.one_shot.sample_class_labels),
+        "one_shot_sample_repeats_per_class": train_cfg.one_shot.sample_repeats_per_class,
+        "one_shot_best_checkpoint": None,
+        "one_shot_best_epoch": None,
+        "one_shot_best_metric": ONE_SHOT_BEST_METRIC,
+        "one_shot_best_loss": None,
+        "one_shot_distill_best_checkpoint": None,
+        "one_shot_distill_best_epoch": None,
+        "one_shot_distill_best_metric": ONE_SHOT_DISTILL_BEST_METRIC,
+        "one_shot_distill_best_loss": None,
+        "one_shot_sample_metric_source": None,
+        "one_shot_distill_eval_metric_source": None,
+        "teacher_distill_dataset": None,
+        "teacher_distill_sample_count": None,
+    }
+
+
+def _run_selected_stage(
+    torch_module,
+    *,
+    args,
+    checkpoint_resolution,
+    train_cfg,
+    run_manager,
+    run_meta,
+    physics,
+    device,
+    use_pin_memory,
+    first_stage,
+    diffusion_model,
+    one_shot_model,
+    scheduler,
+    train_bundle,
+    validation_bundle,
+    first_stage_visual_batch,
+    first_stage_visual_labels,
+    diffusion_visual_labels,
+    diffusion_visual_reference_images,
+    first_stage_model_version,
+    diffusion_model_version,
+    one_shot_model_version,
+    load_first_stage_checkpoint_fn,
+    load_diffusion_checkpoint_fn,
+    load_one_shot_checkpoint_fn,
+    first_stage_loss_fn,
+    diffusion_loss_fn,
+    diffusion_per_sample_losses_fn,
+    one_shot_loss_fn,
+    sample_latents_fn,
+    sample_latents_with_trace_fn,
+    resolve_denoising_trace_steps_fn,
+) -> None:
+    if train_cfg.mode == "teacher_sample":
+        if checkpoint_resolution["diffusion_checkpoint_source"] == "final_pt":
+            print(f"using final_pt diffusion checkpoint: {args.diffusion_checkpoint}")
+        run_sample_stage(
+            torch_module,
+            first_stage=first_stage,
+            diffusion_model=diffusion_model,
+            scheduler=scheduler,
+            train_bundle=train_bundle,
+            validation_bundle=validation_bundle,
+            train_cfg=train_cfg,
+            run_manager=run_manager,
+            run_meta=run_meta,
+            device=device,
+            diffusion_checkpoint=args.diffusion_checkpoint,
+            first_stage_model_version=first_stage_model_version,
+            load_diffusion_checkpoint_fn=load_diffusion_checkpoint_fn,
+            sample_latents_fn=sample_latents_fn,
+            sample_latents_with_trace_fn=sample_latents_with_trace_fn,
+            resolve_denoising_trace_steps_fn=resolve_denoising_trace_steps_fn,
+        )
+
+    if train_cfg.mode == "teacher_distill_export":
+        if checkpoint_resolution["diffusion_checkpoint_source"] == "final_pt":
+            print(f"using final_pt diffusion checkpoint: {args.diffusion_checkpoint}")
+        run_teacher_distill_export(
+            torch_module,
+            first_stage=first_stage,
+            diffusion_model=diffusion_model,
+            scheduler=scheduler,
+            train_cfg=train_cfg,
+            run_manager=run_manager,
+            run_meta=run_meta,
+            device=device,
+            diffusion_checkpoint=args.diffusion_checkpoint,
+            first_stage_model_version=first_stage_model_version,
+            load_diffusion_checkpoint_fn=load_diffusion_checkpoint_fn,
+            sample_latents_fn=sample_latents_fn,
+        )
+
+    if train_cfg.mode == "teacher_distill_filter":
+        run_teacher_distill_filter(
+            torch_module,
+            train_cfg=train_cfg,
+            run_manager=run_manager,
+            run_meta=run_meta,
+            distill_dataset=args.distill_dataset,
+        )
+
+    if train_cfg.mode == "one_shot_sample":
+        run_one_shot_sample_stage(
+            torch_module,
+            one_shot_model=one_shot_model,
+            train_bundle=train_bundle,
+            validation_bundle=validation_bundle,
+            train_cfg=train_cfg,
+            run_manager=run_manager,
+            run_meta=run_meta,
+            device=device,
+            one_shot_checkpoint=args.one_shot_checkpoint,
+            load_one_shot_checkpoint_fn=load_one_shot_checkpoint_fn,
+        )
+
+    if train_cfg.mode == "one_shot_distill_eval":
+        run_one_shot_distill_eval_stage(
+            torch_module,
+            one_shot_model=one_shot_model,
+            train_cfg=train_cfg,
+            run_manager=run_manager,
+            run_meta=run_meta,
+            device=device,
+            one_shot_checkpoint=args.one_shot_checkpoint,
+            distill_dataset=args.distill_dataset,
+            load_one_shot_checkpoint_fn=load_one_shot_checkpoint_fn,
+        )
+
+    if is_teacher_first_stage_mode(train_cfg.mode):
+        run_first_stage_training(
+            torch_module,
+            first_stage=first_stage,
+            first_stage_loss_fn=first_stage_loss_fn,
+            first_stage_visual_batch=first_stage_visual_batch,
+            first_stage_visual_labels=first_stage_visual_labels,
+            run_manager=run_manager,
+            train_bundle=train_bundle,
+            validation_bundle=validation_bundle,
+            train_cfg=train_cfg,
+            run_meta=run_meta,
+            physics=physics,
+            device=device,
+            use_pin_memory=use_pin_memory,
+            first_stage_model_version=first_stage_model_version,
+        )
+
+    if is_teacher_diffusion_mode(train_cfg.mode):
+        run_diffusion_training(
+            torch_module,
+            first_stage=first_stage,
+            diffusion_model=diffusion_model,
+            scheduler=scheduler,
+            train_bundle=train_bundle,
+            validation_bundle=validation_bundle,
+            train_cfg=train_cfg,
+            run_meta=run_meta,
+            run_manager=run_manager,
+            physics=physics,
+            device=device,
+            use_pin_memory=use_pin_memory,
+            first_stage_model_version=first_stage_model_version,
+            diffusion_model_version=diffusion_model_version,
+            diffusion_visual_labels=diffusion_visual_labels,
+            diffusion_visual_reference_images=diffusion_visual_reference_images,
+            load_first_stage_checkpoint_fn=load_first_stage_checkpoint_fn,
+            load_diffusion_checkpoint_fn=load_diffusion_checkpoint_fn,
+            diffusion_loss_fn=diffusion_loss_fn,
+            diffusion_per_sample_losses_fn=diffusion_per_sample_losses_fn,
+            sample_latents_fn=sample_latents_fn,
+            sample_latents_with_trace_fn=sample_latents_with_trace_fn,
+            resolve_denoising_trace_steps_fn=resolve_denoising_trace_steps_fn,
+        )
+
+    if train_cfg.mode == "one_shot":
+        run_one_shot_training(
+            torch_module,
+            one_shot_model=one_shot_model,
+            one_shot_loss_fn=one_shot_loss_fn,
+            run_manager=run_manager,
+            train_bundle=train_bundle,
+            validation_bundle=validation_bundle,
+            train_cfg=train_cfg,
+            run_meta=run_meta,
+            physics=physics,
+            device=device,
+            use_pin_memory=use_pin_memory,
+            one_shot_model_version=one_shot_model_version,
+        )
+
+    if train_cfg.mode == "one_shot_distill":
+        run_one_shot_distill_training(
+            torch_module,
+            one_shot_model=one_shot_model,
+            one_shot_loss_fn=one_shot_loss_fn,
+            run_manager=run_manager,
+            train_cfg=train_cfg,
+            run_meta=run_meta,
+            physics=physics,
+            device=device,
+            use_pin_memory=use_pin_memory,
+            one_shot_model_version=one_shot_model_version,
+            distill_dataset=args.distill_dataset,
+        )
 
 
 def main() -> None:
@@ -325,6 +723,17 @@ def main() -> None:
     )
 
     device = resolve_device(torch, args.device)
+    if train_cfg.mode == "one_shot_distill_eval_diagnostics":
+        _create_diagnostics_run(
+            torch,
+            args=args,
+            physics=physics,
+            train_cfg=train_cfg,
+            device=device,
+            run_manager_cls=RunManager,
+        )
+        return
+
     use_pin_memory = train_cfg.data.pin_memory and device.type == "cuda"
     train_cfg.data.pin_memory = use_pin_memory
 
@@ -386,271 +795,79 @@ def main() -> None:
             train_bundle,
             train_cfg.diffusion.num_classes,
             device,
+            sample_repeats_per_class=2,
         )
 
-    run_manager.save_config_snapshot("physics_config", physics)
-    run_manager.save_config_snapshot("train_config", train_cfg)
-    if first_stage_visual_labels is not None:
-        run_manager.save_config_snapshot(
-            "first_stage_visual_config",
-            {
-                "class_labels": first_stage_visual_labels.detach().cpu().tolist(),
-                "reference_source": first_stage_visual_source,
-                "source": "train.py_fixed_first_stage_visualization",
-            },
-        )
-    if diffusion_visual_labels is not None:
-        run_manager.save_config_snapshot(
-            "diffusion_visual_config",
-            {
-                "class_labels": diffusion_visual_labels.detach().cpu().tolist(),
-                "reference_labels": diffusion_visual_reference_labels.detach().cpu().tolist(),
-                "reference_source": diffusion_visual_source,
-                "source": "train.py_fixed_diffusion_visualization",
-            },
-        )
+    _save_visual_config_snapshots(
+        run_manager,
+        physics,
+        train_cfg,
+        first_stage_visual_labels=first_stage_visual_labels,
+        first_stage_visual_source=first_stage_visual_source,
+        diffusion_visual_labels=diffusion_visual_labels,
+        diffusion_visual_reference_labels=diffusion_visual_reference_labels,
+        diffusion_visual_source=diffusion_visual_source,
+    )
     epoch_plan = resolve_stage_epoch_plan(
         train_cfg.mode,
         train_cfg.first_stage_epochs,
         train_cfg.diffusion_epochs,
         train_cfg.one_shot_epochs,
     )
-    run_meta = {
-        "script": "train.py",
-        "argv": sys.argv,
-        "device": str(device),
-        "mode": train_cfg.mode,
-        "physics_config_path": args.physics_config,
-        "train_config_path": args.train_config,
-        "final_pt_dir": args.final_pt_dir,
-        "first_stage_checkpoint": args.first_stage_checkpoint,
-        "first_stage_checkpoint_source": checkpoint_resolution["first_stage_checkpoint_source"],
-        "diffusion_checkpoint": args.diffusion_checkpoint,
-        "diffusion_checkpoint_source": checkpoint_resolution["diffusion_checkpoint_source"],
-        "one_shot_checkpoint": args.one_shot_checkpoint,
-        "distill_dataset": args.distill_dataset,
-        "run_dir": run_manager.run_dir,
-        "dataset": train_cfg.data.dataset,
-        "dataset_root": train_cfg.data.root,
-        "dataset_total_size": dataset_splits.total_size,
-        "dataset_effective_size": train_bundle.effective_size,
-        "train_split_size": train_bundle.total_size,
-        "train_effective_size": train_bundle.effective_size,
-        "validation_size": 0 if validation_bundle is None else validation_bundle.effective_size,
-        "validation_fraction": train_cfg.data.validation_fraction,
-        "validation_split_seed": train_cfg.data.validation_split_seed,
-        "subset_fraction": train_cfg.data.subset_fraction,
-        "subset_size": train_cfg.data.subset_size,
-        "subset_fraction_applies_to": "train_only",
-        "planned_first_stage_epochs": epoch_plan["first_stage"],
-        "planned_diffusion_epochs": epoch_plan["diffusion"],
-        "planned_one_shot_epochs": epoch_plan["one_shot"],
-        "visual_save_epoch_interval": train_cfg.visual_save_epoch_interval,
-        "validation_epoch_interval": train_cfg.validation_epoch_interval,
-        "first_stage_model_version": FIRST_STAGE_MODEL_VERSION,
-        "first_stage_encoder_fusion_mode": train_cfg.first_stage.encoder_fusion_mode,
-        "first_stage_optical_encoder_input_mode": train_cfg.first_stage.optical_encoder_input_mode,
-        "first_stage_optical_encoder_arch": train_cfg.first_stage.optical_encoder_arch,
-        "first_stage_metasurface_decoder_arch": train_cfg.first_stage.metasurface_decoder_arch,
-        "first_stage_linear_metasurface_grid_size": train_cfg.first_stage.linear_metasurface_grid_size,
-        "first_stage_linear_metasurface_layer_spacing": train_cfg.first_stage.linear_metasurface_layer_spacing,
-        "first_stage_field_energy_weight": train_cfg.first_stage.field_energy_weight,
-        "image_fusion_start_weight": train_cfg.first_stage.image_fusion_start_weight,
-        "image_fusion_end_weight": train_cfg.first_stage.image_fusion_end_weight,
-        "image_fusion_decay_epochs": train_cfg.first_stage.image_fusion_decay_epochs,
-        "first_stage_best_optical_checkpoint": None,
-        "first_stage_best_optical_epoch": None,
-        "first_stage_best_optical_metric": FIRST_STAGE_BEST_OPTICAL_METRIC,
-        "first_stage_best_optical_score": None,
-        "first_stage_best_optical_loaded_for_diffusion": False,
-        "diffusion_latent_source": train_cfg.diffusion.latent_source,
-        "diffusion_guidance_scale": train_cfg.diffusion.guidance_scale,
-        "diffusion_class_weight_labels": list(train_cfg.diffusion.class_weight_labels),
-        "diffusion_class_weight": train_cfg.diffusion.class_weight,
-        "diffusion_best_checkpoint": None,
-        "diffusion_best_epoch": None,
-        "diffusion_best_metric": DIFFUSION_BEST_METRIC,
-        "diffusion_best_loss": None,
-        "diffusion_best_loaded_for_sampling": False,
-        "latent_scale_source": None,
-        "sample_class_labels": list(train_cfg.diffusion.sample_class_labels),
-        "sample_repeats_per_class": train_cfg.diffusion.sample_repeats_per_class,
-        "sample_metric_source": None,
-        "conditioning": diffusion_model.conditioning_metadata(),
-        "one_shot_model_version": ONE_SHOT_MODEL_VERSION,
-        "one_shot_code_dim": train_cfg.one_shot.code_dim,
-        "one_shot_num_classes": train_cfg.one_shot.num_classes,
-        "one_shot_ols_kind": train_cfg.one_shot.ols_kind,
-        "one_shot_metasurface_grid_size": train_cfg.one_shot.metasurface_grid_size,
-        "one_shot_best_checkpoint": None,
-        "one_shot_best_epoch": None,
-        "one_shot_best_metric": ONE_SHOT_BEST_METRIC,
-        "one_shot_best_loss": None,
-        "one_shot_distill_best_checkpoint": None,
-        "one_shot_distill_best_epoch": None,
-        "one_shot_distill_best_metric": ONE_SHOT_DISTILL_BEST_METRIC,
-        "one_shot_distill_best_loss": None,
-        "one_shot_sample_metric_source": None,
-        "one_shot_distill_eval_metric_source": None,
-        "teacher_distill_dataset": None,
-        "teacher_distill_sample_count": None,
-    }
+    run_meta = _build_run_meta(
+        args=args,
+        train_cfg=train_cfg,
+        device=device,
+        checkpoint_resolution=checkpoint_resolution,
+        dataset_splits=dataset_splits,
+        train_bundle=train_bundle,
+        validation_bundle=validation_bundle,
+        epoch_plan=epoch_plan,
+        run_manager=run_manager,
+        diffusion_model=diffusion_model,
+        first_stage_model_version=FIRST_STAGE_MODEL_VERSION,
+        one_shot_model_version=ONE_SHOT_MODEL_VERSION,
+    )
     run_manager.write_meta(run_meta)
     print(
         f"planned epochs: first_stage={epoch_plan['first_stage']} "
         f"diffusion={epoch_plan['diffusion']} one_shot={epoch_plan['one_shot']}"
     )
 
-    if train_cfg.mode == "teacher_sample":
-        if checkpoint_resolution["diffusion_checkpoint_source"] == "final_pt":
-            print(f"using final_pt diffusion checkpoint: {args.diffusion_checkpoint}")
-        run_sample_stage(
-            torch,
-            first_stage=first_stage,
-            diffusion_model=diffusion_model,
-            scheduler=scheduler,
-            train_bundle=train_bundle,
-            validation_bundle=validation_bundle,
-            train_cfg=train_cfg,
-            run_manager=run_manager,
-            run_meta=run_meta,
-            device=device,
-            diffusion_checkpoint=args.diffusion_checkpoint,
-            first_stage_model_version=FIRST_STAGE_MODEL_VERSION,
-            load_diffusion_checkpoint_fn=load_diffusion_checkpoint,
-            sample_latents_fn=sample_latents,
-            sample_latents_with_trace_fn=sample_latents_with_trace,
-            resolve_denoising_trace_steps_fn=resolve_denoising_trace_steps,
-        )
-
-    if train_cfg.mode == "teacher_distill_export":
-        if checkpoint_resolution["diffusion_checkpoint_source"] == "final_pt":
-            print(f"using final_pt diffusion checkpoint: {args.diffusion_checkpoint}")
-        run_teacher_distill_export(
-            torch,
-            first_stage=first_stage,
-            diffusion_model=diffusion_model,
-            scheduler=scheduler,
-            train_cfg=train_cfg,
-            run_manager=run_manager,
-            run_meta=run_meta,
-            device=device,
-            diffusion_checkpoint=args.diffusion_checkpoint,
-            first_stage_model_version=FIRST_STAGE_MODEL_VERSION,
-            load_diffusion_checkpoint_fn=load_diffusion_checkpoint,
-            sample_latents_fn=sample_latents,
-        )
-
-    if train_cfg.mode == "teacher_distill_filter":
-        run_teacher_distill_filter(
-            torch,
-            train_cfg=train_cfg,
-            run_manager=run_manager,
-            run_meta=run_meta,
-            distill_dataset=args.distill_dataset,
-        )
-
-    if train_cfg.mode == "one_shot_sample":
-        run_one_shot_sample_stage(
-            torch,
-            one_shot_model=one_shot_model,
-            train_bundle=train_bundle,
-            validation_bundle=validation_bundle,
-            train_cfg=train_cfg,
-            run_manager=run_manager,
-            run_meta=run_meta,
-            device=device,
-            one_shot_checkpoint=args.one_shot_checkpoint,
-            load_one_shot_checkpoint_fn=load_one_shot_checkpoint,
-        )
-
-    if train_cfg.mode == "one_shot_distill_eval":
-        run_one_shot_distill_eval_stage(
-            torch,
-            one_shot_model=one_shot_model,
-            train_cfg=train_cfg,
-            run_manager=run_manager,
-            run_meta=run_meta,
-            device=device,
-            one_shot_checkpoint=args.one_shot_checkpoint,
-            distill_dataset=args.distill_dataset,
-            load_one_shot_checkpoint_fn=load_one_shot_checkpoint,
-        )
-
-    if is_teacher_first_stage_mode(train_cfg.mode):
-        run_first_stage_training(
-            torch,
-            first_stage=first_stage,
-            first_stage_loss_fn=first_stage_loss,
-            first_stage_visual_batch=first_stage_visual_batch,
-            run_manager=run_manager,
-            train_bundle=train_bundle,
-            validation_bundle=validation_bundle,
-            train_cfg=train_cfg,
-            run_meta=run_meta,
-            physics=physics,
-            device=device,
-            use_pin_memory=use_pin_memory,
-            first_stage_model_version=FIRST_STAGE_MODEL_VERSION,
-        )
-
-    if is_teacher_diffusion_mode(train_cfg.mode):
-        run_diffusion_training(
-            torch,
-            first_stage=first_stage,
-            diffusion_model=diffusion_model,
-            scheduler=scheduler,
-            train_bundle=train_bundle,
-            validation_bundle=validation_bundle,
-            train_cfg=train_cfg,
-            run_meta=run_meta,
-            run_manager=run_manager,
-            physics=physics,
-            device=device,
-            use_pin_memory=use_pin_memory,
-            first_stage_model_version=FIRST_STAGE_MODEL_VERSION,
-            diffusion_model_version=DIFFUSION_MODEL_VERSION,
-            diffusion_visual_labels=diffusion_visual_labels,
-            diffusion_visual_reference_images=diffusion_visual_reference_images,
-            load_first_stage_checkpoint_fn=load_first_stage_checkpoint,
-            load_diffusion_checkpoint_fn=load_diffusion_checkpoint,
-            diffusion_loss_fn=diffusion_loss,
-            diffusion_per_sample_losses_fn=diffusion_per_sample_losses,
-            sample_latents_fn=sample_latents,
-            sample_latents_with_trace_fn=sample_latents_with_trace,
-            resolve_denoising_trace_steps_fn=resolve_denoising_trace_steps,
-        )
-
-    if train_cfg.mode == "one_shot":
-        run_one_shot_training(
-            torch,
-            one_shot_model=one_shot_model,
-            one_shot_loss_fn=one_shot_loss,
-            run_manager=run_manager,
-            train_bundle=train_bundle,
-            validation_bundle=validation_bundle,
-            train_cfg=train_cfg,
-            run_meta=run_meta,
-            physics=physics,
-            device=device,
-            use_pin_memory=use_pin_memory,
-            one_shot_model_version=ONE_SHOT_MODEL_VERSION,
-        )
-
-    if train_cfg.mode == "one_shot_distill":
-        run_one_shot_distill_training(
-            torch,
-            one_shot_model=one_shot_model,
-            one_shot_loss_fn=one_shot_loss,
-            run_manager=run_manager,
-            train_cfg=train_cfg,
-            run_meta=run_meta,
-            physics=physics,
-            device=device,
-            use_pin_memory=use_pin_memory,
-            one_shot_model_version=ONE_SHOT_MODEL_VERSION,
-            distill_dataset=args.distill_dataset,
-        )
+    _run_selected_stage(
+        torch,
+        args=args,
+        checkpoint_resolution=checkpoint_resolution,
+        train_cfg=train_cfg,
+        run_manager=run_manager,
+        run_meta=run_meta,
+        physics=physics,
+        device=device,
+        use_pin_memory=use_pin_memory,
+        first_stage=first_stage,
+        diffusion_model=diffusion_model,
+        one_shot_model=one_shot_model,
+        scheduler=scheduler,
+        train_bundle=train_bundle,
+        validation_bundle=validation_bundle,
+        first_stage_visual_batch=first_stage_visual_batch,
+        first_stage_visual_labels=first_stage_visual_labels,
+        diffusion_visual_labels=diffusion_visual_labels,
+        diffusion_visual_reference_images=diffusion_visual_reference_images,
+        first_stage_model_version=FIRST_STAGE_MODEL_VERSION,
+        diffusion_model_version=DIFFUSION_MODEL_VERSION,
+        one_shot_model_version=ONE_SHOT_MODEL_VERSION,
+        load_first_stage_checkpoint_fn=load_first_stage_checkpoint,
+        load_diffusion_checkpoint_fn=load_diffusion_checkpoint,
+        load_one_shot_checkpoint_fn=load_one_shot_checkpoint,
+        first_stage_loss_fn=first_stage_loss,
+        diffusion_loss_fn=diffusion_loss,
+        diffusion_per_sample_losses_fn=diffusion_per_sample_losses,
+        one_shot_loss_fn=one_shot_loss,
+        sample_latents_fn=sample_latents,
+        sample_latents_with_trace_fn=sample_latents_with_trace,
+        resolve_denoising_trace_steps_fn=resolve_denoising_trace_steps,
+    )
 
     print(f"train dataset size: {train_bundle.effective_size}/{train_bundle.total_size}")
     if validation_bundle is None:
