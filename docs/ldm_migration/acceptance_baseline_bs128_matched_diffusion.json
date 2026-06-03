@@ -1,6 +1,6 @@
 {
   "description": "bs128 matched-diffusion 全链路验收基线",
-  "commit": "HEAD",
+  "commit": "7f1b8f2",
   "date": "2026-06-03",
   "environment": "RTX 3060 Laptop GPU (6GB), CUDA 12.1, PyTorch 2.5.1+cu121, WSL2 Linux",
   "parent_baseline": "c99f559",
