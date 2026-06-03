@@ -51,7 +51,9 @@ class RepoLayoutTests(unittest.TestCase):
             ROOT / "src" / "ldm_project" / "teacher_training.py",
             ROOT / "src" / "ldm_project" / "teacher_training_utils.py",
             ROOT / "src" / "ldm_project" / "one_shot_stages.py",
+            ROOT / "src" / "ldm_project" / "eval_reports.py",
             ROOT / "tests" / "test_teacher_training_utils.py",
+            ROOT / "tests" / "test_eval_reports.py",
         ]
         for path in expected:
             self.assertTrue(path.exists(), f"missing expected file: {path}")

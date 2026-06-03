@@ -139,3 +139,25 @@ source "$(conda info --base)/etc/profile.d/conda.sh" && conda activate optical-g
 - 训练和采样均使用 `--device cuda`。
 - `one_shot_sample` 和 `one_shot_distill_eval` 使用 `one_shot_distill_best.pt` checkpoint。
 - 所有 artifact/checkpoint 位于 `outputs/runs/...`，不纳入 git。
+
+### 评估结果汇总
+
+可通过 `ldm_project.eval_reports` 批量读取 run 目录，自动汇总已有评估指标：
+
+```python
+from ldm_project.eval_reports import print_summary, summarize_runs
+
+summary = summarize_runs([
+    "outputs/runs/<eval_run>",
+    "outputs/runs/<sample_run>",
+])
+# 或输出 JSON 到 stdout
+print_summary([
+    "outputs/runs/<eval_run>",
+    "outputs/runs/<sample_run>",
+])
+```
+
+每个 run 返回的字段: `stage`, `checkpoint`, `distill_dataset`, `best_loss`, `eval_metrics` (mse/corr/dice/sat/slm_tv/diversity_ratio), `sample_metrics` (corr/dice)。缺失 optional artifact 时对应字段为 `null`，run_meta 缺失时记录 error。
+
+此工具只读不写，不生成 checkpoint、图片或新 artifact。适合 CI 回归对比和实验记录。
