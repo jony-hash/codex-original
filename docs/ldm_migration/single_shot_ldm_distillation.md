@@ -161,3 +161,43 @@ print_summary([
 每个 run 返回的字段: `stage`, `checkpoint`, `distill_dataset`, `best_loss`, `eval_metrics` (mse/corr/dice/sat/slm_tv/diversity_ratio), `sample_metrics` (corr/dice)。缺失 optional artifact 时对应字段为 `null`，run_meta 缺失时记录 error。
 
 此工具只读不写，不生成 checkpoint、图片或新 artifact。适合 CI 回归对比和实验记录。
+
+### 回归验收
+
+`ldm_project.eval_reports` 提供 CLI 回归验收入口，将当前 run 指标与基线 JSON 比较：
+
+```bash
+# 汇总
+python -m ldm_project.eval_reports summary outputs/runs/<eval_run> outputs/runs/<sample_run>
+
+# 回归比较（退出码非零表示未通过）
+python -m ldm_project.eval_reports compare \
+  outputs/runs/<eval_run> outputs/runs/<sample_run> outputs/runs/<distill_run> \
+  --baseline docs/ldm_migration/acceptance_baseline_c99f559.json
+```
+
+比较语义：
+
+- `eval_mse`, `eval_sat`, `eval_slm_tv`, `best_loss`：lower-is-better（candidate ≤ baseline + tolerance）
+- `eval_corr`, `eval_dice`, `eval_diversity_ratio`, `sample_corr`, `sample_dice`：higher-is-better（candidate ≥ baseline - tolerance）
+- 多个 candidate run dir 按 best-of 合并：lower-is-better 取 min，higher-is-better 取 max
+- baseline 中值为 `null` 的指标跳过比较
+- candidate 缺失 baseline 要求的指标算作失败（direction=missing）
+- 阈值优先级：CLI 无覆盖参数，优先使用 baseline JSON 内的 `tolerances`，其次使用代码内 `_DEFAULT_TOLERANCES`
+
+可通过 Python API 直接调用：
+
+```python
+from ldm_project.eval_reports import compare_runs
+import json
+
+baseline = json.load(open("docs/ldm_migration/acceptance_baseline_c99f559.json"))
+result = compare_runs(
+    ["outputs/runs/<eval_run>", "outputs/runs/<sample_run>"],
+    baseline,
+    tolerances={"eval_mse": 0.003},  # 可选覆盖
+)
+assert result["passed"], result["checks"]
+```
+
+基线文件 `docs/ldm_migration/acceptance_baseline_c99f559.json` 记录重构提交 `c99f559` 的全链路 CUDA 验收指标与阈值。

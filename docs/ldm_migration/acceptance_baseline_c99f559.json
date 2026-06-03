@@ -1,0 +1,45 @@
+{
+  "description": "CUDA 全链路验收基线  c99f559 refactor: training orchestration into stage modules",
+  "commit": "c99f559",
+  "date": "2026-06-03",
+  "environment": "RTX 3060 Laptop GPU (6GB), CUDA 12.1, PyTorch 2.5.1+cu121, WSL2 Linux",
+  "source_runs": {
+    "eval": "outputs/runs/20260603_155033_620223_train_one_shot_distill_eval",
+    "sample": "outputs/runs/20260603_154938_655736_train_one_shot_sample",
+    "distill": "outputs/runs/20260603_153407_795512_train_one_shot_distill"
+  },
+  "metrics": {
+    "eval_mse": 0.0204,
+    "eval_corr": 0.807,
+    "eval_dice": 0.756,
+    "eval_sat": 0.0913,
+    "eval_slm_tv": 0.382,
+    "eval_diversity_ratio": 0.531,
+    "sample_corr": 0.588,
+    "sample_dice": 0.625,
+    "best_loss": 0.1614
+  },
+  "tolerances": {
+    "eval_mse": 0.005,
+    "eval_corr": 0.03,
+    "eval_dice": 0.03,
+    "eval_sat": 0.02,
+    "eval_slm_tv": 0.10,
+    "eval_diversity_ratio": 0.15,
+    "sample_corr": 0.05,
+    "sample_dice": 0.05,
+    "best_loss": 0.02
+  },
+  "notes": [
+    "eval_mse  lower-is-better: candidate = baseline + tolerance 内为通过",
+    "eval_corr  higher-is-better: candidate = baseline - tolerance 内为通过",
+    "eval_dice  higher-is-better: candidate = baseline - tolerance 内为通过",
+    "eval_sat  lower-is-better: candidate = baseline + tolerance 内为通过",
+    "eval_slm_tv  lower-is-better: candidate = baseline + tolerance 内为通过",
+    "sample_corr  higher-is-better: candidate = baseline - tolerance 内为通过",
+    "sample_dice  higher-is-better: candidate = baseline - tolerance 内为通过",
+    "best_loss  lower-is-better: candidate = baseline + tolerance 内为通过",
+    "阈值优先使用本文件 tolerances，其次使用 eval_reports._DEFAULT_TOLERANCES",
+    "compare 时多个 run dir 的指标按 best-of 合并（lower-is-better 取 min，higher-is-better 取 max）"
+  ]
+}

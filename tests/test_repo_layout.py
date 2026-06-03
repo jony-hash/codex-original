@@ -23,6 +23,7 @@ class RepoLayoutTests(unittest.TestCase):
             ROOT / "configs" / "train_one_shot_distill_d2nn_long.yaml",
             ROOT / "configs" / "train_one_shot_d2nn_smoke.yaml",
             ROOT / "docs" / "ldm_migration" / "single_shot_ldm_distillation.md",
+            ROOT / "docs" / "ldm_migration" / "acceptance_baseline_c99f559.json",
             ROOT / "src" / "ldm_project" / "data.py",
             ROOT / "src" / "ldm_project" / "first_stage.py",
             ROOT / "src" / "ldm_project" / "diffusion.py",
