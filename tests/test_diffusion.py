@@ -40,7 +40,7 @@ class ConditionedDiffusionTests(unittest.TestCase):
     def test_cfg_formula_matches_expected_values(self) -> None:
         import torch
 
-        from ldm_project.training import apply_classifier_free_guidance
+        from ldm_project.diffusion_losses import apply_classifier_free_guidance
 
         conditioned = torch.tensor([2.0])
         unconditioned = torch.tensor([1.0])

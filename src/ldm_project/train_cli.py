@@ -282,15 +282,14 @@ def main() -> None:
         load_training_config,
     )
     from ldm_project.diffusion import DIFFUSION_MODEL_VERSION, load_diffusion_checkpoint
-    from ldm_project.training import (
-        diffusion_loss,
-        diffusion_per_sample_losses,
-        first_stage_loss,
-        one_shot_loss,
+    from ldm_project.diffusion_losses import diffusion_loss, diffusion_per_sample_losses
+    from ldm_project.diffusion_sampling import (
         resolve_denoising_trace_steps,
         sample_latents,
         sample_latents_with_trace,
     )
+    from ldm_project.first_stage_losses import first_stage_loss
+    from ldm_project.one_shot_losses import one_shot_loss
 
     args = parse_args()
     physics = load_physics_config(args.physics_config)

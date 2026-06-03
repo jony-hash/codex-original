@@ -430,12 +430,12 @@ class ConditionedTrainingSmokeTests(unittest.TestCase):
 
         import torch
 
-        import ldm_project.training as training
+        import ldm_project.diffusion_losses as diffusion_losses
 
         labels = torch.tensor([3, 4], dtype=torch.long)
         per_sample_losses = torch.tensor([1.0, 2.0])
-        with mock.patch.object(training, "diffusion_per_sample_losses", return_value=per_sample_losses):
-            unweighted = training.diffusion_loss(
+        with mock.patch.object(diffusion_losses, "diffusion_per_sample_losses", return_value=per_sample_losses):
+            unweighted = diffusion_losses.diffusion_loss(
                 first_stage=None,
                 diffusion_model=None,
                 scheduler=None,
@@ -443,7 +443,7 @@ class ConditionedTrainingSmokeTests(unittest.TestCase):
                 class_labels=labels,
                 latent_scale=torch.tensor(1.0),
             )
-            weighted = training.diffusion_loss(
+            weighted = diffusion_losses.diffusion_loss(
                 first_stage=None,
                 diffusion_model=None,
                 scheduler=None,

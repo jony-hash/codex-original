@@ -32,7 +32,11 @@ class RepoLayoutTests(unittest.TestCase):
             ROOT / "src" / "ldm_project" / "run_manager.py",
             ROOT / "src" / "ldm_project" / "d2nn_diagnostics.py",
             ROOT / "src" / "ldm_project" / "d2nn_visualization.py",
+            ROOT / "src" / "ldm_project" / "diffusion_losses.py",
+            ROOT / "src" / "ldm_project" / "diffusion_sampling.py",
+            ROOT / "src" / "ldm_project" / "first_stage_losses.py",
             ROOT / "src" / "ldm_project" / "one_shot_visualization.py",
+            ROOT / "src" / "ldm_project" / "one_shot_losses.py",
             ROOT / "src" / "ldm_project" / "sampling.py",
             ROOT / "src" / "ldm_project" / "sampling_reports.py",
             ROOT / "src" / "ldm_project" / "stage_constants.py",
@@ -41,6 +45,7 @@ class RepoLayoutTests(unittest.TestCase):
             ROOT / "src" / "ldm_project" / "train_orchestration.py",
             ROOT / "src" / "ldm_project" / "train_run_context.py",
             ROOT / "src" / "ldm_project" / "train_utils.py",
+            ROOT / "src" / "ldm_project" / "training_loss_common.py",
             ROOT / "src" / "ldm_project" / "visualization_core.py",
             ROOT / "src" / "ldm_project" / "one_shot_distill_data.py",
             ROOT / "src" / "ldm_project" / "one_shot_distill_training.py",
@@ -79,8 +84,12 @@ class RepoLayoutTests(unittest.TestCase):
         self.assertIs(module.main, main)
 
     def test_stage_shims_keep_legacy_imports_available(self) -> None:
-        from ldm_project import one_shot_stages, sampling, stage_runners, teacher_stages
+        from ldm_project import one_shot_stages, sampling, stage_runners, teacher_stages, training
         from ldm_project.d2nn_diagnostics import build_one_shot_d2nn_diagnostics
+        from ldm_project.diffusion_losses import apply_classifier_free_guidance, diffusion_loss
+        from ldm_project.diffusion_sampling import sample_latents
+        from ldm_project.first_stage_losses import first_stage_loss, select_diffusion_latents
+        from ldm_project.one_shot_losses import one_shot_loss
         from ldm_project.one_shot_visualization import build_one_shot_visualization_tensors
         from ldm_project.one_shot_distill_training import run_one_shot_distill_training
         from ldm_project.one_shot_eval import (
@@ -106,6 +115,12 @@ class RepoLayoutTests(unittest.TestCase):
         self.assertIs(sampling.save_post_train_samples, save_post_train_samples)
         self.assertIs(sampling.save_visualization_grids, save_visualization_grids)
         self.assertIs(sampling.select_post_train_sample_batch, select_post_train_sample_batch)
+        self.assertIs(training.apply_classifier_free_guidance, apply_classifier_free_guidance)
+        self.assertIs(training.diffusion_loss, diffusion_loss)
+        self.assertIs(training.first_stage_loss, first_stage_loss)
+        self.assertIs(training.one_shot_loss, one_shot_loss)
+        self.assertIs(training.sample_latents, sample_latents)
+        self.assertIs(training.select_diffusion_latents, select_diffusion_latents)
         self.assertIs(teacher_stages.run_first_stage_training, run_first_stage_training)
         self.assertIs(teacher_stages.run_diffusion_training, run_diffusion_training)
         self.assertIs(teacher_stages.run_sample_stage, run_sample_stage)
