@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from .evaluation import compute_first_stage_balanced_metrics, evaluate_diffusion_with_per_class, evaluate_first_stage_with_per_class
-from .sampling import (
+from .sampling_reports import save_post_train_samples
+from .visualization_core import (
     build_diffusion_visualization_tensors,
     build_first_stage_visualization_tensors,
     labels_for_visual_rows,
-    save_post_train_samples,
     save_visualization_grids,
 )
 from .teacher_training_utils import (

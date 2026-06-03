@@ -220,7 +220,6 @@ class TrainScriptStepTests(unittest.TestCase):
     def test_complex_subset_selects_higher_edge_density_samples(self) -> None:
         import torch
 
-        sampling_module = load_sampling_module()
         batch = torch.zeros((2, 1, 16, 16), dtype=torch.float32)
         batch[0, 0, 3:13, 7:9] = 1.0
         batch[1, 0, 3:13, 4:6] = 1.0

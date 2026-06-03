@@ -5,6 +5,7 @@ from .one_shot_training_utils import (
     ONE_SHOT_HISTORY_LOSS_KEYS,
     _build_one_shot_optimizer,
     _evaluate_one_shot,
+    _one_shot_loss_kwargs,
     _phase_grad_summary,
     _scalar_loss_items,
     _select_one_shot_visual_batch,
@@ -13,7 +14,8 @@ from .one_shot_eval_artifacts import (
     _save_one_shot_d2nn_diagnostics,
     _save_one_shot_slm_to_encoder_focus_visualization,
 )
-from .sampling import build_one_shot_visualization_tensors, labels_for_visual_rows, save_visualization_grids
+from .one_shot_visualization import build_one_shot_visualization_tensors
+from .visualization_core import labels_for_visual_rows, save_visualization_grids
 from .stage_constants import ONE_SHOT_BEST_CHECKPOINT, ONE_SHOT_BEST_METRIC
 from .train_utils import (
     resolve_logged_step,

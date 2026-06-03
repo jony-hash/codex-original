@@ -979,13 +979,15 @@ class OneShotConfigTests(unittest.TestCase):
     def test_one_shot_visualization_includes_raw_and_display_camera(self) -> None:
         import torch
 
-        from ldm_project.sampling import (
-            build_one_shot_d2nn_diagnostics,
+        from ldm_project.d2nn_diagnostics import build_one_shot_d2nn_diagnostics
+        from ldm_project.d2nn_visualization import (
             build_one_shot_d2nn_focus_visualization_tensors,
             build_one_shot_d2nn_visualization_tensors,
+            build_one_shot_slm_to_encoder_focus_visualization_tensors,
+        )
+        from ldm_project.one_shot_visualization import (
             build_one_shot_display_diagnostic_tensors,
             build_one_shot_shared_scale_visualization_tensors,
-            build_one_shot_slm_to_encoder_focus_visualization_tensors,
             build_one_shot_visual_diagnostics,
             build_one_shot_visualization_tensors,
         )
@@ -1290,7 +1292,7 @@ class OneShotConfigTests(unittest.TestCase):
     def test_phase_visualization_wraps_to_zero_to_two_pi(self) -> None:
         import torch
 
-        from ldm_project.sampling import build_one_shot_display_diagnostic_tensors
+        from ldm_project.one_shot_visualization import build_one_shot_display_diagnostic_tensors
 
         phase = torch.tensor([[-torch.pi, 0.0], [torch.pi, 2.0 * torch.pi]], dtype=torch.float32).reshape(1, 1, 2, 2)
         outputs = _dummy_one_shot_outputs(batch_size=1, image_size=2, grid_size=2)
@@ -1477,7 +1479,7 @@ class OneShotConfigTests(unittest.TestCase):
     def test_one_shot_distill_eval_preview_indices_balance_classes(self) -> None:
         import torch
 
-        from ldm_project.sampling import select_balanced_visual_preview_indices
+        from ldm_project.sampling_reports import select_balanced_visual_preview_indices
 
         labels = torch.tensor([0, 0, 0, 1, 1, 1, 2], dtype=torch.long)
 

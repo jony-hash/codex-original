@@ -23,11 +23,11 @@ from .one_shot_training_utils import (
     _phase_grad_summary,
     _scalar_loss_items,
 )
-from .sampling import (
-    build_one_shot_visualization_tensors,
+from .one_shot_visualization import build_one_shot_visualization_tensors
+from .sampling_reports import select_balanced_visual_preview_indices
+from .visualization_core import (
     labels_for_visual_rows,
     save_visualization_grids,
-    select_balanced_visual_preview_indices,
 )
 from .stage_constants import ONE_SHOT_DISTILL_BEST_CHECKPOINT, ONE_SHOT_DISTILL_LATEST_CHECKPOINT
 from .train_utils import (

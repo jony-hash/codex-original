@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .sampling import save_post_train_samples
+from .sampling_reports import save_post_train_samples
 from .train_utils import (
     load_latent_scale_from_diffusion_checkpoint,
     set_first_stage_image_fusion_weight,

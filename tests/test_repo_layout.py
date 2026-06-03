@@ -30,13 +30,18 @@ class RepoLayoutTests(unittest.TestCase):
             ROOT / "src" / "ldm_project" / "one_shot.py",
             ROOT / "src" / "ldm_project" / "evaluation.py",
             ROOT / "src" / "ldm_project" / "run_manager.py",
+            ROOT / "src" / "ldm_project" / "d2nn_diagnostics.py",
+            ROOT / "src" / "ldm_project" / "d2nn_visualization.py",
+            ROOT / "src" / "ldm_project" / "one_shot_visualization.py",
             ROOT / "src" / "ldm_project" / "sampling.py",
+            ROOT / "src" / "ldm_project" / "sampling_reports.py",
             ROOT / "src" / "ldm_project" / "stage_constants.py",
             ROOT / "src" / "ldm_project" / "stage_runners.py",
             ROOT / "src" / "ldm_project" / "train_cli.py",
             ROOT / "src" / "ldm_project" / "train_orchestration.py",
             ROOT / "src" / "ldm_project" / "train_run_context.py",
             ROOT / "src" / "ldm_project" / "train_utils.py",
+            ROOT / "src" / "ldm_project" / "visualization_core.py",
             ROOT / "src" / "ldm_project" / "one_shot_distill_data.py",
             ROOT / "src" / "ldm_project" / "one_shot_distill_training.py",
             ROOT / "src" / "ldm_project" / "one_shot_eval.py",
@@ -74,7 +79,9 @@ class RepoLayoutTests(unittest.TestCase):
         self.assertIs(module.main, main)
 
     def test_stage_shims_keep_legacy_imports_available(self) -> None:
-        from ldm_project import one_shot_stages, stage_runners, teacher_stages
+        from ldm_project import one_shot_stages, sampling, stage_runners, teacher_stages
+        from ldm_project.d2nn_diagnostics import build_one_shot_d2nn_diagnostics
+        from ldm_project.one_shot_visualization import build_one_shot_visualization_tensors
         from ldm_project.one_shot_distill_training import run_one_shot_distill_training
         from ldm_project.one_shot_eval import (
             _save_one_shot_d2nn_focus_visualization as legacy_focus_visualization,
@@ -84,14 +91,21 @@ class RepoLayoutTests(unittest.TestCase):
         from ldm_project.one_shot_eval_artifacts import _save_one_shot_d2nn_focus_visualization
         from ldm_project.one_shot_eval_metrics import compute_one_shot_distill_eval_metrics
         from ldm_project.one_shot_training import run_one_shot_training
+        from ldm_project.sampling_reports import save_post_train_samples, select_post_train_sample_batch
         from ldm_project.train_cli import main
         from ldm_project.train_orchestration import run_selected_stage
         from ldm_project.teacher_distill import run_teacher_distill_export
         from ldm_project.teacher_sampling import run_sample_stage
         from ldm_project.teacher_training import run_diffusion_training, run_first_stage_training
+        from ldm_project.visualization_core import save_visualization_grids
 
         self.assertEqual(main.__module__, "ldm_project.train_cli")
         self.assertEqual(run_selected_stage.__module__, "ldm_project.train_orchestration")
+        self.assertIs(sampling.build_one_shot_d2nn_diagnostics, build_one_shot_d2nn_diagnostics)
+        self.assertIs(sampling.build_one_shot_visualization_tensors, build_one_shot_visualization_tensors)
+        self.assertIs(sampling.save_post_train_samples, save_post_train_samples)
+        self.assertIs(sampling.save_visualization_grids, save_visualization_grids)
+        self.assertIs(sampling.select_post_train_sample_batch, select_post_train_sample_batch)
         self.assertIs(teacher_stages.run_first_stage_training, run_first_stage_training)
         self.assertIs(teacher_stages.run_diffusion_training, run_diffusion_training)
         self.assertIs(teacher_stages.run_sample_stage, run_sample_stage)

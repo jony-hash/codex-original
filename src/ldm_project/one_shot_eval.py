@@ -7,8 +7,6 @@ from .one_shot_distill_data import _load_distill_payload, _select_distill_eval_i
 from .one_shot_eval_artifacts import (
     _save_one_shot_d2nn_diagnostics,
     _save_one_shot_d2nn_focus_visualization,
-    _save_one_shot_d2nn_visualization_grids,
-    _save_one_shot_slm_to_encoder_focus_visualization,
 )
 from .one_shot_eval_metrics import compute_one_shot_distill_eval_metrics
 from .one_shot_stage_common import (
@@ -19,24 +17,36 @@ from .one_shot_stage_common import (
     _detach_cpu_tensors,
     _sample_one_shot_codes,
 )
-from .sampling import (
-    VISUALIZATION_AMPLITUDE_KEY,
-    VISUALIZATION_PHASE_KEY,
-    _load_original_mnist_digits,
-    build_code_visualization_tensor,
+from .one_shot_visualization import (
     build_one_shot_display_diagnostic_tensors,
     build_one_shot_eval_shared_scale_visualization_tensors,
     build_one_shot_eval_visualization_tensors,
     build_one_shot_shared_scale_visualization_tensors,
     build_one_shot_visual_diagnostics,
     build_one_shot_visualization_tensors,
+)
+from .sampling_reports import (
     compute_sample_quality_metrics,
-    enhance_camera_for_display,
-    labels_for_visual_rows,
-    save_visualization_grids,
     select_balanced_visual_preview_indices,
     select_post_train_sample_batch,
 )
+from .visualization_core import (
+    VISUALIZATION_AMPLITUDE_KEY,
+    VISUALIZATION_PHASE_KEY,
+    _load_original_mnist_digits,
+    build_code_visualization_tensor,
+    enhance_camera_for_display,
+    labels_for_visual_rows,
+    save_visualization_grids,
+)
+
+__all__ = [
+    "_save_one_shot_d2nn_focus_visualization",
+    "compute_one_shot_distill_eval_metrics",
+    "run_one_shot_distill_eval_diagnostics_stage",
+    "run_one_shot_distill_eval_stage",
+    "run_one_shot_sample_stage",
+]
 
 
 def run_one_shot_distill_eval_diagnostics_stage(

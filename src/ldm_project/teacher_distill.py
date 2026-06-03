@@ -5,10 +5,9 @@ from pathlib import Path
 
 from .one_shot_distill_data import _filter_distill_payload_by_indices, _load_distill_payload, _validated_distill_tensors
 from .one_shot_stage_common import _sample_one_shot_codes_with_seed
-from .sampling import (
+from .visualization_core import (
     enhance_camera_for_display,
     format_output_title,
-    save_visualization_grids,
 )
 from .train_utils import (
     load_latent_scale_from_diffusion_checkpoint,

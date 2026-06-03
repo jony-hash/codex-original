@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from ldm_project.sampling import (
+from ldm_project.sampling_reports import (
     select_first_stage_visual_batch,
     select_post_train_sample_batch,
 )

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from .one_shot_stage_common import ONE_SHOT_DISTILL_EVAL_PREVIEW_PER_CLASS, _sample_one_shot_codes
-from .sampling import select_post_train_sample_batch
+from .sampling_reports import select_post_train_sample_batch
 
 
 ONE_SHOT_HISTORY_LOSS_KEYS = (

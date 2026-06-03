@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .sampling import (
-    build_one_shot_d2nn_diagnostics,
+from .d2nn_diagnostics import build_one_shot_d2nn_diagnostics
+from .d2nn_visualization import (
     build_one_shot_d2nn_focus_visualization_tensors,
     build_one_shot_d2nn_visualization_tensors,
     build_one_shot_slm_to_encoder_focus_visualization_tensors,
     save_one_shot_d2nn_focus_figures,
-    save_visualization_grids,
 )
+from .visualization_core import save_visualization_grids
 
 
 def _save_one_shot_d2nn_visualization_grids(
