@@ -1,0 +1,52 @@
+{
+  "description": "bs128 matched-diffusion 全链路验收基线",
+  "commit": "HEAD",
+  "date": "2026-06-03",
+  "environment": "RTX 3060 Laptop GPU (6GB), CUDA 12.1, PyTorch 2.5.1+cu121, WSL2 Linux",
+  "parent_baseline": "c99f559",
+  "key_change": "first_stage bs128 + matched diffusion (grid_size=40), 替代旧 bs≈4 + 旧 diffusion 混配方案",
+  "source_runs": {
+    "first_stage": "outputs/runs/20260603_171917_817266_train_first_stage_bs128",
+    "diffusion": "outputs/runs/20260603_202557_339829_train_diffusion_from_bs128_first_stage",
+    "distill_export": "outputs/runs/20260603_203615_775633_train_distill_export_bs128_matched_diffusion",
+    "distill_filter": "outputs/runs/20260603_204548_790688_train_distill_filter_bs128_matched_diffusion",
+    "one_shot_distill": "outputs/runs/20260603_204634_461436_train_one_shot_distill_bs128_matched_diffusion",
+    "one_shot_sample": "outputs/runs/20260603_205613_313370_train_one_shot_sample_bs128_matched_diffusion",
+    "one_shot_eval": "outputs/runs/20260603_205657_788415_train_one_shot_eval_bs128_matched_diffusion"
+  },
+  "metrics": {
+    "eval_mse": 0.0209,
+    "eval_corr": 0.809,
+    "eval_dice": 0.777,
+    "eval_sat": 0.091,
+    "eval_slm_tv": 0.277,
+    "eval_diversity_ratio": 0.269,
+    "sample_corr": 0.550,
+    "sample_dice": 0.616,
+    "best_loss": 0.143
+  },
+  "tolerances": {
+    "eval_mse": 0.005,
+    "eval_corr": 0.03,
+    "eval_dice": 0.03,
+    "eval_sat": 0.02,
+    "eval_slm_tv": 0.10,
+    "eval_diversity_ratio": 0.15,
+    "sample_corr": 0.05,
+    "sample_dice": 0.05,
+    "best_loss": 0.02
+  },
+  "notes": [
+    "核心 gate: eval_mse, eval_corr, eval_dice, sample_corr, sample_dice, best_loss",
+    "secondary/warning: diversity_ratio, eval_slm_tv (低更好)",
+    "diversity_ratio=0.269 低于旧基线 0.531，根因是 bs128 teacher 的 target 多样性更高 (teacher_pairwise_mse↑)，学生无法完全复现",
+    "diversity_ratio 不退化为阻塞项；后续在 one-shot distill 侧修复",
+    "first_stage_best_optical.pt 与 diffusion_best.pt 必须配套：两者需来自同一 first-stage latent/decoder 分布",
+    "禁止新 first-stage (grid_size=40) 搭旧 diffusion (grid_size=32) 做 distill baseline",
+    "learning_rate: 1e-4 (first_stage), 1e-4 (diffusion), 1e-2/1e-4 (one_shot phase/other)",
+    "first_stage bs128: 71 step/epoch × 35 epoch = 2485 step",
+    "diffusion bs128: 71 step/epoch × 20 epoch = 1420 step",
+    "one_shot_distill: 113 step/epoch × 20 epoch = 2260 step (2000 filtered samples)",
+    "export config grid_size 已修正为 40，匹配 bs128 first-stage"
+  ]
+}

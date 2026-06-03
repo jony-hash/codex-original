@@ -1,11 +1,11 @@
 training:
   # 线性超表面 first stage：先让 camera_hat 在物理读出上稳定可读，再单独训练 diffusion。
   mode: first_stage
-  batch_size: 16
+  batch_size: 128
   learning_rate: 1.0e-4
   # 终端与 training_history 都按每轮 train 内的 step 间隔记录，同时保留每个 epoch 末尾一条。
   step_log_interval: 100
-  # 按 epoch 控制训练时长；当前 subset_fraction=0.1667 且 batch_size=16 时，约 563 step/epoch。
+  # 按 epoch 控制训练时长；当前 subset_fraction=0.1667 且 batch_size=128 时，约 71 step/epoch。
   visual_save_epoch_interval: 5
   validation_epoch_interval: 5
   first_stage_epochs: 35
@@ -20,7 +20,7 @@ data:
   validation_split_seed: 42
   subset_fraction: 0.1667
   subset_seed: 42
-  num_workers: 0
+  num_workers: 2
   pin_memory: true
 
 first_stage:

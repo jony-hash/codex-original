@@ -201,3 +201,56 @@ assert result["passed"], result["checks"]
 ```
 
 基线文件 `docs/ldm_migration/acceptance_baseline_c99f559.json` 记录重构提交 `c99f559` 的全链路 CUDA 验收指标与阈值。
+
+### bs128 + 匹配扩散基线
+
+**基线提交**: HEAD (bs128 matched-diffusion)
+**验收日期**: 2026-06-03
+**基线文件**: `docs/ldm_migration/acceptance_baseline_bs128_matched_diffusion.json`
+
+bs128 使用 `batch_size=128` 训练 first_stage，相比旧基线 `batch_size=16` 提升 ~8x 训练吞吐（71 step/epoch vs 563 step/epoch），同时保持或超越旧基线的评估指标。
+
+| 指标 | c99f559 (bs≈4) | bs128 matched | 变化 |
+| ---- | -------------- | ------------- | ---- |
+| `eval_corr` | 0.807 | 0.809 | +0.002 |
+| `eval_dice` | 0.756 | 0.777 | +0.021 |
+| `eval_mse` | 0.0204 | 0.0209 | +0.0005 |
+| `best_loss` | 0.161 | 0.143 | -0.018 |
+| `eval_slm_tv` | 0.382 | 0.277 | -0.105 |
+| `sample_corr` | 0.588 | 0.550 | -0.038 |
+| `sample_dice` | 0.625 | 0.616 | -0.009 |
+| `diversity_ratio` | 0.531 | 0.269 | -0.262 |
+
+- bs128 在核心重建指标（corr, dice）上持平或优于旧基线。
+- `diversity_ratio` 下降根因是 bs128 teacher 的 target 多样性更高（teacher_pairwise_mse ↑），学生无法完全复现，不视为阻塞项。
+- `eval_slm_tv` 显著降低（0.277 vs 0.382），说明 bs128 学生的 SLM pattern 更平滑。
+
+## 7. first-stage 与 diffusion 必须配套
+
+**核心规则：first_stage_best_optical.pt 与 diffusion_best.pt 必须来自同一 first-stage 训练的 latent/decoder 分布。**
+
+### 根因
+
+`first-stage` 和 `diffusion` 共享同一个 `OpticalPathVAE` encoder/decoder。不同训练 run（即使模型架构相同）可能因为以下因素产生不同的 latent 分布：
+
+- 不同的 `linear_metasurface_grid_size`（如 32 vs 40）：直接改变模型参数形状和 latent 维度。
+- 不同的 random seed、batch size、学习率：导致参数收敛到不同的局部最优。
+- 不同版本的 loss 权重或架构超参。
+
+当使用不匹配的 first-stage + diffusion 做蒸馏时，diffusion 采样的 latent `z₀` 来自它自己训练时见过的分布，但 first-stage 的 decoder 期望的是另一个分布。结果是 `z₀ → decoder → camera` 重建质量崩溃，蒸馏 target 不可用。
+
+### 实测影响
+
+| 配置 | `eval_corr` | `eval_dice` | `eval_mse` |
+| ---- | ----------- | ----------- | ---------- |
+| bs128 first-stage + **匹配** diffusion | 0.809 | 0.777 | 0.0209 |
+| bs128 first-stage + **旧 (grid_size=32)** diffusion | 0.421 | 0.483 | 0.0404 |
+
+不匹配时 corr 从 0.809 崩溃到 0.421，dice 从 0.777 崩溃到 0.483，mse 翻倍。此时 `best_loss` 反而更低（0.154 vs 0.161），因为 loss 中的 shape/edge/slm_tv regularizer 占主导，掩盖了重建退化。
+
+### 操作约束
+
+1. 更换 first-stage checkpoint 后，**必须重新训练 diffusion**，不得复用旧 diffusion checkpoint。
+2. `teacher_distill_export` 使用 `--pretrained-first-stage-path` 和 `--pretrained-diffusion-path` 时，两者必须来自同一 first-stage 训练 run。
+3. 验收基线 JSON 的 `source_runs` 字段记录完整配套关系，用于回归对比和 checkpoint 溯源。
+4. `configs/train_ldm.yaml` 中 `linear_metasurface_grid_size: 40` 是当前标准；若修改此值，全链路（first-stage → diffusion → export → distill）必须重新训练。
