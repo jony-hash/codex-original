@@ -119,3 +119,23 @@ source "$(conda info --base)/etc/profile.d/conda.sh" && conda activate optical-g
 6. 真实 `SLM command -> CMOS image` 标定与 camera-in-the-loop 微调。
 
 每一步都应保持最终推理路径不依赖 diffusion U-Net 多步去噪，也不依赖软件-only VAE decoding。
+
+## 6. 验收基线
+
+**基线提交**: `c99f559 refactor: training orchestration into stage modules`
+**验收日期**: 2026-06-03
+**环境**: RTX 3060 Laptop GPU (6GB), CUDA 12.1, PyTorch 2.5.1+cu121, WSL2 Linux
+
+### 全链路验收
+
+| Stage | 配置 | Epochs | 关键指标 | Exit |
+| ----- | ---- | ------ | -------- | ---- |
+| `teacher_first_stage` | `configs/train_ldm.yaml` | 35 | `camera_corr=0.9547`, `balanced=0.8770`, `mnist_score=0.8144` | 0 |
+| `one_shot_distill` | `configs/train_one_shot_distill_d2nn_mnist_3k_fast200.yaml` | 20 | `quality=0.1614`, `camera_dice=0.4575` | 0 |
+| `one_shot_sample` | 同上 config | — | 可视化/诊断/tensor bundle 完整 | 0 |
+| `one_shot_distill_eval` | 同上 config | — | `mse=0.020`, `corr=0.807`, `dice=0.756` | 0 |
+
+- 教师蒸馏数据: 3000 samples，源自 `teacher_distill_export` (batch_size=96, guidance_scale=2.0, steps=200)。
+- 训练和采样均使用 `--device cuda`。
+- `one_shot_sample` 和 `one_shot_distill_eval` 使用 `one_shot_distill_best.pt` checkpoint。
+- 所有 artifact/checkpoint 位于 `outputs/runs/...`，不纳入 git。
