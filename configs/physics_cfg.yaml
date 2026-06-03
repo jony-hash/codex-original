@@ -1,7 +1,7 @@
 optics:
   # 采用米制单位存储；5.32e-7 m 即 532 nm。
   wavelength: 5.32e-7
-  pixel_size: 3.0e-6
+  pixel_size: 2.5e-6
 
 geometry:
   grid_size: 200
@@ -13,17 +13,15 @@ readout:
   normalize_percentile: 99.5
 
 macro_optics:
-  dist_laser_to_m1: 0.115
-  dist_m1_to_m2: 0.215
-  dist_m2_to_pf1: 0.215
-  dist_pf1_to_pbs: 0.115
-  dist_pbs_to_bs: 0.088
-  dist_bs_to_slm: 0.038
-  dist_slm_to_m3: 0.140
-  dist_m3_to_4f: 0.063
-  f_4f: 0.100
-  dist_4f_to_pf2: 0.088
-  dist_chip_to_plane: 0.003
-  dist_plane_to_lens: 0.105
-  f_relay: 0.075
-  dist_lens_to_cam: 0.260
+  # 新宏观光路：Laser -> M1 -> BS -> SLM -> BS -> M3 -> LightGen -> relay lens -> CMOS。
+  dist_laser_to_m1: 0.350
+  dist_m1_to_bs: 0.370
+  dist_bs_to_slm: 0.025
+  dist_slm_to_bs: 0.025
+  dist_bs_to_m3: 0.125
+  dist_m3_to_lg: 0.475
+  dist_lg_to_relay_lens: 0.100
+  dist_relay_lens_to_cmos: 0.250
+  dist_lg_to_cmos: 0.350
+  # 由 u=100 mm, v=250 mm 按薄透镜公式反推，保证 CMOS 位于合焦像面。
+  f_relay: 0.0714285714

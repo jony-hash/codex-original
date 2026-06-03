@@ -9,13 +9,21 @@ import warnings
 
 
 def load_train_module():
-    train_path = Path(__file__).resolve().parents[1] / "train.py"
-    spec = importlib.util.spec_from_file_location("train_script_under_test", train_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Unable to load train.py from {train_path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    import ldm_project.train_cli as train_cli
+
+    return train_cli
+
+
+def load_train_utils_module():
+    import ldm_project.train_utils as train_utils
+
+    return train_utils
+
+
+def load_sampling_module():
+    import ldm_project.sampling as sampling
+
+    return sampling
 
 
 class DiffusionConfigTests(unittest.TestCase):
@@ -269,11 +277,12 @@ data:
     def test_label_helpers_validate_and_build_visualization_labels(self) -> None:
         import torch
 
-        train_module = load_train_module()
-        build_post_train_sample_labels = train_module.build_post_train_sample_labels
-        build_visualization_labels = train_module.build_visualization_labels
-        resolve_device = train_module.resolve_device
-        validate_class_label_values = train_module.validate_class_label_values
+        sampling_module = load_sampling_module()
+        train_utils_module = load_train_utils_module()
+        build_post_train_sample_labels = sampling_module.build_post_train_sample_labels
+        build_visualization_labels = sampling_module.build_visualization_labels
+        resolve_device = train_utils_module.resolve_device
+        validate_class_label_values = train_utils_module.validate_class_label_values
 
         sample_labels = build_post_train_sample_labels(
             torch,
@@ -301,16 +310,17 @@ data:
 
         from ldm_project.data import DatasetBundle
 
-        train_module = load_train_module()
-        build_first_stage_visualization_tensors = train_module.build_first_stage_visualization_tensors
-        build_denoising_trace_visualization_tensors = train_module.build_denoising_trace_visualization_tensors
-        build_diffusion_visualization_tensors = train_module.build_diffusion_visualization_tensors
-        resolve_stage_total_steps = train_module.resolve_stage_total_steps
-        select_first_stage_visual_batch = train_module.select_first_stage_visual_batch
-        select_post_train_sample_batch = train_module.select_post_train_sample_batch
-        select_reference_images_for_labels = train_module.select_reference_images_for_labels
-        should_save_epoch_visual = train_module.should_save_epoch_visual
-        validate_stage_requirements = train_module.validate_stage_requirements
+        sampling_module = load_sampling_module()
+        train_utils_module = load_train_utils_module()
+        build_first_stage_visualization_tensors = sampling_module.build_first_stage_visualization_tensors
+        build_denoising_trace_visualization_tensors = sampling_module.build_denoising_trace_visualization_tensors
+        build_diffusion_visualization_tensors = sampling_module.build_diffusion_visualization_tensors
+        resolve_stage_total_steps = train_utils_module.resolve_stage_total_steps
+        select_first_stage_visual_batch = sampling_module.select_first_stage_visual_batch
+        select_post_train_sample_batch = sampling_module.select_post_train_sample_batch
+        select_reference_images_for_labels = sampling_module.select_reference_images_for_labels
+        should_save_epoch_visual = train_utils_module.should_save_epoch_visual
+        validate_stage_requirements = train_utils_module.validate_stage_requirements
 
         self.assertTrue(should_save_epoch_visual(0, 3))
         self.assertFalse(should_save_epoch_visual(1, 3))
@@ -377,7 +387,7 @@ data:
         )
         self.assertEqual(list(trace_visuals.keys()), ["reference", "noise", "t000"])
         self.assertEqual(
-            train_module.format_output_title("images/first_stage/epoch_0001.png", "first_stage epoch 1"),
+            sampling_module.format_output_title("images/first_stage/epoch_0001.png", "first_stage epoch 1"),
             "images/first_stage/epoch_0001.png | first_stage epoch 1",
         )
 

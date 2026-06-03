@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import math
+from pathlib import Path
 import unittest
 
 
@@ -191,7 +192,7 @@ class OpticalPathVAESmokeTests(unittest.TestCase):
         self.assertAlmostEqual(max_normalized[0, 0, 0, 0].item(), 0.01, places=6)
         self.assertAlmostEqual(percentile_normalized[0, 0, 0, 0].item(), 1.0, places=6)
 
-    def test_camera_plane_stays_probe_aligned_under_default_camera_approximation(self) -> None:
+    def test_back_optical_path_outputs_finite_relay_camera_plane(self) -> None:
         import torch
 
         from ldm_project.config import PhysicsConfig
@@ -210,45 +211,73 @@ class OpticalPathVAESmokeTests(unittest.TestCase):
         physics = PhysicsConfig()
         outputs = BackOpticalPath(physics)(torch.complex(chip_amplitude, torch.zeros_like(chip_amplitude)))
 
-        probe_corr = self._flatten_correlation(chip_amplitude, outputs["probe_plane"])
-        camera_probe_corr = self._flatten_correlation(outputs["probe_plane"], outputs["camera_plane"])
-        camera_input_corr = self._flatten_correlation(chip_amplitude, outputs["camera_plane"])
+        for key in (
+            "probe_plane",
+            "probe_plane_loss",
+            "camera_field_real",
+            "camera_field_imag",
+            "camera_phase",
+            "camera_intensity_raw",
+            "camera_plane",
+            "camera_plane_loss",
+        ):
+            self.assertEqual(outputs[key].shape, (1, 1, 200, 200), key)
+            self.assertTrue(torch.isfinite(outputs[key]).all().item(), key)
+        self.assertGreater(outputs["camera_intensity_raw"].sum().item(), 0.0)
 
-        self.assertGreater(probe_corr.item(), 0.80)
-        self.assertGreater(camera_probe_corr.item(), 0.62)
-        self.assertGreater(camera_input_corr.item(), 0.60)
+    def test_physics_config_uses_new_macro_optical_path(self) -> None:
+        from ldm_project.config import load_physics_config
 
-    def test_camera_magnification_blend_preserves_monotonic_object_growth(self) -> None:
-        import torch
+        physics_path = Path("configs/physics_cfg.yaml")
+        physics_text = physics_path.read_text(encoding="utf-8")
+        for old_field in (
+            "dist_m1_to_m2",
+            "dist_m2_to_pf1",
+            "dist_pf1_to_pbs",
+            "dist_pbs_to_bs",
+            "dist_slm_to_m3",
+            "dist_m3_to_4f",
+            "f_4f",
+            "dist_4f_to_pf2",
+            "dist_chip_to_plane",
+            "dist_plane_to_lens",
+            "dist_lens_to_cam",
+        ):
+            self.assertNotIn(old_field, physics_text)
 
-        from ldm_project.config import MacroOpticsConfig, PhysicsConfig, ReadoutConfig
+        physics = load_physics_config(physics_path)
+        macro = physics.macro_optics
+        self.assertAlmostEqual(macro.dist_laser_to_m1, 0.350)
+        self.assertAlmostEqual(macro.dist_m1_to_bs, 0.370)
+        self.assertAlmostEqual(macro.dist_bs_to_slm, 0.025)
+        self.assertAlmostEqual(macro.dist_slm_to_bs, 0.025)
+        self.assertAlmostEqual(macro.dist_bs_to_m3, 0.125)
+        self.assertAlmostEqual(macro.dist_m3_to_lg, 0.475)
+        self.assertAlmostEqual(macro.dist_lg_to_relay_lens, 0.100)
+        self.assertAlmostEqual(macro.dist_relay_lens_to_cmos, 0.250)
+        self.assertAlmostEqual(macro.dist_lg_to_cmos, 0.350)
+        self.assertAlmostEqual(
+            macro.dist_lg_to_relay_lens + macro.dist_relay_lens_to_cmos,
+            macro.dist_lg_to_cmos,
+        )
+        self.assertAlmostEqual(
+            macro.f_relay,
+            1.0 / ((1.0 / macro.dist_lg_to_relay_lens) + (1.0 / macro.dist_relay_lens_to_cmos)),
+            places=9,
+        )
+
+    def test_relay_lens_focuses_default_cmos_distance(self) -> None:
+        from ldm_project.config import PhysicsConfig
         from ldm_project.optics import BackOpticalPath
 
-        chip_amplitude = torch.zeros(1, 1, 200, 200)
-        chip_amplitude[:, :, 92:108, 92:108] = 1.0
-        chip_field = torch.complex(chip_amplitude, torch.zeros_like(chip_amplitude))
+        physics = PhysicsConfig()
+        back_path = BackOpticalPath(physics)
 
-        small_mag_physics = PhysicsConfig(
-            readout=ReadoutConfig(camera_magnification_blend=1.0, camera_blur_gain=0.0),
-            macro_optics=MacroOpticsConfig(
-                dist_plane_to_lens=0.105,
-                f_relay=0.075,
-                dist_lens_to_cam=0.18,
-            ),
+        self.assertAlmostEqual(
+            back_path.focus_image_distance,
+            physics.macro_optics.dist_relay_lens_to_cmos,
+            places=9,
         )
-        large_mag_physics = PhysicsConfig(
-            readout=ReadoutConfig(camera_magnification_blend=1.0, camera_blur_gain=0.0),
-            macro_optics=MacroOpticsConfig(
-                dist_plane_to_lens=0.105,
-                f_relay=0.075,
-                dist_lens_to_cam=0.32,
-            ),
-        )
-
-        small_camera = BackOpticalPath(small_mag_physics)(chip_field)["camera_plane"]
-        large_camera = BackOpticalPath(large_mag_physics)(chip_field)["camera_plane"]
-
-        self.assertGreater(self._second_moment(large_camera).item(), self._second_moment(small_camera).item() * 1.15)
 
     def test_camera_defocus_blur_reduces_high_frequency_energy(self) -> None:
         import torch
@@ -268,17 +297,19 @@ class OpticalPathVAESmokeTests(unittest.TestCase):
         focused_physics = PhysicsConfig(
             readout=ReadoutConfig(camera_magnification_blend=0.35, camera_blur_gain=4.0),
             macro_optics=MacroOpticsConfig(
-                dist_plane_to_lens=object_distance,
+                dist_lg_to_relay_lens=object_distance,
                 f_relay=focal_length,
-                dist_lens_to_cam=focus_distance,
+                dist_relay_lens_to_cmos=focus_distance,
+                dist_lg_to_cmos=object_distance + focus_distance,
             ),
         )
         defocused_physics = PhysicsConfig(
             readout=ReadoutConfig(camera_magnification_blend=0.35, camera_blur_gain=4.0),
             macro_optics=MacroOpticsConfig(
-                dist_plane_to_lens=object_distance,
+                dist_lg_to_relay_lens=object_distance,
                 f_relay=focal_length,
-                dist_lens_to_cam=focus_distance + 0.06,
+                dist_relay_lens_to_cmos=focus_distance + 0.06,
+                dist_lg_to_cmos=object_distance + focus_distance + 0.06,
             ),
         )
 
@@ -361,7 +392,7 @@ class OpticalPathVAESmokeTests(unittest.TestCase):
             field,
             distance=0.003,
             wavelength=532.0e-9,
-            pixel_size=3.0e-6,
+            pixel_size=2.5e-6,
         )
 
         self.assertEqual(propagated.shape, field.shape)

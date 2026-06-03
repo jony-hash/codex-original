@@ -136,7 +136,7 @@ def ideal_image_field(field: torch.Tensor, magnification: float, magnification_b
 
 def _camera_blur_sigma_pixels(
     magnification: float,
-    dist_lens_to_cam: float,
+    dist_relay_lens_to_cmos: float,
     focus_image_distance: float,
     blur_gain: float,
 ) -> float:
@@ -144,7 +144,7 @@ def _camera_blur_sigma_pixels(
         raise ValueError("blur_gain must be non-negative.")
     if focus_image_distance <= 0.0:
         raise ValueError("focus_image_distance must be positive.")
-    defocus = abs(dist_lens_to_cam - focus_image_distance)
+    defocus = abs(dist_relay_lens_to_cmos - focus_image_distance)
     return blur_gain * abs(magnification) * defocus / focus_image_distance
 
 
@@ -163,23 +163,6 @@ class ReflectiveAmplitudeSLM(nn.Module):
         return incoming_field * slm_transfer.to(incoming_field.dtype)
 
 
-class Ideal4fRelay(nn.Module):
-    def __init__(self, focal_length: float, wavelength: float, pixel_size: float) -> None:
-        super().__init__()
-        self.focal_length = focal_length
-        self.wavelength = wavelength
-        self.pixel_size = pixel_size
-
-    def forward(self, field: torch.Tensor, propagation_method: str = "fresnel") -> torch.Tensor:
-        propagate = _resolve_propagator(propagation_method)
-        field = propagate(field, self.focal_length, self.wavelength, self.pixel_size)
-        field = apply_thin_lens(field, self.focal_length, self.wavelength, self.pixel_size)
-        field = propagate(field, 2.0 * self.focal_length, self.wavelength, self.pixel_size)
-        field = apply_thin_lens(field, self.focal_length, self.wavelength, self.pixel_size)
-        field = propagate(field, self.focal_length, self.wavelength, self.pixel_size)
-        return field
-
-
 def _resolve_propagator(propagation_method: str):
     if propagation_method == "fresnel":
         return fresnel_propagate
@@ -195,24 +178,13 @@ class FrontOpticalPath(nn.Module):
     def __init__(self, physics: PhysicsConfig) -> None:
         super().__init__()
         self.physics = physics
-        optics = physics.optics
-        macro = physics.macro_optics
 
         self.m1 = IdealIdentityElement("m1")
-        self.beam_expander = IdealIdentityElement("beam_expander")
-        self.m2 = IdealIdentityElement("m2")
-        self.pf1 = IdealIdentityElement("pf1")
-        self.pbs = IdealIdentityElement("pbs")
         self.bs_in = IdealIdentityElement("bs_in")
         self.slm = ReflectiveAmplitudeSLM()
         self.bs_out = IdealIdentityElement("bs_out")
         self.m3 = IdealIdentityElement("m3")
-        self.relay_4f = Ideal4fRelay(
-            focal_length=macro.f_4f,
-            wavelength=optics.wavelength,
-            pixel_size=optics.pixel_size,
-        )
-        self.pf2 = IdealIdentityElement("pf2")
+        self.lightgen_input = IdealIdentityElement("lightgen_input")
 
     def forward_field(self, slm_transfer: torch.Tensor, propagation_method: str = "fresnel") -> torch.Tensor:
         macro = self.physics.macro_optics
@@ -222,25 +194,16 @@ class FrontOpticalPath(nn.Module):
         field = torch.ones_like(slm_transfer, dtype=torch.complex64)
         field = propagate(field, macro.dist_laser_to_m1, optics.wavelength, optics.pixel_size)
         field = self.m1(field)
-        field = self.beam_expander(field)
-        field = propagate(field, macro.dist_m1_to_m2, optics.wavelength, optics.pixel_size)
-        field = self.m2(field)
-        field = propagate(field, macro.dist_m2_to_pf1, optics.wavelength, optics.pixel_size)
-        field = self.pf1(field)
-        field = propagate(field, macro.dist_pf1_to_pbs, optics.wavelength, optics.pixel_size)
-        field = self.pbs(field)
-        field = propagate(field, macro.dist_pbs_to_bs, optics.wavelength, optics.pixel_size)
+        field = propagate(field, macro.dist_m1_to_bs, optics.wavelength, optics.pixel_size)
         field = self.bs_in(field)
         field = propagate(field, macro.dist_bs_to_slm, optics.wavelength, optics.pixel_size)
         field = self.slm(slm_transfer, field)
+        field = propagate(field, macro.dist_slm_to_bs, optics.wavelength, optics.pixel_size)
         field = self.bs_out(field)
-        field = propagate(field, macro.dist_slm_to_m3, optics.wavelength, optics.pixel_size)
+        field = propagate(field, macro.dist_bs_to_m3, optics.wavelength, optics.pixel_size)
         field = self.m3(field)
-        field = propagate(field, macro.dist_m3_to_4f, optics.wavelength, optics.pixel_size)
-        field = self.relay_4f(field, propagation_method=propagation_method)
-        field = propagate(field, macro.dist_4f_to_pf2, optics.wavelength, optics.pixel_size)
-        field = self.pf2(field)
-        return field
+        field = propagate(field, macro.dist_m3_to_lg, optics.wavelength, optics.pixel_size)
+        return self.lightgen_input(field)
 
     def forward(self, slm_transfer: torch.Tensor) -> torch.Tensor:
         field = self.forward_field(slm_transfer, propagation_method="fresnel")
@@ -255,21 +218,21 @@ class BackOpticalPath(nn.Module):
         _resolve_propagator(propagation_method)
         macro = physics.macro_optics
         readout = physics.readout
-        if macro.dist_plane_to_lens == 0.0:
-            raise ValueError("macro_optics.dist_plane_to_lens must be non-zero for camera imaging.")
+        if macro.dist_lg_to_relay_lens == 0.0:
+            raise ValueError("macro_optics.dist_lg_to_relay_lens must be non-zero for camera imaging.")
         if not 0.0 <= readout.camera_magnification_blend <= 1.0:
             raise ValueError("readout.camera_magnification_blend must be within [0, 1].")
         if readout.camera_blur_gain < 0.0:
             raise ValueError("readout.camera_blur_gain must be non-negative.")
 
-        lens_denominator = (1.0 / macro.f_relay) - (1.0 / macro.dist_plane_to_lens)
+        lens_denominator = (1.0 / macro.f_relay) - (1.0 / macro.dist_lg_to_relay_lens)
         if math.isclose(lens_denominator, 0.0, rel_tol=0.0, abs_tol=1e-12):
-            raise ValueError("macro_optics.dist_plane_to_lens must differ from macro_optics.f_relay.")
+            raise ValueError("macro_optics.dist_lg_to_relay_lens must differ from macro_optics.f_relay.")
         self.focus_image_distance = 1.0 / lens_denominator
         if self.focus_image_distance <= 0.0:
             raise ValueError("Relay lens image distance must be positive for camera imaging.")
 
-        self.camera_magnification = -macro.dist_lens_to_cam / macro.dist_plane_to_lens
+        self.camera_magnification = -macro.dist_relay_lens_to_cmos / macro.dist_lg_to_relay_lens
         self.camera_magnification_blend = readout.camera_magnification_blend
         self.camera_blur_gain = readout.camera_blur_gain
 
@@ -280,16 +243,17 @@ class BackOpticalPath(nn.Module):
         propagate = _resolve_propagator(self.propagation_method)
 
         field = chip_field.to(torch.complex64)
-        probe_field = propagate(field, macro.dist_chip_to_plane, optics.wavelength, optics.pixel_size)
+        probe_field = propagate(field, macro.dist_lg_to_relay_lens, optics.wavelength, optics.pixel_size)
         probe_plane_loss = normalize_intensity(probe_field, normalize_percentile, clamp=False)
-        camera_field = ideal_image_field(probe_field, self.camera_magnification, self.camera_magnification_blend)
+        lens_field = apply_thin_lens(probe_field, macro.f_relay, optics.wavelength, optics.pixel_size)
+        camera_field = propagate(lens_field, macro.dist_relay_lens_to_cmos, optics.wavelength, optics.pixel_size)
         camera_sigma_px = _camera_blur_sigma_pixels(
             self.camera_magnification,
-            macro.dist_lens_to_cam,
+            macro.dist_relay_lens_to_cmos,
             self.focus_image_distance,
             self.camera_blur_gain,
         )
-        # 模糊放在强度域，表示传感器看到的是失焦后的能量扩散，而不是再引入一段额外复场传播。
+        # relay lens 后已经做复场传播；这里保留可选传感器/失焦强度域模糊诊断。
         camera_intensity = _gaussian_blur_intensity(camera_field.abs().pow(2), camera_sigma_px)
         camera_plane_loss = normalize_real_intensity(camera_intensity, normalize_percentile, clamp=False)
         return {
@@ -300,6 +264,7 @@ class BackOpticalPath(nn.Module):
             "camera_field_real": camera_field.real,
             "camera_field_imag": camera_field.imag,
             "camera_phase": torch.angle(camera_field),
+            "camera_intensity_raw": camera_intensity,
             "camera_plane": camera_plane_loss.clamp(0.0, 1.0),
             "camera_plane_loss": camera_plane_loss,
         }

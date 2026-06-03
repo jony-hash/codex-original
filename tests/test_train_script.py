@@ -10,18 +10,32 @@ import warnings
 
 
 def load_train_module():
-    train_path = Path(__file__).resolve().parents[1] / "train.py"
-    spec = importlib.util.spec_from_file_location("train_script_under_test", train_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Unable to load train.py from {train_path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    import ldm_project.train_cli as train_cli
+
+    return train_cli
+
+
+def load_train_utils_module():
+    import ldm_project.train_utils as train_utils
+
+    return train_utils
+
+
+def load_sampling_module():
+    import ldm_project.sampling as sampling
+
+    return sampling
+
+
+def load_evaluation_module():
+    import ldm_project.evaluation as evaluation
+
+    return evaluation
 
 
 class TrainScriptStepTests(unittest.TestCase):
     def test_resolve_logged_step_resets_global_step_per_train_round(self) -> None:
-        resolve_logged_step = load_train_module().resolve_logged_step
+        resolve_logged_step = load_train_utils_module().resolve_logged_step
 
         first_epoch_last = resolve_logged_step(batch_index=625, stage_step=625)
         next_epoch_first = resolve_logged_step(batch_index=0, stage_step=626)
@@ -32,7 +46,7 @@ class TrainScriptStepTests(unittest.TestCase):
         self.assertEqual(next_epoch_first["stage_step"], 626)
 
     def test_resolve_logged_step_rejects_negative_values(self) -> None:
-        resolve_logged_step = load_train_module().resolve_logged_step
+        resolve_logged_step = load_train_utils_module().resolve_logged_step
 
         with self.assertRaises(ValueError):
             resolve_logged_step(batch_index=-1, stage_step=0)
@@ -41,7 +55,7 @@ class TrainScriptStepTests(unittest.TestCase):
             resolve_logged_step(batch_index=0, stage_step=-1)
 
     def test_resolve_stage_epoch_plan_matches_requested_mode(self) -> None:
-        resolve_stage_epoch_plan = load_train_module().resolve_stage_epoch_plan
+        resolve_stage_epoch_plan = load_train_utils_module().resolve_stage_epoch_plan
 
         self.assertEqual(
             resolve_stage_epoch_plan(stage="full", first_stage_epochs=10, diffusion_epochs=20),
@@ -113,11 +127,12 @@ class TrainScriptStepTests(unittest.TestCase):
     def test_resolve_image_fusion_weight_decays_for_gated_mode(self) -> None:
         from ldm_project.config import FirstStageConfig
 
-        train_module = load_train_module()
-        compute_first_stage_balanced_metrics = train_module.compute_first_stage_balanced_metrics
-        is_best_optical_candidate = train_module.is_best_optical_candidate
-        resolve_image_fusion_weight = train_module.resolve_image_fusion_weight
-        should_update_best_optical = train_module.should_update_best_optical
+        train_utils_module = load_train_utils_module()
+        evaluation_module = load_evaluation_module()
+        compute_first_stage_balanced_metrics = evaluation_module.compute_first_stage_balanced_metrics
+        is_best_optical_candidate = train_utils_module.is_best_optical_candidate
+        resolve_image_fusion_weight = train_utils_module.resolve_image_fusion_weight
+        should_update_best_optical = train_utils_module.should_update_best_optical
         config = FirstStageConfig(
             encoder_fusion_mode="gated_dual_path",
             image_fusion_start_weight=1.0,
@@ -205,7 +220,7 @@ class TrainScriptStepTests(unittest.TestCase):
     def test_complex_subset_selects_higher_edge_density_samples(self) -> None:
         import torch
 
-        train_module = load_train_module()
+        sampling_module = load_sampling_module()
         batch = torch.zeros((2, 1, 16, 16), dtype=torch.float32)
         batch[0, 0, 3:13, 7:9] = 1.0
         batch[1, 0, 3:13, 4:6] = 1.0
@@ -214,8 +229,9 @@ class TrainScriptStepTests(unittest.TestCase):
         batch[1, 0, 11:13, 4:12] = 1.0
         batch[1, 0, 5:8, 10:12] = 1.0
 
-        scores = train_module.compute_input_complexity_scores(torch, batch)
-        complex_mask = train_module.select_complex_subset_mask(torch, batch)
+        evaluation_module = load_evaluation_module()
+        scores = evaluation_module.compute_input_complexity_scores(torch, batch)
+        complex_mask = evaluation_module.select_complex_subset_mask(torch, batch)
 
         self.assertGreater(scores[1].item(), scores[0].item())
         self.assertEqual(complex_mask.tolist(), [False, True])
@@ -224,7 +240,7 @@ class TrainScriptStepTests(unittest.TestCase):
     def test_sample_quality_metrics_include_nearest_neighbor_bank(self) -> None:
         import torch
 
-        train_module = load_train_module()
+        sampling_module = load_sampling_module()
         generated = torch.zeros((2, 1, 4, 4), dtype=torch.float32)
         generated[0, 0, :, 0] = 1.0
         generated[1, 0, :, 3] = 1.0
@@ -240,7 +256,8 @@ class TrainScriptStepTests(unittest.TestCase):
             )
         }
 
-        metrics = train_module.compute_sample_quality_metrics(
+        sampling_module = load_sampling_module()
+        metrics = sampling_module.compute_sample_quality_metrics(
             generated,
             fixed_reference,
             torch.tensor([4, 4], dtype=torch.long),
@@ -265,7 +282,7 @@ class TrainScriptStepTests(unittest.TestCase):
         from ldm_project.config import DataConfig, DiffusionConfig, FirstStageConfig, TrainingConfig
         from ldm_project.data import DatasetBundle
 
-        train_module = load_train_module()
+        sampling_module = load_sampling_module()
 
         class RecordingRunManager:
             def __init__(self) -> None:
@@ -326,7 +343,7 @@ class TrainScriptStepTests(unittest.TestCase):
             return final, {"noise": torch.ones(shape, device=device), "t000": final}
 
         run_manager = RecordingRunManager()
-        train_module.save_post_train_samples(
+        sampling_module.save_post_train_samples(
             torch,
             run_manager,
             DummyFirstStage(),
@@ -362,15 +379,15 @@ class TrainScriptStepTests(unittest.TestCase):
     def test_post_train_sample_labels_support_weak_class_repeats(self) -> None:
         import torch
 
-        train_module = load_train_module()
-        labels = train_module.build_post_train_sample_labels(
+        sampling_module = load_sampling_module()
+        labels = sampling_module.build_post_train_sample_labels(
             torch,
             num_classes=10,
             device=torch.device("cpu"),
             sample_class_labels=(3, 4, 5),
             sample_repeats_per_class=4,
         )
-        default_labels = train_module.build_post_train_sample_labels(
+        default_labels = sampling_module.build_post_train_sample_labels(
             torch,
             num_classes=10,
             device=torch.device("cpu"),
@@ -379,7 +396,7 @@ class TrainScriptStepTests(unittest.TestCase):
         self.assertEqual(labels.tolist(), [3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5])
         self.assertEqual(default_labels.tolist(), [label for label in range(10) for _ in range(1)])
         with self.assertRaisesRegex(ValueError, "sample_repeats_per_class"):
-            train_module.build_post_train_sample_labels(
+            sampling_module.build_post_train_sample_labels(
                 torch,
                 num_classes=10,
                 device=torch.device("cpu"),
@@ -387,7 +404,7 @@ class TrainScriptStepTests(unittest.TestCase):
                 sample_repeats_per_class=0,
             )
         with self.assertRaisesRegex(ValueError, "sample_class_labels"):
-            train_module.build_post_train_sample_labels(
+            sampling_module.build_post_train_sample_labels(
                 torch,
                 num_classes=10,
                 device=torch.device("cpu"),
@@ -395,7 +412,7 @@ class TrainScriptStepTests(unittest.TestCase):
             )
 
     def test_should_validate_epoch_keeps_first_interval_and_last_epoch(self) -> None:
-        should_validate_epoch = load_train_module().should_validate_epoch
+        should_validate_epoch = load_train_utils_module().should_validate_epoch
 
         self.assertTrue(should_validate_epoch(0, 10, 5))
         self.assertFalse(should_validate_epoch(1, 10, 5))
@@ -408,15 +425,15 @@ class TrainScriptStepTests(unittest.TestCase):
             should_validate_epoch(0, 0, 1)
 
     def test_require_strict_optical_best_checkpoint_rejects_missing_best(self) -> None:
-        train_module = load_train_module()
+        train_utils_module = load_train_utils_module()
 
         checkpoint = "/tmp/run/checkpoints/first_stage_best_optical.pt"
-        self.assertEqual(train_module.require_strict_optical_best_checkpoint(checkpoint), checkpoint)
+        self.assertEqual(train_utils_module.require_strict_optical_best_checkpoint(checkpoint), checkpoint)
         with self.assertRaisesRegex(RuntimeError, "strict optical-only first-stage best checkpoint"):
-            train_module.require_strict_optical_best_checkpoint(None)
+            train_utils_module.require_strict_optical_best_checkpoint(None)
 
     def test_validate_stage_requirements_enforces_sample_checkpoints(self) -> None:
-        validate_stage_requirements = load_train_module().validate_stage_requirements
+        validate_stage_requirements = load_train_utils_module().validate_stage_requirements
 
         validate_stage_requirements("sample", "first.pt", "diffusion.pt")
         validate_stage_requirements("teacher_sample", "first.pt", "diffusion.pt")
@@ -441,7 +458,7 @@ class TrainScriptStepTests(unittest.TestCase):
             validate_stage_requirements("one_shot_distill_eval", "first.pt", "diffusion.pt", "one_shot.pt", None)
 
     def test_final_pt_checkpoint_resolution_fills_missing_stage_inputs(self) -> None:
-        train_module = load_train_module()
+        train_utils_module = load_train_utils_module()
         with tempfile.TemporaryDirectory() as tmpdir:
             final_pt_dir = Path(tmpdir) / "final_pt"
             final_pt_dir.mkdir()
@@ -450,7 +467,7 @@ class TrainScriptStepTests(unittest.TestCase):
             first_stage_path.write_text("first", encoding="utf-8")
             diffusion_path.write_text("diffusion", encoding="utf-8")
 
-            resolved = train_module.resolve_final_pt_stage_checkpoints(
+            resolved = train_utils_module.resolve_final_pt_stage_checkpoints(
                 "sample",
                 None,
                 None,
@@ -463,7 +480,7 @@ class TrainScriptStepTests(unittest.TestCase):
             self.assertEqual(resolved["diffusion_checkpoint"], str(diffusion_path))
             self.assertEqual(resolved["diffusion_checkpoint_source"], "final_pt")
 
-            explicit_first = train_module.resolve_final_pt_stage_checkpoints(
+            explicit_first = train_utils_module.resolve_final_pt_stage_checkpoints(
                 "sample",
                 "manual_first.pt",
                 None,
@@ -476,7 +493,7 @@ class TrainScriptStepTests(unittest.TestCase):
             self.assertEqual(explicit_first["diffusion_checkpoint"], str(diffusion_path))
             self.assertEqual(explicit_first["diffusion_checkpoint_source"], "final_pt")
 
-            diffusion_only = train_module.resolve_final_pt_stage_checkpoints(
+            diffusion_only = train_utils_module.resolve_final_pt_stage_checkpoints(
                 "diffusion",
                 None,
                 None,
@@ -487,7 +504,7 @@ class TrainScriptStepTests(unittest.TestCase):
             self.assertEqual(diffusion_only["first_stage_checkpoint"], str(first_stage_path))
             self.assertIsNone(diffusion_only["diffusion_checkpoint"])
 
-            distill_export = train_module.resolve_final_pt_stage_checkpoints(
+            distill_export = train_utils_module.resolve_final_pt_stage_checkpoints(
                 "teacher_distill_export",
                 None,
                 None,
@@ -498,7 +515,7 @@ class TrainScriptStepTests(unittest.TestCase):
             self.assertEqual(distill_export["first_stage_checkpoint"], str(first_stage_path))
             self.assertEqual(distill_export["diffusion_checkpoint"], str(diffusion_path))
 
-            distill_filter = train_module.resolve_final_pt_stage_checkpoints(
+            distill_filter = train_utils_module.resolve_final_pt_stage_checkpoints(
                 "teacher_distill_filter",
                 None,
                 None,
@@ -514,9 +531,9 @@ class TrainScriptStepTests(unittest.TestCase):
 
         from ldm_project.config import TrainingConfig
 
-        train_module = load_train_module()
+        train_utils_module = load_train_utils_module()
         config = TrainingConfig()
-        train_module.apply_cli_overrides(
+        train_utils_module.apply_cli_overrides(
             config,
             Namespace(
                 stage="first_stage",
@@ -542,6 +559,7 @@ class TrainScriptStepTests(unittest.TestCase):
                 metasurface_decoder_arch="conv",
                 distill_samples_per_class=7,
                 distill_total_samples=70,
+                distill_train_subset_size=12,
                 distill_output="outputs/runs/distill.pt",
             ),
         )
@@ -570,6 +588,7 @@ class TrainScriptStepTests(unittest.TestCase):
         self.assertEqual(config.first_stage.metasurface_decoder_arch, "conv")
         self.assertEqual(config.distillation.samples_per_class, 7)
         self.assertEqual(config.distillation.total_samples, 70)
+        self.assertEqual(config.distillation.train_subset_size, 12)
         self.assertEqual(config.distillation.output_path, "outputs/runs/distill.pt")
         self.assertAlmostEqual(config.first_stage.image_fusion_start_weight, 0.0, places=6)
         self.assertAlmostEqual(config.first_stage.image_fusion_end_weight, 0.0, places=6)
@@ -581,9 +600,9 @@ class TrainScriptStepTests(unittest.TestCase):
         import torch
 
         from ldm_project.config import OneShotConfig, TrainingConfig
-        from ldm_project.stage_runners import _select_distill_eval_indices
+        from ldm_project.one_shot_distill_data import _select_distill_eval_indices
 
-        train_module = load_train_module()
+        train_utils_module = load_train_utils_module()
         config = TrainingConfig(
             one_shot=OneShotConfig(
                 num_classes=3,
@@ -591,7 +610,7 @@ class TrainScriptStepTests(unittest.TestCase):
                 sample_repeats_per_class=1,
             ),
         )
-        train_module.apply_cli_overrides(
+        train_utils_module.apply_cli_overrides(
             config,
             Namespace(
                 stage="one_shot_distill_eval",
@@ -637,11 +656,11 @@ class TrainScriptStepTests(unittest.TestCase):
 
         from ldm_project.config import TrainingConfig
 
-        train_module = load_train_module()
+        train_utils_module = load_train_utils_module()
         for invalid_weight in (-0.1, 1.1):
             with self.subTest(invalid_weight=invalid_weight):
                 with self.assertRaisesRegex(ValueError, "image_fusion_weight"):
-                    train_module.apply_cli_overrides(
+                    train_utils_module.apply_cli_overrides(
                         TrainingConfig(),
                         Namespace(
                             stage=None,
@@ -672,7 +691,7 @@ class TrainScriptStepTests(unittest.TestCase):
 
         from ldm_project.config import TrainingConfig
 
-        train_module = load_train_module()
+        train_utils_module = load_train_utils_module()
 
         def args_with(**overrides):
             values = {
@@ -701,31 +720,31 @@ class TrainScriptStepTests(unittest.TestCase):
             return Namespace(**values)
 
         with self.assertRaisesRegex(ValueError, "guidance_scale"):
-            train_module.apply_cli_overrides(TrainingConfig(), args_with(guidance_scale=-1.0))
+            train_utils_module.apply_cli_overrides(TrainingConfig(), args_with(guidance_scale=-1.0))
         for invalid_dropout in (-0.1, 1.5):
             with self.subTest(invalid_dropout=invalid_dropout):
                 with self.assertRaisesRegex(ValueError, "cond_dropout_prob"):
-                    train_module.apply_cli_overrides(
+                    train_utils_module.apply_cli_overrides(
                         TrainingConfig(),
                         args_with(cond_dropout_prob=invalid_dropout),
                     )
         with self.assertRaisesRegex(ValueError, "sample_class_labels"):
-            train_module.apply_cli_overrides(TrainingConfig(), args_with(sample_class_labels=[10]))
+            train_utils_module.apply_cli_overrides(TrainingConfig(), args_with(sample_class_labels=[10]))
         with self.assertRaisesRegex(ValueError, "sample_repeats_per_class"):
-            train_module.apply_cli_overrides(TrainingConfig(), args_with(sample_repeats_per_class=0))
+            train_utils_module.apply_cli_overrides(TrainingConfig(), args_with(sample_repeats_per_class=0))
         with self.assertRaisesRegex(ValueError, "diffusion_class_weight_labels"):
-            train_module.apply_cli_overrides(TrainingConfig(), args_with(diffusion_class_weight_labels=[10]))
+            train_utils_module.apply_cli_overrides(TrainingConfig(), args_with(diffusion_class_weight_labels=[10]))
         with self.assertRaisesRegex(ValueError, "class_weight"):
-            train_module.apply_cli_overrides(TrainingConfig(), args_with(diffusion_class_weight=0.0))
+            train_utils_module.apply_cli_overrides(TrainingConfig(), args_with(diffusion_class_weight=0.0))
 
     def test_apply_cli_overrides_rejects_invalid_camera_artifact_weight(self) -> None:
         from argparse import Namespace
 
         from ldm_project.config import TrainingConfig
 
-        train_module = load_train_module()
+        train_utils_module = load_train_utils_module()
         with self.assertRaisesRegex(ValueError, "camera_artifact_weight"):
-            train_module.apply_cli_overrides(
+            train_utils_module.apply_cli_overrides(
                 TrainingConfig(),
                 Namespace(
                     stage=None,

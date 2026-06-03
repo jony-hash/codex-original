@@ -9,7 +9,7 @@ from typing import Any
 @dataclass
 class OpticsConfig:
     wavelength: float = 532.0e-9
-    pixel_size: float = 3.0e-6
+    pixel_size: float = 2.5e-6
 
 
 @dataclass
@@ -29,20 +29,16 @@ class ReadoutConfig:
 
 @dataclass
 class MacroOpticsConfig:
-    dist_laser_to_m1: float = 0.115
-    dist_m1_to_m2: float = 0.215
-    dist_m2_to_pf1: float = 0.215
-    dist_pf1_to_pbs: float = 0.115
-    dist_pbs_to_bs: float = 0.088
-    dist_bs_to_slm: float = 0.038
-    dist_slm_to_m3: float = 0.140
-    dist_m3_to_4f: float = 0.063
-    f_4f: float = 0.100
-    dist_4f_to_pf2: float = 0.088
-    dist_chip_to_plane: float = 0.003
-    dist_plane_to_lens: float = 0.105
-    f_relay: float = 0.075
-    dist_lens_to_cam: float = 0.260
+    dist_laser_to_m1: float = 0.350
+    dist_m1_to_bs: float = 0.370
+    dist_bs_to_slm: float = 0.025
+    dist_slm_to_bs: float = 0.025
+    dist_bs_to_m3: float = 0.125
+    dist_m3_to_lg: float = 0.475
+    dist_lg_to_relay_lens: float = 0.100
+    dist_relay_lens_to_cmos: float = 0.250
+    dist_lg_to_cmos: float = 0.350
+    f_relay: float = 0.0714285714
 
 
 @dataclass
@@ -128,16 +124,43 @@ class DiffusionConfig:
 
 
 @dataclass
+class D2NNConfig:
+    """衍射神经网络全局参数 — 单点配置，覆盖散落的 diffractive_* 字段.
+
+    所有距离/长度单位均为 **米 (m)**，与 physics_cfg.yaml 一致.
+    """
+
+    wavelength: float = 532.0e-9
+    pixel_size: float = 2.5e-6
+    grid_size: int = 200
+    propagation_grid_size: int = 1024
+    encoder_layers: int = 2
+    decoder_layers: int = 2
+    layer_spacing: float = 0.005
+    modulation: str = "phase_only"
+    phase_init: str = "uniform_pi"
+
+
+@dataclass
 class OneShotConfig:
     code_dim: int = 128
     label_embed_dim: int = 32
     hidden_dim: int = 256
     num_classes: int = 10
+    optical_core_arch: str = "dense_linear"
     slm_background_floor: float = 0.05
     slm_residual_phase_scale_rad: float = 0.0
-    ols_kind: str = "gelu"
+    ols_kind: str = "identity"
     metasurface_grid_size: int = 40
     layer_spacing: float = 0.003
+    d2nn: D2NNConfig | None = None
+    diffractive_grid_size: int = 200
+    diffractive_propagation_grid_size: int = 1024
+    encoder_diffractive_layers: int = 2
+    decoder_diffractive_layers: int = 2
+    diffractive_layer_spacing: float = 0.005
+    diffractive_phase_init: str = "uniform_pi"
+    phase_learning_rate: float = 1.0e-2
     recon_foreground_threshold: float = 0.05
     recon_foreground_weight: float = 3.0
     recon_background_weight: float = 1.0
@@ -152,6 +175,7 @@ class OneShotConfig:
     camera_artifact_weight: float = 0.0
     code_diversity_weight: float = 0.0
     teacher_pairwise_diversity_weight: float = 0.0
+    cross_class_pairwise_weight: float = 0.0
     diversity_min_teacher_mse: float = 1.0e-4
     checkpoint_selection_metric: str = "loss"
     sample_class_labels: tuple[int, ...] = ()
@@ -162,6 +186,9 @@ class OneShotConfig:
 class DistillationConfig:
     samples_per_class: int = 200
     total_samples: int | None = None
+    train_subset_size: int | None = None
+    paired_class_batches: bool = False
+    multiclass_batches: bool = False
     class_labels: tuple[int, ...] = ()
     output_path: str | None = None
     code_seed: int = 1234
@@ -255,6 +282,8 @@ def load_training_config(path: str | Path | None = None) -> TrainingConfig:
     first_stage_data = data.get("first_stage", {}).copy()
     diffusion_data = data.get("diffusion", {})
     one_shot_data = data.get("one_shot", {}).copy()
+    d2nn_data = one_shot_data.pop("d2nn", None)
+    one_shot_data.pop("diffractive_modulation", None)
     distillation_data = data.get("distillation", {}).copy()
     electronic_domain_data = first_stage_data.pop("electronic_domain", {})
 
@@ -286,6 +315,8 @@ def load_training_config(path: str | Path | None = None) -> TrainingConfig:
             f"got {data_config.validation_fraction}"
         )
 
+    d2nn_config = D2NNConfig(**d2nn_data) if d2nn_data else None
+
     return TrainingConfig(
         mode=training_data.get("mode", TrainingConfig.mode),
         batch_size=training_data.get("batch_size", TrainingConfig.batch_size),
@@ -308,6 +339,6 @@ def load_training_config(path: str | Path | None = None) -> TrainingConfig:
             **first_stage_data,
         ),
         diffusion=DiffusionConfig(**diffusion_data),
-        one_shot=OneShotConfig(**one_shot_data),
+        one_shot=OneShotConfig(d2nn=d2nn_config, **one_shot_data),
         distillation=DistillationConfig(**distillation_data),
     )

@@ -200,6 +200,7 @@ def _one_shot_pairwise_diversity_metrics(
             "teacher_pairwise_diversity_base": zero,
             "teacher_pairwise_mse": zero,
             "student_pairwise_mse": zero,
+            "diversity_ratio": zero,
             "diversity_pair_count": zero,
         }
 
@@ -232,6 +233,7 @@ def _one_shot_pairwise_diversity_metrics(
             "teacher_pairwise_diversity_base": zero,
             "teacher_pairwise_mse": zero,
             "student_pairwise_mse": zero,
+            "diversity_ratio": zero,
             "diversity_pair_count": zero,
         }
 
@@ -244,6 +246,7 @@ def _one_shot_pairwise_diversity_metrics(
             "teacher_pairwise_diversity_base": zero,
             "teacher_pairwise_mse": teacher_distance.mean().detach(),
             "student_pairwise_mse": student_distance.mean().detach(),
+            "diversity_ratio": zero,
             "diversity_pair_count": zero,
         }
 
@@ -261,8 +264,104 @@ def _one_shot_pairwise_diversity_metrics(
         "teacher_pairwise_diversity_base": teacher_pairwise_base,
         "teacher_pairwise_mse": active_teacher.mean().detach(),
         "student_pairwise_mse": active_student.mean().detach(),
+        "diversity_ratio": diversity_ratio.mean().detach(),
         "diversity_pair_count": active.float().sum().detach(),
     }
+
+
+def _one_shot_cross_class_pairwise_metrics(
+    camera_prediction: torch.Tensor,
+    target_batch: torch.Tensor,
+    class_labels: torch.Tensor | None,
+    min_teacher_mse: float,
+) -> dict[str, torch.Tensor]:
+    zero = _zero_like_loss(camera_prediction)
+    if class_labels is None or camera_prediction.shape[0] < 2:
+        return {
+            "cross_class_pairwise_base": zero,
+            "cross_class_teacher_pairwise_mse": zero,
+            "cross_class_student_pairwise_mse": zero,
+            "cross_class_diversity_ratio": zero,
+            "cross_class_pair_count": zero,
+        }
+
+    labels = class_labels.detach().reshape(-1)
+    if labels.shape[0] != camera_prediction.shape[0]:
+        raise ValueError("class_labels must match one_shot_loss batch size when cross-class diversity is enabled.")
+
+    prediction_flat = camera_prediction.flatten(1)
+    target_flat = target_batch.detach().flatten(1)
+    student_pairwise = (prediction_flat[:, None, :] - prediction_flat[None, :, :]).pow(2).mean(dim=-1)
+    teacher_pairwise = (target_flat[:, None, :] - target_flat[None, :, :]).pow(2).mean(dim=-1)
+    different_class = labels[:, None] != labels[None, :]
+    pair_mask = torch.triu(
+        torch.ones(labels.numel(), labels.numel(), dtype=torch.bool, device=camera_prediction.device),
+        diagonal=1,
+    ) & different_class
+    if not pair_mask.any():
+        return {
+            "cross_class_pairwise_base": zero,
+            "cross_class_teacher_pairwise_mse": zero,
+            "cross_class_student_pairwise_mse": zero,
+            "cross_class_diversity_ratio": zero,
+            "cross_class_pair_count": zero,
+        }
+
+    student_distance = student_pairwise[pair_mask]
+    teacher_distance = teacher_pairwise[pair_mask]
+    active = teacher_distance >= float(min_teacher_mse)
+    if not active.any():
+        return {
+            "cross_class_pairwise_base": zero,
+            "cross_class_teacher_pairwise_mse": teacher_distance.mean().detach(),
+            "cross_class_student_pairwise_mse": student_distance.mean().detach(),
+            "cross_class_diversity_ratio": zero,
+            "cross_class_pair_count": zero,
+        }
+
+    active_student = student_distance[active]
+    active_teacher = teacher_distance[active].clamp_min(1.0e-8)
+    pairwise_base = F.smooth_l1_loss(
+        torch.log(active_student.clamp_min(1.0e-8)),
+        torch.log(active_teacher),
+    )
+    return {
+        "cross_class_pairwise_base": pairwise_base,
+        "cross_class_teacher_pairwise_mse": active_teacher.mean().detach(),
+        "cross_class_student_pairwise_mse": active_student.mean().detach(),
+        "cross_class_diversity_ratio": (active_student / active_teacher).mean().detach(),
+        "cross_class_pair_count": active.float().sum().detach(),
+    }
+
+
+def _pairwise_mse_summary(tensor: torch.Tensor) -> torch.Tensor:
+    if tensor.shape[0] < 2:
+        return _zero_like_loss(tensor)
+    flattened = tensor.detach().float().flatten(1)
+    pairwise = (flattened[:, None, :] - flattened[None, :, :]).pow(2).mean(dim=-1)
+    pair_mask = torch.triu(
+        torch.ones(tensor.shape[0], tensor.shape[0], dtype=torch.bool, device=tensor.device),
+        diagonal=1,
+    )
+    return pairwise[pair_mask].mean()
+
+
+def _per_class_std_summary(tensor: torch.Tensor, class_labels: torch.Tensor | None) -> torch.Tensor:
+    if class_labels is None:
+        return _zero_like_loss(tensor)
+    labels = class_labels.detach().reshape(-1)
+    if labels.shape[0] != tensor.shape[0]:
+        raise ValueError("class_labels must match one_shot_loss batch size for SLM diagnostics.")
+    flattened = tensor.detach().float().flatten(1)
+    class_stds = []
+    for label in labels.unique(sorted=True):
+        indices = torch.nonzero(labels == label, as_tuple=False).flatten()
+        if indices.numel() < 2:
+            continue
+        class_stds.append(flattened.index_select(0, indices).std(dim=0, unbiased=False).mean())
+    if not class_stds:
+        return _zero_like_loss(tensor)
+    return torch.stack(class_stds).mean()
 
 
 def _camera_hotspot_loss(camera_prediction: torch.Tensor) -> torch.Tensor:
@@ -486,6 +585,7 @@ def one_shot_loss(
     camera_artifact_weight: float = 0.0,
     code_diversity_weight: float = 0.0,
     teacher_pairwise_diversity_weight: float = 0.0,
+    cross_class_pairwise_weight: float = 0.0,
     diversity_min_teacher_mse: float = 1.0e-4,
 ) -> dict[str, torch.Tensor]:
     foreground_mask = (target_batch > foreground_threshold).float()
@@ -578,6 +678,15 @@ def one_shot_loss(
     teacher_pairwise_diversity = (
         teacher_pairwise_diversity_weight * diversity_metrics["teacher_pairwise_diversity_base"]
     )
+    cross_class_metrics = _one_shot_cross_class_pairwise_metrics(
+        camera_prediction,
+        target_batch,
+        class_labels,
+        diversity_min_teacher_mse,
+    )
+    cross_class_pairwise = cross_class_pairwise_weight * cross_class_metrics["cross_class_pairwise_base"]
+    slm_pairwise_mse = _pairwise_mse_summary(slm_amplitude)
+    slm_per_class_std_mean = _per_class_std_summary(slm_amplitude, class_labels)
     total = (
         camera_metrics["recon_loss"]
         + shape_loss
@@ -589,6 +698,7 @@ def one_shot_loss(
         + camera_artifact
         + code_diversity
         + teacher_pairwise_diversity
+        + cross_class_pairwise
     )
     return {
         "loss": total,
@@ -618,7 +728,16 @@ def one_shot_loss(
         "teacher_pairwise_diversity_penalty": diversity_metrics["teacher_pairwise_diversity_base"].detach(),
         "teacher_pairwise_mse": diversity_metrics["teacher_pairwise_mse"].detach(),
         "student_pairwise_mse": diversity_metrics["student_pairwise_mse"].detach(),
+        "diversity_ratio": diversity_metrics["diversity_ratio"].detach(),
         "diversity_pair_count": diversity_metrics["diversity_pair_count"].detach(),
+        "cross_class_pairwise_loss": cross_class_pairwise.detach(),
+        "cross_class_pairwise_penalty": cross_class_metrics["cross_class_pairwise_base"].detach(),
+        "cross_class_teacher_pairwise_mse": cross_class_metrics["cross_class_teacher_pairwise_mse"].detach(),
+        "cross_class_student_pairwise_mse": cross_class_metrics["cross_class_student_pairwise_mse"].detach(),
+        "cross_class_diversity_ratio": cross_class_metrics["cross_class_diversity_ratio"].detach(),
+        "cross_class_pair_count": cross_class_metrics["cross_class_pair_count"].detach(),
+        "slm_pairwise_mse": slm_pairwise_mse.detach(),
+        "slm_per_class_std_mean": slm_per_class_std_mean.detach(),
         "class_weight_mean": sample_weights.mean().detach(),
         "fg_pixel_ratio": foreground_mask.mean(),
     }

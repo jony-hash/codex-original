@@ -1,13 +1,13 @@
 training:
   mode: one_shot_distill
-  batch_size: 32
+  batch_size: 1
   learning_rate: 1.0e-4
-  step_log_interval: 20
-  visual_save_epoch_interval: 2
+  step_log_interval: 1
+  visual_save_epoch_interval: 1
   validation_epoch_interval: 1
   first_stage_epochs: 0
   diffusion_epochs: 0
-  one_shot_epochs: 20
+  one_shot_epochs: 1
 
 data:
   dataset: mnist
@@ -44,29 +44,51 @@ diffusion:
   guidance_scale: 2.0
 
 one_shot:
+  optical_core_arch: diffractive_phase_only
+  # ── D2NN 全局参数（单点配置，覆盖下方散落的 diffractive_* 字段）──
+  d2nn:
+    wavelength: 5.32e-7           # 532 nm
+    pixel_size: 2.5e-6            # 2.5 µm — 单神经元尺寸 / pitch
+    grid_size: 200                # 每维神经元数 N
+    propagation_grid_size: 1024   # 传播 padding 网格
+    encoder_layers: 2             # Encoder 衍射层数
+    decoder_layers: 2             # Decoder 衍射层数
+    layer_spacing: 0.005          # 5.0 mm — 层间距 d
+    modulation: phase_only        # 相位-only 调制
+    phase_init: uniform_pi        # 相位初始化 [-π, π]
+  # ──────────────────────────────────────────────────────────
   code_dim: 128
   label_embed_dim: 32
   hidden_dim: 256
   num_classes: 10
   slm_background_floor: 0.05
-  ols_kind: gelu
-  metasurface_grid_size: 16
+  ols_kind: identity
+  metasurface_grid_size: 40
   layer_spacing: 0.003
   recon_foreground_threshold: 0.05
   recon_foreground_weight: 3.0
   recon_background_weight: 1.0
-  class_recon_weight_labels: [3, 4, 5, 6]
+  class_recon_weight_labels: [3, 4, 5, 6, 7, 8, 9]
   class_recon_weight: 2.0
+  shape_loss_weight: 5.0e-2
+  edge_loss_weight: 2.0e-2
   slm_smoothness_weight: 1.0e-4
+  slm_contrast_weight: 1.0e-3
   camera_saturation_weight: 1.0e-3
+  camera_artifact_weight: 1.0e-3
   code_diversity_weight: 3.0e-2
   teacher_pairwise_diversity_weight: 5.0e-3
+  cross_class_pairwise_weight: 1.0e-2
   diversity_min_teacher_mse: 1.0e-4
+  checkpoint_selection_metric: quality
   sample_class_labels: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
   sample_repeats_per_class: 2
 
 distillation:
-  samples_per_class: 200
+  samples_per_class: 300
+  train_subset_size: 20
+  paired_class_batches: true
+  multiclass_batches: true
   class_labels: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
   code_seed: 1234
   code_projection_seed: 2026

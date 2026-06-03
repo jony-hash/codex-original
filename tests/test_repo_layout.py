@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import unittest
 from pathlib import Path
 
@@ -15,14 +16,42 @@ class RepoLayoutTests(unittest.TestCase):
             ROOT / "train.py",
             ROOT / "configs" / "physics_cfg.yaml",
             ROOT / "configs" / "train_ldm.yaml",
+            ROOT / "configs" / "export_teacher_distill_mnist_3k_fast200.yaml",
+            ROOT / "configs" / "filter_teacher_distill_mnist_3k_fast200_top2k.yaml",
+            ROOT / "configs" / "train_one_shot_distill_d2nn_mnist_3k_fast200.yaml",
+            ROOT / "configs" / "train_one_shot_distill_d2nn_gpu_feasibility.yaml",
+            ROOT / "configs" / "train_one_shot_distill_d2nn_long.yaml",
+            ROOT / "configs" / "train_one_shot_d2nn_smoke.yaml",
+            ROOT / "docs" / "ldm_migration" / "single_shot_ldm_distillation.md",
             ROOT / "src" / "ldm_project" / "data.py",
             ROOT / "src" / "ldm_project" / "first_stage.py",
             ROOT / "src" / "ldm_project" / "diffusion.py",
+            ROOT / "src" / "ldm_project" / "one_shot.py",
             ROOT / "src" / "ldm_project" / "evaluation.py",
             ROOT / "src" / "ldm_project" / "run_manager.py",
             ROOT / "src" / "ldm_project" / "sampling.py",
+            ROOT / "src" / "ldm_project" / "stage_constants.py",
             ROOT / "src" / "ldm_project" / "stage_runners.py",
+            ROOT / "src" / "ldm_project" / "train_cli.py",
+            ROOT / "src" / "ldm_project" / "train_orchestration.py",
+            ROOT / "src" / "ldm_project" / "train_run_context.py",
             ROOT / "src" / "ldm_project" / "train_utils.py",
+            ROOT / "src" / "ldm_project" / "one_shot_distill_data.py",
+            ROOT / "src" / "ldm_project" / "one_shot_distill_training.py",
+            ROOT / "src" / "ldm_project" / "one_shot_eval.py",
+            ROOT / "src" / "ldm_project" / "one_shot_eval_artifacts.py",
+            ROOT / "src" / "ldm_project" / "one_shot_eval_metrics.py",
+            ROOT / "src" / "ldm_project" / "one_shot_quality.py",
+            ROOT / "src" / "ldm_project" / "one_shot_stage_common.py",
+            ROOT / "src" / "ldm_project" / "one_shot_training.py",
+            ROOT / "src" / "ldm_project" / "one_shot_training_utils.py",
+            ROOT / "src" / "ldm_project" / "teacher_distill.py",
+            ROOT / "src" / "ldm_project" / "teacher_sampling.py",
+            ROOT / "src" / "ldm_project" / "teacher_stages.py",
+            ROOT / "src" / "ldm_project" / "teacher_training.py",
+            ROOT / "src" / "ldm_project" / "teacher_training_utils.py",
+            ROOT / "src" / "ldm_project" / "one_shot_stages.py",
+            ROOT / "tests" / "test_teacher_training_utils.py",
         ]
         for path in expected:
             self.assertTrue(path.exists(), f"missing expected file: {path}")
@@ -30,19 +59,67 @@ class RepoLayoutTests(unittest.TestCase):
         self.assertFalse((ROOT / "train_ldm.py").exists(), "legacy entry script should be removed: train_ldm.py")
         self.assertFalse((ROOT / "sample_ldm.py").exists(), "legacy entry script should be removed: sample_ldm.py")
 
-    def test_architecture_doc_mentions_optical_path_vae(self) -> None:
-        architecture_doc = ROOT / "docs" / "ldm_migration" / "ldm_architecture_spec.md"
-        content = architecture_doc.read_text(encoding="utf-8")
-        self.assertIn("OpticalPathVAE", content)
-        self.assertIn("classifier-free guidance", content)
+    def test_train_entry_delegates_to_package_cli_main(self) -> None:
+        from ldm_project.train_cli import main
 
-    def test_workflow_doc_records_final_acceptance(self) -> None:
-        workflow_doc = ROOT / "docs" / "ldm_migration" / "ldm_project_workflow.md"
-        content = workflow_doc.read_text(encoding="utf-8")
-        self.assertIn("diffusion_best.pt", content)
-        self.assertIn("nearest_neighbor", content)
-        self.assertIn("overall_nearest_dice=0.8503", content)
-        self.assertIn("--device cuda", content)
+        spec = importlib.util.spec_from_file_location("train_entry", ROOT / "train.py")
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        self.assertIs(module.main, main)
+
+    def test_stage_shims_keep_legacy_imports_available(self) -> None:
+        from ldm_project import one_shot_stages, stage_runners, teacher_stages
+        from ldm_project.one_shot_distill_training import run_one_shot_distill_training
+        from ldm_project.one_shot_eval import (
+            _save_one_shot_d2nn_focus_visualization as legacy_focus_visualization,
+            compute_one_shot_distill_eval_metrics as legacy_eval_metrics,
+            run_one_shot_sample_stage,
+        )
+        from ldm_project.one_shot_eval_artifacts import _save_one_shot_d2nn_focus_visualization
+        from ldm_project.one_shot_eval_metrics import compute_one_shot_distill_eval_metrics
+        from ldm_project.one_shot_training import run_one_shot_training
+        from ldm_project.train_cli import main
+        from ldm_project.train_orchestration import run_selected_stage
+        from ldm_project.teacher_distill import run_teacher_distill_export
+        from ldm_project.teacher_sampling import run_sample_stage
+        from ldm_project.teacher_training import run_diffusion_training, run_first_stage_training
+
+        self.assertEqual(main.__module__, "ldm_project.train_cli")
+        self.assertEqual(run_selected_stage.__module__, "ldm_project.train_orchestration")
+        self.assertIs(teacher_stages.run_first_stage_training, run_first_stage_training)
+        self.assertIs(teacher_stages.run_diffusion_training, run_diffusion_training)
+        self.assertIs(teacher_stages.run_sample_stage, run_sample_stage)
+        self.assertIs(teacher_stages.run_teacher_distill_export, run_teacher_distill_export)
+        self.assertIs(one_shot_stages.run_one_shot_training, run_one_shot_training)
+        self.assertIs(one_shot_stages.run_one_shot_distill_training, run_one_shot_distill_training)
+        self.assertIs(one_shot_stages.run_one_shot_sample_stage, run_one_shot_sample_stage)
+        self.assertIs(legacy_eval_metrics, compute_one_shot_distill_eval_metrics)
+        self.assertIs(legacy_focus_visualization, _save_one_shot_d2nn_focus_visualization)
+        self.assertIs(stage_runners.run_first_stage_training, run_first_stage_training)
+        self.assertIs(stage_runners.run_one_shot_distill_training, run_one_shot_distill_training)
+
+    def test_d2nn_design_doc_is_main_source(self) -> None:
+        design_doc = ROOT / "docs" / "ldm_migration" / "single_shot_ldm_distillation.md"
+        content = design_doc.read_text(encoding="utf-8")
+        self.assertIn("D2NN one-shot", content)
+        self.assertIn("configs/train_one_shot_distill_d2nn_mnist_3k_fast200.yaml", content)
+        self.assertIn("diffractive_phase_only", content)
+        self.assertIn("N = 200", content)
+        self.assertIn("d = 5.0 mm", content)
+
+    def test_removed_historical_docs_are_absent(self) -> None:
+        removed_docs = [
+            ROOT / "docs" / "ldm_migration" / "final_acceptance.md",
+            ROOT / "docs" / "ldm_migration" / "final_delivery.md",
+            ROOT / "docs" / "ldm_migration" / "ldm_architecture_spec.md",
+            ROOT / "docs" / "ldm_migration" / "ldm_project_workflow.md",
+            ROOT / "docs" / "ldm_migration" / "ldm_reuse_matrix.md",
+        ]
+        for path in removed_docs:
+            self.assertFalse(path.exists(), f"historical migration doc should be removed: {path}")
 
     def test_train_config_defaults_to_mnist_subset(self) -> None:
         config_path = ROOT / "configs" / "train_ldm.yaml"

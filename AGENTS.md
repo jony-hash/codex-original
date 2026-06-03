@@ -1,7 +1,8 @@
 # AGENTS.md
 
-- In the first assistant message of each new task, the first line must be exactly `【AGENTS effective】`.
+- **Codex only**: In the first assistant message of each new task, the first line must be exactly `【AGENTS effective】`.
 - Do not repeat this marker later unless the user explicitly asks for it.
+- Claude Code 请参见 [CLAUDE.md](CLAUDE.md)，以 CLAUDE.md 为首要行为约束。
 
 Primary execution contract for this repo. If this file conflicts with any document under `docs/`, follow this file.
 
@@ -70,10 +71,10 @@ Final inference path: `noise/code + optional label -> generator_e -> amplitude S
 - Teacher first stage: `<prefix> python train.py --stage teacher_first_stage --device cuda`
 - Teacher diffusion: `<prefix> python train.py --stage teacher_diffusion --device cuda`
 - Teacher sample: `<prefix> python train.py --stage teacher_sample --device cuda`
-- Export distill data: `<prefix> python train.py --train-config configs/export_teacher_distill_mnist_2k.yaml --stage teacher_distill_export --device cuda --run-name teacher_distill_mnist_2k`
-- Train distilled student: `<prefix> python train.py --train-config configs/train_one_shot_distill_mnist_2k_grid16.yaml --stage one_shot_distill --device cuda --distill-dataset outputs/runs/.../artifacts/teacher_distill_dataset.pt --run-name one_shot_distill_mnist_2k_grid16`
-- Sample student: `<prefix> python train.py --train-config configs/train_one_shot_distill_mnist_2k_grid16.yaml --stage one_shot_sample --device cuda --one-shot-checkpoint outputs/runs/.../checkpoints/one_shot_distill_best.pt`
-- Baseline smoke: `<prefix> python train.py --train-config configs/train_one_shot_smoke.yaml --stage one_shot --device cuda`
+- Export distill data: `<prefix> python train.py --train-config configs/export_teacher_distill_mnist_3k_fast200.yaml --stage teacher_distill_export --device cuda --run-name teacher_distill_mnist_3k_fast200`
+- Train distilled student: `<prefix> python train.py --train-config configs/train_one_shot_distill_d2nn_mnist_3k_fast200.yaml --stage one_shot_distill --device cuda --distill-dataset outputs/runs/.../artifacts/teacher_distill_dataset.pt --run-name one_shot_distill_d2nn_mnist_3k_fast200`
+- Sample student: `<prefix> python train.py --train-config configs/train_one_shot_distill_d2nn_mnist_3k_fast200.yaml --stage one_shot_sample --device cuda --one-shot-checkpoint outputs/runs/.../checkpoints/one_shot_distill_best.pt`
+- Baseline smoke: `<prefix> python train.py --train-config configs/train_one_shot_d2nn_smoke.yaml --stage one_shot --device cuda`
 - Use `--device auto` only for compatibility checks; use `--device cpu` only for local smoke tests.
 
 ## 7. Verification And CUDA

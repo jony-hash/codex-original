@@ -302,6 +302,10 @@ def apply_cli_overrides(train_cfg, args) -> None:
     if distill_total_samples is not None:
         _require_positive(distill_total_samples, "distillation.total_samples")
         train_cfg.distillation.total_samples = distill_total_samples
+    distill_train_subset_size = _optional_arg(args, "distill_train_subset_size")
+    if distill_train_subset_size is not None:
+        _require_positive(distill_train_subset_size, "distillation.train_subset_size")
+        train_cfg.distillation.train_subset_size = distill_train_subset_size
     _set_optional(train_cfg.distillation, "output_path", _optional_arg(args, "distill_output"))
     guidance_scale = _optional_arg(args, "guidance_scale")
     if guidance_scale is not None:
