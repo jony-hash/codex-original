@@ -222,6 +222,7 @@ class TrainingConfig:
     step_log_interval: int = 100
     visual_save_epoch_interval: int = 1
     validation_epoch_interval: int = 1
+    one_shot_distill_epoch_checkpoint_interval: int = 0
     first_stage_epochs: int = 10
     diffusion_epochs: int = 20
     one_shot_epochs: int = 1
@@ -329,6 +330,10 @@ def load_training_config(path: str | Path | None = None) -> TrainingConfig:
         validation_epoch_interval=training_data.get(
             "validation_epoch_interval",
             TrainingConfig.validation_epoch_interval,
+        ),
+        one_shot_distill_epoch_checkpoint_interval=training_data.get(
+            "one_shot_distill_epoch_checkpoint_interval",
+            TrainingConfig.one_shot_distill_epoch_checkpoint_interval,
         ),
         first_stage_epochs=training_data.get("first_stage_epochs", TrainingConfig.first_stage_epochs),
         diffusion_epochs=training_data.get("diffusion_epochs", TrainingConfig.diffusion_epochs),

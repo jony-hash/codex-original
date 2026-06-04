@@ -261,6 +261,48 @@ def _save_best_distill_checkpoint(
     return best_checkpoint_path
 
 
+def _save_epoch_distill_checkpoint(
+    run_manager,
+    run_meta: dict[str, object],
+    *,
+    one_shot_model,
+    train_cfg,
+    physics,
+    epoch_number: int,
+    one_shot_model_version: str,
+    distill_dataset: str,
+    validation_metrics: dict[str, float],
+) -> None:
+    interval = getattr(train_cfg, "one_shot_distill_epoch_checkpoint_interval", 0)
+    if interval <= 0 or epoch_number % interval != 0:
+        return
+    name = f"one_shot_distill_epoch_{epoch_number:04d}.pt"
+    ckpt_path = run_manager.save_checkpoint(
+        name,
+        {
+            "model_state_dict": one_shot_model.state_dict(),
+            "stage": "one_shot_distill",
+            "model_version": one_shot_model_version,
+            "physics_config": physics,
+            "train_config": train_cfg,
+            "epoch": epoch_number,
+            "validation_metrics": validation_metrics,
+            "distill_dataset": distill_dataset,
+        },
+    )
+    epoch_ckpt_records: list[dict[str, object]] = run_meta.setdefault("epoch_checkpoints", [])
+    epoch_ckpt_records.append(
+        {
+            "epoch": epoch_number,
+            "path": str(ckpt_path),
+            "diversity_ratio": validation_metrics.get("diversity_ratio"),
+            "eval_corr": validation_metrics.get("eval_corr"),
+            "eval_dice": validation_metrics.get("eval_dice"),
+            "best_loss": validation_metrics.get("best_loss"),
+        },
+    )
+
+
 def run_one_shot_distill_training(
     torch_module,
     *,
@@ -487,5 +529,16 @@ def run_one_shot_distill_training(
                     "best_score": best_selection_score,
                     "checkpoint": best_checkpoint_path,
                 },
+            )
+            _save_epoch_distill_checkpoint(
+                run_manager,
+                run_meta,
+                one_shot_model=one_shot_model,
+                train_cfg=train_cfg,
+                physics=physics,
+                epoch_number=epoch_number,
+                one_shot_model_version=one_shot_model_version,
+                distill_dataset=distill_dataset,
+                validation_metrics=validation_metrics,
             )
             one_shot_model.train()

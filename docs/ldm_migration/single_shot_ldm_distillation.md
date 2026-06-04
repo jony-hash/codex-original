@@ -254,3 +254,50 @@ bs128 使用 `batch_size=128` 训练 first_stage，相比旧基线 `batch_size=1
 2. `teacher_distill_export` 使用 `--pretrained-first-stage-path` 和 `--pretrained-diffusion-path` 时，两者必须来自同一 first-stage 训练 run。
 3. 验收基线 JSON 的 `source_runs` 字段记录完整配套关系，用于回归对比和 checkpoint 溯源。
 4. `configs/train_ldm.yaml` 中 `linear_metasurface_grid_size: 40` 是当前标准；若修改此值，全链路（first-stage → diffusion → export → distill）必须重新训练。
+
+## 8. diversity 提升实验记录（负结果）
+
+以下三组实验均以 bs128 matched-diffusion 基线 (`diversity_ratio=0.269`) 为起点，试图提升 diversity 但均以重建退化或 diversity 不达标签结束。记录于此避免重复走同样方向。
+
+### 8.1 code_diversity_weight 翻倍 (div2x)
+
+- **变更**: `code_diversity_weight` 0.03 → 0.06
+- **结果**: diversity_ratio +9.7% (0.295) 但 corr -3.2%, dice -3.0%, best_loss 0.160
+- **结论**: code_diversity 加权的 trade-off 太大，方向不可行
+
+### 8.2 teacher_pairwise_diversity_weight 翻倍 (pairwise2x)
+
+- **变更**: `teacher_pairwise_diversity_weight` 0.005 → 0.01
+- **结果**: diversity_ratio 0.312, corr 0.776, dice 0.750, best_loss 0.163 — 重建指标低于验收标准
+- **结论**: pairwise log-space 匹配对重建的损害比 code_diversity 更大
+
+### 8.3 multiclass batch 结构 (multiclass)
+
+- **变更**: `paired_class_batches: false`, `multiclass_batches: true`
+- **结果**: diversity_ratio 0.292, corr 0.783, dice 0.757 — diversity 几乎不变，重建轻微退化
+- **结论**: batch 结构变化对 diversity 无实质性帮助，视为中性方向
+
+### 8.4 重新训练 (retrain) — 唯一有效方向
+
+同一基线配置、同一 teacher dataset 下的简单 retrain：
+
+| 指标 | 原基线 | Retrain ep20 |
+| ---- | ------ | ------------ |
+| `eval_corr` | 0.809 | 0.810 |
+| `eval_dice` | 0.777 | 0.774 |
+| `eval_mse` | 0.0209 | 0.0205 |
+| `diversity_ratio` | 0.269 | **0.322** |
+| `sample_corr` | 0.550 | 0.561 |
+| `sample_dice` | 0.616 | 0.609 |
+| `best_loss` | 0.143 | 0.142 |
+
+- diversity_ratio +20% 来自训练随机性（D2NN phase 初始化差异），非 loss 或 batch 变更。
+- 后续方向：多 seed 训练确认 diversity 波动范围，不做进一步的 loss 调参。
+
+## 9. 诊断工具
+
+### epoch checkpoint
+
+配置 `training.one_shot_distill_epoch_checkpoint_interval`（默认 0=关闭），在每个间隔 epoch 保存周期 checkpoint `one_shot_distill_epoch_XXXX.pt`，同时记录到 `run_meta["epoch_checkpoints"]` 以便自动 sweep。
+
+诊断用配置：`configs/train_one_shot_distill_d2nn_mnist_3k_fast200_debug_epoch_ckpt.yaml`（interval=2）。
