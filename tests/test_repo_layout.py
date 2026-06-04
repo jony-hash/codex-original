@@ -26,6 +26,7 @@ class RepoLayoutTests(unittest.TestCase):
             ROOT / "docs" / "ldm_migration" / "acceptance_baseline_c99f559.json",
             ROOT / "docs" / "ldm_migration" / "acceptance_baseline_bs128_matched_diffusion.json",
             ROOT / "docs" / "ldm_migration" / "acceptance_seed_sweep_ebba8e9.json",
+            ROOT / "docs" / "ldm_migration" / "acceptance_post_refactor_one_shot_smoke_8a307f3.json",
             ROOT / "src" / "ldm_project" / "data.py",
             ROOT / "src" / "ldm_project" / "first_stage.py",
             ROOT / "src" / "ldm_project" / "diffusion.py",

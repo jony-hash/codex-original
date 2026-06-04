@@ -341,3 +341,17 @@ python -m ldm_project.eval_reports seed-sweep \
 - `--seed 202` 作为主线复现实验 seed：重建指标最稳，同时 diversity 达标。
 - `--seed 101` 作为 diversity 优先 seed：`eval_diversity_ratio=0.357` 最高。
 - `--seed 303` 是 near-miss：eval 重建通过，但 sample 与 diversity 略低于阈值，不作为阻塞项。
+
+### post-refactor one-shot sample smoke (8a307f3)
+
+`one_shot.py` 拆分为 `one_shot_model.py` 与 `one_shot_optical_layers.py` 后，使用 seed202 ep20 checkpoint 跑通 CUDA `one_shot_sample`。完整记录见 `docs/ldm_migration/acceptance_post_refactor_one_shot_smoke_8a307f3.json`。
+
+| 项 | 值 |
+| -- | -- |
+| commit | `8a307f3` |
+| run | `outputs/runs/20260604_160035_377670_train_post_refactor_one_shot_sample_seed202` |
+| checkpoint | `outputs/runs/20260604_145621_832064_train_one_shot_distill_seed202/checkpoints/one_shot_distill_epoch_0020.pt` |
+| `sample_corr` | 0.5448 |
+| `sample_dice` | 0.6095 |
+
+结论：拆分后最终学生采样路径仍然可用，sample 指标达到 seed sweep 门槛，且 sample metrics、tensor bundle、D2NN diagnostics 与可视化 artifacts 均正常生成。
