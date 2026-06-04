@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from ldm_project.eval_reports import compare_runs, print_summary, summarize_runs
+from ldm_project.eval_reports import compare_runs, evaluate_seed_sweep, print_summary, summarize_runs
 
 
 class EvalReportsTests(unittest.TestCase):
@@ -36,6 +36,7 @@ class EvalReportsTests(unittest.TestCase):
                 "20250101_000000_train_one_shot_distill_eval",
                 {
                     "mode": "one_shot_distill_eval",
+                    "training_seed": 101,
                     "one_shot_checkpoint": "outputs/runs/fake/checkpoints/one_shot_distill_best.pt",
                     "distill_dataset": "outputs/runs/fake/artifacts/teacher_distill_dataset.pt",
                 },
@@ -58,6 +59,7 @@ class EvalReportsTests(unittest.TestCase):
             self.assertIn(run_name, summary)
             e = summary[run_name]
             self.assertEqual(e["stage"], "one_shot_distill_eval")
+            self.assertEqual(e["training_seed"], 101)
             self.assertIn("one_shot_distill_best.pt", str(e["checkpoint"]))
             self.assertIn("teacher_distill_dataset.pt", str(e["distill_dataset"]))
             self.assertEqual(e["errors"], [])
@@ -472,6 +474,127 @@ class EvalReportsTests(unittest.TestCase):
             self.assertIsNone(mse_check["candidate"])
             self.assertEqual(mse_check["direction"], "missing")
 
+    # ---- seed sweep ----
+
+    def _make_seed_triplet(
+        self,
+        base: Path,
+        seed: int,
+        *,
+        eval_corr: float,
+        eval_dice: float,
+        diversity_ratio: float,
+        sample_corr: float,
+        sample_dice: float,
+        best_loss: float = 0.15,
+    ) -> list[str]:
+        eval_run = self._make_run_dir(
+            base,
+            f"seed{seed}_eval",
+            {"mode": "one_shot_distill_eval", "training_seed": seed},
+            {"overall": {"paired_corr": eval_corr, "paired_dice": eval_dice, "diversity_ratio": diversity_ratio}},
+            None,
+        )
+        sample_run = self._make_run_dir(
+            base,
+            f"seed{seed}_sample",
+            {"mode": "one_shot_sample", "training_seed": seed},
+            None,
+            {"overall": {"corr": sample_corr, "dice": sample_dice}},
+        )
+        distill_run = self._make_run_dir(
+            base,
+            f"seed{seed}_distill",
+            {"mode": "one_shot_distill", "training_seed": seed, "one_shot_distill_best_loss": best_loss},
+            None,
+            None,
+        )
+        return [str(eval_run), str(sample_run), str(distill_run)]
+
+    def test_seed_sweep_passes_when_two_of_three_seeds_pass(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            seed_runs = {
+                "101": self._make_seed_triplet(
+                    base,
+                    101,
+                    eval_corr=0.810,
+                    eval_dice=0.774,
+                    diversity_ratio=0.322,
+                    sample_corr=0.561,
+                    sample_dice=0.609,
+                ),
+                "202": self._make_seed_triplet(
+                    base,
+                    202,
+                    eval_corr=0.795,
+                    eval_dice=0.768,
+                    diversity_ratio=0.315,
+                    sample_corr=0.540,
+                    sample_dice=0.602,
+                ),
+                "303": self._make_seed_triplet(
+                    base,
+                    303,
+                    eval_corr=0.780,
+                    eval_dice=0.750,
+                    diversity_ratio=0.280,
+                    sample_corr=0.520,
+                    sample_dice=0.590,
+                ),
+            }
+
+            result = evaluate_seed_sweep(seed_runs)
+
+            self.assertTrue(result["passed"], result)
+            self.assertEqual(result["success_count"], 2)
+            self.assertEqual(result["required_successes"], 2)
+            self.assertEqual(result["recommended_seed"], "101")
+            seed101 = next(item for item in result["seeds"] if item["seed"] == "101")
+            self.assertEqual(seed101["training_seed_values"], [101])
+            self.assertTrue(all(check["passed"] for check in seed101["checks"]))
+
+    def test_seed_sweep_fails_when_only_one_seed_passes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            seed_runs = {
+                "101": self._make_seed_triplet(
+                    base,
+                    101,
+                    eval_corr=0.810,
+                    eval_dice=0.774,
+                    diversity_ratio=0.322,
+                    sample_corr=0.561,
+                    sample_dice=0.609,
+                ),
+                "202": self._make_seed_triplet(
+                    base,
+                    202,
+                    eval_corr=0.780,
+                    eval_dice=0.760,
+                    diversity_ratio=0.300,
+                    sample_corr=0.540,
+                    sample_dice=0.602,
+                ),
+                "303": self._make_seed_triplet(
+                    base,
+                    303,
+                    eval_corr=0.790,
+                    eval_dice=0.765,
+                    diversity_ratio=0.305,
+                    sample_corr=0.530,
+                    sample_dice=0.600,
+                ),
+            }
+
+            result = evaluate_seed_sweep(seed_runs)
+
+            self.assertFalse(result["passed"], result)
+            self.assertEqual(result["success_count"], 1)
+            seed303 = next(item for item in result["seeds"] if item["seed"] == "303")
+            diversity_check = next(check for check in seed303["checks"] if check["metric"] == "eval_diversity_ratio")
+            self.assertFalse(diversity_check["passed"])
+
     # ---- CLI ----
 
     def test_cli_summary_produces_valid_json(self) -> None:
@@ -550,6 +673,49 @@ class EvalReportsTests(unittest.TestCase):
             )
             self.assertNotEqual(proc.returncode, 0)
             self.assertIn("cannot read baseline", proc.stdout)
+
+    def test_cli_seed_sweep_passes_and_exit_zero(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            seed101 = self._make_seed_triplet(
+                base,
+                101,
+                eval_corr=0.810,
+                eval_dice=0.774,
+                diversity_ratio=0.322,
+                sample_corr=0.561,
+                sample_dice=0.609,
+            )
+            seed202 = self._make_seed_triplet(
+                base,
+                202,
+                eval_corr=0.795,
+                eval_dice=0.768,
+                diversity_ratio=0.315,
+                sample_corr=0.540,
+                sample_dice=0.602,
+            )
+
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "ldm_project.eval_reports",
+                    "seed-sweep",
+                    "--seed-run",
+                    "101",
+                    *seed101,
+                    "--seed-run",
+                    "202",
+                    *seed202,
+                ],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(proc.returncode, 0, f"stderr: {proc.stderr}\nstdout: {proc.stdout}")
+            data = json.loads(proc.stdout)
+            self.assertTrue(data["passed"])
+            self.assertEqual(data["success_count"], 2)
 
 
 if __name__ == "__main__":

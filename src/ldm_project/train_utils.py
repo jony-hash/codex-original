@@ -48,6 +48,18 @@ def resolve_device(torch_module, requested: str):
     return torch_module.device(requested)
 
 
+def apply_training_seed(torch_module, seed: int | None) -> int | None:
+    if seed is None:
+        return None
+    resolved_seed = int(seed)
+    if resolved_seed < 0:
+        raise ValueError(f"training.seed must be non-negative, got {resolved_seed}")
+    torch_module.manual_seed(resolved_seed)
+    if torch_module.cuda.is_available():
+        torch_module.cuda.manual_seed_all(resolved_seed)
+    return resolved_seed
+
+
 def validate_class_label_values(labels: list[int] | tuple[int, ...], num_classes: int, field_name: str) -> tuple[int, ...]:
     resolved = tuple(int(label) for label in labels)
     for label in resolved:
@@ -274,6 +286,11 @@ def apply_cli_overrides(train_cfg, args) -> None:
     else:
         train_cfg.mode = canonicalize_stage(train_cfg.mode)
     _set_optional(train_cfg, "batch_size", args.batch_size)
+    seed = _optional_arg(args, "seed")
+    if seed is not None:
+        if seed < 0:
+            raise ValueError(f"training.seed must be non-negative, got {seed}")
+        train_cfg.seed = int(seed)
     _set_optional(train_cfg.data, "subset_fraction", args.subset_fraction)
     subset_size = _optional_arg(args, "subset_size")
     if subset_size is not None:

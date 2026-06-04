@@ -219,6 +219,7 @@ class TrainingConfig:
     mode: str = "first_stage"
     batch_size: int = 4
     learning_rate: float = 1.0e-4
+    seed: int | None = None
     step_log_interval: int = 100
     visual_save_epoch_interval: int = 1
     validation_epoch_interval: int = 1
@@ -309,6 +310,11 @@ def load_training_config(path: str | Path | None = None) -> TrainingConfig:
         one_shot_data["class_recon_weight_labels"] = tuple(one_shot_data["class_recon_weight_labels"])
     if "class_labels" in distillation_data:
         distillation_data["class_labels"] = tuple(distillation_data["class_labels"])
+    training_seed = training_data.get("seed", TrainingConfig.seed)
+    if training_seed is not None:
+        training_seed = int(training_seed)
+        if training_seed < 0:
+            raise ValueError(f"training.seed must be non-negative, got {training_seed}")
     data_config = DataConfig(**data_cfg)
     if data_config.validation_fraction < 0.0 or data_config.validation_fraction >= 1.0:
         raise ValueError(
@@ -322,6 +328,7 @@ def load_training_config(path: str | Path | None = None) -> TrainingConfig:
         mode=training_data.get("mode", TrainingConfig.mode),
         batch_size=training_data.get("batch_size", TrainingConfig.batch_size),
         learning_rate=training_data.get("learning_rate", TrainingConfig.learning_rate),
+        seed=training_seed,
         step_log_interval=training_data.get("step_log_interval", TrainingConfig.step_log_interval),
         visual_save_epoch_interval=training_data.get(
             "visual_save_epoch_interval",

@@ -20,6 +20,14 @@ _DEFAULT_TOLERANCES: dict[str, float] = {
     "best_loss": 0.02,
 }
 
+_DEFAULT_SEED_SWEEP_CRITERIA: dict[str, float] = {
+    "eval_corr": 0.79,
+    "eval_dice": 0.765,
+    "sample_corr": 0.53,
+    "sample_dice": 0.60,
+    "eval_diversity_ratio": 0.31,
+}
+
 
 def _read_json(path: Path) -> dict | None:
     if not path.is_file():
@@ -65,6 +73,7 @@ def summarize_runs(run_dirs: list[str]) -> dict:
         entry: dict = {
             "run_dir": str(run_path),
             "stage": None,
+            "training_seed": None,
             "checkpoint": None,
             "distill_dataset": None,
             "best_loss": None,
@@ -78,6 +87,7 @@ def summarize_runs(run_dirs: list[str]) -> dict:
             entry["errors"].append(f"missing {_RUN_META_FILE}")
         else:
             entry["stage"] = meta.get("mode")
+            entry["training_seed"] = meta.get("training_seed")
             entry["checkpoint"] = meta.get("one_shot_checkpoint")
             entry["distill_dataset"] = meta.get("distill_dataset")
             if meta.get("one_shot_distill_best_loss") is not None:
@@ -247,6 +257,80 @@ def compare_runs(
     }
 
 
+def _candidate_metric_value(merged: dict, metric_key: str):
+    source_key, field = _METRIC_SOURCE_MAP.get(metric_key, (None, metric_key))
+    if metric_key == "best_loss":
+        return merged.get("best_loss")
+    if source_key is None:
+        return None
+    source = merged.get(source_key, {}) if merged else {}
+    return source.get(field) if source else None
+
+
+def evaluate_seed_sweep(
+    seed_run_dirs: dict[str, list[str]],
+    criteria: dict[str, float] | None = None,
+    *,
+    required_successes: int = 2,
+) -> dict:
+    """汇总多 seed one-shot 验收结果。
+
+    seed_run_dirs 形如 {"101": [eval_run, sample_run, distill_run], ...}。
+    每个 seed 内部按 compare_runs 相同的 best-of 规则合并指标，再按固定阈值检查。
+    """
+    criteria = dict(criteria or _DEFAULT_SEED_SWEEP_CRITERIA)
+    seed_results: list[dict] = []
+
+    for seed, run_dirs in seed_run_dirs.items():
+        candidates = summarize_runs(run_dirs)
+        merged = _merge_candidate_metrics(candidates)
+        checks: list[dict] = []
+        for metric_key, threshold in criteria.items():
+            candidate_value = _candidate_metric_value(merged, metric_key)
+            passed = candidate_value is not None and candidate_value >= threshold
+            checks.append({
+                "metric": metric_key,
+                "candidate": candidate_value,
+                "threshold": threshold,
+                "passed": passed,
+                "direction": "higher-is-better" if candidate_value is not None else "missing",
+            })
+
+        passed = len(checks) > 0 and all(check["passed"] for check in checks)
+        seed_values = sorted({
+            entry["training_seed"]
+            for entry in candidates.values()
+            if entry.get("training_seed") is not None
+        })
+        seed_results.append({
+            "seed": str(seed),
+            "passed": passed,
+            "candidate_runs": list(candidates.keys()),
+            "training_seed_values": seed_values,
+            "checks": checks,
+        })
+
+    success_count = sum(1 for seed_result in seed_results if seed_result["passed"])
+    ranked = sorted(
+        seed_results,
+        key=lambda item: (
+            item["passed"],
+            sum(1 for check in item["checks"] if check["passed"]),
+            sum(float(check["candidate"] or 0.0) for check in item["checks"]),
+        ),
+        reverse=True,
+    )
+
+    return {
+        "passed": success_count >= required_successes,
+        "required_successes": required_successes,
+        "success_count": success_count,
+        "criteria": criteria,
+        "recommended_seed": None if not ranked else ranked[0]["seed"],
+        "seeds": seed_results,
+    }
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -266,6 +350,22 @@ def _cli() -> None:
         "--baseline", required=True, help="path to baseline JSON (e.g. docs/ldm_migration/acceptance_baseline_c99f559.json)"
     )
 
+    sweep_parser = sub.add_parser("seed-sweep", help="summarize seed sweep acceptance")
+    sweep_parser.add_argument(
+        "--seed-run",
+        action="append",
+        nargs="+",
+        required=True,
+        metavar="SEED_OR_RUN_DIR",
+        help="seed followed by that seed's eval/sample/distill run dirs; repeat for each seed",
+    )
+    sweep_parser.add_argument(
+        "--required-successes",
+        type=int,
+        default=2,
+        help="minimum passing seed count required for sweep acceptance",
+    )
+
     args = parser.parse_args()
 
     if args.command == "summary":
@@ -276,6 +376,18 @@ def _cli() -> None:
             print(f"error: cannot read baseline file: {args.baseline}")
             raise SystemExit(1)
         result = compare_runs(args.run_dirs, baseline)
+        print(json.dumps(result, indent=2, ensure_ascii=False, default=str))
+        if not result["passed"]:
+            raise SystemExit(1)
+    elif args.command == "seed-sweep":
+        seed_run_dirs: dict[str, list[str]] = {}
+        for group in args.seed_run:
+            if len(group) < 2:
+                print("error: --seed-run requires a seed and at least one run dir")
+                raise SystemExit(1)
+            seed, *run_dirs = group
+            seed_run_dirs[str(seed)] = run_dirs
+        result = evaluate_seed_sweep(seed_run_dirs, required_successes=args.required_successes)
         print(json.dumps(result, indent=2, ensure_ascii=False, default=str))
         if not result["passed"]:
             raise SystemExit(1)

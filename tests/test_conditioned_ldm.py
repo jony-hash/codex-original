@@ -33,6 +33,7 @@ class DiffusionConfigTests(unittest.TestCase):
         config_text = """
 training:
   mode: diffusion
+  seed: 202
   visual_save_epoch_interval: 3
   validation_epoch_interval: 4
 data:
@@ -106,6 +107,7 @@ diffusion:
         self.assertEqual(loaded.diffusion.class_weight_labels, (3, 4, 5))
         self.assertAlmostEqual(loaded.diffusion.class_weight, 1.5, places=6)
         self.assertEqual(loaded.diffusion.timesteps, 1000)
+        self.assertEqual(loaded.seed, 202)
         self.assertEqual(loaded.visual_save_epoch_interval, 3)
         self.assertEqual(loaded.validation_epoch_interval, 4)
         self.assertAlmostEqual(loaded.data.validation_fraction, 0.1, places=6)
@@ -156,6 +158,7 @@ diffusion:
         physics_cfg = PhysicsConfig()
 
         self.assertEqual(training_cfg.mode, "first_stage")
+        self.assertIsNone(training_cfg.seed)
         self.assertEqual(training_cfg.visual_save_epoch_interval, 1)
         self.assertEqual(training_cfg.validation_epoch_interval, 1)
         self.assertEqual(training_cfg.first_stage_epochs, 10)

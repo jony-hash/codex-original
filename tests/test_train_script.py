@@ -537,6 +537,7 @@ class TrainScriptStepTests(unittest.TestCase):
             Namespace(
                 stage="first_stage",
                 batch_size=8,
+                seed=123,
                 subset_fraction=0.002,
                 subset_size=2000,
                 validation_fraction=0.0,
@@ -565,6 +566,7 @@ class TrainScriptStepTests(unittest.TestCase):
 
         self.assertEqual(config.mode, "teacher_first_stage")
         self.assertEqual(config.batch_size, 8)
+        self.assertEqual(config.seed, 123)
         self.assertAlmostEqual(config.data.subset_fraction, 0.002, places=6)
         self.assertEqual(config.data.subset_size, 2000)
         self.assertAlmostEqual(config.data.validation_fraction, 0.0, places=6)
@@ -685,6 +687,29 @@ class TrainScriptStepTests(unittest.TestCase):
                         ),
                     )
 
+    def test_apply_training_seed_sets_torch_and_cuda_rng(self) -> None:
+        train_utils_module = load_train_utils_module()
+        calls: list[tuple[str, int]] = []
+
+        class FakeCuda:
+            def is_available(self) -> bool:
+                return True
+
+            def manual_seed_all(self, seed: int) -> None:
+                calls.append(("cuda", seed))
+
+        class FakeTorch:
+            cuda = FakeCuda()
+
+            @staticmethod
+            def manual_seed(seed: int) -> None:
+                calls.append(("cpu", seed))
+
+        applied_seed = train_utils_module.apply_training_seed(FakeTorch, 202)
+
+        self.assertEqual(applied_seed, 202)
+        self.assertEqual(calls, [("cpu", 202), ("cuda", 202)])
+
     def test_apply_cli_overrides_rejects_invalid_diffusion_overrides(self) -> None:
         from argparse import Namespace
 
@@ -735,6 +760,8 @@ class TrainScriptStepTests(unittest.TestCase):
             train_utils_module.apply_cli_overrides(TrainingConfig(), args_with(diffusion_class_weight_labels=[10]))
         with self.assertRaisesRegex(ValueError, "class_weight"):
             train_utils_module.apply_cli_overrides(TrainingConfig(), args_with(diffusion_class_weight=0.0))
+        with self.assertRaisesRegex(ValueError, "training.seed"):
+            train_utils_module.apply_cli_overrides(TrainingConfig(), args_with(seed=-1))
 
     def test_apply_cli_overrides_rejects_invalid_camera_artifact_weight(self) -> None:
         from argparse import Namespace
@@ -900,6 +927,7 @@ class TrainMainValidationTests(unittest.TestCase):
         train_config = TrainingConfig(
             mode="full",
             batch_size=2,
+            seed=77,
             first_stage_epochs=1,
             diffusion_epochs=1,
             data=DataConfig(
@@ -975,6 +1003,7 @@ class TrainMainValidationTests(unittest.TestCase):
             stdout_text = stdout_buffer.getvalue()
 
         self.assertEqual(meta["dataset_total_size"], 10)
+        self.assertEqual(meta["training_seed"], 77)
         self.assertEqual(meta["train_split_size"], 5)
         self.assertEqual(meta["train_effective_size"], 5)
         self.assertEqual(meta["validation_size"], 5)

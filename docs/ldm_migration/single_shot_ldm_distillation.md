@@ -301,3 +301,24 @@ bs128 使用 `batch_size=128` 训练 first_stage，相比旧基线 `batch_size=1
 配置 `training.one_shot_distill_epoch_checkpoint_interval`（默认 0=关闭），在每个间隔 epoch 保存周期 checkpoint `one_shot_distill_epoch_XXXX.pt`，同时记录到 `run_meta["epoch_checkpoints"]` 以便自动 sweep。
 
 诊断用配置：`configs/train_one_shot_distill_d2nn_mnist_3k_fast200_debug_epoch_ckpt.yaml`（interval=2）。
+
+### seed sweep 验收
+
+`training.seed` / CLI `--seed` 用于固定 one-shot 训练随机性；默认 `null`，保持旧随机行为。设置 seed 后，`train.py` 会在模型创建前设置 PyTorch CPU/CUDA RNG，并把实际值写入 `run_meta["training_seed"]`。
+
+推荐流程：
+
+1. 固定 bs128 matched teacher dataset，不改 loss、batch composition 或模型结构。
+2. 使用正式 one-shot distill config；若要比较 ep20，使用 debug epoch checkpoint config 开启 interval=2。
+3. 分别运行 `--seed 101`、`--seed 202`、`--seed 303`。
+4. 对每个 seed 的 ep20 checkpoint 分别跑 `one_shot_distill_eval` 和 `one_shot_sample`。
+5. 使用 `eval_reports seed-sweep` 汇总验收：
+
+```bash
+python -m ldm_project.eval_reports seed-sweep \
+  --seed-run 101 outputs/runs/<seed101_eval> outputs/runs/<seed101_sample> outputs/runs/<seed101_distill> \
+  --seed-run 202 outputs/runs/<seed202_eval> outputs/runs/<seed202_sample> outputs/runs/<seed202_distill> \
+  --seed-run 303 outputs/runs/<seed303_eval> outputs/runs/<seed303_sample> outputs/runs/<seed303_distill>
+```
+
+通过标准：3 个 seed 中至少 2 个同时满足 `eval_corr >= 0.79`、`eval_dice >= 0.765`、`sample_corr >= 0.53`、`sample_dice >= 0.60`、`eval_diversity_ratio >= 0.31`。若达标，再记录推荐 seed/run；若不达标，保留当前 bs128 matched-diffusion 基线。

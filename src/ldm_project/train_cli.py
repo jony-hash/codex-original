@@ -26,6 +26,7 @@ from ldm_project.train_run_context import build_run_meta, save_visual_config_sna
 from ldm_project.train_utils import (
     CLI_STAGE_CHOICES,
     apply_cli_overrides,
+    apply_training_seed,
     is_teacher_diffusion_mode,
     is_teacher_first_stage_mode,
     resolve_device,
@@ -54,6 +55,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--stage", choices=CLI_STAGE_CHOICES, default=None)
     parser.add_argument("--batch-size", type=int, default=None)
+    parser.add_argument("--seed", type=int, default=None, help="Override training random seed for reproducible runs.")
     parser.add_argument("--subset-fraction", type=float, default=None, help="Override dataset subset fraction, e.g. 0.1667")
     parser.add_argument("--subset-size", type=int, default=None, help="Override exact train subset size, e.g. 2000")
     parser.add_argument("--validation-fraction", type=float, default=None, help="Override validation split fraction.")
@@ -328,6 +330,10 @@ def main() -> None:
 
     use_pin_memory = train_cfg.data.pin_memory and device.type == "cuda"
     train_cfg.data.pin_memory = use_pin_memory
+    applied_training_seed = apply_training_seed(torch, train_cfg.seed)
+    if applied_training_seed is not None:
+        train_cfg.seed = applied_training_seed
+        print(f"using training seed: {applied_training_seed}")
 
     run_manager = RunManager.create(
         output_root=args.output_root,

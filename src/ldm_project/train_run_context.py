@@ -83,6 +83,7 @@ def build_run_meta(
         "physics_config_path": args.physics_config,
         "train_config_path": args.train_config,
         "final_pt_dir": args.final_pt_dir,
+        "training_seed": train_cfg.seed,
         "first_stage_checkpoint": args.first_stage_checkpoint,
         "first_stage_checkpoint_source": checkpoint_resolution["first_stage_checkpoint_source"],
         "diffusion_checkpoint": args.diffusion_checkpoint,
