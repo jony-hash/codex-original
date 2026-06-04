@@ -1,0 +1,77 @@
+{
+  "description": "one-shot distill seed sweep 验收记录",
+  "commit": "ebba8e9",
+  "date": "2026-06-04",
+  "environment": "RTX 3060 Laptop GPU (6GB), CUDA 12.1, PyTorch 2.5.1+cu121, WSL2 Linux",
+  "parent_baseline": "7f1b8f2",
+  "config": "configs/train_one_shot_distill_d2nn_mnist_3k_fast200_debug_epoch_ckpt.yaml",
+  "distill_dataset": "outputs/runs/20260603_204548_790688_train_distill_filter_bs128_matched_diffusion/artifacts/teacher_distill_dataset_filtered.pt",
+  "checkpoint_policy": "one_shot_distill_epoch_0020.pt from each seeded run",
+  "required_successes": 2,
+  "success_count": 2,
+  "passed": true,
+  "recommended_seed": 202,
+  "diversity_priority_seed": 101,
+  "near_miss_seed": 303,
+  "criteria": {
+    "eval_corr": 0.79,
+    "eval_dice": 0.765,
+    "sample_corr": 0.53,
+    "sample_dice": 0.60,
+    "eval_diversity_ratio": 0.31
+  },
+  "source_runs": {
+    "101": {
+      "one_shot_distill": "outputs/runs/20260604_144707_298808_train_one_shot_distill_seed101",
+      "one_shot_eval": "outputs/runs/20260604_151022_709235_train_one_shot_distill_seed101_eval",
+      "one_shot_sample": "outputs/runs/20260604_151208_052529_train_one_shot_distill_seed101_sample"
+    },
+    "202": {
+      "one_shot_distill": "outputs/runs/20260604_145621_832064_train_one_shot_distill_seed202",
+      "one_shot_eval": "outputs/runs/20260604_151028_706686_train_one_shot_distill_seed202_eval",
+      "one_shot_sample": "outputs/runs/20260604_151208_051503_train_one_shot_distill_seed202_sample"
+    },
+    "303": {
+      "one_shot_distill": "outputs/runs/20260604_150524_772961_train_one_shot_distill_seed303",
+      "one_shot_eval": "outputs/runs/20260604_151556_258849_train_one_shot_distill_seed303_eval",
+      "one_shot_sample": "outputs/runs/20260604_151659_150789_train_one_shot_distill_seed303_sample"
+    }
+  },
+  "seed_results": {
+    "101": {
+      "passed": true,
+      "eval_mse": 0.0210,
+      "eval_corr": 0.8048816919326782,
+      "eval_dice": 0.7713865637779236,
+      "sample_corr": 0.5533288955688477,
+      "sample_dice": 0.6074621856212616,
+      "eval_diversity_ratio": 0.35656230602091205
+    },
+    "202": {
+      "passed": true,
+      "eval_mse": 0.0206,
+      "eval_corr": 0.8093454241752625,
+      "eval_dice": 0.7804175615310669,
+      "sample_corr": 0.5578920394182205,
+      "sample_dice": 0.6122166901826859,
+      "eval_diversity_ratio": 0.33280116087981537
+    },
+    "303": {
+      "passed": false,
+      "eval_mse": 0.0206,
+      "eval_corr": 0.8102309107780457,
+      "eval_dice": 0.7786690592765808,
+      "sample_corr": 0.5235830262303353,
+      "sample_dice": 0.5819471016526222,
+      "eval_diversity_ratio": 0.30147948318106355
+    }
+  },
+  "notes": [
+    "Seed sweep 通过：101/202/303 中 2 个 seed 达到全部门槛",
+    "Seed 202 作为主线复现实验 seed，因为重建指标最稳且 diversity 通过",
+    "Seed 101 作为 diversity 优先 seed，eval_diversity_ratio 最高",
+    "Seed 303 是 near-miss：eval 重建通过，但 sample_corr/sample_dice/diversity_ratio 略低于阈值",
+    "不更新默认 config seed，避免默认训练变成单 seed 偏置",
+    "不改变 loss、batch composition、teacher checkpoint 或 D2NN/SLM/OLS/CMOS 行为"
+  ]
+}

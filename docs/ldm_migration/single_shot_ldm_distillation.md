@@ -322,3 +322,22 @@ python -m ldm_project.eval_reports seed-sweep \
 ```
 
 通过标准：3 个 seed 中至少 2 个同时满足 `eval_corr >= 0.79`、`eval_dice >= 0.765`、`sample_corr >= 0.53`、`sample_dice >= 0.60`、`eval_diversity_ratio >= 0.31`。若达标，再记录推荐 seed/run；若不达标，保留当前 bs128 matched-diffusion 基线。
+
+### seed sweep 结果 (ebba8e9)
+
+基线 seed sweep 已通过：`101/202/303` 中 `2/3` seed 达标。完整记录见 `docs/ldm_migration/acceptance_seed_sweep_ebba8e9.json`。
+
+| 指标 | 阈值 | Seed 101 | Seed 202 | Seed 303 |
+| ---- | ---- | -------- | -------- | -------- |
+| `eval_corr` | >=0.79 | 0.805 | 0.809 | 0.810 |
+| `eval_dice` | >=0.765 | 0.771 | 0.780 | 0.779 |
+| `sample_corr` | >=0.53 | 0.553 | 0.558 | 0.524 |
+| `sample_dice` | >=0.60 | 0.607 | 0.612 | 0.582 |
+| `eval_diversity_ratio` | >=0.31 | 0.357 | 0.333 | 0.301 |
+
+结论：
+
+- `diversity_ratio` 在 `0.301-0.357` 区间波动，训练随机性是主导因素。
+- `--seed 202` 作为主线复现实验 seed：重建指标最稳，同时 diversity 达标。
+- `--seed 101` 作为 diversity 优先 seed：`eval_diversity_ratio=0.357` 最高。
+- `--seed 303` 是 near-miss：eval 重建通过，但 sample 与 diversity 略低于阈值，不作为阻塞项。
