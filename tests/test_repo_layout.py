@@ -30,6 +30,8 @@ class RepoLayoutTests(unittest.TestCase):
             ROOT / "src" / "ldm_project" / "first_stage.py",
             ROOT / "src" / "ldm_project" / "diffusion.py",
             ROOT / "src" / "ldm_project" / "one_shot.py",
+            ROOT / "src" / "ldm_project" / "one_shot_model.py",
+            ROOT / "src" / "ldm_project" / "one_shot_optical_layers.py",
             ROOT / "src" / "ldm_project" / "evaluation.py",
             ROOT / "src" / "ldm_project" / "run_manager.py",
             ROOT / "src" / "ldm_project" / "d2nn_diagnostics.py",
