@@ -61,7 +61,9 @@
 | `src/ldm_project/config.py` | 所有配置类 |
 | `src/ldm_project/first_stage.py` | `OpticalPathVAE` |
 | `src/ldm_project/diffusion.py` | `LatentDiffusionUNet`, 噪声调度 |
-| `src/ldm_project/one_shot.py` | `OneShotOpticalGenerator`, `ElectronicGeneratorE` |
+| `src/ldm_project/one_shot.py` | one-shot 兼容 re-export shim |
+| `src/ldm_project/one_shot_model.py` | `OneShotOpticalGenerator`, checkpoint load/validate |
+| `src/ldm_project/one_shot_optical_layers.py` | `ElectronicGeneratorE`, SLM, D2NN optical layers |
 | `src/ldm_project/optics.py` | Fresnel/角谱传播, `BackOpticalPath` |
 | `src/ldm_project/training.py` | 各阶段 loss 函数 |
 | `src/ldm_project/stage_runners.py` | 训练/采样循环 |

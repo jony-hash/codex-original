@@ -355,3 +355,34 @@ python -m ldm_project.eval_reports seed-sweep \
 | `sample_dice` | 0.6095 |
 
 结论：拆分后最终学生采样路径仍然可用，sample 指标达到 seed sweep 门槛，且 sample metrics、tensor bundle、D2NN diagnostics 与可视化 artifacts 均正常生成。
+
+## 10. 当前推荐复现路径
+
+当前稳定基线使用 bs128 matched teacher、filtered distill dataset、seed202 one-shot distill，并以 ep20 checkpoint 作为主线学生 checkpoint。默认配置不固定 seed；正式复现实验通过 CLI 显式传入 `--seed 202`。
+
+推荐主线：
+
+```bash
+python train.py --train-config configs/train_one_shot_distill_d2nn_mnist_3k_fast200_debug_epoch_ckpt.yaml \
+  --stage one_shot_distill --device cuda --seed 202 \
+  --distill-dataset outputs/runs/20260603_204548_790688_train_distill_filter_bs128_matched_diffusion/artifacts/teacher_distill_dataset_filtered.pt \
+  --run-name one_shot_distill_seed202
+
+python train.py --train-config configs/train_one_shot_distill_d2nn_mnist_3k_fast200.yaml \
+  --stage one_shot_sample --device cuda \
+  --one-shot-checkpoint outputs/runs/<seed202_distill>/checkpoints/one_shot_distill_epoch_0020.pt \
+  --run-name one_shot_sample_seed202_ep20
+
+python train.py --train-config configs/train_one_shot_distill_d2nn_mnist_3k_fast200.yaml \
+  --stage one_shot_distill_eval --device cuda \
+  --distill-dataset outputs/runs/20260603_204548_790688_train_distill_filter_bs128_matched_diffusion/artifacts/teacher_distill_dataset_filtered.pt \
+  --one-shot-checkpoint outputs/runs/<seed202_distill>/checkpoints/one_shot_distill_epoch_0020.pt \
+  --run-name one_shot_eval_seed202_ep20
+```
+
+维护边界：
+
+- 不继续调 `code_diversity_weight`、`teacher_pairwise_diversity_weight` 或 batch composition；已验证这些方向会用重建质量换 diversity。
+- 不继续大拆 `one_shot_visualization.py`、`one_shot_eval.py` 或训练 loop，除非后续有明确 bug 或新功能需求。
+- 不把 `training.seed` 写入默认 config，避免默认训练变成单 seed 偏置；复现实验使用 CLI `--seed 202`。
+- 更换 first-stage checkpoint、diffusion checkpoint、teacher distill dataset 或 D2NN 网格配置时，必须重新跑全链路验收。
