@@ -37,7 +37,7 @@ slm out phase -> encoder phase diagnostics -> OLS boundary
 -> decoder phase diagnostics -> chip phase
 ```
 
-`camera/student` 是训练和评估的主输出。raw D2NN/grid/camera diagnostics 的尺寸由 `one_shot.d2nn.grid_size` 和 decoder 输出的 chip grid 决定；当前主线为 `N=200`，loss 和主评估仍使用 `200 × 200` `camera_plane`。不要把 raw D2NN camera diagnostics 和 loss 图像尺寸混为同一个物理平面，也不要把 raw diagnostics 当成另一条产品输出路径。
+`camera/student` 是训练和评估的主输出。raw D2NN/grid/camera diagnostics 的尺寸由 `one_shot.d2nn.grid_size` 和 decoder 输出的 chip grid 决定；双光子打印尺寸实验为 `N=100`，loss 和主评估仍使用 `200 × 200` `camera_plane`。不要把 raw D2NN camera diagnostics 和 loss 图像尺寸混为同一个物理平面，也不要把 raw diagnostics 当成另一条产品输出路径。
 
 ## Raw Tensor Bundle
 
@@ -47,7 +47,7 @@ slm out phase -> encoder phase diagnostics -> OLS boundary
 - encoder/decoder 输入输出复场。
 - OLS 输入输出复场。
 - `camera_plane`：用于 loss 和主评估的 `200 × 200` 相机输出，是 one-shot student 的主输出。
-- D2NN raw diagnostics：内部衍射层振幅/相位，尺寸由 `one_shot.d2nn.grid_size` 决定，当前主线为 `N=200`。
+- D2NN raw diagnostics：内部衍射层振幅/相位，尺寸由 `one_shot.d2nn.grid_size` 决定；双光子打印尺寸实验为 `N=100`，受保护 v7.2 参考 run 为 `N=200`。
 - D2NN high-res camera diagnostics：`diffractive_camera_intensity_raw`、`diffractive_camera_plane_raw`、`diffractive_camera_plane_loss_raw`。
 - phase-only mask diagnostics：mask 幅度应恒为 1，相位为可训练参数；mask 幅度只在 diagnostics 中保留，不进入主振幅图。
 

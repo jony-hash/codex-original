@@ -1358,6 +1358,64 @@ class OneShotConfigTests(unittest.TestCase):
         self.assertEqual(train_config.one_shot_epochs, 1)
         self.assertEqual(eval_config.one_shot.eval_samples_per_class, 10)
 
+    def test_twophoton_100x100_full_connect_config_and_shapes(self) -> None:
+        import torch
+
+        from ldm_project.config import PhysicsConfig, load_training_config
+        from ldm_project.one_shot import OneShotOpticalGenerator
+
+        train_config = load_training_config(
+            Path(
+                "configs/train_one_shot_distill_d2nn_mnist_3k_fast200_"
+                "twophoton_100x100_2um_full_connect.yaml"
+            )
+        )
+        eval_config = load_training_config(
+            Path(
+                "configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_"
+                "twophoton_100x100_2um_full_connect_strict_readability_test.yaml"
+            )
+        )
+
+        for config in (train_config, eval_config):
+            d2nn = config.one_shot.d2nn
+            self.assertIsNotNone(d2nn)
+            self.assertEqual(config.first_stage.image_size, 200)
+            self.assertEqual(config.one_shot.optical_core_arch, "diffractive_phase_only")
+            self.assertEqual(d2nn.grid_size, 100)
+            self.assertEqual(d2nn.propagation_grid_size, 1024)
+            self.assertEqual(d2nn.encoder_layers, 2)
+            self.assertEqual(d2nn.decoder_layers, 2)
+            self.assertEqual(d2nn.modulation, "phase_only")
+            self.assertAlmostEqual(d2nn.wavelength, 532.0e-9, places=15)
+            self.assertAlmostEqual(d2nn.pixel_size, 2.0e-6, places=15)
+            self.assertAlmostEqual(d2nn.layer_spacing, 1.50e-3, places=12)
+
+            neuron_count = d2nn.grid_size * d2nn.grid_size
+            minimum_spacing = (
+                math.sqrt(neuron_count)
+                * d2nn.pixel_size
+                * math.sqrt(4.0 * d2nn.pixel_size**2 / d2nn.wavelength**2 - 1.0)
+            )
+            self.assertAlmostEqual(minimum_spacing, 1.490e-3, delta=1.0e-6)
+            self.assertGreaterEqual(d2nn.layer_spacing, minimum_spacing)
+
+        model = OneShotOpticalGenerator(
+            PhysicsConfig(),
+            train_config.one_shot,
+            image_size=train_config.first_stage.image_size,
+        ).eval()
+        self.assertEqual(tuple(model.encoder.phase.shape), (2, 1, 100, 100))
+        self.assertEqual(tuple(model.decoder.phase.shape), (2, 1, 100, 100))
+        with torch.no_grad():
+            outputs = model(
+                torch.zeros(1, train_config.one_shot.code_dim),
+                torch.zeros(1, dtype=torch.long),
+            )
+        self.assertEqual(tuple(outputs["diffractive_camera_intensity_raw"].shape), (1, 1, 100, 100))
+        self.assertEqual(tuple(outputs["camera_plane"].shape), (1, 1, 200, 200))
+        self.assertTrue(torch.isfinite(outputs["camera_plane"]).all().item())
+
     def test_distillation_configs_load(self) -> None:
         from ldm_project.config import load_training_config
 

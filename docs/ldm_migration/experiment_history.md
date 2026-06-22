@@ -209,3 +209,9 @@ v9.10 新增 label-only template generator 与 `intensity_to_amplitude` command 
 `outputs/runs/20260611_154426_446321_train_one_shot_distill_eval` 使用 phase-only D2NN、encoder/decoder 各两层、`200 × 200` 神经元、`2.5 µm` pitch、`5 mm` 层间距。它保留为后续物理尺寸实验的行为参考，目录及其引用的 student checkpoint 和 teacher dataset 不得删除或回填。
 
 该 run 的 `paired_corr=0.82863`、`paired_dice=0.75583`，但 strict readability 未通过：最差类别 label margin 为 `0.01852 < 0.03`，background speckle ratio 为 `0.08374 > 0.07`。因此它是受保护参考证据，不是已接受基线。
+
+### 双光子打印 100 × 100 尺寸候选
+
+新尺寸候选保留 v7.2 的 phase-only、encoder/decoder 各两层结构和 `200 × 200` CMOS/loss 接口，仅把物理 D2NN 改为 `100 × 100` 神经元、`2 µm` 边长/pitch、`1024` propagation padding。有效口径为 `200 µm × 200 µm`。
+
+按最大半锥角全连接公式计算，`532 nm` 下理论最小层间距为 `1.490 mm`，配置采用 `1.50 mm`。该几何与旧 `200 × 200` 相位 checkpoint 不兼容，后续必须从头训练。截至本记录，仅完成配置、公式与 CPU 回归检查，尚无 CUDA、strict readability 或加工验收结果。

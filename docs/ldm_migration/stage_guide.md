@@ -111,6 +111,42 @@ python tools/run_v9_10_label_template_audit.py \
 
 只检查命令和配置、不启动 CUDA 作业时添加 `--dry-run`。不得把 `/tmp` checkpoint 复制或回填到旧 `outputs/` run。
 
+## Two-Photon Printing 100 × 100 Experiment
+
+该实验沿用受保护 v7.2 参考 run 的 phase-only、encoder/decoder 各两层结构，只修改 D2NN 加工几何。神经元边长与 pitch 均为 `2 µm`，`100 × 100` 神经元形成 `200 µm × 200 µm` 有效口径；数值传播 padding 保持 `1024`，CMOS/loss 接口保持 `200 × 200`。
+
+按可见光 D2NN 全连接判据，`532 nm` 波长下理论最小层间距为：
+
+`D_min = sqrt(10000) × 2 µm × sqrt(4 × (2 µm)^2 / (0.532 µm)^2 - 1) = 1.490 mm`
+
+配置采用 `1.50 mm`。旧 `200 × 200` checkpoint 的相位参数形状不兼容，必须从头训练，禁止 resize 或静默部分加载。正式训练前先在 `/tmp` 做 pre-acceptance：
+
+```bash
+source "$(conda info --base)/etc/profile.d/conda.sh" && conda activate optical-generative-models && \
+python train.py \
+  --train-config configs/train_one_shot_distill_d2nn_mnist_3k_fast200_twophoton_100x100_2um_full_connect.yaml \
+  --stage one_shot_distill --device cuda \
+  --distill-dataset outputs/runs/20260610_151747_768931_train_teacher_distill_15k_acceptance_matched_diffusion_e40_gs40_readable_split_from_full15k_cuda/artifacts/teacher_distill_dataset_readable_train.pt \
+  --distill-validation-dataset outputs/runs/20260610_151747_768931_train_teacher_distill_15k_acceptance_matched_diffusion_e40_gs40_readable_split_from_full15k_cuda/artifacts/teacher_distill_dataset_readable_val.pt \
+  --output-root /tmp/twophoton_100x100_2um \
+  --run-name twophoton_100x100_2um_full_connect
+```
+
+训练产生新 checkpoint 后，再使用配套 eval 配置和独立 test split；不得传入受保护 v7.2 checkpoint：
+
+```bash
+source "$(conda info --base)/etc/profile.d/conda.sh" && conda activate optical-generative-models && \
+python train.py \
+  --train-config configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_twophoton_100x100_2um_full_connect_strict_readability_test.yaml \
+  --stage one_shot_distill_eval --device cuda \
+  --one-shot-checkpoint /tmp/twophoton_100x100_2um/<new-run>/checkpoints/one_shot_distill_best.pt \
+  --distill-dataset outputs/runs/20260610_151747_768931_train_teacher_distill_15k_acceptance_matched_diffusion_e40_gs40_readable_split_from_full15k_cuda/artifacts/teacher_distill_dataset_readable_test.pt \
+  --output-root /tmp/twophoton_100x100_2um \
+  --run-name twophoton_100x100_2um_full_connect_eval
+```
+
+本配置尚未完成 CUDA 训练、strict readability 或实验室加工验收，不得仅凭静态几何检查称为 accepted。
+
 ## Diagnostics
 
 以下流程均为 `diagnostic-only`：它们可以定位环节问题，但不能单独证明最终 one-shot student 硬件路径可用。

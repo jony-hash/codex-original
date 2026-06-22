@@ -32,6 +32,12 @@ class RepoLayoutTests(unittest.TestCase):
             ROOT
             / "configs"
             / "eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v9_10_label_template_inverse_prototype_baseline_strict_readability_test.yaml",
+            ROOT
+            / "configs"
+            / "train_one_shot_distill_d2nn_mnist_3k_fast200_twophoton_100x100_2um_full_connect.yaml",
+            ROOT
+            / "configs"
+            / "eval_one_shot_distill_d2nn_mnist_3k_fast200_twophoton_100x100_2um_full_connect_strict_readability_test.yaml",
             ROOT / "configs" / "train_first_stage_hardclass_camera_recovery.yaml",
             ROOT / "configs" / "train_one_shot_distill_d2nn_mnist_3k_fast200.yaml",
             ROOT / "configs" / "train_one_shot_distill_d2nn_gpu_feasibility.yaml",
