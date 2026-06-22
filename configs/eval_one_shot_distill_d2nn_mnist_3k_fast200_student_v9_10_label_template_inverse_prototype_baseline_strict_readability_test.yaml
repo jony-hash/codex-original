@@ -1,0 +1,57 @@
+training:
+  mode: one_shot_distill_eval
+  batch_size: 16
+  seed: 1234
+  first_stage_epochs: 0
+  diffusion_epochs: 0
+  one_shot_epochs: 0
+first_stage:
+  image_size: 200
+physics:
+  front_path_model: relay_coherent_psf
+  front_relay_psf_sigma_px: 1.0
+  back_path_model: relay_psf
+  readout:
+    primary_plane: camera
+    relay_psf_sigma_px: 1.0
+one_shot:
+  optical_core_arch: phase_amplitude_d2nn
+  generator_e_arch: label_template
+  generator_command_transform: intensity_to_amplitude
+  generator_template_init: mnist_prototype
+  generator_base_lr_scale: 0.0
+  generator_residual_lr_scale: 0.0
+  phase_learning_rate: 0.0
+  amplitude_learning_rate: 0.0
+  distill_target_source: mnist_prototype
+  code_dim: 128
+  label_embed_dim: 32
+  hidden_dim: 256
+  num_classes: 10
+  slm_background_floor: 0.05
+  ols_kind: identity
+  metasurface_grid_size: 40
+  checkpoint_selection_metric: strict_readability
+  student_label_audit_enabled: true
+  sample_class_labels: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+  sample_repeats_per_class: 2
+  eval_samples_per_class: 10
+  eval_preview_per_class: 2
+  eval_allow_train_fallback: false
+  d2nn:
+    wavelength: 5.32e-7
+    pixel_size: 2.5e-6
+    grid_size: 200
+    propagation_grid_size: 1024
+    encoder_layers: 1
+    decoder_layers: 1
+    layer_spacing: 5.0e-4
+    modulation: phase_amplitude
+    phase_init: small
+    amplitude_logit_init: 4.0
+distillation:
+  paired_class_batches: true
+  label_audit_prototypes_per_class: 128
+  class_labels: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+  code_seed: 1234
+  code_projection_seed: 2026

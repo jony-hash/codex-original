@@ -1,0 +1,91 @@
+training:
+  mode: one_shot_distill
+  batch_size: 16
+  learning_rate: 1.0e-4
+  step_log_interval: 20
+  visual_save_epoch_interval: 2
+  validation_epoch_interval: 1
+  first_stage_epochs: 0
+  diffusion_epochs: 0
+  one_shot_epochs: 5
+
+data:
+  dataset: mnist
+  root: data
+  download: true
+  validation_fraction: 0.1
+  validation_split_seed: 42
+  subset_size: 100
+  subset_seed: 42
+  num_workers: 0
+  pin_memory: true
+
+first_stage:
+  type: optical_path_vae
+  image_size: 200
+  latent_channels: 1
+  encoder_channels: [64, 128, 256]
+  decoder_tail_channels: 64
+  primary_output: camera
+
+diffusion:
+  timesteps: 1000
+  beta_start: 1.0e-4
+  beta_end: 0.02
+  base_channels: 64
+  channel_multipliers: [1, 2, 4]
+  num_res_blocks: 2
+  attention_levels: [1, 2]
+  num_heads: 4
+  context_dim: 128
+  num_classes: 10
+  cond_dropout_prob: 0.1
+  latent_source: mu
+  guidance_scale: 2.0
+
+one_shot:
+  optical_core_arch: diffractive_phase_only
+  # ── D2NN 全局参数 ──
+  d2nn:
+    wavelength: 5.32e-7
+    pixel_size: 2.5e-6
+    grid_size: 200
+    propagation_grid_size: 1024
+    encoder_layers: 2
+    decoder_layers: 2
+    layer_spacing: 0.005
+    modulation: phase_only
+    phase_init: uniform_pi
+  # ────────────────────
+  code_dim: 128
+  label_embed_dim: 32
+  hidden_dim: 256
+  num_classes: 10
+  slm_background_floor: 0.05
+  ols_kind: identity
+  metasurface_grid_size: 40
+  layer_spacing: 0.003
+  recon_foreground_threshold: 0.05
+  recon_foreground_weight: 3.0
+  recon_background_weight: 1.0
+  class_recon_weight_labels: [3, 4, 5, 6, 7, 8, 9]
+  class_recon_weight: 2.0
+  shape_loss_weight: 5.0e-2
+  edge_loss_weight: 2.0e-2
+  slm_smoothness_weight: 1.0e-4
+  camera_saturation_weight: 1.0e-3
+  camera_artifact_weight: 1.0e-3
+  camera_readability_weight: 0.3
+  code_diversity_weight: 3.0e-2
+  teacher_pairwise_diversity_weight: 5.0e-3
+  diversity_min_teacher_mse: 1.0e-4
+  checkpoint_selection_metric: quality
+  sample_class_labels: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+  sample_repeats_per_class: 2
+
+distillation:
+  samples_per_class: 300
+  paired_class_batches: true
+  class_labels: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+  code_seed: 1234
+  code_projection_seed: 2026

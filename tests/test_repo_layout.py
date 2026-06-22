@@ -11,18 +11,34 @@ ROOT = Path(__file__).resolve().parents[1]
 class RepoLayoutTests(unittest.TestCase):
     def test_expected_scaffold_files_exist(self) -> None:
         expected = [
+            ROOT / "README.md",
             ROOT / "pyproject.toml",
             ROOT / "pyrightconfig.json",
             ROOT / "train.py",
             ROOT / "configs" / "physics_cfg.yaml",
             ROOT / "configs" / "train_ldm.yaml",
             ROOT / "configs" / "export_teacher_distill_mnist_3k_fast200.yaml",
+            ROOT / "configs" / "export_teacher_distill_mnist_15k_fast200.yaml",
             ROOT / "configs" / "filter_teacher_distill_mnist_3k_fast200_top2k.yaml",
+            ROOT / "configs" / "filter_teacher_distill_mnist_3k_fast200_label_strict_top1k.yaml",
+            ROOT / "configs" / "split_teacher_distill_readable_top1k_80_10_10.yaml",
+            ROOT / "configs" / "audit_one_shot_d2nn_v8_7a4_optical_identity_chain.yaml",
+            ROOT
+            / "configs"
+            / "audit_one_shot_d2nn_v9_10_label_template_inverse_prototype_baseline.yaml",
+            ROOT
+            / "configs"
+            / "train_one_shot_distill_d2nn_mnist_3k_fast200_student_v9_10_label_template_inverse_prototype_baseline.yaml",
+            ROOT
+            / "configs"
+            / "eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v9_10_label_template_inverse_prototype_baseline_strict_readability_test.yaml",
+            ROOT / "configs" / "train_first_stage_hardclass_camera_recovery.yaml",
             ROOT / "configs" / "train_one_shot_distill_d2nn_mnist_3k_fast200.yaml",
             ROOT / "configs" / "train_one_shot_distill_d2nn_gpu_feasibility.yaml",
             ROOT / "configs" / "train_one_shot_distill_d2nn_long.yaml",
             ROOT / "configs" / "train_one_shot_d2nn_smoke.yaml",
             ROOT / "docs" / "ldm_migration" / "single_shot_ldm_distillation.md",
+            ROOT / "docs" / "ldm_migration" / "stage_guide.md",
             ROOT / "docs" / "ldm_migration" / "acceptance_baseline_c99f559.json",
             ROOT / "docs" / "ldm_migration" / "acceptance_baseline_bs128_matched_diffusion.json",
             ROOT / "docs" / "ldm_migration" / "acceptance_seed_sweep_ebba8e9.json",
@@ -57,11 +73,13 @@ class RepoLayoutTests(unittest.TestCase):
             ROOT / "src" / "ldm_project" / "one_shot_eval.py",
             ROOT / "src" / "ldm_project" / "one_shot_eval_artifacts.py",
             ROOT / "src" / "ldm_project" / "one_shot_eval_metrics.py",
+            ROOT / "src" / "ldm_project" / "one_shot_identity_audit.py",
             ROOT / "src" / "ldm_project" / "one_shot_quality.py",
             ROOT / "src" / "ldm_project" / "one_shot_stage_common.py",
             ROOT / "src" / "ldm_project" / "one_shot_training.py",
             ROOT / "src" / "ldm_project" / "one_shot_training_utils.py",
             ROOT / "src" / "ldm_project" / "teacher_distill.py",
+            ROOT / "src" / "ldm_project" / "teacher_fault_localization.py",
             ROOT / "src" / "ldm_project" / "teacher_sampling.py",
             ROOT / "src" / "ldm_project" / "teacher_stages.py",
             ROOT / "src" / "ldm_project" / "teacher_training.py",
@@ -70,6 +88,7 @@ class RepoLayoutTests(unittest.TestCase):
             ROOT / "src" / "ldm_project" / "eval_reports.py",
             ROOT / "tests" / "test_teacher_training_utils.py",
             ROOT / "tests" / "test_eval_reports.py",
+            ROOT / "tools" / "run_v9_10_label_template_audit.py",
         ]
         for path in expected:
             self.assertTrue(path.exists(), f"missing expected file: {path}")
@@ -146,6 +165,16 @@ class RepoLayoutTests(unittest.TestCase):
         self.assertIn("diffractive_phase_only", content)
         self.assertIn("N = 200", content)
         self.assertIn("d = 5.0 mm", content)
+
+    def test_one_shot_distill_train_and_eval_configs_do_not_use_relay_identity(self) -> None:
+        config_dir = ROOT / "configs"
+        checked = 0
+        for pattern in ("train_one_shot_distill*.yaml", "eval_one_shot_distill*.yaml"):
+            for path in config_dir.glob(pattern):
+                checked += 1
+                content = path.read_text(encoding="utf-8")
+                self.assertNotIn("relay_identity", content, f"{path.name} should use free-space D2NN optics")
+        self.assertGreater(checked, 0)
 
     def test_removed_historical_docs_are_absent(self) -> None:
         removed_docs = [

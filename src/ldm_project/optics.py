@@ -108,6 +108,32 @@ def _sample_complex_field_to_fixed_grid(field: torch.Tensor, scale: float) -> to
     return torch.complex(real, imag)
 
 
+def _gaussian_blur_complex_field(field: torch.Tensor, sigma_px: float) -> torch.Tensor:
+    """Apply a Gaussian blur independently to the real and imag parts of a complex field.
+
+    For sigma=0 the field is returned unchanged (identity).
+    The same real-valued kernel is applied to both channels so the PSF
+    preserves the coherent nature of the field (linear in complex amplitude).
+
+    Args:
+        field: complex tensor (B, C, H, W) in complex64/complex128.
+        sigma_px: standard deviation in pixels.
+    Returns:
+        Blurred complex field, same shape and dtype as input.
+    """
+    if sigma_px <= 1e-6:
+        return field
+    radius = max(1, int(math.ceil(3.0 * sigma_px)))
+    coords = torch.arange(-radius, radius + 1, device=field.device, dtype=field.real.dtype)
+    kernel_1d = torch.exp(-0.5 * (coords / sigma_px).pow(2))
+    kernel_1d = kernel_1d / kernel_1d.sum()
+    kernel_2d = torch.outer(kernel_1d, kernel_1d)
+    kernel = kernel_2d.view(1, 1, 2 * radius + 1, 2 * radius + 1)
+    real_blurred = F.conv2d(field.real, kernel, padding=radius, groups=field.shape[1])
+    imag_blurred = F.conv2d(field.imag, kernel, padding=radius, groups=field.shape[1])
+    return torch.complex(real_blurred, imag_blurred)
+
+
 def _gaussian_blur_intensity(intensity: torch.Tensor, sigma_px: float) -> torch.Tensor:
     if sigma_px <= 1e-6:
         return intensity
@@ -178,6 +204,7 @@ class FrontOpticalPath(nn.Module):
     def __init__(self, physics: PhysicsConfig) -> None:
         super().__init__()
         self.physics = physics
+        self.front_path_model = physics.front_path_model
 
         self.m1 = IdealIdentityElement("m1")
         self.bs_in = IdealIdentityElement("bs_in")
@@ -187,6 +214,23 @@ class FrontOpticalPath(nn.Module):
         self.lightgen_input = IdealIdentityElement("lightgen_input")
 
     def forward_field(self, slm_transfer: torch.Tensor, propagation_method: str = "fresnel") -> torch.Tensor:
+        if self.front_path_model == "relay_identity":
+            # Ideal relay: plane-wave illumination + amplitude SLM modulation only.
+            # No free-space propagation — the SLM pattern is imaged directly to the
+            # encoder input plane via an ideal 4f relay system.
+            field = torch.ones_like(slm_transfer, dtype=torch.complex64)
+            return self.slm(slm_transfer, field)
+
+        if self.front_path_model == "relay_coherent_psf":
+            # Coherent PSF relay: same as relay_identity (plane-wave + SLM) but
+            # then apply a Gaussian blur to the complex field (real/imag separately).
+            # sigma=0 is strictly equivalent to relay_identity.
+            sigma_px = self.physics.front_relay_psf_sigma_px
+            field = torch.ones_like(slm_transfer, dtype=torch.complex64)
+            field = self.slm(slm_transfer, field)
+            return _gaussian_blur_complex_field(field, sigma_px)
+
+        # Default free-space front path.
         macro = self.physics.macro_optics
         optics = self.physics.optics
         propagate = _resolve_propagator(propagation_method)
@@ -216,33 +260,90 @@ class BackOpticalPath(nn.Module):
         self.physics = physics
         self.propagation_method = propagation_method
         _resolve_propagator(propagation_method)
-        macro = physics.macro_optics
         readout = physics.readout
-        if macro.dist_lg_to_relay_lens == 0.0:
-            raise ValueError("macro_optics.dist_lg_to_relay_lens must be non-zero for camera imaging.")
         if not 0.0 <= readout.camera_magnification_blend <= 1.0:
             raise ValueError("readout.camera_magnification_blend must be within [0, 1].")
         if readout.camera_blur_gain < 0.0:
             raise ValueError("readout.camera_blur_gain must be non-negative.")
 
-        lens_denominator = (1.0 / macro.f_relay) - (1.0 / macro.dist_lg_to_relay_lens)
-        if math.isclose(lens_denominator, 0.0, rel_tol=0.0, abs_tol=1e-12):
-            raise ValueError("macro_optics.dist_lg_to_relay_lens must differ from macro_optics.f_relay.")
-        self.focus_image_distance = 1.0 / lens_denominator
-        if self.focus_image_distance <= 0.0:
-            raise ValueError("Relay lens image distance must be positive for camera imaging.")
-
-        self.camera_magnification = -macro.dist_relay_lens_to_cmos / macro.dist_lg_to_relay_lens
-        self.camera_magnification_blend = readout.camera_magnification_blend
-        self.camera_blur_gain = readout.camera_blur_gain
+        if physics.back_path_model in {"relay_identity", "relay_psf"}:
+            # relay_identity/relay_psf: no free-space propagation or lens.
+            # All macro-optic validations are skipped — distances not used.
+            self.focus_image_distance = 0.0
+            self.camera_magnification = 1.0
+            self.camera_magnification_blend = readout.camera_magnification_blend
+            self.camera_blur_gain = readout.camera_blur_gain
+        else:
+            macro = physics.macro_optics
+            if macro.dist_lg_to_relay_lens == 0.0:
+                raise ValueError("macro_optics.dist_lg_to_relay_lens must be non-zero for camera imaging.")
+            lens_denominator = (1.0 / macro.f_relay) - (1.0 / macro.dist_lg_to_relay_lens)
+            if math.isclose(lens_denominator, 0.0, rel_tol=0.0, abs_tol=1e-12):
+                raise ValueError("macro_optics.dist_lg_to_relay_lens must differ from macro_optics.f_relay.")
+            self.focus_image_distance = 1.0 / lens_denominator
+            if self.focus_image_distance <= 0.0:
+                raise ValueError("Relay lens image distance must be positive for camera imaging.")
+            self.camera_magnification = -macro.dist_relay_lens_to_cmos / macro.dist_lg_to_relay_lens
+            self.camera_magnification_blend = readout.camera_magnification_blend
+            self.camera_blur_gain = readout.camera_blur_gain
 
     def forward(self, chip_field: torch.Tensor) -> dict[str, torch.Tensor]:
+        normalize_percentile = self.physics.readout.normalize_percentile
+        field = chip_field.to(torch.complex64)
+
+        if self.physics.back_path_model == "relay_identity":
+            # Ideal relay / readout: chip intensity imaged directly to camera plane,
+            # no free-space propagation, no lens phase, no defocus blur.
+            camera_intensity_raw = field.abs().pow(2)
+            camera_plane_loss = normalize_real_intensity(camera_intensity_raw, normalize_percentile, clamp=False)
+            camera_plane = camera_plane_loss.clamp(0.0, 1.0)
+            # Probe plane mirrors camera plane as ideal-readout diagnostic.
+            probe_plane_loss = camera_plane_loss
+            return {
+                "chip_amplitude": field.abs(),
+                "chip_phase": torch.angle(field),
+                "probe_plane": camera_plane,
+                "probe_plane_loss": probe_plane_loss,
+                "camera_field_real": field.real,
+                "camera_field_imag": field.imag,
+                "camera_phase": torch.angle(field),
+                "camera_field_available": True,
+                "camera_phase_available": True,
+                "camera_intensity_raw": camera_intensity_raw,
+                "camera_plane": camera_plane,
+                "camera_plane_loss": camera_plane_loss,
+            }
+
+        if self.physics.back_path_model == "relay_psf":
+            chip_intensity_raw = field.abs().pow(2)
+            camera_intensity_raw = _gaussian_blur_intensity(
+                chip_intensity_raw,
+                self.physics.readout.relay_psf_sigma_px,
+            )
+            camera_plane_loss = normalize_real_intensity(camera_intensity_raw, normalize_percentile, clamp=False)
+            camera_plane = camera_plane_loss.clamp(0.0, 1.0)
+            camera_phase = torch.zeros_like(camera_intensity_raw)
+            camera_amplitude = camera_intensity_raw.clamp_min(0.0).sqrt()
+            return {
+                "chip_amplitude": field.abs(),
+                "chip_phase": torch.angle(field),
+                "probe_plane": camera_plane,
+                "probe_plane_loss": camera_plane_loss,
+                "camera_field_real": camera_amplitude,
+                "camera_field_imag": torch.zeros_like(camera_amplitude),
+                "camera_phase": camera_phase,
+                "camera_field_available": False,
+                "camera_phase_available": False,
+                "camera_intensity_raw": camera_intensity_raw,
+                "camera_plane": camera_plane,
+                "camera_plane_loss": camera_plane_loss,
+            }
+
+        # --- free_space (default) ---
         macro = self.physics.macro_optics
         optics = self.physics.optics
-        normalize_percentile = self.physics.readout.normalize_percentile
         propagate = _resolve_propagator(self.propagation_method)
 
-        field = chip_field.to(torch.complex64)
         probe_field = propagate(field, macro.dist_lg_to_relay_lens, optics.wavelength, optics.pixel_size)
         probe_plane_loss = normalize_intensity(probe_field, normalize_percentile, clamp=False)
         lens_field = apply_thin_lens(probe_field, macro.f_relay, optics.wavelength, optics.pixel_size)
@@ -264,6 +365,8 @@ class BackOpticalPath(nn.Module):
             "camera_field_real": camera_field.real,
             "camera_field_imag": camera_field.imag,
             "camera_phase": torch.angle(camera_field),
+            "camera_field_available": True,
+            "camera_phase_available": True,
             "camera_intensity_raw": camera_intensity,
             "camera_plane": camera_plane_loss.clamp(0.0, 1.0),
             "camera_plane_loss": camera_plane_loss,

@@ -175,9 +175,24 @@ def parse_args() -> argparse.Namespace:
         "For --stage one_shot_distill: optional model-only warm-start (fresh optimizer, epoch starts at 1).",
     )
     parser.add_argument(
+        "--one-shot-generator-checkpoint",
+        default=None,
+        help="Optional one_shot_distill warm-start for generator_e.* parameters only.",
+    )
+    parser.add_argument(
+        "--one-shot-optical-checkpoint",
+        default=None,
+        help="Optional one_shot_distill warm-start for optical encoder/decoder parameters only.",
+    )
+    parser.add_argument(
         "--distill-dataset",
         default=None,
         help="Required for --stage one_shot_distill to load offline teacher targets.",
+    )
+    parser.add_argument(
+        "--distill-validation-dataset",
+        default=None,
+        help="Optional held-out distillation validation bundle for --stage one_shot_distill.",
     )
     parser.add_argument(
         "--eval-tensor-bundle",
@@ -296,6 +311,8 @@ def main() -> None:
     args = parse_args()
     physics = load_physics_config(args.physics_config)
     train_cfg = load_training_config(args.train_config)
+    if train_cfg.physics is not None:
+        physics = train_cfg.physics
     apply_cli_overrides(train_cfg, args)
 
     checkpoint_resolution = resolve_final_pt_stage_checkpoints(
@@ -380,6 +397,7 @@ def main() -> None:
             train_bundle,
             train_cfg.diffusion.num_classes,
             device,
+            allow_train_reference_fallback=True,
         )
     if is_teacher_diffusion_mode(train_cfg.mode):
         (
@@ -394,6 +412,7 @@ def main() -> None:
             train_cfg.diffusion.num_classes,
             device,
             sample_repeats_per_class=2,
+            allow_train_reference_fallback=True,
         )
 
     save_visual_config_snapshots(
@@ -477,12 +496,12 @@ def main() -> None:
         )
     )
 
-    print(f"train dataset size: {train_bundle.effective_size}/{train_bundle.total_size}")
+    print(f"mnist auxiliary train dataset size: {train_bundle.effective_size}/{train_bundle.total_size}")
     if validation_bundle is None:
-        print("validation dataset size: disabled")
+        print("mnist auxiliary validation dataset size: disabled")
     else:
-        print(f"validation dataset size: {validation_bundle.effective_size}/{validation_bundle.total_size}")
-    print(f"dataset total size: {dataset_splits.total_size}")
+        print(f"mnist auxiliary validation dataset size: {validation_bundle.effective_size}/{validation_bundle.total_size}")
+    print(f"mnist auxiliary dataset total size: {dataset_splits.total_size}")
     print(f"run outputs saved to: {run_manager.run_dir}")
 
 

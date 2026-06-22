@@ -108,7 +108,9 @@ def _d2nn_stack_diagnostics(sample_outputs, specs) -> dict[str, dict[str, dict[s
             continue
         for layer_index in range(layer_count):
             amplitude_label = f"{label_prefix} L{layer_index + 1}"
-            phase_label_prefix = label_prefix.replace("mask amp = 1", "mask phase")
+            phase_label_prefix = label_prefix.replace("transmittance |t|", "phase arg(t)")
+            if phase_label_prefix == label_prefix:
+                phase_label_prefix = label_prefix.replace("mask amplitude", "mask phase")
             phase_label = f"{phase_label_prefix} L{layer_index + 1}"
             if amplitude_tensor.ndim == 5:
                 amplitude_layer = amplitude_tensor[:, layer_index]
@@ -146,6 +148,15 @@ def _phase_only_mask_checks(sample_outputs) -> dict[str, dict[str, object]]:
             "allclose_to_one_atol_1e-6": bool(delta.max().item() <= 1.0e-6),
         }
     return checks
+
+
+def _d2nn_mask_modulation(sample_outputs) -> str:
+    checks = _phase_only_mask_checks(sample_outputs)
+    if not checks:
+        return "unknown"
+    if all(check["allclose_to_one_atol_1e-6"] for check in checks.values()):
+        return "phase_only"
+    return "phase_amplitude"
 
 
 
@@ -287,6 +298,7 @@ def _d2nn_crop_energy_retention(sample_outputs) -> dict[str, dict[str, object]]:
 def build_one_shot_d2nn_diagnostics(sample_outputs) -> dict[str, object]:
     layers = _d2nn_stack_diagnostics(sample_outputs, D2NN_LAYER_VISUALIZATION_SPECS)
     masks = _d2nn_stack_diagnostics(sample_outputs, D2NN_MASK_VISUALIZATION_SPECS)
+    mask_modulation = _d2nn_mask_modulation(sample_outputs)
     identity_checks = {}
     if "ols_input_amplitude" in sample_outputs and "ols_output_amplitude" in sample_outputs:
         identity_checks["ols_input_to_output_amplitude"] = _tensor_diff_summary(
@@ -300,8 +312,13 @@ def build_one_shot_d2nn_diagnostics(sample_outputs) -> dict[str, object]:
         )
     available = bool(layers["amplitude"] or layers["phase"] or masks["amplitude"] or masks["phase"])
     return {
-        "view": "d2nn_phase_only_feasibility",
+        "view": (
+            "d2nn_phase_amplitude_feasibility"
+            if mask_modulation == "phase_amplitude"
+            else "d2nn_phase_only_feasibility"
+        ),
         "available": available,
+        "mask_modulation": mask_modulation,
         "layers": layers,
         "masks": masks,
         "energy_retention": _d2nn_energy_retention(sample_outputs),

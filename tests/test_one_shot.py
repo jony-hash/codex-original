@@ -81,6 +81,18 @@ def _dummy_one_shot_outputs(batch_size: int, image_size: int, grid_size: int):
     }
 
 
+def _assert_nonblank_phase_columns_are_labeled(test_case, tensor_map: dict[str, object]) -> None:
+    import torch
+
+    for label, value in tensor_map.items():
+        if not hasattr(value, "detach"):
+            continue
+        tensor = value.detach().float()
+        if torch.isnan(tensor).all().item():
+            continue
+        test_case.assertIn("phase", label, f"nonblank phase column must say phase: {label}")
+
+
 @unittest.skipUnless(importlib.util.find_spec("torch"), "torch is required for one-shot tests")
 class OneShotOpticalStudentTests(unittest.TestCase):
     def test_generator_outputs_amplitude_slm_command_on_cuda(self) -> None:
@@ -111,6 +123,219 @@ class OneShotOpticalStudentTests(unittest.TestCase):
         self.assertTrue(torch.all(slm_outputs["slm_amplitude"] <= 1.0).item())
         self.assertTrue(torch.allclose(slm_outputs["slm_phase"], torch.zeros_like(command)))
         self.assertTrue(torch.is_complex(slm_outputs["slm_transfer"]))
+
+    def test_template_residual_generator_zero_scale_matches_base(self) -> None:
+        import torch
+
+        from ldm_project.one_shot import ElectronicGeneratorE
+
+        generator = ElectronicGeneratorE(
+            image_size=8,
+            grid_size=4,
+            code_dim=5,
+            num_classes=3,
+            label_embed_dim=4,
+            hidden_dim=12,
+            arch="template_residual_mlp",
+            code_residual_scale=0.0,
+        )
+        code = torch.randn(2, 5)
+        labels = torch.tensor([0, 2], dtype=torch.long)
+
+        command, diagnostics = generator.forward_with_diagnostics(code, labels)
+        base = diagnostics["generator_base_command"]
+
+        self.assertTrue(torch.allclose(command, base))
+        self.assertEqual(tuple(diagnostics["generator_residual_map"].shape), (2, 1, 8, 8))
+        self.assertEqual(tuple(diagnostics["generator_residual_abs_mean"].shape), (2,))
+
+    def test_label_template_inverse_outputs_actual_command_and_ignores_code(self) -> None:
+        import torch
+
+        from ldm_project.one_shot import ElectronicGeneratorE, IdealAmplitudeSLMModel
+
+        generator = ElectronicGeneratorE(
+            image_size=4,
+            grid_size=4,
+            code_dim=5,
+            num_classes=2,
+            label_embed_dim=3,
+            hidden_dim=8,
+            arch="label_template",
+            command_transform="intensity_to_amplitude",
+            background_floor=0.05,
+            template_init="mnist_prototype",
+        )
+        templates = torch.stack(
+            [
+                torch.linspace(0.0, 1.0, 16).reshape(1, 4, 4),
+                torch.linspace(1.0, 0.0, 16).reshape(1, 4, 4),
+            ]
+        )
+        generator.initialize_label_templates(templates)
+        labels = torch.tensor([0, 0, 1])
+        code_a = torch.randn(3, 5)
+        code_b = torch.randn(3, 5)
+
+        command_a, diagnostics_a = generator.forward_with_diagnostics(code_a, labels)
+        command_b, diagnostics_b = generator.forward_with_diagnostics(code_b, labels)
+        slm_intensity = IdealAmplitudeSLMModel(0.05)(command_a)["slm_amplitude"].square()
+
+        torch.testing.assert_close(command_a, command_b, rtol=0.0, atol=0.0)
+        torch.testing.assert_close(
+            diagnostics_a["generator_desired_intensity"],
+            diagnostics_b["generator_desired_intensity"],
+            rtol=0.0,
+            atol=0.0,
+        )
+        self.assertTrue(torch.equal(command_a[0], command_a[1]))
+        self.assertFalse(torch.equal(command_a[0], command_a[2]))
+        expected_intensity = templates.index_select(0, labels).clamp_min(0.05**2)
+        torch.testing.assert_close(slm_intensity, expected_intensity, atol=2.0e-6, rtol=0.0)
+        self.assertEqual(int(diagnostics_a["generator_command_transform"].item()), 1)
+        self.assertFalse(bool(diagnostics_a["generator_code_conditioning_active"].item()))
+
+    def test_label_template_rejects_mlp_checkpoint_structure(self) -> None:
+        from ldm_project.config import OneShotConfig, PhysicsConfig
+        from ldm_project.one_shot import (
+            ONE_SHOT_MODEL_VERSION,
+            OneShotOpticalGenerator,
+            load_one_shot_checkpoint,
+        )
+
+        source = OneShotOpticalGenerator(
+            PhysicsConfig(),
+            OneShotConfig(optical_core_arch="camera_direct_clean_oracle", code_dim=4, num_classes=2),
+            image_size=4,
+        )
+        target = OneShotOpticalGenerator(
+            PhysicsConfig(),
+            OneShotConfig(
+                optical_core_arch="camera_direct_clean_oracle",
+                generator_e_arch="label_template",
+                generator_command_transform="intensity_to_amplitude",
+                generator_template_init="mnist_prototype",
+                distill_target_source="mnist_prototype",
+                code_dim=4,
+                num_classes=2,
+            ),
+            image_size=4,
+        )
+        payload = {"model_version": ONE_SHOT_MODEL_VERSION, "model_state_dict": source.state_dict()}
+
+        with self.assertRaisesRegex(ValueError, "exact model match"):
+            load_one_shot_checkpoint(target, payload)
+
+    def test_label_template_checkpoint_is_self_contained_for_inference(self) -> None:
+        import torch
+
+        from ldm_project.config import OneShotConfig, PhysicsConfig
+        from ldm_project.one_shot import (
+            ONE_SHOT_MODEL_VERSION,
+            OneShotOpticalGenerator,
+            load_one_shot_checkpoint,
+        )
+
+        config = OneShotConfig(
+            optical_core_arch="camera_direct_clean_oracle",
+            generator_e_arch="label_template",
+            generator_command_transform="intensity_to_amplitude",
+            generator_template_init="mnist_prototype",
+            distill_target_source="mnist_prototype",
+            code_dim=4,
+            num_classes=2,
+        )
+        source = OneShotOpticalGenerator(PhysicsConfig(), config, image_size=4)
+        target = OneShotOpticalGenerator(PhysicsConfig(), config, image_size=4)
+        templates = torch.stack([torch.eye(4).unsqueeze(0), torch.eye(4).flip(0).unsqueeze(0)])
+        source.generator_e.initialize_label_templates(templates)
+        payload = {"model_version": ONE_SHOT_MODEL_VERSION, "model_state_dict": source.state_dict()}
+        load_one_shot_checkpoint(target, payload)
+        code = torch.randn(2, 4)
+        labels = torch.tensor([0, 1])
+
+        torch.testing.assert_close(
+            source(code, labels)["slm_command"],
+            target(code, labels)["slm_command"],
+            rtol=0.0,
+            atol=0.0,
+        )
+
+    def test_label_template_desired_intensity_only_appears_in_intensity_visuals(self) -> None:
+        import torch
+
+        from ldm_project.one_shot_visualization import (
+            build_one_shot_shared_scale_visualization_tensors,
+            build_one_shot_visualization_tensors,
+        )
+
+        outputs = _dummy_one_shot_outputs(batch_size=2, image_size=8, grid_size=4)
+        desired = torch.rand(2, 1, 8, 8)
+        outputs["generator_desired_intensity"] = desired
+        outputs["generator_command_transform"] = torch.tensor(1)
+        outputs["generator_code_conditioning_active"] = torch.tensor(False)
+        reference = torch.rand(2, 1, 8, 8)
+
+        visuals = build_one_shot_visualization_tensors(reference, outputs)
+        shared = build_one_shot_shared_scale_visualization_tensors(reference, outputs)
+
+        self.assertTrue(torch.equal(visuals["intensity"]["generator desired intensity"], desired))
+        self.assertNotIn("generator desired intensity", visuals["amplitude"])
+        self.assertNotIn("generator desired intensity", visuals["phase"])
+        self.assertEqual(
+            shared["diagnostics"]["generator"]["command_transform"],
+            "intensity_to_amplitude",
+        )
+        self.assertFalse(shared["diagnostics"]["generator"]["code_conditioning_active"])
+
+    def test_residual_visualization_builder_skips_missing_residual_keys(self) -> None:
+        import torch
+
+        from ldm_project.one_shot_visualization import build_one_shot_distill_residual_visualization_tensors
+
+        reference = torch.zeros(2, 1, 8, 8)
+        outputs = {
+            "camera_plane": torch.ones(2, 1, 8, 8),
+            "slm_amplitude": torch.ones(2, 1, 8, 8),
+        }
+
+        self.assertIsNone(build_one_shot_distill_residual_visualization_tensors(reference, outputs))
+
+    def test_residual_visualization_builder_outputs_expected_columns(self) -> None:
+        import torch
+
+        from ldm_project.one_shot_visualization import build_one_shot_distill_residual_visualization_tensors
+        from ldm_project.visualization_core import VISUALIZATION_INTENSITY_KEY
+
+        reference = torch.zeros(2, 1, 8, 8)
+        base = torch.full((2, 1, 8, 8), 0.4)
+        residual = torch.linspace(-1.0, 1.0, steps=128).reshape(2, 1, 8, 8)
+        outputs = {
+            "camera_plane": (base + 0.05 * residual).clamp(0.0, 1.0),
+            "generator_base_command": base,
+            "generator_residual_map": residual,
+            "slm_amplitude": torch.ones(2, 1, 8, 8),
+        }
+
+        visualization = build_one_shot_distill_residual_visualization_tensors(reference, outputs)
+
+        self.assertIsNotNone(visualization)
+        amplitude = visualization[VISUALIZATION_INTENSITY_KEY]
+        self.assertEqual(
+            tuple(amplitude.keys()),
+            (
+                "reference/prototype",
+                "student raw",
+                "generator_base_command",
+                "generator_residual_map",
+                "abs residual",
+                "student-base diff",
+            ),
+        )
+        for tensor in amplitude.values():
+            self.assertEqual(tuple(tensor.shape), (2, 1, 8, 8))
+            self.assertGreaterEqual(float(tensor.min().item()), 0.0)
+            self.assertLessEqual(float(tensor.max().item()), 1.0)
 
     def test_one_shot_forward_shapes_are_finite_on_cuda(self) -> None:
         import torch
@@ -285,6 +510,55 @@ class OneShotOpticalStudentTests(unittest.TestCase):
         self.assertIsNotNone(model.decoder.phase.grad)
         self.assertTrue(any(param.grad is not None for param in model.generator_e.parameters()))
 
+    def test_readout_primary_plane_rejects_unknown_value(self) -> None:
+        from ldm_project.config import ReadoutConfig
+
+        with self.assertRaisesRegex(ValueError, "readout.primary_plane"):
+            ReadoutConfig(primary_plane="not_a_plane")
+
+    def test_direct_camera_oracle_forward_is_eval_compatible_on_cpu(self) -> None:
+        import torch
+
+        from ldm_project.config import OneShotConfig, PhysicsConfig
+        from ldm_project.one_shot import OneShotOpticalGenerator
+        from ldm_project.training import one_shot_loss
+
+        config = OneShotConfig(
+            optical_core_arch="camera_direct_clean_oracle",
+            code_dim=8,
+            label_embed_dim=4,
+            hidden_dim=16,
+            num_classes=3,
+            metasurface_grid_size=8,
+        )
+        model = OneShotOpticalGenerator(PhysicsConfig(), config, image_size=16)
+        code = torch.randn(2, config.code_dim)
+        labels = torch.tensor([0, 2])
+        target = torch.rand(2, 1, 16, 16)
+
+        outputs = model(code, labels)
+
+        for key in (
+            "x_hat",
+            "camera_plane",
+            "camera_plane_loss",
+            "slm_command",
+            "slm_amplitude",
+            "slm_phase",
+            "encoder_input_amplitude",
+            "encoded_amplitude",
+            "ols_output_amplitude",
+            "decoder_output_amplitude",
+            "chip_amplitude",
+            "probe_plane",
+        ):
+            self.assertIn(key, outputs)
+            self.assertEqual(tuple(outputs[key].shape), (2, 1, 16, 16), key)
+            self.assertTrue(torch.isfinite(outputs[key]).all().item(), key)
+        losses = one_shot_loss(outputs, target, clean_target_enabled=True, clean_foreground_dice_weight=0.1)
+        losses["loss"].backward()
+        self.assertTrue(any(param.grad is not None for param in model.parameters()))
+
     def test_diffractive_phase_initialization_modes(self) -> None:
         import torch
 
@@ -340,6 +614,270 @@ class OneShotOpticalStudentTests(unittest.TestCase):
                 image_size=8,
             )
 
+    def test_phase_amplitude_d2nn_forward_exposes_attenuation_masks(self) -> None:
+        import torch
+
+        from ldm_project.config import D2NNConfig, OneShotConfig, PhysicsConfig
+        from ldm_project.d2nn_diagnostics import build_one_shot_d2nn_diagnostics
+        from ldm_project.one_shot import OneShotOpticalGenerator
+
+        model = OneShotOpticalGenerator(
+            PhysicsConfig(),
+            OneShotConfig(
+                optical_core_arch="phase_amplitude_d2nn",
+                d2nn=D2NNConfig(
+                    grid_size=8,
+                    propagation_grid_size=8,
+                    encoder_layers=2,
+                    decoder_layers=2,
+                    modulation="phase_amplitude",
+                    amplitude_logit_init=2.0,
+                ),
+                code_dim=4,
+                label_embed_dim=2,
+                hidden_dim=8,
+                num_classes=3,
+                metasurface_grid_size=4,
+            ),
+            image_size=8,
+        )
+        code = torch.randn(2, 4)
+        labels = torch.tensor([0, 2], dtype=torch.long)
+
+        outputs = model(code, labels)
+        mask_amplitude = outputs["diffractive_encoder_mask_amplitude"]
+
+        self.assertEqual(tuple(outputs["camera_plane"].shape), (2, 1, 8, 8))
+        self.assertTrue(torch.isfinite(outputs["camera_plane"]).all().item())
+        self.assertEqual(tuple(mask_amplitude.shape), (2, 1, 8, 8))
+        self.assertTrue(torch.all(mask_amplitude >= 0.0).item())
+        self.assertTrue(torch.all(mask_amplitude <= 1.0).item())
+        self.assertFalse(torch.allclose(mask_amplitude, torch.ones_like(mask_amplitude)))
+        self.assertAlmostEqual(float(model.encoder.amplitude_logits.mean().item()), 2.0, places=6)
+        self.assertAlmostEqual(
+            float(mask_amplitude.mean().item()),
+            float(torch.sigmoid(torch.tensor(2.0))),
+            places=6,
+        )
+        diagnostics = build_one_shot_d2nn_diagnostics(outputs)
+        self.assertEqual(diagnostics["view"], "d2nn_phase_amplitude_feasibility")
+        self.assertEqual(diagnostics["mask_modulation"], "phase_amplitude")
+
+    def test_phase_amplitude_d2nn_rejects_phase_only_modulation(self) -> None:
+        from ldm_project.config import D2NNConfig, OneShotConfig, PhysicsConfig
+        from ldm_project.one_shot import OneShotOpticalGenerator
+
+        with self.assertRaisesRegex(ValueError, "phase_amplitude"):
+            OneShotOpticalGenerator(
+                PhysicsConfig(),
+                OneShotConfig(
+                    optical_core_arch="phase_amplitude_d2nn",
+                    d2nn=D2NNConfig(grid_size=8, propagation_grid_size=8, modulation="phase_only"),
+                    code_dim=4,
+                    label_embed_dim=2,
+                    hidden_dim=8,
+                ),
+                image_size=8,
+            )
+
+    def test_phase_amplitude_optimizer_uses_independent_amplitude_learning_rate(self) -> None:
+        from ldm_project.config import D2NNConfig, OneShotConfig, PhysicsConfig, TrainingConfig
+        from ldm_project.one_shot import OneShotOpticalGenerator
+        from ldm_project.one_shot_training_utils import _build_one_shot_optimizer
+
+        model = OneShotOpticalGenerator(
+            PhysicsConfig(),
+            OneShotConfig(
+                optical_core_arch="phase_amplitude_d2nn",
+                d2nn=D2NNConfig(grid_size=8, propagation_grid_size=8, modulation="phase_amplitude"),
+                code_dim=4,
+                label_embed_dim=2,
+                hidden_dim=8,
+            ),
+            image_size=8,
+        )
+        train_cfg = TrainingConfig(learning_rate=2.0e-5)
+        train_cfg.one_shot = model.config
+        train_cfg.one_shot.phase_learning_rate = 1.0e-3
+        train_cfg.one_shot.amplitude_learning_rate = 5.0e-3
+
+        optimizer = _build_one_shot_optimizer(__import__("torch"), model, train_cfg)
+        lr_by_param_id = {
+            id(param): group["lr"]
+            for group in optimizer.param_groups
+            for param in group["params"]
+        }
+
+        self.assertAlmostEqual(lr_by_param_id[id(model.encoder.phase)], 1.0e-3, places=10)
+        self.assertAlmostEqual(lr_by_param_id[id(model.encoder.amplitude_logits)], 5.0e-3, places=10)
+        self.assertAlmostEqual(lr_by_param_id[id(model.decoder.phase)], 1.0e-3, places=10)
+        self.assertAlmostEqual(lr_by_param_id[id(model.decoder.amplitude_logits)], 5.0e-3, places=10)
+
+    def test_zero_lr_parameter_groups_remain_exactly_frozen(self) -> None:
+        import torch
+
+        from ldm_project.config import D2NNConfig, OneShotConfig, PhysicsConfig, TrainingConfig
+        from ldm_project.one_shot import OneShotOpticalGenerator
+        from ldm_project.one_shot_training_utils import (
+            _build_one_shot_optimizer,
+            _snapshot_frozen_one_shot_parameters,
+            _verify_frozen_one_shot_parameters,
+        )
+
+        config = OneShotConfig(
+            optical_core_arch="phase_amplitude_d2nn",
+            generator_e_arch="label_template",
+            generator_command_transform="intensity_to_amplitude",
+            generator_template_init="mnist_prototype",
+            distill_target_source="mnist_prototype",
+            generator_base_lr_scale=0.0,
+            generator_residual_lr_scale=0.0,
+            phase_learning_rate=0.0,
+            amplitude_learning_rate=0.0,
+            d2nn=D2NNConfig(grid_size=8, propagation_grid_size=8, modulation="phase_amplitude"),
+            code_dim=4,
+            label_embed_dim=2,
+            hidden_dim=8,
+            num_classes=2,
+        )
+        model = OneShotOpticalGenerator(PhysicsConfig(), config, image_size=8)
+        model.generator_e.initialize_label_templates(torch.rand(2, 1, 8, 8))
+        train_cfg = TrainingConfig(learning_rate=1.0e-4, one_shot=config)
+        snapshots = _snapshot_frozen_one_shot_parameters(model, train_cfg)
+        optimizer = _build_one_shot_optimizer(torch, model, train_cfg)
+        for parameter in model.parameters():
+            parameter.grad = torch.ones_like(parameter)
+        optimizer.step()
+
+        report = _verify_frozen_one_shot_parameters(model, snapshots)
+
+        self.assertTrue(report["passed"])
+        self.assertEqual(report["max_abs_change"], 0.0)
+        self.assertEqual(set(report["groups"]), {"generator_base", "phase", "amplitude"})
+        with torch.no_grad():
+            model.encoder.phase.add_(1.0)
+        with self.assertRaisesRegex(RuntimeError, "Frozen one-shot parameters changed"):
+            _verify_frozen_one_shot_parameters(model, snapshots)
+
+    def test_phase_amplitude_grad_and_mask_summaries_name_phase_and_amp(self) -> None:
+        import torch
+
+        from ldm_project.config import D2NNConfig, OneShotConfig, PhysicsConfig
+        from ldm_project.one_shot import OneShotOpticalGenerator
+        from ldm_project.one_shot_training_utils import _mask_amplitude_summary, _phase_grad_summary
+
+        model = OneShotOpticalGenerator(
+            PhysicsConfig(),
+            OneShotConfig(
+                optical_core_arch="phase_amplitude_d2nn",
+                d2nn=D2NNConfig(grid_size=8, propagation_grid_size=8, modulation="phase_amplitude"),
+                code_dim=4,
+                label_embed_dim=2,
+                hidden_dim=8,
+                num_classes=3,
+            ),
+            image_size=8,
+        )
+        outputs = model(torch.randn(2, 4), torch.tensor([0, 1], dtype=torch.long))
+        outputs["camera_plane"].mean().backward()
+
+        grad_summary = _phase_grad_summary(model)
+        self.assertIn("encoder_phase_grad=", grad_summary)
+        self.assertIn("encoder_amp_grad=", grad_summary)
+        self.assertIn("decoder_phase_grad=", grad_summary)
+        self.assertIn("decoder_amp_grad=", grad_summary)
+        self.assertNotIn("encoder_grad=", grad_summary)
+
+        mask_summary = _mask_amplitude_summary(model)
+        self.assertIn("mask_amp_mean=", mask_summary)
+        self.assertIn("mask_amp_std=", mask_summary)
+        self.assertIn("mask_amp_min=", mask_summary)
+        self.assertIn("mask_amp_max=", mask_summary)
+
+    def test_one_shot_optical_identity_audit_variants_are_finite_on_cpu(self) -> None:
+        import torch
+
+        from ldm_project.config import D2NNConfig, OneShotConfig, PhysicsConfig
+        from ldm_project.one_shot import OneShotOpticalGenerator
+        from ldm_project.one_shot_identity_audit import (
+            IDENTITY_AUDIT_METRIC_KEYS,
+            IDENTITY_AUDIT_VARIANTS,
+            build_one_shot_optical_identity_audit,
+        )
+
+        model = OneShotOpticalGenerator(
+            PhysicsConfig(),
+            OneShotConfig(
+                optical_core_arch="phase_amplitude_d2nn",
+                d2nn=D2NNConfig(
+                    grid_size=8,
+                    propagation_grid_size=8,
+                    encoder_layers=1,
+                    decoder_layers=1,
+                    layer_spacing=0.0005,
+                    modulation="phase_amplitude",
+                    phase_init="small",
+                    amplitude_logit_init=4.0,
+                ),
+                code_dim=4,
+                label_embed_dim=2,
+                hidden_dim=8,
+                num_classes=3,
+                metasurface_grid_size=4,
+            ),
+            image_size=8,
+        )
+        codes = torch.randn(3, 4)
+        labels = torch.tensor([0, 1, 2], dtype=torch.long)
+
+        audit = build_one_shot_optical_identity_audit(torch, one_shot_model=model, codes=codes, labels=labels)
+
+        self.assertEqual(tuple(audit["variants"].keys()), IDENTITY_AUDIT_VARIANTS)
+        for variant, tensor in audit["variants"].items():
+            self.assertEqual(tuple(tensor.shape), (3, 1, 8, 8), variant)
+            self.assertTrue(torch.isfinite(tensor).all().item(), variant)
+            self.assertIn(variant, audit["metrics"])
+            for key in IDENTITY_AUDIT_METRIC_KEYS:
+                self.assertIn(key, audit["metrics"][variant])
+                self.assertTrue(math.isfinite(float(audit["metrics"][variant][key])))
+        self.assertTrue(audit["zero_mask_checks"]["encoder_mask_amplitude_allclose_one"])
+        self.assertTrue(audit["zero_mask_checks"]["decoder_mask_amplitude_allclose_one"])
+        self.assertAlmostEqual(audit["zero_mask_checks"]["encoder_mask_phase_max_abs"], 0.0, places=6)
+        self.assertAlmostEqual(audit["zero_mask_checks"]["decoder_mask_phase_max_abs"], 0.0, places=6)
+
+    def test_one_shot_identity_audit_artifacts_are_named_as_intensity(self) -> None:
+        import torch
+
+        from ldm_project.one_shot_identity_audit import _save_variant_artifacts
+
+        class RecordingRunManager:
+            def __init__(self, run_dir: Path) -> None:
+                self.run_dir = run_dir
+                self.images_dir = run_dir / "images"
+                self.destinations = []
+
+            def save_tensor_grid(self, tensor_map, destination, **kwargs):
+                path = Path(destination)
+                self.destinations.append((dict(tensor_map), path, dict(kwargs)))
+                return path
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            run_manager = RecordingRunManager(Path(tmpdir))
+            paths = _save_variant_artifacts(
+                run_manager,
+                variant="relay_psf_sigma1",
+                output=torch.rand(2, 1, 4, 4),
+                reference=torch.rand(2, 1, 4, 4),
+                labels=torch.tensor([0, 1]),
+            )
+
+        self.assertEqual(set(paths), {"intensity", "shared_scale_intensity"})
+        self.assertEqual(
+            [destination.name for _, destination, _ in run_manager.destinations],
+            ["relay_psf_sigma1_intensity.png", "relay_psf_sigma1_shared_scale_intensity.png"],
+        )
+        self.assertFalse(any("amplitude" in destination.name for _, destination, _ in run_manager.destinations))
+
     def test_old_one_shot_checkpoint_version_is_rejected(self) -> None:
         from ldm_project.one_shot import validate_one_shot_checkpoint_payload
 
@@ -350,6 +888,341 @@ class OneShotOpticalStudentTests(unittest.TestCase):
                     "model_state_dict": {},
                 }
             )
+
+    def test_one_shot_checkpoint_loads_matching_submodules_across_ablation_architectures(self) -> None:
+        import torch
+
+        from ldm_project.config import OneShotConfig, PhysicsConfig
+        from ldm_project.one_shot import (
+            ONE_SHOT_MODEL_VERSION,
+            OneShotOpticalGenerator,
+            load_one_shot_checkpoint,
+        )
+
+        source = OneShotOpticalGenerator(
+            PhysicsConfig(),
+            OneShotConfig(
+                optical_core_arch="diffractive_phase_only",
+                code_dim=4,
+                label_embed_dim=2,
+                hidden_dim=8,
+                num_classes=3,
+                metasurface_grid_size=4,
+                diffractive_grid_size=8,
+                diffractive_propagation_grid_size=8,
+                encoder_diffractive_layers=2,
+                decoder_diffractive_layers=2,
+            ),
+            image_size=8,
+        )
+        target = OneShotOpticalGenerator(
+            PhysicsConfig(),
+            OneShotConfig(
+                optical_core_arch="dense_linear",
+                code_dim=4,
+                label_embed_dim=2,
+                hidden_dim=8,
+                num_classes=3,
+                metasurface_grid_size=4,
+            ),
+            image_size=8,
+        )
+        key = "generator_e.label_embedding.weight"
+        expected = source.state_dict()[key].clone()
+        target.state_dict()[key].zero_()
+
+        load_one_shot_checkpoint(
+            target,
+            {"model_version": ONE_SHOT_MODEL_VERSION, "model_state_dict": source.state_dict()},
+        )
+
+        self.assertTrue(torch.equal(target.state_dict()[key], expected))
+
+    def test_one_shot_checkpoint_subset_loads_generator_and_optical_modules_separately(self) -> None:
+        import torch
+
+        from ldm_project.config import OneShotConfig, PhysicsConfig
+        from ldm_project.one_shot import (
+            ONE_SHOT_MODEL_VERSION,
+            OneShotOpticalGenerator,
+            load_one_shot_checkpoint_subset,
+        )
+
+        common = dict(
+            code_dim=4,
+            label_embed_dim=2,
+            hidden_dim=8,
+            num_classes=3,
+            metasurface_grid_size=4,
+        )
+        generator_source = OneShotOpticalGenerator(
+            PhysicsConfig(),
+            OneShotConfig(optical_core_arch="camera_direct_clean_oracle", **common),
+            image_size=8,
+        )
+        optical_source = OneShotOpticalGenerator(
+            PhysicsConfig(),
+            OneShotConfig(
+                optical_core_arch="diffractive_phase_only",
+                diffractive_grid_size=8,
+                diffractive_propagation_grid_size=8,
+                encoder_diffractive_layers=2,
+                decoder_diffractive_layers=2,
+                **common,
+            ),
+            image_size=8,
+        )
+        target = OneShotOpticalGenerator(
+            PhysicsConfig(),
+            OneShotConfig(
+                optical_core_arch="diffractive_phase_only",
+                diffractive_grid_size=8,
+                diffractive_propagation_grid_size=8,
+                encoder_diffractive_layers=2,
+                decoder_diffractive_layers=2,
+                **common,
+            ),
+            image_size=8,
+        )
+        with torch.no_grad():
+            generator_source.generator_e.net[-1].bias.fill_(0.25)
+            optical_source.encoder.phase.fill_(0.75)
+            optical_source.decoder.phase.fill_(-0.50)
+            target.generator_e.net[-1].bias.zero_()
+            target.encoder.phase.zero_()
+            target.decoder.phase.zero_()
+
+        load_one_shot_checkpoint_subset(
+            target,
+            {"model_version": ONE_SHOT_MODEL_VERSION, "model_state_dict": generator_source.state_dict()},
+            include_prefixes=("generator_e.",),
+            description="unit generator subset",
+        )
+
+        self.assertTrue(torch.equal(target.generator_e.net[-1].bias, generator_source.generator_e.net[-1].bias))
+        self.assertEqual(float(target.encoder.phase.abs().sum().item()), 0.0)
+
+        load_one_shot_checkpoint_subset(
+            target,
+            {"model_version": ONE_SHOT_MODEL_VERSION, "model_state_dict": optical_source.state_dict()},
+            include_prefixes=("encoder.", "decoder."),
+            description="unit optical subset",
+        )
+
+        self.assertTrue(torch.equal(target.encoder.phase, optical_source.encoder.phase))
+        self.assertTrue(torch.equal(target.decoder.phase, optical_source.decoder.phase))
+
+    def test_phase_only_optical_checkpoint_warm_starts_phase_amplitude_core_phase(self) -> None:
+        import torch
+
+        from ldm_project.config import D2NNConfig, OneShotConfig, PhysicsConfig
+        from ldm_project.one_shot import (
+            ONE_SHOT_MODEL_VERSION,
+            OneShotOpticalGenerator,
+            load_one_shot_checkpoint_subset,
+        )
+
+        common = dict(
+            code_dim=4,
+            label_embed_dim=2,
+            hidden_dim=8,
+            num_classes=3,
+            metasurface_grid_size=4,
+        )
+        optical_source = OneShotOpticalGenerator(
+            PhysicsConfig(),
+            OneShotConfig(
+                optical_core_arch="diffractive_phase_only",
+                diffractive_grid_size=8,
+                diffractive_propagation_grid_size=8,
+                encoder_diffractive_layers=2,
+                decoder_diffractive_layers=2,
+                **common,
+            ),
+            image_size=8,
+        )
+        target = OneShotOpticalGenerator(
+            PhysicsConfig(),
+            OneShotConfig(
+                optical_core_arch="phase_amplitude_d2nn",
+                d2nn=D2NNConfig(
+                    grid_size=8,
+                    propagation_grid_size=8,
+                    encoder_layers=2,
+                    decoder_layers=2,
+                    modulation="phase_amplitude",
+                    amplitude_logit_init=2.0,
+                ),
+                **common,
+            ),
+            image_size=8,
+        )
+        with torch.no_grad():
+            optical_source.encoder.phase.fill_(0.75)
+            optical_source.decoder.phase.fill_(-0.50)
+            target.encoder.phase.zero_()
+            target.decoder.phase.zero_()
+
+        summary = load_one_shot_checkpoint_subset(
+            target,
+            {"model_version": ONE_SHOT_MODEL_VERSION, "model_state_dict": optical_source.state_dict()},
+            include_prefixes=("encoder.", "decoder."),
+            description="unit phase-only optical warm-start",
+            expected_missing_prefixes=("encoder.amplitude_logits", "decoder.amplitude_logits"),
+        )
+
+        self.assertEqual(summary["loaded"], 2)
+        self.assertTrue(torch.equal(target.encoder.phase, optical_source.encoder.phase))
+        self.assertTrue(torch.equal(target.decoder.phase, optical_source.decoder.phase))
+        self.assertTrue(
+            torch.allclose(
+                target.encoder.amplitude_logits,
+                torch.full_like(target.encoder.amplitude_logits, 2.0),
+            )
+        )
+        self.assertTrue(
+            torch.allclose(
+                target.decoder.amplitude_logits,
+                torch.full_like(target.decoder.amplitude_logits, 2.0),
+            )
+        )
+
+    def test_one_shot_checkpoint_partially_warm_starts_template_residual_generator(self) -> None:
+        import torch
+
+        from ldm_project.config import OneShotConfig, PhysicsConfig
+        from ldm_project.one_shot import (
+            ONE_SHOT_MODEL_VERSION,
+            OneShotOpticalGenerator,
+            load_one_shot_checkpoint,
+            load_one_shot_checkpoint_subset,
+        )
+
+        source = OneShotOpticalGenerator(
+            PhysicsConfig(),
+            OneShotConfig(
+                optical_core_arch="camera_direct_clean_oracle",
+                code_dim=4,
+                label_embed_dim=2,
+                hidden_dim=8,
+                num_classes=3,
+                metasurface_grid_size=4,
+            ),
+            image_size=8,
+        )
+        target = OneShotOpticalGenerator(
+            PhysicsConfig(),
+            OneShotConfig(
+                optical_core_arch="camera_direct_clean_oracle",
+                generator_e_arch="template_residual_mlp",
+                code_residual_scale=0.02,
+                code_dim=4,
+                label_embed_dim=2,
+                hidden_dim=8,
+                num_classes=3,
+                metasurface_grid_size=4,
+            ),
+            image_size=8,
+        )
+        key = "generator_e.net.0.weight"
+        expected = source.state_dict()[key].clone()
+        payload = {"model_version": ONE_SHOT_MODEL_VERSION, "model_state_dict": source.state_dict()}
+
+        with self.assertRaisesRegex(ValueError, "full checkpoint load requires an exact model match"):
+            load_one_shot_checkpoint(target, payload)
+
+        load_one_shot_checkpoint_subset(
+            target,
+            payload,
+            include_prefixes=("generator_e.",),
+            description="unit template residual generator warm-start",
+            expected_missing_prefixes=("generator_e.residual_net.",),
+        )
+
+        self.assertTrue(torch.equal(target.state_dict()[key], expected))
+        self.assertIn("generator_e.residual_net.0.weight", target.state_dict())
+
+    def test_one_shot_optimizer_applies_generator_lr_scales(self) -> None:
+        import torch
+
+        from ldm_project.config import OneShotConfig, PhysicsConfig, TrainingConfig
+        from ldm_project.one_shot import OneShotOpticalGenerator
+        from ldm_project.one_shot_training_utils import _build_one_shot_optimizer
+
+        train_cfg = TrainingConfig(
+            learning_rate=1.0e-4,
+            one_shot=OneShotConfig(
+                optical_core_arch="camera_direct_clean_oracle",
+                generator_e_arch="template_residual_mlp",
+                code_residual_scale=0.02,
+                generator_base_lr_scale=0.0,
+                generator_residual_lr_scale=0.5,
+                code_dim=4,
+                label_embed_dim=2,
+                hidden_dim=8,
+                num_classes=3,
+            ),
+        )
+        model = OneShotOpticalGenerator(PhysicsConfig(), train_cfg.one_shot, image_size=8)
+
+        optimizer = _build_one_shot_optimizer(torch, model, train_cfg)
+        lrs = sorted({float(group["lr"]) for group in optimizer.param_groups})
+
+        self.assertIn(0.0, lrs)
+        self.assertIn(5.0e-5, lrs)
+
+    def test_one_shot_checkpoint_slices_diffractive_phase_layers_for_fair_shallow_ablation(self) -> None:
+        import torch
+
+        from ldm_project.config import OneShotConfig, PhysicsConfig
+        from ldm_project.one_shot import (
+            ONE_SHOT_MODEL_VERSION,
+            OneShotOpticalGenerator,
+            load_one_shot_checkpoint,
+        )
+
+        source = OneShotOpticalGenerator(
+            PhysicsConfig(),
+            OneShotConfig(
+                optical_core_arch="diffractive_phase_only",
+                code_dim=4,
+                label_embed_dim=2,
+                hidden_dim=8,
+                num_classes=3,
+                metasurface_grid_size=4,
+                diffractive_grid_size=8,
+                diffractive_propagation_grid_size=8,
+                encoder_diffractive_layers=2,
+                decoder_diffractive_layers=2,
+            ),
+            image_size=8,
+        )
+        target = OneShotOpticalGenerator(
+            PhysicsConfig(),
+            OneShotConfig(
+                optical_core_arch="diffractive_phase_only",
+                code_dim=4,
+                label_embed_dim=2,
+                hidden_dim=8,
+                num_classes=3,
+                metasurface_grid_size=4,
+                diffractive_grid_size=8,
+                diffractive_propagation_grid_size=8,
+                encoder_diffractive_layers=1,
+                decoder_diffractive_layers=1,
+            ),
+            image_size=8,
+        )
+        expected_encoder = source.encoder.phase[:1].detach().clone()
+        expected_decoder = source.decoder.phase[:1].detach().clone()
+
+        load_one_shot_checkpoint(
+            target,
+            {"model_version": ONE_SHOT_MODEL_VERSION, "model_state_dict": source.state_dict()},
+        )
+
+        self.assertTrue(torch.equal(target.encoder.phase.detach(), expected_encoder))
+        self.assertTrue(torch.equal(target.decoder.phase.detach(), expected_decoder))
 
 
 class OneShotConfigTests(unittest.TestCase):
@@ -381,24 +1254,384 @@ class OneShotConfigTests(unittest.TestCase):
         self.assertEqual(d2nn_config.one_shot.d2nn.phase_init, "uniform_pi")
         self.assertEqual(d2nn_config.one_shot.sample_class_labels, (0, 1))
 
+    def test_frozen_generator_requires_explicit_warm_start(self) -> None:
+        from ldm_project.config import OneShotConfig, TrainingConfig
+        from ldm_project.one_shot_distill_training import _validate_frozen_generator_warm_start
+
+        frozen_cfg = TrainingConfig(one_shot=OneShotConfig(generator_base_lr_scale=0.0))
+        with self.assertRaisesRegex(ValueError, "--one-shot-generator-checkpoint"):
+            _validate_frozen_generator_warm_start(
+                frozen_cfg,
+                one_shot_checkpoint=None,
+                one_shot_generator_checkpoint=None,
+            )
+
+        _validate_frozen_generator_warm_start(
+            frozen_cfg,
+            one_shot_checkpoint="student.pt",
+            one_shot_generator_checkpoint=None,
+        )
+        _validate_frozen_generator_warm_start(
+            frozen_cfg,
+            one_shot_checkpoint=None,
+            one_shot_generator_checkpoint="generator.pt",
+        )
+        _validate_frozen_generator_warm_start(
+            TrainingConfig(one_shot=OneShotConfig(generator_base_lr_scale=1.0)),
+            one_shot_checkpoint=None,
+            one_shot_generator_checkpoint=None,
+        )
+        _validate_frozen_generator_warm_start(
+            TrainingConfig(
+                one_shot=OneShotConfig(
+                    generator_e_arch="label_template",
+                    generator_command_transform="intensity_to_amplitude",
+                    generator_template_init="mnist_prototype",
+                    distill_target_source="mnist_prototype",
+                    generator_base_lr_scale=0.0,
+                )
+            ),
+            one_shot_checkpoint=None,
+            one_shot_generator_checkpoint=None,
+        )
+
+    def test_v9_8_full_relay_short_train_config_requires_generator_warm_start(self) -> None:
+        from ldm_project.config import load_training_config
+
+        config = load_training_config(
+            Path(
+                "configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v9_8_"
+                "front_coherent_psf_back_psf_relay.yaml"
+            )
+        )
+
+        self.assertEqual(config.one_shot_epochs, 10)
+        self.assertEqual(config.physics.front_path_model, "relay_coherent_psf")
+        self.assertEqual(config.physics.back_path_model, "relay_psf")
+        self.assertEqual(config.one_shot.generator_e_arch, "mlp")
+        self.assertEqual(config.one_shot.generator_base_lr_scale, 0.0)
+        self.assertEqual(config.one_shot.generator_residual_lr_scale, 0.0)
+
+    def test_v9_10_label_template_inverse_audit_config_contract(self) -> None:
+        from ldm_project.config import load_training_config
+
+        config = load_training_config(
+            Path("configs/audit_one_shot_d2nn_v9_10_label_template_inverse_prototype_baseline.yaml")
+        )
+
+        self.assertEqual(config.one_shot_epochs, 1)
+        self.assertEqual(config.one_shot.generator_e_arch, "label_template")
+        self.assertEqual(config.one_shot.generator_command_transform, "intensity_to_amplitude")
+        self.assertEqual(config.one_shot.generator_template_init, "mnist_prototype")
+        self.assertEqual(config.one_shot.distill_target_source, "mnist_prototype")
+        self.assertEqual(config.one_shot.generator_base_lr_scale, 0.0)
+        self.assertEqual(config.one_shot.generator_residual_lr_scale, 0.0)
+        self.assertEqual(config.one_shot.phase_learning_rate, 0.0)
+        self.assertEqual(config.one_shot.amplitude_learning_rate, 0.0)
+        self.assertEqual(config.physics.front_path_model, "relay_coherent_psf")
+        self.assertEqual(config.physics.back_path_model, "relay_psf")
+        self.assertEqual(config.one_shot.d2nn.grid_size, 200)
+        self.assertEqual(config.one_shot.d2nn.propagation_grid_size, 1024)
+        self.assertAlmostEqual(config.one_shot.d2nn.layer_spacing, 0.0005, places=8)
+
+        train_config = load_training_config(
+            Path(
+                "configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v9_10_"
+                "label_template_inverse_prototype_baseline.yaml"
+            )
+        )
+        eval_config = load_training_config(
+            Path(
+                "configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v9_10_"
+                "label_template_inverse_prototype_baseline_strict_readability_test.yaml"
+            )
+        )
+        for formal_config in (train_config, eval_config):
+            self.assertEqual(formal_config.one_shot.generator_e_arch, "label_template")
+            self.assertEqual(
+                formal_config.one_shot.generator_command_transform,
+                "intensity_to_amplitude",
+            )
+            self.assertEqual(formal_config.one_shot.generator_template_init, "mnist_prototype")
+            self.assertEqual(formal_config.physics.front_path_model, "relay_coherent_psf")
+            self.assertEqual(formal_config.physics.back_path_model, "relay_psf")
+        self.assertEqual(train_config.one_shot_epochs, 1)
+        self.assertEqual(eval_config.one_shot.eval_samples_per_class, 10)
+
     def test_distillation_configs_load(self) -> None:
         from ldm_project.config import load_training_config
 
         export_3k_fast200_config = load_training_config(Path("configs/export_teacher_distill_mnist_3k_fast200.yaml"))
+        export_15k_fast200_config = load_training_config(Path("configs/export_teacher_distill_mnist_15k_fast200.yaml"))
         filter_config = load_training_config(Path("configs/filter_teacher_distill_mnist_3k_fast200_top2k.yaml"))
+        strict_filter_config = load_training_config(
+            Path("configs/filter_teacher_distill_mnist_3k_fast200_label_strict_top1k.yaml")
+        )
+        readable_split_config = load_training_config(
+            Path("configs/split_teacher_distill_readable_top1k_80_10_10.yaml")
+        )
+        identity_audit_config = load_training_config(
+            Path("configs/audit_one_shot_d2nn_v8_7a4_optical_identity_chain.yaml")
+        )
+        readout_ablation_audit_config = load_training_config(
+            Path("configs/audit_one_shot_d2nn_v9_2_readout_plane_ablation.yaml")
+        )
+        hardclass_recovery_config = load_training_config(
+            Path("configs/train_first_stage_hardclass_camera_recovery.yaml")
+        )
+        margin_recovery_config = load_training_config(
+            Path("configs/train_first_stage_hardclass_camera_recovery_margin.yaml")
+        )
+        acceptance_margin_config = load_training_config(
+            Path("configs/train_first_stage_acceptance_margin_recovery.yaml")
+        )
         train_config = load_training_config(Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200.yaml"))
+        strict_eval_config = load_training_config(
+            Path("configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v3_strict_readability.yaml")
+        )
+        student_v3_config = load_training_config(
+            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v3.yaml")
+        )
+        student_v4_config = load_training_config(
+            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v4_readability.yaml")
+        )
+        student_v5_config = load_training_config(
+            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v5_speckle_label.yaml")
+        )
+        student_v6_config = load_training_config(
+            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v6_clean_bg.yaml")
+        )
+        student_v7_1_config = load_training_config(
+            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v7_1_clean_target_fixed.yaml")
+        )
+        student_v7_3_config = load_training_config(
+            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v7_3_denoise.yaml")
+        )
+        student_v7_3_eval_config = load_training_config(
+            Path("configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v7_3_strict_readability_test.yaml")
+        )
+        student_v8_identity_config = load_training_config(
+            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_identity_oracle.yaml")
+        )
+        student_v8_shallow_config = load_training_config(
+            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_shallow_d2nn.yaml")
+        )
+        student_v8_identity_eval_config = load_training_config(
+            Path("configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_identity_strict_readability_test.yaml")
+        )
+        student_v8_shallow_eval_config = load_training_config(
+            Path("configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_shallow_d2nn_strict_readability_test.yaml")
+        )
+        student_v8_shallow_fair_config = load_training_config(
+            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_shallow_d2nn_fair.yaml")
+        )
+        student_v8_direct_config = load_training_config(
+            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_direct_clean_oracle.yaml")
+        )
+        student_v8_direct_eval_config = load_training_config(
+            Path("configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_direct_clean_oracle_strict_readability_test.yaml")
+        )
+        student_v8_1_direct_config = load_training_config(
+            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_1_direct_mnist_prototype_oracle.yaml")
+        )
+        student_v8_1b_direct_config = load_training_config(
+            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_1b_direct_mnist_prototype_oracle_focus1.yaml")
+        )
+        student_v8_2_direct_config = load_training_config(
+            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_2_direct_mnist_prototype_oracle_detail_polish.yaml")
+        )
+        student_v8_2c_direct_config = load_training_config(
+            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_2c_direct_mnist_prototype_oracle_margin_finish.yaml")
+        )
+        student_v8_3_direct_config = load_training_config(
+            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_3_direct_mnist_sample_oracle.yaml")
+        )
+        student_v8_4_direct_config = load_training_config(
+            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_4_direct_mnist_nearest_teacher_image_oracle.yaml")
+        )
+        student_v8_5a_direct_config = load_training_config(
+            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_5a_direct_prototype_residual_safety.yaml")
+        )
+        student_v8_5b_direct_config = load_training_config(
+            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_5b_direct_prototype_anchor_aux_detail.yaml")
+        )
+        student_v8_5c_direct_config = load_training_config(
+            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_5c_direct_prototype_residual_probe.yaml")
+        )
+        student_v8_5d_direct_config = load_training_config(
+            Path(
+                "configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_5d_direct_prototype_residual_foreground_gate.yaml"
+            )
+        )
+        student_v8_6a_config = load_training_config(
+            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_6a_phase2x2_prototype_anchor.yaml")
+        )
+        student_v8_6b_config = load_training_config(
+            Path(
+                "configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_6b_phase2x2_random_phase_prototype_anchor.yaml"
+            )
+        )
+        student_v8_7a_config = load_training_config(
+            Path(
+                "configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_7a_phase_amplitude2x2_prototype_anchor.yaml"
+            )
+        )
+        student_v8_7a2_config = load_training_config(
+            Path(
+                "configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_7a2_phase_amplitude_warm_phase_active_amp.yaml"
+            )
+        )
+        student_v8_7a3_config = load_training_config(
+            Path(
+                "configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_7a3_near_identity_phase_amp_feasibility.yaml"
+            )
+        )
+        student_v9_1_config = load_training_config(
+            Path(
+                "configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v9_1_trainable_generator_phase_amp_feasibility.yaml"
+            )
+        )
+        student_v8_1_direct_eval_config = load_training_config(
+            Path("configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_1_direct_mnist_prototype_oracle_strict_readability_test.yaml")
+        )
+        student_v8_3_direct_eval_config = load_training_config(
+            Path("configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_3_direct_mnist_sample_oracle_strict_readability_test.yaml")
+        )
+        student_v8_4_direct_eval_config = load_training_config(
+            Path("configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_4_direct_mnist_nearest_teacher_image_oracle_strict_readability_test.yaml")
+        )
+        student_v8_5c_direct_eval_config = load_training_config(
+            Path("configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_5c_direct_prototype_residual_probe_strict_readability_test.yaml")
+        )
+        student_v8_5d_direct_eval_config = load_training_config(
+            Path(
+                "configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_5d_direct_prototype_residual_foreground_gate_strict_readability_test.yaml"
+            )
+        )
+        student_v8_6a_eval_config = load_training_config(
+            Path(
+                "configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_6a_phase2x2_prototype_anchor_strict_readability_test.yaml"
+            )
+        )
+        student_v8_6b_eval_config = load_training_config(
+            Path(
+                "configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_6b_phase2x2_random_phase_prototype_anchor_strict_readability_test.yaml"
+            )
+        )
+        student_v8_7a_eval_config = load_training_config(
+            Path(
+                "configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_7a_phase_amplitude2x2_prototype_anchor_strict_readability_test.yaml"
+            )
+        )
+        student_v8_7a2_eval_config = load_training_config(
+            Path(
+                "configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_7a2_phase_amplitude_warm_phase_active_amp_strict_readability_test.yaml"
+            )
+        )
+        student_v8_7a3_eval_config = load_training_config(
+            Path(
+                "configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_7a3_near_identity_phase_amp_feasibility_strict_readability_test.yaml"
+            )
+        )
+        student_v9_1_eval_config = load_training_config(
+            Path(
+                "configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v9_1_trainable_generator_phase_amp_feasibility_strict_readability_test.yaml"
+            )
+        )
+        student_v9_8_relay_psf_config = load_training_config(
+            Path(
+                "configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v9_8_relay_psf_camera_primary.yaml"
+            )
+        )
+        student_v9_8_relay_psf_eval_config = load_training_config(
+            Path(
+                "configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v9_8_relay_psf_camera_primary_strict_readability_test.yaml"
+            )
+        )
+        student_v8_shallow_fair_eval_config = load_training_config(
+            Path("configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_shallow_d2nn_fair_strict_readability_test.yaml")
+        )
         feasibility_config = load_training_config(Path("configs/train_one_shot_distill_d2nn_gpu_feasibility.yaml"))
         long_config = load_training_config(Path("configs/train_one_shot_distill_d2nn_long.yaml"))
 
         self.assertEqual(export_3k_fast200_config.mode, "teacher_distill_export")
         self.assertEqual(export_3k_fast200_config.distillation.samples_per_class, 300)
         self.assertEqual(export_3k_fast200_config.distillation.sampling_steps, 200)
+        self.assertEqual(export_15k_fast200_config.mode, "teacher_distill_export")
+        self.assertEqual(export_15k_fast200_config.distillation.samples_per_class, 1500)
+        self.assertEqual(export_15k_fast200_config.distillation.sampling_steps, 200)
+        self.assertEqual(export_15k_fast200_config.distillation.class_labels, tuple(range(10)))
         self.assertEqual(filter_config.mode, "teacher_distill_filter")
         self.assertEqual(filter_config.distillation.samples_per_class, 300)
         self.assertEqual(filter_config.distillation.filter_keep_per_class, 200)
         self.assertAlmostEqual(filter_config.distillation.filter_foreground_trim_fraction, 0.05, places=8)
         self.assertAlmostEqual(filter_config.distillation.filter_contrast_drop_fraction, 0.10, places=8)
         self.assertAlmostEqual(filter_config.distillation.filter_foreground_threshold, 0.2, places=8)
+        self.assertEqual(strict_filter_config.mode, "teacher_distill_label_strict_filter")
+        self.assertEqual(strict_filter_config.distillation.label_strict_keep_per_class, 100)
+        self.assertEqual(strict_filter_config.distillation.label_audit_prototypes_per_class, 64)
+        self.assertEqual(strict_filter_config.distillation.label_audit_batch_size, 32)
+        self.assertEqual(readable_split_config.mode, "teacher_distill_readable_split")
+        self.assertAlmostEqual(readable_split_config.distillation.readable_min_label_margin, 0.03, places=8)
+        self.assertAlmostEqual(readable_split_config.distillation.readable_min_contrast, 0.70, places=8)
+        self.assertAlmostEqual(readable_split_config.distillation.readable_max_background_speckle, 0.20, places=8)
+        self.assertAlmostEqual(readable_split_config.distillation.readable_max_foreground_hole, 0.08, places=8)
+        self.assertEqual(readable_split_config.distillation.readable_train_per_class, 80)
+        self.assertEqual(readable_split_config.distillation.readable_val_per_class, 10)
+        self.assertEqual(readable_split_config.distillation.readable_test_per_class, 10)
+        self.assertEqual(identity_audit_config.mode, "one_shot_optical_identity_audit")
+        self.assertEqual(identity_audit_config.batch_size, 10)
+        self.assertEqual(identity_audit_config.one_shot_epochs, 0)
+        self.assertEqual(identity_audit_config.one_shot.optical_core_arch, "phase_amplitude_d2nn")
+        self.assertEqual(identity_audit_config.one_shot.d2nn.encoder_layers, 1)
+        self.assertEqual(identity_audit_config.one_shot.d2nn.decoder_layers, 1)
+        self.assertEqual(identity_audit_config.one_shot.d2nn.modulation, "phase_amplitude")
+        self.assertEqual(identity_audit_config.one_shot.d2nn.phase_init, "small")
+        self.assertAlmostEqual(identity_audit_config.one_shot.d2nn.layer_spacing, 0.0005, places=8)
+        self.assertAlmostEqual(identity_audit_config.one_shot.d2nn.amplitude_logit_init, 4.0, places=8)
+        self.assertFalse(identity_audit_config.one_shot.eval_allow_train_fallback)
+        self.assertEqual(readout_ablation_audit_config.mode, "one_shot_optical_identity_audit")
+        self.assertFalse(readout_ablation_audit_config.one_shot.eval_allow_train_fallback)
+        self.assertEqual(readout_ablation_audit_config.physics.readout.primary_plane, "camera")
+        self.assertEqual(student_v9_8_relay_psf_config.mode, "one_shot_distill")
+        self.assertEqual(student_v9_8_relay_psf_config.one_shot_epochs, 10)
+        self.assertEqual(student_v9_8_relay_psf_config.physics.front_path_model, "free_space")
+        self.assertEqual(student_v9_8_relay_psf_config.physics.back_path_model, "relay_psf")
+        self.assertAlmostEqual(student_v9_8_relay_psf_config.physics.readout.relay_psf_sigma_px, 1.0, places=8)
+        self.assertEqual(student_v9_8_relay_psf_eval_config.one_shot_epochs, 0)
+        self.assertEqual(student_v9_8_relay_psf_eval_config.physics.front_path_model, "free_space")
+        self.assertEqual(student_v9_8_relay_psf_eval_config.physics.back_path_model, "relay_psf")
+        self.assertAlmostEqual(student_v9_8_relay_psf_eval_config.physics.readout.relay_psf_sigma_px, 1.0, places=8)
+        self.assertEqual(hardclass_recovery_config.mode, "first_stage")
+        self.assertEqual(hardclass_recovery_config.first_stage_epochs, 12)
+        self.assertAlmostEqual(hardclass_recovery_config.learning_rate, 5.0e-5, places=10)
+        self.assertEqual(hardclass_recovery_config.first_stage.hard_class_weight_labels, (2, 3, 4, 5, 7, 8))
+        self.assertAlmostEqual(hardclass_recovery_config.first_stage.hard_class_weight, 2.0, places=8)
+        self.assertAlmostEqual(hardclass_recovery_config.first_stage.camera_topology_weight, 0.35, places=8)
+        self.assertAlmostEqual(hardclass_recovery_config.first_stage.camera_artifact_weight, 0.75, places=8)
+        self.assertEqual(margin_recovery_config.mode, "first_stage")
+        self.assertEqual(margin_recovery_config.first_stage.optical_encoder_input_mode, "pf2_complex_field")
+        self.assertEqual(margin_recovery_config.first_stage.optical_encoder_arch, "linear_metasurface")
+        self.assertEqual(margin_recovery_config.first_stage.metasurface_decoder_arch, "linear_metasurface")
+        self.assertEqual(margin_recovery_config.first_stage.hard_class_weight_labels, (2, 3, 4, 5, 7, 8))
+        self.assertAlmostEqual(margin_recovery_config.first_stage.hard_class_weight, 2.0, places=8)
+        self.assertAlmostEqual(margin_recovery_config.first_stage.camera_label_margin_weight, 2.0, places=8)
+        self.assertAlmostEqual(margin_recovery_config.first_stage.camera_label_margin_target, 0.08, places=8)
+        self.assertEqual(margin_recovery_config.first_stage.camera_label_margin_labels, (2, 3, 4, 5, 7, 8))
+        self.assertEqual(margin_recovery_config.first_stage.camera_label_margin_prototypes_per_class, 64)
+        self.assertEqual(margin_recovery_config.first_stage.checkpoint_selection_metric, "camera_label_margin_score")
+        self.assertEqual(acceptance_margin_config.mode, "first_stage")
+        self.assertEqual(acceptance_margin_config.first_stage.optical_encoder_input_mode, "pf2_complex_field")
+        self.assertEqual(acceptance_margin_config.first_stage.optical_encoder_arch, "linear_metasurface")
+        self.assertEqual(acceptance_margin_config.first_stage.hard_class_weight_labels, (4, 7, 8))
+        self.assertAlmostEqual(acceptance_margin_config.first_stage.hard_class_weight, 2.5, places=8)
+        self.assertAlmostEqual(acceptance_margin_config.learning_rate, 3.0e-5, places=10)
+        self.assertEqual(acceptance_margin_config.first_stage_epochs, 12)
+        self.assertAlmostEqual(acceptance_margin_config.first_stage.camera_label_margin_weight, 4.0, places=8)
+        self.assertAlmostEqual(acceptance_margin_config.first_stage.camera_label_margin_target, 0.10, places=8)
+        self.assertEqual(acceptance_margin_config.first_stage.camera_label_margin_labels, (4, 7, 8))
+        self.assertEqual(acceptance_margin_config.first_stage.camera_label_margin_prototypes_per_class, 128)
+        self.assertEqual(acceptance_margin_config.first_stage.checkpoint_selection_metric, "camera_label_margin_score")
         self.assertEqual(train_config.mode, "one_shot_distill")
         self.assertEqual(train_config.one_shot.optical_core_arch, "diffractive_phase_only")
         self.assertEqual(train_config.one_shot.ols_kind, "identity")
@@ -420,6 +1653,360 @@ class OneShotConfigTests(unittest.TestCase):
         self.assertEqual(train_config.distillation.samples_per_class, 300)
         self.assertTrue(train_config.distillation.paired_class_batches)
         self.assertEqual(train_config.distillation.class_labels, tuple(range(10)))
+        self.assertTrue(strict_eval_config.one_shot.student_label_audit_enabled)
+        self.assertEqual(strict_eval_config.one_shot.eval_preview_per_class, 2)
+        self.assertEqual(strict_eval_config.one_shot.sample_repeats_per_class, 2)
+        self.assertEqual(strict_eval_config.one_shot.eval_samples_per_class, 5)
+        self.assertEqual(strict_eval_config.distillation.label_audit_prototypes_per_class, 128)
+        self.assertEqual(student_v3_config.one_shot.checkpoint_selection_metric, "strict_readability")
+        self.assertEqual(student_v3_config.one_shot.eval_preview_per_class, 2)
+        self.assertEqual(student_v3_config.one_shot.eval_samples_per_class, 5)
+        self.assertAlmostEqual(student_v3_config.one_shot.shape_loss_weight, 0.12, places=8)
+        self.assertAlmostEqual(student_v3_config.one_shot.edge_loss_weight, 0.06, places=8)
+        self.assertAlmostEqual(student_v3_config.one_shot.camera_topology_weight, 0.04, places=8)
+        self.assertAlmostEqual(student_v3_config.one_shot.camera_readability_weight, 0.8, places=8)
+        self.assertAlmostEqual(student_v3_config.one_shot.code_diversity_weight, 0.03, places=8)
+        self.assertTrue(student_v3_config.one_shot.student_label_audit_enabled)
+        self.assertEqual(student_v4_config.one_shot.checkpoint_selection_metric, "strict_readability")
+        self.assertEqual(student_v4_config.one_shot.student_label_margin_labels, (2, 3, 4, 5, 8, 9))
+        self.assertAlmostEqual(student_v4_config.one_shot.camera_background_speckle_weight, 0.02, places=8)
+        self.assertAlmostEqual(student_v4_config.one_shot.camera_readable_contrast_weight, 0.01, places=8)
+        self.assertAlmostEqual(student_v4_config.one_shot.student_label_margin_weight, 0.5, places=8)
+        self.assertEqual(student_v4_config.one_shot.sample_repeats_per_class, 2)
+        self.assertEqual(student_v4_config.one_shot.eval_samples_per_class, 5)
+        self.assertEqual(student_v4_config.one_shot.eval_preview_per_class, 2)
+        self.assertEqual(student_v5_config.one_shot.checkpoint_selection_metric, "strict_readability")
+        self.assertEqual(student_v5_config.one_shot.student_label_margin_prototype_source, "mnist")
+        self.assertEqual(student_v5_config.one_shot.student_label_margin_labels, (2, 3, 5, 8, 9))
+        self.assertEqual(student_v5_config.one_shot.student_label_margin_focus_label, 2)
+        self.assertAlmostEqual(student_v5_config.one_shot.student_label_margin_focus_weight, 2.0, places=8)
+        self.assertAlmostEqual(student_v5_config.learning_rate, 2.0e-5, places=10)
+        self.assertEqual(student_v5_config.one_shot_epochs, 3)
+        self.assertAlmostEqual(student_v5_config.one_shot.camera_background_hotspot_weight, 0.08, places=8)
+        self.assertAlmostEqual(student_v5_config.one_shot.camera_background_highfreq_weight, 0.05, places=8)
+        self.assertEqual(student_v5_config.one_shot.eval_samples_per_class, 5)
+        self.assertEqual(student_v6_config.one_shot.checkpoint_selection_metric, "strict_readability")
+        self.assertEqual(student_v6_config.one_shot.student_label_margin_prototype_source, "mnist")
+        self.assertAlmostEqual(student_v6_config.learning_rate, 1.0e-5, places=10)
+        self.assertAlmostEqual(student_v6_config.one_shot.phase_learning_rate, 1.0e-3, places=10)
+        self.assertEqual(student_v6_config.one_shot_epochs, 3)
+        self.assertAlmostEqual(student_v6_config.one_shot.recon_background_weight, 2.0, places=8)
+        self.assertAlmostEqual(student_v6_config.one_shot.camera_background_speckle_weight, 0.15, places=8)
+        self.assertAlmostEqual(student_v6_config.one_shot.camera_background_hotspot_weight, 2.0, places=8)
+        self.assertAlmostEqual(student_v6_config.one_shot.camera_background_hotspot_threshold, 0.05, places=8)
+        self.assertAlmostEqual(student_v6_config.one_shot.camera_background_highfreq_weight, 1.0, places=8)
+        self.assertEqual(student_v6_config.one_shot.eval_samples_per_class, 5)
+        self.assertEqual(student_v6_config.one_shot.eval_preview_per_class, 2)
+        # v7.1 clean target fixed config
+        self.assertEqual(student_v7_1_config.one_shot.checkpoint_selection_metric, "strict_readability")
+        self.assertEqual(student_v7_1_config.one_shot.student_label_margin_prototype_source, "mnist")
+        self.assertAlmostEqual(student_v7_1_config.one_shot.student_label_margin_weight, 0.12, places=8)
+        self.assertAlmostEqual(student_v7_1_config.one_shot.clean_foreground_dice_weight, 0.30, places=8)
+        self.assertAlmostEqual(student_v7_1_config.one_shot.clean_foreground_hole_weight, 0.15, places=8)
+        self.assertAlmostEqual(student_v7_1_config.one_shot.camera_recon_weight, 0.35, places=8)
+        self.assertTrue(student_v7_1_config.one_shot.clean_target_enabled)
+        self.assertEqual(student_v7_3_config.one_shot.checkpoint_selection_metric, "strict_readability")
+        self.assertEqual(
+            student_v7_3_config.one_shot.student_pair_contrast_config,
+            ((2, 0, 0.05), (2, 3, 0.05), (5, 6, 0.04), (5, 8, 0.03)),
+        )
+        self.assertAlmostEqual(student_v7_3_config.learning_rate, 3.0e-6, places=10)
+        self.assertAlmostEqual(student_v7_3_config.one_shot.phase_learning_rate, 2.0e-4, places=10)
+        self.assertEqual(student_v7_3_config.one_shot_epochs, 3)
+        self.assertAlmostEqual(student_v7_3_config.one_shot.student_display_speckle_weight, 0.35, places=8)
+        self.assertEqual(student_v7_3_config.one_shot.eval_samples_per_class, 20)
+        self.assertTrue(student_v7_3_config.one_shot.eval_allow_train_fallback)
+        self.assertEqual(student_v7_3_eval_config.one_shot.eval_samples_per_class, 10)
+        self.assertFalse(student_v7_3_eval_config.one_shot.eval_allow_train_fallback)
+        self.assertTrue(student_v7_3_eval_config.one_shot.student_label_audit_enabled)
+        self.assertEqual(student_v8_identity_config.one_shot.optical_core_arch, "dense_linear")
+        self.assertIsNone(student_v8_identity_config.one_shot.d2nn)
+        self.assertEqual(student_v8_identity_config.one_shot.checkpoint_selection_metric, "strict_readability")
+        self.assertEqual(student_v8_identity_config.one_shot_epochs, 3)
+        self.assertEqual(student_v8_identity_config.one_shot.eval_samples_per_class, 20)
+        self.assertTrue(student_v8_identity_config.one_shot.eval_allow_train_fallback)
+        self.assertEqual(student_v8_shallow_config.one_shot.optical_core_arch, "diffractive_phase_only")
+        self.assertIsNotNone(student_v8_shallow_config.one_shot.d2nn)
+        self.assertEqual(student_v8_shallow_config.one_shot.d2nn.propagation_grid_size, 1536)
+        self.assertEqual(student_v8_shallow_config.one_shot.d2nn.encoder_layers, 1)
+        self.assertEqual(student_v8_shallow_config.one_shot.d2nn.decoder_layers, 1)
+        self.assertEqual(student_v8_shallow_config.one_shot_epochs, 3)
+        self.assertEqual(student_v8_identity_eval_config.one_shot.optical_core_arch, "dense_linear")
+        self.assertEqual(student_v8_identity_eval_config.one_shot.eval_samples_per_class, 10)
+        self.assertFalse(student_v8_identity_eval_config.one_shot.eval_allow_train_fallback)
+        self.assertEqual(student_v8_shallow_eval_config.one_shot.optical_core_arch, "diffractive_phase_only")
+        self.assertEqual(student_v8_shallow_eval_config.one_shot.d2nn.encoder_layers, 1)
+        self.assertEqual(student_v8_shallow_eval_config.one_shot.eval_samples_per_class, 10)
+        self.assertFalse(student_v8_shallow_eval_config.one_shot.eval_allow_train_fallback)
+        self.assertEqual(student_v8_shallow_fair_config.one_shot.optical_core_arch, "diffractive_phase_only")
+        self.assertEqual(student_v8_shallow_fair_config.one_shot.d2nn.encoder_layers, 1)
+        self.assertEqual(student_v8_shallow_fair_config.one_shot.d2nn.decoder_layers, 1)
+        self.assertEqual(student_v8_shallow_fair_config.one_shot.d2nn.propagation_grid_size, 1536)
+        self.assertEqual(student_v8_shallow_fair_config.one_shot_epochs, 3)
+        self.assertEqual(student_v8_direct_config.one_shot.optical_core_arch, "camera_direct_clean_oracle")
+        self.assertEqual(student_v8_direct_config.one_shot_epochs, 5)
+        self.assertAlmostEqual(student_v8_direct_config.one_shot.camera_recon_weight, 0.10, places=8)
+        self.assertAlmostEqual(student_v8_direct_config.one_shot.clean_foreground_dice_weight, 0.80, places=8)
+        self.assertEqual(student_v8_direct_config.one_shot.student_label_margin_focus_label, 5)
+        self.assertEqual(student_v8_direct_eval_config.one_shot.optical_core_arch, "camera_direct_clean_oracle")
+        self.assertEqual(student_v8_direct_eval_config.one_shot.eval_samples_per_class, 10)
+        self.assertFalse(student_v8_direct_eval_config.one_shot.eval_allow_train_fallback)
+        self.assertEqual(student_v8_1_direct_config.one_shot.optical_core_arch, "camera_direct_clean_oracle")
+        self.assertEqual(student_v8_1_direct_config.one_shot.distill_target_source, "mnist_prototype")
+        self.assertFalse(student_v8_1_direct_config.one_shot.clean_target_enabled)
+        self.assertEqual(student_v8_1_direct_config.one_shot_epochs, 20)
+        self.assertAlmostEqual(student_v8_1_direct_config.learning_rate, 1.0e-4, places=10)
+        self.assertAlmostEqual(student_v8_1_direct_config.one_shot.camera_recon_weight, 1.0, places=8)
+        self.assertAlmostEqual(student_v8_1_direct_config.one_shot.recon_background_weight, 8.0, places=8)
+        self.assertEqual(student_v8_1b_direct_config.one_shot.optical_core_arch, "camera_direct_clean_oracle")
+        self.assertEqual(student_v8_1b_direct_config.one_shot.distill_target_source, "mnist_prototype")
+        self.assertEqual(student_v8_1b_direct_config.one_shot_epochs, 8)
+        self.assertAlmostEqual(student_v8_1b_direct_config.learning_rate, 3.0e-5, places=10)
+        self.assertAlmostEqual(student_v8_1b_direct_config.one_shot.student_label_margin_target, 0.08, places=8)
+        self.assertEqual(student_v8_1b_direct_config.one_shot.student_label_margin_focus_label, 1)
+        self.assertAlmostEqual(student_v8_1b_direct_config.one_shot.student_label_margin_focus_weight, 4.0, places=8)
+        self.assertEqual(
+            student_v8_1b_direct_config.one_shot.student_pair_contrast_config,
+            ((1, 8, 0.10), (8, 1, 0.10), (2, 8, 0.06), (4, 0, 0.06), (4, 9, 0.06), (9, 8, 0.06)),
+        )
+        self.assertEqual(student_v8_2_direct_config.one_shot.optical_core_arch, "camera_direct_clean_oracle")
+        self.assertEqual(student_v8_2_direct_config.one_shot.distill_target_source, "mnist_prototype")
+        self.assertEqual(student_v8_2_direct_config.one_shot_epochs, 5)
+        self.assertAlmostEqual(student_v8_2_direct_config.learning_rate, 1.0e-5, places=10)
+        self.assertTrue(student_v8_2_direct_config.one_shot.clean_target_enabled)
+        self.assertAlmostEqual(student_v8_2_direct_config.one_shot.shape_loss_weight, 0.03, places=8)
+        self.assertAlmostEqual(student_v8_2_direct_config.one_shot.edge_loss_weight, 0.02, places=8)
+        self.assertAlmostEqual(student_v8_2_direct_config.one_shot.camera_topology_weight, 0.01, places=8)
+        self.assertAlmostEqual(student_v8_2_direct_config.one_shot.clean_foreground_dice_weight, 0.15, places=8)
+        self.assertAlmostEqual(student_v8_2_direct_config.one_shot.clean_foreground_hole_weight, 0.10, places=8)
+        self.assertAlmostEqual(student_v8_2_direct_config.one_shot.camera_background_speckle_weight, 0.5, places=8)
+        self.assertAlmostEqual(student_v8_2_direct_config.one_shot.camera_background_hotspot_weight, 1.0, places=8)
+        self.assertAlmostEqual(student_v8_2_direct_config.one_shot.camera_background_highfreq_weight, 0.25, places=8)
+        self.assertEqual(student_v8_2_direct_config.one_shot.student_label_margin_focus_label, 1)
+        self.assertEqual(
+            student_v8_2_direct_config.one_shot.student_pair_contrast_config,
+            student_v8_1b_direct_config.one_shot.student_pair_contrast_config,
+        )
+        self.assertEqual(student_v8_2c_direct_config.one_shot.optical_core_arch, "camera_direct_clean_oracle")
+        self.assertEqual(student_v8_2c_direct_config.one_shot.distill_target_source, "mnist_prototype")
+        self.assertEqual(student_v8_2c_direct_config.one_shot_epochs, 3)
+        self.assertAlmostEqual(student_v8_2c_direct_config.learning_rate, 5.0e-6, places=11)
+        self.assertAlmostEqual(student_v8_2c_direct_config.one_shot.student_label_margin_weight, 0.16, places=8)
+        self.assertAlmostEqual(student_v8_2c_direct_config.one_shot.student_label_margin_target, 0.09, places=8)
+        self.assertIn((3, 8, 0.08), student_v8_2c_direct_config.one_shot.student_pair_contrast_config)
+        self.assertEqual(student_v8_3_direct_config.one_shot.optical_core_arch, "camera_direct_clean_oracle")
+        self.assertEqual(student_v8_3_direct_config.one_shot.distill_target_source, "mnist_sample")
+        self.assertEqual(student_v8_3_direct_config.one_shot_epochs, 10)
+        self.assertAlmostEqual(student_v8_3_direct_config.one_shot.shape_loss_weight, 0.04, places=8)
+        self.assertAlmostEqual(student_v8_3_direct_config.one_shot.edge_loss_weight, 0.03, places=8)
+        self.assertAlmostEqual(student_v8_3_direct_config.one_shot.clean_foreground_dice_weight, 0.20, places=8)
+        self.assertEqual(
+            student_v8_3_direct_config.one_shot.student_pair_contrast_config,
+            student_v8_2c_direct_config.one_shot.student_pair_contrast_config,
+        )
+        self.assertEqual(student_v8_1_direct_eval_config.one_shot.optical_core_arch, "camera_direct_clean_oracle")
+        self.assertEqual(student_v8_1_direct_eval_config.one_shot.distill_target_source, "mnist_prototype")
+        self.assertEqual(student_v8_1_direct_eval_config.one_shot.eval_samples_per_class, 10)
+        self.assertFalse(student_v8_1_direct_eval_config.one_shot.eval_allow_train_fallback)
+        self.assertEqual(student_v8_3_direct_eval_config.one_shot.optical_core_arch, "camera_direct_clean_oracle")
+        self.assertEqual(student_v8_3_direct_eval_config.one_shot.distill_target_source, "mnist_sample")
+        self.assertEqual(student_v8_3_direct_eval_config.one_shot.eval_samples_per_class, 10)
+        self.assertFalse(student_v8_3_direct_eval_config.one_shot.eval_allow_train_fallback)
+        self.assertEqual(student_v8_4_direct_config.one_shot.optical_core_arch, "camera_direct_clean_oracle")
+        self.assertEqual(student_v8_4_direct_config.one_shot.distill_target_source, "mnist_nearest_teacher_image")
+        self.assertEqual(student_v8_4_direct_config.one_shot_epochs, 10)
+        self.assertAlmostEqual(student_v8_4_direct_config.learning_rate, 8.0e-6, places=11)
+        self.assertAlmostEqual(student_v8_4_direct_config.one_shot.camera_recon_weight, 0.8, places=8)
+        self.assertAlmostEqual(student_v8_4_direct_config.one_shot.recon_background_weight, 6.0, places=8)
+        self.assertEqual(
+            student_v8_4_direct_config.one_shot.student_pair_contrast_config,
+            student_v8_2c_direct_config.one_shot.student_pair_contrast_config,
+        )
+        self.assertEqual(student_v8_4_direct_eval_config.one_shot.optical_core_arch, "camera_direct_clean_oracle")
+        self.assertEqual(student_v8_4_direct_eval_config.one_shot.distill_target_source, "mnist_nearest_teacher_image")
+        self.assertEqual(student_v8_4_direct_eval_config.one_shot.eval_samples_per_class, 10)
+        self.assertFalse(student_v8_4_direct_eval_config.one_shot.eval_allow_train_fallback)
+        self.assertEqual(student_v8_5a_direct_config.one_shot.generator_e_arch, "template_residual_mlp")
+        self.assertEqual(student_v8_5a_direct_config.one_shot.distill_target_source, "mnist_prototype")
+        self.assertEqual(student_v8_5a_direct_config.one_shot.aux_detail_target_source, "none")
+        self.assertAlmostEqual(student_v8_5a_direct_config.one_shot.code_residual_scale, 0.02, places=8)
+        self.assertAlmostEqual(student_v8_5a_direct_config.one_shot.generator_base_lr_scale, 0.0, places=8)
+        self.assertEqual(student_v8_5b_direct_config.one_shot.generator_e_arch, "template_residual_mlp")
+        self.assertEqual(student_v8_5b_direct_config.one_shot.distill_target_source, "mnist_prototype")
+        self.assertEqual(student_v8_5b_direct_config.one_shot.aux_detail_target_source, "mnist_nearest_teacher_image")
+        self.assertAlmostEqual(student_v8_5b_direct_config.one_shot.aux_detail_edge_weight, 0.01, places=8)
+        self.assertAlmostEqual(student_v8_5b_direct_config.one_shot.residual_background_weight, 0.05, places=8)
+        self.assertEqual(student_v8_5c_direct_config.one_shot.generator_e_arch, "template_residual_mlp")
+        self.assertEqual(student_v8_5c_direct_config.one_shot.distill_target_source, "mnist_prototype")
+        self.assertEqual(student_v8_5c_direct_config.one_shot.aux_detail_target_source, "mnist_nearest_teacher_image")
+        self.assertAlmostEqual(student_v8_5c_direct_config.one_shot.code_residual_scale, 0.08, places=8)
+        self.assertAlmostEqual(student_v8_5c_direct_config.one_shot.aux_detail_edge_weight, 0.03, places=8)
+        self.assertAlmostEqual(student_v8_5c_direct_config.one_shot.aux_detail_shape_weight, 0.02, places=8)
+        self.assertAlmostEqual(student_v8_5c_direct_config.one_shot.residual_l1_weight, 0.005, places=8)
+        self.assertAlmostEqual(student_v8_5c_direct_config.one_shot.residual_background_weight, 0.03, places=8)
+        self.assertEqual(student_v8_5c_direct_eval_config.one_shot.generator_e_arch, "template_residual_mlp")
+        self.assertEqual(student_v8_5c_direct_eval_config.one_shot.distill_target_source, "mnist_prototype")
+        self.assertEqual(student_v8_5c_direct_eval_config.one_shot.aux_detail_target_source, "mnist_nearest_teacher_image")
+        self.assertAlmostEqual(student_v8_5c_direct_eval_config.one_shot.code_residual_scale, 0.08, places=8)
+        self.assertFalse(student_v8_5c_direct_eval_config.one_shot.eval_allow_train_fallback)
+        self.assertEqual(student_v8_5d_direct_config.one_shot.generator_e_arch, "template_residual_mlp")
+        self.assertEqual(student_v8_5d_direct_config.one_shot.distill_target_source, "mnist_prototype")
+        self.assertEqual(student_v8_5d_direct_config.one_shot.aux_detail_target_source, "mnist_nearest_teacher_image")
+        self.assertAlmostEqual(student_v8_5d_direct_config.one_shot.code_residual_scale, 0.05, places=8)
+        self.assertAlmostEqual(student_v8_5d_direct_config.one_shot.residual_background_weight, 0.06, places=8)
+        self.assertEqual(student_v8_5d_direct_config.one_shot.aux_detail_foreground_gate_dilation, 15)
+        self.assertEqual(student_v8_5d_direct_eval_config.one_shot.generator_e_arch, "template_residual_mlp")
+        self.assertEqual(student_v8_5d_direct_eval_config.one_shot.distill_target_source, "mnist_prototype")
+        self.assertEqual(student_v8_5d_direct_eval_config.one_shot.aux_detail_target_source, "mnist_nearest_teacher_image")
+        self.assertAlmostEqual(student_v8_5d_direct_eval_config.one_shot.code_residual_scale, 0.05, places=8)
+        self.assertEqual(student_v8_5d_direct_eval_config.one_shot.aux_detail_foreground_gate_dilation, 15)
+        self.assertFalse(student_v8_5d_direct_eval_config.one_shot.eval_allow_train_fallback)
+        self.assertEqual(student_v8_6a_config.one_shot.optical_core_arch, "diffractive_phase_only")
+        self.assertEqual(student_v8_6a_config.one_shot.generator_e_arch, "mlp")
+        self.assertEqual(student_v8_6a_config.one_shot.d2nn.encoder_layers, 2)
+        self.assertEqual(student_v8_6a_config.one_shot.d2nn.decoder_layers, 2)
+        self.assertEqual(student_v8_6a_config.one_shot.distill_target_source, "mnist_prototype")
+        self.assertAlmostEqual(student_v8_6a_config.one_shot.phase_learning_rate, 1.0e-3, places=10)
+        self.assertAlmostEqual(student_v8_6a_config.learning_rate, 2.0e-5, places=10)
+        self.assertAlmostEqual(student_v8_6a_config.one_shot.generator_base_lr_scale, 0.0, places=8)
+        self.assertEqual(student_v8_6a_config.one_shot_epochs, 10)
+        self.assertEqual(student_v8_6a_eval_config.one_shot.optical_core_arch, "diffractive_phase_only")
+        self.assertEqual(student_v8_6a_eval_config.one_shot.distill_target_source, "mnist_prototype")
+        self.assertFalse(student_v8_6a_eval_config.one_shot.eval_allow_train_fallback)
+        self.assertEqual(student_v8_6b_config.one_shot.optical_core_arch, "diffractive_phase_only")
+        self.assertEqual(student_v8_6b_config.one_shot.generator_e_arch, "mlp")
+        self.assertEqual(student_v8_6b_config.one_shot.d2nn.encoder_layers, 2)
+        self.assertEqual(student_v8_6b_config.one_shot.d2nn.decoder_layers, 2)
+        self.assertEqual(student_v8_6b_config.one_shot.d2nn.phase_init, "uniform_pi")
+        self.assertEqual(student_v8_6b_config.one_shot.distill_target_source, "mnist_prototype")
+        self.assertAlmostEqual(student_v8_6b_config.one_shot.phase_learning_rate, 1.0e-3, places=10)
+        self.assertAlmostEqual(student_v8_6b_config.learning_rate, 2.0e-5, places=10)
+        self.assertAlmostEqual(student_v8_6b_config.one_shot.generator_base_lr_scale, 0.0, places=8)
+        self.assertEqual(student_v8_6b_config.one_shot_epochs, 10)
+        self.assertEqual(student_v8_6b_eval_config.one_shot.optical_core_arch, "diffractive_phase_only")
+        self.assertEqual(student_v8_6b_eval_config.one_shot.d2nn.phase_init, "uniform_pi")
+        self.assertEqual(student_v8_6b_eval_config.one_shot.distill_target_source, "mnist_prototype")
+        self.assertEqual(student_v8_6b_eval_config.one_shot.eval_samples_per_class, 10)
+        self.assertEqual(student_v8_6b_eval_config.one_shot.eval_preview_per_class, 2)
+        self.assertFalse(student_v8_6b_eval_config.one_shot.eval_allow_train_fallback)
+        self.assertEqual(student_v8_7a_config.one_shot.optical_core_arch, "phase_amplitude_d2nn")
+        self.assertEqual(student_v8_7a_config.one_shot.generator_e_arch, "mlp")
+        self.assertEqual(student_v8_7a_config.one_shot.d2nn.encoder_layers, 2)
+        self.assertEqual(student_v8_7a_config.one_shot.d2nn.decoder_layers, 2)
+        self.assertEqual(student_v8_7a_config.one_shot.d2nn.modulation, "phase_amplitude")
+        self.assertEqual(student_v8_7a_config.one_shot.d2nn.phase_init, "uniform_pi")
+        self.assertEqual(student_v8_7a_config.one_shot.distill_target_source, "mnist_prototype")
+        self.assertAlmostEqual(student_v8_7a_config.one_shot.phase_learning_rate, 1.0e-3, places=10)
+        self.assertAlmostEqual(student_v8_7a_config.learning_rate, 2.0e-5, places=10)
+        self.assertAlmostEqual(student_v8_7a_config.one_shot.generator_base_lr_scale, 0.0, places=8)
+        self.assertEqual(student_v8_7a_config.one_shot_epochs, 10)
+        self.assertEqual(student_v8_7a2_config.one_shot.optical_core_arch, "phase_amplitude_d2nn")
+        self.assertEqual(student_v8_7a2_config.one_shot.generator_e_arch, "mlp")
+        self.assertEqual(student_v8_7a2_config.one_shot.d2nn.encoder_layers, 2)
+        self.assertEqual(student_v8_7a2_config.one_shot.d2nn.decoder_layers, 2)
+        self.assertEqual(student_v8_7a2_config.one_shot.d2nn.modulation, "phase_amplitude")
+        self.assertEqual(student_v8_7a2_config.one_shot.d2nn.phase_init, "uniform_pi")
+        self.assertAlmostEqual(student_v8_7a2_config.one_shot.d2nn.amplitude_logit_init, 2.0, places=8)
+        self.assertEqual(student_v8_7a2_config.one_shot.distill_target_source, "mnist_prototype")
+        self.assertAlmostEqual(student_v8_7a2_config.one_shot.phase_learning_rate, 1.0e-3, places=10)
+        self.assertAlmostEqual(student_v8_7a2_config.one_shot.amplitude_learning_rate, 5.0e-3, places=10)
+        self.assertAlmostEqual(student_v8_7a2_config.learning_rate, 2.0e-5, places=10)
+        self.assertAlmostEqual(student_v8_7a2_config.one_shot.generator_base_lr_scale, 0.0, places=8)
+        self.assertEqual(student_v8_7a2_config.one_shot_epochs, 10)
+        self.assertEqual(student_v8_7a3_config.one_shot.optical_core_arch, "phase_amplitude_d2nn")
+        self.assertEqual(student_v8_7a3_config.one_shot.generator_e_arch, "mlp")
+        self.assertEqual(student_v8_7a3_config.one_shot.d2nn.encoder_layers, 1)
+        self.assertEqual(student_v8_7a3_config.one_shot.d2nn.decoder_layers, 1)
+        self.assertEqual(student_v8_7a3_config.one_shot.d2nn.modulation, "phase_amplitude")
+        self.assertEqual(student_v8_7a3_config.one_shot.d2nn.phase_init, "small")
+        self.assertAlmostEqual(student_v8_7a3_config.one_shot.d2nn.layer_spacing, 0.0005, places=8)
+        self.assertAlmostEqual(student_v8_7a3_config.one_shot.d2nn.amplitude_logit_init, 4.0, places=8)
+        self.assertEqual(student_v8_7a3_config.one_shot.distill_target_source, "mnist_prototype")
+        self.assertAlmostEqual(student_v8_7a3_config.one_shot.phase_learning_rate, 3.0e-4, places=10)
+        self.assertAlmostEqual(student_v8_7a3_config.one_shot.amplitude_learning_rate, 1.0e-3, places=10)
+        self.assertAlmostEqual(student_v8_7a3_config.one_shot.generator_base_lr_scale, 0.0, places=8)
+        self.assertAlmostEqual(student_v8_7a3_config.one_shot.recon_foreground_weight, 6.0, places=8)
+        self.assertAlmostEqual(student_v8_7a3_config.one_shot.recon_background_weight, 12.0, places=8)
+        self.assertAlmostEqual(student_v8_7a3_config.one_shot.shape_loss_weight, 0.06, places=8)
+        self.assertAlmostEqual(student_v8_7a3_config.one_shot.edge_loss_weight, 0.04, places=8)
+        self.assertAlmostEqual(student_v8_7a3_config.one_shot.camera_background_speckle_weight, 1.0, places=8)
+        self.assertAlmostEqual(student_v8_7a3_config.one_shot.camera_background_hotspot_weight, 2.0, places=8)
+        self.assertAlmostEqual(student_v8_7a3_config.one_shot.camera_background_highfreq_weight, 0.5, places=8)
+        self.assertAlmostEqual(student_v8_7a3_config.one_shot.camera_readable_contrast_weight, 0.005, places=8)
+        self.assertAlmostEqual(student_v8_7a3_config.one_shot.clean_foreground_dice_weight, 0.30, places=8)
+        self.assertAlmostEqual(student_v8_7a3_config.one_shot.clean_foreground_hole_weight, 0.25, places=8)
+        self.assertAlmostEqual(student_v8_7a3_config.one_shot.student_label_margin_weight, 0.05, places=8)
+        self.assertAlmostEqual(student_v8_7a3_config.one_shot.student_label_margin_target, 0.06, places=8)
+        self.assertIsNone(student_v8_7a3_config.one_shot.student_label_margin_focus_label)
+        self.assertAlmostEqual(student_v8_7a3_config.one_shot.cross_class_pairwise_weight, 0.02, places=8)
+        self.assertEqual(student_v8_7a3_config.one_shot_epochs, 10)
+        self.assertEqual(student_v9_1_config.one_shot.optical_core_arch, "phase_amplitude_d2nn")
+        self.assertEqual(student_v9_1_config.one_shot.generator_e_arch, "mlp")
+        self.assertEqual(student_v9_1_config.one_shot.d2nn.encoder_layers, 1)
+        self.assertEqual(student_v9_1_config.one_shot.d2nn.decoder_layers, 1)
+        self.assertEqual(student_v9_1_config.one_shot.d2nn.modulation, "phase_amplitude")
+        self.assertEqual(student_v9_1_config.one_shot.d2nn.phase_init, "small")
+        self.assertAlmostEqual(student_v9_1_config.one_shot.d2nn.layer_spacing, 0.0005, places=8)
+        self.assertAlmostEqual(student_v9_1_config.one_shot.d2nn.amplitude_logit_init, 4.0, places=8)
+        self.assertEqual(student_v9_1_config.one_shot.distill_target_source, "mnist_prototype")
+        self.assertAlmostEqual(student_v9_1_config.one_shot.phase_learning_rate, 3.0e-4, places=10)
+        self.assertAlmostEqual(student_v9_1_config.one_shot.amplitude_learning_rate, 1.0e-3, places=10)
+        self.assertAlmostEqual(student_v9_1_config.one_shot.generator_base_lr_scale, 1.0, places=8)
+        self.assertAlmostEqual(student_v9_1_config.one_shot.recon_foreground_weight, 6.0, places=8)
+        self.assertAlmostEqual(student_v9_1_config.one_shot.recon_background_weight, 12.0, places=8)
+        self.assertAlmostEqual(student_v9_1_config.one_shot.shape_loss_weight, 0.06, places=8)
+        self.assertAlmostEqual(student_v9_1_config.one_shot.edge_loss_weight, 0.04, places=8)
+        self.assertAlmostEqual(student_v9_1_config.one_shot.camera_background_speckle_weight, 1.0, places=8)
+        self.assertAlmostEqual(student_v9_1_config.one_shot.camera_background_hotspot_weight, 2.0, places=8)
+        self.assertAlmostEqual(student_v9_1_config.one_shot.camera_background_highfreq_weight, 0.5, places=8)
+        self.assertAlmostEqual(student_v9_1_config.one_shot.camera_readable_contrast_weight, 0.005, places=8)
+        self.assertAlmostEqual(student_v9_1_config.one_shot.clean_foreground_dice_weight, 0.30, places=8)
+        self.assertAlmostEqual(student_v9_1_config.one_shot.clean_foreground_hole_weight, 0.25, places=8)
+        self.assertAlmostEqual(student_v9_1_config.one_shot.student_label_margin_weight, 0.05, places=8)
+        self.assertAlmostEqual(student_v9_1_config.one_shot.student_label_margin_target, 0.06, places=8)
+        self.assertIsNone(student_v9_1_config.one_shot.student_label_margin_focus_label)
+        self.assertAlmostEqual(student_v9_1_config.one_shot.cross_class_pairwise_weight, 0.02, places=8)
+        self.assertEqual(student_v9_1_config.one_shot_epochs, 10)
+        self.assertEqual(student_v9_1_config.one_shot_distill_epoch_checkpoint_interval, 2)
+        self.assertEqual(student_v8_7a_eval_config.one_shot.optical_core_arch, "phase_amplitude_d2nn")
+        self.assertEqual(student_v8_7a_eval_config.one_shot.d2nn.modulation, "phase_amplitude")
+        self.assertEqual(student_v8_7a_eval_config.one_shot.distill_target_source, "mnist_prototype")
+        self.assertEqual(student_v8_7a_eval_config.one_shot.eval_samples_per_class, 10)
+        self.assertEqual(student_v8_7a_eval_config.one_shot.eval_preview_per_class, 2)
+        self.assertFalse(student_v8_7a_eval_config.one_shot.eval_allow_train_fallback)
+        self.assertEqual(student_v8_7a2_eval_config.one_shot.optical_core_arch, "phase_amplitude_d2nn")
+        self.assertEqual(student_v8_7a2_eval_config.one_shot.d2nn.modulation, "phase_amplitude")
+        self.assertAlmostEqual(student_v8_7a2_eval_config.one_shot.d2nn.amplitude_logit_init, 2.0, places=8)
+        self.assertEqual(student_v8_7a2_eval_config.one_shot.distill_target_source, "mnist_prototype")
+        self.assertEqual(student_v8_7a2_eval_config.one_shot.eval_samples_per_class, 10)
+        self.assertEqual(student_v8_7a2_eval_config.one_shot.eval_preview_per_class, 2)
+        self.assertFalse(student_v8_7a2_eval_config.one_shot.eval_allow_train_fallback)
+        self.assertEqual(student_v8_7a3_eval_config.one_shot.optical_core_arch, "phase_amplitude_d2nn")
+        self.assertEqual(student_v8_7a3_eval_config.one_shot.d2nn.modulation, "phase_amplitude")
+        self.assertEqual(student_v8_7a3_eval_config.one_shot.d2nn.encoder_layers, 1)
+        self.assertEqual(student_v8_7a3_eval_config.one_shot.d2nn.decoder_layers, 1)
+        self.assertEqual(student_v8_7a3_eval_config.one_shot.d2nn.phase_init, "small")
+        self.assertAlmostEqual(student_v8_7a3_eval_config.one_shot.d2nn.layer_spacing, 0.0005, places=8)
+        self.assertAlmostEqual(student_v8_7a3_eval_config.one_shot.d2nn.amplitude_logit_init, 4.0, places=8)
+        self.assertEqual(student_v8_7a3_eval_config.one_shot.distill_target_source, "mnist_prototype")
+        self.assertEqual(student_v8_7a3_eval_config.one_shot.eval_samples_per_class, 10)
+        self.assertEqual(student_v8_7a3_eval_config.one_shot.eval_preview_per_class, 2)
+        self.assertFalse(student_v8_7a3_eval_config.one_shot.eval_allow_train_fallback)
+        self.assertEqual(student_v9_1_eval_config.one_shot.optical_core_arch, "phase_amplitude_d2nn")
+        self.assertEqual(student_v9_1_eval_config.one_shot.d2nn.modulation, "phase_amplitude")
+        self.assertEqual(student_v9_1_eval_config.one_shot.d2nn.encoder_layers, 1)
+        self.assertEqual(student_v9_1_eval_config.one_shot.d2nn.decoder_layers, 1)
+        self.assertEqual(student_v9_1_eval_config.one_shot.d2nn.phase_init, "small")
+        self.assertAlmostEqual(student_v9_1_eval_config.one_shot.d2nn.layer_spacing, 0.0005, places=8)
+        self.assertAlmostEqual(student_v9_1_eval_config.one_shot.d2nn.amplitude_logit_init, 4.0, places=8)
+        self.assertEqual(student_v9_1_eval_config.one_shot.distill_target_source, "mnist_prototype")
+        self.assertAlmostEqual(student_v9_1_eval_config.one_shot.generator_base_lr_scale, 1.0, places=8)
+        self.assertEqual(student_v9_1_eval_config.one_shot.eval_samples_per_class, 10)
+        self.assertEqual(student_v9_1_eval_config.one_shot.eval_preview_per_class, 2)
+        self.assertFalse(student_v9_1_eval_config.one_shot.eval_allow_train_fallback)
+        self.assertEqual(student_v8_shallow_fair_eval_config.one_shot.optical_core_arch, "diffractive_phase_only")
+        self.assertEqual(student_v8_shallow_fair_eval_config.one_shot.d2nn.encoder_layers, 1)
+        self.assertFalse(student_v8_shallow_fair_eval_config.one_shot.eval_allow_train_fallback)
         self.assertEqual(feasibility_config.mode, "one_shot_distill")
         self.assertEqual(feasibility_config.batch_size, 1)
         self.assertEqual(feasibility_config.one_shot_epochs, 1)
@@ -442,6 +2029,132 @@ class OneShotConfigTests(unittest.TestCase):
         self.assertEqual(long_config.distillation.train_subset_size, 1000)
         self.assertAlmostEqual(long_config.one_shot.slm_contrast_weight, 1.0e-3, places=8)
         self.assertAlmostEqual(long_config.one_shot.cross_class_pairwise_weight, 1.0e-2, places=8)
+
+    def test_distill_target_source_rejects_unknown_value(self) -> None:
+        from ldm_project.config import load_training_config
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "bad_target_source.yaml"
+            config_path.write_text(
+                "\n".join(
+                    [
+                        "training:",
+                        "  mode: one_shot_distill",
+                        "first_stage:",
+                        "  image_size: 4",
+                        "one_shot:",
+                        "  code_dim: 3",
+                        "  num_classes: 2",
+                        "  distill_target_source: not_a_target",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "distill_target_source"):
+                load_training_config(config_path)
+
+    def test_generator_and_aux_detail_config_reject_unknown_values(self) -> None:
+        from ldm_project.config import load_training_config
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "bad_generator_arch.yaml"
+            config_path.write_text(
+                "\n".join(
+                    [
+                        "training:",
+                        "  mode: one_shot_distill",
+                        "one_shot:",
+                        "  generator_e_arch: not_a_generator",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "generator_e_arch"):
+                load_training_config(config_path)
+
+            config_path = Path(tmpdir) / "bad_aux_detail_source.yaml"
+            config_path.write_text(
+                "\n".join(
+                    [
+                        "training:",
+                        "  mode: one_shot_distill",
+                        "one_shot:",
+                        "  aux_detail_target_source: not_a_target",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "aux_detail_target_source"):
+                load_training_config(config_path)
+
+            config_path = Path(tmpdir) / "bad_aux_detail_gate.yaml"
+            config_path.write_text(
+                "\n".join(
+                    [
+                        "training:",
+                        "  mode: one_shot_distill",
+                        "one_shot:",
+                        "  aux_detail_foreground_gate_dilation: -1",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "aux_detail_foreground_gate_dilation"):
+                load_training_config(config_path)
+
+    def test_d2nn_arch_and_modulation_mismatch_is_rejected(self) -> None:
+        from ldm_project.config import load_training_config
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "bad_d2nn_modulation.yaml"
+            config_path.write_text(
+                "\n".join(
+                    [
+                        "training:",
+                        "  mode: one_shot_distill",
+                        "one_shot:",
+                        "  optical_core_arch: phase_amplitude_d2nn",
+                        "  d2nn:",
+                        "    modulation: phase_only",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "phase_amplitude_d2nn"):
+                load_training_config(config_path)
+
+            config_path = Path(tmpdir) / "bad_d2nn_amplitude_init.yaml"
+            config_path.write_text(
+                "\n".join(
+                    [
+                        "training:",
+                        "  mode: one_shot_distill",
+                        "one_shot:",
+                        "  optical_core_arch: phase_amplitude_d2nn",
+                        "  d2nn:",
+                        "    modulation: phase_amplitude",
+                        "    amplitude_logit_init: .inf",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "amplitude_logit_init"):
+                load_training_config(config_path)
+
+            config_path = Path(tmpdir) / "bad_amplitude_lr.yaml"
+            config_path.write_text(
+                "\n".join(
+                    [
+                        "training:",
+                        "  mode: one_shot_distill",
+                        "one_shot:",
+                        "  amplitude_learning_rate: -0.001",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "amplitude_learning_rate"):
+                load_training_config(config_path)
 
     def test_distillation_train_subset_reduces_payload_deterministically(self) -> None:
         import torch
@@ -502,6 +2215,469 @@ class OneShotConfigTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(ValueError, "distillation.train_subset_size"):
                 _subset_distill_payload_for_training(torch, payload, train_cfg)
+
+    def test_distill_target_source_defaults_to_teacher_camera(self) -> None:
+        import torch
+
+        from ldm_project.config import FirstStageConfig, OneShotConfig, TrainingConfig
+        from ldm_project.one_shot_distill_data import _resolve_distill_targets
+
+        teacher_camera = torch.rand(3, 1, 4, 4)
+        payload = {
+            "codes": torch.randn(3, 2),
+            "class_labels": torch.tensor([0, 1, 0]),
+            "teacher_camera": teacher_camera,
+        }
+        train_cfg = TrainingConfig(
+            first_stage=FirstStageConfig(image_size=4),
+            one_shot=OneShotConfig(code_dim=2, num_classes=2),
+        )
+
+        targets = _resolve_distill_targets(torch, payload, train_cfg)
+
+        self.assertTrue(torch.equal(targets, teacher_camera))
+
+    def test_distill_target_source_mnist_prototype_indexes_normalized_labels(self) -> None:
+        import torch
+
+        from ldm_project.config import FirstStageConfig, OneShotConfig, TrainingConfig
+        from ldm_project.one_shot_distill_data import _resolve_distill_targets
+
+        payload = {
+            "codes": torch.randn(4, 2),
+            "class_labels": torch.tensor([1, 0, 1, 0]),
+            "teacher_camera": torch.zeros(4, 1, 4, 4),
+        }
+        prototypes = torch.stack(
+            [
+                torch.linspace(-1.0, 1.0, steps=16).reshape(1, 4, 4),
+                torch.linspace(2.0, 6.0, steps=16).reshape(1, 4, 4).flip(-1),
+            ],
+            dim=0,
+        )
+        train_cfg = TrainingConfig(
+            first_stage=FirstStageConfig(image_size=4),
+            one_shot=OneShotConfig(code_dim=2, num_classes=2, distill_target_source="mnist_prototype"),
+        )
+
+        targets = _resolve_distill_targets(torch, payload, train_cfg, mnist_prototypes=prototypes)
+
+        self.assertEqual(tuple(targets.shape), (4, 1, 4, 4))
+        self.assertGreaterEqual(float(targets.min().item()), 0.0)
+        self.assertLessEqual(float(targets.max().item()), 1.0)
+        self.assertTrue(torch.equal(targets[0], targets[2]))
+        self.assertTrue(torch.equal(targets[1], targets[3]))
+        self.assertFalse(torch.equal(targets[0], targets[1]))
+
+    def test_distill_loader_uses_resolved_mnist_prototype_targets(self) -> None:
+        import torch
+
+        from ldm_project.config import DataConfig, FirstStageConfig, OneShotConfig, TrainingConfig
+        from ldm_project.one_shot_distill_data import _build_distill_loaders
+
+        labels = torch.tensor([0, 1], dtype=torch.long)
+        payload = {
+            "codes": torch.randn(2, 2),
+            "class_labels": labels,
+            "teacher_camera": torch.zeros(2, 1, 4, 4),
+        }
+        prototypes = torch.zeros(2, 1, 4, 4)
+        prototypes[0, :, :2, :] = 1.0
+        prototypes[1, :, :, :2] = 1.0
+        train_cfg = TrainingConfig(
+            batch_size=2,
+            data=DataConfig(validation_fraction=0.0),
+            first_stage=FirstStageConfig(image_size=4),
+            one_shot=OneShotConfig(code_dim=2, num_classes=2, distill_target_source="mnist_prototype"),
+        )
+
+        train_loader, _, _, _, _ = _build_distill_loaders(
+            torch,
+            payload,
+            train_cfg,
+            use_pin_memory=False,
+            mnist_prototypes=prototypes,
+        )
+        _, batch_labels, batch_targets = next(iter(train_loader))
+
+        for index, label in enumerate(batch_labels.tolist()):
+            self.assertTrue(torch.equal(batch_targets[index], prototypes[int(label)]))
+
+    def test_distill_loader_keeps_aux_detail_target_separate_from_main_target(self) -> None:
+        import torch
+
+        from ldm_project.config import DataConfig, FirstStageConfig, OneShotConfig, TrainingConfig
+        from ldm_project.one_shot_distill_data import _build_distill_loaders
+        from ldm_project.one_shot_losses import _build_clean_readable_target
+
+        labels = torch.tensor([0, 1], dtype=torch.long)
+        teacher_camera = torch.zeros(2, 1, 4, 4)
+        teacher_camera[:, :, 1:3, 1:3] = 1.0
+        payload = {
+            "codes": torch.randn(2, 2),
+            "class_labels": labels,
+            "teacher_camera": teacher_camera,
+        }
+        prototypes = torch.zeros(2, 1, 4, 4)
+        prototypes[0, :, :2, :] = 1.0
+        prototypes[1, :, :, :2] = 1.0
+        train_cfg = TrainingConfig(
+            batch_size=2,
+            data=DataConfig(validation_fraction=0.0),
+            first_stage=FirstStageConfig(image_size=4),
+            one_shot=OneShotConfig(
+                code_dim=2,
+                num_classes=2,
+                distill_target_source="mnist_prototype",
+                aux_detail_target_source="clean_teacher_camera",
+            ),
+        )
+
+        train_loader, _, _, _, _ = _build_distill_loaders(
+            torch,
+            payload,
+            train_cfg,
+            use_pin_memory=False,
+            mnist_prototypes=prototypes,
+        )
+        _, batch_labels, batch_targets, batch_aux_targets = next(iter(train_loader))
+        expected_aux = _build_clean_readable_target(teacher_camera)["clean_target"]
+
+        for index, label in enumerate(batch_labels.tolist()):
+            self.assertTrue(torch.equal(batch_targets[index], prototypes[int(label)]))
+        self.assertTrue(torch.allclose(batch_aux_targets, expected_aux))
+
+    def test_distill_target_source_mnist_sample_is_deterministic_and_per_sample(self) -> None:
+        import sys
+        import types
+        from unittest.mock import patch
+
+        import torch
+
+        from ldm_project.config import DataConfig, FirstStageConfig, OneShotConfig, TrainingConfig
+        from ldm_project.one_shot_distill_data import _resolve_distill_targets
+
+        class FakeMNIST:
+            def __init__(self, root, train, download, transform):
+                del root, train, download
+                self.transform = transform
+                self.targets = torch.tensor([0, 0, 0, 1, 1, 1], dtype=torch.long)
+                self.images = [
+                    torch.full((1, 4, 4), 0.10),
+                    torch.full((1, 4, 4), 0.20),
+                    torch.full((1, 4, 4), 0.30),
+                    torch.full((1, 4, 4), 0.70),
+                    torch.full((1, 4, 4), 0.80),
+                    torch.full((1, 4, 4), 0.90),
+                ]
+
+            def __iter__(self):
+                for image, label in zip(self.images, self.targets.tolist(), strict=True):
+                    yield self.transform(image), label
+
+        class IdentityTransform:
+            def __call__(self, image):
+                return image
+
+        fake_torchvision = types.ModuleType("torchvision")
+        fake_datasets = types.SimpleNamespace(MNIST=FakeMNIST)
+        fake_transforms = types.SimpleNamespace(
+            Compose=lambda transforms: IdentityTransform(),
+            Resize=lambda size: IdentityTransform(),
+            ToTensor=lambda: IdentityTransform(),
+        )
+        fake_torchvision.datasets = fake_datasets
+        fake_torchvision.transforms = fake_transforms
+
+        payload = {
+            "codes": torch.randn(4, 2),
+            "class_labels": torch.tensor([0, 0, 1, 1], dtype=torch.long),
+            "teacher_camera": torch.zeros(4, 1, 4, 4),
+            "readability_filter_indices": torch.tensor([0, 1, 3, 4], dtype=torch.long),
+        }
+        train_cfg = TrainingConfig(
+            data=DataConfig(root="unused"),
+            first_stage=FirstStageConfig(image_size=4),
+            one_shot=OneShotConfig(code_dim=2, num_classes=2, distill_target_source="mnist_sample"),
+        )
+
+        with patch.dict(
+            sys.modules,
+            {
+                "torchvision": fake_torchvision,
+                "torchvision.datasets": fake_datasets,
+                "torchvision.transforms": fake_transforms,
+            },
+        ):
+            targets_a = _resolve_distill_targets(torch, payload, train_cfg)
+            targets_b = _resolve_distill_targets(torch, payload, train_cfg)
+
+        self.assertEqual(tuple(targets_a.shape), (4, 1, 4, 4))
+        self.assertGreaterEqual(float(targets_a.min().item()), 0.0)
+        self.assertLessEqual(float(targets_a.max().item()), 1.0)
+        self.assertTrue(torch.equal(targets_a, targets_b))
+        self.assertFalse(torch.equal(targets_a[0], targets_a[1]))
+        self.assertFalse(torch.equal(targets_a[2], targets_a[3]))
+        self.assertAlmostEqual(float(targets_a[0].mean().item()), 0.10, places=6)
+        self.assertAlmostEqual(float(targets_a[1].mean().item()), 0.20, places=6)
+        self.assertAlmostEqual(float(targets_a[2].mean().item()), 0.70, places=6)
+        self.assertAlmostEqual(float(targets_a[3].mean().item()), 0.80, places=6)
+
+    def test_distill_loader_uses_resolved_mnist_sample_targets(self) -> None:
+        import sys
+        import types
+        from unittest.mock import patch
+
+        import torch
+
+        from ldm_project.config import DataConfig, FirstStageConfig, OneShotConfig, TrainingConfig
+        from ldm_project.one_shot_distill_data import _build_distill_loaders
+
+        class FakeMNIST:
+            def __init__(self, root, train, download, transform):
+                del root, train, download
+                self.transform = transform
+                self.targets = torch.tensor([0, 0, 1, 1], dtype=torch.long)
+                self.images = [
+                    torch.full((1, 4, 4), 0.15),
+                    torch.full((1, 4, 4), 0.25),
+                    torch.full((1, 4, 4), 0.75),
+                    torch.full((1, 4, 4), 0.85),
+                ]
+
+            def __iter__(self):
+                for image, label in zip(self.images, self.targets.tolist(), strict=True):
+                    yield self.transform(image), label
+
+        class IdentityTransform:
+            def __call__(self, image):
+                return image
+
+        fake_torchvision = types.ModuleType("torchvision")
+        fake_datasets = types.SimpleNamespace(MNIST=FakeMNIST)
+        fake_transforms = types.SimpleNamespace(
+            Compose=lambda transforms: IdentityTransform(),
+            Resize=lambda size: IdentityTransform(),
+            ToTensor=lambda: IdentityTransform(),
+        )
+        fake_torchvision.datasets = fake_datasets
+        fake_torchvision.transforms = fake_transforms
+
+        payload = {
+            "codes": torch.randn(4, 2),
+            "class_labels": torch.tensor([0, 1, 0, 1], dtype=torch.long),
+            "teacher_camera": torch.zeros(4, 1, 4, 4),
+            "readability_filter_indices": torch.tensor([0, 0, 1, 1], dtype=torch.long),
+        }
+        train_cfg = TrainingConfig(
+            batch_size=4,
+            data=DataConfig(root="unused", validation_fraction=0.0),
+            first_stage=FirstStageConfig(image_size=4),
+            one_shot=OneShotConfig(code_dim=2, num_classes=2, distill_target_source="mnist_sample"),
+        )
+
+        with patch.dict(
+            sys.modules,
+            {
+                "torchvision": fake_torchvision,
+                "torchvision.datasets": fake_datasets,
+                "torchvision.transforms": fake_transforms,
+            },
+        ):
+            train_loader, _, _, _, _ = _build_distill_loaders(
+                torch,
+                payload,
+                train_cfg,
+                use_pin_memory=False,
+            )
+            _, batch_labels, batch_targets = next(iter(train_loader))
+
+        means_by_label: dict[int, list[float]] = {0: [], 1: []}
+        for label, target in zip(batch_labels.tolist(), batch_targets, strict=True):
+            means_by_label[int(label)].append(round(float(target.mean().item()), 6))
+            self.assertFalse(torch.equal(target, torch.zeros_like(target)))
+        self.assertEqual(sorted(means_by_label[0]), [0.15, 0.25])
+        self.assertEqual(sorted(means_by_label[1]), [0.75, 0.85])
+
+    def test_distill_target_source_mnist_nearest_teacher_image_selects_aligned_targets(self) -> None:
+        import sys
+        import types
+        from unittest.mock import patch
+
+        import torch
+
+        from ldm_project.config import DataConfig, DistillationConfig, FirstStageConfig, OneShotConfig, TrainingConfig
+        from ldm_project.one_shot_distill_data import _resolve_distill_targets
+
+        horizontal = torch.zeros(1, 4, 4)
+        horizontal[:, :2, :] = 1.0
+        vertical = torch.zeros(1, 4, 4)
+        vertical[:, :, :2] = 1.0
+        diagonal = torch.eye(4).view(1, 4, 4)
+        anti_diagonal = torch.flip(diagonal, dims=(-1,))
+
+        class FakeMNIST:
+            def __init__(self, root, train, download, transform):
+                del root, train, download
+                self.transform = transform
+                self.targets = torch.tensor([0, 0, 1, 1], dtype=torch.long)
+                self.images = [horizontal, vertical, diagonal, anti_diagonal]
+
+            def __iter__(self):
+                for image, label in zip(self.images, self.targets.tolist(), strict=True):
+                    yield self.transform(image), label
+
+        class IdentityTransform:
+            def __call__(self, image):
+                return image
+
+        fake_torchvision = types.ModuleType("torchvision")
+        fake_datasets = types.SimpleNamespace(MNIST=FakeMNIST)
+        fake_transforms = types.SimpleNamespace(
+            Compose=lambda transforms: IdentityTransform(),
+            Resize=lambda size: IdentityTransform(),
+            ToTensor=lambda: IdentityTransform(),
+        )
+        fake_torchvision.datasets = fake_datasets
+        fake_torchvision.transforms = fake_transforms
+
+        payload = {
+            "codes": torch.randn(4, 2),
+            "class_labels": torch.tensor([0, 0, 1, 1], dtype=torch.long),
+            "teacher_camera": torch.zeros(4, 1, 4, 4),
+            "teacher_image": torch.stack([horizontal * 2.0 - 0.5, vertical * 3.0 - 1.0, diagonal, anti_diagonal], dim=0),
+        }
+        train_cfg = TrainingConfig(
+            data=DataConfig(root="unused"),
+            distillation=DistillationConfig(label_audit_prototypes_per_class=2),
+            first_stage=FirstStageConfig(image_size=4),
+            one_shot=OneShotConfig(
+                code_dim=2,
+                num_classes=2,
+                distill_target_source="mnist_nearest_teacher_image",
+            ),
+        )
+
+        with patch.dict(
+            sys.modules,
+            {
+                "torchvision": fake_torchvision,
+                "torchvision.datasets": fake_datasets,
+                "torchvision.transforms": fake_transforms,
+            },
+        ):
+            targets_a = _resolve_distill_targets(torch, payload, train_cfg)
+            targets_b = _resolve_distill_targets(torch, payload, train_cfg)
+
+        self.assertEqual(tuple(targets_a.shape), (4, 1, 4, 4))
+        self.assertGreaterEqual(float(targets_a.min().item()), 0.0)
+        self.assertLessEqual(float(targets_a.max().item()), 1.0)
+        self.assertTrue(torch.equal(targets_a, targets_b))
+        self.assertTrue(torch.equal(targets_a[0], horizontal))
+        self.assertTrue(torch.equal(targets_a[1], vertical))
+        self.assertTrue(torch.equal(targets_a[2], diagonal))
+        self.assertTrue(torch.equal(targets_a[3], anti_diagonal))
+
+    def test_distill_target_source_mnist_nearest_teacher_image_requires_teacher_image(self) -> None:
+        import torch
+
+        from ldm_project.config import FirstStageConfig, OneShotConfig, TrainingConfig
+        from ldm_project.one_shot_distill_data import _resolve_distill_targets
+
+        payload = {
+            "codes": torch.randn(2, 2),
+            "class_labels": torch.tensor([0, 1], dtype=torch.long),
+            "teacher_camera": torch.zeros(2, 1, 4, 4),
+        }
+        train_cfg = TrainingConfig(
+            first_stage=FirstStageConfig(image_size=4),
+            one_shot=OneShotConfig(
+                code_dim=2,
+                num_classes=2,
+                distill_target_source="mnist_nearest_teacher_image",
+            ),
+        )
+
+        with self.assertRaisesRegex(ValueError, "teacher_image"):
+            _resolve_distill_targets(torch, payload, train_cfg)
+
+    def test_distill_loader_uses_resolved_mnist_nearest_teacher_image_targets(self) -> None:
+        import sys
+        import types
+        from unittest.mock import patch
+
+        import torch
+
+        from ldm_project.config import DataConfig, DistillationConfig, FirstStageConfig, OneShotConfig, TrainingConfig
+        from ldm_project.one_shot_distill_data import _build_distill_loaders
+
+        horizontal = torch.zeros(1, 4, 4)
+        horizontal[:, :2, :] = 1.0
+        vertical = torch.zeros(1, 4, 4)
+        vertical[:, :, :2] = 1.0
+
+        class FakeMNIST:
+            def __init__(self, root, train, download, transform):
+                del root, train, download
+                self.transform = transform
+                self.targets = torch.tensor([0, 0], dtype=torch.long)
+                self.images = [horizontal, vertical]
+
+            def __iter__(self):
+                for image, label in zip(self.images, self.targets.tolist(), strict=True):
+                    yield self.transform(image), label
+
+        class IdentityTransform:
+            def __call__(self, image):
+                return image
+
+        fake_torchvision = types.ModuleType("torchvision")
+        fake_datasets = types.SimpleNamespace(MNIST=FakeMNIST)
+        fake_transforms = types.SimpleNamespace(
+            Compose=lambda transforms: IdentityTransform(),
+            Resize=lambda size: IdentityTransform(),
+            ToTensor=lambda: IdentityTransform(),
+        )
+        fake_torchvision.datasets = fake_datasets
+        fake_torchvision.transforms = fake_transforms
+
+        payload = {
+            "codes": torch.randn(2, 2),
+            "class_labels": torch.tensor([0, 0], dtype=torch.long),
+            "teacher_camera": torch.zeros(2, 1, 4, 4),
+            "teacher_image": torch.stack([horizontal, vertical], dim=0),
+        }
+        train_cfg = TrainingConfig(
+            batch_size=2,
+            data=DataConfig(root="unused", validation_fraction=0.0),
+            distillation=DistillationConfig(label_audit_prototypes_per_class=2),
+            first_stage=FirstStageConfig(image_size=4),
+            one_shot=OneShotConfig(
+                code_dim=2,
+                num_classes=1,
+                distill_target_source="mnist_nearest_teacher_image",
+            ),
+        )
+
+        with patch.dict(
+            sys.modules,
+            {
+                "torchvision": fake_torchvision,
+                "torchvision.datasets": fake_datasets,
+                "torchvision.transforms": fake_transforms,
+            },
+        ):
+            train_loader, _, _, _, _ = _build_distill_loaders(
+                torch,
+                payload,
+                train_cfg,
+                use_pin_memory=False,
+            )
+            _, _, batch_targets = next(iter(train_loader))
+
+        target_sums = sorted(float(target.sum().item()) for target in batch_targets)
+        self.assertEqual(target_sums, [8.0, 8.0])
+        self.assertFalse(torch.equal(batch_targets[0], batch_targets[1]))
 
     def test_paired_class_distill_loader_enables_diversity_pairs(self) -> None:
         import torch
@@ -780,6 +2956,7 @@ class OneShotConfigTests(unittest.TestCase):
         from ldm_project.one_shot_quality import (
             _one_shot_distill_balanced_quality_score,
             _one_shot_distill_quality_score,
+            _one_shot_distill_strict_readability_score,
             _one_shot_distill_strict_balanced_quality_score,
             _resolve_one_shot_distill_selection,
         )
@@ -788,6 +2965,7 @@ class OneShotConfigTests(unittest.TestCase):
             ONE_SHOT_DISTILL_BEST_METRIC,
             ONE_SHOT_DISTILL_QUALITY_METRIC,
             ONE_SHOT_DISTILL_STRICT_BALANCED_QUALITY_METRIC,
+            ONE_SHOT_DISTILL_STRICT_READABILITY_METRIC,
         )
 
         one_shot = type("OneShotSelectionConfig", (), {"checkpoint_selection_metric": "quality"})()
@@ -798,7 +2976,17 @@ class OneShotConfigTests(unittest.TestCase):
             "camera_foreground_dice": 0.8,
             "camera_saturation_ratio": 0.4,
             "foreground_hole_ratio": 0.25,
+            "background_speckle_ratio": 0.20,
+            "background_hotspot_ratio": 0.35,
+            "background_highfreq_energy": 0.004,
+            "readable_contrast": 4.2,
             "slm_tv": 0.2,
+            "diversity_ratio": 0.30,
+            "student_label_correct_ratio": 0.75,
+            "student_label_margin_mean": 0.01,
+            "paired_dice": 0.80,
+            "paired_corr": 0.85,
+            "camera_high_saturation_ratio": 0.02,
         }
 
         score, metric = _resolve_one_shot_distill_selection(train_cfg, metrics)
@@ -829,6 +3017,143 @@ class OneShotConfigTests(unittest.TestCase):
         self.assertAlmostEqual(score, 0.1695, places=6)
         self.assertAlmostEqual(metrics["strict_balanced_quality_score"], 0.1695, places=6)
         self.assertAlmostEqual(_one_shot_distill_strict_balanced_quality_score(metrics), 0.1695, places=6)
+
+        one_shot.checkpoint_selection_metric = "strict_readability"
+        score, metric = _resolve_one_shot_distill_selection(train_cfg, metrics)
+
+        self.assertEqual(metric, ONE_SHOT_DISTILL_STRICT_READABILITY_METRIC)
+        self.assertAlmostEqual(score, 0.1425, places=6)
+        self.assertAlmostEqual(metrics["strict_readability_score"], 0.1425, places=6)
+        self.assertAlmostEqual(_one_shot_distill_strict_readability_score(metrics), 0.1425, places=6)
+        for required_metric in ("paired_corr", "paired_dice", "camera_high_saturation_ratio"):
+            incomplete = dict(metrics)
+            incomplete.pop(required_metric)
+            with self.assertRaisesRegex(ValueError, required_metric):
+                _one_shot_distill_strict_readability_score(incomplete)
+
+    def test_one_shot_saturation_split_not_penalizing_black_background(self) -> None:
+        from ldm_project.training_loss_common import (
+            _camera_low_saturation_ratio,
+            _camera_high_saturation_ratio,
+            _camera_saturation_ratio,
+        )
+        from ldm_project.one_shot_quality import _one_shot_distill_strict_readability_score
+        import torch
+
+        # Pure black background: all pixels at 0.0 → low saturation high, high saturation zero.
+        black = torch.zeros(1, 1, 200, 200)
+        self.assertAlmostEqual(float(_camera_low_saturation_ratio(black).item()), 1.0, places=6)
+        self.assertAlmostEqual(float(_camera_high_saturation_ratio(black).item()), 0.0, places=6)
+        self.assertAlmostEqual(float(_camera_saturation_ratio(black).item()), 1.0, places=6)
+
+        # Pure white foreground: all pixels at 1.0 → high saturation high, low saturation zero.
+        white = torch.ones(1, 1, 200, 200)
+        self.assertAlmostEqual(float(_camera_low_saturation_ratio(white).item()), 0.0, places=6)
+        self.assertAlmostEqual(float(_camera_high_saturation_ratio(white).item()), 1.0, places=6)
+
+        # Strict readability score should NOT penalize black background (low sat only).
+        base_metrics = {
+            "camera_recon_loss": 0.1,
+            "camera_foreground_dice": 0.8,
+            "paired_dice": 0.80,
+            "paired_corr": 0.85,
+            "camera_saturation_ratio": 1.0,
+            "camera_low_saturation_ratio": 1.0,
+            "camera_high_saturation_ratio": 0.0,
+            "foreground_hole_ratio": 0.06,
+            "background_speckle_ratio": 0.07,
+            "background_hotspot_ratio": 0.12,
+            "background_highfreq_energy": 0.002,
+            "readable_contrast": 4.5,
+            "slm_tv": 0.01,
+            "student_label_correct_ratio": 0.90,
+            "student_label_margin_mean": 0.03,
+        }
+        score_black = _one_shot_distill_strict_readability_score(base_metrics)
+        # Identical metrics but low_saturation=0 → same score because high_saturation=0 in both.
+        low_sat_only = dict(base_metrics, camera_low_saturation_ratio=0.0)
+        score_no_low_sat = _one_shot_distill_strict_readability_score(low_sat_only)
+        self.assertAlmostEqual(score_black, score_no_low_sat, places=6,
+                               msg="strict_readability should not distinguish low saturation levels (black bg is valid).")
+
+        # High saturation increases strict_readability score (worse).
+        high_sat_metrics = dict(base_metrics, camera_high_saturation_ratio=0.50)
+        score_high_sat = _one_shot_distill_strict_readability_score(high_sat_metrics)
+        self.assertGreater(score_high_sat, score_black,
+                           msg="high saturation should worsen (increase) strict_readability score.")
+
+    def test_one_shot_strict_selection_prefers_better_paired_corr_dice(self) -> None:
+        from ldm_project.one_shot_quality import _one_shot_distill_strict_readability_score
+
+        base = {
+            "camera_recon_loss": 0.1,
+            "camera_foreground_dice": 0.8,
+            "paired_dice": 0.72,
+            "paired_corr": 0.78,
+            "camera_saturation_ratio": 0.02,
+            "camera_low_saturation_ratio": 0.01,
+            "camera_high_saturation_ratio": 0.01,
+            "foreground_hole_ratio": 0.06,
+            "background_speckle_ratio": 0.07,
+            "background_hotspot_ratio": 0.12,
+            "background_highfreq_energy": 0.002,
+            "readable_contrast": 4.5,
+            "slm_tv": 0.01,
+            "student_label_correct_ratio": 0.90,
+            "student_label_margin_mean": 0.03,
+        }
+        score_ok = _one_shot_distill_strict_readability_score(base)
+        # Worse paired_dice → higher score (worse).
+        bad_dice = dict(base, paired_dice=0.50)
+        score_bad_dice = _one_shot_distill_strict_readability_score(bad_dice)
+        self.assertGreater(score_bad_dice, score_ok,
+                           msg="lower paired_dice must worsen (increase) strict_readability score.")
+        # Worse paired_corr → higher score (worse).
+        bad_corr = dict(base, paired_corr=0.50)
+        score_bad_corr = _one_shot_distill_strict_readability_score(bad_corr)
+        self.assertGreater(score_bad_corr, score_ok,
+                           msg="lower paired_corr must worsen (increase) strict_readability score.")
+
+    def test_one_shot_foreground_dice_not_used_in_strict_selection(self) -> None:
+        from ldm_project.one_shot_quality import _one_shot_distill_strict_readability_score
+
+        base = {
+            "camera_recon_loss": 0.1,
+            "camera_foreground_dice": 0.50,  # poor, but should NOT affect strict score
+            "paired_dice": 0.80,
+            "paired_corr": 0.85,
+            "camera_saturation_ratio": 0.02,
+            "camera_low_saturation_ratio": 0.01,
+            "camera_high_saturation_ratio": 0.01,
+            "foreground_hole_ratio": 0.06,
+            "background_speckle_ratio": 0.07,
+            "background_hotspot_ratio": 0.12,
+            "background_highfreq_energy": 0.002,
+            "readable_contrast": 4.5,
+            "slm_tv": 0.01,
+            "student_label_correct_ratio": 0.90,
+            "student_label_margin_mean": 0.03,
+        }
+        score_poor_fg_dice = _one_shot_distill_strict_readability_score(base)
+        good_fg_dice = dict(base, camera_foreground_dice=0.95)
+        score_good_fg_dice = _one_shot_distill_strict_readability_score(good_fg_dice)
+        # camera_foreground_dice is no longer in the formula → scores must be identical.
+        self.assertAlmostEqual(score_poor_fg_dice, score_good_fg_dice, places=6,
+                               msg="camera_foreground_dice should NOT affect strict_readability score.")
+
+        diagnostics_changed = dict(
+            base,
+            student_label_correct_ratio=0.0,
+            student_label_margin_mean=-1.0,
+            foreground_hole_ratio=1.0,
+            background_speckle_ratio=1.0,
+            readable_contrast=0.0,
+        )
+        self.assertAlmostEqual(
+            score_poor_fg_dice,
+            _one_shot_distill_strict_readability_score(diagnostics_changed),
+            places=6,
+        )
 
     def test_one_shot_forward_exposes_encoder_diagnostics_on_cpu(self) -> None:
         import torch
@@ -976,6 +3301,546 @@ class OneShotConfigTests(unittest.TestCase):
             self.assertEqual(run_manager.metrics_payload["class_counts"], {"0": 4, "1": 4})
             self.assertEqual(run_manager.meta_payload["teacher_distill_filter_sample_count"], 8)
 
+    def test_teacher_distill_label_audit_and_strict_selection_use_requested_label(self) -> None:
+        import torch
+
+        from ldm_project.config import DistillationConfig, OneShotConfig, TrainingConfig
+        from ldm_project.teacher_distill import (
+            _build_label_prototype_bank_from_tensors,
+            _select_teacher_distill_label_strict_indices,
+            compute_teacher_distill_label_audit,
+        )
+
+        proto0 = torch.zeros(1, 4, 4)
+        proto0[:, :, :2] = 1.0
+        proto1 = torch.zeros(1, 4, 4)
+        proto1[:, :, 2:] = 1.0
+        prototype_images = torch.stack([proto0, proto0, proto1, proto1], dim=0)
+        prototype_labels = torch.tensor([0, 0, 1, 1], dtype=torch.long)
+        prototypes = _build_label_prototype_bank_from_tensors(
+            torch,
+            prototype_images,
+            prototype_labels,
+            class_labels=(0, 1),
+            image_size=4,
+        )
+
+        teacher_camera = torch.stack([proto0, proto0 * 0.9, proto1, proto1, proto1, proto0], dim=0)
+        labels = torch.tensor([0, 0, 0, 1, 1, 1], dtype=torch.long)
+        audit = compute_teacher_distill_label_audit(
+            torch,
+            teacher_camera,
+            labels,
+            prototypes,
+            class_labels=(0, 1),
+            foreground_threshold=0.2,
+        )
+        self.assertEqual(tuple(prototypes.shape), (2, 1, 4, 4))
+        self.assertEqual(audit["nearest_label"].tolist(), [0, 0, 1, 1, 1, 0])
+        self.assertTrue(audit["label_correct"][0].item())
+        self.assertFalse(audit["label_correct"][2].item())
+        self.assertFalse(audit["label_correct"][5].item())
+
+        train_cfg = TrainingConfig(
+            one_shot=OneShotConfig(num_classes=2),
+            distillation=DistillationConfig(class_labels=(0, 1), label_strict_keep_per_class=2),
+        )
+        selected, summary = _select_teacher_distill_label_strict_indices(torch, labels, audit, train_cfg)
+        self.assertEqual(len(selected), 4)
+        self.assertEqual((labels[torch.tensor(selected)] == 0).sum().item(), 2)
+        self.assertEqual((labels[torch.tensor(selected)] == 1).sum().item(), 2)
+        self.assertFalse(summary["per_class"]["0"]["relaxed_label_filter"])
+        self.assertFalse(summary["per_class"]["1"]["relaxed_label_filter"])
+        self.assertEqual(summary["per_class"]["0"]["selected_label_correct"], 2)
+        self.assertEqual(summary["per_class"]["1"]["selected_label_correct"], 2)
+
+        relaxed_cfg = TrainingConfig(
+            one_shot=OneShotConfig(num_classes=2),
+            distillation=DistillationConfig(class_labels=(0, 1), label_strict_keep_per_class=3),
+        )
+        relaxed_selected, relaxed_summary = _select_teacher_distill_label_strict_indices(
+            torch,
+            labels,
+            audit,
+            relaxed_cfg,
+        )
+        self.assertEqual(len(relaxed_selected), 6)
+        self.assertTrue(relaxed_summary["per_class"]["0"]["relaxed_label_filter"])
+        self.assertTrue(relaxed_summary["per_class"]["1"]["relaxed_label_filter"])
+
+    def test_teacher_distill_label_audit_batched_matches_full_audit(self) -> None:
+        import torch
+
+        from ldm_project.teacher_distill import (
+            compute_teacher_distill_label_audit,
+            compute_teacher_distill_label_audit_batched,
+        )
+
+        proto0 = torch.zeros(1, 4, 4)
+        proto0[:, :, :2] = 1.0
+        proto1 = torch.zeros(1, 4, 4)
+        proto1[:, :, 2:] = 1.0
+        prototypes = torch.stack([proto0, proto1], dim=0)
+        teacher_camera = torch.stack([proto0, proto1, proto0 * 0.8, proto1 * 0.7, proto0], dim=0)
+        labels = torch.tensor([0, 1, 0, 1, 1], dtype=torch.long)
+
+        full = compute_teacher_distill_label_audit(
+            torch,
+            teacher_camera,
+            labels,
+            prototypes,
+            class_labels=(0, 1),
+            foreground_threshold=0.2,
+        )
+        batched = compute_teacher_distill_label_audit_batched(
+            torch,
+            teacher_camera,
+            labels,
+            prototypes,
+            class_labels=(0, 1),
+            batch_size=2,
+            device=torch.device("cpu"),
+            foreground_threshold=0.2,
+        )
+
+        self.assertEqual(set(batched), set(full))
+        self.assertEqual(batched["nearest_label"].tolist(), full["nearest_label"].tolist())
+        self.assertEqual(batched["label_correct"].tolist(), full["label_correct"].tolist())
+        torch.testing.assert_close(batched["label_margin"], full["label_margin"])
+        torch.testing.assert_close(batched["teacher_readable"], full["teacher_readable"])
+
+    def test_teacher_distill_label_strict_relaxed_filter_preserves_all_correct_samples(self) -> None:
+        import torch
+
+        from ldm_project.config import DistillationConfig, OneShotConfig, TrainingConfig
+        from ldm_project.teacher_distill import _select_teacher_distill_label_strict_indices
+
+        labels = torch.tensor([0, 0, 0, 0, 0], dtype=torch.long)
+        audit = {
+            "label_correct": torch.tensor([True, True, False, False, False]),
+            "label_margin": torch.tensor([0.01, 0.02, 10.0, 5.0, 1.0]),
+            "requested_label_corr": torch.tensor([0.7, 0.8, 0.95, 0.9, 0.85]),
+            "background_speckle_ratio": torch.zeros(5),
+            "readable_contrast": torch.zeros(5),
+            "foreground_hole_ratio": torch.zeros(5),
+        }
+        train_cfg = TrainingConfig(
+            one_shot=OneShotConfig(num_classes=1),
+            distillation=DistillationConfig(class_labels=(0,), label_strict_keep_per_class=3),
+        )
+
+        selected, summary = _select_teacher_distill_label_strict_indices(torch, labels, audit, train_cfg)
+
+        self.assertEqual(selected, [0, 1, 2])
+        self.assertTrue(summary["per_class"]["0"]["relaxed_label_filter"])
+        self.assertEqual(summary["per_class"]["0"]["label_correct_available"], 2)
+        self.assertEqual(summary["per_class"]["0"]["selected_label_correct"], 2)
+        self.assertEqual(summary["per_class"]["0"]["kept"], 3)
+
+    def test_teacher_distill_label_strict_filter_writes_balanced_bundle_and_audit(self) -> None:
+        import torch
+
+        from ldm_project.config import DataConfig, DistillationConfig, FirstStageConfig, OneShotConfig, TrainingConfig
+        from ldm_project.teacher_distill import run_teacher_distill_label_strict_filter
+
+        proto0 = torch.zeros(1, 4, 4)
+        proto0[:, :, :2] = 1.0
+        proto1 = torch.zeros(1, 4, 4)
+        proto1[:, :, 2:] = 1.0
+        prototypes = torch.stack([proto0, proto1], dim=0)
+
+        class RecordingRunManager:
+            def __init__(self, run_dir: Path) -> None:
+                self.run_dir = run_dir
+                self.images_dir = run_dir / "images"
+                self.artifacts_dir = run_dir / "artifacts"
+                self.configs_dir = run_dir / "configs"
+                self.meta_payload = None
+                self.bundle_path = None
+                self.artifact_payloads = {}
+                self.config_payloads = {}
+                self.grid_calls = []
+
+            def write_meta(self, meta):
+                self.meta_payload = dict(meta)
+
+            def save_config_snapshot(self, name, data):
+                self.config_payloads[name] = dict(data)
+                return self.configs_dir / f"{name}.json"
+
+            def save_tensor_bundle(self, name, payload):
+                path = self.artifacts_dir / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                torch.save(dict(payload), path)
+                self.bundle_path = path
+                return path
+
+            def save_artifact_json(self, name, payload):
+                self.artifact_payloads[name] = payload
+                path = self.artifacts_dir / f"{name}.json"
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("{}", encoding="utf-8")
+                return path
+
+            def save_tensor_grid(
+                self,
+                tensor_map,
+                destination,
+                title="",
+                max_items=4,
+                row_labels=None,
+                cmap="gray",
+                phase_colorbar=False,
+            ):
+                self.grid_calls.append(
+                    (
+                        Path(destination).name,
+                        list(tensor_map.keys()),
+                        {
+                            "row_labels": row_labels,
+                            "cmap": cmap,
+                            "phase_colorbar": phase_colorbar,
+                        },
+                    )
+                )
+                path = Path(destination)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                return path
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            run_dir = Path(tmpdir)
+            source_path = run_dir / "source_distill.pt"
+            labels = torch.tensor([0, 0, 0, 1, 1, 1], dtype=torch.long)
+            teacher_camera = torch.stack([proto0, proto0, proto1, proto1, proto1, proto0], dim=0)
+            torch.save(
+                {
+                    "codes": torch.arange(18, dtype=torch.float32).reshape(6, 3),
+                    "class_labels": labels,
+                    "teacher_camera": teacher_camera,
+                    "teacher_image": teacher_camera.clone(),
+                },
+                source_path,
+            )
+            train_cfg = TrainingConfig(
+                data=DataConfig(validation_fraction=0.0),
+                first_stage=FirstStageConfig(image_size=4),
+                one_shot=OneShotConfig(code_dim=3, num_classes=2),
+                distillation=DistillationConfig(
+                    class_labels=(0, 1),
+                    label_strict_keep_per_class=2,
+                    label_audit_prototypes_per_class=2,
+                ),
+            )
+            run_manager = RecordingRunManager(run_dir)
+            with unittest.mock.patch(
+                "ldm_project.teacher_distill._build_mnist_label_prototype_bank",
+                return_value=prototypes,
+            ):
+                run_teacher_distill_label_strict_filter(
+                    torch,
+                    train_cfg=train_cfg,
+                    run_manager=run_manager,
+                    run_meta={},
+                    distill_dataset=str(source_path),
+                )
+
+            filtered = torch.load(run_manager.bundle_path, map_location="cpu", weights_only=False)
+            self.assertEqual(run_manager.bundle_path.name, "teacher_distill_dataset_label_strict.pt")
+            self.assertEqual(tuple(filtered["codes"].shape), (4, 3))
+            self.assertEqual((filtered["class_labels"] == 0).sum().item(), 2)
+            self.assertEqual((filtered["class_labels"] == 1).sum().item(), 2)
+            self.assertEqual(filtered["config"]["filter"]["teacher_filter"], "label_strict")
+            self.assertIn("label_audit_nearest_label", filtered)
+            metrics = run_manager.artifact_payloads["teacher_distill_label_strict_filter_metrics"]
+            self.assertEqual(metrics["teacher_filter"], "label_strict")
+            self.assertEqual(metrics["class_counts"], {"0": 2, "1": 2})
+            self.assertIn("label_margin", metrics["per_class"]["0"])
+            audit = run_manager.artifact_payloads["teacher_distill_label_audit"]
+            self.assertIn("per_sample", audit)
+            self.assertIn("nearest_label", audit["per_sample"][0])
+            self.assertEqual(run_manager.meta_payload["teacher_distill_filter"], "label_strict")
+            self.assertIn("teacher_distill_label_audit.png", [call[0] for call in run_manager.grid_calls])
+
+    def test_teacher_distill_readable_split_requires_readable_targets(self) -> None:
+        import torch
+
+        from ldm_project.config import DistillationConfig, OneShotConfig, TrainingConfig
+        from ldm_project.teacher_distill import _split_readable_teacher_indices
+
+        labels = torch.tensor([0, 0, 0, 0, 0, 1, 1, 1, 1, 1], dtype=torch.long)
+        audit = {
+            "label_correct": torch.tensor([True, True, True, True, False, True, True, True, True, False]),
+            "label_margin": torch.tensor([0.04, 0.05, 0.06, 0.07, 0.90, 0.04, 0.05, 0.06, 0.07, 0.90]),
+            "requested_label_corr": torch.ones(10),
+            "nearest_label": labels.clone(),
+            "background_speckle_ratio": torch.tensor([0.10, 0.12, 0.11, 0.13, 0.01, 0.10, 0.12, 0.11, 0.13, 0.01]),
+            "readable_contrast": torch.tensor([0.80, 0.81, 0.82, 0.83, 0.95, 0.80, 0.81, 0.82, 0.83, 0.95]),
+            "foreground_hole_ratio": torch.tensor([0.01, 0.02, 0.03, 0.04, 0.01, 0.01, 0.02, 0.03, 0.04, 0.01]),
+        }
+        train_cfg = TrainingConfig(
+            one_shot=OneShotConfig(num_classes=2),
+            distillation=DistillationConfig(
+                class_labels=(0, 1),
+                readable_train_per_class=2,
+                readable_val_per_class=1,
+                readable_test_per_class=1,
+                readable_split_seed=7,
+            ),
+        )
+
+        summary = _split_readable_teacher_indices(torch, labels, audit, train_cfg)
+
+        self.assertFalse(summary["failed"])
+        self.assertEqual(len(summary["indices"]["train"]), 4)
+        self.assertEqual(len(summary["indices"]["val"]), 2)
+        self.assertEqual(len(summary["indices"]["test"]), 2)
+        self.assertEqual(summary["per_class"]["0"]["readable_available"], 4)
+        self.assertEqual(summary["per_class"]["1"]["readable_available"], 4)
+        all_indices = (
+            summary["indices"]["train"] + summary["indices"]["val"] + summary["indices"]["test"]
+        )
+        self.assertEqual(len(all_indices), len(set(all_indices)))
+
+        fail_cfg = TrainingConfig(
+            one_shot=OneShotConfig(num_classes=2),
+            distillation=DistillationConfig(
+                class_labels=(0, 1),
+                readable_train_per_class=3,
+                readable_val_per_class=1,
+                readable_test_per_class=1,
+            ),
+        )
+        failed = _split_readable_teacher_indices(torch, labels, audit, fail_cfg)
+        self.assertTrue(failed["failed"])
+        self.assertTrue(failed["per_class"]["0"]["readability_filter_failed"])
+        self.assertEqual(failed["indices"]["train"], [])
+
+    def test_teacher_distill_readable_split_writes_train_val_test_bundles(self) -> None:
+        import torch
+
+        from ldm_project.config import DataConfig, DistillationConfig, FirstStageConfig, OneShotConfig, TrainingConfig
+        from ldm_project.teacher_distill import run_teacher_distill_readable_split
+
+        proto0 = torch.zeros(1, 4, 4)
+        proto0[:, :, :2] = 1.0
+        proto1 = torch.zeros(1, 4, 4)
+        proto1[:, :, 2:] = 1.0
+        prototypes = torch.stack([proto0, proto1], dim=0)
+
+        class RecordingRunManager:
+            def __init__(self, run_dir: Path) -> None:
+                self.run_dir = run_dir
+                self.images_dir = run_dir / "images"
+                self.artifacts_dir = run_dir / "artifacts"
+                self.configs_dir = run_dir / "configs"
+                self.meta_payload = None
+                self.bundle_paths = {}
+                self.artifact_payloads = {}
+                self.config_payloads = {}
+                self.grid_calls = []
+
+            def write_meta(self, meta):
+                self.meta_payload = dict(meta)
+
+            def save_config_snapshot(self, name, data):
+                self.config_payloads[name] = dict(data)
+                return self.configs_dir / f"{name}.json"
+
+            def save_tensor_bundle(self, name, payload):
+                path = self.artifacts_dir / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                torch.save(dict(payload), path)
+                self.bundle_paths[name] = path
+                return path
+
+            def save_artifact_json(self, name, payload):
+                self.artifact_payloads[name] = payload
+                path = self.artifacts_dir / f"{name}.json"
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("{}", encoding="utf-8")
+                return path
+
+            def save_tensor_grid(
+                self,
+                tensor_map,
+                destination,
+                title="",
+                max_items=4,
+                row_labels=None,
+                cmap="gray",
+                phase_colorbar=False,
+            ):
+                self.grid_calls.append((Path(destination).name, list(tensor_map.keys()), row_labels))
+                path = Path(destination)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                return path
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            run_dir = Path(tmpdir)
+            source_path = run_dir / "source_distill.pt"
+            labels = torch.tensor([0, 0, 0, 0, 1, 1, 1, 1], dtype=torch.long)
+            teacher_camera = torch.stack([proto0, proto0, proto0, proto0, proto1, proto1, proto1, proto1], dim=0)
+            torch.save(
+                {
+                    "codes": torch.arange(24, dtype=torch.float32).reshape(8, 3),
+                    "class_labels": labels,
+                    "teacher_camera": teacher_camera,
+                    "teacher_image": teacher_camera.clone(),
+                    "config": {"source": "unit"},
+                },
+                source_path,
+            )
+            train_cfg = TrainingConfig(
+                data=DataConfig(validation_fraction=0.0),
+                first_stage=FirstStageConfig(image_size=4),
+                one_shot=OneShotConfig(code_dim=3, num_classes=2),
+                distillation=DistillationConfig(
+                    class_labels=(0, 1),
+                    label_audit_prototypes_per_class=2,
+                    readable_min_label_margin=-1.0,
+                    readable_min_contrast=0.0,
+                    readable_max_background_speckle=1.0,
+                    readable_max_foreground_hole=1.0,
+                    readable_train_per_class=2,
+                    readable_val_per_class=1,
+                    readable_test_per_class=1,
+                    readable_split_seed=11,
+                ),
+            )
+            run_manager = RecordingRunManager(run_dir)
+            with unittest.mock.patch(
+                "ldm_project.teacher_distill._build_mnist_label_prototype_bank",
+                return_value=prototypes,
+            ):
+                run_teacher_distill_readable_split(
+                    torch,
+                    train_cfg=train_cfg,
+                    run_manager=run_manager,
+                    run_meta={},
+                    distill_dataset=str(source_path),
+                    device=torch.device("cpu"),
+                )
+
+            self.assertFalse(run_manager.artifact_payloads["teacher_distill_readable_split_metrics"]["readability_filter_failed"])
+            self.assertEqual(set(run_manager.bundle_paths), {
+                "teacher_distill_dataset_readable_train.pt",
+                "teacher_distill_dataset_readable_val.pt",
+                "teacher_distill_dataset_readable_test.pt",
+            })
+            train_payload = torch.load(
+                run_manager.bundle_paths["teacher_distill_dataset_readable_train.pt"],
+                map_location="cpu",
+                weights_only=False,
+            )
+            val_payload = torch.load(
+                run_manager.bundle_paths["teacher_distill_dataset_readable_val.pt"],
+                map_location="cpu",
+                weights_only=False,
+            )
+            test_payload = torch.load(
+                run_manager.bundle_paths["teacher_distill_dataset_readable_test.pt"],
+                map_location="cpu",
+                weights_only=False,
+            )
+            self.assertEqual(tuple(train_payload["codes"].shape), (4, 3))
+            self.assertEqual(tuple(val_payload["codes"].shape), (2, 3))
+            self.assertEqual(tuple(test_payload["codes"].shape), (2, 3))
+            self.assertEqual(train_payload["config"]["filter"]["teacher_filter"], "readability_strict_split")
+            self.assertIn("label_audit_margin", train_payload)
+            split_indices = [
+                *train_payload["readability_filter_indices"].tolist(),
+                *val_payload["readability_filter_indices"].tolist(),
+                *test_payload["readability_filter_indices"].tolist(),
+            ]
+            self.assertEqual(len(split_indices), len(set(split_indices)))
+            self.assertEqual(run_manager.meta_payload["teacher_distill_readability_filter_failed"], False)
+            self.assertIn("teacher_distill_readable_split_before_after.png", [call[0] for call in run_manager.grid_calls])
+
+    def test_prepare_distill_loaders_uses_external_validation_dataset(self) -> None:
+        import torch
+
+        from ldm_project.config import DataConfig, DistillationConfig, FirstStageConfig, OneShotConfig, TrainingConfig
+        from ldm_project.one_shot_distill_training import _prepare_distill_loaders
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            train_path = root / "train.pt"
+            val_path = root / "val.pt"
+            torch.save(
+                {
+                    "codes": torch.arange(12, dtype=torch.float32).reshape(4, 3),
+                    "class_labels": torch.tensor([0, 0, 1, 1], dtype=torch.long),
+                    "teacher_camera": torch.rand(4, 1, 4, 4),
+                },
+                train_path,
+            )
+            torch.save(
+                {
+                    "codes": torch.arange(6, dtype=torch.float32).reshape(2, 3),
+                    "class_labels": torch.tensor([0, 1], dtype=torch.long),
+                    "teacher_camera": torch.rand(2, 1, 4, 4),
+                },
+                val_path,
+            )
+            train_cfg = TrainingConfig(
+                batch_size=2,
+                data=DataConfig(validation_fraction=0.5),
+                first_stage=FirstStageConfig(image_size=4),
+                one_shot=OneShotConfig(code_dim=3, num_classes=2),
+                distillation=DistillationConfig(),
+            )
+
+            loaders = _prepare_distill_loaders(
+                torch,
+                distill_dataset=str(train_path),
+                distill_validation_dataset=str(val_path),
+                train_cfg=train_cfg,
+                use_pin_memory=False,
+            )
+
+            self.assertEqual(loaders.train_size, 4)
+            self.assertEqual(loaders.validation_size, 2)
+            self.assertEqual(loaders.total_size, 6)
+            self.assertEqual(loaders.validation_source, "external_dataset")
+            self.assertEqual(loaders.validation_dataset_path, str(val_path))
+
+    def test_student_label_margin_prototypes_can_use_mnist_source(self) -> None:
+        import torch
+        from unittest.mock import patch
+
+        from ldm_project.config import DataConfig, DistillationConfig, FirstStageConfig, OneShotConfig, TrainingConfig
+        from ldm_project.one_shot_distill_training import _build_student_label_margin_prototypes
+
+        prototype_bank = torch.arange(32, dtype=torch.float32).reshape(2, 1, 4, 4)
+        payload = {
+            "class_labels": torch.tensor([0, 1], dtype=torch.long),
+            "teacher_camera": torch.zeros(2, 1, 4, 4),
+        }
+        train_cfg = TrainingConfig(
+            data=DataConfig(root="data"),
+            first_stage=FirstStageConfig(image_size=4),
+            one_shot=OneShotConfig(
+                num_classes=2,
+                student_label_margin_weight=0.1,
+                student_label_margin_prototype_source="mnist",
+            ),
+            distillation=DistillationConfig(label_audit_prototypes_per_class=3),
+        )
+
+        with patch(
+            "ldm_project.one_shot_distill_training._build_mnist_label_prototype_bank",
+            return_value=prototype_bank,
+        ) as build_bank:
+            prototypes, source = _build_student_label_margin_prototypes(torch, payload, train_cfg)
+
+        self.assertEqual(source, "mnist")
+        self.assertTrue(torch.equal(prototypes, prototype_bank))
+        build_bank.assert_called_once()
+        _, kwargs = build_bank.call_args
+        self.assertEqual(kwargs["class_labels"], (0, 1))
+        self.assertEqual(kwargs["image_size"], 4)
+        self.assertEqual(kwargs["max_per_class"], 3)
+
     def test_one_shot_visualization_includes_raw_and_display_camera(self) -> None:
         import torch
 
@@ -1014,67 +3879,69 @@ class OneShotConfigTests(unittest.TestCase):
         diagnostics = build_one_shot_display_diagnostic_tensors(outputs)
 
         self.assertEqual(
-            list(tensors.keys()),
-            ["amplitude", "phase"],
+            sorted(tensors.keys()),
+            sorted(["amplitude", "intensity", "phase"]),
         )
         self.assertEqual(
             list(tensors["amplitude"].keys()),
             [
+                "SLM command (amplitude control)",
+                "SLM out |E|",
+                "encoder in |E|",
+                "encoder grid in |E|",
+                "encoder field after L1 |E|",
+                "encoder field after L2 |E|",
+                "encoder out |E|",
+                "OLS in |E|",
+                "OLS out |E|",
+                "decoder in |E|",
+                "decoder field after L1 |E|",
+                "decoder field after L2 |E|",
+                "decoder out |E|",
+                "chip |E|",
+            ],
+        )
+        # Intensity: |E|² for chain, camera/display for sensor/reference/SLM command.
+        self.assertEqual(
+            list(tensors["intensity"].keys()),
+            [
                 "noise code",
                 "reference",
-                "camera",
-                "slm command",
-                "slm amplitude grid",
-                "slm out amp",
-                "encoder in amp",
-                "encoder grid in amp",
-                "encoder mask amp = 1 L1",
-                "encoder field after L1",
-                "encoder mask amp = 1 L2",
-                "encoder field after L2",
-                "encoder out amp",
-                "ols in amp",
-                "ols out amp",
-                "decoder in amp",
-                "decoder mask amp = 1 L1",
-                "decoder field after L1",
-                "decoder mask amp = 1 L2",
-                "decoder field after L2",
-                "decoder out amp",
-                "chip amp",
+                "SLM command (amplitude control)",
+                "SLM amplitude grid (control)",
+                "SLM out I",
+                "encoder in I",
+                "encoder grid in I",
+                "encoder out I",
+                "ols in I",
+                "ols out I",
+                "decoder in I",
+                "decoder out I",
                 "chip I",
+                "camera intensity",
             ],
         )
         self.assertEqual(
             list(tensors["phase"].keys()),
             [
-                "noise code",
-                "reference",
-                "camera",
-                "slm command",
-                "slm amplitude grid",
-                "slm out amp",
-                "encoder in amp",
-                "encoder grid in amp",
-                "encoder mask phase L1",
-                "encoder field after L1",
-                "encoder mask phase L2",
-                "encoder field after L2",
-                "encoder out amp",
-                "ols in amp",
-                "ols out amp",
-                "decoder in amp",
-                "decoder mask phase L1",
-                "decoder field after L1",
-                "decoder mask phase L2",
-                "decoder field after L2",
-                "decoder out amp",
-                "chip amp",
-                "chip I",
+                "SLM out phase",
+                "encoder in phase",
+                "encoder grid in phase",
+                "encoder field after L1 phase",
+                "encoder field after L2 phase",
+                "encoder out phase",
+                "OLS in phase",
+                "OLS out phase",
+                "decoder in phase",
+                "decoder field after L1 phase",
+                "decoder field after L2 phase",
+                "decoder out phase",
+                "chip phase",
             ],
         )
+        _assert_nonblank_phase_columns_are_labeled(self, tensors["phase"])
         self.assertNotIn("chip_amplitude_display", diagnostics)
-        for key in ("slm command", "slm out amp"):
+        for key in ("SLM out |E|", "chip |E|"):
             normalized = tensors["amplitude"][key]
             self.assertTrue(torch.all(normalized >= 0.0).item(), key)
             self.assertTrue(torch.all(normalized <= 1.0).item(), key)
@@ -1082,8 +3949,10 @@ class OneShotConfigTests(unittest.TestCase):
                 sample = normalized[sample_idx]
                 self.assertAlmostEqual(sample.amin().item(), 0.0, delta=1e-5, msg=f"{key}[{sample_idx}] min")
                 self.assertAlmostEqual(sample.amax().item(), 1.0, delta=1e-5, msg=f"{key}[{sample_idx}] max")
-        self.assertTrue(torch.all(tensors["amplitude"]["camera"] >= 0.0).item())
-        self.assertTrue(torch.all(tensors["amplitude"]["camera"] <= 1.0).item())
+        self.assertTrue(torch.all(tensors["intensity"]["camera intensity"] >= 0.0).item())
+        self.assertTrue(torch.all(tensors["intensity"]["camera intensity"] <= 1.0).item())
+        self.assertTrue(torch.equal(tensors["phase"]["SLM out phase"], torch.zeros_like(camera)))
+        self.assertFalse(any("mask" in key for split in tensors.values() for key in split))
         for key in (
             "slm_phase_display",
             "encoder_input_amplitude_display",
@@ -1117,6 +3986,7 @@ class OneShotConfigTests(unittest.TestCase):
         int_lo = flat_int.quantile(0.02, dim=1).reshape(2, 1, 1, 1)
         int_hi = flat_int.quantile(0.98, dim=1).reshape(2, 1, 1, 1)
         expected_intensity = ((chip_intensity - int_lo) / (int_hi - int_lo).clamp_min(1e-6)).clamp(0.0, 1.0)
+        self.assertTrue(torch.allclose(tensors["amplitude"]["chip |E|"], expected_amplitude))
         self.assertTrue(torch.allclose(diagnostics["chip_field_amplitude_display"], expected_amplitude))
         self.assertTrue(torch.allclose(diagnostics["chip_intensity_display"], expected_intensity))
         visual_diagnostics = build_one_shot_visual_diagnostics(outputs, diagnostics)
@@ -1130,54 +4000,103 @@ class OneShotConfigTests(unittest.TestCase):
         self.assertEqual(visual_diagnostics["tensor_stats"]["chip_amplitude"]["shape"], [2, 1, 16, 16])
 
         shared = build_one_shot_shared_scale_visualization_tensors(reference, outputs, codes=codes)
-        shared_amplitude = shared["amplitude"]
+        _assert_nonblank_phase_columns_are_labeled(self, shared["phase"])
         self.assertEqual(
-            list(shared_amplitude.keys()),
+            list(shared["amplitude"].keys()),
+            list(tensors["amplitude"].keys()),
+        )
+        self.assertEqual(
+            list(shared["intensity"].keys()),
             [
                 "noise code",
                 "reference",
-                "slm in cmd",
-                "slm in cmd contrast",
-                "slm amplitude grid",
-                "slm out amp",
-                "encoder in amp",
-                "encoder grid in amp",
-                "encoder mask amp = 1 L1",
-                "encoder field after L1",
-                "encoder mask amp = 1 L2",
-                "encoder field after L2",
-                "encoder out amp",
-                "ols in amp",
-                "ols out amp",
-                "decoder in amp",
-                "decoder mask amp = 1 L1",
-                "decoder field after L1",
-                "decoder mask amp = 1 L2",
-                "decoder field after L2",
-                "decoder out amp",
-                "chip amp",
+                "SLM command (amplitude control)",
+                "SLM command contrast (display)",
+                "SLM amplitude grid (control)",
+                "SLM out I",
+                "encoder in I",
+                "encoder grid in I",
+                "encoder field after L1 I",
+                "encoder field after L2 I",
+                "encoder out I",
+                "ols in I",
+                "ols out I",
+                "decoder in I",
+                "decoder field after L1 I",
+                "decoder field after L2 I",
+                "decoder out I",
                 "chip I",
-                "camera",
+                "camera intensity",
             ],
         )
-        self.assertTrue(torch.allclose(shared_amplitude["slm in cmd"], slm_amplitude))
-        self.assertTrue(torch.all(shared_amplitude["slm in cmd contrast"] >= 0.0).item())
-        self.assertTrue(torch.all(shared_amplitude["slm in cmd contrast"] <= 1.0).item())
-        shared_scale = shared["diagnostics"]["amplitude_scale"]
-        self.assertAlmostEqual(float(shared_amplitude["chip amp"].max().item()), 1.0, places=6)
-        self.assertTrue(torch.allclose(shared_amplitude["slm out amp"], self._minmax_norm(slm_amplitude)))
-        self.assertTrue(torch.allclose(shared_amplitude["encoder in amp"], self._minmax_norm(outputs["encoder_input_amplitude"])))
+        shared_intensity = shared["intensity"]
+        self.assertTrue(torch.allclose(shared_intensity["SLM command (amplitude control)"], slm_amplitude))
+        self.assertTrue(torch.all(shared_intensity["SLM command contrast (display)"] >= 0.0).item())
+        self.assertTrue(torch.all(shared_intensity["SLM command contrast (display)"] <= 1.0).item())
+        shared_scale = shared["diagnostics"]["intensity_scale"]
         self.assertTrue(
-            torch.allclose(shared_amplitude["encoder grid in amp"], self._minmax_norm(outputs["encoder_input_grid_amplitude"]))
+            all("mask amplitude" not in key for key in shared["amplitude"]),
+            "main physical-chain amplitude view should not include constant mask amplitude columns",
         )
-        self.assertTrue(torch.allclose(shared_amplitude["chip amp"], (chip_amplitude / shared_scale).clamp(0.0, 1.0)))
-        self.assertEqual(list(shared["phase"].keys())[0], "noise code")
+        self.assertAlmostEqual(float(shared_intensity["chip I"].max().item()), 1.0, places=6)
+        self.assertTrue(
+            torch.allclose(
+                shared_intensity["encoder in I"],
+                (outputs["encoder_input_amplitude"].pow(2) / shared_scale).clamp(0.0, 1.0),
+            )
+        )
+        self.assertTrue(
+            torch.allclose(
+                shared_intensity["encoder grid in I"],
+                (outputs["encoder_input_grid_amplitude"].pow(2) / shared_scale).clamp(0.0, 1.0),
+            )
+        )
+        self.assertTrue(
+            torch.allclose(shared_intensity["chip I"], (chip_amplitude.pow(2) / shared_scale).clamp(0.0, 1.0))
+        )
+        self.assertNotIn("noise code", shared["phase"],
+                         "noise code has no phase source and should be excluded from phase split")
         self.assertEqual(shared["diagnostics"]["view"], "shared_scale_full_chain")
-        self.assertNotIn("slm out amp", shared["diagnostics"]["amplitude_scale_columns"])
-        self.assertIn("slm out amp", shared["diagnostics"]["early_raw_amplitude_columns"])
-        self.assertIn("encoder grid in amp", shared["diagnostics"]["early_raw_amplitude_columns"])
+        self.assertEqual(shared["diagnostics"]["visualization_schema_version"], 2)
+        self.assertEqual(shared["diagnostics"]["amplitude_display_policy"], "per_plane_robust_normalization")
+        self.assertIn("SLM out I", shared["diagnostics"]["intensity_scale_columns"])
+        self.assertIn("encoder grid in I", shared["diagnostics"]["intensity_scale_columns"])
+        self.assertNotIn("reference", shared["diagnostics"]["intensity_scale_columns"])
+        self.assertNotIn("camera intensity", shared["diagnostics"]["intensity_scale_columns"])
+        self.assertNotIn("amplitude_scale", shared["diagnostics"])
+        self.assertNotIn("early_raw_amplitude_columns", shared["diagnostics"])
         self.assertIn("p99_minus_p01_mean", shared["diagnostics"]["slm_command_stats"])
         self.assertIn("encoder grid in phase", shared["diagnostics"]["phase_stats"])
+
+        coherent_outputs = dict(outputs)
+        coherent_outputs.update(
+            camera_field_available=True,
+            camera_phase_available=True,
+            camera_field_real=camera * 3.0,
+            camera_field_imag=camera * 4.0,
+            camera_phase=torch.zeros_like(camera),
+        )
+        coherent = build_one_shot_visualization_tensors(reference, coherent_outputs)
+        camera_amplitude = camera * 5.0
+        flat_camera_amplitude = camera_amplitude.flatten(start_dim=1)
+        camera_lo = flat_camera_amplitude.quantile(0.02, dim=1).reshape(2, 1, 1, 1)
+        camera_hi = flat_camera_amplitude.quantile(0.98, dim=1).reshape(2, 1, 1, 1)
+        expected_camera_amplitude = (
+            (camera_amplitude - camera_lo) / (camera_hi - camera_lo).clamp_min(1e-6)
+        ).clamp(0.0, 1.0)
+        self.assertTrue(
+            torch.allclose(
+                coherent["amplitude"]["camera field |E|"],
+                expected_camera_amplitude,
+            )
+        )
+        expected_camera_phase = torch.full_like(camera, math.atan2(4.0, 3.0) / (2.0 * math.pi))
+        self.assertTrue(torch.allclose(coherent["phase"]["camera field phase"], expected_camera_phase))
+        intensity_only_outputs = dict(coherent_outputs)
+        intensity_only_outputs.update(camera_field_available=False, camera_phase_available=False)
+        intensity_only = build_one_shot_visualization_tensors(reference, intensity_only_outputs)
+        self.assertNotIn("camera field |E|", intensity_only["amplitude"])
+        self.assertNotIn("camera field phase", intensity_only["phase"])
 
         d2nn = build_one_shot_d2nn_visualization_tensors(outputs)
         self.assertEqual(
@@ -1186,21 +4105,30 @@ class OneShotConfigTests(unittest.TestCase):
         )
         self.assertEqual(
             list(d2nn["layers"]["phase"].keys()),
-            ["encoder field after L1", "encoder field after L2", "decoder field after L1", "decoder field after L2"],
+            [
+                "encoder field after L1 phase",
+                "encoder field after L2 phase",
+                "decoder field after L1 phase",
+                "decoder field after L2 phase",
+            ],
         )
         self.assertEqual(
             list(d2nn["masks"]["amplitude"].keys()),
-            ["encoder mask amp = 1 L1", "encoder mask amp = 1 L2", "decoder mask amp = 1 L1", "decoder mask amp = 1 L2"],
+            [
+                "encoder mask transmittance |t| L1",
+                "encoder mask transmittance |t| L2",
+                "decoder mask transmittance |t| L1",
+                "decoder mask transmittance |t| L2",
+            ],
         )
         self.assertEqual(
             list(d2nn["masks"]["phase"].keys()),
-            ["encoder mask phase L1", "encoder mask phase L2", "decoder mask phase L1", "decoder mask phase L2"],
+            ["encoder mask phase arg(t) L1", "encoder mask phase arg(t) L2", "decoder mask phase arg(t) L1", "decoder mask phase arg(t) L2"],
         )
         self.assertEqual(tuple(d2nn["layers"]["amplitude"]["encoder field after L1"].shape), (2, 1, 8, 8))
-        self.assertEqual(tuple(d2nn["layers"]["phase"]["decoder field after L2"].shape), (2, 1, 8, 8))
-        self.assertEqual(tuple(d2nn["masks"]["amplitude"]["encoder mask amp = 1 L1"].shape), (1, 1, 8, 8))
-        self.assertEqual(tuple(tensors["amplitude"]["encoder mask amp = 1 L1"].shape), (2, 1, 8, 8))
-        self.assertEqual(tuple(tensors["phase"]["decoder mask phase L2"].shape), (2, 1, 8, 8))
+        self.assertEqual(tuple(d2nn["layers"]["phase"]["decoder field after L2 phase"].shape), (2, 1, 8, 8))
+        self.assertEqual(tuple(d2nn["masks"]["amplitude"]["encoder mask transmittance |t| L1"].shape), (1, 1, 8, 8))
+        self.assertFalse(any("mask" in key for key in tensors["amplitude"] | tensors["phase"]))
         focus = build_one_shot_d2nn_focus_visualization_tensors(outputs)
         self.assertEqual(list(focus["amplitude"].keys()), ["encoder field after L1 amplitude"])
         self.assertEqual(list(focus["phase"].keys()), ["encoder field after L1 phase"])
@@ -1233,9 +4161,11 @@ class OneShotConfigTests(unittest.TestCase):
             (1, 1, 8, 8),
         )
         self.assertEqual(tuple(slm_focus["phase"]["encoder grid after propagation phase"].shape), (1, 1, 8, 8))
-        self.assertTrue(torch.all(d2nn["masks"]["amplitude"]["encoder mask amp = 1 L1"] >= 0.0).item())
-        self.assertTrue(torch.allclose(d2nn["masks"]["amplitude"]["encoder mask amp = 1 L1"], torch.ones(1, 1, 8, 8)))
-        self.assertTrue(torch.all(d2nn["masks"]["phase"]["decoder mask phase L2"] <= 1.0).item())
+        self.assertTrue(torch.all(d2nn["masks"]["amplitude"]["encoder mask transmittance |t| L1"] >= 0.0).item())
+        self.assertTrue(
+            torch.allclose(d2nn["masks"]["amplitude"]["encoder mask transmittance |t| L1"], torch.ones(1, 1, 8, 8))
+        )
+        self.assertTrue(torch.all(d2nn["masks"]["phase"]["decoder mask phase arg(t) L2"] <= 1.0).item())
         dense_only = {key: value for key, value in outputs.items() if not key.startswith("diffractive_")}
         dense_d2nn = build_one_shot_d2nn_visualization_tensors(dense_only)
         self.assertFalse(dense_d2nn["layers"]["amplitude"])
@@ -1255,8 +4185,8 @@ class OneShotConfigTests(unittest.TestCase):
             1.0,
         )
         self.assertIn("p99_to_mean_ratio_mean", d2nn_diagnostics["layers"]["amplitude"]["encoder field after L1"])
-        self.assertIn("finite_ratio", d2nn_diagnostics["masks"]["phase"]["decoder mask phase L2"])
-        self.assertIn("local_contrast_mean", d2nn_diagnostics["masks"]["phase"]["decoder mask phase L2"])
+        self.assertIn("finite_ratio", d2nn_diagnostics["masks"]["phase"]["decoder mask phase arg(t) L2"])
+        self.assertIn("local_contrast_mean", d2nn_diagnostics["masks"]["phase"]["decoder mask phase arg(t) L2"])
         self.assertEqual(
             list(d2nn_diagnostics["energy_retention"].keys()),
             ["encoder field after L1", "encoder field after L2", "decoder field after L1", "decoder field after L2"],
@@ -1281,7 +4211,12 @@ class OneShotConfigTests(unittest.TestCase):
         )
         self.assertEqual(
             list(d2nn_diagnostics["masks"]["amplitude"].keys()),
-            ["encoder mask amp = 1 L1", "encoder mask amp = 1 L2", "decoder mask amp = 1 L1", "decoder mask amp = 1 L2"],
+            [
+                "encoder mask transmittance |t| L1",
+                "encoder mask transmittance |t| L2",
+                "decoder mask transmittance |t| L1",
+                "decoder mask transmittance |t| L2",
+            ],
         )
         dense_diagnostics = build_one_shot_d2nn_diagnostics(dense_only)
         self.assertFalse(dense_diagnostics["available"])
@@ -1316,6 +4251,51 @@ class OneShotConfigTests(unittest.TestCase):
         self.assertTrue(torch.allclose(diagnostics["slm_phase_display"], expected))
         self.assertTrue(torch.allclose(diagnostics["chip_phase_display"], expected))
         self.assertTrue(torch.allclose(diagnostics["encoder_input_phase_display"], expected))
+
+    def test_relay_psf_back_path_preserves_crop_and_blurs_readout(self) -> None:
+        import torch
+
+        from ldm_project.config import PhysicsConfig, ReadoutConfig, load_training_config
+        from ldm_project.optics import BackOpticalPath
+
+        def total_variation(image):
+            return (image[..., 1:, :] - image[..., :-1, :]).abs().mean() + (
+                image[..., :, 1:] - image[..., :, :-1]
+            ).abs().mean()
+
+        chip_amplitude = torch.zeros(1, 1, 16, 16)
+        chip_amplitude[:, :, 7:9, :] = 1.0
+        chip_amplitude[:, :, :, 7:9] = 1.0
+        chip_field = torch.complex(chip_amplitude, torch.zeros_like(chip_amplitude))
+
+        identity_physics = PhysicsConfig(back_path_model="relay_identity")
+        psf_identity_physics = PhysicsConfig(
+            back_path_model="relay_psf",
+            readout=ReadoutConfig(relay_psf_sigma_px=0.0),
+        )
+        blurred_physics = PhysicsConfig(
+            back_path_model="relay_psf",
+            readout=ReadoutConfig(relay_psf_sigma_px=1.25),
+        )
+
+        identity_outputs = BackOpticalPath(identity_physics)(chip_field)
+        psf_identity_outputs = BackOpticalPath(psf_identity_physics)(chip_field)
+        blurred_outputs = BackOpticalPath(blurred_physics)(chip_field)
+
+        self.assertEqual(tuple(blurred_outputs["camera_plane"].shape), tuple(chip_amplitude.shape))
+        self.assertTrue(torch.isfinite(blurred_outputs["camera_plane"]).all().item())
+        self.assertTrue(torch.allclose(identity_outputs["camera_plane"], psf_identity_outputs["camera_plane"]))
+        self.assertLess(
+            total_variation(blurred_outputs["camera_plane"]).item(),
+            total_variation(psf_identity_outputs["camera_plane"]).item(),
+        )
+        self.assertEqual(
+            load_training_config(Path("configs/audit_one_shot_d2nn_v9_8_back_relay_psf.yaml")).physics.back_path_model,
+            "relay_psf",
+        )
+
+        with self.assertRaisesRegex(ValueError, "relay_psf_sigma_px"):
+            ReadoutConfig(relay_psf_sigma_px=-0.1)
 
     def test_one_shot_d2nn_focus_helper_skips_missing_d2nn_tensors(self) -> None:
         import struct
@@ -1441,23 +4421,51 @@ class OneShotConfigTests(unittest.TestCase):
         from ldm_project.config import DataConfig, OneShotConfig, TrainingConfig
         from ldm_project.one_shot_distill_data import _select_distill_eval_indices
 
-        labels = torch.tensor([0, 0, 0, 1, 1, 1], dtype=torch.long)
+        labels = torch.tensor([0, 0, 0, 0, 1, 1, 1, 1], dtype=torch.long)
         train_cfg = TrainingConfig(
             data=DataConfig(validation_fraction=0.0),
             one_shot=OneShotConfig(
                 num_classes=2,
                 sample_class_labels=(0, 1),
                 sample_repeats_per_class=1,
+                eval_samples_per_class=3,
             ),
         )
 
         selected, summary = _select_distill_eval_indices(torch, labels, train_cfg)
 
-        self.assertEqual(len(selected), 2)
-        self.assertEqual(summary["requested_samples_per_class"], 1)
-        self.assertEqual(summary["selected_count"], 2)
-        self.assertEqual(summary["per_class"]["0"]["selected"], 1)
-        self.assertEqual(summary["per_class"]["1"]["selected"], 1)
+        self.assertEqual(len(selected), 6)
+        self.assertEqual(summary["requested_samples_per_class"], 3)
+        self.assertEqual(summary["selected_count"], 6)
+        self.assertEqual(summary["per_class"]["0"]["selected"], 3)
+        self.assertEqual(summary["per_class"]["1"]["selected"], 3)
+
+    def test_one_shot_distill_eval_selection_can_disable_train_fallback(self) -> None:
+        import torch
+
+        from ldm_project.config import DataConfig, OneShotConfig, TrainingConfig
+        from ldm_project.one_shot_distill_data import _select_distill_eval_indices
+
+        labels = torch.tensor([0, 0, 0, 1, 1, 1], dtype=torch.long)
+        train_cfg = TrainingConfig(
+            data=DataConfig(validation_fraction=0.1),
+            one_shot=OneShotConfig(
+                num_classes=2,
+                sample_class_labels=(0, 1),
+                eval_samples_per_class=2,
+                eval_allow_train_fallback=False,
+            ),
+        )
+
+        selected, summary = _select_distill_eval_indices(torch, labels, train_cfg)
+
+        self.assertEqual(len(selected), 4)
+        self.assertFalse(summary["used_train_fallback"])
+        self.assertEqual(summary["validation_size"], len(labels))
+
+        train_cfg.one_shot.eval_samples_per_class = 4
+        with self.assertRaisesRegex(ValueError, "eval_allow_train_fallback"):
+            _select_distill_eval_indices(torch, labels, train_cfg)
 
     def test_one_shot_distill_eval_selection_rejects_non_positive_sample_count(self) -> None:
         import torch
@@ -1507,6 +4515,7 @@ class OneShotConfigTests(unittest.TestCase):
             tensor_payload = {
                 "class_labels": labels,
                 "teacher_camera_display": base,
+                "eval_target_display": base.roll(shifts=1, dims=-1),
                 "student_camera_display": base.flip(-1),
                 "abs_error": (base - base.flip(-1)).abs(),
                 "codes_display": torch.linspace(0.0, 1.0, steps=labels.numel() * 4).reshape(labels.numel(), 1, 1, 4),
@@ -1564,11 +4573,14 @@ class OneShotConfigTests(unittest.TestCase):
             )
 
             amplitude_path = run_manager.images_dir / "one_shot_distill_eval_focus_0_1_2_3_4_5_6_7_8_9_amplitude.png"
+            intensity_path = run_manager.images_dir / "one_shot_distill_eval_focus_0_1_2_3_4_5_6_7_8_9_intensity.png"
             phase_path = run_manager.images_dir / "one_shot_distill_eval_focus_0_1_2_3_4_5_6_7_8_9_phase.png"
             artifact_path = run_manager.artifacts_dir / "one_shot_distill_eval_focus_diagnostics.json"
             config_path = run_manager.configs_dir / "one_shot_distill_eval_diagnostics_config.json"
             self.assertTrue(amplitude_path.is_file())
             self.assertGreater(amplitude_path.stat().st_size, 0)
+            self.assertTrue(intensity_path.is_file())
+            self.assertGreater(intensity_path.stat().st_size, 0)
             self.assertTrue(phase_path.is_file())
             self.assertGreater(phase_path.stat().st_size, 0)
             self.assertTrue(artifact_path.is_file())
@@ -1584,10 +4596,40 @@ class OneShotConfigTests(unittest.TestCase):
             self.assertEqual(diagnostics["classes"]["5"]["preview_indices"], [15, 16])
             self.assertAlmostEqual(diagnostics["classes"]["9"]["paired_dice"], 0.89, places=6)
             self.assertIn("amplitude", diagnostics["images"])
+            self.assertIn("intensity", diagnostics["images"])
             self.assertIn("phase", diagnostics["images"])
+            self.assertEqual(diagnostics["focus_target_display_key"], "eval_target_display")
             self.assertEqual(diagnostics["visual_diagnostics"]["view"], "compact_full_chain")
             self.assertIn("encoder_out_ols_in", diagnostics["visual_diagnostics"]["amplitude_phase_similarity"])
             self.assertIn("top25_iou", diagnostics["visual_diagnostics"]["amplitude_phase_similarity"]["chip"])
+            with config_path.open("r", encoding="utf-8") as handle:
+                config_snapshot = json.load(handle)
+            self.assertEqual(config_snapshot["focus_target_display_key"], "eval_target_display")
+
+            legacy_bundle_path = root / "legacy_one_shot_distill_eval_tensors.pt"
+            legacy_payload = dict(tensor_payload)
+            legacy_payload.pop("eval_target_display")
+            torch.save(legacy_payload, legacy_bundle_path)
+            legacy_run_manager = RunManager(root / "legacy_run")
+
+            run_one_shot_distill_eval_diagnostics_stage(
+                torch,
+                run_manager=legacy_run_manager,
+                run_meta={},
+                eval_tensor_bundle=str(legacy_bundle_path),
+                eval_metrics=str(metrics_path),
+                diagnostic_class_labels=(0,),
+                diagnostic_max_per_class=1,
+            )
+
+            legacy_artifact_path = legacy_run_manager.artifacts_dir / "one_shot_distill_eval_focus_diagnostics.json"
+            legacy_config_path = legacy_run_manager.configs_dir / "one_shot_distill_eval_diagnostics_config.json"
+            with legacy_artifact_path.open("r", encoding="utf-8") as handle:
+                legacy_diagnostics = json.load(handle)
+            with legacy_config_path.open("r", encoding="utf-8") as handle:
+                legacy_config_snapshot = json.load(handle)
+            self.assertEqual(legacy_diagnostics["focus_target_display_key"], "teacher_camera_display")
+            self.assertEqual(legacy_config_snapshot["focus_target_display_key"], "teacher_camera_display")
 
     def test_one_shot_sample_artifact_preserves_raw_and_display_diagnostics(self) -> None:
         import torch
@@ -1692,73 +4734,78 @@ class OneShotConfigTests(unittest.TestCase):
             ):
                 self.assertIn(key, run_manager.bundle_payload)
             amplitude_call = next(call for call in run_manager.grid_calls if call[0] == "one_shot_sample_amplitude.png")
-            shared_phase_call = next(
-                call for call in run_manager.grid_calls if call[0] == "one_shot_sample_shared_scale_phase.png"
-            )
+            intensity_call = next(call for call in run_manager.grid_calls if call[0] == "one_shot_sample_intensity.png")
+            phase_call = next(call for call in run_manager.grid_calls if call[0] == "one_shot_sample_phase.png")
+            self.assertFalse(any(call[0] == "one_shot_sample_shared_scale_phase.png" for call in run_manager.grid_calls))
             self.assertEqual(
                 list(amplitude_call[1].keys()),
                 [
-                    "noise code",
-                    "reference",
-                    "camera",
-                    "slm command",
-                    "slm amplitude grid",
-                    "slm out amp",
-                    "encoder in amp",
-                    "encoder grid in amp",
-                    "encoder mask amp = 1 L1",
-                    "encoder field after L1",
-                    "encoder mask amp = 1 L2",
-                    "encoder field after L2",
-                    "encoder out amp",
-                    "ols in amp",
-                    "ols out amp",
-                    "decoder in amp",
-                    "decoder mask amp = 1 L1",
-                    "decoder field after L1",
-                    "decoder mask amp = 1 L2",
-                    "decoder field after L2",
-                    "decoder out amp",
-                    "chip amp",
-                    "chip I",
+                    "SLM command (amplitude control)",
+                    "SLM out |E|",
+                    "encoder in |E|",
+                    "encoder grid in |E|",
+                    "encoder field after L1 |E|",
+                    "encoder field after L2 |E|",
+                    "encoder out |E|",
+                    "OLS in |E|",
+                    "OLS out |E|",
+                    "decoder in |E|",
+                    "decoder field after L1 |E|",
+                    "decoder field after L2 |E|",
+                    "decoder out |E|",
+                    "chip |E|",
                 ],
             )
             self.assertEqual(
-                list(shared_phase_call[1].keys()),
+                list(intensity_call[1].keys()),
                 [
                     "noise code",
                     "reference",
-                    "slm in cmd",
-                    "slm in cmd contrast",
-                    "slm amplitude grid",
-                    "slm out amp",
-                    "encoder in amp",
-                    "encoder grid in amp",
-                    "encoder mask phase L1",
-                    "encoder field after L1",
-                    "encoder mask phase L2",
-                    "encoder field after L2",
-                    "encoder out amp",
-                    "ols in amp",
-                    "ols out amp",
-                    "decoder in amp",
-                    "decoder mask phase L1",
-                    "decoder field after L1",
-                    "decoder mask phase L2",
-                    "decoder field after L2",
-                    "decoder out amp",
-                    "chip amp",
+                    "SLM command (amplitude control)",
+                    "SLM command contrast (display)",
+                    "SLM amplitude grid (control)",
+                    "SLM out I",
+                    "encoder in I",
+                    "encoder grid in I",
+                    "encoder field after L1 I",
+                    "encoder field after L2 I",
+                    "encoder out I",
+                    "ols in I",
+                    "ols out I",
+                    "decoder in I",
+                    "decoder field after L1 I",
+                    "decoder field after L2 I",
+                    "decoder out I",
                     "chip I",
-                    "camera",
+                    "camera intensity",
                 ],
             )
-            self.assertIn("chip amp", amplitude_call[1])
-            self.assertIn("chip amp", shared_phase_call[1])
-            self.assertIn("encoder field after L1", amplitude_call[1])
-            self.assertIn("decoder field after L2", shared_phase_call[1])
-            self.assertEqual(tuple(amplitude_call[1]["encoder field after L1"].shape), (8, 1, 2, 2))
-            self.assertEqual(tuple(amplitude_call[1]["encoder mask amp = 1 L1"].shape), (8, 1, 2, 2))
-            self.assertEqual(tuple(shared_phase_call[1]["decoder mask phase L2"].shape), (8, 1, 2, 2))
+            self.assertEqual(
+                list(phase_call[1].keys()),
+                [
+                    "SLM out phase",
+                    "encoder in phase",
+                    "encoder grid in phase",
+                    "encoder field after L1 phase",
+                    "encoder field after L2 phase",
+                    "encoder out phase",
+                    "OLS in phase",
+                    "OLS out phase",
+                    "decoder in phase",
+                    "decoder field after L1 phase",
+                    "decoder field after L2 phase",
+                    "decoder out phase",
+                    "chip phase",
+                ],
+            )
+            self.assertIn("chip I", intensity_call[1])
+            self.assertIn("chip phase", phase_call[1])
+            self.assertIn("encoder field after L1 I", intensity_call[1])
+            self.assertIn("decoder field after L2 phase", phase_call[1])
+            self.assertEqual(tuple(intensity_call[1]["encoder field after L1 I"].shape), (8, 1, 2, 2))
+            self.assertFalse(any("mask amplitude" in key for key in intensity_call[1]))
+            self.assertFalse(any("mask" in key for key in amplitude_call[1] | phase_call[1]))
+            _assert_nonblank_phase_columns_are_labeled(self, phase_call[1])
             self.assertFalse(any("_d2nn_" in call[0] for call in run_manager.grid_calls))
             self.assertEqual(amplitude_call[2], 8)
             self.assertEqual(amplitude_call[3]["row_labels"], ["0", "0", "0", "0", "1", "1", "1", "1"])
@@ -1783,9 +4830,13 @@ class OneShotConfigTests(unittest.TestCase):
             )
             shared_diagnostics = run_manager.artifact_payloads["one_shot_sample_shared_scale_diagnostics"]
             self.assertEqual(shared_diagnostics["view"], "shared_scale_full_chain")
-            self.assertIn("slm out amp", shared_diagnostics["early_raw_amplitude_columns"])
-            self.assertIn("encoder grid in amp", shared_diagnostics["early_raw_amplitude_columns"])
-            self.assertNotIn("slm out amp", shared_diagnostics["amplitude_scale_columns"])
+            self.assertEqual(shared_diagnostics["visualization_schema_version"], 2)
+            self.assertIn("SLM out I", shared_diagnostics["intensity_scale_columns"])
+            self.assertIn("encoder grid in I", shared_diagnostics["intensity_scale_columns"])
+            self.assertNotIn("reference", shared_diagnostics["intensity_scale_columns"])
+            self.assertNotIn("camera intensity", shared_diagnostics["intensity_scale_columns"])
+            self.assertNotIn("amplitude_scale_columns", shared_diagnostics)
+            self.assertNotIn("early_raw_amplitude_columns", shared_diagnostics)
             self.assertIn("encoder grid in phase", shared_diagnostics["phase_stats"])
             self.assertIn("p99_minus_p01_mean", shared_diagnostics["slm_command_stats"])
             self.assertFalse(any("chip_amplitude_display" in call[1] for call in run_manager.grid_calls))
@@ -1812,6 +4863,7 @@ class OneShotConfigTests(unittest.TestCase):
 
     def test_one_shot_distill_eval_artifact_preserves_raw_and_display_diagnostics(self) -> None:
         import torch
+        from unittest.mock import patch
 
         from ldm_project.config import DataConfig, DiffusionConfig, FirstStageConfig, OneShotConfig, TrainingConfig
         from ldm_project.one_shot_eval import run_one_shot_distill_eval_stage
@@ -1877,23 +4929,29 @@ class OneShotConfigTests(unittest.TestCase):
                 one_shot=OneShotConfig(
                     code_dim=3,
                     num_classes=2,
+                    distill_target_source="mnist_prototype",
                     sample_class_labels=(0, 1),
                     sample_repeats_per_class=4,
+                    student_label_audit_enabled=True,
                 ),
             )
             run_manager = RecordingRunManager(run_dir)
+            prototypes = torch.zeros(2, 1, 4, 4)
+            prototypes[0, :, :2, :] = 1.0
+            prototypes[1, :, :, :2] = 1.0
 
-            run_one_shot_distill_eval_stage(
-                torch,
-                one_shot_model=DummyOneShot(),
-                train_cfg=train_cfg,
-                run_manager=run_manager,
-                run_meta={},
-                device=torch.device("cpu"),
-                one_shot_checkpoint=str(checkpoint),
-                distill_dataset=str(distill_dataset),
-                load_one_shot_checkpoint_fn=lambda model, payload: None,
-            )
+            with patch("ldm_project.one_shot_eval._build_mnist_label_prototype_bank", return_value=prototypes):
+                run_one_shot_distill_eval_stage(
+                    torch,
+                    one_shot_model=DummyOneShot(),
+                    train_cfg=train_cfg,
+                    run_manager=run_manager,
+                    run_meta={},
+                    device=torch.device("cpu"),
+                    one_shot_checkpoint=str(checkpoint),
+                    distill_dataset=str(distill_dataset),
+                    load_one_shot_checkpoint_fn=lambda model, payload: None,
+                )
 
             for key in (
                 "codes_display",
@@ -1913,84 +4971,91 @@ class OneShotConfigTests(unittest.TestCase):
             amplitude_call = next(
                 call for call in run_manager.grid_calls if call[0] == "one_shot_distill_eval_amplitude.png"
             )
-            shared_phase_call = next(
-                call
-                for call in run_manager.grid_calls
-                if call[0] == "one_shot_distill_eval_shared_scale_phase.png"
+            intensity_call = next(
+                call for call in run_manager.grid_calls if call[0] == "one_shot_distill_eval_intensity.png"
+            )
+            phase_call = next(
+                call for call in run_manager.grid_calls if call[0] == "one_shot_distill_eval_phase.png"
+            )
+            self.assertFalse(
+                any(call[0] == "one_shot_distill_eval_shared_scale_phase.png" for call in run_manager.grid_calls)
             )
             self.assertEqual(
                 list(amplitude_call[1].keys()),
                 [
-                    "digit",
-                    "noise code",
-                    "teacher",
-                    "slm command",
-                    "slm amplitude grid",
-                    "slm out amp",
-                    "encoder in amp",
-                    "encoder grid in amp",
-                    "encoder mask amp = 1 L1",
-                    "encoder field after L1",
-                    "encoder mask amp = 1 L2",
-                    "encoder field after L2",
-                    "encoder out amp",
-                    "ols in amp",
-                    "ols out amp",
-                    "decoder in amp",
-                    "decoder mask amp = 1 L1",
-                    "decoder field after L1",
-                    "decoder mask amp = 1 L2",
-                    "decoder field after L2",
-                    "decoder out amp",
-                    "chip amp",
-                    "chip I",
-                    "student",
-                    "abs error",
+                    "SLM command (amplitude control)",
+                    "SLM out |E|",
+                    "encoder in |E|",
+                    "encoder grid in |E|",
+                    "encoder field after L1 |E|",
+                    "encoder field after L2 |E|",
+                    "encoder out |E|",
+                    "OLS in |E|",
+                    "OLS out |E|",
+                    "decoder in |E|",
+                    "decoder field after L1 |E|",
+                    "decoder field after L2 |E|",
+                    "decoder out |E|",
+                    "chip |E|",
                 ],
             )
             self.assertEqual(
-                list(shared_phase_call[1].keys()),
+                list(intensity_call[1].keys()),
                 [
                     "digit",
                     "noise code",
-                    "teacher",
-                    "slm in cmd",
-                    "slm in cmd contrast",
-                    "slm amplitude grid",
-                    "slm out amp",
-                    "encoder in amp",
-                    "encoder grid in amp",
-                    "encoder mask phase L1",
-                    "encoder field after L1",
-                    "encoder mask phase L2",
-                    "encoder field after L2",
-                    "encoder out amp",
-                    "ols in amp",
-                    "ols out amp",
-                    "decoder in amp",
-                    "decoder mask phase L1",
-                    "decoder field after L1",
-                    "decoder mask phase L2",
-                    "decoder field after L2",
-                    "decoder out amp",
-                    "chip amp",
+                    "teacher intensity target",
+                    "SLM command (amplitude control)",
+                    "SLM command contrast (display)",
+                    "SLM amplitude grid (control)",
+                    "SLM out I",
+                    "encoder in I",
+                    "encoder grid in I",
+                    "encoder field after L1 I",
+                    "encoder field after L2 I",
+                    "encoder out I",
+                    "ols in I",
+                    "ols out I",
+                    "decoder in I",
+                    "decoder field after L1 I",
+                    "decoder field after L2 I",
+                    "decoder out I",
                     "chip I",
-                    "student",
-                    "abs error",
+                    "student camera intensity",
+                    "intensity abs error",
                 ],
             )
-            self.assertIn("teacher", amplitude_call[1])
-            self.assertIn("student", amplitude_call[1])
-            self.assertIn("chip amp", amplitude_call[1])
-            self.assertIn("chip amp", shared_phase_call[1])
-            self.assertIn("encoder field after L1", amplitude_call[1])
-            self.assertIn("decoder field after L2", shared_phase_call[1])
-            self.assertEqual(tuple(amplitude_call[1]["encoder field after L1"].shape), (4, 1, 2, 2))
-            self.assertEqual(tuple(amplitude_call[1]["decoder mask amp = 1 L2"].shape), (4, 1, 2, 2))
-            self.assertEqual(tuple(shared_phase_call[1]["encoder mask phase L1"].shape), (4, 1, 2, 2))
+            self.assertEqual(
+                list(phase_call[1].keys()),
+                [
+                    "SLM out phase",
+                    "encoder in phase",
+                    "encoder grid in phase",
+                    "encoder field after L1 phase",
+                    "encoder field after L2 phase",
+                    "encoder out phase",
+                    "OLS in phase",
+                    "OLS out phase",
+                    "decoder in phase",
+                    "decoder field after L1 phase",
+                    "decoder field after L2 phase",
+                    "decoder out phase",
+                    "chip phase",
+                ],
+            )
+            self.assertIn("teacher intensity target", intensity_call[1])
+            self.assertIn("student camera intensity", intensity_call[1])
+            self.assertIn("chip I", intensity_call[1])
+            self.assertIn("chip phase", phase_call[1])
+            self.assertIn("encoder field after L1 I", intensity_call[1])
+            self.assertIn("decoder field after L2 phase", phase_call[1])
+            self.assertEqual(tuple(intensity_call[1]["encoder field after L1 I"].shape), (4, 1, 2, 2))
+            self.assertFalse(any("mask amplitude" in key for key in intensity_call[1]))
+            self.assertFalse(any("mask" in key for key in amplitude_call[1] | phase_call[1]))
+            _assert_nonblank_phase_columns_are_labeled(self, phase_call[1])
             self.assertFalse(any("_d2nn_" in call[0] for call in run_manager.grid_calls))
             self.assertNotIn("chip_amplitude_display", amplitude_call[1])
-            self.assertNotIn("chip_amplitude_display", shared_phase_call[1])
+            self.assertNotIn("chip_amplitude_display", phase_call[1])
             self.assertNotIn("chip_amplitude_display", run_manager.bundle_payload)
             for key in (
                 "slm_command",
@@ -2015,8 +5080,17 @@ class OneShotConfigTests(unittest.TestCase):
             metrics = run_manager.artifact_payloads["one_shot_distill_eval_metrics"]
             self.assertEqual(metrics["overall"]["count"], 8)
             self.assertEqual(metrics["selection"]["selected_count"], 8)
+            self.assertIn("student_label_correct_ratio", metrics["overall"])
+            self.assertIn("min_class_student_label_correct_ratio", metrics["overall"])
+            self.assertIn("strict_readability_acceptance", metrics)
+            self.assertIn("one_shot_distill_eval_student_label_audit", run_manager.artifact_payloads)
+            student_audit = run_manager.artifact_payloads["one_shot_distill_eval_student_label_audit"]
+            self.assertEqual(student_audit["sample_count"], 8)
+            self.assertIn("nearest_label", student_audit["per_sample"][0])
             self.assertEqual(eval_config["visual_preview_count"], 4)
             self.assertEqual(eval_config["visual_preview_labels"], [0, 0, 1, 1])
+            self.assertEqual(eval_config["one_shot_distill_target_source"], "mnist_prototype")
+            self.assertTrue(eval_config["student_label_audit_enabled"])
             eval_visual_diagnostics = run_manager.artifact_payloads["one_shot_distill_eval_visual_diagnostics"]
             self.assertEqual(eval_visual_diagnostics["view"], "compact_full_chain")
             self.assertEqual(
@@ -2029,16 +5103,27 @@ class OneShotConfigTests(unittest.TestCase):
             self.assertEqual(eval_d2nn_diagnostics["context"]["visual_preview_labels"], [0, 0, 1, 1])
             self.assertTrue(eval_d2nn_diagnostics["available"])
             self.assertIn("encoder field after L1", eval_d2nn_diagnostics["layers"]["amplitude"])
-            self.assertIn("decoder mask phase L2", eval_d2nn_diagnostics["masks"]["phase"])
+            self.assertIn("decoder mask phase arg(t) L2", eval_d2nn_diagnostics["masks"]["phase"])
             shared_diagnostics = run_manager.artifact_payloads["one_shot_distill_eval_shared_scale_diagnostics"]
             self.assertEqual(shared_diagnostics["view"], "shared_scale_full_chain")
-            self.assertIn("slm out amp", shared_diagnostics["early_raw_amplitude_columns"])
-            self.assertIn("decoder out amp", shared_diagnostics["amplitude_scale_columns"])
+            self.assertEqual(shared_diagnostics["visualization_schema_version"], 2)
+            self.assertIn("SLM out I", shared_diagnostics["intensity_scale_columns"])
+            self.assertIn("decoder out I", shared_diagnostics["intensity_scale_columns"])
+            self.assertNotIn("teacher intensity target", shared_diagnostics["intensity_scale_columns"])
+            self.assertNotIn("student camera intensity", shared_diagnostics["intensity_scale_columns"])
+            self.assertEqual(shared_diagnostics["columns"]["intensity"], list(intensity_call[1]))
+            self.assertNotIn("amplitude_scale_columns", shared_diagnostics)
+            self.assertNotIn("early_raw_amplitude_columns", shared_diagnostics)
             self.assertIn("encoder out phase", shared_diagnostics["phase_stats"])
             self.assertEqual(amplitude_call[2], 4)
             self.assertEqual(amplitude_call[3]["row_labels"], ["0", "0", "1", "1"])
-            self.assertEqual(tuple(amplitude_call[1]["teacher"].shape), (4, 1, 4, 4))
+            self.assertEqual(tuple(intensity_call[1]["teacher intensity target"].shape), (4, 1, 4, 4))
             self.assertEqual(tuple(run_manager.bundle_payload["teacher_camera"].shape), (8, 1, 4, 4))
+            self.assertEqual(run_manager.bundle_payload["one_shot_distill_target_source"], "mnist_prototype")
+            self.assertEqual(run_manager.meta_payload["one_shot_distill_target_source"], "mnist_prototype")
+            expected_targets = prototypes.index_select(0, run_manager.bundle_payload["class_labels"])
+            self.assertTrue(torch.equal(run_manager.bundle_payload["eval_target"], expected_targets))
+            self.assertFalse(torch.equal(run_manager.bundle_payload["teacher_camera"], expected_targets))
 
     def test_one_shot_distill_eval_metrics_include_diversity_and_hardware_terms(self) -> None:
         import torch
@@ -2152,3 +5237,655 @@ class OneShotConfigTests(unittest.TestCase):
         self.assertGreater(weighted["class_weight_mean"].item(), 1.0)
         weighted["loss"].backward()
         self.assertIsNotNone(prediction.grad)
+
+    def test_one_shot_loss_supports_aux_detail_and_residual_penalties(self) -> None:
+        import torch
+
+        from ldm_project.training import one_shot_loss
+
+        target = torch.zeros(2, 1, 4, 4, dtype=torch.float32)
+        target[:, :, 1:3, 1:3] = 1.0
+        aux_detail = torch.zeros_like(target)
+        aux_detail[:, :, :, 1:3] = 1.0
+        prediction = target.clone().requires_grad_(True)
+        residual = torch.full_like(target, 0.25, requires_grad=True)
+        outputs = {
+            "camera_plane": prediction,
+            "slm_amplitude": torch.ones_like(target),
+            "generator_residual_map": residual,
+            "generator_base_command": torch.zeros_like(target),
+            "generator_residual_abs_mean": residual.detach().abs().flatten(1).mean(dim=1),
+            "generator_residual_bg_abs_mean": residual.detach().abs().flatten(1).mean(dim=1),
+        }
+
+        losses = one_shot_loss(
+            outputs,
+            target,
+            aux_detail_target=aux_detail,
+            aux_detail_shape_weight=0.1,
+            aux_detail_edge_weight=0.1,
+            residual_l1_weight=0.2,
+            residual_background_weight=0.3,
+        )
+
+        self.assertGreater(losses["aux_detail_shape_loss"].item(), 0.0)
+        self.assertGreater(losses["aux_detail_edge_loss"].item(), 0.0)
+        self.assertGreater(losses["residual_l1_loss"].item(), 0.0)
+        self.assertGreater(losses["residual_background_loss"].item(), 0.0)
+        self.assertGreater(losses["student_base_mse"].item(), 0.0)
+        self.assertGreater(losses["student_base_foreground_mse"].item(), 0.0)
+        self.assertEqual(losses["student_base_background_mse"].item(), 0.0)
+        losses["loss"].backward()
+        self.assertIsNotNone(prediction.grad)
+        self.assertIsNotNone(residual.grad)
+
+    def test_one_shot_loss_aux_detail_foreground_gate_blocks_off_template_detail(self) -> None:
+        import torch
+
+        from ldm_project.training import one_shot_loss
+
+        target = torch.zeros(1, 1, 5, 5, dtype=torch.float32)
+        target[:, :, 1:3, 1:3] = 1.0
+        aux_detail = torch.zeros_like(target)
+        aux_detail[:, :, 4:, 4:] = 1.0
+        prediction = target.clone().requires_grad_(True)
+        outputs = {
+            "camera_plane": prediction,
+            "slm_amplitude": torch.ones_like(target),
+        }
+
+        losses = one_shot_loss(
+            outputs,
+            target,
+            aux_detail_target=aux_detail,
+            aux_detail_shape_weight=0.1,
+            aux_detail_edge_weight=0.1,
+            aux_detail_foreground_gate_dilation=1,
+        )
+
+        self.assertGreater(losses["aux_detail_gate_fg_ratio"].item(), 0.0)
+        self.assertEqual(losses["aux_detail_active_fg_ratio"].item(), 0.0)
+        self.assertEqual(losses["aux_detail_shape_loss"].item(), 0.0)
+        self.assertEqual(losses["aux_detail_edge_loss"].item(), 0.0)
+
+    def test_one_shot_loss_residual_background_uses_foreground_gate_complement(self) -> None:
+        import torch
+
+        from ldm_project.training import one_shot_loss
+
+        target = torch.zeros(1, 1, 5, 5, dtype=torch.float32)
+        target[:, :, 2, 2] = 1.0
+        residual = torch.full_like(target, 2.0, requires_grad=True)
+        with torch.no_grad():
+            residual[:, :, 1:4, 1:4] = 1.0
+        outputs = {
+            "camera_plane": target.clone(),
+            "slm_amplitude": torch.ones_like(target),
+            "generator_residual_map": residual,
+        }
+
+        losses = one_shot_loss(
+            outputs,
+            target,
+            residual_background_weight=0.5,
+            aux_detail_foreground_gate_dilation=3,
+        )
+
+        self.assertAlmostEqual(losses["aux_detail_gate_fg_ratio"].item(), 9.0 / 25.0, places=6)
+        self.assertAlmostEqual(losses["residual_background_mask_ratio"].item(), 16.0 / 25.0, places=6)
+        self.assertAlmostEqual(losses["residual_background_penalty"].item(), 2.0, places=6)
+        self.assertAlmostEqual(losses["residual_background_loss"].item(), 1.0, places=6)
+        losses["loss"].backward()
+        self.assertIsNotNone(residual.grad)
+
+    def test_one_shot_loss_student_base_metrics_default_zero_without_base_command(self) -> None:
+        import torch
+
+        from ldm_project.training import one_shot_loss
+
+        target = torch.ones(1, 1, 4, 4, dtype=torch.float32)
+        losses = one_shot_loss(
+            {
+                "camera_plane": torch.zeros_like(target),
+                "slm_amplitude": torch.ones_like(target),
+            },
+            target,
+        )
+
+        self.assertEqual(losses["student_base_mse"].item(), 0.0)
+        self.assertEqual(losses["student_base_foreground_mse"].item(), 0.0)
+        self.assertEqual(losses["student_base_background_mse"].item(), 0.0)
+
+    def test_one_shot_readability_loss_defaults_off_and_activates(self) -> None:
+        import torch
+
+        from ldm_project.training import one_shot_loss
+
+        target = torch.rand(2, 1, 16, 16)
+        outputs = {
+            "camera_plane": torch.rand(2, 1, 16, 16),
+            "slm_amplitude": torch.ones(2, 1, 16, 16),
+        }
+
+        off = one_shot_loss(outputs, target)
+        on = one_shot_loss(outputs, target, camera_readability_weight=1.0)
+
+        self.assertEqual(off["camera_readability_loss"].item(), 0.0)
+        self.assertEqual(off["camera_readability_penalty"].item(), 0.0)
+        self.assertGreater(on["camera_readability_loss"].item(), 0.0)
+        self.assertGreater(on["camera_readability_penalty"].item(), 0.0)
+        self.assertLessEqual(on["camera_readability_loss"].item(), on["loss"].item())
+
+    def test_one_shot_loss_activates_background_speckle_and_contrast_terms(self) -> None:
+        import torch
+
+        from ldm_project.training import one_shot_loss
+
+        target = torch.zeros(2, 1, 8, 8, dtype=torch.float32)
+        target[:, :, 2:6, 2:6] = 1.0
+        prediction = target * 0.02
+        prediction[:, :, 0, 0] = 0.5
+        prediction.requires_grad_(True)
+        outputs = {
+            "camera_plane": prediction,
+            "slm_amplitude": torch.ones(2, 1, 8, 8),
+        }
+
+        losses = one_shot_loss(
+            outputs,
+            target,
+            camera_background_speckle_weight=0.1,
+            camera_background_hotspot_weight=0.1,
+            camera_background_hotspot_threshold=0.08,
+            camera_background_highfreq_weight=0.1,
+            camera_readable_contrast_weight=0.1,
+            camera_readable_contrast_target=4.5,
+        )
+
+        self.assertGreater(losses["camera_background_speckle_loss"].item(), 0.0)
+        self.assertGreater(losses["background_speckle_ratio"].item(), 0.0)
+        self.assertGreater(losses["camera_background_hotspot_loss"].item(), 0.0)
+        self.assertGreater(losses["background_hotspot_ratio"].item(), 0.0)
+        self.assertGreater(losses["camera_background_highfreq_loss"].item(), 0.0)
+        self.assertGreater(losses["background_highfreq_energy"].item(), 0.0)
+        self.assertGreater(losses["camera_readable_contrast_loss"].item(), 0.0)
+        self.assertLess(losses["readable_contrast"].item(), 4.5)
+        losses["loss"].backward()
+        self.assertIsNotNone(prediction.grad)
+
+    def test_one_shot_loss_reports_readability_diagnostics_when_weights_are_zero(self) -> None:
+        import torch
+
+        from ldm_project.training import one_shot_loss
+
+        target = torch.zeros(2, 1, 8, 8, dtype=torch.float32)
+        target[:, :, 2:6, 2:6] = 1.0
+        prediction = target * 0.02
+        prediction[:, :, 0, 0] = 0.5
+        outputs = {
+            "camera_plane": prediction,
+            "slm_amplitude": torch.ones(2, 1, 8, 8),
+        }
+
+        losses = one_shot_loss(
+            outputs,
+            target,
+            camera_background_hotspot_threshold=0.08,
+            camera_readable_contrast_target=4.5,
+        )
+
+        self.assertEqual(losses["camera_artifact_loss"].item(), 0.0)
+        self.assertEqual(losses["camera_background_speckle_loss"].item(), 0.0)
+        self.assertEqual(losses["camera_background_hotspot_loss"].item(), 0.0)
+        self.assertEqual(losses["camera_background_highfreq_loss"].item(), 0.0)
+        self.assertEqual(losses["camera_readable_contrast_loss"].item(), 0.0)
+        self.assertGreater(losses["foreground_hole_ratio"].item(), 0.0)
+        self.assertGreater(losses["background_speckle_ratio"].item(), 0.0)
+        self.assertGreater(losses["background_hotspot_ratio"].item(), 0.0)
+        self.assertGreater(losses["background_highfreq_energy"].item(), 0.0)
+        self.assertLess(losses["readable_contrast"].item(), 4.5)
+
+    def test_save_epoch_distill_checkpoint_persists_epoch_records_to_meta(self) -> None:
+        import torch
+
+        from ldm_project.config import TrainingConfig
+        from ldm_project.one_shot_distill_training import _save_epoch_distill_checkpoint
+
+        class DummyModel:
+            def state_dict(self):
+                return {"weight": torch.tensor(1.0)}
+
+        class RecordingRunManager:
+            def __init__(self, run_dir: Path) -> None:
+                self.run_dir = run_dir
+                self.checkpoints_dir = run_dir / "checkpoints"
+                self.meta_payload = None
+
+            def save_checkpoint(self, name, payload):
+                self.saved_checkpoint = (name, dict(payload))
+                return self.checkpoints_dir / name
+
+            def write_meta(self, meta):
+                self.meta_payload = dict(meta)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            run_manager = RecordingRunManager(Path(tmpdir))
+            train_cfg = TrainingConfig(one_shot_distill_epoch_checkpoint_interval=2)
+            run_meta: dict[str, object] = {}
+
+            _save_epoch_distill_checkpoint(
+                run_manager,
+                run_meta,
+                one_shot_model=DummyModel(),
+                train_cfg=train_cfg,
+                physics={},
+                epoch_number=2,
+                one_shot_model_version="test",
+                distill_dataset="distill.pt",
+                validation_metrics={"diversity_ratio": 0.7, "eval_corr": 0.8, "eval_dice": 0.9, "best_loss": 0.1},
+            )
+
+            self.assertIsNotNone(run_manager.meta_payload)
+            self.assertEqual(run_manager.meta_payload["epoch_checkpoints"][0]["epoch"], 2)
+            self.assertTrue(
+                str(run_manager.meta_payload["epoch_checkpoints"][0]["path"]).endswith(
+                    "one_shot_distill_epoch_0002.pt"
+                )
+            )
+
+    def test_one_shot_loss_student_label_margin_prefers_matching_prototype(self) -> None:
+        import torch
+
+        from ldm_project.training import one_shot_loss
+
+        proto_zero = torch.zeros(1, 1, 4, 4)
+        proto_zero[:, :, :2, :2] = 1.0
+        proto_one = torch.zeros(1, 1, 4, 4)
+        proto_one[:, :, 2:, 2:] = 1.0
+        prototypes = torch.cat([proto_zero, proto_one], dim=0)
+        labels = torch.tensor([0, 1], dtype=torch.long)
+        target = prototypes.index_select(0, labels)
+        slm = torch.ones(2, 1, 4, 4)
+
+        matched = one_shot_loss(
+            {"camera_plane": target.clone(), "slm_amplitude": slm},
+            target,
+            class_labels=labels,
+            student_label_margin_weight=1.0,
+            student_label_margin_target=0.05,
+            student_label_margin_prototypes=prototypes,
+        )
+        swapped = one_shot_loss(
+            {"camera_plane": target.flip(0).clone(), "slm_amplitude": slm},
+            target,
+            class_labels=labels,
+            student_label_margin_weight=1.0,
+            student_label_margin_target=0.05,
+            student_label_margin_prototypes=prototypes,
+        )
+
+        self.assertGreater(matched["student_label_correct_ratio"].item(), swapped["student_label_correct_ratio"].item())
+        self.assertLess(matched["student_label_margin_loss"].item(), swapped["student_label_margin_loss"].item())
+        self.assertGreater(matched["student_label_margin_mean"].item(), swapped["student_label_margin_mean"].item())
+
+    def test_one_shot_distill_eval_readability_metrics_present_and_bounded(self) -> None:
+        import torch
+
+        from ldm_project.one_shot_eval_metrics import compute_one_shot_distill_eval_metrics
+
+        teacher = torch.tensor(
+            [
+                [[[0.0, 1.0], [0.0, 0.0]]],
+                [[[0.0, 0.0], [1.0, 0.0]]],
+                [[[1.0, 0.0], [0.0, 0.0]]],
+                [[[0.0, 0.0], [0.0, 1.0]]],
+            ],
+            dtype=torch.float32,
+        )
+        student = teacher.clone()
+        student[0, 0, 1, 0] = 0.05  # fake speckle in background
+        student[2, 0, 0, 1] = 0.05
+        slm = torch.ones(4, 1, 2, 2, dtype=torch.float32)
+        labels = torch.tensor([0, 0, 1, 1], dtype=torch.long)
+
+        metrics = compute_one_shot_distill_eval_metrics(
+            torch,
+            teacher_camera=teacher,
+            student_camera=student,
+            slm_amplitude=slm,
+            class_labels=labels,
+        )
+
+        for key in ("foreground_ratio", "background_speckle_ratio", "readable_contrast"):
+            self.assertIn(key, metrics["overall"], f"missing overall.{key}")
+            self.assertTrue(math.isfinite(metrics["overall"][key]))
+            self.assertGreaterEqual(metrics["overall"][key], 0.0)
+            self.assertIn(key, metrics["per_class"]["0"], f"missing per_class.0.{key}")
+            self.assertTrue(math.isfinite(metrics["per_class"]["0"][key]))
+            self.assertGreaterEqual(metrics["per_class"]["0"][key], 0.0)
+
+        # background_speckle_ratio should be 0 when there is no background region
+        no_bg_teacher = torch.ones(1, 1, 2, 2, dtype=torch.float32)
+        no_bg_student = torch.ones(1, 1, 2, 2, dtype=torch.float32)
+        no_bg_slm = torch.ones(1, 1, 2, 2, dtype=torch.float32)
+        no_bg_labels = torch.tensor([0], dtype=torch.long)
+        no_bg_metrics = compute_one_shot_distill_eval_metrics(
+            torch,
+            teacher_camera=no_bg_teacher,
+            student_camera=no_bg_student,
+            slm_amplitude=no_bg_slm,
+            class_labels=no_bg_labels,
+        )
+        self.assertEqual(no_bg_metrics["overall"]["background_speckle_ratio"], 0.0)
+
+    def test_direct_oracle_eval_visuals_keep_only_readable_columns_and_no_phase(self) -> None:
+        from ldm_project.one_shot_eval import _direct_readable_eval_visuals
+        from ldm_project.visualization_core import VISUALIZATION_INTENSITY_KEY, VISUALIZATION_PHASE_KEY
+
+        visuals = {
+            VISUALIZATION_INTENSITY_KEY: {
+                "digit": object(),
+                "teacher intensity target": object(),
+                "SLM command (amplitude control)": object(),
+                "student camera intensity": object(),
+                "intensity abs error": object(),
+                "encoded out I": object(),
+                "ols out I": object(),
+                "decoder out I": object(),
+            },
+            VISUALIZATION_PHASE_KEY: {
+                "encoded out phase": object(),
+                "ols out phase": object(),
+            },
+        }
+
+        direct = _direct_readable_eval_visuals(visuals)
+
+        self.assertEqual(
+            tuple(direct[VISUALIZATION_INTENSITY_KEY].keys()),
+            (
+                "digit",
+                "teacher intensity target",
+                "SLM command (amplitude control)",
+                "student camera intensity",
+                "intensity abs error",
+            ),
+        )
+        self.assertEqual(direct[VISUALIZATION_PHASE_KEY], {})
+
+    def test_student_label_audit_metrics_and_strict_acceptance(self) -> None:
+        from ldm_project.one_shot_eval_metrics import (
+            add_student_label_audit_metrics,
+            compute_strict_student_readability_acceptance,
+        )
+
+        metrics = {
+            "overall": {
+                "count": 4,
+                "paired_corr": 0.80,
+                "paired_dice": 0.73,
+                "background_speckle_ratio": 0.07,
+                "foreground_hole_ratio": 0.05,
+                "student_saturation_ratio": 0.07,
+                "student_high_saturation_ratio": 0.01,
+                "readable_contrast": 4.8,
+            },
+            "per_class": {
+                "0": {"paired_dice": 0.70},
+                "1": {"paired_dice": 0.69},
+            },
+        }
+        audit_payload = {
+            "label_correct_count": 4,
+            "label_correct_ratio": 1.0,
+            "overall": {"label_margin": {"mean": 0.06}},
+            "per_class": {
+                "0": {
+                    "count": 2,
+                    "label_correct_count": 2,
+                    "label_correct_ratio": 1.0,
+                    "label_margin": {"mean": 0.05},
+                },
+                "1": {
+                    "count": 2,
+                    "label_correct_count": 2,
+                    "label_correct_ratio": 1.0,
+                    "label_margin": {"mean": 0.04},
+                },
+            },
+            "per_sample": [
+                {"requested_label": 0, "nearest_label": 0},
+                {"requested_label": 0, "nearest_label": 0},
+                {"requested_label": 1, "nearest_label": 1},
+                {"requested_label": 1, "nearest_label": 1},
+            ],
+        }
+
+        add_student_label_audit_metrics(metrics, audit_payload)
+        acceptance = compute_strict_student_readability_acceptance(metrics)
+
+        self.assertTrue(acceptance["passed"])
+        self.assertEqual(metrics["overall"]["student_label_correct_count"], 4)
+        self.assertEqual(metrics["overall"]["min_class_student_label_correct_ratio"], 1.0)
+        self.assertAlmostEqual(metrics["overall"]["min_class_student_label_margin_mean"], 0.04, places=6)
+        self.assertEqual(metrics["per_class"]["0"]["student_nearest_label_confusion"], {"0": 2})
+        self.assertEqual(
+            set(acceptance["checks"]),
+            {"paired_corr", "paired_dice", "student_high_saturation_ratio"},
+        )
+
+        metrics["per_class"]["1"]["student_label_correct_ratio"] = 0.5
+        diagnostics_only = compute_strict_student_readability_acceptance(metrics)
+        self.assertTrue(diagnostics_only["passed"])
+        metrics["overall"]["paired_corr"] = 0.77
+        self.assertFalse(compute_strict_student_readability_acceptance(metrics)["passed"])
+
+
+@unittest.skipUnless(importlib.util.find_spec("torch"), "torch is required for one-shot tests")
+class OneShotCleanTargetTests(unittest.TestCase):
+    """Tests for clean readable target generation and associated losses."""
+
+    def _check_soft_mask_range(self, mask) -> None:
+        self.assertTrue(mask.isfinite().all())
+        self.assertGreaterEqual(mask.min().item(), 0.0)
+        self.assertLessEqual(mask.max().item(), 1.0)
+
+    def test_build_clean_readable_target_shape_and_range(self) -> None:
+        import torch
+
+        from ldm_project.one_shot_losses import _build_clean_readable_target
+
+        teacher = torch.rand(4, 1, 32, 32) * 0.8 + 0.1
+        result = _build_clean_readable_target(teacher)
+
+        self.assertIn("clean_target", result)
+        self.assertIn("clean_target_fg_ratio", result)
+        clean = result["clean_target"]
+        self.assertEqual(tuple(clean.shape), (4, 1, 32, 32))
+        self._check_soft_mask_range(clean)
+        # Foreground ratio should be in reasonable range for random data.
+        fg_ratio = float(result["clean_target_fg_ratio"].item())
+        self.assertGreater(fg_ratio, 0.0)
+        self.assertLessEqual(fg_ratio, 1.0)
+
+    def test_build_clean_readable_target_sharp_edges(self) -> None:
+        """Clean target should preserve sharp edges from a step-function input."""
+        import torch
+
+        from ldm_project.one_shot_losses import _build_clean_readable_target
+
+        step = torch.zeros(1, 1, 32, 32)
+        step[:, :, 8:24, 8:24] = 1.0
+        result = _build_clean_readable_target(step)
+        clean = result["clean_target"]
+        self._check_soft_mask_range(clean)
+        # Most of the foreground region should be high (>0.5).
+        interior = clean[:, :, 10:22, 10:22]
+        self.assertGreater(interior.mean().item(), 0.7)
+        # Most of the background should be low (<0.5).
+        exterior = clean[:, :, :6, :6]
+        self.assertLess(exterior.mean().item(), 0.3)
+        # Opening shouldn't fully erode the foreground.
+        fg_area = (clean > 0.5).float().sum().item()
+        expected_area = 16 * 16
+        self.assertGreater(fg_area, expected_area * 0.5)
+        self.assertLess(fg_area, expected_area * 1.5)
+
+    def test_build_clean_readable_target_closes_small_holes(self) -> None:
+        """Morphology close should fill small holes in the foreground."""
+        import torch
+
+        from ldm_project.one_shot_losses import _build_clean_readable_target
+
+        ring = torch.ones(1, 1, 32, 32) * 0.1
+        ring[:, :, 6:26, 6:26] = 0.8
+        ring[:, :, 12:20, 12:20] = 0.1  # hole in foreground
+        result = _build_clean_readable_target(ring)
+        clean = result["clean_target"]
+        self._check_soft_mask_range(clean)
+        # The hole region should be at least partially filled by closing.
+        hole_region = clean[:, :, 14:18, 14:18]
+        self.assertGreater(hole_region.mean().item(), 0.2)
+
+    def test_build_clean_readable_target_opens_small_speckles(self) -> None:
+        """Morphology open should suppress small background speckles."""
+        import torch
+
+        from ldm_project.one_shot_losses import _build_clean_readable_target
+
+        speckled = torch.zeros(1, 1, 32, 32)
+        speckled[:, :, 8:24, 8:24] = 0.8  # foreground block
+        speckled[:, :, 2:4, 2:4] = 0.9  # small speckle in background
+        speckled[:, :, 28:30, 28:30] = 0.9  # small speckle in background
+        result = _build_clean_readable_target(speckled)
+        clean = result["clean_target"]
+        self._check_soft_mask_range(clean)
+        # Speckle regions should be suppressed below 0.5.
+        speckle1 = clean[:, :, 2:4, 2:4]
+        speckle2 = clean[:, :, 28:30, 28:30]
+        self.assertLess(speckle1.mean().item(), 0.5)
+        self.assertLess(speckle2.mean().item(), 0.5)
+        # Main foreground block should survive.
+        main_block = clean[:, :, 10:22, 10:22]
+        self.assertGreater(main_block.mean().item(), 0.5)
+
+    def test_clean_losses_backpropagate_with_clean_target_enabled(self) -> None:
+        """All clean-target losses should backpropagate when clean_target_enabled=True."""
+        import torch
+
+        from ldm_project.training import one_shot_loss
+
+        target = (torch.rand(2, 1, 16, 16) > 0.3).float()
+        outputs = {
+            "camera_plane": torch.rand(2, 1, 16, 16, requires_grad=True),
+            "camera_plane_loss": torch.rand(2, 1, 16, 16, requires_grad=True),
+            "slm_amplitude": torch.rand(2, 1, 16, 16),
+        }
+        losses = one_shot_loss(
+            outputs,
+            target,
+            clean_target_enabled=True,
+            clean_foreground_dice_weight=0.5,
+            clean_foreground_hole_weight=0.3,
+            clean_background_speckle_weight=0.1,
+            clean_background_hotspot_weight=0.5,
+            clean_background_highfreq_weight=0.3,
+        )
+        self.assertIn("clean_target_fg_ratio", losses)
+        self.assertGreater(float(losses["clean_target_fg_ratio"]), 0.0)
+        self.assertGreater(float(losses["clean_dice_loss"]), 0.0)
+        self.assertGreater(float(losses["clean_fg_hole_loss"]), 0.0)
+        self.assertGreater(float(losses["clean_bg_speckle_loss"]), 0.0)
+        losses["loss"].backward()
+        # Camera plane should have received gradients from clean losses.
+        self.assertIsNotNone(outputs["camera_plane"].grad)
+        self.assertGreater(outputs["camera_plane"].grad.abs().sum().item(), 0.0)
+
+    def test_clean_losses_noop_when_clean_target_disabled(self) -> None:
+        """clean_target_enabled=False should produce zero clean losses."""
+        import torch
+
+        from ldm_project.training import one_shot_loss
+
+        target = torch.rand(2, 1, 16, 16)
+        outputs = {
+            "camera_plane": torch.rand(2, 1, 16, 16, requires_grad=True),
+            "camera_plane_loss": torch.rand(2, 1, 16, 16, requires_grad=True),
+            "slm_amplitude": torch.rand(2, 1, 16, 16),
+        }
+        losses = one_shot_loss(
+            outputs,
+            target,
+            clean_target_enabled=False,
+        )
+        self.assertEqual(float(losses["clean_dice_loss"]), 0.0)
+        self.assertEqual(float(losses["clean_fg_hole_loss"]), 0.0)
+        self.assertEqual(float(losses["clean_bg_speckle_loss"]), 0.0)
+        self.assertEqual(float(losses["clean_bg_hotspot_loss"]), 0.0)
+        self.assertEqual(float(losses["clean_bg_highfreq_loss"]), 0.0)
+        self.assertIn("clean_target_fg_ratio", losses)
+        self.assertEqual(float(losses["clean_target_fg_ratio"]), 0.0)
+
+    def test_display_speckle_loss_targets_background(self) -> None:
+        import torch
+
+        from ldm_project.one_shot_losses import _student_display_speckle_metrics
+
+        camera = torch.zeros(1, 1, 24, 24, requires_grad=True)
+        with torch.no_grad():
+            camera[:, :, 8:16, 8:16] = 0.8
+            camera[:, :, :6, :6] = 0.4
+        foreground = torch.zeros_like(camera)
+        foreground[:, :, 8:16, 8:16] = 1.0
+        background = 1.0 - foreground
+
+        metrics = _student_display_speckle_metrics(camera, foreground, background)
+        self.assertGreater(float(metrics["display_speckle_base"]), 0.0)
+        metrics["display_speckle_base"].backward()
+
+        self.assertIsNotNone(camera.grad)
+        background_grad = (camera.grad.abs() * background).sum().item()
+        foreground_core_grad = camera.grad[:, :, 10:14, 10:14].abs().sum().item()
+        self.assertGreater(background_grad, 0.0)
+        self.assertLess(foreground_core_grad, background_grad)
+
+    def test_strict_readability_treats_clean_target_metrics_as_diagnostics(self) -> None:
+        from ldm_project.one_shot_quality import _one_shot_distill_strict_readability_score
+
+        good_metrics = {
+            "paired_corr": 0.80,
+            "paired_dice": 0.75,
+            "camera_high_saturation_ratio": 0.01,
+            "loss": 0.35,
+            "camera_recon_loss": 0.12,
+            "camera_foreground_dice": 0.50,
+            "camera_saturation_ratio": 0.06,
+            "foreground_hole_ratio": 0.05,
+            "background_speckle_ratio": 0.06,
+            "background_hotspot_ratio": 0.10,
+            "background_highfreq_energy": 0.001,
+            "readable_contrast": 4.6,
+            "slm_tv": 0.35,
+            "student_label_correct_ratio": 0.85,
+            "student_label_margin_mean": 0.04,
+            "clean_foreground_dice": 0.60,
+            "clean_fg_hole_ratio": 0.30,
+            "clean_target_fg_ratio": 0.33,
+        }
+        good_score = _one_shot_distill_strict_readability_score(good_metrics)
+
+        poor_metrics = dict(good_metrics)
+        poor_metrics["clean_foreground_dice"] = 0.30
+        poor_metrics["clean_fg_hole_ratio"] = 0.60
+        poor_metrics["clean_target_fg_ratio"] = 0.55
+        poor_score = _one_shot_distill_strict_readability_score(poor_metrics)
+
+        self.assertEqual(poor_score, good_score)
+
+    def test_clean_target_fg_ratio_recorded_in_history_keys(self) -> None:
+        from ldm_project.one_shot_training_utils import ONE_SHOT_DISTILL_HISTORY_LOSS_KEYS
+
+        self.assertIn("clean_target_fg_ratio", ONE_SHOT_DISTILL_HISTORY_LOSS_KEYS)
+        self.assertIn("aux_detail_gate_fg_ratio", ONE_SHOT_DISTILL_HISTORY_LOSS_KEYS)
+        self.assertIn("aux_detail_active_fg_ratio", ONE_SHOT_DISTILL_HISTORY_LOSS_KEYS)
+        self.assertIn("residual_background_mask_ratio", ONE_SHOT_DISTILL_HISTORY_LOSS_KEYS)

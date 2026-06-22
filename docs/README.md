@@ -1,0 +1,36 @@
+# Documentation
+
+本目录按读者任务组织文档。先找到当前问题的唯一主文档，再沿链接查看设计依据或历史证据；不要用历史实验记录覆盖当前执行契约。
+
+## Start Here
+
+- 项目概览与最小安全入口：[README](../README.md)
+- 架构与最终推理边界：[D2NN 单次曝光蒸馏主线](ldm_migration/single_shot_ldm_distillation.md)
+- Stage 与 config 选择：[Stage Guide](ldm_migration/stage_guide.md)
+- 输出与可视化解释：[D2NN 主线输出与可视化说明](output_JIESHI.md)
+- 历史实验与验收证据：[D2NN 实验与验收历史](ldm_migration/experiment_history.md)
+
+## Choose By Task
+
+| 任务 | 主文档 | 权威范围 |
+| --- | --- | --- |
+| 理解项目并安全开始 | [README](../README.md) | 稳定入口、最小命令、目录地图 |
+| 理解架构和最终推理边界 | [D2NN 单次曝光蒸馏主线](ldm_migration/single_shot_ldm_distillation.md) | 架构契约、teacher/student 边界、硬件化顺序 |
+| 选择或运行 stage | [Stage Guide](ldm_migration/stage_guide.md) | 命令、必需输入、checkpoint 与验收顺序 |
+| 解释图片和 tensor bundle | [输出与可视化说明](output_JIESHI.md) | artifact 路径、张量语义、诊断图读取方式 |
+| 查阅过去的结果 | [实验与验收历史](ldm_migration/experiment_history.md) | 日期、指标、负结果、回归证据 |
+| 约束 Codex 执行 | [AGENTS.md](../AGENTS.md) | 仓库执行策略与不可变边界 |
+
+## Source Of Truth
+
+- `AGENTS.md` 是执行策略和项目不可变边界的权威来源。
+- `single_shot_ldm_distillation.md` 是架构与最终推理契约的权威来源。
+- `stage_guide.md` 是 stage 选择、命令模板与验收顺序的权威来源。
+- `output_JIESHI.md` 是输出 artifact 和诊断张量语义的权威来源。
+- `experiment_history.md` 保存历史证据，不定义当前默认行为。
+
+同一事实只在一个主文档中展开；其他文档仅做摘要并链接到主文档。
+
+## Protected Paths
+
+文档整理不触碰 `outputs/`、`data/raw/`、仓库 `.tmp/` 或 `legacy/`。其中现有 `outputs/` artifact 不得编辑、删除或回填；完整约束见 [AGENTS.md](../AGENTS.md)。

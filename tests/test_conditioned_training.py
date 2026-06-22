@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import importlib.util
+from pathlib import Path
+import tempfile
 import unittest
 
 
@@ -60,9 +62,16 @@ class ConditionedTrainingSmokeTests(unittest.TestCase):
             "camera_foreground_hole_loss",
             "camera_foreground_hole_ratio",
             "camera_foreground_roughness",
+            "camera_label_margin_loss",
+            "camera_label_margin_base",
+            "camera_label_margin_mean",
+            "camera_label_margin_requested_corr",
+            "camera_label_margin_best_other_corr",
+            "camera_label_margin_sample_ratio",
             "kl_loss",
             "fg_pixel_ratio",
             "pred_fg_energy_ratio",
+            "hard_class_weight_mean",
         ):
             self.assertEqual(losses[key].ndim, 0, key)
             self.assertTrue(torch.isfinite(losses[key]).item(), key)
@@ -162,6 +171,164 @@ class ConditionedTrainingSmokeTests(unittest.TestCase):
             base_losses["loss"].item() + shape_losses["shape_loss"].item(),
             places=6,
         )
+
+    def test_first_stage_hard_class_weights_increase_camera_terms_only_for_selected_labels(self) -> None:
+        import torch
+
+        from ldm_project.first_stage_losses import hard_class_sample_weights
+        from ldm_project.training import first_stage_loss
+
+        input_batch = torch.zeros((2, 1, 6, 6), dtype=torch.float32)
+        input_batch[0, :, 1:5, 1:5] = 1.0
+        input_batch[1, :, 2:4, 2:4] = 0.2
+        prediction = torch.zeros_like(input_batch)
+        prediction[1, :, 2:4, 2:4] = 0.2
+        outputs = {
+            "x_hat": prediction,
+            "image_recon": prediction,
+            "camera_plane": prediction,
+            "mu": torch.zeros_like(input_batch),
+            "logvar": torch.zeros_like(input_batch),
+        }
+        labels = torch.tensor([4, 1], dtype=torch.long)
+
+        weights = hard_class_sample_weights(
+            labels,
+            hard_class_weight_labels=(4,),
+            hard_class_weight=2.0,
+            dtype=torch.float32,
+        )
+        self.assertEqual(weights.tolist(), [2.0, 1.0])
+
+        base_losses = first_stage_loss(
+            outputs,
+            input_batch,
+            global_step=0,
+            total_steps=1,
+            target_beta=0.0,
+            warmup_ratio=0.1,
+            image_recon_weight=0.0,
+            camera_recon_weight=1.0,
+            shape_recon_weight=0.5,
+            camera_topology_weight=0.25,
+            camera_artifact_weight=0.25,
+            class_labels=labels,
+            hard_class_weight_labels=(4,),
+            hard_class_weight=1.0,
+        )
+        weighted_losses = first_stage_loss(
+            outputs,
+            input_batch,
+            global_step=0,
+            total_steps=1,
+            target_beta=0.0,
+            warmup_ratio=0.1,
+            image_recon_weight=0.0,
+            camera_recon_weight=1.0,
+            shape_recon_weight=0.5,
+            camera_topology_weight=0.25,
+            camera_artifact_weight=0.25,
+            class_labels=labels,
+            hard_class_weight_labels=(4,),
+            hard_class_weight=2.0,
+        )
+
+        self.assertGreater(weighted_losses["camera_recon_loss"].item(), base_losses["camera_recon_loss"].item())
+        self.assertGreater(weighted_losses["shape_loss"].item(), base_losses["shape_loss"].item())
+        self.assertGreater(weighted_losses["camera_topology_loss"].item(), base_losses["camera_topology_loss"].item())
+        self.assertNotAlmostEqual(
+            weighted_losses["camera_artifact_loss"].item(),
+            base_losses["camera_artifact_loss"].item(),
+            places=6,
+        )
+        self.assertEqual(base_losses["hard_class_weight_mean"].item(), 1.0)
+        self.assertAlmostEqual(weighted_losses["hard_class_weight_mean"].item(), 1.5, places=6)
+        self.assertTrue(torch.isfinite(weighted_losses["loss"]).item())
+
+    def test_first_stage_loss_adds_prototype_margin_for_requested_labels(self) -> None:
+        import torch
+
+        from ldm_project.training import first_stage_loss
+
+        prototype_0 = torch.zeros((1, 8, 8), dtype=torch.float32)
+        prototype_0[:, 1:4, 1:4] = 1.0
+        prototype_1 = torch.zeros((1, 8, 8), dtype=torch.float32)
+        prototype_1[:, 4:7, 4:7] = 1.0
+        prototypes = torch.stack([prototype_0, prototype_1], dim=0)
+        labels = torch.tensor([0, 1], dtype=torch.long)
+        matching_camera = prototypes.index_select(0, labels).clone()
+        wrong_camera = prototypes.index_select(0, torch.tensor([1, 0], dtype=torch.long)).clone().requires_grad_(True)
+
+        def make_outputs(camera_plane: torch.Tensor) -> dict[str, torch.Tensor]:
+            return {
+                "x_hat": torch.zeros_like(camera_plane),
+                "image_recon": torch.zeros_like(camera_plane),
+                "camera_plane": camera_plane,
+                "mu": torch.zeros_like(camera_plane),
+                "logvar": torch.zeros_like(camera_plane),
+            }
+
+        matching_losses = first_stage_loss(
+            make_outputs(matching_camera),
+            torch.zeros_like(matching_camera),
+            global_step=0,
+            total_steps=1,
+            target_beta=0.0,
+            warmup_ratio=0.1,
+            image_recon_weight=0.0,
+            camera_recon_weight=0.0,
+            class_labels=labels,
+            camera_label_margin_weight=2.0,
+            camera_label_margin_target=0.08,
+            camera_label_margin_labels=(0, 1),
+            camera_label_margin_prototypes=prototypes,
+        )
+        wrong_losses = first_stage_loss(
+            make_outputs(wrong_camera),
+            torch.zeros_like(wrong_camera),
+            global_step=0,
+            total_steps=1,
+            target_beta=0.0,
+            warmup_ratio=0.1,
+            image_recon_weight=0.0,
+            camera_recon_weight=0.0,
+            class_labels=labels,
+            camera_label_margin_weight=2.0,
+            camera_label_margin_target=0.08,
+            camera_label_margin_labels=(0, 1),
+            camera_label_margin_prototypes=prototypes,
+        )
+
+        self.assertGreater(matching_losses["camera_label_margin_mean"].item(), 0.08)
+        self.assertEqual(matching_losses["camera_label_margin_loss"].item(), 0.0)
+        self.assertGreater(wrong_losses["camera_label_margin_loss"].item(), 0.0)
+        self.assertLess(wrong_losses["camera_label_margin_mean"].item(), matching_losses["camera_label_margin_mean"].item())
+        wrong_losses["loss"].backward()
+        self.assertIsNotNone(wrong_camera.grad)
+        self.assertGreater(wrong_camera.grad.abs().sum().item(), 0.0)
+
+    def test_first_stage_hard_class_config_validates_labels_and_weight(self) -> None:
+        from ldm_project.config import load_training_config
+
+        base_yaml = """
+training:
+  mode: first_stage
+first_stage:
+  hard_class_weight_labels: [{label}]
+  hard_class_weight: {weight}
+diffusion:
+  num_classes: 10
+"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            invalid_label = Path(tmpdir) / "invalid_label.yaml"
+            invalid_label.write_text(base_yaml.format(label=10, weight=2.0), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "hard_class_weight_labels"):
+                load_training_config(invalid_label)
+
+            invalid_weight = Path(tmpdir) / "invalid_weight.yaml"
+            invalid_weight.write_text(base_yaml.format(label=4, weight=0.0), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "hard_class_weight"):
+                load_training_config(invalid_weight)
 
     def test_first_stage_loss_adds_topology_and_saturation_terms(self) -> None:
         import torch

@@ -4,7 +4,6 @@ from .stage_constants import (
     DIFFUSION_BEST_CHECKPOINT,
     DIFFUSION_BEST_METRIC,
     FIRST_STAGE_BEST_OPTICAL_CHECKPOINT,
-    FIRST_STAGE_BEST_OPTICAL_METRIC,
 )
 from .train_utils import (
     is_best_optical_candidate,
@@ -29,6 +28,9 @@ _FIRST_STAGE_STEP_PRINT_SPEC: tuple[tuple[str, str, str], ...] = (
     ("camera_saturation_ratio", "sat", ".4f"),
     ("camera_artifact_loss", "artifact", ".6f"),
     ("camera_foreground_hole_ratio", "hole", ".4f"),
+    ("camera_label_margin_loss", "margin_loss", ".6f"),
+    ("camera_label_margin_mean", "margin", ".4f"),
+    ("hard_class_weight_mean", "hard_w", ".4f"),
     ("kl_loss", "kl", ".6f"),
 )
 
@@ -68,9 +70,16 @@ FIRST_STAGE_HISTORY_LOSS_KEYS: tuple[str, ...] = (
     "camera_foreground_hole_loss",
     "camera_foreground_hole_ratio",
     "camera_foreground_roughness",
+    "camera_label_margin_loss",
+    "camera_label_margin_base",
+    "camera_label_margin_mean",
+    "camera_label_margin_requested_corr",
+    "camera_label_margin_best_other_corr",
+    "camera_label_margin_sample_ratio",
     "kl_loss",
     "fg_pixel_ratio",
     "pred_fg_energy_ratio",
+    "hard_class_weight_mean",
     "beta",
 )
 
@@ -147,6 +156,8 @@ def _record_first_stage_validation(run_manager, *, epoch_number: int, validation
         f"sat={validation_metrics['camera_saturation_ratio']:.4f} "
         f"artifact={validation_metrics['camera_artifact_loss']:.6f} "
         f"hole={validation_metrics['camera_foreground_hole_ratio']:.4f} "
+        f"margin_loss={validation_metrics['camera_label_margin_loss']:.6f} "
+        f"margin={validation_metrics['camera_label_margin_mean']:.4f} "
         f"camera_corr={validation_metrics['camera_corr']:.4f} "
         f"camera_edge_corr={validation_metrics['camera_edge_corr']:.4f} "
         f"min_class_corr={validation_metrics['min_class_camera_corr']:.4f} "
@@ -154,6 +165,7 @@ def _record_first_stage_validation(run_manager, *, epoch_number: int, validation
         f"mnist_score={validation_metrics['camera_mnist_score']:.4f} "
         f"min_class_mnist={validation_metrics['min_class_camera_mnist_score']:.4f} "
         f"class_balanced_mnist={validation_metrics['camera_class_balanced_mnist_score']:.4f} "
+        f"margin_score={validation_metrics['camera_label_margin_score']:.4f} "
         f"complex_corr={validation_metrics['complex_camera_corr']:.4f} "
         f"complex_mnist={validation_metrics['complex_camera_mnist_score']:.4f} "
         f"complex_balanced_mnist={validation_metrics['camera_complex_balanced_mnist_score']:.4f} "
@@ -190,7 +202,12 @@ def _update_first_stage_best_checkpoint(
     first_stage_model_version: str,
 ):
     optical_candidate = is_best_optical_candidate(train_cfg.first_stage, image_fusion_weight)
-    selection_score = validation_metrics[FIRST_STAGE_BEST_OPTICAL_METRIC]
+    selection_metric = train_cfg.first_stage.checkpoint_selection_metric
+    if selection_metric not in validation_metrics:
+        raise ValueError(
+            f"first_stage.checkpoint_selection_metric={selection_metric!r} is not available in validation metrics."
+        )
+    selection_score = validation_metrics[selection_metric]
     updated_best = optical_candidate and should_update_best_optical(selection_score, best_optical_score)
     if updated_best:
         best_optical_score = selection_score
@@ -203,7 +220,7 @@ def _update_first_stage_best_checkpoint(
                 "physics_config": physics,
                 "train_config": train_cfg,
                 "epoch": epoch_number,
-                "selection_metric": FIRST_STAGE_BEST_OPTICAL_METRIC,
+                "selection_metric": selection_metric,
                 "selection_score": selection_score,
                 "validation_metrics": validation_metrics,
                 "image_fusion_weight": image_fusion_weight,
@@ -213,11 +230,12 @@ def _update_first_stage_best_checkpoint(
             {
                 "first_stage_best_optical_checkpoint": best_optical_checkpoint_path,
                 "first_stage_best_optical_epoch": epoch_number,
+                "first_stage_best_optical_metric": selection_metric,
                 "first_stage_best_optical_score": best_optical_score,
             }
         )
         run_manager.write_meta(run_meta)
-    return best_optical_score, best_optical_checkpoint_path, optical_candidate, selection_score, updated_best
+    return best_optical_score, best_optical_checkpoint_path, optical_candidate, selection_score, updated_best, selection_metric
 
 
 def _record_first_stage_best_history(
@@ -227,6 +245,7 @@ def _record_first_stage_best_history(
     optical_candidate: bool,
     updated_best: bool,
     selection_score,
+    selection_metric: str,
     best_optical_score,
     image_fusion_weight: float,
     best_optical_checkpoint_path,
@@ -237,7 +256,7 @@ def _record_first_stage_best_history(
             "epoch": epoch_number,
             "eligible": optical_candidate,
             "updated": updated_best,
-            "selection_metric": FIRST_STAGE_BEST_OPTICAL_METRIC,
+            "selection_metric": selection_metric,
             "selection_score": selection_score,
             "best_score": best_optical_score,
             "image_fusion_weight": image_fusion_weight,

@@ -5,6 +5,7 @@ from .one_shot_training_utils import (
     ONE_SHOT_HISTORY_LOSS_KEYS,
     _build_one_shot_optimizer,
     _evaluate_one_shot,
+    _mask_amplitude_summary,
     _one_shot_loss_kwargs,
     _phase_grad_summary,
     _scalar_loss_items,
@@ -14,7 +15,7 @@ from .one_shot_eval_artifacts import (
     _save_one_shot_d2nn_diagnostics,
     _save_one_shot_slm_to_encoder_focus_visualization,
 )
-from .one_shot_visualization import build_one_shot_visualization_tensors
+from .one_shot_visualization import build_one_shot_shared_scale_visualization_tensors
 from .visualization_core import labels_for_visual_rows, save_visualization_grids
 from .stage_constants import ONE_SHOT_BEST_CHECKPOINT, ONE_SHOT_BEST_METRIC
 from .train_utils import (
@@ -74,6 +75,7 @@ def run_one_shot_training(
             )
             if should_record:
                 phase_info = _phase_grad_summary(one_shot_model)
+                mask_info = _mask_amplitude_summary(one_shot_model)
                 print(
                     f"[one_shot] epoch={epoch_number} global_step={step_record['global_step']} "
                     f"stage_step={step_record['stage_step']} "
@@ -83,10 +85,12 @@ def run_one_shot_training(
                     f"camera_dice={losses['camera_foreground_dice'].item():.4f} "
                     f"slm_tv={losses['slm_tv'].item():.6f} "
                     f"sat={losses['camera_saturation_ratio'].item():.4f} "
+                    f"sat_low={losses['camera_low_saturation_ratio'].item():.4f} "
+                    f"sat_high={losses['camera_high_saturation_ratio'].item():.4f} "
                     f"div={losses['code_diversity_penalty'].item():.4f} "
                     f"div_ratio={losses['diversity_ratio'].item():.4f} "
                     f"xcls_ratio={losses['cross_class_diversity_ratio'].item():.4f} "
-                    f"{phase_info}"
+                    f"{phase_info} {mask_info}"
                 )
                 run_manager.append_history(
                     "one_shot",
@@ -104,7 +108,7 @@ def run_one_shot_training(
                 visual_outputs = one_shot_model(visual_codes, visual_labels)
                 save_visualization_grids(
                     run_manager,
-                    build_one_shot_visualization_tensors(visual_references, visual_outputs, codes=visual_codes),
+                    build_one_shot_shared_scale_visualization_tensors(visual_references, visual_outputs, codes=visual_codes),
                     run_manager.images_dir / "one_shot" / f"epoch_{epoch_number:04d}.png",
                     title_label=f"one_shot epoch {epoch_number}",
                     max_items=visual_labels.shape[0],

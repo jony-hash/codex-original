@@ -7,6 +7,7 @@ import torch
 
 DEFAULT_AMPLITUDE_DISPLAY_QUANTILE = 0.995
 VISUALIZATION_AMPLITUDE_KEY = "amplitude"
+VISUALIZATION_INTENSITY_KEY = "intensity"
 VISUALIZATION_PHASE_KEY = "phase"
 
 
@@ -112,6 +113,60 @@ def enhance_camera_for_display(tensor, lower_quantile: float = 0.01, upper_quant
     return scaled.clamp(0.0, 1.0).pow(gamma)
 
 
+def _gaussian_blur_2d(tensor, kernel_size: int, sigma: float):
+    """Separable Gaussian blur via conv2d with replicated padding."""
+    if tensor.ndim == 3:
+        tensor = tensor.unsqueeze(0)
+    x = torch.arange(-kernel_size // 2 + 1, kernel_size // 2 + 1, device=tensor.device, dtype=tensor.dtype)
+    g = torch.exp(-x.pow(2) / (2.0 * sigma * sigma))
+    g = g / g.sum()
+    g_row = g.view(1, 1, 1, -1)
+    g_col = g.view(1, 1, -1, 1)
+    pad = kernel_size // 2
+    padded = torch.nn.functional.pad(tensor, (pad, pad, pad, pad), mode="replicate")
+    blurred = torch.nn.functional.conv2d(padded, g_row.expand(tensor.shape[1], 1, 1, -1), groups=tensor.shape[1])
+    blurred = torch.nn.functional.conv2d(blurred, g_col.expand(tensor.shape[1], 1, -1, 1), groups=tensor.shape[1])
+    return blurred
+
+
+def _soft_foreground_boost(tensor, boost: float = 1.3):
+    """Boost pixels above per-sample mean by a multiplicative factor."""
+    per_sample_mean = tensor.flatten(1).mean(dim=1)
+    weight = 1.0 + (boost - 1.0) * torch.sigmoid((tensor - per_sample_mean[:, None, None, None]) * 10.0)
+    return tensor * weight
+
+
+def readable_camera_for_display(
+    tensor,
+    lower_quantile: float = 0.02,
+    upper_quantile: float = 0.98,
+    gamma: float = 0.65,
+    smooth_sigma: float = 0.6,
+    foreground_boost: float = 1.3,
+):
+    """Robust readability transform: quantile-normalize → smooth → gamma → foreground-boost → clamp.
+
+    Designed for speckled optical camera images that need aggressive cleanup for human inspection.
+    """
+    BATCH_KEY = "SINGLE_BATCH_ADDED"
+    if tensor.ndim == 3:
+        tensor = tensor.unsqueeze(0)
+    raw = tensor.detach().float()
+    flat = raw.flatten(start_dim=-2)
+    low = flat.quantile(lower_quantile, dim=-1, keepdim=True).unsqueeze(-1)
+    high = flat.quantile(upper_quantile, dim=-1, keepdim=True).unsqueeze(-1)
+    scaled = (raw - low) / (high - low).clamp_min(1e-6)
+    scaled = scaled.clamp(0.0, 1.0)
+    kernel_size = max(3, int(smooth_sigma * 6) | 1)
+    scaled = _gaussian_blur_2d(scaled, kernel_size=kernel_size, sigma=smooth_sigma)
+    if gamma != 1.0:
+        scaled = scaled.pow(gamma)
+    if foreground_boost != 1.0:
+        scaled = _soft_foreground_boost(scaled, boost=foreground_boost)
+    if BATCH_KEY == "SINGLE_BATCH_ADDED":
+        scaled = scaled.squeeze(0)
+    return scaled.clamp(0.0, 1.0)
+
 
 def format_output_title(relative_path: str, label: str) -> str:
     return f"{relative_path} | {label}"
@@ -121,13 +176,15 @@ def format_output_title(relative_path: str, label: str) -> str:
 def build_first_stage_visualization_tensors(input_batch, outputs):
     # 物理优先先看相机平面是否承载数字，再用 decoder image 诊断 latent 语义。
     return {
+        VISUALIZATION_INTENSITY_KEY: {
+            "input image": input_batch,
+            "camera intensity": outputs["camera_plane"],
+            "decoder image": outputs["image_recon"],
+            "PF2 intensity": outputs["pf2_intensity"],
+            "probe intensity": outputs["probe_plane"],
+        },
         VISUALIZATION_AMPLITUDE_KEY: {
-            "input": input_batch,
-            "camera": outputs["camera_plane"],
-            "image": outputs["image_recon"],
-            "pf2": outputs["pf2_intensity"],
-            "chip amp": _amplitude_for_visualization(outputs["chip_amplitude"]),
-            "probe": outputs["probe_plane"],
+            "chip |E|": _amplitude_for_visualization(outputs["chip_amplitude"]),
         },
         VISUALIZATION_PHASE_KEY: _phase_tensor_map(
             outputs,
@@ -143,12 +200,14 @@ def build_first_stage_visualization_tensors(input_batch, outputs):
 def build_diffusion_visualization_tensors(reference_images, sample_outputs):
     # diffusion 阶段先看生成 latent 经物理后级读出的 camera，再看 decoder image 作为辅助。
     return {
+        VISUALIZATION_INTENSITY_KEY: {
+            "reference image": reference_images,
+            "camera intensity": sample_outputs["camera_plane"],
+            "decoder image": sample_outputs["image_recon"],
+            "probe intensity": sample_outputs["probe_plane"],
+        },
         VISUALIZATION_AMPLITUDE_KEY: {
-            "reference": reference_images,
-            "camera": sample_outputs["camera_plane"],
-            "image": sample_outputs["image_recon"],
-            "chip amp": _amplitude_for_visualization(sample_outputs["chip_amplitude"]),
-            "probe": sample_outputs["probe_plane"],
+            "chip |E|": _amplitude_for_visualization(sample_outputs["chip_amplitude"]),
         },
         VISUALIZATION_PHASE_KEY: _phase_tensor_map(
             sample_outputs,
@@ -207,7 +266,7 @@ def save_visualization_grids(
 ) -> dict[str, Path]:
     base_path = Path(destination)
     saved_paths: dict[str, Path] = {}
-    for split_name in (VISUALIZATION_AMPLITUDE_KEY, VISUALIZATION_PHASE_KEY):
+    for split_name in (VISUALIZATION_AMPLITUDE_KEY, VISUALIZATION_INTENSITY_KEY, VISUALIZATION_PHASE_KEY):
         tensor_map = visualization_splits.get(split_name, {})
         if not tensor_map:
             continue

@@ -99,6 +99,26 @@ def _camera_topology_loss(
     return edge_loss + 0.5 * local_shape_loss
 
 
+def _camera_topology_loss_for_samples(
+    prediction: torch.Tensor,
+    input_batch: torch.Tensor,
+    foreground_mask: torch.Tensor,
+    sample_weights: torch.Tensor,
+) -> torch.Tensor:
+    prediction_soft = prediction.clamp(0.0, 1.0)
+    target = input_batch.clamp(0.0, 1.0)
+    foreground_context = F.max_pool2d(foreground_mask, kernel_size=5, stride=1, padding=2)
+    edge_error = (_sobel_magnitude(prediction_soft) - _sobel_magnitude(target)).abs()
+    local_prediction = F.avg_pool2d(prediction_soft, kernel_size=3, stride=1, padding=1)
+    local_target = F.avg_pool2d(target, kernel_size=3, stride=1, padding=1)
+    local_shape_error = (local_prediction - local_target).abs()
+    per_sample = _masked_mean_per_sample(edge_error, foreground_context) + 0.5 * _masked_mean_per_sample(
+        local_shape_error,
+        foreground_context,
+    )
+    return _weighted_sample_mean(per_sample, sample_weights)
+
+
 def _foreground_shape_loss(prediction: torch.Tensor, input_batch: torch.Tensor, foreground_mask: torch.Tensor) -> torch.Tensor:
     return 1.0 - _foreground_dice_score(prediction, foreground_mask)
 
@@ -161,6 +181,14 @@ def _camera_saturation_ratio(camera_prediction: torch.Tensor) -> torch.Tensor:
     return saturated.float().mean()
 
 
+def _camera_low_saturation_ratio(camera_prediction: torch.Tensor) -> torch.Tensor:
+    return (camera_prediction <= 0.01).float().mean()
+
+
+def _camera_high_saturation_ratio(camera_prediction: torch.Tensor) -> torch.Tensor:
+    return (camera_prediction >= 0.99).float().mean()
+
+
 
 def _camera_hotspot_loss(camera_prediction: torch.Tensor) -> torch.Tensor:
     return F.relu(camera_prediction - 1.0).pow(2).mean()
@@ -199,3 +227,29 @@ def _camera_artifact_metrics(
         "foreground_roughness": foreground_roughness,
     }
 
+
+def _camera_artifact_metrics_for_samples(
+    camera_prediction: torch.Tensor,
+    input_batch: torch.Tensor,
+    foreground_mask: torch.Tensor,
+    sample_weights: torch.Tensor,
+) -> dict[str, torch.Tensor]:
+    prediction = camera_prediction.clamp(0.0, 1.0)
+    target = input_batch.clamp(0.0, 1.0)
+    local_target = F.avg_pool2d(target, kernel_size=5, stride=1, padding=2)
+    foreground_density = F.avg_pool2d(foreground_mask, kernel_size=5, stride=1, padding=2)
+    interior_weight = foreground_mask * foreground_density.pow(2)
+    hole_depth = F.relu(local_target * 0.75 - prediction)
+    foreground_hole_samples = _masked_mean_per_sample(hole_depth.pow(2), interior_weight)
+    foreground_hole_loss = _weighted_sample_mean(foreground_hole_samples, sample_weights)
+    foreground_hole_ratio = _masked_mean((hole_depth > 0.10).float(), interior_weight)
+    local_prediction = F.avg_pool2d(prediction, kernel_size=5, stride=1, padding=2)
+    roughness_samples = _masked_mean_per_sample((prediction - local_prediction).abs(), interior_weight)
+    foreground_roughness = _weighted_sample_mean(roughness_samples, sample_weights)
+    artifact_base = foreground_hole_loss + 0.25 * foreground_roughness
+    return {
+        "artifact_base": artifact_base,
+        "foreground_hole_loss": foreground_hole_loss,
+        "foreground_hole_ratio": foreground_hole_ratio,
+        "foreground_roughness": foreground_roughness,
+    }

@@ -344,13 +344,14 @@ data:
             },
         )
         self.assertEqual(
-            list(visuals.keys()),
-            ["amplitude", "phase"],
+            sorted(visuals.keys()),
+            sorted(["intensity", "amplitude", "phase"]),
         )
         self.assertEqual(
-            list(visuals["amplitude"].keys()),
-            ["input", "camera", "image", "pf2", "chip amp", "probe"],
+            list(visuals["intensity"].keys()),
+            ["input image", "camera intensity", "decoder image", "PF2 intensity", "probe intensity"],
         )
+        self.assertEqual(list(visuals["amplitude"].keys()), ["chip |E|"])
         self.assertEqual(
             list(visuals["phase"].keys()),
             ["slm phase", "chip phase"],
@@ -367,19 +368,19 @@ data:
             },
         )
         self.assertEqual(
-            list(diffusion_visuals.keys()),
-            ["amplitude", "phase"],
+            sorted(diffusion_visuals.keys()),
+            sorted(["intensity", "amplitude", "phase"]),
         )
         self.assertEqual(
-            list(diffusion_visuals["amplitude"].keys()),
+            list(diffusion_visuals["intensity"].keys()),
             [
-                "reference",
-                "camera",
-                "image",
-                "chip amp",
-                "probe",
+                "reference image",
+                "camera intensity",
+                "decoder image",
+                "probe intensity",
             ],
         )
+        self.assertEqual(list(diffusion_visuals["amplitude"].keys()), ["chip |E|"])
         self.assertEqual(list(diffusion_visuals["phase"].keys()), ["chip phase"])
         trace_visuals = build_denoising_trace_visualization_tensors(
             torch.rand(2, 1, 4, 4),
@@ -426,6 +427,7 @@ data:
             validation_bundle,
             train_bundle,
             torch.device("cpu"),
+            allow_train_reference_fallback=True,
         )
         self.assertEqual(reference_labels.tolist(), [0, 2, 3, 0])
         self.assertEqual(reference_source, "validation_then_train_fallback")
@@ -440,6 +442,7 @@ data:
             train_bundle,
             4,
             torch.device("cpu"),
+            allow_train_reference_fallback=True,
         )
         self.assertEqual(visual_labels.tolist(), [0, 0, 1, 1, 2, 2, 3, 3])
         self.assertEqual(visual_source, "validation_then_train_fallback")
@@ -451,6 +454,7 @@ data:
             train_bundle,
             4,
             torch.device("cpu"),
+            allow_train_reference_fallback=True,
         )
         self.assertEqual(sample_labels.tolist(), [0, 1, 2, 3])
         self.assertEqual(sample_reference_labels.tolist(), [0, 1, 2, 3])
@@ -463,6 +467,7 @@ data:
             train_bundle,
             5,
             torch.device("cpu"),
+            allow_train_reference_fallback=True,
         )
         self.assertEqual(fallback_labels.tolist(), [0, 1, 2, 3])
         self.assertEqual(fallback_reference_labels.tolist(), [0, 1, 2, 3])

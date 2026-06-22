@@ -13,6 +13,7 @@ ONE_SHOT_DISTILL_BEST_METRIC = "one_shot_distill_validation.loss"
 ONE_SHOT_DISTILL_QUALITY_METRIC = "one_shot_distill_validation.quality"
 ONE_SHOT_DISTILL_BALANCED_QUALITY_METRIC = "one_shot_distill_validation.balanced_quality"
 ONE_SHOT_DISTILL_STRICT_BALANCED_QUALITY_METRIC = "one_shot_distill_validation.strict_balanced_quality"
+ONE_SHOT_DISTILL_STRICT_READABILITY_METRIC = "one_shot_distill_validation.strict_readability"
 ONE_SHOT_DISTILL_QUALITY_SATURATION_TARGET = 0.325
 ONE_SHOT_DISTILL_BALANCED_QUALITY_SATURATION_TARGET = 0.39
 ONE_SHOT_DISTILL_STRICT_BALANCED_QUALITY_SATURATION_TARGET = 0.36

@@ -1,0 +1,39 @@
+training:
+  mode: one_shot_distill
+  batch_size: 16
+  first_stage_epochs: 0
+  diffusion_epochs: 0
+  one_shot_epochs: 0
+
+first_stage:
+  image_size: 200
+
+one_shot:
+  optical_core_arch: camera_direct_clean_oracle
+  generator_e_arch: template_residual_mlp
+  code_residual_scale: 0.08
+  generator_base_lr_scale: 0.0
+  generator_residual_lr_scale: 1.0
+  distill_target_source: mnist_prototype
+  aux_detail_target_source: mnist_nearest_teacher_image
+  code_dim: 128
+  label_embed_dim: 32
+  hidden_dim: 256
+  num_classes: 10
+  slm_background_floor: 0.05
+  ols_kind: identity
+  metasurface_grid_size: 40
+  checkpoint_selection_metric: strict_readability
+  sample_class_labels: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+  sample_repeats_per_class: 2
+  eval_samples_per_class: 10
+  eval_preview_per_class: 2
+  eval_allow_train_fallback: false
+  student_label_audit_enabled: true
+
+distillation:
+  paired_class_batches: true
+  label_audit_prototypes_per_class: 128
+  class_labels: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+  code_seed: 1234
+  code_projection_seed: 2026

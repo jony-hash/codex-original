@@ -2,6 +2,7 @@ from __future__ import annotations
 
 
 ONE_SHOT_RAW_DIAGNOSTIC_TENSOR_KEYS = (
+    "generator_desired_intensity",
     "slm_command",
     "slm_amplitude",
     "slm_phase",

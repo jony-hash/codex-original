@@ -10,9 +10,8 @@ from .d2nn_visualization import (
     save_one_shot_d2nn_focus_figures,
 )
 from .one_shot_visualization import (
-    ONE_SHOT_EARLY_RAW_AMPLITUDE_SPECS,
-    ONE_SHOT_SHARED_SCALE_AMPLITUDE_QUANTILE,
-    ONE_SHOT_SHARED_SCALE_AMPLITUDE_SPECS,
+    ONE_SHOT_SHARED_SCALE_INTENSITY_QUANTILE,
+    ONE_SHOT_SHARED_SCALE_INTENSITY_SPECS,
     build_one_shot_display_diagnostic_tensors,
     build_one_shot_eval_shared_scale_visualization_tensors,
     build_one_shot_eval_visualization_tensors,
@@ -38,6 +37,7 @@ from .sampling_reports import (
 from .visualization_core import (
     DEFAULT_AMPLITUDE_DISPLAY_QUANTILE,
     VISUALIZATION_AMPLITUDE_KEY,
+    VISUALIZATION_INTENSITY_KEY,
     VISUALIZATION_PHASE_KEY,
     build_code_visualization_tensor,
     build_denoising_trace_visualization_tensors,
@@ -57,10 +57,10 @@ __all__ = [
     "DEFAULT_DENOISING_TRACE_TIMESTEPS",
     "DEFAULT_NEAREST_REFERENCE_LIMIT",
     "DEFAULT_VISUAL_PREVIEW_PER_CLASS",
-    "ONE_SHOT_EARLY_RAW_AMPLITUDE_SPECS",
-    "ONE_SHOT_SHARED_SCALE_AMPLITUDE_QUANTILE",
-    "ONE_SHOT_SHARED_SCALE_AMPLITUDE_SPECS",
+    "ONE_SHOT_SHARED_SCALE_INTENSITY_QUANTILE",
+    "ONE_SHOT_SHARED_SCALE_INTENSITY_SPECS",
     "VISUALIZATION_AMPLITUDE_KEY",
+    "VISUALIZATION_INTENSITY_KEY",
     "VISUALIZATION_PHASE_KEY",
     "build_code_visualization_tensor",
     "build_denoising_trace_visualization_tensors",

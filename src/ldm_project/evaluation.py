@@ -73,6 +73,14 @@ def compute_first_stage_balanced_metrics(
         class_mnist_scores.append(class_score)
     min_class_camera_mnist_score = min(class_mnist_scores) if class_mnist_scores else camera_mnist_score
     camera_class_balanced_mnist_score = 0.5 * camera_mnist_score + 0.5 * min_class_camera_mnist_score
+    margin_values = [
+        float(metrics["camera_label_margin_mean"])
+        for metrics in per_class_metrics.values()
+        if "camera_label_margin_mean" in metrics and float(metrics.get("camera_label_margin_sample_ratio", 0.0)) > 0.0
+    ]
+    camera_label_margin_score = min(margin_values) if margin_values else float(
+        validation_metrics.get("camera_label_margin_mean", 0.0)
+    )
     complex_camera_corr = float(validation_metrics.get("complex_camera_corr", camera_corr))
     complex_camera_edge_corr = float(validation_metrics.get("complex_camera_edge_corr", camera_edge_corr))
     complex_camera_foreground_dice = float(
@@ -101,6 +109,7 @@ def compute_first_stage_balanced_metrics(
         "camera_mnist_score": camera_mnist_score,
         "min_class_camera_mnist_score": min_class_camera_mnist_score,
         "camera_class_balanced_mnist_score": camera_class_balanced_mnist_score,
+        "camera_label_margin_score": camera_label_margin_score,
         "complex_camera_mnist_score": complex_camera_mnist_score,
         "camera_complex_balanced_mnist_score": camera_complex_balanced_mnist_score,
     }
@@ -204,6 +213,7 @@ def evaluate_first_stage(
     stage_step: int,
     total_steps: int,
     train_cfg,
+    camera_label_margin_prototypes=None,
 ) -> dict[str, float]:
     overall_metrics, _ = evaluate_first_stage_with_per_class(
         torch_module,
@@ -215,6 +225,7 @@ def evaluate_first_stage(
         stage_step,
         total_steps,
         train_cfg,
+        camera_label_margin_prototypes=camera_label_margin_prototypes,
     )
     return overall_metrics
 
@@ -229,6 +240,7 @@ def evaluate_first_stage_with_per_class(
     stage_step: int,
     total_steps: int,
     train_cfg,
+    camera_label_margin_prototypes=None,
 ) -> tuple[dict[str, float], dict[str, dict[str, float | int]]]:
     metric_names = (
         "loss",
@@ -266,6 +278,12 @@ def evaluate_first_stage_with_per_class(
         "camera_foreground_hole_loss",
         "camera_foreground_hole_ratio",
         "camera_foreground_roughness",
+        "camera_label_margin_loss",
+        "camera_label_margin_base",
+        "camera_label_margin_mean",
+        "camera_label_margin_requested_corr",
+        "camera_label_margin_best_other_corr",
+        "camera_label_margin_sample_ratio",
         "kl_loss",
         "fg_pixel_ratio",
         "pred_fg_energy_ratio",
@@ -285,6 +303,12 @@ def evaluate_first_stage_with_per_class(
         "camera_foreground_dice",
         "camera_background_leakage",
         "camera_hotspot_ratio",
+        "camera_label_margin_loss",
+        "camera_label_margin_base",
+        "camera_label_margin_mean",
+        "camera_label_margin_requested_corr",
+        "camera_label_margin_best_other_corr",
+        "camera_label_margin_sample_ratio",
     )
     complex_metric_names = (
         "camera_corr",
@@ -329,6 +353,13 @@ def evaluate_first_stage_with_per_class(
                 camera_topology_weight=train_cfg.first_stage.camera_topology_weight,
                 camera_saturation_weight=train_cfg.first_stage.camera_saturation_weight,
                 camera_artifact_weight=train_cfg.first_stage.camera_artifact_weight,
+                class_labels=class_labels,
+                hard_class_weight_labels=train_cfg.first_stage.hard_class_weight_labels,
+                hard_class_weight=train_cfg.first_stage.hard_class_weight,
+                camera_label_margin_weight=train_cfg.first_stage.camera_label_margin_weight,
+                camera_label_margin_target=train_cfg.first_stage.camera_label_margin_target,
+                camera_label_margin_labels=train_cfg.first_stage.camera_label_margin_labels,
+                camera_label_margin_prototypes=camera_label_margin_prototypes,
             )
             quality_metrics = first_stage_quality_metrics(
                 torch_module,
@@ -386,6 +417,13 @@ def evaluate_first_stage_with_per_class(
                     camera_topology_weight=train_cfg.first_stage.camera_topology_weight,
                     camera_saturation_weight=train_cfg.first_stage.camera_saturation_weight,
                     camera_artifact_weight=train_cfg.first_stage.camera_artifact_weight,
+                    class_labels=class_labels[mask],
+                    hard_class_weight_labels=train_cfg.first_stage.hard_class_weight_labels,
+                    hard_class_weight=train_cfg.first_stage.hard_class_weight,
+                    camera_label_margin_weight=train_cfg.first_stage.camera_label_margin_weight,
+                    camera_label_margin_target=train_cfg.first_stage.camera_label_margin_target,
+                    camera_label_margin_labels=train_cfg.first_stage.camera_label_margin_labels,
+                    camera_label_margin_prototypes=camera_label_margin_prototypes,
                 )
                 label_quality_metrics = first_stage_quality_metrics(
                     torch_module,

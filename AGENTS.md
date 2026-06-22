@@ -4,107 +4,72 @@
 - Do not repeat this marker later unless the user explicitly asks for it.
 - Claude Code 请参见 [CLAUDE.md](CLAUDE.md)，以 CLAUDE.md 为首要行为约束。
 
-Primary execution contract for this repo. If this file conflicts with any document under `docs/`, follow this file.
+Primary execution contract for this repository. This file overrides `docs/`; scoped files may add constraints but may not relax this contract.
 
-## 1. Core Rules
+## 1. Scope Router
 
-1. No filler. Start with the answer or the action.
-2. Never fabricate. Read files, run commands, or say you do not know.
-3. Ask only when ambiguity materially changes the output.
-4. Touch only the requested scope. No unrelated refactors or cleanup.
-5. Do not claim success without verification.
-6. Briefly state the plan before editing.
-7. Read the files you will change and the code that calls them.
-8. Match existing patterns; prefer the smallest correct change.
-9. Add concise Chinese comments only when they explain non-obvious logic.
+Before changing a scoped path, read its local contract:
 
-## 2. Project Contract
+- `src/ldm_project/**` -> `src/ldm_project/AGENTS.md`
+- `configs/**` -> `configs/AGENTS.md`
+- `tests/**` -> `tests/AGENTS.md`
+- Cross-scope work -> read every applicable local contract.
 
-This project is a single-exposure optical generative model distilled from an LDM teacher.
+This explicit routing is required when Codex starts at the repository root, because child instructions are not assumed to be loaded automatically.
+
+## 2. Execution Rules
+
+1. Start with the answer or action; do not fabricate.
+2. Resolve ambiguity by reading the local source of truth. Ask only when different interpretations materially change the result.
+3. Touch only requested scope, follow existing patterns, and prefer the smallest correct change.
+4. Before editing, state the intended change and inspect only the necessary files and callers.
+5. No silent fallback. State the blocker, fallback, and lost guarantee; label weaker CPU/smoke/readability substitutes `diagnostic-only`.
+6. Missing required checkpoints, datasets, CUDA, hardware, or external resources are blockers, not permission to substitute another task.
+7. Use focused searches and the smallest sufficient verification. Do not reread large logs or rerun fresh green checks without a relevant change.
+8. If a valid acceptance gate fails, stop downstream training or promotion. If the gate input or harness is invalid, repair and revalidate the gate before drawing a model conclusion.
+9. Do not claim success without verification. State exactly what could not be verified.
+
+## 3. Superpowers Policy
+
+- Superpowers is opt-in in this repository. Invoke a skill only when the user names `$skill-name` or explicitly asks to use Superpowers.
+- Ordinary questions, small edits, and documentation changes must not trigger the full Superpowers workflow.
+- A skill must not create worktrees, branches, commits, subagents, or long CUDA jobs unless the user explicitly requests that action.
+- Root and scoped AGENTS contracts take precedence over skill workflow suggestions. Do not copy Superpowers workflow text into repository instructions.
+
+## 4. Project Contract
+
+This project distills an LDM teacher into a single-exposure optical generative student.
 
 Final inference path: `noise/code + optional label -> generator_e -> amplitude SLM command -> encoder metasurface -> OLS/fiber -> decoder metasurface -> CMOS single exposure -> generated image`.
-- LDM is teacher infrastructure: trained prior, teacher targets, distillation export, and baseline comparison.
-- Final optical inference must not require diffusion U-Net denoising, iterative latent sampling, or software-only VAE decoding.
+
+- LDM is teacher infrastructure for priors, targets, exports, and baselines.
+- Final inference must not require diffusion denoising, iterative latent sampling, software-only VAE decoding, or inference-time optimization.
 - Main flow: `teacher_first_stage/teacher_diffusion -> teacher_distill_export -> one_shot_distill -> one_shot_sample`.
-- Single-shot design source: `docs/ldm_migration/single_shot_ldm_distillation.md`.
-- Direct MNIST `one_shot` is baseline/smoke only, not the main research path.
-- Keep teacher LDM, one-shot student, and future hardware calibration responsibilities separate.
+- Direct MNIST `one_shot` is baseline/smoke only. Keep teacher, student, and hardware-calibration responsibilities separate.
+- Design source: `docs/ldm_migration/single_shot_ldm_distillation.md`; stage commands: `docs/ldm_migration/stage_guide.md`.
 
-## 3. Repo Map
+## 5. Repository And Artifacts
 
-- Python 3.11; stack: PyTorch, torchvision, PyYAML, matplotlib.
-- Environment: WSL2 Linux shell, Conda + pip, VS Code Remote friendly; Conda env: `optical-generative-models`.
-- PyTorch baseline: CUDA build `torch 2.5.1+cu121`.
-- Source: `src/ldm_project/`; tests: `tests/`; entry: `train.py`; configs: `configs/`; docs: `docs/ldm_migration/`.
-- Key files: `src/ldm_project/one_shot.py`, `src/ldm_project/train_utils.py`, `src/ldm_project/stage_runners.py`
-- Teacher stages: `teacher_first_stage`, `teacher_diffusion`, `teacher_full`, `teacher_sample`, `teacher_distill_export`
-- Student stages: `one_shot_distill`, `one_shot_sample`; baseline: `one_shot`.
-- Compatibility aliases: `first_stage`, `diffusion`, `full`, `sample`.
-
-## 4. Optical Model
-
-- `generator_e` is an electronic generator that maps `noise/code + label` to an amplitude SLM command.
-- The SLM is amplitude-controlled. Do not silently reinterpret its command as phase-only or complex-amplitude control.
-- Encoder and decoder metasurfaces are thin complex modulation layers: trainable in simulation, manufacturability-constrained, or fixed after fabrication.
-- OLS must stay behind a replaceable interface: `complex field in -> OLS/fiber module -> complex field out`.
-- GELU proxy, single-mode fiber, multimode fiber, calibrated matrix, and camera-in-the-loop modules must occupy the same OLS interface.
-- CMOS output is the primary student output; digital-twin code must represent real `SLM command -> CMOS image` behavior, not just ideal equations.
-
-## 5. Checkpoints And Artifacts
-
-- Explicit CLI checkpoint paths always win.
-- `outputs/final_pt/` is the highest-priority source for omitted teacher checkpoints: `first_stage_best_optical.pt`, `diffusion_best.pt`.
+- Python requirement comes from `pyproject.toml` (`>=3.11`). Conda env: `optical-generative-models`.
+- Source: `src/ldm_project/`; tests: `tests/`; entrypoint: `train.py`; configs: `configs/`.
+- Explicit CLI checkpoint paths win. Omitted teacher checkpoints resolve first from `outputs/final_pt/`.
 - One-shot sampling requires an explicit student checkpoint unless a documented resolver exists.
-- Preferred student checkpoints: `one_shot_distill_best.pt` for distilled runs, `one_shot_best.pt` for baseline runs.
-- New run artifacts should be written under managed `outputs/runs/...` directories.
-- Do not modify `outputs/` except configured final acceptance artifacts; do not modify `data/raw/`, `.tmp/`, `legacy/`, generated checkpoints/plots/caches outside final acceptance.
+- Diagnostic and pre-acceptance runs write to `/tmp`. Accepted/configured managed runs write to `outputs/runs/...`.
+- Existing `outputs/` artifacts are immutable: do not edit, delete, or backfill them. Do not modify `data/raw/`, repository `.tmp/`, or `legacy/`.
 
-## 6. Commands
+## 6. Commands And Verification
 
-- Install: `conda create -n optical-generative-models python=3.11 -y && source "$(conda info --base)/etc/profile.d/conda.sh" && conda activate optical-generative-models && pip install -r requirements.txt && pip install -e .`
-- Build: `python -m compileall src tests`
-- Test all: `pytest -q`
-- Targeted tests: `pytest tests/test_train_script.py tests/test_one_shot.py -q`
-- Lint: `ruff check src tests *.py`
-- Typecheck: `mypy src`
-- Command prefix: `source "$(conda info --base)/etc/profile.d/conda.sh" && conda activate optical-generative-models &&`
-- Teacher first stage: `<prefix> python train.py --stage teacher_first_stage --device cuda`
-- Teacher diffusion: `<prefix> python train.py --stage teacher_diffusion --device cuda`
-- Teacher sample: `<prefix> python train.py --stage teacher_sample --device cuda`
-- Export distill data: `<prefix> python train.py --train-config configs/export_teacher_distill_mnist_3k_fast200.yaml --stage teacher_distill_export --device cuda --run-name teacher_distill_mnist_3k_fast200`
-- Train distilled student: `<prefix> python train.py --train-config configs/train_one_shot_distill_d2nn_mnist_3k_fast200.yaml --stage one_shot_distill --device cuda --distill-dataset outputs/runs/.../artifacts/teacher_distill_dataset.pt --run-name one_shot_distill_d2nn_mnist_3k_fast200`
-- Sample student: `<prefix> python train.py --train-config configs/train_one_shot_distill_d2nn_mnist_3k_fast200.yaml --stage one_shot_sample --device cuda --one-shot-checkpoint outputs/runs/.../checkpoints/one_shot_distill_best.pt`
-- Baseline smoke: `<prefix> python train.py --train-config configs/train_one_shot_d2nn_smoke.yaml --stage one_shot --device cuda`
-- Use `--device auto` only for compatibility checks; use `--device cpu` only for local smoke tests.
+- Prefix: `source "$(conda info --base)/etc/profile.d/conda.sh" && conda activate optical-generative-models &&`
+- Build: `python -m compileall src tests train.py`
+- Targeted baseline: `pytest tests/test_train_script.py tests/test_one_shot.py tests/test_repo_layout.py -q`
+- Full: `pytest -q`; lint: `ruff check src tests *.py`; docs/meta: `git diff --check`.
+- Run targeted checks during iteration. Run the full suite after targeted checks for shared/final changes; rerun only when a corrective edit can affect its result.
+- Use CUDA for formal training and acceptance, CPU only for labeled smoke tests, and `auto` only for compatibility checks.
+- Long CUDA and hardware jobs are normally prepared by Codex and launched by the user. If explicitly delegated, avoid duplicate evaluations and unnecessary polling.
 
-## 7. Verification And CUDA
+## 7. Boundaries
 
-- Docs-only verification: `git diff --check`.
-- Prefer targeted tests during iteration; use full suite only for final/shared changes.
-- For training changes, verify arguments, stage routing, checkpoint selection, and artifact paths.
-- For one-shot changes, verify shapes, finite values, device placement, and checkpoint compatibility.
-- Before formal training, activate Conda and verify `torch.cuda.is_available()` in that environment.
-- Codex sandbox CUDA failures may be sandbox-only; state that clearly and provide the exact WSL2 CUDA command.
-- Long CUDA training or hardware experiments should usually be prepared by Codex and launched by the user.
-
-## 8. Forbidden
-
-- Do not hardcode interpreter paths, Conda paths, Windows paths, or machine-specific directories.
-- Do not rely on editor settings as the only runtime config; do not mutate `sys.path`, use `pip install -e .`.
-- Do not mix `legacy` optical VAE code directly into the LDM core package.
-- Do not write outputs/checkpoints outside `outputs/runs/...`, except configured final acceptance artifacts.
-- Do not use full-dataset/full-epoch runs for routine iteration; do not use PowerShell/Windows shell syntax unless explicitly asked.
-- Do not present teacher LDM image quality as final student hardware readiness.
-- Do not call an optical result single-exposure if it still depends on iterative software denoising or optimization at inference time.
-
-## 9. When To Ask
-
-Ask before proceeding when:
-
-- two plausible interpretations materially change the output
-- the change affects stages, checkpoints, output dirs, public CLI, or teacher/student boundaries
-- the change affects SLM type, metasurface trainability, OLS/fiber behavior, CMOS calibration, or hardware feedback
-- the user's stated goal conflicts with the literal request
-- a secret, credential, hardware access, or inaccessible external resource is required
-
-Proceed without asking when ambiguity is resolvable by reading/running, the change is trivial and reversible, or the user already answered.
+- Do not hardcode interpreter, Conda, Windows, or machine-specific paths; do not mutate `sys.path`, use `pip install -e .`.
+- Do not mix `legacy` optical VAE code into the LDM core package.
+- Do not present teacher image quality as student hardware readiness or call iterative software inference single-exposure.
+- Ask before an unapproved change to stages, public CLI, teacher/student boundaries, SLM control, metasurface trainability, OLS behavior, CMOS calibration, checkpoint policy, or managed output policy.

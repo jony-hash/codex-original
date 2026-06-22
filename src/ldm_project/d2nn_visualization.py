@@ -17,8 +17,8 @@ D2NN_LAYER_VISUALIZATION_SPECS = (
     ("diffractive_decoder_layer", "decoder field after"),
 )
 D2NN_MASK_VISUALIZATION_SPECS = (
-    ("diffractive_encoder_mask", "encoder mask amp = 1"),
-    ("diffractive_decoder_mask", "decoder mask amp = 1"),
+    ("diffractive_encoder_mask", "encoder mask transmittance |t|"),
+    ("diffractive_decoder_mask", "decoder mask transmittance |t|"),
 )
 
 
@@ -50,7 +50,7 @@ def _broadcast_d2nn_mask_visualization(
         num_layers = int(amp_tensor.shape[0])
         for layer_index in range(num_layers):
             amplitude_label = f"{label_prefix} L{layer_index + 1}"
-            phase_label_prefix = label_prefix.replace("mask amp = 1", "mask phase")
+            phase_label_prefix = label_prefix.replace("transmittance |t|", "phase arg(t)")
             phase_label = f"{phase_label_prefix} L{layer_index + 1}"
             amp_layer = _ensure_visual_batch_channel(amp_tensor[layer_index]).expand(batch_size, -1, -1, -1)
             phs_layer = _ensure_visual_batch_channel(phs_tensor[layer_index]).expand(batch_size, -1, -1, -1)
@@ -73,17 +73,20 @@ def _interleave_d2nn_mask_layer_columns(
         for label in columns:
             if label.startswith(marker):
                 try:
-                    layer_indices.append(int(label.removeprefix(marker)))
+                    layer_indices.append(int(label.removeprefix(marker).split()[0]))
                 except ValueError:
                     continue
     interleaved: dict[str, object] = {}
     for layer_index in range(1, max(layer_indices, default=0) + 1):
         mask_label = f"{mask_prefix} L{layer_index}"
         layer_label = f"{layer_prefix} L{layer_index}"
+        phase_layer_label = f"{layer_label} phase"
         if mask_label in mask_columns:
             interleaved[mask_label] = mask_columns[mask_label]
         if layer_label in layer_columns:
             interleaved[layer_label] = layer_columns[layer_label]
+        elif phase_layer_label in layer_columns:
+            interleaved[phase_layer_label] = layer_columns[phase_layer_label]
     return interleaved
 
 
@@ -125,8 +128,11 @@ def _build_d2nn_layer_split(sample_outputs, specs) -> dict[str, dict[str, object
             continue
         for layer_index in range(layer_count):
             amplitude_label = f"{label_prefix} L{layer_index + 1}"
-            phase_label_prefix = label_prefix.replace("mask amp = 1", "mask phase")
-            phase_label = f"{phase_label_prefix} L{layer_index + 1}"
+            if "transmittance |t|" in label_prefix:
+                phase_label_prefix = label_prefix.replace("transmittance |t|", "phase arg(t)")
+                phase_label = f"{phase_label_prefix} L{layer_index + 1}"
+            else:
+                phase_label = f"{label_prefix} L{layer_index + 1} phase"
             if amplitude_tensor.ndim == 5:
                 amplitude_layer = amplitude_tensor[:, layer_index]
                 phase_layer = phase_tensor[:, layer_index]

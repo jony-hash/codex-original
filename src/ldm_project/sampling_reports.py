@@ -328,6 +328,7 @@ def build_reference_image_bank_for_labels(
     validation_bundle,
     train_bundle,
     max_items_per_label: int = DEFAULT_NEAREST_REFERENCE_LIMIT,
+    allow_train_reference_fallback: bool = False,
 ) -> tuple[dict[int, "torch.Tensor"], str]:
     label_values = sorted({int(label) for label in class_labels.detach().cpu().tolist()})
     validation_bank: dict[int, "torch.Tensor"] = {}
@@ -342,6 +343,11 @@ def build_reference_image_bank_for_labels(
     found_bank = dict(validation_bank)
     missing_labels = sorted(label for label in label_values if label not in found_bank)
     if missing_labels:
+        if not allow_train_reference_fallback:
+            raise ValueError(
+                "Validation reference image bank is missing class labels "
+                f"{missing_labels}; pass allow_train_reference_fallback=True only for smoke/diagnostic previews."
+            )
         found_bank.update(
             _collect_reference_image_bank_from_dataset(
                 torch_module,
@@ -379,6 +385,8 @@ def select_reference_images_for_labels(
     validation_bundle,
     train_bundle,
     device,
+    *,
+    allow_train_reference_fallback: bool = False,
 ):
     label_values = [_resolve_label_value(label) for label in class_labels.detach().cpu()]
     validation_found: dict[int, "torch.Tensor"] = {}
@@ -392,6 +400,11 @@ def select_reference_images_for_labels(
     found_images = dict(validation_found)
     missing_labels = sorted({label for label in label_values if label not in found_images})
     if missing_labels:
+        if not allow_train_reference_fallback:
+            raise ValueError(
+                "Validation reference images are missing class labels "
+                f"{missing_labels}; pass allow_train_reference_fallback=True only for smoke/diagnostic previews."
+            )
         found_images.update(
             _collect_reference_images_from_dataset(
                 torch_module,
@@ -422,6 +435,8 @@ def select_first_stage_visual_batch(
     train_bundle,
     num_classes: int,
     device,
+    *,
+    allow_train_reference_fallback: bool = False,
 ):
     # 固定 0-9 验证样本，避免每个 epoch 因训练 batch 变化而误判结构改进。
     visual_labels = build_post_train_sample_labels(
@@ -438,8 +453,11 @@ def select_first_stage_visual_batch(
             validation_bundle,
             train_bundle,
             device,
+            allow_train_reference_fallback=allow_train_reference_fallback,
         )
     except ValueError:
+        if not allow_train_reference_fallback:
+            raise
         available_labels = set()
         if validation_bundle is not None:
             available_labels.update(_collect_label_values_from_dataset(validation_bundle.dataset))
@@ -458,6 +476,7 @@ def select_first_stage_visual_batch(
             validation_bundle,
             train_bundle,
             device,
+            allow_train_reference_fallback=allow_train_reference_fallback,
         )
 
 
@@ -470,6 +489,8 @@ def select_post_train_sample_batch(
     device,
     sample_class_labels: list[int] | tuple[int, ...] | None = None,
     sample_repeats_per_class: int = 1,
+    *,
+    allow_train_reference_fallback: bool = False,
 ):
     # 正式 MNIST 采样固定 0-9；小测试集缺类时退回到实际存在的类别，避免烟测被样本构造限制卡住。
     sample_labels = build_post_train_sample_labels(
@@ -486,10 +507,11 @@ def select_post_train_sample_batch(
             validation_bundle,
             train_bundle,
             device,
+            allow_train_reference_fallback=allow_train_reference_fallback,
         )
         return sample_labels, reference_images, reference_labels, reference_source
     except ValueError:
-        if sample_class_labels:
+        if sample_class_labels or not allow_train_reference_fallback:
             raise
         available_labels = set()
         if validation_bundle is not None:
@@ -505,6 +527,7 @@ def select_post_train_sample_batch(
             validation_bundle,
             train_bundle,
             device,
+            allow_train_reference_fallback=allow_train_reference_fallback,
         )
         return fallback_tensor, reference_images, reference_labels, reference_source
 
@@ -533,12 +556,14 @@ def save_post_train_samples(
         device,
         sample_class_labels=train_cfg.diffusion.sample_class_labels,
         sample_repeats_per_class=train_cfg.diffusion.sample_repeats_per_class,
+        allow_train_reference_fallback=True,
     )
     reference_image_bank, reference_bank_source = build_reference_image_bank_for_labels(
         torch_module,
         sample_labels,
         validation_bundle,
         train_bundle,
+        allow_train_reference_fallback=True,
     )
     sample_count = int(sample_labels.shape[0])
     run_manager.save_config_snapshot(

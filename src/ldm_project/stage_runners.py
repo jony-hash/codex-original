@@ -45,8 +45,13 @@ from .teacher_stages import (
     run_diffusion_training,
     run_first_stage_training,
     run_sample_stage,
+    run_teacher_diffusion_latent_audit,
     run_teacher_distill_export,
     run_teacher_distill_filter,
+    run_teacher_distill_label_audit,
+    run_teacher_distill_label_strict_filter,
+    run_teacher_distill_readable_split,
+    run_teacher_first_stage_oracle_audit,
 )
 
 __all__ = [
@@ -72,8 +77,13 @@ __all__ = [
     "run_one_shot_sample_stage",
     "run_one_shot_training",
     "run_sample_stage",
+    "run_teacher_diffusion_latent_audit",
     "run_teacher_distill_export",
     "run_teacher_distill_filter",
+    "run_teacher_distill_label_audit",
+    "run_teacher_distill_label_strict_filter",
+    "run_teacher_distill_readable_split",
+    "run_teacher_first_stage_oracle_audit",
     "_build_distill_loaders",
     "_one_shot_d2nn_crop_retention_metrics",
     "_one_shot_distill_balanced_quality_score",

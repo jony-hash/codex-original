@@ -1,0 +1,73 @@
+training:
+  mode: one_shot_distill
+  batch_size: 16
+  learning_rate: 1.0e-5
+  step_log_interval: 20
+  visual_save_epoch_interval: 1
+  validation_epoch_interval: 1
+  first_stage_epochs: 0
+  diffusion_epochs: 0
+  one_shot_epochs: 10
+
+first_stage:
+  image_size: 200
+
+one_shot:
+  optical_core_arch: camera_direct_clean_oracle
+  distill_target_source: mnist_sample
+  code_dim: 128
+  label_embed_dim: 32
+  hidden_dim: 256
+  num_classes: 10
+  slm_background_floor: 0.05
+  ols_kind: identity
+  metasurface_grid_size: 40
+  recon_foreground_threshold: 0.2
+  recon_foreground_weight: 4.0
+  recon_background_weight: 8.0
+  class_recon_weight_labels: []
+  class_recon_weight: 1.0
+  shape_loss_weight: 0.04
+  edge_loss_weight: 0.03
+  camera_saturation_weight: 1.0e-3
+  camera_topology_weight: 0.01
+  camera_readability_weight: 0.0
+  camera_background_speckle_weight: 0.5
+  camera_background_hotspot_weight: 1.0
+  camera_background_hotspot_threshold: 0.08
+  camera_background_highfreq_weight: 0.25
+  camera_readable_contrast_weight: 0.02
+  camera_readable_contrast_target: 4.5
+  camera_recon_weight: 1.0
+  clean_target_enabled: true
+  clean_foreground_dice_weight: 0.20
+  clean_foreground_hole_weight: 0.10
+  clean_background_speckle_weight: 0.0
+  clean_background_hotspot_weight: 0.0
+  clean_background_highfreq_weight: 0.0
+  student_label_margin_weight: 0.16
+  student_label_margin_target: 0.09
+  student_label_margin_labels: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+  student_label_margin_prototype_source: mnist
+  student_label_margin_focus_label: 1
+  student_label_margin_focus_weight: 4.0
+  student_pair_contrast_config: [[1, 8, 0.12], [8, 1, 0.12], [3, 8, 0.08], [3, 5, 0.08], [5, 3, 0.08], [2, 8, 0.06], [4, 0, 0.06], [4, 9, 0.06], [9, 8, 0.06]]
+  student_display_speckle_weight: 0.0
+  code_diversity_weight: 0.0
+  teacher_pairwise_diversity_weight: 0.0
+  cross_class_pairwise_weight: 0.0
+  diversity_min_teacher_mse: 1.0e-4
+  checkpoint_selection_metric: strict_readability
+  sample_class_labels: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+  sample_repeats_per_class: 2
+  eval_samples_per_class: 20
+  eval_preview_per_class: 2
+  eval_allow_train_fallback: true
+  student_label_audit_enabled: true
+
+distillation:
+  paired_class_batches: true
+  label_audit_prototypes_per_class: 128
+  class_labels: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+  code_seed: 1234
+  code_projection_seed: 2026

@@ -70,6 +70,9 @@ from .teacher_distill import (
     compute_teacher_distill_filter_metrics,
     run_teacher_distill_export,
     run_teacher_distill_filter,
+    run_teacher_distill_label_audit,
+    run_teacher_distill_label_strict_filter,
+    run_teacher_distill_readable_split,
 )
 from .teacher_sampling import run_sample_stage
 from .teacher_training import run_diffusion_training, run_first_stage_training
@@ -108,6 +111,9 @@ __all__ = [
     "run_sample_stage",
     "run_teacher_distill_export",
     "run_teacher_distill_filter",
+    "run_teacher_distill_label_audit",
+    "run_teacher_distill_label_strict_filter",
+    "run_teacher_distill_readable_split",
     "_build_distill_loaders",
     "_build_one_shot_optimizer",
     "_detach_cpu_tensors",

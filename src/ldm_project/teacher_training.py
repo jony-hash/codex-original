@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from .evaluation import compute_first_stage_balanced_metrics, evaluate_diffusion_with_per_class, evaluate_first_stage_with_per_class
 from .sampling_reports import save_post_train_samples
+from .teacher_distill import _build_mnist_label_prototype_bank
 from .visualization_core import (
     build_diffusion_visualization_tensors,
     build_first_stage_visualization_tensors,
@@ -58,18 +59,37 @@ def run_first_stage_training(
     first_stage_stage_step = 0
     best_optical_score = None
     best_optical_checkpoint_path = None
+    camera_label_margin_prototypes = None
+    if train_cfg.first_stage.camera_label_margin_weight > 0.0:
+        prototype_labels = tuple(range(int(train_cfg.diffusion.num_classes)))
+        camera_label_margin_prototypes = _build_mnist_label_prototype_bank(
+            torch_module,
+            class_labels=prototype_labels,
+            image_size=train_cfg.first_stage.image_size,
+            root=train_cfg.data.root,
+            max_per_class=train_cfg.first_stage.camera_label_margin_prototypes_per_class,
+        ).to(device)
+        run_meta.update(
+            {
+                "first_stage_camera_label_margin_prototype_labels": list(prototype_labels),
+                "first_stage_camera_label_margin_prototype_shape": list(camera_label_margin_prototypes.shape),
+            }
+        )
+        run_manager.write_meta(run_meta)
     for epoch_index in range(train_cfg.first_stage_epochs):
         epoch_number = epoch_index + 1
         image_fusion_weight = resolve_image_fusion_weight(train_cfg.first_stage, epoch_index)
         set_first_stage_image_fusion_weight(first_stage, image_fusion_weight)
-        for batch_index, (images, _) in enumerate(train_bundle.loader):
+        for batch_index, (images, labels) in enumerate(train_bundle.loader):
             # 物理优先训练把 camera_plane 作为主读出，image_recon 仅保留为辅助诊断。
             input_batch = images.to(device, non_blocking=use_pin_memory)
+            class_labels = labels.to(device, non_blocking=use_pin_memory)
             optimizer.zero_grad(set_to_none=True)
             outputs = first_stage(input_batch)
             losses = first_stage_loss_fn(
                 outputs,
                 input_batch,
+                class_labels=class_labels,
                 global_step=first_stage_stage_step,
                 total_steps=first_stage_total_steps,
                 target_beta=train_cfg.first_stage.kl_beta,
@@ -89,6 +109,12 @@ def run_first_stage_training(
                 camera_topology_weight=train_cfg.first_stage.camera_topology_weight,
                 camera_saturation_weight=train_cfg.first_stage.camera_saturation_weight,
                 camera_artifact_weight=train_cfg.first_stage.camera_artifact_weight,
+                hard_class_weight_labels=train_cfg.first_stage.hard_class_weight_labels,
+                hard_class_weight=train_cfg.first_stage.hard_class_weight,
+                camera_label_margin_weight=train_cfg.first_stage.camera_label_margin_weight,
+                camera_label_margin_target=train_cfg.first_stage.camera_label_margin_target,
+                camera_label_margin_labels=train_cfg.first_stage.camera_label_margin_labels,
+                camera_label_margin_prototypes=camera_label_margin_prototypes,
             )
             losses["loss"].backward()
             optimizer.step()
@@ -142,6 +168,7 @@ def run_first_stage_training(
                 first_stage_stage_step,
                 first_stage_total_steps,
                 train_cfg,
+                camera_label_margin_prototypes=camera_label_margin_prototypes,
             )
             validation_metrics.update(compute_first_stage_balanced_metrics(validation_metrics, per_class_metrics))
             _record_first_stage_validation(
@@ -156,6 +183,7 @@ def run_first_stage_training(
                 optical_candidate,
                 selection_score,
                 updated_best,
+                selection_metric,
             ) = _update_first_stage_best_checkpoint(
                 run_manager,
                 first_stage=first_stage,
@@ -175,6 +203,7 @@ def run_first_stage_training(
                 optical_candidate=optical_candidate,
                 updated_best=updated_best,
                 selection_score=selection_score,
+                selection_metric=selection_metric,
                 best_optical_score=best_optical_score,
                 image_fusion_weight=image_fusion_weight,
                 best_optical_checkpoint_path=best_optical_checkpoint_path,
@@ -228,6 +257,13 @@ def run_diffusion_training(
         run_meta["first_stage_best_optical_loaded_for_diffusion"] = True
         run_manager.write_meta(run_meta)
         print(f"loaded best optical first stage for diffusion: {best_checkpoint_path}")
+    diffusion_checkpoint = run_meta.get("diffusion_checkpoint")
+    if diffusion_checkpoint is not None:
+        diffusion_payload = torch_module.load(diffusion_checkpoint, map_location=device, weights_only=False)
+        load_diffusion_checkpoint_fn(diffusion_model, diffusion_payload, first_stage_model_version)
+        run_meta["diffusion_checkpoint_loaded_for_training"] = True
+        run_manager.write_meta(run_meta)
+        print(f"loaded diffusion checkpoint for training warm-start: {diffusion_checkpoint}")
     first_stage.eval()
     set_first_stage_image_fusion_weight(first_stage, train_cfg.first_stage.image_fusion_end_weight)
     if train_cfg.first_stage.freeze_after_pretrain:

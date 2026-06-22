@@ -4,7 +4,6 @@ import sys
 
 from ldm_project.stage_constants import (
     DIFFUSION_BEST_METRIC,
-    FIRST_STAGE_BEST_OPTICAL_METRIC,
     ONE_SHOT_BEST_METRIC,
     ONE_SHOT_DISTILL_BEST_METRIC,
 )
@@ -57,6 +56,7 @@ def d2nn_metadata(d2nn_cfg) -> dict | None:
         "layer_spacing": d2nn_cfg.layer_spacing,
         "modulation": d2nn_cfg.modulation,
         "phase_init": d2nn_cfg.phase_init,
+        "amplitude_logit_init": d2nn_cfg.amplitude_logit_init,
     }
 
 
@@ -89,7 +89,10 @@ def build_run_meta(
         "diffusion_checkpoint": args.diffusion_checkpoint,
         "diffusion_checkpoint_source": checkpoint_resolution["diffusion_checkpoint_source"],
         "one_shot_checkpoint": args.one_shot_checkpoint,
+        "one_shot_generator_checkpoint": getattr(args, "one_shot_generator_checkpoint", None),
+        "one_shot_optical_checkpoint": getattr(args, "one_shot_optical_checkpoint", None),
         "distill_dataset": args.distill_dataset,
+        "distill_validation_dataset": getattr(args, "distill_validation_dataset", None),
         "run_dir": run_manager.run_dir,
         "dataset": train_cfg.data.dataset,
         "dataset_root": train_cfg.data.root,
@@ -98,6 +101,9 @@ def build_run_meta(
         "train_split_size": train_bundle.total_size,
         "train_effective_size": train_bundle.effective_size,
         "validation_size": 0 if validation_bundle is None else validation_bundle.effective_size,
+        "mnist_aux_train_split_size": train_bundle.total_size,
+        "mnist_aux_train_effective_size": train_bundle.effective_size,
+        "mnist_aux_validation_size": 0 if validation_bundle is None else validation_bundle.effective_size,
         "validation_fraction": train_cfg.data.validation_fraction,
         "validation_split_seed": train_cfg.data.validation_split_seed,
         "subset_fraction": train_cfg.data.subset_fraction,
@@ -116,12 +122,20 @@ def build_run_meta(
         "first_stage_linear_metasurface_grid_size": train_cfg.first_stage.linear_metasurface_grid_size,
         "first_stage_linear_metasurface_layer_spacing": train_cfg.first_stage.linear_metasurface_layer_spacing,
         "first_stage_field_energy_weight": train_cfg.first_stage.field_energy_weight,
+        "first_stage_hard_class_weight_labels": list(train_cfg.first_stage.hard_class_weight_labels),
+        "first_stage_hard_class_weight": train_cfg.first_stage.hard_class_weight,
+        "first_stage_camera_label_margin_weight": train_cfg.first_stage.camera_label_margin_weight,
+        "first_stage_camera_label_margin_target": train_cfg.first_stage.camera_label_margin_target,
+        "first_stage_camera_label_margin_labels": list(train_cfg.first_stage.camera_label_margin_labels),
+        "first_stage_camera_label_margin_prototypes_per_class": (
+            train_cfg.first_stage.camera_label_margin_prototypes_per_class
+        ),
         "image_fusion_start_weight": train_cfg.first_stage.image_fusion_start_weight,
         "image_fusion_end_weight": train_cfg.first_stage.image_fusion_end_weight,
         "image_fusion_decay_epochs": train_cfg.first_stage.image_fusion_decay_epochs,
         "first_stage_best_optical_checkpoint": None,
         "first_stage_best_optical_epoch": None,
-        "first_stage_best_optical_metric": FIRST_STAGE_BEST_OPTICAL_METRIC,
+        "first_stage_best_optical_metric": train_cfg.first_stage.checkpoint_selection_metric,
         "first_stage_best_optical_score": None,
         "first_stage_best_optical_loaded_for_diffusion": False,
         "diffusion_latent_source": train_cfg.diffusion.latent_source,
@@ -132,6 +146,7 @@ def build_run_meta(
         "diffusion_best_epoch": None,
         "diffusion_best_metric": DIFFUSION_BEST_METRIC,
         "diffusion_best_loss": None,
+        "diffusion_checkpoint_loaded_for_training": False,
         "diffusion_best_loaded_for_sampling": False,
         "latent_scale_source": None,
         "sample_class_labels": list(train_cfg.diffusion.sample_class_labels),
@@ -140,6 +155,12 @@ def build_run_meta(
         "conditioning": diffusion_model.conditioning_metadata(),
         "one_shot_model_version": one_shot_model_version,
         "one_shot_optical_core_arch": train_cfg.one_shot.optical_core_arch,
+        "one_shot_generator_e_arch": train_cfg.one_shot.generator_e_arch,
+        "one_shot_generator_command_transform": train_cfg.one_shot.generator_command_transform,
+        "one_shot_generator_template_init": train_cfg.one_shot.generator_template_init,
+        "one_shot_generator_code_conditioning_active": (
+            train_cfg.one_shot.generator_e_arch != "label_template"
+        ),
         "one_shot_code_dim": train_cfg.one_shot.code_dim,
         "one_shot_num_classes": train_cfg.one_shot.num_classes,
         "one_shot_ols_kind": train_cfg.one_shot.ols_kind,

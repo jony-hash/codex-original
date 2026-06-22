@@ -83,6 +83,22 @@ class TrainScriptStepTests(unittest.TestCase):
         )
         self.assertEqual(
             resolve_stage_epoch_plan(
+                stage="teacher_first_stage_oracle_audit",
+                first_stage_epochs=10,
+                diffusion_epochs=20,
+            ),
+            {"first_stage": 0, "diffusion": 0, "one_shot": 0},
+        )
+        self.assertEqual(
+            resolve_stage_epoch_plan(
+                stage="teacher_diffusion_latent_audit",
+                first_stage_epochs=10,
+                diffusion_epochs=20,
+            ),
+            {"first_stage": 0, "diffusion": 0, "one_shot": 0},
+        )
+        self.assertEqual(
+            resolve_stage_epoch_plan(
                 stage="one_shot_distill_eval",
                 first_stage_epochs=10,
                 diffusion_epochs=20,
@@ -93,6 +109,15 @@ class TrainScriptStepTests(unittest.TestCase):
         self.assertEqual(
             resolve_stage_epoch_plan(
                 stage="one_shot_distill_eval_diagnostics",
+                first_stage_epochs=10,
+                diffusion_epochs=20,
+                one_shot_epochs=4,
+            ),
+            {"first_stage": 0, "diffusion": 0, "one_shot": 0},
+        )
+        self.assertEqual(
+            resolve_stage_epoch_plan(
+                stage="one_shot_optical_identity_audit",
                 first_stage_epochs=10,
                 diffusion_epochs=20,
                 one_shot_epochs=4,
@@ -361,9 +386,9 @@ class TrainScriptStepTests(unittest.TestCase):
         self.assertEqual(run_manager.grid_calls[0][0], "post_train_sample_amplitude.png")
         self.assertEqual(run_manager.grid_calls[0][1], 6)
         self.assertEqual(run_manager.grid_calls[0][3]["row_labels"], ["0", "0", "1", "1", "2", "2"])
-        self.assertEqual(run_manager.grid_calls[1][0], "post_train_sample_phase.png")
+        self.assertEqual(run_manager.grid_calls[2][0], "post_train_sample_phase.png")
         self.assertEqual(run_manager.grid_calls[1][1], 6)
-        self.assertEqual(run_manager.grid_calls[2][0], "post_train_denoising_camera_trace.png")
+        self.assertEqual(run_manager.grid_calls[3][0], "post_train_denoising_camera_trace.png")
         self.assertEqual(run_manager.grid_calls[2][1], 6)
         self.assertEqual(run_manager.metrics_payload["overall"]["count"], 6)
         self.assertEqual(sorted(run_manager.metrics_payload["per_class"].keys()), ["0", "1", "2"])
@@ -437,20 +462,36 @@ class TrainScriptStepTests(unittest.TestCase):
         validate_stage_requirements("sample", "first.pt", "diffusion.pt")
         validate_stage_requirements("teacher_sample", "first.pt", "diffusion.pt")
         validate_stage_requirements("teacher_distill_export", "first.pt", "diffusion.pt")
+        validate_stage_requirements("teacher_diffusion_latent_audit", "first.pt", "diffusion.pt")
+        validate_stage_requirements("teacher_first_stage_oracle_audit", "first.pt")
         validate_stage_requirements("teacher_distill_filter", None, None, None, "distill.pt")
+        validate_stage_requirements("teacher_distill_label_audit", None, None, None, "distill.pt")
+        validate_stage_requirements("teacher_distill_label_strict_filter", None, None, None, "distill.pt")
+        validate_stage_requirements("teacher_distill_readable_split", None, None, None, "distill.pt")
         validate_stage_requirements("one_shot_distill", "first.pt", "diffusion.pt", None, "distill.pt")
         validate_stage_requirements("one_shot_distill_eval", "first.pt", "diffusion.pt", "one_shot.pt", "distill.pt")
         validate_stage_requirements("one_shot_distill_eval_diagnostics", None, None, None, None)
+        validate_stage_requirements("one_shot_optical_identity_audit", None, None, None, None)
         with self.assertRaisesRegex(ValueError, "first-stage-checkpoint"):
             validate_stage_requirements("sample", None, "diffusion.pt")
         with self.assertRaisesRegex(ValueError, "diffusion-checkpoint"):
             validate_stage_requirements("sample", "first.pt", None)
+        with self.assertRaisesRegex(ValueError, "first-stage-checkpoint"):
+            validate_stage_requirements("teacher_first_stage_oracle_audit", None)
+        with self.assertRaisesRegex(ValueError, "diffusion-checkpoint"):
+            validate_stage_requirements("teacher_diffusion_latent_audit", "first.pt", None)
         with self.assertRaisesRegex(ValueError, "one-shot-checkpoint"):
             validate_stage_requirements("one_shot_sample", "first.pt", "diffusion.pt", None)
         with self.assertRaisesRegex(ValueError, "distill-dataset"):
             validate_stage_requirements("one_shot_distill", "first.pt", "diffusion.pt", None, None)
         with self.assertRaisesRegex(ValueError, "distill-dataset"):
             validate_stage_requirements("teacher_distill_filter", None, None, None, None)
+        with self.assertRaisesRegex(ValueError, "distill-dataset"):
+            validate_stage_requirements("teacher_distill_label_audit", None, None, None, None)
+        with self.assertRaisesRegex(ValueError, "distill-dataset"):
+            validate_stage_requirements("teacher_distill_label_strict_filter", None, None, None, None)
+        with self.assertRaisesRegex(ValueError, "distill-dataset"):
+            validate_stage_requirements("teacher_distill_readable_split", None, None, None, None)
         with self.assertRaisesRegex(ValueError, "one-shot-checkpoint"):
             validate_stage_requirements("one_shot_distill_eval", "first.pt", "diffusion.pt", None, "distill.pt")
         with self.assertRaisesRegex(ValueError, "distill-dataset"):
@@ -513,6 +554,28 @@ class TrainScriptStepTests(unittest.TestCase):
             )
             self.assertEqual(distill_export["first_stage_checkpoint"], str(first_stage_path))
             self.assertEqual(distill_export["diffusion_checkpoint"], str(diffusion_path))
+
+            oracle_audit = train_utils_module.resolve_final_pt_stage_checkpoints(
+                "teacher_first_stage_oracle_audit",
+                None,
+                None,
+                final_pt_dir,
+                "first_stage_best_optical.pt",
+                "diffusion_best.pt",
+            )
+            self.assertEqual(oracle_audit["first_stage_checkpoint"], str(first_stage_path))
+            self.assertIsNone(oracle_audit["diffusion_checkpoint"])
+
+            latent_audit = train_utils_module.resolve_final_pt_stage_checkpoints(
+                "teacher_diffusion_latent_audit",
+                None,
+                None,
+                final_pt_dir,
+                "first_stage_best_optical.pt",
+                "diffusion_best.pt",
+            )
+            self.assertEqual(latent_audit["first_stage_checkpoint"], str(first_stage_path))
+            self.assertEqual(latent_audit["diffusion_checkpoint"], str(diffusion_path))
 
             distill_filter = train_utils_module.resolve_final_pt_stage_checkpoints(
                 "teacher_distill_filter",
@@ -1124,7 +1187,7 @@ class TrainMainValidationTests(unittest.TestCase):
         self.assertEqual(diffusion_visual_config["reference_source"], "validation_then_train_fallback")
         diffusion_epoch_grids = [
             call for call in grid_calls
-            if call[0] == "epoch_0001_amplitude.png" and "reference" in call[2]
+            if call[0] == "epoch_0001_intensity.png" and "reference image" in call[2]
         ]
         self.assertEqual(len(diffusion_epoch_grids), 1)
         self.assertEqual(diffusion_epoch_grids[0][1], 20)

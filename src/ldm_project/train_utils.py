@@ -18,10 +18,16 @@ CANONICAL_STAGES = {
     "teacher_sample",
     "teacher_distill_export",
     "teacher_distill_filter",
+    "teacher_distill_label_audit",
+    "teacher_distill_label_strict_filter",
+    "teacher_distill_readable_split",
+    "teacher_first_stage_oracle_audit",
+    "teacher_diffusion_latent_audit",
     "one_shot",
     "one_shot_distill",
     "one_shot_distill_eval",
     "one_shot_distill_eval_diagnostics",
+    "one_shot_optical_identity_audit",
     "one_shot_sample",
 }
 CLI_STAGE_CHOICES = tuple(sorted(CANONICAL_STAGES | set(STAGE_ALIASES)))
@@ -163,14 +169,25 @@ def validate_stage_requirements(
     canonical_stage = canonicalize_stage(stage)
     if canonical_stage == "teacher_diffusion" and first_stage_checkpoint is None:
         raise ValueError("--stage teacher_diffusion requires --first-stage-checkpoint to load a trained first stage.")
-    if canonical_stage in {"teacher_sample", "teacher_distill_export"}:
+    if canonical_stage in {"teacher_sample", "teacher_distill_export", "teacher_diffusion_latent_audit"}:
         if first_stage_checkpoint is None:
             raise ValueError(f"--stage {canonical_stage} requires --first-stage-checkpoint to load a trained first stage.")
         if diffusion_checkpoint is None:
             raise ValueError(f"--stage {canonical_stage} requires --diffusion-checkpoint to load a trained diffusion model.")
+    if canonical_stage in {"teacher_first_stage_oracle_audit"} and first_stage_checkpoint is None:
+        raise ValueError(
+            f"--stage {canonical_stage} requires --first-stage-checkpoint to load a trained first stage."
+        )
     if canonical_stage in {"one_shot_sample", "one_shot_distill_eval"} and one_shot_checkpoint is None:
         raise ValueError(f"--stage {canonical_stage} requires --one-shot-checkpoint to load a trained one-shot model.")
-    if canonical_stage in {"one_shot_distill", "one_shot_distill_eval", "teacher_distill_filter"} and distill_dataset is None:
+    if canonical_stage in {
+        "one_shot_distill",
+        "one_shot_distill_eval",
+        "teacher_distill_filter",
+        "teacher_distill_label_audit",
+        "teacher_distill_label_strict_filter",
+        "teacher_distill_readable_split",
+    } and distill_dataset is None:
         raise ValueError(f"--stage {canonical_stage} requires --distill-dataset to load teacher distillation targets.")
 
 
@@ -202,14 +219,20 @@ def resolve_final_pt_stage_checkpoints(
     resolved_diffusion = diffusion_checkpoint
     resolved_diffusion_source = "cli" if diffusion_checkpoint is not None else None
 
-    if canonical_stage in {"teacher_diffusion", "teacher_sample", "teacher_distill_export"}:
+    if canonical_stage in {
+        "teacher_diffusion",
+        "teacher_sample",
+        "teacher_distill_export",
+        "teacher_first_stage_oracle_audit",
+        "teacher_diffusion_latent_audit",
+    }:
         # 缺省 checkpoint 优先从最终验收目录取，避免误用旧 run 或重复传路径。
         resolved_first_stage, resolved_first_stage_source = _resolve_checkpoint_from_final_pt(
             first_stage_checkpoint,
             final_pt_dir,
             first_stage_checkpoint_name,
         )
-    if canonical_stage in {"teacher_sample", "teacher_distill_export"}:
+    if canonical_stage in {"teacher_sample", "teacher_distill_export", "teacher_diffusion_latent_audit"}:
         resolved_diffusion, resolved_diffusion_source = _resolve_checkpoint_from_final_pt(
             diffusion_checkpoint,
             final_pt_dir,
@@ -256,9 +279,15 @@ def resolve_stage_epoch_plan(
         "teacher_sample",
         "teacher_distill_export",
         "teacher_distill_filter",
+        "teacher_distill_label_audit",
+        "teacher_distill_label_strict_filter",
+        "teacher_distill_readable_split",
+        "teacher_first_stage_oracle_audit",
+        "teacher_diffusion_latent_audit",
         "one_shot_sample",
         "one_shot_distill_eval",
         "one_shot_distill_eval_diagnostics",
+        "one_shot_optical_identity_audit",
     }:
         return {"first_stage": 0, "diffusion": 0, "one_shot": 0}
     if canonical_stage in {"one_shot", "one_shot_distill"}:

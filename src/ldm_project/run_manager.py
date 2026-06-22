@@ -4,6 +4,7 @@ from dataclasses import asdict, is_dataclass
 from datetime import datetime
 import json
 from pathlib import Path
+import textwrap
 from typing import Any, Mapping
 
 
@@ -147,7 +148,7 @@ class RunManager:
             rows,
             len(prepared),
             squeeze=False,
-            figsize=(cell_width_inches * len(prepared), cell_height_inches * rows),
+            figsize=(cell_width_inches * len(prepared), cell_height_inches * rows + 0.8),
             constrained_layout=True,
         )
         display_cmap = cmap
@@ -158,7 +159,13 @@ class RunManager:
             display_cmap = cmap_obj
         label_values = list(row_labels or [])[:rows]
         for col, (name, images) in enumerate(prepared):
-            axes[0][col].set_title(name.replace("_", " "), fontsize=8, pad=4)
+            column_title = textwrap.fill(
+                name.replace("_", " "),
+                width=22,
+                break_long_words=False,
+                break_on_hyphens=False,
+            )
+            axes[0][col].set_title(column_title, fontsize=8, pad=4)
             for row in range(rows):
                 axis = axes[row][col]
                 axis.set_xticks([])

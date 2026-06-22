@@ -1,77 +1,46 @@
 from __future__ import annotations
 
-import torch
 import torch.nn.functional as F
 
 from .d2nn_visualization import (
-    _broadcast_d2nn_mask_visualization,
     _d2nn_field_layer_visualization_columns,
-    _interleave_d2nn_mask_layer_columns,
 )
 from .visualization_core import (
     VISUALIZATION_AMPLITUDE_KEY,
+    VISUALIZATION_INTENSITY_KEY,
     VISUALIZATION_PHASE_KEY,
     _amplitude_for_visualization,
-    _blank_tensor_like,
     _code_for_visualization,
     _intensity_for_visualization,
     _normalize_for_visualization,
     _phase_for_visualization,
-    _phase_tensor_map,
     _raw_amplitude_for_visualization,
     _robust_amplitude_display,
     _tensor_stats,
     _tensor_diff_summary,
     enhance_camera_for_display,
+    readable_camera_for_display,
 )
 
-ONE_SHOT_SHARED_SCALE_AMPLITUDE_QUANTILE = 0.995
-ONE_SHOT_EARLY_RAW_AMPLITUDE_SPECS = (
-    ("slm_amplitude", "slm out amp"),
-    ("encoder_input_amplitude", "encoder in amp"),
-    ("encoder_input_grid_amplitude", "encoder grid in amp"),
-)
-ONE_SHOT_SHARED_SCALE_AMPLITUDE_SPECS = (
-    ("encoded_amplitude", "encoder out amp"),
-    ("ols_input_amplitude", "ols in amp"),
-    ("ols_output_amplitude", "ols out amp"),
-    ("decoder_input_amplitude", "decoder in amp"),
-    ("decoder_output_amplitude", "decoder out amp"),
-    ("chip_amplitude", "chip amp"),
-)
-# 相位数据键到振幅列名的映射，None 表示该列无相位等效数据，填入空白。
-_AMPLITUDE_KEY_TO_PHASE_SOURCE: dict[str, str | None] = {
-    "digit": "digit",
-    "noise code": None,
-    "teacher": None,
-    "reference": None,
-    "camera": "camera_phase",
-    "slm command": None,
-    "slm amplitude grid": "slm_phase",
-    "slm in cmd": None,
-    "slm in cmd contrast": None,
-    "slm out amp": "slm_phase",
-    "encoder in amp": "encoder_input_phase",
-    "encoder grid in amp": "encoder_input_grid_phase",
-    "encoder field after L1": None,
-    "encoder field after L2": None,
-    "decoder field after L1": None,
-    "decoder field after L2": None,
-    "encoder out amp": "encoded_phase",
-    "ols in amp": "ols_input_phase",
-    "ols out amp": "ols_output_phase",
-    "decoder in amp": "decoder_input_phase",
-    "decoder out amp": "decoder_output_phase",
-    "chip amp": "chip_phase",
-    "chip I": None,
-    "student": "camera_phase",
-    "abs error": None,
-}
+ONE_SHOT_SHARED_SCALE_INTENSITY_QUANTILE = 0.995
 
 
-def _shared_amplitude_scale(tensors, quantile: float = ONE_SHOT_SHARED_SCALE_AMPLITUDE_QUANTILE) -> float:
+ONE_SHOT_SHARED_SCALE_INTENSITY_SPECS = (
+    ("slm_amplitude", "slm out I"),
+    ("encoder_input_amplitude", "encoder in I"),
+    ("encoder_input_grid_amplitude", "encoder grid in I"),
+    ("encoded_amplitude", "encoder out I"),
+    ("ols_input_amplitude", "ols in I"),
+    ("ols_output_amplitude", "ols out I"),
+    ("decoder_input_amplitude", "decoder in I"),
+    ("decoder_output_amplitude", "decoder out I"),
+    ("chip_amplitude", "chip I"),
+)
+
+
+def _shared_scale(tensors, quantile: float = ONE_SHOT_SHARED_SCALE_INTENSITY_QUANTILE) -> float:
     if quantile <= 0.0 or quantile > 1.0:
-        raise ValueError(f"shared amplitude quantile must be within (0, 1], got {quantile}")
+        raise ValueError(f"shared scale quantile must be within (0, 1], got {quantile}")
     values = [tensor.detach().float().clamp_min(0.0).flatten().cpu() for tensor in tensors]
     if not values:
         return 1.0
@@ -82,7 +51,11 @@ def _shared_amplitude_scale(tensors, quantile: float = ONE_SHOT_SHARED_SCALE_AMP
             import torch
         except ImportError as exc:
             raise RuntimeError("PyTorch is required to build shared-scale visualizations.") from exc
-
+        # Subsample each tensor to avoid OOM with many large images (e.g. 200 eval samples).
+        for i in range(len(values)):
+            if values[i].numel() > 1_000_000:
+                idx = torch.randperm(values[i].shape[0], device=values[i].device)[:1_000_000]
+                values[i] = values[i][idx]
         concatenated = torch.cat(values)
     if concatenated.numel() == 0:
         return 1.0
@@ -90,8 +63,9 @@ def _shared_amplitude_scale(tensors, quantile: float = ONE_SHOT_SHARED_SCALE_AMP
     return max(scale, 1e-6)
 
 
-def _scale_amplitude_for_visualization(tensor, scale: float):
-    return (tensor.detach().float().clamp_min(0.0) / max(float(scale), 1e-6)).clamp(0.0, 1.0)
+def _scale_intensity_for_visualization(amplitude, scale: float):
+    intensity = amplitude.detach().float().clamp_min(0.0).pow(2)
+    return (intensity / max(float(scale), 1e-6)).clamp(0.0, 1.0)
 
 
 def _slm_contrast_for_visualization(tensor):
@@ -107,214 +81,202 @@ def _block_grid_preview(tensor, grid_size: int = 40):
     return _normalize_for_visualization(blocky)
 
 
-def _build_phase_aligned_to_amplitude(
-    amplitude: dict[str, object],
-    sample_outputs: dict[str, torch.Tensor],
-    original_images: torch.Tensor | None = None,
-) -> dict[str, object]:
-    phase: dict[str, object] = {}
-    blank_ref: torch.Tensor | None = None
-    for amp_key in amplitude:
-        source = _AMPLITUDE_KEY_TO_PHASE_SOURCE.get(amp_key)
-        if source is None:
-            if blank_ref is None:
-                blank_ref = _blank_tensor_like(next(iter(amplitude.values())))
-            phase[amp_key] = blank_ref
-        elif source == "digit":
-            phase[amp_key] = original_images if original_images is not None else (_blank_tensor_like(next(iter(amplitude.values()))) if blank_ref is None else blank_ref)
-        elif source in sample_outputs:
-            phase[amp_key] = _phase_for_visualization(sample_outputs[source])
-        else:
-            if blank_ref is None:
-                blank_ref = _blank_tensor_like(next(iter(amplitude.values())))
-            phase[amp_key] = blank_ref
+def _field_layer_amplitude_columns(sample_outputs, specs) -> tuple[dict[str, object], dict[str, object]]:
+    amplitude_columns, phase_columns = _d2nn_field_layer_visualization_columns(sample_outputs, specs)
+    amplitude = {f"{label} |E|": value for label, value in amplitude_columns.items()}
+    return amplitude, phase_columns
+
+
+def _camera_field_amplitude(sample_outputs):
+    real = sample_outputs.get("camera_field_real")
+    imag = sample_outputs.get("camera_field_imag")
+    if real is None or imag is None:
+        return None
+    return real.detach().float().square().add(imag.detach().float().square()).sqrt()
+
+
+def _camera_field_phase(sample_outputs):
+    real = sample_outputs.get("camera_field_real")
+    imag = sample_outputs.get("camera_field_imag")
+    if real is None or imag is None:
+        return None
+    return imag.detach().float().atan2(real.detach().float())
+
+
+def _build_field_amplitude_columns(sample_outputs, encoder_layer_amplitude, decoder_layer_amplitude):
+    amplitude = {
+        "SLM command (amplitude control)": _raw_amplitude_for_visualization(sample_outputs["slm_command"]),
+        "SLM out |E|": _robust_amplitude_display(sample_outputs["slm_amplitude"]),
+        "encoder in |E|": _robust_amplitude_display(sample_outputs["encoder_input_amplitude"]),
+        "encoder grid in |E|": _robust_amplitude_display(sample_outputs["encoder_input_grid_amplitude"]),
+        **encoder_layer_amplitude,
+        "encoder out |E|": _robust_amplitude_display(sample_outputs["encoded_amplitude"]),
+        "OLS in |E|": _robust_amplitude_display(sample_outputs["ols_input_amplitude"]),
+        "OLS out |E|": _robust_amplitude_display(sample_outputs["ols_output_amplitude"]),
+        "decoder in |E|": _robust_amplitude_display(sample_outputs["decoder_input_amplitude"]),
+        **decoder_layer_amplitude,
+        "decoder out |E|": _robust_amplitude_display(sample_outputs["decoder_output_amplitude"]),
+        "chip |E|": _robust_amplitude_display(sample_outputs["chip_amplitude"]),
+    }
+    if bool(sample_outputs.get("camera_field_available", False)):
+        camera_amplitude = _camera_field_amplitude(sample_outputs)
+        if camera_amplitude is not None:
+            amplitude["camera field |E|"] = _robust_amplitude_display(camera_amplitude)
+    return amplitude
+
+
+def _build_field_phase_columns(sample_outputs, encoder_layer_phase, decoder_layer_phase):
+    phase = {}
+
+    def add(key: str, label: str) -> None:
+        if key in sample_outputs:
+            phase[label] = _phase_for_visualization(sample_outputs[key])
+
+    add("slm_phase", "SLM out phase")
+    add("encoder_input_phase", "encoder in phase")
+    add("encoder_input_grid_phase", "encoder grid in phase")
+    phase.update(encoder_layer_phase)
+    add("encoded_phase", "encoder out phase")
+    add("ols_input_phase", "OLS in phase")
+    add("ols_output_phase", "OLS out phase")
+    add("decoder_input_phase", "decoder in phase")
+    phase.update(decoder_layer_phase)
+    add("decoder_output_phase", "decoder out phase")
+    add("chip_phase", "chip phase")
+    if bool(sample_outputs.get("camera_phase_available", False)):
+        camera_phase = _camera_field_phase(sample_outputs)
+        if camera_phase is not None:
+            phase["camera field phase"] = _phase_for_visualization(camera_phase)
     return phase
-
-
-
-def _build_phase_with_d2nn_columns(
-    amplitude: dict[str, object],
-    sample_outputs,
-    encoder_phase_columns: dict[str, object],
-    decoder_phase_columns: dict[str, object],
-    *,
-    original_images=None,
-) -> dict[str, object]:
-    aligned = _build_phase_aligned_to_amplitude(amplitude, sample_outputs, original_images=original_images)
-    phase: dict[str, object] = {}
-    for key, value in aligned.items():
-        if key.startswith("encoder mask amp = 1 "):
-            phase_key = key.replace("encoder mask amp = 1", "encoder mask phase", 1)
-            phase[phase_key] = encoder_phase_columns[phase_key]
-        elif key.startswith("decoder mask amp = 1 "):
-            phase_key = key.replace("decoder mask amp = 1", "decoder mask phase", 1)
-            phase[phase_key] = decoder_phase_columns[phase_key]
-        else:
-            phase[key] = value
-    for key, value in encoder_phase_columns.items():
-        phase.setdefault(key, value)
-    for key, value in decoder_phase_columns.items():
-        phase.setdefault(key, value)
-    return phase
-
 
 
 def build_one_shot_visualization_tensors(reference_images, sample_outputs, codes=None, original_images=None):
-    # one-shot 阶段直接看单次光路 camera，同时保留 SLM 和 chip 诊断。
+    """3-way split: amplitude=|E|, intensity=|E|²/camera, phase=arg(E)."""
     camera_raw = sample_outputs["camera_plane"]
-    batch_size = int(camera_raw.shape[0])
-    encoder_layer_amplitude, encoder_layer_phase = _d2nn_field_layer_visualization_columns(
+    encoder_layer_amplitude, encoder_layer_phase = _field_layer_amplitude_columns(
         sample_outputs,
         (("diffractive_encoder_layer", "encoder field after"),),
     )
-    decoder_layer_amplitude, decoder_layer_phase = _d2nn_field_layer_visualization_columns(
+    decoder_layer_amplitude, decoder_layer_phase = _field_layer_amplitude_columns(
         sample_outputs,
         (("diffractive_decoder_layer", "decoder field after"),),
     )
-    encoder_mask_amplitude, encoder_mask_phase = _broadcast_d2nn_mask_visualization(
+    amplitude = _build_field_amplitude_columns(
         sample_outputs,
-        batch_size,
-        (("diffractive_encoder_mask", "encoder mask amp = 1"),),
-    )
-    decoder_mask_amplitude, decoder_mask_phase = _broadcast_d2nn_mask_visualization(
-        sample_outputs,
-        batch_size,
-        (("diffractive_decoder_mask", "decoder mask amp = 1"),),
-    )
-    encoder_amplitude_columns = _interleave_d2nn_mask_layer_columns(
-        encoder_mask_amplitude,
         encoder_layer_amplitude,
-        mask_prefix="encoder mask amp = 1",
-        layer_prefix="encoder field after",
-    )
-    encoder_phase_columns = _interleave_d2nn_mask_layer_columns(
-        encoder_mask_phase,
-        encoder_layer_phase,
-        mask_prefix="encoder mask phase",
-        layer_prefix="encoder field after",
-    )
-    decoder_amplitude_columns = _interleave_d2nn_mask_layer_columns(
-        decoder_mask_amplitude,
         decoder_layer_amplitude,
-        mask_prefix="decoder mask amp = 1",
-        layer_prefix="decoder field after",
     )
-    decoder_phase_columns = _interleave_d2nn_mask_layer_columns(
-        decoder_mask_phase,
-        decoder_layer_phase,
-        mask_prefix="decoder mask phase",
-        layer_prefix="decoder field after",
-    )
-    amplitude = {
+    intensity = {
         "reference": reference_images,
-        "camera": enhance_camera_for_display(camera_raw),
-        "slm command": _normalize_for_visualization(sample_outputs["slm_command"]),
-        "slm amplitude grid": _block_grid_preview(sample_outputs["slm_amplitude"]),
-        "slm out amp": _normalize_for_visualization(sample_outputs["slm_amplitude"]),
-        "encoder in amp": _normalize_for_visualization(sample_outputs["encoder_input_amplitude"]),
-        "encoder grid in amp": _normalize_for_visualization(sample_outputs["encoder_input_grid_amplitude"]),
-        **encoder_amplitude_columns,
-        "encoder out amp": _robust_amplitude_display(sample_outputs["encoded_amplitude"]),
-        "ols in amp": _robust_amplitude_display(sample_outputs["ols_input_amplitude"]),
-        "ols out amp": _robust_amplitude_display(sample_outputs["ols_output_amplitude"]),
-        "decoder in amp": _robust_amplitude_display(sample_outputs["decoder_input_amplitude"]),
-        **decoder_amplitude_columns,
-        "decoder out amp": _robust_amplitude_display(sample_outputs["decoder_output_amplitude"]),
-        "chip amp": _robust_amplitude_display(sample_outputs["chip_amplitude"]),
-        "chip I": _robust_amplitude_display(sample_outputs["chip_amplitude"].detach().float().clamp_min(0.0).pow(2)),
+        "SLM command (amplitude control)": _raw_amplitude_for_visualization(sample_outputs["slm_command"]),
+        "SLM amplitude grid (control)": _block_grid_preview(sample_outputs["slm_amplitude"]),
+        "SLM out I": _intensity_for_visualization(sample_outputs["slm_amplitude"]),
+        "encoder in I": _intensity_for_visualization(sample_outputs["encoder_input_amplitude"]),
+        "encoder grid in I": _intensity_for_visualization(sample_outputs["encoder_input_grid_amplitude"]),
+        "encoder out I": _intensity_for_visualization(sample_outputs["encoded_amplitude"]),
+        "ols in I": _intensity_for_visualization(sample_outputs["ols_input_amplitude"]),
+        "ols out I": _intensity_for_visualization(sample_outputs["ols_output_amplitude"]),
+        "decoder in I": _intensity_for_visualization(sample_outputs["decoder_input_amplitude"]),
+        "decoder out I": _intensity_for_visualization(sample_outputs["decoder_output_amplitude"]),
+        "chip I": _intensity_for_visualization(sample_outputs["chip_amplitude"]),
+        "camera intensity": enhance_camera_for_display(camera_raw),
     }
+    if "generator_desired_intensity" in sample_outputs:
+        intensity = {
+            "reference": intensity.pop("reference"),
+            "generator desired intensity": sample_outputs["generator_desired_intensity"].detach().float(),
+            **intensity,
+        }
     if original_images is not None:
-        amplitude = {"digit": original_images, **amplitude}
+        intensity = {"digit": original_images, **intensity}
     if codes is not None:
-        amplitude = {"noise code": _code_for_visualization(codes), **amplitude}
-    result_amplitude = dict(amplitude)
-    result_phase = _build_phase_with_d2nn_columns(
-        result_amplitude,
+        intensity = {"noise code": _code_for_visualization(codes), **intensity}
+    phase = _build_field_phase_columns(
         sample_outputs,
-        encoder_phase_columns,
-        decoder_phase_columns,
-        original_images=original_images,
+        encoder_layer_phase,
+        decoder_layer_phase,
     )
     return {
-        VISUALIZATION_AMPLITUDE_KEY: result_amplitude,
-        VISUALIZATION_PHASE_KEY: result_phase,
+        VISUALIZATION_AMPLITUDE_KEY: amplitude,
+        VISUALIZATION_INTENSITY_KEY: intensity,
+        VISUALIZATION_PHASE_KEY: phase,
     }
 
 
 
 def build_one_shot_eval_visualization_tensors(teacher_images, sample_outputs, abs_error, codes=None, original_images=None):
     base = build_one_shot_visualization_tensors(teacher_images, sample_outputs, codes=codes, original_images=original_images)
-    amplitude = dict(base[VISUALIZATION_AMPLITUDE_KEY])
-    teacher_display = amplitude.pop("reference")
-    student_display = amplitude.pop("camera")
-    result = {}
+    intensity = dict(base[VISUALIZATION_INTENSITY_KEY])
+    teacher_display = intensity.pop("reference")
+    student_display = intensity.pop("camera intensity")
+    result_intensity = {}
     if original_images is not None:
-        result["digit"] = amplitude.pop("digit")
+        result_intensity["digit"] = intensity.pop("digit", None)
     if codes is not None:
-        result["noise code"] = amplitude.pop("noise code")
-    result = {
-        **result,
-        "teacher": teacher_display,
-        **amplitude,
-        "student": student_display,
-        "abs error": abs_error,
+        result_intensity["noise code"] = intensity.pop("noise code", None)
+    result_intensity = {
+        **result_intensity,
+        "teacher intensity target": teacher_display,
+        **intensity,
+        "student camera intensity": student_display,
+        "intensity abs error": abs_error,
     }
-    base_phase = base[VISUALIZATION_PHASE_KEY]
-    result_phase = {}
-    for key in result:
-        if key.startswith("encoder mask amp = 1 "):
-            result_phase[key.replace("encoder mask amp = 1", "encoder mask phase", 1)] = base_phase[
-                key.replace("encoder mask amp = 1", "encoder mask phase", 1)
-            ]
-        elif key.startswith("decoder mask amp = 1 "):
-            result_phase[key.replace("decoder mask amp = 1", "decoder mask phase", 1)] = base_phase[
-                key.replace("decoder mask amp = 1", "decoder mask phase", 1)
-            ]
-        elif key in base_phase:
-            result_phase[key] = base_phase[key]
-        else:
-            result_phase[key] = _blank_tensor_like(next(iter(result.values())))
     return {
-        VISUALIZATION_AMPLITUDE_KEY: result,
-        VISUALIZATION_PHASE_KEY: result_phase,
+        VISUALIZATION_AMPLITUDE_KEY: base[VISUALIZATION_AMPLITUDE_KEY],
+        VISUALIZATION_INTENSITY_KEY: result_intensity,
+        VISUALIZATION_PHASE_KEY: base[VISUALIZATION_PHASE_KEY],
     }
 
 
 
-def _build_one_shot_shared_scale_body(sample_outputs, scale: float) -> dict[str, object]:
-    return {
-        label: _scale_amplitude_for_visualization(sample_outputs[key], scale)
-        for key, label in ONE_SHOT_SHARED_SCALE_AMPLITUDE_SPECS
-        if key in sample_outputs
-    }
-
-
-
-def _build_one_shot_early_raw_amplitude_body(sample_outputs) -> dict[str, object]:
-    return {
-        label: _normalize_for_visualization(sample_outputs[key])
-        for key, label in ONE_SHOT_EARLY_RAW_AMPLITUDE_SPECS
-        if key in sample_outputs
-    }
-
-
-
-def _build_one_shot_shared_scale_phase(reference_images, sample_outputs) -> dict[str, object]:
-    phase = _phase_tensor_map(
-        sample_outputs,
-        (
-            ("slm_phase", "slm out phase"),
-            ("encoder_input_phase", "encoder in phase"),
-            ("encoder_input_grid_phase", "encoder grid in phase"),
-            ("encoded_phase", "encoder out phase"),
-            ("ols_input_phase", "ols in phase"),
-            ("ols_output_phase", "ols out phase"),
-            ("decoder_input_phase", "decoder in phase"),
-            ("decoder_output_phase", "decoder out phase"),
-            ("chip_phase", "chip phase"),
-        ),
+def _shared_intensity_scale(tensors, quantile: float = ONE_SHOT_SHARED_SCALE_INTENSITY_QUANTILE) -> float:
+    return _shared_scale(
+        (tensor.detach().float().clamp_min(0.0).pow(2) for tensor in tensors),
+        quantile=quantile,
     )
-    return {"reference": reference_images, **phase}
+
+
+def _physical_intensity_scale_inputs(sample_outputs):
+    for key, _ in ONE_SHOT_SHARED_SCALE_INTENSITY_SPECS:
+        if key in sample_outputs:
+            yield sample_outputs[key]
+    for key in ("diffractive_encoder_layer_amplitude", "diffractive_decoder_layer_amplitude"):
+        if key not in sample_outputs:
+            continue
+        tensor = sample_outputs[key]
+        if tensor.ndim == 5:
+            for layer_index in range(int(tensor.shape[1])):
+                yield tensor[:, layer_index]
+        elif tensor.ndim == 4:
+            for layer_index in range(int(tensor.shape[1])):
+                yield tensor[:, layer_index]
+
+
+def _d2nn_field_layer_intensity_columns(sample_outputs, specs, scale: float) -> dict[str, object]:
+    def _ensure_channel(tensor):
+        return tensor.unsqueeze(1) if tensor.ndim == 3 else tensor
+
+    columns: dict[str, object] = {}
+    for key_prefix, label_prefix in specs:
+        amplitude_key = f"{key_prefix}_amplitude"
+        if amplitude_key not in sample_outputs:
+            continue
+        amplitude_tensor = sample_outputs[amplitude_key]
+        if amplitude_tensor.ndim == 5:
+            layer_count = int(amplitude_tensor.shape[1])
+            for layer_index in range(layer_count):
+                columns[f"{label_prefix} L{layer_index + 1} I"] = _scale_intensity_for_visualization(
+                    _ensure_channel(amplitude_tensor[:, layer_index]),
+                    scale,
+                )
+        elif amplitude_tensor.ndim == 4:
+            layer_count = int(amplitude_tensor.shape[1])
+            for layer_index in range(layer_count):
+                columns[f"{label_prefix} L{layer_index + 1} I"] = _scale_intensity_for_visualization(
+                    _ensure_channel(amplitude_tensor[:, layer_index]),
+                    scale,
+                )
+    return columns
 
 
 
@@ -338,28 +300,53 @@ def _phase_column_stats(sample_outputs) -> dict[str, object]:
 
 
 
-def build_one_shot_shared_scale_diagnostics(sample_outputs, scale: float) -> dict[str, object]:
-    columns = [
-        label
-        for key, label in ONE_SHOT_SHARED_SCALE_AMPLITUDE_SPECS
-        if key in sample_outputs
-    ]
+def build_one_shot_shared_scale_diagnostics(
+    sample_outputs,
+    scale: float,
+    *,
+    amplitude_columns,
+    intensity_columns,
+    phase_columns,
+) -> dict[str, object]:
     slm_command = sample_outputs["slm_command"].detach().float().cpu().flatten(start_dim=1)
     per_sample_p01 = slm_command.quantile(0.01, dim=1)
     per_sample_p99 = slm_command.quantile(0.99, dim=1)
+    transform_code = sample_outputs.get("generator_command_transform")
+    if hasattr(transform_code, "item"):
+        transform_name = (
+            "intensity_to_amplitude" if int(transform_code.item()) == 1 else "direct_amplitude"
+        )
+    else:
+        transform_name = str(transform_code or "unknown")
+    code_conditioning = sample_outputs.get("generator_code_conditioning_active", True)
+    if hasattr(code_conditioning, "item"):
+        code_conditioning = bool(code_conditioning.item())
     return {
+        "visualization_schema_version": 2,
         "view": "shared_scale_full_chain",
-        "amplitude_scale_quantile": ONE_SHOT_SHARED_SCALE_AMPLITUDE_QUANTILE,
-        "amplitude_scale": float(scale),
-        "amplitude_scale_columns": columns,
-        "early_raw_amplitude_columns": [
-            "slm in cmd",
-            *[
-                label
-                for key, label in ONE_SHOT_EARLY_RAW_AMPLITUDE_SPECS
-                if key in sample_outputs
-            ],
-        ],
+        "amplitude_display_policy": "per_plane_robust_normalization",
+        "intensity_scale_quantile": ONE_SHOT_SHARED_SCALE_INTENSITY_QUANTILE,
+        "intensity_scale": float(scale),
+        "intensity_scale_columns": [label for label in intensity_columns if label.endswith(" I")],
+        "physical_quantities": {
+            "amplitude": "field amplitude |E|; SLM command is labeled as amplitude control",
+            "intensity": "field intensity |E|^2 and normalized camera intensity",
+            "phase": "field phase arg(E)",
+        },
+        "columns": {
+            "amplitude": list(amplitude_columns),
+            "intensity": list(intensity_columns),
+            "phase": list(phase_columns),
+        },
+        "availability": {
+            "camera_field_available": bool(sample_outputs.get("camera_field_available", False)),
+            "camera_phase_available": bool(sample_outputs.get("camera_phase_available", False)),
+        },
+        "generator": {
+            "command_transform": transform_name,
+            "code_conditioning_active": bool(code_conditioning),
+            "desired_intensity_available": "generator_desired_intensity" in sample_outputs,
+        },
         "slm_command_stats": {
             **_tensor_stats(sample_outputs["slm_command"]),
             "p01_mean": float(per_sample_p01.mean().item()),
@@ -372,129 +359,107 @@ def build_one_shot_shared_scale_diagnostics(sample_outputs, scale: float) -> dic
 
 
 def build_one_shot_shared_scale_visualization_tensors(reference_images, sample_outputs, codes=None, original_images=None):
-    scale = _shared_amplitude_scale(
-        sample_outputs[key]
-        for key, _ in ONE_SHOT_SHARED_SCALE_AMPLITUDE_SPECS
-        if key in sample_outputs
-    )
-    batch_size = int(reference_images.shape[0])
-    encoder_layer_amplitude, encoder_layer_phase = _d2nn_field_layer_visualization_columns(
+    """3-way shared-scale split: amplitude=|E|, intensity=|E|²/camera, phase=arg(E)."""
+    scale = _shared_intensity_scale(_physical_intensity_scale_inputs(sample_outputs))
+    encoder_layer_amplitude, encoder_layer_phase = _field_layer_amplitude_columns(
         sample_outputs,
         (("diffractive_encoder_layer", "encoder field after"),),
     )
-    decoder_layer_amplitude, decoder_layer_phase = _d2nn_field_layer_visualization_columns(
+    decoder_layer_amplitude, decoder_layer_phase = _field_layer_amplitude_columns(
         sample_outputs,
         (("diffractive_decoder_layer", "decoder field after"),),
     )
-    encoder_mask_amplitude, encoder_mask_phase = _broadcast_d2nn_mask_visualization(
+    encoder_intensity_columns = _d2nn_field_layer_intensity_columns(
         sample_outputs,
-        batch_size,
-        (("diffractive_encoder_mask", "encoder mask amp = 1"),),
+        (("diffractive_encoder_layer", "encoder field after"),),
+        scale,
     )
-    decoder_mask_amplitude, decoder_mask_phase = _broadcast_d2nn_mask_visualization(
+    decoder_intensity_columns = _d2nn_field_layer_intensity_columns(
         sample_outputs,
-        batch_size,
-        (("diffractive_decoder_mask", "decoder mask amp = 1"),),
+        (("diffractive_decoder_layer", "decoder field after"),),
+        scale,
     )
-    encoder_amplitude_columns = _interleave_d2nn_mask_layer_columns(
-        encoder_mask_amplitude,
+    amplitude = _build_field_amplitude_columns(
+        sample_outputs,
         encoder_layer_amplitude,
-        mask_prefix="encoder mask amp = 1",
-        layer_prefix="encoder field after",
-    )
-    encoder_phase_columns = _interleave_d2nn_mask_layer_columns(
-        encoder_mask_phase,
-        encoder_layer_phase,
-        mask_prefix="encoder mask phase",
-        layer_prefix="encoder field after",
-    )
-    decoder_amplitude_columns = _interleave_d2nn_mask_layer_columns(
-        decoder_mask_amplitude,
         decoder_layer_amplitude,
-        mask_prefix="decoder mask amp = 1",
-        layer_prefix="decoder field after",
     )
-    decoder_phase_columns = _interleave_d2nn_mask_layer_columns(
-        decoder_mask_phase,
-        decoder_layer_phase,
-        mask_prefix="decoder mask phase",
-        layer_prefix="decoder field after",
-    )
-    amplitude = {
+    # -- Intensity: shared-scale |E|² for full chain, camera for sensor --
+    intensity = {
         "reference": reference_images,
-        "slm in cmd": _raw_amplitude_for_visualization(sample_outputs["slm_command"]),
-        "slm in cmd contrast": _slm_contrast_for_visualization(sample_outputs["slm_command"]),
-        "slm amplitude grid": _block_grid_preview(sample_outputs["slm_amplitude"]),
-        "slm out amp": _normalize_for_visualization(sample_outputs["slm_amplitude"]),
-        "encoder in amp": _normalize_for_visualization(sample_outputs["encoder_input_amplitude"]),
-        "encoder grid in amp": _normalize_for_visualization(sample_outputs["encoder_input_grid_amplitude"]),
-        **encoder_amplitude_columns,
-        "encoder out amp": _scale_amplitude_for_visualization(sample_outputs["encoded_amplitude"], scale),
-        "ols in amp": _scale_amplitude_for_visualization(sample_outputs["ols_input_amplitude"], scale),
-        "ols out amp": _scale_amplitude_for_visualization(sample_outputs["ols_output_amplitude"], scale),
-        "decoder in amp": _scale_amplitude_for_visualization(sample_outputs["decoder_input_amplitude"], scale),
-        **decoder_amplitude_columns,
-        "decoder out amp": _scale_amplitude_for_visualization(sample_outputs["decoder_output_amplitude"], scale),
-        "chip amp": _scale_amplitude_for_visualization(sample_outputs["chip_amplitude"], scale),
-        "chip I": _intensity_for_visualization(sample_outputs["chip_amplitude"]),
-        "camera": enhance_camera_for_display(sample_outputs["camera_plane"]),
+        "SLM command (amplitude control)": _raw_amplitude_for_visualization(sample_outputs["slm_command"]),
+        "SLM command contrast (display)": _slm_contrast_for_visualization(sample_outputs["slm_command"]),
+        "SLM amplitude grid (control)": _block_grid_preview(sample_outputs["slm_amplitude"]),
+        "SLM out I": _scale_intensity_for_visualization(sample_outputs["slm_amplitude"], scale),
+        "encoder in I": _scale_intensity_for_visualization(sample_outputs["encoder_input_amplitude"], scale),
+        "encoder grid in I": _scale_intensity_for_visualization(sample_outputs["encoder_input_grid_amplitude"], scale),
+        **encoder_intensity_columns,
+        "encoder out I": _scale_intensity_for_visualization(sample_outputs["encoded_amplitude"], scale),
+        "ols in I": _scale_intensity_for_visualization(sample_outputs["ols_input_amplitude"], scale),
+        "ols out I": _scale_intensity_for_visualization(sample_outputs["ols_output_amplitude"], scale),
+        "decoder in I": _scale_intensity_for_visualization(sample_outputs["decoder_input_amplitude"], scale),
+        **decoder_intensity_columns,
+        "decoder out I": _scale_intensity_for_visualization(sample_outputs["decoder_output_amplitude"], scale),
+        "chip I": _scale_intensity_for_visualization(sample_outputs["chip_amplitude"], scale),
+        "camera intensity": enhance_camera_for_display(sample_outputs["camera_plane"]),
     }
+    if "generator_desired_intensity" in sample_outputs:
+        intensity = {
+            "reference": intensity.pop("reference"),
+            "generator desired intensity": sample_outputs["generator_desired_intensity"].detach().float(),
+            **intensity,
+        }
     if original_images is not None:
-        amplitude = {"digit": original_images, **amplitude}
+        intensity = {"digit": original_images, **intensity}
     if codes is not None:
-        amplitude = {"noise code": _code_for_visualization(codes), **amplitude}
-    phase = _build_phase_with_d2nn_columns(
-        amplitude,
+        intensity = {"noise code": _code_for_visualization(codes), **intensity}
+    phase = _build_field_phase_columns(
         sample_outputs,
-        encoder_phase_columns,
-        decoder_phase_columns,
-        original_images=original_images,
+        encoder_layer_phase,
+        decoder_layer_phase,
     )
     return {
         VISUALIZATION_AMPLITUDE_KEY: amplitude,
+        VISUALIZATION_INTENSITY_KEY: intensity,
         VISUALIZATION_PHASE_KEY: phase,
-        "diagnostics": build_one_shot_shared_scale_diagnostics(sample_outputs, scale),
+        "diagnostics": build_one_shot_shared_scale_diagnostics(
+            sample_outputs,
+            scale,
+            amplitude_columns=amplitude,
+            intensity_columns=intensity,
+            phase_columns=phase,
+        ),
     }
 
 
 
 def build_one_shot_eval_shared_scale_visualization_tensors(teacher_images, sample_outputs, abs_error, codes=None, original_images=None):
     base = build_one_shot_shared_scale_visualization_tensors(teacher_images, sample_outputs, codes=codes, original_images=original_images)
-    amplitude = dict(base[VISUALIZATION_AMPLITUDE_KEY])
-    teacher_display = amplitude.pop("reference")
-    student_display = amplitude.pop("camera")
-    result = {}
+    intensity = dict(base[VISUALIZATION_INTENSITY_KEY])
+    teacher_display = intensity.pop("reference")
+    student_display = intensity.pop("camera intensity")
+    result_intensity = {}
     if original_images is not None:
-        result["digit"] = amplitude.pop("digit")
+        result_intensity["digit"] = intensity.pop("digit", None)
     if codes is not None:
-        result["noise code"] = amplitude.pop("noise code")
-    result = {
-        **result,
-        "teacher": teacher_display,
-        **amplitude,
-        "student": student_display,
-        "abs error": abs_error,
+        result_intensity["noise code"] = intensity.pop("noise code", None)
+    result_intensity = {
+        **result_intensity,
+        "teacher intensity target": teacher_display,
+        **intensity,
+        "student camera intensity": student_display,
+        "intensity abs error": abs_error,
     }
-    aligned_phase = _build_phase_aligned_to_amplitude(result, sample_outputs, original_images=original_images)
-    base_phase = base[VISUALIZATION_PHASE_KEY]
-    result_phase: dict[str, object] = {}
-    for key in result:
-        if key.startswith("encoder mask amp = 1 "):
-            phase_key = key.replace("encoder mask amp = 1", "encoder mask phase", 1)
-            if phase_key in base_phase:
-                result_phase[phase_key] = base_phase[phase_key]
-        elif key.startswith("decoder mask amp = 1 "):
-            phase_key = key.replace("decoder mask amp = 1", "decoder mask phase", 1)
-            if phase_key in base_phase:
-                result_phase[phase_key] = base_phase[phase_key]
-        elif key in base_phase:
-            result_phase[key] = base_phase[key]
-        elif key in aligned_phase:
-            result_phase[key] = aligned_phase[key]
+    diagnostics = dict(base["diagnostics"])
+    diagnostics["columns"] = {
+        **diagnostics["columns"],
+        "intensity": list(result_intensity),
+    }
     return {
-        VISUALIZATION_AMPLITUDE_KEY: result,
-        VISUALIZATION_PHASE_KEY: result_phase,
-        "diagnostics": base["diagnostics"],
+        VISUALIZATION_AMPLITUDE_KEY: base[VISUALIZATION_AMPLITUDE_KEY],
+        VISUALIZATION_INTENSITY_KEY: result_intensity,
+        VISUALIZATION_PHASE_KEY: base[VISUALIZATION_PHASE_KEY],
+        "diagnostics": diagnostics,
     }
 
 
@@ -639,4 +604,54 @@ def build_one_shot_visual_diagnostics(sample_outputs, display_diagnostics=None):
         "alias_diffs": alias_diffs,
         "amplitude_phase_similarity": spatial_similarity,
         "tensor_stats": tensor_stats,
+    }
+
+
+def build_one_shot_distill_readability_visualization_tensors(teacher_images, sample_outputs, codes=None):
+    """Build readability-focused visualization: teacher readable, student readable, raw student."""
+    camera_raw = sample_outputs["camera_plane"]
+    teacher_readable = readable_camera_for_display(teacher_images)
+    student_readable = readable_camera_for_display(camera_raw)
+    student_raw = enhance_camera_for_display(camera_raw)
+    intensity = {
+        "teacher (readable)": teacher_readable,
+        "student (readable)": student_readable,
+        "student (raw)": student_raw,
+    }
+    if codes is not None:
+        intensity = {"noise code": _code_for_visualization(codes), **intensity}
+    return {
+        VISUALIZATION_INTENSITY_KEY: intensity,
+        VISUALIZATION_PHASE_KEY: {},
+    }
+
+
+def _signed_unit_for_visualization(tensor):
+    raw = tensor.detach().float()
+    scale = raw.abs().flatten(start_dim=1).amax(dim=1).clamp_min(1.0e-6)
+    view_shape = (raw.shape[0],) + (1,) * (raw.ndim - 1)
+    return (0.5 + 0.5 * raw / scale.view(view_shape)).clamp(0.0, 1.0)
+
+
+def build_one_shot_distill_residual_visualization_tensors(reference_images, sample_outputs):
+    """Build residual-probe visualization when template residual diagnostics exist."""
+    required = ("camera_plane", "generator_base_command", "generator_residual_map")
+    if any(key not in sample_outputs for key in required):
+        return None
+
+    student_raw = sample_outputs["camera_plane"].detach().float()
+    base_command = sample_outputs["generator_base_command"].detach().float()
+    residual_map = sample_outputs["generator_residual_map"].detach().float()
+    student_base_diff = student_raw - base_command
+    intensity = {
+        "reference/prototype": readable_camera_for_display(reference_images),
+        "student raw": enhance_camera_for_display(student_raw),
+        "generator_base_command": enhance_camera_for_display(base_command),
+        "generator_residual_map": _signed_unit_for_visualization(residual_map),
+        "abs residual": _normalize_for_visualization(residual_map.abs()),
+        "student-base diff": _signed_unit_for_visualization(student_base_diff),
+    }
+    return {
+        VISUALIZATION_INTENSITY_KEY: intensity,
+        VISUALIZATION_PHASE_KEY: {},
     }
