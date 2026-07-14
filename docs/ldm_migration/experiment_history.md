@@ -468,6 +468,19 @@ v48 使用同一个 v47 Probe A checkpoint、相同 `small_sharp_stroke_digit_co
 
 - v58：`outputs/reports/v58_aperture_throughput_upper_bound.json`、`outputs/reports/v58_aperture_throughput_upper_bound.pt`
 - v59：`outputs/reports/v59_upstream_separation_isolation.json`、`outputs/reports/v59_upstream_separation_isolation.pt`、`outputs/reports/v59_upstream_separation_isolation_preview.png`
+
+### v60-v61：复制训练、稳健首塌缩审计与离线可解码上界
+
+- v60 使用 v56 相同配置、seed `1234`、5 epoch 和正式物理合同完成复制训练。eval corr/dice 为 `0.5733/0.6235`，sample corr 为 `0.4914`，均未超过 v56；最终 CMOS 仍不可读。v58.3 只加固 relay 验收和 preflight，不改变正式传播算子。
+- v61 robust tool 冻结 v60 best checkpoint，对 readable train/val/test `800/100/100` 做完整 formal forward；缓存包含所有严格复场 plane、CMOS intensity、provenance 和 parameter hash。使用固定 32×32 诊断网格、2,000 次 pair bootstrap 与 permutation null；前后参数 hash 一致，报告结论为 `no-robust-localized-collapse`。
+- 因此 v60 的 20-sample camera intensity retention `0.0981` 仍是阈值边缘证据，不能推翻 v59 的 100-sample broad-isolation 结论。下一步只允许运行 `tools/diagnose_v61_offline_decodability.py`：linear ridge 在 validation 选参，test 单次评估；固定 nonlinear readout、label-only 和类内打乱对照均为软件上界，不能 promotion。
+- v61 offline report 的 linear plane probe 在 test 上得到 corr `0.874-0.892`、dice `0.676-0.710`，但相对 label-only paired corr/dice delta 为负；code-only/code+label corr 仅 `0.716/0.731`。固定 nonlinear probe 的三个 seed 未达到 strict gate，且部分 seed 输出零多样性。该结果支持“plane 仍有类别模板/低阶信号，但没有证明 paired instance-level CMOS 生成”，不授权继续堆 loss 或 promotion。
+
+代表证据：
+
+- `outputs/20260715_v61/runs/robust_collapse/v61_robust_collapse.json`
+- `outputs/20260715_v61/runs/robust_collapse/v61_frozen_optical_cache.pt`
+- `outputs/20260715_v61/runs/offline_decodability/v61_offline_decodability.json`
 ### v58：现行合同去旧化与独立 relay 重验（进行中）
 
 - formal validator 已收紧为当前 v55 coherent 4f 前端、identity OLS、1.50 mm D2NN 和后端薄透镜 B=0 relay；v52/v53 free-space+aperture 配置保留为 legacy diagnostic，不再作为 formal contract。

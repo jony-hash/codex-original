@@ -1,10 +1,10 @@
-# 当前主线交接：v59 后
+# 当前主线交接：v61
 
-更新时间：2026-07-14。此文件供新对话快速恢复当前主线；带日期的完整证据在 [Experiment History](experiment_history.md)，稳定架构合同在 [D2NN 单次曝光蒸馏主线](single_shot_ldm_distillation.md)。
+更新时间：2026-07-15。此文件供新对话快速恢复当前主线；带日期的完整证据在 [Experiment History](experiment_history.md)，稳定架构合同在 [D2NN 单次曝光蒸馏主线](single_shot_ldm_distillation.md)。
 
 ## 先读的结论
 
-- 当前所有 v49-v59 结果都是 `diagnostic-only`，且 `accepted_summary_written=false`。没有可 promotion 的学生 checkpoint。
+- 当前所有 v49-v61 结果都是 `diagnostic-only`，且 `accepted_summary_written=false`。没有可 promotion 的学生 checkpoint。
 - 人眼硬 gate 只看最终 `physical_camera_plane` 的 CMOS intensity。v56 的正式 class-balanced sample（0-9 每类两张）仍为同源圆斑/纹理，不可读；这是 strict provenance 有效条件下的模型失败，不是 harness failure。
 - 不要重新使用 v47/v51/v53 checkpoint：它们与现行的 identity OLS、1.50 mm geometry 或完整前端 4f relay 合同不兼容。
 - 在下一决策门前，不训练、不延长 epoch、不叠加 loss、不做 spacing/padding/pupil sweep，也不修改正式硬件合同。
@@ -35,7 +35,7 @@ v55 structural preflight 通过；原 v55.1 reference 仅证明生产算子与�
 
 这些是理想数字孪生与设计 pupil 下限的结构/历史自洽检查，不是独立物理参考或硬件实测。
 
-v49-v54 的 mask 归因、严格复场修复和旧 central-aperture 失败定位均已降为历史证据；完整细节见 [Experiment History](experiment_history.md)。v56 在旧实现下有效训练但人眼失败；v58.3 独立重验是恢复训练资格的唯一下一门。v57 只读诊断未定位到单一 plane，且曾修复 complex tensor 丢失虚部的问题，最终报告已使用 `complex128` 重跑。
+v49-v54 的 mask 归因、严格复场修复和旧 central-aperture 失败定位均已降为历史证据；完整细节见 [Experiment History](experiment_history.md)。v60 是 v56 的同配置复制训练，未改善人工可读性。v61 稳健审计在完整 val/test split 上未确认稳定的局部首塌缩；下一门是已实现的离线 decodability upper bound。
 
 ## v56-v59 事实与证据
 
@@ -113,6 +113,21 @@ accepted_summary_written=false
 
 v59 tool：`tools/diagnose_v59_upstream_separation_isolation.py`。它只做固定 validation batch 的 baseline、label derangement、within-class code rotation forward，并将类间/类内分离、permutation null、target error、label/code sensitivity 与 formal pupil spectral audit 写入报告。当前报告指向 offline decodability upper bound；其仍是 `diagnostic-only`，不改变正式合同。
 
+## v60-v61 当前证据与下一门
+
+v60 使用与 v56 相同的 readable 数据、seed `1234`、5 epoch 和正式 `coherent_imaging_4f/free_space/identity OLS` 合同；它只是复制训练，不是新物理架构。相较 v56，eval corr/dice 为 `0.5733/0.6235`（v56 为 `0.5789/0.6298`），sample corr 为 `0.4914`（v56 为 `0.4945`），最终 CMOS 仍为跨类别同源圆斑/散斑。
+
+v61 robust audit 使用冻结 v60 best checkpoint 和 readable `800/100/100` train/val/test，参数 hash 前后相同；以 32×32 诊断网格、2,000 次固定大小 pair bootstrap 和 permutation null 复核全部正式 planes。当前报告为 `no-robust-localized-collapse`，因此 v60 的单次 20 样本、`0.0981` camera 阈值边缘报告不能单独升级为 camera 首崩溃结论。
+
+代表证据与工具：
+
+- `outputs/20260715_v61/runs/robust_collapse/v61_robust_collapse.json`
+- `outputs/20260715_v61/runs/robust_collapse/v61_frozen_optical_cache.pt`
+- `tools/diagnose_v61_robust_collapse.py`
+- `tools/diagnose_v61_offline_decodability.py`
+
+离线 readout 只允许作为 `diagnostic-only` 上界：linear ridge 会在 validation 选择预注册强度，test 只评估一次；固定小型 nonlinear readout 只运行审计发现的边界两侧，并保留 code-only、code+label、label-only 与类内打乱对照。实际 v61 report 中 linear plane probe 的 test corr 约 `0.874-0.892`、dice 约 `0.676-0.710`，但相对 label-only 的 paired delta 为负；code-only/code+label 仅 `0.716/0.731` corr。nonlinear 三 seed 未达到 strict gate，且部分 seed 退化为零多样性。结论是 plane 中保留的是类别模板/低阶可预测信号，不是通过 paired software readout 证明的 instance-level single-exposure generation。软件 readout 的可读图不能替代 raw CMOS 人工硬 gate，也不能进入正式单曝光推理链。
+
 ## 已完成验证
 
-当前工作树上，v59 工具测试与 CUDA 诊断已完成；定向回归 `10 passed`，完整回归 `435 passed`、`148 subtests passed`，另有 `1607 warnings`；ruff、compileall、git diff check 通过。工作树已有大量先前未提交的改动；迁移时不得用 reset/checkout 清理它们。
+v58.3 targeted/CUDA preflight、v61 robust audit 和离线 readout 已完成；v61 targeted tests `6 passed`，工具报告均为 `diagnostic-only`。所有输出和 cache 均位于 `outputs/`，不加入 Git；迁移时不得用 reset/checkout 清理用户改动。
