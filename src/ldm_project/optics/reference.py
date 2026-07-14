@@ -12,6 +12,57 @@ import math
 import torch
 
 
+def measure_circular_pupil_first_zero(
+    *,
+    source_size: int,
+    input_pixel_size: float,
+    magnification: float,
+    wavelength: float,
+    pupil_diameter: float,
+    pupil_focal_length: float,
+    radial_step: float,
+    radial_extent: float,
+    device: torch.device,
+    dtype: torch.dtype = torch.float64,
+) -> dict[str, float | int]:
+    """Measure a B=0 point-response first minimum from an oversampled field.
+
+    The calculation evaluates the independently constructed circular Fourier
+    pupil on a physical radial line.  It does not call the production relay,
+    interpolate an image, or assign a theoretical zero as a measured result.
+    """
+    if source_size <= 1 or radial_step <= 0.0 or radial_extent <= radial_step:
+        raise ValueError("invalid point-response sampling")
+    if magnification == 0.0 or pupil_diameter <= 0.0 or pupil_focal_length <= 0.0:
+        raise ValueError("invalid B=0 pupil geometry")
+    cutoff = pupil_diameter / (2.0 * (pupil_focal_length / abs(magnification)) * wavelength)
+    frequency = torch.fft.fftfreq(source_size, d=input_pixel_size, device=device, dtype=dtype)
+    fy, fx = torch.meshgrid(frequency, frequency, indexing="ij")
+    pupil = ((fx.square() + fy.square()).sqrt() <= cutoff * (1.0 + 1.0e-6)).to(torch.complex128)
+    radius = torch.arange(0.0, radial_extent + radial_step / 2.0, radial_step, device=device, dtype=dtype)
+    # The source point may be centered without loss of radial PSF magnitude.
+    phase_x = torch.exp(2j * math.pi * (radius[:, None] / magnification) * frequency[None, :]).to(torch.complex128)
+    phase_y = torch.ones((1, source_size), device=device, dtype=torch.complex128)
+    field = torch.einsum("ij,ui,vj->uv", pupil, phase_y, phase_x) / float(source_size * source_size)
+    intensity = field[0].abs().square()
+    # First strict local minimum after the central lobe.  A flat/invalid PSF
+    # deliberately fails rather than receiving a fabricated zero location.
+    candidates = (intensity[1:-1] <= intensity[:-2]) & (intensity[1:-1] <= intensity[2:])
+    indices = torch.nonzero(candidates, as_tuple=False).flatten() + 1
+    if indices.numel() == 0:
+        raise ValueError("point response has no measurable first radial minimum")
+    index = int(indices[0])
+    return {
+        "measured_first_zero_m": float(radius[index]),
+        "measured_first_zero_index": index,
+        "radial_step_m": radial_step,
+        "radial_samples": int(radius.numel()),
+        "object_cutoff_cycles_m": float(cutoff),
+        "peak_intensity": float(intensity[0]),
+        "minimum_intensity": float(intensity[index]),
+    }
+
+
 def thin_lens_matrix(focal_length: float) -> tuple[tuple[float, float], tuple[float, float]]:
     return ((1.0, 0.0), (-1.0 / focal_length, 1.0))
 

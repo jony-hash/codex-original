@@ -82,4 +82,25 @@ def test_v56_preflight_requires_valid_v55_reference(tmp_path: Path):
     spec.loader.exec_module(module)
     report = module.run_preflight(TRAIN, reference, device_name="cpu")
     assert report["status"] == "physical-forward-model-invalid"
-    assert "v58.2" in report["reasons"][0]
+    assert "v58.3" in report["reasons"][0]
+
+
+def test_v56_preflight_rejects_tampered_v58_3_contract(tmp_path: Path):
+    spec = importlib.util.spec_from_file_location("v56_preflight_contract", PREFLIGHT)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    reference = {
+        "status": "physical-forward-model-valid",
+        "validation_revision": "v58.3-full-fov-b0-relay-acceptance",
+        "diagnostic_only": True,
+        "accepted_summary_written": False,
+        "formal_full_fov_validation": {}, "independent_analytic_validation": {"fault_injection": {}},
+        "measured_pupil_psf_validation": {}, "propagation_component_diagnostic": {}, "sampling_and_independence_audit": {},
+        "report_contract": {"front_magnification": 0.4},
+    }
+    path = tmp_path / "tampered.json"
+    path.write_text(json.dumps(reference), encoding="utf-8")
+    report = module.run_preflight(TRAIN, path, device_name="cpu")
+    assert report["status"] == "physical-forward-model-invalid"
+    assert "tampered" in report["reasons"][0]

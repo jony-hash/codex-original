@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,18 @@ from ldm_project.one_shot_eval import build_strict_optical_field_artifact
 
 
 EXPECTED_SEGMENTS = [0.350, 0.370, 0.025, 0.025, 0.125, 0.07321428571428572, 0.3125, 0.0892857142857143]
+EXPECTED_V58_3_CONTRACT = {
+    "input_sampling": {"shape": [200, 200], "pixel_size_m": 2.5e-6, "fov_m": 500e-6},
+    "output_sampling": {"shape": [100, 100], "pixel_size_m": 2.0e-6, "fov_m": 200e-6},
+    "wavelength_m": 532e-9,
+    "front_magnification": -0.4,
+    "front_abcd": {"A": -0.4, "B": 0.0, "C": 0.0},
+    "front_pupil_diameter_m": 0.02375,
+}
+EXPECTED_V58_3_FAULTS = {
+    "wrong_magnification_detected", "wrong_inversion_detected", "wrong_amplitude_detected",
+    "spurious_quadratic_phase_detected", "pupil_omission_detected",
+}
 
 
 def _invalid(reason: str) -> dict[str, Any]:
@@ -39,6 +52,30 @@ def _sampling_matches(record: dict[str, Any], shape: tuple[int, int], pixel: flo
     )
 
 
+def _v58_3_contract_valid(reference: dict[str, Any]) -> bool:
+    contract = reference.get("report_contract")
+    analytic = reference.get("independent_analytic_validation", {})
+    faults = analytic.get("fault_injection", {}) if isinstance(analytic, dict) else {}
+    if not isinstance(contract, dict) or not isinstance(faults, dict):
+        return False
+    for key, expected in EXPECTED_V58_3_CONTRACT.items():
+        actual = contract.get(key)
+        if isinstance(expected, dict):
+            if not isinstance(actual, dict) or any(
+                not _contract_value_matches(actual.get(name), value) for name, value in expected.items()
+            ):
+                return False
+        elif not _contract_value_matches(actual, expected):
+            return False
+    return set(faults) == EXPECTED_V58_3_FAULTS and all(value is True for value in faults.values())
+
+
+def _contract_value_matches(actual: Any, expected: Any) -> bool:
+    if isinstance(expected, float):
+        return isinstance(actual, (float, int)) and math.isclose(float(actual), expected, rel_tol=0.0, abs_tol=1e-12)
+    return actual == expected
+
+
 def run_preflight(
     config_path: str | Path,
     reference_report_path: str | Path,
@@ -48,11 +85,20 @@ def run_preflight(
     try:
         reference = json.loads(Path(reference_report_path).read_text(encoding="utf-8"))
     except Exception as exc:
-        return _invalid(f"cannot read v58.2 relay reference report: {exc}")
-    if reference.get("status") != "physical-forward-model-valid" or reference.get("validation_revision") != "v58.2-layered-b0-relay-validation":
-        return _invalid("v58.2 relay reference report is not independently physical-forward-model-valid")
+        return _invalid(f"cannot read v58.3 relay reference report: {exc}")
+    required_sections = {
+        "formal_full_fov_validation",
+        "independent_analytic_validation",
+        "measured_pupil_psf_validation",
+        "propagation_component_diagnostic",
+        "sampling_and_independence_audit",
+    }
+    if reference.get("status") != "physical-forward-model-valid" or reference.get("validation_revision") != "v58.3-full-fov-b0-relay-acceptance" or not required_sections.issubset(reference):
+        return _invalid("v58.3 relay reference report is not independently physical-forward-model-valid")
     if reference.get("accepted_summary_written") is not False or reference.get("diagnostic_only") is not True:
-        return _invalid("v58.2 relay reference report has invalid acceptance metadata")
+        return _invalid("v58.3 relay reference report has invalid acceptance metadata")
+    if not _v58_3_contract_valid(reference):
+        return _invalid("v58.3 relay reference report has missing, tampered, or failed physical contract evidence")
     if device_name != "cuda":
         return _invalid("v56 preflight requires --device cuda")
     if not torch.cuda.is_available():

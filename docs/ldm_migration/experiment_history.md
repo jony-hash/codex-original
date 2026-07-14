@@ -432,7 +432,7 @@ v48 使用同一个 v47 Probe A checkpoint、相同 `small_sharp_stroke_digit_co
 
 - 前端机械折转距离保持 SLM->BS->M3 `150.000 mm`、M3->L1 `73.214 mm`、L1->L2 `312.500 mm`、L2->encoder `89.286 mm`，总计 `625 mm`；ABCD 为 `A=-0.4, B=0`。
 - v55 CUDA structural preflight 通过，确认 sampling/FOV/ABCD/provenance/无 crop 路径可完整 forward：`outputs/reports/v55_coherent_relay_cuda_preflight.json`。
-- v55.1 原报告曾标记 reference validation 通过，但其参考实现与生产 B=0 采样同构，现降级为实现自洽证据。v55.2 的自适应 scaled-Fresnel/direct-RS 参考仍因中间面离散采样不足返回 `reference-harness-invalid`。v58.2 起，正式两镜 4f 采用真实 `A=-0.4, B=0, C=0`：生产采样改为周期带限 DFT/NUDFT；实际尺寸低分辨率 direct-RS 排除出 acceptance，改以解析 B=0、pupil 与相似缩放传播分层重验。pupil/NA 仍是设计下限，不是已实测硬件参数。
+- v55.1 原报告曾标记 reference validation 通过，但其参考实现与生产 B=0 采样同构，现降级为实现自洽证据。v55.2 的自适应 scaled-Fresnel/direct-RS 参考仍因中间面离散采样不足返回 `reference-harness-invalid`。v58.2 的 CUDA 数值自洽运行保留为历史证据：它使用 `128→64`、未实测 Airy PSF，不能作为正式验收。v58.3 才以真实 `A=-0.4, B=0, C=0`、完整 `200→100` sampling、闭式 B=0 场、实测 pupil PSF 和故障注入审计签发 gate；实际尺寸低分辨率 direct-RS 继续排除出 acceptance。pupil/NA 仍是设计下限，不是已实测硬件参数。
 
 ### v56-v57：现行 relay 合同的一次从零训练与首塌缩定位
 

@@ -28,14 +28,14 @@ laser -> M1 -> BS -> amplitude SLM -> BS -> M3
 - 后端有限共轭成像：`M=-2.5`、`u=100 mm`、`f=71.4285714 mm`、`v=250 mm`、最低 pupil `26.60 mm`。
 - 严格光场 artifact 必须从同一传播复场的 `real/imag` 现场计算 `abs(E)`/`angle(E)`；camera intensity relay 不得伪造 phase。
 
-v55 structural preflight 通过；原 v55.1 reference 仅证明生产算子与同构 Collins 实现自洽，已降级为非独立证据。v55.2 的低分辨率实际尺寸 direct-RS 参考也因采样不足而无效。当前门是 v58.2：真实两镜 4f `A=-0.4, B=0, C=0`，生产算子采用周期带限 DFT/NUDFT，验收分离为解析 B=0、pupil 和相似缩放逐段传播。
+v55 structural preflight 通过；原 v55.1 reference 仅证明生产算子与同构 Collins 实现自洽，已降级为非独立证据。v55.2 的低分辨率实际尺寸 direct-RS 参考也因采样不足而无效。v58.2 CUDA run 证明 DFT/NUDFT 可执行，但其 `128→64` sampling、硬编码 Airy error 与单段 component reference 不能签发正式 gate。当前门是 v58.3：完整 `200→100` FOV、闭式 B=0 场、实测 pupil PSF 与故障注入独立性审计。
 
 - `outputs/reports/v55_coherent_relay_cuda_preflight.json`
 - `outputs/reports/v55_1_coherent_relay_reference_cuda.json`（历史自洽检查）
 
 这些是理想数字孪生与设计 pupil 下限的结构/历史自洽检查，不是独立物理参考或硬件实测。
 
-v49-v54 的 mask 归因、严格复场修复和旧 central-aperture 失败定位均已降为历史证据；完整细节见 [Experiment History](experiment_history.md)。v56 在旧实现下有效训练但人眼失败；v58.2 独立重验是恢复训练资格的唯一下一门。v57 只读诊断未定位到单一 plane，且曾修复 complex tensor 丢失虚部的问题，最终报告已使用 `complex128` 重跑。
+v49-v54 的 mask 归因、严格复场修复和旧 central-aperture 失败定位均已降为历史证据；完整细节见 [Experiment History](experiment_history.md)。v56 在旧实现下有效训练但人眼失败；v58.3 独立重验是恢复训练资格的唯一下一门。v57 只读诊断未定位到单一 plane，且曾修复 complex tensor 丢失虚部的问题，最终报告已使用 `complex128` 重跑。
 
 ## v56-v59 事实与证据
 
