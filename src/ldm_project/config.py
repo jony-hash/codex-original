@@ -45,11 +45,26 @@ class MacroOpticsConfig:
     dist_bs_to_slm: float = 0.025
     dist_slm_to_bs: float = 0.025
     dist_bs_to_m3: float = 0.125
+    # Formal v55 relay segments.  dist_m3_to_lg is retained only for legacy
+    # free-space diagnostics and must not be used by the formal contract.
+    dist_m3_to_front_lens1: float = 0.07321428571428572
+    dist_front_lens1_to_lens2: float = 0.3125
+    dist_front_lens2_to_encoder: float = 0.0892857142857143
     dist_m3_to_lg: float = 0.475
     dist_lg_to_relay_lens: float = 0.100
     dist_relay_lens_to_cmos: float = 0.250
     dist_lg_to_cmos: float = 0.350
     f_relay: float = 0.0714285714
+    front_lens1_focal_length: float = 0.22321428571428573
+    front_lens2_focal_length: float = 0.0892857142857143
+    front_lens1_clear_aperture: float = 0.02375
+    front_lens2_clear_aperture: float = 0.02375
+    back_relay_clear_aperture: float = 0.0266
+    propagation_grid_size: int = 2048
+
+    def __post_init__(self) -> None:
+        if self.propagation_grid_size <= 0:
+            raise ValueError("macro_optics.propagation_grid_size must be positive")
 
 
 @dataclass
@@ -61,9 +76,10 @@ class PhysicsConfig:
     front_path_model: str = "free_space"
     back_path_model: str = "free_space"
     front_relay_psf_sigma_px: float = 0.0
+    physical_forward_contract: bool = False
 
     def __post_init__(self) -> None:
-        front_allowed = {"free_space", "relay_identity", "relay_coherent_psf"}
+        front_allowed = {"free_space", "coherent_imaging_4f", "relay_identity", "relay_coherent_psf", "relay_intensity_psf"}
         back_allowed = {"free_space", "relay_identity", "relay_psf"}
         if self.front_path_model not in front_allowed:
             raise ValueError(
@@ -197,7 +213,10 @@ class OneShotConfig:
     optical_core_arch: str = "dense_linear"
     slm_background_floor: float = 0.05
     slm_residual_phase_scale_rad: float = 0.0
+    diagnostic_slm_override_mode: str = "none"
+    diagnostic_slm_override_amplitude: float = 0.0
     ols_kind: str = "identity"
+    physical_forward_contract: bool = False
     metasurface_grid_size: int = 40
     layer_spacing: float = 0.003
     d2nn: D2NNConfig | None = None
@@ -242,13 +261,50 @@ class OneShotConfig:
     clean_background_speckle_weight: float = 0.0
     clean_background_hotspot_weight: float = 0.0
     clean_background_highfreq_weight: float = 0.0
+    encoder_input_topology_weight: float = 0.0
+    encoder_input_topology_dice_weight: float = 1.0
+    encoder_input_topology_mse_weight: float = 1.0
     student_label_margin_weight: float = 0.0
     student_label_margin_target: float = 0.03
     student_label_margin_labels: tuple[int, ...] = ()
     student_label_margin_prototype_source: str = "mnist"
     student_label_margin_focus_label: int | None = None
     student_label_margin_focus_weight: float = 1.0
+    student_prototype_ce_weight: float = 0.0
+    student_prototype_ce_labels: tuple[int, ...] = ()
+    student_prototype_ce_temperature: float = 0.07
+    student_negative_label_margin_weight: float = 0.0
+    student_negative_label_margin_config: tuple[tuple[int, int, float], ...] = ()
+    student_roi_prototype_ce_weight: float = 0.0
+    student_roi_prototype_ce_labels: tuple[int, ...] = ()
+    student_roi_prototype_ce_temperature: float = 0.07
+    student_roi_negative_label_margin_weight: float = 0.0
+    student_roi_negative_label_margin_config: tuple[tuple[int, int, float], ...] = ()
+    student_roi_foreground_threshold: float = 0.20
+    aux_semantic_plane_key: str = ""
+    aux_semantic_weight: float = 0.0
+    aux_semantic_prototype_ce_weight: float = 0.0
+    aux_semantic_negative_label_margin_weight: float = 0.0
+    aux_topology_plane_key: str = ""
+    aux_topology_weight: float = 0.0
+    aux_topology_dice_weight: float = 1.0
+    aux_topology_mse_weight: float = 1.0
+    aux_topology_target_transform: str = "none"
+    decoder_only_training: bool = False
+    decoder_trainability_audit: bool = False
+    decoder_diagnostic_mode: str = "normal"
+    decoder_diagnostic_modulation_override: str = "none"
+    decoder_diagnostic_mask_component: str = "trained"
+    decoder_diagnostic_phase_layer_mask: tuple[bool, ...] = ()
+    target_code_diagnostic_mode: str = "none"
+    target_code_spatial_scale: float | None = None
+    target_code_bridge_source: str = "none"
+    target_code_bridge_arch: str = "shallow"
+    target_code_bridge_hidden_channels: int = 8
+    target_code_bridge_trainability_audit: bool = False
+    ols_transfer_calibration: str = "none"
     code_diversity_weight: float = 0.0
+    sample_code_diversity_weight: float = 0.0
     teacher_pairwise_diversity_weight: float = 0.0
     cross_class_pairwise_weight: float = 0.0
     diversity_min_teacher_mse: float = 1.0e-4
@@ -359,12 +415,20 @@ def load_physics_config(path: str | Path | None = None) -> PhysicsConfig:
     )
 
 
-def load_training_config(path: str | Path | None = None) -> TrainingConfig:
-    if path is None:
-        return TrainingConfig()
+@dataclass(frozen=True)
+class _TrainingConfigSections:
+    training: dict[str, Any]
+    data: dict[str, Any]
+    physics: dict[str, Any] | None
+    first_stage: dict[str, Any]
+    diffusion: dict[str, Any]
+    one_shot: dict[str, Any]
+    d2nn: dict[str, Any] | None
+    distillation: dict[str, Any]
+    electronic_domain: dict[str, Any]
 
-    data = _load_yaml_file(path)
-    training_data = data.get("training", {})
+
+def _validate_legacy_training_fields(training_data: dict[str, Any]) -> None:
     if "smoke_steps" in training_data:
         raise ValueError(
             "training.smoke_steps is no longer supported; use training.first_stage_epochs "
@@ -375,128 +439,173 @@ def load_training_config(path: str | Path | None = None) -> TrainingConfig:
             "training.visual_save_interval is no longer supported; "
             "use training.visual_save_epoch_interval instead."
         )
-    data_cfg = data.get("data", {})
-    physics_data = data.get("physics")
-    first_stage_data = data.get("first_stage", {}).copy()
-    diffusion_data = data.get("diffusion", {})
-    one_shot_data = data.get("one_shot", {}).copy()
-    d2nn_data = one_shot_data.pop("d2nn", None)
-    one_shot_data.pop("diffractive_modulation", None)
-    distillation_data = data.get("distillation", {}).copy()
-    electronic_domain_data = first_stage_data.pop("electronic_domain", {})
 
-    ols_data = first_stage_data.pop("ols", {})
+
+def _normalize_first_stage_section(first_stage_data: dict[str, Any]) -> dict[str, Any]:
+    normalized = first_stage_data.copy()
+    ols_data = normalized.pop("ols", {})
     if "kind" in ols_data:
-        first_stage_data["ols_kind"] = ols_data["kind"]
-    if "encoder_channels" in first_stage_data:
-        first_stage_data["encoder_channels"] = tuple(first_stage_data["encoder_channels"])
-    if "hard_class_weight_labels" in first_stage_data:
-        first_stage_data["hard_class_weight_labels"] = tuple(first_stage_data["hard_class_weight_labels"])
-    if "camera_label_margin_labels" in first_stage_data:
-        first_stage_data["camera_label_margin_labels"] = tuple(first_stage_data["camera_label_margin_labels"])
+        normalized["ols_kind"] = ols_data["kind"]
+    if "encoder_channels" in normalized:
+        normalized["encoder_channels"] = tuple(normalized["encoder_channels"])
+    if "hard_class_weight_labels" in normalized:
+        normalized["hard_class_weight_labels"] = tuple(normalized["hard_class_weight_labels"])
+    if "camera_label_margin_labels" in normalized:
+        normalized["camera_label_margin_labels"] = tuple(normalized["camera_label_margin_labels"])
+    return normalized
+
+
+def _normalize_diffusion_section(diffusion_data: dict[str, Any]) -> dict[str, Any]:
     if "hidden_channels" in diffusion_data and "base_channels" not in diffusion_data:
         diffusion_data["base_channels"] = diffusion_data.pop("hidden_channels")
-    if "channel_multipliers" in diffusion_data:
-        diffusion_data["channel_multipliers"] = tuple(diffusion_data["channel_multipliers"])
-    if "attention_levels" in diffusion_data:
-        diffusion_data["attention_levels"] = tuple(diffusion_data["attention_levels"])
-    if "sample_class_labels" in diffusion_data:
-        diffusion_data["sample_class_labels"] = tuple(diffusion_data["sample_class_labels"])
-    if "class_weight_labels" in diffusion_data:
-        diffusion_data["class_weight_labels"] = tuple(diffusion_data["class_weight_labels"])
-    if "sample_class_labels" in one_shot_data:
-        one_shot_data["sample_class_labels"] = tuple(one_shot_data["sample_class_labels"])
-    if "class_recon_weight_labels" in one_shot_data:
-        one_shot_data["class_recon_weight_labels"] = tuple(one_shot_data["class_recon_weight_labels"])
-    if "student_label_margin_labels" in one_shot_data:
-        one_shot_data["student_label_margin_labels"] = tuple(one_shot_data["student_label_margin_labels"])
-    if "student_pair_contrast_config" in one_shot_data:
-        one_shot_data["student_pair_contrast_config"] = tuple(
-            tuple(item) for item in one_shot_data["student_pair_contrast_config"]
+    for name in ("channel_multipliers", "attention_levels", "sample_class_labels", "class_weight_labels"):
+        if name in diffusion_data:
+            diffusion_data[name] = tuple(diffusion_data[name])
+    return diffusion_data
+
+
+def _normalize_one_shot_section(one_shot_data: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    normalized = one_shot_data.copy()
+    d2nn_data = normalized.pop("d2nn", None)
+    normalized.pop("diffractive_modulation", None)
+    for name in (
+        "sample_class_labels",
+        "class_recon_weight_labels",
+        "student_label_margin_labels",
+        "student_prototype_ce_labels",
+        "student_roi_prototype_ce_labels",
+    ):
+        if name in normalized:
+            normalized[name] = tuple(normalized[name])
+    if "decoder_diagnostic_phase_layer_mask" in normalized:
+        normalized["decoder_diagnostic_phase_layer_mask"] = tuple(
+            normalized["decoder_diagnostic_phase_layer_mask"]
         )
+    for name in (
+        "student_negative_label_margin_config",
+        "student_roi_negative_label_margin_config",
+        "student_pair_contrast_config",
+    ):
+        if name in normalized:
+            normalized[name] = tuple(tuple(item) for item in normalized[name])
+    return normalized, d2nn_data
+
+
+def _normalize_training_config_sections(data: dict[str, Any]) -> _TrainingConfigSections:
+    training_data = data.get("training", {})
+    _validate_legacy_training_fields(training_data)
+    data_cfg = data.get("data", {})
+    physics_data = data.get("physics")
+    first_stage_data = _normalize_first_stage_section(data.get("first_stage", {}))
+    diffusion_data = _normalize_diffusion_section(data.get("diffusion", {}))
+    one_shot_data, d2nn_data = _normalize_one_shot_section(data.get("one_shot", {}))
+    distillation_data = data.get("distillation", {}).copy()
+    electronic_domain_data = first_stage_data.pop("electronic_domain", {})
     if "class_labels" in distillation_data:
         distillation_data["class_labels"] = tuple(distillation_data["class_labels"])
-    training_seed = training_data.get("seed", TrainingConfig.seed)
+    return _TrainingConfigSections(
+        training=training_data,
+        data=data_cfg,
+        physics=physics_data,
+        first_stage=first_stage_data,
+        diffusion=diffusion_data,
+        one_shot=one_shot_data,
+        d2nn=d2nn_data,
+        distillation=distillation_data,
+        electronic_domain=electronic_domain_data,
+    )
+
+
+def _build_training_config(sections: _TrainingConfigSections) -> TrainingConfig:
+    training_seed = sections.training.get("seed", TrainingConfig.seed)
     if training_seed is not None:
         training_seed = int(training_seed)
         if training_seed < 0:
             raise ValueError(f"training.seed must be non-negative, got {training_seed}")
-    data_config = DataConfig(**data_cfg)
+    data_config = DataConfig(**sections.data)
     if data_config.validation_fraction < 0.0 or data_config.validation_fraction >= 1.0:
         raise ValueError(
             "data.validation_fraction must be in [0.0, 1.0), "
             f"got {data_config.validation_fraction}"
         )
 
-    d2nn_config = D2NNConfig(**d2nn_data) if d2nn_data else None
+    d2nn_config = D2NNConfig(**sections.d2nn) if sections.d2nn else None
     physics_config = None
-    if physics_data is not None:
+    if sections.physics is not None:
         physics_config = PhysicsConfig(
-            optics=OpticsConfig(**physics_data.get("optics", {})),
-            geometry=GeometryConfig(**physics_data.get("geometry", {})),
-            readout=ReadoutConfig(**physics_data.get("readout", {})),
-            macro_optics=MacroOpticsConfig(**physics_data.get("macro_optics", {})),
-            front_path_model=physics_data.get("front_path_model", "free_space"),
-            back_path_model=physics_data.get("back_path_model", "free_space"),
-            front_relay_psf_sigma_px=float(physics_data.get("front_relay_psf_sigma_px", 0.0)),
+            optics=OpticsConfig(**sections.physics.get("optics", {})),
+            geometry=GeometryConfig(**sections.physics.get("geometry", {})),
+            readout=ReadoutConfig(**sections.physics.get("readout", {})),
+            macro_optics=MacroOpticsConfig(**sections.physics.get("macro_optics", {})),
+            front_path_model=sections.physics.get("front_path_model", "free_space"),
+            back_path_model=sections.physics.get("back_path_model", "free_space"),
+            front_relay_psf_sigma_px=float(sections.physics.get("front_relay_psf_sigma_px", 0.0)),
+            physical_forward_contract=bool(sections.physics.get("physical_forward_contract", False)),
         )
 
-    config = TrainingConfig(
-        mode=training_data.get("mode", TrainingConfig.mode),
-        batch_size=training_data.get("batch_size", TrainingConfig.batch_size),
-        learning_rate=training_data.get("learning_rate", TrainingConfig.learning_rate),
+    return TrainingConfig(
+        mode=sections.training.get("mode", TrainingConfig.mode),
+        batch_size=sections.training.get("batch_size", TrainingConfig.batch_size),
+        learning_rate=sections.training.get("learning_rate", TrainingConfig.learning_rate),
         seed=training_seed,
-        step_log_interval=training_data.get("step_log_interval", TrainingConfig.step_log_interval),
-        visual_save_epoch_interval=training_data.get(
+        step_log_interval=sections.training.get("step_log_interval", TrainingConfig.step_log_interval),
+        visual_save_epoch_interval=sections.training.get(
             "visual_save_epoch_interval",
             TrainingConfig.visual_save_epoch_interval,
         ),
-        validation_epoch_interval=training_data.get(
+        validation_epoch_interval=sections.training.get(
             "validation_epoch_interval",
             TrainingConfig.validation_epoch_interval,
         ),
-        one_shot_distill_epoch_checkpoint_interval=training_data.get(
+        one_shot_distill_epoch_checkpoint_interval=sections.training.get(
             "one_shot_distill_epoch_checkpoint_interval",
             TrainingConfig.one_shot_distill_epoch_checkpoint_interval,
         ),
-        first_stage_epochs=training_data.get("first_stage_epochs", TrainingConfig.first_stage_epochs),
-        diffusion_epochs=training_data.get("diffusion_epochs", TrainingConfig.diffusion_epochs),
-        one_shot_epochs=training_data.get("one_shot_epochs", TrainingConfig.one_shot_epochs),
+        first_stage_epochs=sections.training.get("first_stage_epochs", TrainingConfig.first_stage_epochs),
+        diffusion_epochs=sections.training.get("diffusion_epochs", TrainingConfig.diffusion_epochs),
+        one_shot_epochs=sections.training.get("one_shot_epochs", TrainingConfig.one_shot_epochs),
         data=data_config,
         first_stage=FirstStageConfig(
-            electronic_domain=ElectronicDomainConfig(**electronic_domain_data),
-            **first_stage_data,
+            electronic_domain=ElectronicDomainConfig(**sections.electronic_domain),
+            **sections.first_stage,
         ),
-        diffusion=DiffusionConfig(**diffusion_data),
-        one_shot=OneShotConfig(d2nn=d2nn_config, **one_shot_data),
-        distillation=DistillationConfig(**distillation_data),
+        diffusion=DiffusionConfig(**sections.diffusion),
+        one_shot=OneShotConfig(d2nn=d2nn_config, **sections.one_shot),
+        distillation=DistillationConfig(**sections.distillation),
         physics=physics_config,
     )
-    if config.one_shot.d2nn is not None:
-        if not math.isfinite(float(config.one_shot.d2nn.amplitude_logit_init)):
-            raise ValueError(
-                "one_shot.d2nn.amplitude_logit_init must be finite, "
-                f"got {config.one_shot.d2nn.amplitude_logit_init}"
-            )
-        if config.one_shot.d2nn.modulation not in {"phase_only", "phase_amplitude"}:
-            raise ValueError(
-                "Unsupported one_shot.d2nn.modulation: "
-                f"{config.one_shot.d2nn.modulation}; expected phase_only or phase_amplitude."
-            )
-        if config.one_shot.optical_core_arch == "diffractive_phase_only" and (
-            config.one_shot.d2nn.modulation != "phase_only"
-        ):
-            raise ValueError(
-                "one_shot.optical_core_arch=diffractive_phase_only requires "
-                "d2nn.modulation=phase_only."
-            )
-        if config.one_shot.optical_core_arch == "phase_amplitude_d2nn" and (
-            config.one_shot.d2nn.modulation != "phase_amplitude"
-        ):
-            raise ValueError(
-                "one_shot.optical_core_arch=phase_amplitude_d2nn requires "
-                "d2nn.modulation=phase_amplitude."
-            )
+
+
+def _validate_d2nn_training_config(config: TrainingConfig) -> None:
+    if config.one_shot.d2nn is None:
+        return
+    if not math.isfinite(float(config.one_shot.d2nn.amplitude_logit_init)):
+        raise ValueError(
+            "one_shot.d2nn.amplitude_logit_init must be finite, "
+            f"got {config.one_shot.d2nn.amplitude_logit_init}"
+        )
+    if config.one_shot.d2nn.modulation not in {"phase_only", "phase_amplitude"}:
+        raise ValueError(
+            "Unsupported one_shot.d2nn.modulation: "
+            f"{config.one_shot.d2nn.modulation}; expected phase_only or phase_amplitude."
+        )
+    if _expected_d2nn_modulation(config.one_shot.optical_core_arch) == "phase_only" and (
+        config.one_shot.d2nn.modulation != "phase_only"
+    ):
+        raise ValueError(
+            "one_shot.optical_core_arch=diffractive_phase_only requires "
+            "d2nn.modulation=phase_only."
+        )
+    if _expected_d2nn_modulation(config.one_shot.optical_core_arch) == "phase_amplitude" and (
+        config.one_shot.d2nn.modulation != "phase_amplitude"
+    ):
+        raise ValueError(
+            "one_shot.optical_core_arch=phase_amplitude_d2nn requires "
+            "d2nn.modulation=phase_amplitude."
+        )
+
+
+def _validate_first_stage_training_config(config: TrainingConfig) -> None:
     if config.first_stage.hard_class_weight <= 0.0:
         raise ValueError(
             "first_stage.hard_class_weight must be positive, "
@@ -541,6 +650,9 @@ def load_training_config(path: str | Path | None = None) -> TrainingConfig:
             f"{sorted(allowed_first_stage_selection_metrics)}, "
             f"got {config.first_stage.checkpoint_selection_metric!r}"
         )
+
+
+def _validate_one_shot_selection_and_weights(config: TrainingConfig) -> None:
     allowed_one_shot_selection_metrics = {
         "loss",
         "quality",
@@ -576,15 +688,29 @@ def load_training_config(path: str | Path | None = None) -> TrainingConfig:
         "clean_background_speckle_weight",
         "clean_background_hotspot_weight",
         "clean_background_highfreq_weight",
+        "encoder_input_topology_weight",
+        "encoder_input_topology_dice_weight",
+        "encoder_input_topology_mse_weight",
         "camera_background_speckle_weight",
         "camera_background_hotspot_weight",
         "camera_background_highfreq_weight",
         "camera_readable_contrast_weight",
         "student_label_margin_weight",
+        "student_prototype_ce_weight",
+        "student_negative_label_margin_weight",
+        "student_roi_prototype_ce_weight",
+        "student_roi_negative_label_margin_weight",
+        "aux_semantic_weight",
+        "aux_semantic_prototype_ce_weight",
+        "aux_semantic_negative_label_margin_weight",
+        "aux_topology_weight",
+        "aux_topology_dice_weight",
+        "aux_topology_mse_weight",
         "aux_detail_edge_weight",
         "aux_detail_shape_weight",
         "residual_l1_weight",
         "residual_background_weight",
+        "sample_code_diversity_weight",
     ):
         value = getattr(config.one_shot, name)
         if float(value) < 0.0:
@@ -593,6 +719,7 @@ def load_training_config(path: str | Path | None = None) -> TrainingConfig:
         "code_residual_scale",
         "generator_base_lr_scale",
         "generator_residual_lr_scale",
+        "diagnostic_slm_override_amplitude",
     ):
         value = getattr(config.one_shot, name)
         if float(value) < 0.0:
@@ -605,86 +732,429 @@ def load_training_config(path: str | Path | None = None) -> TrainingConfig:
             "one_shot.amplitude_learning_rate must be non-negative when set, "
             f"got {config.one_shot.amplitude_learning_rate}"
         )
-    allowed_generator_arches = {"label_template", "mlp", "template_residual_mlp"}
-    if config.one_shot.generator_e_arch not in allowed_generator_arches:
+
+
+_ONE_SHOT_GENERATOR_ARCHES = {
+    "label_template",
+    "label_template_code_residual",
+    "mlp",
+    "template_residual_mlp",
+}
+_ONE_SHOT_COMMAND_TRANSFORMS = {"direct_amplitude", "intensity_to_amplitude"}
+_ONE_SHOT_TEMPLATE_INITIALIZERS = {"none", "mnist_prototype"}
+_ONE_SHOT_SLM_OVERRIDE_MODES = {"none", "lowfreq_additive"}
+
+
+def _validate_one_shot_generator_values(one_shot: OneShotConfig) -> None:
+    if one_shot.generator_e_arch not in _ONE_SHOT_GENERATOR_ARCHES:
         raise ValueError(
             "one_shot.generator_e_arch must be one of "
-            f"{sorted(allowed_generator_arches)}, got {config.one_shot.generator_e_arch!r}"
+            f"{sorted(_ONE_SHOT_GENERATOR_ARCHES)}, got {one_shot.generator_e_arch!r}"
         )
-    allowed_command_transforms = {"direct_amplitude", "intensity_to_amplitude"}
-    if config.one_shot.generator_command_transform not in allowed_command_transforms:
+    if one_shot.generator_command_transform not in _ONE_SHOT_COMMAND_TRANSFORMS:
         raise ValueError(
             "one_shot.generator_command_transform must be one of "
-            f"{sorted(allowed_command_transforms)}, "
-            f"got {config.one_shot.generator_command_transform!r}"
+            f"{sorted(_ONE_SHOT_COMMAND_TRANSFORMS)}, "
+            f"got {one_shot.generator_command_transform!r}"
         )
-    allowed_template_initializers = {"none", "mnist_prototype"}
-    if config.one_shot.generator_template_init not in allowed_template_initializers:
+    if one_shot.generator_template_init not in _ONE_SHOT_TEMPLATE_INITIALIZERS:
         raise ValueError(
             "one_shot.generator_template_init must be one of "
-            f"{sorted(allowed_template_initializers)}, "
-            f"got {config.one_shot.generator_template_init!r}"
+            f"{sorted(_ONE_SHOT_TEMPLATE_INITIALIZERS)}, "
+            f"got {one_shot.generator_template_init!r}"
         )
-    if config.one_shot.generator_e_arch == "label_template":
-        if config.one_shot.generator_template_init != "mnist_prototype":
+    if one_shot.diagnostic_slm_override_mode not in _ONE_SHOT_SLM_OVERRIDE_MODES:
+        raise ValueError(
+            "one_shot.diagnostic_slm_override_mode must be one of "
+            f"{sorted(_ONE_SHOT_SLM_OVERRIDE_MODES)}, "
+            f"got {one_shot.diagnostic_slm_override_mode!r}"
+        )
+
+
+def _validate_one_shot_generator_arch_requirements(one_shot: OneShotConfig) -> None:
+    if one_shot.generator_e_arch == "label_template":
+        if one_shot.generator_template_init != "mnist_prototype":
             raise ValueError(
                 "one_shot.generator_e_arch='label_template' requires "
                 "one_shot.generator_template_init='mnist_prototype'."
             )
-        if config.one_shot.generator_command_transform != "intensity_to_amplitude":
+        if one_shot.generator_command_transform != "intensity_to_amplitude":
             raise ValueError(
                 "one_shot.generator_e_arch='label_template' requires "
                 "one_shot.generator_command_transform='intensity_to_amplitude'."
             )
-        if config.one_shot.distill_target_source != "mnist_prototype":
+        if one_shot.distill_target_source != "mnist_prototype":
             raise ValueError(
                 "one_shot.generator_e_arch='label_template' requires "
                 "one_shot.distill_target_source='mnist_prototype'."
             )
-    elif config.one_shot.generator_template_init != "none":
+    elif one_shot.generator_e_arch == "label_template_code_residual":
+        if one_shot.generator_template_init != "mnist_prototype":
+            raise ValueError(
+                "one_shot.generator_e_arch='label_template_code_residual' requires "
+                "one_shot.generator_template_init='mnist_prototype'."
+            )
+        if one_shot.generator_command_transform != "intensity_to_amplitude":
+            raise ValueError(
+                "one_shot.generator_e_arch='label_template_code_residual' requires "
+                "one_shot.generator_command_transform='intensity_to_amplitude'."
+            )
+    elif one_shot.generator_template_init != "none":
         raise ValueError(
             "one_shot.generator_template_init is only supported for "
-            "one_shot.generator_e_arch='label_template'."
+            "one_shot.generator_e_arch='label_template' or "
+            "one_shot.generator_e_arch='label_template_code_residual'."
         )
+
+
+def _validate_one_shot_generator_requirements(one_shot: OneShotConfig) -> None:
+    _validate_one_shot_generator_arch_requirements(one_shot)
     if (
-        config.one_shot.generator_command_transform == "intensity_to_amplitude"
-        and float(config.one_shot.slm_background_floor) >= 1.0
+        one_shot.generator_command_transform == "intensity_to_amplitude"
+        and float(one_shot.slm_background_floor) >= 1.0
     ):
         raise ValueError(
             "one_shot.generator_command_transform='intensity_to_amplitude' requires "
             "one_shot.slm_background_floor < 1.0."
         )
-    if float(config.one_shot.student_label_margin_target) < 0.0:
+    if (
+        one_shot.diagnostic_slm_override_mode == "none"
+        and float(one_shot.diagnostic_slm_override_amplitude) != 0.0
+    ):
+        raise ValueError(
+            "one_shot.diagnostic_slm_override_amplitude must be 0.0 when "
+            "one_shot.diagnostic_slm_override_mode='none'."
+        )
+
+
+def _validate_one_shot_generator_config(config: TrainingConfig) -> None:
+    _validate_one_shot_generator_values(config.one_shot)
+    _validate_one_shot_generator_requirements(config.one_shot)
+
+
+def _validate_one_shot_student_objective_values(one_shot: OneShotConfig) -> None:
+    if float(one_shot.student_label_margin_target) < 0.0:
         raise ValueError(
             "one_shot.student_label_margin_target must be non-negative, "
-            f"got {config.one_shot.student_label_margin_target}"
+            f"got {one_shot.student_label_margin_target}"
         )
-    if float(config.one_shot.student_label_margin_focus_weight) <= 0.0:
+    if float(one_shot.student_label_margin_focus_weight) <= 0.0:
         raise ValueError(
             "one_shot.student_label_margin_focus_weight must be positive, "
-            f"got {config.one_shot.student_label_margin_focus_weight}"
+            f"got {one_shot.student_label_margin_focus_weight}"
         )
-    if float(config.one_shot.camera_readable_contrast_target) < 0.0:
+    if float(one_shot.student_prototype_ce_temperature) <= 0.0:
+        raise ValueError(
+            "one_shot.student_prototype_ce_temperature must be positive, "
+            f"got {one_shot.student_prototype_ce_temperature}"
+        )
+    if float(one_shot.student_roi_prototype_ce_temperature) <= 0.0:
+        raise ValueError(
+            "one_shot.student_roi_prototype_ce_temperature must be positive, "
+            f"got {one_shot.student_roi_prototype_ce_temperature}"
+        )
+    if float(one_shot.student_roi_foreground_threshold) < 0.0:
+        raise ValueError(
+            "one_shot.student_roi_foreground_threshold must be non-negative, "
+            f"got {one_shot.student_roi_foreground_threshold}"
+        )
+
+
+def _validate_one_shot_aux_objective_config(one_shot: OneShotConfig) -> None:
+    allowed_aux_semantic_planes = {
+        "",
+        "decoder_output_amplitude",
+        "chip_intensity_primary",
+        "chip_amplitude",
+        "probe_plane",
+    }
+    if one_shot.aux_semantic_plane_key not in allowed_aux_semantic_planes:
+        raise ValueError(
+            "one_shot.aux_semantic_plane_key must be one of "
+            f"{sorted(allowed_aux_semantic_planes)}, "
+            f"got {one_shot.aux_semantic_plane_key!r}"
+        )
+    aux_semantic_active = (
+        float(one_shot.aux_semantic_weight) > 0.0
+        and (
+            float(one_shot.aux_semantic_prototype_ce_weight) > 0.0
+            or float(one_shot.aux_semantic_negative_label_margin_weight) > 0.0
+        )
+    )
+    if aux_semantic_active and not one_shot.aux_semantic_plane_key:
+        raise ValueError(
+            "one_shot.aux_semantic_plane_key is required when aux semantic losses are enabled."
+        )
+    allowed_aux_topology_planes = {
+        "",
+        "target_code_amplitude",
+        "decoder_input_amplitude",
+        "decoder_output_amplitude",
+        "chip_intensity_primary",
+        "physical_camera_plane",
+        "camera_plane",
+    }
+    if one_shot.aux_topology_plane_key not in allowed_aux_topology_planes:
+        raise ValueError(
+            "one_shot.aux_topology_plane_key must be one of "
+            f"{sorted(allowed_aux_topology_planes)}, "
+            f"got {one_shot.aux_topology_plane_key!r}"
+        )
+    if float(one_shot.aux_topology_weight) > 0.0 and not one_shot.aux_topology_plane_key:
+        raise ValueError(
+            "one_shot.aux_topology_plane_key is required when aux topology loss is enabled."
+        )
+    allowed_aux_topology_target_transforms = {"none", "lowpass", "thick_binary"}
+    if one_shot.aux_topology_target_transform not in allowed_aux_topology_target_transforms:
+        raise ValueError(
+            "one_shot.aux_topology_target_transform must be one of "
+            f"{sorted(allowed_aux_topology_target_transforms)}, "
+            f"got {one_shot.aux_topology_target_transform!r}"
+        )
+
+
+def _validate_one_shot_objective_config(config: TrainingConfig) -> None:
+    _validate_one_shot_student_objective_values(config.one_shot)
+    _validate_one_shot_aux_objective_config(config.one_shot)
+
+
+_ONE_SHOT_DECODER_DIAGNOSTIC_MODES = {"normal", "bypass_decoder", "propagation_only_decoder"}
+_ONE_SHOT_DECODER_MODULATION_OVERRIDES = {"none", "phase_amplitude"}
+_ONE_SHOT_DECODER_MASK_COMPONENTS = {"trained", "phase_only", "amplitude_only"}
+_ONE_SHOT_TARGET_CODE_MODES = {
+    "none",
+    "spatial_identity_code",
+    "lowfreq_digit_code",
+    "thick_lowfreq_digit_code",
+    "sharp_stroke_digit_code",
+    "small_sharp_stroke_digit_code",
+    "class_codebook_grid",
+}
+_ONE_SHOT_TARGET_CODE_BRIDGE_SOURCES = {"none", "encoded_amplitude", "ols_output_amplitude"}
+_ONE_SHOT_TARGET_CODE_BRIDGE_ARCHES = {"shallow", "deep_residual", "multiscale"}
+_ONE_SHOT_TARGET_CODE_BRIDGE_MODES = {
+    "spatial_identity_code",
+    "lowfreq_digit_code",
+    "thick_lowfreq_digit_code",
+    "sharp_stroke_digit_code",
+    "small_sharp_stroke_digit_code",
+}
+_ONE_SHOT_OLS_CALIBRATIONS = {"none", "phase_screen", "amplitude_phase_screen"}
+
+
+def _expected_d2nn_modulation(optical_core_arch: str) -> str | None:
+    if optical_core_arch == "diffractive_phase_only":
+        return "phase_only"
+    if optical_core_arch == "phase_amplitude_d2nn":
+        return "phase_amplitude"
+    return None
+
+
+def _target_code_bridge_mode_is_compatible(one_shot: OneShotConfig) -> bool:
+    return (
+        one_shot.target_code_bridge_source == "none"
+        or one_shot.target_code_diagnostic_mode in _ONE_SHOT_TARGET_CODE_BRIDGE_MODES
+    )
+
+
+def _validate_one_shot_decoder_diagnostic_config(one_shot: OneShotConfig) -> None:
+    if one_shot.decoder_diagnostic_mode not in _ONE_SHOT_DECODER_DIAGNOSTIC_MODES:
+        raise ValueError(
+            "one_shot.decoder_diagnostic_mode must be one of "
+            f"{sorted(_ONE_SHOT_DECODER_DIAGNOSTIC_MODES)}, "
+            f"got {one_shot.decoder_diagnostic_mode!r}"
+        )
+    if one_shot.decoder_diagnostic_modulation_override not in _ONE_SHOT_DECODER_MODULATION_OVERRIDES:
+        raise ValueError(
+            "one_shot.decoder_diagnostic_modulation_override must be one of "
+            f"{sorted(_ONE_SHOT_DECODER_MODULATION_OVERRIDES)}, "
+            f"got {one_shot.decoder_diagnostic_modulation_override!r}"
+        )
+    if one_shot.decoder_diagnostic_mask_component not in _ONE_SHOT_DECODER_MASK_COMPONENTS:
+        raise ValueError(
+            "one_shot.decoder_diagnostic_mask_component must be one of "
+            f"{sorted(_ONE_SHOT_DECODER_MASK_COMPONENTS)}, "
+            f"got {one_shot.decoder_diagnostic_mask_component!r}"
+        )
+    if (
+        one_shot.decoder_diagnostic_mask_component != "trained"
+        and one_shot.decoder_diagnostic_mode != "normal"
+    ):
+        raise ValueError(
+            "one_shot.decoder_diagnostic_mask_component phase_only/amplitude_only "
+            "requires decoder_diagnostic_mode=normal"
+        )
+    if (
+        one_shot.decoder_diagnostic_mask_component != "trained"
+        and one_shot.decoder_diagnostic_modulation_override != "phase_amplitude"
+    ):
+        raise ValueError(
+            "one_shot.decoder_diagnostic_mask_component phase_only/amplitude_only "
+            "requires decoder_diagnostic_modulation_override=phase_amplitude"
+        )
+    phase_layer_mask = tuple(one_shot.decoder_diagnostic_phase_layer_mask)
+    if phase_layer_mask:
+        decoder_layers = (
+            int(one_shot.d2nn.decoder_layers)
+            if one_shot.d2nn is not None
+            else int(one_shot.decoder_diffractive_layers)
+        )
+        if len(phase_layer_mask) != decoder_layers:
+            raise ValueError(
+                "one_shot.decoder_diagnostic_phase_layer_mask length must equal "
+                f"decoder layer count {decoder_layers}, got {len(phase_layer_mask)}"
+            )
+        if not all(type(enabled) is bool for enabled in phase_layer_mask):
+            raise ValueError("one_shot.decoder_diagnostic_phase_layer_mask entries must be booleans")
+        if not any(phase_layer_mask):
+            raise ValueError("one_shot.decoder_diagnostic_phase_layer_mask must enable at least one layer")
+        if one_shot.decoder_diagnostic_mode != "normal":
+            raise ValueError(
+                "one_shot.decoder_diagnostic_phase_layer_mask requires decoder_diagnostic_mode=normal"
+            )
+        if one_shot.decoder_diagnostic_mask_component != "phase_only":
+            raise ValueError(
+                "one_shot.decoder_diagnostic_phase_layer_mask requires "
+                "decoder_diagnostic_mask_component=phase_only"
+            )
+
+
+def _validate_one_shot_target_code_diagnostic_config(one_shot: OneShotConfig) -> None:
+    if one_shot.target_code_diagnostic_mode not in _ONE_SHOT_TARGET_CODE_MODES:
+        raise ValueError(
+            "one_shot.target_code_diagnostic_mode must be one of "
+            f"{sorted(_ONE_SHOT_TARGET_CODE_MODES)}, "
+            f"got {one_shot.target_code_diagnostic_mode!r}"
+        )
+    if one_shot.target_code_spatial_scale is not None:
+        target_code_spatial_scale = float(one_shot.target_code_spatial_scale)
+        if target_code_spatial_scale <= 0.0 or target_code_spatial_scale > 1.0:
+            raise ValueError(
+                "one_shot.target_code_spatial_scale must be in (0, 1] when set, "
+                f"got {one_shot.target_code_spatial_scale}"
+            )
+    if one_shot.target_code_bridge_source not in _ONE_SHOT_TARGET_CODE_BRIDGE_SOURCES:
+        raise ValueError(
+            "one_shot.target_code_bridge_source must be one of "
+            f"{sorted(_ONE_SHOT_TARGET_CODE_BRIDGE_SOURCES)}, "
+            f"got {one_shot.target_code_bridge_source!r}"
+        )
+    if one_shot.target_code_bridge_arch not in _ONE_SHOT_TARGET_CODE_BRIDGE_ARCHES:
+        raise ValueError(
+            "one_shot.target_code_bridge_arch must be one of "
+            f"{sorted(_ONE_SHOT_TARGET_CODE_BRIDGE_ARCHES)}, "
+            f"got {one_shot.target_code_bridge_arch!r}"
+        )
+    if int(one_shot.target_code_bridge_hidden_channels) <= 0:
+        raise ValueError(
+            "one_shot.target_code_bridge_hidden_channels must be positive, "
+            f"got {one_shot.target_code_bridge_hidden_channels}"
+        )
+    if not _target_code_bridge_mode_is_compatible(one_shot):
+        raise ValueError(
+            "one_shot.target_code_bridge_source requires target_code_diagnostic_mode "
+            "to be spatial_identity_code, lowfreq_digit_code, thick_lowfreq_digit_code, "
+            "sharp_stroke_digit_code, or small_sharp_stroke_digit_code."
+        )
+
+
+def _validate_one_shot_diagnostic_config(config: TrainingConfig) -> None:
+    one_shot = config.one_shot
+    _validate_one_shot_decoder_diagnostic_config(one_shot)
+    _validate_one_shot_target_code_diagnostic_config(one_shot)
+    if one_shot.ols_transfer_calibration not in _ONE_SHOT_OLS_CALIBRATIONS:
+        raise ValueError(
+            "one_shot.ols_transfer_calibration must be one of "
+            f"{sorted(_ONE_SHOT_OLS_CALIBRATIONS)}, "
+            f"got {one_shot.ols_transfer_calibration!r}"
+        )
+
+
+def validate_physical_forward_contract(config: TrainingConfig, physics: PhysicsConfig) -> None:
+    """Validate the current v55 coherent-relay physical contract."""
+    one_shot = config.one_shot
+    if not one_shot.physical_forward_contract:
+        return
+    if one_shot.ols_kind != "identity":
+        raise ValueError("physical forward contract requires identity OLS")
+    if one_shot.ols_transfer_calibration != "none":
+        raise ValueError("physical forward contract forbids OLS transfer calibration")
+    if one_shot.optical_core_arch != "diffractive_phase_only":
+        raise ValueError("physical forward contract requires diffractive_phase_only core")
+    if physics.front_path_model != "coherent_imaging_4f" or physics.back_path_model != "free_space":
+        raise ValueError(
+            "current physical forward contract requires coherent_imaging_4f front "
+            "and thin-lens free_space backend relay"
+        )
+    if not physics.physical_forward_contract:
+        raise ValueError("physical forward contract requires physics.physical_forward_contract=true")
+    d2nn = one_shot.d2nn
+    if d2nn is None:
+        raise ValueError("physical forward contract requires one_shot.d2nn")
+    if (d2nn.grid_size, d2nn.pixel_size) != (100, 2.0e-6):
+        raise ValueError("physical forward contract requires 100x100 D2NN at 2 um pitch")
+    if abs(d2nn.layer_spacing - 1.5e-3) > 1.0e-12:
+        raise ValueError("physical forward contract requires 1.50 mm layer spacing")
+    if d2nn.modulation != "phase_only":
+        raise ValueError("physical forward contract requires phase_only D2NN modulation")
+    if (d2nn.encoder_layers, d2nn.decoder_layers) != (2, 2):
+        raise ValueError("physical forward contract requires two encoder and two decoder layers")
+    if abs(physics.optics.pixel_size - 2.5e-6) > 1.0e-12 or physics.geometry.grid_size != 200:
+        raise ValueError("physical forward contract requires 200x200 SLM/CMOS at 2.5 um pitch")
+    if physics.front_path_model == "coherent_imaging_4f":
+        macro = physics.macro_optics
+        if abs(macro.dist_slm_to_bs + macro.dist_bs_to_m3 + macro.dist_m3_to_front_lens1 - macro.front_lens1_focal_length) > 1.0e-9:
+            raise ValueError("formal front relay SLM-to-L1 distance must equal f1")
+        if abs(macro.dist_front_lens1_to_lens2 - (macro.front_lens1_focal_length + macro.front_lens2_focal_length)) > 1.0e-9:
+            raise ValueError("formal front relay L1-to-L2 distance must equal f1+f2")
+        if abs(macro.dist_front_lens2_to_encoder - macro.front_lens2_focal_length) > 1.0e-9:
+            raise ValueError("formal front relay L2-to-encoder distance must equal f2")
+        if abs(
+            macro.dist_slm_to_bs
+            + macro.dist_bs_to_m3
+            + macro.dist_m3_to_front_lens1
+            + macro.dist_front_lens1_to_lens2
+            + macro.dist_front_lens2_to_encoder
+            - 0.625
+        ) > 1.0e-9:
+            raise ValueError("formal front relay mechanical distance must equal 625 mm")
+        if abs(macro.front_lens2_focal_length / macro.front_lens1_focal_length - 0.4) > 1.0e-9:
+            raise ValueError("front 4f relay requires magnification -0.4")
+        if macro.front_lens1_clear_aperture < 0.02375 or macro.front_lens2_clear_aperture < 0.02375:
+            raise ValueError("front relay clear apertures must be at least 23.75 mm")
+        if macro.back_relay_clear_aperture < 0.0266:
+            raise ValueError("back relay clear aperture must be at least 26.60 mm")
+    if one_shot.decoder_diagnostic_mode != "normal":
+        raise ValueError("physical forward contract requires normal decoder mode")
+    if one_shot.decoder_diagnostic_modulation_override != "none":
+        raise ValueError("physical forward contract forbids decoder modulation overrides")
+    if one_shot.target_code_diagnostic_mode != "none" or one_shot.target_code_bridge_source != "none":
+        raise ValueError("physical forward contract forbids target-code intervention")
+
+
+def _validate_one_shot_target_config(config: TrainingConfig) -> None:
+    one_shot = config.one_shot
+    if float(one_shot.camera_readable_contrast_target) < 0.0:
         raise ValueError(
             "one_shot.camera_readable_contrast_target must be non-negative, "
-            f"got {config.one_shot.camera_readable_contrast_target}"
+            f"got {one_shot.camera_readable_contrast_target}"
         )
-    if float(config.one_shot.camera_background_hotspot_threshold) < 0.0:
+    if float(one_shot.camera_background_hotspot_threshold) < 0.0:
         raise ValueError(
             "one_shot.camera_background_hotspot_threshold must be non-negative, "
-            f"got {config.one_shot.camera_background_hotspot_threshold}"
+            f"got {one_shot.camera_background_hotspot_threshold}"
         )
-    if int(config.one_shot.aux_detail_foreground_gate_dilation) < 0:
+    if int(one_shot.aux_detail_foreground_gate_dilation) < 0:
         raise ValueError(
             "one_shot.aux_detail_foreground_gate_dilation must be non-negative, "
-            f"got {config.one_shot.aux_detail_foreground_gate_dilation}"
+            f"got {one_shot.aux_detail_foreground_gate_dilation}"
         )
     allowed_student_prototype_sources = {"mnist", "teacher_image", "teacher_camera"}
-    if config.one_shot.student_label_margin_prototype_source not in allowed_student_prototype_sources:
+    if one_shot.student_label_margin_prototype_source not in allowed_student_prototype_sources:
         raise ValueError(
             "one_shot.student_label_margin_prototype_source must be one of "
             f"{sorted(allowed_student_prototype_sources)}, "
-            f"got {config.one_shot.student_label_margin_prototype_source!r}"
+            f"got {one_shot.student_label_margin_prototype_source!r}"
         )
     allowed_distill_target_sources = {
         "teacher_camera",
@@ -693,48 +1163,106 @@ def load_training_config(path: str | Path | None = None) -> TrainingConfig:
         "mnist_sample",
         "mnist_nearest_teacher_image",
     }
-    if config.one_shot.distill_target_source not in allowed_distill_target_sources:
+    if one_shot.distill_target_source not in allowed_distill_target_sources:
         raise ValueError(
             "one_shot.distill_target_source must be one of "
             f"{sorted(allowed_distill_target_sources)}, "
-            f"got {config.one_shot.distill_target_source!r}"
+            f"got {one_shot.distill_target_source!r}"
         )
     allowed_aux_detail_target_sources = {"none", *allowed_distill_target_sources}
-    if config.one_shot.aux_detail_target_source not in allowed_aux_detail_target_sources:
+    if one_shot.aux_detail_target_source not in allowed_aux_detail_target_sources:
         raise ValueError(
             "one_shot.aux_detail_target_source must be one of "
             f"{sorted(allowed_aux_detail_target_sources)}, "
-            f"got {config.one_shot.aux_detail_target_source!r}"
+            f"got {one_shot.aux_detail_target_source!r}"
         )
-    for label in config.one_shot.student_label_margin_labels:
-        if int(label) < 0 or int(label) >= int(config.one_shot.num_classes):
+
+
+def _validate_one_shot_class_labels(labels, *, field_name: str, num_classes: int) -> None:
+    for label in labels:
+        if int(label) < 0 or int(label) >= num_classes:
             raise ValueError(
-                "one_shot.student_label_margin_labels must be valid class labels "
-                f"in [0, {int(config.one_shot.num_classes) - 1}], got {label}"
+                f"one_shot.{field_name} must be valid class labels "
+                f"in [0, {num_classes - 1}], got {label}"
             )
-    if config.one_shot.student_label_margin_focus_label is not None:
-        focus_label = int(config.one_shot.student_label_margin_focus_label)
-        if focus_label < 0 or focus_label >= int(config.one_shot.num_classes):
-            raise ValueError(
-                "one_shot.student_label_margin_focus_label must be a valid class label "
-                f"in [0, {int(config.one_shot.num_classes) - 1}], got {focus_label}"
-            )
-    for pair in config.one_shot.student_pair_contrast_config:
+
+
+def _validate_one_shot_margin_pairs(
+    pairs,
+    *,
+    field_name: str,
+    entry_shape: str,
+    num_classes: int,
+) -> None:
+    for pair in pairs:
         if len(pair) != 3:
             raise ValueError(
-                "one_shot.student_pair_contrast_config entries must be [class_a, class_b, target_margin], "
-                f"got {pair!r}"
+                f"one_shot.{field_name} entries must be {entry_shape}, got {pair!r}"
             )
         class_a, class_b, target_margin = pair
         for label in (int(class_a), int(class_b)):
-            if label < 0 or label >= int(config.one_shot.num_classes):
+            if label < 0 or label >= num_classes:
                 raise ValueError(
-                    "one_shot.student_pair_contrast_config class labels must be valid "
-                    f"in [0, {int(config.one_shot.num_classes) - 1}], got {label}"
+                    f"one_shot.{field_name} class labels must be valid "
+                    f"in [0, {num_classes - 1}], got {label}"
                 )
         if float(target_margin) < 0.0:
             raise ValueError(
-                "one_shot.student_pair_contrast_config target margins must be non-negative, "
+                f"one_shot.{field_name} target margins must be non-negative, "
                 f"got {target_margin}"
             )
+
+
+def _validate_one_shot_label_config(config: TrainingConfig) -> None:
+    one_shot = config.one_shot
+    num_classes = int(one_shot.num_classes)
+    for field_name in (
+        "student_label_margin_labels",
+        "student_prototype_ce_labels",
+        "student_roi_prototype_ce_labels",
+    ):
+        _validate_one_shot_class_labels(
+            getattr(one_shot, field_name),
+            field_name=field_name,
+            num_classes=num_classes,
+        )
+    if one_shot.student_label_margin_focus_label is not None:
+        focus_label = int(one_shot.student_label_margin_focus_label)
+        if focus_label < 0 or focus_label >= num_classes:
+            raise ValueError(
+                "one_shot.student_label_margin_focus_label must be a valid class label "
+                f"in [0, {num_classes - 1}], got {focus_label}"
+            )
+    for field_name, entry_shape in (
+        ("student_pair_contrast_config", "[class_a, class_b, target_margin]"),
+        ("student_negative_label_margin_config", "[target_class, negative_class, target_margin]"),
+        ("student_roi_negative_label_margin_config", "[target_class, negative_class, target_margin]"),
+    ):
+        _validate_one_shot_margin_pairs(
+            getattr(one_shot, field_name),
+            field_name=field_name,
+            entry_shape=entry_shape,
+            num_classes=num_classes,
+        )
+
+
+def load_training_config(path: str | Path | None = None) -> TrainingConfig:
+    if path is None:
+        return TrainingConfig()
+
+    data = _load_yaml_file(path)
+    sections = _normalize_training_config_sections(data)
+    config = _build_training_config(sections)
+    _validate_d2nn_training_config(config)
+    _validate_first_stage_training_config(config)
+    _validate_one_shot_selection_and_weights(config)
+    _validate_one_shot_generator_config(config)
+    _validate_one_shot_objective_config(config)
+    _validate_one_shot_diagnostic_config(config)
+    _validate_one_shot_target_config(config)
+    _validate_one_shot_label_config(config)
+    if config.one_shot.physical_forward_contract:
+        if config.physics is None:
+            raise ValueError("physical forward contract requires a physics section")
+        validate_physical_forward_contract(config, config.physics)
     return config

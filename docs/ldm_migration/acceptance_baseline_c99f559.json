@@ -4,9 +4,9 @@
   "date": "2026-06-03",
   "environment": "RTX 3060 Laptop GPU (6GB), CUDA 12.1, PyTorch 2.5.1+cu121, WSL2 Linux",
   "source_runs": {
-    "eval": "outputs/runs/20260603_155033_620223_train_one_shot_distill_eval",
-    "sample": "outputs/runs/20260603_154938_655736_train_one_shot_sample",
-    "distill": "outputs/runs/20260603_153407_795512_train_one_shot_distill"
+    "eval": "outputs/20260514_unversioned/runs/20260603_155033_620223_train_one_shot_distill_eval",
+    "sample": "outputs/20260514_unversioned/runs/20260603_154938_655736_train_one_shot_sample",
+    "distill": "outputs/20260514_unversioned/runs/20260603_153407_795512_train_one_shot_distill"
   },
   "metrics": {
     "eval_mse": 0.0204,

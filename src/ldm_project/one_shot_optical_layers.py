@@ -175,18 +175,19 @@ class ElectronicGeneratorE(nn.Module):
         self.command_transform = command_transform
         self.background_floor = float(background_floor)
         self.template_init = template_init
-        if self.arch not in {"label_template", "mlp", "template_residual_mlp"}:
+        if self.arch not in {"label_template", "label_template_code_residual", "mlp", "template_residual_mlp"}:
             raise ValueError(
                 "Unsupported one_shot.generator_e_arch: "
-                f"{self.arch}; expected label_template, mlp, or template_residual_mlp."
+                f"{self.arch}; expected label_template, label_template_code_residual, "
+                "mlp, or template_residual_mlp."
             )
         if self.command_transform not in {"direct_amplitude", "intensity_to_amplitude"}:
             raise ValueError(f"Unsupported generator command transform: {self.command_transform}")
         if self.command_transform == "intensity_to_amplitude" and self.background_floor >= 1.0:
             raise ValueError("intensity_to_amplitude requires background_floor < 1.0")
-        if self.arch == "label_template":
+        if self.arch in {"label_template", "label_template_code_residual"}:
             if self.template_init != "mnist_prototype":
-                raise ValueError("label_template requires template_init='mnist_prototype'")
+                raise ValueError(f"{self.arch} requires template_init='mnist_prototype'")
             self.template_logits = nn.Parameter(
                 torch.zeros(num_classes, 1, image_size, image_size)
             )
@@ -204,6 +205,15 @@ class ElectronicGeneratorE(nn.Module):
                 nn.Linear(hidden_dim, image_size * image_size),
             )
             self.residual_net = None
+        if self.arch == "label_template_code_residual":
+            self.label_embedding = nn.Embedding(num_classes, label_embed_dim)
+            self.residual_net = nn.Sequential(
+                nn.Linear(code_dim + label_embed_dim, hidden_dim),
+                nn.SiLU(),
+                nn.Linear(hidden_dim, hidden_dim),
+                nn.SiLU(),
+                nn.Linear(hidden_dim, image_size * image_size),
+            )
         if self.arch == "template_residual_mlp":
             self.residual_net = nn.Sequential(
                 nn.Linear(code_dim + label_embed_dim, hidden_dim),
@@ -214,8 +224,11 @@ class ElectronicGeneratorE(nn.Module):
             )
 
     def initialize_label_templates(self, intensity_bank: torch.Tensor) -> None:
-        if self.arch != "label_template" or self.template_logits is None:
-            raise ValueError("Label templates can only initialize generator_e_arch='label_template'.")
+        if self.arch not in {"label_template", "label_template_code_residual"} or self.template_logits is None:
+            raise ValueError(
+                "Label templates can only initialize generator_e_arch='label_template' "
+                "or 'label_template_code_residual'."
+            )
         expected = (self.num_classes, 1, self.image_size, self.image_size)
         if tuple(intensity_bank.shape) != expected:
             raise ValueError(f"label template bank must have shape {expected}, got {tuple(intensity_bank.shape)}")
@@ -270,19 +283,34 @@ class ElectronicGeneratorE(nn.Module):
         code: torch.Tensor,
         class_labels: torch.Tensor,
     ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
-        if self.arch == "label_template":
+        if self.arch in {"label_template", "label_template_code_residual"}:
             labels = self._validate_inputs(code, class_labels)
             if self.template_logits is None:
-                raise RuntimeError("label_template generator is missing template logits")
-            desired_intensity = torch.sigmoid(self.template_logits.index_select(0, labels))
+                raise RuntimeError(f"{self.arch} generator is missing template logits")
+            template_logits = self.template_logits.index_select(0, labels)
+            base_intensity = torch.sigmoid(template_logits)
+            if self.arch == "label_template":
+                desired_intensity = base_intensity
+                residual_map = torch.zeros_like(desired_intensity)
+            else:
+                if self.residual_net is None:
+                    raise RuntimeError("label_template_code_residual generator is missing residual_net")
+                residual_logits = self.residual_net(self._features(code, class_labels))
+                residual_map = torch.tanh(residual_logits.reshape(code.shape[0], 1, self.image_size, self.image_size))
+                desired_intensity = torch.sigmoid(template_logits + self.code_residual_scale * residual_map)
             command = self._to_amplitude_command(desired_intensity)
-            zero_residual = torch.zeros_like(command)
+            base_command = self._to_amplitude_command(base_intensity)
+            background_mask = (base_intensity.detach() < 0.2).float()
+            bg_abs = (
+                (residual_map.abs() * background_mask).flatten(1).sum(dim=1)
+                / background_mask.flatten(1).sum(dim=1).clamp_min(1.0)
+            )
             return command, {
-                "generator_base_command": command,
+                "generator_base_command": base_command,
                 "generator_desired_intensity": desired_intensity,
-                "generator_residual_map": zero_residual,
-                "generator_residual_abs_mean": zero_residual.flatten(1).mean(dim=1),
-                "generator_residual_bg_abs_mean": zero_residual.flatten(1).mean(dim=1),
+                "generator_residual_map": residual_map,
+                "generator_residual_abs_mean": residual_map.abs().flatten(1).mean(dim=1),
+                "generator_residual_bg_abs_mean": bg_abs,
                 **self._diagnostic_metadata(command),
             }
         features = self._features(code, class_labels)
@@ -389,11 +417,27 @@ class PhaseOnlyDiffractiveStack(nn.Module):
                 f"{self.phase_init}; expected uniform_pi, uniform_2pi, or small."
             )
 
-    def phase_transfers(self) -> torch.Tensor:
+    def phase_transfers(
+        self,
+        mask_component: str = "trained",
+        phase_layer_mask: tuple[bool, ...] = (),
+    ) -> torch.Tensor:
+        if mask_component not in {"trained", "phase_only", "amplitude_only"}:
+            raise ValueError(f"Unsupported decoder diagnostic mask component: {mask_component!r}")
         amplitude = torch.ones_like(self.phase)
-        return torch.polar(amplitude, self.phase)
+        phase = torch.zeros_like(self.phase) if mask_component == "amplitude_only" else self.phase
+        if phase_layer_mask:
+            layer_mask = torch.tensor(phase_layer_mask, device=phase.device, dtype=phase.dtype).view(-1, 1, 1, 1)
+            phase = phase * layer_mask
+        return torch.polar(amplitude, phase)
 
-    def forward(self, field: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, dict[str, torch.Tensor]]:
+    def forward(
+        self,
+        field: torch.Tensor,
+        *,
+        mask_component: str = "trained",
+        phase_layer_mask: tuple[bool, ...] = (),
+    ) -> tuple[torch.Tensor, torch.Tensor, dict[str, torch.Tensor]]:
         outputs = []
         diagnostic_values: dict[str, list[torch.Tensor]] = {
             "input_energy": [],
@@ -403,7 +447,7 @@ class PhaseOnlyDiffractiveStack(nn.Module):
             "crop_retention": [],
             "propagation_energy_ratio": [],
         }
-        transfers = self.phase_transfers().to(field.dtype)
+        transfers = self.phase_transfers(mask_component, phase_layer_mask).to(field.dtype)
         for layer_index in range(self.num_layers):
             field = field * transfers[layer_index].unsqueeze(0)
             field, layer_diagnostics = _angular_spectrum_propagate_center_padded_with_diagnostics(
@@ -448,6 +492,19 @@ class PhaseAmplitudeDiffractiveStack(PhaseOnlyDiffractiveStack):
     def reset_amplitude_parameters(self) -> None:
         nn.init.constant_(self.amplitude_logits, self.amplitude_logit_init)
 
-    def phase_transfers(self) -> torch.Tensor:
-        amplitude = torch.sigmoid(self.amplitude_logits)
-        return torch.polar(amplitude, self.phase)
+    def phase_transfers(
+        self,
+        mask_component: str = "trained",
+        phase_layer_mask: tuple[bool, ...] = (),
+    ) -> torch.Tensor:
+        if mask_component not in {"trained", "phase_only", "amplitude_only"}:
+            raise ValueError(f"Unsupported decoder diagnostic mask component: {mask_component!r}")
+        if mask_component == "phase_only":
+            amplitude = torch.ones_like(self.phase)
+        else:
+            amplitude = torch.sigmoid(self.amplitude_logits)
+        phase = torch.zeros_like(self.phase) if mask_component == "amplitude_only" else self.phase
+        if phase_layer_mask:
+            layer_mask = torch.tensor(phase_layer_mask, device=phase.device, dtype=phase.dtype).view(-1, 1, 1, 1)
+            phase = phase * layer_mask
+        return torch.polar(amplitude, phase)

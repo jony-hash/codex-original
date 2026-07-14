@@ -13,7 +13,8 @@ readout:
   normalize_percentile: 99.5
 
 macro_optics:
-  # 新宏观光路：Laser -> M1 -> BS -> SLM -> BS -> M3 -> LightGen -> relay lens -> CMOS。
+  # 通用/teacher 基础光路参数；本文件不是 formal physical-forward 配置。
+  # Formal v55/v56 配置必须在自身 physics section 中声明 coherent 4f relay、lens pupil 和 identity OLS。
   dist_laser_to_m1: 0.350
   dist_m1_to_bs: 0.370
   dist_bs_to_slm: 0.025

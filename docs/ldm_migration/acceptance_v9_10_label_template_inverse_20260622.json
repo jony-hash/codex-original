@@ -21,9 +21,9 @@
     "eval": "configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v9_10_label_template_inverse_prototype_baseline_strict_readability_test.yaml"
   },
   "datasets": {
-    "train": "outputs/runs/20260610_151747_768931_train_teacher_distill_15k_acceptance_matched_diffusion_e40_gs40_readable_split_from_full15k_cuda/artifacts/teacher_distill_dataset_readable_train.pt",
-    "validation": "outputs/runs/20260610_151747_768931_train_teacher_distill_15k_acceptance_matched_diffusion_e40_gs40_readable_split_from_full15k_cuda/artifacts/teacher_distill_dataset_readable_val.pt",
-    "test": "outputs/runs/20260610_151747_768931_train_teacher_distill_15k_acceptance_matched_diffusion_e40_gs40_readable_split_from_full15k_cuda/artifacts/teacher_distill_dataset_readable_test.pt"
+    "train": "outputs/20260514_unversioned/runs/20260610_151747_768931_train_teacher_distill_15k_acceptance_matched_diffusion_e40_gs40_readable_split_from_full15k_cuda/artifacts/teacher_distill_dataset_readable_train.pt",
+    "validation": "outputs/20260514_unversioned/runs/20260610_151747_768931_train_teacher_distill_15k_acceptance_matched_diffusion_e40_gs40_readable_split_from_full15k_cuda/artifacts/teacher_distill_dataset_readable_val.pt",
+    "test": "outputs/20260514_unversioned/runs/20260610_151747_768931_train_teacher_distill_15k_acceptance_matched_diffusion_e40_gs40_readable_split_from_full15k_cuda/artifacts/teacher_distill_dataset_readable_test.pt"
   },
   "frozen_parameter_check": {
     "passed": true,
@@ -50,7 +50,7 @@
   },
   "limitations": [
     "The generator ignores code and therefore does not demonstrate within-class diversity.",
-    "The audit checkpoint remained under /tmp and was not promoted to managed outputs.",
+    "The historical 2026-06-22 audit checkpoint remained under /tmp; current reruns default to managed outputs/YYYYMMDD_v9_10/.",
     "This result does not establish final hardware readiness."
   ]
 }

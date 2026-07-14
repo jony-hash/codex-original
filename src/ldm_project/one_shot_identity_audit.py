@@ -404,7 +404,7 @@ def build_one_shot_optical_identity_audit(
 
         # Zero-mask D2NN → chip output for back-path comparison.
         with _temporary_unit_d2nn_masks(one_shot_model):
-            _zero_forward = one_shot_model._forward_diffractive(slm_outputs)
+            _zero_forward = one_shot_model._forward_diffractive(slm_outputs, labels)
         zero_mask_chip_intensity = _zero_forward["chip_intensity_primary"].detach().float()
         zero_mask_chip_field = torch.complex(
             zero_mask_chip_intensity.sqrt().clamp_min(0.0),
@@ -530,7 +530,7 @@ def build_one_shot_optical_identity_audit(
         )
 
         with _temporary_unit_d2nn_masks(one_shot_model):
-            zero_outputs = one_shot_model._forward_diffractive(slm_outputs)
+            zero_outputs = one_shot_model._forward_diffractive(slm_outputs, labels)
             variants["zero_mask_d2nn_1x1"] = zero_outputs["physical_camera_plane"].detach().float()
             variants["zero_mask_d2nn_1x1_chip_intensity"] = zero_outputs["chip_intensity_primary"].detach().float()
             variants["zero_mask_d2nn_1x1_probe"] = zero_outputs["probe_plane"].detach().float()
@@ -553,7 +553,7 @@ def build_one_shot_optical_identity_audit(
                 "decoder_mask_phase_max_abs": float(zero_outputs["diffractive_decoder_mask_phase"].abs().max().item()),
             }
 
-        small_outputs = one_shot_model._forward_diffractive(slm_outputs)
+        small_outputs = one_shot_model._forward_diffractive(slm_outputs, labels)
         variants["small_phase_amp_d2nn_1x1"] = small_outputs["physical_camera_plane"].detach().float()
         variants["small_phase_amp_d2nn_1x1_chip_intensity"] = small_outputs["chip_intensity_primary"].detach().float()
         variants["small_phase_amp_d2nn_1x1_probe"] = small_outputs["probe_plane"].detach().float()

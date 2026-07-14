@@ -61,7 +61,7 @@ def main():
     parser = argparse.ArgumentParser(description="Build v9.8 diagnostic checkpoint")
     parser.add_argument("--v8-2c-checkpoint", required=True,
                         help="Path to v8.2c one_shot_distill_best.pt")
-    parser.add_argument("--output", default="/tmp/v9_8_diagnostic_checkpoint.pt",
+    parser.add_argument("--output", default="outputs/20260620_v9_8/checkpoints/v9_8_diagnostic_checkpoint.pt",
                         help="Output checkpoint path")
     parser.add_argument("--device", default="cuda")
     args = parser.parse_args()

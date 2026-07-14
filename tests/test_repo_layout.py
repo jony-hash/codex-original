@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import importlib
 import importlib.util
+import subprocess
+import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -9,6 +13,33 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class RepoLayoutTests(unittest.TestCase):
+    def test_tools_are_importable_without_sys_path_mutation(self) -> None:
+        tools_dir = ROOT / "tools"
+        self.assertTrue((tools_dir / "__init__.py").is_file())
+
+        offenders = []
+        for path in sorted(tools_dir.glob("*.py")):
+            if "sys.path" in path.read_text(encoding="utf-8"):
+                offenders.append(path.name)
+        self.assertEqual(offenders, [])
+
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                (
+                    "import tools.diagnose_v21_physical_cmos_readout; "
+                    "import tools.diagnose_v34_code_coupling_recovery; "
+                    "import tools.diagnose_v48_transparent_decoder_control"
+                ),
+            ],
+            cwd=ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+
     def test_expected_scaffold_files_exist(self) -> None:
         expected = [
             ROOT / "README.md",
@@ -95,6 +126,7 @@ class RepoLayoutTests(unittest.TestCase):
             ROOT / "tests" / "test_teacher_training_utils.py",
             ROOT / "tests" / "test_eval_reports.py",
             ROOT / "tools" / "run_v9_10_label_template_audit.py",
+            ROOT / "tools" / "organize_outputs_by_version.py",
         ]
         for path in expected:
             self.assertTrue(path.exists(), f"missing expected file: {path}")
@@ -112,6 +144,96 @@ class RepoLayoutTests(unittest.TestCase):
         spec.loader.exec_module(module)
 
         self.assertIs(module.main, main)
+
+    def _load_output_tool(self):
+        tool_path = ROOT / "tools" / "organize_outputs_by_version.py"
+        spec = importlib.util.spec_from_file_location("organize_outputs_by_version", tool_path)
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_output_version_reorder_detects_conflicts_without_overwrite(self) -> None:
+        module = self._load_output_tool()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir) / "outputs"
+            source = root / "v9_8" / "runs" / "20260620_102234_train_one_shot_d2nn_v9_8_audit"
+            target = root / "20260620_v9_8" / "runs" / source.name
+            source.mkdir(parents=True)
+            target.mkdir(parents=True)
+            (source / "run_meta.json").write_text("{}", encoding="utf-8")
+            (target / "run_meta.json").write_text('{"target": true}', encoding="utf-8")
+
+            dry_run_manifest = module.reorganize_outputs(root, dry_run=True, tracked_files=[])
+            self.assertEqual(dry_run_manifest["counts"]["versions_conflict_duplicate_target"], 2)
+            self.assertTrue(source.is_dir())
+            self.assertEqual((target / "run_meta.json").read_text(encoding="utf-8"), '{"target": true}')
+
+    def test_output_version_reorder_renames_and_rewrites_exact_refs(self) -> None:
+        module = self._load_output_tool()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir) / "outputs"
+            real_run = root / "v9_8" / "runs" / "20260620_102234_train_one_shot_d2nn_v9_8_audit"
+            real_run.mkdir(parents=True)
+            doc = Path(tmpdir) / "doc.md"
+            doc.write_text(
+                "outputs/v9_8/runs/20260620_102234_train_one_shot_d2nn_v9_8_audit\n"
+                "outputs/<version>/runs/<run>\n"
+                "outputs/v9_8_placeholder\n",
+                encoding="utf-8",
+            )
+
+            dry_run = module.reorganize_outputs(root, dry_run=True, tracked_files=[doc])
+            self.assertEqual(dry_run["counts"]["versions_planned_rename"], 1)
+            self.assertEqual(dry_run["counts"]["rewrite_files"], 1)
+            self.assertTrue((root / "v9_8").is_dir())
+
+            apply_manifest = module.reorganize_outputs(root, dry_run=False, tracked_files=[doc])
+            self.assertEqual(apply_manifest["counts"]["versions_renamed"], 1)
+            self.assertFalse((root / "v9_8").exists())
+            self.assertTrue((root / "20260620_v9_8" / "runs" / real_run.name).is_dir())
+            self.assertIn(
+                "outputs/20260620_v9_8/runs/20260620_102234_train_one_shot_d2nn_v9_8_audit",
+                doc.read_text(encoding="utf-8"),
+            )
+            self.assertIn("outputs/<version>/runs/<run>", doc.read_text(encoding="utf-8"))
+            self.assertIn("outputs/v9_8_placeholder", doc.read_text(encoding="utf-8"))
+
+    def test_output_version_reorder_refuses_missing_timestamped_runs(self) -> None:
+        module = self._load_output_tool()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir) / "outputs"
+            real_run = root / "v9_8" / "runs" / "real_run_without_timestamp"
+            real_run.mkdir(parents=True)
+
+            dry_run = module.reorganize_outputs(root, dry_run=True, tracked_files=[])
+            self.assertEqual(dry_run["counts"]["versions_blocker_missing_timestamped_runs"], 1)
+            with self.assertRaisesRegex(RuntimeError, "blockers"):
+                module.reorganize_outputs(root, dry_run=False, tracked_files=[])
+            self.assertTrue(real_run.is_dir())
+
+    def test_output_version_index_is_oldest_first_by_earliest_run_time(self) -> None:
+        module = self._load_output_tool()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir) / "outputs"
+            fixtures = {
+                "v10": "20260523_224644_train_v10",
+                "v9_8": "20260620_102112_train_v9_8",
+                "unversioned": "20260514_161039_train_unversioned",
+                "v5": "20260520_195637_train_v5",
+            }
+            for version, run_name in fixtures.items():
+                (root / version / "runs" / run_name).mkdir(parents=True)
+
+            json_path, md_path, index = module.write_version_index(root)
+            self.assertEqual(
+                [entry["directory"] for entry in index],
+                ["unversioned", "v5", "v10", "v9_8"],
+            )
+            markdown = md_path.read_text(encoding="utf-8")
+            self.assertLess(markdown.index("`v5`"), markdown.index("`v9_8`"))
+            self.assertTrue(json_path.is_file())
 
     def test_stage_shims_keep_legacy_imports_available(self) -> None:
         from ldm_project import one_shot_stages, sampling, stage_runners, teacher_stages, training
@@ -167,10 +289,10 @@ class RepoLayoutTests(unittest.TestCase):
         design_doc = ROOT / "docs" / "ldm_migration" / "single_shot_ldm_distillation.md"
         content = design_doc.read_text(encoding="utf-8")
         self.assertIn("D2NN one-shot", content)
-        self.assertIn("configs/train_one_shot_distill_d2nn_mnist_3k_fast200.yaml", content)
+        self.assertIn("configs/train_v56_coherent_relay_from_scratch.yaml", content)
         self.assertIn("diffractive_phase_only", content)
-        self.assertIn("N = 200", content)
-        self.assertIn("d = 5.0 mm", content)
+        self.assertIn("100 × 100 @ 2 µm", content)
+        self.assertIn("d = 1.50 mm", content)
 
     def test_one_shot_distill_train_and_eval_configs_do_not_use_relay_identity(self) -> None:
         config_dir = ROOT / "configs"

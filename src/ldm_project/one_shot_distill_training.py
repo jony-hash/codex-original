@@ -13,6 +13,8 @@ from .one_shot_distill_data import (
     _validated_distill_tensors,
 )
 from .one_shot_model import load_one_shot_checkpoint_subset
+from .one_shot_eval import _save_strict_optical_field_artifacts
+from .one_shot_losses import transform_aux_topology_target
 from .one_shot_eval_artifacts import (
     _save_one_shot_d2nn_diagnostics,
     _save_one_shot_d2nn_focus_visualization,
@@ -22,8 +24,14 @@ from .one_shot_quality import _resolve_one_shot_distill_selection
 from .teacher_distill import _build_mnist_label_prototype_bank
 from .one_shot_training_utils import (
     ONE_SHOT_DISTILL_HISTORY_LOSS_KEYS,
+    _accumulate_target_code_bridge_trainability_gradients,
     _build_one_shot_optimizer,
+    _accumulate_decoder_trainability_gradients,
     _evaluate_one_shot_distill,
+    _finalize_target_code_bridge_trainability_audit,
+    _finalize_decoder_trainability_audit,
+    _init_target_code_bridge_trainability_audit,
+    _init_decoder_trainability_audit,
     _one_shot_d2nn_crop_retention_metrics,
     _one_shot_loss_kwargs,
     _mask_amplitude_summary,
@@ -78,6 +86,17 @@ class _DistillVisualBatch:
 def _build_student_label_margin_prototypes(torch_module, payload: dict[str, object], train_cfg):
     needs_prototypes = (
         float(train_cfg.one_shot.student_label_margin_weight) > 0.0
+        or float(train_cfg.one_shot.student_prototype_ce_weight) > 0.0
+        or float(train_cfg.one_shot.student_negative_label_margin_weight) > 0.0
+        or float(train_cfg.one_shot.student_roi_prototype_ce_weight) > 0.0
+        or float(train_cfg.one_shot.student_roi_negative_label_margin_weight) > 0.0
+        or (
+            float(train_cfg.one_shot.aux_semantic_weight) > 0.0
+            and (
+                float(train_cfg.one_shot.aux_semantic_prototype_ce_weight) > 0.0
+                or float(train_cfg.one_shot.aux_semantic_negative_label_margin_weight) > 0.0
+            )
+        )
         or train_cfg.one_shot.checkpoint_selection_metric == "strict_readability"
     )
     if not needs_prototypes:
@@ -109,6 +128,10 @@ def _build_distill_target_prototypes(torch_module, train_cfg):
     if (
         train_cfg.one_shot.distill_target_source != "mnist_prototype"
         and train_cfg.one_shot.aux_detail_target_source != "mnist_prototype"
+        and not (
+            train_cfg.one_shot.generator_e_arch in {"label_template", "label_template_code_residual"}
+            and train_cfg.one_shot.generator_template_init == "mnist_prototype"
+        )
     ):
         return None
     prototypes = _build_mnist_label_prototype_bank(
@@ -151,7 +174,7 @@ def _validate_frozen_generator_warm_start(
     if float(train_cfg.one_shot.generator_base_lr_scale) > 0.0:
         return
     if (
-        train_cfg.one_shot.generator_e_arch == "label_template"
+        train_cfg.one_shot.generator_e_arch in {"label_template", "label_template_code_residual"}
         and train_cfg.one_shot.generator_template_init == "mnist_prototype"
     ):
         return
@@ -174,7 +197,7 @@ def _maybe_initialize_label_template(
     one_shot_checkpoint: str | None,
     generator_checkpoint: str | None,
 ) -> None:
-    if train_cfg.one_shot.generator_e_arch != "label_template":
+    if train_cfg.one_shot.generator_e_arch not in {"label_template", "label_template_code_residual"}:
         return
     if one_shot_checkpoint is not None or generator_checkpoint is not None:
         return
@@ -194,7 +217,9 @@ def _maybe_initialize_label_template(
             "one_shot_generator_template_min": float(template_bank.min().item()),
             "one_shot_generator_template_max": float(template_bank.max().item()),
             "one_shot_generator_command_transform": train_cfg.one_shot.generator_command_transform,
-            "one_shot_generator_code_conditioning_active": False,
+            "one_shot_generator_code_conditioning_active": (
+                train_cfg.one_shot.generator_e_arch == "label_template_code_residual"
+            ),
         }
     )
     run_manager.write_meta(run_meta)
@@ -353,6 +378,31 @@ def _select_distill_visual_batch(torch_module, *, payload, train_cfg, device, us
     )
 
 
+def _distill_run_setup_metadata(
+    *,
+    distill_dataset: str,
+    distill_validation_dataset: str | None,
+    train_cfg,
+    loaders,
+) -> dict[str, object]:
+    return {
+        "distill_dataset": distill_dataset,
+        "distill_validation_dataset": distill_validation_dataset,
+        "distill_validation_source": loaders.validation_source,
+        "one_shot_distill_target_source": train_cfg.one_shot.distill_target_source,
+        "one_shot_aux_detail_target_source": train_cfg.one_shot.aux_detail_target_source,
+        "one_shot_aux_topology_target_transform": train_cfg.one_shot.aux_topology_target_transform,
+        "one_shot_decoder_trainability_audit": train_cfg.one_shot.decoder_trainability_audit,
+        "one_shot_target_code_bridge_trainability_audit": (
+            train_cfg.one_shot.target_code_bridge_trainability_audit
+        ),
+        "one_shot_target_code_diagnostic_mode": train_cfg.one_shot.target_code_diagnostic_mode,
+        "one_shot_target_code_spatial_scale": train_cfg.one_shot.target_code_spatial_scale,
+        "one_shot_target_code_bridge_source": train_cfg.one_shot.target_code_bridge_source,
+        "one_shot_target_code_bridge_arch": train_cfg.one_shot.target_code_bridge_arch,
+    }
+
+
 def _record_distill_run_setup(
     run_manager,
     run_meta: dict[str, object],
@@ -364,14 +414,16 @@ def _record_distill_run_setup(
     visual_summary: dict[str, object],
 ) -> None:
     physical_phase_available = train_cfg.one_shot.optical_core_arch != "camera_direct_clean_oracle"
+    setup_metadata = _distill_run_setup_metadata(
+        distill_dataset=distill_dataset,
+        distill_validation_dataset=distill_validation_dataset,
+        train_cfg=train_cfg,
+        loaders=loaders,
+    )
     run_manager.save_config_snapshot(
         "one_shot_distill_config",
         {
-            "distill_dataset": distill_dataset,
-            "distill_validation_dataset": distill_validation_dataset,
-            "distill_validation_source": loaders.validation_source,
-            "one_shot_distill_target_source": train_cfg.one_shot.distill_target_source,
-            "one_shot_aux_detail_target_source": train_cfg.one_shot.aux_detail_target_source,
+            **setup_metadata,
             "physical_phase_available": physical_phase_available,
             "visualization_mode": "optical_chain" if physical_phase_available else "direct_readable",
             "distill_source_total_size": loaders.source_total_size,
@@ -389,11 +441,7 @@ def _record_distill_run_setup(
     )
     run_meta.update(
         {
-            "distill_dataset": distill_dataset,
-            "distill_validation_dataset": distill_validation_dataset,
-            "distill_validation_source": loaders.validation_source,
-            "one_shot_distill_target_source": train_cfg.one_shot.distill_target_source,
-            "one_shot_aux_detail_target_source": train_cfg.one_shot.aux_detail_target_source,
+            **setup_metadata,
             "one_shot_physical_phase_available": physical_phase_available,
             "one_shot_visualization_mode": "optical_chain" if physical_phase_available else "direct_readable",
             "distill_source_total_size": loaders.source_total_size,
@@ -408,6 +456,26 @@ def _record_distill_run_setup(
         }
     )
     run_manager.write_meta(run_meta)
+
+
+def _distill_checkpoint_payload(
+    *,
+    one_shot_model,
+    train_cfg,
+    physics,
+    epoch_number: int,
+    one_shot_model_version: str,
+    **details,
+) -> dict[str, object]:
+    return {
+        "model_state_dict": one_shot_model.state_dict(),
+        "stage": "one_shot_distill",
+        "model_version": one_shot_model_version,
+        "physics_config": physics,
+        "train_config": train_cfg,
+        "epoch": epoch_number,
+        **details,
+    }
 
 
 def _save_latest_distill_checkpoint(
@@ -425,17 +493,16 @@ def _save_latest_distill_checkpoint(
 ) -> None:
     latest_path = run_manager.save_checkpoint(
         ONE_SHOT_DISTILL_LATEST_CHECKPOINT,
-        {
-            "model_state_dict": one_shot_model.state_dict(),
-            "stage": "one_shot_distill",
-            "model_version": one_shot_model_version,
-            "physics_config": physics,
-            "train_config": train_cfg,
-            "epoch": epoch_number,
-            "stage_step": stage_step,
-            "total_steps": total_steps,
-            "distill_dataset": distill_dataset,
-        },
+        _distill_checkpoint_payload(
+            one_shot_model=one_shot_model,
+            train_cfg=train_cfg,
+            physics=physics,
+            epoch_number=epoch_number,
+            one_shot_model_version=one_shot_model_version,
+            stage_step=stage_step,
+            total_steps=total_steps,
+            distill_dataset=distill_dataset,
+        ),
     )
     run_meta.update(
         {
@@ -463,19 +530,18 @@ def _save_best_distill_checkpoint(
 ):
     best_checkpoint_path = run_manager.save_checkpoint(
         ONE_SHOT_DISTILL_BEST_CHECKPOINT,
-        {
-            "model_state_dict": one_shot_model.state_dict(),
-            "stage": "one_shot_distill",
-            "model_version": one_shot_model_version,
-            "physics_config": physics,
-            "train_config": train_cfg,
-            "epoch": epoch_number,
-            "selection_metric": selection_metric,
-            "selection_loss": selection_score,
-            "selection_score": selection_score,
-            "validation_metrics": validation_metrics,
-            "distill_dataset": distill_dataset,
-        },
+        _distill_checkpoint_payload(
+            one_shot_model=one_shot_model,
+            train_cfg=train_cfg,
+            physics=physics,
+            epoch_number=epoch_number,
+            one_shot_model_version=one_shot_model_version,
+            selection_metric=selection_metric,
+            selection_loss=selection_score,
+            selection_score=selection_score,
+            validation_metrics=validation_metrics,
+            distill_dataset=distill_dataset,
+        ),
     )
     run_meta.update(
         {
@@ -512,16 +578,15 @@ def _save_epoch_distill_checkpoint(
     name = f"one_shot_distill_epoch_{epoch_number:04d}.pt"
     ckpt_path = run_manager.save_checkpoint(
         name,
-        {
-            "model_state_dict": one_shot_model.state_dict(),
-            "stage": "one_shot_distill",
-            "model_version": one_shot_model_version,
-            "physics_config": physics,
-            "train_config": train_cfg,
-            "epoch": epoch_number,
-            "validation_metrics": validation_metrics,
-            "distill_dataset": distill_dataset,
-        },
+        _distill_checkpoint_payload(
+            one_shot_model=one_shot_model,
+            train_cfg=train_cfg,
+            physics=physics,
+            epoch_number=epoch_number,
+            one_shot_model_version=one_shot_model_version,
+            validation_metrics=validation_metrics,
+            distill_dataset=distill_dataset,
+        ),
     )
     epoch_ckpt_records: list[dict[str, object]] = run_meta.setdefault("epoch_checkpoints", [])
     epoch_ckpt_records.append(
@@ -602,6 +667,20 @@ def run_one_shot_distill_training(
     train_loader = loaders.train_loader
     validation_loader = loaders.validation_loader
     optimizer = _build_one_shot_optimizer(torch_module, one_shot_model, train_cfg)
+    decoder_trainability_audit = _init_decoder_trainability_audit(one_shot_model, optimizer, train_cfg)
+    bridge_trainability_audit = _init_target_code_bridge_trainability_audit(one_shot_model, optimizer, train_cfg)
+    if decoder_trainability_audit is not None:
+        run_meta["one_shot_decoder_trainability_audit_enabled"] = True
+        run_meta["one_shot_decoder_trainability_optimizer_param_groups"] = decoder_trainability_audit[
+            "optimizer_param_groups"
+        ]
+        run_manager.write_meta(run_meta)
+    if bridge_trainability_audit is not None:
+        run_meta["one_shot_target_code_bridge_trainability_audit_enabled"] = True
+        run_meta["one_shot_target_code_bridge_trainability_optimizer_param_groups"] = bridge_trainability_audit[
+            "optimizer_param_groups"
+        ]
+        run_manager.write_meta(run_meta)
     loader_length = len(train_loader)
     total_steps = resolve_stage_total_steps(loader_length, train_cfg.one_shot_epochs)
     visual_batch = _select_distill_visual_batch(
@@ -660,6 +739,8 @@ def run_one_shot_distill_training(
                 **_one_shot_loss_kwargs(train_cfg, student_label_margin_prototypes),
             )
             losses["loss"].backward()
+            _accumulate_decoder_trainability_gradients(decoder_trainability_audit, one_shot_model)
+            _accumulate_target_code_bridge_trainability_gradients(bridge_trainability_audit, one_shot_model)
             optimizer.step()
             step_record = resolve_logged_step(batch_index, stage_step)
             should_record = should_log_step(
@@ -681,6 +762,8 @@ def run_one_shot_distill_training(
                     f"contrast={losses['readable_contrast'].item():.3f} "
                     f"label_acc={losses['student_label_correct_ratio'].item():.3f} "
                     f"margin={losses['student_label_margin_mean'].item():.4f} "
+                    f"roi_acc={losses['student_roi_prototype_ce_correct_ratio'].item():.3f} "
+                    f"roi_margin={losses['student_roi_negative_label_margin_mean'].item():.4f} "
                     f"base_mse={losses['student_base_mse'].item():.6f} "
                     f"shape={losses['shape_penalty'].item():.4f} "
                     f"edge={losses['edge_penalty'].item():.4f} "
@@ -728,19 +811,34 @@ def run_one_shot_distill_training(
         if should_save_epoch_visual(epoch_index, train_cfg.visual_save_epoch_interval):
             one_shot_model.eval()
             with torch_module.no_grad():
-                visual_outputs = one_shot_model(visual_batch.codes, visual_batch.labels)
+                visual_outputs = one_shot_model(
+                    visual_batch.codes,
+                    visual_batch.labels,
+                    return_optical_fields=True,
+                )
                 if train_cfg.one_shot.optical_core_arch != "camera_direct_clean_oracle":
                     save_visualization_grids(
                         run_manager,
-                        build_one_shot_shared_scale_visualization_tensors(
-                            visual_batch.references,
-                            visual_outputs,
-                            codes=visual_batch.codes,
-                        ),
+                        {
+                            "intensity": build_one_shot_shared_scale_visualization_tensors(
+                                visual_batch.references,
+                                visual_outputs,
+                                codes=visual_batch.codes,
+                            ).get("intensity", {}),
+                        },
                         run_manager.images_dir / "one_shot_distill" / f"epoch_{epoch_number:04d}.png",
-                        title_label=f"one_shot_distill epoch {epoch_number}",
+                        title_label=f"one_shot_distill epoch {epoch_number} intensity/control diagnostics",
                         max_items=visual_batch.labels.shape[0],
                         row_labels=labels_for_visual_rows(visual_batch.labels),
+                    )
+                    _save_strict_optical_field_artifacts(
+                        run_manager,
+                        visual_outputs,
+                        artifact_prefix=f"one_shot_distill_epoch_{epoch_number:04d}",
+                        title_prefix=f"one-shot distill epoch {epoch_number}",
+                        max_items=visual_batch.labels.shape[0],
+                        row_labels=labels_for_visual_rows(visual_batch.labels),
+                        front_path_model=getattr(physics, "front_path_model", "free_space"),
                     )
                 save_visualization_grids(
                     run_manager,
@@ -764,6 +862,32 @@ def run_one_shot_distill_training(
                         residual_visualization,
                         run_manager.images_dir / "one_shot_distill" / f"epoch_{epoch_number:04d}_residual.png",
                         title_label=f"one_shot_distill epoch {epoch_number} residual",
+                        max_items=visual_batch.labels.shape[0],
+                        row_labels=labels_for_visual_rows(visual_batch.labels),
+                    )
+                if train_cfg.one_shot.aux_topology_target_transform != "none":
+                    transformed = transform_aux_topology_target(
+                        visual_batch.references,
+                        train_cfg.one_shot.aux_topology_target_transform,
+                        train_cfg.one_shot.recon_foreground_threshold,
+                    )
+                    save_visualization_grids(
+                        run_manager,
+                        {
+                            "reference_target": visual_batch.references,
+                            f"aux_topology_target_{train_cfg.one_shot.aux_topology_target_transform}": transformed[
+                                "target"
+                            ],
+                            "aux_topology_foreground_mask": transformed["foreground_mask"],
+                        },
+                        run_manager.images_dir
+                        / "one_shot_distill"
+                        / f"epoch_{epoch_number:04d}_aux_topology_target.png",
+                        title_label=(
+                            "one_shot_distill "
+                            f"epoch {epoch_number} aux topology target "
+                            f"{train_cfg.one_shot.aux_topology_target_transform}"
+                        ),
                         max_items=visual_batch.labels.shape[0],
                         row_labels=labels_for_visual_rows(visual_batch.labels),
                     )
@@ -884,3 +1008,28 @@ def run_one_shot_distill_training(
                 validation_metrics=validation_metrics,
             )
             one_shot_model.train()
+
+    finalized_trainability_audit = _finalize_decoder_trainability_audit(
+        decoder_trainability_audit,
+        one_shot_model,
+    )
+    if finalized_trainability_audit is not None:
+        audit_path = run_manager.save_artifact_json(
+            "one_shot_decoder_trainability_audit",
+            finalized_trainability_audit,
+        )
+        run_meta["one_shot_decoder_trainability_audit"] = finalized_trainability_audit
+        run_meta["one_shot_decoder_trainability_audit_path"] = str(audit_path)
+        run_manager.write_meta(run_meta)
+    finalized_bridge_trainability_audit = _finalize_target_code_bridge_trainability_audit(
+        bridge_trainability_audit,
+        one_shot_model,
+    )
+    if finalized_bridge_trainability_audit is not None:
+        audit_path = run_manager.save_artifact_json(
+            "one_shot_target_code_bridge_trainability_audit",
+            finalized_bridge_trainability_audit,
+        )
+        run_meta["one_shot_target_code_bridge_trainability_audit"] = finalized_bridge_trainability_audit
+        run_meta["one_shot_target_code_bridge_trainability_audit_path"] = str(audit_path)
+        run_manager.write_meta(run_meta)

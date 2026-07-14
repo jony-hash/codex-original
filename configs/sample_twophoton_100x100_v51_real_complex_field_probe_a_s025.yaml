@@ -1,0 +1,83 @@
+training:
+  mode: one_shot_sample
+  seed: 1234
+  batch_size: 20
+  first_stage_epochs: 0
+  diffusion_epochs: 0
+  one_shot_epochs: 0
+
+data:
+  dataset: mnist
+  root: data
+  download: false
+  validation_fraction: 0.1
+  validation_split_seed: 42
+  subset_size: 100
+  subset_seed: 42
+  num_workers: 0
+  pin_memory: true
+
+first_stage:
+  image_size: 200
+  latent_channels: 1
+  primary_output: camera
+
+diffusion:
+  num_classes: 10
+
+physics:
+  optics:
+    wavelength: 5.32e-7
+    pixel_size: 2.5e-6
+  geometry:
+    grid_size: 200
+    prop_dist: 0.001
+  readout:
+    primary_plane: camera
+    save_camera_plane: true
+    normalize_percentile: 99.5
+    relay_psf_sigma_px: 1.0
+  front_path_model: relay_coherent_psf
+  front_relay_psf_sigma_px: 0.0
+  back_path_model: relay_psf
+
+one_shot:
+  generator_e_arch: label_template_code_residual
+  generator_command_transform: intensity_to_amplitude
+  generator_template_init: mnist_prototype
+  code_residual_scale: 2.0
+  optical_core_arch: diffractive_phase_only
+  code_dim: 128
+  label_embed_dim: 32
+  hidden_dim: 256
+  num_classes: 10
+  slm_background_floor: 0.05
+  ols_kind: tanh
+  metasurface_grid_size: 40
+  layer_spacing: 0.003
+  d2nn:
+    wavelength: 5.32e-7
+    pixel_size: 2.0e-6
+    grid_size: 100
+    propagation_grid_size: 1024
+    encoder_layers: 2
+    decoder_layers: 2
+    layer_spacing: 2.5e-4
+    modulation: phase_only
+    phase_init: small
+    amplitude_logit_init: 4.0
+  decoder_diagnostic_mode: normal
+  decoder_diagnostic_modulation_override: phase_amplitude
+  decoder_diagnostic_mask_component: trained
+  decoder_diagnostic_phase_layer_mask: []
+  target_code_diagnostic_mode: none
+  target_code_bridge_source: none
+  target_code_bridge_arch: shallow
+  ols_transfer_calibration: none
+  sample_class_labels: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+  sample_repeats_per_class: 2
+  eval_preview_per_class: 1
+
+distillation:
+  code_seed: 1234
+  code_projection_seed: 2026

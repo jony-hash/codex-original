@@ -14,6 +14,7 @@ from ldm_project.stage_constants import (
     DIFFUSION_BEST_CHECKPOINT,
     FIRST_STAGE_BEST_OPTICAL_CHECKPOINT,
 )
+from ldm_project.output_layout import resolve_output_layout
 from ldm_project.train_orchestration import (
     StageContext,
     StageData,
@@ -51,7 +52,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--train-config",
         default="configs/train_ldm.yaml",
-        help="Path to training YAML; use configs/train_one_shot_distill_d2nn_mnist_3k_fast200.yaml for D2NN.",
+        help="Path to training YAML; formal D2NN runs require an approved coherent-relay physical-forward config (see docs/ldm_migration/stage_guide.md).",
     )
     parser.add_argument("--stage", choices=CLI_STAGE_CHOICES, default=None)
     parser.add_argument("--batch-size", type=int, default=None)
@@ -151,7 +152,11 @@ def parse_args() -> argparse.Namespace:
         help="Override first-stage metasurface decoder architecture.",
     )
     parser.add_argument("--device", default="auto", help="Device: auto, cuda, cuda:0, or cpu")
-    parser.add_argument("--output-root", default="outputs/runs", help="Root directory for timestamped run outputs")
+    parser.add_argument(
+        "--output-root",
+        default=None,
+        help="Root directory for timestamped run outputs; defaults to outputs/YYYYMMDD_<version>/runs.",
+    )
     parser.add_argument(
         "--final-pt-dir",
         default="outputs/final_pt",
@@ -256,6 +261,9 @@ def _create_diagnostics_run(torch_module, *, args, physics, train_cfg, device, r
         "diagnostic_class_labels": list(diagnostic_labels),
         "diagnostic_max_per_class": args.diagnostic_max_per_class,
         "run_dir": run_manager.run_dir,
+        "output_version": args.output_version,
+        "output_root": args.output_root,
+        "output_root_explicit": args.output_root_explicit,
     }
     run_manager.write_meta(run_meta)
     run_manager.save_config_snapshot("physics_config", physics)
@@ -297,6 +305,7 @@ def main() -> None:
         load_one_shot_checkpoint,
         load_physics_config,
         load_training_config,
+        validate_physical_forward_contract,
     )
     from ldm_project.diffusion import DIFFUSION_MODEL_VERSION, load_diffusion_checkpoint
     from ldm_project.diffusion_losses import diffusion_loss, diffusion_per_sample_losses
@@ -314,6 +323,15 @@ def main() -> None:
     if train_cfg.physics is not None:
         physics = train_cfg.physics
     apply_cli_overrides(train_cfg, args)
+    validate_physical_forward_contract(train_cfg, physics)
+    output_layout = resolve_output_layout(
+        args.output_root,
+        run_name=args.run_name,
+        train_config=args.train_config,
+    )
+    args.output_root = str(output_layout.output_root)
+    args.output_version = output_layout.version
+    args.output_root_explicit = output_layout.explicit
 
     checkpoint_resolution = resolve_final_pt_stage_checkpoints(
         train_cfg.mode,

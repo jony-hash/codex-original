@@ -52,7 +52,7 @@ def _extract_overall(metrics: dict | None) -> dict | None:
 
 
 def summarize_runs(run_dirs: list[str]) -> dict:
-    """汇总一个或多个 outputs/runs/<run> 目录的 one-shot 评估结果。
+    """汇总一个或多个 outputs/YYYYMMDD_<version>/runs/<run> 目录的 one-shot 评估结果。
 
     返回 dict，key 为 run 目录名，value 包含：
       - run_dir: 绝对路径
@@ -342,10 +342,10 @@ def _cli() -> None:
     sub = parser.add_subparsers(dest="command")
 
     summary_parser = sub.add_parser("summary", help="print JSON summary for run dirs")
-    summary_parser.add_argument("run_dirs", nargs="+", help="one or more outputs/runs/<run> directories")
+    summary_parser.add_argument("run_dirs", nargs="+", help="one or more output run directories")
 
     compare_parser = sub.add_parser("compare", help="compare run dirs against baseline JSON")
-    compare_parser.add_argument("run_dirs", nargs="+", help="one or more outputs/runs/<run> directories")
+    compare_parser.add_argument("run_dirs", nargs="+", help="one or more output run directories")
     compare_parser.add_argument(
         "--baseline", required=True, help="path to baseline JSON (e.g. docs/ldm_migration/acceptance_baseline_c99f559.json)"
     )

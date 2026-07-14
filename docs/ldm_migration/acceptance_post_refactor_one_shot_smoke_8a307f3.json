@@ -3,9 +3,9 @@
   "commit": "8a307f3",
   "date": "2026-06-04",
   "environment": "RTX 3060 Laptop GPU (6GB), CUDA 12.1, PyTorch 2.5.1+cu121, WSL2 Linux",
-  "source_run": "outputs/runs/20260604_160035_377670_train_post_refactor_one_shot_sample_seed202",
+  "source_run": "outputs/20260514_unversioned/runs/20260604_160035_377670_train_post_refactor_one_shot_sample_seed202",
   "stage": "one_shot_sample",
-  "checkpoint": "outputs/runs/20260604_145621_832064_train_one_shot_distill_seed202/checkpoints/one_shot_distill_epoch_0020.pt",
+  "checkpoint": "outputs/20260514_unversioned/runs/20260604_145621_832064_train_one_shot_distill_seed202/checkpoints/one_shot_distill_epoch_0020.pt",
   "parent_commits": {
     "one_shot_refactor": "8a307f3",
     "seed_sweep": "bdb3d4f",
@@ -17,12 +17,12 @@
     "sample_dice": 0.6094984069466591
   },
   "artifacts": {
-    "metrics": "outputs/runs/20260604_160035_377670_train_post_refactor_one_shot_sample_seed202/artifacts/one_shot_sample_metrics.json",
-    "tensor_bundle": "outputs/runs/20260604_160035_377670_train_post_refactor_one_shot_sample_seed202/artifacts/one_shot_sample_tensors.pt",
-    "d2nn_diagnostics": "outputs/runs/20260604_160035_377670_train_post_refactor_one_shot_sample_seed202/artifacts/one_shot_sample_d2nn_diagnostics.json",
-    "visual_diagnostics": "outputs/runs/20260604_160035_377670_train_post_refactor_one_shot_sample_seed202/artifacts/one_shot_sample_visual_diagnostics.json",
-    "amplitude_image": "outputs/runs/20260604_160035_377670_train_post_refactor_one_shot_sample_seed202/images/one_shot_sample_amplitude.png",
-    "phase_image": "outputs/runs/20260604_160035_377670_train_post_refactor_one_shot_sample_seed202/images/one_shot_sample_shared_scale_phase.png"
+    "metrics": "outputs/20260514_unversioned/runs/20260604_160035_377670_train_post_refactor_one_shot_sample_seed202/artifacts/one_shot_sample_metrics.json",
+    "tensor_bundle": "outputs/20260514_unversioned/runs/20260604_160035_377670_train_post_refactor_one_shot_sample_seed202/artifacts/one_shot_sample_tensors.pt",
+    "d2nn_diagnostics": "outputs/20260514_unversioned/runs/20260604_160035_377670_train_post_refactor_one_shot_sample_seed202/artifacts/one_shot_sample_d2nn_diagnostics.json",
+    "visual_diagnostics": "outputs/20260514_unversioned/runs/20260604_160035_377670_train_post_refactor_one_shot_sample_seed202/artifacts/one_shot_sample_visual_diagnostics.json",
+    "amplitude_image": "outputs/20260514_unversioned/runs/20260604_160035_377670_train_post_refactor_one_shot_sample_seed202/images/one_shot_sample_amplitude.png",
+    "phase_image": "outputs/20260514_unversioned/runs/20260604_160035_377670_train_post_refactor_one_shot_sample_seed202/images/one_shot_sample_shared_scale_phase.png"
   },
   "acceptance": {
     "passed": true,

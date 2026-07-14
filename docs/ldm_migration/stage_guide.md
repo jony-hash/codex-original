@@ -1,6 +1,6 @@
 # Stage Guide
 
-本文件是选择和运行 stage 的操作权威来源。架构与最终推理边界见 [D2NN 单次曝光蒸馏主线](single_shot_ldm_distillation.md)，带日期的结果见 [实验与验收历史](experiment_history.md)，完整文档导航见 [Documentation](../README.md)。
+本文件是选择和运行 stage 的操作权威来源。架构与最终推理边界见 [D2NN 单次曝光蒸馏主线](single_shot_ldm_distillation.md)，带日期的结果见 [实验与验收历史](experiment_history.md)，完整文档导航见 [Documentation](../README.md)。当前 v57 状态与停止规则见 [当前主线交接](current_handoff.md)；该 handoff 是时效性状态快照，不是架构合同，下一决策门后必须刷新。
 
 ## Golden Path
 
@@ -46,22 +46,24 @@ python train.py --train-config configs/export_teacher_distill_mnist_3k_fast200.y
   --diffusion-checkpoint <matched_diffusion_checkpoint>
 ```
 
-训练学生：
+训练学生（仅在已批准的 physical-forward config 和 preflight 通过后执行）：
 
 ```bash
-python train.py --train-config configs/train_one_shot_distill_d2nn_mnist_3k_fast200.yaml \
+python train.py --train-config <approved_physical_forward_config.yaml> \
   --stage one_shot_distill --device cuda \
   --distill-dataset <distill_dataset>
 ```
 
+正式 config 必须以 [架构文档](single_shot_ldm_distillation.md) 为合同来源，至少锁定 identity OLS、完整 SLM-to-encoder 相干 4f relay、`100 × 100 @ 2 µm`、`1.50 mm` D2NN spacing、严格 physical-field provenance，并先通过对应 CUDA preflight。当前 v56 已完成一次有效但人眼失败的训练；在 v58 决策门之前不提供新的训练命令。
+
 采样并评估同一个 student checkpoint：
 
 ```bash
-python train.py --train-config configs/train_one_shot_distill_d2nn_mnist_3k_fast200.yaml \
+python train.py --train-config <approved_physical_forward_config.yaml> \
   --stage one_shot_sample --device cuda \
   --one-shot-checkpoint <one_shot_checkpoint>
 
-python train.py --train-config configs/train_one_shot_distill_d2nn_mnist_3k_fast200.yaml \
+python train.py --train-config <approved_physical_forward_config.yaml> \
   --stage one_shot_distill_eval --device cuda \
   --distill-dataset <distill_dataset> \
   --one-shot-checkpoint <one_shot_checkpoint>
@@ -79,9 +81,10 @@ python train.py --train-config configs/train_one_shot_distill_d2nn_mnist_3k_fast
 
 ## Output Policy
 
-- 诊断和 pre-acceptance run 写到 `/tmp`。
-- 已接受或正式配置的 managed run 写到 `outputs/runs/<run>/`。
-- 现有 `outputs/` artifact 不得编辑、删除或回填。
+- 训练、诊断和 pre-acceptance run 默认写到 `outputs/YYYYMMDD_<version>/runs/<run>/`；`<version>` 从 `--run-name` 或 train config 文件名提取，缺省为 `unversioned`，日期前缀取该版本当前已知最早 run 日期。
+- 诊断和 pre-acceptance 结果仍必须标注为 `diagnostic-only`，不能仅因位于 `outputs/` 就视为 accepted。
+- `outputs/runs/` 已移除；具体历史路径需要改写到真实的带日期前缀版本目录，`outputs/final_pt/` 不参与版本迁移。
+- 整理历史 run 时先执行 `python -m tools.organize_outputs_by_version --root outputs --dry-run` 检查 manifest，确认无 blocker 后再执行 `--apply`。
 - 输出图片和 tensor bundle 的语义见 [输出与可视化说明](../output_JIESHI.md)。
 
 ## v9.10 Prototype Baseline Audit
@@ -95,61 +98,40 @@ source "$(conda info --base)/etc/profile.d/conda.sh" && conda activate optical-g
 python -c 'import torch; print(torch.__version__); print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else None)'
 ```
 
-正式 audit 由用户启动，所有结果写入 `/tmp`：
+正式 audit 由用户启动，所有结果默认写入 `outputs/YYYYMMDD_v9_10/`：
 
 ```bash
 source "$(conda info --base)/etc/profile.d/conda.sh" && conda activate optical-generative-models && \
-python tools/run_v9_10_label_template_audit.py \
-  --train-dataset outputs/runs/20260610_151747_768931_train_teacher_distill_15k_acceptance_matched_diffusion_e40_gs40_readable_split_from_full15k_cuda/artifacts/teacher_distill_dataset_readable_train.pt \
-  --validation-dataset outputs/runs/20260610_151747_768931_train_teacher_distill_15k_acceptance_matched_diffusion_e40_gs40_readable_split_from_full15k_cuda/artifacts/teacher_distill_dataset_readable_val.pt \
-  --test-dataset outputs/runs/20260610_151747_768931_train_teacher_distill_15k_acceptance_matched_diffusion_e40_gs40_readable_split_from_full15k_cuda/artifacts/teacher_distill_dataset_readable_test.pt \
-  --output-root /tmp/v9_10_label_template_inverse \
+python -m tools.run_v9_10_label_template_audit \
+  --train-dataset outputs/20260514_unversioned/runs/20260610_151747_768931_train_teacher_distill_15k_acceptance_matched_diffusion_e40_gs40_readable_split_from_full15k_cuda/artifacts/teacher_distill_dataset_readable_train.pt \
+  --validation-dataset outputs/20260514_unversioned/runs/20260610_151747_768931_train_teacher_distill_15k_acceptance_matched_diffusion_e40_gs40_readable_split_from_full15k_cuda/artifacts/teacher_distill_dataset_readable_val.pt \
+  --test-dataset outputs/20260514_unversioned/runs/20260610_151747_768931_train_teacher_distill_15k_acceptance_matched_diffusion_e40_gs40_readable_split_from_full15k_cuda/artifacts/teacher_distill_dataset_readable_test.pt \
   --device cuda
 ```
 
 启动器先生成 self-contained checkpoint，再用独立 test split 执行 strict eval。唯一 required gate 是 `paired_corr >= 0.78`、`paired_dice >= 0.72`、`student_high_saturation_ratio <= 0.08`；模板和 D2NN 的零学习率参数还必须满足 `max_abs_change == 0`。任一条件失败时停止，不运行 sample。通过后才用同一 checkpoint 运行 `one_shot_sample`，并写入唯一的 `v9_10_label_template_audit_summary_*.json`。
 
-只检查命令和配置、不启动 CUDA 作业时添加 `--dry-run`。不得把 `/tmp` checkpoint 复制或回填到旧 `outputs/` run。
+只检查命令和配置、不启动 CUDA 作业时添加 `--dry-run`。启动器会把 train/eval/sample run 写入 `outputs/YYYYMMDD_v9_10/runs/`，并把汇总 JSON 写入对应版本目录下的 `reports/`。
 
-## Two-Photon Printing 100 × 100 Experiment
+## Legacy 100 × 100 Two-Photon Configuration
 
-该实验沿用受保护 v7.2 参考 run 的 phase-only、encoder/decoder 各两层结构，只修改 D2NN 加工几何。神经元边长与 pitch 均为 `2 µm`，`100 × 100` 神经元形成 `200 µm × 200 µm` 有效口径；数值传播 padding 保持 `1024`，CMOS/loss 接口保持 `200 × 200`。
-
-按可见光 D2NN 全连接判据，`532 nm` 波长下理论最小层间距为：
-
-`D_min = sqrt(10000) × 2 µm × sqrt(4 × (2 µm)^2 / (0.532 µm)^2 - 1) = 1.490 mm`
-
-配置采用 `1.50 mm`。旧 `200 × 200` checkpoint 的相位参数形状不兼容，必须从头训练，禁止 resize 或静默部分加载。正式训练前先在 `/tmp` 做 pre-acceptance：
-
-```bash
-source "$(conda info --base)/etc/profile.d/conda.sh" && conda activate optical-generative-models && \
-python train.py \
-  --train-config configs/train_one_shot_distill_d2nn_mnist_3k_fast200_twophoton_100x100_2um_full_connect.yaml \
-  --stage one_shot_distill --device cuda \
-  --distill-dataset outputs/runs/20260610_151747_768931_train_teacher_distill_15k_acceptance_matched_diffusion_e40_gs40_readable_split_from_full15k_cuda/artifacts/teacher_distill_dataset_readable_train.pt \
-  --distill-validation-dataset outputs/runs/20260610_151747_768931_train_teacher_distill_15k_acceptance_matched_diffusion_e40_gs40_readable_split_from_full15k_cuda/artifacts/teacher_distill_dataset_readable_val.pt \
-  --output-root /tmp/twophoton_100x100_2um \
-  --run-name twophoton_100x100_2um_full_connect
-```
-
-训练产生新 checkpoint 后，再使用配套 eval 配置和独立 test split；不得传入受保护 v7.2 checkpoint：
-
-```bash
-source "$(conda info --base)/etc/profile.d/conda.sh" && conda activate optical-generative-models && \
-python train.py \
-  --train-config configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_twophoton_100x100_2um_full_connect_strict_readability_test.yaml \
-  --stage one_shot_distill_eval --device cuda \
-  --one-shot-checkpoint /tmp/twophoton_100x100_2um/<new-run>/checkpoints/one_shot_distill_best.pt \
-  --distill-dataset outputs/runs/20260610_151747_768931_train_teacher_distill_15k_acceptance_matched_diffusion_e40_gs40_readable_split_from_full15k_cuda/artifacts/teacher_distill_dataset_readable_test.pt \
-  --output-root /tmp/twophoton_100x100_2um \
-  --run-name twophoton_100x100_2um_full_connect_eval
-```
-
-本配置尚未完成 CUDA 训练、strict readability 或实验室加工验收，不得仅凭静态几何检查称为 accepted。
+`configs/train_one_shot_distill_d2nn_mnist_3k_fast200_twophoton_100x100_2um_full_connect.yaml` 及其 eval 配置保留作历史实验引用。它们记录旧 two-photon 几何与 loss 组合，不是当前 formal physical-forward 入口；不得复制其命令训练、不得把旧 checkpoint 加载到 v55 relay 合同，也不得仅凭静态几何检查称为 accepted。当前合同、v56 失败事实和 v58 前停止规则以 [Current Handoff](current_handoff.md) 和 [架构文档](single_shot_ldm_distillation.md) 为准。
 
 ## Diagnostics
 
 以下流程均为 `diagnostic-only`：它们可以定位环节问题，但不能单独证明最终 one-shot student 硬件路径可用。
+
+### Experimental Debugging Decision Policy
+
+本节只定义通用决策流程；当前版本状态、run 路径和下一决策门以 [Current Handoff](current_handoff.md) 为准。
+
+- 从事实开始：记录最新 summary/run 路径、gate 与 preview 状态、first-collapse plane，以及 sample/human review 是否存在。
+- 人眼可读性是硬 gate。真实最终 CMOS 为 blob 时，即使 corr/dice、strict eval 或 proxy audit 良好，也不得 promotion。
+- 仅在已定位子系统且指标和人类相关 preview 同时改善时进行 micro-tuning；两次聚焦尝试后人眼信号或首塌缩平面无改善，停止 micro-tuning。
+- 当 eval 通过但 sample/human 失败、指标改善而 class/prototype audit 仍塌缩、gate 输入无效，或失败平面不变时，切换为 broad isolation。
+- 在追加 CUDA 训练或 loss stack 前，broad isolation 必须先证伪一个子系统假设；优先 offline readout、plane-gate、oracle、ablation 或 upper-bound 诊断。
+- bypass、identity relay、phase-amplitude override、software oracle 和非合同层数仅是 `diagnostic-only` 证据，不能 promotion。
+- 每份实验报告必须列出：已定位问题、已排除原因、仍可能原因、gate 有效性和下一决策 gate；不得只提出“再训练”。
 
 | Stage | 用途 | 何时运行 | 必需输入 | 可作为最终单次曝光证据 |
 | --- | --- | --- | --- | --- |
@@ -179,14 +161,14 @@ python train.py \
 
 ```bash
 python -m ldm_project.eval_reports summary \
-  outputs/runs/<eval_run> outputs/runs/<sample_run>
+  outputs/YYYYMMDD_<version>/runs/<eval_run> outputs/YYYYMMDD_<version>/runs/<sample_run>
 ```
 
 将 candidate 与保存的 baseline 比较；退出码非零表示比较未通过：
 
 ```bash
 python -m ldm_project.eval_reports compare \
-  outputs/runs/<eval_run> outputs/runs/<sample_run> outputs/runs/<distill_run> \
+  outputs/YYYYMMDD_<version>/runs/<eval_run> outputs/YYYYMMDD_<version>/runs/<sample_run> outputs/YYYYMMDD_<version>/runs/<distill_run> \
   --baseline docs/ldm_migration/acceptance_baseline_c99f559.json
 ```
 

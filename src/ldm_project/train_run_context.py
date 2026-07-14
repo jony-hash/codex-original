@@ -94,6 +94,9 @@ def build_run_meta(
         "distill_dataset": args.distill_dataset,
         "distill_validation_dataset": getattr(args, "distill_validation_dataset", None),
         "run_dir": run_manager.run_dir,
+        "output_version": getattr(args, "output_version", None),
+        "output_root": getattr(args, "output_root", None),
+        "output_root_explicit": getattr(args, "output_root_explicit", None),
         "dataset": train_cfg.data.dataset,
         "dataset_root": train_cfg.data.root,
         "dataset_total_size": dataset_splits.total_size,
@@ -164,6 +167,13 @@ def build_run_meta(
         "one_shot_code_dim": train_cfg.one_shot.code_dim,
         "one_shot_num_classes": train_cfg.one_shot.num_classes,
         "one_shot_ols_kind": train_cfg.one_shot.ols_kind,
+        "one_shot_target_code_diagnostic_mode": train_cfg.one_shot.target_code_diagnostic_mode,
+        "one_shot_target_code_spatial_scale": train_cfg.one_shot.target_code_spatial_scale,
+        "one_shot_target_code_bridge_source": train_cfg.one_shot.target_code_bridge_source,
+        "one_shot_target_code_bridge_arch": train_cfg.one_shot.target_code_bridge_arch,
+        "one_shot_target_code_bridge_trainability_audit": (
+            train_cfg.one_shot.target_code_bridge_trainability_audit
+        ),
         "one_shot_metasurface_grid_size": train_cfg.one_shot.metasurface_grid_size,
         "one_shot_diffractive_grid_size": train_cfg.one_shot.diffractive_grid_size,
         "one_shot_diffractive_propagation_grid_size": train_cfg.one_shot.diffractive_propagation_grid_size,

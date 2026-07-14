@@ -10,6 +10,7 @@ from .config import (
     TrainingConfig,
     load_physics_config,
     load_training_config,
+    validate_physical_forward_contract,
 )
 from .run_manager import RunManager
 
@@ -26,6 +27,7 @@ __all__ = [
     "TrainingConfig",
     "load_physics_config",
     "load_training_config",
+    "validate_physical_forward_contract",
 ]
 
 try:

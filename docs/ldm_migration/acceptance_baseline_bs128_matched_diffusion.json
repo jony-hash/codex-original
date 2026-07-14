@@ -6,13 +6,13 @@
   "parent_baseline": "c99f559",
   "key_change": "first_stage bs128 + matched diffusion (grid_size=40), 替代旧 bs≈4 + 旧 diffusion 混配方案",
   "source_runs": {
-    "first_stage": "outputs/runs/20260603_171917_817266_train_first_stage_bs128",
-    "diffusion": "outputs/runs/20260603_202557_339829_train_diffusion_from_bs128_first_stage",
-    "distill_export": "outputs/runs/20260603_203615_775633_train_distill_export_bs128_matched_diffusion",
-    "distill_filter": "outputs/runs/20260603_204548_790688_train_distill_filter_bs128_matched_diffusion",
-    "one_shot_distill": "outputs/runs/20260603_204634_461436_train_one_shot_distill_bs128_matched_diffusion",
-    "one_shot_sample": "outputs/runs/20260603_205613_313370_train_one_shot_sample_bs128_matched_diffusion",
-    "one_shot_eval": "outputs/runs/20260603_205657_788415_train_one_shot_eval_bs128_matched_diffusion"
+    "first_stage": "outputs/20260514_unversioned/runs/20260603_171917_817266_train_first_stage_bs128",
+    "diffusion": "outputs/20260514_unversioned/runs/20260603_202557_339829_train_diffusion_from_bs128_first_stage",
+    "distill_export": "outputs/20260514_unversioned/runs/20260603_203615_775633_train_distill_export_bs128_matched_diffusion",
+    "distill_filter": "outputs/20260514_unversioned/runs/20260603_204548_790688_train_distill_filter_bs128_matched_diffusion",
+    "one_shot_distill": "outputs/20260514_unversioned/runs/20260603_204634_461436_train_one_shot_distill_bs128_matched_diffusion",
+    "one_shot_sample": "outputs/20260514_unversioned/runs/20260603_205613_313370_train_one_shot_sample_bs128_matched_diffusion",
+    "one_shot_eval": "outputs/20260514_unversioned/runs/20260603_205657_788415_train_one_shot_eval_bs128_matched_diffusion"
   },
   "metrics": {
     "eval_mse": 0.0209,

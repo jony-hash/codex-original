@@ -195,6 +195,140 @@ class OneShotOpticalStudentTests(unittest.TestCase):
         self.assertEqual(int(diagnostics_a["generator_command_transform"].item()), 1)
         self.assertFalse(bool(diagnostics_a["generator_code_conditioning_active"].item()))
 
+    def test_label_template_code_residual_zero_scale_matches_template(self) -> None:
+        import torch
+
+        from ldm_project.one_shot import ElectronicGeneratorE
+
+        common = dict(
+            image_size=4,
+            grid_size=4,
+            code_dim=5,
+            num_classes=2,
+            label_embed_dim=3,
+            hidden_dim=8,
+            command_transform="intensity_to_amplitude",
+            background_floor=0.05,
+            template_init="mnist_prototype",
+        )
+        template = ElectronicGeneratorE(arch="label_template", **common)
+        residual = ElectronicGeneratorE(
+            arch="label_template_code_residual",
+            code_residual_scale=0.0,
+            **common,
+        )
+        templates = torch.stack(
+            [
+                torch.linspace(0.0, 1.0, 16).reshape(1, 4, 4),
+                torch.linspace(1.0, 0.0, 16).reshape(1, 4, 4),
+            ]
+        )
+        template.initialize_label_templates(templates)
+        residual.initialize_label_templates(templates)
+        labels = torch.tensor([0, 1], dtype=torch.long)
+        code = torch.randn(2, 5)
+
+        template_command, template_diag = template.forward_with_diagnostics(code, labels)
+        residual_command, residual_diag = residual.forward_with_diagnostics(code, labels)
+
+        torch.testing.assert_close(residual_command, template_command, rtol=0.0, atol=0.0)
+        torch.testing.assert_close(
+            residual_diag["generator_desired_intensity"],
+            template_diag["generator_desired_intensity"],
+            rtol=0.0,
+            atol=0.0,
+        )
+        self.assertEqual(tuple(residual_diag["generator_residual_map"].shape), (2, 1, 4, 4))
+        self.assertTrue(bool(residual_diag["generator_code_conditioning_active"].item()))
+
+    def test_label_template_code_residual_nonzero_scale_changes_with_code(self) -> None:
+        import torch
+
+        from ldm_project.one_shot import ElectronicGeneratorE
+
+        generator = ElectronicGeneratorE(
+            image_size=4,
+            grid_size=4,
+            code_dim=5,
+            num_classes=2,
+            label_embed_dim=3,
+            hidden_dim=8,
+            arch="label_template_code_residual",
+            code_residual_scale=0.2,
+            command_transform="intensity_to_amplitude",
+            background_floor=0.05,
+            template_init="mnist_prototype",
+        )
+        templates = torch.stack(
+            [
+                torch.full((1, 4, 4), 0.25),
+                torch.full((1, 4, 4), 0.75),
+            ]
+        )
+        generator.initialize_label_templates(templates)
+        labels = torch.tensor([0, 0], dtype=torch.long)
+        codes = torch.stack([torch.zeros(5), torch.ones(5) * 3.0], dim=0)
+
+        command, diagnostics = generator.forward_with_diagnostics(codes, labels)
+
+        self.assertTrue(torch.isfinite(command).all().item())
+        self.assertGreaterEqual(float(command.min().item()), 0.0)
+        self.assertLessEqual(float(command.max().item()), 1.0)
+        self.assertFalse(torch.allclose(command[0], command[1]))
+        self.assertGreater(float(diagnostics["generator_residual_abs_mean"].mean().item()), 0.0)
+
+    def test_diagnostic_slm_override_is_default_off_and_can_perturb_command(self) -> None:
+        import torch
+
+        from ldm_project.config import OneShotConfig, PhysicsConfig
+        from ldm_project.one_shot import OneShotOpticalGenerator
+
+        common = dict(
+            optical_core_arch="camera_direct_clean_oracle",
+            generator_e_arch="label_template",
+            generator_command_transform="intensity_to_amplitude",
+            generator_template_init="mnist_prototype",
+            distill_target_source="mnist_prototype",
+            code_dim=8,
+            num_classes=2,
+            label_embed_dim=3,
+            hidden_dim=8,
+        )
+        templates = torch.stack(
+            [
+                torch.full((1, 8, 8), 0.35),
+                torch.full((1, 8, 8), 0.65),
+            ]
+        )
+        labels = torch.tensor([0, 0], dtype=torch.long)
+        codes = torch.stack([torch.zeros(8), torch.ones(8) * 2.0], dim=0)
+
+        baseline = OneShotOpticalGenerator(PhysicsConfig(), OneShotConfig(**common), image_size=8)
+        baseline.generator_e.initialize_label_templates(templates)
+        baseline_outputs = baseline(codes, labels)
+
+        torch.testing.assert_close(baseline_outputs["slm_command"][0], baseline_outputs["slm_command"][1])
+        self.assertFalse(bool(baseline_outputs["diagnostic_slm_override_active"].item()))
+
+        oracle = OneShotOpticalGenerator(
+            PhysicsConfig(),
+            OneShotConfig(
+                **common,
+                diagnostic_slm_override_mode="lowfreq_additive",
+                diagnostic_slm_override_amplitude=0.10,
+            ),
+            image_size=8,
+        )
+        oracle.generator_e.initialize_label_templates(templates)
+        oracle_outputs = oracle(codes, labels)
+
+        self.assertTrue(bool(oracle_outputs["diagnostic_slm_override_active"].item()))
+        self.assertEqual(tuple(oracle_outputs["diagnostic_slm_override_pattern"].shape), (2, 1, 8, 8))
+        self.assertFalse(torch.allclose(oracle_outputs["slm_command"][0], oracle_outputs["slm_command"][1]))
+        self.assertTrue(torch.isfinite(oracle_outputs["slm_command"]).all().item())
+        self.assertGreaterEqual(float(oracle_outputs["slm_command"].min().item()), 0.0)
+        self.assertLessEqual(float(oracle_outputs["slm_command"].max().item()), 1.0)
+
     def test_label_template_rejects_mlp_checkpoint_structure(self) -> None:
         from ldm_project.config import OneShotConfig, PhysicsConfig
         from ldm_project.one_shot import (
@@ -260,6 +394,49 @@ class OneShotOpticalStudentTests(unittest.TestCase):
             rtol=0.0,
             atol=0.0,
         )
+
+    def test_relay_intensity_psf_sigma_zero_preserves_slm_intensity(self) -> None:
+        import torch
+
+        from ldm_project.config import PhysicsConfig
+        from ldm_project.optics import FrontOpticalPath
+
+        physics = PhysicsConfig(front_path_model="relay_intensity_psf", front_relay_psf_sigma_px=0.0)
+        front_path = FrontOpticalPath(physics)
+        slm_transfer = torch.rand(2, 1, 12, 12)
+
+        field = front_path.forward_field(slm_transfer)
+
+        self.assertTrue(torch.is_complex(field))
+        self.assertEqual(tuple(field.shape), tuple(slm_transfer.shape))
+        torch.testing.assert_close(field.imag, torch.zeros_like(field.imag), rtol=0.0, atol=0.0)
+        torch.testing.assert_close(field.abs().pow(2), slm_transfer.pow(2), rtol=1.0e-6, atol=1.0e-6)
+
+    def test_relay_intensity_psf_positive_sigma_blurs_intensity(self) -> None:
+        import torch
+
+        from ldm_project.config import PhysicsConfig
+        from ldm_project.optics import FrontOpticalPath
+
+        physics = PhysicsConfig(front_path_model="relay_intensity_psf", front_relay_psf_sigma_px=1.0)
+        front_path = FrontOpticalPath(physics)
+        slm_transfer = torch.zeros(1, 1, 17, 17)
+        slm_transfer[:, :, 8, 8] = 1.0
+
+        field = front_path.forward_field(slm_transfer)
+        relayed_intensity = field.abs().pow(2)
+
+        self.assertTrue(torch.is_complex(field))
+        self.assertEqual(tuple(field.shape), tuple(slm_transfer.shape))
+        self.assertGreater(float(relayed_intensity[:, :, 8, 8]), 0.0)
+        self.assertLess(float(relayed_intensity[:, :, 8, 8]), 1.0)
+        self.assertGreater(float(relayed_intensity[:, :, 8, 9]), 0.0)
+
+    def test_invalid_front_path_model_rejects_unknown_values(self) -> None:
+        from ldm_project.config import PhysicsConfig
+
+        with self.assertRaisesRegex(ValueError, "physics.front_path_model"):
+            PhysicsConfig(front_path_model="not_a_front_path")
 
     def test_label_template_desired_intensity_only_appears_in_intensity_visuals(self) -> None:
         import torch
@@ -509,6 +686,891 @@ class OneShotOpticalStudentTests(unittest.TestCase):
         self.assertIsNotNone(model.encoder.phase.grad)
         self.assertIsNotNone(model.decoder.phase.grad)
         self.assertTrue(any(param.grad is not None for param in model.generator_e.parameters()))
+
+    def test_non_camera_primary_readout_resizes_output_and_preserves_native_planes(self) -> None:
+        import torch
+
+        from ldm_project.config import OneShotConfig, PhysicsConfig, ReadoutConfig
+        from ldm_project.one_shot import OneShotOpticalGenerator
+        from ldm_project.training import one_shot_loss
+
+        for primary_plane in ("chip_intensity", "chip_amplitude", "probe"):
+            with self.subTest(primary_plane=primary_plane):
+                config = OneShotConfig(
+                    optical_core_arch="diffractive_phase_only",
+                    code_dim=8,
+                    label_embed_dim=4,
+                    hidden_dim=16,
+                    num_classes=3,
+                    ols_kind="identity",
+                    diffractive_grid_size=8,
+                    diffractive_propagation_grid_size=16,
+                    encoder_diffractive_layers=2,
+                    decoder_diffractive_layers=2,
+                    diffractive_layer_spacing=0.004,
+                )
+                physics = PhysicsConfig(readout=ReadoutConfig(primary_plane=primary_plane))
+                model = OneShotOpticalGenerator(physics, config, image_size=16)
+                code = torch.randn(2, config.code_dim)
+                labels = torch.tensor([0, 2])
+                target = torch.rand(2, 1, 16, 16)
+
+                outputs = model(code, labels)
+                self.assertEqual(tuple(outputs["camera_plane"].shape), (2, 1, 16, 16))
+                self.assertEqual(tuple(outputs["camera_plane_loss"].shape), (2, 1, 16, 16))
+                self.assertEqual(tuple(outputs["primary_readout_plane_native"].shape), (2, 1, 8, 8))
+                self.assertEqual(tuple(outputs["primary_readout_plane_loss_native"].shape), (2, 1, 8, 8))
+                self.assertEqual(tuple(outputs["chip_intensity_primary"].shape), (2, 1, 8, 8))
+                self.assertEqual(tuple(outputs["chip_amplitude"].shape), (2, 1, 8, 8))
+                self.assertEqual(tuple(outputs["diffractive_camera_plane_raw"].shape), (2, 1, 8, 8))
+                self.assertTrue(torch.isfinite(outputs["camera_plane"]).all().item())
+
+                losses = one_shot_loss(outputs, target)
+                losses["loss"].backward()
+                self.assertTrue(any(param.grad is not None for param in model.parameters()))
+
+    def test_v24_diagnostic_switch_defaults_preserve_forward_outputs(self) -> None:
+        import torch
+
+        from ldm_project.config import OneShotConfig, PhysicsConfig
+        from ldm_project.one_shot import OneShotOpticalGenerator
+
+        base_config = OneShotConfig(
+            optical_core_arch="diffractive_phase_only",
+            code_dim=8,
+            label_embed_dim=4,
+            hidden_dim=16,
+            num_classes=3,
+            ols_kind="tanh",
+            d2nn=None,
+            diffractive_grid_size=8,
+            diffractive_propagation_grid_size=16,
+            encoder_diffractive_layers=2,
+            decoder_diffractive_layers=2,
+            diffractive_layer_spacing=0.004,
+        )
+        explicit_config = OneShotConfig(
+            **{
+                **base_config.__dict__,
+                "decoder_diagnostic_mode": "normal",
+                "decoder_diagnostic_modulation_override": "none",
+                "ols_transfer_calibration": "none",
+            }
+        )
+        torch.manual_seed(123)
+        base = OneShotOpticalGenerator(PhysicsConfig(front_path_model="relay_intensity_psf"), base_config, image_size=16)
+        torch.manual_seed(123)
+        explicit = OneShotOpticalGenerator(
+            PhysicsConfig(front_path_model="relay_intensity_psf"),
+            explicit_config,
+            image_size=16,
+        )
+        code = torch.randn(2, base_config.code_dim)
+        labels = torch.tensor([0, 2])
+
+        base_outputs = base(code, labels)
+        explicit_outputs = explicit(code, labels)
+
+        for key in (
+            "camera_plane",
+            "ols_output_amplitude",
+            "decoder_output_amplitude",
+            "chip_intensity_primary",
+            "physical_camera_plane",
+        ):
+            torch.testing.assert_close(base_outputs[key], explicit_outputs[key], rtol=0.0, atol=0.0)
+        self.assertEqual(explicit_outputs["decoder_diagnostic_mode"], "normal")
+        self.assertEqual(explicit_outputs["decoder_diagnostic_modulation_override"], "none")
+        self.assertEqual(explicit_outputs["ols_transfer_calibration"], "none")
+
+    def test_v51_optical_field_capture_preserves_real_ols_to_decoder_continuity(self) -> None:
+        import torch
+
+        from ldm_project.config import D2NNConfig, OneShotConfig, PhysicsConfig, ReadoutConfig
+        from ldm_project.one_shot import OneShotOpticalGenerator
+
+        config = OneShotConfig(
+            optical_core_arch="diffractive_phase_only",
+            code_dim=8,
+            label_embed_dim=4,
+            hidden_dim=16,
+            num_classes=3,
+            ols_kind="tanh",
+            target_code_diagnostic_mode="none",
+            target_code_bridge_source="none",
+            d2nn=D2NNConfig(
+                grid_size=8,
+                propagation_grid_size=16,
+                encoder_layers=2,
+                decoder_layers=2,
+                layer_spacing=0.004,
+                modulation="phase_only",
+            ),
+        )
+        model = OneShotOpticalGenerator(
+            PhysicsConfig(
+                front_path_model="relay_coherent_psf",
+                front_relay_psf_sigma_px=0.0,
+                back_path_model="relay_psf",
+                readout=ReadoutConfig(relay_psf_sigma_px=1.0),
+            ),
+            config,
+            image_size=16,
+        )
+
+        outputs = model(torch.randn(2, 8), torch.tensor([0, 2]), return_optical_fields=True)
+
+        fields = outputs["optical_fields"]
+        self.assertIn("slm_output", fields)
+        self.assertIn("encoder_layer_1", fields)
+        self.assertIn("decoder_layer_2", fields)
+        self.assertIn("chip", fields)
+        self.assertNotIn("camera_field", fields)
+        self.assertTrue(fields["ols_output"]["phase_available"])
+        self.assertTrue(torch.equal(fields["ols_output"]["real"], fields["decoder_input"]["real"]))
+        self.assertTrue(torch.equal(fields["ols_output"]["imag"], fields["decoder_input"]["imag"]))
+
+    def test_v25_decoder_modulation_override_only_adds_decoder_amplitude(self) -> None:
+        from ldm_project.config import D2NNConfig, OneShotConfig, PhysicsConfig
+        from ldm_project.one_shot import OneShotOpticalGenerator
+
+        config = OneShotConfig(
+            optical_core_arch="diffractive_phase_only",
+            code_dim=8,
+            label_embed_dim=4,
+            hidden_dim=16,
+            num_classes=3,
+            ols_kind="tanh",
+            decoder_diagnostic_modulation_override="phase_amplitude",
+            d2nn=D2NNConfig(
+                grid_size=8,
+                propagation_grid_size=16,
+                encoder_layers=2,
+                decoder_layers=2,
+                layer_spacing=0.004,
+                modulation="phase_only",
+            ),
+        )
+        model = OneShotOpticalGenerator(PhysicsConfig(front_path_model="relay_intensity_psf"), config, image_size=16)
+
+        self.assertFalse(hasattr(model.encoder, "amplitude_logits"))
+        self.assertTrue(hasattr(model.decoder, "amplitude_logits"))
+        self.assertEqual(tuple(model.decoder.amplitude_logits.shape), (2, 1, 8, 8))
+
+    def test_v49_decoder_diagnostic_mask_component_applies_only_selected_decoder_component(self) -> None:
+        import torch
+
+        from ldm_project.config import D2NNConfig, OneShotConfig, PhysicsConfig
+        from ldm_project.one_shot import OneShotOpticalGenerator
+
+        base_kwargs = {
+            "optical_core_arch": "diffractive_phase_only",
+            "code_dim": 8,
+            "label_embed_dim": 4,
+            "hidden_dim": 16,
+            "num_classes": 3,
+            "ols_kind": "tanh",
+            "decoder_diagnostic_modulation_override": "phase_amplitude",
+            "d2nn": D2NNConfig(
+                grid_size=8,
+                propagation_grid_size=16,
+                encoder_layers=2,
+                decoder_layers=2,
+                layer_spacing=0.004,
+                modulation="phase_only",
+                phase_init="small",
+                amplitude_logit_init=1.0,
+            ),
+        }
+        torch.manual_seed(49)
+        trained = OneShotOpticalGenerator(
+            PhysicsConfig(front_path_model="relay_intensity_psf"),
+            OneShotConfig(**base_kwargs),
+            image_size=16,
+        )
+        phase_only = OneShotOpticalGenerator(
+            PhysicsConfig(front_path_model="relay_intensity_psf"),
+            OneShotConfig(**base_kwargs, decoder_diagnostic_mask_component="phase_only"),
+            image_size=16,
+        )
+        amplitude_only = OneShotOpticalGenerator(
+            PhysicsConfig(front_path_model="relay_intensity_psf"),
+            OneShotConfig(**base_kwargs, decoder_diagnostic_mask_component="amplitude_only"),
+            image_size=16,
+        )
+        phase_only.load_state_dict(trained.state_dict())
+        amplitude_only.load_state_dict(trained.state_dict())
+        with torch.no_grad():
+            phase_pattern = torch.linspace(-0.8, 0.8, steps=trained.decoder.phase.numel()).reshape_as(
+                trained.decoder.phase
+            )
+            amplitude_pattern = torch.linspace(-2.0, 2.0, steps=trained.decoder.amplitude_logits.numel()).reshape_as(
+                trained.decoder.amplitude_logits
+            )
+            for model in (trained, phase_only, amplitude_only):
+                model.decoder.phase.copy_(phase_pattern)
+                model.decoder.amplitude_logits.copy_(amplitude_pattern)
+
+        code = torch.randn(2, 8)
+        labels = torch.tensor([0, 2])
+        trained_outputs = trained(code, labels)
+        phase_outputs = phase_only(code, labels)
+        amplitude_outputs = amplitude_only(code, labels)
+
+        torch.testing.assert_close(
+            phase_outputs["diffractive_decoder_mask_amplitude"],
+            torch.ones_like(phase_outputs["diffractive_decoder_mask_amplitude"]),
+        )
+        torch.testing.assert_close(
+            phase_outputs["diffractive_decoder_mask_phase"],
+            phase_pattern,
+        )
+        torch.testing.assert_close(
+            amplitude_outputs["diffractive_decoder_mask_amplitude"],
+            torch.sigmoid(amplitude_pattern),
+        )
+        torch.testing.assert_close(
+            amplitude_outputs["diffractive_decoder_mask_phase"],
+            torch.zeros_like(amplitude_outputs["diffractive_decoder_mask_phase"]),
+        )
+        torch.testing.assert_close(
+            trained_outputs["diffractive_encoder_mask_amplitude"],
+            phase_outputs["diffractive_encoder_mask_amplitude"],
+        )
+        torch.testing.assert_close(
+            trained_outputs["diffractive_encoder_mask_phase"],
+            amplitude_outputs["diffractive_encoder_mask_phase"],
+        )
+        self.assertEqual(phase_outputs["decoder_diagnostic_mask_component"], "phase_only")
+        self.assertEqual(amplitude_outputs["decoder_diagnostic_mask_component"], "amplitude_only")
+
+    def test_v50_decoder_diagnostic_phase_layer_mask_selects_decoder_layers_only(self) -> None:
+        import torch
+
+        from ldm_project.config import D2NNConfig, OneShotConfig, PhysicsConfig
+        from ldm_project.one_shot import OneShotOpticalGenerator
+
+        base_kwargs = {
+            "optical_core_arch": "diffractive_phase_only",
+            "code_dim": 8,
+            "label_embed_dim": 4,
+            "hidden_dim": 16,
+            "num_classes": 3,
+            "ols_kind": "tanh",
+            "decoder_diagnostic_modulation_override": "phase_amplitude",
+            "decoder_diagnostic_mask_component": "phase_only",
+            "d2nn": D2NNConfig(
+                grid_size=8,
+                propagation_grid_size=16,
+                encoder_layers=2,
+                decoder_layers=2,
+                layer_spacing=0.004,
+                modulation="phase_only",
+                phase_init="small",
+            ),
+        }
+        torch.manual_seed(50)
+        both = OneShotOpticalGenerator(
+            PhysicsConfig(front_path_model="relay_intensity_psf"),
+            OneShotConfig(**base_kwargs),
+            image_size=16,
+        )
+        layer1 = OneShotOpticalGenerator(
+            PhysicsConfig(front_path_model="relay_intensity_psf"),
+            OneShotConfig(**base_kwargs, decoder_diagnostic_phase_layer_mask=(True, False)),
+            image_size=16,
+        )
+        layer2 = OneShotOpticalGenerator(
+            PhysicsConfig(front_path_model="relay_intensity_psf"),
+            OneShotConfig(**base_kwargs, decoder_diagnostic_phase_layer_mask=(False, True)),
+            image_size=16,
+        )
+        layer1.load_state_dict(both.state_dict())
+        layer2.load_state_dict(both.state_dict())
+        with torch.no_grad():
+            phase_pattern = torch.linspace(-0.8, 0.8, steps=both.decoder.phase.numel()).reshape_as(
+                both.decoder.phase
+            )
+            for model in (both, layer1, layer2):
+                model.decoder.phase.copy_(phase_pattern)
+
+        code = torch.randn(2, 8)
+        labels = torch.tensor([0, 2])
+        both_outputs = both(code, labels)
+        layer1_outputs = layer1(code, labels)
+        layer2_outputs = layer2(code, labels)
+
+        torch.testing.assert_close(both_outputs["diffractive_decoder_mask_phase"], phase_pattern)
+        torch.testing.assert_close(
+            layer1_outputs["diffractive_decoder_mask_phase"],
+            torch.stack((phase_pattern[0], torch.zeros_like(phase_pattern[1]))),
+        )
+        torch.testing.assert_close(
+            layer2_outputs["diffractive_decoder_mask_phase"],
+            torch.stack((torch.zeros_like(phase_pattern[0]), phase_pattern[1])),
+        )
+        torch.testing.assert_close(
+            layer1_outputs["diffractive_decoder_mask_amplitude"],
+            torch.ones_like(layer1_outputs["diffractive_decoder_mask_amplitude"]),
+        )
+        torch.testing.assert_close(
+            both_outputs["diffractive_encoder_mask_phase"],
+            layer1_outputs["diffractive_encoder_mask_phase"],
+        )
+        torch.testing.assert_close(
+            both_outputs["diffractive_encoder_mask_phase"],
+            layer2_outputs["diffractive_encoder_mask_phase"],
+        )
+        self.assertEqual(tuple(layer1_outputs["decoder_diagnostic_phase_layer_mask"]), (True, False))
+        self.assertEqual(tuple(layer2_outputs["decoder_diagnostic_phase_layer_mask"]), (False, True))
+        self.assertEqual(tuple(layer1_outputs["diffractive_decoder_crop_input_energy"].shape), (2, 2))
+        self.assertTrue(torch.isfinite(layer1_outputs["diffractive_decoder_crop_input_energy"]).all().item())
+
+    def test_v28_decoder_only_training_optimizer_excludes_upstream_parameters(self) -> None:
+        import torch
+
+        from ldm_project.config import D2NNConfig, OneShotConfig, PhysicsConfig, TrainingConfig
+        from ldm_project.one_shot import OneShotOpticalGenerator
+        from ldm_project.one_shot_training_utils import _build_one_shot_optimizer
+
+        config = OneShotConfig(
+            optical_core_arch="diffractive_phase_only",
+            code_dim=8,
+            label_embed_dim=4,
+            hidden_dim=16,
+            num_classes=3,
+            ols_kind="tanh",
+            decoder_only_training=True,
+            d2nn=D2NNConfig(
+                grid_size=8,
+                propagation_grid_size=16,
+                encoder_layers=2,
+                decoder_layers=2,
+                layer_spacing=0.004,
+                modulation="phase_only",
+            ),
+        )
+        train_cfg = TrainingConfig(learning_rate=1.0e-4, one_shot=config)
+        model = OneShotOpticalGenerator(PhysicsConfig(front_path_model="relay_intensity_psf"), config, image_size=16)
+        optimizer = _build_one_shot_optimizer(torch, model, train_cfg)
+        optimized_ids = {
+            id(param)
+            for group in optimizer.param_groups
+            for param in group["params"]
+        }
+        named_parameters = dict(model.named_parameters())
+
+        self.assertTrue(optimized_ids)
+        self.assertTrue(all(id(param) in optimized_ids for name, param in named_parameters.items() if name.startswith("decoder.")))
+        self.assertTrue(all(id(param) not in optimized_ids for name, param in named_parameters.items() if not name.startswith("decoder.")))
+
+    def test_v29_aux_topology_target_transforms_are_deterministic_and_safe(self) -> None:
+        import torch
+
+        from ldm_project.one_shot_losses import transform_aux_topology_target
+
+        target = torch.zeros(2, 1, 32, 32, dtype=torch.float32)
+        target[:, :, 8:24, 13:19] = 0.8
+        target[:, :, 18:24, 8:24] = 1.0
+
+        unchanged = transform_aux_topology_target(target, "none")
+        torch.testing.assert_close(unchanged["target"], target)
+        self.assertEqual(unchanged["target"].dtype, target.dtype)
+        self.assertEqual(unchanged["target"].device, target.device)
+
+        lowpass_a = transform_aux_topology_target(target, "lowpass")
+        lowpass_b = transform_aux_topology_target(target, "lowpass")
+        thick = transform_aux_topology_target(target, "thick_binary")
+
+        torch.testing.assert_close(lowpass_a["target"], lowpass_b["target"])
+        self.assertEqual(tuple(lowpass_a["target"].shape), tuple(target.shape))
+        self.assertEqual(tuple(thick["target"].shape), tuple(target.shape))
+        self.assertGreater(float(thick["foreground_ratio"]), float(unchanged["foreground_ratio"]))
+        self.assertGreaterEqual(float(lowpass_a["target"].min()), 0.0)
+        self.assertLessEqual(float(lowpass_a["target"].max()), 1.0)
+        self.assertGreater(float(lowpass_a["target"].sum()), 0.0)
+        with self.assertRaisesRegex(ValueError, "aux_topology_target_transform"):
+            transform_aux_topology_target(target, "sharpen")
+
+    def test_v29_decoder_trainability_audit_records_updates_and_zero_update_failures(self) -> None:
+        import torch
+
+        from ldm_project.config import D2NNConfig, OneShotConfig, PhysicsConfig, TrainingConfig
+        from ldm_project.one_shot import OneShotOpticalGenerator
+        from ldm_project.one_shot_training_utils import (
+            _accumulate_target_code_bridge_trainability_gradients,
+            _accumulate_decoder_trainability_gradients,
+            _build_one_shot_optimizer,
+            _finalize_target_code_bridge_trainability_audit,
+            _finalize_decoder_trainability_audit,
+            _init_target_code_bridge_trainability_audit,
+            _init_decoder_trainability_audit,
+        )
+
+        torch.manual_seed(7)
+        config = OneShotConfig(
+            optical_core_arch="diffractive_phase_only",
+            code_dim=8,
+            label_embed_dim=4,
+            hidden_dim=16,
+            num_classes=3,
+            ols_kind="tanh",
+            decoder_only_training=True,
+            decoder_trainability_audit=True,
+            d2nn=D2NNConfig(
+                grid_size=8,
+                propagation_grid_size=16,
+                encoder_layers=2,
+                decoder_layers=2,
+                layer_spacing=0.004,
+                modulation="phase_only",
+            ),
+        )
+        train_cfg = TrainingConfig(learning_rate=1.0e-2, one_shot=config)
+        model = OneShotOpticalGenerator(PhysicsConfig(front_path_model="relay_intensity_psf"), config, image_size=16)
+        optimizer = _build_one_shot_optimizer(torch, model, train_cfg)
+        audit = _init_decoder_trainability_audit(model, optimizer, train_cfg)
+        loss = sum(param.pow(2).sum() for name, param in model.named_parameters() if name.startswith("decoder."))
+        loss.backward()
+        _accumulate_decoder_trainability_gradients(audit, model)
+        optimizer.step()
+        finalized = _finalize_decoder_trainability_audit(audit, model)
+
+        self.assertTrue(finalized["passed"])
+        self.assertGreater(finalized["final"]["decoder"]["update_l2_norm"], 0.0)
+        self.assertEqual(finalized["final"]["upstream"]["update_l2_norm"], 0.0)
+        self.assertGreater(finalized["gradients"]["decoder_grad_l2_max"], 0.0)
+
+        zero_model = OneShotOpticalGenerator(PhysicsConfig(front_path_model="relay_intensity_psf"), config, image_size=16)
+        zero_optimizer = _build_one_shot_optimizer(torch, zero_model, train_cfg)
+        zero_audit = _init_decoder_trainability_audit(zero_model, zero_optimizer, train_cfg)
+        zero_finalized = _finalize_decoder_trainability_audit(zero_audit, zero_model)
+        self.assertFalse(zero_finalized["passed"])
+        self.assertIn("decoder-update-zero", zero_finalized["failure_reasons"])
+        self.assertIn("decoder-gradient-zero", zero_finalized["failure_reasons"])
+
+        bridge_config = OneShotConfig(
+            optical_core_arch="diffractive_phase_only",
+            code_dim=8,
+            label_embed_dim=4,
+            hidden_dim=16,
+            num_classes=3,
+            ols_kind="tanh",
+            target_code_diagnostic_mode="lowfreq_digit_code",
+            target_code_bridge_source="encoded_amplitude",
+            target_code_bridge_hidden_channels=4,
+            target_code_bridge_trainability_audit=True,
+            d2nn=D2NNConfig(
+                grid_size=8,
+                propagation_grid_size=16,
+                encoder_layers=2,
+                decoder_layers=2,
+                layer_spacing=0.004,
+                modulation="phase_only",
+            ),
+        )
+        bridge_train_cfg = TrainingConfig(learning_rate=1.0e-2, one_shot=bridge_config)
+        bridge_model = OneShotOpticalGenerator(
+            PhysicsConfig(front_path_model="relay_intensity_psf"),
+            bridge_config,
+            image_size=16,
+        )
+        bridge_optimizer = _build_one_shot_optimizer(torch, bridge_model, bridge_train_cfg)
+        bridge_audit = _init_target_code_bridge_trainability_audit(
+            bridge_model,
+            bridge_optimizer,
+            bridge_train_cfg,
+        )
+        bridge_loss = sum(
+            param.pow(2).sum()
+            for name, param in bridge_model.named_parameters()
+            if name.startswith("target_code_bridge_adapter.")
+        )
+        bridge_loss.backward()
+        _accumulate_target_code_bridge_trainability_gradients(bridge_audit, bridge_model)
+        bridge_optimizer.step()
+        bridge_finalized = _finalize_target_code_bridge_trainability_audit(bridge_audit, bridge_model)
+        self.assertTrue(bridge_finalized["passed"])
+        self.assertGreater(bridge_finalized["final"]["bridge"]["update_l2_norm"], 0.0)
+        self.assertEqual(bridge_finalized["final"]["non_bridge"]["update_l2_norm"], 0.0)
+        self.assertGreater(bridge_finalized["gradients"]["bridge_grad_l2_max"], 0.0)
+
+    def test_v30_target_code_modes_are_default_safe_and_shape_stable(self) -> None:
+        import torch
+
+        from ldm_project.config import D2NNConfig, OneShotConfig, PhysicsConfig
+        from ldm_project.one_shot import OneShotOpticalGenerator
+        from ldm_project.one_shot_stage_common import (
+            ONE_SHOT_DISPLAY_DIAGNOSTIC_TENSOR_KEYS,
+            ONE_SHOT_RAW_DIAGNOSTIC_TENSOR_KEYS,
+        )
+
+        self.assertIn("target_code_amplitude", ONE_SHOT_RAW_DIAGNOSTIC_TENSOR_KEYS)
+        self.assertIn("generator_base_command", ONE_SHOT_RAW_DIAGNOSTIC_TENSOR_KEYS)
+        self.assertIn("generator_residual_map", ONE_SHOT_RAW_DIAGNOSTIC_TENSOR_KEYS)
+        self.assertIn("generator_residual_abs_mean", ONE_SHOT_RAW_DIAGNOSTIC_TENSOR_KEYS)
+        self.assertIn("generator_residual_bg_abs_mean", ONE_SHOT_RAW_DIAGNOSTIC_TENSOR_KEYS)
+        self.assertIn("target_code_amplitude_display", ONE_SHOT_DISPLAY_DIAGNOSTIC_TENSOR_KEYS)
+
+        base_config = OneShotConfig(
+            optical_core_arch="diffractive_phase_only",
+            code_dim=8,
+            label_embed_dim=4,
+            hidden_dim=16,
+            num_classes=4,
+            ols_kind="tanh",
+            d2nn=D2NNConfig(
+                grid_size=8,
+                propagation_grid_size=16,
+                encoder_layers=2,
+                decoder_layers=2,
+                layer_spacing=0.004,
+                modulation="phase_only",
+            ),
+        )
+        explicit_none = OneShotConfig(**{**base_config.__dict__, "target_code_diagnostic_mode": "none"})
+        torch.manual_seed(31)
+        base = OneShotOpticalGenerator(PhysicsConfig(front_path_model="relay_intensity_psf"), base_config, image_size=16)
+        torch.manual_seed(31)
+        explicit = OneShotOpticalGenerator(
+            PhysicsConfig(front_path_model="relay_intensity_psf"),
+            explicit_none,
+            image_size=16,
+        )
+        code = torch.randn(3, base_config.code_dim)
+        labels = torch.tensor([0, 1, 3])
+
+        base_outputs = base(code, labels)
+        explicit_outputs = explicit(code, labels)
+        for key in ("camera_plane", "decoder_input_amplitude", "decoder_output_amplitude", "physical_camera_plane"):
+            torch.testing.assert_close(base_outputs[key], explicit_outputs[key], rtol=0.0, atol=0.0)
+        self.assertEqual(explicit_outputs["target_code_diagnostic_mode"], "none")
+        self.assertFalse(bool(explicit_outputs["target_code_diagnostic_active"].item()))
+
+        for mode in (
+            "spatial_identity_code",
+            "lowfreq_digit_code",
+            "thick_lowfreq_digit_code",
+            "sharp_stroke_digit_code",
+            "small_sharp_stroke_digit_code",
+            "class_codebook_grid",
+        ):
+            with self.subTest(mode=mode):
+                config = OneShotConfig(**{**base_config.__dict__, "target_code_diagnostic_mode": mode})
+                model = OneShotOpticalGenerator(
+                    PhysicsConfig(front_path_model="relay_intensity_psf"),
+                    config,
+                    image_size=16,
+                )
+                outputs = model(code, labels)
+                self.assertEqual(outputs["target_code_diagnostic_mode"], mode)
+                self.assertTrue(bool(outputs["target_code_diagnostic_active"].item()))
+                if mode == "small_sharp_stroke_digit_code":
+                    self.assertAlmostEqual(outputs["target_code_spatial_scale"], 0.72)
+                else:
+                    self.assertIsNone(outputs["target_code_spatial_scale"])
+                self.assertEqual(tuple(outputs["target_code_amplitude"].shape), (3, 1, 8, 8))
+                self.assertEqual(tuple(outputs["decoder_input_amplitude"].shape), (3, 1, 8, 8))
+                self.assertTrue(torch.isfinite(outputs["target_code_amplitude"]).all().item())
+                self.assertGreaterEqual(float(outputs["target_code_amplitude"].min()), 0.0)
+                self.assertLessEqual(float(outputs["target_code_amplitude"].max()), 1.0)
+
+        default_small = OneShotOpticalGenerator(
+            PhysicsConfig(front_path_model="relay_intensity_psf"),
+            OneShotConfig(
+                **{
+                    **base_config.__dict__,
+                    "target_code_diagnostic_mode": "small_sharp_stroke_digit_code",
+                }
+            ),
+            image_size=16,
+        )
+        explicit_small = OneShotOpticalGenerator(
+            PhysicsConfig(front_path_model="relay_intensity_psf"),
+            OneShotConfig(
+                **{
+                    **base_config.__dict__,
+                    "target_code_diagnostic_mode": "small_sharp_stroke_digit_code",
+                    "target_code_spatial_scale": 0.60,
+                }
+            ),
+            image_size=16,
+        )
+        torch.manual_seed(41)
+        default_outputs = default_small(code, labels)
+        torch.manual_seed(41)
+        explicit_outputs = explicit_small(code, labels)
+        self.assertAlmostEqual(default_outputs["target_code_spatial_scale"], 0.72)
+        self.assertAlmostEqual(explicit_outputs["target_code_spatial_scale"], 0.60)
+        self.assertEqual(tuple(explicit_outputs["target_code_amplitude"].shape), (3, 1, 8, 8))
+        self.assertTrue(torch.isfinite(explicit_outputs["target_code_amplitude"]).all().item())
+        self.assertGreaterEqual(float(explicit_outputs["target_code_amplitude"].min()), 0.0)
+        self.assertLessEqual(float(explicit_outputs["target_code_amplitude"].max()), 1.0)
+        self.assertFalse(
+            torch.allclose(default_outputs["target_code_amplitude"], explicit_outputs["target_code_amplitude"])
+        )
+
+        bridge_cases = [
+            ("shallow", "lowfreq_digit_code", 4),
+            ("deep_residual", "thick_lowfreq_digit_code", 4),
+            ("deep_residual", "sharp_stroke_digit_code", 4),
+            ("deep_residual", "small_sharp_stroke_digit_code", 4),
+            ("multiscale", "spatial_identity_code", 3),
+        ]
+        for bridge_arch, target_mode, hidden_channels in bridge_cases:
+            with self.subTest(bridge_arch=bridge_arch, target_mode=target_mode):
+                bridge_config = OneShotConfig(
+                    **{
+                        **base_config.__dict__,
+                        "target_code_diagnostic_mode": target_mode,
+                        "target_code_bridge_source": "encoded_amplitude",
+                        "target_code_bridge_arch": bridge_arch,
+                        "target_code_bridge_hidden_channels": hidden_channels,
+                    }
+                )
+                bridge_model = OneShotOpticalGenerator(
+                    PhysicsConfig(front_path_model="relay_intensity_psf"),
+                    bridge_config,
+                    image_size=16,
+                )
+                bridge_outputs = bridge_model(code, labels)
+                self.assertEqual(bridge_outputs["target_code_diagnostic_mode"], target_mode)
+                self.assertEqual(bridge_outputs["target_code_bridge_source"], "encoded_amplitude")
+                self.assertEqual(bridge_outputs["target_code_bridge_arch"], bridge_arch)
+                self.assertTrue(bool(bridge_outputs["target_code_diagnostic_active"].item()))
+                self.assertTrue(bool(bridge_outputs["target_code_bridge_active"].item()))
+                self.assertEqual(tuple(bridge_outputs["target_code_amplitude"].shape), (3, 1, 8, 8))
+                self.assertEqual(tuple(bridge_outputs["decoder_input_amplitude"].shape), (3, 1, 8, 8))
+                self.assertTrue(torch.isfinite(bridge_outputs["target_code_amplitude"]).all().item())
+                self.assertGreaterEqual(float(bridge_outputs["target_code_amplitude"].min()), 0.0)
+                self.assertLessEqual(float(bridge_outputs["target_code_amplitude"].max()), 1.0)
+                self.assertTrue(
+                    any(name.startswith("target_code_bridge_adapter.") for name, _ in bridge_model.named_parameters())
+                )
+
+    def test_v25_two_layer_checkpoint_loads_into_four_layer_decoder_with_sliced_phase(self) -> None:
+        import torch
+
+        from ldm_project.config import D2NNConfig, OneShotConfig, PhysicsConfig
+        from ldm_project.one_shot import (
+            ONE_SHOT_MODEL_VERSION,
+            OneShotOpticalGenerator,
+            load_one_shot_checkpoint_subset,
+        )
+
+        source_cfg = OneShotConfig(
+            optical_core_arch="diffractive_phase_only",
+            code_dim=8,
+            label_embed_dim=4,
+            hidden_dim=16,
+            num_classes=3,
+            d2nn=D2NNConfig(
+                grid_size=8,
+                propagation_grid_size=16,
+                encoder_layers=2,
+                decoder_layers=2,
+                layer_spacing=0.004,
+                modulation="phase_only",
+            ),
+        )
+        target_cfg = OneShotConfig(
+            **{
+                **source_cfg.__dict__,
+                "d2nn": D2NNConfig(
+                    grid_size=8,
+                    propagation_grid_size=16,
+                    encoder_layers=2,
+                    decoder_layers=4,
+                    layer_spacing=0.004,
+                    modulation="phase_only",
+                ),
+            }
+        )
+        torch.manual_seed(11)
+        source = OneShotOpticalGenerator(PhysicsConfig(front_path_model="relay_intensity_psf"), source_cfg, image_size=16)
+        torch.manual_seed(22)
+        target = OneShotOpticalGenerator(PhysicsConfig(front_path_model="relay_intensity_psf"), target_cfg, image_size=16)
+        payload = {
+            "model_version": ONE_SHOT_MODEL_VERSION,
+            "model_state_dict": source.state_dict(),
+        }
+
+        summary = load_one_shot_checkpoint_subset(
+            target,
+            payload,
+            include_prefixes=("encoder.", "decoder."),
+            description="v25 two-to-four layer optical warm-start",
+        )
+
+        self.assertGreaterEqual(summary["sliced"], 1)
+        torch.testing.assert_close(target.decoder.phase[:2], source.decoder.phase, rtol=0.0, atol=0.0)
+
+    def test_v25_artifact_metadata_sidecar_round_trips_non_tensor_strings(self) -> None:
+        import torch
+
+        from ldm_project.config import D2NNConfig, OneShotConfig, PhysicsConfig, TrainingConfig
+        from ldm_project.one_shot_eval import _one_shot_artifact_metadata
+        from ldm_project.run_manager import RunManager
+
+        cfg = TrainingConfig(
+            one_shot=OneShotConfig(
+                optical_core_arch="diffractive_phase_only",
+                decoder_diagnostic_mode="bypass_decoder",
+                decoder_diagnostic_modulation_override="phase_amplitude",
+                ols_transfer_calibration="phase_screen",
+                d2nn=D2NNConfig(
+                    grid_size=100,
+                    pixel_size=2.0e-6,
+                    encoder_layers=2,
+                    decoder_layers=4,
+                    layer_spacing=1.50e-3,
+                    modulation="phase_only",
+                ),
+            ),
+            physics=PhysicsConfig(
+                front_path_model="relay_intensity_psf",
+                back_path_model="relay_psf",
+            ),
+        )
+        outputs = {
+            "decoder_diagnostic_mode": "bypass_decoder",
+            "decoder_diagnostic_modulation_override": "phase_amplitude",
+            "ols_transfer_calibration": "phase_screen",
+            "decoder_bypass_active": torch.tensor(True),
+            "primary_readout_plane": "camera",
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = RunManager(Path(tmpdir) / "run")
+            metadata = _one_shot_artifact_metadata(
+                stage="one_shot_distill_eval",
+                train_cfg=cfg,
+                one_shot_checkpoint="outputs/example/checkpoints/one_shot_distill_best.pt",
+                distill_dataset="outputs/example/artifacts/val.pt",
+                outputs=outputs,
+            )
+            path = manager.save_artifact_json("one_shot_distill_eval_artifact_metadata", metadata)
+            payload = json.loads(path.read_text(encoding="utf-8"))
+
+        self.assertEqual(payload["decoder_diagnostic_mode"], "bypass_decoder")
+        self.assertEqual(payload["decoder_diagnostic_modulation_override"], "phase_amplitude")
+        self.assertEqual(payload["ols_transfer_calibration"], "phase_screen")
+        self.assertTrue(payload["decoder_bypass_active"])
+        self.assertEqual(payload["d2nn"]["decoder_layers"], 4)
+
+    def test_v24_decoder_bypass_exposes_ols_output_at_decoder_plane(self) -> None:
+        import torch
+
+        from ldm_project.config import OneShotConfig, PhysicsConfig
+        from ldm_project.one_shot import OneShotOpticalGenerator
+
+        config = OneShotConfig(
+            optical_core_arch="diffractive_phase_only",
+            code_dim=8,
+            label_embed_dim=4,
+            hidden_dim=16,
+            num_classes=3,
+            ols_kind="tanh",
+            decoder_diagnostic_mode="bypass_decoder",
+            diffractive_grid_size=8,
+            diffractive_propagation_grid_size=16,
+            encoder_diffractive_layers=2,
+            decoder_diffractive_layers=2,
+            diffractive_layer_spacing=0.004,
+        )
+        model = OneShotOpticalGenerator(PhysicsConfig(front_path_model="relay_intensity_psf"), config, image_size=16)
+        code = torch.randn(2, config.code_dim)
+        labels = torch.tensor([0, 2])
+
+        outputs = model(code, labels)
+
+        torch.testing.assert_close(
+            outputs["decoder_output_amplitude"],
+            outputs["ols_output_amplitude"],
+            rtol=0.0,
+            atol=0.0,
+        )
+        self.assertTrue(bool(outputs["decoder_bypass_active"].item()))
+        self.assertEqual(outputs["decoder_diagnostic_mode"], "bypass_decoder")
+
+    def test_v42_propagation_only_decoder_outputs_finite_diagnostic_bundle(self) -> None:
+        import torch
+
+        from ldm_project.config import OneShotConfig, PhysicsConfig
+        from ldm_project.one_shot import OneShotOpticalGenerator
+
+        config = OneShotConfig(
+            optical_core_arch="diffractive_phase_only",
+            code_dim=8,
+            label_embed_dim=4,
+            hidden_dim=16,
+            num_classes=3,
+            ols_kind="tanh",
+            decoder_diagnostic_mode="propagation_only_decoder",
+            diffractive_grid_size=8,
+            diffractive_propagation_grid_size=16,
+            encoder_diffractive_layers=2,
+            decoder_diffractive_layers=2,
+            diffractive_layer_spacing=0.004,
+        )
+        model = OneShotOpticalGenerator(PhysicsConfig(front_path_model="relay_intensity_psf"), config, image_size=16)
+        outputs = model(torch.randn(2, config.code_dim), torch.tensor([0, 2]))
+
+        self.assertEqual(outputs["decoder_diagnostic_mode"], "propagation_only_decoder")
+        self.assertFalse(bool(outputs["decoder_bypass_active"].item()))
+        self.assertTrue(bool(outputs["decoder_propagation_only_active"].item()))
+        self.assertEqual(tuple(outputs["diffractive_decoder_layer_amplitude"].shape), (2, 2, 1, 8, 8))
+        for key in (
+            "decoder_output_amplitude",
+            "physical_camera_plane",
+            "diffractive_decoder_crop_crop_retention",
+            "diffractive_decoder_crop_propagation_energy_ratio",
+        ):
+            self.assertTrue(torch.isfinite(outputs[key]).all(), key)
+
+    def test_v24_ols_calibration_screens_have_finite_gradients(self) -> None:
+        import torch
+
+        from ldm_project.config import OneShotConfig, PhysicsConfig
+        from ldm_project.one_shot import OneShotOpticalGenerator
+        from ldm_project.training import one_shot_loss
+
+        for calibration in ("phase_screen", "amplitude_phase_screen"):
+            with self.subTest(calibration=calibration):
+                config = OneShotConfig(
+                    optical_core_arch="diffractive_phase_only",
+                    code_dim=8,
+                    label_embed_dim=4,
+                    hidden_dim=16,
+                    num_classes=3,
+                    ols_kind="tanh",
+                    ols_transfer_calibration=calibration,
+                    diffractive_grid_size=8,
+                    diffractive_propagation_grid_size=16,
+                    encoder_diffractive_layers=2,
+                    decoder_diffractive_layers=2,
+                    diffractive_layer_spacing=0.004,
+                )
+                model = OneShotOpticalGenerator(
+                    PhysicsConfig(front_path_model="relay_intensity_psf"),
+                    config,
+                    image_size=16,
+                )
+                code = torch.randn(2, config.code_dim)
+                labels = torch.tensor([0, 2])
+                target = torch.rand(2, 1, 16, 16)
+
+                outputs = model(code, labels)
+                self.assertEqual(tuple(outputs["ols_output_amplitude"].shape), (2, 1, 8, 8))
+                losses = one_shot_loss(outputs, target)
+                losses["loss"].backward()
+
+                self.assertIsNotNone(model.ols_phase_screen)
+                self.assertIsNotNone(model.ols_phase_screen.grad)
+                self.assertTrue(torch.isfinite(model.ols_phase_screen.grad).all().item())
+                if calibration == "amplitude_phase_screen":
+                    self.assertIsNotNone(model.ols_amplitude_log)
+                    self.assertIsNotNone(model.ols_amplitude_log.grad)
+                    self.assertTrue(torch.isfinite(model.ols_amplitude_log.grad).all().item())
 
     def test_readout_primary_plane_rejects_unknown_value(self) -> None:
         from ldm_project.config import ReadoutConfig
@@ -1147,7 +2209,7 @@ class OneShotOpticalStudentTests(unittest.TestCase):
 
         from ldm_project.config import OneShotConfig, PhysicsConfig, TrainingConfig
         from ldm_project.one_shot import OneShotOpticalGenerator
-        from ldm_project.one_shot_training_utils import _build_one_shot_optimizer
+        from ldm_project.one_shot_training_utils import _build_one_shot_optimizer, _one_shot_parameter_groups
 
         train_cfg = TrainingConfig(
             learning_rate=1.0e-4,
@@ -1170,6 +2232,32 @@ class OneShotOpticalStudentTests(unittest.TestCase):
 
         self.assertIn(0.0, lrs)
         self.assertIn(5.0e-5, lrs)
+
+        residual_cfg = TrainingConfig(
+            learning_rate=1.0e-4,
+            one_shot=OneShotConfig(
+                optical_core_arch="camera_direct_clean_oracle",
+                generator_e_arch="label_template_code_residual",
+                generator_command_transform="intensity_to_amplitude",
+                generator_template_init="mnist_prototype",
+                distill_target_source="mnist_sample",
+                code_residual_scale=0.05,
+                generator_base_lr_scale=0.0,
+                generator_residual_lr_scale=1.0,
+                code_dim=4,
+                label_embed_dim=2,
+                hidden_dim=8,
+                num_classes=3,
+            ),
+        )
+        residual_model = OneShotOpticalGenerator(PhysicsConfig(), residual_cfg.one_shot, image_size=8)
+        groups = _one_shot_parameter_groups(residual_model)
+        base_names = {name for name, _ in groups["generator_base"]}
+        residual_names = {name for name, _ in groups["generator_residual"]}
+
+        self.assertIn("generator_e.template_logits", base_names)
+        self.assertTrue(any(name.startswith("generator_e.residual_net.") for name in residual_names))
+        self.assertFalse(any(name.startswith("generator_e.residual_net.") for name in base_names))
 
     def test_one_shot_checkpoint_slices_diffractive_phase_layers_for_fair_shallow_ablation(self) -> None:
         import torch
@@ -1232,6 +2320,489 @@ class OneShotConfigTests(unittest.TestCase):
         mx = tensor.amax(dim=(-2, -1), keepdim=True)
         return (tensor - mn) / (mx - mn).clamp_min(1e-6)
 
+    def test_student_prototype_ce_config_defaults_and_validation(self) -> None:
+        from ldm_project.config import OneShotConfig, load_training_config
+
+        defaults = OneShotConfig()
+        self.assertEqual(defaults.student_prototype_ce_weight, 0.0)
+        self.assertEqual(defaults.student_prototype_ce_labels, ())
+        self.assertAlmostEqual(defaults.student_prototype_ce_temperature, 0.07, places=8)
+        self.assertEqual(defaults.student_negative_label_margin_weight, 0.0)
+        self.assertEqual(defaults.student_negative_label_margin_config, ())
+        self.assertEqual(defaults.student_roi_prototype_ce_weight, 0.0)
+        self.assertEqual(defaults.student_roi_prototype_ce_labels, ())
+        self.assertAlmostEqual(defaults.student_roi_prototype_ce_temperature, 0.07, places=8)
+        self.assertEqual(defaults.student_roi_negative_label_margin_weight, 0.0)
+        self.assertEqual(defaults.student_roi_negative_label_margin_config, ())
+        self.assertAlmostEqual(defaults.student_roi_foreground_threshold, 0.20, places=8)
+        self.assertEqual(defaults.aux_semantic_plane_key, "")
+        self.assertEqual(defaults.aux_semantic_weight, 0.0)
+        self.assertEqual(defaults.aux_semantic_prototype_ce_weight, 0.0)
+        self.assertEqual(defaults.aux_semantic_negative_label_margin_weight, 0.0)
+        self.assertEqual(defaults.aux_topology_plane_key, "")
+        self.assertEqual(defaults.aux_topology_weight, 0.0)
+        self.assertEqual(defaults.aux_topology_dice_weight, 1.0)
+        self.assertEqual(defaults.aux_topology_mse_weight, 1.0)
+        self.assertEqual(defaults.aux_topology_target_transform, "none")
+        self.assertFalse(defaults.decoder_trainability_audit)
+        self.assertEqual(defaults.decoder_diagnostic_mode, "normal")
+        self.assertEqual(defaults.decoder_diagnostic_modulation_override, "none")
+        self.assertEqual(defaults.decoder_diagnostic_mask_component, "trained")
+        self.assertEqual(defaults.decoder_diagnostic_phase_layer_mask, ())
+        self.assertEqual(defaults.ols_transfer_calibration, "none")
+        self.assertEqual(defaults.target_code_diagnostic_mode, "none")
+        self.assertEqual(defaults.target_code_bridge_source, "none")
+        self.assertEqual(defaults.target_code_bridge_arch, "shallow")
+        self.assertEqual(defaults.target_code_bridge_hidden_channels, 8)
+        self.assertFalse(defaults.target_code_bridge_trainability_audit)
+        self.assertAlmostEqual(defaults.sample_code_diversity_weight, 0.0, places=8)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            good_path = Path(tmpdir) / "prototype_ce.yaml"
+            good_path.write_text(
+                "\n".join(
+                    [
+                        "one_shot:",
+                        "  student_prototype_ce_weight: 0.08",
+                        "  student_prototype_ce_labels: [1, 3, 7, 9]",
+                        "  student_prototype_ce_temperature: 0.07",
+                        "  student_negative_label_margin_weight: 0.5",
+                        "  student_negative_label_margin_config:",
+                        "    - [3, 5, 0.08]",
+                        "    - [7, 9, 0.08]",
+                        "  student_roi_prototype_ce_weight: 0.10",
+                        "  student_roi_prototype_ce_labels: [0, 3, 4]",
+                        "  student_roi_prototype_ce_temperature: 0.09",
+                        "  student_roi_negative_label_margin_weight: 0.25",
+                        "  student_roi_negative_label_margin_config:",
+                        "    - [0, 5, 0.04]",
+                        "    - [4, 9, 0.04]",
+                        "  student_roi_foreground_threshold: 0.25",
+                        "  aux_semantic_plane_key: chip_intensity_primary",
+                        "  aux_semantic_weight: 0.40",
+                        "  aux_semantic_prototype_ce_weight: 0.20",
+                        "  aux_semantic_negative_label_margin_weight: 0.30",
+                        "  aux_topology_plane_key: decoder_output_amplitude",
+                        "  aux_topology_weight: 0.50",
+                        "  aux_topology_dice_weight: 1.25",
+                        "  aux_topology_mse_weight: 0.75",
+                        "  aux_topology_target_transform: lowpass",
+                        "  decoder_trainability_audit: true",
+                        "  target_code_diagnostic_mode: lowfreq_digit_code",
+                        "  target_code_bridge_source: ols_output_amplitude",
+                        "  target_code_bridge_arch: deep_residual",
+                        "  target_code_bridge_hidden_channels: 4",
+                        "  target_code_bridge_trainability_audit: true",
+                        "  sample_code_diversity_weight: 0.25",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            cfg = load_training_config(good_path)
+            self.assertAlmostEqual(cfg.one_shot.student_prototype_ce_weight, 0.08, places=8)
+            self.assertEqual(cfg.one_shot.student_prototype_ce_labels, (1, 3, 7, 9))
+            self.assertEqual(
+                cfg.one_shot.student_negative_label_margin_config,
+                ((3, 5, 0.08), (7, 9, 0.08)),
+            )
+            self.assertAlmostEqual(cfg.one_shot.student_roi_prototype_ce_weight, 0.10, places=8)
+            self.assertEqual(cfg.one_shot.student_roi_prototype_ce_labels, (0, 3, 4))
+            self.assertAlmostEqual(cfg.one_shot.student_roi_prototype_ce_temperature, 0.09, places=8)
+            self.assertAlmostEqual(cfg.one_shot.student_roi_negative_label_margin_weight, 0.25, places=8)
+            self.assertEqual(
+                cfg.one_shot.student_roi_negative_label_margin_config,
+                ((0, 5, 0.04), (4, 9, 0.04)),
+            )
+            self.assertAlmostEqual(cfg.one_shot.student_roi_foreground_threshold, 0.25, places=8)
+            self.assertEqual(cfg.one_shot.aux_semantic_plane_key, "chip_intensity_primary")
+            self.assertAlmostEqual(cfg.one_shot.aux_semantic_weight, 0.40, places=8)
+            self.assertAlmostEqual(cfg.one_shot.aux_semantic_prototype_ce_weight, 0.20, places=8)
+            self.assertAlmostEqual(cfg.one_shot.aux_semantic_negative_label_margin_weight, 0.30, places=8)
+            self.assertEqual(cfg.one_shot.aux_topology_plane_key, "decoder_output_amplitude")
+            self.assertAlmostEqual(cfg.one_shot.aux_topology_weight, 0.50, places=8)
+            self.assertAlmostEqual(cfg.one_shot.aux_topology_dice_weight, 1.25, places=8)
+            self.assertAlmostEqual(cfg.one_shot.aux_topology_mse_weight, 0.75, places=8)
+            self.assertEqual(cfg.one_shot.aux_topology_target_transform, "lowpass")
+            self.assertTrue(cfg.one_shot.decoder_trainability_audit)
+            self.assertEqual(cfg.one_shot.target_code_diagnostic_mode, "lowfreq_digit_code")
+            self.assertEqual(cfg.one_shot.target_code_bridge_source, "ols_output_amplitude")
+            self.assertEqual(cfg.one_shot.target_code_bridge_arch, "deep_residual")
+            self.assertEqual(cfg.one_shot.target_code_bridge_hidden_channels, 4)
+            self.assertTrue(cfg.one_shot.target_code_bridge_trainability_audit)
+            self.assertAlmostEqual(cfg.one_shot.sample_code_diversity_weight, 0.25, places=8)
+
+            for plane_key in ("target_code_amplitude", "decoder_input_amplitude"):
+                with self.subTest(aux_topology_plane_key=plane_key):
+                    aux_plane_path = Path(tmpdir) / f"aux_{plane_key}.yaml"
+                    aux_plane_path.write_text(
+                        "\n".join(
+                            [
+                                "one_shot:",
+                                f"  aux_topology_plane_key: {plane_key}",
+                                "  aux_topology_weight: 0.5",
+                            ]
+                        ),
+                        encoding="utf-8",
+                    )
+                    aux_cfg = load_training_config(aux_plane_path)
+                    self.assertEqual(aux_cfg.one_shot.aux_topology_plane_key, plane_key)
+
+            bad_label_path = Path(tmpdir) / "bad_label.yaml"
+            bad_label_path.write_text(
+                "\n".join(["one_shot:", "  student_prototype_ce_labels: [10]"]),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "student_prototype_ce_labels"):
+                load_training_config(bad_label_path)
+
+            bad_tuple_path = Path(tmpdir) / "bad_tuple.yaml"
+            bad_tuple_path.write_text(
+                "\n".join(
+                    [
+                        "one_shot:",
+                        "  student_negative_label_margin_config:",
+                        "    - [3, 5]",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "student_negative_label_margin_config entries"):
+                load_training_config(bad_tuple_path)
+
+            bad_weight_path = Path(tmpdir) / "bad_weight.yaml"
+            bad_weight_path.write_text(
+                "\n".join(["one_shot:", "  student_negative_label_margin_weight: -0.1"]),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "student_negative_label_margin_weight"):
+                load_training_config(bad_weight_path)
+
+            bad_roi_label_path = Path(tmpdir) / "bad_roi_label.yaml"
+            bad_roi_label_path.write_text(
+                "\n".join(["one_shot:", "  student_roi_prototype_ce_labels: [-1]"]),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "student_roi_prototype_ce_labels"):
+                load_training_config(bad_roi_label_path)
+
+            bad_roi_tuple_path = Path(tmpdir) / "bad_roi_tuple.yaml"
+            bad_roi_tuple_path.write_text(
+                "\n".join(
+                    [
+                        "one_shot:",
+                        "  student_roi_negative_label_margin_config:",
+                        "    - [3, 5]",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "student_roi_negative_label_margin_config entries"):
+                load_training_config(bad_roi_tuple_path)
+
+            bad_roi_weight_path = Path(tmpdir) / "bad_roi_weight.yaml"
+            bad_roi_weight_path.write_text(
+                "\n".join(["one_shot:", "  student_roi_prototype_ce_weight: -0.1"]),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "student_roi_prototype_ce_weight"):
+                load_training_config(bad_roi_weight_path)
+
+            bad_aux_plane_path = Path(tmpdir) / "bad_aux_plane.yaml"
+            bad_aux_plane_path.write_text(
+                "\n".join(["one_shot:", "  aux_semantic_plane_key: not_a_plane"]),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "aux_semantic_plane_key"):
+                load_training_config(bad_aux_plane_path)
+
+            bad_aux_blank_path = Path(tmpdir) / "bad_aux_blank.yaml"
+            bad_aux_blank_path.write_text(
+                "\n".join(
+                    [
+                        "one_shot:",
+                        "  aux_semantic_weight: 0.5",
+                        "  aux_semantic_prototype_ce_weight: 1.0",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "aux_semantic_plane_key"):
+                load_training_config(bad_aux_blank_path)
+
+            bad_aux_weight_path = Path(tmpdir) / "bad_aux_weight.yaml"
+            bad_aux_weight_path.write_text(
+                "\n".join(["one_shot:", "  aux_semantic_weight: -0.1"]),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "aux_semantic_weight"):
+                load_training_config(bad_aux_weight_path)
+
+            bad_aux_topology_plane_path = Path(tmpdir) / "bad_aux_topology_plane.yaml"
+            bad_aux_topology_plane_path.write_text(
+                "\n".join(["one_shot:", "  aux_topology_plane_key: not_a_plane"]),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "aux_topology_plane_key"):
+                load_training_config(bad_aux_topology_plane_path)
+
+            bad_aux_topology_blank_path = Path(tmpdir) / "bad_aux_topology_blank.yaml"
+            bad_aux_topology_blank_path.write_text(
+                "\n".join(["one_shot:", "  aux_topology_weight: 0.5"]),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "aux_topology_plane_key"):
+                load_training_config(bad_aux_topology_blank_path)
+
+            bad_aux_topology_weight_path = Path(tmpdir) / "bad_aux_topology_weight.yaml"
+            bad_aux_topology_weight_path.write_text(
+                "\n".join(["one_shot:", "  aux_topology_weight: -0.1"]),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "aux_topology_weight"):
+                load_training_config(bad_aux_topology_weight_path)
+
+            bad_aux_topology_transform_path = Path(tmpdir) / "bad_aux_topology_transform.yaml"
+            bad_aux_topology_transform_path.write_text(
+                "\n".join(["one_shot:", "  aux_topology_target_transform: sharpen"]),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "aux_topology_target_transform"):
+                load_training_config(bad_aux_topology_transform_path)
+
+            bad_decoder_mode_path = Path(tmpdir) / "bad_decoder_mode.yaml"
+            bad_decoder_mode_path.write_text(
+                "\n".join(["one_shot:", "  decoder_diagnostic_mode: not_a_mode"]),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "decoder_diagnostic_mode"):
+                load_training_config(bad_decoder_mode_path)
+
+            bad_decoder_modulation_override_path = Path(tmpdir) / "bad_decoder_modulation_override.yaml"
+            bad_decoder_modulation_override_path.write_text(
+                "\n".join(["one_shot:", "  decoder_diagnostic_modulation_override: phase_only"]),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "decoder_diagnostic_modulation_override"):
+                load_training_config(bad_decoder_modulation_override_path)
+
+            bad_decoder_mask_component_path = Path(tmpdir) / "bad_decoder_mask_component.yaml"
+            bad_decoder_mask_component_path.write_text(
+                "\n".join(["one_shot:", "  decoder_diagnostic_mask_component: not_a_component"]),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "decoder_diagnostic_mask_component"):
+                load_training_config(bad_decoder_mask_component_path)
+
+            bad_decoder_mask_mode_path = Path(tmpdir) / "bad_decoder_mask_mode.yaml"
+            bad_decoder_mask_mode_path.write_text(
+                "\n".join(
+                    [
+                        "one_shot:",
+                        "  decoder_diagnostic_mode: propagation_only_decoder",
+                        "  decoder_diagnostic_modulation_override: phase_amplitude",
+                        "  decoder_diagnostic_mask_component: phase_only",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "decoder_diagnostic_mode=normal"):
+                load_training_config(bad_decoder_mask_mode_path)
+
+            bad_decoder_mask_modulation_path = Path(tmpdir) / "bad_decoder_mask_modulation.yaml"
+            bad_decoder_mask_modulation_path.write_text(
+                "\n".join(["one_shot:", "  decoder_diagnostic_mask_component: amplitude_only"]),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "phase_amplitude"):
+                load_training_config(bad_decoder_mask_modulation_path)
+
+    def test_v50_decoder_diagnostic_phase_layer_mask_config_validation(self) -> None:
+        from ldm_project.config import load_training_config
+
+        base_lines = [
+            "one_shot:",
+            "  decoder_diagnostic_mode: normal",
+            "  decoder_diagnostic_modulation_override: phase_amplitude",
+            "  decoder_diagnostic_mask_component: phase_only",
+            "  d2nn:",
+            "    decoder_layers: 2",
+        ]
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+
+            def write(name, extra_lines):
+                path = root / name
+                path.write_text("\n".join([*base_lines, *extra_lines]), encoding="utf-8")
+                return path
+
+            valid = load_training_config(
+                write("valid.yaml", ["  decoder_diagnostic_phase_layer_mask: [true, false]"])
+            )
+            self.assertEqual(valid.one_shot.decoder_diagnostic_phase_layer_mask, (True, False))
+
+            with self.assertRaisesRegex(ValueError, "length must equal"):
+                load_training_config(
+                    write("bad_length.yaml", ["  decoder_diagnostic_phase_layer_mask: [true]"])
+                )
+            with self.assertRaisesRegex(ValueError, "at least one layer"):
+                load_training_config(
+                    write("all_false.yaml", ["  decoder_diagnostic_phase_layer_mask: [false, false]"])
+                )
+            with self.assertRaisesRegex(ValueError, "decoder_diagnostic_mask_component=phase_only"):
+                load_training_config(
+                    write(
+                        "bad_component.yaml",
+                        [
+                            "  decoder_diagnostic_mask_component: trained",
+                            "  decoder_diagnostic_phase_layer_mask: [true, false]",
+                        ],
+                    )
+                )
+            with self.assertRaisesRegex(ValueError, "decoder_diagnostic_mode=normal"):
+                load_training_config(
+                    write(
+                        "bad_mode.yaml",
+                        [
+                            "  decoder_diagnostic_mode: propagation_only_decoder",
+                            "  decoder_diagnostic_phase_layer_mask: [true, false]",
+                        ],
+                    )
+                )
+
+            bad_ols_calibration_path = Path(tmpdir) / "bad_ols_calibration.yaml"
+            bad_ols_calibration_path.write_text(
+                "\n".join(["one_shot:", "  ols_transfer_calibration: not_a_calibration"]),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "ols_transfer_calibration"):
+                load_training_config(bad_ols_calibration_path)
+
+            bad_target_code_path = Path(tmpdir) / "bad_target_code.yaml"
+            bad_target_code_path.write_text(
+                "\n".join(["one_shot:", "  target_code_diagnostic_mode: not_a_code"]),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "target_code_diagnostic_mode"):
+                load_training_config(bad_target_code_path)
+
+            bad_bridge_source_path = Path(tmpdir) / "bad_target_code_bridge.yaml"
+            bad_bridge_source_path.write_text(
+                "\n".join(["one_shot:", "  target_code_bridge_source: decoder_output_amplitude"]),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "target_code_bridge_source"):
+                load_training_config(bad_bridge_source_path)
+
+            bad_bridge_hidden_path = Path(tmpdir) / "bad_target_code_bridge_hidden.yaml"
+            bad_bridge_hidden_path.write_text(
+                "\n".join(["one_shot:", "  target_code_bridge_hidden_channels: 0"]),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "target_code_bridge_hidden_channels"):
+                load_training_config(bad_bridge_hidden_path)
+
+            bad_bridge_arch_path = Path(tmpdir) / "bad_target_code_bridge_arch.yaml"
+            bad_bridge_arch_path.write_text(
+                "\n".join(["one_shot:", "  target_code_bridge_arch: too_fancy"]),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "target_code_bridge_arch"):
+                load_training_config(bad_bridge_arch_path)
+
+            bad_bridge_mode_path = Path(tmpdir) / "bad_target_code_bridge_mode.yaml"
+            bad_bridge_mode_path.write_text(
+                "\n".join(
+                    [
+                        "one_shot:",
+                        "  target_code_diagnostic_mode: class_codebook_grid",
+                        "  target_code_bridge_source: encoded_amplitude",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "target_code_bridge_source"):
+                load_training_config(bad_bridge_mode_path)
+
+            bad_sample_diversity_path = Path(tmpdir) / "bad_sample_code_diversity.yaml"
+            bad_sample_diversity_path.write_text(
+                "\n".join(["one_shot:", "  sample_code_diversity_weight: -0.1"]),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "sample_code_diversity_weight"):
+                load_training_config(bad_sample_diversity_path)
+
+            for bad_scale in ("0.0", "-0.2", "1.2"):
+                bad_scale_path = Path(tmpdir) / f"bad_target_code_spatial_scale_{bad_scale.replace('.', '_')}.yaml"
+                bad_scale_path.write_text(
+                    "\n".join(["one_shot:", f"  target_code_spatial_scale: {bad_scale}"]),
+                    encoding="utf-8",
+                )
+                with self.subTest(target_code_spatial_scale=bad_scale):
+                    with self.assertRaisesRegex(ValueError, "target_code_spatial_scale"):
+                        load_training_config(bad_scale_path)
+
+            target_scale_path = Path(tmpdir) / "target_code_spatial_scale.yaml"
+            target_scale_path.write_text(
+                "\n".join(
+                    [
+                        "one_shot:",
+                        "  target_code_diagnostic_mode: small_sharp_stroke_digit_code",
+                        "  target_code_spatial_scale: 0.60",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            target_scale_cfg = load_training_config(target_scale_path)
+            self.assertEqual(target_scale_cfg.one_shot.target_code_diagnostic_mode, "small_sharp_stroke_digit_code")
+            self.assertAlmostEqual(target_scale_cfg.one_shot.target_code_spatial_scale, 0.60)
+
+            thick_bridge_path = Path(tmpdir) / "thick_bridge.yaml"
+            thick_bridge_path.write_text(
+                "\n".join(
+                    [
+                        "one_shot:",
+                        "  target_code_diagnostic_mode: thick_lowfreq_digit_code",
+                        "  target_code_bridge_source: encoded_amplitude",
+                        "  target_code_bridge_arch: multiscale",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            thick_cfg = load_training_config(thick_bridge_path)
+            self.assertEqual(thick_cfg.one_shot.target_code_diagnostic_mode, "thick_lowfreq_digit_code")
+            self.assertEqual(thick_cfg.one_shot.target_code_bridge_source, "encoded_amplitude")
+            self.assertEqual(thick_cfg.one_shot.target_code_bridge_arch, "multiscale")
+
+            sharp_bridge_path = Path(tmpdir) / "sharp_bridge.yaml"
+            sharp_bridge_path.write_text(
+                "\n".join(
+                    [
+                        "one_shot:",
+                        "  target_code_diagnostic_mode: sharp_stroke_digit_code",
+                        "  target_code_bridge_source: encoded_amplitude",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            sharp_cfg = load_training_config(sharp_bridge_path)
+            self.assertEqual(sharp_cfg.one_shot.target_code_diagnostic_mode, "sharp_stroke_digit_code")
+            self.assertEqual(sharp_cfg.one_shot.target_code_bridge_source, "encoded_amplitude")
+
+            small_sharp_bridge_path = Path(tmpdir) / "small_sharp_bridge.yaml"
+            small_sharp_bridge_path.write_text(
+                "\n".join(
+                    [
+                        "one_shot:",
+                        "  target_code_diagnostic_mode: small_sharp_stroke_digit_code",
+                        "  target_code_bridge_source: encoded_amplitude",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            small_sharp_cfg = load_training_config(small_sharp_bridge_path)
+            self.assertEqual(small_sharp_cfg.one_shot.target_code_diagnostic_mode, "small_sharp_stroke_digit_code")
+            self.assertEqual(small_sharp_cfg.one_shot.target_code_bridge_source, "encoded_amplitude")
+
     def test_smoke_config_loads_one_shot_fields(self) -> None:
         from ldm_project.config import load_training_config
 
@@ -1253,6 +2824,586 @@ class OneShotConfigTests(unittest.TestCase):
         self.assertEqual(d2nn_config.one_shot.d2nn.modulation, "phase_only")
         self.assertEqual(d2nn_config.one_shot.d2nn.phase_init, "uniform_pi")
         self.assertEqual(d2nn_config.one_shot.sample_class_labels, (0, 1))
+        self.assertEqual(d2nn_config.one_shot.encoder_input_topology_weight, 0.0)
+        self.assertEqual(d2nn_config.one_shot.encoder_input_topology_dice_weight, 1.0)
+        self.assertEqual(d2nn_config.one_shot.encoder_input_topology_mse_weight, 1.0)
+
+    def test_v18_front_topology_probe_configs_preserve_twophoton_contract(self) -> None:
+        from ldm_project.config import load_training_config
+
+        config_dir = Path("outputs/reports/twophoton_100x100_probe_configs")
+        cases = {
+            "probe_a": (
+                "train_twophoton_100x100_v18_probe_a_front_identity_upper_bound_e2.yaml",
+                "eval_twophoton_100x100_v18_probe_a_front_identity_upper_bound.yaml",
+                "relay_identity",
+            ),
+            "probe_b": (
+                "train_twophoton_100x100_v18_probe_b_free_space_precomp_topology_e4.yaml",
+                "eval_twophoton_100x100_v18_probe_b_free_space_precomp_topology.yaml",
+                "free_space",
+            ),
+            "probe_c": (
+                "train_twophoton_100x100_v18_probe_c_front_relay_coherent_psf_e4.yaml",
+                "eval_twophoton_100x100_v18_probe_c_front_relay_coherent_psf.yaml",
+                "relay_coherent_psf",
+            ),
+        }
+
+        for label, (train_name, eval_name, expected_front) in cases.items():
+            train_config = load_training_config(config_dir / train_name)
+            eval_config = load_training_config(config_dir / eval_name)
+            for config in (train_config, eval_config):
+                d2nn = config.one_shot.d2nn
+                self.assertEqual(d2nn.grid_size, 100, label)
+                self.assertAlmostEqual(d2nn.pixel_size, 2.0e-6, places=15)
+                self.assertEqual(d2nn.encoder_layers, 2)
+                self.assertEqual(d2nn.decoder_layers, 2)
+                self.assertAlmostEqual(d2nn.layer_spacing, 1.50e-3, places=12)
+                self.assertEqual(d2nn.modulation, "phase_only")
+                self.assertEqual(config.one_shot.generator_e_arch, "label_template")
+                self.assertEqual(config.one_shot.generator_template_init, "mnist_prototype")
+                self.assertEqual(config.one_shot.distill_target_source, "mnist_prototype")
+                self.assertEqual(config.physics.front_path_model, expected_front)
+            if label == "probe_a":
+                self.assertEqual(train_config.one_shot_epochs, 2)
+                self.assertEqual(train_config.one_shot.encoder_input_topology_weight, 0.0)
+            elif label == "probe_b":
+                self.assertGreater(train_config.one_shot.generator_base_lr_scale, 0.0)
+                self.assertGreater(train_config.one_shot.encoder_input_topology_weight, 0.0)
+            else:
+                self.assertGreater(train_config.physics.front_relay_psf_sigma_px, 0.0)
+
+    def test_v19_front_imaging_probe_configs_preserve_twophoton_contract(self) -> None:
+        from ldm_project.config import load_training_config
+
+        config_dir = Path("outputs/reports/twophoton_100x100_probe_configs")
+        cases = {
+            "probe_a": (
+                "train_twophoton_100x100_v19_probe_a_relay_intensity_psf_sigma0_generator_only_e6.yaml",
+                "eval_twophoton_100x100_v19_probe_a_relay_intensity_psf_sigma0_generator_only.yaml",
+                "relay_intensity_psf",
+                0.0,
+                False,
+            ),
+            "probe_b": (
+                "train_twophoton_100x100_v19_probe_b_relay_intensity_psf_sigma0p4_generator_only_e6.yaml",
+                "eval_twophoton_100x100_v19_probe_b_relay_intensity_psf_sigma0p4_generator_only.yaml",
+                "relay_intensity_psf",
+                0.4,
+                False,
+            ),
+            "probe_c": (
+                "train_twophoton_100x100_v19_probe_c_free_space_short_front_diagnostic_e4.yaml",
+                "eval_twophoton_100x100_v19_probe_c_free_space_short_front_diagnostic.yaml",
+                "free_space",
+                0.0,
+                True,
+            ),
+        }
+
+        for label, (train_name, eval_name, expected_front, expected_sigma, diagnostic_only) in cases.items():
+            train_config = load_training_config(config_dir / train_name)
+            eval_config = load_training_config(config_dir / eval_name)
+            for config in (train_config, eval_config):
+                d2nn = config.one_shot.d2nn
+                self.assertEqual(d2nn.grid_size, 100, label)
+                self.assertAlmostEqual(d2nn.pixel_size, 2.0e-6, places=15)
+                self.assertEqual(d2nn.encoder_layers, 2)
+                self.assertEqual(d2nn.decoder_layers, 2)
+                self.assertAlmostEqual(d2nn.layer_spacing, 1.50e-3, places=12)
+                self.assertEqual(d2nn.modulation, "phase_only")
+                self.assertEqual(config.one_shot.generator_e_arch, "label_template")
+                self.assertEqual(config.one_shot.generator_template_init, "mnist_prototype")
+                self.assertEqual(config.one_shot.distill_target_source, "mnist_prototype")
+                self.assertEqual(config.physics.front_path_model, expected_front)
+                self.assertAlmostEqual(config.physics.front_relay_psf_sigma_px, expected_sigma, places=8)
+                self.assertEqual(config.one_shot.generator_base_lr_scale, 0.0)
+                self.assertEqual(config.one_shot.encoder_input_topology_weight, 0.0)
+            if diagnostic_only:
+                macro = train_config.physics.macro_optics
+                self.assertLessEqual(macro.dist_slm_to_bs, 1.0e-3)
+                self.assertLessEqual(macro.dist_bs_to_m3, 1.0e-3)
+                self.assertLessEqual(macro.dist_m3_to_lg, 1.0e-3)
+            else:
+                self.assertEqual(train_config.one_shot_epochs, 6)
+
+    def test_v20_downstream_isolation_probe_configs_preserve_twophoton_contract(self) -> None:
+        from ldm_project.config import load_training_config
+
+        config_dir = Path("outputs/reports/twophoton_100x100_probe_configs")
+        cases = {
+            "probe_a": (
+                "train_twophoton_100x100_v20_probe_a_relay_intensity_full_checkpoint_from_ac_e4.yaml",
+                "eval_twophoton_100x100_v20_probe_a_relay_intensity_full_checkpoint_from_ac.yaml",
+                "free_space",
+                "camera",
+                False,
+            ),
+            "probe_b": (
+                "train_twophoton_100x100_v20_probe_b_relay_intensity_back_relay_identity_from_ac_e4.yaml",
+                "eval_twophoton_100x100_v20_probe_b_relay_intensity_back_relay_identity_from_ac.yaml",
+                "relay_identity",
+                "camera",
+                True,
+            ),
+            "probe_c": (
+                "train_twophoton_100x100_v20_probe_c_relay_intensity_primary_chip_intensity_from_ac_e4.yaml",
+                "eval_twophoton_100x100_v20_probe_c_relay_intensity_primary_chip_intensity_from_ac.yaml",
+                "free_space",
+                "chip_intensity",
+                True,
+            ),
+            "probe_d": (
+                "train_twophoton_100x100_v20_probe_d_relay_intensity_primary_probe_from_ac_e4.yaml",
+                "eval_twophoton_100x100_v20_probe_d_relay_intensity_primary_probe_from_ac.yaml",
+                "free_space",
+                "probe",
+                True,
+            ),
+        }
+
+        for label, (train_name, eval_name, expected_back, expected_primary, diagnostic_only) in cases.items():
+            train_config = load_training_config(config_dir / train_name)
+            eval_config = load_training_config(config_dir / eval_name)
+            for config in (train_config, eval_config):
+                d2nn = config.one_shot.d2nn
+                self.assertEqual(d2nn.grid_size, 100, label)
+                self.assertAlmostEqual(d2nn.pixel_size, 2.0e-6, places=15)
+                self.assertEqual(d2nn.encoder_layers, 2)
+                self.assertEqual(d2nn.decoder_layers, 2)
+                self.assertAlmostEqual(d2nn.layer_spacing, 1.50e-3, places=12)
+                self.assertEqual(d2nn.modulation, "phase_only")
+                self.assertEqual(config.one_shot.generator_e_arch, "label_template")
+                self.assertEqual(config.one_shot.generator_template_init, "mnist_prototype")
+                self.assertEqual(config.one_shot.distill_target_source, "mnist_prototype")
+                self.assertEqual(config.physics.front_path_model, "relay_intensity_psf")
+                self.assertAlmostEqual(config.physics.front_relay_psf_sigma_px, 0.0, places=8)
+                self.assertEqual(config.physics.back_path_model, expected_back)
+                self.assertEqual(config.physics.readout.primary_plane, expected_primary)
+                self.assertEqual(config.one_shot.generator_base_lr_scale, 0.0)
+                self.assertEqual(config.one_shot.encoder_input_topology_weight, 0.0)
+            self.assertEqual(train_config.one_shot_epochs, 4)
+            self.assertEqual(eval_config.one_shot_epochs, 0)
+
+        launcher = config_dir / "run_twophoton_100x100_v20_downstream_isolation_commands.sh"
+        text = launcher.read_text(encoding="utf-8")
+        self.assertIn("probe_b_relay_intensity_back_relay_identity_from_ac", text)
+        self.assertIn("probe_c_relay_intensity_primary_chip_intensity_from_ac", text)
+        self.assertIn("probe_d_relay_intensity_primary_probe_from_ac", text)
+        self.assertIn('"true"', text)
+
+    def test_v20_downstream_launcher_ignores_incomplete_reused_runs(self) -> None:
+        launcher = Path(
+            "outputs/reports/twophoton_100x100_probe_configs/"
+            "run_twophoton_100x100_v20_downstream_isolation_commands.sh"
+        )
+        text = launcher.read_text(encoding="utf-8")
+
+        self.assertIn("latest_complete_train_run()", text)
+        self.assertIn("checkpoints/one_shot_distill_best.pt", text)
+        self.assertIn("latest_complete_eval_run()", text)
+        self.assertIn("one_shot_distill_eval_metrics.json", text)
+        self.assertIn("one_shot_distill_eval_tensors.pt", text)
+        self.assertIn("incomplete-run-ignored", text)
+        self.assertIn("FAILURE_LOG_DIR", text)
+        self.assertIn("twophoton_100x100_probe_logs", text)
+        self.assertIn("log_path", text)
+        self.assertIn("write_summary", text)
+        self.assertIn("No complete train run", text)
+
+    def test_v21_physical_cmos_probe_configs_preserve_twophoton_contract(self) -> None:
+        from ldm_project.config import load_training_config
+
+        config_dir = Path("outputs/reports/twophoton_100x100_probe_configs")
+        cases = {
+            "probe_a": (
+                "train_twophoton_100x100_v21_probe_a_relay_psf_sigma0_physical_cmos_from_ac_e4.yaml",
+                "eval_twophoton_100x100_v21_probe_a_relay_psf_sigma0_physical_cmos_from_ac.yaml",
+                0.0,
+                True,
+            ),
+            "probe_b": (
+                "train_twophoton_100x100_v21_probe_b_relay_psf_sigma0p4_physical_cmos_from_ac_e4.yaml",
+                "eval_twophoton_100x100_v21_probe_b_relay_psf_sigma0p4_physical_cmos_from_ac.yaml",
+                0.4,
+                False,
+            ),
+            "probe_c": (
+                "train_twophoton_100x100_v21_probe_c_relay_psf_sigma1p0_physical_cmos_from_ac_e4.yaml",
+                "eval_twophoton_100x100_v21_probe_c_relay_psf_sigma1p0_physical_cmos_from_ac.yaml",
+                1.0,
+                False,
+            ),
+        }
+
+        for label, (train_name, eval_name, expected_sigma, _diagnostic_only) in cases.items():
+            train_config = load_training_config(config_dir / train_name)
+            eval_config = load_training_config(config_dir / eval_name)
+            for config in (train_config, eval_config):
+                d2nn = config.one_shot.d2nn
+                self.assertEqual(d2nn.grid_size, 100, label)
+                self.assertAlmostEqual(d2nn.pixel_size, 2.0e-6, places=15)
+                self.assertEqual(d2nn.encoder_layers, 2)
+                self.assertEqual(d2nn.decoder_layers, 2)
+                self.assertAlmostEqual(d2nn.layer_spacing, 1.50e-3, places=12)
+                self.assertEqual(d2nn.modulation, "phase_only")
+                self.assertEqual(config.one_shot.generator_e_arch, "label_template")
+                self.assertEqual(config.one_shot.generator_template_init, "mnist_prototype")
+                self.assertEqual(config.one_shot.distill_target_source, "mnist_prototype")
+                self.assertEqual(config.physics.front_path_model, "relay_intensity_psf")
+                self.assertAlmostEqual(config.physics.front_relay_psf_sigma_px, 0.0, places=8)
+                self.assertEqual(config.physics.back_path_model, "relay_psf")
+                self.assertEqual(config.physics.readout.primary_plane, "camera")
+                self.assertAlmostEqual(config.physics.readout.relay_psf_sigma_px, expected_sigma, places=8)
+                self.assertEqual(config.one_shot.generator_base_lr_scale, 0.0)
+                self.assertEqual(config.one_shot.encoder_input_topology_weight, 0.0)
+            self.assertEqual(train_config.one_shot_epochs, 4)
+            self.assertEqual(eval_config.one_shot_epochs, 0)
+
+        launcher = config_dir / "run_twophoton_100x100_v21_physical_cmos_readout_commands.sh"
+        text = launcher.read_text(encoding="utf-8")
+        self.assertIn("probe_a_relay_psf_sigma0_physical_cmos_from_ac", text)
+        self.assertIn("probe_b_relay_psf_sigma0p4_physical_cmos_from_ac", text)
+        self.assertIn("probe_c_relay_psf_sigma1p0_physical_cmos_from_ac", text)
+        self.assertIn("diagnostic_only_probe", text)
+        self.assertIn("accepted_summary_written", text)
+        self.assertIn("diagnose_v21_physical_cmos_readout.py", text)
+        self.assertIn("No complete eval run", text)
+        self.assertIn("Train command failed", text)
+        self.assertIn("Eval command failed", text)
+        self.assertIn("Reusing complete train run", text)
+        self.assertIn("Reusing complete eval run", text)
+        self.assertIn("decision_rule_status", text)
+
+    def test_v22_physical_cmos_semantic_configs_preserve_contract_and_objectives(self) -> None:
+        from ldm_project.config import load_training_config
+
+        config_dir = Path("outputs/reports/twophoton_100x100_probe_configs")
+        cases = {
+            "probe_a": (
+                "train_twophoton_100x100_v22_probe_a_semantic_ce_from_v21c_e4.yaml",
+                "eval_twophoton_100x100_v22_probe_a_semantic_ce_from_v21c.yaml",
+                "prototype_ce",
+            ),
+            "probe_b": (
+                "train_twophoton_100x100_v22_probe_b_confusion_margin_from_v21c_e4.yaml",
+                "eval_twophoton_100x100_v22_probe_b_confusion_margin_from_v21c.yaml",
+                "confusion_negative_margin",
+            ),
+            "probe_c": (
+                "train_twophoton_100x100_v22_probe_c_focus_roi_semantic_from_v21c_e4.yaml",
+                "eval_twophoton_100x100_v22_probe_c_focus_roi_semantic_from_v21c.yaml",
+                "focus_roi_semantic",
+            ),
+        }
+
+        for label, (train_name, eval_name, objective) in cases.items():
+            train_config = load_training_config(config_dir / train_name)
+            eval_config = load_training_config(config_dir / eval_name)
+            for config in (train_config, eval_config):
+                d2nn = config.one_shot.d2nn
+                self.assertEqual(d2nn.grid_size, 100, label)
+                self.assertAlmostEqual(d2nn.pixel_size, 2.0e-6, places=15)
+                self.assertEqual(d2nn.encoder_layers, 2)
+                self.assertEqual(d2nn.decoder_layers, 2)
+                self.assertAlmostEqual(d2nn.layer_spacing, 1.50e-3, places=12)
+                self.assertEqual(d2nn.modulation, "phase_only")
+                self.assertEqual(config.one_shot.generator_e_arch, "label_template")
+                self.assertEqual(config.one_shot.generator_template_init, "mnist_prototype")
+                self.assertEqual(config.one_shot.distill_target_source, "mnist_prototype")
+                self.assertEqual(config.physics.front_path_model, "relay_intensity_psf")
+                self.assertAlmostEqual(config.physics.front_relay_psf_sigma_px, 0.0, places=8)
+                self.assertEqual(config.physics.back_path_model, "relay_psf")
+                self.assertEqual(config.physics.readout.primary_plane, "camera")
+                self.assertAlmostEqual(config.physics.readout.relay_psf_sigma_px, 1.0, places=8)
+                self.assertEqual(config.one_shot.generator_base_lr_scale, 0.0)
+                self.assertEqual(config.one_shot.encoder_input_topology_weight, 0.0)
+            self.assertEqual(train_config.one_shot_epochs, 4)
+            self.assertEqual(eval_config.one_shot_epochs, 0)
+            if objective == "prototype_ce":
+                self.assertGreater(train_config.one_shot.student_label_margin_weight, 0.0)
+                self.assertGreater(train_config.one_shot.student_prototype_ce_weight, 0.0)
+            elif objective == "confusion_negative_margin":
+                self.assertGreater(train_config.one_shot.student_negative_label_margin_weight, 0.0)
+                self.assertIn((3, 2, 0.06), train_config.one_shot.student_negative_label_margin_config)
+                self.assertIn((7, 5, 0.06), train_config.one_shot.student_negative_label_margin_config)
+                self.assertIn((9, 8, 0.05), train_config.one_shot.student_negative_label_margin_config)
+            else:
+                self.assertGreater(train_config.one_shot.student_roi_prototype_ce_weight, 0.0)
+                self.assertGreater(train_config.one_shot.student_roi_negative_label_margin_weight, 0.0)
+                self.assertEqual(train_config.one_shot.student_roi_prototype_ce_labels, (3, 4, 7, 9))
+
+        launcher = config_dir / "run_twophoton_100x100_v22_physical_cmos_semantic_commands.sh"
+        text = launcher.read_text(encoding="utf-8")
+        self.assertIn("V21C_CHECKPOINT", text)
+        self.assertIn("probe_a_semantic_ce_from_v21c", text)
+        self.assertIn("probe_b_confusion_margin_from_v21c", text)
+        self.assertIn("probe_c_focus_roi_semantic_from_v21c", text)
+        self.assertIn("diagnose_v21_physical_cmos_readout.py", text)
+        self.assertIn("accepted_summary_written", text)
+        self.assertIn("physical_cmos_corr_gain_over_v21c", text)
+        self.assertIn("prototype_label_audit_gain_over_v21c", text)
+        self.assertIn("semantic_loss_microtuning_stop_recommended", text)
+        self.assertIn("No complete eval run", text)
+        self.assertIn("Train command failed", text)
+        self.assertIn("Eval command failed", text)
+
+    def test_v23_decoder_chip_semantic_configs_preserve_contract_and_objectives(self) -> None:
+        from ldm_project.config import load_training_config
+
+        config_dir = Path("outputs/reports/twophoton_100x100_probe_configs")
+        cases = {
+            "probe_a": (
+                "train_twophoton_100x100_v23_probe_a_decoder_amp_aux_semantic_from_v22b_e4.yaml",
+                "eval_twophoton_100x100_v23_probe_a_decoder_amp_aux_semantic_from_v22b.yaml",
+                "decoder_output_amplitude",
+                0.0,
+                0.0,
+            ),
+            "probe_b": (
+                "train_twophoton_100x100_v23_probe_b_chip_intensity_aux_semantic_from_v22b_e4.yaml",
+                "eval_twophoton_100x100_v23_probe_b_chip_intensity_aux_semantic_from_v22b.yaml",
+                "chip_intensity_primary",
+                0.0,
+                0.0,
+            ),
+            "probe_c": (
+                "train_twophoton_100x100_v23_probe_c_chip_aux_semantic_template_precomp_from_v22b_e4.yaml",
+                "eval_twophoton_100x100_v23_probe_c_chip_aux_semantic_template_precomp_from_v22b.yaml",
+                "chip_intensity_primary",
+                0.02,
+                0.03,
+            ),
+        }
+
+        for label, (train_name, eval_name, aux_plane, generator_scale, topology_weight) in cases.items():
+            train_config = load_training_config(config_dir / train_name)
+            eval_config = load_training_config(config_dir / eval_name)
+            for config in (train_config, eval_config):
+                d2nn = config.one_shot.d2nn
+                self.assertEqual(d2nn.grid_size, 100, label)
+                self.assertAlmostEqual(d2nn.pixel_size, 2.0e-6, places=15)
+                self.assertEqual(d2nn.encoder_layers, 2)
+                self.assertEqual(d2nn.decoder_layers, 2)
+                self.assertAlmostEqual(d2nn.layer_spacing, 1.50e-3, places=12)
+                self.assertEqual(d2nn.modulation, "phase_only")
+                self.assertEqual(config.one_shot.generator_e_arch, "label_template")
+                self.assertEqual(config.one_shot.generator_template_init, "mnist_prototype")
+                self.assertEqual(config.one_shot.distill_target_source, "mnist_prototype")
+                self.assertEqual(config.physics.front_path_model, "relay_intensity_psf")
+                self.assertEqual(config.physics.back_path_model, "relay_psf")
+                self.assertEqual(config.physics.readout.primary_plane, "camera")
+                self.assertAlmostEqual(config.physics.readout.relay_psf_sigma_px, 1.0, places=8)
+            self.assertEqual(train_config.one_shot.aux_semantic_plane_key, aux_plane)
+            self.assertGreater(train_config.one_shot.aux_semantic_weight, 0.0)
+            self.assertGreater(train_config.one_shot.aux_semantic_prototype_ce_weight, 0.0)
+            self.assertGreater(train_config.one_shot.aux_semantic_negative_label_margin_weight, 0.0)
+            self.assertEqual(eval_config.one_shot.aux_semantic_plane_key, "")
+            self.assertEqual(eval_config.one_shot.aux_semantic_weight, 0.0)
+            self.assertEqual(train_config.one_shot_epochs, 4)
+            self.assertEqual(eval_config.one_shot_epochs, 0)
+            self.assertAlmostEqual(train_config.one_shot.generator_base_lr_scale, generator_scale, places=8)
+            self.assertAlmostEqual(train_config.one_shot.encoder_input_topology_weight, topology_weight, places=8)
+
+        launcher = config_dir / "run_twophoton_100x100_v23_decoder_chip_semantic_commands.sh"
+        text = launcher.read_text(encoding="utf-8")
+        self.assertIn("V22B_CHECKPOINT", text)
+        self.assertIn("probe_a_decoder_amp_aux_semantic_from_v22b", text)
+        self.assertIn("probe_b_chip_intensity_aux_semantic_from_v22b", text)
+        self.assertIn("probe_c_chip_aux_semantic_template_precomp_from_v22b", text)
+        self.assertIn("diagnose_v21_physical_cmos_readout.py", text)
+        self.assertIn("diagnose_v23_decoder_chip_semantic_collapse.py", text)
+        self.assertIn("accepted_summary_written", text)
+        self.assertIn("decoder_chip_improved", text)
+        self.assertIn("worth_extending_metric_candidates", text)
+
+    def test_v24_ols_decoder_expressivity_configs_preserve_contract_and_diagnostics(self) -> None:
+        from ldm_project.config import load_training_config
+
+        config_dir = Path("outputs/reports/twophoton_100x100_probe_configs")
+        cases = {
+            "probe_a": (
+                None,
+                "eval_twophoton_100x100_v24_probe_a_decoder_bypass_upper_bound_from_v22b.yaml",
+                "bypass_decoder",
+                "none",
+                True,
+            ),
+            "probe_b": (
+                "train_twophoton_100x100_v24_probe_b_ols_phase_screen_from_v22b_e4.yaml",
+                "eval_twophoton_100x100_v24_probe_b_ols_phase_screen_from_v22b.yaml",
+                "normal",
+                "phase_screen",
+                False,
+            ),
+            "probe_c": (
+                "train_twophoton_100x100_v24_probe_c_ols_amp_phase_screen_upper_bound_from_v22b_e4.yaml",
+                "eval_twophoton_100x100_v24_probe_c_ols_amp_phase_screen_upper_bound_from_v22b.yaml",
+                "normal",
+                "amplitude_phase_screen",
+                True,
+            ),
+        }
+
+        for label, (train_name, eval_name, decoder_mode, ols_calibration, _diagnostic_only) in cases.items():
+            eval_config = load_training_config(config_dir / eval_name)
+            configs = [eval_config]
+            train_config = None
+            if train_name is not None:
+                train_config = load_training_config(config_dir / train_name)
+                configs.append(train_config)
+            for config in configs:
+                d2nn = config.one_shot.d2nn
+                self.assertEqual(d2nn.grid_size, 100, label)
+                self.assertAlmostEqual(d2nn.pixel_size, 2.0e-6, places=15)
+                self.assertEqual(d2nn.encoder_layers, 2)
+                self.assertEqual(d2nn.decoder_layers, 2)
+                self.assertAlmostEqual(d2nn.layer_spacing, 1.50e-3, places=12)
+                self.assertEqual(d2nn.modulation, "phase_only")
+                self.assertEqual(config.one_shot.generator_e_arch, "label_template")
+                self.assertEqual(config.one_shot.generator_template_init, "mnist_prototype")
+                self.assertEqual(config.one_shot.distill_target_source, "mnist_prototype")
+                self.assertEqual(config.physics.front_path_model, "relay_intensity_psf")
+                self.assertEqual(config.physics.back_path_model, "relay_psf")
+                self.assertEqual(config.physics.readout.primary_plane, "camera")
+                self.assertEqual(config.one_shot.decoder_diagnostic_mode, decoder_mode)
+                self.assertEqual(config.one_shot.ols_transfer_calibration, ols_calibration)
+            self.assertEqual(eval_config.one_shot_epochs, 0)
+            if train_config is not None:
+                self.assertEqual(train_config.one_shot_epochs, 4)
+
+        launcher = config_dir / "run_twophoton_100x100_v24_ols_decoder_expressivity_commands.sh"
+        text = launcher.read_text(encoding="utf-8")
+        self.assertIn("V22B_CHECKPOINT", text)
+        self.assertIn("probe_a_decoder_bypass_upper_bound_from_v22b", text)
+        self.assertIn("probe_b_ols_phase_screen_from_v22b", text)
+        self.assertIn("probe_c_ols_amp_phase_screen_upper_bound_from_v22b", text)
+        self.assertIn("diagnose_v21_physical_cmos_readout.py", text)
+        self.assertIn("diagnose_v24_ols_decoder_expressivity.py", text)
+        self.assertIn("accepted_summary_written", text)
+        self.assertIn("sample_eligible", text)
+        self.assertIn("upper_bound_only_runs", text)
+
+    def test_v25_decoder_capacity_configs_preserve_readout_and_mark_upper_bounds(self) -> None:
+        from ldm_project.config import load_training_config
+
+        config_dir = Path("outputs/reports/twophoton_100x100_probe_configs")
+        cases = {
+            "probe_a": (
+                "train_twophoton_100x100_v25_probe_a_decoder_phase_amplitude_2layer_upper_bound_from_v22b_e4.yaml",
+                "eval_twophoton_100x100_v25_probe_a_decoder_phase_amplitude_2layer_upper_bound_from_v22b.yaml",
+                2,
+                "phase_amplitude",
+            ),
+            "probe_b": (
+                "train_twophoton_100x100_v25_probe_b_decoder_phase_only_4layer_upper_bound_from_v22b_e4.yaml",
+                "eval_twophoton_100x100_v25_probe_b_decoder_phase_only_4layer_upper_bound_from_v22b.yaml",
+                4,
+                "none",
+            ),
+            "probe_c": (
+                "train_twophoton_100x100_v25_probe_c_decoder_phase_amplitude_4layer_upper_bound_from_v22b_e4.yaml",
+                "eval_twophoton_100x100_v25_probe_c_decoder_phase_amplitude_4layer_upper_bound_from_v22b.yaml",
+                4,
+                "phase_amplitude",
+            ),
+        }
+
+        for label, (train_name, eval_name, decoder_layers, override) in cases.items():
+            train_config = load_training_config(config_dir / train_name)
+            eval_config = load_training_config(config_dir / eval_name)
+            for config in (train_config, eval_config):
+                d2nn = config.one_shot.d2nn
+                self.assertEqual(d2nn.grid_size, 100, label)
+                self.assertAlmostEqual(d2nn.pixel_size, 2.0e-6, places=15)
+                self.assertEqual(d2nn.encoder_layers, 2, label)
+                self.assertEqual(d2nn.decoder_layers, decoder_layers, label)
+                self.assertAlmostEqual(d2nn.layer_spacing, 1.50e-3, places=12)
+                self.assertEqual(d2nn.modulation, "phase_only")
+                self.assertEqual(config.one_shot.decoder_diagnostic_modulation_override, override)
+                self.assertEqual(config.one_shot.generator_e_arch, "label_template")
+                self.assertEqual(config.physics.front_path_model, "relay_intensity_psf")
+                self.assertEqual(config.physics.back_path_model, "relay_psf")
+                self.assertEqual(config.physics.readout.primary_plane, "camera")
+            self.assertEqual(train_config.one_shot_epochs, 4)
+            self.assertEqual(eval_config.one_shot_epochs, 0)
+
+        launcher = config_dir / "run_twophoton_100x100_v25_decoder_capacity_commands.sh"
+        text = launcher.read_text(encoding="utf-8")
+        self.assertIn("--one-shot-generator-checkpoint", text)
+        self.assertIn("--one-shot-optical-checkpoint", text)
+        self.assertIn("diagnose_v21_physical_cmos_readout.py", text)
+        self.assertIn("diagnose_v24_ols_decoder_expressivity.py", text)
+        self.assertIn("diagnose_v25_decoder_capacity_gate.py", text)
+        self.assertIn("accepted_summary_written", text)
+        self.assertIn("human_readability_required", text)
+
+    def test_v26_ols_decodability_launcher_is_offline_diagnostic_only(self) -> None:
+        config_dir = Path("outputs/reports/twophoton_100x100_probe_configs")
+        launcher = config_dir / "run_twophoton_100x100_v26_ols_decodability_commands.sh"
+        text = launcher.read_text(encoding="utf-8")
+        self.assertIn("diagnose_v26_ols_decodability_oracle.py", text)
+        self.assertIn("twophoton_100x100_v22_physical_cmos_semantic_summary", text)
+        self.assertIn("twophoton_100x100_v25_decoder_capacity_summary", text)
+        self.assertIn("No CUDA training was run", text)
+        self.assertIn("No accepted summary was written", text)
+        self.assertNotIn("train.py", text)
+        self.assertNotIn("--stage one_shot_distill", text)
+
+    def test_v27_decoder_synthesis_configs_preserve_contract_and_topology_bridge(self) -> None:
+        from ldm_project.config import load_training_config
+
+        config_dir = Path("outputs/reports/twophoton_100x100_probe_configs")
+        cases = {
+            "probe_a": (
+                "train_twophoton_100x100_v27_probe_a_decoder_topology_bridge_from_v22b_e4.yaml",
+                "eval_twophoton_100x100_v27_probe_a_decoder_topology_bridge_from_v22b.yaml",
+                "decoder_output_amplitude",
+            ),
+            "probe_b": (
+                "train_twophoton_100x100_v27_probe_b_chip_topology_bridge_from_v22b_e4.yaml",
+                "eval_twophoton_100x100_v27_probe_b_chip_topology_bridge_from_v22b.yaml",
+                "chip_intensity_primary",
+            ),
+            "probe_c": (
+                "train_twophoton_100x100_v27_probe_c_physical_cmos_topology_bridge_from_v22b_e4.yaml",
+                "eval_twophoton_100x100_v27_probe_c_physical_cmos_topology_bridge_from_v22b.yaml",
+                "physical_camera_plane",
+            ),
+        }
+        for label, (train_name, eval_name, aux_plane) in cases.items():
+            train_config = load_training_config(config_dir / train_name)
+            eval_config = load_training_config(config_dir / eval_name)
+            for config in (train_config, eval_config):
+                d2nn = config.one_shot.d2nn
+                self.assertEqual(d2nn.grid_size, 100, label)
+                self.assertAlmostEqual(d2nn.pixel_size, 2.0e-6, places=15)
+                self.assertEqual(d2nn.encoder_layers, 2, label)
+                self.assertEqual(d2nn.decoder_layers, 2, label)
+                self.assertAlmostEqual(d2nn.layer_spacing, 1.50e-3, places=12)
+                self.assertEqual(d2nn.modulation, "phase_only")
+                self.assertEqual(config.one_shot.generator_e_arch, "label_template")
+                self.assertEqual(config.one_shot.distill_target_source, "mnist_prototype")
+                self.assertEqual(config.physics.front_path_model, "relay_intensity_psf")
+                self.assertEqual(config.physics.back_path_model, "relay_psf")
+                self.assertEqual(config.physics.readout.primary_plane, "camera")
+            self.assertEqual(train_config.one_shot.aux_topology_plane_key, aux_plane)
+            self.assertGreater(train_config.one_shot.aux_topology_weight, 0.0)
+            self.assertEqual(eval_config.one_shot.aux_topology_plane_key, "")
+            self.assertEqual(eval_config.one_shot.aux_topology_weight, 0.0)
+            self.assertEqual(train_config.one_shot_epochs, 4)
+            self.assertEqual(eval_config.one_shot_epochs, 0)
+
+        launcher = config_dir / "run_twophoton_100x100_v27_decoder_synthesis_commands.sh"
+        text = launcher.read_text(encoding="utf-8")
+        self.assertIn("V26_REPORT", text)
+        self.assertIn("diagnose_v21_physical_cmos_readout.py", text)
+        self.assertIn("diagnose_v24_ols_decoder_expressivity.py", text)
+        self.assertIn("diagnose_v26_ols_decodability_oracle.py", text)
+        self.assertIn("diagnose_v27_decoder_synthesis_gap.py", text)
+        self.assertIn("physical-decoder-unreachable", text)
+        self.assertIn("accepted_summary_written", text)
 
     def test_frozen_generator_requires_explicit_warm_start(self) -> None:
         from ldm_project.config import OneShotConfig, TrainingConfig
@@ -1415,8 +3566,11 @@ class OneShotConfigTests(unittest.TestCase):
         self.assertEqual(tuple(outputs["diffractive_camera_intensity_raw"].shape), (1, 1, 100, 100))
         self.assertEqual(tuple(outputs["camera_plane"].shape), (1, 1, 200, 200))
         self.assertTrue(torch.isfinite(outputs["camera_plane"]).all().item())
+        self.assertEqual(train_config.one_shot.eval_samples_per_class, 5)
+        self.assertEqual(eval_config.one_shot.eval_samples_per_class, 10)
+        self.assertFalse(eval_config.one_shot.eval_allow_train_fallback)
 
-    def test_distillation_configs_load(self) -> None:
+    def test_teacher_distillation_configs_load(self) -> None:
         from ldm_project.config import load_training_config
 
         export_3k_fast200_config = load_training_config(Path("configs/export_teacher_distill_mnist_3k_fast200.yaml"))
@@ -1428,189 +3582,6 @@ class OneShotConfigTests(unittest.TestCase):
         readable_split_config = load_training_config(
             Path("configs/split_teacher_distill_readable_top1k_80_10_10.yaml")
         )
-        identity_audit_config = load_training_config(
-            Path("configs/audit_one_shot_d2nn_v8_7a4_optical_identity_chain.yaml")
-        )
-        readout_ablation_audit_config = load_training_config(
-            Path("configs/audit_one_shot_d2nn_v9_2_readout_plane_ablation.yaml")
-        )
-        hardclass_recovery_config = load_training_config(
-            Path("configs/train_first_stage_hardclass_camera_recovery.yaml")
-        )
-        margin_recovery_config = load_training_config(
-            Path("configs/train_first_stage_hardclass_camera_recovery_margin.yaml")
-        )
-        acceptance_margin_config = load_training_config(
-            Path("configs/train_first_stage_acceptance_margin_recovery.yaml")
-        )
-        train_config = load_training_config(Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200.yaml"))
-        strict_eval_config = load_training_config(
-            Path("configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v3_strict_readability.yaml")
-        )
-        student_v3_config = load_training_config(
-            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v3.yaml")
-        )
-        student_v4_config = load_training_config(
-            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v4_readability.yaml")
-        )
-        student_v5_config = load_training_config(
-            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v5_speckle_label.yaml")
-        )
-        student_v6_config = load_training_config(
-            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v6_clean_bg.yaml")
-        )
-        student_v7_1_config = load_training_config(
-            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v7_1_clean_target_fixed.yaml")
-        )
-        student_v7_3_config = load_training_config(
-            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v7_3_denoise.yaml")
-        )
-        student_v7_3_eval_config = load_training_config(
-            Path("configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v7_3_strict_readability_test.yaml")
-        )
-        student_v8_identity_config = load_training_config(
-            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_identity_oracle.yaml")
-        )
-        student_v8_shallow_config = load_training_config(
-            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_shallow_d2nn.yaml")
-        )
-        student_v8_identity_eval_config = load_training_config(
-            Path("configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_identity_strict_readability_test.yaml")
-        )
-        student_v8_shallow_eval_config = load_training_config(
-            Path("configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_shallow_d2nn_strict_readability_test.yaml")
-        )
-        student_v8_shallow_fair_config = load_training_config(
-            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_shallow_d2nn_fair.yaml")
-        )
-        student_v8_direct_config = load_training_config(
-            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_direct_clean_oracle.yaml")
-        )
-        student_v8_direct_eval_config = load_training_config(
-            Path("configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_direct_clean_oracle_strict_readability_test.yaml")
-        )
-        student_v8_1_direct_config = load_training_config(
-            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_1_direct_mnist_prototype_oracle.yaml")
-        )
-        student_v8_1b_direct_config = load_training_config(
-            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_1b_direct_mnist_prototype_oracle_focus1.yaml")
-        )
-        student_v8_2_direct_config = load_training_config(
-            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_2_direct_mnist_prototype_oracle_detail_polish.yaml")
-        )
-        student_v8_2c_direct_config = load_training_config(
-            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_2c_direct_mnist_prototype_oracle_margin_finish.yaml")
-        )
-        student_v8_3_direct_config = load_training_config(
-            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_3_direct_mnist_sample_oracle.yaml")
-        )
-        student_v8_4_direct_config = load_training_config(
-            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_4_direct_mnist_nearest_teacher_image_oracle.yaml")
-        )
-        student_v8_5a_direct_config = load_training_config(
-            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_5a_direct_prototype_residual_safety.yaml")
-        )
-        student_v8_5b_direct_config = load_training_config(
-            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_5b_direct_prototype_anchor_aux_detail.yaml")
-        )
-        student_v8_5c_direct_config = load_training_config(
-            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_5c_direct_prototype_residual_probe.yaml")
-        )
-        student_v8_5d_direct_config = load_training_config(
-            Path(
-                "configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_5d_direct_prototype_residual_foreground_gate.yaml"
-            )
-        )
-        student_v8_6a_config = load_training_config(
-            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_6a_phase2x2_prototype_anchor.yaml")
-        )
-        student_v8_6b_config = load_training_config(
-            Path(
-                "configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_6b_phase2x2_random_phase_prototype_anchor.yaml"
-            )
-        )
-        student_v8_7a_config = load_training_config(
-            Path(
-                "configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_7a_phase_amplitude2x2_prototype_anchor.yaml"
-            )
-        )
-        student_v8_7a2_config = load_training_config(
-            Path(
-                "configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_7a2_phase_amplitude_warm_phase_active_amp.yaml"
-            )
-        )
-        student_v8_7a3_config = load_training_config(
-            Path(
-                "configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_7a3_near_identity_phase_amp_feasibility.yaml"
-            )
-        )
-        student_v9_1_config = load_training_config(
-            Path(
-                "configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v9_1_trainable_generator_phase_amp_feasibility.yaml"
-            )
-        )
-        student_v8_1_direct_eval_config = load_training_config(
-            Path("configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_1_direct_mnist_prototype_oracle_strict_readability_test.yaml")
-        )
-        student_v8_3_direct_eval_config = load_training_config(
-            Path("configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_3_direct_mnist_sample_oracle_strict_readability_test.yaml")
-        )
-        student_v8_4_direct_eval_config = load_training_config(
-            Path("configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_4_direct_mnist_nearest_teacher_image_oracle_strict_readability_test.yaml")
-        )
-        student_v8_5c_direct_eval_config = load_training_config(
-            Path("configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_5c_direct_prototype_residual_probe_strict_readability_test.yaml")
-        )
-        student_v8_5d_direct_eval_config = load_training_config(
-            Path(
-                "configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_5d_direct_prototype_residual_foreground_gate_strict_readability_test.yaml"
-            )
-        )
-        student_v8_6a_eval_config = load_training_config(
-            Path(
-                "configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_6a_phase2x2_prototype_anchor_strict_readability_test.yaml"
-            )
-        )
-        student_v8_6b_eval_config = load_training_config(
-            Path(
-                "configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_6b_phase2x2_random_phase_prototype_anchor_strict_readability_test.yaml"
-            )
-        )
-        student_v8_7a_eval_config = load_training_config(
-            Path(
-                "configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_7a_phase_amplitude2x2_prototype_anchor_strict_readability_test.yaml"
-            )
-        )
-        student_v8_7a2_eval_config = load_training_config(
-            Path(
-                "configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_7a2_phase_amplitude_warm_phase_active_amp_strict_readability_test.yaml"
-            )
-        )
-        student_v8_7a3_eval_config = load_training_config(
-            Path(
-                "configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_7a3_near_identity_phase_amp_feasibility_strict_readability_test.yaml"
-            )
-        )
-        student_v9_1_eval_config = load_training_config(
-            Path(
-                "configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v9_1_trainable_generator_phase_amp_feasibility_strict_readability_test.yaml"
-            )
-        )
-        student_v9_8_relay_psf_config = load_training_config(
-            Path(
-                "configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v9_8_relay_psf_camera_primary.yaml"
-            )
-        )
-        student_v9_8_relay_psf_eval_config = load_training_config(
-            Path(
-                "configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v9_8_relay_psf_camera_primary_strict_readability_test.yaml"
-            )
-        )
-        student_v8_shallow_fair_eval_config = load_training_config(
-            Path("configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_shallow_d2nn_fair_strict_readability_test.yaml")
-        )
-        feasibility_config = load_training_config(Path("configs/train_one_shot_distill_d2nn_gpu_feasibility.yaml"))
-        long_config = load_training_config(Path("configs/train_one_shot_distill_d2nn_long.yaml"))
 
         self.assertEqual(export_3k_fast200_config.mode, "teacher_distill_export")
         self.assertEqual(export_3k_fast200_config.distillation.samples_per_class, 300)
@@ -1637,6 +3608,27 @@ class OneShotConfigTests(unittest.TestCase):
         self.assertEqual(readable_split_config.distillation.readable_train_per_class, 80)
         self.assertEqual(readable_split_config.distillation.readable_val_per_class, 10)
         self.assertEqual(readable_split_config.distillation.readable_test_per_class, 10)
+
+    def test_optical_audit_and_relay_configs_load(self) -> None:
+        from ldm_project.config import load_training_config
+
+        identity_audit_config = load_training_config(
+            Path("configs/audit_one_shot_d2nn_v8_7a4_optical_identity_chain.yaml")
+        )
+        readout_ablation_audit_config = load_training_config(
+            Path("configs/audit_one_shot_d2nn_v9_2_readout_plane_ablation.yaml")
+        )
+        student_v9_8_relay_psf_config = load_training_config(
+            Path(
+                "configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v9_8_relay_psf_camera_primary.yaml"
+            )
+        )
+        student_v9_8_relay_psf_eval_config = load_training_config(
+            Path(
+                "configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v9_8_relay_psf_camera_primary_strict_readability_test.yaml"
+            )
+        )
+
         self.assertEqual(identity_audit_config.mode, "one_shot_optical_identity_audit")
         self.assertEqual(identity_audit_config.batch_size, 10)
         self.assertEqual(identity_audit_config.one_shot_epochs, 0)
@@ -1660,6 +3652,20 @@ class OneShotConfigTests(unittest.TestCase):
         self.assertEqual(student_v9_8_relay_psf_eval_config.physics.front_path_model, "free_space")
         self.assertEqual(student_v9_8_relay_psf_eval_config.physics.back_path_model, "relay_psf")
         self.assertAlmostEqual(student_v9_8_relay_psf_eval_config.physics.readout.relay_psf_sigma_px, 1.0, places=8)
+
+    def test_first_stage_recovery_configs_load(self) -> None:
+        from ldm_project.config import load_training_config
+
+        hardclass_recovery_config = load_training_config(
+            Path("configs/train_first_stage_hardclass_camera_recovery.yaml")
+        )
+        margin_recovery_config = load_training_config(
+            Path("configs/train_first_stage_hardclass_camera_recovery_margin.yaml")
+        )
+        acceptance_margin_config = load_training_config(
+            Path("configs/train_first_stage_acceptance_margin_recovery.yaml")
+        )
+
         self.assertEqual(hardclass_recovery_config.mode, "first_stage")
         self.assertEqual(hardclass_recovery_config.first_stage_epochs, 12)
         self.assertAlmostEqual(hardclass_recovery_config.learning_rate, 5.0e-5, places=10)
@@ -1690,6 +3696,27 @@ class OneShotConfigTests(unittest.TestCase):
         self.assertEqual(acceptance_margin_config.first_stage.camera_label_margin_labels, (4, 7, 8))
         self.assertEqual(acceptance_margin_config.first_stage.camera_label_margin_prototypes_per_class, 128)
         self.assertEqual(acceptance_margin_config.first_stage.checkpoint_selection_metric, "camera_label_margin_score")
+
+    def test_one_shot_v3_to_v6_configs_load(self) -> None:
+        from ldm_project.config import load_training_config
+
+        train_config = load_training_config(Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200.yaml"))
+        strict_eval_config = load_training_config(
+            Path("configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v3_strict_readability.yaml")
+        )
+        student_v3_config = load_training_config(
+            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v3.yaml")
+        )
+        student_v4_config = load_training_config(
+            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v4_readability.yaml")
+        )
+        student_v5_config = load_training_config(
+            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v5_speckle_label.yaml")
+        )
+        student_v6_config = load_training_config(
+            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v6_clean_bg.yaml")
+        )
+
         self.assertEqual(train_config.mode, "one_shot_distill")
         self.assertEqual(train_config.one_shot.optical_core_arch, "diffractive_phase_only")
         self.assertEqual(train_config.one_shot.ols_kind, "identity")
@@ -1755,7 +3782,41 @@ class OneShotConfigTests(unittest.TestCase):
         self.assertAlmostEqual(student_v6_config.one_shot.camera_background_highfreq_weight, 1.0, places=8)
         self.assertEqual(student_v6_config.one_shot.eval_samples_per_class, 5)
         self.assertEqual(student_v6_config.one_shot.eval_preview_per_class, 2)
-        # v7.1 clean target fixed config
+
+    def test_one_shot_v7_and_v8_baseline_configs_load(self) -> None:
+        from ldm_project.config import load_training_config
+
+        student_v7_1_config = load_training_config(
+            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v7_1_clean_target_fixed.yaml")
+        )
+        student_v7_3_config = load_training_config(
+            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v7_3_denoise.yaml")
+        )
+        student_v7_3_eval_config = load_training_config(
+            Path("configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v7_3_strict_readability_test.yaml")
+        )
+        student_v8_identity_config = load_training_config(
+            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_identity_oracle.yaml")
+        )
+        student_v8_shallow_config = load_training_config(
+            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_shallow_d2nn.yaml")
+        )
+        student_v8_identity_eval_config = load_training_config(
+            Path("configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_identity_strict_readability_test.yaml")
+        )
+        student_v8_shallow_eval_config = load_training_config(
+            Path("configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_shallow_d2nn_strict_readability_test.yaml")
+        )
+        student_v8_shallow_fair_config = load_training_config(
+            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_shallow_d2nn_fair.yaml")
+        )
+        student_v8_direct_config = load_training_config(
+            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_direct_clean_oracle.yaml")
+        )
+        student_v8_direct_eval_config = load_training_config(
+            Path("configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_direct_clean_oracle_strict_readability_test.yaml")
+        )
+
         self.assertEqual(student_v7_1_config.one_shot.checkpoint_selection_metric, "strict_readability")
         self.assertEqual(student_v7_1_config.one_shot.student_label_margin_prototype_source, "mnist")
         self.assertAlmostEqual(student_v7_1_config.one_shot.student_label_margin_weight, 0.12, places=8)
@@ -1809,6 +3870,60 @@ class OneShotConfigTests(unittest.TestCase):
         self.assertEqual(student_v8_direct_eval_config.one_shot.optical_core_arch, "camera_direct_clean_oracle")
         self.assertEqual(student_v8_direct_eval_config.one_shot.eval_samples_per_class, 10)
         self.assertFalse(student_v8_direct_eval_config.one_shot.eval_allow_train_fallback)
+
+    def test_one_shot_v8_direct_configs_load(self) -> None:
+        from ldm_project.config import load_training_config
+
+        student_v8_1_direct_config = load_training_config(
+            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_1_direct_mnist_prototype_oracle.yaml")
+        )
+        student_v8_1b_direct_config = load_training_config(
+            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_1b_direct_mnist_prototype_oracle_focus1.yaml")
+        )
+        student_v8_2_direct_config = load_training_config(
+            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_2_direct_mnist_prototype_oracle_detail_polish.yaml")
+        )
+        student_v8_2c_direct_config = load_training_config(
+            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_2c_direct_mnist_prototype_oracle_margin_finish.yaml")
+        )
+        student_v8_3_direct_config = load_training_config(
+            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_3_direct_mnist_sample_oracle.yaml")
+        )
+        student_v8_4_direct_config = load_training_config(
+            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_4_direct_mnist_nearest_teacher_image_oracle.yaml")
+        )
+        student_v8_5a_direct_config = load_training_config(
+            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_5a_direct_prototype_residual_safety.yaml")
+        )
+        student_v8_5b_direct_config = load_training_config(
+            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_5b_direct_prototype_anchor_aux_detail.yaml")
+        )
+        student_v8_5c_direct_config = load_training_config(
+            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_5c_direct_prototype_residual_probe.yaml")
+        )
+        student_v8_5d_direct_config = load_training_config(
+            Path(
+                "configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_5d_direct_prototype_residual_foreground_gate.yaml"
+            )
+        )
+        student_v8_1_direct_eval_config = load_training_config(
+            Path("configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_1_direct_mnist_prototype_oracle_strict_readability_test.yaml")
+        )
+        student_v8_3_direct_eval_config = load_training_config(
+            Path("configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_3_direct_mnist_sample_oracle_strict_readability_test.yaml")
+        )
+        student_v8_4_direct_eval_config = load_training_config(
+            Path("configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_4_direct_mnist_nearest_teacher_image_oracle_strict_readability_test.yaml")
+        )
+        student_v8_5c_direct_eval_config = load_training_config(
+            Path("configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_5c_direct_prototype_residual_probe_strict_readability_test.yaml")
+        )
+        student_v8_5d_direct_eval_config = load_training_config(
+            Path(
+                "configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_5d_direct_prototype_residual_foreground_gate_strict_readability_test.yaml"
+            )
+        )
+
         self.assertEqual(student_v8_1_direct_config.one_shot.optical_core_arch, "camera_direct_clean_oracle")
         self.assertEqual(student_v8_1_direct_config.one_shot.distill_target_source, "mnist_prototype")
         self.assertFalse(student_v8_1_direct_config.one_shot.clean_target_enabled)
@@ -1919,6 +4034,69 @@ class OneShotConfigTests(unittest.TestCase):
         self.assertAlmostEqual(student_v8_5d_direct_eval_config.one_shot.code_residual_scale, 0.05, places=8)
         self.assertEqual(student_v8_5d_direct_eval_config.one_shot.aux_detail_foreground_gate_dilation, 15)
         self.assertFalse(student_v8_5d_direct_eval_config.one_shot.eval_allow_train_fallback)
+
+    def test_one_shot_v8_diffractive_and_v9_configs_load(self) -> None:
+        from ldm_project.config import load_training_config
+
+        student_v8_6a_config = load_training_config(
+            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_6a_phase2x2_prototype_anchor.yaml")
+        )
+        student_v8_6b_config = load_training_config(
+            Path(
+                "configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_6b_phase2x2_random_phase_prototype_anchor.yaml"
+            )
+        )
+        student_v8_7a_config = load_training_config(
+            Path(
+                "configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_7a_phase_amplitude2x2_prototype_anchor.yaml"
+            )
+        )
+        student_v8_7a2_config = load_training_config(
+            Path(
+                "configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_7a2_phase_amplitude_warm_phase_active_amp.yaml"
+            )
+        )
+        student_v8_7a3_config = load_training_config(
+            Path(
+                "configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_7a3_near_identity_phase_amp_feasibility.yaml"
+            )
+        )
+        student_v9_1_config = load_training_config(
+            Path(
+                "configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v9_1_trainable_generator_phase_amp_feasibility.yaml"
+            )
+        )
+        student_v8_6a_eval_config = load_training_config(
+            Path(
+                "configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_6a_phase2x2_prototype_anchor_strict_readability_test.yaml"
+            )
+        )
+        student_v8_6b_eval_config = load_training_config(
+            Path(
+                "configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_6b_phase2x2_random_phase_prototype_anchor_strict_readability_test.yaml"
+            )
+        )
+        student_v8_7a_eval_config = load_training_config(
+            Path(
+                "configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_7a_phase_amplitude2x2_prototype_anchor_strict_readability_test.yaml"
+            )
+        )
+        student_v8_7a2_eval_config = load_training_config(
+            Path(
+                "configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_7a2_phase_amplitude_warm_phase_active_amp_strict_readability_test.yaml"
+            )
+        )
+        student_v8_7a3_eval_config = load_training_config(
+            Path(
+                "configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_7a3_near_identity_phase_amp_feasibility_strict_readability_test.yaml"
+            )
+        )
+        student_v9_1_eval_config = load_training_config(
+            Path(
+                "configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v9_1_trainable_generator_phase_amp_feasibility_strict_readability_test.yaml"
+            )
+        )
+
         self.assertEqual(student_v8_6a_config.one_shot.optical_core_arch, "diffractive_phase_only")
         self.assertEqual(student_v8_6a_config.one_shot.generator_e_arch, "mlp")
         self.assertEqual(student_v8_6a_config.one_shot.d2nn.encoder_layers, 2)
@@ -2062,6 +4240,16 @@ class OneShotConfigTests(unittest.TestCase):
         self.assertEqual(student_v9_1_eval_config.one_shot.eval_samples_per_class, 10)
         self.assertEqual(student_v9_1_eval_config.one_shot.eval_preview_per_class, 2)
         self.assertFalse(student_v9_1_eval_config.one_shot.eval_allow_train_fallback)
+
+    def test_one_shot_feasibility_and_long_configs_load(self) -> None:
+        from ldm_project.config import load_training_config
+
+        student_v8_shallow_fair_eval_config = load_training_config(
+            Path("configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_shallow_d2nn_fair_strict_readability_test.yaml")
+        )
+        feasibility_config = load_training_config(Path("configs/train_one_shot_distill_d2nn_gpu_feasibility.yaml"))
+        long_config = load_training_config(Path("configs/train_one_shot_distill_d2nn_long.yaml"))
+
         self.assertEqual(student_v8_shallow_fair_eval_config.one_shot.optical_core_arch, "diffractive_phase_only")
         self.assertEqual(student_v8_shallow_fair_eval_config.one_shot.d2nn.encoder_layers, 1)
         self.assertFalse(student_v8_shallow_fair_eval_config.one_shot.eval_allow_train_fallback)
@@ -2087,6 +4275,7 @@ class OneShotConfigTests(unittest.TestCase):
         self.assertEqual(long_config.distillation.train_subset_size, 1000)
         self.assertAlmostEqual(long_config.one_shot.slm_contrast_weight, 1.0e-3, places=8)
         self.assertAlmostEqual(long_config.one_shot.cross_class_pairwise_weight, 1.0e-2, places=8)
+
 
     def test_distill_target_source_rejects_unknown_value(self) -> None:
         from ldm_project.config import load_training_config
@@ -2779,11 +4968,13 @@ class OneShotConfigTests(unittest.TestCase):
             targets,
             class_labels=labels,
             code_diversity_weight=1.0,
+            sample_code_diversity_weight=0.5,
             teacher_pairwise_diversity_weight=1.0,
             diversity_min_teacher_mse=1.0e-8,
         )
         self.assertGreater(float(losses["diversity_pair_count"].item()), 0.0)
         self.assertGreater(float(losses["code_diversity_loss"].item()), 0.0)
+        self.assertGreater(float(losses["sample_code_diversity_loss"].item()), 0.0)
         self.assertGreater(float(losses["teacher_pairwise_mse"].item()), 0.0)
 
     def test_multiclass_distill_loader_enables_cross_class_pairs(self) -> None:
@@ -2853,7 +5044,7 @@ class OneShotConfigTests(unittest.TestCase):
                 super().__init__()
                 self.scale = torch.nn.Parameter(torch.tensor(0.0))
 
-            def forward(self, codes, labels):
+            def forward(self, codes, labels, *, return_optical_fields=False):
                 outputs = _dummy_one_shot_outputs(batch_size=int(codes.shape[0]), image_size=4, grid_size=2)
                 for key in (
                     "slm_phase",
@@ -2878,6 +5069,8 @@ class OneShotConfigTests(unittest.TestCase):
                 ):
                     outputs.pop(key, None)
                 outputs["camera_plane"] = torch.sigmoid(self.scale) * outputs["camera_plane"]
+                if return_optical_fields:
+                    outputs["optical_fields"] = {}
                 return outputs
 
         class RecordingRunManager:
@@ -2904,6 +5097,10 @@ class OneShotConfigTests(unittest.TestCase):
             def save_artifact_json(self, name, payload):
                 self.events.append(("artifact", name))
                 return self.artifacts_dir / f"{name}.json"
+
+            def save_tensor_bundle(self, name, payload):
+                self.events.append(("bundle", name))
+                return self.artifacts_dir / name
 
             def save_checkpoint(self, name, payload):
                 path = self.run_dir / "checkpoints" / name
@@ -3899,6 +6096,41 @@ class OneShotConfigTests(unittest.TestCase):
         self.assertEqual(kwargs["image_size"], 4)
         self.assertEqual(kwargs["max_per_class"], 3)
 
+    def test_roi_semantic_losses_request_student_prototypes(self) -> None:
+        import torch
+
+        from ldm_project.config import OneShotConfig, TrainingConfig
+        from ldm_project.one_shot_distill_training import _build_student_label_margin_prototypes
+
+        payload = {
+            "class_labels": torch.tensor([0, 0, 1, 1], dtype=torch.long),
+            "teacher_camera": torch.tensor(
+                [
+                    [[[[1.0, 0.0], [0.0, 0.0]]]],
+                    [[[[0.0, 1.0], [0.0, 0.0]]]],
+                    [[[[0.0, 0.0], [1.0, 0.0]]]],
+                    [[[[0.0, 0.0], [0.0, 1.0]]]],
+                ],
+                dtype=torch.float32,
+            ).squeeze(1),
+        }
+        train_cfg = TrainingConfig(
+            one_shot=OneShotConfig(
+                num_classes=2,
+                student_roi_prototype_ce_weight=0.1,
+                student_roi_negative_label_margin_weight=0.2,
+                student_label_margin_prototype_source="teacher_camera",
+                checkpoint_selection_metric="loss",
+            )
+        )
+
+        prototypes, source = _build_student_label_margin_prototypes(torch, payload, train_cfg)
+
+        self.assertEqual(source, "teacher_camera")
+        self.assertEqual(tuple(prototypes.shape), (2, 1, 2, 2))
+        self.assertTrue(torch.allclose(prototypes[0], payload["teacher_camera"][:2].mean(dim=0)))
+        self.assertTrue(torch.allclose(prototypes[1], payload["teacher_camera"][2:].mean(dim=0)))
+
     def test_one_shot_visualization_includes_raw_and_display_camera(self) -> None:
         import torch
 
@@ -4343,6 +6575,11 @@ class OneShotConfigTests(unittest.TestCase):
         self.assertEqual(tuple(blurred_outputs["camera_plane"].shape), tuple(chip_amplitude.shape))
         self.assertTrue(torch.isfinite(blurred_outputs["camera_plane"]).all().item())
         self.assertTrue(torch.allclose(identity_outputs["camera_plane"], psf_identity_outputs["camera_plane"]))
+        self.assertFalse(psf_identity_outputs["camera_field_available"])
+        self.assertFalse(psf_identity_outputs["camera_phase_available"])
+        self.assertNotIn("camera_field_real", psf_identity_outputs)
+        self.assertNotIn("camera_field_imag", psf_identity_outputs)
+        self.assertNotIn("camera_phase", psf_identity_outputs)
         self.assertLess(
             total_variation(blurred_outputs["camera_plane"]).item(),
             total_variation(psf_identity_outputs["camera_plane"]).item(),
@@ -4472,6 +6709,163 @@ class OneShotConfigTests(unittest.TestCase):
             width, height = struct.unpack(">II", header[16:24])
             self.assertLessEqual(width, 420)
             self.assertLessEqual(height, 320)
+
+    def test_run_manager_tensor_grid_defaults_to_nearest_interpolation(self) -> None:
+        import importlib.util
+        from unittest.mock import patch
+
+        import torch
+
+        if importlib.util.find_spec("matplotlib") is None:
+            raise unittest.SkipTest("matplotlib is required for PNG grid output.")
+
+        import matplotlib.axes
+
+        from ldm_project.run_manager import RunManager
+
+        calls = []
+        original_imshow = matplotlib.axes.Axes.imshow
+
+        def record_imshow(axis, *args, **kwargs):
+            calls.append(kwargs.get("interpolation"))
+            return original_imshow(axis, *args, **kwargs)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            run_manager = RunManager(Path(tmpdir))
+            with patch.object(matplotlib.axes.Axes, "imshow", record_imshow):
+                run_manager.save_tensor_grid(
+                    {"grid": torch.rand(1, 1, 4, 4)},
+                    run_manager.images_dir / "nearest_grid.png",
+                    max_items=1,
+                )
+
+        self.assertEqual(calls, ["nearest"])
+
+    def test_one_shot_neuron_lattice_amplitude_tensors_use_grid_cells(self) -> None:
+        import torch
+
+        from ldm_project.one_shot_visualization import build_one_shot_neuron_lattice_amplitude_tensors
+
+        outputs = _dummy_one_shot_outputs(batch_size=2, image_size=16, grid_size=8)
+        tensors, metadata = build_one_shot_neuron_lattice_amplitude_tensors(outputs, pixel_size=2.0e-6)
+
+        self.assertEqual(metadata["view"], "neuron_lattice_amplitude")
+        self.assertEqual(metadata["grid_size"], 8)
+        self.assertEqual(metadata["pixel_size_um"], 2.0)
+        self.assertEqual(metadata["display_interpolation"], "nearest")
+        self.assertEqual(
+            list(tensors),
+            [
+                "SLM command/control grid",
+                "SLM amplitude grid |E|",
+                "encoder input grid |E|",
+                "encoder out |E|",
+                "decoder in |E|",
+                "decoder out |E|",
+                "chip |E|",
+            ],
+        )
+        for tensor in tensors.values():
+            self.assertEqual(tuple(tensor.shape), (2, 1, 8, 8))
+            self.assertTrue(torch.all(tensor >= 0.0).item())
+            self.assertTrue(torch.all(tensor <= 1.0).item())
+        self.assertEqual(
+            metadata["columns"]["SLM command/control grid"]["source_policy"],
+            "area_resampled_to_lattice",
+        )
+        self.assertEqual(
+            metadata["columns"]["encoder input grid |E|"]["source_policy"],
+            "raw_lattice",
+        )
+
+    def test_one_shot_slim_cell_chain_preview_uses_requested_columns(self) -> None:
+        import torch
+
+        from ldm_project.one_shot_visualization import build_one_shot_slim_cell_chain_preview_tensors
+
+        outputs = _dummy_one_shot_outputs(batch_size=2, image_size=16, grid_size=8)
+        tensors, metadata = build_one_shot_slim_cell_chain_preview_tensors(outputs, pixel_size=2.0e-6)
+
+        expected_columns = [
+            "SLM command",
+            "SLM out amp",
+            "Encoder in amp",
+            "Encoder out amp",
+            "Decoder in amp",
+            "Decoder out amp",
+            "CMOS intensity",
+        ]
+        self.assertEqual(list(tensors), expected_columns)
+        self.assertEqual(metadata["render_mode"], "v4_style_slim_amplitude_preview")
+        self.assertEqual(metadata["columns"], expected_columns)
+        self.assertEqual(metadata["grid_size"], 8)
+        self.assertEqual(metadata["cell_pitch_um"], 2.0)
+        self.assertEqual(metadata["display_interpolation"], "nearest")
+        self.assertEqual(metadata["panel_style"], "v4_epoch_amplitude")
+        self.assertEqual(metadata["column_metadata"]["SLM command"]["source_policy"], "area_resampled_to_lattice")
+        self.assertEqual(metadata["column_metadata"]["SLM out amp"]["source_policy"], "area_resampled_to_lattice")
+        self.assertEqual(metadata["column_metadata"]["Encoder in amp"]["source_policy"], "raw_lattice")
+        self.assertEqual(metadata["column_metadata"]["Encoder out amp"]["source_policy"], "raw_lattice")
+        self.assertEqual(metadata["column_metadata"]["Decoder in amp"]["source_policy"], "raw_lattice")
+        self.assertEqual(metadata["column_metadata"]["Decoder out amp"]["source_policy"], "raw_lattice")
+        self.assertEqual(
+            metadata["column_metadata"]["CMOS intensity"]["source_policy"],
+            "area_resampled_camera_to_lattice",
+        )
+        self.assertEqual(metadata["column_metadata"]["CMOS intensity"]["value_kind"], "intensity")
+        for name, tensor in tensors.items():
+            self.assertEqual(tuple(tensor.shape), (2, 1, 8, 8))
+            self.assertTrue(torch.all(tensor >= 0.0).item(), name)
+            self.assertTrue(torch.all(tensor <= 1.0).item(), name)
+
+        offline_bundle = dict(outputs)
+        offline_bundle["generated_camera_raw"] = offline_bundle.pop("camera_plane")
+        offline_tensors, offline_metadata = build_one_shot_slim_cell_chain_preview_tensors(
+            offline_bundle,
+            pixel_size=2.0e-6,
+        )
+        self.assertEqual(list(offline_tensors), expected_columns)
+        self.assertEqual(offline_metadata["column_metadata"]["CMOS intensity"]["source_tensor"], "generated_camera_raw")
+
+    def test_one_shot_slim_cell_chain_preview_splits_selected_readout_from_physical_cmos(self) -> None:
+        import torch
+
+        from ldm_project.one_shot_visualization import build_one_shot_slim_cell_chain_preview_tensors
+
+        outputs = _dummy_one_shot_outputs(batch_size=2, image_size=16, grid_size=8)
+        outputs["primary_readout_plane"] = "chip_intensity"
+        outputs["selected_readout"] = torch.ones(2, 1, 16, 16) * 0.9
+        outputs["camera_plane"] = outputs["selected_readout"]
+        outputs["physical_camera_plane"] = torch.ones(2, 1, 16, 16) * 0.2
+
+        tensors, metadata = build_one_shot_slim_cell_chain_preview_tensors(outputs, pixel_size=2.0e-6)
+
+        self.assertEqual(
+            list(tensors),
+            [
+                "SLM command",
+                "SLM out amp",
+                "Encoder in amp",
+                "Encoder out amp",
+                "Decoder in amp",
+                "Decoder out amp",
+                "Selected readout (chip_intensity)",
+                "Physical CMOS intensity",
+            ],
+        )
+        self.assertNotIn("CMOS intensity", tensors)
+        self.assertEqual(metadata["primary_readout_plane"], "chip_intensity")
+        self.assertEqual(metadata["physical_cmos_source_tensor"], "physical_camera_plane")
+        self.assertEqual(
+            metadata["column_metadata"]["Selected readout (chip_intensity)"]["source_tensor"],
+            "selected_readout",
+        )
+        self.assertEqual(
+            metadata["column_metadata"]["Physical CMOS intensity"]["source_tensor"],
+            "physical_camera_plane",
+        )
+        self.assertEqual(tuple(tensors["Selected readout (chip_intensity)"].shape), (2, 1, 8, 8))
+        self.assertEqual(tuple(tensors["Physical CMOS intensity"].shape), (2, 1, 8, 8))
 
     def test_one_shot_distill_eval_selection_respects_requested_sample_count(self) -> None:
         import torch
@@ -4704,8 +7098,11 @@ class OneShotConfigTests(unittest.TestCase):
             def eval(self) -> None:
                 pass
 
-            def __call__(self, codes, labels):
-                return diagnostic_outputs(int(codes.shape[0]), 4, 2)
+            def __call__(self, codes, labels, *, return_optical_fields=False):
+                outputs = diagnostic_outputs(int(codes.shape[0]), 4, 2)
+                if return_optical_fields:
+                    outputs["optical_fields"] = {}
+                return outputs
 
         class RecordingRunManager:
             def __init__(self, run_dir: Path) -> None:
@@ -4777,43 +7174,14 @@ class OneShotConfigTests(unittest.TestCase):
             )
 
             for key in (
-                "codes_display",
                 "slm_phase_display",
                 "chip_field_amplitude_display",
-                "chip_intensity_display",
                 "encoder_input_amplitude_display",
-                "encoder_input_grid_amplitude_display",
-                "encoded_phase_display",
-                "ols_input_phase_display",
                 "ols_output_phase_display",
-                "ols_phase_display",
-                "decoder_input_amplitude_display",
                 "decoder_output_phase_display",
             ):
-                self.assertIn(key, run_manager.bundle_payload)
-            amplitude_call = next(call for call in run_manager.grid_calls if call[0] == "one_shot_sample_amplitude.png")
+                self.assertNotIn(key, run_manager.bundle_payload)
             intensity_call = next(call for call in run_manager.grid_calls if call[0] == "one_shot_sample_intensity.png")
-            phase_call = next(call for call in run_manager.grid_calls if call[0] == "one_shot_sample_phase.png")
-            self.assertFalse(any(call[0] == "one_shot_sample_shared_scale_phase.png" for call in run_manager.grid_calls))
-            self.assertEqual(
-                list(amplitude_call[1].keys()),
-                [
-                    "SLM command (amplitude control)",
-                    "SLM out |E|",
-                    "encoder in |E|",
-                    "encoder grid in |E|",
-                    "encoder field after L1 |E|",
-                    "encoder field after L2 |E|",
-                    "encoder out |E|",
-                    "OLS in |E|",
-                    "OLS out |E|",
-                    "decoder in |E|",
-                    "decoder field after L1 |E|",
-                    "decoder field after L2 |E|",
-                    "decoder out |E|",
-                    "chip |E|",
-                ],
-            )
             self.assertEqual(
                 list(intensity_call[1].keys()),
                 [
@@ -4838,42 +7206,18 @@ class OneShotConfigTests(unittest.TestCase):
                     "camera intensity",
                 ],
             )
-            self.assertEqual(
-                list(phase_call[1].keys()),
-                [
-                    "SLM out phase",
-                    "encoder in phase",
-                    "encoder grid in phase",
-                    "encoder field after L1 phase",
-                    "encoder field after L2 phase",
-                    "encoder out phase",
-                    "OLS in phase",
-                    "OLS out phase",
-                    "decoder in phase",
-                    "decoder field after L1 phase",
-                    "decoder field after L2 phase",
-                    "decoder out phase",
-                    "chip phase",
-                ],
-            )
             self.assertIn("chip I", intensity_call[1])
-            self.assertIn("chip phase", phase_call[1])
             self.assertIn("encoder field after L1 I", intensity_call[1])
-            self.assertIn("decoder field after L2 phase", phase_call[1])
             self.assertEqual(tuple(intensity_call[1]["encoder field after L1 I"].shape), (8, 1, 2, 2))
             self.assertFalse(any("mask amplitude" in key for key in intensity_call[1]))
-            self.assertFalse(any("mask" in key for key in amplitude_call[1] | phase_call[1]))
-            _assert_nonblank_phase_columns_are_labeled(self, phase_call[1])
             self.assertFalse(any("_d2nn_" in call[0] for call in run_manager.grid_calls))
-            self.assertEqual(amplitude_call[2], 8)
-            self.assertEqual(amplitude_call[3]["row_labels"], ["0", "0", "0", "0", "1", "1", "1", "1"])
-            sample_visual_diagnostics = run_manager.artifact_payloads["one_shot_sample_visual_diagnostics"]
-            self.assertEqual(sample_visual_diagnostics["view"], "compact_full_chain")
-            self.assertEqual(
-                sample_visual_diagnostics["alias_diffs"]["encoded_to_ols_input_amplitude"]["max_abs_diff"],
-                0.0,
-            )
-            self.assertIn("top25_iou", sample_visual_diagnostics["amplitude_phase_similarity"]["chip"])
+            self.assertFalse(any(call[0] == "one_shot_sample_amplitude.png" for call in run_manager.grid_calls))
+            self.assertFalse(any(call[0] == "one_shot_sample_phase.png" for call in run_manager.grid_calls))
+            self.assertNotIn("one_shot_sample_neuron_lattice_amplitude", run_manager.artifact_payloads)
+            self.assertNotIn("one_shot_sample_100x100_cell_chain_preview", run_manager.artifact_payloads)
+            provenance = run_manager.artifact_payloads["one_shot_sample_optical_field_provenance"]
+            self.assertEqual(provenance["status"], "harness-invalid")
+            self.assertFalse(provenance["full_chain_available"])
             sample_d2nn_diagnostics = run_manager.artifact_payloads["one_shot_sample_d2nn_diagnostics"]
             self.assertEqual(sample_d2nn_diagnostics["context"]["stage"], "one_shot_sample")
             self.assertTrue(sample_d2nn_diagnostics["available"])
@@ -4886,17 +7230,7 @@ class OneShotConfigTests(unittest.TestCase):
                 sample_d2nn_diagnostics["identity_checks"]["ols_input_to_output_amplitude"]["max_abs_diff"],
                 1.0,
             )
-            shared_diagnostics = run_manager.artifact_payloads["one_shot_sample_shared_scale_diagnostics"]
-            self.assertEqual(shared_diagnostics["view"], "shared_scale_full_chain")
-            self.assertEqual(shared_diagnostics["visualization_schema_version"], 2)
-            self.assertIn("SLM out I", shared_diagnostics["intensity_scale_columns"])
-            self.assertIn("encoder grid in I", shared_diagnostics["intensity_scale_columns"])
-            self.assertNotIn("reference", shared_diagnostics["intensity_scale_columns"])
-            self.assertNotIn("camera intensity", shared_diagnostics["intensity_scale_columns"])
-            self.assertNotIn("amplitude_scale_columns", shared_diagnostics)
-            self.assertNotIn("early_raw_amplitude_columns", shared_diagnostics)
-            self.assertIn("encoder grid in phase", shared_diagnostics["phase_stats"])
-            self.assertIn("p99_minus_p01_mean", shared_diagnostics["slm_command_stats"])
+            self.assertNotIn("one_shot_sample_shared_scale_diagnostics", run_manager.artifact_payloads)
             self.assertFalse(any("chip_amplitude_display" in call[1] for call in run_manager.grid_calls))
             self.assertNotIn("chip_amplitude_display", run_manager.bundle_payload)
             for key in (
@@ -4919,7 +7253,7 @@ class OneShotConfigTests(unittest.TestCase):
             ):
                 self.assertIn(key, run_manager.bundle_payload)
 
-    def test_one_shot_distill_eval_artifact_preserves_raw_and_display_diagnostics(self) -> None:
+    def test_one_shot_distill_eval_artifact_preserves_raw_diagnostics_and_strict_field_provenance(self) -> None:
         import torch
         from unittest.mock import patch
 
@@ -4933,8 +7267,11 @@ class OneShotConfigTests(unittest.TestCase):
             def eval(self) -> None:
                 pass
 
-            def __call__(self, codes, labels):
-                return diagnostic_outputs(int(codes.shape[0]), 4, 2)
+            def __call__(self, codes, labels, *, return_optical_fields=False):
+                outputs = diagnostic_outputs(int(codes.shape[0]), 4, 2)
+                if return_optical_fields:
+                    outputs["optical_fields"] = {}
+                return outputs
 
         class RecordingRunManager:
             def __init__(self, run_dir: Path) -> None:
@@ -5012,109 +7349,24 @@ class OneShotConfigTests(unittest.TestCase):
                 )
 
             for key in (
-                "codes_display",
                 "slm_phase_display",
                 "chip_field_amplitude_display",
-                "chip_intensity_display",
                 "encoder_input_phase_display",
-                "encoder_input_grid_phase_display",
-                "encoded_amplitude_display",
-                "ols_input_amplitude_display",
                 "ols_output_amplitude_display",
-                "ols_amplitude_display",
-                "decoder_input_phase_display",
                 "decoder_output_amplitude_display",
             ):
-                self.assertIn(key, run_manager.bundle_payload)
-            amplitude_call = next(
-                call for call in run_manager.grid_calls if call[0] == "one_shot_distill_eval_amplitude.png"
-            )
+                self.assertNotIn(key, run_manager.bundle_payload)
             intensity_call = next(
                 call for call in run_manager.grid_calls if call[0] == "one_shot_distill_eval_intensity.png"
             )
-            phase_call = next(
-                call for call in run_manager.grid_calls if call[0] == "one_shot_distill_eval_phase.png"
-            )
-            self.assertFalse(
-                any(call[0] == "one_shot_distill_eval_shared_scale_phase.png" for call in run_manager.grid_calls)
-            )
-            self.assertEqual(
-                list(amplitude_call[1].keys()),
-                [
-                    "SLM command (amplitude control)",
-                    "SLM out |E|",
-                    "encoder in |E|",
-                    "encoder grid in |E|",
-                    "encoder field after L1 |E|",
-                    "encoder field after L2 |E|",
-                    "encoder out |E|",
-                    "OLS in |E|",
-                    "OLS out |E|",
-                    "decoder in |E|",
-                    "decoder field after L1 |E|",
-                    "decoder field after L2 |E|",
-                    "decoder out |E|",
-                    "chip |E|",
-                ],
-            )
-            self.assertEqual(
-                list(intensity_call[1].keys()),
-                [
-                    "digit",
-                    "noise code",
-                    "teacher intensity target",
-                    "SLM command (amplitude control)",
-                    "SLM command contrast (display)",
-                    "SLM amplitude grid (control)",
-                    "SLM out I",
-                    "encoder in I",
-                    "encoder grid in I",
-                    "encoder field after L1 I",
-                    "encoder field after L2 I",
-                    "encoder out I",
-                    "ols in I",
-                    "ols out I",
-                    "decoder in I",
-                    "decoder field after L1 I",
-                    "decoder field after L2 I",
-                    "decoder out I",
-                    "chip I",
-                    "student camera intensity",
-                    "intensity abs error",
-                ],
-            )
-            self.assertEqual(
-                list(phase_call[1].keys()),
-                [
-                    "SLM out phase",
-                    "encoder in phase",
-                    "encoder grid in phase",
-                    "encoder field after L1 phase",
-                    "encoder field after L2 phase",
-                    "encoder out phase",
-                    "OLS in phase",
-                    "OLS out phase",
-                    "decoder in phase",
-                    "decoder field after L1 phase",
-                    "decoder field after L2 phase",
-                    "decoder out phase",
-                    "chip phase",
-                ],
-            )
             self.assertIn("teacher intensity target", intensity_call[1])
             self.assertIn("student camera intensity", intensity_call[1])
-            self.assertIn("chip I", intensity_call[1])
-            self.assertIn("chip phase", phase_call[1])
-            self.assertIn("encoder field after L1 I", intensity_call[1])
-            self.assertIn("decoder field after L2 phase", phase_call[1])
-            self.assertEqual(tuple(intensity_call[1]["encoder field after L1 I"].shape), (4, 1, 2, 2))
-            self.assertFalse(any("mask amplitude" in key for key in intensity_call[1]))
-            self.assertFalse(any("mask" in key for key in amplitude_call[1] | phase_call[1]))
-            _assert_nonblank_phase_columns_are_labeled(self, phase_call[1])
-            self.assertFalse(any("_d2nn_" in call[0] for call in run_manager.grid_calls))
-            self.assertNotIn("chip_amplitude_display", amplitude_call[1])
-            self.assertNotIn("chip_amplitude_display", phase_call[1])
-            self.assertNotIn("chip_amplitude_display", run_manager.bundle_payload)
+            self.assertFalse(any("mask" in key for key in intensity_call[1]))
+            self.assertFalse(any(call[0] == "one_shot_distill_eval_amplitude.png" for call in run_manager.grid_calls))
+            self.assertFalse(any(call[0] == "one_shot_distill_eval_phase.png" for call in run_manager.grid_calls))
+            provenance = run_manager.artifact_payloads["one_shot_distill_eval_optical_field_provenance"]
+            self.assertEqual(provenance["status"], "harness-invalid")
+            self.assertFalse(provenance["full_chain_available"])
             for key in (
                 "slm_command",
                 "chip_amplitude",
@@ -5149,32 +7401,15 @@ class OneShotConfigTests(unittest.TestCase):
             self.assertEqual(eval_config["visual_preview_labels"], [0, 0, 1, 1])
             self.assertEqual(eval_config["one_shot_distill_target_source"], "mnist_prototype")
             self.assertTrue(eval_config["student_label_audit_enabled"])
-            eval_visual_diagnostics = run_manager.artifact_payloads["one_shot_distill_eval_visual_diagnostics"]
-            self.assertEqual(eval_visual_diagnostics["view"], "compact_full_chain")
-            self.assertEqual(
-                eval_visual_diagnostics["alias_diffs"]["ols_output_to_decoder_input_phase"]["max_abs_diff"],
-                0.0,
-            )
-            self.assertIn("pearson", eval_visual_diagnostics["amplitude_phase_similarity"]["decoder_out"])
+            self.assertNotIn("one_shot_distill_eval_neuron_lattice_amplitude", run_manager.artifact_payloads)
+            self.assertNotIn("one_shot_distill_eval_100x100_cell_chain_preview", run_manager.artifact_payloads)
             eval_d2nn_diagnostics = run_manager.artifact_payloads["one_shot_distill_eval_d2nn_diagnostics"]
             self.assertEqual(eval_d2nn_diagnostics["context"]["stage"], "one_shot_distill_eval")
             self.assertEqual(eval_d2nn_diagnostics["context"]["visual_preview_labels"], [0, 0, 1, 1])
             self.assertTrue(eval_d2nn_diagnostics["available"])
             self.assertIn("encoder field after L1", eval_d2nn_diagnostics["layers"]["amplitude"])
             self.assertIn("decoder mask phase arg(t) L2", eval_d2nn_diagnostics["masks"]["phase"])
-            shared_diagnostics = run_manager.artifact_payloads["one_shot_distill_eval_shared_scale_diagnostics"]
-            self.assertEqual(shared_diagnostics["view"], "shared_scale_full_chain")
-            self.assertEqual(shared_diagnostics["visualization_schema_version"], 2)
-            self.assertIn("SLM out I", shared_diagnostics["intensity_scale_columns"])
-            self.assertIn("decoder out I", shared_diagnostics["intensity_scale_columns"])
-            self.assertNotIn("teacher intensity target", shared_diagnostics["intensity_scale_columns"])
-            self.assertNotIn("student camera intensity", shared_diagnostics["intensity_scale_columns"])
-            self.assertEqual(shared_diagnostics["columns"]["intensity"], list(intensity_call[1]))
-            self.assertNotIn("amplitude_scale_columns", shared_diagnostics)
-            self.assertNotIn("early_raw_amplitude_columns", shared_diagnostics)
-            self.assertIn("encoder out phase", shared_diagnostics["phase_stats"])
-            self.assertEqual(amplitude_call[2], 4)
-            self.assertEqual(amplitude_call[3]["row_labels"], ["0", "0", "1", "1"])
+            self.assertNotIn("one_shot_distill_eval_shared_scale_diagnostics", run_manager.artifact_payloads)
             self.assertEqual(tuple(intensity_call[1]["teacher intensity target"].shape), (4, 1, 4, 4))
             self.assertEqual(tuple(run_manager.bundle_payload["teacher_camera"].shape), (8, 1, 4, 4))
             self.assertEqual(run_manager.bundle_payload["one_shot_distill_target_source"], "mnist_prototype")
@@ -5252,11 +7487,13 @@ class OneShotConfigTests(unittest.TestCase):
             target,
             class_labels=labels,
             code_diversity_weight=0.1,
+            sample_code_diversity_weight=0.2,
             teacher_pairwise_diversity_weight=0.02,
             diversity_min_teacher_mse=1.0e-4,
         )
 
         self.assertGreater(losses["code_diversity_penalty"].item(), 0.0)
+        self.assertGreater(losses["sample_code_diversity_penalty"].item(), 0.0)
         self.assertGreater(losses["teacher_pairwise_mse"].item(), losses["student_pairwise_mse"].item())
         self.assertEqual(losses["diversity_ratio"].item(), 0.0)
         self.assertEqual(losses["cross_class_pair_count"].item(), 0.0)
@@ -5586,6 +7823,332 @@ class OneShotConfigTests(unittest.TestCase):
         self.assertLess(matched["student_label_margin_loss"].item(), swapped["student_label_margin_loss"].item())
         self.assertGreater(matched["student_label_margin_mean"].item(), swapped["student_label_margin_mean"].item())
 
+    def test_one_shot_loss_student_prototype_ce_prefers_matching_prototype(self) -> None:
+        import torch
+
+        from ldm_project.training import one_shot_loss
+
+        proto_zero = torch.zeros(1, 1, 4, 4)
+        proto_zero[:, :, :2, :2] = 1.0
+        proto_one = torch.zeros(1, 1, 4, 4)
+        proto_one[:, :, 2:, 2:] = 1.0
+        prototypes = torch.cat([proto_zero, proto_one], dim=0)
+        labels = torch.tensor([0, 1], dtype=torch.long)
+        target = prototypes.index_select(0, labels)
+        slm = torch.ones(2, 1, 4, 4)
+
+        matched = one_shot_loss(
+            {"camera_plane": target.clone(), "slm_amplitude": slm},
+            target,
+            class_labels=labels,
+            student_label_margin_prototypes=prototypes,
+            student_prototype_ce_weight=1.0,
+            student_prototype_ce_labels=(0, 1),
+            student_prototype_ce_temperature=0.1,
+        )
+        swapped = one_shot_loss(
+            {"camera_plane": target.flip(0).clone(), "slm_amplitude": slm},
+            target,
+            class_labels=labels,
+            student_label_margin_prototypes=prototypes,
+            student_prototype_ce_weight=1.0,
+            student_prototype_ce_labels=(0, 1),
+            student_prototype_ce_temperature=0.1,
+        )
+
+        self.assertLess(matched["student_prototype_ce_loss"].item(), swapped["student_prototype_ce_loss"].item())
+        self.assertGreater(
+            matched["student_prototype_ce_correct_ratio"].item(),
+            swapped["student_prototype_ce_correct_ratio"].item(),
+        )
+
+    def test_one_shot_loss_student_negative_label_margin_targets_specific_pair(self) -> None:
+        import torch
+
+        from ldm_project.training import one_shot_loss
+
+        prototypes = torch.zeros(10, 1, 4, 4)
+        prototypes[3, :, :2, :2] = 1.0
+        prototypes[5, :, 2:, 2:] = 1.0
+        labels = torch.tensor([3], dtype=torch.long)
+        target = prototypes.index_select(0, labels)
+        slm = torch.ones(1, 1, 4, 4)
+
+        matched = one_shot_loss(
+            {"camera_plane": target.clone(), "slm_amplitude": slm},
+            target,
+            class_labels=labels,
+            student_label_margin_prototypes=prototypes,
+            student_negative_label_margin_weight=1.0,
+            student_negative_label_margin_config=((3, 5, 0.05),),
+        )
+        confused = one_shot_loss(
+            {"camera_plane": prototypes[5:6].clone(), "slm_amplitude": slm},
+            target,
+            class_labels=labels,
+            student_label_margin_prototypes=prototypes,
+            student_negative_label_margin_weight=1.0,
+            student_negative_label_margin_config=((3, 5, 0.05),),
+        )
+        inactive = one_shot_loss(
+            {"camera_plane": prototypes[5:6].clone(), "slm_amplitude": slm},
+            target,
+            class_labels=labels,
+            student_label_margin_prototypes=prototypes,
+            student_negative_label_margin_weight=1.0,
+            student_negative_label_margin_config=((7, 9, 0.05),),
+        )
+
+        self.assertLess(
+            matched["student_negative_label_margin_loss"].item(),
+            confused["student_negative_label_margin_loss"].item(),
+        )
+        self.assertGreater(confused["student_negative_label_margin_count"].item(), 0.0)
+        self.assertEqual(inactive["student_negative_label_margin_count"].item(), 0.0)
+        self.assertEqual(inactive["student_negative_label_margin_loss"].item(), 0.0)
+
+    def test_one_shot_loss_student_roi_prototype_ce_prefers_foreground_match(self) -> None:
+        import torch
+
+        from ldm_project.training import one_shot_loss
+
+        prototypes = torch.zeros(2, 1, 4, 4)
+        prototypes[0, :, :2, :2] = torch.tensor([[1.0, 0.8], [0.6, 0.4]])
+        prototypes[1, :, :2, :2] = torch.tensor([[0.4, 0.6], [0.8, 1.0]])
+        labels = torch.tensor([0, 1], dtype=torch.long)
+        target = prototypes.index_select(0, labels)
+        slm = torch.ones(2, 1, 4, 4)
+        background_noise = torch.zeros_like(target)
+        background_noise[:, :, 2:, 2:] = 20.0
+
+        matched = one_shot_loss(
+            {"camera_plane": target + background_noise, "slm_amplitude": slm},
+            target,
+            class_labels=labels,
+            student_label_margin_prototypes=prototypes,
+            student_roi_prototype_ce_weight=1.0,
+            student_roi_prototype_ce_labels=(0, 1),
+            student_roi_prototype_ce_temperature=0.1,
+            student_roi_foreground_threshold=0.5,
+        )
+        swapped = one_shot_loss(
+            {"camera_plane": target.flip(0) + background_noise, "slm_amplitude": slm},
+            target,
+            class_labels=labels,
+            student_label_margin_prototypes=prototypes,
+            student_roi_prototype_ce_weight=1.0,
+            student_roi_prototype_ce_labels=(0, 1),
+            student_roi_prototype_ce_temperature=0.1,
+            student_roi_foreground_threshold=0.5,
+        )
+
+        self.assertLess(
+            matched["student_roi_prototype_ce_loss"].item(),
+            swapped["student_roi_prototype_ce_loss"].item(),
+        )
+        self.assertGreater(
+            matched["student_roi_prototype_ce_correct_ratio"].item(),
+            swapped["student_roi_prototype_ce_correct_ratio"].item(),
+        )
+
+    def test_one_shot_loss_student_roi_negative_label_margin_targets_specific_pair(self) -> None:
+        import torch
+
+        from ldm_project.training import one_shot_loss
+
+        prototypes = torch.zeros(10, 1, 4, 4)
+        prototypes[3, :, :2, :2] = torch.tensor([[1.0, 0.8], [0.6, 0.4]])
+        prototypes[5, :, :2, :2] = torch.tensor([[0.4, 0.6], [0.8, 1.0]])
+        labels = torch.tensor([3], dtype=torch.long)
+        target = prototypes.index_select(0, labels)
+        slm = torch.ones(1, 1, 4, 4)
+
+        matched = one_shot_loss(
+            {"camera_plane": target.clone(), "slm_amplitude": slm},
+            target,
+            class_labels=labels,
+            student_label_margin_prototypes=prototypes,
+            student_roi_negative_label_margin_weight=1.0,
+            student_roi_negative_label_margin_config=((3, 5, 0.05),),
+            student_roi_foreground_threshold=0.5,
+        )
+        confused = one_shot_loss(
+            {"camera_plane": prototypes[5:6].clone(), "slm_amplitude": slm},
+            target,
+            class_labels=labels,
+            student_label_margin_prototypes=prototypes,
+            student_roi_negative_label_margin_weight=1.0,
+            student_roi_negative_label_margin_config=((3, 5, 0.05),),
+            student_roi_foreground_threshold=0.5,
+        )
+        inactive = one_shot_loss(
+            {"camera_plane": prototypes[5:6].clone(), "slm_amplitude": slm},
+            target,
+            class_labels=labels,
+            student_label_margin_prototypes=prototypes,
+            student_roi_negative_label_margin_weight=1.0,
+            student_roi_negative_label_margin_config=((7, 9, 0.05),),
+            student_roi_foreground_threshold=0.5,
+        )
+
+        self.assertLess(
+            matched["student_roi_negative_label_margin_loss"].item(),
+            confused["student_roi_negative_label_margin_loss"].item(),
+        )
+        self.assertGreater(confused["student_roi_negative_label_margin_count"].item(), 0.0)
+        self.assertEqual(inactive["student_roi_negative_label_margin_count"].item(), 0.0)
+        self.assertEqual(inactive["student_roi_negative_label_margin_loss"].item(), 0.0)
+
+    def test_one_shot_loss_student_prototype_objectives_default_off(self) -> None:
+        import torch
+
+        from ldm_project.training import one_shot_loss
+
+        prototypes = torch.rand(2, 1, 4, 4)
+        labels = torch.tensor([0, 1], dtype=torch.long)
+        target = torch.rand(2, 1, 4, 4)
+        outputs = {"camera_plane": torch.rand(2, 1, 4, 4), "slm_amplitude": torch.ones(2, 1, 4, 4)}
+
+        base = one_shot_loss(outputs, target, class_labels=labels)
+        disabled = one_shot_loss(
+            outputs,
+            target,
+            class_labels=labels,
+            student_label_margin_prototypes=prototypes,
+            student_prototype_ce_labels=(0, 1),
+            student_negative_label_margin_config=((0, 1, 0.05),),
+            student_roi_prototype_ce_labels=(0, 1),
+            student_roi_negative_label_margin_config=((0, 1, 0.05),),
+        )
+
+        self.assertAlmostEqual(base["loss"].item(), disabled["loss"].item(), places=8)
+        self.assertEqual(disabled["student_prototype_ce_loss"].item(), 0.0)
+        self.assertEqual(disabled["student_negative_label_margin_loss"].item(), 0.0)
+        self.assertEqual(disabled["student_roi_prototype_ce_loss"].item(), 0.0)
+        self.assertEqual(disabled["student_roi_negative_label_margin_loss"].item(), 0.0)
+        self.assertEqual(disabled["aux_semantic_loss"].item(), 0.0)
+        self.assertEqual(disabled["aux_semantic_prototype_ce_loss"].item(), 0.0)
+        self.assertEqual(disabled["aux_semantic_negative_label_margin_loss"].item(), 0.0)
+        self.assertEqual(disabled["aux_topology_loss"].item(), 0.0)
+        self.assertEqual(disabled["aux_topology_dice"].item(), 0.0)
+        self.assertEqual(disabled["aux_topology_mse"].item(), 0.0)
+
+    def test_one_shot_loss_aux_semantic_plane_resizes_and_backpropagates(self) -> None:
+        import torch
+
+        from ldm_project.training import one_shot_loss
+
+        prototypes = torch.zeros(2, 1, 8, 8)
+        prototypes[0, :, :4, :4] = 1.0
+        prototypes[1, :, 4:, 4:] = 1.0
+        labels = torch.tensor([0, 1], dtype=torch.long)
+        target = prototypes.index_select(0, labels)
+        aux_plane = torch.nn.Parameter(target[:, :, ::2, ::2].clone() * 0.8 + 0.1)
+        outputs = {
+            "camera_plane": torch.rand(2, 1, 8, 8),
+            "slm_amplitude": torch.ones(2, 1, 8, 8),
+            "chip_intensity_primary": aux_plane,
+        }
+
+        losses = one_shot_loss(
+            outputs,
+            target,
+            class_labels=labels,
+            student_label_margin_prototypes=prototypes,
+            student_prototype_ce_labels=(0, 1),
+            student_negative_label_margin_config=((0, 1, 0.05),),
+            student_prototype_ce_temperature=0.1,
+            aux_semantic_plane_key="chip_intensity_primary",
+            aux_semantic_weight=1.0,
+            aux_semantic_prototype_ce_weight=1.0,
+            aux_semantic_negative_label_margin_weight=0.5,
+        )
+
+        self.assertGreater(float(losses["aux_semantic_loss"]), 0.0)
+        self.assertGreater(float(losses["aux_semantic_prototype_ce_count"]), 0.0)
+        self.assertGreater(float(losses["aux_semantic_negative_label_margin_count"]), 0.0)
+        losses["loss"].backward()
+        self.assertIsNotNone(aux_plane.grad)
+        self.assertTrue(torch.isfinite(aux_plane.grad).all().item())
+        self.assertGreater(float(aux_plane.grad.abs().sum()), 0.0)
+
+    def test_one_shot_loss_aux_semantic_plane_fails_loudly_when_missing(self) -> None:
+        import torch
+
+        from ldm_project.training import one_shot_loss
+
+        target = torch.rand(2, 1, 8, 8)
+        labels = torch.tensor([0, 1], dtype=torch.long)
+        prototypes = torch.rand(2, 1, 8, 8)
+        outputs = {
+            "camera_plane": torch.rand(2, 1, 8, 8),
+            "slm_amplitude": torch.ones(2, 1, 8, 8),
+        }
+
+        with self.assertRaisesRegex(ValueError, "aux_semantic_plane_key"):
+            one_shot_loss(
+                outputs,
+                target,
+                class_labels=labels,
+                student_label_margin_prototypes=prototypes,
+                aux_semantic_plane_key="chip_intensity_primary",
+                aux_semantic_weight=1.0,
+                aux_semantic_prototype_ce_weight=1.0,
+            )
+
+    def test_one_shot_loss_aux_topology_plane_resizes_and_backpropagates(self) -> None:
+        import torch
+
+        from ldm_project.training import one_shot_loss
+
+        target = torch.zeros(2, 1, 8, 8)
+        target[:, :, 2:6, 2:6] = 1.0
+        for plane_key in ("decoder_output_amplitude", "target_code_amplitude", "decoder_input_amplitude"):
+            with self.subTest(aux_topology_plane_key=plane_key):
+                aux_plane = torch.nn.Parameter(target[:, :, ::2, ::2].clone() * 0.5 + 0.2)
+                outputs = {
+                    "camera_plane": torch.rand(2, 1, 8, 8),
+                    "slm_amplitude": torch.ones(2, 1, 8, 8),
+                    plane_key: aux_plane,
+                }
+
+                losses = one_shot_loss(
+                    outputs,
+                    target,
+                    aux_topology_plane_key=plane_key,
+                    aux_topology_weight=1.0,
+                    aux_topology_dice_weight=1.0,
+                    aux_topology_mse_weight=0.5,
+                )
+
+                self.assertGreater(float(losses["aux_topology_loss"]), 0.0)
+                self.assertGreaterEqual(float(losses["aux_topology_dice"]), 0.0)
+                self.assertLessEqual(float(losses["aux_topology_dice"]), 1.0)
+                self.assertGreater(float(losses["aux_topology_mse"]), 0.0)
+                losses["loss"].backward()
+                self.assertIsNotNone(aux_plane.grad)
+                self.assertTrue(torch.isfinite(aux_plane.grad).all().item())
+                self.assertGreater(float(aux_plane.grad.abs().sum()), 0.0)
+
+    def test_one_shot_loss_aux_topology_plane_fails_loudly_when_missing(self) -> None:
+        import torch
+
+        from ldm_project.training import one_shot_loss
+
+        target = torch.rand(2, 1, 8, 8)
+        outputs = {
+            "camera_plane": torch.rand(2, 1, 8, 8),
+            "slm_amplitude": torch.ones(2, 1, 8, 8),
+        }
+
+        with self.assertRaisesRegex(ValueError, "aux_topology_plane_key"):
+            one_shot_loss(
+                outputs,
+                target,
+                aux_topology_plane_key="decoder_output_amplitude",
+                aux_topology_weight=1.0,
+            )
+
     def test_one_shot_distill_eval_readability_metrics_present_and_bounded(self) -> None:
         import torch
 
@@ -5884,6 +8447,76 @@ class OneShotCleanTargetTests(unittest.TestCase):
         self.assertIn("clean_target_fg_ratio", losses)
         self.assertEqual(float(losses["clean_target_fg_ratio"]), 0.0)
 
+    def test_encoder_input_topology_loss_defaults_to_noop(self) -> None:
+        import torch
+
+        from ldm_project.training import one_shot_loss
+
+        target = torch.rand(2, 1, 16, 16)
+        outputs = {
+            "camera_plane": torch.rand(2, 1, 16, 16, requires_grad=True),
+            "slm_amplitude": torch.rand(2, 1, 16, 16),
+        }
+
+        losses = one_shot_loss(outputs, target)
+
+        self.assertEqual(float(losses["encoder_input_topology_loss"]), 0.0)
+        self.assertEqual(float(losses["encoder_input_topology_dice"]), 0.0)
+        self.assertEqual(float(losses["encoder_input_topology_mse"]), 0.0)
+
+    def test_encoder_input_topology_loss_backpropagates_when_enabled(self) -> None:
+        import torch
+
+        from ldm_project.training import one_shot_loss
+
+        target = torch.zeros(2, 1, 16, 16)
+        target[:, :, 4:12, 6:10] = 1.0
+        encoder_input = torch.zeros(2, 1, 16, 16, requires_grad=True)
+        encoder_grid = torch.zeros(2, 1, 8, 8, requires_grad=True)
+        with torch.no_grad():
+            encoder_input[:, :, 2:10, 2:6] = 0.8
+            encoder_grid[:, :, 1:5, 1:4] = 0.8
+        outputs = {
+            "camera_plane": torch.rand(2, 1, 16, 16, requires_grad=True),
+            "slm_amplitude": torch.rand(2, 1, 16, 16),
+            "encoder_input_amplitude": encoder_input,
+            "encoder_input_grid_amplitude": encoder_grid,
+        }
+
+        losses = one_shot_loss(
+            outputs,
+            target,
+            encoder_input_topology_weight=0.5,
+            encoder_input_topology_dice_weight=1.0,
+            encoder_input_topology_mse_weight=0.5,
+        )
+
+        self.assertGreater(float(losses["encoder_input_topology_loss"]), 0.0)
+        self.assertGreaterEqual(float(losses["encoder_input_topology_dice"]), 0.0)
+        self.assertLessEqual(float(losses["encoder_input_topology_dice"]), 1.0)
+        self.assertGreater(float(losses["encoder_input_topology_mse"]), 0.0)
+        losses["loss"].backward()
+        self.assertIsNotNone(encoder_input.grad)
+        self.assertIsNotNone(encoder_grid.grad)
+        self.assertTrue(torch.isfinite(encoder_input.grad).all().item())
+        self.assertTrue(torch.isfinite(encoder_grid.grad).all().item())
+        self.assertGreater(encoder_input.grad.abs().sum().item(), 0.0)
+        self.assertGreater(encoder_grid.grad.abs().sum().item(), 0.0)
+
+    def test_encoder_input_topology_loss_fails_without_encoder_planes(self) -> None:
+        import torch
+
+        from ldm_project.training import one_shot_loss
+
+        target = torch.rand(2, 1, 16, 16)
+        outputs = {
+            "camera_plane": torch.rand(2, 1, 16, 16),
+            "slm_amplitude": torch.rand(2, 1, 16, 16),
+        }
+
+        with self.assertRaisesRegex(ValueError, "encoder_input_topology_weight requires"):
+            one_shot_loss(outputs, target, encoder_input_topology_weight=0.1)
+
     def test_display_speckle_loss_targets_background(self) -> None:
         import torch
 
@@ -5947,3 +8580,6 @@ class OneShotCleanTargetTests(unittest.TestCase):
         self.assertIn("aux_detail_gate_fg_ratio", ONE_SHOT_DISTILL_HISTORY_LOSS_KEYS)
         self.assertIn("aux_detail_active_fg_ratio", ONE_SHOT_DISTILL_HISTORY_LOSS_KEYS)
         self.assertIn("residual_background_mask_ratio", ONE_SHOT_DISTILL_HISTORY_LOSS_KEYS)
+        self.assertIn("encoder_input_topology_loss", ONE_SHOT_DISTILL_HISTORY_LOSS_KEYS)
+        self.assertIn("encoder_input_topology_dice", ONE_SHOT_DISTILL_HISTORY_LOSS_KEYS)
+        self.assertIn("encoder_input_topology_mse", ONE_SHOT_DISTILL_HISTORY_LOSS_KEYS)

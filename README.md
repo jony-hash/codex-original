@@ -6,7 +6,7 @@
 
 ```text
 noise/code + optional label -> generator_e -> amplitude SLM command
--> encoder metasurface -> OLS/fiber -> decoder metasurface
+-> encoder metasurface -> linear identity OLS -> decoder metasurface
 -> CMOS single exposure -> generated image
 ```
 
@@ -48,9 +48,13 @@ python train.py --train-config configs/train_one_shot_d2nn_smoke.yaml \
 - Teacher audit、readability filter 和单环节诊断不能替代 `one_shot_sample` 与 `one_shot_distill_eval`。
 - 正式 CUDA 训练和验收所需 checkpoint、dataset 或硬件缺失时应视为 blocker，不应静默降级。
 
-## Current Candidate
+## Current Mainline Status
 
-`v9.10 label-template inverse prototype baseline` 已通过受控 CUDA strict audit。它从 checkpoint 内的类别 intensity template 生成实际 amplitude SLM command，明确忽略 code，只验证 command calibration 与完整非理想 relay 光路；不能证明 code-conditioned 多样性，也不是最终 generative student 验收。审计证据见 [v9.10 acceptance record](docs/ldm_migration/acceptance_v9_10_label_template_inverse_20260622.json)，复验入口和失败停止规则见 [Stage Guide](docs/ldm_migration/stage_guide.md#v910-prototype-baseline-audit)。
+当前正式物理合同是 `532 nm`、identity OLS、完整 SLM FOV 的相干 4f `-0.4` relay、`100 × 100 @ 2 µm` phase-only D2NN、`1.50 mm` 层间距，以及后端 `-2.5` relay。理想两镜 4f 的实际 ABCD 为 `A=-0.4, B=0, C=0`；v58.2 使用周期带限 DFT/NUDFT、pupil 与相似缩放传播的分层独立重验。未得到该门的 `physical-forward-model-valid` 报告前不得训练。
+
+v56 在该合同上完成了一次从零 CUDA 训练、一次 eval 和一次 class-balanced sample；strict provenance 有效，但真实最终 CMOS 仍不可读，因此没有可 promotion 的学生 checkpoint。v57 的只读复光场诊断报告为 `aperture-throughput-limited-no-localized-collapse`。在下一决策门前，不得继续训练、叠加 loss 或修改正式硬件合同。当前状态与下一门见 [v57 后主线交接](docs/ldm_migration/current_handoff.md)。
+
+`v9.10 label-template inverse prototype baseline` 仅是历史 label-template prototype：它明确忽略 code，不能证明 code-conditioned 多样性或最终 generative student readiness。历史证据见 [v9.10 record](docs/ldm_migration/acceptance_v9_10_label_template_inverse_20260622.json)。
 
 ## Repository Map
 
@@ -62,11 +66,11 @@ python train.py --train-config configs/train_one_shot_d2nn_smoke.yaml \
 | `docs/` | 架构、运行指南、输出语义和历史证据 |
 | `tools/` | 聚焦的诊断与受控复验工具 |
 | `scripts/` | 独立展示或工作流辅助脚本 |
-| `outputs/` | 不可变 managed run artifacts；不得编辑、删除或回填 |
+| `outputs/` | 按真实日期前缀版本目录分组的 managed run artifacts；`outputs/final_pt/` 保持固定 |
 | `data/raw/` | 不可变原始数据 |
 | `legacy/` | 历史实现；不得混入 LDM core package |
 
-诊断和 pre-acceptance run 写入 `/tmp`；已接受或正式配置的 managed run 写入 `outputs/runs/<run>/`。
+训练、诊断和 pre-acceptance run 默认写入 `outputs/YYYYMMDD_<version>/runs/<run>/`；`<version>` 从 run-name 或 config 文件名提取，缺省为 `unversioned`。目录名前缀使用该版本当前已知最早 run 日期；若这是一个新版本，则首次创建时使用当天日期。`outputs/runs/` 已移除。
 
 ## Documentation
 
@@ -74,5 +78,6 @@ python train.py --train-config configs/train_one_shot_d2nn_smoke.yaml \
 - [Architecture And Boundaries](docs/ldm_migration/single_shot_ldm_distillation.md)：最终推理契约、模块职责和硬件化顺序。
 - [Stage Guide](docs/ldm_migration/stage_guide.md)：stage 分类、命令模板、checkpoint 和验收规则。
 - [Output Guide](docs/output_JIESHI.md)：图片、tensor bundle 和光学诊断语义。
+- [Current Handoff](docs/ldm_migration/current_handoff.md)：当前合同、有效证据、停止规则和下一决策门。
 - [Experiment History](docs/ldm_migration/experiment_history.md)：历史 baseline、负实验、seed sweep 和复验记录。
 - [AGENTS.md](AGENTS.md)：仓库执行契约与不可变边界。

@@ -32,6 +32,8 @@ from .one_shot_visualization import (
     build_one_shot_distill_readability_visualization_tensors,
     build_one_shot_eval_shared_scale_visualization_tensors,
     build_one_shot_eval_visualization_tensors,
+    build_one_shot_neuron_lattice_amplitude_tensors,
+    build_one_shot_slim_cell_chain_preview_tensors,
     build_one_shot_shared_scale_visualization_tensors,
     build_one_shot_visual_diagnostics,
 )
@@ -39,6 +41,12 @@ from .sampling_reports import (
     compute_sample_quality_metrics,
     select_balanced_visual_preview_indices,
     select_post_train_sample_batch,
+)
+from .strict_optical_fields import (
+    build_strict_optical_field_views,
+    detach_optical_fields,
+    save_strict_optical_field_grids,
+    validate_optical_field_chain,
 )
 from .teacher_distill import (
     _build_mnist_label_prototype_bank,
@@ -62,7 +70,396 @@ __all__ = [
     "run_one_shot_distill_eval_diagnostics_stage",
     "run_one_shot_distill_eval_stage",
     "run_one_shot_sample_stage",
+    "build_strict_optical_field_artifact",
 ]
+
+
+def build_strict_optical_field_artifact(
+    fields,
+    *,
+    front_path_model: str,
+    target_code_active: bool,
+    bridge_active: bool,
+) -> dict[str, object]:
+    """Describe a strict field artifact without serializing proxy/display tensors."""
+    chain = validate_optical_field_chain(
+        fields,
+        front_path_model=front_path_model,
+        target_code_active=target_code_active,
+        bridge_active=bridge_active,
+    )
+    return {
+        **chain,
+        "field_chain_status": chain["status"],
+        "status": "manual-review-required" if chain["status"] == "valid" else chain["status"],
+        "diagnostic_only": True,
+        "accepted_summary_written": False,
+        "human_review_required": True,
+        "physical_quantities": {
+            "amplitude": "abs(E) from recorded real/imag; simulation field a.u.",
+            "phase": "angle(E) in radians; PNG masks intensity below -60 dB",
+        },
+        "planes": {
+            name: {key: value for key, value in record.items() if key not in {"real", "imag"}}
+            for name, record in fields.items()
+        },
+    }
+
+
+def _save_strict_optical_field_artifacts(
+    run_manager,
+    outputs,
+    *,
+    artifact_prefix: str,
+    title_prefix: str,
+    max_items: int,
+    row_labels,
+    front_path_model: str,
+) -> tuple[dict[str, object], Path, dict[str, Path]]:
+    fields = outputs.get("optical_fields", {})
+    if not isinstance(fields, dict):
+        fields = {}
+    artifact = build_strict_optical_field_artifact(
+        fields,
+        front_path_model=front_path_model,
+        target_code_active=_bool_output_value(outputs, "target_code_diagnostic_active"),
+        bridge_active=_bool_output_value(outputs, "target_code_bridge_active"),
+    )
+    artifact_path = run_manager.save_artifact_json(f"{artifact_prefix}_optical_field_provenance", artifact)
+    run_manager.save_tensor_bundle(
+        f"{artifact_prefix}_optical_fields.pt",
+        {
+            "schema_version": artifact["schema_version"],
+            "status": artifact["status"],
+            "fields": detach_optical_fields(fields),
+        },
+    )
+    paths: dict[str, Path] = {}
+    if artifact["status"] != "harness-invalid":
+        views = build_strict_optical_field_views(fields, artifact)
+        paths = save_strict_optical_field_grids(
+            run_manager,
+            views,
+            run_manager.images_dir / f"{artifact_prefix}_optical_field.png",
+            title_prefix=(
+                f"{title_prefix} simulated coherent optical field"
+                if artifact["full_chain_available"]
+                else f"{title_prefix} pre-intervention optical field only"
+            ),
+            max_items=max_items,
+            row_labels=row_labels,
+        )
+        common_paths = save_strict_optical_field_grids(
+            run_manager,
+            views,
+            run_manager.images_dir / f"{artifact_prefix}_optical_field_common_scale.png",
+            title_prefix=f"{title_prefix} physical-scale optical field",
+            max_items=max_items,
+            row_labels=row_labels,
+            common_scale=True,
+        )
+        paths.update({f"common_scale_{name}": path for name, path in common_paths.items()})
+    return artifact, artifact_path, paths
+
+
+def _one_shot_d2nn_pixel_size(train_cfg) -> float | None:
+    d2nn = getattr(train_cfg.one_shot, "d2nn", None)
+    if d2nn is None:
+        return None
+    pixel_size = getattr(d2nn, "pixel_size", None)
+    return None if pixel_size is None else float(pixel_size)
+
+
+def _primary_readout_plane_name(outputs) -> str:
+    value = outputs.get("primary_readout_plane", "camera")
+    return value if isinstance(value, str) else "camera"
+
+
+def _physical_cmos_tensor(outputs):
+    primary_readout = _primary_readout_plane_name(outputs)
+    if primary_readout == "camera":
+        keys = (
+            "physical_camera_plane",
+            "camera_plane",
+            "generated_camera_raw",
+            "generated_camera",
+            "student_camera_raw",
+            "diffractive_camera_plane_raw",
+        )
+    else:
+        keys = (
+            "physical_camera_plane",
+            "diffractive_camera_plane_raw",
+            "generated_camera_raw",
+            "generated_camera",
+            "student_camera_raw",
+        )
+    for key in keys:
+        value = outputs.get(key)
+        if not hasattr(value, "detach"):
+            continue
+        return value
+    if primary_readout != "camera":
+        raise ValueError("physical CMOS tensor is required when primary_readout_plane is not camera")
+    return outputs["camera_plane"]
+
+
+def _bool_output_value(outputs, key: str) -> bool:
+    value = outputs.get(key)
+    if hasattr(value, "detach"):
+        return bool(value.detach().cpu().item())
+    return bool(value)
+
+
+def _one_shot_artifact_metadata(
+    *,
+    stage: str,
+    train_cfg,
+    one_shot_checkpoint: str,
+    distill_dataset: str | None = None,
+    outputs=None,
+) -> dict[str, object]:
+    d2nn = getattr(train_cfg.one_shot, "d2nn", None)
+    physics = getattr(train_cfg, "physics", None)
+    readout = getattr(physics, "readout", None)
+    metadata: dict[str, object] = {
+        "stage": stage,
+        "one_shot_checkpoint": one_shot_checkpoint,
+        "distill_dataset": distill_dataset,
+        "decoder_diagnostic_mode": train_cfg.one_shot.decoder_diagnostic_mode,
+        "decoder_diagnostic_modulation_override": (
+            train_cfg.one_shot.decoder_diagnostic_modulation_override
+        ),
+        "decoder_diagnostic_mask_component": (
+            train_cfg.one_shot.decoder_diagnostic_mask_component
+        ),
+        "decoder_diagnostic_phase_layer_mask": list(
+            train_cfg.one_shot.decoder_diagnostic_phase_layer_mask
+        ),
+        "decoder_bypass_active": train_cfg.one_shot.decoder_diagnostic_mode == "bypass_decoder",
+        "ols_transfer_calibration": train_cfg.one_shot.ols_transfer_calibration,
+        "target_code_diagnostic_mode": train_cfg.one_shot.target_code_diagnostic_mode,
+        "target_code_spatial_scale": train_cfg.one_shot.target_code_spatial_scale,
+        "target_code_diagnostic_active": train_cfg.one_shot.target_code_diagnostic_mode != "none",
+        "target_code_bridge_source": train_cfg.one_shot.target_code_bridge_source,
+        "target_code_bridge_arch": train_cfg.one_shot.target_code_bridge_arch,
+        "target_code_bridge_active": train_cfg.one_shot.target_code_bridge_source != "none",
+        "target_code_bridge_trainability_audit": train_cfg.one_shot.target_code_bridge_trainability_audit,
+        "optical_core_arch": train_cfg.one_shot.optical_core_arch,
+        "readout_primary_plane": getattr(readout, "primary_plane", "camera"),
+        "front_path_model": getattr(physics, "front_path_model", "free_space"),
+        "back_path_model": getattr(physics, "back_path_model", "free_space"),
+    }
+    if d2nn is not None:
+        metadata["d2nn"] = {
+            "grid_size": int(d2nn.grid_size),
+            "pixel_size": float(d2nn.pixel_size),
+            "encoder_layers": int(d2nn.encoder_layers),
+            "decoder_layers": int(d2nn.decoder_layers),
+            "layer_spacing": float(d2nn.layer_spacing),
+            "modulation": d2nn.modulation,
+            "amplitude_logit_init": float(d2nn.amplitude_logit_init),
+        }
+    if outputs is not None:
+        metadata["output_decoder_diagnostic_mode"] = outputs.get(
+            "decoder_diagnostic_mode",
+            metadata["decoder_diagnostic_mode"],
+        )
+        metadata["output_decoder_diagnostic_modulation_override"] = outputs.get(
+            "decoder_diagnostic_modulation_override",
+            metadata["decoder_diagnostic_modulation_override"],
+        )
+        metadata["output_decoder_diagnostic_mask_component"] = outputs.get(
+            "decoder_diagnostic_mask_component",
+            metadata["decoder_diagnostic_mask_component"],
+        )
+        metadata["output_decoder_diagnostic_phase_layer_mask"] = list(
+            outputs.get("decoder_diagnostic_phase_layer_mask", ())
+        )
+        metadata["output_decoder_diagnostic_phase_layer_mask_applied"] = list(
+            outputs.get("decoder_diagnostic_phase_layer_mask_applied", ())
+        )
+        metadata["output_ols_transfer_calibration"] = outputs.get(
+            "ols_transfer_calibration",
+            metadata["ols_transfer_calibration"],
+        )
+        metadata["output_target_code_diagnostic_mode"] = outputs.get(
+            "target_code_diagnostic_mode",
+            metadata["target_code_diagnostic_mode"],
+        )
+        metadata["output_target_code_spatial_scale"] = outputs.get(
+            "target_code_spatial_scale",
+            metadata["target_code_spatial_scale"],
+        )
+        metadata["output_target_code_diagnostic_active"] = _bool_output_value(
+            outputs,
+            "target_code_diagnostic_active",
+        )
+        metadata["output_target_code_bridge_source"] = outputs.get(
+            "target_code_bridge_source",
+            metadata["target_code_bridge_source"],
+        )
+        metadata["output_target_code_bridge_arch"] = outputs.get(
+            "target_code_bridge_arch",
+            metadata["target_code_bridge_arch"],
+        )
+        metadata["output_target_code_bridge_active"] = _bool_output_value(
+            outputs,
+            "target_code_bridge_active",
+        )
+        metadata["output_decoder_bypass_active"] = _bool_output_value(outputs, "decoder_bypass_active")
+        metadata["output_primary_readout_plane"] = _primary_readout_plane_name(outputs)
+    return metadata
+
+
+def _save_one_shot_neuron_lattice_amplitude(
+    run_manager,
+    sample_outputs,
+    *,
+    image_name: str,
+    artifact_name: str,
+    title_label: str,
+    row_labels,
+    max_items: int,
+    pixel_size: float | None,
+    context: dict[str, object],
+) -> None:
+    lattice_tensors, lattice_metadata = build_one_shot_neuron_lattice_amplitude_tensors(
+        sample_outputs,
+        pixel_size=pixel_size,
+    )
+    image_path = run_manager.save_tensor_grid(
+        lattice_tensors,
+        run_manager.images_dir / image_name,
+        title=title_label,
+        max_items=max_items,
+        row_labels=row_labels,
+        interpolation="nearest",
+    )
+    run_manager.save_artifact_json(
+        artifact_name,
+        {
+            **lattice_metadata,
+            "context": context,
+            "image": str(image_path.relative_to(run_manager.run_dir)),
+        },
+    )
+
+
+def _save_one_shot_slim_cell_chain_preview(
+    run_manager,
+    sample_outputs,
+    *,
+    image_name: str,
+    artifact_name: str,
+    title_label: str,
+    row_labels,
+    max_items: int,
+    pixel_size: float | None,
+    context: dict[str, object],
+) -> None:
+    chain_tensors, chain_metadata = build_one_shot_slim_cell_chain_preview_tensors(
+        sample_outputs,
+        pixel_size=pixel_size,
+    )
+    image_path = run_manager.save_tensor_grid(
+        chain_tensors,
+        run_manager.images_dir / image_name,
+        title=title_label,
+        max_items=max_items,
+        row_labels=row_labels,
+        interpolation="nearest",
+    )
+    run_manager.save_artifact_json(
+        artifact_name,
+        {
+            **chain_metadata,
+            "context": context,
+            "image": str(image_path.relative_to(run_manager.run_dir)),
+        },
+    )
+
+
+def _load_one_shot_model_for_inference(
+    torch_module,
+    one_shot_model,
+    *,
+    checkpoint: str,
+    device,
+    load_checkpoint,
+    purpose: str,
+) -> None:
+    payload = torch_module.load(checkpoint, map_location=device, weights_only=False)
+    load_checkpoint(one_shot_model, payload)
+    one_shot_model.eval()
+    print(f"loaded one-shot checkpoint for {purpose}: {checkpoint}")
+
+
+def _one_shot_readout_artifact_tensors(
+    outputs,
+    display_diagnostics,
+    *,
+    physical_cmos,
+    selected_readout,
+    additional_tensors: dict[str, object] | None = None,
+    include_display_diagnostics: bool = False,
+) -> dict[str, object]:
+    additional_tensors = additional_tensors or {}
+    tensors = {
+        "generated_camera": physical_cmos.detach().cpu(),
+        "generated_camera_raw": physical_cmos.detach().cpu(),
+        "generated_camera_display": enhance_camera_for_display(physical_cmos).detach().cpu(),
+        "selected_readout": selected_readout.detach().cpu(),
+        "selected_readout_raw": selected_readout.detach().cpu(),
+        "selected_readout_display": enhance_camera_for_display(selected_readout).detach().cpu(),
+        "primary_readout_plane": _primary_readout_plane_name(outputs),
+        **additional_tensors,
+        **_detach_cpu_tensors(outputs, ONE_SHOT_RAW_DIAGNOSTIC_TENSOR_KEYS),
+    }
+    if include_display_diagnostics:
+        tensors["legacy_display_diagnostics"] = _detach_cpu_tensors(
+            display_diagnostics,
+            ONE_SHOT_DISPLAY_DIAGNOSTIC_TENSOR_KEYS,
+        )
+    return tensors
+
+
+def _save_one_shot_physical_chain_previews(
+    run_manager,
+    outputs,
+    *,
+    artifact_prefix: str,
+    title_prefix: str,
+    max_items: int,
+    row_labels,
+    pixel_size: float | None,
+    context: dict[str, object],
+) -> None:
+    _save_one_shot_neuron_lattice_amplitude(
+        run_manager,
+        outputs,
+        image_name=f"{artifact_prefix}_neuron_lattice_amplitude.png",
+        artifact_name=f"{artifact_prefix}_neuron_lattice_amplitude",
+        title_label=f"{title_prefix} 100x100 neuron-lattice amplitude",
+        max_items=max_items,
+        row_labels=row_labels,
+        pixel_size=pixel_size,
+        context=context,
+    )
+    _save_one_shot_slim_cell_chain_preview(
+        run_manager,
+        outputs,
+        image_name=f"{artifact_prefix}_100x100_cell_chain_preview.png",
+        artifact_name=f"{artifact_prefix}_100x100_cell_chain_preview",
+        title_label=(
+            f"{title_prefix} 100x100 cell chain preview: "
+            "SLM -> encoder -> decoder -> CMOS intensity"
+        ),
+        max_items=max_items,
+        row_labels=row_labels,
+        pixel_size=pixel_size,
+        context=context,
+    )
 
 
 def _compute_student_eval_label_audit(torch_module, *, train_cfg, student_camera, labels, device) -> dict[str, object]:
@@ -320,10 +717,14 @@ def run_one_shot_sample_stage(
     one_shot_checkpoint: str,
     load_one_shot_checkpoint_fn,
 ) -> None:
-    one_shot_payload = torch_module.load(one_shot_checkpoint, map_location=device, weights_only=False)
-    load_one_shot_checkpoint_fn(one_shot_model, one_shot_payload)
-    one_shot_model.eval()
-    print(f"loaded one-shot checkpoint for sampling: {one_shot_checkpoint}")
+    _load_one_shot_model_for_inference(
+        torch_module,
+        one_shot_model,
+        checkpoint=one_shot_checkpoint,
+        device=device,
+        load_checkpoint=load_one_shot_checkpoint_fn,
+        purpose="sampling",
+    )
     sample_labels, reference_images, reference_labels, reference_source = select_post_train_sample_batch(
         torch_module,
         validation_bundle,
@@ -336,14 +737,15 @@ def run_one_shot_sample_stage(
     sample_count = int(sample_labels.shape[0])
     codes = _sample_one_shot_codes(torch_module, sample_count, train_cfg, device)
     with torch_module.no_grad():
-        sample_outputs = one_shot_model(codes, sample_labels)
+        sample_outputs = one_shot_model(codes, sample_labels, return_optical_fields=True)
+    selected_readout = sample_outputs["camera_plane"]
+    physical_cmos = _physical_cmos_tensor(sample_outputs)
     sample_shared_scale_visuals = build_one_shot_shared_scale_visualization_tensors(
         reference_images,
         sample_outputs,
         codes=codes,
     )
     sample_display_diagnostics = build_one_shot_display_diagnostic_tensors(sample_outputs)
-    sample_visual_diagnostics = build_one_shot_visual_diagnostics(sample_outputs, sample_display_diagnostics)
     run_manager.save_config_snapshot(
         "one_shot_sample_config",
         {
@@ -356,17 +758,34 @@ def run_one_shot_sample_stage(
             "source": "train.py_one_shot_sample",
         },
     )
+    sample_artifact_metadata = _one_shot_artifact_metadata(
+        stage="one_shot_sample",
+        train_cfg=train_cfg,
+        one_shot_checkpoint=one_shot_checkpoint,
+        outputs=sample_outputs,
+    )
+    sample_artifact_metadata_path = run_manager.save_artifact_json(
+        "one_shot_sample_artifact_metadata",
+        sample_artifact_metadata,
+    )
     save_visualization_grids(
         run_manager,
         {
-            VISUALIZATION_AMPLITUDE_KEY: sample_shared_scale_visuals[VISUALIZATION_AMPLITUDE_KEY],
             VISUALIZATION_INTENSITY_KEY: sample_shared_scale_visuals.get(VISUALIZATION_INTENSITY_KEY, {}),
-            VISUALIZATION_PHASE_KEY: sample_shared_scale_visuals[VISUALIZATION_PHASE_KEY],
         },
         run_manager.images_dir / "one_shot_sample.png",
-        title_label="one-shot sample physical-chain diagnostics",
+        title_label="one-shot sample intensity/control diagnostics",
         max_items=sample_count,
         row_labels=labels_for_visual_rows(sample_labels),
+    )
+    optical_field_artifact, optical_field_artifact_path, optical_field_paths = _save_strict_optical_field_artifacts(
+        run_manager,
+        sample_outputs,
+        artifact_prefix="one_shot_sample",
+        title_prefix="one-shot sample",
+        max_items=sample_count,
+        row_labels=labels_for_visual_rows(sample_labels),
+        front_path_model=getattr(getattr(train_cfg, "physics", None), "front_path_model", "free_space"),
     )
     _save_one_shot_d2nn_diagnostics(
         run_manager,
@@ -387,24 +806,31 @@ def run_one_shot_sample_stage(
             "reference_images": reference_images.detach().cpu(),
             "reference_labels": reference_labels.detach().cpu(),
             "reference_source": reference_source,
-            "generated_camera": sample_outputs["camera_plane"].detach().cpu(),
-            "generated_camera_raw": sample_outputs["camera_plane"].detach().cpu(),
-            "generated_camera_display": enhance_camera_for_display(sample_outputs["camera_plane"]).detach().cpu(),
-            **_detach_cpu_tensors(sample_outputs, ONE_SHOT_RAW_DIAGNOSTIC_TENSOR_KEYS),
-            **_detach_cpu_tensors(sample_display_diagnostics, ONE_SHOT_DISPLAY_DIAGNOSTIC_TENSOR_KEYS),
+            "artifact_metadata": sample_artifact_metadata,
+            **_one_shot_readout_artifact_tensors(
+                sample_outputs,
+                sample_display_diagnostics,
+                physical_cmos=physical_cmos,
+                selected_readout=selected_readout,
+            ),
         },
     )
-    run_manager.save_artifact_json("one_shot_sample_visual_diagnostics", sample_visual_diagnostics)
-    run_manager.save_artifact_json(
-        "one_shot_sample_shared_scale_diagnostics",
-        sample_shared_scale_visuals["diagnostics"],
-    )
-    sample_metrics = compute_sample_quality_metrics(sample_outputs["camera_plane"], reference_images, sample_labels)
+    sample_metrics = compute_sample_quality_metrics(physical_cmos, reference_images, sample_labels)
     metrics_path = run_manager.save_artifact_json("one_shot_sample_metrics", sample_metrics)
     run_meta.update(
         {
             "one_shot_checkpoint": one_shot_checkpoint,
             "one_shot_sample_metric_source": str(metrics_path.relative_to(run_manager.run_dir)),
+            "one_shot_sample_artifact_metadata_source": str(
+                sample_artifact_metadata_path.relative_to(run_manager.run_dir)
+            ),
+            "one_shot_sample_optical_field_provenance_source": str(
+                optical_field_artifact_path.relative_to(run_manager.run_dir)
+            ),
+            "one_shot_sample_optical_field_status": optical_field_artifact["status"],
+            "one_shot_sample_optical_field_images": {
+                name: str(path.relative_to(run_manager.run_dir)) for name, path in optical_field_paths.items()
+            },
         }
     )
     run_manager.write_meta(run_meta)
@@ -440,13 +866,19 @@ def run_one_shot_distill_eval_stage(
     eval_raw_teacher = teacher_camera.index_select(0, index_tensor)
     eval_target = resolved_targets.index_select(0, index_tensor)
 
-    one_shot_payload = torch_module.load(one_shot_checkpoint, map_location=device, weights_only=False)
-    load_one_shot_checkpoint_fn(one_shot_model, one_shot_payload)
-    one_shot_model.eval()
-    print(f"loaded one-shot checkpoint for distill eval: {one_shot_checkpoint}")
+    _load_one_shot_model_for_inference(
+        torch_module,
+        one_shot_model,
+        checkpoint=one_shot_checkpoint,
+        device=device,
+        load_checkpoint=load_one_shot_checkpoint_fn,
+        purpose="distill eval",
+    )
     with torch_module.no_grad():
         eval_outputs = one_shot_model(eval_codes.to(device), eval_labels.to(device))
-    student_camera = eval_outputs["camera_plane"].detach().cpu()
+    selected_readout = eval_outputs["camera_plane"]
+    physical_cmos = _physical_cmos_tensor(eval_outputs)
+    student_camera = physical_cmos.detach().cpu()
     eval_original_digits = _load_original_mnist_digits(
         eval_labels, train_cfg.first_stage.image_size, root=train_cfg.data.root
     )
@@ -535,6 +967,12 @@ def run_one_shot_distill_eval_stage(
         else:
             eval_preview_outputs[key] = value
     preview_labels = eval_labels.index_select(0, visual_preview_index_tensor)
+    with torch_module.no_grad():
+        eval_preview_field_outputs = one_shot_model(
+            eval_codes.index_select(0, visual_preview_index_tensor).to(device),
+            preview_labels.to(device),
+            return_optical_fields=True,
+        )
 
     run_manager.save_config_snapshot(
         "one_shot_distill_eval_config",
@@ -553,20 +991,41 @@ def run_one_shot_distill_eval_stage(
             "source": "train.py_one_shot_distill_eval",
         },
     )
+    eval_artifact_metadata = _one_shot_artifact_metadata(
+        stage="one_shot_distill_eval",
+        train_cfg=train_cfg,
+        one_shot_checkpoint=one_shot_checkpoint,
+        distill_dataset=distill_dataset,
+        outputs=eval_outputs,
+    )
+    eval_artifact_metadata_path = run_manager.save_artifact_json(
+        "one_shot_distill_eval_artifact_metadata",
+        eval_artifact_metadata,
+    )
     if physical_phase_available:
         save_visualization_grids(
             run_manager,
             {
-                VISUALIZATION_AMPLITUDE_KEY: eval_preview_shared_scale_visuals[VISUALIZATION_AMPLITUDE_KEY],
                 VISUALIZATION_INTENSITY_KEY: eval_preview_shared_scale_visuals.get(VISUALIZATION_INTENSITY_KEY, {}),
-                VISUALIZATION_PHASE_KEY: eval_preview_shared_scale_visuals[VISUALIZATION_PHASE_KEY],
             },
             run_manager.images_dir / "one_shot_distill_eval.png",
-            title_label="one-shot distill paired eval physical-chain diagnostics",
+            title_label="one-shot distill eval intensity/control diagnostics",
             max_items=int(visual_preview_summary["visual_preview_count"]),
             row_labels=labels_for_visual_rows(preview_labels),
         )
+        eval_optical_field_artifact, eval_optical_field_artifact_path, eval_optical_field_paths = _save_strict_optical_field_artifacts(
+            run_manager,
+            eval_preview_field_outputs,
+            artifact_prefix="one_shot_distill_eval",
+            title_prefix="one-shot distill eval",
+            max_items=int(visual_preview_summary["visual_preview_count"]),
+            row_labels=labels_for_visual_rows(preview_labels),
+            front_path_model=getattr(getattr(train_cfg, "physics", None), "front_path_model", "free_space"),
+        )
     else:
+        eval_optical_field_artifact = None
+        eval_optical_field_artifact_path = None
+        eval_optical_field_paths = {}
         save_visualization_grids(
             run_manager,
             _direct_readable_eval_visuals(eval_preview_visuals),
@@ -629,22 +1088,20 @@ def run_one_shot_distill_eval_stage(
             "eval_target": eval_target,
             "eval_target_display": enhance_camera_for_display(eval_target),
             "one_shot_distill_target_source": train_cfg.one_shot.distill_target_source,
+            "artifact_metadata": eval_artifact_metadata,
             "student_camera_raw": student_camera,
             "student_camera_display": enhance_camera_for_display(student_camera),
-            "original_digits": eval_original_digits,
-            "abs_error": abs_error,
-            **_detach_cpu_tensors(eval_outputs, ONE_SHOT_RAW_DIAGNOSTIC_TENSOR_KEYS),
-            **_detach_cpu_tensors(eval_display_diagnostics, ONE_SHOT_DISPLAY_DIAGNOSTIC_TENSOR_KEYS),
+            **_one_shot_readout_artifact_tensors(
+                eval_outputs,
+                eval_display_diagnostics,
+                physical_cmos=student_camera,
+                selected_readout=selected_readout,
+                additional_tensors={
+                    "original_digits": eval_original_digits,
+                    "abs_error": abs_error,
+                },
+            ),
         },
-    )
-    run_manager.save_artifact_json("one_shot_distill_eval_visual_diagnostics", eval_visual_diagnostics)
-    eval_shared_scale_visuals["diagnostics"]["physical_phase_available"] = physical_phase_available
-    eval_shared_scale_visuals["diagnostics"]["visualization_mode"] = (
-        "optical_chain" if physical_phase_available else "direct_readable"
-    )
-    run_manager.save_artifact_json(
-        "one_shot_distill_eval_shared_scale_diagnostics",
-        eval_shared_scale_visuals["diagnostics"],
     )
     metrics_path = run_manager.save_artifact_json("one_shot_distill_eval_metrics", metrics)
     overall = metrics["overall"]
@@ -663,11 +1120,27 @@ def run_one_shot_distill_eval_stage(
             "one_shot_visualization_mode": "optical_chain" if physical_phase_available else "direct_readable",
             "one_shot_distill_eval_metric_source": str(metrics_path.relative_to(run_manager.run_dir)),
             "one_shot_distill_eval_tensor_source": str(tensor_path.relative_to(run_manager.run_dir)),
+            "one_shot_distill_eval_artifact_metadata_source": str(
+                eval_artifact_metadata_path.relative_to(run_manager.run_dir)
+            ),
             "one_shot_distill_eval_strict_readability_passed": bool(
                 metrics["strict_readability_acceptance"]["passed"]
             ),
         }
     )
+    if eval_optical_field_artifact is not None and eval_optical_field_artifact_path is not None:
+        run_meta.update(
+            {
+                "one_shot_distill_eval_optical_field_provenance_source": str(
+                    eval_optical_field_artifact_path.relative_to(run_manager.run_dir)
+                ),
+                "one_shot_distill_eval_optical_field_status": eval_optical_field_artifact["status"],
+                "one_shot_distill_eval_optical_field_images": {
+                    name: str(path.relative_to(run_manager.run_dir))
+                    for name, path in eval_optical_field_paths.items()
+                },
+            }
+        )
     if student_label_audit_path is not None:
         run_meta["one_shot_distill_eval_student_label_audit_source"] = str(
             student_label_audit_path.relative_to(run_manager.run_dir)

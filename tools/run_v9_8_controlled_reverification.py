@@ -10,10 +10,10 @@
   Phase 4: 可选 —— 如果 gates 通过，运行 3-epoch controlled training
 
 用法:
-  python tools/run_v9_8_controlled_reverification.py \
+  python -m tools.run_v9_8_controlled_reverification \
       --v8-2c-checkpoint <path> \
       --distill-dataset <path> \
-      [--output-dir /tmp/v9_8_reverification] \
+      [--output-dir outputs/20260620_v9_8/reverification] \
       [--device cuda] \
       [--run-training]
 """
@@ -415,7 +415,7 @@ def main():
                         help="Path to v8.2c one_shot_distill_best.pt")
     parser.add_argument("--distill-dataset", required=True,
                         help="Path to readable test distill dataset (100 samples, 10/class)")
-    parser.add_argument("--output-dir", default="/tmp/v9_8_reverification",
+    parser.add_argument("--output-dir", default="outputs/20260620_v9_8/reverification",
                         help="Output directory for results")
     parser.add_argument("--device", default="cuda",
                         help="Device (cuda or cpu)")

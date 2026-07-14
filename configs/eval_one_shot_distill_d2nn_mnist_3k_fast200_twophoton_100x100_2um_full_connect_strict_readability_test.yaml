@@ -105,7 +105,7 @@ one_shot:
   checkpoint_selection_metric: strict_readability
   sample_class_labels: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
   sample_repeats_per_class: 2
-  eval_samples_per_class: 20
+  eval_samples_per_class: 10
   eval_preview_per_class: 2
   student_label_audit_enabled: true
 

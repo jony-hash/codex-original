@@ -15,6 +15,7 @@ from .one_shot_eval_artifacts import (
     _save_one_shot_d2nn_diagnostics,
     _save_one_shot_slm_to_encoder_focus_visualization,
 )
+from .one_shot_eval import _save_strict_optical_field_artifacts
 from .one_shot_visualization import build_one_shot_shared_scale_visualization_tensors
 from .visualization_core import labels_for_visual_rows, save_visualization_grids
 from .stage_constants import ONE_SHOT_BEST_CHECKPOINT, ONE_SHOT_BEST_METRIC
@@ -105,14 +106,33 @@ def run_one_shot_training(
         if should_save_epoch_visual(epoch_index, train_cfg.visual_save_epoch_interval):
             one_shot_model.eval()
             with torch_module.no_grad():
-                visual_outputs = one_shot_model(visual_codes, visual_labels)
+                visual_outputs = one_shot_model(
+                    visual_codes,
+                    visual_labels,
+                    return_optical_fields=True,
+                )
                 save_visualization_grids(
                     run_manager,
-                    build_one_shot_shared_scale_visualization_tensors(visual_references, visual_outputs, codes=visual_codes),
+                    {
+                        "intensity": build_one_shot_shared_scale_visualization_tensors(
+                            visual_references,
+                            visual_outputs,
+                            codes=visual_codes,
+                        ).get("intensity", {}),
+                    },
                     run_manager.images_dir / "one_shot" / f"epoch_{epoch_number:04d}.png",
-                    title_label=f"one_shot epoch {epoch_number}",
+                    title_label=f"one_shot epoch {epoch_number} intensity/control diagnostics",
                     max_items=visual_labels.shape[0],
                     row_labels=labels_for_visual_rows(visual_labels),
+                )
+                _save_strict_optical_field_artifacts(
+                    run_manager,
+                    visual_outputs,
+                    artifact_prefix=f"one_shot_epoch_{epoch_number:04d}",
+                    title_prefix=f"one-shot epoch {epoch_number}",
+                    max_items=visual_labels.shape[0],
+                    row_labels=labels_for_visual_rows(visual_labels),
+                    front_path_model=physics.front_path_model,
                 )
                 _save_one_shot_d2nn_diagnostics(
                     run_manager,

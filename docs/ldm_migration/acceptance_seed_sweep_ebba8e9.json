@@ -5,7 +5,7 @@
   "environment": "RTX 3060 Laptop GPU (6GB), CUDA 12.1, PyTorch 2.5.1+cu121, WSL2 Linux",
   "parent_baseline": "7f1b8f2",
   "config": "configs/train_one_shot_distill_d2nn_mnist_3k_fast200_debug_epoch_ckpt.yaml",
-  "distill_dataset": "outputs/runs/20260603_204548_790688_train_distill_filter_bs128_matched_diffusion/artifacts/teacher_distill_dataset_filtered.pt",
+  "distill_dataset": "outputs/20260514_unversioned/runs/20260603_204548_790688_train_distill_filter_bs128_matched_diffusion/artifacts/teacher_distill_dataset_filtered.pt",
   "checkpoint_policy": "one_shot_distill_epoch_0020.pt from each seeded run",
   "required_successes": 2,
   "success_count": 2,
@@ -22,19 +22,19 @@
   },
   "source_runs": {
     "101": {
-      "one_shot_distill": "outputs/runs/20260604_144707_298808_train_one_shot_distill_seed101",
-      "one_shot_eval": "outputs/runs/20260604_151022_709235_train_one_shot_distill_seed101_eval",
-      "one_shot_sample": "outputs/runs/20260604_151208_052529_train_one_shot_distill_seed101_sample"
+      "one_shot_distill": "outputs/20260514_unversioned/runs/20260604_144707_298808_train_one_shot_distill_seed101",
+      "one_shot_eval": "outputs/20260514_unversioned/runs/20260604_151022_709235_train_one_shot_distill_seed101_eval",
+      "one_shot_sample": "outputs/20260514_unversioned/runs/20260604_151208_052529_train_one_shot_distill_seed101_sample"
     },
     "202": {
-      "one_shot_distill": "outputs/runs/20260604_145621_832064_train_one_shot_distill_seed202",
-      "one_shot_eval": "outputs/runs/20260604_151028_706686_train_one_shot_distill_seed202_eval",
-      "one_shot_sample": "outputs/runs/20260604_151208_051503_train_one_shot_distill_seed202_sample"
+      "one_shot_distill": "outputs/20260514_unversioned/runs/20260604_145621_832064_train_one_shot_distill_seed202",
+      "one_shot_eval": "outputs/20260514_unversioned/runs/20260604_151028_706686_train_one_shot_distill_seed202_eval",
+      "one_shot_sample": "outputs/20260514_unversioned/runs/20260604_151208_051503_train_one_shot_distill_seed202_sample"
     },
     "303": {
-      "one_shot_distill": "outputs/runs/20260604_150524_772961_train_one_shot_distill_seed303",
-      "one_shot_eval": "outputs/runs/20260604_151556_258849_train_one_shot_distill_seed303_eval",
-      "one_shot_sample": "outputs/runs/20260604_151659_150789_train_one_shot_distill_seed303_sample"
+      "one_shot_distill": "outputs/20260514_unversioned/runs/20260604_150524_772961_train_one_shot_distill_seed303",
+      "one_shot_eval": "outputs/20260514_unversioned/runs/20260604_151556_258849_train_one_shot_distill_seed303_eval",
+      "one_shot_sample": "outputs/20260514_unversioned/runs/20260604_151659_150789_train_one_shot_distill_seed303_sample"
     }
   },
   "seed_results": {

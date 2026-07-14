@@ -20,12 +20,13 @@ def _load_tool():
 
 
 class V910AuditToolTests(unittest.TestCase):
-    def test_output_root_must_stay_under_tmp(self) -> None:
+    def test_output_root_must_stay_under_outputs(self) -> None:
         tool = _load_tool()
+        expected = tool.DEFAULT_OUTPUT_ROOT.resolve()
 
-        self.assertEqual(tool._require_tmp_output_root(Path("/tmp/v9_10_test")), Path("/tmp/v9_10_test"))
-        with self.assertRaisesRegex(tool.AuditError, "under /tmp"):
-            tool._require_tmp_output_root(ROOT / "outputs" / "runs")
+        self.assertEqual(tool._require_persistent_output_root(tool.DEFAULT_OUTPUT_ROOT), expected)
+        with self.assertRaisesRegex(tool.AuditError, "under .*outputs"):
+            tool._require_persistent_output_root(Path("/tmp/v9_10_test"))
 
     def test_config_contract_matches_prototype_baseline(self) -> None:
         contract = _load_tool()._validate_config_contract()
@@ -74,11 +75,12 @@ class V910AuditToolTests(unittest.TestCase):
 
     def test_summary_path_is_unique_and_does_not_overwrite(self) -> None:
         tool = _load_tool()
-        with tempfile.TemporaryDirectory(dir="/tmp") as tmpdir:
+        with tempfile.TemporaryDirectory() as tmpdir:
             first = tool._write_summary(Path(tmpdir), {"status": "first"})
             second = tool._write_summary(Path(tmpdir), {"status": "second"})
 
         self.assertNotEqual(first.name, second.name)
+        self.assertEqual(first.parent.name, "reports")
 
 
 if __name__ == "__main__":

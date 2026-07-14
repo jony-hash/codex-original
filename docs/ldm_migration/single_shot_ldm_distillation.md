@@ -1,6 +1,6 @@
 # D2NN 单次曝光蒸馏主线
 
-本文件定义稳定架构、最终推理边界和模块职责，不保存带日期的实验状态。
+本文件定义稳定架构、最终推理边界和模块职责，不保存带日期的实验状态。当前实验状态与验收结论见 [v57 后主线交接](current_handoff.md)；物理合同通过不等于学生模型已通过最终 CMOS 人眼验收。
 
 - 运行 stage：[Stage Guide](stage_guide.md)
 - 解释输出：[Output Guide](../output_JIESHI.md)
@@ -22,7 +22,7 @@ amplitude SLM command
         ↓
 encoder D2NN phase-only diffractive stack
         ↓
-OLS / fiber interface
+linear identity OLS (fiber is not implemented)
         ↓
 decoder D2NN phase-only diffractive stack
         ↓
@@ -42,25 +42,27 @@ Teacher first-stage、diffusion 和 teacher distill export 是训练基础设施
 - `configs/physics_cfg.yaml`：波长、像素尺寸、宏观光路与读出配置。
 - `configs/train_ldm.yaml`：teacher first-stage 与 diffusion 训练入口。
 - `configs/export_teacher_distill_mnist_3k_fast200.yaml`：稳定 teacher distill dataset 导出入口。
-- `configs/train_one_shot_distill_d2nn_mnist_3k_fast200.yaml`：D2NN one-shot 蒸馏主线。
+- `configs/train_v56_coherent_relay_from_scratch.yaml`：最近一次批准的 coherent-relay 训练配置；当前训练已停止，详见交接文档。旧 `train_one_shot_distill_d2nn_mnist_3k_fast200.yaml` 仅为 legacy baseline。
 - `configs/train_one_shot_d2nn_smoke.yaml`：小尺寸 D2NN compatibility smoke，不作为正式证据。
 
 其他 export、filter、split、audit 和实验 config 的分类与使用条件见 [Stage Guide](stage_guide.md)。
 
 D2NN 主线通过 `one_shot.optical_core_arch: diffractive_phase_only` 启用；`dense_linear` 只保留为旧 baseline 和兼容入口。
 
-### D2NN 几何
+### v55 正式 D2NN 几何与 relay
 
 - 工作波长 `λ = 532 nm`（0.532 µm）。
-- 单神经元尺寸 / pitch `Δx = 2.5 µm`。
-- 层间距 `d = 5.0 mm`（5000 µm）。
+- SLM 与 CMOS 为 `200 × 200 @ 2.5 µm`，物理 FOV 为 `500 µm`。
+- Encoder 与 decoder metasurface 各为 `100 × 100 @ 2 µm`，物理 FOV 为 `200 µm`。
+- 层间距 `d = 1.50 mm`，满足当前全连接几何下限。
 - Encoder phase-only 衍射层数为 2。
 - Decoder phase-only 衍射层数为 2。
 - 总衍射层数 `L = 4`。
 - 调制类型为 `phase_only`。
 - 传播方法为 angular spectrum。
-- 内部 D2NN 网格 `N = 200`，物理孔径为 `0.5 mm × 0.5 mm`。
-- Loss 输出保持 teacher target 的 `200 × 200` camera shape。
+- 前端使用相干 4f 缩小 relay，将完整 `500 µm` SLM FOV 以倍率 `−0.4` 成像到完整 `200 µm` Encoder FOV；禁止使用自由传播后的中央 aperture 截取作为正式路径。
+- 前端 relay 为 `f1=223.214 mm`、`f2=89.286 mm`，两镜间距 `312.5 mm`，SLM→Encoder 总路径 `625 mm`，最低 clear aperture `23.75 mm`。
+- CMOS 输出保持 `200 × 200 @ 2.5 µm` camera shape。
 - Raw diagnostics 保留 D2NN 内部复场、phase mask 和 camera readout。
 
 ### 宏观光路
@@ -69,12 +71,13 @@ D2NN 主线通过 `one_shot.optical_core_arch: diffractive_phase_only` 启用；
 - `M1 -> BS`：370 mm。
 - `BS -> SLM`：25 mm；SLM 为反射式振幅调制，反射光沿 `SLM -> BS` 返回 25 mm。
 - `BS -> M3`：125 mm；BS 将 SLM 返回光向下导入 M3。
-- `M3 -> LightGen`：475 mm；M3 将竖直向下光束折转为水平进入 LightGen。
-- `LightGen -> relay lens`：100 mm。
-- `relay lens -> CMOS`：250 mm；`LightGen -> CMOS` 总机械距离为 350 mm。
+- `M3 -> L1`：73.214 mm；随后 `L1 -> L2` 为 312.5 mm，`L2 -> Encoder` 为 89.286 mm，构成完整前端 4f relay。
+- `chip -> backend relay lens`：100 mm。
+- `backend relay lens -> CMOS`：250 mm；chip -> CMOS 总机械距离为 350 mm。
 - Relay lens 焦距 `f = 71.4285714 mm`，由 `u = 100 mm, v = 250 mm` 的薄透镜公式反推，使 CMOS 位于合焦像面。
-- LightGen 内部仍为 `Encoder x2 -> OLS -> Decoder x2`；其 5 mm 层间距不被宏观距离替代。
+- LightGen 内部为 `Encoder x2 -> linear identity OLS -> Decoder x2`，层间距为 1.50 mm。
 - PBS 只作为偏振效率建议，不作为当前数值传播节点。
+- v55 physical-forward contract 中 relay 距离、倍率、pupil 和 ABCD trace 全部进入 provenance；v52 的自由传播+中央 aperture 仅保留为历史 diagnostic，不代表当前正式路径。
 
 ## 3. 模块边界
 
@@ -100,11 +103,13 @@ Phase mask 是可训练光学参数；其幅度保持为 1。
 
 ### OLS
 
-OLS 保持可替换的 complex-field 输入/输出接口。当前可以使用 GELU 代理，后续可替换为单模光纤、多模光纤、标定矩阵或 camera-in-the-loop 模块，但不得绕过最终单次曝光路径。
+当前正式 OLS 是严格复恒等映射 `Eout = Ein`，并通过复线性叠加测试。fiber、标定矩阵和 camera-in-the-loop 仅是未来可选实现；历史 GELU/tanh 代理只允许历史配置读取，不能进入 v55 physical-forward contract。
 
 ### CMOS
 
 CMOS camera plane 是学生主输出。训练和评估优先使用下采样后的 `camera_plane`；硬件诊断同时检查 `diffractive_camera_*_raw`。具体张量和图像语义见 [Output Guide](../output_JIESHI.md)。
+
+Teacher 只生成目标图像/目标 latent，不经过学生的 laser、SLM、D2NN 或 CMOS 光路；teacher 与 student 不是同一条物理路径。
 
 ## 4. Teacher 配套边界
 
@@ -150,7 +155,7 @@ teacher_first_stage / teacher_diffusion
 1. SLM 振幅响应 LUT 与残余相位。
 2. Phase mask 量化、加工误差和平滑/带宽约束。
 3. 传播距离、平移、旋转、缩放和离焦扰动。
-4. OLS 从 GELU 代理替换为 fiber 或 calibrated matrix 接口。
+4. 在独立硬件变体中以保留复场接口的 fiber 或 calibrated matrix 替换 identity OLS。
 5. CMOS 噪声、饱和、gamma 和像素非均匀性。
 6. 真实 `SLM command -> CMOS image` 标定与 camera-in-the-loop 微调。
 

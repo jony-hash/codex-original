@@ -73,6 +73,48 @@ def _build_clean_readable_target(teacher_camera: torch.Tensor) -> dict[str, torc
     }
 
 
+def _gaussian_blur_2d(tensor: torch.Tensor, sigma: float) -> torch.Tensor:
+    if sigma <= 0.0:
+        return tensor
+    channels = tensor.shape[1]
+    radius = max(1, int(round(float(sigma) * 3.0)))
+    coords = torch.arange(-radius, radius + 1, device=tensor.device, dtype=tensor.dtype)
+    kernel_1d = torch.exp(-(coords.pow(2)) / (2.0 * float(sigma) * float(sigma)))
+    kernel_1d = kernel_1d / kernel_1d.sum().clamp_min(1.0e-12)
+    kernel_y = kernel_1d.view(1, 1, -1, 1).expand(channels, 1, -1, 1)
+    kernel_x = kernel_1d.view(1, 1, 1, -1).expand(channels, 1, 1, -1)
+    padded = F.pad(tensor, (radius, radius, radius, radius), mode="replicate")
+    blurred = F.conv2d(padded, kernel_y, groups=channels)
+    return F.conv2d(blurred, kernel_x, groups=channels)
+
+
+def transform_aux_topology_target(
+    target: torch.Tensor,
+    transform: str = "none",
+    foreground_threshold: float = 0.05,
+) -> dict[str, torch.Tensor]:
+    """Return a diagnostic-only target variant for aux topology supervision."""
+    if transform == "none":
+        transformed = target.float().clamp(0.0, 1.0)
+    elif transform == "lowpass":
+        transformed = _gaussian_blur_2d(target.float().clamp(0.0, 1.0), sigma=3.0).clamp(0.0, 1.0)
+    elif transform == "thick_binary":
+        base = (target.float() > foreground_threshold).float()
+        thick = F.max_pool2d(base, kernel_size=9, stride=1, padding=4)
+        transformed = _gaussian_blur_2d(thick, sigma=1.2).clamp(0.0, 1.0)
+    else:
+        raise ValueError(
+            "aux_topology_target_transform must be one of ['none', 'lowpass', 'thick_binary'], "
+            f"got {transform!r}"
+        )
+    foreground_mask = (transformed > foreground_threshold).float()
+    return {
+        "target": transformed,
+        "foreground_mask": foreground_mask,
+        "foreground_ratio": foreground_mask.mean().detach(),
+    }
+
+
 def _one_shot_pairwise_diversity_metrics(
     camera_prediction: torch.Tensor,
     target_batch: torch.Tensor,
@@ -152,6 +194,37 @@ def _one_shot_pairwise_diversity_metrics(
         "student_pairwise_mse": active_student.mean().detach(),
         "diversity_ratio": diversity_ratio.mean().detach(),
         "diversity_pair_count": active.float().sum().detach(),
+    }
+
+
+def _encoder_input_topology_metrics(
+    outputs: dict[str, torch.Tensor],
+    target: torch.Tensor,
+    foreground_mask: torch.Tensor,
+) -> dict[str, torch.Tensor]:
+    planes = []
+    for key in ("encoder_input_amplitude", "encoder_input_grid_amplitude"):
+        plane = outputs.get(key)
+        if plane is None:
+            continue
+        resized = plane.float()
+        if resized.shape[-2:] != target.shape[-2:]:
+            resized = F.interpolate(resized, size=target.shape[-2:], mode="bilinear", align_corners=False)
+        planes.append(resized.clamp(0.0, 1.0))
+    if not planes:
+        raise ValueError(
+            "encoder_input_topology_weight requires encoder_input_amplitude "
+            "or encoder_input_grid_amplitude."
+        )
+
+    dice_scores = [_foreground_dice_score(plane, foreground_mask) for plane in planes]
+    mse_scores = [torch.mean((plane - target.float()).pow(2)) for plane in planes]
+    dice = torch.stack(dice_scores).mean()
+    mse = torch.stack(mse_scores).mean()
+    return {
+        "dice": dice,
+        "dice_penalty": 1.0 - dice,
+        "mse": mse,
     }
 
 
@@ -362,24 +435,7 @@ def _student_label_margin_metrics(
             "student_label_margin_mean": zero,
             "student_label_correct_ratio": zero,
         }
-    labels = class_labels.detach().reshape(-1).to(device=camera_prediction.device)
-    if labels.shape[0] != camera_prediction.shape[0]:
-        raise ValueError("class_labels must match one_shot_loss batch size for student label margin.")
-    if prototypes.ndim != 4 or prototypes.shape[1] != camera_prediction.shape[1]:
-        raise ValueError(
-            "student_label_margin_prototypes must be [num_classes, channels, height, width] "
-            f"with matching channels, got {tuple(prototypes.shape)}"
-        )
-    prototype_batch = prototypes.to(device=camera_prediction.device, dtype=camera_prediction.dtype)
-    if prototype_batch.shape[-2:] != camera_prediction.shape[-2:]:
-        prototype_batch = F.interpolate(
-            prototype_batch,
-            size=camera_prediction.shape[-2:],
-            mode="bilinear",
-            align_corners=False,
-        )
-    if int(labels.max().item()) >= prototype_batch.shape[0] or int(labels.min().item()) < 0:
-        raise ValueError("class_labels exceed student_label_margin_prototypes class dimension.")
+    labels, correlations = _student_prototype_correlations(camera_prediction, class_labels, prototypes)
 
     valid_mask = torch.ones_like(labels, dtype=torch.bool)
     if label_subset:
@@ -393,9 +449,6 @@ def _student_label_margin_metrics(
             "student_label_correct_ratio": zero,
         }
 
-    sample_features = _normalize_for_label_margin(camera_prediction)
-    prototype_features = _normalize_for_label_margin(prototype_batch)
-    correlations = sample_features @ prototype_features.t()
     target_corr = correlations.gather(1, labels.view(-1, 1)).squeeze(1)
     other_corr = correlations.clone()
     other_corr.scatter_(1, labels.view(-1, 1), -2.0)
@@ -419,6 +472,308 @@ def _student_label_margin_metrics(
         "student_label_margin_base": base,
         "student_label_margin_mean": active_margins.mean().detach(),
         "student_label_correct_ratio": active_correct.mean().detach(),
+    }
+
+
+def _student_prototype_correlations(
+    camera_prediction: torch.Tensor,
+    class_labels: torch.Tensor,
+    prototypes: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    labels = class_labels.detach().reshape(-1).to(device=camera_prediction.device)
+    if labels.shape[0] != camera_prediction.shape[0]:
+        raise ValueError("class_labels must match one_shot_loss batch size for student prototype losses.")
+    if prototypes.ndim != 4 or prototypes.shape[1] != camera_prediction.shape[1]:
+        raise ValueError(
+            "student_label_margin_prototypes must be [num_classes, channels, height, width] "
+            f"with matching channels, got {tuple(prototypes.shape)}"
+        )
+    prototype_batch = prototypes.to(device=camera_prediction.device, dtype=camera_prediction.dtype)
+    if prototype_batch.shape[-2:] != camera_prediction.shape[-2:]:
+        prototype_batch = F.interpolate(
+            prototype_batch,
+            size=camera_prediction.shape[-2:],
+            mode="bilinear",
+            align_corners=False,
+        )
+    if int(labels.max().item()) >= prototype_batch.shape[0] or int(labels.min().item()) < 0:
+        raise ValueError("class_labels exceed student_label_margin_prototypes class dimension.")
+
+    sample_features = _normalize_for_label_margin(camera_prediction)
+    prototype_features = _normalize_for_label_margin(prototype_batch)
+    correlations = sample_features @ prototype_features.t()
+    return labels, correlations
+
+
+def _student_roi_prototype_correlations(
+    camera_prediction: torch.Tensor,
+    class_labels: torch.Tensor,
+    prototypes: torch.Tensor,
+    foreground_threshold: float,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    labels = class_labels.detach().reshape(-1).to(device=camera_prediction.device)
+    if labels.shape[0] != camera_prediction.shape[0]:
+        raise ValueError("class_labels must match one_shot_loss batch size for student ROI prototype losses.")
+    if prototypes.ndim != 4 or prototypes.shape[1] != camera_prediction.shape[1]:
+        raise ValueError(
+            "student_label_margin_prototypes must be [num_classes, channels, height, width] "
+            f"with matching channels, got {tuple(prototypes.shape)}"
+        )
+    prototype_batch = prototypes.to(device=camera_prediction.device, dtype=camera_prediction.dtype)
+    if prototype_batch.shape[-2:] != camera_prediction.shape[-2:]:
+        prototype_batch = F.interpolate(
+            prototype_batch,
+            size=camera_prediction.shape[-2:],
+            mode="bilinear",
+            align_corners=False,
+        )
+    if int(labels.max().item()) >= prototype_batch.shape[0] or int(labels.min().item()) < 0:
+        raise ValueError("class_labels exceed student_label_margin_prototypes class dimension.")
+
+    sample_flat = camera_prediction.float().flatten(1)
+    prototype_flat = prototype_batch.float().flatten(1)
+    roi_source = prototype_batch.index_select(0, labels).float()
+    roi_mask = (roi_source > float(foreground_threshold)).float().flatten(1)
+    mask_sum = roi_mask.sum(dim=1, keepdim=True).clamp_min(1.0)
+
+    sample_mean = (sample_flat * roi_mask).sum(dim=1, keepdim=True) / mask_sum
+    sample_centered = (sample_flat - sample_mean) * roi_mask
+    prototype_mean = (
+        prototype_flat.unsqueeze(0) * roi_mask.unsqueeze(1)
+    ).sum(dim=2) / mask_sum
+    prototype_centered = (prototype_flat.unsqueeze(0) - prototype_mean.unsqueeze(2)) * roi_mask.unsqueeze(1)
+
+    numerator = (sample_centered.unsqueeze(1) * prototype_centered).sum(dim=2)
+    sample_norm = sample_centered.pow(2).sum(dim=1, keepdim=True).sqrt()
+    prototype_norm = prototype_centered.pow(2).sum(dim=2).sqrt()
+    correlations = numerator / (sample_norm * prototype_norm).clamp_min(1.0e-6)
+    return labels, correlations
+
+
+def _student_roi_prototype_ce_metrics(
+    camera_prediction: torch.Tensor,
+    class_labels: torch.Tensor | None,
+    prototypes: torch.Tensor | None,
+    label_subset: tuple[int, ...],
+    temperature: float,
+    foreground_threshold: float,
+) -> dict[str, torch.Tensor]:
+    zero = _zero_like_loss(camera_prediction)
+    if class_labels is None or prototypes is None:
+        return {
+            "student_roi_prototype_ce_base": zero,
+            "student_roi_prototype_ce_correct_ratio": zero,
+            "student_roi_prototype_ce_count": zero,
+        }
+    labels, correlations = _student_roi_prototype_correlations(
+        camera_prediction,
+        class_labels,
+        prototypes,
+        foreground_threshold,
+    )
+    valid_mask = torch.ones_like(labels, dtype=torch.bool)
+    if label_subset:
+        valid_mask = torch.zeros_like(labels, dtype=torch.bool)
+        for label in label_subset:
+            valid_mask |= labels == int(label)
+    if not valid_mask.any():
+        return {
+            "student_roi_prototype_ce_base": zero,
+            "student_roi_prototype_ce_correct_ratio": zero,
+            "student_roi_prototype_ce_count": zero,
+        }
+    logits = correlations[valid_mask] / float(temperature)
+    active_labels = labels[valid_mask]
+    predictions = logits.argmax(dim=1)
+    return {
+        "student_roi_prototype_ce_base": F.cross_entropy(logits, active_labels),
+        "student_roi_prototype_ce_correct_ratio": (predictions == active_labels).float().mean().detach(),
+        "student_roi_prototype_ce_count": torch.tensor(float(active_labels.numel()), device=camera_prediction.device),
+    }
+
+
+def _student_roi_negative_label_margin_metrics(
+    camera_prediction: torch.Tensor,
+    class_labels: torch.Tensor | None,
+    prototypes: torch.Tensor | None,
+    margin_config: tuple[tuple[int, int, float], ...],
+    foreground_threshold: float,
+) -> dict[str, torch.Tensor]:
+    zero = _zero_like_loss(camera_prediction)
+    if class_labels is None or prototypes is None or not margin_config:
+        return {
+            "student_roi_negative_label_margin_base": zero,
+            "student_roi_negative_label_margin_mean": zero,
+            "student_roi_negative_label_margin_count": zero,
+        }
+    labels, correlations = _student_roi_prototype_correlations(
+        camera_prediction,
+        class_labels,
+        prototypes,
+        foreground_threshold,
+    )
+    penalties = []
+    margins = []
+    for target_class, negative_class, target_margin in margin_config:
+        active = labels == int(target_class)
+        if not active.any():
+            continue
+        target_corr = correlations[active, int(target_class)]
+        negative_corr = correlations[active, int(negative_class)]
+        pair_margins = target_corr - negative_corr
+        margins.append(pair_margins)
+        penalties.append(F.relu(float(target_margin) - pair_margins))
+    if not penalties:
+        return {
+            "student_roi_negative_label_margin_base": zero,
+            "student_roi_negative_label_margin_mean": zero,
+            "student_roi_negative_label_margin_count": zero,
+        }
+    penalty_tensor = torch.cat(penalties)
+    margin_tensor = torch.cat(margins)
+    return {
+        "student_roi_negative_label_margin_base": penalty_tensor.mean(),
+        "student_roi_negative_label_margin_mean": margin_tensor.mean().detach(),
+        "student_roi_negative_label_margin_count": torch.tensor(
+            float(penalty_tensor.numel()),
+            device=camera_prediction.device,
+        ),
+    }
+
+
+def _student_prototype_ce_metrics(
+    camera_prediction: torch.Tensor,
+    class_labels: torch.Tensor | None,
+    prototypes: torch.Tensor | None,
+    label_subset: tuple[int, ...],
+    temperature: float,
+) -> dict[str, torch.Tensor]:
+    zero = _zero_like_loss(camera_prediction)
+    if class_labels is None or prototypes is None:
+        return {
+            "student_prototype_ce_base": zero,
+            "student_prototype_ce_correct_ratio": zero,
+            "student_prototype_ce_count": zero,
+        }
+    labels, correlations = _student_prototype_correlations(camera_prediction, class_labels, prototypes)
+    valid_mask = torch.ones_like(labels, dtype=torch.bool)
+    if label_subset:
+        valid_mask = torch.zeros_like(labels, dtype=torch.bool)
+        for label in label_subset:
+            valid_mask |= labels == int(label)
+    if not valid_mask.any():
+        return {
+            "student_prototype_ce_base": zero,
+            "student_prototype_ce_correct_ratio": zero,
+            "student_prototype_ce_count": zero,
+        }
+    logits = correlations[valid_mask] / float(temperature)
+    active_labels = labels[valid_mask]
+    predictions = logits.argmax(dim=1)
+    return {
+        "student_prototype_ce_base": F.cross_entropy(logits, active_labels),
+        "student_prototype_ce_correct_ratio": (predictions == active_labels).float().mean().detach(),
+        "student_prototype_ce_count": torch.tensor(float(active_labels.numel()), device=camera_prediction.device),
+    }
+
+
+def _student_negative_label_margin_metrics(
+    camera_prediction: torch.Tensor,
+    class_labels: torch.Tensor | None,
+    prototypes: torch.Tensor | None,
+    margin_config: tuple[tuple[int, int, float], ...],
+) -> dict[str, torch.Tensor]:
+    zero = _zero_like_loss(camera_prediction)
+    if class_labels is None or prototypes is None or not margin_config:
+        return {
+            "student_negative_label_margin_base": zero,
+            "student_negative_label_margin_mean": zero,
+            "student_negative_label_margin_count": zero,
+        }
+    labels, correlations = _student_prototype_correlations(camera_prediction, class_labels, prototypes)
+    penalties = []
+    margins = []
+    for target_class, negative_class, target_margin in margin_config:
+        active = labels == int(target_class)
+        if not active.any():
+            continue
+        target_corr = correlations[active, int(target_class)]
+        negative_corr = correlations[active, int(negative_class)]
+        pair_margins = target_corr - negative_corr
+        margins.append(pair_margins)
+        penalties.append(F.relu(float(target_margin) - pair_margins))
+    if not penalties:
+        return {
+            "student_negative_label_margin_base": zero,
+            "student_negative_label_margin_mean": zero,
+            "student_negative_label_margin_count": zero,
+        }
+    penalty_tensor = torch.cat(penalties)
+    margin_tensor = torch.cat(margins)
+    return {
+        "student_negative_label_margin_base": penalty_tensor.mean(),
+        "student_negative_label_margin_mean": margin_tensor.mean().detach(),
+        "student_negative_label_margin_count": torch.tensor(float(penalty_tensor.numel()), device=camera_prediction.device),
+    }
+
+
+def _resize_aux_semantic_plane(
+    outputs: dict[str, torch.Tensor],
+    plane_key: str,
+    target_batch: torch.Tensor,
+) -> torch.Tensor:
+    if not plane_key:
+        raise ValueError("aux_semantic_plane_key is required when aux semantic losses are enabled.")
+    plane = outputs.get(plane_key)
+    if not torch.is_tensor(plane):
+        raise ValueError(f"aux_semantic_plane_key={plane_key!r} was not found in one-shot outputs.")
+    plane = plane.float()
+    if plane.ndim != target_batch.ndim:
+        raise ValueError(
+            "aux semantic plane rank must match target_batch rank, "
+            f"got {tuple(plane.shape)} and {tuple(target_batch.shape)}"
+        )
+    if plane.shape[0] != target_batch.shape[0] or plane.shape[1] != target_batch.shape[1]:
+        raise ValueError(
+            "aux semantic plane batch/channel must match target_batch, "
+            f"got {tuple(plane.shape)} and {tuple(target_batch.shape)}"
+        )
+    if plane.shape[-2:] != target_batch.shape[-2:]:
+        plane = F.interpolate(plane, size=target_batch.shape[-2:], mode="bilinear", align_corners=False)
+    return plane.clamp(0.0, 1.0)
+
+
+def _aux_topology_metrics(
+    outputs: dict[str, torch.Tensor],
+    plane_key: str,
+    target: torch.Tensor,
+    foreground_mask: torch.Tensor,
+) -> dict[str, torch.Tensor]:
+    if not plane_key:
+        raise ValueError("aux_topology_plane_key is required when aux topology loss is enabled.")
+    plane = outputs.get(plane_key)
+    if not torch.is_tensor(plane):
+        raise ValueError(f"aux_topology_plane_key={plane_key!r} was not found in one-shot outputs.")
+    resized = plane.float()
+    if resized.ndim != target.ndim:
+        raise ValueError(
+            "aux topology plane rank must match target_batch rank, "
+            f"got {tuple(resized.shape)} and {tuple(target.shape)}"
+        )
+    if resized.shape[0] != target.shape[0] or resized.shape[1] != target.shape[1]:
+        raise ValueError(
+            "aux topology plane batch/channel must match target_batch, "
+            f"got {tuple(resized.shape)} and {tuple(target.shape)}"
+        )
+    if resized.shape[-2:] != target.shape[-2:]:
+        resized = F.interpolate(resized, size=target.shape[-2:], mode="bilinear", align_corners=False)
+    resized = resized.clamp(0.0, 1.0)
+    dice = _foreground_dice_score(resized, foreground_mask)
+    mse = torch.mean((resized - target.float()).pow(2))
+    return {
+        "dice": dice,
+        "dice_penalty": 1.0 - dice,
+        "mse": mse,
     }
 
 
@@ -563,6 +918,630 @@ def _dilate_foreground_mask(foreground_mask: torch.Tensor, dilation: int) -> tor
     ).clamp(0.0, 1.0)
 
 
+def _resolve_clean_target_masks(
+    target_batch: torch.Tensor,
+    foreground_mask: torch.Tensor,
+    background_mask: torch.Tensor,
+    *,
+    enabled: bool,
+    zero: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    if not enabled:
+        return target_batch, foreground_mask, background_mask, zero
+    clean_result = _build_clean_readable_target(target_batch.detach())
+    clean_target = clean_result["clean_target"]
+    clean_foreground_mask = clean_target.float()
+    return (
+        clean_target,
+        clean_foreground_mask,
+        1.0 - clean_foreground_mask,
+        clean_result["clean_target_fg_ratio"],
+    )
+
+
+def _clean_target_regularization_terms(
+    camera_prediction: torch.Tensor,
+    camera_loss_prediction: torch.Tensor,
+    clean_target: torch.Tensor,
+    clean_foreground_mask: torch.Tensor,
+    clean_background_mask: torch.Tensor,
+    *,
+    enabled: bool,
+    foreground_dice_weight: float,
+    foreground_hole_weight: float,
+    background_speckle_weight: float,
+    background_hotspot_weight: float,
+    background_highfreq_weight: float,
+    background_hotspot_threshold: float,
+    zero: torch.Tensor,
+) -> dict[str, torch.Tensor]:
+    if not enabled:
+        return {
+            "dice_base": zero,
+            "dice_loss": zero,
+            "foreground_hole_base": zero,
+            "foreground_hole_loss": zero,
+            "foreground_hole_ratio": zero,
+            "background_speckle_base": zero,
+            "background_speckle_loss": zero,
+            "background_speckle_ratio": zero,
+            "background_hotspot_base": zero,
+            "background_hotspot_loss": zero,
+            "background_hotspot_ratio": zero,
+            "background_highfreq_base": zero,
+            "background_highfreq_loss": zero,
+            "background_highfreq_energy": zero,
+        }
+    dice_base = 1.0 - _foreground_dice_score(camera_prediction, clean_foreground_mask)
+    hole_metrics = _camera_artifact_metrics(
+        camera_loss_prediction,
+        clean_target,
+        clean_foreground_mask,
+    )
+    speckle_metrics = _camera_background_speckle_metrics(
+        camera_loss_prediction,
+        clean_background_mask,
+    )
+    hotspot_metrics = _camera_background_hotspot_metrics(
+        camera_prediction,
+        clean_background_mask,
+        background_hotspot_threshold,
+    )
+    highfreq_metrics = _camera_background_highfreq_metrics(
+        camera_prediction,
+        clean_background_mask,
+    )
+    return {
+        "dice_base": dice_base,
+        "dice_loss": foreground_dice_weight * dice_base,
+        "foreground_hole_base": hole_metrics["artifact_base"],
+        "foreground_hole_loss": foreground_hole_weight * hole_metrics["artifact_base"],
+        "foreground_hole_ratio": hole_metrics["foreground_hole_ratio"],
+        "background_speckle_base": speckle_metrics["background_speckle_base"],
+        "background_speckle_loss": background_speckle_weight * speckle_metrics["background_speckle_base"],
+        "background_speckle_ratio": speckle_metrics["background_speckle_ratio"],
+        "background_hotspot_base": hotspot_metrics["background_hotspot_base"],
+        "background_hotspot_loss": background_hotspot_weight * hotspot_metrics["background_hotspot_base"],
+        "background_hotspot_ratio": hotspot_metrics["background_hotspot_ratio"],
+        "background_highfreq_base": highfreq_metrics["background_highfreq_base"],
+        "background_highfreq_loss": background_highfreq_weight * highfreq_metrics["background_highfreq_base"],
+        "background_highfreq_energy": highfreq_metrics["background_highfreq_energy"],
+    }
+
+
+def _camera_readability_terms(
+    camera_prediction: torch.Tensor,
+    camera_loss_prediction: torch.Tensor,
+    target_batch: torch.Tensor,
+    foreground_mask: torch.Tensor,
+    background_mask: torch.Tensor,
+    *,
+    readability_weight: float,
+    background_speckle_weight: float,
+    background_hotspot_weight: float,
+    background_hotspot_threshold: float,
+    background_highfreq_weight: float,
+    readable_contrast_weight: float,
+    readable_contrast_target: float,
+    zero: torch.Tensor,
+) -> dict[str, torch.Tensor]:
+    if readability_weight != 0.0:
+        readability_metrics = _camera_readability_metrics(
+            camera_loss_prediction,
+            target_batch,
+            foreground_mask,
+        )
+        readability_base = readability_metrics["readability_base"]
+        readability_penalty = readability_metrics["readability_penalty"]
+    else:
+        readability_base = zero
+        readability_penalty = zero
+    speckle_metrics = _camera_background_speckle_metrics(camera_loss_prediction, background_mask)
+    hotspot_metrics = _camera_background_hotspot_metrics(
+        camera_prediction,
+        background_mask,
+        background_hotspot_threshold,
+    )
+    highfreq_metrics = _camera_background_highfreq_metrics(camera_prediction, background_mask)
+    contrast_metrics = _camera_readable_contrast_metrics(
+        camera_loss_prediction,
+        foreground_mask,
+        background_mask,
+        readable_contrast_target,
+    )
+    return {
+        "readability_base": readability_base,
+        "readability_penalty": readability_penalty,
+        "readability_loss": readability_weight * readability_base,
+        "background_speckle_base": speckle_metrics["background_speckle_base"],
+        "background_speckle_ratio": speckle_metrics["background_speckle_ratio"],
+        "background_speckle_loss": background_speckle_weight * speckle_metrics["background_speckle_base"],
+        "background_hotspot_base": hotspot_metrics["background_hotspot_base"],
+        "background_hotspot_ratio": hotspot_metrics["background_hotspot_ratio"],
+        "background_hotspot_loss": background_hotspot_weight * hotspot_metrics["background_hotspot_base"],
+        "background_highfreq_base": highfreq_metrics["background_highfreq_base"],
+        "background_highfreq_energy": highfreq_metrics["background_highfreq_energy"],
+        "background_highfreq_loss": background_highfreq_weight * highfreq_metrics["background_highfreq_base"],
+        "readable_contrast_base": contrast_metrics["readable_contrast_base"],
+        "readable_contrast": contrast_metrics["readable_contrast"],
+        "readable_contrast_loss": readable_contrast_weight * contrast_metrics["readable_contrast_base"],
+    }
+
+
+def _student_label_margin_terms(
+    camera_prediction: torch.Tensor,
+    class_labels: torch.Tensor | None,
+    prototypes: torch.Tensor | None,
+    *,
+    weight: float,
+    labels: tuple[int, ...],
+    target: float,
+    focus_label: int | None,
+    focus_weight: float,
+    zero: torch.Tensor,
+) -> dict[str, torch.Tensor]:
+    if weight != 0.0 or prototypes is not None:
+        if weight != 0.0 and prototypes is None:
+            raise ValueError("student_label_margin_weight requires student_label_margin_prototypes.")
+        metrics = _student_label_margin_metrics(
+            camera_prediction,
+            class_labels,
+            prototypes,
+            labels,
+            target,
+            focus_label,
+            focus_weight,
+        )
+        base = metrics["student_label_margin_base"]
+        margin_mean = metrics["student_label_margin_mean"]
+        correct_ratio = metrics["student_label_correct_ratio"]
+    else:
+        base = zero
+        margin_mean = zero
+        correct_ratio = zero
+    return {
+        "base": base,
+        "loss": weight * base,
+        "margin_mean": margin_mean,
+        "correct_ratio": correct_ratio,
+    }
+
+
+def _student_prototype_objective_terms(
+    camera_prediction: torch.Tensor,
+    class_labels: torch.Tensor | None,
+    prototypes: torch.Tensor | None,
+    *,
+    prototype_ce_weight: float,
+    prototype_ce_labels: tuple[int, ...],
+    prototype_ce_temperature: float,
+    negative_margin_weight: float,
+    negative_margin_config: tuple[tuple[int, int, float], ...],
+    roi_prototype_ce_weight: float,
+    roi_prototype_ce_labels: tuple[int, ...],
+    roi_prototype_ce_temperature: float,
+    roi_negative_margin_weight: float,
+    roi_negative_margin_config: tuple[tuple[int, int, float], ...],
+    roi_foreground_threshold: float,
+    zero: torch.Tensor,
+) -> dict[str, torch.Tensor]:
+    if (
+        prototype_ce_weight != 0.0
+        or negative_margin_weight != 0.0
+        or roi_prototype_ce_weight != 0.0
+        or roi_negative_margin_weight != 0.0
+    ) and prototypes is None:
+        raise ValueError(
+            "student prototype label objectives "
+            "require student_label_margin_prototypes."
+        )
+    if prototype_ce_weight != 0.0:
+        prototype_metrics = _student_prototype_ce_metrics(
+            camera_prediction,
+            class_labels,
+            prototypes,
+            prototype_ce_labels,
+            prototype_ce_temperature,
+        )
+        prototype_base = prototype_metrics["student_prototype_ce_base"]
+        prototype_correct_ratio = prototype_metrics["student_prototype_ce_correct_ratio"]
+        prototype_count = prototype_metrics["student_prototype_ce_count"]
+    else:
+        prototype_base = zero
+        prototype_correct_ratio = zero
+        prototype_count = zero
+    if negative_margin_weight != 0.0:
+        negative_metrics = _student_negative_label_margin_metrics(
+            camera_prediction,
+            class_labels,
+            prototypes,
+            negative_margin_config,
+        )
+        negative_base = negative_metrics["student_negative_label_margin_base"]
+        negative_mean = negative_metrics["student_negative_label_margin_mean"]
+        negative_count = negative_metrics["student_negative_label_margin_count"]
+    else:
+        negative_base = zero
+        negative_mean = zero
+        negative_count = zero
+    if roi_prototype_ce_weight != 0.0:
+        roi_prototype_metrics = _student_roi_prototype_ce_metrics(
+            camera_prediction,
+            class_labels,
+            prototypes,
+            roi_prototype_ce_labels,
+            roi_prototype_ce_temperature,
+            roi_foreground_threshold,
+        )
+        roi_prototype_base = roi_prototype_metrics["student_roi_prototype_ce_base"]
+        roi_prototype_correct_ratio = roi_prototype_metrics["student_roi_prototype_ce_correct_ratio"]
+        roi_prototype_count = roi_prototype_metrics["student_roi_prototype_ce_count"]
+    else:
+        roi_prototype_base = zero
+        roi_prototype_correct_ratio = zero
+        roi_prototype_count = zero
+    if roi_negative_margin_weight != 0.0:
+        roi_negative_metrics = _student_roi_negative_label_margin_metrics(
+            camera_prediction,
+            class_labels,
+            prototypes,
+            roi_negative_margin_config,
+            roi_foreground_threshold,
+        )
+        roi_negative_base = roi_negative_metrics["student_roi_negative_label_margin_base"]
+        roi_negative_mean = roi_negative_metrics["student_roi_negative_label_margin_mean"]
+        roi_negative_count = roi_negative_metrics["student_roi_negative_label_margin_count"]
+    else:
+        roi_negative_base = zero
+        roi_negative_mean = zero
+        roi_negative_count = zero
+    return {
+        "prototype_base": prototype_base,
+        "prototype_loss": prototype_ce_weight * prototype_base,
+        "prototype_correct_ratio": prototype_correct_ratio,
+        "prototype_count": prototype_count,
+        "negative_base": negative_base,
+        "negative_loss": negative_margin_weight * negative_base,
+        "negative_mean": negative_mean,
+        "negative_count": negative_count,
+        "roi_prototype_base": roi_prototype_base,
+        "roi_prototype_loss": roi_prototype_ce_weight * roi_prototype_base,
+        "roi_prototype_correct_ratio": roi_prototype_correct_ratio,
+        "roi_prototype_count": roi_prototype_count,
+        "roi_negative_base": roi_negative_base,
+        "roi_negative_loss": roi_negative_margin_weight * roi_negative_base,
+        "roi_negative_mean": roi_negative_mean,
+        "roi_negative_count": roi_negative_count,
+    }
+
+
+def _aux_semantic_objective_terms(
+    outputs: dict[str, torch.Tensor],
+    target_batch: torch.Tensor,
+    class_labels: torch.Tensor | None,
+    prototypes: torch.Tensor | None,
+    *,
+    plane_key: str,
+    weight: float,
+    prototype_ce_weight: float,
+    negative_margin_weight: float,
+    prototype_ce_labels: tuple[int, ...],
+    prototype_ce_temperature: float,
+    negative_margin_config: tuple[tuple[int, int, float], ...],
+    zero: torch.Tensor,
+) -> dict[str, torch.Tensor]:
+    active = weight != 0.0 and (prototype_ce_weight != 0.0 or negative_margin_weight != 0.0)
+    if active:
+        if prototypes is None:
+            raise ValueError("aux semantic objectives require student_label_margin_prototypes.")
+        semantic_plane = _resize_aux_semantic_plane(outputs, plane_key, target_batch)
+        if prototype_ce_weight != 0.0:
+            prototype_metrics = _student_prototype_ce_metrics(
+                semantic_plane,
+                class_labels,
+                prototypes,
+                prototype_ce_labels,
+                prototype_ce_temperature,
+            )
+            prototype_base = prototype_metrics["student_prototype_ce_base"]
+            prototype_correct_ratio = prototype_metrics["student_prototype_ce_correct_ratio"]
+            prototype_count = prototype_metrics["student_prototype_ce_count"]
+        else:
+            prototype_base = zero
+            prototype_correct_ratio = zero
+            prototype_count = zero
+        if negative_margin_weight != 0.0:
+            negative_metrics = _student_negative_label_margin_metrics(
+                semantic_plane,
+                class_labels,
+                prototypes,
+                negative_margin_config,
+            )
+            negative_base = negative_metrics["student_negative_label_margin_base"]
+            negative_mean = negative_metrics["student_negative_label_margin_mean"]
+            negative_count = negative_metrics["student_negative_label_margin_count"]
+        else:
+            negative_base = zero
+            negative_mean = zero
+            negative_count = zero
+    else:
+        prototype_base = zero
+        prototype_correct_ratio = zero
+        prototype_count = zero
+        negative_base = zero
+        negative_mean = zero
+        negative_count = zero
+    prototype_loss = weight * prototype_ce_weight * prototype_base
+    negative_loss = weight * negative_margin_weight * negative_base
+    return {
+        "loss": prototype_loss + negative_loss,
+        "prototype_base": prototype_base,
+        "prototype_loss": prototype_loss,
+        "prototype_correct_ratio": prototype_correct_ratio,
+        "prototype_count": prototype_count,
+        "negative_base": negative_base,
+        "negative_loss": negative_loss,
+        "negative_mean": negative_mean,
+        "negative_count": negative_count,
+    }
+
+
+def _aux_topology_terms(
+    outputs: dict[str, torch.Tensor],
+    topology_target: torch.Tensor,
+    *,
+    plane_key: str,
+    weight: float,
+    dice_weight: float,
+    mse_weight: float,
+    target_transform: str,
+    foreground_threshold: float,
+    zero: torch.Tensor,
+) -> dict[str, torch.Tensor | dict[str, torch.Tensor]]:
+    target_info = transform_aux_topology_target(
+        topology_target,
+        target_transform,
+        foreground_threshold,
+    )
+    if weight != 0.0:
+        metrics = _aux_topology_metrics(
+            outputs,
+            plane_key,
+            target_info["target"],
+            target_info["foreground_mask"],
+        )
+        dice = metrics["dice"]
+        mse = metrics["mse"]
+        base = float(dice_weight) * metrics["dice_penalty"] + float(mse_weight) * mse
+    else:
+        dice = zero
+        mse = zero
+        base = zero
+    return {
+        "target_info": target_info,
+        "dice": dice,
+        "mse": mse,
+        "loss": weight * base,
+    }
+
+
+def _aux_detail_terms(
+    camera_prediction: torch.Tensor,
+    target_batch: torch.Tensor,
+    aux_detail_target: torch.Tensor | None,
+    clean_foreground_mask: torch.Tensor,
+    sample_weights: torch.Tensor,
+    *,
+    foreground_threshold: float,
+    gate_dilation: int,
+    shape_weight: float,
+    edge_weight: float,
+    zero: torch.Tensor,
+) -> dict[str, torch.Tensor | None]:
+    gate_dilation = int(gate_dilation)
+    if gate_dilation > 0:
+        gate_mask = _dilate_foreground_mask(clean_foreground_mask, gate_dilation)
+        gate_foreground_ratio = gate_mask.mean().detach()
+    else:
+        gate_mask = None
+        gate_foreground_ratio = zero
+    if aux_detail_target is not None and (shape_weight != 0.0 or edge_weight != 0.0):
+        if aux_detail_target.shape != target_batch.shape:
+            raise ValueError(
+                "aux_detail_target must match target_batch shape, "
+                f"got {tuple(aux_detail_target.shape)} and {tuple(target_batch.shape)}"
+            )
+        aux_detail = aux_detail_target.float().clamp(0.0, 1.0)
+        aux_detail_foreground = (aux_detail > foreground_threshold).float()
+        if gate_mask is not None:
+            aux_detail = aux_detail * gate_mask
+            aux_detail_foreground = aux_detail_foreground * gate_mask
+        active_foreground_ratio = aux_detail_foreground.mean().detach()
+        has_foreground = bool(aux_detail_foreground.detach().sum().item() > 0)
+        shape_base = (
+            _foreground_shape_loss_for_samples(camera_prediction, aux_detail_foreground, sample_weights)
+            if shape_weight != 0.0 and has_foreground
+            else zero
+        )
+        edge_base = (
+            _one_shot_edge_shape_loss(
+                camera_prediction,
+                aux_detail,
+                aux_detail_foreground,
+                sample_weights,
+            )
+            if edge_weight != 0.0 and has_foreground
+            else zero
+        )
+    else:
+        shape_base = zero
+        edge_base = zero
+        active_foreground_ratio = zero
+    return {
+        "gate_mask": gate_mask,
+        "gate_foreground_ratio": gate_foreground_ratio,
+        "active_foreground_ratio": active_foreground_ratio,
+        "shape_base": shape_base,
+        "shape_loss": shape_weight * shape_base,
+        "edge_base": edge_base,
+        "edge_loss": edge_weight * edge_base,
+    }
+
+
+def _generator_residual_terms(
+    outputs: dict[str, torch.Tensor],
+    camera_prediction: torch.Tensor,
+    foreground_mask: torch.Tensor,
+    background_mask: torch.Tensor,
+    clean_background_mask: torch.Tensor,
+    aux_detail_gate_mask: torch.Tensor | None,
+    *,
+    l1_weight: float,
+    background_weight: float,
+    zero: torch.Tensor,
+) -> dict[str, torch.Tensor]:
+    residual_map = outputs.get("generator_residual_map")
+    if residual_map is not None and (l1_weight != 0.0 or background_weight != 0.0):
+        residual_abs = residual_map.float().abs()
+        l1_base = residual_abs.mean()
+        residual_background_mask = (
+            (1.0 - aux_detail_gate_mask).clamp(0.0, 1.0)
+            if aux_detail_gate_mask is not None
+            else clean_background_mask
+        )
+        background_base = _masked_mean(residual_abs, residual_background_mask)
+        background_mask_ratio = residual_background_mask.mean().detach()
+    else:
+        l1_base = zero
+        background_base = zero
+        background_mask_ratio = zero
+    residual_abs_mean = (
+        outputs["generator_residual_abs_mean"].detach().float().mean()
+        if "generator_residual_abs_mean" in outputs
+        else zero
+    )
+    residual_background_abs_mean = (
+        outputs["generator_residual_bg_abs_mean"].detach().float().mean()
+        if "generator_residual_bg_abs_mean" in outputs
+        else zero
+    )
+    generator_base = outputs.get("generator_base_command")
+    if generator_base is not None:
+        if generator_base.shape != camera_prediction.shape:
+            raise ValueError(
+                "generator_base_command must match camera_plane shape, "
+                f"got {tuple(generator_base.shape)} and {tuple(camera_prediction.shape)}"
+            )
+        student_base_error = (camera_prediction.float() - generator_base.float()).pow(2)
+        student_base_mse = student_base_error.mean().detach()
+        student_base_foreground_mse = _masked_mean(student_base_error, foreground_mask).detach()
+        student_base_background_mse = _masked_mean(student_base_error, background_mask).detach()
+    else:
+        student_base_mse = zero
+        student_base_foreground_mse = zero
+        student_base_background_mse = zero
+    return {
+        "l1_base": l1_base,
+        "l1_loss": l1_weight * l1_base,
+        "background_base": background_base,
+        "background_loss": background_weight * background_base,
+        "background_mask_ratio": background_mask_ratio,
+        "residual_abs_mean": residual_abs_mean,
+        "residual_background_abs_mean": residual_background_abs_mean,
+        "student_base_mse": student_base_mse,
+        "student_base_foreground_mse": student_base_foreground_mse,
+        "student_base_background_mse": student_base_background_mse,
+    }
+
+
+def _diversity_terms(
+    camera_prediction: torch.Tensor,
+    target_batch: torch.Tensor,
+    class_labels: torch.Tensor | None,
+    slm_amplitude: torch.Tensor,
+    *,
+    code_weight: float,
+    sample_code_weight: float,
+    teacher_pairwise_weight: float,
+    cross_class_weight: float,
+    minimum_teacher_mse: float,
+) -> dict[str, torch.Tensor | dict[str, torch.Tensor]]:
+    pairwise = _one_shot_pairwise_diversity_metrics(
+        camera_prediction,
+        target_batch,
+        class_labels,
+        minimum_teacher_mse,
+    )
+    cross_class = _one_shot_cross_class_pairwise_metrics(
+        camera_prediction,
+        target_batch,
+        class_labels,
+        minimum_teacher_mse,
+    )
+    return {
+        "pairwise": pairwise,
+        "cross_class": cross_class,
+        "code_loss": code_weight * pairwise["code_diversity_base"],
+        "sample_code_loss": sample_code_weight * pairwise["code_diversity_base"],
+        "teacher_pairwise_loss": teacher_pairwise_weight * pairwise["teacher_pairwise_diversity_base"],
+        "cross_class_loss": cross_class_weight * cross_class["cross_class_pairwise_base"],
+        "slm_pairwise_mse": _pairwise_mse_summary(slm_amplitude),
+        "slm_per_class_std_mean": _per_class_std_summary(slm_amplitude, class_labels),
+    }
+
+
+def _reconstruction_terms(
+    outputs: dict[str, torch.Tensor],
+    target_batch: torch.Tensor,
+    class_labels: torch.Tensor | None,
+    *,
+    foreground_threshold: float,
+    foreground_weight: float,
+    background_weight: float,
+    class_weight_labels: tuple[int, ...],
+    class_weight: float,
+) -> dict[str, torch.Tensor]:
+    foreground_mask = (target_batch > foreground_threshold).float()
+    background_mask = 1.0 - foreground_mask
+    camera_prediction = outputs["camera_plane"]
+    camera_loss_prediction = outputs.get("camera_plane_loss", camera_prediction)
+    sample_weights = _resolve_sample_weights(
+        target_batch,
+        class_labels,
+        class_weight_labels,
+        class_weight,
+    )
+    has_class_weights = class_labels is not None and bool(class_weight_labels) and class_weight != 1.0
+    if has_class_weights:
+        metrics = _weighted_reconstruction_metrics_for_samples(
+            camera_prediction,
+            target_batch,
+            foreground_mask,
+            background_mask,
+            foreground_weight,
+            background_weight,
+            sample_weights,
+        )
+    else:
+        metrics = _weighted_reconstruction_metrics(
+            camera_prediction,
+            target_batch,
+            foreground_mask,
+            background_mask,
+            foreground_weight,
+            background_weight,
+        )
+    return {
+        "foreground_mask": foreground_mask,
+        "background_mask": background_mask,
+        "camera_prediction": camera_prediction,
+        "camera_loss_prediction": camera_loss_prediction,
+        "sample_weights": sample_weights,
+        "metrics": metrics,
+        "zero": _zero_like_loss(camera_prediction),
+    }
+
+
 def one_shot_loss(
     outputs: dict[str, torch.Tensor],
     target_batch: torch.Tensor,
@@ -594,12 +1573,35 @@ def one_shot_loss(
     clean_background_speckle_weight: float = 0.0,
     clean_background_hotspot_weight: float = 0.0,
     clean_background_highfreq_weight: float = 0.0,
+    encoder_input_topology_weight: float = 0.0,
+    encoder_input_topology_dice_weight: float = 1.0,
+    encoder_input_topology_mse_weight: float = 1.0,
     student_label_margin_weight: float = 0.0,
     student_label_margin_target: float = 0.03,
     student_label_margin_labels: tuple[int, ...] = (),
     student_label_margin_focus_label: int | None = None,
     student_label_margin_focus_weight: float = 1.0,
     student_label_margin_prototypes: torch.Tensor | None = None,
+    student_prototype_ce_weight: float = 0.0,
+    student_prototype_ce_labels: tuple[int, ...] = (),
+    student_prototype_ce_temperature: float = 0.07,
+    student_negative_label_margin_weight: float = 0.0,
+    student_negative_label_margin_config: tuple[tuple[int, int, float], ...] = (),
+    student_roi_prototype_ce_weight: float = 0.0,
+    student_roi_prototype_ce_labels: tuple[int, ...] = (),
+    student_roi_prototype_ce_temperature: float = 0.07,
+    student_roi_negative_label_margin_weight: float = 0.0,
+    student_roi_negative_label_margin_config: tuple[tuple[int, int, float], ...] = (),
+    student_roi_foreground_threshold: float = 0.20,
+    aux_semantic_plane_key: str = "",
+    aux_semantic_weight: float = 0.0,
+    aux_semantic_prototype_ce_weight: float = 0.0,
+    aux_semantic_negative_label_margin_weight: float = 0.0,
+    aux_topology_plane_key: str = "",
+    aux_topology_weight: float = 0.0,
+    aux_topology_dice_weight: float = 1.0,
+    aux_topology_mse_weight: float = 1.0,
+    aux_topology_target_transform: str = "none",
     student_pair_contrast_config: tuple[tuple[int, int, float], ...] = (),
     student_display_speckle_weight: float = 0.0,
     aux_detail_edge_weight: float = 0.0,
@@ -608,53 +1610,37 @@ def one_shot_loss(
     residual_l1_weight: float = 0.0,
     residual_background_weight: float = 0.0,
     code_diversity_weight: float = 0.0,
+    sample_code_diversity_weight: float = 0.0,
     teacher_pairwise_diversity_weight: float = 0.0,
     cross_class_pairwise_weight: float = 0.0,
     diversity_min_teacher_mse: float = 1.0e-4,
 ) -> dict[str, torch.Tensor]:
-    foreground_mask = (target_batch > foreground_threshold).float()
-    background_mask = 1.0 - foreground_mask
-    camera_prediction = outputs["camera_plane"]
-    camera_loss_prediction = outputs.get("camera_plane_loss", camera_prediction)
-    sample_weights = _resolve_sample_weights(
+    reconstruction = _reconstruction_terms(
+        outputs,
         target_batch,
         class_labels,
-        class_recon_weight_labels,
-        class_recon_weight,
+        foreground_threshold=foreground_threshold,
+        foreground_weight=foreground_weight,
+        background_weight=background_weight,
+        class_weight_labels=class_recon_weight_labels,
+        class_weight=class_recon_weight,
     )
-    has_class_weights = class_labels is not None and bool(class_recon_weight_labels) and class_recon_weight != 1.0
-    if has_class_weights:
-        camera_metrics = _weighted_reconstruction_metrics_for_samples(
-            camera_prediction,
+    foreground_mask = reconstruction["foreground_mask"]
+    background_mask = reconstruction["background_mask"]
+    camera_prediction = reconstruction["camera_prediction"]
+    camera_loss_prediction = reconstruction["camera_loss_prediction"]
+    sample_weights = reconstruction["sample_weights"]
+    camera_metrics = reconstruction["metrics"]
+    zero = reconstruction["zero"]
+    clean_target, clean_foreground_mask, clean_background_mask, clean_target_fg_ratio = (
+        _resolve_clean_target_masks(
             target_batch,
             foreground_mask,
             background_mask,
-            foreground_weight,
-            background_weight,
-            sample_weights,
+            enabled=clean_target_enabled,
+            zero=zero,
         )
-    else:
-        camera_metrics = _weighted_reconstruction_metrics(
-            camera_prediction,
-            target_batch,
-            foreground_mask,
-            background_mask,
-            foreground_weight,
-            background_weight,
-        )
-    zero = _zero_like_loss(camera_prediction)
-    # Clean target: derive clean readable mask from teacher_camera for structure supervision.
-    if clean_target_enabled:
-        _clean_result = _build_clean_readable_target(target_batch.detach())
-        clean_target = _clean_result["clean_target"]
-        clean_target_fg_ratio = _clean_result["clean_target_fg_ratio"]
-        clean_foreground_mask = clean_target.float()
-        clean_background_mask = 1.0 - clean_foreground_mask
-    else:
-        clean_target = target_batch
-        clean_foreground_mask = foreground_mask
-        clean_background_mask = background_mask
-        clean_target_fg_ratio = zero
+    )
 
     shape_base = (
         _foreground_shape_loss_for_samples(camera_prediction, clean_foreground_mask, sample_weights)
@@ -703,106 +1689,165 @@ def one_shot_loss(
     camera_artifact_base = artifact_metrics["artifact_base"]
     foreground_hole_ratio = artifact_metrics["foreground_hole_ratio"]
     camera_artifact = camera_artifact_weight * camera_artifact_base
-    # 可读性正则项：用平滑教师监督学生输出，抑制散斑噪声。
-    # Clean-target losses: structural supervision from derived clean mask.
-    if clean_target_enabled:
-        clean_dice_base = 1.0 - _foreground_dice_score(camera_prediction, clean_foreground_mask)
-        clean_dice_loss = clean_foreground_dice_weight * clean_dice_base
-        clean_hole_metrics = _camera_artifact_metrics(
-            camera_loss_prediction, clean_target, clean_foreground_mask
-        )
-        clean_fg_hole_base = clean_hole_metrics["artifact_base"]
-        clean_fg_hole_ratio = clean_hole_metrics["foreground_hole_ratio"]
-        clean_fg_hole_loss = clean_foreground_hole_weight * clean_fg_hole_base
-        clean_bg_speckle_metrics = _camera_background_speckle_metrics(
-            camera_loss_prediction, clean_background_mask
-        )
-        clean_bg_speckle_base = clean_bg_speckle_metrics["background_speckle_base"]
-        clean_bg_speckle_ratio = clean_bg_speckle_metrics["background_speckle_ratio"]
-        clean_bg_speckle_loss = clean_background_speckle_weight * clean_bg_speckle_base
-        clean_bg_hotspot_metrics = _camera_background_hotspot_metrics(
-            camera_prediction, clean_background_mask, camera_background_hotspot_threshold
-        )
-        clean_bg_hotspot_base = clean_bg_hotspot_metrics["background_hotspot_base"]
-        clean_bg_hotspot_ratio = clean_bg_hotspot_metrics["background_hotspot_ratio"]
-        clean_bg_hotspot_loss = clean_background_hotspot_weight * clean_bg_hotspot_base
-        clean_bg_highfreq_metrics = _camera_background_highfreq_metrics(
-            camera_prediction, clean_background_mask
-        )
-        clean_bg_highfreq_base = clean_bg_highfreq_metrics["background_highfreq_base"]
-        clean_bg_highfreq_energy = clean_bg_highfreq_metrics["background_highfreq_energy"]
-        clean_bg_highfreq_loss = clean_background_highfreq_weight * clean_bg_highfreq_base
-    else:
-        clean_dice_base = zero
-        clean_dice_loss = zero
-        clean_fg_hole_base = zero
-        clean_fg_hole_loss = zero
-        clean_fg_hole_ratio = zero
-        clean_bg_speckle_base = zero
-        clean_bg_speckle_loss = zero
-        clean_bg_speckle_ratio = zero
-        clean_bg_hotspot_base = zero
-        clean_bg_hotspot_loss = zero
-        clean_bg_hotspot_ratio = zero
-        clean_bg_highfreq_base = zero
-        clean_bg_highfreq_loss = zero
-        clean_bg_highfreq_energy = zero
-
-    if camera_readability_weight != 0.0:
-        readability_metrics = _camera_readability_metrics(
-            camera_loss_prediction, target_batch, foreground_mask
-        )
-        camera_readability_base = readability_metrics["readability_base"]
-        camera_readability_penalty = readability_metrics["readability_penalty"]
-    else:
-        camera_readability_base = zero
-        camera_readability_penalty = zero
-    camera_readability = camera_readability_weight * camera_readability_base
-    background_speckle_metrics = _camera_background_speckle_metrics(camera_loss_prediction, background_mask)
-    camera_background_speckle_base = background_speckle_metrics["background_speckle_base"]
-    background_speckle_ratio = background_speckle_metrics["background_speckle_ratio"]
-    camera_background_speckle = camera_background_speckle_weight * camera_background_speckle_base
-    background_hotspot_metrics = _camera_background_hotspot_metrics(
+    clean_terms = _clean_target_regularization_terms(
         camera_prediction,
-        background_mask,
-        camera_background_hotspot_threshold,
-    )
-    camera_background_hotspot_base = background_hotspot_metrics["background_hotspot_base"]
-    background_hotspot_ratio = background_hotspot_metrics["background_hotspot_ratio"]
-    camera_background_hotspot = camera_background_hotspot_weight * camera_background_hotspot_base
-    background_highfreq_metrics = _camera_background_highfreq_metrics(camera_prediction, background_mask)
-    camera_background_highfreq_base = background_highfreq_metrics["background_highfreq_base"]
-    background_highfreq_energy = background_highfreq_metrics["background_highfreq_energy"]
-    camera_background_highfreq = camera_background_highfreq_weight * camera_background_highfreq_base
-    readable_contrast_metrics = _camera_readable_contrast_metrics(
         camera_loss_prediction,
+        clean_target,
+        clean_foreground_mask,
+        clean_background_mask,
+        enabled=clean_target_enabled,
+        foreground_dice_weight=clean_foreground_dice_weight,
+        foreground_hole_weight=clean_foreground_hole_weight,
+        background_speckle_weight=clean_background_speckle_weight,
+        background_hotspot_weight=clean_background_hotspot_weight,
+        background_highfreq_weight=clean_background_highfreq_weight,
+        background_hotspot_threshold=camera_background_hotspot_threshold,
+        zero=zero,
+    )
+    clean_dice_base = clean_terms["dice_base"]
+    clean_dice_loss = clean_terms["dice_loss"]
+    clean_fg_hole_base = clean_terms["foreground_hole_base"]
+    clean_fg_hole_loss = clean_terms["foreground_hole_loss"]
+    clean_fg_hole_ratio = clean_terms["foreground_hole_ratio"]
+    clean_bg_speckle_base = clean_terms["background_speckle_base"]
+    clean_bg_speckle_loss = clean_terms["background_speckle_loss"]
+    clean_bg_speckle_ratio = clean_terms["background_speckle_ratio"]
+    clean_bg_hotspot_base = clean_terms["background_hotspot_base"]
+    clean_bg_hotspot_loss = clean_terms["background_hotspot_loss"]
+    clean_bg_hotspot_ratio = clean_terms["background_hotspot_ratio"]
+    clean_bg_highfreq_base = clean_terms["background_highfreq_base"]
+    clean_bg_highfreq_loss = clean_terms["background_highfreq_loss"]
+    clean_bg_highfreq_energy = clean_terms["background_highfreq_energy"]
+
+    if encoder_input_topology_weight != 0.0:
+        encoder_topology_metrics = _encoder_input_topology_metrics(outputs, topology_target, topology_fg)
+        encoder_input_topology_dice = encoder_topology_metrics["dice"]
+        encoder_input_topology_mse = encoder_topology_metrics["mse"]
+        encoder_input_topology_base = (
+            float(encoder_input_topology_dice_weight) * encoder_topology_metrics["dice_penalty"]
+            + float(encoder_input_topology_mse_weight) * encoder_input_topology_mse
+        )
+    else:
+        encoder_input_topology_dice = zero
+        encoder_input_topology_mse = zero
+        encoder_input_topology_base = zero
+    encoder_input_topology = encoder_input_topology_weight * encoder_input_topology_base
+
+    readability_terms = _camera_readability_terms(
+        camera_prediction,
+        camera_loss_prediction,
+        target_batch,
         foreground_mask,
         background_mask,
-        camera_readable_contrast_target,
+        readability_weight=camera_readability_weight,
+        background_speckle_weight=camera_background_speckle_weight,
+        background_hotspot_weight=camera_background_hotspot_weight,
+        background_hotspot_threshold=camera_background_hotspot_threshold,
+        background_highfreq_weight=camera_background_highfreq_weight,
+        readable_contrast_weight=camera_readable_contrast_weight,
+        readable_contrast_target=camera_readable_contrast_target,
+        zero=zero,
     )
-    camera_readable_contrast_base = readable_contrast_metrics["readable_contrast_base"]
-    camera_readable_contrast_value = readable_contrast_metrics["readable_contrast"]
-    camera_readable_contrast = camera_readable_contrast_weight * camera_readable_contrast_base
-    if student_label_margin_weight != 0.0 or student_label_margin_prototypes is not None:
-        if student_label_margin_weight != 0.0 and student_label_margin_prototypes is None:
-            raise ValueError("student_label_margin_weight requires student_label_margin_prototypes.")
-        student_label_margin_metrics = _student_label_margin_metrics(
-            camera_prediction,
-            class_labels,
-            student_label_margin_prototypes,
-            student_label_margin_labels,
-            student_label_margin_target,
-            student_label_margin_focus_label,
-            student_label_margin_focus_weight,
-        )
-        student_label_margin_base = student_label_margin_metrics["student_label_margin_base"]
-        student_label_margin_mean = student_label_margin_metrics["student_label_margin_mean"]
-        student_label_correct_ratio = student_label_margin_metrics["student_label_correct_ratio"]
-    else:
-        student_label_margin_base = zero
-        student_label_margin_mean = zero
-        student_label_correct_ratio = zero
-    student_label_margin = student_label_margin_weight * student_label_margin_base
+    camera_readability_penalty = readability_terms["readability_penalty"]
+    camera_readability = readability_terms["readability_loss"]
+    camera_background_speckle_base = readability_terms["background_speckle_base"]
+    background_speckle_ratio = readability_terms["background_speckle_ratio"]
+    camera_background_speckle = readability_terms["background_speckle_loss"]
+    camera_background_hotspot_base = readability_terms["background_hotspot_base"]
+    background_hotspot_ratio = readability_terms["background_hotspot_ratio"]
+    camera_background_hotspot = readability_terms["background_hotspot_loss"]
+    camera_background_highfreq_base = readability_terms["background_highfreq_base"]
+    background_highfreq_energy = readability_terms["background_highfreq_energy"]
+    camera_background_highfreq = readability_terms["background_highfreq_loss"]
+    camera_readable_contrast_base = readability_terms["readable_contrast_base"]
+    camera_readable_contrast_value = readability_terms["readable_contrast"]
+    camera_readable_contrast = readability_terms["readable_contrast_loss"]
+    label_margin_terms = _student_label_margin_terms(
+        camera_prediction,
+        class_labels,
+        student_label_margin_prototypes,
+        weight=student_label_margin_weight,
+        labels=student_label_margin_labels,
+        target=student_label_margin_target,
+        focus_label=student_label_margin_focus_label,
+        focus_weight=student_label_margin_focus_weight,
+        zero=zero,
+    )
+    student_label_margin_base = label_margin_terms["base"]
+    student_label_margin = label_margin_terms["loss"]
+    student_label_margin_mean = label_margin_terms["margin_mean"]
+    student_label_correct_ratio = label_margin_terms["correct_ratio"]
+    prototype_terms = _student_prototype_objective_terms(
+        camera_prediction,
+        class_labels,
+        student_label_margin_prototypes,
+        prototype_ce_weight=student_prototype_ce_weight,
+        prototype_ce_labels=student_prototype_ce_labels,
+        prototype_ce_temperature=student_prototype_ce_temperature,
+        negative_margin_weight=student_negative_label_margin_weight,
+        negative_margin_config=student_negative_label_margin_config,
+        roi_prototype_ce_weight=student_roi_prototype_ce_weight,
+        roi_prototype_ce_labels=student_roi_prototype_ce_labels,
+        roi_prototype_ce_temperature=student_roi_prototype_ce_temperature,
+        roi_negative_margin_weight=student_roi_negative_label_margin_weight,
+        roi_negative_margin_config=student_roi_negative_label_margin_config,
+        roi_foreground_threshold=student_roi_foreground_threshold,
+        zero=zero,
+    )
+    student_prototype_ce_base = prototype_terms["prototype_base"]
+    student_prototype_ce_loss = prototype_terms["prototype_loss"]
+    student_prototype_ce_correct_ratio = prototype_terms["prototype_correct_ratio"]
+    student_prototype_ce_count = prototype_terms["prototype_count"]
+    student_negative_label_margin_base = prototype_terms["negative_base"]
+    student_negative_label_margin_loss = prototype_terms["negative_loss"]
+    student_negative_label_margin_mean = prototype_terms["negative_mean"]
+    student_negative_label_margin_count = prototype_terms["negative_count"]
+    student_roi_prototype_ce_base = prototype_terms["roi_prototype_base"]
+    student_roi_prototype_ce_loss = prototype_terms["roi_prototype_loss"]
+    student_roi_prototype_ce_correct_ratio = prototype_terms["roi_prototype_correct_ratio"]
+    student_roi_prototype_ce_count = prototype_terms["roi_prototype_count"]
+    student_roi_negative_label_margin_base = prototype_terms["roi_negative_base"]
+    student_roi_negative_label_margin_loss = prototype_terms["roi_negative_loss"]
+    student_roi_negative_label_margin_mean = prototype_terms["roi_negative_mean"]
+    student_roi_negative_label_margin_count = prototype_terms["roi_negative_count"]
+    aux_semantic_terms = _aux_semantic_objective_terms(
+        outputs,
+        target_batch,
+        class_labels,
+        student_label_margin_prototypes,
+        plane_key=aux_semantic_plane_key,
+        weight=aux_semantic_weight,
+        prototype_ce_weight=aux_semantic_prototype_ce_weight,
+        negative_margin_weight=aux_semantic_negative_label_margin_weight,
+        prototype_ce_labels=student_prototype_ce_labels,
+        prototype_ce_temperature=student_prototype_ce_temperature,
+        negative_margin_config=student_negative_label_margin_config,
+        zero=zero,
+    )
+    aux_semantic_loss = aux_semantic_terms["loss"]
+    aux_semantic_prototype_ce_base = aux_semantic_terms["prototype_base"]
+    aux_semantic_prototype_ce_loss = aux_semantic_terms["prototype_loss"]
+    aux_semantic_prototype_ce_correct_ratio = aux_semantic_terms["prototype_correct_ratio"]
+    aux_semantic_prototype_ce_count = aux_semantic_terms["prototype_count"]
+    aux_semantic_negative_label_margin_base = aux_semantic_terms["negative_base"]
+    aux_semantic_negative_label_margin_loss = aux_semantic_terms["negative_loss"]
+    aux_semantic_negative_label_margin_mean = aux_semantic_terms["negative_mean"]
+    aux_semantic_negative_label_margin_count = aux_semantic_terms["negative_count"]
+    aux_topology_terms = _aux_topology_terms(
+        outputs,
+        topology_target,
+        plane_key=aux_topology_plane_key,
+        weight=aux_topology_weight,
+        dice_weight=aux_topology_dice_weight,
+        mse_weight=aux_topology_mse_weight,
+        target_transform=aux_topology_target_transform,
+        foreground_threshold=foreground_threshold,
+        zero=zero,
+    )
+    aux_topology_target_info = aux_topology_terms["target_info"]
+    aux_topology_dice = aux_topology_terms["dice"]
+    aux_topology_mse = aux_topology_terms["mse"]
+    aux_topology_loss = aux_topology_terms["loss"]
     # Student pair contrast: penalize confusion between problematic class pairs.
     if student_pair_contrast_config:
         pair_contrast_metrics = _student_pair_contrast_metrics(
@@ -828,100 +1873,65 @@ def one_shot_loss(
         display_speckle_ratio = zero
         display_highfreq_energy = zero
     display_speckle_loss = student_display_speckle_weight * display_speckle_base
-    gate_dilation = int(aux_detail_foreground_gate_dilation)
-    if gate_dilation > 0:
-        aux_detail_gate_mask = _dilate_foreground_mask(clean_foreground_mask, gate_dilation)
-        aux_detail_gate_fg_ratio = aux_detail_gate_mask.mean().detach()
-    else:
-        aux_detail_gate_mask = None
-        aux_detail_gate_fg_ratio = zero
-    if aux_detail_target is not None and (aux_detail_shape_weight != 0.0 or aux_detail_edge_weight != 0.0):
-        if aux_detail_target.shape != target_batch.shape:
-            raise ValueError(
-                "aux_detail_target must match target_batch shape, "
-                f"got {tuple(aux_detail_target.shape)} and {tuple(target_batch.shape)}"
-            )
-        aux_detail = aux_detail_target.float().clamp(0.0, 1.0)
-        aux_detail_fg = (aux_detail > foreground_threshold).float()
-        if aux_detail_gate_mask is not None:
-            aux_detail = aux_detail * aux_detail_gate_mask
-            aux_detail_fg = aux_detail_fg * aux_detail_gate_mask
-        aux_detail_active_fg_ratio = aux_detail_fg.mean().detach()
-        has_aux_detail_foreground = bool(aux_detail_fg.detach().sum().item() > 0)
-        aux_detail_shape_base = (
-            _foreground_shape_loss_for_samples(camera_prediction, aux_detail_fg, sample_weights)
-            if aux_detail_shape_weight != 0.0 and has_aux_detail_foreground
-            else zero
-        )
-        aux_detail_edge_base = (
-            _one_shot_edge_shape_loss(camera_prediction, aux_detail, aux_detail_fg, sample_weights)
-            if aux_detail_edge_weight != 0.0 and has_aux_detail_foreground
-            else zero
-        )
-    else:
-        aux_detail_shape_base = zero
-        aux_detail_edge_base = zero
-        aux_detail_active_fg_ratio = zero
-    aux_detail_shape_loss = aux_detail_shape_weight * aux_detail_shape_base
-    aux_detail_edge_loss = aux_detail_edge_weight * aux_detail_edge_base
-
-    residual_map = outputs.get("generator_residual_map")
-    if residual_map is not None and (residual_l1_weight != 0.0 or residual_background_weight != 0.0):
-        residual_abs = residual_map.float().abs()
-        residual_l1_base = residual_abs.mean()
-        residual_background_mask = (1.0 - aux_detail_gate_mask).clamp(0.0, 1.0) if aux_detail_gate_mask is not None else clean_background_mask
-        residual_background_base = _masked_mean(residual_abs, residual_background_mask)
-        residual_background_mask_ratio = residual_background_mask.mean().detach()
-    else:
-        residual_l1_base = zero
-        residual_background_base = zero
-        residual_background_mask_ratio = zero
-    residual_l1_loss = residual_l1_weight * residual_l1_base
-    residual_background_loss = residual_background_weight * residual_background_base
-    generator_residual_abs_mean = (
-        outputs["generator_residual_abs_mean"].detach().float().mean()
-        if "generator_residual_abs_mean" in outputs
-        else zero
+    aux_detail_terms = _aux_detail_terms(
+        camera_prediction,
+        target_batch,
+        aux_detail_target,
+        clean_foreground_mask,
+        sample_weights,
+        foreground_threshold=foreground_threshold,
+        gate_dilation=aux_detail_foreground_gate_dilation,
+        shape_weight=aux_detail_shape_weight,
+        edge_weight=aux_detail_edge_weight,
+        zero=zero,
     )
-    generator_residual_bg_abs_mean = (
-        outputs["generator_residual_bg_abs_mean"].detach().float().mean()
-        if "generator_residual_bg_abs_mean" in outputs
-        else zero
+    aux_detail_gate_mask = aux_detail_terms["gate_mask"]
+    aux_detail_gate_fg_ratio = aux_detail_terms["gate_foreground_ratio"]
+    aux_detail_active_fg_ratio = aux_detail_terms["active_foreground_ratio"]
+    aux_detail_shape_base = aux_detail_terms["shape_base"]
+    aux_detail_shape_loss = aux_detail_terms["shape_loss"]
+    aux_detail_edge_base = aux_detail_terms["edge_base"]
+    aux_detail_edge_loss = aux_detail_terms["edge_loss"]
+    residual_terms = _generator_residual_terms(
+        outputs,
+        camera_prediction,
+        foreground_mask,
+        background_mask,
+        clean_background_mask,
+        aux_detail_gate_mask,
+        l1_weight=residual_l1_weight,
+        background_weight=residual_background_weight,
+        zero=zero,
     )
-    generator_base = outputs.get("generator_base_command")
-    if generator_base is not None:
-        if generator_base.shape != camera_prediction.shape:
-            raise ValueError(
-                "generator_base_command must match camera_plane shape, "
-                f"got {tuple(generator_base.shape)} and {tuple(camera_prediction.shape)}"
-            )
-        student_base_error = (camera_prediction.float() - generator_base.float()).pow(2)
-        student_base_mse = student_base_error.mean().detach()
-        student_base_foreground_mse = _masked_mean(student_base_error, foreground_mask).detach()
-        student_base_background_mse = _masked_mean(student_base_error, background_mask).detach()
-    else:
-        student_base_mse = zero
-        student_base_foreground_mse = zero
-        student_base_background_mse = zero
-    diversity_metrics = _one_shot_pairwise_diversity_metrics(
+    residual_l1_base = residual_terms["l1_base"]
+    residual_l1_loss = residual_terms["l1_loss"]
+    residual_background_base = residual_terms["background_base"]
+    residual_background_loss = residual_terms["background_loss"]
+    residual_background_mask_ratio = residual_terms["background_mask_ratio"]
+    generator_residual_abs_mean = residual_terms["residual_abs_mean"]
+    generator_residual_bg_abs_mean = residual_terms["residual_background_abs_mean"]
+    student_base_mse = residual_terms["student_base_mse"]
+    student_base_foreground_mse = residual_terms["student_base_foreground_mse"]
+    student_base_background_mse = residual_terms["student_base_background_mse"]
+    diversity_terms = _diversity_terms(
         camera_prediction,
         target_batch,
         class_labels,
-        diversity_min_teacher_mse,
+        slm_amplitude,
+        code_weight=code_diversity_weight,
+        sample_code_weight=sample_code_diversity_weight,
+        teacher_pairwise_weight=teacher_pairwise_diversity_weight,
+        cross_class_weight=cross_class_pairwise_weight,
+        minimum_teacher_mse=diversity_min_teacher_mse,
     )
-    code_diversity = code_diversity_weight * diversity_metrics["code_diversity_base"]
-    teacher_pairwise_diversity = (
-        teacher_pairwise_diversity_weight * diversity_metrics["teacher_pairwise_diversity_base"]
-    )
-    cross_class_metrics = _one_shot_cross_class_pairwise_metrics(
-        camera_prediction,
-        target_batch,
-        class_labels,
-        diversity_min_teacher_mse,
-    )
-    cross_class_pairwise = cross_class_pairwise_weight * cross_class_metrics["cross_class_pairwise_base"]
-    slm_pairwise_mse = _pairwise_mse_summary(slm_amplitude)
-    slm_per_class_std_mean = _per_class_std_summary(slm_amplitude, class_labels)
+    diversity_metrics = diversity_terms["pairwise"]
+    cross_class_metrics = diversity_terms["cross_class"]
+    code_diversity = diversity_terms["code_loss"]
+    sample_code_diversity = diversity_terms["sample_code_loss"]
+    teacher_pairwise_diversity = diversity_terms["teacher_pairwise_loss"]
+    cross_class_pairwise = diversity_terms["cross_class_loss"]
+    slm_pairwise_mse = diversity_terms["slm_pairwise_mse"]
+    slm_per_class_std_mean = diversity_terms["slm_per_class_std_mean"]
     total = (
         camera_recon_weight * camera_metrics["recon_loss"]
         + shape_loss
@@ -937,7 +1947,14 @@ def one_shot_loss(
         + camera_background_highfreq
         + camera_readable_contrast
         + student_label_margin
+        + student_prototype_ce_loss
+        + student_negative_label_margin_loss
+        + student_roi_prototype_ce_loss
+        + student_roi_negative_label_margin_loss
+        + aux_semantic_loss
+        + aux_topology_loss
         + code_diversity
+        + sample_code_diversity
         + teacher_pairwise_diversity
         + cross_class_pairwise
         + clean_dice_loss
@@ -945,6 +1962,7 @@ def one_shot_loss(
         + clean_bg_speckle_loss
         + clean_bg_hotspot_loss
         + clean_bg_highfreq_loss
+        + encoder_input_topology
         + student_pair_contrast_loss
         + display_speckle_loss
         + aux_detail_shape_loss
@@ -992,6 +2010,35 @@ def one_shot_loss(
         "student_label_margin_penalty": student_label_margin_base.detach(),
         "student_label_margin_mean": student_label_margin_mean.detach(),
         "student_label_correct_ratio": student_label_correct_ratio.detach(),
+        "student_prototype_ce_loss": student_prototype_ce_loss.detach(),
+        "student_prototype_ce_penalty": student_prototype_ce_base.detach(),
+        "student_prototype_ce_correct_ratio": student_prototype_ce_correct_ratio.detach(),
+        "student_prototype_ce_count": student_prototype_ce_count.detach(),
+        "student_negative_label_margin_loss": student_negative_label_margin_loss.detach(),
+        "student_negative_label_margin_penalty": student_negative_label_margin_base.detach(),
+        "student_negative_label_margin_mean": student_negative_label_margin_mean.detach(),
+        "student_negative_label_margin_count": student_negative_label_margin_count.detach(),
+        "student_roi_prototype_ce_loss": student_roi_prototype_ce_loss.detach(),
+        "student_roi_prototype_ce_penalty": student_roi_prototype_ce_base.detach(),
+        "student_roi_prototype_ce_correct_ratio": student_roi_prototype_ce_correct_ratio.detach(),
+        "student_roi_prototype_ce_count": student_roi_prototype_ce_count.detach(),
+        "student_roi_negative_label_margin_loss": student_roi_negative_label_margin_loss.detach(),
+        "student_roi_negative_label_margin_penalty": student_roi_negative_label_margin_base.detach(),
+        "student_roi_negative_label_margin_mean": student_roi_negative_label_margin_mean.detach(),
+        "student_roi_negative_label_margin_count": student_roi_negative_label_margin_count.detach(),
+        "aux_semantic_loss": aux_semantic_loss.detach(),
+        "aux_semantic_prototype_ce_loss": aux_semantic_prototype_ce_loss.detach(),
+        "aux_semantic_prototype_ce_penalty": aux_semantic_prototype_ce_base.detach(),
+        "aux_semantic_prototype_ce_correct_ratio": aux_semantic_prototype_ce_correct_ratio.detach(),
+        "aux_semantic_prototype_ce_count": aux_semantic_prototype_ce_count.detach(),
+        "aux_semantic_negative_label_margin_loss": aux_semantic_negative_label_margin_loss.detach(),
+        "aux_semantic_negative_label_margin_penalty": aux_semantic_negative_label_margin_base.detach(),
+        "aux_semantic_negative_label_margin_mean": aux_semantic_negative_label_margin_mean.detach(),
+        "aux_semantic_negative_label_margin_count": aux_semantic_negative_label_margin_count.detach(),
+        "aux_topology_loss": aux_topology_loss.detach(),
+        "aux_topology_dice": aux_topology_dice.detach(),
+        "aux_topology_mse": aux_topology_mse.detach(),
+        "aux_topology_target_fg_ratio": aux_topology_target_info["foreground_ratio"].detach(),
         "foreground_hole_ratio": foreground_hole_ratio.detach() if hasattr(foreground_hole_ratio, 'detach') else foreground_hole_ratio,
         "camera_foreground_dice": _foreground_dice_score(camera_prediction.detach(), foreground_mask),
         "clean_foreground_dice": _foreground_dice_score(camera_prediction.detach(), clean_foreground_mask),
@@ -1010,6 +2057,9 @@ def one_shot_loss(
         "clean_bg_highfreq_penalty": clean_bg_highfreq_base.detach(),
         "clean_bg_highfreq_energy": clean_bg_highfreq_energy.detach() if hasattr(clean_bg_highfreq_energy, 'detach') else clean_bg_highfreq_energy,
         "clean_target_fg_ratio": clean_target_fg_ratio.detach() if hasattr(clean_target_fg_ratio, 'detach') else clean_target_fg_ratio,
+        "encoder_input_topology_loss": encoder_input_topology.detach(),
+        "encoder_input_topology_dice": encoder_input_topology_dice.detach(),
+        "encoder_input_topology_mse": encoder_input_topology_mse.detach(),
         "student_pair_contrast_loss": student_pair_contrast_loss.detach(),
         "student_pair_contrast_penalty": student_pair_contrast_base.detach() if hasattr(student_pair_contrast_base, 'detach') else zero,
         "student_pair_contrast_count": student_pair_contrast_count.detach() if hasattr(student_pair_contrast_count, 'detach') else zero,
@@ -1035,6 +2085,8 @@ def one_shot_loss(
         "student_base_background_mse": student_base_background_mse.detach(),
         "code_diversity_loss": code_diversity.detach(),
         "code_diversity_penalty": diversity_metrics["code_diversity_base"].detach(),
+        "sample_code_diversity_loss": sample_code_diversity.detach(),
+        "sample_code_diversity_penalty": diversity_metrics["code_diversity_base"].detach(),
         "teacher_pairwise_diversity_loss": teacher_pairwise_diversity.detach(),
         "teacher_pairwise_diversity_penalty": diversity_metrics["teacher_pairwise_diversity_base"].detach(),
         "teacher_pairwise_mse": diversity_metrics["teacher_pairwise_mse"].detach(),

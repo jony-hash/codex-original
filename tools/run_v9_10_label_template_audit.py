@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the gated v9.10 label-template prototype audit under /tmp."""
+"""Run the gated v9.10 label-template prototype audit under persistent outputs."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ import sys
 from typing import Any
 
 from ldm_project.config import load_training_config
+from ldm_project.output_layout import resolve_version_dir
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -26,7 +27,7 @@ EVAL_CONFIG = (
     / "configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v9_10_"
     "label_template_inverse_prototype_baseline_strict_readability_test.yaml"
 )
-DEFAULT_OUTPUT_ROOT = Path("/tmp/v9_10_label_template_inverse")
+DEFAULT_OUTPUT_ROOT = resolve_version_dir("v9_10", output_base=REPO_ROOT / "outputs")
 EXPECTED_FROZEN_GROUPS = {"generator_base", "phase", "amplitude"}
 
 
@@ -45,11 +46,11 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _require_tmp_output_root(path: Path) -> Path:
+def _require_persistent_output_root(path: Path) -> Path:
     resolved = path.expanduser().resolve()
-    tmp_root = Path("/tmp").resolve()
-    if resolved != tmp_root and tmp_root not in resolved.parents:
-        raise AuditError(f"v9.10 pre-acceptance output must stay under /tmp, got {resolved}")
+    outputs_root = (REPO_ROOT / "outputs").resolve()
+    if resolved != outputs_root and outputs_root not in resolved.parents:
+        raise AuditError(f"v9.10 pre-acceptance output must stay under {outputs_root}, got {resolved}")
     return resolved
 
 
@@ -172,12 +173,13 @@ def _strict_gate(metrics: dict[str, Any]) -> tuple[bool, dict[str, Any]]:
 
 def _summary_path(output_root: Path) -> Path:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    return output_root / f"v9_10_label_template_audit_summary_{timestamp}.json"
+    return output_root / "reports" / f"v9_10_label_template_audit_summary_{timestamp}.json"
 
 
 def _write_summary(output_root: Path, summary: dict[str, Any]) -> Path:
     output_root.mkdir(parents=True, exist_ok=True)
     path = _summary_path(output_root)
+    path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("x", encoding="utf-8") as handle:
         json.dump(summary, handle, indent=2, ensure_ascii=False)
     return path
@@ -190,7 +192,8 @@ def _print_commands(commands: list[list[str]]) -> None:
 
 def main() -> int:
     args = _parse_args()
-    output_root = _require_tmp_output_root(args.output_root)
+    output_root = _require_persistent_output_root(args.output_root)
+    run_output_root = output_root / "runs"
     datasets = {
         "train": args.train_dataset.expanduser().resolve(),
         "validation": args.validation_dataset.expanduser().resolve(),
@@ -208,7 +211,7 @@ def main() -> int:
         config=AUDIT_CONFIG,
         stage="one_shot_distill",
         device=args.device,
-        output_root=output_root,
+        output_root=run_output_root,
         run_name=audit_name,
         extra=[
             "--distill-dataset",
@@ -222,7 +225,7 @@ def main() -> int:
         config=EVAL_CONFIG,
         stage="one_shot_distill_eval",
         device=args.device,
-        output_root=output_root,
+        output_root=run_output_root,
         run_name=eval_name,
         extra=["--distill-dataset", str(datasets["test"]), "--one-shot-checkpoint", placeholder_checkpoint],
     )
@@ -230,7 +233,7 @@ def main() -> int:
         config=EVAL_CONFIG,
         stage="one_shot_sample",
         device=args.device,
-        output_root=output_root,
+        output_root=run_output_root,
         run_name=sample_name,
         extra=["--one-shot-checkpoint", placeholder_checkpoint],
     )
@@ -246,8 +249,8 @@ def main() -> int:
             f"cuda_available={torch.cuda.is_available()}"
         )
 
-    output_root.mkdir(parents=True, exist_ok=True)
-    audit_run = _run_command(audit_command, output_root, audit_name)
+    run_output_root.mkdir(parents=True, exist_ok=True)
+    audit_run = _run_command(audit_command, run_output_root, audit_name)
     audit_meta = _load_json(audit_run / "run_meta.json")
     frozen_report = _validate_frozen_report(audit_meta)
     checkpoint_value = audit_meta.get("one_shot_distill_best_checkpoint")
@@ -258,7 +261,7 @@ def main() -> int:
         raise AuditError(f"Audit checkpoint does not exist: {checkpoint}")
 
     eval_command = [str(checkpoint) if item == placeholder_checkpoint else item for item in eval_command]
-    eval_run = _run_command(eval_command, output_root, eval_name)
+    eval_run = _run_command(eval_command, run_output_root, eval_name)
     eval_meta = _load_json(eval_run / "run_meta.json")
     metric_source = eval_meta.get("one_shot_distill_eval_metric_source")
     if not metric_source:
@@ -281,7 +284,7 @@ def main() -> int:
         return 2
 
     sample_command = [str(checkpoint) if item == placeholder_checkpoint else item for item in sample_command]
-    sample_run = _run_command(sample_command, output_root, sample_name)
+    sample_run = _run_command(sample_command, run_output_root, sample_name)
     summary["status"] = "complete"
     summary["commands"]["sample"] = sample_command
     summary["runs"]["sample"] = str(sample_run)

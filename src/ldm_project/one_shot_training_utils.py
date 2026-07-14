@@ -38,8 +38,39 @@ ONE_SHOT_HISTORY_LOSS_KEYS = (
     "student_label_margin_penalty",
     "student_label_margin_mean",
     "student_label_correct_ratio",
+    "student_prototype_ce_loss",
+    "student_prototype_ce_penalty",
+    "student_prototype_ce_correct_ratio",
+    "student_prototype_ce_count",
+    "student_negative_label_margin_loss",
+    "student_negative_label_margin_penalty",
+    "student_negative_label_margin_mean",
+    "student_negative_label_margin_count",
+    "student_roi_prototype_ce_loss",
+    "student_roi_prototype_ce_penalty",
+    "student_roi_prototype_ce_correct_ratio",
+    "student_roi_prototype_ce_count",
+    "student_roi_negative_label_margin_loss",
+    "student_roi_negative_label_margin_penalty",
+    "student_roi_negative_label_margin_mean",
+    "student_roi_negative_label_margin_count",
+    "aux_semantic_loss",
+    "aux_semantic_prototype_ce_loss",
+    "aux_semantic_prototype_ce_penalty",
+    "aux_semantic_prototype_ce_correct_ratio",
+    "aux_semantic_prototype_ce_count",
+    "aux_semantic_negative_label_margin_loss",
+    "aux_semantic_negative_label_margin_penalty",
+    "aux_semantic_negative_label_margin_mean",
+    "aux_semantic_negative_label_margin_count",
+    "aux_topology_loss",
+    "aux_topology_dice",
+    "aux_topology_mse",
+    "aux_topology_target_fg_ratio",
     "code_diversity_loss",
     "code_diversity_penalty",
+    "sample_code_diversity_loss",
+    "sample_code_diversity_penalty",
     "teacher_pairwise_diversity_loss",
     "teacher_pairwise_diversity_penalty",
     "teacher_pairwise_mse",
@@ -54,6 +85,9 @@ ONE_SHOT_HISTORY_LOSS_KEYS = (
     "cross_class_pair_count",
     "slm_pairwise_mse",
     "slm_per_class_std_mean",
+    "encoder_input_topology_loss",
+    "encoder_input_topology_dice",
+    "encoder_input_topology_mse",
     "fg_pixel_ratio",
 )
 ONE_SHOT_DISTILL_HISTORY_LOSS_KEYS = (
@@ -91,8 +125,39 @@ ONE_SHOT_DISTILL_HISTORY_LOSS_KEYS = (
     "student_label_margin_penalty",
     "student_label_margin_mean",
     "student_label_correct_ratio",
+    "student_prototype_ce_loss",
+    "student_prototype_ce_penalty",
+    "student_prototype_ce_correct_ratio",
+    "student_prototype_ce_count",
+    "student_negative_label_margin_loss",
+    "student_negative_label_margin_penalty",
+    "student_negative_label_margin_mean",
+    "student_negative_label_margin_count",
+    "student_roi_prototype_ce_loss",
+    "student_roi_prototype_ce_penalty",
+    "student_roi_prototype_ce_correct_ratio",
+    "student_roi_prototype_ce_count",
+    "student_roi_negative_label_margin_loss",
+    "student_roi_negative_label_margin_penalty",
+    "student_roi_negative_label_margin_mean",
+    "student_roi_negative_label_margin_count",
+    "aux_semantic_loss",
+    "aux_semantic_prototype_ce_loss",
+    "aux_semantic_prototype_ce_penalty",
+    "aux_semantic_prototype_ce_correct_ratio",
+    "aux_semantic_prototype_ce_count",
+    "aux_semantic_negative_label_margin_loss",
+    "aux_semantic_negative_label_margin_penalty",
+    "aux_semantic_negative_label_margin_mean",
+    "aux_semantic_negative_label_margin_count",
+    "aux_topology_loss",
+    "aux_topology_dice",
+    "aux_topology_mse",
+    "aux_topology_target_fg_ratio",
     "code_diversity_loss",
     "code_diversity_penalty",
+    "sample_code_diversity_loss",
+    "sample_code_diversity_penalty",
     "teacher_pairwise_diversity_loss",
     "teacher_pairwise_diversity_penalty",
     "teacher_pairwise_mse",
@@ -124,6 +189,9 @@ ONE_SHOT_DISTILL_HISTORY_LOSS_KEYS = (
     "clean_bg_highfreq_penalty",
     "clean_bg_highfreq_energy",
     "clean_target_fg_ratio",
+    "encoder_input_topology_loss",
+    "encoder_input_topology_dice",
+    "encoder_input_topology_mse",
     "student_pair_contrast_loss",
     "student_pair_contrast_penalty",
     "student_pair_contrast_count",
@@ -208,13 +276,37 @@ def _one_shot_loss_kwargs(train_cfg, student_label_margin_prototypes=None) -> di
         "clean_background_speckle_weight": train_cfg.one_shot.clean_background_speckle_weight,
         "clean_background_hotspot_weight": train_cfg.one_shot.clean_background_hotspot_weight,
         "clean_background_highfreq_weight": train_cfg.one_shot.clean_background_highfreq_weight,
+        "encoder_input_topology_weight": train_cfg.one_shot.encoder_input_topology_weight,
+        "encoder_input_topology_dice_weight": train_cfg.one_shot.encoder_input_topology_dice_weight,
+        "encoder_input_topology_mse_weight": train_cfg.one_shot.encoder_input_topology_mse_weight,
         "student_label_margin_weight": train_cfg.one_shot.student_label_margin_weight,
         "student_label_margin_target": train_cfg.one_shot.student_label_margin_target,
         "student_label_margin_labels": train_cfg.one_shot.student_label_margin_labels,
         "student_label_margin_focus_label": train_cfg.one_shot.student_label_margin_focus_label,
         "student_label_margin_focus_weight": train_cfg.one_shot.student_label_margin_focus_weight,
         "student_label_margin_prototypes": student_label_margin_prototypes,
+        "student_prototype_ce_weight": train_cfg.one_shot.student_prototype_ce_weight,
+        "student_prototype_ce_labels": train_cfg.one_shot.student_prototype_ce_labels,
+        "student_prototype_ce_temperature": train_cfg.one_shot.student_prototype_ce_temperature,
+        "student_negative_label_margin_weight": train_cfg.one_shot.student_negative_label_margin_weight,
+        "student_negative_label_margin_config": train_cfg.one_shot.student_negative_label_margin_config,
+        "student_roi_prototype_ce_weight": train_cfg.one_shot.student_roi_prototype_ce_weight,
+        "student_roi_prototype_ce_labels": train_cfg.one_shot.student_roi_prototype_ce_labels,
+        "student_roi_prototype_ce_temperature": train_cfg.one_shot.student_roi_prototype_ce_temperature,
+        "student_roi_negative_label_margin_weight": train_cfg.one_shot.student_roi_negative_label_margin_weight,
+        "student_roi_negative_label_margin_config": train_cfg.one_shot.student_roi_negative_label_margin_config,
+        "student_roi_foreground_threshold": train_cfg.one_shot.student_roi_foreground_threshold,
+        "aux_semantic_plane_key": train_cfg.one_shot.aux_semantic_plane_key,
+        "aux_semantic_weight": train_cfg.one_shot.aux_semantic_weight,
+        "aux_semantic_prototype_ce_weight": train_cfg.one_shot.aux_semantic_prototype_ce_weight,
+        "aux_semantic_negative_label_margin_weight": train_cfg.one_shot.aux_semantic_negative_label_margin_weight,
+        "aux_topology_plane_key": train_cfg.one_shot.aux_topology_plane_key,
+        "aux_topology_weight": train_cfg.one_shot.aux_topology_weight,
+        "aux_topology_dice_weight": train_cfg.one_shot.aux_topology_dice_weight,
+        "aux_topology_mse_weight": train_cfg.one_shot.aux_topology_mse_weight,
+        "aux_topology_target_transform": train_cfg.one_shot.aux_topology_target_transform,
         "code_diversity_weight": train_cfg.one_shot.code_diversity_weight,
+        "sample_code_diversity_weight": train_cfg.one_shot.sample_code_diversity_weight,
         "teacher_pairwise_diversity_weight": train_cfg.one_shot.teacher_pairwise_diversity_weight,
         "cross_class_pairwise_weight": train_cfg.one_shot.cross_class_pairwise_weight,
         "diversity_min_teacher_mse": train_cfg.one_shot.diversity_min_teacher_mse,
@@ -533,6 +625,24 @@ def _verify_frozen_one_shot_parameters(one_shot_model, snapshots) -> dict[str, o
 
 def _build_one_shot_optimizer(torch_module, one_shot_model, train_cfg):
     groups = _one_shot_parameter_groups(one_shot_model)
+    if bool(getattr(train_cfg.one_shot, "decoder_only_training", False)):
+        skipped = 0
+        for group_name, named_parameters in groups.items():
+            kept = [(name, param) for name, param in named_parameters if name.startswith("decoder.")]
+            skipped += len(named_parameters) - len(kept)
+            groups[group_name] = kept
+        print(f"[optimizer] decoder-only training active; skipped {skipped} non-decoder tensors")
+    if bool(getattr(train_cfg.one_shot, "target_code_bridge_trainability_audit", False)):
+        skipped = 0
+        for group_name, named_parameters in groups.items():
+            kept = [
+                (name, param)
+                for name, param in named_parameters
+                if name.startswith("target_code_bridge_adapter.")
+            ]
+            skipped += len(named_parameters) - len(kept)
+            groups[group_name] = kept
+        print(f"[optimizer] target-code bridge audit active; skipped {skipped} non-bridge tensors")
     learning_rates = _one_shot_group_learning_rates(train_cfg)
     display_names = {
         "phase": "optical core phase",
@@ -567,6 +677,293 @@ def _build_one_shot_optimizer(torch_module, one_shot_model, train_cfg):
     if not param_groups:
         raise ValueError("one-shot optimizer has no trainable parameters.")
     return torch_module.optim.Adam(param_groups)
+
+
+def _tensor_norm_and_count(tensors) -> dict[str, float | int]:
+    total_sq = 0.0
+    count = 0
+    max_abs = 0.0
+    for tensor in tensors:
+        value = tensor.detach().float().cpu()
+        total_sq += float(value.pow(2).sum().item())
+        count += int(value.numel())
+        max_abs = max(max_abs, float(value.abs().max().item()) if value.numel() else 0.0)
+    return {
+        "parameter_count": count,
+        "l2_norm": total_sq ** 0.5,
+        "max_abs": max_abs,
+    }
+
+
+def _init_decoder_trainability_audit(one_shot_model, optimizer, train_cfg):
+    if not bool(getattr(train_cfg.one_shot, "decoder_trainability_audit", False)):
+        return None
+    named = list(one_shot_model.named_parameters())
+    decoder_named = [(name, param) for name, param in named if name.startswith("decoder.")]
+    upstream_named = [(name, param) for name, param in named if not name.startswith("decoder.")]
+    id_to_name = {id(param): name for name, param in named}
+    optimizer_groups = []
+    for group_index, group in enumerate(optimizer.param_groups):
+        names = [id_to_name.get(id(param), "<unknown>") for param in group.get("params", [])]
+        optimizer_groups.append(
+            {
+                "group_index": group_index,
+                "lr": float(group.get("lr", 0.0)),
+                "tensor_count": len(names),
+                "parameter_count": int(sum(param.numel() for param in group.get("params", []))),
+                "decoder_tensor_count": sum(1 for name in names if name.startswith("decoder.")),
+                "upstream_tensor_count": sum(1 for name in names if not name.startswith("decoder.")),
+                "names": names,
+            }
+        )
+    audit = {
+        "enabled": True,
+        "decoder_only_training": bool(getattr(train_cfg.one_shot, "decoder_only_training", False)),
+        "initial": {
+            "decoder": _tensor_norm_and_count([param for _, param in decoder_named]),
+            "upstream": _tensor_norm_and_count([param for _, param in upstream_named]),
+        },
+        "optimizer_param_groups": optimizer_groups,
+        "gradients": {
+            "steps": 0,
+            "decoder_grad_l2_sum": 0.0,
+            "decoder_grad_l2_max": 0.0,
+            "decoder_grad_abs_max": 0.0,
+            "decoder_grad_nonfinite_count": 0,
+            "upstream_grad_l2_sum": 0.0,
+            "upstream_grad_l2_max": 0.0,
+            "upstream_grad_abs_max": 0.0,
+            "upstream_grad_nonfinite_count": 0,
+        },
+        "_snapshots": {
+            "decoder": {name: param.detach().cpu().clone() for name, param in decoder_named},
+            "upstream": {name: param.detach().cpu().clone() for name, param in upstream_named},
+        },
+    }
+    return audit
+
+
+def _accumulate_decoder_trainability_gradients(audit, one_shot_model) -> None:
+    if audit is None:
+        return
+    gradients = audit["gradients"]
+    gradients["steps"] += 1
+    decoder_sq = 0.0
+    upstream_sq = 0.0
+    decoder_abs_max = 0.0
+    upstream_abs_max = 0.0
+    decoder_nonfinite = 0
+    upstream_nonfinite = 0
+    for name, param in one_shot_model.named_parameters():
+        if param.grad is None:
+            continue
+        grad = param.grad.detach().float()
+        finite = torch.isfinite(grad)
+        nonfinite_count = int((~finite).sum().item())
+        safe_grad = torch.where(finite, grad, torch.zeros_like(grad))
+        grad_sq = float(safe_grad.pow(2).sum().item())
+        grad_abs = float(safe_grad.abs().max().item()) if safe_grad.numel() else 0.0
+        if name.startswith("decoder."):
+            decoder_sq += grad_sq
+            decoder_abs_max = max(decoder_abs_max, grad_abs)
+            decoder_nonfinite += nonfinite_count
+        else:
+            upstream_sq += grad_sq
+            upstream_abs_max = max(upstream_abs_max, grad_abs)
+            upstream_nonfinite += nonfinite_count
+    decoder_l2 = decoder_sq ** 0.5
+    upstream_l2 = upstream_sq ** 0.5
+    gradients["decoder_grad_l2_sum"] += decoder_l2
+    gradients["decoder_grad_l2_max"] = max(float(gradients["decoder_grad_l2_max"]), decoder_l2)
+    gradients["decoder_grad_abs_max"] = max(float(gradients["decoder_grad_abs_max"]), decoder_abs_max)
+    gradients["decoder_grad_nonfinite_count"] += decoder_nonfinite
+    gradients["upstream_grad_l2_sum"] += upstream_l2
+    gradients["upstream_grad_l2_max"] = max(float(gradients["upstream_grad_l2_max"]), upstream_l2)
+    gradients["upstream_grad_abs_max"] = max(float(gradients["upstream_grad_abs_max"]), upstream_abs_max)
+    gradients["upstream_grad_nonfinite_count"] += upstream_nonfinite
+
+
+def _finalize_decoder_trainability_audit(audit, one_shot_model):
+    if audit is None:
+        return None
+    current = dict(one_shot_model.named_parameters())
+    final_summary: dict[str, object] = {}
+    failure_reasons: list[str] = []
+    for group_name, snapshots in audit.pop("_snapshots").items():
+        update_sq = 0.0
+        max_abs_update = 0.0
+        final_tensors = []
+        for name, before in snapshots.items():
+            if name not in current:
+                failure_reasons.append(f"missing-final-parameter:{name}")
+                continue
+            after = current[name].detach().cpu()
+            diff = (after - before).float()
+            update_sq += float(diff.pow(2).sum().item())
+            max_abs_update = max(max_abs_update, float(diff.abs().max().item()) if diff.numel() else 0.0)
+            final_tensors.append(after)
+        final_summary[group_name] = {
+            **_tensor_norm_and_count(final_tensors),
+            "update_l2_norm": update_sq ** 0.5,
+            "update_max_abs": max_abs_update,
+        }
+    gradients = audit["gradients"]
+    steps = max(int(gradients["steps"]), 1)
+    gradients["decoder_grad_l2_mean"] = float(gradients["decoder_grad_l2_sum"]) / float(steps)
+    gradients["upstream_grad_l2_mean"] = float(gradients["upstream_grad_l2_sum"]) / float(steps)
+    decoder_final = final_summary.get("decoder", {})
+    upstream_final = final_summary.get("upstream", {})
+    if float(decoder_final.get("update_l2_norm", 0.0)) <= 0.0:
+        failure_reasons.append("decoder-update-zero")
+    if int(gradients.get("decoder_grad_nonfinite_count", 0)) > 0:
+        failure_reasons.append("decoder-gradient-nonfinite")
+    if float(gradients.get("decoder_grad_l2_max", 0.0)) <= 0.0:
+        failure_reasons.append("decoder-gradient-zero")
+    if audit.get("decoder_only_training") and float(upstream_final.get("update_max_abs", 0.0)) != 0.0:
+        failure_reasons.append("upstream-updated-during-decoder-only")
+    audit["final"] = final_summary
+    audit["failure_reasons"] = failure_reasons
+    audit["passed"] = not failure_reasons
+    return audit
+
+
+def _init_target_code_bridge_trainability_audit(one_shot_model, optimizer, train_cfg):
+    if not bool(getattr(train_cfg.one_shot, "target_code_bridge_trainability_audit", False)):
+        return None
+    named = list(one_shot_model.named_parameters())
+    bridge_named = [
+        (name, param)
+        for name, param in named
+        if name.startswith("target_code_bridge_adapter.")
+    ]
+    non_bridge_named = [(name, param) for name, param in named if not name.startswith("target_code_bridge_adapter.")]
+    id_to_name = {id(param): name for name, param in named}
+    optimizer_groups = []
+    for group_index, group in enumerate(optimizer.param_groups):
+        names = [id_to_name.get(id(param), "<unknown>") for param in group.get("params", [])]
+        optimizer_groups.append(
+            {
+                "group_index": group_index,
+                "lr": float(group.get("lr", 0.0)),
+                "tensor_count": len(names),
+                "parameter_count": int(sum(param.numel() for param in group.get("params", []))),
+                "bridge_tensor_count": sum(1 for name in names if name.startswith("target_code_bridge_adapter.")),
+                "non_bridge_tensor_count": sum(1 for name in names if not name.startswith("target_code_bridge_adapter.")),
+                "names": names,
+            }
+        )
+    return {
+        "enabled": True,
+        "target_code_bridge_source": getattr(train_cfg.one_shot, "target_code_bridge_source", "none"),
+        "target_code_bridge_arch": getattr(train_cfg.one_shot, "target_code_bridge_arch", "shallow"),
+        "target_code_diagnostic_mode": getattr(train_cfg.one_shot, "target_code_diagnostic_mode", "none"),
+        "initial": {
+            "bridge": _tensor_norm_and_count([param for _, param in bridge_named]),
+            "non_bridge": _tensor_norm_and_count([param for _, param in non_bridge_named]),
+        },
+        "optimizer_param_groups": optimizer_groups,
+        "gradients": {
+            "steps": 0,
+            "bridge_grad_l2_sum": 0.0,
+            "bridge_grad_l2_max": 0.0,
+            "bridge_grad_abs_max": 0.0,
+            "bridge_grad_nonfinite_count": 0,
+            "non_bridge_grad_l2_sum": 0.0,
+            "non_bridge_grad_l2_max": 0.0,
+            "non_bridge_grad_abs_max": 0.0,
+            "non_bridge_grad_nonfinite_count": 0,
+        },
+        "_snapshots": {
+            "bridge": {name: param.detach().cpu().clone() for name, param in bridge_named},
+            "non_bridge": {name: param.detach().cpu().clone() for name, param in non_bridge_named},
+        },
+    }
+
+
+def _accumulate_target_code_bridge_trainability_gradients(audit, one_shot_model) -> None:
+    if audit is None:
+        return
+    gradients = audit["gradients"]
+    gradients["steps"] += 1
+    bridge_sq = 0.0
+    non_bridge_sq = 0.0
+    bridge_abs_max = 0.0
+    non_bridge_abs_max = 0.0
+    bridge_nonfinite = 0
+    non_bridge_nonfinite = 0
+    for name, param in one_shot_model.named_parameters():
+        if param.grad is None:
+            continue
+        grad = param.grad.detach().float()
+        finite = torch.isfinite(grad)
+        nonfinite_count = int((~finite).sum().item())
+        safe_grad = torch.where(finite, grad, torch.zeros_like(grad))
+        grad_sq = float(safe_grad.pow(2).sum().item())
+        grad_abs = float(safe_grad.abs().max().item()) if safe_grad.numel() else 0.0
+        if name.startswith("target_code_bridge_adapter."):
+            bridge_sq += grad_sq
+            bridge_abs_max = max(bridge_abs_max, grad_abs)
+            bridge_nonfinite += nonfinite_count
+        else:
+            non_bridge_sq += grad_sq
+            non_bridge_abs_max = max(non_bridge_abs_max, grad_abs)
+            non_bridge_nonfinite += nonfinite_count
+    bridge_l2 = bridge_sq ** 0.5
+    non_bridge_l2 = non_bridge_sq ** 0.5
+    gradients["bridge_grad_l2_sum"] += bridge_l2
+    gradients["bridge_grad_l2_max"] = max(float(gradients["bridge_grad_l2_max"]), bridge_l2)
+    gradients["bridge_grad_abs_max"] = max(float(gradients["bridge_grad_abs_max"]), bridge_abs_max)
+    gradients["bridge_grad_nonfinite_count"] += bridge_nonfinite
+    gradients["non_bridge_grad_l2_sum"] += non_bridge_l2
+    gradients["non_bridge_grad_l2_max"] = max(float(gradients["non_bridge_grad_l2_max"]), non_bridge_l2)
+    gradients["non_bridge_grad_abs_max"] = max(float(gradients["non_bridge_grad_abs_max"]), non_bridge_abs_max)
+    gradients["non_bridge_grad_nonfinite_count"] += non_bridge_nonfinite
+
+
+def _finalize_target_code_bridge_trainability_audit(audit, one_shot_model):
+    if audit is None:
+        return None
+    current = dict(one_shot_model.named_parameters())
+    final_summary: dict[str, object] = {}
+    failure_reasons: list[str] = []
+    for group_name, snapshots in audit.pop("_snapshots").items():
+        update_sq = 0.0
+        max_abs_update = 0.0
+        final_tensors = []
+        for name, before in snapshots.items():
+            if name not in current:
+                failure_reasons.append(f"missing-final-parameter:{name}")
+                continue
+            after = current[name].detach().cpu()
+            diff = (after - before).float()
+            update_sq += float(diff.pow(2).sum().item())
+            max_abs_update = max(max_abs_update, float(diff.abs().max().item()) if diff.numel() else 0.0)
+            final_tensors.append(after)
+        final_summary[group_name] = {
+            **_tensor_norm_and_count(final_tensors),
+            "update_l2_norm": update_sq ** 0.5,
+            "update_max_abs": max_abs_update,
+        }
+    gradients = audit["gradients"]
+    steps = max(int(gradients["steps"]), 1)
+    gradients["bridge_grad_l2_mean"] = float(gradients["bridge_grad_l2_sum"]) / float(steps)
+    gradients["non_bridge_grad_l2_mean"] = float(gradients["non_bridge_grad_l2_sum"]) / float(steps)
+    bridge_final = final_summary.get("bridge", {})
+    non_bridge_final = final_summary.get("non_bridge", {})
+    if int(bridge_final.get("parameter_count", 0)) <= 0:
+        failure_reasons.append("bridge-parameter-missing")
+    if float(bridge_final.get("update_l2_norm", 0.0)) <= 0.0:
+        failure_reasons.append("bridge-update-zero")
+    if int(gradients.get("bridge_grad_nonfinite_count", 0)) > 0:
+        failure_reasons.append("bridge-gradient-nonfinite")
+    if float(gradients.get("bridge_grad_l2_max", 0.0)) <= 0.0:
+        failure_reasons.append("bridge-gradient-zero")
+    if float(non_bridge_final.get("update_max_abs", 0.0)) != 0.0:
+        failure_reasons.append("non-bridge-updated-during-bridge-only")
+    audit["final"] = final_summary
+    audit["failure_reasons"] = failure_reasons
+    audit["passed"] = not failure_reasons
+    return audit
 
 
 def _phase_grad_summary(model) -> str:

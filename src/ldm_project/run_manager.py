@@ -7,6 +7,8 @@ from pathlib import Path
 import textwrap
 from typing import Any, Mapping
 
+from ldm_project.output_layout import resolve_version_dir
+
 
 def _json_ready(value: Any) -> Any:
     # is_dataclass 会对“dataclass 类本身”也返回 True；asdict 仅接受实例。
@@ -59,13 +61,16 @@ class RunManager:
     @classmethod
     def create(
         cls,
-        output_root: str | Path = "outputs/runs",
+        output_root: str | Path | None = None,
         purpose: str = "train",
         run_name: str | None = None,
     ) -> "RunManager":
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         suffix = f"_{run_name}" if run_name else ""
-        run_dir = Path(output_root) / f"{timestamp}_{purpose}{suffix}"
+        resolved_output_root = (
+            resolve_version_dir("unversioned") / "runs" if output_root is None else Path(output_root)
+        )
+        run_dir = resolved_output_root / f"{timestamp}_{purpose}{suffix}"
         return cls(run_dir)
 
     def write_meta(self, meta: Mapping[str, Any]) -> None:
@@ -115,6 +120,7 @@ class RunManager:
         row_labels: list[str] | tuple[str, ...] | None = None,
         cmap: str = "gray",
         phase_colorbar: bool = False,
+        interpolation: str = "nearest",
     ) -> Path:
         path = self.run_dir / destination if not isinstance(destination, Path) else destination
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -184,7 +190,7 @@ class RunManager:
                     )
                 if row >= len(images):
                     continue
-                axis.imshow(images[row], cmap=display_cmap, vmin=0.0, vmax=1.0)
+                axis.imshow(images[row], cmap=display_cmap, vmin=0.0, vmax=1.0, interpolation=interpolation)
 
         if title:
             figure.suptitle(title)

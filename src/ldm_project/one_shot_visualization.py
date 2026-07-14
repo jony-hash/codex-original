@@ -81,6 +81,194 @@ def _block_grid_preview(tensor, grid_size: int = 40):
     return _normalize_for_visualization(blocky)
 
 
+def _infer_neuron_lattice_grid_size(sample_outputs) -> int:
+    for key in (
+        "encoder_input_grid_amplitude",
+        "encoded_amplitude",
+        "decoder_input_amplitude",
+        "decoder_output_amplitude",
+        "chip_amplitude",
+    ):
+        tensor = sample_outputs.get(key)
+        if tensor is not None and getattr(tensor, "ndim", 0) >= 4:
+            height, width = tensor.shape[-2:]
+            if int(height) != int(width):
+                raise ValueError(f"{key} must be square for neuron-lattice visualization, got {height}x{width}")
+            return int(height)
+    raise KeyError("Unable to infer neuron-lattice grid size from one-shot outputs.")
+
+
+def _to_neuron_lattice_grid(tensor, grid_size: int):
+    raw = tensor.detach().float().clamp_min(0.0)
+    if raw.ndim < 4:
+        raise ValueError(f"neuron-lattice amplitude tensors must be 4D, got shape={tuple(raw.shape)}")
+    if raw.shape[-2:] == (grid_size, grid_size):
+        return raw
+    return F.interpolate(raw, size=(grid_size, grid_size), mode="area")
+
+
+def _neuron_lattice_display(tensor):
+    return _robust_amplitude_display(tensor)
+
+
+def build_one_shot_neuron_lattice_amplitude_tensors(sample_outputs, *, pixel_size: float | None = None):
+    """Return a true grid-cell amplitude view for D2NN/SLM neuron-lattice inspection.
+
+    The output tensors are all shaped as the inferred D2NN grid, e.g. 100x100 for
+    the two-photon full-connect path. 200x200 image-plane SLM controls are
+    explicitly area-resampled to this lattice; propagated fields already live on
+    the lattice and are not upsampled.
+    """
+    grid_size = _infer_neuron_lattice_grid_size(sample_outputs)
+    specs = (
+        ("slm_command", "SLM command/control grid", "area_resampled_to_lattice"),
+        ("slm_amplitude", "SLM amplitude grid |E|", "area_resampled_to_lattice"),
+        ("encoder_input_grid_amplitude", "encoder input grid |E|", "raw_lattice"),
+        ("encoded_amplitude", "encoder out |E|", "raw_lattice"),
+        ("target_code_amplitude", "target code |E|", "raw_lattice"),
+        ("decoder_input_amplitude", "decoder in |E|", "raw_lattice"),
+        ("decoder_output_amplitude", "decoder out |E|", "raw_lattice"),
+        ("chip_amplitude", "chip |E|", "raw_lattice"),
+    )
+    columns: dict[str, object] = {}
+    column_metadata: dict[str, object] = {}
+    for key, label, source_policy in specs:
+        if key not in sample_outputs:
+            continue
+        lattice = _to_neuron_lattice_grid(sample_outputs[key], grid_size)
+        columns[label] = _neuron_lattice_display(lattice)
+        column_metadata[label] = {
+            "source_tensor": key,
+            "source_shape": list(sample_outputs[key].shape),
+            "lattice_shape": list(lattice.shape),
+            "source_policy": (
+                "raw_lattice"
+                if sample_outputs[key].shape[-2:] == (grid_size, grid_size)
+                else source_policy
+            ),
+        }
+    metadata = {
+        "view": "neuron_lattice_amplitude",
+        "grid_size": grid_size,
+        "pixel_size_um": None if pixel_size is None else float(pixel_size) * 1.0e6,
+        "display_interpolation": "nearest",
+        "value_kind": "raw_or_explicitly_normalized_amplitude",
+        "display_normalization": "per-sample robust amplitude normalization, q02-q98",
+        "columns": column_metadata,
+    }
+    return columns, metadata
+
+
+def build_one_shot_slim_cell_chain_preview_tensors(sample_outputs, *, pixel_size: float | None = None):
+    """Return a v4-style slim amplitude panel: SLM, encoder, decoder, CMOS."""
+    grid_size = _infer_neuron_lattice_grid_size(sample_outputs)
+    specs: list[tuple[str, str, str, str]] = [
+        ("slm_command", "SLM command", "area_resampled_to_lattice", "amplitude"),
+        ("slm_amplitude", "SLM out amp", "area_resampled_to_lattice", "amplitude"),
+        ("encoder_input_grid_amplitude", "Encoder in amp", "raw_lattice", "amplitude"),
+        ("encoded_amplitude", "Encoder out amp", "raw_lattice", "amplitude"),
+        ("target_code_amplitude", "Target code amp", "raw_lattice", "amplitude"),
+        ("decoder_input_amplitude", "Decoder in amp", "raw_lattice", "amplitude"),
+        ("decoder_output_amplitude", "Decoder out amp", "raw_lattice", "amplitude"),
+    ]
+    primary_readout = sample_outputs.get("primary_readout_plane", "camera")
+    if not isinstance(primary_readout, str):
+        primary_readout = "camera"
+    if primary_readout == "camera":
+        physical_cmos_keys = (
+            "physical_camera_plane",
+            "generated_camera_raw",
+            "generated_camera",
+            "student_camera_raw",
+            "camera_plane",
+            "diffractive_camera_plane_raw",
+        )
+    else:
+        physical_cmos_keys = (
+            "physical_camera_plane",
+            "diffractive_camera_plane_raw",
+            "generated_camera_raw",
+            "generated_camera",
+            "student_camera_raw",
+        )
+    physical_cmos_source_key = next((key for key in physical_cmos_keys if key in sample_outputs), None)
+    if primary_readout == "camera":
+        if physical_cmos_source_key is not None:
+            specs.append(
+                (
+                    physical_cmos_source_key,
+                    "CMOS intensity",
+                    "area_resampled_camera_to_lattice",
+                    "intensity",
+                )
+            )
+    else:
+        selected_source_key = next(
+            (
+                key
+                for key in ("selected_readout", "selected_readout_raw", "camera_plane")
+                if key in sample_outputs
+            ),
+            None,
+        )
+        if selected_source_key is not None:
+            specs.append(
+                (
+                    selected_source_key,
+                    f"Selected readout ({primary_readout})",
+                    "area_resampled_selected_readout_to_lattice",
+                    "intensity",
+                )
+            )
+        if physical_cmos_source_key is not None:
+            specs.append(
+                (
+                    physical_cmos_source_key,
+                    "Physical CMOS intensity",
+                    "area_resampled_physical_cmos_to_lattice",
+                    "intensity",
+                )
+            )
+    columns: dict[str, object] = {}
+    column_metadata: dict[str, object] = {}
+    for key, label, source_policy, value_kind in specs:
+        if key not in sample_outputs:
+            continue
+        source = sample_outputs[key]
+        if value_kind == "intensity":
+            camera_display = enhance_camera_for_display(source)
+            display = F.interpolate(camera_display, size=(grid_size, grid_size), mode="area")
+            rendered_shape = list(display.shape)
+            source_policy = "area_resampled_camera_to_lattice"
+        else:
+            lattice = _to_neuron_lattice_grid(source, grid_size)
+            display = _neuron_lattice_display(lattice)
+            rendered_shape = list(lattice.shape)
+            if source.shape[-2:] == (grid_size, grid_size):
+                source_policy = "raw_lattice"
+        columns[label] = display
+        column_metadata[label] = {
+            "source_tensor": key,
+            "source_shape": list(source.shape),
+            "rendered_shape": rendered_shape,
+            "source_policy": source_policy,
+            "value_kind": value_kind,
+        }
+    metadata = {
+        "render_mode": "v4_style_slim_amplitude_preview",
+        "columns": [label for _, label, _, _ in specs if label in columns],
+        "grid_size": grid_size,
+        "cell_pitch_um": None if pixel_size is None else float(pixel_size) * 1.0e6,
+        "display_interpolation": "nearest",
+        "panel_style": "v4_epoch_amplitude",
+        "value_kind": "amplitude_chain_with_cmos_intensity",
+        "primary_readout_plane": primary_readout,
+        "physical_cmos_source_tensor": physical_cmos_source_key,
+        "column_metadata": column_metadata,
+    }
+    return columns, metadata
+
+
 def _field_layer_amplitude_columns(sample_outputs, specs) -> tuple[dict[str, object], dict[str, object]]:
     amplitude_columns, phase_columns = _d2nn_field_layer_visualization_columns(sample_outputs, specs)
     amplitude = {f"{label} |E|": value for label, value in amplitude_columns.items()}
@@ -465,7 +653,7 @@ def build_one_shot_eval_shared_scale_visualization_tensors(teacher_images, sampl
 
 
 def build_one_shot_display_diagnostic_tensors(sample_outputs):
-    return {
+    tensors = {
         "slm_phase_display": _phase_for_visualization(sample_outputs["slm_phase"]),
         "encoder_input_amplitude_display": _amplitude_for_visualization(sample_outputs["encoder_input_amplitude"]),
         "encoder_input_phase_display": _phase_for_visualization(sample_outputs["encoder_input_phase"]),
@@ -489,6 +677,9 @@ def build_one_shot_display_diagnostic_tensors(sample_outputs):
         "chip_intensity_display": _robust_amplitude_display(sample_outputs["chip_amplitude"].detach().float().clamp_min(0.0).pow(2)),
         "chip_phase_display": _phase_for_visualization(sample_outputs["chip_phase"]),
     }
+    if "target_code_amplitude" in sample_outputs:
+        tensors["target_code_amplitude_display"] = _robust_amplitude_display(sample_outputs["target_code_amplitude"])
+    return tensors
 
 
 
@@ -586,6 +777,7 @@ def build_one_shot_visual_diagnostics(sample_outputs, display_diagnostics=None):
         "encoder_input_grid_amplitude",
         "encoded_amplitude",
         "ols_output_amplitude",
+        "target_code_amplitude",
         "decoder_output_amplitude",
         "chip_amplitude",
         "camera_plane",

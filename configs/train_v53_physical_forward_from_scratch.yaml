@@ -1,0 +1,143 @@
+training:
+  mode: one_shot_distill
+  batch_size: 16
+  learning_rate: 5.0e-6
+  step_log_interval: 20
+  visual_save_epoch_interval: 1
+  validation_epoch_interval: 1
+  first_stage_epochs: 0
+  diffusion_epochs: 0
+  one_shot_epochs: 5
+
+seed: 1234
+
+data:
+  dataset: mnist
+  root: data
+  download: false
+  validation_fraction: 0.1
+  validation_split_seed: 42
+  subset_size: 100
+  subset_seed: 42
+  num_workers: 0
+  pin_memory: true
+
+physics:
+  optics:
+    wavelength: 5.32e-7
+    pixel_size: 2.5e-6
+  geometry:
+    grid_size: 200
+    prop_dist: 1.0e-3
+  readout:
+    primary_plane: camera
+    save_camera_plane: true
+    normalize_percentile: 99.5
+    relay_psf_sigma_px: 0.0
+  macro_optics:
+    dist_laser_to_m1: 0.350
+    dist_m1_to_bs: 0.370
+    dist_bs_to_slm: 0.025
+    dist_slm_to_bs: 0.025
+    dist_bs_to_m3: 0.125
+    dist_m3_to_lg: 0.475
+    dist_lg_to_relay_lens: 0.100
+    dist_relay_lens_to_cmos: 0.250
+    dist_lg_to_cmos: 0.350
+    f_relay: 0.0714285714
+    propagation_grid_size: 2048
+  front_path_model: free_space
+  back_path_model: free_space
+  # Legacy v52/v53 free-space + aperture diagnostic; not the current contract.
+  physical_forward_contract: false
+
+first_stage:
+  type: optical_path_vae
+  image_size: 200
+  latent_channels: 1
+
+diffusion:
+  timesteps: 1000
+  beta_start: 1.0e-4
+  beta_end: 0.02
+  base_channels: 64
+  channel_multipliers: [1, 2, 4]
+  num_res_blocks: 2
+  attention_levels: [1, 2]
+  num_heads: 4
+  context_dim: 128
+  num_classes: 10
+
+one_shot:
+  optical_core_arch: diffractive_phase_only
+  code_dim: 128
+  label_embed_dim: 32
+  hidden_dim: 256
+  num_classes: 10
+  slm_background_floor: 0.05
+  ols_kind: identity
+  physical_forward_contract: false
+  decoder_diagnostic_mode: normal
+  decoder_diagnostic_modulation_override: none
+  decoder_diagnostic_mask_component: trained
+  target_code_diagnostic_mode: none
+  target_code_bridge_source: none
+  ols_transfer_calibration: none
+  d2nn:
+    wavelength: 5.32e-7
+    pixel_size: 2.0e-6
+    grid_size: 100
+    propagation_grid_size: 1024
+    encoder_layers: 2
+    decoder_layers: 2
+    layer_spacing: 1.5e-3
+    modulation: phase_only
+    phase_init: uniform_pi
+  camera_recon_weight: 1.0
+  shape_loss_weight: 0.0
+  edge_loss_weight: 0.0
+  slm_smoothness_weight: 0.0
+  slm_contrast_weight: 0.0
+  camera_saturation_weight: 0.0
+  camera_topology_weight: 0.0
+  camera_artifact_weight: 0.0
+  camera_readability_weight: 0.0
+  camera_background_speckle_weight: 0.0
+  camera_background_hotspot_weight: 0.0
+  camera_background_highfreq_weight: 0.0
+  camera_readable_contrast_weight: 0.0
+  clean_target_enabled: false
+  clean_foreground_dice_weight: 0.0
+  clean_foreground_hole_weight: 0.0
+  clean_background_speckle_weight: 0.0
+  clean_background_hotspot_weight: 0.0
+  clean_background_highfreq_weight: 0.0
+  encoder_input_topology_weight: 0.0
+  student_label_margin_weight: 0.0
+  student_prototype_ce_weight: 0.0
+  student_negative_label_margin_weight: 0.0
+  student_roi_prototype_ce_weight: 0.0
+  student_roi_negative_label_margin_weight: 0.0
+  aux_semantic_weight: 0.0
+  aux_semantic_prototype_ce_weight: 0.0
+  aux_semantic_negative_label_margin_weight: 0.0
+  aux_topology_weight: 0.0
+  residual_l1_weight: 0.0
+  residual_background_weight: 0.0
+  sample_code_diversity_weight: 0.0
+  code_diversity_weight: 0.0
+  teacher_pairwise_diversity_weight: 0.0
+  cross_class_pairwise_weight: 0.0
+  checkpoint_selection_metric: loss
+  sample_class_labels: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+  sample_repeats_per_class: 2
+  eval_samples_per_class: 2
+  eval_preview_per_class: 2
+
+distillation:
+  samples_per_class: 300
+  paired_class_batches: true
+  label_audit_prototypes_per_class: 128
+  class_labels: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+  code_seed: 1234
+  code_projection_seed: 2026
