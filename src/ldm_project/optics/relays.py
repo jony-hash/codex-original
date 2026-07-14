@@ -6,127 +6,28 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from .config import PhysicsConfig
+from ..config import PhysicsConfig
+from .devices import IdealIdentityElement, ReflectiveAmplitudeSLM
+from .propagation import (
+    _frequency_grid,
+    angular_spectrum_propagate,
+    apply_thin_lens,
+    band_limited_angular_spectrum_propagate,
+    fresnel_propagate,
+    normalize_intensity,
+    normalize_real_intensity,
+)
 
 
-def normalize_intensity(
-    field: torch.Tensor,
-    normalize_percentile: float = 100.0,
-    clamp: bool = True,
-) -> torch.Tensor:
-    intensity = field.abs().pow(2)
-    return normalize_real_intensity(intensity, normalize_percentile, clamp=clamp)
-
-
-def normalize_real_intensity(
-    intensity: torch.Tensor,
-    normalize_percentile: float = 100.0,
-    clamp: bool = True,
-) -> torch.Tensor:
-    if normalize_percentile >= 100.0:
-        scale = intensity.amax(dim=(-2, -1), keepdim=True)
-    else:
-        quantile = normalize_percentile / 100.0
-        # 按每个样本/通道的空间分位数归一化，避免极少数尖峰把整幅图压得过暗。
-        scale = torch.quantile(intensity.flatten(-2), quantile, dim=-1, keepdim=True).unsqueeze(-1)
-    normalized = intensity / scale.clamp_min(1e-6)
-    return normalized.clamp(0.0, 1.0) if clamp else normalized
-
-
-def _frequency_grid(
-    height: int,
-    width: int,
-    pixel_size: float,
-    device: torch.device,
-    dtype: torch.dtype,
-) -> tuple[torch.Tensor, torch.Tensor]:
-    fy = torch.fft.fftfreq(height, d=pixel_size, device=device, dtype=dtype)
-    fx = torch.fft.fftfreq(width, d=pixel_size, device=device, dtype=dtype)
-    fy_grid, fx_grid = torch.meshgrid(fy, fx, indexing="ij")
-    return fy_grid, fx_grid
-
-
-def fresnel_propagate(field: torch.Tensor, distance: float, wavelength: float, pixel_size: float) -> torch.Tensor:
-    if distance == 0.0:
-        return field
-
-    height, width = field.shape[-2:]
-    fy, fx = _frequency_grid(height, width, pixel_size, field.device, field.real.dtype)
-    phase = torch.exp(
-        -1j * math.pi * wavelength * distance * (fx.pow(2) + fy.pow(2))
-    ).to(field.dtype)
-    spectrum = torch.fft.fft2(field)
-    return torch.fft.ifft2(spectrum * phase)
-
-
-def angular_spectrum_propagate(field: torch.Tensor, distance: float, wavelength: float, pixel_size: float) -> torch.Tensor:
-    if distance == 0.0:
-        return field
-
-    height, width = field.shape[-2:]
-    fy, fx = _frequency_grid(height, width, pixel_size, field.device, field.real.dtype)
-    frequency_radius = (wavelength * fx).pow(2) + (wavelength * fy).pow(2)
-    propagating = frequency_radius <= 1.0
-    phase_root = (1.0 - frequency_radius).clamp_min(0.0).sqrt()
-    phase_angle = 2.0 * math.pi * distance * phase_root / wavelength
-    transfer = torch.exp(1j * phase_angle).to(field.dtype)
-    transfer = torch.where(propagating, transfer, torch.zeros_like(transfer))
-    spectrum = torch.fft.fft2(field)
-    return torch.fft.ifft2(spectrum * transfer)
-
-
-def band_limited_angular_spectrum_propagate(
-    field: torch.Tensor,
-    distance: float,
-    wavelength: float,
-    pixel_size: float,
-) -> torch.Tensor:
-    """Angular-spectrum propagation with a transfer-function sampling band limit.
-
-    The ordinary angular-spectrum transfer function is exact in the continuous
-    spatial-frequency domain, but its sampled phase can alias when ``distance``
-    is large.  The mask below keeps only frequencies whose transfer-function
-    phase change between adjacent frequency samples is at most pi.
-    """
-    if distance == 0.0:
-        return field
-    height, width = field.shape[-2:]
-    fy, fx = _frequency_grid(height, width, pixel_size, field.device, field.real.dtype)
-    wavelength = float(wavelength)
-    radial = (wavelength * fx).pow(2) + (wavelength * fy).pow(2)
-    propagating = radial <= 1.0
-    root = (1.0 - radial).clamp_min(0.0).sqrt()
-    phase_angle = 2.0 * math.pi * distance * root / wavelength
-    transfer = torch.exp(1j * phase_angle).to(field.dtype)
-    delta_fx = 1.0 / (width * pixel_size)
-    delta_fy = 1.0 / (height * pixel_size)
-    denominator = root.clamp_min(torch.finfo(root.dtype).eps)
-    phase_step_x = 2.0 * abs(distance) * wavelength * abs(fx) * delta_fx / denominator
-    phase_step_y = 2.0 * abs(distance) * wavelength * abs(fy) * delta_fy / denominator
-    sampled = torch.maximum(phase_step_x, phase_step_y) <= 1.0
-    transfer = torch.where(propagating & sampled, transfer, torch.zeros_like(transfer))
-    spectrum = torch.fft.fft2(field)
-    return torch.fft.ifft2(spectrum * transfer)
-
-
-def apply_thin_lens(field: torch.Tensor, focal_length: float, wavelength: float, pixel_size: float) -> torch.Tensor:
-    if focal_length == 0.0:
-        return field
-
-    height, width = field.shape[-2:]
-    y = (torch.arange(height, device=field.device) - height / 2.0) * pixel_size
-    x = (torch.arange(width, device=field.device) - width / 2.0) * pixel_size
-    yy, xx = torch.meshgrid(y, x, indexing="ij")
-    phase = torch.exp(
-        -1j * math.pi * (xx.pow(2) + yy.pow(2)) / (wavelength * focal_length)
-    ).to(field.dtype)
-    return field * phase
-
-
-def _resize_complex_field(field: torch.Tensor, size: tuple[int, int]) -> torch.Tensor:
+def resize_complex_field_diagnostic(field: torch.Tensor, size: tuple[int, int]) -> torch.Tensor:
+    """Diagnostic-only complex interpolation; never a formal plane transition."""
     real = F.interpolate(field.real, size=size, mode="bilinear", align_corners=False)
     imag = F.interpolate(field.imag, size=size, mode="bilinear", align_corners=False)
     return torch.complex(real, imag)
+
+
+# Kept only for historical direct imports; formal relays use explicit B=0 mappings.
+_resize_complex_field = resize_complex_field_diagnostic
 
 
 def _center_embed_complex_field(field: torch.Tensor, size: tuple[int, int]) -> torch.Tensor:
@@ -332,21 +233,6 @@ def coherent_imaging_4f_field(
     cutoff = pupil_diameter / (2.0 * pupil_focal_length * wavelength)
     pupil = ((fx.square() + fy.square()).sqrt() <= cutoff * (1.0 + 1.0e-6)).to(image.dtype)
     return torch.fft.ifft2(torch.fft.fft2(image) * pupil)
-
-
-class IdealIdentityElement(nn.Module):
-    def __init__(self, name: str) -> None:
-        super().__init__()
-        self.name = name
-
-    def forward(self, field: torch.Tensor) -> torch.Tensor:
-        return field
-
-
-class ReflectiveAmplitudeSLM(nn.Module):
-    def forward(self, slm_transfer: torch.Tensor, incoming_field: torch.Tensor) -> torch.Tensor:
-        # 当前 SLM 采用工程近似：电子控制图先映射成复振幅透过率，再与入射光场逐点相乘。
-        return incoming_field * slm_transfer.to(incoming_field.dtype)
 
 
 def _resolve_propagator(propagation_method: str):
