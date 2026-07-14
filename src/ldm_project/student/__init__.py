@@ -1,0 +1,31 @@
+"""Formal single-exposure optical student domain.
+
+Teacher modules may provide targets, but the formal student forward, objective,
+checkpoint, training, evaluation and artifact contracts live here.
+"""
+
+from .layers import (
+    ElectronicGeneratorE,
+    IdealAmplitudeSLMModel,
+    PhaseAmplitudeDiffractiveStack,
+    PhaseOnlyDiffractiveStack,
+)
+from .model import (
+    ONE_SHOT_MODEL_VERSION,
+    OneShotOpticalGenerator,
+    load_one_shot_checkpoint,
+    load_one_shot_checkpoint_subset,
+    validate_one_shot_checkpoint_payload,
+)
+
+__all__ = [
+    "ElectronicGeneratorE",
+    "IdealAmplitudeSLMModel",
+    "ONE_SHOT_MODEL_VERSION",
+    "OneShotOpticalGenerator",
+    "PhaseAmplitudeDiffractiveStack",
+    "PhaseOnlyDiffractiveStack",
+    "load_one_shot_checkpoint",
+    "load_one_shot_checkpoint_subset",
+    "validate_one_shot_checkpoint_payload",
+]

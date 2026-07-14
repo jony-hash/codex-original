@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from .one_shot_model import (
+from .student.model import (
     ONE_SHOT_MODEL_VERSION,
     OneShotOpticalGenerator,
     load_one_shot_checkpoint,
     load_one_shot_checkpoint_subset,
     validate_one_shot_checkpoint_payload,
 )
-from .one_shot_optical_layers import (
+from .student.layers import (
     ElectronicGeneratorE,
     IdealAmplitudeSLMModel,
     PhaseAmplitudeDiffractiveStack,
