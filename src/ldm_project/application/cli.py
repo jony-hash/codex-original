@@ -21,6 +21,7 @@ from ..train_utils import (
     apply_training_seed,
     resolve_device,
     resolve_final_pt_stage_checkpoints,
+    resolve_stage_epoch_plan,
     validate_class_label_values,
     validate_stage_requirements,
 )
@@ -280,15 +281,16 @@ def main() -> None:
     except ImportError as exc:
         raise RuntimeError("PyTorch is required to run train.py.") from exc
 
-    from ldm_project.config import (
+    # 通过根包公开契约读取依赖，保留既有 CLI 的可替换测试/集成接口。
+    from ldm_project import (
+        DIFFUSION_MODEL_VERSION,
+        FIRST_STAGE_MODEL_VERSION,
+        ONE_SHOT_MODEL_VERSION,
+        RunManager,
         load_physics_config,
         load_training_config,
         validate_physical_forward_contract,
     )
-    from ldm_project.run_manager import RunManager
-    from ldm_project.student.model import ONE_SHOT_MODEL_VERSION
-    from ldm_project.teacher.diffusion import DIFFUSION_MODEL_VERSION
-    from ldm_project.teacher.first_stage import FIRST_STAGE_MODEL_VERSION
 
     args = parse_args()
     physics = load_physics_config(args.physics_config)
@@ -347,6 +349,16 @@ def main() -> None:
         output_root=args.output_root,
         purpose="train",
         run_name=args.run_name or train_cfg.mode,
+    )
+    epoch_plan = resolve_stage_epoch_plan(
+        train_cfg.mode,
+        train_cfg.first_stage_epochs,
+        train_cfg.diffusion_epochs,
+        train_cfg.one_shot_epochs,
+    )
+    print(
+        f"planned epochs: first_stage={epoch_plan['first_stage']} "
+        f"diffusion={epoch_plan['diffusion']} one_shot={epoch_plan['one_shot']}"
     )
     stage_context = run_selected_stage(
         StageRequest(

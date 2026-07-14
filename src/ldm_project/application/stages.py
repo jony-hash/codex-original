@@ -132,7 +132,8 @@ _STUDENT_STAGES = frozenset({"one_shot", "one_shot_distill", "one_shot_sample", 
 STAGE_REGISTRY = {
     mode: {"data": mode not in _NO_DATA_STAGES, "first_stage": mode in _FIRST_STAGE_STAGES or is_teacher_first_stage_mode(mode) or is_teacher_diffusion_mode(mode), "diffusion": mode in _DIFFUSION_STAGES or is_teacher_diffusion_mode(mode), "student": mode in _STUDENT_STAGES}
     for mode in (
-        "first_stage", "diffusion", "teacher_sample", "teacher_distill_export", "teacher_distill_filter",
+        "first_stage", "diffusion", "teacher_first_stage", "teacher_diffusion", "teacher_full",
+        "teacher_sample", "teacher_distill_export", "teacher_distill_filter",
         "teacher_distill_label_audit", "teacher_distill_label_strict_filter", "teacher_distill_readable_split",
         "teacher_first_stage_oracle_audit", "teacher_diffusion_latent_audit", "one_shot", "one_shot_distill",
         "one_shot_sample", "one_shot_distill_eval", "one_shot_optical_identity_audit",
@@ -142,15 +143,23 @@ STAGE_REGISTRY = {
 
 def _build_stage_context(request: StageRequest) -> StageContext:
     """Construct the legacy handler context lazily from a stage request."""
-    from ..data import build_train_validation_loaders
+    # 保留根包的可注入公开接口：既兼容既有 CLI 测试替身，也不改变实际实现的归属。
+    from .. import (
+        DIFFUSION_MODEL_VERSION,
+        FIRST_STAGE_MODEL_VERSION,
+        LatentDiffusionUNet,
+        LinearNoiseScheduler,
+        OpticalPathVAE,
+        build_train_validation_loaders,
+        load_diffusion_checkpoint,
+        load_first_stage_checkpoint,
+        load_one_shot_checkpoint,
+    )
     from ..sampling_reports import select_first_stage_visual_batch, select_post_train_sample_batch
-    from ..student.checkpoints import load_one_shot_checkpoint
     from ..student.model import OneShotOpticalGenerator
     from ..student.objectives import one_shot_loss
-    from ..teacher.diffusion import DIFFUSION_MODEL_VERSION, LatentDiffusionUNet, LinearNoiseScheduler, load_diffusion_checkpoint
     from ..teacher.diffusion_losses import diffusion_loss, diffusion_per_sample_losses
     from ..teacher.diffusion_sampling import resolve_denoising_trace_steps, sample_latents, sample_latents_with_trace
-    from ..teacher.first_stage import FIRST_STAGE_MODEL_VERSION, OpticalPathVAE, load_first_stage_checkpoint
     from ..teacher.first_stage_losses import first_stage_loss
     from .run_context import build_run_meta, save_visual_config_snapshots
     from ..train_utils import resolve_stage_epoch_plan

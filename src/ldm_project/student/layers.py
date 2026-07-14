@@ -424,6 +424,7 @@ class IdealAmplitudeSLMModel(nn.Module):
         self.residual_phase_scale_rad = float(residual_phase_scale_rad)
 
     def forward(self, slm_command: torch.Tensor) -> dict[str, torch.Tensor]:
+        # slm_command 是归一化电子控制量；slm_amplitude 才是进入复光场的物理振幅。
         slm_command = slm_command.clamp(0.0, 1.0)
         amplitude = self.background_floor + (1.0 - self.background_floor) * slm_command
         phase = (
@@ -509,6 +510,7 @@ class PhaseOnlyDiffractiveStack(nn.Module):
         mask_component: str = "trained",
         phase_layer_mask: tuple[bool, ...] = (),
     ) -> tuple[torch.Tensor, torch.Tensor, dict[str, torch.Tensor]]:
+        """正式层序固定为相位调制→中心 padding→ASM 传播→中心 crop；padding/crop 不是物理重采样。"""
         outputs = []
         diagnostic_values: dict[str, list[torch.Tensor]] = {
             "input_energy": [],
