@@ -9,7 +9,7 @@ import torch
 
 
 def _load_tool_module():
-    path = Path("tools/diagnose_v15_label_audit_boundary.py")
+    path = Path("experiments/archive/pre_v57/tools/diagnose_v15_label_audit_boundary.py")
     spec = importlib.util.spec_from_file_location("diagnose_v15_label_audit_boundary", path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"cannot load {path}")

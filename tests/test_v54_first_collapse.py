@@ -6,7 +6,15 @@ import torch
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SPEC = importlib.util.spec_from_file_location("v54", ROOT / "tools" / "diagnose_v54_first_collapse_complex_field.py")
+SPEC = importlib.util.spec_from_file_location(
+    "v54",
+    ROOT
+    / "experiments"
+    / "archive"
+    / "pre_v57"
+    / "tools"
+    / "diagnose_v54_first_collapse_complex_field.py",
+)
 V54 = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
 SPEC.loader.exec_module(V54)

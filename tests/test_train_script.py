@@ -39,20 +39,26 @@ def load_evaluation_module():
 
 
 def _load_tool_module(module_name: str, filename: str):
-    tools_dir = PROJECT_ROOT / "tools"
+    active_tools_dir = PROJECT_ROOT / "tools"
+    tools_dir = PROJECT_ROOT / "experiments" / "archive" / "pre_v57" / "tools"
     if "tools" not in sys.modules:
         package_spec = importlib.util.spec_from_file_location(
             "tools",
-            tools_dir / "__init__.py",
-            submodule_search_locations=[str(tools_dir)],
+            active_tools_dir / "__init__.py",
+            submodule_search_locations=[str(tools_dir), str(active_tools_dir)],
         )
         if package_spec is None or package_spec.loader is None:
             raise RuntimeError(f"could not load tools package: {tools_dir}")
         package = importlib.util.module_from_spec(package_spec)
         sys.modules["tools"] = package
         package_spec.loader.exec_module(package)
+    else:
+        package_paths = sys.modules["tools"].__path__
+        for directory in (tools_dir, active_tools_dir):
+            if str(directory) not in package_paths:
+                package_paths.insert(0, str(directory))
 
-    tool_path = PROJECT_ROOT / "tools" / filename
+    tool_path = tools_dir / filename
     qualified_name = f"tools.{module_name}"
     spec = importlib.util.spec_from_file_location(qualified_name, tool_path)
     if spec is None or spec.loader is None:

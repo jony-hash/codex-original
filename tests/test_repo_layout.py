@@ -28,9 +28,9 @@ class RepoLayoutTests(unittest.TestCase):
                 sys.executable,
                 "-c",
                 (
-                    "import tools.diagnose_v21_physical_cmos_readout; "
-                    "import tools.diagnose_v34_code_coupling_recovery; "
-                    "import tools.diagnose_v48_transparent_decoder_control"
+                    "import tools.diagnose_v57_first_collapse_complex_field; "
+                    "import tools.diagnose_v58_aperture_throughput_upper_bound; "
+                    "import tools.diagnose_v59_upstream_separation_isolation"
                 ),
             ],
             cwd=ROOT,
@@ -53,26 +53,8 @@ class RepoLayoutTests(unittest.TestCase):
             ROOT / "configs" / "filter_teacher_distill_mnist_3k_fast200_top2k.yaml",
             ROOT / "configs" / "filter_teacher_distill_mnist_3k_fast200_label_strict_top1k.yaml",
             ROOT / "configs" / "split_teacher_distill_readable_top1k_80_10_10.yaml",
-            ROOT / "configs" / "audit_one_shot_d2nn_v8_7a4_optical_identity_chain.yaml",
-            ROOT
-            / "configs"
-            / "audit_one_shot_d2nn_v9_10_label_template_inverse_prototype_baseline.yaml",
-            ROOT
-            / "configs"
-            / "train_one_shot_distill_d2nn_mnist_3k_fast200_student_v9_10_label_template_inverse_prototype_baseline.yaml",
-            ROOT
-            / "configs"
-            / "eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v9_10_label_template_inverse_prototype_baseline_strict_readability_test.yaml",
-            ROOT
-            / "configs"
-            / "train_one_shot_distill_d2nn_mnist_3k_fast200_twophoton_100x100_2um_full_connect.yaml",
-            ROOT
-            / "configs"
-            / "eval_one_shot_distill_d2nn_mnist_3k_fast200_twophoton_100x100_2um_full_connect_strict_readability_test.yaml",
+            ROOT / "experiments" / "archive" / "manifest.yaml",
             ROOT / "configs" / "train_first_stage_hardclass_camera_recovery.yaml",
-            ROOT / "configs" / "train_one_shot_distill_d2nn_mnist_3k_fast200.yaml",
-            ROOT / "configs" / "train_one_shot_distill_d2nn_gpu_feasibility.yaml",
-            ROOT / "configs" / "train_one_shot_distill_d2nn_long.yaml",
             ROOT / "configs" / "train_one_shot_d2nn_smoke.yaml",
             ROOT / "docs" / "ldm_migration" / "single_shot_ldm_distillation.md",
             ROOT / "docs" / "ldm_migration" / "stage_guide.md",
@@ -125,7 +107,7 @@ class RepoLayoutTests(unittest.TestCase):
             ROOT / "src" / "ldm_project" / "eval_reports.py",
             ROOT / "tests" / "test_teacher_training_utils.py",
             ROOT / "tests" / "test_eval_reports.py",
-            ROOT / "tools" / "run_v9_10_label_template_audit.py",
+            ROOT / "tools" / "diagnose_v59_upstream_separation_isolation.py",
             ROOT / "tools" / "organize_outputs_by_version.py",
         ]
         for path in expected:
@@ -297,7 +279,7 @@ class RepoLayoutTests(unittest.TestCase):
     def test_one_shot_distill_train_and_eval_configs_do_not_use_relay_identity(self) -> None:
         config_dir = ROOT / "configs"
         checked = 0
-        for pattern in ("train_one_shot_distill*.yaml", "eval_one_shot_distill*.yaml"):
+        for pattern in ("train_v56*.yaml", "eval_v56*.yaml"):
             for path in config_dir.glob(pattern):
                 checked += 1
                 content = path.read_text(encoding="utf-8")

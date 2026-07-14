@@ -3451,7 +3451,7 @@ class OneShotConfigTests(unittest.TestCase):
 
         config = load_training_config(
             Path(
-                "configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v9_8_"
+                "experiments/archive/pre_v56/configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v9_8_"
                 "front_coherent_psf_back_psf_relay.yaml"
             )
         )
@@ -3467,7 +3467,7 @@ class OneShotConfigTests(unittest.TestCase):
         from ldm_project.config import load_training_config
 
         config = load_training_config(
-            Path("configs/audit_one_shot_d2nn_v9_10_label_template_inverse_prototype_baseline.yaml")
+            Path("experiments/archive/pre_v56/configs/audit_one_shot_d2nn_v9_10_label_template_inverse_prototype_baseline.yaml")
         )
 
         self.assertEqual(config.one_shot_epochs, 1)
@@ -3487,13 +3487,13 @@ class OneShotConfigTests(unittest.TestCase):
 
         train_config = load_training_config(
             Path(
-                "configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v9_10_"
+                "experiments/archive/pre_v56/configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v9_10_"
                 "label_template_inverse_prototype_baseline.yaml"
             )
         )
         eval_config = load_training_config(
             Path(
-                "configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v9_10_"
+                "experiments/archive/pre_v56/configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v9_10_"
                 "label_template_inverse_prototype_baseline_strict_readability_test.yaml"
             )
         )
@@ -3517,13 +3517,13 @@ class OneShotConfigTests(unittest.TestCase):
 
         train_config = load_training_config(
             Path(
-                "configs/train_one_shot_distill_d2nn_mnist_3k_fast200_"
+                "experiments/archive/pre_v56/configs/train_one_shot_distill_d2nn_mnist_3k_fast200_"
                 "twophoton_100x100_2um_full_connect.yaml"
             )
         )
         eval_config = load_training_config(
             Path(
-                "configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_"
+                "experiments/archive/pre_v56/configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_"
                 "twophoton_100x100_2um_full_connect_strict_readability_test.yaml"
             )
         )
@@ -3613,19 +3613,19 @@ class OneShotConfigTests(unittest.TestCase):
         from ldm_project.config import load_training_config
 
         identity_audit_config = load_training_config(
-            Path("configs/audit_one_shot_d2nn_v8_7a4_optical_identity_chain.yaml")
+            Path("experiments/archive/pre_v56/configs/audit_one_shot_d2nn_v8_7a4_optical_identity_chain.yaml")
         )
         readout_ablation_audit_config = load_training_config(
-            Path("configs/audit_one_shot_d2nn_v9_2_readout_plane_ablation.yaml")
+            Path("experiments/archive/pre_v56/configs/audit_one_shot_d2nn_v9_2_readout_plane_ablation.yaml")
         )
         student_v9_8_relay_psf_config = load_training_config(
             Path(
-                "configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v9_8_relay_psf_camera_primary.yaml"
+                "experiments/archive/pre_v56/configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v9_8_relay_psf_camera_primary.yaml"
             )
         )
         student_v9_8_relay_psf_eval_config = load_training_config(
             Path(
-                "configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v9_8_relay_psf_camera_primary_strict_readability_test.yaml"
+                "experiments/archive/pre_v56/configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v9_8_relay_psf_camera_primary_strict_readability_test.yaml"
             )
         )
 
@@ -3700,21 +3700,21 @@ class OneShotConfigTests(unittest.TestCase):
     def test_one_shot_v3_to_v6_configs_load(self) -> None:
         from ldm_project.config import load_training_config
 
-        train_config = load_training_config(Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200.yaml"))
+        train_config = load_training_config(Path("experiments/archive/pre_v56/configs/train_one_shot_distill_d2nn_mnist_3k_fast200.yaml"))
         strict_eval_config = load_training_config(
-            Path("configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v3_strict_readability.yaml")
+            Path("experiments/archive/pre_v56/configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v3_strict_readability.yaml")
         )
         student_v3_config = load_training_config(
-            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v3.yaml")
+            Path("experiments/archive/pre_v56/configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v3.yaml")
         )
         student_v4_config = load_training_config(
-            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v4_readability.yaml")
+            Path("experiments/archive/pre_v56/configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v4_readability.yaml")
         )
         student_v5_config = load_training_config(
-            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v5_speckle_label.yaml")
+            Path("experiments/archive/pre_v56/configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v5_speckle_label.yaml")
         )
         student_v6_config = load_training_config(
-            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v6_clean_bg.yaml")
+            Path("experiments/archive/pre_v56/configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v6_clean_bg.yaml")
         )
 
         self.assertEqual(train_config.mode, "one_shot_distill")
@@ -3787,34 +3787,34 @@ class OneShotConfigTests(unittest.TestCase):
         from ldm_project.config import load_training_config
 
         student_v7_1_config = load_training_config(
-            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v7_1_clean_target_fixed.yaml")
+            Path("experiments/archive/pre_v56/configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v7_1_clean_target_fixed.yaml")
         )
         student_v7_3_config = load_training_config(
-            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v7_3_denoise.yaml")
+            Path("experiments/archive/pre_v56/configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v7_3_denoise.yaml")
         )
         student_v7_3_eval_config = load_training_config(
-            Path("configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v7_3_strict_readability_test.yaml")
+            Path("experiments/archive/pre_v56/configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v7_3_strict_readability_test.yaml")
         )
         student_v8_identity_config = load_training_config(
-            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_identity_oracle.yaml")
+            Path("experiments/archive/pre_v56/configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_identity_oracle.yaml")
         )
         student_v8_shallow_config = load_training_config(
-            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_shallow_d2nn.yaml")
+            Path("experiments/archive/pre_v56/configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_shallow_d2nn.yaml")
         )
         student_v8_identity_eval_config = load_training_config(
-            Path("configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_identity_strict_readability_test.yaml")
+            Path("experiments/archive/pre_v56/configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_identity_strict_readability_test.yaml")
         )
         student_v8_shallow_eval_config = load_training_config(
-            Path("configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_shallow_d2nn_strict_readability_test.yaml")
+            Path("experiments/archive/pre_v56/configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_shallow_d2nn_strict_readability_test.yaml")
         )
         student_v8_shallow_fair_config = load_training_config(
-            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_shallow_d2nn_fair.yaml")
+            Path("experiments/archive/pre_v56/configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_shallow_d2nn_fair.yaml")
         )
         student_v8_direct_config = load_training_config(
-            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_direct_clean_oracle.yaml")
+            Path("experiments/archive/pre_v56/configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_direct_clean_oracle.yaml")
         )
         student_v8_direct_eval_config = load_training_config(
-            Path("configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_direct_clean_oracle_strict_readability_test.yaml")
+            Path("experiments/archive/pre_v56/configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_direct_clean_oracle_strict_readability_test.yaml")
         )
 
         self.assertEqual(student_v7_1_config.one_shot.checkpoint_selection_metric, "strict_readability")
@@ -3875,52 +3875,52 @@ class OneShotConfigTests(unittest.TestCase):
         from ldm_project.config import load_training_config
 
         student_v8_1_direct_config = load_training_config(
-            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_1_direct_mnist_prototype_oracle.yaml")
+            Path("experiments/archive/pre_v56/configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_1_direct_mnist_prototype_oracle.yaml")
         )
         student_v8_1b_direct_config = load_training_config(
-            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_1b_direct_mnist_prototype_oracle_focus1.yaml")
+            Path("experiments/archive/pre_v56/configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_1b_direct_mnist_prototype_oracle_focus1.yaml")
         )
         student_v8_2_direct_config = load_training_config(
-            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_2_direct_mnist_prototype_oracle_detail_polish.yaml")
+            Path("experiments/archive/pre_v56/configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_2_direct_mnist_prototype_oracle_detail_polish.yaml")
         )
         student_v8_2c_direct_config = load_training_config(
-            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_2c_direct_mnist_prototype_oracle_margin_finish.yaml")
+            Path("experiments/archive/pre_v56/configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_2c_direct_mnist_prototype_oracle_margin_finish.yaml")
         )
         student_v8_3_direct_config = load_training_config(
-            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_3_direct_mnist_sample_oracle.yaml")
+            Path("experiments/archive/pre_v56/configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_3_direct_mnist_sample_oracle.yaml")
         )
         student_v8_4_direct_config = load_training_config(
-            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_4_direct_mnist_nearest_teacher_image_oracle.yaml")
+            Path("experiments/archive/pre_v56/configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_4_direct_mnist_nearest_teacher_image_oracle.yaml")
         )
         student_v8_5a_direct_config = load_training_config(
-            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_5a_direct_prototype_residual_safety.yaml")
+            Path("experiments/archive/pre_v56/configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_5a_direct_prototype_residual_safety.yaml")
         )
         student_v8_5b_direct_config = load_training_config(
-            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_5b_direct_prototype_anchor_aux_detail.yaml")
+            Path("experiments/archive/pre_v56/configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_5b_direct_prototype_anchor_aux_detail.yaml")
         )
         student_v8_5c_direct_config = load_training_config(
-            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_5c_direct_prototype_residual_probe.yaml")
+            Path("experiments/archive/pre_v56/configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_5c_direct_prototype_residual_probe.yaml")
         )
         student_v8_5d_direct_config = load_training_config(
             Path(
-                "configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_5d_direct_prototype_residual_foreground_gate.yaml"
+                "experiments/archive/pre_v56/configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_5d_direct_prototype_residual_foreground_gate.yaml"
             )
         )
         student_v8_1_direct_eval_config = load_training_config(
-            Path("configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_1_direct_mnist_prototype_oracle_strict_readability_test.yaml")
+            Path("experiments/archive/pre_v56/configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_1_direct_mnist_prototype_oracle_strict_readability_test.yaml")
         )
         student_v8_3_direct_eval_config = load_training_config(
-            Path("configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_3_direct_mnist_sample_oracle_strict_readability_test.yaml")
+            Path("experiments/archive/pre_v56/configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_3_direct_mnist_sample_oracle_strict_readability_test.yaml")
         )
         student_v8_4_direct_eval_config = load_training_config(
-            Path("configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_4_direct_mnist_nearest_teacher_image_oracle_strict_readability_test.yaml")
+            Path("experiments/archive/pre_v56/configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_4_direct_mnist_nearest_teacher_image_oracle_strict_readability_test.yaml")
         )
         student_v8_5c_direct_eval_config = load_training_config(
-            Path("configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_5c_direct_prototype_residual_probe_strict_readability_test.yaml")
+            Path("experiments/archive/pre_v56/configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_5c_direct_prototype_residual_probe_strict_readability_test.yaml")
         )
         student_v8_5d_direct_eval_config = load_training_config(
             Path(
-                "configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_5d_direct_prototype_residual_foreground_gate_strict_readability_test.yaml"
+                "experiments/archive/pre_v56/configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_5d_direct_prototype_residual_foreground_gate_strict_readability_test.yaml"
             )
         )
 
@@ -4039,61 +4039,61 @@ class OneShotConfigTests(unittest.TestCase):
         from ldm_project.config import load_training_config
 
         student_v8_6a_config = load_training_config(
-            Path("configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_6a_phase2x2_prototype_anchor.yaml")
+            Path("experiments/archive/pre_v56/configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_6a_phase2x2_prototype_anchor.yaml")
         )
         student_v8_6b_config = load_training_config(
             Path(
-                "configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_6b_phase2x2_random_phase_prototype_anchor.yaml"
+                "experiments/archive/pre_v56/configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_6b_phase2x2_random_phase_prototype_anchor.yaml"
             )
         )
         student_v8_7a_config = load_training_config(
             Path(
-                "configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_7a_phase_amplitude2x2_prototype_anchor.yaml"
+                "experiments/archive/pre_v56/configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_7a_phase_amplitude2x2_prototype_anchor.yaml"
             )
         )
         student_v8_7a2_config = load_training_config(
             Path(
-                "configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_7a2_phase_amplitude_warm_phase_active_amp.yaml"
+                "experiments/archive/pre_v56/configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_7a2_phase_amplitude_warm_phase_active_amp.yaml"
             )
         )
         student_v8_7a3_config = load_training_config(
             Path(
-                "configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_7a3_near_identity_phase_amp_feasibility.yaml"
+                "experiments/archive/pre_v56/configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_7a3_near_identity_phase_amp_feasibility.yaml"
             )
         )
         student_v9_1_config = load_training_config(
             Path(
-                "configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v9_1_trainable_generator_phase_amp_feasibility.yaml"
+                "experiments/archive/pre_v56/configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v9_1_trainable_generator_phase_amp_feasibility.yaml"
             )
         )
         student_v8_6a_eval_config = load_training_config(
             Path(
-                "configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_6a_phase2x2_prototype_anchor_strict_readability_test.yaml"
+                "experiments/archive/pre_v56/configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_6a_phase2x2_prototype_anchor_strict_readability_test.yaml"
             )
         )
         student_v8_6b_eval_config = load_training_config(
             Path(
-                "configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_6b_phase2x2_random_phase_prototype_anchor_strict_readability_test.yaml"
+                "experiments/archive/pre_v56/configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_6b_phase2x2_random_phase_prototype_anchor_strict_readability_test.yaml"
             )
         )
         student_v8_7a_eval_config = load_training_config(
             Path(
-                "configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_7a_phase_amplitude2x2_prototype_anchor_strict_readability_test.yaml"
+                "experiments/archive/pre_v56/configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_7a_phase_amplitude2x2_prototype_anchor_strict_readability_test.yaml"
             )
         )
         student_v8_7a2_eval_config = load_training_config(
             Path(
-                "configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_7a2_phase_amplitude_warm_phase_active_amp_strict_readability_test.yaml"
+                "experiments/archive/pre_v56/configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_7a2_phase_amplitude_warm_phase_active_amp_strict_readability_test.yaml"
             )
         )
         student_v8_7a3_eval_config = load_training_config(
             Path(
-                "configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_7a3_near_identity_phase_amp_feasibility_strict_readability_test.yaml"
+                "experiments/archive/pre_v56/configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_7a3_near_identity_phase_amp_feasibility_strict_readability_test.yaml"
             )
         )
         student_v9_1_eval_config = load_training_config(
             Path(
-                "configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v9_1_trainable_generator_phase_amp_feasibility_strict_readability_test.yaml"
+                "experiments/archive/pre_v56/configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v9_1_trainable_generator_phase_amp_feasibility_strict_readability_test.yaml"
             )
         )
 
@@ -4245,10 +4245,10 @@ class OneShotConfigTests(unittest.TestCase):
         from ldm_project.config import load_training_config
 
         student_v8_shallow_fair_eval_config = load_training_config(
-            Path("configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_shallow_d2nn_fair_strict_readability_test.yaml")
+            Path("experiments/archive/pre_v56/configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v8_shallow_d2nn_fair_strict_readability_test.yaml")
         )
-        feasibility_config = load_training_config(Path("configs/train_one_shot_distill_d2nn_gpu_feasibility.yaml"))
-        long_config = load_training_config(Path("configs/train_one_shot_distill_d2nn_long.yaml"))
+        feasibility_config = load_training_config(Path("experiments/archive/pre_v56/configs/train_one_shot_distill_d2nn_gpu_feasibility.yaml"))
+        long_config = load_training_config(Path("experiments/archive/pre_v56/configs/train_one_shot_distill_d2nn_long.yaml"))
 
         self.assertEqual(student_v8_shallow_fair_eval_config.one_shot.optical_core_arch, "diffractive_phase_only")
         self.assertEqual(student_v8_shallow_fair_eval_config.one_shot.d2nn.encoder_layers, 1)
@@ -6585,7 +6585,7 @@ class OneShotConfigTests(unittest.TestCase):
             total_variation(psf_identity_outputs["camera_plane"]).item(),
         )
         self.assertEqual(
-            load_training_config(Path("configs/audit_one_shot_d2nn_v9_8_back_relay_psf.yaml")).physics.back_path_model,
+            load_training_config(Path("experiments/archive/pre_v56/configs/audit_one_shot_d2nn_v9_8_back_relay_psf.yaml")).physics.back_path_model,
             "relay_psf",
         )
 

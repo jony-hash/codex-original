@@ -7,7 +7,8 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-TOOL_PATH = ROOT / "tools" / "run_v9_10_label_template_audit.py"
+ARCHIVE_CONFIGS = ROOT / "experiments" / "archive" / "pre_v56" / "configs"
+TOOL_PATH = ROOT / "experiments" / "archive" / "pre_v57" / "tools" / "run_v9_10_label_template_audit.py"
 
 
 def _load_tool():
@@ -16,6 +17,12 @@ def _load_tool():
         raise RuntimeError(f"Cannot load audit tool: {TOOL_PATH}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    # 归档代码保持原样；测试仅为读取历史合同而注入原仓库的上下文。
+    module.REPO_ROOT = ROOT
+    module.AUDIT_CONFIG = ARCHIVE_CONFIGS / "audit_one_shot_d2nn_v9_10_label_template_inverse_prototype_baseline.yaml"
+    module.TRAIN_CONFIG = ARCHIVE_CONFIGS / "train_one_shot_distill_d2nn_mnist_3k_fast200_student_v9_10_label_template_inverse_prototype_baseline.yaml"
+    module.EVAL_CONFIG = ARCHIVE_CONFIGS / "eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v9_10_label_template_inverse_prototype_baseline_strict_readability_test.yaml"
+    module.DEFAULT_OUTPUT_ROOT = ROOT / "outputs"
     return module
 
 

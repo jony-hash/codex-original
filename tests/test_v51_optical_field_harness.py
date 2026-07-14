@@ -9,7 +9,7 @@ class V51OpticalFieldHarnessTests(unittest.TestCase):
         from ldm_project.config import load_training_config
 
         config = load_training_config(
-            Path("configs/sample_twophoton_100x100_v51_real_complex_field_probe_a_s025.yaml")
+            Path("experiments/archive/pre_v56/configs/sample_twophoton_100x100_v51_real_complex_field_probe_a_s025.yaml")
         )
 
         self.assertEqual(config.mode, "one_shot_sample")
@@ -25,7 +25,7 @@ class V51OpticalFieldHarnessTests(unittest.TestCase):
         self.assertAlmostEqual(config.one_shot.d2nn.layer_spacing, 0.25e-3)
 
     def test_v51_launcher_contains_one_cuda_sample_and_no_training_or_eval(self) -> None:
-        text = Path("tools/run_v51_real_complex_field_sample.sh").read_text(encoding="utf-8")
+        text = Path("experiments/archive/pre_v57/tools/run_v51_real_complex_field_sample.sh").read_text(encoding="utf-8")
 
         self.assertEqual(text.count("--stage one_shot_sample"), 1)
         self.assertEqual(text.count("--device cuda"), 1)

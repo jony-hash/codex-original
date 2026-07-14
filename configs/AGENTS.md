@@ -2,6 +2,8 @@
 
 Scope: `configs/**`. Read the repository-root `AGENTS.md` first. This file adds configuration constraints and may not relax the root contract.
 
+Only Golden Path, teacher/smoke, v52/v55/v56 and current decision-gate configs belong here. Historical YAML lives in `experiments/archive/` and is reference-only.
+
 ## Configuration Rules
 
 - YAML must remain compatible with `load_training_config`; use existing keys and naming patterns before adding a new option.

@@ -10,8 +10,10 @@ from ldm_project.config import load_training_config, validate_physical_forward_c
 
 
 ROOT = Path(__file__).resolve().parents[1]
-TRAIN_CONFIG = ROOT / "configs" / "train_v53_physical_forward_from_scratch.yaml"
-EVAL_CONFIG = ROOT / "configs" / "eval_v53_physical_forward_from_scratch.yaml"
+ARCHIVE_CONFIGS = ROOT / "experiments" / "archive" / "pre_v56" / "configs"
+ARCHIVE_TOOLS = ROOT / "experiments" / "archive" / "pre_v57" / "tools"
+TRAIN_CONFIG = ARCHIVE_CONFIGS / "train_v53_physical_forward_from_scratch.yaml"
+EVAL_CONFIG = ARCHIVE_CONFIGS / "eval_v53_physical_forward_from_scratch.yaml"
 READABLE_SPLIT_ROOT = ROOT / "outputs" / "20260514_unversioned" / "runs" / (
     "20260610_151747_768931_train_teacher_distill_15k_acceptance_matched_diffusion_"
     "e40_gs40_readable_split_from_full15k_cuda"
@@ -71,14 +73,14 @@ def test_readable_split_teacher_targets_are_present_and_explicitly_separate():
 
 
 def test_cuda_preflight_is_cuda_only_and_does_not_load_checkpoint_or_train():
-    source = (ROOT / "tools" / "validate_v53_cuda_physical_preflight.py").read_text(encoding="utf-8")
+    source = (ARCHIVE_TOOLS / "validate_v53_cuda_physical_preflight.py").read_text(encoding="utf-8")
     assert "load_one_shot_checkpoint" not in source
     assert "run_one_shot_distill_training" not in source
     assert "one_shot_distill_eval" not in source
 
     spec = importlib.util.spec_from_file_location(
         "v53_preflight",
-        ROOT / "tools" / "validate_v53_cuda_physical_preflight.py",
+        ARCHIVE_TOOLS / "validate_v53_cuda_physical_preflight.py",
     )
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
