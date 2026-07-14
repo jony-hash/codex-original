@@ -260,8 +260,8 @@ class RepoLayoutTests(unittest.TestCase):
         from ldm_project.teacher_training import run_diffusion_training, run_first_stage_training
         from ldm_project.visualization_core import save_visualization_grids
 
-        self.assertEqual(main.__module__, "ldm_project.train_cli")
-        self.assertEqual(run_selected_stage.__module__, "ldm_project.train_orchestration")
+        self.assertEqual(main.__module__, "ldm_project.application.cli")
+        self.assertEqual(run_selected_stage.__module__, "ldm_project.application.stages")
         self.assertIs(sampling.build_one_shot_d2nn_diagnostics, build_one_shot_d2nn_diagnostics)
         self.assertIs(sampling.build_one_shot_visualization_tensors, build_one_shot_visualization_tensors)
         self.assertIs(sampling.save_post_train_samples, save_post_train_samples)
