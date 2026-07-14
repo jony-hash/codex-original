@@ -10,6 +10,7 @@
 - 输出与可视化解释：[D2NN 主线输出与可视化说明](output_JIESHI.md)
 - 迁移或续接当前实验：[当前主线交接（v57 后）](ldm_migration/current_handoff.md)（时效性状态快照，下一决策门后刷新）
 - 历史实验与验收证据：[D2NN 实验与验收历史](ldm_migration/experiment_history.md)
+- 归档配置与诊断源码：[实验归档清单](../experiments/archive/manifest.yaml)（仅供溯源，`diagnostic-only`）
 
 ## Choose By Task
 

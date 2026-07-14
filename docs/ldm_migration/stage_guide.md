@@ -87,35 +87,9 @@ python train.py --train-config <approved_physical_forward_config.yaml> \
 - 整理历史 run 时先执行 `python -m tools.organize_outputs_by_version --root outputs --dry-run` 检查 manifest，确认无 blocker 后再执行 `--apply`。
 - 输出图片和 tensor bundle 的语义见 [输出与可视化说明](../output_JIESHI.md)。
 
-## v9.10 Prototype Baseline Audit
+## Archived Experiments
 
-`v9.10 label-template inverse prototype baseline` 明确忽略 code，只验证 intensity-template 到 amplitude SLM command 的逆映射与完整 `relay_coherent_psf -> D2NN -> relay_psf` 光路。它不是 code-conditioned generative baseline。
-
-先确认 WSL2 环境可见 CUDA：
-
-```bash
-source "$(conda info --base)/etc/profile.d/conda.sh" && conda activate optical-generative-models && \
-python -c 'import torch; print(torch.__version__); print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else None)'
-```
-
-正式 audit 由用户启动，所有结果默认写入 `outputs/YYYYMMDD_v9_10/`：
-
-```bash
-source "$(conda info --base)/etc/profile.d/conda.sh" && conda activate optical-generative-models && \
-python -m tools.run_v9_10_label_template_audit \
-  --train-dataset outputs/20260514_unversioned/runs/20260610_151747_768931_train_teacher_distill_15k_acceptance_matched_diffusion_e40_gs40_readable_split_from_full15k_cuda/artifacts/teacher_distill_dataset_readable_train.pt \
-  --validation-dataset outputs/20260514_unversioned/runs/20260610_151747_768931_train_teacher_distill_15k_acceptance_matched_diffusion_e40_gs40_readable_split_from_full15k_cuda/artifacts/teacher_distill_dataset_readable_val.pt \
-  --test-dataset outputs/20260514_unversioned/runs/20260610_151747_768931_train_teacher_distill_15k_acceptance_matched_diffusion_e40_gs40_readable_split_from_full15k_cuda/artifacts/teacher_distill_dataset_readable_test.pt \
-  --device cuda
-```
-
-启动器先生成 self-contained checkpoint，再用独立 test split 执行 strict eval。唯一 required gate 是 `paired_corr >= 0.78`、`paired_dice >= 0.72`、`student_high_saturation_ratio <= 0.08`；模板和 D2NN 的零学习率参数还必须满足 `max_abs_change == 0`。任一条件失败时停止，不运行 sample。通过后才用同一 checkpoint 运行 `one_shot_sample`，并写入唯一的 `v9_10_label_template_audit_summary_*.json`。
-
-只检查命令和配置、不启动 CUDA 作业时添加 `--dry-run`。启动器会把 train/eval/sample run 写入 `outputs/YYYYMMDD_v9_10/runs/`，并把汇总 JSON 写入对应版本目录下的 `reports/`。
-
-## Legacy 100 × 100 Two-Photon Configuration
-
-`configs/train_one_shot_distill_d2nn_mnist_3k_fast200_twophoton_100x100_2um_full_connect.yaml` 及其 eval 配置保留作历史实验引用。它们记录旧 two-photon 几何与 loss 组合，不是当前 formal physical-forward 入口；不得复制其命令训练、不得把旧 checkpoint 加载到 v55 relay 合同，也不得仅凭静态几何检查称为 accepted。当前合同、v56 失败事实和 v58 前停止规则以 [Current Handoff](current_handoff.md) 和 [架构文档](single_shot_ldm_distillation.md) 为准。
+v9.10 prototype、旧 100×100 two-photon、v53 及更早的 loss/relay probes 都已迁入 `experiments/archive/`，并由 [archive manifest](../../experiments/archive/manifest.yaml) 标为 `diagnostic-only`、`runnable: false`。它们只能解释历史证据，不能作为当前命令、checkpoint 或 formal physical-forward 入口；当前合同与停止规则只以 [Current Handoff](current_handoff.md) 为准。
 
 ## Diagnostics
 

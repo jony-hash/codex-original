@@ -33,6 +33,8 @@ SLM command、generator desired intensity、target code、mask transmittance 和
 
 `*_optical_fields.pt` 只保存严格光场链的原始 `real/imag`、shape 和 provenance；renderer 由这些 tensor 现场计算 `abs(E)` 与 `angle(E)`。`one_shot_sample_tensors.pt`、`one_shot_distill_eval_tensors.pt` 和训练 artifact 仍可保存 control、mask、intensity 与其他 raw diagnostics，但它们不是严格复光场证据。
 
+写入责任已收敛到 `student.artifacts`（预览与 device diagnostics）和 `student.evaluation`（strict field provenance）；`application/` 只提供 run manager/输出布局，不改变 artifact 字段语义。
+
 - `camera_plane`：用于 loss 和主评估的 `200 × 200` 相机强度输出，是 one-shot student 的主输出。
 - D2NN raw diagnostics：内部衍射层与 high-res camera 的原始诊断 tensor；其尺寸由 `one_shot.d2nn.grid_size` 和 chip grid 决定。
 - device-mask diagnostics：mask transmittance 的 `|t|` 和 `arg(t)`，描述器件参数而非传播光场。

@@ -13,6 +13,7 @@ Before changing a scoped path, read its local contract:
 - `src/ldm_project/**` -> `src/ldm_project/AGENTS.md`
 - `configs/**` -> `configs/AGENTS.md`
 - `tests/**`, or repository verification work -> `tests/AGENTS.md`
+- `experiments/**` -> `experiments/AGENTS.md`
 - Cross-scope work -> read every applicable local contract.
 
 This explicit routing is required when Codex starts at the repository root, because child instructions are not assumed to be loaded automatically.
@@ -40,6 +41,8 @@ For long optical-training or one-shot readability debugging, follow the **Experi
 This project distills an LDM teacher into a single-exposure optical generative student.
 
 Final inference path: `noise/code + optional label -> generator_e -> amplitude SLM command -> encoder metasurface -> linear identity OLS -> decoder metasurface -> CMOS single exposure -> generated image`. The current formal contract has no fiber; a future fiber variant must preserve the complex-field interface and be separately validated.
+
+Dependency direction is `optics -> (none)`, `teacher/student -> neutral generation/distillation/evaluation`, and `application -> teacher/student`. Formal code must not import compatibility shims or `experiments/archive`; archived files are reference-only.
 
 Formal optical-field artifacts must carry shape, pixel pitch, physical FOV, wavelength, upstream plane, propagation distance, and operation. Tensor equality alone is not physical-coordinate validation; generic complex resize is forbidden in the formal path.
 

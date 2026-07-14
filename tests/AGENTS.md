@@ -10,6 +10,7 @@ Scope: `tests/**` and verification for repository changes. Read the repository-r
 - Docs-only and repository-instruction changes require `git diff --check`; do not run Python or CUDA tests unless behavior-bearing files also changed.
 - Run `python -m compileall src tests train.py` for shared Python changes and `ruff check src tests *.py` when lint-relevant files change.
 - Run the full suite only after targeted checks pass for shared/final changes. If a corrective edit can affect the result, rerun the invalidated check.
+- Keep architecture-boundary and lazy-stage assertions separate from physics/numerical assertions; legacy imports must resolve to canonical package implementations.
 
 ## Acceptance Semantics
 

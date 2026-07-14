@@ -9,6 +9,8 @@
 - 不要重新使用 v47/v51/v53 checkpoint：它们与现行的 identity OLS、1.50 mm geometry 或完整前端 4f relay 合同不兼容。
 - 在下一决策门前，不训练、不延长 epoch、不叠加 loss、不做 spacing/padding/pupil sweep，也不修改正式硬件合同。
 
+代码已完成行为保持的领域重构：`optics / student / teacher / application / diagnostics` 为正式目录，stage 通过 `StageRequest` 懒构造依赖；旧 import 仍解析到同一实现。此结构状态不改变下列 v56–v59 科学结论。
+
 ## 现行正式理想数字孪生合同
 
 ```text

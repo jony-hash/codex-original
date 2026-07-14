@@ -42,7 +42,7 @@ Teacher first-stage、diffusion 和 teacher distill export 是训练基础设施
 - `configs/physics_cfg.yaml`：波长、像素尺寸、宏观光路与读出配置。
 - `configs/train_ldm.yaml`：teacher first-stage 与 diffusion 训练入口。
 - `configs/export_teacher_distill_mnist_3k_fast200.yaml`：稳定 teacher distill dataset 导出入口。
-- `configs/train_v56_coherent_relay_from_scratch.yaml`：最近一次批准的 coherent-relay 训练配置；当前训练已停止，详见交接文档。旧 `train_one_shot_distill_d2nn_mnist_3k_fast200.yaml` 仅为 legacy baseline。
+- `configs/train_v56_coherent_relay_from_scratch.yaml`：最近一次批准的 coherent-relay 训练配置；当前训练已停止，详见交接文档。旧 one-shot baseline 位于 `experiments/archive/`。
 - `configs/train_one_shot_d2nn_smoke.yaml`：小尺寸 D2NN compatibility smoke，不作为正式证据。
 
 其他 export、filter、split、audit 和实验 config 的分类与使用条件见 [Stage Guide](stage_guide.md)。
@@ -80,6 +80,8 @@ D2NN 主线通过 `one_shot.optical_core_arch: diffractive_phase_only` 启用；
 - v55 physical-forward contract 中 relay 距离、倍率、pupil 和 ABCD trace 全部进入 provenance；v52 的自由传播+中央 aperture 仅保留为历史 diagnostic，不代表当前正式路径。
 
 ## 3. 模块边界
+
+正式代码按五个领域组织：`optics/`（复场/传播/relay/device）、`student/`（单曝光模型与训练评估）、`teacher/`（VAE/DDPM 与 target export）、`application/`（CLI 与懒 stage 调度）和 `diagnostics/`。中立 `generation/`、`distillation/`、`evaluation/` 提供 code、payload、prototype/label-audit 能力。依赖只可从 application 指向 teacher/student，teacher 与 student 不得彼此导入，optics 不得导入上层领域；顶层旧模块仅是兼容 shim。
 
 ### generator_e
 

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ldm-project"
 version = "0.1.0"
-description = "Optical-Path VAE scaffold for latent diffusion migration."
+description = "Single-exposure optical generative student distilled from an LDM teacher."
 requires-python = ">=3.11"
 dependencies = [
   "torch",

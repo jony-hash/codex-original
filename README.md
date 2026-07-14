@@ -60,8 +60,12 @@ v56 在该合同上完成了一次从零 CUDA 训练、一次 eval 和一次 cla
 
 | Path | Responsibility |
 | --- | --- |
-| `src/ldm_project/` | Teacher、student、optics、training、evaluation 与 orchestration 核心代码 |
-| `configs/` | Training、evaluation、export、audit 与 smoke 配置 |
+| `src/ldm_project/optics/` | 物理复场、传播、sampling、relay、devices 与独立 reference |
+| `src/ldm_project/student/` | 单曝光 student 的 model、objective、training、evaluation、artifact 与 checkpoint |
+| `src/ldm_project/teacher/` | first-stage、diffusion、teacher sampling/training/distill |
+| `src/ldm_project/application/` | CLI、输出布局、run metadata 与按 stage 懒构造的调度 |
+| `configs/` | 仅活动 Golden Path、physics、teacher、smoke 与 v52/v55/v56 配置 |
+| `experiments/archive/` | 不可 promotion 的历史配置/工具及其 manifest |
 | `tests/` | 行为测试和仓库契约测试 |
 | `docs/` | 架构、运行指南、输出语义和历史证据 |
 | `tools/` | 聚焦的诊断与受控复验工具 |

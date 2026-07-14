@@ -20,7 +20,7 @@
 | Stage | 配置 | Epochs | 关键指标 | Exit |
 | --- | --- | --- | --- | --- |
 | `teacher_first_stage` | `configs/train_ldm.yaml` | 35 | `camera_corr=0.9547`, `balanced=0.8770`, `mnist_score=0.8144` | 0 |
-| `one_shot_distill` | `configs/train_one_shot_distill_d2nn_mnist_3k_fast200.yaml` | 20 | `quality=0.1614`, `camera_dice=0.4575` | 0 |
+| `one_shot_distill` | `experiments/archive/pre_v56/configs/train_one_shot_distill_d2nn_mnist_3k_fast200.yaml` | 20 | `quality=0.1614`, `camera_dice=0.4575` | 0 |
 | `one_shot_sample` | 同上 config | - | 可视化、诊断和 tensor bundle 完整 | 0 |
 | `one_shot_distill_eval` | 同上 config | - | `mse=0.020`, `corr=0.807`, `dice=0.756` | 0 |
 
@@ -117,7 +117,7 @@ bs128 first-stage 相比旧基线将训练吞吐从 563 step/epoch 改善到 71 
 
 ### Epoch Checkpoint
 
-`training.one_shot_distill_epoch_checkpoint_interval` 控制周期 checkpoint；默认 0 表示关闭。启用后生成 `one_shot_distill_epoch_XXXX.pt`，并记录到 `run_meta["epoch_checkpoints"]`。历史诊断配置为 `configs/train_one_shot_distill_d2nn_mnist_3k_fast200_debug_epoch_ckpt.yaml`，interval 为 2。
+`training.one_shot_distill_epoch_checkpoint_interval` 控制周期 checkpoint；默认 0 表示关闭。启用后生成 `one_shot_distill_epoch_XXXX.pt`，并记录到 `run_meta["epoch_checkpoints"]`。历史诊断配置为 `experiments/archive/pre_v56/configs/train_one_shot_distill_d2nn_mnist_3k_fast200_debug_epoch_ckpt.yaml`，interval 为 2。
 
 ### Seed Sweep
 

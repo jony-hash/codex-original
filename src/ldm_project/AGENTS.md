@@ -2,6 +2,13 @@
 
 Scope: `src/ldm_project/**`. Read the repository-root `AGENTS.md` first. This file adds implementation constraints and may not relax the root contract.
 
+## Domain Routing
+
+- `optics/` owns formal field/provenance, propagation, relays and devices; it imports no teacher, student, application or diagnostic code.
+- `student/` owns the single-exposure forward/training/evaluation path; it may consume neutral `generation/`, `distillation/` and `evaluation/` modules but not teacher internals.
+- `teacher/` owns VAE/diffusion and target export; it does not import student.
+- `application/` owns CLI and lazy stage construction. Compatibility files at this directory level are import-only shims.
+
 ## Physical Model
 
 - `generator_e` produces the actual amplitude SLM command. Do not silently reinterpret it as phase-only or complex-amplitude control.

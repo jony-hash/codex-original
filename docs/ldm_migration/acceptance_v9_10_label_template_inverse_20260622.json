@@ -16,9 +16,9 @@
     "layer_spacing_m": 0.0005
   },
   "configs": {
-    "audit": "configs/audit_one_shot_d2nn_v9_10_label_template_inverse_prototype_baseline.yaml",
-    "train": "configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v9_10_label_template_inverse_prototype_baseline.yaml",
-    "eval": "configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v9_10_label_template_inverse_prototype_baseline_strict_readability_test.yaml"
+    "audit": "experiments/archive/pre_v56/configs/audit_one_shot_d2nn_v9_10_label_template_inverse_prototype_baseline.yaml",
+    "train": "experiments/archive/pre_v56/configs/train_one_shot_distill_d2nn_mnist_3k_fast200_student_v9_10_label_template_inverse_prototype_baseline.yaml",
+    "eval": "experiments/archive/pre_v56/configs/eval_one_shot_distill_d2nn_mnist_3k_fast200_student_v9_10_label_template_inverse_prototype_baseline_strict_readability_test.yaml"
   },
   "datasets": {
     "train": "outputs/20260514_unversioned/runs/20260610_151747_768931_train_teacher_distill_15k_acceptance_matched_diffusion_e40_gs40_readable_split_from_full15k_cuda/artifacts/teacher_distill_dataset_readable_train.pt",
