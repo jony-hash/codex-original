@@ -69,7 +69,7 @@ v56/v60 在该合同上完成了两次同配置短训练；strict provenance 有
 | `src/ldm_project/teacher/` | first-stage、diffusion、teacher sampling/training/distill |
 | `src/ldm_project/teacher/common.py` | teacher distillation algorithm implementation; `distill_legacy.py` and `distill.py` are compatibility facades |
 | `src/ldm_project/application/` | CLI、输出布局、run metadata 与按 stage 懒构造的调度 |
-| `src/ldm_project/application/stage_runtimes.py` | data-only、student-only、teacher runtime footprints; no model imports during classification |
+| `src/ldm_project/application/stage_runtimes.py` | stage footprint registry 与真实 runtime materialization；`StageContext` 仅为兼容适配器 |
 | `configs/` | 仅活动 Golden Path、physics、teacher、smoke 与 v52/v55/v56 配置 |
 | `experiments/archive/` | 不可 promotion 的历史配置/工具及其 manifest |
 | `tests/` | 行为测试和仓库契约测试 |

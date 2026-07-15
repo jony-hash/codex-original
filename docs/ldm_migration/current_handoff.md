@@ -196,6 +196,8 @@ v63 工具与工件：
 
 第四轮已将正式 Student 实现独立到 `student/formal_model.py`，兼容模型归入 `student/experimental/model.py`，`student/model.py` 仅保留公开 facade；冻结 v60 checkpoint 在 CUDA 上与 `/tmp/second_decoupling_baseline.pt` 的 96 个输出字段 bitwise 相同。配置 dataclass、YAML loading/normalization 和 validators 已分别落到 `configuration/schema.py`、`loading.py`、`validation.py`，旧 `legacy.py`/`config.py` 仍保持对象和错误契约。teacher distill 算法主体已移到 `teacher/common.py`，旧入口保留 prototype builder monkeypatch 注入点；stage runtime footprint 位于 `application/stage_runtimes.py`。完整回归为 `490 passed`、`148 subtests passed`、1607 个既有 warning；本轮不训练、不改变 v56–v63 科学结论。超大测试文件机械拆分和逐 runtime 物化的进一步收敛仍延后，不能把 footprint 登记误写成已完全替换 StageContext。
 
+第五轮已完成正式 Student 固定物理链收口：`FormalOneShotOpticalGenerator` 不再包含 diagnostic intervention，兼容路径由 `student/experimental/model.py` 按配置选择；输出 contract 与 optical provenance 组装独立到 `student/output_contract.py`。`application/stage_runtimes.py` 现在负责实际依赖物化，`StageContext` 仅为兼容适配器；data-only、student、teacher 阶段的模型集合会在构造后再次校验。正式 camera reconstruction term 已迁入 `student/objective_terms/formal.py`，旧 `one_shot_loss` 继续保持签名、返回字段和浮点加法顺序。冻结 v60 checkpoint 的 CUDA 96-output/9-state-key 比较通过，完整回归为 `492 passed`、`148 subtests passed`、1607 个既有 warning；本轮仍不训练、不改变 v56–v63 科学结论。超大测试机械拆分及其余实验 objective term 的移动留待独立提交。
+
 ## 已完成验证
 
 v58.3 targeted/CUDA preflight、v61 robust audit、v61 native dual-channel upper bound、v62 conditional-control audit 与 v63 crossed-factor audit 已完成；v63 CUDA harness 有效，参数更新数为 0，所有报告均为 `diagnostic-only`。本次代码的完整验证命令及结果见当前工作区测试输出；所有输出和 cache 均位于 `outputs/`，不加入 Git；迁移时不得用 reset/checkout 清理用户改动。

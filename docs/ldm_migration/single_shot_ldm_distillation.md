@@ -119,6 +119,8 @@ CMOS camera plane 是学生主输出。训练和评估优先使用下采样后�
 
 Teacher 只生成目标图像/目标 latent，不经过学生的 laser、SLM、D2NN 或 CMOS 光路；teacher 与 student 不是同一条物理路径。
 
+第五轮收口后，正式 Student 入口是固定物理链 `FormalOneShotOpticalGenerator`；历史 phase-amplitude、bypass、generic-resize 等干预只由 `student.experimental` 兼容路径构造。应用层先按 stage 生成 `DataOnlyRuntime`、`StudentRuntime` 或 `TeacherRuntime`，再物化该阶段声明的模型和数据，旧 `StageContext` 不再拥有独立构造逻辑。正式 camera reconstruction term 位于 `student/objective_terms/formal.py`，`one_shot_loss` 仅保留兼容编排，确保正式项与实验项的边界可审计。
+
 ## 4. Teacher 配套边界
 
 `first_stage_best_optical.pt` 与 `diffusion_best.pt` 必须来自配套的 first-stage latent/decoder 分布。
