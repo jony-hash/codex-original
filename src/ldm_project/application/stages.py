@@ -29,7 +29,7 @@ from ..teacher.training import (
     run_first_stage_training,
 )
 from ..train_utils import is_teacher_diffusion_mode, is_teacher_first_stage_mode
-from .stage_runtimes import build_stage_runtime
+from .stage_runtimes import StageRuntime, build_stage_runtime
 
 
 @dataclass(frozen=True)
@@ -103,6 +103,7 @@ class StageContext:
     data: StageData
     hooks: StageHooks
     versions: StageVersions
+    runtime: StageRuntime | None = None
 
 
 _NO_DATA_STAGES = frozenset(
@@ -142,7 +143,7 @@ STAGE_REGISTRY = {
 }
 
 
-def _build_stage_context(request: StageRequest) -> StageContext:
+def _build_stage_context(request: StageRequest, runtime: StageRuntime | None = None) -> StageContext:
     """Construct the legacy handler context lazily from a stage request."""
     # 保留根包的可注入公开接口：既兼容既有 CLI 测试替身，也不改变实际实现的归属。
     from .. import (
@@ -230,6 +231,19 @@ def _build_stage_context(request: StageRequest) -> StageContext:
         first_stage_model_version=FIRST_STAGE_MODEL_VERSION, one_shot_model_version=request.one_shot_version,
     )
     request.run_manager.write_meta(run_meta)
+    actual_models = tuple(
+        name for name, value in (
+            ("first_stage", first_stage),
+            ("diffusion_model", diffusion_model),
+            ("scheduler", scheduler),
+            ("one_shot_model", one_shot_model),
+        ) if value is not None
+    )
+    if runtime is not None and actual_models != runtime.footprint.constructs_models:
+        raise RuntimeError(
+            "stage runtime footprint disagrees with constructed models: "
+            f"declared={runtime.footprint.constructs_models}, actual={actual_models}"
+        )
     return StageContext(
         torch_module=torch_module, args=request.args, checkpoint_resolution=request.checkpoint_resolution,
         train_cfg=request.train_cfg, run_manager=request.run_manager, run_meta=run_meta, physics=request.physics,
@@ -244,6 +258,7 @@ def _build_stage_context(request: StageRequest) -> StageContext:
                          one_shot_loss=one_shot_loss, sample_latents=sample_latents,
                          sample_latents_with_trace=sample_latents_with_trace, resolve_denoising_trace_steps=resolve_denoising_trace_steps),
         versions=StageVersions(first_stage=FIRST_STAGE_MODEL_VERSION, diffusion=DIFFUSION_MODEL_VERSION, one_shot=request.one_shot_version),
+        runtime=runtime,
     )
 
 
@@ -252,8 +267,8 @@ def run_selected_stage(context: StageRequest | StageContext) -> StageContext:
     if isinstance(context, StageRequest):
         # 先登记 stage-specific footprint，再通过兼容适配器物化旧 handler payload。
         # 该登记本身不导入模型，确保 data-only/student stage 的边界可测试。
-        build_stage_runtime(context, STAGE_REGISTRY)
-        context = _build_stage_context(context)
+        runtime = build_stage_runtime(context, STAGE_REGISTRY)
+        context = _build_stage_context(context, runtime=runtime)
     mode = context.train_cfg.mode
     handler = STAGE_HANDLER_REGISTRY.get(mode)
     if handler is None:
