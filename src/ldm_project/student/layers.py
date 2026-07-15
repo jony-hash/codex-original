@@ -20,11 +20,13 @@ from .experimental.layers import (
     _resize_real_intensity,
     _vector_to_complex_field,
 )
+from ..optics import angular_spectrum_propagate
 from ..optics.d2nn import PhaseOnlyDiffractiveStack
 from ..optics.devices import IdealAmplitudeSLMModel
 
 __all__ = [
     "ElectronicGeneratorE",
+    "angular_spectrum_propagate",
     "IdealAmplitudeSLMModel",
     "PhaseAmplitudeDiffractiveStack",
     "PhaseOnlyDiffractiveStack",
