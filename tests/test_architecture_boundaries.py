@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from ldm_project.application.stages import StageRequest, _build_stage_context
 from ldm_project.config import PhysicsConfig, TrainingConfig
+from ldm_project.student.model import FormalOneShotOpticalGenerator
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -108,3 +109,19 @@ def test_student_distillation_does_not_construct_teacher_models() -> None:
     assert context.models.first_stage is None
     assert context.models.diffusion_model is None
     assert context.models.scheduler is None
+
+
+def test_formal_student_rejects_diagnostic_switches() -> None:
+    physics = PhysicsConfig(
+        front_path_model="coherent_imaging_4f",
+        back_path_model="free_space",
+        physical_forward_contract=True,
+    )
+    config = TrainingConfig().one_shot
+    config.decoder_diagnostic_mode = "bypass_decoder"
+    try:
+        FormalOneShotOpticalGenerator(physics, config, image_size=200)
+    except ValueError as exc:
+        assert "decoder_diagnostic_mode" in str(exc)
+    else:
+        raise AssertionError("formal student accepted a decoder diagnostic switch")
