@@ -3,6 +3,7 @@ from __future__ import annotations
 import torch
 import torch.nn.functional as F
 
+from ..distillation.targets import build_clean_readable_target
 from ..training_loss_common import (
     _camera_artifact_metrics,
     _camera_high_saturation_ratio,
@@ -23,66 +24,8 @@ from ..training_loss_common import (
 )
 
 
-def _build_clean_readable_target(
-    teacher_camera: torch.Tensor,
-) -> dict[str, torch.Tensor]:
-    """Derive a clean readable soft mask from the noisy teacher_camera.
-
-    Returns a dict with:
-        clean_target: soft mask in [0, 1], background near 0, foreground near 1.
-        clean_target_fg_ratio: fraction of pixels above 0.5 (detached scalar).
-    """
-    B, C, H, W = teacher_camera.shape
-    flat = teacher_camera.reshape(B, C, -1)
-    q_low = flat.quantile(0.02, dim=-1, keepdim=True)
-    q_high = flat.quantile(0.98, dim=-1, keepdim=True)
-    normalized = (teacher_camera - q_low.view(B, C, 1, 1)) / (
-        (q_high - q_low).view(B, C, 1, 1).clamp_min(1e-6)
-    )
-    # Small Gaussian blur (~3px sigma) to soften noise without destroying edges.
-    sigma = 3.0
-    ksize = max(3, int(round(sigma * 3)) // 2 * 2 + 1)
-    g = torch.arange(
-        -ksize // 2 + 1,
-        ksize // 2 + 1,
-        device=teacher_camera.device,
-        dtype=teacher_camera.dtype,
-    )
-    g = torch.exp(-g.pow(2) / (2.0 * sigma * sigma))
-    g = g / g.sum()
-    g_row = g.view(1, 1, 1, -1)
-    g_col = g.view(1, 1, -1, 1)
-    clamped = normalized.clamp(0.0, 1.0)
-    padded = F.pad(
-        clamped, (ksize // 2, ksize // 2, ksize // 2, ksize // 2), mode="replicate"
-    )
-    blurred = F.conv2d(padded, g_row.expand(C, 1, 1, -1), groups=C)
-    blurred = F.conv2d(blurred, g_col.expand(C, 1, -1, 1), groups=C)
-    # Soft sigmoid mask: threshold at 0.30 with steepness 10.
-    soft_threshold = 0.30
-    mask = torch.sigmoid((blurred - soft_threshold) * 10.0)
-    # Morphology close (fill small holes): dilation → erosion.
-    close_k = max(3, int(round(0.04 * min(H, W)) // 2 * 2 + 1))  # ~7px at 200
-    # erosion of dilated: -max_pool2d(-max_pool2d(mask))
-    closed = -F.max_pool2d(
-        -F.max_pool2d(mask, kernel_size=close_k, stride=1, padding=close_k // 2),
-        kernel_size=close_k,
-        stride=1,
-        padding=close_k // 2,
-    )
-    # Morphology open (clean tiny speckles): erosion → dilation.
-    open_k = max(3, int(round(0.03 * min(H, W)) // 2 * 2 + 1))  # ~5px at 200
-    opened = F.max_pool2d(
-        -F.max_pool2d(-closed, kernel_size=open_k, stride=1, padding=open_k // 2),
-        kernel_size=open_k,
-        stride=1,
-        padding=open_k // 2,
-    )
-    fg_ratio = (opened > 0.5).float().mean().detach()
-    return {
-        "clean_target": opened,
-        "clean_target_fg_ratio": fg_ratio,
-    }
+# Legacy private import retained for existing objective and test callers.
+_build_clean_readable_target = build_clean_readable_target
 
 
 def _gaussian_blur_2d(tensor: torch.Tensor, sigma: float) -> torch.Tensor:

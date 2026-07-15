@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from .targets import build_clean_readable_target
 from ..train_utils import validate_class_label_values
 
 DISTILL_TARGET_SOURCES = {
@@ -264,9 +265,7 @@ def _resolve_distill_targets(
     if source == "teacher_camera":
         return teacher_camera
     if source == "clean_teacher_camera":
-        from ..student.objectives import _build_clean_readable_target
-
-        return _build_clean_readable_target(teacher_camera.detach())[
+        return build_clean_readable_target(teacher_camera.detach())[
             "clean_target"
         ].float()
     if source == "mnist_prototype":

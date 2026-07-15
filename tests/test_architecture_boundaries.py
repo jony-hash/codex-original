@@ -76,6 +76,14 @@ def test_formal_domain_import_boundaries() -> None:
         assert not any(name.startswith("teacher") for name in imports), path
 
 
+def test_neutral_domains_do_not_depend_on_execution_domains() -> None:
+    forbidden = ("student", "teacher", "application", "diagnostics")
+    for domain in ("distillation", "generation", "evaluation"):
+        for path in (ROOT / "src" / "ldm_project" / domain).glob("*.py"):
+            imports = _imports_in(path)
+            assert not any(name.startswith(forbidden) for name in imports), path
+
+
 def test_filter_stage_constructs_no_model_or_dataset() -> None:
     context = _build_stage_context(_request("teacher_distill_filter"))
     assert context.models.first_stage is None
