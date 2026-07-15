@@ -37,7 +37,7 @@ from ..optics import (
 )
 from ..optics.fields import build_optical_field_record
 
-ONE_SHOT_MODEL_VERSION = "ldm_distilled_single_shot_optical_student_v3"
+from .contracts import ONE_SHOT_MODEL_VERSION
 
 
 def _apply_complex_ols(field: torch.Tensor, kind: str) -> torch.Tensor:
