@@ -77,6 +77,21 @@ def test_formal_domain_import_boundaries() -> None:
         assert not any(name.startswith("teacher") for name in imports), path
 
 
+def test_student_layer_shim_contains_no_implementation() -> None:
+    path = ROOT / "src" / "ldm_project" / "student" / "layers.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    assert not any(isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) for node in tree.body)
+
+
+def test_generator_and_legacy_imports_share_identity() -> None:
+    from ldm_project.one_shot import ElectronicGeneratorE as root_generator
+    from ldm_project.student.generator import ElectronicGeneratorE
+    from ldm_project.student.layers import ElectronicGeneratorE as shim_generator
+
+    assert root_generator is ElectronicGeneratorE
+    assert shim_generator is ElectronicGeneratorE
+
+
 def test_neutral_domains_do_not_depend_on_execution_domains() -> None:
     forbidden = ("student", "teacher", "application", "diagnostics")
     for domain in ("distillation", "generation", "evaluation"):
