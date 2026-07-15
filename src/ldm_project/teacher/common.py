@@ -3,12 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..distillation.dataset import (
-    _filter_distill_payload_by_indices,
-    _load_distill_payload,
-    _validated_distill_tensors,
+    filter_distill_payload_by_indices,
+    load_distill_payload,
+    validated_distill_tensors,
 )
 from ..generation.codes import (
-    _sample_one_shot_codes_with_seed,
+    sample_one_shot_codes_with_seed,
     project_codes_to_teacher_noise,
 )
 from ..visualization_core import (
@@ -869,7 +869,7 @@ def _balanced_preview_indices(
 def _resolve_teacher_label_audit_inputs(
     torch_module, payload, train_cfg, *, device=None
 ):
-    codes, labels, teacher_camera = _validated_distill_tensors(
+    codes, labels, teacher_camera = validated_distill_tensors(
         torch_module, payload, train_cfg
     )
     requested_labels = tuple(train_cfg.distillation.class_labels)
@@ -993,7 +993,7 @@ def run_teacher_distill_export(
     diffusion_model.eval()
     sample_labels = _distill_class_label_sequence(torch_module, train_cfg, device)
     sample_count = int(sample_labels.shape[0])
-    codes = _sample_one_shot_codes_with_seed(
+    codes = sample_one_shot_codes_with_seed(
         torch_module,
         sample_count,
         train_cfg.one_shot.code_dim,
@@ -1114,7 +1114,7 @@ def run_teacher_distill_label_audit(
     distill_dataset: str,
     device=None,
 ) -> None:
-    payload = _load_distill_payload(torch_module, distill_dataset)
+    payload = load_distill_payload(torch_module, distill_dataset)
     _, labels, _, prototypes, audit_tensors, audit_payload, class_labels = (
         _resolve_teacher_label_audit_inputs(
             torch_module,
@@ -1178,7 +1178,7 @@ def run_teacher_distill_label_strict_filter(
     distill_dataset: str,
     device=None,
 ) -> None:
-    payload = _load_distill_payload(torch_module, distill_dataset)
+    payload = load_distill_payload(torch_module, distill_dataset)
     (
         codes,
         labels,
@@ -1199,7 +1199,7 @@ def run_teacher_distill_label_strict_filter(
         audit_tensors,
         train_cfg,
     )
-    filtered_payload, index_tensor = _filter_distill_payload_by_indices(
+    filtered_payload, index_tensor = filter_distill_payload_by_indices(
         torch_module,
         payload,
         selected_indices,
@@ -1375,7 +1375,7 @@ def run_teacher_distill_readable_split(
     distill_dataset: str,
     device=None,
 ) -> None:
-    payload = _load_distill_payload(torch_module, distill_dataset)
+    payload = load_distill_payload(torch_module, distill_dataset)
     (
         codes,
         labels,
@@ -1437,7 +1437,7 @@ def run_teacher_distill_readable_split(
         source_config = payload.get("config", {})
         for split_name in ("train", "val", "test"):
             split_indices = split_summary["indices"][split_name]
-            filtered_payload, index_tensor = _filter_distill_payload_by_indices(
+            filtered_payload, index_tensor = filter_distill_payload_by_indices(
                 torch_module,
                 payload,
                 split_indices,
@@ -1534,8 +1534,8 @@ def run_teacher_distill_filter(
     run_meta: dict[str, object],
     distill_dataset: str,
 ) -> None:
-    payload = _load_distill_payload(torch_module, distill_dataset)
-    codes, labels, teacher_camera = _validated_distill_tensors(
+    payload = load_distill_payload(torch_module, distill_dataset)
+    codes, labels, teacher_camera = validated_distill_tensors(
         torch_module, payload, train_cfg
     )
     metric_tensors = compute_teacher_distill_filter_metrics(
@@ -1549,7 +1549,7 @@ def run_teacher_distill_filter(
         metric_tensors,
         train_cfg,
     )
-    filtered_payload, index_tensor = _filter_distill_payload_by_indices(
+    filtered_payload, index_tensor = filter_distill_payload_by_indices(
         torch_module,
         payload,
         selected_indices,

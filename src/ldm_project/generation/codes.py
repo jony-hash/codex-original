@@ -128,3 +128,6 @@ def project_codes_to_teacher_noise(
 
 
 _project_codes_to_teacher_noise = project_codes_to_teacher_noise
+
+# Public neutral sampling boundary; keep the underscore alias for compatibility.
+sample_one_shot_codes_with_seed = _sample_one_shot_codes_with_seed

@@ -693,3 +693,10 @@ def _select_distill_eval_indices(
         "used_train_fallback": used_train_fallback,
         "per_class": per_class,
     }
+
+
+# Public neutral boundary; historical private aliases remain above for callers
+# that still import the pre-refactor names.
+load_distill_payload = _load_distill_payload
+validated_distill_tensors = _validated_distill_tensors
+filter_distill_payload_by_indices = _filter_distill_payload_by_indices
