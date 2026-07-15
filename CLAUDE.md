@@ -18,5 +18,6 @@
 
 - `optics/`、`student/`、`teacher/`、`application/` 是正式领域；顶层旧模块仅为无 warning 的 import compatibility shim。
 - `application.stages.StageRequest` 按 stage 懒构造依赖；不得恢复 CLI 启动时同时实例化 VAE、DDPM、scheduler 和 student 的模式。
+- `configuration/schema.py`、`configuration/loading.py`、`configuration/validation.py` 分别拥有 canonical config 实现；`configuration/legacy.py` 与根 `config.py` 不得重新承载算法主体。`teacher/common.py` 拥有 distill 算法，scoped workflow modules 和 legacy facades 只做公开转发/兼容注入。
 - Formal v56 stage 使用 `FormalOneShotOpticalGenerator`；`student.generator`、`student.checkpoints`、`optics.d2nn` 和 `distillation.targets` 分别拥有 generator、checkpoint、phase-only D2NN 和中立 target transform 合同。`student.experimental` 承载兼容诊断层，`student.layers` 仅为旧 imports 提供 shim；历史 `OneShotOpticalGenerator` 仅用于 compatibility/diagnostic 配置。
 - `experiments/archive/` 只读、`diagnostic-only`，不能作为 active config/tool promotion。

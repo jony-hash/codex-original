@@ -194,7 +194,7 @@ v63 工具与工件：
 
 截至本轮已验证：v62/v63 基线完整测试 `478 passed`、`148 subtests passed`；formal Student/Optics 定向测试通过；冻结 v60 checkpoint 在 CUDA 上与 `/tmp/second_decoupling_baseline.pt` 的 96 个输出字段和 15 个 provenance 光场平面 bitwise 相同。随后 objective composer 已将 `camera_recon_loss` 固定为 formal term，其余项按显式 experimental registry 叠加；checkpoint 实现已落到 `student/checkpoints.py`，旧 model 私有入口仅作兼容转发。新增 composer/边界测试后完整测试为 `481 passed`、`148 subtests passed`。完整 stage context、config schema 和超大测试文件的进一步机械拆分仍需在下一等价门之后继续，不能与科学训练混合。
 
-第三轮已完成的结构提交将 canonical `ElectronicGeneratorE` 放入 `student/generator.py`，将旧 layers 实现归入 `student/experimental/`，并把 `student/layers.py` 降为无实现 shim；config 公开入口现在由 `configuration/` 内部实现支撑，stage 通过显式 registry dispatch，teacher distill 由 export/filter/readable/label-audit facade 组织。generator、config、stage、teacher 定向测试和冻结 v60 CUDA 96-output bitwise equality 均通过。formal model 与 experimental model 的最终物理实现反转、测试文件机械拆分仍未宣称完成，必须在下一阶段单独验证。
+第四轮已将正式 Student 实现独立到 `student/formal_model.py`，兼容模型归入 `student/experimental/model.py`，`student/model.py` 仅保留公开 facade；冻结 v60 checkpoint 在 CUDA 上与 `/tmp/second_decoupling_baseline.pt` 的 96 个输出字段 bitwise 相同。配置 dataclass、YAML loading/normalization 和 validators 已分别落到 `configuration/schema.py`、`loading.py`、`validation.py`，旧 `legacy.py`/`config.py` 仍保持对象和错误契约。teacher distill 算法主体已移到 `teacher/common.py`，旧入口保留 prototype builder monkeypatch 注入点；stage runtime footprint 位于 `application/stage_runtimes.py`。完整回归为 `490 passed`、`148 subtests passed`、1607 个既有 warning；本轮不训练、不改变 v56–v63 科学结论。超大测试文件机械拆分和逐 runtime 物化的进一步收敛仍延后，不能把 footprint 登记误写成已完全替换 StageContext。
 
 ## 已完成验证
 

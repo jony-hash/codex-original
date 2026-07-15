@@ -4,6 +4,12 @@ import ast
 from pathlib import Path
 
 from ldm_project.application.stages import STAGE_HANDLER_REGISTRY, STAGE_REGISTRY
+from ldm_project.application.stage_runtimes import (
+    DataOnlyRuntime,
+    StudentRuntime,
+    TeacherRuntime,
+    build_stage_runtime,
+)
 from ldm_project.configuration.loading import load_training_config
 from ldm_project.configuration.schema import TrainingConfig
 from ldm_project.generation import project_codes_to_teacher_noise
@@ -37,3 +43,32 @@ def test_legacy_layers_are_reexports_only() -> None:
         isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
         for node in tree.body
     )
+
+
+def test_stage_runtime_footprints_are_scoped_without_model_construction() -> None:
+    from argparse import Namespace
+
+    request = Namespace(train_cfg=TrainingConfig(mode="teacher_distill_filter"))
+    runtime = build_stage_runtime(request, STAGE_REGISTRY)
+    assert isinstance(runtime, DataOnlyRuntime)
+    assert runtime.footprint.constructs_models == ()
+    assert runtime.footprint.constructs_loader is False
+
+    request.train_cfg = TrainingConfig(mode="one_shot_sample")
+    runtime = build_stage_runtime(request, STAGE_REGISTRY)
+    assert isinstance(runtime, StudentRuntime)
+    assert runtime.footprint.constructs_models == ("one_shot_model",)
+
+    request.train_cfg = TrainingConfig(mode="teacher_sample")
+    runtime = build_stage_runtime(request, STAGE_REGISTRY)
+    assert isinstance(runtime, TeacherRuntime)
+    assert "one_shot_model" not in runtime.footprint.constructs_models
+
+
+def test_formal_model_has_no_experimental_imports() -> None:
+    path = ROOT / "src" / "ldm_project" / "student" / "formal_model.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    imports = [node for node in ast.walk(tree) if isinstance(node, (ast.Import, ast.ImportFrom))]
+    text = "\n".join(ast.unparse(node) for node in imports)
+    assert "student.experimental" not in text
+    assert "student.layers" not in text
