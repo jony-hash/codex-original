@@ -251,11 +251,10 @@ def run_selected_stage(context: StageRequest | StageContext) -> StageContext:
     if isinstance(context, StageRequest):
         context = _build_stage_context(context)
     mode = context.train_cfg.mode
-    if _run_teacher_artifact_stage(context, mode):
-        return context
-    if _run_one_shot_artifact_stage(context, mode):
-        return context
-    _run_training_stage(context, mode)
+    handler = STAGE_HANDLER_REGISTRY.get(mode)
+    if handler is None:
+        raise ValueError(f"unsupported stage: {mode!r}")
+    handler(context)
     return context
 
 
@@ -522,3 +521,51 @@ def _run_training_stage(context: StageContext, mode: str) -> None:
             one_shot_optical_checkpoint=getattr(args, "one_shot_optical_checkpoint", None),
             load_one_shot_checkpoint_fn=hooks.load_one_shot_checkpoint,
         )
+
+
+def _handle_teacher_artifact_stage(context: StageContext) -> None:
+    _run_teacher_artifact_stage(context, context.train_cfg.mode)
+
+
+def _handle_one_shot_artifact_stage(context: StageContext) -> None:
+    _run_one_shot_artifact_stage(context, context.train_cfg.mode)
+
+
+def _handle_training_stage(context: StageContext) -> None:
+    _run_training_stage(context, context.train_cfg.mode)
+
+
+# Explicit registry: dispatch ownership is auditable without constructing a
+# model to discover which branch a stage will use.  StageContext remains only
+# the compatibility payload for the existing runners and tests.
+STAGE_HANDLER_REGISTRY: dict[str, Callable[[StageContext], None]] = {
+    **{
+        mode: _handle_teacher_artifact_stage
+        for mode in {
+            "teacher_sample",
+            "teacher_distill_export",
+            "teacher_distill_filter",
+            "teacher_distill_label_audit",
+            "teacher_distill_label_strict_filter",
+            "teacher_distill_readable_split",
+            "teacher_first_stage_oracle_audit",
+            "teacher_diffusion_latent_audit",
+        }
+    },
+    **{
+        mode: _handle_one_shot_artifact_stage
+        for mode in {"one_shot_sample", "one_shot_distill_eval", "one_shot_optical_identity_audit"}
+    },
+    **{
+        mode: _handle_training_stage
+        for mode in {
+            "first_stage",
+            "diffusion",
+            "teacher_first_stage",
+            "teacher_diffusion",
+            "teacher_full",
+            "one_shot",
+            "one_shot_distill",
+        }
+    },
+}
