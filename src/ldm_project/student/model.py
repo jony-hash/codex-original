@@ -1771,7 +1771,7 @@ def _validate_partial_checkpoint_load(
         )
 
 
-def _load_one_shot_checkpoint_state(
+def _load_one_shot_checkpoint_state_legacy_impl(
     model: OneShotOpticalGenerator,
     checkpoint_state: Mapping[str, torch.Tensor],
     *,
@@ -1836,3 +1836,17 @@ def _load_one_shot_checkpoint_state(
     if skipped_keys or missing_keys or unexpected_keys:
         _print_partial_checkpoint_load(description, summary)
     return summary
+
+
+# Compatibility symbol for callers that historically imported the private
+# loader from ``student.model``.  The implementation now lives in the
+# checkpoint contract module; keeping this forwarding wrapper avoids changing
+# old tooling while preventing new code from depending on model internals.
+def _load_one_shot_checkpoint_state(
+    model: OneShotOpticalGenerator,
+    checkpoint_state: Mapping[str, torch.Tensor],
+    **kwargs: Any,
+) -> dict[str, int]:
+    from .checkpoints import _load_one_shot_checkpoint_state as canonical_loader
+
+    return canonical_loader(model, checkpoint_state, **kwargs)

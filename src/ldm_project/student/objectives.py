@@ -22,6 +22,7 @@ from ..training_loss_common import (
     _weighted_sample_mean,
     _zero_like_loss,
 )
+from .objective_composition import compose_one_shot_total
 
 
 # Legacy private import retained for existing objective and test callers.
@@ -2091,43 +2092,45 @@ def one_shot_loss(
     cross_class_pairwise = diversity_terms["cross_class_loss"]
     slm_pairwise_mse = diversity_terms["slm_pairwise_mse"]
     slm_per_class_std_mean = diversity_terms["slm_per_class_std_mean"]
-    total = (
-        camera_recon_weight * camera_metrics["recon_loss"]
-        + shape_loss
-        + edge_loss
-        + slm_smoothness
-        + slm_contrast
-        + camera_saturation
-        + camera_topology
-        + camera_artifact
-        + camera_readability
-        + camera_background_speckle
-        + camera_background_hotspot
-        + camera_background_highfreq
-        + camera_readable_contrast
-        + student_label_margin
-        + student_prototype_ce_loss
-        + student_negative_label_margin_loss
-        + student_roi_prototype_ce_loss
-        + student_roi_negative_label_margin_loss
-        + aux_semantic_loss
-        + aux_topology_loss
-        + code_diversity
-        + sample_code_diversity
-        + teacher_pairwise_diversity
-        + cross_class_pairwise
-        + clean_dice_loss
-        + clean_fg_hole_loss
-        + clean_bg_speckle_loss
-        + clean_bg_hotspot_loss
-        + clean_bg_highfreq_loss
-        + encoder_input_topology
-        + student_pair_contrast_loss
-        + display_speckle_loss
-        + aux_detail_shape_loss
-        + aux_detail_edge_loss
-        + residual_l1_loss
-        + residual_background_loss
+    total = compose_one_shot_total(
+        {
+            "camera_recon_loss": camera_recon_weight * camera_metrics["recon_loss"],
+            "shape_loss": shape_loss,
+            "edge_loss": edge_loss,
+            "slm_smoothness_loss": slm_smoothness,
+            "slm_contrast_loss": slm_contrast,
+            "camera_saturation_loss": camera_saturation,
+            "camera_topology_loss": camera_topology,
+            "camera_artifact_loss": camera_artifact,
+            "camera_readability_loss": camera_readability,
+            "camera_background_speckle_loss": camera_background_speckle,
+            "camera_background_hotspot_loss": camera_background_hotspot,
+            "camera_background_highfreq_loss": camera_background_highfreq,
+            "camera_readable_contrast_loss": camera_readable_contrast,
+            "student_label_margin_loss": student_label_margin,
+            "student_prototype_ce_loss": student_prototype_ce_loss,
+            "student_negative_label_margin_loss": student_negative_label_margin_loss,
+            "student_roi_prototype_ce_loss": student_roi_prototype_ce_loss,
+            "student_roi_negative_label_margin_loss": student_roi_negative_label_margin_loss,
+            "aux_semantic_loss": aux_semantic_loss,
+            "aux_topology_loss": aux_topology_loss,
+            "code_diversity_loss": code_diversity,
+            "sample_code_diversity_loss": sample_code_diversity,
+            "teacher_pairwise_diversity_loss": teacher_pairwise_diversity,
+            "cross_class_pairwise_loss": cross_class_pairwise,
+            "clean_foreground_dice_loss": clean_dice_loss,
+            "clean_foreground_hole_loss": clean_fg_hole_loss,
+            "clean_background_speckle_loss": clean_bg_speckle_loss,
+            "clean_background_hotspot_loss": clean_bg_hotspot_loss,
+            "clean_background_highfreq_loss": clean_bg_highfreq_loss,
+            "encoder_input_topology_loss": encoder_input_topology,
+            "student_pair_contrast_loss": student_pair_contrast_loss,
+            "display_speckle_loss": display_speckle_loss,
+            "aux_detail_shape_loss": aux_detail_shape_loss,
+            "aux_detail_edge_loss": aux_detail_edge_loss,
+            "residual_l1_loss": residual_l1_loss,
+            "residual_background_loss": residual_background_loss,
+        }
     )
     return {
         "loss": total,
