@@ -1607,7 +1607,7 @@ class OneShotOpticalGenerator(nn.Module):
         return fields
 
 
-class FormalOneShotOpticalGenerator(OneShotOpticalGenerator):
+class _LegacyFormalOneShotOpticalGenerator(OneShotOpticalGenerator):
     """Canonical current physical-forward student.
 
     Compatibility and diagnostic variants remain available through
@@ -1638,3 +1638,8 @@ def _load_one_shot_checkpoint_state(
     from .checkpoints import _load_one_shot_checkpoint_state as canonical_loader
 
     return canonical_loader(model, checkpoint_state, **kwargs)
+
+
+# Canonical formal implementation is isolated from this compatibility module.
+# Keep the historical import path and class name stable for callers.
+from .formal_model import FormalOneShotOpticalGenerator  # noqa: E402
