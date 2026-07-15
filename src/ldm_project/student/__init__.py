@@ -11,6 +11,7 @@ from .layers import (
     PhaseOnlyDiffractiveStack,
 )
 from .model import (
+    FormalOneShotOpticalGenerator,
     ONE_SHOT_MODEL_VERSION,
     OneShotOpticalGenerator,
     load_one_shot_checkpoint,
@@ -20,6 +21,7 @@ from .model import (
 
 __all__ = [
     "ElectronicGeneratorE",
+    "FormalOneShotOpticalGenerator",
     "IdealAmplitudeSLMModel",
     "ONE_SHOT_MODEL_VERSION",
     "OneShotOpticalGenerator",
