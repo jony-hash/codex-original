@@ -17,12 +17,11 @@ from ..training_loss_common import (
     _masked_mean_per_sample,
     _sobel_magnitude,
     _total_variation,
-    _weighted_reconstruction_metrics,
-    _weighted_reconstruction_metrics_for_samples,
     _weighted_sample_mean,
     _zero_like_loss,
 )
 from .objective_composition import compose_one_shot_total
+from .objective_terms import formal_reconstruction_terms
 
 
 # Legacy private import retained for existing objective and test callers.
@@ -1633,47 +1632,17 @@ def _reconstruction_terms(
     class_weight_labels: tuple[int, ...],
     class_weight: float,
 ) -> dict[str, torch.Tensor]:
-    foreground_mask = (target_batch > foreground_threshold).float()
-    background_mask = 1.0 - foreground_mask
-    camera_prediction = outputs["camera_plane"]
-    camera_loss_prediction = outputs.get("camera_plane_loss", camera_prediction)
-    sample_weights = _resolve_sample_weights(
+    return formal_reconstruction_terms(
+        outputs,
         target_batch,
         class_labels,
-        class_weight_labels,
-        class_weight,
+        foreground_threshold=foreground_threshold,
+        foreground_weight=foreground_weight,
+        background_weight=background_weight,
+        class_weight_labels=class_weight_labels,
+        class_weight=class_weight,
+        sample_weight_resolver=_resolve_sample_weights,
     )
-    has_class_weights = (
-        class_labels is not None and bool(class_weight_labels) and class_weight != 1.0
-    )
-    if has_class_weights:
-        metrics = _weighted_reconstruction_metrics_for_samples(
-            camera_prediction,
-            target_batch,
-            foreground_mask,
-            background_mask,
-            foreground_weight,
-            background_weight,
-            sample_weights,
-        )
-    else:
-        metrics = _weighted_reconstruction_metrics(
-            camera_prediction,
-            target_batch,
-            foreground_mask,
-            background_mask,
-            foreground_weight,
-            background_weight,
-        )
-    return {
-        "foreground_mask": foreground_mask,
-        "background_mask": background_mask,
-        "camera_prediction": camera_prediction,
-        "camera_loss_prediction": camera_loss_prediction,
-        "sample_weights": sample_weights,
-        "metrics": metrics,
-        "zero": _zero_like_loss(camera_prediction),
-    }
 
 
 def one_shot_loss(
