@@ -1,3 +1,4 @@
+# ruff: noqa: F401,F403,F405,F811
 from __future__ import annotations
 
 import importlib.util
@@ -6,94 +7,11 @@ import math
 from pathlib import Path
 import tempfile
 import unittest
-
-
-def _cuda_device():
-    import torch
-
-    if not torch.cuda.is_available():
-        raise unittest.SkipTest("CUDA is required for one-shot optical student smoke tests.")
-    return torch.device("cuda")
-
-
-def _dummy_one_shot_outputs(batch_size: int, image_size: int, grid_size: int):
-    import torch
-
-    camera = torch.linspace(0.05, 0.95, steps=batch_size * image_size * image_size).reshape(
-        batch_size, 1, image_size, image_size
-    )
-    full_phase = torch.linspace(-torch.pi, torch.pi, steps=camera.numel()).reshape_as(camera)
-    grid = torch.linspace(0.0, 2.0, steps=batch_size * grid_size * grid_size).reshape(
-        batch_size, 1, grid_size, grid_size
-    )
-    grid_phase = torch.linspace(-torch.pi, torch.pi, steps=grid.numel()).reshape_as(grid)
-    raw_camera = torch.linspace(0.1, 1.1, steps=batch_size * grid_size * grid_size).reshape(
-        batch_size, 1, grid_size, grid_size
-    )
-    layer_energy = torch.ones(batch_size, 2, dtype=torch.float32)
-    return {
-        "camera_plane": camera,
-        "slm_command": camera.clamp(0.0, 1.0),
-        "slm_amplitude": camera.clamp(0.0, 1.0),
-        "slm_phase": torch.zeros_like(camera),
-        "encoder_input_amplitude": camera * 2.0,
-        "encoder_input_phase": full_phase,
-        "encoder_input_grid_amplitude": grid * 0.8,
-        "encoder_input_grid_phase": grid_phase,
-        "encoded_amplitude": grid,
-        "encoded_phase": grid_phase,
-        "ols_input_amplitude": grid,
-        "ols_input_phase": grid_phase,
-        "ols_output_amplitude": grid * 0.5,
-        "ols_output_phase": -grid_phase,
-        "ols_amplitude": grid * 0.5,
-        "ols_phase": -grid_phase,
-        "decoder_input_amplitude": grid * 0.5,
-        "decoder_input_phase": -grid_phase,
-        "decoder_output_amplitude": grid * 1.25,
-        "decoder_output_phase": grid_phase.roll(shifts=1, dims=-1),
-        "chip_amplitude": grid * 3.0,
-        "chip_phase": grid_phase,
-        "camera_phase": grid_phase,
-        "diffractive_camera_intensity_raw": raw_camera,
-        "diffractive_camera_plane_raw": raw_camera.clamp(0.0, 1.0),
-        "diffractive_camera_plane_loss_raw": raw_camera,
-        "diffractive_encoder_layer_amplitude": grid.unsqueeze(1).expand(batch_size, 2, 1, grid_size, grid_size),
-        "diffractive_encoder_layer_phase": grid_phase.unsqueeze(1).expand(batch_size, 2, 1, grid_size, grid_size),
-        "diffractive_decoder_layer_amplitude": (grid * 1.1).unsqueeze(1).expand(batch_size, 2, 1, grid_size, grid_size),
-        "diffractive_decoder_layer_phase": grid_phase.neg().unsqueeze(1).expand(batch_size, 2, 1, grid_size, grid_size),
-        "diffractive_encoder_mask_amplitude": grid.new_ones(2, 1, grid_size, grid_size),
-        "diffractive_encoder_mask_phase": grid_phase[:2],
-        "diffractive_decoder_mask_amplitude": grid.new_ones(2, 1, grid_size, grid_size),
-        "diffractive_decoder_mask_phase": -grid_phase[:2],
-        "diffractive_encoder_crop_input_energy": layer_energy * 4.0,
-        "diffractive_encoder_crop_padded_input_energy": layer_energy * 4.0,
-        "diffractive_encoder_crop_propagated_full_energy": layer_energy * 3.0,
-        "diffractive_encoder_crop_cropped_energy": layer_energy,
-        "diffractive_encoder_crop_crop_retention": layer_energy * 0.25,
-        "diffractive_encoder_crop_propagation_energy_ratio": layer_energy * 0.75,
-        "diffractive_decoder_crop_input_energy": layer_energy * 2.0,
-        "diffractive_decoder_crop_padded_input_energy": layer_energy * 2.0,
-        "diffractive_decoder_crop_propagated_full_energy": layer_energy * 1.5,
-        "diffractive_decoder_crop_cropped_energy": layer_energy * 0.5,
-        "diffractive_decoder_crop_crop_retention": layer_energy * 0.25,
-        "diffractive_decoder_crop_propagation_energy_ratio": layer_energy * 0.75,
-    }
-
-
-def _assert_nonblank_phase_columns_are_labeled(test_case, tensor_map: dict[str, object]) -> None:
-    import torch
-
-    for label, value in tensor_map.items():
-        if not hasattr(value, "detach"):
-            continue
-        tensor = value.detach().float()
-        if torch.isnan(tensor).all().item():
-            continue
-        test_case.assertIn("phase", label, f"nonblank phase column must say phase: {label}")
-
-
-
+from tests.tests_support import (
+    _assert_nonblank_phase_columns_are_labeled,
+    _cuda_device,
+    _dummy_one_shot_outputs,
+)
 @unittest.skipUnless(importlib.util.find_spec("torch"), "torch is required for one-shot tests")
 class OneShotConfigTests(unittest.TestCase):
     @staticmethod
