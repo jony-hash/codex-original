@@ -8,7 +8,7 @@ import torch
 
 def validate_one_shot_checkpoint_payload(payload: Mapping[str, Any]) -> None:
     """Reject unknown versions or incomplete payloads before touching model state."""
-    from .model import ONE_SHOT_MODEL_VERSION
+    from .contracts import ONE_SHOT_MODEL_VERSION
 
     if payload.get("model_version") != ONE_SHOT_MODEL_VERSION:
         raise ValueError("Incompatible one-shot checkpoint: unexpected model_version.")
