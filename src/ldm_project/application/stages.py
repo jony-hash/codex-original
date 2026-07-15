@@ -5,29 +5,6 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from ..config import TrainingConfig
-from ..student.evaluation import (
-    run_one_shot_distill_eval_stage,
-    run_one_shot_sample_stage,
-)
-from ..diagnostics.identity_audit import run_one_shot_optical_identity_audit_stage
-from ..student.training import run_one_shot_distill_training
-from ..student.baseline_training import run_one_shot_training
-from ..teacher.distill import (
-    run_teacher_distill_export,
-    run_teacher_distill_filter,
-    run_teacher_distill_label_audit,
-    run_teacher_distill_label_strict_filter,
-    run_teacher_distill_readable_split,
-)
-from ..teacher.fault_localization import (
-    run_teacher_diffusion_latent_audit,
-    run_teacher_first_stage_oracle_audit,
-)
-from ..teacher.sampling import run_sample_stage
-from ..teacher.training import (
-    run_diffusion_training,
-    run_first_stage_training,
-)
 from ..train_utils import is_teacher_diffusion_mode, is_teacher_first_stage_mode
 from .stage_runtimes import StageRuntime, build_stage_runtime
 
@@ -52,16 +29,17 @@ class StageData:
 
 @dataclass(frozen=True)
 class StageHooks:
-    load_first_stage_checkpoint: Callable[..., Any]
-    load_diffusion_checkpoint: Callable[..., Any]
-    load_one_shot_checkpoint: Callable[..., Any]
-    first_stage_loss: Callable[..., Any]
-    diffusion_loss: Callable[..., Any]
-    diffusion_per_sample_losses: Callable[..., Any]
-    one_shot_loss: Callable[..., Any]
-    sample_latents: Callable[..., Any]
-    sample_latents_with_trace: Callable[..., Any]
-    resolve_denoising_trace_steps: Callable[..., Any]
+    # 未被当前 stage 声明的 hook 固定为 None；StageContext 仍保留旧字段形状。
+    load_first_stage_checkpoint: Callable[..., Any] | None
+    load_diffusion_checkpoint: Callable[..., Any] | None
+    load_one_shot_checkpoint: Callable[..., Any] | None
+    first_stage_loss: Callable[..., Any] | None
+    diffusion_loss: Callable[..., Any] | None
+    diffusion_per_sample_losses: Callable[..., Any] | None
+    one_shot_loss: Callable[..., Any] | None
+    sample_latents: Callable[..., Any] | None
+    sample_latents_with_trace: Callable[..., Any] | None
+    resolve_denoising_trace_steps: Callable[..., Any] | None
 
 
 @dataclass(frozen=True)
@@ -196,6 +174,19 @@ def run_selected_stage(context: StageRequest | StageContext) -> StageContext:
 
 
 def _run_teacher_artifact_stage(context: StageContext, mode: str) -> bool:
+    from ..teacher.distill import (
+        run_teacher_distill_export,
+        run_teacher_distill_filter,
+        run_teacher_distill_label_audit,
+        run_teacher_distill_label_strict_filter,
+        run_teacher_distill_readable_split,
+    )
+    from ..teacher.fault_localization import (
+        run_teacher_diffusion_latent_audit,
+        run_teacher_first_stage_oracle_audit,
+    )
+    from ..teacher.sampling import run_sample_stage
+
     args = context.args
     data = context.data
     hooks = context.hooks
@@ -321,6 +312,12 @@ def _run_teacher_artifact_stage(context: StageContext, mode: str) -> bool:
 
 
 def _run_one_shot_artifact_stage(context: StageContext, mode: str) -> bool:
+    from ..diagnostics.identity_audit import run_one_shot_optical_identity_audit_stage
+    from ..student.evaluation import (
+        run_one_shot_distill_eval_stage,
+        run_one_shot_sample_stage,
+    )
+
     args = context.args
     data = context.data
     hooks = context.hooks
@@ -371,6 +368,10 @@ def _run_one_shot_artifact_stage(context: StageContext, mode: str) -> bool:
 
 
 def _run_training_stage(context: StageContext, mode: str) -> None:
+    from ..student.baseline_training import run_one_shot_training
+    from ..student.training import run_one_shot_distill_training
+    from ..teacher.training import run_diffusion_training, run_first_stage_training
+
     args = context.args
     data = context.data
     hooks = context.hooks
