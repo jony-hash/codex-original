@@ -144,123 +144,41 @@ STAGE_REGISTRY = {
 
 
 def _build_stage_context(request: StageRequest, runtime: StageRuntime | None = None) -> StageContext:
-    """Construct the legacy handler context lazily from a stage request."""
-    # 保留根包的可注入公开接口：既兼容既有 CLI 测试替身，也不改变实际实现的归属。
-    from .. import (
-        DIFFUSION_MODEL_VERSION,
-        FIRST_STAGE_MODEL_VERSION,
-        LatentDiffusionUNet,
-        LinearNoiseScheduler,
-        OpticalPathVAE,
-        build_train_validation_loaders,
-        load_diffusion_checkpoint,
-        load_first_stage_checkpoint,
-        load_one_shot_checkpoint,
-    )
-    from ..sampling_reports import select_first_stage_visual_batch, select_post_train_sample_batch
-    from .model_factory import build_student_model
-    from ..student.objectives import one_shot_loss
-    from ..teacher.diffusion_losses import diffusion_loss, diffusion_per_sample_losses
-    from ..teacher.diffusion_sampling import resolve_denoising_trace_steps, sample_latents, sample_latents_with_trace
-    from ..teacher.first_stage_losses import first_stage_loss
-    from .run_context import build_run_meta, save_visual_config_snapshots
-    from ..train_utils import resolve_stage_epoch_plan
+    """Compatibility adapter around the canonical scoped runtime materializer."""
+    from .stage_runtimes import materialize_stage_runtime
 
-    mode = request.train_cfg.mode
-    footprint = STAGE_REGISTRY.get(mode)
-    if footprint is None:
-        raise ValueError(f"unsupported stage for lazy construction: {mode!r}")
-    torch_module = request.torch_module
-    first_stage = None
-    diffusion_model = None
-    one_shot_model = None
-    scheduler = None
-    if footprint["first_stage"]:
-        first_stage = OpticalPathVAE(request.physics, request.train_cfg.first_stage).to(request.device)
-        if request.args.first_stage_checkpoint is not None:
-            payload = torch_module.load(request.args.first_stage_checkpoint, map_location=request.device, weights_only=False)
-            load_first_stage_checkpoint(first_stage, payload)
-            if request.checkpoint_resolution["first_stage_checkpoint_source"] == "final_pt":
-                print(f"using final_pt first-stage checkpoint: {request.args.first_stage_checkpoint}")
-    if footprint["diffusion"]:
-        diffusion_model = LatentDiffusionUNet(request.train_cfg.first_stage.latent_channels, request.train_cfg.diffusion).to(request.device)
-        scheduler = LinearNoiseScheduler(
-            timesteps=request.train_cfg.diffusion.timesteps,
-            beta_start=request.train_cfg.diffusion.beta_start,
-            beta_end=request.train_cfg.diffusion.beta_end,
-        ).to(request.device)
-    if footprint["student"]:
-        one_shot_model = build_student_model(
-            request.physics,
-            request.train_cfg.one_shot,
-            image_size=request.train_cfg.first_stage.image_size,
-            device=request.device,
-        )
-
-    dataset_splits = train_bundle = validation_bundle = None
-    first_stage_visual_batch = first_stage_visual_labels = None
-    first_stage_visual_source = None
-    diffusion_visual_labels = diffusion_visual_reference_images = None
-    diffusion_visual_reference_labels = diffusion_visual_source = None
-    if footprint["data"]:
-        dataset_splits = build_train_validation_loaders(
-            data_config=request.train_cfg.data, first_stage_config=request.train_cfg.first_stage, batch_size=request.train_cfg.batch_size
-        )
-        train_bundle = dataset_splits.train
-        validation_bundle = dataset_splits.validation
-        if is_teacher_first_stage_mode(mode):
-            first_stage_visual_batch, first_stage_visual_labels, first_stage_visual_source = select_first_stage_visual_batch(
-                torch_module, validation_bundle, train_bundle, request.train_cfg.diffusion.num_classes, request.device, allow_train_reference_fallback=True
-            )
-        if is_teacher_diffusion_mode(mode):
-            diffusion_visual_labels, diffusion_visual_reference_images, diffusion_visual_reference_labels, diffusion_visual_source = select_post_train_sample_batch(
-                torch_module, validation_bundle, train_bundle, request.train_cfg.diffusion.num_classes, request.device, sample_repeats_per_class=2, allow_train_reference_fallback=True
-            )
-
-    save_visual_config_snapshots(
-        request.run_manager, request.physics, request.train_cfg,
-        first_stage_visual_labels=first_stage_visual_labels, first_stage_visual_source=first_stage_visual_source,
-        diffusion_visual_labels=diffusion_visual_labels, diffusion_visual_reference_labels=diffusion_visual_reference_labels,
-        diffusion_visual_source=diffusion_visual_source,
-    )
-    epoch_plan = resolve_stage_epoch_plan(mode, request.train_cfg.first_stage_epochs, request.train_cfg.diffusion_epochs, request.train_cfg.one_shot_epochs)
-    run_meta = build_run_meta(
-        args=request.args, train_cfg=request.train_cfg, device=request.device, checkpoint_resolution=request.checkpoint_resolution,
-        dataset_splits=dataset_splits, train_bundle=train_bundle, validation_bundle=validation_bundle, epoch_plan=epoch_plan,
-        run_manager=request.run_manager, diffusion_model=diffusion_model,
-        first_stage_model_version=FIRST_STAGE_MODEL_VERSION, one_shot_model_version=request.one_shot_version,
-    )
-    request.run_manager.write_meta(run_meta)
-    actual_models = tuple(
-        name for name, value in (
-            ("first_stage", first_stage),
-            ("diffusion_model", diffusion_model),
-            ("scheduler", scheduler),
-            ("one_shot_model", one_shot_model),
-        ) if value is not None
-    )
-    if runtime is not None and actual_models != runtime.footprint.constructs_models:
-        raise RuntimeError(
-            "stage runtime footprint disagrees with constructed models: "
-            f"declared={runtime.footprint.constructs_models}, actual={actual_models}"
-        )
+    if runtime is None:
+        runtime = build_stage_runtime(request, STAGE_REGISTRY)
+    materialized = materialize_stage_runtime(request, runtime)
+    hooks = materialized.hooks
     return StageContext(
-        torch_module=torch_module, args=request.args, checkpoint_resolution=request.checkpoint_resolution,
-        train_cfg=request.train_cfg, run_manager=request.run_manager, run_meta=run_meta, physics=request.physics,
-        device=request.device, use_pin_memory=request.use_pin_memory,
-        models=StageModels(first_stage=first_stage, diffusion_model=diffusion_model, one_shot_model=one_shot_model, scheduler=scheduler),
-        data=StageData(train_bundle=train_bundle, validation_bundle=validation_bundle, first_stage_visual_batch=first_stage_visual_batch,
-                       first_stage_visual_labels=first_stage_visual_labels, diffusion_visual_labels=diffusion_visual_labels,
-                       diffusion_visual_reference_images=diffusion_visual_reference_images),
-        hooks=StageHooks(load_first_stage_checkpoint=load_first_stage_checkpoint, load_diffusion_checkpoint=load_diffusion_checkpoint,
-                         load_one_shot_checkpoint=load_one_shot_checkpoint, first_stage_loss=first_stage_loss,
-                         diffusion_loss=diffusion_loss, diffusion_per_sample_losses=diffusion_per_sample_losses,
-                         one_shot_loss=one_shot_loss, sample_latents=sample_latents,
-                         sample_latents_with_trace=sample_latents_with_trace, resolve_denoising_trace_steps=resolve_denoising_trace_steps),
-        versions=StageVersions(first_stage=FIRST_STAGE_MODEL_VERSION, diffusion=DIFFUSION_MODEL_VERSION, one_shot=request.one_shot_version),
+        torch_module=materialized.torch_module,
+        args=request.args,
+        checkpoint_resolution=request.checkpoint_resolution,
+        train_cfg=request.train_cfg,
+        run_manager=request.run_manager,
+        run_meta=materialized.run_meta,
+        physics=request.physics,
+        device=request.device,
+        use_pin_memory=request.use_pin_memory,
+        models=StageModels(
+            first_stage=materialized.first_stage,
+            diffusion_model=materialized.diffusion_model,
+            one_shot_model=materialized.one_shot_model,
+            scheduler=materialized.scheduler,
+        ),
+        data=StageData(
+            train_bundle=materialized.train_bundle,
+            validation_bundle=materialized.validation_bundle,
+            first_stage_visual_batch=materialized.first_stage_visual_batch,
+            first_stage_visual_labels=materialized.first_stage_visual_labels,
+            diffusion_visual_labels=materialized.diffusion_visual_labels,
+            diffusion_visual_reference_images=materialized.diffusion_visual_reference_images,
+        ),
+        hooks=StageHooks(**hooks),
+        versions=StageVersions(**materialized.versions),
         runtime=runtime,
     )
-
 
 def run_selected_stage(context: StageRequest | StageContext) -> StageContext:
     """Dispatch a request with lazy construction; accept StageContext for legacy callers."""
