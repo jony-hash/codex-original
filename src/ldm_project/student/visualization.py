@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import torch.nn.functional as F
 
-from ..diagnostics.d2nn_visualization import (
+from ..evaluation.d2nn_visualization import (
     _d2nn_field_layer_visualization_columns,
 )
 from ..visualization_core import (

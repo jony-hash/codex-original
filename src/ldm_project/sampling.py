@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from .d2nn_diagnostics import build_one_shot_d2nn_diagnostics
-from .d2nn_visualization import (
+from .evaluation.d2nn_visualization import (
     D2NN_LAYER_VISUALIZATION_SPECS,
     D2NN_MASK_VISUALIZATION_SPECS,
     build_one_shot_d2nn_focus_visualization_tensors,

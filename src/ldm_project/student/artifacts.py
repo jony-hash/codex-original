@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..diagnostics.d2nn import build_one_shot_d2nn_diagnostics
-from ..diagnostics.d2nn_visualization import (
+from ..evaluation.d2nn import build_one_shot_d2nn_diagnostics
+from ..evaluation.d2nn_visualization import (
     build_one_shot_d2nn_focus_visualization_tensors,
     build_one_shot_d2nn_visualization_tensors,
     build_one_shot_slm_to_encoder_focus_visualization_tensors,
