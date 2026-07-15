@@ -100,6 +100,27 @@ def test_neutral_domains_do_not_depend_on_execution_domains() -> None:
             assert not any(name.startswith(forbidden) for name in imports), path
 
 
+def test_teacher_workflows_do_not_depend_on_common_facade() -> None:
+    for name in ("export.py", "label_audit.py", "filter.py", "readable.py"):
+        imports = _imports_in(ROOT / "src" / "ldm_project" / "teacher" / name)
+        assert "common" not in imports, name
+    common_tree = ast.parse(
+        (ROOT / "src" / "ldm_project" / "teacher" / "common.py").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert not any(
+        isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+        for node in common_tree.body
+    )
+
+
+def test_objective_terms_do_not_depend_on_objective_facade() -> None:
+    terms_root = ROOT / "src" / "ldm_project" / "student" / "objective_terms"
+    for path in terms_root.glob("*.py"):
+        assert "objectives" not in _imports_in(path), path
+
+
 def test_filter_stage_constructs_no_model_or_dataset() -> None:
     context = _build_stage_context(_request("teacher_distill_filter"))
     assert context.models.first_stage is None
