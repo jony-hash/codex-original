@@ -6,6 +6,9 @@ exact behavior and error messages.
 """
 from __future__ import annotations
 
+# Re-export imports are intentionally unused within this compatibility module.
+# ruff: noqa: F401
+
 from .schema import *  # noqa: F401,F403
 from .loading import (
     _TrainingConfigSections,
