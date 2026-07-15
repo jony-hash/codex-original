@@ -18,6 +18,7 @@ from .model import (
     load_one_shot_checkpoint_subset,
     validate_one_shot_checkpoint_payload,
 )
+from .formal_contract import validate_formal_student_config
 
 __all__ = [
     "ElectronicGeneratorE",
@@ -30,4 +31,5 @@ __all__ = [
     "load_one_shot_checkpoint",
     "load_one_shot_checkpoint_subset",
     "validate_one_shot_checkpoint_payload",
+    "validate_formal_student_config",
 ]

@@ -37,6 +37,7 @@ from .checkpoints import (
     load_one_shot_checkpoint_subset,
     validate_one_shot_checkpoint_payload,
 )
+from .formal_contract import validate_formal_student_config
 from ..optics.sampling import PlaneSampling, sample_center_aperture
 from ..optics import (
     BackOpticalPath,
@@ -1621,33 +1622,7 @@ class FormalOneShotOpticalGenerator(OneShotOpticalGenerator):
         image_size: int = 200,
     ) -> None:
         resolved = config or OneShotConfig()
-        d2nn = resolved.d2nn
-        invalid = []
-        if not physics.physical_forward_contract:
-            invalid.append("physics.physical_forward_contract")
-        if resolved.optical_core_arch != "diffractive_phase_only":
-            invalid.append("one_shot.optical_core_arch")
-        if resolved.ols_kind != "identity":
-            invalid.append("one_shot.ols_kind")
-        if resolved.decoder_diagnostic_mode != "normal":
-            invalid.append("one_shot.decoder_diagnostic_mode")
-        if resolved.decoder_diagnostic_modulation_override != "none":
-            invalid.append("one_shot.decoder_diagnostic_modulation_override")
-        if resolved.decoder_diagnostic_mask_component != "trained":
-            invalid.append("one_shot.decoder_diagnostic_mask_component")
-        if resolved.target_code_diagnostic_mode != "none":
-            invalid.append("one_shot.target_code_diagnostic_mode")
-        if resolved.target_code_bridge_source != "none":
-            invalid.append("one_shot.target_code_bridge_source")
-        if resolved.ols_transfer_calibration != "none":
-            invalid.append("one_shot.ols_transfer_calibration")
-        if d2nn is None or d2nn.modulation != "phase_only":
-            invalid.append("one_shot.d2nn.modulation")
-        if invalid:
-            raise ValueError(
-                "FormalOneShotOpticalGenerator rejects diagnostic/compatibility settings: "
-                + ", ".join(invalid)
-            )
+        validate_formal_student_config(physics, resolved)
         super().__init__(physics, resolved, image_size=image_size)
 
 
