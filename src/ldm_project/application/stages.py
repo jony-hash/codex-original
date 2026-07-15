@@ -29,6 +29,7 @@ from ..teacher.training import (
     run_first_stage_training,
 )
 from ..train_utils import is_teacher_diffusion_mode, is_teacher_first_stage_mode
+from .stage_runtimes import build_stage_runtime
 
 
 @dataclass(frozen=True)
@@ -249,6 +250,9 @@ def _build_stage_context(request: StageRequest) -> StageContext:
 def run_selected_stage(context: StageRequest | StageContext) -> StageContext:
     """Dispatch a request with lazy construction; accept StageContext for legacy callers."""
     if isinstance(context, StageRequest):
+        # 先登记 stage-specific footprint，再通过兼容适配器物化旧 handler payload。
+        # 该登记本身不导入模型，确保 data-only/student stage 的边界可测试。
+        build_stage_runtime(context, STAGE_REGISTRY)
         context = _build_stage_context(context)
     mode = context.train_cfg.mode
     handler = STAGE_HANDLER_REGISTRY.get(mode)

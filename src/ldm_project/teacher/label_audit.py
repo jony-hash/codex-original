@@ -1,5 +1,5 @@
 """Teacher label-audit APIs."""
-from .distill_legacy import (
+from .common import (
     compute_teacher_distill_label_audit,
     compute_teacher_distill_label_audit_batched,
     run_teacher_distill_label_audit,

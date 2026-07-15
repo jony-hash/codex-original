@@ -1,5 +1,5 @@
 """Readable split and gate APIs for teacher payloads."""
-from .distill_legacy import (
+from .common import (
     run_teacher_distill_readable_split,
     _readable_candidate_score,
     _readable_gate_thresholds,
