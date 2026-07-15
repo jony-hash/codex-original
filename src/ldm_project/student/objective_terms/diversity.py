@@ -1,8 +1,10 @@
-"""diversity objective terms."""
-# ruff: noqa: F403,F401,F405
+"""Diversity objective terms."""
 from __future__ import annotations
 
-from ._shared import *
+import torch
+import torch.nn.functional as F
+
+from ._shared import _zero_like_loss
 
 def _one_shot_pairwise_diversity_metrics(
     camera_prediction: torch.Tensor,

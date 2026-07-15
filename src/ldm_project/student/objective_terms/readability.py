@@ -1,10 +1,18 @@
-"""readability objective terms."""
-# ruff: noqa: F403,F401,F405
+"""Readability objective terms and shared display-free image primitives."""
 from __future__ import annotations
 
-from ._shared import *
+import torch
+import torch.nn.functional as F
 
-def _gaussian_blur_2d(tensor: torch.Tensor, sigma: float) -> torch.Tensor:
+from ._shared import (
+    _camera_artifact_metrics,
+    _foreground_dice_score,
+    _masked_mean_per_sample,
+    _zero_like_loss,
+)
+
+
+def gaussian_blur_2d(tensor: torch.Tensor, sigma: float) -> torch.Tensor:
     if sigma <= 0.0:
         return tensor
     channels = tensor.shape[1]
@@ -17,6 +25,10 @@ def _gaussian_blur_2d(tensor: torch.Tensor, sigma: float) -> torch.Tensor:
     padded = F.pad(tensor, (radius, radius, radius, radius), mode="replicate")
     blurred = F.conv2d(padded, kernel_y, groups=channels)
     return F.conv2d(blurred, kernel_x, groups=channels)
+
+
+# 兼容旧的 objective 私有导入；新 term 只使用公开名称。
+_gaussian_blur_2d = gaussian_blur_2d
 
 def _camera_readability_metrics(
     camera_prediction: torch.Tensor,

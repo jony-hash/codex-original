@@ -1,39 +1,25 @@
-# ruff: noqa: F401,E402
 from __future__ import annotations
 
-from pathlib import Path
-
 from ..distillation.dataset import (
-    filter_distill_payload_by_indices,
     load_distill_payload,
     validated_distill_tensors,
 )
-from ..generation.codes import (
-    sample_one_shot_codes_with_seed,
-    project_codes_to_teacher_noise,
-)
+from ..generation.codes import project_codes_to_teacher_noise
 from ..visualization_core import (
     _normalize_for_visualization,
-    enhance_camera_for_display,
     format_output_title,
     readable_camera_for_display,
 )
-from ..train_utils import (
-    load_latent_scale_from_diffusion_checkpoint,
-    set_first_stage_image_fusion_weight,
-    validate_class_label_values,
+from ..train_utils import validate_class_label_values
+from .distill_support import (
+    balanced_preview_indices as _balanced_preview_indices,
+    build_mnist_label_prototype_bank as _build_mnist_label_prototype_bank,
+    masked_ratio as _masked_ratio,
+    metric_summary as _metric_summary,
+    prototype_correlation as _prototype_correlation,
 )
 
 _project_codes_to_teacher_noise = project_codes_to_teacher_noise
-
-from .distill_support import (
-    _balanced_preview_indices,
-    _build_label_prototype_bank_from_tensors,
-    _build_mnist_label_prototype_bank,
-    _masked_ratio,
-    _metric_summary,
-    _prototype_correlation,
-)
 
 def compute_teacher_distill_label_audit(
     torch_module,
@@ -237,7 +223,7 @@ def _teacher_label_audit_json(
         "per_sample": per_sample,
     }
 
-def _teacher_label_audit_visual_tensors(
+def teacher_label_audit_visual_tensors(
     torch_module,
     labels,
     prototypes,
@@ -283,7 +269,7 @@ def _teacher_label_audit_visual_tensors(
         ],
     )
 
-def _resolve_teacher_label_audit_inputs(
+def resolve_teacher_label_audit_inputs(
     torch_module, payload, train_cfg, *, device=None, prototype_builder=None
 ):
     codes, labels, teacher_camera = validated_distill_tensors(
@@ -335,7 +321,7 @@ def _resolve_teacher_label_audit_inputs(
         class_labels,
     )
 
-def _save_teacher_label_audit_artifacts(
+def save_teacher_label_audit_artifacts(
     torch_module,
     *,
     run_manager,
@@ -360,7 +346,7 @@ def _save_teacher_label_audit_artifacts(
             **audit_payload,
         },
     )
-    visual_tensors, row_labels = _teacher_label_audit_visual_tensors(
+    visual_tensors, row_labels = teacher_label_audit_visual_tensors(
         torch_module,
         labels,
         prototypes,
@@ -443,4 +429,17 @@ def run_teacher_distill_label_audit(
     )
     run_manager.write_meta(run_meta)
 
-__all__ = ["compute_teacher_distill_label_audit","compute_teacher_distill_label_audit_batched","run_teacher_distill_label_audit"]
+# Private names are retained for legacy callers; scoped modules import the public
+# names above (often under their historical local spelling).
+_resolve_teacher_label_audit_inputs = resolve_teacher_label_audit_inputs
+_save_teacher_label_audit_artifacts = save_teacher_label_audit_artifacts
+_teacher_label_audit_visual_tensors = teacher_label_audit_visual_tensors
+
+__all__ = [
+    "compute_teacher_distill_label_audit",
+    "compute_teacher_distill_label_audit_batched",
+    "run_teacher_distill_label_audit",
+    "resolve_teacher_label_audit_inputs",
+    "save_teacher_label_audit_artifacts",
+    "teacher_label_audit_visual_tensors",
+]

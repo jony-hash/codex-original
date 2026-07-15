@@ -3,16 +3,18 @@ from __future__ import annotations
 from typing import Any, cast
 
 from ..generation.codes import _sample_one_shot_codes_with_seed
-from .distill import (
-    _build_mnist_label_prototype_bank,
-    _distill_class_label_sequence,
-    _metric_summary,
-    _project_codes_to_teacher_noise,
-    _save_teacher_label_audit_artifacts,
-    _teacher_label_audit_json,
-    _teacher_label_audit_visual_tensors,
-    compute_teacher_distill_label_audit_batched,
+from .distill_support import (
+    build_mnist_label_prototype_bank as _build_mnist_label_prototype_bank,
+    distill_class_label_sequence as _distill_class_label_sequence,
+    metric_summary as _metric_summary,
+    project_codes_to_teacher_noise as _project_codes_to_teacher_noise,
 )
+from .label_audit import (
+    compute_teacher_distill_label_audit_batched,
+    save_teacher_label_audit_artifacts as _save_teacher_label_audit_artifacts,
+    teacher_label_audit_visual_tensors as _teacher_label_audit_visual_tensors,
+)
+from ..evaluation.label_audit import label_audit_json as _teacher_label_audit_json
 from ..train_utils import (
     load_latent_scale_from_diffusion_checkpoint,
     set_first_stage_image_fusion_weight,

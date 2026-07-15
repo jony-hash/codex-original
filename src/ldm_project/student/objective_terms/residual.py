@@ -1,8 +1,10 @@
-"""residual objective terms."""
-# ruff: noqa: F403,F401,F405
+"""Residual and pairwise objective terms."""
 from __future__ import annotations
 
-from ._shared import *
+import torch
+import torch.nn.functional as F
+
+from ._shared import _masked_mean, _masked_mean_per_sample, _zero_like_loss
 
 def _student_pair_contrast_metrics(
     camera_prediction: torch.Tensor,

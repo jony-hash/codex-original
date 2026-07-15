@@ -1,8 +1,10 @@
-"""semantic objective terms."""
-# ruff: noqa: F403,F401,F405
+"""Semantic objective terms."""
 from __future__ import annotations
 
-from ._shared import *
+import torch
+import torch.nn.functional as F
+
+from ._shared import _zero_like_loss
 
 def _normalize_for_label_margin(tensor: torch.Tensor) -> torch.Tensor:
     flattened = tensor.float().flatten(1)

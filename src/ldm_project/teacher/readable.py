@@ -1,33 +1,23 @@
-# ruff: noqa: F401,E402
 from __future__ import annotations
 
-from pathlib import Path
-
 from ..distillation.dataset import (
-    filter_distill_payload_by_indices,
     load_distill_payload,
-    validated_distill_tensors,
-)
-from ..generation.codes import (
-    sample_one_shot_codes_with_seed,
-    project_codes_to_teacher_noise,
+    filter_distill_payload_by_indices,
 )
 from ..visualization_core import (
-    _normalize_for_visualization,
-    enhance_camera_for_display,
     format_output_title,
     readable_camera_for_display,
 )
-from ..train_utils import (
-    load_latent_scale_from_diffusion_checkpoint,
-    set_first_stage_image_fusion_weight,
-    validate_class_label_values,
+from ..train_utils import validate_class_label_values
+
+from .distill_support import (
+    balanced_preview_indices as _balanced_preview_indices,
+    metric_summary as _metric_summary,
 )
-
-_project_codes_to_teacher_noise = project_codes_to_teacher_noise
-
-from .distill_support import _balanced_preview_indices, _metric_summary
-from .label_audit import _resolve_teacher_label_audit_inputs, _save_teacher_label_audit_artifacts
+from .label_audit import (
+    resolve_teacher_label_audit_inputs as _resolve_teacher_label_audit_inputs,
+    save_teacher_label_audit_artifacts as _save_teacher_label_audit_artifacts,
+)
 
 def _readable_gate_thresholds(train_cfg) -> dict[str, float]:
     return {

@@ -1,9 +1,18 @@
-"""topology objective terms."""
-# ruff: noqa: F403,F401,F405
+"""Topology objective terms."""
 from __future__ import annotations
 
-from ._shared import *
-from .readability import _gaussian_blur_2d
+import torch
+import torch.nn.functional as F
+
+from ._shared import (
+    _build_clean_readable_target,
+    _foreground_dice_score,
+    _foreground_shape_loss_for_samples,
+    _masked_mean_per_sample,
+    _sobel_magnitude,
+    _weighted_sample_mean,
+)
+from .readability import gaussian_blur_2d
 
 def transform_aux_topology_target(
     target: torch.Tensor,
@@ -14,13 +23,13 @@ def transform_aux_topology_target(
     if transform == "none":
         transformed = target.float().clamp(0.0, 1.0)
     elif transform == "lowpass":
-        transformed = _gaussian_blur_2d(
+        transformed = gaussian_blur_2d(
             target.float().clamp(0.0, 1.0), sigma=3.0
         ).clamp(0.0, 1.0)
     elif transform == "thick_binary":
         base = (target.float() > foreground_threshold).float()
         thick = F.max_pool2d(base, kernel_size=9, stride=1, padding=4)
-        transformed = _gaussian_blur_2d(thick, sigma=1.2).clamp(0.0, 1.0)
+        transformed = gaussian_blur_2d(thick, sigma=1.2).clamp(0.0, 1.0)
     else:
         raise ValueError(
             "aux_topology_target_transform must be one of ['none', 'lowpass', 'thick_binary'], "

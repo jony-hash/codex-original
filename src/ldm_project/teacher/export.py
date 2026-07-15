@@ -1,32 +1,23 @@
-# ruff: noqa: F401,E402
 from __future__ import annotations
 
 from pathlib import Path
 
-from ..distillation.dataset import (
-    filter_distill_payload_by_indices,
-    load_distill_payload,
-    validated_distill_tensors,
-)
 from ..generation.codes import (
     sample_one_shot_codes_with_seed,
     project_codes_to_teacher_noise,
 )
 from ..visualization_core import (
-    _normalize_for_visualization,
     enhance_camera_for_display,
     format_output_title,
-    readable_camera_for_display,
 )
 from ..train_utils import (
     load_latent_scale_from_diffusion_checkpoint,
     set_first_stage_image_fusion_weight,
-    validate_class_label_values,
 )
 
-_project_codes_to_teacher_noise = project_codes_to_teacher_noise
-
-from .distill_support import _distill_class_label_sequence, _project_codes_to_teacher_noise
+from .distill_support import (
+    distill_class_label_sequence as _distill_class_label_sequence,
+)
 
 def run_teacher_distill_export(
     torch_module,
@@ -83,7 +74,7 @@ def run_teacher_distill_export(
             batch_labels = sample_labels[start:end]
             batch_codes = codes[start:end]
             batch_shape = (end - start, *sample_shape[1:])
-            initial_noise = _project_codes_to_teacher_noise(
+            initial_noise = project_codes_to_teacher_noise(
                 torch_module,
                 batch_codes,
                 batch_shape,

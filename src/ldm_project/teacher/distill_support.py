@@ -1,32 +1,13 @@
-# ruff: noqa: F401
 from __future__ import annotations
 
-from pathlib import Path
-
-from ..distillation.dataset import (
-    filter_distill_payload_by_indices,
-    load_distill_payload,
-    validated_distill_tensors,
-)
-from ..generation.codes import (
-    sample_one_shot_codes_with_seed,
-    project_codes_to_teacher_noise,
-)
-from ..visualization_core import (
-    _normalize_for_visualization,
-    enhance_camera_for_display,
-    format_output_title,
-    readable_camera_for_display,
-)
-from ..train_utils import (
-    load_latent_scale_from_diffusion_checkpoint,
-    set_first_stage_image_fusion_weight,
-    validate_class_label_values,
-)
+from ..generation.codes import project_codes_to_teacher_noise
+from ..train_utils import validate_class_label_values
+from ..visualization_core import _normalize_for_visualization
 
 _project_codes_to_teacher_noise = project_codes_to_teacher_noise
 
-def _distill_class_label_sequence(torch_module, train_cfg, device):
+
+def distill_class_label_sequence(torch_module, train_cfg, device):
     requested_labels = tuple(train_cfg.distillation.class_labels)
     if requested_labels:
         class_labels = validate_class_label_values(
@@ -55,9 +36,8 @@ def _distill_class_label_sequence(torch_module, train_cfg, device):
     return torch_module.tensor(labels, device=device, dtype=torch_module.long)
 
 
-_project_codes_to_teacher_noise = project_codes_to_teacher_noise
 
-def _metric_summary(values) -> dict[str, float]:
+def metric_summary(values) -> dict[str, float]:
     values = values.detach().float().cpu()
     if values.numel() == 0:
         return {"min": 0.0, "mean": 0.0, "max": 0.0}
@@ -67,14 +47,14 @@ def _metric_summary(values) -> dict[str, float]:
         "max": float(values.max().item()),
     }
 
-def _class_relative_minmax(values):
+def class_relative_minmax(values):
     values = values.detach().float()
     spread = values.max() - values.min()
     if float(spread.item()) <= 1.0e-8:
         return values.new_zeros(values.shape)
     return (values - values.min()) / spread
 
-def _build_label_prototype_bank_from_tensors(
+def build_label_prototype_bank_from_tensors(
     torch_module, images, labels, *, class_labels, image_size: int
 ):
     if images.ndim != 4:
@@ -106,7 +86,7 @@ def _build_label_prototype_bank_from_tensors(
         prototypes.append(_normalize_for_visualization(prototype).squeeze(0))
     return torch_module.stack(prototypes, dim=0)
 
-def _build_mnist_label_prototype_bank(
+def build_mnist_label_prototype_bank(
     torch_module, *, class_labels, image_size: int, root: str, max_per_class: int
 ):
     try:
@@ -140,7 +120,7 @@ def _build_mnist_label_prototype_bank(
     for label in requested:
         prototype_images.extend(buckets[label])
         prototype_labels.extend([label] * len(buckets[label]))
-    return _build_label_prototype_bank_from_tensors(
+    return build_label_prototype_bank_from_tensors(
         torch_module,
         torch_module.stack(prototype_images, dim=0),
         torch_module.tensor(prototype_labels, dtype=torch_module.long),
@@ -148,7 +128,7 @@ def _build_mnist_label_prototype_bank(
         image_size=image_size,
     )
 
-def _prototype_correlation(torch_module, samples, prototypes):
+def prototype_correlation(torch_module, samples, prototypes):
     sample_flat = samples.detach().float().flatten(1)
     prototype_flat = prototypes.detach().float().flatten(1)
     sample_centered = sample_flat - sample_flat.mean(dim=1, keepdim=True)
@@ -165,12 +145,12 @@ def _prototype_correlation(torch_module, samples, prototypes):
         / float(sample_flat.shape[1])
     )
 
-def _masked_ratio(values, mask):
+def masked_ratio(values, mask):
     return values.float().sum(dim=(1, 2, 3)) / mask.float().sum(
         dim=(1, 2, 3)
     ).clamp_min(1.0)
 
-def _balanced_preview_indices(
+def balanced_preview_indices(
     torch_module, labels, *, max_per_class: int = 2, max_total: int = 20
 ):
     labels_cpu = labels.detach().long().cpu()
@@ -184,4 +164,23 @@ def _balanced_preview_indices(
             break
     return torch_module.tensor(preview[:max_total], dtype=torch_module.long)
 
-__all__ = ["_distill_class_label_sequence","_metric_summary","_class_relative_minmax","_build_label_prototype_bank_from_tensors","_build_mnist_label_prototype_bank","_prototype_correlation","_masked_ratio","_balanced_preview_indices","_project_codes_to_teacher_noise","sample_one_shot_codes_with_seed","project_codes_to_teacher_noise","filter_distill_payload_by_indices","load_distill_payload","validated_distill_tensors","enhance_camera_for_display","format_output_title","readable_camera_for_display","load_latent_scale_from_diffusion_checkpoint","set_first_stage_image_fusion_weight","validate_class_label_values","_normalize_for_visualization"]
+# Historical private names remain aliases in the facade/module namespace.
+_distill_class_label_sequence = distill_class_label_sequence
+_metric_summary = metric_summary
+_class_relative_minmax = class_relative_minmax
+_build_label_prototype_bank_from_tensors = build_label_prototype_bank_from_tensors
+_build_mnist_label_prototype_bank = build_mnist_label_prototype_bank
+_prototype_correlation = prototype_correlation
+_masked_ratio = masked_ratio
+_balanced_preview_indices = balanced_preview_indices
+
+__all__ = [
+    "distill_class_label_sequence", "metric_summary", "class_relative_minmax",
+    "build_label_prototype_bank_from_tensors", "build_mnist_label_prototype_bank",
+    "prototype_correlation", "masked_ratio", "balanced_preview_indices",
+    "project_codes_to_teacher_noise", "_project_codes_to_teacher_noise",
+    "_distill_class_label_sequence", "_metric_summary", "_class_relative_minmax",
+    "_build_label_prototype_bank_from_tensors", "_build_mnist_label_prototype_bank",
+    "_prototype_correlation", "_masked_ratio", "_balanced_preview_indices",
+    "_normalize_for_visualization",
+]
