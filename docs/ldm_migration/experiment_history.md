@@ -473,14 +473,20 @@ v48 使用同一个 v47 Probe A checkpoint、相同 `small_sharp_stroke_digit_co
 
 - v60 使用 v56 相同配置、seed `1234`、5 epoch 和正式物理合同完成复制训练。eval corr/dice 为 `0.5733/0.6235`，sample corr 为 `0.4914`，均未超过 v56；最终 CMOS 仍不可读。v58.3 只加固 relay 验收和 preflight，不改变正式传播算子。
 - v61 robust tool 冻结 v60 best checkpoint，对 readable train/val/test `800/100/100` 做完整 formal forward；缓存包含所有严格复场 plane、CMOS intensity、provenance 和 parameter hash。使用固定 32×32 诊断网格、2,000 次 pair bootstrap 与 permutation null；前后参数 hash 一致，报告结论为 `no-robust-localized-collapse`。
-- 因此 v60 的 20-sample camera intensity retention `0.0981` 仍是阈值边缘证据，不能推翻 v59 的 100-sample broad-isolation 结论。下一步只允许运行 `tools/diagnose_v61_offline_decodability.py`：linear ridge 在 validation 选参，test 单次评估；固定 nonlinear readout、label-only 和类内打乱对照均为软件上界，不能 promotion。
-- v61 offline report 的 linear plane probe 在 test 上得到 corr `0.874-0.892`、dice `0.676-0.710`，但相对 label-only paired corr/dice delta 为负；code-only/code+label corr 仅 `0.716/0.731`。固定 nonlinear probe 的三个 seed 未达到 strict gate，且部分 seed 输出零多样性。该结果支持“plane 仍有类别模板/低阶信号，但没有证明 paired instance-level CMOS 生成”，不授权继续堆 loss 或 promotion。
+- 因此 v60 的 20-sample camera intensity retention `0.0981` 仍是阈值边缘证据，不能推翻 v59 的 100-sample broad-isolation 结论。早期 `tools/diagnose_v61_offline_decodability.py` 是历史软件 readout：它使用降采样/PCA 与额外对照，不能充当下述原生采样上界的替代或正式单曝光读出。
+- v61 offline report 的历史 linear plane probe 在 test 上得到 corr `0.874-0.892`、dice `0.676-0.710`，但相对 label-only paired corr/dice delta 为负；code-only/code+label corr 仅 `0.716/0.731`。固定 nonlinear probe 的三个 seed 未达到 strict gate，且部分 seed 输出零多样性。该结果支持“plane 仍有类别模板/低阶信号，但没有证明 paired instance-level CMOS 生成”，不授权继续堆 loss 或 promotion。
+- 随后的 v61 native dual-channel upper bound 冻结 v60 epoch-5 checkpoint，以 readable train/val/test `800/100/100` 提取真实 chip/camera fields；无 optimizer、`state_dict` 前后无变化、无 target-code/bridge/override。特征保持 native sampling：chip `100x100 @2 um`，camera/teacher target `200x200 @2.5 um`；逐批验证 `physical_camera_intensity_raw == |E_camera|²`，而 probe 使用真实最终 detector-normalized `physical_camera_plane`。它没有 resize、PCA、神经网络或保存完整复场 bundle。
+- 四个严格 held-out linear ridge probes 只用 train 拟合、只由 val 的 raw MSE 从 `{1e-4,1e-3,1e-2,1e-1,1}` 选择、再 train+val 重拟合并仅 test 一次。chip intensity / chip complex / camera intensity / camera complex 的 test `(corr, dice, prototype-accuracy)` 分别为 `(0.9453, 0.8829, 1.00)`、`(0.9456, 0.8835, 1.00)`、`(0.9452, 0.8829, 1.00)`、`(0.9456, 0.8835, 1.00)`；均选 `lambda=0.1`。按预注册门，结论为 `camera-intensity-decodable`。
+- 这不是 raw CMOS 人眼 gate 通过，也不是可部署的 optical readout：preview 中的数字来自使用 900 个配对 teacher target 拟合的离线软件映射。complex oracle 相对 intensity 无实质增益，chip/camera intensity 均达标，故本结果不支持仅 phase-to-intensity 或仅 backend relay 失配。它也尚未区分逐实例信息与类别模板；下一门只能做零训练 native conditional-control audit（label-only、code-only、within-class target permutation、逐实例残差），不得调整 decoder/loss 或 promotion。
 
 代表证据：
 
 - `outputs/20260715_v61/runs/robust_collapse/v61_robust_collapse.json`
 - `outputs/20260715_v61/runs/robust_collapse/v61_frozen_optical_cache.pt`
 - `outputs/20260715_v61/runs/offline_decodability/v61_offline_decodability.json`
+- `outputs/reports/v61_offline_decodability_upper_bound.json`
+- `outputs/reports/v61_offline_decodability_upper_bound.pt`
+- `outputs/reports/v61_offline_decodability_upper_bound_preview.png`
 ### v58：现行合同去旧化与独立 relay 重验（进行中）
 
 - formal validator 已收紧为当前 v55 coherent 4f 前端、identity OLS、1.50 mm D2NN 和后端薄透镜 B=0 relay；v52/v53 free-space+aperture 配置保留为 legacy diagnostic，不再作为 formal contract。

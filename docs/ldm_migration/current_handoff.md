@@ -7,6 +7,7 @@
 - 当前所有 v49-v61 结果都是 `diagnostic-only`，且 `accepted_summary_written=false`。没有可 promotion 的学生 checkpoint。
 - 人眼硬 gate 只看最终 `physical_camera_plane` 的 CMOS intensity。v56 的正式 class-balanced sample（0-9 每类两张）仍为同源圆斑/纹理，不可读；这是 strict provenance 有效条件下的模型失败，不是 harness failure。
 - 不要重新使用 v47/v51/v53 checkpoint：它们与现行的 identity OLS、1.50 mm geometry 或完整前端 4f relay 合同不兼容。
+- v61 的原生采样离线 ridge 上界已从冻结 v60 camera intensity 重建出 held-out teacher target，但它是 900 例训练/验证后的软件读出；最终 `physical_camera_plane` 对人眼仍不可读。它不改变上述硬 gate，也不授权训练。
 - 在下一决策门前，不训练、不延长 epoch、不叠加 loss、不做 spacing/padding/pupil sweep，也不修改正式硬件合同。
 
 代码已完成行为保持的领域重构：`optics / student / teacher / application / diagnostics` 为正式目录，stage 通过 `StageRequest` 懒构造依赖；旧 import 仍解析到同一实现。此结构状态不改变下列 v56–v59 科学结论。
@@ -28,14 +29,14 @@ laser -> M1 -> BS -> amplitude SLM -> BS -> M3
 - 后端有限共轭成像：`M=-2.5`、`u=100 mm`、`f=71.4285714 mm`、`v=250 mm`、最低 pupil `26.60 mm`。
 - 严格光场 artifact 必须从同一传播复场的 `real/imag` 现场计算 `abs(E)`/`angle(E)`；camera intensity relay 不得伪造 phase。
 
-v55 structural preflight 通过；原 v55.1 reference 仅证明生产算子与同构 Collins 实现自洽，已降级为非独立证据。v55.2 的低分辨率实际尺寸 direct-RS 参考也因采样不足而无效。v58.2 CUDA run 证明 DFT/NUDFT 可执行，但其 `128→64` sampling、硬编码 Airy error 与单段 component reference 不能签发正式 gate。当前门是 v58.3：完整 `200→100` FOV、闭式 B=0 场、实测 pupil PSF 与故障注入独立性审计。
+v55 structural preflight 通过；原 v55.1 reference 仅证明生产算子与同构 Collins 实现自洽，已降级为非独立证据。v55.2 的低分辨率实际尺寸 direct-RS 参考也因采样不足而无效。v58.2 CUDA run 证明 DFT/NUDFT 可执行，但其 `128→64` sampling、硬编码 Airy error 与单段 component reference 不能签发正式 gate。现行 v58.3 report 是完整 `200→100` FOV、闭式 B=0 场、实测 pupil PSF 与故障注入独立性审计的正式前向前提。
 
 - `outputs/reports/v55_coherent_relay_cuda_preflight.json`
 - `outputs/reports/v55_1_coherent_relay_reference_cuda.json`（历史自洽检查）
 
 这些是理想数字孪生与设计 pupil 下限的结构/历史自洽检查，不是独立物理参考或硬件实测。
 
-v49-v54 的 mask 归因、严格复场修复和旧 central-aperture 失败定位均已降为历史证据；完整细节见 [Experiment History](experiment_history.md)。v60 是 v56 的同配置复制训练，未改善人工可读性。v61 稳健审计在完整 val/test split 上未确认稳定的局部首塌缩；下一门是已实现的离线 decodability upper bound。
+v49-v54 的 mask 归因、严格复场修复和旧 central-aperture 失败定位均已降为历史证据；完整细节见 [Experiment History](experiment_history.md)。v60 是 v56 的同配置复制训练，未改善人工可读性。v61 稳健审计未确认稳定的局部首塌缩；新的 native dual-channel ridge 上界确认了软件可解码性，而非 CMOS 人眼可读性。下一门必须只隔离“类别模板/条件信号”与“逐实例图像信息”，不得训练。
 
 ## v56-v59 事实与证据
 
@@ -126,8 +127,26 @@ v61 robust audit 使用冻结 v60 best checkpoint 和 readable `800/100/100` tra
 - `tools/diagnose_v61_robust_collapse.py`
 - `tools/diagnose_v61_offline_decodability.py`
 
-离线 readout 只允许作为 `diagnostic-only` 上界：linear ridge 会在 validation 选择预注册强度，test 只评估一次；固定小型 nonlinear readout 只运行审计发现的边界两侧，并保留 code-only、code+label、label-only 与类内打乱对照。实际 v61 report 中 linear plane probe 的 test corr 约 `0.874-0.892`、dice 约 `0.676-0.710`，但相对 label-only 的 paired delta 为负；code-only/code+label 仅 `0.716/0.731` corr。nonlinear 三 seed 未达到 strict gate，且部分 seed 退化为零多样性。结论是 plane 中保留的是类别模板/低阶可预测信号，不是通过 paired software readout 证明的 instance-level single-exposure generation。软件 readout 的可读图不能替代 raw CMOS 人工硬 gate，也不能进入正式单曝光推理链。
+早期的 `diagnose_v61_offline_decodability.py` 是带降采样/PCA 与额外对照的历史软件 readout 研究；其可读结果不能替代本轮的原生采样门，也不能进入正式单曝光推理链。
+
+v61 native dual-channel upper bound 冻结 v60 epoch-5 checkpoint，沿严格正式前向读取完整 readable `800/100/100` split；没有 optimizer、无参数变化，且逐批验证 `physical_camera_intensity_raw == |E_camera|²` 与 detector-normalized `physical_camera_plane` 语义。四个 held-out linear ridge probe 均只在 train 拟合、在 validation 从 `{1e-4,1e-3,1e-2,1e-1,1}` 选择、再以 train+val 重拟合并只评估 test；没有 resize、PCA、神经网络或复场 bundle 输出。
+
+| Native probe | Test corr | Dice | Prototype label acc. |
+| --- | ---: | ---: | ---: |
+| chip intensity | 0.9453 | 0.8829 | 1.00 |
+| chip complex oracle | 0.9456 | 0.8835 | 1.00 |
+| camera intensity | 0.9452 | 0.8829 | 1.00 |
+| camera complex oracle | 0.9456 | 0.8835 | 1.00 |
+
+因此该预注册门为 `camera-intensity-decodable`：camera complex oracle 没有带来实质增益，且 chip/camera intensity 都达标，故当前证据不支持“仅 phase-to-intensity”或“仅后端 relay”信息失配。它仅说明有一个离线线性软件 readout 可以从不可读 CMOS intensity 的细微条件相关差异恢复 teacher target；它不代表 raw CMOS 对人眼可读、不是光学末端生成，也不允许 promotion 或继续训练。下一门应为零训练的 native conditional-control audit：预注册 label-only、code-only、within-class target permutation 与逐实例残差信号，以判定该上界是否只是类别模板。
+
+新证据：
+
+- `tools/diagnose_v61_offline_decodability_upper_bound.py`
+- `outputs/reports/v61_offline_decodability_upper_bound.json`
+- `outputs/reports/v61_offline_decodability_upper_bound.pt`
+- `outputs/reports/v61_offline_decodability_upper_bound_preview.png`
 
 ## 已完成验证
 
-v58.3 targeted/CUDA preflight、v61 robust audit 和离线 readout 已完成；v61 targeted tests `6 passed`，工具报告均为 `diagnostic-only`。所有输出和 cache 均位于 `outputs/`，不加入 Git；迁移时不得用 reset/checkout 清理用户改动。
+v58.3 targeted/CUDA preflight、v61 robust audit、历史 offline readout 与 v61 native dual-channel upper bound 已完成；native 工具定向测试 `8 passed`，所有报告均为 `diagnostic-only`。所有输出和 cache 均位于 `outputs/`，不加入 Git；迁移时不得用 reset/checkout 清理用户改动。

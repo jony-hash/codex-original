@@ -52,7 +52,7 @@ python train.py --train-config configs/train_one_shot_d2nn_smoke.yaml \
 
 当前正式物理合同是 `532 nm`、identity OLS、完整 SLM FOV 的相干 4f `-0.4` relay、`100 × 100 @ 2 µm` phase-only D2NN、`1.50 mm` 层间距，以及后端 `-2.5` relay。理想两镜 4f 的实际 ABCD 为 `A=-0.4, B=0, C=0`；v58.2 仅是 CUDA 数值自洽证据，v58.3 才在完整 `500→200 µm` FOV 上验收闭式场、实测 pupil PSF 与独立性。未得到 v58.3 的 `physical-forward-model-valid` 报告前不得训练。
 
-v56/v60 在该合同上完成了两次同配置短训练；strict provenance 有效，但真实最终 CMOS 都不可读，因此没有可 promotion 的学生 checkpoint。v61 对完整 readable split 做了稳健复场审计，当前没有确认稳定的局部首崩溃；下一门是只读离线 decodability upper bound。当前状态与证据见 [v61 主线交接](docs/ldm_migration/current_handoff.md)。
+v56/v60 在该合同上完成了两次同配置短训练；strict provenance 有效，但真实最终 CMOS 都不可读，因此没有可 promotion 的学生 checkpoint。v61 对完整 readable split 的原生双通道 ridge 上界虽显示冻结 camera intensity 可被离线软件恢复为 teacher target，却不改变 raw CMOS 人眼失败；下一门只能隔离类别模板与逐实例信息，不能继续训练。当前状态与证据见 [v61 主线交接](docs/ldm_migration/current_handoff.md)。
 
 `v9.10 label-template inverse prototype baseline` 仅是历史 label-template prototype：它明确忽略 code，不能证明 code-conditioned 多样性或最终 generative student readiness。历史证据见 [v9.10 record](docs/ldm_migration/acceptance_v9_10_label_template_inverse_20260622.json)。
 
