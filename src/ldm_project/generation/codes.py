@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 
 ONE_SHOT_RAW_DIAGNOSTIC_TENSOR_KEYS = (
     "generator_base_command",
@@ -102,3 +104,27 @@ def _sample_one_shot_codes_with_seed(
 ):
     generator = torch_module.Generator().manual_seed(int(seed))
     return torch_module.randn(sample_count, code_dim, generator=generator).to(device)
+
+
+def project_codes_to_teacher_noise(
+    torch_module,
+    codes,
+    sample_shape: tuple[int, int, int, int],
+    projection_seed: int,
+    device,
+):
+    """Project deterministic code vectors into a teacher noise-shaped tensor."""
+    if codes.ndim != 2:
+        raise ValueError(
+            f"codes must be [batch, code_dim], got shape {tuple(codes.shape)}"
+        )
+    flat_size = int(math.prod(sample_shape[1:]))
+    generator = torch_module.Generator().manual_seed(int(projection_seed))
+    projection = torch_module.randn(
+        codes.shape[1], flat_size, generator=generator, dtype=codes.dtype
+    )
+    projected = codes.detach().cpu() @ (projection / math.sqrt(float(codes.shape[1])))
+    return projected.to(device=device).reshape(sample_shape)
+
+
+_project_codes_to_teacher_noise = project_codes_to_teacher_noise
