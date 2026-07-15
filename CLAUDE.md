@@ -18,4 +18,5 @@
 
 - `optics/`、`student/`、`teacher/`、`application/` 是正式领域；顶层旧模块仅为无 warning 的 import compatibility shim。
 - `application.stages.StageRequest` 按 stage 懒构造依赖；不得恢复 CLI 启动时同时实例化 VAE、DDPM、scheduler 和 student 的模式。
+- Formal v56 stage 使用 `FormalOneShotOpticalGenerator`；`student.checkpoints`、`optics.d2nn` 和 `distillation.targets` 分别拥有 checkpoint、phase-only D2NN 和中立 target transform 合同。历史 `OneShotOpticalGenerator` 仅用于 compatibility/diagnostic 配置。
 - `experiments/archive/` 只读、`diagnostic-only`，不能作为 active config/tool promotion。

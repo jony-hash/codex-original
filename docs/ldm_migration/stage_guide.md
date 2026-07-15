@@ -54,7 +54,7 @@ python train.py --train-config <approved_physical_forward_config.yaml> \
   --distill-dataset <distill_dataset>
 ```
 
-正式 config 必须以 [架构文档](single_shot_ldm_distillation.md) 为合同来源，至少锁定 identity OLS、完整 SLM-to-encoder 相干 4f relay、`100 × 100 @ 2 µm`、`1.50 mm` D2NN spacing、严格 physical-field provenance，并先通过对应 CUDA preflight。当前 v56 已完成一次有效但人眼失败的训练；在 v58 决策门之前不提供新的训练命令。
+正式 config 必须以 [架构文档](single_shot_ldm_distillation.md) 为合同来源，至少锁定 identity OLS、完整 SLM-to-encoder 相干 4f relay、`100 × 100 @ 2 µm`、`1.50 mm` D2NN spacing、严格 physical-field provenance，并先通过对应 CUDA preflight。正式 stage 由 `FormalOneShotOpticalGenerator` 构造；包含 bypass、phase-amplitude、generic resize、target-code bridge 或 SLM override 的配置只能走 compatibility/diagnostic facade。当前 v56 已完成一次有效但人眼失败的训练；在 v58 决策门之前不提供新的训练命令。
 
 采样并评估同一个 student checkpoint：
 

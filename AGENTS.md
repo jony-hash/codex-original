@@ -42,7 +42,7 @@ This project distills an LDM teacher into a single-exposure optical generative s
 
 Final inference path: `noise/code + optional label -> generator_e -> amplitude SLM command -> encoder metasurface -> linear identity OLS -> decoder metasurface -> CMOS single exposure -> generated image`. The current formal contract has no fiber; a future fiber variant must preserve the complex-field interface and be separately validated.
 
-Dependency direction is `optics -> (none)`, `teacher/student -> neutral generation/distillation/evaluation`, and `application -> teacher/student`. Formal code must not import compatibility shims or `experiments/archive`; archived files are reference-only.
+Dependency direction is `optics -> (none)`, `teacher/student -> neutral generation/distillation/evaluation`, and `application -> teacher/student`. The formal student entry is `FormalOneShotOpticalGenerator`; compatibility variants and root shims must not be imported by formal code. `distillation/targets.py` is neutral and must not import student. Archived files are reference-only.
 
 Formal optical-field artifacts must carry shape, pixel pitch, physical FOV, wavelength, upstream plane, propagation distance, and operation. Tensor equality alone is not physical-coordinate validation; generic complex resize is forbidden in the formal path.
 

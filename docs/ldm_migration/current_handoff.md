@@ -188,6 +188,12 @@ v63 工具与工件：
 - `outputs/reports/v63_code_conditioning_provenance_audit.pt`
 - `outputs/reports/v63_code_conditioning_provenance_audit_preview.png`
 
+## 第二轮解耦状态
+
+本轮代码重构不改变 v56–v63 科学结论，也没有启动训练。当前正式路径的 phase-only D2NN、SLM transfer 和 identity OLS canonical 实现在 `optics/`；正式 Student 由 `FormalOneShotOpticalGenerator` 构造，旧 `OneShotOpticalGenerator`、`student/layers.py` 和根目录 one-shot imports 仅保留 compatibility/diagnostic 行为。checkpoint 合同位于 `student/checkpoints.py`，clean-readable target 位于中立 `distillation/targets.py`，stage student model 由 `application/model_factory.py` 按 physical contract 延迟构造。
+
+截至本轮已验证：v62/v63 基线完整测试 `478 passed`、`148 subtests passed`；formal Student/Optics 定向测试通过；冻结 v60 checkpoint 在 CUDA 上与 `/tmp/second_decoupling_baseline.pt` 的 96 个输出字段和 15 个 provenance 光场平面 bitwise 相同。objective 大文件、完整 stage context、config schema 和超大测试文件的进一步机械拆分仍需在该等价门之后继续，不能与科学训练混合。
+
 ## 已完成验证
 
 v58.3 targeted/CUDA preflight、v61 robust audit、v61 native dual-channel upper bound、v62 conditional-control audit 与 v63 crossed-factor audit 已完成；v63 CUDA harness 有效，参数更新数为 0，所有报告均为 `diagnostic-only`。本次代码的完整验证命令及结果见当前工作区测试输出；所有输出和 cache 均位于 `outputs/`，不加入 Git；迁移时不得用 reset/checkout 清理用户改动。
