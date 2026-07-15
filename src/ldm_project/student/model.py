@@ -32,6 +32,11 @@ from .layers import (
     _resize_real_intensity,
     _vector_to_complex_field,
 )
+from .checkpoints import (
+    load_one_shot_checkpoint,
+    load_one_shot_checkpoint_subset,
+    validate_one_shot_checkpoint_payload,
+)
 from ..optics.sampling import PlaneSampling, sample_center_aperture
 from ..optics import (
     BackOpticalPath,
@@ -45,6 +50,14 @@ from ..optics.fields import build_optical_field_record
 
 
 ONE_SHOT_MODEL_VERSION = "ldm_distilled_single_shot_optical_student_v3"
+
+__all__ = [
+    "ONE_SHOT_MODEL_VERSION",
+    "OneShotOpticalGenerator",
+    "load_one_shot_checkpoint",
+    "load_one_shot_checkpoint_subset",
+    "validate_one_shot_checkpoint_payload",
+]
 
 
 class _BridgeResidualBlock(nn.Module):
@@ -1592,16 +1605,6 @@ class OneShotOpticalGenerator(nn.Module):
         return fields
 
 
-def validate_one_shot_checkpoint_payload(payload: Mapping[str, Any]) -> None:
-    """只接受已声明版本和完整 state dict，避免把未知物理参数静默带入正式链路。"""
-    model_version = payload.get("model_version")
-    if model_version != ONE_SHOT_MODEL_VERSION:
-        raise ValueError("Incompatible one-shot checkpoint: unexpected model_version.")
-    state_dict = payload.get("model_state_dict")
-    if not isinstance(state_dict, dict):
-        raise ValueError("Incompatible one-shot checkpoint: missing model_state_dict.")
-
-
 def _phase_slice_compatible_state(
     target: torch.Tensor, value: torch.Tensor
 ) -> torch.Tensor | None:
@@ -1812,36 +1815,3 @@ def _load_one_shot_checkpoint_state(
     if skipped_keys or missing_keys or unexpected_keys:
         _print_partial_checkpoint_load(description, summary)
     return summary
-
-
-def load_one_shot_checkpoint(
-    model: OneShotOpticalGenerator, payload: Mapping[str, Any]
-) -> None:
-    validate_one_shot_checkpoint_payload(payload)
-    checkpoint_state = payload["model_state_dict"]
-    _load_one_shot_checkpoint_state(
-        model, checkpoint_state, description="one-shot checkpoint"
-    )
-
-
-def load_one_shot_checkpoint_subset(
-    model: OneShotOpticalGenerator,
-    payload: Mapping[str, Any],
-    *,
-    include_prefixes: tuple[str, ...],
-    description: str,
-    expected_missing_prefixes: tuple[str, ...] = (),
-    expected_skipped_prefixes: tuple[str, ...] = (),
-) -> dict[str, int]:
-    """仅允许调用方声明的 warm-start 子模块；其余缺失/跳过键必须显式白名单化。"""
-    validate_one_shot_checkpoint_payload(payload)
-    checkpoint_state = payload["model_state_dict"]
-    return _load_one_shot_checkpoint_state(
-        model,
-        checkpoint_state,
-        include_prefixes=include_prefixes,
-        description=description,
-        allow_partial=True,
-        expected_missing_prefixes=expected_missing_prefixes,
-        expected_skipped_prefixes=expected_skipped_prefixes,
-    )
