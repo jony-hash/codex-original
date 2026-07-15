@@ -8,7 +8,8 @@ Scope: `src/ldm_project/**`. Read the repository-root `AGENTS.md` first. This fi
 - `student/` owns the single-exposure forward/training/evaluation path; it may consume neutral `generation/`, `distillation/` and `evaluation/` modules but not teacher internals.
 - `teacher/` owns VAE/diffusion and target export; it does not import student.
 - `application/` owns CLI and lazy stage construction. Compatibility files at this directory level are import-only shims.
-- `student/formal_contract.py` validates the current formal model before construction; `student/checkpoints.py` owns checkpoint loading contracts. `student/layers.py` is a compatibility facade for historical optical imports.
+- `student/formal_contract.py` validates the current formal model before construction; `student/checkpoints.py` owns checkpoint loading contracts. `student/generator.py` is the canonical `ElectronicGeneratorE`; `student/layers.py` is a compatibility facade and diagnostic implementations belong under `student/experimental/`.
+- `configuration/` owns scoped config schema/loading/validation modules behind the public `config.py` facade. `teacher/distill.py` is a compatibility facade over scoped teacher distillation modules.
 
 ## Physical Model
 

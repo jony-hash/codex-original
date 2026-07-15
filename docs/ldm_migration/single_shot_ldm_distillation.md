@@ -81,9 +81,9 @@ D2NN 主线通过 `one_shot.optical_core_arch: diffractive_phase_only` 启用；
 
 ## 3. 模块边界
 
-正式代码按五个领域组织：`optics/`（复场/传播/relay/device/D2NN）、`student/`（正式单曝光模型、训练评估与 checkpoint）、`teacher/`（VAE/DDPM 与 target export）、`application/`（CLI、stage-specific model builder 与懒调度）和 `diagnostics/`。中立 `generation/`、`distillation/`、`evaluation/` 提供 code、payload/target、prototype/label-audit 能力。正式 v56 链由 `FormalOneShotOpticalGenerator` 固定；旧 `OneShotOpticalGenerator` 仅保留历史 compatibility/diagnostic 变体。依赖只可从 application 指向 teacher/student，teacher 与 student 不得彼此导入，optics 不得导入上层领域；顶层旧模块仅是兼容 shim。
+正式代码按五个领域组织：`optics/`（复场/传播/relay/device/D2NN）、`student/`（正式单曝光模型、canonical generator、训练评估与 checkpoint）、`teacher/`（VAE/DDPM 与 target export）、`application/`（CLI、stage registry 与懒调度）和 `diagnostics/`。中立 `generation/`、`distillation/`、`evaluation/` 提供 code、payload/target、prototype/label-audit 能力。`student/configuration/` 归属 schema/loading/validation，`teacher/distill.py` 是 export/filter/readable/label-audit 的兼容 facade。正式 v56 链由 `FormalOneShotOpticalGenerator` 固定；旧 `OneShotOpticalGenerator` 仅保留历史 compatibility/diagnostic 变体。依赖只可从 application 指向 teacher/student，teacher 与 student 不得彼此导入，optics 不得导入上层领域；顶层旧模块仅是兼容 shim。
 
-正式 optics 组件的唯一实现位于 `optics/devices.py` 与 `optics/d2nn.py`：SLM command 到复传递函数、identity OLS、phase-only modulation、center padding→ASM propagation→center crop 和能量 provenance 均在该层定义。`student/layers.py` 与 `one_shot_optical_layers.py` 只为旧 import 提供 aliases；phase-amplitude、generic resize、decoder bypass、target-code bridge 和 SLM override 不得由正式类构造。
+正式 optics 组件的唯一实现位于 `optics/devices.py` 与 `optics/d2nn.py`：SLM command 到复传递函数、identity OLS、phase-only modulation、center padding→ASM propagation→center crop 和能量 provenance 均在该层定义。`student/layers.py` 与 `one_shot_optical_layers.py` 只为旧 import 提供 aliases；`student/experimental/` 承载 phase-amplitude、generic resize、decoder bypass、target-code bridge 和 SLM override。formal model 的完全独立模块化仍需下一道 bitwise 等价门，不得以兼容继承替代。
 
 `student/checkpoints.py` 拥有 checkpoint version、完整加载和显式 subset warm-start 合同；`student/formal_contract.py` 在构造正式模型前拒绝诊断配置。`distillation/targets.py` 是 teacher payload 与 student supervision 共享的中立 target transform，禁止 payload loader 反向导入 student objective。
 

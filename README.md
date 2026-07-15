@@ -61,8 +61,11 @@ v56/v60 在该合同上完成了两次同配置短训练；strict provenance 有
 | Path | Responsibility |
 | --- | --- |
 | `src/ldm_project/optics/` | 物理复场、传播、sampling、relay、devices、正式 D2NN 与独立 reference |
-| `src/ldm_project/student/` | 正式 `FormalOneShotOpticalGenerator`、兼容 student、objective、training、evaluation、artifact 与 checkpoint contract |
+| `src/ldm_project/student/` | 正式 `FormalOneShotOpticalGenerator`、canonical generator、兼容 student、objective、training、evaluation、artifact 与 checkpoint contract |
 | `src/ldm_project/student/checkpoints.py` | 完整 checkpoint 与显式 optical/generator subset warm-start |
+| `src/ldm_project/student/generator.py` | `ElectronicGeneratorE` 唯一 canonical 实现 |
+| `src/ldm_project/student/experimental/` | phase-amplitude、generic resize 和 diagnostic compatibility 实现 |
+| `src/ldm_project/configuration/` | config schema、loading、validation 的内部归属；`config.py` 保持公开 facade |
 | `src/ldm_project/teacher/` | first-stage、diffusion、teacher sampling/training/distill |
 | `src/ldm_project/application/` | CLI、输出布局、run metadata 与按 stage 懒构造的调度 |
 | `configs/` | 仅活动 Golden Path、physics、teacher、smoke 与 v52/v55/v56 配置 |
