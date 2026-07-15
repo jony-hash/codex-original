@@ -179,7 +179,7 @@ def _apply_complex_ols(field: torch.Tensor, kind: str) -> torch.Tensor:
     return torch.complex(real, imag)
 
 
-class ElectronicGeneratorE(nn.Module):
+class _LegacyElectronicGeneratorE(nn.Module):
     def __init__(
         self,
         image_size: int,
@@ -482,3 +482,9 @@ class PhaseAmplitudeDiffractiveStack(PhaseOnlyDiffractiveStack):
             ).view(-1, 1, 1, 1)
             phase = phase * layer_mask
         return torch.polar(amplitude, phase)
+
+
+# Canonical implementation moved to ``student.generator``.  This assignment
+# deliberately remains at the end so historical imports retain object identity
+# while the model no longer depends on this compatibility module.
+from .generator import ElectronicGeneratorE  # noqa: E402

@@ -4,8 +4,8 @@ Teacher modules may provide targets, but the formal student forward, objective,
 checkpoint, training, evaluation and artifact contracts live here.
 """
 
+from .generator import ElectronicGeneratorE
 from .layers import (
-    ElectronicGeneratorE,
     IdealAmplitudeSLMModel,
     PhaseAmplitudeDiffractiveStack,
     PhaseOnlyDiffractiveStack,

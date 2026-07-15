@@ -23,8 +23,8 @@ from ..config import (
     _expected_d2nn_modulation,
     _target_code_bridge_mode_is_compatible,
 )
+from .generator import ElectronicGeneratorE
 from .layers import (
-    ElectronicGeneratorE,
     PhaseAmplitudeDiffractiveStack,
     _apply_complex_ols,
     _flatten_complex_field,
