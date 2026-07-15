@@ -1,10 +1,10 @@
-# 当前主线交接：v61
+# 当前主线交接：v63
 
 更新时间：2026-07-15。此文件供新对话快速恢复当前主线；带日期的完整证据在 [Experiment History](experiment_history.md)，稳定架构合同在 [D2NN 单次曝光蒸馏主线](single_shot_ldm_distillation.md)。
 
 ## 先读的结论
 
-- 当前所有 v49-v61 结果都是 `diagnostic-only`，且 `accepted_summary_written=false`。没有可 promotion 的学生 checkpoint。
+- 当前所有 v49-v63 结果都是 `diagnostic-only`，且 `accepted_summary_written=false`。没有可 promotion 的学生 checkpoint。
 - 人眼硬 gate 只看最终 `physical_camera_plane` 的 CMOS intensity。v56 的正式 class-balanced sample（0-9 每类两张）仍为同源圆斑/纹理，不可读；这是 strict provenance 有效条件下的模型失败，不是 harness failure。
 - 不要重新使用 v47/v51/v53 checkpoint：它们与现行的 identity OLS、1.50 mm geometry 或完整前端 4f relay 合同不兼容。
 - v61 的原生采样离线 ridge 上界已从冻结 v60 camera intensity 重建出 held-out teacher target，但它是 900 例训练/验证后的软件读出；最终 `physical_camera_plane` 对人眼仍不可读。它不改变上述硬 gate，也不授权训练。
@@ -36,7 +36,7 @@ v55 structural preflight 通过；原 v55.1 reference 仅证明生产算子与�
 
 这些是理想数字孪生与设计 pupil 下限的结构/历史自洽检查，不是独立物理参考或硬件实测。
 
-v49-v54 的 mask 归因、严格复场修复和旧 central-aperture 失败定位均已降为历史证据；完整细节见 [Experiment History](experiment_history.md)。v60 是 v56 的同配置复制训练，未改善人工可读性。v61 稳健审计未确认稳定的局部首塌缩；新的 native dual-channel ridge 上界确认了软件可解码性，而非 CMOS 人眼可读性。下一门必须只隔离“类别模板/条件信号”与“逐实例图像信息”，不得训练。
+v49-v54 的 mask 归因、严格复场修复和旧 central-aperture 失败定位均已降为历史证据；完整细节见 [Experiment History](experiment_history.md)。v60 是 v56 的同配置复制训练，未改善人工可读性。v61 稳健审计未确认稳定的局部首塌缩；新的 native dual-channel ridge 上界确认了软件可解码性，而非 CMOS 人眼可读性。v63 进一步确认 code 因子不是在正式光路被局部抹除；下一门只能隔离原生、不可读的表示与人眼可读性的差异，不得训练。
 
 ## v56-v59 事实与证据
 
@@ -147,6 +147,47 @@ v61 native dual-channel upper bound 冻结 v60 epoch-5 checkpoint，沿严格正
 - `outputs/reports/v61_offline_decodability_upper_bound.pt`
 - `outputs/reports/v61_offline_decodability_upper_bound_preview.png`
 
+## v62 解释修正与 v63 code-conditioning provenance audit
+
+v62 在冻结 v60 epoch-5 checkpoint、正式 v56 config、同一 `readability_strict_split` 数据和 v58.3 relay gate 上完成一次零训练 native conditional-control audit。输入验证通过：train/val/test 为 `800/100/100`、每类分别 `80/10/10`，identity OLS、正式 4f/后端 geometry 和 `physical_camera_intensity_raw == |E_camera|²` 语义均保持；模型参数 hash 前后无变化，`optimizer_created=false`。
+
+对 held-out test 做了三组原生 forward：baseline；固定一个 readable-train code、仅变化 requested label 的 `label-only`；保留 requested code、将 label 固定为 0 的 `code-only`。同时复用 v61 已封存、未重新拟合的 camera-intensity ridge prediction，进行 within-class target 一位循环置换和 leave-one-out class-template residual 对照。所有反事实均为 `diagnostic-only`。
+
+v62 的仍然有效的事实：
+
+- label-only prototype CV accuracy `1.00`，permutation `p=0.00775`；其类内 residual energy `3.14e-15`，说明类别模板几乎完全由 label 条件决定。
+- baseline prototype CV accuracy `0.94`，permutation `p=0.00775`；code-only 用原始 readable-test labels 分组的 accuracy `0.23`，`p=0.00775`，类内 residual energy 仅 `5.09e-5`。
+- baseline 与 label-only camera 的归一化响应为 `1.040%`；baseline 与 fixed-label code-only 的响应为 `0.389%`。
+- v61 camera-intensity offline prediction 与配对 teacher target 的 corr `0.9452`；within-class target rotation 后为 `0.8909`，paired delta `0.0544`，95% bootstrap CI `[0.0469, 0.0628]`。
+- 去除 leave-one-out 类别模板后的 residual corr 为 `0.4931`，同类 target rotation 后为 `-0.0890`；paired residual delta `0.5821`，95% CI `[0.5321, 0.6325]`。这证明离线读出中存在逐实例残差信号，但不等于 raw CMOS 人眼可读。
+
+v63 发现上述 v62 `0.23` 不能用作学生的 code 类别学习证据：全局 15k IID 导出 code 的 prototype CV 是 `0.0971`（null `p=0.9412`），但 readable 筛选后的 train/val/test 分别为 `0.3225/0.1700/0.2200`，test `p=0.00775`。因此这是 target readability 筛选引入的 code-label selection confound；它不能推翻已封存的 paired-residual 对照，也绝不授权训练。v62 的 `baseline→label-only 1.040%` 实际是替换 code、保持 requested label 的反事实响应，不能当作 label 响应；固定 `2%` 绝对响应门同样不再用于 code 根因判定。
+
+v63 用全局 `code_seed=1234` 精确重放 15k code，并以 `code_projection_seed=2026` 精确重算每个 readable split 的 `teacher_initial_noise`；所有 code/label/noise replay 都相等。冻结 v60 epoch-5 checkpoint 后，对 100 held-out test code 与全部 10 labels 的 `100×10` 平衡交叉网格沿未改动正式链路前向，无 resize、optimizer、readout refit 或参数变化；camera raw intensity 与 detector normalization 语义也逐批通过。
+
+| Plane | Code factor | Label factor | Interaction |
+| --- | ---: | ---: | ---: |
+| SLM command | 80.62% | 16.07% | 3.31% |
+| pre-encoder intensity | 80.51% | 16.13% | 3.35% |
+| chip intensity | 79.52% | 17.71% | 2.77% |
+| final CMOS intensity | 80.39% | 15.55% | 4.06% |
+
+预注册决策同时满足 `generator-code-dominant`（SLM code factor ≥25% 且高于 label）与 `native-code-conditioned-subvisual-representation-confirmed`（camera 保留 code factor，v62 paired residual 有效）；不满足任何“SLM 的 10% 以下而 label 持续保留”的局部 code 因子衰减门。真实 raw CMOS 的人工不可读结论不变，故这不是 promotion 或训练授权。下一门只允许设计离线/诊断性的 representation-readability isolation，明确比较 code/label 因子可保留性与最终 CMOS 的人眼可读性；不得回到 decoder/loss 微调或改变正式光学合同。
+
+v62 工具与工件：
+
+- `tools/diagnose_v62_native_conditional_control_audit.py`
+- `outputs/reports/v62_native_conditional_control_audit.json`
+- `outputs/reports/v62_native_conditional_control_audit.pt`
+- `outputs/reports/v62_native_conditional_control_audit_preview.png`
+
+v63 工具与工件：
+
+- `tools/diagnose_v63_code_conditioning_provenance_audit.py`
+- `outputs/reports/v63_code_conditioning_provenance_audit.json`
+- `outputs/reports/v63_code_conditioning_provenance_audit.pt`
+- `outputs/reports/v63_code_conditioning_provenance_audit_preview.png`
+
 ## 已完成验证
 
-v58.3 targeted/CUDA preflight、v61 robust audit、历史 offline readout 与 v61 native dual-channel upper bound 已完成；native 工具定向测试 `8 passed`，所有报告均为 `diagnostic-only`。所有输出和 cache 均位于 `outputs/`，不加入 Git；迁移时不得用 reset/checkout 清理用户改动。
+v58.3 targeted/CUDA preflight、v61 robust audit、v61 native dual-channel upper bound、v62 conditional-control audit 与 v63 crossed-factor audit 已完成；v63 CUDA harness 有效，参数更新数为 0，所有报告均为 `diagnostic-only`。本次代码的完整验证命令及结果见当前工作区测试输出；所有输出和 cache 均位于 `outputs/`，不加入 Git；迁移时不得用 reset/checkout 清理用户改动。

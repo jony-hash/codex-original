@@ -492,3 +492,32 @@ v48 使用同一个 v47 Probe A checkpoint、相同 `small_sharp_stroke_digit_co
 - formal validator 已收紧为当前 v55 coherent 4f 前端、identity OLS、1.50 mm D2NN 和后端薄透镜 B=0 relay；v52/v53 free-space+aperture 配置保留为 legacy diagnostic，不再作为 formal contract。
 - 前端 provenance 正在改为具名的 `SLM→BS→M3→L1→L2→Encoder` 距离链。原 v55.1 reference 使用与生产实现同构的插值/相位表达，现降级为实现自洽证据；v55.2 需要独立逐段 Fresnel/Collins 与低分辨率 direct-RS 4f 参考通过后，才能恢复 formal-valid 状态。
 - 本轮合同重验不训练、不重复运行 v58 aperture upper bound，也不修改历史 outputs 或 checkpoint。
+
+### v62：native conditional-control audit（2026-07-15）
+
+- 在冻结 v60 epoch-5 checkpoint、正式 v56 config、同一 readable split 和 v58.3 relay gate 上运行一次零训练 CUDA audit。train/val/test 为 `800/100/100`，参数 hash 前后相同，`optimizer_created=false`，所有结果仍为 `diagnostic-only`。
+- 原生 forward 对照包括 baseline、固定 readable-train code 的 label-only、固定 label `0` 的 code-only；target 对照为每类一位确定性循环置换。v61 已封存的 camera-intensity held-out ridge prediction 直接复用，未重新拟合。
+- label-only prototype CV accuracy `1.00`、permutation `p=0.00775`，类内 residual energy `3.14e-15`；baseline accuracy `0.94`，code-only accuracy `0.23`（同样 `p=0.00775`），但 code-only 类内 residual energy 仅 `5.09e-5`。baseline→label-only camera response `1.040%`，baseline→fixed-label code-only `0.389%`。
+- v61 offline camera-intensity prediction 对 paired teacher target 的 corr 为 `0.9452`，within-class target rotation 后 `0.8909`，paired delta `0.0544`（95% CI `[0.0469,0.0628]`）。leave-one-out class-template residual corr 为 `0.4931`，旋转 target 后 `-0.0890`，paired residual delta `0.5821`（95% CI `[0.5321,0.6325]`）。因此上界包含逐实例 residual，但仍不是 raw CMOS 人眼 gate。
+- 当时决策写为 `paired-instance-residual-with-weak-explicit-code-control` / `manual-review-required`。该解释已被后续 v63 修正：code-only classifier 用原始 readable labels 分组，readable filter 对 IID code 造成 code-label selection confound；且 `baseline→label-only` 是替换 code、保持 label 的响应。因此 `0.23` classifier 和固定 `2%` 门不能用作“code 弱”或根因结论。已封存 paired-residual 对照仍是有效的关联证据，但不授权修改 generator、decoder、loss 或硬件合同。
+
+代表证据：
+
+- 工具：`tools/diagnose_v62_native_conditional_control_audit.py`
+- 报告：`outputs/reports/v62_native_conditional_control_audit.json`
+- tensor：`outputs/reports/v62_native_conditional_control_audit.pt`
+- preview：`outputs/reports/v62_native_conditional_control_audit_preview.png`
+
+### v63：code-conditioning provenance 与 crossed-factor audit（2026-07-15）
+
+- 固定 v60 epoch-5 checkpoint、v56 正式 config、v58.3 relay、同一 readable `800/100/100` split 与 v61/v62 工件，执行一次零训练 CUDA audit。identity OLS、正式 geometry/field chain、camera intensity 语义、参数快照、code replay 与 teacher-noise replay 全部有效；`parameter_update_count=0`、`optimizer_created=false`、`diagnostic_only=true`。
+- 全局 `code_seed=1234` 的 15k IID 导出 code prototype CV 为 `0.09713`，相对于 permutation null 的 `p=0.94118`。按 readability filter 选择后的 train/val/test 分别为 `0.3225/0.1700/0.2200`，对应 p 值 `0.00775/0.02326/0.00775`。这是筛选造成的 code-label selection confound，不能当作模型 code-conditioning 能力或训练许可证。
+- 在 100 held-out test code × 10 labels 的平衡网格上，SLM command 的 code/label/interaction 方差份额为 `80.62%/16.07%/3.31%`；pre-encoder intensity 为 `80.51%/16.13%/3.35%`；chip intensity 为 `79.52%/17.71%/2.77%`；最终 detector-normalized CMOS 为 `80.39%/15.55%/4.06%`。因此正式光路没有把 code 因子衰减到 SLM 的 10% 以下，且 label 因子没有形成局部保留而 code 丢失的模式。
+- 预注册门给出 `generator-code-dominant` 和 `native-code-conditioned-subvisual-representation-confirmed`：generator 的 code 因子很强，并保持到 final CMOS，且 v62 paired-residual 对照仍有效。它不改变 raw final CMOS 人工不可读的硬 gate；结论是原生 code-conditioned representation 为 subvisual，下一门只能进行 representation/readability isolation，不得重新微调 decoder/loss、修改 optical contract、训练或 promotion checkpoint。
+
+代表证据：
+
+- 工具：`tools/diagnose_v63_code_conditioning_provenance_audit.py`
+- 报告：`outputs/reports/v63_code_conditioning_provenance_audit.json`
+- tensor：`outputs/reports/v63_code_conditioning_provenance_audit.pt`
+- preview：`outputs/reports/v63_code_conditioning_provenance_audit_preview.png`
