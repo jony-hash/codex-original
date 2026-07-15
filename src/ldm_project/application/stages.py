@@ -156,7 +156,7 @@ def _build_stage_context(request: StageRequest) -> StageContext:
         load_one_shot_checkpoint,
     )
     from ..sampling_reports import select_first_stage_visual_batch, select_post_train_sample_batch
-    from ..student.model import FormalOneShotOpticalGenerator, OneShotOpticalGenerator
+    from .model_factory import build_student_model
     from ..student.objectives import one_shot_loss
     from ..teacher.diffusion_losses import diffusion_loss, diffusion_per_sample_losses
     from ..teacher.diffusion_sampling import resolve_denoising_trace_steps, sample_latents, sample_latents_with_trace
@@ -188,14 +188,12 @@ def _build_stage_context(request: StageRequest) -> StageContext:
             beta_end=request.train_cfg.diffusion.beta_end,
         ).to(request.device)
     if footprint["student"]:
-        student_model_cls = (
-            FormalOneShotOpticalGenerator
-            if request.physics.physical_forward_contract
-            else OneShotOpticalGenerator
+        one_shot_model = build_student_model(
+            request.physics,
+            request.train_cfg.one_shot,
+            image_size=request.train_cfg.first_stage.image_size,
+            device=request.device,
         )
-        one_shot_model = student_model_cls(
-            request.physics, request.train_cfg.one_shot, image_size=request.train_cfg.first_stage.image_size
-        ).to(request.device)
 
     dataset_splits = train_bundle = validation_bundle = None
     first_stage_visual_batch = first_stage_visual_labels = None

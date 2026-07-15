@@ -57,6 +57,7 @@ try:
         load_one_shot_checkpoint as load_one_shot_checkpoint,
         validate_one_shot_checkpoint_payload as validate_one_shot_checkpoint_payload,
     )
+    from .student.model import FormalOneShotOpticalGenerator as FormalOneShotOpticalGenerator
     from .evaluation import (
         compute_first_stage_balanced_metrics as compute_first_stage_balanced_metrics,
         evaluate_diffusion_with_per_class as evaluate_diffusion_with_per_class,
@@ -91,6 +92,7 @@ else:
             "DatasetBundle",
             "DatasetSplits",
             "ElectronicGeneratorE",
+            "FormalOneShotOpticalGenerator",
             "FIRST_STAGE_MODEL_VERSION",
             "LatentDiffusionUNet",
             "LinearNoiseScheduler",
