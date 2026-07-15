@@ -1,12 +1,29 @@
 from __future__ import annotations
 
-import math
-
 import torch
 from torch import nn
 import torch.nn.functional as F
 
 from ..optics import angular_spectrum_propagate
+from ..optics.d2nn import PhaseOnlyDiffractiveStack
+from ..optics.devices import IdealAmplitudeSLMModel
+
+__all__ = [
+    "ElectronicGeneratorE",
+    "IdealAmplitudeSLMModel",
+    "PhaseAmplitudeDiffractiveStack",
+    "PhaseOnlyDiffractiveStack",
+    "_angular_spectrum_propagate_center_padded",
+    "_angular_spectrum_propagate_center_padded_with_diagnostics",
+    "_apply_complex_ols",
+    "_center_crop_complex_field",
+    "_center_embed_complex_field",
+    "_complex_field_energy",
+    "_flatten_complex_field",
+    "_resize_complex_field",
+    "_resize_real_intensity",
+    "_vector_to_complex_field",
+]
 
 
 def _resize_complex_field(field: torch.Tensor, size: tuple[int, int]) -> torch.Tensor:
@@ -409,138 +426,6 @@ class ElectronicGeneratorE(nn.Module):
     def forward(self, code: torch.Tensor, class_labels: torch.Tensor) -> torch.Tensor:
         slm_grid, _ = self.forward_with_diagnostics(code, class_labels)
         return slm_grid
-
-
-class IdealAmplitudeSLMModel(nn.Module):
-    def __init__(
-        self, background_floor: float, residual_phase_scale_rad: float = 0.0
-    ) -> None:
-        super().__init__()
-        if not 0.0 <= background_floor <= 1.0:
-            raise ValueError(
-                f"slm_background_floor must be in [0, 1], got {background_floor}"
-            )
-        self.background_floor = float(background_floor)
-        self.residual_phase_scale_rad = float(residual_phase_scale_rad)
-
-    def forward(self, slm_command: torch.Tensor) -> dict[str, torch.Tensor]:
-        # slm_command 是归一化电子控制量；slm_amplitude 才是进入复光场的物理振幅。
-        slm_command = slm_command.clamp(0.0, 1.0)
-        amplitude = self.background_floor + (1.0 - self.background_floor) * slm_command
-        phase = (
-            slm_command.new_full(slm_command.shape, self.residual_phase_scale_rad)
-            * slm_command
-        )
-        return {
-            "slm_command": slm_command,
-            "slm_amplitude": amplitude,
-            "slm_phase": phase,
-            "slm_transfer": torch.polar(amplitude, phase),
-        }
-
-
-class PhaseOnlyDiffractiveStack(nn.Module):
-    def __init__(
-        self,
-        num_layers: int,
-        grid_size: int,
-        layer_spacing: float,
-        wavelength: float,
-        pixel_size: float,
-        propagation_grid_size: int,
-        phase_init: str = "uniform_pi",
-    ) -> None:
-        super().__init__()
-        if num_layers <= 0:
-            raise ValueError(f"num_layers must be positive, got {num_layers}")
-        if propagation_grid_size < grid_size:
-            raise ValueError(
-                "propagation_grid_size must be at least grid_size, "
-                f"got propagation_grid_size={propagation_grid_size} and grid_size={grid_size}."
-            )
-        self.num_layers = num_layers
-        self.grid_size = grid_size
-        self.layer_spacing = layer_spacing
-        self.wavelength = wavelength
-        self.pixel_size = pixel_size
-        self.propagation_grid_size = propagation_grid_size
-        self.phase_init = phase_init
-        self.phase = nn.Parameter(torch.empty(num_layers, 1, grid_size, grid_size))
-        self.reset_parameters()
-
-    def reset_parameters(self) -> None:
-        if self.phase_init == "uniform_pi":
-            nn.init.uniform_(self.phase, -math.pi, math.pi)
-        elif self.phase_init == "uniform_2pi":
-            nn.init.uniform_(self.phase, 0.0, 2.0 * math.pi)
-        elif self.phase_init == "small":
-            nn.init.uniform_(self.phase, -0.05, 0.05)
-        else:
-            raise ValueError(
-                "Unsupported one_shot.diffractive_phase_init: "
-                f"{self.phase_init}; expected uniform_pi, uniform_2pi, or small."
-            )
-
-    def phase_transfers(
-        self,
-        mask_component: str = "trained",
-        phase_layer_mask: tuple[bool, ...] = (),
-    ) -> torch.Tensor:
-        if mask_component not in {"trained", "phase_only", "amplitude_only"}:
-            raise ValueError(
-                f"Unsupported decoder diagnostic mask component: {mask_component!r}"
-            )
-        amplitude = torch.ones_like(self.phase)
-        phase = (
-            torch.zeros_like(self.phase)
-            if mask_component == "amplitude_only"
-            else self.phase
-        )
-        if phase_layer_mask:
-            layer_mask = torch.tensor(
-                phase_layer_mask, device=phase.device, dtype=phase.dtype
-            ).view(-1, 1, 1, 1)
-            phase = phase * layer_mask
-        return torch.polar(amplitude, phase)
-
-    def forward(
-        self,
-        field: torch.Tensor,
-        *,
-        mask_component: str = "trained",
-        phase_layer_mask: tuple[bool, ...] = (),
-    ) -> tuple[torch.Tensor, torch.Tensor, dict[str, torch.Tensor]]:
-        """正式层序固定为相位调制→中心 padding→ASM 传播→中心 crop；padding/crop 不是物理重采样。"""
-        outputs = []
-        diagnostic_values: dict[str, list[torch.Tensor]] = {
-            "input_energy": [],
-            "padded_input_energy": [],
-            "propagated_full_energy": [],
-            "cropped_energy": [],
-            "crop_retention": [],
-            "propagation_energy_ratio": [],
-        }
-        transfers = self.phase_transfers(mask_component, phase_layer_mask).to(
-            field.dtype
-        )
-        for layer_index in range(self.num_layers):
-            field = field * transfers[layer_index].unsqueeze(0)
-            field, layer_diagnostics = (
-                _angular_spectrum_propagate_center_padded_with_diagnostics(
-                    field,
-                    self.layer_spacing,
-                    self.wavelength,
-                    self.pixel_size,
-                    self.propagation_grid_size,
-                )
-            )
-            for key, value in layer_diagnostics.items():
-                diagnostic_values[key].append(value)
-            outputs.append(field)
-        diagnostics = {
-            key: torch.stack(values, dim=1) for key, values in diagnostic_values.items()
-        }
-        return field, torch.stack(outputs, dim=1), diagnostics
 
 
 class PhaseAmplitudeDiffractiveStack(PhaseOnlyDiffractiveStack):
