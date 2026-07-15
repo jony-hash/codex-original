@@ -69,11 +69,15 @@ v56/v60 在该合同上完成了两次同配置短训练；strict provenance 有
 | `src/ldm_project/teacher/` | first-stage、diffusion、teacher sampling/training/distill |
 | `src/ldm_project/teacher/{export,label_audit,filter,readable}.py` | canonical teacher distillation workflows |
 | `src/ldm_project/teacher/common.py` | compatibility facade; shared helpers live in `distill_support.py` |
+| `src/ldm_project/evaluation/d2nn*.py` | neutral D2NN tensor/metric primitives used by Student and diagnostics |
 | `src/ldm_project/application/` | CLI、输出布局、run metadata 与按 stage 懒构造的调度 |
 | `src/ldm_project/application/stage_runtimes.py` | stage footprint registry 与真实 runtime materialization；`StageContext` 仅为兼容适配器 |
 | `configs/` | 仅活动 Golden Path、physics、teacher、smoke 与 v52/v55/v56 配置 |
 | `experiments/archive/` | 不可 promotion 的历史配置/工具及其 manifest |
-| `tests/` | 按 student/application/diagnostics/teacher 领域组织的行为测试和仓库契约测试 |
+| `tests/student/` | Student model、objective、config、checkpoint 和训练/评估测试 |
+| `tests/teacher/` | Teacher distillation export、audit、filter、readable split 和兼容测试 |
+| `tests/application/` | stage runtime、CLI、输出和 checkpoint resolution 测试 |
+| `tests/diagnostics/` | v16–v63 diagnostic-only 版本验证 |
 | `docs/` | 架构、运行指南、输出语义和历史证据 |
 | `tools/` | 聚焦的诊断与受控复验工具 |
 | `scripts/` | 独立展示或工作流辅助脚本 |

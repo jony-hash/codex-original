@@ -198,8 +198,12 @@ v63 工具与工件：
 
 第五轮已完成正式 Student 固定物理链收口：`FormalOneShotOpticalGenerator` 不再包含 diagnostic intervention，兼容路径由 `student/experimental/model.py` 按配置选择；输出 contract 与 optical provenance 组装独立到 `student/output_contract.py`。`application/stage_runtimes.py` 现在负责实际依赖物化，`StageContext` 仅为兼容适配器；data-only、student、teacher 阶段的模型集合会在构造后再次校验。正式 camera reconstruction term 已迁入 `student/objective_terms/formal.py`，旧 `one_shot_loss` 继续保持签名、返回字段和浮点加法顺序。冻结 v60 checkpoint 的 CUDA 96-output/9-state-key 比较通过，完整回归为 `492 passed`、`148 subtests passed`、1607 个既有 warning；本轮仍不训练、不改变 v56–v63 科学结论。超大测试机械拆分及其余实验 objective term 的移动留待独立提交。
 
-第六轮完成 Teacher、Objective 与测试规模收口：teacher workflow 已分别迁入 `teacher/export.py`、`label_audit.py`、`filter.py`、`readable.py`，`teacher/common.py` 降为兼容 facade；prototype builder monkeypatch 改为显式依赖注入。实验 objective 已按 readability、semantic、topology、diversity、residual 分组到 `student/objective_terms/`，`student/objectives.py` 保留 loss 编排。原两份超大测试已按 student/application/diagnostics 分类，公共 fixture 集中到 `tests/tests_support.py`，旧测试文件保留兼容 smoke。分类后的核心回归为 `282 passed`、`148 subtests passed`、1607 个既有 warning；完整仓库回归在最终门执行。未训练、不改变 v56–v63 科学结论。
+第六轮完成 Teacher、Objective 与测试规模收口：teacher workflow 已分别迁入 `teacher/export.py`、`label_audit.py`、`filter.py`、`readable.py`，`teacher/common.py` 降为兼容 facade；prototype builder monkeypatch 改为显式依赖注入。实验 objective 已按 readability、semantic、topology、diversity、residual 分组到 `student/objective_terms/`，`student/objectives.py` 保留 loss 编排。原两份超大测试已按 student/application/diagnostics 分类，公共 fixture 集中到 `tests/tests_support.py`，旧测试文件保留兼容 smoke。该轮中间分类回归为 `282 passed`；最终完整仓库回归为 `498 passed`、`148 subtests passed`、1607 个既有 warning。未训练、不改变 v56–v63 科学结论。
+
+第七轮完成最终边界校正：根包模型导出改为惰性属性，data-only stage 不再因兼容 root import 加载 VAE、DDPM 或 Student；`stages.py` 与 `stage_runtimes.py` 按 footprint 延迟绑定模型、loader 和 hooks。D2NN tensor/metric primitive 归入中立 `evaluation/d2nn*.py`，`student` 不再导入 `diagnostics`；旧 diagnostics/root 路径继续作为兼容 facade。Teacher scoped workflow 和 objective terms 改为显式依赖，新增 Teacher 边界与 subprocess import 测试。最终完整回归、静态检查和工作树状态以本节末尾的最新验收记录为准；不训练、不改变 v56–v63 科学结论。
 
 ## 已完成验证
+
+第七轮源码收尾验收：`503 passed`、`148 subtests passed`、1607 个既有 warning；`ruff check src tests *.py`、`python -m compileall src tests train.py`、`git diff --check` 和 subprocess lazy-import boundary tests 均通过。未运行新 CUDA 训练，未修改或提交 `outputs/`、checkpoint、数据集或缓存。
 
 v58.3 targeted/CUDA preflight、v61 robust audit、v61 native dual-channel upper bound、v62 conditional-control audit 与 v63 crossed-factor audit 已完成；v63 CUDA harness 有效，参数更新数为 0，所有报告均为 `diagnostic-only`。本次代码的完整验证命令及结果见当前工作区测试输出；所有输出和 cache 均位于 `outputs/`，不加入 Git；迁移时不得用 reset/checkout 清理用户改动。

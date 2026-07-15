@@ -5,7 +5,7 @@ Scope: `tests/**` and verification for repository changes. Read the repository-r
 ## Test Selection
 
 - Start with tests nearest the changed behavior.
-- One-shot model, optics, visualization, config, or checkpoint changes normally require `tests/student/`, `tests/application/`, `tests/diagnostics/`, the compatibility smoke files, and `tests/test_repo_layout.py` as applicable.
+- One-shot model, optics, visualization, config, or checkpoint changes normally require `tests/student/`, `tests/teacher/`, `tests/application/`, `tests/diagnostics/`, the compatibility smoke files, and `tests/test_repo_layout.py` as applicable.
 - Teacher/first-stage/diffusion changes normally require the matching conditioned, diffusion, data, or optical-path tests rather than an unrelated fixed bundle.
 - Docs-only and repository-instruction changes require `git diff --check`; do not run Python or CUDA tests unless behavior-bearing files also changed.
 - Run `python -m compileall src tests train.py` for shared Python changes and `ruff check src tests *.py` when lint-relevant files change.

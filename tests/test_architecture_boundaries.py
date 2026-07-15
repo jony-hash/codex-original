@@ -147,6 +147,40 @@ def test_student_distillation_does_not_construct_teacher_models() -> None:
     assert context.models.scheduler is None
 
 
+def test_stage_modules_do_not_eagerly_import_execution_models() -> None:
+    import subprocess
+    import sys
+
+    script = """
+import sys
+import ldm_project.application.stages
+assert 'ldm_project.diffusion' not in sys.modules
+assert 'ldm_project.first_stage' not in sys.modules
+assert 'ldm_project.student.model' not in sys.modules
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert result.stdout == ""
+
+
+def test_student_has_no_diagnostics_imports() -> None:
+    for path in (ROOT / "src" / "ldm_project" / "student").rglob("*.py"):
+        imports = _imports_in(path)
+        assert not any(name.startswith("diagnostics") for name in imports), path
+
+
+def test_teacher_scoped_modules_use_public_support_symbols() -> None:
+    for name in ("export.py", "label_audit.py", "filter.py", "readable.py", "fault_localization.py"):
+        path = ROOT / "src" / "ldm_project" / "teacher" / name
+        text = path.read_text(encoding="utf-8")
+        assert "from .distill import" not in text, path
+        assert "from .common import" not in text, path
+
+
 def test_formal_student_rejects_diagnostic_switches() -> None:
     physics = PhysicsConfig(
         front_path_model="coherent_imaging_4f",

@@ -42,7 +42,7 @@ This project distills an LDM teacher into a single-exposure optical generative s
 
 Final inference path: `noise/code + optional label -> generator_e -> amplitude SLM command -> encoder metasurface -> linear identity OLS -> decoder metasurface -> CMOS single exposure -> generated image`. The current formal contract has no fiber; a future fiber variant must preserve the complex-field interface and be separately validated.
 
-Dependency direction is `optics -> (none)`, `teacher/student -> neutral generation/distillation/evaluation`, and `application -> teacher/student`. The formal student entry is `FormalOneShotOpticalGenerator`; compatibility variants and root shims must not be imported by formal code. `distillation/targets.py` is neutral and must not import student. Archived files are reference-only.
+Dependency direction is `optics -> (none)`, `teacher/student -> optics + neutral generation/distillation/evaluation`, and `application -> teacher/student/optics`. Student may use neutral evaluation visualization primitives, but must not import `diagnostics`. The formal student entry is `FormalOneShotOpticalGenerator`; compatibility variants and root shims must not be imported by formal code. `distillation/targets.py` is neutral and must not import student. Archived files are reference-only.
 
 Formal optical-field artifacts must carry shape, pixel pitch, physical FOV, wavelength, upstream plane, propagation distance, and operation. Tensor equality alone is not physical-coordinate validation; generic complex resize is forbidden in the formal path.
 
@@ -60,7 +60,7 @@ Formal optical-field artifacts must carry shape, pixel pitch, physical FOV, wave
 ## 6. Commands And Verification
 
 - Prefix: `source "$(conda info --base)/etc/profile.d/conda.sh" && conda activate optical-generative-models &&`
-- Build: `python -m compileall src tests train.py`; targeted baseline: `pytest tests/student tests/application tests/diagnostics tests/test_one_shot.py tests/test_train_script.py tests/test_repo_layout.py -q`.
+- Build: `python -m compileall src tests train.py`; targeted baseline: `pytest tests/student tests/teacher tests/application tests/diagnostics tests/test_one_shot.py tests/test_train_script.py tests/test_repo_layout.py -q`.
 - Full: `pytest -q`; lint: `ruff check src tests *.py`; docs/meta: `git diff --check`.
 - Run targeted checks during iteration; run the full suite after targeted checks for shared/final changes, and rerun only checks invalidated by a corrective edit.
 - Use CUDA for formal training and acceptance, CPU only for labeled smoke tests, and `auto` only for compatibility checks. Codex prepares long CUDA/hardware jobs for the user unless explicitly delegated.
