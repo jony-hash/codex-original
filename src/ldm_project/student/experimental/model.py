@@ -37,7 +37,6 @@ from ..checkpoints import (
     load_one_shot_checkpoint_subset,
     validate_one_shot_checkpoint_payload,
 )
-from ..formal_contract import validate_formal_student_config
 from ...optics.sampling import PlaneSampling, sample_center_aperture
 from ...optics import (
     BackOpticalPath,
@@ -98,7 +97,7 @@ class _MultiScaleBridgeAdapter(nn.Module):
         )
 
 
-class OneShotOpticalGenerator(nn.Module):
+class _LegacyDiagnosticOneShotOpticalGenerator(nn.Module):
     def __init__(
         self,
         physics: PhysicsConfig,
@@ -1607,23 +1606,40 @@ class OneShotOpticalGenerator(nn.Module):
         return fields
 
 
-class _LegacyFormalOneShotOpticalGenerator(OneShotOpticalGenerator):
-    """Canonical current physical-forward student.
+from ..formal_model import FormalOneShotOpticalGenerator  # noqa: E402
 
-    Compatibility and diagnostic variants remain available through
-    ``OneShotOpticalGenerator``; this class refuses those switches before any
-    trainable module is constructed.
+
+class OneShotOpticalGenerator(FormalOneShotOpticalGenerator):
+    """Compatibility facade that reuses the formal class for formal configs.
+
+    Historical diagnostic configurations are routed to the preserved legacy
+    implementation so their state-dict keys and intervention behavior remain
+    unchanged during the migration period.
     """
 
-    def __init__(
-        self,
-        physics: PhysicsConfig,
-        config: OneShotConfig | None = None,
-        image_size: int = 200,
-    ) -> None:
+    def __new__(cls, physics, config=None, image_size=200):
         resolved = config or OneShotConfig()
-        validate_formal_student_config(physics, resolved)
-        super().__init__(physics, resolved, image_size=image_size)
+        formal = (
+            physics.physical_forward_contract
+            and resolved.optical_core_arch == "diffractive_phase_only"
+            and resolved.ols_kind == "identity"
+            and resolved.decoder_diagnostic_mode == "normal"
+            and resolved.decoder_diagnostic_modulation_override == "none"
+            and resolved.decoder_diagnostic_mask_component == "trained"
+            and resolved.target_code_diagnostic_mode == "none"
+            and resolved.target_code_bridge_source == "none"
+            and resolved.ols_transfer_calibration == "none"
+            and resolved.d2nn is not None
+            and resolved.d2nn.modulation == "phase_only"
+        )
+        if not formal:
+            return _LegacyDiagnosticOneShotOpticalGenerator(
+                physics, resolved, image_size=image_size
+            )
+        return super().__new__(cls)
+
+    def __init__(self, physics, config=None, image_size=200):
+        super().__init__(physics, config, image_size=image_size)
 
 
 # Compatibility symbol for callers that historically imported the private
@@ -1631,15 +1647,10 @@ class _LegacyFormalOneShotOpticalGenerator(OneShotOpticalGenerator):
 # checkpoint contract module; keeping this forwarding wrapper avoids changing
 # old tooling while preventing new code from depending on model internals.
 def _load_one_shot_checkpoint_state(
-    model: OneShotOpticalGenerator,
+    model: nn.Module,
     checkpoint_state: Mapping[str, torch.Tensor],
     **kwargs: Any,
 ) -> dict[str, int]:
     from .checkpoints import _load_one_shot_checkpoint_state as canonical_loader
 
     return canonical_loader(model, checkpoint_state, **kwargs)
-
-
-# Canonical formal implementation is isolated from this compatibility module.
-# Keep the historical import path and class name stable for callers.
-from ..formal_model import FormalOneShotOpticalGenerator  # noqa: E402
