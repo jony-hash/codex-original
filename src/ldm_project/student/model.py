@@ -25,18 +25,22 @@ from ..config import (
 )
 from .layers import (
     ElectronicGeneratorE,
-    IdealAmplitudeSLMModel,
     PhaseAmplitudeDiffractiveStack,
-    PhaseOnlyDiffractiveStack,
     _apply_complex_ols,
-    _angular_spectrum_propagate_center_padded_with_diagnostics,
     _flatten_complex_field,
     _resize_complex_field,
     _resize_real_intensity,
     _vector_to_complex_field,
 )
 from ..optics.sampling import PlaneSampling, sample_center_aperture
-from ..optics import BackOpticalPath, FrontOpticalPath, normalize_real_intensity
+from ..optics import (
+    BackOpticalPath,
+    FrontOpticalPath,
+    IdealAmplitudeSLMModel,
+    PhaseOnlyDiffractiveStack,
+    angular_spectrum_propagate_center_padded_with_diagnostics,
+    normalize_real_intensity,
+)
 from ..optics.fields import build_optical_field_record
 
 
@@ -673,7 +677,7 @@ class OneShotOpticalGenerator(nn.Module):
         current = field
         for _ in range(num_layers):
             current, layer_diagnostics = (
-                _angular_spectrum_propagate_center_padded_with_diagnostics(
+                angular_spectrum_propagate_center_padded_with_diagnostics(
                     current,
                     layer_spacing,
                     wavelength,

@@ -4,7 +4,12 @@ The package keeps the historical ``ldm_project.optics`` import path while
 separating field provenance, propagation, sampling, devices, relays and
 independent references into explicit modules.
 """
-from .devices import IdealIdentityElement, ReflectiveAmplitudeSLM
+from .devices import IdealAmplitudeSLMModel, IdealIdentityElement, ReflectiveAmplitudeSLM, apply_identity_ols
+from .d2nn import (
+    PhaseOnlyDiffractiveStack,
+    angular_spectrum_propagate_center_padded,
+    angular_spectrum_propagate_center_padded_with_diagnostics,
+)
 from .fields import (
     PHASE_INTENSITY_FLOOR_RATIO,
     STRICT_OPTICAL_FIELD_SCHEMA_VERSION,
@@ -35,15 +40,20 @@ from .sampling import PlaneSampling, aperture_sampling, sample_center_aperture, 
 __all__ = [
     "BackOpticalPath",
     "FrontOpticalPath",
+    "IdealAmplitudeSLMModel",
     "IdealIdentityElement",
     "PHASE_INTENSITY_FLOOR_RATIO",
+    "PhaseOnlyDiffractiveStack",
     "PlaneSampling",
     "ReflectiveAmplitudeSLM",
     "STRICT_OPTICAL_FIELD_SCHEMA_VERSION",
     "_gaussian_blur_complex_field",
     "_gaussian_blur_intensity",
     "angular_spectrum_propagate",
+    "angular_spectrum_propagate_center_padded",
+    "angular_spectrum_propagate_center_padded_with_diagnostics",
     "aperture_sampling",
+    "apply_identity_ols",
     "apply_thin_lens",
     "band_limited_angular_spectrum_propagate",
     "build_optical_field_record",
