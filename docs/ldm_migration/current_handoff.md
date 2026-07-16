@@ -263,10 +263,10 @@ v58.3 targeted/CUDA preflight、v61 robust audit、v61 native dual-channel upper
 - v66 已在 CUDA 上按预注册输入运行一次：`parameter_update_count=0`、`optimizer_created=false`，报告、tensor 和 preview 均已生成。结果为 `mixed-semantic-gradient-evidence`：label/instance drive 未同时低于 suppression gate，且未满足 semantic-gradient-available 或 batch-cancellation gate。因此它不授权继续 v56/v60 同配置训练，但允许在明确隔离的理想透明薄相位 diagnostic 分支中进行一次预注册 paired experiment；该分支不得替换 formal contract 或 promotion v60。
 - 实现验证已通过：v57–v66 定向 `58 passed`，完整回归 `522 passed`、`148 subtests passed`；compileall、ruff、`git diff --check` 均通过。
 
-### v67：理想透明薄相位面收敛门（2026-07-16）
+### v67/v67.1：理想透明薄相位面收敛门（2026-07-16）
 
-v67 新增了独立的 `transparent_identity` diagnostic boundary：外围复透射率为恒等、四个零厚度 phase-only 面在完整传播网格上 ASM 传播，正式 Student validator 明确拒绝该边界。活动 100×100 窗口与完整传播网格使用独立 sampling/FOV provenance；玻璃、材料、吸收、孔径和加工误差均未进入模型。
+v67 新增独立的 `transparent_identity` diagnostic boundary：外围复透射率为恒等，四个零厚度 phase-only 面在完整传播网格上 ASM 传播；Formal Student validator 明确拒绝该边界。Formal `finite_crop` 只表示传播后的理想硬孔径计算合同，不是透明玻璃或不透明基底的完整材料模型。活动 100×100 窗口与完整传播网格使用独立 sampling/FOV provenance；玻璃、材料、吸收、孔径和加工误差均未进入理想模型。
 
-冻结 v60 checkpoint、v56 配置和固定 v56 sample bundle 的 CUDA 1024/1536/2048 preflight 已执行。相对 2048 参考：1024 camera corr `-0.3018`、central-field relative L2 `0.02389`、energy relative difference `3.0000`、guard-band ratio `0.002748`；1536 分别为 `0.1167`、`0.007548`、`0.7778`、`0.0001771`。两者均未满足预注册门（corr≥`0.999`、L2≤`1e-3`、energy≤`1e-3`、guard≤`1e-4`），因此状态为 `grid-not-converged`，未启动 A/B 训练，也未导出加工候选。报告位于 `outputs/20260716_v67/runs/preflight/v67_transparent_boundary_preflight.json`。
+v67.1 修正了原 preflight 的面积均值伪差、中央比较区域、raw camera readout 和指标统计，并加入独立 ASM 零相位参考及固定 chip 的 backend relay 参考。CUDA 结果显示三种网格的零相位 reference 均通过（relative L2 `0.0`），backend relay reference 三网格 corr 均约 `1.0000`，说明 ASM 和 backend relay 坐标合同有效。冻结 v60 phase 参数的 transparent 对照中，1024/1536/2048 camera corr 分别为 `0.999898/0.999993/1.000000`，但中央 complex-field L2 分别为 `0.02107/0.005816/0`，guard-band ratio 分别为 `0.002748/0.0001771/0.00005869`；1024 和 1536 未满足 L2≤`1e-3` 与 guard≤`1e-4`，因此没有选定训练网格。
 
-该失败是数值传播网格不足的诊断结论，不代表透明相位模型或 v60 checkpoint 的生成质量结论；在不先解决收敛门前不得训练、延长 epoch 或进入材料高度标定。
+该结果将问题定位为“冻结 finite-crop v60 相位参数放入透明完整传播边界后的残余边界能量/复场差异”，不是独立 ASM 或 backend relay 失败，也不是透明模型重新训练失败。v67.1 状态为 `grid-not-converged`，未启动 A/B 训练、未延长 epoch、未导出加工候选；报告位于 `outputs/20260716_v671/runs/preflight/v67_transparent_convergence_v2.json`。同一轮 v58.3 relay 与 v56 formal artifact preflight 均为 `physical-forward-model-valid`，Formal Student 合同未发生变化。下一步必须先完成透明边界的零初始化/短程收敛验证，不得把 v60 冻结对照失败直接解释为透明模型不可训练。

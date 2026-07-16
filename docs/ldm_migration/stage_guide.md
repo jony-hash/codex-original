@@ -107,6 +107,10 @@ v9.10 prototype、旧 100×100 two-photon、v53 及更早的 loss/relay probes �
 - bypass、identity relay、phase-amplitude override、software oracle 和非合同层数仅是 `diagnostic-only` 证据，不能 promotion。
 - 每份实验报告必须列出：已定位问题、已排除原因、仍可能原因、gate 有效性和下一决策 gate；不得只提出“再训练”。
 
+### v67.1 transparent thin-phase gate
+
+`tools/diagnose_v67_transparent_boundary_convergence.py` 是独立的 diagnostic-only 前置门。它先验证零相位 ASM reference 和固定 chip 的 backend relay 坐标，再比较冻结 v60 phase 参数在 1024/1536/2048 传播网格上的中央 100×100 complex field、raw camera intensity、总能量和 guard-band。`finite_crop` 是 Formal Student 的理想硬孔径计算合同；`transparent_identity` 只允许 experimental diagnostic 使用。只要 1024/1536 未同时通过 corr、complex L2、总能量和 guard-band 门，就不得启动透明边界 A/B 训练或相位导出；v67.1 结果以 Current Handoff 和 versioned output report 为准。
+
 | Stage | 用途 | 何时运行 | 必需输入 | 可作为最终单次曝光证据 |
 | --- | --- | --- | --- | --- |
 | `teacher_distill_filter` | 按前景/对比度等规则过滤 teacher targets | Teacher target 质量不稳时 | `--distill-dataset` | 否 |

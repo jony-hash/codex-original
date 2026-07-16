@@ -75,7 +75,7 @@ D2NN 主线通过 `one_shot.optical_core_arch: diffractive_phase_only` 启用；
 - `chip -> backend relay lens`：100 mm。
 - `backend relay lens -> CMOS`：250 mm；chip -> CMOS 总机械距离为 350 mm。
 - Relay lens 焦距 `f = 71.4285714 mm`，由 `u = 100 mm, v = 250 mm` 的薄透镜公式反推，使 CMOS 位于合焦像面。
-- LightGen 内部为 `Encoder x2 -> linear identity OLS -> Decoder x2`，层间距为 1.50 mm。
+- LightGen 只作为 optical encoder–latent–generator 的系统组织参考；论文的具体光子神经元、OLS/光纤连接、层数、尺寸和间距不等同于本项目。当前项目自定义为 `phase-only Encoder x2 -> identity complex-field OLS -> phase-only Decoder x2`，100×100、2 µm 和 1.50 mm 均为本项目设计参数，不能归因于 LightGen 原始硬件。
 - PBS 只作为偏振效率建议，不作为当前数值传播节点。
 - v55 physical-forward contract 中 relay 距离、倍率、pupil 和 ABCD trace 全部进入 provenance；v52 的自由传播+中央 aperture 仅保留为历史 diagnostic，不代表当前正式路径。
 

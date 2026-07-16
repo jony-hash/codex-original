@@ -46,6 +46,8 @@ Dependency direction is `optics -> (none)`, `teacher/student -> optics + neutral
 
 Formal optical-field artifacts must carry shape, pixel pitch, physical FOV, wavelength, upstream plane, propagation distance, and operation. Tensor equality alone is not physical-coordinate validation; generic complex resize is forbidden in the formal path.
 
+The formal D2NN boundary is `finite_crop`, meaning a propagation-after-crop ideal hard-aperture computation contract; it is not a claim that printed glass is opaque. `transparent_identity` is diagnostic-only: it models a zero-thickness phase surface with an identity exterior on a full propagation grid and must pass the v67.1 convergence gate before any paired diagnostic training.
+
 - LDM is teacher infrastructure; final inference must not require diffusion denoising, iterative latent sampling, software-only VAE decoding, or inference-time optimization.
 - Direct MNIST `one_shot` is baseline/smoke only. Keep teacher, student, and hardware-calibration responsibilities separate.
 - Design source: `docs/ldm_migration/single_shot_ldm_distillation.md`; stage commands and debugging policy: `docs/ldm_migration/stage_guide.md`.

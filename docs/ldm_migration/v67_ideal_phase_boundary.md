@@ -7,9 +7,18 @@ v67 是 diagnostic-only 的加工候选筛选，不替换 Formal Student，也�
 - [Optical generative models (Nature, 2025)](https://www.nature.com/articles/s41586-025-09446-5)：本项目借鉴其将生成模型知识蒸馏到单曝光光学生成链的思想；不复制其器件层数、材料或训练目标。
 - [All-optical synthesis chip for large-scale intelligent semantic vision generation (Science, 2025)](https://pubmed.ncbi.nlm.nih.gov/41411438/)：本项目参考其 encoder–latent–decoder 和光学系统级组织方式；四层 `2+2`、100×100、2 µm 双光子打印相位层是本项目自定义设计。
 
+### 来源归属矩阵
+
+| 内容 | 论文借鉴 | 本项目合同 |
+| --- | --- | --- |
+| DDPM teacher distillation、数字 seed encoder、单曝光生成 | Nature | 具体 generator、loss 和 SLM command 为本项目实现 |
+| optical encoder、optical latent space、optical generator 的系统抽象 | Science LightGen | 自由空间 phase-only D2NN 与 identity complex-field OLS |
+| `2+2` 层、100×100、2 µm、1.50 mm | 非论文复现参数 | 本项目设计/几何推导 |
+| 透明外围 `1+0j` | 两篇论文未规定 | 由透明玻璃、无金属遮光层的第一阶段加工假设决定 |
+
 ## 理想仿真合同
 
-四个 phase-only 零厚度相位面在完整传播网格上传播。中央 100×100 活动区使用可学习相位，外围复透射率严格为 `1+0j`；层间不执行 destructive crop，1.50 mm 仅作为相位面间空气距离。玻璃厚度、基板折射率/吸收/反射、打印材料折射率、相位量化和装配误差均明确省略。
+Formal `finite_crop` 是传播后的中央裁剪计算合同，等价于每层之间存在理想硬孔径；它不是不透明玻璃基底的完整材料模型。v67 使用四个 phase-only 零厚度相位面在完整传播网格上传播：中央 100×100 活动区使用可学习相位，外围复透射率严格为 `1+0j`，层间不执行 destructive crop，1.50 mm 仅作为相位面间空气距离。玻璃厚度、基板折射率/吸收/反射、打印材料折射率、相位量化和装配误差均明确省略。
 
 因此，当前结果只能命名为 `ideal-phase-fabrication-candidate`。在取得玻璃和 ATE-DIP1.52 的 `n/k@532 nm`、结构高度及高度—相位标定前，不导出高度图；`h₂π` 的任何估算都不是加工参数。
 
