@@ -5,6 +5,7 @@ import torch
 from ldm_project.configuration.schema import D2NNConfig
 from ldm_project.configuration.schema import OneShotConfig, PhysicsConfig
 from ldm_project.student.formal_contract import validate_formal_student_config
+from ldm_project.student.experimental.model import OneShotOpticalGenerator
 from ldm_project.student.experimental.transparent_phase import (
     TransparentIdentityDiffractiveStack,
 )
@@ -69,3 +70,19 @@ def test_formal_contract_rejects_transparent_boundary() -> None:
         assert "exterior_boundary" in str(exc)
     else:
         raise AssertionError("formal contract accepted transparent diagnostic boundary")
+
+
+def test_transparent_boundary_keeps_physical_relay_but_routes_experimental() -> None:
+    physics = PhysicsConfig(physical_forward_contract=True)
+    config = OneShotConfig(
+        optical_core_arch="diffractive_phase_only",
+        physical_forward_contract=True,
+        d2nn=D2NNConfig(
+            grid_size=4,
+            propagation_grid_size=8,
+            exterior_boundary="transparent_identity",
+        ),
+    )
+    model = OneShotOpticalGenerator(physics, config, image_size=8)
+    assert model.__class__.__name__ == "_LegacyDiagnosticOneShotOpticalGenerator"
+    assert model.physics.physical_forward_contract is True

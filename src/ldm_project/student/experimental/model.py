@@ -1662,6 +1662,7 @@ class OneShotOpticalGenerator(FormalOneShotOpticalGenerator):
             and resolved.ols_transfer_calibration == "none"
             and resolved.d2nn is not None
             and resolved.d2nn.modulation == "phase_only"
+            and resolved.d2nn.exterior_boundary == "finite_crop"
         )
         if not formal:
             return _LegacyDiagnosticOneShotOpticalGenerator(
