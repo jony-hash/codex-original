@@ -521,3 +521,38 @@ v48 使用同一个 v47 Probe A checkpoint、相同 `small_sharp_stroke_digit_co
 - 报告：`outputs/reports/v63_code_conditioning_provenance_audit.json`
 - tensor：`outputs/reports/v63_code_conditioning_provenance_audit.pt`
 - preview：`outputs/reports/v63_code_conditioning_provenance_audit_preview.png`
+
+### v64：semantic-band carriage 与 readability isolation（2026-07-15）
+
+- 固定 v60 epoch-5 checkpoint、v56 正式 config、v58.3 relay、同一 readable `800/100/100` split 及 v61/v63 工件，执行零训练 CUDA audit。15k code/noise provenance、identity OLS、formal geometry/field chain、camera `|E|²`/detector normalization 和参数快照均通过；`parameter_update_count=0`、`optimizer_created=false`，临时 native memmap 在诊断后删除。
+- 以 camera `200x200 @2.5 µm` 的 native DFT lattice 定义 `0–20 cycles/mm` semantic、`20–80` mid、`>80` high。train teacher target 在 semantic band 的中心化能量份额为 `95.96%`，通过预注册 `90%` cutoff；v63 camera code-main 频带份额为 `20.16%/67.47%/12.37%`，label-main 为 `18.24%/69.56%/12.20%`。
+- 独立 held-out band probes（raw v61 probe 保持冻结）得到：semantic `0–20` corr/dice `0.9421/0.8782`，paired rotation drop `0.0547`、95% CI `[0.0474,0.0626]`；non-semantic `>20` corr/dice `0.9454/0.8832`，drop `0.0545`、CI `[0.0469,0.0625]`；冻结 v61 raw reference 为 `0.9452/0.8829`。两路均保留 paired held-out information。
+- 因此 v64 决策为 `distributed-subvisual-carrier` / `manual-review-required`：paired representation 同时分布于 semantic 与 non-semantic 频带，不存在单一主载波。raw CMOS 人眼不可读的硬 gate 不变；v64 不授权 detector/display calibration、generator/loss/optical-contract 修改、训练或 promotion。下一门只能做跨频带表示归因与固定显示/人工审查关联。
+- v64 preview 人工复核显示 teacher 行可读，raw CMOS 仍是同源颗粒纹理，semantic 行接近相同低频模板，non-semantic 行主要是颗粒纹理；因此最终 raw CMOS 人眼 gate 仍失败。
+
+代表证据：
+
+- 工具：`tools/diagnose_v64_semantic_band_carriage_audit.py`
+- 报告：`outputs/reports/v64_semantic_band_carriage_audit.json`
+- tensor：`outputs/reports/v64_semantic_band_carriage_audit.pt`
+- preview：`outputs/reports/v64_semantic_band_carriage_audit_preview.png`
+### v65：common-mode 与 readout-locality attribution audit（2026-07-15）
+
+- 固定 v60 epoch-5 checkpoint、v56 config、v58.3 relay、readable `800/100/100` split 及 v61/v63/v64 工件，完成一次零训练 CUDA audit。provenance、identity OLS、formal field-chain、camera `|E|²`/detector normalization 与参数快照通过；`parameter_update_count=0`、`optimizer_created=false`，临时 native memmap 已删除，结果均为 `diagnostic-only`。
+- train-only common mean/gain 的参数为 RMS `0.230195`、residual abs q995 `0.0071021`、gain `63.3615`。固定 common-mode display 的 test corr/dice/prototype accuracy 为 `0.04295/0.33365/0.46`，人工 preview 仍不可读。
+- 冻结 v61 raw reference 为 corr/dice `0.94523/0.88293`。pointwise affine 为 `0.68988/0.68732`；3x3、7x7、15x15、31x31 shared local convolution 分别为 `0.62136/0.64443`、`0.65647/0.67172`、`0.66580/0.67585`、`0.66830/0.67637`；full-support Fourier/Wiener 为 `0.68419/0.68491`。所有 target-fitted observer 的 within-class rotation CI 下界不为正，均未达到 v61 raw corr/dice 的 90% paired retention。
+- 预注册决策为 `nonlocal-codebook-objective-representation-mismatch-confirmed`，因为 fixed display、pointwise、全部 `<=31x31` local kernel 与 Fourier/Wiener 均失败，而冻结 v61 dense reference 仍可解码。raw CMOS 人眼 gate 仍失败；该结果只授权架构讨论，不授权训练、改 loss/decoder/generator/D2NN/OLS/relay/aperture 或 promotion。下一门应在不改变 formal path 的前提下讨论 nonlocal codebook/objective 设计与可读性约束，不直接启动训练。
+
+代表工件：
+
+- `tools/diagnose_v65_common_mode_readout_locality_audit.py`
+- `outputs/reports/v65_common_mode_readout_locality_audit.json`
+- `outputs/reports/v65_common_mode_readout_locality_audit.pt`
+- `outputs/reports/v65_common_mode_readout_locality_audit_preview.png`
+
+### v66：semantic-gradient budget audit（实现完成，CUDA 待单独授权）
+
+- 新增只读 `tools/diagnose_v66_semantic_gradient_budget_audit.py` 与 `tests/test_v66_semantic_gradient_budget_audit.py`。工具固定 v60 epoch-5、v56 formal config、v58.3 relay、readable `800/100/100` 及 v61–v65 工件；使用正式未 clamp camera reconstruction residual，对 generator、encoder、decoder 参数块进行逐样本 VJP 与流式 cancellation/cosine 统计。
+- train-only global/label templates、common/label/instance residual 精确分解、foreground/background 权重、参数零变化和四个决策分支均已覆盖。工具不创建训练对象、不写入参数梯度、不保存完整复场或梯度。
+- 按计划的单独 CUDA 授权条件，本轮未运行 v66 CUDA audit，因此没有虚构模型结论或生成 v66 report/tensor/preview。待获得授权后只执行一次正式诊断并把实际 gate 追加到本节。
+- 实现验证：v57–v66 定向 `58 passed`；完整仓库 `522 passed`、`148 subtests passed`；compileall、ruff、`git diff --check` 通过。

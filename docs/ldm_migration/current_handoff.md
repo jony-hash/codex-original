@@ -1,10 +1,10 @@
-# 当前主线交接：v63
+# 当前主线交接：v65
 
 更新时间：2026-07-15。此文件供新对话快速恢复当前主线；带日期的完整证据在 [Experiment History](experiment_history.md)，稳定架构合同在 [D2NN 单次曝光蒸馏主线](single_shot_ldm_distillation.md)。
 
 ## 先读的结论
 
-- 当前所有 v49-v63 结果都是 `diagnostic-only`，且 `accepted_summary_written=false`。没有可 promotion 的学生 checkpoint。
+- 当前所有 v49-v65 结果都是 `diagnostic-only`，且 `accepted_summary_written=false`。没有可 promotion 的学生 checkpoint。
 - 人眼硬 gate 只看最终 `physical_camera_plane` 的 CMOS intensity。v56 的正式 class-balanced sample（0-9 每类两张）仍为同源圆斑/纹理，不可读；这是 strict provenance 有效条件下的模型失败，不是 harness failure。
 - 不要重新使用 v47/v51/v53 checkpoint：它们与现行的 identity OLS、1.50 mm geometry 或完整前端 4f relay 合同不兼容。
 - v61 的原生采样离线 ridge 上界已从冻结 v60 camera intensity 重建出 held-out teacher target，但它是 900 例训练/验证后的软件读出；最终 `physical_camera_plane` 对人眼仍不可读。它不改变上述硬 gate，也不授权训练。
@@ -188,6 +188,40 @@ v63 工具与工件：
 - `outputs/reports/v63_code_conditioning_provenance_audit.pt`
 - `outputs/reports/v63_code_conditioning_provenance_audit_preview.png`
 
+## v64 semantic-band carriage audit
+
+v64 固定 v60 epoch-5 checkpoint、v56 正式 config、v58.3 relay 和 readable `800/100/100` split，沿未改动正式链路提取 native `physical_camera_plane`。15k code/noise provenance、v61/v63 labels/teacher targets、identity OLS、geometry、camera `|E|²` 语义和参数快照均有效；`parameter_update_count=0`、`optimizer_created=false`、未保存正式复场 cache。
+
+以 camera `200x200 @ 2.5 µm` 的物理 DFT lattice 定义 `0–20 cycles/mm` semantic band、`20–80` mid band 和 `>80` high band。train teacher target 在 semantic band 内含 `95.96%` 中心化空间能量，超过预注册 `90%` cutoff；但 v63 camera code-main 仅有 `20.16%` 位于 semantic band，`67.47%` 在 mid、`12.37%` 在 high。label-main 频带份额为 `18.24%/69.56%/12.20%`。
+
+独立 band-only held-out ridge probes（不重拟合 v61 raw probe）结果如下：
+
+| CMOS feature | Corr | Dice | Paired rotation drop (95% CI) |
+| --- | ---: | ---: | ---: |
+| semantic `0–20` | `0.9421` | `0.8782` | `0.0547 [0.0474, 0.0626]` |
+| non-semantic `>20` | `0.9454` | `0.8832` | `0.0545 [0.0469, 0.0625]` |
+| frozen v61 raw | `0.9452` | `0.8829` | reference |
+
+两个频带都保留 held-out paired information，且 semantic probe 达到 raw baseline 的 90% retention；但 code-main 没有在 semantic band 占多数。因此预注册决策为：
+
+```text
+distributed-subvisual-carrier
+manual-review-required
+diagnostic-only
+accepted_summary_written=false
+```
+
+这说明 paired representation 不是单一低频或高频载波，而是分布在多个频带；它仍然不能解释 raw CMOS 人眼不可读，也不授权修改 detector、display、generator、loss、D2NN、relay 或启动训练。下一门只允许做跨频带表示归因与固定显示/人工审查关联，继续停止训练和 checkpoint promotion。
+
+v64 preview 人工复核：teacher 行可读；raw CMOS 仍为同源颗粒纹理；semantic 行主要是几乎相同的低频模板；non-semantic 行主要是颗粒纹理。故 raw CMOS 人眼 gate 仍失败。
+
+v64 工具与工件：
+
+- `tools/diagnose_v64_semantic_band_carriage_audit.py`
+- `outputs/reports/v64_semantic_band_carriage_audit.json`
+- `outputs/reports/v64_semantic_band_carriage_audit.pt`
+- `outputs/reports/v64_semantic_band_carriage_audit_preview.png`
+
 ## 第二轮解耦状态
 
 本轮代码重构不改变 v56–v63 科学结论，也没有启动训练。当前正式路径的 phase-only D2NN、SLM transfer 和 identity OLS canonical 实现在 `optics/`；正式 Student 由 `FormalOneShotOpticalGenerator` 构造，旧 `OneShotOpticalGenerator`、`student/layers.py` 和根目录 one-shot imports 仅保留 compatibility/diagnostic 行为。checkpoint 合同位于 `student/checkpoints.py`，clean-readable target 位于中立 `distillation/targets.py`，stage student model 由 `application/model_factory.py` 按 physical contract 延迟构造。
@@ -206,4 +240,25 @@ v63 工具与工件：
 
 第七轮源码收尾验收：`503 passed`、`148 subtests passed`、1607 个既有 warning；`ruff check src tests *.py`、`python -m compileall src tests train.py`、`git diff --check` 和 subprocess lazy-import boundary tests 均通过。未运行新 CUDA 训练，未修改或提交 `outputs/`、checkpoint、数据集或缓存。
 
-v58.3 targeted/CUDA preflight、v61 robust audit、v61 native dual-channel upper bound、v62 conditional-control audit 与 v63 crossed-factor audit 已完成；v63 CUDA harness 有效，参数更新数为 0，所有报告均为 `diagnostic-only`。本次代码的完整验证命令及结果见当前工作区测试输出；所有输出和 cache 均位于 `outputs/`，不加入 Git；迁移时不得用 reset/checkout 清理用户改动。
+v58.3 targeted/CUDA preflight、v61 robust audit、v61 native dual-channel upper bound、v62 conditional-control audit、v63 crossed-factor audit 与 v64 semantic-band audit 已完成；v64 CUDA harness 有效，参数更新数为 0，所有报告均为 `diagnostic-only`。本次代码的完整验证命令及结果见当前工作区测试输出；所有输出和 cache 均位于 `outputs/`，不加入 Git；迁移时不得用 reset/checkout 清理用户改动。
+
+### v65：common-mode 与 readout-locality attribution audit（2026-07-15）
+
+- 固定 v60 epoch-5 checkpoint、v56 正式 config、v58.3 relay、readable `800/100/100` split 及 v61/v63/v64 工件，执行一次零训练 CUDA audit。输入 provenance、identity OLS、formal geometry/field chain、camera `|E|²`/detector normalization 和参数快照均通过；`parameter_update_count=0`、`optimizer_created=false`，临时 native `200x200 @2.5 µm` CMOS memmap 在诊断后删除。所有结果为 `diagnostic-only`，未改 formal inference 或硬件合同。
+- 训练集唯一 common mean 的 RMS 为 `0.230195`，训练 residual `abs` 99.5 percentile 为 `0.0071021`，固定全局 gain 为 `63.3615`。无监督 common-mode display 的 test corr/dice/prototype accuracy 仅 `0.04295/0.33365/0.46`，class-balanced preview 仍不可读；共同模板/显示动态范围不能单独解释为可读恢复。
+- 冻结 v61 raw camera reference 为 corr/dice `0.94523/0.88293`。held-out observer ladder 的 test 结果为：pointwise affine `0.68988/0.68732`；shared local convolution `3x3/7x7/15x15/31x31` 分别为 `0.62136/0.64443`、`0.65647/0.67172`、`0.66580/0.67585`、`0.66830/0.67637`；full-support Fourier/Wiener 为 `0.68419/0.68491`。各 target-fitted observer 的 within-class rotation CI 下界均不为正，未达到相对 v61 raw corr/dice 的 90% paired 门。
+- v65 预注册决策为 `nonlocal-codebook-objective-representation-mismatch-confirmed`，dense v61 reference 仍可解码。证据排除了 fixed common-mode display、pointwise photometric、`<=31x31` finite-local 和 translation-equivariant Fourier/Wiener 作为充分读出；raw CMOS 人眼不可读 gate 仍失败。该结果只授权进入 generator/objective 架构重设计讨论，不授权直接训练、延长 epoch、改 loss、decoder、D2NN、OLS、aperture、spacing、pupil 或 promotion。
+
+代表证据：
+
+- `tools/diagnose_v65_common_mode_readout_locality_audit.py`
+- `outputs/reports/v65_common_mode_readout_locality_audit.json`
+- `outputs/reports/v65_common_mode_readout_locality_audit.pt`
+- `outputs/reports/v65_common_mode_readout_locality_audit_preview.png`
+
+### v66：semantic-gradient budget audit（CUDA 已完成，diagnostic-only）
+
+- 已新增只读工具 `tools/diagnose_v66_semantic_gradient_budget_audit.py` 与对应测试。工具固定 v60/v56/v58.3、readable `800/100/100` 和 v61–v65 provenance，使用正式未 clamp `camera_plane_loss`、前景阈值 `0.05`、权重 `3.0/1.0`，对 `generator_e`、encoder phase、decoder phase 做逐样本 VJP；不创建训练对象、不写入参数梯度、不保存完整复场或梯度。
+- target 只由 train split 构造 global/label template；test residual 的 common、label、instance 分解含精确加和校验，并流式报告参数 RMS、归一化 semantic/common drive、cancellation ratio 及同类/跨类 cosine。所有预注册决策分支均有合成测试。
+- v66 已在 CUDA 上按预注册输入运行一次：`parameter_update_count=0`、`optimizer_created=false`，报告、tensor 和 preview 均已生成。结果为 `mixed-semantic-gradient-evidence`：label/instance drive 未同时低于 suppression gate，且未满足 semantic-gradient-available 或 batch-cancellation gate。因此它不授权继续 v56/v60 同配置训练，但允许在明确隔离的理想透明薄相位 diagnostic 分支中进行一次预注册 paired experiment；该分支不得替换 formal contract 或 promotion v60。
+- 实现验证已通过：v57–v66 定向 `58 passed`，完整回归 `522 passed`、`148 subtests passed`；compileall、ruff、`git diff --check` 均通过。
