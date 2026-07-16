@@ -25,6 +25,8 @@ def validate_formal_student_config(physics, config) -> None:
         invalid.append("one_shot.ols_transfer_calibration")
     if config.d2nn is None or config.d2nn.modulation != "phase_only":
         invalid.append("one_shot.d2nn.modulation")
+    if config.d2nn is None or config.d2nn.exterior_boundary != "finite_crop":
+        invalid.append("one_shot.d2nn.exterior_boundary")
     if invalid:
         raise ValueError(
             "FormalOneShotOpticalGenerator rejects diagnostic/compatibility settings: "

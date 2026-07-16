@@ -194,6 +194,16 @@ class D2NNConfig:
     modulation: str = "phase_only"
     phase_init: str = "uniform_pi"
     amplitude_logit_init: float = 4.0
+    # 理想透明相位面只允许在 experimental/diagnostic 路径使用；旧配置默认硬边界。
+    exterior_boundary: str = "finite_crop"
+
+    def __post_init__(self) -> None:
+        allowed = {"finite_crop", "transparent_identity"}
+        if self.exterior_boundary not in allowed:
+            raise ValueError(
+                "one_shot.d2nn.exterior_boundary must be one of "
+                f"{sorted(allowed)}, got {self.exterior_boundary!r}"
+            )
 
 
 @dataclass

@@ -32,6 +32,7 @@ from .layers import (
     _resize_real_intensity,
     _vector_to_complex_field,
 )
+from .transparent_phase import TransparentIdentityDiffractiveStack
 from ..checkpoints import (
     load_one_shot_checkpoint,
     load_one_shot_checkpoint_subset,
@@ -157,6 +158,13 @@ class _LegacyDiagnosticOneShotOpticalGenerator(nn.Module):
                 if decoder_modulation == "phase_amplitude"
                 else PhaseOnlyDiffractiveStack
             )
+            if d2nn.get("exterior_boundary") == "transparent_identity":
+                if encoder_modulation != "phase_only" or decoder_modulation != "phase_only":
+                    raise ValueError(
+                        "transparent_identity requires phase-only encoder and decoder"
+                    )
+                encoder_stack_cls = TransparentIdentityDiffractiveStack
+                decoder_stack_cls = TransparentIdentityDiffractiveStack
             self.encoder = encoder_stack_cls(
                 d2nn["encoder_layers"],
                 d2nn["grid_size"],
@@ -275,6 +283,7 @@ class _LegacyDiagnosticOneShotOpticalGenerator(nn.Module):
                 "modulation": d2nn_cfg.modulation,
                 "phase_init": d2nn_cfg.phase_init,
                 "amplitude_logit_init": d2nn_cfg.amplitude_logit_init,
+                "exterior_boundary": d2nn_cfg.exterior_boundary,
             }
         return {
             "wavelength": self.physics.optics.wavelength,
@@ -1329,6 +1338,19 @@ class _LegacyDiagnosticOneShotOpticalGenerator(nn.Module):
             },
             **optical_readout,
         }
+        if self._d2nn.get("exterior_boundary") == "transparent_identity":
+            # 理想模型省略玻璃、材料和孔径；这些字段不可被解释为实物标定。
+            outputs["optical_boundary_contract"] = (
+                "ideal_transparent_thin_phase_v1"
+            )
+            outputs["ideal_phase_provenance"] = {
+                "glass_model": "omitted",
+                "substrate_thickness": None,
+                "exterior_transmission": "identity",
+                "physical_aperture": None,
+                "phase_plane_spacing_m": float(self._d2nn["layer_spacing"]),
+                "fabrication_status": "unverified",
+            }
         if return_optical_fields:
             outputs["optical_fields"] = self._build_diffractive_optical_fields(
                 slm_transfer=slm_transfer,
@@ -1391,10 +1413,19 @@ class _LegacyDiagnosticOneShotOpticalGenerator(nn.Module):
             if self.physics.front_path_model == "coherent_imaging_4f"
             else self.physics.optics.pixel_size,
         ).to_dict()
-        d2nn_sampling = PlaneSampling(
-            "lightgen_d2nn",
+        active_d2nn_sampling = PlaneSampling(
+            "lightgen_d2nn_active",
             height=int(encoder_input_field.shape[-2]),
             width=int(encoder_input_field.shape[-1]),
+            pixel_size_y=self._d2nn["pixel_size"],
+            pixel_size_x=self._d2nn["pixel_size"],
+        ).to_dict()
+        # 透明理想相位面在完整传播网格上工作；活动区与传播网格的
+        # physical FOV 不同，不能复用 100x100 的 provenance。
+        propagation_d2nn_sampling = PlaneSampling(
+            "lightgen_d2nn_propagation_grid",
+            height=int(encoder_layer_fields.shape[-1]),
+            width=int(encoder_layer_fields.shape[-1]),
             pixel_size_y=self._d2nn["pixel_size"],
             pixel_size_x=self._d2nn["pixel_size"],
         ).to_dict()
@@ -1472,7 +1503,7 @@ class _LegacyDiagnosticOneShotOpticalGenerator(nn.Module):
             ),
             phase_available=front_phase_available,
             source_kind=front_source_kind,
-            sampling=d2nn_sampling,
+            sampling=active_d2nn_sampling,
         )
         add(
             fields,
@@ -1486,7 +1517,7 @@ class _LegacyDiagnosticOneShotOpticalGenerator(nn.Module):
             ),
             phase_available=front_phase_available,
             source_kind=front_source_kind,
-            sampling=d2nn_sampling,
+            sampling=active_d2nn_sampling,
         )
         encoder_source_kind = (
             "propagated_complex_field"
@@ -1504,7 +1535,7 @@ class _LegacyDiagnosticOneShotOpticalGenerator(nn.Module):
                 operation="encoder_diffractive_layer",
                 phase_available=front_phase_available,
                 source_kind=encoder_source_kind,
-                sampling=d2nn_sampling,
+                sampling=propagation_d2nn_sampling,
             )
             previous = name
         add(
@@ -1515,7 +1546,7 @@ class _LegacyDiagnosticOneShotOpticalGenerator(nn.Module):
             operation="encoder_output",
             phase_available=front_phase_available,
             source_kind=encoder_source_kind,
-            sampling=d2nn_sampling,
+            sampling=propagation_d2nn_sampling,
         )
         add(
             fields,
@@ -1525,7 +1556,7 @@ class _LegacyDiagnosticOneShotOpticalGenerator(nn.Module):
             operation="ols_input_alias",
             phase_available=front_phase_available,
             source_kind=encoder_source_kind,
-            sampling=d2nn_sampling,
+            sampling=propagation_d2nn_sampling,
         )
         add(
             fields,
@@ -1535,7 +1566,7 @@ class _LegacyDiagnosticOneShotOpticalGenerator(nn.Module):
             operation=f"complex_ols:{self.config.ols_kind}",
             phase_available=front_phase_available,
             source_kind=encoder_source_kind,
-            sampling=d2nn_sampling,
+            sampling=propagation_d2nn_sampling,
         )
         if target_active:
             decoder_source_kind = "target_code_intervention"
@@ -1553,7 +1584,7 @@ class _LegacyDiagnosticOneShotOpticalGenerator(nn.Module):
             operation="decoder_input",
             phase_available=decoder_phase_available,
             source_kind=decoder_source_kind,
-            sampling=d2nn_sampling,
+            sampling=propagation_d2nn_sampling,
         )
         previous = "decoder_input"
         for layer_index in range(int(decoder_layer_fields.shape[1])):
@@ -1566,7 +1597,7 @@ class _LegacyDiagnosticOneShotOpticalGenerator(nn.Module):
                 operation="decoder_diffractive_layer",
                 phase_available=decoder_phase_available,
                 source_kind=decoder_source_kind,
-                sampling=d2nn_sampling,
+                sampling=propagation_d2nn_sampling,
             )
             previous = name
         add(
@@ -1577,7 +1608,7 @@ class _LegacyDiagnosticOneShotOpticalGenerator(nn.Module):
             operation="decoder_output",
             phase_available=decoder_phase_available,
             source_kind=decoder_source_kind,
-            sampling=d2nn_sampling,
+            sampling=propagation_d2nn_sampling,
         )
         add(
             fields,
@@ -1587,7 +1618,7 @@ class _LegacyDiagnosticOneShotOpticalGenerator(nn.Module):
             operation="chip_plane",
             phase_available=decoder_phase_available,
             source_kind=decoder_source_kind,
-            sampling=d2nn_sampling,
+            sampling=propagation_d2nn_sampling,
         )
         if bool(raw_optical_readout.get("camera_field_available", False)):
             real = raw_optical_readout.get("camera_field_real")
