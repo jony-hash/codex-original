@@ -9,6 +9,7 @@ from tools.diagnose_v67_transparent_boundary_convergence import (
     phase_circular_error,
     relative_l2,
     total_energy,
+    zero_phase_reference_check,
 )
 from tools.diagnose_v67_transparent_boundary_convergence import run
 
@@ -56,3 +57,9 @@ def test_v67_report_uses_versioned_schema_without_inputs(tmp_path) -> None:
     report = run(output=tmp_path / "preflight.json", device="cpu")
     assert report["schema"] == "v67_transparent_convergence_v2"
     assert report["status"] == "preflight-input-required"
+
+
+def test_v67_zero_phase_reference_matches_independent_asm() -> None:
+    result = zero_phase_reference_check(device=torch.device("cpu"), grid=128, layers=1)
+    assert result["passed"] is True
+    assert result["relative_l2"] <= 1e-6
