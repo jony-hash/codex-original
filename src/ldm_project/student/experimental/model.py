@@ -1007,6 +1007,28 @@ class _LegacyDiagnosticOneShotOpticalGenerator(nn.Module):
             return float(self.config.target_code_spatial_scale)
         return 0.72
 
+    def _transparent_active_view(self, value: torch.Tensor) -> torch.Tensor:
+        """Return the active view without changing the internal propagation field.
+
+        透明实验路径可以在毫米级完整网格上传播；普通训练输出仍只保留
+        中央学习窗口，避免把完整 3072/4096 复场意外保存到 loss bundle。
+        显式 ``return_optical_fields=True`` 时，完整复场仍通过 provenance
+        记录返回，且 backend relay 始终先使用未裁剪的内部 field。
+        """
+        if self._d2nn.get("exterior_boundary") != "transparent_identity":
+            return value
+        target = int(self._d2nn["grid_size"])
+        if value.shape[-2:] == (target, target):
+            return value
+        height, width = value.shape[-2:]
+        if height < target or width < target:
+            raise ValueError(
+                "transparent propagation field is smaller than its active window: "
+                f"{tuple(value.shape[-2:])} vs {(target, target)}"
+            )
+        top, left = (height - target) // 2, (width - target) // 2
+        return value[..., top : top + target, left : left + target]
+
     def _target_code_field(
         self,
         *,
@@ -1224,7 +1246,25 @@ class _LegacyDiagnosticOneShotOpticalGenerator(nn.Module):
             clamp=False,
         )
         physical_camera_plane = camera_plane_loss.clamp(0.0, 1.0)
-        chip_amplitude = chip_grid.abs()
+        # backend relay 已经使用完整 chip_grid；这里仅为常规输出构造中央
+        # 活动区视图，避免 diagnostic 全场传播扩大所有 loss tensor。
+        encoder_phase_transfer = self.encoder.phase_transfers()
+        decoder_phase_transfer = self.decoder.phase_transfers(
+            self.config.decoder_diagnostic_mask_component,
+            tuple(self.config.decoder_diagnostic_phase_layer_mask),
+        )
+        chip_output = self._transparent_active_view(chip_grid)
+        encoder_input_output = self._transparent_active_view(encoder_input_field)
+        encoder_grid_output = self._transparent_active_view(encoder_grid)
+        encoded_output = self._transparent_active_view(encoded_field)
+        ols_output_field = self._transparent_active_view(ols_field)
+        decoder_input_output = self._transparent_active_view(decoder_input_field)
+        target_code_output = self._transparent_active_view(target_code_amplitude)
+        encoder_layers_output = self._transparent_active_view(encoder_layer_fields)
+        decoder_layers_output = self._transparent_active_view(decoder_layer_fields)
+        encoder_mask_output = self._transparent_active_view(encoder_phase_transfer)
+        decoder_mask_output = self._transparent_active_view(decoder_phase_transfer)
+        chip_amplitude = chip_output.abs()
         chip_intensity_loss = normalize_real_intensity(
             chip_amplitude.pow(2),
             self.physics.readout.normalize_percentile,
@@ -1262,11 +1302,6 @@ class _LegacyDiagnosticOneShotOpticalGenerator(nn.Module):
             "camera_plane": selected_plane,
             "camera_plane_loss": selected_plane_loss,
         }
-        encoder_phase_transfer = self.encoder.phase_transfers()
-        decoder_phase_transfer = self.decoder.phase_transfers(
-            self.config.decoder_diagnostic_mask_component,
-            tuple(self.config.decoder_diagnostic_phase_layer_mask),
-        )
         outputs = {
             "x_hat": selected_plane,
             "camera_plane": selected_plane,
@@ -1277,21 +1312,21 @@ class _LegacyDiagnosticOneShotOpticalGenerator(nn.Module):
             "slm_command": slm_outputs["slm_command"],
             "slm_amplitude": slm_outputs["slm_amplitude"],
             "slm_phase": slm_outputs["slm_phase"],
-            "encoder_input_amplitude": encoder_input_field.abs(),
-            "encoder_input_phase": torch.angle(encoder_input_field),
-            "encoder_input_grid_amplitude": encoder_grid.abs(),
-            "encoder_input_grid_phase": torch.angle(encoder_grid),
-            "encoded_amplitude": encoded_field.abs(),
-            "encoded_phase": torch.angle(encoded_field),
-            "ols_input_amplitude": encoded_field.abs(),
-            "ols_input_phase": torch.angle(encoded_field),
-            "ols_output_amplitude": ols_field.abs(),
-            "ols_output_phase": torch.angle(ols_field),
-            "ols_amplitude": ols_field.abs(),
-            "ols_phase": torch.angle(ols_field),
-            "decoder_input_amplitude": decoder_input_field.abs(),
-            "decoder_input_phase": torch.angle(decoder_input_field),
-            "target_code_amplitude": target_code_amplitude,
+            "encoder_input_amplitude": encoder_input_output.abs(),
+            "encoder_input_phase": torch.angle(encoder_input_output),
+            "encoder_input_grid_amplitude": encoder_grid_output.abs(),
+            "encoder_input_grid_phase": torch.angle(encoder_grid_output),
+            "encoded_amplitude": encoded_output.abs(),
+            "encoded_phase": torch.angle(encoded_output),
+            "ols_input_amplitude": encoded_output.abs(),
+            "ols_input_phase": torch.angle(encoded_output),
+            "ols_output_amplitude": ols_output_field.abs(),
+            "ols_output_phase": torch.angle(ols_output_field),
+            "ols_amplitude": ols_output_field.abs(),
+            "ols_phase": torch.angle(ols_output_field),
+            "decoder_input_amplitude": decoder_input_output.abs(),
+            "decoder_input_phase": torch.angle(decoder_input_output),
+            "target_code_amplitude": target_code_output,
             "target_code_diagnostic_mode": self.config.target_code_diagnostic_mode,
             "target_code_spatial_scale": self._effective_target_code_spatial_scale(),
             "target_code_diagnostic_active": torch.tensor(
@@ -1304,8 +1339,8 @@ class _LegacyDiagnosticOneShotOpticalGenerator(nn.Module):
                 self.config.target_code_bridge_source != "none",
                 device=chip_grid.device,
             ),
-            "decoder_output_amplitude": chip_grid.abs(),
-            "decoder_output_phase": torch.angle(chip_grid),
+            "decoder_output_amplitude": chip_output.abs(),
+            "decoder_output_phase": torch.angle(chip_output),
             "decoder_diagnostic_mode": self.config.decoder_diagnostic_mode,
             "decoder_diagnostic_modulation_override": self.config.decoder_diagnostic_modulation_override,
             "decoder_diagnostic_mask_component": self.config.decoder_diagnostic_mask_component,
@@ -1322,8 +1357,8 @@ class _LegacyDiagnosticOneShotOpticalGenerator(nn.Module):
                 device=chip_grid.device,
             ),
             "ols_transfer_calibration": self.config.ols_transfer_calibration,
-            "chip_real": chip_grid.real,
-            "chip_imag": chip_grid.imag,
+            "chip_real": chip_output.real,
+            "chip_imag": chip_output.imag,
             "chip_intensity_primary_loss": chip_intensity_loss,
             "chip_intensity_primary": chip_intensity_loss.clamp(0.0, 1.0),
             "chip_amplitude_primary_loss": chip_amplitude_loss,
@@ -1341,14 +1376,14 @@ class _LegacyDiagnosticOneShotOpticalGenerator(nn.Module):
             "diffractive_camera_plane_loss_raw": raw_optical_readout[
                 "camera_plane_loss"
             ],
-            "diffractive_encoder_layer_amplitude": encoder_layer_fields.abs(),
-            "diffractive_encoder_layer_phase": torch.angle(encoder_layer_fields),
-            "diffractive_decoder_layer_amplitude": decoder_layer_fields.abs(),
-            "diffractive_decoder_layer_phase": torch.angle(decoder_layer_fields),
-            "diffractive_encoder_mask_amplitude": encoder_phase_transfer.abs(),
-            "diffractive_encoder_mask_phase": torch.angle(encoder_phase_transfer),
-            "diffractive_decoder_mask_amplitude": decoder_phase_transfer.abs(),
-            "diffractive_decoder_mask_phase": torch.angle(decoder_phase_transfer),
+            "diffractive_encoder_layer_amplitude": encoder_layers_output.abs(),
+            "diffractive_encoder_layer_phase": torch.angle(encoder_layers_output),
+            "diffractive_decoder_layer_amplitude": decoder_layers_output.abs(),
+            "diffractive_decoder_layer_phase": torch.angle(decoder_layers_output),
+            "diffractive_encoder_mask_amplitude": encoder_mask_output.abs(),
+            "diffractive_encoder_mask_phase": torch.angle(encoder_mask_output),
+            "diffractive_decoder_mask_amplitude": decoder_mask_output.abs(),
+            "diffractive_decoder_mask_phase": torch.angle(decoder_mask_output),
             **{
                 f"diffractive_encoder_crop_{key}": value
                 for key, value in encoder_crop_diagnostics.items()
@@ -1380,6 +1415,11 @@ class _LegacyDiagnosticOneShotOpticalGenerator(nn.Module):
                 "transparent_fft_grid_size": self._d2nn.get(
                     "transparent_fft_grid_size"
                 ),
+                "transparent_active_view_shape": [
+                    int(self._d2nn["grid_size"]),
+                    int(self._d2nn["grid_size"]),
+                ],
+                "transparent_artifact_view": "center_crop_from_internal_field",
                 "transparent_edge_guard_fraction": float(
                     self._d2nn.get("transparent_edge_guard_fraction", 0.05)
                 ),
