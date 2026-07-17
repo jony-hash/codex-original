@@ -8,6 +8,14 @@ import torch
 from ldm_project.configuration.schema import D2NNConfig
 from ldm_project.configuration.schema import OneShotConfig, PhysicsConfig
 from ldm_project.student.formal_contract import validate_formal_student_config
+from ldm_project.student.checkpoints import load_one_shot_checkpoint_subset
+from ldm_project.student.experimental.model import OneShotOpticalGenerator
+from ldm_project.student.contracts import ONE_SHOT_MODEL_VERSION
+from tools.diagnose_v68_transparent_memory import (
+    _build_prototype_bank,
+    _compare,
+    _tensor_hash,
+)
 from ldm_project.student.experimental.transparent_phase import (
     TransparentIdentityDiffractiveStack,
 )
@@ -52,6 +60,95 @@ def test_formal_contract_rejects_checkpointed_transparent_memory_mode() -> None:
         validate_formal_student_config(
             PhysicsConfig(physical_forward_contract=True), config
         )
+
+
+def test_v68_prototype_bank_hash_is_reproducible() -> None:
+    from ldm_project import load_training_config
+
+    config = load_training_config(
+        ROOT / "configs" / "train_v68_transparent_readability_a.yaml"
+    )
+    assert _tensor_hash(_build_prototype_bank(config)) == _tensor_hash(
+        _build_prototype_bank(config)
+    )
+
+
+def test_b_warmstart_loads_template_and_phase_but_not_residual() -> None:
+    common = dict(
+        optical_core_arch="diffractive_phase_only",
+        physical_forward_contract=False,
+        code_dim=8,
+        label_embed_dim=4,
+        hidden_dim=8,
+        num_classes=3,
+        generator_command_transform="intensity_to_amplitude",
+        generator_template_init="mnist_prototype",
+        distill_target_source="mnist_prototype",
+        d2nn=D2NNConfig(
+            grid_size=4,
+            propagation_grid_size=8,
+            pixel_size=2.0e-6,
+            layer_spacing=1.0e-5,
+            exterior_boundary="transparent_identity",
+        ),
+    )
+    source_cfg = OneShotConfig(generator_e_arch="label_template", **common)
+    target_cfg = OneShotConfig(
+        generator_e_arch="label_template_code_residual",
+        code_residual_scale=0.10,
+        **common,
+    )
+    source = OneShotOpticalGenerator(PhysicsConfig(), source_cfg, image_size=8)
+    target = OneShotOpticalGenerator(PhysicsConfig(), target_cfg, image_size=8)
+    with torch.no_grad():
+        source.generator_e.template_logits.fill_(0.25)
+    residual_before = target.generator_e.residual_net[0].weight.detach().clone()
+    summary = load_one_shot_checkpoint_subset(
+        target,
+        {"model_version": ONE_SHOT_MODEL_VERSION, "model_state_dict": source.state_dict()},
+        include_prefixes=("generator_e.",),
+        description="v68 B template warm-start",
+        expected_missing_prefixes=(
+            "generator_e.label_embedding.",
+            "generator_e.residual_net.",
+        ),
+    )
+    assert summary["loaded"] == 1
+    assert torch.equal(
+        target.generator_e.template_logits, source.generator_e.template_logits
+    )
+    assert torch.equal(target.generator_e.residual_net[0].weight, residual_before)
+
+
+def test_v68_admission_report_is_not_success_when_a_plane_gate_fails() -> None:
+    torch.manual_seed(1234)
+    fields = {
+        name: torch.randn(1, 1, 100, 100, dtype=torch.complex64)
+        for name in (
+            "encoder_layer_1",
+            "encoder_layer_2",
+            "encoder_output",
+            "decoder_layer_1",
+            "decoder_layer_2",
+            "chip",
+        )
+    }
+    base = {
+        "fields": fields,
+        "camera": torch.ones(1, 1, 8, 8),
+        "energy_records": [
+            {
+                "encoder_propagation_energy_ratio": 1.0,
+                "encoder_retained_energy": 1.0,
+                "encoder_guard_band_energy_ratio": 0.0,
+                "encoder_discarded_energy_ratio": 0.0,
+            }
+        ],
+        "initialization": {},
+    }
+    assert _compare(base, base)["all_plane_gates_pass"] is True
+    failed = {**base, "fields": {**fields, "chip": fields["chip"] * 1.1}}
+    assert _compare(failed, base)["all_plane_gates_pass"] is False
 
 
 def _make_stack(memory_mode: str) -> TransparentIdentityDiffractiveStack:
