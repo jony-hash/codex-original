@@ -63,6 +63,19 @@ from ..train_utils import (
 )
 
 
+def _state_component_hash(module, prefixes: tuple[str, ...]) -> str:
+    digest = hashlib.sha256()
+    for key, value in sorted(module.state_dict().items()):
+        if not key.startswith(prefixes):
+            continue
+        tensor = value.detach().cpu().contiguous()
+        digest.update(key.encode())
+        digest.update(str(tuple(tensor.shape)).encode())
+        digest.update(str(tensor.dtype).encode())
+        digest.update(tensor.numpy().tobytes())
+    return digest.hexdigest()
+
+
 @dataclass(frozen=True)
 class _DistillLoaderBundle:
     payload: dict[str, object]
@@ -266,16 +279,36 @@ def _maybe_load_one_shot_module_warm_starts(
         payload = torch_module.load(
             generator_checkpoint, map_location=device, weights_only=False
         )
+        generator_before = _state_component_hash(one_shot_model, ("generator_e.",))
+        expected_generator_missing = ()
+        if one_shot_model.config.generator_e_arch == "label_template_code_residual":
+            # B intentionally inherits only A's template logits.  The label
+            # embedding and residual network are new parameters by contract.
+            expected_generator_missing = (
+                "generator_e.label_embedding.",
+                "generator_e.residual_net.",
+            )
         summary = load_one_shot_checkpoint_subset(
             one_shot_model,
             payload,
             include_prefixes=("generator_e.",),
             description="one-shot generator warm-start checkpoint",
+            expected_missing_prefixes=expected_generator_missing,
         )
         run_meta["one_shot_distill_generator_warm_start_checkpoint"] = (
             generator_checkpoint
         )
         run_meta["one_shot_distill_generator_warm_start_summary"] = summary
+        run_meta["one_shot_distill_generator_warm_start_before_hash"] = generator_before
+        run_meta["one_shot_distill_generator_warm_start_after_hash"] = _state_component_hash(
+            one_shot_model, ("generator_e.",)
+        )
+        run_meta["one_shot_distill_generator_template_hash"] = _state_component_hash(
+            one_shot_model, ("generator_e.template_logits",)
+        )
+        run_meta["one_shot_distill_generator_residual_hash"] = _state_component_hash(
+            one_shot_model, ("generator_e.residual_net.",)
+        )
         print(
             f"warm-started one_shot_distill generator_e from checkpoint: {generator_checkpoint}"
         )
@@ -284,6 +317,7 @@ def _maybe_load_one_shot_module_warm_starts(
         payload = torch_module.load(
             optical_checkpoint, map_location=device, weights_only=False
         )
+        optical_before = _state_component_hash(one_shot_model, ("encoder.", "decoder."))
         summary = load_one_shot_checkpoint_subset(
             one_shot_model,
             payload,
@@ -296,6 +330,10 @@ def _maybe_load_one_shot_module_warm_starts(
         )
         run_meta["one_shot_distill_optical_warm_start_checkpoint"] = optical_checkpoint
         run_meta["one_shot_distill_optical_warm_start_summary"] = summary
+        run_meta["one_shot_distill_optical_warm_start_before_hash"] = optical_before
+        run_meta["one_shot_distill_optical_warm_start_after_hash"] = _state_component_hash(
+            one_shot_model, ("encoder.", "decoder.")
+        )
         print(
             f"warm-started one_shot_distill optical core from checkpoint: {optical_checkpoint}"
         )
