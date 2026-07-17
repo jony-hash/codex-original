@@ -136,12 +136,11 @@ python -m tools.audit_v68_lightgen_contract \
   --config configs/train_v68_transparent_readability_b.yaml
 python -m tools.diagnose_v68_transparent_memory \
   --train-config configs/train_v68_transparent_readability_a.yaml \
-  --checkpoint <v60_generator_warm_start_checkpoint> \
   --sample-tensors <fixed_sample_bundle.pt> \
   --output <versioned_v68_preflight.json> --device cuda --max-samples 4
 ```
 
-该 streaming probe 逐样本释放内部全场，只比较中央 artifact view 与 raw camera，不能替代 v67.4 的逐层全场数值门、完整 one_shot_loss 梯度门或人工 raw-CMOS 门。上述门通过后，才由用户运行 A 的 5 epoch；B 必须等待 A 的 validation gate。
+该 v68.2 streaming probe 默认从本地 MNIST train 构造 prototype，并固定 small phase seed；逐样本释放内部全场，只比较中央 artifact view 与 raw camera。v60 checkpoint 不兼容时不得完整或静默加载；如需压力测试，必须显式加 `--warm-start-mode generator_subset --checkpoint <checkpoint>`，工具会比较 generator arch/command transform 并报告不兼容。v67.4 的 periodic full-domain 结果保留为 stress test，不替代 v68.2 padded candidate gate。v68.2 只有在 zero/small-init 均报告 `numerical-converged` 后，才进入完整 one_shot_loss 梯度门和显存门。
 
 | Stage | 用途 | 何时运行 | 必需输入 | 可作为最终单次曝光证据 |
 | --- | --- | --- | --- | --- |

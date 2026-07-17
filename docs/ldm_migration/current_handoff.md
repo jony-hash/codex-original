@@ -2,6 +2,8 @@
 
 > 2026-07-17 v68：LightGen 参照合同审计、透明路径 `checkpointed_active_capture` 和 A/B 可读性配置已加入源码；尚未运行长 CUDA，未修改 Formal v56/v60。必须先通过合同、数值收敛和显存准入，再由用户运行 A 5 epoch；B 只有 A 的 validation corr≥0.70、dice≥0.68 且最近两次不退化时才允许启动。
 
+> v68.2 工具修正：streaming preflight 默认使用本地 MNIST prototype，不再完整加载 v60 MLP checkpoint。v60 checkpoint 与 v68 `label_template + intensity_to_amplitude` 不兼容，只能显式 generator-subset 压力测试。v67.4 `grid-not-converged` 继续保留为 periodic stress evidence；v68 训练准入以 `2048/3072 padded` 对 `3072/4096` reference 的 prototype-init zero/small 数值门为准。当前未运行 A/B 或长 CUDA。
+
 更新时间：2026-07-15。此文件供新对话快速恢复当前主线；带日期的完整证据在 [Experiment History](experiment_history.md)，稳定架构合同在 [D2NN 单次曝光蒸馏主线](single_shot_ldm_distillation.md)。
 
 ## 先读的结论
