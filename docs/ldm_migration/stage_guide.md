@@ -111,6 +111,10 @@ v9.10 prototype、旧 100×100 two-photon、v53 及更早的 loss/relay probes �
 
 `tools/diagnose_v67_transparent_boundary_convergence.py` 是独立的 diagnostic-only 前置门。它先验证零相位 ASM reference 和固定 chip 的 backend relay 坐标，再比较冻结 v60 phase 参数在 1024/1536/2048 传播网格上的中央 100×100 complex field、raw camera intensity、总能量和 guard-band。`finite_crop` 是 Formal Student 的理想硬孔径计算合同；`transparent_identity` 只允许 experimental diagnostic 使用。只要 1024/1536 未同时通过 corr、complex L2、总能量和 guard-band 门，就不得启动透明边界 A/B 训练或相位导出；v67.1 结果以 Current Handoff 和 versioned output report 为准。
 
+### v67.2 padded transparent admission
+
+`tools/diagnose_v672_transparent_phase.py` 是 v67.2 的 diagnostic-only 数值和训练准入门。`padded_band_limited_asm` 只在完整 state grid 外做临时 FFT padding，传播后裁回完整 state grid，不得裁回活动 100×100 区域。候选按 state/FFT `1536/3072`、`2048/4096` 顺序测试；必须同时通过逐层复场、幅度、圆相位、强度、总能量、guard/discarded energy、raw camera、独立 direct-RS、sampling/FOV、梯度和显存门，才允许 A/B 训练。候选不能与自身 reference 比较，固定 pitch 下不同 state grid 的 FOV 不等价时必须停止。v67.2 当前报告为 `grid-not-converged`，未运行训练；不得用 camera corr 单项通过替代完整复场门。
+
 | Stage | 用途 | 何时运行 | 必需输入 | 可作为最终单次曝光证据 |
 | --- | --- | --- | --- | --- |
 | `teacher_distill_filter` | 按前景/对比度等规则过滤 teacher targets | Teacher target 质量不稳时 | `--distill-dataset` | 否 |

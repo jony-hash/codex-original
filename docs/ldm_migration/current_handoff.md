@@ -270,3 +270,11 @@ v67 新增独立的 `transparent_identity` diagnostic boundary：外围复透射
 v67.1 修正了原 preflight 的面积均值伪差、中央比较区域、raw camera readout 和指标统计，并加入独立 ASM 零相位参考及固定 chip 的 backend relay 参考。CUDA 结果显示三种网格的零相位 reference 均通过（relative L2 `0.0`），backend relay reference 三网格 corr 均约 `1.0000`，说明 ASM 和 backend relay 坐标合同有效。冻结 v60 phase 参数的 transparent 对照中，1024/1536/2048 camera corr 分别为 `0.999898/0.999993/1.000000`，但中央 complex-field L2 分别为 `0.02107/0.005816/0`，guard-band ratio 分别为 `0.002748/0.0001771/0.00005869`；1024 和 1536 未满足 L2≤`1e-3` 与 guard≤`1e-4`，因此没有选定训练网格。
 
 该结果将问题定位为“冻结 finite-crop v60 相位参数放入透明完整传播边界后的残余边界能量/复场差异”，不是独立 ASM 或 backend relay 失败，也不是透明模型重新训练失败。v67.1 状态为 `grid-not-converged`，未启动 A/B 训练、未延长 epoch、未导出加工候选；报告位于 `outputs/20260716_v671/runs/preflight/v67_transparent_convergence_v2.json`。同一轮 v58.3 relay 与 v56 formal artifact preflight 均为 `physical-forward-model-valid`，Formal Student 合同未发生变化。下一步必须先完成透明边界的零初始化/短程收敛验证，不得把 v60 冻结对照失败直接解释为透明模型不可训练。
+
+### v67.2：padded transparent propagation gate（2026-07-17）
+
+v67.2 新增 `padded_band_limited_asm` diagnostic 实现：先把完整 state grid 嵌入更大的 FFT grid，进行带限 ASM，再裁回完整 state grid；不裁回 100×100 活动区。新增 schema 为 `v67_transparent_convergence_v3`，Formal validator 拒绝透明边界及其实验传播字段。
+
+冻结 v60 phase、20 个 readable test 样本的 CUDA preflight 仍为 `grid-not-converged`。1536/3072 对 2048/4096 的 camera corr 为 `0.9999993`，但 chip complex L2 `0.003382`、amplitude L2 `0.002500`、phase MAE `0.2717 rad`，首个严格失败为 `encoder_layer_2`；discarded ratio `3.33e-5`、guard ratio `2.90e-5`。2048/4096 被严格标记为 reference-self，未被当作候选通过。固定 2 µm pitch 下两种 state FOV 为 `3.072/4.096 mm`，物理 sampling/FOV 等价门失败；独立 direct-RS 中央强度门也失败（relative L2 `1.924`）。
+
+因此 v67.2 没有运行 20 样本梯度 smoke、显存准入、A/B 训练或相位导出。该失败只说明当前 padded 传播与参考/坐标合同尚未满足准入条件，不改变 Formal v56/v60 结论；下一步必须先统一候选 FOV 定义并修复独立 RS reference，再重新执行梯度和训练门。报告为 diagnostic-only，位于 `outputs/20260717_v672/runs/preflight/v67_transparent_convergence_v3.json`。
