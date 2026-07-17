@@ -1,7 +1,7 @@
-"""Guarded launcher for v67.2 transparent A/B diagnostic training.
+"""Guarded launcher for v67.3 transparent A/B diagnostic training.
 
 This launcher is intentionally stricter than the v67 launcher: a numerical
-grid result alone is insufficient.  The v67.2 report must contain successful
+grid result alone is insufficient.  The v67.3 report must contain successful
 full-objective gradient and memory admission records before a subprocess can
 be started.  It never promotes a checkpoint to the formal loader.
 """
@@ -26,15 +26,15 @@ def run(
 ) -> dict[str, object]:
     report = json.loads(Path(preflight).read_text(encoding="utf-8"))
     if report.get("schema") != REPORT_SCHEMA:
-        raise RuntimeError("v67.2 launcher requires a v67_transparent_convergence_v3 report")
+        raise RuntimeError("v67.3 launcher requires a v67_transparent_convergence_v4 report")
     if report.get("status") != "converged" or not report.get("training_field_converged"):
-        raise RuntimeError("v67.2 numerical/training-field gate has not converged")
+        raise RuntimeError("v67.3 numerical/training-field gate has not converged")
     gradient = report.get("gradient_admission", {})
     memory = report.get("memory_admission", {})
     if gradient.get("passed") is not True:
-        raise RuntimeError("v67.2 gradient admission has not passed")
+        raise RuntimeError("v67.3 gradient admission has not passed")
     if memory.get("passed") is not True:
-        raise RuntimeError("v67.2 memory admission has not passed")
+        raise RuntimeError("v67.3 memory admission has not passed")
     commands = [
         ["python", str(train_script), "--config", str(config_a), "--seed", "1234"],
         ["python", str(train_script), "--config", str(config_b), "--seed", "1234"],
