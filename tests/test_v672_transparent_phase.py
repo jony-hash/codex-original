@@ -5,10 +5,13 @@ import torch
 from tools.diagnose_v672_transparent_phase import (
     candidate_passes,
     choose_candidate,
+    common_roi_contract,
+    correlation,
     direct_rayleigh_sommerfeld_reference,
     direct_rs_check,
     gradient_admission,
     memory_admission,
+    phase_circular_error,
     run,
 )
 
@@ -21,7 +24,7 @@ def _passing_candidate() -> dict[str, object]:
         "ci95": [1.0e-5, 2.0e-5],
     }
     return {
-        "complex_field_relative_l2": summary,
+        "gauge_aligned_complex_field_relative_l2": summary,
         "amplitude_relative_l2": summary,
         "weighted_phase_mae_rad": summary,
         "intensity_corr": {"mean": 0.9999},
@@ -74,11 +77,11 @@ def test_v672_direct_rs_gate_uses_band_limited_reference_input() -> None:
 
 def test_v672_empty_report_is_diagnostic_only(tmp_path) -> None:
     report = run(output=tmp_path / "v672.json", device="cpu")
-    assert report["schema"] == "v67_transparent_convergence_v3"
+    assert report["schema"] == "v67_transparent_convergence_v4"
     assert report["diagnostic_only"] is True
     assert report["status"] == "preflight-input-required"
     assert report["training_field_converged"] is False
-    assert report["decision"] == "do-not-train-until-v67.2-gates-pass"
+    assert report["decision"] == "do-not-train-until-v67.3-gates-pass"
 
 
 def test_v672_gradient_and_memory_gates_are_not_relaxed() -> None:
@@ -98,3 +101,40 @@ def test_v672_gradient_and_memory_gates_are_not_relaxed() -> None:
     assert gradient_admission(metrics)["passed"] is False
     assert memory_admission(peak_reserved_bytes=85, available_bytes=100)["passed"] is True
     assert memory_admission(peak_reserved_bytes=86, available_bytes=100)["passed"] is False
+
+
+def test_v673_common_roi_allows_nested_fov_but_rejects_coordinate_mismatch() -> None:
+    valid = common_roi_contract(
+        1536,
+        2048,
+        pixel_size=2.0e-6,
+        wavelength=532.0e-9,
+        distance=1.5e-3,
+        roi_size=1536,
+    )
+    assert valid["valid"] is True
+    assert valid["state_fov_m"] != valid["reference_fov_m"]
+    invalid = common_roi_contract(
+        1535,
+        2048,
+        pixel_size=2.0e-6,
+        wavelength=532.0e-9,
+        distance=1.5e-3,
+        roi_size=1536,
+    )
+    assert invalid["valid"] is False
+
+
+def test_v673_phase_gate_ignores_low_intensity_phase_noise() -> None:
+    reference = torch.ones(1, 1, 4, 4, dtype=torch.complex64)
+    reference[..., 0, 0] = 1.0e-5
+    value = reference.clone()
+    value[..., 0, 0] = 1.0e-5 * torch.exp(1j * torch.tensor(2.5))
+    assert phase_circular_error(value, reference) < 1.0e-6
+    assert phase_circular_error(value, reference, intensity_floor_db=None) > 0.1
+
+
+def test_v673_correlation_is_bounded_for_large_dynamic_range() -> None:
+    value = torch.linspace(0.0, 1.0e8, 64).reshape(1, 1, 8, 8)
+    measured = correlation(value, value * 1.000001)
+    assert -1.0 <= measured <= 1.0

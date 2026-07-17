@@ -13,7 +13,7 @@ import subprocess
 from pathlib import Path
 
 
-REPORT_SCHEMA = "v67_transparent_convergence_v3"
+REPORT_SCHEMA = "v67_transparent_convergence_v4"
 
 
 def run(
