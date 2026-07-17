@@ -216,6 +216,8 @@ def run(
     report: dict[str, Any] = {
         "schema": REPORT_SCHEMA,
         "diagnostic_only": True,
+        "role": "periodic-full-domain-stress-test",
+        "superseded_for_v68_admission": True,
         "status": "preflight-input-required",
         "device": str(resolved),
         "candidate_paths": {
