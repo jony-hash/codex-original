@@ -142,6 +142,17 @@ python -m tools.diagnose_v68_transparent_memory \
 
 该 v68.2 streaming probe 默认从本地 MNIST train 构造 prototype，并固定 small phase seed；逐样本释放内部全场，只比较中央 artifact view 与 raw camera。v60 checkpoint 不兼容时不得完整或静默加载；如需压力测试，必须显式加 `--warm-start-mode generator_subset --checkpoint <checkpoint>`，工具会比较 generator arch/command transform 并报告不兼容。v67.4 的 periodic full-domain 结果保留为 stress test，不替代 v68.2 padded candidate gate。v68.2 只有在 zero/small-init 均报告 `numerical-converged` 后，才进入完整 one_shot_loss 梯度门和显存门。
 
+B 分支的 warm-start 只允许继承 A checkpoint 的 `generator_e.template_logits`、`encoder.*` 和 `decoder.*`；`label_embedding` 与 `residual_net` 必须保持新初始化：
+
+```bash
+python train.py --train-config configs/train_v68_transparent_readability_b.yaml \
+  --stage one_shot_distill --device cuda \
+  --distill-dataset <readable_train.pt> \
+  --distill-validation-dataset <readable_val.pt> \
+  --one-shot-generator-checkpoint <v68_A_best.pt> \
+  --one-shot-optical-checkpoint <v68_A_best.pt>
+```
+
 | Stage | 用途 | 何时运行 | 必需输入 | 可作为最终单次曝光证据 |
 | --- | --- | --- | --- | --- |
 | `teacher_distill_filter` | 按前景/对比度等规则过滤 teacher targets | Teacher target 质量不稳时 | `--distill-dataset` | 否 |

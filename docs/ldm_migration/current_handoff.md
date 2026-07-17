@@ -4,6 +4,8 @@
 
 > v68.2 工具修正：streaming preflight 默认使用本地 MNIST prototype，不再完整加载 v60 MLP checkpoint。v60 checkpoint 与 v68 `label_template + intensity_to_amplitude` 不兼容，只能显式 generator-subset 压力测试。v67.4 `grid-not-converged` 继续保留为 periodic stress evidence；v68 训练准入以 `2048/3072 padded` 对 `3072/4096` reference 的 prototype-init zero/small 数值门为准。当前未运行 A/B 或长 CUDA。
 
+v68.2 的 4 样本 CUDA streaming admission 已通过 zero/small-init（camera corr `0.999999998`，首失败平面为空），报告为 `outputs/20260720_v682/runs/preflight/v68_transparent_admission_v2.json`。该报告只签发 numerical gate，不包含 one_shot_loss gradient、显存或人工可读性结论。
+
 更新时间：2026-07-15。此文件供新对话快速恢复当前主线；带日期的完整证据在 [Experiment History](experiment_history.md)，稳定架构合同在 [D2NN 单次曝光蒸馏主线](single_shot_ldm_distillation.md)。
 
 ## 先读的结论
