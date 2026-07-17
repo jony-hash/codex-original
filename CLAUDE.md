@@ -23,3 +23,4 @@
 - Formal v56 stage 使用 `FormalOneShotOpticalGenerator`；`student.generator`、`student.checkpoints`、`optics.d2nn` 和 `distillation.targets` 分别拥有 generator、checkpoint、phase-only D2NN 和中立 target transform 合同。`student.experimental` 承载兼容诊断层，`student.layers` 仅为旧 imports 提供 shim；历史 `OneShotOpticalGenerator` 仅用于 compatibility/diagnostic 配置。
 - `experiments/archive/` 只读、`diagnostic-only`，不能作为 active config/tool promotion。
 - v68 仅允许 `configs/train_v68_transparent_readability_a.yaml`（camera-only 上界）和 `..._b.yaml`（A 通过后的最小可读性分支）作为透明诊断入口；先运行 LightGen 合同审计与数值/显存准入，再由用户执行长 CUDA。透明 `checkpointed_active_capture` 只减少保存/反向激活，不改变完整复场、backend relay 或 Formal v56/v60。
+- v68.3 的 raw-CMOS 硬门必须使用 `tools/audit_v68_raw_cmos.py` 的一个全 validation 共享 exposure scale、gamma=1 和 `physical_camera_intensity_raw`；历史逐样本增强图只作对照。A checkpoint 若缺少显式边界字段，只能由其 train config 推断为 diagnostic transparent-v2，Formal loader 必须拒绝。A2 配置的固定曝光 scale 只能来自该审计，未通过人工 raw 门不得启动 B。

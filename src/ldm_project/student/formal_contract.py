@@ -23,6 +23,10 @@ def validate_formal_student_config(physics, config) -> None:
         invalid.append("one_shot.target_code_bridge_source")
     if config.ols_transfer_calibration != "none":
         invalid.append("one_shot.ols_transfer_calibration")
+    if getattr(config, "diagnostic_camera_normalization", "per_sample_percentile") != "per_sample_percentile":
+        invalid.append("one_shot.diagnostic_camera_normalization")
+    if getattr(config, "diagnostic_camera_exposure_scale", None) is not None:
+        invalid.append("one_shot.diagnostic_camera_exposure_scale")
     if config.d2nn is None or config.d2nn.modulation != "phase_only":
         invalid.append("one_shot.d2nn.modulation")
     if config.d2nn is None or config.d2nn.exterior_boundary != "finite_crop":

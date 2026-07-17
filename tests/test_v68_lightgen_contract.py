@@ -8,7 +8,10 @@ import torch
 from ldm_project.configuration.schema import D2NNConfig
 from ldm_project.configuration.schema import OneShotConfig, PhysicsConfig
 from ldm_project.student.formal_contract import validate_formal_student_config
-from ldm_project.student.checkpoints import load_one_shot_checkpoint_subset
+from ldm_project.student.checkpoints import (
+    load_one_shot_checkpoint,
+    load_one_shot_checkpoint_subset,
+)
 from ldm_project.student.experimental.model import OneShotOpticalGenerator
 from ldm_project.student.contracts import ONE_SHOT_MODEL_VERSION
 from tools.diagnose_v68_transparent_memory import (
@@ -20,6 +23,8 @@ from ldm_project.student.experimental.transparent_phase import (
     TransparentIdentityDiffractiveStack,
 )
 from tools.audit_v68_lightgen_contract import audit_config
+from tools.audit_v68_raw_cmos import fixed_exposure_view, global_exposure_scale
+from ldm_project.student.training import _save_transparent_active_artifact
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -60,6 +65,89 @@ def test_formal_contract_rejects_checkpointed_transparent_memory_mode() -> None:
         validate_formal_student_config(
             PhysicsConfig(physical_forward_contract=True), config
         )
+
+
+def test_formal_contract_rejects_fixed_exposure_diagnostic_mode() -> None:
+    config = OneShotConfig(
+        optical_core_arch="diffractive_phase_only",
+        physical_forward_contract=True,
+        diagnostic_camera_normalization="fixed_exposure",
+        diagnostic_camera_exposure_scale=0.5,
+        d2nn=D2NNConfig(),
+    )
+    with pytest.raises(ValueError, match="diagnostic_camera_normalization"):
+        validate_formal_student_config(
+            PhysicsConfig(physical_forward_contract=True), config
+        )
+
+
+def test_fixed_exposure_uses_one_scale_for_all_samples() -> None:
+    raw = torch.tensor([[[[1.0, 2.0], [3.0, 4.0]]], [[[2.0, 4.0], [6.0, 8.0]]]])
+    scale = global_exposure_scale(raw)
+    view = fixed_exposure_view(raw, scale)
+    assert scale == pytest.approx(float(torch.quantile(raw.flatten(), 0.995)))
+    assert torch.allclose(view[0], raw[0] / scale)
+    assert view[1, 0, -1, -1].item() == 1.0
+    assert torch.allclose(view[0, ..., :1, :], view[1, ..., :1, :] / 2.0)
+
+
+def test_transparent_checkpoint_is_rejected_by_formal_target() -> None:
+    config = OneShotConfig(
+        optical_core_arch="diffractive_phase_only",
+        physical_forward_contract=True,
+        d2nn=D2NNConfig(),
+    )
+    payload = {
+        "model_version": ONE_SHOT_MODEL_VERSION,
+        "model_state_dict": {},
+        "optical_boundary_contract": "ideal_transparent_thin_phase_v2",
+    }
+
+    target = type("_Target", (), {"config": config})()
+    with pytest.raises(ValueError, match="optical boundary contract"):
+        load_one_shot_checkpoint(target, payload)
+
+
+def test_v68_a2_config_declares_fixed_exposure_and_compact_mode() -> None:
+    from ldm_project import load_training_config
+
+    config = load_training_config(
+        ROOT / "configs" / "train_v68_transparent_readability_a2.yaml"
+    )
+    assert config.one_shot.diagnostic_camera_normalization == "fixed_exposure"
+    assert config.one_shot.diagnostic_camera_exposure_scale > 0.0
+    assert config.one_shot.checkpoint_selection_metric == "strict_readability"
+    assert config.one_shot.d2nn.transparent_memory_mode == "checkpointed_active_capture"
+
+
+def test_compact_transparent_artifact_excludes_full_field_bundle() -> None:
+    class _Capture:
+        def __init__(self) -> None:
+            self.json_payload = None
+            self.tensor_payload = None
+
+        def save_artifact_json(self, _name, payload):
+            self.json_payload = payload
+
+        def save_tensor_bundle(self, _name, payload):
+            self.tensor_payload = payload
+
+    capture = _Capture()
+    _save_transparent_active_artifact(
+        capture,
+        {
+            "optical_boundary_contract": "ideal_transparent_thin_phase_v2",
+            "ideal_phase_provenance": {
+                "transparent_artifact_view": "center_crop_from_internal_field"
+            },
+            "physical_camera_intensity_raw": torch.ones(1, 1, 4, 4),
+            "optical_fields": {"full_field": torch.ones(1, 1, 2048, 2048)},
+        },
+        artifact_prefix="epoch_0001",
+    )
+    assert capture.json_payload["full_field_saved"] is False
+    assert capture.json_payload["active_view_only"] is True
+    assert set(capture.tensor_payload) == {"physical_camera_intensity_raw"}
 
 
 def test_v68_prototype_bank_hash_is_reproducible() -> None:

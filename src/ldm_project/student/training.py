@@ -503,6 +503,15 @@ def _distill_run_setup_metadata(
         "one_shot_target_code_spatial_scale": train_cfg.one_shot.target_code_spatial_scale,
         "one_shot_target_code_bridge_source": train_cfg.one_shot.target_code_bridge_source,
         "one_shot_target_code_bridge_arch": train_cfg.one_shot.target_code_bridge_arch,
+        "diagnostic_camera_normalization": train_cfg.one_shot.diagnostic_camera_normalization,
+        "diagnostic_camera_exposure_scale": train_cfg.one_shot.diagnostic_camera_exposure_scale,
+        "diagnostic_camera_exposure_scale_hash": (
+            hashlib.sha256(
+                str(train_cfg.one_shot.diagnostic_camera_exposure_scale).encode()
+            ).hexdigest()
+            if train_cfg.one_shot.diagnostic_camera_exposure_scale is not None
+            else None
+        ),
     }
 
 
@@ -603,6 +612,16 @@ def _distill_checkpoint_payload(
                 d2nn, "transparent_propagation_method", None
             ),
             "memory_mode": getattr(d2nn, "transparent_memory_mode", None),
+            "camera_normalization": getattr(
+                getattr(one_shot_model, "config", None),
+                "diagnostic_camera_normalization",
+                "per_sample_percentile",
+            ),
+            "camera_exposure_scale": getattr(
+                getattr(one_shot_model, "config", None),
+                "diagnostic_camera_exposure_scale",
+                None,
+            ),
         },
         "epoch": epoch_number,
         **details,

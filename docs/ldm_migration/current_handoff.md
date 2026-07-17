@@ -8,6 +8,27 @@ v68.2 的 4 样本 CUDA streaming admission 已通过 zero/small-init（camera c
 
 v68.2 后续准入工具 `tools/diagnose_v68_training_admission.py` 已就绪：默认复用本地 MNIST prototype、small phase 初始化和固定 sample bundle，逐样本比较 `2048/3072` candidate 与 `3072/4096` reference 的完整 loss/梯度/显存；它不创建 optimizer、不更新参数。长 CUDA 由用户运行，只有报告同时给出 `gradient_pass=true`、`memory_pass=true`、`finite=true` 才允许 A 5 epoch。
 
+## v68 A 训练结果与 v68.3 raw-CMOS 收口（2026-07-17）
+
+v68 A 已由用户完成 5 epoch/2000 step。validation loss `0.1107 → 0.02681`，paired corr `0.8503 → 0.9633`，paired dice `0.8359 → 0.9122`，epoch 4→5 未退化；这证明 `label_template + mnist_prototype` 可以在当前透明 LightGen 参照路径上形成类别原型，但 code conditioning 未启用，不能称为生成模型。自动 paired 指标不等于 raw-CMOS 人工通过。
+
+原 A run 的 `student (raw)` 预览仍调用逐样本 percentile/gamma 显示增强，且每个 epoch 保存约 3.2 GB 全场 tensor；其 provenance 对 `100×100 → 2048×2048` 的数值嵌入未显式命名，因此不能签发真实 raw 或完整物理合同。原 run 和约 16 GB 工件保留不覆盖。
+
+v68.3 已加入固定曝光 raw audit、透明 checkpoint 合同和紧凑 active artifact：`physical_camera_intensity_raw` 在完整 validation split 上只使用一个共享 99.5% exposure scale、gamma=1；per-sample normalized 图仅作对照。新 checkpoint 写入 `ideal_transparent_thin_phase_v2` 及 state/FFT/memory metadata；Formal loader 拒绝透明合同，旧 A checkpoint 只能依据其 train config 被 diagnostic 方式显式识别。透明 provenance 现在明确记录 `transparent_identity_exterior_embedding`，不是 generic resize 或物理光阑。
+
+先运行只读验收（不查看 test、不训练）：
+
+```bash
+python -m tools.audit_v68_raw_cmos \
+  --config configs/train_v68_transparent_readability_a.yaml \
+  --checkpoint outputs/20260717_v68/runs/20260717_181429_822997_train_one_shot_distill/checkpoints/one_shot_distill_best.pt \
+  --validation-dataset outputs/20260514_unversioned/runs/20260610_151747_768931_train_teacher_distill_15k_acceptance_matched_diffusion_e40_gs40_readable_split_from_full15k_cuda/artifacts/teacher_distill_dataset_readable_val.pt \
+  --output outputs/20260717_v683/runs/raw_audit/v68_raw_cmos_acceptance_v1.json \
+  --device cuda
+```
+
+只有 fixed-exposure raw corr/dice、saturation、prototype accuracy 和十类人工 raw-linear 轮廓全部通过，才直接进入 B；否则只允许把审计 scale 写入 `train_v68_transparent_readability_a2.yaml` 后执行唯一一次 A2（5 epoch）。A2 仍关闭 code conditioning；A/A2 真实 raw 门未通过时禁止 B、禁止加工候选导出。
+
 更新时间：2026-07-15。此文件供新对话快速恢复当前主线；带日期的完整证据在 [Experiment History](experiment_history.md)，稳定架构合同在 [D2NN 单次曝光蒸馏主线](single_shot_ldm_distillation.md)。
 
 ## 先读的结论

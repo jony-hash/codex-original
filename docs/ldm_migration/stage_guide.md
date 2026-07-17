@@ -142,6 +142,12 @@ python -m tools.diagnose_v68_transparent_memory \
 
 该 v68.2 streaming probe 默认从本地 MNIST train 构造 prototype，并固定 small phase seed；逐样本释放内部全场，只比较中央 artifact view 与 raw camera。v60 checkpoint 不兼容时不得完整或静默加载；如需压力测试，必须显式加 `--warm-start-mode generator_subset --checkpoint <checkpoint>`，工具会比较 generator arch/command transform 并报告不兼容。v67.4 的 periodic full-domain 结果保留为 stress test，不替代 v68.2 padded candidate gate。v68.2 只有在 zero/small-init 均报告 `numerical-converged` 后，才进入完整 one_shot_loss 梯度门和显存门。
 
+### v68.3 fixed-exposure raw-CMOS acceptance
+
+v68 A 的 paired 指标已经达到 validation corr `0.9633`、dice `0.9122`，但历史 `student (raw)` 图使用逐样本 percentile/gamma，不能作为硬件人工门。`tools/audit_v68_raw_cmos.py` 是只读审计：它在完整 validation split 上计算一个共享的 99.5% exposure scale，直接读取 `physical_camera_intensity_raw`，固定 gamma=1，并同时输出 raw-linear、固定曝光和历史 normalized 对照。它不看 test、不训练、不保存完整 optical-field bundle；manual review 必须逐类检查轮廓。
+
+审计通过后可以直接进入 B；审计的固定曝光形状或人工门失败时，只能把报告中的 scale 填入 `configs/train_v68_transparent_readability_a2.yaml`，运行一次 5 epoch A2。A2 的 `diagnostic_camera_normalization=fixed_exposure` 要求正的固定 scale，`strict_readability` 选择 checkpoint；A/A2 未通过 raw 门不得运行 code residual B。v68.3 仍为 diagnostic-only，不改变 Formal v56/v60、LightGen 距离、SLM 类型、D2NN 尺寸或层间距。
+
 数值门通过后，长 CUDA 梯度/显存准入由用户显式运行；该工具不创建 optimizer、不会更新参数，也不会替代 A/B 训练：
 
 ```bash

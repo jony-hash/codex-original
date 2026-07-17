@@ -82,6 +82,20 @@ def _validate_first_stage_training_config(config: TrainingConfig) -> None:
 
 
 def _validate_one_shot_selection_and_weights(config: TrainingConfig) -> None:
+    allowed_camera_normalization = {"per_sample_percentile", "fixed_exposure"}
+    camera_normalization = config.one_shot.diagnostic_camera_normalization
+    if camera_normalization not in allowed_camera_normalization:
+        raise ValueError(
+            "one_shot.diagnostic_camera_normalization must be one of "
+            f"{sorted(allowed_camera_normalization)}, got {camera_normalization!r}"
+        )
+    if camera_normalization == "fixed_exposure":
+        scale = config.one_shot.diagnostic_camera_exposure_scale
+        if scale is None or not math.isfinite(float(scale)) or float(scale) <= 0.0:
+            raise ValueError(
+                "one_shot.diagnostic_camera_exposure_scale must be positive and finite "
+                "when diagnostic_camera_normalization='fixed_exposure'."
+            )
     allowed_one_shot_selection_metrics = {
         "loss",
         "quality",

@@ -291,6 +291,11 @@ class OneShotConfig:
     camera_readable_contrast_weight: float = 0.0
     camera_readable_contrast_target: float = 4.5
     camera_recon_weight: float = 1.0
+    # Diagnostic-only readout contract.  The formal path keeps the historical
+    # per-sample percentile normalization; fixed_exposure is used only after
+    # a v68 raw-CMOS audit has registered one global scale.
+    diagnostic_camera_normalization: str = "per_sample_percentile"
+    diagnostic_camera_exposure_scale: float | None = None
     distill_target_source: str = "teacher_camera"
     aux_detail_target_source: str = "none"
     aux_detail_edge_weight: float = 0.0
