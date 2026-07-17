@@ -33,6 +33,8 @@ def validate_formal_student_config(physics, config) -> None:
         invalid.append("one_shot.d2nn.transparent_fft_grid_size")
     if config.d2nn is None or config.d2nn.transparent_edge_guard_fraction != 0.05:
         invalid.append("one_shot.d2nn.transparent_edge_guard_fraction")
+    if config.d2nn is None or config.d2nn.transparent_memory_mode != "legacy_full_capture":
+        invalid.append("one_shot.d2nn.transparent_memory_mode")
     if invalid:
         raise ValueError(
             "FormalOneShotOpticalGenerator rejects diagnostic/compatibility settings: "

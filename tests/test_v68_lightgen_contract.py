@@ -6,6 +6,8 @@ import pytest
 import torch
 
 from ldm_project.configuration.schema import D2NNConfig
+from ldm_project.configuration.schema import OneShotConfig, PhysicsConfig
+from ldm_project.student.formal_contract import validate_formal_student_config
 from ldm_project.student.experimental.transparent_phase import (
     TransparentIdentityDiffractiveStack,
 )
@@ -38,6 +40,18 @@ def test_v68_memory_mode_is_explicit_and_validated() -> None:
     assert D2NNConfig().transparent_memory_mode == "legacy_full_capture"
     with pytest.raises(ValueError, match="transparent_memory_mode"):
         D2NNConfig(transparent_memory_mode="not-a-mode")
+
+
+def test_formal_contract_rejects_checkpointed_transparent_memory_mode() -> None:
+    config = OneShotConfig(
+        optical_core_arch="diffractive_phase_only",
+        physical_forward_contract=True,
+        d2nn=D2NNConfig(transparent_memory_mode="checkpointed_active_capture"),
+    )
+    with pytest.raises(ValueError, match="transparent_memory_mode"):
+        validate_formal_student_config(
+            PhysicsConfig(physical_forward_contract=True), config
+        )
 
 
 def _make_stack(memory_mode: str) -> TransparentIdentityDiffractiveStack:
