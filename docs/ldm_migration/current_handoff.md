@@ -35,6 +35,12 @@ python -m tools.audit_v68_raw_cmos \
 
 raw audit v2 将 clean MNIST prototype 与 teacher camera 分开报告，避免把 A 的真实优化目标和蒸馏相似度混为一谈。A2/B 的 exposure scale 锁定为 `0.4913053810596466`；A2 配置已启用 fixed exposure、clean dice/readability 和 strict_readability，B 配置也已锁定同一曝光并改为 strict_readability。A2 是唯一一次可读性聚焦修正；若 A2 失败，停止继续 loss/学习率/层数微调，转入 chip→backend relay→camera raw 的 broad isolation；A2 通过后才允许 B。
 
+## v68.5 A2 准入合同（2026-07-18）
+
+v68.5 增加 `tools/diagnose_v68_a2_warmstart.py` 短 smoke。它不创建 optimizer、不更新参数，只从 A checkpoint 显式加载 `generator_e.template_logits`、`encoder.*` 和 `decoder.*`，在四个 validation 样本上计算完整 A2 loss 与梯度有限性；A2 使用 locked exposure `0.4913053810596466`，不重新标定。`label_embedding`/`residual_net` 若出现在 A2 模型中会使 smoke 失败。
+
+`tools/decide_v68_a2_acceptance.py` 联合 raw audit v2、epoch 4/5 history、warm-start/numerical/memory 报告和人工 review JSON。人工 review 的 `readable_labels` 必须严格为 `[0,1,2,3,4,5,6,7,8,9]`；失败时状态为 `a2-readability-failed`，自动禁止 B、test 和加工导出，下一步只能做冻结 checkpoint 的 chip→backend→camera broad isolation。长 CUDA A2 仍由用户运行，warning 清理不与本主线混合。
+
 更新时间：2026-07-15。此文件供新对话快速恢复当前主线；带日期的完整证据在 [Experiment History](experiment_history.md)，稳定架构合同在 [D2NN 单次曝光蒸馏主线](single_shot_ldm_distillation.md)。
 
 ## 先读的结论

@@ -177,6 +177,20 @@ python train.py --train-config configs/train_v68_transparent_readability_b.yaml 
   --one-shot-optical-checkpoint <v68_A_best.pt>
 ```
 
+### v68.5 A2 短准入与联合决策
+
+A2 长训练前先运行只读 smoke（四个 validation 样本，不创建 optimizer）：
+
+```bash
+python -m tools.diagnose_v68_a2_warmstart \
+  --train-config configs/train_v68_transparent_readability_a2.yaml \
+  --checkpoint <v68_A_best.pt> \
+  --validation-dataset <readable_val.pt> \
+  --output <v68_a2_warmstart_smoke.json> --device cuda
+```
+
+smoke 必须报告 `a2-warmstart-smoke-passed`、finite、参数 hash 未改变和 memory limit 通过，才允许用户执行 5 epoch A2。A2 完成后，人工 review JSON 需要明确十类是否可读，再用 `tools/decide_v68_a2_acceptance.py` 联合判断；未通过即禁止 B、test 和加工候选导出，不以 paired corr/dice 或增强预览替代人工门。
+
 | Stage | 用途 | 何时运行 | 必需输入 | 可作为最终单次曝光证据 |
 | --- | --- | --- | --- | --- |
 | `teacher_distill_filter` | 按前景/对比度等规则过滤 teacher targets | Teacher target 质量不稳时 | `--distill-dataset` | 否 |
