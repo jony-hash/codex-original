@@ -148,6 +148,12 @@ v68 A 的 paired 指标已经达到 validation corr `0.9633`、dice `0.9122`，�
 
 审计通过后可以直接进入 B；审计的固定曝光形状或人工门失败时，只能把报告中的 scale 填入 `configs/train_v68_transparent_readability_a2.yaml`，运行一次 5 epoch A2。A2 的 `diagnostic_camera_normalization=fixed_exposure` 要求正的固定 scale，`strict_readability` 选择 checkpoint；A/A2 未通过 raw 门不得运行 code residual B。v68.3 仍为 diagnostic-only，不改变 Formal v56/v60、LightGen 距离、SLM 类型、D2NN 尺寸或层间距。
 
+### v68.4 双目标 raw 验收与 A2/B 准入
+
+`tools/audit_v68_raw_cmos.py` 的 v2 报告同时计算 clean MNIST prototype 和 `teacher_camera` 两套目标；clean prototype 是 A/A2 的主可读性门，teacher camera 只作蒸馏相似度辅助，不能互换。预览固定为 clean prototype、teacher camera、locked-scale raw-linear 和历史 per-sample normalized 对照。A 使用 `calibrate`（全 validation 一次计算 99.5% scale）；A2/B 使用 `locked`，固定 scale 为 `0.4913053810596466`，禁止重新 percentile 标定。
+
+v68 A 已通过 numerical/gradient/memory 和自动 raw 门，但 `4/8` 仍为 blob、`2/5` 仍模糊，因此状态是 `automated-pass / manual-readability-fail / prototype-upper-bound-only`。不要重训 A 或直接运行 B；先用 A template/phase warm-start 执行唯一一次 5 epoch A2。A2 只有在 clean-prototype raw corr/dice、饱和度、逐类人工门和 epoch 4→5 稳定性同时通过后才允许 B。B 必须继续使用 locked exposure、strict_readability，并只重新初始化 label embedding/residual；code factor 不足时不得称为生成模型。
+
 数值门通过后，长 CUDA 梯度/显存准入由用户显式运行；该工具不创建 optimizer、不会更新参数，也不会替代 A/B 训练：
 
 ```bash

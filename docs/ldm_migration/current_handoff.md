@@ -29,6 +29,12 @@ python -m tools.audit_v68_raw_cmos \
 
 只有 fixed-exposure raw corr/dice、saturation、prototype accuracy 和十类人工 raw-linear 轮廓全部通过，才直接进入 B；否则只允许把审计 scale 写入 `train_v68_transparent_readability_a2.yaml` 后执行唯一一次 A2（5 epoch）。A2 仍关闭 code conditioning；A/A2 真实 raw 门未通过时禁止 B、禁止加工候选导出。
 
+## v68.4 raw 双目标验收（2026-07-18）
+
+当前 A 的 raw 审计自动指标为 fixed-scale corr `0.84253`、dice `0.77095`、prototype accuracy `1.0`、high-saturation `0.00538`；数值、梯度和显存门也通过。但固定曝光预览中 `4/8` 不可读、`2/5` 模糊，因此人工十类门失败。该结果说明类别模板可被机器区分，不说明十类 CMOS 图均可肉眼读取，更不说明已具备 code-conditioned generation。
+
+raw audit v2 将 clean MNIST prototype 与 teacher camera 分开报告，避免把 A 的真实优化目标和蒸馏相似度混为一谈。A2/B 的 exposure scale 锁定为 `0.4913053810596466`；A2 配置已启用 fixed exposure、clean dice/readability 和 strict_readability，B 配置也已锁定同一曝光并改为 strict_readability。A2 是唯一一次可读性聚焦修正；若 A2 失败，停止继续 loss/学习率/层数微调，转入 chip→backend relay→camera raw 的 broad isolation；A2 通过后才允许 B。
+
 更新时间：2026-07-15。此文件供新对话快速恢复当前主线；带日期的完整证据在 [Experiment History](experiment_history.md)，稳定架构合同在 [D2NN 单次曝光蒸馏主线](single_shot_ldm_distillation.md)。
 
 ## 先读的结论
