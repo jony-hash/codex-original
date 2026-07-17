@@ -27,6 +27,12 @@ def validate_formal_student_config(physics, config) -> None:
         invalid.append("one_shot.d2nn.modulation")
     if config.d2nn is None or config.d2nn.exterior_boundary != "finite_crop":
         invalid.append("one_shot.d2nn.exterior_boundary")
+    if config.d2nn is None or config.d2nn.transparent_propagation_method != "periodic_asm":
+        invalid.append("one_shot.d2nn.transparent_propagation_method")
+    if config.d2nn is None or config.d2nn.transparent_fft_grid_size is not None:
+        invalid.append("one_shot.d2nn.transparent_fft_grid_size")
+    if config.d2nn is None or config.d2nn.transparent_edge_guard_fraction != 0.05:
+        invalid.append("one_shot.d2nn.transparent_edge_guard_fraction")
     if invalid:
         raise ValueError(
             "FormalOneShotOpticalGenerator rejects diagnostic/compatibility settings: "

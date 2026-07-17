@@ -165,6 +165,19 @@ class _LegacyDiagnosticOneShotOpticalGenerator(nn.Module):
                     )
                 encoder_stack_cls = TransparentIdentityDiffractiveStack
                 decoder_stack_cls = TransparentIdentityDiffractiveStack
+            stack_kwargs = {}
+            if encoder_stack_cls is TransparentIdentityDiffractiveStack:
+                stack_kwargs = {
+                    "transparent_propagation_method": d2nn[
+                        "transparent_propagation_method"
+                    ],
+                    "transparent_fft_grid_size": d2nn[
+                        "transparent_fft_grid_size"
+                    ],
+                    "transparent_edge_guard_fraction": d2nn[
+                        "transparent_edge_guard_fraction"
+                    ],
+                }
             self.encoder = encoder_stack_cls(
                 d2nn["encoder_layers"],
                 d2nn["grid_size"],
@@ -174,6 +187,7 @@ class _LegacyDiagnosticOneShotOpticalGenerator(nn.Module):
                 d2nn["propagation_grid_size"],
                 d2nn["phase_init"],
                 **encoder_kwargs,
+                **stack_kwargs,
             )
             self.decoder = decoder_stack_cls(
                 d2nn["decoder_layers"],
@@ -184,6 +198,7 @@ class _LegacyDiagnosticOneShotOpticalGenerator(nn.Module):
                 d2nn["propagation_grid_size"],
                 d2nn["phase_init"],
                 **decoder_kwargs,
+                **stack_kwargs,
             )
         elif self.uses_direct_camera_core:
             self.encoder = nn.Identity()
@@ -284,6 +299,9 @@ class _LegacyDiagnosticOneShotOpticalGenerator(nn.Module):
                 "phase_init": d2nn_cfg.phase_init,
                 "amplitude_logit_init": d2nn_cfg.amplitude_logit_init,
                 "exterior_boundary": d2nn_cfg.exterior_boundary,
+                "transparent_propagation_method": d2nn_cfg.transparent_propagation_method,
+                "transparent_fft_grid_size": d2nn_cfg.transparent_fft_grid_size,
+                "transparent_edge_guard_fraction": d2nn_cfg.transparent_edge_guard_fraction,
             }
         return {
             "wavelength": self.physics.optics.wavelength,
@@ -300,6 +318,9 @@ class _LegacyDiagnosticOneShotOpticalGenerator(nn.Module):
             ),
             "phase_init": self.config.diffractive_phase_init,
             "amplitude_logit_init": 4.0,
+            "transparent_propagation_method": "periodic_asm",
+            "transparent_fft_grid_size": None,
+            "transparent_edge_guard_fraction": 0.05,
         }
 
     def _validate_dimensions(self) -> None:
@@ -1340,8 +1361,13 @@ class _LegacyDiagnosticOneShotOpticalGenerator(nn.Module):
         }
         if self._d2nn.get("exterior_boundary") == "transparent_identity":
             # 理想模型省略玻璃、材料和孔径；这些字段不可被解释为实物标定。
+            propagation_method = self._d2nn.get(
+                "transparent_propagation_method", "periodic_asm"
+            )
             outputs["optical_boundary_contract"] = (
-                "ideal_transparent_thin_phase_v1"
+                "ideal_transparent_thin_phase_v2"
+                if propagation_method == "padded_band_limited_asm"
+                else "ideal_transparent_thin_phase_v1"
             )
             outputs["ideal_phase_provenance"] = {
                 "glass_model": "omitted",
@@ -1349,6 +1375,19 @@ class _LegacyDiagnosticOneShotOpticalGenerator(nn.Module):
                 "exterior_transmission": "identity",
                 "physical_aperture": None,
                 "phase_plane_spacing_m": float(self._d2nn["layer_spacing"]),
+                "transparent_propagation_method": propagation_method,
+                "transparent_state_grid_size": int(self._d2nn["propagation_grid_size"]),
+                "transparent_fft_grid_size": self._d2nn.get(
+                    "transparent_fft_grid_size"
+                ),
+                "transparent_edge_guard_fraction": float(
+                    self._d2nn.get("transparent_edge_guard_fraction", 0.05)
+                ),
+                "numerical_boundary": (
+                    "padded_band_limited"
+                    if propagation_method == "padded_band_limited_asm"
+                    else "periodic"
+                ),
                 "fabrication_status": "unverified",
             }
         if return_optical_fields:

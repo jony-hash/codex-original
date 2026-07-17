@@ -196,6 +196,12 @@ class D2NNConfig:
     amplitude_logit_init: float = 4.0
     # 理想透明相位面只允许在 experimental/diagnostic 路径使用；旧配置默认硬边界。
     exterior_boundary: str = "finite_crop"
+    # 透明 diagnostic 路径的传播算子；默认 periodic_asm 保持 v67 行为。
+    transparent_propagation_method: str = "periodic_asm"
+    # 仅 padded_band_limited_asm 使用的临时 FFT 网格；None 表示未启用。
+    transparent_fft_grid_size: int | None = None
+    # 完整 state grid 边缘的能量监测带比例，不是活动区裁剪比例。
+    transparent_edge_guard_fraction: float = 0.05
 
     def __post_init__(self) -> None:
         allowed = {"finite_crop", "transparent_identity"}
@@ -203,6 +209,27 @@ class D2NNConfig:
             raise ValueError(
                 "one_shot.d2nn.exterior_boundary must be one of "
                 f"{sorted(allowed)}, got {self.exterior_boundary!r}"
+            )
+        allowed_methods = {"periodic_asm", "padded_band_limited_asm"}
+        if self.transparent_propagation_method not in allowed_methods:
+            raise ValueError(
+                "one_shot.d2nn.transparent_propagation_method must be one of "
+                f"{sorted(allowed_methods)}, got "
+                f"{self.transparent_propagation_method!r}"
+            )
+        if self.transparent_fft_grid_size is not None:
+            if int(self.transparent_fft_grid_size) <= 0:
+                raise ValueError(
+                    "one_shot.d2nn.transparent_fft_grid_size must be positive when set"
+                )
+            if int(self.transparent_fft_grid_size) < int(self.propagation_grid_size):
+                raise ValueError(
+                    "one_shot.d2nn.transparent_fft_grid_size must be at least "
+                    "propagation_grid_size"
+                )
+        if not 0.0 < float(self.transparent_edge_guard_fraction) < 0.5:
+            raise ValueError(
+                "one_shot.d2nn.transparent_edge_guard_fraction must be in (0, 0.5)"
             )
 
 
