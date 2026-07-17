@@ -1,7 +1,7 @@
 # v68.3 diagnostic-only A2: fixed-exposure raw-CMOS readability refinement.
-# Replace diagnostic_camera_exposure_scale with the value from
-# audit_v68_raw_cmos.py before running.  No per-sample display normalization is
-# allowed in this branch.
+# The scale is locked to the v68 A validation calibration
+# (0.4913053810596466).  No per-sample display normalization is allowed in
+# this branch.
 training:
   mode: one_shot_distill
   batch_size: 1
@@ -72,7 +72,7 @@ one_shot:
   target_code_bridge_source: none
   ols_transfer_calibration: none
   diagnostic_camera_normalization: fixed_exposure
-  diagnostic_camera_exposure_scale: 1.0
+  diagnostic_camera_exposure_scale: 0.4913053810596466
   d2nn:
     wavelength: 5.32e-7
     pixel_size: 2.0e-6
