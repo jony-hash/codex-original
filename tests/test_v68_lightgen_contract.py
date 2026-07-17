@@ -29,6 +29,7 @@ from tools.audit_v68_raw_cmos import (
     global_exposure_scale,
     per_sample_normalized_view,
 )
+from tools.decide_v68_a2_acceptance import _history_gate, _manual_gate
 from ldm_project.student.training import _save_transparent_active_artifact
 
 
@@ -267,6 +268,27 @@ def test_v68_admission_report_is_not_success_when_a_plane_gate_fails() -> None:
     assert _compare(base, base)["all_plane_gates_pass"] is True
     failed = {**base, "fields": {**fields, "chip": fields["chip"] * 1.1}}
     assert _compare(failed, base)["all_plane_gates_pass"] is False
+
+
+def test_v68_a2_history_gate_requires_non_degenerate_final_epochs() -> None:
+    history = {
+        "one_shot_distill_validation": [
+            {"epoch": 4, "paired_corr": 0.8, "paired_dice": 0.7},
+            {"epoch": 5, "paired_corr": 0.81, "paired_dice": 0.71},
+        ]
+    }
+    result = _history_gate(history)
+    assert result["epoch5_not_below_epoch4"] is True
+    history["one_shot_distill_validation"][1]["paired_dice"] = 0.69
+    assert _history_gate(history)["epoch5_not_below_epoch4"] is False
+
+
+def test_v68_a2_manual_gate_requires_all_digit_labels(tmp_path: Path) -> None:
+    review = tmp_path / "manual.json"
+    review.write_text('{"readable_labels": [0,1,2,3,4,5,6,7,8,9]}', encoding="utf-8")
+    assert _manual_gate(review)["passed"] is True
+    review.write_text('{"readable_labels": [0,1,2,3,5,6,7,8,9]}', encoding="utf-8")
+    assert _manual_gate(review)["passed"] is False
 
 
 def _make_stack(memory_mode: str) -> TransparentIdentityDiffractiveStack:
