@@ -275,6 +275,6 @@ v67.1 修正了原 preflight 的面积均值伪差、中央比较区域、raw ca
 
 v67.2 新增 `padded_band_limited_asm` diagnostic 实现：先把完整 state grid 嵌入更大的 FFT grid，进行带限 ASM，再裁回完整 state grid；不裁回 100×100 活动区。新增 schema 为 `v67_transparent_convergence_v3`，Formal validator 拒绝透明边界及其实验传播字段。
 
-冻结 v60 phase、20 个 readable test 样本的 CUDA preflight 仍为 `grid-not-converged`。1536/3072 对 2048/4096 的 camera corr 为 `0.9999993`，但 chip complex L2 `0.003382`、amplitude L2 `0.002500`、phase MAE `0.2717 rad`，首个严格失败为 `encoder_layer_2`；discarded ratio `3.33e-5`、guard ratio `2.90e-5`。2048/4096 被严格标记为 reference-self，未被当作候选通过。固定 2 µm pitch 下两种 state FOV 为 `3.072/4.096 mm`，物理 sampling/FOV 等价门失败；独立 direct-RS 中央强度门也失败（relative L2 `1.924`）。
+冻结 v60 phase、20 个 readable test 样本的 CUDA preflight 仍为 `grid-not-converged`。1536/3072 对 2048/4096 的 camera corr 为 `0.9999993`，但 chip complex L2 `0.003382`、amplitude L2 `0.002500`、phase MAE `0.2717 rad`，首个严格失败为 `encoder_layer_2`；discarded ratio `3.33e-5`、guard ratio `2.90e-5`。2048/4096 被严格标记为 reference-self，未被当作候选通过。固定 2 µm pitch 下两种 state FOV 为 `3.072/4.096 mm`，物理 sampling/FOV 等价门失败；独立 direct-RS 的平滑带限参考输入通过中央强度门（CUDA relative L2 `0.001025`）。
 
 因此 v67.2 没有运行 20 样本梯度 smoke、显存准入、A/B 训练或相位导出。该失败只说明当前 padded 传播与参考/坐标合同尚未满足准入条件，不改变 Formal v56/v60 结论；下一步必须先统一候选 FOV 定义并修复独立 RS reference，再重新执行梯度和训练门。报告为 diagnostic-only，位于 `outputs/20260717_v672/runs/preflight/v67_transparent_convergence_v3.json`。

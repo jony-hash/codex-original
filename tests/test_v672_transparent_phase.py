@@ -6,6 +6,7 @@ from tools.diagnose_v672_transparent_phase import (
     candidate_passes,
     choose_candidate,
     direct_rayleigh_sommerfeld_reference,
+    direct_rs_check,
     gradient_admission,
     memory_admission,
     run,
@@ -63,6 +64,12 @@ def test_v672_direct_rs_reference_is_small_grid_only() -> None:
         assert "64" in str(exc)
     else:
         raise AssertionError("large direct RS reference was not rejected")
+
+
+def test_v672_direct_rs_gate_uses_band_limited_reference_input() -> None:
+    result = direct_rs_check(device=torch.device("cpu"), grid=16)
+    assert result["passed"] is True
+    assert result["central_normalized_intensity_relative_l2"] <= 0.01
 
 
 def test_v672_empty_report_is_diagnostic_only(tmp_path) -> None:

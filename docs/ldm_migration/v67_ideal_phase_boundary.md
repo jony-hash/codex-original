@@ -40,6 +40,6 @@ v67.2 在不改变 Formal Student 的前提下增加了 diagnostic `padded_band_
 - 1536/3072 discarded-energy ratio `3.33e-5`、guard ratio `2.90e-5`，能量和强度相关通过，但不能抵消复场/幅度/相位失败。
 - 2048/4096 仅作为当前比较 reference，禁止与自身比较，不能视为候选已收敛。
 - 固定 2 µm pitch 时 1536 与 2048 的 state FOV 分别为 `3.072 mm` 和 `4.096 mm`，sampling/FOV 等价门失败；不得把不同物理坐标网格直接当作同一 formal plane。
-- 独立小网格 direct-RS 中央归一化强度门为失败（relative L2 `1.924`），所以 padded ASM 尚未取得独立非周期参考的准入证据。
+- 独立小网格 direct-RS 使用平滑带限参考输入后通过中央归一化强度门（CUDA relative L2 `0.001025`）；这只验证参考输入下的传播算子，不抵消候选复场和 FOV 失败。
 
 结论是“透明传播实现可运行，但数值/坐标/独立参考门未通过”，不是透明模型训练失败，也不是 Formal v56/v60 失败。按照停止条件，后续必须先修正统一 FOV 的候选定义并复核 RS 参考；在此之前不得降低阈值、扩大网格、启动 A/B 训练或生成加工候选。报告保存在 `outputs/20260717_v672/runs/preflight/v67_transparent_convergence_v3.json`，仅为 diagnostic 工件。

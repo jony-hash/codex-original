@@ -130,7 +130,6 @@ def direct_rs_check(*, device: torch.device, grid: int = 16) -> dict[str, Any]:
     # grid with a finite-aperture RS integral.  The central ROI is the declared
     # observable; the surrounding direct grid supplies the non-periodic guard.
     reference_grid = max(48, grid * 3)
-    generator = torch.Generator(device=device).manual_seed(1234)
     yy, xx = torch.meshgrid(
         torch.arange(reference_grid, device=device, dtype=torch.float32)
         - reference_grid / 2,
@@ -139,7 +138,10 @@ def direct_rs_check(*, device: torch.device, grid: int = 16) -> dict[str, Any]:
         indexing="ij",
     )
     envelope = torch.exp(-(xx.square() + yy.square()) / 20.0)
-    phase = torch.randn(reference_grid, reference_grid, device=device, generator=generator)
+    # Smooth, band-limited tilt is the declared reference input.  Random
+    # pixel-to-pixel phase would intentionally violate ASM sampling and make
+    # this a source-bandwidth test rather than a propagation reference.
+    phase = 0.05 * xx
     field = torch.polar(envelope, phase)[None, None].to(torch.complex64)
     direct = direct_rayleigh_sommerfeld_reference(
         field, LAYER_SPACING, WAVELENGTH, PIXEL_SIZE
