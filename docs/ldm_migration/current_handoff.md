@@ -286,3 +286,9 @@ v67.3 修正了 v67.2 的三个验收问题：总 FOV 不再被错误要求相�
 20 个 readable test 样本的 CUDA 结果仍为 `grid-not-converged`：zero/small-init 的 1536/3072 gauge-aligned chip complex L2 为 `0.001408/0.001412`，首个严格失败面为 `decoder_layer_1`；weighted phase MAE 约 `1.20e-4/1.22e-4 rad`，camera corr `0.99999999`，energy、guard、discarded energy 和 direct-RS reference 通过。v60 stress L2 为 `0.003382`，仅作为边界敏感性记录。
 
 因此当前失败已定位为“完整透明 state domain 在多层传播后的复场数值误差累积”，不再归因于 FOV 判定、低能量相位噪声或 v60 phase 初始化。zero/small-init 门未通过，故没有运行梯度 VJP、训练显存门、A/B 训练或相位导出。报告位于 `outputs/20260718_v673/runs/preflight/v67_transparent_convergence_v4.json`。
+
+### v67.4：透明全场算子隔离（diagnostic-only）
+
+v67.4 将历史 `1536/3072` 每层裁回路径与新的全场候选分开：候选使用 `3072/3072`，encoder、identity OLS、decoder 之间保持完整 3072 网格；`4096/4096` 只作为只读参考。普通输出只保存中央 100×100 活动视图，backend relay 和显式 optical-field diagnostic 使用完整复场。该路径不改变 Formal `finite_crop`、v56/v60 checkpoint 或默认 YAML。
+
+新增 `tools/diagnose_v674_transparent_operator.py`，报告 schema 为 `v67_transparent_operator_audit_v1`。它同时记录逐层复场门、共同物理频率 bin 的 transfer audit、zero/small-init 基线和首个失败平面。v67.4 未通过数值门前，不运行 gradient、memory、A/B 训练或加工候选导出；长 CUDA 任务须在报告明确 `ready-for-gradient-and-memory-admission` 后由用户运行。

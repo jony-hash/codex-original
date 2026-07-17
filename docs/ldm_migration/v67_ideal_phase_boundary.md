@@ -51,3 +51,9 @@ v67.3 将总 FOV 不同改为允许的 reference-domain 扩大，只比较共同
 20 个样本 CUDA 结果仍为 `grid-not-converged`，但归因更准确：零相位和 small-init 的 1536/3072 common-ROI gauge-aligned complex L2 分别为 `0.001408/0.001412`，首个失败面为 `decoder_layer_1`；weighted phase MAE 仅约 `1.20e-4/1.22e-4 rad`，camera corr 约 `0.99999999`，energy/guard/discarded 通过。冻结 v60 stress 的 gauge-aligned L2 为 `0.003382`，只记录为边界敏感性，不作为透明训练结论。
 
 这说明当前主要瓶颈是完整 state-domain 在多次传播后的复场数值截断/参考差异，而不是低能量相位噪声或 phase 初始化本身。由于 zero/small-init 数值门均未通过，v67.3 没有执行 full `one_shot_loss` VJP、训练显存准入、A/B 训练或加工导出。
+
+## v67.4 全场算子隔离
+
+v67.4 是 diagnostic-only 修复轮次。历史 `1536/3072` 路径保留用于复现每层 crop 的累积误差；新的透明候选使用 `3072/3072`，四层 phase-only stack 和 identity OLS 之间保持完整传播网格；`4096/4096` 只作为只读参考。普通训练输出只保存中央 100×100 活动视图，显式 optical-field artifact 才保存完整场及其 FOV provenance，backend relay 不使用活动区替代完整 chip field。
+
+新增工具 `tools/diagnose_v674_transparent_operator.py` 同时检查逐层复场门、crop 残差、共同物理频率 bin 的 transfer audit 和 zero/small-init 重现性。数值门未通过前不运行梯度、显存、A/B 训练或相位导出；本轮不引入玻璃、材料折射率、厚度、吸收、反射或加工误差。

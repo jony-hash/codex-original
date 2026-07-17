@@ -117,6 +117,10 @@ v9.10 prototype、旧 100×100 two-photon、v53 及更早的 loss/relay probes �
 
 v67.3 将 `1536/3072` 固定为唯一训练候选、`2048/4096` 固定为扩大 reference；总 FOV 不同是允许的，只有共同 ROI 的 pitch、origin、wavelength、距离和坐标映射必须一致。复场 gate 使用 gauge-aligned L2，phase gate 使用 `-40 dB` reference-intensity 权重。zero/small-init 必须先通过，v60 phase 只作 stress test；当前 v67.3 仍在 `decoder_layer_1` 失败，未进入梯度、显存或训练阶段。
 
+### v67.4 full-domain operator audit
+
+`tools/diagnose_v674_transparent_operator.py` 只用于隔离透明传播算子：`1536/3072` 每层 crop 复现历史断点，`3072/3072` 是唯一候选，`4096/4096` 是只读 reference。候选 encoder、identity OLS 和 decoder 之间不得裁回 1536 或 100；普通输出可只保存中央活动视图，但 backend relay 必须接收完整 chip field。只有 zero/small-init 的逐层复场、共同频率 transfer audit 和 reference-domain 状态全部通过，才允许用户运行 gradient/memory smoke；该阶段不自动启动长 CUDA 训练。
+
 | Stage | 用途 | 何时运行 | 必需输入 | 可作为最终单次曝光证据 |
 | --- | --- | --- | --- | --- |
 | `teacher_distill_filter` | 按前景/对比度等规则过滤 teacher targets | Teacher target 质量不稳时 | `--distill-dataset` | 否 |
