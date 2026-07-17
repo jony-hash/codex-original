@@ -46,6 +46,8 @@ Dependency direction is `optics -> (none)`, `teacher/student -> optics + neutral
 
 Formal optical-field artifacts must carry shape, pixel pitch, physical FOV, wavelength, upstream plane, propagation distance, and operation. Tensor equality alone is not physical-coordinate validation; generic complex resize is forbidden in the formal path.
 
+The LightGen Science paper is a system-organization and user-confirmed distance-calibration reference for the amplitude-SLM -> optical encoder/OLS -> photonic generator arrangement; exact repository distances are not claimed as verbatim main-text values. The project-specific `2+2`, `100x100 @ 2 um`, `1.50 mm`, phase-only masks, and identity OLS are explicitly custom approximations. v68 transparent identity and checkpointed active capture are diagnostic-only and must never alter Formal v56/v60 defaults or be promoted without raw-CMOS and material calibration gates.
+
 The formal D2NN boundary is `finite_crop`, meaning a propagation-after-crop ideal hard-aperture computation contract; it is not a claim that printed glass is opaque. `transparent_identity` is diagnostic-only: it models a zero-thickness phase surface with an identity exterior on a full propagation grid and must pass the v67.1 convergence gate before any paired diagnostic training.
 
 - LDM is teacher infrastructure; final inference must not require diffusion denoising, iterative latent sampling, software-only VAE decoding, or inference-time optimization.

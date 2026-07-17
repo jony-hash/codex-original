@@ -75,7 +75,7 @@ D2NN 主线通过 `one_shot.optical_core_arch: diffractive_phase_only` 启用；
 - `chip -> backend relay lens`：100 mm。
 - `backend relay lens -> CMOS`：250 mm；chip -> CMOS 总机械距离为 350 mm。
 - Relay lens 焦距 `f = 71.4285714 mm`，由 `u = 100 mm, v = 250 mm` 的薄透镜公式反推，使 CMOS 位于合焦像面。
-- LightGen 只作为 optical encoder–latent–generator 的系统组织参考；论文的具体光子神经元、OLS/光纤连接、层数、尺寸和间距不等同于本项目。当前项目自定义为 `phase-only Encoder x2 -> identity complex-field OLS -> phase-only Decoder x2`，100×100、2 µm 和 1.50 mm 均为本项目设计参数，不能归因于 LightGen 原始硬件。
+- LightGen（Science）提供振幅 SLM 输入、optical encoder–latent–generator 的系统组织，以及本项目采用的器件距离标定参考；当前配置中的具体距离是用户确认的 LightGen 参照标定合同，不声称 Science 正文逐项原样给出。论文的 OLS/光纤连接、层数、尺寸和间距不等同于本项目。当前项目自定义为 `phase-only Encoder x2 -> identity complex-field OLS -> phase-only Decoder x2`；100×100、2 µm、2+2 和 1.50 mm 均为本项目双光子打印缩放参数。identity OLS 是保留复场接口的理想近似，不等同于论文中的单模光纤阵列。Nature 论文只提供 DDPM teacher 蒸馏与单曝光生成思想，不替换本项目的振幅 SLM 或 relay。
 - PBS 只作为偏振效率建议，不作为当前数值传播节点。
 - v55 physical-forward contract 中 relay 距离、倍率、pupil 和 ABCD trace 全部进入 provenance；v52 的自由传播+中央 aperture 仅保留为历史 diagnostic，不代表当前正式路径。
 

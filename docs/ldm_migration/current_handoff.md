@@ -1,4 +1,6 @@
-# 当前主线交接：v65
+# 当前主线交接：v65（v68 诊断准备状态）
+
+> 2026-07-17 v68：LightGen 参照合同审计、透明路径 `checkpointed_active_capture` 和 A/B 可读性配置已加入源码；尚未运行长 CUDA，未修改 Formal v56/v60。必须先通过合同、数值收敛和显存准入，再由用户运行 A 5 epoch；B 只有 A 的 validation corr≥0.70、dice≥0.68 且最近两次不退化时才允许启动。
 
 更新时间：2026-07-15。此文件供新对话快速恢复当前主线；带日期的完整证据在 [Experiment History](experiment_history.md)，稳定架构合同在 [D2NN 单次曝光蒸馏主线](single_shot_ldm_distillation.md)。
 

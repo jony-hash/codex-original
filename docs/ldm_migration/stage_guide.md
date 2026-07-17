@@ -121,6 +121,28 @@ v67.3 将 `1536/3072` 固定为唯一训练候选、`2048/4096` 固定为扩大 
 
 `tools/diagnose_v674_transparent_operator.py` 只用于隔离透明传播算子：`1536/3072` 每层 crop 复现历史断点，`3072/3072` 是唯一候选，`4096/4096` 是只读 reference。候选 encoder、identity OLS 和 decoder 之间不得裁回 1536 或 100；普通输出可只保存中央活动视图，但 backend relay 必须接收完整 chip field。只有 zero/small-init 的逐层复场、共同频率 transfer audit 和 reference-domain 状态全部通过，才允许用户运行 gradient/memory smoke；该阶段不自动启动长 CUDA 训练。
 
+### v68 LightGen-calibrated transparent readability
+
+`tools/audit_v68_lightgen_contract.py` 是只读合同审计；它锁定振幅 SLM、完整相干 4f 前端、identity complex-field OLS、后端有限共轭 relay、`2+2 @ 1.50 mm` 和 `100×100 @ 2 µm`。审计中的宏观距离是用户确认的 LightGen 参照标定，不声称为 Science 正文逐项数字；identity OLS 也不声称是论文单模光纤阵列的复现。Nature 仅作为 DDPM 蒸馏/单曝光生成的来源。
+
+`configs/train_v68_transparent_readability_a.yaml` 是硬件路径可读上界（只启用 camera reconstruction）；`..._b.yaml` 只有在 A 的 validation corr/dice 门通过后才运行，并加入最小 clean-target/readability 项。两者均为 `diagnostic-only`，不改变 Formal v56/v60，也不允许 generic complex resize 或旧 v15 中央硬裁切进入 import/forward 图。透明路径可使用 `checkpointed_active_capture`：内部仍保留完整复场并把 backend relay 接收完整 chip field，只有常规 artifact 才保存中央活动视图。先运行合同审计、短数值/显存 preflight，再由用户执行长 CUDA；任何门失败都停止训练和加工候选导出。
+
+短 preflight（不会启动训练）如下；需要显式的 v60 generator-only checkpoint 和固定 sample bundle：
+
+```bash
+python -m tools.audit_v68_lightgen_contract \
+  --config configs/train_v68_transparent_readability_a.yaml
+python -m tools.audit_v68_lightgen_contract \
+  --config configs/train_v68_transparent_readability_b.yaml
+python -m tools.diagnose_v68_transparent_memory \
+  --train-config configs/train_v68_transparent_readability_a.yaml \
+  --checkpoint <v60_generator_warm_start_checkpoint> \
+  --sample-tensors <fixed_sample_bundle.pt> \
+  --output <versioned_v68_preflight.json> --device cuda --max-samples 4
+```
+
+该 streaming probe 逐样本释放内部全场，只比较中央 artifact view 与 raw camera，不能替代 v67.4 的逐层全场数值门、完整 one_shot_loss 梯度门或人工 raw-CMOS 门。上述门通过后，才由用户运行 A 的 5 epoch；B 必须等待 A 的 validation gate。
+
 | Stage | 用途 | 何时运行 | 必需输入 | 可作为最终单次曝光证据 |
 | --- | --- | --- | --- | --- |
 | `teacher_distill_filter` | 按前景/对比度等规则过滤 teacher targets | Teacher target 质量不稳时 | `--distill-dataset` | 否 |

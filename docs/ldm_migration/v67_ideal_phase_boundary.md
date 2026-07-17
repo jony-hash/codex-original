@@ -57,3 +57,9 @@ v67.3 将总 FOV 不同改为允许的 reference-domain 扩大，只比较共同
 v67.4 是 diagnostic-only 修复轮次。历史 `1536/3072` 路径保留用于复现每层 crop 的累积误差；新的透明候选使用 `3072/3072`，四层 phase-only stack 和 identity OLS 之间保持完整传播网格；`4096/4096` 只作为只读参考。普通训练输出只保存中央 100×100 活动视图，显式 optical-field artifact 才保存完整场及其 FOV provenance，backend relay 不使用活动区替代完整 chip field。
 
 新增工具 `tools/diagnose_v674_transparent_operator.py` 同时检查逐层复场门、crop 残差、共同物理频率 bin 的 transfer audit 和 zero/small-init 重现性。数值门未通过前不运行梯度、显存、A/B 训练或相位导出；本轮不引入玻璃、材料折射率、厚度、吸收、反射或加工误差。
+
+## v68 LightGen 合同与快速可读性分级
+
+v68 将 LightGen 的借鉴范围冻结为振幅 SLM 输入、encoder–OLS–photonic-generator 的系统组织和用户确认的宏观距离标定参考；当前具体距离不声称为 Science 正文逐项原样数字。`2+2`、`100×100 @ 2 µm`、1.50 mm、phase-only 层和 identity OLS 是本项目的缩放设计/理想近似，后者不等同于论文中的单模光纤阵列。Nature 仅提供 DDPM teacher 蒸馏与单曝光生成思想。
+
+`tools/audit_v68_lightgen_contract.py` 只读检查该合同。`train_v68_transparent_readability_a.yaml` 是 camera-only 硬件路径可读上界；B 配置只有在 A 的 validation 门通过后才允许启动。两者的 `checkpointed_active_capture` 只重算传播激活、限制常规 artifact 的保存范围，不改变完整透明复场、backend relay 或 Formal v56/v60。v68 仍为 diagnostic-only，未通过数值/显存/人工 raw-CMOS 门时不得训练或导出加工候选。
