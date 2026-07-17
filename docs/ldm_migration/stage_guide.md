@@ -142,6 +142,18 @@ python -m tools.diagnose_v68_transparent_memory \
 
 该 v68.2 streaming probe 默认从本地 MNIST train 构造 prototype，并固定 small phase seed；逐样本释放内部全场，只比较中央 artifact view 与 raw camera。v60 checkpoint 不兼容时不得完整或静默加载；如需压力测试，必须显式加 `--warm-start-mode generator_subset --checkpoint <checkpoint>`，工具会比较 generator arch/command transform 并报告不兼容。v67.4 的 periodic full-domain 结果保留为 stress test，不替代 v68.2 padded candidate gate。v68.2 只有在 zero/small-init 均报告 `numerical-converged` 后，才进入完整 one_shot_loss 梯度门和显存门。
 
+数值门通过后，长 CUDA 梯度/显存准入由用户显式运行；该工具不创建 optimizer、不会更新参数，也不会替代 A/B 训练：
+
+```bash
+python -m tools.diagnose_v68_training_admission \
+  --train-config configs/train_v68_transparent_readability_a.yaml \
+  --sample-tensors <fixed_sample_bundle.pt> \
+  --output <versioned_v68_gradient_admission.json> \
+  --device cuda --max-samples 20
+```
+
+它逐样本比较 `2048/3072` candidate 与 `3072/4096` streaming reference 的完整 `one_shot_loss`、generator/encoder/decoder 梯度和 CUDA 峰值显存；只有 `gradient_pass`、`memory_pass` 和 `finite` 同时为真，才允许运行 A 的 5 epoch。A 不传入 v60 checkpoint；B 的受控 warm-start 见下方命令。
+
 B 分支的 warm-start 只允许继承 A checkpoint 的 `generator_e.template_logits`、`encoder.*` 和 `decoder.*`；`label_embedding` 与 `residual_net` 必须保持新初始化：
 
 ```bash

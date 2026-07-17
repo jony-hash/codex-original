@@ -6,6 +6,8 @@
 
 v68.2 的 4 样本 CUDA streaming admission 已通过 zero/small-init（camera corr `0.999999998`，首失败平面为空），报告为 `outputs/20260720_v682/runs/preflight/v68_transparent_admission_v2.json`。该报告只签发 numerical gate，不包含 one_shot_loss gradient、显存或人工可读性结论。
 
+v68.2 后续准入工具 `tools/diagnose_v68_training_admission.py` 已就绪：默认复用本地 MNIST prototype、small phase 初始化和固定 sample bundle，逐样本比较 `2048/3072` candidate 与 `3072/4096` reference 的完整 loss/梯度/显存；它不创建 optimizer、不更新参数。长 CUDA 由用户运行，只有报告同时给出 `gradient_pass=true`、`memory_pass=true`、`finite=true` 才允许 A 5 epoch。
+
 更新时间：2026-07-15。此文件供新对话快速恢复当前主线；带日期的完整证据在 [Experiment History](experiment_history.md)，稳定架构合同在 [D2NN 单次曝光蒸馏主线](single_shot_ldm_distillation.md)。
 
 ## 先读的结论

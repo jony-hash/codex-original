@@ -17,8 +17,12 @@ from typing import Any
 
 import torch
 
-from tools.diagnose_v672_transparent_phase import compare_planes, correlation
-from tools.diagnose_v674_transparent_operator import PLANE_NAMES, _set_phase_baseline
+try:
+    from tools.diagnose_v672_transparent_phase import compare_planes, correlation
+    from tools.diagnose_v674_transparent_operator import PLANE_NAMES, _set_phase_baseline
+except ModuleNotFoundError:  # direct ``python tools/<script>.py`` compatibility
+    from diagnose_v672_transparent_phase import compare_planes, correlation
+    from diagnose_v674_transparent_operator import PLANE_NAMES, _set_phase_baseline
 
 
 REPORT_SCHEMA = "v68_transparent_admission_v2"
