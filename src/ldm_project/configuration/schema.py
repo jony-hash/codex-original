@@ -202,6 +202,8 @@ class D2NNConfig:
     transparent_fft_grid_size: int | None = None
     # 完整 state grid 边缘的能量监测带比例，不是活动区裁剪比例。
     transparent_edge_guard_fraction: float = 0.05
+    # experimental transparent path 的显存策略；默认保持旧行为。
+    transparent_memory_mode: str = "legacy_full_capture"
 
     def __post_init__(self) -> None:
         allowed = {"finite_crop", "transparent_identity"}
@@ -230,6 +232,12 @@ class D2NNConfig:
         if not 0.0 < float(self.transparent_edge_guard_fraction) < 0.5:
             raise ValueError(
                 "one_shot.d2nn.transparent_edge_guard_fraction must be in (0, 0.5)"
+            )
+        allowed_memory_modes = {"legacy_full_capture", "checkpointed_active_capture"}
+        if self.transparent_memory_mode not in allowed_memory_modes:
+            raise ValueError(
+                "one_shot.d2nn.transparent_memory_mode must be one of "
+                f"{sorted(allowed_memory_modes)}, got {self.transparent_memory_mode!r}"
             )
 
 

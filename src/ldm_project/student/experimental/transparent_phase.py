@@ -11,6 +11,7 @@ import math
 
 import torch
 from torch import nn
+from torch.utils.checkpoint import checkpoint as activation_checkpoint
 
 from ...optics.propagation import (
     angular_spectrum_propagate,
@@ -75,6 +76,7 @@ class TransparentIdentityDiffractiveStack(nn.Module):
         transparent_propagation_method: str = "periodic_asm",
         transparent_fft_grid_size: int | None = None,
         transparent_edge_guard_fraction: float = 0.05,
+        transparent_memory_mode: str = "legacy_full_capture",
     ) -> None:
         super().__init__()
         if num_layers <= 0:
@@ -95,6 +97,14 @@ class TransparentIdentityDiffractiveStack(nn.Module):
             )
         if not 0.0 < float(transparent_edge_guard_fraction) < 0.5:
             raise ValueError("transparent_edge_guard_fraction must be in (0, 0.5)")
+        if transparent_memory_mode not in {
+            "legacy_full_capture",
+            "checkpointed_active_capture",
+        }:
+            raise ValueError(
+                "transparent_memory_mode must be legacy_full_capture or "
+                "checkpointed_active_capture"
+            )
         self.num_layers = int(num_layers)
         self.grid_size = int(grid_size)
         self.layer_spacing = float(layer_spacing)
@@ -109,6 +119,7 @@ class TransparentIdentityDiffractiveStack(nn.Module):
             else None
         )
         self.transparent_edge_guard_fraction = float(transparent_edge_guard_fraction)
+        self.transparent_memory_mode = transparent_memory_mode
         if transparent_propagation_method == "padded_band_limited_asm":
             if self.transparent_fft_grid_size is None:
                 raise ValueError(
@@ -165,6 +176,7 @@ class TransparentIdentityDiffractiveStack(nn.Module):
         *,
         mask_component: str = "trained",
         phase_layer_mask: tuple[bool, ...] = (),
+        capture_full_layers: bool = True,
     ) -> tuple[torch.Tensor, torch.Tensor, dict[str, torch.Tensor]]:
         field = _embed(field, self.propagation_grid_size)
         transfers = self.phase_transfers(mask_component, phase_layer_mask).to(field.dtype)
@@ -184,36 +196,53 @@ class TransparentIdentityDiffractiveStack(nn.Module):
         for index in range(self.num_layers):
             field = field * transfers[index].unsqueeze(0)
             input_energy = _energy(field)
-            if self.transparent_propagation_method == "periodic_asm":
-                propagated = angular_spectrum_propagate(
-                    field, self.layer_spacing, self.wavelength, self.pixel_size
-                )
-                padded_input_energy = input_energy
-                propagated_energy = _energy(propagated)
-                retained = propagated
-                retained_energy = propagated_energy
-                discarded_energy = torch.zeros_like(retained_energy)
-                crop_retention = torch.ones_like(retained_energy)
-                discarded_ratio = torch.zeros_like(retained_energy)
-            else:
-                # 这里只裁回毫米级完整 state grid，绝不裁回 100x100 学习窗口。
-                fft_grid = _embed(field, int(self.transparent_fft_grid_size))
-                padded_input_energy = _energy(fft_grid)
+            def propagate_once(value: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+                if self.transparent_propagation_method == "periodic_asm":
+                    propagated_value = angular_spectrum_propagate(
+                        value, self.layer_spacing, self.wavelength, self.pixel_size
+                    )
+                    return propagated_value, _energy(propagated_value)
+                fft_grid = _embed(value, int(self.transparent_fft_grid_size))
                 propagated_padded = band_limited_angular_spectrum_propagate(
                     fft_grid,
                     self.layer_spacing,
                     self.wavelength,
                     self.pixel_size,
                 )
-                propagated_energy = _energy(propagated_padded)
-                retained = _center_crop(propagated_padded, self.propagation_grid_size)
+                # 这里只裁回毫米级完整 state grid，绝不裁回 100x100 学习窗口。
+                return (
+                    _center_crop(propagated_padded, self.propagation_grid_size),
+                    _energy(propagated_padded),
+                )
+
+            use_checkpoint = (
+                self.training
+                and self.transparent_memory_mode == "checkpointed_active_capture"
+                and field.requires_grad
+            )
+            if use_checkpoint:
+                propagated, propagated_energy = activation_checkpoint(
+                    propagate_once, field, use_reentrant=False
+                )
+            else:
+                propagated, propagated_energy = propagate_once(field)
+            if self.transparent_propagation_method == "periodic_asm":
+                padded_input_energy = input_energy
+                retained = propagated
+                retained_energy = _energy(retained)
+                discarded_energy = torch.zeros_like(retained_energy)
+                crop_retention = torch.ones_like(retained_energy)
+                discarded_ratio = torch.zeros_like(retained_energy)
+            else:
+                fft_grid = _embed(field, int(self.transparent_fft_grid_size))
+                padded_input_energy = _energy(fft_grid)
+                retained = propagated
                 retained_energy = _energy(retained)
                 discarded_energy = (propagated_energy - retained_energy).clamp_min(0.0)
                 crop_retention = retained_energy / propagated_energy.clamp_min(1.0e-12)
                 discarded_ratio = discarded_energy / propagated_energy.clamp_min(1.0e-12)
-                propagated = retained
             field = propagated
-            outputs.append(field)
+            outputs.append(field if capture_full_layers else _center_crop(field, self.grid_size))
             diagnostics["input_energy"].append(input_energy)
             diagnostics["padded_input_energy"].append(padded_input_energy)
             diagnostics["propagated_full_energy"].append(propagated_energy)
@@ -242,6 +271,8 @@ class TransparentIdentityDiffractiveStack(nn.Module):
         diagnostics_out["transparent_edge_guard_fraction"] = torch.tensor(
             self.transparent_edge_guard_fraction, device=field.device
         )
+        diagnostics_out["transparent_memory_mode"] = self.transparent_memory_mode
+        diagnostics_out["transparent_full_layer_capture"] = bool(capture_full_layers)
         return field, torch.stack(outputs, dim=1), diagnostics_out
 
 

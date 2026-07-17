@@ -177,6 +177,7 @@ class _LegacyDiagnosticOneShotOpticalGenerator(nn.Module):
                     "transparent_edge_guard_fraction": d2nn[
                         "transparent_edge_guard_fraction"
                     ],
+                    "transparent_memory_mode": d2nn["transparent_memory_mode"],
                 }
             self.encoder = encoder_stack_cls(
                 d2nn["encoder_layers"],
@@ -302,6 +303,7 @@ class _LegacyDiagnosticOneShotOpticalGenerator(nn.Module):
                 "transparent_propagation_method": d2nn_cfg.transparent_propagation_method,
                 "transparent_fft_grid_size": d2nn_cfg.transparent_fft_grid_size,
                 "transparent_edge_guard_fraction": d2nn_cfg.transparent_edge_guard_fraction,
+                "transparent_memory_mode": d2nn_cfg.transparent_memory_mode,
             }
         return {
             "wavelength": self.physics.optics.wavelength,
@@ -321,6 +323,7 @@ class _LegacyDiagnosticOneShotOpticalGenerator(nn.Module):
             "transparent_propagation_method": "periodic_asm",
             "transparent_fft_grid_size": None,
             "transparent_edge_guard_fraction": 0.05,
+            "transparent_memory_mode": "legacy_full_capture",
         }
 
     def _validate_dimensions(self) -> None:
@@ -1192,9 +1195,19 @@ class _LegacyDiagnosticOneShotOpticalGenerator(nn.Module):
                 (d2nn["grid_size"], d2nn["grid_size"]),
             )
         encoder_grid = encoder_input_field
-        encoded_field, encoder_layer_fields, encoder_crop_diagnostics = self.encoder(
-            encoder_grid
+        capture_full_layers = not (
+            d2nn.get("exterior_boundary") == "transparent_identity"
+            and d2nn.get("transparent_memory_mode") == "checkpointed_active_capture"
+            and not return_optical_fields
         )
+        if isinstance(self.encoder, TransparentIdentityDiffractiveStack):
+            encoded_field, encoder_layer_fields, encoder_crop_diagnostics = self.encoder(
+                encoder_grid, capture_full_layers=capture_full_layers
+            )
+        else:
+            encoded_field, encoder_layer_fields, encoder_crop_diagnostics = self.encoder(
+                encoder_grid
+            )
         ols_field = self._apply_ols_transfer_calibration(
             _apply_complex_ols(encoded_field, self.config.ols_kind)
         )
@@ -1224,11 +1237,19 @@ class _LegacyDiagnosticOneShotOpticalGenerator(nn.Module):
                 )
             )
         else:
-            chip_grid, decoder_layer_fields, decoder_crop_diagnostics = self.decoder(
-                decoder_input_field,
-                mask_component=self.config.decoder_diagnostic_mask_component,
-                phase_layer_mask=tuple(self.config.decoder_diagnostic_phase_layer_mask),
-            )
+            if isinstance(self.decoder, TransparentIdentityDiffractiveStack):
+                chip_grid, decoder_layer_fields, decoder_crop_diagnostics = self.decoder(
+                    decoder_input_field,
+                    mask_component=self.config.decoder_diagnostic_mask_component,
+                    phase_layer_mask=tuple(self.config.decoder_diagnostic_phase_layer_mask),
+                    capture_full_layers=capture_full_layers,
+                )
+            else:
+                chip_grid, decoder_layer_fields, decoder_crop_diagnostics = self.decoder(
+                    decoder_input_field,
+                    mask_component=self.config.decoder_diagnostic_mask_component,
+                    phase_layer_mask=tuple(self.config.decoder_diagnostic_phase_layer_mask),
+                )
         raw_optical_readout = self.back_path(
             chip_grid,
             input_pixel_size=d2nn["pixel_size"],
@@ -1422,6 +1443,9 @@ class _LegacyDiagnosticOneShotOpticalGenerator(nn.Module):
                 "transparent_artifact_view": "center_crop_from_internal_field",
                 "transparent_edge_guard_fraction": float(
                     self._d2nn.get("transparent_edge_guard_fraction", 0.05)
+                ),
+                "transparent_memory_mode": self._d2nn.get(
+                    "transparent_memory_mode", "legacy_full_capture"
                 ),
                 "numerical_boundary": (
                     "padded_band_limited"
