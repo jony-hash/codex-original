@@ -256,20 +256,34 @@ def run(
         if resolved.type == "cuda" and not torch.cuda.is_available():
             raise RuntimeError("CUDA is required for v67.4 operator audit")
         captures: dict[str, dict[str, dict[str, Any]]] = {}
-        for baseline in BASELINE_NAMES:
-            captures[baseline] = {}
-            captures[baseline]["legacy_per_layer_crop"] = _capture_one_grid(
-                base=base, checkpoint_payload=checkpoint_payload, codes=codes, labels=labels,
-                device=resolved, state_grid=1536, fft_grid=3072, baseline=baseline,
-            )
-            captures[baseline]["full_domain_candidate"] = _capture_one_grid(
-                base=base, checkpoint_payload=checkpoint_payload, codes=codes, labels=labels,
-                device=resolved, state_grid=3072, fft_grid=3072, baseline=baseline,
-            )
-            captures[baseline]["read_only_reference"] = _capture_one_grid(
-                base=base, checkpoint_payload=checkpoint_payload, codes=codes, labels=labels,
-                device=resolved, state_grid=4096, fft_grid=4096, baseline=baseline,
-            )
+        try:
+            for baseline in BASELINE_NAMES:
+                captures[baseline] = {}
+                captures[baseline]["legacy_per_layer_crop"] = _capture_one_grid(
+                    base=base, checkpoint_payload=checkpoint_payload, codes=codes, labels=labels,
+                    device=resolved, state_grid=1536, fft_grid=3072, baseline=baseline,
+                )
+                captures[baseline]["full_domain_candidate"] = _capture_one_grid(
+                    base=base, checkpoint_payload=checkpoint_payload, codes=codes, labels=labels,
+                    device=resolved, state_grid=3072, fft_grid=3072, baseline=baseline,
+                )
+                captures[baseline]["read_only_reference"] = _capture_one_grid(
+                    base=base, checkpoint_payload=checkpoint_payload, codes=codes, labels=labels,
+                    device=resolved, state_grid=4096, fft_grid=4096, baseline=baseline,
+                )
+        except RuntimeError as exc:
+            if resolved.type != "cuda" or "out of memory" not in str(exc).lower():
+                raise
+            report["status"] = "cuda-memory-blocked"
+            report["reference_domain_status"] = "reference-domain-memory-blocked"
+            report["error"] = str(exc)
+            report["decision"] = "stop-before-gradient-and-training"
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            path = Path(output)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+            return report
         report["baselines"] = {}
         for baseline, paths in captures.items():
             report["baselines"][baseline] = {
