@@ -70,6 +70,8 @@ one_shot:
   target_code_diagnostic_mode: none
   target_code_bridge_source: none
   ols_transfer_calibration: none
+  diagnostic_camera_normalization: fixed_exposure
+  diagnostic_camera_exposure_scale: 0.4913053810596466
   d2nn:
     wavelength: 5.32e-7
     pixel_size: 2.0e-6
@@ -89,7 +91,7 @@ one_shot:
   camera_readability_weight: 0.25
   clean_target_enabled: true
   clean_foreground_dice_weight: 0.30
-  checkpoint_selection_metric: loss
+  checkpoint_selection_metric: strict_readability
 distillation:
   samples_per_class: 300
   paired_class_batches: true
