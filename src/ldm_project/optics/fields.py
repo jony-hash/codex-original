@@ -137,6 +137,7 @@ def validate_optical_field_chain(
                     "scaled_imaging",
                     "coherent_camera_propagation",
                     "coherent_imaging_4f",
+                    "transparent_identity_exterior_embedding",
                 }:
                     malformed.append(
                         f"optical field {name!r} changes physical sampling without an explicit physical mapping: "

@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass, replace
 
+import torch
+
 from ..distillation.dataset import (
     _build_distill_loaders,
     _load_distill_payload,
@@ -574,12 +576,34 @@ def _distill_checkpoint_payload(
     one_shot_model_version: str,
     **details,
 ) -> dict[str, object]:
+    d2nn = getattr(getattr(one_shot_model, "config", None), "d2nn", None)
+    boundary_contract = getattr(one_shot_model, "_optical_boundary_contract", None)
+    if boundary_contract is None:
+        exterior_boundary = getattr(d2nn, "exterior_boundary", "finite_crop")
+        if exterior_boundary == "transparent_identity":
+            method = getattr(d2nn, "transparent_propagation_method", "periodic_asm")
+            boundary_contract = (
+                "ideal_transparent_thin_phase_v2"
+                if method == "padded_band_limited_asm"
+                else "ideal_transparent_thin_phase_v1"
+            )
+        else:
+            boundary_contract = "formal_finite_crop_v1"
     return {
         "model_state_dict": one_shot_model.state_dict(),
         "stage": "one_shot_distill",
         "model_version": one_shot_model_version,
         "physics_config": physics,
         "train_config": train_cfg,
+        "optical_boundary_contract": boundary_contract,
+        "optical_boundary_metadata": {
+            "state_grid": getattr(d2nn, "propagation_grid_size", None),
+            "fft_grid": getattr(d2nn, "transparent_fft_grid_size", None),
+            "propagation_method": getattr(
+                d2nn, "transparent_propagation_method", None
+            ),
+            "memory_mode": getattr(d2nn, "transparent_memory_mode", None),
+        },
         "epoch": epoch_number,
         **details,
     }
@@ -709,6 +733,51 @@ def _save_epoch_distill_checkpoint(
         },
     )
     run_manager.write_meta(run_meta)
+
+
+def _save_transparent_active_artifact(
+    run_manager,
+    outputs: dict[str, object],
+    *,
+    artifact_prefix: str,
+) -> None:
+    """Save compact active views for transparent training diagnostics.
+
+    完整 2048/3072 复场只在显式 final audit 保存；训练 epoch 只保留中央
+    100×100 活动视图、raw camera 和 provenance 摘要，避免每个 epoch 写入 GB
+    级 tensor，同时不改变内部 forward 或 backend relay。
+    """
+    provenance = outputs.get("ideal_phase_provenance", {})
+    active_keys = (
+        "diffractive_encoder_layer_amplitude",
+        "diffractive_encoder_layer_phase",
+        "diffractive_decoder_layer_amplitude",
+        "diffractive_decoder_layer_phase",
+        "encoded_amplitude",
+        "encoded_phase",
+        "ols_output_amplitude",
+        "ols_output_phase",
+        "decoder_output_amplitude",
+        "decoder_output_phase",
+        "physical_camera_intensity_raw",
+    )
+    tensors = {
+        key: outputs[key].detach().cpu()
+        for key in active_keys
+        if key in outputs and torch.is_tensor(outputs[key])
+    }
+    summary = {
+        "schema_version": "v68_compact_transparent_active_artifact_v1",
+        "status": "diagnostic-only",
+        "optical_boundary_contract": outputs.get("optical_boundary_contract"),
+        "capture_mode": "checkpointed_active_capture",
+        "full_field_saved": False,
+        "active_view_only": True,
+        "provenance": provenance,
+        "tensor_shapes": {key: list(value.shape) for key, value in tensors.items()},
+    }
+    run_manager.save_artifact_json(f"{artifact_prefix}_active_provenance", summary)
+    run_manager.save_tensor_bundle(f"{artifact_prefix}_active_views.pt", tensors)
 
 
 def run_one_shot_distill_training(
@@ -934,10 +1003,16 @@ def run_one_shot_distill_training(
         if should_save_epoch_visual(epoch_index, train_cfg.visual_save_epoch_interval):
             one_shot_model.eval()
             with torch_module.no_grad():
+                d2nn = train_cfg.one_shot.d2nn
+                capture_full_fields = not (
+                    d2nn is not None
+                    and d2nn.exterior_boundary == "transparent_identity"
+                    and d2nn.transparent_memory_mode == "checkpointed_active_capture"
+                )
                 visual_outputs = one_shot_model(
                     visual_batch.codes,
                     visual_batch.labels,
-                    return_optical_fields=True,
+                    return_optical_fields=capture_full_fields,
                 )
                 if train_cfg.one_shot.optical_core_arch != "camera_direct_clean_oracle":
                     save_visualization_grids(
@@ -956,17 +1031,24 @@ def run_one_shot_distill_training(
                         max_items=visual_batch.labels.shape[0],
                         row_labels=labels_for_visual_rows(visual_batch.labels),
                     )
-                    _save_strict_optical_field_artifacts(
-                        run_manager,
-                        visual_outputs,
-                        artifact_prefix=f"one_shot_distill_epoch_{epoch_number:04d}",
-                        title_prefix=f"one-shot distill epoch {epoch_number}",
-                        max_items=visual_batch.labels.shape[0],
-                        row_labels=labels_for_visual_rows(visual_batch.labels),
-                        front_path_model=getattr(
-                            physics, "front_path_model", "free_space"
-                        ),
-                    )
+                    if capture_full_fields:
+                        _save_strict_optical_field_artifacts(
+                            run_manager,
+                            visual_outputs,
+                            artifact_prefix=f"one_shot_distill_epoch_{epoch_number:04d}",
+                            title_prefix=f"one-shot distill epoch {epoch_number}",
+                            max_items=visual_batch.labels.shape[0],
+                            row_labels=labels_for_visual_rows(visual_batch.labels),
+                            front_path_model=getattr(
+                                physics, "front_path_model", "free_space"
+                            ),
+                        )
+                    else:
+                        _save_transparent_active_artifact(
+                            run_manager,
+                            visual_outputs,
+                            artifact_prefix=f"one_shot_distill_epoch_{epoch_number:04d}",
+                        )
                 save_visualization_grids(
                     run_manager,
                     build_one_shot_distill_readability_visualization_tensors(

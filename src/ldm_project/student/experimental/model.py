@@ -1261,11 +1261,21 @@ class _LegacyDiagnosticOneShotOpticalGenerator(nn.Module):
             camera_intensity = _resize_real_intensity(
                 camera_intensity, (self.image_size, self.image_size)
             )
-        camera_plane_loss = normalize_real_intensity(
-            camera_intensity,
-            self.physics.readout.normalize_percentile,
-            clamp=False,
-        )
+        if self.config.diagnostic_camera_normalization == "fixed_exposure":
+            # 固定曝光合同：同一 run 的所有样本共享审计登记的标量，
+            # 不使用逐样本 percentile、gamma 或显示增强。
+            exposure_scale = self.config.diagnostic_camera_exposure_scale
+            if exposure_scale is None or float(exposure_scale) <= 0.0:
+                raise ValueError(
+                    "fixed_exposure requires a positive diagnostic_camera_exposure_scale"
+                )
+            camera_plane_loss = camera_intensity / float(exposure_scale)
+        else:
+            camera_plane_loss = normalize_real_intensity(
+                camera_intensity,
+                self.physics.readout.normalize_percentile,
+                clamp=False,
+            )
         physical_camera_plane = camera_plane_loss.clamp(0.0, 1.0)
         # backend relay 已经使用完整 chip_grid；这里仅为常规输出构造中央
         # 活动区视图，避免 diagnostic 全场传播扩大所有 loss tensor。
@@ -1441,6 +1451,17 @@ class _LegacyDiagnosticOneShotOpticalGenerator(nn.Module):
                     int(self._d2nn["grid_size"]),
                 ],
                 "transparent_artifact_view": "center_crop_from_internal_field",
+                "transparent_identity_exterior_embedding": {
+                    "operation": "transparent_identity_exterior_embedding",
+                    "source_shape": [int(encoder_grid.shape[-2]), int(encoder_grid.shape[-1])],
+                    "destination_shape": [
+                        int(encoder_input_field.shape[-2]),
+                        int(encoder_input_field.shape[-1]),
+                    ],
+                    "outside_active_window_transmission": "1+0j",
+                    "is_physical_resize": False,
+                    "is_physical_aperture": False,
+                },
                 "transparent_edge_guard_fraction": float(
                     self._d2nn.get("transparent_edge_guard_fraction", 0.05)
                 ),
@@ -1628,6 +1649,25 @@ class _LegacyDiagnosticOneShotOpticalGenerator(nn.Module):
             else "downstream_of_intensity_relay"
         )
         previous = "encoder_grid"
+        if self._d2nn.get("exterior_boundary") == "transparent_identity":
+            state_size = int(self._d2nn["propagation_grid_size"])
+            top = (state_size - int(encoder_grid.shape[-2])) // 2
+            left = (state_size - int(encoder_grid.shape[-1])) // 2
+            full_grid_input = encoder_grid.new_zeros(
+                *encoder_grid.shape[:-2], state_size, state_size
+            )
+            full_grid_input[..., top : top + encoder_grid.shape[-2], left : left + encoder_grid.shape[-1]] = encoder_grid
+            add(
+                fields,
+                "encoder_full_grid_input",
+                full_grid_input,
+                upstream="encoder_grid",
+                operation="transparent_identity_exterior_embedding",
+                phase_available=front_phase_available,
+                source_kind="transparent_identity_exterior",
+                sampling=propagation_d2nn_sampling,
+            )
+            previous = "encoder_full_grid_input"
         for layer_index in range(int(encoder_layer_fields.shape[1])):
             name = f"encoder_layer_{layer_index + 1}"
             add(
