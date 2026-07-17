@@ -115,6 +115,8 @@ v9.10 prototype、旧 100×100 two-photon、v53 及更早的 loss/relay probes �
 
 `tools/diagnose_v672_transparent_phase.py` 是 v67.2 的 diagnostic-only 数值和训练准入门。`padded_band_limited_asm` 只在完整 state grid 外做临时 FFT padding，传播后裁回完整 state grid，不得裁回活动 100×100 区域。候选按 state/FFT `1536/3072`、`2048/4096` 顺序测试；必须同时通过逐层复场、幅度、圆相位、强度、总能量、guard/discarded energy、raw camera、独立 direct-RS、sampling/FOV、梯度和显存门，才允许 A/B 训练。候选不能与自身 reference 比较，固定 pitch 下不同 state grid 的 FOV 不等价时必须停止。v67.2 当前报告为 `grid-not-converged`，未运行训练；不得用 camera corr 单项通过替代完整复场门。
 
+v67.3 将 `1536/3072` 固定为唯一训练候选、`2048/4096` 固定为扩大 reference；总 FOV 不同是允许的，只有共同 ROI 的 pitch、origin、wavelength、距离和坐标映射必须一致。复场 gate 使用 gauge-aligned L2，phase gate 使用 `-40 dB` reference-intensity 权重。zero/small-init 必须先通过，v60 phase 只作 stress test；当前 v67.3 仍在 `decoder_layer_1` 失败，未进入梯度、显存或训练阶段。
+
 | Stage | 用途 | 何时运行 | 必需输入 | 可作为最终单次曝光证据 |
 | --- | --- | --- | --- | --- |
 | `teacher_distill_filter` | 按前景/对比度等规则过滤 teacher targets | Teacher target 质量不稳时 | `--distill-dataset` | 否 |

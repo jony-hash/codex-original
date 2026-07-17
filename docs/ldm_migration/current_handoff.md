@@ -278,3 +278,11 @@ v67.2 新增 `padded_band_limited_asm` diagnostic 实现：先把完整 state gr
 冻结 v60 phase、20 个 readable test 样本的 CUDA preflight 仍为 `grid-not-converged`。1536/3072 对 2048/4096 的 camera corr 为 `0.9999993`，但 chip complex L2 `0.003382`、amplitude L2 `0.002500`、phase MAE `0.2717 rad`，首个严格失败为 `encoder_layer_2`；discarded ratio `3.33e-5`、guard ratio `2.90e-5`。2048/4096 被严格标记为 reference-self，未被当作候选通过。固定 2 µm pitch 下两种 state FOV 为 `3.072/4.096 mm`，物理 sampling/FOV 等价门失败；独立 direct-RS 的平滑带限参考输入通过中央强度门（CUDA relative L2 `0.001025`）。
 
 因此 v67.2 没有运行 20 样本梯度 smoke、显存准入、A/B 训练或相位导出。该失败只说明当前 padded 传播与参考/坐标合同尚未满足准入条件，不改变 Formal v56/v60 结论；下一步必须先统一候选 FOV 定义并修复独立 RS reference，再重新执行梯度和训练门。报告为 diagnostic-only，位于 `outputs/20260717_v672/runs/preflight/v67_transparent_convergence_v3.json`。
+
+### v67.3：共同 ROI 与 phase-gauge 复核（2026-07-18）
+
+v67.3 修正了 v67.2 的三个验收问题：总 FOV 不再被错误要求相等，1536/3072 作为唯一候选、2048/4096 作为只读 reference；复场比较加入每样本 global-phase 对齐；phase MAE 使用 reference intensity 权重并排除 `-40 dB` 以下像素。零相位、small-init 和 v60 stress 分开记录，报告 schema 为 `v67_transparent_convergence_v4`。
+
+20 个 readable test 样本的 CUDA 结果仍为 `grid-not-converged`：zero/small-init 的 1536/3072 gauge-aligned chip complex L2 为 `0.001408/0.001412`，首个严格失败面为 `decoder_layer_1`；weighted phase MAE 约 `1.20e-4/1.22e-4 rad`，camera corr `0.99999999`，energy、guard、discarded energy 和 direct-RS reference 通过。v60 stress L2 为 `0.003382`，仅作为边界敏感性记录。
+
+因此当前失败已定位为“完整透明 state domain 在多层传播后的复场数值误差累积”，不再归因于 FOV 判定、低能量相位噪声或 v60 phase 初始化。zero/small-init 门未通过，故没有运行梯度 VJP、训练显存门、A/B 训练或相位导出。报告位于 `outputs/20260718_v673/runs/preflight/v67_transparent_convergence_v4.json`。

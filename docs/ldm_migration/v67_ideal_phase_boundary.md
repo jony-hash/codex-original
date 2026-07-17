@@ -43,3 +43,11 @@ v67.2 在不改变 Formal Student 的前提下增加了 diagnostic `padded_band_
 - 独立小网格 direct-RS 使用平滑带限参考输入后通过中央归一化强度门（CUDA relative L2 `0.001025`）；这只验证参考输入下的传播算子，不抵消候选复场和 FOV 失败。
 
 结论是“透明传播实现可运行，但数值/坐标/独立参考门未通过”，不是透明模型训练失败，也不是 Formal v56/v60 失败。按照停止条件，后续必须先修正统一 FOV 的候选定义并复核 RS 参考；在此之前不得降低阈值、扩大网格、启动 A/B 训练或生成加工候选。报告保存在 `outputs/20260717_v672/runs/preflight/v67_transparent_convergence_v3.json`，仅为 diagnostic 工件。
+
+## v67.3 坐标与相位指标复核（2026-07-18）
+
+v67.3 将总 FOV 不同改为允许的 reference-domain 扩大，只比较共同中央 ROI；同时加入 global-phase 对齐、`-40 dB` reference-intensity 加权 phase MAE，并把零相位、small-init 和冻结 v60 phase 分开报告。v3 工件由 `v67_transparent_convergence_v4` supersede。
+
+20 个样本 CUDA 结果仍为 `grid-not-converged`，但归因更准确：零相位和 small-init 的 1536/3072 common-ROI gauge-aligned complex L2 分别为 `0.001408/0.001412`，首个失败面为 `decoder_layer_1`；weighted phase MAE 仅约 `1.20e-4/1.22e-4 rad`，camera corr 约 `0.99999999`，energy/guard/discarded 通过。冻结 v60 stress 的 gauge-aligned L2 为 `0.003382`，只记录为边界敏感性，不作为透明训练结论。
+
+这说明当前主要瓶颈是完整 state-domain 在多次传播后的复场数值截断/参考差异，而不是低能量相位噪声或 phase 初始化本身。由于 zero/small-init 数值门均未通过，v67.3 没有执行 full `one_shot_loss` VJP、训练显存准入、A/B 训练或加工导出。
