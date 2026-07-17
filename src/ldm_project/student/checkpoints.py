@@ -6,6 +6,58 @@ from typing import Any, Mapping
 import torch
 
 
+FORMAL_OPTICAL_BOUNDARY_CONTRACT = "formal_finite_crop_v1"
+TRANSPARENT_OPTICAL_BOUNDARY_CONTRACT_V1 = "ideal_transparent_thin_phase_v1"
+TRANSPARENT_OPTICAL_BOUNDARY_CONTRACT_V2 = "ideal_transparent_thin_phase_v2"
+
+
+def _config_boundary_contract(config: Any) -> str | None:
+    one_shot = getattr(config, "one_shot", config)
+    d2nn = getattr(one_shot, "d2nn", None)
+    if d2nn is None:
+        return None
+    boundary = getattr(d2nn, "exterior_boundary", "finite_crop")
+    if boundary == "finite_crop":
+        return FORMAL_OPTICAL_BOUNDARY_CONTRACT
+    if boundary == "transparent_identity":
+        method = getattr(d2nn, "transparent_propagation_method", "periodic_asm")
+        return (
+            TRANSPARENT_OPTICAL_BOUNDARY_CONTRACT_V2
+            if method == "padded_band_limited_asm"
+            else TRANSPARENT_OPTICAL_BOUNDARY_CONTRACT_V1
+        )
+    return None
+
+
+def checkpoint_boundary_contract(payload: Mapping[str, Any]) -> str | None:
+    """Resolve an explicit or legacy-inferred optical boundary contract."""
+    explicit = payload.get("optical_boundary_contract")
+    if isinstance(explicit, str) and explicit:
+        return explicit
+    return _config_boundary_contract(payload.get("train_config"))
+
+
+def _model_boundary_contract(model: Any) -> str | None:
+    return _config_boundary_contract(getattr(model, "config", None))
+
+
+def _validate_checkpoint_boundary(model: Any, payload: Mapping[str, Any]) -> None:
+    source = checkpoint_boundary_contract(payload)
+    target = _model_boundary_contract(model)
+    if source is None or target is None:
+        # Older minimal test payloads did not carry a train config. Preserve
+        # their state-key compatibility behavior while enforcing contracts for
+        # all v68 checkpoints that can be identified.
+        return
+    source_is_transparent = source.startswith("ideal_transparent_thin_phase_")
+    target_is_transparent = target.startswith("ideal_transparent_thin_phase_")
+    if source_is_transparent != target_is_transparent or source != target:
+        raise ValueError(
+            "Incompatible one-shot checkpoint: optical boundary contract "
+            f"{source!r} cannot load into {target!r}."
+        )
+
+
 def validate_one_shot_checkpoint_payload(payload: Mapping[str, Any]) -> None:
     """Reject unknown versions or incomplete payloads before touching model state."""
     from .contracts import ONE_SHOT_MODEL_VERSION
@@ -19,6 +71,7 @@ def validate_one_shot_checkpoint_payload(payload: Mapping[str, Any]) -> None:
 def load_one_shot_checkpoint(model: Any, payload: Mapping[str, Any]) -> None:
     """Load a complete checkpoint using the model's registered state-key contract."""
     validate_one_shot_checkpoint_payload(payload)
+    _validate_checkpoint_boundary(model, payload)
     _load_one_shot_checkpoint_state(
         model, payload["model_state_dict"], description="one-shot checkpoint"
     )
@@ -35,6 +88,7 @@ def load_one_shot_checkpoint_subset(
 ) -> dict[str, int]:
     """Warm-start only explicitly named modules; all omissions remain auditable."""
     validate_one_shot_checkpoint_payload(payload)
+    _validate_checkpoint_boundary(model, payload)
     return _load_one_shot_checkpoint_state(
         model,
         payload["model_state_dict"],
