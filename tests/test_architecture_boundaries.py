@@ -8,6 +8,8 @@ from unittest.mock import patch
 from ldm_project.application.stages import StageRequest, _build_stage_context
 from ldm_project.config import PhysicsConfig, TrainingConfig
 from ldm_project.student.model import FormalOneShotOpticalGenerator
+from ldm_project.application.model_factory import build_student_model
+from ldm_project.configuration.schema import D2NNConfig, OneShotConfig
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -195,3 +197,27 @@ def test_formal_student_rejects_diagnostic_switches() -> None:
         assert "decoder_diagnostic_mode" in str(exc)
     else:
         raise AssertionError("formal student accepted a decoder diagnostic switch")
+
+
+def test_transparent_physical_stage_routes_to_diagnostic_student() -> None:
+    physics = PhysicsConfig(physical_forward_contract=True)
+    config = OneShotConfig(
+        physical_forward_contract=True,
+        generator_e_arch="label_template",
+        generator_command_transform="intensity_to_amplitude",
+        generator_template_init="mnist_prototype",
+        distill_target_source="mnist_prototype",
+        d2nn=D2NNConfig(
+            grid_size=4,
+            propagation_grid_size=8,
+            pixel_size=2.0e-6,
+            layer_spacing=1.0e-5,
+            exterior_boundary="transparent_identity",
+            transparent_propagation_method="padded_band_limited_asm",
+            transparent_fft_grid_size=16,
+            transparent_memory_mode="checkpointed_active_capture",
+        ),
+    )
+    model = build_student_model(physics, config, image_size=8, device="cpu")
+    assert not isinstance(model, FormalOneShotOpticalGenerator)
+    assert model.config.d2nn.exterior_boundary == "transparent_identity"
