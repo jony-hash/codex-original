@@ -23,7 +23,12 @@ from ldm_project.student.experimental.transparent_phase import (
     TransparentIdentityDiffractiveStack,
 )
 from tools.audit_v68_lightgen_contract import audit_config
-from tools.audit_v68_raw_cmos import fixed_exposure_view, global_exposure_scale
+from tools.audit_v68_raw_cmos import (
+    _class_metrics,
+    fixed_exposure_view,
+    global_exposure_scale,
+    per_sample_normalized_view,
+)
 from ldm_project.student.training import _save_transparent_active_artifact
 
 
@@ -89,6 +94,31 @@ def test_fixed_exposure_uses_one_scale_for_all_samples() -> None:
     assert torch.allclose(view[0], raw[0] / scale)
     assert view[1, 0, -1, -1].item() == 1.0
     assert torch.allclose(view[0, ..., :1, :], view[1, ..., :1, :] / 2.0)
+
+
+def test_locked_exposure_requires_fixed_exposure_config() -> None:
+    from ldm_project import load_training_config
+
+    a = load_training_config(ROOT / "configs" / "train_v68_transparent_readability_a.yaml")
+    a2 = load_training_config(ROOT / "configs" / "train_v68_transparent_readability_a2.yaml")
+    b = load_training_config(ROOT / "configs" / "train_v68_transparent_readability_b.yaml")
+    assert a.one_shot.diagnostic_camera_normalization == "per_sample_percentile"
+    assert a2.one_shot.diagnostic_camera_normalization == "fixed_exposure"
+    assert a2.one_shot.diagnostic_camera_exposure_scale == pytest.approx(0.4913053810596466)
+    assert b.one_shot.diagnostic_camera_normalization == "fixed_exposure"
+    assert b.one_shot.checkpoint_selection_metric == "strict_readability"
+
+
+def test_raw_audit_helpers_keep_clean_and_teacher_targets_separate() -> None:
+    prediction = torch.zeros(4, 1, 2, 2)
+    prediction[:, :, 0, 0] = 1.0
+    target = prediction.clone()
+    labels = torch.tensor([0, 0, 1, 1])
+    normalized = per_sample_normalized_view(prediction + 0.1)
+    metrics = _class_metrics(prediction, target, labels)
+    assert set(metrics) == {"0", "1"}
+    assert metrics["0"]["corr"] == pytest.approx(1.0)
+    assert normalized.shape == prediction.shape
 
 
 def test_transparent_checkpoint_is_rejected_by_formal_target() -> None:
