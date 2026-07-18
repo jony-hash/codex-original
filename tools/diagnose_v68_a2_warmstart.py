@@ -43,6 +43,15 @@ def _component_hash(model: torch.nn.Module, prefixes: tuple[str, ...]) -> str:
     return digest.hexdigest()
 
 
+def _tensor_hash(value: torch.Tensor) -> str:
+    digest = hashlib.sha256()
+    tensor = value.detach().cpu().contiguous()
+    digest.update(str(tuple(tensor.shape)).encode())
+    digest.update(str(tensor.dtype).encode())
+    digest.update(tensor.numpy().tobytes())
+    return digest.hexdigest()
+
+
 def _state_hash(model: torch.nn.Module) -> str:
     return _component_hash(model, ("",))
 
@@ -176,10 +185,7 @@ def run(
         "hashes": {
             "before_load": before_load,
             "after_load": after_load,
-            "prototype_bank_sha256": _component_hash(
-                torch.nn.ModuleDict({"prototype": torch.nn.Parameter(prototypes, requires_grad=False)}),
-                ("prototype",),
-            ),
+            "prototype_bank_sha256": _tensor_hash(prototypes),
             "state_before_forward": parameter_before_forward,
             "state_after_forward": parameter_after_forward,
         },
