@@ -59,13 +59,17 @@ def _linked_gate(
     *,
     accepted_statuses: tuple[str, ...] = (),
     accepted_decisions: tuple[str, ...] = (),
+    accepted_schemas: tuple[str, ...] = (),
 ) -> dict[str, Any]:
     if path is None:
         return {"provided": False, "passed": False, "reason": "linked report required"}
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
     status = payload.get("status")
     decision = payload.get("decision")
+    schema = payload.get("schema")
     passed = status in accepted_statuses or decision in accepted_decisions
+    if accepted_schemas:
+        passed = passed and schema in accepted_schemas
     if "finite" in payload:
         passed = passed and bool(payload["finite"])
     if "gradient_pass" in payload:
@@ -77,6 +81,7 @@ def _linked_gate(
         "passed": passed,
         "status": status,
         "decision": decision,
+        "schema": schema,
         "path": str(path),
     }
 
@@ -115,7 +120,9 @@ def run(
     }
     linked = {
         "warmstart": _linked_gate(
-            warmstart_report, accepted_decisions=("a2-warmstart-smoke-passed",)
+            warmstart_report,
+            accepted_decisions=("a2-warmstart-smoke-passed",),
+            accepted_schemas=("v68_a2_warmstart_smoke_v2",),
         ),
         "numerical": _linked_gate(
             numerical_report, accepted_statuses=("numerical-converged",)

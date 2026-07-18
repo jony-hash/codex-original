@@ -26,3 +26,4 @@
 - v68.3 的 raw-CMOS 硬门必须使用 `tools/audit_v68_raw_cmos.py` 的一个全 validation 共享 exposure scale、gamma=1 和 `physical_camera_intensity_raw`；历史逐样本增强图只作对照。A checkpoint 若缺少显式边界字段，只能由其 train config 推断为 diagnostic transparent-v2，Formal loader 必须拒绝。A2 配置的固定曝光 scale 只能来自该审计，未通过人工 raw 门不得启动 B。
 - v68.4 audit v2 必须分开 clean MNIST prototype 主门与 teacher-camera 辅助指标；A 只 calibrate 一次 exposure，A2/B 固定 locked scale `0.4913053810596466`。A 的 prototype accuracy 不能替代十类人工 raw 可读门；A2 失败后禁止继续 loss sweep 或启动 B。
 - v68.5 A2 先执行只读 warm-start/loss smoke：仅继承 `template_logits`、`encoder.*`、`decoder.*`，不创建 optimizer；联合 decision gate 必须同时消费 locked raw、epoch 4/5、numerical/gradient/memory 和人工十类 review。A2 失败即转 chip→backend→camera isolation，warning 清理延期。
+- v68.5.1 的 A2 memory smoke 只能把 warm-start 后测得的 delta reserved 与 v68.2 delta baseline 比较；absolute peak 仅用于总显存 90% 容量门。v1 的 absolute/delta 混比报告无效但必须保留，A2 只接受新的 smoke v2。

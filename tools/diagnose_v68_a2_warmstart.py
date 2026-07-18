@@ -27,7 +27,13 @@ except ModuleNotFoundError:  # direct ``python tools/<script>.py`` compatibility
     from diagnose_v68_transparent_memory import _build_prototype_bank
 
 
-REPORT_SCHEMA = "v68_a2_warmstart_smoke_v1"
+REPORT_SCHEMA = "v68_a2_warmstart_smoke_v2"
+A2_ADMISSION_DELTA_RESERVED_LIMIT_GIB = 1.904296875
+WARMSTART_STATE_KEYS = (
+    "generator_e.template_logits",
+    "encoder.phase",
+    "decoder.phase",
+)
 
 
 def _component_hash(model: torch.nn.Module, prefixes: tuple[str, ...]) -> str:
@@ -60,11 +66,60 @@ def _finite_state(model: torch.nn.Module) -> bool:
     return all(torch.isfinite(value).all().item() for value in model.state_dict().values())
 
 
-def _grad_finite(model: torch.nn.Module) -> bool:
-    return all(
-        parameter.grad is None or torch.isfinite(parameter.grad).all().item()
-        for parameter in model.parameters()
-    )
+def _memory_gate(
+    *,
+    baseline_allocated_gib: float,
+    baseline_reserved_gib: float,
+    startup_free_gib: float,
+    total_memory_gib: float,
+    absolute_peak_allocated_gib: float,
+    absolute_peak_reserved_gib: float,
+) -> dict[str, float | bool]:
+    """Compare A2 peak memory using the same delta-reserved basis as v68.2."""
+    delta_allocated = max(absolute_peak_allocated_gib - baseline_allocated_gib, 0.0)
+    delta_reserved = max(absolute_peak_reserved_gib - baseline_reserved_gib, 0.0)
+    delta_against_admission = delta_reserved <= A2_ADMISSION_DELTA_RESERVED_LIMIT_GIB
+    delta_capacity = delta_reserved <= startup_free_gib * 0.85
+    absolute_capacity = absolute_peak_reserved_gib <= total_memory_gib * 0.90
+    return {
+        "baseline_allocated_gib": baseline_allocated_gib,
+        "baseline_reserved_gib": baseline_reserved_gib,
+        "startup_free_gib": startup_free_gib,
+        "total_memory_gib": total_memory_gib,
+        "absolute_peak_allocated_gib": absolute_peak_allocated_gib,
+        "absolute_peak_reserved_gib": absolute_peak_reserved_gib,
+        "delta_peak_allocated_gib": delta_allocated,
+        "delta_peak_reserved_gib": delta_reserved,
+        "delta_reserved_limit_gib": A2_ADMISSION_DELTA_RESERVED_LIMIT_GIB,
+        "delta_reserved_against_v68_admission_pass": delta_against_admission,
+        "delta_reserved_capacity_85pct_pass": delta_capacity,
+        "absolute_reserved_capacity_90pct_pass": absolute_capacity,
+        "memory_pass": delta_against_admission and delta_capacity and absolute_capacity,
+    }
+
+
+def _warmstart_coverage(
+    *, model_state: dict[str, torch.Tensor], checkpoint_state: dict[str, torch.Tensor]
+) -> dict[str, object]:
+    expected = list(WARMSTART_STATE_KEYS)
+    model_keys = [key for key in expected if key in model_state]
+    checkpoint_keys = [key for key in expected if key in checkpoint_state]
+    return {
+        "expected_state_keys": expected,
+        "model_state_keys": model_keys,
+        "checkpoint_state_keys": checkpoint_keys,
+        "complete": model_keys == expected and checkpoint_keys == expected,
+    }
+
+
+def _gradient_group_names(name: str) -> str | None:
+    if name.startswith("generator_e."):
+        return "generator"
+    if name.startswith("encoder."):
+        return "encoder"
+    if name.startswith("decoder."):
+        return "decoder"
+    return None
 
 
 def run(
@@ -75,7 +130,6 @@ def run(
     output: str | Path,
     device: str = "cuda",
     max_samples: int = 4,
-    max_peak_reserved_gib: float = 1.904,
 ) -> dict[str, Any]:
     if max_samples <= 0:
         raise ValueError("max_samples must be positive")
@@ -131,12 +185,40 @@ def run(
         "template": _component_hash(model, ("generator_e.template_logits",)),
         "phase": _component_hash(model, ("encoder.", "decoder.")),
     }
+    coverage = _warmstart_coverage(
+        model_state=model.state_dict(), checkpoint_state=checkpoint_payload["model_state_dict"]
+    )
     parameter_before_forward = _state_hash(model)
     loss_kwargs = _one_shot_loss_kwargs(config)
     losses: list[float] = []
     component_losses: dict[str, list[float]] = {}
     finite = _finite_state(model)
+    fields_finite = True
+    named_parameters = tuple(model.named_parameters())
+    gradient_records: dict[str, dict[str, float | int | bool]] = {
+        group: {
+            "parameter_count": 0,
+            "observed_gradient_count": 0,
+            "finite": True,
+            "squared_norm_sum": 0.0,
+            "sample_count": 0,
+        }
+        for group in ("generator", "encoder", "decoder")
+    }
+    for name, _ in named_parameters:
+        group = _gradient_group_names(name)
+        if group is not None:
+            gradient_records[group]["parameter_count"] += 1
+    baseline_memory: dict[str, float] | None = None
     if resolved.type == "cuda":
+        torch.cuda.synchronize(resolved)
+        free_bytes, total_bytes = torch.cuda.mem_get_info(resolved)
+        baseline_memory = {
+            "baseline_allocated_gib": float(torch.cuda.memory_allocated(resolved) / (1024**3)),
+            "baseline_reserved_gib": float(torch.cuda.memory_reserved(resolved) / (1024**3)),
+            "startup_free_gib": float(free_bytes / (1024**3)),
+            "total_memory_gib": float(total_bytes / (1024**3)),
+        }
         torch.cuda.reset_peak_memory_stats(resolved)
     for code, label, target in zip(codes, labels, targets):
         model.zero_grad(set_to_none=True)
@@ -154,25 +236,60 @@ def run(
             for value in result.values()
             if torch.is_tensor(value)
         )
+        fields_finite = fields_finite and all(
+            bool(torch.isfinite(value).all().item())
+            for value in output_values.values()
+            if torch.is_tensor(value)
+        )
         losses.append(float(loss.detach().cpu().item()))
         for key, value in result.items():
             if torch.is_tensor(value) and value.ndim == 0:
                 component_losses.setdefault(key, []).append(float(value.detach().cpu()))
         gradients = torch.autograd.grad(
             loss,
-            tuple(model.parameters()),
+            tuple(parameter for _, parameter in named_parameters),
             allow_unused=True,
             retain_graph=False,
         )
-        finite = finite and all(
-            grad is None or bool(torch.isfinite(grad).all().item()) for grad in gradients
-        )
+        for (name, _), gradient in zip(named_parameters, gradients):
+            group = _gradient_group_names(name)
+            if group is None or gradient is None:
+                continue
+            group_record = gradient_records[group]
+            group_record["observed_gradient_count"] += 1
+            is_finite = bool(torch.isfinite(gradient).all().item())
+            group_record["finite"] = bool(group_record["finite"]) and is_finite
+            finite = finite and is_finite
+            if is_finite:
+                group_record["squared_norm_sum"] += float(
+                    gradient.detach().float().square().sum().cpu()
+                )
+        for record in gradient_records.values():
+            record["sample_count"] += 1
         del output_values, result, loss, gradients
     parameter_after_forward = _state_hash(model)
-    peak_reserved_gib = None
+    memory: dict[str, float | bool] | None = None
     if resolved.type == "cuda":
         torch.cuda.synchronize(resolved)
-        peak_reserved_gib = float(torch.cuda.max_memory_reserved(resolved) / (1024**3))
+        assert baseline_memory is not None
+        memory = _memory_gate(
+            **baseline_memory,
+            absolute_peak_allocated_gib=float(
+                torch.cuda.max_memory_allocated(resolved) / (1024**3)
+            ),
+            absolute_peak_reserved_gib=float(
+                torch.cuda.max_memory_reserved(resolved) / (1024**3)
+            ),
+        )
+    gradient_groups = {
+        name: {
+            "parameter_count": int(record["parameter_count"]),
+            "observed_gradient_count": int(record["observed_gradient_count"]),
+            "finite": bool(record["finite"]),
+            "l2_norm": float(float(record["squared_norm_sum"]) ** 0.5),
+        }
+        for name, record in gradient_records.items()
+    }
     report: dict[str, Any] = {
         "schema": REPORT_SCHEMA,
         "diagnostic_only": True,
@@ -181,6 +298,7 @@ def run(
         "checkpoint_load_mode": "explicit_template_and_optical_subset",
         "generator_summary": generator_summary,
         "optical_summary": optical_summary,
+        "warmstart_coverage": coverage,
         "forbidden_architecture_keys": forbidden_keys,
         "hashes": {
             "before_load": before_load,
@@ -194,24 +312,35 @@ def run(
             key: float(sum(values) / len(values)) for key, values in component_losses.items()
         },
         "finite": bool(finite),
+        "output_fields_finite": bool(fields_finite),
+        "gradient_groups": gradient_groups,
         "optimizer_created": False,
         "parameter_update_count": 0,
         "parameters_unchanged": parameter_before_forward == parameter_after_forward,
-        "peak_reserved_gib": peak_reserved_gib,
-        "memory_limit_gib": float(max_peak_reserved_gib),
+        "memory": memory,
     }
-    report["memory_pass"] = peak_reserved_gib is None or peak_reserved_gib <= float(max_peak_reserved_gib)
+    report["memory_pass"] = memory is not None and bool(memory["memory_pass"])
     report["fixed_exposure_scale"] = float(exposure_scale)
-    report["decision"] = (
-        "a2-warmstart-smoke-passed"
-        if report["finite"]
+    core_pass = (
+        report["finite"]
+        and report["output_fields_finite"]
         and report["parameters_unchanged"]
-        and report["memory_pass"]
+        and coverage["complete"]
         and not forbidden_keys
+        and all(record["finite"] for record in gradient_groups.values())
+        and all(record["observed_gradient_count"] > 0 for record in gradient_groups.values())
         and after_load["template"] != before_load["template"]
         and after_load["phase"] != before_load["phase"]
-        else "a2-warmstart-smoke-failed"
     )
+    if core_pass and report["memory_pass"]:
+        report["status"] = "smoke-complete"
+        report["decision"] = "a2-warmstart-smoke-passed"
+    elif core_pass:
+        report["status"] = "memory-regression"
+        report["decision"] = "a2-warmstart-memory-regression"
+    else:
+        report["status"] = "warmstart-or-numerical-failed"
+        report["decision"] = "a2-warmstart-smoke-failed"
     path = Path(output)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -226,7 +355,6 @@ def main() -> None:
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--max-samples", type=int, default=4)
-    parser.add_argument("--max-peak-reserved-gib", type=float, default=1.904)
     args = parser.parse_args()
     print(json.dumps(run(**vars(args)), ensure_ascii=False, sort_keys=True))
 

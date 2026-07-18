@@ -41,6 +41,8 @@ v68.5 增加 `tools/diagnose_v68_a2_warmstart.py` 短 smoke。它不创建 optim
 
 `tools/decide_v68_a2_acceptance.py` 联合 raw audit v2、epoch 4/5 history、warm-start/numerical/memory 报告和人工 review JSON。人工 review 的 `readable_labels` 必须严格为 `[0,1,2,3,4,5,6,7,8,9]`；失败时状态为 `a2-readability-failed`，自动禁止 B、test 和加工导出，下一步只能做冻结 checkpoint 的 chip→backend→camera broad isolation。长 CUDA A2 仍由用户运行，warning 清理不与本主线混合。
 
+v68.5.1 将第一份 smoke v1 标记为显存口径无效：它把 absolute reserved peak 与 v68.2 的 delta reserved peak 直接比较，造成约 22 MiB 的假失败。现行 v2 在模型构造和 warm-start 后记录 baseline allocated/reserved、startup free 和总显存；之后同时报告 absolute/delta peak，并且只用 delta reserved 与 v68.2 的 `1.904296875 GiB` admission 基线比较。v1 工件保留为历史证据，不得作为 A2 memory regression 结论；v2 是唯一可签发 A2 准入的 smoke。
+
 更新时间：2026-07-15。此文件供新对话快速恢复当前主线；带日期的完整证据在 [Experiment History](experiment_history.md)，稳定架构合同在 [D2NN 单次曝光蒸馏主线](single_shot_ldm_distillation.md)。
 
 ## 先读的结论

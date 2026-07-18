@@ -191,6 +191,8 @@ python -m tools.diagnose_v68_a2_warmstart \
 
 smoke 必须报告 `a2-warmstart-smoke-passed`、finite、参数 hash 未改变和 memory limit 通过，才允许用户执行 5 epoch A2。A2 完成后，人工 review JSON 需要明确十类是否可读，再用 `tools/decide_v68_a2_acceptance.py` 联合判断；未通过即禁止 B、test 和加工候选导出，不以 paired corr/dice 或增强预览替代人工门。
 
+v68.5.1 使用 smoke v2：它将 model/warm-start 后的 CUDA reserved memory 作为 baseline，分别报告 absolute 与 delta peak。只有 delta reserved 不超过 v68.2 admission 的 `1.904296875 GiB`、delta 不超过启动空闲显存的 85%、absolute reserved 不超过总显存的 90%，才算 memory pass。旧 v1 绝对/增量混比报告保留但无效；重新运行时输出必须使用新文件名 `a2_warmstart_smoke_v2.json`。
+
 | Stage | 用途 | 何时运行 | 必需输入 | 可作为最终单次曝光证据 |
 | --- | --- | --- | --- | --- |
 | `teacher_distill_filter` | 按前景/对比度等规则过滤 teacher targets | Teacher target 质量不稳时 | `--distill-dataset` | 否 |

@@ -19,6 +19,11 @@ from tools.diagnose_v68_transparent_memory import (
     _compare,
     _tensor_hash,
 )
+from tools.diagnose_v68_a2_warmstart import (
+    A2_ADMISSION_DELTA_RESERVED_LIMIT_GIB,
+    _memory_gate,
+    _warmstart_coverage,
+)
 from ldm_project.student.experimental.transparent_phase import (
     TransparentIdentityDiffractiveStack,
 )
@@ -29,7 +34,7 @@ from tools.audit_v68_raw_cmos import (
     global_exposure_scale,
     per_sample_normalized_view,
 )
-from tools.decide_v68_a2_acceptance import _history_gate, _manual_gate
+from tools.decide_v68_a2_acceptance import _history_gate, _linked_gate, _manual_gate
 from ldm_project.student.training import _save_transparent_active_artifact
 
 
@@ -289,6 +294,78 @@ def test_v68_a2_manual_gate_requires_all_digit_labels(tmp_path: Path) -> None:
     assert _manual_gate(review)["passed"] is True
     review.write_text('{"readable_labels": [0,1,2,3,5,6,7,8,9]}', encoding="utf-8")
     assert _manual_gate(review)["passed"] is False
+
+
+def test_v68_a2_memory_gate_uses_delta_not_absolute_reserved() -> None:
+    memory = _memory_gate(
+        baseline_allocated_gib=0.02,
+        baseline_reserved_gib=0.021484375,
+        startup_free_gib=4.96,
+        total_memory_gib=6.0,
+        absolute_peak_allocated_gib=1.90,
+        absolute_peak_reserved_gib=1.92578125,
+    )
+    assert memory["delta_peak_reserved_gib"] == pytest.approx(
+        A2_ADMISSION_DELTA_RESERVED_LIMIT_GIB
+    )
+    assert memory["delta_reserved_against_v68_admission_pass"] is True
+    assert memory["memory_pass"] is True
+
+
+def test_v68_a2_memory_gate_rejects_delta_or_capacity_regressions() -> None:
+    baseline = dict(
+        baseline_allocated_gib=0.0,
+        baseline_reserved_gib=0.0,
+        startup_free_gib=4.0,
+        total_memory_gib=6.0,
+        absolute_peak_allocated_gib=1.0,
+    )
+    over_delta = _memory_gate(
+        **baseline,
+        absolute_peak_reserved_gib=A2_ADMISSION_DELTA_RESERVED_LIMIT_GIB + 0.001,
+    )
+    assert over_delta["delta_reserved_against_v68_admission_pass"] is False
+    assert over_delta["memory_pass"] is False
+    over_absolute = _memory_gate(
+        **baseline,
+        absolute_peak_reserved_gib=5.5,
+    )
+    assert over_absolute["absolute_reserved_capacity_90pct_pass"] is False
+    assert over_absolute["memory_pass"] is False
+
+
+def test_v68_a2_warmstart_coverage_requires_exact_three_keys() -> None:
+    state = {key: torch.ones(1) for key in (
+        "generator_e.template_logits", "encoder.phase", "decoder.phase"
+    )}
+    assert _warmstart_coverage(model_state=state, checkpoint_state=state)["complete"] is True
+    incomplete = {key: value for key, value in state.items() if key != "decoder.phase"}
+    assert _warmstart_coverage(model_state=state, checkpoint_state=incomplete)["complete"] is False
+
+
+def test_v68_a2_joint_gate_rejects_v1_warmstart_report(tmp_path: Path) -> None:
+    report = tmp_path / "smoke.json"
+    report.write_text(
+        '{"schema": "v68_a2_warmstart_smoke_v1", '
+        '"decision": "a2-warmstart-smoke-passed", "finite": true}',
+        encoding="utf-8",
+    )
+    result = _linked_gate(
+        report,
+        accepted_decisions=("a2-warmstart-smoke-passed",),
+        accepted_schemas=("v68_a2_warmstart_smoke_v2",),
+    )
+    assert result["passed"] is False
+    report.write_text(
+        '{"schema": "v68_a2_warmstart_smoke_v2", '
+        '"decision": "a2-warmstart-smoke-passed", "finite": true}',
+        encoding="utf-8",
+    )
+    assert _linked_gate(
+        report,
+        accepted_decisions=("a2-warmstart-smoke-passed",),
+        accepted_schemas=("v68_a2_warmstart_smoke_v2",),
+    )["passed"] is True
 
 
 def _make_stack(memory_mode: str) -> TransparentIdentityDiffractiveStack:

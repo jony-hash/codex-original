@@ -50,6 +50,8 @@ The LightGen Science paper is a system-organization and user-confirmed distance-
 
 v68.5 A2 is a single controlled readability correction. Before its user-run CUDA job, the read-only warm-start smoke must load only `generator_e.template_logits`, `encoder.*`, and `decoder.*`, prove finite loss/gradients and unchanged parameters, and use the locked exposure. The joint decision gate requires clean-prototype raw metrics, epoch stability, numerical/gradient/memory reports, and explicit manual readability of all ten labels; failure forbids B and promotion and routes only to chip/backend/camera isolation.
 
+For v68.5.1, A2 memory admission must compare delta reserved CUDA memory measured after model construction/warm-start against the v68.2 delta baseline; absolute reserved peak is a separate device-capacity check and must never be compared directly to that delta baseline. Preserve the invalid v1 report as historical evidence and require a new v2 report before A2 training.
+
 The formal D2NN boundary is `finite_crop`, meaning a propagation-after-crop ideal hard-aperture computation contract; it is not a claim that printed glass is opaque. `transparent_identity` is diagnostic-only: it models a zero-thickness phase surface with an identity exterior on a full propagation grid and must pass the v67.1 convergence gate before any paired diagnostic training.
 
 - LDM is teacher infrastructure; final inference must not require diffusion denoising, iterative latent sampling, software-only VAE decoding, or inference-time optimization.
