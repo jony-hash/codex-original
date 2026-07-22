@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from ldm_project.v2.evidence import EvidenceContextV2, EvidenceRecordV2, GateResult, require_passed_evidence
+from ldm_project.v2.evidence import EvidenceContextV2, EvidenceRecordV2, GateResult, require_evidence_action, require_passed_evidence
 from ldm_project.v2.student.admission import CapacityMetrics, PrototypeMetrics, balanced_code_fraction, capacity_gate, prototype_gate
 from ldm_project.v2.student.capacity import build_code_basis, capacity_metrics, supported_dct_candidates
 from ldm_project.v2.student.capacity import finite_difference_response_matrices
@@ -42,6 +42,11 @@ def test_dct_svd_basis_and_capacity_metrics_are_label_fixed() -> None:
     assert balanced_code_fraction(commands) >= 0.0
 
 
+def test_physical_dct_cutoff_rejects_an_underresolved_fov() -> None:
+    with pytest.raises(ValueError, match="physical"):
+        supported_dct_candidates(torch.ones(8, 8), candidate_count=8, pixel_pitch_m=(2.5e-6, 2.5e-6), max_cycles_per_mm=20.0)
+
+
 def test_evidence_state_machine_blocks_diagnostic_and_dirty_acceptance() -> None:
     gate = GateResult("unit", True, {})
     context = EvidenceContextV2("system", "config")
@@ -51,6 +56,14 @@ def test_evidence_state_machine_blocks_diagnostic_and_dirty_acceptance() -> None
     dirty = EvidenceRecordV2(2, "capacity", "acceptance", "passed", "commit", "patch", "config", context, {}, (gate,), ("train",))
     with pytest.raises(ValueError, match="clean"):
         dirty.validate()
+
+
+def test_evidence_action_requires_exact_context_and_named_diagnostic_permission() -> None:
+    context = EvidenceContextV2("system", "config", dataset_hash="dataset")
+    record = EvidenceRecordV2(2, "prototype", "diagnostic", "diagnostic", "commit", "patch", "config", context, {}, (GateResult("unit", False, {}),), ("diagnostic_capacity_smoke",))
+    require_evidence_action(record, kind="prototype", action="diagnostic_capacity_smoke", expected_context=EvidenceContextV2("system", "config", dataset_hash="dataset"), allow_diagnostic=True)
+    with pytest.raises(ValueError, match="context"):
+        require_evidence_action(record, kind="prototype", action="diagnostic_capacity_smoke", expected_context=EvidenceContextV2("system", "config", dataset_hash="other"), allow_diagnostic=True)
 
 
 def test_finite_difference_responses_are_frozen_and_finite() -> None:

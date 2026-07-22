@@ -42,6 +42,11 @@ def test_exact_checkpoint_refuses_any_contract_or_state_change(tmp_path: Path) -
         load_exact_checkpoint(path, restored, incompatible)
     with pytest.raises(ValueError, match="signature"):
         load_exact_checkpoint(path, torch.nn.Linear(3, 3), manifest)
+    payload = torch.load(path, weights_only=False)
+    payload["state_dict"]["weight"].add_(1.0)
+    torch.save(payload, path)
+    with pytest.raises(ValueError, match="signature"):
+        load_exact_checkpoint(path, torch.nn.Linear(3, 2), manifest)
 
 
 def test_atomic_json_write_replaces_only_complete_file(tmp_path: Path) -> None:
