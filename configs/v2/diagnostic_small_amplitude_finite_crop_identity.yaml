@@ -30,6 +30,12 @@ student_training:
   epochs: 1
   learning_rate: 0.0001
   code_dim: 8
+execution:
+  prototype_microbatch_size: 1
+  capacity_microbatch_size: 1
+  training_microbatch_size: 1
+  evaluation_microbatch_size: 1
+  activation_checkpoint: true
 run:
   run_name: diagnostic_v2_small_amplitude_finite_crop_identity
   output_root: outputs

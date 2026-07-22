@@ -136,6 +136,16 @@ class StudentTrainingConfig(StrictModel):
         return self
 
 
+class ExecutionConfig(StrictModel):
+    """Memory-safe physical execution controls; they never alter the optics."""
+
+    prototype_microbatch_size: int = Field(default=1, ge=1)
+    capacity_microbatch_size: int = Field(default=1, ge=1)
+    training_microbatch_size: int = Field(default=1, ge=1)
+    evaluation_microbatch_size: int = Field(default=1, ge=1)
+    activation_checkpoint: bool = True
+
+
 class RunConfig(StrictModel):
     run_name: str
     output_root: str = "outputs"
@@ -150,6 +160,7 @@ class V2Config(StrictModel):
     prototype_calibration: PrototypeCalibrationConfig | None = None
     capacity_audit: CapacityAuditConfig | None = None
     student_training: StudentTrainingConfig | None = None
+    execution: ExecutionConfig = Field(default_factory=ExecutionConfig)
     run: RunConfig
 
     @model_validator(mode="after")
@@ -168,6 +179,15 @@ class V2Config(StrictModel):
         for name, value in expected.items():
             if getattr(self.capacity_audit, name) != value:
                 raise ValueError(f"formal capacity locks {name}={value}")
+        execution = self.execution
+        if (
+            execution.prototype_microbatch_size,
+            execution.capacity_microbatch_size,
+            execution.training_microbatch_size,
+            execution.evaluation_microbatch_size,
+            execution.activation_checkpoint,
+        ) != (1, 1, 1, 1, True):
+            raise ValueError("formal execution locks microbatches to one with activation checkpointing")
         return self
 
 

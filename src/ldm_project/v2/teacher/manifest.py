@@ -63,6 +63,7 @@ class TeacherTargetManifestV2:
     teacher_camera_hash: str
     sample_count: int
     samples_per_label: int
+    code_shape: tuple[int, int]
     latent_shape: tuple[int, int, int]
     target_plane: str
     seed: int
@@ -84,9 +85,10 @@ class TeacherTargetManifestV2:
         values.pop("manifest_hash", None)
         values["dataset"] = ArtifactRefV2(**values["dataset"])
         values["latent_shape"] = tuple(values["latent_shape"])
+        values["code_shape"] = tuple(values["code_shape"])
         return cls(**values)
 
-    def validate(self) -> None:
+    def validate(self, *, formal: bool = False) -> None:
         if self.schema_version != 2 or self.target_plane != "teacher_camera":
             raise ValueError("unsupported teacher target manifest")
         self.dataset.validate()
@@ -103,6 +105,8 @@ class TeacherTargetManifestV2:
             raise ValueError("teacher dataset values must be tensors")
         if codes.shape[0] != labels.numel() or camera.shape[0] != labels.numel() or latents.shape[0] != labels.numel():
             raise ValueError("teacher dataset sample axes disagree")
+        if tuple(codes.shape) != self.code_shape:
+            raise ValueError("teacher code geometry changed")
         if tuple(latents.shape[1:]) != self.latent_shape or labels.numel() != self.sample_count:
             raise ValueError("teacher dataset geometry changed")
         if not torch.isfinite(codes).all() or not torch.isfinite(camera).all() or camera.min() < 0.0 or camera.max() > 1.0:
@@ -114,6 +118,8 @@ class TeacherTargetManifestV2:
             raise ValueError("teacher dataset label counts do not match manifest")
         if tensor_sha256(codes) != self.codes_hash or tensor_sha256(labels) != self.labels_hash or tensor_sha256(camera) != self.teacher_camera_hash:
             raise ValueError("teacher dataset tensor content changed")
+        if formal and (self.sample_count != 1000 or self.samples_per_label != 100 or self.code_shape != (1000, 8)):
+            raise ValueError("formal v2 teacher targets require exactly 100 codes per label with code_dim=8")
 
 
 def _payload(path: str | Path) -> dict[str, Any]:
@@ -163,7 +169,7 @@ def build_teacher_pair_manifest(
     return manifest
 
 
-def build_teacher_target_manifest(dataset_path: str | Path, pair: TeacherPairManifestV2) -> TeacherTargetManifestV2:
+def build_teacher_target_manifest(dataset_path: str | Path, pair: TeacherPairManifestV2, *, formal: bool = False) -> TeacherTargetManifestV2:
     """Validate a legacy export once, then expose a strict v2 dataset boundary."""
     pair.validate()
     target = Path(dataset_path)
@@ -193,11 +199,12 @@ def build_teacher_target_manifest(dataset_path: str | Path, pair: TeacherPairMan
         teacher_camera_hash=tensor_sha256(camera),
         sample_count=int(labels.numel()),
         samples_per_label=int(labels.numel() // 10),
+        code_shape=tuple(int(value) for value in codes.shape),
         latent_shape=tuple(int(value) for value in latents.shape[1:]),
         target_plane=pair.target_plane,
         seed=pair.seed,
         guidance_scale=pair.guidance_scale,
         split=pair.split,
     )
-    manifest.validate()
+    manifest.validate(formal=formal)
     return manifest

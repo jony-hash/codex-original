@@ -13,11 +13,12 @@ import torch
 from torch import nn
 
 from ..config import V2Config, load_config
-from ..evidence import EvidenceContextV2, EvidenceRecordV2, GateResult, atomic_torch_save, atomic_write_json, canonical_sha256, file_sha256, load_manual_review, require_evidence_action, tensor_sha256
+from ..evidence import EvidenceContextV2, EvidenceRecordV2, GateResult, atomic_torch_save, atomic_write_json, canonical_sha256, file_sha256, load_manual_review, require_evidence_action, tensor_artifact_ref, tensor_sha256
 from ..optics import FormalAmplitudeFiniteCropIdentitySystem
 from ..student.admission import CapacityMetrics, PrototypeMetrics, capacity_gate, prototype_gate
 from ..student.capacity import CodeBasisArtifactV2, build_code_basis, capacity_metrics, finite_difference_response_matrices, replay_capacity
 from ..student.checkpoints import CheckpointManifestV2, load_exact_checkpoint, load_prototype_warm_start, save_exact_checkpoint, state_content_hash, state_signature
+from ..student.clean_targets import CleanTargetManifestV2, build_clean_targets
 from ..student.evaluation import CodeAcceptanceMetrics, acceptance_metrics, code_acceptance_gate, paired_advantage_lower_bound
 from ..student.generator import LabelPrototypeBasisGenerator
 from ..student.training import calibrate_prototypes, train_code_conditioned
@@ -61,6 +62,7 @@ def _validate_target_for_config(target: TeacherTargetManifestV2, config: V2Confi
     pair = build_teacher_pair_manifest(config.teacher.first_stage_checkpoint, config.teacher.diffusion_checkpoint, target_plane=config.teacher.target_plane, seed=config.teacher.seed, guidance_scale=config.teacher.guidance_scale, split=target.split, latent_geometry=config.teacher.latent_geometry)
     if pair.manifest_hash != target.teacher_pair_manifest_hash:
         raise ValueError("teacher target manifest is not paired with current teacher checkpoints/config")
+    target.validate(formal=config.system.is_formal)
 
 
 def _write_record(run: V2Run, name: str, record: EvidenceRecordV2) -> Path:
@@ -147,15 +149,44 @@ def _teacher_export(args: argparse.Namespace, config: V2Config) -> int:
     try:
         command = [sys.executable, "train.py", "--train-config", args.legacy_train_config, "--stage", "teacher_distill_export", "--device", config.run.device, "--first-stage-checkpoint", pair.first_stage_path, "--diffusion-checkpoint", pair.diffusion_path, "--seed", str(pair.seed), "--guidance-scale", str(pair.guidance_scale), "--distill-output", str(temporary)]
         subprocess.run(command, check=True)
-        target = build_teacher_target_manifest(temporary, pair)
+        target = build_teacher_target_manifest(temporary, pair, formal=config.system.is_formal)
         os.replace(temporary, output)
-        target = build_teacher_target_manifest(output, pair)
+        target = build_teacher_target_manifest(output, pair, formal=config.system.is_formal)
         target_path = Path(args.target_manifest)
         if target_path.exists():
             raise FileExistsError("teacher target manifest already exists")
         atomic_write_json(target_path, target.to_dict() | {"manifest_hash": target.manifest_hash})
     finally:
         temporary.unlink(missing_ok=True)
+    print(output)
+    return 0
+
+
+def _export_clean_targets(args: argparse.Namespace, config: V2Config) -> int:
+    output, manifest_path = Path(args.output), Path(args.manifest)
+    if output.exists() or manifest_path.exists():
+        raise FileExistsError("clean-target output and manifest paths must be new")
+    run = _new_run(config)
+    targets = build_clean_targets(dataset_root=args.dataset_root, image_size=config.system.slm_shape[0])
+    if tuple(targets.shape) != (10, 1, *config.system.slm_shape):
+        raise ValueError("clean-target geometry does not match the configured SLM plane")
+    atomic_torch_save(output, targets)
+    reference = tensor_artifact_ref(output, role="clean_mnist_targets", git_commit=run.git_commit)
+    manifest = CleanTargetManifestV2(
+        schema_version=2,
+        dataset_root=str(Path(args.dataset_root).resolve()),
+        dataset_split="train",
+        samples_per_label=128,
+        labels=tuple(range(10)),
+        targets=reference,
+        targets_hash=tensor_sha256(targets),
+        shape=tuple(targets.shape),
+        dtype=str(targets.dtype),
+        config_hash=run.config_hash,
+        git_commit=run.git_commit,
+    )
+    manifest.validate()
+    atomic_write_json(manifest_path, manifest.to_dict() | {"manifest_hash": manifest.manifest_hash})
     print(output)
     return 0
 
@@ -390,6 +421,10 @@ def _parser() -> argparse.ArgumentParser:
     calibrate.add_argument("--config", required=True)
     calibrate.add_argument("--clean-targets", required=True)
     calibrate.set_defaults(handler=lambda args: _calibrate(args, load_config(args.config)))
+    clean = student.add_parser("export-clean-targets")
+    for name in ("config", "dataset_root", "output", "manifest"):
+        clean.add_argument("--" + name.replace("_", "-"), required=True)
+    clean.set_defaults(handler=lambda args: _export_clean_targets(args, load_config(args.config)))
     admit = student.add_parser("admit-prototypes")
     for name in ("config", "calibration_evidence", "prototype_checkpoint", "prototype_raw_cmos", "measurements", "clean_targets", "manual_review"):
         admit.add_argument("--" + name.replace("_", "-"), required=True)

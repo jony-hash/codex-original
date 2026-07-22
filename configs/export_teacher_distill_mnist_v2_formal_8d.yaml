@@ -1,0 +1,10 @@
+# Legacy teacher-export adapter configuration for the formal v2 8D dataset.
+# It is intentionally distinct from historical 128D exports.
+mode: teacher_distill_export
+dataset: mnist
+data_root: data
+image_size: 200
+code_dim: 8
+samples_per_class: 100
+seed: 1234
+guidance_scale: 4.0
