@@ -14,6 +14,8 @@ code + optional label -> amplitude command -> complete 4f relay
 -> 2-layer finite-crop decoder -> B=0 backend relay -> raw CMOS intensity
 ```
 
+v2 从 v79 研究快照旁路重写而来；两线的范围、回档点和发布状态见 [Git 分支治理与回档指南](../git_branch_management.md)。v1 的版本化诊断命令与 v2 子命令不互相替代。
+
 ## 运行顺序
 
 1. 使用 `teacher manifest` 将配套 first-stage/diffusion checkpoint 固定为内容寻址 manifest。

@@ -1,0 +1,66 @@
+# Git 分支治理与回档指南
+
+> 状态快照：2026-07-22。本文的远端引用由 `git ls-remote --heads origin` 只读核验；提交领先数是该日期的快照，后续操作前应重新检查。
+
+## 当前拓扑
+
+```text
+main (660763e, scaffold)
+  └─ experiment-first-stage-complex-recon (19c611c)
+      ├─ 只完成第一阶段训练-… (e4e1553, early side branch)
+      └─ encoder-decoder-主要依赖电子域-… (9cd76ca)
+          └─ 完成全阶段训练-…-双通道 (5783b6e)
+              └─ 基于-LDM-蒸馏的单次曝光光学生成模型 (161555b)
+                  └─ 适用于实验室双光子打印加工的尺寸 (e21dba1, v79 snapshot)
+                      └─ rewrite/v2 (6a8895d, active)
+```
+
+`rewrite/v2` 从 `e21dba1` 线性增加 8 个提交；旧 v79 快照没有该分支独有提交。它们不是两个待合并的独立开发线，而是可并行运行的 v1 研究快照与 v2 旁路重写。
+
+## 本地分支
+
+| 分支 | 提交 | 角色与状态 |
+| --- | --- | --- |
+| `main` | `660763e` | 初始项目骨架；本地历史锚点。 |
+| `experiment-first-stage-complex-recon` | `19c611c` | 第一阶段复杂复场重建实验；本地历史分支。 |
+| `只完成第一阶段训练-encoder为两层-decoder为4层-encoder和decoder均是线性` | `e4e1553` | 早期 2-layer encoder／4-layer decoder 线性旁支。 |
+| `encoder-decoder-主要依赖电子域-不是贴合超表面设计` | `9cd76ca` | LDM 迁移、checkpoint 与电子域基线。 |
+| `完成全阶段训练-encoder为1层-decoder为1层-encoder和decoder均是线性，激活函数为gelu-双通道` | `5783b6e` | 完整单次曝光工作流基线。 |
+| `基于-LDM-蒸馏的单次曝光光学生成模型` | `161555b` | one-shot 蒸馏、评估与审计主线。 |
+| `适用于实验室双光子打印加工的尺寸` | `e21dba1` | 已封存的 v68–v79 诊断研究和正式物理几何快照。 |
+| `rewrite/v2` | `6a8895d` | 当前活动分支；contract-first v2 旁路运行时，未 promotion。 |
+
+## 远端发布状态
+
+远端 `origin` 只存在以下四个历史分支：
+
+| 远端分支 | 提交 | 本地关系 |
+| --- | --- | --- |
+| `encoder-decoder-主要依赖电子域-不是贴合超表面设计` | `9cd76ca` | 与同名本地分支一致。 |
+| `只完成第一阶段训练-encoder为两层-decoder为4层-encoder和decoder均是线性` | `e4e1553` | 与同名本地分支一致。 |
+| `基于-LDM-蒸馏的单次曝光光学生成模型` | `4e2ac3f` | 本地 `161555b` 比它领先 16 个提交。 |
+| `完成全阶段训练-encoder为1层-decoder为1层-encoder和decoder均是线性，激活函数为gelu` | `ff70108` | 双通道本地分支配置为跟踪该分支，领先 1 个提交。 |
+
+`rewrite/v2`、v79 快照、`main` 和 complex-recon 均未发布到 `origin`。本轮不推送；发布前先执行 `git fetch --prune origin`，再复核本文中的提交与领先关系。
+
+## v79 快照与 rewrite/v2 的区别
+
+两线共享 amplitude SLM、`finite_crop`、2+2 phase-only D2NN、identity OLS 与现行 relay 几何。它们的边界不同：
+
+| 维度 | v79 快照（v1） | `rewrite/v2` |
+| --- | --- | --- |
+| 入口 | `train.py --stage` 与既有 `ldm_project.*` | `python -m ldm_project.v2` |
+| 目的 | 保存 v16–v79 的版本化诊断和失败证据 | 独立、可审计的正式链路重写 |
+| 物理/配置合同 | 既有 formal 与 diagnostic 分支共存 | 类型化 plane/field、严格 schema、独立 production/reference 实现 |
+| 工件与 checkpoint | 历史 checkpoint、审计工具和版本专用 gate | 内容寻址 teacher manifest、精确 checkpoint manifest、evidence 状态机 |
+| 科学状态 | v79 的八维 supported basis 未达到 capacity gate；learned code transport 未证明 | CPU 竖切和单样本 CUDA smoke 已完成；未做正式 capacity evidence、长 CUDA、人工验收或 promotion |
+
+v2 不替换 `train.py`，不导入 v1 student、diagnostics 或 experimental；仅由 teacher adapter 复用数值兼容的 v1 teacher checkpoint。它没有解决 v79 的科学失败，正式 acceptance 仍需完整 capacity、raw-CMOS、人审与 bootstrap 证据。
+
+## 操作与回档规则
+
+- `rewrite/v2` 是后续 v2 工作的活动分支；v79 分支是 v1 研究快照。两线在正式 acceptance 前并行，不整分支合并。
+- 历史分支默认只读。需要复用已验证改动时，先审阅具体提交，再使用 `git cherry-pick <commit>`。
+- 切换整体回档点使用 `git switch rewrite/v2` 或 `git switch 适用于实验室双光子打印加工的尺寸`。
+- 撤销已提交的单项改动使用 `git revert <commit>`；不使用 `git reset --hard`、强推或改写历史。
+- 每次计划发布或恢复前，执行 `git status --short --branch`、`git log --oneline --decorate -n 12`，并以实际 Git 输出而不是本文快照为准。

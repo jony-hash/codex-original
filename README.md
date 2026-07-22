@@ -50,15 +50,15 @@ python train.py --train-config configs/train_one_shot_d2nn_smoke.yaml \
 
 ## Current Mainline Status
 
-当前正式物理合同是 `532 nm`、identity OLS、完整 SLM FOV 的相干 4f `-0.4` relay、`100 × 100 @ 2 µm` phase-only D2NN、`1.50 mm` 层间距，以及后端 `-2.5` relay。理想两镜 4f 的实际 ABCD 为 `A=-0.4, B=0, C=0`；v58.2 仅是 CUDA 数值自洽证据，v58.3 才在完整 `500→200 µm` FOV 上验收闭式场、实测 pupil PSF 与独立性。未得到 v58.3 的 `physical-forward-model-valid` 报告前不得训练。
+当前正式物理合同是 `532 nm`、identity OLS、完整 SLM FOV 的相干 4f `-0.4` relay、`100 × 100 @ 2 µm` phase-only D2NN、`1.50 mm` 层间距，以及后端 `-2.5` relay。理想两镜 4f 的实际 ABCD 为 `A=-0.4, B=0, C=0`；物理前向合同、raw-CMOS 人眼 gate 与严格 provenance 均保持有效。
 
-v56/v60 在该合同上完成了两次同配置短训练；strict provenance 有效，但真实最终 CMOS 都不可读，因此没有可 promotion 的学生 checkpoint。v61 对完整 readable split 的原生双通道 ridge 上界虽显示冻结 camera intensity 可被离线软件恢复为 teacher target，却不改变 raw CMOS 人眼失败；下一门只能隔离类别模板与逐实例信息，不能继续训练。当前状态与证据见 [v61 主线交接](docs/ldm_migration/current_handoff.md)。
+v1 研究线已冻结在 v79：固定 label-only normalization 的八维 supported-basis capacity arm 仅得到 physical-SLM code factor `0.05455 < 0.25`，且 clipping `0.20547 > 0.08`。这不是 harness failure，而是当前 basis 家族的有效 capacity gate 失败；learned code transport 未证明，因而没有可 promotion 的 student checkpoint。完整当前状态、停止规则和下一允许动作见 [v79/v2 主线交接](docs/ldm_migration/current_handoff.md)。
 
 `v9.10 label-template inverse prototype baseline` 仅是历史 label-template prototype：它明确忽略 code，不能证明 code-conditioned 多样性或最终 generative student readiness。历史证据见 [v9.10 record](docs/ldm_migration/acceptance_v9_10_label_template_inverse_20260622.json)。
 
 ## v2 Side-by-Side Runtime
 
-`ldm_project.v2` 是新的 contract-first 旁路实现，使用类型化 plane/field、严格 checkpoint manifest、prototype/capacity gate 和独立子命令 CLI。它保持 amplitude SLM、finite-crop、identity OLS 与现行正式几何，但尚未替换 `train.py` 或签发任何 student promotion。使用说明见 [v2 runtime](docs/v2/README.md)。
+`ldm_project.v2` 是新的 contract-first 旁路实现，使用类型化 plane/field、严格 checkpoint manifest、prototype/capacity gate 和独立子命令 CLI。它保持 amplitude SLM、finite-crop、identity OLS 与现行正式几何，但尚未替换 `train.py`；现有 CPU 竖切和单样本 CUDA smoke 不构成正式训练、人工验收或 student promotion。使用说明见 [v2 runtime](docs/v2/README.md)。
 
 ## Repository Map
 
@@ -99,4 +99,5 @@ v56/v60 在该合同上完成了两次同配置短训练；strict provenance 有
 - [Output Guide](docs/output_JIESHI.md)：图片、tensor bundle 和光学诊断语义。
 - [Current Handoff](docs/ldm_migration/current_handoff.md)：当前合同、有效证据、停止规则和下一决策门。
 - [Experiment History](docs/ldm_migration/experiment_history.md)：历史 baseline、负实验、seed sweep 和复验记录。
+- [Git Branch Management](docs/git_branch_management.md)：分支谱系、v1/v2 差异、远端发布状态与安全回档。
 - [AGENTS.md](AGENTS.md)：仓库执行契约与不可变边界。

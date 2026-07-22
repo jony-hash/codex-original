@@ -1,6 +1,8 @@
 # Stage Guide
 
-本文件是选择和运行 stage 的操作权威来源。架构与最终推理边界见 [D2NN 单次曝光蒸馏主线](single_shot_ldm_distillation.md)，带日期的结果见 [实验与验收历史](experiment_history.md)，完整文档导航见 [Documentation](../README.md)。当前 v57 状态与停止规则见 [当前主线交接](current_handoff.md)；该 handoff 是时效性状态快照，不是架构合同，下一决策门后必须刷新。
+本文件是 v1 stage 的操作权威来源。架构与最终推理边界见 [D2NN 单次曝光蒸馏主线](single_shot_ldm_distillation.md)，带日期的结果见 [实验与验收历史](experiment_history.md)，完整文档导航见 [Documentation](../README.md)。当前 v79 冻结与 v2 状态见 [当前主线交接](current_handoff.md)，分支与回档点见 [Git 分支治理指南](../git_branch_management.md)；handoff 是时效性状态快照，不是架构合同。
+
+本文件中的 `train.py --stage` 命令只适用于 v1。v2 使用独立的 `python -m ldm_project.v2` 子命令和独立 evidence gate，二者不互相替代；在 v2 正式 acceptance 前，v1 仍是默认入口。
 
 ## Golden Path
 
@@ -54,7 +56,7 @@ python train.py --train-config <approved_physical_forward_config.yaml> \
   --distill-dataset <distill_dataset>
 ```
 
-正式 config 必须以 [架构文档](single_shot_ldm_distillation.md) 为合同来源，至少锁定 identity OLS、完整 SLM-to-encoder 相干 4f relay、`100 × 100 @ 2 µm`、`1.50 mm` D2NN spacing、严格 physical-field provenance，并先通过对应 CUDA preflight。正式 stage 由 `FormalOneShotOpticalGenerator` 构造；包含 bypass、phase-amplitude、generic resize、target-code bridge 或 SLM override 的配置只能走 compatibility/diagnostic facade。当前 v56 已完成一次有效但人眼失败的训练；在 v58 决策门之前不提供新的训练命令。
+正式 config 必须以 [架构文档](single_shot_ldm_distillation.md) 为合同来源，至少锁定 identity OLS、完整 SLM-to-encoder 相干 4f relay、`100 × 100 @ 2 µm`、`1.50 mm` D2NN spacing、严格 physical-field provenance，并先通过对应 CUDA preflight。正式 stage 由 `FormalOneShotOpticalGenerator` 构造；包含 bypass、phase-amplitude、generic resize、target-code bridge 或 SLM override 的配置只能走 compatibility/diagnostic facade。v56 的人眼失败和 v58 门属于历史证据；v1 已在 v79 capacity gate 后冻结，不提供新的 v1 训练命令。v2 的正式前置门与命令见 [v2 runtime](../v2/README.md)。
 
 采样并评估同一个 student checkpoint：
 

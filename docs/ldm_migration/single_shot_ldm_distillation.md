@@ -1,6 +1,6 @@
 # D2NN 单次曝光蒸馏主线
 
-本文件定义稳定架构、最终推理边界和模块职责，不保存带日期的实验状态。当前实验状态与验收结论见 [v57 后主线交接](current_handoff.md)；物理合同通过不等于学生模型已通过最终 CMOS 人眼验收。
+本文件定义稳定架构、最终推理边界和模块职责，不保存带日期的实验状态。当前实验状态与验收结论见 [v79/v2 主线交接](current_handoff.md)；分支与回档点见 [Git 分支治理指南](../git_branch_management.md)。物理合同通过不等于学生模型已通过最终 CMOS 人眼验收。
 
 - 运行 stage：[Stage Guide](stage_guide.md)
 - 解释输出：[Output Guide](../output_JIESHI.md)

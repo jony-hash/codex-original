@@ -8,8 +8,9 @@
 - 架构与最终推理边界：[D2NN 单次曝光蒸馏主线](ldm_migration/single_shot_ldm_distillation.md)
 - Stage 与 config 选择：[Stage Guide](ldm_migration/stage_guide.md)
 - 输出与可视化解释：[D2NN 主线输出与可视化说明](output_JIESHI.md)
-- 迁移或续接当前实验：[当前主线交接（v57 后）](ldm_migration/current_handoff.md)（时效性状态快照，下一决策门后刷新）
+- 迁移或续接当前实验：[当前主线交接（v79 冻结与 v2）](ldm_migration/current_handoff.md)（时效性状态快照，下一决策门后刷新）
 - 历史实验与验收证据：[D2NN 实验与验收历史](ldm_migration/experiment_history.md)
+- 理解分支、回档与发布状态：[Git 分支治理与回档指南](git_branch_management.md)
 - 归档配置与诊断源码：[实验归档清单](../experiments/archive/manifest.yaml)（仅供溯源，`diagnostic-only`）
 - 旁路重写运行时：[v2 Contract-First Runtime](v2/README.md)（不替换 v1 默认入口）
 
@@ -21,9 +22,10 @@
 | 理解架构和最终推理边界 | [D2NN 单次曝光蒸馏主线](ldm_migration/single_shot_ldm_distillation.md) | 架构契约、teacher/student 边界、硬件化顺序 |
 | 选择或运行 stage | [Stage Guide](ldm_migration/stage_guide.md) | 命令、必需输入、checkpoint 与验收顺序 |
 | 解释图片和 tensor bundle | [输出与可视化说明](output_JIESHI.md) | artifact 路径、张量语义、诊断图读取方式 |
-| 迁移或续接当前实验 | [当前主线交接（v57 后）](ldm_migration/current_handoff.md) | 当前合同、有效证据、停止规则与下一决策门 |
+| 迁移或续接当前实验 | [当前主线交接（v79 冻结与 v2）](ldm_migration/current_handoff.md) | 当前合同、有效证据、停止规则与下一决策门 |
 | 查阅过去的结果 | [实验与验收历史](ldm_migration/experiment_history.md) | 日期、指标、负结果、回归证据 |
 | 使用旁路 v2 runtime | [v2 Contract-First Runtime](v2/README.md) | 类型化物理合同、evidence gate 与独立 CLI |
+| 理解分支与安全回档 | [Git 分支治理与回档指南](git_branch_management.md) | 分支谱系、远端状态、v1/v2 差异与 revert 策略 |
 | 约束 Codex 执行 | [AGENTS.md](../AGENTS.md) | 仓库执行策略与不可变边界 |
 
 ## Source Of Truth
