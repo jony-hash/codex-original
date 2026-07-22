@@ -6,7 +6,7 @@ import pytest
 import torch
 from torch import nn
 
-from ldm_project.v2.evidence import EvidenceRecordV2, GateResult
+from ldm_project.v2.evidence import EvidenceContextV2, EvidenceRecordV2, GateResult
 from ldm_project.v2.student.capacity import CodeBasisArtifactV2
 from ldm_project.v2.student.evaluation import CodeAcceptanceMetrics, code_acceptance_gate
 from ldm_project.v2.student.generator import LabelPrototypeBasisGenerator
@@ -35,7 +35,7 @@ def _artifact() -> CodeBasisArtifactV2:
 
 
 def _evidence(kind: str) -> EvidenceRecordV2:
-    return EvidenceRecordV2(2, kind, "acceptance", "passed", "commit", None, "config", {}, (GateResult(kind, True, {}),), ("train",))
+    return EvidenceRecordV2(2, kind, "acceptance", "passed", "commit", None, "config", EvidenceContextV2("system", "config"), {}, (GateResult(kind, True, {}),), ("train",))
 
 
 def test_generator_uses_fixed_label_normalizer_and_reports_clipping() -> None:
@@ -51,13 +51,14 @@ def test_training_requires_passed_and_matching_capacity_evidence() -> None:
     system = ToyRawCameraSystem()
     summary = calibrate_prototypes(system, generator, torch.full((10, 1, 4, 4), 0.5), exposure_scale=1.0, epochs=1, learning_rate=1e-3)
     assert summary.gradients_finite
-    codes = torch.randn(4, 3)
-    labels = torch.tensor([0, 1, 2, 3])
-    targets = torch.full((4, 1, 4, 4), 0.5)
-    trained = train_code_conditioned(system, generator, codes, labels, targets, exposure_scale=1.0, prototype_evidence=_evidence("prototype"), capacity_evidence=_evidence("capacity"), expected_basis_hash=generator.basis_artifact_hash, epochs=1, learning_rate=1e-3)
+    codes = torch.randn(20, 3)
+    labels = torch.arange(10).repeat_interleave(2)
+    targets = torch.full((20, 1, 4, 4), 0.5)
+    weights = {"prototype": 1.0, "paired_residual": 1.0, "code_transport": 0.01, "clipping": 0.1, "saturation": 0.1, "phase_tv": 1e-5}
+    trained = train_code_conditioned(system, generator, codes, labels, targets, exposure_scale=1.0, prototype_evidence=_evidence("prototype"), capacity_evidence=_evidence("capacity"), expected_basis_hash=generator.basis_artifact_hash, epochs=1, learning_rate=1e-3, batch_size=20, weights=weights)
     assert torch.isfinite(torch.tensor(trained.loss))
     with pytest.raises(ValueError, match="basis artifact"):
-        train_code_conditioned(system, generator, codes, labels, targets, exposure_scale=1.0, prototype_evidence=_evidence("prototype"), capacity_evidence=_evidence("capacity"), expected_basis_hash="other", epochs=1, learning_rate=1e-3)
+        train_code_conditioned(system, generator, codes, labels, targets, exposure_scale=1.0, prototype_evidence=_evidence("prototype"), capacity_evidence=_evidence("capacity"), expected_basis_hash="other", epochs=1, learning_rate=1e-3, batch_size=20, weights=weights)
 
 
 def test_code_acceptance_requires_bootstrap_and_manual_review() -> None:

@@ -6,7 +6,7 @@ import pytest
 import torch
 
 from ldm_project.v2.evidence import atomic_write_json, tensor_artifact_ref
-from ldm_project.v2.student.checkpoints import CheckpointManifestV2, load_exact_checkpoint, save_exact_checkpoint, state_signature
+from ldm_project.v2.student.checkpoints import CheckpointManifestV2, load_exact_checkpoint, save_exact_checkpoint, state_content_hash, state_signature
 from ldm_project.v2.teacher import build_teacher_pair_manifest
 
 
@@ -32,12 +32,12 @@ def test_teacher_manifest_requires_matched_pair_and_stable_hash(tmp_path: Path) 
 
 def test_exact_checkpoint_refuses_any_contract_or_state_change(tmp_path: Path) -> None:
     model = torch.nn.Linear(3, 2)
-    manifest = CheckpointManifestV2(2, "formal_amplitude_finite_crop_identity", "finite_crop", "config", "dataset", "calibration", state_signature(model.state_dict()))
+    manifest = CheckpointManifestV2(2, "formal_amplitude_finite_crop_identity", "finite_crop", "system", "config", "dataset", "teacher", "calibration", "basis", state_signature(model.state_dict()), state_content_hash(model.state_dict()))
     path = tmp_path / "checkpoint.pt"
     save_exact_checkpoint(path, model, manifest, extra={"kind": "unit"})
     restored = torch.nn.Linear(3, 2)
     assert load_exact_checkpoint(path, restored, manifest)["kind"] == "unit"
-    incompatible = CheckpointManifestV2(2, "formal_amplitude_finite_crop_identity", "finite_crop", "other", "dataset", "calibration", state_signature(model.state_dict()))
+    incompatible = CheckpointManifestV2(2, "formal_amplitude_finite_crop_identity", "finite_crop", "other-system", "config", "dataset", "teacher", "calibration", "basis", state_signature(model.state_dict()), state_content_hash(model.state_dict()))
     with pytest.raises(ValueError, match="manifest"):
         load_exact_checkpoint(path, restored, incompatible)
     with pytest.raises(ValueError, match="signature"):

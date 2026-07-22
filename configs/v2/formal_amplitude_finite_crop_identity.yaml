@@ -26,5 +26,5 @@ student_training:
 run:
   run_name: formal_v2_amplitude_finite_crop_identity
   output_root: outputs
-  evidence_tier: diagnostic
+  evidence_tier: acceptance
   device: cuda

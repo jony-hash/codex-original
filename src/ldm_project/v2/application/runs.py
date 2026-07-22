@@ -19,7 +19,7 @@ class V2Run:
     @classmethod
     def create(cls, *, output_root: str, run_name: str, config_payload: dict[str, object]) -> "V2Run":
         now = datetime.now()
-        root = Path(output_root) / f"{now:%Y%m%d}_v2" / "runs" / f"{now:%Y%m%d_%H%M%S}_{run_name}"
+        root = Path(output_root) / f"{now:%Y%m%d}_v2" / "runs" / f"{now:%Y%m%d_%H%M%S_%f}_{run_name}"
         root.mkdir(parents=True, exist_ok=False)
         commit = subprocess.run(["git", "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
         diff = subprocess.run(["git", "diff", "--binary", "HEAD"], check=True, capture_output=True, text=True).stdout

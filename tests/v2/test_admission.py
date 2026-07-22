@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from ldm_project.v2.evidence import EvidenceRecordV2, GateResult, require_passed_evidence
+from ldm_project.v2.evidence import EvidenceContextV2, EvidenceRecordV2, GateResult, require_passed_evidence
 from ldm_project.v2.student.admission import CapacityMetrics, PrototypeMetrics, balanced_code_fraction, capacity_gate, prototype_gate
 from ldm_project.v2.student.capacity import build_code_basis, capacity_metrics, supported_dct_candidates
 from ldm_project.v2.student.capacity import finite_difference_response_matrices
@@ -28,10 +28,11 @@ def test_capacity_gate_blocks_when_code_is_not_transportable() -> None:
 
 def test_dct_svd_basis_and_capacity_metrics_are_label_fixed() -> None:
     support = torch.ones(10, 8, 8)
-    candidates = supported_dct_candidates(support[0], candidate_count=8)
-    assert candidates.shape == (8, 8, 8)
+    candidates = supported_dct_candidates(support[0], candidate_count=8, pixel_pitch_m=(62.5e-6, 62.5e-6), max_cycles_per_mm=20.0)
+    assert candidates.directions.shape == (8, 8, 8)
+    assert torch.all(candidates.frequencies_cycles_per_mm <= 20.0)
     response = torch.randn(10, 8, 16)
-    artifact = build_code_basis(response, support, candidate_count=8, seed=1234, source_hash="source")
+    artifact = build_code_basis(response, support, candidate_count=8, seed=1234, source_hash="source", pixel_pitch_m=(62.5e-6, 62.5e-6), max_cycles_per_mm=20.0)
     assert artifact.basis.shape == (10, 8, 8, 8)
     assert artifact.normalizer.shape == (10, 1, 1)
     commands = torch.rand(10, 4, 8, 8)
@@ -43,10 +44,11 @@ def test_dct_svd_basis_and_capacity_metrics_are_label_fixed() -> None:
 
 def test_evidence_state_machine_blocks_diagnostic_and_dirty_acceptance() -> None:
     gate = GateResult("unit", True, {})
-    diagnostic = EvidenceRecordV2(2, "capacity", "diagnostic", "diagnostic", "commit", "patch", "config", {}, (gate,), ())
+    context = EvidenceContextV2("system", "config")
+    diagnostic = EvidenceRecordV2(2, "capacity", "diagnostic", "diagnostic", "commit", "patch", "config", context, {}, (gate,), ())
     with pytest.raises(ValueError, match="passed"):
         require_passed_evidence(diagnostic, kind="capacity")
-    dirty = EvidenceRecordV2(2, "capacity", "acceptance", "passed", "commit", "patch", "config", {}, (gate,), ("train",))
+    dirty = EvidenceRecordV2(2, "capacity", "acceptance", "passed", "commit", "patch", "config", context, {}, (gate,), ("train",))
     with pytest.raises(ValueError, match="clean"):
         dirty.validate()
 
@@ -63,6 +65,6 @@ def test_finite_difference_responses_are_frozen_and_finite() -> None:
         def forward(self, value: torch.Tensor):
             return type("Result", (), {"raw_camera": type("Raw", (), {"tensor": value * self.scale})()})()
 
-    responses, unchanged = finite_difference_response_matrices(System(), torch.full((10, 1, 4, 4), 0.5), torch.ones(10, 4, 4), candidate_count=8, epsilon=1.0e-3)
+    responses, unchanged, before_hash, after_hash = finite_difference_response_matrices(System(), torch.full((10, 1, 4, 4), 0.5), torch.ones(10, 4, 4), candidate_count=8, epsilon=1.0e-3, pixel_pitch_m=(125e-6, 125e-6), max_cycles_per_mm=20.0)
     assert responses.shape == (10, 8, 16)
-    assert torch.isfinite(responses).all() and unchanged
+    assert torch.isfinite(responses).all() and unchanged and before_hash == after_hash

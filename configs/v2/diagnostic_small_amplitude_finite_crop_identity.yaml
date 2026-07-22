@@ -2,9 +2,10 @@ schema_version: 2
 system:
   kind: diagnostic_amplitude_finite_crop_identity
   slm_shape: [8, 8]
-  slm_pixel_pitch_m: 0.0000025
+  # Preserve the formal 500 -> 200 um FOV mapping on a tiny diagnostic lattice.
+  slm_pixel_pitch_m: 0.0000625
   metasurface_shape: [4, 4]
-  metasurface_pixel_pitch_m: 0.000002
+  metasurface_pixel_pitch_m: 0.000050
   propagation_grid_size: 8
   encoder_layers: 2
   decoder_layers: 2

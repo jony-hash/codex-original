@@ -80,7 +80,7 @@ class TeacherConfig(StrictModel):
 
 
 class PrototypeCalibrationConfig(StrictModel):
-    epochs: int = Field(default=5, ge=1)
+    epochs: int = Field(default=5, ge=2)
     learning_rate: float = Field(default=5.0e-4, gt=0.0)
     fixed_exposure_scale: float = Field(gt=0.0)
     clean_corr_min: float = 0.70
@@ -99,16 +99,41 @@ class CapacityAuditConfig(StrictModel):
     camera_code_fraction_min: float = 0.25
     support_energy_min: float = 0.95
     clipping_max: float = 0.08
+    command_gain: float = 0.1
 
 
 class StudentTrainingConfig(StrictModel):
     epochs: int = Field(default=5, ge=1)
     learning_rate: float = Field(default=1.0e-4, gt=0.0)
-    code_dim: int = Field(default=8, ge=1)
+    code_dim: Literal[8] = 8
+    batch_size: int = Field(default=20, ge=20)
+    prototype_fidelity_weight: float = 1.0
+    paired_teacher_residual_weight: float = 1.0
+    code_transport_weight: float = 0.01
+    clipping_weight: float = 0.1
+    saturation_weight: float = 0.1
+    phase_tv_weight: float = 1.0e-5
     paired_teacher_corr_min: float = 0.70
     paired_teacher_dice_min: float = 0.68
     bootstrap_seed: Literal[1234] = 1234
     bootstrap_resamples: Literal[10000] = 10000
+
+    @model_validator(mode="after")
+    def training_contract_is_explicit(self) -> "StudentTrainingConfig":
+        if self.batch_size % 10:
+            raise ValueError("student batch_size must be divisible by ten")
+        expected = {
+            "prototype_fidelity_weight": 1.0,
+            "paired_teacher_residual_weight": 1.0,
+            "code_transport_weight": 0.01,
+            "clipping_weight": 0.1,
+            "saturation_weight": 0.1,
+            "phase_tv_weight": 1.0e-5,
+        }
+        for name, value in expected.items():
+            if getattr(self, name) != value:
+                raise ValueError(f"v2 training locks {name}={value}")
+        return self
 
 
 class RunConfig(StrictModel):
@@ -126,6 +151,24 @@ class V2Config(StrictModel):
     capacity_audit: CapacityAuditConfig | None = None
     student_training: StudentTrainingConfig | None = None
     run: RunConfig
+
+    @model_validator(mode="after")
+    def formal_audit_contract_is_locked(self) -> "V2Config":
+        if not self.system.is_formal or self.capacity_audit is None:
+            return self
+        expected = {
+            "dct_modes": 64,
+            "selected_basis_dim": 8,
+            "max_cycles_per_mm": 20.0,
+            "codes_per_label": 100,
+            "seed": 1234,
+            "finite_difference_epsilon": 1.0e-3,
+            "command_gain": 0.1,
+        }
+        for name, value in expected.items():
+            if getattr(self.capacity_audit, name) != value:
+                raise ValueError(f"formal capacity locks {name}={value}")
+        return self
 
 
 def load_config(path: str | Path) -> V2Config:

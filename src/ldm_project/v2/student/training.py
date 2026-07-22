@@ -34,6 +34,7 @@ class CodeTrainingSummary:
     paired_dice: float
     code_variance: float
     clipping_fraction: float
+    objective_history: tuple[dict[str, float], ...]
 
 
 def _phase_regularization(system: nn.Module) -> torch.Tensor:
@@ -103,32 +104,78 @@ def train_code_conditioned(
     expected_basis_hash: str,
     epochs: int,
     learning_rate: float,
+    batch_size: int,
+    weights: dict[str, float],
+    allow_diagnostic_evidence: bool = False,
 ) -> CodeTrainingSummary:
-    require_passed_evidence(prototype_evidence, kind="prototype")
-    require_passed_evidence(capacity_evidence, kind="capacity")
+    if not allow_diagnostic_evidence:
+        require_passed_evidence(prototype_evidence, kind="prototype")
+        require_passed_evidence(capacity_evidence, kind="capacity")
     if generator.basis_artifact_hash != expected_basis_hash:
         raise ValueError("generator basis artifact does not match approved capacity evidence")
     if codes.shape[0] != labels.shape[0] or teacher_targets.shape[0] != labels.shape[0]:
         raise ValueError("code, labels, and teacher targets must share batch size")
+    if batch_size < 20 or batch_size % 10:
+        raise ValueError("code training requires a balanced batch size divisible by ten")
+    if set(weights) != {"prototype", "paired_residual", "code_transport", "clipping", "saturation", "phase_tv"}:
+        raise ValueError("code training requires all six explicit objective weights")
+    counts = torch.bincount(labels, minlength=10)
+    if (counts < 2).any() or not torch.equal(counts, torch.full_like(counts, counts[0])):
+        raise ValueError("training requires an equal count of at least two codes for every label")
+    if not torch.equal(generator(torch.zeros(1, generator.code_dim, device=codes.device), torch.zeros(1, dtype=torch.long, device=codes.device)), generator.prototype_command(torch.zeros(1, dtype=torch.long, device=codes.device))):
+        raise ValueError("zero code must map exactly to the label prototype")
+    generator.template_logits.requires_grad_(False)
     for parameter in generator.coefficient_net.parameters():
         parameter.requires_grad_(True)
-    optimizer = torch.optim.Adam((parameter for parameter in list(generator.parameters()) + list(system.parameters()) if parameter.requires_grad), lr=learning_rate)
+    trainable = [*generator.coefficient_net.parameters(), *(parameter for name, parameter in system.named_parameters() if name.endswith("phase"))]
+    if not trainable:
+        raise ValueError("no allowed v2 code-training parameters")
+    optimizer = torch.optim.Adam(trainable, lr=learning_rate)
+    all_labels = torch.arange(10, device=codes.device)
+    with torch.no_grad():
+        frozen_prototype_raw = (system.forward(system.command(generator.prototype_command(all_labels))).raw_camera.tensor / exposure_scale).clamp(0.0, 1.0).detach()
+        teacher_prototypes = torch.stack([teacher_targets[labels == label].mean(dim=0) for label in range(10)])
     last_loss = torch.tensor(float("nan"), device=codes.device)
     diagnostics = None
     raw = None
-    for _ in range(epochs):
-        optimizer.zero_grad(set_to_none=True)
-        command, diagnostics = generator.forward_with_diagnostics(codes, labels)
-        result = system.forward(system.command(command))
-        raw = result.raw_camera.tensor
-        normalized = (raw / exposure_scale).clamp(0.0, 1.0)
-        paired = torch.nn.functional.mse_loss(normalized, teacher_targets)
-        code_transport = -raw.var(dim=0, unbiased=False).mean()
-        saturation = high_saturation_ratio(raw, exposure_scale)
-        loss = paired + 0.01 * code_transport + 0.1 * diagnostics.clipping_fraction + 0.1 * saturation + 1.0e-5 * _phase_regularization(system)
-        loss.backward()
-        optimizer.step()
-        last_loss = loss.detach()
+    history: list[dict[str, float]] = []
+    for epoch in range(epochs):
+        for index in _balanced_batch_indices(labels, batch_size=batch_size, seed=1234 + epoch):
+            optimizer.zero_grad(set_to_none=True)
+            batch_codes = codes.index_select(0, index)
+            batch_labels = labels.index_select(0, index)
+            batch_targets = teacher_targets.index_select(0, index)
+            command, diagnostics = generator.forward_with_diagnostics(batch_codes, batch_labels)
+            raw = system.forward(system.command(command)).raw_camera.tensor
+            normalized = (raw / exposure_scale).clamp(0.0, 1.0)
+            zero_raw = (system.forward(system.command(generator.prototype_command(all_labels))).raw_camera.tensor / exposure_scale).clamp(0.0, 1.0)
+            prototype = torch.nn.functional.mse_loss(zero_raw, frozen_prototype_raw)
+            paired = torch.nn.functional.mse_loss(normalized - zero_raw.index_select(0, batch_labels), batch_targets - teacher_prototypes.index_select(0, batch_labels))
+            factor = _differentiable_within_label_factor(raw, batch_labels)
+            saturation = torch.relu(raw / exposure_scale - 1.0).square().mean()
+            phase_tv = _phase_regularization(system)
+            loss = (weights["prototype"] * prototype + weights["paired_residual"] * paired + weights["code_transport"] * (1.0 - factor) + weights["clipping"] * diagnostics.clipping_penalty + weights["saturation"] * saturation + weights["phase_tv"] * phase_tv)
+            loss.backward()
+            optimizer.step()
+            last_loss = loss.detach()
+            history.append({"epoch": float(epoch + 1), "loss": float(last_loss.item()), "prototype": float(prototype.detach().item()), "paired_residual": float(paired.detach().item()), "code_transport_factor": float(factor.detach().item()), "clipping_penalty": float(diagnostics.clipping_penalty.detach().item()), "saturation_penalty": float(saturation.detach().item()), "phase_tv": float(phase_tv.detach().item())})
     assert diagnostics is not None and raw is not None
     normalized = (raw / exposure_scale).clamp(0.0, 1.0)
-    return CodeTrainingSummary(float(last_loss.item()), float(correlation(normalized, teacher_targets).mean().item()), float(foreground_dice(normalized, teacher_targets).mean().item()), float(raw.var(dim=0, unbiased=False).mean().item()), float(diagnostics.clipping_fraction.item()))
+    return CodeTrainingSummary(float(last_loss.item()), float(correlation(normalized, teacher_targets.index_select(0, index)).mean().item()), float(foreground_dice(normalized, teacher_targets.index_select(0, index)).mean().item()), float(_differentiable_within_label_factor(raw, labels.index_select(0, index)).item()), float(diagnostics.clipping_fraction.item()), tuple(history))
+
+
+def _balanced_batch_indices(labels: torch.Tensor, *, batch_size: int, seed: int):
+    per_label = batch_size // 10
+    generator = torch.Generator(device="cpu").manual_seed(seed)
+    groups = []
+    for label in range(10):
+        matches = torch.nonzero(labels == label, as_tuple=False).flatten().cpu()
+        groups.append(matches.index_select(0, torch.randperm(matches.numel(), generator=generator)))
+    for start in range(0, groups[0].numel(), per_label):
+        yield torch.cat([group[start : start + per_label] for group in groups]).to(labels.device)
+
+
+def _differentiable_within_label_factor(values: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+    label_mean = torch.stack([values[labels == label].mean(dim=0) for label in range(10)])
+    centered = values - label_mean.index_select(0, labels)
+    return centered.square().sum() / (values - values.mean()).square().sum().clamp_min(1.0e-12)
