@@ -5,7 +5,8 @@ from pathlib import Path
 import pytest
 import torch
 
-from ldm_project.v2.evidence import atomic_write_json, tensor_artifact_ref
+from ldm_project.v2.evidence import atomic_write_json, tensor_artifact_ref, tensor_sha256
+from ldm_project.v2.student.clean_targets import CleanTargetManifestV2
 from ldm_project.v2.student.checkpoints import CheckpointManifestV2, load_exact_checkpoint, save_exact_checkpoint, state_content_hash, state_signature
 from ldm_project.v2.teacher import build_teacher_pair_manifest, build_teacher_target_manifest
 
@@ -63,6 +64,18 @@ def test_tensor_artifact_ref_is_content_addressed(tmp_path: Path) -> None:
     second = tensor_artifact_ref(path, role="clean_targets")
     assert first.sha256 != second.sha256
     assert first.shape == second.shape == (2, 3)
+
+
+def test_clean_target_manifest_is_content_addressed(tmp_path: Path) -> None:
+    target = tmp_path / "clean.pt"
+    values = torch.rand(10, 1, 2, 2)
+    torch.save(values, target)
+    reference = tensor_artifact_ref(target, role="clean_mnist_targets", git_commit="unit")
+    manifest = CleanTargetManifestV2(2, str(tmp_path), "train", 128, tuple(range(10)), reference, tensor_sha256(values), (10, 1, 2, 2), "torch.float32", "config", "unit")
+    manifest.validate()
+    torch.save(values + 1.0, target)
+    with pytest.raises(ValueError, match="artifact"):
+        manifest.validate()
 
 
 def test_formal_teacher_manifest_requires_exact_8d_100_per_label(tmp_path: Path) -> None:
