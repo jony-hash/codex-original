@@ -4,7 +4,7 @@ import pytest
 import torch
 
 from ldm_project.v2.evidence import EvidenceContextV2, EvidenceRecordV2, GateResult, file_sha256, load_manual_review, require_evidence_action, require_passed_evidence, tensor_sha256
-from ldm_project.v2.student.admission import CapacityMetrics, PrototypeMetrics, balanced_code_fraction, capacity_gate, prototype_gate
+from ldm_project.v2.student.admission import CapacityMetrics, PrototypeMetrics, balanced_code_fraction, capacity_gate, prototype_gate, prototype_measurement_gate
 from ldm_project.v2.student.capacity import build_code_basis, capacity_metrics, supported_dct_candidates
 from ldm_project.v2.student.capacity import finite_difference_response_matrices
 
@@ -17,6 +17,12 @@ def test_prototype_gate_requires_every_manual_label() -> None:
     assert _prototype_pass().passed
     failed = prototype_gate(PrototypeMetrics(0.8, 0.8, 1.0, 0.01, True, True, True, True), list(range(9)))
     assert not failed.passed
+
+
+def test_prototype_measurement_gate_stops_before_manual_review() -> None:
+    failed = prototype_measurement_gate(PrototypeMetrics(0.69, 0.8, 1.0, 0.01, True, True, True, True))
+    assert not failed.passed
+    assert "manual_readability" not in failed.metrics
 
 
 def test_capacity_gate_blocks_when_code_is_not_transportable() -> None:
@@ -93,3 +99,13 @@ def test_review_requires_the_exact_fixed_exposure_preview(tmp_path) -> None:
     preview.write_bytes(b"different")
     with pytest.raises(ValueError, match="preview"):
         load_manual_review(review, kind="prototype", tensor_hash=tensor_sha256(raw), preview_hash=file_sha256(preview))
+
+
+def test_review_can_record_a_failed_readability_subset(tmp_path) -> None:
+    raw = torch.zeros(10, 1, 2, 2)
+    preview = tmp_path / "preview.png"
+    preview.write_bytes(b"fixed-exposure")
+    review = tmp_path / "review.json"
+    review.write_text('{"schema_version":2,"review_kind":"prototype","reviewed_tensor_sha256":"%s","reviewed_preview_sha256":"%s","readable_labels":[0,2],"reviewer":"unit"}' % (tensor_sha256(raw), file_sha256(preview)), encoding="utf-8")
+    parsed, _ = load_manual_review(review, kind="prototype", tensor_hash=tensor_sha256(raw), preview_hash=file_sha256(preview))
+    assert not prototype_gate(PrototypeMetrics(0.8, 0.8, 1.0, 0.01, True, True, True, True), parsed.readable_labels).passed

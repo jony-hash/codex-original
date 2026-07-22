@@ -80,3 +80,7 @@ def test_formal_teacher_manifest_requires_exact_8d_100_per_label(tmp_path: Path)
     torch.save(payload, dataset)
     manifest = build_teacher_target_manifest(dataset, pair, formal=True, generated_git_commit="unit", v2_config_hash="config", legacy_export_config_hash="legacy")
     manifest.validate(formal=True)
+    payload["config"]["sampling_steps"] = 199
+    torch.save(payload, dataset)
+    with pytest.raises(ValueError, match="content"):
+        manifest.validate(formal=True)
