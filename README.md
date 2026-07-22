@@ -58,7 +58,7 @@ v1 研究线已冻结在 v79：固定 label-only normalization 的八维 support
 
 ## v2 Side-by-Side Runtime
 
-`ldm_project.v2` 是新的 contract-first 旁路实现，使用类型化 plane/field、严格 checkpoint manifest、prototype/capacity gate 和独立子命令 CLI。它保持 amplitude SLM、finite-crop、identity OLS 与现行正式几何，但尚未替换 `train.py`；现有 CPU 竖切和单样本 CUDA smoke 不构成正式训练、人工验收或 student promotion。使用说明见 [v2 runtime](docs/v2/README.md)。
+`ldm_project.v2` 是新的 contract-first 旁路实现，使用类型化 plane/field、严格 checkpoint manifest、8 维内容绑定 teacher 数据、prototype/capacity gate、固定曝光人审工件和独立子命令 CLI。它保持 amplitude SLM、finite-crop、identity OLS 与现行正式几何，但尚未替换 `train.py`；CPU 竖切、单样本 CUDA smoke 和无更新 preflight 都不构成正式训练、人工验收或 student promotion。使用说明见 [v2 runtime](docs/v2/README.md)。
 
 ## Repository Map
 

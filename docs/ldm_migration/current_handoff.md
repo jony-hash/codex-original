@@ -27,10 +27,10 @@ v79 以固定 label-only normalization 对八维 supported basis 做 CPU 上界�
 
 `rewrite/v2` 从 v79 快照 `e21dba1` 线性分出，当前入口为 `python -m ldm_project.v2`；它不替换 `train.py` 或 v1 默认行为。v2 以类型化 physical field、严格配置/manifest、独立光学 reference、prototype/capacity evidence gate 和受约束 code basis 重写正式主链。其执行链已固定为 teacher pair/target manifest → calibration measurement → content-bound prototype review/admission → frozen capacity → guarded training → raw-CMOS evaluate/review。
 
-已完成代码和 CPU diagnostic 全链竖切；该竖切使用 fake teacher pair、内部 physical-DCT capacity 和单步训练，所有输出强制为 diagnostic。已在 clean commit 上重跑正式 `200×200` 单样本 CUDA forward 与单方向差分 capacity smoke：raw/response 均 finite、参数 hash 未变、未创建 optimizer；它们只说明执行和数值路径，不构成 scientific acceptance。尚未完成正式 CUDA prototype/capacity evidence、长 CUDA 训练、两次内容绑定的十类人工 raw-CMOS 审查、bootstrap paired-teacher advantage 或 promotion。
+已完成代码和 CPU diagnostic 全链竖切；该竖切使用 fake teacher pair、内部 physical-DCT capacity 和单步训练，所有输出强制为 diagnostic。v2 现已具备 8 维/每类 100 个 teacher export 合同、本地 128-per-label clean target 导出、流式 CUDA 执行、固定曝光 review 工件及无更新 `student preflight`。已在 clean commit 上重跑正式 `200×200` 单样本 CUDA forward 与单方向差分 capacity smoke：raw/response 均 finite、参数 hash 未变、未创建 optimizer；它们只说明执行和数值路径，不构成 scientific acceptance。尚未完成本轮正式 CUDA preflight、正式 CUDA prototype/capacity evidence、长 CUDA 训练、两次内容绑定的十类人工 raw-CMOS 审查、bootstrap paired-teacher advantage 或 promotion。
 
 ## 下一允许动作
 
-v2 的正式执行顺序固定为：teacher pair manifest → atomic target export/target manifest → `student calibrate-prototypes` → `student admit-prototypes` → `audit capacity` → `student train` → `student sample/evaluate`。prototype 或 capacity gate 失败时，后续训练、test、导出和 promotion 自动关闭；CPU diagnostic evidence 只能显式授权 diagnostic smoke，不能跨入 formal 链。
+v2 的正式执行顺序固定为：clean commit 上的 `student preflight` → local clean-target manifest → teacher pair manifest → 8D atomic target export/target manifest → `student calibrate-prototypes` → `student admit-prototypes` → `audit capacity` → `student train` → `student evaluate` → `student admit-evaluation`。prototype 或 capacity gate 失败时，后续训练、test、导出和 promotion 自动关闭；CPU diagnostic evidence 只能显式授权 diagnostic smoke，不能跨入 formal 链。preflight 通过只授权用户进入 prototype gate，不构成 capacity、科学或 promotion acceptance。
 
 在具备 clean commit、匹配 teacher/data/checkpoint/calibration hash、固定曝光与人工审查输入后，由用户在 CUDA 上依序运行 v2 的 prototype 与 capacity gate。未取得这些证据前，不改写 v1 科学结论，不将 v2 设为默认入口，也不签发 acceptance。
