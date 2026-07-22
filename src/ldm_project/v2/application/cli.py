@@ -188,7 +188,8 @@ def _teacher_export(args: argparse.Namespace, config: V2Config) -> int:
         raise FileExistsError("teacher target output already exists")
     temporary = _temporary_output(output)
     try:
-        command = [sys.executable, "train.py", "--train-config", args.legacy_train_config, "--stage", "teacher_distill_export", "--device", config.run.device, "--first-stage-checkpoint", pair.first_stage_path, "--diffusion-checkpoint", pair.diffusion_path, "--seed", str(pair.seed), "--guidance-scale", str(pair.guidance_scale), "--distill-output", str(temporary)]
+        legacy_output_root = output.parent.parent
+        command = [sys.executable, "train.py", "--train-config", args.legacy_train_config, "--stage", "teacher_distill_export", "--device", config.run.device, "--output-root", str(legacy_output_root), "--first-stage-checkpoint", pair.first_stage_path, "--diffusion-checkpoint", pair.diffusion_path, "--seed", str(pair.seed), "--guidance-scale", str(pair.guidance_scale), "--distill-output", str(temporary)]
         subprocess.run(command, check=True)
         commit = subprocess.run(["git", "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
         target = build_teacher_target_manifest(temporary, pair, formal=config.system.is_formal, generated_git_commit=commit, v2_config_hash=canonical_sha256(config.model_dump(mode="json")), legacy_export_config_hash=legacy_hash)
