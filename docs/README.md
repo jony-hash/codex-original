@@ -10,6 +10,7 @@
 - 输出与可视化解释：[D2NN 主线输出与可视化说明](output_JIESHI.md)
 - 迁移或续接当前实验：[当前主线交接（v79 冻结与 v2）](ldm_migration/current_handoff.md)（时效性状态快照，下一决策门后刷新）
 - 历史实验与验收证据：[D2NN 实验与验收历史](ldm_migration/experiment_history.md)
+- 无删节的 v68–v79 交接证据：[原始主线交接归档](ldm_migration/current_handoff_v68_v79_archive.md)（历史只读，不定义当前合同）
 - 理解分支、回档与发布状态：[Git 分支治理与回档指南](git_branch_management.md)
 - 归档配置与诊断源码：[实验归档清单](../experiments/archive/manifest.yaml)（仅供溯源，`diagnostic-only`）
 - 旁路重写运行时：[v2 Contract-First Runtime](v2/README.md)（不替换 v1 默认入口）

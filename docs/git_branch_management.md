@@ -17,6 +17,8 @@ main (660763e, scaffold)
 
 `rewrite/v2` 从 `e21dba1` 线性增加 8 个提交；旧 v79 快照没有该分支独有提交。它们不是两个待合并的独立开发线，而是可并行运行的 v1 研究快照与 v2 旁路重写。
 
+为便于不切换分支地查阅证据，`e21dba1` 中原有的 v68–v79 交接全文已逐字归档到 [v68–v79 原始主线交接归档](ldm_migration/current_handoff_v68_v79_archive.md)。归档不定义当前行为；当前状态仍以 [当前主线交接](ldm_migration/current_handoff.md) 为准。
+
 ## 本地分支
 
 | 分支 | 提交 | 角色与状态 |

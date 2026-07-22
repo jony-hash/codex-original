@@ -559,7 +559,7 @@ v48 使用同一个 v47 Probe A checkpoint、相同 `small_sharp_stroke_digit_co
 
 ## 2026-07-16 至 2026-07-22 v67–v79：透明诊断、code transport 上界与冻结结论
 
-以下记录均为历史 `diagnostic-only` 证据，不改变 stable formal contract，也不构成 student promotion。
+以下记录均为历史 `diagnostic-only` 证据，不改变 stable formal contract，也不构成 student promotion。需要逐次查看原始交接正文时，使用 [v68–v79 原始主线交接归档](current_handoff_v68_v79_archive.md)；本节保留面向检索的浓缩索引。
 
 ### v67–v67.4：透明薄相位与全场传播数值门
 
