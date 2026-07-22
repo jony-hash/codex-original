@@ -88,6 +88,35 @@ def build_code_basis(response_matrices: torch.Tensor, supports: torch.Tensor, *,
     return CodeBasisArtifactV2(basis=basis, normalizer=normalizer, candidate_count=candidate_count, seed=seed, source_hash=source_hash)
 
 
+@torch.no_grad()
+def finite_difference_response_matrices(system, prototype_commands: torch.Tensor, supports: torch.Tensor, *, candidate_count: int, epsilon: float) -> tuple[torch.Tensor, bool]:
+    """Measure frozen command-to-raw-camera responses without creating an optimizer.
+
+    The caller deliberately chooses when to run this full-geometry CUDA audit;
+    v2 itself neither updates parameters nor saves full optical fields here.
+    """
+    if prototype_commands.ndim != 4 or prototype_commands.shape[:2] != (10, 1):
+        raise ValueError("prototype_commands must have shape [10, 1, H, W]")
+    if supports.shape != (10, *prototype_commands.shape[-2:]):
+        raise ValueError("supports must have shape [10, H, W]")
+    if epsilon <= 0.0:
+        raise ValueError("finite-difference epsilon must be positive")
+    before = {name: value.detach().clone() for name, value in system.state_dict().items()}
+    rows = []
+    for label in range(10):
+        candidates = supported_dct_candidates(supports[label], candidate_count=candidate_count)
+        responses = []
+        base = prototype_commands[label : label + 1]
+        for direction in candidates:
+            delta = direction.unsqueeze(0).unsqueeze(0) * epsilon
+            plus = system.forward(system.command((base + delta).clamp(0.0, 1.0))).raw_camera.tensor
+            minus = system.forward(system.command((base - delta).clamp(0.0, 1.0))).raw_camera.tensor
+            responses.append(((plus - minus) / (2.0 * epsilon)).flatten())
+        rows.append(torch.stack(responses))
+    unchanged = all(torch.equal(before[name], value) for name, value in system.state_dict().items())
+    return torch.stack(rows), unchanged
+
+
 def capacity_metrics(commands_unclamped: torch.Tensor, physical_slm_intensity: torch.Tensor, raw_camera: torch.Tensor, supports: torch.Tensor) -> tuple[float, float, float, float]:
     """Return command/camera code factors, support energy, and one-clipping fraction."""
     if commands_unclamped.shape[:2] != (10, physical_slm_intensity.shape[1]) or raw_camera.shape[:2] != commands_unclamped.shape[:2]:

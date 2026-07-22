@@ -6,6 +6,7 @@ import torch
 from ldm_project.v2.evidence import EvidenceRecordV2, GateResult, require_passed_evidence
 from ldm_project.v2.student.admission import CapacityMetrics, PrototypeMetrics, balanced_code_fraction, capacity_gate, prototype_gate
 from ldm_project.v2.student.capacity import build_code_basis, capacity_metrics, supported_dct_candidates
+from ldm_project.v2.student.capacity import finite_difference_response_matrices
 
 
 def _prototype_pass() -> GateResult:
@@ -48,3 +49,20 @@ def test_evidence_state_machine_blocks_diagnostic_and_dirty_acceptance() -> None
     dirty = EvidenceRecordV2(2, "capacity", "acceptance", "passed", "commit", "patch", "config", {}, (gate,), ("train",))
     with pytest.raises(ValueError, match="clean"):
         dirty.validate()
+
+
+def test_finite_difference_responses_are_frozen_and_finite() -> None:
+    class System(torch.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.scale = torch.nn.Parameter(torch.tensor(1.0))
+
+        def command(self, value: torch.Tensor) -> torch.Tensor:
+            return value
+
+        def forward(self, value: torch.Tensor):
+            return type("Result", (), {"raw_camera": type("Raw", (), {"tensor": value * self.scale})()})()
+
+    responses, unchanged = finite_difference_response_matrices(System(), torch.full((10, 1, 4, 4), 0.5), torch.ones(10, 4, 4), candidate_count=8, epsilon=1.0e-3)
+    assert responses.shape == (10, 8, 16)
+    assert torch.isfinite(responses).all() and unchanged

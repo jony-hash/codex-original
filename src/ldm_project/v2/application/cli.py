@@ -14,7 +14,7 @@ from ..config import V2Config, load_config
 from ..evidence import EvidenceRecordV2, GateResult, atomic_write_json, canonical_sha256, require_passed_evidence
 from ..optics import FormalAmplitudeFiniteCropIdentitySystem
 from ..student.admission import CapacityMetrics, PrototypeMetrics, capacity_gate, prototype_gate
-from ..student.capacity import CodeBasisArtifactV2, build_code_basis, capacity_metrics
+from ..student.capacity import CodeBasisArtifactV2, build_code_basis, capacity_metrics, finite_difference_response_matrices
 from ..student.checkpoints import CheckpointManifestV2, load_exact_checkpoint, save_exact_checkpoint, state_signature
 from ..student.generator import LabelPrototypeBasisGenerator
 from ..student.metrics import correlation, foreground_dice
@@ -107,14 +107,28 @@ def _capacity(args: argparse.Namespace, config: V2Config) -> int:
     prototype = _record(args.prototype_evidence)
     require_passed_evidence(prototype, kind="prototype")
     device = torch.device(config.run.device)
-    responses = _tensor(args.response_matrices, device=device)
     supports = _tensor(args.supports, device=device)
     commands = _tensor(args.commands, device=device)
     slm_intensity = _tensor(args.slm_intensity, device=device)
     camera = _tensor(args.raw_camera, device=device)
+    parameters_unchanged = True
+    if args.response_matrices is not None:
+        responses = _tensor(args.response_matrices, device=device)
+    else:
+        if args.prototype_checkpoint is None:
+            raise ValueError("finite-difference capacity audit requires --prototype-checkpoint")
+        bundle = StudentBundle(config, _zero_basis(config.system.slm_shape)).to(device)
+        _warm_start_prototype(bundle, args.prototype_checkpoint)
+        responses, parameters_unchanged = finite_difference_response_matrices(
+            bundle.system,
+            _tensor(args.prototype_commands, device=device),
+            supports,
+            candidate_count=config.capacity_audit.dct_modes,
+            epsilon=config.capacity_audit.finite_difference_epsilon,
+        )
     artifact = build_code_basis(responses, supports, candidate_count=config.capacity_audit.dct_modes, seed=config.capacity_audit.seed, source_hash=prototype.evidence_hash)
     slm_factor, camera_factor, support_energy, clipping = capacity_metrics(commands, slm_intensity, camera, supports)
-    gate = capacity_gate(CapacityMetrics(slm_factor, camera_factor, support_energy, clipping, True, False, True), prototype.gates[0])
+    gate = capacity_gate(CapacityMetrics(slm_factor, camera_factor, support_energy, clipping, parameters_unchanged, False, True), prototype.gates[0])
     run = V2Run.create(output_root=config.run.output_root, run_name=config.run.run_name, config_payload=config.model_dump(mode="json"))
     status = "passed" if gate.passed and config.run.evidence_tier == "acceptance" and run.dirty_patch_hash is None else "diagnostic"
     record = EvidenceRecordV2(2, "capacity", config.run.evidence_tier, status, run.git_commit, run.dirty_patch_hash, run.config_hash, {"prototype_evidence": prototype.evidence_hash, "basis": artifact.artifact_hash}, (gate,), ("train",) if status == "passed" else ())
@@ -219,8 +233,12 @@ def _parser() -> argparse.ArgumentParser:
     evaluate.set_defaults(handler=lambda args: _evaluate(args, load_config(args.config)))
     audit = root.add_parser("audit").add_subparsers(dest="action", required=True)
     capacity = audit.add_parser("capacity")
-    for name in ("prototype_evidence", "response_matrices", "supports", "commands", "slm_intensity", "raw_camera"):
+    for name in ("prototype_evidence", "supports", "commands", "slm_intensity", "raw_camera"):
         capacity.add_argument("--" + name.replace("_", "-"), required=True)
+    response_source = capacity.add_mutually_exclusive_group(required=True)
+    response_source.add_argument("--response-matrices")
+    response_source.add_argument("--prototype-commands")
+    capacity.add_argument("--prototype-checkpoint")
     capacity.add_argument("--config", required=True)
     capacity.set_defaults(handler=lambda args: _capacity(args, load_config(args.config)))
     evidence = root.add_parser("evidence").add_subparsers(dest="action", required=True)
