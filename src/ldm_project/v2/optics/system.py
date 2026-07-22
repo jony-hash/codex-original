@@ -32,14 +32,19 @@ class FormalAmplitudeFiniteCropIdentitySystem(nn.Module):
         self.config = config
         wavelength = config.wavelength_m
         self.slm_plane = PlaneSpec("slm_output", config.slm_shape, (config.slm_pixel_pitch_m,) * 2, wavelength, 0.0, "slm")
-        self.encoder_plane = PlaneSpec("encoder_input", config.metasurface_shape, (config.metasurface_pixel_pitch_m,) * 2, wavelength, 0.625, "encoder")
-        self.chip_plane = PlaneSpec("chip", config.metasurface_shape, (config.metasurface_pixel_pitch_m,) * 2, wavelength, 0.625 + 4 * config.layer_spacing_m, "chip")
-        self.camera_plane = PlaneSpec("camera", config.slm_shape, (config.slm_pixel_pitch_m,) * 2, wavelength, 0.975, "camera")
+        front_segments = (0.025, 0.125, 0.0732142857142857, 0.3125, 0.0892857142857143)
+        back_segments = (0.100, 0.250)
+        encoder_z = sum(front_segments)
+        chip_z = encoder_z + 4 * config.layer_spacing_m
+        camera_z = chip_z + sum(back_segments)
+        self.encoder_plane = PlaneSpec("encoder_input", config.metasurface_shape, (config.metasurface_pixel_pitch_m,) * 2, wavelength, encoder_z, "encoder")
+        self.chip_plane = PlaneSpec("chip", config.metasurface_shape, (config.metasurface_pixel_pitch_m,) * 2, wavelength, chip_z, "chip")
+        self.camera_plane = PlaneSpec("camera", config.slm_shape, (config.slm_pixel_pitch_m,) * 2, wavelength, camera_z, "camera")
         self.slm = IdealAmplitudeSLM()
-        self.front = CoherentImagingRelay(self.slm_plane, self.encoder_plane, config.front_magnification, name="front_4f", segments_m=(0.025, 0.125, 0.0732142857142857, 0.3125, 0.0892857142857143))
+        self.front = CoherentImagingRelay(self.slm_plane, self.encoder_plane, config.front_magnification, name="front_4f", segments_m=front_segments, matrix_segments_m=(sum(front_segments[:3]), front_segments[3], front_segments[4]), focal_lengths_m=config.front_lens_focal_lengths_m, clear_aperture_m=config.front_clear_aperture_m)
         self.encoder = FiniteCropPhaseStack(layers=config.encoder_layers, active_shape=config.metasurface_shape, propagation_shape=(config.propagation_grid_size,) * 2, spacing_m=config.layer_spacing_m)
         self.decoder = FiniteCropPhaseStack(layers=config.decoder_layers, active_shape=config.metasurface_shape, propagation_shape=(config.propagation_grid_size,) * 2, spacing_m=config.layer_spacing_m)
-        self.back = CoherentImagingRelay(self.chip_plane, self.camera_plane, config.back_magnification, name="back_b0", segments_m=(0.100, 0.250))
+        self.back = CoherentImagingRelay(self.chip_plane, self.camera_plane, config.back_magnification, name="back_b0", segments_m=back_segments, focal_lengths_m=(config.back_lens_focal_length_m,), clear_aperture_m=config.back_clear_aperture_m)
 
     def command(self, tensor: torch.Tensor) -> AmplitudeCommand:
         return AmplitudeCommand(tensor, self.slm_plane, IdealAmplitudeSLM.calibration_id)

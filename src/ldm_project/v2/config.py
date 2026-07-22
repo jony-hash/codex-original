@@ -13,7 +13,7 @@ class StrictModel(BaseModel):
 
 
 class FormalSystemConfig(StrictModel):
-    kind: Literal["formal_amplitude_finite_crop_identity"]
+    kind: Literal["formal_amplitude_finite_crop_identity", "diagnostic_amplitude_finite_crop_identity"]
     wavelength_m: float = 532.0e-9
     slm_shape: tuple[int, int] = (200, 200)
     slm_pixel_pitch_m: float = 2.5e-6
@@ -25,11 +25,19 @@ class FormalSystemConfig(StrictModel):
     layer_spacing_m: float = 1.50e-3
     front_magnification: float = -0.4
     back_magnification: float = -2.5
+    front_lens_focal_lengths_m: tuple[float, float] = (223.2142857142857e-3, 89.2857142857143e-3)
+    back_lens_focal_length_m: float = 71.4285714285714e-3
+    front_clear_aperture_m: float = 23.75e-3
+    back_clear_aperture_m: float = 26.60e-3
     ols_kind: Literal["identity"] = "identity"
     boundary: Literal["finite_crop"] = "finite_crop"
 
     @model_validator(mode="after")
     def formal_geometry_is_locked(self) -> "FormalSystemConfig":
+        if self.kind == "diagnostic_amplitude_finite_crop_identity":
+            if self.propagation_grid_size < max(self.metasurface_shape):
+                raise ValueError("diagnostic propagation grid must cover the active metasurface")
+            return self
         expected = {
             "wavelength_m": 532.0e-9,
             "slm_shape": (200, 200),
@@ -41,6 +49,10 @@ class FormalSystemConfig(StrictModel):
             "layer_spacing_m": 1.50e-3,
             "front_magnification": -0.4,
             "back_magnification": -2.5,
+            "front_lens_focal_lengths_m": (223.2142857142857e-3, 89.2857142857143e-3),
+            "back_lens_focal_length_m": 71.4285714285714e-3,
+            "front_clear_aperture_m": 23.75e-3,
+            "back_clear_aperture_m": 26.60e-3,
         }
         for key, value in expected.items():
             actual = getattr(self, key)
@@ -52,6 +64,10 @@ class FormalSystemConfig(StrictModel):
         if self.propagation_grid_size < 100:
             raise ValueError("propagation_grid_size must cover the active metasurface")
         return self
+
+    @property
+    def is_formal(self) -> bool:
+        return self.kind == "formal_amplitude_finite_crop_identity"
 
 
 class TeacherConfig(StrictModel):

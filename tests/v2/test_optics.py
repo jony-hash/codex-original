@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+import pytest
 import torch
 
 from ldm_project.v2.config import FormalSystemConfig
@@ -14,7 +15,7 @@ from ldm_project.v2.optics import (
     angular_spectrum_propagate,
     identity_ols,
     reference_angular_spectrum_propagate,
-    reference_nearest_scaled_imaging,
+    reference_b0_imaging,
 )
 
 
@@ -42,14 +43,15 @@ def test_identity_ols_is_complex_linear() -> None:
 def test_named_relay_preserves_constant_field_and_provenance() -> None:
     field = _field((8, 8))
     field = ComplexField(torch.ones_like(field.tensor), field.plane, field.provenance)
-    target = PlaneSpec("target", (4, 4), (4e-6, 4e-6), 532e-9, 0.0, "target")
-    relay = CoherentImagingRelay(field.plane, target, -1.0, name="unit_relay", segments_m=(0.1, 0.2))
+    target = PlaneSpec("target", (4, 4), (4e-6, 4e-6), 532e-9, 0.4, "target")
+    relay = CoherentImagingRelay(field.plane, target, -1.0, name="unit_relay", segments_m=(0.2, 0.2), focal_lengths_m=(0.1,), clear_aperture_m=1e-3)
     output = relay(field)
-    reference = reference_nearest_scaled_imaging(field, target, -1.0, name="unit_relay")
+    reference = reference_b0_imaging(field, target, relay.abcd, name="unit_relay")
     assert output.plane == target
-    assert torch.allclose(output.tensor, torch.ones_like(output.tensor))
+    assert torch.allclose(output.tensor.abs(), torch.ones_like(output.tensor.abs()))
     assert torch.allclose(output.tensor, reference.tensor)
     assert output.provenance.parameters["relay"] == "unit_relay"
+    assert output.provenance.parameters["abcd"]["B_m"] == pytest.approx(0.0)
 
 
 def test_finite_crop_phase_stack_preserves_shape_and_unit_mask() -> None:
@@ -68,6 +70,9 @@ def test_formal_system_is_fixed_to_the_formal_contract() -> None:
     assert system.decoder.layers == 2
     assert system.front.magnification == -0.4
     assert system.back.magnification == -2.5
+    assert system.camera_plane.z_m - system.chip_plane.z_m == pytest.approx(0.350)
+    assert system.front.abcd.b_m == pytest.approx(0.0, abs=1e-9)
+    assert system.back.abcd.b_m == pytest.approx(0.0, abs=1e-9)
 
 
 def test_v2_optics_does_not_import_upper_layers() -> None:
