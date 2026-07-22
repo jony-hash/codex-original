@@ -83,6 +83,12 @@ class PrototypeCalibrationConfig(StrictModel):
     epochs: int = Field(default=5, ge=2)
     learning_rate: float = Field(default=5.0e-4, gt=0.0)
     fixed_exposure_scale: float = Field(gt=0.0)
+    initialization: Literal["uniform_half", "clean_intensity_to_amplitude"] = "uniform_half"
+    optimizer_steps_per_epoch: int = Field(default=1, ge=1)
+    prototype_correlation_weight: float = Field(default=0.25, ge=0.0)
+    prototype_dice_weight: float = Field(default=0.30, ge=0.0)
+    prototype_ce_weight: float = Field(default=0.10, ge=0.0)
+    prototype_ce_temperature: float = Field(default=0.07, gt=0.0)
     clean_corr_min: float = 0.70
     clean_dice_min: float = 0.68
     high_saturation_max: float = 0.08
@@ -188,6 +194,20 @@ class V2Config(StrictModel):
             execution.activation_checkpoint,
         ) != (1, 1, 1, 1, True):
             raise ValueError("formal execution locks microbatches to one with activation checkpointing")
+        if self.prototype_calibration is not None:
+            expected_prototype = {
+                "epochs": 5,
+                "learning_rate": 5.0e-4,
+                "initialization": "clean_intensity_to_amplitude",
+                "optimizer_steps_per_epoch": 40,
+                "prototype_correlation_weight": 0.25,
+                "prototype_dice_weight": 0.30,
+                "prototype_ce_weight": 0.10,
+                "prototype_ce_temperature": 0.07,
+            }
+            for name, value in expected_prototype.items():
+                if getattr(self.prototype_calibration, name) != value:
+                    raise ValueError(f"formal prototype locks {name}={value}")
         return self
 
 

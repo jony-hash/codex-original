@@ -82,6 +82,9 @@ def _validate_target_for_config(target: TeacherTargetManifestV2, config: V2Confi
     if target.system_contract_hash is not None and target.system_contract_hash != _system_signature(config):
         raise ValueError("teacher target manifest belongs to another physical system")
     if target.teacher_export_contract_hash is None:
+        if not config.system.is_formal:
+            target.validate(formal=False)
+            return
         raise ValueError("teacher target manifest requires explicit scoped migration")
     expected_export_hash = _teacher_export_contract_hash(config, pair, target.legacy_export_config_hash or "")
     if target.teacher_export_contract_hash != expected_export_hash:
@@ -272,7 +275,22 @@ def _calibrate(args: argparse.Namespace, config: V2Config) -> int:
         baseline_allocated, baseline_reserved = torch.cuda.memory_allocated(device), torch.cuda.memory_reserved(device)
     else:
         baseline_allocated = baseline_reserved = 0
-    summary = calibrate_prototypes(bundle.system, bundle.generator, clean_targets, exposure_scale=config.prototype_calibration.fixed_exposure_scale, epochs=config.prototype_calibration.epochs, learning_rate=config.prototype_calibration.learning_rate, microbatch_size=config.execution.prototype_microbatch_size, activation_checkpoint=config.execution.activation_checkpoint)
+    summary = calibrate_prototypes(
+        bundle.system,
+        bundle.generator,
+        clean_targets,
+        exposure_scale=config.prototype_calibration.fixed_exposure_scale,
+        epochs=config.prototype_calibration.epochs,
+        learning_rate=config.prototype_calibration.learning_rate,
+        microbatch_size=config.execution.prototype_microbatch_size,
+        activation_checkpoint=config.execution.activation_checkpoint,
+        initialization=config.prototype_calibration.initialization,
+        optimizer_steps_per_epoch=config.prototype_calibration.optimizer_steps_per_epoch,
+        correlation_weight=config.prototype_calibration.prototype_correlation_weight,
+        dice_weight=config.prototype_calibration.prototype_dice_weight,
+        ce_weight=config.prototype_calibration.prototype_ce_weight,
+        ce_temperature=config.prototype_calibration.prototype_ce_temperature,
+    )
     memory_pass, memory = _memory_report(device, baseline_reserved=baseline_reserved, baseline_allocated=baseline_allocated)
     raw = _stream_prototype_raw(bundle, device=device, microbatch_size=config.execution.prototype_microbatch_size)
     raw_path = run.root / "prototype_raw_cmos.pt"

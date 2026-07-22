@@ -12,6 +12,12 @@ prototype_calibration:
   epochs: 5
   learning_rate: 0.0005
   fixed_exposure_scale: 0.4913053810596466
+  initialization: clean_intensity_to_amplitude
+  optimizer_steps_per_epoch: 40
+  prototype_correlation_weight: 0.25
+  prototype_dice_weight: 0.30
+  prototype_ce_weight: 0.10
+  prototype_ce_temperature: 0.07
 capacity_audit:
   dct_modes: 64
   selected_basis_dim: 8

@@ -54,6 +54,16 @@ def _raw_from_command(system: RawCameraSystem, command: torch.Tensor, *, activat
     return checkpoint(forward, command, use_reentrant=False) if activation_checkpoint and torch.is_grad_enabled() else forward(command)
 
 
+def _differentiable_correlation(prediction: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    pred = prediction.flatten(1)
+    truth = target.flatten(1)
+    pred = pred - pred.mean(dim=1, keepdim=True)
+    truth = truth - truth.mean(dim=1, keepdim=True)
+    pred_norm = pred.square().sum(dim=1).clamp_min(1.0e-12).sqrt()
+    truth_norm = truth.square().sum(dim=1).clamp_min(1.0e-12).sqrt()
+    return (pred * truth).sum(dim=1) / (pred_norm * truth_norm)
+
+
 def _prototype_raw(system: RawCameraSystem, generator: LabelPrototypeBasisGenerator, labels: torch.Tensor, *, microbatch_size: int, activation_checkpoint: bool) -> torch.Tensor:
     rows = []
     for start in range(0, labels.numel(), microbatch_size):
@@ -72,12 +82,24 @@ def calibrate_prototypes(
     learning_rate: float,
     microbatch_size: int = 10,
     activation_checkpoint: bool = False,
+    initialization: str = "uniform_half",
+    optimizer_steps_per_epoch: int = 1,
+    correlation_weight: float = 0.0,
+    dice_weight: float = 0.0,
+    ce_weight: float = 0.0,
+    ce_temperature: float = 0.07,
 ) -> PrototypeCalibrationSummary:
     """Optimize only prototypes and phase masks; coefficient-net parameters remain frozen."""
     if clean_targets.shape[0] != 10 or exposure_scale <= 0.0:
         raise ValueError("prototype calibration requires ten clean targets and fixed exposure")
-    if microbatch_size < 1:
+    if microbatch_size < 1 or optimizer_steps_per_epoch < 1:
         raise ValueError("prototype microbatch must be positive")
+    if initialization not in {"uniform_half", "clean_intensity_to_amplitude"}:
+        raise ValueError("unsupported prototype initialization")
+    if initialization == "clean_intensity_to_amplitude":
+        with torch.no_grad():
+            amplitude = clean_targets[:, 0].clamp(0.0, 1.0).sqrt().clamp(1.0e-4, 1.0 - 1.0e-4)
+            generator.template_logits.copy_(torch.logit(amplitude))
     for parameter in generator.coefficient_net.parameters():
         parameter.requires_grad_(False)
     trainable = [generator.template_logits, *(parameter for name, parameter in system.named_parameters() if name.endswith("phase"))]
@@ -88,23 +110,34 @@ def calibrate_prototypes(
     gradients_finite = True
     history: list[dict[str, float]] = []
     for epoch in range(epochs):
-        optimizer.zero_grad(set_to_none=True)
-        losses = []
-        for start in range(0, labels.numel(), microbatch_size):
-            part_labels = labels[start : start + microbatch_size]
-            command = generator(code[start : start + microbatch_size], part_labels)
-            raw = _raw_from_command(system, command, activation_checkpoint=activation_checkpoint)
-            losses.append(torch.nn.functional.mse_loss((raw / exposure_scale).clamp(0.0, 1.0), clean_targets[start : start + microbatch_size], reduction="sum"))
-        loss = sum(losses) / clean_targets.numel()
-        loss = loss + 1.0e-5 * _phase_regularization(system)
-        loss.backward()
-        gradients_finite = gradients_finite and all(parameter.grad is None or torch.isfinite(parameter.grad).all() for parameter in trainable)
-        optimizer.step()
-        last_loss = loss.detach()
+        for _ in range(optimizer_steps_per_epoch):
+            optimizer.zero_grad(set_to_none=True)
+            losses = []
+            predictions = []
+            for start in range(0, labels.numel(), microbatch_size):
+                part_labels = labels[start : start + microbatch_size]
+                command = generator(code[start : start + microbatch_size], part_labels)
+                raw = _raw_from_command(system, command, activation_checkpoint=activation_checkpoint)
+                normalized_part = (raw / exposure_scale).clamp(0.0, 1.0)
+                predictions.append(normalized_part)
+                losses.append(torch.nn.functional.mse_loss(normalized_part, clean_targets[start : start + microbatch_size], reduction="sum"))
+            normalized_step = torch.cat(predictions)
+            corr = _differentiable_correlation(normalized_step, clean_targets)
+            soft_dice = (2.0 * (normalized_step * clean_targets).flatten(1).sum(dim=1) + 1.0e-6) / (normalized_step.square().flatten(1).sum(dim=1) + clean_targets.square().flatten(1).sum(dim=1) + 1.0e-6)
+            pair_prediction = normalized_step[:, None].expand(10, 10, *normalized_step.shape[1:]).reshape(100, *normalized_step.shape[1:])
+            pair_target = clean_targets[None].expand(10, 10, *clean_targets.shape[1:]).reshape(100, *clean_targets.shape[1:])
+            correlations = _differentiable_correlation(pair_prediction, pair_target).reshape(10, 10)
+            ce = torch.nn.functional.cross_entropy(correlations / ce_temperature, labels)
+            loss = sum(losses) / clean_targets.numel()
+            loss = loss + correlation_weight * (1.0 - corr.mean()) + dice_weight * (1.0 - soft_dice.mean()) + ce_weight * ce + 1.0e-5 * _phase_regularization(system)
+            loss.backward()
+            gradients_finite = gradients_finite and all(parameter.grad is None or torch.isfinite(parameter.grad).all() for parameter in trainable)
+            optimizer.step()
+            last_loss = loss.detach()
         with torch.no_grad():
             observed = _prototype_raw(system, generator, labels, microbatch_size=microbatch_size, activation_checkpoint=False)
             normalized = (observed / exposure_scale).clamp(0.0, 1.0)
-            history.append({"epoch": float(epoch + 1), "loss": float(last_loss.item()), "corr": float(correlation(normalized, clean_targets).mean().item()), "dice": float(foreground_dice(normalized, clean_targets).mean().item()), "high_saturation": float(high_saturation_ratio(observed, exposure_scale).item())})
+            history.append({"epoch": float(epoch + 1), "loss": float(last_loss.item()), "corr": float(correlation(normalized, clean_targets).mean().item()), "dice": float(foreground_dice(normalized, clean_targets).mean().item()), "prototype_accuracy": float(((correlation(normalized[:, None].expand(10, 10, *normalized.shape[1:]).reshape(100, *normalized.shape[1:]), clean_targets[None].expand(10, 10, *clean_targets.shape[1:]).reshape(100, *clean_targets.shape[1:])).reshape(10, 10).argmax(dim=1)) == labels).to(torch.float32).mean().item()), "high_saturation": float(high_saturation_ratio(observed, exposure_scale).item())})
     with torch.no_grad():
         raw_final = _prototype_raw(system, generator, labels, microbatch_size=microbatch_size, activation_checkpoint=False)
         normalized = (raw_final / exposure_scale).clamp(0.0, 1.0)
