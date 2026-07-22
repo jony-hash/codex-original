@@ -12,6 +12,7 @@ dependencies = [
   "torchvision",
   "PyYAML",
   "matplotlib",
+  "pydantic>=2.11,<3",
 ]
 
 [tool.setuptools]
