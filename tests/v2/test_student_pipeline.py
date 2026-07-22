@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 from types import SimpleNamespace
 
 import pytest
@@ -59,6 +60,18 @@ def test_training_requires_passed_and_matching_capacity_evidence() -> None:
     assert torch.isfinite(torch.tensor(trained.loss))
     with pytest.raises(ValueError, match="basis artifact"):
         train_code_conditioned(system, generator, codes, labels, targets, exposure_scale=1.0, prototype_evidence=_evidence("prototype"), capacity_evidence=_evidence("capacity"), expected_basis_hash="other", epochs=1, learning_rate=1e-3, batch_size=20, weights=weights)
+
+
+def test_prototype_microbatch_matches_full_batch_without_checkpointing() -> None:
+    torch.manual_seed(7)
+    system, generator = ToyRawCameraSystem(), LabelPrototypeBasisGenerator(code_dim=3, basis_artifact=_artifact())
+    split_system, split_generator = copy.deepcopy(system), copy.deepcopy(generator)
+    clean = torch.full((10, 1, 4, 4), 0.5)
+    calibrate_prototypes(system, generator, clean, exposure_scale=1.0, epochs=1, learning_rate=1e-3, microbatch_size=10)
+    calibrate_prototypes(split_system, split_generator, clean, exposure_scale=1.0, epochs=1, learning_rate=1e-3, microbatch_size=1)
+    for left, right in zip(system.parameters(), split_system.parameters()):
+        assert torch.allclose(left, right)
+    assert torch.allclose(generator.template_logits, split_generator.template_logits)
 
 
 def test_code_acceptance_requires_bootstrap_and_manual_review() -> None:

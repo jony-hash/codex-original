@@ -204,7 +204,7 @@ def _calibrate(args: argparse.Namespace, config: V2Config) -> int:
         baseline_allocated, baseline_reserved = torch.cuda.memory_allocated(device), torch.cuda.memory_reserved(device)
     else:
         baseline_allocated = baseline_reserved = 0
-    summary = calibrate_prototypes(bundle.system, bundle.generator, clean_targets, exposure_scale=config.prototype_calibration.fixed_exposure_scale, epochs=config.prototype_calibration.epochs, learning_rate=config.prototype_calibration.learning_rate)
+    summary = calibrate_prototypes(bundle.system, bundle.generator, clean_targets, exposure_scale=config.prototype_calibration.fixed_exposure_scale, epochs=config.prototype_calibration.epochs, learning_rate=config.prototype_calibration.learning_rate, microbatch_size=config.execution.prototype_microbatch_size, activation_checkpoint=config.execution.activation_checkpoint)
     memory_pass, memory = _memory_report(device, baseline_reserved=baseline_reserved, baseline_allocated=baseline_allocated)
     labels = torch.arange(10, device=device)
     with torch.no_grad():
@@ -335,7 +335,7 @@ def _train(args: argparse.Namespace, config: V2Config) -> int:
     warm = load_prototype_warm_start(args.prototype_checkpoint, bundle, expected_system_signature=_system_signature(config))
     codes, labels, targets = _teacher_dataset(target)
     settings = config.student_training
-    summary = train_code_conditioned(bundle.system, bundle.generator, codes, labels, targets, exposure_scale=config.prototype_calibration.fixed_exposure_scale, prototype_evidence=prototype, capacity_evidence=capacity, expected_basis_hash=basis.artifact_hash, epochs=settings.epochs, learning_rate=settings.learning_rate, batch_size=settings.batch_size, weights={"prototype": settings.prototype_fidelity_weight, "paired_residual": settings.paired_teacher_residual_weight, "code_transport": settings.code_transport_weight, "clipping": settings.clipping_weight, "saturation": settings.saturation_weight, "phase_tv": settings.phase_tv_weight}, allow_diagnostic_evidence=diagnostic)
+    summary = train_code_conditioned(bundle.system, bundle.generator, codes, labels, targets, exposure_scale=config.prototype_calibration.fixed_exposure_scale, prototype_evidence=prototype, capacity_evidence=capacity, expected_basis_hash=basis.artifact_hash, epochs=settings.epochs, learning_rate=settings.learning_rate, batch_size=settings.batch_size, weights={"prototype": settings.prototype_fidelity_weight, "paired_residual": settings.paired_teacher_residual_weight, "code_transport": settings.code_transport_weight, "clipping": settings.clipping_weight, "saturation": settings.saturation_weight, "phase_tv": settings.phase_tv_weight}, microbatch_size=config.execution.training_microbatch_size, activation_checkpoint=config.execution.activation_checkpoint, allow_diagnostic_evidence=diagnostic)
     run = _new_run(config)
     checkpoint = run.root / "student_bundle.pt"
     manifest = _bundle_manifest(config, bundle, dataset_hash=target.dataset_hash, teacher_manifest_hash=target.teacher_pair_manifest_hash, calibration_hash=prototype.context.calibration_hash or "", basis_hash=basis.artifact_hash)
