@@ -29,6 +29,16 @@ class CodeBasisArtifactV2:
     def save(self, path: str) -> None:
         atomic_torch_save(path, {"basis": self.basis, "normalizer": self.normalizer, "candidate_count": self.candidate_count, "seed": self.seed, "source_hash": self.source_hash, "artifact_hash": self.artifact_hash})
 
+    @classmethod
+    def load(cls, path: str) -> "CodeBasisArtifactV2":
+        payload = torch.load(path, map_location="cpu", weights_only=False)
+        if not isinstance(payload, dict):
+            raise ValueError("invalid code basis artifact")
+        artifact = cls(payload["basis"], payload["normalizer"], int(payload["candidate_count"]), int(payload["seed"]), str(payload["source_hash"]))
+        if payload.get("artifact_hash") != artifact.artifact_hash:
+            raise ValueError("code basis artifact hash mismatch")
+        return artifact
+
 
 def supported_dct_candidates(support: torch.Tensor, *, candidate_count: int) -> torch.Tensor:
     """Return weighted-zero-mean low-frequency command directions for one label."""

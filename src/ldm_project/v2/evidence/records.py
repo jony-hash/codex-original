@@ -38,6 +38,13 @@ class EvidenceRecordV2:
         payload["gates"] = [asdict(gate) for gate in self.gates]
         return payload
 
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "EvidenceRecordV2":
+        values = dict(payload)
+        values["gates"] = tuple(GateResult(**gate) for gate in values.get("gates", ()))
+        values["permitted_next_actions"] = tuple(values.get("permitted_next_actions", ()))
+        return cls(**values)
+
     def validate(self) -> None:
         if self.schema_version != 2:
             raise ValueError("unsupported evidence schema")

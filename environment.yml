@@ -1,0 +1,19 @@
+name: optical-generative-models
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pytorch=2.5.1
+  - torchvision=0.20.1
+  - pytorch-cuda=12.1
+  - pyyaml=6.0.3
+  - numpy=2.2.6
+  - matplotlib=3.10.8
+  - pytest=9.0.3
+  - ruff=0.15.12
+  - pydantic=2.11.7
+  - pip
+  - pip:
+      - -e .
