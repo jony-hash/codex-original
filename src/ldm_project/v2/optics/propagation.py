@@ -1,0 +1,71 @@
+"""Independent v2 angular-spectrum propagation implementations."""
+from __future__ import annotations
+
+import math
+
+import torch
+
+from ..contracts import ComplexField, OperationProvenance
+
+
+def _transfer_function(
+    shape: tuple[int, int],
+    *,
+    pixel_pitch_m: tuple[float, float],
+    wavelength_m: float,
+    distance_m: float,
+    device: torch.device,
+    real_dtype: torch.dtype,
+) -> torch.Tensor:
+    fy = torch.fft.fftfreq(shape[0], d=pixel_pitch_m[0], device=device, dtype=real_dtype)
+    fx = torch.fft.fftfreq(shape[1], d=pixel_pitch_m[1], device=device, dtype=real_dtype)
+    grid_y, grid_x = torch.meshgrid(fy, fx, indexing="ij")
+    argument = 1.0 - (wavelength_m * grid_x).square() - (wavelength_m * grid_y).square()
+    phase = (2.0 * math.pi * distance_m / wavelength_m) * torch.sqrt(argument.clamp_min(0.0))
+    transfer = torch.polar(torch.ones_like(phase), phase)
+    return torch.where(argument >= 0.0, transfer, torch.zeros_like(transfer))
+
+
+def angular_spectrum_propagate(field: ComplexField, distance_m: float, plane_id: str) -> ComplexField:
+    """Production FFT ASM; it creates a new physical plane and provenance node."""
+    if distance_m < 0.0:
+        raise ValueError("formal v2 propagation distance must be non-negative")
+    transfer = _transfer_function(
+        field.plane.shape,
+        pixel_pitch_m=field.plane.pixel_pitch_m,
+        wavelength_m=field.plane.wavelength_m,
+        distance_m=distance_m,
+        device=field.tensor.device,
+        real_dtype=field.tensor.real.dtype,
+    )
+    propagated = torch.fft.ifft2(torch.fft.fft2(field.tensor, norm="ortho") * transfer, norm="ortho")
+    plane = field.plane.with_plane(plane_id, z_m=field.plane.z_m + distance_m)
+    provenance = OperationProvenance(
+        "propagate_angular_spectrum",
+        field.plane.plane_id,
+        distance_m,
+        {"wavelength_m": field.plane.wavelength_m, "sampling": plane.to_dict()},
+    )
+    return ComplexField(propagated, plane, provenance)
+
+
+def reference_angular_spectrum_propagate(field: ComplexField, distance_m: float, plane_id: str) -> ComplexField:
+    """Reference ASM with independently assembled spectral coordinates and transfer."""
+    if distance_m < 0.0:
+        raise ValueError("reference propagation distance must be non-negative")
+    height, width = field.plane.shape
+    dy, dx = field.plane.pixel_pitch_m
+    dtype = field.tensor.real.dtype
+    ky = torch.arange(height, device=field.tensor.device, dtype=dtype)
+    kx = torch.arange(width, device=field.tensor.device, dtype=dtype)
+    fy = torch.where(ky < (height + 1) // 2, ky, ky - height) / (height * dy)
+    fx = torch.where(kx < (width + 1) // 2, kx, kx - width) / (width * dx)
+    fy_grid, fx_grid = torch.meshgrid(fy, fx, indexing="ij")
+    radicand = 1.0 - (field.plane.wavelength_m * fx_grid).square() - (field.plane.wavelength_m * fy_grid).square()
+    phase = 2.0 * math.pi * distance_m * torch.sqrt(radicand.clamp_min(0.0)) / field.plane.wavelength_m
+    kernel = torch.complex(torch.cos(phase), torch.sin(phase)) * (radicand >= 0.0)
+    spectrum = torch.fft.fft2(field.tensor)
+    propagated = torch.fft.ifft2(spectrum * kernel)
+    plane = field.plane.with_plane(plane_id, z_m=field.plane.z_m + distance_m)
+    provenance = OperationProvenance("propagate_angular_spectrum_reference", field.plane.plane_id, distance_m)
+    return ComplexField(propagated, plane, provenance)
