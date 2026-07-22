@@ -58,3 +58,21 @@ def load_exact_checkpoint(path: str | Path, model: torch.nn.Module, expected: Ch
 
 def checkpoint_file_hash(path: str | Path) -> str:
     return file_sha256(path)
+
+
+def load_prototype_warm_start(path: str | Path, model: torch.nn.Module) -> dict[str, str]:
+    """Load only the auditable prototype/template and phase state boundary."""
+    payload = torch.load(path, map_location="cpu", weights_only=False)
+    state = payload.get("state_dict") if isinstance(payload, dict) else None
+    if not isinstance(state, dict):
+        raise ValueError("prototype checkpoint is invalid")
+    allowed = ("generator.template_logits", "system.encoder.phase", "system.decoder.phase")
+    target = model.state_dict()
+    loaded: dict[str, str] = {}
+    for key in allowed:
+        if key not in state or key not in target or state[key].shape != target[key].shape:
+            raise ValueError(f"prototype warm-start lacks compatible {key}")
+        target[key].copy_(state[key])
+        loaded[key] = state_signature({key: state[key]})
+    model.load_state_dict(target, strict=True)
+    return loaded

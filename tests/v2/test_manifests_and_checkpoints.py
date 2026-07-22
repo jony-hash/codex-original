@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 import torch
 
-from ldm_project.v2.evidence import atomic_write_json
+from ldm_project.v2.evidence import atomic_write_json, tensor_artifact_ref
 from ldm_project.v2.student.checkpoints import CheckpointManifestV2, load_exact_checkpoint, save_exact_checkpoint, state_signature
 from ldm_project.v2.teacher import build_teacher_pair_manifest
 
@@ -48,3 +48,13 @@ def test_atomic_json_write_replaces_only_complete_file(tmp_path: Path) -> None:
     path = tmp_path / "evidence.json"
     atomic_write_json(path, {"status": "passed"})
     assert path.read_text(encoding="utf-8").strip().endswith("}")
+
+
+def test_tensor_artifact_ref_is_content_addressed(tmp_path: Path) -> None:
+    path = tmp_path / "tensor.pt"
+    torch.save(torch.ones(2, 3), path)
+    first = tensor_artifact_ref(path, role="clean_targets")
+    torch.save(torch.zeros(2, 3), path)
+    second = tensor_artifact_ref(path, role="clean_targets")
+    assert first.sha256 != second.sha256
+    assert first.shape == second.shape == (2, 3)

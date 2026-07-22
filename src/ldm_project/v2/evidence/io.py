@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 from tempfile import NamedTemporaryFile
+from dataclasses import asdict, dataclass
 from typing import Any, Mapping
 
 import torch
@@ -22,6 +23,27 @@ def file_sha256(path: str | Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+@dataclass(frozen=True)
+class ArtifactRefV2:
+    path: str
+    sha256: str
+    role: str
+    shape: tuple[int, ...] | None = None
+    dtype: str | None = None
+    git_commit: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+def tensor_artifact_ref(path: str | Path, *, role: str, git_commit: str | None = None) -> ArtifactRefV2:
+    target = Path(path)
+    value = torch.load(target, map_location="cpu", weights_only=False)
+    if not torch.is_tensor(value):
+        raise ValueError(f"{target} must contain one tensor")
+    return ArtifactRefV2(str(target.resolve()), file_sha256(target), role, tuple(value.shape), str(value.dtype), git_commit)
 
 
 def _temporary_path(path: Path) -> Path:
