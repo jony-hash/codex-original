@@ -24,7 +24,7 @@ from ..student.clean_targets import CleanTargetManifestV2, build_clean_targets
 from ..student.evaluation import CodeAcceptanceMetrics, acceptance_metrics, code_acceptance_gate, paired_advantage_lower_bound
 from ..student.generator import LabelPrototypeBasisGenerator
 from ..student.review_artifacts import write_review_artifacts
-from ..student.training import calibrate_prototypes, train_code_conditioned
+from ..student.training import _differentiable_correlation, calibrate_prototypes, train_code_conditioned
 from ..student.capacity import supported_dct_candidates
 from ..teacher import TeacherPairManifestV2, TeacherTargetManifestV2, build_teacher_pair_manifest, build_teacher_target_manifest
 from .runs import V2Run
@@ -619,6 +619,110 @@ def _preflight(args: argparse.Namespace, config: V2Config) -> int:
     return 0
 
 
+def _reachability(args: argparse.Namespace, config: V2Config) -> int:
+    if config.prototype_calibration is None:
+        raise ValueError("prototype reachability requires prototype_calibration config")
+    clean_manifest = _clean_target_manifest(args.clean_target_manifest, config)
+    clean = _tensor(clean_manifest.targets.path, device=torch.device(config.run.device))
+    device = torch.device(config.run.device)
+    failed_payload = torch.load(args.failed_prototype_checkpoint, map_location="cpu", weights_only=False)
+    if not isinstance(failed_payload, dict) or "state_dict" not in failed_payload:
+        raise ValueError("failed prototype checkpoint payload is invalid")
+    labels = torch.arange(10, device=device)
+
+    def bundle_with(kind: str) -> StudentBundle:
+        bundle = StudentBundle(config, _zero_basis(config.system.slm_shape)).to(device)
+        if kind == "failed_replay":
+            bundle.load_state_dict(failed_payload["state_dict"], strict=True)
+        elif kind == "clean_intensity_to_amplitude":
+            with torch.no_grad():
+                amplitude = clean[:, 0].sqrt().clamp(1.0e-4, 1.0 - 1.0e-4)
+                bundle.generator.template_logits.copy_(torch.logit(amplitude))
+        elif kind != "uniform_half":
+            raise ValueError(f"unknown reachability state: {kind}")
+        return bundle
+
+    def replay(bundle: StudentBundle, *, trace: bool = False) -> tuple[torch.Tensor, tuple[object, ...] | None]:
+        rows, traces = [], None
+        with torch.no_grad():
+            for label in labels:
+                result = bundle.system.forward(bundle.system.command(bundle.generator.prototype_command(label[None])), return_optical_trace=trace)
+                rows.append(result.raw_camera.tensor)
+                if trace and traces is None:
+                    traces = [[] for _ in result.optical_trace or ()]
+                if trace and result.optical_trace is not None:
+                    for bucket, field in zip(traces, result.optical_trace):
+                        bucket.append(field)
+        return torch.cat(rows), tuple(torch.cat([field.tensor.abs().square().cpu() for field in bucket]) for bucket in traces) if traces is not None else None
+
+    def camera_metrics(raw: torch.Tensor) -> dict[str, float]:
+        normalized = (raw / config.prototype_calibration.fixed_exposure_scale).clamp(0.0, 1.0)
+        matrix = _differentiable_correlation(normalized[:, None].expand(10, 10, *normalized.shape[1:]).reshape(100, *normalized.shape[1:]), clean[None].expand(10, 10, *clean.shape[1:]).reshape(100, *clean.shape[1:])).reshape(10, 10)
+        dice = (2.0 * (normalized * clean).flatten(1).sum(dim=1) + 1.0e-6) / (normalized.square().flatten(1).sum(dim=1) + clean.square().flatten(1).sum(dim=1) + 1.0e-6)
+        margin = matrix.diag() - (matrix + torch.eye(10, device=device) * -2.0).max(dim=1).values
+        return {"clean_corr": float(_differentiable_correlation(normalized, clean).mean().item()), "clean_dice_soft": float(dice.mean().item()), "prototype_accuracy": float((matrix.argmax(dim=1) == labels).to(torch.float32).mean().item()), "min_target_margin": float(margin.min().item()), "high_saturation": float((raw / config.prototype_calibration.fixed_exposure_scale > 1.0).to(torch.float32).mean().item())}
+
+    states = {}
+    for kind in ("uniform_half", "failed_replay", "clean_intensity_to_amplitude"):
+        bundle = bundle_with(kind)
+        raw, trace = replay(bundle, trace=True)
+        states[kind] = {"metrics": camera_metrics(raw), "trace_plane_ids": [field.plane.plane_id for field in bundle.system.forward(bundle.system.command(bundle.generator.prototype_command(labels[:1])), return_optical_trace=True).optical_trace or ()], "trace": trace}
+
+    clean_bundle = bundle_with("clean_intensity_to_amplitude")
+    before = state_content_hash(clean_bundle.state_dict())
+    template = clean_bundle.generator.template_logits
+    slm_error = float((clean_bundle.generator.prototype_command(labels).square() - clean).square().max().sqrt().item())
+    raw, trace = replay(clean_bundle, trace=True)
+    direction_metrics: dict[str, dict[str, float | bool]] = {}
+    groups = {
+        "template": [template],
+        "encoder": [clean_bundle.system.encoder.phase],
+        "decoder": [clean_bundle.system.decoder.phase],
+        "joint": [template, clean_bundle.system.encoder.phase, clean_bundle.system.decoder.phase],
+    }
+    base_margin = camera_metrics(raw)["min_target_margin"]
+    for name, parameters in groups.items():
+        clean_bundle.zero_grad(set_to_none=True)
+        current_rows = []
+        for label in labels:
+            current_rows.append(clean_bundle.system.forward(clean_bundle.system.command(clean_bundle.generator.prototype_command(label[None]))).raw_camera.tensor)
+        current_raw = torch.cat(current_rows)
+        normalized = (current_raw / config.prototype_calibration.fixed_exposure_scale).clamp(0.0, 1.0)
+        loss = torch.nn.functional.mse_loss(normalized, clean) + 0.25 * (1.0 - _differentiable_correlation(normalized, clean).mean())
+        loss.backward()
+        finite = all(parameter.grad is not None and torch.isfinite(parameter.grad).all().item() for parameter in parameters)
+        snapshots = [parameter.detach().clone() for parameter in parameters]
+        with torch.no_grad():
+            for parameter in parameters:
+                if parameter.grad is not None:
+                    parameter.add_(-1.0e-3 * parameter.grad / parameter.grad.square().mean().sqrt().clamp_min(1.0e-12))
+        candidate_raw, _ = replay(clean_bundle)
+        improvement = camera_metrics(candidate_raw)["min_target_margin"] - base_margin
+        with torch.no_grad():
+            for parameter, snapshot in zip(parameters, snapshots):
+                parameter.copy_(snapshot)
+        direction_metrics[name] = {"gradient_finite": bool(finite), "margin_improvement": float(improvement), "margin_improved": bool(improvement > 0.0)}
+    after = state_content_hash(clean_bundle.state_dict())
+    crop_values = []
+    if trace is not None:
+        for plane_id, bucket in zip(states["clean_intensity_to_amplitude"]["trace_plane_ids"], trace):
+            if "layer_" in plane_id and "propagated" not in plane_id:
+                crop_values.append(float(bucket.square().mean().item()))
+    front_retention = 1.0
+    if trace is not None and len(trace) >= 2:
+        base = trace[0].flatten(1)
+        front = trace[1].flatten(1)
+        base = base / base.square().sum(dim=1, keepdim=True).sqrt().clamp_min(1.0e-12)
+        front = front / front.square().sum(dim=1, keepdim=True).sqrt().clamp_min(1.0e-12)
+        front_retention = float((front @ front.T).abs().mean().item() / (base @ base.T).abs().mean().clamp_min(1.0e-12).item())
+    passed = slm_error <= 1.0e-6 and front_retention >= 0.95 and all(metric["gradient_finite"] for metric in direction_metrics.values()) and any(metric["margin_improved"] for metric in direction_metrics.values()) and before == after
+    run = _new_run(config)
+    evidence = {"schema_version": 2, "evidence_kind": "prototype_reachability", "status": "diagnostic", "tier": "diagnostic", "git_commit": run.git_commit, "config_hash": run.config_hash, "input_hashes": {"clean_target_manifest": clean_manifest.manifest_hash, "failed_prototype_checkpoint": file_sha256(args.failed_prototype_checkpoint)}, "states": {name: {"metrics": value["metrics"], "trace_plane_ids": value["trace_plane_ids"]} for name, value in states.items()}, "slm_intensity_max_error": slm_error, "front_retention": front_retention, "crop_statistics": crop_values, "direction_metrics": direction_metrics, "parameters_unchanged": before == after, "passed": passed, "permitted_next_actions": ["calibrate_prototypes"] if passed else [], "invalidation_reason": None if passed else "prototype reachability isolation gate failed"}
+    atomic_write_json(run.root / "prototype_reachability_evidence.json", evidence)
+    print(run.root)
+    return 0
+
+
 def _rebind_manifest(args: argparse.Namespace, config: V2Config) -> int:
     """Re-emit a verified input manifest without touching its tensor payload."""
     _require_clean_acceptance(config)
@@ -702,6 +806,10 @@ def _parser() -> argparse.ArgumentParser:
     for name in ("config", "prototype_evidence", "prototype_checkpoint"):
         capacity.add_argument("--" + name.replace("_", "-"), required=True)
     capacity.set_defaults(handler=lambda args: _capacity(args, load_config(args.config)))
+    reachability = audit.add_parser("prototype-reachability")
+    for name in ("config", "clean_target_manifest", "failed_calibration_evidence", "failed_prototype_checkpoint"):
+        reachability.add_argument("--" + name.replace("_", "-"), required=True)
+    reachability.set_defaults(handler=lambda args: _reachability(args, load_config(args.config)))
     evidence = root.add_parser("evidence").add_subparsers(dest="action", required=True)
     summarize = evidence.add_parser("summarize")
     summarize.add_argument("--run", required=True)
