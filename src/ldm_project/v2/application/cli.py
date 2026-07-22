@@ -409,7 +409,6 @@ def _evaluate(args: argparse.Namespace, config: V2Config) -> int:
     run = _new_run(config)
     raw_path = run.root / "evaluation_raw_cmos.pt"
     atomic_torch_save(raw_path, raw.detach().cpu())
-    raw_hash = tensor_sha256(raw.detach().cpu())
     review_artifacts = write_review_artifacts(root=run.root, stem="evaluation", kind="code_acceptance", raw_cmos=raw, labels=labels, targets=teacher, exposure_scale=config.prototype_calibration.fixed_exposure_scale)
     gate = code_acceptance_gate(CodeAcceptanceMetrics(camera_fraction, teacher_corr, teacher_dice, lower_bound, 1234, 10000), None)
     if diagnostic:
