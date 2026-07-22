@@ -4,6 +4,8 @@
 
 本文件中的 `train.py --stage` 命令只适用于 v1。v2 使用独立的 `python -m ldm_project.v2` 子命令和独立 evidence gate，二者不互相替代；在 v2 正式 acceptance 前，v1 仍是默认入口。
 
+v2 的可执行闭环为：内容寻址 teacher pair/target manifest → prototype measurement → 内容绑定的人工 admission → frozen capacity → guarded training → checkpoint-driven raw-CMOS evaluate。small diagnostic system 仅允许 `diagnostic_*_smoke` 动作，不能授权 formal train、export、evaluate acceptance 或 promotion；正式 CUDA 命令和 review 交接见 [v2 runtime](../v2/README.md)。
+
 ## Golden Path
 
 | Stage | 用途 | 何时运行 | 必需输入 | 可作为最终单次曝光证据 |
