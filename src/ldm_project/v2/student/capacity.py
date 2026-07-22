@@ -109,7 +109,7 @@ def build_code_basis(response_matrices: torch.Tensor, supports: torch.Tensor, *,
 
 
 @torch.no_grad()
-def finite_difference_response_matrices(system, prototype_commands: torch.Tensor, supports: torch.Tensor, *, candidate_count: int, epsilon: float, pixel_pitch_m: tuple[float, float], max_cycles_per_mm: float) -> tuple[torch.Tensor, bool, str, str]:
+def finite_difference_response_matrices(system, prototype_commands: torch.Tensor, supports: torch.Tensor, *, candidate_count: int, epsilon: float, pixel_pitch_m: tuple[float, float], max_cycles_per_mm: float, microbatch_size: int = 1) -> tuple[torch.Tensor, bool, str, str]:
     """Measure frozen command-to-raw-camera responses without creating an optimizer.
 
     The caller deliberately chooses when to run this full-geometry CUDA audit;
@@ -121,6 +121,8 @@ def finite_difference_response_matrices(system, prototype_commands: torch.Tensor
         raise ValueError("supports must have shape [10, H, W]")
     if epsilon <= 0.0:
         raise ValueError("finite-difference epsilon must be positive")
+    if microbatch_size != 1:
+        raise ValueError("finite-difference response directions are physically measured one command at a time")
     before = {name: value.detach().clone() for name, value in system.state_dict().items()}
     before_hash = _state_hash(before)
     rows = []
@@ -132,7 +134,7 @@ def finite_difference_response_matrices(system, prototype_commands: torch.Tensor
             delta = direction.unsqueeze(0).unsqueeze(0) * epsilon
             plus = system.forward(system.command((base + delta).clamp(0.0, 1.0))).raw_camera.tensor
             minus = system.forward(system.command((base - delta).clamp(0.0, 1.0))).raw_camera.tensor
-            responses.append(((plus - minus) / (2.0 * epsilon)).flatten())
+            responses.append(((plus - minus) / (2.0 * epsilon)).flatten().detach().cpu())
         rows.append(torch.stack(responses))
     after = system.state_dict()
     after_hash = _state_hash(after)
@@ -160,22 +162,27 @@ def capacity_metrics(commands_unclamped: torch.Tensor, physical_slm_intensity: t
 
 
 @torch.no_grad()
-def replay_capacity(system, prototype_commands: torch.Tensor, artifact: CodeBasisArtifactV2, supports: torch.Tensor, *, codes_per_label: int, command_gain: float = 0.1) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+def replay_capacity(system, prototype_commands: torch.Tensor, artifact: CodeBasisArtifactV2, supports: torch.Tensor, *, codes_per_label: int, command_gain: float = 0.1, microbatch_size: int = 1) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """Replay one fixed 100×10 basis experiment inside the frozen formal system."""
     if prototype_commands.shape[0] != 10 or prototype_commands.shape[1] != 1:
         raise ValueError("prototype commands must be [10, 1, H, W]")
+    if microbatch_size < 1:
+        raise ValueError("capacity replay microbatch must be positive")
     generator = torch.Generator(device="cpu").manual_seed(artifact.seed)
-    coefficients = torch.tanh(torch.randn(codes_per_label, 8, generator=generator, dtype=prototype_commands.dtype)).to(prototype_commands.device)
+    coefficients = torch.tanh(torch.randn(codes_per_label, 8, generator=generator, dtype=prototype_commands.dtype))
     commands = []
     cameras = []
     for label in range(10):
-        delta = torch.einsum("ck,khw->chw", coefficients, artifact.basis[label].to(prototype_commands.device)) / artifact.normalizer[label].to(prototype_commands.device)
-        unclamped = prototype_commands[label, 0].unsqueeze(0) + command_gain * delta
-        command = unclamped.clamp(0.0, 1.0).unsqueeze(1)
-        cameras.append(system.forward(system.command(command)).raw_camera.tensor.squeeze(1))
+        delta = torch.einsum("ck,khw->chw", coefficients, artifact.basis[label].cpu()) / artifact.normalizer[label].cpu()
+        unclamped = prototype_commands[label, 0].detach().cpu().unsqueeze(0) + command_gain * delta
+        label_cameras = []
+        for start in range(0, codes_per_label, microbatch_size):
+            command = unclamped[start : start + microbatch_size].clamp(0.0, 1.0).to(prototype_commands.device).unsqueeze(1)
+            label_cameras.append(system.forward(system.command(command)).raw_camera.tensor.squeeze(1).detach().cpu())
+        cameras.append(torch.cat(label_cameras))
         commands.append(unclamped)
     unclamped_commands = torch.stack(commands)
-    return unclamped_commands, unclamped_commands.clamp(0.0, 1.0).square(), torch.stack(cameras), coefficients
+    return unclamped_commands, unclamped_commands.clamp(0.0, 1.0).square(), torch.stack(cameras), coefficients.cpu()
 @dataclass(frozen=True)
 class DCTCandidateSet:
     directions: torch.Tensor  # [candidate, H, W]

@@ -8,6 +8,14 @@ import torch
 from ..contracts import ComplexField, OperationProvenance
 
 
+_PRODUCTION_TRANSFER_CACHE: dict[tuple[tuple[int, int], tuple[float, float], float, float, str, str], torch.Tensor] = {}
+
+
+def clear_production_transfer_cache() -> None:
+    """Test/support hook; the reference implementation intentionally has no cache."""
+    _PRODUCTION_TRANSFER_CACHE.clear()
+
+
 def _transfer_function(
     shape: tuple[int, int],
     *,
@@ -30,14 +38,18 @@ def angular_spectrum_propagate(field: ComplexField, distance_m: float, plane_id:
     """Production FFT ASM; it creates a new physical plane and provenance node."""
     if distance_m < 0.0:
         raise ValueError("formal v2 propagation distance must be non-negative")
-    transfer = _transfer_function(
-        field.plane.shape,
-        pixel_pitch_m=field.plane.pixel_pitch_m,
-        wavelength_m=field.plane.wavelength_m,
-        distance_m=distance_m,
-        device=field.tensor.device,
-        real_dtype=field.tensor.real.dtype,
-    )
+    key = (field.plane.shape, field.plane.pixel_pitch_m, field.plane.wavelength_m, distance_m, str(field.tensor.device), str(field.tensor.real.dtype))
+    transfer = _PRODUCTION_TRANSFER_CACHE.get(key)
+    if transfer is None:
+        transfer = _transfer_function(
+            field.plane.shape,
+            pixel_pitch_m=field.plane.pixel_pitch_m,
+            wavelength_m=field.plane.wavelength_m,
+            distance_m=distance_m,
+            device=field.tensor.device,
+            real_dtype=field.tensor.real.dtype,
+        )
+        _PRODUCTION_TRANSFER_CACHE[key] = transfer
     propagated = torch.fft.ifft2(torch.fft.fft2(field.tensor, norm="ortho") * transfer, norm="ortho")
     plane = field.plane.with_plane(plane_id, z_m=field.plane.z_m + distance_m)
     provenance = OperationProvenance(

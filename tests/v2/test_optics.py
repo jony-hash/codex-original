@@ -17,6 +17,7 @@ from ldm_project.v2.optics import (
     reference_angular_spectrum_propagate,
     reference_b0_imaging,
 )
+from ldm_project.v2.optics.propagation import _PRODUCTION_TRANSFER_CACHE, clear_production_transfer_cache
 
 
 def _field(shape: tuple[int, int] = (8, 8)) -> ComplexField:
@@ -31,6 +32,17 @@ def test_asm_reference_agrees_for_small_field() -> None:
     reference = reference_angular_spectrum_propagate(field, 1e-3, "reference")
     assert torch.allclose(production.tensor, reference.tensor, rtol=1e-3, atol=1e-3)
     assert production.provenance.propagation_distance_m == 1e-3
+
+
+def test_production_asm_cache_is_physics_and_dtype_scoped() -> None:
+    clear_production_transfer_cache()
+    field = _field()
+    first = angular_spectrum_propagate(field, 1e-3, "first")
+    second = angular_spectrum_propagate(field, 1e-3, "second")
+    assert torch.equal(first.tensor, second.tensor)
+    assert len(_PRODUCTION_TRANSFER_CACHE) == 1
+    angular_spectrum_propagate(field, 2e-3, "other-distance")
+    assert len(_PRODUCTION_TRANSFER_CACHE) == 2
 
 
 def test_identity_ols_is_complex_linear() -> None:

@@ -282,12 +282,12 @@ def _capacity(args: argparse.Namespace, config: V2Config) -> int:
     prototype_commands = bundle.generator.prototype_command(labels).detach()
     supports = (prototype_commands[:, 0] >= 0.2).to(prototype_commands.dtype)
     audit = config.capacity_audit
-    responses, unchanged, before_hash, after_hash = finite_difference_response_matrices(bundle.system, prototype_commands, supports, candidate_count=audit.dct_modes, epsilon=audit.finite_difference_epsilon, pixel_pitch_m=(config.system.slm_pixel_pitch_m, config.system.slm_pixel_pitch_m), max_cycles_per_mm=audit.max_cycles_per_mm)
-    artifact = build_code_basis(responses, supports, candidate_count=audit.dct_modes, seed=audit.seed, source_hash=prototype.evidence_hash, pixel_pitch_m=(config.system.slm_pixel_pitch_m, config.system.slm_pixel_pitch_m), max_cycles_per_mm=audit.max_cycles_per_mm)
-    commands, slm_intensity, camera, coefficients = replay_capacity(bundle.system, prototype_commands, artifact, supports, codes_per_label=audit.codes_per_label, command_gain=audit.command_gain)
+    responses, unchanged, before_hash, after_hash = finite_difference_response_matrices(bundle.system, prototype_commands, supports, candidate_count=audit.dct_modes, epsilon=audit.finite_difference_epsilon, pixel_pitch_m=(config.system.slm_pixel_pitch_m, config.system.slm_pixel_pitch_m), max_cycles_per_mm=audit.max_cycles_per_mm, microbatch_size=config.execution.capacity_microbatch_size)
+    artifact = build_code_basis(responses, supports.cpu(), candidate_count=audit.dct_modes, seed=audit.seed, source_hash=prototype.evidence_hash, pixel_pitch_m=(config.system.slm_pixel_pitch_m, config.system.slm_pixel_pitch_m), max_cycles_per_mm=audit.max_cycles_per_mm)
+    commands, slm_intensity, camera, coefficients = replay_capacity(bundle.system, prototype_commands, artifact, supports, codes_per_label=audit.codes_per_label, command_gain=audit.command_gain, microbatch_size=config.execution.capacity_microbatch_size)
     trace = bundle.system.forward(bundle.system.command(prototype_commands[:1]), return_optical_trace=True).optical_trace
     provenance_complete = trace is not None and all(field.provenance.upstream_plane is not None or field.provenance.operation == "ideal_amplitude_slm" for field in trace)
-    slm_factor, camera_factor, support_energy, clipping = capacity_metrics(commands, slm_intensity, camera, supports)
+    slm_factor, camera_factor, support_energy, clipping = capacity_metrics(commands, slm_intensity, camera, supports.cpu())
     gate = capacity_gate(CapacityMetrics(slm_factor, camera_factor, support_energy, clipping, unchanged, False, provenance_complete), prototype.gates[0])
     run = _new_run(config)
     basis_path = run.root / "code_basis.pt"
@@ -303,9 +303,20 @@ def _capacity(args: argparse.Namespace, config: V2Config) -> int:
     return 0
 
 
-def _teacher_dataset(manifest: TeacherTargetManifestV2, device: torch.device) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    payload = torch.load(manifest.dataset.path, map_location=device, weights_only=False)
-    return payload["codes"].to(device), payload["class_labels"].to(device).long(), payload["teacher_camera"].to(device)
+def _teacher_dataset(manifest: TeacherTargetManifestV2) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    payload = torch.load(manifest.dataset.path, map_location="cpu", weights_only=False)
+    return payload["codes"].cpu(), payload["class_labels"].cpu().long(), payload["teacher_camera"].cpu()
+
+
+@torch.no_grad()
+def _stream_raw(bundle: StudentBundle, codes: torch.Tensor, labels: torch.Tensor, *, device: torch.device, microbatch_size: int) -> torch.Tensor:
+    if microbatch_size < 1:
+        raise ValueError("evaluation microbatch must be positive")
+    rows = []
+    for start in range(0, codes.shape[0], microbatch_size):
+        result = bundle.system.forward_from_generator(bundle.generator, codes[start : start + microbatch_size].to(device), labels[start : start + microbatch_size].to(device))
+        rows.append(result.raw_camera.tensor.detach().cpu())
+    return torch.cat(rows)
 
 
 def _train(args: argparse.Namespace, config: V2Config) -> int:
@@ -322,7 +333,7 @@ def _train(args: argparse.Namespace, config: V2Config) -> int:
     device = torch.device(config.run.device)
     bundle = StudentBundle(config, basis).to(device)
     warm = load_prototype_warm_start(args.prototype_checkpoint, bundle, expected_system_signature=_system_signature(config))
-    codes, labels, targets = _teacher_dataset(target, device)
+    codes, labels, targets = _teacher_dataset(target)
     settings = config.student_training
     summary = train_code_conditioned(bundle.system, bundle.generator, codes, labels, targets, exposure_scale=config.prototype_calibration.fixed_exposure_scale, prototype_evidence=prototype, capacity_evidence=capacity, expected_basis_hash=basis.artifact_hash, epochs=settings.epochs, learning_rate=settings.learning_rate, batch_size=settings.batch_size, weights={"prototype": settings.prototype_fidelity_weight, "paired_residual": settings.paired_teacher_residual_weight, "code_transport": settings.code_transport_weight, "clipping": settings.clipping_weight, "saturation": settings.saturation_weight, "phase_tv": settings.phase_tv_weight}, allow_diagnostic_evidence=diagnostic)
     run = _new_run(config)
@@ -370,8 +381,8 @@ def _evaluate(args: argparse.Namespace, config: V2Config) -> int:
     diagnostic = not config.system.is_formal and config.run.evidence_tier == "diagnostic"
     require_evidence_action(training, kind="code_training", action="diagnostic_evaluate_smoke" if diagnostic else "evaluate", expected_context=_context(config, teacher_manifest_hash=target.teacher_pair_manifest_hash, dataset_hash=target.dataset_hash, checkpoint_hash=checkpoint_hash, basis_hash=basis.artifact_hash), allow_diagnostic=diagnostic)
     bundle, _ = _load_student_bundle(config, args.code_basis, args.checkpoint, device=device)
-    codes, labels, teacher = _teacher_dataset(target, device)
-    raw = bundle.system.forward_from_generator(bundle.generator, codes, labels).raw_camera.tensor
+    codes, labels, teacher = _teacher_dataset(target)
+    raw = _stream_raw(bundle, codes, labels, device=device, microbatch_size=config.execution.evaluation_microbatch_size)
     normalized = (raw / config.prototype_calibration.fixed_exposure_scale).clamp(0.0, 1.0)
     camera_fraction, teacher_corr, teacher_dice = acceptance_metrics(raw, teacher, labels)
     lower_bound = paired_advantage_lower_bound(normalized, teacher, labels)
