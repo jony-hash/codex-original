@@ -20,8 +20,8 @@ v2 从 v79 研究快照旁路重写而来；两线的范围、回档点和发布
 
 1. `student export-clean-targets` 只从本地 MNIST 的 train split 构造固定 `0–9`、每类 128 张平均的 `[10,1,200,200]` clean target；不下载数据，并原子写入内容寻址 manifest。
 2. `teacher manifest` 固定 first-stage/diffusion pair；`teacher export-targets` 使用 v2 的 8 维、每类 100 个 export 配置，先验证 pair manifest，再原子写入 target bundle 与 target manifest。历史 128 维 bundle 不能截断后复用。
-3. `student calibrate-prototypes` 只产生冻结 checkpoint、raw-CMOS replay、固定曝光预览、review 模板、数值/显存测量和 `pending_review` evidence；它不在同一命令内伪造人工结论。
-4. 人工查看该 replay 后运行 `student admit-prototypes`。review 必须同时绑定 replay tensor 与固定曝光 preview SHA-256，且 `readable_labels` 严格为 `0–9`。
+3. `student calibrate-prototypes` 必须消费 clean-target manifest；自动 measurement gate 失败会直接签发 `failed` evidence。只有自动指标通过时，才产生冻结 checkpoint、raw-CMOS replay、固定曝光预览、未填写 review 模板和 `pending_review` evidence。
+4. 人工查看该 replay 后运行 `student admit-prototypes`。review 必须同时绑定 replay tensor 与固定曝光 preview SHA-256；它可记录不可读标签子集，但只有完整 `0–9` 才能通过 gate。
 4. `audit capacity` 从冻结 amplitude prototype 的 `>=0.2` support 内部构造物理 `<=20 cycles/mm` DCT 候选、SVD basis 与固定 code replay；不接受外部 command/camera/support 绕过。
 5. 只有 clean-commit acceptance 的 passed capacity evidence 才能启动 `student train`。训练读取一个 target manifest，而非无关联的散装 tensor。
 6. `student evaluate` exact-load checkpoint 并流式重放 raw CMOS，输出待审 tensor、固定曝光 preview 和 review 模板。`student admit-evaluation` 仅复核这些内容绑定工件，不重跑光路，才形成 passed/failed acceptance。任何命令都不会自动 promotion checkpoint。
@@ -45,8 +45,8 @@ python -m ldm_project.v2 student preflight --config configs/v2/formal_amplitude_
 python -m ldm_project.v2 student export-clean-targets --config configs/v2/formal_amplitude_finite_crop_identity.yaml --dataset-root data --output <clean.pt> --manifest <clean.json>
 python -m ldm_project.v2 teacher manifest --config configs/v2/formal_amplitude_finite_crop_identity.yaml --split train
 python -m ldm_project.v2 teacher export-targets --config configs/v2/formal_amplitude_finite_crop_identity.yaml --legacy-train-config configs/export_teacher_distill_mnist_v2_formal_8d.yaml --teacher-manifest <pair.json> --output <targets.pt> --target-manifest <targets.json>
-python -m ldm_project.v2 student calibrate-prototypes --config configs/v2/formal_amplitude_finite_crop_identity.yaml --clean-targets <clean.pt>
-python -m ldm_project.v2 student admit-prototypes --config configs/v2/formal_amplitude_finite_crop_identity.yaml --calibration-evidence <calibration.json> --prototype-checkpoint <prototype.pt> --prototype-raw-cmos <raw.pt> --prototype-preview <preview.png> --measurements <measurements.json> --clean-targets <clean.pt> --manual-review <review.json>
+python -m ldm_project.v2 student calibrate-prototypes --config configs/v2/formal_amplitude_finite_crop_identity.yaml --clean-target-manifest <clean.json>
+python -m ldm_project.v2 student admit-prototypes --config configs/v2/formal_amplitude_finite_crop_identity.yaml --calibration-evidence <calibration.json> --prototype-checkpoint <prototype.pt> --prototype-raw-cmos <raw.pt> --prototype-preview <preview.png> --measurements <measurements.json> --clean-target-manifest <clean.json> --manual-review <review.json>
 python -m ldm_project.v2 audit capacity --config configs/v2/formal_amplitude_finite_crop_identity.yaml --prototype-evidence <prototype.json> --prototype-checkpoint <prototype.pt>
 python -m ldm_project.v2 student train --config configs/v2/formal_amplitude_finite_crop_identity.yaml --prototype-evidence <prototype.json> --capacity-evidence <capacity.json> --prototype-checkpoint <prototype.pt> --code-basis <basis.pt> --teacher-target-manifest <targets.json>
 python -m ldm_project.v2 student evaluate --config configs/v2/formal_amplitude_finite_crop_identity.yaml --training-evidence <training.json> --code-basis <basis.pt> --checkpoint <student.pt> --teacher-target-manifest <targets.json> --output <pending-evaluation.json>

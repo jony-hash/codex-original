@@ -31,6 +31,6 @@ v79 以固定 label-only normalization 对八维 supported basis 做 CPU 上界�
 
 ## 下一允许动作
 
-v2 的正式执行顺序固定为：clean commit 上的 `student preflight` → local clean-target manifest → teacher pair manifest → 8D atomic target export/target manifest → `student calibrate-prototypes` → `student admit-prototypes` → `audit capacity` → `student train` → `student evaluate` → `student admit-evaluation`。prototype 或 capacity gate 失败时，后续训练、test、导出和 promotion 自动关闭；CPU diagnostic evidence 只能显式授权 diagnostic smoke，不能跨入 formal 链。preflight 通过只授权用户进入 prototype gate，不构成 capacity、科学或 promotion acceptance。
+v2 的正式执行顺序固定为：clean commit 上的 `student preflight` → local clean-target manifest → teacher pair manifest → 8D atomic target export/target manifest → `student calibrate-prototypes` → `student admit-prototypes` → `audit capacity` → `student train` → `student evaluate` → `student admit-evaluation`。prototype calibration 的自动 corr/dice/accuracy/saturation/finite/gradient/memory/epoch gate 任一失败会直接停止，不进入人工审阅；CPU diagnostic evidence 只能显式授权 diagnostic smoke，不能跨入 formal 链。preflight 通过只授权用户进入 prototype gate，不构成 capacity、科学或 promotion acceptance。
 
 在具备 clean commit、匹配 teacher/data/checkpoint/calibration hash、固定曝光与人工审查输入后，由用户在 CUDA 上依序运行 v2 的 prototype 与 capacity gate。未取得这些证据前，不改写 v1 科学结论，不将 v2 设为默认入口，也不签发 acceptance。
