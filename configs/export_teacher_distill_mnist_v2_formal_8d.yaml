@@ -1,10 +1,105 @@
-# Legacy teacher-export adapter configuration for the formal v2 8D dataset.
-# It is intentionally distinct from historical 128D exports.
-mode: teacher_distill_export
-dataset: mnist
-data_root: data
-image_size: 200
-code_dim: 8
-samples_per_class: 100
-seed: 1234
-guidance_scale: 4.0
+# v1 teacher-export adapter input for the formal v2 8D paired dataset.
+# Architecture fields match the established guidance-4 teacher export contract;
+# only the exported code geometry and sample count differ from historical 128D bundles.
+training:
+  mode: teacher_distill_export
+  batch_size: 96
+  learning_rate: 1.0e-4
+  step_log_interval: 20
+  visual_save_epoch_interval: 1
+  validation_epoch_interval: 1
+  first_stage_epochs: 0
+  diffusion_epochs: 0
+  one_shot_epochs: 0
+
+data:
+  dataset: mnist
+  root: data
+  download: false
+  validation_fraction: 0.1
+  validation_split_seed: 42
+  subset_size: 100
+  subset_seed: 42
+  num_workers: 0
+  pin_memory: true
+
+first_stage:
+  type: optical_path_vae
+  image_size: 200
+  latent_channels: 1
+  encoder_channels: [64, 128, 256]
+  decoder_tail_channels: 64
+  readout_plane: camera
+  latent_position: post_encoder_pre_ols
+  ols:
+    kind: gelu
+  encoder_fusion_mode: optical_only
+  optical_encoder_input_mode: pf2_complex_field
+  optical_encoder_arch: linear_metasurface
+  metasurface_decoder_arch: linear_metasurface
+  linear_metasurface_grid_size: 40
+  linear_metasurface_layer_spacing: 0.003
+  image_fusion_start_weight: 0.0
+  image_fusion_end_weight: 0.0
+  image_fusion_decay_epochs: 1
+  optical_field_mode: complex_cartesian
+  primary_output: camera
+  freeze_after_pretrain: true
+  kl_beta: 3.0e-5
+  kl_warmup_ratio: 0.1
+  recon_foreground_threshold: 0.05
+  recon_foreground_weight: 3.0
+  recon_background_weight: 1.0
+  image_recon_weight: 0.0
+  camera_recon_weight: 1.0
+  structure_recon_weight: 0.25
+  shape_recon_weight: 0.75
+  field_smoothness_weight: 0.01
+  phase_smoothness_weight: 0.005
+  field_energy_weight: 0.01
+  background_leakage_weight: 0.2
+  camera_hotspot_weight: 0.25
+  camera_topology_weight: 0.15
+  camera_saturation_weight: 0.05
+  camera_artifact_weight: 0.55
+  electronic_domain:
+    mode: mnist_complex_slm
+    background_floor: 0.05
+    gamma: 1.0
+    polarity: non_inverted
+    phase_scale_rad: 3.141592653589793
+    phase_bias_rad: 0.0
+
+diffusion:
+  timesteps: 1000
+  beta_start: 1.0e-4
+  beta_end: 0.02
+  base_channels: 64
+  channel_multipliers: [1, 2, 4]
+  num_res_blocks: 2
+  attention_levels: [1, 2]
+  num_heads: 4
+  context_dim: 128
+  num_classes: 10
+  cond_dropout_prob: 0.1
+  latent_source: mu
+  guidance_scale: 4.0
+
+one_shot:
+  code_dim: 8
+  label_embed_dim: 32
+  hidden_dim: 256
+  num_classes: 10
+  slm_background_floor: 0.05
+  ols_kind: gelu
+  metasurface_grid_size: 16
+  layer_spacing: 0.003
+  sample_class_labels: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+  sample_repeats_per_class: 2
+
+distillation:
+  samples_per_class: 100
+  class_labels: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+  code_seed: 1234
+  code_projection_seed: 2026
+  sampling_steps: 200
