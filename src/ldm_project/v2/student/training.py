@@ -23,6 +23,8 @@ class PrototypeCalibrationSummary:
     clean_dice: float
     high_saturation: float
     gradients_finite: bool
+    prototype_accuracy: float
+    epoch_history: tuple[dict[str, float], ...]
 
 
 @dataclass(frozen=True)
@@ -63,7 +65,8 @@ def calibrate_prototypes(
     code = torch.zeros(10, generator.code_dim, device=clean_targets.device)
     last_loss = torch.tensor(float("nan"), device=clean_targets.device)
     gradients_finite = True
-    for _ in range(epochs):
+    history: list[dict[str, float]] = []
+    for epoch in range(epochs):
         optimizer.zero_grad(set_to_none=True)
         result = system.forward_from_generator(generator, code, labels)
         raw = result.raw_camera.tensor
@@ -73,10 +76,18 @@ def calibrate_prototypes(
         gradients_finite = gradients_finite and all(parameter.grad is None or torch.isfinite(parameter.grad).all() for parameter in trainable)
         optimizer.step()
         last_loss = loss.detach()
+        with torch.no_grad():
+            observed = system.forward_from_generator(generator, code, labels).raw_camera.tensor
+            normalized = (observed / exposure_scale).clamp(0.0, 1.0)
+            history.append({"epoch": float(epoch + 1), "loss": float(last_loss.item()), "corr": float(correlation(normalized, clean_targets).mean().item()), "dice": float(foreground_dice(normalized, clean_targets).mean().item()), "high_saturation": float(high_saturation_ratio(observed, exposure_scale).item())})
     with torch.no_grad():
         result = system.forward_from_generator(generator, code, labels)
         normalized = (result.raw_camera.tensor / exposure_scale).clamp(0.0, 1.0)
-        return PrototypeCalibrationSummary(float(last_loss.item()), float(correlation(normalized, clean_targets).mean().item()), float(foreground_dice(normalized, clean_targets).mean().item()), float(high_saturation_ratio(result.raw_camera.tensor, exposure_scale).item()), gradients_finite)
+        pair_prediction = normalized[:, None].expand(10, 10, *normalized.shape[1:]).reshape(100, *normalized.shape[1:])
+        pair_target = clean_targets[None].expand(10, 10, *clean_targets.shape[1:]).reshape(100, *clean_targets.shape[1:])
+        corr_matrix = correlation(pair_prediction, pair_target).reshape(10, 10)
+        accuracy = (corr_matrix.argmax(dim=1) == labels).to(torch.float32).mean()
+        return PrototypeCalibrationSummary(float(last_loss.item()), float(correlation(normalized, clean_targets).mean().item()), float(foreground_dice(normalized, clean_targets).mean().item()), float(high_saturation_ratio(result.raw_camera.tensor, exposure_scale).item()), gradients_finite, float(accuracy.item()), tuple(history))
 
 
 def train_code_conditioned(

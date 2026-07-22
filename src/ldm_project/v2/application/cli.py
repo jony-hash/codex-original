@@ -11,11 +11,11 @@ import torch
 from torch import nn
 
 from ..config import V2Config, load_config
-from ..evidence import EvidenceRecordV2, GateResult, atomic_write_json, canonical_sha256, require_passed_evidence
+from ..evidence import EvidenceRecordV2, GateResult, atomic_torch_save, atomic_write_json, canonical_sha256, file_sha256, require_passed_evidence, tensor_artifact_ref
 from ..optics import FormalAmplitudeFiniteCropIdentitySystem
 from ..student.admission import CapacityMetrics, PrototypeMetrics, capacity_gate, prototype_gate
-from ..student.capacity import CodeBasisArtifactV2, build_code_basis, capacity_metrics, finite_difference_response_matrices
-from ..student.checkpoints import CheckpointManifestV2, load_exact_checkpoint, save_exact_checkpoint, state_signature
+from ..student.capacity import CodeBasisArtifactV2, build_code_basis, capacity_metrics, finite_difference_response_matrices, replay_capacity
+from ..student.checkpoints import CheckpointManifestV2, load_exact_checkpoint, load_prototype_warm_start, save_exact_checkpoint, state_signature
 from ..student.generator import LabelPrototypeBasisGenerator
 from ..student.metrics import correlation, foreground_dice
 from ..student.training import calibrate_prototypes, train_code_conditioned
@@ -66,6 +66,18 @@ def _manual_labels(path: str | None) -> list[int] | None:
     return labels if isinstance(labels, list) else None
 
 
+def _memory_gate(device: torch.device, baseline_reserved: int, baseline_allocated: int) -> tuple[bool, dict[str, float | bool]]:
+    if device.type != "cuda":
+        return False, {"cuda_measured": False}
+    properties = torch.cuda.get_device_properties(device)
+    reserved = torch.cuda.memory_reserved(device)
+    allocated = torch.cuda.memory_allocated(device)
+    delta_reserved = max(0, reserved - baseline_reserved)
+    free_after_model = max(1, properties.total_memory - baseline_reserved)
+    passed = delta_reserved <= 0.85 * free_after_model and reserved <= 0.90 * properties.total_memory
+    return passed, {"cuda_measured": True, "allocated_baseline": float(baseline_allocated), "reserved_baseline": float(baseline_reserved), "allocated_peak": float(allocated), "reserved_peak": float(reserved), "reserved_delta": float(delta_reserved), "total_memory": float(properties.total_memory)}
+
+
 def _legacy_teacher(args: argparse.Namespace, config: V2Config, stage: str) -> None:
     command = [sys.executable, "train.py", "--train-config", args.legacy_train_config, "--stage", stage, "--device", config.run.device]
     subprocess.run(command, check=True)
@@ -87,16 +99,20 @@ def _calibrate(args: argparse.Namespace, config: V2Config) -> int:
     device = torch.device(config.run.device)
     clean_targets = _tensor(args.clean_targets, device=device)
     run = V2Run.create(output_root=config.run.output_root, run_name=config.run.run_name, config_payload=config.model_dump(mode="json"))
+    baseline_allocated = torch.cuda.memory_allocated(device) if device.type == "cuda" else 0
+    baseline_reserved = torch.cuda.memory_reserved(device) if device.type == "cuda" else 0
     basis = _zero_basis(config.system.slm_shape)
     bundle = StudentBundle(config, basis).to(device)
     summary = calibrate_prototypes(bundle.system, bundle.generator, clean_targets, exposure_scale=config.prototype_calibration.fixed_exposure_scale, epochs=config.prototype_calibration.epochs, learning_rate=config.prototype_calibration.learning_rate)
-    metrics = PrototypeMetrics(summary.clean_corr, summary.clean_dice, args.prototype_accuracy, summary.high_saturation, torch.isfinite(torch.tensor(summary.loss)).item(), summary.gradients_finite, True, True)
+    memory_pass, memory_report = _memory_gate(device, baseline_reserved, baseline_allocated)
+    stable = len(summary.epoch_history) >= 2 and summary.epoch_history[-1]["loss"] <= summary.epoch_history[-2]["loss"] and summary.epoch_history[-1]["corr"] >= summary.epoch_history[-2]["corr"] and summary.epoch_history[-1]["dice"] >= summary.epoch_history[-2]["dice"]
+    metrics = PrototypeMetrics(summary.clean_corr, summary.clean_dice, summary.prototype_accuracy, summary.high_saturation, torch.isfinite(torch.tensor(summary.loss)).item(), summary.gradients_finite, memory_pass, stable)
     gate = prototype_gate(metrics, _manual_labels(args.manual_review))
     status = "passed" if gate.passed and config.run.evidence_tier == "acceptance" and run.dirty_patch_hash is None else "diagnostic"
-    record = EvidenceRecordV2(2, "prototype", config.run.evidence_tier, status, run.git_commit, run.dirty_patch_hash, run.config_hash, {"clean_targets": canonical_sha256(str(Path(args.clean_targets).resolve()))}, (gate,), ("audit_capacity",) if status == "passed" else ())
+    record = EvidenceRecordV2(2, "prototype", config.run.evidence_tier, status, run.git_commit, run.dirty_patch_hash, run.config_hash, {"clean_targets": file_sha256(args.clean_targets), "manual_review": file_sha256(args.manual_review) if args.manual_review else "missing", "system": canonical_sha256(config.system.model_dump(mode="json"))}, (gate,), ("audit_capacity",) if status == "passed" else ())
     _write_record(run, "prototype_evidence.json", record)
-    manifest = _bundle_manifest(config, bundle, dataset_hash=canonical_sha256(str(Path(args.clean_targets).resolve())), calibration_hash=basis.artifact_hash)
-    save_exact_checkpoint(run.root / "prototype_bundle.pt", bundle, manifest, extra={"basis_artifact_hash": basis.artifact_hash})
+    manifest = _bundle_manifest(config, bundle, dataset_hash=file_sha256(args.clean_targets), calibration_hash=basis.artifact_hash)
+    save_exact_checkpoint(run.root / "prototype_bundle.pt", bundle, manifest, extra={"basis_artifact_hash": basis.artifact_hash, "epoch_history": summary.epoch_history, "memory": memory_report, "clean_targets": tensor_artifact_ref(args.clean_targets, role="clean_targets", git_commit=run.git_commit).to_dict()})
     print(run.root)
     return 0
 
@@ -108,48 +124,23 @@ def _capacity(args: argparse.Namespace, config: V2Config) -> int:
     require_passed_evidence(prototype, kind="prototype")
     device = torch.device(config.run.device)
     supports = _tensor(args.supports, device=device)
-    commands = _tensor(args.commands, device=device)
-    slm_intensity = _tensor(args.slm_intensity, device=device)
-    camera = _tensor(args.raw_camera, device=device)
-    parameters_unchanged = True
-    if args.response_matrices is not None:
-        responses = _tensor(args.response_matrices, device=device)
-    else:
-        if args.prototype_checkpoint is None:
-            raise ValueError("finite-difference capacity audit requires --prototype-checkpoint")
-        bundle = StudentBundle(config, _zero_basis(config.system.slm_shape)).to(device)
-        _warm_start_prototype(bundle, args.prototype_checkpoint)
-        responses, parameters_unchanged = finite_difference_response_matrices(
-            bundle.system,
-            _tensor(args.prototype_commands, device=device),
-            supports,
-            candidate_count=config.capacity_audit.dct_modes,
-            epsilon=config.capacity_audit.finite_difference_epsilon,
-        )
+    bundle = StudentBundle(config, _zero_basis(config.system.slm_shape)).to(device)
+    loaded = load_prototype_warm_start(args.prototype_checkpoint, bundle)
+    labels = torch.arange(10, device=device)
+    prototype_commands = bundle.generator(torch.zeros(10, bundle.generator.code_dim, device=device), labels).detach()
+    responses, parameters_unchanged = finite_difference_response_matrices(bundle.system, prototype_commands, supports, candidate_count=config.capacity_audit.dct_modes, epsilon=config.capacity_audit.finite_difference_epsilon)
     artifact = build_code_basis(responses, supports, candidate_count=config.capacity_audit.dct_modes, seed=config.capacity_audit.seed, source_hash=prototype.evidence_hash)
+    commands, slm_intensity, camera, coefficients = replay_capacity(bundle.system, prototype_commands, artifact, supports, codes_per_label=config.capacity_audit.codes_per_label)
     slm_factor, camera_factor, support_energy, clipping = capacity_metrics(commands, slm_intensity, camera, supports)
     gate = capacity_gate(CapacityMetrics(slm_factor, camera_factor, support_energy, clipping, parameters_unchanged, False, True), prototype.gates[0])
     run = V2Run.create(output_root=config.run.output_root, run_name=config.run.run_name, config_payload=config.model_dump(mode="json"))
     status = "passed" if gate.passed and config.run.evidence_tier == "acceptance" and run.dirty_patch_hash is None else "diagnostic"
-    record = EvidenceRecordV2(2, "capacity", config.run.evidence_tier, status, run.git_commit, run.dirty_patch_hash, run.config_hash, {"prototype_evidence": prototype.evidence_hash, "basis": artifact.artifact_hash}, (gate,), ("train",) if status == "passed" else ())
+    record = EvidenceRecordV2(2, "capacity", config.run.evidence_tier, status, run.git_commit, run.dirty_patch_hash, run.config_hash, {"prototype_evidence": prototype.evidence_hash, "prototype_checkpoint": file_sha256(args.prototype_checkpoint), "supports": file_sha256(args.supports), "basis": artifact.artifact_hash, "system": canonical_sha256(config.system.model_dump(mode="json"))}, (gate,), ("train",) if status == "passed" else ())
     _write_record(run, "capacity_evidence.json", record)
     artifact.save(str(run.root / "code_basis.pt"))
+    atomic_torch_save(run.root / "capacity_replay.pt", {"unclamped_commands": commands.cpu(), "slm_intensity": slm_intensity.cpu(), "raw_camera": camera.cpu(), "coefficients": coefficients.cpu(), "singular_values": artifact.singular_values.cpu() if artifact.singular_values is not None else None, "warm_start": loaded})
     print(run.root)
     return 0
-
-
-def _warm_start_prototype(bundle: StudentBundle, checkpoint: str) -> None:
-    payload = torch.load(checkpoint, map_location="cpu", weights_only=False)
-    state = payload.get("state_dict") if isinstance(payload, dict) else None
-    if not isinstance(state, dict):
-        raise ValueError("prototype checkpoint is invalid")
-    allowed = ("generator.template_logits", "system.encoder.phase", "system.decoder.phase")
-    target = bundle.state_dict()
-    for key in allowed:
-        if key not in state or key not in target or state[key].shape != target[key].shape:
-            raise ValueError(f"prototype warm-start lacks compatible {key}")
-        target[key].copy_(state[key])
-    bundle.load_state_dict(target, strict=True)
 
 
 def _train(args: argparse.Namespace, config: V2Config) -> int:
@@ -162,7 +153,7 @@ def _train(args: argparse.Namespace, config: V2Config) -> int:
     device = torch.device(config.run.device)
     basis = CodeBasisArtifactV2.load(args.code_basis)
     bundle = StudentBundle(config, basis).to(device)
-    _warm_start_prototype(bundle, args.prototype_checkpoint)
+    load_prototype_warm_start(args.prototype_checkpoint, bundle)
     summary = train_code_conditioned(bundle.system, bundle.generator, _tensor(args.codes, device=device), _tensor(args.labels, device=device).long(), _tensor(args.teacher_targets, device=device), exposure_scale=args.exposure_scale, prototype_evidence=prototype, capacity_evidence=capacity, expected_basis_hash=basis.artifact_hash, epochs=config.student_training.epochs, learning_rate=config.student_training.learning_rate)
     run = V2Run.create(output_root=config.run.output_root, run_name=config.run.run_name, config_payload=config.model_dump(mode="json"))
     manifest = _bundle_manifest(config, bundle, dataset_hash=canonical_sha256(str(Path(args.teacher_targets).resolve())), calibration_hash=basis.artifact_hash)
@@ -182,7 +173,7 @@ def _sample(args: argparse.Namespace, config: V2Config) -> int:
     expected = _bundle_manifest(config, bundle, dataset_hash=manifest.dataset_hash, calibration_hash=basis.artifact_hash)
     load_exact_checkpoint(args.checkpoint, bundle, expected)
     result = bundle.system.forward_from_generator(bundle.generator, _tensor(args.codes, device=device), _tensor(args.labels, device=device).long())
-    torch.save(result.raw_camera.tensor.detach().cpu(), args.output)
+    atomic_torch_save(args.output, result.raw_camera.tensor.detach().cpu())
     return 0
 
 
@@ -212,7 +203,6 @@ def _parser() -> argparse.ArgumentParser:
     calibrate.add_argument("--config", required=True)
     calibrate.add_argument("--clean-targets", required=True)
     calibrate.add_argument("--manual-review")
-    calibrate.add_argument("--prototype-accuracy", type=float, default=0.0)
     calibrate.set_defaults(handler=lambda args: _calibrate(args, load_config(args.config)))
     train = student.add_parser("train")
     for name in ("prototype_evidence", "capacity_evidence", "code_basis", "prototype_checkpoint", "codes", "labels", "teacher_targets"):
@@ -233,12 +223,8 @@ def _parser() -> argparse.ArgumentParser:
     evaluate.set_defaults(handler=lambda args: _evaluate(args, load_config(args.config)))
     audit = root.add_parser("audit").add_subparsers(dest="action", required=True)
     capacity = audit.add_parser("capacity")
-    for name in ("prototype_evidence", "supports", "commands", "slm_intensity", "raw_camera"):
+    for name in ("prototype_evidence", "prototype_checkpoint", "supports"):
         capacity.add_argument("--" + name.replace("_", "-"), required=True)
-    response_source = capacity.add_mutually_exclusive_group(required=True)
-    response_source.add_argument("--response-matrices")
-    response_source.add_argument("--prototype-commands")
-    capacity.add_argument("--prototype-checkpoint")
     capacity.add_argument("--config", required=True)
     capacity.set_defaults(handler=lambda args: _capacity(args, load_config(args.config)))
     evidence = root.add_parser("evidence").add_subparsers(dest="action", required=True)
