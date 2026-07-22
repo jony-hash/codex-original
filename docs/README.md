@@ -11,6 +11,7 @@
 - 迁移或续接当前实验：[当前主线交接（v57 后）](ldm_migration/current_handoff.md)（时效性状态快照，下一决策门后刷新）
 - 历史实验与验收证据：[D2NN 实验与验收历史](ldm_migration/experiment_history.md)
 - 归档配置与诊断源码：[实验归档清单](../experiments/archive/manifest.yaml)（仅供溯源，`diagnostic-only`）
+- 旁路重写运行时：[v2 Contract-First Runtime](v2/README.md)（不替换 v1 默认入口）
 
 ## Choose By Task
 
@@ -22,6 +23,7 @@
 | 解释图片和 tensor bundle | [输出与可视化说明](output_JIESHI.md) | artifact 路径、张量语义、诊断图读取方式 |
 | 迁移或续接当前实验 | [当前主线交接（v57 后）](ldm_migration/current_handoff.md) | 当前合同、有效证据、停止规则与下一决策门 |
 | 查阅过去的结果 | [实验与验收历史](ldm_migration/experiment_history.md) | 日期、指标、负结果、回归证据 |
+| 使用旁路 v2 runtime | [v2 Contract-First Runtime](v2/README.md) | 类型化物理合同、evidence gate 与独立 CLI |
 | 约束 Codex 执行 | [AGENTS.md](../AGENTS.md) | 仓库执行策略与不可变边界 |
 
 ## Source Of Truth

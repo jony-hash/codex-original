@@ -56,6 +56,10 @@ v56/v60 在该合同上完成了两次同配置短训练；strict provenance 有
 
 `v9.10 label-template inverse prototype baseline` 仅是历史 label-template prototype：它明确忽略 code，不能证明 code-conditioned 多样性或最终 generative student readiness。历史证据见 [v9.10 record](docs/ldm_migration/acceptance_v9_10_label_template_inverse_20260622.json)。
 
+## v2 Side-by-Side Runtime
+
+`ldm_project.v2` 是新的 contract-first 旁路实现，使用类型化 plane/field、严格 checkpoint manifest、prototype/capacity gate 和独立子命令 CLI。它保持 amplitude SLM、finite-crop、identity OLS 与现行正式几何，但尚未替换 `train.py` 或签发任何 student promotion。使用说明见 [v2 runtime](docs/v2/README.md)。
+
 ## Repository Map
 
 | Path | Responsibility |
