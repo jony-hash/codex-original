@@ -17,8 +17,8 @@ from ..student.admission import CapacityMetrics, PrototypeMetrics, capacity_gate
 from ..student.capacity import CodeBasisArtifactV2, build_code_basis, capacity_metrics, finite_difference_response_matrices, replay_capacity
 from ..student.checkpoints import CheckpointManifestV2, load_exact_checkpoint, load_prototype_warm_start, save_exact_checkpoint, state_signature
 from ..student.generator import LabelPrototypeBasisGenerator
-from ..student.metrics import correlation, foreground_dice
 from ..student.training import calibrate_prototypes, train_code_conditioned
+from ..student.evaluation import CodeAcceptanceMetrics, acceptance_metrics, code_acceptance_gate, paired_advantage_lower_bound
 from ..teacher import build_teacher_pair_manifest
 from .runs import V2Run
 
@@ -178,10 +178,25 @@ def _sample(args: argparse.Namespace, config: V2Config) -> int:
 
 
 def _evaluate(args: argparse.Namespace, config: V2Config) -> int:
-    prediction = _tensor(args.predictions, device=torch.device("cpu"))
-    target = _tensor(args.targets, device=torch.device("cpu"))
-    metrics = {"corr": float(correlation(prediction, target).mean().item()), "dice": float(foreground_dice(prediction, target).mean().item()), "diagnostic_only": True}
-    atomic_write_json(args.output, metrics)
+    device = torch.device(config.run.device)
+    basis = CodeBasisArtifactV2.load(args.code_basis)
+    bundle = StudentBundle(config, basis).to(device)
+    payload = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
+    manifest = CheckpointManifestV2(**payload["manifest"])
+    expected = _bundle_manifest(config, bundle, dataset_hash=manifest.dataset_hash, calibration_hash=basis.artifact_hash)
+    load_exact_checkpoint(args.checkpoint, bundle, expected)
+    codes = _tensor(args.codes, device=device)
+    labels = _tensor(args.labels, device=device).long()
+    target = _tensor(args.teacher_targets, device=device)
+    prediction = bundle.system.forward_from_generator(bundle.generator, codes, labels).raw_camera.tensor
+    camera_fraction, teacher_corr, teacher_dice = acceptance_metrics(prediction, target, labels)
+    lower_bound = paired_advantage_lower_bound(prediction, target, labels)
+    gate = code_acceptance_gate(CodeAcceptanceMetrics(camera_fraction, teacher_corr, teacher_dice, lower_bound, 1234, 10000), _manual_labels(args.manual_review))
+    run = V2Run.create(output_root=config.run.output_root, run_name=config.run.run_name, config_payload=config.model_dump(mode="json"))
+    status = "passed" if gate.passed and config.run.evidence_tier == "acceptance" and run.dirty_patch_hash is None else "diagnostic"
+    record = EvidenceRecordV2(2, "code_acceptance", config.run.evidence_tier, status, run.git_commit, run.dirty_patch_hash, run.config_hash, {"checkpoint": file_sha256(args.checkpoint), "basis": basis.artifact_hash, "codes": file_sha256(args.codes), "labels": file_sha256(args.labels), "teacher_targets": file_sha256(args.teacher_targets), "manual_review": file_sha256(args.manual_review) if args.manual_review else "missing"}, (gate,), ("promote",) if status == "passed" else ())
+    _write_record(run, "code_acceptance_evidence.json", record)
+    atomic_write_json(args.output, record.to_dict())
     return 0
 
 
@@ -217,8 +232,9 @@ def _parser() -> argparse.ArgumentParser:
     sample.set_defaults(handler=lambda args: _sample(args, load_config(args.config)))
     evaluate = student.add_parser("evaluate")
     evaluate.add_argument("--config", required=True)
-    evaluate.add_argument("--predictions", required=True)
-    evaluate.add_argument("--targets", required=True)
+    for name in ("code_basis", "checkpoint", "codes", "labels", "teacher_targets"):
+        evaluate.add_argument("--" + name.replace("_", "-"), required=True)
+    evaluate.add_argument("--manual-review")
     evaluate.add_argument("--output", required=True)
     evaluate.set_defaults(handler=lambda args: _evaluate(args, load_config(args.config)))
     audit = root.add_parser("audit").add_subparsers(dest="action", required=True)

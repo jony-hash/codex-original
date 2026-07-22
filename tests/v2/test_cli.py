@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import torch
+import pytest
 
 from ldm_project.v2.application.cli import main
 from ldm_project.v2.config import load_config
@@ -32,13 +32,9 @@ def test_v2_config_is_strict_but_v1_loader_can_parse_the_file(tmp_path: Path) ->
     assert load_training_config(path).mode == "first_stage"
 
 
-def test_evaluate_subcommand_writes_diagnostic_metrics(tmp_path: Path) -> None:
+def test_evaluate_requires_checkpoint_driven_acceptance_inputs(tmp_path: Path) -> None:
     config = tmp_path / "v2.yaml"
     _config(config)
-    prediction = tmp_path / "prediction.pt"
-    target = tmp_path / "target.pt"
     output = tmp_path / "metrics.json"
-    torch.save(torch.ones(2, 1, 4, 4), prediction)
-    torch.save(torch.ones(2, 1, 4, 4), target)
-    assert main(["student", "evaluate", "--config", str(config), "--predictions", str(prediction), "--targets", str(target), "--output", str(output)]) == 0
-    assert '"diagnostic_only": true' in output.read_text(encoding="utf-8")
+    with pytest.raises(SystemExit):
+        main(["student", "evaluate", "--config", str(config), "--output", str(output)])
