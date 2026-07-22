@@ -74,6 +74,30 @@ def test_prototype_microbatch_matches_full_batch_without_checkpointing() -> None
     assert torch.allclose(generator.template_logits, split_generator.template_logits)
 
 
+def test_clean_intensity_initialization_and_explicit_optimizer_steps() -> None:
+    torch.manual_seed(11)
+    system = ToyRawCameraSystem()
+    generator = LabelPrototypeBasisGenerator(code_dim=3, basis_artifact=_artifact())
+    clean = torch.rand(10, 1, 4, 4).clamp_min(0.05)
+    expected = clean[:, 0].sqrt().clamp(1.0e-4, 1.0 - 1.0e-4)
+    before = generator.prototype_command(torch.arange(10))[:, 0].clone()
+    summary = calibrate_prototypes(
+        system,
+        generator,
+        clean,
+        exposure_scale=1.0,
+        epochs=2,
+        learning_rate=1.0e-4,
+        initialization="clean_intensity_to_amplitude",
+        optimizer_steps_per_epoch=3,
+    )
+    assert len(summary.epoch_history) == 2
+    assert torch.isfinite(generator.template_logits).all()
+    assert not torch.allclose(before.square(), expected.square(), atol=2.0e-3)
+    initialized = generator.prototype_command(torch.arange(10))[:, 0]
+    assert torch.isfinite(initialized).all()
+
+
 def test_code_acceptance_requires_bootstrap_and_manual_review() -> None:
     metrics = CodeAcceptanceMetrics(0.25, 0.70, 0.68, 0.001, 1234, 10000)
     assert code_acceptance_gate(metrics, list(range(10))).passed

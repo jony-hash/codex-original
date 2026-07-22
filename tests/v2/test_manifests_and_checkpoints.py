@@ -78,6 +78,16 @@ def test_clean_target_manifest_is_content_addressed(tmp_path: Path) -> None:
         manifest.validate()
 
 
+def test_clean_target_manifest_can_carry_scoped_system_hash(tmp_path: Path) -> None:
+    target = tmp_path / "clean.pt"
+    values = torch.rand(10, 1, 2, 2)
+    torch.save(values, target)
+    reference = tensor_artifact_ref(target, role="clean_mnist_targets", git_commit="unit")
+    manifest = CleanTargetManifestV2(2, str(tmp_path), "train", 128, tuple(range(10)), reference, tensor_sha256(values), (10, 1, 2, 2), "torch.float32", "producer", "unit", "system-contract", "producer")
+    manifest.validate()
+    assert manifest.to_dict()["system_contract_hash"] == "system-contract"
+
+
 def test_formal_teacher_manifest_requires_exact_8d_100_per_label(tmp_path: Path) -> None:
     first, diffusion = tmp_path / "first.pt", tmp_path / "diffusion.pt"
     torch.save(_teacher_payload("first-v1"), first)
