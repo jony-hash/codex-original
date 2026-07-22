@@ -21,6 +21,7 @@ from ..student.checkpoints import CheckpointManifestV2, load_exact_checkpoint, l
 from ..student.clean_targets import CleanTargetManifestV2, build_clean_targets
 from ..student.evaluation import CodeAcceptanceMetrics, acceptance_metrics, code_acceptance_gate, paired_advantage_lower_bound
 from ..student.generator import LabelPrototypeBasisGenerator
+from ..student.review_artifacts import write_review_artifacts
 from ..student.training import calibrate_prototypes, train_code_conditioned
 from ..teacher import TeacherPairManifestV2, TeacherTargetManifestV2, build_teacher_pair_manifest, build_teacher_target_manifest
 from .runs import V2Run
@@ -211,6 +212,7 @@ def _calibrate(args: argparse.Namespace, config: V2Config) -> int:
         raw = bundle.system.forward(bundle.system.command(bundle.generator.prototype_command(labels))).raw_camera.tensor.detach().cpu()
     raw_path = run.root / "prototype_raw_cmos.pt"
     atomic_torch_save(raw_path, raw)
+    review_artifacts = write_review_artifacts(root=run.root, stem="prototype", kind="prototype", raw_cmos=raw, targets=clean_targets.detach().cpu(), exposure_scale=config.prototype_calibration.fixed_exposure_scale)
     stable = summary.epoch_history[-1]["loss"] <= summary.epoch_history[-2]["loss"] and summary.epoch_history[-1]["corr"] >= summary.epoch_history[-2]["corr"] and summary.epoch_history[-1]["dice"] >= summary.epoch_history[-2]["dice"]
     metrics = PrototypeMetrics(summary.clean_corr, summary.clean_dice, summary.prototype_accuracy, summary.high_saturation, torch.isfinite(torch.tensor(summary.loss)).item() and torch.isfinite(raw).all().item(), summary.gradients_finite, memory_pass, stable)
     atomic_write_json(run.root / "prototype_measurements.json", {"summary": summary.__dict__, "memory": memory, "raw_tensor_sha256": tensor_sha256(raw)})
@@ -221,7 +223,7 @@ def _calibrate(args: argparse.Namespace, config: V2Config) -> int:
     context = _context(config, dataset_hash=file_sha256(args.clean_targets), calibration_hash=basis.artifact_hash, checkpoint_hash=checkpoint_hash)
     status = "diagnostic" if not config.system.is_formal else "pending_review"
     actions = ("diagnostic_capacity_smoke",) if status == "diagnostic" else ("admit_prototypes",)
-    record = EvidenceRecordV2(2, "prototype_calibration", config.run.evidence_tier, status, run.git_commit, run.dirty_patch_hash, run.config_hash, context, {"clean_targets": file_sha256(args.clean_targets), "prototype_checkpoint": checkpoint_hash, "prototype_raw_cmos": file_sha256(raw_path)}, (prototype_gate(metrics, None),), actions)
+    record = EvidenceRecordV2(2, "prototype_calibration", config.run.evidence_tier, status, run.git_commit, run.dirty_patch_hash, run.config_hash, context, {"clean_targets": file_sha256(args.clean_targets), "prototype_checkpoint": checkpoint_hash, "prototype_raw_cmos": file_sha256(raw_path), "prototype_preview": review_artifacts.preview_sha256}, (prototype_gate(metrics, None),), actions)
     _write_record(run, "prototype_calibration_evidence.json", record)
     print(run.root)
     return 0
@@ -249,7 +251,10 @@ def _admit_prototypes(args: argparse.Namespace, config: V2Config) -> int:
     saved_raw = _tensor(args.prototype_raw_cmos, device=torch.device("cpu"))
     if tensor_sha256(saved_raw) != raw_hash:
         raise ValueError("prototype replay does not match the saved raw-CMOS evidence")
-    review, review_hash = load_manual_review(args.manual_review, kind="prototype", tensor_hash=raw_hash)
+    preview_hash = file_sha256(args.prototype_preview)
+    if preview_hash != source.input_hashes.get("prototype_preview"):
+        raise ValueError("prototype preview content does not match calibration evidence")
+    review, review_hash = load_manual_review(args.manual_review, kind="prototype", tensor_hash=raw_hash, preview_hash=preview_hash)
     measurement = json.loads(Path(args.measurements).read_text(encoding="utf-8"))
     summary = measurement["summary"]
     memory = measurement["memory"]
@@ -262,7 +267,7 @@ def _admit_prototypes(args: argparse.Namespace, config: V2Config) -> int:
     status = "diagnostic" if diagnostic else ("passed" if gate.passed else "failed")
     actions = ("diagnostic_capacity_smoke",) if diagnostic else (("audit_capacity",) if status == "passed" else ())
     context = _context(config, dataset_hash=file_sha256(args.clean_targets), calibration_hash=source.context.calibration_hash, checkpoint_hash=file_sha256(args.prototype_checkpoint))
-    record = EvidenceRecordV2(2, "prototype", config.run.evidence_tier, status, run.git_commit, run.dirty_patch_hash, run.config_hash, context, {"calibration_evidence": source.evidence_hash, "prototype_checkpoint": file_sha256(args.prototype_checkpoint), "prototype_raw_cmos": file_sha256(args.prototype_raw_cmos), "manual_review": review_hash}, (gate,), actions, None if gate.passed else "prototype gate failed")
+    record = EvidenceRecordV2(2, "prototype", config.run.evidence_tier, status, run.git_commit, run.dirty_patch_hash, run.config_hash, context, {"calibration_evidence": source.evidence_hash, "prototype_checkpoint": file_sha256(args.prototype_checkpoint), "prototype_raw_cmos": file_sha256(args.prototype_raw_cmos), "prototype_preview": preview_hash, "manual_review": review_hash}, (gate,), actions, None if gate.passed else "prototype gate failed")
     _write_record(run, "prototype_evidence.json", record)
     print(run.root)
     return 0
@@ -390,20 +395,47 @@ def _evaluate(args: argparse.Namespace, config: V2Config) -> int:
     raw_path = run.root / "evaluation_raw_cmos.pt"
     atomic_torch_save(raw_path, raw.detach().cpu())
     raw_hash = tensor_sha256(raw.detach().cpu())
-    review_labels = None
-    review_hash = "missing"
-    if args.manual_review:
-        review, review_hash = load_manual_review(args.manual_review, kind="code_acceptance", tensor_hash=raw_hash)
-        review_labels = review.readable_labels
-    gate = code_acceptance_gate(CodeAcceptanceMetrics(camera_fraction, teacher_corr, teacher_dice, lower_bound, 1234, 10000), review_labels)
+    review_artifacts = write_review_artifacts(root=run.root, stem="evaluation", kind="code_acceptance", raw_cmos=raw, labels=labels, targets=teacher, exposure_scale=config.prototype_calibration.fixed_exposure_scale)
+    gate = code_acceptance_gate(CodeAcceptanceMetrics(camera_fraction, teacher_corr, teacher_dice, lower_bound, 1234, 10000), None)
     if diagnostic:
         status, actions = "diagnostic", ()
-    elif args.manual_review is None:
-        status, actions = "pending_review", ()
     else:
-        status, actions = ("passed", ("manual_promotion_review",)) if gate.passed else ("failed", ())
+        status, actions = "pending_review", ("admit_evaluation",)
     context = _context(config, teacher_manifest_hash=target.teacher_pair_manifest_hash, dataset_hash=target.dataset_hash, calibration_hash=training.context.calibration_hash, checkpoint_hash=checkpoint_hash, basis_hash=basis.artifact_hash)
-    record = EvidenceRecordV2(2, "code_acceptance", config.run.evidence_tier, status, run.git_commit, run.dirty_patch_hash, run.config_hash, context, {"training_evidence": training.evidence_hash, "checkpoint": checkpoint_hash, "basis": basis.artifact_hash, "teacher_dataset": target.dataset_hash, "raw_cmos": file_sha256(raw_path), "manual_review": review_hash}, (gate,), actions, None if gate.passed else "code-conditioned acceptance gate is incomplete or failed")
+    record = EvidenceRecordV2(2, "code_acceptance", config.run.evidence_tier, status, run.git_commit, run.dirty_patch_hash, run.config_hash, context, {"training_evidence": training.evidence_hash, "checkpoint": checkpoint_hash, "basis": basis.artifact_hash, "teacher_dataset": target.dataset_hash, "raw_cmos": file_sha256(raw_path), "evaluation_preview": review_artifacts.preview_sha256}, (gate,), actions, "manual review is required before code acceptance")
+    _write_record(run, "code_acceptance_evidence.json", record)
+    atomic_write_json(args.output, record.to_dict())
+    print(run.root)
+    return 0
+
+
+def _admit_evaluation(args: argparse.Namespace, config: V2Config) -> int:
+    source = _record(args.evaluation_evidence)
+    if source.evidence_kind != "code_acceptance" or source.status not in {"pending_review", "diagnostic"}:
+        raise ValueError("evaluation admission requires pending evaluation evidence")
+    target = _target_manifest(args.teacher_target_manifest)
+    _validate_target_for_config(target, config)
+    basis = CodeBasisArtifactV2.load(args.code_basis)
+    checkpoint_hash = file_sha256(args.checkpoint)
+    expected = _context(config, teacher_manifest_hash=target.teacher_pair_manifest_hash, dataset_hash=target.dataset_hash, checkpoint_hash=checkpoint_hash, basis_hash=basis.artifact_hash)
+    source.context.assert_matches(expected)
+    device = torch.device(config.run.device)
+    _load_student_bundle(config, args.code_basis, args.checkpoint, device=device)
+    raw = _tensor(args.evaluation_raw_cmos, device=torch.device("cpu"))
+    raw_hash = tensor_sha256(raw)
+    if file_sha256(args.evaluation_raw_cmos) != source.input_hashes.get("raw_cmos"):
+        raise ValueError("evaluation raw-CMOS file does not match pending evidence")
+    preview_hash = file_sha256(args.evaluation_preview)
+    if preview_hash != source.input_hashes.get("evaluation_preview"):
+        raise ValueError("evaluation preview does not match pending evidence")
+    review, review_hash = load_manual_review(args.manual_review, kind="code_acceptance", tensor_hash=raw_hash, preview_hash=preview_hash)
+    gate = source.gates[0]
+    completed = code_acceptance_gate(CodeAcceptanceMetrics(float(gate.metrics["camera_code_fraction"]), float(gate.metrics["teacher_corr"]), float(gate.metrics["teacher_dice"]), float(gate.metrics["paired_advantage_lower_bound"]), 1234, 10000), review.readable_labels)
+    run = _new_run(config)
+    diagnostic = not config.system.is_formal and config.run.evidence_tier == "diagnostic"
+    status = "diagnostic" if diagnostic else ("passed" if completed.passed else "failed")
+    actions = () if diagnostic else (("manual_promotion_review",) if status == "passed" else ())
+    record = EvidenceRecordV2(2, "code_acceptance", config.run.evidence_tier, status, run.git_commit, run.dirty_patch_hash, run.config_hash, source.context, {**source.input_hashes, "manual_review": review_hash}, (completed,), actions, None if completed.passed else "code-conditioned acceptance gate failed")
     _write_record(run, "code_acceptance_evidence.json", record)
     atomic_write_json(args.output, record.to_dict())
     print(run.root)
@@ -437,7 +469,7 @@ def _parser() -> argparse.ArgumentParser:
         clean.add_argument("--" + name.replace("_", "-"), required=True)
     clean.set_defaults(handler=lambda args: _export_clean_targets(args, load_config(args.config)))
     admit = student.add_parser("admit-prototypes")
-    for name in ("config", "calibration_evidence", "prototype_checkpoint", "prototype_raw_cmos", "measurements", "clean_targets", "manual_review"):
+    for name in ("config", "calibration_evidence", "prototype_checkpoint", "prototype_raw_cmos", "prototype_preview", "measurements", "clean_targets", "manual_review"):
         admit.add_argument("--" + name.replace("_", "-"), required=True)
     admit.set_defaults(handler=lambda args: _admit_prototypes(args, load_config(args.config)))
     train = student.add_parser("train")
@@ -451,8 +483,11 @@ def _parser() -> argparse.ArgumentParser:
     evaluate = student.add_parser("evaluate")
     for name in ("config", "training_evidence", "code_basis", "checkpoint", "teacher_target_manifest", "output"):
         evaluate.add_argument("--" + name.replace("_", "-"), required=True)
-    evaluate.add_argument("--manual-review")
     evaluate.set_defaults(handler=lambda args: _evaluate(args, load_config(args.config)))
+    admit_evaluation = student.add_parser("admit-evaluation")
+    for name in ("config", "evaluation_evidence", "evaluation_raw_cmos", "evaluation_preview", "manual_review", "code_basis", "checkpoint", "teacher_target_manifest", "output"):
+        admit_evaluation.add_argument("--" + name.replace("_", "-"), required=True)
+    admit_evaluation.set_defaults(handler=lambda args: _admit_evaluation(args, load_config(args.config)))
     audit = root.add_parser("audit").add_subparsers(dest="action", required=True)
     capacity = audit.add_parser("capacity")
     for name in ("config", "prototype_evidence", "prototype_checkpoint"):

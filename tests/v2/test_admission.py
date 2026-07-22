@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from ldm_project.v2.evidence import EvidenceContextV2, EvidenceRecordV2, GateResult, require_evidence_action, require_passed_evidence
+from ldm_project.v2.evidence import EvidenceContextV2, EvidenceRecordV2, GateResult, file_sha256, load_manual_review, require_evidence_action, require_passed_evidence, tensor_sha256
 from ldm_project.v2.student.admission import CapacityMetrics, PrototypeMetrics, balanced_code_fraction, capacity_gate, prototype_gate
 from ldm_project.v2.student.capacity import build_code_basis, capacity_metrics, supported_dct_candidates
 from ldm_project.v2.student.capacity import finite_difference_response_matrices
@@ -81,3 +81,15 @@ def test_finite_difference_responses_are_frozen_and_finite() -> None:
     responses, unchanged, before_hash, after_hash = finite_difference_response_matrices(System(), torch.full((10, 1, 4, 4), 0.5), torch.ones(10, 4, 4), candidate_count=8, epsilon=1.0e-3, pixel_pitch_m=(125e-6, 125e-6), max_cycles_per_mm=20.0)
     assert responses.shape == (10, 8, 16)
     assert torch.isfinite(responses).all() and unchanged and before_hash == after_hash
+
+
+def test_review_requires_the_exact_fixed_exposure_preview(tmp_path) -> None:
+    raw = torch.zeros(10, 1, 2, 2)
+    preview = tmp_path / "preview.png"
+    preview.write_bytes(b"fixed-exposure")
+    review = tmp_path / "review.json"
+    review.write_text('{"schema_version":2,"review_kind":"prototype","reviewed_tensor_sha256":"%s","reviewed_preview_sha256":"%s","readable_labels":[0,1,2,3,4,5,6,7,8,9],"reviewer":"unit"}' % (tensor_sha256(raw), file_sha256(preview)), encoding="utf-8")
+    load_manual_review(review, kind="prototype", tensor_hash=tensor_sha256(raw), preview_hash=file_sha256(preview))
+    preview.write_bytes(b"different")
+    with pytest.raises(ValueError, match="preview"):
+        load_manual_review(review, kind="prototype", tensor_hash=tensor_sha256(raw), preview_hash=file_sha256(preview))

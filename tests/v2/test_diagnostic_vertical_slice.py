@@ -6,7 +6,7 @@ from pathlib import Path
 import torch
 
 from ldm_project.v2.application.cli import main
-from ldm_project.v2.evidence import tensor_sha256
+from ldm_project.v2.evidence import file_sha256, tensor_sha256
 from ldm_project.v2.teacher import build_teacher_pair_manifest, build_teacher_target_manifest
 
 
@@ -84,8 +84,9 @@ def test_cpu_diagnostic_cli_vertical_slice_is_never_acceptance(tmp_path: Path) -
     calibration_root = calibration.parent
     raw = torch.load(calibration_root / "prototype_raw_cmos.pt", weights_only=False)
     review = tmp_path / "prototype_review.json"
-    review.write_text(json.dumps({"schema_version": 2, "review_kind": "prototype", "reviewed_tensor_sha256": tensor_sha256(raw), "readable_labels": list(range(10)), "reviewer": "unit"}), encoding="utf-8")
-    assert main(["student", "admit-prototypes", "--config", str(config), "--calibration-evidence", str(calibration), "--prototype-checkpoint", str(calibration_root / "prototype_bundle.pt"), "--prototype-raw-cmos", str(calibration_root / "prototype_raw_cmos.pt"), "--measurements", str(calibration_root / "prototype_measurements.json"), "--clean-targets", str(clean), "--manual-review", str(review)]) == 0
+    preview = calibration_root / "prototype_fixed_exposure.png"
+    review.write_text(json.dumps({"schema_version": 2, "review_kind": "prototype", "reviewed_tensor_sha256": tensor_sha256(raw), "reviewed_preview_sha256": file_sha256(preview), "readable_labels": list(range(10)), "reviewer": "unit"}), encoding="utf-8")
+    assert main(["student", "admit-prototypes", "--config", str(config), "--calibration-evidence", str(calibration), "--prototype-checkpoint", str(calibration_root / "prototype_bundle.pt"), "--prototype-raw-cmos", str(calibration_root / "prototype_raw_cmos.pt"), "--prototype-preview", str(preview), "--measurements", str(calibration_root / "prototype_measurements.json"), "--clean-targets", str(clean), "--manual-review", str(review)]) == 0
     prototype = _artifact(output_root, "prototype_evidence.json")
     assert main(["audit", "capacity", "--config", str(config), "--prototype-evidence", str(prototype), "--prototype-checkpoint", str(calibration_root / "prototype_bundle.pt")]) == 0
     capacity = _artifact(output_root, "capacity_evidence.json")
