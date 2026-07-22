@@ -45,6 +45,8 @@ class EvidenceRecordV2:
             raise ValueError("invalid evidence status")
         if self.tier == "acceptance" and self.dirty_patch_hash is not None:
             raise ValueError("acceptance evidence requires a clean commit")
+        if self.tier == "diagnostic" and any(action in {"train", "promote", "export"} for action in self.permitted_next_actions):
+            raise ValueError("diagnostic evidence cannot authorize train, promote, or export")
         if self.status == "passed" and not all(gate.passed for gate in self.gates):
             raise ValueError("passed evidence cannot contain a failed gate")
         if self.status != "passed" and self.permitted_next_actions and any(action in {"train", "promote", "export"} for action in self.permitted_next_actions):
