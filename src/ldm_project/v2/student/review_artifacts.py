@@ -66,5 +66,5 @@ def write_review_artifacts(*, root: str | Path, stem: str, kind: str, raw_cmos: 
     plt.close(figure)
     raw_hash, preview_hash = tensor_sha256(raw), file_sha256(preview)
     template = root / f"{stem}_manual_review_template.json"
-    atomic_write_json(template, {"schema_version": 2, "review_kind": kind, "reviewed_tensor_sha256": raw_hash, "reviewed_preview_sha256": preview_hash, "readable_labels": list(range(10)), "reviewer": "REQUIRED_REVIEWER"})
+    atomic_write_json(template, {"schema_version": 2, "review_kind": kind, "reviewed_tensor_sha256": raw_hash, "reviewed_preview_sha256": preview_hash, "readable_labels": [], "reviewer": "REQUIRED_REVIEWER"})
     return ReviewArtifactsV2(preview, preview_hash, template, raw_hash)

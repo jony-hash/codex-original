@@ -32,8 +32,8 @@ class ManualReviewV2(BaseModel):
             raise ValueError("manual review is not bound to the replayed raw-CMOS tensor")
         if self.reviewed_preview_sha256 != preview_hash:
             raise ValueError("manual review is not bound to the fixed-exposure preview")
-        if list(self.readable_labels) != list(range(10)):
-            raise ValueError("manual review must contain exactly readable labels 0 through 9")
+        if any(label < 0 or label > 9 for label in self.readable_labels) or len(set(self.readable_labels)) != len(self.readable_labels):
+            raise ValueError("manual review labels must be a unique subset of 0 through 9")
 
 
 def load_manual_review(path: str | Path, *, kind: str, tensor_hash: str, preview_hash: str) -> tuple[ManualReviewV2, str]:

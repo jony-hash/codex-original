@@ -6,7 +6,9 @@ from pathlib import Path
 import torch
 
 from ldm_project.v2.application.cli import main
-from ldm_project.v2.evidence import file_sha256, tensor_sha256
+from ldm_project.v2.config import load_config
+from ldm_project.v2.evidence import canonical_sha256, file_sha256, tensor_artifact_ref, tensor_sha256
+from ldm_project.v2.student.clean_targets import CleanTargetManifestV2
 from ldm_project.v2.teacher import build_teacher_pair_manifest, build_teacher_target_manifest
 
 
@@ -75,21 +77,25 @@ def test_cpu_diagnostic_cli_vertical_slice_is_never_acceptance(tmp_path: Path) -
     codes = torch.randn(20, 8)
     labels = torch.arange(10).repeat_interleave(2)
     dataset = tmp_path / "teacher_dataset.pt"
-    torch.save({"codes": codes, "class_labels": labels, "teacher_camera": torch.full((20, 1, 8, 8), 0.5), "teacher_latents": torch.zeros(20, 1, 1, 1), "guidance_scale": torch.tensor(4.0)}, dataset)
+    torch.save({"codes": codes, "class_labels": labels, "teacher_camera": torch.full((20, 1, 8, 8), 0.5), "teacher_latents": torch.zeros(20, 1, 1, 1), "teacher_initial_noise": torch.zeros(20, 1, 1, 1), "guidance_scale": torch.tensor(4.0), "config": {"code_seed": 1234, "code_projection_seed": 2026, "sampling_steps": 200, "class_labels": list(range(10))}}, dataset)
     target = build_teacher_target_manifest(dataset, pair)
     target_path = tmp_path / "teacher_target_manifest.json"
     target_path.write_text(json.dumps(target.to_dict() | {"manifest_hash": target.manifest_hash}), encoding="utf-8")
     clean = tmp_path / "clean.pt"
     torch.save(torch.full((10, 1, 8, 8), 0.5), clean)
+    loaded = load_config(config)
+    clean_manifest = CleanTargetManifestV2(2, str(tmp_path), "train", 128, tuple(range(10)), tensor_artifact_ref(clean, role="clean_mnist_targets", git_commit="unit"), tensor_sha256(torch.load(clean, weights_only=False)), (10, 1, 8, 8), "torch.float32", canonical_sha256(loaded.model_dump(mode="json")), "unit")
+    clean_path = tmp_path / "clean_manifest.json"
+    clean_path.write_text(json.dumps(clean_manifest.to_dict() | {"manifest_hash": clean_manifest.manifest_hash}), encoding="utf-8")
 
-    assert main(["student", "calibrate-prototypes", "--config", str(config), "--clean-targets", str(clean)]) == 0
+    assert main(["student", "calibrate-prototypes", "--config", str(config), "--clean-target-manifest", str(clean_path)]) == 0
     calibration = _artifact(output_root, "prototype_calibration_evidence.json")
     calibration_root = calibration.parent
     raw = torch.load(calibration_root / "prototype_raw_cmos.pt", weights_only=False)
     review = tmp_path / "prototype_review.json"
     preview = calibration_root / "prototype_fixed_exposure.png"
     review.write_text(json.dumps({"schema_version": 2, "review_kind": "prototype", "reviewed_tensor_sha256": tensor_sha256(raw), "reviewed_preview_sha256": file_sha256(preview), "readable_labels": list(range(10)), "reviewer": "unit"}), encoding="utf-8")
-    assert main(["student", "admit-prototypes", "--config", str(config), "--calibration-evidence", str(calibration), "--prototype-checkpoint", str(calibration_root / "prototype_bundle.pt"), "--prototype-raw-cmos", str(calibration_root / "prototype_raw_cmos.pt"), "--prototype-preview", str(preview), "--measurements", str(calibration_root / "prototype_measurements.json"), "--clean-targets", str(clean), "--manual-review", str(review)]) == 0
+    assert main(["student", "admit-prototypes", "--config", str(config), "--calibration-evidence", str(calibration), "--prototype-checkpoint", str(calibration_root / "prototype_bundle.pt"), "--prototype-raw-cmos", str(calibration_root / "prototype_raw_cmos.pt"), "--prototype-preview", str(preview), "--measurements", str(calibration_root / "prototype_measurements.json"), "--clean-target-manifest", str(clean_path), "--manual-review", str(review)]) == 0
     prototype = _artifact(output_root, "prototype_evidence.json")
     assert main(["audit", "capacity", "--config", str(config), "--prototype-evidence", str(prototype), "--prototype-checkpoint", str(calibration_root / "prototype_bundle.pt")]) == 0
     capacity = _artifact(output_root, "capacity_evidence.json")

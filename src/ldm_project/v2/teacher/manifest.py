@@ -69,6 +69,15 @@ class TeacherTargetManifestV2:
     seed: int
     guidance_scale: float
     split: str
+    generated_git_commit: str | None = None
+    v2_config_hash: str | None = None
+    legacy_export_config_hash: str | None = None
+    teacher_latents_hash: str | None = None
+    teacher_initial_noise_hash: str | None = None
+    code_seed: int | None = None
+    code_projection_seed: int | None = None
+    sampling_steps: int | None = None
+    class_labels: tuple[int, ...] | None = None
 
     @property
     def manifest_hash(self) -> str:
@@ -83,9 +92,14 @@ class TeacherTargetManifestV2:
     def from_dict(cls, payload: dict[str, Any]) -> "TeacherTargetManifestV2":
         values = dict(payload)
         values.pop("manifest_hash", None)
-        values["dataset"] = ArtifactRefV2(**values["dataset"])
+        dataset_ref = dict(values["dataset"])
+        if dataset_ref.get("shape") is not None:
+            dataset_ref["shape"] = tuple(dataset_ref["shape"])
+        values["dataset"] = ArtifactRefV2(**dataset_ref)
         values["latent_shape"] = tuple(values["latent_shape"])
         values["code_shape"] = tuple(values["code_shape"])
+        if values.get("class_labels") is not None:
+            values["class_labels"] = tuple(values["class_labels"])
         return cls(**values)
 
     def validate(self, *, formal: bool = False) -> None:
@@ -97,13 +111,13 @@ class TeacherTargetManifestV2:
         payload = torch.load(self.dataset.path, map_location="cpu", weights_only=False)
         if not isinstance(payload, dict):
             raise ValueError("teacher dataset must be a tensor bundle")
-        required = {"codes", "class_labels", "teacher_camera", "teacher_latents", "guidance_scale"}
+        required = {"codes", "class_labels", "teacher_camera", "teacher_latents", "teacher_initial_noise", "guidance_scale", "config"}
         if not required.issubset(payload):
             raise ValueError("teacher dataset is missing required export tensors")
-        codes, labels, camera, latents = (payload["codes"], payload["class_labels"], payload["teacher_camera"], payload["teacher_latents"])
-        if not all(torch.is_tensor(item) for item in (codes, labels, camera, latents)):
+        codes, labels, camera, latents, noise = (payload["codes"], payload["class_labels"], payload["teacher_camera"], payload["teacher_latents"], payload["teacher_initial_noise"])
+        if not all(torch.is_tensor(item) for item in (codes, labels, camera, latents, noise)):
             raise ValueError("teacher dataset values must be tensors")
-        if codes.shape[0] != labels.numel() or camera.shape[0] != labels.numel() or latents.shape[0] != labels.numel():
+        if codes.shape[0] != labels.numel() or camera.shape[0] != labels.numel() or latents.shape[0] != labels.numel() or noise.shape[0] != labels.numel():
             raise ValueError("teacher dataset sample axes disagree")
         if tuple(codes.shape) != self.code_shape:
             raise ValueError("teacher code geometry changed")
@@ -118,8 +132,19 @@ class TeacherTargetManifestV2:
             raise ValueError("teacher dataset label counts do not match manifest")
         if tensor_sha256(codes) != self.codes_hash or tensor_sha256(labels) != self.labels_hash or tensor_sha256(camera) != self.teacher_camera_hash:
             raise ValueError("teacher dataset tensor content changed")
-        if formal and (self.sample_count != 1000 or self.samples_per_label != 100 or self.code_shape != (1000, 8)):
+        if self.teacher_latents_hash is not None and tensor_sha256(latents) != self.teacher_latents_hash:
+            raise ValueError("teacher latent content changed")
+        if self.teacher_initial_noise_hash is not None and tensor_sha256(noise) != self.teacher_initial_noise_hash:
+            raise ValueError("teacher initial-noise content changed")
+        export = payload["config"]
+        if formal and (self.sample_count != 1000 or self.samples_per_label != 100 or self.code_shape != (1000, 8) or self.code_seed != 1234 or self.code_projection_seed != 2026 or self.sampling_steps != 200 or self.class_labels != tuple(range(10)) or not self.generated_git_commit or not self.v2_config_hash or not self.legacy_export_config_hash):
             raise ValueError("formal v2 teacher targets require exactly 100 codes per label with code_dim=8")
+        if self.code_seed is not None and export.get("code_seed") != self.code_seed:
+            raise ValueError("teacher export code seed changed")
+        if self.code_projection_seed is not None and export.get("code_projection_seed") != self.code_projection_seed:
+            raise ValueError("teacher export projection seed changed")
+        if self.sampling_steps is not None and export.get("sampling_steps") != self.sampling_steps:
+            raise ValueError("teacher export sampling steps changed")
 
 
 def _payload(path: str | Path) -> dict[str, Any]:
@@ -169,7 +194,7 @@ def build_teacher_pair_manifest(
     return manifest
 
 
-def build_teacher_target_manifest(dataset_path: str | Path, pair: TeacherPairManifestV2, *, formal: bool = False) -> TeacherTargetManifestV2:
+def build_teacher_target_manifest(dataset_path: str | Path, pair: TeacherPairManifestV2, *, formal: bool = False, generated_git_commit: str | None = None, v2_config_hash: str | None = None, legacy_export_config_hash: str | None = None) -> TeacherTargetManifestV2:
     """Validate a legacy export once, then expose a strict v2 dataset boundary."""
     pair.validate()
     target = Path(dataset_path)
@@ -181,7 +206,9 @@ def build_teacher_target_manifest(dataset_path: str | Path, pair: TeacherPairMan
         labels = payload["class_labels"].to(torch.int64)
         camera = payload["teacher_camera"]
         latents = payload["teacher_latents"]
+        noise = payload["teacher_initial_noise"]
         guidance = float(payload["guidance_scale"].item())
+        export = payload["config"]
     except (KeyError, AttributeError, TypeError) as error:
         raise ValueError("teacher export has an incompatible payload") from error
     if guidance != pair.guidance_scale:
@@ -205,6 +232,15 @@ def build_teacher_target_manifest(dataset_path: str | Path, pair: TeacherPairMan
         seed=pair.seed,
         guidance_scale=pair.guidance_scale,
         split=pair.split,
+        generated_git_commit=generated_git_commit,
+        v2_config_hash=v2_config_hash,
+        legacy_export_config_hash=legacy_export_config_hash,
+        teacher_latents_hash=tensor_sha256(latents),
+        teacher_initial_noise_hash=tensor_sha256(noise),
+        code_seed=int(export["code_seed"]),
+        code_projection_seed=int(export["code_projection_seed"]),
+        sampling_steps=int(export["sampling_steps"]),
+        class_labels=tuple(int(label) for label in export["class_labels"]),
     )
     manifest.validate(formal=formal)
     return manifest

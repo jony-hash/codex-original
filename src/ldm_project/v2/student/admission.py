@@ -44,6 +44,21 @@ def prototype_gate(metrics: PrototypeMetrics, readable_labels: Sequence[int] | N
     return GateResult("prototype_raw_cmos", all(checks.values()), values, None if all(checks.values()) else "prototype gate failed")
 
 
+def prototype_measurement_gate(metrics: PrototypeMetrics) -> GateResult:
+    """Automatic gate; human readability is intentionally excluded until admission."""
+    checks = {
+        "clean_corr": metrics.clean_corr >= 0.70,
+        "clean_dice": metrics.clean_dice >= 0.68,
+        "prototype_accuracy": metrics.prototype_accuracy == 1.0,
+        "high_saturation": metrics.high_saturation <= 0.08,
+        "finite": metrics.finite,
+        "gradients_finite": metrics.gradients_finite,
+        "memory_pass": metrics.memory_pass,
+        "epoch_stable": metrics.epoch_stable,
+    }
+    return GateResult("prototype_measurement", all(checks.values()), {"clean_corr": metrics.clean_corr, "clean_dice": metrics.clean_dice, "prototype_accuracy": metrics.prototype_accuracy, "high_saturation": metrics.high_saturation, **checks}, None if all(checks.values()) else "prototype automatic measurement gate failed")
+
+
 @dataclass(frozen=True)
 class CapacityMetrics:
     physical_slm_code_fraction: float

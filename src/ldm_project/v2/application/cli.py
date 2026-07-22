@@ -17,7 +17,7 @@ from torch.utils.checkpoint import checkpoint
 from ..config import V2Config, load_config
 from ..evidence import EvidenceContextV2, EvidenceRecordV2, GateResult, atomic_torch_save, atomic_write_json, canonical_sha256, file_sha256, load_manual_review, require_evidence_action, tensor_artifact_ref, tensor_sha256
 from ..optics import FormalAmplitudeFiniteCropIdentitySystem
-from ..student.admission import CapacityMetrics, PrototypeMetrics, capacity_gate, prototype_gate
+from ..student.admission import CapacityMetrics, PrototypeMetrics, capacity_gate, prototype_gate, prototype_measurement_gate
 from ..student.capacity import CodeBasisArtifactV2, build_code_basis, capacity_metrics, finite_difference_response_matrices, replay_capacity
 from ..student.checkpoints import CheckpointManifestV2, load_exact_checkpoint, load_prototype_warm_start, save_exact_checkpoint, state_content_hash, state_signature
 from ..student.clean_targets import CleanTargetManifestV2, build_clean_targets
@@ -60,12 +60,24 @@ def _target_manifest(path: str) -> TeacherTargetManifestV2:
     return manifest
 
 
+def _clean_target_manifest(path: str, config: V2Config) -> CleanTargetManifestV2:
+    manifest = CleanTargetManifestV2.from_dict(json.loads(Path(path).read_text(encoding="utf-8")))
+    manifest.validate()
+    if manifest.config_hash != canonical_sha256(config.model_dump(mode="json")):
+        raise ValueError("clean-target manifest belongs to another v2 configuration")
+    if manifest.shape != (10, 1, *config.system.slm_shape):
+        raise ValueError("clean-target manifest geometry does not match the formal SLM plane")
+    return manifest
+
+
 def _validate_target_for_config(target: TeacherTargetManifestV2, config: V2Config) -> None:
     if config.teacher is None:
         raise ValueError("v2 student stages require a teacher configuration")
     pair = build_teacher_pair_manifest(config.teacher.first_stage_checkpoint, config.teacher.diffusion_checkpoint, target_plane=config.teacher.target_plane, seed=config.teacher.seed, guidance_scale=config.teacher.guidance_scale, split=target.split, latent_geometry=config.teacher.latent_geometry)
     if pair.manifest_hash != target.teacher_pair_manifest_hash:
         raise ValueError("teacher target manifest is not paired with current teacher checkpoints/config")
+    if target.v2_config_hash is not None and target.v2_config_hash != canonical_sha256(config.model_dump(mode="json")):
+        raise ValueError("teacher target manifest belongs to another v2 configuration")
     target.validate(formal=config.system.is_formal)
 
 
@@ -87,9 +99,20 @@ def _context(config: V2Config, *, teacher_manifest_hash: str | None = None, data
 def _require_clean_acceptance(config: V2Config) -> None:
     if config.run.evidence_tier != "acceptance":
         return
-    dirty = subprocess.run(["git", "diff", "--quiet", "HEAD"], check=False).returncode != 0
+    dirty = subprocess.run(["git", "status", "--porcelain", "--untracked-files=normal"], check=True, capture_output=True, text=True).stdout.strip()
     if dirty:
         raise ValueError("acceptance operations require a clean git commit")
+
+
+def _legacy_export_contract(path: str, config: V2Config) -> str:
+    from ldm_project.config import load_training_config
+
+    legacy = load_training_config(path)
+    expected = ("teacher_distill_export", 8, 100, 1234, 2026, 200, 4.0, tuple(range(10)), False)
+    actual = (legacy.mode, legacy.one_shot.code_dim, legacy.distillation.samples_per_class, legacy.distillation.code_seed, legacy.distillation.code_projection_seed, legacy.distillation.sampling_steps, legacy.diffusion.guidance_scale, tuple(legacy.distillation.class_labels), legacy.data.download)
+    if actual != expected or config.teacher is None or config.teacher.seed != 1234 or config.teacher.guidance_scale != 4.0:
+        raise ValueError("formal teacher export requires the locked 8D/100-per-label legacy export contract")
+    return file_sha256(path)
 
 
 def _new_run(config: V2Config) -> V2Run:
@@ -155,6 +178,8 @@ def _temporary_output(output: Path) -> Path:
 def _teacher_export(args: argparse.Namespace, config: V2Config) -> int:
     if config.teacher is None:
         raise ValueError("teacher export requires teacher config")
+    _require_clean_acceptance(config)
+    legacy_hash = _legacy_export_contract(args.legacy_train_config, config)
     pair = _pair_manifest(args.teacher_manifest)
     if pair.first_stage_path != config.teacher.first_stage_checkpoint or pair.diffusion_path != config.teacher.diffusion_checkpoint or pair.seed != config.teacher.seed or pair.guidance_scale != config.teacher.guidance_scale:
         raise ValueError("teacher pair manifest does not match v2 teacher configuration")
@@ -165,9 +190,10 @@ def _teacher_export(args: argparse.Namespace, config: V2Config) -> int:
     try:
         command = [sys.executable, "train.py", "--train-config", args.legacy_train_config, "--stage", "teacher_distill_export", "--device", config.run.device, "--first-stage-checkpoint", pair.first_stage_path, "--diffusion-checkpoint", pair.diffusion_path, "--seed", str(pair.seed), "--guidance-scale", str(pair.guidance_scale), "--distill-output", str(temporary)]
         subprocess.run(command, check=True)
-        target = build_teacher_target_manifest(temporary, pair, formal=config.system.is_formal)
+        commit = subprocess.run(["git", "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
+        target = build_teacher_target_manifest(temporary, pair, formal=config.system.is_formal, generated_git_commit=commit, v2_config_hash=canonical_sha256(config.model_dump(mode="json")), legacy_export_config_hash=legacy_hash)
         os.replace(temporary, output)
-        target = build_teacher_target_manifest(output, pair, formal=config.system.is_formal)
+        target = build_teacher_target_manifest(output, pair, formal=config.system.is_formal, generated_git_commit=commit, v2_config_hash=canonical_sha256(config.model_dump(mode="json")), legacy_export_config_hash=legacy_hash)
         target_path = Path(args.target_manifest)
         if target_path.exists():
             raise FileExistsError("teacher target manifest already exists")
@@ -211,7 +237,8 @@ def _calibrate(args: argparse.Namespace, config: V2Config) -> int:
     if config.prototype_calibration is None:
         raise ValueError("student calibrate-prototypes requires prototype_calibration config")
     device = torch.device(config.run.device)
-    clean_targets = _tensor(args.clean_targets, device=device)
+    clean_manifest = _clean_target_manifest(args.clean_target_manifest, config)
+    clean_targets = _tensor(clean_manifest.targets.path, device=device)
     run = _new_run(config)
     basis = _zero_basis(config.system.slm_shape)
     bundle = StudentBundle(config, basis).to(device)
@@ -222,9 +249,7 @@ def _calibrate(args: argparse.Namespace, config: V2Config) -> int:
         baseline_allocated = baseline_reserved = 0
     summary = calibrate_prototypes(bundle.system, bundle.generator, clean_targets, exposure_scale=config.prototype_calibration.fixed_exposure_scale, epochs=config.prototype_calibration.epochs, learning_rate=config.prototype_calibration.learning_rate, microbatch_size=config.execution.prototype_microbatch_size, activation_checkpoint=config.execution.activation_checkpoint)
     memory_pass, memory = _memory_report(device, baseline_reserved=baseline_reserved, baseline_allocated=baseline_allocated)
-    labels = torch.arange(10, device=device)
-    with torch.no_grad():
-        raw = bundle.system.forward(bundle.system.command(bundle.generator.prototype_command(labels))).raw_camera.tensor.detach().cpu()
+    raw = _stream_prototype_raw(bundle, device=device, microbatch_size=config.execution.prototype_microbatch_size)
     raw_path = run.root / "prototype_raw_cmos.pt"
     atomic_torch_save(raw_path, raw)
     review_artifacts = write_review_artifacts(root=run.root, stem="prototype", kind="prototype", raw_cmos=raw, targets=clean_targets.detach().cpu(), exposure_scale=config.prototype_calibration.fixed_exposure_scale)
@@ -232,13 +257,15 @@ def _calibrate(args: argparse.Namespace, config: V2Config) -> int:
     metrics = PrototypeMetrics(summary.clean_corr, summary.clean_dice, summary.prototype_accuracy, summary.high_saturation, torch.isfinite(torch.tensor(summary.loss)).item() and torch.isfinite(raw).all().item(), summary.gradients_finite, memory_pass, stable)
     atomic_write_json(run.root / "prototype_measurements.json", {"summary": summary.__dict__, "memory": memory, "raw_tensor_sha256": tensor_sha256(raw)})
     checkpoint = run.root / "prototype_bundle.pt"
-    manifest = _bundle_manifest(config, bundle, dataset_hash=file_sha256(args.clean_targets), teacher_manifest_hash=None, calibration_hash=basis.artifact_hash, basis_hash=basis.artifact_hash)
-    save_exact_checkpoint(checkpoint, bundle, manifest, extra={"epoch_history": summary.epoch_history, "memory": memory, "clean_targets_hash": file_sha256(args.clean_targets), "prototype_raw_hash": tensor_sha256(raw)})
+    manifest = _bundle_manifest(config, bundle, dataset_hash=clean_manifest.targets.sha256, teacher_manifest_hash=None, calibration_hash=basis.artifact_hash, basis_hash=basis.artifact_hash)
+    save_exact_checkpoint(checkpoint, bundle, manifest, extra={"epoch_history": summary.epoch_history, "memory": memory, "clean_targets_hash": clean_manifest.targets.sha256, "clean_target_manifest_hash": clean_manifest.manifest_hash, "prototype_raw_hash": tensor_sha256(raw)})
     checkpoint_hash = file_sha256(checkpoint)
-    context = _context(config, dataset_hash=file_sha256(args.clean_targets), calibration_hash=basis.artifact_hash, checkpoint_hash=checkpoint_hash)
-    status = "diagnostic" if not config.system.is_formal else "pending_review"
-    actions = ("diagnostic_capacity_smoke",) if status == "diagnostic" else ("admit_prototypes",)
-    record = EvidenceRecordV2(2, "prototype_calibration", config.run.evidence_tier, status, run.git_commit, run.dirty_patch_hash, run.config_hash, context, {"clean_targets": file_sha256(args.clean_targets), "prototype_checkpoint": checkpoint_hash, "prototype_raw_cmos": file_sha256(raw_path), "prototype_preview": review_artifacts.preview_sha256}, (prototype_gate(metrics, None),), actions)
+    context = _context(config, dataset_hash=clean_manifest.targets.sha256, calibration_hash=basis.artifact_hash, checkpoint_hash=checkpoint_hash)
+    measurement_gate = prototype_measurement_gate(metrics)
+    diagnostic = not config.system.is_formal or config.run.evidence_tier == "diagnostic"
+    status = "diagnostic" if diagnostic else ("pending_review" if measurement_gate.passed else "failed")
+    actions = ("diagnostic_capacity_smoke",) if diagnostic and measurement_gate.passed else (("admit_prototypes",) if status == "pending_review" else ())
+    record = EvidenceRecordV2(2, "prototype_calibration", config.run.evidence_tier, status, run.git_commit, run.dirty_patch_hash, run.config_hash, context, {"clean_targets": clean_manifest.targets.sha256, "clean_target_manifest": clean_manifest.manifest_hash, "prototype_checkpoint": checkpoint_hash, "prototype_raw_cmos": file_sha256(raw_path), "prototype_preview": review_artifacts.preview_sha256}, (measurement_gate,), actions, None if measurement_gate.passed else "prototype automatic measurement gate failed")
     _write_record(run, "prototype_calibration_evidence.json", record)
     print(run.root)
     return 0
@@ -254,14 +281,15 @@ def _admit_prototypes(args: argparse.Namespace, config: V2Config) -> int:
     if file_sha256(args.prototype_checkpoint) != source.context.checkpoint_hash:
         raise ValueError("prototype checkpoint content does not match calibration evidence")
     device = torch.device(config.run.device)
-    if file_sha256(args.clean_targets) != source.context.dataset_hash:
+    clean_manifest = _clean_target_manifest(args.clean_target_manifest, config)
+    if clean_manifest.targets.sha256 != source.context.dataset_hash or clean_manifest.manifest_hash != source.input_hashes.get("clean_target_manifest"):
         raise ValueError("clean targets content does not match calibration evidence")
     basis = _zero_basis(config.system.slm_shape)
     bundle = StudentBundle(config, basis).to(device)
     payload = torch.load(args.prototype_checkpoint, map_location="cpu", weights_only=False)
     actual = CheckpointManifestV2(**payload["manifest"])
     load_exact_checkpoint(args.prototype_checkpoint, bundle, actual)
-    raw = bundle.system.forward(bundle.system.command(bundle.generator.prototype_command(torch.arange(10, device=device)))).raw_camera.tensor.detach().cpu()
+    raw = _stream_prototype_raw(bundle, device=device, microbatch_size=config.execution.prototype_microbatch_size)
     raw_hash = tensor_sha256(raw)
     saved_raw = _tensor(args.prototype_raw_cmos, device=torch.device("cpu"))
     if tensor_sha256(saved_raw) != raw_hash:
@@ -281,8 +309,8 @@ def _admit_prototypes(args: argparse.Namespace, config: V2Config) -> int:
     diagnostic = not config.system.is_formal or config.run.evidence_tier == "diagnostic"
     status = "diagnostic" if diagnostic else ("passed" if gate.passed else "failed")
     actions = ("diagnostic_capacity_smoke",) if diagnostic else (("audit_capacity",) if status == "passed" else ())
-    context = _context(config, dataset_hash=file_sha256(args.clean_targets), calibration_hash=source.context.calibration_hash, checkpoint_hash=file_sha256(args.prototype_checkpoint))
-    record = EvidenceRecordV2(2, "prototype", config.run.evidence_tier, status, run.git_commit, run.dirty_patch_hash, run.config_hash, context, {"calibration_evidence": source.evidence_hash, "prototype_checkpoint": file_sha256(args.prototype_checkpoint), "prototype_raw_cmos": file_sha256(args.prototype_raw_cmos), "prototype_preview": preview_hash, "manual_review": review_hash}, (gate,), actions, None if gate.passed else "prototype gate failed")
+    context = _context(config, dataset_hash=clean_manifest.targets.sha256, calibration_hash=source.context.calibration_hash, checkpoint_hash=file_sha256(args.prototype_checkpoint))
+    record = EvidenceRecordV2(2, "prototype", config.run.evidence_tier, status, run.git_commit, run.dirty_patch_hash, run.config_hash, context, {"calibration_evidence": source.evidence_hash, "clean_target_manifest": clean_manifest.manifest_hash, "prototype_checkpoint": file_sha256(args.prototype_checkpoint), "prototype_raw_cmos": file_sha256(args.prototype_raw_cmos), "prototype_preview": preview_hash, "manual_review": review_hash}, (gate,), actions, None if gate.passed else "prototype gate failed")
     _write_record(run, "prototype_evidence.json", record)
     print(run.root)
     return 0
@@ -336,6 +364,16 @@ def _stream_raw(bundle: StudentBundle, codes: torch.Tensor, labels: torch.Tensor
     for start in range(0, codes.shape[0], microbatch_size):
         result = bundle.system.forward_from_generator(bundle.generator, codes[start : start + microbatch_size].to(device), labels[start : start + microbatch_size].to(device))
         rows.append(result.raw_camera.tensor.detach().cpu())
+    return torch.cat(rows)
+
+
+@torch.no_grad()
+def _stream_prototype_raw(bundle: StudentBundle, *, device: torch.device, microbatch_size: int) -> torch.Tensor:
+    labels = torch.arange(10, device=device)
+    rows = []
+    for start in range(0, labels.numel(), microbatch_size):
+        command = bundle.generator.prototype_command(labels[start : start + microbatch_size])
+        rows.append(bundle.system.forward(bundle.system.command(command)).raw_camera.tensor.detach().cpu())
     return torch.cat(rows)
 
 
@@ -558,14 +596,14 @@ def _parser() -> argparse.ArgumentParser:
     student = root.add_parser("student").add_subparsers(dest="action", required=True)
     calibrate = student.add_parser("calibrate-prototypes")
     calibrate.add_argument("--config", required=True)
-    calibrate.add_argument("--clean-targets", required=True)
+    calibrate.add_argument("--clean-target-manifest", required=True)
     calibrate.set_defaults(handler=lambda args: _calibrate(args, load_config(args.config)))
     clean = student.add_parser("export-clean-targets")
     for name in ("config", "dataset_root", "output", "manifest"):
         clean.add_argument("--" + name.replace("_", "-"), required=True)
     clean.set_defaults(handler=lambda args: _export_clean_targets(args, load_config(args.config)))
     admit = student.add_parser("admit-prototypes")
-    for name in ("config", "calibration_evidence", "prototype_checkpoint", "prototype_raw_cmos", "prototype_preview", "measurements", "clean_targets", "manual_review"):
+    for name in ("config", "calibration_evidence", "prototype_checkpoint", "prototype_raw_cmos", "prototype_preview", "measurements", "clean_target_manifest", "manual_review"):
         admit.add_argument("--" + name.replace("_", "-"), required=True)
     admit.set_defaults(handler=lambda args: _admit_prototypes(args, load_config(args.config)))
     train = student.add_parser("train")

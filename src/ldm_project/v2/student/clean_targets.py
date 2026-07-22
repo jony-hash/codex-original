@@ -37,7 +37,10 @@ class CleanTargetManifestV2:
     def from_dict(cls, payload: dict[str, Any]) -> "CleanTargetManifestV2":
         values = dict(payload)
         values.pop("manifest_hash", None)
-        values["targets"] = ArtifactRefV2(**values["targets"])
+        target_ref = dict(values["targets"])
+        if target_ref.get("shape") is not None:
+            target_ref["shape"] = tuple(target_ref["shape"])
+        values["targets"] = ArtifactRefV2(**target_ref)
         values["labels"] = tuple(values["labels"])
         values["shape"] = tuple(values["shape"])
         return cls(**values)

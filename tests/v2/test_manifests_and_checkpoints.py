@@ -71,12 +71,12 @@ def test_formal_teacher_manifest_requires_exact_8d_100_per_label(tmp_path: Path)
     torch.save(_teacher_payload("diffusion-v1", first_stage_model_version="first-v1"), diffusion)
     pair = build_teacher_pair_manifest(first, diffusion, target_plane="teacher_camera", seed=1234, guidance_scale=4.0, split="train")
     labels = torch.arange(10).repeat_interleave(100)
-    payload = {"codes": torch.randn(1000, 128), "class_labels": labels, "teacher_camera": torch.rand(1000, 1, 2, 2), "teacher_latents": torch.zeros(1000, 1, 1, 1), "guidance_scale": torch.tensor(4.0)}
+    payload = {"codes": torch.randn(1000, 128), "class_labels": labels, "teacher_camera": torch.rand(1000, 1, 2, 2), "teacher_latents": torch.zeros(1000, 1, 1, 1), "teacher_initial_noise": torch.zeros(1000, 1, 1, 1), "guidance_scale": torch.tensor(4.0), "config": {"code_seed": 1234, "code_projection_seed": 2026, "sampling_steps": 200, "class_labels": list(range(10))}}
     dataset = tmp_path / "historical_128d.pt"
     torch.save(payload, dataset)
     with pytest.raises(ValueError, match="code_dim=8"):
         build_teacher_target_manifest(dataset, pair, formal=True)
     payload["codes"] = torch.randn(1000, 8)
     torch.save(payload, dataset)
-    manifest = build_teacher_target_manifest(dataset, pair, formal=True)
+    manifest = build_teacher_target_manifest(dataset, pair, formal=True, generated_git_commit="unit", v2_config_hash="config", legacy_export_config_hash="legacy")
     manifest.validate(formal=True)
