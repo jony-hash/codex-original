@@ -87,6 +87,16 @@ def test_formal_system_is_fixed_to_the_formal_contract() -> None:
     assert system.back.abcd.b_m == pytest.approx(0.0, abs=1e-9)
 
 
+def test_formal_trace_has_one_root_and_connected_provenance() -> None:
+    config = FormalSystemConfig(kind="diagnostic_amplitude_finite_crop_identity", slm_shape=(8, 8), slm_pixel_pitch_m=62.5e-6, metasurface_shape=(4, 4), metasurface_pixel_pitch_m=50e-6, propagation_grid_size=8)
+    system = FormalAmplitudeFiniteCropIdentitySystem(config)
+    result = system.forward(system.command(torch.full((1, 1, 8, 8), 0.5)), return_optical_trace=True)
+    assert result.optical_trace is not None
+    roots = [field for field in result.optical_trace if field.provenance.upstream_plane is None]
+    assert [field.provenance.operation for field in roots] == ["amplitude_slm"]
+    assert all(field.provenance.upstream_plane is not None or field.provenance.operation in {"ideal_amplitude_slm", "amplitude_slm"} for field in result.optical_trace)
+
+
 def test_v2_optics_does_not_import_upper_layers() -> None:
     optics_root = Path("src/ldm_project/v2/optics")
     forbidden = {"student", "teacher", "application", "diagnostics"}

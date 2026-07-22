@@ -306,7 +306,7 @@ def _capacity(args: argparse.Namespace, config: V2Config) -> int:
     artifact = build_code_basis(responses, supports.cpu(), candidate_count=audit.dct_modes, seed=audit.seed, source_hash=prototype.evidence_hash, pixel_pitch_m=(config.system.slm_pixel_pitch_m, config.system.slm_pixel_pitch_m), max_cycles_per_mm=audit.max_cycles_per_mm)
     commands, slm_intensity, camera, coefficients = replay_capacity(bundle.system, prototype_commands, artifact, supports, codes_per_label=audit.codes_per_label, command_gain=audit.command_gain, microbatch_size=config.execution.capacity_microbatch_size)
     trace = bundle.system.forward(bundle.system.command(prototype_commands[:1]), return_optical_trace=True).optical_trace
-    provenance_complete = trace is not None and all(field.provenance.upstream_plane is not None or field.provenance.operation == "ideal_amplitude_slm" for field in trace)
+    provenance_complete = trace is not None and all(field.provenance.upstream_plane is not None or field.provenance.operation in {"ideal_amplitude_slm", "amplitude_slm"} for field in trace)
     slm_factor, camera_factor, support_energy, clipping = capacity_metrics(commands, slm_intensity, camera, supports.cpu())
     gate = capacity_gate(CapacityMetrics(slm_factor, camera_factor, support_energy, clipping, unchanged, False, provenance_complete), prototype.gates[0])
     run = _new_run(config)
@@ -527,7 +527,7 @@ def _preflight(args: argparse.Namespace, config: V2Config) -> int:
     reports["evaluation_microbatch"] = report
     after = state_content_hash(bundle.state_dict())
     trace = bundle.system.forward(bundle.system.command(bundle.generator.prototype_command(label)), return_optical_trace=True).optical_trace
-    provenance_complete = trace is not None and all(field.provenance.upstream_plane is not None or field.provenance.operation == "ideal_amplitude_slm" for field in trace)
+    provenance_complete = trace is not None and all(field.provenance.upstream_plane is not None or field.provenance.operation in {"ideal_amplitude_slm", "amplitude_slm"} for field in trace)
     unchanged = before == after
     stages.append(GateResult("preflight_parameter_unchanged", unchanged, {"before_after_equal": unchanged}, None if unchanged else "preflight modified parameters"))
     stages.append(GateResult("preflight_provenance", provenance_complete, {"provenance_complete": provenance_complete}, None if provenance_complete else "optical trace is incomplete"))
