@@ -23,6 +23,8 @@ class CleanTargetManifestV2:
     dtype: str
     config_hash: str
     git_commit: str
+    system_contract_hash: str | None = None
+    producer_config_hash: str | None = None
 
     @property
     def manifest_hash(self) -> str:
@@ -60,6 +62,10 @@ class CleanTargetManifestV2:
             raise ValueError("clean targets must be finite normalized [10, 1, H, W] tensors")
         if str(value.dtype) != self.dtype or tensor_sha256(value) != self.targets_hash:
             raise ValueError("clean-target tensor content changed")
+        if self.system_contract_hash is not None and not self.system_contract_hash:
+            raise ValueError("clean-target system contract hash must be non-empty")
+        if self.producer_config_hash is not None and not self.producer_config_hash:
+            raise ValueError("clean-target producer config hash must be non-empty")
 
 
 def build_clean_targets(*, dataset_root: str | Path, image_size: int, samples_per_label: int = 128) -> torch.Tensor:

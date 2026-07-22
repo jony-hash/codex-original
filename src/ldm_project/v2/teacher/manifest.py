@@ -78,6 +78,8 @@ class TeacherTargetManifestV2:
     code_projection_seed: int | None = None
     sampling_steps: int | None = None
     class_labels: tuple[int, ...] | None = None
+    system_contract_hash: str | None = None
+    teacher_export_contract_hash: str | None = None
 
     @property
     def manifest_hash(self) -> str:
@@ -136,6 +138,10 @@ class TeacherTargetManifestV2:
             raise ValueError("teacher latent content changed")
         if self.teacher_initial_noise_hash is not None and tensor_sha256(noise) != self.teacher_initial_noise_hash:
             raise ValueError("teacher initial-noise content changed")
+        if self.system_contract_hash is not None and not self.system_contract_hash:
+            raise ValueError("teacher system contract hash must be non-empty")
+        if self.teacher_export_contract_hash is not None and not self.teacher_export_contract_hash:
+            raise ValueError("teacher export contract hash must be non-empty")
         export = payload["config"]
         if formal and (self.sample_count != 1000 or self.samples_per_label != 100 or self.code_shape != (1000, 8) or self.code_seed != 1234 or self.code_projection_seed != 2026 or self.sampling_steps != 200 or self.class_labels != tuple(range(10)) or not self.generated_git_commit or not self.v2_config_hash or not self.legacy_export_config_hash):
             raise ValueError("formal v2 teacher targets require exactly 100 codes per label with code_dim=8")
@@ -194,7 +200,7 @@ def build_teacher_pair_manifest(
     return manifest
 
 
-def build_teacher_target_manifest(dataset_path: str | Path, pair: TeacherPairManifestV2, *, formal: bool = False, generated_git_commit: str | None = None, v2_config_hash: str | None = None, legacy_export_config_hash: str | None = None) -> TeacherTargetManifestV2:
+def build_teacher_target_manifest(dataset_path: str | Path, pair: TeacherPairManifestV2, *, formal: bool = False, generated_git_commit: str | None = None, v2_config_hash: str | None = None, legacy_export_config_hash: str | None = None, system_contract_hash: str | None = None, teacher_export_contract_hash: str | None = None) -> TeacherTargetManifestV2:
     """Validate a legacy export once, then expose a strict v2 dataset boundary."""
     pair.validate()
     target = Path(dataset_path)
@@ -241,6 +247,8 @@ def build_teacher_target_manifest(dataset_path: str | Path, pair: TeacherPairMan
         code_projection_seed=int(export["code_projection_seed"]),
         sampling_steps=int(export["sampling_steps"]),
         class_labels=tuple(int(label) for label in export["class_labels"]),
+        system_contract_hash=system_contract_hash,
+        teacher_export_contract_hash=teacher_export_contract_hash,
     )
     manifest.validate(formal=formal)
     return manifest

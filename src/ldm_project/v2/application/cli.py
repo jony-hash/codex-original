@@ -63,8 +63,11 @@ def _target_manifest(path: str) -> TeacherTargetManifestV2:
 def _clean_target_manifest(path: str, config: V2Config) -> CleanTargetManifestV2:
     manifest = CleanTargetManifestV2.from_dict(json.loads(Path(path).read_text(encoding="utf-8")))
     manifest.validate()
-    if manifest.config_hash != canonical_sha256(config.model_dump(mode="json")):
-        raise ValueError("clean-target manifest belongs to another v2 configuration")
+    if manifest.system_contract_hash is not None:
+        if manifest.system_contract_hash != _system_signature(config):
+            raise ValueError("clean-target manifest belongs to another physical system")
+    elif manifest.config_hash != canonical_sha256(config.model_dump(mode="json")):
+        raise ValueError("legacy clean-target manifest requires explicit migration")
     if manifest.shape != (10, 1, *config.system.slm_shape):
         raise ValueError("clean-target manifest geometry does not match the formal SLM plane")
     return manifest
@@ -76,8 +79,13 @@ def _validate_target_for_config(target: TeacherTargetManifestV2, config: V2Confi
     pair = build_teacher_pair_manifest(config.teacher.first_stage_checkpoint, config.teacher.diffusion_checkpoint, target_plane=config.teacher.target_plane, seed=config.teacher.seed, guidance_scale=config.teacher.guidance_scale, split=target.split, latent_geometry=config.teacher.latent_geometry)
     if pair.manifest_hash != target.teacher_pair_manifest_hash:
         raise ValueError("teacher target manifest is not paired with current teacher checkpoints/config")
-    if target.v2_config_hash is not None and target.v2_config_hash != canonical_sha256(config.model_dump(mode="json")):
-        raise ValueError("teacher target manifest belongs to another v2 configuration")
+    if target.system_contract_hash is not None and target.system_contract_hash != _system_signature(config):
+        raise ValueError("teacher target manifest belongs to another physical system")
+    if target.teacher_export_contract_hash is None:
+        raise ValueError("teacher target manifest requires explicit scoped migration")
+    expected_export_hash = _teacher_export_contract_hash(config, pair, target.legacy_export_config_hash or "")
+    if target.teacher_export_contract_hash != expected_export_hash:
+        raise ValueError("teacher target manifest belongs to another teacher export contract")
     target.validate(formal=config.system.is_formal)
 
 
@@ -90,6 +98,19 @@ def _write_record(run: V2Run, name: str, record: EvidenceRecordV2) -> Path:
 
 def _system_signature(config: V2Config) -> str:
     return canonical_sha256(config.system.model_dump(mode="json"))
+
+
+def _teacher_export_contract_hash(config: V2Config, pair: TeacherPairManifestV2, legacy_hash: str) -> str:
+    if config.teacher is None:
+        raise ValueError("teacher export contract requires teacher configuration")
+    return canonical_sha256({
+        "teacher_pair_manifest_hash": pair.manifest_hash,
+        "legacy_export_config_hash": legacy_hash,
+        "target_plane": config.teacher.target_plane,
+        "latent_geometry": config.teacher.latent_geometry,
+        "seed": config.teacher.seed,
+        "guidance_scale": config.teacher.guidance_scale,
+    })
 
 
 def _context(config: V2Config, *, teacher_manifest_hash: str | None = None, dataset_hash: str | None = None, calibration_hash: str | None = None, checkpoint_hash: str | None = None, basis_hash: str | None = None) -> EvidenceContextV2:
@@ -192,9 +213,10 @@ def _teacher_export(args: argparse.Namespace, config: V2Config) -> int:
         command = [sys.executable, "train.py", "--train-config", args.legacy_train_config, "--stage", "teacher_distill_export", "--device", config.run.device, "--output-root", str(legacy_output_root), "--first-stage-checkpoint", pair.first_stage_path, "--diffusion-checkpoint", pair.diffusion_path, "--seed", str(pair.seed), "--guidance-scale", str(pair.guidance_scale), "--distill-output", str(temporary)]
         subprocess.run(command, check=True)
         commit = subprocess.run(["git", "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
-        target = build_teacher_target_manifest(temporary, pair, formal=config.system.is_formal, generated_git_commit=commit, v2_config_hash=canonical_sha256(config.model_dump(mode="json")), legacy_export_config_hash=legacy_hash)
+        scoped_export_hash = _teacher_export_contract_hash(config, pair, legacy_hash)
+        target = build_teacher_target_manifest(temporary, pair, formal=config.system.is_formal, generated_git_commit=commit, v2_config_hash=canonical_sha256(config.model_dump(mode="json")), legacy_export_config_hash=legacy_hash, system_contract_hash=_system_signature(config), teacher_export_contract_hash=scoped_export_hash)
         os.replace(temporary, output)
-        target = build_teacher_target_manifest(output, pair, formal=config.system.is_formal, generated_git_commit=commit, v2_config_hash=canonical_sha256(config.model_dump(mode="json")), legacy_export_config_hash=legacy_hash)
+        target = build_teacher_target_manifest(output, pair, formal=config.system.is_formal, generated_git_commit=commit, v2_config_hash=canonical_sha256(config.model_dump(mode="json")), legacy_export_config_hash=legacy_hash, system_contract_hash=_system_signature(config), teacher_export_contract_hash=scoped_export_hash)
         target_path = Path(args.target_manifest)
         if target_path.exists():
             raise FileExistsError("teacher target manifest already exists")
@@ -227,6 +249,8 @@ def _export_clean_targets(args: argparse.Namespace, config: V2Config) -> int:
         dtype=str(targets.dtype),
         config_hash=run.config_hash,
         git_commit=run.git_commit,
+        system_contract_hash=_system_signature(config),
+        producer_config_hash=run.config_hash,
     )
     manifest.validate()
     atomic_write_json(manifest_path, manifest.to_dict() | {"manifest_hash": manifest.manifest_hash})
@@ -577,6 +601,35 @@ def _preflight(args: argparse.Namespace, config: V2Config) -> int:
     return 0
 
 
+def _rebind_manifest(args: argparse.Namespace, config: V2Config) -> int:
+    """Re-emit a verified input manifest without touching its tensor payload."""
+    _require_clean_acceptance(config)
+    output = Path(args.output)
+    if output.exists():
+        raise FileExistsError("rebound manifest output already exists")
+    source = json.loads(Path(args.source_manifest).read_text(encoding="utf-8"))
+    commit = subprocess.run(["git", "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
+    if args.kind == "clean-target":
+        old = CleanTargetManifestV2.from_dict(source)
+        old.validate()
+        targets = torch.load(old.targets.path, map_location="cpu", weights_only=False)
+        reference = tensor_artifact_ref(old.targets.path, role="clean_mnist_targets", git_commit=commit)
+        manifest = CleanTargetManifestV2(2, old.dataset_root, old.dataset_split, old.samples_per_label, old.labels, reference, tensor_sha256(targets), tuple(targets.shape), str(targets.dtype), canonical_sha256(config.model_dump(mode="json")), commit, _system_signature(config), canonical_sha256(config.model_dump(mode="json")))
+        manifest.validate()
+    else:
+        pair = _pair_manifest(args.teacher_manifest)
+        legacy_hash = _legacy_export_contract(args.legacy_train_config, config)
+        old = TeacherTargetManifestV2.from_dict(source)
+        old.validate(formal=config.system.is_formal)
+        if Path(old.dataset.path).resolve() != Path(args.dataset).resolve():
+            raise ValueError("teacher source manifest dataset does not match --dataset")
+        scoped_export_hash = _teacher_export_contract_hash(config, pair, legacy_hash)
+        manifest = build_teacher_target_manifest(old.dataset.path, pair, formal=config.system.is_formal, generated_git_commit=commit, v2_config_hash=canonical_sha256(config.model_dump(mode="json")), legacy_export_config_hash=legacy_hash, system_contract_hash=_system_signature(config), teacher_export_contract_hash=scoped_export_hash)
+    atomic_write_json(output, manifest.to_dict() | {"manifest_hash": manifest.manifest_hash})
+    print(output)
+    return 0
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m ldm_project.v2")
     root = parser.add_subparsers(dest="domain", required=True)
@@ -635,6 +688,15 @@ def _parser() -> argparse.ArgumentParser:
     summarize = evidence.add_parser("summarize")
     summarize.add_argument("--run", required=True)
     summarize.set_defaults(handler=lambda args: print(Path(args.run).read_text(encoding="utf-8")) or 0)
+    rebind = evidence.add_parser("rebind-manifest")
+    rebind.add_argument("--config", required=True)
+    rebind.add_argument("--kind", choices=("clean-target", "teacher-target"), required=True)
+    rebind.add_argument("--source-manifest", required=True)
+    rebind.add_argument("--output", required=True)
+    rebind.add_argument("--dataset", default="")
+    rebind.add_argument("--teacher-manifest", default="")
+    rebind.add_argument("--legacy-train-config", default="")
+    rebind.set_defaults(handler=lambda args: _rebind_manifest(args, load_config(args.config)))
     return parser
 
 
