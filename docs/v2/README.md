@@ -54,3 +54,5 @@ python -m ldm_project.v2 student admit-evaluation --config configs/v2/formal_amp
 ```
 
 任何 prototype 或 capacity gate 失败都会停止后续训练、test、导出与 promotion；不得用 enhanced preview 或 software readout 绕过 raw-CMOS 证据。
+
+当前 v2 formal prototype 状态：reachability audit 已通过，但修正后的唯一一次 5×40-step calibration 以 accuracy `0.50` 和 epoch stability failure 收口；因此没有人工 review 门、capacity evidence 或 student training 授权。下一次推进必须是独立的 prototype/readout 合同，经 reachability gate 后才可重新申请 formal calibration。

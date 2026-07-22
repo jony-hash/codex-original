@@ -6,6 +6,8 @@
 
 v2 的可执行闭环为：内容寻址 teacher pair/target manifest → prototype measurement → 内容绑定的人工 admission → frozen capacity → guarded training → checkpoint-driven raw-CMOS evaluate。small diagnostic system 仅允许 `diagnostic_*_smoke` 动作，不能授权 formal train、export、evaluate acceptance 或 promotion；正式 CUDA 命令和 review 交接见 [v2 runtime](../v2/README.md)。
 
+2026-07-22 v2 prototype 断点已完成一次 broad isolation 和一次修正后的 formal calibration。`sqrt(clean intensity)` 初始化、5×40 logical steps、固定 clean-correlation/Dice/CE objective 后，corr 达到 `0.8395`、dice `0.7625`，但 prototype accuracy 仅 `0.50`，且末两 epoch Dice 退化；reachability、finite、gradient、memory 和 provenance 均有效。因此这是 formal prototype gate 的真实失败，不是传播 harness failure。按照决策政策，当前停止进一步 loss/LR/epoch/phase sweep，禁止 capacity、student training、test、导出和 promotion；下一次主线只能先提出新的、独立的 prototype/readout 合同并重新通过 reachability gate。
+
 ## Golden Path
 
 | Stage | 用途 | 何时运行 | 必需输入 | 可作为最终单次曝光证据 |
