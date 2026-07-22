@@ -68,6 +68,9 @@ def test_cpu_diagnostic_cli_vertical_slice_is_never_acceptance(tmp_path: Path) -
     _checkpoint(diffusion, {"model_version": "diffusion-v1", "first_stage_model_version": "first-v1", "train_config": {"diffusion": 1}})
     config, output_root = tmp_path / "diagnostic.yaml", tmp_path / "outputs"
     _config(config, output_root, first, diffusion)
+    assert main(["student", "preflight", "--config", str(config)]) == 0
+    preflight = _artifact(output_root, "formal_execution_preflight_evidence.json")
+    assert json.loads(preflight.read_text(encoding="utf-8"))["status"] == "diagnostic"
     pair = build_teacher_pair_manifest(first, diffusion, target_plane="teacher_camera", seed=1234, guidance_scale=4.0, split="train")
     codes = torch.randn(20, 8)
     labels = torch.arange(10).repeat_interleave(2)

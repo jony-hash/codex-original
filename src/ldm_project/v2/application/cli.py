@@ -6,11 +6,13 @@ import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 import torch
 from torch import nn
+from torch.utils.checkpoint import checkpoint
 
 from ..config import V2Config, load_config
 from ..evidence import EvidenceContextV2, EvidenceRecordV2, GateResult, atomic_torch_save, atomic_write_json, canonical_sha256, file_sha256, load_manual_review, require_evidence_action, tensor_artifact_ref, tensor_sha256
@@ -23,6 +25,7 @@ from ..student.evaluation import CodeAcceptanceMetrics, acceptance_metrics, code
 from ..student.generator import LabelPrototypeBasisGenerator
 from ..student.review_artifacts import write_review_artifacts
 from ..student.training import calibrate_prototypes, train_code_conditioned
+from ..student.capacity import supported_dct_candidates
 from ..teacher import TeacherPairManifestV2, TeacherTargetManifestV2, build_teacher_pair_manifest, build_teacher_target_manifest
 from .runs import V2Run
 
@@ -113,6 +116,18 @@ def _memory_report(device: torch.device, *, baseline_reserved: int, baseline_all
     free_after_model = max(1, properties.total_memory - baseline_reserved)
     passed = delta <= 0.85 * free_after_model and peak_reserved <= 0.90 * properties.total_memory
     return passed, {"cuda_measured": True, "allocated_baseline": float(baseline_allocated), "reserved_baseline": float(baseline_reserved), "allocated_peak": float(peak_allocated), "reserved_peak": float(peak_reserved), "reserved_delta_peak": float(delta), "total_memory": float(properties.total_memory)}
+
+
+def _preflight_stage(name: str, operation, *, device: torch.device, baseline_reserved: int, baseline_allocated: int) -> tuple[GateResult, dict[str, float | bool]]:
+    if device.type == "cuda":
+        torch.cuda.reset_peak_memory_stats(device)
+    started = time.perf_counter()
+    operation()
+    if device.type == "cuda":
+        torch.cuda.synchronize(device)
+    memory_pass, memory = _memory_report(device, baseline_reserved=baseline_reserved, baseline_allocated=baseline_allocated)
+    memory["elapsed_seconds"] = time.perf_counter() - started
+    return GateResult(f"preflight_{name}", memory_pass, memory, None if memory_pass else "CUDA memory gate was not measured or failed"), memory
 
 
 def _legacy_teacher(args: argparse.Namespace, config: V2Config, stage: str) -> int:
@@ -442,6 +457,88 @@ def _admit_evaluation(args: argparse.Namespace, config: V2Config) -> int:
     return 0
 
 
+def _preflight(args: argparse.Namespace, config: V2Config) -> int:
+    """Bounded no-update physical execution probe; it is diagnostic by definition."""
+    device = torch.device(config.run.device)
+    run = _new_run(config)
+    basis = _zero_basis(config.system.slm_shape)
+    bundle = StudentBundle(config, basis).to(device)
+    if device.type == "cuda":
+        torch.cuda.empty_cache()
+        torch.cuda.reset_peak_memory_stats(device)
+        baseline_allocated, baseline_reserved = torch.cuda.memory_allocated(device), torch.cuda.memory_reserved(device)
+    else:
+        baseline_allocated = baseline_reserved = 0
+    before = state_content_hash(bundle.state_dict())
+    stages: list[GateResult] = []
+    reports: dict[str, dict[str, float | bool]] = {}
+    label = torch.zeros(1, dtype=torch.long, device=device)
+
+    def prototype() -> None:
+        bundle.zero_grad(set_to_none=True)
+        command = bundle.generator(torch.zeros(1, 8, device=device), label)
+        raw = checkpoint(lambda value: bundle.system.forward(bundle.system.command(value), return_optical_trace=True).raw_camera.tensor, command, use_reentrant=False)
+        raw.square().mean().backward()
+        if not all(parameter.grad is None or torch.isfinite(parameter.grad).all() for parameter in bundle.parameters()):
+            raise ValueError("prototype preflight produced non-finite gradients")
+        bundle.zero_grad(set_to_none=True)
+
+    gate, report = _preflight_stage("prototype_backward", prototype, device=device, baseline_reserved=baseline_reserved, baseline_allocated=baseline_allocated)
+    stages.append(gate)
+    reports["prototype_backward"] = report
+
+    def capacity() -> None:
+        with torch.no_grad():
+            base = bundle.generator.prototype_command(label)
+            support = torch.ones(*config.system.slm_shape, device=device)
+            direction = supported_dct_candidates(support, candidate_count=8, pixel_pitch_m=(config.system.slm_pixel_pitch_m, config.system.slm_pixel_pitch_m), max_cycles_per_mm=config.capacity_audit.max_cycles_per_mm if config.capacity_audit else 20.0).directions[0].unsqueeze(0).unsqueeze(0)
+            epsilon = config.capacity_audit.finite_difference_epsilon if config.capacity_audit else 1.0e-3
+            plus = bundle.system.forward(bundle.system.command((base + epsilon * direction).clamp(0.0, 1.0))).raw_camera.tensor
+            minus = bundle.system.forward(bundle.system.command((base - epsilon * direction).clamp(0.0, 1.0))).raw_camera.tensor
+            if not torch.isfinite((plus - minus) / (2.0 * epsilon)).all():
+                raise ValueError("capacity preflight response is non-finite")
+
+    gate, report = _preflight_stage("capacity_pair", capacity, device=device, baseline_reserved=baseline_reserved, baseline_allocated=baseline_allocated)
+    stages.append(gate)
+    reports["capacity_pair"] = report
+
+    def training() -> None:
+        bundle.zero_grad(set_to_none=True)
+        labels = torch.arange(10, device=device).repeat_interleave(2)
+        codes = torch.randn(20, 8, device=device)
+        values = []
+        for start in range(0, 20, config.execution.training_microbatch_size):
+            command = bundle.generator(codes[start : start + config.execution.training_microbatch_size], labels[start : start + config.execution.training_microbatch_size])
+            values.append(checkpoint(lambda value: bundle.system.forward(bundle.system.command(value)).raw_camera.tensor, command, use_reentrant=False))
+        torch.cat(values).square().mean().backward()
+        if not all(parameter.grad is None or torch.isfinite(parameter.grad).all() for parameter in bundle.parameters()):
+            raise ValueError("training preflight produced non-finite gradients")
+        bundle.zero_grad(set_to_none=True)
+
+    gate, report = _preflight_stage("logical_training_backward", training, device=device, baseline_reserved=baseline_reserved, baseline_allocated=baseline_allocated)
+    stages.append(gate)
+    reports["logical_training_backward"] = report
+
+    def evaluation() -> None:
+        with torch.no_grad():
+            bundle.system.forward_from_generator(bundle.generator, torch.zeros(1, 8, device=device), label)
+
+    gate, report = _preflight_stage("evaluation_microbatch", evaluation, device=device, baseline_reserved=baseline_reserved, baseline_allocated=baseline_allocated)
+    stages.append(gate)
+    reports["evaluation_microbatch"] = report
+    after = state_content_hash(bundle.state_dict())
+    trace = bundle.system.forward(bundle.system.command(bundle.generator.prototype_command(label)), return_optical_trace=True).optical_trace
+    provenance_complete = trace is not None and all(field.provenance.upstream_plane is not None or field.provenance.operation == "ideal_amplitude_slm" for field in trace)
+    unchanged = before == after
+    stages.append(GateResult("preflight_parameter_unchanged", unchanged, {"before_after_equal": unchanged}, None if unchanged else "preflight modified parameters"))
+    stages.append(GateResult("preflight_provenance", provenance_complete, {"provenance_complete": provenance_complete}, None if provenance_complete else "optical trace is incomplete"))
+    record = EvidenceRecordV2(2, "formal_execution_preflight", "diagnostic", "diagnostic", run.git_commit, run.dirty_patch_hash, run.config_hash, _context(config, calibration_hash=basis.artifact_hash, basis_hash=basis.artifact_hash), {}, tuple(stages), (), None if all(gate.passed for gate in stages) else "formal execution preflight did not pass")
+    _write_record(run, "formal_execution_preflight_evidence.json", record)
+    atomic_write_json(run.root / "formal_execution_preflight_memory.json", reports)
+    print(run.root)
+    return 0
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m ldm_project.v2")
     root = parser.add_subparsers(dest="domain", required=True)
@@ -480,6 +577,9 @@ def _parser() -> argparse.ArgumentParser:
     for name in ("config", "code_basis", "checkpoint", "codes", "labels", "output"):
         sample.add_argument("--" + name.replace("_", "-"), required=True)
     sample.set_defaults(handler=lambda args: _sample(args, load_config(args.config)))
+    preflight = student.add_parser("preflight")
+    preflight.add_argument("--config", required=True)
+    preflight.set_defaults(handler=lambda args: _preflight(args, load_config(args.config)))
     evaluate = student.add_parser("evaluate")
     for name in ("config", "training_evidence", "code_basis", "checkpoint", "teacher_target_manifest", "output"):
         evaluate.add_argument("--" + name.replace("_", "-"), required=True)
