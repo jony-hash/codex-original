@@ -1,0 +1,36 @@
+schema_version: 2
+system:
+  kind: diagnostic_amplitude_finite_crop_identity
+  slm_shape: [8, 8]
+  slm_pixel_pitch_m: 0.0000025
+  metasurface_shape: [4, 4]
+  metasurface_pixel_pitch_m: 0.000002
+  propagation_grid_size: 8
+  encoder_layers: 2
+  decoder_layers: 2
+  layer_spacing_m: 0.0015
+  front_magnification: -0.4
+  back_magnification: -2.5
+teacher:
+  first_stage_checkpoint: outputs/final_pt/first_stage_best_optical.pt
+  diffusion_checkpoint: outputs/final_pt/diffusion_best.pt
+prototype_calibration:
+  epochs: 2
+  learning_rate: 0.0005
+  fixed_exposure_scale: 0.4913053810596466
+capacity_audit:
+  dct_modes: 8
+  selected_basis_dim: 8
+  max_cycles_per_mm: 20.0
+  codes_per_label: 2
+  seed: 1234
+  finite_difference_epsilon: 0.001
+student_training:
+  epochs: 1
+  learning_rate: 0.0001
+  code_dim: 8
+run:
+  run_name: diagnostic_v2_small_amplitude_finite_crop_identity
+  output_root: outputs
+  evidence_tier: diagnostic
+  device: cpu

@@ -66,3 +66,8 @@ def test_v2_config_rejects_unknown_and_geometry_drift() -> None:
     payload["system"] = {"kind": "formal_amplitude_finite_crop_identity", "layer_spacing_m": 1e-3}
     with pytest.raises(ValidationError, match="layer_spacing_m"):
         V2Config.model_validate(payload)
+
+
+def test_small_diagnostic_system_is_never_formal() -> None:
+    config = V2Config.model_validate({"schema_version": 2, "system": {"kind": "diagnostic_amplitude_finite_crop_identity", "slm_shape": [8, 8], "metasurface_shape": [4, 4], "propagation_grid_size": 8}, "run": {"run_name": "unit", "device": "cpu"}})
+    assert not config.system.is_formal

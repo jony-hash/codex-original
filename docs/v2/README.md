@@ -20,7 +20,7 @@ v2 从 v79 研究快照旁路重写而来；两线的范围、回档点和发布
 
 1. 使用 `teacher manifest` 将配套 first-stage/diffusion checkpoint 固定为内容寻址 manifest。
 2. 运行 `student calibrate-prototypes`。它只能写 diagnostic evidence，直到固定曝光、十类人工 review、数值/梯度/显存门都通过。
-3. 运行 `audit capacity`。它必须读取已通过的 prototype evidence，并写入 8 维、label-only normalized DCT/SVD basis artifact。
+3. 运行 `audit capacity`。它必须读取已通过的 prototype evidence、冻结 prototype checkpoint 与 support；DCT/SVD、固定 100×10 code replay、SLM/raw-CMOS 指标均在同一冻结运行内生成。
 4. 仅当 capacity evidence 是 clean-commit 的 acceptance `passed` 状态时，`student train` 才允许启动。
 5. `student sample` 和 `student evaluate` 只产生 raw-CMOS 结果；它们不会 promotion checkpoint。
 
@@ -32,7 +32,7 @@ v2 从 v79 研究快照旁路重写而来；两线的范围、回档点和发布
 - v2 的显示图必须来自显式固定曝光；raw camera、loss view 和 display view 是不同类型。
 - v2 正式 checkpoint 只允许完整精确加载。prototype→code basis 的载入是单独、可审计的 warm-start。
 - v1 `outputs/final_pt/` 只作为 teacher adapter 输入，v2 不会写入或替换它。
-- CPU 竖切和单样本 CUDA smoke 仅证明执行与数值路径，不构成正式训练、可读性、硬件或 promotion 证据。
+- `diagnostic_amplitude_finite_crop_identity` 只用于小尺寸 CPU 竖切，任何 evidence 都不能变为 acceptance；CPU 竖切和单样本 CUDA smoke 不构成正式训练、可读性、硬件或 promotion 证据。
 
 ## 用户执行的正式 CUDA 工作
 

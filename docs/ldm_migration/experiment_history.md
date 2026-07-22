@@ -550,11 +550,11 @@ v48 使用同一个 v47 Probe A checkpoint、相同 `small_sharp_stroke_digit_co
 - `outputs/reports/v65_common_mode_readout_locality_audit.pt`
 - `outputs/reports/v65_common_mode_readout_locality_audit_preview.png`
 
-### v66：semantic-gradient budget audit（实现完成，CUDA 待单独授权）
+### v66：semantic-gradient budget audit（CUDA 已完成，diagnostic-only）
 
 - 新增只读 `tools/diagnose_v66_semantic_gradient_budget_audit.py` 与 `tests/test_v66_semantic_gradient_budget_audit.py`。工具固定 v60 epoch-5、v56 formal config、v58.3 relay、readable `800/100/100` 及 v61–v65 工件；使用正式未 clamp camera reconstruction residual，对 generator、encoder、decoder 参数块进行逐样本 VJP 与流式 cancellation/cosine 统计。
 - train-only global/label templates、common/label/instance residual 精确分解、foreground/background 权重、参数零变化和四个决策分支均已覆盖。工具不创建训练对象、不写入参数梯度、不保存完整复场或梯度。
-- 按计划的单独 CUDA 授权条件，本轮未运行 v66 CUDA audit，因此没有虚构模型结论或生成 v66 report/tensor/preview。待获得授权后只执行一次正式诊断并把实际 gate 追加到本节。
+- 已按预注册输入完成一次 CUDA audit：`parameter_update_count=0`、`optimizer_created=false`，报告、tensor 与 preview 均已生成。结果为 `mixed-semantic-gradient-evidence`：label/instance drive 未同时低于 suppression gate，且未满足 semantic-gradient-available 或 batch-cancellation gate；它不授权继续 v56/v60 同配置训练，只保留为透明薄相位 diagnostic 的历史前置证据。
 - 实现验证：v57–v66 定向 `58 passed`；完整仓库 `522 passed`、`148 subtests passed`；compileall、ruff、`git diff --check` 通过。
 
 ## 2026-07-16 至 2026-07-22 v67–v79：透明诊断、code transport 上界与冻结结论
