@@ -159,7 +159,10 @@ class _LegacyDiagnosticOneShotOpticalGenerator(nn.Module):
                 else PhaseOnlyDiffractiveStack
             )
             if d2nn.get("exterior_boundary") == "transparent_identity":
-                if encoder_modulation != "phase_only" or decoder_modulation != "phase_only":
+                if (
+                    encoder_modulation != "phase_only"
+                    or decoder_modulation != "phase_only"
+                ):
                     raise ValueError(
                         "transparent_identity requires phase-only encoder and decoder"
                     )
@@ -171,9 +174,7 @@ class _LegacyDiagnosticOneShotOpticalGenerator(nn.Module):
                     "transparent_propagation_method": d2nn[
                         "transparent_propagation_method"
                     ],
-                    "transparent_fft_grid_size": d2nn[
-                        "transparent_fft_grid_size"
-                    ],
+                    "transparent_fft_grid_size": d2nn["transparent_fft_grid_size"],
                     "transparent_edge_guard_fraction": d2nn[
                         "transparent_edge_guard_fraction"
                     ],
@@ -351,7 +352,8 @@ class _LegacyDiagnosticOneShotOpticalGenerator(nn.Module):
             raise ValueError(
                 "Unsupported one_shot.generator_e_arch: "
                 f"{self.config.generator_e_arch}; expected label_template, "
-                "label_template_code_residual, mlp, or template_residual_mlp."
+                "label_template_code_residual, label_template_code_delta, "
+                "label_template_semantic_command_residual, mlp, or template_residual_mlp."
             )
         if self.config.generator_command_transform not in _ONE_SHOT_COMMAND_TRANSFORMS:
             raise ValueError(
@@ -372,12 +374,16 @@ class _LegacyDiagnosticOneShotOpticalGenerator(nn.Module):
                 "label_template requires mnist_prototype initialization and targets plus "
                 "the intensity_to_amplitude command transform"
             )
-        if self.config.generator_e_arch == "label_template_code_residual" and (
+        if self.config.generator_e_arch in {
+            "label_template_code_residual",
+            "label_template_code_delta",
+            "label_template_semantic_command_residual",
+        } and (
             self.config.generator_command_transform != "intensity_to_amplitude"
             or self.config.generator_template_init != "mnist_prototype"
         ):
             raise ValueError(
-                "label_template_code_residual requires mnist_prototype initialization plus "
+                "template code generator requires mnist_prototype initialization plus "
                 "the intensity_to_amplitude command transform"
             )
         if self.config.code_residual_scale < 0.0:
@@ -1201,12 +1207,12 @@ class _LegacyDiagnosticOneShotOpticalGenerator(nn.Module):
             and not return_optical_fields
         )
         if isinstance(self.encoder, TransparentIdentityDiffractiveStack):
-            encoded_field, encoder_layer_fields, encoder_crop_diagnostics = self.encoder(
-                encoder_grid, capture_full_layers=capture_full_layers
+            encoded_field, encoder_layer_fields, encoder_crop_diagnostics = (
+                self.encoder(encoder_grid, capture_full_layers=capture_full_layers)
             )
         else:
-            encoded_field, encoder_layer_fields, encoder_crop_diagnostics = self.encoder(
-                encoder_grid
+            encoded_field, encoder_layer_fields, encoder_crop_diagnostics = (
+                self.encoder(encoder_grid)
             )
         ols_field = self._apply_ols_transfer_calibration(
             _apply_complex_ols(encoded_field, self.config.ols_kind)
@@ -1238,17 +1244,25 @@ class _LegacyDiagnosticOneShotOpticalGenerator(nn.Module):
             )
         else:
             if isinstance(self.decoder, TransparentIdentityDiffractiveStack):
-                chip_grid, decoder_layer_fields, decoder_crop_diagnostics = self.decoder(
-                    decoder_input_field,
-                    mask_component=self.config.decoder_diagnostic_mask_component,
-                    phase_layer_mask=tuple(self.config.decoder_diagnostic_phase_layer_mask),
-                    capture_full_layers=capture_full_layers,
+                chip_grid, decoder_layer_fields, decoder_crop_diagnostics = (
+                    self.decoder(
+                        decoder_input_field,
+                        mask_component=self.config.decoder_diagnostic_mask_component,
+                        phase_layer_mask=tuple(
+                            self.config.decoder_diagnostic_phase_layer_mask
+                        ),
+                        capture_full_layers=capture_full_layers,
+                    )
                 )
             else:
-                chip_grid, decoder_layer_fields, decoder_crop_diagnostics = self.decoder(
-                    decoder_input_field,
-                    mask_component=self.config.decoder_diagnostic_mask_component,
-                    phase_layer_mask=tuple(self.config.decoder_diagnostic_phase_layer_mask),
+                chip_grid, decoder_layer_fields, decoder_crop_diagnostics = (
+                    self.decoder(
+                        decoder_input_field,
+                        mask_component=self.config.decoder_diagnostic_mask_component,
+                        phase_layer_mask=tuple(
+                            self.config.decoder_diagnostic_phase_layer_mask
+                        ),
+                    )
                 )
         raw_optical_readout = self.back_path(
             chip_grid,
@@ -1453,7 +1467,10 @@ class _LegacyDiagnosticOneShotOpticalGenerator(nn.Module):
                 "transparent_artifact_view": "center_crop_from_internal_field",
                 "transparent_identity_exterior_embedding": {
                     "operation": "transparent_identity_exterior_embedding",
-                    "source_shape": [int(encoder_grid.shape[-2]), int(encoder_grid.shape[-1])],
+                    "source_shape": [
+                        int(encoder_grid.shape[-2]),
+                        int(encoder_grid.shape[-1]),
+                    ],
                     "destination_shape": [
                         int(encoder_input_field.shape[-2]),
                         int(encoder_input_field.shape[-1]),
@@ -1656,7 +1673,11 @@ class _LegacyDiagnosticOneShotOpticalGenerator(nn.Module):
             full_grid_input = encoder_grid.new_zeros(
                 *encoder_grid.shape[:-2], state_size, state_size
             )
-            full_grid_input[..., top : top + encoder_grid.shape[-2], left : left + encoder_grid.shape[-1]] = encoder_grid
+            full_grid_input[
+                ...,
+                top : top + encoder_grid.shape[-2],
+                left : left + encoder_grid.shape[-1],
+            ] = encoder_grid
             add(
                 fields,
                 "encoder_full_grid_input",

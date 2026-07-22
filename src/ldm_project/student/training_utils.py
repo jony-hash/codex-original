@@ -546,7 +546,7 @@ def _per_class_label_audit_metrics(
     _student_label_margin_metrics, but returns per-class scalars instead of
     a single overall loss term.
     """
-    from .one_shot_losses import _normalize_for_label_margin
+    from .objectives import _normalize_for_label_margin
 
     result: dict[str, float] = {}
     per_class_counts: dict[str, int] = {}

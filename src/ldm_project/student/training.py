@@ -156,7 +156,12 @@ def _build_distill_target_prototypes(torch_module, train_cfg):
         and train_cfg.one_shot.aux_detail_target_source != "mnist_prototype"
         and not (
             train_cfg.one_shot.generator_e_arch
-            in {"label_template", "label_template_code_residual"}
+            in {
+                "label_template",
+                "label_template_code_residual",
+                "label_template_code_delta",
+                "label_template_semantic_command_residual",
+            }
             and train_cfg.one_shot.generator_template_init == "mnist_prototype"
         )
     ):
@@ -206,7 +211,12 @@ def _validate_frozen_generator_warm_start(
         return
     if (
         train_cfg.one_shot.generator_e_arch
-        in {"label_template", "label_template_code_residual"}
+        in {
+            "label_template",
+            "label_template_code_residual",
+            "label_template_code_delta",
+            "label_template_semantic_command_residual",
+        }
         and train_cfg.one_shot.generator_template_init == "mnist_prototype"
     ):
         return
@@ -232,6 +242,8 @@ def _maybe_initialize_label_template(
     if train_cfg.one_shot.generator_e_arch not in {
         "label_template",
         "label_template_code_residual",
+        "label_template_code_delta",
+        "label_template_semantic_command_residual",
     }:
         return
     if one_shot_checkpoint is not None or generator_checkpoint is not None:
@@ -259,7 +271,12 @@ def _maybe_initialize_label_template(
             "one_shot_generator_template_max": float(template_bank.max().item()),
             "one_shot_generator_command_transform": train_cfg.one_shot.generator_command_transform,
             "one_shot_generator_code_conditioning_active": (
-                train_cfg.one_shot.generator_e_arch == "label_template_code_residual"
+                train_cfg.one_shot.generator_e_arch
+                in {
+                    "label_template_code_residual",
+                    "label_template_code_delta",
+                    "label_template_semantic_command_residual",
+                }
             ),
         }
     )
@@ -302,8 +319,8 @@ def _maybe_load_one_shot_module_warm_starts(
         )
         run_meta["one_shot_distill_generator_warm_start_summary"] = summary
         run_meta["one_shot_distill_generator_warm_start_before_hash"] = generator_before
-        run_meta["one_shot_distill_generator_warm_start_after_hash"] = _state_component_hash(
-            one_shot_model, ("generator_e.",)
+        run_meta["one_shot_distill_generator_warm_start_after_hash"] = (
+            _state_component_hash(one_shot_model, ("generator_e.",))
         )
         run_meta["one_shot_distill_generator_template_hash"] = _state_component_hash(
             one_shot_model, ("generator_e.template_logits",)
@@ -333,8 +350,8 @@ def _maybe_load_one_shot_module_warm_starts(
         run_meta["one_shot_distill_optical_warm_start_checkpoint"] = optical_checkpoint
         run_meta["one_shot_distill_optical_warm_start_summary"] = summary
         run_meta["one_shot_distill_optical_warm_start_before_hash"] = optical_before
-        run_meta["one_shot_distill_optical_warm_start_after_hash"] = _state_component_hash(
-            one_shot_model, ("encoder.", "decoder.")
+        run_meta["one_shot_distill_optical_warm_start_after_hash"] = (
+            _state_component_hash(one_shot_model, ("encoder.", "decoder."))
         )
         print(
             f"warm-started one_shot_distill optical core from checkpoint: {optical_checkpoint}"
@@ -608,9 +625,7 @@ def _distill_checkpoint_payload(
         "optical_boundary_metadata": {
             "state_grid": getattr(d2nn, "propagation_grid_size", None),
             "fft_grid": getattr(d2nn, "transparent_fft_grid_size", None),
-            "propagation_method": getattr(
-                d2nn, "transparent_propagation_method", None
-            ),
+            "propagation_method": getattr(d2nn, "transparent_propagation_method", None),
             "memory_mode": getattr(d2nn, "transparent_memory_mode", None),
             "camera_normalization": getattr(
                 getattr(one_shot_model, "config", None),

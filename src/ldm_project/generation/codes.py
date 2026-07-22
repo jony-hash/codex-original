@@ -6,6 +6,7 @@ import math
 ONE_SHOT_RAW_DIAGNOSTIC_TENSOR_KEYS = (
     "generator_base_command",
     "generator_desired_intensity",
+    "generator_code_delta_logits",
     "generator_residual_map",
     "generator_residual_abs_mean",
     "generator_residual_bg_abs_mean",

@@ -1,9 +1,11 @@
 """Canonical configuration validators preserving the legacy error contract."""
+
 from __future__ import annotations
 
 import math
 
 from .schema import OneShotConfig, PhysicsConfig, TrainingConfig
+
 
 def _validate_d2nn_training_config(config: TrainingConfig) -> None:
     if config.one_shot.d2nn is None:
@@ -18,16 +20,16 @@ def _validate_d2nn_training_config(config: TrainingConfig) -> None:
             "Unsupported one_shot.d2nn.modulation: "
             f"{config.one_shot.d2nn.modulation}; expected phase_only or phase_amplitude."
         )
-    if _expected_d2nn_modulation(config.one_shot.optical_core_arch) == "phase_only" and (
-        config.one_shot.d2nn.modulation != "phase_only"
-    ):
+    if _expected_d2nn_modulation(
+        config.one_shot.optical_core_arch
+    ) == "phase_only" and (config.one_shot.d2nn.modulation != "phase_only"):
         raise ValueError(
             "one_shot.optical_core_arch=diffractive_phase_only requires "
             "d2nn.modulation=phase_only."
         )
-    if _expected_d2nn_modulation(config.one_shot.optical_core_arch) == "phase_amplitude" and (
-        config.one_shot.d2nn.modulation != "phase_amplitude"
-    ):
+    if _expected_d2nn_modulation(
+        config.one_shot.optical_core_arch
+    ) == "phase_amplitude" and (config.one_shot.d2nn.modulation != "phase_amplitude"):
         raise ValueError(
             "one_shot.optical_core_arch=phase_amplitude_d2nn requires "
             "d2nn.modulation=phase_amplitude."
@@ -73,7 +75,10 @@ def _validate_first_stage_training_config(config: TrainingConfig) -> None:
         "camera_balanced_score",
         "camera_label_margin_score",
     }
-    if config.first_stage.checkpoint_selection_metric not in allowed_first_stage_selection_metrics:
+    if (
+        config.first_stage.checkpoint_selection_metric
+        not in allowed_first_stage_selection_metrics
+    ):
         raise ValueError(
             "first_stage.checkpoint_selection_metric must be one of "
             f"{sorted(allowed_first_stage_selection_metrics)}, "
@@ -103,7 +108,10 @@ def _validate_one_shot_selection_and_weights(config: TrainingConfig) -> None:
         "strict_balanced_quality",
         "strict_readability",
     }
-    if config.one_shot.checkpoint_selection_metric not in allowed_one_shot_selection_metrics:
+    if (
+        config.one_shot.checkpoint_selection_metric
+        not in allowed_one_shot_selection_metrics
+    ):
         raise ValueError(
             "one_shot.checkpoint_selection_metric must be one of "
             f"{sorted(allowed_one_shot_selection_metrics)}, "
@@ -114,7 +122,10 @@ def _validate_one_shot_selection_and_weights(config: TrainingConfig) -> None:
             "one_shot.sample_repeats_per_class must be positive, "
             f"got {config.one_shot.sample_repeats_per_class}"
         )
-    if config.one_shot.eval_samples_per_class is not None and int(config.one_shot.eval_samples_per_class) <= 0:
+    if (
+        config.one_shot.eval_samples_per_class is not None
+        and int(config.one_shot.eval_samples_per_class) <= 0
+    ):
         raise ValueError(
             "one_shot.eval_samples_per_class must be positive when set, "
             f"got {config.one_shot.eval_samples_per_class}"
@@ -180,6 +191,8 @@ def _validate_one_shot_selection_and_weights(config: TrainingConfig) -> None:
 _ONE_SHOT_GENERATOR_ARCHES = {
     "label_template",
     "label_template_code_residual",
+    "label_template_code_delta",
+    "label_template_semantic_command_residual",
     "mlp",
     "template_residual_mlp",
 }
@@ -231,22 +244,43 @@ def _validate_one_shot_generator_arch_requirements(one_shot: OneShotConfig) -> N
                 "one_shot.generator_e_arch='label_template' requires "
                 "one_shot.distill_target_source='mnist_prototype'."
             )
-    elif one_shot.generator_e_arch == "label_template_code_residual":
+    elif one_shot.generator_e_arch in {
+        "label_template_code_residual",
+        "label_template_code_delta",
+        "label_template_semantic_command_residual",
+    }:
         if one_shot.generator_template_init != "mnist_prototype":
             raise ValueError(
-                "one_shot.generator_e_arch='label_template_code_residual' requires "
+                "template code generator requires "
                 "one_shot.generator_template_init='mnist_prototype'."
             )
         if one_shot.generator_command_transform != "intensity_to_amplitude":
             raise ValueError(
-                "one_shot.generator_e_arch='label_template_code_residual' requires "
+                "template code generator requires "
                 "one_shot.generator_command_transform='intensity_to_amplitude'."
             )
     elif one_shot.generator_template_init != "none":
         raise ValueError(
             "one_shot.generator_template_init is only supported for "
-            "one_shot.generator_e_arch='label_template' or "
-            "one_shot.generator_e_arch='label_template_code_residual'."
+            "one_shot.generator_e_arch='label_template', "
+            "'label_template_code_residual', 'label_template_code_delta', or "
+            "'label_template_semantic_command_residual'."
+        )
+    if (
+        one_shot.generator_e_arch == "label_template_code_delta"
+        and float(one_shot.code_residual_scale) != 0.0
+    ):
+        raise ValueError(
+            "one_shot.generator_e_arch='label_template_code_delta' requires "
+            "one_shot.code_residual_scale=0.0; its code delta is unscaled."
+        )
+    if (
+        one_shot.generator_e_arch == "label_template_semantic_command_residual"
+        and float(one_shot.code_residual_scale) != 0.0
+    ):
+        raise ValueError(
+            "one_shot.generator_e_arch='label_template_semantic_command_residual' "
+            "requires one_shot.code_residual_scale=0.0; semantic command has a fixed amplitude."
         )
 
 
@@ -317,12 +351,9 @@ def _validate_one_shot_aux_objective_config(one_shot: OneShotConfig) -> None:
             f"{sorted(allowed_aux_semantic_planes)}, "
             f"got {one_shot.aux_semantic_plane_key!r}"
         )
-    aux_semantic_active = (
-        float(one_shot.aux_semantic_weight) > 0.0
-        and (
-            float(one_shot.aux_semantic_prototype_ce_weight) > 0.0
-            or float(one_shot.aux_semantic_negative_label_margin_weight) > 0.0
-        )
+    aux_semantic_active = float(one_shot.aux_semantic_weight) > 0.0 and (
+        float(one_shot.aux_semantic_prototype_ce_weight) > 0.0
+        or float(one_shot.aux_semantic_negative_label_margin_weight) > 0.0
     )
     if aux_semantic_active and not one_shot.aux_semantic_plane_key:
         raise ValueError(
@@ -343,12 +374,18 @@ def _validate_one_shot_aux_objective_config(one_shot: OneShotConfig) -> None:
             f"{sorted(allowed_aux_topology_planes)}, "
             f"got {one_shot.aux_topology_plane_key!r}"
         )
-    if float(one_shot.aux_topology_weight) > 0.0 and not one_shot.aux_topology_plane_key:
+    if (
+        float(one_shot.aux_topology_weight) > 0.0
+        and not one_shot.aux_topology_plane_key
+    ):
         raise ValueError(
             "one_shot.aux_topology_plane_key is required when aux topology loss is enabled."
         )
     allowed_aux_topology_target_transforms = {"none", "lowpass", "thick_binary"}
-    if one_shot.aux_topology_target_transform not in allowed_aux_topology_target_transforms:
+    if (
+        one_shot.aux_topology_target_transform
+        not in allowed_aux_topology_target_transforms
+    ):
         raise ValueError(
             "one_shot.aux_topology_target_transform must be one of "
             f"{sorted(allowed_aux_topology_target_transforms)}, "
@@ -361,7 +398,11 @@ def _validate_one_shot_objective_config(config: TrainingConfig) -> None:
     _validate_one_shot_aux_objective_config(config.one_shot)
 
 
-_ONE_SHOT_DECODER_DIAGNOSTIC_MODES = {"normal", "bypass_decoder", "propagation_only_decoder"}
+_ONE_SHOT_DECODER_DIAGNOSTIC_MODES = {
+    "normal",
+    "bypass_decoder",
+    "propagation_only_decoder",
+}
 _ONE_SHOT_DECODER_MODULATION_OVERRIDES = {"none", "phase_amplitude"}
 _ONE_SHOT_DECODER_MASK_COMPONENTS = {"trained", "phase_only", "amplitude_only"}
 _ONE_SHOT_TARGET_CODE_MODES = {
@@ -373,7 +414,11 @@ _ONE_SHOT_TARGET_CODE_MODES = {
     "small_sharp_stroke_digit_code",
     "class_codebook_grid",
 }
-_ONE_SHOT_TARGET_CODE_BRIDGE_SOURCES = {"none", "encoded_amplitude", "ols_output_amplitude"}
+_ONE_SHOT_TARGET_CODE_BRIDGE_SOURCES = {
+    "none",
+    "encoded_amplitude",
+    "ols_output_amplitude",
+}
 _ONE_SHOT_TARGET_CODE_BRIDGE_ARCHES = {"shallow", "deep_residual", "multiscale"}
 _ONE_SHOT_TARGET_CODE_BRIDGE_MODES = {
     "spatial_identity_code",
@@ -407,13 +452,19 @@ def _validate_one_shot_decoder_diagnostic_config(one_shot: OneShotConfig) -> Non
             f"{sorted(_ONE_SHOT_DECODER_DIAGNOSTIC_MODES)}, "
             f"got {one_shot.decoder_diagnostic_mode!r}"
         )
-    if one_shot.decoder_diagnostic_modulation_override not in _ONE_SHOT_DECODER_MODULATION_OVERRIDES:
+    if (
+        one_shot.decoder_diagnostic_modulation_override
+        not in _ONE_SHOT_DECODER_MODULATION_OVERRIDES
+    ):
         raise ValueError(
             "one_shot.decoder_diagnostic_modulation_override must be one of "
             f"{sorted(_ONE_SHOT_DECODER_MODULATION_OVERRIDES)}, "
             f"got {one_shot.decoder_diagnostic_modulation_override!r}"
         )
-    if one_shot.decoder_diagnostic_mask_component not in _ONE_SHOT_DECODER_MASK_COMPONENTS:
+    if (
+        one_shot.decoder_diagnostic_mask_component
+        not in _ONE_SHOT_DECODER_MASK_COMPONENTS
+    ):
         raise ValueError(
             "one_shot.decoder_diagnostic_mask_component must be one of "
             f"{sorted(_ONE_SHOT_DECODER_MASK_COMPONENTS)}, "
@@ -448,9 +499,13 @@ def _validate_one_shot_decoder_diagnostic_config(one_shot: OneShotConfig) -> Non
                 f"decoder layer count {decoder_layers}, got {len(phase_layer_mask)}"
             )
         if not all(type(enabled) is bool for enabled in phase_layer_mask):
-            raise ValueError("one_shot.decoder_diagnostic_phase_layer_mask entries must be booleans")
+            raise ValueError(
+                "one_shot.decoder_diagnostic_phase_layer_mask entries must be booleans"
+            )
         if not any(phase_layer_mask):
-            raise ValueError("one_shot.decoder_diagnostic_phase_layer_mask must enable at least one layer")
+            raise ValueError(
+                "one_shot.decoder_diagnostic_phase_layer_mask must enable at least one layer"
+            )
         if one_shot.decoder_diagnostic_mode != "normal":
             raise ValueError(
                 "one_shot.decoder_diagnostic_phase_layer_mask requires decoder_diagnostic_mode=normal"
@@ -513,7 +568,9 @@ def _validate_one_shot_diagnostic_config(config: TrainingConfig) -> None:
         )
 
 
-def validate_physical_forward_contract(config: TrainingConfig, physics: PhysicsConfig) -> None:
+def validate_physical_forward_contract(
+    config: TrainingConfig, physics: PhysicsConfig
+) -> None:
     """Validate the current v55 coherent-relay physical contract."""
     one_shot = config.one_shot
     if not one_shot.physical_forward_contract:
@@ -523,55 +580,104 @@ def validate_physical_forward_contract(config: TrainingConfig, physics: PhysicsC
     if one_shot.ols_transfer_calibration != "none":
         raise ValueError("physical forward contract forbids OLS transfer calibration")
     if one_shot.optical_core_arch != "diffractive_phase_only":
-        raise ValueError("physical forward contract requires diffractive_phase_only core")
-    if physics.front_path_model != "coherent_imaging_4f" or physics.back_path_model != "free_space":
+        raise ValueError(
+            "physical forward contract requires diffractive_phase_only core"
+        )
+    if (
+        physics.front_path_model != "coherent_imaging_4f"
+        or physics.back_path_model != "free_space"
+    ):
         raise ValueError(
             "current physical forward contract requires coherent_imaging_4f front "
             "and thin-lens free_space backend relay"
         )
     if not physics.physical_forward_contract:
-        raise ValueError("physical forward contract requires physics.physical_forward_contract=true")
+        raise ValueError(
+            "physical forward contract requires physics.physical_forward_contract=true"
+        )
     d2nn = one_shot.d2nn
     if d2nn is None:
         raise ValueError("physical forward contract requires one_shot.d2nn")
     if (d2nn.grid_size, d2nn.pixel_size) != (100, 2.0e-6):
-        raise ValueError("physical forward contract requires 100x100 D2NN at 2 um pitch")
+        raise ValueError(
+            "physical forward contract requires 100x100 D2NN at 2 um pitch"
+        )
     if abs(d2nn.layer_spacing - 1.5e-3) > 1.0e-12:
         raise ValueError("physical forward contract requires 1.50 mm layer spacing")
     if d2nn.modulation != "phase_only":
-        raise ValueError("physical forward contract requires phase_only D2NN modulation")
+        raise ValueError(
+            "physical forward contract requires phase_only D2NN modulation"
+        )
     if (d2nn.encoder_layers, d2nn.decoder_layers) != (2, 2):
-        raise ValueError("physical forward contract requires two encoder and two decoder layers")
-    if abs(physics.optics.pixel_size - 2.5e-6) > 1.0e-12 or physics.geometry.grid_size != 200:
-        raise ValueError("physical forward contract requires 200x200 SLM/CMOS at 2.5 um pitch")
+        raise ValueError(
+            "physical forward contract requires two encoder and two decoder layers"
+        )
+    if (
+        abs(physics.optics.pixel_size - 2.5e-6) > 1.0e-12
+        or physics.geometry.grid_size != 200
+    ):
+        raise ValueError(
+            "physical forward contract requires 200x200 SLM/CMOS at 2.5 um pitch"
+        )
     if physics.front_path_model == "coherent_imaging_4f":
         macro = physics.macro_optics
-        if abs(macro.dist_slm_to_bs + macro.dist_bs_to_m3 + macro.dist_m3_to_front_lens1 - macro.front_lens1_focal_length) > 1.0e-9:
+        if (
+            abs(
+                macro.dist_slm_to_bs
+                + macro.dist_bs_to_m3
+                + macro.dist_m3_to_front_lens1
+                - macro.front_lens1_focal_length
+            )
+            > 1.0e-9
+        ):
             raise ValueError("formal front relay SLM-to-L1 distance must equal f1")
-        if abs(macro.dist_front_lens1_to_lens2 - (macro.front_lens1_focal_length + macro.front_lens2_focal_length)) > 1.0e-9:
+        if (
+            abs(
+                macro.dist_front_lens1_to_lens2
+                - (macro.front_lens1_focal_length + macro.front_lens2_focal_length)
+            )
+            > 1.0e-9
+        ):
             raise ValueError("formal front relay L1-to-L2 distance must equal f1+f2")
-        if abs(macro.dist_front_lens2_to_encoder - macro.front_lens2_focal_length) > 1.0e-9:
+        if (
+            abs(macro.dist_front_lens2_to_encoder - macro.front_lens2_focal_length)
+            > 1.0e-9
+        ):
             raise ValueError("formal front relay L2-to-encoder distance must equal f2")
-        if abs(
-            macro.dist_slm_to_bs
-            + macro.dist_bs_to_m3
-            + macro.dist_m3_to_front_lens1
-            + macro.dist_front_lens1_to_lens2
-            + macro.dist_front_lens2_to_encoder
-            - 0.625
-        ) > 1.0e-9:
+        if (
+            abs(
+                macro.dist_slm_to_bs
+                + macro.dist_bs_to_m3
+                + macro.dist_m3_to_front_lens1
+                + macro.dist_front_lens1_to_lens2
+                + macro.dist_front_lens2_to_encoder
+                - 0.625
+            )
+            > 1.0e-9
+        ):
             raise ValueError("formal front relay mechanical distance must equal 625 mm")
-        if abs(macro.front_lens2_focal_length / macro.front_lens1_focal_length - 0.4) > 1.0e-9:
+        if (
+            abs(macro.front_lens2_focal_length / macro.front_lens1_focal_length - 0.4)
+            > 1.0e-9
+        ):
             raise ValueError("front 4f relay requires magnification -0.4")
-        if macro.front_lens1_clear_aperture < 0.02375 or macro.front_lens2_clear_aperture < 0.02375:
+        if (
+            macro.front_lens1_clear_aperture < 0.02375
+            or macro.front_lens2_clear_aperture < 0.02375
+        ):
             raise ValueError("front relay clear apertures must be at least 23.75 mm")
         if macro.back_relay_clear_aperture < 0.0266:
             raise ValueError("back relay clear aperture must be at least 26.60 mm")
     if one_shot.decoder_diagnostic_mode != "normal":
         raise ValueError("physical forward contract requires normal decoder mode")
     if one_shot.decoder_diagnostic_modulation_override != "none":
-        raise ValueError("physical forward contract forbids decoder modulation overrides")
-    if one_shot.target_code_diagnostic_mode != "none" or one_shot.target_code_bridge_source != "none":
+        raise ValueError(
+            "physical forward contract forbids decoder modulation overrides"
+        )
+    if (
+        one_shot.target_code_diagnostic_mode != "none"
+        or one_shot.target_code_bridge_source != "none"
+    ):
         raise ValueError("physical forward contract forbids target-code intervention")
 
 
@@ -593,7 +699,10 @@ def _validate_one_shot_target_config(config: TrainingConfig) -> None:
             f"got {one_shot.aux_detail_foreground_gate_dilation}"
         )
     allowed_student_prototype_sources = {"mnist", "teacher_image", "teacher_camera"}
-    if one_shot.student_label_margin_prototype_source not in allowed_student_prototype_sources:
+    if (
+        one_shot.student_label_margin_prototype_source
+        not in allowed_student_prototype_sources
+    ):
         raise ValueError(
             "one_shot.student_label_margin_prototype_source must be one of "
             f"{sorted(allowed_student_prototype_sources)}, "
@@ -621,7 +730,9 @@ def _validate_one_shot_target_config(config: TrainingConfig) -> None:
         )
 
 
-def _validate_one_shot_class_labels(labels, *, field_name: str, num_classes: int) -> None:
+def _validate_one_shot_class_labels(
+    labels, *, field_name: str, num_classes: int
+) -> None:
     for label in labels:
         if int(label) < 0 or int(label) >= num_classes:
             raise ValueError(
@@ -678,12 +789,18 @@ def _validate_one_shot_label_config(config: TrainingConfig) -> None:
             )
     for field_name, entry_shape in (
         ("student_pair_contrast_config", "[class_a, class_b, target_margin]"),
-        ("student_negative_label_margin_config", "[target_class, negative_class, target_margin]"),
-        ("student_roi_negative_label_margin_config", "[target_class, negative_class, target_margin]"),
+        (
+            "student_negative_label_margin_config",
+            "[target_class, negative_class, target_margin]",
+        ),
+        (
+            "student_roi_negative_label_margin_config",
+            "[target_class, negative_class, target_margin]",
+        ),
     ):
         _validate_one_shot_margin_pairs(
             getattr(one_shot, field_name),
             field_name=field_name,
             entry_shape=entry_shape,
-        num_classes=num_classes,
-    )
+            num_classes=num_classes,
+        )

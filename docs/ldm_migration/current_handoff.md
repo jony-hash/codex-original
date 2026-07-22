@@ -1,8 +1,8 @@
-# 当前主线交接：v65（v68 诊断准备状态）
+# 当前主线交接：v69 code-distillation（v68 已关闭，静态/CUDA smoke 已通过）
 
-> 2026-07-17 v68：LightGen 参照合同审计、透明路径 `checkpointed_active_capture` 和 A/B 可读性配置已加入源码；尚未运行长 CUDA，未修改 Formal v56/v60。必须先通过合同、数值收敛和显存准入，再由用户运行 A 5 epoch；B 只有 A 的 validation corr≥0.70、dice≥0.68 且最近两次不退化时才允许启动。
+> 2026-07-19：v68.6 B 已以 `b-prototype-imaging-only` 收口。v68.7 固定合同上界报告确认 generator injection 是首个退化面，v68 已关闭；v69 仅以新的 paired teacher-camera code-distillation 合同继续，仍为 diagnostic-only，未修改 Formal v56/v60。
 
-> v68.2 工具修正：streaming preflight 默认使用本地 MNIST prototype，不再完整加载 v60 MLP checkpoint。v60 checkpoint 与 v68 `label_template + intensity_to_amplitude` 不兼容，只能显式 generator-subset 压力测试。v67.4 `grid-not-converged` 继续保留为 periodic stress evidence；v68 训练准入以 `2048/3072 padded` 对 `3072/4096` reference 的 prototype-init zero/small 数值门为准。当前未运行 A/B 或长 CUDA。
+> v68.2 工具修正：streaming preflight 默认使用本地 MNIST prototype，不再完整加载 v60 MLP checkpoint。v60 checkpoint 与 v68 `label_template + intensity_to_amplitude` 不兼容，只能显式 generator-subset 压力测试。v67.4 `grid-not-converged` 继续保留为 periodic stress evidence；v68 训练准入以 `2048/3072 padded` 对 `3072/4096` reference 的 prototype-init zero/small 数值门为准。该段记录的是准入历史；A2 已在后续 v68.5 段完成，B 尚待用户执行。
 
 v68.2 的 4 样本 CUDA streaming admission 已通过 zero/small-init（camera corr `0.999999998`，首失败平面为空），报告为 `outputs/20260720_v682/runs/preflight/v68_transparent_admission_v2.json`。该报告只签发 numerical gate，不包含 one_shot_loss gradient、显存或人工可读性结论。
 
@@ -42,6 +42,111 @@ v68.5 增加 `tools/diagnose_v68_a2_warmstart.py` 短 smoke。它不创建 optim
 `tools/decide_v68_a2_acceptance.py` 联合 raw audit v2、epoch 4/5 history、warm-start/numerical/memory 报告和人工 review JSON。人工 review 的 `readable_labels` 必须严格为 `[0,1,2,3,4,5,6,7,8,9]`；失败时状态为 `a2-readability-failed`，自动禁止 B、test 和加工导出，下一步只能做冻结 checkpoint 的 chip→backend→camera broad isolation。长 CUDA A2 仍由用户运行，warning 清理不与本主线混合。
 
 v68.5.1 将第一份 smoke v1 标记为显存口径无效：它把 absolute reserved peak 与 v68.2 的 delta reserved peak 直接比较，造成约 22 MiB 的假失败。现行 v2 在模型构造和 warm-start 后记录 baseline allocated/reserved、startup free 和总显存；之后同时报告 absolute/delta peak，并且只用 delta reserved 与 v68.2 的 `1.904296875 GiB` admission 基线比较。v1 工件保留为历史证据，不得作为 A2 memory regression 结论；v2 是唯一可签发 A2 准入的 smoke。
+
+## v68.5 A2 实际结果与 v68.6 B 准入（2026-07-19）
+
+A2 有效 run 为 `outputs/20260718_v685/runs/20260718_235834_941545_train_v685_a2_readability`；epoch 1→5 paired corr 为 `0.9790→0.9910`、dice 为 `0.9281→0.9548`，没有保存完整 2048/3072 全场。locked raw audit 的 clean corr/dice 为 `0.9910/0.9548`、prototype accuracy `1.0`、high saturation `0.0032`，人工第三列 raw-linear 逐类 0–9 可读；联合决定为 `a2-raw-readability-passed` 且 `b_allowed=true`。
+
+v68.6 新增 `tools/diagnose_v68_b_warmstart.py`、`tools/audit_v68_b_crossed_cmos.py` 与 `tools/decide_v68_b_acceptance.py`。B smoke 已在 CUDA 通过：generator `loaded=1/missing=9`、optical `loaded=2/missing=8`，residual/embedding seed hash 未变，四样本 loss/梯度有限且无 optimizer/update。B 有效 run 为 `outputs/20260719_v686/runs/20260719_214724_340872_train_v686_b_code_residual`，epoch 5 corr/dice `0.9951/0.9676` 高于 epoch 4 的 `0.9946/0.9661`。有效 v2 crossed 审计的 crossed/diagonal clean corr 为约 `0.9951`、dice 约 `0.9676`、accuracy `1.0`、high saturation `0.0042`，十类人工 raw-linear 可读；但 raw-camera balanced-ANOVA code fraction 只有 `7.14e-08`，远低于 `0.25`。联合决定 `b-prototype-imaging-only`，因此停止 B 重训、任何 loss/LR/scale sweep、test、加工导出和 Formal promotion。早期 v1 crossed/decision 因统计 harness 将绝对能量当比例、错误使用 per-sample target 作为分类库而保留为无效历史工件；v2 是唯一有效决定。
+
+## v68.7 冻结收口与 v69 主线（2026-07-19）
+
+v68.7 只读报告 `outputs/20260719_v686/runs/raw_audit/b_code_bottleneck_v1.json` 链接有效 B decision v2、B best checkpoint、validation split 和 crossed report v2。它证实 residual map 仍有 code fraction `0.74447`，但 template 注入后 desired/SLM code fraction 分别只剩 `1.05e-05/8.25e-06`，camera 为 `7.14e-08`。在不改变 `code_residual_scale=0.10` 的唯一合同上界中，将 residual 推至 tanh ±1 后 SLM code fraction 仍仅 `0.003595 < 0.25`，故状态为 `generator-injection-contract-insufficient`，v68 关闭。禁止 B 重训、scale/loss/LR sweep、光路隔离、test、加工导出和 Formal promotion。
+
+v69 是独立 experimental 合同：`label_template_code_delta` 直接使用 `sigmoid(template_logits + delta_logits(code,label))`，强制 `code_residual_scale=0.0`；沿用 B checkpoint 的全部 generator/phase state keys，冻结 template、label embedding 和 encoder/decoder phase，只训练 residual net（`5e-6`）以配对 `teacher_camera` 为 target。其 CUDA warm-start smoke 已通过：generator `8/2`、optical `2/8` 完整兼容覆盖，冻结 hash/全参数均未改变，四样本 residual gradient 为非零，reserved CUDA 为 `2.5 GiB`（`6.0 GiB` 总容量）。随后才允许唯一一次 5 epoch/2000-step v69 训练；结束后必须运行 100 code × 10 label locked raw audit、人工第三列审查及联合 v69 decision。无论结果如何，test、加工导出和 Formal promotion 均保持 false。
+
+v69 的唯一有效 run 为 `outputs/20260720_v69/runs/20260719_225948_550124_train_v69_code_distill`。五个 epoch/2000 steps、best/latest checkpoint 和五组 compact active artifact 均完整且 finite；epoch 4→5 paired corr/dice 从 `0.87501/0.80056` 升至 `0.87634/0.80345`。locked crossed audit 以 validation `100×10`、batch 1 与 raw scale `0.4913053810596466` 完成，clean crossed/diagonal corr 约 `0.99537`、dice 约 `0.9723`、accuracy `1.0`、high saturation 约 `0.00214`，能量、provenance 与参数不变门均通过；人工 locked raw preview 的十类可读，`2/5` 和 `4/8` 可区分。
+
+但 v69 的 raw-camera code fraction 仅 `0.0002712 < 0.25`，虽然比 B 提高，仍不是 code-conditioned generation。delta logits 内部的 code fraction 为 `0.70649`，到 SLM 降至 `0.001143`、pre-encoder 为 `0.000417`、chip/camera 约 `0.0002712`，首个主要衰减仍是 generator delta 到 amplitude-SLM command。paired teacher advantage 均值虽为正（`2.50e-05`），其 seed-1234/10000 bootstrap 95% 下界为 `-0.00559`，故不能确认逐实例 teacher transport。联合决定 `v69-prototype-only`；冻结 v69 best checkpoint，停止 v69 重训、loss/LR/架构 sweep、test、加工导出和 Formal promotion。下一步仅允许基于已封存的 factor/paired reports 提出新的独立合同，不得把本轮 prototype readability 解释为生成模型。
+
+### v70 SLM code-transport upper-bound isolation（2026-07-20）
+
+v70 对冻结 v69 best checkpoint 做了一次只读 `lowfreq_additive` SLM intervention。generator-only 30 次二分将平衡 SLM code fraction 校准为 `0.25000003`（绝对误差 `3.46e-8`）；未创建 optimizer、未更新参数、未保存完整 2048/3072 全场。唯一一次 100 codes × 10 labels CUDA crossed forward 的 clean prototype corr/dice/accuracy 为 `0.96495/0.93059/1.0`，人工 locked raw 复核十类全部可读，2/5 与 4/8 保持区分。
+
+但 code fraction 在 pre-encoder 首次降至 `0.22124`，随后 chip/camera 为 `0.19430/0.19396`，camera 未达到 `0.25` 门。因此联合状态固定为 `post-slm-code-factor-attenuated`：后端只能传输约 `0.194` 的该合成 code pattern，上界隔离不授权 generator 重训、scale/loss/LR sweep、test、加工导出或 Formal promotion。v70 全部工件保持 `diagnostic-only`，报告为 `outputs/20260720_v70/runs/isolation/v70_slm_transport_isolation_v1.json`，联合决策为 `v70_joint_decision_v1.json`；首个 attenuation plane 为 `pre_encoder`。
+
+### v71 physical SLM-intensity to D2NN isolation（2026-07-20）
+
+v71 将唯一 intervention 的校准域改为物理 `slm_amplitude²`，30 次 generator-only 二分得到 `0.24999998`（绝对误差 `2.3e-8`，override amplitude `0.27918722`）。这确认 v70 的 command→intensity 平方变换是前一轮数值下降来源；在物理强度校准后，pre-encoder 为 `0.25000195`，front 4f relay 没有实质衰减。
+
+逐层 intensity code fraction 为：encoder layer 1 `0.28391`、encoder layer 2/OLS `0.23731`、decoder layer 1 `0.22287`、chip `0.22058`、camera `0.22021`。因此联合状态固定为 `d2nn-code-factor-attenuated`，首个有效 attenuation plane 为 `encoder_layer_2`；camera clean corr/dice/accuracy 为 `0.96002/0.92565/1.0`，locked raw 十类均可读，2/5 与 4/8 保持区分。
+
+encoder layer 2 的 complex-field code fraction 仍为 `0.26413`，高于其 intensity fraction `0.23731`；代码尚未从 complex field 中消失，主要退化是 phase→intensity conversion。v71 不授权训练、loss/LR/scale sweep、test、加工导出或 Formal promotion。报告为 `outputs/20260720_v71/runs/isolation/v71_slm_intensity_transport_v1.json`，联合决策为 `v71_joint_decision_v1.json`；下一门只能做冻结 D2NN 的 phase-to-intensity/readout broad isolation。
+
+### v72 frozen D2NN phase-mask causal attribution（2026-07-20）
+
+v72 在同一 physical `slm_amplitude²` intervention 上执行了完整 2×2 phase ablation：baseline、encoder-2 identity、decoder-1 identity 和 joint identity。四臂均 finite、energy/provenance/hash 通过，未创建 optimizer、未更新或保存 checkpoint；gauge-aligned complex factor 使用 requested-label leave-one-out mean 去除 global phase 影响。
+
+baseline camera code factor 为 `0.22021`。encoder-2 identity 提升至 `0.26085`，joint identity 提升至 `0.29503`；joint 的 gauge-aligned decoder-layer-2 code effect SS 为 baseline 的 `1.2938x`。但 encoder-2 identity、decoder-1 identity 和 joint identity 的 locked raw 均失去可靠数字轮廓，自动 corr/dice 也分别降至 `0.5991/0.6511`、`0.6440/0.6771` 和 `0.4728/0.5617`。因此联合状态固定为 `phase-readability-code-tradeoff`：训练 phase mask 确实压制 code variance，但同时承担十类 prototype readability，不能通过 identity ablation 直接释放。
+
+v72 关闭 phase mask 重训、phase/LR/loss sweep、test、加工导出和 Formal promotion。报告为 `outputs/20260720_v72/runs/isolation/v72_d2nn_phase_attribution_v1.json`，联合决策为 `v72_joint_decision_v1.json`；下一门只能设计 foreground/semantic-band 受限 code basis，并在冻结 D2NN 上做新的只读上界，不得把 phase identity 结果当作可部署方案。
+
+### v73 semantic-support direct-command upper bound（2026-07-20）
+
+v73 冻结 v69–v72 checkpoint 与报告，使用 clean MNIST prototype 的 soft semantic support 对同一 low-frequency code pattern 做 weighted-zero-mean command intervention。CPU admission 通过：physical SLM code fraction `0.25000002`，amplitude `0.40276851`，prototype `≥0.2` 前景内 delta energy `0.95638`，`≤20 cycles/mm` 频带能量 `0.99454`，one-clipping `0.02905`，且 checkpoint hash 与 v72 baseline 一致。
+
+修复三次审计 harness-only device/shape 错误后，唯一有效 CUDA audit 使用 validation `100×10`、batch 1、locked exposure、`return_optical_fields=false`。semantic support 保持 raw readability（camera corr/dice/accuracy `0.95721/0.94303/1.0`，人工十类通过），但 intensity code factor 从 SLM `0.25000`、pre-encoder `0.25000` 在 encoder layer 1 首次降至 `0.21386`，随后 camera 为 `0.16961`。camera absolute code-effect SS 为 `39513.27`，低于 v72 baseline `53141.62`；label-effect SS retention 为 `0.99040`，所以不是通过破坏 label denominator 伪造失败或通过门。
+
+联合状态固定为 `semantic-support-code-factor-attenuated`，且 `partial_absolute_code_improvement_vs_v72=false`。这证明 semantic/foreground 支持域能保持数字轮廓，但不能把足够 code 转成 D2NN intensity；新的首个可操作断点是 encoder layer 1 之后的 D2NN active/complex-to-intensity 传输，而不是 generator command 或前端 relay。v73 关闭训练、basis/phase sweep、test、加工导出、phase 导出和 Formal promotion；下一门只能做 transient full-state active/exterior code-energy partition。
+CPU admission 为 `outputs/20260720_v73/runs/admission/v73_cpu_admission_v1.json`，有效 raw audit 为 `outputs/20260720_v73/runs/raw_audit/v73_semantic_support_raw_v1.json`，人工 review 为 `v73_manual_review_v1.json`，联合决策为 `v73_joint_decision_v1.json`。
+
+### v74 transparent full-state active/exterior attribution（2026-07-20）
+
+v74 在冻结 v69–v73 的前提下精确复用 v73 semantic-support intervention（amplitude `0.4027685085311532`），执行 validation `100×10` 的唯一 transient full-state replay。full field 只在 GPU 内存中逐 code 聚合，最终仅保存 scalar SS、retention、energy 和 provenance；没有保存 2048/3072 全场。CPU admission、checkpoint/data hash、finite、参数不变、locked exposure 和 v73 active-view replay 均通过，CUDA 峰值约 `2.82 GiB allocated / 3.00 GiB reserved`。
+
+首个 transition `encoder_full_grid_input → encoder_layer_1` 的 intensity full retention 为 `0.490237`、active retention 为 `0.489444`，exterior gain 仅解释 `0.00155` 的 active intensity loss；raw complex full retention 为 `0.999999`，gauge-aligned complex full retention 为 `1.000001`。因此 code 没有从 2048 state 逃逸，主要在冻结 D2NN 的 phase→intensity 转换中被重分配。后续 encoder layer 2 intensity full retention 为 `0.560517`，complex full retention 仍约 `1.0000`；OLS、decoder 与 chip relay 不引入额外 complex code 损失。locked camera corr/dice/accuracy 为 `0.95721/0.94303/1.0`，与 v73 复现，人工 v73 十类 review 继续有效。
+
+联合状态固定为 `full-state-phase-to-intensity-redistribution-confirmed`。v74 仍为 `diagnostic-only`，test、训练、phase 导出、加工导出和 Formal promotion 全部关闭；下一步只能继续做只读 phase-to-intensity attribution，不能做 phase/basis/geometry sweep 或重训。工件：`outputs/20260720_v74/runs/admission/v74_full_state_admission_v1.json`、`outputs/20260720_v74/runs/isolation/v74_full_state_partition_v1.json`、`v74_joint_decision_v1.json`。
+
+### v75 carrier–residual phase-to-intensity attribution（2026-07-20）
+
+v75 冻结 v69–v74，使用同一 v73 semantic-support intervention 和 v69 checkpoint，完成两遍 validation `100×10` full-state CUDA audit。首轮因 support 广播维度误传给 camera relay 而中止，未形成证据、未更新参数；修复后从 carrier pass 重新完整运行。最终 CPU admission、v74 active replay、OLS/chip alias、finite、energy、参数 hash 和 reconstruction 均通过，最大 `ΔI=R+Q` 相对误差为 `1.65e-6`，carrier 仅驻留内存，`persistent_full_field_saved=false`，所有工件为 scalar statistics。
+
+首个 transition `encoder_full_grid_input→encoder_layer_1` 的 full intensity code-SS retention 为 `0.490237`，residual complex retention 为 `0.999999`；camera locked corr/dice/accuracy 为 `0.95721/0.94303/1.0`，复现 v74，十类人工可读性沿用 v73。quadrature share 从约 `0` 增至 `0.22424`，real-interference signed contribution 解释约 `1.0496` 的首层 intensity loss；within-label real-interference retention 为 `0.46035`，未满足 cross-label cancellation 门，self-term+covariance 解释为负。因此唯一联合状态为 `carrier-residual-quadrature-rotation-confirmed`，主机制是 carrier/residual 的正交相位旋转造成 phase→intensity 读出损失，后续层的 exterior 扩散为次级结构。
+
+v75 不授权训练、test、phase/加工导出或 Formal promotion；下一步最多设计一次固定双正交 coherent-reference readout 上界，仍须先过静态/CPU 门，不能直接训练或 sweep。v69 learned code transport 仍未被证明。工件：`outputs/20260720_v75/runs/admission/v75_interference_admission_v1.json`、`outputs/20260720_v75/runs/isolation/v75_carrier_residual_interference_v1.json`、`v75_joint_decision_v1.json`。
+
+### v76 fixed dual-quadrature coherent-reference readout（2026-07-20）
+
+v76 冻结 v69–v75，先通过 CPU admission，再执行唯一一次从头开始的两遍 CUDA replay。首轮 CUDA 曾因端口能量恒等式的残差归约写错而判为无效 harness；未改参数、未写 checkpoint，也未复用其载波。修正后完整重跑通过：经验 label carrier 仅保存在内存（`complex64`，未持久化），`return_optical_fields=false`，仅保存 scalar statistics，`parameter_update_count=0`、`optimizer_created=false`、`persistent_full_field_saved=false`。
+
+双正交读出固定为 LO amplitude `1.0`、理想 50:50：`H_R=R`、`H_J=J`，不做增益、相位或曝光 sweep。camera raw replay 与 v75 严格一致（code SS `39513.27116`、code factor `0.16960563`、corr/dice/accuracy `0.95721090/0.94303381/1.0`）。联合 `[H_R,H_J]` code SS 为 `47158.77928`，相对 v75 raw 为 `1.193492×`，但仅为 v72 baseline `53141.61876` 的 `0.887417×`；joint code factor 为 `0.740539`。
+
+四端口恒等式误差均通过 `≤1e-5`（`H_R 2.52e-6`、`H_J 4.34e-6`、R/J 能量加和分别 `3.68e-7/3.41e-7`），finite、energy、hash、参数不变和 provenance 全通过。R/J 端口中 `r_plus` high saturation 为 `0.156618>0.08`，其余端口均低于门限；因此联合状态固定为 `dual-quadrature-dynamic-range-tradeoff`，而非 upper-bound passed。绝对 code SS 也未恢复至 v72 baseline；该比例提升不能作为部署读出证据。
+
+v76 仍为 `diagnostic-only`：训练、test、phase/加工导出和 Formal promotion 全部关闭。下一步冻结该 synthetic transport 分支，进行受限 coherent receiver / phase-aware D2NN 只读设计评审；不启动 LO gain/phase sweep、不训练、不修改 Formal v56/v60、光学几何、曝光或 managed checkpoint policy。工件：`outputs/20260720_v76/runs/admission/v76_dual_quadrature_admission_v1.json`、`outputs/20260720_v76/runs/isolation/v76_dual_quadrature_readout_v1.json`、`v76_joint_decision_v1.json`。
+
+### v77 phase-aware D2NN local gradient compatibility（2026-07-20）
+
+v77 已完成独立 CPU admission 和四 code smoke。输入固定链接 v73 semantic-support、v75 carrier/residual、v76 dual-quadrature 的有效 admission/report/decision、v69 best checkpoint 与 validation split；amplitude `0.4027685085311532`、locked exposure `0.4913053810596466`、100×10 合同、checkpoint hash 和十类人工可读性均通过。coherent receiver 分支保持关闭，learned code transport 仍未证明。
+
+四 code smoke 使用 4 个 validation code × 10 requested labels（40 个输出），只对 encoder/decoder phase 做 VJP；无 optimizer、无参数更新、无 full field artifact。finite、phase gradient nonzero 和 parameter hash 全部通过，峰值约 `1.659 GiB allocated / 1.848 GiB reserved`。joint code/readability gradient cosine 为 `-0.4154`，joint 与 encoder L1 projected code-drive ratio 均为 `1.0`，一阶 readability change 为负；这只是局部兼容性证据，不是可训练性或生成模型证据。
+
+完整 100×10 VJP 已有效完成：`streaming_code_effect_ss=39513.27116` 严格复现 v75 raw camera，四层及 joint code gradient 非零、参数更新为 0、无 optimizer/full-field artifact。joint 与 encoder L1 projected code-drive ratio 均为 `1.0`，一阶 readability change 均为负；最终状态为 `phase-aware-local-co-design-admissible`。这只授权设计一次 semantic-gated direct-command residual＋phase 合同，不授权训练、test、phase/加工导出或 Formal promotion。工件：`outputs/20260720_v77/runs/admission/v77_phase_gradient_admission_v1.json`、`outputs/20260720_v77/runs/admission/v77_phase_gradient_smoke_v1.json`、`outputs/20260720_v77/runs/isolation/v77_phase_gradient_compatibility_v1.json`、`v77_joint_decision_v1.json`。
+
+### v78 semantic-gated direct-command contract admission（2026-07-21）
+
+v78 已实现并完成 CPU generator-only 合同准入，未启动训练。新架构 `label_template_semantic_command_residual` 保持 v69 template/embedding/residual state keys 与形状，固定 v73 amplitude `0.4027685085311532`，使用模型内八维低频 basis、template-intensity soft support、weighted-zero-mean 和固定 command 公式；Formal student 明确拒绝该 diagnostic-only 架构，公共 SLM/OLS/传播器不变。
+
+CPU admission 的公式、basis、finite、hash、参数不变和 provenance 均通过，但物理 SLM intensity code factor 仅为 `0.00049967`（要求 `≥0.25`），prototype `≥0.2` 支持域 command-delta energy 为 `0.94566`（要求 `≥0.95`）；低频能量 `0.99817`、one-clipping `0.01558`。因此唯一联合状态为 `v78-command-code-factor-insufficient`，不是 harness failure。该结果说明冻结 v69 residual 在新 semantic projection 后仍没有足够的 direct-command code 注入；不得运行 CUDA smoke、不得训练或 sweep。
+
+v78 继续保持 `diagnostic-only`：training、test、phase/加工导出和 Formal promotion 全部关闭；下一步只允许冻结该合同并记录 code injection insufficiency，不回到 coherent receiver、LO、曝光、basis 或 phase sweep。工件：`outputs/20260721_v78/runs/admission/v78_semantic_command_admission_v1.json`、`v78_joint_decision_v1.json`。
+
+### v78.1 semantic-gate / normalization bottleneck closure（2026-07-21）
+
+v78.1 完成 generator-only postmortem，冻结 v69–v78，不运行 CUDA、smoke 或训练。分阶段 code factor 为：basis coefficients `0.56152`、unit coefficient direction `0.37579`、projected pattern `0.56182`、weighted-zero-mean `0.44844`、template-support `0.05015`、per-sample normalized `0.00350`、command `0.000256`、physical SLM intensity `0.000500`。公式重构误差最大 `1.86e-9`，finite、checkpoint boundary/hash、参数不变、无 optimizer/update 和无 full-field artifact 全部通过。
+
+因此唯一状态为 `mixed-support-normalization-code-suppression`：residual basis 中仍有 code，但 template support 首先造成主要绝对衰减，逐样本 max-abs normalization 又将支持后的 code factor 从 `0.05015` 降至 `0.00350`。这关闭当前 template-multiplication＋per-sample-normalization 合同；后续只允许设计 label-fixed supported basis，其 normalization 常数不得依赖 code/sample，仍不训练。工件：`outputs/20260721_v781/runs/isolation/v781_semantic_command_bottleneck_v1.json`、`v781_joint_decision_v1.json`。
+
+v78.1 Evidence v2 保留 v1 不覆盖，实际记录 before/after parameter hash 和 state-key equality，均通过；transition retention 明确显示 support 是绝对 code SS 首断点，而 normalization 主要放大 label denominator，属于 ratio artifact。v2 工件：`outputs/20260721_v781/runs/isolation/v781_semantic_command_bottleneck_v2.json`、`v781_joint_decision_v2.json`。
+
+### v79 label-fixed supported-basis upper bound（2026-07-22）
+
+v79 仅完成 generator-only CPU 两臂上界，固定 label-only normalizer `N_l=max_p Σ_k|ψ_{l,k}(p)|`，无逐样本 normalization、无 calibration/sweep、无 optical forward/CUDA/teacher alignment/训练。100 codes × 10 labels、checkpoint boundary/state keys、before/after hash、finite、公式误差和 scalar-only provenance 全部通过。
+
+frozen learned replay 的 physical SLM code factor 为 `6.03e-7`，absolute code SS `0.496`；deterministic capacity arm 的 code factor 为 `0.05455`，absolute code SS `48292.58`，均低于 factor `0.25` 和 v73 physical-SLM absolute baseline `289721.29`。capacity 的 support energy `0.97080`、低频能量 `0.99814`、label SS `817287.20` 通过，但 clipping `0.20547` 超过 `0.08`。因此联合状态固定为 `label-fixed-supported-basis-insufficient`；这说明在固定 amplitude 与 label-only normalization 下，当前八维 semantic-supported basis 家族仍不足以提供 code transport，不授权 CUDA、smoke 或训练。
+
+v79 后冻结 semantic-supported basis、residual＋phase 联合训练、normalization/gain/amplitude/basis sweep、test、导出和 Formal promotion；learned code transport 继续为 unproven。工件：`outputs/20260721_v79/runs/admission/v79_label_fixed_supported_basis_v1.json`、`v79_joint_decision_v1.json`。
 
 更新时间：2026-07-15。此文件供新对话快速恢复当前主线；带日期的完整证据在 [Experiment History](experiment_history.md)，稳定架构合同在 [D2NN 单次曝光蒸馏主线](single_shot_ldm_distillation.md)。
 

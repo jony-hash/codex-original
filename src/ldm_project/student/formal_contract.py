@@ -5,6 +5,8 @@ from __future__ import annotations
 def validate_formal_student_config(physics, config) -> None:
     """Raise before construction when a diagnostic or compatibility switch is active."""
     invalid = []
+    if getattr(config, "generator_e_arch", None) == "label_template_semantic_command_residual":
+        invalid.append("one_shot.generator_e_arch (diagnostic-only semantic command)")
     if not physics.physical_forward_contract:
         invalid.append("physics.physical_forward_contract")
     if config.optical_core_arch != "diffractive_phase_only":

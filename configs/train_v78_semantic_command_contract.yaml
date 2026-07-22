@@ -1,0 +1,103 @@
+# v78 diagnostic-only semantic-gated direct-command contract admission.
+training:
+  mode: one_shot_distill
+  batch_size: 1
+  learning_rate: 5.0e-6
+  seed: 1234
+  step_log_interval: 20
+  visual_save_epoch_interval: 1
+  validation_epoch_interval: 1
+  first_stage_epochs: 0
+  diffusion_epochs: 0
+  one_shot_epochs: 0
+data:
+  dataset: mnist
+  root: data
+  download: false
+  validation_fraction: 0.1
+  validation_split_seed: 42
+  subset_size: 100
+  subset_seed: 42
+  num_workers: 0
+  pin_memory: true
+physics:
+  optics: {wavelength: 5.32e-7, pixel_size: 2.5e-6}
+  geometry: {grid_size: 200, prop_dist: 1.0e-3}
+  readout: {primary_plane: camera, save_camera_plane: true, normalize_percentile: 99.5, relay_psf_sigma_px: 0.0}
+  macro_optics:
+    dist_laser_to_m1: 0.350
+    dist_m1_to_bs: 0.370
+    dist_bs_to_slm: 0.025
+    dist_slm_to_bs: 0.025
+    dist_bs_to_m3: 0.125
+    dist_m3_to_front_lens1: 0.07321428571428572
+    dist_front_lens1_to_lens2: 0.3125
+    dist_front_lens2_to_encoder: 0.0892857142857143
+    dist_m3_to_lg: 0.475
+    dist_lg_to_relay_lens: 0.100
+    dist_relay_lens_to_cmos: 0.250
+    dist_lg_to_cmos: 0.350
+    f_relay: 0.0714285714
+    front_lens1_focal_length: 0.22321428571428573
+    front_lens2_focal_length: 0.0892857142857143
+    front_lens1_clear_aperture: 0.02375
+    front_lens2_clear_aperture: 0.02375
+    back_relay_clear_aperture: 0.0266
+    propagation_grid_size: 2048
+  front_path_model: coherent_imaging_4f
+  back_path_model: free_space
+  physical_forward_contract: true
+first_stage: {type: optical_path_vae, image_size: 200, latent_channels: 1}
+diffusion: {num_classes: 10}
+one_shot:
+  optical_core_arch: diffractive_phase_only
+  code_dim: 128
+  label_embed_dim: 32
+  hidden_dim: 256
+  num_classes: 10
+  generator_e_arch: label_template_semantic_command_residual
+  generator_command_transform: intensity_to_amplitude
+  generator_template_init: mnist_prototype
+  code_residual_scale: 0.0
+  generator_base_lr_scale: 0.0
+  generator_residual_lr_scale: 1.0
+  phase_learning_rate: 5.0e-6
+  distill_target_source: teacher_camera
+  slm_background_floor: 0.05
+  ols_kind: identity
+  physical_forward_contract: true
+  decoder_diagnostic_mode: normal
+  decoder_diagnostic_modulation_override: none
+  decoder_diagnostic_mask_component: trained
+  target_code_diagnostic_mode: none
+  target_code_bridge_source: none
+  ols_transfer_calibration: none
+  diagnostic_camera_normalization: fixed_exposure
+  diagnostic_camera_exposure_scale: 0.4913053810596466
+  d2nn:
+    wavelength: 5.32e-7
+    pixel_size: 2.0e-6
+    grid_size: 100
+    propagation_grid_size: 2048
+    encoder_layers: 2
+    decoder_layers: 2
+    layer_spacing: 1.5e-3
+    modulation: phase_only
+    phase_init: small
+    exterior_boundary: transparent_identity
+    transparent_propagation_method: padded_band_limited_asm
+    transparent_fft_grid_size: 3072
+    transparent_edge_guard_fraction: 0.05
+    transparent_memory_mode: checkpointed_active_capture
+  camera_recon_weight: 1.0
+  camera_readability_weight: 0.25
+  clean_target_enabled: true
+  clean_foreground_dice_weight: 0.30
+  checkpoint_selection_metric: strict_readability
+distillation:
+  samples_per_class: 300
+  paired_class_batches: true
+  label_audit_prototypes_per_class: 128
+  class_labels: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+  code_seed: 1234
+  code_projection_seed: 2026

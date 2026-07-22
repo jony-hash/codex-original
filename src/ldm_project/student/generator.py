@@ -1,8 +1,11 @@
 """Canonical electronic code/label to amplitude-command generator."""
+
 from __future__ import annotations
 
 import torch
 from torch import nn
+
+from .semantic_command import semantic_command_residual
 
 
 class ElectronicGeneratorE(nn.Module):
@@ -41,12 +44,15 @@ class ElectronicGeneratorE(nn.Module):
         if self.arch not in {
             "label_template",
             "label_template_code_residual",
+            "label_template_code_delta",
+            "label_template_semantic_command_residual",
             "mlp",
             "template_residual_mlp",
         }:
             raise ValueError(
                 "Unsupported one_shot.generator_e_arch: "
                 f"{self.arch}; expected label_template, label_template_code_residual, "
+                "label_template_code_delta, label_template_semantic_command_residual, "
                 "mlp, or template_residual_mlp."
             )
         if self.command_transform not in {"direct_amplitude", "intensity_to_amplitude"}:
@@ -58,7 +64,12 @@ class ElectronicGeneratorE(nn.Module):
             and self.background_floor >= 1.0
         ):
             raise ValueError("intensity_to_amplitude requires background_floor < 1.0")
-        if self.arch in {"label_template", "label_template_code_residual"}:
+        if self.arch in {
+            "label_template",
+            "label_template_code_residual",
+            "label_template_code_delta",
+            "label_template_semantic_command_residual",
+        }:
             if self.template_init != "mnist_prototype":
                 raise ValueError(
                     f"{self.arch} requires template_init='mnist_prototype'"
@@ -80,7 +91,11 @@ class ElectronicGeneratorE(nn.Module):
                 nn.Linear(hidden_dim, image_size * image_size),
             )
             self.residual_net = None
-        if self.arch == "label_template_code_residual":
+        if self.arch in {
+            "label_template_code_residual",
+            "label_template_code_delta",
+            "label_template_semantic_command_residual",
+        }:
             self.label_embedding = nn.Embedding(num_classes, label_embed_dim)
             self.residual_net = nn.Sequential(
                 nn.Linear(code_dim + label_embed_dim, hidden_dim),
@@ -100,12 +115,17 @@ class ElectronicGeneratorE(nn.Module):
 
     def initialize_label_templates(self, intensity_bank: torch.Tensor) -> None:
         if (
-            self.arch not in {"label_template", "label_template_code_residual"}
+            self.arch
+            not in {
+                "label_template",
+                "label_template_code_residual",
+                "label_template_code_delta",
+                "label_template_semantic_command_residual",
+            }
             or self.template_logits is None
         ):
             raise ValueError(
-                "Label templates can only initialize generator_e_arch='label_template' "
-                "or 'label_template_code_residual'."
+                "Label templates can only initialize template-based generator architectures."
             )
         expected = (self.num_classes, 1, self.image_size, self.image_size)
         if tuple(intensity_bank.shape) != expected:
@@ -149,7 +169,9 @@ class ElectronicGeneratorE(nn.Module):
         if self.command_transform == "direct_amplitude":
             return desired_intensity
         amplitude = desired_intensity.clamp_min(0.0).sqrt()
-        return ((amplitude - self.background_floor) / (1.0 - self.background_floor)).clamp(0.0, 1.0)
+        return (
+            (amplitude - self.background_floor) / (1.0 - self.background_floor)
+        ).clamp(0.0, 1.0)
 
     def _diagnostic_metadata(self, reference: torch.Tensor) -> dict[str, torch.Tensor]:
         return {
@@ -165,7 +187,12 @@ class ElectronicGeneratorE(nn.Module):
     def forward_with_diagnostics(
         self, code: torch.Tensor, class_labels: torch.Tensor
     ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
-        if self.arch in {"label_template", "label_template_code_residual"}:
+        if self.arch in {
+            "label_template",
+            "label_template_code_residual",
+            "label_template_code_delta",
+            "label_template_semantic_command_residual",
+        }:
             labels = self._validate_inputs(code, class_labels)
             if self.template_logits is None:
                 raise RuntimeError(f"{self.arch} generator is missing template logits")
@@ -174,27 +201,47 @@ class ElectronicGeneratorE(nn.Module):
             if self.arch == "label_template":
                 desired_intensity = base_intensity
                 residual_map = torch.zeros_like(desired_intensity)
+                delta_logits = torch.zeros_like(desired_intensity)
             else:
                 if self.residual_net is None:
                     raise RuntimeError(
                         "label_template_code_residual generator is missing residual_net"
                     )
                 residual_logits = self.residual_net(self._features(code, class_labels))
-                residual_map = torch.tanh(
-                    residual_logits.reshape(code.shape[0], 1, self.image_size, self.image_size)
+                delta_logits = residual_logits.reshape(
+                    code.shape[0], 1, self.image_size, self.image_size
                 )
-                desired_intensity = torch.sigmoid(
-                    template_logits + self.code_residual_scale * residual_map
-                )
+                if self.arch == "label_template_code_delta":
+                    residual_map = delta_logits
+                    desired_intensity = torch.sigmoid(template_logits + delta_logits)
+                elif self.arch == "label_template_semantic_command_residual":
+                    command, semantic_diagnostics = semantic_command_residual(
+                        template_logits,
+                        delta_logits,
+                        amplitude=0.4027685085311532,
+                        background_floor=self.background_floor,
+                    )
+                    semantic_diagnostics.update(self._diagnostic_metadata(command))
+                    return command, semantic_diagnostics
+                else:
+                    residual_map = torch.tanh(delta_logits)
+                    desired_intensity = torch.sigmoid(
+                        template_logits + self.code_residual_scale * residual_map
+                    )
             command = self._to_amplitude_command(desired_intensity)
             base_command = self._to_amplitude_command(base_intensity)
             background_mask = (base_intensity.detach() < 0.2).float()
-            bg_abs = (residual_map.abs() * background_mask).flatten(1).sum(dim=1) / background_mask.flatten(1).sum(dim=1).clamp_min(1.0)
+            bg_abs = (residual_map.abs() * background_mask).flatten(1).sum(
+                dim=1
+            ) / background_mask.flatten(1).sum(dim=1).clamp_min(1.0)
             return command, {
                 "generator_base_command": base_command,
                 "generator_desired_intensity": desired_intensity,
                 "generator_residual_map": residual_map,
-                "generator_residual_abs_mean": residual_map.abs().flatten(1).mean(dim=1),
+                "generator_code_delta_logits": delta_logits,
+                "generator_residual_abs_mean": residual_map.abs()
+                .flatten(1)
+                .mean(dim=1),
                 "generator_residual_bg_abs_mean": bg_abs,
                 **self._diagnostic_metadata(command),
             }
@@ -230,7 +277,9 @@ class ElectronicGeneratorE(nn.Module):
         )
         command = self._to_amplitude_command(desired_intensity)
         background_mask = (base_grid.detach() < 0.2).float()
-        bg_abs = (residual_map.abs() * background_mask).flatten(1).sum(dim=1) / background_mask.flatten(1).sum(dim=1).clamp_min(1.0)
+        bg_abs = (residual_map.abs() * background_mask).flatten(1).sum(
+            dim=1
+        ) / background_mask.flatten(1).sum(dim=1).clamp_min(1.0)
         diagnostics = {
             "generator_base_command": self._to_amplitude_command(base_grid),
             "generator_residual_map": residual_map,
