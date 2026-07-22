@@ -37,7 +37,7 @@ first_stage:
   optical_encoder_input_mode: pf2_complex_field
   optical_encoder_arch: linear_metasurface
   metasurface_decoder_arch: linear_metasurface
-  linear_metasurface_grid_size: 40
+  linear_metasurface_grid_size: 32
   linear_metasurface_layer_spacing: 0.003
   image_fusion_start_weight: 0.0
   image_fusion_end_weight: 0.0
