@@ -27,7 +27,7 @@ v79 以固定 label-only normalization 对八维 supported basis 做 CPU 上界�
 
 `rewrite/v2` 从 v79 快照 `e21dba1` 线性分出，当前入口为 `python -m ldm_project.v2`；它不替换 `train.py` 或 v1 默认行为。v2 以类型化 physical field、严格配置/manifest、独立光学 reference、prototype/capacity evidence gate 和受约束 code basis 重写正式主链。其执行链已固定为 teacher pair/target manifest → calibration measurement → content-bound prototype review/admission → frozen capacity → guarded training → raw-CMOS evaluate/review。
 
-已完成代码和 CPU diagnostic 全链竖切；该竖切使用 fake teacher pair、内部 physical-DCT capacity 和单步训练，所有输出强制为 diagnostic。v2 现已具备 8 维/每类 100 个 teacher export 合同、本地 128-per-label clean target 导出、流式 CUDA 执行、固定曝光 review 工件及无更新 `student preflight`。已在 clean commit 上重跑正式 `200×200` 单样本 CUDA forward 与单方向差分 capacity smoke：raw/response 均 finite、参数 hash 未变、未创建 optimizer；它们只说明执行和数值路径，不构成 scientific acceptance。尚未完成本轮正式 CUDA preflight、正式 CUDA prototype/capacity evidence、长 CUDA 训练、两次内容绑定的十类人工 raw-CMOS 审查、bootstrap paired-teacher advantage 或 promotion。
+已完成代码和 CPU diagnostic 全链竖切；该竖切使用 fake teacher pair、内部 physical-DCT capacity 和单步训练，所有输出强制为 diagnostic。v2 现已具备 8 维/每类 100 个 teacher export 合同、本地 128-per-label clean target 导出、流式 CUDA 执行、固定曝光 review 工件及无更新 `student preflight`。正式 `200×200` CUDA preflight 已在 clean commit `5add68b` 通过：prototype backward、capacity difference pair、logical balanced training backward、evaluation microbatch 的显存门均通过，参数 hash 未变且 provenance 完整；证据位于 `outputs/20260722_v2/runs/20260722_180145_145964_formal_v2_amplitude_finite_crop_identity/`，仍为 diagnostic-only。此前的单样本 forward/difference smoke 同样只说明执行和数值路径，不构成 scientific acceptance。尚未完成正式 CUDA prototype/capacity evidence、长 CUDA 训练、两次内容绑定的十类人工 raw-CMOS 审查、bootstrap paired-teacher advantage 或 promotion。
 
 ## 下一允许动作
 

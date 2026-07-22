@@ -38,7 +38,7 @@ v2 从 v79 研究快照旁路重写而来；两线的范围、回档点和发布
 
 ## 用户执行的正式 CUDA 工作
 
-本次重写没有运行长 CUDA 训练。CPU diagnostic 全链已在临时目录中验证，但它只能生成 diagnostic evidence。完成 clean commit 后，先运行一次 `student preflight`；它只测量单样本/逻辑 batch 的显存、梯度、参数不变性和 provenance，仍是 diagnostic evidence。仅当其 CUDA 内存门通过后，用户再依序运行：
+本次重写没有运行长 CUDA 训练。CPU diagnostic 全链已在临时目录中验证，但它只能生成 diagnostic evidence。正式 `student preflight` 已在 clean commit `5add68b` 通过；它只测量单样本/逻辑 batch 的显存、梯度、参数不变性和 provenance，仍是 diagnostic evidence。用户仍应在自己的 clean commit 上复跑它；仅当 CUDA 内存门通过后，再依序运行：
 
 ```bash
 python -m ldm_project.v2 student preflight --config configs/v2/formal_amplitude_finite_crop_identity.yaml
