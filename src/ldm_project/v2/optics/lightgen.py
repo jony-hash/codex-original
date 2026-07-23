@@ -57,4 +57,4 @@ class LightGenAmplitudeFiberOLSSystemV2(nn.Module):
         decoded, dec_records, dec_stats = self.decoder(emitted, "lightgen_generator")
         camera = ComplexField(decoded.tensor, self.camera_plane, OperationProvenance("lightgen_proxy_raw_sensor", decoded.plane.plane_id, 0.0, {"physical_parameter_status": "unknown", "tier": "architecture-proxy"}))
         raw = IntensityFrame(camera.tensor.abs().square(), self.camera_plane, camera.provenance)
-        return LightGenForwardResultV2(raw, ols, (field, *enc_records, emitted, *dec_records, camera), {"encoder_crop_retention": enc_stats["crop_retention"], "decoder_crop_retention": dec_stats["crop_retention"]})
+        return LightGenForwardResultV2(raw, ols, (field, *enc_records, encoded, emitted, *dec_records, camera), {"encoder_crop_retention": enc_stats["crop_retention"], "decoder_crop_retention": dec_stats["crop_retention"]})

@@ -34,7 +34,7 @@ class LightGenReferenceContractV2:
 
     @property
     def contract_hash(self) -> str:
-        return canonical_sha256(self.to_dict())
+        return canonical_sha256(asdict(self))
 
     @property
     def architecture_proxy_only(self) -> bool:

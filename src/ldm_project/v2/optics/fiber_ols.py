@@ -73,7 +73,7 @@ def project_single_mode_fibers(field: ComplexField, bank: FiberModeBankV2) -> Fi
 
 def reemit_single_mode_fibers(state: FiberOLSStateV2, *, plane_id: str) -> ComplexField:
     state.validate()
-    tensor = torch.einsum("bm,mhw->b1hw", state.coefficients, state.modes.modes)
+    tensor = torch.einsum("bm,mhw->bhw", state.coefficients, state.modes.modes).unsqueeze(1)
     plane = state.input_plane.with_plane(plane_id)
     return ComplexField(tensor, plane, OperationProvenance("single_mode_fiber_reemission", state.input_plane.plane_id, None, {"mode_count": 100, "coupling_efficiency": "represented_by_coefficient_norm"}))
 
