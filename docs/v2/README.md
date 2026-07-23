@@ -20,7 +20,9 @@ v2 从 v79 研究快照旁路重写而来；两线的范围、回档点和发布
 
 1. `student export-clean-targets` 只从本地 MNIST 的 train split 构造固定 `0–9`、每类 128 张平均的 `[10,1,200,200]` clean target；不下载数据，并原子写入内容寻址 manifest。
 2. `teacher manifest` 固定 first-stage/diffusion pair；`teacher export-targets` 使用 v2 的 8 维、每类 100 个 export 配置，先验证 pair manifest，再原子写入 target bundle 与 target manifest。历史 128 维 bundle 不能截断后复用。
-3. `student calibrate-prototypes` 必须消费 clean-target manifest；自动 measurement gate 失败会直接签发 `failed` evidence。只有自动指标通过时，才产生冻结 checkpoint、raw-CMOS replay、固定曝光预览、未填写 review 模板和 `pending_review` evidence。
+3. `audit prototype-reachability` 先以真实 finite-crop retention、类间距离 retention 与十类逐类 margin 检验冻结方向；它只生成 diagnostic evidence。formal `student calibrate-prototypes` 还必须消费该 evidence，缺失、篡改或 context 漂移会在构造 optimizer 前失败。
+4. `audit prototype-topology` 是无 optimizer 的四臂冻结隔离（sqrt/trained template × zero/trained phase）；ROI 结果只定位背景污染，不能替代 full-frame raw-CMOS gate 或人工判断。
+5. `student calibrate-prototypes` 必须消费 clean-target manifest；自动 measurement/shape gate 失败会直接签发 `failed` evidence。只有自动指标通过时，才产生冻结 checkpoint、raw-CMOS replay、固定曝光预览、未填写 review 模板和 `pending_review` evidence。
 4. 人工查看该 replay 后运行 `student admit-prototypes`。review 必须同时绑定 replay tensor 与固定曝光 preview SHA-256；它可记录不可读标签子集，但只有完整 `0–9` 才能通过 gate。
 4. `audit capacity` 从冻结 amplitude prototype 的 `>=0.2` support 内部构造物理 `<=20 cycles/mm` DCT 候选、SVD basis 与固定 code replay；不接受外部 command/camera/support 绕过。
 5. 只有 clean-commit acceptance 的 passed capacity evidence 才能启动 `student train`。训练读取一个 target manifest，而非无关联的散装 tensor。
@@ -45,7 +47,9 @@ python -m ldm_project.v2 student preflight --config configs/v2/formal_amplitude_
 python -m ldm_project.v2 student export-clean-targets --config configs/v2/formal_amplitude_finite_crop_identity.yaml --dataset-root data --output <clean.pt> --manifest <clean.json>
 python -m ldm_project.v2 teacher manifest --config configs/v2/formal_amplitude_finite_crop_identity.yaml --split train
 python -m ldm_project.v2 teacher export-targets --config configs/v2/formal_amplitude_finite_crop_identity.yaml --legacy-train-config configs/export_teacher_distill_mnist_v2_formal_8d.yaml --teacher-manifest <pair.json> --output <targets.pt> --target-manifest <targets.json>
-python -m ldm_project.v2 student calibrate-prototypes --config configs/v2/formal_amplitude_finite_crop_identity.yaml --clean-target-manifest <clean.json>
+python -m ldm_project.v2 audit prototype-reachability --config configs/v2/formal_amplitude_finite_crop_identity.yaml --clean-target-manifest <clean.json> --failed-calibration-evidence <failed.json> --failed-prototype-checkpoint <failed.pt>
+python -m ldm_project.v2 audit prototype-topology --config configs/v2/formal_amplitude_finite_crop_identity.yaml --clean-target-manifest <clean.json> --prototype-checkpoint <failed.pt>
+python -m ldm_project.v2 student calibrate-prototypes --config configs/v2/formal_amplitude_finite_crop_identity_shape_guard.yaml --clean-target-manifest <clean.json> --reachability-evidence <reachability.json>
 python -m ldm_project.v2 student admit-prototypes --config configs/v2/formal_amplitude_finite_crop_identity.yaml --calibration-evidence <calibration.json> --prototype-checkpoint <prototype.pt> --prototype-raw-cmos <raw.pt> --prototype-preview <preview.png> --measurements <measurements.json> --clean-target-manifest <clean.json> --manual-review <review.json>
 python -m ldm_project.v2 audit capacity --config configs/v2/formal_amplitude_finite_crop_identity.yaml --prototype-evidence <prototype.json> --prototype-checkpoint <prototype.pt>
 python -m ldm_project.v2 student train --config configs/v2/formal_amplitude_finite_crop_identity.yaml --prototype-evidence <prototype.json> --capacity-evidence <capacity.json> --prototype-checkpoint <prototype.pt> --code-basis <basis.pt> --teacher-target-manifest <targets.json>
@@ -55,4 +59,4 @@ python -m ldm_project.v2 student admit-evaluation --config configs/v2/formal_amp
 
 任何 prototype 或 capacity gate 失败都会停止后续训练、test、导出与 promotion；不得用 enhanced preview 或 software readout 绕过 raw-CMOS 证据。
 
-当前 v2 formal prototype 状态：reachability audit 已通过，但修正后的唯一一次 5×40-step calibration 以 accuracy `0.50` 和 epoch stability failure 收口；因此没有人工 review 门、capacity evidence 或 student training 授权。下一次推进必须是独立的 prototype/readout 合同，经 reachability gate 后才可重新申请 formal calibration。
+当前 v2 formal prototype 状态：旧 `212454` reachability 报告已降级为 harness-invalid——其 crop 值是平面强度、front gate 是相似度比、direction gate 未逐类验证，且 calibration 未消费 evidence。`212618` 的 5×40-step calibration（corr/dice `0.8395/0.7625`、accuracy `0.50`）保留为旧 reconstruction 合同的数值负结果，但没有有效 admission lineage。下一动作是修正后 reachability → frozen topology → 一次 diagnostic shape-guard；在用户审阅 preview 前不得进行 formal calibration、capacity 或 training。
