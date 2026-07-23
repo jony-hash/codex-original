@@ -16,6 +16,23 @@ code + optional label -> amplitude command -> complete 4f relay
 
 v2 从 v79 研究快照旁路重写而来；两线的范围、回档点和发布状态见 [Git 分支治理与回档指南](../git_branch_management.md)。v1 的版本化诊断命令与 v2 子命令不互相替代。
 
+## LightGen 对齐诊断（2026-07-24）
+
+`formal_amplitude_finite_crop_identity` 没有改变，仍是 `2+2`、identity OLS、`1.50 mm` 的正式合同。此前失败只冻结已验证的局部注入族：十类 direct-template 附近的 64 个低频 DCT candidates、8 个线性 basis 与 gain `0.1`；它不能外推为 amplitude SLM 失败。
+
+新增的 `diagnostic_lightgen_amplitude_fiber_ols_400` 是严格隔离的 architecture proxy：`400×400 @ 3 µm` amplitude seed → 2-layer encoder → 10×10 Gaussian single-mode-fiber complex OLS → 4-layer generator → raw sensor。来源与字段置信等级记录在 [LightGen reference contract](lightgen_reference_contract_v2.json)：论文组织、100D OLS/fiber 传输为 paper-reported；400×400、3 µm、2+4 是本项目 user-locked diagnostic 参数；波长、层距、孔径和耦合校准仍是 `unknown`。因此它永远不能自称 physical-faithful，也不授予 training 或 promotion 权限。
+
+```bash
+python -m ldm_project.v2 audit lightgen-contract-gap \
+  --config configs/v2/diagnostic_lightgen_amplitude_fiber_ols_400.yaml \
+  --reference-contract docs/v2/lightgen_reference_contract_v2.json
+python -m ldm_project.v2 audit lightgen-ols-observability \
+  --config configs/v2/diagnostic_lightgen_amplitude_fiber_ols_400.yaml \
+  --reference-contract docs/v2/lightgen_reference_contract_v2.json
+```
+
+第二条命令无 optimizer，检查 100 个复 OLS modes、有效秩 `>=8`、`sigma8/sigma1 >= 1e-3`、完整 plane/provenance 与参数零更新。只有它通过，才可另立计划讨论 diagnostic prototype calibration；本阶段不恢复 capacity 或 student training。
+
 ## 运行顺序
 
 1. `student export-clean-targets` 只从本地 MNIST 的 train split 构造固定 `0–9`、每类 128 张平均的 `[10,1,200,200]` clean target；不下载数据，并原子写入内容寻址 manifest。
