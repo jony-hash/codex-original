@@ -138,7 +138,7 @@ def calibrate_prototypes(
                 weights = foreground * foreground_weight + (1.0 - foreground) * background_weight
                 mse = ((normalized_step - clean_targets).square() * weights).sum() / weights.sum().clamp_min(1.0)
                 roi_prediction = normalized_step[:, None] * foreground[None]
-                roi_target = clean_targets[None] * foreground[None]
+                roi_target = clean_targets[None].expand(10, 10, *clean_targets.shape[1:]) * foreground[None]
                 roi_correlations = _differentiable_correlation(roi_prediction.reshape(100, *normalized_step.shape[1:]), roi_target.reshape(100, *clean_targets.shape[1:])).reshape(10, 10)
                 ce = torch.nn.functional.cross_entropy(roi_correlations / ce_temperature, labels)
                 background_energy = (normalized_step * (1.0 - foreground)).square().mean()
