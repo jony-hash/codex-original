@@ -309,6 +309,11 @@ def _calibrate(args: argparse.Namespace, config: V2Config) -> int:
         dice_weight=config.prototype_calibration.prototype_dice_weight,
         ce_weight=config.prototype_calibration.prototype_ce_weight,
         ce_temperature=config.prototype_calibration.prototype_ce_temperature,
+        contract_kind=config.prototype_calibration.prototype_contract_kind,
+        foreground_weight=config.prototype_calibration.foreground_weight,
+        background_weight=config.prototype_calibration.background_weight,
+        roi_threshold=config.prototype_calibration.roi_threshold,
+        background_energy_weight=config.prototype_calibration.background_energy_weight,
     )
     memory_pass, memory = _memory_report(device, baseline_reserved=baseline_reserved, baseline_allocated=baseline_allocated)
     raw = _stream_prototype_raw(bundle, device=device, microbatch_size=config.execution.prototype_microbatch_size)
@@ -324,14 +329,28 @@ def _calibrate(args: argparse.Namespace, config: V2Config) -> int:
     checkpoint_hash = file_sha256(checkpoint)
     context = _context(config, dataset_hash=clean_manifest.targets.sha256, calibration_hash=basis.artifact_hash, checkpoint_hash=checkpoint_hash)
     measurement_gate = prototype_measurement_gate(metrics)
+    gates: tuple[GateResult, ...] = (measurement_gate,)
+    if config.prototype_calibration.prototype_contract_kind == "formal_prototype_shape_guard_v1":
+        normalized = (raw.to(device) / config.prototype_calibration.fixed_exposure_scale).clamp(0.0, 1.0)
+        matrix = prototype_correlation_matrix(normalized, clean_targets)
+        margins = prototype_margins(matrix)
+        shape_checks = {
+            "full_frame_accuracy": bool((matrix.argmax(dim=1) == torch.arange(10, device=device)).all().item()),
+            "minimum_full_frame_margin": bool((margins >= 0.03).all().item()),
+            "foreground_hole": bool((foreground_hole_ratio(normalized, clean_targets) <= 0.08).all().item()),
+            "background_speckle": bool((background_speckle_ratio(normalized, clean_targets) <= 0.07).all().item()),
+        }
+        shape_gate = GateResult("prototype_shape_guard", all(shape_checks.values()), {"min_full_frame_margin": float(margins.min().item()), "foreground_hole": float(foreground_hole_ratio(normalized, clean_targets).mean().item()), "background_speckle": float(background_speckle_ratio(normalized, clean_targets).mean().item()), **shape_checks}, None if all(shape_checks.values()) else "raw shape guard failed")
+        gates = (measurement_gate, shape_gate)
+    automatic_passed = all(gate.passed for gate in gates)
     diagnostic = not config.system.is_formal or config.run.evidence_tier == "diagnostic"
-    status = "diagnostic" if diagnostic else ("pending_review" if measurement_gate.passed else "failed")
-    actions = ("diagnostic_capacity_smoke",) if diagnostic and measurement_gate.passed else (("admit_prototypes",) if status == "pending_review" else ())
+    status = "diagnostic" if diagnostic else ("pending_review" if automatic_passed else "failed")
+    actions = ("diagnostic_capacity_smoke",) if diagnostic and automatic_passed else (("admit_prototypes",) if status == "pending_review" else ())
     input_hashes = {"clean_targets": clean_manifest.targets.sha256, "clean_target_manifest": clean_manifest.manifest_hash, "prototype_checkpoint": checkpoint_hash, "prototype_raw_cmos": file_sha256(raw_path), "prototype_preview": review_artifacts.preview_sha256}
     if reachability is not None:
         input_hashes["reachability_evidence"] = reachability.evidence_hash
         input_hashes["failed_prototype_checkpoint"] = reachability.context.checkpoint_hash or ""
-    record = EvidenceRecordV2(2, "prototype_calibration", config.run.evidence_tier, status, run.git_commit, run.dirty_patch_hash, run.config_hash, context, input_hashes, (measurement_gate,), actions, None if measurement_gate.passed else "prototype automatic measurement gate failed")
+    record = EvidenceRecordV2(2, "prototype_calibration", config.run.evidence_tier, status, run.git_commit, run.dirty_patch_hash, run.config_hash, context, input_hashes, gates, actions, None if automatic_passed else "prototype automatic measurement/shape gate failed")
     _write_record(run, "prototype_calibration_evidence.json", record)
     print(run.root)
     return 0

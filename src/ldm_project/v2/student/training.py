@@ -88,6 +88,11 @@ def calibrate_prototypes(
     dice_weight: float = 0.0,
     ce_weight: float = 0.0,
     ce_temperature: float = 0.07,
+    contract_kind: str = "formal_prototype_reconstruction_v1",
+    foreground_weight: float = 1.0,
+    background_weight: float = 1.0,
+    roi_threshold: float = 0.20,
+    background_energy_weight: float = 0.0,
 ) -> PrototypeCalibrationSummary:
     """Optimize only prototypes and phase masks; coefficient-net parameters remain frozen."""
     if clean_targets.shape[0] != 10 or exposure_scale <= 0.0:
@@ -96,6 +101,8 @@ def calibrate_prototypes(
         raise ValueError("prototype microbatch must be positive")
     if initialization not in {"uniform_half", "clean_intensity_to_amplitude"}:
         raise ValueError("unsupported prototype initialization")
+    if contract_kind not in {"formal_prototype_reconstruction_v1", "formal_prototype_shape_guard_v1"}:
+        raise ValueError("unsupported prototype contract")
     if initialization == "clean_intensity_to_amplitude":
         with torch.no_grad():
             amplitude = clean_targets[:, 0].clamp(0.0, 1.0).sqrt().clamp(1.0e-4, 1.0 - 1.0e-4)
@@ -112,7 +119,6 @@ def calibrate_prototypes(
     for epoch in range(epochs):
         for _ in range(optimizer_steps_per_epoch):
             optimizer.zero_grad(set_to_none=True)
-            losses = []
             predictions = []
             for start in range(0, labels.numel(), microbatch_size):
                 part_labels = labels[start : start + microbatch_size]
@@ -120,7 +126,6 @@ def calibrate_prototypes(
                 raw = _raw_from_command(system, command, activation_checkpoint=activation_checkpoint)
                 normalized_part = (raw / exposure_scale).clamp(0.0, 1.0)
                 predictions.append(normalized_part)
-                losses.append(torch.nn.functional.mse_loss(normalized_part, clean_targets[start : start + microbatch_size], reduction="sum"))
             normalized_step = torch.cat(predictions)
             corr = _differentiable_correlation(normalized_step, clean_targets)
             soft_dice = (2.0 * (normalized_step * clean_targets).flatten(1).sum(dim=1) + 1.0e-6) / (normalized_step.square().flatten(1).sum(dim=1) + clean_targets.square().flatten(1).sum(dim=1) + 1.0e-6)
@@ -128,8 +133,18 @@ def calibrate_prototypes(
             pair_target = clean_targets[None].expand(10, 10, *clean_targets.shape[1:]).reshape(100, *clean_targets.shape[1:])
             correlations = _differentiable_correlation(pair_prediction, pair_target).reshape(10, 10)
             ce = torch.nn.functional.cross_entropy(correlations / ce_temperature, labels)
-            loss = sum(losses) / clean_targets.numel()
-            loss = loss + correlation_weight * (1.0 - corr.mean()) + dice_weight * (1.0 - soft_dice.mean()) + ce_weight * ce + 1.0e-5 * _phase_regularization(system)
+            if contract_kind == "formal_prototype_shape_guard_v1":
+                foreground = (clean_targets >= roi_threshold).to(normalized_step.dtype)
+                weights = foreground * foreground_weight + (1.0 - foreground) * background_weight
+                mse = ((normalized_step - clean_targets).square() * weights).sum() / weights.sum().clamp_min(1.0)
+                roi_prediction = normalized_step[:, None] * foreground[None]
+                roi_target = clean_targets[None] * foreground[None]
+                roi_correlations = _differentiable_correlation(roi_prediction.reshape(100, *normalized_step.shape[1:]), roi_target.reshape(100, *clean_targets.shape[1:])).reshape(10, 10)
+                ce = torch.nn.functional.cross_entropy(roi_correlations / ce_temperature, labels)
+                background_energy = (normalized_step * (1.0 - foreground)).square().mean()
+                loss = mse + correlation_weight * (1.0 - corr.mean()) + dice_weight * (1.0 - soft_dice.mean()) + ce_weight * ce + background_energy_weight * background_energy + 1.0e-5 * _phase_regularization(system)
+            else:
+                loss = torch.nn.functional.mse_loss(normalized_step, clean_targets) + correlation_weight * (1.0 - corr.mean()) + dice_weight * (1.0 - soft_dice.mean()) + ce_weight * ce + 1.0e-5 * _phase_regularization(system)
             loss.backward()
             gradients_finite = gradients_finite and all(parameter.grad is None or torch.isfinite(parameter.grad).all() for parameter in trainable)
             optimizer.step()

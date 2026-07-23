@@ -80,6 +80,7 @@ class TeacherConfig(StrictModel):
 
 
 class PrototypeCalibrationConfig(StrictModel):
+    prototype_contract_kind: Literal["formal_prototype_reconstruction_v1", "formal_prototype_shape_guard_v1"] = "formal_prototype_reconstruction_v1"
     epochs: int = Field(default=5, ge=2)
     learning_rate: float = Field(default=5.0e-4, gt=0.0)
     fixed_exposure_scale: float = Field(gt=0.0)
@@ -89,6 +90,10 @@ class PrototypeCalibrationConfig(StrictModel):
     prototype_dice_weight: float = Field(default=0.30, ge=0.0)
     prototype_ce_weight: float = Field(default=0.10, ge=0.0)
     prototype_ce_temperature: float = Field(default=0.07, gt=0.0)
+    foreground_weight: float = Field(default=1.0, gt=0.0)
+    background_weight: float = Field(default=1.0, gt=0.0)
+    roi_threshold: float = Field(default=0.20, gt=0.0, lt=1.0)
+    background_energy_weight: float = Field(default=0.0, ge=0.0)
     clean_corr_min: float = 0.70
     clean_dice_min: float = 0.68
     high_saturation_max: float = 0.08
@@ -205,6 +210,13 @@ class V2Config(StrictModel):
                 "prototype_ce_weight": 0.10,
                 "prototype_ce_temperature": 0.07,
             }
+            if self.prototype_calibration.prototype_contract_kind == "formal_prototype_shape_guard_v1":
+                expected_prototype |= {
+                    "foreground_weight": 3.0,
+                    "background_weight": 1.0,
+                    "roi_threshold": 0.20,
+                    "background_energy_weight": 0.10,
+                }
             for name, value in expected_prototype.items():
                 if getattr(self.prototype_calibration, name) != value:
                     raise ValueError(f"formal prototype locks {name}={value}")

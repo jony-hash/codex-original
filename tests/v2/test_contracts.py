@@ -71,3 +71,23 @@ def test_v2_config_rejects_unknown_and_geometry_drift() -> None:
 def test_small_diagnostic_system_is_never_formal() -> None:
     config = V2Config.model_validate({"schema_version": 2, "system": {"kind": "diagnostic_amplitude_finite_crop_identity", "slm_shape": [8, 8], "metasurface_shape": [4, 4], "propagation_grid_size": 8}, "run": {"run_name": "unit", "device": "cpu"}})
     assert not config.system.is_formal
+
+
+def test_shape_guard_contract_locks_raw_shape_weights() -> None:
+    payload = _config()
+    payload["prototype_calibration"] = {
+        "prototype_contract_kind": "formal_prototype_shape_guard_v1",
+        "epochs": 5,
+        "learning_rate": 5.0e-4,
+        "fixed_exposure_scale": 1.0,
+        "initialization": "clean_intensity_to_amplitude",
+        "optimizer_steps_per_epoch": 40,
+        "foreground_weight": 3.0,
+        "background_weight": 1.0,
+        "background_energy_weight": 0.10,
+    }
+    payload["capacity_audit"] = {"dct_modes": 64, "selected_basis_dim": 8, "codes_per_label": 100}
+    assert V2Config.model_validate(payload).prototype_calibration is not None
+    payload["prototype_calibration"]["foreground_weight"] = 2.0
+    with pytest.raises(ValidationError, match="foreground_weight"):
+        V2Config.model_validate(payload)
