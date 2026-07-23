@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 import torch
 
+from ldm_project.v2.application import cli as v2_cli
 from ldm_project.v2.application.cli import main
 from ldm_project.v2.config import load_config
 from ldm_project.v2.evidence import canonical_sha256, file_sha256, tensor_artifact_ref, tensor_sha256
@@ -65,7 +66,7 @@ def _artifact(root: Path, name: str) -> Path:
     return next(root.rglob(name))
 
 
-def test_cpu_diagnostic_cli_vertical_slice_is_never_acceptance(tmp_path: Path) -> None:
+def test_cpu_diagnostic_cli_vertical_slice_is_never_acceptance(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     first, diffusion = tmp_path / "first.pt", tmp_path / "diffusion.pt"
     _checkpoint(first, {"model_version": "first-v1", "train_config": {"first": 1}})
     _checkpoint(diffusion, {"model_version": "diffusion-v1", "first_stage_model_version": "first-v1", "train_config": {"diffusion": 1}})
@@ -97,8 +98,14 @@ def test_cpu_diagnostic_cli_vertical_slice_is_never_acceptance(tmp_path: Path) -
     assert json.loads(topology.read_text(encoding="utf-8"))["status"] == "diagnostic"
     assert main(["audit", "prototype-geometry-upper-bound", "--config", str(config), "--clean-target-manifest", str(clean_path), "--shape-evidence", str(calibration), "--shape-checkpoint", str(calibration_root / "prototype_bundle.pt")]) == 0
     geometry = _artifact(output_root, "prototype_geometry_upper_bound_evidence.json")
-    assert json.loads(geometry.read_text(encoding="utf-8"))["permitted_next_actions"] == []
+    assert json.loads(geometry.read_text(encoding="utf-8"))["permitted_next_actions"] == ["diagnostic_control_oracle"]
     oracle_args = ["audit", "prototype-control-oracle", "--config", str(config), "--clean-target-manifest", str(clean_path), "--geometry-evidence", str(geometry), "--shape-checkpoint", str(calibration_root / "prototype_bundle.pt")]
+    unapproved_geometry = tmp_path / "unapproved_geometry.json"
+    unapproved_payload = json.loads(geometry.read_text(encoding="utf-8"))
+    unapproved_payload["permitted_next_actions"] = []
+    unapproved_geometry.write_text(json.dumps(unapproved_payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="cannot authorize"):
+        main(oracle_args[:7] + [str(unapproved_geometry)] + oracle_args[8:])
     tampered_geometry = tmp_path / "tampered_geometry.json"
     geometry_payload = json.loads(geometry.read_text(encoding="utf-8"))
     geometry_payload["context"]["dataset_hash"] = "tampered"
@@ -117,6 +124,18 @@ def test_cpu_diagnostic_cli_vertical_slice_is_never_acceptance(tmp_path: Path) -
     with pytest.raises(ValueError, match="evidence context mismatch"):
         main(["audit", "prototype-control-oracle", "--config", str(config), "--clean-target-manifest", str(clean_path), "--geometry-evidence", str(geometry), "--shape-checkpoint", str(wrong_checkpoint)])
     assert not list(output_root.rglob("prototype_control_oracle_evidence.json"))
+    monkeypatch.setattr(v2_cli, "_CONTROL_ORACLE_STEPS", 2)
+    monkeypatch.setattr(v2_cli, "_CONTROL_ORACLE_PROGRESS_INTERVAL", 1)
+    assert main(oracle_args) == 0
+    oracle = _artifact(output_root, "prototype_control_oracle_evidence.json")
+    oracle_payload = json.loads(oracle.read_text(encoding="utf-8"))
+    oracle_report = json.loads((oracle.parent / "prototype_control_oracle_report.json").read_text(encoding="utf-8"))
+    assert oracle_payload["tier"] == "diagnostic"
+    assert oracle_payload["permitted_next_actions"] == []
+    assert oracle_report["parameters_unchanged"] is True
+    assert set(oracle_report["arms"]) == {"formal_amplitude_only", "diagnostic_complex_slm"}
+    assert oracle_report["arms"]["diagnostic_complex_slm"]["input_control"] == "diagnostic_complex_slm"
+    assert (oracle.parent / "prototype_control_oracle_progress.json").is_file()
     raw = torch.load(calibration_root / "prototype_raw_cmos.pt", weights_only=False)
     review = tmp_path / "prototype_review.json"
     preview = calibration_root / "prototype_fixed_exposure.png"
