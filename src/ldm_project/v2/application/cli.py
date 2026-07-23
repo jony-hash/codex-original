@@ -1206,7 +1206,10 @@ def _admit_direct_template_replay(args: argparse.Namespace, config: V2Config) ->
     clean_manifest = _clean_target_manifest(args.clean_target_manifest, config)
     checkpoint_hash = file_sha256(args.shape_checkpoint)
     expected = _context(config, dataset_hash=clean_manifest.targets.sha256, checkpoint_hash=checkpoint_hash)
-    require_evidence_action(source, kind="direct_template_replay", action="admit_direct_template_replay", expected_context=expected, allow_diagnostic=True)
+    source.validate()
+    if source.evidence_kind != "direct_template_replay" or source.tier != "diagnostic" or source.status != "pending_review" or "admit_direct_template_replay" not in source.permitted_next_actions:
+        raise ValueError("direct-template replay evidence cannot authorize manual admission")
+    source.context.assert_matches(expected)
     manifest = json.loads(Path(args.command_manifest).read_text(encoding="utf-8"))
     raw = _tensor(args.replay_raw_cmos, device=torch.device("cpu"))
     if manifest.get("raw_cmos", {}).get("tensor_sha256") != tensor_sha256(raw) or source.input_hashes.get("raw_cmos") != file_sha256(args.replay_raw_cmos):
