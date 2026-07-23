@@ -1036,8 +1036,14 @@ def _prototype_control_oracle(args: argparse.Namespace, config: V2Config) -> int
         raise ValueError("control oracle requires geometry upper-bound evidence")
     device = torch.device(config.run.device)
     clean_manifest = _clean_target_manifest(args.clean_target_manifest, config)
-    clean = _tensor(clean_manifest.targets.path, device=device)
     checkpoint_hash = file_sha256(args.shape_checkpoint)
+    expected_context = _context(config, dataset_hash=clean_manifest.targets.sha256, checkpoint_hash=checkpoint_hash)
+    geometry.context.assert_matches(expected_context, fields=("system_signature", "config_hash", "dataset_hash", "checkpoint_hash"))
+    if geometry.input_hashes.get("clean_target_manifest") != clean_manifest.manifest_hash:
+        raise ValueError("geometry evidence does not match the clean-target manifest")
+    if geometry.input_hashes.get("shape_checkpoint") != checkpoint_hash:
+        raise ValueError("geometry evidence does not match the shape checkpoint")
+    clean = _tensor(clean_manifest.targets.path, device=device)
     bundle = StudentBundle(config, _zero_basis(config.system.slm_shape)).to(device)
     load_prototype_warm_start(args.shape_checkpoint, bundle, expected_system_signature=_system_signature(config))
     for parameter in bundle.parameters():

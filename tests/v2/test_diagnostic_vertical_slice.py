@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 import torch
 
 from ldm_project.v2.application.cli import main
@@ -97,6 +98,25 @@ def test_cpu_diagnostic_cli_vertical_slice_is_never_acceptance(tmp_path: Path) -
     assert main(["audit", "prototype-geometry-upper-bound", "--config", str(config), "--clean-target-manifest", str(clean_path), "--shape-evidence", str(calibration), "--shape-checkpoint", str(calibration_root / "prototype_bundle.pt")]) == 0
     geometry = _artifact(output_root, "prototype_geometry_upper_bound_evidence.json")
     assert json.loads(geometry.read_text(encoding="utf-8"))["permitted_next_actions"] == []
+    oracle_args = ["audit", "prototype-control-oracle", "--config", str(config), "--clean-target-manifest", str(clean_path), "--geometry-evidence", str(geometry), "--shape-checkpoint", str(calibration_root / "prototype_bundle.pt")]
+    tampered_geometry = tmp_path / "tampered_geometry.json"
+    geometry_payload = json.loads(geometry.read_text(encoding="utf-8"))
+    geometry_payload["context"]["dataset_hash"] = "tampered"
+    tampered_geometry.write_text(json.dumps(geometry_payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="evidence context mismatch"):
+        main(oracle_args[:7] + [str(tampered_geometry)] + oracle_args[8:])
+    alternate_clean = tmp_path / "alternate_clean.pt"
+    torch.save(torch.full((10, 1, 8, 8), 0.25), alternate_clean)
+    alternate_manifest = CleanTargetManifestV2(2, str(tmp_path), "train", 128, tuple(range(10)), tensor_artifact_ref(alternate_clean, role="clean_mnist_targets", git_commit="unit"), tensor_sha256(torch.load(alternate_clean, weights_only=False)), (10, 1, 8, 8), "torch.float32", canonical_sha256(loaded.model_dump(mode="json")), "unit")
+    alternate_path = tmp_path / "alternate_clean_manifest.json"
+    alternate_path.write_text(json.dumps(alternate_manifest.to_dict() | {"manifest_hash": alternate_manifest.manifest_hash}), encoding="utf-8")
+    with pytest.raises(ValueError, match="evidence context mismatch"):
+        main(["audit", "prototype-control-oracle", "--config", str(config), "--clean-target-manifest", str(alternate_path), "--geometry-evidence", str(geometry), "--shape-checkpoint", str(calibration_root / "prototype_bundle.pt")])
+    wrong_checkpoint = tmp_path / "wrong_bundle.pt"
+    torch.save({}, wrong_checkpoint)
+    with pytest.raises(ValueError, match="evidence context mismatch"):
+        main(["audit", "prototype-control-oracle", "--config", str(config), "--clean-target-manifest", str(clean_path), "--geometry-evidence", str(geometry), "--shape-checkpoint", str(wrong_checkpoint)])
+    assert not list(output_root.rglob("prototype_control_oracle_evidence.json"))
     raw = torch.load(calibration_root / "prototype_raw_cmos.pt", weights_only=False)
     review = tmp_path / "prototype_review.json"
     preview = calibration_root / "prototype_fixed_exposure.png"
