@@ -70,6 +70,48 @@ class FormalSystemConfig(StrictModel):
         return self.kind == "formal_amplitude_finite_crop_identity"
 
 
+class LightGenSystemConfig(StrictModel):
+    """A deliberately isolated architecture proxy, not a formal hardware claim."""
+
+    kind: Literal["diagnostic_lightgen_amplitude_fiber_ols_400"]
+    slm_shape: tuple[int, int] = (400, 400)
+    slm_pixel_pitch_m: float = 3.0e-6
+    metasurface_shape: tuple[int, int] = (400, 400)
+    metasurface_pixel_pitch_m: float = 3.0e-6
+    propagation_grid_size: int = 512
+    encoder_layers: Literal[2] = 2
+    decoder_layers: Literal[4] = 4
+    fiber_grid_shape: tuple[int, int] = (10, 10)
+    fiber_mode_waist_m: float = 30.0e-6
+    # These are numerical proxy values only.  The reference contract records them as unknown.
+    proxy_wavelength_m: float = 532.0e-9
+    proxy_layer_spacing_m: float = 1.0e-3
+    ols_kind: Literal["gaussian_single_mode_fiber"] = "gaussian_single_mode_fiber"
+    boundary: Literal["finite_crop"] = "finite_crop"
+    physical_parameter_status: Literal["unknown"] = "unknown"
+
+    @model_validator(mode="after")
+    def diagnostic_contract_is_locked(self) -> "LightGenSystemConfig":
+        expected = {
+            "slm_shape": (400, 400), "slm_pixel_pitch_m": 3.0e-6,
+            "metasurface_shape": (400, 400), "metasurface_pixel_pitch_m": 3.0e-6,
+            "encoder_layers": 2, "decoder_layers": 4, "fiber_grid_shape": (10, 10),
+        }
+        for name, value in expected.items():
+            if getattr(self, name) != value:
+                raise ValueError(f"LightGen diagnostic contract locks {name}={value}")
+        if self.propagation_grid_size < 400:
+            raise ValueError("LightGen propagation grid must cover the 400x400 active plane")
+        return self
+
+    @property
+    def is_formal(self) -> bool:
+        return False
+
+
+SystemConfig = FormalSystemConfig | LightGenSystemConfig
+
+
 class TeacherConfig(StrictModel):
     first_stage_checkpoint: str
     diffusion_checkpoint: str
@@ -166,7 +208,7 @@ class RunConfig(StrictModel):
 
 class V2Config(StrictModel):
     schema_version: Literal[2]
-    system: FormalSystemConfig
+    system: SystemConfig
     teacher: TeacherConfig | None = None
     prototype_calibration: PrototypeCalibrationConfig | None = None
     capacity_audit: CapacityAuditConfig | None = None

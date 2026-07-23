@@ -3,6 +3,8 @@ from .devices import IdealAmplitudeSLM, identity_ols
 from .propagation import angular_spectrum_propagate, reference_angular_spectrum_propagate
 from .relays import ABCDMatrix, CoherentImagingRelay, reference_b0_imaging
 from .system import FormalAmplitudeFiniteCropIdentitySystem, FormalForwardResult
+from .lightgen import LightGenAmplitudeFiberOLSSystemV2, LightGenForwardResultV2
+from .fiber_ols import FiberModeBankV2, FiberOLSStateV2, gaussian_single_mode_bank, project_single_mode_fibers, reference_project_single_mode_fibers, reemit_single_mode_fibers
 
 __all__ = [
     "ABCDMatrix",
@@ -10,9 +12,17 @@ __all__ = [
     "FiniteCropPhaseStack",
     "FormalAmplitudeFiniteCropIdentitySystem",
     "FormalForwardResult",
+    "FiberModeBankV2",
+    "FiberOLSStateV2",
     "IdealAmplitudeSLM",
+    "LightGenAmplitudeFiberOLSSystemV2",
+    "LightGenForwardResultV2",
     "angular_spectrum_propagate",
     "identity_ols",
+    "gaussian_single_mode_bank",
+    "project_single_mode_fibers",
+    "reference_project_single_mode_fibers",
+    "reemit_single_mode_fibers",
     "reference_angular_spectrum_propagate",
     "reference_b0_imaging",
 ]

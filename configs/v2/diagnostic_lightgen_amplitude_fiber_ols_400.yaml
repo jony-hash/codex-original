@@ -1,0 +1,12 @@
+schema_version: 2
+system:
+  kind: diagnostic_lightgen_amplitude_fiber_ols_400
+  propagation_grid_size: 512
+  # Numerical propagation values; the reference contract classifies them as unknown physically.
+  proxy_wavelength_m: 5.32e-7
+  proxy_layer_spacing_m: 1.0e-3
+run:
+  run_name: diagnostic_lightgen_amplitude_fiber_ols_400
+  output_root: outputs
+  evidence_tier: diagnostic
+  device: cuda
