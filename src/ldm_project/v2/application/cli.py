@@ -462,6 +462,57 @@ def _stream_prototype_raw(bundle: StudentBundle, *, device: torch.device, microb
     return torch.cat(rows)
 
 
+def _prototype_shape_summary(raw: torch.Tensor, clean: torch.Tensor, *, exposure_scale: float, device: torch.device) -> tuple[dict[str, float | list[int]], GateResult]:
+    """One full-frame metric contract shared by prototype diagnostic audits."""
+    labels = torch.arange(10, device=device)
+    normalized = (raw.to(device) / exposure_scale).clamp(0.0, 1.0)
+    matrix = prototype_correlation_matrix(normalized, clean)
+    margins = prototype_margins(matrix)
+    values: dict[str, float | list[int]] = {
+        "clean_corr": float(correlation(normalized, clean).mean().item()),
+        "hard_dice": float(foreground_dice(normalized, clean).mean().item()),
+        "standard_accuracy": float((matrix.argmax(dim=1) == labels).to(torch.float32).mean().item()),
+        "minimum_full_frame_margin": float(margins.min().item()),
+        "foreground_hole": float(foreground_hole_ratio(normalized, clean).mean().item()),
+        "background_speckle": float(background_speckle_ratio(normalized, clean).mean().item()),
+        "high_saturation": float(high_saturation_ratio(raw.to(device), exposure_scale).item()),
+        "confusion": [int(value) for value in matrix.argmax(dim=1).cpu().tolist()],
+    }
+    checks = {
+        "clean_corr": values["clean_corr"] >= 0.70,
+        "hard_dice": values["hard_dice"] >= 0.68,
+        "standard_accuracy": values["standard_accuracy"] == 1.0,
+        "minimum_full_frame_margin": values["minimum_full_frame_margin"] >= 0.03,
+        "foreground_hole": values["foreground_hole"] <= 0.08,
+        "background_speckle": values["background_speckle"] <= 0.07,
+        "high_saturation": values["high_saturation"] <= 0.08,
+        "finite": bool(torch.isfinite(raw).all().item()),
+    }
+    return values, GateResult("prototype_raw_shape", all(checks.values()), {key: float(value) if isinstance(value, (int, float)) else bool(value) for key, value in values.items() if key != "confusion"} | checks, None if all(checks.values()) else "full-frame prototype shape gate failed")
+
+
+def _trace_plane_report(fields: tuple[ComplexField, ...]) -> tuple[list[dict[str, object]], str | None]:
+    """Report physical planes and the first persistent material separation collapse."""
+    rows: list[dict[str, object]] = []
+    distances: list[float] = []
+    for field in fields:
+        intensity = field.tensor.abs().square().detach()
+        flat = intensity.flatten(1)
+        unit = flat / flat.square().sum(dim=1, keepdim=True).sqrt().clamp_min(1.0e-12)
+        pair = torch.cdist(unit, unit)
+        minimum = float(pair[~torch.eye(pair.shape[0], dtype=torch.bool, device=pair.device)].min().item())
+        distances.append(minimum)
+        rows.append({"plane": field.plane.to_dict(), "provenance": field.provenance.to_dict(), "mean_energy": float(intensity.sum(dim=(-3, -2, -1)).mean().item()), "minimum_class_distance": minimum})
+    for index, row in enumerate(rows):
+        previous = distances[index - 1] if index else distances[0]
+        row["adjacent_distance_retention"] = 1.0 if index == 0 else distances[index] / max(previous, 1.0e-12)
+        row["cumulative_distance_retention"] = distances[index] / max(distances[0], 1.0e-12)
+    for index in range(1, len(rows) - 1):
+        if rows[index]["adjacent_distance_retention"] < 0.85 and rows[index + 1]["cumulative_distance_retention"] <= rows[index]["cumulative_distance_retention"]:
+            return rows, str(rows[index]["plane"]["plane_id"])
+    return rows, None
+
+
 def _train(args: argparse.Namespace, config: V2Config) -> int:
     if config.student_training is None or config.prototype_calibration is None:
         raise ValueError("student train requires training and prototype config")
@@ -820,8 +871,8 @@ def _prototype_topology(args: argparse.Namespace, config: V2Config) -> int:
                 bundle.system.decoder.phase.copy_(state["system.decoder.phase"].to(device))
         return bundle
 
-    def replay(bundle: StudentBundle) -> tuple[torch.Tensor, dict[str, torch.Tensor], tuple[torch.Tensor, ...]]:
-        raw_rows, crops, trace_rows = [], {"encoder_crop_retention": [], "decoder_crop_retention": []}, None
+    def replay(bundle: StudentBundle) -> tuple[torch.Tensor, dict[str, torch.Tensor], tuple[torch.Tensor, ...], tuple[ComplexField, ...]]:
+        raw_rows, crops, trace_rows, trace_fields = [], {"encoder_crop_retention": [], "decoder_crop_retention": []}, None, None
         with torch.no_grad():
             for label in labels:
                 result = bundle.system.forward(bundle.system.command(bundle.generator.prototype_command(label[None])), return_optical_trace=True)
@@ -830,11 +881,12 @@ def _prototype_topology(args: argparse.Namespace, config: V2Config) -> int:
                     crops[name].append(value.detach().cpu())
                 if trace_rows is None:
                     trace_rows = [[] for _ in result.optical_trace or ()]
+                    trace_fields = result.optical_trace
                 for bucket, field in zip(trace_rows or [], result.optical_trace or (), strict=True):
                     bucket.append(field.tensor.abs().square().detach().cpu())
-        return torch.cat(raw_rows), {name: torch.cat(values) for name, values in crops.items()}, tuple(torch.cat(bucket) for bucket in trace_rows or [])
+        return torch.cat(raw_rows), {name: torch.cat(values) for name, values in crops.items()}, tuple(torch.cat(bucket) for bucket in trace_rows or []), tuple(trace_fields or ())
 
-    def summary(raw: torch.Tensor, crops: dict[str, torch.Tensor], trace: tuple[torch.Tensor, ...]) -> dict[str, object]:
+    def summary(raw: torch.Tensor, crops: dict[str, torch.Tensor], trace: tuple[torch.Tensor, ...], trace_fields: tuple[ComplexField, ...]) -> dict[str, object]:
         normalized = (raw.to(device) / config.prototype_calibration.fixed_exposure_scale).clamp(0.0, 1.0)
         matrix = prototype_correlation_matrix(normalized, clean)
         margins = prototype_margins(matrix)
@@ -844,12 +896,8 @@ def _prototype_topology(args: argparse.Namespace, config: V2Config) -> int:
             masked_prediction = normalized[label] * roi[label]
             roi_scores.append(torch.stack([correlation(masked_prediction, clean[target] * roi[target])[0] for target in range(10)]))
         roi_matrix = torch.stack(roi_scores)
-        plane_distances = []
-        for field in trace:
-            flat = field.flatten(1)
-            unit = flat / flat.square().sum(dim=1, keepdim=True).sqrt().clamp_min(1.0e-12)
-            pair = torch.cdist(unit, unit)
-            plane_distances.append(float(pair[~torch.eye(10, dtype=torch.bool)].min().item()))
+        trace_for_report = tuple(ComplexField(value.to(device).sqrt().to(torch.complex64), field.plane, field.provenance) for value, field in zip(trace, trace_fields, strict=True))
+        planes, first_collapse = _trace_plane_report(trace_for_report)
         return {
             "clean_corr": float(correlation(normalized, clean).mean().item()),
             "hard_dice": float(foreground_dice(normalized, clean).mean().item()),
@@ -863,7 +911,8 @@ def _prototype_topology(args: argparse.Namespace, config: V2Config) -> int:
             "background_speckle": float(background_speckle_ratio(normalized, clean).mean().item()),
             "high_saturation": float(high_saturation_ratio(raw.to(device), config.prototype_calibration.fixed_exposure_scale).item()),
             "crop_retention": {name: [float(value) for value in values.flatten().tolist()] for name, values in crops.items()},
-            "plane_min_pair_distances": plane_distances,
+            "plane_report": planes,
+            "first_material_collapse_plane": first_collapse,
         }
 
     arms = {
@@ -922,6 +971,33 @@ def _rebind_manifest(args: argparse.Namespace, config: V2Config) -> int:
         manifest = build_teacher_target_manifest(old.dataset.path, pair, formal=config.system.is_formal, generated_git_commit=commit, v2_config_hash=canonical_sha256(config.model_dump(mode="json")), legacy_export_config_hash=legacy_hash, system_contract_hash=_system_signature(config), teacher_export_contract_hash=scoped_export_hash)
     atomic_write_json(output, manifest.to_dict() | {"manifest_hash": manifest.manifest_hash})
     print(output)
+    return 0
+
+
+def _supersede_reachability(args: argparse.Namespace, config: V2Config) -> int:
+    """Content-bind an invalidation without mutating historical evidence."""
+    old = Path(args.old_evidence)
+    payload = json.loads(old.read_text(encoding="utf-8"))
+    if payload.get("evidence_kind") != "prototype_reachability":
+        raise ValueError("only prototype reachability evidence can be superseded here")
+    run = _new_run(config)
+    record = EvidenceRecordV2(
+        2,
+        "prototype_reachability_supersession",
+        "diagnostic",
+        "diagnostic",
+        run.git_commit,
+        run.dirty_patch_hash,
+        run.config_hash,
+        _context(config),
+        {"superseded_reachability": file_sha256(old)},
+        (GateResult("historical_harness_invalid", True, {"immutable_historical_file": True}),),
+        (),
+        "superseded evidence used plane intensity means, a similarity ratio, and no per-label directional gate",
+    )
+    _write_record(run, "prototype_reachability_supersession_evidence.json", record)
+    atomic_write_json(run.root / "prototype_reachability_supersession.json", {"superseded_path": str(old.resolve()), "superseded_sha256": file_sha256(old), "superseded_evidence_hash": canonical_sha256(payload), "classification": "harness-invalid", "reason": record.invalidation_reason})
+    print(run.root)
     return 0
 
 
@@ -1001,9 +1077,14 @@ def _parser() -> argparse.ArgumentParser:
     rebind.add_argument("--teacher-manifest", default="")
     rebind.add_argument("--legacy-train-config", default="")
     rebind.set_defaults(handler=lambda args: _rebind_manifest(args, load_config(args.config)))
+    supersede = evidence.add_parser("supersede-reachability")
+    supersede.add_argument("--config", required=True)
+    supersede.add_argument("--old-evidence", required=True)
+    supersede.set_defaults(handler=lambda args: _supersede_reachability(args, load_config(args.config)))
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     return int(args.handler(args) or 0)
+from ..contracts import ComplexField
