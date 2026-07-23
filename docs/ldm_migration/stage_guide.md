@@ -6,7 +6,7 @@
 
 v2 的可执行闭环为：内容寻址 teacher pair/target manifest → prototype measurement → 内容绑定的人工 admission → frozen capacity → guarded training → checkpoint-driven raw-CMOS evaluate。small diagnostic system 仅允许 `diagnostic_*_smoke` 动作，不能授权 formal train、export、evaluate acceptance 或 promotion；正式 CUDA 命令和 review 交接见 [v2 runtime](../v2/README.md)。
 
-2026-07-23 v2 prototype 断点已完成一次 broad isolation 和一次修正后的 calibration。`sqrt(clean intensity)` 初始化、5×40 logical steps、固定 clean-correlation/Dice/CE objective 后，corr 达到 `0.8395`、dice `0.7625`，但 prototype accuracy 仅 `0.50`，且末两 epoch Dice 退化。此前 `212454` reachability 的 passed 状态现为 harness-invalid：crop、front separation 与逐类 direction gate 的计算不符合合同，且 calibration 未绑定该 evidence。保留 `212618` 作为旧 reconstruction 合同的数值负结果，不据此下物理不可达结论。当前只能运行修正后的 reachability、frozen topology isolation，随后最多一次 diagnostic `formal_prototype_shape_guard_v1`；它若数值失败，不得继续 loss/LR/epoch/ROI/phase sweep，也不得运行 capacity、student training、test、导出或 promotion。
+2026-07-23 v2 prototype 断点已完成一次 broad isolation 和一次修正后的 calibration。`sqrt(clean intensity)` 初始化、5×40 logical steps、固定 clean-correlation/Dice/CE objective 后，corr 达到 `0.8395`、dice `0.7625`，但 prototype accuracy 仅 `0.50`，且末两 epoch Dice 退化。此前 `212454` reachability 的 passed 状态现为 harness-invalid：crop、front separation 与逐类 direction gate 的计算不符合合同，且 calibration 未绑定该 evidence。保留 `212618` 作为旧 reconstruction 合同的数值负结果，不据此下物理不可达结论。修正后的 reachability 通过且 topology isolation 显示 joint 最好，但唯一 diagnostic `formal_prototype_shape_guard_v1` 仍以 accuracy `0.50`、minimum full-frame margin `-0.0801` 与 background-speckle failure 自动停止。按决策政策冻结该合同：不得继续 loss/LR/epoch/ROI/phase sweep，也不得运行 formal calibration、capacity、student training、test、导出或 promotion。
 
 ## Golden Path
 
