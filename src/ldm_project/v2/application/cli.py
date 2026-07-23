@@ -14,10 +14,11 @@ import torch
 from torch import nn
 from torch.utils.checkpoint import checkpoint
 
-from ..config import V2Config, load_config
+from ..config import LightGenSystemConfig, V2Config, load_config
 from ..contracts import ComplexField, OperationProvenance, PlaneSpec
 from ..evidence import EvidenceContextV2, EvidenceRecordV2, GateResult, atomic_torch_save, atomic_write_json, canonical_sha256, file_sha256, load_manual_review, require_evidence_action, tensor_artifact_ref, tensor_sha256
-from ..optics import FormalAmplitudeFiniteCropIdentitySystem
+from ..optics import FormalAmplitudeFiniteCropIdentitySystem, LightGenAmplitudeFiberOLSSystemV2, reference_project_single_mode_fibers
+from ..lightgen_contract import LightGenReferenceContractV2
 from ..optics.d2nn import FiniteCropPhaseStack
 from ..optics.devices import identity_ols
 from ..optics.relays import CoherentImagingRelay
@@ -153,6 +154,95 @@ def _legacy_export_contract(path: str, config: V2Config) -> str:
 def _new_run(config: V2Config) -> V2Run:
     _require_clean_acceptance(config)
     return V2Run.create(output_root=config.run.output_root, run_name=config.run.run_name, config_payload=config.model_dump(mode="json"))
+
+
+def _lightgen_contract(path: str) -> LightGenReferenceContractV2:
+    return LightGenReferenceContractV2.from_dict(json.loads(Path(path).read_text(encoding="utf-8")))
+
+
+def _require_lightgen(config: V2Config) -> LightGenSystemConfig:
+    if not isinstance(config.system, LightGenSystemConfig):
+        raise ValueError("this audit requires diagnostic_lightgen_amplitude_fiber_ols_400")
+    if config.run.evidence_tier != "diagnostic":
+        raise ValueError("LightGen architecture proxy is diagnostic-only")
+    return config.system
+
+
+def _lightgen_seeds(*, device: torch.device, shape: tuple[int, int]) -> torch.Tensor:
+    """Fixed global nonlinear amplitude seeds; this is neither DCT nor a local-gain basis."""
+    height, width = shape
+    yy = torch.linspace(-1.0, 1.0, height, device=device).view(1, height, 1)
+    xx = torch.linspace(-1.0, 1.0, width, device=device).view(1, 1, width)
+    code = torch.eye(8, device=device).view(8, 8, 1, 1)
+    frequencies = torch.arange(1, 9, device=device, dtype=yy.dtype).view(8, 1, 1)
+    patterns = torch.sin(frequencies * 2.0 * torch.pi * xx) + torch.cos((frequencies + 0.5) * 2.0 * torch.pi * yy)
+    nonlinear = torch.tanh(code[:, :, 0] * patterns.unsqueeze(0)).sum(dim=1)
+    # all directions modulate the entire active aperture before the amplitude mapping
+    return (0.5 + 0.20 * nonlinear).sigmoid().unsqueeze(1).clamp(1.0e-4, 1.0 - 1.0e-4)
+
+
+def _lightgen_contract_gap(args: argparse.Namespace, config: V2Config) -> int:
+    system = _require_lightgen(config)
+    reference = _lightgen_contract(args.reference_contract)
+    run = _new_run(config)
+    formal = {
+        "resolution": [200, 200], "pixel_pitch_m": 2.5e-6, "encoder_layers": 2,
+        "generator_layers": 2, "ols": "identity", "ols_dimension": None,
+        "complex_ols": False, "spatial_bandwidth_product": 10000,
+        "training": "local_8d_DCT_supported_basis",
+    }
+    lightgen = {
+        "resolution": list(system.slm_shape), "pixel_pitch_m": system.slm_pixel_pitch_m,
+        "encoder_layers": system.encoder_layers, "generator_layers": system.decoder_layers,
+        "ols": system.ols_kind, "ols_dimension": 100, "complex_ols": True,
+        "spatial_bandwidth_product": system.slm_shape[0] * system.slm_shape[1],
+        "training": "global_nonlinear_amplitude_seed_architecture_proxy",
+    }
+    differences = {name: {"formal": formal[name], "lightgen_proxy": lightgen[name], "different": formal[name] != lightgen[name]} for name in formal}
+    atomic_write_json(run.root / "lightgen_contract_gap.json", {"reference_contract_hash": reference.contract_hash, "reference_proxy_only": reference.architecture_proxy_only, "differences": differences})
+    evidence = EvidenceRecordV2(2, "lightgen_contract_gap", "diagnostic", "diagnostic", run.git_commit, run.dirty_patch_hash, run.config_hash, _context(config), {"reference_contract": reference.contract_hash}, (GateResult("isolated_from_formal_system", True, {"formal_system_changed": False}),), (), "architecture-proxy: reference contract retains unknown physical parameters")
+    _write_record(run, "lightgen_contract_gap_evidence.json", evidence)
+    print(run.root)
+    return 0
+
+
+def _lightgen_ols_observability(args: argparse.Namespace, config: V2Config) -> int:
+    _require_lightgen(config)
+    reference = _lightgen_contract(args.reference_contract)
+    run = _new_run(config)
+    device = torch.device(config.run.device)
+    system = LightGenAmplitudeFiberOLSSystemV2(config.system).to(device)
+    before = state_content_hash(system.state_dict())
+    seeds = _lightgen_seeds(device=device, shape=config.system.slm_shape)
+    with torch.no_grad():
+        result = system(system.command(seeds))
+        reference_coefficients = reference_project_single_mode_fibers(result.optical_trace[3], result.ols.modes)
+        if not torch.allclose(result.ols.coefficients, reference_coefficients, atol=2.0e-5, rtol=2.0e-5):
+            raise ValueError("fiber OLS production/reference disagreement")
+        # The real-imaginary coupling response preserves the physical complex OLS interface.
+        response = torch.cat((result.ols.coefficients.real, result.ols.coefficients.imag), dim=1)
+        singular = torch.linalg.svdvals(response.cpu())
+        effective_rank = int((singular / singular[0].clamp_min(1.0e-12) >= 1.0e-6).sum().item())
+        ratio = float((singular[7] / singular[0].clamp_min(1.0e-12)).item())
+        gram = result.ols.modes.gram
+        crosstalk = float((gram - torch.eye(100, device=device, dtype=gram.dtype)).abs().max().item())
+        raw = result.raw_camera.tensor.detach().cpu()
+    after = state_content_hash(system.state_dict())
+    atomic_torch_save(run.root / "lightgen_observability_raw_cmos.pt", raw)
+    atomic_torch_save(run.root / "lightgen_ols_singular_values.pt", singular)
+    atomic_write_json(run.root / "lightgen_ols_observability_report.json", {"mode_count": 100, "effective_rank": effective_rank, "sigma8_over_sigma1": ratio, "max_mode_crosstalk": crosstalk, "parameters_unchanged": before == after, "optimizer_created": False, "physical_parameter_status": "unknown", "evidence_label": "architecture-proxy", "input_seed_hash": tensor_sha256(seeds), "raw_cmos_hash": tensor_sha256(raw), "optical_trace": [{"plane": field.plane.to_dict(), "provenance": field.provenance.to_dict()} for field in result.optical_trace]})
+    gates = (
+        GateResult("one_hundred_finite_complex_modes", bool(torch.isfinite(result.ols.coefficients).all()), {"mode_count": 100}),
+        GateResult("effective_rank_at_least_eight", effective_rank >= 8, {"effective_rank": effective_rank}),
+        GateResult("sigma8_over_sigma1", ratio >= 1.0e-3, {"sigma8_over_sigma1": ratio}),
+        GateResult("parameters_unchanged", before == after, {"parameters_unchanged": before == after}),
+        GateResult("complete_provenance", all(field.provenance.operation for field in result.optical_trace), {"planes": len(result.optical_trace)}),
+    )
+    passed = all(gate.passed for gate in gates)
+    evidence = EvidenceRecordV2(2, "lightgen_ols_observability", "diagnostic", "diagnostic", run.git_commit, run.dirty_patch_hash, run.config_hash, _context(config), {"reference_contract": reference.contract_hash, "raw_cmos": file_sha256(run.root / "lightgen_observability_raw_cmos.pt"), "singular_values": file_sha256(run.root / "lightgen_ols_singular_values.pt")}, gates, (), "architecture-proxy: unknown wavelength, spacing, aperture, and fiber coupling prohibit physical-faithful/training authority" if passed else "architecture-proxy observability gate failed")
+    _write_record(run, "lightgen_ols_observability_evidence.json", evidence)
+    print(run.root)
+    return 0
 
 
 def _zero_basis(shape: tuple[int, int]) -> CodeBasisArtifactV2:
@@ -1485,6 +1575,14 @@ def _parser() -> argparse.ArgumentParser:
     for name in ("config", "prototype_evidence", "prototype_artifact", "clean_target_manifest", "shape_checkpoint"):
         local_capacity.add_argument("--" + name.replace("_", "-"), required=True)
     local_capacity.set_defaults(handler=lambda args: _direct_template_local_capacity(args, load_config(args.config)))
+    lightgen_gap = audit.add_parser("lightgen-contract-gap")
+    for name in ("config", "reference_contract"):
+        lightgen_gap.add_argument("--" + name.replace("_", "-"), required=True)
+    lightgen_gap.set_defaults(handler=lambda args: _lightgen_contract_gap(args, load_config(args.config)))
+    lightgen_observability = audit.add_parser("lightgen-ols-observability")
+    for name in ("config", "reference_contract"):
+        lightgen_observability.add_argument("--" + name.replace("_", "-"), required=True)
+    lightgen_observability.set_defaults(handler=lambda args: _lightgen_ols_observability(args, load_config(args.config)))
     evidence = root.add_parser("evidence").add_subparsers(dest="action", required=True)
     summarize = evidence.add_parser("summarize")
     summarize.add_argument("--run", required=True)
