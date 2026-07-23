@@ -27,6 +27,7 @@ def test_direct_template_prototype_artifact_is_content_addressed_and_support_loc
     payload = artifact.to_dict() | {"artifact_hash": artifact.artifact_hash}
     restored = DirectTemplatePrototypeArtifactV2.from_dict(json.loads(json.dumps(payload)))
     assert restored.artifact_hash == artifact.artifact_hash
+    restored.validate()
     torch.save(torch.zeros((10, 8, 8)), tmp_path / "supports.pt")
     with pytest.raises(ValueError, match="artifact content no longer matches"):
         artifact.validate()

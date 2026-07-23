@@ -36,7 +36,10 @@ class DirectTemplatePrototypeArtifactV2:
     def from_dict(cls, payload: Mapping[str, Any]) -> "DirectTemplatePrototypeArtifactV2":
         values = dict(payload)
         for name in ("commands", "raw_cmos", "supports"):
-            values[name] = ArtifactRefV2(**values[name])
+            reference = dict(values[name])
+            if reference.get("shape") is not None:
+                reference["shape"] = tuple(reference["shape"])
+            values[name] = ArtifactRefV2(**reference)
         values.pop("artifact_hash", None)
         return cls(**values)
 
