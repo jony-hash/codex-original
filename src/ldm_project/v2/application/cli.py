@@ -266,6 +266,24 @@ def _calibrate(args: argparse.Namespace, config: V2Config) -> int:
         raise ValueError("student calibrate-prototypes requires prototype_calibration config")
     device = torch.device(config.run.device)
     clean_manifest = _clean_target_manifest(args.clean_target_manifest, config)
+    if config.system.is_formal:
+        if not args.reachability_evidence:
+            raise ValueError("formal prototype calibration requires --reachability-evidence")
+        reachability = _record(args.reachability_evidence)
+        reachability.validate()
+        expected = _context(config, dataset_hash=clean_manifest.targets.sha256)
+        if reachability.evidence_kind != "prototype_reachability" or reachability.tier != "diagnostic" or reachability.status != "diagnostic":
+            raise ValueError("formal prototype calibration requires diagnostic reachability evidence")
+        reachability.context.assert_matches(expected, fields=("system_signature", "config_hash", "dataset_hash"))
+        if not all(gate.passed for gate in reachability.gates) or "calibrate_prototypes" not in reachability.permitted_next_actions:
+            raise ValueError("reachability evidence did not authorize prototype calibration")
+        if reachability.input_hashes.get("clean_target_manifest") != clean_manifest.manifest_hash:
+            raise ValueError("reachability evidence uses another clean-target manifest")
+        failed_checkpoint = reachability.input_hashes.get("failed_prototype_checkpoint")
+        if not failed_checkpoint or failed_checkpoint != reachability.context.checkpoint_hash:
+            raise ValueError("reachability evidence lacks a verified failed-checkpoint lineage")
+    else:
+        reachability = None
     clean_targets = _tensor(clean_manifest.targets.path, device=device)
     run = _new_run(config)
     basis = _zero_basis(config.system.slm_shape)
@@ -308,7 +326,11 @@ def _calibrate(args: argparse.Namespace, config: V2Config) -> int:
     diagnostic = not config.system.is_formal or config.run.evidence_tier == "diagnostic"
     status = "diagnostic" if diagnostic else ("pending_review" if measurement_gate.passed else "failed")
     actions = ("diagnostic_capacity_smoke",) if diagnostic and measurement_gate.passed else (("admit_prototypes",) if status == "pending_review" else ())
-    record = EvidenceRecordV2(2, "prototype_calibration", config.run.evidence_tier, status, run.git_commit, run.dirty_patch_hash, run.config_hash, context, {"clean_targets": clean_manifest.targets.sha256, "clean_target_manifest": clean_manifest.manifest_hash, "prototype_checkpoint": checkpoint_hash, "prototype_raw_cmos": file_sha256(raw_path), "prototype_preview": review_artifacts.preview_sha256}, (measurement_gate,), actions, None if measurement_gate.passed else "prototype automatic measurement gate failed")
+    input_hashes = {"clean_targets": clean_manifest.targets.sha256, "clean_target_manifest": clean_manifest.manifest_hash, "prototype_checkpoint": checkpoint_hash, "prototype_raw_cmos": file_sha256(raw_path), "prototype_preview": review_artifacts.preview_sha256}
+    if reachability is not None:
+        input_hashes["reachability_evidence"] = reachability.evidence_hash
+        input_hashes["failed_prototype_checkpoint"] = reachability.context.checkpoint_hash or ""
+    record = EvidenceRecordV2(2, "prototype_calibration", config.run.evidence_tier, status, run.git_commit, run.dirty_patch_hash, run.config_hash, context, input_hashes, (measurement_gate,), actions, None if measurement_gate.passed else "prototype automatic measurement gate failed")
     _write_record(run, "prototype_calibration_evidence.json", record)
     print(run.root)
     return 0
@@ -800,6 +822,7 @@ def _parser() -> argparse.ArgumentParser:
     calibrate = student.add_parser("calibrate-prototypes")
     calibrate.add_argument("--config", required=True)
     calibrate.add_argument("--clean-target-manifest", required=True)
+    calibrate.add_argument("--reachability-evidence")
     calibrate.set_defaults(handler=lambda args: _calibrate(args, load_config(args.config)))
     clean = student.add_parser("export-clean-targets")
     for name in ("config", "dataset_root", "output", "manifest"):
