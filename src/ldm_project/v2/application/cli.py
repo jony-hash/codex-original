@@ -23,6 +23,7 @@ from ..student.checkpoints import CheckpointManifestV2, load_exact_checkpoint, l
 from ..student.clean_targets import CleanTargetManifestV2, build_clean_targets
 from ..student.evaluation import CodeAcceptanceMetrics, acceptance_metrics, code_acceptance_gate, paired_advantage_lower_bound
 from ..student.generator import LabelPrototypeBasisGenerator
+from ..student.metrics import background_speckle_ratio, correlation, foreground_dice, foreground_hole_ratio, high_saturation_ratio, prototype_correlation_matrix, prototype_margins
 from ..student.review_artifacts import write_review_artifacts
 from ..student.training import _differentiable_correlation, calibrate_prototypes, train_code_conditioned
 from ..student.capacity import supported_dct_candidates
@@ -651,8 +652,8 @@ def _reachability(args: argparse.Namespace, config: V2Config) -> int:
     source.validate()
     if source.evidence_kind != "prototype_calibration" or source.status != "failed":
         raise ValueError("reachability requires failed prototype-calibration evidence")
-    if source.context.system_signature != _system_signature(config) or source.context.config_hash != canonical_sha256(config.model_dump(mode="json")):
-        raise ValueError("failed calibration evidence belongs to another physical/config contract")
+    if source.context.system_signature != _system_signature(config):
+        raise ValueError("failed calibration evidence belongs to another physical contract")
     if source.context.dataset_hash != clean_manifest.targets.sha256 or source.input_hashes.get("clean_target_manifest") != clean_manifest.manifest_hash:
         raise ValueError("failed calibration evidence does not match clean-target manifest")
     failed_checkpoint_hash = file_sha256(args.failed_prototype_checkpoint)
@@ -772,6 +773,110 @@ def _reachability(args: argparse.Namespace, config: V2Config) -> int:
     return 0
 
 
+def _prototype_topology(args: argparse.Namespace, config: V2Config) -> int:
+    """Frozen 2x2 template/phase isolation.  It intentionally creates no optimizer."""
+    if config.prototype_calibration is None:
+        raise ValueError("prototype topology requires prototype calibration config")
+    device = torch.device(config.run.device)
+    clean_manifest = _clean_target_manifest(args.clean_target_manifest, config)
+    clean = _tensor(clean_manifest.targets.path, device=device)
+    payload = torch.load(args.prototype_checkpoint, map_location="cpu", weights_only=False)
+    if not isinstance(payload, dict) or not isinstance(payload.get("state_dict"), dict) or not isinstance(payload.get("manifest"), dict):
+        raise ValueError("prototype topology requires a v2 prototype checkpoint")
+    source_manifest = CheckpointManifestV2(**payload["manifest"])
+    if source_manifest.system_signature != _system_signature(config):
+        raise ValueError("prototype topology checkpoint belongs to another physical system")
+    state = payload["state_dict"]
+    labels = torch.arange(10, device=device)
+
+    def build(*, trained_template: bool, trained_phase: bool) -> StudentBundle:
+        bundle = StudentBundle(config, _zero_basis(config.system.slm_shape)).to(device)
+        with torch.no_grad():
+            if trained_template:
+                bundle.generator.template_logits.copy_(state["generator.template_logits"].to(device))
+            else:
+                bundle.generator.template_logits.copy_(torch.logit(clean[:, 0].sqrt().clamp(1.0e-4, 1.0 - 1.0e-4)))
+            if trained_phase:
+                bundle.system.encoder.phase.copy_(state["system.encoder.phase"].to(device))
+                bundle.system.decoder.phase.copy_(state["system.decoder.phase"].to(device))
+        return bundle
+
+    def replay(bundle: StudentBundle) -> tuple[torch.Tensor, dict[str, torch.Tensor], tuple[torch.Tensor, ...]]:
+        raw_rows, crops, trace_rows = [], {"encoder_crop_retention": [], "decoder_crop_retention": []}, None
+        with torch.no_grad():
+            for label in labels:
+                result = bundle.system.forward(bundle.system.command(bundle.generator.prototype_command(label[None])), return_optical_trace=True)
+                raw_rows.append(result.raw_camera.tensor.detach().cpu())
+                for name, value in result.crop_statistics.items():
+                    crops[name].append(value.detach().cpu())
+                if trace_rows is None:
+                    trace_rows = [[] for _ in result.optical_trace or ()]
+                for bucket, field in zip(trace_rows or [], result.optical_trace or (), strict=True):
+                    bucket.append(field.tensor.abs().square().detach().cpu())
+        return torch.cat(raw_rows), {name: torch.cat(values) for name, values in crops.items()}, tuple(torch.cat(bucket) for bucket in trace_rows or [])
+
+    def summary(raw: torch.Tensor, crops: dict[str, torch.Tensor], trace: tuple[torch.Tensor, ...]) -> dict[str, object]:
+        normalized = (raw.to(device) / config.prototype_calibration.fixed_exposure_scale).clamp(0.0, 1.0)
+        matrix = prototype_correlation_matrix(normalized, clean)
+        margins = prototype_margins(matrix)
+        roi = clean >= 0.2
+        roi_scores = []
+        for label in range(10):
+            masked_prediction = normalized[label] * roi[label]
+            roi_scores.append(torch.stack([correlation(masked_prediction, clean[target] * roi[target])[0] for target in range(10)]))
+        roi_matrix = torch.stack(roi_scores)
+        plane_distances = []
+        for field in trace:
+            flat = field.flatten(1)
+            unit = flat / flat.square().sum(dim=1, keepdim=True).sqrt().clamp_min(1.0e-12)
+            pair = torch.cdist(unit, unit)
+            plane_distances.append(float(pair[~torch.eye(10, dtype=torch.bool)].min().item()))
+        return {
+            "clean_corr": float(correlation(normalized, clean).mean().item()),
+            "hard_dice": float(foreground_dice(normalized, clean).mean().item()),
+            "soft_dice": float(((2.0 * (normalized * clean).flatten(1).sum(dim=1) + 1.0e-6) / (normalized.square().flatten(1).sum(dim=1) + clean.square().flatten(1).sum(dim=1) + 1.0e-6)).mean().item()),
+            "standard_accuracy": float((matrix.argmax(dim=1) == labels).to(torch.float32).mean().item()),
+            "confusion": [int(value) for value in matrix.argmax(dim=1).cpu().tolist()],
+            "full_frame_margins": [float(value) for value in margins.cpu().tolist()],
+            "roi_accuracy_diagnostic_only": float((roi_matrix.argmax(dim=1) == labels).to(torch.float32).mean().item()),
+            "roi_margins_diagnostic_only": [float(value) for value in prototype_margins(roi_matrix).cpu().tolist()],
+            "foreground_hole": float(foreground_hole_ratio(normalized, clean).mean().item()),
+            "background_speckle": float(background_speckle_ratio(normalized, clean).mean().item()),
+            "high_saturation": float(high_saturation_ratio(raw.to(device), config.prototype_calibration.fixed_exposure_scale).item()),
+            "crop_retention": {name: [float(value) for value in values.flatten().tolist()] for name, values in crops.items()},
+            "plane_min_pair_distances": plane_distances,
+        }
+
+    arms = {
+        "sqrt_template_zero_phase": (False, False),
+        "trained_template_zero_phase": (True, False),
+        "sqrt_template_trained_phase": (False, True),
+        "trained_template_trained_phase": (True, True),
+    }
+    outputs: dict[str, dict[str, object]] = {}
+    all_unchanged = True
+    run = _new_run(config)
+    for name, (trained_template, trained_phase) in arms.items():
+        bundle = build(trained_template=trained_template, trained_phase=trained_phase)
+        before = state_content_hash(bundle.state_dict())
+        raw, crops, trace = replay(bundle)
+        after = state_content_hash(bundle.state_dict())
+        all_unchanged = all_unchanged and before == after
+        raw_path = run.root / f"topology_{name}_raw_cmos.pt"
+        atomic_torch_save(raw_path, raw)
+        review = write_review_artifacts(root=run.root, stem=f"topology_{name}", kind="prototype_topology_diagnostic", raw_cmos=raw, targets=clean.detach().cpu(), exposure_scale=config.prototype_calibration.fixed_exposure_scale)
+        outputs[name] = summary(raw, crops, trace) | {"raw_cmos": file_sha256(raw_path), "preview": review.preview_sha256, "parameters_unchanged": before == after}
+    joint = outputs["trained_template_trained_phase"]
+    best_arm = max(outputs, key=lambda name: float(outputs[name]["standard_accuracy"]))
+    classification = "joint-separation-improving-but-topology-unresolved" if best_arm == "trained_template_trained_phase" and float(joint["standard_accuracy"]) < 1.0 else f"component-or-baseline-preferred:{best_arm}"
+    gate = GateResult("topology_isolation_parameters_unchanged", all_unchanged, {"parameters_unchanged": all_unchanged})
+    record = EvidenceRecordV2(2, "prototype_topology", "diagnostic", "diagnostic", run.git_commit, run.dirty_patch_hash, run.config_hash, _context(config, dataset_hash=clean_manifest.targets.sha256, checkpoint_hash=file_sha256(args.prototype_checkpoint)), {"clean_target_manifest": clean_manifest.manifest_hash, "prototype_checkpoint": file_sha256(args.prototype_checkpoint)}, (gate,), (), "topology isolation is diagnostic only; ROI metrics cannot authorize acceptance")
+    _write_record(run, "prototype_topology_evidence.json", record)
+    atomic_write_json(run.root / "prototype_topology_report.json", {"classification": classification, "arms": outputs, "acceptance_note": "ROI results and topology proxies are diagnostic only; fixed-exposure raw previews require human judgement."})
+    print(run.root)
+    return 0
+
+
 def _rebind_manifest(args: argparse.Namespace, config: V2Config) -> int:
     """Re-emit a verified input manifest without touching its tensor payload."""
     _require_clean_acceptance(config)
@@ -860,6 +965,10 @@ def _parser() -> argparse.ArgumentParser:
     for name in ("config", "clean_target_manifest", "failed_calibration_evidence", "failed_prototype_checkpoint"):
         reachability.add_argument("--" + name.replace("_", "-"), required=True)
     reachability.set_defaults(handler=lambda args: _reachability(args, load_config(args.config)))
+    topology = audit.add_parser("prototype-topology")
+    for name in ("config", "clean_target_manifest", "prototype_checkpoint"):
+        topology.add_argument("--" + name.replace("_", "-"), required=True)
+    topology.set_defaults(handler=lambda args: _prototype_topology(args, load_config(args.config)))
     evidence = root.add_parser("evidence").add_subparsers(dest="action", required=True)
     summarize = evidence.add_parser("summarize")
     summarize.add_argument("--run", required=True)

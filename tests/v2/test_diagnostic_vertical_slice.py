@@ -91,6 +91,9 @@ def test_cpu_diagnostic_cli_vertical_slice_is_never_acceptance(tmp_path: Path) -
     assert main(["student", "calibrate-prototypes", "--config", str(config), "--clean-target-manifest", str(clean_path)]) == 0
     calibration = _artifact(output_root, "prototype_calibration_evidence.json")
     calibration_root = calibration.parent
+    assert main(["audit", "prototype-topology", "--config", str(config), "--clean-target-manifest", str(clean_path), "--prototype-checkpoint", str(calibration_root / "prototype_bundle.pt")]) == 0
+    topology = _artifact(output_root, "prototype_topology_evidence.json")
+    assert json.loads(topology.read_text(encoding="utf-8"))["status"] == "diagnostic"
     raw = torch.load(calibration_root / "prototype_raw_cmos.pt", weights_only=False)
     review = tmp_path / "prototype_review.json"
     preview = calibration_root / "prototype_fixed_exposure.png"
