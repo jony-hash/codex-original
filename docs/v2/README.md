@@ -24,6 +24,7 @@ v2 从 v79 研究快照旁路重写而来；两线的范围、回档点和发布
 4. `audit prototype-topology` 是无 optimizer 的四臂冻结隔离（sqrt/trained template × zero/trained phase）；ROI 结果只定位背景污染，不能替代 full-frame raw-CMOS gate 或人工判断。
 5. 当 shape-guard 已有效失败时，`audit prototype-geometry-upper-bound` 以同一冻结 template、encoder、OLS 与 backend 比较 trained 1.50 mm decoder、zero-phase 1.50 mm decoder、decoder bypass，以及独立的 zero-phase 0.25 mm decoder。它只作传播归因：任何 ROI、bypass 或 complex-control 结果都不能授权 capacity、training 或 promotion。仅当 0.25 mm 全帧自动门和用户人工审阅均通过，才可另行建立名称隔离的 diagnostic variant。
 6. 若短层距上界未通过，它只会授权 `diagnostic_control_oracle`。用户可消费该内容绑定 evidence 执行 `audit prototype-control-oracle`：两臂、十类、每类 400 固定 Adam steps，固定初始化、曝光和 objective；每 40 steps 原子记录进度。中断不会发布最终 evidence。它不是训练 sweep，也不会产生下游权限。
+7. amplitude-only oracle 自动通过后，`audit direct-template-replay` 会以冻结光路逐类重放内容寻址的 amplitude command；只有 bit-exact raw replay 和完整自动门同时通过，才生成待填写的 `direct_template_replay` 人审模板。`audit admit-direct-template-replay` 只复核该模板和工件，仍不授权 capacity 或 training。
 5. `student calibrate-prototypes` 必须消费 clean-target manifest；自动 measurement/shape gate 失败会直接签发 `failed` evidence。只有自动指标通过时，才产生冻结 checkpoint、raw-CMOS replay、固定曝光预览、未填写 review 模板和 `pending_review` evidence。
 4. 人工查看该 replay 后运行 `student admit-prototypes`。review 必须同时绑定 replay tensor 与固定曝光 preview SHA-256；它可记录不可读标签子集，但只有完整 `0–9` 才能通过 gate。
 4. `audit capacity` 从冻结 amplitude prototype 的 `>=0.2` support 内部构造物理 `<=20 cycles/mm` DCT 候选、SVD basis 与固定 code replay；不接受外部 command/camera/support 绕过。
