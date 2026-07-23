@@ -34,6 +34,11 @@ from ..student.capacity import supported_dct_candidates
 from ..teacher import TeacherPairManifestV2, TeacherTargetManifestV2, build_teacher_pair_manifest, build_teacher_target_manifest
 from .runs import V2Run
 
+_CONTROL_ORACLE_ARMS = ("formal_amplitude_only", "diagnostic_complex_slm")
+_CONTROL_ORACLE_STEPS = 400
+_CONTROL_ORACLE_LR = 1.0e-2
+_CONTROL_ORACLE_PROGRESS_INTERVAL = 40
+
 
 class StudentBundle(nn.Module):
     def __init__(self, config: V2Config, basis: CodeBasisArtifactV2) -> None:
@@ -1019,7 +1024,8 @@ def _prototype_geometry_upper_bound(args: argparse.Namespace, config: V2Config) 
     unchanged = before == after
     short_gate = outputs["zero_phase_decoder_0250um"]["shape_gate"]["passed"] and unchanged
     gate = GateResult("decoder_geometry_upper_bound", bool(short_gate), {"short_decoder_full_shape_gate": bool(outputs["zero_phase_decoder_0250um"]["shape_gate"]["passed"]), "parameters_unchanged": unchanged})
-    record = EvidenceRecordV2(2, "prototype_geometry_upper_bound", "diagnostic", "diagnostic", run.git_commit, run.dirty_patch_hash, run.config_hash, _context(config, dataset_hash=clean_manifest.targets.sha256, checkpoint_hash=checkpoint_hash), {"shape_evidence": source.evidence_hash, "shape_checkpoint": checkpoint_hash, "clean_target_manifest": clean_manifest.manifest_hash}, (gate,), ("manual_geometry_review",) if gate.passed else (), None if gate.passed else "short-decoder geometry upper bound did not recover the full raw-CMOS shape gate")
+    next_actions = ("manual_geometry_review",) if gate.passed else ("diagnostic_control_oracle",)
+    record = EvidenceRecordV2(2, "prototype_geometry_upper_bound", "diagnostic", "diagnostic", run.git_commit, run.dirty_patch_hash, run.config_hash, _context(config, dataset_hash=clean_manifest.targets.sha256, checkpoint_hash=checkpoint_hash), {"shape_evidence": source.evidence_hash, "shape_checkpoint": checkpoint_hash, "clean_target_manifest": clean_manifest.manifest_hash}, (gate,), next_actions, None if gate.passed else "short-decoder geometry upper bound did not recover the full raw-CMOS shape gate")
     _write_record(run, "prototype_geometry_upper_bound_evidence.json", record)
     atomic_write_json(run.root / "prototype_geometry_upper_bound_report.json", {"arms": outputs, "formal_contract_unchanged": True, "decoder025_diagnostic_only": True, "parameters_unchanged": unchanged, "decision": "pending_manual_geometry_review" if gate.passed else "prepare_bounded_control_oracle"})
     print(run.root)
@@ -1038,7 +1044,7 @@ def _prototype_control_oracle(args: argparse.Namespace, config: V2Config) -> int
     clean_manifest = _clean_target_manifest(args.clean_target_manifest, config)
     checkpoint_hash = file_sha256(args.shape_checkpoint)
     expected_context = _context(config, dataset_hash=clean_manifest.targets.sha256, checkpoint_hash=checkpoint_hash)
-    geometry.context.assert_matches(expected_context, fields=("system_signature", "config_hash", "dataset_hash", "checkpoint_hash"))
+    require_evidence_action(geometry, kind="prototype_geometry_upper_bound", action="diagnostic_control_oracle", expected_context=expected_context, allow_diagnostic=True)
     if geometry.input_hashes.get("clean_target_manifest") != clean_manifest.manifest_hash:
         raise ValueError("geometry evidence does not match the clean-target manifest")
     if geometry.input_hashes.get("shape_checkpoint") != checkpoint_hash:
@@ -1050,6 +1056,29 @@ def _prototype_control_oracle(args: argparse.Namespace, config: V2Config) -> int
         parameter.requires_grad_(False)
     before = state_content_hash(bundle.state_dict())
     exposure = config.prototype_calibration.fixed_exposure_scale
+    run = _new_run(config)
+    contract = {
+        "arms": list(_CONTROL_ORACLE_ARMS),
+        "labels": list(range(10)),
+        "steps_per_label": _CONTROL_ORACLE_STEPS,
+        "adam_learning_rate": _CONTROL_ORACLE_LR,
+        "progress_interval_steps": _CONTROL_ORACLE_PROGRESS_INTERVAL,
+        "fixed_exposure_scale": exposure,
+        "initialization": "sqrt_clean_intensity_logit",
+        "objective": {"raw_mse": 1.0, "correlation": 0.25, "soft_dice": 0.30, "background": 0.10},
+        "parameters_before": before,
+        "geometry_evidence": geometry.evidence_hash,
+    }
+    atomic_write_json(run.root / "prototype_control_oracle_contract.json", contract)
+    if device.type == "cuda":
+        torch.cuda.reset_peak_memory_stats(device)
+    started = time.perf_counter()
+
+    def write_progress(*, status: str, arm: str | None = None, label: int | None = None, step: int | None = None, objective_value: float | None = None, error: str | None = None) -> None:
+        memory: dict[str, int] = {}
+        if device.type == "cuda":
+            memory = {"allocated": torch.cuda.memory_allocated(device), "reserved": torch.cuda.memory_reserved(device), "peak_allocated": torch.cuda.max_memory_allocated(device), "peak_reserved": torch.cuda.max_memory_reserved(device)}
+        atomic_write_json(run.root / "prototype_control_oracle_progress.json", {"status": status, "arm": arm, "label": label, "step": step, "objective": objective_value, "elapsed_seconds": time.perf_counter() - started, "optical_parameter_hash": state_content_hash(bundle.state_dict()), "cuda_memory": memory, "contract": contract, "error": error})
 
     def complex_forward(amplitude: torch.Tensor, phase: torch.Tensor) -> torch.Tensor:
         field = ComplexField(torch.polar(amplitude, phase).to(torch.complex64), bundle.system.slm_plane, OperationProvenance("diagnostic_complex_slm_control", None, None, {}))
@@ -1067,39 +1096,48 @@ def _prototype_control_oracle(args: argparse.Namespace, config: V2Config) -> int
         soft = (2.0 * (normalized * target).flatten(1).sum(dim=1) + 1.0e-6) / (normalized.square().flatten(1).sum(dim=1) + target.square().flatten(1).sum(dim=1) + 1.0e-6)
         return mse + 0.25 * (1.0 - _differentiable_correlation(normalized, target).mean()) + 0.30 * (1.0 - soft.mean()) + 0.10 * (normalized * (1.0 - foreground)).square().mean()
 
-    def optimize(kind: str) -> tuple[torch.Tensor, torch.Tensor, list[float]]:
+    def optimize(kind: str) -> tuple[torch.Tensor, torch.Tensor, list[list[float]]]:
         commands, raws, history = [], [], []
         for label in range(10):
             initial = clean[label : label + 1, 0].sqrt().clamp(1.0e-4, 1.0 - 1.0e-4)
             logits = torch.nn.Parameter(torch.logit(initial))
             phase_logits = torch.nn.Parameter(torch.zeros_like(initial)) if kind == "diagnostic_complex_slm" else None
-            optimizer = torch.optim.Adam([logits] + ([phase_logits] if phase_logits is not None else []), lr=1.0e-2)
+            optimizer = torch.optim.Adam([logits] + ([phase_logits] if phase_logits is not None else []), lr=_CONTROL_ORACLE_LR)
             target = clean[label : label + 1]
-            for _ in range(400):
+            label_history: list[float] = []
+            for step in range(1, _CONTROL_ORACLE_STEPS + 1):
                 optimizer.zero_grad(set_to_none=True)
                 amplitude = torch.sigmoid(logits).unsqueeze(1)
                 raw = bundle.system.forward(bundle.system.command(amplitude)).raw_camera.tensor if phase_logits is None else complex_forward(amplitude, torch.pi * torch.tanh(phase_logits).unsqueeze(1))
                 loss = objective(raw, target)
                 loss.backward()
                 optimizer.step()
+                value = float(loss.detach().item())
+                label_history.append(value)
+                if step % _CONTROL_ORACLE_PROGRESS_INTERVAL == 0 or step == _CONTROL_ORACLE_STEPS:
+                    write_progress(status="running", arm=kind, label=label, step=step, objective_value=value)
             with torch.no_grad():
                 amplitude = torch.sigmoid(logits).unsqueeze(1)
                 raw = bundle.system.forward(bundle.system.command(amplitude)).raw_camera.tensor if phase_logits is None else complex_forward(amplitude, torch.pi * torch.tanh(phase_logits).unsqueeze(1))
                 commands.append(amplitude.detach().cpu())
                 raws.append(raw.detach().cpu())
-                history.append(float(objective(raw, target).item()))
+                label_history.append(float(objective(raw, target).item()))
+                history.append(label_history)
         return torch.cat(commands), torch.cat(raws), history
 
-    run = _new_run(config)
     arms: dict[str, dict[str, object]] = {}
-    for kind in ("formal_amplitude_only", "diagnostic_complex_slm"):
-        commands, raw, history = optimize(kind)
-        command_path, raw_path = run.root / f"control_oracle_{kind}_commands.pt", run.root / f"control_oracle_{kind}_raw_cmos.pt"
-        atomic_torch_save(command_path, commands)
-        atomic_torch_save(raw_path, raw)
-        review = write_review_artifacts(root=run.root, stem=f"control_oracle_{kind}", kind="prototype_control_oracle", raw_cmos=raw, targets=clean.detach().cpu(), exposure_scale=exposure)
-        metrics, gate = _prototype_shape_summary(raw, clean, exposure_scale=exposure, device=device)
-        arms[kind] = {"metrics": metrics, "shape_gate": {"passed": gate.passed, "metrics": dict(gate.metrics)}, "final_objective_per_label": history, "commands": file_sha256(command_path), "raw_cmos": file_sha256(raw_path), "preview": review.preview_sha256}
+    try:
+        for kind in _CONTROL_ORACLE_ARMS:
+            commands, raw, history = optimize(kind)
+            command_path, raw_path = run.root / f"control_oracle_{kind}_commands.pt", run.root / f"control_oracle_{kind}_raw_cmos.pt"
+            atomic_torch_save(command_path, commands)
+            atomic_torch_save(raw_path, raw)
+            review = write_review_artifacts(root=run.root, stem=f"control_oracle_{kind}", kind="prototype_control_oracle", raw_cmos=raw, targets=clean.detach().cpu(), exposure_scale=exposure)
+            metrics, gate = _prototype_shape_summary(raw, clean, exposure_scale=exposure, device=device)
+            arms[kind] = {"input_control": kind, "metrics": metrics, "shape_gate": {"passed": gate.passed, "metrics": dict(gate.metrics)}, "objective_history_per_label": history, "commands": file_sha256(command_path), "raw_cmos": file_sha256(raw_path), "preview": review.preview_sha256}
+    except BaseException as error:
+        write_progress(status="interrupted", error=f"{type(error).__name__}: {error}")
+        raise
     unchanged = before == state_content_hash(bundle.state_dict())
     amplitude_passed = bool(arms["formal_amplitude_only"]["shape_gate"]["passed"] and unchanged)
     complex_passed = bool(arms["diagnostic_complex_slm"]["shape_gate"]["passed"] and unchanged)
@@ -1107,7 +1145,8 @@ def _prototype_control_oracle(args: argparse.Namespace, config: V2Config) -> int
     gate = GateResult("bounded_control_oracle", amplitude_passed, {"amplitude_only_passed": amplitude_passed, "complex_diagnostic_passed": complex_passed, "parameters_unchanged": unchanged})
     record = EvidenceRecordV2(2, "prototype_control_oracle", "diagnostic", "diagnostic", run.git_commit, run.dirty_patch_hash, run.config_hash, _context(config, dataset_hash=clean_manifest.targets.sha256, checkpoint_hash=checkpoint_hash), {"geometry_evidence": geometry.evidence_hash, "shape_checkpoint": checkpoint_hash, "clean_target_manifest": clean_manifest.manifest_hash}, (gate,), (), decision)
     _write_record(run, "prototype_control_oracle_evidence.json", record)
-    atomic_write_json(run.root / "prototype_control_oracle_report.json", {"arms": arms, "decision": decision, "parameters_unchanged": unchanged, "diagnostic_only": True})
+    atomic_write_json(run.root / "prototype_control_oracle_report.json", {"contract": contract, "arms": arms, "decision": decision, "parameters_before": before, "parameters_after": state_content_hash(bundle.state_dict()), "parameters_unchanged": unchanged, "diagnostic_only": True})
+    write_progress(status="completed")
     print(run.root)
     return 0
 
