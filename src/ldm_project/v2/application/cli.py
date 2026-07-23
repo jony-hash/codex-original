@@ -176,7 +176,7 @@ def _lightgen_seeds(*, device: torch.device, shape: tuple[int, int]) -> torch.Te
     code = torch.eye(8, device=device).view(8, 8, 1, 1)
     frequencies = torch.arange(1, 9, device=device, dtype=yy.dtype).view(8, 1, 1)
     patterns = torch.sin(frequencies * 2.0 * torch.pi * xx) + torch.cos((frequencies + 0.5) * 2.0 * torch.pi * yy)
-    nonlinear = torch.tanh(code[:, :, 0] * patterns.unsqueeze(0)).sum(dim=1)
+    nonlinear = torch.tanh(code * patterns.unsqueeze(0)).sum(dim=1)
     # all directions modulate the entire active aperture before the amplitude mapping
     return (0.5 + 0.20 * nonlinear).sigmoid().unsqueeze(1).clamp(1.0e-4, 1.0 - 1.0e-4)
 

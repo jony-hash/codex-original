@@ -7,6 +7,7 @@ from ldm_project.v2.config import LightGenSystemConfig, load_config
 from ldm_project.v2.lightgen_contract import LightGenReferenceContractV2
 from ldm_project.v2.optics.lightgen import LightGenAmplitudeFiberOLSSystemV2
 from ldm_project.v2.optics.fiber_ols import reference_project_single_mode_fibers
+from ldm_project.v2.application.cli import _lightgen_seeds
 
 
 def _small_config() -> LightGenSystemConfig:
@@ -50,3 +51,10 @@ def test_fiber_ols_keeps_complex_interface_and_matches_reference():
 def test_formal_config_cannot_be_used_as_lightgen_audit():
     config = load_config("configs/v2/formal_amplitude_finite_crop_identity.yaml")
     assert config.system.kind == "formal_amplitude_finite_crop_identity"
+
+
+def test_global_nonlinear_seed_keeps_eight_global_directions():
+    seeds = _lightgen_seeds(device=torch.device("cpu"), shape=(32, 32))
+    assert seeds.shape == (8, 1, 32, 32)
+    assert torch.isfinite(seeds).all()
+    assert not torch.allclose(seeds[0], seeds[1])
