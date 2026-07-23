@@ -1221,7 +1221,8 @@ def _admit_direct_template_replay(args: argparse.Namespace, config: V2Config) ->
     readable = tuple(review.readable_labels) == tuple(range(10))
     gate = GateResult("direct_template_manual_readability", readable, {"all_labels_readable": readable}, None if readable else "manual review did not approve labels 0-9")
     run = _new_run(config)
-    record = EvidenceRecordV2(2, "direct_template_control_demonstrated", "diagnostic", "diagnostic" if gate.passed else "failed", run.git_commit, run.dirty_patch_hash, run.config_hash, expected, {"replay_evidence": source.evidence_hash, "command_manifest": file_sha256(args.command_manifest), "raw_cmos": file_sha256(args.replay_raw_cmos), "preview": preview_hash, "manual_review": review_hash}, (source.gates[0], gate), (), None if gate.passed else "direct-template manual readability gate failed")
+    actions = ("freeze_direct_template_prototype",) if gate.passed else ()
+    record = EvidenceRecordV2(2, "direct_template_control_demonstrated", "diagnostic", "diagnostic" if gate.passed else "failed", run.git_commit, run.dirty_patch_hash, run.config_hash, expected, {"replay_evidence": source.evidence_hash, "command_manifest": file_sha256(args.command_manifest), "raw_cmos": file_sha256(args.replay_raw_cmos), "preview": preview_hash, "manual_review": review_hash}, (source.gates[0], gate), actions, None if gate.passed else "direct-template manual readability gate failed")
     _write_record(run, "direct_template_admission_evidence.json", record)
     print(run.root)
     return 0
