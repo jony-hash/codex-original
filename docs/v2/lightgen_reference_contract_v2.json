@@ -1,0 +1,21 @@
+{
+  "schema_version": 2,
+  "paper_doi": "10.1126/science.adv7434",
+  "pubmed_url": "https://pubmed.ncbi.nlm.nih.gov/41411438/",
+  "zenodo_doi": "10.5281/zenodo.17385609",
+  "zenodo_record_url": "https://zenodo.org/records/17385609",
+  "fields": {
+    "architecture": {"value": "photonic_encoder_to_ols_to_photonic_generator", "status": "paper_reported", "source": "10.1126/science.adv7434"},
+    "ols_transport": {"value": "single_mode_fiber_array", "status": "paper_reported", "source": "10.1126/science.adv7434"},
+    "ols_dimension": {"value": 100, "status": "paper_reported", "source": "10.1126/science.adv7434"},
+    "input": {"value": "amplitude", "status": "user_locked", "source": "project decision 2026-07-24"},
+    "active_shape": {"value": [400, 400], "status": "user_locked", "source": "project LightGen diagnostic plan"},
+    "pixel_pitch_m": {"value": 3e-06, "status": "user_locked", "source": "project LightGen diagnostic plan"},
+    "encoder_layers": {"value": 2, "status": "user_locked", "source": "project LightGen diagnostic plan"},
+    "generator_layers": {"value": 4, "status": "user_locked", "source": "project LightGen diagnostic plan"},
+    "wavelength_m": {"value": null, "status": "unknown", "source": null},
+    "layer_spacing_m": {"value": null, "status": "unknown", "source": null},
+    "aperture_m": {"value": null, "status": "unknown", "source": null},
+    "fiber_coupling_calibration": {"value": null, "status": "unknown", "source": null}
+  }
+}
