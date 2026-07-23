@@ -1288,6 +1288,59 @@ def _freeze_direct_template_prototype(args: argparse.Namespace, config: V2Config
     return 0
 
 
+def _direct_template_local_capacity(args: argparse.Namespace, config: V2Config) -> int:
+    """Run the fixed 8D capacity upper bound around immutable admitted commands."""
+    if config.capacity_audit is None:
+        raise ValueError("direct-template local capacity requires capacity_audit config")
+    frozen = _record(args.prototype_evidence)
+    clean_manifest = _clean_target_manifest(args.clean_target_manifest, config)
+    checkpoint_hash = file_sha256(args.shape_checkpoint)
+    expected = _context(config, dataset_hash=clean_manifest.targets.sha256, checkpoint_hash=checkpoint_hash)
+    require_evidence_action(frozen, kind="direct_template_prototype", action="diagnostic_local_capacity_upper_bound", expected_context=expected, allow_diagnostic=True)
+    artifact_path = Path(args.prototype_artifact)
+    artifact = DirectTemplatePrototypeArtifactV2.from_dict(json.loads(artifact_path.read_text(encoding="utf-8")))
+    artifact.validate()
+    if artifact.artifact_hash != json.loads(artifact_path.read_text(encoding="utf-8")).get("artifact_hash"):
+        raise ValueError("direct-template prototype artifact hash mismatch")
+    if (artifact.system_signature != _system_signature(config) or artifact.config_hash != canonical_sha256(config.model_dump(mode="json"))
+            or artifact.clean_target_manifest_hash != clean_manifest.manifest_hash or artifact.shape_checkpoint_sha256 != checkpoint_hash
+            or artifact.source_admission_evidence_hash != frozen.input_hashes.get("admission_evidence")
+            or frozen.input_hashes.get("artifact") != file_sha256(artifact_path)):
+        raise ValueError("direct-template prototype artifact does not match evidence/context")
+    commands = _tensor(artifact.commands.path, device=torch.device("cpu"))
+    supports = _tensor(artifact.supports.path, device=torch.device("cpu"))
+    if tuple(commands.shape) != (10, 1, *config.system.slm_shape) or supports.shape != (10, *config.system.slm_shape):
+        raise ValueError("direct-template artifact geometry does not match the configured system")
+    device = torch.device(config.run.device)
+    bundle = StudentBundle(config, _zero_basis(config.system.slm_shape)).to(device)
+    load_prototype_warm_start(args.shape_checkpoint, bundle, expected_system_signature=_system_signature(config))
+    for parameter in bundle.parameters():
+        parameter.requires_grad_(False)
+    commands_device, supports_device = commands.to(device), supports.to(device)
+    audit = config.capacity_audit
+    responses, unchanged_response, before_hash, response_hash = finite_difference_response_matrices(bundle.system, commands_device, supports_device, candidate_count=audit.dct_modes, epsilon=audit.finite_difference_epsilon, pixel_pitch_m=(config.system.slm_pixel_pitch_m, config.system.slm_pixel_pitch_m), max_cycles_per_mm=audit.max_cycles_per_mm, microbatch_size=config.execution.capacity_microbatch_size)
+    basis = build_code_basis(responses, supports, candidate_count=audit.dct_modes, seed=audit.seed, source_hash=artifact.artifact_hash, pixel_pitch_m=(config.system.slm_pixel_pitch_m, config.system.slm_pixel_pitch_m), max_cycles_per_mm=audit.max_cycles_per_mm)
+    unclamped, slm_intensity, raw_camera, coefficients = replay_capacity(bundle.system, commands_device, basis, supports_device, codes_per_label=audit.codes_per_label, command_gain=audit.command_gain, microbatch_size=config.execution.capacity_microbatch_size)
+    after_hash = state_content_hash(bundle.state_dict())
+    unchanged = unchanged_response and before_hash == after_hash
+    trace = bundle.system.forward(bundle.system.command(commands_device[:1]), return_optical_trace=True).optical_trace
+    provenance_complete = trace is not None and all(field.provenance.upstream_plane is not None or field.provenance.operation in {"ideal_amplitude_slm", "amplitude_slm"} for field in trace)
+    slm_factor, camera_factor, support_energy, clipping = capacity_metrics(unclamped, slm_intensity, raw_camera, supports)
+    finite = bool(torch.isfinite(responses).all().item() and torch.isfinite(unclamped).all().item() and torch.isfinite(raw_camera).all().item())
+    base_gate = capacity_gate(CapacityMetrics(slm_factor, camera_factor, support_energy, clipping, unchanged, False, provenance_complete), frozen.gates[0])
+    gate = GateResult("direct_template_local_capacity", base_gate.passed and finite, dict(base_gate.metrics) | {"finite": finite}, None if base_gate.passed and finite else "direct-template local capacity upper bound failed")
+    run = _new_run(config)
+    basis_path, replay_path = run.root / "direct_template_local_code_basis.pt", run.root / "direct_template_local_capacity_replay.pt"
+    basis.save(str(basis_path))
+    atomic_torch_save(replay_path, {"unclamped_commands": unclamped, "physical_slm_intensity": slm_intensity, "raw_camera": raw_camera, "coefficients": coefficients, "supports": supports.cpu(), "responses": responses, "parameter_before_hash": before_hash, "parameter_after_response_hash": response_hash, "parameter_after_hash": after_hash, "optimizer_created": False, "provenance_complete": provenance_complete})
+    atomic_write_json(run.root / "direct_template_local_capacity_report.json", {"diagnostic_only": True, "contract": {"dct_modes": audit.dct_modes, "selected_basis_dim": audit.selected_basis_dim, "max_cycles_per_mm": audit.max_cycles_per_mm, "codes_per_label": audit.codes_per_label, "seed": audit.seed, "finite_difference_epsilon": audit.finite_difference_epsilon, "command_gain": audit.command_gain, "microbatch_size": config.execution.capacity_microbatch_size}, "metrics": dict(gate.metrics), "basis_hash": basis.artifact_hash, "parameters_unchanged": unchanged, "optimizer_created": False, "provenance_complete": provenance_complete})
+    context = _context(config, dataset_hash=clean_manifest.targets.sha256, checkpoint_hash=checkpoint_hash, basis_hash=basis.artifact_hash)
+    record = EvidenceRecordV2(2, "direct_template_local_capacity", "diagnostic", "diagnostic" if gate.passed else "failed", run.git_commit, run.dirty_patch_hash, run.config_hash, context, {"prototype_evidence": frozen.evidence_hash, "prototype_artifact": file_sha256(artifact_path), "shape_checkpoint": checkpoint_hash, "clean_target_manifest": clean_manifest.manifest_hash, "basis": basis.artifact_hash, "basis_file": file_sha256(basis_path), "replay": file_sha256(replay_path), "responses": tensor_sha256(responses)}, (gate,), (), None if gate.passed else "direct-template local capacity gate failed")
+    _write_record(run, "direct_template_local_capacity_evidence.json", record)
+    print(run.root)
+    return 0
+
+
 def _rebind_manifest(args: argparse.Namespace, config: V2Config) -> int:
     """Re-emit a verified input manifest without touching its tensor payload."""
     _require_clean_acceptance(config)
@@ -1427,6 +1480,10 @@ def _parser() -> argparse.ArgumentParser:
     for name in ("config", "admission_evidence", "replay_evidence", "command_manifest", "commands", "raw_cmos", "clean_target_manifest", "shape_checkpoint"):
         freeze_template.add_argument("--" + name.replace("_", "-"), required=True)
     freeze_template.set_defaults(handler=lambda args: _freeze_direct_template_prototype(args, load_config(args.config)))
+    local_capacity = audit.add_parser("direct-template-local-capacity")
+    for name in ("config", "prototype_evidence", "prototype_artifact", "clean_target_manifest", "shape_checkpoint"):
+        local_capacity.add_argument("--" + name.replace("_", "-"), required=True)
+    local_capacity.set_defaults(handler=lambda args: _direct_template_local_capacity(args, load_config(args.config)))
     evidence = root.add_parser("evidence").add_subparsers(dest="action", required=True)
     summarize = evidence.add_parser("summarize")
     summarize.add_argument("--run", required=True)
