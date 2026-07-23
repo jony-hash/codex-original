@@ -1,4 +1,4 @@
-# 当前主线交接：v79 冻结与 v2 旁路（2026-07-22）
+# 当前主线交接：v79 冻结与 v2 旁路（2026-07-23）
 
 本文件只保存当前状态、停止规则和下一允许动作。v68–v79 的旧交接正文已完整、只读保存在 [v68–v79 原始主线交接归档](current_handoff_v68_v79_archive.md)，按阶段查阅的摘要、指标和工件索引见 [实验与验收历史](experiment_history.md)；稳定架构合同见 [D2NN 单次曝光蒸馏主线](single_shot_ldm_distillation.md)；分支与回档点见 [Git 分支治理指南](../git_branch_management.md)。
 
@@ -33,4 +33,6 @@ v79 以固定 label-only normalization 对八维 supported basis 做 CPU 上界�
 
 v2 的正式执行顺序固定为：clean commit 上的 `student preflight` → local clean-target manifest → teacher pair manifest → 8D atomic target export/target manifest → `student calibrate-prototypes` → `student admit-prototypes` → `audit capacity` → `student train` → `student evaluate` → `student admit-evaluation`。prototype calibration 的自动 corr/dice/accuracy/saturation/finite/gradient/memory/epoch gate 任一失败会直接停止，不进入人工审阅；CPU diagnostic evidence 只能显式授权 diagnostic smoke，不能跨入 formal 链。preflight 通过只授权用户进入 prototype gate，不构成 capacity、科学或 promotion acceptance。
 
-正式 1.50 mm 主线的下一允许动作不是继续调 loss、epoch、LR、ROI、phase 或 exposure。已完成的 two-arm control oracle 证明 amplitude-only command 可控制冻结光路，但不证明 code transport。当前只允许 `audit direct-template-replay` 的无 optimizer 内容寻址重放和随后的人工审阅；它通过后仍不进入 capacity、student training 或 promotion。complex arm不推进硬件变体。
+正式 1.50 mm 主线的下一允许动作不是继续调 loss、epoch、LR、ROI、phase 或 exposure。two-arm control oracle 已证明 amplitude-only command 可控制冻结光路；其 amplitude arm 与随后 direct-template replay 均通过完整 raw-CMOS 自动门，且用户已对 `0–9` 完成内容绑定人工审阅。该链只证明十类固定 command 的可控性，不证明 8D code transport；complex arm不推进硬件变体。
+
+当前唯一下一动作是 `audit freeze-direct-template-prototype`：它必须消费这份人工准入 evidence，生成只读、内容寻址的 command/raw/support artifact。随后才允许一次 `audit direct-template-local-capacity`，固定为 64 个 `<=20 cycles/mm` DCT candidates、8 basis、100 codes/class、seed 1234 和 gain 0.1。该审计保持 diagnostic；无论结果如何都不授权 formal capacity、student training、export 或 promotion。不得扫描 gain、basis、seed、phase、spacing 或 exposure。
