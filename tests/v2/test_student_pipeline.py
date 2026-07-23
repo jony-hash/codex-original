@@ -98,6 +98,28 @@ def test_clean_intensity_initialization_and_explicit_optimizer_steps() -> None:
     assert torch.isfinite(initialized).all()
 
 
+def test_shape_guard_contract_keeps_microbatch_gradient_equivalence() -> None:
+    torch.manual_seed(17)
+    clean = torch.rand(10, 1, 4, 4).clamp_min(0.05)
+    system, generator = ToyRawCameraSystem(), LabelPrototypeBasisGenerator(code_dim=3, basis_artifact=_artifact())
+    split_system, split_generator = copy.deepcopy(system), copy.deepcopy(generator)
+    kwargs = {
+        "exposure_scale": 1.0,
+        "epochs": 1,
+        "learning_rate": 1.0e-3,
+        "initialization": "clean_intensity_to_amplitude",
+        "contract_kind": "formal_prototype_shape_guard_v1",
+        "foreground_weight": 3.0,
+        "background_weight": 1.0,
+        "background_energy_weight": 0.1,
+    }
+    calibrate_prototypes(system, generator, clean, microbatch_size=10, **kwargs)
+    calibrate_prototypes(split_system, split_generator, clean, microbatch_size=1, **kwargs)
+    for left, right in zip(system.parameters(), split_system.parameters()):
+        assert torch.allclose(left, right)
+    assert torch.allclose(generator.template_logits, split_generator.template_logits)
+
+
 def test_code_acceptance_requires_bootstrap_and_manual_review() -> None:
     metrics = CodeAcceptanceMetrics(0.25, 0.70, 0.68, 0.001, 1234, 10000)
     assert code_acceptance_gate(metrics, list(range(10))).passed
