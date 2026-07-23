@@ -94,6 +94,9 @@ def test_cpu_diagnostic_cli_vertical_slice_is_never_acceptance(tmp_path: Path) -
     assert main(["audit", "prototype-topology", "--config", str(config), "--clean-target-manifest", str(clean_path), "--prototype-checkpoint", str(calibration_root / "prototype_bundle.pt")]) == 0
     topology = _artifact(output_root, "prototype_topology_evidence.json")
     assert json.loads(topology.read_text(encoding="utf-8"))["status"] == "diagnostic"
+    assert main(["audit", "prototype-geometry-upper-bound", "--config", str(config), "--clean-target-manifest", str(clean_path), "--shape-evidence", str(calibration), "--shape-checkpoint", str(calibration_root / "prototype_bundle.pt")]) == 0
+    geometry = _artifact(output_root, "prototype_geometry_upper_bound_evidence.json")
+    assert json.loads(geometry.read_text(encoding="utf-8"))["permitted_next_actions"] == []
     raw = torch.load(calibration_root / "prototype_raw_cmos.pt", weights_only=False)
     review = tmp_path / "prototype_review.json"
     preview = calibration_root / "prototype_fixed_exposure.png"

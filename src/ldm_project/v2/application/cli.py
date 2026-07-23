@@ -15,8 +15,12 @@ from torch import nn
 from torch.utils.checkpoint import checkpoint
 
 from ..config import V2Config, load_config
+from ..contracts import ComplexField, OperationProvenance, PlaneSpec
 from ..evidence import EvidenceContextV2, EvidenceRecordV2, GateResult, atomic_torch_save, atomic_write_json, canonical_sha256, file_sha256, load_manual_review, require_evidence_action, tensor_artifact_ref, tensor_sha256
 from ..optics import FormalAmplitudeFiniteCropIdentitySystem
+from ..optics.d2nn import FiniteCropPhaseStack
+from ..optics.devices import identity_ols
+from ..optics.relays import CoherentImagingRelay
 from ..student.admission import CapacityMetrics, PrototypeMetrics, capacity_gate, prototype_gate, prototype_measurement_gate
 from ..student.capacity import CodeBasisArtifactV2, build_code_basis, capacity_metrics, finite_difference_response_matrices, replay_capacity
 from ..student.checkpoints import CheckpointManifestV2, load_exact_checkpoint, load_prototype_warm_start, save_exact_checkpoint, state_content_hash, state_signature
@@ -927,13 +931,13 @@ def _prototype_topology(args: argparse.Namespace, config: V2Config) -> int:
     for name, (trained_template, trained_phase) in arms.items():
         bundle = build(trained_template=trained_template, trained_phase=trained_phase)
         before = state_content_hash(bundle.state_dict())
-        raw, crops, trace = replay(bundle)
+        raw, crops, trace, trace_fields = replay(bundle)
         after = state_content_hash(bundle.state_dict())
         all_unchanged = all_unchanged and before == after
         raw_path = run.root / f"topology_{name}_raw_cmos.pt"
         atomic_torch_save(raw_path, raw)
         review = write_review_artifacts(root=run.root, stem=f"topology_{name}", kind="prototype_topology_diagnostic", raw_cmos=raw, targets=clean.detach().cpu(), exposure_scale=config.prototype_calibration.fixed_exposure_scale)
-        outputs[name] = summary(raw, crops, trace) | {"raw_cmos": file_sha256(raw_path), "preview": review.preview_sha256, "parameters_unchanged": before == after}
+        outputs[name] = summary(raw, crops, trace, trace_fields) | {"raw_cmos": file_sha256(raw_path), "preview": review.preview_sha256, "parameters_unchanged": before == after}
     joint = outputs["trained_template_trained_phase"]
     best_arm = max(outputs, key=lambda name: float(outputs[name]["standard_accuracy"]))
     classification = "joint-separation-improving-but-topology-unresolved" if best_arm == "trained_template_trained_phase" and float(joint["standard_accuracy"]) < 1.0 else f"component-or-baseline-preferred:{best_arm}"
@@ -941,6 +945,163 @@ def _prototype_topology(args: argparse.Namespace, config: V2Config) -> int:
     record = EvidenceRecordV2(2, "prototype_topology", "diagnostic", "diagnostic", run.git_commit, run.dirty_patch_hash, run.config_hash, _context(config, dataset_hash=clean_manifest.targets.sha256, checkpoint_hash=file_sha256(args.prototype_checkpoint)), {"clean_target_manifest": clean_manifest.manifest_hash, "prototype_checkpoint": file_sha256(args.prototype_checkpoint)}, (gate,), (), "topology isolation is diagnostic only; ROI metrics cannot authorize acceptance")
     _write_record(run, "prototype_topology_evidence.json", record)
     atomic_write_json(run.root / "prototype_topology_report.json", {"classification": classification, "arms": outputs, "acceptance_note": "ROI results and topology proxies are diagnostic only; fixed-exposure raw previews require human judgement."})
+    print(run.root)
+    return 0
+
+
+def _geometry_forward(system: FormalAmplitudeFiniteCropIdentitySystem, command: torch.Tensor, *, arm: str) -> tuple[torch.Tensor, tuple[ComplexField, ...], dict[str, torch.Tensor]]:
+    """Diagnostic decoder-only counterfactual with legal, re-derived physical planes."""
+    slm = system.slm(system.command(command))
+    front = system.front(slm)
+    encoded, encoder_records, encoder_stats = system.encoder(front, "encoder")
+    ols = identity_ols(encoded)
+    if arm == "trained_decoder_1500um":
+        decoded, decoder_records, decoder_stats = system.decoder(ols, "decoder")
+    elif arm in {"zero_phase_decoder_1500um", "zero_phase_decoder_0250um"}:
+        spacing = 1.50e-3 if arm.endswith("1500um") else 0.25e-3
+        decoder = FiniteCropPhaseStack(layers=system.config.decoder_layers, active_shape=system.config.metasurface_shape, propagation_shape=(system.config.propagation_grid_size,) * 2, spacing_m=spacing).to(command.device)
+        decoded, decoder_records, decoder_stats = decoder(ols, "diagnostic_decoder")
+    elif arm == "decoder_bypass":
+        decoded, decoder_records, decoder_stats = ols, (), {"crop_retention": torch.ones(command.shape[0], 0, device=command.device)}
+    else:
+        raise ValueError(f"unknown decoder geometry arm: {arm}")
+    chip_plane = PlaneSpec(f"{arm}_chip", system.config.metasurface_shape, (system.config.metasurface_pixel_pitch_m,) * 2, system.config.wavelength_m, decoded.plane.z_m, "diagnostic_chip")
+    chip = ComplexField(decoded.tensor, chip_plane, OperationProvenance("diagnostic_decoder_geometry", decoded.plane.plane_id, None, {"arm": arm, "decoder_spacing_m": None if arm == "decoder_bypass" else (1.50e-3 if arm.endswith("1500um") else 0.25e-3)}))
+    camera_plane = PlaneSpec(f"{arm}_camera", system.config.slm_shape, (system.config.slm_pixel_pitch_m,) * 2, system.config.wavelength_m, chip_plane.z_m + sum(system.back.segments_m), "diagnostic_camera")
+    back = CoherentImagingRelay(chip_plane, camera_plane, system.config.back_magnification, name=f"diagnostic_{arm}_back_b0", segments_m=system.back.segments_m, focal_lengths_m=system.back.focal_lengths_m, clear_aperture_m=system.back.clear_aperture_m)
+    camera = back(chip)
+    return camera.tensor.abs().square(), (slm, front, *encoder_records, ols, *decoder_records, camera), {"encoder_crop_retention": encoder_stats["crop_retention"], "decoder_crop_retention": decoder_stats["crop_retention"]}
+
+
+def _prototype_geometry_upper_bound(args: argparse.Namespace, config: V2Config) -> int:
+    if config.prototype_calibration is None:
+        raise ValueError("prototype geometry upper bound requires prototype calibration config")
+    source = _record(args.shape_evidence)
+    source.validate()
+    if source.evidence_kind != "prototype_calibration" or source.status not in {"failed", "diagnostic"}:
+        raise ValueError("geometry upper bound requires a failed prototype calibration record")
+    device = torch.device(config.run.device)
+    clean_manifest = _clean_target_manifest(args.clean_target_manifest, config)
+    clean = _tensor(clean_manifest.targets.path, device=device)
+    checkpoint_hash = file_sha256(args.shape_checkpoint)
+    if source.context.checkpoint_hash != checkpoint_hash or source.context.dataset_hash != clean_manifest.targets.sha256:
+        raise ValueError("shape checkpoint or clean targets do not match shape evidence")
+    bundle = StudentBundle(config, _zero_basis(config.system.slm_shape)).to(device)
+    load_prototype_warm_start(args.shape_checkpoint, bundle, expected_system_signature=_system_signature(config))
+    labels = torch.arange(10, device=device)
+    commands = bundle.generator.prototype_command(labels).detach()
+    before = state_content_hash(bundle.state_dict())
+    arms = ("trained_decoder_1500um", "zero_phase_decoder_1500um", "decoder_bypass", "zero_phase_decoder_0250um")
+    run = _new_run(config)
+    outputs: dict[str, dict[str, object]] = {}
+    for arm in arms:
+        raw_rows, crop_rows, trace_rows, trace_fields = [], {"encoder_crop_retention": [], "decoder_crop_retention": []}, None, None
+        with torch.no_grad():
+            for label in range(10):
+                raw, trace, crops = _geometry_forward(bundle.system, commands[label : label + 1], arm=arm)
+                raw_rows.append(raw.detach().cpu())
+                for name, value in crops.items():
+                    crop_rows[name].append(value.detach().cpu())
+                if trace_rows is None:
+                    trace_rows, trace_fields = [[] for _ in trace], trace
+                for bucket, field in zip(trace_rows or [], trace, strict=True):
+                    bucket.append(field.tensor.abs().square().detach().cpu())
+        raw = torch.cat(raw_rows)
+        raw_path = run.root / f"geometry_{arm}_raw_cmos.pt"
+        atomic_torch_save(raw_path, raw)
+        review = write_review_artifacts(root=run.root, stem=f"geometry_{arm}", kind="prototype_geometry_diagnostic", raw_cmos=raw, targets=clean.detach().cpu(), exposure_scale=config.prototype_calibration.fixed_exposure_scale)
+        metrics, shape_gate = _prototype_shape_summary(raw, clean, exposure_scale=config.prototype_calibration.fixed_exposure_scale, device=device)
+        aggregated = tuple(ComplexField(torch.cat(bucket).to(device).sqrt().to(torch.complex64), field.plane, field.provenance) for bucket, field in zip(trace_rows or [], trace_fields or (), strict=True))
+        planes, collapse = _trace_plane_report(aggregated)
+        crops = {name: [float(item) for row in values for item in row.flatten().tolist()] for name, values in crop_rows.items()}
+        outputs[arm] = {"metrics": metrics, "shape_gate": {"passed": shape_gate.passed, "reason": shape_gate.reason, "metrics": dict(shape_gate.metrics)}, "crop_retention": crops, "plane_report": planes, "first_material_collapse_plane": collapse, "raw_cmos": file_sha256(raw_path), "preview": review.preview_sha256}
+    after = state_content_hash(bundle.state_dict())
+    unchanged = before == after
+    short_gate = outputs["zero_phase_decoder_0250um"]["shape_gate"]["passed"] and unchanged
+    gate = GateResult("decoder_geometry_upper_bound", bool(short_gate), {"short_decoder_full_shape_gate": bool(outputs["zero_phase_decoder_0250um"]["shape_gate"]["passed"]), "parameters_unchanged": unchanged})
+    record = EvidenceRecordV2(2, "prototype_geometry_upper_bound", "diagnostic", "diagnostic", run.git_commit, run.dirty_patch_hash, run.config_hash, _context(config, dataset_hash=clean_manifest.targets.sha256, checkpoint_hash=checkpoint_hash), {"shape_evidence": source.evidence_hash, "shape_checkpoint": checkpoint_hash, "clean_target_manifest": clean_manifest.manifest_hash}, (gate,), ("manual_geometry_review",) if gate.passed else (), None if gate.passed else "short-decoder geometry upper bound did not recover the full raw-CMOS shape gate")
+    _write_record(run, "prototype_geometry_upper_bound_evidence.json", record)
+    atomic_write_json(run.root / "prototype_geometry_upper_bound_report.json", {"arms": outputs, "formal_contract_unchanged": True, "decoder025_diagnostic_only": True, "parameters_unchanged": unchanged, "decision": "pending_manual_geometry_review" if gate.passed else "prepare_bounded_control_oracle"})
+    print(run.root)
+    return 0
+
+
+def _prototype_control_oracle(args: argparse.Namespace, config: V2Config) -> int:
+    """Bounded per-label control upper bound; diagnostic only and never a model checkpoint."""
+    if config.prototype_calibration is None:
+        raise ValueError("prototype control oracle requires prototype calibration config")
+    geometry = _record(args.geometry_evidence)
+    geometry.validate()
+    if geometry.evidence_kind != "prototype_geometry_upper_bound" or geometry.status != "diagnostic":
+        raise ValueError("control oracle requires geometry upper-bound evidence")
+    device = torch.device(config.run.device)
+    clean_manifest = _clean_target_manifest(args.clean_target_manifest, config)
+    clean = _tensor(clean_manifest.targets.path, device=device)
+    checkpoint_hash = file_sha256(args.shape_checkpoint)
+    bundle = StudentBundle(config, _zero_basis(config.system.slm_shape)).to(device)
+    load_prototype_warm_start(args.shape_checkpoint, bundle, expected_system_signature=_system_signature(config))
+    for parameter in bundle.parameters():
+        parameter.requires_grad_(False)
+    before = state_content_hash(bundle.state_dict())
+    exposure = config.prototype_calibration.fixed_exposure_scale
+
+    def complex_forward(amplitude: torch.Tensor, phase: torch.Tensor) -> torch.Tensor:
+        field = ComplexField(torch.polar(amplitude, phase).to(torch.complex64), bundle.system.slm_plane, OperationProvenance("diagnostic_complex_slm_control", None, None, {}))
+        front = bundle.system.front(field)
+        encoded, _, _ = bundle.system.encoder(front, "encoder")
+        decoded, _, _ = bundle.system.decoder(identity_ols(encoded), "decoder")
+        chip = ComplexField(decoded.tensor, bundle.system.chip_plane, decoded.provenance)
+        return bundle.system.back(chip).tensor.abs().square()
+
+    def objective(raw: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        normalized = (raw / exposure).clamp(0.0, 1.0)
+        foreground = (target >= 0.20).to(normalized.dtype)
+        weights = 1.0 + 2.0 * foreground
+        mse = ((normalized - target).square() * weights).sum() / weights.sum().clamp_min(1.0)
+        soft = (2.0 * (normalized * target).flatten(1).sum(dim=1) + 1.0e-6) / (normalized.square().flatten(1).sum(dim=1) + target.square().flatten(1).sum(dim=1) + 1.0e-6)
+        return mse + 0.25 * (1.0 - _differentiable_correlation(normalized, target).mean()) + 0.30 * (1.0 - soft.mean()) + 0.10 * (normalized * (1.0 - foreground)).square().mean()
+
+    def optimize(kind: str) -> tuple[torch.Tensor, torch.Tensor, list[float]]:
+        commands, raws, history = [], [], []
+        for label in range(10):
+            initial = clean[label : label + 1, 0].sqrt().clamp(1.0e-4, 1.0 - 1.0e-4)
+            logits = torch.nn.Parameter(torch.logit(initial))
+            phase_logits = torch.nn.Parameter(torch.zeros_like(initial)) if kind == "diagnostic_complex_slm" else None
+            optimizer = torch.optim.Adam([logits] + ([phase_logits] if phase_logits is not None else []), lr=1.0e-2)
+            target = clean[label : label + 1]
+            for _ in range(400):
+                optimizer.zero_grad(set_to_none=True)
+                amplitude = torch.sigmoid(logits).unsqueeze(1)
+                raw = bundle.system.forward(bundle.system.command(amplitude)).raw_camera.tensor if phase_logits is None else complex_forward(amplitude, torch.pi * torch.tanh(phase_logits).unsqueeze(1))
+                loss = objective(raw, target)
+                loss.backward()
+                optimizer.step()
+            with torch.no_grad():
+                amplitude = torch.sigmoid(logits).unsqueeze(1)
+                raw = bundle.system.forward(bundle.system.command(amplitude)).raw_camera.tensor if phase_logits is None else complex_forward(amplitude, torch.pi * torch.tanh(phase_logits).unsqueeze(1))
+                commands.append(amplitude.detach().cpu())
+                raws.append(raw.detach().cpu())
+                history.append(float(objective(raw, target).item()))
+        return torch.cat(commands), torch.cat(raws), history
+
+    run = _new_run(config)
+    arms: dict[str, dict[str, object]] = {}
+    for kind in ("formal_amplitude_only", "diagnostic_complex_slm"):
+        commands, raw, history = optimize(kind)
+        command_path, raw_path = run.root / f"control_oracle_{kind}_commands.pt", run.root / f"control_oracle_{kind}_raw_cmos.pt"
+        atomic_torch_save(command_path, commands)
+        atomic_torch_save(raw_path, raw)
+        review = write_review_artifacts(root=run.root, stem=f"control_oracle_{kind}", kind="prototype_control_oracle", raw_cmos=raw, targets=clean.detach().cpu(), exposure_scale=exposure)
+        metrics, gate = _prototype_shape_summary(raw, clean, exposure_scale=exposure, device=device)
+        arms[kind] = {"metrics": metrics, "shape_gate": {"passed": gate.passed, "metrics": dict(gate.metrics)}, "final_objective_per_label": history, "commands": file_sha256(command_path), "raw_cmos": file_sha256(raw_path), "preview": review.preview_sha256}
+    unchanged = before == state_content_hash(bundle.state_dict())
+    amplitude_passed = bool(arms["formal_amplitude_only"]["shape_gate"]["passed"] and unchanged)
+    complex_passed = bool(arms["diagnostic_complex_slm"]["shape_gate"]["passed"] and unchanged)
+    decision = "direct_template_replay_candidate" if amplitude_passed else ("amplitude_control_limited" if complex_passed else "control_oracle_not_demonstrated")
+    gate = GateResult("bounded_control_oracle", amplitude_passed, {"amplitude_only_passed": amplitude_passed, "complex_diagnostic_passed": complex_passed, "parameters_unchanged": unchanged})
+    record = EvidenceRecordV2(2, "prototype_control_oracle", "diagnostic", "diagnostic", run.git_commit, run.dirty_patch_hash, run.config_hash, _context(config, dataset_hash=clean_manifest.targets.sha256, checkpoint_hash=checkpoint_hash), {"geometry_evidence": geometry.evidence_hash, "shape_checkpoint": checkpoint_hash, "clean_target_manifest": clean_manifest.manifest_hash}, (gate,), (), decision)
+    _write_record(run, "prototype_control_oracle_evidence.json", record)
+    atomic_write_json(run.root / "prototype_control_oracle_report.json", {"arms": arms, "decision": decision, "parameters_unchanged": unchanged, "diagnostic_only": True})
     print(run.root)
     return 0
 
@@ -1064,6 +1225,14 @@ def _parser() -> argparse.ArgumentParser:
     for name in ("config", "clean_target_manifest", "prototype_checkpoint"):
         topology.add_argument("--" + name.replace("_", "-"), required=True)
     topology.set_defaults(handler=lambda args: _prototype_topology(args, load_config(args.config)))
+    geometry = audit.add_parser("prototype-geometry-upper-bound")
+    for name in ("config", "clean_target_manifest", "shape_evidence", "shape_checkpoint"):
+        geometry.add_argument("--" + name.replace("_", "-"), required=True)
+    geometry.set_defaults(handler=lambda args: _prototype_geometry_upper_bound(args, load_config(args.config)))
+    oracle = audit.add_parser("prototype-control-oracle")
+    for name in ("config", "clean_target_manifest", "geometry_evidence", "shape_checkpoint"):
+        oracle.add_argument("--" + name.replace("_", "-"), required=True)
+    oracle.set_defaults(handler=lambda args: _prototype_control_oracle(args, load_config(args.config)))
     evidence = root.add_parser("evidence").add_subparsers(dest="action", required=True)
     summarize = evidence.add_parser("summarize")
     summarize.add_argument("--run", required=True)
@@ -1087,4 +1256,3 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     return int(args.handler(args) or 0)
-from ..contracts import ComplexField
