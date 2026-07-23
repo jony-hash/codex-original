@@ -623,8 +623,19 @@ def _reachability(args: argparse.Namespace, config: V2Config) -> int:
     if config.prototype_calibration is None:
         raise ValueError("prototype reachability requires prototype_calibration config")
     clean_manifest = _clean_target_manifest(args.clean_target_manifest, config)
-    clean = _tensor(clean_manifest.targets.path, device=torch.device(config.run.device))
     device = torch.device(config.run.device)
+    clean = _tensor(clean_manifest.targets.path, device=device)
+    source = _record(args.failed_calibration_evidence)
+    source.validate()
+    if source.evidence_kind != "prototype_calibration" or source.status != "failed":
+        raise ValueError("reachability requires failed prototype-calibration evidence")
+    if source.context.system_signature != _system_signature(config) or source.context.config_hash != canonical_sha256(config.model_dump(mode="json")):
+        raise ValueError("failed calibration evidence belongs to another physical/config contract")
+    if source.context.dataset_hash != clean_manifest.targets.sha256 or source.input_hashes.get("clean_target_manifest") != clean_manifest.manifest_hash:
+        raise ValueError("failed calibration evidence does not match clean-target manifest")
+    failed_checkpoint_hash = file_sha256(args.failed_prototype_checkpoint)
+    if failed_checkpoint_hash != source.context.checkpoint_hash:
+        raise ValueError("failed prototype checkpoint does not match failed calibration evidence")
     failed_payload = torch.load(args.failed_prototype_checkpoint, map_location="cpu", weights_only=False)
     if not isinstance(failed_payload, dict) or "state_dict" not in failed_payload:
         raise ValueError("failed prototype checkpoint payload is invalid")
@@ -642,45 +653,55 @@ def _reachability(args: argparse.Namespace, config: V2Config) -> int:
             raise ValueError(f"unknown reachability state: {kind}")
         return bundle
 
-    def replay(bundle: StudentBundle, *, trace: bool = False) -> tuple[torch.Tensor, tuple[object, ...] | None]:
-        rows, traces = [], None
+    def replay(bundle: StudentBundle, *, trace: bool = False) -> tuple[torch.Tensor, tuple[torch.Tensor, ...] | None, dict[str, torch.Tensor]]:
+        rows, traces, crop_rows = [], None, {"encoder_crop_retention": [], "decoder_crop_retention": []}
         with torch.no_grad():
             for label in labels:
                 result = bundle.system.forward(bundle.system.command(bundle.generator.prototype_command(label[None])), return_optical_trace=trace)
                 rows.append(result.raw_camera.tensor)
+                for name, value in result.crop_statistics.items():
+                    crop_rows[name].append(value.detach().cpu())
                 if trace and traces is None:
                     traces = [[] for _ in result.optical_trace or ()]
                 if trace and result.optical_trace is not None:
                     for bucket, field in zip(traces, result.optical_trace):
                         bucket.append(field)
-        return torch.cat(rows), tuple(torch.cat([field.tensor.abs().square().cpu() for field in bucket]) for bucket in traces) if traces is not None else None
+        crops = {name: torch.cat(values, dim=0) for name, values in crop_rows.items()}
+        return torch.cat(rows), tuple(torch.cat([field.tensor.abs().square().cpu() for field in bucket]) for bucket in traces) if traces is not None else None, crops
 
-    def camera_metrics(raw: torch.Tensor) -> dict[str, float]:
+    def camera_metrics(raw: torch.Tensor) -> tuple[dict[str, float], torch.Tensor]:
         normalized = (raw / config.prototype_calibration.fixed_exposure_scale).clamp(0.0, 1.0)
         matrix = _differentiable_correlation(normalized[:, None].expand(10, 10, *normalized.shape[1:]).reshape(100, *normalized.shape[1:]), clean[None].expand(10, 10, *clean.shape[1:]).reshape(100, *clean.shape[1:])).reshape(10, 10)
         dice = (2.0 * (normalized * clean).flatten(1).sum(dim=1) + 1.0e-6) / (normalized.square().flatten(1).sum(dim=1) + clean.square().flatten(1).sum(dim=1) + 1.0e-6)
         margin = matrix.diag() - (matrix + torch.eye(10, device=device) * -2.0).max(dim=1).values
-        return {"clean_corr": float(_differentiable_correlation(normalized, clean).mean().item()), "clean_dice_soft": float(dice.mean().item()), "prototype_accuracy": float((matrix.argmax(dim=1) == labels).to(torch.float32).mean().item()), "min_target_margin": float(margin.min().item()), "high_saturation": float((raw / config.prototype_calibration.fixed_exposure_scale > 1.0).to(torch.float32).mean().item())}
+        return {"clean_corr": float(_differentiable_correlation(normalized, clean).mean().item()), "clean_dice_soft": float(dice.mean().item()), "prototype_accuracy": float((matrix.argmax(dim=1) == labels).to(torch.float32).mean().item()), "min_target_margin": float(margin.min().item()), "high_saturation": float((raw / config.prototype_calibration.fixed_exposure_scale > 1.0).to(torch.float32).mean().item())}, margin.detach()
+
+    def min_pair_distance(values: torch.Tensor) -> float:
+        flat = values.flatten(1)
+        normalized = flat / flat.square().sum(dim=1, keepdim=True).sqrt().clamp_min(1.0e-12)
+        distances = torch.cdist(normalized, normalized)
+        return float(distances[~torch.eye(values.shape[0], dtype=torch.bool, device=values.device)].min().item())
 
     states = {}
     for kind in ("uniform_half", "failed_replay", "clean_intensity_to_amplitude"):
         bundle = bundle_with(kind)
-        raw, trace = replay(bundle, trace=True)
-        states[kind] = {"metrics": camera_metrics(raw), "trace_plane_ids": [field.plane.plane_id for field in bundle.system.forward(bundle.system.command(bundle.generator.prototype_command(labels[:1])), return_optical_trace=True).optical_trace or ()], "trace": trace}
+        raw, trace, crops = replay(bundle, trace=True)
+        metrics, _ = camera_metrics(raw)
+        states[kind] = {"metrics": metrics, "trace_plane_ids": [field.plane.plane_id for field in bundle.system.forward(bundle.system.command(bundle.generator.prototype_command(labels[:1])), return_optical_trace=True).optical_trace or ()], "trace": trace, "crops": crops}
 
     clean_bundle = bundle_with("clean_intensity_to_amplitude")
     before = state_content_hash(clean_bundle.state_dict())
     template = clean_bundle.generator.template_logits
     slm_error = float((clean_bundle.generator.prototype_command(labels).square() - clean).square().max().sqrt().item())
-    raw, trace = replay(clean_bundle, trace=True)
-    direction_metrics: dict[str, dict[str, float | bool]] = {}
+    raw, trace, crops = replay(clean_bundle, trace=True)
+    direction_metrics: dict[str, dict[str, object]] = {}
     groups = {
         "template": [template],
         "encoder": [clean_bundle.system.encoder.phase],
         "decoder": [clean_bundle.system.decoder.phase],
         "joint": [template, clean_bundle.system.encoder.phase, clean_bundle.system.decoder.phase],
     }
-    base_margin = camera_metrics(raw)["min_target_margin"]
+    _, base_margin = camera_metrics(raw)
     for name, parameters in groups.items():
         clean_bundle.zero_grad(set_to_none=True)
         current_rows = []
@@ -696,29 +717,35 @@ def _reachability(args: argparse.Namespace, config: V2Config) -> int:
             for parameter in parameters:
                 if parameter.grad is not None:
                     parameter.add_(-1.0e-3 * parameter.grad / parameter.grad.square().mean().sqrt().clamp_min(1.0e-12))
-        candidate_raw, _ = replay(clean_bundle)
-        improvement = camera_metrics(candidate_raw)["min_target_margin"] - base_margin
+        candidate_raw, _, _ = replay(clean_bundle)
+        _, candidate_margin = camera_metrics(candidate_raw)
+        improvement = candidate_margin - base_margin
         with torch.no_grad():
             for parameter, snapshot in zip(parameters, snapshots):
                 parameter.copy_(snapshot)
-        direction_metrics[name] = {"gradient_finite": bool(finite), "margin_improvement": float(improvement), "margin_improved": bool(improvement > 0.0)}
+        direction_metrics[name] = {"gradient_finite": bool(finite), "per_label_margin_improvement": [float(value) for value in improvement.cpu().tolist()], "all_margins_strictly_improved": bool((improvement > 0.0).all().item())}
     after = state_content_hash(clean_bundle.state_dict())
-    crop_values = []
-    if trace is not None:
-        for plane_id, bucket in zip(states["clean_intensity_to_amplitude"]["trace_plane_ids"], trace):
-            if "layer_" in plane_id and "propagated" not in plane_id:
-                crop_values.append(float(bucket.square().mean().item()))
-    front_retention = 1.0
+    crop_statistics = {name: {"min": float(value.min().item()), "mean": float(value.mean().item()), "max": float(value.max().item()), "values": [float(item) for item in value.flatten().tolist()]} for name, value in crops.items()}
+    crop_values = [item for values in crops.values() for item in values.flatten()]
+    front_retention = 0.0
     if trace is not None and len(trace) >= 2:
-        base = trace[0].flatten(1)
-        front = trace[1].flatten(1)
-        base = base / base.square().sum(dim=1, keepdim=True).sqrt().clamp_min(1.0e-12)
-        front = front / front.square().sum(dim=1, keepdim=True).sqrt().clamp_min(1.0e-12)
-        front_retention = float((front @ front.T).abs().mean().item() / (base @ base.T).abs().mean().clamp_min(1.0e-12).item())
-    passed = slm_error <= 1.0e-6 and front_retention >= 0.95 and all(metric["gradient_finite"] for metric in direction_metrics.values()) and any(metric["margin_improved"] for metric in direction_metrics.values()) and before == after
+        front_retention = min_pair_distance(trace[1]) / max(min_pair_distance(trace[0]), 1.0e-12)
+    crop_gate = bool(crop_values) and all(0.0 <= float(value) <= 1.0 for value in crop_values) and min(float(value) for value in crop_values) >= 0.98
+    direction_gate = any(bool(direction_metrics[name]["all_margins_strictly_improved"]) for name in ("template", "joint"))
+    gates = (
+        GateResult("slm_clean_intensity", slm_error <= 1.0e-6, {"max_error": slm_error}),
+        GateResult("front_class_distance_retention", front_retention >= 0.95, {"worst_pair_distance_retention": front_retention}),
+        GateResult("finite_crop_retention", crop_gate, {"minimum_retention": min(float(value) for value in crop_values) if crop_values else -1.0}),
+        GateResult("directional_margin_reachability", direction_gate, {"template_all_labels": bool(direction_metrics["template"]["all_margins_strictly_improved"]), "joint_all_labels": bool(direction_metrics["joint"]["all_margins_strictly_improved"])}),
+        GateResult("finite_gradients", all(bool(metric["gradient_finite"]) for metric in direction_metrics.values()), {"all_groups_finite": all(bool(metric["gradient_finite"]) for metric in direction_metrics.values())}),
+        GateResult("parameters_unchanged", before == after, {"before_after_equal": before == after}),
+    )
+    passed = all(gate.passed for gate in gates)
     run = _new_run(config)
-    evidence = {"schema_version": 2, "evidence_kind": "prototype_reachability", "status": "diagnostic", "tier": "diagnostic", "git_commit": run.git_commit, "config_hash": run.config_hash, "input_hashes": {"clean_target_manifest": clean_manifest.manifest_hash, "failed_prototype_checkpoint": file_sha256(args.failed_prototype_checkpoint)}, "states": {name: {"metrics": value["metrics"], "trace_plane_ids": value["trace_plane_ids"]} for name, value in states.items()}, "slm_intensity_max_error": slm_error, "front_retention": front_retention, "crop_statistics": crop_values, "direction_metrics": direction_metrics, "parameters_unchanged": before == after, "passed": passed, "permitted_next_actions": ["calibrate_prototypes"] if passed else [], "invalidation_reason": None if passed else "prototype reachability isolation gate failed"}
-    atomic_write_json(run.root / "prototype_reachability_evidence.json", evidence)
+    context = _context(config, dataset_hash=clean_manifest.targets.sha256, checkpoint_hash=failed_checkpoint_hash)
+    record = EvidenceRecordV2(2, "prototype_reachability", "diagnostic", "diagnostic", run.git_commit, run.dirty_patch_hash, run.config_hash, context, {"clean_target_manifest": clean_manifest.manifest_hash, "failed_calibration_evidence": source.evidence_hash, "failed_prototype_checkpoint": failed_checkpoint_hash}, gates, ("calibrate_prototypes",) if passed else (), None if passed else "prototype reachability isolation gate failed")
+    _write_record(run, "prototype_reachability_evidence.json", record)
+    atomic_write_json(run.root / "prototype_reachability_report.json", {"supersedes": {"evidence": str(Path(args.failed_calibration_evidence)), "reason": "earlier reachability harness used intensity means and similarity ratios instead of physical retention/distance gates"}, "states": {name: {"metrics": value["metrics"], "trace_plane_ids": value["trace_plane_ids"]} for name, value in states.items()}, "slm_intensity_max_error": slm_error, "front_class_distance_retention": front_retention, "crop_statistics": crop_statistics, "direction_metrics": direction_metrics, "parameters_unchanged": before == after})
     print(run.root)
     return 0
 
