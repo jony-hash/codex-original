@@ -28,6 +28,7 @@ def test_prototype_measurement_gate_stops_before_manual_review() -> None:
 def test_capacity_gate_blocks_when_code_is_not_transportable() -> None:
     gate = capacity_gate(CapacityMetrics(0.25, 0.24, 0.95, 0.08, True, False, True), _prototype_pass())
     assert not gate.passed
+    assert gate.metrics["raw_camera_code_fraction_value"] == 0.24
     passed = capacity_gate(CapacityMetrics(0.25, 0.25, 0.95, 0.08, True, False, True), _prototype_pass())
     assert passed.passed
 

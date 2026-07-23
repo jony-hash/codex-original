@@ -1318,11 +1318,12 @@ def _direct_template_local_capacity(args: argparse.Namespace, config: V2Config) 
         parameter.requires_grad_(False)
     commands_device, supports_device = commands.to(device), supports.to(device)
     audit = config.capacity_audit
+    state_before = state_content_hash(bundle.state_dict())
     responses, unchanged_response, before_hash, response_hash = finite_difference_response_matrices(bundle.system, commands_device, supports_device, candidate_count=audit.dct_modes, epsilon=audit.finite_difference_epsilon, pixel_pitch_m=(config.system.slm_pixel_pitch_m, config.system.slm_pixel_pitch_m), max_cycles_per_mm=audit.max_cycles_per_mm, microbatch_size=config.execution.capacity_microbatch_size)
     basis = build_code_basis(responses, supports, candidate_count=audit.dct_modes, seed=audit.seed, source_hash=artifact.artifact_hash, pixel_pitch_m=(config.system.slm_pixel_pitch_m, config.system.slm_pixel_pitch_m), max_cycles_per_mm=audit.max_cycles_per_mm)
     unclamped, slm_intensity, raw_camera, coefficients = replay_capacity(bundle.system, commands_device, basis, supports_device, codes_per_label=audit.codes_per_label, command_gain=audit.command_gain, microbatch_size=config.execution.capacity_microbatch_size)
     after_hash = state_content_hash(bundle.state_dict())
-    unchanged = unchanged_response and before_hash == after_hash
+    unchanged = unchanged_response and state_before == after_hash
     trace = bundle.system.forward(bundle.system.command(commands_device[:1]), return_optical_trace=True).optical_trace
     provenance_complete = trace is not None and all(field.provenance.upstream_plane is not None or field.provenance.operation in {"ideal_amplitude_slm", "amplitude_slm"} for field in trace)
     slm_factor, camera_factor, support_energy, clipping = capacity_metrics(unclamped, slm_intensity, raw_camera, supports)
@@ -1332,7 +1333,7 @@ def _direct_template_local_capacity(args: argparse.Namespace, config: V2Config) 
     run = _new_run(config)
     basis_path, replay_path = run.root / "direct_template_local_code_basis.pt", run.root / "direct_template_local_capacity_replay.pt"
     basis.save(str(basis_path))
-    atomic_torch_save(replay_path, {"unclamped_commands": unclamped, "physical_slm_intensity": slm_intensity, "raw_camera": raw_camera, "coefficients": coefficients, "supports": supports.cpu(), "responses": responses, "parameter_before_hash": before_hash, "parameter_after_response_hash": response_hash, "parameter_after_hash": after_hash, "optimizer_created": False, "provenance_complete": provenance_complete})
+    atomic_torch_save(replay_path, {"unclamped_commands": unclamped, "physical_slm_intensity": slm_intensity, "raw_camera": raw_camera, "coefficients": coefficients, "supports": supports.cpu(), "responses": responses, "parameter_before_hash": state_before, "finite_difference_parameter_before_hash": before_hash, "parameter_after_response_hash": response_hash, "parameter_after_hash": after_hash, "optimizer_created": False, "provenance_complete": provenance_complete})
     atomic_write_json(run.root / "direct_template_local_capacity_report.json", {"diagnostic_only": True, "contract": {"dct_modes": audit.dct_modes, "selected_basis_dim": audit.selected_basis_dim, "max_cycles_per_mm": audit.max_cycles_per_mm, "codes_per_label": audit.codes_per_label, "seed": audit.seed, "finite_difference_epsilon": audit.finite_difference_epsilon, "command_gain": audit.command_gain, "microbatch_size": config.execution.capacity_microbatch_size}, "metrics": dict(gate.metrics), "basis_hash": basis.artifact_hash, "parameters_unchanged": unchanged, "optimizer_created": False, "provenance_complete": provenance_complete})
     context = _context(config, dataset_hash=clean_manifest.targets.sha256, checkpoint_hash=checkpoint_hash, basis_hash=basis.artifact_hash)
     record = EvidenceRecordV2(2, "direct_template_local_capacity", "diagnostic", "diagnostic" if gate.passed else "failed", run.git_commit, run.dirty_patch_hash, run.config_hash, context, {"prototype_evidence": frozen.evidence_hash, "prototype_artifact": file_sha256(artifact_path), "shape_checkpoint": checkpoint_hash, "clean_target_manifest": clean_manifest.manifest_hash, "basis": basis.artifact_hash, "basis_file": file_sha256(basis_path), "replay": file_sha256(replay_path), "responses": tensor_sha256(responses)}, (gate,), (), None if gate.passed else "direct-template local capacity gate failed")

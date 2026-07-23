@@ -82,10 +82,10 @@ def capacity_gate(metrics: CapacityMetrics, prototype: GateResult) -> GateResult
         "provenance_complete": metrics.provenance_complete,
     }
     values: Mapping[str, float | bool] = {
-        "physical_slm_code_fraction": metrics.physical_slm_code_fraction,
-        "raw_camera_code_fraction": metrics.raw_camera_code_fraction,
-        "prototype_support_energy": metrics.prototype_support_energy,
-        "clipping_fraction": metrics.clipping_fraction,
+        "physical_slm_code_fraction_value": metrics.physical_slm_code_fraction,
+        "raw_camera_code_fraction_value": metrics.raw_camera_code_fraction,
+        "prototype_support_energy_value": metrics.prototype_support_energy,
+        "clipping_fraction_value": metrics.clipping_fraction,
         **checks,
     }
     return GateResult("code_capacity", all(checks.values()), values, None if all(checks.values()) else "capacity gate failed")
