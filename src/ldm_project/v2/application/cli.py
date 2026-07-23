@@ -1151,6 +1151,79 @@ def _prototype_control_oracle(args: argparse.Namespace, config: V2Config) -> int
     return 0
 
 
+def _direct_template_replay(args: argparse.Namespace, config: V2Config) -> int:
+    """Replay a successful amplitude-control oracle without any optimizer."""
+    oracle = _record(args.control_evidence)
+    oracle.validate()
+    if oracle.evidence_kind != "prototype_control_oracle" or oracle.status != "diagnostic" or not oracle.gates or not oracle.gates[0].metrics.get("amplitude_only_passed", False):
+        raise ValueError("direct-template replay requires a successful diagnostic amplitude control oracle")
+    clean_manifest = _clean_target_manifest(args.clean_target_manifest, config)
+    checkpoint_hash = file_sha256(args.shape_checkpoint)
+    expected = _context(config, dataset_hash=clean_manifest.targets.sha256, checkpoint_hash=checkpoint_hash)
+    oracle.context.assert_matches(expected, fields=("system_signature", "config_hash", "dataset_hash", "checkpoint_hash"))
+    report_path = Path(args.control_report)
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    arm = report.get("arms", {}).get("formal_amplitude_only", {})
+    if report.get("decision") != "direct_template_replay_candidate" or not report.get("parameters_unchanged") or arm.get("input_control") != "formal_amplitude_only" or not arm.get("shape_gate", {}).get("passed"):
+        raise ValueError("control report does not establish amplitude direct-template replay")
+    if arm.get("commands") != file_sha256(args.amplitude_commands) or arm.get("raw_cmos") != file_sha256(args.oracle_raw_cmos):
+        raise ValueError("control report artifact hashes do not match the supplied command/raw tensors")
+    commands = _tensor(args.amplitude_commands, device=torch.device("cpu"))
+    oracle_raw = _tensor(args.oracle_raw_cmos, device=torch.device("cpu"))
+    if tuple(commands.shape) != (10, 1, *config.system.slm_shape) or tuple(oracle_raw.shape) != tuple(commands.shape) or commands.dtype != torch.float32 or not torch.isfinite(commands).all() or bool((commands < 0.0).any()) or bool((commands > 1.0).any()):
+        raise ValueError("direct-template commands/raw tensors violate the locked amplitude contract")
+    device = torch.device(config.run.device)
+    bundle = StudentBundle(config, _zero_basis(config.system.slm_shape)).to(device)
+    load_prototype_warm_start(args.shape_checkpoint, bundle, expected_system_signature=_system_signature(config))
+    for parameter in bundle.parameters():
+        parameter.requires_grad_(False)
+    before = state_content_hash(bundle.state_dict())
+    rows = []
+    with torch.no_grad():
+        for label in range(10):
+            rows.append(bundle.system.forward(bundle.system.command(commands[label : label + 1].to(device))).raw_camera.tensor.cpu())
+    raw = torch.cat(rows)
+    after = state_content_hash(bundle.state_dict())
+    bit_exact = tensor_sha256(raw) == tensor_sha256(oracle_raw)
+    metrics, shape_gate = _prototype_shape_summary(raw, _tensor(clean_manifest.targets.path, device=device), exposure_scale=config.prototype_calibration.fixed_exposure_scale, device=device)
+    gate = GateResult("direct_template_replay", bool(bit_exact and before == after and shape_gate.passed), {"bit_exact_raw_replay": bit_exact, "parameters_unchanged": before == after, **dict(shape_gate.metrics)}, None if bit_exact and before == after and shape_gate.passed else "direct-template replay gate failed")
+    run = _new_run(config)
+    command_path, raw_path = run.root / "direct_template_commands.pt", run.root / "direct_template_raw_cmos.pt"
+    atomic_torch_save(command_path, commands)
+    atomic_torch_save(raw_path, raw)
+    review = write_review_artifacts(root=run.root, stem="direct_template_replay", kind="direct_template_replay", raw_cmos=raw, targets=_tensor(clean_manifest.targets.path, device=torch.device("cpu")), exposure_scale=config.prototype_calibration.fixed_exposure_scale)
+    manifest = {"schema_version": 2, "control_evidence": oracle.evidence_hash, "control_report_sha256": file_sha256(report_path), "system_signature": _system_signature(config), "config_hash": canonical_sha256(config.model_dump(mode="json")), "checkpoint_sha256": checkpoint_hash, "clean_target_manifest": clean_manifest.manifest_hash, "commands": {"path": str(command_path), "sha256": file_sha256(command_path), "tensor_sha256": tensor_sha256(commands), "shape": list(commands.shape), "dtype": str(commands.dtype)}, "raw_cmos": {"path": str(raw_path), "sha256": file_sha256(raw_path), "tensor_sha256": tensor_sha256(raw), "preview_sha256": review.preview_sha256}, "metrics": metrics, "parameters_before": before, "parameters_after": after}
+    atomic_write_json(run.root / "direct_template_command_manifest.json", manifest)
+    status = "pending_review" if gate.passed else "failed"
+    record = EvidenceRecordV2(2, "direct_template_replay", "diagnostic", status, run.git_commit, run.dirty_patch_hash, run.config_hash, expected, {"control_evidence": oracle.evidence_hash, "control_report": file_sha256(report_path), "shape_checkpoint": checkpoint_hash, "clean_target_manifest": clean_manifest.manifest_hash, "commands": file_sha256(command_path), "raw_cmos": file_sha256(raw_path), "preview": review.preview_sha256}, (gate,), ("admit_direct_template_replay",) if gate.passed else (), None if gate.passed else "direct-template automatic replay gate failed")
+    _write_record(run, "direct_template_replay_evidence.json", record)
+    print(run.root)
+    return 0
+
+
+def _admit_direct_template_replay(args: argparse.Namespace, config: V2Config) -> int:
+    source = _record(args.replay_evidence)
+    clean_manifest = _clean_target_manifest(args.clean_target_manifest, config)
+    checkpoint_hash = file_sha256(args.shape_checkpoint)
+    expected = _context(config, dataset_hash=clean_manifest.targets.sha256, checkpoint_hash=checkpoint_hash)
+    require_evidence_action(source, kind="direct_template_replay", action="admit_direct_template_replay", expected_context=expected, allow_diagnostic=True)
+    manifest = json.loads(Path(args.command_manifest).read_text(encoding="utf-8"))
+    raw = _tensor(args.replay_raw_cmos, device=torch.device("cpu"))
+    if manifest.get("raw_cmos", {}).get("tensor_sha256") != tensor_sha256(raw) or source.input_hashes.get("raw_cmos") != file_sha256(args.replay_raw_cmos):
+        raise ValueError("direct-template replay raw-CMOS content does not match its manifest/evidence")
+    preview_hash = file_sha256(args.replay_preview)
+    if preview_hash != manifest.get("raw_cmos", {}).get("preview_sha256") or preview_hash != source.input_hashes.get("preview"):
+        raise ValueError("direct-template replay preview content does not match its manifest/evidence")
+    review, review_hash = load_manual_review(args.manual_review, kind="direct_template_replay", tensor_hash=tensor_sha256(raw), preview_hash=preview_hash)
+    readable = tuple(review.readable_labels) == tuple(range(10))
+    gate = GateResult("direct_template_manual_readability", readable, {"all_labels_readable": readable}, None if readable else "manual review did not approve labels 0-9")
+    run = _new_run(config)
+    record = EvidenceRecordV2(2, "direct_template_control_demonstrated", "diagnostic", "diagnostic" if gate.passed else "failed", run.git_commit, run.dirty_patch_hash, run.config_hash, expected, {"replay_evidence": source.evidence_hash, "command_manifest": file_sha256(args.command_manifest), "raw_cmos": file_sha256(args.replay_raw_cmos), "preview": preview_hash, "manual_review": review_hash}, (source.gates[0], gate), (), None if gate.passed else "direct-template manual readability gate failed")
+    _write_record(run, "direct_template_admission_evidence.json", record)
+    print(run.root)
+    return 0
+
+
 def _rebind_manifest(args: argparse.Namespace, config: V2Config) -> int:
     """Re-emit a verified input manifest without touching its tensor payload."""
     _require_clean_acceptance(config)
@@ -1278,6 +1351,14 @@ def _parser() -> argparse.ArgumentParser:
     for name in ("config", "clean_target_manifest", "geometry_evidence", "shape_checkpoint"):
         oracle.add_argument("--" + name.replace("_", "-"), required=True)
     oracle.set_defaults(handler=lambda args: _prototype_control_oracle(args, load_config(args.config)))
+    replay = audit.add_parser("direct-template-replay")
+    for name in ("config", "clean_target_manifest", "control_evidence", "control_report", "amplitude_commands", "oracle_raw_cmos", "shape_checkpoint"):
+        replay.add_argument("--" + name.replace("_", "-"), required=True)
+    replay.set_defaults(handler=lambda args: _direct_template_replay(args, load_config(args.config)))
+    admit_replay = audit.add_parser("admit-direct-template-replay")
+    for name in ("config", "replay_evidence", "command_manifest", "replay_raw_cmos", "replay_preview", "clean_target_manifest", "shape_checkpoint", "manual_review"):
+        admit_replay.add_argument("--" + name.replace("_", "-"), required=True)
+    admit_replay.set_defaults(handler=lambda args: _admit_direct_template_replay(args, load_config(args.config)))
     evidence = root.add_parser("evidence").add_subparsers(dest="action", required=True)
     summarize = evidence.add_parser("summarize")
     summarize.add_argument("--run", required=True)
