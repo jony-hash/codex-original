@@ -136,6 +136,8 @@ def test_cpu_diagnostic_cli_vertical_slice_is_never_acceptance(tmp_path: Path, m
     assert set(oracle_report["arms"]) == {"formal_amplitude_only", "diagnostic_complex_slm"}
     assert oracle_report["arms"]["diagnostic_complex_slm"]["input_control"] == "diagnostic_complex_slm"
     assert (oracle.parent / "prototype_control_oracle_progress.json").is_file()
+    with pytest.raises(ValueError, match="successful diagnostic amplitude control oracle"):
+        main(["audit", "direct-template-replay", "--config", str(config), "--clean-target-manifest", str(clean_path), "--control-evidence", str(oracle), "--control-report", str(oracle.parent / "prototype_control_oracle_report.json"), "--amplitude-commands", str(oracle.parent / "control_oracle_formal_amplitude_only_commands.pt"), "--oracle-raw-cmos", str(oracle.parent / "control_oracle_formal_amplitude_only_raw_cmos.pt"), "--shape-checkpoint", str(calibration_root / "prototype_bundle.pt")])
     raw = torch.load(calibration_root / "prototype_raw_cmos.pt", weights_only=False)
     review = tmp_path / "prototype_review.json"
     preview = calibration_root / "prototype_fixed_exposure.png"
