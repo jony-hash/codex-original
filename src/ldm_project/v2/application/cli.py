@@ -25,6 +25,7 @@ from ..student.admission import CapacityMetrics, PrototypeMetrics, capacity_gate
 from ..student.capacity import CodeBasisArtifactV2, build_code_basis, capacity_metrics, finite_difference_response_matrices, replay_capacity
 from ..student.checkpoints import CheckpointManifestV2, load_exact_checkpoint, load_prototype_warm_start, save_exact_checkpoint, state_content_hash, state_signature
 from ..student.clean_targets import CleanTargetManifestV2, build_clean_targets
+from ..student.direct_template import DirectTemplatePrototypeArtifactV2
 from ..student.evaluation import CodeAcceptanceMetrics, acceptance_metrics, code_acceptance_gate, paired_advantage_lower_bound
 from ..student.generator import LabelPrototypeBasisGenerator
 from ..student.metrics import background_speckle_ratio, correlation, foreground_dice, foreground_hole_ratio, high_saturation_ratio, prototype_correlation_matrix, prototype_margins
@@ -1228,6 +1229,65 @@ def _admit_direct_template_replay(args: argparse.Namespace, config: V2Config) ->
     return 0
 
 
+def _freeze_direct_template_prototype(args: argparse.Namespace, config: V2Config) -> int:
+    """Freeze a manually admitted amplitude command bank without creating a model checkpoint."""
+    admission = _record(args.admission_evidence)
+    clean_manifest = _clean_target_manifest(args.clean_target_manifest, config)
+    checkpoint_hash = file_sha256(args.shape_checkpoint)
+    expected = _context(config, dataset_hash=clean_manifest.targets.sha256, checkpoint_hash=checkpoint_hash)
+    require_evidence_action(admission, kind="direct_template_control_demonstrated", action="freeze_direct_template_prototype", expected_context=expected, allow_diagnostic=True)
+    if not all(gate.passed for gate in admission.gates):
+        raise ValueError("direct-template admission contains an unsuccessful gate")
+    replay = _record(args.replay_evidence)
+    replay.validate()
+    if replay.evidence_kind != "direct_template_replay" or replay.status != "pending_review" or admission.input_hashes.get("replay_evidence") != replay.evidence_hash:
+        raise ValueError("direct-template admission is not bound to the supplied replay evidence")
+    replay.context.assert_matches(expected)
+    manifest_path = Path(args.command_manifest)
+    if admission.input_hashes.get("command_manifest") != file_sha256(manifest_path):
+        raise ValueError("direct-template command manifest does not match admission evidence")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    commands = _tensor(args.commands, device=torch.device("cpu"))
+    saved_raw = _tensor(args.raw_cmos, device=torch.device("cpu"))
+    if (manifest.get("commands", {}).get("sha256") != file_sha256(args.commands)
+            or manifest.get("raw_cmos", {}).get("sha256") != file_sha256(args.raw_cmos)
+            or manifest.get("commands", {}).get("tensor_sha256") != tensor_sha256(commands)
+            or manifest.get("raw_cmos", {}).get("tensor_sha256") != tensor_sha256(saved_raw)):
+        raise ValueError("direct-template command/raw artifacts do not match their manifest")
+    if tuple(commands.shape) != (10, 1, *config.system.slm_shape) or saved_raw.shape != commands.shape or commands.dtype != torch.float32:
+        raise ValueError("direct-template command/raw geometry does not match the formal SLM")
+    if not torch.isfinite(commands).all() or bool((commands < 0.0).any()) or bool((commands > 1.0).any()):
+        raise ValueError("direct-template commands violate the bounded amplitude contract")
+    device = torch.device(config.run.device)
+    bundle = StudentBundle(config, _zero_basis(config.system.slm_shape)).to(device)
+    load_prototype_warm_start(args.shape_checkpoint, bundle, expected_system_signature=_system_signature(config))
+    for parameter in bundle.parameters():
+        parameter.requires_grad_(False)
+    before = state_content_hash(bundle.state_dict())
+    rows: list[torch.Tensor] = []
+    with torch.no_grad():
+        for label in range(10):
+            rows.append(bundle.system.forward(bundle.system.command(commands[label : label + 1].to(device))).raw_camera.tensor.detach().cpu())
+    replay_raw = torch.cat(rows)
+    after = state_content_hash(bundle.state_dict())
+    bit_exact = tensor_sha256(replay_raw) == tensor_sha256(saved_raw)
+    supports = (commands[:, 0] >= 0.2).to(torch.float32)
+    gate = GateResult("direct_template_prototype_frozen", bit_exact and before == after and bool(torch.isfinite(replay_raw).all().item()), {"bit_exact_raw_replay": bit_exact, "parameters_unchanged": before == after, "finite": bool(torch.isfinite(replay_raw).all().item())}, None if bit_exact and before == after else "frozen direct-template replay changed content or parameters")
+    run = _new_run(config)
+    command_path, raw_path, support_path = run.root / "frozen_direct_template_commands.pt", run.root / "frozen_direct_template_raw_cmos.pt", run.root / "frozen_direct_template_supports.pt"
+    atomic_torch_save(command_path, commands)
+    atomic_torch_save(raw_path, replay_raw)
+    atomic_torch_save(support_path, supports)
+    artifact = DirectTemplatePrototypeArtifactV2(2, _system_signature(config), canonical_sha256(config.model_dump(mode="json")), clean_manifest.manifest_hash, checkpoint_hash, admission.evidence_hash, replay.evidence_hash, config.prototype_calibration.fixed_exposure_scale, tensor_artifact_ref(command_path, role="frozen_direct_template_commands", git_commit=run.git_commit), tensor_artifact_ref(raw_path, role="frozen_direct_template_raw_cmos", git_commit=run.git_commit), tensor_artifact_ref(support_path, role="frozen_direct_template_support", git_commit=run.git_commit))
+    artifact.validate()
+    artifact_path = run.root / "direct_template_prototype_artifact.json"
+    atomic_write_json(artifact_path, artifact.to_dict() | {"artifact_hash": artifact.artifact_hash})
+    record = EvidenceRecordV2(2, "direct_template_prototype", "diagnostic", "diagnostic" if gate.passed else "failed", run.git_commit, run.dirty_patch_hash, run.config_hash, expected, {"admission_evidence": admission.evidence_hash, "replay_evidence": replay.evidence_hash, "command_manifest": file_sha256(manifest_path), "shape_checkpoint": checkpoint_hash, "artifact": file_sha256(artifact_path), "commands": file_sha256(command_path), "raw_cmos": file_sha256(raw_path), "supports": file_sha256(support_path)}, (gate,), ("diagnostic_local_capacity_upper_bound",) if gate.passed else (), None if gate.passed else "direct-template prototype freeze failed")
+    _write_record(run, "direct_template_prototype_evidence.json", record)
+    print(run.root)
+    return 0
+
+
 def _rebind_manifest(args: argparse.Namespace, config: V2Config) -> int:
     """Re-emit a verified input manifest without touching its tensor payload."""
     _require_clean_acceptance(config)
@@ -1363,6 +1423,10 @@ def _parser() -> argparse.ArgumentParser:
     for name in ("config", "replay_evidence", "command_manifest", "replay_raw_cmos", "replay_preview", "clean_target_manifest", "shape_checkpoint", "manual_review"):
         admit_replay.add_argument("--" + name.replace("_", "-"), required=True)
     admit_replay.set_defaults(handler=lambda args: _admit_direct_template_replay(args, load_config(args.config)))
+    freeze_template = audit.add_parser("freeze-direct-template-prototype")
+    for name in ("config", "admission_evidence", "replay_evidence", "command_manifest", "commands", "raw_cmos", "clean_target_manifest", "shape_checkpoint"):
+        freeze_template.add_argument("--" + name.replace("_", "-"), required=True)
+    freeze_template.set_defaults(handler=lambda args: _freeze_direct_template_prototype(args, load_config(args.config)))
     evidence = root.add_parser("evidence").add_subparsers(dest="action", required=True)
     summarize = evidence.add_parser("summarize")
     summarize.add_argument("--run", required=True)
