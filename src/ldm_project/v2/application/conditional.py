@@ -262,7 +262,14 @@ def _identity_observability(args, config: V2Config) -> int:
     gradient_checks = {name: bool(all(parameter.grad is not None and torch.isfinite(parameter.grad).all() and parameter.grad.detach().norm() > 0 for parameter in params)) for name, params in groups.items()}
     after = state_content_hash(bundle.state_dict())
     operations = tuple(field.provenance.operation for field in result.optical_trace or ())
-    checks = (GateResult("finite_fields", bool(torch.isfinite(raw).all()), {}), GateResult("complete_trace", len(operations) >= 8 and any("identity_ols" in op for op in operations), {"trace_length": float(len(operations))}), GateResult("gradient_groups", all(gradient_checks.values()), {name: value for name, value in gradient_checks.items()}), GateResult("parameters_unchanged", before == after, {}))
+    # At the exact identity anchor Wy=0, Wz is intentionally second-order: the
+    # first derivative of Wy*SiLU(Wz*z) with respect to Wz is zero.  Record this
+    # contract exception explicitly; smoke must still prove Wz updates after Wy
+    # leaves its initialization state.
+    gradient_gate = all(value for name, value in gradient_checks.items() if name != "code_projection") and not gradient_checks["code_projection"]
+    gradient_metrics = dict(gradient_checks)
+    gradient_metrics["code_projection_identity_anchor_zero"] = True
+    checks = (GateResult("finite_fields", bool(torch.isfinite(raw).all()), {}), GateResult("complete_trace", len(operations) >= 8 and any("identity_ols" in op for op in operations), {"trace_length": float(len(operations))}), GateResult("gradient_groups", gradient_gate, gradient_metrics), GateResult("parameters_unchanged", before == after, {}))
     run = _new_run(config)
     report_path = run.root / "conditional_observability_report.json"
     atomic_write_json(report_path, {"trace_operations": operations, "gradient_groups": gradient_checks, "parameters_unchanged": before == after, "raw_finite": bool(torch.isfinite(raw).all()), "checkpoint_hash": init_hash})
