@@ -109,6 +109,15 @@ def raw_from_generator(system: nn.Module, generator: ConditionalGlobalAmplitudeG
     return forward(command)
 
 
+def raw_from_generator_batched(system: nn.Module, generator: ConditionalGlobalAmplitudeGenerator, codes: torch.Tensor, labels: torch.Tensor, *, microbatch_size: int = 1, activation_checkpoint: bool) -> torch.Tensor:
+    if microbatch_size < 1:
+        raise ValueError("optical microbatch_size must be positive")
+    rows = []
+    for start in range(0, codes.shape[0], microbatch_size):
+        rows.append(raw_from_generator(system, generator, codes[start : start + microbatch_size], labels[start : start + microbatch_size], activation_checkpoint=activation_checkpoint))
+    return torch.cat(rows, dim=0)
+
+
 def conditional_loss(
     *,
     system: nn.Module,
@@ -121,8 +130,9 @@ def conditional_loss(
     sinkhorn_epsilon: float,
     sinkhorn_iterations: int,
     activation_checkpoint: bool,
+    microbatch_size: int = 1,
 ) -> tuple[torch.Tensor, ConditionalLossSummary, torch.Tensor]:
-    raw = raw_from_generator(system, generator, codes, labels, activation_checkpoint=activation_checkpoint)
+    raw = raw_from_generator_batched(system, generator, codes, labels, microbatch_size=microbatch_size, activation_checkpoint=activation_checkpoint)
     generated_view = fixed_exposure_view(raw, exposure_scale)
     generated_features, logits = evaluator(generated_view)
     with torch.no_grad():
@@ -136,4 +146,3 @@ def conditional_loss(
     total = sinkhorn + 0.5 * classification + 0.1 * diversity + 0.1 * saturation + 1.0e-3 * orthogonality + 1.0e-5 * phase_tv
     summary = ConditionalLossSummary(*(float(value.detach().item()) for value in (total, sinkhorn, classification, diversity, saturation, orthogonality, phase_tv)))
     return total, summary, raw
-
