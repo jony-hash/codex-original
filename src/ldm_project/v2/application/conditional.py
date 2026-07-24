@@ -13,12 +13,16 @@ from ..config import V2Config
 from ..evidence import EvidenceContextV2, EvidenceRecordV2, GateResult, atomic_torch_save, atomic_write_json, canonical_sha256, file_sha256, load_conditional_manual_review, tensor_sha256
 from ..optics import FormalAmplitudeFiniteCropIdentitySystem
 from ..student.checkpoints import ConditionalCheckpointManifestV2, load_conditional_checkpoint, save_conditional_checkpoint, state_content_hash, state_signature
+from ..student.admission import balanced_code_fraction
 from ..student.conditional import conditional_loss, fixed_exposure_view, raw_from_generator_batched
 from ..student.conditional_acceptance import conditional_coverage_ratio, load_candidate_dataset, memorization_statistics, paired_bootstrap_lower_bound, per_label_feature_diversity_ratio
 from ..student.evaluator import FrozenMNISTEvaluator, MNISTSplitManifest, balanced_batches, evaluator_checkpoint_hash, load_frozen_evaluator, load_local_mnist, save_evaluator_checkpoint, stratified_mnist_indices
 from ..student.generator import ConditionalGlobalAmplitudeGenerator
 from ..student.review_artifacts import write_conditional_review_artifacts
 from .runs import V2Run
+
+
+CONDITIONAL_CONTROL_METRIC_CONTRACT = "sample_centered_anova_v1|sinkhorn_feature_l2_v1|coverage_disjoint_real_ab_v1"
 
 
 class ConditionalBundle(nn.Module):
@@ -219,7 +223,153 @@ def _passed_evidence(path: str, *, kind: str) -> EvidenceRecordV2:
 def _code_fraction(values: torch.Tensor, labels: torch.Tensor) -> float:
     means = torch.stack([values[labels == label].mean(dim=0) for label in range(10)])
     residual = values - means.index_select(0, labels)
-    return float((residual.square().sum() / (values - values.mean()).square().sum().clamp_min(1.0e-12)).item())
+    grand_mean = values.mean(dim=0, keepdim=True)
+    return float((residual.square().sum() / (values - grand_mean).square().sum().clamp_min(1.0e-12)).item())
+
+
+def _conditional_parameter_groups(bundle: ConditionalBundle) -> dict[str, tuple[nn.Parameter, ...]]:
+    return {
+        "class_carrier": (bundle.generator.class_carrier_logits,),
+        "global_modes": (bundle.generator.global_modes,),
+        "code_projection": (bundle.generator.code_projection.weight,),
+        "class_heads": (bundle.generator.class_heads,),
+        "encoder_phase": (bundle.system.encoder.phase,),
+        "decoder_phase": (bundle.system.decoder.phase,),
+    }
+
+
+def _fixed_control_probe(*, device: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
+    axis = torch.eye(8, device=device)
+    codes = torch.cat((torch.zeros(1, 8, device=device), axis, -axis), dim=0)
+    return codes.repeat(10, 1), torch.arange(10, device=device).repeat_interleave(17)
+
+
+def _probe_metrics(raw: torch.Tensor, labels: torch.Tensor, evaluator: nn.Module, exposure_scale: float) -> dict[str, object]:
+    view = fixed_exposure_view(raw, exposure_scale)
+    features, logits = evaluator(view)
+    values = raw.reshape(10, 17, *raw.shape[1:])
+    command_fraction = balanced_code_fraction(values)
+    code_mean = values.mean(dim=1, keepdim=True)
+    direction_rms = (values - code_mean).square().mean(dim=tuple(range(2, values.ndim))).sqrt().mean(dim=0).flatten().tolist()
+    return {
+        "accuracy": float((logits.argmax(dim=1) == labels).to(torch.float32).mean().item()),
+        "confusion": torch.bincount(labels * 10 + logits.argmax(dim=1), minlength=100).reshape(10, 10).cpu().tolist(),
+        "code_fraction": command_fraction,
+        "label_fraction": 1.0 - command_fraction,
+        "direction_rms": [float(value) for value in direction_rms],
+        "raw_rms": float(raw.square().mean().sqrt().item()),
+        "view_rms": float(view.square().mean().sqrt().item()),
+        "saturation": float(torch.relu(raw / exposure_scale - 1.0).gt(0).to(torch.float32).mean().item()),
+        "feature_code_fraction": balanced_code_fraction(features.reshape(10, 17, -1)),
+    }
+
+
+def conditional_control_isolation(args, config: V2Config) -> int:
+    """Read-only fixed-code panel locating the first control-signal collapse."""
+    _require_conditional(config)
+    device = torch.device(config.run.device)
+    images, all_labels = load_local_mnist(args.dataset_root, train=True)
+    _, _, _, _, split = _split(images, all_labels, args.dataset_root)
+    evaluator, _ = load_frozen_evaluator(args.evaluator_checkpoint, device=device)
+    bundle = ConditionalBundle(config, carrier_logits=_carrier_logits(images, all_labels, config.system.slm_shape)).to(device).eval()
+    codes, labels = _fixed_control_probe(device=device)
+    settings = config.conditional_generation
+    assert settings is not None
+    before = state_content_hash(bundle.state_dict())
+    with torch.no_grad():
+        command = bundle.generator(codes, labels)
+        result = bundle.system.forward(bundle.system.command(command), return_optical_trace=True)
+        raw = result.raw_camera.tensor
+        view = fixed_exposure_view(raw, settings.fixed_exposure_scale)
+        features, logits = evaluator(view)
+    after = state_content_hash(bundle.state_dict())
+    trace = result.optical_trace or ()
+    trace_names = ("slm_field", "pre_encoder", "encoder_layer_1", "encoder_layer_2", "identity_ols", "decoder_layer_1", "decoder_layer_2", "camera_field")
+    plane_metrics: list[dict[str, object]] = []
+    for name, field in zip(trace_names, trace, strict=False):
+        tensor = field.tensor.abs().square()
+        grouped = tensor.reshape(10, 17, *tensor.shape[1:])
+        fraction = balanced_code_fraction(grouped)
+        plane_metrics.append({
+            "name": name,
+            "code_fraction": fraction,
+            "label_fraction": 1.0 - fraction,
+            "rms": float(tensor.square().mean().sqrt().item()),
+            "mean": float(tensor.mean().item()),
+            "max": float(tensor.max().item()),
+            "finite": bool(torch.isfinite(tensor).all()),
+            "plane": field.plane.to_dict(),
+            "provenance": field.provenance.to_dict(),
+        })
+    command_grouped = command.reshape(10, 17, *command.shape[1:])
+    command_fraction = balanced_code_fraction(command_grouped)
+    coefficients = bundle.generator.coefficients(codes, labels).reshape(10, 17, 8)
+    duplicate = codes[0].repeat(10, 1)
+    duplicate_command = bundle.generator(duplicate, labels[:10])
+    duplicate_error = float((duplicate_command - command[:10]).abs().max().item())
+    report = {
+        "metric_contract": CONDITIONAL_CONTROL_METRIC_CONTRACT,
+        "code_count_per_label": 17,
+        "code_panel": "z0,+e1,-e1,...,+e8,-e8",
+        "parameters_unchanged": before == after,
+        "trace_operations": [field.provenance.operation for field in trace],
+        "trace_plane_ids": [field.plane.plane_id for field in trace],
+        "plane_metrics": plane_metrics,
+        "command": {
+            "code_fraction": command_fraction,
+            "label_fraction": 1.0 - command_fraction,
+            "coefficient_rms": float(coefficients.square().mean().sqrt().item()),
+            "coefficient_std_by_direction": coefficients.reshape(-1, 8).std(dim=0).tolist(),
+            "duplicate_zero_code_max_error": duplicate_error,
+        },
+        "camera": _probe_metrics(raw, labels, evaluator, settings.fixed_exposure_scale),
+        "classification": {"accuracy": float((logits.argmax(dim=1) == labels).to(torch.float32).mean().item())},
+        "harness": {
+            "finite_command": bool(torch.isfinite(command).all()),
+            "finite_raw": bool(torch.isfinite(raw).all()),
+            "finite_features": bool(torch.isfinite(features).all()),
+            "complete_trace": len(trace) == len(trace_names) and any("identity_ols" in item for item in [field.provenance.operation for field in trace]),
+        },
+    }
+    command_path = Path(args.output) if args.output else None
+    run = _new_run(config)
+    if command_path is None:
+        command_path = run.root / "conditional_control_isolation_raw_cmos.pt"
+    atomic_torch_save(command_path, raw.cpu())
+    atomic_torch_save(run.root / "conditional_control_isolation_codes.pt", codes.cpu())
+    atomic_torch_save(run.root / "conditional_control_isolation_labels.pt", labels.cpu())
+    report_path = run.root / "conditional_control_isolation_report.json"
+    atomic_write_json(report_path, report)
+    command_passed = command_fraction >= 0.10
+    first_collapse = None
+    if not command_passed:
+        classification = "generator_injection_insufficient"
+    else:
+        for item in plane_metrics:
+            if item["code_fraction"] < 0.10:
+                first_collapse = item["name"]
+                break
+        if first_collapse is not None:
+            classification = "optical_transport_attenuated"
+        elif not report["harness"]["complete_trace"] or not report["parameters_unchanged"] or not report["harness"]["finite_raw"]:
+            classification = "harness_invalid"
+        elif report["camera"]["feature_code_fraction"] < 0.10 or report["classification"]["accuracy"] < 0.30:
+            classification = "semantic_readout_insufficient"
+        else:
+            classification = "controllable_upper_bound"
+    report["classification"] = {**report["classification"], "status": classification, "first_collapse_plane": first_collapse}
+    atomic_write_json(report_path, report)
+    checks = (
+        GateResult("fixed_probe_shape", len(codes) == 170 and len(labels) == 170, {"samples": float(len(labels))}),
+        GateResult("finite_fields", bool(report["harness"]["finite_command"] and report["harness"]["finite_raw"] and report["harness"]["finite_features"]), {}),
+        GateResult("complete_provenance", bool(report["harness"]["complete_trace"]), {"trace_length": float(len(trace))}),
+        GateResult("parameters_unchanged", bool(report["parameters_unchanged"]), {}),
+        GateResult("command_code_response", command_fraction > 0.0, {"code_fraction": command_fraction}),
+    )
+    record = EvidenceRecordV2(2, "conditional_control_isolation", "diagnostic", "diagnostic" if all(item.passed for item in checks) else "failed", run.git_commit, run.dirty_patch_hash, run.config_hash, _context(config, evaluator_hash=evaluator_checkpoint_hash(args.evaluator_checkpoint), split_hash=split.manifest_hash), {"report": file_sha256(report_path), "raw_cmos": file_sha256(command_path), "metric_contract": canonical_sha256(CONDITIONAL_CONTROL_METRIC_CONTRACT)}, checks, (), None if all(item.passed for item in checks) else "conditional control isolation harness failed")
+    _write_evidence(run, "conditional_control_isolation_evidence.json", record)
+    print(run.root)
+    return 0
 
 
 def _conditional_optimizer(bundle: ConditionalBundle, config: V2Config) -> torch.optim.Optimizer:
@@ -242,36 +392,66 @@ def controllability_smoke(args, config: V2Config) -> int:
     optimizer = _conditional_optimizer(bundle, config)
     settings = config.conditional_generation
     assert settings is not None
-    last_raw = last_labels = None
+    probe_codes, probe_labels = _fixed_control_probe(device=device)
+    probe_history: dict[str, dict[str, object]] = {}
+    loss_history: list[dict[str, float]] = []
+    group_history: list[dict[str, object]] = []
+
+    def evaluate_probe() -> tuple[torch.Tensor, dict[str, object]]:
+        with torch.no_grad():
+            probe_raw = raw_from_generator_batched(bundle.system, bundle.generator, probe_codes, probe_labels, microbatch_size=config.execution.training_microbatch_size, activation_checkpoint=False)
+            return probe_raw, _probe_metrics(probe_raw, probe_labels, evaluator, settings.fixed_exposure_scale)
+
+    initial_raw, initial_metrics = evaluate_probe()
+    probe_history["step_0"] = initial_metrics
     for step, indices in zip(range(args.steps), balanced_batches(train_labels, batch_size=settings.logical_batch_size, seed=1234)):
         labels = train_labels.index_select(0, indices).to(device)
         codes = _random_codes(labels.numel(), device=device, seed=1234 + step)
         optimizer.zero_grad(set_to_none=True)
         loss, _, raw = conditional_loss(system=bundle.system, generator=bundle.generator, evaluator=evaluator, codes=codes, labels=labels, real_views=train_images.index_select(0, indices).to(device), exposure_scale=settings.fixed_exposure_scale, sinkhorn_epsilon=settings.sinkhorn_epsilon, sinkhorn_iterations=settings.sinkhorn_iterations, activation_checkpoint=config.execution.activation_checkpoint, microbatch_size=config.execution.training_microbatch_size)
         loss.backward()
+        groups = _conditional_parameter_groups(bundle)
+        grad_metrics = {}
+        snapshots = {name: [parameter.detach().clone() for parameter in parameters] for name, parameters in groups.items()}
+        for name, parameters in groups.items():
+            norms = [parameter.grad.detach().norm() if parameter.grad is not None else torch.tensor(float("nan"), device=device) for parameter in parameters]
+            grad_metrics[name] = {"gradient_norm": float(torch.stack(norms).norm().item()), "gradient_finite": bool(all(torch.isfinite(value) for value in norms)), "gradient_nonzero": bool(any(value > 0.0 for value in norms))}
         optimizer.step()
-        last_raw, last_labels = raw.detach(), labels.detach()
-    if last_raw is None or last_labels is None:
+        update_metrics = {}
+        for name, parameters in groups.items():
+            deltas = [parameter.detach() - before for parameter, before in zip(parameters, snapshots[name], strict=True)]
+            update_metrics[name] = {"update_norm": float(torch.stack([delta.norm() for delta in deltas]).norm().item()), "update_nonzero": bool(any(delta.abs().sum() > 0.0 for delta in deltas))}
+        group_history.append({"step": step + 1, "gradients": grad_metrics, "updates": update_metrics})
+        loss_history.append({"step": float(step + 1), "total": float(loss.detach().item())})
+        if step + 1 in {10, args.steps}:
+            _, metrics = evaluate_probe()
+            probe_history[f"step_{step + 1}"] = metrics
+    if args.steps < 1:
         raise ValueError("controllability smoke received no balanced MNIST batches")
-    with torch.no_grad():
-        view = fixed_exposure_view(last_raw, settings.fixed_exposure_scale)
-        _, logits = evaluator(view)
-        accuracy = float((logits.argmax(dim=1) == last_labels).to(torch.float32).mean().item())
-        fraction = _code_fraction(last_raw, last_labels)
-        saturation = float(torch.relu(last_raw / settings.fixed_exposure_scale - 1.0).gt(0).to(torch.float32).mean().item())
-    gradients = all(parameter.grad is not None and torch.isfinite(parameter.grad).all() for parameter in bundle.parameters())
+    final_raw, final_metrics = evaluate_probe()
+    probe_history[f"step_{args.steps}"] = final_metrics
+    final_groups = group_history[-1]
+    gradient_checks = [value["gradient_finite"] and value["gradient_nonzero"] for value in final_groups["gradients"].values()]
+    update_checks = [value["update_nonzero"] for value in final_groups["updates"].values()]
     checks = (
-        GateResult("all_classes_present", bool(torch.equal(torch.bincount(last_labels, minlength=10), torch.full((10,), settings.logical_batch_size // 10, device=device, dtype=torch.long))), {"batch_size": float(last_labels.numel())}),
-        GateResult("semantic_accuracy", accuracy >= 0.30, {"accuracy": accuracy}),
-        GateResult("camera_code_fraction", fraction >= 0.10, {"camera_code_fraction": fraction}),
-        GateResult("finite_nonzero_gradients", gradients, {"finite_nonzero_gradients": gradients}),
-        GateResult("high_saturation", saturation <= 0.08, {"high_saturation": saturation}),
+        GateResult("fixed_probe_complete", final_metrics["accuracy"] is not None, {"samples": 170.0}),
+        GateResult("semantic_accuracy", float(final_metrics["accuracy"]) >= 0.30, {"accuracy": float(final_metrics["accuracy"])}),
+        GateResult("camera_code_fraction", float(final_metrics["code_fraction"]) >= 0.10, {"camera_code_fraction": float(final_metrics["code_fraction"])}),
+        GateResult("finite_nonzero_gradients", bool(all(gradient_checks)), {"groups": float(sum(gradient_checks)), "total": float(len(gradient_checks))}),
+        GateResult("nonzero_parameter_updates", bool(all(update_checks)), {"groups": float(sum(update_checks)), "total": float(len(update_checks))}),
+        GateResult("high_saturation", float(final_metrics["saturation"]) <= 0.08, {"high_saturation": float(final_metrics["saturation"])}),
     )
     run = _new_run(config)
+    raw_path = run.root / "controllability_probe_raw_cmos.pt"
+    labels_path = run.root / "controllability_probe_labels.pt"
+    atomic_torch_save(raw_path, final_raw.cpu())
+    atomic_torch_save(labels_path, probe_labels.cpu())
+    review_artifacts = write_conditional_review_artifacts(root=run.root, raw_cmos=final_raw.cpu(), labels=probe_labels.cpu(), exposure_scale=settings.fixed_exposure_scale)
+    atomic_write_json(run.root / "controllability_probe_history.json", {"metric_contract": CONDITIONAL_CONTROL_METRIC_CONTRACT, "loss": loss_history, "probes": probe_history, "parameter_groups": group_history})
     passed = all(item.passed for item in checks)
     context = _context(config, evaluator_hash=evaluator_checkpoint_hash(args.evaluator_checkpoint), split_hash=split.manifest_hash)
     permitted = ("train",) if passed and config.run.evidence_tier == "acceptance" else ()
-    record = EvidenceRecordV2(2, "controllability_smoke", config.run.evidence_tier, "passed" if passed else "failed", run.git_commit, run.dirty_patch_hash, run.config_hash, context, {"observability": file_sha256(args.observability_evidence), "evaluator": evaluator_checkpoint_hash(args.evaluator_checkpoint)}, checks, permitted, None if passed else "conditional controllability smoke failed")
+    record = EvidenceRecordV2(2, "controllability_smoke", config.run.evidence_tier, "passed" if passed else "failed", run.git_commit, run.dirty_patch_hash, run.config_hash, context, {"observability": file_sha256(args.observability_evidence), "evaluator": evaluator_checkpoint_hash(args.evaluator_checkpoint), "metric_contract": canonical_sha256(CONDITIONAL_CONTROL_METRIC_CONTRACT), "probe_raw_cmos": file_sha256(raw_path), "probe_labels": file_sha256(labels_path), "probe_preview": review_artifacts.preview_sha256}, checks, permitted, None if passed else "conditional controllability smoke failed")
     _write_evidence(run, "controllability_smoke_evidence.json", record)
     print(run.root)
     return 0

@@ -20,11 +20,60 @@ def per_label_feature_diversity_ratio(generated: torch.Tensor, real: torch.Tenso
     return tuple(values)
 
 
-def conditional_coverage_ratio(generated_features: torch.Tensor, generated_view: torch.Tensor, real_features: torch.Tensor, real_view: torch.Tensor, labels: torch.Tensor, *, epsilon: float, iterations: int) -> float:
-    observed = conditional_sinkhorn_loss(generated_features, generated_view, real_features, real_view, labels, epsilon=epsilon, iterations=iterations)
-    # The deterministic label-preserving reversal is an independent real-vs-real reference.
-    reverse = torch.cat([torch.nonzero(labels == label, as_tuple=False).flatten().flip(0) for label in range(10)])
-    baseline = conditional_sinkhorn_loss(real_features.index_select(0, reverse), real_view.index_select(0, reverse), real_features, real_view, labels, epsilon=epsilon, iterations=iterations)
+def conditional_coverage_ratio(
+    generated_features: torch.Tensor,
+    generated_view: torch.Tensor,
+    real_features: torch.Tensor,
+    real_view: torch.Tensor,
+    labels: torch.Tensor,
+    *,
+    epsilon: float,
+    iterations: int,
+    seed: int = 1234,
+) -> float:
+    """Compare generated coverage with two disjoint real subsets.
+
+    The old implementation compared one real set with a permutation of
+    itself.  That is an OT identity and is not a coverage baseline.
+    """
+    generator = torch.Generator(device="cpu").manual_seed(seed)
+    generated_rows, left_rows, right_rows = [], [], []
+    count: int | None = None
+    for label in range(10):
+        generated_indices = torch.nonzero(labels == label, as_tuple=False).flatten().cpu()
+        real_indices = torch.nonzero(labels == label, as_tuple=False).flatten().cpu()
+        if generated_indices.numel() < 2 or real_indices.numel() < 4:
+            raise ValueError("coverage requires at least two generated and four real samples per label")
+        shuffled = real_indices.index_select(0, torch.randperm(real_indices.numel(), generator=generator))
+        half = shuffled.numel() // 2
+        current = min(generated_indices.numel(), half)
+        count = current if count is None else min(count, current)
+        generated_rows.append(generated_indices)
+        left_rows.append(shuffled[:current])
+        right_rows.append(shuffled[current : current * 2])
+    assert count is not None
+    generated_selected = torch.cat([rows[:count] for rows in generated_rows])
+    left_selected = torch.cat([rows[:count] for rows in left_rows])
+    right_selected = torch.cat([rows[:count] for rows in right_rows])
+    local_labels = torch.arange(10, device=labels.device).repeat_interleave(count)
+    observed = conditional_sinkhorn_loss(
+        generated_features.index_select(0, generated_selected.to(labels.device)),
+        generated_view.index_select(0, generated_selected.to(labels.device)),
+        real_features.index_select(0, right_selected.to(labels.device)),
+        real_view.index_select(0, right_selected.to(labels.device)),
+        local_labels,
+        epsilon=epsilon,
+        iterations=iterations,
+    )
+    baseline = conditional_sinkhorn_loss(
+        real_features.index_select(0, left_selected.to(labels.device)),
+        real_view.index_select(0, left_selected.to(labels.device)),
+        real_features.index_select(0, right_selected.to(labels.device)),
+        real_view.index_select(0, right_selected.to(labels.device)),
+        local_labels,
+        epsilon=epsilon,
+        iterations=iterations,
+    )
     return float((observed / baseline.clamp_min(1.0e-12)).item())
 
 

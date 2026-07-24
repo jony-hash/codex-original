@@ -92,13 +92,18 @@ def capacity_gate(metrics: CapacityMetrics, prototype: GateResult) -> GateResult
 
 
 def balanced_code_fraction(values: torch.Tensor) -> float:
-    """Within-label code SS divided by total SS for [label, code, ...] tensors."""
+    """Within-label code SS divided by sample-centered total SS.
+
+    The denominator is centered independently at every spatial/feature
+    coordinate so a shared digit shape is not counted as code variation.
+    """
     if values.ndim < 3:
         raise ValueError("code factor expects [label, code, spatial...] values")
     labels, codes = values.shape[:2]
     if labels != 10 or codes < 2:
         raise ValueError("code factor requires ten labels and at least two codes")
     label_mean = values.mean(dim=1, keepdim=True)
+    grand_mean = values.mean(dim=(0, 1), keepdim=True)
     code_ss = (values - label_mean).square().sum()
-    total_ss = (values - values.mean()).square().sum().clamp_min(1.0e-12)
+    total_ss = (values - grand_mean).square().sum().clamp_min(1.0e-12)
     return float((code_ss / total_ss).item())

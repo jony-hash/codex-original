@@ -35,7 +35,7 @@ from ..student.training import _differentiable_correlation, calibrate_prototypes
 from ..student.capacity import supported_dct_candidates
 from ..teacher import TeacherPairManifestV2, TeacherTargetManifestV2, build_teacher_pair_manifest, build_teacher_target_manifest
 from .runs import V2Run
-from .conditional import admit_conditional_evaluation, admit_dataset, audit_memorization, conditional_evaluate, conditional_observability, conditional_train, controllability_smoke, evaluate_utility, export_conditional_dataset, qualify_evaluator, sample_conditional, train_evaluator
+from .conditional import admit_conditional_evaluation, admit_dataset, audit_memorization, conditional_control_isolation, conditional_evaluate, conditional_observability, conditional_train, controllability_smoke, evaluate_utility, export_conditional_dataset, qualify_evaluator, sample_conditional, train_evaluator
 
 _CONTROL_ORACLE_ARMS = ("formal_amplitude_only", "diagnostic_complex_slm")
 _CONTROL_ORACLE_STEPS = 400
@@ -1623,6 +1623,12 @@ def _parser() -> argparse.ArgumentParser:
     conditional_observability_parser = audit.add_parser("conditional-observability")
     conditional_observability_parser.add_argument("--config", required=True)
     conditional_observability_parser.set_defaults(handler=lambda args: conditional_observability(args, load_config(args.config)))
+    conditional_control_parser = audit.add_parser("conditional-control-isolation")
+    conditional_control_parser.add_argument("--config", required=True)
+    conditional_control_parser.add_argument("--dataset-root", required=True)
+    conditional_control_parser.add_argument("--evaluator-checkpoint", required=True)
+    conditional_control_parser.add_argument("--output")
+    conditional_control_parser.set_defaults(handler=lambda args: conditional_control_isolation(args, load_config(args.config)))
     memorization = audit.add_parser("memorization")
     for name in ("config", "candidate_evidence", "candidate_dataset", "dataset_root", "evaluator_checkpoint"):
         memorization.add_argument("--" + name.replace("_", "-"), required=True)

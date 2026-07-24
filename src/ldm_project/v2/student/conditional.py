@@ -34,6 +34,13 @@ def fixed_exposure_view(raw_cmos: torch.Tensor, exposure_scale: float, *, output
     return torch.nn.functional.adaptive_avg_pool2d(normalized, (output_size, output_size))
 
 
+def sinkhorn_cost_view(view: torch.Tensor, *, output_size: int = 14) -> torch.Tensor:
+    """Return the fixed lower-resolution intensity view used by OT costs."""
+    if view.ndim != 4 or view.shape[1] != 1:
+        raise ValueError("view must be [batch, 1, H, W]")
+    return torch.nn.functional.adaptive_avg_pool2d(view, (output_size, output_size))
+
+
 def phase_total_variation(system: nn.Module) -> torch.Tensor:
     values = []
     for name, parameter in system.named_parameters():
@@ -80,9 +87,11 @@ def conditional_sinkhorn_loss(
         selected = torch.nonzero(labels == label, as_tuple=False).flatten()
         if selected.numel() < 2:
             raise ValueError("each conditional Sinkhorn batch needs at least two samples per label")
-        feature_cost = torch.cdist(generated_features.index_select(0, selected), real_features.index_select(0, selected)).square()
-        generated_pixels = generated_view.index_select(0, selected).flatten(1)
-        real_pixels = real_view.index_select(0, selected).flatten(1)
+        generated_features_label = torch.nn.functional.normalize(generated_features.index_select(0, selected), dim=1)
+        real_features_label = torch.nn.functional.normalize(real_features.index_select(0, selected), dim=1)
+        feature_cost = torch.cdist(generated_features_label, real_features_label).square()
+        generated_pixels = sinkhorn_cost_view(generated_view.index_select(0, selected)).flatten(1)
+        real_pixels = sinkhorn_cost_view(real_view.index_select(0, selected)).flatten(1)
         pixel_cost = torch.cdist(generated_pixels, real_pixels, p=1) / generated_pixels.shape[1]
         terms.append(log_sinkhorn(feature_cost + 0.25 * pixel_cost, epsilon=epsilon, iterations=iterations))
     return torch.stack(terms).mean()
