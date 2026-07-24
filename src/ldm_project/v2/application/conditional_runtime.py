@@ -1253,7 +1253,7 @@ def diversity_recovery_smoke(args, config: V2Config) -> int:
     final_raw, final_metrics = probe()
     zero_raw_after = raw_from_generator_batched(bundle.system, bundle.generator, torch.zeros(10, 8, device=device), torch.arange(10, device=device), microbatch_size=config.execution.evaluation_microbatch_size, activation_checkpoint=False).detach().cpu()
     ratios = [float(value) for value in final_metrics.get("diversity_ratios", [])] if isinstance(final_metrics.get("diversity_ratios"), list) else []
-    frozen_unchanged = all(torch.equal(initial_state[name], value.detach().cpu()) for name, value in bundle.state_dict().items() if name in initial_state and (name.startswith("generator.class_carrier") or name.startswith("system.encoder") or name.startswith("system.decoder")))
+    frozen_unchanged = all(torch.equal(initial_state[name].detach().cpu(), value.detach().cpu()) for name, value in bundle.state_dict().items() if name in initial_state and (name.startswith("generator.class_carrier") or name.startswith("system.encoder") or name.startswith("system.decoder")))
     code_updates = all(value > 0.0 for row in update_history for value in row.values())
     initial_ratios = probe_history["step_0"].get("diversity_ratios", [])
     ratios_ok = len(ratios) == 10 and min(ratios) >= 0.25 and all(float(after) >= float(before) for before, after in zip(initial_ratios, ratios, strict=True))
