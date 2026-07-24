@@ -14,6 +14,7 @@ from ldm_project.v2.student.conditional_acceptance import chunked_nearest_distan
 from ldm_project.v2.student.generator import ConditionalGlobalAmplitudeGenerator, IdentityAnchoredConditionalAmplitudeGenerator
 from ldm_project.v2.evidence.reviews import ConditionalManualReviewV2
 from ldm_project.v2.application.conditional import _first_hundred_schedule_hash, _identity_isolation_classification, _require_current_acceptance
+from ldm_project.v2.student.evaluator import MNISTSplitManifest
 
 
 def test_conditional_generator_is_bounded_zero_code_carrier_and_global() -> None:
@@ -208,6 +209,13 @@ def test_v2_config_migration_resolves_exact_legacy_path() -> None:
 def test_v2_config_migration_does_not_guess_unknown_paths() -> None:
     with pytest.raises(FileNotFoundError, match="v2 config does not exist"):
         load_config("configs/v2/formal_identity_logit_amplitude_finite_crop_identity_typo.yaml")
+
+
+def test_content_bound_mnist_split_identity_ignores_machine_path() -> None:
+    common = (2, 1234, "train", "validation", 55000, 5000, "mnist-content")
+    left = MNISTSplitManifest(common[0], "/machine/a/data", common[1], common[2], common[3], common[4], common[5], common[6])
+    right = MNISTSplitManifest(common[0], "/machine/b/data", common[1], common[2], common[3], common[4], common[5], common[6])
+    assert left.manifest_hash == right.manifest_hash
 
 
 def test_conditional_config_rejects_teacher_fields(tmp_path: Path) -> None:
