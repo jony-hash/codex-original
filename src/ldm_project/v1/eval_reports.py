@@ -338,7 +338,7 @@ def evaluate_seed_sweep(
 def _cli() -> None:
     import argparse
 
-    parser = argparse.ArgumentParser(prog="python -m ldm_project.eval_reports")
+    parser = argparse.ArgumentParser(prog="python -m ldm_project.v1.eval_reports")
     sub = parser.add_subparsers(dest="command")
 
     summary_parser = sub.add_parser("summary", help="print JSON summary for run dirs")

@@ -429,7 +429,7 @@ def estimate_latent_scale_from_loader(
     latent_source: str,
     max_batches: int = DEFAULT_LATENT_SCALE_BATCHES,
 ):
-    from ldm_project.first_stage_losses import select_diffusion_latents
+    from .teacher.first_stage_losses import select_diffusion_latents
 
     if max_batches <= 0:
         raise ValueError(f"max_batches must be positive, got {max_batches}")

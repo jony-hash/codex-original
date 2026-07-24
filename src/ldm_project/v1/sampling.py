@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .d2nn_diagnostics import build_one_shot_d2nn_diagnostics
+from .diagnostics.d2nn import build_one_shot_d2nn_diagnostics
 from .evaluation.d2nn_visualization import (
     D2NN_LAYER_VISUALIZATION_SPECS,
     D2NN_MASK_VISUALIZATION_SPECS,
@@ -9,7 +9,7 @@ from .evaluation.d2nn_visualization import (
     build_one_shot_slm_to_encoder_focus_visualization_tensors,
     save_one_shot_d2nn_focus_figures,
 )
-from .one_shot_visualization import (
+from .student.visualization import (
     ONE_SHOT_SHARED_SCALE_INTENSITY_QUANTILE,
     ONE_SHOT_SHARED_SCALE_INTENSITY_SPECS,
     build_one_shot_display_diagnostic_tensors,

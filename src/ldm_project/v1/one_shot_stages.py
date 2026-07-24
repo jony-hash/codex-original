@@ -1,32 +1,32 @@
 from __future__ import annotations
 
-from .one_shot_distill_data import (
+from .distillation.dataset import (
     _build_distill_loaders,
     _load_distill_payload,
     _select_distill_eval_indices,
     _subset_distill_payload_for_training,
     _validated_distill_tensors,
 )
-from .one_shot_distill_training import run_one_shot_distill_training
-from .one_shot_eval import (
+from .student.training import run_one_shot_distill_training
+from .student.evaluation import (
     run_one_shot_distill_eval_diagnostics_stage,
     run_one_shot_distill_eval_stage,
     run_one_shot_sample_stage,
 )
-from .one_shot_eval_artifacts import (
+from .student.artifacts import (
     _save_one_shot_d2nn_diagnostics,
     _save_one_shot_d2nn_focus_visualization,
     _save_one_shot_d2nn_visualization_grids,
     _save_one_shot_slm_to_encoder_focus_visualization,
 )
-from .one_shot_eval_metrics import compute_one_shot_distill_eval_metrics
-from .one_shot_quality import (
+from .student.metrics import compute_one_shot_distill_eval_metrics
+from .student.quality import (
     _one_shot_distill_balanced_quality_score,
     _one_shot_distill_quality_score,
     _one_shot_distill_strict_balanced_quality_score,
     _resolve_one_shot_distill_selection,
 )
-from .one_shot_stage_common import (
+from .generation.codes import (
     ONE_SHOT_DISPLAY_DIAGNOSTIC_TENSOR_KEYS,
     ONE_SHOT_DISTILL_EVAL_FOCUS_TENSOR_KEYS,
     ONE_SHOT_DISTILL_EVAL_PREVIEW_PER_CLASS,
@@ -35,8 +35,8 @@ from .one_shot_stage_common import (
     _sample_one_shot_codes,
     _sample_one_shot_codes_with_seed,
 )
-from .one_shot_training import run_one_shot_training
-from .one_shot_training_utils import (
+from .student.baseline_training import run_one_shot_training
+from .student.training_utils import (
     ONE_SHOT_DISTILL_HISTORY_LOSS_KEYS,
     ONE_SHOT_HISTORY_LOSS_KEYS,
     _build_one_shot_optimizer,
@@ -66,7 +66,7 @@ from .stage_constants import (
     ONE_SHOT_DISTILL_STRICT_BALANCED_QUALITY_METRIC,
     ONE_SHOT_DISTILL_STRICT_BALANCED_QUALITY_SATURATION_TARGET,
 )
-from .teacher_distill import (
+from .teacher.distill_legacy import (
     compute_teacher_distill_filter_metrics,
     run_teacher_distill_export,
     run_teacher_distill_filter,
@@ -74,8 +74,8 @@ from .teacher_distill import (
     run_teacher_distill_label_strict_filter,
     run_teacher_distill_readable_split,
 )
-from .teacher_sampling import run_sample_stage
-from .teacher_training import run_diffusion_training, run_first_stage_training
+from .teacher.sampling import run_sample_stage
+from .teacher.training import run_diffusion_training, run_first_stage_training
 
 __all__ = [
     "DIFFUSION_BEST_CHECKPOINT",
