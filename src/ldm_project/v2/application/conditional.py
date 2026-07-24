@@ -10,6 +10,7 @@ import torch
 from torch import nn
 
 from ..config import V2Config
+from ..contracts import ComplexField
 from ..evidence import EvidenceContextV2, EvidenceRecordV2, GateResult, atomic_torch_save, atomic_write_json, canonical_sha256, file_sha256, load_conditional_manual_review, tensor_sha256
 from ..optics import FormalAmplitudeFiniteCropIdentitySystem
 from ..student.checkpoints import ConditionalCheckpointManifestV2, load_conditional_checkpoint, save_conditional_checkpoint, state_content_hash, state_signature
