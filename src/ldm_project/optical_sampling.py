@@ -1,2 +1,2 @@
 """Compatibility shim for physical sampling APIs."""
-from .optics.sampling import *  # noqa: F403
+from .v1.optics.sampling import *  # noqa: F403

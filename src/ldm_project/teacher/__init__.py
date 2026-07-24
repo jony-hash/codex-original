@@ -1,6 +1,4 @@
-"""Teacher-side first-stage, diffusion, sampling, and distillation domain."""
-
-from .diffusion import LatentDiffusionUNet, LinearNoiseScheduler
-from .first_stage import OpticalPathVAE
-
-__all__ = ["LatentDiffusionUNet", "LinearNoiseScheduler", "OpticalPathVAE"]
+"""Legacy package facade for :mod:`ldm_project.v1.teacher`."""
+import sys
+from ..v1 import teacher as _implementation
+sys.modules[__name__] = _implementation

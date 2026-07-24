@@ -1,2 +1,2 @@
 """Compatibility shim for independent relay reference APIs."""
-from .optics.reference import *  # noqa: F403
+from .v1.optics.reference import *  # noqa: F403

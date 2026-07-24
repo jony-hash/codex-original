@@ -1,3 +1,4 @@
-"""Scoped configuration implementation modules behind the public facade."""
-
-from .legacy import *  # noqa: F401,F403
+"""Legacy package facade for :mod:`ldm_project.v1.configuration`."""
+import sys
+from ..v1 import configuration as _implementation
+sys.modules[__name__] = _implementation

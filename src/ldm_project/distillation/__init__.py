@@ -1,5 +1,4 @@
-"""Neutral offline distillation payload schema and target utilities."""
-
-from .targets import build_clean_readable_target
-
-__all__ = ["build_clean_readable_target"]
+"""Legacy package facade for :mod:`ldm_project.v1.distillation`."""
+import sys
+from ..v1 import distillation as _implementation
+sys.modules[__name__] = _implementation

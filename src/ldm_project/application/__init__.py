@@ -1,4 +1,4 @@
-"""CLI-facing application layer and lazy stage dispatcher."""
-from .stages import StageRequest, run_selected_stage
-
-__all__ = ["StageRequest", "run_selected_stage"]
+"""Legacy package facade for :mod:`ldm_project.v1.application`."""
+import sys
+from ..v1 import application as _implementation
+sys.modules[__name__] = _implementation

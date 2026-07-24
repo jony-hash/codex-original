@@ -1,6 +1,6 @@
 """Compatibility shim aliasing teacher training stages."""
 import sys
 
-from .teacher import training as _implementation
+from .v1.teacher import training as _implementation
 
 sys.modules[__name__] = _implementation

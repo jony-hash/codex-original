@@ -1,5 +1,4 @@
-"""Neutral code-generation utilities shared by teacher and student stages."""
-
-from .codes import project_codes_to_teacher_noise
-
-__all__ = ["project_codes_to_teacher_noise"]
+"""Legacy package facade for :mod:`ldm_project.v1.generation`."""
+import sys
+from ..v1 import generation as _implementation
+sys.modules[__name__] = _implementation
