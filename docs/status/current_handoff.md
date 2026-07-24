@@ -28,6 +28,10 @@ memorization、utility 或 promotion。旧 100-step smoke 只保留为历史诊�
 - 当前合同唯一一次 100-step smoke 失败：raw accuracy 0.217647，code fraction 0.320250，饱和 0.057841；
   六组梯度/更新及 Wz 恢复门通过。失败后不得重复 smoke 或直接训练。
 - 运行目录：`outputs/20260724_v2/runs/20260724_164030_016157_formal_v2_identity_logit_amplitude_finite_crop_identity/`。
+- 400-step semantic recovery smoke 已通过：raw accuracy 0.435294，前/后50步 classification loss
+  为 3.849249/1.876344，code fraction 0.310312，饱和 0.056744，raw 相对变化 0.089787；
+  六组梯度/更新、Wz 恢复、provenance 和 schedule/context 门全部通过。
+- recovery 运行目录：`outputs/20260724_v2/runs/20260724_172048_171701_formal_v2_identity_logit_amplitude_finite_crop_identity/`。
 
 任何 evidence 的 system/config/evaluator/split/checkpoint/action 不匹配，都必须在创建
 optimizer 前失败。旧 global-amplitude、teacher/prototype/capacity、direct-template 和
@@ -40,6 +44,6 @@ LightGen evidence 不能授权 identity 主线。
 
 ## 下一允许动作
 
-下一步必须另立语义修复计划。不得运行 5-epoch CUDA training、60,000 张导出或下游效用实验，
-除非新的修复合同明确批准并重新通过 evaluator、injection、observability、isolation 与唯一
-smoke 门。当前失败证据保留为只读历史，不得覆盖或迁移。
+下一步由用户从同一个 `conditional_initialization.pt` 运行预注册的 5-epoch/5500-step CUDA
+formal train，并传入 passed `semantic_recovery_evidence.json`。不得使用 recovery final checkpoint
+作为 warm-start；60,000 张导出、memorization、utility 和最终准入仍须在正式训练后依次执行。
