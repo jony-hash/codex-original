@@ -311,9 +311,9 @@ def conditional_control_isolation(args, config: V2Config) -> int:
     command_grouped = command.reshape(10, 17, *command.shape[1:])
     command_fraction = balanced_code_fraction(command_grouped)
     coefficients = bundle.generator.coefficients(codes, labels).reshape(10, 17, 8)
-    duplicate = codes[0].repeat(10, 1)
-    duplicate_command = bundle.generator(duplicate, labels[:10])
-    duplicate_error = float((duplicate_command - command[:10]).abs().max().item())
+    zero_codes = torch.zeros(10, 8, device=device)
+    zero_labels = torch.arange(10, device=device)
+    duplicate_error = float((bundle.generator(zero_codes, zero_labels) - bundle.generator(zero_codes, zero_labels)).abs().max().item())
     report = {
         "metric_contract": CONDITIONAL_CONTROL_METRIC_CONTRACT,
         "code_count_per_label": 17,
