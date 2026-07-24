@@ -22,7 +22,7 @@ def _small_config() -> LightGenSystemConfig:
 
 
 def test_lightgen_contract_preserves_unknown_physics():
-    contract = LightGenReferenceContractV2.from_dict(json.loads(open("docs/v2/lightgen_reference_contract_v2.json", encoding="utf-8").read()))
+    contract = LightGenReferenceContractV2.from_dict(json.loads(open("docs/architecture/lightgen_reference_contract_v2.json", encoding="utf-8").read()))
     assert contract.architecture_proxy_only
     with pytest.raises(ValueError, match="unknown"):
         LightGenReferenceContractV2.from_dict({**contract.to_dict(), "fields": {**contract.to_dict()["fields"], "wavelength_m": {"value": 532e-9, "status": "unknown", "source": None}}})
