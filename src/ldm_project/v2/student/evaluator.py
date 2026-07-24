@@ -8,7 +8,7 @@ from typing import Iterator
 import torch
 from torch import nn
 
-from ..evidence import atomic_torch_save, canonical_sha256, file_sha256, tensor_sha256
+from ..evidence import atomic_torch_save, canonical_sha256, file_sha256
 
 
 class FrozenMNISTEvaluator(nn.Module):
