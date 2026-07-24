@@ -158,11 +158,6 @@ class ConditionalGlobalAmplitudeGenerator(nn.Module):
             raise ValueError("labels must be integers in [0, 9]")
         return torch.sigmoid(self.class_carrier_logits.index_select(0, labels)).unsqueeze(1)
 
-
-# Descriptive compatibility alias used by the architecture/config contract.
-ConditionalIdentityLogitAmplitudeGenerator = IdentityAnchoredConditionalAmplitudeGenerator
-
-
 class IdentityAnchoredConditionalAmplitudeGenerator(nn.Module):
     """Identity-anchored conditional generator for the v2 recovery path.
 
@@ -286,3 +281,7 @@ class IdentityAnchoredConditionalAmplitudeGenerator(nn.Module):
         if labels.ndim != 1 or labels.numel() == 0 or labels.min() < 0 or labels.max() > 9:
             raise ValueError("labels must be integers in [0, 9]")
         return torch.sigmoid(self.class_carrier_logits.index_select(0, labels)).unsqueeze(1)
+
+
+# Descriptive compatibility alias used by the architecture/config contract.
+ConditionalIdentityLogitAmplitudeGenerator = IdentityAnchoredConditionalAmplitudeGenerator
