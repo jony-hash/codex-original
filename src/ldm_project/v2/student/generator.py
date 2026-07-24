@@ -179,11 +179,12 @@ class IdentityAnchoredConditionalAmplitudeGenerator(nn.Module):
         shape: tuple[int, int] = (200, 200),
         code_dim: int = 8,
         hidden_dim: int = 64,
+        command_gain: float = fixed_command_gain,
         class_carrier_logits: torch.Tensor | None = None,
     ) -> None:
         super().__init__()
-        if shape[0] <= 0 or shape[1] <= 0 or code_dim != 8 or hidden_dim != 64:
-            raise ValueError("identity-anchored generator requires 8D code and 64 hidden units")
+        if shape[0] <= 0 or shape[1] <= 0 or code_dim != 8 or hidden_dim != 64 or command_gain != self.fixed_command_gain:
+            raise ValueError("identity-anchored generator requires 8D code, 64 hidden units, and fixed gain 0.5")
         self.shape = shape
         self.code_dim = code_dim
         self.hidden_dim = hidden_dim
