@@ -7,6 +7,7 @@ import torch
 from torch import nn
 
 from ldm_project.v2.config import load_config
+from ldm_project.v2.student.admission import balanced_code_fraction
 from ldm_project.v2.student.checkpoints import ConditionalCheckpointManifestV2, load_conditional_checkpoint, save_conditional_checkpoint, state_content_hash, state_signature
 from ldm_project.v2.student.conditional import conditional_sinkhorn_loss, fixed_exposure_view
 from ldm_project.v2.student.conditional_acceptance import chunked_nearest_distances, memorization_statistics, paired_bootstrap_lower_bound, per_label_feature_diversity_ratio
@@ -45,6 +46,34 @@ def test_conditional_sinkhorn_has_no_sample_index_pairing() -> None:
     permutation = torch.cat([torch.nonzero(labels == label).flatten().flip(0) for label in range(10)])
     shuffled = conditional_sinkhorn_loss(generated_features, generated_view, real_features.index_select(0, permutation), real_view.index_select(0, permutation), labels, epsilon=0.05, iterations=5)
     assert torch.allclose(loss, shuffled)
+
+
+def test_balanced_code_fraction_is_zero_when_codes_are_identical() -> None:
+    """Repeated code probes must not be credited for class/spatial variation."""
+    generator = torch.Generator().manual_seed(11)
+    class_patterns = torch.randn(10, 1, 3, 5, generator=generator)
+    values = class_patterns.expand(10, 17, 3, 5).clone()
+    assert balanced_code_fraction(values) == pytest.approx(0.0, abs=1.0e-8)
+
+
+def test_balanced_code_fraction_uses_per_pixel_grand_mean() -> None:
+    """A common spatial template must not alter the code fraction."""
+    generator = torch.Generator().manual_seed(12)
+    # Code variation is shared across labels, while the large template varies
+    # strongly by pixel.  A scalar grand mean would spuriously change eta².
+    code_patterns = torch.randn(1, 17, 3, 5, generator=generator)
+    values = code_patterns.expand(10, 17, 3, 5).clone()
+    template = torch.linspace(-100.0, 100.0, 15).reshape(1, 1, 3, 5)
+    fraction = balanced_code_fraction(values)
+    shifted_fraction = balanced_code_fraction(values + template)
+    assert fraction == pytest.approx(1.0, abs=1.0e-6)
+    assert shifted_fraction == pytest.approx(fraction, abs=1.0e-6)
+
+
+def test_balanced_code_fraction_is_bounded() -> None:
+    values = torch.randn(10, 17, 4, 4, generator=torch.Generator().manual_seed(13))
+    fraction = balanced_code_fraction(values)
+    assert 0.0 <= fraction <= 1.0
 
 
 def test_conditional_checkpoint_rejects_architecture_mismatch(tmp_path: Path) -> None:
