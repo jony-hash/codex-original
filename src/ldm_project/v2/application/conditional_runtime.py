@@ -1213,7 +1213,7 @@ def diversity_recovery_smoke(args, config: V2Config) -> int:
     for parameter in (bundle.generator.class_carrier_logits, bundle.system.encoder.phase, bundle.system.decoder.phase):
         parameter.requires_grad_(False)
     groups = _diversity_parameters(bundle)
-    optimizer = torch.optim.Adam([parameter for params in groups.values() for parameter in params], lr=config.conditional_generation.generator_lr)
+    optimizer = torch.optim.Adam([parameter for params in groups.values() for parameter in params], lr=config.conditional_generation.generator_learning_rate)
     settings = config.conditional_generation
     assert settings is not None
     probe_codes, probe_labels = _fixed_control_probe(device=device)
@@ -1285,7 +1285,7 @@ def train_diversity_recovery(args, config: V2Config) -> int:
     for parameter in (bundle.generator.class_carrier_logits, bundle.system.encoder.phase, bundle.system.decoder.phase):
         parameter.requires_grad_(False)
     groups = _diversity_parameters(bundle)
-    optimizer = torch.optim.Adam([parameter for params in groups.values() for parameter in params], lr=config.conditional_generation.generator_lr)
+    optimizer = torch.optim.Adam([parameter for params in groups.values() for parameter in params], lr=config.conditional_generation.generator_learning_rate)
     settings = config.conditional_generation
     assert settings is not None
     history = []
