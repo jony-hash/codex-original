@@ -1,6 +1,6 @@
 # Optical Implementation Contract
 
-Scope: `src/ldm_project/**`. Read the repository-root `AGENTS.md` first. This file adds implementation constraints and may not relax the root contract.
+Scope: `src/ldm_project/**`. Read the repository-root `AGENTS.md` first. This file adds implementation constraints and may not relax the root contract. Canonical v1 code lives in `v1/`, canonical v2 code in `v2/`; root modules are compatibility facades only.
 
 ## Domain Routing
 

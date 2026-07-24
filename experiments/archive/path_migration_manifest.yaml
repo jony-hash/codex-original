@@ -1,0 +1,21 @@
+schema_version: 1
+baseline_commit: 758363e43030a60fa4c90d2163d69e52ba4f5ad8
+content_verification:
+  algorithm: sha256
+  source: "git show ${baseline_commit}:<source_path>"
+  invariant: "moved historical files must byte-match their baseline source"
+runtime_mapping:
+  source_root: src/ldm_project
+  canonical_v1_root: src/ldm_project/v1
+  canonical_v2_root: src/ldm_project/v2
+  legacy_import_policy: root compatibility facades re-export canonical v1 symbols
+archive_eras:
+  - id: v57-v67
+    target: experiments/archive/v57_v67
+    status: diagnostic-only
+  - id: v68-v69
+    target: experiments/archive/v68_v69
+    status: diagnostic-only
+  - id: v70-v79
+    target: experiments/archive/v70_v79
+    status: diagnostic-only

@@ -10,7 +10,7 @@ Primary execution contract for this repository. This file overrides `docs/`; sco
 
 Before changing a scoped path, read its local contract:
 
-- `src/ldm_project/**` -> `src/ldm_project/AGENTS.md`
+- `src/ldm_project/v1/**`, `src/ldm_project/v2/**`, and root compatibility facades -> `src/ldm_project/AGENTS.md`
 - `configs/**` -> `configs/AGENTS.md`
 - `tests/**`, or repository verification work -> `tests/AGENTS.md`
 - `experiments/**` -> `experiments/AGENTS.md`
@@ -60,7 +60,7 @@ The formal D2NN boundary is `finite_crop`, meaning a propagation-after-crop idea
 
 ## 5. Repository And Artifacts
 
-- Python requirement comes from `pyproject.toml` (`>=3.11`). Conda env: `optical-generative-models`; source: `src/ldm_project/`; tests: `tests/`; entrypoint: `train.py`; configs: `configs/`.
+- Python requirement comes from `pyproject.toml` (`>=3.11`). Conda env: `optical-generative-models`; canonical source: `src/ldm_project/v1/` and `src/ldm_project/v2/`; root modules are compatibility facades; tests: `tests/`; entrypoint: `train.py`; configs: `configs/`.
 - Explicit CLI checkpoint paths win. Omitted teacher checkpoints resolve first from `outputs/final_pt/`; one-shot sampling requires an explicit student checkpoint unless a documented resolver exists.
 - Generated runs write to `outputs/YYYYMMDD_<version>/runs/...`, with `<version>` derived from the run name or config filename and falling back to `unversioned`; new runs remain in an existing real prefixed version directory.
 - Diagnostic and pre-acceptance runs use persistent versioned `outputs/` paths but remain `diagnostic-only`. Do not modify `outputs/final_pt/`, non-run root files under `outputs/`, `data/raw/`, repository `.tmp/`, or `legacy/`; `outputs/runs/` must not be reintroduced.
