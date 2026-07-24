@@ -8,6 +8,8 @@ from .conditional_runtime import (
     conditional_diversity_observability,
     diversity_recovery_smoke,
     train_diversity_recovery,
+    diversity_aligned_smoke,
+    train_diversity_aligned,
     sample_conditional,
 )
 
@@ -19,5 +21,7 @@ __all__ = [
     "conditional_diversity_observability",
     "diversity_recovery_smoke",
     "train_diversity_recovery",
+    "diversity_aligned_smoke",
+    "train_diversity_aligned",
     "sample_conditional",
 ]

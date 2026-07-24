@@ -15,7 +15,7 @@ from ..evidence import EvidenceContextV2, EvidenceRecordV2, GateResult, atomic_t
 from ..optics import FormalAmplitudeFiniteCropIdentitySystem
 from ..student.checkpoints import ConditionalCheckpointManifestV2, load_conditional_checkpoint, save_conditional_checkpoint, state_content_hash, state_signature
 from ..student.admission import balanced_code_fraction
-from ..student.conditional import conditional_loss, conditional_sinkhorn_loss, fixed_exposure_view, raw_from_generator_batched, relative_diversity_loss, relative_diversity_ratios
+from ..student.conditional import camera_code_fraction, camera_code_fraction_loss, conditional_loss, conditional_sinkhorn_loss, fixed_exposure_view, raw_from_generator_batched, relative_diversity_loss, relative_diversity_ratios
 from ..student.conditional_acceptance import conditional_coverage_ratio, load_candidate_dataset, memorization_statistics, paired_bootstrap_lower_bound, per_label_feature_diversity_ratio
 from ..student.evaluator import FrozenMNISTEvaluator, MNISTSplitManifest, balanced_batches, evaluator_checkpoint_hash, load_frozen_evaluator, load_local_mnist, save_evaluator_checkpoint, stratified_mnist_indices
 from ..student.generator import ConditionalGlobalAmplitudeGenerator, IdentityAnchoredConditionalAmplitudeGenerator
@@ -37,6 +37,9 @@ BALANCED_TRAINING_SCHEDULE = {"epochs": 5, "logical_batch_size": 50, "batch_poli
 BALANCED_TRAINING_SCHEDULE_CONTRACT = canonical_sha256(BALANCED_TRAINING_SCHEDULE)
 DIVERSITY_LOSS_CONTRACT = canonical_sha256({"sinkhorn": 1.0, "classification": 0.5, "relative_diversity": 1.0, "saturation": 0.1, "mode_orthogonality": 1.0e-3, "feature_normalization": "l2", "bounds": [0.70, 1.30]})
 DIVERSITY_RECOVERY_CONTRACT = canonical_sha256({"kind": "conditional_diversity_recovery_smoke", "steps": 400, "probes": [0, 100, 200, 400], "trainable_groups": ["global_modes", "code_projection", "class_heads"]})
+ALIGNED_DIVERSITY_METRIC_CONTRACT = "conditional_diversity_metric_v2|feature_l2_normalized_median_pdist|raw_cmos_sample_centered_anova"
+ALIGNED_DIVERSITY_LOSS_CONTRACT = canonical_sha256({"sinkhorn": 1.0, "classification": 0.5, "relative_diversity": 1.0, "camera_fraction": 2.0, "saturation": 0.1, "mode_orthogonality": 1.0e-3, "camera_target": 0.25})
+ALIGNED_DIVERSITY_CONTRACT = canonical_sha256({"kind": "conditional_diversity_aligned_smoke", "steps": 400, "thresholds": {"camera": 0.175, "camera_delta_200_400": 0.026, "ratio": 0.42, "ratio_delta_200_400": 0.10}, "code_schedule": "zero_plus_two_antithetic_pairs"})
 SEMANTIC_RECOVERY_STEPS = 400
 SEMANTIC_RECOVERY_CONTRACT = canonical_sha256({"kind": "conditional_semantic_recovery_smoke", "steps": SEMANTIC_RECOVERY_STEPS, "batch_seed": 1234, "code_seed": "100000+batch_number", "initialization_only": True})
 
@@ -1133,6 +1136,35 @@ def _diversity_parameters(bundle: ConditionalBundle) -> dict[str, tuple[nn.Param
     return {"global_modes": (bundle.generator.global_modes,), "code_projection": (bundle.generator.code_projection.weight,), "class_heads": (bundle.generator.class_heads,)}
 
 
+def _aligned_codes(labels: torch.Tensor, *, seed: int) -> torch.Tensor:
+    """Five deterministic codes per label: zero and two antithetic pairs."""
+    generator = torch.Generator(device="cpu").manual_seed(seed)
+    rows = []
+    for _ in range(10):
+        vectors = torch.rand(2, 8, generator=generator).mul_(2.0).sub_(1.0)
+        rows.append(torch.cat((torch.zeros(1, 8), vectors, -vectors), dim=0))
+    panel = torch.cat(rows, dim=0).to(labels.device)
+    if labels.numel() != panel.shape[0]:
+        raise ValueError("aligned code schedule requires a logical batch of 50")
+    return panel
+
+
+def _aligned_objective(*, bundle: ConditionalBundle, evaluator: nn.Module, codes: torch.Tensor, labels: torch.Tensor, real_views: torch.Tensor, settings, config: V2Config) -> tuple[torch.Tensor, dict[str, float], torch.Tensor]:
+    raw = raw_from_generator_batched(bundle.system, bundle.generator, codes, labels, microbatch_size=config.execution.training_microbatch_size, activation_checkpoint=config.execution.activation_checkpoint)
+    view = fixed_exposure_view(raw, settings.fixed_exposure_scale)
+    generated_features, logits = evaluator(view)
+    with torch.no_grad():
+        real_features, _ = evaluator(real_views)
+    sinkhorn = conditional_sinkhorn_loss(generated_features, view, real_features, real_views, labels, epsilon=settings.sinkhorn_epsilon, iterations=settings.sinkhorn_iterations)
+    classification = torch.nn.functional.cross_entropy(logits, labels)
+    relative = relative_diversity_loss(generated_features, real_features, labels)
+    camera_loss = camera_code_fraction_loss(raw, labels)
+    saturation = torch.relu(raw / settings.fixed_exposure_scale - 1.0).square().mean()
+    orthogonality = bundle.generator.mode_orthogonality_penalty()
+    total = sinkhorn + 0.5 * classification + relative + 2.0 * camera_loss + 0.1 * saturation + 1.0e-3 * orthogonality
+    return total, {"total": float(total.detach()), "sinkhorn": float(sinkhorn.detach()), "classification": float(classification.detach()), "relative_diversity": float(relative.detach()), "camera_fraction_loss": float(camera_loss.detach()), "camera_fraction": float(camera_code_fraction(raw, labels).detach()), "saturation": float(saturation.detach()), "mode_orthogonality": float(orthogonality.detach())}, raw
+
+
 def _diversity_objective(*, bundle: ConditionalBundle, evaluator: nn.Module, codes: torch.Tensor, labels: torch.Tensor, real_views: torch.Tensor, settings, config: V2Config) -> tuple[torch.Tensor, dict[str, float], torch.Tensor]:
     raw = raw_from_generator_batched(bundle.system, bundle.generator, codes, labels, microbatch_size=config.execution.training_microbatch_size, activation_checkpoint=config.execution.activation_checkpoint)
     generated_view = fixed_exposure_view(raw, settings.fixed_exposure_scale)
@@ -1187,6 +1219,58 @@ def conditional_diversity_observability(args, config: V2Config) -> int:
     passed = all(item.passed for item in checks)
     record = EvidenceRecordV2(2, "conditional_diversity_observability", config.run.evidence_tier, "passed" if passed else "failed", run.git_commit, run.dirty_patch_hash, run.config_hash, expected, {"completion": file_sha256(args.training_completion_evidence), "checkpoint": corrected_hash, "report": file_sha256(report_path)}, checks, ("diversity_recovery_smoke",) if passed else (), None if passed else "diversity observability failed")
     _write_evidence(run, "conditional_diversity_observability_evidence.json", record)
+    print(run.root)
+    return 0
+
+
+def conditional_diversity_alignment_admission(args, config: V2Config) -> int:
+    """Read-only admission for the gate-aligned diversity contract."""
+    _require_identity(config)
+    failed = EvidenceRecordV2.from_dict(json.loads(Path(args.failed_recovery_evidence).read_text(encoding="utf-8")))
+    failed.validate()
+    if failed.evidence_kind != "conditional_diversity_recovery_smoke" or failed.status != "failed":
+        raise ValueError("alignment admission requires the immutable failed diversity recovery evidence")
+    failed_gates = {gate.name: gate.passed for gate in failed.gates}
+    if any(failed_gates.get(name) is not True for name in ("semantic_accuracy", "per_class_recall", "relative_diversity", "high_saturation", "frozen_parameters", "code_parameter_updates", "zero_code_unchanged", "finite_losses")):
+        raise ValueError("failed recovery contains failures beyond the camera-fraction gate")
+    history_path = Path(args.failed_recovery_history)
+    history = json.loads(history_path.read_text(encoding="utf-8"))
+    probes = history.get("probes", {})
+    required_steps = ("step_0", "step_100", "step_200", "step_400")
+    if any(step not in probes for step in required_steps):
+        raise ValueError("failed recovery history lacks the fixed 0/100/200/400 probe panel")
+    camera_values = [float(probes[step]["code_fraction"]) for step in required_steps]
+    ratio_values = [min(float(v) for v in probes[step]["diversity_ratios"]) for step in required_steps]
+    if not all(camera_values[i] <= camera_values[i + 1] and ratio_values[i] <= ratio_values[i + 1] for i in range(3)):
+        raise ValueError("failed recovery trend is not monotonic")
+    images, labels_all = load_local_mnist(args.dataset_root, train=True)
+    train_images, train_labels, _, _, split = _split(images, labels_all, args.dataset_root)
+    evaluator_hash = evaluator_checkpoint_hash(args.evaluator_checkpoint)
+    checkpoint_hash = file_sha256(args.checkpoint)
+    expected = _context(config, evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, checkpoint_hash=checkpoint_hash)
+    device = torch.device(config.run.device)
+    evaluator, _ = load_frozen_evaluator(args.evaluator_checkpoint, device=device)
+    bundle, _ = _load_bundle(config, args.checkpoint, device=device, evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, allow_balanced_schedule=True)
+    for parameter in (bundle.generator.class_carrier_logits, bundle.system.encoder.phase, bundle.system.decoder.phase):
+        parameter.requires_grad_(False)
+    groups = _diversity_parameters(bundle)
+    indices = next(iter(balanced_batches(train_labels, batch_size=50, seed=1234)))
+    labels = train_labels.index_select(0, indices).to(device)
+    codes = _aligned_codes(labels, seed=100000)
+    settings = config.conditional_generation
+    assert settings is not None
+    before = state_content_hash(bundle.state_dict())
+    objective, summary, _ = _aligned_objective(bundle=bundle, evaluator=evaluator, codes=codes, labels=labels, real_views=train_images.index_select(0, indices).to(device), settings=settings, config=config)
+    grads = torch.autograd.grad(objective, [parameter for params in groups.values() for parameter in params], allow_unused=True)
+    gradient_gate = all(gradient is not None and torch.isfinite(gradient).all() and gradient.detach().norm() > 0 for gradient in grads)
+    after = state_content_hash(bundle.state_dict())
+    checks = (GateResult("only_camera_fraction_failure", True, {"failed_gate": "camera_code_fraction"}), GateResult("monotonic_probe_trend", True, {"camera_start": camera_values[0], "camera_end": camera_values[-1], "ratio_start": ratio_values[0], "ratio_end": ratio_values[-1]}), GateResult("aligned_loss_gradients", gradient_gate, {}), GateResult("parameters_unchanged", before == after, {}))
+    run = _new_run(config)
+    report_path = run.root / "conditional_diversity_alignment_admission_report.json"
+    atomic_write_json(report_path, {"metric_contract": ALIGNED_DIVERSITY_METRIC_CONTRACT, "loss_contract": ALIGNED_DIVERSITY_LOSS_CONTRACT, "camera_values": camera_values, "ratio_values": ratio_values, "aligned_summary": summary, "parameters_unchanged": before == after})
+    passed = all(check.passed for check in checks)
+    record = EvidenceRecordV2(2, "conditional_diversity_alignment_admission", config.run.evidence_tier, "passed" if passed else "failed", run.git_commit, run.dirty_patch_hash, run.config_hash, expected, {"failed_recovery_evidence": file_sha256(args.failed_recovery_evidence), "failed_recovery_history": file_sha256(history_path), "checkpoint": checkpoint_hash, "report": file_sha256(report_path)}, checks, ("diversity_aligned_smoke",) if passed else (), None if passed else "aligned diversity admission failed")
+    _write_evidence(run, "conditional_diversity_alignment_admission_evidence.json", record)
     print(run.root)
     return 0
 
@@ -1278,6 +1362,89 @@ def diversity_recovery_smoke(args, config: V2Config) -> int:
     return 0
 
 
+def diversity_aligned_smoke(args, config: V2Config) -> int:
+    """Fixed 400-step camera-fraction aligned smoke from the semantic anchor."""
+    _require_identity(config)
+    images, labels_all = load_local_mnist(args.dataset_root, train=True)
+    train_images, train_labels, _, _, split = _split(images, labels_all, args.dataset_root)
+    evaluator_hash = evaluator_checkpoint_hash(args.evaluator_checkpoint)
+    checkpoint_hash = file_sha256(args.checkpoint)
+    expected = _context(config, evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, checkpoint_hash=checkpoint_hash)
+    admission = EvidenceRecordV2.from_dict(json.loads(Path(args.alignment_admission_evidence).read_text(encoding="utf-8")))
+    require_evidence_action(admission, kind="conditional_diversity_alignment_admission", action="diversity_aligned_smoke", expected_context=expected)
+    device = torch.device(config.run.device)
+    evaluator, _ = load_frozen_evaluator(args.evaluator_checkpoint, device=device)
+    bundle, initialization_manifest = _load_bundle(config, args.checkpoint, device=device, evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, allow_balanced_schedule=True)
+    if initialization_manifest.training_schedule_hash != BALANCED_TRAINING_SCHEDULE_CONTRACT:
+        raise ValueError("aligned smoke requires the metadata-corrected semantic checkpoint")
+    for parameter in (bundle.generator.class_carrier_logits, bundle.system.encoder.phase, bundle.system.decoder.phase):
+        parameter.requires_grad_(False)
+    groups = _diversity_parameters(bundle)
+    optimizer = torch.optim.Adam([parameter for params in groups.values() for parameter in params], lr=config.conditional_generation.generator_learning_rate)
+    settings = config.conditional_generation
+    assert settings is not None
+    probe_codes, probe_labels = _fixed_control_probe(device=device)
+    real_probe = torch.cat([train_images[train_labels == label][:17] for label in range(10)], dim=0).to(device)
+    with torch.no_grad():
+        real_features, _ = evaluator(real_probe)
+    initial_state = {name: value.detach().clone() for name, value in bundle.state_dict().items()}
+    with torch.no_grad():
+        zero_raw = raw_from_generator_batched(bundle.system, bundle.generator, torch.zeros(10, 8, device=device), torch.arange(10, device=device), microbatch_size=config.execution.evaluation_microbatch_size, activation_checkpoint=False).detach().cpu()
+    probes: dict[str, dict[str, object]] = {}
+    raws: dict[int, torch.Tensor] = {}
+    losses: list[dict[str, float]] = []
+    updates: list[dict[str, float]] = []
+
+    def evaluate_probe() -> tuple[torch.Tensor, dict[str, object]]:
+        with torch.no_grad():
+            raw = raw_from_generator_batched(bundle.system, bundle.generator, probe_codes, probe_labels, microbatch_size=config.execution.evaluation_microbatch_size, activation_checkpoint=False)
+            view = fixed_exposure_view(raw, settings.fixed_exposure_scale)
+            features, logits = evaluator(view)
+            ratios = relative_diversity_ratios(features, real_features, probe_labels)
+            predictions = logits.argmax(dim=1)
+            metrics = _probe_metrics(raw, probe_labels, evaluator, settings.fixed_exposure_scale)
+            metrics["diversity_ratios"] = ratios
+            metrics["coefficient_rank"] = int(torch.linalg.matrix_rank(bundle.generator.coefficients(probe_codes, probe_labels).reshape(-1, 8)).item())
+            metrics["confusion"] = torch.bincount(probe_labels * 10 + predictions, minlength=100).reshape(10, 10).cpu().tolist()
+            return raw.detach().cpu(), metrics
+
+    raw0, metric0 = evaluate_probe(); raws[0] = raw0; probes["step_0"] = metric0
+    for step, indices in zip(range(400), balanced_batches(train_labels, batch_size=settings.logical_batch_size, seed=1234)):
+        labels = train_labels.index_select(0, indices).to(device)
+        codes = _aligned_codes(labels, seed=100000 + step)
+        optimizer.zero_grad(set_to_none=True)
+        total, summary, _ = _aligned_objective(bundle=bundle, evaluator=evaluator, codes=codes, labels=labels, real_views=train_images.index_select(0, indices).to(device), settings=settings, config=config)
+        total.backward()
+        before = {name: [parameter.detach().clone() for parameter in params] for name, params in groups.items()}
+        optimizer.step()
+        updates.append({name: float(torch.stack([torch.linalg.vector_norm(parameter.detach() - old) for parameter, old in zip(groups[name], before[name], strict=True)]).norm().item()) for name in groups})
+        losses.append(summary | {"step": float(step + 1)})
+        if step + 1 in {100, 200, 400}:
+            probe_raw, probe_metrics = evaluate_probe(); raws[step + 1] = probe_raw; probes[f"step_{step + 1}"] = probe_metrics
+    final = probes["step_400"]
+    ratio0 = min(probes["step_0"]["diversity_ratios"]); ratio200 = min(probes["step_200"]["diversity_ratios"]); ratio400 = min(final["diversity_ratios"])
+    camera200 = float(probes["step_200"]["code_fraction"]); camera400 = float(final["code_fraction"])
+    camera_loss_first = sum(row["camera_fraction_loss"] for row in losses[:50]) / 50.0
+    camera_loss_last = sum(row["camera_fraction_loss"] for row in losses[-50:]) / 50.0
+    frozen = all(torch.equal(initial_state[name].detach().cpu(), value.detach().cpu()) for name, value in bundle.state_dict().items() if name.startswith("generator.class_carrier") or name.startswith("system.encoder") or name.startswith("system.decoder"))
+    checks = (GateResult("semantic_accuracy", float(final["accuracy"]) >= 0.95, {"accuracy": float(final["accuracy"])}), GateResult("per_class_recall", min(float(final["confusion"][label][label]) / 17.0 for label in range(10)) >= 0.90, {}), GateResult("camera_code_fraction", camera400 >= 0.175, {"value": camera400}), GateResult("camera_fraction_progress", camera400 - camera200 >= 0.026, {"delta": camera400 - camera200}), GateResult("relative_diversity", ratio400 >= 0.42, {"minimum": ratio400}), GateResult("relative_diversity_progress", ratio400 - ratio200 >= 0.10, {"delta": ratio400 - ratio200}), GateResult("high_saturation", float(final["saturation"]) <= 0.08, {}), GateResult("coefficient_rank_eight", int(final["coefficient_rank"]) == 8, {}), GateResult("zero_code_unchanged", bool(torch.equal(zero_raw, raw_from_generator_batched(bundle.system, bundle.generator, torch.zeros(10, 8, device=device), torch.arange(10, device=device), microbatch_size=config.execution.evaluation_microbatch_size, activation_checkpoint=False).detach().cpu())), {}), GateResult("frozen_parameters", frozen, {}), GateResult("camera_loss_progress", camera_loss_last <= 0.90 * camera_loss_first, {"first_50": camera_loss_first, "last_50": camera_loss_last}), GateResult("finite_losses", bool(torch.isfinite(torch.tensor([row["total"] for row in losses])).all()), {}), GateResult("code_parameter_updates", all(value > 0.0 for row in updates for value in row.values()), {}))
+    run = _new_run(config)
+    artifact_hashes = {}
+    for step, raw in raws.items():
+        path = run.root / f"conditional_diversity_aligned_step_{step}_raw_cmos.pt"; atomic_torch_save(path, raw)
+        preview = write_review_artifacts(root=run.root, stem=f"conditional_diversity_aligned_step_{step}", kind="conditional_diversity_aligned_smoke", raw_cmos=raw, labels=probe_labels.cpu(), exposure_scale=settings.fixed_exposure_scale)
+        artifact_hashes[str(step)] = {"raw_cmos": file_sha256(path), "preview": preview.preview_sha256}
+    history_path = run.root / "conditional_diversity_aligned_history.json"
+    atomic_write_json(history_path, {"metric_contract": ALIGNED_DIVERSITY_METRIC_CONTRACT, "loss_contract": ALIGNED_DIVERSITY_LOSS_CONTRACT, "probes": probes, "loss": losses, "updates": updates, "artifacts": artifact_hashes, "first_400_schedule_hash": canonical_sha256([{"indices": tensor_sha256(indices), "codes": tensor_sha256(_aligned_codes(train_labels.index_select(0, indices), seed=100000 + number))} for number, indices in zip(range(400), balanced_batches(train_labels, batch_size=50, seed=1234))])})
+    diagnostic = run.root / "conditional_diversity_aligned_diagnostic_final.pt"
+    save_conditional_checkpoint(diagnostic, bundle, ConditionalCheckpointManifestV2(2, IDENTITY_ARCHITECTURE, initialization_manifest.system_signature, initialization_manifest.config_hash, split.manifest_hash, evaluator_hash, settings.fixed_exposure_scale, state_signature(bundle.state_dict()), state_content_hash(bundle.state_dict()), IDENTITY_GENERATOR_CONTRACT, canonical_sha256(CONDITIONAL_CONTROL_METRIC_CONTRACT), BALANCED_TRAINING_SCHEDULE_CONTRACT, 1234, initialization_manifest.initialization_state_hash), extra={"diagnostic_only": True, "never_warm_start": True, "steps": 400})
+    passed = all(check.passed for check in checks)
+    record = EvidenceRecordV2(2, "conditional_diversity_aligned_smoke", config.run.evidence_tier, "passed" if passed else "failed", run.git_commit, run.dirty_patch_hash, run.config_hash, expected, {"alignment_admission": file_sha256(args.alignment_admission_evidence), "history": file_sha256(history_path), "diagnostic_final_checkpoint": file_sha256(diagnostic), "metric_contract": ALIGNED_DIVERSITY_METRIC_CONTRACT, "loss_contract": ALIGNED_DIVERSITY_LOSS_CONTRACT}, checks, ("train_diversity_aligned",) if passed else (), None if passed else "aligned diversity smoke failed")
+    _write_evidence(run, "conditional_diversity_aligned_smoke_evidence.json", record)
+    print(run.root)
+    return 0
+
+
 def train_diversity_recovery(args, config: V2Config) -> int:
     """User-run one balanced epoch code-only recovery (not launched here)."""
     _require_identity(config)
@@ -1315,18 +1482,43 @@ def train_diversity_recovery(args, config: V2Config) -> int:
     return 0
 
 
+def train_diversity_aligned(args, config: V2Config) -> int:
+    """User-run one-epoch aligned diversity training from the semantic anchor."""
+    _require_identity(config)
+    smoke = _passed_evidence(args.aligned_smoke_evidence, kind="conditional_diversity_aligned_smoke")
+    images, labels_all = load_local_mnist(args.dataset_root, train=True)
+    train_images, train_labels, _, _, split = _split(images, labels_all, args.dataset_root)
+    evaluator_hash = evaluator_checkpoint_hash(args.evaluator_checkpoint); checkpoint_hash = file_sha256(args.checkpoint)
+    expected = _context(config, evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, checkpoint_hash=checkpoint_hash)
+    require_evidence_action(smoke, kind="conditional_diversity_aligned_smoke", action="train_diversity_aligned", expected_context=expected)
+    device = torch.device(config.run.device); evaluator, _ = load_frozen_evaluator(args.evaluator_checkpoint, device=device)
+    bundle, init_manifest = _load_bundle(config, args.checkpoint, device=device, evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, allow_balanced_schedule=True)
+    for parameter in (bundle.generator.class_carrier_logits, bundle.system.encoder.phase, bundle.system.decoder.phase): parameter.requires_grad_(False)
+    groups = _diversity_parameters(bundle); optimizer = torch.optim.Adam([p for ps in groups.values() for p in ps], lr=config.conditional_generation.generator_learning_rate); settings = config.conditional_generation; assert settings is not None
+    history = []
+    for batch_number, indices in enumerate(balanced_batches(train_labels, batch_size=settings.logical_batch_size, seed=1234)):
+        labels = train_labels.index_select(0, indices).to(device); codes = _aligned_codes(labels, seed=100000 + batch_number); optimizer.zero_grad(set_to_none=True)
+        loss, summary, _ = _aligned_objective(bundle=bundle, evaluator=evaluator, codes=codes, labels=labels, real_views=train_images.index_select(0, indices).to(device), settings=settings, config=config); loss.backward(); optimizer.step(); history.append(summary | {"step": float(batch_number + 1)})
+    run = _new_run(config); path = run.root / "conditional_diversity_aligned_generator.pt"
+    manifest = ConditionalCheckpointManifestV2(2, IDENTITY_ARCHITECTURE, _system_signature(config), canonical_sha256(config.model_dump(mode="json")), split.manifest_hash, evaluator_hash, settings.fixed_exposure_scale, state_signature(bundle.state_dict()), state_content_hash(bundle.state_dict()), IDENTITY_GENERATOR_CONTRACT, canonical_sha256(CONDITIONAL_CONTROL_METRIC_CONTRACT), BALANCED_TRAINING_SCHEDULE_CONTRACT, 1234, init_manifest.initialization_state_hash)
+    save_conditional_checkpoint(path, bundle, manifest, extra={"history": history, "metric_contract": ALIGNED_DIVERSITY_METRIC_CONTRACT, "loss_contract": ALIGNED_DIVERSITY_LOSS_CONTRACT, "steps": len(history), "first_400_schedule_hash": canonical_sha256([{"indices": tensor_sha256(indices), "codes": tensor_sha256(_aligned_codes(train_labels.index_select(0, indices), seed=100000 + number))} for number, indices in zip(range(400), balanced_batches(train_labels, batch_size=50, seed=1234))])})
+    out_hash = file_sha256(path); finite = bool(torch.isfinite(torch.tensor([row["total"] for row in history])).all())
+    record = EvidenceRecordV2(2, "conditional_diversity_aligned_training", config.run.evidence_tier, "passed" if finite else "failed", run.git_commit, run.dirty_patch_hash, run.config_hash, _context(config, evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, checkpoint_hash=out_hash), {"checkpoint": out_hash, "aligned_smoke": file_sha256(args.aligned_smoke_evidence), "steps": len(history), "metric_contract": ALIGNED_DIVERSITY_METRIC_CONTRACT}, (GateResult("finite_training_loss", finite, {"steps": float(len(history))}),), ("evaluate",) if finite else (), None if finite else "aligned diversity training produced non-finite loss")
+    _write_evidence(run, "conditional_diversity_aligned_training_evidence.json", record); print(run.root); return 0
+
+
 def conditional_evaluate(args, config: V2Config) -> int:
     _require_conditional(config)
     _require_current_acceptance(config)
     training_record = EvidenceRecordV2.from_dict(json.loads(Path(args.training_evidence).read_text(encoding="utf-8")))
-    if training_record.evidence_kind not in {"conditional_training", "conditional_diversity_training"} or training_record.status != "passed":
+    if training_record.evidence_kind not in {"conditional_training", "conditional_diversity_training", "conditional_diversity_aligned_training"} or training_record.status != "passed":
         raise ValueError("conditional evaluate requires passed conditional training evidence")
     device = torch.device(config.run.device)
     images, all_labels = load_local_mnist(args.dataset_root, train=True)
     _, _, validation_images, validation_labels, split = _split(images, all_labels, args.dataset_root)
     evaluator, _ = load_frozen_evaluator(args.evaluator_checkpoint, device=device)
     evaluator_hash = evaluator_checkpoint_hash(args.evaluator_checkpoint)
-    bundle, manifest = _load_bundle(config, args.checkpoint, device=device, evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, allow_balanced_schedule=training_record.evidence_kind == "conditional_diversity_training")
+    bundle, manifest = _load_bundle(config, args.checkpoint, device=device, evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, allow_balanced_schedule=training_record.evidence_kind in {"conditional_diversity_training", "conditional_diversity_aligned_training"})
     if training_record.context.checkpoint_hash != file_sha256(args.checkpoint):
         raise ValueError("training evidence does not bind the evaluation checkpoint")
     settings = config.conditional_generation
@@ -1355,7 +1547,9 @@ def conditional_evaluate(args, config: V2Config) -> int:
     recalls = [float(((predictions[labels == label] == label).to(torch.float32).mean()).item()) for label in range(10)]
     code_fraction = _code_fraction(raw, labels)
     saturation = float(torch.relu(raw / settings.fixed_exposure_scale - 1.0).gt(0).to(torch.float32).mean().item())
-    diversity_ratios = per_label_feature_diversity_ratio(generated_features, real_features, labels)
+    if training_record.evidence_kind == "conditional_diversity_aligned_training" and training_record.input_hashes.get("metric_contract") != ALIGNED_DIVERSITY_METRIC_CONTRACT:
+        raise ValueError("aligned evaluation requires the normalized diversity metric contract")
+    diversity_ratios = tuple(relative_diversity_ratios(generated_features, real_features, labels))
     coverage_ratio = conditional_coverage_ratio(generated_features, generated_view, real_features, real_view, labels, epsilon=settings.sinkhorn_epsilon, iterations=settings.sinkhorn_iterations)
     checks = (
         GateResult("semantic_accuracy", accuracy >= 0.95, {"accuracy": accuracy}),

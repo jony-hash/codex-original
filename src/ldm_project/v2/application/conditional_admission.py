@@ -11,6 +11,7 @@ from .conditional_runtime import (
     train_evaluator,
     conditional_training_completion,
     conditional_diversity_observability,
+    conditional_diversity_alignment_admission,
 )
 
 __all__ = [
@@ -24,6 +25,7 @@ __all__ = [
     "train_evaluator",
     "conditional_training_completion",
     "conditional_diversity_observability",
+    "conditional_diversity_alignment_admission",
 ]
 
 conditional_semantic_localization = _identity_semantic_localization

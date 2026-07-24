@@ -148,6 +148,23 @@ def relative_diversity_loss(features: torch.Tensor, real_features: torch.Tensor,
     return torch.stack(terms).mean()
 
 
+def camera_code_fraction(values: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+    """Differentiable sample-centered ANOVA code fraction on raw CMOS."""
+    if values.ndim != 4 or values.shape[1] != 1 or labels.ndim != 1 or values.shape[0] != labels.numel():
+        raise ValueError("camera code fraction expects raw [N,1,H,W] and labels [N]")
+    means = torch.stack([values[labels == label].mean(dim=0) for label in range(10)])
+    residual = values - means.index_select(0, labels)
+    centered = values - values.mean(dim=0, keepdim=True)
+    return residual.square().sum() / centered.square().sum().clamp_min(1.0e-12)
+
+
+def camera_code_fraction_loss(raw: torch.Tensor, labels: torch.Tensor, *, target: float = 0.25) -> torch.Tensor:
+    if not 0.0 < target < 1.0:
+        raise ValueError("camera code fraction target must lie in (0,1)")
+    fraction = camera_code_fraction(raw, labels)
+    return torch.relu(torch.as_tensor(target, device=raw.device, dtype=raw.dtype) - fraction).square()
+
+
 def raw_from_generator(system: nn.Module, generator: ConditionalGlobalAmplitudeGenerator, codes: torch.Tensor, labels: torch.Tensor, *, activation_checkpoint: bool) -> torch.Tensor:
     def forward(command: torch.Tensor) -> torch.Tensor:
         return system.forward(system.command(command)).raw_camera.tensor
