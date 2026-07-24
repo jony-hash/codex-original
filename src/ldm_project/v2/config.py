@@ -189,6 +189,33 @@ class StudentTrainingConfig(StrictModel):
         return self
 
 
+class ConditionalGenerationConfig(StrictModel):
+    """Teacher-free, full-optical-path conditional generation contract."""
+
+    code_dim: Literal[8] = 8
+    hidden_dim: Literal[64] = 64
+    command_gain: float = Field(default=0.1, gt=0.0, le=0.5)
+    fixed_exposure_scale: float = Field(default=0.4913053810596466, gt=0.0)
+    logical_batch_size: int = Field(default=50, ge=50)
+    epochs: int = Field(default=5, ge=1)
+    generator_learning_rate: float = Field(default=2.0e-4, gt=0.0)
+    phase_learning_rate: float = Field(default=5.0e-5, gt=0.0)
+    sinkhorn_epsilon: float = Field(default=0.05, gt=0.0)
+    sinkhorn_iterations: int = Field(default=20, ge=1)
+    samples_per_label: int = Field(default=6000, ge=1)
+    shard_size: int = Field(default=1000, ge=1)
+
+    @model_validator(mode="after")
+    def conditional_contract_is_explicit(self) -> "ConditionalGenerationConfig":
+        if self.logical_batch_size % 10:
+            raise ValueError("conditional logical_batch_size must be divisible by ten")
+        if self.logical_batch_size // 10 < 5:
+            raise ValueError("conditional batches require at least five samples per label")
+        if self.samples_per_label % self.shard_size:
+            raise ValueError("samples_per_label must divide exactly into shards")
+        return self
+
+
 class ExecutionConfig(StrictModel):
     """Memory-safe physical execution controls; they never alter the optics."""
 
@@ -208,16 +235,36 @@ class RunConfig(StrictModel):
 
 class V2Config(StrictModel):
     schema_version: Literal[2]
+    architecture: Literal["legacy_v2_distillation", "conditional_global_amplitude_v1"] = "legacy_v2_distillation"
     system: SystemConfig
     teacher: TeacherConfig | None = None
     prototype_calibration: PrototypeCalibrationConfig | None = None
     capacity_audit: CapacityAuditConfig | None = None
     student_training: StudentTrainingConfig | None = None
+    conditional_generation: ConditionalGenerationConfig | None = None
     execution: ExecutionConfig = Field(default_factory=ExecutionConfig)
     run: RunConfig
 
     @model_validator(mode="after")
     def formal_audit_contract_is_locked(self) -> "V2Config":
+        if self.architecture == "conditional_global_amplitude_v1":
+            if self.conditional_generation is None:
+                raise ValueError("conditional architecture requires conditional_generation")
+            forbidden = {
+                "teacher": self.teacher,
+                "prototype_calibration": self.prototype_calibration,
+                "capacity_audit": self.capacity_audit,
+                "student_training": self.student_training,
+            }
+            supplied = [name for name, value in forbidden.items() if value is not None]
+            if supplied:
+                raise ValueError(f"conditional architecture rejects legacy fields: {', '.join(supplied)}")
+            if not self.system.is_formal:
+                raise ValueError("conditional architecture requires the formal identity-OLS system")
+            execution = self.execution
+            if (execution.training_microbatch_size, execution.evaluation_microbatch_size, execution.activation_checkpoint) != (1, 1, True):
+                raise ValueError("conditional formal execution locks training/evaluation microbatches to one with activation checkpointing")
+            return self
         if not self.system.is_formal or self.capacity_audit is None:
             return self
         expected = {

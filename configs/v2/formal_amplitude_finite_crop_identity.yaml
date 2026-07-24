@@ -1,34 +1,20 @@
 schema_version: 2
+architecture: conditional_global_amplitude_v1
 system:
   kind: formal_amplitude_finite_crop_identity
-teacher:
-  first_stage_checkpoint: outputs/final_pt/first_stage_best_optical.pt
-  diffusion_checkpoint: outputs/final_pt/diffusion_best.pt
-  target_plane: teacher_camera
-  guidance_scale: 4.0
-  seed: 1234
-  latent_geometry: matched_first_stage
-prototype_calibration:
-  epochs: 5
-  learning_rate: 0.0005
-  fixed_exposure_scale: 0.4913053810596466
-  initialization: clean_intensity_to_amplitude
-  optimizer_steps_per_epoch: 40
-  prototype_correlation_weight: 0.25
-  prototype_dice_weight: 0.30
-  prototype_ce_weight: 0.10
-  prototype_ce_temperature: 0.07
-capacity_audit:
-  dct_modes: 64
-  selected_basis_dim: 8
-  max_cycles_per_mm: 20.0
-  codes_per_label: 100
-  seed: 1234
-  finite_difference_epsilon: 0.001
-student_training:
-  epochs: 5
-  learning_rate: 0.0001
+conditional_generation:
   code_dim: 8
+  hidden_dim: 64
+  command_gain: 0.1
+  fixed_exposure_scale: 0.4913053810596466
+  logical_batch_size: 50
+  epochs: 5
+  generator_learning_rate: 0.0002
+  phase_learning_rate: 0.00005
+  sinkhorn_epsilon: 0.05
+  sinkhorn_iterations: 20
+  samples_per_label: 6000
+  shard_size: 1000
 execution:
   prototype_microbatch_size: 1
   capacity_microbatch_size: 1

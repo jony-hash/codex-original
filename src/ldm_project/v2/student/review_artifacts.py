@@ -68,3 +68,35 @@ def write_review_artifacts(*, root: str | Path, stem: str, kind: str, raw_cmos: 
     template = root / f"{stem}_manual_review_template.json"
     atomic_write_json(template, {"schema_version": 2, "review_kind": kind, "reviewed_tensor_sha256": raw_hash, "reviewed_preview_sha256": preview_hash, "readable_labels": [], "reviewer": "REQUIRED_REVIEWER"})
     return ReviewArtifactsV2(preview, preview_hash, template, raw_hash)
+
+
+def write_conditional_review_artifacts(*, root: str | Path, raw_cmos: torch.Tensor, labels: torch.Tensor, exposure_scale: float) -> ReviewArtifactsV2:
+    """Render a fixed 10×16 raw-CMOS grid for conditional-generation review."""
+    if raw_cmos.ndim != 4 or raw_cmos.shape[1] != 1 or labels.ndim != 1 or labels.shape[0] != raw_cmos.shape[0]:
+        raise ValueError("conditional review requires matching [N, 1, H, W] raw CMOS and labels")
+    raw, labels = raw_cmos.detach().cpu(), labels.detach().cpu().long()
+    selected = []
+    for label in range(10):
+        rows = torch.nonzero(labels == label, as_tuple=False).flatten()
+        if rows.numel() < 16:
+            raise ValueError("conditional review requires sixteen samples for every label")
+        selected.append(rows[:16])
+    indices = torch.cat(selected)
+    reviewed = raw.index_select(0, indices)
+    figure, axes = plt.subplots(10, 16, figsize=(20, 13))
+    for label in range(10):
+        for column in range(16):
+            axis = axes[label, column]
+            axis.imshow((reviewed[label * 16 + column, 0] / exposure_scale).clamp(0.0, 1.0), cmap="gray", vmin=0.0, vmax=1.0)
+            axis.axis("off")
+            if column == 0:
+                axis.set_title(str(label), loc="left")
+    figure.tight_layout(pad=0.1)
+    root = Path(root)
+    preview = root / "conditional_evaluation_fixed_exposure.png"
+    _atomic_png(preview, figure)
+    plt.close(figure)
+    raw_hash, preview_hash = tensor_sha256(reviewed), file_sha256(preview)
+    template = root / "conditional_evaluation_manual_review_template.json"
+    atomic_write_json(template, {"schema_version": 2, "review_kind": "conditional_generation", "reviewed_tensor_sha256": raw_hash, "reviewed_preview_sha256": preview_hash, "samples_per_label": 16, "readable_counts": [0] * 10, "reviewer": "REQUIRED_REVIEWER"})
+    return ReviewArtifactsV2(preview, preview_hash, template, raw_hash)

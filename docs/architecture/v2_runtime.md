@@ -16,6 +16,64 @@ code + optional label -> amplitude command -> complete 4f relay
 
 v2 从 v79 研究快照旁路重写而来；两线的范围、回档点和发布状态见 [Git 分支治理与回档指南](../operations/git_branch_management.md)。v1 的版本化诊断命令与 v2 子命令不互相替代。
 
+## 条件全光路生成主线
+
+`configs/v2/formal_amplitude_finite_crop_identity.yaml` 现在显式选择
+`conditional_global_amplitude_v1`。正式输入为 `label + 8D code`：电子端
+generator_e 生成 `200×200` 振幅 SLM 指令，每个样本随后完整经过 Encoder →
+identity OLS → Decoder → raw CMOS。该配置拒绝 teacher、teacher target、prototype
+和 DCT basis 字段；历史 v2 子命令只保留为兼容路径，不能消费此配置。
+
+训练只读取本地 MNIST train split 的固定 55,000/5,000 分层划分。raw CMOS 使用全局
+曝光 `0.4913053810596466`，并通过 area pooling 得到 `28×28` 视图；不会做逐样本
+归一化。官方 MNIST test split 不进入生成器训练。
+
+```bash
+python -m ldm_project.v2 student train-evaluator \
+  --config configs/v2/formal_amplitude_finite_crop_identity.yaml --dataset-root data
+python -m ldm_project.v2 audit conditional-observability \
+  --config configs/v2/formal_amplitude_finite_crop_identity.yaml
+python -m ldm_project.v2 student controllability-smoke \
+  --config configs/v2/formal_amplitude_finite_crop_identity.yaml --dataset-root data \
+  --evaluator-checkpoint <frozen_evaluator.pt> --observability-evidence <observability.json>
+python -m ldm_project.v2 student train \
+  --config configs/v2/formal_amplitude_finite_crop_identity.yaml --dataset-root data \
+  --evaluator-checkpoint <frozen_evaluator.pt> --observability-evidence <observability.json> \
+  --controllability-evidence <smoke.json>
+```
+
+`student evaluate` consumes conditional training evidence, checkpoint, local MNIST and the
+same frozen evaluator. Its automatic gates include semantic accuracy, per-class recall, CMOS
+code fraction, saturation, per-class feature-diversity ratio and Sinkhorn coverage. A passed
+automatic result becomes `pending_review`, not accepted: it writes a deterministic `10×16`
+fixed-exposure raw-CMOS grid and a content-bound review template. The next formal commands are:
+
+```bash
+python -m ldm_project.v2 student admit-conditional-evaluation \
+  --config configs/v2/formal_amplitude_finite_crop_identity.yaml \
+  --evaluation-evidence <evaluation.json> --evaluation-raw-cmos <raw.pt> \
+  --evaluation-labels <labels.pt> --evaluation-preview <review.png> \
+  --manual-review <completed-review.json>
+python -m ldm_project.v2 student export-dataset \
+  --config configs/v2/formal_amplitude_finite_crop_identity.yaml \
+  --checkpoint <generator.pt> --acceptance-evidence <generation-admission.json>
+python -m ldm_project.v2 student audit-memorization \
+  --config configs/v2/formal_amplitude_finite_crop_identity.yaml \
+  --candidate-evidence <candidate.json> --candidate-dataset <dataset-dir> \
+  --dataset-root data --evaluator-checkpoint <frozen_evaluator.pt>
+python -m ldm_project.v2 student evaluate-utility \
+  --config configs/v2/formal_amplitude_finite_crop_identity.yaml \
+  --candidate-evidence <candidate.json> --candidate-dataset <dataset-dir> --dataset-root data
+```
+
+The manual gate requires at least 14 readable samples for each of ten labels. Exported shards
+are explicitly `candidate` artifacts, not accepted datasets. `audit-memorization` uses only
+their stored `28×28` views and chunked frozen-evaluator nearest neighbors; `evaluate-utility`
+is the only conditional command that reads the official MNIST test split. Only `student
+admit-dataset`, after passed generation, memorization and utility evidence, writes the immutable
+accepted manifest. Long CUDA training, the full export, manual review and utility experiment
+remain user-run tasks.
+
 ## LightGen 对齐诊断（2026-07-24）
 
 `formal_amplitude_finite_crop_identity` 没有改变，仍是 `2+2`、identity OLS、`1.50 mm` 的正式合同。此前失败只冻结已验证的局部注入族：十类 direct-template 附近的 64 个低频 DCT candidates、8 个线性 basis 与 gain `0.1`；它不能外推为 amplitude SLM 失败。

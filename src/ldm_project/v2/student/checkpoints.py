@@ -113,3 +113,46 @@ def load_prototype_warm_start(path: str | Path, model: torch.nn.Module, *, expec
         target_system_signature=expected_system_signature,
         loaded_key_signatures=loaded,
     )
+
+
+@dataclass(frozen=True)
+class ConditionalCheckpointManifestV2:
+    """Exact checkpoint contract for the teacher-free conditional architecture."""
+
+    schema_version: int
+    architecture_kind: str
+    system_signature: str
+    config_hash: str
+    dataset_split_manifest_hash: str
+    evaluator_checkpoint_hash: str
+    exposure_scale: float
+    state_signature: str
+    state_content_hash: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+def save_conditional_checkpoint(path: str | Path, model: torch.nn.Module, manifest: ConditionalCheckpointManifestV2, *, extra: Mapping[str, Any] | None = None) -> None:
+    state = model.state_dict()
+    if manifest.schema_version != 2 or manifest.architecture_kind != "conditional_global_amplitude_v1":
+        raise ValueError("invalid conditional checkpoint manifest")
+    if manifest.state_signature != state_signature(state) or manifest.state_content_hash != state_content_hash(state):
+        raise ValueError("conditional checkpoint manifest does not exactly describe model state")
+    atomic_torch_save(path, {"manifest": manifest.to_dict(), "state_dict": state, "extra": dict(extra or {})})
+
+
+def load_conditional_checkpoint(path: str | Path, model: torch.nn.Module, expected: ConditionalCheckpointManifestV2) -> Mapping[str, Any]:
+    payload = torch.load(path, map_location="cpu", weights_only=False)
+    if not isinstance(payload, dict) or not isinstance(payload.get("manifest"), dict) or not isinstance(payload.get("state_dict"), dict):
+        raise ValueError("invalid conditional checkpoint")
+    actual = ConditionalCheckpointManifestV2(**payload["manifest"])
+    if actual != expected:
+        raise ValueError("conditional checkpoint does not match the requested architecture/system/config")
+    state = payload["state_dict"]
+    if state_signature(state) != actual.state_signature or state_content_hash(state) != actual.state_content_hash:
+        raise ValueError("conditional checkpoint state content changed")
+    missing, unexpected = model.load_state_dict(state, strict=True)
+    if missing or unexpected:
+        raise ValueError("conditional checkpoint state mismatch")
+    return payload.get("extra", {})

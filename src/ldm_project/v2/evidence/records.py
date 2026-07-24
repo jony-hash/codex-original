@@ -26,6 +26,10 @@ class EvidenceContextV2:
     calibration_hash: str | None = None
     checkpoint_hash: str | None = None
     basis_hash: str | None = None
+    evaluator_checkpoint_hash: str | None = None
+    dataset_split_manifest_hash: str | None = None
+    exposure_scale: float | None = None
+    candidate_dataset_manifest_hash: str | None = None
 
     def assert_matches(self, expected: "EvidenceContextV2", *, fields: tuple[str, ...] | None = None) -> None:
         names = fields or tuple(self.to_dict())
