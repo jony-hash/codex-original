@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
-import subprocess
 import sys
 import tempfile
 import unittest
@@ -13,32 +12,16 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class RepoLayoutTests(unittest.TestCase):
-    def test_tools_are_importable_without_sys_path_mutation(self) -> None:
-        tools_dir = ROOT / "tools"
-        self.assertTrue((tools_dir / "__init__.py").is_file())
+    def test_active_scripts_are_not_import_path_mutators(self) -> None:
+        script_dirs = (ROOT / "scripts" / "maintenance", ROOT / "scripts" / "visualization")
 
         offenders = []
-        for path in sorted(tools_dir.glob("*.py")):
-            if "sys.path" in path.read_text(encoding="utf-8"):
-                offenders.append(path.name)
+        for directory in script_dirs:
+            for path in sorted(directory.glob("*.py")):
+                if "sys.path" in path.read_text(encoding="utf-8"):
+                    offenders.append(str(path.relative_to(ROOT)))
         self.assertEqual(offenders, [])
-
-        completed = subprocess.run(
-            [
-                sys.executable,
-                "-c",
-                (
-                    "import tools.diagnose_v57_first_collapse_complex_field; "
-                    "import tools.diagnose_v58_aperture_throughput_upper_bound; "
-                    "import tools.diagnose_v59_upstream_separation_isolation"
-                ),
-            ],
-            cwd=ROOT,
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertTrue((ROOT / "experiments" / "archive" / "v57_v67" / "tools").is_dir())
 
     def test_expected_scaffold_files_exist(self) -> None:
         expected = [
@@ -107,8 +90,8 @@ class RepoLayoutTests(unittest.TestCase):
             ROOT / "src" / "ldm_project" / "eval_reports.py",
             ROOT / "tests" / "test_teacher_training_utils.py",
             ROOT / "tests" / "test_eval_reports.py",
-            ROOT / "tools" / "diagnose_v59_upstream_separation_isolation.py",
-            ROOT / "tools" / "organize_outputs_by_version.py",
+            ROOT / "experiments" / "archive" / "v57_v67" / "tools" / "diagnose_v59_upstream_separation_isolation.py",
+            ROOT / "scripts" / "maintenance" / "organize_outputs_by_version.py",
         ]
         for path in expected:
             self.assertTrue(path.exists(), f"missing expected file: {path}")
@@ -128,7 +111,7 @@ class RepoLayoutTests(unittest.TestCase):
         self.assertIs(module.main, main)
 
     def _load_output_tool(self):
-        tool_path = ROOT / "tools" / "organize_outputs_by_version.py"
+        tool_path = ROOT / "scripts" / "maintenance" / "organize_outputs_by_version.py"
         spec = importlib.util.spec_from_file_location("organize_outputs_by_version", tool_path)
         self.assertIsNotNone(spec)
         self.assertIsNotNone(spec.loader)
@@ -276,13 +259,13 @@ class RepoLayoutTests(unittest.TestCase):
         design_doc = ROOT / "docs" / "ldm_migration" / "single_shot_ldm_distillation.md"
         content = design_doc.read_text(encoding="utf-8")
         self.assertIn("D2NN one-shot", content)
-        self.assertIn("configs/train_v56_coherent_relay_from_scratch.yaml", content)
+        self.assertIn("configs/v1/formal/train_v56_coherent_relay_from_scratch.yaml", content)
         self.assertIn("diffractive_phase_only", content)
         self.assertIn("100 × 100 @ 2 µm", content)
         self.assertIn("d = 1.50 mm", content)
 
     def test_one_shot_distill_train_and_eval_configs_do_not_use_relay_identity(self) -> None:
-        config_dir = ROOT / "configs"
+        config_dir = ROOT / "configs" / "v1" / "formal"
         checked = 0
         for pattern in ("train_v56*.yaml", "eval_v56*.yaml"):
             for path in config_dir.glob(pattern):
@@ -303,7 +286,7 @@ class RepoLayoutTests(unittest.TestCase):
             self.assertFalse(path.exists(), f"historical migration doc should be removed: {path}")
 
     def test_train_config_defaults_to_mnist_subset(self) -> None:
-        config_path = ROOT / "configs" / "train_ldm.yaml"
+        config_path = ROOT / "configs" / "v1" / "formal" / "train_ldm.yaml"
         content = config_path.read_text(encoding="utf-8")
         self.assertIn("dataset: mnist", content)
         self.assertIn("validation_fraction: 0.1", content)

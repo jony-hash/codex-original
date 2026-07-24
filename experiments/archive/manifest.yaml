@@ -24,3 +24,41 @@ archives:
       - docs/ldm_migration/experiment_history.md
       - docs/ldm_migration/current_handoff.md
     source_commit: bb2d8ee
+  - id: v52-v56-tools
+    version_range: v52-v56
+    original_path: tools/validate_v{52,55,56}_*.py
+    archived_path: experiments/archive/pre_v56/tools/
+    role: historical physical-forward and relay validation launchers
+    diagnostic_only: true
+    runnable: false
+    replacement: configs/v1/diagnostic/ and configs/v1/formal/
+    evidence_paths:
+      - docs/status/experiment_history.md
+    source_commit: 758363e
+  - id: v57-v67-tools
+    version_range: v57-v67
+    original_path: tools/{diagnose,run,export}_v*.py
+    archived_path: experiments/archive/v57_v67/tools/
+    role: historical collapse, propagation, and transparent-boundary diagnostics
+    diagnostic_only: true
+    runnable: false
+    replacement: docs/status/current_handoff.md
+    source_commit: 758363e
+  - id: v68-v69-tools-and-configs
+    version_range: v68-v69
+    original_path: tools/{audit,decide,diagnose}_v6*.py; configs/train_v6*.yaml
+    archived_path: experiments/archive/v68_v69/{tools,configs}/
+    role: historical raw-CMOS admission and code-distillation research
+    diagnostic_only: true
+    runnable: false
+    replacement: src/ldm_project/v2/
+    source_commit: 758363e
+  - id: v70-v79-tools-and-configs
+    version_range: v70-v79
+    original_path: tools/{audit,decide}_v7*.py; configs/train_v78_*.yaml
+    archived_path: experiments/archive/v70_v79/{tools,configs}/
+    role: historical supported-basis and semantic-command audits
+    diagnostic_only: true
+    runnable: false
+    replacement: src/ldm_project/v2/
+    source_commit: 758363e
