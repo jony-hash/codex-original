@@ -13,7 +13,7 @@ from ldm_project.v2.student.conditional import conditional_sinkhorn_loss, fixed_
 from ldm_project.v2.student.conditional_acceptance import chunked_nearest_distances, memorization_statistics, paired_bootstrap_lower_bound, per_label_feature_diversity_ratio
 from ldm_project.v2.student.generator import ConditionalGlobalAmplitudeGenerator, IdentityAnchoredConditionalAmplitudeGenerator
 from ldm_project.v2.evidence.reviews import ConditionalManualReviewV2
-from ldm_project.v2.application.conditional import _first_hundred_schedule_hash, _identity_isolation_classification, _require_current_acceptance
+from ldm_project.v2.application.conditional import _first_hundred_schedule_hash, _identity_isolation_classification, _require_current_acceptance, _semantic_localization_classification
 from ldm_project.v2.student.evaluator import MNISTSplitManifest
 
 
@@ -136,6 +136,24 @@ def test_identity_isolation_allows_one_semantic_alignment_smoke_only_after_trans
     assert _identity_isolation_classification(**{**common, "command_accuracy": 0.94}, camera_accuracy=0.18) == "carrier_semantics_invalid"
     assert _identity_isolation_classification(**{**common, "camera_fraction": 0.09}, camera_accuracy=0.18) == "optical_transport_attenuated"
     assert _identity_isolation_classification(**{**common, "saturation": 0.081}, camera_accuracy=0.18) == "exposure_saturation_excessive"
+
+
+def test_semantic_localization_classifies_gradient_contract_without_updates() -> None:
+    groups = ("class_carrier", "global_modes", "code_projection", "class_heads", "encoder_phase", "decoder_phase")
+    zero = {name: {"gradient_norm": 1.0, "gradient_finite": True, "gradient_nonzero": True} for name in groups}
+    formal = {name: {"gradient_norm": 1.0, "gradient_finite": True, "gradient_nonzero": True} for name in groups}
+    aligned = {name: {"cosine": 0.5} for name in groups}
+    assert _semantic_localization_classification(harness_valid=True, zero_gradients=zero, formal_gradients=formal, gradient_cosines=aligned) == "local_semantic_alignment_plausible"
+    assert _semantic_localization_classification(harness_valid=True, zero_gradients=zero, formal_gradients=formal, gradient_cosines={**aligned, "encoder_phase": {"cosine": -0.1}}) == "zero_code_joint_conflict"
+    assert _semantic_localization_classification(harness_valid=True, zero_gradients=zero, formal_gradients=formal, gradient_cosines={**aligned, "decoder_phase": {"cosine": 0.0}}) == "indeterminate_alignment"
+    zero_missing = {**zero, "class_carrier": {"gradient_norm": 0.0, "gradient_finite": True, "gradient_nonzero": False}}
+    assert _semantic_localization_classification(harness_valid=True, zero_gradients=zero_missing, formal_gradients=formal, gradient_cosines=aligned) == "zero_code_gradient_absent"
+    assert _semantic_localization_classification(harness_valid=False, zero_gradients=zero, formal_gradients=formal, gradient_cosines=aligned) == "harness_invalid"
+
+
+def test_semantic_alignment_isolation_routes_only_to_localization() -> None:
+    common = dict(harness_valid=True, command_fraction=0.15, first_collapse=None, camera_fraction=0.32, command_accuracy=0.97, saturation=0.05)
+    assert _identity_isolation_classification(**common, camera_accuracy=0.18) == "semantic_alignment_required"
 
 
 def test_identity_smoke_and_formal_training_share_the_first_hundred_schedule() -> None:

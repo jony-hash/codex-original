@@ -35,7 +35,7 @@ from ..student.training import _differentiable_correlation, calibrate_prototypes
 from ..student.capacity import supported_dct_candidates
 from ..teacher import TeacherPairManifestV2, TeacherTargetManifestV2, build_teacher_pair_manifest, build_teacher_target_manifest
 from .runs import V2Run
-from .conditional_admission import conditional_control_isolation, conditional_injection_admission, conditional_observability, controllability_smoke, qualify_evaluator, train_evaluator
+from .conditional_admission import conditional_control_isolation, conditional_injection_admission, conditional_observability, conditional_semantic_localization, controllability_smoke, qualify_evaluator, train_evaluator
 from .conditional_training import admit_conditional_evaluation, conditional_evaluate, conditional_train, sample_conditional
 from .conditional_dataset import admit_dataset, audit_memorization, evaluate_utility, export_conditional_dataset
 
@@ -1590,7 +1590,7 @@ def _parser() -> argparse.ArgumentParser:
     qualify.add_argument("--evaluator-checkpoint", required=True)
     qualify.set_defaults(handler=lambda args: qualify_evaluator(args, load_config(args.config)))
     controllability = student.add_parser("controllability-smoke")
-    for name in ("config", "dataset_root", "evaluator_checkpoint", "observability_evidence", "checkpoint", "injection_evidence", "isolation_evidence"):
+    for name in ("config", "dataset_root", "evaluator_checkpoint", "observability_evidence", "checkpoint", "injection_evidence", "isolation_evidence", "semantic_localization_evidence"):
         controllability.add_argument("--" + name.replace("_", "-"), required=name in {"config", "dataset_root", "evaluator_checkpoint", "observability_evidence"})
     controllability.add_argument("--steps", type=int, default=100)
     controllability.set_defaults(handler=lambda args: controllability_smoke(args, load_config(args.config)))
@@ -1647,6 +1647,10 @@ def _parser() -> argparse.ArgumentParser:
     conditional_control_parser.add_argument("--observability-evidence", required=False)
     conditional_control_parser.add_argument("--output")
     conditional_control_parser.set_defaults(handler=lambda args: conditional_control_isolation(args, load_config(args.config)))
+    conditional_localization_parser = audit.add_parser("conditional-semantic-localization")
+    for name in ("config", "dataset_root", "evaluator_checkpoint", "checkpoint", "injection_evidence", "observability_evidence", "isolation_evidence"):
+        conditional_localization_parser.add_argument("--" + name.replace("_", "-"), required=True)
+    conditional_localization_parser.set_defaults(handler=lambda args: conditional_semantic_localization(args, load_config(args.config)))
     memorization = audit.add_parser("memorization")
     for name in ("config", "candidate_evidence", "candidate_dataset", "dataset_root", "evaluator_checkpoint"):
         memorization.add_argument("--" + name.replace("_", "-"), required=True)

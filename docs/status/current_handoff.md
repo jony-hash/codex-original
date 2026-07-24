@@ -16,8 +16,8 @@
 ## 当前停止规则
 
 当前 identity 主线尚未完成 evaluator qualification、injection admission、observability、
-control isolation 和 100-step smoke 的全新内容绑定链。因此不运行 5-epoch 长训练、
-60,000 张导出、memorization、utility 或 promotion。
+control isolation 和语义定位的全新内容绑定链。因此不运行 5-epoch 长训练、60,000 张导出、
+memorization、utility 或 promotion。旧 100-step smoke 只保留为历史诊断，不能迁移到当前合同。
 
 任何 evidence 的 system/config/evaluator/split/checkpoint/action 不匹配，都必须在创建
 optimizer 前失败。旧 global-amplitude、teacher/prototype/capacity、direct-template 和
@@ -30,5 +30,8 @@ LightGen evidence 不能授权 identity 主线。
 
 ## 下一允许动作
 
-在 clean commit 上完成当前 evaluator qualification 和 identity admission/observability
-链；通过唯一一次 100-step smoke 后，才交给用户运行预注册的 5-epoch CUDA training。
+在 clean commit 上完成当前 evaluator qualification 和 identity admission/observability/
+control-isolation 链。若 isolation 判定为 semantic_alignment_required，必须先完成
+只读 conditional-semantic-localization；只有其结果为 local_semantic_alignment_plausible
+时，才允许当前内容绑定链中的唯一一次 100-step smoke。smoke 通过后，才交给用户运行
+预注册的 5-epoch CUDA training。

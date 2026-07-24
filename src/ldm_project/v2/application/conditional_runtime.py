@@ -29,6 +29,7 @@ CONDITIONAL_CONTROL_METRIC_CONTRACT = "sample_centered_anova_v1|sinkhorn_feature
 # checkpoint metric contract above.  Existing initialization checkpoints retain
 # the latter; new isolation evidence cannot be mistaken for the old gate.
 CONDITIONAL_CONTROL_ADMISSION_CONTRACT = "sample_centered_anova_v1|sinkhorn_feature_l2_v1|coverage_disjoint_real_ab_v1|physical_command_semantics_v2"
+CONDITIONAL_SEMANTIC_LOCALIZATION_CONTRACT = "identity_semantic_localization_v1|zero_code_vs_formal_gradient_cosine_v1|no_optimizer_state_change_v1"
 IDENTITY_ARCHITECTURE = "conditional_identity_logit_amplitude_v2"
 IDENTITY_GENERATOR_CONTRACT = canonical_sha256({"architecture": IDENTITY_ARCHITECTURE, "formula": "h=SiLU(Wz*z);r=Wy*h;c=tanh(z+r);A=sigmoid(By+0.5*sum(c*P_hat))", "gain": 0.5, "bias_free": True})
 TRAINING_SCHEDULE_CONTRACT = canonical_sha256({"epochs": 5, "logical_batch_size": 50, "steps": 5500, "seed": 1234, "code_seed": "(epoch+1)*100000+batch_number"})
@@ -504,8 +505,13 @@ def _identity_control_isolation(args, config: V2Config) -> int:
     report_path = run.root / "conditional_control_isolation_report.json"
     atomic_write_json(report_path, {"metric_contract": CONDITIONAL_CONTROL_ADMISSION_CONTRACT, "code_count_per_label": 17, "command_code_fraction": command_fraction, "physical_slm_code_fraction": physical_fraction, "camera_code_fraction": camera_fraction, "command_semantics": command_semantics, "camera_semantics": camera_semantics, "saturation": saturation, "first_collapse_plane": first_collapse, "classification": classification, "parameters_unchanged": before == after, "plane_metrics": plane_metrics, "trace_operations": operations})
     checks = (GateResult("fixed_probe_shape", len(codes) == 170, {"samples": 170.0}), GateResult("finite_fields", bool(torch.isfinite(raw).all()), {}), GateResult("complete_provenance", len(operations) >= 8 and any("identity_ols" in op for op in operations), {}), GateResult("parameters_unchanged", before == after, {}), GateResult("command_code_response", command_fraction >= 0.10, {"value": command_fraction}), GateResult("command_semantic_readability", float(command_semantics["accuracy"]) >= 0.95, {"accuracy": float(command_semantics["accuracy"])}), GateResult("fixed_exposure_saturation", saturation <= 0.08, {"saturation": saturation}))
-    smoke_authorized = classification in {"semantic_alignment_required", "controllable_upper_bound"}
-    record = EvidenceRecordV2(2, "conditional_control_isolation", "diagnostic", "diagnostic" if harness_valid else "failed", run.git_commit, run.dirty_patch_hash, run.config_hash, expected, {"injection_evidence": injection.evidence_hash, "observability_evidence": observability.evidence_hash, "checkpoint": init_hash, "report": file_sha256(report_path), "raw_cmos": file_sha256(raw_path), "control_admission_metric_contract": canonical_sha256(CONDITIONAL_CONTROL_ADMISSION_CONTRACT)}, checks, ("controllability_smoke",) if smoke_authorized else (), None if harness_valid else "conditional control isolation harness failed")
+    if classification == "semantic_alignment_required":
+        permitted_actions = ("conditional_semantic_localization",)
+    elif classification == "controllable_upper_bound":
+        permitted_actions = ("controllability_smoke",)
+    else:
+        permitted_actions = ()
+    record = EvidenceRecordV2(2, "conditional_control_isolation", "diagnostic", "diagnostic" if harness_valid else "failed", run.git_commit, run.dirty_patch_hash, run.config_hash, expected, {"injection_evidence": injection.evidence_hash, "observability_evidence": observability.evidence_hash, "checkpoint": init_hash, "report": file_sha256(report_path), "raw_cmos": file_sha256(raw_path), "control_admission_metric_contract": canonical_sha256(CONDITIONAL_CONTROL_ADMISSION_CONTRACT)}, checks, permitted_actions, None if harness_valid else "conditional control isolation harness failed")
     _write_evidence(run, "conditional_control_isolation_evidence.json", record)
     print(run.root)
     return 0
@@ -627,6 +633,136 @@ def conditional_control_isolation(args, config: V2Config) -> int:
     return 0
 
 
+def _gradient_summary(objective: torch.Tensor, groups: dict[str, tuple[nn.Parameter, ...]]) -> tuple[dict[str, dict[str, object]], dict[str, torch.Tensor]]:
+    """Collect gradients without creating an optimizer or changing parameters."""
+    parameters = [parameter for values in groups.values() for parameter in values]
+    gradients = torch.autograd.grad(objective, parameters, allow_unused=True)
+    summary: dict[str, dict[str, object]] = {}
+    vectors: dict[str, torch.Tensor] = {}
+    offset = 0
+    for name, values in groups.items():
+        rows = gradients[offset : offset + len(values)]
+        offset += len(values)
+        finite = all(gradient is None or bool(torch.isfinite(gradient).all()) for gradient in rows)
+        vectors[name] = torch.cat([gradient.detach().flatten() for gradient in rows if gradient is not None]) if any(gradient is not None for gradient in rows) else torch.zeros(1, device=objective.device)
+        norm = float(vectors[name].norm().item())
+        summary[name] = {"gradient_norm": norm, "gradient_finite": finite, "gradient_nonzero": norm > 1.0e-12, "structurally_inactive": norm <= 1.0e-12}
+    return summary, vectors
+
+
+def _semantic_metrics(logits: torch.Tensor, labels: torch.Tensor) -> dict[str, object]:
+    predictions = logits.argmax(dim=1)
+    true_logits = logits.gather(1, labels[:, None]).squeeze(1)
+    other_logits = logits.clone()
+    other_logits.scatter_(1, labels[:, None], float("-inf"))
+    margins = true_logits - other_logits.max(dim=1).values
+    return {
+        "accuracy": float((predictions == labels).to(torch.float32).mean().item()),
+        "per_label_accuracy": [float((predictions[labels == label] == label).to(torch.float32).mean().item()) for label in range(10)],
+        "mean_true_margin": float(margins.mean().item()),
+        "median_true_margin": float(margins.median().item()),
+        "confusion": torch.bincount(labels * 10 + predictions, minlength=100).reshape(10, 10).cpu().tolist(),
+    }
+
+
+def _semantic_localization_classification(*, harness_valid: bool, zero_gradients: dict[str, dict[str, object]], formal_gradients: dict[str, dict[str, object]], gradient_cosines: dict[str, dict[str, object]]) -> str:
+    required_zero = ("class_carrier", "encoder_phase", "decoder_phase")
+    required_formal = ("class_carrier", "global_modes", "class_heads", "encoder_phase", "decoder_phase")
+    if not harness_valid:
+        return "harness_invalid"
+    if any(float(zero_gradients[name]["gradient_norm"]) <= 1.0e-12 for name in required_zero):
+        return "zero_code_gradient_absent"
+    if not all(bool(formal_gradients[name]["gradient_nonzero"]) and bool(formal_gradients[name]["gradient_finite"]) for name in required_formal):
+        return "harness_invalid"
+    usable = [float(gradient_cosines[name]["cosine"]) for name in required_zero if gradient_cosines[name]["cosine"] is not None]
+    if any(value <= -0.05 for value in usable):
+        return "zero_code_joint_conflict"
+    if any(abs(value) < 0.05 for value in usable):
+        return "indeterminate_alignment"
+    return "local_semantic_alignment_plausible"
+
+
+def _identity_semantic_localization(args, config: V2Config) -> int:
+    """Read-only local semantic-gradient diagnostic for the identity anchor."""
+    _require_identity(config)
+    images, labels_all = load_local_mnist(args.dataset_root, train=True)
+    train_images, train_labels, _, _, split = _split(images, labels_all, args.dataset_root)
+    device = torch.device(config.run.device)
+    evaluator, _ = load_frozen_evaluator(args.evaluator_checkpoint, device=device)
+    evaluator_hash = evaluator_checkpoint_hash(args.evaluator_checkpoint)
+    init_hash = file_sha256(args.checkpoint)
+    expected = _context(config, evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, checkpoint_hash=init_hash)
+    injection = EvidenceRecordV2.from_dict(json.loads(Path(args.injection_evidence).read_text(encoding="utf-8")))
+    observability = EvidenceRecordV2.from_dict(json.loads(Path(args.observability_evidence).read_text(encoding="utf-8")))
+    isolation = EvidenceRecordV2.from_dict(json.loads(Path(args.isolation_evidence).read_text(encoding="utf-8")))
+    require_evidence_action(injection, kind="conditional_injection_admission", action="conditional_observability", expected_context=expected)
+    require_evidence_action(observability, kind="conditional_observability", action="conditional_control_isolation", expected_context=expected)
+    require_evidence_action(isolation, kind="conditional_control_isolation", action="conditional_semantic_localization", expected_context=expected, allow_diagnostic=True)
+    if isolation.input_hashes.get("control_admission_metric_contract") != canonical_sha256(CONDITIONAL_CONTROL_ADMISSION_CONTRACT):
+        raise ValueError("legacy control-isolation metric contract cannot authorize semantic localization")
+
+    settings = config.conditional_generation
+    assert settings is not None
+    bundle, _ = _load_bundle(config, args.checkpoint, device=device, evaluator_hash=evaluator_hash, split_hash=split.manifest_hash)
+    bundle.eval()
+    groups = _conditional_parameter_groups(bundle)
+    before = state_content_hash(bundle.state_dict())
+    zero_codes = torch.zeros(10, 8, device=device)
+    zero_labels = torch.arange(10, device=device)
+    control_codes, control_labels = _fixed_control_probe(device=device)
+    first_indices = next(balanced_batches(train_labels, batch_size=settings.logical_batch_size, seed=1234))
+    formal_labels = train_labels.index_select(0, first_indices).to(device)
+    formal_codes = _random_codes(formal_labels.numel(), device=device, seed=100000)
+    formal_real = train_images.index_select(0, first_indices).to(device)
+
+    with torch.enable_grad():
+        zero_raw = raw_from_generator_batched(bundle.system, bundle.generator, zero_codes, zero_labels, microbatch_size=config.execution.evaluation_microbatch_size, activation_checkpoint=False)
+        zero_view = fixed_exposure_view(zero_raw, settings.fixed_exposure_scale)
+        _, zero_logits = evaluator(zero_view)
+        zero_objective = torch.nn.functional.cross_entropy(zero_logits, zero_labels)
+        zero_gradients, zero_vectors = _gradient_summary(zero_objective, groups)
+        formal_total, formal_summary, formal_raw = conditional_loss(system=bundle.system, generator=bundle.generator, evaluator=evaluator, codes=formal_codes, labels=formal_labels, real_views=formal_real, exposure_scale=settings.fixed_exposure_scale, sinkhorn_epsilon=settings.sinkhorn_epsilon, sinkhorn_iterations=settings.sinkhorn_iterations, activation_checkpoint=False, microbatch_size=config.execution.evaluation_microbatch_size)
+        formal_gradients, formal_vectors = _gradient_summary(formal_total, groups)
+
+    gradient_cosines = {}
+    for name in groups:
+        zero_norm = float(zero_gradients[name]["gradient_norm"])
+        formal_norm = float(formal_gradients[name]["gradient_norm"])
+        gradient_cosines[name] = {"cosine": None if zero_norm <= 1.0e-12 or formal_norm <= 1.0e-12 else float(torch.nn.functional.cosine_similarity(zero_vectors[name][None], formal_vectors[name][None]).item()), "zero_code_structural": zero_norm <= 1.0e-12, "formal_structural": formal_norm <= 1.0e-12}
+
+    with torch.no_grad():
+        control_raw = raw_from_generator_batched(bundle.system, bundle.generator, control_codes, control_labels, microbatch_size=config.execution.evaluation_microbatch_size, activation_checkpoint=False)
+        _, control_logits = evaluator(fixed_exposure_view(control_raw, settings.fixed_exposure_scale))
+        _, formal_logits = evaluator(fixed_exposure_view(formal_raw.detach(), settings.fixed_exposure_scale))
+        trace_result = bundle.system.forward(bundle.system.command(control_codes[:1]), return_optical_trace=True)
+    after = state_content_hash(bundle.state_dict())
+    operations = tuple(field.provenance.operation for field in trace_result.optical_trace or ())
+    finite_gradients = all(bool(value["gradient_finite"]) for value in (*zero_gradients.values(), *formal_gradients.values()))
+    required_formal = ("class_carrier", "global_modes", "class_heads", "encoder_phase", "decoder_phase")
+    active_formal = all(bool(formal_gradients[name]["gradient_nonzero"]) for name in required_formal)
+    valid = bool(torch.isfinite(zero_raw).all() and torch.isfinite(control_raw).all() and torch.isfinite(formal_raw).all() and finite_gradients and active_formal and before == after and len(operations) >= 8 and any("identity_ols" in operation for operation in operations))
+    classification = _semantic_localization_classification(harness_valid=valid, zero_gradients=zero_gradients, formal_gradients=formal_gradients, gradient_cosines=gradient_cosines)
+
+    run = _new_run(config)
+    zero_path = run.root / "conditional_semantic_localization_zero_raw_cmos.pt"
+    control_path = run.root / "conditional_semantic_localization_control_raw_cmos.pt"
+    formal_path = run.root / "conditional_semantic_localization_formal_raw_cmos.pt"
+    atomic_torch_save(zero_path, zero_raw.detach().cpu())
+    atomic_torch_save(control_path, control_raw.detach().cpu())
+    atomic_torch_save(formal_path, formal_raw.detach().cpu())
+    zero_preview = write_review_artifacts(root=run.root, stem="semantic_localization_zero", kind="conditional_semantic_localization", raw_cmos=zero_raw.detach().cpu(), labels=zero_labels.cpu(), exposure_scale=settings.fixed_exposure_scale)
+    control_preview = write_review_artifacts(root=run.root, stem="semantic_localization_control", kind="conditional_semantic_localization", raw_cmos=control_raw.detach().cpu(), labels=control_labels.cpu(), exposure_scale=settings.fixed_exposure_scale)
+    report_path = run.root / "conditional_semantic_localization_report.json"
+    report = {"metric_contract": CONDITIONAL_SEMANTIC_LOCALIZATION_CONTRACT, "classification": classification, "parameters_unchanged": before == after, "optimizer_created": False, "zero_code_semantics": _semantic_metrics(zero_logits.detach(), zero_labels), "control_panel_semantics": _semantic_metrics(control_logits.detach(), control_labels), "formal_batch_semantics": _semantic_metrics(formal_logits.detach(), formal_labels), "formal_loss": asdict(formal_summary), "zero_code_gradients": zero_gradients, "formal_gradients": formal_gradients, "gradient_cosines": gradient_cosines, "control_code_fraction": balanced_code_fraction(control_raw.reshape(10, 17, *control_raw.shape[1:])), "control_saturation": float(torch.relu(control_raw / settings.fixed_exposure_scale - 1.0).gt(0).to(torch.float32).mean().item()), "trace_operations": operations, "trace_provenance": [field.provenance.to_dict() for field in (trace_result.optical_trace or ())], "first_formal_batch_schedule_hash": canonical_sha256({"indices": tensor_sha256(first_indices), "codes": tensor_sha256(formal_codes.cpu())})}
+    atomic_write_json(report_path, report)
+    checks = (GateResult("finite_fields_and_gradients", valid, {"finite": finite_gradients}), GateResult("parameters_unchanged", before == after, {}), GateResult("complete_trace", len(operations) >= 8 and any("identity_ols" in operation for operation in operations), {"trace_length": float(len(operations))}), GateResult("zero_code_semantic_gradients", all(float(zero_gradients[name]["gradient_norm"]) > 1.0e-12 for name in ("class_carrier", "encoder_phase", "decoder_phase")), {}), GateResult("formal_active_gradients", active_formal, {}))
+    permitted = ("controllability_smoke",) if classification == "local_semantic_alignment_plausible" else ()
+    record = EvidenceRecordV2(2, "conditional_semantic_localization", "diagnostic", "diagnostic" if valid else "failed", run.git_commit, run.dirty_patch_hash, run.config_hash, expected, {"injection_evidence": injection.evidence_hash, "observability_evidence": observability.evidence_hash, "isolation_evidence": isolation.evidence_hash, "checkpoint": init_hash, "report": file_sha256(report_path), "zero_raw_cmos": file_sha256(zero_path), "control_raw_cmos": file_sha256(control_path), "formal_raw_cmos": file_sha256(formal_path), "zero_preview": zero_preview.preview_sha256, "control_preview": control_preview.preview_sha256, "metric_contract": canonical_sha256(CONDITIONAL_SEMANTIC_LOCALIZATION_CONTRACT)}, checks, permitted, None if valid else "semantic localization harness failed")
+    _write_evidence(run, "conditional_semantic_localization_evidence.json", record)
+    print(run.root)
+    return 0
+
+
 def _conditional_optimizer(bundle: ConditionalBundle, config: V2Config) -> torch.optim.Optimizer:
     settings = config.conditional_generation
     assert settings is not None
@@ -650,7 +786,15 @@ def controllability_smoke(args, config: V2Config) -> int:
         isolation = EvidenceRecordV2.from_dict(json.loads(Path(args.isolation_evidence).read_text(encoding="utf-8")))
         require_evidence_action(injection, kind="conditional_injection_admission", action="conditional_observability", expected_context=expected)
         require_evidence_action(observability, kind="conditional_observability", action="conditional_control_isolation", expected_context=expected)
-        require_evidence_action(isolation, kind="conditional_control_isolation", action="controllability_smoke", expected_context=expected, allow_diagnostic=True)
+        if "controllability_smoke" in isolation.permitted_next_actions:
+            require_evidence_action(isolation, kind="conditional_control_isolation", action="controllability_smoke", expected_context=expected, allow_diagnostic=True)
+        else:
+            localization_path = getattr(args, "semantic_localization_evidence", None)
+            if not localization_path:
+                raise ValueError("semantic-alignment isolation requires semantic-localization evidence before smoke")
+            require_evidence_action(isolation, kind="conditional_control_isolation", action="conditional_semantic_localization", expected_context=expected, allow_diagnostic=True)
+            localization = EvidenceRecordV2.from_dict(json.loads(Path(localization_path).read_text(encoding="utf-8")))
+            require_evidence_action(localization, kind="conditional_semantic_localization", action="controllability_smoke", expected_context=expected, allow_diagnostic=True)
         if isolation.input_hashes.get("control_admission_metric_contract") != canonical_sha256(CONDITIONAL_CONTROL_ADMISSION_CONTRACT):
             raise ValueError("legacy control-isolation metric contract cannot authorize identity smoke")
     else:
