@@ -18,22 +18,27 @@ from ..student.admission import balanced_code_fraction
 from ..student.conditional import conditional_loss, fixed_exposure_view, raw_from_generator_batched
 from ..student.conditional_acceptance import conditional_coverage_ratio, load_candidate_dataset, memorization_statistics, paired_bootstrap_lower_bound, per_label_feature_diversity_ratio
 from ..student.evaluator import FrozenMNISTEvaluator, MNISTSplitManifest, balanced_batches, evaluator_checkpoint_hash, load_frozen_evaluator, load_local_mnist, save_evaluator_checkpoint, stratified_mnist_indices
-from ..student.generator import ConditionalGlobalAmplitudeGenerator
+from ..student.generator import ConditionalGlobalAmplitudeGenerator, IdentityAnchoredConditionalAmplitudeGenerator
+from ..evidence.records import require_evidence_action
 from ..student.review_artifacts import write_conditional_review_artifacts
 from .runs import V2Run
 
 
 CONDITIONAL_CONTROL_METRIC_CONTRACT = "sample_centered_anova_v1|sinkhorn_feature_l2_v1|coverage_disjoint_real_ab_v1"
+IDENTITY_ARCHITECTURE = "conditional_identity_logit_amplitude_v2"
+IDENTITY_GENERATOR_CONTRACT = canonical_sha256({"architecture": IDENTITY_ARCHITECTURE, "formula": "h=SiLU(Wz*z);r=Wy*h;c=tanh(z+r);A=sigmoid(By+0.5*sum(c*P_hat))", "gain": 0.5, "bias_free": True})
+TRAINING_SCHEDULE_CONTRACT = canonical_sha256({"epochs": 5, "logical_batch_size": 50, "steps": 5500, "seed": 1234, "code_seed": "(epoch+1)*100000+batch_number"})
 
 
 class ConditionalBundle(nn.Module):
     def __init__(self, config: V2Config, *, carrier_logits: torch.Tensor | None = None) -> None:
         super().__init__()
-        if config.architecture != "conditional_global_amplitude_v1" or config.conditional_generation is None:
-            raise ValueError("conditional bundle requires conditional_global_amplitude_v1 config")
+        if config.architecture not in {"conditional_global_amplitude_v1", IDENTITY_ARCHITECTURE} or config.conditional_generation is None:
+            raise ValueError("conditional bundle requires a supported conditional architecture config")
         settings = config.conditional_generation
         self.system = FormalAmplitudeFiniteCropIdentitySystem(config.system)
-        self.generator = ConditionalGlobalAmplitudeGenerator(
+        generator_type = IdentityAnchoredConditionalAmplitudeGenerator if config.architecture == IDENTITY_ARCHITECTURE else ConditionalGlobalAmplitudeGenerator
+        self.generator = generator_type(
             shape=config.system.slm_shape,
             code_dim=settings.code_dim,
             hidden_dim=settings.hidden_dim,
@@ -43,8 +48,14 @@ class ConditionalBundle(nn.Module):
 
 
 def _require_conditional(config: V2Config) -> None:
-    if config.architecture != "conditional_global_amplitude_v1" or config.conditional_generation is None:
-        raise ValueError("this command requires architecture: conditional_global_amplitude_v1")
+    if config.architecture not in {"conditional_global_amplitude_v1", IDENTITY_ARCHITECTURE} or config.conditional_generation is None:
+        raise ValueError("this command requires a supported conditional architecture")
+
+
+def _require_identity(config: V2Config) -> None:
+    _require_conditional(config)
+    if config.architecture != IDENTITY_ARCHITECTURE:
+        raise ValueError("this command requires architecture: conditional_identity_logit_amplitude_v2")
 
 
 def _system_signature(config: V2Config) -> str:
@@ -107,13 +118,16 @@ def _load_bundle(config: V2Config, checkpoint: str, *, device: torch.device, eva
     if not isinstance(payload, dict) or not isinstance(payload.get("manifest"), dict):
         raise ValueError("invalid conditional checkpoint")
     manifest = ConditionalCheckpointManifestV2(**payload["manifest"])
-    if manifest.architecture_kind != "conditional_global_amplitude_v1" or manifest.system_signature != _system_signature(config) or manifest.config_hash != canonical_sha256(config.model_dump(mode="json")):
+    if manifest.architecture_kind != config.architecture or manifest.system_signature != _system_signature(config) or manifest.config_hash != canonical_sha256(config.model_dump(mode="json")):
         raise ValueError("conditional checkpoint belongs to a different architecture/system/config")
     if evaluator_hash is not None and manifest.evaluator_checkpoint_hash != evaluator_hash:
         raise ValueError("conditional checkpoint uses another evaluator")
     if split_hash is not None and manifest.dataset_split_manifest_hash != split_hash:
         raise ValueError("conditional checkpoint uses another MNIST split")
     bundle = ConditionalBundle(config).to(device)
+    if manifest.architecture_kind == IDENTITY_ARCHITECTURE:
+        if manifest.generator_contract_hash != IDENTITY_GENERATOR_CONTRACT or manifest.metric_contract_hash != canonical_sha256(CONDITIONAL_CONTROL_METRIC_CONTRACT) or manifest.training_schedule_hash != TRAINING_SCHEDULE_CONTRACT or manifest.initialization_seed != 1234:
+            raise ValueError("identity checkpoint has an incomplete or mismatched contract")
     load_conditional_checkpoint(checkpoint, bundle, manifest)
     return bundle, manifest
 
@@ -167,7 +181,101 @@ def qualify_evaluator(args, config: V2Config) -> int:
     return 0
 
 
+def conditional_injection_admission(args, config: V2Config) -> int:
+    """CPU-only generator contract gate and immutable initialization checkpoint."""
+    _require_identity(config)
+    images, labels = load_local_mnist(args.dataset_root, train=True)
+    train_images, train_labels, _, _, split = _split(images, labels, args.dataset_root)
+    evaluator, evaluator_payload = load_frozen_evaluator(args.evaluator_checkpoint, device=torch.device("cpu"))
+    evaluator_hash = evaluator_checkpoint_hash(args.evaluator_checkpoint)
+    payload_split = MNISTSplitManifest(**evaluator_payload["split_manifest"])
+    if payload_split.manifest_hash != split.manifest_hash:
+        raise ValueError("evaluator checkpoint uses a different fixed MNIST split")
+    torch.manual_seed(1234)
+    bundle = ConditionalBundle(config, carrier_logits=_carrier_logits(train_images, train_labels, config.system.slm_shape)).cpu().eval()
+    codes, code_labels = _fixed_control_probe(device=torch.device("cpu"))
+    before = state_content_hash(bundle.state_dict())
+    with torch.no_grad():
+        command = bundle.generator(codes, code_labels)
+        command_again = bundle.generator(codes, code_labels)
+        physical = command.square()
+        grouped = command.reshape(10, 17, *command.shape[1:])
+        physical_grouped = physical.reshape(10, 17, *physical.shape[1:])
+        coeff = bundle.generator.coefficients(codes, code_labels).reshape(10, 17, 8)
+        signed = coeff[:, 1:17].reshape(10, 8, 2, 8)
+        direction_rms = signed.square().mean(dim=(0, 2, 3)).sqrt()
+        rank = int(torch.linalg.matrix_rank(coeff[:, 1:17].reshape(-1, 8)).item())
+        zero = torch.zeros(10, 8)
+        zero_command = bundle.generator(zero, torch.arange(10))
+        carrier = bundle.generator.class_carrier_command(torch.arange(10))
+    after = state_content_hash(bundle.state_dict())
+    mode = bundle.generator.normalized_modes(bundle.generator.global_modes)
+    gram = mode.flatten(1) @ mode.flatten(1).T / mode[0].numel()
+    checks = (
+        GateResult("amplitude_command_code_fraction", balanced_code_fraction(grouped) >= 0.10, {"value": balanced_code_fraction(grouped)}),
+        GateResult("physical_slm_intensity_code_fraction", balanced_code_fraction(physical_grouped) >= 0.10, {"value": balanced_code_fraction(physical_grouped)}),
+        GateResult("zero_code_is_carrier", bool(torch.equal(zero_command, carrier)), {}),
+        GateResult("eight_signed_direction_rms", bool((direction_rms >= 0.01).all()), {"minimum": float(direction_rms.min().item())}),
+        GateResult("coefficient_rank_eight", rank == 8, {"rank": float(rank)}),
+        GateResult("finite_orthogonal_modes", bool(torch.isfinite(mode).all() and (gram - torch.eye(8)).abs().max() < 0.25), {}),
+        GateResult("deterministic_initialization", before == after and bool(torch.equal(command, command_again)), {}),
+    )
+    run = _new_run(config)
+    init_path = run.root / "conditional_initialization.pt"
+    settings = config.conditional_generation
+    assert settings is not None
+    manifest = ConditionalCheckpointManifestV2(2, IDENTITY_ARCHITECTURE, _system_signature(config), canonical_sha256(config.model_dump(mode="json")), split.manifest_hash, evaluator_hash, settings.fixed_exposure_scale, state_signature(bundle.state_dict()), state_content_hash(bundle.state_dict()), IDENTITY_GENERATOR_CONTRACT, canonical_sha256(CONDITIONAL_CONTROL_METRIC_CONTRACT), TRAINING_SCHEDULE_CONTRACT, 1234, state_content_hash(bundle.state_dict()))
+    save_conditional_checkpoint(init_path, bundle, manifest, extra={"initialization": True, "seed": 1234})
+    report = {"architecture_kind": IDENTITY_ARCHITECTURE, "metric_contract": CONDITIONAL_CONTROL_METRIC_CONTRACT, "generator_contract_hash": IDENTITY_GENERATOR_CONTRACT, "command_code_fraction": float(balanced_code_fraction(grouped)), "physical_code_fraction": float(balanced_code_fraction(physical_grouped)), "direction_rms": direction_rms.tolist(), "coefficient_rank": rank, "parameters_unchanged": before == after, "state_hash": manifest.initialization_state_hash}
+    report_path = run.root / "conditional_injection_admission_report.json"
+    atomic_write_json(report_path, report)
+    passed = all(gate.passed for gate in checks)
+    record = EvidenceRecordV2(2, "conditional_injection_admission", config.run.evidence_tier, "passed" if passed else "failed", run.git_commit, run.dirty_patch_hash, run.config_hash, _context(config, evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, checkpoint_hash=file_sha256(init_path)), {"checkpoint": file_sha256(init_path), "report": file_sha256(report_path), "evaluator": evaluator_hash}, checks, ("conditional_observability",) if passed else (), None if passed else "identity generator injection admission failed")
+    _write_evidence(run, "conditional_injection_admission_evidence.json", record)
+    print(run.root)
+    return 0
+
+
+def _identity_observability(args, config: V2Config) -> int:
+    _require_identity(config)
+    images, labels = load_local_mnist(args.dataset_root, train=True)
+    _, _, _, _, split = _split(images, labels, args.dataset_root)
+    evaluator, _ = load_frozen_evaluator(args.evaluator_checkpoint, device=torch.device(config.run.device))
+    evaluator_hash = evaluator_checkpoint_hash(args.evaluator_checkpoint)
+    init_hash = file_sha256(args.checkpoint)
+    injection = EvidenceRecordV2.from_dict(json.loads(Path(args.injection_evidence).read_text(encoding="utf-8")))
+    expected = _context(config, evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, checkpoint_hash=init_hash)
+    require_evidence_action(injection, kind="conditional_injection_admission", action="conditional_observability", expected_context=expected)
+    device = torch.device(config.run.device)
+    bundle, manifest = _load_bundle(config, args.checkpoint, device=device, evaluator_hash=evaluator_hash, split_hash=split.manifest_hash)
+    codes_probe, labels_probe = _fixed_control_probe(device=device)
+    codes_probe, labels_probe = codes_probe[:20], labels_probe[:20]
+    before = state_content_hash(bundle.state_dict())
+    result = bundle.system.forward_from_generator(bundle.generator, codes_probe, labels_probe, return_optical_trace=True)
+    raw = result.raw_camera.tensor
+    view = fixed_exposure_view(raw, config.conditional_generation.fixed_exposure_scale)
+    with torch.enable_grad():
+        _, logits = evaluator(view)
+        objective = raw.mean() + logits.float().mean() * 0.0
+        objective.backward()
+    groups = _conditional_parameter_groups(bundle)
+    gradient_checks = {name: bool(all(parameter.grad is not None and torch.isfinite(parameter.grad).all() and parameter.grad.detach().norm() > 0 for parameter in params)) for name, params in groups.items()}
+    after = state_content_hash(bundle.state_dict())
+    operations = tuple(field.provenance.operation for field in result.optical_trace or ())
+    checks = (GateResult("finite_fields", bool(torch.isfinite(raw).all()), {}), GateResult("complete_trace", len(operations) >= 8 and any("identity_ols" in op for op in operations), {"trace_length": float(len(operations))}), GateResult("gradient_groups", all(gradient_checks.values()), {name: value for name, value in gradient_checks.items()}), GateResult("parameters_unchanged", before == after, {}))
+    run = _new_run(config)
+    report_path = run.root / "conditional_observability_report.json"
+    atomic_write_json(report_path, {"trace_operations": operations, "gradient_groups": gradient_checks, "parameters_unchanged": before == after, "raw_finite": bool(torch.isfinite(raw).all()), "checkpoint_hash": init_hash})
+    passed = all(check.passed for check in checks)
+    record = EvidenceRecordV2(2, "conditional_observability", config.run.evidence_tier, "passed" if passed else "failed", run.git_commit, run.dirty_patch_hash, run.config_hash, expected, {"injection_evidence": injection.evidence_hash, "checkpoint": init_hash, "report": file_sha256(report_path)}, checks, ("conditional_control_isolation",) if passed else (), None if passed else "identity optical observability failed")
+    _write_evidence(run, "conditional_observability_evidence.json", record)
+    print(run.root)
+    return 0
+
+
 def conditional_observability(args, config: V2Config) -> int:
+    if config.architecture == IDENTITY_ARCHITECTURE:
+        return _identity_observability(args, config)
     _require_conditional(config)
     device = torch.device(config.run.device)
     bundle = ConditionalBundle(config).to(device)
@@ -265,7 +373,75 @@ def _probe_metrics(raw: torch.Tensor, labels: torch.Tensor, evaluator: nn.Module
     }
 
 
+def _identity_control_isolation(args, config: V2Config) -> int:
+    _require_identity(config)
+    images, labels_all = load_local_mnist(args.dataset_root, train=True)
+    _, _, _, _, split = _split(images, labels_all, args.dataset_root)
+    evaluator, _ = load_frozen_evaluator(args.evaluator_checkpoint, device=torch.device(config.run.device))
+    evaluator_hash = evaluator_checkpoint_hash(args.evaluator_checkpoint)
+    init_hash = file_sha256(args.checkpoint)
+    expected = _context(config, evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, checkpoint_hash=init_hash)
+    injection = EvidenceRecordV2.from_dict(json.loads(Path(args.injection_evidence).read_text(encoding="utf-8")))
+    observability = EvidenceRecordV2.from_dict(json.loads(Path(args.observability_evidence).read_text(encoding="utf-8")))
+    require_evidence_action(injection, kind="conditional_injection_admission", action="conditional_observability", expected_context=expected)
+    require_evidence_action(observability, kind="conditional_observability", action="conditional_control_isolation", expected_context=expected)
+    device = torch.device(config.run.device)
+    bundle, _ = _load_bundle(config, args.checkpoint, device=device, evaluator_hash=evaluator_hash, split_hash=split.manifest_hash)
+    codes, probe_labels = _fixed_control_probe(device=device)
+    before = state_content_hash(bundle.state_dict())
+    settings = config.conditional_generation
+    assert settings is not None
+    command_rows, raw_rows, trace_rows = [], [], []
+    with torch.no_grad():
+        for start in range(0, len(codes), config.execution.evaluation_microbatch_size):
+            command = bundle.generator(codes[start:start + config.execution.evaluation_microbatch_size], probe_labels[start:start + config.execution.evaluation_microbatch_size])
+            result = bundle.system.forward(bundle.system.command(command), return_optical_trace=True)
+            command_rows.append(command.cpu())
+            raw_rows.append(result.raw_camera.tensor.cpu())
+            trace_rows.append(result.optical_trace or ())
+    command = torch.cat(command_rows).to(device)
+    raw = torch.cat(raw_rows).to(device)
+    after = state_content_hash(bundle.state_dict())
+    view = fixed_exposure_view(raw, settings.fixed_exposure_scale)
+    with torch.no_grad():
+        features, logits = evaluator(view)
+    command_fraction = balanced_code_fraction(command.reshape(10, 17, *command.shape[1:]))
+    physical_fraction = balanced_code_fraction(command.square().reshape(10, 17, *command.shape[1:]))
+    camera_fraction = balanced_code_fraction(raw.reshape(10, 17, *raw.shape[1:]))
+    accuracy = float((logits.argmax(1) == probe_labels).float().mean().item())
+    trace = trace_rows[0]
+    operations = [field.provenance.operation for field in trace]
+    plane_metrics = []
+    for field_index, field in enumerate(trace):
+        tensors = torch.cat([row[field_index].tensor.abs().square() for row in trace_rows], dim=0)
+        plane_metrics.append({"index": field_index, "operation": field.provenance.operation, "code_fraction": balanced_code_fraction(tensors.reshape(10, 17, *tensors.shape[1:])), "finite": bool(torch.isfinite(tensors).all()), "plane": field.plane.to_dict(), "provenance": field.provenance.to_dict()})
+    first_collapse = next((item["operation"] for item in plane_metrics if item["code_fraction"] < 0.10), None)
+    if command_fraction < 0.10:
+        classification = "generator_injection_insufficient"
+    elif first_collapse is not None:
+        classification = "optical_transport_attenuated"
+    elif not bool(torch.isfinite(raw).all()) or before != after or len(operations) < 8:
+        classification = "harness_invalid"
+    elif camera_fraction < 0.10 or accuracy < 0.30:
+        classification = "semantic_readout_insufficient"
+    else:
+        classification = "controllable_upper_bound"
+    run = _new_run(config)
+    raw_path = run.root / "conditional_control_isolation_raw_cmos.pt"
+    atomic_torch_save(raw_path, raw.cpu())
+    report_path = run.root / "conditional_control_isolation_report.json"
+    atomic_write_json(report_path, {"metric_contract": CONDITIONAL_CONTROL_METRIC_CONTRACT, "code_count_per_label": 17, "command_code_fraction": command_fraction, "physical_slm_code_fraction": physical_fraction, "camera_code_fraction": camera_fraction, "accuracy": accuracy, "first_collapse_plane": first_collapse, "classification": classification, "parameters_unchanged": before == after, "plane_metrics": plane_metrics, "trace_operations": operations})
+    passed_harness = bool(torch.isfinite(raw).all()) and before == after and len(operations) >= 8
+    checks = (GateResult("fixed_probe_shape", len(codes) == 170, {"samples": 170.0}), GateResult("finite_fields", bool(torch.isfinite(raw).all()), {}), GateResult("complete_provenance", len(operations) >= 8 and any("identity_ols" in op for op in operations), {}), GateResult("parameters_unchanged", before == after, {}), GateResult("command_code_response", command_fraction >= 0.10, {"value": command_fraction}))
+    record = EvidenceRecordV2(2, "conditional_control_isolation", "diagnostic", "diagnostic" if passed_harness else "failed", run.git_commit, run.dirty_patch_hash, run.config_hash, expected, {"injection_evidence": injection.evidence_hash, "observability_evidence": observability.evidence_hash, "checkpoint": init_hash, "report": file_sha256(report_path), "raw_cmos": file_sha256(raw_path)}, checks, ("controllability_smoke",) if classification == "controllable_upper_bound" else (), None if passed_harness else "conditional control isolation harness failed")
+    _write_evidence(run, "conditional_control_isolation_evidence.json", record)
+    print(run.root)
+    return 0
+
+
 def conditional_control_isolation(args, config: V2Config) -> int:
+    if config.architecture == IDENTITY_ARCHITECTURE:
+        return _identity_control_isolation(args, config)
     """Read-only fixed-code panel locating the first control-signal collapse."""
     _require_conditional(config)
     device = torch.device(config.run.device)
@@ -390,12 +566,25 @@ def _conditional_optimizer(bundle: ConditionalBundle, config: V2Config) -> torch
 
 def controllability_smoke(args, config: V2Config) -> int:
     _require_conditional(config)
-    _passed_evidence(args.observability_evidence, kind="conditional_observability")
+    if config.architecture == IDENTITY_ARCHITECTURE:
+        images, all_labels = load_local_mnist(args.dataset_root, train=True)
+        train_images, train_labels, _, _, split = _split(images, all_labels, args.dataset_root)
+        evaluator, _ = load_frozen_evaluator(args.evaluator_checkpoint, device=torch.device(config.run.device))
+        expected = _context(config, evaluator_hash=evaluator_checkpoint_hash(args.evaluator_checkpoint), split_hash=split.manifest_hash, checkpoint_hash=file_sha256(args.checkpoint))
+        injection = EvidenceRecordV2.from_dict(json.loads(Path(args.injection_evidence).read_text(encoding="utf-8")))
+        isolation = EvidenceRecordV2.from_dict(json.loads(Path(args.isolation_evidence).read_text(encoding="utf-8")))
+        require_evidence_action(injection, kind="conditional_injection_admission", action="conditional_observability", expected_context=expected)
+        require_evidence_action(isolation, kind="conditional_control_isolation", action="controllability_smoke", expected_context=expected, allow_diagnostic=True)
+    else:
+        _passed_evidence(args.observability_evidence, kind="conditional_observability")
     device = torch.device(config.run.device)
     images, all_labels = load_local_mnist(args.dataset_root, train=True)
     train_images, train_labels, _, _, split = _split(images, all_labels, args.dataset_root)
     evaluator, _ = load_frozen_evaluator(args.evaluator_checkpoint, device=device)
-    bundle = ConditionalBundle(config, carrier_logits=_carrier_logits(train_images, train_labels, config.system.slm_shape)).to(device)
+    if config.architecture == IDENTITY_ARCHITECTURE:
+        bundle, _ = _load_bundle(config, args.checkpoint, device=device, evaluator_hash=evaluator_checkpoint_hash(args.evaluator_checkpoint), split_hash=split.manifest_hash)
+    else:
+        bundle = ConditionalBundle(config, carrier_logits=_carrier_logits(train_images, train_labels, config.system.slm_shape)).to(device)
     optimizer = _conditional_optimizer(bundle, config)
     settings = config.conditional_generation
     assert settings is not None
@@ -467,13 +656,28 @@ def controllability_smoke(args, config: V2Config) -> int:
 
 def conditional_train(args, config: V2Config) -> int:
     _require_conditional(config)
-    _passed_evidence(args.observability_evidence, kind="conditional_observability")
-    _passed_evidence(args.controllability_evidence, kind="controllability_smoke")
+    if config.architecture == IDENTITY_ARCHITECTURE:
+        images, all_labels = load_local_mnist(args.dataset_root, train=True)
+        train_images, train_labels, _, _, split = _split(images, all_labels, args.dataset_root)
+        expected = _context(config, evaluator_hash=evaluator_checkpoint_hash(args.evaluator_checkpoint), split_hash=split.manifest_hash, checkpoint_hash=file_sha256(args.initialization_checkpoint))
+        injection = EvidenceRecordV2.from_dict(json.loads(Path(args.injection_evidence).read_text(encoding="utf-8")))
+        observability = EvidenceRecordV2.from_dict(json.loads(Path(args.observability_evidence).read_text(encoding="utf-8")))
+        smoke = EvidenceRecordV2.from_dict(json.loads(Path(args.controllability_evidence).read_text(encoding="utf-8")))
+        require_evidence_action(injection, kind="conditional_injection_admission", action="conditional_observability", expected_context=expected)
+        require_evidence_action(observability, kind="conditional_observability", action="conditional_control_isolation", expected_context=expected)
+        require_evidence_action(smoke, kind="controllability_smoke", action="train", expected_context=expected)
+    else:
+        _passed_evidence(args.observability_evidence, kind="conditional_observability")
+        _passed_evidence(args.controllability_evidence, kind="controllability_smoke")
     device = torch.device(config.run.device)
     images, all_labels = load_local_mnist(args.dataset_root, train=True)
     train_images, train_labels, _, _, split = _split(images, all_labels, args.dataset_root)
     evaluator, _ = load_frozen_evaluator(args.evaluator_checkpoint, device=device)
-    bundle = ConditionalBundle(config, carrier_logits=_carrier_logits(train_images, train_labels, config.system.slm_shape)).to(device)
+    if config.architecture == IDENTITY_ARCHITECTURE:
+        bundle, init_manifest = _load_bundle(config, args.initialization_checkpoint, device=device, evaluator_hash=evaluator_checkpoint_hash(args.evaluator_checkpoint), split_hash=split.manifest_hash)
+    else:
+        bundle = ConditionalBundle(config, carrier_logits=_carrier_logits(train_images, train_labels, config.system.slm_shape)).to(device)
+        init_manifest = None
     optimizer = _conditional_optimizer(bundle, config)
     settings = config.conditional_generation
     assert settings is not None
@@ -489,7 +693,7 @@ def conditional_train(args, config: V2Config) -> int:
             history.append(asdict(summary) | {"epoch": float(epoch + 1)})
     run = _new_run(config)
     checkpoint_path = run.root / "conditional_optical_generator.pt"
-    manifest = ConditionalCheckpointManifestV2(2, "conditional_global_amplitude_v1", _system_signature(config), canonical_sha256(config.model_dump(mode="json")), split.manifest_hash, evaluator_checkpoint_hash(args.evaluator_checkpoint), settings.fixed_exposure_scale, state_signature(bundle.state_dict()), state_content_hash(bundle.state_dict()))
+    manifest = ConditionalCheckpointManifestV2(2, config.architecture, _system_signature(config), canonical_sha256(config.model_dump(mode="json")), split.manifest_hash, evaluator_checkpoint_hash(args.evaluator_checkpoint), settings.fixed_exposure_scale, state_signature(bundle.state_dict()), state_content_hash(bundle.state_dict()), IDENTITY_GENERATOR_CONTRACT if config.architecture == IDENTITY_ARCHITECTURE else None, canonical_sha256(CONDITIONAL_CONTROL_METRIC_CONTRACT) if config.architecture == IDENTITY_ARCHITECTURE else None, TRAINING_SCHEDULE_CONTRACT if config.architecture == IDENTITY_ARCHITECTURE else None, 1234 if config.architecture == IDENTITY_ARCHITECTURE else None, init_manifest.initialization_state_hash if init_manifest is not None else None)
     save_conditional_checkpoint(checkpoint_path, bundle, manifest, extra={"history": history})
     checkpoint_hash = file_sha256(checkpoint_path)
     finite = bool(torch.isfinite(torch.tensor([row["total"] for row in history])).all())

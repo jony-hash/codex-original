@@ -11,7 +11,7 @@ from ldm_project.v2.student.admission import balanced_code_fraction
 from ldm_project.v2.student.checkpoints import ConditionalCheckpointManifestV2, load_conditional_checkpoint, save_conditional_checkpoint, state_content_hash, state_signature
 from ldm_project.v2.student.conditional import conditional_sinkhorn_loss, fixed_exposure_view, sinkhorn_cost_view
 from ldm_project.v2.student.conditional_acceptance import chunked_nearest_distances, memorization_statistics, paired_bootstrap_lower_bound, per_label_feature_diversity_ratio
-from ldm_project.v2.student.generator import ConditionalGlobalAmplitudeGenerator
+from ldm_project.v2.student.generator import ConditionalGlobalAmplitudeGenerator, IdentityAnchoredConditionalAmplitudeGenerator
 from ldm_project.v2.evidence.reviews import ConditionalManualReviewV2
 
 
@@ -26,6 +26,38 @@ def test_conditional_generator_is_bounded_zero_code_carrier_and_global() -> None
     changed = generator(torch.tensor([[0.8] * 8, [-0.8] * 8]), labels)
     assert not torch.equal(changed, command)
     assert generator.mode_orthogonality_penalty().isfinite()
+
+
+def test_identity_anchored_generator_has_zero_code_identity_and_zero_wy() -> None:
+    generator = IdentityAnchoredConditionalAmplitudeGenerator(shape=(8, 8))
+    labels = torch.tensor([2, 7])
+    zero = torch.zeros(2, 8)
+    command = generator(zero, labels)
+    assert command.shape == (2, 1, 8, 8)
+    assert torch.allclose(command, generator.class_carrier_command(labels), atol=0.0, rtol=0.0)
+    assert torch.count_nonzero(generator.Wy) == 0
+    assert generator.command_gain == pytest.approx(0.5)
+    assert generator.Wz.bias is None
+
+
+def test_identity_anchored_generator_preserves_eight_code_directions() -> None:
+    generator = IdentityAnchoredConditionalAmplitudeGenerator(shape=(12, 12))
+    labels = torch.zeros(16, dtype=torch.long)
+    codes = torch.cat((torch.eye(8), -torch.eye(8)))
+    commands = generator(codes, labels)
+    # Wy=0 at initialization means the coefficient response is tanh(z), so
+    # each signed basis direction remains observable before any training.
+    plus_minus = commands[:8].flatten(1) - commands[8:].flatten(1)
+    assert torch.linalg.matrix_rank(plus_minus) == 8
+    assert torch.isfinite(commands).all()
+
+
+def test_identity_anchored_generator_initialization_is_deterministic() -> None:
+    torch.manual_seed(1234)
+    first = IdentityAnchoredConditionalAmplitudeGenerator(shape=(8, 8))
+    torch.manual_seed(1234)
+    second = IdentityAnchoredConditionalAmplitudeGenerator(shape=(8, 8))
+    assert all(torch.equal(first_state, second_state) for first_state, second_state in zip(first.state_dict().values(), second.state_dict().values()))
 
 
 def test_fixed_exposure_view_is_not_sample_normalization() -> None:
@@ -105,6 +137,44 @@ def test_conditional_checkpoint_rejects_architecture_mismatch(tmp_path: Path) ->
     incompatible = ConditionalCheckpointManifestV2(2, "conditional_global_amplitude_v1", "other-system", "config", "split", "evaluator", 1.0, manifest.state_signature, manifest.state_content_hash)
     with pytest.raises(ValueError, match="does not match"):
         load_conditional_checkpoint(checkpoint, target, incompatible)
+
+
+def test_identity_logit_v2_checkpoint_requires_complete_context(tmp_path: Path) -> None:
+    model = nn.Linear(2, 2)
+    model.architecture_kind = "conditional_identity_logit_amplitude_v2"
+    state_sig = state_signature(model.state_dict())
+    content_hash = state_content_hash(model.state_dict())
+    common = dict(
+        schema_version=2,
+        architecture_kind="conditional_identity_logit_amplitude_v2",
+        system_signature="system",
+        config_hash="config",
+        dataset_split_manifest_hash="split",
+        evaluator_checkpoint_hash="evaluator",
+        exposure_scale=1.0,
+        state_signature=state_sig,
+        state_content_hash=content_hash,
+        generator_contract_hash="generator-contract",
+        metric_contract_hash="metric-contract",
+        training_schedule_hash="schedule-contract",
+        initialization_seed=1234,
+        initialization_state_hash="initial-state",
+    )
+    manifest = ConditionalCheckpointManifestV2(**common)
+    checkpoint = tmp_path / "identity_v2.pt"
+    save_conditional_checkpoint(checkpoint, model, manifest)
+    load_conditional_checkpoint(checkpoint, nn.Linear(2, 2), manifest)
+    incomplete = ConditionalCheckpointManifestV2(**{**common, "metric_contract_hash": None})
+    with pytest.raises(ValueError, match="complete contract hashes"):
+        save_conditional_checkpoint(tmp_path / "incomplete.pt", model, incomplete)
+
+
+def test_identity_logit_config_is_separate_and_locks_gain_and_seed() -> None:
+    config = load_config("configs/v2/formal_identity_logit_amplitude_finite_crop_identity.yaml")
+    assert config.architecture == "conditional_identity_logit_amplitude_v2"
+    assert config.conditional_generation is not None
+    assert config.conditional_generation.command_gain == pytest.approx(0.5)
+    assert config.conditional_generation.initialization_seed == 1234
 
 
 def test_conditional_config_rejects_teacher_fields(tmp_path: Path) -> None:

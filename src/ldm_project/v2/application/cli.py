@@ -35,7 +35,7 @@ from ..student.training import _differentiable_correlation, calibrate_prototypes
 from ..student.capacity import supported_dct_candidates
 from ..teacher import TeacherPairManifestV2, TeacherTargetManifestV2, build_teacher_pair_manifest, build_teacher_target_manifest
 from .runs import V2Run
-from .conditional import admit_conditional_evaluation, admit_dataset, audit_memorization, conditional_control_isolation, conditional_evaluate, conditional_observability, conditional_train, controllability_smoke, evaluate_utility, export_conditional_dataset, qualify_evaluator, sample_conditional, train_evaluator
+from .conditional import admit_conditional_evaluation, admit_dataset, audit_memorization, conditional_control_isolation, conditional_evaluate, conditional_injection_admission, conditional_observability, conditional_train, controllability_smoke, evaluate_utility, export_conditional_dataset, qualify_evaluator, sample_conditional, train_evaluator
 
 _CONTROL_ORACLE_ARMS = ("formal_amplitude_only", "diagnostic_complex_slm")
 _CONTROL_ORACLE_STEPS = 400
@@ -1492,7 +1492,13 @@ def _supersede_reachability(args: argparse.Namespace, config: V2Config) -> int:
 
 def _dispatch_train(args: argparse.Namespace) -> int:
     config = load_config(args.config)
-    if config.architecture == "conditional_global_amplitude_v1":
+    if config.architecture == "conditional_identity_logit_amplitude_v2":
+        required = ("dataset_root", "evaluator_checkpoint", "initialization_checkpoint", "injection_evidence", "observability_evidence", "controllability_evidence")
+        missing = [name for name in required if not getattr(args, name)]
+        if missing:
+            raise ValueError(f"identity conditional train requires: {', '.join('--' + item.replace('_', '-') for item in missing)}")
+        return conditional_train(args, config)
+    if config.architecture in {"conditional_global_amplitude_v1", "conditional_identity_logit_amplitude_v2"}:
         required = ("dataset_root", "evaluator_checkpoint", "observability_evidence", "controllability_evidence")
         missing = [name for name in required if not getattr(args, name)]
         if missing:
@@ -1507,7 +1513,7 @@ def _dispatch_train(args: argparse.Namespace) -> int:
 
 def _dispatch_sample(args: argparse.Namespace) -> int:
     config = load_config(args.config)
-    if config.architecture == "conditional_global_amplitude_v1":
+    if config.architecture in {"conditional_global_amplitude_v1", "conditional_identity_logit_amplitude_v2"}:
         return sample_conditional(args, config)
     if not args.code_basis:
         raise ValueError("legacy student sample requires --code-basis")
@@ -1516,7 +1522,7 @@ def _dispatch_sample(args: argparse.Namespace) -> int:
 
 def _dispatch_evaluate(args: argparse.Namespace) -> int:
     config = load_config(args.config)
-    if config.architecture == "conditional_global_amplitude_v1":
+    if config.architecture in {"conditional_global_amplitude_v1", "conditional_identity_logit_amplitude_v2"}:
         required = ("training_evidence", "checkpoint", "dataset_root", "evaluator_checkpoint")
         missing = [name for name in required if not getattr(args, name)]
         if missing:
@@ -1562,7 +1568,7 @@ def _parser() -> argparse.ArgumentParser:
     admit.set_defaults(handler=lambda args: _admit_prototypes(args, load_config(args.config)))
     train = student.add_parser("train")
     train.add_argument("--config", required=True)
-    for name in ("prototype_evidence", "capacity_evidence", "code_basis", "prototype_checkpoint", "teacher_target_manifest", "dataset_root", "evaluator_checkpoint", "observability_evidence", "controllability_evidence"):
+    for name in ("prototype_evidence", "capacity_evidence", "code_basis", "prototype_checkpoint", "teacher_target_manifest", "dataset_root", "evaluator_checkpoint", "observability_evidence", "controllability_evidence", "initialization_checkpoint", "injection_evidence"):
         train.add_argument("--" + name.replace("_", "-"))
     train.set_defaults(handler=_dispatch_train)
     sample = student.add_parser("sample")
@@ -1581,8 +1587,8 @@ def _parser() -> argparse.ArgumentParser:
     qualify.add_argument("--evaluator-checkpoint", required=True)
     qualify.set_defaults(handler=lambda args: qualify_evaluator(args, load_config(args.config)))
     controllability = student.add_parser("controllability-smoke")
-    for name in ("config", "dataset_root", "evaluator_checkpoint", "observability_evidence"):
-        controllability.add_argument("--" + name.replace("_", "-"), required=True)
+    for name in ("config", "dataset_root", "evaluator_checkpoint", "observability_evidence", "checkpoint", "injection_evidence", "isolation_evidence"):
+        controllability.add_argument("--" + name.replace("_", "-"), required=name in {"config", "dataset_root", "evaluator_checkpoint", "observability_evidence"})
     controllability.add_argument("--steps", type=int, default=100)
     controllability.set_defaults(handler=lambda args: controllability_smoke(args, load_config(args.config)))
     export_dataset = student.add_parser("export-dataset")
@@ -1622,11 +1628,20 @@ def _parser() -> argparse.ArgumentParser:
     audit = root.add_parser("audit").add_subparsers(dest="action", required=True)
     conditional_observability_parser = audit.add_parser("conditional-observability")
     conditional_observability_parser.add_argument("--config", required=True)
+    for name in ("checkpoint", "injection_evidence", "dataset_root", "evaluator_checkpoint"):
+        conditional_observability_parser.add_argument("--" + name.replace("_", "-"), required=False)
     conditional_observability_parser.set_defaults(handler=lambda args: conditional_observability(args, load_config(args.config)))
+    conditional_injection_parser = audit.add_parser("conditional-injection-admission")
+    for name in ("config", "dataset_root", "evaluator_checkpoint"):
+        conditional_injection_parser.add_argument("--" + name.replace("_", "-"), required=True)
+    conditional_injection_parser.set_defaults(handler=lambda args: conditional_injection_admission(args, load_config(args.config)))
     conditional_control_parser = audit.add_parser("conditional-control-isolation")
     conditional_control_parser.add_argument("--config", required=True)
     conditional_control_parser.add_argument("--dataset-root", required=True)
     conditional_control_parser.add_argument("--evaluator-checkpoint", required=True)
+    conditional_control_parser.add_argument("--checkpoint", required=False)
+    conditional_control_parser.add_argument("--injection-evidence", required=False)
+    conditional_control_parser.add_argument("--observability-evidence", required=False)
     conditional_control_parser.add_argument("--output")
     conditional_control_parser.set_defaults(handler=lambda args: conditional_control_isolation(args, load_config(args.config)))
     memorization = audit.add_parser("memorization")
