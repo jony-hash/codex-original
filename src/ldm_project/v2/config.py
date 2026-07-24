@@ -204,6 +204,10 @@ class ConditionalGenerationConfig(StrictModel):
     sinkhorn_iterations: int = Field(default=20, ge=1)
     samples_per_label: int = Field(default=6000, ge=1)
     shard_size: int = Field(default=1000, ge=1)
+    # The identity-anchored v2 line is deliberately reproducible.  Keeping the
+    # seed in the scoped config makes it part of the configuration hash rather
+    # than an implicit CLI default.
+    initialization_seed: Literal[1234] = 1234
 
     @model_validator(mode="after")
     def conditional_contract_is_explicit(self) -> "ConditionalGenerationConfig":
@@ -235,7 +239,11 @@ class RunConfig(StrictModel):
 
 class V2Config(StrictModel):
     schema_version: Literal[2]
-    architecture: Literal["legacy_v2_distillation", "conditional_global_amplitude_v1"] = "legacy_v2_distillation"
+    architecture: Literal[
+        "legacy_v2_distillation",
+        "conditional_global_amplitude_v1",
+        "conditional_identity_logit_amplitude_v2",
+    ] = "legacy_v2_distillation"
     system: SystemConfig
     teacher: TeacherConfig | None = None
     prototype_calibration: PrototypeCalibrationConfig | None = None
@@ -247,7 +255,10 @@ class V2Config(StrictModel):
 
     @model_validator(mode="after")
     def formal_audit_contract_is_locked(self) -> "V2Config":
-        if self.architecture == "conditional_global_amplitude_v1":
+        if self.architecture in {
+            "conditional_global_amplitude_v1",
+            "conditional_identity_logit_amplitude_v2",
+        }:
             if self.conditional_generation is None:
                 raise ValueError("conditional architecture requires conditional_generation")
             forbidden = {
@@ -261,6 +272,11 @@ class V2Config(StrictModel):
                 raise ValueError(f"conditional architecture rejects legacy fields: {', '.join(supplied)}")
             if not self.system.is_formal:
                 raise ValueError("conditional architecture requires the formal identity-OLS system")
+            if self.architecture == "conditional_identity_logit_amplitude_v2":
+                if self.conditional_generation.command_gain != 0.5:
+                    raise ValueError("identity-logit v2 locks conditional command_gain=0.5")
+                if self.conditional_generation.initialization_seed != 1234:
+                    raise ValueError("identity-logit v2 locks initialization_seed=1234")
             execution = self.execution
             if (execution.training_microbatch_size, execution.evaluation_microbatch_size, execution.activation_checkpoint) != (1, 1, True):
                 raise ValueError("conditional formal execution locks training/evaluation microbatches to one with activation checkpointing")
