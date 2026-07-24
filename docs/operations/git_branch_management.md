@@ -1,6 +1,6 @@
 # Git 分支治理与回档指南
 
-> 状态快照：2026-07-22。本文的远端引用由 `git ls-remote --heads origin` 只读核验；提交领先数是该日期的快照，后续操作前应重新检查。
+> 状态快照：2026-07-24。本文的远端引用和提交关系仍是带日期快照；后续操作前应重新执行只读 Git 核验。
 
 ## 当前拓扑
 
@@ -12,10 +12,10 @@ main (660763e, scaffold)
           └─ 完成全阶段训练-…-双通道 (5783b6e)
               └─ 基于-LDM-蒸馏的单次曝光光学生成模型 (161555b)
                   └─ 适用于实验室双光子打印加工的尺寸 (e21dba1, v79 snapshot)
-                      └─ rewrite/v2 (6a8895d, active)
+                      └─ rewrite/v2 (724f389 baseline, active identity-v2 line)
 ```
 
-`rewrite/v2` 从 `e21dba1` 线性增加 8 个提交；旧 v79 快照没有该分支独有提交。它们不是两个待合并的独立开发线，而是可并行运行的 v1 研究快照与 v2 旁路重写。
+`rewrite/v2` 从 `e21dba1` 线性分出，当前活动合同是 teacher-free identity conditional generation。旧 v2 teacher/prototype/capacity 内容仍可从 archive 追溯，但不再是当前命令来源。
 
 为便于不切换分支地查阅证据，`e21dba1` 中原有的 v68–v79 交接全文已逐字归档到 [v68–v79 原始主线交接归档](../archive/current_handoff_v68_v79_archive.md)。归档不定义当前行为；当前状态仍以 [当前主线交接](../status/current_handoff.md) 为准。
 
@@ -30,7 +30,7 @@ main (660763e, scaffold)
 | `完成全阶段训练-encoder为1层-decoder为1层-encoder和decoder均是线性，激活函数为gelu-双通道` | `5783b6e` | 完整单次曝光工作流基线。 |
 | `基于-LDM-蒸馏的单次曝光光学生成模型` | `161555b` | one-shot 蒸馏、评估与审计主线。 |
 | `适用于实验室双光子打印加工的尺寸` | `e21dba1` | 已封存的 v68–v79 诊断研究和正式物理几何快照。 |
-| `rewrite/v2` | `6a8895d` | 当前活动分支；contract-first v2 旁路运行时，未 promotion。 |
+| `rewrite/v2` | `724f389` baseline | 当前活动分支；identity teacher-free v2，未 promotion。 |
 
 ## 远端发布状态
 
@@ -55,9 +55,9 @@ main (660763e, scaffold)
 | 目的 | 保存 v16–v79 的版本化诊断和失败证据 | 独立、可审计的正式链路重写 |
 | 物理/配置合同 | 既有 formal 与 diagnostic 分支共存 | 类型化 plane/field、严格 schema、独立 production/reference 实现 |
 | 工件与 checkpoint | 历史 checkpoint、审计工具和版本专用 gate | 内容寻址 teacher manifest、精确 checkpoint manifest、evidence 状态机 |
-| 科学状态 | v79 的八维 supported basis 未达到 capacity gate；learned code transport 未证明 | CPU 竖切和单样本 CUDA smoke 已完成；未做正式 capacity evidence、长 CUDA、人工验收或 promotion |
+| 科学状态 | v79 的八维 supported basis 未达到 capacity gate；learned code transport 未证明 | identity v2 尚未完成当前 evidence 链和长训练；旧 v2 capacity 结果仅为历史参考 |
 
-v2 不替换 `train.py`，不导入 v1 student、diagnostics 或 experimental；仅由 teacher adapter 复用数值兼容的 v1 teacher checkpoint。它没有解决 v79 的科学失败，正式 acceptance 仍需完整 capacity、raw-CMOS、人审与 bootstrap 证据。
+v2 不替换 `train.py`，不导入 v1 teacher、旧 prototype/capacity 或 diagnostics。正式 acceptance 以当前 identity evaluator/evidence/5-epoch 链为准；旧 v79 与 v2 诊断不能授予新主线权限。
 
 ## 操作与回档规则
 

@@ -1,6 +1,14 @@
 # D2NN 主线输出与可视化说明
 
-本文件只解释生成图片、tensor bundle 和光学诊断。Stage 命令见 [Stage Guide](stage_guide.md)，完整文档导航见 [Documentation](../README.md)。
+本文件只解释生成图片、tensor bundle 和光学诊断。v1 Stage 命令见 [Stage Guide](stage_guide.md)，v2 current 命令见 [v2 runtime](../architecture/v2_runtime.md)，完整文档导航见 [Documentation](../README.md)。
+
+## v2 Conditional Artifacts
+
+v2 current run 在 `outputs/YYYYMMDD_v2/runs/<run>/` 下保存 evaluator、identity
+initialization、conditional evidence、raw-CMOS review tensor 和 candidate dataset shards。
+candidate manifest 必须保持 `status: candidate`；只有 generation admission、memorization
+和 utility 全部通过后才写入 `accepted_manifest.json`。这些 artifact 不得写入
+`outputs/final_pt/`，也不能与 v1 teacher/distillation bundle 混用。
 
 ## Teacher 与蒸馏数据
 

@@ -6,7 +6,8 @@
 | --- | --- |
 | 当前停止规则、有效证据与下一门 | [Current Handoff](status/current_handoff.md) |
 | v1 架构与最终推理边界 | [v1 single-shot architecture](architecture/v1_single_shot_distillation.md) |
-| v2 runtime、evidence 和 LightGen proxy | [v2 runtime](architecture/v2_runtime.md) |
+| 当前 v2 identity 无蒸馏 runtime、evidence 和停止规则 | [v2 runtime](architecture/v2_runtime.md) |
+| v2 旧蒸馏、prototype/capacity 与 LightGen 历史 | [archive](archive/) |
 | 命令、stage 和回档 | [Stage Guide](operations/stage_guide.md) / [Git branch management](operations/git_branch_management.md) |
 | 输出与 artifact 语义 | [Output notes](operations/output_artifact_notes.md) |
 | 实验历史 | [Experiment history](status/experiment_history.md) |

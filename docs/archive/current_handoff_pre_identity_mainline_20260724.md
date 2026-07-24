@@ -1,6 +1,6 @@
 # 当前主线交接：v79 冻结与 v2 旁路（2026-07-23）
 
-本文件只保存当前状态、停止规则和下一允许动作。v68–v79 的旧交接正文已完整、只读保存在 [v68–v79 原始主线交接归档](../archive/current_handoff_v68_v79_archive.md)，按阶段查阅的摘要、指标和工件索引见 [实验与验收历史](experiment_history.md)；稳定架构合同见 [D2NN 单次曝光蒸馏主线](../architecture/v1_single_shot_distillation.md)；分支与回档点见 [Git 分支治理指南](../operations/git_branch_management.md)。
+本文件只保存当前状态、停止规则和下一允许动作。v68–v79 的旧交接正文已完整、只读保存在 [v68–v79 原始主线交接归档](current_handoff_v68_v79_archive.md)，按阶段查阅的摘要、指标和工件索引见 [实验与验收历史](../status/experiment_history.md)；稳定架构合同见 [D2NN 单次曝光蒸馏主线](../architecture/v1_single_shot_distillation.md)；分支与回档点见 [Git 分支治理指南](../operations/git_branch_management.md)。
 
 ## 当前正式合同
 

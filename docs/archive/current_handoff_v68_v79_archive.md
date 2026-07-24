@@ -1,6 +1,6 @@
 # v68–v79 原始主线交接归档
 
-> 此文件完整保留提交 `e21dba1`（v79 snapshot）中的 `current_handoff.md` 原文，仅作为历史证据读取；它不定义当前执行合同。当前状态见 [v79/v2 主线交接](current_handoff.md)，按阶段查阅摘要见 [实验与验收历史](experiment_history.md)。
+> 此文件完整保留提交 `e21dba1`（v79 snapshot）中的 `current_handoff.md` 原文，仅作为历史证据读取；它不定义当前执行合同。当前状态见 [当前主线交接](../status/current_handoff.md)，按阶段查阅摘要见 [实验与验收历史](../status/experiment_history.md)。
 
 # 当前主线交接：v69 code-distillation（v68 已关闭，静态/CUDA smoke 已通过）
 
@@ -152,7 +152,7 @@ frozen learned replay 的 physical SLM code factor 为 `6.03e-7`，absolute code
 
 v79 后冻结 semantic-supported basis、residual＋phase 联合训练、normalization/gain/amplitude/basis sweep、test、导出和 Formal promotion；learned code transport 继续为 unproven。工件：`outputs/20260721_v79/runs/admission/v79_label_fixed_supported_basis_v1.json`、`v79_joint_decision_v1.json`。
 
-更新时间：2026-07-15。此文件供新对话快速恢复当前主线；带日期的完整证据在 [Experiment History](experiment_history.md)，稳定架构合同在 [D2NN 单次曝光蒸馏主线](single_shot_ldm_distillation.md)。
+更新时间：2026-07-15。此文件供新对话快速恢复历史主线；带日期的完整证据在 [Experiment History](../status/experiment_history.md)，稳定架构合同在 [D2NN 单次曝光蒸馏主线](../architecture/v1_single_shot_distillation.md)。
 
 ## 先读的结论
 
@@ -188,7 +188,7 @@ v55 structural preflight 通过；原 v55.1 reference 仅证明生产算子与�
 
 这些是理想数字孪生与设计 pupil 下限的结构/历史自洽检查，不是独立物理参考或硬件实测。
 
-v49-v54 的 mask 归因、严格复场修复和旧 central-aperture 失败定位均已降为历史证据；完整细节见 [Experiment History](experiment_history.md)。v60 是 v56 的同配置复制训练，未改善人工可读性。v61 稳健审计未确认稳定的局部首塌缩；新的 native dual-channel ridge 上界确认了软件可解码性，而非 CMOS 人眼可读性。v63 进一步确认 code 因子不是在正式光路被局部抹除；下一门只能隔离原生、不可读的表示与人眼可读性的差异，不得训练。
+v49-v54 的 mask 归因、严格复场修复和旧 central-aperture 失败定位均已降为历史证据；完整细节见 [Experiment History](../status/experiment_history.md)。v60 是 v56 的同配置复制训练，未改善人工可读性。v61 稳健审计未确认稳定的局部首塌缩；新的 native dual-channel ridge 上界确认了软件可解码性，而非 CMOS 人眼可读性。v63 进一步确认 code 因子不是在正式光路被局部抹除；下一门只能隔离原生、不可读的表示与人眼可读性的差异，不得训练。
 
 ## v56-v59 事实与证据
 

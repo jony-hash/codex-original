@@ -18,7 +18,7 @@ v2 从 v79 研究快照旁路重写而来；两线的范围、回档点和发布
 
 ## 条件全光路生成主线
 
-`configs/v2/formal_amplitude_finite_crop_identity.yaml` 现在显式选择
+历史路径 `configs/v2/formal_amplitude_finite_crop_identity.yaml` 曾经显式选择
 `conditional_global_amplitude_v1`。正式输入为 `label + 8D code`：电子端
 generator_e 生成 `200×200` 振幅 SLM 指令，每个样本随后完整经过 Encoder →
 identity OLS → Decoder → raw CMOS。该配置拒绝 teacher、teacher target、prototype
@@ -78,7 +78,7 @@ remain user-run tasks.
 
 `formal_amplitude_finite_crop_identity` 没有改变，仍是 `2+2`、identity OLS、`1.50 mm` 的正式合同。此前失败只冻结已验证的局部注入族：十类 direct-template 附近的 64 个低频 DCT candidates、8 个线性 basis 与 gain `0.1`；它不能外推为 amplitude SLM 失败。
 
-新增的 `diagnostic_lightgen_amplitude_fiber_ols_400` 是严格隔离的 architecture proxy：`400×400 @ 3 µm` amplitude seed → 2-layer encoder → 10×10 Gaussian single-mode-fiber complex OLS → 4-layer generator → raw sensor。来源与字段置信等级记录在 [LightGen reference contract](lightgen_reference_contract_v2.json)：论文组织、100D OLS/fiber 传输为 paper-reported；400×400、3 µm、2+4 是本项目 user-locked diagnostic 参数；波长、层距、孔径和耦合校准仍是 `unknown`。因此它永远不能自称 physical-faithful，也不授予 training 或 promotion 权限。
+新增的 `diagnostic_lightgen_amplitude_fiber_ols_400` 是严格隔离的 architecture proxy：`400×400 @ 3 µm` amplitude seed → 2-layer encoder → 10×10 Gaussian single-mode-fiber complex OLS → 4-layer generator → raw sensor。来源与字段置信等级记录在 [LightGen reference contract](../architecture/lightgen_reference_contract_v2.json)：论文组织、100D OLS/fiber 传输为 paper-reported；400×400、3 µm、2+4 是本项目 user-locked diagnostic 参数；波长、层距、孔径和耦合校准仍是 `unknown`。因此它永远不能自称 physical-faithful，也不授予 training 或 promotion 权限。
 
 ```bash
 python -m ldm_project.v2 audit lightgen-contract-gap \
@@ -108,7 +108,7 @@ python -m ldm_project.v2 audit lightgen-ols-observability \
 5. 只有 clean-commit acceptance 的 passed capacity evidence 才能启动 `student train`。训练读取一个 target manifest，而非无关联的散装 tensor。
 6. `student evaluate` exact-load checkpoint 并流式重放 raw CMOS，输出待审 tensor、固定曝光 preview 和 review 模板。`student admit-evaluation` 仅复核这些内容绑定工件，不重跑光路，才形成 passed/failed acceptance。任何命令都不会自动 promotion checkpoint。
 
-示例配置是 [formal_amplitude_finite_crop_identity.yaml](../../configs/v2/formal_amplitude_finite_crop_identity.yaml)。配置 schema 为 2，未知字段会失败；其中的 formal geometry 不允许修改。
+示例配置是历史路径 [formal_global_amplitude_finite_crop_identity.yaml](../../configs/v2/legacy/formal_global_amplitude_finite_crop_identity.yaml)。配置 schema 为 2，未知字段会失败；其中的 formal geometry 不允许修改。
 
 ## 重要边界
 

@@ -1,6 +1,6 @@
 # Stage Guide
 
-本文件是 v1 stage 的操作权威来源。架构与最终推理边界见 [D2NN 单次曝光蒸馏主线](../architecture/v1_single_shot_distillation.md)，带日期的结果见 [实验与验收历史](../status/experiment_history.md)，完整文档导航见 [Documentation](../README.md)。当前 v79 冻结与 v2 状态见 [当前主线交接](../status/current_handoff.md)，分支与回档点见 [Git 分支治理指南](git_branch_management.md)；handoff 是时效性状态快照，不是架构合同。
+本文件是 v1 stage 的历史快照。架构与最终推理边界见 [D2NN 单次曝光蒸馏主线](../architecture/v1_single_shot_distillation.md)，带日期的结果见 [实验与验收历史](../status/experiment_history.md)，当前文档导航见 [Documentation](../README.md)。当前运行规则以新的 [v2 runtime](../architecture/v2_runtime.md) 和 [Git 分支治理指南](../operations/git_branch_management.md) 为准。
 
 本文件中的 `train.py --stage` 命令只适用于 v1。v2 使用独立的 `python -m ldm_project.v2` 子命令和独立 evidence gate，二者不互相替代；在 v2 正式 acceptance 前，v1 仍是默认入口。
 
@@ -91,7 +91,7 @@ python train.py --train-config <approved_physical_forward_config.yaml> \
 - 诊断和 pre-acceptance 结果仍必须标注为 `diagnostic-only`，不能仅因位于 `outputs/` 就视为 accepted。
 - `outputs/runs/` 已移除；具体历史路径需要改写到真实的带日期前缀版本目录，`outputs/final_pt/` 不参与版本迁移。
 - 整理历史 run 时先执行 `python -m tools.organize_outputs_by_version --root outputs --dry-run` 检查 manifest，确认无 blocker 后再执行 `--apply`。
-- 输出图片和 tensor bundle 的语义见 [输出与可视化说明](output_artifact_notes.md)。
+- 输出图片和 tensor bundle 的语义见 [输出与可视化说明](../operations/output_artifact_notes.md)。
 
 ## Archived Experiments
 

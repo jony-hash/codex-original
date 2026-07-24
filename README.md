@@ -2,7 +2,7 @@
 
 ## What This Repository Builds
 
-本项目把 LDM teacher 的生成能力蒸馏到 D2NN one-shot student。Teacher 负责先验、训练目标和对照；最终 inference 必须由学生在单次光学传播和单次 CMOS 曝光中完成。
+本项目保留两条并行运行时：v1 将 LDM teacher 蒸馏到 D2NN one-shot student；当前 v2 使用无 LDM 蒸馏的 conditional generator，在单次光学传播和单次 CMOS 曝光中完成生成。v1 和 v2 共享正式物理合同，但不共享训练输入或 evidence。
 
 ```text
 noise/code + optional label -> generator_e -> amplitude SLM command
@@ -14,14 +14,14 @@ noise/code + optional label -> generator_e -> amplitude SLM command
 
 ## Supported Workflow
 
-支持的主流程是：
+v1 主流程是：
 
 ```text
 teacher_first_stage -> teacher_diffusion -> teacher_distill_export
 -> one_shot_distill -> one_shot_sample -> one_shot_distill_eval
 ```
 
-Teacher stages 只提供训练基础设施。加载 student checkpoint 的 `one_shot_sample` 和 `one_shot_distill_eval` 才能形成最终单次曝光学生证据。完整命令、必需输入和 checkpoint 规则见 [Stage Guide](docs/operations/stage_guide.md)。
+Teacher stages 只提供 v1 训练基础设施。加载 student checkpoint 的 `one_shot_sample` 和 `one_shot_distill_eval` 才能形成 v1 单次曝光证据；v2 命令见 [v2 runtime](docs/architecture/v2_runtime.md)。
 
 ## Quick Start
 
@@ -38,7 +38,7 @@ python train.py --train-config configs/v1/smoke/train_one_shot_d2nn_smoke.yaml \
   --stage one_shot --device cuda
 ```
 
-该 smoke 是 `diagnostic-only` compatibility check，不是正式验收，也不能替代 teacher distillation 和 student sample/eval 链路。
+该 smoke 是 v1 的 `diagnostic-only` compatibility check，不是正式验收，也不能替代 v1 distillation 或 v2 conditional evidence 链路。
 
 ## Evidence Boundaries
 
@@ -50,7 +50,7 @@ python train.py --train-config configs/v1/smoke/train_one_shot_d2nn_smoke.yaml \
 
 ## Current Mainline Status
 
-当前正式物理合同是 `532 nm`、identity OLS、完整 SLM FOV 的相干 4f `-0.4` relay、`100 × 100 @ 2 µm` phase-only D2NN、`1.50 mm` 层间距，以及后端 `-2.5` relay。理想两镜 4f 的实际 ABCD 为 `A=-0.4, B=0, C=0`；物理前向合同、raw-CMOS 人眼 gate 与严格 provenance 均保持有效。
+当前正式物理合同是 `532 nm`、identity OLS、完整 SLM FOV 的相干 4f `-0.4` relay、`100 × 100 @ 2 µm` phase-only D2NN、`1.50 mm` 层间距，以及后端 `-2.5` relay。理想两镜 4f 的实际 ABCD 为 `A=-0.4, B=0, C=0`；物理前向合同、raw-CMOS 人眼 gate 与严格 provenance 均保持有效。当前 v2 架构是 `conditional_identity_logit_amplitude_v2`。
 
 v1 研究线已冻结在 v79：固定 label-only normalization 的八维 supported-basis capacity arm 仅得到 physical-SLM code factor `0.05455 < 0.25`，且 clipping `0.20547 > 0.08`。这不是 harness failure，而是当前 basis 家族的有效 capacity gate 失败；learned code transport 未证明，因而没有可 promotion 的 student checkpoint。完整当前状态、停止规则和下一允许动作见 [v79/v2 主线交接](docs/status/current_handoff.md)。
 
@@ -58,7 +58,7 @@ v1 研究线已冻结在 v79：固定 label-only normalization 的八维 support
 
 ## v2 Side-by-Side Runtime
 
-`ldm_project.v2` 是新的 contract-first 旁路实现，使用类型化 plane/field、严格 checkpoint manifest、8 维内容绑定 teacher 数据、prototype/capacity gate、固定曝光人审工件和独立子命令 CLI。它保持 amplitude SLM、finite-crop、identity OLS 与现行正式几何，但尚未替换 `train.py`；CPU 竖切、单样本 CUDA smoke 和无更新 preflight 都不构成正式训练、人工验收或 student promotion。使用说明见 [v2 runtime](docs/architecture/v2_runtime.md)。
+`ldm_project.v2` 是当前 teacher-free contract-first runtime，使用类型化 plane/field、identity-anchored 8D conditional generator、冻结 MNIST evaluator、严格 checkpoint/evidence manifest 和独立子命令 CLI。它保持 amplitude SLM、finite-crop、identity OLS 与现行正式几何，不替换 `train.py`。旧 v2 teacher/prototype/capacity 和 LightGen 内容仅保留在 archive；使用说明见 [v2 runtime](docs/architecture/v2_runtime.md)。
 
 ## Repository Map
 
@@ -66,7 +66,9 @@ v1 研究线已冻结在 v79：固定 label-only normalization 的八维 support
 | --- | --- |
 | `src/ldm_project/v1/` | v1 canonical runtime；根包模块仅为旧导入兼容 facade |
 | `src/ldm_project/v2/` | contract-first v2 runtime 与独立 diagnostic variants |
-| `configs/v1/`, `configs/v2/` | 分别为 v1/v2 的活动配置 |
+| `configs/v1/` | v1 活动配置 |
+| `configs/v2/current/` | 当前 identity v2 配置 |
+| `configs/v2/legacy/`, `configs/v2/diagnostic/` | v2 兼容和诊断配置，不授权当前 acceptance |
 | `experiments/archive/` | 不可 promotion 的历史配置/工具及其 manifest |
 | `tests/student/` | Student model、objective、config、checkpoint 和训练/评估测试 |
 | `tests/teacher/` | Teacher distillation export、audit、filter、readable split 和兼容测试 |
