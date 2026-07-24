@@ -134,6 +134,20 @@ class RepoLayoutTests(unittest.TestCase):
         self.assertFalse((ROOT / "train_ldm.py").exists(), "legacy entry script should be removed: train_ldm.py")
         self.assertFalse((ROOT / "sample_ldm.py").exists(), "legacy entry script should be removed: sample_ldm.py")
 
+    def test_v2_current_legacy_diagnostic_taxonomy(self) -> None:
+        current = ROOT / "configs" / "v2" / "current" / "formal_identity_logit_amplitude_finite_crop_identity.yaml"
+        legacy = ROOT / "configs" / "v2" / "legacy" / "formal_global_amplitude_finite_crop_identity.yaml"
+        diagnostic = ROOT / "configs" / "v2" / "diagnostic" / "lightgen_amplitude_fiber_ols_400.yaml"
+        migration = ROOT / "configs" / "v2" / "path_migration_manifest.yaml"
+        for path in (current, legacy, diagnostic, migration):
+            self.assertTrue(path.is_file(), path)
+        self.assertTrue((ROOT / "src" / "ldm_project" / "v1" / "AGENTS.md").is_file())
+        self.assertTrue((ROOT / "src" / "ldm_project" / "v2" / "AGENTS.md").is_file())
+        active_runtime = (ROOT / "docs" / "architecture" / "v2_runtime.md").read_text(encoding="utf-8")
+        self.assertIn("conditional_identity_logit_amplitude_v2", active_runtime)
+        self.assertNotIn("teacher pair/target manifest", active_runtime)
+        self.assertNotIn("prototype-reachability", active_runtime)
+
     def test_train_entry_delegates_to_package_cli_main(self) -> None:
         from ldm_project.train_cli import main
 
