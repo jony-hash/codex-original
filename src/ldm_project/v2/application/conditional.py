@@ -13,7 +13,7 @@ from ..config import V2Config
 from ..evidence import EvidenceContextV2, EvidenceRecordV2, GateResult, atomic_torch_save, atomic_write_json, canonical_sha256, file_sha256, load_conditional_manual_review, tensor_sha256
 from ..optics import FormalAmplitudeFiniteCropIdentitySystem
 from ..student.checkpoints import ConditionalCheckpointManifestV2, load_conditional_checkpoint, save_conditional_checkpoint, state_content_hash, state_signature
-from ..student.conditional import conditional_loss, fixed_exposure_view, raw_from_generator
+from ..student.conditional import conditional_loss, fixed_exposure_view, raw_from_generator_batched
 from ..student.conditional_acceptance import conditional_coverage_ratio, load_candidate_dataset, memorization_statistics, paired_bootstrap_lower_bound, per_label_feature_diversity_ratio
 from ..student.evaluator import FrozenMNISTEvaluator, MNISTSplitManifest, balanced_batches, evaluator_checkpoint_hash, load_frozen_evaluator, load_local_mnist, save_evaluator_checkpoint, stratified_mnist_indices
 from ..student.generator import ConditionalGlobalAmplitudeGenerator
@@ -203,7 +203,7 @@ def sample_conditional(args, config: V2Config) -> int:
     labels = torch.load(args.labels, map_location=device, weights_only=False).long()
     if not torch.is_tensor(codes) or not torch.is_tensor(labels):
         raise ValueError("codes and labels must be tensor files")
-    raw = bundle.system.forward_from_generator(bundle.generator, codes, labels).raw_camera.tensor.detach().cpu()
+    raw = raw_from_generator_batched(bundle.system, bundle.generator, codes, labels, microbatch_size=config.execution.evaluation_microbatch_size, activation_checkpoint=False).detach().cpu()
     atomic_torch_save(args.output, raw)
     return 0
 
@@ -247,7 +247,7 @@ def controllability_smoke(args, config: V2Config) -> int:
         labels = train_labels.index_select(0, indices).to(device)
         codes = _random_codes(labels.numel(), device=device, seed=1234 + step)
         optimizer.zero_grad(set_to_none=True)
-        loss, _, raw = conditional_loss(system=bundle.system, generator=bundle.generator, evaluator=evaluator, codes=codes, labels=labels, real_views=train_images.index_select(0, indices).to(device), exposure_scale=settings.fixed_exposure_scale, sinkhorn_epsilon=settings.sinkhorn_epsilon, sinkhorn_iterations=settings.sinkhorn_iterations, activation_checkpoint=config.execution.activation_checkpoint)
+        loss, _, raw = conditional_loss(system=bundle.system, generator=bundle.generator, evaluator=evaluator, codes=codes, labels=labels, real_views=train_images.index_select(0, indices).to(device), exposure_scale=settings.fixed_exposure_scale, sinkhorn_epsilon=settings.sinkhorn_epsilon, sinkhorn_iterations=settings.sinkhorn_iterations, activation_checkpoint=config.execution.activation_checkpoint, microbatch_size=config.execution.training_microbatch_size)
         loss.backward()
         optimizer.step()
         last_raw, last_labels = raw.detach(), labels.detach()
@@ -295,7 +295,7 @@ def conditional_train(args, config: V2Config) -> int:
             labels = train_labels.index_select(0, indices).to(device)
             codes = _random_codes(labels.numel(), device=device, seed=(epoch + 1) * 100000 + batch_number)
             optimizer.zero_grad(set_to_none=True)
-            loss, summary, _ = conditional_loss(system=bundle.system, generator=bundle.generator, evaluator=evaluator, codes=codes, labels=labels, real_views=train_images.index_select(0, indices).to(device), exposure_scale=settings.fixed_exposure_scale, sinkhorn_epsilon=settings.sinkhorn_epsilon, sinkhorn_iterations=settings.sinkhorn_iterations, activation_checkpoint=config.execution.activation_checkpoint)
+            loss, summary, _ = conditional_loss(system=bundle.system, generator=bundle.generator, evaluator=evaluator, codes=codes, labels=labels, real_views=train_images.index_select(0, indices).to(device), exposure_scale=settings.fixed_exposure_scale, sinkhorn_epsilon=settings.sinkhorn_epsilon, sinkhorn_iterations=settings.sinkhorn_iterations, activation_checkpoint=config.execution.activation_checkpoint, microbatch_size=config.execution.training_microbatch_size)
             loss.backward()
             optimizer.step()
             history.append(asdict(summary) | {"epoch": float(epoch + 1)})
@@ -328,7 +328,7 @@ def conditional_evaluate(args, config: V2Config) -> int:
         for batch_number, indices in enumerate(balanced_batches(validation_labels, batch_size=settings.logical_batch_size, seed=4321)):
             labels = validation_labels.index_select(0, indices).to(device)
             codes = _random_codes(labels.numel(), device=device, seed=4321 + batch_number)
-            raw = raw_from_generator(bundle.system, bundle.generator, codes, labels, activation_checkpoint=False)
+            raw = raw_from_generator_batched(bundle.system, bundle.generator, codes, labels, microbatch_size=config.execution.evaluation_microbatch_size, activation_checkpoint=False)
             generated_view = fixed_exposure_view(raw, settings.fixed_exposure_scale)
             generated_features, logits = evaluator(generated_view)
             real_view = validation_images.index_select(0, indices).to(device)
@@ -422,7 +422,7 @@ def export_conditional_dataset(args, config: V2Config) -> int:
                 size = min(settings.shard_size, count - start)
                 labels = torch.full((size,), label, device=device, dtype=torch.long)
                 codes = _random_codes(size, device=device, seed=args.seed + index)
-                raw = raw_from_generator(bundle.system, bundle.generator, codes, labels, activation_checkpoint=False)
+                raw = raw_from_generator_batched(bundle.system, bundle.generator, codes, labels, microbatch_size=config.execution.evaluation_microbatch_size, activation_checkpoint=False)
                 view200 = (raw / settings.fixed_exposure_scale).clamp(0.0, 1.0)
                 view28 = (fixed_exposure_view(raw, settings.fixed_exposure_scale) * 255.0).round().to(torch.uint8)
                 shard = dataset_root / f"label_{label}_part_{start // settings.shard_size:03d}.pt"
