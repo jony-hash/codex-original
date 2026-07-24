@@ -20,3 +20,8 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+# Historical experiment tests are preserved under experiments/archive as reference-only
+# material.  The default suite covers only the active runtime and its regression tests.
+testpaths = ["tests"]
