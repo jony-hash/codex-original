@@ -122,11 +122,12 @@ def train_evaluator(args, config: V2Config) -> int:
     optimizer = torch.optim.Adam(model.parameters(), lr=1.0e-3)
     for epoch in range(args.epochs):
         model.train()
-        for start in range(0, train_images.shape[0], args.batch_size):
-            indices = slice(start, min(start + args.batch_size, train_images.shape[0]))
+        order = torch.randperm(train_images.shape[0], generator=torch.Generator(device="cpu").manual_seed(1234 + epoch))
+        for start in range(0, order.numel(), args.batch_size):
+            indices = order[start : min(start + args.batch_size, order.numel())]
             optimizer.zero_grad(set_to_none=True)
-            _, logits = model(train_images[indices].to(device), )
-            loss = torch.nn.functional.cross_entropy(logits, train_labels[indices].to(device))
+            _, logits = model(train_images.index_select(0, indices).to(device))
+            loss = torch.nn.functional.cross_entropy(logits, train_labels.index_select(0, indices).to(device))
             loss.backward()
             optimizer.step()
     model.eval()
