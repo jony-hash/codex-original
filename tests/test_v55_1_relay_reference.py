@@ -13,7 +13,7 @@ from ldm_project.relay_reference import (
 )
 
 
-CONFIG = "configs/validate_v55_coherent_relay.yaml"
+CONFIG = "configs/v1/diagnostic/validate_v55_coherent_relay.yaml"
 
 
 def _relative_global_phase(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:

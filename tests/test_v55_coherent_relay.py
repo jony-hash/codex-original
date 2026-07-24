@@ -6,7 +6,7 @@ from ldm_project.config import load_training_config, validate_physical_forward_c
 from ldm_project.optics import FrontOpticalPath, coherent_imaging_4f_field
 
 
-CONFIG = "configs/validate_v55_coherent_relay.yaml"
+CONFIG = "configs/v1/diagnostic/validate_v55_coherent_relay.yaml"
 
 
 def test_v55_contract_and_abcd_geometry():

@@ -506,7 +506,7 @@ class OneShotConfigTests(unittest.TestCase):
     def test_smoke_config_loads_one_shot_fields(self) -> None:
         from ldm_project.config import load_training_config
 
-        d2nn_config = load_training_config(Path("configs/train_one_shot_d2nn_smoke.yaml"))
+        d2nn_config = load_training_config(Path("configs/v1/smoke/train_one_shot_d2nn_smoke.yaml"))
 
         self.assertEqual(d2nn_config.mode, "one_shot")
         self.assertEqual(d2nn_config.one_shot_epochs, 1)
@@ -1273,14 +1273,14 @@ class OneShotConfigTests(unittest.TestCase):
     def test_teacher_distillation_configs_load(self) -> None:
         from ldm_project.config import load_training_config
 
-        export_3k_fast200_config = load_training_config(Path("configs/export_teacher_distill_mnist_3k_fast200.yaml"))
-        export_15k_fast200_config = load_training_config(Path("configs/export_teacher_distill_mnist_15k_fast200.yaml"))
-        filter_config = load_training_config(Path("configs/filter_teacher_distill_mnist_3k_fast200_top2k.yaml"))
+        export_3k_fast200_config = load_training_config(Path("configs/v1/teacher/export_teacher_distill_mnist_3k_fast200.yaml"))
+        export_15k_fast200_config = load_training_config(Path("configs/v1/teacher/export_teacher_distill_mnist_15k_fast200.yaml"))
+        filter_config = load_training_config(Path("configs/v1/teacher/filter_teacher_distill_mnist_3k_fast200_top2k.yaml"))
         strict_filter_config = load_training_config(
-            Path("configs/filter_teacher_distill_mnist_3k_fast200_label_strict_top1k.yaml")
+            Path("configs/v1/teacher/filter_teacher_distill_mnist_3k_fast200_label_strict_top1k.yaml")
         )
         readable_split_config = load_training_config(
-            Path("configs/split_teacher_distill_readable_top1k_80_10_10.yaml")
+            Path("configs/v1/teacher/split_teacher_distill_readable_top1k_80_10_10.yaml")
         )
 
         self.assertEqual(export_3k_fast200_config.mode, "teacher_distill_export")
@@ -1357,13 +1357,13 @@ class OneShotConfigTests(unittest.TestCase):
         from ldm_project.config import load_training_config
 
         hardclass_recovery_config = load_training_config(
-            Path("configs/train_first_stage_hardclass_camera_recovery.yaml")
+            Path("configs/v1/teacher/train_first_stage_hardclass_camera_recovery.yaml")
         )
         margin_recovery_config = load_training_config(
-            Path("configs/train_first_stage_hardclass_camera_recovery_margin.yaml")
+            Path("configs/v1/teacher/train_first_stage_hardclass_camera_recovery_margin.yaml")
         )
         acceptance_margin_config = load_training_config(
-            Path("configs/train_first_stage_acceptance_margin_recovery.yaml")
+            Path("configs/v1/teacher/train_first_stage_acceptance_margin_recovery.yaml")
         )
 
         self.assertEqual(hardclass_recovery_config.mode, "first_stage")

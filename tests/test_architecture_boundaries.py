@@ -27,8 +27,8 @@ class _RunManager:
 
 def _request(mode: str) -> StageRequest:
     args = Namespace(
-        physics_config="configs/physics_cfg.yaml",
-        train_config="configs/train_ldm.yaml",
+        physics_config="configs/v1/formal/physics_cfg.yaml",
+        train_config="configs/v1/formal/train_ldm.yaml",
         final_pt_dir="outputs/final_pt",
         first_stage_checkpoint=None,
         diffusion_checkpoint=None,

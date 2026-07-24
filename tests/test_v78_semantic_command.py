@@ -48,7 +48,7 @@ def test_semantic_architecture_reuses_delta_state_keys_and_formal_rejects():
     delta = ElectronicGeneratorE(8, 8, 4, 2, 3, 5, arch="label_template_code_delta", command_transform="intensity_to_amplitude", template_init="mnist_prototype")
     semantic = ElectronicGeneratorE(8, 8, 4, 2, 3, 5, arch="label_template_semantic_command_residual", command_transform="intensity_to_amplitude", template_init="mnist_prototype")
     assert set(delta.state_dict()) == set(semantic.state_dict())
-    cfg = load_training_config("configs/train_v78_semantic_command_contract.yaml")
+    cfg = load_training_config("experiments/archive/v70_v79/configs/train_v78_semantic_command_contract.yaml")
     with pytest.raises(ValueError, match="semantic command"):
         validate_formal_student_config(cfg.physics, cfg.one_shot)
 

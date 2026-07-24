@@ -37,10 +37,10 @@ __all__ = [
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train the Optical-Path VAE LDM scaffold.")
-    parser.add_argument("--physics-config", default="configs/physics_cfg.yaml", help="Path to physics_cfg.yaml")
+    parser.add_argument("--physics-config", default="configs/v1/formal/physics_cfg.yaml", help="Path to physics_cfg.yaml")
     parser.add_argument(
         "--train-config",
-        default="configs/train_ldm.yaml",
+        default="configs/v1/formal/train_ldm.yaml",
         help="Path to training YAML; formal D2NN runs require an approved coherent-relay physical-forward config (see docs/ldm_migration/stage_guide.md).",
     )
     parser.add_argument("--stage", choices=CLI_STAGE_CHOICES, default=None)

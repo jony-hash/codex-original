@@ -136,7 +136,7 @@ def test_identity_ols_is_complex_linear():
 def test_v52_physical_config_loads_with_contract_metadata():
     from ldm_project.config import load_training_config
 
-    config = load_training_config("configs/validate_v52_physical_forward_model.yaml")
+    config = load_training_config("configs/v1/diagnostic/validate_v52_physical_forward_model.yaml")
     assert config.one_shot.ols_kind == "identity"
     assert config.one_shot.d2nn is not None
     assert config.one_shot.d2nn.grid_size == 100

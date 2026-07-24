@@ -228,7 +228,7 @@ class OpticalPathVAESmokeTests(unittest.TestCase):
     def test_physics_config_uses_new_macro_optical_path(self) -> None:
         from ldm_project.config import load_physics_config
 
-        physics_path = Path("configs/physics_cfg.yaml")
+        physics_path = Path("configs/v1/formal/physics_cfg.yaml")
         physics_text = physics_path.read_text(encoding="utf-8")
         for old_field in (
             "dist_m1_to_m2",

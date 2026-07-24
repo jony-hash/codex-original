@@ -46,7 +46,7 @@ def test_code_delta_adds_raw_logits_without_tanh_or_scale():
 def test_code_delta_contract_rejects_nonzero_residual_scale():
     from ldm_project import load_training_config
 
-    cfg = load_training_config("configs/train_v69_code_distill.yaml")
+    cfg = load_training_config("experiments/archive/v68_v69/configs/train_v69_code_distill.yaml")
     changed = replace(cfg, one_shot=replace(cfg.one_shot, code_residual_scale=0.1))
     with pytest.raises(ValueError, match="code delta is unscaled"):
         _validate_one_shot_generator_config(changed)
