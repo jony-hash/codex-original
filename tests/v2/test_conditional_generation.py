@@ -9,7 +9,7 @@ from torch import nn
 from ldm_project.v2.config import load_config
 from ldm_project.v2.student.admission import balanced_code_fraction
 from ldm_project.v2.student.checkpoints import ConditionalCheckpointManifestV2, load_conditional_checkpoint, save_conditional_checkpoint, state_content_hash, state_signature
-from ldm_project.v2.student.conditional import conditional_sinkhorn_loss, fixed_exposure_view
+from ldm_project.v2.student.conditional import conditional_sinkhorn_loss, fixed_exposure_view, sinkhorn_cost_view
 from ldm_project.v2.student.conditional_acceptance import chunked_nearest_distances, memorization_statistics, paired_bootstrap_lower_bound, per_label_feature_diversity_ratio
 from ldm_project.v2.student.generator import ConditionalGlobalAmplitudeGenerator
 from ldm_project.v2.evidence.reviews import ConditionalManualReviewV2
@@ -46,6 +46,25 @@ def test_conditional_sinkhorn_has_no_sample_index_pairing() -> None:
     permutation = torch.cat([torch.nonzero(labels == label).flatten().flip(0) for label in range(10)])
     shuffled = conditional_sinkhorn_loss(generated_features, generated_view, real_features.index_select(0, permutation), real_view.index_select(0, permutation), labels, epsilon=0.05, iterations=5)
     assert torch.allclose(loss, shuffled)
+
+
+def test_conditional_sinkhorn_normalizes_features_and_pools_intensity_cost() -> None:
+    labels = torch.arange(10).repeat_interleave(2)
+    generated_features = torch.randn(20, 8, generator=torch.Generator().manual_seed(21))
+    real_features = torch.randn(20, 8, generator=torch.Generator().manual_seed(22))
+    generated_view = torch.rand(20, 1, 28, 28, generator=torch.Generator().manual_seed(23))
+    real_view = torch.rand(20, 1, 28, 28, generator=torch.Generator().manual_seed(24))
+    loss = conditional_sinkhorn_loss(generated_features, generated_view, real_features, real_view, labels, epsilon=0.05, iterations=5)
+    scaled = conditional_sinkhorn_loss(17.0 * generated_features, 3.0 * generated_view, 0.25 * real_features, 3.0 * real_view, labels, epsilon=0.05, iterations=5)
+    # Feature normalization makes global feature scale irrelevant; pooled
+    # intensity costs remain finite and preserve the expected 14x14 contract.
+    assert sinkhorn_cost_view(generated_view).shape == (20, 1, 14, 14)
+    assert torch.isfinite(loss)
+    assert torch.isfinite(scaled)
+    assert not torch.allclose(loss, scaled)
+    feature_only = conditional_sinkhorn_loss(generated_features, generated_view, real_features, real_view, labels, epsilon=0.05, iterations=5)
+    feature_scaled = conditional_sinkhorn_loss(17.0 * generated_features, generated_view, 0.25 * real_features, real_view, labels, epsilon=0.05, iterations=5)
+    assert torch.allclose(feature_only, feature_scaled, atol=1.0e-5, rtol=1.0e-5)
 
 
 def test_balanced_code_fraction_is_zero_when_codes_are_identical() -> None:
