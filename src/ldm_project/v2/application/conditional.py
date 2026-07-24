@@ -405,7 +405,7 @@ def _identity_control_isolation(args, config: V2Config) -> int:
             result = bundle.system.forward(bundle.system.command(command), return_optical_trace=True)
             command_rows.append(command.cpu())
             raw_rows.append(result.raw_camera.tensor.cpu())
-            trace_rows.append(result.optical_trace or ())
+            trace_rows.append(tuple(ComplexField(field.tensor.cpu(), field.plane, field.provenance) for field in (result.optical_trace or ())))
     command = torch.cat(command_rows).to(device)
     raw = torch.cat(raw_rows).to(device)
     after = state_content_hash(bundle.state_dict())
