@@ -188,7 +188,7 @@ def test_identity_logit_v2_checkpoint_requires_complete_context(tmp_path: Path) 
 
 
 def test_identity_logit_config_is_separate_and_locks_gain_and_seed() -> None:
-    config = load_config("configs/v2/formal_identity_logit_amplitude_finite_crop_identity.yaml")
+    config = load_config("configs/v2/current/formal_identity_logit_amplitude_finite_crop_identity.yaml")
     assert config.architecture == "conditional_identity_logit_amplitude_v2"
     assert config.conditional_generation is not None
     assert config.conditional_generation.command_gain == pytest.approx(0.5)

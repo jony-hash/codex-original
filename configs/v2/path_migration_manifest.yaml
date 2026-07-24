@@ -1,0 +1,28 @@
+schema_version: 1
+scope: v2_configuration_paths
+entries:
+  - old_path: configs/v2/formal_identity_logit_amplitude_finite_crop_identity.yaml
+    new_path: configs/v2/current/formal_identity_logit_amplitude_finite_crop_identity.yaml
+    architecture: conditional_identity_logit_amplitude_v2
+    lifecycle: current
+    sha256: 0c42035c1a525e27ff787d013ca27b0f5ae91338329eb0607c7042ebc5ae8905
+  - old_path: configs/v2/formal_amplitude_finite_crop_identity.yaml
+    new_path: configs/v2/legacy/formal_global_amplitude_finite_crop_identity.yaml
+    architecture: conditional_global_amplitude_v1
+    lifecycle: legacy_reference
+    sha256: 83469865bea31d94d0c1916d2fac6baf01320d60bb4b77a9a58245f653dce625
+  - old_path: configs/v2/formal_amplitude_finite_crop_identity_shape_guard.yaml
+    new_path: configs/v2/legacy/formal_prototype_shape_guard.yaml
+    architecture: legacy_v2_distillation
+    lifecycle: legacy_reference
+    sha256: dc2d98afe66a4aec59b461bd15882e0edefab814aa5356f14620aeed01dee907
+  - old_path: configs/v2/diagnostic_small_amplitude_finite_crop_identity.yaml
+    new_path: configs/v2/diagnostic/small_amplitude_finite_crop_identity.yaml
+    architecture: legacy_v2_distillation
+    lifecycle: diagnostic_reference
+    sha256: a1d04e6441a259626290eb451819c0b6e4ac89c0c7e94965d76972b18ca35fd6
+  - old_path: configs/v2/diagnostic_lightgen_amplitude_fiber_ols_400.yaml
+    new_path: configs/v2/diagnostic/lightgen_amplitude_fiber_ols_400.yaml
+    architecture: diagnostic_lightgen_amplitude_fiber_ols_400
+    lifecycle: diagnostic_reference
+    sha256: e42c42bbe2274376b49a670b23d4ca461cbe3f8e7d355788d31d443c6d299dc1

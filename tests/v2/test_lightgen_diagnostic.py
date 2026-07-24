@@ -29,7 +29,7 @@ def test_lightgen_contract_preserves_unknown_physics():
 
 
 def test_lightgen_public_config_locks_reference_geometry():
-    config = load_config("configs/v2/diagnostic_lightgen_amplitude_fiber_ols_400.yaml")
+    config = load_config("configs/v2/diagnostic/lightgen_amplitude_fiber_ols_400.yaml")
     assert config.system.slm_shape == (400, 400)
     with pytest.raises(ValueError, match="locks slm_shape"):
         LightGenSystemConfig(kind="diagnostic_lightgen_amplitude_fiber_ols_400", slm_shape=(200, 200))
@@ -49,7 +49,7 @@ def test_fiber_ols_keeps_complex_interface_and_matches_reference():
 
 
 def test_formal_config_cannot_be_used_as_lightgen_audit():
-    config = load_config("configs/v2/formal_amplitude_finite_crop_identity.yaml")
+    config = load_config("configs/v2/legacy/formal_global_amplitude_finite_crop_identity.yaml")
     assert config.system.kind == "formal_amplitude_finite_crop_identity"
 
 
