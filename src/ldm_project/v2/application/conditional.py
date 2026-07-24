@@ -415,7 +415,7 @@ def controllability_smoke(args, config: V2Config) -> int:
         labels = train_labels.index_select(0, indices).to(device)
         codes = _random_codes(labels.numel(), device=device, seed=1234 + step)
         optimizer.zero_grad(set_to_none=True)
-        loss, _, raw = conditional_loss(system=bundle.system, generator=bundle.generator, evaluator=evaluator, codes=codes, labels=labels, real_views=train_images.index_select(0, indices).to(device), exposure_scale=settings.fixed_exposure_scale, sinkhorn_epsilon=settings.sinkhorn_epsilon, sinkhorn_iterations=settings.sinkhorn_iterations, activation_checkpoint=config.execution.activation_checkpoint, microbatch_size=config.execution.training_microbatch_size)
+        loss, summary, raw = conditional_loss(system=bundle.system, generator=bundle.generator, evaluator=evaluator, codes=codes, labels=labels, real_views=train_images.index_select(0, indices).to(device), exposure_scale=settings.fixed_exposure_scale, sinkhorn_epsilon=settings.sinkhorn_epsilon, sinkhorn_iterations=settings.sinkhorn_iterations, activation_checkpoint=config.execution.activation_checkpoint, microbatch_size=config.execution.training_microbatch_size)
         loss.backward()
         groups = _conditional_parameter_groups(bundle)
         grad_metrics = {}
@@ -429,7 +429,7 @@ def controllability_smoke(args, config: V2Config) -> int:
             deltas = [parameter.detach() - before for parameter, before in zip(parameters, snapshots[name], strict=True)]
             update_metrics[name] = {"update_norm": float(torch.stack([delta.norm() for delta in deltas]).norm().item()), "update_nonzero": bool(any(delta.abs().sum() > 0.0 for delta in deltas))}
         group_history.append({"step": step + 1, "gradients": grad_metrics, "updates": update_metrics})
-        loss_history.append({"step": float(step + 1), "total": float(loss.detach().item())})
+        loss_history.append(asdict(summary) | {"step": float(step + 1)})
         if step + 1 in {10, args.steps}:
             _, metrics = evaluate_probe()
             probe_history[f"step_{step + 1}"] = metrics
@@ -454,11 +454,12 @@ def controllability_smoke(args, config: V2Config) -> int:
     atomic_torch_save(raw_path, final_raw.cpu())
     atomic_torch_save(labels_path, probe_labels.cpu())
     review_artifacts = write_conditional_review_artifacts(root=run.root, raw_cmos=final_raw.cpu(), labels=probe_labels.cpu(), exposure_scale=settings.fixed_exposure_scale)
-    atomic_write_json(run.root / "controllability_probe_history.json", {"metric_contract": CONDITIONAL_CONTROL_METRIC_CONTRACT, "loss": loss_history, "probes": probe_history, "parameter_groups": group_history})
+    history_path = run.root / "controllability_probe_history.json"
+    atomic_write_json(history_path, {"metric_contract": CONDITIONAL_CONTROL_METRIC_CONTRACT, "loss": loss_history, "probes": probe_history, "parameter_groups": group_history})
     passed = all(item.passed for item in checks)
     context = _context(config, evaluator_hash=evaluator_checkpoint_hash(args.evaluator_checkpoint), split_hash=split.manifest_hash)
     permitted = ("train",) if passed and config.run.evidence_tier == "acceptance" else ()
-    record = EvidenceRecordV2(2, "controllability_smoke", config.run.evidence_tier, "passed" if passed else "failed", run.git_commit, run.dirty_patch_hash, run.config_hash, context, {"observability": file_sha256(args.observability_evidence), "evaluator": evaluator_checkpoint_hash(args.evaluator_checkpoint), "metric_contract": canonical_sha256(CONDITIONAL_CONTROL_METRIC_CONTRACT), "probe_raw_cmos": file_sha256(raw_path), "probe_labels": file_sha256(labels_path), "probe_preview": review_artifacts.preview_sha256}, checks, permitted, None if passed else "conditional controllability smoke failed")
+    record = EvidenceRecordV2(2, "controllability_smoke", config.run.evidence_tier, "passed" if passed else "failed", run.git_commit, run.dirty_patch_hash, run.config_hash, context, {"observability": file_sha256(args.observability_evidence), "evaluator": evaluator_checkpoint_hash(args.evaluator_checkpoint), "metric_contract": canonical_sha256(CONDITIONAL_CONTROL_METRIC_CONTRACT), "probe_raw_cmos": file_sha256(raw_path), "probe_labels": file_sha256(labels_path), "probe_preview": review_artifacts.preview_sha256, "probe_history": file_sha256(history_path)}, checks, permitted, None if passed else "conditional controllability smoke failed")
     _write_evidence(run, "controllability_smoke_evidence.json", record)
     print(run.root)
     return 0
