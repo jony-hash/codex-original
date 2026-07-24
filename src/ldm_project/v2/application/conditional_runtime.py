@@ -1224,6 +1224,7 @@ def diversity_recovery_smoke(args, config: V2Config) -> int:
     with torch.no_grad():
         zero_raw = raw_from_generator_batched(bundle.system, bundle.generator, torch.zeros(10, 8, device=device), torch.arange(10, device=device), microbatch_size=config.execution.evaluation_microbatch_size, activation_checkpoint=False).detach().cpu()
     probe_history: dict[str, object] = {}
+    probe_raw_by_step: dict[int, torch.Tensor] = {}
     loss_history: list[dict[str, float]] = []
     update_history: list[dict[str, float]] = []
 
@@ -1237,6 +1238,7 @@ def diversity_recovery_smoke(args, config: V2Config) -> int:
 
     raw0, metrics0 = probe()
     probe_history["step_0"] = metrics0
+    probe_raw_by_step[0] = raw0.cpu()
     for step, indices in zip(range(400), balanced_batches(train_labels, batch_size=settings.logical_batch_size, seed=1234)):
         labels = train_labels.index_select(0, indices).to(device)
         codes = _random_codes(labels.numel(), device=device, seed=100000 + step)
@@ -1250,6 +1252,7 @@ def diversity_recovery_smoke(args, config: V2Config) -> int:
         if step + 1 in {100, 200, 400}:
             probe_raw, probe_metrics = probe()
             probe_history[f"step_{step + 1}"] = probe_metrics
+            probe_raw_by_step[step + 1] = probe_raw.cpu()
     final_raw, final_metrics = probe()
     zero_raw_after = raw_from_generator_batched(bundle.system, bundle.generator, torch.zeros(10, 8, device=device), torch.arange(10, device=device), microbatch_size=config.execution.evaluation_microbatch_size, activation_checkpoint=False).detach().cpu()
     ratios = [float(value) for value in final_metrics.get("diversity_ratios", [])] if isinstance(final_metrics.get("diversity_ratios"), list) else []
@@ -1259,8 +1262,14 @@ def diversity_recovery_smoke(args, config: V2Config) -> int:
     ratios_ok = len(ratios) == 10 and min(ratios) >= 0.25 and all(float(after) >= float(before) for before, after in zip(initial_ratios, ratios, strict=True))
     checks = (GateResult("semantic_accuracy", float(final_metrics["accuracy"]) >= 0.95, {"accuracy": float(final_metrics["accuracy"])}), GateResult("per_class_recall", min(float(final_metrics["confusion"][label][label]) / 17.0 for label in range(10)) >= 0.90, {}), GateResult("relative_diversity", ratios_ok, {"minimum_ratio": min(ratios) if ratios else 0.0}), GateResult("camera_code_fraction", float(final_metrics["code_fraction"]) >= 0.15, {"value": float(final_metrics["code_fraction"])}), GateResult("high_saturation", float(final_metrics["saturation"]) <= 0.08, {"value": float(final_metrics["saturation"])}), GateResult("frozen_parameters", frozen_unchanged, {}), GateResult("code_parameter_updates", code_updates, {}), GateResult("zero_code_unchanged", bool(torch.equal(zero_raw, zero_raw_after)), {}), GateResult("finite_losses", bool(torch.isfinite(torch.tensor([row["total"] for row in loss_history])).all()), {}))
     run = _new_run(config)
+    step_artifacts: dict[str, dict[str, str]] = {}
+    for probe_step in (0, 100, 200, 400):
+        step_path = run.root / f"conditional_diversity_recovery_step_{probe_step}_raw_cmos.pt"
+        atomic_torch_save(step_path, probe_raw_by_step[probe_step])
+        preview = write_review_artifacts(root=run.root, stem=f"conditional_diversity_recovery_step_{probe_step}", kind="conditional_diversity_recovery", raw_cmos=probe_raw_by_step[probe_step], labels=probe_labels.cpu(), exposure_scale=settings.fixed_exposure_scale)
+        step_artifacts[str(probe_step)] = {"raw_cmos": file_sha256(step_path), "preview": preview.preview_sha256}
     history_path = run.root / "conditional_diversity_recovery_history.json"
-    atomic_write_json(history_path, {"loss": loss_history, "probes": probe_history, "updates": update_history, "schedule_hash_first_400": _schedule_hash(train_labels, 400), "contract": DIVERSITY_RECOVERY_CONTRACT})
+    atomic_write_json(history_path, {"loss": loss_history, "probes": probe_history, "updates": update_history, "step_probe_artifacts": step_artifacts, "schedule_hash_first_400": _schedule_hash(train_labels, 400), "contract": DIVERSITY_RECOVERY_CONTRACT})
     raw_path = run.root / "conditional_diversity_recovery_probe_raw_cmos.pt"
     atomic_torch_save(raw_path, final_raw.cpu())
     record = EvidenceRecordV2(2, "conditional_diversity_recovery_smoke", config.run.evidence_tier, "passed" if all(item.passed for item in checks) else "failed", run.git_commit, run.dirty_patch_hash, run.config_hash, expected, {"checkpoint": checkpoint_hash, "history": file_sha256(history_path), "raw_cmos": file_sha256(raw_path), "schedule_hash_first_400": _schedule_hash(train_labels, 400), "loss_contract": DIVERSITY_LOSS_CONTRACT}, checks, ("train_diversity_recovery",) if all(item.passed for item in checks) else (), None if all(item.passed for item in checks) else "conditional diversity recovery smoke failed")
