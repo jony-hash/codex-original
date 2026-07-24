@@ -11,6 +11,10 @@ Scope: `tests/**` and verification for repository changes. Read the repository-r
 - Run `python -m compileall src tests train.py` for shared Python changes and `ruff check src tests *.py` when lint-relevant files change.
 - Run the full suite only after targeted checks pass for shared/final changes. If a corrective edit can affect the result, rerun the invalidated check.
 - Keep architecture-boundary and lazy-stage assertions separate from physics/numerical assertions; legacy imports must resolve to canonical package implementations.
+- v2 conditional tests must separately cover current identity architecture,
+  legacy compatibility, evidence action/context binding, evaluator qualification,
+  candidate dataset status, and manual admission. A CPU smoke is diagnostic and
+  cannot stand in for CUDA or scientific acceptance.
 
 ## Acceptance Semantics
 

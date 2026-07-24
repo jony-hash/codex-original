@@ -2,14 +2,22 @@
 
 Scope: `configs/**`. Read the repository-root `AGENTS.md` first. This file adds configuration constraints and may not relax the root contract.
 
-Only Golden Path, teacher/smoke, v52/v55/v56 and current decision-gate configs belong here. Historical YAML lives in `experiments/archive/` and is reference-only.
+v1 configs live under `configs/v1/`. Current v2 identity-conditional configs,
+legacy v2 distillation configs, and diagnostic proxies are separated under
+`configs/v2/current`, `configs/v2/legacy`, and `configs/v2/diagnostic`.
+Historical YAML outside those active namespaces is reference-only.
 
 ## Configuration Rules
 
-- YAML must remain compatible with `load_training_config`; use existing keys and naming patterns before adding a new option.
+- v1 YAML must remain compatible with `load_training_config`; v2 YAML must
+  validate through `ldm_project.v2.config.load_config`. Do not make one loader's
+  schema authoritative for the other runtime.
 - Explicit CLI seed, checkpoint, dataset, geometry, and output arguments take precedence. Never guess a missing path or silently change geometry.
 - Keep paired train/eval configs aligned on optical geometry, SLM semantics, readout model, target source, and checkpoint contract.
 - Audit and formal configurations must state their diagnostic or acceptance role in the filename and run metadata.
+- Current v2 identity configs must not contain teacher, teacher-target,
+  prototype-calibration, or legacy-capacity fields. Legacy and diagnostic
+  configs cannot authorize current acceptance.
 
 ## Optical Path Policy
 

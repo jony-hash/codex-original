@@ -38,25 +38,39 @@ For long optical-training or one-shot readability debugging, follow the **Experi
 
 ## 4. Project Contract
 
-This project distills an LDM teacher into a single-exposure optical generative student.
+This repository contains two intentionally separate runtimes. v1 preserves the
+LDM-teacher distillation line behind `train.py`; v2 is the current teacher-free
+conditional optical-generation line behind `python -m ldm_project.v2`. v1
+history remains reproducible, but it does not define the v2 training contract.
 
-Final inference path: `noise/code + optional label -> generator_e -> amplitude SLM command -> encoder metasurface -> linear identity OLS -> decoder metasurface -> CMOS single exposure -> generated image`. The current formal contract has no fiber; a future fiber variant must preserve the complex-field interface and be separately validated.
+The current v2 inference path is `label + 8D code -> identity-anchored
+electronic amplitude generator -> amplitude SLM command -> encoder metasurface
+-> linear identity OLS -> decoder metasurface -> CMOS single exposure`. The
+formal optical contract has no fiber; a future fiber variant must preserve the
+complex-field interface and be separately validated. The frozen evaluator is a
+training/acceptance instrument only and is not part of final optical inference.
 
-Dependency direction is `optics -> (none)`, `teacher/student -> optics + neutral generation/distillation/evaluation`, and `application -> teacher/student/optics`. Student may use neutral evaluation visualization primitives, but must not import `diagnostics`. The formal student entry is `FormalOneShotOpticalGenerator`; compatibility variants and root shims must not be imported by formal code. `distillation/targets.py` is neutral and must not import student. Archived files are reference-only.
+Dependency direction is `optics -> (none)`, v1 teacher/student -> optics and
+neutral modules, v2 conditional student -> optics and neutral evaluation, and
+application -> the selected runtime. v2 current code must not import v1 teacher,
+teacher targets, prototype basis, capacity artifacts, or diagnostics. Root shims
+are compatibility facades only. Archived files are reference-only.
 
 Formal optical-field artifacts must carry shape, pixel pitch, physical FOV, wavelength, upstream plane, propagation distance, and operation. Tensor equality alone is not physical-coordinate validation; generic complex resize is forbidden in the formal path.
 
-The LightGen Science paper is a system-organization and user-confirmed distance-calibration reference for the amplitude-SLM -> optical encoder/OLS -> photonic generator arrangement; exact repository distances are not claimed as verbatim main-text values. The project-specific `2+2`, `100x100 @ 2 um`, `1.50 mm`, phase-only masks, and identity OLS are explicitly custom approximations. v68 transparent identity and checkpointed active capture are diagnostic-only and must never alter Formal v56/v60 defaults or be promoted without raw-CMOS and material calibration gates. v68.4 raw acceptance must separate clean MNIST prototype from teacher-camera similarity; A2/B use one locked validation exposure scale and `physical_camera_intensity_raw`, while historical enhanced previews are not evidence.
-
-v68.5 A2 is a single controlled readability correction. Before its user-run CUDA job, the read-only warm-start smoke must load only `generator_e.template_logits`, `encoder.*`, and `decoder.*`, prove finite loss/gradients and unchanged parameters, and use the locked exposure. The joint decision gate requires clean-prototype raw metrics, epoch stability, numerical/gradient/memory reports, and explicit manual readability of all ten labels; failure forbids B and promotion and routes only to chip/backend/camera isolation.
-
-For v68.5.1, A2 memory admission must compare delta reserved CUDA memory measured after model construction/warm-start against the v68.2 delta baseline; absolute reserved peak is a separate device-capacity check and must never be compared directly to that delta baseline. Preserve the invalid v1 report as historical evidence and require a new v2 report before A2 training.
+The LightGen paper is an architecture reference only. Its exact parameters are
+not silently substituted into the formal v2 contract. v68-v79, A2/B,
+prototype/capacity, direct-template, and LightGen measurements belong in status
+or archive documents and cannot authorize a current v2 run.
 
 The formal D2NN boundary is `finite_crop`, meaning a propagation-after-crop ideal hard-aperture computation contract; it is not a claim that printed glass is opaque. `transparent_identity` is diagnostic-only: it models a zero-thickness phase surface with an identity exterior on a full propagation grid and must pass the v67.1 convergence gate before any paired diagnostic training.
 
-- LDM is teacher infrastructure; final inference must not require diffusion denoising, iterative latent sampling, software-only VAE decoding, or inference-time optimization.
-- Direct MNIST `one_shot` is baseline/smoke only. Keep teacher, student, and hardware-calibration responsibilities separate.
-- Design source: `docs/architecture/v1_single_shot_distillation.md`; stage commands and debugging policy: `docs/operations/stage_guide.md`.
+- Neither runtime may require diffusion denoising, iterative latent sampling,
+  software-only VAE decoding, or inference-time optimization at final inference.
+- Direct MNIST `one_shot` is a v1 baseline/smoke. v2 conditional MNIST is a
+  separate teacher-free training contract and must not be routed through v1.
+- v1 design and stages are documented in `docs/architecture/v1_single_shot_distillation.md`;
+  v2 current stages are documented in `docs/architecture/v2_runtime.md`.
 
 ## 5. Repository And Artifacts
 
