@@ -20,11 +20,15 @@ from ..student.conditional_acceptance import conditional_coverage_ratio, load_ca
 from ..student.evaluator import FrozenMNISTEvaluator, MNISTSplitManifest, balanced_batches, evaluator_checkpoint_hash, load_frozen_evaluator, load_local_mnist, save_evaluator_checkpoint, stratified_mnist_indices
 from ..student.generator import ConditionalGlobalAmplitudeGenerator, IdentityAnchoredConditionalAmplitudeGenerator
 from ..evidence.records import require_evidence_action
-from ..student.review_artifacts import write_conditional_review_artifacts
+from ..student.review_artifacts import write_conditional_review_artifacts, write_review_artifacts
 from .runs import V2Run
 
 
 CONDITIONAL_CONTROL_METRIC_CONTRACT = "sample_centered_anova_v1|sinkhorn_feature_l2_v1|coverage_disjoint_real_ab_v1"
+# This admission contract is deliberately separate from the immutable loss/
+# checkpoint metric contract above.  Existing initialization checkpoints retain
+# the latter; new isolation evidence cannot be mistaken for the old gate.
+CONDITIONAL_CONTROL_ADMISSION_CONTRACT = "sample_centered_anova_v1|sinkhorn_feature_l2_v1|coverage_disjoint_real_ab_v1|physical_command_semantics_v2"
 IDENTITY_ARCHITECTURE = "conditional_identity_logit_amplitude_v2"
 IDENTITY_GENERATOR_CONTRACT = canonical_sha256({"architecture": IDENTITY_ARCHITECTURE, "formula": "h=SiLU(Wz*z);r=Wy*h;c=tanh(z+r);A=sigmoid(By+0.5*sum(c*P_hat))", "gain": 0.5, "bias_free": True})
 TRAINING_SCHEDULE_CONTRACT = canonical_sha256({"epochs": 5, "logical_batch_size": 50, "steps": 5500, "seed": 1234, "code_seed": "(epoch+1)*100000+batch_number"})
@@ -360,6 +364,52 @@ def _fixed_control_probe(*, device: torch.device) -> tuple[torch.Tensor, torch.T
     return codes.repeat(10, 1), torch.arange(10, device=device).repeat_interleave(17)
 
 
+def _panel_semantic_metrics(values: torch.Tensor, labels: torch.Tensor, evaluator: nn.Module, exposure_scale: float) -> dict[str, object]:
+    """Fixed-exposure semantic metrics for the immutable 10×17 code panel."""
+    if values.shape[0] != 170 or labels.shape != (170,):
+        raise ValueError("semantic panel requires the fixed 10×17 control probe")
+    view = fixed_exposure_view(values, exposure_scale)
+    _, logits = evaluator(view)
+    predictions = logits.argmax(dim=1)
+    zero = torch.arange(0, 170, 17, device=labels.device)
+    nonzero_mask = torch.ones(170, device=labels.device, dtype=torch.bool)
+    nonzero_mask[zero] = False
+    return {
+        "accuracy": float((predictions == labels).to(torch.float32).mean().item()),
+        "zero_code_accuracy": float((predictions.index_select(0, zero) == labels.index_select(0, zero)).to(torch.float32).mean().item()),
+        "nonzero_code_accuracy": float((predictions[nonzero_mask] == labels[nonzero_mask]).to(torch.float32).mean().item()),
+        "confusion": torch.bincount(labels * 10 + predictions, minlength=100).reshape(10, 10).cpu().tolist(),
+    }
+
+
+def _first_hundred_schedule_hash(labels: torch.Tensor) -> str:
+    """Content-address the exact formal epoch-one batches/codes used by smoke."""
+    rows = []
+    for batch_number, indices in zip(range(100), balanced_batches(labels, batch_size=50, seed=1234)):
+        codes = _random_codes(indices.numel(), device=torch.device("cpu"), seed=100000 + batch_number)
+        rows.append({"batch": batch_number, "indices": tensor_sha256(indices), "codes": tensor_sha256(codes)})
+    if len(rows) != 100:
+        raise ValueError("fixed MNIST training split cannot provide one hundred formal batches")
+    return canonical_sha256(rows)
+
+
+def _identity_isolation_classification(*, harness_valid: bool, command_fraction: float, first_collapse: str | None, camera_fraction: float, command_accuracy: float, camera_accuracy: float, saturation: float) -> str:
+    """Classify the read-only identity panel without mutating its evidence."""
+    if not harness_valid:
+        return "harness_invalid"
+    if command_fraction < 0.10:
+        return "generator_injection_insufficient"
+    if first_collapse is not None or camera_fraction < 0.10:
+        return "optical_transport_attenuated"
+    if command_accuracy < 0.95:
+        return "carrier_semantics_invalid"
+    if saturation > 0.08:
+        return "exposure_saturation_excessive"
+    if camera_accuracy < 0.30:
+        return "semantic_alignment_required"
+    return "controllable_upper_bound"
+
+
 def _probe_metrics(raw: torch.Tensor, labels: torch.Tensor, evaluator: nn.Module, exposure_scale: float) -> dict[str, object]:
     view = fixed_exposure_view(raw, exposure_scale)
     features, logits = evaluator(view)
@@ -367,6 +417,7 @@ def _probe_metrics(raw: torch.Tensor, labels: torch.Tensor, evaluator: nn.Module
     command_fraction = balanced_code_fraction(values)
     code_mean = values.mean(dim=1, keepdim=True)
     direction_rms = (values - code_mean).square().mean(dim=tuple(range(2, values.ndim))).sqrt().mean(dim=0).flatten().tolist()
+    semantic = _panel_semantic_metrics(raw, labels, evaluator, exposure_scale)
     return {
         "accuracy": float((logits.argmax(dim=1) == labels).to(torch.float32).mean().item()),
         "confusion": torch.bincount(labels * 10 + logits.argmax(dim=1), minlength=100).reshape(10, 10).cpu().tolist(),
@@ -377,6 +428,8 @@ def _probe_metrics(raw: torch.Tensor, labels: torch.Tensor, evaluator: nn.Module
         "view_rms": float(view.square().mean().sqrt().item()),
         "saturation": float(torch.relu(raw / exposure_scale - 1.0).gt(0).to(torch.float32).mean().item()),
         "feature_code_fraction": balanced_code_fraction(features.reshape(10, 17, -1)),
+        "zero_code_accuracy": semantic["zero_code_accuracy"],
+        "nonzero_code_accuracy": semantic["nonzero_code_accuracy"],
     }
 
 
@@ -409,13 +462,12 @@ def _identity_control_isolation(args, config: V2Config) -> int:
     command = torch.cat(command_rows).to(device)
     raw = torch.cat(raw_rows).to(device)
     after = state_content_hash(bundle.state_dict())
-    view = fixed_exposure_view(raw, settings.fixed_exposure_scale)
-    with torch.no_grad():
-        features, logits = evaluator(view)
     command_fraction = balanced_code_fraction(command.reshape(10, 17, *command.shape[1:]))
     physical_fraction = balanced_code_fraction(command.square().reshape(10, 17, *command.shape[1:]))
     camera_fraction = balanced_code_fraction(raw.reshape(10, 17, *raw.shape[1:]))
-    accuracy = float((logits.argmax(1) == probe_labels).float().mean().item())
+    command_semantics = _panel_semantic_metrics(command.square(), probe_labels, evaluator, settings.fixed_exposure_scale)
+    camera_semantics = _panel_semantic_metrics(raw, probe_labels, evaluator, settings.fixed_exposure_scale)
+    saturation = float(torch.relu(raw / settings.fixed_exposure_scale - 1.0).gt(0).to(torch.float32).mean().item())
     trace = trace_rows[0]
     operations = [field.provenance.operation for field in trace]
     plane_metrics = []
@@ -423,24 +475,24 @@ def _identity_control_isolation(args, config: V2Config) -> int:
         tensors = torch.cat([row[field_index].tensor.abs().square() for row in trace_rows], dim=0)
         plane_metrics.append({"index": field_index, "operation": field.provenance.operation, "code_fraction": balanced_code_fraction(tensors.reshape(10, 17, *tensors.shape[1:])), "finite": bool(torch.isfinite(tensors).all()), "plane": field.plane.to_dict(), "provenance": field.provenance.to_dict()})
     first_collapse = next((item["operation"] for item in plane_metrics if item["code_fraction"] < 0.10), None)
-    if command_fraction < 0.10:
-        classification = "generator_injection_insufficient"
-    elif first_collapse is not None:
-        classification = "optical_transport_attenuated"
-    elif not bool(torch.isfinite(raw).all()) or before != after or len(operations) < 8:
-        classification = "harness_invalid"
-    elif camera_fraction < 0.10 or accuracy < 0.30:
-        classification = "semantic_readout_insufficient"
-    else:
-        classification = "controllable_upper_bound"
+    harness_valid = bool(torch.isfinite(raw).all()) and before == after and len(operations) >= 8 and any("identity_ols" in operation for operation in operations) and all(item["finite"] for item in plane_metrics)
+    classification = _identity_isolation_classification(
+        harness_valid=harness_valid,
+        command_fraction=command_fraction,
+        first_collapse=first_collapse,
+        camera_fraction=camera_fraction,
+        command_accuracy=float(command_semantics["accuracy"]),
+        camera_accuracy=float(camera_semantics["accuracy"]),
+        saturation=saturation,
+    )
     run = _new_run(config)
     raw_path = run.root / "conditional_control_isolation_raw_cmos.pt"
     atomic_torch_save(raw_path, raw.cpu())
     report_path = run.root / "conditional_control_isolation_report.json"
-    atomic_write_json(report_path, {"metric_contract": CONDITIONAL_CONTROL_METRIC_CONTRACT, "code_count_per_label": 17, "command_code_fraction": command_fraction, "physical_slm_code_fraction": physical_fraction, "camera_code_fraction": camera_fraction, "accuracy": accuracy, "first_collapse_plane": first_collapse, "classification": classification, "parameters_unchanged": before == after, "plane_metrics": plane_metrics, "trace_operations": operations})
-    passed_harness = bool(torch.isfinite(raw).all()) and before == after and len(operations) >= 8
-    checks = (GateResult("fixed_probe_shape", len(codes) == 170, {"samples": 170.0}), GateResult("finite_fields", bool(torch.isfinite(raw).all()), {}), GateResult("complete_provenance", len(operations) >= 8 and any("identity_ols" in op for op in operations), {}), GateResult("parameters_unchanged", before == after, {}), GateResult("command_code_response", command_fraction >= 0.10, {"value": command_fraction}))
-    record = EvidenceRecordV2(2, "conditional_control_isolation", "diagnostic", "diagnostic" if passed_harness else "failed", run.git_commit, run.dirty_patch_hash, run.config_hash, expected, {"injection_evidence": injection.evidence_hash, "observability_evidence": observability.evidence_hash, "checkpoint": init_hash, "report": file_sha256(report_path), "raw_cmos": file_sha256(raw_path)}, checks, ("controllability_smoke",) if classification == "controllable_upper_bound" else (), None if passed_harness else "conditional control isolation harness failed")
+    atomic_write_json(report_path, {"metric_contract": CONDITIONAL_CONTROL_ADMISSION_CONTRACT, "code_count_per_label": 17, "command_code_fraction": command_fraction, "physical_slm_code_fraction": physical_fraction, "camera_code_fraction": camera_fraction, "command_semantics": command_semantics, "camera_semantics": camera_semantics, "saturation": saturation, "first_collapse_plane": first_collapse, "classification": classification, "parameters_unchanged": before == after, "plane_metrics": plane_metrics, "trace_operations": operations})
+    checks = (GateResult("fixed_probe_shape", len(codes) == 170, {"samples": 170.0}), GateResult("finite_fields", bool(torch.isfinite(raw).all()), {}), GateResult("complete_provenance", len(operations) >= 8 and any("identity_ols" in op for op in operations), {}), GateResult("parameters_unchanged", before == after, {}), GateResult("command_code_response", command_fraction >= 0.10, {"value": command_fraction}), GateResult("command_semantic_readability", float(command_semantics["accuracy"]) >= 0.95, {"accuracy": float(command_semantics["accuracy"])}), GateResult("fixed_exposure_saturation", saturation <= 0.08, {"saturation": saturation}))
+    smoke_authorized = classification in {"semantic_alignment_required", "controllable_upper_bound"}
+    record = EvidenceRecordV2(2, "conditional_control_isolation", "diagnostic", "diagnostic" if harness_valid else "failed", run.git_commit, run.dirty_patch_hash, run.config_hash, expected, {"injection_evidence": injection.evidence_hash, "observability_evidence": observability.evidence_hash, "checkpoint": init_hash, "report": file_sha256(report_path), "raw_cmos": file_sha256(raw_path), "control_admission_metric_contract": canonical_sha256(CONDITIONAL_CONTROL_ADMISSION_CONTRACT)}, checks, ("controllability_smoke",) if smoke_authorized else (), None if harness_valid else "conditional control isolation harness failed")
     _write_evidence(run, "conditional_control_isolation_evidence.json", record)
     print(run.root)
     return 0
@@ -574,14 +626,20 @@ def _conditional_optimizer(bundle: ConditionalBundle, config: V2Config) -> torch
 def controllability_smoke(args, config: V2Config) -> int:
     _require_conditional(config)
     if config.architecture == IDENTITY_ARCHITECTURE:
+        if args.steps != 100:
+            raise ValueError("identity semantic-alignment smoke is locked to exactly 100 steps")
         images, all_labels = load_local_mnist(args.dataset_root, train=True)
         train_images, train_labels, _, _, split = _split(images, all_labels, args.dataset_root)
         evaluator, _ = load_frozen_evaluator(args.evaluator_checkpoint, device=torch.device(config.run.device))
         expected = _context(config, evaluator_hash=evaluator_checkpoint_hash(args.evaluator_checkpoint), split_hash=split.manifest_hash, checkpoint_hash=file_sha256(args.checkpoint))
         injection = EvidenceRecordV2.from_dict(json.loads(Path(args.injection_evidence).read_text(encoding="utf-8")))
+        observability = EvidenceRecordV2.from_dict(json.loads(Path(args.observability_evidence).read_text(encoding="utf-8")))
         isolation = EvidenceRecordV2.from_dict(json.loads(Path(args.isolation_evidence).read_text(encoding="utf-8")))
         require_evidence_action(injection, kind="conditional_injection_admission", action="conditional_observability", expected_context=expected)
+        require_evidence_action(observability, kind="conditional_observability", action="conditional_control_isolation", expected_context=expected)
         require_evidence_action(isolation, kind="conditional_control_isolation", action="controllability_smoke", expected_context=expected, allow_diagnostic=True)
+        if isolation.input_hashes.get("control_admission_metric_contract") != canonical_sha256(CONDITIONAL_CONTROL_ADMISSION_CONTRACT):
+            raise ValueError("legacy control-isolation metric contract cannot authorize identity smoke")
     else:
         _passed_evidence(args.observability_evidence, kind="conditional_observability")
     device = torch.device(config.run.device)
@@ -589,16 +647,19 @@ def controllability_smoke(args, config: V2Config) -> int:
     train_images, train_labels, _, _, split = _split(images, all_labels, args.dataset_root)
     evaluator, _ = load_frozen_evaluator(args.evaluator_checkpoint, device=device)
     if config.architecture == IDENTITY_ARCHITECTURE:
-        bundle, _ = _load_bundle(config, args.checkpoint, device=device, evaluator_hash=evaluator_checkpoint_hash(args.evaluator_checkpoint), split_hash=split.manifest_hash)
+        bundle, initialization_manifest = _load_bundle(config, args.checkpoint, device=device, evaluator_hash=evaluator_checkpoint_hash(args.evaluator_checkpoint), split_hash=split.manifest_hash)
     else:
         bundle = ConditionalBundle(config, carrier_logits=_carrier_logits(train_images, train_labels, config.system.slm_shape)).to(device)
+        initialization_manifest = None
     optimizer = _conditional_optimizer(bundle, config)
     settings = config.conditional_generation
     assert settings is not None
     probe_codes, probe_labels = _fixed_control_probe(device=device)
     probe_history: dict[str, dict[str, object]] = {}
+    probe_raw_by_step: dict[int, torch.Tensor] = {}
     loss_history: list[dict[str, float]] = []
     group_history: list[dict[str, object]] = []
+    schedule_hash = _first_hundred_schedule_hash(train_labels) if config.architecture == IDENTITY_ARCHITECTURE else None
 
     def evaluate_probe() -> tuple[torch.Tensor, dict[str, object]]:
         with torch.no_grad():
@@ -607,9 +668,10 @@ def controllability_smoke(args, config: V2Config) -> int:
 
     initial_raw, initial_metrics = evaluate_probe()
     probe_history["step_0"] = initial_metrics
+    probe_raw_by_step[0] = initial_raw.detach().cpu()
     for step, indices in zip(range(args.steps), balanced_batches(train_labels, batch_size=settings.logical_batch_size, seed=1234)):
         labels = train_labels.index_select(0, indices).to(device)
-        codes = _random_codes(labels.numel(), device=device, seed=1234 + step)
+        codes = _random_codes(labels.numel(), device=device, seed=100000 + step if config.architecture == IDENTITY_ARCHITECTURE else 1234 + step)
         optimizer.zero_grad(set_to_none=True)
         loss, summary, raw = conditional_loss(system=bundle.system, generator=bundle.generator, evaluator=evaluator, codes=codes, labels=labels, real_views=train_images.index_select(0, indices).to(device), exposure_scale=settings.fixed_exposure_scale, sinkhorn_epsilon=settings.sinkhorn_epsilon, sinkhorn_iterations=settings.sinkhorn_iterations, activation_checkpoint=config.execution.activation_checkpoint, microbatch_size=config.execution.training_microbatch_size)
         loss.backward()
@@ -627,21 +689,26 @@ def controllability_smoke(args, config: V2Config) -> int:
         group_history.append({"step": step + 1, "gradients": grad_metrics, "updates": update_metrics})
         loss_history.append(asdict(summary) | {"step": float(step + 1)})
         if step + 1 in {10, args.steps}:
-            _, metrics = evaluate_probe()
+            probe_raw, metrics = evaluate_probe()
             probe_history[f"step_{step + 1}"] = metrics
+            probe_raw_by_step[step + 1] = probe_raw.detach().cpu()
     if args.steps < 1:
         raise ValueError("controllability smoke received no balanced MNIST batches")
     final_raw, final_metrics = evaluate_probe()
     probe_history[f"step_{args.steps}"] = final_metrics
+    probe_raw_by_step[args.steps] = final_raw.detach().cpu()
     final_groups = group_history[-1]
+    step_ten_groups = next((row for row in group_history if row["step"] == 10), None)
     gradient_checks = [value["gradient_finite"] and value["gradient_nonzero"] for value in final_groups["gradients"].values()]
     update_checks = [value["update_nonzero"] for value in final_groups["updates"].values()]
+    code_projection_recovered = bool(step_ten_groups is not None and step_ten_groups["gradients"]["code_projection"]["gradient_finite"] and step_ten_groups["gradients"]["code_projection"]["gradient_nonzero"] and step_ten_groups["updates"]["code_projection"]["update_nonzero"] and final_groups["gradients"]["code_projection"]["gradient_finite"] and final_groups["gradients"]["code_projection"]["gradient_nonzero"] and final_groups["updates"]["code_projection"]["update_nonzero"])
     checks = (
         GateResult("fixed_probe_complete", final_metrics["accuracy"] is not None, {"samples": 170.0}),
         GateResult("semantic_accuracy", float(final_metrics["accuracy"]) >= 0.30, {"accuracy": float(final_metrics["accuracy"])}),
         GateResult("camera_code_fraction", float(final_metrics["code_fraction"]) >= 0.10, {"camera_code_fraction": float(final_metrics["code_fraction"])}),
         GateResult("finite_nonzero_gradients", bool(all(gradient_checks)), {"groups": float(sum(gradient_checks)), "total": float(len(gradient_checks))}),
         GateResult("nonzero_parameter_updates", bool(all(update_checks)), {"groups": float(sum(update_checks)), "total": float(len(update_checks))}),
+        GateResult("identity_wz_recovered_by_step_10_and_100", code_projection_recovered, {"recovered": code_projection_recovered}),
         GateResult("high_saturation", float(final_metrics["saturation"]) <= 0.08, {"high_saturation": float(final_metrics["saturation"])}),
     )
     run = _new_run(config)
@@ -650,12 +717,27 @@ def controllability_smoke(args, config: V2Config) -> int:
     atomic_torch_save(raw_path, final_raw.cpu())
     atomic_torch_save(labels_path, probe_labels.cpu())
     review_artifacts = write_conditional_review_artifacts(root=run.root, raw_cmos=final_raw.cpu(), labels=probe_labels.cpu(), exposure_scale=settings.fixed_exposure_scale)
+    step_probe_artifacts: dict[str, dict[str, str]] = {}
+    for probe_step in (0, 10, args.steps):
+        probe_raw = probe_raw_by_step[probe_step]
+        probe_raw_path = run.root / f"controllability_probe_step_{probe_step}_raw_cmos.pt"
+        atomic_torch_save(probe_raw_path, probe_raw)
+        preview = write_review_artifacts(root=run.root, stem=f"controllability_probe_step_{probe_step}", kind="conditional_controllability_smoke", raw_cmos=probe_raw, labels=probe_labels.cpu(), exposure_scale=settings.fixed_exposure_scale)
+        step_probe_artifacts[str(probe_step)] = {"raw_cmos": file_sha256(probe_raw_path), "preview": preview.preview_sha256}
+    smoke_checkpoint_path = run.root / "controllability_smoke_final.pt"
+    if config.architecture == IDENTITY_ARCHITECTURE:
+        assert initialization_manifest is not None
+        smoke_manifest = ConditionalCheckpointManifestV2(2, IDENTITY_ARCHITECTURE, _system_signature(config), canonical_sha256(config.model_dump(mode="json")), split.manifest_hash, evaluator_checkpoint_hash(args.evaluator_checkpoint), settings.fixed_exposure_scale, state_signature(bundle.state_dict()), state_content_hash(bundle.state_dict()), IDENTITY_GENERATOR_CONTRACT, canonical_sha256(CONDITIONAL_CONTROL_METRIC_CONTRACT), TRAINING_SCHEDULE_CONTRACT, 1234, initialization_manifest.initialization_state_hash)
+        save_conditional_checkpoint(smoke_checkpoint_path, bundle, smoke_manifest, extra={"diagnostic_only": True, "never_warm_start": True, "steps": args.steps})
     history_path = run.root / "controllability_probe_history.json"
-    atomic_write_json(history_path, {"metric_contract": CONDITIONAL_CONTROL_METRIC_CONTRACT, "loss": loss_history, "probes": probe_history, "parameter_groups": group_history})
+    atomic_write_json(history_path, {"metric_contract": CONDITIONAL_CONTROL_ADMISSION_CONTRACT if config.architecture == IDENTITY_ARCHITECTURE else CONDITIONAL_CONTROL_METRIC_CONTRACT, "loss": loss_history, "probes": probe_history, "parameter_groups": group_history, "step_probe_artifacts": step_probe_artifacts, "first_100_schedule_hash": schedule_hash})
     passed = all(item.passed for item in checks)
-    context = _context(config, evaluator_hash=evaluator_checkpoint_hash(args.evaluator_checkpoint), split_hash=split.manifest_hash)
+    context = _context(config, evaluator_hash=evaluator_checkpoint_hash(args.evaluator_checkpoint), split_hash=split.manifest_hash, checkpoint_hash=file_sha256(args.checkpoint) if config.architecture == IDENTITY_ARCHITECTURE else None)
     permitted = ("train",) if passed and config.run.evidence_tier == "acceptance" else ()
-    record = EvidenceRecordV2(2, "controllability_smoke", config.run.evidence_tier, "passed" if passed else "failed", run.git_commit, run.dirty_patch_hash, run.config_hash, context, {"observability": file_sha256(args.observability_evidence), "evaluator": evaluator_checkpoint_hash(args.evaluator_checkpoint), "metric_contract": canonical_sha256(CONDITIONAL_CONTROL_METRIC_CONTRACT), "probe_raw_cmos": file_sha256(raw_path), "probe_labels": file_sha256(labels_path), "probe_preview": review_artifacts.preview_sha256, "probe_history": file_sha256(history_path)}, checks, permitted, None if passed else "conditional controllability smoke failed")
+    inputs = {"observability": file_sha256(args.observability_evidence), "evaluator": evaluator_checkpoint_hash(args.evaluator_checkpoint), "metric_contract": canonical_sha256(CONDITIONAL_CONTROL_ADMISSION_CONTRACT if config.architecture == IDENTITY_ARCHITECTURE else CONDITIONAL_CONTROL_METRIC_CONTRACT), "probe_raw_cmos": file_sha256(raw_path), "probe_labels": file_sha256(labels_path), "probe_preview": review_artifacts.preview_sha256, "probe_history": file_sha256(history_path)}
+    if config.architecture == IDENTITY_ARCHITECTURE:
+        inputs.update({"injection": file_sha256(args.injection_evidence), "isolation": file_sha256(args.isolation_evidence), "initialization_checkpoint": file_sha256(args.checkpoint), "first_100_schedule_hash": schedule_hash, "diagnostic_final_checkpoint": file_sha256(smoke_checkpoint_path)})
+    record = EvidenceRecordV2(2, "controllability_smoke", config.run.evidence_tier, "passed" if passed else "failed", run.git_commit, run.dirty_patch_hash, run.config_hash, context, inputs, checks, permitted, None if passed else "conditional controllability smoke failed")
     _write_evidence(run, "controllability_smoke_evidence.json", record)
     print(run.root)
     return 0
@@ -673,6 +755,8 @@ def conditional_train(args, config: V2Config) -> int:
         require_evidence_action(injection, kind="conditional_injection_admission", action="conditional_observability", expected_context=expected)
         require_evidence_action(observability, kind="conditional_observability", action="conditional_control_isolation", expected_context=expected)
         require_evidence_action(smoke, kind="controllability_smoke", action="train", expected_context=expected)
+        if smoke.input_hashes.get("first_100_schedule_hash") != _first_hundred_schedule_hash(train_labels):
+            raise ValueError("smoke does not reproduce the formal training first-100 batch/code schedule")
     else:
         _passed_evidence(args.observability_evidence, kind="conditional_observability")
         _passed_evidence(args.controllability_evidence, kind="controllability_smoke")
@@ -705,7 +789,10 @@ def conditional_train(args, config: V2Config) -> int:
     checkpoint_hash = file_sha256(checkpoint_path)
     finite = bool(torch.isfinite(torch.tensor([row["total"] for row in history])).all())
     permitted = ("evaluate",) if finite and config.run.evidence_tier == "acceptance" else ()
-    record = EvidenceRecordV2(2, "conditional_training", config.run.evidence_tier, "passed" if finite else "failed", run.git_commit, run.dirty_patch_hash, run.config_hash, _context(config, evaluator_hash=manifest.evaluator_checkpoint_hash, split_hash=split.manifest_hash, checkpoint_hash=checkpoint_hash), {"checkpoint": checkpoint_hash, "evaluator": manifest.evaluator_checkpoint_hash}, (GateResult("finite_training_loss", finite, {"steps": float(len(history))}),), permitted, None if finite else "conditional training produced non-finite loss")
+    inputs = {"checkpoint": checkpoint_hash, "evaluator": manifest.evaluator_checkpoint_hash}
+    if config.architecture == IDENTITY_ARCHITECTURE:
+        inputs["first_100_schedule_hash"] = _first_hundred_schedule_hash(train_labels)
+    record = EvidenceRecordV2(2, "conditional_training", config.run.evidence_tier, "passed" if finite else "failed", run.git_commit, run.dirty_patch_hash, run.config_hash, _context(config, evaluator_hash=manifest.evaluator_checkpoint_hash, split_hash=split.manifest_hash, checkpoint_hash=checkpoint_hash), inputs, (GateResult("finite_training_loss", finite, {"steps": float(len(history))}),), permitted, None if finite else "conditional training produced non-finite loss")
     _write_evidence(run, "conditional_training_evidence.json", record)
     print(run.root)
     return 0

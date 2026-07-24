@@ -13,6 +13,7 @@ from ldm_project.v2.student.conditional import conditional_sinkhorn_loss, fixed_
 from ldm_project.v2.student.conditional_acceptance import chunked_nearest_distances, memorization_statistics, paired_bootstrap_lower_bound, per_label_feature_diversity_ratio
 from ldm_project.v2.student.generator import ConditionalGlobalAmplitudeGenerator, IdentityAnchoredConditionalAmplitudeGenerator
 from ldm_project.v2.evidence.reviews import ConditionalManualReviewV2
+from ldm_project.v2.application.conditional import _first_hundred_schedule_hash, _identity_isolation_classification
 
 
 def test_conditional_generator_is_bounded_zero_code_carrier_and_global() -> None:
@@ -125,6 +126,23 @@ def test_balanced_code_fraction_is_bounded() -> None:
     values = torch.randn(10, 17, 4, 4, generator=torch.Generator().manual_seed(13))
     fraction = balanced_code_fraction(values)
     assert 0.0 <= fraction <= 1.0
+
+
+def test_identity_isolation_allows_one_semantic_alignment_smoke_only_after_transport_passes() -> None:
+    common = dict(harness_valid=True, command_fraction=0.15, first_collapse=None, camera_fraction=0.32, command_accuracy=0.97, saturation=0.05)
+    assert _identity_isolation_classification(**common, camera_accuracy=0.18) == "semantic_alignment_required"
+    assert _identity_isolation_classification(**common, camera_accuracy=0.30) == "controllable_upper_bound"
+    assert _identity_isolation_classification(**{**common, "command_accuracy": 0.94}, camera_accuracy=0.18) == "carrier_semantics_invalid"
+    assert _identity_isolation_classification(**{**common, "camera_fraction": 0.09}, camera_accuracy=0.18) == "optical_transport_attenuated"
+    assert _identity_isolation_classification(**{**common, "saturation": 0.081}, camera_accuracy=0.18) == "exposure_saturation_excessive"
+
+
+def test_identity_smoke_and_formal_training_share_the_first_hundred_schedule() -> None:
+    labels = torch.arange(10).repeat_interleave(600)
+    assert _first_hundred_schedule_hash(labels) == _first_hundred_schedule_hash(labels.clone())
+    changed = labels.clone()
+    changed[0], changed[600] = changed[600], changed[0]
+    assert _first_hundred_schedule_hash(changed) != _first_hundred_schedule_hash(labels)
 
 
 def test_conditional_checkpoint_rejects_architecture_mismatch(tmp_path: Path) -> None:
