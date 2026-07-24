@@ -35,8 +35,8 @@ from ..student.training import _differentiable_correlation, calibrate_prototypes
 from ..student.capacity import supported_dct_candidates
 from ..teacher import TeacherPairManifestV2, TeacherTargetManifestV2, build_teacher_pair_manifest, build_teacher_target_manifest
 from .runs import V2Run
-from .conditional_admission import conditional_control_isolation, conditional_injection_admission, conditional_observability, conditional_semantic_localization, controllability_smoke, qualify_evaluator, semantic_recovery_smoke, train_evaluator
-from .conditional_training import admit_conditional_evaluation, conditional_evaluate, conditional_train, sample_conditional
+from .conditional_admission import conditional_control_isolation, conditional_injection_admission, conditional_observability, conditional_semantic_localization, controllability_smoke, qualify_evaluator, semantic_recovery_smoke, train_evaluator, conditional_training_completion, conditional_diversity_observability
+from .conditional_training import admit_conditional_evaluation, conditional_evaluate, conditional_train, sample_conditional, diversity_recovery_smoke, train_diversity_recovery
 from .conditional_dataset import admit_dataset, audit_memorization, evaluate_utility, export_conditional_dataset
 
 _CONTROL_ORACLE_ARMS = ("formal_amplitude_only", "diagnostic_complex_slm")
@@ -1598,6 +1598,14 @@ def _parser() -> argparse.ArgumentParser:
     for name in ("config", "dataset_root", "evaluator_checkpoint", "initialization_checkpoint", "injection_evidence", "observability_evidence", "isolation_evidence", "semantic_localization_evidence", "failed_controllability_evidence"):
         recovery.add_argument("--" + name.replace("_", "-"), required=True)
     recovery.set_defaults(handler=lambda args: semantic_recovery_smoke(args, load_config(args.config)))
+    diversity_smoke = student.add_parser("diversity-recovery-smoke")
+    for name in ("config", "dataset_root", "evaluator_checkpoint", "checkpoint", "training_completion_evidence", "diversity_observability_evidence"):
+        diversity_smoke.add_argument("--" + name.replace("_", "-"), required=True)
+    diversity_smoke.set_defaults(handler=lambda args: diversity_recovery_smoke(args, load_config(args.config)))
+    diversity_train = student.add_parser("train-diversity-recovery")
+    for name in ("config", "dataset_root", "evaluator_checkpoint", "checkpoint", "diversity_recovery_evidence"):
+        diversity_train.add_argument("--" + name.replace("_", "-"), required=True)
+    diversity_train.set_defaults(handler=lambda args: train_diversity_recovery(args, load_config(args.config)))
     export_dataset = student.add_parser("export-dataset")
     for name in ("config", "checkpoint", "acceptance_evidence"):
         export_dataset.add_argument("--" + name.replace("_", "-"), required=True)
@@ -1655,6 +1663,14 @@ def _parser() -> argparse.ArgumentParser:
     for name in ("config", "dataset_root", "evaluator_checkpoint", "checkpoint", "injection_evidence", "observability_evidence", "isolation_evidence"):
         conditional_localization_parser.add_argument("--" + name.replace("_", "-"), required=True)
     conditional_localization_parser.set_defaults(handler=lambda args: conditional_semantic_localization(args, load_config(args.config)))
+    completion_parser = audit.add_parser("conditional-training-completion")
+    for name in ("config", "dataset_root", "evaluator_checkpoint", "checkpoint", "training_evidence"):
+        completion_parser.add_argument("--" + name.replace("_", "-"), required=True)
+    completion_parser.set_defaults(handler=lambda args: conditional_training_completion(args, load_config(args.config)))
+    diversity_observability_parser = audit.add_parser("conditional-diversity-observability")
+    for name in ("config", "dataset_root", "evaluator_checkpoint", "checkpoint", "training_completion_evidence"):
+        diversity_observability_parser.add_argument("--" + name.replace("_", "-"), required=True)
+    diversity_observability_parser.set_defaults(handler=lambda args: conditional_diversity_observability(args, load_config(args.config)))
     memorization = audit.add_parser("memorization")
     for name in ("config", "candidate_evidence", "candidate_dataset", "dataset_root", "evaluator_checkpoint"):
         memorization.add_argument("--" + name.replace("_", "-"), required=True)

@@ -15,7 +15,7 @@ from ..evidence import EvidenceContextV2, EvidenceRecordV2, GateResult, atomic_t
 from ..optics import FormalAmplitudeFiniteCropIdentitySystem
 from ..student.checkpoints import ConditionalCheckpointManifestV2, load_conditional_checkpoint, save_conditional_checkpoint, state_content_hash, state_signature
 from ..student.admission import balanced_code_fraction
-from ..student.conditional import conditional_loss, fixed_exposure_view, raw_from_generator_batched
+from ..student.conditional import conditional_loss, conditional_sinkhorn_loss, fixed_exposure_view, raw_from_generator_batched, relative_diversity_loss, relative_diversity_ratios
 from ..student.conditional_acceptance import conditional_coverage_ratio, load_candidate_dataset, memorization_statistics, paired_bootstrap_lower_bound, per_label_feature_diversity_ratio
 from ..student.evaluator import FrozenMNISTEvaluator, MNISTSplitManifest, balanced_batches, evaluator_checkpoint_hash, load_frozen_evaluator, load_local_mnist, save_evaluator_checkpoint, stratified_mnist_indices
 from ..student.generator import ConditionalGlobalAmplitudeGenerator, IdentityAnchoredConditionalAmplitudeGenerator
@@ -33,6 +33,10 @@ CONDITIONAL_SEMANTIC_LOCALIZATION_CONTRACT = "identity_semantic_localization_v1|
 IDENTITY_ARCHITECTURE = "conditional_identity_logit_amplitude_v2"
 IDENTITY_GENERATOR_CONTRACT = canonical_sha256({"architecture": IDENTITY_ARCHITECTURE, "formula": "h=SiLU(Wz*z);r=Wy*h;c=tanh(z+r);A=sigmoid(By+0.5*sum(c*P_hat))", "gain": 0.5, "bias_free": True})
 TRAINING_SCHEDULE_CONTRACT = canonical_sha256({"epochs": 5, "logical_batch_size": 50, "steps": 5500, "seed": 1234, "code_seed": "(epoch+1)*100000+batch_number"})
+BALANCED_TRAINING_SCHEDULE = {"epochs": 5, "logical_batch_size": 50, "batch_policy": "balanced_min_class_exhaustion", "seed": 1234, "code_seed": "(epoch+1)*100000+batch_number"}
+BALANCED_TRAINING_SCHEDULE_CONTRACT = canonical_sha256(BALANCED_TRAINING_SCHEDULE)
+DIVERSITY_LOSS_CONTRACT = canonical_sha256({"sinkhorn": 1.0, "classification": 0.5, "relative_diversity": 1.0, "saturation": 0.1, "mode_orthogonality": 1.0e-3, "feature_normalization": "l2", "bounds": [0.70, 1.30]})
+DIVERSITY_RECOVERY_CONTRACT = canonical_sha256({"kind": "conditional_diversity_recovery_smoke", "steps": 400, "probes": [0, 100, 200, 400], "trainable_groups": ["global_modes", "code_projection", "class_heads"]})
 SEMANTIC_RECOVERY_STEPS = 400
 SEMANTIC_RECOVERY_CONTRACT = canonical_sha256({"kind": "conditional_semantic_recovery_smoke", "steps": SEMANTIC_RECOVERY_STEPS, "batch_seed": 1234, "code_seed": "100000+batch_number", "initialization_only": True})
 
@@ -125,7 +129,7 @@ def _random_codes(count: int, *, device: torch.device, seed: int) -> torch.Tenso
     return torch.rand(count, 8, generator=generator).mul_(2.0).sub_(1.0).to(device)
 
 
-def _load_bundle(config: V2Config, checkpoint: str, *, device: torch.device, evaluator_hash: str | None = None, split_hash: str | None = None) -> tuple[ConditionalBundle, ConditionalCheckpointManifestV2]:
+def _load_bundle(config: V2Config, checkpoint: str, *, device: torch.device, evaluator_hash: str | None = None, split_hash: str | None = None, allow_balanced_schedule: bool = False) -> tuple[ConditionalBundle, ConditionalCheckpointManifestV2]:
     _require_conditional(config)
     payload = torch.load(checkpoint, map_location="cpu", weights_only=False)
     if not isinstance(payload, dict) or not isinstance(payload.get("manifest"), dict):
@@ -139,7 +143,10 @@ def _load_bundle(config: V2Config, checkpoint: str, *, device: torch.device, eva
         raise ValueError("conditional checkpoint uses another MNIST split")
     bundle = ConditionalBundle(config).to(device)
     if manifest.architecture_kind == IDENTITY_ARCHITECTURE:
-        if manifest.generator_contract_hash != IDENTITY_GENERATOR_CONTRACT or manifest.metric_contract_hash != canonical_sha256(CONDITIONAL_CONTROL_METRIC_CONTRACT) or manifest.training_schedule_hash != TRAINING_SCHEDULE_CONTRACT or manifest.initialization_seed != 1234:
+        valid_schedules = {TRAINING_SCHEDULE_CONTRACT}
+        if allow_balanced_schedule:
+            valid_schedules.add(BALANCED_TRAINING_SCHEDULE_CONTRACT)
+        if manifest.generator_contract_hash != IDENTITY_GENERATOR_CONTRACT or manifest.metric_contract_hash != canonical_sha256(CONDITIONAL_CONTROL_METRIC_CONTRACT) or manifest.training_schedule_hash not in valid_schedules or manifest.initialization_seed != 1234:
             raise ValueError("identity checkpoint has an incomplete or mismatched contract")
     load_conditional_checkpoint(checkpoint, bundle, manifest)
     return bundle, manifest
@@ -822,6 +829,9 @@ def controllability_smoke(args, config: V2Config) -> int:
     settings = config.conditional_generation
     assert settings is not None
     probe_codes, probe_labels = _fixed_control_probe(device=device)
+    real_probe_images = torch.cat([train_images[train_labels == label][:17] for label in range(10)], dim=0).to(device)
+    with torch.no_grad():
+        real_probe_features, _ = evaluator(real_probe_images)
     probe_history: dict[str, dict[str, object]] = {}
     probe_raw_by_step: dict[int, torch.Tensor] = {}
     loss_history: list[dict[str, float]] = []
@@ -1085,16 +1095,231 @@ def conditional_train(args, config: V2Config) -> int:
     return 0
 
 
+def _balanced_epoch_steps(labels: torch.Tensor, batch_size: int = 50) -> int:
+    return sum(1 for _ in balanced_batches(labels, batch_size=batch_size, seed=1234))
+
+
+def conditional_training_completion(args, config: V2Config) -> int:
+    """Repair only the schedule metadata of the completed semantic checkpoint."""
+    _require_identity(config)
+    images, labels_all = load_local_mnist(args.dataset_root, train=True)
+    train_images, train_labels, _, _, split = _split(images, labels_all, args.dataset_root)
+    evaluator_hash = evaluator_checkpoint_hash(args.evaluator_checkpoint)
+    training = _passed_evidence(args.training_evidence, kind="conditional_training")
+    checkpoint_hash = file_sha256(args.checkpoint)
+    expected = _context(config, evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, checkpoint_hash=checkpoint_hash)
+    if training.context != expected or training.input_hashes.get("checkpoint") != checkpoint_hash:
+        raise ValueError("training evidence does not bind the requested semantic checkpoint context")
+    payload = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
+    history = payload.get("extra", {}).get("history") if isinstance(payload, dict) else None
+    expected_steps = config.conditional_generation.epochs * _balanced_epoch_steps(train_labels, config.conditional_generation.logical_batch_size)
+    if not isinstance(history, list) or len(history) != expected_steps:
+        raise ValueError(f"completed checkpoint history must contain exactly {expected_steps} balanced steps")
+    if any(not torch.isfinite(torch.tensor(float(row.get("total", float("nan"))))) for row in history if isinstance(row, dict)):
+        raise ValueError("completed checkpoint contains non-finite history")
+    bundle, old_manifest = _load_bundle(config, args.checkpoint, device=torch.device("cpu"), evaluator_hash=evaluator_hash, split_hash=split.manifest_hash)
+    run = _new_run(config)
+    corrected = run.root / "conditional_optical_generator_balanced.pt"
+    new_manifest = ConditionalCheckpointManifestV2(2, IDENTITY_ARCHITECTURE, old_manifest.system_signature, old_manifest.config_hash, old_manifest.dataset_split_manifest_hash, old_manifest.evaluator_checkpoint_hash, old_manifest.exposure_scale, state_signature(bundle.state_dict()), state_content_hash(bundle.state_dict()), IDENTITY_GENERATOR_CONTRACT, canonical_sha256(CONDITIONAL_CONTROL_METRIC_CONTRACT), BALANCED_TRAINING_SCHEDULE_CONTRACT, 1234, old_manifest.initialization_state_hash)
+    save_conditional_checkpoint(corrected, bundle, new_manifest, extra={"history": history, "schedule_steps_per_epoch": expected_steps // config.conditional_generation.epochs, "source_checkpoint": checkpoint_hash, "metadata_only_correction": True})
+    checks = (GateResult("balanced_steps_per_epoch", expected_steps // config.conditional_generation.epochs == 984, {"steps_per_epoch": float(expected_steps // config.conditional_generation.epochs)}), GateResult("history_finite", True, {"steps": float(len(history))}), GateResult("state_content_preserved", new_manifest.state_content_hash == old_manifest.state_content_hash, {}))
+    record = EvidenceRecordV2(2, "conditional_training_completion", config.run.evidence_tier, "passed", run.git_commit, run.dirty_patch_hash, run.config_hash, _context(config, evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, checkpoint_hash=file_sha256(corrected)), {"source_checkpoint": checkpoint_hash, "checkpoint": file_sha256(corrected), "schedule_contract": BALANCED_TRAINING_SCHEDULE_CONTRACT}, checks, ("diversity_observability",), None)
+    _write_evidence(run, "conditional_training_completion_evidence.json", record)
+    print(run.root)
+    return 0
+
+
+def _diversity_parameters(bundle: ConditionalBundle) -> dict[str, tuple[nn.Parameter, ...]]:
+    return {"global_modes": (bundle.generator.global_modes,), "code_projection": (bundle.generator.code_projection.weight,), "class_heads": (bundle.generator.class_heads,)}
+
+
+def _diversity_objective(*, bundle: ConditionalBundle, evaluator: nn.Module, codes: torch.Tensor, labels: torch.Tensor, real_views: torch.Tensor, settings, config: V2Config) -> tuple[torch.Tensor, dict[str, float], torch.Tensor]:
+    raw = raw_from_generator_batched(bundle.system, bundle.generator, codes, labels, microbatch_size=config.execution.training_microbatch_size, activation_checkpoint=config.execution.activation_checkpoint)
+    generated_view = fixed_exposure_view(raw, settings.fixed_exposure_scale)
+    generated_features, logits = evaluator(generated_view)
+    with torch.no_grad():
+        real_features, _ = evaluator(real_views)
+    sinkhorn = conditional_sinkhorn_loss(generated_features, generated_view, real_features, real_views, labels, epsilon=settings.sinkhorn_epsilon, iterations=settings.sinkhorn_iterations)
+    classification = torch.nn.functional.cross_entropy(logits, labels)
+    diversity = relative_diversity_loss(generated_features, real_features, labels)
+    saturation = torch.relu(raw / settings.fixed_exposure_scale - 1.0).square().mean()
+    orthogonality = bundle.generator.mode_orthogonality_penalty()
+    total = sinkhorn + 0.5 * classification + diversity + 0.1 * saturation + 1.0e-3 * orthogonality
+    return total, {"total": float(total.detach()), "sinkhorn": float(sinkhorn.detach()), "classification": float(classification.detach()), "relative_diversity": float(diversity.detach()), "saturation": float(saturation.detach()), "mode_orthogonality": float(orthogonality.detach())}, raw
+
+
+def conditional_diversity_observability(args, config: V2Config) -> int:
+    _require_identity(config)
+    images, labels_all = load_local_mnist(args.dataset_root, train=True)
+    train_images, train_labels, _, _, split = _split(images, labels_all, args.dataset_root)
+    evaluator_hash = evaluator_checkpoint_hash(args.evaluator_checkpoint)
+    corrected_hash = file_sha256(args.checkpoint)
+    expected = _context(config, evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, checkpoint_hash=corrected_hash)
+    completion = EvidenceRecordV2.from_dict(json.loads(Path(args.training_completion_evidence).read_text(encoding="utf-8")))
+    require_evidence_action(completion, kind="conditional_training_completion", action="diversity_observability", expected_context=expected)
+    device = torch.device(config.run.device)
+    evaluator, _ = load_frozen_evaluator(args.evaluator_checkpoint, device=device)
+    bundle, manifest = _load_bundle(config, args.checkpoint, device=device, evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, allow_balanced_schedule=True)
+    if manifest.training_schedule_hash != BALANCED_TRAINING_SCHEDULE_CONTRACT:
+        raise ValueError("diversity observability requires the corrected balanced schedule checkpoint")
+    groups = _diversity_parameters(bundle)
+    codes, probe_labels = _fixed_control_probe(device=device)
+    with torch.no_grad():
+        commands = bundle.generator(codes, probe_labels)
+        raw = raw_from_generator_batched(bundle.system, bundle.generator, codes, probe_labels, microbatch_size=config.execution.evaluation_microbatch_size, activation_checkpoint=False)
+    state_before = state_content_hash(bundle.state_dict())
+    indices = next(iter(balanced_batches(train_labels, batch_size=50, seed=1234)))
+    settings = config.conditional_generation
+    assert settings is not None
+    train_codes = _random_codes(50, device=device, seed=100000)
+    train_labels_device = train_labels.index_select(0, indices).to(device)
+    real_views = train_images.index_select(0, indices).to(device)
+    optimizer_like = []
+    total, _, _ = _diversity_objective(bundle=bundle, evaluator=evaluator, codes=train_codes, labels=train_labels_device, real_views=real_views, settings=settings, config=config)
+    grads = torch.autograd.grad(total, [parameter for params in groups.values() for parameter in params], allow_unused=True)
+    gradient_gate = all(g is not None and torch.isfinite(g).all() and g.detach().norm() > 0 for g in grads)
+    state_after = state_content_hash(bundle.state_dict())
+    coeff = bundle.generator.coefficients(codes, probe_labels).reshape(10, 17, 8)
+    checks = (GateResult("finite_optical_response", bool(torch.isfinite(raw).all()), {}), GateResult("code_parameter_gradients", gradient_gate, {}), GateResult("coefficient_rank_eight", int(torch.linalg.matrix_rank(coeff[:, 1:].reshape(-1, 8)).item()) == 8, {}), GateResult("parameters_unchanged", state_before == state_after, {}))
+    run = _new_run(config)
+    report_path = run.root / "conditional_diversity_observability_report.json"
+    atomic_write_json(report_path, {"raw_code_fraction": _code_fraction(raw, probe_labels), "rank": int(torch.linalg.matrix_rank(coeff[:, 1:].reshape(-1, 8)).item()), "gradient_gate": gradient_gate, "parameters_unchanged": state_before == state_after, "diversity_loss_contract": DIVERSITY_LOSS_CONTRACT})
+    passed = all(item.passed for item in checks)
+    record = EvidenceRecordV2(2, "conditional_diversity_observability", config.run.evidence_tier, "passed" if passed else "failed", run.git_commit, run.dirty_patch_hash, run.config_hash, expected, {"completion": file_sha256(args.training_completion_evidence), "checkpoint": corrected_hash, "report": file_sha256(report_path)}, checks, ("diversity_recovery_smoke",) if passed else (), None if passed else "diversity observability failed")
+    _write_evidence(run, "conditional_diversity_observability_evidence.json", record)
+    print(run.root)
+    return 0
+
+
+def diversity_recovery_smoke(args, config: V2Config) -> int:
+    """Single fixed 400-step code-only diagnostic from the corrected anchor."""
+    _require_identity(config)
+    if getattr(args, "steps", 400) != 400:
+        raise ValueError("diversity recovery smoke is locked to exactly 400 steps")
+    images, labels_all = load_local_mnist(args.dataset_root, train=True)
+    train_images, train_labels, _, _, split = _split(images, labels_all, args.dataset_root)
+    evaluator_hash = evaluator_checkpoint_hash(args.evaluator_checkpoint)
+    checkpoint_hash = file_sha256(args.checkpoint)
+    expected = _context(config, evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, checkpoint_hash=checkpoint_hash)
+    completion = EvidenceRecordV2.from_dict(json.loads(Path(args.training_completion_evidence).read_text(encoding="utf-8")))
+    observability = EvidenceRecordV2.from_dict(json.loads(Path(args.diversity_observability_evidence).read_text(encoding="utf-8")))
+    require_evidence_action(completion, kind="conditional_training_completion", action="diversity_observability", expected_context=expected)
+    require_evidence_action(observability, kind="conditional_diversity_observability", action="diversity_recovery_smoke", expected_context=expected)
+    device = torch.device(config.run.device)
+    evaluator, _ = load_frozen_evaluator(args.evaluator_checkpoint, device=device)
+    bundle, manifest = _load_bundle(config, args.checkpoint, device=device, evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, allow_balanced_schedule=True)
+    if manifest.training_schedule_hash != BALANCED_TRAINING_SCHEDULE_CONTRACT:
+        raise ValueError("diversity smoke requires corrected completion checkpoint")
+    for parameter in (bundle.generator.class_carrier_logits, bundle.system.encoder.phase, bundle.system.decoder.phase):
+        parameter.requires_grad_(False)
+    groups = _diversity_parameters(bundle)
+    optimizer = torch.optim.Adam([parameter for params in groups.values() for parameter in params], lr=config.conditional_generation.generator_lr)
+    settings = config.conditional_generation
+    assert settings is not None
+    probe_codes, probe_labels = _fixed_control_probe(device=device)
+    real_probe_images = torch.cat([train_images[train_labels == label][:17] for label in range(10)], dim=0).to(device)
+    with torch.no_grad():
+        real_probe_features, _ = evaluator(real_probe_images)
+    initial_state = {name: value.detach().clone() for name, value in bundle.state_dict().items()}
+    with torch.no_grad():
+        zero_raw = raw_from_generator_batched(bundle.system, bundle.generator, torch.zeros(10, 8, device=device), torch.arange(10, device=device), microbatch_size=config.execution.evaluation_microbatch_size, activation_checkpoint=False).detach().cpu()
+    probe_history: dict[str, object] = {}
+    loss_history: list[dict[str, float]] = []
+    update_history: list[dict[str, float]] = []
+
+    def probe() -> tuple[torch.Tensor, dict[str, object]]:
+        with torch.no_grad():
+            raw = raw_from_generator_batched(bundle.system, bundle.generator, probe_codes, probe_labels, microbatch_size=config.execution.evaluation_microbatch_size, activation_checkpoint=False)
+            metrics = _probe_metrics(raw, probe_labels, evaluator, settings.fixed_exposure_scale)
+            generated_features, _ = evaluator(fixed_exposure_view(raw, settings.fixed_exposure_scale))
+            metrics["diversity_ratios"] = relative_diversity_ratios(generated_features, real_probe_features, probe_labels)
+            return raw.detach(), metrics
+
+    raw0, metrics0 = probe()
+    probe_history["step_0"] = metrics0
+    for step, indices in zip(range(400), balanced_batches(train_labels, batch_size=settings.logical_batch_size, seed=1234)):
+        labels = train_labels.index_select(0, indices).to(device)
+        codes = _random_codes(labels.numel(), device=device, seed=100000 + step)
+        optimizer.zero_grad(set_to_none=True)
+        loss, summary, _ = _diversity_objective(bundle=bundle, evaluator=evaluator, codes=codes, labels=labels, real_views=train_images.index_select(0, indices).to(device), settings=settings, config=config)
+        loss.backward()
+        before = {name: [parameter.detach().clone() for parameter in params] for name, params in groups.items()}
+        optimizer.step()
+        update_history.append({name: float(torch.stack([torch.linalg.vector_norm(parameter.detach() - old) for parameter, old in zip(groups[name], before[name], strict=True)]).norm().item()) for name in groups})
+        loss_history.append(summary | {"step": float(step + 1)})
+        if step + 1 in {100, 200, 400}:
+            probe_raw, probe_metrics = probe()
+            probe_history[f"step_{step + 1}"] = probe_metrics
+    final_raw, final_metrics = probe()
+    zero_raw_after = raw_from_generator_batched(bundle.system, bundle.generator, torch.zeros(10, 8, device=device), torch.arange(10, device=device), microbatch_size=config.execution.evaluation_microbatch_size, activation_checkpoint=False).detach().cpu()
+    ratios = [float(value) for value in final_metrics.get("diversity_ratios", [])] if isinstance(final_metrics.get("diversity_ratios"), list) else []
+    frozen_unchanged = all(torch.equal(initial_state[name], value.detach().cpu()) for name, value in bundle.state_dict().items() if name in initial_state and (name.startswith("generator.class_carrier") or name.startswith("system.encoder") or name.startswith("system.decoder")))
+    code_updates = all(value > 0.0 for row in update_history for value in row.values())
+    initial_ratios = probe_history["step_0"].get("diversity_ratios", [])
+    ratios_ok = len(ratios) == 10 and min(ratios) >= 0.25 and all(float(after) >= float(before) for before, after in zip(initial_ratios, ratios, strict=True))
+    checks = (GateResult("semantic_accuracy", float(final_metrics["accuracy"]) >= 0.95, {"accuracy": float(final_metrics["accuracy"])}), GateResult("per_class_recall", min(float(final_metrics["confusion"][label][label]) / 17.0 for label in range(10)) >= 0.90, {}), GateResult("relative_diversity", ratios_ok, {"minimum_ratio": min(ratios) if ratios else 0.0}), GateResult("camera_code_fraction", float(final_metrics["code_fraction"]) >= 0.15, {"value": float(final_metrics["code_fraction"])}), GateResult("high_saturation", float(final_metrics["saturation"]) <= 0.08, {"value": float(final_metrics["saturation"])}), GateResult("frozen_parameters", frozen_unchanged, {}), GateResult("code_parameter_updates", code_updates, {}), GateResult("zero_code_unchanged", bool(torch.equal(zero_raw, zero_raw_after)), {}), GateResult("finite_losses", bool(torch.isfinite(torch.tensor([row["total"] for row in loss_history])).all()), {}))
+    run = _new_run(config)
+    history_path = run.root / "conditional_diversity_recovery_history.json"
+    atomic_write_json(history_path, {"loss": loss_history, "probes": probe_history, "updates": update_history, "schedule_hash_first_400": _schedule_hash(train_labels, 400), "contract": DIVERSITY_RECOVERY_CONTRACT})
+    raw_path = run.root / "conditional_diversity_recovery_probe_raw_cmos.pt"
+    atomic_torch_save(raw_path, final_raw.cpu())
+    record = EvidenceRecordV2(2, "conditional_diversity_recovery_smoke", config.run.evidence_tier, "passed" if all(item.passed for item in checks) else "failed", run.git_commit, run.dirty_patch_hash, run.config_hash, expected, {"checkpoint": checkpoint_hash, "history": file_sha256(history_path), "raw_cmos": file_sha256(raw_path), "schedule_hash_first_400": _schedule_hash(train_labels, 400), "loss_contract": DIVERSITY_LOSS_CONTRACT}, checks, ("train_diversity_recovery",) if all(item.passed for item in checks) else (), None if all(item.passed for item in checks) else "conditional diversity recovery smoke failed")
+    _write_evidence(run, "conditional_diversity_recovery_evidence.json", record)
+    print(run.root)
+    return 0
+
+
+def train_diversity_recovery(args, config: V2Config) -> int:
+    """User-run one balanced epoch code-only recovery (not launched here)."""
+    _require_identity(config)
+    images, labels_all = load_local_mnist(args.dataset_root, train=True)
+    train_images, train_labels, _, _, split = _split(images, labels_all, args.dataset_root)
+    evaluator_hash = evaluator_checkpoint_hash(args.evaluator_checkpoint)
+    checkpoint_hash = file_sha256(args.checkpoint)
+    expected = _context(config, evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, checkpoint_hash=checkpoint_hash)
+    smoke = _passed_evidence(args.diversity_recovery_evidence, kind="conditional_diversity_recovery_smoke")
+    require_evidence_action(smoke, kind="conditional_diversity_recovery_smoke", action="train_diversity_recovery", expected_context=expected)
+    device = torch.device(config.run.device)
+    evaluator, _ = load_frozen_evaluator(args.evaluator_checkpoint, device=device)
+    bundle, init_manifest = _load_bundle(config, args.checkpoint, device=device, evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, allow_balanced_schedule=True)
+    for parameter in (bundle.generator.class_carrier_logits, bundle.system.encoder.phase, bundle.system.decoder.phase):
+        parameter.requires_grad_(False)
+    groups = _diversity_parameters(bundle)
+    optimizer = torch.optim.Adam([parameter for params in groups.values() for parameter in params], lr=config.conditional_generation.generator_lr)
+    settings = config.conditional_generation
+    assert settings is not None
+    history = []
+    for batch_number, indices in enumerate(balanced_batches(train_labels, batch_size=settings.logical_batch_size, seed=1234)):
+        labels = train_labels.index_select(0, indices).to(device)
+        codes = _random_codes(labels.numel(), device=device, seed=100000 + batch_number)
+        optimizer.zero_grad(set_to_none=True)
+        loss, summary, _ = _diversity_objective(bundle=bundle, evaluator=evaluator, codes=codes, labels=labels, real_views=train_images.index_select(0, indices).to(device), settings=settings, config=config)
+        loss.backward(); optimizer.step(); history.append(summary | {"step": float(batch_number + 1)})
+    run = _new_run(config)
+    path = run.root / "conditional_diversity_generator.pt"
+    manifest = ConditionalCheckpointManifestV2(2, IDENTITY_ARCHITECTURE, _system_signature(config), canonical_sha256(config.model_dump(mode="json")), split.manifest_hash, evaluator_hash, settings.fixed_exposure_scale, state_signature(bundle.state_dict()), state_content_hash(bundle.state_dict()), IDENTITY_GENERATOR_CONTRACT, canonical_sha256(CONDITIONAL_CONTROL_METRIC_CONTRACT), BALANCED_TRAINING_SCHEDULE_CONTRACT, 1234, init_manifest.initialization_state_hash)
+    save_conditional_checkpoint(path, bundle, manifest, extra={"history": history, "diversity_loss_contract": DIVERSITY_LOSS_CONTRACT, "epochs": 1, "steps": len(history)})
+    checkpoint_out_hash = file_sha256(path)
+    record = EvidenceRecordV2(2, "conditional_diversity_training", config.run.evidence_tier, "passed", run.git_commit, run.dirty_patch_hash, run.config_hash, _context(config, evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, checkpoint_hash=checkpoint_out_hash), {"checkpoint": checkpoint_out_hash, "recovery_evidence": file_sha256(args.diversity_recovery_evidence), "steps": len(history), "schedule_contract": BALANCED_TRAINING_SCHEDULE_CONTRACT}, (GateResult("finite_training_loss", bool(torch.isfinite(torch.tensor([row["total"] for row in history])).all()), {"steps": float(len(history))}),), ("evaluate",), None)
+    _write_evidence(run, "conditional_diversity_training_evidence.json", record)
+    print(run.root)
+    return 0
+
+
 def conditional_evaluate(args, config: V2Config) -> int:
     _require_conditional(config)
     _require_current_acceptance(config)
-    _passed_evidence(args.training_evidence, kind="conditional_training")
+    training_record = EvidenceRecordV2.from_dict(json.loads(Path(args.training_evidence).read_text(encoding="utf-8")))
+    if training_record.evidence_kind not in {"conditional_training", "conditional_diversity_training"} or training_record.status != "passed":
+        raise ValueError("conditional evaluate requires passed conditional training evidence")
     device = torch.device(config.run.device)
     images, all_labels = load_local_mnist(args.dataset_root, train=True)
     _, _, validation_images, validation_labels, split = _split(images, all_labels, args.dataset_root)
     evaluator, _ = load_frozen_evaluator(args.evaluator_checkpoint, device=device)
     evaluator_hash = evaluator_checkpoint_hash(args.evaluator_checkpoint)
-    bundle, manifest = _load_bundle(config, args.checkpoint, device=device, evaluator_hash=evaluator_hash, split_hash=split.manifest_hash)
+    bundle, manifest = _load_bundle(config, args.checkpoint, device=device, evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, allow_balanced_schedule=training_record.evidence_kind == "conditional_diversity_training")
+    if training_record.context.checkpoint_hash != file_sha256(args.checkpoint):
+        raise ValueError("training evidence does not bind the evaluation checkpoint")
     settings = config.conditional_generation
     assert settings is not None
     raw_rows, label_rows, prediction_rows, feature_rows, real_feature_rows, generated_view_rows, real_view_rows = [], [], [], [], [], [], []

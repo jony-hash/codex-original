@@ -108,6 +108,46 @@ def diversity_hinge(features: torch.Tensor, codes: torch.Tensor, labels: torch.T
     return torch.stack(terms).mean()
 
 
+def relative_diversity_ratios(features: torch.Tensor, real_features: torch.Tensor, labels: torch.Tensor) -> list[float]:
+    """Per-class generated/real median feature-distance ratios.
+
+    Both feature sets are L2-normalized before distances, matching the
+    Sinkhorn feature contract and making this statistic independent of the
+    evaluator's arbitrary feature scale.
+    """
+    if features.shape != real_features.shape or features.ndim != 2:
+        raise ValueError("feature batches must have matching [N,D] shapes")
+    generated = torch.nn.functional.normalize(features, dim=1)
+    real = torch.nn.functional.normalize(real_features, dim=1)
+    ratios: list[float] = []
+    for label in range(10):
+        selected = torch.nonzero(labels == label, as_tuple=False).flatten()
+        if selected.numel() < 2:
+            raise ValueError("relative diversity needs at least two samples per class")
+        generated_distance = torch.pdist(generated.index_select(0, selected), p=2).median()
+        real_distance = torch.pdist(real.index_select(0, selected), p=2).median()
+        ratios.append(float((generated_distance / real_distance.clamp_min(1.0e-8)).detach().item()))
+    return ratios
+
+
+def relative_diversity_loss(features: torch.Tensor, real_features: torch.Tensor, labels: torch.Tensor, *, lower: float = 0.70, upper: float = 1.30) -> torch.Tensor:
+    """Smooth bounded relative-diversity penalty used only by recovery training."""
+    if not (0.0 < lower < upper):
+        raise ValueError("relative-diversity bounds must satisfy 0 < lower < upper")
+    generated = torch.nn.functional.normalize(features, dim=1)
+    real = torch.nn.functional.normalize(real_features, dim=1)
+    terms = []
+    for label in range(10):
+        selected = torch.nonzero(labels == label, as_tuple=False).flatten()
+        if selected.numel() < 2:
+            raise ValueError("relative diversity needs at least two samples per class")
+        generated_distance = torch.pdist(generated.index_select(0, selected), p=2).median()
+        real_distance = torch.pdist(real.index_select(0, selected), p=2).median().detach()
+        ratio = generated_distance / real_distance.clamp_min(1.0e-8)
+        terms.append(torch.relu(torch.as_tensor(lower, device=ratio.device, dtype=ratio.dtype) - ratio).square() + 0.25 * torch.relu(ratio - upper).square())
+    return torch.stack(terms).mean()
+
+
 def raw_from_generator(system: nn.Module, generator: ConditionalGlobalAmplitudeGenerator, codes: torch.Tensor, labels: torch.Tensor, *, activation_checkpoint: bool) -> torch.Tensor:
     def forward(command: torch.Tensor) -> torch.Tensor:
         return system.forward(system.command(command)).raw_camera.tensor

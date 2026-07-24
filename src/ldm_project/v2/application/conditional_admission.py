@@ -9,6 +9,8 @@ from .conditional_runtime import (
     controllability_smoke,
     qualify_evaluator,
     train_evaluator,
+    conditional_training_completion,
+    conditional_diversity_observability,
 )
 
 __all__ = [
@@ -20,6 +22,8 @@ __all__ = [
     "controllability_smoke",
     "qualify_evaluator",
     "train_evaluator",
+    "conditional_training_completion",
+    "conditional_diversity_observability",
 ]
 
 conditional_semantic_localization = _identity_semantic_localization
