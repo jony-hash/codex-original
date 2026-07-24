@@ -23,6 +23,38 @@ class RepoLayoutTests(unittest.TestCase):
         self.assertEqual(offenders, [])
         self.assertTrue((ROOT / "experiments" / "archive" / "v57_v67" / "tools").is_dir())
 
+    def test_v1_v2_namespaces_and_legacy_facades_are_isolated(self) -> None:
+        package_root = ROOT / "src" / "ldm_project"
+        for namespace in ("v1", "v2"):
+            self.assertTrue((package_root / namespace / "__init__.py").is_file())
+
+        facade_files = [
+            path
+            for path in package_root.glob("*.py")
+            if path.name not in {"__init__.py", "_compat.py"}
+        ]
+        for path in facade_files:
+            content = path.read_text(encoding="utf-8")
+            self.assertTrue(
+                "sys.modules[__name__]" in content or "globals().update" in content or "from .v1" in content,
+                path.name,
+            )
+
+        for package in ("application", "configuration", "diagnostics", "distillation", "evaluation", "generation", "optics", "student", "teacher"):
+            content = (package_root / package / "__init__.py").read_text(encoding="utf-8")
+            self.assertIn("alias_package", content, package)
+
+        forbidden = []
+        for namespace in ("v1", "v2"):
+            for path in (package_root / namespace).rglob("*.py"):
+                content = path.read_text(encoding="utf-8")
+                if "from ldm_project." in content or "import ldm_project." in content:
+                    if path == package_root / "v2" / "application" / "cli.py":
+                        self.assertIn("ldm_project.v1.config", content)
+                        continue
+                    forbidden.append(str(path.relative_to(ROOT)))
+        self.assertEqual(forbidden, [])
+
     def test_expected_scaffold_files_exist(self) -> None:
         expected = [
             ROOT / "README.md",
@@ -39,12 +71,16 @@ class RepoLayoutTests(unittest.TestCase):
             ROOT / "experiments" / "archive" / "manifest.yaml",
             ROOT / "configs" / "v1" / "teacher" / "train_first_stage_hardclass_camera_recovery.yaml",
             ROOT / "configs" / "v1" / "smoke" / "train_one_shot_d2nn_smoke.yaml",
-            ROOT / "docs" / "ldm_migration" / "single_shot_ldm_distillation.md",
-            ROOT / "docs" / "ldm_migration" / "stage_guide.md",
-            ROOT / "docs" / "ldm_migration" / "acceptance_baseline_c99f559.json",
-            ROOT / "docs" / "ldm_migration" / "acceptance_baseline_bs128_matched_diffusion.json",
-            ROOT / "docs" / "ldm_migration" / "acceptance_seed_sweep_ebba8e9.json",
-            ROOT / "docs" / "ldm_migration" / "acceptance_post_refactor_one_shot_smoke_8a307f3.json",
+            ROOT / "docs" / "architecture" / "v1_single_shot_distillation.md",
+            ROOT / "docs" / "operations" / "stage_guide.md",
+            ROOT / "docs" / "archive" / "acceptance_baseline_c99f559.json",
+            ROOT / "docs" / "archive" / "acceptance_baseline_bs128_matched_diffusion.json",
+            ROOT / "docs" / "archive" / "acceptance_seed_sweep_ebba8e9.json",
+            ROOT / "docs" / "archive" / "acceptance_post_refactor_one_shot_smoke_8a307f3.json",
+            ROOT / "src" / "ldm_project" / "v1" / "application" / "cli.py",
+            ROOT / "src" / "ldm_project" / "v1" / "optics" / "d2nn.py",
+            ROOT / "src" / "ldm_project" / "v1" / "student" / "model.py",
+            ROOT / "src" / "ldm_project" / "v2" / "application" / "cli.py",
             ROOT / "src" / "ldm_project" / "data.py",
             ROOT / "src" / "ldm_project" / "first_stage.py",
             ROOT / "src" / "ldm_project" / "diffusion.py",
@@ -256,7 +292,7 @@ class RepoLayoutTests(unittest.TestCase):
         self.assertIs(stage_runners.run_one_shot_distill_training, run_one_shot_distill_training)
 
     def test_d2nn_design_doc_is_main_source(self) -> None:
-        design_doc = ROOT / "docs" / "ldm_migration" / "single_shot_ldm_distillation.md"
+        design_doc = ROOT / "docs" / "architecture" / "v1_single_shot_distillation.md"
         content = design_doc.read_text(encoding="utf-8")
         self.assertIn("D2NN one-shot", content)
         self.assertIn("configs/v1/formal/train_v56_coherent_relay_from_scratch.yaml", content)

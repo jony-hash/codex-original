@@ -14,7 +14,7 @@ code + optional label -> amplitude command -> complete 4f relay
 -> 2-layer finite-crop decoder -> B=0 backend relay -> raw CMOS intensity
 ```
 
-v2 从 v79 研究快照旁路重写而来；两线的范围、回档点和发布状态见 [Git 分支治理与回档指南](../git_branch_management.md)。v1 的版本化诊断命令与 v2 子命令不互相替代。
+v2 从 v79 研究快照旁路重写而来；两线的范围、回档点和发布状态见 [Git 分支治理与回档指南](../operations/git_branch_management.md)。v1 的版本化诊断命令与 v2 子命令不互相替代。
 
 ## LightGen 对齐诊断（2026-07-24）
 
@@ -25,10 +25,10 @@ v2 从 v79 研究快照旁路重写而来；两线的范围、回档点和发布
 ```bash
 python -m ldm_project.v2 audit lightgen-contract-gap \
   --config configs/v2/diagnostic_lightgen_amplitude_fiber_ols_400.yaml \
-  --reference-contract docs/v2/lightgen_reference_contract_v2.json
+  --reference-contract docs/architecture/lightgen_reference_contract_v2.json
 python -m ldm_project.v2 audit lightgen-ols-observability \
   --config configs/v2/diagnostic_lightgen_amplitude_fiber_ols_400.yaml \
-  --reference-contract docs/v2/lightgen_reference_contract_v2.json
+  --reference-contract docs/architecture/lightgen_reference_contract_v2.json
 ```
 
 第二条命令无 optimizer，检查 100 个复 OLS modes、有效秩 `>=8`、`sigma8/sigma1 >= 1e-3`、完整 plane/provenance 与参数零更新。只有它通过，才可另立计划讨论 diagnostic prototype calibration；本阶段不恢复 capacity 或 student training。

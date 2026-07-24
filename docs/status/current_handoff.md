@@ -1,6 +1,6 @@
 # 当前主线交接：v79 冻结与 v2 旁路（2026-07-23）
 
-本文件只保存当前状态、停止规则和下一允许动作。v68–v79 的旧交接正文已完整、只读保存在 [v68–v79 原始主线交接归档](current_handoff_v68_v79_archive.md)，按阶段查阅的摘要、指标和工件索引见 [实验与验收历史](experiment_history.md)；稳定架构合同见 [D2NN 单次曝光蒸馏主线](single_shot_ldm_distillation.md)；分支与回档点见 [Git 分支治理指南](../git_branch_management.md)。
+本文件只保存当前状态、停止规则和下一允许动作。v68–v79 的旧交接正文已完整、只读保存在 [v68–v79 原始主线交接归档](../archive/current_handoff_v68_v79_archive.md)，按阶段查阅的摘要、指标和工件索引见 [实验与验收历史](experiment_history.md)；稳定架构合同见 [D2NN 单次曝光蒸馏主线](../architecture/v1_single_shot_distillation.md)；分支与回档点见 [Git 分支治理指南](../operations/git_branch_management.md)。
 
 ## 当前正式合同
 
@@ -37,4 +37,4 @@ v2 的正式执行顺序固定为：clean commit 上的 `student preflight` → 
 
 direct-template command 已冻结并完成唯一一次 `audit direct-template-local-capacity`。首次运行暴露 state-hash 算法混用和数值报告覆盖，保留为 harness-invalid；修复后在 clean commit 上按完全相同的内容寻址 inputs 与固定 64 个 `<=20 cycles/mm` DCT candidates、8 basis、100 codes/class、seed 1234、gain 0.1 重跑。参数不变、finite、provenance、support energy `1.0` 与 clipping `9.875e-06` 都通过，但 physical-SLM/raw-CMOS code fraction 只有 `0.00500678`/`0.00493487`，低于 `0.25`。有效结论为 `direct-template-local-capacity-not-demonstrated`：冻结 direct-template 邻域与此 basis/normalizer 家族；不进行 gain、basis、seed、phase、spacing 或 exposure sweep，不进入 formal capacity、student training、export 或 promotion。
 
-2026-07-24 的唯一新诊断主线是 LightGen 对齐审计，而不是修改上述正式合同：`diagnostic_lightgen_amplitude_fiber_ols_400` 使用 amplitude seed、2-layer encoder、10×10 Gaussian single-mode-fiber complex OLS 和 4-layer generator。其 [内容寻址 reference contract](../v2/lightgen_reference_contract_v2.json) 明确保留波长、层距、孔径及真实 fiber coupling 为 `unknown`，所以输出只能是 `architecture-proxy` diagnostic evidence。先运行 contract-gap 与无 optimizer observability；若 100 modes、rank、奇异值比、provenance 或参数不变性任何一项失败，停止，不训练。即使通过，也仅可另立 diagnostic prototype 计划，绝不授权 formal capacity、student training 或 promotion。
+2026-07-24 的唯一新诊断主线是 LightGen 对齐审计，而不是修改上述正式合同：`diagnostic_lightgen_amplitude_fiber_ols_400` 使用 amplitude seed、2-layer encoder、10×10 Gaussian single-mode-fiber complex OLS 和 4-layer generator。其 [内容寻址 reference contract](../architecture/lightgen_reference_contract_v2.json) 明确保留波长、层距、孔径及真实 fiber coupling 为 `unknown`，所以输出只能是 `architecture-proxy` diagnostic evidence。先运行 contract-gap 与无 optimizer observability；若 100 modes、rank、奇异值比、provenance 或参数不变性任何一项失败，停止，不训练。即使通过，也仅可另立 diagnostic prototype 计划，绝不授权 formal capacity、student training 或 promotion。

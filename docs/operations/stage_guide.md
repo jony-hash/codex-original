@@ -1,12 +1,12 @@
 # Stage Guide
 
-本文件是 v1 stage 的操作权威来源。架构与最终推理边界见 [D2NN 单次曝光蒸馏主线](single_shot_ldm_distillation.md)，带日期的结果见 [实验与验收历史](experiment_history.md)，完整文档导航见 [Documentation](../README.md)。当前 v79 冻结与 v2 状态见 [当前主线交接](current_handoff.md)，分支与回档点见 [Git 分支治理指南](../git_branch_management.md)；handoff 是时效性状态快照，不是架构合同。
+本文件是 v1 stage 的操作权威来源。架构与最终推理边界见 [D2NN 单次曝光蒸馏主线](../architecture/v1_single_shot_distillation.md)，带日期的结果见 [实验与验收历史](../status/experiment_history.md)，完整文档导航见 [Documentation](../README.md)。当前 v79 冻结与 v2 状态见 [当前主线交接](../status/current_handoff.md)，分支与回档点见 [Git 分支治理指南](git_branch_management.md)；handoff 是时效性状态快照，不是架构合同。
 
 本文件中的 `train.py --stage` 命令只适用于 v1。v2 使用独立的 `python -m ldm_project.v2` 子命令和独立 evidence gate，二者不互相替代；在 v2 正式 acceptance 前，v1 仍是默认入口。
 
-v2 的可执行闭环为：内容寻址 teacher pair/target manifest → prototype measurement → 内容绑定的人工 admission → frozen capacity → guarded training → checkpoint-driven raw-CMOS evaluate。small diagnostic system 仅允许 `diagnostic_*_smoke` 动作，不能授权 formal train、export、evaluate acceptance 或 promotion；正式 CUDA 命令和 review 交接见 [v2 runtime](../v2/README.md)。
+v2 的可执行闭环为：内容寻址 teacher pair/target manifest → prototype measurement → 内容绑定的人工 admission → frozen capacity → guarded training → checkpoint-driven raw-CMOS evaluate。small diagnostic system 仅允许 `diagnostic_*_smoke` 动作，不能授权 formal train、export、evaluate acceptance 或 promotion；正式 CUDA 命令和 review 交接见 [v2 runtime](../architecture/v2_runtime.md)。
 
-2026-07-23 v2 prototype 断点已完成一次 broad isolation 和一次修正后的 calibration。`sqrt(clean intensity)` 初始化、5×40 logical steps、固定 clean-correlation/Dice/CE objective 后，corr 达到 `0.8395`、dice `0.7625`，但 prototype accuracy 仅 `0.50`，且末两 epoch Dice 退化。此前 `212454` reachability 的 passed 状态现为 harness-invalid：crop、front separation 与逐类 direction gate 的计算不符合合同，且 calibration 未绑定该 evidence。保留 `212618` 作为旧 reconstruction 合同的数值负结果，不据此下物理不可达结论。修正后的 reachability 通过且 topology isolation 显示 joint 最好，但 shape-guard 仍以 accuracy `0.50`、minimum full-frame margin `-0.0801` 与 background-speckle failure 自动停止。无更新 geometry 上界显示 0.25 mm 虽恢复十类 accuracy，完整 raw-CMOS 仍以 margin `0.0073`、speckle `0.1725` 失败；bounded control oracle 随后证明十类固定 amplitude command 可控制冻结光路，但 direct-template 邻域的固定 DCT/8D/gain-0.1 local capacity 上界失败，仍不得训练。当前仅允许完全隔离的 LightGen architecture-proxy 对齐审计：参见 [v2 runtime](../v2/README.md)，它不改变 formal `2+2/identity OLS` 合同，也不授权 capacity 或 promotion。
+2026-07-23 v2 prototype 断点已完成一次 broad isolation 和一次修正后的 calibration。`sqrt(clean intensity)` 初始化、5×40 logical steps、固定 clean-correlation/Dice/CE objective 后，corr 达到 `0.8395`、dice `0.7625`，但 prototype accuracy 仅 `0.50`，且末两 epoch Dice 退化。此前 `212454` reachability 的 passed 状态现为 harness-invalid：crop、front separation 与逐类 direction gate 的计算不符合合同，且 calibration 未绑定该 evidence。保留 `212618` 作为旧 reconstruction 合同的数值负结果，不据此下物理不可达结论。修正后的 reachability 通过且 topology isolation 显示 joint 最好，但 shape-guard 仍以 accuracy `0.50`、minimum full-frame margin `-0.0801` 与 background-speckle failure 自动停止。无更新 geometry 上界显示 0.25 mm 虽恢复十类 accuracy，完整 raw-CMOS 仍以 margin `0.0073`、speckle `0.1725` 失败；bounded control oracle 随后证明十类固定 amplitude command 可控制冻结光路，但 direct-template 邻域的固定 DCT/8D/gain-0.1 local capacity 上界失败，仍不得训练。当前仅允许完全隔离的 LightGen architecture-proxy 对齐审计：参见 [v2 runtime](../architecture/v2_runtime.md)，它不改变 formal `2+2/identity OLS` 合同，也不授权 capacity 或 promotion。
 
 ## Golden Path
 
@@ -35,10 +35,10 @@ source "$(conda info --base)/etc/profile.d/conda.sh" && conda activate optical-g
 训练或选择配套 teacher：
 
 ```bash
-python train.py --train-config configs/train_ldm.yaml \
+python train.py --train-config configs/v1/formal/train_ldm.yaml \
   --stage teacher_first_stage --device cuda
 
-python train.py --train-config configs/train_ldm.yaml \
+python train.py --train-config configs/v1/formal/train_ldm.yaml \
   --stage teacher_diffusion --device cuda \
   --first-stage-checkpoint <matched_first_stage_checkpoint>
 ```
@@ -60,7 +60,7 @@ python train.py --train-config <approved_physical_forward_config.yaml> \
   --distill-dataset <distill_dataset>
 ```
 
-正式 config 必须以 [架构文档](single_shot_ldm_distillation.md) 为合同来源，至少锁定 identity OLS、完整 SLM-to-encoder 相干 4f relay、`100 × 100 @ 2 µm`、`1.50 mm` D2NN spacing、严格 physical-field provenance，并先通过对应 CUDA preflight。正式 stage 由 `FormalOneShotOpticalGenerator` 构造；包含 bypass、phase-amplitude、generic resize、target-code bridge 或 SLM override 的配置只能走 compatibility/diagnostic facade。v56 的人眼失败和 v58 门属于历史证据；v1 已在 v79 capacity gate 后冻结，不提供新的 v1 训练命令。v2 的正式前置门与命令见 [v2 runtime](../v2/README.md)。
+正式 config 必须以 [架构文档](../architecture/v1_single_shot_distillation.md) 为合同来源，至少锁定 identity OLS、完整 SLM-to-encoder 相干 4f relay、`100 × 100 @ 2 µm`、`1.50 mm` D2NN spacing、严格 physical-field provenance，并先通过对应 CUDA preflight。正式 stage 由 `FormalOneShotOpticalGenerator` 构造；包含 bypass、phase-amplitude、generic resize、target-code bridge 或 SLM override 的配置只能走 compatibility/diagnostic facade。v56 的人眼失败和 v58 门属于历史证据；v1 已在 v79 capacity gate 后冻结，不提供新的 v1 训练命令。v2 的正式前置门与命令见 [v2 runtime](../architecture/v2_runtime.md)。
 
 采样并评估同一个 student checkpoint：
 
@@ -83,7 +83,7 @@ python train.py --train-config <approved_physical_forward_config.yaml> \
 - 更换 teacher pair、teacher distill dataset 或 D2NN 网格配置后，必须重新导出并重新验证下游链路。
 - 正式 student 证据必须来自加载了 one-shot checkpoint 的 `one_shot_sample` 和 `one_shot_distill_eval`；仅训练完成不构成最终证据。
 - Teacher sample、teacher audit、direct MNIST `one_shot`、CPU smoke 和 compatibility alias 都不能证明最终单次曝光学生链路可用。
-- 详细原因见 [架构文档](single_shot_ldm_distillation.md)；历史测量值见 [实验与验收历史](experiment_history.md)。
+- 详细原因见 [架构文档](../architecture/v1_single_shot_distillation.md)；历史测量值见 [实验与验收历史](../status/experiment_history.md)。
 
 ## Output Policy
 
@@ -91,11 +91,11 @@ python train.py --train-config <approved_physical_forward_config.yaml> \
 - 诊断和 pre-acceptance 结果仍必须标注为 `diagnostic-only`，不能仅因位于 `outputs/` 就视为 accepted。
 - `outputs/runs/` 已移除；具体历史路径需要改写到真实的带日期前缀版本目录，`outputs/final_pt/` 不参与版本迁移。
 - 整理历史 run 时先执行 `python -m tools.organize_outputs_by_version --root outputs --dry-run` 检查 manifest，确认无 blocker 后再执行 `--apply`。
-- 输出图片和 tensor bundle 的语义见 [输出与可视化说明](../output_JIESHI.md)。
+- 输出图片和 tensor bundle 的语义见 [输出与可视化说明](output_artifact_notes.md)。
 
 ## Archived Experiments
 
-v9.10 prototype、旧 100×100 two-photon、v53 及更早的 loss/relay probes 都已迁入 `experiments/archive/`，并由 [archive manifest](../../experiments/archive/manifest.yaml) 标为 `diagnostic-only`、`runnable: false`。它们只能解释历史证据，不能作为当前命令、checkpoint 或 formal physical-forward 入口；当前合同与停止规则只以 [Current Handoff](current_handoff.md) 为准。
+v9.10 prototype、旧 100×100 two-photon、v53 及更早的 loss/relay probes 都已迁入 `experiments/archive/`，并由 [archive manifest](../../experiments/archive/manifest.yaml) 标为 `diagnostic-only`、`runnable: false`。它们只能解释历史证据，不能作为当前命令、checkpoint 或 formal physical-forward 入口；当前合同与停止规则只以 [Current Handoff](../status/current_handoff.md) 为准。
 
 ## Diagnostics
 
@@ -103,7 +103,7 @@ v9.10 prototype、旧 100×100 two-photon、v53 及更早的 loss/relay probes �
 
 ### Experimental Debugging Decision Policy
 
-本节只定义通用决策流程；当前版本状态、run 路径和下一决策门以 [Current Handoff](current_handoff.md) 为准。
+本节只定义通用决策流程；当前版本状态、run 路径和下一决策门以 [Current Handoff](../status/current_handoff.md) 为准。
 
 - 从事实开始：记录最新 summary/run 路径、gate 与 preview 状态、first-collapse plane，以及 sample/human review 是否存在。
 - 人眼可读性是硬 gate。真实最终 CMOS 为 blob 时，即使 corr/dice、strict eval 或 proxy audit 良好，也不得 promotion。
@@ -338,7 +338,7 @@ python -m ldm_project.eval_reports summary \
 ```bash
 python -m ldm_project.eval_reports compare \
   outputs/YYYYMMDD_<version>/runs/<eval_run> outputs/YYYYMMDD_<version>/runs/<sample_run> outputs/YYYYMMDD_<version>/runs/<distill_run> \
-  --baseline docs/ldm_migration/acceptance_baseline_c99f559.json
+  --baseline docs/archive/acceptance_baseline_c99f559.json
 ```
 
-Baseline 指标、阈值语义和过往结果见 [实验与验收历史](experiment_history.md)。
+Baseline 指标、阈值语义和过往结果见 [实验与验收历史](../status/experiment_history.md)。

@@ -41,7 +41,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--train-config",
         default="configs/v1/formal/train_ldm.yaml",
-        help="Path to training YAML; formal D2NN runs require an approved coherent-relay physical-forward config (see docs/ldm_migration/stage_guide.md).",
+        help="Path to training YAML; formal D2NN runs require an approved coherent-relay physical-forward config (see docs/operations/stage_guide.md).",
     )
     parser.add_argument("--stage", choices=CLI_STAGE_CHOICES, default=None)
     parser.add_argument("--batch-size", type=int, default=None)

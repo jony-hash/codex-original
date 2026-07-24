@@ -7,10 +7,10 @@ archives:
     role: historical student configurations, early physical-forward probes, and obsolete audits
     diagnostic_only: true
     runnable: false
-    replacement: configs/train_v56_coherent_relay_from_scratch.yaml
+    replacement: configs/v1/formal/train_v56_coherent_relay_from_scratch.yaml
     evidence_paths:
-      - docs/ldm_migration/experiment_history.md
-      - docs/ldm_migration/current_handoff.md
+      - docs/status/experiment_history.md
+      - docs/status/current_handoff.md
     source_commit: bb2d8ee
   - id: pre-v57-tools
     version_range: v9-v54
@@ -21,8 +21,8 @@ archives:
     runnable: false
     replacement: tools/diagnose_v57_first_collapse_complex_field.py
     evidence_paths:
-      - docs/ldm_migration/experiment_history.md
-      - docs/ldm_migration/current_handoff.md
+      - docs/status/experiment_history.md
+      - docs/status/current_handoff.md
     source_commit: bb2d8ee
   - id: v52-v56-tools
     version_range: v52-v56

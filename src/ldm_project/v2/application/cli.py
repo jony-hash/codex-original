@@ -141,7 +141,8 @@ def _require_clean_acceptance(config: V2Config) -> None:
 
 
 def _legacy_export_contract(path: str, config: V2Config) -> str:
-    from ldm_project.config import load_training_config
+    # This is the documented v2-to-v1 teacher-export adapter boundary.
+    from ldm_project.v1.config import load_training_config
 
     legacy = load_training_config(path)
     expected = ("teacher_distill_export", 8, 100, 1234, 2026, 200, 4.0, tuple(range(10)), False)

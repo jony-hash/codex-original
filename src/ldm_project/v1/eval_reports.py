@@ -347,7 +347,7 @@ def _cli() -> None:
     compare_parser = sub.add_parser("compare", help="compare run dirs against baseline JSON")
     compare_parser.add_argument("run_dirs", nargs="+", help="one or more output run directories")
     compare_parser.add_argument(
-        "--baseline", required=True, help="path to baseline JSON (e.g. docs/ldm_migration/acceptance_baseline_c99f559.json)"
+        "--baseline", required=True, help="path to baseline JSON (e.g. docs/archive/acceptance_baseline_c99f559.json)"
     )
 
     sweep_parser = sub.add_parser("seed-sweep", help="summarize seed sweep acceptance")

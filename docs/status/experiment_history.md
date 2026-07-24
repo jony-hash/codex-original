@@ -1,6 +1,6 @@
 # D2NN 实验与验收历史
 
-本文件保存带日期的实验事实和验收证据，不定义当前执行契约。迁移或续接当前主线时先读 [当前主线交接（v79 冻结与 v2）](current_handoff.md)；当前架构见 [D2NN 单次曝光蒸馏主线](single_shot_ldm_distillation.md)，stage 命令与输入要求见 [Stage Guide](stage_guide.md)，完整导航见 [Documentation](../README.md)。本文件的“当前/下一步”均表示各记录当时的结论；历史证据保留，不应覆盖现行合同。
+本文件保存带日期的实验事实和验收证据，不定义当前执行契约。迁移或续接当前主线时先读 [当前主线交接（v79 冻结与 v2）](current_handoff.md)；当前架构见 [D2NN 单次曝光蒸馏主线](../architecture/v1_single_shot_distillation.md)，stage 命令与输入要求见 [Stage Guide](../operations/stage_guide.md)，完整导航见 [Documentation](../README.md)。本文件的“当前/下一步”均表示各记录当时的结论；历史证据保留，不应覆盖现行合同。
 
 ## 状态快照：2026-06-10
 
@@ -15,7 +15,7 @@
 
 **环境**：RTX 3060 Laptop GPU (6GB), CUDA 12.1, PyTorch 2.5.1+cu121, WSL2 Linux
 
-**证据文件**：[acceptance_baseline_c99f559.json](acceptance_baseline_c99f559.json)
+**证据文件**：[acceptance_baseline_c99f559.json](../archive/acceptance_baseline_c99f559.json)
 
 | Stage | 配置 | Epochs | 关键指标 | Exit |
 | --- | --- | --- | --- | --- |
@@ -33,7 +33,7 @@
 
 `ldm_project.eval_reports` 可只读汇总已有 run，返回 `stage`、`checkpoint`、`distill_dataset`、`best_loss`、`eval_metrics` 和 `sample_metrics`。缺失 optional artifact 时对应字段为 `null`，缺失 run metadata 时记录 error；该工具不生成 checkpoint、图片或新 artifact。
 
-当前命令模板和回归比较方式由 [Stage Guide](stage_guide.md) 维护。
+当前命令模板和回归比较方式由 [Stage Guide](../operations/stage_guide.md) 维护。
 
 ### 回归比较
 
@@ -49,7 +49,7 @@
 
 **验收日期**：2026-06-03
 
-**证据文件**：[acceptance_baseline_bs128_matched_diffusion.json](acceptance_baseline_bs128_matched_diffusion.json)
+**证据文件**：[acceptance_baseline_bs128_matched_diffusion.json](../archive/acceptance_baseline_bs128_matched_diffusion.json)
 
 bs128 first-stage 相比旧基线将训练吞吐从 563 step/epoch 改善到 71 step/epoch，同时保持或超过核心重建指标。
 
@@ -68,7 +68,7 @@ bs128 first-stage 相比旧基线将训练吞吐从 563 step/epoch 改善到 71 
 
 ## Matched First-Stage 与 Diffusion 证据
 
-稳定规则是 `first_stage_best_optical.pt` 与 `diffusion_best.pt` 必须来自同一 first-stage 训练的 latent/decoder 分布；规则和原因由 [架构文档](single_shot_ldm_distillation.md) 维护。
+稳定规则是 `first_stage_best_optical.pt` 与 `diffusion_best.pt` 必须来自同一 first-stage 训练的 latent/decoder 分布；规则和原因由 [架构文档](../architecture/v1_single_shot_distillation.md) 维护。
 
 | 配置 | `eval_corr` | `eval_dice` | `eval_mse` |
 | --- | --- | --- | --- |
@@ -127,7 +127,7 @@ bs128 first-stage 相比旧基线将训练吞吐从 563 step/epoch 改善到 71 
 
 **记录提交**：`ebba8e9`
 
-**证据文件**：[acceptance_seed_sweep_ebba8e9.json](acceptance_seed_sweep_ebba8e9.json)
+**证据文件**：[acceptance_seed_sweep_ebba8e9.json](../archive/acceptance_seed_sweep_ebba8e9.json)
 
 | 指标 | 阈值 | Seed 101 | Seed 202 | Seed 303 |
 | --- | --- | --- | --- | --- |
@@ -145,7 +145,7 @@ bs128 first-stage 相比旧基线将训练吞吐从 563 step/epoch 改善到 71 
 
 **记录提交**：`8a307f3`
 
-**证据文件**：[acceptance_post_refactor_one_shot_smoke_8a307f3.json](acceptance_post_refactor_one_shot_smoke_8a307f3.json)
+**证据文件**：[acceptance_post_refactor_one_shot_smoke_8a307f3.json](../archive/acceptance_post_refactor_one_shot_smoke_8a307f3.json)
 
 | 项 | 值 |
 | --- | --- |
@@ -168,7 +168,7 @@ bs128 first-stage 相比旧基线将训练吞吐从 563 step/epoch 改善到 71 
 - `15k_fast200`、guidance sweep、label-strict filter 和 readable split 在该快照中仍是候选链路。
 - Teacher oracle/latent audit 只能说明 teacher target 或 latent 链路质量，不能证明 one-shot student 已达到最终硬件推理就绪。
 
-历史使用的具体 run 路径保留在本文件其他记录和 managed `outputs/` metadata 中；当前命令模板见 [Stage Guide](stage_guide.md)。
+历史使用的具体 run 路径保留在本文件其他记录和 managed `outputs/` metadata 中；当前命令模板见 [Stage Guide](../operations/stage_guide.md)。
 
 ## v9.8 full-relay 受控复验
 
@@ -200,7 +200,7 @@ bs128 first-stage 相比旧基线将训练吞吐从 563 step/epoch 改善到 71 
 
 v9.10 新增 label-only template generator 与 `intensity_to_amplitude` command transform。checkpoint 自包含 `[num_classes, 1, H, W]` intensity template bank，接口保留 code 但明确忽略；模板和 D2NN 均冻结。该版本只能称为 `prototype_baseline`。
 
-2026-06-22 的受控 CUDA audit 已完成并通过。冻结参数检查中 generator、encoder/decoder phase 与 amplitude 的 `max_abs_change` 均为 `0.0`；独立 test split 得到 `paired_corr=0.99944`、`paired_dice=0.98052`、`student_high_saturation_ratio=0.005975`，三项 required gate 全部通过。脱敏后的持久证据见 [acceptance_v9_10_label_template_inverse_20260622.json](acceptance_v9_10_label_template_inverse_20260622.json)。
+2026-06-22 的受控 CUDA audit 已完成并通过。冻结参数检查中 generator、encoder/decoder phase 与 amplitude 的 `max_abs_change` 均为 `0.0`；独立 test split 得到 `paired_corr=0.99944`、`paired_dice=0.98052`、`student_high_saturation_ratio=0.005975`，三项 required gate 全部通过。脱敏后的持久证据见 [acceptance_v9_10_label_template_inverse_20260622.json](../archive/acceptance_v9_10_label_template_inverse_20260622.json)。
 
 该结果只接受为 label-only `prototype_baseline`：code conditioning 仍未启用，不能解释为同类多样性或最终 generative student readiness。2026-06-22 这次历史审计的原始运行和 checkpoint 仍是 `/tmp` 记录；当前及后续 v9.10 复验默认写入持久的 `outputs/YYYYMMDD_v9_10/` 管理目录。
 
@@ -559,7 +559,7 @@ v48 使用同一个 v47 Probe A checkpoint、相同 `small_sharp_stroke_digit_co
 
 ## 2026-07-16 至 2026-07-22 v67–v79：透明诊断、code transport 上界与冻结结论
 
-以下记录均为历史 `diagnostic-only` 证据，不改变 stable formal contract，也不构成 student promotion。需要逐次查看原始交接正文时，使用 [v68–v79 原始主线交接归档](current_handoff_v68_v79_archive.md)；本节保留面向检索的浓缩索引。
+以下记录均为历史 `diagnostic-only` 证据，不改变 stable formal contract，也不构成 student promotion。需要逐次查看原始交接正文时，使用 [v68–v79 原始主线交接归档](../archive/current_handoff_v68_v79_archive.md)；本节保留面向检索的浓缩索引。
 
 ### v67–v67.4：透明薄相位与全场传播数值门
 

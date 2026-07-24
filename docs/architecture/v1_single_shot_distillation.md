@@ -1,10 +1,10 @@
 # D2NN 单次曝光蒸馏主线
 
-本文件定义稳定架构、最终推理边界和模块职责，不保存带日期的实验状态。当前实验状态与验收结论见 [v79/v2 主线交接](current_handoff.md)；分支与回档点见 [Git 分支治理指南](../git_branch_management.md)。物理合同通过不等于学生模型已通过最终 CMOS 人眼验收。
+本文件定义稳定架构、最终推理边界和模块职责，不保存带日期的实验状态。当前实验状态与验收结论见 [v79/v2 主线交接](../status/current_handoff.md)；分支与回档点见 [Git 分支治理指南](../operations/git_branch_management.md)。物理合同通过不等于学生模型已通过最终 CMOS 人眼验收。
 
-- 运行 stage：[Stage Guide](stage_guide.md)
-- 解释输出：[Output Guide](../output_JIESHI.md)
-- 查阅历史证据：[Experiment History](experiment_history.md)
+- 运行 stage：[Stage Guide](../operations/stage_guide.md)
+- 解释输出：[Output Guide](../operations/output_artifact_notes.md)
+- 查阅历史证据：[Experiment History](../status/experiment_history.md)
 - 浏览全部文档：[Documentation](../README.md)
 
 ## 1. 项目定位
@@ -39,13 +39,13 @@ Teacher first-stage、diffusion 和 teacher distill export 是训练基础设施
 
 核心配置职责：
 
-- `configs/physics_cfg.yaml`：波长、像素尺寸、宏观光路与读出配置。
-- `configs/train_ldm.yaml`：teacher first-stage 与 diffusion 训练入口。
-- `configs/export_teacher_distill_mnist_3k_fast200.yaml`：稳定 teacher distill dataset 导出入口。
-- `configs/train_v56_coherent_relay_from_scratch.yaml`：最近一次批准的 coherent-relay 训练配置；当前训练已停止，详见交接文档。旧 one-shot baseline 位于 `experiments/archive/`。
-- `configs/train_one_shot_d2nn_smoke.yaml`：小尺寸 D2NN compatibility smoke，不作为正式证据。
+- `configs/v1/formal/physics_cfg.yaml`：波长、像素尺寸、宏观光路与读出配置。
+- `configs/v1/formal/train_ldm.yaml`：teacher first-stage 与 diffusion 训练入口。
+- `configs/v1/teacher/export_teacher_distill_mnist_3k_fast200.yaml`：稳定 teacher distill dataset 导出入口。
+- `configs/v1/formal/train_v56_coherent_relay_from_scratch.yaml`：最近一次批准的 coherent-relay 训练配置；当前训练已停止，详见交接文档。旧 one-shot baseline 位于 `experiments/archive/`。
+- `configs/v1/smoke/train_one_shot_d2nn_smoke.yaml`：小尺寸 D2NN compatibility smoke，不作为正式证据。
 
-其他 export、filter、split、audit 和实验 config 的分类与使用条件见 [Stage Guide](stage_guide.md)。
+其他 export、filter、split、audit 和实验 config 的分类与使用条件见 [Stage Guide](../operations/stage_guide.md)。
 
 D2NN 主线通过 `one_shot.optical_core_arch: diffractive_phase_only` 启用；`dense_linear` 只保留为旧 baseline 和兼容入口。
 
@@ -115,7 +115,7 @@ Phase mask 是可训练光学参数；其幅度保持为 1。
 
 ### CMOS
 
-CMOS camera plane 是学生主输出。训练和评估优先使用下采样后的 `camera_plane`；硬件诊断同时检查 `diffractive_camera_*_raw`。具体张量和图像语义见 [Output Guide](../output_JIESHI.md)。
+CMOS camera plane 是学生主输出。训练和评估优先使用下采样后的 `camera_plane`；硬件诊断同时检查 `diffractive_camera_*_raw`。具体张量和图像语义见 [Output Guide](../operations/output_artifact_notes.md)。
 
 Teacher 只生成目标图像/目标 latent，不经过学生的 laser、SLM、D2NN 或 CMOS 光路；teacher 与 student 不是同一条物理路径。
 
@@ -134,7 +134,7 @@ First-stage 和 diffusion 共享 `OpticalPathVAE` encoder/decoder。不同 `line
 3. Acceptance baseline 的 `source_runs` 必须记录配套关系，用于 checkpoint 溯源。
 4. 修改 teacher latent geometry 后，必须重新运行 `first-stage -> diffusion -> export -> distill` 全链路。
 
-匹配与不匹配 checkpoint 的历史测量对比见 [Experiment History](experiment_history.md)。
+匹配与不匹配 checkpoint 的历史测量对比见 [Experiment History](../status/experiment_history.md)。
 
 ## 5. 运行与验收边界
 
@@ -148,7 +148,7 @@ teacher_first_stage / teacher_diffusion
 -> one_shot_distill_eval
 ```
 
-命令、必需输入、checkpoint policy、diagnostic-only 标签和 output policy 均由 [Stage Guide](stage_guide.md) 维护。
+命令、必需输入、checkpoint policy、diagnostic-only 标签和 output policy 均由 [Stage Guide](../operations/stage_guide.md) 维护。
 
 验收时必须保持以下边界：
 
@@ -173,4 +173,4 @@ teacher_first_stage / teacher_diffusion
 
 ## 7. 历史证据
 
-带日期的基线、负实验、seed sweep、post-refactor smoke 和受控复验记录已集中到 [Experiment History](experiment_history.md)。这些记录解释“过去验证了什么”，不覆盖本文件的架构契约或 [Stage Guide](stage_guide.md) 的当前操作要求。
+带日期的基线、负实验、seed sweep、post-refactor smoke 和受控复验记录已集中到 [Experiment History](../status/experiment_history.md)。这些记录解释“过去验证了什么”，不覆盖本文件的架构契约或 [Stage Guide](../operations/stage_guide.md) 的当前操作要求。

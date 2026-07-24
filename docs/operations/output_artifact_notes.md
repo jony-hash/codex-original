@@ -1,6 +1,6 @@
 # D2NN 主线输出与可视化说明
 
-本文件只解释生成图片、tensor bundle 和光学诊断。Stage 命令见 [Stage Guide](ldm_migration/stage_guide.md)，完整文档导航见 [Documentation](README.md)。
+本文件只解释生成图片、tensor bundle 和光学诊断。Stage 命令见 [Stage Guide](stage_guide.md)，完整文档导航见 [Documentation](../README.md)。
 
 ## Teacher 与蒸馏数据
 

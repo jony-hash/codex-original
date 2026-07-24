@@ -28,7 +28,7 @@ This explicit routing is required when Codex starts at the repository root, beca
 6. A valid failed acceptance gate stops downstream training or promotion; repair and revalidate an invalid gate before drawing a model conclusion.
 7. Do not claim success without verification. State exactly what could not be verified.
 
-For long optical-training or one-shot readability debugging, follow the **Experimental Debugging Decision Policy** in `docs/ldm_migration/stage_guide.md`.
+For long optical-training or one-shot readability debugging, follow the **Experimental Debugging Decision Policy** in `docs/operations/stage_guide.md`.
 
 ## 3. Skill Policy
 
@@ -56,7 +56,7 @@ The formal D2NN boundary is `finite_crop`, meaning a propagation-after-crop idea
 
 - LDM is teacher infrastructure; final inference must not require diffusion denoising, iterative latent sampling, software-only VAE decoding, or inference-time optimization.
 - Direct MNIST `one_shot` is baseline/smoke only. Keep teacher, student, and hardware-calibration responsibilities separate.
-- Design source: `docs/ldm_migration/single_shot_ldm_distillation.md`; stage commands and debugging policy: `docs/ldm_migration/stage_guide.md`.
+- Design source: `docs/architecture/v1_single_shot_distillation.md`; stage commands and debugging policy: `docs/operations/stage_guide.md`.
 
 ## 5. Repository And Artifacts
 
