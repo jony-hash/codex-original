@@ -159,6 +159,10 @@ class ConditionalGlobalAmplitudeGenerator(nn.Module):
         return torch.sigmoid(self.class_carrier_logits.index_select(0, labels)).unsqueeze(1)
 
 
+# Descriptive compatibility alias used by the architecture/config contract.
+ConditionalIdentityLogitAmplitudeGenerator = IdentityAnchoredConditionalAmplitudeGenerator
+
+
 class IdentityAnchoredConditionalAmplitudeGenerator(nn.Module):
     """Identity-anchored conditional generator for the v2 recovery path.
 
