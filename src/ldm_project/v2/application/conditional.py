@@ -6,7 +6,7 @@ responsibility groups.
 """
 
 from .conditional_runtime import *  # noqa: F401,F403
-from .conditional_runtime import _first_hundred_schedule_hash, _identity_isolation_classification, _require_current_acceptance, _semantic_localization_classification  # noqa: F401
+from .conditional_runtime import _first_hundred_schedule_hash, _identity_isolation_classification, _require_current_acceptance, _schedule_hash, _semantic_localization_classification  # noqa: F401
 
 __all__ = [
     name for name in globals()

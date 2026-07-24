@@ -13,7 +13,7 @@ from ldm_project.v2.student.conditional import conditional_sinkhorn_loss, fixed_
 from ldm_project.v2.student.conditional_acceptance import chunked_nearest_distances, memorization_statistics, paired_bootstrap_lower_bound, per_label_feature_diversity_ratio
 from ldm_project.v2.student.generator import ConditionalGlobalAmplitudeGenerator, IdentityAnchoredConditionalAmplitudeGenerator
 from ldm_project.v2.evidence.reviews import ConditionalManualReviewV2
-from ldm_project.v2.application.conditional import _first_hundred_schedule_hash, _identity_isolation_classification, _require_current_acceptance, _semantic_localization_classification
+from ldm_project.v2.application.conditional import _first_hundred_schedule_hash, _identity_isolation_classification, _require_current_acceptance, _schedule_hash, _semantic_localization_classification
 from ldm_project.v2.student.evaluator import MNISTSplitManifest
 
 
@@ -162,6 +162,12 @@ def test_identity_smoke_and_formal_training_share_the_first_hundred_schedule() -
     changed = labels.clone()
     changed[0], changed[600] = changed[600], changed[0]
     assert _first_hundred_schedule_hash(changed) != _first_hundred_schedule_hash(labels)
+
+
+def test_semantic_recovery_schedule_extends_the_same_first_hundred_batches() -> None:
+    labels = torch.arange(10).repeat_interleave(2500)
+    assert _schedule_hash(labels, 100) == _first_hundred_schedule_hash(labels)
+    assert _schedule_hash(labels, 400) != _first_hundred_schedule_hash(labels)
 
 
 def test_conditional_checkpoint_rejects_architecture_mismatch(tmp_path: Path) -> None:

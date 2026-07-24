@@ -35,7 +35,7 @@ from ..student.training import _differentiable_correlation, calibrate_prototypes
 from ..student.capacity import supported_dct_candidates
 from ..teacher import TeacherPairManifestV2, TeacherTargetManifestV2, build_teacher_pair_manifest, build_teacher_target_manifest
 from .runs import V2Run
-from .conditional_admission import conditional_control_isolation, conditional_injection_admission, conditional_observability, conditional_semantic_localization, controllability_smoke, qualify_evaluator, train_evaluator
+from .conditional_admission import conditional_control_isolation, conditional_injection_admission, conditional_observability, conditional_semantic_localization, controllability_smoke, qualify_evaluator, semantic_recovery_smoke, train_evaluator
 from .conditional_training import admit_conditional_evaluation, conditional_evaluate, conditional_train, sample_conditional
 from .conditional_dataset import admit_dataset, audit_memorization, evaluate_utility, export_conditional_dataset
 
@@ -1495,7 +1495,7 @@ def _supersede_reachability(args: argparse.Namespace, config: V2Config) -> int:
 def _dispatch_train(args: argparse.Namespace) -> int:
     config = load_config(args.config)
     if config.architecture == "conditional_identity_logit_amplitude_v2":
-        required = ("dataset_root", "evaluator_checkpoint", "initialization_checkpoint", "injection_evidence", "observability_evidence", "controllability_evidence")
+        required = ("dataset_root", "evaluator_checkpoint", "initialization_checkpoint", "injection_evidence", "observability_evidence", "semantic_recovery_evidence")
         missing = [name for name in required if not getattr(args, name)]
         if missing:
             raise ValueError(f"identity conditional train requires: {', '.join('--' + item.replace('_', '-') for item in missing)}")
@@ -1570,7 +1570,7 @@ def _parser() -> argparse.ArgumentParser:
     admit.set_defaults(handler=lambda args: _admit_prototypes(args, load_config(args.config)))
     train = student.add_parser("train")
     train.add_argument("--config", required=True)
-    for name in ("prototype_evidence", "capacity_evidence", "code_basis", "prototype_checkpoint", "teacher_target_manifest", "dataset_root", "evaluator_checkpoint", "observability_evidence", "controllability_evidence", "initialization_checkpoint", "injection_evidence"):
+    for name in ("prototype_evidence", "capacity_evidence", "code_basis", "prototype_checkpoint", "teacher_target_manifest", "dataset_root", "evaluator_checkpoint", "observability_evidence", "controllability_evidence", "semantic_recovery_evidence", "initialization_checkpoint", "injection_evidence"):
         train.add_argument("--" + name.replace("_", "-"))
     train.set_defaults(handler=_dispatch_train)
     sample = student.add_parser("sample")
@@ -1594,6 +1594,10 @@ def _parser() -> argparse.ArgumentParser:
         controllability.add_argument("--" + name.replace("_", "-"), required=name in {"config", "dataset_root", "evaluator_checkpoint", "observability_evidence"})
     controllability.add_argument("--steps", type=int, default=100)
     controllability.set_defaults(handler=lambda args: controllability_smoke(args, load_config(args.config)))
+    recovery = student.add_parser("semantic-recovery-smoke")
+    for name in ("config", "dataset_root", "evaluator_checkpoint", "initialization_checkpoint", "injection_evidence", "observability_evidence", "isolation_evidence", "semantic_localization_evidence", "failed_controllability_evidence"):
+        recovery.add_argument("--" + name.replace("_", "-"), required=True)
+    recovery.set_defaults(handler=lambda args: semantic_recovery_smoke(args, load_config(args.config)))
     export_dataset = student.add_parser("export-dataset")
     for name in ("config", "checkpoint", "acceptance_evidence"):
         export_dataset.add_argument("--" + name.replace("_", "-"), required=True)
