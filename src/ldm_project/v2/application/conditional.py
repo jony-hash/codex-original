@@ -278,12 +278,18 @@ def conditional_control_isolation(args, config: V2Config) -> int:
     before = state_content_hash(bundle.state_dict())
     with torch.no_grad():
         command = bundle.generator(codes, labels)
-        result = bundle.system.forward(bundle.system.command(command), return_optical_trace=True)
-        raw = result.raw_camera.tensor
+        raw_rows: list[torch.Tensor] = []
+        trace_rows: list[list[ComplexField]] = []
+        microbatch = config.execution.evaluation_microbatch_size
+        for start in range(0, codes.shape[0], microbatch):
+            result = bundle.system.forward(bundle.system.command(command[start : start + microbatch]), return_optical_trace=True)
+            raw_rows.append(result.raw_camera.tensor.cpu())
+            trace_rows.append(list(result.optical_trace or ()))
+        raw = torch.cat(raw_rows, dim=0).to(device)
+        trace = tuple(ComplexField(torch.cat([row[index].tensor for row in trace_rows], dim=0), trace_rows[0][index].plane, trace_rows[0][index].provenance) for index in range(len(trace_rows[0])))
         view = fixed_exposure_view(raw, settings.fixed_exposure_scale)
         features, logits = evaluator(view)
     after = state_content_hash(bundle.state_dict())
-    trace = result.optical_trace or ()
     trace_names = ("slm_field", "pre_encoder", "encoder_layer_1", "encoder_layer_2", "identity_ols", "decoder_layer_1", "decoder_layer_2", "camera_field")
     plane_metrics: list[dict[str, object]] = []
     for name, field in zip(trace_names, trace, strict=False):
