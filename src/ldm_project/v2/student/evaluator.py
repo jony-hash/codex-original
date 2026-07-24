@@ -8,7 +8,7 @@ from typing import Iterator
 import torch
 from torch import nn
 
-from ..evidence import atomic_torch_save, canonical_sha256, file_sha256
+from ..evidence import atomic_torch_save, canonical_sha256, file_sha256, tensor_sha256
 
 
 class FrozenMNISTEvaluator(nn.Module):
@@ -43,10 +43,16 @@ class MNISTSplitManifest:
     validation_indices_hash: str
     train_count: int
     validation_count: int
+    dataset_content_hash: str = ""
 
     @property
     def manifest_hash(self) -> str:
-        return canonical_sha256(asdict(self))
+        payload = asdict(self)
+        if self.schema_version >= 2:
+            payload.pop("dataset_root", None)
+        else:
+            payload.pop("dataset_content_hash", None)
+        return canonical_sha256(payload)
 
 
 def stratified_mnist_indices(labels: torch.Tensor, *, seed: int = 1234, validation_per_label: int = 500) -> tuple[torch.Tensor, torch.Tensor]:
@@ -110,4 +116,3 @@ def load_frozen_evaluator(path: str | Path, *, device: torch.device, min_validat
 
 def evaluator_checkpoint_hash(path: str | Path) -> str:
     return file_sha256(path)
-

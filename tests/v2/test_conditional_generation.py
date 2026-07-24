@@ -13,7 +13,7 @@ from ldm_project.v2.student.conditional import conditional_sinkhorn_loss, fixed_
 from ldm_project.v2.student.conditional_acceptance import chunked_nearest_distances, memorization_statistics, paired_bootstrap_lower_bound, per_label_feature_diversity_ratio
 from ldm_project.v2.student.generator import ConditionalGlobalAmplitudeGenerator, IdentityAnchoredConditionalAmplitudeGenerator
 from ldm_project.v2.evidence.reviews import ConditionalManualReviewV2
-from ldm_project.v2.application.conditional import _first_hundred_schedule_hash, _identity_isolation_classification
+from ldm_project.v2.application.conditional import _first_hundred_schedule_hash, _identity_isolation_classification, _require_current_acceptance
 
 
 def test_conditional_generator_is_bounded_zero_code_carrier_and_global() -> None:
@@ -193,6 +193,21 @@ def test_identity_logit_config_is_separate_and_locks_gain_and_seed() -> None:
     assert config.conditional_generation is not None
     assert config.conditional_generation.command_gain == pytest.approx(0.5)
     assert config.conditional_generation.initialization_seed == 1234
+
+
+def test_v2_config_migration_resolves_exact_legacy_path() -> None:
+    with pytest.warns(UserWarning, match="deprecated v2 config path"):
+        legacy = load_config("configs/v2/formal_amplitude_finite_crop_identity.yaml")
+    assert legacy.architecture == "conditional_global_amplitude_v1"
+    current = load_config("configs/v2/current/formal_identity_logit_amplitude_finite_crop_identity.yaml")
+    assert current.architecture == "conditional_identity_logit_amplitude_v2"
+    with pytest.raises(ValueError, match="legacy v2 architectures"):
+        _require_current_acceptance(legacy)
+
+
+def test_v2_config_migration_does_not_guess_unknown_paths() -> None:
+    with pytest.raises(FileNotFoundError, match="v2 config does not exist"):
+        load_config("configs/v2/formal_identity_logit_amplitude_finite_crop_identity_typo.yaml")
 
 
 def test_conditional_config_rejects_teacher_fields(tmp_path: Path) -> None:

@@ -35,7 +35,9 @@ from ..student.training import _differentiable_correlation, calibrate_prototypes
 from ..student.capacity import supported_dct_candidates
 from ..teacher import TeacherPairManifestV2, TeacherTargetManifestV2, build_teacher_pair_manifest, build_teacher_target_manifest
 from .runs import V2Run
-from .conditional import admit_conditional_evaluation, admit_dataset, audit_memorization, conditional_control_isolation, conditional_evaluate, conditional_injection_admission, conditional_observability, conditional_train, controllability_smoke, evaluate_utility, export_conditional_dataset, qualify_evaluator, sample_conditional, train_evaluator
+from .conditional_admission import conditional_control_isolation, conditional_injection_admission, conditional_observability, controllability_smoke, qualify_evaluator, train_evaluator
+from .conditional_training import admit_conditional_evaluation, conditional_evaluate, conditional_train, sample_conditional
+from .conditional_dataset import admit_dataset, audit_memorization, evaluate_utility, export_conditional_dataset
 
 _CONTROL_ORACLE_ARMS = ("formal_amplitude_only", "diagnostic_complex_slm")
 _CONTROL_ORACLE_STEPS = 400
@@ -1584,6 +1586,7 @@ def _parser() -> argparse.ArgumentParser:
     evaluator.set_defaults(handler=lambda args: train_evaluator(args, load_config(args.config)))
     qualify = student.add_parser("qualify-evaluator")
     qualify.add_argument("--config", required=True)
+    qualify.add_argument("--dataset-root", required=True)
     qualify.add_argument("--evaluator-checkpoint", required=True)
     qualify.set_defaults(handler=lambda args: qualify_evaluator(args, load_config(args.config)))
     controllability = student.add_parser("controllability-smoke")
