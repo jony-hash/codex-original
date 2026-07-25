@@ -13,7 +13,7 @@ from ldm_project.v2.student.conditional import conditional_sinkhorn_loss, fixed_
 from ldm_project.v2.student.conditional_acceptance import chunked_nearest_distances, memorization_statistics, paired_bootstrap_lower_bound, per_label_feature_diversity_ratio
 from ldm_project.v2.student.generator import ConditionalGlobalAmplitudeGenerator, IdentityAnchoredConditionalAmplitudeGenerator
 from ldm_project.v2.evidence.reviews import ConditionalManualReviewV2
-from ldm_project.v2.application.conditional import _first_hundred_schedule_hash, _identity_isolation_classification, _require_current_acceptance, _schedule_hash, _semantic_localization_classification
+from ldm_project.v2.application.conditional import _first_hundred_schedule_hash, _identity_isolation_classification, _reanchor_codes, _require_current_acceptance, _schedule_hash, _semantic_localization_classification
 from ldm_project.v2.student.evaluator import MNISTSplitManifest
 
 
@@ -60,6 +60,31 @@ def test_identity_anchored_generator_initialization_is_deterministic() -> None:
     torch.manual_seed(1234)
     second = IdentityAnchoredConditionalAmplitudeGenerator(shape=(8, 8))
     assert all(torch.equal(first_state, second_state) for first_state, second_state in zip(first.state_dict().values(), second.state_dict().values()))
+
+
+def test_reanchor_code_schedule_is_deterministic_and_antithetic() -> None:
+    labels = torch.arange(10).repeat_interleave(5)
+    first = _reanchor_codes(labels, batch_number=3)
+    second = _reanchor_codes(labels, batch_number=3)
+    assert torch.equal(first, second)
+    assert first.shape == (50, 8)
+    for label in range(10):
+        codes = first[label * 5 : (label + 1) * 5]
+        assert torch.equal(codes[0], torch.zeros(8))
+        assert torch.equal(codes[1], -codes[2])
+        assert torch.equal(codes[3], -codes[4])
+        assert torch.count_nonzero(codes[1]) == 1
+        assert torch.count_nonzero(codes[3]) > 0
+    assert int(torch.argmax(first[1]).item()) == 3
+
+
+def test_reanchor_code_schedule_rotates_axis_by_batch() -> None:
+    labels = torch.arange(10).repeat_interleave(5)
+    first = _reanchor_codes(labels, batch_number=0)
+    ninth = _reanchor_codes(labels, batch_number=8)
+    assert torch.equal(first[1], ninth[1])
+    assert torch.equal(first[2], ninth[2])
+    assert torch.equal(first[6], ninth[6])
 
 
 def test_fixed_exposure_view_is_not_sample_normalization() -> None:

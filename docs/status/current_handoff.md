@@ -1,4 +1,4 @@
-# 当前主线交接：identity v2 无蒸馏（2026-07-24）
+# 当前主线交接：identity v2 无蒸馏（2026-07-25）
 
 当前活动运行时是 `rewrite/v2` 上的
 `conditional_identity_logit_amplitude_v2`。v1 的 LDM 蒸馏线仍由 `train.py` 维护，
@@ -15,9 +15,10 @@
 
 ## 当前停止规则
 
-当前 identity 主线尚未完成 evaluator qualification、injection admission、observability、
-control isolation 和语义定位的全新内容绑定链。因此不运行 5-epoch 长训练、60,000 张导出、
-memorization、utility 或 promotion。旧 100-step smoke 只保留为历史诊断，不能迁移到当前合同。
+evaluator、injection、observability、control isolation、semantic localization 和 schedule
+completion 的内容绑定链已经通过。语义训练已完成，但多样性恢复的 aligned 和 identity-reanchor
+两条路径均未通过。因此不运行984-step正式恢复、5000张自动评估、60,000张导出、memorization、
+utility或promotion。所有failed diversity smoke均为不可变诊断证据。
 
 ## 当前合同运行结果（2026-07-24）
 
@@ -37,6 +38,14 @@ memorization、utility 或 promotion。旧 100-step smoke 只保留为历史诊�
 optimizer 前失败。旧 global-amplitude、teacher/prototype/capacity、direct-template 和
 LightGen evidence 不能授权 identity 主线。
 
+## 多样性恢复断点（2026-07-25）
+
+- 旧400-step recovery：camera fraction `0.1436`、最低距离比 `0.310`。
+- aligned smoke：训练batch camera fraction约`0.242`，固定170面板仅`0.1581`，最低距离比`0.268`。
+- Wy=0只读反事实：轴向camera fraction `0.3034`、最低距离比 `0.5406`、accuracy `0.8941`；uniform accuracy约`0.77`。
+- identity-reanchor smoke：轴向camera fraction `0.2961`、最低距离比 `0.5226`、accuracy `0.8941`；uniform accuracy `0.8118`。
+- 结论：自由Wy/Wz会压缩独立code，global modes单独训练又不足以恢复非零code语义；问题已定位为物理多样性与类别语义的结构容量冲突。
+
 ## 历史证据
 
 旧运行手册与完整指标保留在 [`docs/archive`](../archive/)，阶段摘要在
@@ -44,6 +53,5 @@ LightGen evidence 不能授权 identity 主线。
 
 ## 下一允许动作
 
-下一步由用户从同一个 `conditional_initialization.pt` 运行预注册的 5-epoch/5500-step CUDA
-formal train，并传入 passed `semantic_recovery_evidence.json`。不得使用 recovery final checkpoint
-作为 warm-start；60,000 张导出、memorization、utility 和最终准入仍须在正式训练后依次执行。
+当前没有正式训练授权。下一步必须另立受限的类别条件语义调制方案，并通过新的只读容量/语义
+观测门；不得重复Wy归零或自由Wy损失训练，不得降低最终门限或启动数据集导出。
