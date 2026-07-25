@@ -10,6 +10,8 @@ from .conditional_runtime import (
     train_diversity_recovery,
     diversity_aligned_smoke,
     train_diversity_aligned,
+    train_identity_reanchor,
+    identity_reanchor_smoke,
     sample_conditional,
 )
 
@@ -23,5 +25,7 @@ __all__ = [
     "train_diversity_recovery",
     "diversity_aligned_smoke",
     "train_diversity_aligned",
+    "train_identity_reanchor",
+    "identity_reanchor_smoke",
     "sample_conditional",
 ]
