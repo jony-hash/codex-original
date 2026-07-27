@@ -35,8 +35,8 @@ from ..student.training import _differentiable_correlation, calibrate_prototypes
 from ..student.capacity import supported_dct_candidates
 from ..teacher import TeacherPairManifestV2, TeacherTargetManifestV2, build_teacher_pair_manifest, build_teacher_target_manifest
 from .runs import V2Run
-from .conditional_admission import conditional_control_isolation, conditional_injection_admission, conditional_observability, conditional_semantic_localization, controllability_smoke, qualify_evaluator, semantic_recovery_smoke, train_evaluator, conditional_training_completion, conditional_diversity_observability, conditional_diversity_alignment_admission, conditional_identity_reanchor, conditional_reanchor_observability, conditional_shared_mode_conflict, conditional_class_mode_admission, conditional_class_mode_observability
-from .conditional_training import admit_conditional_evaluation, conditional_evaluate, conditional_train, sample_conditional, diversity_recovery_smoke, train_diversity_recovery, diversity_aligned_smoke, train_diversity_aligned, identity_reanchor_smoke, train_identity_reanchor, class_mode_recovery_smoke, train_class_modes
+from .conditional_admission import conditional_control_isolation, conditional_injection_admission, conditional_observability, conditional_semantic_localization, controllability_smoke, qualify_evaluator, semantic_recovery_smoke, train_evaluator, conditional_training_completion, conditional_diversity_observability, conditional_diversity_alignment_admission, conditional_identity_reanchor, conditional_reanchor_observability, conditional_shared_mode_conflict, conditional_class_mode_admission, conditional_class_mode_observability, conditional_parity_conflict, conditional_parity_mode_admission, conditional_parity_observability
+from .conditional_training import admit_conditional_evaluation, conditional_evaluate, conditional_train, sample_conditional, diversity_recovery_smoke, train_diversity_recovery, diversity_aligned_smoke, train_diversity_aligned, identity_reanchor_smoke, train_identity_reanchor, class_mode_recovery_smoke, train_class_modes, parity_stabilizer_smoke, train_parity_stabilizer
 from .conditional_dataset import admit_dataset, audit_memorization, evaluate_utility, export_conditional_dataset
 
 _CONTROL_ORACLE_ARMS = ("formal_amplitude_only", "diagnostic_complex_slm")
@@ -1630,6 +1630,14 @@ def _parser() -> argparse.ArgumentParser:
     for name in ("config", "dataset_root", "evaluator_checkpoint", "checkpoint", "smoke_evidence"):
         class_mode_train.add_argument("--" + name.replace("_", "-"), required=True)
     class_mode_train.set_defaults(handler=lambda args: train_class_modes(args, load_config(args.config)))
+    parity_smoke = student.add_parser("parity-stabilizer-smoke")
+    for name in ("config", "dataset_root", "evaluator_checkpoint", "checkpoint", "observability_evidence"):
+        parity_smoke.add_argument("--" + name.replace("_", "-"), required=True)
+    parity_smoke.set_defaults(handler=lambda args: parity_stabilizer_smoke(args, load_config(args.config)))
+    parity_train = student.add_parser("train-parity-stabilizer")
+    for name in ("config", "dataset_root", "evaluator_checkpoint", "checkpoint", "smoke_evidence"):
+        parity_train.add_argument("--" + name.replace("_", "-"), required=True)
+    parity_train.set_defaults(handler=lambda args: train_parity_stabilizer(args, load_config(args.config)))
     export_dataset = student.add_parser("export-dataset")
     for name in ("config", "checkpoint", "acceptance_evidence"):
         export_dataset.add_argument("--" + name.replace("_", "-"), required=True)
@@ -1719,6 +1727,18 @@ def _parser() -> argparse.ArgumentParser:
     for name in ("config", "dataset_root", "evaluator_checkpoint", "checkpoint", "admission_evidence"):
         class_mode_obs_parser.add_argument("--" + name.replace("_", "-"), required=True)
     class_mode_obs_parser.set_defaults(handler=lambda args: conditional_class_mode_observability(args, load_config(args.config)))
+    parity_conflict_parser = audit.add_parser("conditional-parity-conflict")
+    for name in ("config", "dataset_root", "evaluator_checkpoint", "checkpoint", "failed_smoke_evidence"):
+        parity_conflict_parser.add_argument("--" + name.replace("_", "-"), required=True)
+    parity_conflict_parser.set_defaults(handler=lambda args: conditional_parity_conflict(args, load_config(args.config)))
+    parity_admission_parser = audit.add_parser("conditional-parity-mode-admission")
+    for name in ("config", "dataset_root", "evaluator_checkpoint", "checkpoint", "conflict_evidence"):
+        parity_admission_parser.add_argument("--" + name.replace("_", "-"), required=True)
+    parity_admission_parser.set_defaults(handler=lambda args: conditional_parity_mode_admission(args, load_config(args.config)))
+    parity_obs_parser = audit.add_parser("conditional-parity-observability")
+    for name in ("config", "dataset_root", "evaluator_checkpoint", "checkpoint", "admission_evidence"):
+        parity_obs_parser.add_argument("--" + name.replace("_", "-"), required=True)
+    parity_obs_parser.set_defaults(handler=lambda args: conditional_parity_observability(args, load_config(args.config)))
     memorization = audit.add_parser("memorization")
     for name in ("config", "candidate_evidence", "candidate_dataset", "dataset_root", "evaluator_checkpoint"):
         memorization.add_argument("--" + name.replace("_", "-"), required=True)

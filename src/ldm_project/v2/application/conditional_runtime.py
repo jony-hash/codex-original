@@ -18,7 +18,7 @@ from ..student.admission import balanced_code_fraction
 from ..student.conditional import camera_code_fraction, camera_code_fraction_loss, conditional_loss, conditional_sinkhorn_loss, fixed_exposure_view, raw_from_generator_batched, relative_diversity_loss, relative_diversity_ratios
 from ..student.conditional_acceptance import conditional_coverage_ratio, load_candidate_dataset, memorization_statistics, paired_bootstrap_lower_bound, per_label_feature_diversity_ratio
 from ..student.evaluator import FrozenMNISTEvaluator, MNISTSplitManifest, balanced_batches, evaluator_checkpoint_hash, load_frozen_evaluator, load_local_mnist, save_evaluator_checkpoint, stratified_mnist_indices
-from ..student.generator import ConditionalClassConditionedModesGenerator, ConditionalGlobalAmplitudeGenerator, IdentityAnchoredConditionalAmplitudeGenerator
+from ..student.generator import ConditionalClassConditionedModesGenerator, ConditionalGlobalAmplitudeGenerator, IdentityAnchoredConditionalAmplitudeGenerator, ConditionalParityStabilizedModesGenerator
 from ..evidence.records import require_evidence_action
 from ..student.review_artifacts import write_conditional_review_artifacts, write_review_artifacts
 from .runs import V2Run
@@ -32,8 +32,10 @@ CONDITIONAL_CONTROL_ADMISSION_CONTRACT = "sample_centered_anova_v1|sinkhorn_feat
 CONDITIONAL_SEMANTIC_LOCALIZATION_CONTRACT = "identity_semantic_localization_v1|zero_code_vs_formal_gradient_cosine_v1|no_optimizer_state_change_v1"
 IDENTITY_ARCHITECTURE = "conditional_identity_logit_amplitude_v2"
 CLASS_MODE_ARCHITECTURE = "conditional_class_conditioned_modes_v3"
+PARITY_ARCHITECTURE = "conditional_parity_stabilized_modes_v4"
 IDENTITY_GENERATOR_CONTRACT = canonical_sha256({"architecture": IDENTITY_ARCHITECTURE, "formula": "h=SiLU(Wz*z);r=Wy*h;c=tanh(z+r);A=sigmoid(By+0.5*sum(c*P_hat))", "gain": 0.5, "bias_free": True})
 CLASS_MODE_GENERATOR_CONTRACT = canonical_sha256({"architecture": CLASS_MODE_ARCHITECTURE, "formula": "c=tanh(z);A=sigmoid(By+0.5*sum(c*P_hat_y))", "gain": 0.5, "class_modes_shape": [10, 8, 200, 200]})
+PARITY_GENERATOR_CONTRACT = canonical_sha256({"architecture": PARITY_ARCHITECTURE, "formula": "t=tanh(z);rho=1-exp(-sum(t^2));w=t^2/sum(t^2);A=sigmoid(By+0.5*(sum(t*P_hat_y)+rho*sum(w*tanh(Q_y))))", "gain": 0.5, "class_modes_shape": [10, 8, 200, 200], "stabilizer_shape": [10, 8, 200, 200]})
 TRAINING_SCHEDULE_CONTRACT = canonical_sha256({"epochs": 5, "logical_batch_size": 50, "steps": 5500, "seed": 1234, "code_seed": "(epoch+1)*100000+batch_number"})
 BALANCED_TRAINING_SCHEDULE = {"epochs": 5, "logical_batch_size": 50, "batch_policy": "balanced_min_class_exhaustion", "seed": 1234, "code_seed": "(epoch+1)*100000+batch_number"}
 BALANCED_TRAINING_SCHEDULE_CONTRACT = canonical_sha256(BALANCED_TRAINING_SCHEDULE)
@@ -45,6 +47,7 @@ ALIGNED_DIVERSITY_CONTRACT = canonical_sha256({"kind": "conditional_diversity_al
 REANCHOR_CONTRACT = canonical_sha256({"kind": "conditional_identity_reanchor_v1", "zeroed": ["generator.class_heads"], "trainable": ["generator.global_modes"], "gain": 0.5})
 REANCHOR_SMOKE_CONTRACT = canonical_sha256({"kind": "conditional_identity_reanchor_smoke", "steps": 400, "code_schedule": "axis_plus_uniform_antithetic", "trainable": ["generator.global_modes"]})
 CLASS_MODE_SMOKE_CONTRACT = canonical_sha256({"kind": "conditional_class_mode_recovery_smoke", "steps": 400, "panels": ["axis", "uniform_1234", "uniform_5678"], "trainable": ["generator.class_modes"]})
+PARITY_SMOKE_CONTRACT = canonical_sha256({"kind": "conditional_parity_stabilizer_smoke", "steps": 400, "panels": ["axis", "uniform_1234", "uniform_5678"], "trainable": ["generator.semantic_stabilizers"], "stop_after_failure": True})
 SEMANTIC_RECOVERY_STEPS = 400
 SEMANTIC_RECOVERY_CONTRACT = canonical_sha256({"kind": "conditional_semantic_recovery_smoke", "steps": SEMANTIC_RECOVERY_STEPS, "batch_seed": 1234, "code_seed": "100000+batch_number", "initialization_only": True})
 
@@ -52,11 +55,11 @@ SEMANTIC_RECOVERY_CONTRACT = canonical_sha256({"kind": "conditional_semantic_rec
 class ConditionalBundle(nn.Module):
     def __init__(self, config: V2Config, *, carrier_logits: torch.Tensor | None = None) -> None:
         super().__init__()
-        if config.architecture not in {"conditional_global_amplitude_v1", IDENTITY_ARCHITECTURE, CLASS_MODE_ARCHITECTURE} or config.conditional_generation is None:
+        if config.architecture not in {"conditional_global_amplitude_v1", IDENTITY_ARCHITECTURE, CLASS_MODE_ARCHITECTURE, PARITY_ARCHITECTURE} or config.conditional_generation is None:
             raise ValueError("conditional bundle requires a supported conditional architecture config")
         settings = config.conditional_generation
         self.system = FormalAmplitudeFiniteCropIdentitySystem(config.system)
-        generator_type = {IDENTITY_ARCHITECTURE: IdentityAnchoredConditionalAmplitudeGenerator, CLASS_MODE_ARCHITECTURE: ConditionalClassConditionedModesGenerator}.get(config.architecture, ConditionalGlobalAmplitudeGenerator)
+        generator_type = {IDENTITY_ARCHITECTURE: IdentityAnchoredConditionalAmplitudeGenerator, CLASS_MODE_ARCHITECTURE: ConditionalClassConditionedModesGenerator, PARITY_ARCHITECTURE: ConditionalParityStabilizedModesGenerator}.get(config.architecture, ConditionalGlobalAmplitudeGenerator)
         self.generator = generator_type(
             shape=config.system.slm_shape,
             code_dim=settings.code_dim,
@@ -67,7 +70,7 @@ class ConditionalBundle(nn.Module):
 
 
 def _require_conditional(config: V2Config) -> None:
-    if config.architecture not in {"conditional_global_amplitude_v1", IDENTITY_ARCHITECTURE, CLASS_MODE_ARCHITECTURE} or config.conditional_generation is None:
+    if config.architecture not in {"conditional_global_amplitude_v1", IDENTITY_ARCHITECTURE, CLASS_MODE_ARCHITECTURE, PARITY_ARCHITECTURE} or config.conditional_generation is None:
         raise ValueError("this command requires a supported conditional architecture")
 
 
@@ -83,8 +86,14 @@ def _require_class_modes(config: V2Config) -> None:
         raise ValueError("this command requires architecture: conditional_class_conditioned_modes_v3")
 
 
+def _require_parity(config: V2Config) -> None:
+    _require_conditional(config)
+    if config.architecture != PARITY_ARCHITECTURE:
+        raise ValueError("this command requires architecture: conditional_parity_stabilized_modes_v4")
+
+
 def _require_current_acceptance(config: V2Config) -> None:
-    if config.run.evidence_tier == "acceptance" and config.architecture not in {IDENTITY_ARCHITECTURE, CLASS_MODE_ARCHITECTURE}:
+    if config.run.evidence_tier == "acceptance" and config.architecture not in {IDENTITY_ARCHITECTURE, CLASS_MODE_ARCHITECTURE, PARITY_ARCHITECTURE}:
         raise ValueError("legacy v2 architectures cannot authorize current acceptance")
 
 
@@ -165,8 +174,30 @@ def _load_bundle(config: V2Config, checkpoint: str, *, device: torch.device, eva
     if manifest.architecture_kind == CLASS_MODE_ARCHITECTURE:
         if manifest.generator_contract_hash != CLASS_MODE_GENERATOR_CONTRACT or manifest.metric_contract_hash != canonical_sha256(CONDITIONAL_CONTROL_METRIC_CONTRACT) or manifest.training_schedule_hash != BALANCED_TRAINING_SCHEDULE_CONTRACT or manifest.initialization_seed != 1234:
             raise ValueError("class-mode checkpoint has an incomplete or mismatched contract")
+    if manifest.architecture_kind == PARITY_ARCHITECTURE:
+        if manifest.generator_contract_hash != PARITY_GENERATOR_CONTRACT or manifest.metric_contract_hash != canonical_sha256(CONDITIONAL_CONTROL_METRIC_CONTRACT) or manifest.training_schedule_hash != BALANCED_TRAINING_SCHEDULE_CONTRACT or manifest.initialization_seed != 1234:
+            raise ValueError("parity checkpoint has an incomplete or mismatched contract")
     load_conditional_checkpoint(checkpoint, bundle, manifest)
     return bundle, manifest
+
+
+def _load_parity_source(config: V2Config, checkpoint: str, *, device: torch.device) -> tuple[ConditionalBundle, dict]:
+    """Explicitly migrate the v3 physical state into a zero-Q v4 bundle."""
+    payload = torch.load(checkpoint, map_location="cpu", weights_only=False)
+    if not isinstance(payload, dict) or not isinstance(payload.get("manifest"), dict) or not isinstance(payload.get("state_dict"), dict):
+        raise ValueError("invalid source checkpoint for parity migration")
+    source = ConditionalCheckpointManifestV2(**payload["manifest"])
+    if source.architecture_kind != CLASS_MODE_ARCHITECTURE or source.system_signature != _system_signature(config):
+        raise ValueError("parity migration requires a class-mode v3 checkpoint with the same optical system")
+    state = payload["state_dict"]
+    bundle = ConditionalBundle(config).to(device)
+    target = bundle.state_dict()
+    for key in ("system.encoder.phase", "system.decoder.phase", "generator.class_carrier_logits", "generator.class_modes"):
+        if key not in state or key not in target or state[key].shape != target[key].shape:
+            raise ValueError(f"source checkpoint lacks exact migration tensor {key}")
+        target[key].copy_(state[key])
+    bundle.load_state_dict(target, strict=True)
+    return bundle, payload
 
 
 def train_evaluator(args, config: V2Config) -> int:
@@ -1640,6 +1671,162 @@ def conditional_class_mode_observability(args, config: V2Config) -> int:
     return 0
 
 
+def conditional_parity_conflict(args, config: V2Config) -> int:
+    """Read-only test that odd signed modes conflict with semantic gradients."""
+    _require_parity(config)
+    conflict = EvidenceRecordV2.from_dict(json.loads(Path(args.failed_smoke_evidence).read_text(encoding="utf-8")))
+    if conflict.evidence_kind != "conditional_class_mode_recovery_smoke" or conflict.status != "failed":
+        raise ValueError("parity conflict audit requires the valid failed v3 smoke")
+    images, labels_all = load_local_mnist(args.dataset_root, train=True)
+    train_images, train_labels, _, _, split = _split(images, labels_all, args.dataset_root)
+    evaluator_hash = evaluator_checkpoint_hash(args.evaluator_checkpoint)
+    device = torch.device(config.run.device)
+    evaluator, _ = load_frozen_evaluator(args.evaluator_checkpoint, device=device)
+    bundle, _ = _load_parity_source(config, args.checkpoint, device=device)
+    for parameter in bundle.parameters():
+        parameter.requires_grad_(False)
+    bundle.generator.class_modes.requires_grad_(True)
+    bundle.generator.semantic_stabilizers.requires_grad_(True)
+    axis_codes, axis_labels = _fixed_control_probe(device=device)
+    odd_cosines, even_cosines, rows = [], [], []
+    before = state_content_hash(bundle.state_dict())
+    for label in range(10):
+        for direction in range(8):
+            plus = torch.zeros(1, 8, device=device); plus[0, direction] = 1.0
+            minus = -plus
+            grads = []
+            for code in (plus, minus):
+                lab = torch.tensor([label], device=device)
+                raw = raw_from_generator_batched(bundle.system, bundle.generator, code, lab, microbatch_size=1, activation_checkpoint=False)
+                _, logits = evaluator(fixed_exposure_view(raw, config.conditional_generation.fixed_exposure_scale))
+                loss = torch.nn.functional.cross_entropy(logits, lab)
+                gp, gq = torch.autograd.grad(loss, (bundle.generator.class_modes, bundle.generator.semantic_stabilizers), retain_graph=False)
+                grads.append((gp[label, direction].detach().flatten(), gq[label, direction].detach().flatten()))
+            odd_cosine = float(torch.nn.functional.cosine_similarity(grads[0][0], grads[1][0], dim=0).cpu())
+            even_cosine = float(torch.nn.functional.cosine_similarity(grads[0][1], grads[1][1], dim=0).cpu())
+            odd_cancel_pair = float((1.0 - torch.linalg.vector_norm(grads[0][0] + grads[1][0]) / (torch.linalg.vector_norm(grads[0][0]) + torch.linalg.vector_norm(grads[1][0])).clamp_min(1.0e-12)).cpu())
+            even_cancel_pair = float((1.0 - torch.linalg.vector_norm(grads[0][1] + grads[1][1]) / (torch.linalg.vector_norm(grads[0][1]) + torch.linalg.vector_norm(grads[1][1])).clamp_min(1.0e-12)).cpu())
+            odd_cosines.append(odd_cosine)
+            even_cosines.append(even_cosine)
+            rows.append({"label": label, "direction": direction, "odd_cosine": odd_cosine, "even_cosine": even_cosine, "odd_pair_cancellation": odd_cancel_pair, "even_pair_cancellation": even_cancel_pair})
+    after = state_content_hash(bundle.state_dict())
+    conflict_count = sum(value <= -0.10 for value in odd_cosines)
+    affected = {label: any(row["label"] == label and row["odd_cosine"] <= -0.10 for row in rows) for label in (5, 7)}
+    odd_cancel = sum(row["odd_pair_cancellation"] for row in rows) / len(rows)
+    even_cancel = sum(row["even_pair_cancellation"] for row in rows) / len(rows)
+    checks = (GateResult("finite_nonzero_gradients", all(torch.isfinite(torch.tensor(odd_cosines + even_cosines))) and all(abs(x) > 1.0e-8 for x in odd_cosines + even_cosines), {}), GateResult("odd_signed_conflict", conflict_count >= 20, {"count": float(conflict_count)}), GateResult("affected_labels_5_7", all(affected.values()), {str(k): v for k, v in affected.items()}), GateResult("even_pair_alignment", sum(x > 0.10 for x in even_cosines) >= 20, {}), GateResult("even_cancellation_improves", even_cancel + 0.15 <= odd_cancel, {"odd": odd_cancel, "even": even_cancel}), GateResult("parameters_unchanged", before == after, {}))
+    run = _new_run(config)
+    report = run.root / "conditional_parity_conflict_report.json"
+    atomic_write_json(report, {"classification": "odd_even_semantic_conflict_confirmed" if all(x.passed for x in checks) else "parity_cause_unconfirmed", "rows": rows, "odd_cancellation": odd_cancel, "even_cancellation": even_cancel})
+    expected = _context(config, evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, checkpoint_hash=file_sha256(args.checkpoint))
+    passed = all(x.passed for x in checks)
+    record = EvidenceRecordV2(2, "conditional_parity_conflict", config.run.evidence_tier, "passed" if passed else "failed", run.git_commit, run.dirty_patch_hash, run.config_hash, expected, {"source_checkpoint": file_sha256(args.checkpoint), "failed_smoke": file_sha256(args.failed_smoke_evidence), "report": file_sha256(report)}, checks, ("conditional_parity_mode_admission",) if passed else (), None if passed else "odd-even semantic conflict was not confirmed")
+    _write_evidence(run, "conditional_parity_conflict_evidence.json", record); print(run.root); return 0
+
+
+def conditional_parity_mode_admission(args, config: V2Config) -> int:
+    _require_parity(config)
+    conflict = EvidenceRecordV2.from_dict(json.loads(Path(args.conflict_evidence).read_text(encoding="utf-8")))
+    if conflict.evidence_kind != "conditional_parity_conflict" or conflict.status != "passed" or "conditional_parity_mode_admission" not in conflict.permitted_next_actions:
+        raise ValueError("parity admission requires passed conflict evidence")
+    images, labels_all = load_local_mnist(args.dataset_root, train=True)
+    train_images, train_labels, _, _, split = _split(images, labels_all, args.dataset_root)
+    evaluator_hash = evaluator_checkpoint_hash(args.evaluator_checkpoint)
+    device = torch.device(config.run.device)
+    evaluator, _ = load_frozen_evaluator(args.evaluator_checkpoint, device=device)
+    bundle, source_payload = _load_parity_source(config, args.checkpoint, device=device)
+    source_hash = file_sha256(args.checkpoint)
+    axis_codes, axis_labels = _fixed_control_probe(device=device)
+    panels = {"axis": (axis_codes, axis_labels), "uniform_1234": (_random_codes(170, device=device, seed=1234), axis_labels), "uniform_5678": (_random_codes(170, device=device, seed=5678), axis_labels)}
+    initial = {name: raw_from_generator_batched(bundle.system, bundle.generator, codes, labels, microbatch_size=1, activation_checkpoint=False).detach().cpu() for name, (codes, labels) in panels.items()}
+    zero = initial["axis"][::17]
+    checks = [GateResult("zero_stabilizers", bool(torch.count_nonzero(bundle.generator.semantic_stabilizers) == 0), {}), GateResult("finite_modes", bool(torch.isfinite(bundle.generator.class_modes).all()), {})]
+    run = _new_run(config); path = run.root / "conditional_parity_stabilized_initialization.pt"
+    manifest = ConditionalCheckpointManifestV2(2, PARITY_ARCHITECTURE, _system_signature(config), canonical_sha256(config.model_dump(mode="json")), split.manifest_hash, evaluator_hash, config.conditional_generation.fixed_exposure_scale, state_signature(bundle.state_dict()), state_content_hash(bundle.state_dict()), PARITY_GENERATOR_CONTRACT, canonical_sha256(CONDITIONAL_CONTROL_METRIC_CONTRACT), BALANCED_TRAINING_SCHEDULE_CONTRACT, 1234, None)
+    save_conditional_checkpoint(path, bundle, manifest, extra={"source_checkpoint": source_hash, "conflict_evidence": file_sha256(args.conflict_evidence), "semantic_stabilizers_zero": True, "initial_panel_hashes": {k: tensor_sha256(v) for k, v in initial.items()}})
+    out_hash = file_sha256(path); checks.append(GateResult("derived_checkpoint", True, {"checkpoint": out_hash})); passed = all(x.passed for x in checks)
+    record = EvidenceRecordV2(2, "conditional_parity_mode_admission", config.run.evidence_tier, "passed" if passed else "failed", run.git_commit, run.dirty_patch_hash, run.config_hash, _context(config, evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, checkpoint_hash=out_hash), {"source_checkpoint": source_hash, "checkpoint": out_hash, "conflict_evidence": file_sha256(args.conflict_evidence), "initial_panel_hashes": {k: tensor_sha256(v) for k, v in initial.items()}}, tuple(checks), ("conditional_parity_observability",) if passed else (), None if passed else "parity admission failed")
+    _write_evidence(run, "conditional_parity_mode_admission_evidence.json", record); print(run.root); return 0
+
+
+def conditional_parity_observability(args, config: V2Config) -> int:
+    _require_parity(config)
+    admission = EvidenceRecordV2.from_dict(json.loads(Path(args.admission_evidence).read_text(encoding="utf-8")))
+    if admission.evidence_kind != "conditional_parity_mode_admission" or admission.status != "passed" or "conditional_parity_observability" not in admission.permitted_next_actions:
+        raise ValueError("parity observability requires passed parity admission")
+    images, labels_all = load_local_mnist(args.dataset_root, train=True); train_images, train_labels, _, _, split = _split(images, labels_all, args.dataset_root)
+    evaluator_hash = evaluator_checkpoint_hash(args.evaluator_checkpoint); device = torch.device(config.run.device); evaluator, _ = load_frozen_evaluator(args.evaluator_checkpoint, device=device); bundle, _ = _load_bundle(config, args.checkpoint, device=device, evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, allow_balanced_schedule=True)
+    for p in bundle.parameters(): p.requires_grad_(False)
+    bundle.generator.semantic_stabilizers.requires_grad_(True)
+    indices = next(balanced_batches(train_labels, batch_size=config.conditional_generation.logical_batch_size, seed=1234)); labels = train_labels.index_select(0, indices).to(device); codes = _reanchor_codes(labels, batch_number=0)
+    raw = raw_from_generator_batched(bundle.system, bundle.generator, codes, labels, microbatch_size=1, activation_checkpoint=False); _, logits = evaluator(fixed_exposure_view(raw, config.conditional_generation.fixed_exposure_scale)); loss = torch.nn.functional.cross_entropy(logits, labels); grad = torch.autograd.grad(loss, bundle.generator.semantic_stabilizers, allow_unused=True)[0]
+    nonzero = [bool(torch.count_nonzero(grad[label]) > 0) for label in range(10)] if grad is not None else [False] * 10
+    checks = (GateResult("finite_fields", bool(torch.isfinite(raw).all()), {}), GateResult("all_label_stabilizer_gradients", all(nonzero), {}), GateResult("frozen_parameters", all(not p.requires_grad for n, p in bundle.named_parameters() if n != "generator.semantic_stabilizers"), {}), GateResult("no_optimizer_update", True, {}))
+    run = _new_run(config); report = run.root / "conditional_parity_observability_report.json"; atomic_write_json(report, {"gradient_norm": float(grad.norm()) if grad is not None else 0.0, "per_label_nonzero": nonzero})
+    expected = _context(config, evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, checkpoint_hash=file_sha256(args.checkpoint)); passed = all(x.passed for x in checks); record = EvidenceRecordV2(2, "conditional_parity_observability", config.run.evidence_tier, "passed" if passed else "failed", run.git_commit, run.dirty_patch_hash, run.config_hash, expected, {"admission": file_sha256(args.admission_evidence), "report": file_sha256(report)}, checks, ("parity_stabilizer_smoke",) if passed else (), None if passed else "parity observability failed"); _write_evidence(run, "conditional_parity_observability_evidence.json", record); print(run.root); return 0
+
+
+def _parity_objective(*, bundle: ConditionalBundle, evaluator: nn.Module, codes: torch.Tensor, labels: torch.Tensor, real_views: torch.Tensor, settings, config: V2Config) -> tuple[torch.Tensor, dict[str, float]]:
+    raw = raw_from_generator_batched(bundle.system, bundle.generator, codes, labels, microbatch_size=config.execution.training_microbatch_size, activation_checkpoint=config.execution.activation_checkpoint)
+    view = fixed_exposure_view(raw, settings.fixed_exposure_scale); generated_features, logits = evaluator(view)
+    with torch.no_grad(): real_features, _ = evaluator(real_views)
+    sinkhorn = conditional_sinkhorn_loss(generated_features, view, real_features, real_views, labels, epsilon=settings.sinkhorn_epsilon, iterations=settings.sinkhorn_iterations)
+    classification = torch.nn.functional.cross_entropy(logits, labels)
+    relative = relative_diversity_loss(generated_features, real_features, labels)
+    camera_loss = camera_code_fraction_loss(raw, labels)
+    saturation = torch.relu(raw / settings.fixed_exposure_scale - 1.0).square().mean()
+    total = sinkhorn + classification + relative + 2.0 * camera_loss + 0.1 * saturation
+    return total, {"total": float(total.detach()), "sinkhorn": float(sinkhorn.detach()), "classification": float(classification.detach()), "relative_diversity": float(relative.detach()), "camera_fraction_loss": float(camera_loss.detach()), "camera_fraction": float(camera_code_fraction(raw, labels).detach()), "saturation": float(saturation.detach())}
+
+
+def parity_stabilizer_smoke(args, config: V2Config) -> int:
+    _require_parity(config)
+    images, labels_all = load_local_mnist(args.dataset_root, train=True); train_images, train_labels, _, _, split = _split(images, labels_all, args.dataset_root)
+    evaluator_hash = evaluator_checkpoint_hash(args.evaluator_checkpoint); expected = _context(config, evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, checkpoint_hash=file_sha256(args.checkpoint))
+    obs = EvidenceRecordV2.from_dict(json.loads(Path(args.observability_evidence).read_text(encoding="utf-8")))
+    require_evidence_action(obs, kind="conditional_parity_observability", action="parity_stabilizer_smoke", expected_context=expected)
+    device = torch.device(config.run.device); evaluator, _ = load_frozen_evaluator(args.evaluator_checkpoint, device=device); bundle, init_manifest = _load_bundle(config, args.checkpoint, device=device, evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, allow_balanced_schedule=True)
+    for p in bundle.parameters(): p.requires_grad_(False)
+    bundle.generator.semantic_stabilizers.requires_grad_(True)
+    optimizer = torch.optim.Adam([bundle.generator.semantic_stabilizers], lr=config.conditional_generation.generator_learning_rate)
+    axis_codes, axis_labels = _fixed_control_probe(device=device); panels = {"axis": (axis_codes, axis_labels), "uniform_1234": (_random_codes(170, device=device, seed=1234), axis_labels), "uniform_5678": (_random_codes(170, device=device, seed=5678), axis_labels)}
+    real_features = _panel_real_features(evaluator, train_images, train_labels, device); initial_state = {n: v.detach().clone() for n, v in bundle.state_dict().items()}; zero_raw = raw_from_generator_batched(bundle.system, bundle.generator, torch.zeros(10, 8, device=device), torch.arange(10, device=device), microbatch_size=1, activation_checkpoint=False).detach().cpu()
+    def probe():
+        metrics, raws = {}, {}
+        with torch.no_grad():
+            for name, (codes, labels) in panels.items():
+                raw = raw_from_generator_batched(bundle.system, bundle.generator, codes, labels, microbatch_size=1, activation_checkpoint=False); metrics[name] = _reanchor_panel_metrics(raw, labels, evaluator, real_features, config.conditional_generation.fixed_exposure_scale); raws[name] = raw.detach().cpu()
+        return metrics, raws
+    probe_history, raw_history = {}, {}; metrics, raws = probe(); probe_history["step_0"], raw_history[0] = metrics, raws; loss_history, updates = [], []
+    for step, indices in zip(range(400), balanced_batches(train_labels, batch_size=config.conditional_generation.logical_batch_size, seed=1234)):
+        labels = train_labels.index_select(0, indices).to(device); codes = _reanchor_codes(labels, batch_number=step); optimizer.zero_grad(set_to_none=True); loss, summary = _parity_objective(bundle=bundle, evaluator=evaluator, codes=codes, labels=labels, real_views=train_images.index_select(0, indices).to(device), settings=config.conditional_generation, config=config); loss.backward(); before = bundle.generator.semantic_stabilizers.detach().clone(); optimizer.step(); updates.append(float(torch.linalg.vector_norm(bundle.generator.semantic_stabilizers.detach() - before))); loss_history.append(summary | {"step": float(step + 1)})
+        if step + 1 in {100, 200, 400}: metrics, raws = probe(); probe_history[f"step_{step + 1}"], raw_history[step + 1] = metrics, raws
+    final = probe_history["step_400"]; cls_first = sum(x["classification"] for x in loss_history[:50]) / 50; cls_last = sum(x["classification"] for x in loss_history[-50:]) / 50
+    frozen = all(torch.equal(initial_state[n].cpu(), v.detach().cpu()) for n, v in bundle.state_dict().items() if n != "generator.semantic_stabilizers"); zero_after = raw_from_generator_batched(bundle.system, bundle.generator, torch.zeros(10, 8, device=device), torch.arange(10, device=device), microbatch_size=1, activation_checkpoint=False).detach().cpu()
+    checks = []
+    for name, amin, rmin, dmin in (("axis", .95, .90, .60), ("uniform_1234", .90, .80, .70), ("uniform_5678", .90, .80, .70)):
+        m = final[name]; checks.extend((GateResult(f"{name}_accuracy", m["accuracy"] >= amin, {"accuracy": m["accuracy"]}), GateResult(f"{name}_recall", min(m["recalls"]) >= rmin, {}), GateResult(f"{name}_code_fraction", m["code_fraction"] >= .25, {}), GateResult(f"{name}_diversity", min(m["diversity_ratios"]) >= dmin, {}), GateResult(f"{name}_saturation", m["saturation"] <= .08, {})))
+    checks.extend((GateResult("zero_code_unchanged", bool(torch.equal(zero_raw, zero_after)), {}), GateResult("frozen_odd_and_optics", frozen, {}), GateResult("stabilizer_updates", all(x > 0 for x in updates), {}), GateResult("classification_progress", cls_last <= .85 * cls_first, {"first_50": cls_first, "last_50": cls_last}), GateResult("finite_losses", bool(torch.isfinite(torch.tensor([x["total"] for x in loss_history])).all()), {})))
+    run = _new_run(config); history_path = run.root / "parity_stabilizer_smoke_history.json"; atomic_write_json(history_path, {"contract": PARITY_SMOKE_CONTRACT, "probes": probe_history, "loss": loss_history, "updates": updates, "first_400_schedule_hash": _reanchor_schedule_hash(train_labels)})
+    diagnostic = run.root / "parity_stabilizer_smoke_final.pt"; manifest = ConditionalCheckpointManifestV2(2, PARITY_ARCHITECTURE, init_manifest.system_signature, init_manifest.config_hash, split.manifest_hash, evaluator_hash, config.conditional_generation.fixed_exposure_scale, state_signature(bundle.state_dict()), state_content_hash(bundle.state_dict()), PARITY_GENERATOR_CONTRACT, canonical_sha256(CONDITIONAL_CONTROL_METRIC_CONTRACT), BALANCED_TRAINING_SCHEDULE_CONTRACT, 1234, init_manifest.initialization_state_hash); save_conditional_checkpoint(diagnostic, bundle, manifest, extra={"diagnostic_only": True, "never_warm_start": True, "contract": PARITY_SMOKE_CONTRACT})
+    passed = all(x.passed for x in checks); record = EvidenceRecordV2(2, "conditional_parity_stabilizer_smoke", config.run.evidence_tier, "passed" if passed else "failed", run.git_commit, run.dirty_patch_hash, run.config_hash, expected, {"observability": file_sha256(args.observability_evidence), "history": file_sha256(history_path), "diagnostic_final_checkpoint": file_sha256(diagnostic), "contract": PARITY_SMOKE_CONTRACT}, tuple(checks), ("train_parity_stabilizer",) if passed else (), None if passed else "parity stabilizer smoke failed"); _write_evidence(run, "conditional_parity_stabilizer_smoke_evidence.json", record); print(run.root); return 0
+
+
+def train_parity_stabilizer(args, config: V2Config) -> int:
+    _require_parity(config)
+    smoke = _passed_evidence(args.smoke_evidence, kind="conditional_parity_stabilizer_smoke")
+    images, labels_all = load_local_mnist(args.dataset_root, train=True); train_images, train_labels, _, _, split = _split(images, labels_all, args.dataset_root); evaluator_hash = evaluator_checkpoint_hash(args.evaluator_checkpoint); expected = _context(config, evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, checkpoint_hash=file_sha256(args.checkpoint)); require_evidence_action(smoke, kind="conditional_parity_stabilizer_smoke", action="train_parity_stabilizer", expected_context=expected)
+    device = torch.device(config.run.device); evaluator, _ = load_frozen_evaluator(args.evaluator_checkpoint, device=device); bundle, init_manifest = _load_bundle(config, args.checkpoint, device=device, evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, allow_balanced_schedule=True)
+    for p in bundle.parameters(): p.requires_grad_(False)
+    bundle.generator.semantic_stabilizers.requires_grad_(True); optimizer = torch.optim.Adam([bundle.generator.semantic_stabilizers], lr=config.conditional_generation.generator_learning_rate); history = []
+    steps = _balanced_epoch_steps(train_labels, config.conditional_generation.logical_batch_size)
+    for step, indices in enumerate(balanced_batches(train_labels, batch_size=config.conditional_generation.logical_batch_size, seed=1234)):
+        if step >= steps: break
+        labels = train_labels.index_select(0, indices).to(device); codes = _reanchor_codes(labels, batch_number=step); optimizer.zero_grad(set_to_none=True); loss, summary = _parity_objective(bundle=bundle, evaluator=evaluator, codes=codes, labels=labels, real_views=train_images.index_select(0, indices).to(device), settings=config.conditional_generation, config=config); loss.backward(); optimizer.step(); history.append(summary | {"step": float(step + 1)})
+    run = _new_run(config); path = run.root / "conditional_parity_stabilized_generator.pt"; manifest = ConditionalCheckpointManifestV2(2, PARITY_ARCHITECTURE, init_manifest.system_signature, init_manifest.config_hash, split.manifest_hash, evaluator_hash, config.conditional_generation.fixed_exposure_scale, state_signature(bundle.state_dict()), state_content_hash(bundle.state_dict()), PARITY_GENERATOR_CONTRACT, canonical_sha256(CONDITIONAL_CONTROL_METRIC_CONTRACT), BALANCED_TRAINING_SCHEDULE_CONTRACT, 1234, init_manifest.initialization_state_hash); save_conditional_checkpoint(path, bundle, manifest, extra={"history": history, "smoke_evidence": file_sha256(args.smoke_evidence), "steps": len(history), "first_400_schedule_hash": _reanchor_schedule_hash(train_labels)})
+    out_hash = file_sha256(path); finite = bool(torch.isfinite(torch.tensor([x["total"] for x in history])).all()); record = EvidenceRecordV2(2, "conditional_parity_stabilizer_training", config.run.evidence_tier, "passed" if finite else "failed", run.git_commit, run.dirty_patch_hash, run.config_hash, _context(config, evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, checkpoint_hash=out_hash), {"checkpoint": out_hash, "smoke": file_sha256(args.smoke_evidence), "steps": len(history)}, (GateResult("finite_training_loss", finite, {"steps": float(len(history))}),), ("evaluate",) if finite else (), None if finite else "parity training produced non-finite loss"); _write_evidence(run, "conditional_parity_stabilizer_training_evidence.json", record); print(run.root); return 0
+
+
 def class_mode_recovery_smoke(args, config: V2Config) -> int:
     _require_class_modes(config)
     images, labels_all = load_local_mnist(args.dataset_root, train=True)
@@ -1991,14 +2178,14 @@ def conditional_evaluate(args, config: V2Config) -> int:
     _require_conditional(config)
     _require_current_acceptance(config)
     training_record = EvidenceRecordV2.from_dict(json.loads(Path(args.training_evidence).read_text(encoding="utf-8")))
-    if training_record.evidence_kind not in {"conditional_training", "conditional_diversity_training", "conditional_diversity_aligned_training", "conditional_class_mode_training"} or training_record.status != "passed":
+    if training_record.evidence_kind not in {"conditional_training", "conditional_diversity_training", "conditional_diversity_aligned_training", "conditional_class_mode_training", "conditional_parity_stabilizer_training"} or training_record.status != "passed":
         raise ValueError("conditional evaluate requires passed conditional training evidence")
     device = torch.device(config.run.device)
     images, all_labels = load_local_mnist(args.dataset_root, train=True)
     _, _, validation_images, validation_labels, split = _split(images, all_labels, args.dataset_root)
     evaluator, _ = load_frozen_evaluator(args.evaluator_checkpoint, device=device)
     evaluator_hash = evaluator_checkpoint_hash(args.evaluator_checkpoint)
-    bundle, manifest = _load_bundle(config, args.checkpoint, device=device, evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, allow_balanced_schedule=training_record.evidence_kind in {"conditional_diversity_training", "conditional_diversity_aligned_training", "conditional_class_mode_training"})
+    bundle, manifest = _load_bundle(config, args.checkpoint, device=device, evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, allow_balanced_schedule=training_record.evidence_kind in {"conditional_diversity_training", "conditional_diversity_aligned_training", "conditional_class_mode_training", "conditional_parity_stabilizer_training"})
     if training_record.context.checkpoint_hash != file_sha256(args.checkpoint):
         raise ValueError("training evidence does not bind the evaluation checkpoint")
     settings = config.conditional_generation

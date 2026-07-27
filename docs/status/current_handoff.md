@@ -53,11 +53,11 @@ LightGen evidence 不能授权 identity 主线。
 
 ## 下一允许动作
 
-当前没有正式训练授权。已实现但尚未运行的下一主线是
+当前没有正式训练授权。已实现但尚未运行的候选下一主线是
 `conditional_class_conditioned_modes_v3`：每个类别拥有8个全视场物理模式，系数固定为
 `tanh(z)`，删除Wz/Wy。必须先运行 shared-mode capacity conflict audit，再完成v3派生准入、
-observability和唯一400-step smoke。当前机器无可用NVIDIA驱动，因此CUDA审计/光学smoke暂缓；
-不得用CPU结果替代正式CUDA证据，不得启动984-step训练或数据集导出。
+observability和唯一400-step smoke。当前机器的 `optical-generative-models` 环境已恢复CUDA可见性；
+但v3 smoke已是有效失败证据，不得重复，不得启动984-step训练或数据集导出。
 
 2026-07-27 的首次v3 smoke因派生代码遗漏复制已训练的Encoder/Decoder相位而作废，
 不作为模型失败证据。派生准入现已增加step-0 raw-CMOS等价门；只有该门通过后运行的smoke
@@ -68,3 +68,11 @@ camera fraction `0.2997`、最低距离比`0.5273`；uniform-1234 accuracy `0.80
 uniform-5678 accuracy `0.7412`。三面板的camera fraction、饱和、rank、零码、冻结参数和
 class-mode更新门均通过，但语义门、axis距离比及15%分类loss下降门未通过。该evidence不授权
 984-step训练、自动评估或导出；下一步必须另立结构方案，不得重复该v3 smoke或延长相同训练。
+
+## v4 parity audit（2026-07-27）
+
+已实现候选 `conditional_parity_stabilized_modes_v4`：冻结v3奇模式，增加零初始化、仅非零码生效的偶语义稳定器。该候选尚未获得训练授权。
+
+只读 parity conflict audit 的结果为 `failed / parity_cause_unconfirmed`：奇梯度冲突为 `71/80`，类别5和7均命中，偶梯度正向对齐通过；但真实梯度向量抵消率仅从奇分量 `0.1721` 改善到偶分量 `0.0691`，改善 `0.1030`，未达到合同要求的 `0.15`。state hash 未变化，未创建optimizer，未派生v4 checkpoint，未运行v4 smoke。
+
+该失败证据只说明偶稳定器方向尚未充分证明，不授权任何训练、正式评估或数据集导出。不得放宽抵消率门或重复相同审计。

@@ -11,7 +11,7 @@ from ldm_project.v2.student.admission import balanced_code_fraction
 from ldm_project.v2.student.checkpoints import ConditionalCheckpointManifestV2, load_conditional_checkpoint, save_conditional_checkpoint, state_content_hash, state_signature
 from ldm_project.v2.student.conditional import conditional_sinkhorn_loss, fixed_exposure_view, sinkhorn_cost_view
 from ldm_project.v2.student.conditional_acceptance import chunked_nearest_distances, memorization_statistics, paired_bootstrap_lower_bound, per_label_feature_diversity_ratio
-from ldm_project.v2.student.generator import ConditionalClassConditionedModesGenerator, ConditionalGlobalAmplitudeGenerator, IdentityAnchoredConditionalAmplitudeGenerator
+from ldm_project.v2.student.generator import ConditionalClassConditionedModesGenerator, ConditionalGlobalAmplitudeGenerator, IdentityAnchoredConditionalAmplitudeGenerator, ConditionalParityStabilizedModesGenerator
 from ldm_project.v2.evidence.reviews import ConditionalManualReviewV2
 from ldm_project.v2.application.conditional import _first_hundred_schedule_hash, _identity_isolation_classification, _reanchor_codes, _require_current_acceptance, _schedule_hash, _semantic_localization_classification
 from ldm_project.v2.student.evaluator import MNISTSplitManifest
@@ -85,6 +85,28 @@ def test_class_conditioned_modes_update_only_selected_label() -> None:
     assert torch.count_nonzero(generator.class_modes.grad[:3]) == 0
     assert torch.count_nonzero(generator.class_modes.grad[4:]) == 0
     assert torch.count_nonzero(generator.class_modes.grad[3]) > 0
+
+
+def test_parity_stabilizer_is_zero_at_zero_and_even_in_code() -> None:
+    generator = ConditionalParityStabilizedModesGenerator(shape=(8, 8))
+    labels = torch.tensor([2, 2, 2])
+    zero = torch.zeros(1, 8)
+    plus = torch.zeros(1, 8); plus[0, 3] = 0.8
+    minus = -plus
+    assert torch.equal(generator(zero, torch.tensor([2])), generator.class_carrier_command(torch.tensor([2])))
+    assert torch.allclose(generator.parity_terms(plus, labels[:1])[1], generator.parity_terms(minus, labels[:1])[1])
+    assert torch.allclose(generator.parity_terms(plus, labels[:1])[2], generator.parity_terms(minus, labels[:1])[2])
+    assert torch.allclose(generator.coefficients(plus, labels[:1]), -generator.coefficients(minus, labels[:1]))
+
+
+def test_parity_stabilizer_only_selected_class_receives_q_gradient() -> None:
+    generator = ConditionalParityStabilizedModesGenerator(shape=(8, 8))
+    code = torch.ones(1, 8)
+    generator(code, torch.tensor([3])).sum().backward()
+    assert generator.semantic_stabilizers.grad is not None
+    assert torch.count_nonzero(generator.semantic_stabilizers.grad[:3]) == 0
+    assert torch.count_nonzero(generator.semantic_stabilizers.grad[4:]) == 0
+    assert torch.count_nonzero(generator.semantic_stabilizers.grad[3]) > 0
 
 
 def test_reanchor_code_schedule_is_deterministic_and_antithetic() -> None:

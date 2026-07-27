@@ -17,6 +17,9 @@ from .conditional_runtime import (
     conditional_shared_mode_conflict,
     conditional_class_mode_admission,
     conditional_class_mode_observability,
+    conditional_parity_conflict,
+    conditional_parity_mode_admission,
+    conditional_parity_observability,
 )
 
 __all__ = [
@@ -36,6 +39,9 @@ __all__ = [
     "conditional_shared_mode_conflict",
     "conditional_class_mode_admission",
     "conditional_class_mode_observability",
+    "conditional_parity_conflict",
+    "conditional_parity_mode_admission",
+    "conditional_parity_observability",
 ]
 
 conditional_semantic_localization = _identity_semantic_localization

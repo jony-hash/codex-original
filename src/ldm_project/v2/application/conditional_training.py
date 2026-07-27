@@ -15,6 +15,8 @@ from .conditional_runtime import (
     sample_conditional,
     class_mode_recovery_smoke,
     train_class_modes,
+    parity_stabilizer_smoke,
+    train_parity_stabilizer,
 )
 
 __all__ = [
@@ -32,4 +34,6 @@ __all__ = [
     "sample_conditional",
     "class_mode_recovery_smoke",
     "train_class_modes",
+    "parity_stabilizer_smoke",
+    "train_parity_stabilizer",
 ]

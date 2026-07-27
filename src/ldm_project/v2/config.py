@@ -245,6 +245,7 @@ class V2Config(StrictModel):
         "conditional_global_amplitude_v1",
         "conditional_identity_logit_amplitude_v2",
         "conditional_class_conditioned_modes_v3",
+        "conditional_parity_stabilized_modes_v4",
     ] = "legacy_v2_distillation"
     system: SystemConfig
     teacher: TeacherConfig | None = None
@@ -261,6 +262,7 @@ class V2Config(StrictModel):
             "conditional_global_amplitude_v1",
             "conditional_identity_logit_amplitude_v2",
             "conditional_class_conditioned_modes_v3",
+            "conditional_parity_stabilized_modes_v4",
         }:
             if self.conditional_generation is None:
                 raise ValueError("conditional architecture requires conditional_generation")
@@ -275,7 +277,7 @@ class V2Config(StrictModel):
                 raise ValueError(f"conditional architecture rejects legacy fields: {', '.join(supplied)}")
             if not self.system.is_formal:
                 raise ValueError("conditional architecture requires the formal identity-OLS system")
-            if self.architecture in {"conditional_identity_logit_amplitude_v2", "conditional_class_conditioned_modes_v3"}:
+            if self.architecture in {"conditional_identity_logit_amplitude_v2", "conditional_class_conditioned_modes_v3", "conditional_parity_stabilized_modes_v4"}:
                 if self.conditional_generation.command_gain != 0.5:
                     raise ValueError("identity conditional architectures lock conditional command_gain=0.5")
                 if self.conditional_generation.initialization_seed != 1234:

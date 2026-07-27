@@ -350,3 +350,70 @@ class ConditionalClassConditionedModesGenerator(nn.Module):
         if labels.ndim != 1 or labels.numel() == 0 or labels.min() < 0 or labels.max() > 9:
             raise ValueError("labels must be integers in [0, 9]")
         return torch.sigmoid(self.class_carrier_logits.index_select(0, labels)).unsqueeze(1)
+
+
+class ConditionalParityStabilizedModesGenerator(nn.Module):
+    """Class-conditioned odd diversity modes plus even semantic stabilizers."""
+
+    architecture_kind = "conditional_parity_stabilized_modes_v4"
+    fixed_command_gain = 0.5
+
+    def __init__(self, *, shape: tuple[int, int] = (200, 200), code_dim: int = 8,
+                 hidden_dim: int = 64, command_gain: float = fixed_command_gain,
+                 class_carrier_logits: torch.Tensor | None = None,
+                 class_modes: torch.Tensor | None = None,
+                 semantic_stabilizers: torch.Tensor | None = None) -> None:
+        super().__init__()
+        if shape[0] <= 0 or shape[1] <= 0 or code_dim != 8 or hidden_dim != 64 or command_gain != self.fixed_command_gain:
+            raise ValueError("parity-stabilized modes require 8D code and fixed gain 0.5")
+        self.shape, self.code_dim = shape, code_dim
+        carrier = torch.zeros(10, *shape) if class_carrier_logits is None else class_carrier_logits.detach().clone()
+        modes = (IdentityAnchoredConditionalAmplitudeGenerator._initial_global_modes(shape).unsqueeze(0).expand(10, -1, -1, -1).clone()
+                 if class_modes is None else class_modes.detach().clone())
+        stabilizers = torch.zeros(10, code_dim, *shape) if semantic_stabilizers is None else semantic_stabilizers.detach().clone()
+        if tuple(carrier.shape) != (10, *shape) or tuple(modes.shape) != (10, code_dim, *shape) or tuple(stabilizers.shape) != (10, code_dim, *shape):
+            raise ValueError("parity generator tensors have invalid shapes")
+        self.command_gain = self.fixed_command_gain
+        self.class_carrier_logits = nn.Parameter(carrier)
+        self.class_modes = nn.Parameter(modes)
+        self.semantic_stabilizers = nn.Parameter(stabilizers)
+
+    @staticmethod
+    def normalized_modes(modes: torch.Tensor) -> torch.Tensor:
+        return ConditionalClassConditionedModesGenerator.normalized_modes(modes)
+
+    def _validate_inputs(self, code: torch.Tensor, labels: torch.Tensor) -> None:
+        if code.ndim != 2 or code.shape[1] != self.code_dim or labels.ndim != 1 or labels.shape[0] != code.shape[0] or labels.numel() == 0 or labels.min() < 0 or labels.max() > 9:
+            raise ValueError("code must be [batch,8] and labels must be in [0,9]")
+
+    def coefficients(self, code: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+        self._validate_inputs(code, labels)
+        return torch.tanh(code)
+
+    def parity_terms(self, code: torch.Tensor, labels: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        self._validate_inputs(code, labels)
+        t = torch.tanh(code)
+        energy = t.square().sum(dim=1)
+        rho = 1.0 - torch.exp(-energy)
+        weights = t.square() / energy.clamp_min(1.0e-8).unsqueeze(1)
+        modes = self.normalized_modes(self.class_modes).index_select(0, labels)
+        odd = torch.einsum("bk,bkhw->bhw", t, modes)
+        even_modes = torch.tanh(self.semantic_stabilizers).index_select(0, labels)
+        even = torch.einsum("bk,bkhw->bhw", weights, even_modes)
+        return odd, rho, even
+
+    def forward(self, code: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+        odd, rho, even = self.parity_terms(code, labels)
+        logits = self.class_carrier_logits.index_select(0, labels) + self.fixed_command_gain * (odd + rho[:, None, None] * even)
+        return torch.sigmoid(logits).unsqueeze(1)
+
+    def mode_orthogonality_penalty(self) -> torch.Tensor:
+        modes = self.normalized_modes(self.class_modes).flatten(2)
+        gram = torch.matmul(modes, modes.transpose(1, 2)) / modes.shape[-1]
+        eye = torch.eye(self.code_dim, device=modes.device, dtype=modes.dtype).expand(10, -1, -1)
+        return (gram - eye).square().mean()
+
+    def class_carrier_command(self, labels: torch.Tensor) -> torch.Tensor:
+        if labels.ndim != 1 or labels.numel() == 0 or labels.min() < 0 or labels.max() > 9:
+            raise ValueError("labels must be integers in [0, 9]")
+        return torch.sigmoid(self.class_carrier_logits.index_select(0, labels)).unsqueeze(1)
