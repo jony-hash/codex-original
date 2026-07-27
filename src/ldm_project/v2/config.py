@@ -244,6 +244,7 @@ class V2Config(StrictModel):
         "legacy_v2_distillation",
         "conditional_global_amplitude_v1",
         "conditional_identity_logit_amplitude_v2",
+        "conditional_class_conditioned_modes_v3",
     ] = "legacy_v2_distillation"
     system: SystemConfig
     teacher: TeacherConfig | None = None
@@ -259,6 +260,7 @@ class V2Config(StrictModel):
         if self.architecture in {
             "conditional_global_amplitude_v1",
             "conditional_identity_logit_amplitude_v2",
+            "conditional_class_conditioned_modes_v3",
         }:
             if self.conditional_generation is None:
                 raise ValueError("conditional architecture requires conditional_generation")
@@ -273,11 +275,11 @@ class V2Config(StrictModel):
                 raise ValueError(f"conditional architecture rejects legacy fields: {', '.join(supplied)}")
             if not self.system.is_formal:
                 raise ValueError("conditional architecture requires the formal identity-OLS system")
-            if self.architecture == "conditional_identity_logit_amplitude_v2":
+            if self.architecture in {"conditional_identity_logit_amplitude_v2", "conditional_class_conditioned_modes_v3"}:
                 if self.conditional_generation.command_gain != 0.5:
-                    raise ValueError("identity-logit v2 locks conditional command_gain=0.5")
+                    raise ValueError("identity conditional architectures lock conditional command_gain=0.5")
                 if self.conditional_generation.initialization_seed != 1234:
-                    raise ValueError("identity-logit v2 locks initialization_seed=1234")
+                    raise ValueError("identity conditional architectures lock initialization_seed=1234")
             execution = self.execution
             if (execution.training_microbatch_size, execution.evaluation_microbatch_size, execution.activation_checkpoint) != (1, 1, True):
                 raise ValueError("conditional formal execution locks training/evaluation microbatches to one with activation checkpointing")

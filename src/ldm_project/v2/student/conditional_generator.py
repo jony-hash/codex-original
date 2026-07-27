@@ -285,3 +285,68 @@ class IdentityAnchoredConditionalAmplitudeGenerator(nn.Module):
 
 # Descriptive compatibility alias used by the architecture/config contract.
 ConditionalIdentityLogitAmplitudeGenerator = IdentityAnchoredConditionalAmplitudeGenerator
+
+
+class ConditionalClassConditionedModesGenerator(nn.Module):
+    """Identity-anchored generator with an independent physical mode frame per label."""
+
+    architecture_kind = "conditional_class_conditioned_modes_v3"
+    fixed_command_gain = 0.5
+
+    def __init__(self, *, shape: tuple[int, int] = (200, 200), code_dim: int = 8, hidden_dim: int = 64,
+                 command_gain: float = fixed_command_gain,
+                 class_carrier_logits: torch.Tensor | None = None,
+                 class_modes: torch.Tensor | None = None) -> None:
+        super().__init__()
+        if shape[0] <= 0 or shape[1] <= 0 or code_dim != 8 or hidden_dim != 64 or command_gain != self.fixed_command_gain:
+            raise ValueError("class-conditioned modes require 8D code and fixed gain 0.5")
+        self.shape, self.code_dim = shape, code_dim
+        self.command_gain = self.fixed_command_gain
+        carrier = torch.zeros(10, *shape) if class_carrier_logits is None else class_carrier_logits.detach().clone()
+        if tuple(carrier.shape) != (10, *shape):
+            raise ValueError("class_carrier_logits must have shape [10, H, W]")
+        if class_modes is None:
+            base = IdentityAnchoredConditionalAmplitudeGenerator._initial_global_modes(shape)
+            modes = base.unsqueeze(0).expand(10, -1, -1, -1).clone()
+        else:
+            modes = class_modes.detach().clone()
+        if tuple(modes.shape) != (10, code_dim, *shape):
+            raise ValueError("class_modes must have shape [10, 8, H, W]")
+        self.class_carrier_logits = nn.Parameter(carrier)
+        self.class_modes = nn.Parameter(modes)
+
+    @staticmethod
+    def normalized_modes(modes: torch.Tensor) -> torch.Tensor:
+        if modes.ndim != 4:
+            raise ValueError("class modes must have shape [10, 8, H, W]")
+        centered = modes - modes.mean(dim=(-2, -1), keepdim=True)
+        rms = centered.square().mean(dim=(-2, -1), keepdim=True).clamp_min(1.0e-8).sqrt()
+        return centered / rms
+
+    def _validate_inputs(self, code: torch.Tensor, labels: torch.Tensor) -> None:
+        if code.ndim != 2 or code.shape[1] != self.code_dim:
+            raise ValueError("code must have shape [batch, 8]")
+        if labels.ndim != 1 or labels.shape[0] != code.shape[0] or labels.numel() == 0 or labels.min() < 0 or labels.max() > 9:
+            raise ValueError("labels must be integers in [0, 9]")
+
+    def coefficients(self, code: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+        self._validate_inputs(code, labels)
+        return torch.tanh(code)
+
+    def forward(self, code: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+        coefficients = self.coefficients(code, labels)
+        modes = self.normalized_modes(self.class_modes).index_select(0, labels)
+        residual = torch.einsum("bk,bkhw->bhw", coefficients, modes)
+        logits = self.class_carrier_logits.index_select(0, labels) + self.command_gain * residual
+        return torch.sigmoid(logits).unsqueeze(1)
+
+    def mode_orthogonality_penalty(self) -> torch.Tensor:
+        modes = self.normalized_modes(self.class_modes).flatten(2)
+        gram = torch.matmul(modes, modes.transpose(1, 2)) / modes.shape[-1]
+        eye = torch.eye(self.code_dim, device=modes.device, dtype=modes.dtype).expand(10, -1, -1)
+        return (gram - eye).square().mean()
+
+    def class_carrier_command(self, labels: torch.Tensor) -> torch.Tensor:
+        if labels.ndim != 1 or labels.numel() == 0 or labels.min() < 0 or labels.max() > 9:
+            raise ValueError("labels must be integers in [0, 9]")
+        return torch.sigmoid(self.class_carrier_logits.index_select(0, labels)).unsqueeze(1)

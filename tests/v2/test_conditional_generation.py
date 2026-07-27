@@ -11,7 +11,7 @@ from ldm_project.v2.student.admission import balanced_code_fraction
 from ldm_project.v2.student.checkpoints import ConditionalCheckpointManifestV2, load_conditional_checkpoint, save_conditional_checkpoint, state_content_hash, state_signature
 from ldm_project.v2.student.conditional import conditional_sinkhorn_loss, fixed_exposure_view, sinkhorn_cost_view
 from ldm_project.v2.student.conditional_acceptance import chunked_nearest_distances, memorization_statistics, paired_bootstrap_lower_bound, per_label_feature_diversity_ratio
-from ldm_project.v2.student.generator import ConditionalGlobalAmplitudeGenerator, IdentityAnchoredConditionalAmplitudeGenerator
+from ldm_project.v2.student.generator import ConditionalClassConditionedModesGenerator, ConditionalGlobalAmplitudeGenerator, IdentityAnchoredConditionalAmplitudeGenerator
 from ldm_project.v2.evidence.reviews import ConditionalManualReviewV2
 from ldm_project.v2.application.conditional import _first_hundred_schedule_hash, _identity_isolation_classification, _reanchor_codes, _require_current_acceptance, _schedule_hash, _semantic_localization_classification
 from ldm_project.v2.student.evaluator import MNISTSplitManifest
@@ -60,6 +60,31 @@ def test_identity_anchored_generator_initialization_is_deterministic() -> None:
     torch.manual_seed(1234)
     second = IdentityAnchoredConditionalAmplitudeGenerator(shape=(8, 8))
     assert all(torch.equal(first_state, second_state) for first_state, second_state in zip(first.state_dict().values(), second.state_dict().values()))
+
+
+def test_class_conditioned_modes_are_identity_anchored_and_rank_eight() -> None:
+    generator = ConditionalClassConditionedModesGenerator(shape=(12, 12))
+    labels = torch.arange(10).repeat_interleave(2)
+    zero = torch.zeros(20, 8)
+    assert torch.equal(generator(zero, labels), generator.class_carrier_command(labels))
+    code = torch.randn(20, 8)
+    assert torch.allclose(generator.coefficients(code, labels), torch.tanh(code))
+    modes = generator.normalized_modes(generator.class_modes)
+    assert modes.shape == (10, 8, 12, 12)
+    assert all(int(torch.linalg.matrix_rank(modes[label].flatten(1)).item()) == 8 for label in range(10))
+    assert generator.command_gain == pytest.approx(0.5)
+
+
+def test_class_conditioned_modes_update_only_selected_label() -> None:
+    generator = ConditionalClassConditionedModesGenerator(shape=(8, 8))
+    code = torch.ones(1, 8, requires_grad=True)
+    labels = torch.tensor([3])
+    loss = generator(code, labels).sum()
+    loss.backward()
+    assert generator.class_modes.grad is not None
+    assert torch.count_nonzero(generator.class_modes.grad[:3]) == 0
+    assert torch.count_nonzero(generator.class_modes.grad[4:]) == 0
+    assert torch.count_nonzero(generator.class_modes.grad[3]) > 0
 
 
 def test_reanchor_code_schedule_is_deterministic_and_antithetic() -> None:

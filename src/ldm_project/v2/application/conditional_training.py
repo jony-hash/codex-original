@@ -13,6 +13,8 @@ from .conditional_runtime import (
     train_identity_reanchor,
     identity_reanchor_smoke,
     sample_conditional,
+    class_mode_recovery_smoke,
+    train_class_modes,
 )
 
 __all__ = [
@@ -28,4 +30,6 @@ __all__ = [
     "train_identity_reanchor",
     "identity_reanchor_smoke",
     "sample_conditional",
+    "class_mode_recovery_smoke",
+    "train_class_modes",
 ]

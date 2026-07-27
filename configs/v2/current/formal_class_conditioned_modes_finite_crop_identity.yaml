@@ -1,0 +1,29 @@
+schema_version: 2
+architecture: conditional_class_conditioned_modes_v3
+system:
+  kind: formal_amplitude_finite_crop_identity
+conditional_generation:
+  code_dim: 8
+  hidden_dim: 64
+  command_gain: 0.5
+  fixed_exposure_scale: 0.4913053810596466
+  logical_batch_size: 50
+  epochs: 1
+  generator_learning_rate: 0.0002
+  phase_learning_rate: 0.00005
+  sinkhorn_epsilon: 0.05
+  sinkhorn_iterations: 20
+  samples_per_label: 6000
+  shard_size: 1000
+  initialization_seed: 1234
+execution:
+  prototype_microbatch_size: 1
+  capacity_microbatch_size: 1
+  training_microbatch_size: 1
+  evaluation_microbatch_size: 1
+  activation_checkpoint: true
+run:
+  run_name: formal_v2_class_conditioned_modes_finite_crop_identity
+  output_root: outputs
+  evidence_tier: diagnostic
+  device: cuda

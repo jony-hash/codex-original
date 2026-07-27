@@ -179,7 +179,7 @@ def _validate_conditional_manifest(manifest: ConditionalCheckpointManifestV2, *,
     """
     if manifest.schema_version != 2:
         raise ValueError("invalid conditional checkpoint manifest schema_version")
-    allowed = {"conditional_global_amplitude_v1", "conditional_identity_logit_amplitude_v2"}
+    allowed = {"conditional_global_amplitude_v1", "conditional_identity_logit_amplitude_v2", "conditional_class_conditioned_modes_v3"}
     if manifest.architecture_kind not in allowed:
         raise ValueError("unsupported conditional checkpoint architecture")
     model_kind = getattr(model, "architecture_kind", None) if model is not None else None

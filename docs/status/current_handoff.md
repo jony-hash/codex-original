@@ -1,7 +1,7 @@
-# 当前主线交接：identity v2 无蒸馏（2026-07-25）
+# 当前主线交接：identity v3 无蒸馏（2026-07-27）
 
 当前活动运行时是 `rewrite/v2` 上的
-`conditional_identity_logit_amplitude_v2`。v1 的 LDM 蒸馏线仍由 `train.py` 维护，
+`conditional_class_conditioned_modes_v3`（实现已写入工作区但尚未取得CUDA准入证据）。v1 的 LDM 蒸馏线仍由 `train.py` 维护，
 但不定义 v2 的训练或验收输入。
 
 ## 已锁定合同
@@ -53,5 +53,8 @@ LightGen evidence 不能授权 identity 主线。
 
 ## 下一允许动作
 
-当前没有正式训练授权。下一步必须另立受限的类别条件语义调制方案，并通过新的只读容量/语义
-观测门；不得重复Wy归零或自由Wy损失训练，不得降低最终门限或启动数据集导出。
+当前没有正式训练授权。已实现但尚未运行的下一主线是
+`conditional_class_conditioned_modes_v3`：每个类别拥有8个全视场物理模式，系数固定为
+`tanh(z)`，删除Wz/Wy。必须先运行 shared-mode capacity conflict audit，再完成v3派生准入、
+observability和唯一400-step smoke。当前机器无可用NVIDIA驱动，因此CUDA审计/光学smoke暂缓；
+不得用CPU结果替代正式CUDA证据，不得启动984-step训练或数据集导出。
