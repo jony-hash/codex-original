@@ -58,3 +58,7 @@ LightGen evidence 不能授权 identity 主线。
 `tanh(z)`，删除Wz/Wy。必须先运行 shared-mode capacity conflict audit，再完成v3派生准入、
 observability和唯一400-step smoke。当前机器无可用NVIDIA驱动，因此CUDA审计/光学smoke暂缓；
 不得用CPU结果替代正式CUDA证据，不得启动984-step训练或数据集导出。
+
+2026-07-27 的首次v3 smoke因派生代码遗漏复制已训练的Encoder/Decoder相位而作废，
+不作为模型失败证据。派生准入现已增加step-0 raw-CMOS等价门；只有该门通过后运行的smoke
+才是该主线唯一有效的400-step结果。

@@ -1568,6 +1568,16 @@ def conditional_class_mode_admission(args, config: V2Config) -> int:
     class_modes = source.generator.global_modes.detach().unsqueeze(0).expand(10, -1, -1, -1).clone()
     bundle = ConditionalBundle(config, carrier_logits=source.generator.class_carrier_logits.detach(),).to(device)
     bundle.generator.class_modes.data.copy_(class_modes.to(device))
+    # The electronic generator migration must not silently reset the learned
+    # encoder/decoder phase state.  Copy every formal-system state tensor so
+    # the derived v3 checkpoint is physically equivalent at step zero.
+    target_state = bundle.state_dict()
+    for name, value in source.state_dict().items():
+        if name.startswith("system."):
+            if name not in target_state or target_state[name].shape != value.shape:
+                raise ValueError(f"source system state is incompatible: {name}")
+            target_state[name].copy_(value)
+    bundle.load_state_dict(target_state, strict=True)
     axis_codes, axis_labels = _fixed_control_probe(device=device)
     zero = torch.zeros(10, 8, device=device)
     with torch.no_grad():
@@ -1575,11 +1585,14 @@ def conditional_class_mode_admission(args, config: V2Config) -> int:
         target_axis = bundle.generator(axis_codes, axis_labels)
         source_zero = source.generator(zero, torch.arange(10, device=device))
         target_zero = bundle.generator(zero, torch.arange(10, device=device))
+        source_raw = raw_from_generator_batched(source.system, source.generator, axis_codes, axis_labels, microbatch_size=config.execution.evaluation_microbatch_size, activation_checkpoint=False)
+        target_raw = raw_from_generator_batched(bundle.system, bundle.generator, axis_codes, axis_labels, microbatch_size=config.execution.evaluation_microbatch_size, activation_checkpoint=False)
     max_abs = float(torch.max(torch.abs(source_axis - target_axis)))
     checks = (
         GateResult("class_modes_shape", tuple(bundle.generator.class_modes.shape) == (10, 8, *config.system.slm_shape), {}),
         GateResult("initial_output_matches_source", max_abs <= 1.0e-6, {"max_abs": max_abs}),
         GateResult("zero_code_matches_source", bool(torch.equal(source_zero, target_zero)), {}),
+        GateResult("initial_raw_cmos_matches_source", bool(torch.max(torch.abs(source_raw - target_raw)) <= 1.0e-6), {"max_abs": float(torch.max(torch.abs(source_raw - target_raw)))}),
         GateResult("finite_modes", bool(torch.isfinite(bundle.generator.class_modes).all()), {}),
         GateResult("rank_eight_per_label", all(int(torch.linalg.matrix_rank(bundle.generator.normalized_modes(bundle.generator.class_modes)[label].flatten(1)).item()) == 8 for label in range(10)), {}),
     )
