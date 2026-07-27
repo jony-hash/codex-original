@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import copy
 from dataclasses import asdict
 from pathlib import Path
 
@@ -48,6 +49,7 @@ REANCHOR_CONTRACT = canonical_sha256({"kind": "conditional_identity_reanchor_v1"
 REANCHOR_SMOKE_CONTRACT = canonical_sha256({"kind": "conditional_identity_reanchor_smoke", "steps": 400, "code_schedule": "axis_plus_uniform_antithetic", "trainable": ["generator.global_modes"]})
 CLASS_MODE_SMOKE_CONTRACT = canonical_sha256({"kind": "conditional_class_mode_recovery_smoke", "steps": 400, "panels": ["axis", "uniform_1234", "uniform_5678"], "trainable": ["generator.class_modes"]})
 PARITY_SMOKE_CONTRACT = canonical_sha256({"kind": "conditional_parity_stabilizer_smoke", "steps": 400, "panels": ["axis", "uniform_1234", "uniform_5678"], "trainable": ["generator.semantic_stabilizers"], "stop_after_failure": True})
+SEMANTIC_TANGENT_CONTRACT = canonical_sha256({"kind": "conditional_semantic_tangent_v1", "panels": ["axis", "uniform_1234", "uniform_5678"], "margin_threshold": 0.5, "probe_raw_rms": 0.01, "logit_rms": 0.05, "phase_rms": 0.005, "optimizer": False})
 SEMANTIC_RECOVERY_STEPS = 400
 SEMANTIC_RECOVERY_CONTRACT = canonical_sha256({"kind": "conditional_semantic_recovery_smoke", "steps": SEMANTIC_RECOVERY_STEPS, "batch_seed": 1234, "code_seed": "100000+batch_number", "initialization_only": True})
 
@@ -1669,6 +1671,185 @@ def conditional_class_mode_observability(args, config: V2Config) -> int:
     _write_evidence(run, "conditional_class_mode_observability_evidence.json", record)
     print(run.root)
     return 0
+
+
+def _write_tangent_contact_sheet(root: Path, name: str, raw: torch.Tensor, labels: torch.Tensor, exposure: float) -> str:
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    raw = raw.detach().cpu(); labels = labels.detach().cpu()
+    figure, axes = plt.subplots(10, 17, figsize=(17, 10))
+    for row in range(10):
+        rows = torch.nonzero(labels == row, as_tuple=False).flatten()
+        if rows.numel() != 17:
+            raise ValueError("tangent contact sheet requires exactly 17 samples per label")
+        for col, index in enumerate(rows.tolist()):
+            axes[row, col].imshow((raw[index, 0] / exposure).clamp(0.0, 1.0), cmap="gray", vmin=0.0, vmax=1.0)
+            axes[row, col].axis("off")
+            if row == 0:
+                axes[row, col].set_title(str(col), fontsize=7)
+        axes[row, 0].set_ylabel(str(row), rotation=0, labelpad=10)
+    figure.tight_layout(pad=0.1)
+    path = root / f"{name}_10x17_fixed_exposure.png"
+    figure.savefig(path, dpi=150, bbox_inches="tight")
+    plt.close(figure)
+    return file_sha256(path)
+
+
+def _tangent_sample_grad(bundle: ConditionalBundle, evaluator: nn.Module, code: torch.Tensor, label: torch.Tensor, groups: dict[str, tuple[torch.Tensor, ...]]) -> tuple[float, dict[str, torch.Tensor]]:
+    raw = raw_from_generator_batched(bundle.system, bundle.generator, code, label, microbatch_size=1, activation_checkpoint=True)
+    _, logits = evaluator(fixed_exposure_view(raw, 0.4913053810596466))
+    target = label.item()
+    other = logits.clone(); other[0, target] = -torch.inf
+    margin = logits[0, target] - other.max()
+    grads = torch.autograd.grad(margin, [p for params in groups.values() for p in params], allow_unused=True)
+    result: dict[str, torch.Tensor] = {}
+    offset = 0
+    for name, params in groups.items():
+        pieces = []
+        for parameter in params:
+            grad = grads[offset]
+            offset += 1
+            pieces.append(torch.zeros_like(parameter) if grad is None else grad.detach())
+        result[name] = torch.cat([piece.reshape(-1) for piece in pieces])
+    return float(margin.detach().cpu()), result
+
+
+def _tangent_apply_probe(bundle: ConditionalBundle, group: str, directions: dict[int | str, torch.Tensor], *, panel_codes: torch.Tensor, panel_labels: torch.Tensor, evaluator: nn.Module, exposure: float) -> tuple[torch.Tensor, dict[str, object]]:
+    probe = copy.deepcopy(bundle)
+    with torch.no_grad():
+        if group == "q":
+            for label, direction in directions.items():
+                delta = direction.reshape_as(probe.generator.semantic_stabilizers[int(label)])
+                probe.generator.semantic_stabilizers[int(label)].copy_(delta)
+        elif group == "carrier":
+            for label, direction in directions.items():
+                delta = direction.reshape_as(probe.generator.class_carrier_logits[int(label)])
+                probe.generator.class_carrier_logits[int(label)].copy_(delta)
+        else:
+            for name, direction in directions.items():
+                parameter = probe.system.encoder.phase if name == "encoder_phase" else probe.system.decoder.phase
+                parameter.copy_(direction.reshape_as(parameter))
+    with torch.no_grad():
+        raw = raw_from_generator_batched(probe.system, probe.generator, panel_codes, panel_labels, microbatch_size=1, activation_checkpoint=False)
+        _, logits = evaluator(fixed_exposure_view(raw, exposure))
+    return raw, {"predictions": logits.argmax(dim=1).cpu(), "logits": logits.cpu()}
+
+
+def conditional_semantic_tangent(args, config: V2Config) -> int:
+    """Read-only local reachability audit; never creates an optimizer or checkpoint."""
+    _require_parity(config)
+    admission = EvidenceRecordV2.from_dict(json.loads(Path(args.class_mode_admission_evidence).read_text(encoding="utf-8")))
+    failed_smoke = EvidenceRecordV2.from_dict(json.loads(Path(args.failed_class_mode_smoke_evidence).read_text(encoding="utf-8")))
+    failed_parity = EvidenceRecordV2.from_dict(json.loads(Path(args.failed_parity_evidence).read_text(encoding="utf-8")))
+    if admission.evidence_kind != "conditional_class_mode_admission" or admission.status != "passed":
+        raise ValueError("semantic tangent requires passed v3 class-mode admission")
+    if failed_smoke.evidence_kind != "conditional_class_mode_recovery_smoke" or failed_smoke.status != "failed":
+        raise ValueError("semantic tangent requires failed v3 class-mode smoke")
+    if failed_parity.evidence_kind != "conditional_parity_conflict" or failed_parity.status != "failed":
+        raise ValueError("semantic tangent requires failed parity evidence")
+    images, labels_all = load_local_mnist(args.dataset_root, train=True)
+    train_images, train_labels, validation_images, validation_labels, split = _split(images, labels_all, args.dataset_root)
+    evaluator_hash = evaluator_checkpoint_hash(args.evaluator_checkpoint)
+    device = torch.device(config.run.device)
+    evaluator, _ = load_frozen_evaluator(args.evaluator_checkpoint, device=device)
+    bundle, _ = _load_parity_source(config, args.checkpoint, device=device)
+    for parameter in bundle.parameters():
+        parameter.requires_grad_(False)
+    with torch.no_grad():
+        _, validation_logits = evaluator(validation_images.to(device))
+    evaluator_accuracy = float((validation_logits.argmax(dim=1) == validation_labels.to(device)).float().mean().cpu())
+    panels = {"axis": (_fixed_control_probe(device=device)), "uniform_1234": (_random_codes(170, device=device, seed=1234), torch.arange(10, device=device).repeat_interleave(17)), "uniform_5678": (_random_codes(170, device=device, seed=5678), torch.arange(10, device=device).repeat_interleave(17))}
+    real_features = _panel_real_features(evaluator, train_images, train_labels, device)
+    initial_state = state_content_hash(bundle.state_dict())
+    groups = {"q": (bundle.generator.semantic_stabilizers,), "carrier": (bundle.generator.class_carrier_logits,), "encoder_phase": (bundle.system.encoder.phase,), "decoder_phase": (bundle.system.decoder.phase,)}
+    report_panels: dict[str, object] = {}; artifact_hashes: dict[str, object] = {}
+    run = _new_run(config)
+    for panel_name, (codes, panel_labels) in panels.items():
+        with torch.no_grad():
+            raw = raw_from_generator_batched(bundle.system, bundle.generator, codes, panel_labels, microbatch_size=1, activation_checkpoint=False).detach()
+        view = fixed_exposure_view(raw, config.conditional_generation.fixed_exposure_scale)
+        with torch.no_grad(): _, logits = evaluator(view)
+        margins = logits[torch.arange(170, device=device), panel_labels] - logits.masked_fill(torch.nn.functional.one_hot(panel_labels, 10).bool(), -torch.inf).max(dim=1).values
+        selected = torch.nonzero(margins < 0.5, as_tuple=False).flatten().tolist()
+        for parameter in bundle.parameters():
+            parameter.requires_grad_(True)
+        directions: dict[str, dict[int | str, torch.Tensor]] = {name: {} for name in groups}; sample_rows = []
+        sums = {}
+        for name, params in groups.items():
+            size = sum(p[0].numel() for p in params) if name in {"q", "carrier"} else sum(p.numel() for p in params)
+            sums[name] = {label: torch.zeros(size, device="cpu") for label in range(10)}
+        for index in selected:
+            margin, grads = _tangent_sample_grad(bundle, evaluator, codes[index:index + 1], panel_labels[index:index + 1], groups)
+            label = int(panel_labels[index]); sample_rows.append({"index": index, "label": label, "margin": margin})
+            for name, grad in grads.items():
+                if name in {"q", "carrier"}:
+                    grad = grad.reshape(10, -1)[label]
+                sums[name][label] += grad.cpu()
+        for name in groups:
+            for label, direction in sums[name].items():
+                if torch.linalg.vector_norm(direction) > 0:
+                    directions[name][label] = direction / torch.linalg.vector_norm(direction)
+                else:
+                    directions[name][label] = direction
+        positive: dict[str, float] = {}; directional_rows = []
+        for name in groups:
+            values = []
+            for index in selected:
+                margin, grads = _tangent_sample_grad(bundle, evaluator, codes[index:index + 1], panel_labels[index:index + 1], groups)
+                direction = directions[name][int(panel_labels[index])]
+                gradient = grads[name]
+                if name == "q":
+                    gradient = gradient.reshape(10, -1)[int(panel_labels[index])]
+                elif name == "carrier":
+                    gradient = gradient.reshape(10, -1)[int(panel_labels[index])]
+                value = float(torch.dot(gradient.cpu(), direction).item())
+                values.append(value); directional_rows.append({"index": index, "group": name, "margin_direction": value})
+            positive[name] = sum(v > 0 for v in values) / max(1, len(values))
+        for parameter in bundle.parameters():
+            parameter.requires_grad_(False)
+        probe_results = {}
+        baseline_margins = margins.detach().cpu()
+        baseline_correct = int((logits.argmax(dim=1) == panel_labels).sum().item())
+        for name in ("q", "carrier", "encoder_phase", "decoder_phase"):
+            scaled: dict[int | str, torch.Tensor] = {}
+            for key, direction in directions[name].items():
+                if direction.numel() == 0: continue
+                target = 0.005 if name.endswith("phase") else 0.05
+                scaled[key] = (direction * target / direction.square().mean().sqrt().clamp_min(1.0e-8)).to(device)
+            probe_raw, probe_info = _tangent_apply_probe(bundle, name, scaled, panel_codes=codes, panel_labels=panel_labels, evaluator=evaluator, exposure=config.conditional_generation.fixed_exposure_scale)
+            probe_metrics = _reanchor_panel_metrics(probe_raw, panel_labels, evaluator, real_features, config.conditional_generation.fixed_exposure_scale)
+            probe_logits = probe_info["logits"].to(device)
+            probe_other = probe_logits.masked_fill(torch.nn.functional.one_hot(panel_labels, 10).bool(), -torch.inf)
+            probe_margins = (probe_logits[torch.arange(170), panel_labels.cpu()] - probe_other.max(dim=1).values).cpu()
+            selected_tensor = torch.tensor(selected, dtype=torch.long)
+            margin_delta = float((probe_margins.index_select(0, selected_tensor) - baseline_margins.index_select(0, selected_tensor)).median().item()) if selected else 0.0
+            correct_delta = int((probe_info["predictions"] == panel_labels.cpu()).sum().item()) - baseline_correct
+            probe_results[name] = {"positive_fraction": positive[name], "metrics": probe_metrics, "raw_rms_delta": float((probe_raw - raw).square().mean().sqrt().cpu()), "median_low_margin_delta": margin_delta, "correct_count_delta": correct_delta}
+        baseline_metrics = _reanchor_panel_metrics(raw, panel_labels, evaluator, real_features, config.conditional_generation.fixed_exposure_scale)
+        report_panels[panel_name] = {"baseline": baseline_metrics, "low_margin_count": len(selected), "positive_fraction": positive, "probe": probe_results, "samples": sample_rows, "directional_rows": directional_rows}
+        run_dir = run.root
+        raw_path = run_dir / f"{panel_name}_raw_cmos.pt"; atomic_torch_save(raw_path, raw.cpu())
+        artifact_hashes[panel_name] = {"raw": file_sha256(raw_path), "preview": _write_tangent_contact_sheet(run_dir, panel_name, raw, panel_labels, config.conditional_generation.fixed_exposure_scale)}
+    final_state = state_content_hash(bundle.state_dict())
+    def group_gate(name: str, group: str) -> bool:
+        panel = report_panels[name]
+        threshold = 0.90 if name == "axis" else 0.80
+        baseline = panel["baseline"]
+        probe = panel["probe"][group]
+        ratios_ok = all(after >= before - 0.03 for before, after in zip(baseline["diversity_ratios"], probe["metrics"]["diversity_ratios"]))
+        return panel["positive_fraction"][group] >= threshold and probe["median_low_margin_delta"] >= 0.01 and probe["correct_count_delta"] >= 0 and probe["metrics"]["code_fraction"] >= 0.25 and probe["metrics"]["code_fraction"] >= baseline["code_fraction"] - 0.01 and ratios_ok and probe["metrics"]["saturation"] <= 0.08
+    q_positive = all(report_panels[name]["positive_fraction"]["q"] >= (0.90 if name == "axis" else 0.80) for name in report_panels)
+    q_probe = all(group_gate(name, "q") for name in report_panels)
+    state_ok = initial_state == final_state
+    readout_ok = evaluator_accuracy >= 0.985 and state_ok
+    q_reachable = readout_ok and q_positive and q_probe
+    carrier_or_phase = readout_ok and any(all(group_gate(name, group) for name in report_panels) for group in ("carrier", "encoder_phase", "decoder_phase"))
+    classification = "semantic_correction_reachable" if q_reachable else ("carrier_or_phase_required" if carrier_or_phase else ("semantic_readout_inconsistent" if not readout_ok else "local_semantic_unreachable"))
+    checks = (GateResult("evaluator_qualification", evaluator_accuracy >= 0.985, {"accuracy": evaluator_accuracy}), GateResult("state_unchanged", state_ok, {}), GateResult("q_directional_gate", q_positive, {}), GateResult("q_probe_accuracy_non_decrease", q_probe, {}), GateResult("no_optimizer", True, {}))
+    report = run.root / "conditional_semantic_tangent_report.json"; atomic_write_json(report, {"contract": SEMANTIC_TANGENT_CONTRACT, "classification": classification, "evaluator_accuracy": evaluator_accuracy, "panels": report_panels, "artifacts": artifact_hashes, "state_before": initial_state, "state_after": final_state})
+    evidence = EvidenceRecordV2(2, "conditional_semantic_tangent", config.run.evidence_tier, "passed" if classification == "semantic_correction_reachable" else "failed", run.git_commit, run.dirty_patch_hash, run.config_hash, _context(config, evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, checkpoint_hash=file_sha256(args.checkpoint)), {"report": file_sha256(report), "class_mode_admission": file_sha256(args.class_mode_admission_evidence), "failed_class_mode_smoke": file_sha256(args.failed_class_mode_smoke_evidence), "failed_parity": file_sha256(args.failed_parity_evidence), "artifacts": artifact_hashes}, checks, ("conditional_parity_mode_admission",) if classification == "semantic_correction_reachable" else (), None if classification == "semantic_correction_reachable" else classification)
+    _write_evidence(run, "conditional_semantic_tangent_evidence.json", evidence); print(run.root); return 0
 
 
 def conditional_parity_conflict(args, config: V2Config) -> int:

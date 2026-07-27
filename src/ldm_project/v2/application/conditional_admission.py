@@ -20,6 +20,7 @@ from .conditional_runtime import (
     conditional_parity_conflict,
     conditional_parity_mode_admission,
     conditional_parity_observability,
+    conditional_semantic_tangent,
 )
 
 __all__ = [
@@ -42,6 +43,7 @@ __all__ = [
     "conditional_parity_conflict",
     "conditional_parity_mode_admission",
     "conditional_parity_observability",
+    "conditional_semantic_tangent",
 ]
 
 conditional_semantic_localization = _identity_semantic_localization

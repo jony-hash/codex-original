@@ -76,3 +76,12 @@ class-mode更新门均通过，但语义门、axis距离比及15%分类loss下�
 只读 parity conflict audit 的结果为 `failed / parity_cause_unconfirmed`：奇梯度冲突为 `71/80`，类别5和7均命中，偶梯度正向对齐通过；但真实梯度向量抵消率仅从奇分量 `0.1721` 改善到偶分量 `0.0691`，改善 `0.1030`，未达到合同要求的 `0.15`。state hash 未变化，未创建optimizer，未派生v4 checkpoint，未运行v4 smoke。
 
 该失败证据只说明偶稳定器方向尚未充分证明，不授权任何训练、正式评估或数据集导出。不得放宽抵消率门或重复相同审计。
+
+## v4 semantic tangent audit（2026-07-27）
+
+新增的无更新 `conditional-semantic-tangent` 审计已完成，证据位于
+`outputs/20260727_v2/runs/20260727_203639_023816_formal_v2_parity_stabilized_modes_finite_crop_identity/`。
+
+evaluator validation accuracy 为 `0.9876`，state hash 前后一致，未创建 optimizer。Q 方向对所有低margin样本均为正，functional probe 的面板 accuracy 分别由 `0.8941/0.7706/0.7059` 提高到 `0.9118/0.8412/0.8000`；但每类特征距离比下降超过允许的 `0.03`，违反多样性保护门。因此最终分类为 `local_semantic_unreachable`，evidence 状态为 failed，`permitted_next_actions=[]`。
+
+该结果表明语义修正方向存在，但在保持当前物理多样性、零码和饱和约束的切空间内不可达。不得运行 v4 admission、400-step smoke、984-step正式训练、自动评估或数据集导出；继续扩展生成器前必须另立结构/目标合同。

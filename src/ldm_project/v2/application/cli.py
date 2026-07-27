@@ -35,7 +35,7 @@ from ..student.training import _differentiable_correlation, calibrate_prototypes
 from ..student.capacity import supported_dct_candidates
 from ..teacher import TeacherPairManifestV2, TeacherTargetManifestV2, build_teacher_pair_manifest, build_teacher_target_manifest
 from .runs import V2Run
-from .conditional_admission import conditional_control_isolation, conditional_injection_admission, conditional_observability, conditional_semantic_localization, controllability_smoke, qualify_evaluator, semantic_recovery_smoke, train_evaluator, conditional_training_completion, conditional_diversity_observability, conditional_diversity_alignment_admission, conditional_identity_reanchor, conditional_reanchor_observability, conditional_shared_mode_conflict, conditional_class_mode_admission, conditional_class_mode_observability, conditional_parity_conflict, conditional_parity_mode_admission, conditional_parity_observability
+from .conditional_admission import conditional_control_isolation, conditional_injection_admission, conditional_observability, conditional_semantic_localization, controllability_smoke, qualify_evaluator, semantic_recovery_smoke, train_evaluator, conditional_training_completion, conditional_diversity_observability, conditional_diversity_alignment_admission, conditional_identity_reanchor, conditional_reanchor_observability, conditional_shared_mode_conflict, conditional_class_mode_admission, conditional_class_mode_observability, conditional_parity_conflict, conditional_parity_mode_admission, conditional_parity_observability, conditional_semantic_tangent
 from .conditional_training import admit_conditional_evaluation, conditional_evaluate, conditional_train, sample_conditional, diversity_recovery_smoke, train_diversity_recovery, diversity_aligned_smoke, train_diversity_aligned, identity_reanchor_smoke, train_identity_reanchor, class_mode_recovery_smoke, train_class_modes, parity_stabilizer_smoke, train_parity_stabilizer
 from .conditional_dataset import admit_dataset, audit_memorization, evaluate_utility, export_conditional_dataset
 
@@ -1739,6 +1739,10 @@ def _parser() -> argparse.ArgumentParser:
     for name in ("config", "dataset_root", "evaluator_checkpoint", "checkpoint", "admission_evidence"):
         parity_obs_parser.add_argument("--" + name.replace("_", "-"), required=True)
     parity_obs_parser.set_defaults(handler=lambda args: conditional_parity_observability(args, load_config(args.config)))
+    tangent_parser = audit.add_parser("conditional-semantic-tangent")
+    for name in ("config", "dataset_root", "evaluator_checkpoint", "checkpoint", "class_mode_admission_evidence", "failed_class_mode_smoke_evidence", "failed_parity_evidence"):
+        tangent_parser.add_argument("--" + name.replace("_", "-"), required=True)
+    tangent_parser.set_defaults(handler=lambda args: conditional_semantic_tangent(args, load_config(args.config)))
     memorization = audit.add_parser("memorization")
     for name in ("config", "candidate_evidence", "candidate_dataset", "dataset_root", "evaluator_checkpoint"):
         memorization.add_argument("--" + name.replace("_", "-"), required=True)
