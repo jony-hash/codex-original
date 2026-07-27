@@ -62,3 +62,9 @@ observability和唯一400-step smoke。当前机器无可用NVIDIA驱动，因�
 2026-07-27 的首次v3 smoke因派生代码遗漏复制已训练的Encoder/Decoder相位而作废，
 不作为模型失败证据。派生准入现已增加step-0 raw-CMOS等价门；只有该门通过后运行的smoke
 才是该主线唯一有效的400-step结果。
+
+修复后有效v3 smoke已完成并失败：axis accuracy `0.8941`、最低recall `0.5882`、
+camera fraction `0.2997`、最低距离比`0.5273`；uniform-1234 accuracy `0.8059`，
+uniform-5678 accuracy `0.7412`。三面板的camera fraction、饱和、rank、零码、冻结参数和
+class-mode更新门均通过，但语义门、axis距离比及15%分类loss下降门未通过。该evidence不授权
+984-step训练、自动评估或导出；下一步必须另立结构方案，不得重复该v3 smoke或延长相同训练。
