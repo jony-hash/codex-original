@@ -1,4 +1,17 @@
-# v6 失败归因与 v6.2 短层距方案
+# v6 失败归因、v6.2 短层距归档与 v6.3 正式间距结果
+
+## v6.3 正式 1.50 mm self-imaging smoke（2026-07-29）
+
+v6.3 是可搭建实验台合同：正式 1.50 mm、2+2 phase、identity OLS、固定曝光，显式接续通过的
+逐类逐方向电子 PCA scale，但相位零初始化。其物理 admission 证明随机码仍到达 CMOS（axis/uniform
+fraction `0.2531/0.4603/0.4814`）；无更新 semantic tangent 也证明 carrier 与 phase 存在局部
+改善语义的方向。唯一 400-step smoke 后语义完全恢复，但 axis fraction 变为 `0.2203 < 0.25`。
+
+这将根因收窄为：在当前 2+2、1.50 mm、固定曝光和此 PCA command 分布下，现有 self-imaging/
+classification 优化会优先形成类别稳定模板，并牺牲最严格的轴向扰动传输。两组 uniform 仍高于门，
+故不是随机码全面消失；同时五组梯度、更新、饱和和显存均正常，不能归因于训练停滞或 CUDA。
+该有效硬门失败停止 v6.3；禁止重跑、延长或调 gain/LR/loss。后续若继续，只能另立物理架构合同，
+例如明确设计层间 1:1 relay，或转向单片多层器件。
 
 ## 结论
 

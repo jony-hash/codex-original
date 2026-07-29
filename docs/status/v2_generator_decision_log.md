@@ -73,3 +73,12 @@ v6.3 不把 0.25 mm 数值结果提升为实验台配置：它使用 formal 1.50
 状态重新建立 `κA²` / 同 code delta 自成像合同。先以无更新 semantic-tangent 验证 carrier 与四层相位
 的局部语义方向，再运行一次 400-step phase-warmup + joint smoke；不降低语义、多样性或饱和门，也不
 复用任何 short-spacing 或 smoke-final 状态。
+
+### v6.3 smoke 结果（2026-07-29）
+
+admission、semantic tangent 和 observability 都通过；tangent 在约 1% raw-CMOS 限制内使三面板的
+低 margin 样本正向改善比例达到 `0.94–0.97`，且 state hash 不变。唯一 smoke 则在 step 400 取得
+三个面板和零码 accuracy `1.0`，uniform camera fraction `0.4149/0.4339`，但 axis fraction 只有
+`0.2203`，低于不可降低的 `0.25`。分类 loss 前50/后50均值从 `1.5472` 降至 `0.0606`，说明训练
+确实向语义模板收敛，却未保持最难轴向 code 的物理差分。该 evidence 为有效核心物理门失败，不授权
+5-epoch、validation、导出或任何数据集准入；不得重跑同一 smoke。

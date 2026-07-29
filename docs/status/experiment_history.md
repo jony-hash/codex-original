@@ -15,6 +15,13 @@ uniform `0.4603/0.4814`，实际饱和 `0.054–0.059`；但分类 accuracy 仅
 尚未把高响应变化组织为可读数字。v6.3 因而只接续电子状态并重置四层相位，以 formal 1.50 mm
 self-imaging semantic-tangent → 一次 smoke 的新证据链检验该可达性；它不是层距或增益 sweep。
 
+该链的 admission、无更新 tangent、observability 和唯一 400-step smoke 都已实际执行。tangent
+显示局部语义方向存在，五个训练组都有有限梯度；smoke 的三面板 accuracy 与零码 accuracy 最终均为
+`1.0`，类别 loss 前50/后50均值 `1.5472 → 0.0606`。但 axis camera fraction 从初始 `0.2531`
+降为 `0.2203`，未达到 `0.25`；uniform-1234/5678 仍为 `0.4149/0.4339`。饱和、方向响应、显存与
+更新门均通过。因此这不是未收敛或 CUDA/harness 问题，而是当前 self-imaging 目标把语义恢复与 axis
+物理差分推向不同方向。v6.3 正式训练、自动评估和导出均停止。
+
 ## 状态快照：2026-06-10
 
 - **已验收稳定基线**：`3k/fast200` teacher distill dataset + bs128 matched teacher + seed202 one-shot distill，学生复现实验使用 `one_shot_distill_epoch_0020.pt` 做 sample/eval。

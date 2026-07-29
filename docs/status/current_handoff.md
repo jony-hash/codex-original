@@ -5,9 +5,11 @@
 1.50 mm 层距；只显式接续已通过的 v6.2 电子 PCA 载波、basis 与逐类逐方向 scale，四层相位从零开始。
 0.25 mm 链已因 full-connect 可搭建性、uniform retention 和真实 pre-clamp 饱和门而关闭，只能作为未来单片堆叠器件的诊断资料。
 
-当前允许顺序严格为：formal-spacing admission → semantic tangent → observability → 唯一一次
-400-step smoke →（仅 smoke 通过后）用户从初始 checkpoint 执行 5 个动态 balanced epochs。smoke final
-不得 warm-start。任一 v6.3 门失败即停止当前生成器扩展；后续只能明确选择 1:1 relay 重设计或单片多层器件路线。
+v6.3 的唯一 400-step smoke 已执行并失败，故没有 5-epoch 训练授权。最终 axis camera fraction 为
+`0.2203 < 0.25`，而 uniform-1234/5678 为 `0.4149/0.4339`；三面板 accuracy 与零码 accuracy
+均为 `1.0`，饱和约 `0.054–0.059`，方向响应、五组更新和 CUDA 门均通过。结果说明 phase+carrier
+联合优化可恢复语义，却把最严格的轴向随机码物理响应从初始 `0.2531` 压低。smoke final 仅为诊断，
+不得 warm-start；不重复、不延长或调参。后续只能明确选择 1:1 relay 重设计或单片多层器件路线。
 
 当前活动候选 `conditional_multi_anchor_local_modes_v5` 已完成实现和无更新容量审计，但容量准入失败，现为
 `rejected candidate / diagnostic-only`。v1 的 LDM 蒸馏线仍由 `train.py` 维护，
