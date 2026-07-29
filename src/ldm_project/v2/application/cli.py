@@ -43,6 +43,7 @@ from .conditional_continuous_audit import conditional_continuous_mode_capacity
 from .conditional_continuous_reachability import conditional_continuous_mode_reachability
 from .conditional_pca_transport import conditional_pca_transport_admission, conditional_pca_transport_observability, conditional_pca_transport_smoke_revalidation, pca_transport_smoke, train_pca_transport
 from .conditional_optical_feasibility import conditional_optical_generation_feasibility
+from .conditional_short_spacing import conditional_short_spacing_target_admission, conditional_short_spacing_optical_admission, conditional_short_spacing_observability, short_spacing_self_imaging_smoke
 
 _CONTROL_ORACLE_ARMS = ("formal_amplitude_only", "diagnostic_complex_slm")
 _CONTROL_ORACLE_STEPS = 400
@@ -1505,7 +1506,7 @@ def _dispatch_train(args: argparse.Namespace) -> int:
         if missing:
             raise ValueError(f"identity conditional train requires: {', '.join('--' + item.replace('_', '-') for item in missing)}")
         return conditional_train(args, config)
-    if config.architecture in {"conditional_global_amplitude_v1", "conditional_identity_logit_amplitude_v2", "conditional_class_conditioned_modes_v3", "conditional_parity_stabilized_modes_v4", "conditional_multi_anchor_local_modes_v5", "conditional_pca_transport_codesign_v6"}:
+    if config.architecture in {"conditional_global_amplitude_v1", "conditional_identity_logit_amplitude_v2", "conditional_class_conditioned_modes_v3", "conditional_parity_stabilized_modes_v4", "conditional_multi_anchor_local_modes_v5", "conditional_pca_transport_codesign_v6", "conditional_pca_self_imaging_transport_v6_2"}:
         if config.architecture == "conditional_multi_anchor_local_modes_v5":
             raise ValueError("v5 training must use student train-multi-anchor with its passed smoke evidence")
         required = ("dataset_root", "evaluator_checkpoint", "observability_evidence", "controllability_evidence")
@@ -1522,7 +1523,7 @@ def _dispatch_train(args: argparse.Namespace) -> int:
 
 def _dispatch_sample(args: argparse.Namespace) -> int:
     config = load_config(args.config)
-    if config.architecture in {"conditional_global_amplitude_v1", "conditional_identity_logit_amplitude_v2", "conditional_class_conditioned_modes_v3", "conditional_parity_stabilized_modes_v4", "conditional_multi_anchor_local_modes_v5", "conditional_pca_transport_codesign_v6"}:
+    if config.architecture in {"conditional_global_amplitude_v1", "conditional_identity_logit_amplitude_v2", "conditional_class_conditioned_modes_v3", "conditional_parity_stabilized_modes_v4", "conditional_multi_anchor_local_modes_v5", "conditional_pca_transport_codesign_v6", "conditional_pca_self_imaging_transport_v6_2"}:
         return sample_conditional(args, config)
     if not args.code_basis:
         raise ValueError("legacy student sample requires --code-basis")
@@ -1802,6 +1803,22 @@ def _parser() -> argparse.ArgumentParser:
     for name in ("config", "dataset_root", "evaluator_checkpoint", "checkpoint", "revalidation_evidence"):
         feasibility.add_argument("--" + name.replace("_", "-"), required=True)
     feasibility.set_defaults(handler=lambda args: conditional_optical_generation_feasibility(args, load_config(args.config)))
+    short_target = audit.add_parser("conditional-short-spacing-target-admission")
+    for name in ("config", "dataset_root", "evaluator_checkpoint", "semantic_checkpoint"):
+        short_target.add_argument("--" + name.replace("_", "-"), required=True)
+    short_target.set_defaults(handler=lambda args: conditional_short_spacing_target_admission(args, load_config(args.config)))
+    short_optical = audit.add_parser("conditional-short-spacing-optical-admission")
+    for name in ("config", "dataset_root", "evaluator_checkpoint", "target_admission_evidence"):
+        short_optical.add_argument("--" + name.replace("_", "-"), required=True)
+    short_optical.set_defaults(handler=lambda args: conditional_short_spacing_optical_admission(args, load_config(args.config)))
+    short_obs = audit.add_parser("conditional-short-spacing-observability")
+    for name in ("config", "dataset_root", "evaluator_checkpoint", "initialization_checkpoint", "optical_admission_evidence"):
+        short_obs.add_argument("--" + name.replace("_", "-"), required=True)
+    short_obs.set_defaults(handler=lambda args: conditional_short_spacing_observability(args, load_config(args.config)))
+    short_smoke = student.add_parser("short-spacing-self-imaging-smoke")
+    for name in ("config", "dataset_root", "evaluator_checkpoint", "initialization_checkpoint", "target_admission_evidence", "optical_admission_evidence", "observability_evidence"):
+        short_smoke.add_argument("--" + name.replace("_", "-"), required=True)
+    short_smoke.set_defaults(handler=lambda args: short_spacing_self_imaging_smoke(args, load_config(args.config)))
     memorization = audit.add_parser("memorization")
     for name in ("config", "candidate_evidence", "candidate_dataset", "dataset_root", "evaluator_checkpoint"):
         memorization.add_argument("--" + name.replace("_", "-"), required=True)

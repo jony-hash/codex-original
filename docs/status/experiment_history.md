@@ -622,3 +622,12 @@ WSL CUDA 动态链接路径修复后，RTX 3060 Laptop GPU 完成了新的只读
 结果为 `failed / safe_scale_transport_insufficient`，无下游授权。这是有效物理传输停止证据：不能恢复
 gain `0.5`、不能做 gain sweep、不能派生连续PCA正式checkpoint或训练；若继续，只能审计带 PCA
 特征值尺度的物理模式参数化。
+
+## 2026-07-29：v6.2 短层距自成像恢复合同
+
+v6 smoke 与局部宏观审计失败后，保留完整宏观光路但建立独立 diagnostic 合同：层距
+`1.50 mm → 0.25 mm`，2+2 相位层、relay、identity OLS、finite_crop、曝光和网格不变。
+新增 `conditional_pca_self_imaging_transport_v6_2`、固定全局 `κA²` target 和同 code
+delta transport loss。旧 v6 checkpoint/evidence 不迁移；执行顺序为 target admission →
+optical admission → observability → 唯一 400-step smoke。正式训练与数据集闭环在 smoke
+通过前继续禁止。

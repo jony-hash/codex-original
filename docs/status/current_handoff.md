@@ -165,3 +165,13 @@ gradient observability 均通过，零码和光路 trace 均有效。但物理�
 变化尚未以足够强度穿过完整光路。不得恢复 gain `0.5` 或进行 gain sweep。该失败现为不可变 v6 输入证据：
 v6 联合训练载波、20 cycles/mm 固定低通 PCA 模式、有界模式尺度和四层相位，建立新的传输合同。
 只允许按 `admission → observability → 一次400-step smoke → 用户5 epoch` 推进；任一门失败即停止。
+
+## v6.2 短层距自成像合同（2026-07-29）
+
+v6 的有效停止证据已归档到 `docs/status/v6_failure_attribution.md`。用户选择新的
+diagnostic-only 物理合同：层距从 1.50 mm 改为 0.25 mm，保持 2+2 层、relay、identity
+OLS、finite_crop、曝光和 2048 网格不变，并加入同 code 自成像 `κA²` 与 delta 传输损失。
+
+当前只允许执行 `conditional-short-spacing-target-admission`；它通过后才能执行 optical
+admission、observability 和唯一一次 400-step smoke。短层距 checkpoint 与旧 v6 checkpoint
+严格不兼容，旧 smoke final 禁止 warm-start。正式训练、5000 validation 和 60000 导出仍未授权。

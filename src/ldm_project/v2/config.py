@@ -14,7 +14,7 @@ class StrictModel(BaseModel):
 
 
 class FormalSystemConfig(StrictModel):
-    kind: Literal["formal_amplitude_finite_crop_identity", "diagnostic_amplitude_finite_crop_identity"]
+    kind: Literal["formal_amplitude_finite_crop_identity", "diagnostic_amplitude_finite_crop_identity", "diagnostic_amplitude_finite_crop_identity_short_spacing_v1"]
     wavelength_m: float = 532.0e-9
     slm_shape: tuple[int, int] = (200, 200)
     slm_pixel_pitch_m: float = 2.5e-6
@@ -35,7 +35,7 @@ class FormalSystemConfig(StrictModel):
 
     @model_validator(mode="after")
     def formal_geometry_is_locked(self) -> "FormalSystemConfig":
-        if self.kind == "diagnostic_amplitude_finite_crop_identity":
+        if self.kind in {"diagnostic_amplitude_finite_crop_identity", "diagnostic_amplitude_finite_crop_identity_short_spacing_v1"}:
             if self.propagation_grid_size < max(self.metasurface_shape):
                 raise ValueError("diagnostic propagation grid must cover the active metasurface")
             return self
@@ -248,6 +248,7 @@ class V2Config(StrictModel):
         "conditional_parity_stabilized_modes_v4",
         "conditional_multi_anchor_local_modes_v5",
         "conditional_pca_transport_codesign_v6",
+        "conditional_pca_self_imaging_transport_v6_2",
     ] = "legacy_v2_distillation"
     system: SystemConfig
     teacher: TeacherConfig | None = None
@@ -279,7 +280,7 @@ class V2Config(StrictModel):
             supplied = [name for name, value in forbidden.items() if value is not None]
             if supplied:
                 raise ValueError(f"conditional architecture rejects legacy fields: {', '.join(supplied)}")
-            if not self.system.is_formal:
+            if not self.system.is_formal and self.architecture != "conditional_pca_self_imaging_transport_v6_2":
                 raise ValueError("conditional architecture requires the formal identity-OLS system")
             if self.architecture in {"conditional_identity_logit_amplitude_v2", "conditional_class_conditioned_modes_v3", "conditional_parity_stabilized_modes_v4"}:
                 if self.conditional_generation.command_gain != 0.5:
@@ -296,6 +297,13 @@ class V2Config(StrictModel):
                     raise ValueError("PCA transport architecture locks conditional command_gain=0.05")
                 if self.conditional_generation.initialization_seed != 1234:
                     raise ValueError("PCA transport architecture locks initialization_seed=1234")
+            if self.architecture == "conditional_pca_self_imaging_transport_v6_2":
+                if self.system.kind != "diagnostic_amplitude_finite_crop_identity_short_spacing_v1":
+                    raise ValueError("v6.2 requires the explicit short-spacing diagnostic system")
+                if abs(self.system.layer_spacing_m - 0.25e-3) > 1e-15:
+                    raise ValueError("v6.2 locks layer_spacing_m=0.25e-3")
+                if self.conditional_generation.command_gain != 0.05:
+                    raise ValueError("v6.2 locks initial command gain=0.05")
             execution = self.execution
             if (execution.training_microbatch_size, execution.evaluation_microbatch_size, execution.activation_checkpoint) != (1, 1, True):
                 raise ValueError("conditional formal execution locks training/evaluation microbatches to one with activation checkpointing")

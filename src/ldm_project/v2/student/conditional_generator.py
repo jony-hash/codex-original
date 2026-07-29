@@ -858,3 +858,83 @@ class ConditionalPCATransportCodesignGenerator(nn.Module):
         return torch.sigmoid(
             self.class_carrier_logits.index_select(0, labels)
         ).unsqueeze(1)
+
+
+class ConditionalPCASelfImagingTransportGenerator(nn.Module):
+    """v6.2 bounded PCA command generator for short-spacing self-imaging.
+
+    This is an electronic amplitude-SLM command generator.  The optical
+    self-imaging target is deliberately kept outside this module so target
+    branches can be detached in the training application.  Unlike v6, the
+    scale is a bounded trainable parameter and the PCA basis is low-passed on
+    every forward pass.
+    """
+
+    architecture_kind = "conditional_pca_self_imaging_transport_v6_2"
+    code_dim = 8
+    max_scale = 0.20
+    initial_scale = 0.05
+
+    def __init__(self, *, shape=(200, 200), code_dim=8, hidden_dim=64,
+                 command_gain=0.05, class_carrier_logits=None,
+                 class_modes=None, scale_logits=None, pixel_pitch_m=2.5e-6):
+        super().__init__()
+        if code_dim != 8 or hidden_dim != 64 or abs(float(command_gain)-0.05) > 1e-12:
+            raise ValueError("v6.2 locks code_dim=8, hidden_dim=64 and initial scale=0.05")
+        carrier = torch.zeros(10, *shape) if class_carrier_logits is None else class_carrier_logits.detach().clone()
+        modes = (ConditionalClassConditionedModesGenerator.normalized_modes(
+            IdentityAnchoredConditionalAmplitudeGenerator._initial_global_modes(shape).unsqueeze(0).expand(10, -1, -1, -1)
+        ) if class_modes is None else class_modes.detach().clone())
+        if tuple(carrier.shape) != (10, *shape) or tuple(modes.shape) != (10, 8, *shape):
+            raise ValueError("v6.2 carrier/modes shapes must be [10,H,W] and [10,8,H,W]")
+        initial_logit = float(torch.logit(torch.tensor(self.initial_scale / self.max_scale)).item())
+        scales = torch.full((10, 8), initial_logit) if scale_logits is None else scale_logits.detach().clone()
+        if tuple(scales.shape) != (10, 8):
+            raise ValueError("v6.2 scale_logits must have shape [10,8]")
+        self.shape = tuple(shape)
+        self.pixel_pitch_m = float(pixel_pitch_m)
+        self.class_carrier_logits = nn.Parameter(carrier)
+        self.class_modes = nn.Parameter(modes)
+        self.scale_logits = nn.Parameter(scales)
+        fy = torch.fft.fftfreq(shape[0], d=self.pixel_pitch_m).view(shape[0], 1)
+        fx = torch.fft.rfftfreq(shape[1], d=self.pixel_pitch_m).view(1, shape[1] // 2 + 1)
+        self.register_buffer("lowpass_mask", ((fx.square() + fy.square()).sqrt() <= 20_000.0).to(torch.float32))
+
+    def _validate_inputs(self, code, labels):
+        if code.ndim != 2 or code.shape[1] != 8 or labels.ndim != 1 or code.shape[0] != labels.shape[0] or labels.numel() == 0 or labels.min() < 0 or labels.max() > 9:
+            raise ValueError("code must be [batch,8] and labels must be in [0,9]")
+
+    def lowpass_normalized_modes(self):
+        spectrum = torch.fft.rfft2(self.class_modes, dim=(-2, -1))
+        filtered = torch.fft.irfft2(spectrum * self.lowpass_mask, s=self.shape, dim=(-2, -1))
+        return ConditionalClassConditionedModesGenerator.normalized_modes(filtered)
+
+    def scales(self):
+        return self.max_scale * torch.sigmoid(self.scale_logits)
+
+    def coefficients(self, code, labels):
+        self._validate_inputs(code, labels)
+        return torch.tanh(code)
+
+    def logits(self, code, labels):
+        coefficients = self.coefficients(code, labels)
+        modes = self.lowpass_normalized_modes().index_select(0, labels)
+        scales = self.scales().index_select(0, labels)
+        residual = torch.einsum("bk,bk,bkhw->bhw", coefficients, scales, modes)
+        return self.class_carrier_logits.index_select(0, labels) + residual
+
+    def forward(self, code, labels):
+        return torch.sigmoid(self.logits(code, labels)).unsqueeze(1)
+
+    def mode_orthogonality_penalty(self):
+        modes = self.lowpass_normalized_modes().flatten(2)
+        gram = modes @ modes.transpose(1, 2) / modes.shape[-1]
+        eye = torch.eye(8, device=modes.device, dtype=modes.dtype).expand(10, -1, -1)
+        return (gram - eye).square().mean()
+
+    def scale_budget_penalty(self):
+        return torch.relu(self.scales().square().sum(dim=1).sqrt() - 0.30).square().mean()
+
+    def class_carrier_command(self, labels):
+        self._validate_inputs(torch.zeros(labels.shape[0], 8, device=labels.device), labels)
+        return torch.sigmoid(self.class_carrier_logits.index_select(0, labels)).unsqueeze(1)

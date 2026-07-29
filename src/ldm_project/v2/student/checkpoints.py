@@ -274,6 +274,7 @@ def _validate_conditional_manifest(
         "conditional_parity_stabilized_modes_v4",
         "conditional_multi_anchor_local_modes_v5",
         "conditional_pca_transport_codesign_v6",
+        "conditional_pca_self_imaging_transport_v6_2",
     }
     if manifest.architecture_kind not in allowed:
         raise ValueError("unsupported conditional checkpoint architecture")
@@ -311,7 +312,7 @@ def _validate_conditional_manifest(
         raise ValueError(
             "v2 conditional checkpoint requires initialization seed 1234 and complete contract hashes"
         )
-    if manifest.architecture_kind == "conditional_pca_transport_codesign_v6":
+    if manifest.architecture_kind in {"conditional_pca_transport_codesign_v6", "conditional_pca_self_imaging_transport_v6_2"}:
         v6_required = {
             "config_contract_hash": manifest.config_contract_hash,
             "pca_basis_hash": manifest.pca_basis_hash,
@@ -325,4 +326,4 @@ def _validate_conditional_manifest(
         if any(
             not isinstance(value, str) or not value for value in v6_required.values()
         ):
-            raise ValueError("v6 checkpoint requires complete PCA transport provenance")
+            raise ValueError("PCA transport checkpoint requires complete basis/route provenance")

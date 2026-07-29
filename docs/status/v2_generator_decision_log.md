@@ -42,3 +42,13 @@ updates gate，已由只读复核工具排除；五组可训练参数仍均有�
 
 当前停止条件：必须先完成宏观物理合同复审，明确是否允许改变 phase 初始化、光学层容量/间距/孔径或质量门；
 在得到明确合同前，禁止正式训练、自动评估、candidate 导出、防记忆、utility 和最终准入。
+
+## v6.2 短层距自成像（2026-07-29）
+
+v6 失败归因为 1.50 mm 层距下相位职责与随机码传输目标错位，而不是 MNIST 容量或注入失败。
+真实 MNIST 同一 ANOVA 指标的 camera fraction 约 0.710，故不降低 0.25 门限。新 diagnostic
+架构 `conditional_pca_self_imaging_transport_v6_2` 将层距固定为 0.25 mm，并让 raw CMOS
+对同 code 的 `κA²` 与 delta 变化负责；target 分支 detach，禁止 teacher/paired-MSE。
+
+旧 v6 证据不能迁移。短层距链必须重新通过 target admission、optical admission、observability
+和唯一 400-step smoke；失败后停止，不创建 v7。
