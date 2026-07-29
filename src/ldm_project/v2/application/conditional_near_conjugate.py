@@ -646,9 +646,7 @@ def _phase_loss(bundle, evaluator, codes, labels, real, exposure):
     )
     zero_anchor = (zero - 0.80 * target_zero).square().mean()
     saturation = torch.relu(raw / exposure - 1).square().mean()
-    tv = phase_total_variation(bundle.system.encoder.phase) + phase_total_variation(
-        bundle.system.decoder.phase
-    )
+    tv = phase_total_variation(bundle.system)
     return (
         sinkhorn
         + classification
