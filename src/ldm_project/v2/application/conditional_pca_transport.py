@@ -399,13 +399,19 @@ def conditional_pca_transport_admission(args, config) -> int:
     )
     basis = _build_modes(train_images, train_labels, evaluator, config)
     basis_hash = tensor_sha256(basis)
+    device = torch.device(config.run.device)
+    if device.type != "cuda" or not torch.cuda.is_available():
+        raise RuntimeError(
+            "v6 physical admission requires CUDA; CPU is not an acceptance substitute"
+        )
+    evaluator = evaluator.to(device).eval()
     bundle = (
         ConditionalBundle(
             config,
             carrier_logits=source["generator.class_carrier_logits"],
             class_modes=basis,
         )
-        .cpu()
+        .to(device)
         .eval()
     )
     target = bundle.state_dict()
@@ -413,15 +419,13 @@ def conditional_pca_transport_admission(args, config) -> int:
         target[name].copy_(source[name])
     bundle.load_state_dict(target, strict=True)
     before = state_content_hash(bundle.state_dict())
-    panels = _panels(torch.device("cpu"))
-    real_views = _real_panel_views(
-        train_images, train_labels, device=torch.device("cpu")
-    )
+    panels = _panels(device)
+    real_views = _real_panel_views(train_images, train_labels, device=device)
     safe_reference = (
         _ContinuousProbeGenerator(
             source["generator.class_carrier_logits"], basis, gain=SAFE_PROBE_ALPHA
         )
-        .cpu()
+        .to(device)
         .eval()
     )
     initial_equivalence: dict[str, dict[str, float]] = {}
