@@ -37,12 +37,14 @@ PARITY_ARCHITECTURE = "conditional_parity_stabilized_modes_v4"
 MULTI_ANCHOR_ARCHITECTURE = "conditional_multi_anchor_local_modes_v5"
 PCA_TRANSPORT_ARCHITECTURE = "conditional_pca_transport_codesign_v6"
 SHORT_SPACING_ARCHITECTURE = "conditional_pca_self_imaging_transport_v6_2"
+FORMAL_SPACING_ARCHITECTURE = "conditional_pca_formal_spacing_self_imaging_v6_3"
 IDENTITY_GENERATOR_CONTRACT = canonical_sha256({"architecture": IDENTITY_ARCHITECTURE, "formula": "h=SiLU(Wz*z);r=Wy*h;c=tanh(z+r);A=sigmoid(By+0.5*sum(c*P_hat))", "gain": 0.5, "bias_free": True})
 CLASS_MODE_GENERATOR_CONTRACT = canonical_sha256({"architecture": CLASS_MODE_ARCHITECTURE, "formula": "c=tanh(z);A=sigmoid(By+0.5*sum(c*P_hat_y))", "gain": 0.5, "class_modes_shape": [10, 8, 200, 200]})
 PARITY_GENERATOR_CONTRACT = canonical_sha256({"architecture": PARITY_ARCHITECTURE, "formula": "t=tanh(z);rho=1-exp(-sum(t^2));w=t^2/sum(t^2);A=sigmoid(By+0.5*(sum(t*P_hat_y)+rho*sum(w*tanh(Q_y))))", "gain": 0.5, "class_modes_shape": [10, 8, 200, 200], "stabilizer_shape": [10, 8, 200, 200]})
 MULTI_ANCHOR_GENERATOR_CONTRACT = canonical_sha256({"architecture": MULTI_ANCHOR_ARCHITECTURE, "formula": "m=2*I(z0>0)+I(z1>0);v=z2:8;A=sigmoid(B_y_m+0.25*sum(tanh(v)*P_hat_y_m))", "gain": 0.25, "anchor_shape": [10, 4, 200, 200], "local_modes_shape": [10, 4, 6, 200, 200]})
 PCA_TRANSPORT_GENERATOR_CONTRACT = canonical_sha256({"architecture": PCA_TRANSPORT_ARCHITECTURE, "formula": "t=tanh(z);P_hat=lowpass20cyclesmm(P);s=.20*sigmoid(g);A=sigmoid(B+sum(s*t*P_hat))", "scale_bounds": [0.0, 0.20], "initial_scale": 0.05, "per_class_l2_budget": 0.30})
 SHORT_SPACING_GENERATOR_CONTRACT = canonical_sha256({"architecture": SHORT_SPACING_ARCHITECTURE, "formula": "A=sigmoid(B+sum((.05+.45*sigmoid(g))*tanh(z)*lowpass20(P)))", "scale_bounds": [0.05, 0.50], "initial_scale": 0.05, "self_imaging": True})
+FORMAL_SPACING_GENERATOR_CONTRACT = canonical_sha256({"architecture": FORMAL_SPACING_ARCHITECTURE, "formula": "A=sigmoid(B+sum((.05+.45*sigmoid(g))*tanh(z)*lowpass20(P)))", "scale_bounds": [0.05, 0.50], "initial_scale": 0.05, "self_imaging": True, "layer_spacing_m": 1.50e-3})
 TRAINING_SCHEDULE_CONTRACT = canonical_sha256({"epochs": 5, "logical_batch_size": 50, "steps": 5500, "seed": 1234, "code_seed": "(epoch+1)*100000+batch_number"})
 BALANCED_TRAINING_SCHEDULE = {"epochs": 5, "logical_batch_size": 50, "batch_policy": "balanced_min_class_exhaustion", "seed": 1234, "code_seed": "(epoch+1)*100000+batch_number"}
 BALANCED_TRAINING_SCHEDULE_CONTRACT = canonical_sha256(BALANCED_TRAINING_SCHEDULE)
@@ -64,11 +66,11 @@ SEMANTIC_RECOVERY_CONTRACT = canonical_sha256({"kind": "conditional_semantic_rec
 class ConditionalBundle(nn.Module):
     def __init__(self, config: V2Config, *, carrier_logits: torch.Tensor | None = None, anchor_logits: torch.Tensor | None = None, local_modes: torch.Tensor | None = None, class_modes: torch.Tensor | None = None, scale_logits: torch.Tensor | None = None) -> None:
         super().__init__()
-        if config.architecture not in {"conditional_global_amplitude_v1", IDENTITY_ARCHITECTURE, CLASS_MODE_ARCHITECTURE, PARITY_ARCHITECTURE, MULTI_ANCHOR_ARCHITECTURE, PCA_TRANSPORT_ARCHITECTURE, SHORT_SPACING_ARCHITECTURE} or config.conditional_generation is None:
+        if config.architecture not in {"conditional_global_amplitude_v1", IDENTITY_ARCHITECTURE, CLASS_MODE_ARCHITECTURE, PARITY_ARCHITECTURE, MULTI_ANCHOR_ARCHITECTURE, PCA_TRANSPORT_ARCHITECTURE, SHORT_SPACING_ARCHITECTURE, FORMAL_SPACING_ARCHITECTURE} or config.conditional_generation is None:
             raise ValueError("conditional bundle requires a supported conditional architecture config")
         settings = config.conditional_generation
         self.system = FormalAmplitudeFiniteCropIdentitySystem(config.system)
-        generator_type = {IDENTITY_ARCHITECTURE: IdentityAnchoredConditionalAmplitudeGenerator, CLASS_MODE_ARCHITECTURE: ConditionalClassConditionedModesGenerator, PARITY_ARCHITECTURE: ConditionalParityStabilizedModesGenerator, MULTI_ANCHOR_ARCHITECTURE: ConditionalMultiAnchorLocalModesGenerator, PCA_TRANSPORT_ARCHITECTURE: ConditionalPCATransportCodesignGenerator, SHORT_SPACING_ARCHITECTURE: ConditionalPCASelfImagingTransportGenerator}.get(config.architecture, ConditionalGlobalAmplitudeGenerator)
+        generator_type = {IDENTITY_ARCHITECTURE: IdentityAnchoredConditionalAmplitudeGenerator, CLASS_MODE_ARCHITECTURE: ConditionalClassConditionedModesGenerator, PARITY_ARCHITECTURE: ConditionalParityStabilizedModesGenerator, MULTI_ANCHOR_ARCHITECTURE: ConditionalMultiAnchorLocalModesGenerator, PCA_TRANSPORT_ARCHITECTURE: ConditionalPCATransportCodesignGenerator, SHORT_SPACING_ARCHITECTURE: ConditionalPCASelfImagingTransportGenerator, FORMAL_SPACING_ARCHITECTURE: ConditionalPCASelfImagingTransportGenerator}.get(config.architecture, ConditionalGlobalAmplitudeGenerator)
         kwargs = {
             "shape": config.system.slm_shape,
             "code_dim": settings.code_dim,
@@ -79,14 +81,14 @@ class ConditionalBundle(nn.Module):
             kwargs.update(anchor_logits=anchor_logits, local_modes=local_modes)
         else:
             kwargs["class_carrier_logits"] = carrier_logits
-        if config.architecture in {PCA_TRANSPORT_ARCHITECTURE, SHORT_SPACING_ARCHITECTURE}:
+        if config.architecture in {PCA_TRANSPORT_ARCHITECTURE, SHORT_SPACING_ARCHITECTURE, FORMAL_SPACING_ARCHITECTURE}:
             ctor = ConditionalPCATransportCodesignGenerator if config.architecture == PCA_TRANSPORT_ARCHITECTURE else ConditionalPCASelfImagingTransportGenerator
             kwargs.update(command_gain=ctor.initial_scale, pixel_pitch_m=config.system.slm_pixel_pitch_m, class_modes=class_modes, scale_logits=scale_logits)
         self.generator = generator_type(**kwargs)
 
 
 def _require_conditional(config: V2Config) -> None:
-    if config.architecture not in {"conditional_global_amplitude_v1", IDENTITY_ARCHITECTURE, CLASS_MODE_ARCHITECTURE, PARITY_ARCHITECTURE, MULTI_ANCHOR_ARCHITECTURE, PCA_TRANSPORT_ARCHITECTURE, SHORT_SPACING_ARCHITECTURE} or config.conditional_generation is None:
+    if config.architecture not in {"conditional_global_amplitude_v1", IDENTITY_ARCHITECTURE, CLASS_MODE_ARCHITECTURE, PARITY_ARCHITECTURE, MULTI_ANCHOR_ARCHITECTURE, PCA_TRANSPORT_ARCHITECTURE, SHORT_SPACING_ARCHITECTURE, FORMAL_SPACING_ARCHITECTURE} or config.conditional_generation is None:
         raise ValueError("this command requires a supported conditional architecture")
 
 
@@ -206,6 +208,10 @@ def _load_bundle(config: V2Config, checkpoint: str, *, device: torch.device, eva
         from .conditional_short_spacing import SHORT_SPACING_GENERATOR_CONTRACT, SHORT_SPACING_METRIC_CONTRACT
         if manifest.generator_contract_hash != SHORT_SPACING_GENERATOR_CONTRACT or manifest.metric_contract_hash != SHORT_SPACING_METRIC_CONTRACT or manifest.initialization_seed != 1234:
             raise ValueError("v6.2 checkpoint has an incomplete or mismatched contract")
+    if manifest.architecture_kind == FORMAL_SPACING_ARCHITECTURE:
+        from .conditional_formal_spacing import FORMAL_SPACING_GENERATOR_CONTRACT, FORMAL_SPACING_METRIC_CONTRACT
+        if manifest.generator_contract_hash != FORMAL_SPACING_GENERATOR_CONTRACT or manifest.metric_contract_hash != FORMAL_SPACING_METRIC_CONTRACT or manifest.initialization_seed != 1234:
+            raise ValueError("v6.3 checkpoint has an incomplete or mismatched contract")
     load_conditional_checkpoint(checkpoint, bundle, manifest)
     return bundle, manifest
 
@@ -2393,14 +2399,14 @@ def conditional_evaluate(args, config: V2Config) -> int:
     _require_conditional(config)
     _require_current_acceptance(config)
     training_record = EvidenceRecordV2.from_dict(json.loads(Path(args.training_evidence).read_text(encoding="utf-8")))
-    if training_record.evidence_kind not in {"conditional_training", "conditional_diversity_training", "conditional_diversity_aligned_training", "conditional_class_mode_training", "conditional_parity_stabilizer_training", "conditional_multi_anchor_training"} or training_record.status != "passed":
+    if training_record.evidence_kind not in {"conditional_training", "conditional_diversity_training", "conditional_diversity_aligned_training", "conditional_class_mode_training", "conditional_parity_stabilizer_training", "conditional_multi_anchor_training", "conditional_formal_spacing_training"} or training_record.status != "passed":
         raise ValueError("conditional evaluate requires passed conditional training evidence")
     device = torch.device(config.run.device)
     images, all_labels = load_local_mnist(args.dataset_root, train=True)
     _, _, validation_images, validation_labels, split = _split(images, all_labels, args.dataset_root)
     evaluator, _ = load_frozen_evaluator(args.evaluator_checkpoint, device=device)
     evaluator_hash = evaluator_checkpoint_hash(args.evaluator_checkpoint)
-    bundle, manifest = _load_bundle(config, args.checkpoint, device=device, evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, allow_balanced_schedule=training_record.evidence_kind in {"conditional_diversity_training", "conditional_diversity_aligned_training", "conditional_class_mode_training", "conditional_parity_stabilizer_training", "conditional_multi_anchor_training"})
+    bundle, manifest = _load_bundle(config, args.checkpoint, device=device, evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, allow_balanced_schedule=training_record.evidence_kind in {"conditional_diversity_training", "conditional_diversity_aligned_training", "conditional_class_mode_training", "conditional_parity_stabilizer_training", "conditional_multi_anchor_training", "conditional_formal_spacing_training"})
     if training_record.context.checkpoint_hash != file_sha256(args.checkpoint):
         raise ValueError("training evidence does not bind the evaluation checkpoint")
     settings = config.conditional_generation

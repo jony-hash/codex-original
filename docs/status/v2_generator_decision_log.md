@@ -68,3 +68,8 @@ axis `0.2531`、uniform `0.4603/0.4814`，且实际高饱和比例为`0.054–0.
 组织而非随机码消失。下一条受控主线因此是 `conditional_pca_formal_spacing_self_imaging_v6_3`：
 保留正式2+2、1.50 mm、identity OLS和固定曝光，用冻结 `κA²` self-imaging/delta target 先做
 无更新切空间准入，再最多执行一次400-step smoke。若该切空间或smoke失败，停止当前生成器扩展。
+
+v6.3 不把 0.25 mm 数值结果提升为实验台配置：它使用 formal 1.50 mm、零相位和已通过的电子 PCA
+状态重新建立 `κA²` / 同 code delta 自成像合同。先以无更新 semantic-tangent 验证 carrier 与四层相位
+的局部语义方向，再运行一次 400-step phase-warmup + joint smoke；不降低语义、多样性或饱和门，也不
+复用任何 short-spacing 或 smoke-final 状态。

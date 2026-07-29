@@ -1,4 +1,13 @@
-# 当前主线交接：v5 容量失败归档与连续模式审计（2026-07-28）
+# 当前主线交接：v6.3 正式 1.50 mm 自成像恢复（2026-07-29）
+
+当前实验台主线是 `conditional_pca_formal_spacing_self_imaging_v6_3`。它保留
+`label + code → amplitude SLM → Encoder → identity OLS → Decoder → CMOS` 与正式
+1.50 mm 层距；只显式接续已通过的 v6.2 电子 PCA 载波、basis 与逐类逐方向 scale，四层相位从零开始。
+0.25 mm 链已因 full-connect 可搭建性、uniform retention 和真实 pre-clamp 饱和门而关闭，只能作为未来单片堆叠器件的诊断资料。
+
+当前允许顺序严格为：formal-spacing admission → semantic tangent → observability → 唯一一次
+400-step smoke →（仅 smoke 通过后）用户从初始 checkpoint 执行 5 个动态 balanced epochs。smoke final
+不得 warm-start。任一 v6.3 门失败即停止当前生成器扩展；后续只能明确选择 1:1 relay 重设计或单片多层器件路线。
 
 当前活动候选 `conditional_multi_anchor_local_modes_v5` 已完成实现和无更新容量审计，但容量准入失败，现为
 `rejected candidate / diagnostic-only`。v1 的 LDM 蒸馏线仍由 `train.py` 维护，

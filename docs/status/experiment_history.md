@@ -2,6 +2,19 @@
 
 本文件保存带日期的实验事实和验收证据，不定义当前执行契约。迁移或续接当前主线时先读 [当前主线交接（v79 冻结与 v2）](current_handoff.md)；当前架构见 [D2NN 单次曝光蒸馏主线](../architecture/v1_single_shot_distillation.md)，stage 命令与输入要求见 [Stage Guide](../operations/stage_guide.md)，完整导航见 [Documentation](../README.md)。本文件的“当前/下一步”均表示各记录当时的结论；历史证据保留，不应覆盖现行合同。
 
+## 2026-07-29：v6.2 短层距归档与 v6.3 正式间距接续
+
+v6.2 的逐类逐方向电子标定已证明 SLM 前端可以同时保留语义与强 code 响应；但 0.25 mm optical
+admission 的 uniform retention 相对 1.50 mm 仅 `+16.0%/+14.3%`，低于三个面板均需 `+25%` 的门。
+历史报告还在 clamp 后统计饱和，故其“0 饱和”字段无效；pre-clamp 复算的高饱和比例约为
+`9.4%–10.4%`，超过 `0.08`。该链归档为 diagnostic-only，不授权训练。
+
+同一电子 command 在正式 1.50 mm 零相位合同下仍保留 raw-CMOS code fraction：axis `0.2531`、
+uniform `0.4603/0.4814`，实际饱和 `0.054–0.059`；但分类 accuracy 仅
+`0.6412/0.5000/0.4941`，零码 accuracy `0.80`。这说明随机变化没有被物理传播消除，断点是零相位
+尚未把高响应变化组织为可读数字。v6.3 因而只接续电子状态并重置四层相位，以 formal 1.50 mm
+self-imaging semantic-tangent → 一次 smoke 的新证据链检验该可达性；它不是层距或增益 sweep。
+
 ## 状态快照：2026-06-10
 
 - **已验收稳定基线**：`3k/fast200` teacher distill dataset + bs128 matched teacher + seed202 one-shot distill，学生复现实验使用 `one_shot_distill_epoch_0020.pt` 做 sample/eval。

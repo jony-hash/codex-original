@@ -249,6 +249,7 @@ class V2Config(StrictModel):
         "conditional_multi_anchor_local_modes_v5",
         "conditional_pca_transport_codesign_v6",
         "conditional_pca_self_imaging_transport_v6_2",
+        "conditional_pca_formal_spacing_self_imaging_v6_3",
     ] = "legacy_v2_distillation"
     system: SystemConfig
     teacher: TeacherConfig | None = None
@@ -268,6 +269,7 @@ class V2Config(StrictModel):
             "conditional_parity_stabilized_modes_v4",
             "conditional_multi_anchor_local_modes_v5",
             "conditional_pca_transport_codesign_v6",
+            "conditional_pca_formal_spacing_self_imaging_v6_3",
         }:
             if self.conditional_generation is None:
                 raise ValueError("conditional architecture requires conditional_generation")
@@ -304,6 +306,11 @@ class V2Config(StrictModel):
                     raise ValueError("v6.2 locks layer_spacing_m=0.25e-3")
                 if self.conditional_generation.command_gain != 0.05:
                     raise ValueError("v6.2 locks initial command gain=0.05")
+            if self.architecture == "conditional_pca_formal_spacing_self_imaging_v6_3":
+                if not self.system.is_formal:
+                    raise ValueError("v6.3 requires the formal 1.50 mm identity-OLS system")
+                if self.conditional_generation.command_gain != 0.05:
+                    raise ValueError("v6.3 locks initial command gain=0.05")
             execution = self.execution
             if (execution.training_microbatch_size, execution.evaluation_microbatch_size, execution.activation_checkpoint) != (1, 1, True):
                 raise ValueError("conditional formal execution locks training/evaluation microbatches to one with activation checkpointing")

@@ -44,6 +44,7 @@ from .conditional_continuous_reachability import conditional_continuous_mode_rea
 from .conditional_pca_transport import conditional_pca_transport_admission, conditional_pca_transport_observability, conditional_pca_transport_smoke_revalidation, pca_transport_smoke, train_pca_transport
 from .conditional_optical_feasibility import conditional_optical_generation_feasibility
 from .conditional_short_spacing import conditional_short_spacing_target_admission, conditional_short_spacing_optical_admission, conditional_short_spacing_observability, conditional_short_spacing_evidence_supersession, short_spacing_self_imaging_smoke
+from .conditional_formal_spacing import conditional_formal_spacing_admission, conditional_formal_spacing_semantic_tangent, conditional_formal_spacing_observability, formal_spacing_self_imaging_smoke, train_formal_spacing_self_imaging
 
 _CONTROL_ORACLE_ARMS = ("formal_amplitude_only", "diagnostic_complex_slm")
 _CONTROL_ORACLE_STEPS = 400
@@ -1506,7 +1507,7 @@ def _dispatch_train(args: argparse.Namespace) -> int:
         if missing:
             raise ValueError(f"identity conditional train requires: {', '.join('--' + item.replace('_', '-') for item in missing)}")
         return conditional_train(args, config)
-    if config.architecture in {"conditional_global_amplitude_v1", "conditional_identity_logit_amplitude_v2", "conditional_class_conditioned_modes_v3", "conditional_parity_stabilized_modes_v4", "conditional_multi_anchor_local_modes_v5", "conditional_pca_transport_codesign_v6", "conditional_pca_self_imaging_transport_v6_2"}:
+    if config.architecture in {"conditional_global_amplitude_v1", "conditional_identity_logit_amplitude_v2", "conditional_class_conditioned_modes_v3", "conditional_parity_stabilized_modes_v4", "conditional_multi_anchor_local_modes_v5", "conditional_pca_transport_codesign_v6", "conditional_pca_self_imaging_transport_v6_2", "conditional_pca_formal_spacing_self_imaging_v6_3"}:
         if config.architecture == "conditional_multi_anchor_local_modes_v5":
             raise ValueError("v5 training must use student train-multi-anchor with its passed smoke evidence")
         required = ("dataset_root", "evaluator_checkpoint", "observability_evidence", "controllability_evidence")
@@ -1523,7 +1524,7 @@ def _dispatch_train(args: argparse.Namespace) -> int:
 
 def _dispatch_sample(args: argparse.Namespace) -> int:
     config = load_config(args.config)
-    if config.architecture in {"conditional_global_amplitude_v1", "conditional_identity_logit_amplitude_v2", "conditional_class_conditioned_modes_v3", "conditional_parity_stabilized_modes_v4", "conditional_multi_anchor_local_modes_v5", "conditional_pca_transport_codesign_v6", "conditional_pca_self_imaging_transport_v6_2"}:
+    if config.architecture in {"conditional_global_amplitude_v1", "conditional_identity_logit_amplitude_v2", "conditional_class_conditioned_modes_v3", "conditional_parity_stabilized_modes_v4", "conditional_multi_anchor_local_modes_v5", "conditional_pca_transport_codesign_v6", "conditional_pca_self_imaging_transport_v6_2", "conditional_pca_formal_spacing_self_imaging_v6_3"}:
         return sample_conditional(args, config)
     if not args.code_basis:
         raise ValueError("legacy student sample requires --code-basis")
@@ -1532,7 +1533,7 @@ def _dispatch_sample(args: argparse.Namespace) -> int:
 
 def _dispatch_evaluate(args: argparse.Namespace) -> int:
     config = load_config(args.config)
-    if config.architecture in {"conditional_global_amplitude_v1", "conditional_identity_logit_amplitude_v2", "conditional_class_conditioned_modes_v3", "conditional_parity_stabilized_modes_v4", "conditional_multi_anchor_local_modes_v5"}:
+    if config.architecture in {"conditional_global_amplitude_v1", "conditional_identity_logit_amplitude_v2", "conditional_class_conditioned_modes_v3", "conditional_parity_stabilized_modes_v4", "conditional_multi_anchor_local_modes_v5", "conditional_pca_formal_spacing_self_imaging_v6_3"}:
         required = ("training_evidence", "checkpoint", "dataset_root", "evaluator_checkpoint")
         missing = [name for name in required if not getattr(args, name)]
         if missing:
@@ -1823,6 +1824,26 @@ def _parser() -> argparse.ArgumentParser:
     for name in ("config", "dataset_root", "evaluator_checkpoint", "initialization_checkpoint", "target_admission_evidence", "optical_admission_evidence", "observability_evidence"):
         short_smoke.add_argument("--" + name.replace("_", "-"), required=True)
     short_smoke.set_defaults(handler=lambda args: short_spacing_self_imaging_smoke(args, load_config(args.config)))
+    formal_admission = audit.add_parser("conditional-formal-spacing-admission")
+    for name in ("config", "dataset_root", "evaluator_checkpoint", "target_admission_evidence", "electronic_initialization"):
+        formal_admission.add_argument("--" + name.replace("_", "-"), required=True)
+    formal_admission.set_defaults(handler=lambda args: conditional_formal_spacing_admission(args, load_config(args.config)))
+    formal_tangent = audit.add_parser("conditional-formal-spacing-semantic-tangent")
+    for name in ("config", "dataset_root", "evaluator_checkpoint", "checkpoint", "admission_evidence"):
+        formal_tangent.add_argument("--" + name.replace("_", "-"), required=True)
+    formal_tangent.set_defaults(handler=lambda args: conditional_formal_spacing_semantic_tangent(args, load_config(args.config)))
+    formal_observability = audit.add_parser("conditional-formal-spacing-observability")
+    for name in ("config", "dataset_root", "evaluator_checkpoint", "checkpoint", "tangent_evidence"):
+        formal_observability.add_argument("--" + name.replace("_", "-"), required=True)
+    formal_observability.set_defaults(handler=lambda args: conditional_formal_spacing_observability(args, load_config(args.config)))
+    formal_smoke = student.add_parser("formal-spacing-self-imaging-smoke")
+    for name in ("config", "dataset_root", "evaluator_checkpoint", "checkpoint", "observability_evidence"):
+        formal_smoke.add_argument("--" + name.replace("_", "-"), required=True)
+    formal_smoke.set_defaults(handler=lambda args: formal_spacing_self_imaging_smoke(args, load_config(args.config)))
+    formal_train = student.add_parser("train-formal-spacing-self-imaging")
+    for name in ("config", "dataset_root", "evaluator_checkpoint", "checkpoint", "smoke_evidence"):
+        formal_train.add_argument("--" + name.replace("_", "-"), required=True)
+    formal_train.set_defaults(handler=lambda args: train_formal_spacing_self_imaging(args, load_config(args.config)))
     memorization = audit.add_parser("memorization")
     for name in ("config", "candidate_evidence", "candidate_dataset", "dataset_root", "evaluator_checkpoint"):
         memorization.add_argument("--" + name.replace("_", "-"), required=True)
