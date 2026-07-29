@@ -82,7 +82,7 @@ admission、semantic tangent 和 observability 都通过；tangent 在约 1% raw
 `0.2203`，低于不可降低的 `0.25`。分类 loss 前50/后50均值从 `1.5472` 降至 `0.0606`，说明训练
 确实向语义模板收敛，却未保持最难轴向 code 的物理差分。该 evidence 为有效核心物理门失败，不授权
 5-epoch、validation、导出或任何数据集准入；不得重跑同一 smoke。
-## v6.4: near-conjugate relay, pending gates
+## v6.4: near-conjugate relay（2026-07-30，harness-invalid diagnostic）
 
 The exact B=0 relay preserves command intensity but leaves phase-only masks
 unable to create useful intensity changes; the 0.25 mm free-space alternative
@@ -91,3 +91,18 @@ retention/saturation gate.  v6.4 therefore uses a physically positive-distance
 two-lens relay whose LCT is `[-1, +0.25 mm; 0, -1]`.  It retains the electronic
 PCA response while preserving a limited phase-to-intensity channel.  This is a
 new architecture and evidence chain; no v6.3 final state is compatible.
+
+实现分支为 `experiment/v2-near-conjugate-relay-v64`，提交范围 `07cd1f9` 至 `8fb6174`。电子 PCA
+carrier/basis/[10,8] scale 来自通过的 v6.2 target 并永久冻结；四层 phase 是唯一可训练参数；
+全局照明透过率为 `tau=0.80`。relay equivalence、admission、semantic tangent 与 observability
+通过，且初始化三面板同时满足语义、camera fraction、方向响应与实际饱和门。
+
+唯一400-step CUDA smoke 已结束。其 fraction 为 `0.2625/0.4606/0.4941`，saturation 为
+`0.0451/0.0613/0.0621`，delta correlation 为 `0.8760/0.9281/0.9256`；但 uniform-5678
+类别7 recall `0.8824`，且最低 feature ratio 为 axis `0.3982`、uniform-1234 `0.5833`、
+uniform-5678 `0.6479`。该 evidence 的 status 是 failed，故不授权正式训练。
+
+不过 smoke 未把预注册的 ratio、delta-correlation、relay crop-retention、最后50步分布损失趋势
+全部写为 GateResult。因此不得将它写成 v6.4 模型失败；正式分类为 `invalid_harness_evidence`。
+禁止重跑、延长、调 B/tau/LR/loss、放宽门限或从 diagnostic final warm-start。后续只能先制定独立的
+harness 修复与重新资格化计划。

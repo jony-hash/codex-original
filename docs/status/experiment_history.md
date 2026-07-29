@@ -2,6 +2,18 @@
 
 本文件保存带日期的实验事实和验收证据，不定义当前执行契约。迁移或续接当前主线时先读 [当前主线交接（v79 冻结与 v2）](current_handoff.md)；当前架构见 [D2NN 单次曝光蒸馏主线](../architecture/v1_single_shot_distillation.md)，stage 命令与输入要求见 [Stage Guide](../operations/stage_guide.md)，完整导航见 [Documentation](../README.md)。本文件的“当前/下一步”均表示各记录当时的结论；历史证据保留，不应覆盖现行合同。
 
+## 2026-07-30：v6.4 近共轭 1:1 relay 诊断（harness-invalid）
+
+分支 `experiment/v2-near-conjugate-relay-v64` 实现了四个 `25.00/50.00/24.75 mm` 的两透镜
+近共轭模块，总机械路径399 mm，对应有效 ABCD `[-1,+0.25 mm;0,-1]`。通过的 v6.2 PCA
+electronic state 被冻结，统一使用 `tau=0.80`，仅训练四层 phase。equivalence、admission、
+semantic tangent 和 observability 通过；400-step smoke 保持高 code fraction 和低饱和，
+但 uniform-5678 类别7 recall 为0.8824，最终 feature-ratio 下限也未满足。
+
+smoke 漏掉若干预注册 GateResult（ratio、delta、relay crop retention、分布损失趋势），故记录为
+`invalid_harness_evidence`，而非模型失败。它不授权正式5-epoch、validation、导出、防记忆或utility，
+也不得用 diagnostic final warm-start。下一步若继续必须先创建独立的 harness 修复和重新资格化合同。
+
 ## 2026-07-29：v6.2 短层距归档与 v6.3 正式间距接续
 
 v6.2 的逐类逐方向电子标定已证明 SLM 前端可以同时保留语义与强 code 响应；但 0.25 mm optical

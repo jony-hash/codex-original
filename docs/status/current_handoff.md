@@ -1,6 +1,27 @@
-# 当前主线交接：v6.3 正式 1.50 mm 自成像恢复（2026-07-29）
+# 当前主线交接：v6.4 近共轭 relay 诊断闭环（2026-07-30）
 
-当前实验台主线是 `conditional_pca_formal_spacing_self_imaging_v6_3`。它保留
+当前分支为 `experiment/v2-near-conjugate-relay-v64`，最新提交为 `8fb6174`，工作区干净。
+v6.4 保留宏观链路 `label + 8D code → amplitude SLM → Encoder → identity OLS → Decoder → CMOS`，
+但使用四个可搭建的两透镜近共轭 1:1 relay：每模块机械段 `25.00/50.00/24.75 mm`、两片
+`f=25 mm` 透镜、ABCD `[-1,+0.25 mm;0,-1]`，四模块总机械长度 `399 mm`。通过的 v6.2
+PCA electronic state 被显式复制并冻结；仅四层 phase 可训练；全局照明强度透过率固定 `tau=0.80`。
+
+relay equivalence、admission、semantic tangent 和 observability 都已通过。初始 axis/uniform-1234/
+uniform-5678 的 accuracy 为 `0.9765/0.9882/0.9706`，camera fraction 为
+`0.2623/0.4604/0.4938`，实际 pre-clamp saturation 为 `0.0449/0.0613/0.0621`；trace 明确含
+四次 `near_conjugate_relay_lct`、Encoder、identity OLS、Decoder 与 CMOS。
+
+唯一400-step CUDA smoke 已完成：
+`outputs/20260729_v2/runs/20260729_233809_929370_diagnostic_v2_pca_near_conjugate_relay/`。
+evidence 为 `failed`，没有后续授权。uniform-5678 的类别7 recall 是 `0.8824 < 0.90`，最终
+最低 feature ratio 为 axis `0.3982`、uniform `0.5833/0.6479`，不满足预注册 smoke 下限。
+同时，现有 smoke harness 未把 ratio、delta correlation、relay crop retention 和最后50步
+distribution-loss 趋势完整写成 GateResult。因此它能阻止正式训练，却**不能作为 v6.4 的有效架构失败归因**；
+归档类别为 `invalid_harness_evidence`。禁止重跑 smoke、正式5-epoch训练、5000 validation、60000导出
+或从 smoke-final warm-start。若继续，必须先立独立的 harness 修复与重新资格化计划，且不得创建v6.5/v7、
+调整 B/tau/LR/loss或降低质量门。
+
+v6.3 是已停止的正式1.50 mm历史主线：`conditional_pca_formal_spacing_self_imaging_v6_3` 保留
 `label + code → amplitude SLM → Encoder → identity OLS → Decoder → CMOS` 与正式
 1.50 mm 层距；只显式接续已通过的 v6.2 电子 PCA 载波、basis 与逐类逐方向 scale，四层相位从零开始。
 0.25 mm 链已因 full-connect 可搭建性、uniform retention 和真实 pre-clamp 饱和门而关闭，只能作为未来单片堆叠器件的诊断资料。
@@ -197,7 +218,7 @@ uniform `+16.0%/+14.3%`，未满足三个面板均需`+25%`的物理门。
 该历史 evidence 已标记 `invalid_saturation_harness`，必须用 pre-clamp 高饱和比例重跑一次 optical admission；
 无论结果如何都不得运行observability、400-step smoke、正式训练或任何数据集验收。`0.25 mm`只保留给未来
 单片堆叠器件诊断，当前实验台主线回到正式 `1.50 mm` 合同。
-## v6.4 near-conjugate relay recovery (current branch)
+## v6.4 near-conjugate relay recovery（已归档为 harness-invalid）
 
 The v6.3 formal-spacing smoke is a valid failed diagnostic: allowing the
 electronic carrier, PCA modes and scales to update restored classification but
@@ -211,4 +232,5 @@ lenses, 99.75 mm per module, effective ABCD `[-1, +0.25 mm; 0, -1]`).  A
 global intensity transmission of 0.80 is part of this physical contract; it
 is not per-sample exposure normalization.  The required sequence is relay
 equivalence → admission → semantic tangent → observability → one CUDA
-400-step smoke.  A failed gate stops the line.
+400-step smoke. 该 smoke 已完成；详细结果与停止理由见本文件开头。它是阻止训练的
+diagnostic-only evidence，不能升级为可推广的架构失败结论。
