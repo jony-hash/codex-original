@@ -37,7 +37,11 @@ from ..teacher import TeacherPairManifestV2, TeacherTargetManifestV2, build_teac
 from .runs import V2Run
 from .conditional_admission import conditional_control_isolation, conditional_injection_admission, conditional_observability, conditional_semantic_localization, controllability_smoke, qualify_evaluator, semantic_recovery_smoke, train_evaluator, conditional_training_completion, conditional_diversity_observability, conditional_diversity_alignment_admission, conditional_identity_reanchor, conditional_reanchor_observability, conditional_shared_mode_conflict, conditional_class_mode_admission, conditional_class_mode_observability, conditional_parity_conflict, conditional_parity_mode_admission, conditional_parity_observability, conditional_semantic_tangent
 from .conditional_training import admit_conditional_evaluation, conditional_evaluate, conditional_train, sample_conditional, diversity_recovery_smoke, train_diversity_recovery, diversity_aligned_smoke, train_diversity_aligned, identity_reanchor_smoke, train_identity_reanchor, class_mode_recovery_smoke, train_class_modes, parity_stabilizer_smoke, train_parity_stabilizer
+from .conditional_runtime import conditional_multi_anchor_capacity, conditional_multi_anchor_admission, conditional_multi_anchor_observability, multi_anchor_smoke, train_multi_anchor
 from .conditional_dataset import admit_dataset, audit_memorization, evaluate_utility, export_conditional_dataset
+from .conditional_continuous_audit import conditional_continuous_mode_capacity
+from .conditional_continuous_reachability import conditional_continuous_mode_reachability
+from .conditional_pca_transport import conditional_pca_transport_admission, conditional_pca_transport_observability, pca_transport_smoke, train_pca_transport
 
 _CONTROL_ORACLE_ARMS = ("formal_amplitude_only", "diagnostic_complex_slm")
 _CONTROL_ORACLE_STEPS = 400
@@ -1500,7 +1504,9 @@ def _dispatch_train(args: argparse.Namespace) -> int:
         if missing:
             raise ValueError(f"identity conditional train requires: {', '.join('--' + item.replace('_', '-') for item in missing)}")
         return conditional_train(args, config)
-    if config.architecture in {"conditional_global_amplitude_v1", "conditional_identity_logit_amplitude_v2"}:
+    if config.architecture in {"conditional_global_amplitude_v1", "conditional_identity_logit_amplitude_v2", "conditional_class_conditioned_modes_v3", "conditional_parity_stabilized_modes_v4", "conditional_multi_anchor_local_modes_v5", "conditional_pca_transport_codesign_v6"}:
+        if config.architecture == "conditional_multi_anchor_local_modes_v5":
+            raise ValueError("v5 training must use student train-multi-anchor with its passed smoke evidence")
         required = ("dataset_root", "evaluator_checkpoint", "observability_evidence", "controllability_evidence")
         missing = [name for name in required if not getattr(args, name)]
         if missing:
@@ -1515,7 +1521,7 @@ def _dispatch_train(args: argparse.Namespace) -> int:
 
 def _dispatch_sample(args: argparse.Namespace) -> int:
     config = load_config(args.config)
-    if config.architecture in {"conditional_global_amplitude_v1", "conditional_identity_logit_amplitude_v2"}:
+    if config.architecture in {"conditional_global_amplitude_v1", "conditional_identity_logit_amplitude_v2", "conditional_class_conditioned_modes_v3", "conditional_parity_stabilized_modes_v4", "conditional_multi_anchor_local_modes_v5", "conditional_pca_transport_codesign_v6"}:
         return sample_conditional(args, config)
     if not args.code_basis:
         raise ValueError("legacy student sample requires --code-basis")
@@ -1524,7 +1530,7 @@ def _dispatch_sample(args: argparse.Namespace) -> int:
 
 def _dispatch_evaluate(args: argparse.Namespace) -> int:
     config = load_config(args.config)
-    if config.architecture in {"conditional_global_amplitude_v1", "conditional_identity_logit_amplitude_v2"}:
+    if config.architecture in {"conditional_global_amplitude_v1", "conditional_identity_logit_amplitude_v2", "conditional_class_conditioned_modes_v3", "conditional_parity_stabilized_modes_v4", "conditional_multi_anchor_local_modes_v5"}:
         required = ("training_evidence", "checkpoint", "dataset_root", "evaluator_checkpoint")
         missing = [name for name in required if not getattr(args, name)]
         if missing:
@@ -1638,6 +1644,22 @@ def _parser() -> argparse.ArgumentParser:
     for name in ("config", "dataset_root", "evaluator_checkpoint", "checkpoint", "smoke_evidence"):
         parity_train.add_argument("--" + name.replace("_", "-"), required=True)
     parity_train.set_defaults(handler=lambda args: train_parity_stabilizer(args, load_config(args.config)))
+    multi_anchor_smoke_parser = student.add_parser("multi-anchor-smoke")
+    for name in ("config", "dataset_root", "evaluator_checkpoint", "checkpoint", "observability_evidence"):
+        multi_anchor_smoke_parser.add_argument("--" + name.replace("_", "-"), required=True)
+    multi_anchor_smoke_parser.set_defaults(handler=lambda args: multi_anchor_smoke(args, load_config(args.config)))
+    multi_anchor_train = student.add_parser("train-multi-anchor")
+    for name in ("config", "dataset_root", "evaluator_checkpoint", "checkpoint", "smoke_evidence"):
+        multi_anchor_train.add_argument("--" + name.replace("_", "-"), required=True)
+    multi_anchor_train.set_defaults(handler=lambda args: train_multi_anchor(args, load_config(args.config)))
+    pca_transport_smoke_parser = student.add_parser("pca-transport-smoke")
+    for name in ("config", "dataset_root", "evaluator_checkpoint", "checkpoint", "observability_evidence"):
+        pca_transport_smoke_parser.add_argument("--" + name.replace("_", "-"), required=True)
+    pca_transport_smoke_parser.set_defaults(handler=lambda args: pca_transport_smoke(args, load_config(args.config)))
+    pca_transport_train = student.add_parser("train-pca-transport")
+    for name in ("config", "dataset_root", "evaluator_checkpoint", "checkpoint", "smoke_evidence"):
+        pca_transport_train.add_argument("--" + name.replace("_", "-"), required=True)
+    pca_transport_train.set_defaults(handler=lambda args: train_pca_transport(args, load_config(args.config)))
     export_dataset = student.add_parser("export-dataset")
     for name in ("config", "checkpoint", "acceptance_evidence"):
         export_dataset.add_argument("--" + name.replace("_", "-"), required=True)
@@ -1743,6 +1765,34 @@ def _parser() -> argparse.ArgumentParser:
     for name in ("config", "dataset_root", "evaluator_checkpoint", "checkpoint", "class_mode_admission_evidence", "failed_class_mode_smoke_evidence", "failed_parity_evidence"):
         tangent_parser.add_argument("--" + name.replace("_", "-"), required=True)
     tangent_parser.set_defaults(handler=lambda args: conditional_semantic_tangent(args, load_config(args.config)))
+    multi_capacity_parser = audit.add_parser("conditional-multi-anchor-capacity")
+    for name in ("config", "dataset_root", "evaluator_checkpoint"):
+        multi_capacity_parser.add_argument("--" + name.replace("_", "-"), required=True)
+    multi_capacity_parser.set_defaults(handler=lambda args: conditional_multi_anchor_capacity(args, load_config(args.config)))
+    multi_admission_parser = audit.add_parser("conditional-multi-anchor-admission")
+    for name in ("config", "dataset_root", "evaluator_checkpoint", "semantic_checkpoint", "capacity_evidence"):
+        multi_admission_parser.add_argument("--" + name.replace("_", "-"), required=True)
+    multi_admission_parser.set_defaults(handler=lambda args: conditional_multi_anchor_admission(args, load_config(args.config)))
+    multi_obs_parser = audit.add_parser("conditional-multi-anchor-observability")
+    for name in ("config", "dataset_root", "evaluator_checkpoint", "checkpoint", "admission_evidence"):
+        multi_obs_parser.add_argument("--" + name.replace("_", "-"), required=True)
+    multi_obs_parser.set_defaults(handler=lambda args: conditional_multi_anchor_observability(args, load_config(args.config)))
+    continuous_capacity_parser = audit.add_parser("conditional-continuous-mode-capacity")
+    for name in ("config", "dataset_root", "evaluator_checkpoint", "semantic_checkpoint"):
+        continuous_capacity_parser.add_argument("--" + name.replace("_", "-"), required=True)
+    continuous_capacity_parser.set_defaults(handler=lambda args: conditional_continuous_mode_capacity(args, load_config(args.config)))
+    continuous_reachability_parser = audit.add_parser("conditional-continuous-mode-reachability")
+    for name in ("config", "dataset_root", "evaluator_checkpoint", "semantic_checkpoint", "capacity_evidence"):
+        continuous_reachability_parser.add_argument("--" + name.replace("_", "-"), required=True)
+    continuous_reachability_parser.set_defaults(handler=lambda args: conditional_continuous_mode_reachability(args, load_config(args.config)))
+    pca_transport_admission = audit.add_parser("conditional-pca-transport-admission")
+    for name in ("config", "dataset_root", "evaluator_checkpoint", "semantic_checkpoint", "safe_scale_evidence"):
+        pca_transport_admission.add_argument("--" + name.replace("_", "-"), required=True)
+    pca_transport_admission.set_defaults(handler=lambda args: conditional_pca_transport_admission(args, load_config(args.config)))
+    pca_transport_observability = audit.add_parser("conditional-pca-transport-observability")
+    for name in ("config", "dataset_root", "evaluator_checkpoint", "checkpoint", "admission_evidence"):
+        pca_transport_observability.add_argument("--" + name.replace("_", "-"), required=True)
+    pca_transport_observability.set_defaults(handler=lambda args: conditional_pca_transport_observability(args, load_config(args.config)))
     memorization = audit.add_parser("memorization")
     for name in ("config", "candidate_evidence", "candidate_dataset", "dataset_root", "evaluator_checkpoint"):
         memorization.add_argument("--" + name.replace("_", "-"), required=True)

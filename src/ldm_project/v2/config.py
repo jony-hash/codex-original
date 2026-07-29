@@ -246,6 +246,8 @@ class V2Config(StrictModel):
         "conditional_identity_logit_amplitude_v2",
         "conditional_class_conditioned_modes_v3",
         "conditional_parity_stabilized_modes_v4",
+        "conditional_multi_anchor_local_modes_v5",
+        "conditional_pca_transport_codesign_v6",
     ] = "legacy_v2_distillation"
     system: SystemConfig
     teacher: TeacherConfig | None = None
@@ -263,6 +265,8 @@ class V2Config(StrictModel):
             "conditional_identity_logit_amplitude_v2",
             "conditional_class_conditioned_modes_v3",
             "conditional_parity_stabilized_modes_v4",
+            "conditional_multi_anchor_local_modes_v5",
+            "conditional_pca_transport_codesign_v6",
         }:
             if self.conditional_generation is None:
                 raise ValueError("conditional architecture requires conditional_generation")
@@ -282,6 +286,16 @@ class V2Config(StrictModel):
                     raise ValueError("identity conditional architectures lock conditional command_gain=0.5")
                 if self.conditional_generation.initialization_seed != 1234:
                     raise ValueError("identity conditional architectures lock initialization_seed=1234")
+            if self.architecture == "conditional_multi_anchor_local_modes_v5":
+                if self.conditional_generation.command_gain != 0.25:
+                    raise ValueError("multi-anchor architecture locks conditional command_gain=0.25")
+                if self.conditional_generation.initialization_seed != 1234:
+                    raise ValueError("multi-anchor architecture locks initialization_seed=1234")
+            if self.architecture == "conditional_pca_transport_codesign_v6":
+                if self.conditional_generation.command_gain != 0.05:
+                    raise ValueError("PCA transport architecture locks conditional command_gain=0.05")
+                if self.conditional_generation.initialization_seed != 1234:
+                    raise ValueError("PCA transport architecture locks initialization_seed=1234")
             execution = self.execution
             if (execution.training_microbatch_size, execution.evaluation_microbatch_size, execution.activation_checkpoint) != (1, 1, True):
                 raise ValueError("conditional formal execution locks training/evaluation microbatches to one with activation checkpointing")

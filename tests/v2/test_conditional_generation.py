@@ -11,7 +11,7 @@ from ldm_project.v2.student.admission import balanced_code_fraction
 from ldm_project.v2.student.checkpoints import ConditionalCheckpointManifestV2, load_conditional_checkpoint, save_conditional_checkpoint, state_content_hash, state_signature
 from ldm_project.v2.student.conditional import conditional_sinkhorn_loss, fixed_exposure_view, sinkhorn_cost_view
 from ldm_project.v2.student.conditional_acceptance import chunked_nearest_distances, memorization_statistics, paired_bootstrap_lower_bound, per_label_feature_diversity_ratio
-from ldm_project.v2.student.generator import ConditionalClassConditionedModesGenerator, ConditionalGlobalAmplitudeGenerator, IdentityAnchoredConditionalAmplitudeGenerator, ConditionalParityStabilizedModesGenerator
+from ldm_project.v2.student.generator import ConditionalClassConditionedModesGenerator, ConditionalGlobalAmplitudeGenerator, IdentityAnchoredConditionalAmplitudeGenerator, ConditionalParityStabilizedModesGenerator, ConditionalMultiAnchorLocalModesGenerator
 from ldm_project.v2.evidence.reviews import ConditionalManualReviewV2
 from ldm_project.v2.application.conditional import _first_hundred_schedule_hash, _identity_isolation_classification, _reanchor_codes, _require_current_acceptance, _schedule_hash, _semantic_localization_classification
 from ldm_project.v2.student.evaluator import MNISTSplitManifest
@@ -107,6 +107,34 @@ def test_parity_stabilizer_only_selected_class_receives_q_gradient() -> None:
     assert torch.count_nonzero(generator.semantic_stabilizers.grad[:3]) == 0
     assert torch.count_nonzero(generator.semantic_stabilizers.grad[4:]) == 0
     assert torch.count_nonzero(generator.semantic_stabilizers.grad[3]) > 0
+
+
+def test_multi_anchor_route_is_deterministic_and_zero_code_selects_anchor_zero() -> None:
+    generator = ConditionalMultiAnchorLocalModesGenerator(shape=(8, 8))
+    codes = torch.tensor([[0.0, 0.0, 0, 0, 0, 0, 0, 0], [-1.0, -1.0, 0, 0, 0, 0, 0, 0], [-1.0, 1.0, 0, 0, 0, 0, 0, 0], [1.0, -1.0, 0, 0, 0, 0, 0, 0], [1.0, 1.0, 0, 0, 0, 0, 0, 0]])
+    assert torch.equal(generator.route_indices(codes), torch.tensor([0, 0, 1, 2, 3]))
+    labels = torch.zeros(5, dtype=torch.long)
+    assert torch.equal(generator(codes[:1], labels[:1]), generator(codes[1:2], labels[1:2]))
+
+
+def test_multi_anchor_local_code_only_updates_selected_anchor_modes() -> None:
+    generator = ConditionalMultiAnchorLocalModesGenerator(shape=(8, 8))
+    code = torch.ones(1, 8); code[0, 2:] = 0.0; code[0, 2] = 1.0
+    generator(code, torch.tensor([3])).sum().backward()
+    assert generator.local_modes.grad is not None
+    assert torch.count_nonzero(generator.local_modes.grad[3, 0]) == 0
+    assert torch.count_nonzero(generator.local_modes.grad[3, 1]) == 0
+    assert torch.count_nonzero(generator.local_modes.grad[3, 2]) == 0
+    assert torch.count_nonzero(generator.local_modes.grad[3, 3]) > 0
+    assert torch.count_nonzero(generator.anchor_logits.grad[3, :3]) == 0
+
+
+def test_multi_anchor_generator_has_no_hidden_coefficient_network() -> None:
+    generator = ConditionalMultiAnchorLocalModesGenerator(shape=(8, 8))
+    assert tuple(generator.anchor_logits.shape) == (10, 4, 8, 8)
+    assert tuple(generator.local_modes.shape) == (10, 4, 6, 8, 8)
+    assert generator.command_gain == pytest.approx(0.25)
+    assert all("code_projection" not in name and "class_heads" not in name for name, _ in generator.named_parameters())
 
 
 def test_reanchor_code_schedule_is_deterministic_and_antithetic() -> None:
@@ -289,6 +317,15 @@ def test_identity_logit_config_is_separate_and_locks_gain_and_seed() -> None:
     assert config.architecture == "conditional_identity_logit_amplitude_v2"
     assert config.conditional_generation is not None
     assert config.conditional_generation.command_gain == pytest.approx(0.5)
+    assert config.conditional_generation.initialization_seed == 1234
+
+
+def test_multi_anchor_config_locks_gain_batch_and_seed() -> None:
+    config = load_config("configs/v2/current/formal_multi_anchor_local_modes_finite_crop_identity.yaml")
+    assert config.architecture == "conditional_multi_anchor_local_modes_v5"
+    assert config.conditional_generation is not None
+    assert config.conditional_generation.command_gain == pytest.approx(0.25)
+    assert config.conditional_generation.logical_batch_size == 80
     assert config.conditional_generation.initialization_seed == 1234
 
 

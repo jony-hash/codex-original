@@ -1,7 +1,7 @@
-# 当前主线交接：identity v3 无蒸馏（2026-07-27）
+# 当前主线交接：v5 容量失败归档与连续模式审计（2026-07-28）
 
-当前活动运行时是 `rewrite/v2` 上的
-`conditional_class_conditioned_modes_v3`（实现已写入工作区但尚未取得CUDA准入证据）。v1 的 LDM 蒸馏线仍由 `train.py` 维护，
+当前活动候选 `conditional_multi_anchor_local_modes_v5` 已完成实现和无更新容量审计，但容量准入失败，现为
+`rejected candidate / diagnostic-only`。v1 的 LDM 蒸馏线仍由 `train.py` 维护，
 但不定义 v2 的训练或验收输入。
 
 ## 已锁定合同
@@ -53,11 +53,9 @@ LightGen evidence 不能授权 identity 主线。
 
 ## 下一允许动作
 
-当前没有正式训练授权。已实现但尚未运行的候选下一主线是
-`conditional_class_conditioned_modes_v3`：每个类别拥有8个全视场物理模式，系数固定为
-`tanh(z)`，删除Wz/Wy。必须先运行 shared-mode capacity conflict audit，再完成v3派生准入、
-observability和唯一400-step smoke。当前机器的 `optical-generative-models` 环境已恢复CUDA可见性；
-但v3 smoke已是有效失败证据，不得重复，不得启动984-step训练或数据集导出。
+当前没有正式训练授权。v3/v4和v5均保持失败证据只读。v5容量审计已经证明固定四锚点等权硬路由不满足当前MNIST类内几何，
+因此不得运行v5初始化准入、可观测性、400-step smoke或正式训练。下一步仅允许运行
+`audit conditional-continuous-mode-capacity`，先比较数据对齐的连续PCA模式与v5硬锚点基线；该审计不创建optimizer或checkpoint。
 
 2026-07-27 的首次v3 smoke因派生代码遗漏复制已训练的Encoder/Decoder相位而作废，
 不作为模型失败证据。派生准入现已增加step-0 raw-CMOS等价门；只有该门通过后运行的smoke
@@ -85,3 +83,62 @@ class-mode更新门均通过，但语义门、axis距离比及15%分类loss下�
 evaluator validation accuracy 为 `0.9876`，state hash 前后一致，未创建 optimizer。Q 方向对所有低margin样本均为正，functional probe 的面板 accuracy 分别由 `0.8941/0.7706/0.7059` 提高到 `0.9118/0.8412/0.8000`；但每类特征距离比下降超过允许的 `0.03`，违反多样性保护门。因此最终分类为 `local_semantic_unreachable`，evidence 状态为 failed，`permitted_next_actions=[]`。
 
 该结果表明语义修正方向存在，但在保持当前物理多样性、零码和饱和约束的切空间内不可达。不得运行 v4 admission、400-step smoke、984-step正式训练、自动评估或数据集导出；继续扩展生成器前必须另立结构/目标合同。
+
+## v5 容量审计（2026-07-27）
+
+v5代码、配置和CLI已实现，但无更新四锚点容量审计未通过：平均类内特征离散度下降 `0.1691`，最低类别下降 `0.1243`，低于固定平均 `0.30`/最低 `0.15` 门。证据位于
+`outputs/20260727_v2/runs/20260727_211242_776413_formal_v2_multi_anchor_local_modes_finite_crop_identity/`。
+
+该失败是有效停止证据；不得降低门限、运行v5准入/可观测性/400-step smoke或启动正式训练。数字1还存在156张小簇，后续容量gate必须显式报告最小cluster count。
+下一步仅允许连续模式容量审计；若其通过，才能另立candidate admission合同。
+
+## 连续模式容量审计（2026-07-28）
+
+无更新数据审计已完成，证据位于
+`outputs/20260728_v2/runs/20260728_180501_490139_diagnostic_v2_continuous_mode_capacity_finite_crop_identity/`。
+固定55k训练子集上，PCA-8相对v5 K=4基线的平均优势为 `0.4269`、最低类别优势为 `0.3052`，振幅空间PCA-8最小解释收益为 `0.4732`，十类模式均为rank 8；数据容量门全部通过。
+
+同一证据的物理probe因当前环境 `CUDA unavailable` 分类为 `harness_invalid`，未创建optimizer、未写入checkpoint、未改变任何参数。该结果只能授权在CUDA可用且内容上下文一致的环境中重跑同一无更新物理probe，不授权连续模式训练或正式评估。
+
+## 连续模式CUDA probe合同复核（2026-07-29）
+
+20260729 CUDA运行完成了旧版连续模式容量/物理probe，但旧版evidence的`passed`不能作为准入依据：axis accuracy为 `0.8235`，uniform-1234/5678 accuracy为 `0.5824/0.5706`，低于原语义门；类别5/7 recall显著不足。旧实现还复用了v3固定gain `0.5`，没有执行预注册的 `0.05` SLM-logit RMS安全探针、逐方向响应、梯度和stateless切空间门。
+
+因此该run标记为 `probe_gain_contract_mismatch / harness_contract_incomplete`，原始文件保持只读，不修改、不迁移其`permitted_next_actions`。下一步必须运行新的
+`audit conditional-continuous-mode-reachability`，固定 `alpha=0.05/tanh(1)`，补齐语义、梯度、逐方向响应和完整10×17 contact sheet门。该命令仍不创建optimizer或checkpoint。
+
+代码侧已补齐该只读合同：新审计固定 basis hash
+`de283cad951b1fddb54499c16c032fc44f6beb5239734d78795475effbe890bb`，生成三个完整
+`10×17` contact sheet，并对 class carrier、continuous PCA modes、Encoder phase、Decoder
+phase 分别执行可逆的一次性切空间 probe。probe 将分类 margin 梯度与分布保持梯度归一化组合，
+实际限制 SLM-logit RMS `≤0.05`、相位 RMS `≤0.005 rad` 和 raw-CMOS 相对 RMS `1%`；不创建
+optimizer、不写回参数、不生成 checkpoint。修复前当前会话 CUDA 不可用，故尚未运行该新物理审计；
+CUDA 可见性恢复后仍须重新执行该审计，才能宣称连续模式语义可达或授权后续架构/训练。
+
+## WSL CUDA 环境修复（2026-07-29）
+
+此前的 `torch.cuda.is_available() == false` 不是模型或审计失败：WSL 的 NVIDIA 驱动库目录
+`/usr/lib/wsl/lib` 没有在导入 PyTorch 前进入动态链接器路径。已为 Conda 环境
+`optical-generative-models` 安装 activation/deactivation hook；新的 shell 执行
+`conda activate optical-generative-models` 后会自动设置 `LD_LIBRARY_PATH=/usr/lib/wsl/lib`，
+并已验证 `torch.cuda.is_available() == true`、`device_count == 1`、设备为 RTX 3060 Laptop GPU。
+此修复只恢复硬件可见性，不改变任何训练、审计或物理合同。
+
+## 连续 PCA 安全尺度可达性审计（2026-07-29）
+
+修复 WSL CUDA 路径后，`conditional-continuous-mode-reachability` 已在 RTX 3060 Laptop GPU
+完成，证据位于
+`outputs/20260729_v2/runs/20260729_131120_150834_diagnostic_v2_continuous_mode_capacity_finite_crop_identity/`。
+审计初版在 6 GB 显存上错误地同时保留 170 个完整光路反向图而 OOM；实现现已改为每类17个样本
+立即消费并累计梯度，固定三块 10×17 面板、无 optimizer、无 checkpoint、参数哈希不变的合同保持不变。
+
+安全增益 `alpha=0.05/tanh(1)` 准确得到 axis SLM-logit RMS `0.0500`。语义在安全尺度下显著恢复：
+axis/uniform-1234/uniform-5678 accuracy 为 `0.9824/0.9529/0.9529`，饱和均约 `0.0076`；四组
+gradient observability 均通过，零码和光路 trace 均有效。但物理随机码传输不足：raw CMOS code fraction
+仅 `0.0071/0.0212/0.0240`，物理 SLM `A²` code fraction 仅 `0.0107/0.0323/0.0352`，低于固定 `0.10`。
+最终分类为 `failed / safe_scale_transport_insufficient`，不授权连续模式 admission、smoke 或训练。
+
+这说明旧 gain `0.5` 的语义退化主要来自过大扰动；但在符合预注册安全 logit 范围的单位 RMS PCA 模式下，
+变化尚未以足够强度穿过完整光路。不得恢复 gain `0.5` 或进行 gain sweep。该失败现为不可变 v6 输入证据：
+v6 联合训练载波、20 cycles/mm 固定低通 PCA 模式、有界模式尺度和四层相位，建立新的传输合同。
+只允许按 `admission → observability → 一次400-step smoke → 用户5 epoch` 推进；任一门失败即停止。

@@ -1,4 +1,5 @@
 """Strict v2 checkpoints; migrations are explicit and never implicit full loads."""
+
 from __future__ import annotations
 
 import hashlib
@@ -8,7 +9,13 @@ from typing import Any, Mapping
 
 import torch
 
-from ..evidence import ArtifactRefV2, atomic_torch_save, canonical_sha256, file_sha256, tensor_sha256
+from ..evidence import (
+    ArtifactRefV2,
+    atomic_torch_save,
+    canonical_sha256,
+    file_sha256,
+    tensor_sha256,
+)
 
 
 def state_signature(state: Mapping[str, torch.Tensor]) -> str:
@@ -45,23 +52,49 @@ class CheckpointManifestV2:
         return asdict(self)
 
 
-def save_exact_checkpoint(path: str | Path, model: torch.nn.Module, manifest: CheckpointManifestV2, *, extra: Mapping[str, Any] | None = None) -> None:
+def save_exact_checkpoint(
+    path: str | Path,
+    model: torch.nn.Module,
+    manifest: CheckpointManifestV2,
+    *,
+    extra: Mapping[str, Any] | None = None,
+) -> None:
     state = model.state_dict()
-    if manifest.schema_version != 2 or manifest.state_signature != state_signature(state) or manifest.state_content_hash != state_content_hash(state):
+    if (
+        manifest.schema_version != 2
+        or manifest.state_signature != state_signature(state)
+        or manifest.state_content_hash != state_content_hash(state)
+    ):
         raise ValueError("checkpoint manifest does not exactly describe model state")
-    payload = {"manifest": manifest.to_dict(), "state_dict": state, "extra": dict(extra or {})}
+    payload = {
+        "manifest": manifest.to_dict(),
+        "state_dict": state,
+        "extra": dict(extra or {}),
+    }
     atomic_torch_save(path, payload)
 
 
-def load_exact_checkpoint(path: str | Path, model: torch.nn.Module, expected: CheckpointManifestV2) -> Mapping[str, Any]:
+def load_exact_checkpoint(
+    path: str | Path, model: torch.nn.Module, expected: CheckpointManifestV2
+) -> Mapping[str, Any]:
     payload = torch.load(path, map_location="cpu", weights_only=False)
-    if not isinstance(payload, dict) or not isinstance(payload.get("manifest"), dict) or not isinstance(payload.get("state_dict"), dict):
+    if (
+        not isinstance(payload, dict)
+        or not isinstance(payload.get("manifest"), dict)
+        or not isinstance(payload.get("state_dict"), dict)
+    ):
         raise ValueError("invalid v2 checkpoint payload")
     actual = CheckpointManifestV2(**payload["manifest"])
     if actual != expected:
-        raise ValueError("v2 checkpoint manifest does not match the requested formal system")
+        raise ValueError(
+            "v2 checkpoint manifest does not match the requested formal system"
+        )
     state = payload["state_dict"]
-    if state_signature(state) != actual.state_signature or state_content_hash(state) != actual.state_content_hash or state_signature(model.state_dict()) != actual.state_signature:
+    if (
+        state_signature(state) != actual.state_signature
+        or state_content_hash(state) != actual.state_content_hash
+        or state_signature(model.state_dict()) != actual.state_signature
+    ):
         raise ValueError("v2 checkpoint state signature is not exact")
     missing, unexpected = model.load_state_dict(state, strict=True)
     if missing or unexpected:
@@ -87,7 +120,9 @@ class WarmStartManifestV2:
         return payload
 
 
-def load_prototype_warm_start(path: str | Path, model: torch.nn.Module, *, expected_system_signature: str) -> WarmStartManifestV2:
+def load_prototype_warm_start(
+    path: str | Path, model: torch.nn.Module, *, expected_system_signature: str
+) -> WarmStartManifestV2:
     """Load only the auditable prototype/template and phase state boundary."""
     payload = torch.load(path, map_location="cpu", weights_only=False)
     state = payload.get("state_dict") if isinstance(payload, dict) else None
@@ -96,19 +131,31 @@ def load_prototype_warm_start(path: str | Path, model: torch.nn.Module, *, expec
         raise ValueError("prototype checkpoint is invalid")
     source_manifest = CheckpointManifestV2(**manifest_payload)
     if source_manifest.system_signature != expected_system_signature:
-        raise ValueError("prototype checkpoint system signature does not match warm-start target")
-    allowed = ("generator.template_logits", "system.encoder.phase", "system.decoder.phase")
+        raise ValueError(
+            "prototype checkpoint system signature does not match warm-start target"
+        )
+    allowed = (
+        "generator.template_logits",
+        "system.encoder.phase",
+        "system.decoder.phase",
+    )
     target = model.state_dict()
     loaded: dict[str, str] = {}
     for key in allowed:
-        if key not in state or key not in target or state[key].shape != target[key].shape:
+        if (
+            key not in state
+            or key not in target
+            or state[key].shape != target[key].shape
+        ):
             raise ValueError(f"prototype warm-start lacks compatible {key}")
         target[key].copy_(state[key])
         loaded[key] = state_signature({key: state[key]})
     model.load_state_dict(target, strict=True)
     return WarmStartManifestV2(
         schema_version=2,
-        source_checkpoint=ArtifactRefV2(str(Path(path).resolve()), file_sha256(path), "prototype_checkpoint"),
+        source_checkpoint=ArtifactRefV2(
+            str(Path(path).resolve()), file_sha256(path), "prototype_checkpoint"
+        ),
         source_system_signature=source_manifest.system_signature,
         target_system_signature=expected_system_signature,
         loaded_key_signatures=loaded,
@@ -136,22 +183,56 @@ class ConditionalCheckpointManifestV2:
     training_schedule_hash: str | None = None
     initialization_seed: int | None = None
     initialization_state_hash: str | None = None
+    # v6 is the first conditional architecture whose electronic generator is
+    # derived from a content-addressed physical basis.  These optional fields
+    # keep every older manifest readable while making v6 loads exact.
+    config_contract_hash: str | None = None
+    pca_basis_hash: str | None = None
+    lowpass_contract_hash: str | None = None
+    scale_contract_hash: str | None = None
+    route_contract_hash: str | None = None
+    semantic_source_checkpoint_hash: str | None = None
+    safe_scale_evidence_hash: str | None = None
+    first_400_schedule_hash: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
-def save_conditional_checkpoint(path: str | Path, model: torch.nn.Module, manifest: ConditionalCheckpointManifestV2, *, extra: Mapping[str, Any] | None = None) -> None:
+def save_conditional_checkpoint(
+    path: str | Path,
+    model: torch.nn.Module,
+    manifest: ConditionalCheckpointManifestV2,
+    *,
+    extra: Mapping[str, Any] | None = None,
+) -> None:
     state = model.state_dict()
     _validate_conditional_manifest(manifest, model=model)
-    if manifest.state_signature != state_signature(state) or manifest.state_content_hash != state_content_hash(state):
-        raise ValueError("conditional checkpoint manifest does not exactly describe model state")
-    atomic_torch_save(path, {"manifest": manifest.to_dict(), "state_dict": state, "extra": dict(extra or {})})
+    if manifest.state_signature != state_signature(
+        state
+    ) or manifest.state_content_hash != state_content_hash(state):
+        raise ValueError(
+            "conditional checkpoint manifest does not exactly describe model state"
+        )
+    atomic_torch_save(
+        path,
+        {
+            "manifest": manifest.to_dict(),
+            "state_dict": state,
+            "extra": dict(extra or {}),
+        },
+    )
 
 
-def load_conditional_checkpoint(path: str | Path, model: torch.nn.Module, expected: ConditionalCheckpointManifestV2) -> Mapping[str, Any]:
+def load_conditional_checkpoint(
+    path: str | Path, model: torch.nn.Module, expected: ConditionalCheckpointManifestV2
+) -> Mapping[str, Any]:
     payload = torch.load(path, map_location="cpu", weights_only=False)
-    if not isinstance(payload, dict) or not isinstance(payload.get("manifest"), dict) or not isinstance(payload.get("state_dict"), dict):
+    if (
+        not isinstance(payload, dict)
+        or not isinstance(payload.get("manifest"), dict)
+        or not isinstance(payload.get("state_dict"), dict)
+    ):
         raise ValueError("invalid conditional checkpoint")
     try:
         actual = ConditionalCheckpointManifestV2(**payload["manifest"])
@@ -159,9 +240,14 @@ def load_conditional_checkpoint(path: str | Path, model: torch.nn.Module, expect
         raise ValueError("invalid conditional checkpoint manifest") from exc
     _validate_conditional_manifest(actual, model=model)
     if actual != expected:
-        raise ValueError("conditional checkpoint does not match the requested architecture/system/config")
+        raise ValueError(
+            "conditional checkpoint does not match the requested architecture/system/config"
+        )
     state = payload["state_dict"]
-    if state_signature(state) != actual.state_signature or state_content_hash(state) != actual.state_content_hash:
+    if (
+        state_signature(state) != actual.state_signature
+        or state_content_hash(state) != actual.state_content_hash
+    ):
         raise ValueError("conditional checkpoint state content changed")
     missing, unexpected = model.load_state_dict(state, strict=True)
     if missing or unexpected:
@@ -169,7 +255,9 @@ def load_conditional_checkpoint(path: str | Path, model: torch.nn.Module, expect
     return payload.get("extra", {})
 
 
-def _validate_conditional_manifest(manifest: ConditionalCheckpointManifestV2, *, model: torch.nn.Module | None = None) -> None:
+def _validate_conditional_manifest(
+    manifest: ConditionalCheckpointManifestV2, *, model: torch.nn.Module | None = None
+) -> None:
     """Validate the architecture-specific manifest contract.
 
     v1 is retained as an explicit historical format.  v2 is intentionally
@@ -179,10 +267,19 @@ def _validate_conditional_manifest(manifest: ConditionalCheckpointManifestV2, *,
     """
     if manifest.schema_version != 2:
         raise ValueError("invalid conditional checkpoint manifest schema_version")
-    allowed = {"conditional_global_amplitude_v1", "conditional_identity_logit_amplitude_v2", "conditional_class_conditioned_modes_v3", "conditional_parity_stabilized_modes_v4"}
+    allowed = {
+        "conditional_global_amplitude_v1",
+        "conditional_identity_logit_amplitude_v2",
+        "conditional_class_conditioned_modes_v3",
+        "conditional_parity_stabilized_modes_v4",
+        "conditional_multi_anchor_local_modes_v5",
+        "conditional_pca_transport_codesign_v6",
+    }
     if manifest.architecture_kind not in allowed:
         raise ValueError("unsupported conditional checkpoint architecture")
-    model_kind = getattr(model, "architecture_kind", None) if model is not None else None
+    model_kind = (
+        getattr(model, "architecture_kind", None) if model is not None else None
+    )
     if model_kind is not None and model_kind != manifest.architecture_kind:
         raise ValueError("conditional checkpoint architecture does not match model")
     if manifest.architecture_kind == "conditional_global_amplitude_v1":
@@ -198,7 +295,9 @@ def _validate_conditional_manifest(manifest: ConditionalCheckpointManifestV2, *,
                 manifest.initialization_state_hash,
             )
         ):
-            raise ValueError("v1 conditional checkpoint cannot carry v2 contract fields")
+            raise ValueError(
+                "v1 conditional checkpoint cannot carry v2 contract fields"
+            )
         return
     required = {
         "generator_contract_hash": manifest.generator_contract_hash,
@@ -206,5 +305,24 @@ def _validate_conditional_manifest(manifest: ConditionalCheckpointManifestV2, *,
         "training_schedule_hash": manifest.training_schedule_hash,
         "initialization_state_hash": manifest.initialization_state_hash,
     }
-    if manifest.initialization_seed != 1234 or any(not isinstance(value, str) or not value for value in required.values()):
-        raise ValueError("v2 conditional checkpoint requires initialization seed 1234 and complete contract hashes")
+    if manifest.initialization_seed != 1234 or any(
+        not isinstance(value, str) or not value for value in required.values()
+    ):
+        raise ValueError(
+            "v2 conditional checkpoint requires initialization seed 1234 and complete contract hashes"
+        )
+    if manifest.architecture_kind == "conditional_pca_transport_codesign_v6":
+        v6_required = {
+            "config_contract_hash": manifest.config_contract_hash,
+            "pca_basis_hash": manifest.pca_basis_hash,
+            "lowpass_contract_hash": manifest.lowpass_contract_hash,
+            "scale_contract_hash": manifest.scale_contract_hash,
+            "route_contract_hash": manifest.route_contract_hash,
+            "semantic_source_checkpoint_hash": manifest.semantic_source_checkpoint_hash,
+            "safe_scale_evidence_hash": manifest.safe_scale_evidence_hash,
+            "first_400_schedule_hash": manifest.first_400_schedule_hash,
+        }
+        if any(
+            not isinstance(value, str) or not value for value in v6_required.values()
+        ):
+            raise ValueError("v6 checkpoint requires complete PCA transport provenance")
