@@ -113,6 +113,15 @@ PCA_TRANSPORT_ROUTE_CONTRACT = canonical_sha256(
     {"code": "tanh(z)", "code_dim": 8, "panels": "zero,+e,-e,+u,-u"}
 )
 
+PCA_TRANSPORT_REVALIDATION_CONTRACT = canonical_sha256(
+    {
+        "kind": "conditional_pca_transport_smoke_revalidation_v1",
+        "source": "saved_step_raw_and_final_checkpoint",
+        "optimizer": False,
+        "fixed_buffers_excluded_from_updates": True,
+    }
+)
+
 
 def _config_contract_hash(config) -> str:
     """Stable v6 contract: run metadata cannot invalidate a physical state."""
@@ -1044,6 +1053,114 @@ def pca_transport_smoke(args, config) -> int:
         None if passed else "PCA transport smoke failed",
     )
     _write_evidence(run, "conditional_pca_transport_smoke_evidence.json", record)
+    print(run.root)
+    return 0
+
+
+def conditional_pca_transport_smoke_revalidation(args, config) -> int:
+    """Recompute the v6 smoke gates from immutable saved artifacts.
+
+    This command deliberately performs no optical backward pass and creates no
+    optimizer.  It exists to separate the real model failure from the old
+    update gate, which accidentally required the fixed low-pass buffer to
+    change.
+    """
+    _require(config)
+    failed = EvidenceRecordV2.from_dict(
+        json.loads(Path(args.failed_smoke_evidence).read_text())
+    )
+    failed.validate()
+    if failed.evidence_kind != "conditional_pca_transport_smoke" or failed.status != "failed":
+        raise ValueError("revalidation requires the failed v6 smoke evidence")
+    history_path = Path(args.smoke_history)
+    history = json.loads(history_path.read_text())
+    if history.get("contract") != PCA_TRANSPORT_SMOKE_CONTRACT or len(history.get("history", [])) != 400:
+        raise ValueError("v6 smoke history must contain the immutable 400-step contract")
+    if not Path(args.checkpoint).is_file():
+        raise ValueError("revalidation checkpoint is missing")
+    # Load the bundle only to verify context and the trainable/frozen state
+    # partition.  No forward pass or optimizer is created here.
+    _, _, split, evaluator_hash, evaluator, bundle, manifest, device = _load(args, config)
+    expected_checkpoint_hash = file_sha256(args.checkpoint)
+    context = failed.context
+    if (
+        context.system_signature != _context(config).system_signature
+        or context.evaluator_checkpoint_hash != evaluator_hash
+        or context.dataset_split_manifest_hash != split.manifest_hash
+        or context.checkpoint_hash != expected_checkpoint_hash
+    ):
+        raise ValueError("failed smoke evidence is not bound to the v6 checkpoint context")
+    if failed.input_hashes.get("history") != file_sha256(history_path):
+        raise ValueError("smoke history hash does not match failed evidence")
+    run = _new_run(config)
+    panels = _panels(device)
+    # Recompute all gates from the already-written raw tensors.  This is a
+    # read-only numerical check; it never writes model state.
+    report_probes: dict[str, object] = {}
+    raw_root = Path(args.smoke_run)
+    mnist_images, mnist_labels = load_local_mnist(args.dataset_root, train=True)
+    real_probe = _real_panel_views(mnist_images, mnist_labels, device=device)
+    for step in (0, 50, 100, 200, 400):
+        payload: dict[str, object] = {}
+        for name, (_, labels) in panels.items():
+            raw_path = raw_root / f"pca_transport_{name}_step_{step}_raw.pt"
+            if not raw_path.is_file():
+                raise ValueError(f"missing immutable raw probe: {raw_path}")
+            raw = torch.load(raw_path, map_location=device, weights_only=True)
+            if raw.shape[0] != 170 or raw.ndim != 4:
+                raise ValueError("saved v6 raw probe must have shape [170,1,H,W]")
+            view = fixed_exposure_view(raw, config.conditional_generation.fixed_exposure_scale)
+            with torch.no_grad():
+                features, logits = evaluator(view)
+                real_features, _ = evaluator(real_probe)
+            prediction = logits.argmax(1)
+            payload[name] = {
+                "accuracy": float((prediction == labels).float().mean().item()),
+                "recall": [float((prediction[labels == y] == y).float().mean().item()) for y in range(10)],
+                "zero_accuracy": float((prediction[torch.arange(10, device=device) * 17] == labels[torch.arange(10, device=device) * 17]).float().mean().item()),
+                "camera_fraction": float(camera_code_fraction(raw, labels).item()),
+                "ratios": [float(x) for x in relative_diversity_ratios(F.normalize(features, dim=1), F.normalize(real_features, dim=1), labels)],
+                "saturation": float(torch.relu(raw / config.conditional_generation.fixed_exposure_scale - 1).gt(0).float().mean().item()),
+                "finite": bool(torch.isfinite(raw).all().item()),
+            }
+        report_probes[str(step)] = payload
+    axis_raw = torch.load(raw_root / "pca_transport_axis_step_400_raw.pt", map_location="cpu", weights_only=True)
+    zero = axis_raw[::17]
+    direction_rms = []
+    zero_rms = zero.square().mean().sqrt().clamp_min(1.0e-12)
+    for direction in range(8):
+        plus = axis_raw[1 + direction::17]
+        minus = axis_raw[9 + direction::17]
+        direction_rms.append(float((plus - minus).square().mean().sqrt().div(zero_rms).item()))
+    initial_state = state_content_hash(bundle.state_dict())
+    final_payload = torch.load(raw_root / "pca_transport_smoke_final.pt", map_location="cpu", weights_only=False)
+    final_state = state_content_hash({k: v for k, v in final_payload["state_dict"].items()})
+    trainable = {"generator.class_carrier_logits", "generator.class_modes", "generator.scale_logits", "system.encoder.phase", "system.decoder.phase"}
+    update_norms = {k: float((final_payload["state_dict"][k] - v.detach().cpu()).norm().item()) for k, v in bundle.state_dict().items() if k in trainable}
+    fixed_unchanged = all(torch.equal(final_payload["state_dict"][k], v.detach().cpu()) for k, v in bundle.state_dict().items() if k not in trainable)
+    p200 = report_probes["200"]
+    p400 = report_probes["400"]
+    camera_delta = {n: float(p400[n]["camera_fraction"] - p200[n]["camera_fraction"]) for n in p400}
+    ratio_delta = {n: float(min(p400[n]["ratios"]) - min(p200[n]["ratios"])) for n in p400}
+    gates = (
+        GateResult("saved_history_contract", True, {"steps": 400}),
+        GateResult("semantic_accuracy", all(x["accuracy"] >= .90 and min(x["recall"]) >= .80 for x in p400.values()), {}),
+        GateResult("camera_fraction", all(x["camera_fraction"] >= .10 for x in p400.values()), {"final": {n: x["camera_fraction"] for n, x in p400.items()}}),
+        GateResult("camera_progress", all(x >= .03 for x in camera_delta.values()), camera_delta),
+        GateResult("diversity_floor", all(min(x["ratios"]) >= .35 for x in p400.values()), {}),
+        GateResult("diversity_progress", all(x >= .10 for x in ratio_delta.values()), ratio_delta),
+        GateResult("zero_accuracy", all(x["zero_accuracy"] >= .95 for x in p400.values()), {}),
+        GateResult("direction_response", min(direction_rms) >= .01, {"minimum": min(direction_rms), "values": direction_rms}),
+        GateResult("finite", all(x["finite"] for x in p400.values()), {}),
+        GateResult("trainable_updates", all(x > 0 for x in update_norms.values()), update_norms),
+        GateResult("frozen_state_unchanged", fixed_unchanged, {}),
+        GateResult("state_context", bool(initial_state and final_state), {"initial": initial_state, "final": final_state}),
+    )
+    report_path = run.root / "conditional_pca_transport_smoke_revalidation_report.json"
+    atomic_write_json(report_path, {"contract": PCA_TRANSPORT_REVALIDATION_CONTRACT, "probes": report_probes, "camera_delta_200_400": camera_delta, "ratio_delta_200_400": ratio_delta, "direction_rms": direction_rms, "update_norms": update_norms, "fixed_state_unchanged": fixed_unchanged, "initial_state": initial_state, "final_state": final_state})
+    passed = all(g.passed for g in gates)
+    record = EvidenceRecordV2(2, "conditional_pca_transport_smoke_revalidation", config.run.evidence_tier, "passed" if passed else "failed", run.git_commit, run.dirty_patch_hash, run.config_hash, _context(config, evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, checkpoint_hash=expected_checkpoint_hash), {"failed_smoke": file_sha256(args.failed_smoke_evidence), "history": file_sha256(history_path), "report": file_sha256(report_path)}, gates, ("conditional-optical-generation-feasibility",) if passed else (), None if passed else "v6 physical diversity gates remain failed")
+    _write_evidence(run, "conditional_pca_transport_smoke_revalidation_evidence.json", record)
     print(run.root)
     return 0
 

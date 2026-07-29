@@ -124,6 +124,29 @@ CUDA 可见性恢复后仍须重新执行该审计，才能宣称连续模式语
 并已验证 `torch.cuda.is_available() == true`、`device_count == 1`、设备为 RTX 3060 Laptop GPU。
 此修复只恢复硬件可见性，不改变任何训练、审计或物理合同。
 
+## v6 PCA transport smoke 失败闭环（2026-07-29）
+
+v6 admission 与 observability 已通过，唯一一次 400-step CUDA smoke 已完成但失败。最终固定面板
+accuracy 为 `1.0`，saturation 为 `0.0467/0.0474/0.0482`；但 raw-CMOS code fraction 仅为
+`0.0106/0.0325/0.0354`，最低归一化特征距离比为 `0.288/0.399/0.442`。step 200→400 的
+camera fraction 增量只有 `0.0013/0.0031/0.0041`，不满足 `0.03` 门；因此不得运行 v6 正式
+5 epochs、自动评估或数据集导出。
+
+原 smoke 的 updates gate 还错误地把固定 `lowpass_mask` 当作必须更新参数。只读复核已修正为只检查
+五个可训练组；其余固定状态保持不变。复核证据位于
+`outputs/20260729_v2/runs/20260729_172156_692157_diagnostic_v2_pca_transport_codesign_finite_crop_identity/`，
+最终结论仍是 `valid_v6_model_failure_with_harness_defects`。
+
+随后完成一次流式宏观光路局部可行性审计，未创建 optimizer、未写回 checkpoint，state hash 前后一致。
+在 band-limited SLM、SLM+共享 phase counterfactual 和 identity-phase reference 三个局部切空间中，
+均无法同时达到语义和物理多样性门，分类为 `local_macro_generation_unreachable`。审计产物位于
+`outputs/20260729_v2/runs/20260729_173629_136389_diagnostic_v2_pca_transport_codesign_finite_crop_identity/`。
+
+该分类是当前 v6 局部合同下的停止证据，不是对任意未来光学系统的数学不可能性证明。当前不创建 v7，
+不重复 smoke，不调整 gain/LR/loss/scale，不启动正式训练。下一阶段只能进行宏观物理合同复审：明确是否
+允许改变相位初始化、层数/间距/孔径或任务门限；在此决定前不得进入 5000 张 validation、60,000 张导出
+或 utility 闭环。
+
 ## 连续 PCA 安全尺度可达性审计（2026-07-29）
 
 修复 WSL CUDA 路径后，`conditional-continuous-mode-reachability` 已在 RTX 3060 Laptop GPU

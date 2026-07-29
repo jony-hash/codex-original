@@ -2,6 +2,8 @@ import torch
 
 from ldm_project.v2.config import load_config
 from ldm_project.v2.student.generator import ConditionalPCATransportCodesignGenerator
+from ldm_project.v2.application.conditional_optical_feasibility import FEASIBILITY_CONTRACT
+from ldm_project.v2.application.conditional_pca_transport import PCA_TRANSPORT_REVALIDATION_CONTRACT
 
 
 def test_pca_transport_config_and_bounded_scales() -> None:
@@ -46,3 +48,12 @@ def test_pca_transport_has_no_hidden_coefficient_network() -> None:
     codes = torch.zeros(2, 8)
     codes[1, 3] = 1.0
     assert not torch.equal(generator(codes, labels)[0], generator(codes, labels)[1])
+
+
+def test_v6_revalidation_and_macro_review_are_diagnostic_contracts() -> None:
+    assert PCA_TRANSPORT_REVALIDATION_CONTRACT
+    assert FEASIBILITY_CONTRACT
+    generator = ConditionalPCATransportCodesignGenerator()
+    # The fixed low-pass mask is a buffer, not one of the five trainable v6
+    # groups that a smoke revalidation may require to move.
+    assert "lowpass_mask" not in dict(generator.named_parameters())

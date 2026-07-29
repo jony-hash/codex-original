@@ -28,3 +28,17 @@ label + code → amplitude SLM → Encoder → identity OLS → Decoder → CMOS
 载波、20 cycles/mm 固定低通 PCA 模式、有界尺度和四层相位；不是 gain sweep，也不复用旧 generator 权重。
 v6 只可按 `admission → observability → 一次400-step smoke → 用户5 epoch` 推进。任一门失败即转入宏观光路
 生成可行性复审，禁止 v7、降门限、重复 smoke 或延长相同训练。
+
+## v6 smoke 与宏观可行性复审结果（2026-07-29）
+
+v6 的 admission/observability 通过，但唯一 400-step smoke 真实失败：语义 accuracy 达到 `1.0`，
+而三个面板 code fraction 仅 `0.0106/0.0325/0.0354`，最低 feature ratio 为 `0.288/0.399/0.442`。
+分类 loss 和 evaluator 特征损失下降没有转化为足够 raw-CMOS 物理变化。固定 `lowpass_mask` 被错误纳入旧
+updates gate，已由只读复核工具排除；五组可训练参数仍均有有限非零更新，因此该缺陷不改变模型失败结论。
+
+流式宏观审计在 band-limited SLM、SLM+共享 phase 和 identity-phase reference 三个局部 counterfactual
+空间均未满足联合门，结果为 `local_macro_generation_unreachable`。该证据只表示当前 v6 初始化、20 cycles/mm
+输入带宽、2+2 phase 和固定曝光合同的局部可达性不足，不授权创建 v7 或继续训练。
+
+当前停止条件：必须先完成宏观物理合同复审，明确是否允许改变 phase 初始化、光学层容量/间距/孔径或质量门；
+在得到明确合同前，禁止正式训练、自动评估、candidate 导出、防记忆、utility 和最终准入。
