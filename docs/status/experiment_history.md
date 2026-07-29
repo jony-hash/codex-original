@@ -631,3 +631,10 @@ v6 smoke 与局部宏观审计失败后，保留完整宏观光路但建立独�
 delta transport loss。旧 v6 checkpoint/evidence 不迁移；执行顺序为 target admission →
 optical admission → observability → 唯一 400-step smoke。正式训练与数据集闭环在 smoke
 通过前继续禁止。
+
+## 2026-07-29：v6.2.1 合同修复后短层距 retention 失败
+
+首次v6.2 target admission的全局scale/0.20上限/错误退出码被归为无效harness。改为每类每方向
+`(0.05,0.50)`确定性标定后，电子target通过三块面板的语义、fraction和方向响应。随后0.25 mm
+零phase CUDA admission计算冻结 `κ=0.997967`，但Encoder layer 2相对1.50 mm的retention为
+axis `+27.4%`、uniform `+16.0%/+14.3%`，低于每面板`+25%`门。该失败阻止所有训练与导出。

@@ -52,3 +52,10 @@ v6 失败归因为 1.50 mm 层距下相位职责与随机码传输目标错位�
 
 旧 v6 证据不能迁移。短层距链必须重新通过 target admission、optical admission、observability
 和唯一 400-step smoke；失败后停止，不创建 v7。
+
+### v6.2.1 optical admission结果
+
+修复每类每方向scale与CLI返回码后，电子target通过；但0.25 mm零phase的Encoder layer 2
+retention相对1.50 mm只在axis达到`+27.4%`，两组uniform仅`+16.0%/+14.3%`。因三面板
+`+25%`是预注册物理门，`conditional_short_spacing_optical_admission`有效失败。短层距自成像
+训练尚未开始，也不得通过调loss、重复smoke或降低门限绕过该证据。

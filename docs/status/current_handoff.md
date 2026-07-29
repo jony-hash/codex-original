@@ -175,3 +175,14 @@ OLS、finite_crop、曝光和 2048 网格不变，并加入同 code 自成像 `�
 当前只允许执行 `conditional-short-spacing-target-admission`；它通过后才能执行 optical
 admission、observability 和唯一一次 400-step smoke。短层距 checkpoint 与旧 v6 checkpoint
 严格不兼容，旧 smoke final 禁止 warm-start。正式训练、5000 validation 和 60000 导出仍未授权。
+
+## v6.2.1 短层距光学准入失败（2026-07-29）
+
+每类每方向 `(0.05,0.50)` 电子标定已经通过语义、`A²` code fraction和方向响应门；首次v6.2
+target evidence因此标为 `invalid_harness_evidence`。零phase短层距CUDA准入随后完成，冻结
+`κ=0.997967`且无饱和，但Encoder layer 2 retention相对1.50 mm仅为axis `+27.4%`、
+uniform `+16.0%/+14.3%`，未满足三个面板均需`+25%`的物理门。
+
+这是有效 `short_spacing_optical_retention_insufficient` 停止证据。不得运行observability、
+400-step smoke、正式训练或任何数据集验收；下一步只能独立复审宏观光路容量，不降低门限或重复相同
+0.25 mm训练。

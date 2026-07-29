@@ -24,7 +24,7 @@ identity OLS → 2+2 Decoder → CMOS`。generator 仍为低通 PCA 模式和有
 400-step short-spacing smoke。任一 gate 失败即停止，不调整 gain/LR/loss/层距，
 正式 5 epoch、5000 validation、60000 导出由用户在 smoke 通过后运行。
 
-## 首次 v6.2 target admission（2026-07-29）
+## 首次 v6.2 target admission（2026-07-29，已 supersede）
 
 使用当前内容绑定 semantic checkpoint、冻结 evaluator 和本地 MNIST 重新执行电子端门。
 固定 20 次二分把语义安全 scale 推到硬上限 `0.19999986`；三个固定面板的 accuracy
@@ -33,3 +33,19 @@ identity OLS → 2+2 Decoder → CMOS`。generator 仍为低通 PCA 模式和有
 为 `failed`。该失败发生在光路之前，未创建 optimizer、未生成初始化 checkpoint，故
 不允许继续 optical admission 或 CUDA smoke。最新运行目录为
 `outputs/20260729_v2/runs/20260729_181916_504477_diagnostic_v2_pca_self_imaging_transport_finite_crop_identity_short_spacing/`。
+
+该证据的全局scale、0.20上限、错误失败原因和CLI零退出码均违背预注册合同，分类为
+`invalid_harness_evidence`；原文件保持只读。
+
+## v6.2.1 电子与短层距光学准入（2026-07-29）
+
+修复为每类每方向独立的 `(0.05,0.50)` scale 后，电子target admission通过：axis、
+uniform-1234、uniform-5678 的 accuracy均为 `1.0`，`A²` code fraction为
+`0.3095/0.5066/0.5387`，每类recall和八方向响应均通过。
+
+随后零phase的0.25 mm CUDA光学准入为有效失败。冻结全局 `κ=0.997967`，无饱和、
+trace完整；但相对于1.50 mm，Encoder layer 2 code retention仅提升 axis `27.4%`、
+uniform-1234 `16.0%`、uniform-5678 `14.3%`。三面板均需至少25%的合同未满足，故
+分类 `short_spacing_optical_retention_insufficient`。不得进入observability、400-step smoke、
+正式训练或数据集导出。运行目录：
+`outputs/20260729_v2/runs/20260729_213431_379723_diagnostic_v2_pca_self_imaging_transport_finite_crop_identity_short_spacing/`。

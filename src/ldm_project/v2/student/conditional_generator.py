@@ -872,7 +872,8 @@ class ConditionalPCASelfImagingTransportGenerator(nn.Module):
 
     architecture_kind = "conditional_pca_self_imaging_transport_v6_2"
     code_dim = 8
-    max_scale = 0.20
+    min_scale = 0.05
+    max_scale = 0.50
     initial_scale = 0.05
 
     def __init__(self, *, shape=(200, 200), code_dim=8, hidden_dim=64,
@@ -887,7 +888,7 @@ class ConditionalPCASelfImagingTransportGenerator(nn.Module):
         ) if class_modes is None else class_modes.detach().clone())
         if tuple(carrier.shape) != (10, *shape) or tuple(modes.shape) != (10, 8, *shape):
             raise ValueError("v6.2 carrier/modes shapes must be [10,H,W] and [10,8,H,W]")
-        initial_logit = float(torch.logit(torch.tensor(self.initial_scale / self.max_scale)).item())
+        initial_logit = float(torch.logit(torch.tensor((self.initial_scale - self.min_scale + 1.0e-6) / (self.max_scale - self.min_scale))).item())
         scales = torch.full((10, 8), initial_logit) if scale_logits is None else scale_logits.detach().clone()
         if tuple(scales.shape) != (10, 8):
             raise ValueError("v6.2 scale_logits must have shape [10,8]")
@@ -910,7 +911,7 @@ class ConditionalPCASelfImagingTransportGenerator(nn.Module):
         return ConditionalClassConditionedModesGenerator.normalized_modes(filtered)
 
     def scales(self):
-        return self.max_scale * torch.sigmoid(self.scale_logits)
+        return self.min_scale + (self.max_scale - self.min_scale) * torch.sigmoid(self.scale_logits)
 
     def coefficients(self, code, labels):
         self._validate_inputs(code, labels)
