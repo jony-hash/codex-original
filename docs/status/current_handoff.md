@@ -197,3 +197,18 @@ uniform `+16.0%/+14.3%`，未满足三个面板均需`+25%`的物理门。
 该历史 evidence 已标记 `invalid_saturation_harness`，必须用 pre-clamp 高饱和比例重跑一次 optical admission；
 无论结果如何都不得运行observability、400-step smoke、正式训练或任何数据集验收。`0.25 mm`只保留给未来
 单片堆叠器件诊断，当前实验台主线回到正式 `1.50 mm` 合同。
+## v6.4 near-conjugate relay recovery (current branch)
+
+The v6.3 formal-spacing smoke is a valid failed diagnostic: allowing the
+electronic carrier, PCA modes and scales to update restored classification but
+reduced the axis code fraction from 0.2531 to 0.2203.  It must not warm-start
+another run.  The active branch is `experiment/v2-near-conjugate-relay-v64`.
+
+v6.4 freezes the passed v6.2 electronic PCA target and trains only the four
+phase surfaces.  Its inter-layer transport is a mechanically buildable,
+two-lens 1:1 near-conjugate relay (25.00/50.00/24.75 mm segments, 25 mm
+lenses, 99.75 mm per module, effective ABCD `[-1, +0.25 mm; 0, -1]`).  A
+global intensity transmission of 0.80 is part of this physical contract; it
+is not per-sample exposure normalization.  The required sequence is relay
+equivalence → admission → semantic tangent → observability → one CUDA
+400-step smoke.  A failed gate stops the line.

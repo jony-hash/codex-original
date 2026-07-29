@@ -14,7 +14,7 @@ class StrictModel(BaseModel):
 
 
 class FormalSystemConfig(StrictModel):
-    kind: Literal["formal_amplitude_finite_crop_identity", "diagnostic_amplitude_finite_crop_identity", "diagnostic_amplitude_finite_crop_identity_short_spacing_v1"]
+    kind: Literal["formal_amplitude_finite_crop_identity", "diagnostic_amplitude_finite_crop_identity", "diagnostic_amplitude_finite_crop_identity_short_spacing_v1", "diagnostic_amplitude_near_conjugate_relay_identity_v1", "formal_amplitude_near_conjugate_relay_identity_v1"]
     wavelength_m: float = 532.0e-9
     slm_shape: tuple[int, int] = (200, 200)
     slm_pixel_pitch_m: float = 2.5e-6
@@ -62,13 +62,20 @@ class FormalSystemConfig(StrictModel):
                     raise ValueError(f"formal v2 system locks {key}={value!r}")
             elif actual != value:
                 raise ValueError(f"formal v2 system locks {key}={value!r}")
+        if self.kind in {"diagnostic_amplitude_near_conjugate_relay_identity_v1", "formal_amplitude_near_conjugate_relay_identity_v1"}:
+            # The bench geometry and sampling remain formal; the inter-layer
+            # transport is an explicitly named near-conjugate relay, not a
+            # substitute free-space layer spacing.
+            if self.propagation_grid_size < 100:
+                raise ValueError("propagation_grid_size must cover the active metasurface")
+            return self
         if self.propagation_grid_size < 100:
             raise ValueError("propagation_grid_size must cover the active metasurface")
         return self
 
     @property
     def is_formal(self) -> bool:
-        return self.kind == "formal_amplitude_finite_crop_identity"
+        return self.kind in {"formal_amplitude_finite_crop_identity", "formal_amplitude_near_conjugate_relay_identity_v1"}
 
 
 class LightGenSystemConfig(StrictModel):
@@ -250,6 +257,7 @@ class V2Config(StrictModel):
         "conditional_pca_transport_codesign_v6",
         "conditional_pca_self_imaging_transport_v6_2",
         "conditional_pca_formal_spacing_self_imaging_v6_3",
+        "conditional_pca_near_conjugate_relay_v6_4",
     ] = "legacy_v2_distillation"
     system: SystemConfig
     teacher: TeacherConfig | None = None
@@ -270,6 +278,7 @@ class V2Config(StrictModel):
             "conditional_multi_anchor_local_modes_v5",
             "conditional_pca_transport_codesign_v6",
             "conditional_pca_formal_spacing_self_imaging_v6_3",
+            "conditional_pca_near_conjugate_relay_v6_4",
         }:
             if self.conditional_generation is None:
                 raise ValueError("conditional architecture requires conditional_generation")
@@ -282,7 +291,7 @@ class V2Config(StrictModel):
             supplied = [name for name, value in forbidden.items() if value is not None]
             if supplied:
                 raise ValueError(f"conditional architecture rejects legacy fields: {', '.join(supplied)}")
-            if not self.system.is_formal and self.architecture != "conditional_pca_self_imaging_transport_v6_2":
+            if not self.system.is_formal and self.architecture not in {"conditional_pca_self_imaging_transport_v6_2", "conditional_pca_near_conjugate_relay_v6_4"}:
                 raise ValueError("conditional architecture requires the formal identity-OLS system")
             if self.architecture in {"conditional_identity_logit_amplitude_v2", "conditional_class_conditioned_modes_v3", "conditional_parity_stabilized_modes_v4"}:
                 if self.conditional_generation.command_gain != 0.5:
@@ -311,6 +320,11 @@ class V2Config(StrictModel):
                     raise ValueError("v6.3 requires the formal 1.50 mm identity-OLS system")
                 if self.conditional_generation.command_gain != 0.05:
                     raise ValueError("v6.3 locks initial command gain=0.05")
+            if self.architecture == "conditional_pca_near_conjugate_relay_v6_4":
+                if self.system.kind not in {"diagnostic_amplitude_near_conjugate_relay_identity_v1", "formal_amplitude_near_conjugate_relay_identity_v1"}:
+                    raise ValueError("v6.4 requires the explicit near-conjugate relay system")
+                if self.conditional_generation.command_gain != 0.05:
+                    raise ValueError("v6.4 locks initial command gain=0.05")
             execution = self.execution
             if (execution.training_microbatch_size, execution.evaluation_microbatch_size, execution.activation_checkpoint) != (1, 1, True):
                 raise ValueError("conditional formal execution locks training/evaluation microbatches to one with activation checkpointing")

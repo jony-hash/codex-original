@@ -8,6 +8,7 @@ import torch
 import torch.nn.functional as functional
 
 from ..contracts import ComplexField, OperationProvenance, PlaneSpec
+from .propagation import angular_spectrum_propagate
 
 
 @dataclass(frozen=True)
@@ -110,3 +111,91 @@ def reference_b0_imaging(field: ComplexField, target: PlaneSpec, matrix: ABCDMat
     sampled = field.tensor.index_select(-2, sy.clamp(0, source.shape[0] - 1)).index_select(-1, sx.clamp(0, source.shape[1] - 1))
     output = sampled * valid.to(sampled.dtype) * _quadratic_phase(target, matrix, device=field.tensor.device, dtype=field.tensor.real.dtype) * (1.0 / abs(matrix.a))
     return ComplexField(output, target, OperationProvenance("reference_closed_form_b0_imaging", source.plane_id, target.z_m - source.z_m, {"relay": name, "abcd": matrix.to_dict()}))
+
+
+class NearConjugateRelay:
+    """A physical two-lens 1:1 relay with a declared, signed residual B.
+
+    The production operator is the LCT-equivalent parity plus residual
+    diffraction.  ``effective_b_m`` is *not* submitted to the free-space
+    propagator as a physical negative distance: the physical construction is
+    recorded separately as three positive mechanical segments.
+    """
+
+    focal_length_m = 25.0e-3
+    segments_m = (25.0e-3, 50.0e-3, 24.75e-3)
+    clear_aperture_m = 12.7e-3
+    effective_b_m = 0.25e-3
+
+    def __init__(self, source: PlaneSpec, target: PlaneSpec, *, name: str) -> None:
+        self.source, self.target, self.name = source, target, name
+        self.abcd = path_abcd(self.segments_m, (self.focal_length_m, self.focal_length_m))
+        expected = ABCDMatrix(-1.0, self.effective_b_m, 0.0, -1.0)
+        if any(abs(a - b) > 1.0e-12 for a, b in zip((self.abcd.a, self.abcd.b_m, self.abcd.c_per_m, self.abcd.d), (expected.a, expected.b_m, expected.c_per_m, expected.d), strict=True)):
+            raise ValueError("near-conjugate mechanical relay does not realize its fixed ABCD matrix")
+        if abs(self.abcd.determinant - 1.0) > 1.0e-12:
+            raise ValueError("near-conjugate relay determinant must equal one")
+        if source.shape != target.shape or source.pixel_pitch_m != target.pixel_pitch_m:
+            raise ValueError("near-conjugate relay requires a unit-sampling conjugate plane")
+        if abs((target.z_m - source.z_m) - sum(self.segments_m)) > 1.0e-12:
+            raise ValueError("near-conjugate target z must equal the mechanical relay length")
+
+    @staticmethod
+    def _signed_residual(field: ComplexField, distance_m: float) -> torch.Tensor:
+        """Numerical LCT residual; deliberately distinct from physical ASM."""
+        height, width = field.plane.shape
+        dy, dx = field.plane.pixel_pitch_m
+        dtype = field.tensor.real.dtype
+        fy = torch.fft.fftfreq(height, d=dy, device=field.tensor.device, dtype=dtype)
+        fx = torch.fft.fftfreq(width, d=dx, device=field.tensor.device, dtype=dtype)
+        yy, xx = torch.meshgrid(fy, fx, indexing="ij")
+        radicand = 1.0 - (field.plane.wavelength_m * xx).square() - (field.plane.wavelength_m * yy).square()
+        phase = 2.0 * math.pi * distance_m * torch.sqrt(radicand.clamp_min(0.0)) / field.plane.wavelength_m
+        transfer = torch.polar(torch.ones_like(phase), phase) * (radicand >= 0.0)
+        return torch.fft.ifft2(torch.fft.fft2(field.tensor, norm="ortho") * transfer, norm="ortho")
+
+    def __call__(self, field: ComplexField) -> ComplexField:
+        if field.plane != self.source:
+            raise ValueError(f"{self.name} received an unexpected source plane")
+        # [-1,+B;0,-1] = parity followed by a signed residual propagation.
+        residual = self._signed_residual(field, -self.effective_b_m)
+        output = torch.flip(residual, dims=(-2, -1))
+        return ComplexField(
+            output,
+            self.target,
+            OperationProvenance(
+                "near_conjugate_relay_lct",
+                field.plane.plane_id,
+                sum(self.segments_m),
+                {
+                    "relay": self.name,
+                    "abcd": self.abcd.to_dict(),
+                    "mechanical_segments_m": list(self.segments_m),
+                    "focal_lengths_m": [self.focal_length_m, self.focal_length_m],
+                    "effective_B_m": self.effective_b_m,
+                    "clear_aperture_m": self.clear_aperture_m,
+                    "spatial_inversion": True,
+                    "implementation": "parity_plus_signed_lct_residual_not_negative_free_space",
+                    "source_sampling": self.source.to_dict(),
+                    "target_sampling": self.target.to_dict(),
+                },
+            ),
+        )
+
+
+def reference_near_conjugate_lens_relay(field: ComplexField, target: PlaneSpec, *, name: str) -> ComplexField:
+    """Independent positive-distance, two-thin-lens reference for audits."""
+    if field.plane.shape != target.shape or field.plane.pixel_pitch_m != target.pixel_pitch_m:
+        raise ValueError("reference near-conjugate relay requires matched planes")
+    current = angular_spectrum_propagate(field, 25.0e-3, f"{name}_reference_lens_1")
+    def lens(in_field: ComplexField, plane_id: str) -> ComplexField:
+        y = (torch.arange(in_field.plane.shape[0], device=in_field.tensor.device, dtype=in_field.tensor.real.dtype) - (in_field.plane.shape[0] - 1) / 2) * in_field.plane.pixel_pitch_m[0]
+        x = (torch.arange(in_field.plane.shape[1], device=in_field.tensor.device, dtype=in_field.tensor.real.dtype) - (in_field.plane.shape[1] - 1) / 2) * in_field.plane.pixel_pitch_m[1]
+        yy, xx = torch.meshgrid(y, x, indexing="ij")
+        phase = -math.pi * (xx.square() + yy.square()) / (in_field.plane.wavelength_m * 25.0e-3)
+        return ComplexField(in_field.tensor * torch.polar(torch.ones_like(phase), phase), in_field.plane.with_plane(plane_id), OperationProvenance("thin_lens_reference", in_field.plane.plane_id, None, {"focal_length_m": 25.0e-3}))
+    current = lens(current, f"{name}_reference_lens_1_phase")
+    current = angular_spectrum_propagate(current, 50.0e-3, f"{name}_reference_lens_2")
+    current = lens(current, f"{name}_reference_lens_2_phase")
+    current = angular_spectrum_propagate(current, 24.75e-3, target.plane_id)
+    return ComplexField(current.tensor, target, OperationProvenance("near_conjugate_relay_lens_reference", field.plane.plane_id, 99.75e-3, {"relay": name, "abcd": path_abcd(NearConjugateRelay.segments_m, (25.0e-3, 25.0e-3)).to_dict()}))

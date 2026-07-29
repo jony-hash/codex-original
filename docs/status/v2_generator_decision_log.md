@@ -82,3 +82,12 @@ admission、semantic tangent 和 observability 都通过；tangent 在约 1% raw
 `0.2203`，低于不可降低的 `0.25`。分类 loss 前50/后50均值从 `1.5472` 降至 `0.0606`，说明训练
 确实向语义模板收敛，却未保持最难轴向 code 的物理差分。该 evidence 为有效核心物理门失败，不授权
 5-epoch、validation、导出或任何数据集准入；不得重跑同一 smoke。
+## v6.4: near-conjugate relay, pending gates
+
+The exact B=0 relay preserves command intensity but leaves phase-only masks
+unable to create useful intensity changes; the 0.25 mm free-space alternative
+is not a normal free-space bench contract and also failed its repaired
+retention/saturation gate.  v6.4 therefore uses a physically positive-distance
+two-lens relay whose LCT is `[-1, +0.25 mm; 0, -1]`.  It retains the electronic
+PCA response while preserving a limited phase-to-intensity channel.  This is a
+new architecture and evidence chain; no v6.3 final state is compatible.

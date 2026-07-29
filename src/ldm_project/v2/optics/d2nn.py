@@ -6,6 +6,7 @@ from torch import nn
 
 from ..contracts import ComplexField, OperationProvenance
 from .propagation import angular_spectrum_propagate
+from .relays import NearConjugateRelay
 
 
 class FiniteCropPhaseStack(nn.Module):
@@ -46,5 +47,38 @@ class FiniteCropPhaseStack(nn.Module):
             active_plane = current.plane.with_plane(f"{prefix}_layer_{index + 1}", z_m=propagated.plane.z_m)
             current = ComplexField(cropped_tensor, active_plane, OperationProvenance("finite_crop_hard_aperture", propagated.plane.plane_id, self.spacing_m, {"layer": index + 1, "active_shape": list(self.active_shape)}))
             retention.append(current.tensor.abs().square().sum(dim=(-3, -2, -1)) / propagated.tensor.abs().square().sum(dim=(-3, -2, -1)).clamp_min(1.0e-12))
+            records.append(current)
+        return current, tuple(records), {"crop_retention": torch.stack(retention, dim=1), "phase": self.phase}
+
+
+class NearConjugateFiniteCropPhaseStack(FiniteCropPhaseStack):
+    """Finite-aperture phase stack connected by physical near-conjugate relays."""
+
+    def __init__(self, *, layers: int, active_shape: tuple[int, int], propagation_shape: tuple[int, int], input_plane, prefix: str) -> None:
+        super().__init__(layers=layers, active_shape=active_shape, propagation_shape=propagation_shape, spacing_m=NearConjugateRelay.effective_b_m)
+        self.relay_prefix = prefix
+        self._input_plane = input_plane
+
+    def forward(self, field: ComplexField, prefix: str) -> tuple[ComplexField, tuple[ComplexField, ...], dict[str, torch.Tensor]]:
+        if field.plane.shape != self.active_shape:
+            raise ValueError("near-conjugate D2NN field does not match active shape")
+        records: list[ComplexField] = []
+        retention: list[torch.Tensor] = []
+        current = field
+        for index in range(self.layers):
+            transfer = torch.polar(torch.ones_like(self.phase[index]), self.phase[index]).to(current.tensor.dtype)
+            modulated = ComplexField(current.tensor * transfer, current.plane, OperationProvenance("phase_only_modulation", current.plane.plane_id, None, {"layer": index + 1}))
+            padding_y = (self.propagation_shape[0] - self.active_shape[0]) // 2
+            padding_x = (self.propagation_shape[1] - self.active_shape[1]) // 2
+            padded_plane = current.plane.with_plane(f"{prefix}_layer_{index + 1}_relay_grid", shape=self.propagation_shape, coordinate_frame=f"{prefix}_near_conjugate_grid")
+            padded = ComplexField(torch.nn.functional.pad(modulated.tensor, (padding_x, padding_x, padding_y, padding_y)), padded_plane, OperationProvenance("finite_crop_center_pad", current.plane.plane_id, None, {"active_shape": list(self.active_shape)}))
+            target_padded = padded_plane.with_plane(f"{prefix}_layer_{index + 1}_relay_output", z_m=padded_plane.z_m + sum(NearConjugateRelay.segments_m))
+            relayed = NearConjugateRelay(padded_plane, target_padded, name=f"{prefix}_near_conjugate_{index + 1}")(padded)
+            crop_y = (self.propagation_shape[0] - self.active_shape[0]) // 2
+            crop_x = (self.propagation_shape[1] - self.active_shape[1]) // 2
+            cropped = relayed.tensor[..., crop_y:crop_y + self.active_shape[0], crop_x:crop_x + self.active_shape[1]]
+            active_plane = current.plane.with_plane(f"{prefix}_layer_{index + 1}", z_m=relayed.plane.z_m)
+            current = ComplexField(cropped, active_plane, OperationProvenance("finite_crop_hard_aperture", relayed.plane.plane_id, sum(NearConjugateRelay.segments_m), {"layer": index + 1, "active_shape": list(self.active_shape), "transport": "near_conjugate_relay"}))
+            retention.append(current.tensor.abs().square().sum(dim=(-3, -2, -1)) / relayed.tensor.abs().square().sum(dim=(-3, -2, -1)).clamp_min(1.0e-12))
             records.append(current)
         return current, tuple(records), {"crop_retention": torch.stack(retention, dim=1), "phase": self.phase}
