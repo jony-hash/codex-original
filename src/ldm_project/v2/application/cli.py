@@ -41,7 +41,8 @@ from .conditional_runtime import conditional_multi_anchor_capacity, conditional_
 from .conditional_dataset import admit_dataset, audit_memorization, evaluate_utility, export_conditional_dataset
 from .conditional_continuous_audit import conditional_continuous_mode_capacity
 from .conditional_continuous_reachability import conditional_continuous_mode_reachability
-from .conditional_pca_transport import conditional_pca_transport_admission, conditional_pca_transport_observability, pca_transport_smoke, train_pca_transport
+from .conditional_pca_transport import conditional_pca_transport_admission, conditional_pca_transport_observability, conditional_pca_transport_smoke_revalidation, pca_transport_smoke, train_pca_transport
+from .conditional_optical_feasibility import conditional_optical_generation_feasibility
 
 _CONTROL_ORACLE_ARMS = ("formal_amplitude_only", "diagnostic_complex_slm")
 _CONTROL_ORACLE_STEPS = 400
@@ -1793,6 +1794,14 @@ def _parser() -> argparse.ArgumentParser:
     for name in ("config", "dataset_root", "evaluator_checkpoint", "checkpoint", "admission_evidence"):
         pca_transport_observability.add_argument("--" + name.replace("_", "-"), required=True)
     pca_transport_observability.set_defaults(handler=lambda args: conditional_pca_transport_observability(args, load_config(args.config)))
+    pca_revalidation = audit.add_parser("conditional-pca-transport-smoke-revalidation")
+    for name in ("config", "dataset_root", "evaluator_checkpoint", "checkpoint", "failed_smoke_evidence", "smoke_history", "smoke_run"):
+        pca_revalidation.add_argument("--" + name.replace("_", "-"), required=True)
+    pca_revalidation.set_defaults(handler=lambda args: conditional_pca_transport_smoke_revalidation(args, load_config(args.config)))
+    feasibility = audit.add_parser("conditional-optical-generation-feasibility")
+    for name in ("config", "dataset_root", "evaluator_checkpoint", "checkpoint", "revalidation_evidence"):
+        feasibility.add_argument("--" + name.replace("_", "-"), required=True)
+    feasibility.set_defaults(handler=lambda args: conditional_optical_generation_feasibility(args, load_config(args.config)))
     memorization = audit.add_parser("memorization")
     for name in ("config", "candidate_evidence", "candidate_dataset", "dataset_root", "evaluator_checkpoint"):
         memorization.add_argument("--" + name.replace("_", "-"), required=True)
