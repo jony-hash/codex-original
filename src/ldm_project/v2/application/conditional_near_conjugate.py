@@ -617,10 +617,17 @@ def _phase_loss(bundle, evaluator, codes, labels, real, exposure):
     features, logits = evaluator(fixed_exposure_view(raw, exposure))
     real_features, _ = evaluator(real)
     classification = F.cross_entropy(logits, labels)
+    generated_view = fixed_exposure_view(raw, exposure)
     sinkhorn = conditional_sinkhorn_loss(
-        features, labels, real_features, labels, raw, real, epsilon=0.05, iterations=20
+        features,
+        generated_view,
+        real_features,
+        real,
+        labels,
+        epsilon=0.05,
+        iterations=20,
     )
-    diversity, _ = relative_diversity_loss(features, real_features, labels)
+    diversity = relative_diversity_loss(features, real_features, labels)
     zero = raw_from_generator_batched(
         bundle.system,
         bundle.generator,
