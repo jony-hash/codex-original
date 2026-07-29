@@ -916,7 +916,7 @@ def pca_transport_smoke(args, config) -> int:
 
     probe(0)
     for step in range(400):
-        indices = batches[step % len(batches)].to(device)
+        indices = batches[step % len(batches)]
         real_view = train_images.index_select(0, indices).to(device)
         real_labels = train_labels.index_select(0, indices).to(device)
         codes, generated_labels = _training_codes(step, device)
