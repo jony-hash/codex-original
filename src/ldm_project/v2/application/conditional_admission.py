@@ -21,6 +21,9 @@ from .conditional_runtime import (
     conditional_parity_mode_admission,
     conditional_parity_observability,
     conditional_semantic_tangent,
+    conditional_multi_anchor_capacity,
+    conditional_multi_anchor_admission,
+    conditional_multi_anchor_observability,
 )
 
 __all__ = [
@@ -44,6 +47,9 @@ __all__ = [
     "conditional_parity_mode_admission",
     "conditional_parity_observability",
     "conditional_semantic_tangent",
+    "conditional_multi_anchor_capacity",
+    "conditional_multi_anchor_admission",
+    "conditional_multi_anchor_observability",
 ]
 
 conditional_semantic_localization = _identity_semantic_localization

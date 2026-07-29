@@ -17,6 +17,8 @@ from .conditional_runtime import (
     train_class_modes,
     parity_stabilizer_smoke,
     train_parity_stabilizer,
+    multi_anchor_smoke,
+    train_multi_anchor,
 )
 
 __all__ = [
@@ -36,4 +38,6 @@ __all__ = [
     "train_class_modes",
     "parity_stabilizer_smoke",
     "train_parity_stabilizer",
+    "multi_anchor_smoke",
+    "train_multi_anchor",
 ]

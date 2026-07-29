@@ -584,3 +584,41 @@ v73 semantic-support intervention 保持 prototype readability，却使 camera f
 v78 的 semantic-gated direct-command CPU admission 虽通过 provenance 与有限性，但 physical-SLM code factor `0.00049967 < 0.25`、support energy `0.94566 < 0.95`，状态为 `v78-command-code-factor-insufficient`。v78.1 定位到 template support 与逐样本 normalization 的 code suppression；它关闭 template multiplication 加逐样本 normalization 合同（`outputs/20260721_v781/runs/isolation/v781_semantic_command_bottleneck_v2.json`）。
 
 v79 使用固定 label-only normalizer，对 frozen learned replay 与 deterministic capacity arm 作 generator-only CPU 上界。前者 factor 为 `6.03e-7`、absolute code SS `0.496`；后者 factor 为 `0.05455`、absolute code SS `48292.58`，均低于 `0.25` 和 v73 的 physical-SLM absolute baseline `289721.29`。虽 support energy `0.97080`、低频能量 `0.99814` 通过，但 clipping `0.20547 > 0.08`。有效决定为 `label-fixed-supported-basis-insufficient`，冻结该八维 basis 家族及 residual＋phase 联合训练；工件为 `outputs/20260721_v79/runs/admission/v79_label_fixed_supported_basis_v1.json` 与 `v79_joint_decision_v1.json`。
+## 2026-07-27 至 2026-07-28：v2 v5 多锚点容量准入失败
+
+`conditional_multi_anchor_local_modes_v5` 只完成了代码实现和无更新容量审计，没有启动optimizer、CUDA训练或数据集导出。固定55k MNIST训练子集上的四簇特征审计得到平均类内离散度降低 `0.1691328704`、最低类别降低 `0.1243160963`，均低于预注册的 `0.30`/`0.15` 门。数字1的四个簇大小为 `2027/1855/156/2204`，最小簇也低于256张要求。证据保存在 `outputs/20260727_v2/runs/20260727_211242_776413_formal_v2_multi_anchor_local_modes_finite_crop_identity/`，原始evidence保持只读。
+
+该结果否定的是每类四个等权硬锚点和象限路由的容量假设，不否定完整 `label+code → SLM → Encoder → identity OLS → Decoder → CMOS` 宏观光路。特别是数字1的小簇若被强制等概率路由，会把约2.5%的真实形态放大到25%，因此不能通过放宽最小簇或离散度门继续训练。下一动作是diagnostic-only的连续PCA模式容量审计；在该审计通过前不得派生v5 checkpoint或启动任何smoke。
+
+## 2026-07-28：连续PCA模式容量数据门通过，物理probe等待CUDA
+
+`audit conditional-continuous-mode-capacity` 使用当前内容绑定evaluator、55k训练split和语义checkpoint完成无更新数据审计。PCA-8相对v5 K=4基线的平均优势为 `0.4269000490`、最低类别优势为 `0.3052000363`，振幅PCA-8最小解释收益为 `0.4731594795`，十类物理basis均为rank 8。数据门通过，说明连续类内模式比四锚点等权硬路由更符合当前MNIST类内几何。
+
+运行目录为 `outputs/20260728_v2/runs/20260728_180501_490139_diagnostic_v2_continuous_mode_capacity_finite_crop_identity/`。后续物理probe未因指标失败，而是因当前环境 `CUDA unavailable` 被标记为 `harness_invalid`；未创建optimizer、未修改参数、未生成checkpoint。恢复时必须在CUDA可用环境中使用相同配置、evaluator、split和语义checkpoint重跑无更新probe，不能直接进入训练。
+
+## 2026-07-29：连续模式旧CUDA probe合同不完整
+
+20260729运行目录为 `outputs/20260729_v2/runs/20260729_104105_417380_diagnostic_v2_continuous_mode_capacity_finite_crop_identity/`。完整光路、camera code fraction和saturation通过，但语义结果为 axis `0.8235`、uniform-1234 `0.5824`、uniform-5678 `0.5706`，类别5/7 recall最低；因此不满足原定语义门。该版本还直接使用v3的gain `0.5`，没有执行预注册安全logit RMS、逐方向响应、梯度和stateless切空间门。
+
+旧evidence标记为 `probe_gain_contract_mismatch / harness_contract_incomplete`，不修改历史JSON，不消费其准入动作。新合同固定 `alpha=0.05/tanh(1)`，新增 `conditional-continuous-mode-reachability` 只读审计；在新审计通过前不得派生连续模式checkpoint或训练。
+
+实现状态：新审计已固定旧basis hash，输出三个完整 `10×17` contact sheet，并分别对
+class carrier、continuous PCA modes、Encoder phase、Decoder phase 做无状态可逆单步
+margin/distribution tangent probe；电子扰动限制 SLM-logit RMS `0.05`，相位扰动限制
+`0.005 rad`，raw-CMOS目标变化 `1%`。该改动只增加诊断代码和测试，不修改旧run/evidence，
+也不产生checkpoint。由于当前执行环境 CUDA 不可用，必须由用户在 CUDA 环境运行新命令后，才能
+判断 `continuous_semantic_alignment_reachable`、objective conflict 或 harness invalid。
+
+## 2026-07-29：连续 PCA 安全尺度 CUDA 可达性审计失败
+
+WSL CUDA 动态链接路径修复后，RTX 3060 Laptop GPU 完成了新的只读审计：
+`outputs/20260729_v2/runs/20260729_131120_150834_diagnostic_v2_continuous_mode_capacity_finite_crop_identity/`。
+实现同时修复了诊断本身的内存合同：170样本反向图改为每个类别17样本即时消费与梯度累计，以适配6 GB显存；
+没有 optimizer、checkpoint 或参数更新。
+
+安全尺度准确达到 axis SLM-logit RMS `0.0500`，并保留高语义 accuracy
+`0.9824/0.9529/0.9529` 和低饱和约 `0.0076`。但 raw CMOS code fraction 仅
+`0.0071/0.0212/0.0240`，物理 `A²` fraction 仅 `0.0107/0.0323/0.0352`，均未达到 `0.10`。
+结果为 `failed / safe_scale_transport_insufficient`，无下游授权。这是有效物理传输停止证据：不能恢复
+gain `0.5`、不能做 gain sweep、不能派生连续PCA正式checkpoint或训练；若继续，只能审计带 PCA
+特征值尺度的物理模式参数化。

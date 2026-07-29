@@ -80,3 +80,9 @@ promotion。
 当前 identity 尚未产生可 promotion 的正式 checkpoint。旧 smoke、prototype 和诊断结果
 保持历史状态；若 split、config 或 evidence context 变化，必须从 evaluator qualification
 重新签发。
+
+## v5 多锚点候选（已拒绝，diagnostic-only）
+
+`conditional_multi_anchor_local_modes_v5` 保留完整宏观光路，但将电子端入口改为每类4个振幅锚点和每个锚点6个局部模式。前两维code只选择锚点，后六维code只调制所选锚点；没有Wz/Wy、软件decoder或光路后latent。无更新容量审计未通过，因此该候选不属于当前正式运行时；不得继续运行v5 admission、observability或smoke。旧v1-v4 checkpoint/evidence不能部分迁移。
+
+连续PCA模式目前仅有diagnostic-only容量审计接口，尚未注册为正式architecture，也没有训练checkpoint或推理合同。
