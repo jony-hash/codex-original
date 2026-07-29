@@ -1,6 +1,8 @@
 # 当前主线交接：v6.4 近共轭 relay 诊断闭环（2026-07-30）
 
-当前分支为 `experiment/v2-near-conjugate-relay-v64`，最新提交为 `8fb6174`，工作区干净。
+当前分支为 `experiment/v2-near-conjugate-relay-v64`；v6.4 smoke 的科学状态已由
+`44981b1` 归档。此前用于 v6、宏观可行性、v6.2 和 v6.3 的本地实验分支指针已精简为
+`archive/v2/*` tags；提交和 evidence 均未删除，也未推送远端。
 v6.4 保留宏观链路 `label + 8D code → amplitude SLM → Encoder → identity OLS → Decoder → CMOS`，
 但使用四个可搭建的两透镜近共轭 1:1 relay：每模块机械段 `25.00/50.00/24.75 mm`、两片
 `f=25 mm` 透镜、ABCD `[-1,+0.25 mm;0,-1]`，四模块总机械长度 `399 mm`。通过的 v6.2
@@ -32,25 +34,35 @@ v6.3 的唯一 400-step smoke 已执行并失败，故没有 5-epoch 训练授�
 联合优化可恢复语义，却把最严格的轴向随机码物理响应从初始 `0.2531` 压低。smoke final 仅为诊断，
 不得 warm-start；不重复、不延长或调参。后续只能明确选择 1:1 relay 重设计或单片多层器件路线。
 
-当前活动候选 `conditional_multi_anchor_local_modes_v5` 已完成实现和无更新容量审计，但容量准入失败，现为
-`rejected candidate / diagnostic-only`。v1 的 LDM 蒸馏线仍由 `train.py` 维护，
+历史候选 `conditional_multi_anchor_local_modes_v5` 已完成实现和无更新容量审计，但容量准入失败，现为
+`rejected candidate / diagnostic-only`，不是当前活动候选。v1 的 LDM 蒸馏线仍由 `train.py` 维护，
 但不定义 v2 的训练或验收输入。
 
-## 已锁定合同
+## 当前 v6.4 诊断合同
 
-- amplitude SLM、532 nm、完整 4f relay、2+2 phase-only finite-crop D2NN、identity
-  OLS、1.50 mm layer spacing、B=0 backend relay。
-- 输入为 `label + 8D code`；identity-anchor generator 的 gain 为 `0.5`，seed 为
-  `1234`，固定曝光为 `0.4913053810596466`。
+- 宏观链仍为 `label + 8D code → amplitude SLM → Encoder → identity OLS → Decoder → CMOS`。
+- 电子端使用通过 v6.2 资格化的逐类 PCA carrier/basis/scale，并在 v6.4 中永久冻结。
+- 四层 phase 是唯一训练参数；层间使用四个两透镜近共轭 relay，而不是 1.50 mm 自由传播或
+  0.25 mm 器件间隔。
+- relay 的机械段为 `25.00/50.00/24.75 mm`，有效 ABCD 为
+  `[-1,+0.25 mm;0,-1]`；全局照明强度透过率固定 `tau=0.80`。
+- 532 nm、SLM/相位面规格、2+2 phase-only、finite-crop、identity OLS、后端 relay 和固定曝光
+  `0.4913053810596466` 保持不变。
 - evaluator 只用于训练和验收；最终推理不运行 teacher、diffusion、VAE 或迭代优化。
-- 当前配置位于 [`configs/v2/current`](../../configs/v2/current/)，旧配置由迁移 manifest 追溯。
+- v6.4 当前仍是 diagnostic-only，不能被称为正式硬件或数据集已通过。
 
 ## 当前停止规则
 
-evaluator、injection、observability、control isolation、semantic localization 和 schedule
-completion 的内容绑定链已经通过。语义训练已完成，但多样性恢复的 aligned 和 identity-reanchor
-两条路径均未通过。因此不运行984-step正式恢复、5000张自动评估、60,000张导出、memorization、
-utility或promotion。所有failed diversity smoke均为不可变诊断证据。
+v6.4 唯一400-step smoke 的 evidence 为 `failed` 且无后续授权；同时 harness 遗漏了
+feature-ratio、delta-correlation、relay crop-retention 和 distribution-loss trend 的独立
+GateResult。因此当前同时满足两条停止理由：
+
+1. 不得启动正式5-epoch、5000张自动评估、60,000张导出、memorization、utility或promotion。
+2. 不得把本次结果直接宣称为 v6.4 架构失败；应先用现有只读 history/raw artifacts 补齐并重放
+   gate，生成 superseding evidence。禁止使用 smoke-final warm-start，也不重复同一400-step CUDA。
+
+历史 identity、aligned、reanchor、v3–v6.3 的失败证据均保持不可变；它们不能直接授权 v6.4 或
+任何后续正式训练。
 
 ## 当前合同运行结果（2026-07-24）
 
@@ -83,7 +95,9 @@ LightGen evidence 不能授权 identity 主线。
 旧运行手册与完整指标保留在 [`docs/archive`](../archive/)，阶段摘要在
 [`experiment_history.md`](experiment_history.md)。它们具有参考价值，但不提供当前执行权。
 
-## 下一允许动作
+## 历史下一动作记录：v5 后的连续模式审计
+
+以下小节保留 2026-07-27 当时的决策，不是 2026-07-30 的当前执行授权。
 
 当前没有正式训练授权。v3/v4和v5均保持失败证据只读。v5容量审计已经证明固定四锚点等权硬路由不满足当前MNIST类内几何，
 因此不得运行v5初始化准入、可观测性、400-step smoke或正式训练。下一步仅允许运行

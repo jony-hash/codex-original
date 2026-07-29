@@ -92,7 +92,8 @@ two-lens relay whose LCT is `[-1, +0.25 mm; 0, -1]`.  It retains the electronic
 PCA response while preserving a limited phase-to-intensity channel.  This is a
 new architecture and evidence chain; no v6.3 final state is compatible.
 
-实现分支为 `experiment/v2-near-conjugate-relay-v64`，提交范围 `07cd1f9` 至 `8fb6174`。电子 PCA
+实现分支为 `experiment/v2-near-conjugate-relay-v64`，实现提交范围 `07cd1f9` 至 `8fb6174`，
+科学状态由 `44981b1` 归档。电子 PCA
 carrier/basis/[10,8] scale 来自通过的 v6.2 target 并永久冻结；四层 phase 是唯一可训练参数；
 全局照明透过率为 `tau=0.80`。relay equivalence、admission、semantic tangent 与 observability
 通过，且初始化三面板同时满足语义、camera fraction、方向响应与实际饱和门。
