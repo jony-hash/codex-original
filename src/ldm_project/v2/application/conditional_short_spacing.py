@@ -16,6 +16,7 @@ from ..student.checkpoints import ConditionalCheckpointManifestV2, save_conditio
 from ..student.conditional import camera_code_fraction, fixed_exposure_view, raw_from_generator_batched
 from ..student.evaluator import evaluator_checkpoint_hash, load_frozen_evaluator, load_local_mnist
 from ..student.generator import ConditionalPCASelfImagingTransportGenerator
+from ..student.metrics import high_saturation_ratio
 from ..optics.system import FormalAmplitudeFiniteCropIdentitySystem
 from .conditional_runtime import ConditionalBundle, _context, _new_run, _random_codes, _split, _write_evidence, _system_signature, _fixed_control_probe, SHORT_SPACING_ARCHITECTURE, SHORT_SPACING_GENERATOR_CONTRACT
 from .conditional_continuous_reachability import _build_modes
@@ -23,7 +24,7 @@ from .conditional_continuous_reachability import _build_modes
 SHORT_SPACING_METRIC_CONTRACT = canonical_sha256({"kind": "conditional_self_imaging_metric_v2", "target": "kappa*A^2", "delta": "same_code_delta", "exposure": "global_fixed", "target_detached": True})
 SHORT_SPACING_ROUTE_CONTRACT = canonical_sha256({"architecture": SHORT_SPACING_ARCHITECTURE, "layer_spacing_m": 0.25e-3, "gain": 0.05, "code": "tanh(z)"})
 SHORT_SPACING_ADMISSION_CONTRACT = canonical_sha256({"kind": "conditional_short_spacing_target_admission_v2", "per_class_per_direction_bisection": {"lo": 0.05, "hi": 0.50, "steps": 20}, "uniform_safety_bisection": 20, "optimizer": False})
-SHORT_SPACING_OPTICAL_CONTRACT = canonical_sha256({"kind": "conditional_short_spacing_optical_admission_v2", "compare_spacing_m": [1.5e-3, 0.25e-3], "kappa": "median_zero_code_energy_ratio", "optimizer": False})
+SHORT_SPACING_OPTICAL_CONTRACT = canonical_sha256({"kind": "conditional_short_spacing_optical_admission_v3", "compare_spacing_m": [1.5e-3, 0.25e-3], "kappa": "median_zero_code_energy_ratio", "saturation": "mean(raw/exposure>1)_before_clamp", "optimizer": False})
 SHORT_SPACING_OBSERVABILITY_CONTRACT = canonical_sha256({"kind": "conditional_short_spacing_observability_v1", "losses": ["image", "delta"], "optimizer": False})
 SHORT_SPACING_SMOKE_CONTRACT = canonical_sha256({"kind": "conditional_short_spacing_self_imaging_smoke_v2", "steps": 400, "phase_warmup": 100, "probes": [0, 50, 100, 200, 400]})
 
@@ -54,6 +55,13 @@ def _target_kappa(raw: torch.Tensor, amplitude: torch.Tensor) -> torch.Tensor:
     denom = amplitude.square().flatten(1).sum(1).clamp_min(1e-8)
     numer = raw.flatten(1).sum(1)
     return (numer / denom).median().detach()
+
+
+def _high_saturation_fraction(raw: torch.Tensor, exposure: float) -> float:
+    """Report detector clipping before the fixed-exposure display clamp."""
+    if raw.ndim != 4 or exposure <= 0.0:
+        raise ValueError("raw must be [N,1,H,W] and exposure must be positive")
+    return float(high_saturation_ratio(raw, exposure).item())
 
 
 def _electronic_payload(path: str | Path) -> dict:
@@ -231,7 +239,7 @@ def conditional_short_spacing_optical_admission(args, config) -> int:
             pred = logits.argmax(1)
             long_fraction = float(camera_code_fraction(long_encoder2, panel_labels))
             short_fraction = float(camera_code_fraction(short_encoder2, panel_labels))
-            metrics[name] = {"accuracy": float((pred == panel_labels).float().mean()), "zero_or_panel_finite": bool(torch.isfinite(raw).all()), "saturation": float(torch.relu(view - 1).square().mean()), "encoder2_code_fraction_long": long_fraction, "encoder2_code_fraction_short": short_fraction, "encoder2_retention_improvement": short_fraction / max(long_fraction, 1.0e-12) - 1.0}
+            metrics[name] = {"accuracy": float((pred == panel_labels).float().mean()), "zero_or_panel_finite": bool(torch.isfinite(raw).all()), "saturation": _high_saturation_fraction(raw, config.conditional_generation.fixed_exposure_scale), "encoder2_code_fraction_long": long_fraction, "encoder2_code_fraction_short": short_fraction, "encoder2_retention_improvement": short_fraction / max(long_fraction, 1.0e-12) - 1.0}
     zero_codes = torch.zeros(10, 8, device=device)
     zero_labels = torch.arange(10, device=device)
     with torch.no_grad():
@@ -249,6 +257,41 @@ def conditional_short_spacing_optical_admission(args, config) -> int:
     record = EvidenceRecordV2(2, "conditional_short_spacing_optical_admission", config.run.evidence_tier, "passed" if passed else "failed", run.git_commit, run.dirty_patch_hash, run.config_hash, evidence.context, {"target_admission": file_sha256(args.target_admission_evidence), "report": file_sha256(report), "electronic_initialization": file_sha256(electronic), "initialization": file_sha256(initialization) if passed else ""}, (GateResult("short_spacing_cuda_probe", passed, metrics | {"kappa": float(kappa)}),), ("conditional-short-spacing-observability",) if passed else (), None if passed else "short_spacing_optical_gate_failed")
     _write_evidence(run, "conditional_short_spacing_optical_admission_evidence.json", record)
     return 0 if passed else 1
+
+
+def conditional_short_spacing_evidence_supersession(args, config) -> int:
+    """Bind the pre-clamp saturation defect without mutating historical evidence."""
+    _require(config)
+    historical_path = Path(args.old_optical_evidence)
+    historical = EvidenceRecordV2.from_dict(json.loads(historical_path.read_text(encoding="utf-8")))
+    historical.validate()
+    if historical.evidence_kind != "conditional_short_spacing_optical_admission":
+        raise ValueError("supersession requires short-spacing optical-admission evidence")
+    run = _new_run(config)
+    report = run.root / "conditional_short_spacing_optical_supersession_report.json"
+    atomic_write_json(report, {
+        "superseded_evidence": str(historical_path.resolve()),
+        "superseded_evidence_hash": file_sha256(historical_path),
+        "classification": "invalid_saturation_harness",
+        "reason": "the historical optical admission evaluated saturation after fixed-exposure clamp; v3 uses mean(raw/exposure>1) before clamp",
+        "replacement_action": "rerun conditional-short-spacing-optical-admission with the v3 metric contract",
+    })
+    record = EvidenceRecordV2(
+        2,
+        "conditional_short_spacing_optical_supersession",
+        config.run.evidence_tier,
+        "diagnostic",
+        run.git_commit,
+        run.dirty_patch_hash,
+        run.config_hash,
+        historical.context,
+        {"historical_optical_evidence": file_sha256(historical_path), "report": file_sha256(report)},
+        (GateResult("historical_saturation_harness_invalid", True, {"historical_evidence_is_immutable": True}),),
+        (),
+        "historical short-spacing optical evidence cannot authorize downstream work because saturation was measured after clamp",
+    )
+    _write_evidence(run, "conditional_short_spacing_optical_supersession_evidence.json", record)
+    return 0
 
 
 def conditional_short_spacing_observability(args, config) -> int:

@@ -5,6 +5,7 @@ from ldm_project.v2.application.conditional_runtime import ConditionalBundle
 from ldm_project.v2.application.conditional_short_spacing import (
     SHORT_SPACING_GENERATOR_CONTRACT,
     SHORT_SPACING_METRIC_CONTRACT,
+    _high_saturation_fraction,
 )
 from ldm_project.v2.student.generator import ConditionalPCASelfImagingTransportGenerator
 
@@ -38,3 +39,8 @@ def test_short_spacing_bundle_keeps_two_plus_two_layers_and_contracts():
     assert bundle.system.config.layer_spacing_m == 0.25e-3
     assert SHORT_SPACING_GENERATOR_CONTRACT
     assert SHORT_SPACING_METRIC_CONTRACT
+
+
+def test_short_spacing_saturation_is_measured_before_display_clamp():
+    raw = torch.tensor([[[[0.40, 0.60]]]])
+    assert _high_saturation_fraction(raw, 0.50) == 0.5

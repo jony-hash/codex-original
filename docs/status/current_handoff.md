@@ -180,9 +180,9 @@ admission、observability 和唯一一次 400-step smoke。短层距 checkpoint 
 
 每类每方向 `(0.05,0.50)` 电子标定已经通过语义、`A²` code fraction和方向响应门；首次v6.2
 target evidence因此标为 `invalid_harness_evidence`。零phase短层距CUDA准入随后完成，冻结
-`κ=0.997967`且无饱和，但Encoder layer 2 retention相对1.50 mm仅为axis `+27.4%`、
+`κ=0.997967`；原报告的“无饱和”结论无效，因为它在固定曝光 clamp 后测量饱和。Encoder layer 2 retention相对1.50 mm仅为axis `+27.4%`、
 uniform `+16.0%/+14.3%`，未满足三个面板均需`+25%`的物理门。
 
-这是有效 `short_spacing_optical_retention_insufficient` 停止证据。不得运行observability、
-400-step smoke、正式训练或任何数据集验收；下一步只能独立复审宏观光路容量，不降低门限或重复相同
-0.25 mm训练。
+该历史 evidence 已标记 `invalid_saturation_harness`，必须用 pre-clamp 高饱和比例重跑一次 optical admission；
+无论结果如何都不得运行observability、400-step smoke、正式训练或任何数据集验收。`0.25 mm`只保留给未来
+单片堆叠器件诊断，当前实验台主线回到正式 `1.50 mm` 合同。

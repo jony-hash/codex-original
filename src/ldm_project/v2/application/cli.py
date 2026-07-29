@@ -43,7 +43,7 @@ from .conditional_continuous_audit import conditional_continuous_mode_capacity
 from .conditional_continuous_reachability import conditional_continuous_mode_reachability
 from .conditional_pca_transport import conditional_pca_transport_admission, conditional_pca_transport_observability, conditional_pca_transport_smoke_revalidation, pca_transport_smoke, train_pca_transport
 from .conditional_optical_feasibility import conditional_optical_generation_feasibility
-from .conditional_short_spacing import conditional_short_spacing_target_admission, conditional_short_spacing_optical_admission, conditional_short_spacing_observability, short_spacing_self_imaging_smoke
+from .conditional_short_spacing import conditional_short_spacing_target_admission, conditional_short_spacing_optical_admission, conditional_short_spacing_observability, conditional_short_spacing_evidence_supersession, short_spacing_self_imaging_smoke
 
 _CONTROL_ORACLE_ARMS = ("formal_amplitude_only", "diagnostic_complex_slm")
 _CONTROL_ORACLE_STEPS = 400
@@ -1811,6 +1811,10 @@ def _parser() -> argparse.ArgumentParser:
     for name in ("config", "dataset_root", "evaluator_checkpoint", "target_admission_evidence"):
         short_optical.add_argument("--" + name.replace("_", "-"), required=True)
     short_optical.set_defaults(handler=lambda args: conditional_short_spacing_optical_admission(args, load_config(args.config)))
+    short_supersession = audit.add_parser("conditional-short-spacing-optical-supersession")
+    for name in ("config", "old_optical_evidence"):
+        short_supersession.add_argument("--" + name.replace("_", "-"), required=True)
+    short_supersession.set_defaults(handler=lambda args: conditional_short_spacing_evidence_supersession(args, load_config(args.config)))
     short_obs = audit.add_parser("conditional-short-spacing-observability")
     for name in ("config", "dataset_root", "evaluator_checkpoint", "initialization_checkpoint", "optical_admission_evidence"):
         short_obs.add_argument("--" + name.replace("_", "-"), required=True)

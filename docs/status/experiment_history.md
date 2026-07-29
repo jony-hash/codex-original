@@ -637,4 +637,7 @@ optical admission → observability → 唯一 400-step smoke。正式训练与�
 首次v6.2 target admission的全局scale/0.20上限/错误退出码被归为无效harness。改为每类每方向
 `(0.05,0.50)`确定性标定后，电子target通过三块面板的语义、fraction和方向响应。随后0.25 mm
 零phase CUDA admission计算冻结 `κ=0.997967`，但Encoder layer 2相对1.50 mm的retention为
-axis `+27.4%`、uniform `+16.0%/+14.3%`，低于每面板`+25%`门。该失败阻止所有训练与导出。
+axis `+27.4%`、uniform `+16.0%/+14.3%`，低于每面板`+25%`门。其饱和字段后来发现是在显示
+clamp后计算，故历史 evidence 标为 `invalid_saturation_harness` 并需一次pre-clamp重跑；短层距
+训练和导出始终未获授权。0.25 mm也不满足实验台1.50 mm full-connect几何下界，后续只作为单片堆叠
+器件诊断保留。

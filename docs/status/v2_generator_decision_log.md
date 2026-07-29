@@ -56,6 +56,15 @@ v6 失败归因为 1.50 mm 层距下相位职责与随机码传输目标错位�
 ### v6.2.1 optical admission结果
 
 修复每类每方向scale与CLI返回码后，电子target通过；但0.25 mm零phase的Encoder layer 2
-retention相对1.50 mm只在axis达到`+27.4%`，两组uniform仅`+16.0%/+14.3%`。因三面板
-`+25%`是预注册物理门，`conditional_short_spacing_optical_admission`有效失败。短层距自成像
-训练尚未开始，也不得通过调loss、重复smoke或降低门限绕过该证据。
+retention相对1.50 mm只在axis达到`+27.4%`，两组uniform仅`+16.0%/+14.3%`。原报告还在
+fixed-exposure clamp 后计算饱和，因此“无饱和”字段无效；历史 evidence 只能作为
+`invalid_saturation_harness`归档。修复后将重跑一次 optical admission，但短层距自成像训练
+不得通过调loss、重复smoke或降低门限绕过。
+
+### v6.3 实验台主线（2026-07-29）
+
+只读复算表明，使用同一通过电子标定和零相位时，正式1.50 mm raw CMOS code fraction 已为
+axis `0.2531`、uniform `0.4603/0.4814`，且实际高饱和比例为`0.054–0.059`；缺口是语义
+组织而非随机码消失。下一条受控主线因此是 `conditional_pca_formal_spacing_self_imaging_v6_3`：
+保留正式2+2、1.50 mm、identity OLS和固定曝光，用冻结 `κA²` self-imaging/delta target 先做
+无更新切空间准入，再最多执行一次400-step smoke。若该切空间或smoke失败，停止当前生成器扩展。
