@@ -519,6 +519,7 @@ def conditional_near_conjugate_admission(args, config) -> int:
         GateResult(
             "trace_and_immutability",
             "identity_ols" in operations
+            and operations.count("near_conjugate_relay_lct") == 4
             and initial_hash == state_content_hash(bundle.state_dict()),
             {"operations": operations},
         ),
