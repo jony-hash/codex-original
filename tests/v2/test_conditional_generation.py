@@ -8,12 +8,39 @@ from torch import nn
 
 from ldm_project.v2.config import load_config
 from ldm_project.v2.student.admission import balanced_code_fraction
-from ldm_project.v2.student.checkpoints import ConditionalCheckpointManifestV2, load_conditional_checkpoint, save_conditional_checkpoint, state_content_hash, state_signature
-from ldm_project.v2.student.conditional import conditional_sinkhorn_loss, fixed_exposure_view, sinkhorn_cost_view
-from ldm_project.v2.student.conditional_acceptance import chunked_nearest_distances, memorization_statistics, paired_bootstrap_lower_bound, per_label_feature_diversity_ratio
-from ldm_project.v2.student.generator import ConditionalClassConditionedModesGenerator, ConditionalGlobalAmplitudeGenerator, IdentityAnchoredConditionalAmplitudeGenerator, ConditionalParityStabilizedModesGenerator, ConditionalMultiAnchorLocalModesGenerator
+from ldm_project.v2.student.checkpoints import (
+    ConditionalCheckpointManifestV2,
+    load_conditional_checkpoint,
+    save_conditional_checkpoint,
+    state_content_hash,
+    state_signature,
+)
+from ldm_project.v2.student.conditional import (
+    conditional_sinkhorn_loss,
+    fixed_exposure_view,
+    sinkhorn_cost_view,
+)
+from ldm_project.v2.student.conditional_acceptance import (
+    chunked_nearest_distances,
+    memorization_statistics,
+    paired_bootstrap_lower_bound,
+    per_label_feature_diversity_ratio,
+)
+from ldm_project.v2.student.generator import (
+    ConditionalClassConditionedModesGenerator,
+    ConditionalGlobalAmplitudeGenerator,
+    IdentityAnchoredConditionalAmplitudeGenerator,
+    ConditionalParityStabilizedModesGenerator,
+    ConditionalMultiAnchorLocalModesGenerator,
+)
 from ldm_project.v2.evidence.reviews import ConditionalManualReviewV2
-from ldm_project.v2.application.conditional import _first_hundred_schedule_hash, _identity_isolation_classification, _reanchor_codes, _require_current_acceptance, _schedule_hash, _semantic_localization_classification
+from ldm_project.v2.application.conditional import (
+    _first_hundred_schedule_hash,
+    _identity_isolation_classification,
+    _reanchor_codes,
+    _schedule_hash,
+    _semantic_localization_classification,
+)
 from ldm_project.v2.student.evaluator import MNISTSplitManifest
 
 
@@ -36,7 +63,9 @@ def test_identity_anchored_generator_has_zero_code_identity_and_zero_wy() -> Non
     zero = torch.zeros(2, 8)
     command = generator(zero, labels)
     assert command.shape == (2, 1, 8, 8)
-    assert torch.allclose(command, generator.class_carrier_command(labels), atol=0.0, rtol=0.0)
+    assert torch.allclose(
+        command, generator.class_carrier_command(labels), atol=0.0, rtol=0.0
+    )
     assert torch.count_nonzero(generator.Wy) == 0
     assert generator.command_gain == pytest.approx(0.5)
     assert generator.Wz.bias is None
@@ -59,7 +88,12 @@ def test_identity_anchored_generator_initialization_is_deterministic() -> None:
     first = IdentityAnchoredConditionalAmplitudeGenerator(shape=(8, 8))
     torch.manual_seed(1234)
     second = IdentityAnchoredConditionalAmplitudeGenerator(shape=(8, 8))
-    assert all(torch.equal(first_state, second_state) for first_state, second_state in zip(first.state_dict().values(), second.state_dict().values()))
+    assert all(
+        torch.equal(first_state, second_state)
+        for first_state, second_state in zip(
+            first.state_dict().values(), second.state_dict().values()
+        )
+    )
 
 
 def test_class_conditioned_modes_are_identity_anchored_and_rank_eight() -> None:
@@ -71,7 +105,10 @@ def test_class_conditioned_modes_are_identity_anchored_and_rank_eight() -> None:
     assert torch.allclose(generator.coefficients(code, labels), torch.tanh(code))
     modes = generator.normalized_modes(generator.class_modes)
     assert modes.shape == (10, 8, 12, 12)
-    assert all(int(torch.linalg.matrix_rank(modes[label].flatten(1)).item()) == 8 for label in range(10))
+    assert all(
+        int(torch.linalg.matrix_rank(modes[label].flatten(1)).item()) == 8
+        for label in range(10)
+    )
     assert generator.command_gain == pytest.approx(0.5)
 
 
@@ -91,12 +128,25 @@ def test_parity_stabilizer_is_zero_at_zero_and_even_in_code() -> None:
     generator = ConditionalParityStabilizedModesGenerator(shape=(8, 8))
     labels = torch.tensor([2, 2, 2])
     zero = torch.zeros(1, 8)
-    plus = torch.zeros(1, 8); plus[0, 3] = 0.8
+    plus = torch.zeros(1, 8)
+    plus[0, 3] = 0.8
     minus = -plus
-    assert torch.equal(generator(zero, torch.tensor([2])), generator.class_carrier_command(torch.tensor([2])))
-    assert torch.allclose(generator.parity_terms(plus, labels[:1])[1], generator.parity_terms(minus, labels[:1])[1])
-    assert torch.allclose(generator.parity_terms(plus, labels[:1])[2], generator.parity_terms(minus, labels[:1])[2])
-    assert torch.allclose(generator.coefficients(plus, labels[:1]), -generator.coefficients(minus, labels[:1]))
+    assert torch.equal(
+        generator(zero, torch.tensor([2])),
+        generator.class_carrier_command(torch.tensor([2])),
+    )
+    assert torch.allclose(
+        generator.parity_terms(plus, labels[:1])[1],
+        generator.parity_terms(minus, labels[:1])[1],
+    )
+    assert torch.allclose(
+        generator.parity_terms(plus, labels[:1])[2],
+        generator.parity_terms(minus, labels[:1])[2],
+    )
+    assert torch.allclose(
+        generator.coefficients(plus, labels[:1]),
+        -generator.coefficients(minus, labels[:1]),
+    )
 
 
 def test_parity_stabilizer_only_selected_class_receives_q_gradient() -> None:
@@ -109,17 +159,31 @@ def test_parity_stabilizer_only_selected_class_receives_q_gradient() -> None:
     assert torch.count_nonzero(generator.semantic_stabilizers.grad[3]) > 0
 
 
-def test_multi_anchor_route_is_deterministic_and_zero_code_selects_anchor_zero() -> None:
+def test_multi_anchor_route_is_deterministic_and_zero_code_selects_anchor_zero() -> (
+    None
+):
     generator = ConditionalMultiAnchorLocalModesGenerator(shape=(8, 8))
-    codes = torch.tensor([[0.0, 0.0, 0, 0, 0, 0, 0, 0], [-1.0, -1.0, 0, 0, 0, 0, 0, 0], [-1.0, 1.0, 0, 0, 0, 0, 0, 0], [1.0, -1.0, 0, 0, 0, 0, 0, 0], [1.0, 1.0, 0, 0, 0, 0, 0, 0]])
+    codes = torch.tensor(
+        [
+            [0.0, 0.0, 0, 0, 0, 0, 0, 0],
+            [-1.0, -1.0, 0, 0, 0, 0, 0, 0],
+            [-1.0, 1.0, 0, 0, 0, 0, 0, 0],
+            [1.0, -1.0, 0, 0, 0, 0, 0, 0],
+            [1.0, 1.0, 0, 0, 0, 0, 0, 0],
+        ]
+    )
     assert torch.equal(generator.route_indices(codes), torch.tensor([0, 0, 1, 2, 3]))
     labels = torch.zeros(5, dtype=torch.long)
-    assert torch.equal(generator(codes[:1], labels[:1]), generator(codes[1:2], labels[1:2]))
+    assert torch.equal(
+        generator(codes[:1], labels[:1]), generator(codes[1:2], labels[1:2])
+    )
 
 
 def test_multi_anchor_local_code_only_updates_selected_anchor_modes() -> None:
     generator = ConditionalMultiAnchorLocalModesGenerator(shape=(8, 8))
-    code = torch.ones(1, 8); code[0, 2:] = 0.0; code[0, 2] = 1.0
+    code = torch.ones(1, 8)
+    code[0, 2:] = 0.0
+    code[0, 2] = 1.0
     generator(code, torch.tensor([3])).sum().backward()
     assert generator.local_modes.grad is not None
     assert torch.count_nonzero(generator.local_modes.grad[3, 0]) == 0
@@ -134,7 +198,10 @@ def test_multi_anchor_generator_has_no_hidden_coefficient_network() -> None:
     assert tuple(generator.anchor_logits.shape) == (10, 4, 8, 8)
     assert tuple(generator.local_modes.shape) == (10, 4, 6, 8, 8)
     assert generator.command_gain == pytest.approx(0.25)
-    assert all("code_projection" not in name and "class_heads" not in name for name, _ in generator.named_parameters())
+    assert all(
+        "code_projection" not in name and "class_heads" not in name
+        for name, _ in generator.named_parameters()
+    )
 
 
 def test_reanchor_code_schedule_is_deterministic_and_antithetic() -> None:
@@ -176,9 +243,27 @@ def test_conditional_sinkhorn_has_no_sample_index_pairing() -> None:
     generated_view = torch.rand(20, 1, 14, 14)
     real_features = torch.randn(20, 4)
     real_view = torch.rand(20, 1, 14, 14)
-    loss = conditional_sinkhorn_loss(generated_features, generated_view, real_features, real_view, labels, epsilon=0.05, iterations=5)
-    permutation = torch.cat([torch.nonzero(labels == label).flatten().flip(0) for label in range(10)])
-    shuffled = conditional_sinkhorn_loss(generated_features, generated_view, real_features.index_select(0, permutation), real_view.index_select(0, permutation), labels, epsilon=0.05, iterations=5)
+    loss = conditional_sinkhorn_loss(
+        generated_features,
+        generated_view,
+        real_features,
+        real_view,
+        labels,
+        epsilon=0.05,
+        iterations=5,
+    )
+    permutation = torch.cat(
+        [torch.nonzero(labels == label).flatten().flip(0) for label in range(10)]
+    )
+    shuffled = conditional_sinkhorn_loss(
+        generated_features,
+        generated_view,
+        real_features.index_select(0, permutation),
+        real_view.index_select(0, permutation),
+        labels,
+        epsilon=0.05,
+        iterations=5,
+    )
     assert torch.allclose(loss, shuffled)
 
 
@@ -186,18 +271,52 @@ def test_conditional_sinkhorn_normalizes_features_and_pools_intensity_cost() -> 
     labels = torch.arange(10).repeat_interleave(2)
     generated_features = torch.randn(20, 8, generator=torch.Generator().manual_seed(21))
     real_features = torch.randn(20, 8, generator=torch.Generator().manual_seed(22))
-    generated_view = torch.rand(20, 1, 28, 28, generator=torch.Generator().manual_seed(23))
+    generated_view = torch.rand(
+        20, 1, 28, 28, generator=torch.Generator().manual_seed(23)
+    )
     real_view = torch.rand(20, 1, 28, 28, generator=torch.Generator().manual_seed(24))
-    loss = conditional_sinkhorn_loss(generated_features, generated_view, real_features, real_view, labels, epsilon=0.05, iterations=5)
-    scaled = conditional_sinkhorn_loss(17.0 * generated_features, 3.0 * generated_view, 0.25 * real_features, 3.0 * real_view, labels, epsilon=0.05, iterations=5)
+    loss = conditional_sinkhorn_loss(
+        generated_features,
+        generated_view,
+        real_features,
+        real_view,
+        labels,
+        epsilon=0.05,
+        iterations=5,
+    )
+    scaled = conditional_sinkhorn_loss(
+        17.0 * generated_features,
+        3.0 * generated_view,
+        0.25 * real_features,
+        3.0 * real_view,
+        labels,
+        epsilon=0.05,
+        iterations=5,
+    )
     # Feature normalization makes global feature scale irrelevant; pooled
     # intensity costs remain finite and preserve the expected 14x14 contract.
     assert sinkhorn_cost_view(generated_view).shape == (20, 1, 14, 14)
     assert torch.isfinite(loss)
     assert torch.isfinite(scaled)
     assert not torch.allclose(loss, scaled)
-    feature_only = conditional_sinkhorn_loss(generated_features, generated_view, real_features, real_view, labels, epsilon=0.05, iterations=5)
-    feature_scaled = conditional_sinkhorn_loss(17.0 * generated_features, generated_view, 0.25 * real_features, real_view, labels, epsilon=0.05, iterations=5)
+    feature_only = conditional_sinkhorn_loss(
+        generated_features,
+        generated_view,
+        real_features,
+        real_view,
+        labels,
+        epsilon=0.05,
+        iterations=5,
+    )
+    feature_scaled = conditional_sinkhorn_loss(
+        17.0 * generated_features,
+        generated_view,
+        0.25 * real_features,
+        real_view,
+        labels,
+        epsilon=0.05,
+        iterations=5,
+    )
     assert torch.allclose(feature_only, feature_scaled, atol=1.0e-5, rtol=1.0e-5)
 
 
@@ -229,36 +348,138 @@ def test_balanced_code_fraction_is_bounded() -> None:
     assert 0.0 <= fraction <= 1.0
 
 
-def test_identity_isolation_allows_one_semantic_alignment_smoke_only_after_transport_passes() -> None:
-    common = dict(harness_valid=True, command_fraction=0.15, first_collapse=None, camera_fraction=0.32, command_accuracy=0.97, saturation=0.05)
-    assert _identity_isolation_classification(**common, camera_accuracy=0.18) == "semantic_alignment_required"
-    assert _identity_isolation_classification(**common, camera_accuracy=0.30) == "controllable_upper_bound"
-    assert _identity_isolation_classification(**{**common, "command_accuracy": 0.94}, camera_accuracy=0.18) == "carrier_semantics_invalid"
-    assert _identity_isolation_classification(**{**common, "camera_fraction": 0.09}, camera_accuracy=0.18) == "optical_transport_attenuated"
-    assert _identity_isolation_classification(**{**common, "saturation": 0.081}, camera_accuracy=0.18) == "exposure_saturation_excessive"
+def test_identity_isolation_allows_one_semantic_alignment_smoke_only_after_transport_passes() -> (
+    None
+):
+    common = dict(
+        harness_valid=True,
+        command_fraction=0.15,
+        first_collapse=None,
+        camera_fraction=0.32,
+        command_accuracy=0.97,
+        saturation=0.05,
+    )
+    assert (
+        _identity_isolation_classification(**common, camera_accuracy=0.18)
+        == "semantic_alignment_required"
+    )
+    assert (
+        _identity_isolation_classification(**common, camera_accuracy=0.30)
+        == "controllable_upper_bound"
+    )
+    assert (
+        _identity_isolation_classification(
+            **{**common, "command_accuracy": 0.94}, camera_accuracy=0.18
+        )
+        == "carrier_semantics_invalid"
+    )
+    assert (
+        _identity_isolation_classification(
+            **{**common, "camera_fraction": 0.09}, camera_accuracy=0.18
+        )
+        == "optical_transport_attenuated"
+    )
+    assert (
+        _identity_isolation_classification(
+            **{**common, "saturation": 0.081}, camera_accuracy=0.18
+        )
+        == "exposure_saturation_excessive"
+    )
 
 
 def test_semantic_localization_classifies_gradient_contract_without_updates() -> None:
-    groups = ("class_carrier", "global_modes", "code_projection", "class_heads", "encoder_phase", "decoder_phase")
-    zero = {name: {"gradient_norm": 1.0, "gradient_finite": True, "gradient_nonzero": True} for name in groups}
-    formal = {name: {"gradient_norm": 1.0, "gradient_finite": True, "gradient_nonzero": True} for name in groups}
+    groups = (
+        "class_carrier",
+        "global_modes",
+        "code_projection",
+        "class_heads",
+        "encoder_phase",
+        "decoder_phase",
+    )
+    zero = {
+        name: {"gradient_norm": 1.0, "gradient_finite": True, "gradient_nonzero": True}
+        for name in groups
+    }
+    formal = {
+        name: {"gradient_norm": 1.0, "gradient_finite": True, "gradient_nonzero": True}
+        for name in groups
+    }
     aligned = {name: {"cosine": 0.5} for name in groups}
-    assert _semantic_localization_classification(harness_valid=True, zero_gradients=zero, formal_gradients=formal, gradient_cosines=aligned) == "local_semantic_alignment_plausible"
-    assert _semantic_localization_classification(harness_valid=True, zero_gradients=zero, formal_gradients=formal, gradient_cosines={**aligned, "encoder_phase": {"cosine": -0.1}}) == "zero_code_joint_conflict"
-    assert _semantic_localization_classification(harness_valid=True, zero_gradients=zero, formal_gradients=formal, gradient_cosines={**aligned, "decoder_phase": {"cosine": 0.0}}) == "indeterminate_alignment"
-    zero_missing = {**zero, "class_carrier": {"gradient_norm": 0.0, "gradient_finite": True, "gradient_nonzero": False}}
-    assert _semantic_localization_classification(harness_valid=True, zero_gradients=zero_missing, formal_gradients=formal, gradient_cosines=aligned) == "zero_code_gradient_absent"
-    assert _semantic_localization_classification(harness_valid=False, zero_gradients=zero, formal_gradients=formal, gradient_cosines=aligned) == "harness_invalid"
+    assert (
+        _semantic_localization_classification(
+            harness_valid=True,
+            zero_gradients=zero,
+            formal_gradients=formal,
+            gradient_cosines=aligned,
+        )
+        == "local_semantic_alignment_plausible"
+    )
+    assert (
+        _semantic_localization_classification(
+            harness_valid=True,
+            zero_gradients=zero,
+            formal_gradients=formal,
+            gradient_cosines={**aligned, "encoder_phase": {"cosine": -0.1}},
+        )
+        == "zero_code_joint_conflict"
+    )
+    assert (
+        _semantic_localization_classification(
+            harness_valid=True,
+            zero_gradients=zero,
+            formal_gradients=formal,
+            gradient_cosines={**aligned, "decoder_phase": {"cosine": 0.0}},
+        )
+        == "indeterminate_alignment"
+    )
+    zero_missing = {
+        **zero,
+        "class_carrier": {
+            "gradient_norm": 0.0,
+            "gradient_finite": True,
+            "gradient_nonzero": False,
+        },
+    }
+    assert (
+        _semantic_localization_classification(
+            harness_valid=True,
+            zero_gradients=zero_missing,
+            formal_gradients=formal,
+            gradient_cosines=aligned,
+        )
+        == "zero_code_gradient_absent"
+    )
+    assert (
+        _semantic_localization_classification(
+            harness_valid=False,
+            zero_gradients=zero,
+            formal_gradients=formal,
+            gradient_cosines=aligned,
+        )
+        == "harness_invalid"
+    )
 
 
 def test_semantic_alignment_isolation_routes_only_to_localization() -> None:
-    common = dict(harness_valid=True, command_fraction=0.15, first_collapse=None, camera_fraction=0.32, command_accuracy=0.97, saturation=0.05)
-    assert _identity_isolation_classification(**common, camera_accuracy=0.18) == "semantic_alignment_required"
+    common = dict(
+        harness_valid=True,
+        command_fraction=0.15,
+        first_collapse=None,
+        camera_fraction=0.32,
+        command_accuracy=0.97,
+        saturation=0.05,
+    )
+    assert (
+        _identity_isolation_classification(**common, camera_accuracy=0.18)
+        == "semantic_alignment_required"
+    )
 
 
 def test_identity_smoke_and_formal_training_share_the_first_hundred_schedule() -> None:
     labels = torch.arange(10).repeat_interleave(600)
-    assert _first_hundred_schedule_hash(labels) == _first_hundred_schedule_hash(labels.clone())
+    assert _first_hundred_schedule_hash(labels) == _first_hundred_schedule_hash(
+        labels.clone()
+    )
     changed = labels.clone()
     changed[0], changed[600] = changed[600], changed[0]
     assert _first_hundred_schedule_hash(changed) != _first_hundred_schedule_hash(labels)
@@ -272,12 +493,32 @@ def test_semantic_recovery_schedule_extends_the_same_first_hundred_batches() -> 
 
 def test_conditional_checkpoint_rejects_architecture_mismatch(tmp_path: Path) -> None:
     model = nn.Linear(2, 2)
-    manifest = ConditionalCheckpointManifestV2(2, "conditional_global_amplitude_v1", "system", "config", "split", "evaluator", 1.0, state_signature(model.state_dict()), state_content_hash(model.state_dict()))
+    manifest = ConditionalCheckpointManifestV2(
+        2,
+        "conditional_global_amplitude_v1",
+        "system",
+        "config",
+        "split",
+        "evaluator",
+        1.0,
+        state_signature(model.state_dict()),
+        state_content_hash(model.state_dict()),
+    )
     checkpoint = tmp_path / "conditional.pt"
     save_conditional_checkpoint(checkpoint, model, manifest)
     target = nn.Linear(2, 2)
     load_conditional_checkpoint(checkpoint, target, manifest)
-    incompatible = ConditionalCheckpointManifestV2(2, "conditional_global_amplitude_v1", "other-system", "config", "split", "evaluator", 1.0, manifest.state_signature, manifest.state_content_hash)
+    incompatible = ConditionalCheckpointManifestV2(
+        2,
+        "conditional_global_amplitude_v1",
+        "other-system",
+        "config",
+        "split",
+        "evaluator",
+        1.0,
+        manifest.state_signature,
+        manifest.state_content_hash,
+    )
     with pytest.raises(ValueError, match="does not match"):
         load_conditional_checkpoint(checkpoint, target, incompatible)
 
@@ -307,21 +548,65 @@ def test_identity_logit_v2_checkpoint_requires_complete_context(tmp_path: Path) 
     checkpoint = tmp_path / "identity_v2.pt"
     save_conditional_checkpoint(checkpoint, model, manifest)
     load_conditional_checkpoint(checkpoint, nn.Linear(2, 2), manifest)
-    incomplete = ConditionalCheckpointManifestV2(**{**common, "metric_contract_hash": None})
+    incomplete = ConditionalCheckpointManifestV2(
+        **{**common, "metric_contract_hash": None}
+    )
     with pytest.raises(ValueError, match="complete contract hashes"):
         save_conditional_checkpoint(tmp_path / "incomplete.pt", model, incomplete)
 
 
 def test_identity_logit_config_is_separate_and_locks_gain_and_seed() -> None:
-    config = load_config("configs/v2/current/formal_identity_logit_amplitude_finite_crop_identity.yaml")
+    config = load_config(
+        "configs/v2/current/formal_identity_logit_amplitude_finite_crop_identity.yaml"
+    )
     assert config.architecture == "conditional_identity_logit_amplitude_v2"
     assert config.conditional_generation is not None
     assert config.conditional_generation.command_gain == pytest.approx(0.5)
     assert config.conditional_generation.initialization_seed == 1234
 
 
+def test_current_identity_bundle_preserves_legacy_checkpoint_topology() -> None:
+    """The physical split must not alter formal state keys or generator output."""
+    from ldm_project.v2.application.current.runtime import ConditionalBundle as current_bundle
+    from ldm_project.v2.application.legacy.runtime import ConditionalBundle as legacy_bundle
+
+    config = load_config(
+        "configs/v2/current/formal_identity_logit_amplitude_finite_crop_identity.yaml"
+    )
+    torch.manual_seed(1234)
+    current = current_bundle(config).eval()
+    torch.manual_seed(1234)
+    legacy = legacy_bundle(config).eval()
+    assert state_signature(current.state_dict()) == state_signature(legacy.state_dict())
+    assert tuple(current.state_dict()) == tuple(legacy.state_dict())
+    codes = torch.tensor([[0.0] * 8, [0.25] * 8])
+    labels = torch.tensor([0, 9])
+    assert torch.equal(current.generator(codes, labels), legacy.generator(codes, labels))
+
+
+def test_current_identity_parameter_groups_have_no_candidate_architecture_branch() -> None:
+    """Identity admission must not consult diagnostic-only architecture constants."""
+    from ldm_project.v2.application.current.admission import _conditional_parameter_groups
+    from ldm_project.v2.application.current.runtime import ConditionalBundle
+
+    config = load_config(
+        "configs/v2/current/formal_identity_logit_amplitude_finite_crop_identity.yaml"
+    )
+    groups = _conditional_parameter_groups(ConditionalBundle(config))
+    assert tuple(groups) == (
+        "class_carrier",
+        "global_modes",
+        "code_projection",
+        "class_heads",
+        "encoder_phase",
+        "decoder_phase",
+    )
+
+
 def test_multi_anchor_config_locks_gain_batch_and_seed() -> None:
-    config = load_config("configs/v2/current/formal_multi_anchor_local_modes_finite_crop_identity.yaml")
+    config = load_config(
+        "configs/v2/diagnostic/conditional_multi_anchor_local_modes_finite_crop_identity.yaml"
+    )
     assert config.architecture == "conditional_multi_anchor_local_modes_v5"
     assert config.conditional_generation is not None
     assert config.conditional_generation.command_gain == pytest.approx(0.25)
@@ -333,21 +618,42 @@ def test_v2_config_migration_resolves_exact_legacy_path() -> None:
     with pytest.warns(UserWarning, match="deprecated v2 config path"):
         legacy = load_config("configs/v2/formal_amplitude_finite_crop_identity.yaml")
     assert legacy.architecture == "conditional_global_amplitude_v1"
-    current = load_config("configs/v2/current/formal_identity_logit_amplitude_finite_crop_identity.yaml")
+    current = load_config(
+        "configs/v2/current/formal_identity_logit_amplitude_finite_crop_identity.yaml"
+    )
     assert current.architecture == "conditional_identity_logit_amplitude_v2"
-    with pytest.raises(ValueError, match="legacy v2 architectures"):
-        _require_current_acceptance(legacy)
+    assert legacy.run.evidence_tier == "diagnostic"
 
 
 def test_v2_config_migration_does_not_guess_unknown_paths() -> None:
     with pytest.raises(FileNotFoundError, match="v2 config does not exist"):
-        load_config("configs/v2/formal_identity_logit_amplitude_finite_crop_identity_typo.yaml")
+        load_config(
+            "configs/v2/formal_identity_logit_amplitude_finite_crop_identity_typo.yaml"
+        )
 
 
 def test_content_bound_mnist_split_identity_ignores_machine_path() -> None:
     common = (2, 1234, "train", "validation", 55000, 5000, "mnist-content")
-    left = MNISTSplitManifest(common[0], "/machine/a/data", common[1], common[2], common[3], common[4], common[5], common[6])
-    right = MNISTSplitManifest(common[0], "/machine/b/data", common[1], common[2], common[3], common[4], common[5], common[6])
+    left = MNISTSplitManifest(
+        common[0],
+        "/machine/a/data",
+        common[1],
+        common[2],
+        common[3],
+        common[4],
+        common[5],
+        common[6],
+    )
+    right = MNISTSplitManifest(
+        common[0],
+        "/machine/b/data",
+        common[1],
+        common[2],
+        common[3],
+        common[4],
+        common[5],
+        common[6],
+    )
     assert left.manifest_hash == right.manifest_hash
 
 
@@ -374,10 +680,24 @@ run:
 
 
 def test_conditional_manual_review_requires_each_label_to_have_sixteen_slots() -> None:
-    review = ConditionalManualReviewV2(review_kind="conditional_generation", reviewed_tensor_sha256="raw", reviewed_preview_sha256="preview", samples_per_label=16, readable_counts=(14,) * 10, reviewer="unit")
+    review = ConditionalManualReviewV2(
+        review_kind="conditional_generation",
+        reviewed_tensor_sha256="raw",
+        reviewed_preview_sha256="preview",
+        samples_per_label=16,
+        readable_counts=(14,) * 10,
+        reviewer="unit",
+    )
     review.validate_contract(tensor_hash="raw", preview_hash="preview")
     with pytest.raises(ValueError, match="sixteen"):
-        ConditionalManualReviewV2(review_kind="conditional_generation", reviewed_tensor_sha256="raw", reviewed_preview_sha256="preview", samples_per_label=15, readable_counts=(14,) * 10, reviewer="unit").validate_contract(tensor_hash="raw", preview_hash="preview")
+        ConditionalManualReviewV2(
+            review_kind="conditional_generation",
+            reviewed_tensor_sha256="raw",
+            reviewed_preview_sha256="preview",
+            samples_per_label=15,
+            readable_counts=(14,) * 10,
+            reviewer="unit",
+        ).validate_contract(tensor_hash="raw", preview_hash="preview")
 
 
 def test_diversity_and_chunked_nearest_neighbor_metrics() -> None:
@@ -399,4 +719,6 @@ def test_memorization_copy_is_flagged_and_bootstrap_is_deterministic() -> None:
     report = memorization_statistics(generated, generated_labels, real, real_labels)
     assert report["overall_anomalous_rate"] == 1.0
     values = torch.tensor([1.0, -1.0, 1.0, -1.0])
-    assert paired_bootstrap_lower_bound(values, seed=1234, resamples=20) == paired_bootstrap_lower_bound(values, seed=1234, resamples=20)
+    assert paired_bootstrap_lower_bound(
+        values, seed=1234, resamples=20
+    ) == paired_bootstrap_lower_bound(values, seed=1234, resamples=20)

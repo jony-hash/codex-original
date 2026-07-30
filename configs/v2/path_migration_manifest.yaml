@@ -6,6 +6,36 @@ entries:
     architecture: conditional_identity_logit_amplitude_v2
     lifecycle: current
     sha256: 0c42035c1a525e27ff787d013ca27b0f5ae91338329eb0607c7042ebc5ae8905
+  - old_path: configs/v2/current/formal_class_conditioned_modes_finite_crop_identity.yaml
+    new_path: configs/v2/diagnostic/conditional_class_conditioned_modes_finite_crop_identity.yaml
+    architecture: conditional_class_conditioned_modes_v3
+    lifecycle: diagnostic_reference
+    sha256: bc88b7ddb44f2e070ff62531266283f883f4e66b67dd88ff214d36b1f5bfa38b
+  - old_path: configs/v2/current/formal_parity_stabilized_modes_finite_crop_identity.yaml
+    new_path: configs/v2/diagnostic/conditional_parity_stabilized_modes_finite_crop_identity.yaml
+    architecture: conditional_parity_stabilized_modes_v4
+    lifecycle: diagnostic_reference
+    sha256: f0c4a97cf387e3ace256baf09c2437e327b691ff18d80aec88ff3a198969cdb4
+  - old_path: configs/v2/current/formal_multi_anchor_local_modes_finite_crop_identity.yaml
+    new_path: configs/v2/diagnostic/conditional_multi_anchor_local_modes_finite_crop_identity.yaml
+    architecture: conditional_multi_anchor_local_modes_v5
+    lifecycle: diagnostic_reference
+    sha256: 198810937a94d2740e9bbea494df16510b7d7a917161d18034c37e7c35f274bd
+  - old_path: configs/v2/current/formal_pca_transport_codesign_finite_crop_identity.yaml
+    new_path: configs/v2/diagnostic/conditional_pca_transport_codesign_finite_crop_identity.yaml
+    architecture: conditional_pca_transport_codesign_v6
+    lifecycle: diagnostic_reference
+    sha256: 659c4870440372c845dc70e9cd3c5015dfe3b446d20a0cfbb597099c7de852ae
+  - old_path: configs/v2/current/formal_pca_formal_spacing_self_imaging_finite_crop_identity.yaml
+    new_path: configs/v2/diagnostic/conditional_pca_formal_spacing_self_imaging_finite_crop_identity.yaml
+    architecture: conditional_pca_formal_spacing_self_imaging_v6_3
+    lifecycle: diagnostic_reference
+    sha256: 9c6a6b01b96df828500aac09ca42fc866c3dd8fde75764a8bf3d8c65ab7a7be0
+  - old_path: configs/v2/current/formal_pca_near_conjugate_relay.yaml
+    new_path: configs/v2/diagnostic/conditional_pca_near_conjugate_relay.yaml
+    architecture: conditional_pca_near_conjugate_relay_v6_4
+    lifecycle: diagnostic_reference
+    sha256: 936882a902d97637d3b56fe74139ac521e194994360a2182c12abda0e00e55ae
   - old_path: configs/v2/formal_amplitude_finite_crop_identity.yaml
     new_path: configs/v2/legacy/formal_global_amplitude_finite_crop_identity.yaml
     architecture: conditional_global_amplitude_v1

@@ -1,43 +1,16 @@
-"""Training and evaluation facade for the v2 conditional runtime."""
+"""Lazy compatibility facade for historical conditional training imports."""
 
-from .conditional_runtime import (
-    admit_conditional_evaluation,
-    conditional_evaluate,
-    conditional_train,
-    conditional_training_completion,
-    conditional_diversity_observability,
-    diversity_recovery_smoke,
-    train_diversity_recovery,
-    diversity_aligned_smoke,
-    train_diversity_aligned,
-    train_identity_reanchor,
-    identity_reanchor_smoke,
-    sample_conditional,
-    class_mode_recovery_smoke,
-    train_class_modes,
-    parity_stabilizer_smoke,
-    train_parity_stabilizer,
-    multi_anchor_smoke,
-    train_multi_anchor,
-)
+from __future__ import annotations
 
-__all__ = [
-    "admit_conditional_evaluation",
-    "conditional_evaluate",
-    "conditional_train",
-    "conditional_training_completion",
-    "conditional_diversity_observability",
-    "diversity_recovery_smoke",
-    "train_diversity_recovery",
-    "diversity_aligned_smoke",
-    "train_diversity_aligned",
-    "train_identity_reanchor",
-    "identity_reanchor_smoke",
-    "sample_conditional",
-    "class_mode_recovery_smoke",
-    "train_class_modes",
-    "parity_stabilizer_smoke",
-    "train_parity_stabilizer",
-    "multi_anchor_smoke",
-    "train_multi_anchor",
-]
+from importlib import import_module
+
+
+def __getattr__(name: str):
+    module = import_module(".legacy.runtime", __package__)
+    value = getattr(module, name)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(dir(import_module(".legacy.runtime", __package__))))

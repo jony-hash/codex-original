@@ -1,5 +1,8 @@
 import torch
+from types import SimpleNamespace
 
+from ldm_project.v2.application.cli import _parser
+from ldm_project.v2.application.conditional_near_conjugate import _replay_checks
 from ldm_project.v2.application.conditional_runtime import ConditionalBundle
 from ldm_project.v2.config import load_config
 from ldm_project.v2.contracts import ComplexField, OperationProvenance, PlaneSpec
@@ -39,3 +42,101 @@ def test_near_conjugate_relay_records_physical_and_effective_geometry():
     ]
     assert output.provenance.parameters["effective_B_m"] == 0.25e-3
     assert torch.isfinite(reference.tensor).all()
+
+
+def test_near_conjugate_replay_keeps_missing_quality_gates_independent():
+    def panel(*, ratio, recall=1.0):
+        return {
+            "accuracy": 1.0,
+            "recall": [recall] * 10,
+            "camera_fraction": 0.5,
+            "ratios": [ratio] * 10,
+            "delta_correlation": 0.9,
+            "direction_response": [0.02] * 8,
+            "saturation": 0.01,
+        }
+
+    history = {
+        "probes": {
+            str(step): {
+                "axis": panel(ratio=0.4),
+                "uniform_1234": panel(ratio=0.5),
+                "uniform_5678": panel(ratio=0.7),
+            }
+            for step in (0, 50, 100, 200, 400)
+        },
+        "history": [
+            {
+                "sinkhorn": 0.1,
+                "relative_diversity": 0.1 if step < 350 else 0.2,
+                "delta": 0.1,
+            }
+            for step in range(400)
+        ],
+        "updates": {"encoder": 1.0, "decoder": 1.0},
+    }
+    initial = SimpleNamespace(
+        state_dict=lambda: {
+            "generator.value": torch.ones(1),
+            "system.encoder.phase": torch.zeros(1),
+            "system.decoder.phase": torch.zeros(1),
+        }
+    )
+    final = SimpleNamespace(
+        state_dict=lambda: {
+            "generator.value": torch.ones(1),
+            "system.encoder.phase": torch.ones(1),
+            "system.decoder.phase": torch.ones(1),
+        }
+    )
+    crops = {
+        "axis": {"encoder": [0.95], "decoder": [0.95]},
+        "uniform_1234": {"encoder": [0.95], "decoder": [0.95]},
+        "uniform_5678": {"encoder": [0.95], "decoder": [0.95]},
+    }
+    checks, _ = _replay_checks(
+        history,
+        initial,
+        final,
+        True,
+        {"axis": True, "uniform_1234": True, "uniform_5678": True},
+        crops,
+        crops,
+        {"accuracy": 1.0},
+    )
+    by_name = {item.name: item for item in checks}
+    assert not by_name["feature_ratio"].passed
+    assert not by_name["distribution_loss_trend"].passed
+    assert by_name["integrity"].passed
+
+
+def test_near_conjugate_replay_and_distribution_tangent_cli_are_explicit():
+    parser = _parser()
+    replay = parser.parse_args(
+        [
+            "audit",
+            "conditional-near-conjugate-smoke-replay",
+            "--config", "config.yaml",
+            "--dataset-root", "data",
+            "--evaluator-checkpoint", "evaluator.pt",
+            "--smoke-evidence", "smoke.json",
+            "--history", "history.json",
+            "--initialization-checkpoint", "initial.pt",
+            "--diagnostic-final", "final.pt",
+            "--observability-evidence", "observability.json",
+        ]
+    )
+    tangent = parser.parse_args(
+        [
+            "audit",
+            "conditional-near-conjugate-phase-distribution-tangent",
+            "--config", "config.yaml",
+            "--dataset-root", "data",
+            "--evaluator-checkpoint", "evaluator.pt",
+            "--replay-evidence", "replay.json",
+            "--initialization-checkpoint", "initial.pt",
+            "--diagnostic-final", "final.pt",
+        ]
+    )
+    assert replay.history == "history.json"
+    assert tangent.replay_evidence == "replay.json"

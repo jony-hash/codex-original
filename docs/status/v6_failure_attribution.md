@@ -1,6 +1,6 @@
 # v6 失败归因、v6.2 短层距归档、v6.3 正式间距与 v6.4 relay 诊断
 
-## v6.4 近共轭 1:1 relay smoke（2026-07-30，harness-invalid）
+## v6.4 近共轭 1:1 relay smoke（2026-07-30，已由 replay/tangent 关闭）
 
 v6.4 使用四个正机械距离两透镜 relay（每个 `25.00/50.00/24.75 mm`，有效 ABCD
 `[-1,+0.25 mm;0,-1]`），而不是把负有效距离伪装为自由空间传播。它冻结已通过的 v6.2
@@ -13,12 +13,11 @@ admission、semantic tangent 与 observability 通过。初始三面板 camera f
 recall 为 `0.8824 < 0.90`；最终最低 feature ratio 为 axis `0.3982`、uniform-1234
 `0.5833`、uniform-5678 `0.6479`，低于 smoke 注册下限。
 
-更关键的是，smoke 实现遗漏将 ratio、delta correlation、relay crop retention、最后50步分布损失
-趋势完整编码为 GateResult。因此 `conditional_near_conjugate_smoke_evidence.json` 的 failed 状态
-足以阻止训练，却不能升级为有效架构失败归因；其类别为 `invalid_harness_evidence`。不得从该
-smoke final warm-start、不得重跑或调参；若继续，必须先独立修复 harness 并重新资格化。
-产物目录：
-`outputs/20260729_v2/runs/20260729_233809_929370_diagnostic_v2_pca_near_conjugate_relay/`。
+遗漏项已由只读CUDA replay补齐，产物为
+`outputs/20260730_v2/runs/20260730_014137_778801_diagnostic_v2_pca_near_conjugate_relay/`。
+完整harness有效而科学门失败，唯一授权的phase-distribution tangent位于
+`20260730_014836_346059`；其三种安全方向均不存在受保护的三面板ratio改善。故v6.4是有效的
+`phase_only_distribution_tangent_absent`架构关闭证据。不得从smoke final warm-start、重跑或调参。
 
 ## v6.3 正式 1.50 mm self-imaging smoke（2026-07-29）
 

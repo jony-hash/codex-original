@@ -10,6 +10,8 @@
 | Wy=0 / v3共享或类条件模式 | 多样性恢复后，非零码语义与类别5/7冲突。 |
 | v4 parity stabilizer | 只读切空间能改善margin，但会破坏特征多样性；奇偶抵消改善不足。 |
 | v5四锚点局部模式 | 四簇平均收益仅0.1691，最低类别0.1243；数字1有156张小簇，不支持等权硬路由。 |
+| v6.4 冻结PCA + phase-only relay | replay确认ratio/分布趋势失败；安全encoder/decoder/joint tangent均不能改善三面板瓶颈。 |
+| v7 32-mode nonlinear manifold | 容量通过，但固定CUDA admission的axis语义、ratio与防模板坍缩失败。 |
 
 ## 当前有效边界
 
@@ -20,6 +22,27 @@ label + code → amplitude SLM → Encoder → identity OLS → Decoder → CMOS
 ```
 
 它们否定的是电子端入口的参数化和数据几何假设。失败evidence保持不可变，只能用于下一次诊断定位，不能授权训练、自动评估或导出。
+
+## 当前状态（2026-07-30）
+
+Evaluator v2.1 已通过独立资格化。它不改变历史 v7.1/v7.2 的有效失败：那些 evidence
+仍绑定各自的 evaluator 合同。v2.1 仅证明新的双-evaluator bundle 可以作为下一条独立 2+2
+transport 诊断链的测量仪器；后续仍须依次通过曲率基线、design、admission、tangent 与预注册的
+两 seed smoke，才可能授权正式训练。
+
+v7使用v6.2的carrier与前8模式，新增训练split PCA 9--32和无bias类条件MLP；不读取v6.4
+diagnostic final。容量 evidence `20260730_030257_695213` 通过，但 admission
+`20260730_030608_413918` 为 `nonlinear_expanded_manifold_not_admitted`。因此当前没有可训练
+generator候选；下一步只能提出新结构合同，不可重试、调scale或启动smoke。
+
+v7.1 是唯一受控替代：冻结 v6.2 carrier、v7 同源 32-mode pool 和逐方向 scale，
+仅允许训练 `[10,32,8]` transport mixing 与 2+2 phase。它必须完成
+`design → no-update admission → no-update tangent → 唯一400-step smoke`；任何失败
+均停止电子生成器迭代并转向物理容量合同，不执行本轮 5-epoch。
+
+该候选已在 design 门停止：完整 CUDA central-difference response 的每类 rank 均为8，
+但最小 nonlinearity 为 `0.1132`，高于锁定上限 `0.10`。这是一条有效的 v7.1
+transport-linearization 失败，不授权 admission 或后续训练。
 
 ## 当前 v6 决策门
 

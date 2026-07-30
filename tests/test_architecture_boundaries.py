@@ -80,7 +80,7 @@ def test_formal_domain_import_boundaries() -> None:
 
 
 def test_student_layer_shim_contains_no_implementation() -> None:
-    path = ROOT / "src" / "ldm_project" / "student" / "layers.py"
+    path = ROOT / "src" / "ldm_project" / "v1" / "student" / "layers.py"
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     assert not any(isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) for node in tree.body)
 
@@ -104,10 +104,10 @@ def test_neutral_domains_do_not_depend_on_execution_domains() -> None:
 
 def test_teacher_workflows_do_not_depend_on_common_facade() -> None:
     for name in ("export.py", "label_audit.py", "filter.py", "readable.py"):
-        imports = _imports_in(ROOT / "src" / "ldm_project" / "teacher" / name)
+        imports = _imports_in(ROOT / "src" / "ldm_project" / "v1" / "teacher" / name)
         assert "common" not in imports, name
     common_tree = ast.parse(
-        (ROOT / "src" / "ldm_project" / "teacher" / "common.py").read_text(
+        (ROOT / "src" / "ldm_project" / "v1" / "teacher" / "common.py").read_text(
             encoding="utf-8"
         )
     )
@@ -177,7 +177,7 @@ def test_student_has_no_diagnostics_imports() -> None:
 
 def test_teacher_scoped_modules_use_public_support_symbols() -> None:
     for name in ("export.py", "label_audit.py", "filter.py", "readable.py", "fault_localization.py"):
-        path = ROOT / "src" / "ldm_project" / "teacher" / name
+        path = ROOT / "src" / "ldm_project" / "v1" / "teacher" / name
         text = path.read_text(encoding="utf-8")
         assert "from .distill import" not in text, path
         assert "from .common import" not in text, path

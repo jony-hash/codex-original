@@ -1,7 +1,9 @@
 schema_version: 2
-architecture: conditional_pca_transport_codesign_v6
+architecture: conditional_transport_aligned_phase_capacity_v7_2
 system:
-  kind: formal_amplitude_finite_crop_identity
+  kind: diagnostic_amplitude_near_conjugate_relay_identity_phase_capacity_v7_2
+  encoder_layers: 4
+  decoder_layers: 4
 conditional_generation:
   code_dim: 8
   hidden_dim: 64
@@ -23,7 +25,7 @@ execution:
   evaluation_microbatch_size: 1
   activation_checkpoint: true
 run:
-  run_name: formal_v2_pca_transport_codesign_finite_crop_identity
+  run_name: diagnostic_v2_transport_aligned_phase_capacity_v72
   output_root: outputs
-  evidence_tier: acceptance
+  evidence_tier: diagnostic
   device: cuda

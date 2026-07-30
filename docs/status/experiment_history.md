@@ -2,6 +2,17 @@
 
 本文件保存带日期的实验事实和验收证据，不定义当前执行契约。迁移或续接当前主线时先读 [当前主线交接（v79 冻结与 v2）](current_handoff.md)；当前架构见 [D2NN 单次曝光蒸馏主线](../architecture/v1_single_shot_distillation.md)，stage 命令与输入要求见 [Stage Guide](../operations/stage_guide.md)，完整导航见 [Documentation](../README.md)。本文件的“当前/下一步”均表示各记录当时的结论；历史证据保留，不应覆盖现行合同。
 
+## 2026-07-30：v7.1 transport-aligned manifold 合同预注册
+
+在 v7 的有效 CUDA admission 失败后，唯一允许的电子候选为 v7.1：冻结 carrier、
+32-mode candidate pool 和 calibrated scales，以完整物理 relay Jacobian 拟合 8D
+transport mixing。其运行顺序、阈值、固定 seed、唯一 smoke 与停止规则均写入
+runner/evidence；此条目仅记录预注册合同，不记录任何 CUDA 结果。
+
+随后 design 在 CUDA 上完成。双符号 scale 的语义、饱和和 raw/feature response 全部合格，
+response rank 也满足8维；但类别 nonlinearity 落在 `0.1132--0.3192`，超过
+`≤0.10` 的预注册上限。design artifact 未发布，后续 admission、tangent、smoke 未运行。
+
 ## 2026-07-30：v6.4 近共轭 1:1 relay 诊断（harness-invalid）
 
 分支 `experiment/v2-near-conjugate-relay-v64` 实现了四个 `25.00/50.00/24.75 mm` 的两透镜
@@ -673,3 +684,15 @@ axis `+27.4%`、uniform `+16.0%/+14.3%`，低于每面板`+25%`门。其饱和�
 clamp后计算，故历史 evidence 标为 `invalid_saturation_harness` 并需一次pre-clamp重跑；短层距
 训练和导出始终未获授权。0.25 mm也不满足实验台1.50 mm full-connect几何下界，后续只作为单片堆叠
 器件诊断保留。
+
+## 2026-07-30：v6.4 replay关闭与v7扩展流形准入失败
+
+只读CUDA replay补齐v6.4的ratio、delta correlation、crop和最后50步趋势门；harness有效但
+feature ratio、类别7 recall和distribution trend失败。唯一phase-only distribution tangent在
+phase RMS `<=0.005`、raw RMS `<=1%`内分别测试encoder、decoder和joint，三者均不能让三面板
+最差feature ratio提升`0.01`且保持保护门，故关闭该路线。
+
+v7保持near-conjugate光路，使用32个20 cycles/mm以下的数据对齐PCA模式和无bias类条件MLP。
+PCA-32相对PCA-8的容量门通过；固定CUDA admission失败于axis类别8 recall `0.8235`、axis/
+uniform-1234/holdout feature ratio `0.4231/0.5223/0.5419`及防模板坍缩。无optimizer、checkpoint、
+smoke或训练被创建；结果为 `nonlinear_expanded_manifold_not_admitted`。

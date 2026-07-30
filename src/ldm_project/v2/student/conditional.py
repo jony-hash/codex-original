@@ -2,7 +2,7 @@
 
 This module is intentionally independent of v2's historical teacher manifests.
 Every image loss begins at raw CMOS intensity and gradients then flow through the
-formal optical system to ``ConditionalGlobalAmplitudeGenerator``.
+formal optical system to the configured amplitude-SLM generator.
 """
 from __future__ import annotations
 
@@ -11,9 +11,6 @@ from dataclasses import dataclass
 import torch
 from torch import nn
 from torch.utils.checkpoint import checkpoint
-
-from .generator import ConditionalGlobalAmplitudeGenerator
-
 
 @dataclass(frozen=True)
 class ConditionalLossSummary:
@@ -165,7 +162,7 @@ def camera_code_fraction_loss(raw: torch.Tensor, labels: torch.Tensor, *, target
     return torch.relu(torch.as_tensor(target, device=raw.device, dtype=raw.dtype) - fraction).square()
 
 
-def raw_from_generator(system: nn.Module, generator: ConditionalGlobalAmplitudeGenerator, codes: torch.Tensor, labels: torch.Tensor, *, activation_checkpoint: bool) -> torch.Tensor:
+def raw_from_generator(system: nn.Module, generator: nn.Module, codes: torch.Tensor, labels: torch.Tensor, *, activation_checkpoint: bool) -> torch.Tensor:
     def forward(command: torch.Tensor) -> torch.Tensor:
         return system.forward(system.command(command)).raw_camera.tensor
 
@@ -175,7 +172,7 @@ def raw_from_generator(system: nn.Module, generator: ConditionalGlobalAmplitudeG
     return forward(command)
 
 
-def raw_from_generator_batched(system: nn.Module, generator: ConditionalGlobalAmplitudeGenerator, codes: torch.Tensor, labels: torch.Tensor, *, microbatch_size: int = 1, activation_checkpoint: bool) -> torch.Tensor:
+def raw_from_generator_batched(system: nn.Module, generator: nn.Module, codes: torch.Tensor, labels: torch.Tensor, *, microbatch_size: int = 1, activation_checkpoint: bool) -> torch.Tensor:
     if microbatch_size < 1:
         raise ValueError("optical microbatch_size must be positive")
     rows = []
@@ -187,7 +184,7 @@ def raw_from_generator_batched(system: nn.Module, generator: ConditionalGlobalAm
 def conditional_loss(
     *,
     system: nn.Module,
-    generator: ConditionalGlobalAmplitudeGenerator,
+    generator: nn.Module,
     evaluator: nn.Module,
     codes: torch.Tensor,
     labels: torch.Tensor,

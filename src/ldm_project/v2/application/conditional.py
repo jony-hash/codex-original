@@ -1,14 +1,19 @@
-"""Compatibility facade for the v2 conditional application stages.
+"""Lazy compatibility facade for historical v2 conditional stage imports."""
 
-The implementation is kept in ``conditional_runtime`` so the public CLI and
-older internal imports remain stable while domain facades expose narrower
-responsibility groups.
-"""
+from __future__ import annotations
 
-from .conditional_runtime import *  # noqa: F401,F403
-from .conditional_runtime import _first_hundred_schedule_hash, _identity_isolation_classification, _reanchor_codes, _require_current_acceptance, _schedule_hash, _semantic_localization_classification  # noqa: F401
+from importlib import import_module
 
-__all__ = [
-    name for name in globals()
-    if not name.startswith("__")
-]
+
+def _implementation():
+    return import_module(".legacy.runtime", __package__)
+
+
+def __getattr__(name: str):
+    value = getattr(_implementation(), name)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(dir(_implementation())))

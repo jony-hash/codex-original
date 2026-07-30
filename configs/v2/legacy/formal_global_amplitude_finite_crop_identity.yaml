@@ -24,5 +24,5 @@ execution:
 run:
   run_name: formal_v2_amplitude_finite_crop_identity
   output_root: outputs
-  evidence_tier: acceptance
+  evidence_tier: diagnostic
   device: cuda

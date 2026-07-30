@@ -1,55 +1,18 @@
-"""Admission and observability facade for the v2 conditional runtime."""
+"""Lazy compatibility facade for historical conditional admission imports."""
 
-from .conditional_runtime import (
-    conditional_control_isolation,
-    conditional_injection_admission,
-    conditional_observability,
-    _identity_semantic_localization,
-    semantic_recovery_smoke,
-    controllability_smoke,
-    qualify_evaluator,
-    train_evaluator,
-    conditional_training_completion,
-    conditional_diversity_observability,
-    conditional_diversity_alignment_admission,
-    conditional_identity_reanchor,
-    conditional_reanchor_observability,
-    conditional_shared_mode_conflict,
-    conditional_class_mode_admission,
-    conditional_class_mode_observability,
-    conditional_parity_conflict,
-    conditional_parity_mode_admission,
-    conditional_parity_observability,
-    conditional_semantic_tangent,
-    conditional_multi_anchor_capacity,
-    conditional_multi_anchor_admission,
-    conditional_multi_anchor_observability,
-)
+from __future__ import annotations
 
-__all__ = [
-    "conditional_control_isolation",
-    "conditional_injection_admission",
-    "conditional_observability",
-    "conditional_semantic_localization",
-    "semantic_recovery_smoke",
-    "controllability_smoke",
-    "qualify_evaluator",
-    "train_evaluator",
-    "conditional_training_completion",
-    "conditional_diversity_observability",
-    "conditional_diversity_alignment_admission",
-    "conditional_identity_reanchor",
-    "conditional_reanchor_observability",
-    "conditional_shared_mode_conflict",
-    "conditional_class_mode_admission",
-    "conditional_class_mode_observability",
-    "conditional_parity_conflict",
-    "conditional_parity_mode_admission",
-    "conditional_parity_observability",
-    "conditional_semantic_tangent",
-    "conditional_multi_anchor_capacity",
-    "conditional_multi_anchor_admission",
-    "conditional_multi_anchor_observability",
-]
+from importlib import import_module
 
-conditional_semantic_localization = _identity_semantic_localization
+_ALIASES = {"conditional_semantic_localization": "_identity_semantic_localization"}
+
+
+def __getattr__(name: str):
+    module = import_module(".legacy.runtime", __package__)
+    value = getattr(module, _ALIASES.get(name, name))
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(dir(import_module(".legacy.runtime", __package__))) | set(_ALIASES))

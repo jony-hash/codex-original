@@ -1,12 +1,11 @@
 """Strict v2 YAML configuration models."""
+
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Literal
-import warnings
-
-import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from .configuration.loading import load_config  # noqa: F401
 
 
 class StrictModel(BaseModel):
@@ -14,7 +13,14 @@ class StrictModel(BaseModel):
 
 
 class FormalSystemConfig(StrictModel):
-    kind: Literal["formal_amplitude_finite_crop_identity", "diagnostic_amplitude_finite_crop_identity", "diagnostic_amplitude_finite_crop_identity_short_spacing_v1", "diagnostic_amplitude_near_conjugate_relay_identity_v1", "formal_amplitude_near_conjugate_relay_identity_v1"]
+    kind: Literal[
+        "formal_amplitude_finite_crop_identity",
+        "diagnostic_amplitude_finite_crop_identity",
+        "diagnostic_amplitude_finite_crop_identity_short_spacing_v1",
+        "diagnostic_amplitude_near_conjugate_relay_identity_v1",
+        "formal_amplitude_near_conjugate_relay_identity_v1",
+        "diagnostic_amplitude_near_conjugate_relay_identity_phase_capacity_v7_2",
+    ]
     wavelength_m: float = 532.0e-9
     slm_shape: tuple[int, int] = (200, 200)
     slm_pixel_pitch_m: float = 2.5e-6
@@ -26,7 +32,10 @@ class FormalSystemConfig(StrictModel):
     layer_spacing_m: float = 1.50e-3
     front_magnification: float = -0.4
     back_magnification: float = -2.5
-    front_lens_focal_lengths_m: tuple[float, float] = (223.2142857142857e-3, 89.2857142857143e-3)
+    front_lens_focal_lengths_m: tuple[float, float] = (
+        223.2142857142857e-3,
+        89.2857142857143e-3,
+    )
     back_lens_focal_length_m: float = 71.4285714285714e-3
     front_clear_aperture_m: float = 23.75e-3
     back_clear_aperture_m: float = 26.60e-3
@@ -35,18 +44,27 @@ class FormalSystemConfig(StrictModel):
 
     @model_validator(mode="after")
     def formal_geometry_is_locked(self) -> "FormalSystemConfig":
-        if self.kind in {"diagnostic_amplitude_finite_crop_identity", "diagnostic_amplitude_finite_crop_identity_short_spacing_v1"}:
+        if self.kind in {
+            "diagnostic_amplitude_finite_crop_identity",
+            "diagnostic_amplitude_finite_crop_identity_short_spacing_v1",
+        }:
             if self.propagation_grid_size < max(self.metasurface_shape):
-                raise ValueError("diagnostic propagation grid must cover the active metasurface")
+                raise ValueError(
+                    "diagnostic propagation grid must cover the active metasurface"
+                )
             return self
+        phase_capacity = (
+            self.kind
+            == "diagnostic_amplitude_near_conjugate_relay_identity_phase_capacity_v7_2"
+        )
         expected = {
             "wavelength_m": 532.0e-9,
             "slm_shape": (200, 200),
             "slm_pixel_pitch_m": 2.5e-6,
             "metasurface_shape": (100, 100),
             "metasurface_pixel_pitch_m": 2.0e-6,
-            "encoder_layers": 2,
-            "decoder_layers": 2,
+            "encoder_layers": 4 if phase_capacity else 2,
+            "decoder_layers": 4 if phase_capacity else 2,
             "layer_spacing_m": 1.50e-3,
             "front_magnification": -0.4,
             "back_magnification": -2.5,
@@ -62,12 +80,18 @@ class FormalSystemConfig(StrictModel):
                     raise ValueError(f"formal v2 system locks {key}={value!r}")
             elif actual != value:
                 raise ValueError(f"formal v2 system locks {key}={value!r}")
-        if self.kind in {"diagnostic_amplitude_near_conjugate_relay_identity_v1", "formal_amplitude_near_conjugate_relay_identity_v1"}:
+        if self.kind in {
+            "diagnostic_amplitude_near_conjugate_relay_identity_v1",
+            "formal_amplitude_near_conjugate_relay_identity_v1",
+            "diagnostic_amplitude_near_conjugate_relay_identity_phase_capacity_v7_2",
+        }:
             # The bench geometry and sampling remain formal; the inter-layer
             # transport is an explicitly named near-conjugate relay, not a
             # substitute free-space layer spacing.
             if self.propagation_grid_size < 100:
-                raise ValueError("propagation_grid_size must cover the active metasurface")
+                raise ValueError(
+                    "propagation_grid_size must cover the active metasurface"
+                )
             return self
         if self.propagation_grid_size < 100:
             raise ValueError("propagation_grid_size must cover the active metasurface")
@@ -75,7 +99,10 @@ class FormalSystemConfig(StrictModel):
 
     @property
     def is_formal(self) -> bool:
-        return self.kind in {"formal_amplitude_finite_crop_identity", "formal_amplitude_near_conjugate_relay_identity_v1"}
+        return self.kind in {
+            "formal_amplitude_finite_crop_identity",
+            "formal_amplitude_near_conjugate_relay_identity_v1",
+        }
 
 
 class LightGenSystemConfig(StrictModel):
@@ -101,15 +128,21 @@ class LightGenSystemConfig(StrictModel):
     @model_validator(mode="after")
     def diagnostic_contract_is_locked(self) -> "LightGenSystemConfig":
         expected = {
-            "slm_shape": (400, 400), "slm_pixel_pitch_m": 3.0e-6,
-            "metasurface_shape": (400, 400), "metasurface_pixel_pitch_m": 3.0e-6,
-            "encoder_layers": 2, "decoder_layers": 4, "fiber_grid_shape": (10, 10),
+            "slm_shape": (400, 400),
+            "slm_pixel_pitch_m": 3.0e-6,
+            "metasurface_shape": (400, 400),
+            "metasurface_pixel_pitch_m": 3.0e-6,
+            "encoder_layers": 2,
+            "decoder_layers": 4,
+            "fiber_grid_shape": (10, 10),
         }
         for name, value in expected.items():
             if getattr(self, name) != value:
                 raise ValueError(f"LightGen diagnostic contract locks {name}={value}")
         if self.propagation_grid_size < 400:
-            raise ValueError("LightGen propagation grid must cover the 400x400 active plane")
+            raise ValueError(
+                "LightGen propagation grid must cover the 400x400 active plane"
+            )
         return self
 
     @property
@@ -130,11 +163,15 @@ class TeacherConfig(StrictModel):
 
 
 class PrototypeCalibrationConfig(StrictModel):
-    prototype_contract_kind: Literal["formal_prototype_reconstruction_v1", "formal_prototype_shape_guard_v1"] = "formal_prototype_reconstruction_v1"
+    prototype_contract_kind: Literal[
+        "formal_prototype_reconstruction_v1", "formal_prototype_shape_guard_v1"
+    ] = "formal_prototype_reconstruction_v1"
     epochs: int = Field(default=5, ge=2)
     learning_rate: float = Field(default=5.0e-4, gt=0.0)
     fixed_exposure_scale: float = Field(gt=0.0)
-    initialization: Literal["uniform_half", "clean_intensity_to_amplitude"] = "uniform_half"
+    initialization: Literal["uniform_half", "clean_intensity_to_amplitude"] = (
+        "uniform_half"
+    )
     optimizer_steps_per_epoch: int = Field(default=1, ge=1)
     prototype_correlation_weight: float = Field(default=0.25, ge=0.0)
     prototype_dice_weight: float = Field(default=0.30, ge=0.0)
@@ -222,7 +259,9 @@ class ConditionalGenerationConfig(StrictModel):
         if self.logical_batch_size % 10:
             raise ValueError("conditional logical_batch_size must be divisible by ten")
         if self.logical_batch_size // 10 < 5:
-            raise ValueError("conditional batches require at least five samples per label")
+            raise ValueError(
+                "conditional batches require at least five samples per label"
+            )
         if self.samples_per_label % self.shard_size:
             raise ValueError("samples_per_label must divide exactly into shards")
         return self
@@ -258,6 +297,9 @@ class V2Config(StrictModel):
         "conditional_pca_self_imaging_transport_v6_2",
         "conditional_pca_formal_spacing_self_imaging_v6_3",
         "conditional_pca_near_conjugate_relay_v6_4",
+        "conditional_nonlinear_expanded_manifold_v7",
+        "conditional_transport_aligned_manifold_v7_1",
+        "conditional_transport_aligned_phase_capacity_v7_2",
     ] = "legacy_v2_distillation"
     system: SystemConfig
     teacher: TeacherConfig | None = None
@@ -270,6 +312,15 @@ class V2Config(StrictModel):
 
     @model_validator(mode="after")
     def formal_audit_contract_is_locked(self) -> "V2Config":
+        if (
+            self.run.evidence_tier == "acceptance"
+            and self.architecture != "conditional_identity_logit_amplitude_v2"
+        ):
+            raise ValueError(
+                "only conditional_identity_logit_amplitude_v2 may use "
+                "evidence_tier=acceptance; legacy and diagnostic v2 "
+                "architectures are diagnostic-only"
+            )
         if self.architecture in {
             "conditional_global_amplitude_v1",
             "conditional_identity_logit_amplitude_v2",
@@ -279,9 +330,14 @@ class V2Config(StrictModel):
             "conditional_pca_transport_codesign_v6",
             "conditional_pca_formal_spacing_self_imaging_v6_3",
             "conditional_pca_near_conjugate_relay_v6_4",
+            "conditional_nonlinear_expanded_manifold_v7",
+            "conditional_transport_aligned_manifold_v7_1",
+            "conditional_transport_aligned_phase_capacity_v7_2",
         }:
             if self.conditional_generation is None:
-                raise ValueError("conditional architecture requires conditional_generation")
+                raise ValueError(
+                    "conditional architecture requires conditional_generation"
+                )
             forbidden = {
                 "teacher": self.teacher,
                 "prototype_calibration": self.prototype_calibration,
@@ -290,44 +346,135 @@ class V2Config(StrictModel):
             }
             supplied = [name for name, value in forbidden.items() if value is not None]
             if supplied:
-                raise ValueError(f"conditional architecture rejects legacy fields: {', '.join(supplied)}")
-            if not self.system.is_formal and self.architecture not in {"conditional_pca_self_imaging_transport_v6_2", "conditional_pca_near_conjugate_relay_v6_4"}:
-                raise ValueError("conditional architecture requires the formal identity-OLS system")
-            if self.architecture in {"conditional_identity_logit_amplitude_v2", "conditional_class_conditioned_modes_v3", "conditional_parity_stabilized_modes_v4"}:
+                raise ValueError(
+                    f"conditional architecture rejects legacy fields: {', '.join(supplied)}"
+                )
+            if not self.system.is_formal and self.architecture not in {
+                "conditional_pca_self_imaging_transport_v6_2",
+                "conditional_pca_near_conjugate_relay_v6_4",
+                "conditional_nonlinear_expanded_manifold_v7",
+                "conditional_transport_aligned_manifold_v7_1",
+                "conditional_transport_aligned_phase_capacity_v7_2",
+            }:
+                raise ValueError(
+                    "conditional architecture requires the formal identity-OLS system"
+                )
+            if self.architecture in {
+                "conditional_identity_logit_amplitude_v2",
+                "conditional_class_conditioned_modes_v3",
+                "conditional_parity_stabilized_modes_v4",
+            }:
                 if self.conditional_generation.command_gain != 0.5:
-                    raise ValueError("identity conditional architectures lock conditional command_gain=0.5")
+                    raise ValueError(
+                        "identity conditional architectures lock conditional command_gain=0.5"
+                    )
                 if self.conditional_generation.initialization_seed != 1234:
-                    raise ValueError("identity conditional architectures lock initialization_seed=1234")
+                    raise ValueError(
+                        "identity conditional architectures lock initialization_seed=1234"
+                    )
             if self.architecture == "conditional_multi_anchor_local_modes_v5":
                 if self.conditional_generation.command_gain != 0.25:
-                    raise ValueError("multi-anchor architecture locks conditional command_gain=0.25")
+                    raise ValueError(
+                        "multi-anchor architecture locks conditional command_gain=0.25"
+                    )
                 if self.conditional_generation.initialization_seed != 1234:
-                    raise ValueError("multi-anchor architecture locks initialization_seed=1234")
+                    raise ValueError(
+                        "multi-anchor architecture locks initialization_seed=1234"
+                    )
             if self.architecture == "conditional_pca_transport_codesign_v6":
                 if self.conditional_generation.command_gain != 0.05:
-                    raise ValueError("PCA transport architecture locks conditional command_gain=0.05")
+                    raise ValueError(
+                        "PCA transport architecture locks conditional command_gain=0.05"
+                    )
                 if self.conditional_generation.initialization_seed != 1234:
-                    raise ValueError("PCA transport architecture locks initialization_seed=1234")
+                    raise ValueError(
+                        "PCA transport architecture locks initialization_seed=1234"
+                    )
             if self.architecture == "conditional_pca_self_imaging_transport_v6_2":
-                if self.system.kind != "diagnostic_amplitude_finite_crop_identity_short_spacing_v1":
-                    raise ValueError("v6.2 requires the explicit short-spacing diagnostic system")
+                if (
+                    self.system.kind
+                    != "diagnostic_amplitude_finite_crop_identity_short_spacing_v1"
+                ):
+                    raise ValueError(
+                        "v6.2 requires the explicit short-spacing diagnostic system"
+                    )
                 if abs(self.system.layer_spacing_m - 0.25e-3) > 1e-15:
                     raise ValueError("v6.2 locks layer_spacing_m=0.25e-3")
                 if self.conditional_generation.command_gain != 0.05:
                     raise ValueError("v6.2 locks initial command gain=0.05")
             if self.architecture == "conditional_pca_formal_spacing_self_imaging_v6_3":
                 if not self.system.is_formal:
-                    raise ValueError("v6.3 requires the formal 1.50 mm identity-OLS system")
+                    raise ValueError(
+                        "v6.3 requires the formal 1.50 mm identity-OLS system"
+                    )
                 if self.conditional_generation.command_gain != 0.05:
                     raise ValueError("v6.3 locks initial command gain=0.05")
             if self.architecture == "conditional_pca_near_conjugate_relay_v6_4":
-                if self.system.kind not in {"diagnostic_amplitude_near_conjugate_relay_identity_v1", "formal_amplitude_near_conjugate_relay_identity_v1"}:
-                    raise ValueError("v6.4 requires the explicit near-conjugate relay system")
+                if self.system.kind not in {
+                    "diagnostic_amplitude_near_conjugate_relay_identity_v1",
+                    "formal_amplitude_near_conjugate_relay_identity_v1",
+                }:
+                    raise ValueError(
+                        "v6.4 requires the explicit near-conjugate relay system"
+                    )
                 if self.conditional_generation.command_gain != 0.05:
                     raise ValueError("v6.4 locks initial command gain=0.05")
+            if self.architecture == "conditional_nonlinear_expanded_manifold_v7":
+                if self.system.kind not in {
+                    "diagnostic_amplitude_near_conjugate_relay_identity_v1",
+                    "formal_amplitude_near_conjugate_relay_identity_v1",
+                }:
+                    raise ValueError(
+                        "v7 expanded manifold requires the near-conjugate relay system"
+                    )
+                if (
+                    self.conditional_generation.command_gain != 0.05
+                    or self.conditional_generation.initialization_seed != 1234
+                ):
+                    raise ValueError(
+                        "v7 expanded manifold locks command_gain=0.05 and initialization_seed=1234"
+                    )
+            if self.architecture == "conditional_transport_aligned_manifold_v7_1":
+                if self.system.kind not in {
+                    "diagnostic_amplitude_near_conjugate_relay_identity_v1",
+                    "formal_amplitude_near_conjugate_relay_identity_v1",
+                }:
+                    raise ValueError(
+                        "v7.1 transport manifold requires the near-conjugate relay system"
+                    )
+                if (
+                    self.conditional_generation.command_gain != 0.05
+                    or self.conditional_generation.initialization_seed != 1234
+                ):
+                    raise ValueError(
+                        "v7.1 transport manifold locks command_gain=0.05 and initialization_seed=1234"
+                    )
+            if self.architecture == "conditional_transport_aligned_phase_capacity_v7_2":
+                if (
+                    self.system.kind
+                    != "diagnostic_amplitude_near_conjugate_relay_identity_phase_capacity_v7_2"
+                ):
+                    raise ValueError(
+                        "v7.2 requires the isolated 4+4 near-conjugate relay system"
+                    )
+                if (self.system.encoder_layers, self.system.decoder_layers) != (4, 4):
+                    raise ValueError("v7.2 locks encoder_layers=4 and decoder_layers=4")
+                if (
+                    self.conditional_generation.command_gain != 0.05
+                    or self.conditional_generation.initialization_seed != 1234
+                ):
+                    raise ValueError(
+                        "v7.2 locks command_gain=0.05 and initialization_seed=1234"
+                    )
             execution = self.execution
-            if (execution.training_microbatch_size, execution.evaluation_microbatch_size, execution.activation_checkpoint) != (1, 1, True):
-                raise ValueError("conditional formal execution locks training/evaluation microbatches to one with activation checkpointing")
+            if (
+                execution.training_microbatch_size,
+                execution.evaluation_microbatch_size,
+                execution.activation_checkpoint,
+            ) != (1, 1, True):
+                raise ValueError(
+                    "conditional formal execution locks training/evaluation microbatches to one with activation checkpointing"
+                )
             return self
         if not self.system.is_formal or self.capacity_audit is None:
             return self
@@ -351,7 +498,9 @@ class V2Config(StrictModel):
             execution.evaluation_microbatch_size,
             execution.activation_checkpoint,
         ) != (1, 1, 1, 1, True):
-            raise ValueError("formal execution locks microbatches to one with activation checkpointing")
+            raise ValueError(
+                "formal execution locks microbatches to one with activation checkpointing"
+            )
         if self.prototype_calibration is not None:
             expected_prototype = {
                 "epochs": 5,
@@ -363,7 +512,10 @@ class V2Config(StrictModel):
                 "prototype_ce_weight": 0.10,
                 "prototype_ce_temperature": 0.07,
             }
-            if self.prototype_calibration.prototype_contract_kind == "formal_prototype_shape_guard_v1":
+            if (
+                self.prototype_calibration.prototype_contract_kind
+                == "formal_prototype_shape_guard_v1"
+            ):
                 expected_prototype |= {
                     "foreground_weight": 3.0,
                     "background_weight": 1.0,
@@ -374,39 +526,3 @@ class V2Config(StrictModel):
                 if getattr(self.prototype_calibration, name) != value:
                     raise ValueError(f"formal prototype locks {name}={value}")
         return self
-
-
-def _resolve_config_path(path: str | Path) -> Path:
-    requested = Path(path)
-    if requested.is_file():
-        return requested
-    manifest_candidates = [
-        Path("configs/v2/path_migration_manifest.yaml"),
-        Path(__file__).resolve().parents[3] / "configs/v2/path_migration_manifest.yaml",
-    ]
-    for manifest_path in manifest_candidates:
-        if not manifest_path.is_file():
-            continue
-        payload = yaml.safe_load(manifest_path.read_text(encoding="utf-8")) or {}
-        for entry in payload.get("entries", []):
-            if entry.get("old_path") == requested.as_posix():
-                target = Path(str(entry["new_path"]))
-                if not target.is_file():
-                    raise FileNotFoundError(f"migrated v2 config target is missing: {target}")
-                warnings.warn(
-                    f"deprecated v2 config path {requested}; use {target}",
-                    UserWarning,
-                    stacklevel=3,
-                )
-                return target
-        break
-    raise FileNotFoundError(f"v2 config does not exist: {requested}")
-
-
-def load_config(path: str | Path) -> V2Config:
-    resolved = _resolve_config_path(path)
-    with resolved.open("r", encoding="utf-8") as handle:
-        payload = yaml.safe_load(handle)
-    if not isinstance(payload, dict):
-        raise ValueError("v2 configuration must be a YAML mapping")
-    return V2Config.model_validate(payload)

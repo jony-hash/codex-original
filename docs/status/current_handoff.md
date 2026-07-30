@@ -1,5 +1,36 @@
 # 当前主线交接：v6.4 近共轭 relay 诊断闭环（2026-07-30）
 
+## Evaluator v2.1 已资格化：2+2 transport 的前置仪器门通过
+
+历史 evaluator-v2 evidence `20260730_164205_687065` 仍为有效失败，且其 smooth
+checkpoint 不可复用。v2.1 将该失败作为内容绑定的校准输入，保持 primary evaluator、数据
+split、固定曝光和阈值不变；smooth evaluator 从零开始以 seed `2234`、10 epochs、batch 256、
+Adam `1e-3` 训练。校准 evidence 位于 `20260730_171048_272046`，资格化 evidence 位于
+`20260730_171126_556355`，两者均为 `passed`。
+
+资格化的 primary/smooth validation accuracy 为 `0.9876/0.9880`，macro recall 为
+`0.9876/0.9880`，最差类别 recall 为 `0.954/0.976`，预测一致率为 `0.986`。强度 ±2%
+和 x/y 单像素平移均通过硬门；morphology 的 dilation/erosion 指标分别被记录但不参与资格化，
+因为它们会改变细笔画的任务语义。该通过只授权新的 evaluator-qualified 曲率基线和独立 2+2
+design；不复活任何 v7.1/v7.2 evidence，也不授权训练。
+
+## 已关闭：v6.4 phase-only；v7 准入失败
+
+重放 evidence `20260730_014137_778801` 已完整验证旧 smoke 的 artifact、context、400-step
+schedule、CUDA前向、generator冻结、phase更新和relay crop。它将 v6.4 分类为
+`valid_failed_phase_only_distribution`：类别7 recall为 `0.8824`，最终最低 feature ratio为
+`0.3982/0.5833/0.6479`，relative-diversity与delta的最后50步趋势也失败。唯一的
+phase-distribution tangent `20260730_014836_346059` 在安全限制内完成，但encoder、decoder和joint
+均未让三面板最差 ratio同时提升0.01；正式关闭冻结PCA generator、仅训练四层phase的v6.4路线。
+
+随后 v7 `conditional_nonlinear_expanded_manifold_v7` 保持相同near-conjugate relay、`tau=0.80`、
+identity OLS和零phase，只把SLM前电子端扩展为32个低通PCA模式与无bias类条件MLP。容量证据
+`20260730_030257_695213` 通过；CUDA admission `20260730_030608_413918` 有效失败：fraction、
+Jacobian/八方向响应、非线性、饱和、crop、CUDA和state门通过，但axis类别8 recall为`0.8235`，
+feature ratio为axis `0.4231`、uniform-1234 `0.5223`、holdout `0.5419`，且防模板坍缩门失败。
+没有optimizer、checkpoint、smoke或训练授权。当前无活动训练主线；不得调参、重跑v7 admission、
+导出或promotion，后续只能另立新的电子流形设计合同。
+
 当前分支为 `experiment/v2-near-conjugate-relay-v64`；v6.4 smoke 的科学状态已由
 `44981b1` 归档。此前用于 v6、宏观可行性、v6.2 和 v6.3 的本地实验分支指针已精简为
 `archive/v2/*` tags；提交和 evidence 均未删除，也未推送远端。
@@ -233,6 +264,76 @@ uniform `+16.0%/+14.3%`，未满足三个面板均需`+25%`的物理门。
 无论结果如何都不得运行observability、400-step smoke、正式训练或任何数据集验收。`0.25 mm`只保留给未来
 单片堆叠器件诊断，当前实验台主线回到正式 `1.50 mm` 合同。
 ## v6.4 near-conjugate relay recovery（已归档为 harness-invalid）
+
+## v7 supersession 与 v7.1 受控替代（2026-07-30）
+
+v7 的 admission evidence 是有效的未准入结果：axis 类别 8 recall 为
+`0.8235`，四面板 feature-ratio 最低值为 `0.4231/0.5223/...`，均独立违反
+不可降低的门。该 run 的 anti-template 字段曾错误取中心化 17 样本矩阵的最后
+奇异值；现更正为 `s[7]/s[0]`，因此 supersession 分类为
+`valid_v7_failure_with_rank_gate_defect`：rank 子门无效，但不改变 recall 与
+feature-ratio 的独立失败结论。历史 outputs/evidence 不重跑、不重写。
+
+唯一允许的后续电子候选是诊断架构
+`conditional_transport_aligned_manifold_v7_1`。它冻结 carrier、v7 同源的
+32 个 train-only 低通 PCA 候选模式和每方向尺度，仅训练 `[10,32,8]`
+transport mixing 与四层 phase；零码严格回到 carrier。固定顺序为 design →
+CUDA no-update admission → tangent → 一次 400-step smoke → 5 epoch。任何前置
+门失败都产生空 `permitted_next_actions`，直接停止电子端版本迭代并转向物理容量重设计。
+
+v7.1 的执行合同已预注册：design 必须同时校验正负 scale 的语义、pre-clamp
+saturation 与 raw/feature response；admission 使用四个固定 170 样本面板，复核
+command/raw `s[7]/s[0]`、feature rank、170 raw 唯一性、delta correlation、crop、
+CUDA 和严格 checkpoint 回读；tangent 只审计 mixing/encoder/decoder/joint 的安全
+无更新方向；唯一 smoke 固定为 seed=1234、400 steps、五个 probe。未通过任一门不得
+创建可 warm-start checkpoint 或进入 5 epoch。本轮只运行至 smoke 的有效结论。
+
+执行结果：v7.1 design 已在 CUDA 完成并有效失败。所有类别的 transport response
+rank=8 且 `s[7]/s[0]=0.2692--0.5902`，双符号 scale、zero carrier、relay provenance、
+state 与显存门通过；但 central-difference nonlinearity 为 `0.1132--0.3192`，全部不能
+满足预注册的 `≤0.10`。因此未发布 design artifact，evidence 的
+`permitted_next_actions=[]`，admission/tangent/smoke 和 5 epoch 均停止。
+
+## v7.1 失败归因与 v7.2 物理容量合同（2026-07-30）
+
+v7.1 的失败是有效科学证据，不是 rank 缺陷：每类 32 个 candidate physical-Jacobian
+方向都以最大二阶/一阶响应比聚合，得到 `0.1132--0.3192`（最低值仍高于 `0.10`）。该完整测量
+同时包含 sigmoid amplitude command、相干传播后的 intensity square 和冻结 evaluator 的分段非线性，
+故不能据此归因为单一器件。rank、双符号 scale、relay 与显存均通过，说明信息可以传输，但不支持
+“一阶 transport mixing 足够线性近似局部物理/evaluator 映射”的假设。不得改变 epsilon、聚合规则或门限，
+亦不得补跑 v7.1 admission。
+
+下一条且唯一的受控候选为独立 `conditional_transport_aligned_phase_capacity_v7_2`：4+4 phase-only、
+amplitude SLM、near-conjugate relay、identity OLS、固定曝光与 `tau=.80` 保持不变。其内部机械距离锁为
+`(4+4)*99.75 mm = 798 mm`，trace 必须有八个 relay 与八个 finite crop。v7.1 failed evidence 仅作为内容
+绑定的停止事实，绝不授权下游。v7.2 的 design → admission → tangent → 唯一400-step smoke 各有独立
+架构与 evidence/hash；任一有效门失败即关闭当前电子+phase 家族，不创建 v7.3 或进行门限、seed、epsilon、LR/gain 扫描。
+
+## v7.2 曲率归因：冻结 evaluator 首次越门（2026-07-30）
+
+新的 no-update `conditional-transport-curvature-attribution` 严格绑定 v7.1/v7.2 failed evidence、
+v6.2 initialization、v7 train-only 32-mode basis、split、frozen evaluator、固定曝光与 `epsilon=.01`。
+320 个 candidate directions 在 command、OLS field、camera field、raw intensity 与 fixed-exposure
+边界的逐类最大曲率均小于 `.10`：raw intensity 为 `.0074--.0103`，fixed-exposure 为 `.0101--.0925`。
+首次越门只发生在 frozen evaluator feature，逐类最大值为 `.0839--.2674`；最终八个 mixed
+directions 的 evaluator-feature 最大值为 `.1035--.3218`，十类全失败。所有 state/CUDA/provenance
+门通过，未创建 optimizer、checkpoint 或 artifact。
+
+因此 v7.2 的 design failure 仍保持有效，但其物理归因修正为 `evaluator_feature_local_nonlinearity`，
+而非 CMOS square-law 或 relay 传输非线性。根据预注册决策，禁止启动 balanced coherent readout、
+OLS/readout 或更多 phase 层扩容；下一步只能另行决定是否重定义冻结 evaluator 的局部可线性特征合同，
+或收缩任务。证据位于 `outputs/20260730_v2/runs/20260730_161035_715678_diagnostic_v2_transport_aligned_phase_capacity_v72/`。
+
+## Evaluator Qualification v2 停止（2026-07-30）
+
+新 evaluator-v2 合同在任何新 transport design 前有效失败。历史 ReLU evaluator 的总体 validation
+accuracy 为 `.9876`，但类别4 recall 为 `.954 < .97`；独立 smooth evaluator 的 accuracy 为
+`.9846 < .985`，类别9 recall 为 `.966 < .97`。两者原始 validation agreement `.9834` 通过，
+但固定 erosion 扰动的一致率仅 `.5064/.5346`，dilation 也仅 `.9508/.9152`，不满足 `.98`。
+该结果表明新合同把原 evaluator qualification 未曾要求的类别下界和形态侵蚀鲁棒性提升为硬门，
+因此不能作为允许重启 transport 的已资格化验收仪器。未运行 evaluator curvature baseline、
+2+2 design、admission、tangent 或 smoke；无新 transport artifact/checkpoint 被创建。
+证据位于 `outputs/20260730_v2/runs/20260730_164205_687065_diagnostic_v2_transport_aligned_manifold_v71/`。
 
 The v6.3 formal-spacing smoke is a valid failed diagnostic: allowing the
 electronic carrier, PCA modes and scales to update restored classification but

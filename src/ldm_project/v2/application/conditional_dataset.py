@@ -1,15 +1,16 @@
-"""Candidate dataset and downstream utility facade for v2 conditional runs."""
+"""Lazy compatibility facade for historical conditional dataset imports."""
 
-from .conditional_runtime import (
-    admit_dataset,
-    audit_memorization,
-    evaluate_utility,
-    export_conditional_dataset,
-)
+from __future__ import annotations
 
-__all__ = [
-    "admit_dataset",
-    "audit_memorization",
-    "evaluate_utility",
-    "export_conditional_dataset",
-]
+from importlib import import_module
+
+
+def __getattr__(name: str):
+    module = import_module(".legacy.runtime", __package__)
+    value = getattr(module, name)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(dir(import_module(".legacy.runtime", __package__))))

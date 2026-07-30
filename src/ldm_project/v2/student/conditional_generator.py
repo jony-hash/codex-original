@@ -8,6 +8,10 @@ import torch
 from torch import nn
 
 from .capacity import CodeBasisArtifactV2
+from .identity_generator import (
+    ConditionalIdentityLogitAmplitudeGenerator,  # noqa: F401
+    IdentityAnchoredConditionalAmplitudeGenerator,
+)
 
 
 @dataclass(frozen=True)
@@ -215,165 +219,6 @@ class ConditionalGlobalAmplitudeGenerator(nn.Module):
         return torch.sigmoid(
             self.class_carrier_logits.index_select(0, labels)
         ).unsqueeze(1)
-
-
-class IdentityAnchoredConditionalAmplitudeGenerator(nn.Module):
-    """Identity-anchored conditional generator for the v2 recovery path.
-
-    The code enters the optical path only through the amplitude SLM command.
-    The residual coefficient map is deliberately initialized as an identity
-    anchor: ``Wy`` is zero at initialization, so ``c(z, y) == tanh(z)``.
-    Both linear maps are bias-free and the command is never normalized per
-    sample.  The class carrier and the global modes remain trainable, while
-    the gain is fixed by the architecture contract at ``0.5``.
-    """
-
-    architecture_kind = "conditional_identity_logit_amplitude_v2"
-    fixed_command_gain = 0.5
-
-    def __init__(
-        self,
-        *,
-        shape: tuple[int, int] = (200, 200),
-        code_dim: int = 8,
-        hidden_dim: int = 64,
-        command_gain: float = fixed_command_gain,
-        class_carrier_logits: torch.Tensor | None = None,
-    ) -> None:
-        super().__init__()
-        if (
-            shape[0] <= 0
-            or shape[1] <= 0
-            or code_dim != 8
-            or hidden_dim != 64
-            or command_gain != self.fixed_command_gain
-        ):
-            raise ValueError(
-                "identity-anchored generator requires 8D code, 64 hidden units, and fixed gain 0.5"
-            )
-        self.shape = shape
-        self.code_dim = code_dim
-        self.hidden_dim = hidden_dim
-        self.command_gain = self.fixed_command_gain
-        if class_carrier_logits is None:
-            carrier = torch.zeros(10, *shape)
-        else:
-            if tuple(class_carrier_logits.shape) != (10, *shape):
-                raise ValueError("class_carrier_logits must have shape [10, H, W]")
-            carrier = class_carrier_logits.detach().clone()
-        self.class_carrier_logits = nn.Parameter(carrier)
-        self.global_modes = nn.Parameter(self._initial_global_modes(shape))
-
-        # Wz is bias-free by contract.  Wy starts at zero, making the initial
-        # coefficient map exactly tanh(z) for every label.
-        self.code_projection = nn.Linear(code_dim, hidden_dim, bias=False)
-        self.class_heads = nn.Parameter(torch.zeros(10, code_dim, hidden_dim))
-        nn.init.kaiming_uniform_(self.code_projection.weight, a=5**0.5)
-
-    @staticmethod
-    def _initial_global_modes(shape: tuple[int, int]) -> torch.Tensor:
-        """Eight full-aperture, low-frequency directions with unit RMS."""
-        height, width = shape
-        yy = torch.linspace(-1.0, 1.0, height).view(height, 1)
-        xx = torch.linspace(-1.0, 1.0, width).view(1, width)
-        modes = torch.stack(
-            (
-                torch.cos(torch.pi * xx).expand(height, width),
-                torch.sin(torch.pi * xx).expand(height, width),
-                torch.cos(torch.pi * yy).expand(height, width),
-                torch.sin(torch.pi * yy).expand(height, width),
-                torch.cos(torch.pi * (xx + yy)),
-                torch.sin(torch.pi * (xx + yy)),
-                torch.cos(torch.pi * (xx - yy)),
-                torch.sin(torch.pi * (xx - yy)),
-            )
-        )
-        return IdentityAnchoredConditionalAmplitudeGenerator.normalized_modes(modes)
-
-    @staticmethod
-    def normalized_modes(modes: torch.Tensor) -> torch.Tensor:
-        if modes.ndim != 3:
-            raise ValueError("global modes must have shape [code_dim, H, W]")
-        centered = modes - modes.mean(dim=(-2, -1), keepdim=True)
-        rms = (
-            centered.square().mean(dim=(-2, -1), keepdim=True).clamp_min(1.0e-8).sqrt()
-        )
-        return centered / rms
-
-    @property
-    def Wz(self) -> nn.Linear:
-        """Formula-level alias for the bias-free code map."""
-        return self.code_projection
-
-    @property
-    def Wy(self) -> torch.Tensor:
-        """Formula-level alias for the per-label residual map."""
-        return self.class_heads
-
-    @property
-    def By(self) -> torch.Tensor:
-        """Formula-level alias for the class-carrier logits."""
-        return self.class_carrier_logits
-
-    @property
-    def P(self) -> torch.Tensor:
-        """Formula-level alias for the trainable global modes."""
-        return self.global_modes
-
-    def _validate_inputs(self, code: torch.Tensor, labels: torch.Tensor) -> None:
-        if code.ndim != 2 or code.shape[1] != self.code_dim:
-            raise ValueError("code must have shape [batch, 8]")
-        if labels.ndim != 1 or labels.shape[0] != code.shape[0] or labels.numel() == 0:
-            raise ValueError("labels must have shape [batch]")
-        if labels.min() < 0 or labels.max() > 9:
-            raise ValueError("labels must be integers in [0, 9]")
-
-    def coefficients(self, code: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
-        self._validate_inputs(code, labels)
-        h = torch.nn.functional.silu(self.code_projection(code))
-        residual = torch.einsum(
-            "bkh,bh->bk", self.class_heads.index_select(0, labels), h
-        )
-        # The direct z term is the identity anchor.  It is not a decoder-side
-        # latent: coefficients are converted immediately into the SLM command.
-        return torch.tanh(code + residual)
-
-    def forward(self, code: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
-        coefficients = self.coefficients(code, labels)
-        modes = self.normalized_modes(self.global_modes)
-        residual = torch.einsum("bk,khw->bhw", coefficients, modes)
-        logits = (
-            self.class_carrier_logits.index_select(0, labels)
-            + self.command_gain * residual
-        )
-        return torch.sigmoid(logits).unsqueeze(1)
-
-    def mode_orthogonality_penalty(self) -> torch.Tensor:
-        modes = self.normalized_modes(self.global_modes).flatten(1)
-        gram = modes @ modes.T / modes.shape[1]
-        return (
-            (gram - torch.eye(self.code_dim, device=modes.device, dtype=modes.dtype))
-            .square()
-            .mean()
-        )
-
-    def class_carrier_command(self, labels: torch.Tensor) -> torch.Tensor:
-        if (
-            labels.ndim != 1
-            or labels.numel() == 0
-            or labels.min() < 0
-            or labels.max() > 9
-        ):
-            raise ValueError("labels must be integers in [0, 9]")
-        return torch.sigmoid(
-            self.class_carrier_logits.index_select(0, labels)
-        ).unsqueeze(1)
-
-
-# Descriptive compatibility alias used by the architecture/config contract.
-ConditionalIdentityLogitAmplitudeGenerator = (
-    IdentityAnchoredConditionalAmplitudeGenerator
-)
 
 
 class ConditionalClassConditionedModesGenerator(nn.Module):
@@ -876,20 +721,60 @@ class ConditionalPCASelfImagingTransportGenerator(nn.Module):
     max_scale = 0.50
     initial_scale = 0.05
 
-    def __init__(self, *, shape=(200, 200), code_dim=8, hidden_dim=64,
-                 command_gain=0.05, class_carrier_logits=None,
-                 class_modes=None, scale_logits=None, pixel_pitch_m=2.5e-6):
+    def __init__(
+        self,
+        *,
+        shape=(200, 200),
+        code_dim=8,
+        hidden_dim=64,
+        command_gain=0.05,
+        class_carrier_logits=None,
+        class_modes=None,
+        scale_logits=None,
+        pixel_pitch_m=2.5e-6,
+    ):
         super().__init__()
-        if code_dim != 8 or hidden_dim != 64 or abs(float(command_gain)-0.05) > 1e-12:
-            raise ValueError("v6.2 locks code_dim=8, hidden_dim=64 and initial scale=0.05")
-        carrier = torch.zeros(10, *shape) if class_carrier_logits is None else class_carrier_logits.detach().clone()
-        modes = (ConditionalClassConditionedModesGenerator.normalized_modes(
-            IdentityAnchoredConditionalAmplitudeGenerator._initial_global_modes(shape).unsqueeze(0).expand(10, -1, -1, -1)
-        ) if class_modes is None else class_modes.detach().clone())
-        if tuple(carrier.shape) != (10, *shape) or tuple(modes.shape) != (10, 8, *shape):
-            raise ValueError("v6.2 carrier/modes shapes must be [10,H,W] and [10,8,H,W]")
-        initial_logit = float(torch.logit(torch.tensor((self.initial_scale - self.min_scale + 1.0e-6) / (self.max_scale - self.min_scale))).item())
-        scales = torch.full((10, 8), initial_logit) if scale_logits is None else scale_logits.detach().clone()
+        if code_dim != 8 or hidden_dim != 64 or abs(float(command_gain) - 0.05) > 1e-12:
+            raise ValueError(
+                "v6.2 locks code_dim=8, hidden_dim=64 and initial scale=0.05"
+            )
+        carrier = (
+            torch.zeros(10, *shape)
+            if class_carrier_logits is None
+            else class_carrier_logits.detach().clone()
+        )
+        modes = (
+            ConditionalClassConditionedModesGenerator.normalized_modes(
+                IdentityAnchoredConditionalAmplitudeGenerator._initial_global_modes(
+                    shape
+                )
+                .unsqueeze(0)
+                .expand(10, -1, -1, -1)
+            )
+            if class_modes is None
+            else class_modes.detach().clone()
+        )
+        if tuple(carrier.shape) != (10, *shape) or tuple(modes.shape) != (
+            10,
+            8,
+            *shape,
+        ):
+            raise ValueError(
+                "v6.2 carrier/modes shapes must be [10,H,W] and [10,8,H,W]"
+            )
+        initial_logit = float(
+            torch.logit(
+                torch.tensor(
+                    (self.initial_scale - self.min_scale + 1.0e-6)
+                    / (self.max_scale - self.min_scale)
+                )
+            ).item()
+        )
+        scales = (
+            torch.full((10, 8), initial_logit)
+            if scale_logits is None
+            else scale_logits.detach().clone()
+        )
         if tuple(scales.shape) != (10, 8):
             raise ValueError("v6.2 scale_logits must have shape [10,8]")
         self.shape = tuple(shape)
@@ -898,20 +783,37 @@ class ConditionalPCASelfImagingTransportGenerator(nn.Module):
         self.class_modes = nn.Parameter(modes)
         self.scale_logits = nn.Parameter(scales)
         fy = torch.fft.fftfreq(shape[0], d=self.pixel_pitch_m).view(shape[0], 1)
-        fx = torch.fft.rfftfreq(shape[1], d=self.pixel_pitch_m).view(1, shape[1] // 2 + 1)
-        self.register_buffer("lowpass_mask", ((fx.square() + fy.square()).sqrt() <= 20_000.0).to(torch.float32))
+        fx = torch.fft.rfftfreq(shape[1], d=self.pixel_pitch_m).view(
+            1, shape[1] // 2 + 1
+        )
+        self.register_buffer(
+            "lowpass_mask",
+            ((fx.square() + fy.square()).sqrt() <= 20_000.0).to(torch.float32),
+        )
 
     def _validate_inputs(self, code, labels):
-        if code.ndim != 2 or code.shape[1] != 8 or labels.ndim != 1 or code.shape[0] != labels.shape[0] or labels.numel() == 0 or labels.min() < 0 or labels.max() > 9:
+        if (
+            code.ndim != 2
+            or code.shape[1] != 8
+            or labels.ndim != 1
+            or code.shape[0] != labels.shape[0]
+            or labels.numel() == 0
+            or labels.min() < 0
+            or labels.max() > 9
+        ):
             raise ValueError("code must be [batch,8] and labels must be in [0,9]")
 
     def lowpass_normalized_modes(self):
         spectrum = torch.fft.rfft2(self.class_modes, dim=(-2, -1))
-        filtered = torch.fft.irfft2(spectrum * self.lowpass_mask, s=self.shape, dim=(-2, -1))
+        filtered = torch.fft.irfft2(
+            spectrum * self.lowpass_mask, s=self.shape, dim=(-2, -1)
+        )
         return ConditionalClassConditionedModesGenerator.normalized_modes(filtered)
 
     def scales(self):
-        return self.min_scale + (self.max_scale - self.min_scale) * torch.sigmoid(self.scale_logits)
+        return self.min_scale + (self.max_scale - self.min_scale) * torch.sigmoid(
+            self.scale_logits
+        )
 
     def coefficients(self, code, labels):
         self._validate_inputs(code, labels)
@@ -934,8 +836,235 @@ class ConditionalPCASelfImagingTransportGenerator(nn.Module):
         return (gram - eye).square().mean()
 
     def scale_budget_penalty(self):
-        return torch.relu(self.scales().square().sum(dim=1).sqrt() - 0.30).square().mean()
+        return (
+            torch.relu(self.scales().square().sum(dim=1).sqrt() - 0.30).square().mean()
+        )
 
     def class_carrier_command(self, labels):
-        self._validate_inputs(torch.zeros(labels.shape[0], 8, device=labels.device), labels)
-        return torch.sigmoid(self.class_carrier_logits.index_select(0, labels)).unsqueeze(1)
+        self._validate_inputs(
+            torch.zeros(labels.shape[0], 8, device=labels.device), labels
+        )
+        return torch.sigmoid(
+            self.class_carrier_logits.index_select(0, labels)
+        ).unsqueeze(1)
+
+
+class ConditionalNonlinearExpandedManifoldGenerator(nn.Module):
+    """Class-conditioned, nonlinear 32-mode amplitude-SLM generator."""
+
+    architecture_kind = "conditional_nonlinear_expanded_manifold_v7"
+    code_dim, mode_dim, hidden_dim = 8, 32, 64
+
+    def __init__(
+        self,
+        *,
+        shape=(200, 200),
+        code_dim=8,
+        hidden_dim=64,
+        command_gain=0.05,
+        class_carrier_logits=None,
+        class_modes=None,
+        manifold_scales=None,
+    ):
+        super().__init__()
+        if code_dim != 8 or hidden_dim != 64 or command_gain != 0.05:
+            raise ValueError(
+                "expanded manifold locks code_dim=8, hidden_dim=64 and command_gain=0.05"
+            )
+        if (
+            class_carrier_logits is None
+            or class_modes is None
+            or manifold_scales is None
+        ):
+            raise ValueError(
+                "expanded manifold requires explicit carrier, modes and scales"
+            )
+        carrier, modes, scales = (
+            class_carrier_logits.detach().clone(),
+            class_modes.detach().clone(),
+            manifold_scales.detach().clone(),
+        )
+        if (
+            tuple(carrier.shape) != (10, *shape)
+            or tuple(modes.shape) != (10, 32, *shape)
+            or tuple(scales.shape) != (10, 32)
+        ):
+            raise ValueError("expanded manifold tensor shapes are invalid")
+        if not bool(torch.isfinite(scales).all()) or not bool(
+            ((scales >= 0.05) & (scales <= 0.50)).all()
+        ):
+            raise ValueError(
+                "expanded manifold scales must be finite and in [0.05,0.50]"
+            )
+        self.shape = tuple(shape)
+        self.class_carrier_logits = nn.Parameter(carrier)
+        self.class_modes = nn.Parameter(modes)
+        self.register_buffer("manifold_scales", scales)
+        self.code_projection = nn.Linear(8, 64, bias=False)
+        self.class_extra_heads = nn.Parameter(torch.empty(10, 24, 64))
+        with torch.random.fork_rng(devices=[]):
+            torch.manual_seed(1234)
+            nn.init.orthogonal_(self.code_projection.weight)
+            for head in self.class_extra_heads:
+                nn.init.orthogonal_(head)
+        with torch.no_grad():
+            self.class_extra_heads.mul_(0.1)
+
+    @staticmethod
+    def normalized_modes(modes):
+        return ConditionalClassConditionedModesGenerator.normalized_modes(modes)
+
+    def _validate_inputs(self, code, labels):
+        if (
+            code.ndim != 2
+            or code.shape[1] != 8
+            or labels.ndim != 1
+            or labels.shape[0] != code.shape[0]
+            or labels.numel() == 0
+            or labels.min() < 0
+            or labels.max() > 9
+        ):
+            raise ValueError("code must be [batch,8] and labels must be in [0,9]")
+
+    def coefficients(self, code, labels):
+        self._validate_inputs(code, labels)
+        hidden = torch.nn.functional.silu(self.code_projection(code))
+        extra = torch.einsum(
+            "bkh,bh->bk", self.class_extra_heads.index_select(0, labels), hidden
+        )
+        return torch.cat((torch.tanh(code), torch.tanh(extra)), dim=1)
+
+    def forward(self, code, labels):
+        coefficients = self.coefficients(code, labels)
+        modes = self.normalized_modes(self.class_modes).index_select(0, labels)
+        scales = self.manifold_scales.index_select(0, labels)
+        residual = torch.einsum("bk,bk,bkhw->bhw", coefficients, scales, modes)
+        return torch.sigmoid(
+            self.class_carrier_logits.index_select(0, labels) + residual
+        ).unsqueeze(1)
+
+    def class_carrier_command(self, labels):
+        self._validate_inputs(
+            torch.zeros(labels.shape[0], 8, device=labels.device), labels
+        )
+        return torch.sigmoid(
+            self.class_carrier_logits.index_select(0, labels)
+        ).unsqueeze(1)
+
+
+class ConditionalTransportAlignedManifoldGenerator(nn.Module):
+    """Frozen 32-mode pool mixed into eight transport-aligned SLM directions.
+
+    This deliberately has no learned encoder, bias, sample normalization, or
+    decoder.  Only ``transport_mixing`` is electronic trainable state.
+    """
+
+    architecture_kind = "conditional_transport_aligned_manifold_v7_1"
+
+    def __init__(
+        self,
+        *,
+        shape=(200, 200),
+        code_dim=8,
+        hidden_dim=64,
+        command_gain=0.05,
+        class_carrier_logits=None,
+        candidate_modes=None,
+        transport_mixing=None,
+        manifold_scales=None,
+    ):
+        super().__init__()
+        del hidden_dim
+        if code_dim != 8 or command_gain != 0.05:
+            raise ValueError("transport manifold locks 8D code and command_gain=0.05")
+        if any(
+            value is None
+            for value in (
+                class_carrier_logits,
+                candidate_modes,
+                transport_mixing,
+                manifold_scales,
+            )
+        ):
+            raise ValueError(
+                "transport manifold requires carrier, 32 modes, mixing, and scales"
+            )
+        carrier = class_carrier_logits.detach().clone()
+        modes = candidate_modes.detach().clone()
+        mixing = transport_mixing.detach().clone()
+        scales = manifold_scales.detach().clone()
+        if tuple(carrier.shape) != (10, *shape) or tuple(modes.shape) != (
+            10,
+            32,
+            *shape,
+        ):
+            raise ValueError("transport manifold carrier/mode shapes are invalid")
+        if tuple(mixing.shape) != (10, 32, 8) or tuple(scales.shape) != (10, 8):
+            raise ValueError("transport manifold mixing/scale shapes are invalid")
+        if not bool(torch.isfinite(mixing).all()) or not bool(
+            torch.isfinite(scales).all()
+        ):
+            raise ValueError("transport manifold inputs must be finite")
+        if not bool(((scales >= 0.05) & (scales <= 0.50)).all()):
+            raise ValueError("transport manifold scales must be in [0.05, 0.50]")
+        self.shape, self.code_dim, self.command_gain = tuple(shape), 8, 0.05
+        self.register_buffer("class_carrier_logits", carrier)
+        self.register_buffer("candidate_modes", modes)
+        self.register_buffer("manifold_scales", scales)
+        self.transport_mixing = nn.Parameter(mixing)
+
+    @staticmethod
+    def normalized_modes(modes: torch.Tensor) -> torch.Tensor:
+        return ConditionalClassConditionedModesGenerator.normalized_modes(modes)
+
+    def _validate_inputs(self, code: torch.Tensor, labels: torch.Tensor) -> None:
+        if (
+            code.ndim != 2
+            or code.shape[1] != 8
+            or labels.ndim != 1
+            or labels.shape[0] != code.shape[0]
+            or labels.numel() == 0
+        ):
+            raise ValueError("code must be [batch,8] with matching labels")
+        if labels.min() < 0 or labels.max() > 9:
+            raise ValueError("labels must be integers in [0,9]")
+
+    def aligned_modes(self) -> torch.Tensor:
+        mixed = torch.einsum(
+            "ymk,ymhw->ykhw", self.transport_mixing, self.candidate_modes
+        )
+        return self.normalized_modes(mixed)
+
+    def coefficients(self, code: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+        self._validate_inputs(code, labels)
+        return torch.tanh(code)
+
+    def forward(self, code: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+        coefficients = self.coefficients(code, labels)
+        modes = self.aligned_modes().index_select(0, labels)
+        scales = self.manifold_scales.index_select(0, labels)
+        residual = torch.einsum("bk,bk,bkhw->bhw", coefficients, scales, modes)
+        logits = self.class_carrier_logits.index_select(0, labels) + residual
+        return torch.sigmoid(logits).unsqueeze(1)
+
+    def class_carrier_command(self, labels: torch.Tensor) -> torch.Tensor:
+        self._validate_inputs(
+            torch.zeros(labels.shape[0], 8, device=labels.device), labels
+        )
+        return torch.sigmoid(
+            self.class_carrier_logits.index_select(0, labels)
+        ).unsqueeze(1)
+
+    def mode_orthogonality_penalty(self) -> torch.Tensor:
+        modes = self.aligned_modes().flatten(2)
+        gram = modes @ modes.transpose(1, 2) / modes.shape[-1]
+        eye = torch.eye(8, device=modes.device, dtype=modes.dtype).expand(10, -1, -1)
+        return (gram - eye).square().mean()
+
+
+class ConditionalTransportAlignedPhaseCapacityGenerator(
+    ConditionalTransportAlignedManifoldGenerator
+):
+    """v7.2-only generator marker; tensors are deliberately v7.1-incompatible."""
+
+    architecture_kind = "conditional_transport_aligned_phase_capacity_v7_2"

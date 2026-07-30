@@ -72,10 +72,25 @@ promotion。
 
 ## 旧 v2 内容的状态
 
-旧 teacher/prototype/capacity、global-amplitude、direct-template 和 LightGen 文本已
-移入 archive，只用于解释既往证据，不能作为当前命令来源。旧配置路径通过
+旧 teacher/prototype/capacity、global-amplitude、direct-template 和 LightGen 保留在
+显式 `legacy` 或 `diagnostic` 兼容命名空间，只用于解释和复现既往证据，不能进入
+identity 正式命令的导入面，也不能签发 acceptance。`configs/v2/current/` 只包含
+identity 配置；旧配置路径通过
 [`path_migration_manifest.yaml`](../../configs/v2/path_migration_manifest.yaml) 精确映射，
 不会猜测相似路径，也不会静默迁移 evidence 或 checkpoint。
+
+正式 CLI 先以只依赖 `argparse` 的 schema 解析命令和验证配置，再通过
+`module:function + 调用类型` 描述惰性分派。identity 命令只加载 current 的 runtime、
+admission/recovery、training、evaluation 或 dataset 职责模块，以及 formal optics、
+evidence 和 evaluator；`identity_runtime` 与 `conditional_runtime` 都仅保留为惰性兼容
+facade，不进入正式 identity 的导入闭包。teacher/prototype/direct-template 归 legacy，
+class/parity/multi-anchor 和 v6–v7.2 归 diagnostic，均不能签发 acceptance。
+
+为保留历史复现，旧的 `application.conditional_*` Python 路径仍然可导入，但它们只是
+惰性 shim，实际 v6–v7.2 实现均位于 `application.diagnostic`。正式 current 与
+diagnostic 仅共享不含架构分派或 acceptance 判定的运行时辅助函数；current 不会反向
+导入 diagnostic 或 legacy。旧 `legacy.cli_impl` 同样转发到唯一的公共 parser/dispatcher，
+不再维护第二份 CLI 定义。
 
 当前 identity 尚未产生可 promotion 的正式 checkpoint。旧 smoke、prototype 和诊断结果
 保持历史状态；若 split、config 或 evidence context 变化，必须从 evaluator qualification

@@ -1,18 +1,3 @@
-from .v1.config import (
-    DataConfig,
-    DiffusionConfig,
-    DistillationConfig,
-    ElectronicDomainConfig,
-    FirstStageConfig,
-    MacroOpticsConfig,
-    OneShotConfig,
-    PhysicsConfig,
-    TrainingConfig,
-    load_physics_config,
-    load_training_config,
-    validate_physical_forward_contract,
-)
-from .v1.application.run_manager import RunManager
 from importlib import import_module
 
 __all__ = [
@@ -32,6 +17,23 @@ __all__ = [
 ]
 
 _LAZY_EXPORTS = {
+    # Keep the historic root API, but never initialize v1 merely because a
+    # caller imports ``ldm_project.v2``.  The package root is shared by both
+    # runtimes, so eager v1 compatibility exports are an otherwise invisible
+    # v2 startup dependency.
+    "DataConfig": (".v1.config", "DataConfig"),
+    "DiffusionConfig": (".v1.config", "DiffusionConfig"),
+    "DistillationConfig": (".v1.config", "DistillationConfig"),
+    "ElectronicDomainConfig": (".v1.config", "ElectronicDomainConfig"),
+    "FirstStageConfig": (".v1.config", "FirstStageConfig"),
+    "MacroOpticsConfig": (".v1.config", "MacroOpticsConfig"),
+    "OneShotConfig": (".v1.config", "OneShotConfig"),
+    "PhysicsConfig": (".v1.config", "PhysicsConfig"),
+    "RunManager": (".v1.application.run_manager", "RunManager"),
+    "TrainingConfig": (".v1.config", "TrainingConfig"),
+    "load_physics_config": (".v1.config", "load_physics_config"),
+    "load_training_config": (".v1.config", "load_training_config"),
+    "validate_physical_forward_contract": (".v1.config", "validate_physical_forward_contract"),
     "DatasetBundle": (".v1.data", "DatasetBundle"), "DatasetSplits": (".v1.data", "DatasetSplits"),
     "build_train_validation_loaders": (".v1.data", "build_train_validation_loaders"), "build_training_loader": (".v1.data", "build_training_loader"),
     "DIFFUSION_MODEL_VERSION": (".v1.teacher.diffusion", "DIFFUSION_MODEL_VERSION"), "ClassConditionEncoder": (".v1.teacher.diffusion", "ClassConditionEncoder"),

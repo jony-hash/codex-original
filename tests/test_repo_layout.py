@@ -48,11 +48,42 @@ class RepoLayoutTests(unittest.TestCase):
             for path in (package_root / namespace).rglob("*.py"):
                 content = path.read_text(encoding="utf-8")
                 if "from ldm_project." in content or "import ldm_project." in content:
-                    if path == package_root / "v2" / "application" / "cli.py":
+                    if path == package_root / "v2" / "application" / "legacy_adapter.py":
                         self.assertIn("ldm_project.v1.config", content)
                         continue
                     forbidden.append(str(path.relative_to(ROOT)))
         self.assertEqual(forbidden, [])
+
+    def test_v2_current_runtime_is_physically_isolated_and_split(self) -> None:
+        application = ROOT / "src" / "ldm_project" / "v2" / "application"
+        self.assertLessEqual(len((application / "cli.py").read_text(encoding="utf-8").splitlines()), 250)
+        self.assertLessEqual(len((application / "identity_runtime.py").read_text(encoding="utf-8").splitlines()), 100)
+        for name in ("runtime.py", "admission.py", "recovery.py", "training.py", "evaluation.py", "dataset.py"):
+            path = application / "current" / name
+            self.assertTrue(path.is_file(), path)
+            self.assertLessEqual(len(path.read_text(encoding="utf-8").splitlines()), 2000)
+        for name in ("runtime.py", "admission.py", "recovery.py", "diversity.py", "class_modes.py", "parity.py", "legacy_training.py", "evaluation.py", "multi_anchor.py"):
+            path = application / "diagnostic" / name
+            self.assertTrue(path.is_file(), path)
+            self.assertLessEqual(len(path.read_text(encoding="utf-8").splitlines()), 2000)
+        for name in ("cli_impl.py", "teacher.py", "prototypes.py", "geometry.py", "templates.py"):
+            path = application / "legacy" / name
+            self.assertTrue(path.is_file(), path)
+            self.assertLessEqual(len(path.read_text(encoding="utf-8").splitlines()), 2000)
+        current_source = "\n".join(
+            path.read_text(encoding="utf-8")
+            for path in (application / "current").glob("*.py")
+        )
+        for forbidden_import in (
+            "ldm_project.v1",
+            "student.capacity",
+            "student.direct_template",
+            "optics.lightgen",
+            "optics.fiber_ols",
+            "from ..diagnostic",
+            "from ...diagnostic",
+        ):
+            self.assertNotIn(forbidden_import, current_source)
 
     def test_expected_scaffold_files_exist(self) -> None:
         expected = [
@@ -147,6 +178,8 @@ class RepoLayoutTests(unittest.TestCase):
         self.assertIn("conditional_identity_logit_amplitude_v2", active_runtime)
         self.assertNotIn("teacher pair/target manifest", active_runtime)
         self.assertNotIn("prototype-reachability", active_runtime)
+        current_configs = sorted((ROOT / "configs" / "v2" / "current").glob("*.yaml"))
+        self.assertEqual(current_configs, [current])
 
     def test_train_entry_delegates_to_package_cli_main(self) -> None:
         from ldm_project.train_cli import main
