@@ -12,9 +12,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from .cli_schema import _parser
-
-
 CallKind = Literal["args", "args+config", "architecture-dispatch"]
 IDENTITY_ARCHITECTURE = "conditional_identity_logit_amplitude_v2"
 # Public monkeypatch seam retained for the diagnostic prototype oracle.  Values
@@ -22,6 +19,13 @@ IDENTITY_ARCHITECTURE = "conditional_identity_logit_amplitude_v2"
 _CONTROL_ORACLE_STEPS = 400
 _CONTROL_ORACLE_LR = 1.0e-2
 _CONTROL_ORACLE_PROGRESS_INTERVAL = 40
+
+
+def _parser() -> argparse.ArgumentParser:
+    """Construct the public schema without making it a dispatcher dependency."""
+    from .cli_schema import _parser as build_parser
+
+    return build_parser()
 
 
 @dataclass(frozen=True)
@@ -53,7 +57,7 @@ _IDENTITY_HANDLERS = {
     ("audit", "memorization"): HandlerSpec(".current.dataset:audit_memorization", "args+config"),
 }
 
-_LEGACY_HANDLERS = {
+_NON_IDENTITY_HANDLERS = {
     ("evidence", "summarize"): HandlerSpec(".cli:_summarize", "args"),
     ("student", "train"): HandlerSpec(".legacy.templates:_dispatch_train", "args"),
     ("student", "sample"): HandlerSpec(".legacy.templates:_dispatch_sample", "args"),
@@ -156,6 +160,19 @@ _LEGACY_HANDLERS = {
     ("student", "audit-memorization"): HandlerSpec(".diagnostic.evaluation:audit_memorization", "args+config"),
 }
 
+# Diagnostic commands remain available through the public parser, but they are
+# deliberately a separate registry from legacy teacher/prototype commands.
+_DIAGNOSTIC_HANDLERS = {
+    key: spec
+    for key, spec in _NON_IDENTITY_HANDLERS.items()
+    if ".diagnostic." in spec.target
+}
+_LEGACY_HANDLERS = {
+    key: spec
+    for key, spec in _NON_IDENTITY_HANDLERS.items()
+    if key not in _DIAGNOSTIC_HANDLERS
+}
+
 
 def _load_config(args: argparse.Namespace):
     path = getattr(args, "config", None)
@@ -185,7 +202,9 @@ def _dispatch(args: argparse.Namespace) -> int:
     if spec is not None and config is not None and config.architecture == IDENTITY_ARCHITECTURE:
         target = _resolve(spec)
         return int(target(args, config) or 0)
-    spec = _LEGACY_HANDLERS.get((args.domain, args.action))
+    spec = _DIAGNOSTIC_HANDLERS.get((args.domain, args.action))
+    if spec is None:
+        spec = _LEGACY_HANDLERS.get((args.domain, args.action))
     if spec is not None and spec.call_kind == "args":
         return int(_resolve(spec)(args) or 0)
     if spec is not None and config is not None:

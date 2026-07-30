@@ -311,7 +311,12 @@ class V2Config(StrictModel):
     run: RunConfig
 
     @model_validator(mode="after")
+    def validate_lifecycle(self) -> "V2Config":
+        """Dispatch lifecycle validation without importing an execution runtime."""
+        return self.formal_audit_contract_is_locked()
+
     def formal_audit_contract_is_locked(self) -> "V2Config":
+        """Compatibility implementation for lifecycle-specific validation."""
         if (
             self.run.evidence_tier == "acceptance"
             and self.architecture != "conditional_identity_logit_amplitude_v2"
