@@ -69,6 +69,29 @@ assert not any(name.startswith(forbidden) for name in sys.modules), sorted(
     )
 
 
+def test_identity_import_closure_stays_within_the_formal_budget() -> None:
+    _run(
+        """
+import sys
+from pathlib import Path
+from ldm_project.v2.application.current.training import conditional_train
+assert callable(conditional_train)
+root = Path.cwd() / 'src' / 'ldm_project' / 'v2'
+files = {
+    Path(module.__file__).resolve()
+    for name, module in sys.modules.items()
+    if name.startswith('ldm_project.v2') and getattr(module, '__file__', None)
+}
+closure_lines = sum(
+    len(path.read_text(encoding='utf-8').splitlines())
+    for path in files
+    if path.suffix == '.py' and root in path.parents
+)
+assert closure_lines <= 8036, closure_lines
+"""
+    )
+
+
 def test_parser_does_not_load_an_execution_runtime_or_torch() -> None:
     _run(
         """
