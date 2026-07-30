@@ -72,3 +72,19 @@ def test_moved_diagnostic_import_paths_resolve_to_the_new_implementations() -> N
     from ldm_project.v2.application.diagnostic.pca_transport import _metrics as moved
 
     assert _metrics is moved
+
+
+def test_current_and_diagnostic_recovery_share_the_same_workflow_implementation() -> None:
+    from ldm_project.v2.application.current import recovery as current
+    from ldm_project.v2.application.diagnostic import recovery as diagnostic
+
+    for name in (
+        "_conditional_optimizer",
+        "controllability_smoke",
+        "semantic_recovery_smoke",
+    ):
+        current_workflow = getattr(current, name)
+        diagnostic_workflow = getattr(diagnostic, name)
+        assert current_workflow.__module__.endswith("_conditional_recovery_shared")
+        assert diagnostic_workflow.__module__ == current_workflow.__module__
+        assert diagnostic_workflow.__code__ is current_workflow.__code__

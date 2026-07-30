@@ -5,6 +5,8 @@ from __future__ import annotations
 
 from . import runtime as _runtime
 from . import admission as _admission
+from .._conditional_admission_shared import ConditionalRuntimeBindings
+from .._conditional_recovery_shared import bind_recovery
 
 globals().update({name: value for name, value in _runtime.__dict__.items() if not name.startswith("__")})
 globals().update({name: value for name, value in _admission.__dict__.items() if not name.startswith("__")})
@@ -1115,3 +1117,10 @@ def conditional_training_completion(args, config: V2Config) -> int:
     _write_evidence(run, "conditional_training_completion_evidence.json", record)
     print(run.root)
     return 0
+
+
+# Formal and diagnostic commands bind the same recovery workflows.  The local
+# training compatibility functions remain diagnostic-only and retain their
+# broader-architecture behavior.
+_recovery_bindings = ConditionalRuntimeBindings(vars(_runtime) | vars(_admission))
+globals().update(bind_recovery(_recovery_bindings))
