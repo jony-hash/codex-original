@@ -47,8 +47,9 @@ teacher/prototype/capacity 内容仍可从 archive 追溯，但不再是当前�
 | `archive/v2/optical-feasibility` | `e9072f6` | 宏观光路局部可行性审计。 |
 | `archive/v2/short-spacing-v6.2` | `25d3c4a` | 0.25 mm 短层距与饱和 harness 闭环。 |
 | `archive/v2/formal-spacing-v6.3` | `74a41e8` | 1.50 mm self-imaging smoke 失败闭环。 |
+| `archive/v2/capacity-map-v2.2-conditional-negative` | closeout milestone | E2:O0 teacher-free objective-family 条件性负结果封存。 |
 
-这些 tags 只替代冗余本地 branch 指针；提交、输出目录和 evidence 未删除，远端引用未修改。
+这些 tags 只替代冗余本地 branch 指针或标记已关闭研究里程碑；提交、输出目录和 evidence 未删除，远端引用未修改。v2.2 closeout 的可审阅 JSON 快照位于 `experiments/archive/v2_2_capacity_map_closeout/`；它不授权物理训练或 promotion。
 
 ## 远端发布状态
 

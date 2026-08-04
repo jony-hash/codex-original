@@ -1,0 +1,48 @@
+{
+  "action": "qualify-shape",
+  "config_hash": "f6d0bcec3eb99fc3787d21fffe890c75280d29d89d3ad3a8159a6d29c8ceb423",
+  "content_hash": "4c27f58b7b10df6e7bc4dd66a20d1bc686f593fd1d0802990f645db5a4c1a59e",
+  "dataset": "mnist",
+  "evidence_revision": 10,
+  "inputs": {
+    "capacity_map_config": "6bc260d97460a0ae2571524119204611484269c9a951ff2e6ae9069bce79b481",
+    "evaluator_bundle": "970dd6ea39cbda8aa23d3ca8338d9b0140a21cde45e4199137ef303f9d73ea31",
+    "evaluator_qualification_evidence": "93592543306b5a3da8c238d86e41805fc2de0080459d217dfbc3e7161d374d88",
+    "primary_evaluator": "46741ec76e45653c9dcb76e7b4f1645c9c057a47cdd9e4c1778d9debb553ec57",
+    "smooth_evaluator": "45879962cf8a6dc51e141a2f2a9892356ede97dd45063f38d830299aa877e26c"
+  },
+  "metrics": {
+    "accuracy": 0.9233999848365784,
+    "agreement_primary": 0.9225999712944031,
+    "checkpoint": "outputs/20260804_capacity_map_v2_2/runs/20260804_010321_583684_research_qualify_shape/shape_mnist_evaluator_v22.pt",
+    "checkpoint_sha256": "519249d8936c0cedcd9c0a181c791472cd88f9efca3d23b4aa52fad1d4675019",
+    "gates": {
+      "agreement_primary": false,
+      "robustness": false,
+      "validation": false
+    },
+    "recall": [
+      0.9380000233650208,
+      0.9760000705718994,
+      0.8940000534057617,
+      0.9440000653266907,
+      0.9720000624656677,
+      0.9160000681877136,
+      0.89000004529953,
+      0.9440000653266907,
+      0.9020000696182251,
+      0.8580000400543213
+    ],
+    "robustness": {
+      "intensity_minus_2pct": 0.9899999499320984,
+      "intensity_plus_2pct": 0.9943999648094177,
+      "translate_x_plus_1": 0.9643999934196472,
+      "translate_y_plus_1": 0.884399950504303
+    }
+  },
+  "reason": "shape_evaluator_qualification_gate_failed",
+  "schema_version": 1,
+  "seed": 7319,
+  "state": "screened_out",
+  "variant": null
+}

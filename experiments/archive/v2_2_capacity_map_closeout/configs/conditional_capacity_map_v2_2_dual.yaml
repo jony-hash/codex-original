@@ -1,0 +1,30 @@
+# Same v2.2 measurement contract; only the frozen training objective changes.
+schema_version: 1
+name: conditional_optical_capacity_conflict_map_v22_dual
+version: capacity_map_v2_2
+dataset_root: data
+output_root: outputs
+evaluator_checkpoint: outputs/20260724_v2/runs/20260724_162422_705459_formal_v2_identity_logit_amplitude_finite_crop_identity/frozen_mnist_evaluator.pt
+smooth_evaluator_checkpoint: outputs/20260730_v2/runs/20260730_171126_556355_diagnostic_v2_transport_aligned_manifold_v71/smooth_mnist_evaluator_v21.pt
+evaluator_bundle: outputs/20260730_v2/runs/20260730_171126_556355_diagnostic_v2_transport_aligned_manifold_v71/conditional_evaluator_bundle_v21.json
+evaluator_qualification_evidence: outputs/20260730_v2/runs/20260730_171126_556355_diagnostic_v2_transport_aligned_manifold_v71/conditional_evaluator_qualification_v21_evidence.json
+measurement_contract: e1b7bca759d3ea747b735c8c872b8f828d24f3719ca4a5980830fdf4865785ca
+objective_id: dual_bundle
+screening_probe_steps: 50
+smoke_steps: 400
+confirm_epochs: 5
+seeds: [1234, 4321, 2234]
+batch_size: 50
+electronic:
+  - {variant_id: E0, kind: shared_modes, code_dim: 8}
+  - {variant_id: E1, kind: class_modes, code_dim: 8}
+  - {variant_id: E2, kind: spatial_decoder, code_dim: 8}
+  - {variant_id: E3, kind: spatial_decoder, code_dim: 16}
+  - {variant_id: E4, kind: spatial_decoder, code_dim: 32}
+optical:
+  - {variant_id: O0, kind: digital_oracle, encoder_layers: 0, decoder_layers: 0}
+  - {variant_id: O1, kind: phase_bypass, encoder_layers: 0, decoder_layers: 0}
+  - {variant_id: O2, kind: phase_only, encoder_layers: 2, decoder_layers: 2}
+  - {variant_id: O3, kind: deep_phase_only, encoder_layers: 4, decoder_layers: 4}
+  - {variant_id: O4, kind: spatial_upper_bound, encoder_layers: 2, decoder_layers: 2, diagnostic_only: true}
+  - {variant_id: O5, kind: complex_upper_bound, encoder_layers: 2, decoder_layers: 2, diagnostic_only: true}

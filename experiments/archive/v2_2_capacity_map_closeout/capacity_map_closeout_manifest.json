@@ -1,0 +1,127 @@
+{
+  "ambiguous_revisions": {
+    "dual": [],
+    "primary": [
+      {
+        "classification": "ambiguous_revision",
+        "content_hashes": [
+          "94a71b17175c41041639466c2aae4603c100779f4ce5c4f53eab2f0743a7acc0",
+          "94c9b12c6b79cc0162dd2d2a5a66625b56fa3946bc9a8726f882fa23adc790f4"
+        ],
+        "evidence_revision": 10,
+        "key": [
+          "f6d0bcec3eb99fc3787d21fffe890c75280d29d89d3ad3a8159a6d29c8ceb423",
+          "mnist",
+          "E2:O0",
+          "diagnose",
+          1234
+        ],
+        "paths": [
+          "outputs/20260804_capacity_map_v2_2/runs/20260804_010352_706718_research_diagnose/capacity_map_E2_O0_diagnose_evidence.json",
+          "outputs/20260804_capacity_map_v2_2/runs/20260804_010416_354703_research_diagnose/capacity_map_E2_O0_diagnose_evidence.json"
+        ]
+      }
+    ]
+  },
+  "comparison_config_hash": "f6d0bcec3eb99fc3787d21fffe890c75280d29d89d3ad3a8159a6d29c8ceb423",
+  "dual_config_hash": "30a2d497d76b5f54a787b09321a409cf37015dcb3b5492935a03702cd9e62897",
+  "inputs": [
+    {
+      "action": "qualify-shape",
+      "content_hash": "4c27f58b7b10df6e7bc4dd66a20d1bc686f593fd1d0802990f645db5a4c1a59e",
+      "path": "outputs/20260804_capacity_map_v2_2/runs/20260804_010321_583684_research_qualify_shape/capacity_map_shape_evaluator_qualification_evidence.json",
+      "seed": 7319,
+      "state": "screened_out"
+    },
+    {
+      "action": "diagnose",
+      "content_hash": "94c9b12c6b79cc0162dd2d2a5a66625b56fa3946bc9a8726f882fa23adc790f4",
+      "path": "outputs/20260804_capacity_map_v2_2/runs/20260804_010416_354703_research_diagnose/capacity_map_E2_O0_diagnose_evidence.json",
+      "seed": 1234,
+      "state": "screen_passed"
+    },
+    {
+      "action": "train-smoke",
+      "content_hash": "569e14944ac9c66e65ba325d477f34e71b56acb3bd9f064ee63eee9f057dadb5",
+      "path": "outputs/20260804_capacity_map_v2_2/runs/20260804_010443_294515_research_train_smoke/capacity_map_E2_O0_smoke_evidence.json",
+      "seed": 1234,
+      "state": "smoke_failed"
+    },
+    {
+      "action": "train-smoke",
+      "content_hash": "f695b8553d7c92b1406821edc61b051e540787dd14449c0674dc5a3bc9ff9af0",
+      "path": "outputs/20260804_capacity_map_v2_2/runs/20260804_010538_751926_research_train_smoke/capacity_map_E2_O0_smoke_evidence.json",
+      "seed": 4321,
+      "state": "smoke_failed"
+    },
+    {
+      "action": "train-smoke",
+      "content_hash": "542c60ae24ed37ab3c8488d6517ab7ecd90595962afa01025e9ea2f04bb0ed91",
+      "path": "outputs/20260804_capacity_map_v2_2/runs/20260804_010619_817327_research_train_smoke/capacity_map_E2_O0_smoke_evidence.json",
+      "seed": 2234,
+      "state": "smoke_passed"
+    },
+    {
+      "action": "train-smoke",
+      "content_hash": "0dae1558841a0f37ba4b145bb4594d35cad1d1260a37864bb6bad7c4b5aba39e",
+      "path": "outputs/20260804_capacity_map_v2_2/runs/20260804_010655_244684_research_train_smoke/capacity_map_E2_O0_smoke_evidence.json",
+      "seed": 1234,
+      "state": "smoke_passed"
+    },
+    {
+      "action": "train-smoke",
+      "content_hash": "2d6a4a3f485267a91432e7dc20e84f0e2ea835d5c6aa81933d6caac7de0e06c5",
+      "path": "outputs/20260804_capacity_map_v2_2/runs/20260804_010809_947635_research_train_smoke/capacity_map_E2_O0_smoke_evidence.json",
+      "seed": 4321,
+      "state": "smoke_passed"
+    },
+    {
+      "action": "train-smoke",
+      "content_hash": "baf054cc45e5678d4267e9ef19683259927d24dc3184bb6bcd5ac1b25a45ba09",
+      "path": "outputs/20260804_capacity_map_v2_2/runs/20260804_010911_978224_research_train_smoke/capacity_map_E2_O0_smoke_evidence.json",
+      "seed": 2234,
+      "state": "smoke_passed"
+    },
+    {
+      "action": "confirm",
+      "content_hash": "41a0c309184f7baef0d439caf09fdc9e0bb8ef875df516147516272739cc4eba",
+      "path": "outputs/20260804_capacity_map_v2_2/runs/20260804_011104_036193_research_confirm/capacity_map_E2_O0_confirm_evidence.json",
+      "seed": 1234,
+      "state": "smoke_failed"
+    },
+    {
+      "action": "confirm",
+      "content_hash": "b0eea8d85bca84825aac22847d9a7d44f86f811bda30e8daadfbe46ca5ec8590",
+      "path": "outputs/20260804_capacity_map_v2_2/runs/20260804_011413_923285_research_confirm/capacity_map_E2_O0_confirm_evidence.json",
+      "seed": 4321,
+      "state": "smoke_failed"
+    },
+    {
+      "action": "confirm",
+      "content_hash": "dfbeb2197e700ea5009448a51f733d984980a79348241f791b36decc803d4dc5",
+      "path": "outputs/20260804_capacity_map_v2_2/runs/20260804_011727_329670_research_confirm/capacity_map_E2_O0_confirm_evidence.json",
+      "seed": 2234,
+      "state": "smoke_failed"
+    }
+  ],
+  "invalid_revisions": {
+    "dual": [],
+    "primary": [
+      {
+        "content_hash": "94a71b17175c41041639466c2aae4603c100779f4ce5c4f53eab2f0743a7acc0",
+        "evidence_revision": 10,
+        "key": [
+          "f6d0bcec3eb99fc3787d21fffe890c75280d29d89d3ad3a8159a6d29c8ceb423",
+          "mnist",
+          "E2:O0",
+          "diagnose",
+          1234
+        ],
+        "path": "outputs/20260804_capacity_map_v2_2/runs/20260804_010352_706718_research_diagnose/capacity_map_E2_O0_diagnose_evidence.json",
+        "reason": "shape evaluator qualification evidence did not pass"
+      }
+    ]
+  },
+  "schema_version": 1,
+  "status": "closed_conditional_negative"
+}

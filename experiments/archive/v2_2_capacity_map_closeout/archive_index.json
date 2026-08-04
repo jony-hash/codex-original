@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "archive_id": "v2_2_capacity_map_closeout",
+  "status": "closed_conditional_negative",
+  "confirmation_pass_count": "0/3",
+  "causal_scope": "E2:O0_declared_teacher_free_objectives",
+  "downstream_status": "stopped_by_o0_gate",
+  "runnable": false,
+  "formal_promotion_authorized": false,
+  "source_closeout_run": "outputs/20260804_capacity_map_v2_2/runs/20260804_015524_788470_research_closeout",
+  "files": [
+    {"role": "primary_config", "source_path": "configs/research/conditional_capacity_map_v2_2_primary.yaml", "archive_path": "configs/conditional_capacity_map_v2_2_primary.yaml", "bytes": 1912, "sha256": "6bc260d97460a0ae2571524119204611484269c9a951ff2e6ae9069bce79b481"},
+    {"role": "dual_config", "source_path": "configs/research/conditional_capacity_map_v2_2_dual.yaml", "archive_path": "configs/conditional_capacity_map_v2_2_dual.yaml", "bytes": 1907, "sha256": "8fbad3438c996984c5dc278a5be9543363132b59e1e155fe41af43668be8ab51"},
+    {"role": "shape_qualification_failure", "source_path": "outputs/20260804_capacity_map_v2_2/runs/20260804_010321_583684_research_qualify_shape/capacity_map_shape_evaluator_qualification_evidence.json", "archive_path": "evidence/shape_qualification_failure.json", "bytes": 1830, "sha256": "a1f7ed72192e1704e07b24d55245bf5430dc5e1276a66e5a0ece8ba2430461b0"},
+    {"role": "diagnose", "source_path": "outputs/20260804_capacity_map_v2_2/runs/20260804_010416_354703_research_diagnose/capacity_map_E2_O0_diagnose_evidence.json", "archive_path": "evidence/diagnose_e2_o0.json", "bytes": 58528, "sha256": "c773ca3e8d66dbf6c56187cce8e7f79930a5dae9d92e4e8bb12a33ca32de521f"},
+    {"role": "invalid_diagnose_revision", "source_path": "outputs/20260804_capacity_map_v2_2/runs/20260804_010352_706718_research_diagnose/capacity_map_E2_O0_diagnose_evidence.json", "archive_path": "evidence/diagnose_invalid_shape_evaluator.json", "bytes": 1290, "sha256": "6764b6bf28b1a500eb454920af3256e28c63f165842eb4df9ee854c60f58d4b2"},
+    {"role": "primary_smoke_1234", "source_path": "outputs/20260804_capacity_map_v2_2/runs/20260804_010443_294515_research_train_smoke/capacity_map_E2_O0_smoke_evidence.json", "archive_path": "evidence/primary_smoke_seed_1234.json", "bytes": 124309, "sha256": "add8ffea81e154110601413ae983bf3e4010683549ba6fe9457a0003bc8ba35a"},
+    {"role": "primary_smoke_4321", "source_path": "outputs/20260804_capacity_map_v2_2/runs/20260804_010538_751926_research_train_smoke/capacity_map_E2_O0_smoke_evidence.json", "archive_path": "evidence/primary_smoke_seed_4321.json", "bytes": 124183, "sha256": "af965eea346260bc05276b0d00788ed9448ea8506248a792dd1373ef39e1767b"},
+    {"role": "primary_smoke_2234", "source_path": "outputs/20260804_capacity_map_v2_2/runs/20260804_010619_817327_research_train_smoke/capacity_map_E2_O0_smoke_evidence.json", "archive_path": "evidence/primary_smoke_seed_2234.json", "bytes": 124241, "sha256": "dc0309905398315939a8c4d61e9c445d53f39941858ab4a4541a0fd63b9149d0"},
+    {"role": "dual_smoke_1234", "source_path": "outputs/20260804_capacity_map_v2_2/runs/20260804_010655_244684_research_train_smoke/capacity_map_E2_O0_smoke_evidence.json", "archive_path": "evidence/dual_smoke_seed_1234.json", "bytes": 128315, "sha256": "51c2a4d33e0d08b24cb5f75299c12d31ca0393aac220b8e2657bc091fef9398b"},
+    {"role": "dual_smoke_4321", "source_path": "outputs/20260804_capacity_map_v2_2/runs/20260804_010809_947635_research_train_smoke/capacity_map_E2_O0_smoke_evidence.json", "archive_path": "evidence/dual_smoke_seed_4321.json", "bytes": 128080, "sha256": "6f41950ba8701641a9ae70a1057b3f4531a647a2a56991a70bc836318526a6cf"},
+    {"role": "dual_smoke_2234", "source_path": "outputs/20260804_capacity_map_v2_2/runs/20260804_010911_978224_research_train_smoke/capacity_map_E2_O0_smoke_evidence.json", "archive_path": "evidence/dual_smoke_seed_2234.json", "bytes": 128204, "sha256": "d8e11225e24e47115ac79ff2dff12a48a8896d0367137fe0239ad6308f37be20"},
+    {"role": "dual_confirm_1234", "source_path": "outputs/20260804_capacity_map_v2_2/runs/20260804_011104_036193_research_confirm/capacity_map_E2_O0_confirm_evidence.json", "archive_path": "evidence/dual_confirm_seed_1234.json", "bytes": 146571, "sha256": "4e7c9925236b785b3be345af581f640be3398265a4197ba86572c4d4059cb00f"},
+    {"role": "dual_confirm_4321", "source_path": "outputs/20260804_capacity_map_v2_2/runs/20260804_011413_923285_research_confirm/capacity_map_E2_O0_confirm_evidence.json", "archive_path": "evidence/dual_confirm_seed_4321.json", "bytes": 146518, "sha256": "990454254d0d062012716d09d3ae0abdd0e9d6965741171a0e983d3eef5060ea"},
+    {"role": "dual_confirm_2234", "source_path": "outputs/20260804_capacity_map_v2_2/runs/20260804_011727_329670_research_confirm/capacity_map_E2_O0_confirm_evidence.json", "archive_path": "evidence/dual_confirm_seed_2234.json", "bytes": 146361, "sha256": "7a188ac979881c9b99dc7fb7b1f7214214da926596c3cf92c449cb468a7b6c50"},
+    {"role": "closeout_manifest", "source_path": "outputs/20260804_capacity_map_v2_2/runs/20260804_015524_788470_research_closeout/capacity_map_closeout_manifest.json", "archive_path": "capacity_map_closeout_manifest.json", "bytes": 5287, "sha256": "82206094fc4d4a0ab2ebf98e8e4056c863f2a99659646632eb93f5e7acad6b4e"},
+    {"role": "closeout_summary", "source_path": "outputs/20260804_capacity_map_v2_2/runs/20260804_015524_788470_research_closeout/capacity_map_closeout_summary.json", "archive_path": "capacity_map_closeout_summary.json", "bytes": 7328, "sha256": "d590e59171836ee53b2a62a9010947e8fd5844926c7a81ed56deff31f826a872"},
+    {"role": "closeout_report", "source_path": "outputs/20260804_capacity_map_v2_2/runs/20260804_015524_788470_research_closeout/capacity_map_closeout_report.md", "archive_path": "capacity_map_closeout_report.md", "bytes": 425, "sha256": "9a5a09c68c91c6d1a8de7d3601426d2ca7f0975e3010b94dd6211c02a66c8c9e"}
+  ]
+}

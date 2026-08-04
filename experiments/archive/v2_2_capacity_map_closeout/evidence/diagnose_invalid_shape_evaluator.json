@@ -1,0 +1,24 @@
+{
+  "action": "diagnose",
+  "config_hash": "f6d0bcec3eb99fc3787d21fffe890c75280d29d89d3ad3a8159a6d29c8ceb423",
+  "content_hash": "94a71b17175c41041639466c2aae4603c100779f4ce5c4f53eab2f0743a7acc0",
+  "dataset": "mnist",
+  "evidence_revision": 10,
+  "inputs": {
+    "capacity_map_config": "6bc260d97460a0ae2571524119204611484269c9a951ff2e6ae9069bce79b481",
+    "evaluator_bundle": "970dd6ea39cbda8aa23d3ca8338d9b0140a21cde45e4199137ef303f9d73ea31",
+    "evaluator_qualification_evidence": "93592543306b5a3da8c238d86e41805fc2de0080459d217dfbc3e7161d374d88",
+    "primary_evaluator": "46741ec76e45653c9dcb76e7b4f1645c9c057a47cdd9e4c1778d9debb553ec57",
+    "shape_evaluator": "519249d8936c0cedcd9c0a181c791472cd88f9efca3d23b4aa52fad1d4675019",
+    "shape_qualification": "a1f7ed72192e1704e07b24d55245bf5430dc5e1276a66e5a0ece8ba2430461b0",
+    "smooth_evaluator": "45879962cf8a6dc51e141a2f2a9892356ede97dd45063f38d830299aa877e26c",
+    "source_checkpoint": "ad9b628520bc7d912d771a9def30e6ef66c01a1b1b4440af69f37c8170f6b056",
+    "source_evidence": "1fcd9875dc44caa7b2516dc755ca0f09f748a059e20e0f444a2264047617b623"
+  },
+  "metrics": {},
+  "reason": "shape evaluator qualification evidence did not pass",
+  "schema_version": 1,
+  "seed": 1234,
+  "state": "invalid_harness",
+  "variant": "E2:O0"
+}

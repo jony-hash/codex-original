@@ -62,3 +62,38 @@ archives:
     runnable: false
     replacement: src/ldm_project/v2/
     source_commit: 758363e
+  - id: pre-v56-regression-tests
+    version_range: v56
+    original_path: tests/test_v56_coherent_relay.py
+    archived_path: experiments/archive/pre_v56/tests/test_v56_coherent_relay.py
+    role: historical coherent-relay test bound to archived v56 tools and configurations
+    diagnostic_only: true
+    runnable: false
+    replacement: src/ldm_project/v1/ and active tests/
+    source_commit: 758363e
+  - id: v57-v66-regression-tests
+    version_range: v57-v66
+    original_path: tests/test_v{57,58,59,61,62,63,64,65,66}_*.py
+    archived_path: experiments/archive/v57_v67/tests/test_v{57,58,59,61,62,63,64,65,66}_*.py
+    role: historical tests bound to archived collapse, relay, and provenance tools
+    diagnostic_only: true
+    runnable: false
+    replacement: active tests/ and src/ldm_project/v2/
+    source_commit: 758363e
+  - id: v2.2-capacity-map-conditional-negative-closeout
+    version_range: v2.2
+    original_path: outputs/20260804_capacity_map_v2_2/runs/*_research_{train_smoke,confirm,diagnose,qualify_shape,closeout}/capacity_map_*.json
+    archived_path: experiments/archive/v2_2_capacity_map_closeout/
+    role: immutable E2:O0 teacher-free objective-family conditional-negative evidence capsule
+    diagnostic_only: true
+    runnable: false
+    formal_promotion_authorized: false
+    status: closed_conditional_negative
+    confirmation_pass_count: 0/3
+    causal_scope: E2:O0_declared_teacher_free_objectives
+    downstream_status: stopped_by_o0_gate
+    replacement: a newly pre-registered electronic O0 contract; no direct O1-O5 continuation
+    evidence_paths:
+      - experiments/archive/v2_2_capacity_map_closeout/capacity_map_closeout_summary.json
+      - experiments/archive/v2_2_capacity_map_closeout/capacity_map_closeout_manifest.json
+    source_commit: archive/v2/capacity-map-v2.2-conditional-negative

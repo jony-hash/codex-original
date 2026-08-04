@@ -2,6 +2,21 @@
 
 本记录只总结当前teacher-free全光路生成主线的结构决策，不授权任何训练或数据集导出。
 
+## v2.2 closeout（当前有效状态，2026-08-04）
+
+`E2:O0_declared_teacher_free_objectives` 已以
+`closed_conditional_negative` 封存。三个 dual-bundle confirm 均未通过完整的
+qualified dual-evaluator 门（`0/3`），因此 O1--O5、Teacher/WGAN、Controlled
+Shapes 与 Fashion-MNIST 分支被 `stopped_by_o0_gate` 停止。
+
+这只支持“当前电子 O0 与已声明 teacher-free objective family 不可达”的条件性
+结论；不支持 phase-only、光学容量、空间 DOF 或普适 semantic--diversity conflict。
+历史 v6/v7、revision-9 和本文件以下的历史记录不能重新授权物理训练。完整证据位于
+[`experiments/archive/v2_2_capacity_map_closeout/`](../../experiments/archive/v2_2_capacity_map_closeout/)。
+
+任何未来研究必须另立电子 O0 合同与新的 objective family，并重新通过数字 oracle 的
+multi-seed dual-evaluator 确认；不得恢复当前 O1--O5 的长训练。
+
 ## 已停止的结构
 
 | 候选 | 停止原因 |
@@ -24,6 +39,14 @@ label + code → amplitude SLM → Encoder → identity OLS → Decoder → CMOS
 它们否定的是电子端入口的参数化和数据几何假设。失败evidence保持不可变，只能用于下一次诊断定位，不能授权训练、自动评估或导出。
 
 ## 当前状态（2026-07-30）
+
+2026-07-31 起，evaluation-qualified 2+2 主线采用“完整 runner 先行”的工程策略：先冻结
+共享 runtime 和全链测试，再执行一次有阶段门的 CUDA 序列。曲率、单面板小样本 correlation 和
+局部 tangent 的逐面板改善只承担诊断职责；最终双-seed、语义、物理安全、分布和证据完整性门不变。
+
+该链的 shared runtime 和四个 stage runner 已完成实现，但尚未运行新的 CUDA design。先前的
+曲率 evidence `20260731_001324_194392` 是唯一允许消费的曲率输入；历史两份曲率 evidence
+均不重跑。当前剩余的是完整 pytest 的环境受限确认，而非任何新的科学门失败。
 
 Evaluator v2.1 已通过独立资格化。它不改变历史 v7.1/v7.2 的有效失败：那些 evidence
 仍绑定各自的 evaluator 合同。v2.1 仅证明新的双-evaluator bundle 可以作为下一条独立 2+2

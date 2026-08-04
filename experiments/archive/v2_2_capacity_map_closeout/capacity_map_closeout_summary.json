@@ -1,0 +1,204 @@
+{
+  "allowed_claim": "The current E2:O0 declared teacher-free objective family did not pass the qualified dual-evaluator gate.",
+  "alternative_causes": [
+    "electronic_generator_capacity",
+    "optimization_dynamics",
+    "evaluator_disagreement"
+  ],
+  "causal_certainty": "not_uniquely_identified",
+  "causal_scope": "E2:O0_declared_teacher_free_objectives",
+  "claim": "training_objective_conflict",
+  "confirmation_pass_count": 0,
+  "confirmation_seed_count": 3,
+  "cuda_used": false,
+  "diagnostic_inputs": {
+    "diagnose": "94c9b12c6b79cc0162dd2d2a5a66625b56fa3946bc9a8726f882fa23adc790f4",
+    "shape_qualification_failure": "4c27f58b7b10df6e7bc4dd66a20d1bc686f593fd1d0802990f645db5a4c1a59e"
+  },
+  "downstream_status": "stopped_by_o0_gate",
+  "evidence_governance": {
+    "ambiguous_revision_count": 1,
+    "invalid_revision_count": 1,
+    "manifest_sha256": "dc69259bdddee1afc7031b14f3ee62d6fd94b9097550c8e6c9f0534f747ea99b"
+  },
+  "formal_promotion_authorized": false,
+  "input_hashes": {
+    "comparison_config": "6bc260d97460a0ae2571524119204611484269c9a951ff2e6ae9069bce79b481",
+    "dual_config": "8fbad3438c996984c5dc278a5be9543363132b59e1e155fe41af43668be8ab51",
+    "evaluator_bundle": "970dd6ea39cbda8aa23d3ca8338d9b0140a21cde45e4199137ef303f9d73ea31",
+    "evaluator_qualification_evidence": "93592543306b5a3da8c238d86e41805fc2de0080459d217dfbc3e7161d374d88",
+    "primary_evaluator": "46741ec76e45653c9dcb76e7b4f1645c9c057a47cdd9e4c1778d9debb553ec57",
+    "smooth_evaluator": "45879962cf8a6dc51e141a2f2a9892356ede97dd45063f38d830299aa877e26c"
+  },
+  "optimizer_created": false,
+  "prohibited_claims": [
+    "optical capacity failure",
+    "phase-only capacity failure",
+    "spatial-DOF failure",
+    "universal semantic-diversity capacity conflict"
+  ],
+  "schema_version": 1,
+  "seed_matched_comparison": {
+    "dual_minus_primary": {
+      "code_fraction": {
+        "median": 0.5779852148245084,
+        "variance": 0.06726683767548024
+      },
+      "evaluator_agreement": {
+        "median": 0.458823524415493,
+        "variance": 0.0018223767123491108
+      },
+      "minimum_per_class_recall": {
+        "median": 0.0,
+        "variance": 0.0
+      },
+      "primary_accuracy": {
+        "median": 0.058823585510253906,
+        "variance": 0.012525951466346422
+      },
+      "saturation": {
+        "median": 0.0,
+        "variance": 0.0
+      },
+      "smooth_accuracy": {
+        "median": 0.47058822959661484,
+        "variance": 0.0010226826042638334
+      },
+      "worst_normalized_margin": {
+        "median": 9.411764591932293,
+        "variance": 0.4090730417055324
+      }
+    },
+    "rows": [
+      {
+        "delta_dual_minus_primary": {
+          "code_fraction": 0.5779852148245084,
+          "evaluator_agreement": 0.38235294073820114,
+          "minimum_per_class_recall": 0.0,
+          "primary_accuracy": -0.011764705181121826,
+          "saturation": 0.0,
+          "smooth_accuracy": 0.417647086083889,
+          "worst_normalized_margin": 8.352941721677778
+        },
+        "dual_confirm_gates": {
+          "anti_template": true,
+          "code_response": true,
+          "cross_evaluator_agreement": false,
+          "distribution": false,
+          "minimum_recall": false,
+          "primary_semantics": false,
+          "saturation": true,
+          "smooth_semantics": false
+        },
+        "dual_smoke": {
+          "code_fraction": 0.5779854655265808,
+          "evaluator_agreement": 0.48235294222831726,
+          "minimum_per_class_recall": 0.0,
+          "primary_accuracy": 0.6882352828979492,
+          "saturation": 0.0,
+          "smooth_accuracy": 0.5176470875740051,
+          "worst_normalized_margin": -8.647058248519896
+        },
+        "primary_smoke": {
+          "code_fraction": 2.507020724351605e-07,
+          "evaluator_agreement": 0.10000000149011612,
+          "minimum_per_class_recall": 0.0,
+          "primary_accuracy": 0.699999988079071,
+          "saturation": 0.0,
+          "smooth_accuracy": 0.10000000149011612,
+          "worst_normalized_margin": -16.999999970197674
+        },
+        "seed": 1234
+      },
+      {
+        "delta_dual_minus_primary": {
+          "code_fraction": 0.049975454807281494,
+          "evaluator_agreement": 0.48235296830534935,
+          "minimum_per_class_recall": 0.0,
+          "primary_accuracy": 0.25294119119644165,
+          "saturation": 0.0,
+          "smooth_accuracy": 0.4941176399588585,
+          "worst_normalized_margin": 9.882352799177166
+        },
+        "dual_confirm_gates": {
+          "anti_template": true,
+          "code_response": true,
+          "cross_evaluator_agreement": false,
+          "distribution": false,
+          "minimum_recall": false,
+          "primary_semantics": false,
+          "saturation": true,
+          "smooth_semantics": false
+        },
+        "dual_smoke": {
+          "code_fraction": 0.6361658573150635,
+          "evaluator_agreement": 0.529411792755127,
+          "minimum_per_class_recall": 0.0,
+          "primary_accuracy": 0.7941176891326904,
+          "saturation": 0.0,
+          "smooth_accuracy": 0.5941176414489746,
+          "worst_normalized_margin": -7.117647171020507
+        },
+        "primary_smoke": {
+          "code_fraction": 0.586190402507782,
+          "evaluator_agreement": 0.0470588244497776,
+          "minimum_per_class_recall": 0.0,
+          "primary_accuracy": 0.5411764979362488,
+          "saturation": 0.0,
+          "smooth_accuracy": 0.10000000149011612,
+          "worst_normalized_margin": -16.999999970197674
+        },
+        "seed": 4321
+      },
+      {
+        "delta_dual_minus_primary": {
+          "code_fraction": 0.6199297416376339,
+          "evaluator_agreement": 0.458823524415493,
+          "minimum_per_class_recall": 0.0,
+          "primary_accuracy": 0.058823585510253906,
+          "saturation": 0.0,
+          "smooth_accuracy": 0.47058822959661484,
+          "worst_normalized_margin": 9.411764591932293
+        },
+        "dual_confirm_gates": {
+          "anti_template": true,
+          "code_response": true,
+          "cross_evaluator_agreement": false,
+          "distribution": false,
+          "minimum_recall": false,
+          "primary_semantics": false,
+          "saturation": true,
+          "smooth_semantics": false
+        },
+        "dual_smoke": {
+          "code_fraction": 0.6199311017990112,
+          "evaluator_agreement": 0.5588235259056091,
+          "minimum_per_class_recall": 0.0,
+          "primary_accuracy": 0.758823573589325,
+          "saturation": 0.0,
+          "smooth_accuracy": 0.570588231086731,
+          "worst_normalized_margin": -7.58823537826538
+        },
+        "primary_smoke": {
+          "code_fraction": 1.3601613773062127e-06,
+          "evaluator_agreement": 0.10000000149011612,
+          "minimum_per_class_recall": 0.0,
+          "primary_accuracy": 0.699999988079071,
+          "saturation": 0.0,
+          "smooth_accuracy": 0.10000000149011612,
+          "worst_normalized_margin": -16.999999970197674
+        },
+        "seed": 2234
+      }
+    ],
+    "worst_dual_confirm_seed": 1234
+  },
+  "status": "closed_conditional_negative",
+  "unexecuted_branches": [
+    "O1-O5 long training",
+    "Teacher upper bound",
+    "WGAN upper bound",
+    "Controlled Shapes confirmation",
+    "Fashion-MNIST confirmation"
+  ]
+}
