@@ -12,6 +12,38 @@ import argparse
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m ldm_project.v2")
     root = parser.add_subparsers(dest="domain", required=True)
+    research = root.add_parser("research", help="diagnostic-only pre-registered research programs")
+    capacity_map = research.add_subparsers(dest="research_program", required=True).add_parser("capacity-map")
+    capacity_actions = capacity_map.add_subparsers(dest="research_action", required=True)
+    for action in ("validate", "screen", "train-smoke", "confirm", "summarize", "diagnose", "qualify-shape", "closeout"):
+        command = capacity_actions.add_parser(action)
+        command.add_argument("--config", required=True)
+        command.add_argument("--evidence-revision", type=int, default=1)
+        command.add_argument("--dataset", choices=("mnist", "controlled_shapes", "fashion_mnist"), default="mnist")
+        command.add_argument("--device", choices=("cuda", "cpu"), default="cpu" if action == "closeout" else "cuda")
+        if action not in {"validate", "summarize", "qualify-shape", "closeout"}:
+            command.add_argument("--variant", required=True)
+        else:
+            command.add_argument("--variant")
+        if action in {"screen", "train-smoke", "confirm", "diagnose", "qualify-shape"}:
+            command.add_argument("--seed", type=int, default=7319 if action == "qualify-shape" else 1234)
+        if action == "screen":
+            command.add_argument("--preflight-only", action="store_true")
+            command.add_argument("--stage", choices=("audit", "probe"), default="audit")
+            command.add_argument("--prior-evidence")
+        if action in {"train-smoke", "confirm"}:
+            command.add_argument("--prior-evidence", required=True)
+            command.add_argument("--resume-checkpoint")
+        if action == "diagnose":
+            command.add_argument("--checkpoint", required=True)
+            command.add_argument("--source-evidence", required=True)
+            command.add_argument("--shape-evaluator-checkpoint")
+            command.add_argument("--shape-qualification-evidence")
+        if action == "summarize":
+            command.add_argument("--evidence-root")
+        if action == "closeout":
+            command.add_argument("--comparison-config", required=True)
+            command.add_argument("--evidence-root", required=True)
     teacher = root.add_parser("teacher").add_subparsers(dest="action", required=True)
     for action, stage in (
         ("train-first-stage", "first_stage"),
@@ -817,6 +849,62 @@ def _parser() -> argparse.ArgumentParser:
         "calibration_evidence",
     ):
         evaluator_v21.add_argument("--" + name.replace("_", "-"), required=True)
+    evaluator_curvature = audit.add_parser("conditional-evaluator-curvature-baseline")
+    for name in (
+        "config",
+        "dataset_root",
+        "primary_evaluator_checkpoint",
+        "smooth_evaluator_checkpoint",
+        "evaluator_bundle",
+        "evaluator_qualification_evidence",
+        "electronic_initialization",
+        "v7_capacity_evidence",
+        "v7_basis_artifact",
+    ):
+        evaluator_curvature.add_argument("--" + name.replace("_", "-"), required=True)
+    evaluation_qualified_design = audit.add_parser(
+        "conditional-evaluation-qualified-transport-design"
+    )
+    for name in (
+        "config",
+        "dataset_root",
+        "primary_evaluator_checkpoint",
+        "smooth_evaluator_checkpoint",
+        "evaluator_bundle",
+        "evaluator_qualification_evidence",
+        "curvature_evidence",
+        "electronic_initialization",
+        "v7_capacity_evidence",
+        "v7_basis_artifact",
+    ):
+        evaluation_qualified_design.add_argument(
+            "--" + name.replace("_", "-"), required=True
+        )
+    evaluation_qualified_admission = audit.add_parser(
+        "conditional-evaluation-qualified-transport-admission"
+    )
+    for name in (
+        "config", "dataset_root", "primary_evaluator_checkpoint",
+        "smooth_evaluator_checkpoint", "evaluator_bundle",
+        "evaluator_qualification_evidence", "design_evidence", "design_artifact",
+    ):
+        evaluation_qualified_admission.add_argument("--" + name.replace("_", "-"), required=True)
+    evaluation_qualified_tangent = audit.add_parser(
+        "conditional-evaluation-qualified-transport-tangent"
+    )
+    for name in (
+        "config", "dataset_root", "primary_evaluator_checkpoint",
+        "smooth_evaluator_checkpoint", "evaluator_bundle",
+        "evaluator_qualification_evidence", "admission_evidence", "checkpoint",
+    ):
+        evaluation_qualified_tangent.add_argument("--" + name.replace("_", "-"), required=True)
+    evaluation_qualified_smoke = student.add_parser("evaluation-qualified-transport-smoke")
+    for name in (
+        "config", "dataset_root", "primary_evaluator_checkpoint",
+        "smooth_evaluator_checkpoint", "evaluator_bundle",
+        "evaluator_qualification_evidence", "admission_evidence", "tangent_evidence", "checkpoint",
+    ):
+        evaluation_qualified_smoke.add_argument("--" + name.replace("_", "-"), required=True)
     phase_capacity_admission = audit.add_parser(
         "conditional-transport-aligned-phase-capacity-admission"
     )

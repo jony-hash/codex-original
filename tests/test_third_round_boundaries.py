@@ -37,7 +37,7 @@ def test_teacher_distill_facade_preserves_public_callable_identity() -> None:
 
 
 def test_legacy_layers_are_reexports_only() -> None:
-    path = ROOT / "src" / "ldm_project" / "student" / "layers.py"
+    path = ROOT / "src" / "ldm_project" / "v1" / "student" / "layers.py"
     tree = ast.parse(path.read_text(encoding="utf-8"))
     assert not any(
         isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
@@ -66,7 +66,7 @@ def test_stage_runtime_footprints_are_scoped_without_model_construction() -> Non
 
 
 def test_formal_model_has_no_experimental_imports() -> None:
-    path = ROOT / "src" / "ldm_project" / "student" / "formal_model.py"
+    path = ROOT / "src" / "ldm_project" / "v1" / "student" / "formal_model.py"
     tree = ast.parse(path.read_text(encoding="utf-8"))
     imports = [node for node in ast.walk(tree) if isinstance(node, (ast.Import, ast.ImportFrom))]
     text = "\n".join(ast.unparse(node) for node in imports)
