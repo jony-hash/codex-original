@@ -20,6 +20,8 @@ class FormalSystemConfig(StrictModel):
         "diagnostic_amplitude_near_conjugate_relay_identity_v1",
         "formal_amplitude_near_conjugate_relay_identity_v1",
         "diagnostic_amplitude_near_conjugate_relay_identity_phase_capacity_v7_2",
+        "diagnostic_amplitude_near_conjugate_relay_identity_evaluation_qualified_v1",
+        "diagnostic_amplitude_near_conjugate_relay_identity_evaluation_qualified_v1_1",
     ]
     wavelength_m: float = 532.0e-9
     slm_shape: tuple[int, int] = (200, 200)
@@ -84,6 +86,8 @@ class FormalSystemConfig(StrictModel):
             "diagnostic_amplitude_near_conjugate_relay_identity_v1",
             "formal_amplitude_near_conjugate_relay_identity_v1",
             "diagnostic_amplitude_near_conjugate_relay_identity_phase_capacity_v7_2",
+            "diagnostic_amplitude_near_conjugate_relay_identity_evaluation_qualified_v1",
+            "diagnostic_amplitude_near_conjugate_relay_identity_evaluation_qualified_v1_1",
         }:
             # The bench geometry and sampling remain formal; the inter-layer
             # transport is an explicitly named near-conjugate relay, not a
@@ -300,6 +304,8 @@ class V2Config(StrictModel):
         "conditional_nonlinear_expanded_manifold_v7",
         "conditional_transport_aligned_manifold_v7_1",
         "conditional_transport_aligned_phase_capacity_v7_2",
+        "conditional_transport_aligned_evaluation_qualified_v1",
+        "conditional_transport_aligned_evaluation_qualified_v1_1",
     ] = "legacy_v2_distillation"
     system: SystemConfig
     teacher: TeacherConfig | None = None
@@ -338,6 +344,8 @@ class V2Config(StrictModel):
             "conditional_nonlinear_expanded_manifold_v7",
             "conditional_transport_aligned_manifold_v7_1",
             "conditional_transport_aligned_phase_capacity_v7_2",
+            "conditional_transport_aligned_evaluation_qualified_v1",
+            "conditional_transport_aligned_evaluation_qualified_v1_1",
         }:
             if self.conditional_generation is None:
                 raise ValueError(
@@ -360,6 +368,8 @@ class V2Config(StrictModel):
                 "conditional_nonlinear_expanded_manifold_v7",
                 "conditional_transport_aligned_manifold_v7_1",
                 "conditional_transport_aligned_phase_capacity_v7_2",
+                "conditional_transport_aligned_evaluation_qualified_v1",
+                "conditional_transport_aligned_evaluation_qualified_v1_1",
             }:
                 raise ValueError(
                     "conditional architecture requires the formal identity-OLS system"
@@ -470,6 +480,34 @@ class V2Config(StrictModel):
                 ):
                     raise ValueError(
                         "v7.2 locks command_gain=0.05 and initialization_seed=1234"
+                    )
+            if (
+                self.architecture
+                in {
+                    "conditional_transport_aligned_evaluation_qualified_v1",
+                    "conditional_transport_aligned_evaluation_qualified_v1_1",
+                }
+            ):
+                if (
+                    self.system.kind
+                    not in {
+                        "diagnostic_amplitude_near_conjugate_relay_identity_evaluation_qualified_v1",
+                        "diagnostic_amplitude_near_conjugate_relay_identity_evaluation_qualified_v1_1",
+                    }
+                ):
+                    raise ValueError(
+                        "evaluation-qualified transport requires its isolated 2+2 relay system"
+                    )
+                if (self.system.encoder_layers, self.system.decoder_layers) != (2, 2):
+                    raise ValueError(
+                        "evaluation-qualified transport locks encoder_layers=decoder_layers=2"
+                    )
+                if (
+                    self.conditional_generation.command_gain != 0.05
+                    or self.conditional_generation.initialization_seed != 1234
+                ):
+                    raise ValueError(
+                        "evaluation-qualified transport locks command_gain=0.05 and initialization_seed=1234"
                     )
             execution = self.execution
             if (

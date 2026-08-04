@@ -105,6 +105,8 @@ NEAR_CONJUGATE_ARCHITECTURE = "conditional_pca_near_conjugate_relay_v6_4"
 EXPANDED_MANIFOLD_ARCHITECTURE = "conditional_nonlinear_expanded_manifold_v7"
 TRANSPORT_ALIGNED_MANIFOLD_ARCHITECTURE = "conditional_transport_aligned_manifold_v7_1"
 TRANSPORT_ALIGNED_PHASE_CAPACITY_ARCHITECTURE = "conditional_transport_aligned_phase_capacity_v7_2"
+EVALUATION_QUALIFIED_TRANSPORT_ARCHITECTURE = "conditional_transport_aligned_evaluation_qualified_v1"
+EVALUATION_QUALIFIED_TRANSPORT_V11_ARCHITECTURE = "conditional_transport_aligned_evaluation_qualified_v1_1"
 IDENTITY_GENERATOR_CONTRACT = canonical_sha256(
     {
         "architecture": IDENTITY_ARCHITECTURE,
@@ -338,6 +340,7 @@ class ConditionalBundle(nn.Module):
                 EXPANDED_MANIFOLD_ARCHITECTURE,
                 TRANSPORT_ALIGNED_MANIFOLD_ARCHITECTURE,
                 TRANSPORT_ALIGNED_PHASE_CAPACITY_ARCHITECTURE,
+                EVALUATION_QUALIFIED_TRANSPORT_ARCHITECTURE,
             }
             or config.conditional_generation is None
         ):
@@ -365,6 +368,8 @@ class ConditionalBundle(nn.Module):
                 EXPANDED_MANIFOLD_ARCHITECTURE: legacy_generators.ConditionalNonlinearExpandedManifoldGenerator,
                 TRANSPORT_ALIGNED_MANIFOLD_ARCHITECTURE: legacy_generators.ConditionalTransportAlignedManifoldGenerator,
                 TRANSPORT_ALIGNED_PHASE_CAPACITY_ARCHITECTURE: legacy_generators.ConditionalTransportAlignedPhaseCapacityGenerator,
+                EVALUATION_QUALIFIED_TRANSPORT_ARCHITECTURE: legacy_generators.ConditionalEvaluationQualifiedTransportGenerator,
+                EVALUATION_QUALIFIED_TRANSPORT_V11_ARCHITECTURE: legacy_generators.ConditionalEvaluationQualifiedTransportV11Generator,
             }.get(config.architecture, legacy_generators.ConditionalGlobalAmplitudeGenerator)
         kwargs = {
             "shape": config.system.slm_shape,
@@ -398,6 +403,8 @@ class ConditionalBundle(nn.Module):
         if config.architecture in {
             TRANSPORT_ALIGNED_MANIFOLD_ARCHITECTURE,
             TRANSPORT_ALIGNED_PHASE_CAPACITY_ARCHITECTURE,
+            EVALUATION_QUALIFIED_TRANSPORT_ARCHITECTURE,
+            EVALUATION_QUALIFIED_TRANSPORT_V11_ARCHITECTURE,
         }:
             kwargs.update(
                 candidate_modes=class_modes,
@@ -423,6 +430,8 @@ def _require_conditional(config: V2Config) -> None:
             EXPANDED_MANIFOLD_ARCHITECTURE,
             TRANSPORT_ALIGNED_MANIFOLD_ARCHITECTURE,
             TRANSPORT_ALIGNED_PHASE_CAPACITY_ARCHITECTURE,
+            EVALUATION_QUALIFIED_TRANSPORT_ARCHITECTURE,
+            EVALUATION_QUALIFIED_TRANSPORT_V11_ARCHITECTURE,
         }
         or config.conditional_generation is None
     ):

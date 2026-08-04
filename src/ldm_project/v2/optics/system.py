@@ -56,6 +56,8 @@ class FormalAmplitudeFiniteCropIdentitySystem(nn.Module):
             "diagnostic_amplitude_near_conjugate_relay_identity_v1",
             "formal_amplitude_near_conjugate_relay_identity_v1",
             "diagnostic_amplitude_near_conjugate_relay_identity_phase_capacity_v7_2",
+            "diagnostic_amplitude_near_conjugate_relay_identity_evaluation_qualified_v1",
+            "diagnostic_amplitude_near_conjugate_relay_identity_evaluation_qualified_v1_1",
         }
         internal_distance = (config.encoder_layers + config.decoder_layers) * (
             99.75e-3 if near_conjugate else config.layer_spacing_m

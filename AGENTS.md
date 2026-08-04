@@ -92,3 +92,15 @@ The formal D2NN boundary is `finite_crop`, meaning a propagation-after-crop idea
 - Do not hardcode interpreter, Conda, Windows, or machine-specific paths; do not mutate `sys.path`; use `pip install -e .`.
 - Do not mix `legacy` optical VAE code into the LDM core package, present teacher image quality as student hardware readiness, or call iterative software inference single-exposure.
 - Ask before an unapproved change to stages, public CLI, teacher/student boundaries, SLM control, metasurface trainability, OLS behavior, CMOS calibration, checkpoint policy, or managed output policy.
+
+## 8. Capacity-map Research Lifecycle
+
+- `python -m ldm_project.v2 research capacity-map` is diagnostic-only. Its
+  `research` failures close a single declared variant; only formal
+  `acceptance` evidence is global fail-closed.
+- Capacity-map evidence is immutable and content-hashed. A repaired harness
+  must use an evidence revision; invalid-harness records are excluded from
+  Pareto ranking and causal attribution.
+- `docs/status/capacity_map_hypothesis_ledger.md` is the single current
+  hypothesis ledger. Keep handoff notes to current status, blocker, and next
+  command; move completed history to immutable evidence/report artifacts.

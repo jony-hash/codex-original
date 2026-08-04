@@ -22,6 +22,8 @@ _SYMBOL_MODULES = {
         "EXPANDED_MANIFOLD_ARCHITECTURE",
         "TRANSPORT_ALIGNED_MANIFOLD_ARCHITECTURE",
         "TRANSPORT_ALIGNED_PHASE_CAPACITY_ARCHITECTURE",
+        "EVALUATION_QUALIFIED_TRANSPORT_ARCHITECTURE",
+        "EVALUATION_QUALIFIED_TRANSPORT_V11_ARCHITECTURE",
         "_context", "_new_run", "_random_codes", "_split", "_write_evidence",
         "_system_signature", "_load_bundle", "_fixed_control_probe",
     )

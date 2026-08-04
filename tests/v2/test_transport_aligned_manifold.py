@@ -2,6 +2,10 @@ from pathlib import Path
 
 import torch
 
+from ldm_project.v2.application.diagnostic.evaluation_qualified_runtime import (
+    admission_gate_dict,
+)
+
 from ldm_project.v2.application.cli import _parser
 from ldm_project.v2.application.conditional_transport_aligned_manifold import (
     _artifact_hashes,
@@ -228,3 +232,141 @@ def test_evaluator_v21_cli_has_separate_calibration_and_qualification():
     )
     assert calibration.evaluator_v2_evidence == "failed.json"
     assert qualification.calibration_evidence == "calibration.json"
+
+
+def test_evaluator_qualified_curvature_cli_is_content_explicit():
+    parser = _parser()
+    parsed = parser.parse_args(
+        [
+            "audit",
+            "conditional-evaluator-curvature-baseline",
+            "--config",
+            "config.yaml",
+            "--dataset-root",
+            "data",
+            "--primary-evaluator-checkpoint",
+            "primary.pt",
+            "--smooth-evaluator-checkpoint",
+            "smooth.pt",
+            "--evaluator-bundle",
+            "bundle.json",
+            "--evaluator-qualification-evidence",
+            "qualification.json",
+            "--electronic-initialization",
+            "init.pt",
+            "--v7-capacity-evidence",
+            "capacity.json",
+            "--v7-basis-artifact",
+            "basis.pt",
+        ]
+    )
+    assert parsed.smooth_evaluator_checkpoint == "smooth.pt"
+
+
+def test_evaluation_qualified_design_cli_binds_curvature_and_dual_evaluator():
+    parser = _parser()
+    parsed = parser.parse_args(
+        [
+            "audit",
+            "conditional-evaluation-qualified-transport-design",
+            "--config",
+            "config.yaml",
+            "--dataset-root",
+            "data",
+            "--primary-evaluator-checkpoint",
+            "primary.pt",
+            "--smooth-evaluator-checkpoint",
+            "smooth.pt",
+            "--evaluator-bundle",
+            "bundle.json",
+            "--evaluator-qualification-evidence",
+            "qualification.json",
+            "--curvature-evidence",
+            "curvature.json",
+            "--electronic-initialization",
+            "init.pt",
+            "--v7-capacity-evidence",
+            "capacity.json",
+            "--v7-basis-artifact",
+            "basis.pt",
+        ]
+    )
+    assert parsed.curvature_evidence == "curvature.json"
+
+
+def test_evaluation_qualified_stage_clis_keep_content_inputs_explicit():
+    parser = _parser()
+    common = [
+        "--config", "config.yaml", "--dataset-root", "data",
+        "--primary-evaluator-checkpoint", "primary.pt",
+        "--smooth-evaluator-checkpoint", "smooth.pt",
+        "--evaluator-bundle", "bundle.json",
+        "--evaluator-qualification-evidence", "qualification.json",
+    ]
+    admission = parser.parse_args([
+        "audit", "conditional-evaluation-qualified-transport-admission", *common,
+        "--design-evidence", "design.json", "--design-artifact", "design.pt",
+    ])
+    tangent = parser.parse_args([
+        "audit", "conditional-evaluation-qualified-transport-tangent", *common,
+        "--admission-evidence", "admission.json", "--checkpoint", "init.pt",
+    ])
+    smoke = parser.parse_args([
+        "student", "evaluation-qualified-transport-smoke", *common,
+        "--admission-evidence", "admission.json", "--tangent-evidence", "tangent.json",
+        "--checkpoint", "init.pt",
+    ])
+    assert admission.design_artifact == "design.pt"
+    assert tangent.checkpoint == smoke.checkpoint == "init.pt"
+
+
+def test_evaluator_qualified_curvature_keeps_command_batch_axis():
+    center = torch.zeros(200, 200)
+    direction = torch.ones(200, 200)
+    command = torch.sigmoid(
+        center.unsqueeze(0) + 0.01 * direction.unsqueeze(0)
+    ).unsqueeze(1)
+    assert command.shape == (1, 1, 200, 200)
+
+
+def test_evaluation_qualified_composite_and_merged_template_gates_are_separate():
+    rank = {"rank": 8, "sigma8_over_sigma1": 1e-3}
+    metrics = {
+        name: {
+            "accuracy": 1.0,
+            "recall": [1.0] * 10,
+            "camera_fraction": .41 if name != "axis" else .26,
+            "delta_correlation": .81,
+            "saturation": .01,
+            "composite": [.61 if name != "axis" else .51] * 10,
+            "composite_floor": .60 if name != "axis" else .50,
+            "catastrophe_floor": .45 if name != "axis" else .35,
+            "ratios": {"primary": [.61] * 10, "smooth": [.61] * 10, "low_frequency": [.34] * 10},
+        }
+        for name in ("axis", "uniform_1234", "uniform_5678", "holdout_9012")
+    }
+    merged = {
+        str(label): {
+            "primary_rank": rank,
+            "smooth_rank": rank,
+            "effective_rank": 8,
+            "quantized_distance_median": 1 / 255 + .01,
+            "quantized_nonzero_fraction": .96,
+            "code_output_correlation": .21,
+        }
+        for label in range(10)
+    }
+    values = {
+        "metrics": metrics,
+        "merged": merged,
+        "command_rank": {str(label): rank for label in range(10)},
+        "raw_rank": {str(label): rank for label in range(10)},
+        "zero_accuracy": 1.0,
+        "merged_recall": [1.0] * 10,
+        "crops": {name: .99 for name in metrics},
+    }
+    flags = admission_gate_dict(values)
+    assert not flags["distribution"]  # one representation is catastrophic
+    for row in metrics.values():
+        row["ratios"]["low_frequency"] = [.46 if row["catastrophe_floor"] == .45 else .36] * 10
+    assert admission_gate_dict(values)["distribution"]

@@ -25,6 +25,8 @@ CONFIG_HASHES = {
     "diagnostic/conditional_pca_transport_codesign_finite_crop_identity.yaml": "1e3957b3257f7eec5f53ec89f308f176d1d66f1ac6fd8516fe8bc899f25bce53",
     "diagnostic/conditional_transport_aligned_manifold_v71.yaml": "bcbb953276eec5a281f9f519c756457d570429372dd3ca317c8fddeef513ebc7",
     "diagnostic/conditional_transport_aligned_phase_capacity_v72.yaml": "db15499fa2d5529c7cb90369acaadc0d646683729407128ddfd7275d8b37687f",
+    "diagnostic/conditional_transport_aligned_evaluation_qualified_v1.yaml": "c9c662f4ed98d2a33146db0f769219f5aea0c6b273953db13c2621b19206859f",
+    "diagnostic/conditional_transport_aligned_evaluation_qualified_v1_1.yaml": "5ab6306be15de834f6c42fa66b440dd72aabf07957b874e93ab4fa8e88c28ace",
     "diagnostic/lightgen_amplitude_fiber_ols_400.yaml": "52c4dca8ed79f06bf9240c87bd02a91e525cb0570571f8f0d63ed973f6858c5d",
     "diagnostic/small_amplitude_finite_crop_identity.yaml": "ac36ddb3a18f5f5bd9c4d406b12dfdce62158d1e29fb7c9d436b368554f90d33",
     "legacy/formal_global_amplitude_finite_crop_identity.yaml": "0048249d7b35848c8b2db4351bc353239d8d59c060e05c888017c099a5136040",
@@ -47,7 +49,14 @@ def test_active_v2_configuration_hashes_are_stable() -> None:
 def test_legacy_cli_module_delegates_to_the_canonical_parser() -> None:
     cases = (
         ["student", "train", "--config", "identity.yaml"],
-        ["student", "calibrate-prototypes", "--config", "legacy.yaml", "--clean-target-manifest", "clean.json"],
+        [
+            "student",
+            "calibrate-prototypes",
+            "--config",
+            "legacy.yaml",
+            "--clean-target-manifest",
+            "clean.json",
+        ],
         [
             "audit",
             "conditional-pca-transport-admission",
@@ -64,7 +73,9 @@ def test_legacy_cli_module_delegates_to_the_canonical_parser() -> None:
         ],
     )
     for argv in cases:
-        assert vars(cli_impl._parser().parse_args(argv)) == vars(cli._parser().parse_args(argv))
+        assert vars(cli_impl._parser().parse_args(argv)) == vars(
+            cli._parser().parse_args(argv)
+        )
 
 
 def test_moved_diagnostic_import_paths_resolve_to_the_new_implementations() -> None:
@@ -74,7 +85,9 @@ def test_moved_diagnostic_import_paths_resolve_to_the_new_implementations() -> N
     assert _metrics is moved
 
 
-def test_current_and_diagnostic_recovery_share_the_same_workflow_implementation() -> None:
+def test_current_and_diagnostic_recovery_share_the_same_workflow_implementation() -> (
+    None
+):
     from ldm_project.v2.application.current import recovery as current
     from ldm_project.v2.application.diagnostic import recovery as diagnostic
 

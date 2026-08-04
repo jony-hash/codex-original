@@ -280,6 +280,8 @@ def _validate_conditional_manifest(
         "conditional_nonlinear_expanded_manifold_v7",
         "conditional_transport_aligned_manifold_v7_1",
         "conditional_transport_aligned_phase_capacity_v7_2",
+        "conditional_transport_aligned_evaluation_qualified_v1",
+        "conditional_transport_aligned_evaluation_qualified_v1_1",
     }
     if manifest.architecture_kind not in allowed:
         raise ValueError("unsupported conditional checkpoint architecture")
@@ -325,6 +327,8 @@ def _validate_conditional_manifest(
         "conditional_nonlinear_expanded_manifold_v7",
         "conditional_transport_aligned_manifold_v7_1",
         "conditional_transport_aligned_phase_capacity_v7_2",
+        "conditional_transport_aligned_evaluation_qualified_v1",
+        "conditional_transport_aligned_evaluation_qualified_v1_1",
     }:
         v6_required = {
             "config_contract_hash": manifest.config_contract_hash,

@@ -1068,3 +1068,19 @@ class ConditionalTransportAlignedPhaseCapacityGenerator(
     """v7.2-only generator marker; tensors are deliberately v7.1-incompatible."""
 
     architecture_kind = "conditional_transport_aligned_phase_capacity_v7_2"
+
+
+class ConditionalEvaluationQualifiedTransportGenerator(
+    ConditionalTransportAlignedManifoldGenerator
+):
+    """2+2 transport marker with an evaluator-qualified checkpoint boundary."""
+
+    architecture_kind = "conditional_transport_aligned_evaluation_qualified_v1"
+
+
+class ConditionalEvaluationQualifiedTransportV11Generator(
+    ConditionalTransportAlignedManifoldGenerator
+):
+    """v1.1 checkpoint boundary with primary-only semantic calibration."""
+
+    architecture_kind = "conditional_transport_aligned_evaluation_qualified_v1_1"
