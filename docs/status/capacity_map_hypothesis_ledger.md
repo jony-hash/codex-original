@@ -23,6 +23,23 @@ Research failures close only their own variant. Formal acceptance remains
 fail-closed. Invalid harness records are excluded from Pareto ranking and may
 not support a capacity conclusion.
 
+## v2.3-r2 correction boundary
+
+Revision-2 D0 evidence is archived as `invalid_harness` under
+`experiments/archive/v2_3_r2_invalid_harness/`. The implementation lacked a
+seed-bound model initialization contract and did not step the auxiliary
+classifier/Q heads after their gradients were computed. Therefore the observed
+code-fraction decline is not evidence for feature-matching dominance, objective
+conflict, or generator-capacity failure. The only established fact is the
+training implementation defect. Locked-final, C0--C3, optical branches, and
+cross-dataset tests were not executed. v2.4 tests these update boundaries only.
+
+The single v2.4 CUDA probe passed preflight and then validly failed its first
+health gate as `discriminator_identifiability_failure`: real auxiliary
+classifier accuracy improved from 0.10 to 0.26, while Q latent error did not
+improve by the required 10%. This closes v2.4 without a D0 reachability or
+generator-capacity claim; no command candidate or optical branch is authorized.
+
 ## Closed v2.2 branch
 
 Status: `closed_conditional_negative`. The immutable closeout is archived in

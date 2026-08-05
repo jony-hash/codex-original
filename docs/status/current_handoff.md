@@ -39,16 +39,24 @@ teacher-free objective family，从数字 oracle 重新完成双 evaluator 多 s
 [current_handoff_pre_v2_2_closeout_20260804.md](../archive/current_handoff_pre_v2_2_closeout_20260804.md)，
 仅作历史参考，不定义当前执行授权。
 
-## v2.3-r2 D0 电子图像上界（2026-08-05）
+## v2.3-r2 D0 电子图像上界：harness 无效（2026-08-06）
 
 v2.3-r2 在 `experiment/v2-o0-feasibility-v23` 分支完成了 harness 冻结、revision-2
 validate、CUDA preflight 和 controls。D0 seed-1234 probe 已按预注册门运行至 step 50，
-但 worst margin 没有改善，digital code fraction 从约 `0.0323` 降至约 `0.0020`，因此
-状态为 `probe_failed`。finite、safety 和 saturation 门通过，但 probe 的 margin/code
-response 门失败；这是有效的电子目标负结果，不是 invalid harness。
+但其 evidence 已永久降级为 `invalid_harness`。实现没有在模型构造前将全局
+RNG 初始化绑定到 evidence seed，且 auxiliary classifier/Q 的梯度没有由其 optimizer
+真正更新。code fraction 下降仍作为运行事实保留，但不构成科学负结果。
 
 依据 D0 停止规则，smoke、confirm、locked-final、C0--C3、O1--O5、Teacher、diffusion
-和外部数据集均未执行。v2.3-r2 唯一允许分类为
-`training_objective_or_evaluator_inconclusive`，范围仅限 D0 image-domain teacher-free
-objective；不得解释为光学、phase-only、空间 DOF 或普适容量失败。`physical_authorization`
-和 `formal_promotion_authorized` 均为 false。
+和外部数据集均未执行。不得主张 feature-matching 主导、目标冲突或 generator capacity
+failure，也不得解释为光学、phase-only、空间 DOF 或普适容量失败。修正证据位于
+[`experiments/archive/v2_3_r2_invalid_harness/`](../../experiments/archive/v2_3_r2_invalid_harness/)。
+
+## v2.4 D0 training identifiability
+
+独立的 `o0-identifiability` 生命周期只验证确定性初始化、DQ/G 更新隔离、classifier/Q
+是否真实学习、恢复连续性和一次 100-step optimization-health probe；它不重开 v2.3，
+不运行 C0--C3 或光学实验，且 `physical_authorization=false`。CUDA preflight 通过，
+唯一 probe 已完成并有效失败为 `discriminator_identifiability_failure`：real auxiliary
+classifier accuracy 从 0.10 提升到 0.26，但 Q latent error 未达到预注册的 10% 改善门。
+因此 v2.4 在首个有效停止门关闭；这不是 D0 分布可达性或 generator capacity 结论。

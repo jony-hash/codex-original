@@ -32,6 +32,22 @@ revision-2 validate、CUDA preflight 和 controls 均通过；D0 seed-1234 probe
 `training_objective_or_evaluator_inconclusive`，仅适用于 D0 image-domain objective。
 这不支持任何光学、phase-only、空间 DOF 或普适容量结论。
 
+## v2.3-r2 correction / v2.4（2026-08-06）
+
+逆向审计发现 v2.3-r2 的 D0 probe 为 `invalid_harness`：模型初始化未绑定
+全局 seed，且 classifier/Q 梯度未执行对应 optimizer 更新。原始 evidence 保持
+不可变并仅作运行事实；不得据此宣称 feature-matching 主导、目标冲突或 generator
+capacity failure。v2.3 的 locked-final、C0--C3 和光学分支从未执行。
+
+v2.4 新建 `o0-identifiability` 合同，只验证 seed/init、DQ/G 参数边界、恢复和
+100-step 训练可识别性；结果无论如何均不授权物理推进或 formal promotion。
+
+v2.4 CUDA preflight 通过，唯一 D0 seed-1234 100-step probe 在首个有效 health
+gate 关闭：real auxiliary classifier accuracy 从 0.10 提升到 0.26，但 Q latent
+error 未达到 10% 改善门，分类为 `discriminator_identifiability_failure`。这只说明
+训练可识别性仍未满足，不说明 D0 分布不可达或任何光学容量限制；C0--C3 与物理链路
+均保持未执行。
+
 ## 已停止的结构
 
 | 候选 | 停止原因 |
