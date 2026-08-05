@@ -1,0 +1,25 @@
+# v2.3 teacher-free electronic-oracle feasibility; diagnostic-only.
+schema_version: 1
+name: conditional_o0_feasibility_v23
+version: o0_feasibility_v2_3
+dataset_root: data
+output_root: outputs
+evaluator_checkpoint: outputs/20260724_v2/runs/20260724_162422_705459_formal_v2_identity_logit_amplitude_finite_crop_identity/frozen_mnist_evaluator.pt
+smooth_evaluator_checkpoint: outputs/20260730_v2/runs/20260730_171126_556355_diagnostic_v2_transport_aligned_manifold_v71/smooth_mnist_evaluator_v21.pt
+evaluator_bundle: outputs/20260730_v2/runs/20260730_171126_556355_diagnostic_v2_transport_aligned_manifold_v71/conditional_evaluator_bundle_v21.json
+evaluator_qualification_evidence: outputs/20260730_v2/runs/20260730_171126_556355_diagnostic_v2_transport_aligned_manifold_v71/conditional_evaluator_qualification_v21_evidence.json
+measurement_contract: e1b7bca759d3ea747b735c8c872b8f828d24f3719ca4a5980830fdf4865785ca
+objective_id: data_adversarial
+split_seed: 1234
+microbatch_size: 10
+effective_batch_size: 50
+probe_steps: 50
+smoke_steps: 400
+confirm_epochs: 5
+seeds: [1234, 4321, 2234]
+candidates:
+  - {candidate_id: D0, domain: image28, code_dim: 32, anchor: none, diagnostic_only: true, parameter_budget: 5000000}
+  - {candidate_id: C0, domain: command200, code_dim: 8, anchor: exact, diagnostic_only: false, parameter_budget: 1500000}
+  - {candidate_id: C1, domain: command200, code_dim: 8, anchor: exact, diagnostic_only: false, parameter_budget: 6000000}
+  - {candidate_id: C2, domain: command200, code_dim: 8, anchor: soft, diagnostic_only: false, parameter_budget: 6000000}
+  - {candidate_id: C3, domain: command200, code_dim: 32, anchor: soft, diagnostic_only: true, parameter_budget: 6000000}

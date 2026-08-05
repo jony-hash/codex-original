@@ -13,7 +13,8 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m ldm_project.v2")
     root = parser.add_subparsers(dest="domain", required=True)
     research = root.add_parser("research", help="diagnostic-only pre-registered research programs")
-    capacity_map = research.add_subparsers(dest="research_program", required=True).add_parser("capacity-map")
+    research_programs = research.add_subparsers(dest="research_program", required=True)
+    capacity_map = research_programs.add_parser("capacity-map")
     capacity_actions = capacity_map.add_subparsers(dest="research_action", required=True)
     for action in ("validate", "screen", "train-smoke", "confirm", "summarize", "diagnose", "qualify-shape", "closeout"):
         command = capacity_actions.add_parser(action)
@@ -43,6 +44,25 @@ def _parser() -> argparse.ArgumentParser:
             command.add_argument("--evidence-root")
         if action == "closeout":
             command.add_argument("--comparison-config", required=True)
+            command.add_argument("--evidence-root", required=True)
+    o0 = research_programs.add_parser("o0-feasibility")
+    o0_actions = o0.add_subparsers(dest="research_action", required=True)
+    for action in ("validate", "preflight", "controls", "probe", "smoke", "confirm", "final", "summarize", "closeout"):
+        command = o0_actions.add_parser(action)
+        command.add_argument("--config", required=True)
+        command.add_argument("--evidence-revision", type=int, default=1)
+        command.add_argument("--dataset", choices=("mnist",), default="mnist")
+        command.add_argument("--device", choices=("cuda", "cpu"), default="cuda")
+        command.add_argument("--candidate", choices=("D0", "C0", "C1", "C2", "C3"), required=action in {"preflight", "probe", "smoke", "confirm", "final"})
+        if action in {"preflight", "probe", "smoke", "confirm"}:
+            command.add_argument("--seed", type=int, default=1234)
+        if action in {"probe", "smoke", "confirm"}:
+            command.add_argument("--prior-evidence", required=True)
+            command.add_argument("--resume-checkpoint")
+        if action == "final":
+            command.add_argument("--checkpoint", action="append", required=True)
+            command.add_argument("--source-evidence", action="append", required=True)
+        if action in {"summarize", "closeout"}:
             command.add_argument("--evidence-root", required=True)
     teacher = root.add_parser("teacher").add_subparsers(dest="action", required=True)
     for action, stage in (

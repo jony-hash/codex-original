@@ -32,16 +32,17 @@ EXPOSURE_SCALES = tuple(2.0 ** (value / 2.0) for value in range(-4, 5))
 
 
 def fixed_panels(*, device: torch.device, code_dim: int) -> dict[str, tuple[torch.Tensor, torch.Tensor]]:
-    """Return the v2.1 10x17 panels; v2.2 O0 reconciliation is 8D only."""
-    if code_dim != 8:
-        raise ValueError("v2.2 full-panel reconciliation is pre-registered for E2's 8D code only")
-    axis = torch.eye(8, device=device)
-    axis_codes = torch.cat((torch.zeros(1, 8, device=device), axis, -axis), dim=0)
+    """Return deterministic 10x17 panels for the registered 8D/32D codes."""
+    if code_dim not in {8, 32}:
+        raise ValueError("research panels are pre-registered for 8D and 32D codes")
+    axis = torch.eye(code_dim, device=device)
+    axis_codes = torch.cat((torch.zeros(1, code_dim, device=device), axis, -axis), dim=0)
+    axis_codes = axis_codes.repeat((170 + axis_codes.shape[0] - 1) // axis_codes.shape[0], 1)[:170]
     labels = torch.arange(10, device=device).repeat_interleave(17)
     def generator_codes(seed: int) -> torch.Tensor:
-        return torch.randn((170, 8), generator=torch.Generator(device=device).manual_seed(seed), device=device)
+        return torch.randn((170, code_dim), generator=torch.Generator(device=device).manual_seed(seed), device=device)
     return {
-        "axis": (axis_codes.repeat(10, 1), labels),
+        "axis": (axis_codes, labels),
         "uniform_1234": (generator_codes(1234), labels),
         "uniform_5678": (generator_codes(5678), labels),
         "holdout_9012": (generator_codes(9012), labels),
@@ -144,14 +145,14 @@ def _anti_template(images: torch.Tensor, features: torch.Tensor, codes: torch.Te
     return values
 
 
-def _command_jacobian(model: nn.Module, *, device: torch.device) -> dict[str, object]:
+def _command_jacobian(model: nn.Module, *, device: torch.device, code_dim: int) -> dict[str, object]:
     """Forward-mode directional Jacobians avoid materialising a 40k x 40k graph."""
     result: dict[str, object] = {}
     for label in range(10):
-        code = torch.zeros(8, device=device, requires_grad=True)
+        code = torch.zeros(code_dim, device=device, requires_grad=True)
         target = torch.tensor([label], device=device)
         columns = []
-        for direction in torch.eye(8, device=device):
+        for direction in torch.eye(code_dim, device=device):
             _, derivative = torch.autograd.functional.jvp(
                 lambda value: model(value.unsqueeze(0), target).flatten(), code, direction, create_graph=False
             )
@@ -164,12 +165,12 @@ def _command_jacobian(model: nn.Module, *, device: torch.device) -> dict[str, ob
     return result
 
 
-def _curvature(render: Callable[[torch.Tensor, torch.Tensor], torch.Tensor], *, device: torch.device) -> dict[str, float]:
+def _curvature(render: Callable[[torch.Tensor, torch.Tensor], torch.Tensor], *, device: torch.device, code_dim: int) -> dict[str, float]:
     labels = torch.arange(10, device=device)
-    zero = torch.zeros((10, 8), device=device)
+    zero = torch.zeros((10, code_dim), device=device)
     base = render(zero, labels)
     values = []
-    for direction in torch.eye(8, device=device):
+    for direction in torch.eye(code_dim, device=device):
         plus, minus = zero + direction, zero - direction
         second = render(plus, labels) + render(minus, labels) - 2 * base
         values.append(float(second.square().mean().sqrt().item()))
@@ -187,13 +188,19 @@ def measure_candidate(
     device: torch.device,
     shape: nn.Module | None = None,
     output_domain: str,
+    code_dim: int | None = None,
+    reference_override: tuple[torch.Tensor, torch.Tensor] | None = None,
 ) -> dict[str, object]:
     """Measure all panels without optimizer creation or generated-data selection."""
-    reference, reference_labels = validation_reference(real_images, real_labels, device=device)
+    if reference_override is None:
+        reference, reference_labels = validation_reference(real_images, real_labels, device=device)
+    else:
+        reference, reference_labels = reference_override[0].to(device), reference_override[1].to(device)
     primary_reference, _ = evaluator_features(primary, reference)
     smooth_reference, _ = evaluator_features(smooth, reference)
     shape_reference = evaluator_features(shape, reference)[0] if shape is not None else None
-    panels, details = fixed_panels(device=device, code_dim=8), {}
+    resolved_code_dim = int(code_dim or getattr(model, "code_dim", 8))
+    panels, details = fixed_panels(device=device, code_dim=resolved_code_dim), {}
     for number, (name, (codes, labels)) in enumerate(panels.items()):
         with torch.no_grad():
             images = render(codes, labels).clamp(0, 1)
@@ -217,11 +224,11 @@ def measure_candidate(
         details[name] = row
     return {
         "measurement_contract": MEASUREMENT_CONTRACT,
-        "panel_hashes": panel_hashes(device=device, code_dim=8),
+        "panel_hashes": panel_hashes(device=device, code_dim=resolved_code_dim),
         "panels": details,
-        "command_jacobian": _command_jacobian(model, device=device),
-        "command_curvature": _curvature(lambda codes, labels: model(codes, labels), device=device),
-        "output_curvature": _curvature(render, device=device),
+        "command_jacobian": _command_jacobian(model, device=device, code_dim=resolved_code_dim),
+        "command_curvature": _curvature(lambda codes, labels: model(codes, labels), device=device, code_dim=resolved_code_dim),
+        "output_curvature": _curvature(render, device=device, code_dim=resolved_code_dim),
         "physical": {"raw_cmos": "not_applicable" if output_domain == "electronic_oracle" else "reported_by_operator", "crop_retention": "not_applicable" if output_domain == "electronic_oracle" else "reported_by_operator"},
     }
 
