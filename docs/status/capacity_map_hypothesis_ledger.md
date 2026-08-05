@@ -50,3 +50,21 @@ because the O0 gate stopped downstream work; no formal promotion is authorized.
 - Untested: optical capacity, phase-only control, spatial DOF, and cross-dataset
   generality. A future investigation must begin with a new electronic O0
   contract and objective family, not a continuation of O1--O5.
+
+## v2.3 electronic-oracle preregistration
+
+The branch `experiment/v2-o0-feasibility-v23` is a new, research-only contract
+based on the immutable v2.2 closeout. Its sole question is whether a teacher-free
+single-forward electronic amplitude-command generator can pass the qualified
+dual-evaluator protocol before any optical work is reconsidered. The ordered
+counterfactuals are D0 (28x28 image upper bound), C0 (current 8D exact anchor),
+C1 (higher-capacity 8D exact anchor), C2 (higher-capacity 8D soft anchor), and
+C3 (32D soft diagnostic upper bound). D0 failure stops the branch; C3 can never
+authorize physical follow-up.
+
+Implementation and controls are complete, but no v2.3 probe, smoke, confirm, or
+locked-final training has run. Therefore the ledger records no v2.3 scientific
+result yet. The allowed future classifications are electronic-oracle reachable,
+electronic-generator capacity, exact-anchor bottleneck, input-manifold bottleneck,
+training-objective/evaluator inconclusive, or command-parameterization
+inconclusive; none may be promoted automatically.

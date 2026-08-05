@@ -38,3 +38,17 @@ teacher-free objective family，从数字 oracle 重新完成双 evaluator 多 s
 此前的长 handoff 已逐字冻结在
 [current_handoff_pre_v2_2_closeout_20260804.md](../archive/current_handoff_pre_v2_2_closeout_20260804.md)，
 仅作历史参考，不定义当前执行授权。
+
+## v2.3 电子数字上界分支（已实现，尚未训练）
+
+v2.3 在 `experiment/v2-o0-feasibility-v23` 分支实现为独立 research 生命周期；其
+基线仍是 v2.2 closeout tag，不消费 v2.2 checkpoint，也不改变 formal current。已完成
+`validate`/`controls`、D0/C0--C3 合同、四面板双 evaluator 测量、microbatch 训练状态、
+checkpoint/evidence 绑定和顺序停止门。CPU controls 已通过真实集、标签置换和模板重复控制。
+
+本分支尚未启动 probe、smoke、confirm 或 locked-final CUDA 训练，因此尚无 v2.3 生成器
+可达性结论。下一条命令必须先使用通过 controls 的 evidence 执行 D0 probe；D0 未通过时
+不得启动 C0--C3。只有 C0/C1/C2 locked-final 通过，才可另立 O1/O2 计划；C3 永远不
+授权物理推进。完整接口和配置见
+`configs/research/conditional_o0_feasibility_v2_3.yaml` 及
+`python -m ldm_project.v2 research o0-feasibility --help`。

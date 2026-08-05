@@ -17,6 +17,19 @@ Shapes 与 Fashion-MNIST 分支被 `stopped_by_o0_gate` 停止。
 任何未来研究必须另立电子 O0 合同与新的 objective family，并重新通过数字 oracle 的
 multi-seed dual-evaluator 确认；不得恢复当前 O1--O5 的长训练。
 
+## v2.3 电子数字上界分支（2026-08-05）
+
+为避免把 v2.2 的双评价器错配直接外推为光学失败，已从
+`archive/v2/capacity-map-v2.2-conditional-negative` 建立独立分支
+`experiment/v2-o0-feasibility-v23`。该分支只实现 teacher-free、单次前馈的 D0/C0--C3
+电子候选、projection discriminator 训练目标、四固定面板测量、三 seed 阶段门和
+locked-final evidence 治理；不导入光学 operator、Teacher、diffusion 或外部数据。
+
+当前只完成了代码合同、CPU 执行链和 controls 验证，尚未执行 CUDA probe/smoke/confirm。
+因此不能声称电子上界可达或不可达。后续必须按 D0→C0→C1→C2→C3 顺序运行；每个候选
+只能在前置门通过或前一候选 locked-final 失败后推进。C0/C1/C2 通过只授权另立 O1/O2
+计划，C3 即使通过也保持 diagnostic-only。
+
 ## 已停止的结构
 
 | 候选 | 停止原因 |
