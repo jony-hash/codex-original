@@ -1,0 +1,23 @@
+# v2.4 D0-only training identifiability contract.
+schema_version: 1
+name: conditional_o0_identifiability_v2_4
+version: o0_identifiability_v2_4
+dataset_root: data
+output_root: outputs
+evaluator_checkpoint: outputs/20260724_v2/runs/20260724_162422_705459_formal_v2_identity_logit_amplitude_finite_crop_identity/frozen_mnist_evaluator.pt
+smooth_evaluator_checkpoint: outputs/20260730_v2/runs/20260730_171126_556355_diagnostic_v2_transport_aligned_manifold_v71/smooth_mnist_evaluator_v21.pt
+evaluator_bundle: outputs/20260730_v2/runs/20260730_171126_556355_diagnostic_v2_transport_aligned_manifold_v71/conditional_evaluator_bundle_v21.json
+evaluator_qualification_evidence: outputs/20260730_v2/runs/20260730_171126_556355_diagnostic_v2_transport_aligned_manifold_v71/conditional_evaluator_qualification_v21_evidence.json
+measurement_contract: e1b7bca759d3ea747b735c8c872b8f828d24f3719ca4a5980830fdf4865785ca
+objective_id: data_adversarial_identifiability
+split_seed: 1234
+microbatch_size: 10
+effective_batch_size: 50
+audit_steps: 2
+probe_steps: 100
+seed: 1234
+candidate: D0
+harness_revision: 1
+require_clean_git: false
+r1_interval: 16
+r1_weight: 10.0

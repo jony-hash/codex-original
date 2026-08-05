@@ -64,6 +64,22 @@ def _parser() -> argparse.ArgumentParser:
             command.add_argument("--source-evidence", action="append", required=True)
         if action in {"summarize", "closeout"}:
             command.add_argument("--evidence-root", required=True)
+    ident = research_programs.add_parser("o0-identifiability")
+    ident_actions = ident.add_subparsers(dest="research_action", required=True)
+    for action in ("validate", "preflight", "audit-update", "probe", "summarize", "closeout"):
+        command = ident_actions.add_parser(action)
+        command.add_argument("--config", required=True)
+        command.add_argument("--evidence-revision", type=int, default=1)
+        command.add_argument("--dataset", choices=("mnist",), default="mnist")
+        command.add_argument("--device", choices=("cuda", "cpu"), default="cuda")
+        command.add_argument("--candidate", choices=("D0",), default="D0")
+        if action in {"preflight", "audit-update", "probe"}:
+            command.add_argument("--seed", type=int, default=1234)
+        if action == "probe":
+            command.add_argument("--prior-evidence", required=True)
+            command.add_argument("--resume-checkpoint")
+        if action in {"summarize", "closeout"}:
+            command.add_argument("--evidence-root", required=True)
     teacher = root.add_parser("teacher").add_subparsers(dest="action", required=True)
     for action, stage in (
         ("train-first-stage", "first_stage"),

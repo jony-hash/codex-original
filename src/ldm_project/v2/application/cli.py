@@ -53,6 +53,10 @@ def _dispatch(args: argparse.Namespace) -> int:
             from .research.o0_feasibility import dispatch
 
             return int(dispatch(args) or 0)
+        if args.research_program == "o0-identifiability":
+            from .research.o0_identifiability import dispatch
+
+            return int(dispatch(args) or 0)
         if args.research_program != "capacity-map":
             raise RuntimeError(f"unknown research program {args.research_program}")
         from .research.capacity_map import dispatch
