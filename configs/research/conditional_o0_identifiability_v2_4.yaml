@@ -18,6 +18,6 @@ probe_steps: 100
 seed: 1234
 candidate: D0
 harness_revision: 1
-require_clean_git: false
+require_clean_git: true
 r1_interval: 16
 r1_weight: 10.0
