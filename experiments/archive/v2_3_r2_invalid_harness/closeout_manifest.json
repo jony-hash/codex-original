@@ -1,0 +1,13 @@
+{
+  "classification": "training_objective_or_evaluator_inconclusive",
+  "config_hash": "1dba449e003d16cec70ef511dc369dfef46c23ed6f270f07a72f29671bf5c085",
+  "cuda_used": false,
+  "final_pass_count": 0,
+  "formal_promotion_authorized": false,
+  "optimizer_created": false,
+  "physical_authorization": false,
+  "record_count": 4,
+  "schema_version": 1,
+  "status": "closed",
+  "summary_sha256": "6addd1d55686baa305d6a0b0f6be1d0fcea5e3b89bb8cc40e00d604a4edd3eda"
+}

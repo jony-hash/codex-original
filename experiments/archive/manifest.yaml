@@ -97,3 +97,19 @@ archives:
       - experiments/archive/v2_2_capacity_map_closeout/capacity_map_closeout_summary.json
       - experiments/archive/v2_2_capacity_map_closeout/capacity_map_closeout_manifest.json
     source_commit: archive/v2/capacity-map-v2.2-conditional-negative
+  - id: v2.3-r2-o0-invalid-harness
+    version_range: v2.3-r2
+    original_path: outputs/20260805_o0_feasibility_v2_3_r2/runs/*_research_{validate,preflight,controls,probe}/*
+    archived_path: experiments/archive/v2_3_r2_invalid_harness/
+    role: immutable D0 evidence reclassified after update-boundary audit
+    diagnostic_only: true
+    runnable: false
+    status: invalid_harness
+    reason: unseeded_model_initialization_and_untrained_auxiliary_heads
+    locked_final_unconsumed: true
+    physical_authorization: false
+    formal_promotion_authorized: false
+    replacement: v2.4 o0-identifiability update-boundary contract
+    evidence_paths:
+      - experiments/archive/v2_3_r2_invalid_harness/archive_manifest.json
+      - experiments/archive/v2_3_r2_invalid_harness/revision_3_correction.json

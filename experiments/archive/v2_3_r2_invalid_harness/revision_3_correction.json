@@ -1,0 +1,20 @@
+{
+  "alternative_causes": [
+    "objective_contract_mismatch",
+    "untrained_auxiliary_heads",
+    "nondeterministic_initialization"
+  ],
+  "config_hash": "1dba449e003d16cec70ef511dc369dfef46c23ed6f270f07a72f29671bf5c085",
+  "content_hash": "f5c432784fd6f95b7a15eb839a624fc3ea3052d7bf6c4757f7e24196b13f8d2b",
+  "downstream_status": "stopped_by_invalid_harness",
+  "formal_promotion_authorized": false,
+  "invalidated_checkpoint_sha256": "ea273711ebaa8f17c83546a07f1672382cc693ea752498652c386124e211a8a9",
+  "invalidated_evidence_sha256": "2c6b16a38fa1a4977b2e291977457357fcc05b93aa7ab34e7a82303fbd1f829e",
+  "invalidated_probe_content_hash": "227fb65f461813d10b6686b0c27ffe981a6bea4ad97391fee355698d9dbc0bce",
+  "original_checkpoint_path": "outputs/20260805_o0_feasibility_v2_3_r2/runs/20260805_234022_889248_research_probe/o0_D0_seed_1234_inference.pt",
+  "physical_authorization": false,
+  "reason": "unseeded_model_initialization_and_untrained_auxiliary_heads",
+  "schema_version": 1,
+  "status": "invalid_harness",
+  "tag": "experiment/v2/o0-feasibility-v2.3-r2-preregistered"
+}

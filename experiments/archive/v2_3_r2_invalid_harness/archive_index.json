@@ -1,0 +1,66 @@
+{
+  "files": [
+    {
+      "archive_path": "experiments/archive/v2_3_r2_invalid_harness/README.md",
+      "sha256": "3c0dfd97fffccf3d511866ae75a2df4b558c5a33c6a5af637c03ab0be8481062",
+      "size": 574
+    },
+    {
+      "archive_path": "experiments/archive/v2_3_r2_invalid_harness/archive_manifest.json",
+      "sha256": "17986b61c22081b91d958cfcce8b14dbebe15b07ed02317e0327294d58c2314a",
+      "size": 489
+    },
+    {
+      "archive_path": "experiments/archive/v2_3_r2_invalid_harness/closeout_manifest.json",
+      "sha256": "0710faaebc9fc78516a9d1de67e91e8eefce7912e35ba39856203c0092e3d413",
+      "size": 462
+    },
+    {
+      "archive_path": "experiments/archive/v2_3_r2_invalid_harness/closeout_report.md",
+      "sha256": "e2bc3d41716ed629e88420a77aa59899e03369467a086a30c09beb3e73411221",
+      "size": 399
+    },
+    {
+      "archive_path": "experiments/archive/v2_3_r2_invalid_harness/closeout_summary.json",
+      "sha256": "6addd1d55686baa305d6a0b0f6be1d0fcea5e3b89bb8cc40e00d604a4edd3eda",
+      "size": 166951
+    },
+    {
+      "archive_path": "experiments/archive/v2_3_r2_invalid_harness/evidence/controls.json",
+      "sha256": "63ac9c26bda6302e4b51e0a81445487405c17de3efc9effcbd35c4a0a963e104",
+      "size": 4469
+    },
+    {
+      "archive_path": "experiments/archive/v2_3_r2_invalid_harness/evidence/preflight.json",
+      "sha256": "f1c944cb2f38a64cf77f9c73e2e5c9464e479b3038327fec77481bafd73ba0be",
+      "size": 3513
+    },
+    {
+      "archive_path": "experiments/archive/v2_3_r2_invalid_harness/evidence/probe.json",
+      "sha256": "2c6b16a38fa1a4977b2e291977457357fcc05b93aa7ab34e7a82303fbd1f829e",
+      "size": 136172
+    },
+    {
+      "archive_path": "experiments/archive/v2_3_r2_invalid_harness/evidence/validate.json",
+      "sha256": "11b486a6e4ea66581cec6ae1176446bd708ce5479d20e2eeba3a0c2faee427e7",
+      "size": 3496
+    },
+    {
+      "archive_path": "experiments/archive/v2_3_r2_invalid_harness/report.md",
+      "sha256": "1b01b450e422d470d0aead4cc475f3d80e9d77763b304cafdcb86cbf837b6baf",
+      "size": 240
+    },
+    {
+      "archive_path": "experiments/archive/v2_3_r2_invalid_harness/revision_3_correction.json",
+      "sha256": "d59226b48a77c5af4f853609e72b3ef7d73bb81cf90ead82368f8470de0180a8",
+      "size": 1084
+    },
+    {
+      "archive_path": "experiments/archive/v2_3_r2_invalid_harness/summary.json",
+      "sha256": "4bc087d1c87cedf2695670b4babb38a02f3733925e3ac66fdedecbc84bab4bea",
+      "size": 167078
+    }
+  ],
+  "schema_version": 1,
+  "source_root": "outputs/20260805_o0_feasibility_v2_3_r2"
+}

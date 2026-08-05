@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "status": "invalid_harness",
+  "source_version": "conditional_o0_feasibility_v2_3_r2",
+  "causal_scope": "D0_image_domain_training_implementation",
+  "reason": "unseeded_model_initialization_and_untrained_auxiliary_heads",
+  "locked_final_unconsumed": true,
+  "physical_authorization": false,
+  "formal_promotion_authorized": false,
+  "runnable": false,
+  "downstream_status": "stopped_by_invalid_harness",
+  "checkpoint_policy": "hash_and_original_path_only"
+}
