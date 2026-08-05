@@ -325,6 +325,8 @@ def _audit(
         ProjectionDiscriminator(code_dim=32, image_size=28).to(device),
     )
     g0, d0 = parameter_hash(generator), parameter_hash(discriminator)
+    classifier0 = parameter_hash(discriminator.classifier)
+    q0 = parameter_hash(discriminator.latent_head)
     gopt = torch.optim.Adam(generator.parameters(), lr=2e-4, betas=(0.0, 0.9))
     dopt = torch.optim.Adam(discriminator.parameters(), lr=2e-4, betas=(0.0, 0.9))
     real, labels, codes = _batch(spec, device, args.seed)
@@ -333,6 +335,8 @@ def _audit(
         generator, discriminator, dopt, real, labels, codes, apply_r1=False
     )
     d_after, g_after_d = parameter_hash(discriminator), parameter_hash(generator)
+    classifier_after = parameter_hash(discriminator.classifier)
+    q_after = parameter_hash(discriminator.latent_head)
     g_detail = _g_step(generator, discriminator, gopt, real, labels, codes)
     g_after = parameter_hash(generator)
     metrics = {
@@ -341,6 +345,8 @@ def _audit(
         "dq": d_detail,
         "g": g_detail,
         "dq_updates_discriminator": d_after != d_before,
+        "dq_updates_classifier": classifier_after != classifier0,
+        "dq_updates_q": q_after != q0,
         "dq_preserves_generator": g_after_d == g0,
         "g_updates_generator": g_after != g_after_d,
         "inference_state_keys": sorted(inference_state_dict(generator)),
@@ -353,6 +359,8 @@ def _audit(
     }
     metrics["passed"] = bool(
         metrics["dq_updates_discriminator"]
+        and metrics["dq_updates_classifier"]
+        and metrics["dq_updates_q"]
         and metrics["dq_preserves_generator"]
         and metrics["g_updates_generator"]
         and metrics["finite"]
