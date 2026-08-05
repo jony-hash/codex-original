@@ -62,9 +62,10 @@ C1 (higher-capacity 8D exact anchor), C2 (higher-capacity 8D soft anchor), and
 C3 (32D soft diagnostic upper bound). D0 failure stops the branch; C3 can never
 authorize physical follow-up.
 
-Implementation and controls are complete, but no v2.3 probe, smoke, confirm, or
-locked-final training has run. Therefore the ledger records no v2.3 scientific
-result yet. The allowed future classifications are electronic-oracle reachable,
-electronic-generator capacity, exact-anchor bottleneck, input-manifold bottleneck,
-training-objective/evaluator inconclusive, or command-parameterization
-inconclusive; none may be promoted automatically.
+Implementation, revision-2 controls and CUDA preflight passed. The preregistered
+D0 seed-1234 probe then failed validly at step 50: worst normalized margin did
+not improve and digital code fraction fell from approximately 0.0323 to 0.0020;
+finite, safety and saturation checks remained valid. The branch therefore closes
+as `training_objective_or_evaluator_inconclusive` for the D0 image-domain
+teacher-free objective only. Smoke, confirm, locked-final, command candidates,
+and all optical branches were stopped and must not be inferred from this result.

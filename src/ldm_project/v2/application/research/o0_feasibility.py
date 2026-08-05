@@ -589,6 +589,8 @@ def _scan(source: Path, config_hash: str) -> list[dict]:
 
 def _classification(records: list[dict]) -> str:
     final_states = {(item.get("candidate"), item.get("state")) for item in records if item.get("action") == "final"}
+    if any(item.get("candidate") == "D0" and item.get("state") in {"probe_failed", "smoke_failed", "confirm_failed", "final_failed"} for item in records):
+        return "training_objective_or_evaluator_inconclusive"
     if ("C0", "final_passed") in final_states:
         return "electronic_oracle_reachable"
     if ("C1", "final_passed") in final_states:

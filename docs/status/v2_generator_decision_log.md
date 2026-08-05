@@ -25,10 +25,12 @@ multi-seed dual-evaluator 确认；不得恢复当前 O1--O5 的长训练。
 电子候选、projection discriminator 训练目标、四固定面板测量、三 seed 阶段门和
 locked-final evidence 治理；不导入光学 operator、Teacher、diffusion 或外部数据。
 
-当前只完成了代码合同、CPU 执行链和 controls 验证，尚未执行 CUDA probe/smoke/confirm。
-因此不能声称电子上界可达或不可达。后续必须按 D0→C0→C1→C2→C3 顺序运行；每个候选
-只能在前置门通过或前一候选 locked-final 失败后推进。C0/C1/C2 通过只授权另立 O1/O2
-计划，C3 即使通过也保持 diagnostic-only。
+revision-2 validate、CUDA preflight 和 controls 均通过；D0 seed-1234 probe 在 step 50
+有效失败。worst normalized margin 未改善，digital code fraction 从约 0.0323 降至约
+0.0020；finite、safety、saturation 仍通过。依据停止规则，smoke、confirm、locked-final
+以及 C0--C3 全部停止，唯一分类为
+`training_objective_or_evaluator_inconclusive`，仅适用于 D0 image-domain objective。
+这不支持任何光学、phase-only、空间 DOF 或普适容量结论。
 
 ## 已停止的结构
 

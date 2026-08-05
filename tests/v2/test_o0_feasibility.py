@@ -96,3 +96,4 @@ def test_o0_revision_conflicts_are_excluded_and_latest_revision_wins() -> None:
     selected = _selected_records(records)
     assert len(selected) == 1 and selected[0]["evidence_revision"] == 2
     assert _classification([{ "action": "final", "candidate": "D0", "state": "final_passed" }]) == "d0_image_oracle_reachable"
+    assert _classification([{ "action": "probe", "candidate": "D0", "state": "probe_failed" }]) == "training_objective_or_evaluator_inconclusive"

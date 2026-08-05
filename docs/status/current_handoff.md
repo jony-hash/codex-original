@@ -39,16 +39,16 @@ teacher-free objective family，从数字 oracle 重新完成双 evaluator 多 s
 [current_handoff_pre_v2_2_closeout_20260804.md](../archive/current_handoff_pre_v2_2_closeout_20260804.md)，
 仅作历史参考，不定义当前执行授权。
 
-## v2.3 电子数字上界分支（已实现，尚未训练）
+## v2.3-r2 D0 电子图像上界（2026-08-05）
 
-v2.3 在 `experiment/v2-o0-feasibility-v23` 分支实现为独立 research 生命周期；其
-基线仍是 v2.2 closeout tag，不消费 v2.2 checkpoint，也不改变 formal current。已完成
-`validate`/`controls`、D0/C0--C3 合同、四面板双 evaluator 测量、microbatch 训练状态、
-checkpoint/evidence 绑定和顺序停止门。CPU controls 已通过真实集、标签置换和模板重复控制。
+v2.3-r2 在 `experiment/v2-o0-feasibility-v23` 分支完成了 harness 冻结、revision-2
+validate、CUDA preflight 和 controls。D0 seed-1234 probe 已按预注册门运行至 step 50，
+但 worst margin 没有改善，digital code fraction 从约 `0.0323` 降至约 `0.0020`，因此
+状态为 `probe_failed`。finite、safety 和 saturation 门通过，但 probe 的 margin/code
+response 门失败；这是有效的电子目标负结果，不是 invalid harness。
 
-本分支尚未启动 probe、smoke、confirm 或 locked-final CUDA 训练，因此尚无 v2.3 生成器
-可达性结论。下一条命令必须先使用通过 controls 的 evidence 执行 D0 probe；D0 未通过时
-不得启动 C0--C3。只有 C0/C1/C2 locked-final 通过，才可另立 O1/O2 计划；C3 永远不
-授权物理推进。完整接口和配置见
-`configs/research/conditional_o0_feasibility_v2_3.yaml` 及
-`python -m ldm_project.v2 research o0-feasibility --help`。
+依据 D0 停止规则，smoke、confirm、locked-final、C0--C3、O1--O5、Teacher、diffusion
+和外部数据集均未执行。v2.3-r2 唯一允许分类为
+`training_objective_or_evaluator_inconclusive`，范围仅限 D0 image-domain teacher-free
+objective；不得解释为光学、phase-only、空间 DOF 或普适容量失败。`physical_authorization`
+和 `formal_promotion_authorized` 均为 false。
