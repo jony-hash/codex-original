@@ -105,6 +105,14 @@ state hash、最终 checkpoint 摘要、配置和数据 split。evaluation、dat
 manifest 或 evidence 输入摘要被篡改都必须 fail-closed。此链路只证明工程来源和
 更新真实性，不替代 CUDA、硬件或科学 acceptance。
 
+Current evidence 还受 runtime-tree 来源约束：同一消费操作的上游记录必须使用相同的
+`git_commit`，且所有记录的 `dirty_patch_hash` 必须为 `None`。记录的提交必须是当前
+`HEAD` 的祖先，并且从该提交到当前 `HEAD` 的以下路径不得有差异：
+`src/ldm_project/v2/`、`configs/v2/current/` 和 `pyproject.toml`。因此 docs/tests-only
+后续提交可以继续消费既有 evidence；runtime、current 配置或项目依赖变化必须重新签发
+整条 evidence 链。Git 不可用、提交无效或比较失败时，current 入口在加载 checkpoint、
+创建 optimizer、写入 run 工件之前 fail-closed。
+
 所有 current、student、teacher、evidence、diagnostic 和 research v2 artifact 都通过
 `safe_torch_load` 反序列化，默认 `weights_only=True`，并在有期望摘要时先校验文件。
 唯一的 `weights_only=False` 位于 legacy 私有可信加载边界；不提供 current CLI 绕过开关。

@@ -122,6 +122,79 @@ BALANCED_TRAINING_SCHEDULE = {
 }
 BALANCED_TRAINING_SCHEDULE_CONTRACT = canonical_sha256(BALANCED_TRAINING_SCHEDULE)
 
+# Evidence is allowed to survive documentation and test-only follow-up commits,
+# but not a change to the executable v2 runtime or its formal configuration.
+_CURRENT_EVIDENCE_RUNTIME_PATHS = (
+    "src/ldm_project/v2/",
+    "configs/v2/current/",
+    "pyproject.toml",
+)
+
+
+def _validate_current_evidence_source(*records: EvidenceRecordV2) -> None:
+    """Fail closed unless all evidence was produced by the same runtime tree."""
+    if not records:
+        raise ValueError("current evidence source validation requires evidence records")
+    commits = {record.git_commit for record in records}
+    if len(commits) != 1:
+        raise ValueError("current evidence records come from different commits")
+    commit = next(iter(commits))
+    if (
+        not isinstance(commit, str)
+        or len(commit) != 40
+        or any(character not in "0123456789abcdef" for character in commit.lower())
+    ):
+        raise ValueError("current evidence has an invalid git commit")
+    if any(record.dirty_patch_hash is not None for record in records):
+        raise ValueError("current evidence must have clean provenance")
+    try:
+        repo_root = Path(
+            subprocess.run(
+                ["git", "rev-parse", "--show-toplevel"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+        )
+        head = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repo_root,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        subprocess.run(
+            ["git", "cat-file", "-e", f"{commit}^{{commit}}"],
+            cwd=repo_root,
+            check=True,
+            capture_output=True,
+        )
+        ancestor = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", commit, head],
+            cwd=repo_root,
+            capture_output=True,
+        )
+        if ancestor.returncode != 0:
+            raise ValueError("current evidence commit is not an ancestor of HEAD")
+        runtime_diff = subprocess.run(
+            [
+                "git",
+                "diff",
+                "--quiet",
+                f"{commit}..{head}",
+                "--",
+                *_CURRENT_EVIDENCE_RUNTIME_PATHS,
+            ],
+            cwd=repo_root,
+            capture_output=True,
+        )
+        if runtime_diff.returncode == 1:
+            raise ValueError("current runtime tree changed after evidence was produced")
+        if runtime_diff.returncode != 0:
+            raise ValueError("current runtime tree comparison failed")
+    except (OSError, subprocess.CalledProcessError) as error:
+        raise ValueError("current evidence source validation is unavailable") from error
+
 
 def balanced_schedule_steps(
     labels: torch.Tensor, *, batch_size: int, epochs: int, batch_iterator=None

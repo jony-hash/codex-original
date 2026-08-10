@@ -6,6 +6,7 @@ from .runtime import (
     _context, _load_bundle, _load_bundle_with_payload,
     _new_run, _random_codes, _require_conditional, _require_current_acceptance,
     _split, _validate_conditional_lineage, _validate_balanced_training_payload,
+    _validate_current_evidence_source,
     _write_evidence, atomic_torch_save, balanced_batches,
     balanced_schedule_steps,
     conditional_coverage_ratio, evaluator_checkpoint_hash, file_sha256,
@@ -62,6 +63,7 @@ def conditional_evaluate(args, config: V2Config) -> int:
         raise ValueError(
             "conditional evaluate requires passed conditional training evidence"
         )
+    _validate_current_evidence_source(training_record)
     device = torch.device(config.run.device)
     images, all_labels = load_local_mnist(args.dataset_root, train=True)
     _, _, validation_images, validation_labels, split = _split(
@@ -300,6 +302,7 @@ def admit_conditional_evaluation(args, config: V2Config) -> int:
         raise ValueError(
             "conditional evaluation evidence cannot authorize manual admission"
         )
+    _validate_current_evidence_source(source)
     source.context.assert_matches(
         _context(
             config,

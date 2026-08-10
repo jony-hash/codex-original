@@ -19,6 +19,10 @@ Scope: `tests/**` and verification for repository changes. Read the repository-r
   legacy compatibility, evidence action/context binding, evaluator qualification,
   candidate dataset status, and manual admission. A CPU smoke is diagnostic and
   cannot stand in for CUDA or scientific acceptance.
+- Current evidence-consumer tests must cover runtime-tree provenance: all upstream
+  records share a clean ancestor commit, and changes under
+  `src/ldm_project/v2/`, `configs/v2/current/`, or `pyproject.toml` reject before
+  checkpoint loading, optimizer creation, run creation, or artifact writes.
 
 ## Acceptance Semantics
 

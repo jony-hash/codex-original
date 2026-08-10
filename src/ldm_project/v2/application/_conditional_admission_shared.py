@@ -711,6 +711,8 @@ def _identity_control_isolation(args, config: V2Config) -> int:
     observability = EvidenceRecordV2.from_dict(
         json.loads(Path(args.observability_evidence).read_text(encoding="utf-8"))
     )
+    if config.architecture == IDENTITY_ARCHITECTURE:
+        _validate_current_evidence_source(injection, observability)
     require_evidence_action(
         injection,
         kind="conditional_injection_admission",
@@ -1246,6 +1248,8 @@ def _identity_semantic_localization(args, config: V2Config) -> int:
     isolation = EvidenceRecordV2.from_dict(
         json.loads(Path(args.isolation_evidence).read_text(encoding="utf-8"))
     )
+    if config.architecture == IDENTITY_ARCHITECTURE:
+        _validate_current_evidence_source(injection, observability, isolation)
     require_evidence_action(
         injection,
         kind="conditional_injection_admission",

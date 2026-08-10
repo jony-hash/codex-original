@@ -5,6 +5,7 @@ from .runtime import (
     EvidenceRecordV2, FrozenMNISTEvaluator, GateResult, Path, V2Config,
     _context, _load_bundle, _new_run, _random_codes, _require_conditional,
     _validate_conditional_lineage,
+    _validate_current_evidence_source,
     _write_evidence, atomic_torch_save, atomic_write_json, canonical_sha256,
     file_sha256, fixed_exposure_view, load_candidate_dataset,
     load_frozen_evaluator, load_local_mnist, memorization_statistics,
@@ -18,6 +19,7 @@ def export_conditional_dataset(args, config: V2Config) -> int:
     admission = _passed_evidence(
         args.acceptance_evidence, kind="conditional_generation_admission"
     )
+    _validate_current_evidence_source(admission)
     checkpoint_hash = admission.input_hashes.get("checkpoint")
     if not isinstance(checkpoint_hash, str):
         raise ValueError("generation admission lacks checkpoint binding")
@@ -155,6 +157,7 @@ def audit_memorization(args, config: V2Config) -> int:
     candidate = _passed_evidence(
         args.candidate_evidence, kind="conditional_dataset_candidate"
     )
+    _validate_current_evidence_source(candidate)
     payload, generated_images, generated_labels = load_candidate_dataset(
         args.candidate_dataset
     )
@@ -274,6 +277,7 @@ def evaluate_utility(args, config: V2Config) -> int:
     candidate = _passed_evidence(
         args.candidate_evidence, kind="conditional_dataset_candidate"
     )
+    _validate_current_evidence_source(candidate)
     payload, synthetic_images, synthetic_labels = load_candidate_dataset(
         args.candidate_dataset
     )
@@ -407,6 +411,7 @@ def admit_dataset(args, config: V2Config) -> int:
         args.memorization_evidence, kind="conditional_memorization_audit"
     )
     utility = _passed_evidence(args.utility_evidence, kind="conditional_utility")
+    _validate_current_evidence_source(admission, memorization, utility)
     payload, _, _ = load_candidate_dataset(args.candidate_dataset)
     manifest_hash = canonical_sha256(payload)
     lineage_context = _context(

@@ -9,7 +9,8 @@ from .runtime import (
     SEMANTIC_RECOVERY_STEPS, TRAINING_SCHEDULE_CONTRACT, V2Config,
     _carrier_logits, _context, _load_bundle, _load_bundle_with_payload, _new_run, _random_codes,
     _require_conditional, _require_current_acceptance, _require_identity, _split,
-    _system_signature, _validate_conditional_lineage, _write_evidence, asdict, balanced_batches,
+    _system_signature, _validate_conditional_lineage, _validate_current_evidence_source,
+    _write_evidence, asdict, balanced_batches,
     balanced_schedule_steps,
     canonical_sha256, conditional_loss, evaluator_checkpoint_hash, file_sha256,
     json, load_frozen_evaluator, load_local_mnist, require_evidence_action,
@@ -101,6 +102,7 @@ def conditional_train(args, config: V2Config) -> int:
         observability = EvidenceRecordV2.from_dict(
             json.loads(Path(args.observability_evidence).read_text(encoding="utf-8"))
         )
+        authorization: EvidenceRecordV2
         initialization_checkpoint_hash = injection.input_hashes.get(
             "initialization_checkpoint"
         )
@@ -128,6 +130,7 @@ def conditional_train(args, config: V2Config) -> int:
             control = _passed_evidence(
                 controllability_path, kind="controllability_smoke"
             )
+            authorization = control
             require_evidence_action(
                 control,
                 kind="controllability_smoke",
@@ -158,6 +161,7 @@ def conditional_train(args, config: V2Config) -> int:
                 )
         else:
             recovery = _passed_evidence(recovery_path, kind="conditional_semantic_recovery_smoke")
+            authorization = recovery
             require_evidence_action(
                 recovery,
                 kind="conditional_semantic_recovery_smoke",
@@ -170,6 +174,7 @@ def conditional_train(args, config: V2Config) -> int:
                 raise ValueError(
                     "semantic recovery does not reproduce the formal training first-400 batch/code schedule"
                 )
+        _validate_current_evidence_source(injection, observability, authorization)
     else:
         _passed_evidence(args.observability_evidence, kind="conditional_observability")
         _passed_evidence(args.controllability_evidence, kind="controllability_smoke")
@@ -387,6 +392,7 @@ def conditional_training_completion(args, config: V2Config) -> int:
     )
     evaluator_hash = evaluator_checkpoint_hash(args.evaluator_checkpoint)
     training = _passed_evidence(args.training_evidence, kind="conditional_training")
+    _validate_current_evidence_source(training)
     checkpoint_hash = file_sha256(args.checkpoint)
     expected = _context(
         config,

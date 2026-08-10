@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -20,6 +22,8 @@ from ldm_project.v2.application.current.runtime import (
     balanced_schedule_steps,
     _seeded_conditional_bundle,
     _system_signature,
+    _validate_balanced_training_payload,
+    _validate_current_evidence_source,
 )
 from ldm_project.v2.config import load_config
 from ldm_project.v2.evidence import (
@@ -57,12 +61,15 @@ def _record(
     *,
     status: str = "passed",
 ) -> EvidenceRecordV2:
+    commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"], check=True, capture_output=True, text=True
+    ).stdout.strip()
     return EvidenceRecordV2(
         2,
         kind,
         "acceptance",
         status,
-        "test-commit",
+        commit,
         None,
         context.config_hash,
         context,
@@ -99,6 +106,47 @@ def _lineage_context(config, *, checkpoint_hash: str = CHECKPOINT_HASH):
     )
 
 
+def test_current_evidence_source_accepts_clean_head() -> None:
+    config = _config()
+    context = _lineage_context(config)
+    current = _record(config, "conditional_observability", context, {}, ("conditional_control_isolation",))
+    _validate_current_evidence_source(current)
+
+
+@pytest.mark.parametrize(
+    "mutator",
+    [
+        pytest.param(lambda record: replace(record, git_commit="0" * 40), id="non_ancestor"),
+        pytest.param(lambda record: replace(record, dirty_patch_hash="d" * 64), id="dirty"),
+        pytest.param(lambda record: replace(record, git_commit="f" * 40), id="different_commit"),
+    ],
+)
+def test_current_evidence_source_rejects_untrusted_records(mutator) -> None:
+    config = _config()
+    context = _lineage_context(config)
+    record = _record(config, "conditional_observability", context, {}, ("conditional_control_isolation",))
+    with pytest.raises(ValueError, match="current evidence"):
+        _validate_current_evidence_source(mutator(record))
+
+
+def test_current_evidence_source_rejects_runtime_tree_changes(monkeypatch) -> None:
+    config = _config()
+    context = _lineage_context(config)
+    record = _record(config, "conditional_observability", context, {}, ("conditional_control_isolation",))
+    import ldm_project.v2.application.current.runtime as runtime
+
+    real_run = runtime.subprocess.run
+
+    def fake_run(command, *args, **kwargs):
+        if command[:2] == ["git", "diff"]:
+            return subprocess.CompletedProcess(command, 1, b"", b"changed")
+        return real_run(command, *args, **kwargs)
+
+    monkeypatch.setattr(runtime.subprocess, "run", fake_run)
+    with pytest.raises(ValueError, match="runtime tree changed"):
+        _validate_current_evidence_source(record)
+
+
 def _stub_mnist(monkeypatch, module) -> None:
     images = torch.zeros(20, 1, 28, 28)
     labels = torch.arange(20, dtype=torch.long) % 10
@@ -121,6 +169,44 @@ def test_balanced_schedule_contract_is_split_derived_and_stable() -> None:
     reduced = labels[labels != 9]
     with pytest.raises(ValueError, match="no batches"):
         balanced_schedule_steps(reduced, batch_size=50, epochs=5)
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        pytest.param({"schedule_steps_per_epoch": 984, "schedule_total_steps": 5500}, id="old_total"),
+        pytest.param({"schedule_steps_per_epoch": 5500, "schedule_total_steps": 4920}, id="old_epoch"),
+        pytest.param({"schedule_steps_per_epoch": 984, "schedule_total_steps": 4920, "history": []}, id="missing_history"),
+        pytest.param(
+            {
+                "schedule_steps_per_epoch": 984,
+                "schedule_total_steps": 4920,
+                "history": [{"epoch": 1}] * 4920,
+            },
+            id="wrong_epoch_counts",
+        ),
+    ],
+)
+def test_balanced_schedule_payload_rejects_legacy_or_malformed_history(extra) -> None:
+    with pytest.raises(ValueError, match="balanced schedule|step count|epoch"):
+        _validate_balanced_training_payload(
+            {"extra": extra}, steps_per_epoch=984, total_steps=4920
+        )
+
+
+def test_balanced_schedule_payload_accepts_complete_epoch_history() -> None:
+    history = [{"epoch": epoch} for epoch in range(1, 6) for _ in range(984)]
+    _validate_balanced_training_payload(
+        {
+            "extra": {
+                "schedule_steps_per_epoch": 984,
+                "schedule_total_steps": 4920,
+                "history": history,
+            }
+        },
+        steps_per_epoch=984,
+        total_steps=4920,
+    )
 
 
 def test_conditional_train_consumes_injection_action_before_checkpoint(
@@ -711,7 +797,9 @@ def test_training_completion_reuses_corrected_checkpoint_hash_once(
         "_new_run",
         lambda *args, **kwargs: SimpleNamespace(
             root=run_root,
-            git_commit="test",
+            git_commit=subprocess.run(
+                ["git", "rev-parse", "HEAD"], check=True, capture_output=True, text=True
+            ).stdout.strip(),
             dirty_patch_hash=None,
             config_hash=canonical_sha256(config.model_dump(mode="json")),
         ),

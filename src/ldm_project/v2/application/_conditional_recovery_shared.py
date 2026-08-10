@@ -74,6 +74,7 @@ def controllability_smoke(args, config: V2Config) -> int:
         isolation = EvidenceRecordV2.from_dict(
             json.loads(Path(args.isolation_evidence).read_text(encoding="utf-8"))
         )
+        localization = None
         require_evidence_action(
             injection,
             kind="conditional_injection_admission",
@@ -116,6 +117,12 @@ def controllability_smoke(args, config: V2Config) -> int:
                 action="controllability_smoke",
                 expected_context=expected,
                 allow_diagnostic=True,
+            )
+        if localization is None:
+            _validate_current_evidence_source(injection, observability, isolation)
+        else:
+            _validate_current_evidence_source(
+                injection, observability, isolation, localization
             )
         if isolation.input_hashes.get(
             "control_admission_metric_contract"
@@ -481,6 +488,9 @@ def semantic_recovery_smoke(args, config: V2Config) -> int:
         json.loads(
             Path(args.failed_controllability_evidence).read_text(encoding="utf-8")
         )
+    )
+    _validate_current_evidence_source(
+        injection, observability, isolation, localization, failed_smoke
     )
     require_evidence_action(
         injection,
