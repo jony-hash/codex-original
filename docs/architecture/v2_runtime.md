@@ -70,6 +70,28 @@ outputs/YYYYMMDD_v2/runs/<run>/conditional_mnist_dataset/
 全部通过，才原子写入 `accepted_manifest.json`。这不等同于硬件加工或 scientific
 promotion。
 
+## 初始化、加载与证据链
+
+current identity 的唯一 bundle 构造入口在构造任何参数前读取配置中的
+`initialization_seed`，并在局部 RNG 作用域内完成初始化。初始化 checkpoint 的
+manifest 必须同时满足 seed、`state_content_hash` 和
+`initialization_state_hash` 一致；restore 先验证这些关系，再把同一配置 seed
+用于构造 bundle。
+
+训练 evidence 的现有 `input_hashes` 绑定初始化 checkpoint 文件摘要、初始化
+state hash、最终 checkpoint 摘要、配置和数据 split。evaluation、dataset 和 recovery
+消费前必须验证最终 manifest 与训练 evidence 的初始化 state hash；任何 seed、文件、
+manifest 或 evidence 输入摘要被篡改都必须 fail-closed。此链路只证明工程来源和
+更新真实性，不替代 CUDA、硬件或科学 acceptance。
+
+所有 current、student、teacher、evidence、diagnostic 和 research v2 artifact 都通过
+`safe_torch_load` 反序列化，默认 `weights_only=True`，并在有期望摘要时先校验文件。
+唯一的 `weights_only=False` 位于 legacy 私有可信加载边界；不提供 current CLI 绕过开关。
+
+current 与 diagnostic 共享中立的 admission/recovery 工作流绑定，但依赖方向仍是单向的：
+current 不导入 diagnostic 或 legacy，v2 parser 也不加载执行 runtime。动态绑定是兼容实现
+边界，不构成 current 对候选架构的运行时依赖。
+
 ## 旧 v2 内容的状态
 
 旧 teacher/prototype/capacity、global-amplitude、direct-template 和 LightGen 保留在
