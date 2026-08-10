@@ -7,7 +7,7 @@ import math
 from pathlib import Path
 import tempfile
 import unittest
-from tests.tests_support import (
+from tests_support import (
     _assert_nonblank_phase_columns_are_labeled,
     _cuda_device,
     _dummy_one_shot_outputs,

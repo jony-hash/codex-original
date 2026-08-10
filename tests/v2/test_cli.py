@@ -24,7 +24,7 @@ run:
     )
 
 
-def test_v2_config_is_strict_but_v1_loader_can_parse_the_file(tmp_path: Path) -> None:
+def test_config_is_strict_but_v1_loader_can_parse_the_file(tmp_path: Path) -> None:
     path = tmp_path / "v2.yaml"
     _config(path)
     assert load_config(path).schema_version == 2

@@ -5,7 +5,7 @@ import unittest
 
 
 class V51OpticalFieldHarnessTests(unittest.TestCase):
-    def test_v51_config_is_continuous_complex_field_sample_only(self) -> None:
+    def test_optical_field_config_is_continuous_complex_field_sample_only(self) -> None:
         from ldm_project.config import load_training_config
 
         config = load_training_config(
@@ -24,7 +24,7 @@ class V51OpticalFieldHarnessTests(unittest.TestCase):
         self.assertAlmostEqual(config.one_shot.d2nn.pixel_size, 2.0e-6)
         self.assertAlmostEqual(config.one_shot.d2nn.layer_spacing, 0.25e-3)
 
-    def test_v51_launcher_contains_one_cuda_sample_and_no_training_or_eval(self) -> None:
+    def test_optical_field_launcher_contains_one_cuda_sample_and_no_training_or_eval(self) -> None:
         text = Path("experiments/archive/pre_v57/tools/run_v51_real_complex_field_sample.sh").read_text(encoding="utf-8")
 
         self.assertEqual(text.count("--stage one_shot_sample"), 1)

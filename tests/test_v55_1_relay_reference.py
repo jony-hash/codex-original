@@ -78,7 +78,7 @@ def test_direct_rs_plane_wave_is_finite_and_aperture_reference_is_nonzero():
     assert float(propagated.abs().amax()) > 0.0
 
 
-def test_v55_reference_geometry_has_full_fov_and_pupil_contract():
+def test_reference_geometry_has_full_fov_and_pupil_contract():
     cfg = load_training_config(CONFIG)
     validate_physical_forward_contract(cfg, cfg.physics)
     macro = cfg.physics.macro_optics

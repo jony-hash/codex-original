@@ -116,7 +116,7 @@ def test_transport_scale_bisection_has_exactly_twenty_fixed_trials():
     assert all("passed" in item and "value" in item for item in trace)
 
 
-def test_v72_phase_capacity_config_is_isolated_4_plus_4_and_798_mm():
+def test_phase_capacity_config_is_isolated_4_plus_4_and_798_mm():
     config = load_config(
         Path(
             "configs/v2/diagnostic/conditional_transport_aligned_phase_capacity_v72.yaml"
@@ -144,7 +144,7 @@ def test_v72_phase_capacity_config_is_isolated_4_plus_4_and_798_mm():
     )
 
 
-def test_v72_cli_requires_the_non_authorizing_v71_failure_fact():
+def test_cli_requires_the_non_authorizing_v71_failure_fact():
     parser = _parser()
     parsed = parser.parse_args(
         [

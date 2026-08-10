@@ -1,0 +1,14 @@
+schema_version: 1
+archive_id: test-governance-v1
+status: diagnostic-only
+runnable: false
+reason: historical version-specific regression methods removed from the active suite
+sources:
+  - tests/application/test_train_stages.py
+  - tests/student/test_student_config.py
+preserved_files:
+  - experiments/archive/test_governance_v1/tests/test_train_stages.py
+  - experiments/archive/test_governance_v1/tests/test_student_config.py
+  - experiments/archive/test_governance_v1/tests/tests_support.py
+behavior_mapping: experiments/archive/test_governance_v1/behavior_mapping.yaml
+replacement: active behavior tests and current v1/v2 contracts

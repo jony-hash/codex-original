@@ -22,7 +22,7 @@ def _content_hash(payload: dict) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def test_v22_closeout_archive_is_self_authenticating_and_non_runnable() -> None:
+def test_closeout_archive_is_self_authenticating_and_non_runnable() -> None:
     index = json.loads((ARCHIVE / "archive_index.json").read_text(encoding="utf-8"))
     assert index["status"] == "closed_conditional_negative"
     assert index["confirmation_pass_count"] == "0/3"
@@ -35,7 +35,7 @@ def test_v22_closeout_archive_is_self_authenticating_and_non_runnable() -> None:
     assert all(_sha256(ARCHIVE / item["archive_path"]) == item["sha256"] for item in index["files"])
 
 
-def test_v22_closeout_inputs_and_evidence_hashes_are_complete() -> None:
+def test_closeout_inputs_and_evidence_hashes_are_complete() -> None:
     index = json.loads((ARCHIVE / "archive_index.json").read_text(encoding="utf-8"))
     by_source = {item["source_path"]: item for item in index["files"]}
     manifest = json.loads((ARCHIVE / "capacity_map_closeout_manifest.json").read_text(encoding="utf-8"))
@@ -74,7 +74,7 @@ def test_v22_closeout_inputs_and_evidence_hashes_are_complete() -> None:
     assert set(ambiguous[0]["content_hashes"]) == {invalid[0]["content_hash"], summary["diagnostic_inputs"]["diagnose"]}
 
 
-def test_v22_closeout_binds_archived_configs_and_excludes_historical_tests() -> None:
+def test_closeout_binds_archived_configs_and_excludes_historical_tests() -> None:
     index = json.loads((ARCHIVE / "archive_index.json").read_text(encoding="utf-8"))
     summary = json.loads((ARCHIVE / "capacity_map_closeout_summary.json").read_text(encoding="utf-8"))
     by_role = {item["role"]: item for item in index["files"]}

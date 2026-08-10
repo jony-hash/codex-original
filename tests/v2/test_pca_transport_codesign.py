@@ -50,7 +50,7 @@ def test_pca_transport_has_no_hidden_coefficient_network() -> None:
     assert not torch.equal(generator(codes, labels)[0], generator(codes, labels)[1])
 
 
-def test_v6_revalidation_and_macro_review_are_diagnostic_contracts() -> None:
+def test_revalidation_and_macro_review_are_diagnostic_contracts() -> None:
     assert PCA_TRANSPORT_REVALIDATION_CONTRACT
     assert FEASIBILITY_CONTRACT
     generator = ConditionalPCATransportCodesignGenerator()

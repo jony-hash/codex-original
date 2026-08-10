@@ -97,7 +97,7 @@ def test_formal_trace_has_one_root_and_connected_provenance() -> None:
     assert all(field.provenance.upstream_plane is not None or field.provenance.operation in {"ideal_amplitude_slm", "amplitude_slm"} for field in result.optical_trace)
 
 
-def test_v2_optics_does_not_import_upper_layers() -> None:
+def test_optics_does_not_import_upper_layers() -> None:
     optics_root = Path("src/ldm_project/v2/optics")
     forbidden = {"student", "teacher", "application", "diagnostics"}
     for path in optics_root.glob("*.py"):

@@ -59,7 +59,7 @@ def test_propagation_requires_distance() -> None:
         OperationProvenance("propagate_asm", "slm", None)
 
 
-def test_v2_config_rejects_unknown_and_geometry_drift() -> None:
+def test_config_rejects_unknown_and_geometry_drift() -> None:
     with pytest.raises(ValidationError):
         V2Config.model_validate({**_config(), "unknown": True})
     payload = _config()

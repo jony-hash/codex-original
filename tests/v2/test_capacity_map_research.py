@@ -72,7 +72,7 @@ def test_upper_bound_slots_do_not_silently_substitute_an_optical_model() -> None
         raise AssertionError("O5 must not silently become a CPU/amplitude-only proxy")
 
 
-def test_v22_panels_are_fixed_and_shape_evaluator_is_distinct() -> None:
+def test_panels_are_fixed_and_shape_evaluator_is_distinct() -> None:
     first = fixed_panels(device=torch.device("cpu"), code_dim=8)
     assert tuple(first) == ("axis", "uniform_1234", "uniform_5678", "holdout_9012")
     assert all(codes.shape == (170, 8) and labels.shape == (170,) for codes, labels in first.values())

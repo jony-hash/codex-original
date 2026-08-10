@@ -25,3 +25,10 @@ where = ["src"]
 # Historical experiment tests are preserved under experiments/archive as reference-only
 # material.  The default suite covers only the active runtime and its regression tests.
 testpaths = ["tests"]
+# Matplotlib releases supported by the current environment call NumPy 2's
+# __array__ protocol without the new copy keyword.  This is a third-party
+# compatibility warning, scoped to the exact module and message; repository
+# warnings remain visible.
+filterwarnings = [
+  "ignore:__array__ implementation doesn't accept a copy keyword:DeprecationWarning:matplotlib\\.cbook",
+]

@@ -1,0 +1,670 @@
+schema_version: 1
+archive_id: test-governance-v1
+coverage_policy: every archived nodeid is listed; each replacement must be collected or each archive-only entry must carry a specific reason_code and historical_reference
+entries:
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v16_readout_calibration_tool_writes_diagnostic_report_only"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v16_readout_calibration_tool_writes_diagnostic_report_only"
+    reason: "Archive-only closed_experiment_diagnostic: test_v16_readout_calibration_tool_writes_diagnostic_report_only is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v16_readout_calibration_tool_writes_diagnostic_report_only; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v16_readout_calibration_tool_fails_loudly_for_bad_inputs"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v16_readout_calibration_tool_fails_loudly_for_bad_inputs"
+    reason: "Archive-only closed_experiment_diagnostic: test_v16_readout_calibration_tool_fails_loudly_for_bad_inputs is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v16_readout_calibration_tool_fails_loudly_for_bad_inputs; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v17_terminal_readability_tool_accepts_perfect_diagnostic_candidate"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v17_terminal_readability_tool_accepts_perfect_diagnostic_candidate"
+    reason: "Archive-only closed_experiment_diagnostic: test_v17_terminal_readability_tool_accepts_perfect_diagnostic_candidate is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v17_terminal_readability_tool_accepts_perfect_diagnostic_candidate; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v17_terminal_readability_tool_rejects_blob_sample"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v17_terminal_readability_tool_rejects_blob_sample"
+    reason: "Archive-only closed_experiment_diagnostic: test_v17_terminal_readability_tool_rejects_blob_sample is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v17_terminal_readability_tool_rejects_blob_sample; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v17_terminal_readability_focus_class_failure_blocks_candidate"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v17_terminal_readability_focus_class_failure_blocks_candidate"
+    reason: "Archive-only closed_experiment_diagnostic: test_v17_terminal_readability_focus_class_failure_blocks_candidate is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v17_terminal_readability_focus_class_failure_blocks_candidate; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v17_terminal_readability_tool_fails_loudly_for_bad_inputs"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v17_terminal_readability_tool_fails_loudly_for_bad_inputs"
+    reason: "Archive-only closed_experiment_diagnostic: test_v17_terminal_readability_tool_fails_loudly_for_bad_inputs is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v17_terminal_readability_tool_fails_loudly_for_bad_inputs; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v17_terminal_readability_summary_extracts_sample_and_eval_runs"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v17_terminal_readability_summary_extracts_sample_and_eval_runs"
+    reason: "Archive-only closed_experiment_diagnostic: test_v17_terminal_readability_summary_extracts_sample_and_eval_runs is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v17_terminal_readability_summary_extracts_sample_and_eval_runs; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v19_front_transfer_accepts_retained_encoder_input"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v19_front_transfer_accepts_retained_encoder_input"
+    reason: "Archive-only closed_experiment_diagnostic: test_v19_front_transfer_accepts_retained_encoder_input is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v19_front_transfer_accepts_retained_encoder_input; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v19_front_transfer_flags_encoder_input_collapse"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v19_front_transfer_flags_encoder_input_collapse"
+    reason: "Archive-only closed_experiment_diagnostic: test_v19_front_transfer_flags_encoder_input_collapse is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v19_front_transfer_flags_encoder_input_collapse; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v19_front_transfer_fails_loudly_for_bad_inputs"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v19_front_transfer_fails_loudly_for_bad_inputs"
+    reason: "Archive-only closed_experiment_diagnostic: test_v19_front_transfer_fails_loudly_for_bad_inputs is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v19_front_transfer_fails_loudly_for_bad_inputs; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v20_downstream_plane_gate_accepts_readable_chain"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v20_downstream_plane_gate_accepts_readable_chain"
+    reason: "Archive-only closed_experiment_diagnostic: test_v20_downstream_plane_gate_accepts_readable_chain is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v20_downstream_plane_gate_accepts_readable_chain; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v20_downstream_plane_gate_reports_encoded_collapse"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v20_downstream_plane_gate_reports_encoded_collapse"
+    reason: "Archive-only closed_experiment_diagnostic: test_v20_downstream_plane_gate_reports_encoded_collapse is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v20_downstream_plane_gate_reports_encoded_collapse; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v20_downstream_plane_gate_classifies_camera_path_failure"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v20_downstream_plane_gate_classifies_camera_path_failure"
+    reason: "Archive-only closed_experiment_diagnostic: test_v20_downstream_plane_gate_classifies_camera_path_failure is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v20_downstream_plane_gate_classifies_camera_path_failure; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v20_downstream_plane_gate_fails_loudly_for_bad_inputs"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v20_downstream_plane_gate_fails_loudly_for_bad_inputs"
+    reason: "Archive-only closed_experiment_diagnostic: test_v20_downstream_plane_gate_fails_loudly_for_bad_inputs is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v20_downstream_plane_gate_fails_loudly_for_bad_inputs; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v20_downstream_plane_gate_summary_extracts_eval_and_sample_runs"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v20_downstream_plane_gate_summary_extracts_eval_and_sample_runs"
+    reason: "Archive-only closed_experiment_diagnostic: test_v20_downstream_plane_gate_summary_extracts_eval_and_sample_runs is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v20_downstream_plane_gate_summary_extracts_eval_and_sample_runs; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v21_physical_cmos_readout_flags_selected_vs_physical_mismatch"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v21_physical_cmos_readout_flags_selected_vs_physical_mismatch"
+    reason: "Archive-only closed_experiment_diagnostic: test_v21_physical_cmos_readout_flags_selected_vs_physical_mismatch is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v21_physical_cmos_readout_flags_selected_vs_physical_mismatch; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v21_physical_cmos_readout_candidate_requires_human_review"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: historical_manual_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v21_physical_cmos_readout_candidate_requires_human_review"
+    reason: "Archive-only historical_manual_diagnostic: test_v21_physical_cmos_readout_candidate_requires_human_review is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v21_physical_cmos_readout_candidate_requires_human_review; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v21_physical_cmos_readout_rejects_bad_output_and_summary_extracts_runs"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v21_physical_cmos_readout_rejects_bad_output_and_summary_extracts_runs"
+    reason: "Archive-only closed_experiment_diagnostic: test_v21_physical_cmos_readout_rejects_bad_output_and_summary_extracts_runs is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v21_physical_cmos_readout_rejects_bad_output_and_summary_extracts_runs; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v23_decoder_chip_semantic_collapse_reports_decoder_plane"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v23_decoder_chip_semantic_collapse_reports_decoder_plane"
+    reason: "Archive-only closed_experiment_diagnostic: test_v23_decoder_chip_semantic_collapse_reports_decoder_plane is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v23_decoder_chip_semantic_collapse_reports_decoder_plane; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v23_decoder_chip_semantic_rejects_bad_output_and_summary_extracts_runs"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v23_decoder_chip_semantic_rejects_bad_output_and_summary_extracts_runs"
+    reason: "Archive-only closed_experiment_diagnostic: test_v23_decoder_chip_semantic_rejects_bad_output_and_summary_extracts_runs is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v23_decoder_chip_semantic_rejects_bad_output_and_summary_extracts_runs; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v24_ols_decoder_expressivity_classifies_decoder_bottleneck"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v24_ols_decoder_expressivity_classifies_decoder_bottleneck"
+    reason: "Archive-only closed_experiment_diagnostic: test_v24_ols_decoder_expressivity_classifies_decoder_bottleneck is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v24_ols_decoder_expressivity_classifies_decoder_bottleneck; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v24_ols_decoder_expressivity_classifies_phase_screen_rescue"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v24_ols_decoder_expressivity_classifies_phase_screen_rescue"
+    reason: "Archive-only closed_experiment_diagnostic: test_v24_ols_decoder_expressivity_classifies_phase_screen_rescue is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v24_ols_decoder_expressivity_classifies_phase_screen_rescue; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v24_ols_decoder_expressivity_classifies_amp_phase_upper_bound_and_rejects_bad_output"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v24_ols_decoder_expressivity_classifies_amp_phase_upper_bound_and_rejects_bad_output"
+    reason: "Archive-only closed_experiment_diagnostic: test_v24_ols_decoder_expressivity_classifies_amp_phase_upper_bound_and_rejects_bad_output is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v24_ols_decoder_expressivity_classifies_amp_phase_upper_bound_and_rejects_bad_output; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v25_decoder_capacity_gate_classifies_eval_positive_sample_failed"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v25_decoder_capacity_gate_classifies_eval_positive_sample_failed"
+    reason: "Archive-only closed_experiment_diagnostic: test_v25_decoder_capacity_gate_classifies_eval_positive_sample_failed is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v25_decoder_capacity_gate_classifies_eval_positive_sample_failed; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v25_decoder_capacity_gate_classifies_phase_only_limited"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v25_decoder_capacity_gate_classifies_phase_only_limited"
+    reason: "Archive-only closed_experiment_diagnostic: test_v25_decoder_capacity_gate_classifies_phase_only_limited is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v25_decoder_capacity_gate_classifies_phase_only_limited; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v25_decoder_capacity_gate_classifies_depth_limited"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v25_decoder_capacity_gate_classifies_depth_limited"
+    reason: "Archive-only closed_experiment_diagnostic: test_v25_decoder_capacity_gate_classifies_depth_limited is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v25_decoder_capacity_gate_classifies_depth_limited; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v26_ols_oracle_classifies_separable_ols_as_decodable"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v26_ols_oracle_classifies_separable_ols_as_decodable"
+    reason: "Archive-only closed_experiment_diagnostic: test_v26_ols_oracle_classifies_separable_ols_as_decodable is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v26_ols_oracle_classifies_separable_ols_as_decodable; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v26_ols_oracle_classifies_collapsed_ols_as_not_decodable"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v26_ols_oracle_classifies_collapsed_ols_as_not_decodable"
+    reason: "Archive-only closed_experiment_diagnostic: test_v26_ols_oracle_classifies_collapsed_ols_as_not_decodable is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v26_ols_oracle_classifies_collapsed_ols_as_not_decodable; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v26_ols_oracle_rejects_same_run_leakage_and_extracts_summary_runs"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v26_ols_oracle_rejects_same_run_leakage_and_extracts_summary_runs"
+    reason: "Archive-only closed_experiment_diagnostic: test_v26_ols_oracle_rejects_same_run_leakage_and_extracts_summary_runs is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v26_ols_oracle_rejects_same_run_leakage_and_extracts_summary_runs; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v27_decoder_synthesis_gap_reports_decoder_gap"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v27_decoder_synthesis_gap_reports_decoder_gap"
+    reason: "Archive-only closed_experiment_diagnostic: test_v27_decoder_synthesis_gap_reports_decoder_gap is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v27_decoder_synthesis_gap_reports_decoder_gap; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v27_decoder_synthesis_gap_reports_camera_readout_gap"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v27_decoder_synthesis_gap_reports_camera_readout_gap"
+    reason: "Archive-only closed_experiment_diagnostic: test_v27_decoder_synthesis_gap_reports_camera_readout_gap is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v27_decoder_synthesis_gap_reports_camera_readout_gap; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v27_decoder_synthesis_gap_marks_readable_cmos_candidate_and_rejects_bad_output"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v27_decoder_synthesis_gap_marks_readable_cmos_candidate_and_rejects_bad_output"
+    reason: "Archive-only closed_experiment_diagnostic: test_v27_decoder_synthesis_gap_marks_readable_cmos_candidate_and_rejects_bad_output is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v27_decoder_synthesis_gap_marks_readable_cmos_candidate_and_rejects_bad_output; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v28_decoder_controllability_reports_decoder_unreachable"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v28_decoder_controllability_reports_decoder_unreachable"
+    reason: "Archive-only closed_experiment_diagnostic: test_v28_decoder_controllability_reports_decoder_unreachable is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v28_decoder_controllability_reports_decoder_unreachable; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v28_decoder_controllability_reports_camera_after_decoder_failure"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v28_decoder_controllability_reports_camera_after_decoder_failure"
+    reason: "Archive-only closed_experiment_diagnostic: test_v28_decoder_controllability_reports_camera_after_decoder_failure is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v28_decoder_controllability_reports_camera_after_decoder_failure; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v28_decoder_controllability_marks_metric_proxy_failure_and_rejects_bad_output"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v28_decoder_controllability_marks_metric_proxy_failure_and_rejects_bad_output"
+    reason: "Archive-only closed_experiment_diagnostic: test_v28_decoder_controllability_marks_metric_proxy_failure_and_rejects_bad_output is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v28_decoder_controllability_marks_metric_proxy_failure_and_rejects_bad_output; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v28_decoder_controllability_configs_preserve_contract"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: archive_config_contract
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v28_decoder_controllability_configs_preserve_contract"
+    reason: "Archive-only archive_config_contract: test_v28_decoder_controllability_configs_preserve_contract is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v28_decoder_controllability_configs_preserve_contract; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v28_1_tiny_replay_payload_is_deterministic_and_balanced"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v28_1_tiny_replay_payload_is_deterministic_and_balanced"
+    reason: "Archive-only closed_experiment_diagnostic: test_v28_1_tiny_replay_payload_is_deterministic_and_balanced is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v28_1_tiny_replay_payload_is_deterministic_and_balanced; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v28_1_same_batch_gate_distinguishes_main_statuses"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v28_1_same_batch_gate_distinguishes_main_statuses"
+    reason: "Archive-only closed_experiment_diagnostic: test_v28_1_same_batch_gate_distinguishes_main_statuses is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v28_1_same_batch_gate_distinguishes_main_statuses; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v28_1_configs_preserve_contract_and_same_eval_fallback"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: archive_config_contract
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v28_1_configs_preserve_contract_and_same_eval_fallback"
+    reason: "Archive-only archive_config_contract: test_v28_1_configs_preserve_contract_and_same_eval_fallback is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v28_1_configs_preserve_contract_and_same_eval_fallback; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v29_decoder_trainability_classifies_main_outcomes"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v29_decoder_trainability_classifies_main_outcomes"
+    reason: "Archive-only closed_experiment_diagnostic: test_v29_decoder_trainability_classifies_main_outcomes is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v29_decoder_trainability_classifies_main_outcomes; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v29_configs_preserve_contract_and_mark_upper_bounds"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: archive_config_contract
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v29_configs_preserve_contract_and_mark_upper_bounds"
+    reason: "Archive-only archive_config_contract: test_v29_configs_preserve_contract_and_mark_upper_bounds is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v29_configs_preserve_contract_and_mark_upper_bounds; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v30_target_code_alignment_classifies_main_outcomes"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v30_target_code_alignment_classifies_main_outcomes"
+    reason: "Archive-only closed_experiment_diagnostic: test_v30_target_code_alignment_classifies_main_outcomes is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v30_target_code_alignment_classifies_main_outcomes; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v30_1_sample_gate_recovery_separates_metric_positive_from_human_candidate"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: historical_manual_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v30_1_sample_gate_recovery_separates_metric_positive_from_human_candidate"
+    reason: "Archive-only historical_manual_diagnostic: test_v30_1_sample_gate_recovery_separates_metric_positive_from_human_candidate is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v30_1_sample_gate_recovery_separates_metric_positive_from_human_candidate; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v31_bridge_topology_classifies_bridge_decoder_and_camera_failures"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v31_bridge_topology_classifies_bridge_decoder_and_camera_failures"
+    reason: "Archive-only closed_experiment_diagnostic: test_v31_bridge_topology_classifies_bridge_decoder_and_camera_failures is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v31_bridge_topology_classifies_bridge_decoder_and_camera_failures; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v32_1_sample_gap_isolation_detects_label_template_reference_mismatch"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v32_1_sample_gap_isolation_detects_label_template_reference_mismatch"
+    reason: "Archive-only closed_experiment_diagnostic: test_v32_1_sample_gap_isolation_detects_label_template_reference_mismatch is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v32_1_sample_gap_isolation_detects_label_template_reference_mismatch; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v32_1_sample_gap_isolation_detects_code_insensitive_generator_gap"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v32_1_sample_gap_isolation_detects_code_insensitive_generator_gap"
+    reason: "Archive-only closed_experiment_diagnostic: test_v32_1_sample_gap_isolation_detects_code_insensitive_generator_gap is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v32_1_sample_gap_isolation_detects_code_insensitive_generator_gap; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v32_1_sample_gap_isolation_detects_sample_target_code_collapse"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v32_1_sample_gap_isolation_detects_sample_target_code_collapse"
+    reason: "Archive-only closed_experiment_diagnostic: test_v32_1_sample_gap_isolation_detects_sample_target_code_collapse is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v32_1_sample_gap_isolation_detects_sample_target_code_collapse; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v33_code_conditioned_diagnostic_classifies_residual_inactive_and_rescue"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v33_code_conditioned_diagnostic_classifies_residual_inactive_and_rescue"
+    reason: "Archive-only closed_experiment_diagnostic: test_v33_code_conditioned_diagnostic_classifies_residual_inactive_and_rescue is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v33_code_conditioned_diagnostic_classifies_residual_inactive_and_rescue; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v33_code_conditioned_diagnostic_marks_unpaired_sample_reference_invalid"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v33_code_conditioned_diagnostic_marks_unpaired_sample_reference_invalid"
+    reason: "Archive-only closed_experiment_diagnostic: test_v33_code_conditioned_diagnostic_marks_unpaired_sample_reference_invalid is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v33_code_conditioned_diagnostic_marks_unpaired_sample_reference_invalid; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v33_2_real_ols_candidate_preview_requires_manual_review_for_unpaired_candidate"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: historical_manual_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v33_2_real_ols_candidate_preview_requires_manual_review_for_unpaired_candidate"
+    reason: "Archive-only historical_manual_diagnostic: test_v33_2_real_ols_candidate_preview_requires_manual_review_for_unpaired_candidate is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v33_2_real_ols_candidate_preview_requires_manual_review_for_unpaired_candidate; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v33_2_real_ols_candidate_preview_detects_sample_code_distribution_gap"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v33_2_real_ols_candidate_preview_detects_sample_code_distribution_gap"
+    reason: "Archive-only closed_experiment_diagnostic: test_v33_2_real_ols_candidate_preview_detects_sample_code_distribution_gap is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v33_2_real_ols_candidate_preview_detects_sample_code_distribution_gap; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v33_2_real_ols_candidate_preview_detects_camera_after_code_failure"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v33_2_real_ols_candidate_preview_detects_camera_after_code_failure"
+    reason: "Archive-only closed_experiment_diagnostic: test_v33_2_real_ols_candidate_preview_detects_camera_after_code_failure is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v33_2_real_ols_candidate_preview_detects_camera_after_code_failure; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v34_code_coupling_recovery_classifies_first_collapse_plane"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v34_code_coupling_recovery_classifies_first_collapse_plane"
+    reason: "Archive-only closed_experiment_diagnostic: test_v34_code_coupling_recovery_classifies_first_collapse_plane is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v34_code_coupling_recovery_classifies_first_collapse_plane; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v35_optical_code_carrier_isolation_classifies_oracle_and_scale_paths"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v35_optical_code_carrier_isolation_classifies_oracle_and_scale_paths"
+    reason: "Archive-only closed_experiment_diagnostic: test_v35_optical_code_carrier_isolation_classifies_oracle_and_scale_paths is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v35_optical_code_carrier_isolation_classifies_oracle_and_scale_paths; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v36_high_gain_code_coupled_training_classifies_training_outcomes"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v36_high_gain_code_coupled_training_classifies_training_outcomes"
+    reason: "Archive-only closed_experiment_diagnostic: test_v36_high_gain_code_coupled_training_classifies_training_outcomes is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v36_high_gain_code_coupled_training_classifies_training_outcomes; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v37_final_cmos_decoder_topology_classifies_plane_failures"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v37_final_cmos_decoder_topology_classifies_plane_failures"
+    reason: "Archive-only closed_experiment_diagnostic: test_v37_final_cmos_decoder_topology_classifies_plane_failures is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v37_final_cmos_decoder_topology_classifies_plane_failures; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v37_final_cmos_decoder_topology_allows_distinct_cmos_resolution"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v37_final_cmos_decoder_topology_allows_distinct_cmos_resolution"
+    reason: "Archive-only closed_experiment_diagnostic: test_v37_final_cmos_decoder_topology_allows_distinct_cmos_resolution is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v37_final_cmos_decoder_topology_allows_distinct_cmos_resolution; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v38_formal_cmos_manual_review_builds_cmos_only_package_and_template"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: historical_manual_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v38_formal_cmos_manual_review_builds_cmos_only_package_and_template"
+    reason: "Archive-only historical_manual_diagnostic: test_v38_formal_cmos_manual_review_builds_cmos_only_package_and_template is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v38_formal_cmos_manual_review_builds_cmos_only_package_and_template; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v38_formal_cmos_manual_review_marks_missing_cmos_plane_harness_invalid"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: historical_manual_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v38_formal_cmos_manual_review_marks_missing_cmos_plane_harness_invalid"
+    reason: "Archive-only historical_manual_diagnostic: test_v38_formal_cmos_manual_review_marks_missing_cmos_plane_harness_invalid is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v38_formal_cmos_manual_review_marks_missing_cmos_plane_harness_invalid; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v39_human_topology_false_positive_classifies_blob_origin"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: historical_manual_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v39_human_topology_false_positive_classifies_blob_origin"
+    reason: "Archive-only historical_manual_diagnostic: test_v39_human_topology_false_positive_classifies_blob_origin is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v39_human_topology_false_positive_classifies_blob_origin; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v39_human_topology_false_positive_detects_label_template_collapse_and_invalid_verdict"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: historical_manual_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v39_human_topology_false_positive_detects_label_template_collapse_and_invalid_verdict"
+    reason: "Archive-only historical_manual_diagnostic: test_v39_human_topology_false_positive_detects_label_template_collapse_and_invalid_verdict is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v39_human_topology_false_positive_detects_label_template_collapse_and_invalid_verdict; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v40_sample_code_diversity_target_representation_classifies_probe_states"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v40_sample_code_diversity_target_representation_classifies_probe_states"
+    reason: "Archive-only closed_experiment_diagnostic: test_v40_sample_code_diversity_target_representation_classifies_probe_states is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v40_sample_code_diversity_target_representation_classifies_probe_states; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v48_transparent_decoder_control_validates_inputs_and_maps_manual_verdicts"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v48_transparent_decoder_control_validates_inputs_and_maps_manual_verdicts"
+    reason: "Archive-only closed_experiment_diagnostic: test_v48_transparent_decoder_control_validates_inputs_and_maps_manual_verdicts is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v48_transparent_decoder_control_validates_inputs_and_maps_manual_verdicts; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v49_decoder_mask_component_attribution_validates_sources_and_maps_verdicts"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v49_decoder_mask_component_attribution_validates_sources_and_maps_verdicts"
+    reason: "Archive-only closed_experiment_diagnostic: test_v49_decoder_mask_component_attribution_validates_sources_and_maps_verdicts is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v49_decoder_mask_component_attribution_validates_sources_and_maps_verdicts; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v50_decoder_phase_layer_attribution_validates_sources_and_maps_verdicts"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v50_decoder_phase_layer_attribution_validates_sources_and_maps_verdicts"
+    reason: "Archive-only closed_experiment_diagnostic: test_v50_decoder_phase_layer_attribution_validates_sources_and_maps_verdicts is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v50_decoder_phase_layer_attribution_validates_sources_and_maps_verdicts; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v41_decoder_physical_topology_recovery_classifies_probe_states"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v41_decoder_physical_topology_recovery_classifies_probe_states"
+    reason: "Archive-only closed_experiment_diagnostic: test_v41_decoder_physical_topology_recovery_classifies_probe_states is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v41_decoder_physical_topology_recovery_classifies_probe_states; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v42_decoder_bypass_backpath_isolation_classifies_probe_states"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v42_decoder_bypass_backpath_isolation_classifies_probe_states"
+    reason: "Archive-only closed_experiment_diagnostic: test_v42_decoder_bypass_backpath_isolation_classifies_probe_states is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v42_decoder_bypass_backpath_isolation_classifies_probe_states; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v43_decoder_propagation_geometry_isolation_classifies_probe_states"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v43_decoder_propagation_geometry_isolation_classifies_probe_states"
+    reason: "Archive-only closed_experiment_diagnostic: test_v43_decoder_propagation_geometry_isolation_classifies_probe_states is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v43_decoder_propagation_geometry_isolation_classifies_probe_states; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v44_target_code_spatial_scaling_decoder_recovery_classifies_probe_states"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v44_target_code_spatial_scaling_decoder_recovery_classifies_probe_states"
+    reason: "Archive-only closed_experiment_diagnostic: test_v44_target_code_spatial_scaling_decoder_recovery_classifies_probe_states is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v44_target_code_spatial_scaling_decoder_recovery_classifies_probe_states; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v45_decoder_spacing_near_field_recovery_classifies_probe_states"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v45_decoder_spacing_near_field_recovery_classifies_probe_states"
+    reason: "Archive-only closed_experiment_diagnostic: test_v45_decoder_spacing_near_field_recovery_classifies_probe_states is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v45_decoder_spacing_near_field_recovery_classifies_probe_states; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v46_near_field_semantic_separation_classifies_probe_states"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v46_near_field_semantic_separation_classifies_probe_states"
+    reason: "Archive-only closed_experiment_diagnostic: test_v46_near_field_semantic_separation_classifies_probe_states is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v46_near_field_semantic_separation_classifies_probe_states; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v47_near_field_decoder_capacity_upper_bound_classifies_probe_states"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: closed_experiment_diagnostic
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v47_near_field_decoder_capacity_upper_bound_classifies_probe_states"
+    reason: "Archive-only closed_experiment_diagnostic: test_v47_near_field_decoder_capacity_upper_bound_classifies_probe_states is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v47_near_field_decoder_capacity_upper_bound_classifies_probe_states; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v30_configs_preserve_contract_and_launcher_is_diagnostic_only"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: historical_launcher
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v30_configs_preserve_contract_and_launcher_is_diagnostic_only"
+    reason: "Archive-only historical_launcher: test_v30_configs_preserve_contract_and_launcher_is_diagnostic_only is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v30_configs_preserve_contract_and_launcher_is_diagnostic_only; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v30_1_and_v31_configs_preserve_contract_and_sample_gate_policy"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: archive_config_contract
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v30_1_and_v31_configs_preserve_contract_and_sample_gate_policy"
+    reason: "Archive-only archive_config_contract: test_v30_1_and_v31_configs_preserve_contract_and_sample_gate_policy is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v30_1_and_v31_configs_preserve_contract_and_sample_gate_policy; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v31_1_config_and_launcher_contracts"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: historical_launcher
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v31_1_config_and_launcher_contracts"
+    reason: "Archive-only historical_launcher: test_v31_1_config_and_launcher_contracts is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v31_1_config_and_launcher_contracts; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v32_config_and_launcher_contracts"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: historical_launcher
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v32_config_and_launcher_contracts"
+    reason: "Archive-only historical_launcher: test_v32_config_and_launcher_contracts is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v32_config_and_launcher_contracts; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v33_config_and_launcher_contracts"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: historical_launcher
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v33_config_and_launcher_contracts"
+    reason: "Archive-only historical_launcher: test_v33_config_and_launcher_contracts is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v33_config_and_launcher_contracts; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v33_1_config_and_launcher_contracts"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: historical_launcher
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v33_1_config_and_launcher_contracts"
+    reason: "Archive-only historical_launcher: test_v33_1_config_and_launcher_contracts is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v33_1_config_and_launcher_contracts; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v33_2_launcher_contract"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: historical_launcher
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v33_2_launcher_contract"
+    reason: "Archive-only historical_launcher: test_v33_2_launcher_contract is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v33_2_launcher_contract; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v34_config_and_launcher_contracts"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: historical_launcher
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v34_config_and_launcher_contracts"
+    reason: "Archive-only historical_launcher: test_v34_config_and_launcher_contracts is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v34_config_and_launcher_contracts; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v35_config_and_launcher_contracts"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: historical_launcher
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v35_config_and_launcher_contracts"
+    reason: "Archive-only historical_launcher: test_v35_config_and_launcher_contracts is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v35_config_and_launcher_contracts; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v36_config_and_launcher_contracts"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: historical_launcher
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v36_config_and_launcher_contracts"
+    reason: "Archive-only historical_launcher: test_v36_config_and_launcher_contracts is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v36_config_and_launcher_contracts; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v37_launcher_contracts"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: historical_launcher
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v37_launcher_contracts"
+    reason: "Archive-only historical_launcher: test_v37_launcher_contracts is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v37_launcher_contracts; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v38_launcher_contract"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: historical_launcher
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v38_launcher_contract"
+    reason: "Archive-only historical_launcher: test_v38_launcher_contract is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v38_launcher_contract; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v39_launcher_contract"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: historical_launcher
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v39_launcher_contract"
+    reason: "Archive-only historical_launcher: test_v39_launcher_contract is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v39_launcher_contract; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v40_config_and_launcher_contracts"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: historical_launcher
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v40_config_and_launcher_contracts"
+    reason: "Archive-only historical_launcher: test_v40_config_and_launcher_contracts is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v40_config_and_launcher_contracts; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v41_config_and_launcher_contracts"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: historical_launcher
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v41_config_and_launcher_contracts"
+    reason: "Archive-only historical_launcher: test_v41_config_and_launcher_contracts is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v41_config_and_launcher_contracts; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v42_config_and_launcher_contracts"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: historical_launcher
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v42_config_and_launcher_contracts"
+    reason: "Archive-only historical_launcher: test_v42_config_and_launcher_contracts is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v42_config_and_launcher_contracts; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v43_config_and_launcher_contracts"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: historical_launcher
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v43_config_and_launcher_contracts"
+    reason: "Archive-only historical_launcher: test_v43_config_and_launcher_contracts is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v43_config_and_launcher_contracts; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v44_config_and_launcher_contracts"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: historical_launcher
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v44_config_and_launcher_contracts"
+    reason: "Archive-only historical_launcher: test_v44_config_and_launcher_contracts is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v44_config_and_launcher_contracts; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v45_config_and_launcher_contracts"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: historical_launcher
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v45_config_and_launcher_contracts"
+    reason: "Archive-only historical_launcher: test_v45_config_and_launcher_contracts is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v45_config_and_launcher_contracts; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v46_config_and_launcher_contracts"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: historical_launcher
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v46_config_and_launcher_contracts"
+    reason: "Archive-only historical_launcher: test_v46_config_and_launcher_contracts is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v46_config_and_launcher_contracts; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v47_config_and_launcher_contracts"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: historical_launcher
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v47_config_and_launcher_contracts"
+    reason: "Archive-only historical_launcher: test_v47_config_and_launcher_contracts is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v47_config_and_launcher_contracts; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v48_config_and_launcher_contracts"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: historical_launcher
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v48_config_and_launcher_contracts"
+    reason: "Archive-only historical_launcher: test_v48_config_and_launcher_contracts is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v48_config_and_launcher_contracts; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v49_decoder_mask_component_config_and_launcher_contracts"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: historical_launcher
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v49_decoder_mask_component_config_and_launcher_contracts"
+    reason: "Archive-only historical_launcher: test_v49_decoder_mask_component_config_and_launcher_contracts is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v49_decoder_mask_component_config_and_launcher_contracts; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v50_decoder_phase_layer_config_and_launcher_contracts"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: historical_launcher
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v50_decoder_phase_layer_config_and_launcher_contracts"
+    reason: "Archive-only historical_launcher: test_v50_decoder_phase_layer_config_and_launcher_contracts is preserved at experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_v50_decoder_phase_layer_config_and_launcher_contracts; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_validate_stage_requirements_enforces_sample_checkpoints"
+    replacement_nodeids: ["tests/application/test_train_stages.py::TrainScriptStepTests::test_validate_stage_requirements_requires_stage_inputs"]
+    disposition: behavior_replaced
+    reason_code: current_behavior_preserved
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_train_stages.py::TrainScriptStepTests::test_validate_stage_requirements_enforces_sample_checkpoints"
+    reason: "Current behavior is covered by tests/application/test_train_stages.py::TrainScriptStepTests::test_validate_stage_requirements_requires_stage_inputs; the archived method remains only as immutable historical provenance."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_student_config.py::OneShotConfigTests::test_v50_decoder_diagnostic_phase_layer_mask_config_validation"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: archive_config_contract
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_student_config.py::OneShotConfigTests::test_v50_decoder_diagnostic_phase_layer_mask_config_validation"
+    reason: "Archive-only archive_config_contract: test_v50_decoder_diagnostic_phase_layer_mask_config_validation is preserved at experiments/archive/test_governance_v1/tests/test_student_config.py::OneShotConfigTests::test_v50_decoder_diagnostic_phase_layer_mask_config_validation; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_student_config.py::OneShotConfigTests::test_v18_front_topology_probe_configs_preserve_twophoton_contract"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: archive_config_contract
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_student_config.py::OneShotConfigTests::test_v18_front_topology_probe_configs_preserve_twophoton_contract"
+    reason: "Archive-only archive_config_contract: test_v18_front_topology_probe_configs_preserve_twophoton_contract is preserved at experiments/archive/test_governance_v1/tests/test_student_config.py::OneShotConfigTests::test_v18_front_topology_probe_configs_preserve_twophoton_contract; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_student_config.py::OneShotConfigTests::test_v19_front_imaging_probe_configs_preserve_twophoton_contract"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: archive_config_contract
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_student_config.py::OneShotConfigTests::test_v19_front_imaging_probe_configs_preserve_twophoton_contract"
+    reason: "Archive-only archive_config_contract: test_v19_front_imaging_probe_configs_preserve_twophoton_contract is preserved at experiments/archive/test_governance_v1/tests/test_student_config.py::OneShotConfigTests::test_v19_front_imaging_probe_configs_preserve_twophoton_contract; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_student_config.py::OneShotConfigTests::test_v20_downstream_isolation_probe_configs_preserve_twophoton_contract"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: archive_config_contract
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_student_config.py::OneShotConfigTests::test_v20_downstream_isolation_probe_configs_preserve_twophoton_contract"
+    reason: "Archive-only archive_config_contract: test_v20_downstream_isolation_probe_configs_preserve_twophoton_contract is preserved at experiments/archive/test_governance_v1/tests/test_student_config.py::OneShotConfigTests::test_v20_downstream_isolation_probe_configs_preserve_twophoton_contract; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_student_config.py::OneShotConfigTests::test_v20_downstream_launcher_ignores_incomplete_reused_runs"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: historical_launcher
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_student_config.py::OneShotConfigTests::test_v20_downstream_launcher_ignores_incomplete_reused_runs"
+    reason: "Archive-only historical_launcher: test_v20_downstream_launcher_ignores_incomplete_reused_runs is preserved at experiments/archive/test_governance_v1/tests/test_student_config.py::OneShotConfigTests::test_v20_downstream_launcher_ignores_incomplete_reused_runs; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_student_config.py::OneShotConfigTests::test_v21_physical_cmos_probe_configs_preserve_twophoton_contract"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: archive_config_contract
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_student_config.py::OneShotConfigTests::test_v21_physical_cmos_probe_configs_preserve_twophoton_contract"
+    reason: "Archive-only archive_config_contract: test_v21_physical_cmos_probe_configs_preserve_twophoton_contract is preserved at experiments/archive/test_governance_v1/tests/test_student_config.py::OneShotConfigTests::test_v21_physical_cmos_probe_configs_preserve_twophoton_contract; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_student_config.py::OneShotConfigTests::test_v22_physical_cmos_semantic_configs_preserve_contract_and_objectives"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: archive_config_contract
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_student_config.py::OneShotConfigTests::test_v22_physical_cmos_semantic_configs_preserve_contract_and_objectives"
+    reason: "Archive-only archive_config_contract: test_v22_physical_cmos_semantic_configs_preserve_contract_and_objectives is preserved at experiments/archive/test_governance_v1/tests/test_student_config.py::OneShotConfigTests::test_v22_physical_cmos_semantic_configs_preserve_contract_and_objectives; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_student_config.py::OneShotConfigTests::test_v23_decoder_chip_semantic_configs_preserve_contract_and_objectives"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: archive_config_contract
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_student_config.py::OneShotConfigTests::test_v23_decoder_chip_semantic_configs_preserve_contract_and_objectives"
+    reason: "Archive-only archive_config_contract: test_v23_decoder_chip_semantic_configs_preserve_contract_and_objectives is preserved at experiments/archive/test_governance_v1/tests/test_student_config.py::OneShotConfigTests::test_v23_decoder_chip_semantic_configs_preserve_contract_and_objectives; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_student_config.py::OneShotConfigTests::test_v24_ols_decoder_expressivity_configs_preserve_contract_and_diagnostics"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: archive_config_contract
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_student_config.py::OneShotConfigTests::test_v24_ols_decoder_expressivity_configs_preserve_contract_and_diagnostics"
+    reason: "Archive-only archive_config_contract: test_v24_ols_decoder_expressivity_configs_preserve_contract_and_diagnostics is preserved at experiments/archive/test_governance_v1/tests/test_student_config.py::OneShotConfigTests::test_v24_ols_decoder_expressivity_configs_preserve_contract_and_diagnostics; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_student_config.py::OneShotConfigTests::test_v25_decoder_capacity_configs_preserve_readout_and_mark_upper_bounds"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: archive_config_contract
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_student_config.py::OneShotConfigTests::test_v25_decoder_capacity_configs_preserve_readout_and_mark_upper_bounds"
+    reason: "Archive-only archive_config_contract: test_v25_decoder_capacity_configs_preserve_readout_and_mark_upper_bounds is preserved at experiments/archive/test_governance_v1/tests/test_student_config.py::OneShotConfigTests::test_v25_decoder_capacity_configs_preserve_readout_and_mark_upper_bounds; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_student_config.py::OneShotConfigTests::test_v26_ols_decodability_launcher_is_offline_diagnostic_only"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: historical_launcher
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_student_config.py::OneShotConfigTests::test_v26_ols_decodability_launcher_is_offline_diagnostic_only"
+    reason: "Archive-only historical_launcher: test_v26_ols_decodability_launcher_is_offline_diagnostic_only is preserved at experiments/archive/test_governance_v1/tests/test_student_config.py::OneShotConfigTests::test_v26_ols_decodability_launcher_is_offline_diagnostic_only; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_student_config.py::OneShotConfigTests::test_v27_decoder_synthesis_configs_preserve_contract_and_topology_bridge"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: archive_config_contract
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_student_config.py::OneShotConfigTests::test_v27_decoder_synthesis_configs_preserve_contract_and_topology_bridge"
+    reason: "Archive-only archive_config_contract: test_v27_decoder_synthesis_configs_preserve_contract_and_topology_bridge is preserved at experiments/archive/test_governance_v1/tests/test_student_config.py::OneShotConfigTests::test_v27_decoder_synthesis_configs_preserve_contract_and_topology_bridge; it does not authorize a current acceptance invariant."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_student_config.py::OneShotConfigTests::test_v9_8_full_relay_short_train_config_requires_generator_warm_start"
+    replacement_nodeids: ["tests/student/test_student_config_contracts.py::TestStudentConfigContracts::test_frozen_generator_requires_explicit_warm_start"]
+    disposition: behavior_replaced
+    reason_code: current_behavior_preserved
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_student_config.py::OneShotConfigTests::test_v9_8_full_relay_short_train_config_requires_generator_warm_start"
+    reason: "Current behavior is covered by tests/student/test_student_config_contracts.py::TestStudentConfigContracts::test_frozen_generator_requires_explicit_warm_start; the archived method remains only as immutable historical provenance."
+  - nodeid: "experiments/archive/test_governance_v1/tests/test_student_config.py::OneShotConfigTests::test_v9_10_label_template_inverse_audit_config_contract"
+    replacement_nodeids: []
+    disposition: archive_only
+    reason_code: archive_config_contract
+    historical_reference: "experiments/archive/test_governance_v1/tests/test_student_config.py::OneShotConfigTests::test_v9_10_label_template_inverse_audit_config_contract"
+    reason: "Archive-only archive_config_contract: test_v9_10_label_template_inverse_audit_config_contract is preserved at experiments/archive/test_governance_v1/tests/test_student_config.py::OneShotConfigTests::test_v9_10_label_template_inverse_audit_config_contract; it does not authorize a current acceptance invariant."

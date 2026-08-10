@@ -20,7 +20,7 @@ READABLE_SPLIT_ROOT = ROOT / "outputs" / "20260514_unversioned" / "runs" / (
 ) / "artifacts"
 
 
-def test_v53_train_and_eval_configs_share_physical_contract_and_core_objective():
+def test_train_and_eval_configs_share_physical_contract_and_core_objective():
     train = load_training_config(TRAIN_CONFIG)
     evaluation = load_training_config(EVAL_CONFIG)
     assert train.one_shot.physical_forward_contract is False
@@ -47,7 +47,7 @@ def test_v53_train_and_eval_configs_share_physical_contract_and_core_objective()
         assert float(getattr(train.one_shot, name)) == 0.0
 
 
-def test_v53_rejects_interventions_and_non_identity_ols():
+def test_rejects_interventions_and_non_identity_ols():
     config = load_training_config(TRAIN_CONFIG)
     config.one_shot.physical_forward_contract = True
     config.physics.physical_forward_contract = True

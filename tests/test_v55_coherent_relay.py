@@ -9,7 +9,7 @@ from ldm_project.optics import FrontOpticalPath, coherent_imaging_4f_field
 CONFIG = "configs/v1/diagnostic/validate_v55_coherent_relay.yaml"
 
 
-def test_v55_contract_and_abcd_geometry():
+def test_coherent_relay_contract_and_abcd_geometry():
     cfg = load_training_config(CONFIG)
     validate_physical_forward_contract(cfg, cfg.physics)
     macro = cfg.physics.macro_optics
