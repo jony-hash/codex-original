@@ -8,7 +8,7 @@ from .runtime import (
     SEMANTIC_RECOVERY_STEPS, TRAINING_SCHEDULE_CONTRACT, V2Config,
     _carrier_logits, _context, _load_bundle, _load_bundle_with_payload, _new_run, _random_codes,
     _require_conditional, _require_current_acceptance, _require_identity, _split,
-    _system_signature, _write_evidence, asdict, balanced_batches,
+    _system_signature, _validate_conditional_lineage, _write_evidence, asdict, balanced_batches,
     canonical_sha256, conditional_loss, evaluator_checkpoint_hash, file_sha256,
     json, load_frozen_evaluator, load_local_mnist, require_evidence_action,
     require_input_hashes,
@@ -82,16 +82,9 @@ def conditional_train(args, config: V2Config) -> int:
     _require_conditional(config)
     _require_current_acceptance(config)
     if config.architecture == IDENTITY_ARCHITECTURE:
-        initialization_checkpoint_hash = file_sha256(args.initialization_checkpoint)
         images, all_labels = load_local_mnist(args.dataset_root, train=True)
         train_images, train_labels, _, _, split = _split(
             images, all_labels, args.dataset_root
-        )
-        expected = _context(
-            config,
-            evaluator_hash=evaluator_checkpoint_hash(args.evaluator_checkpoint),
-            split_hash=split.manifest_hash,
-            checkpoint_hash=initialization_checkpoint_hash,
         )
         injection = EvidenceRecordV2.from_dict(
             json.loads(Path(args.injection_evidence).read_text(encoding="utf-8"))
@@ -103,6 +96,17 @@ def conditional_train(args, config: V2Config) -> int:
             json.loads(
                 Path(args.semantic_recovery_evidence).read_text(encoding="utf-8")
             )
+        )
+        initialization_checkpoint_hash = injection.input_hashes.get(
+            "initialization_checkpoint"
+        )
+        if not isinstance(initialization_checkpoint_hash, str):
+            raise ValueError("injection evidence lacks initialization checkpoint binding")
+        expected = _context(
+            config,
+            evaluator_hash=evaluator_checkpoint_hash(args.evaluator_checkpoint),
+            split_hash=split.manifest_hash,
+            checkpoint_hash=initialization_checkpoint_hash,
         )
         require_evidence_action(
             injection,
@@ -145,6 +149,12 @@ def conditional_train(args, config: V2Config) -> int:
             evaluator_hash=evaluator_checkpoint_hash(args.evaluator_checkpoint),
             split_hash=split.manifest_hash,
             checkpoint_sha256=initialization_checkpoint_hash,
+        )
+        _validate_conditional_lineage(
+            config,
+            init_manifest,
+            checkpoint_hash=initialization_checkpoint_hash,
+            evidence=injection,
         )
         require_input_hashes(
             injection,
@@ -376,6 +386,7 @@ def conditional_training_completion(args, config: V2Config) -> int:
             "metadata_only_correction": True,
         },
     )
+    corrected_hash = file_sha256(corrected)
     checks = (
         GateResult(
             "balanced_steps_per_epoch",
@@ -405,11 +416,11 @@ def conditional_training_completion(args, config: V2Config) -> int:
             config,
             evaluator_hash=evaluator_hash,
             split_hash=split.manifest_hash,
-            checkpoint_hash=file_sha256(corrected),
+            checkpoint_hash=corrected_hash,
         ),
         {
             "source_checkpoint": checkpoint_hash,
-            "checkpoint": file_sha256(corrected),
+            "checkpoint": corrected_hash,
             "schedule_contract": BALANCED_TRAINING_SCHEDULE_CONTRACT,
         },
         checks,

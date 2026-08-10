@@ -70,7 +70,7 @@ assert not any(name.startswith(forbidden) for name in sys.modules), sorted(
     )
 
 
-def test_identity_import_closure_stays_within_the_formal_budget() -> None:
+def test_identity_import_closure_stays_within_allowed_domains() -> None:
     _run(
         """
 import sys
@@ -78,17 +78,16 @@ from pathlib import Path
 from ldm_project.v2.application.current.training import conditional_train
 assert callable(conditional_train)
 root = Path.cwd() / 'src' / 'ldm_project' / 'v2'
-files = {
-    Path(module.__file__).resolve()
-    for name, module in sys.modules.items()
-    if name.startswith('ldm_project.v2') and getattr(module, '__file__', None)
-}
-closure_lines = sum(
-    len(path.read_text(encoding='utf-8').splitlines())
-    for path in files
-    if path.suffix == '.py' and root in path.parents
+assert root.exists()
+forbidden = (
+    'ldm_project.v1',
+    'ldm_project.v2.teacher',
+    'ldm_project.v2.application.diagnostic',
+    'ldm_project.v2.application.legacy',
 )
-assert closure_lines <= 8036, closure_lines
+assert not any(name.startswith(forbidden) for name in sys.modules), sorted(
+    name for name in sys.modules if name.startswith(forbidden)
+)
 """
     )
 

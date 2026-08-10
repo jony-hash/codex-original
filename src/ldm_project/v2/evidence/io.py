@@ -74,11 +74,13 @@ class ArtifactRefV2:
 
     def validate(self) -> None:
         target = Path(self.path)
-        if not target.is_file() or file_sha256(target) != self.sha256:
-            raise ValueError(f"artifact content no longer matches {self.role}")
         if self.shape is not None or self.dtype is not None:
             try:
                 value = safe_torch_load(target, expected_sha256=self.sha256)
+            except ValueError as exc:
+                if "content no longer matches" in str(exc):
+                    raise ValueError(f"artifact content no longer matches {self.role}") from exc
+                raise ValueError(f"tensor artifact {self.role} is not safely loadable") from exc
             except Exception as exc:
                 raise ValueError(f"tensor artifact {self.role} is not safely loadable") from exc
             if not torch.is_tensor(value):
@@ -87,6 +89,9 @@ class ArtifactRefV2:
                 raise ValueError(f"tensor artifact {self.role} shape changed")
             if self.dtype is not None and str(value.dtype) != self.dtype:
                 raise ValueError(f"tensor artifact {self.role} dtype changed")
+            return
+        if not target.is_file() or file_sha256(target) != self.sha256:
+            raise ValueError(f"artifact content no longer matches {self.role}")
 
 
 def tensor_artifact_ref(path: str | Path, *, role: str, git_commit: str | None = None) -> ArtifactRefV2:

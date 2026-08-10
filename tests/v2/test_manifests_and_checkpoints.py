@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import subprocess
+from types import SimpleNamespace
 
 import pytest
 import torch
@@ -18,6 +19,7 @@ from ldm_project.v2.evidence import (
     tensor_sha256,
 )
 from ldm_project.v2.application.runs import _worktree_fingerprint
+from ldm_project.v2.config import load_config
 from ldm_project.v2.student.clean_targets import CleanTargetManifestV2
 from ldm_project.v2.student.checkpoints import CheckpointManifestV2, load_exact_checkpoint, save_exact_checkpoint, state_content_hash, state_signature
 from ldm_project.v2.teacher import build_teacher_pair_manifest, build_teacher_target_manifest
@@ -115,6 +117,36 @@ def test_exact_checkpoint_deserializes_once_after_one_digest_check(
     assert calls == 1
 
 
+def test_tensor_artifact_validation_hashes_and_loads_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "tensor.pt"
+    torch.save(torch.ones(2), path)
+    artifact = tensor_artifact_ref(path, role="tensor")
+    import ldm_project.v2.evidence.io as evidence_io
+
+    original_hash = evidence_io.file_sha256
+    original_load = torch.load
+    hash_calls = 0
+    load_calls = 0
+
+    def counted_hash(value: object) -> str:
+        nonlocal hash_calls
+        hash_calls += 1
+        return original_hash(value)
+
+    def counted_load(*args: object, **kwargs: object) -> object:
+        nonlocal load_calls
+        load_calls += 1
+        return original_load(*args, **kwargs)
+
+    monkeypatch.setattr(evidence_io, "file_sha256", counted_hash)
+    monkeypatch.setattr(torch, "load", counted_load)
+    artifact.validate()
+    assert hash_calls == 1
+    assert load_calls == 1
+
+
 def test_evidence_input_hash_binding_rejects_tampering() -> None:
     record = EvidenceRecordV2(
         2,
@@ -138,6 +170,70 @@ def test_evidence_input_hash_binding_rejects_tampering() -> None:
             record,
             {"initialization_state_hash": "c" * 64},
         )
+
+
+def test_current_lineage_rejects_checkpoint_and_initialization_hash_tampering() -> None:
+    from ldm_project.v2.application.current.runtime import (
+        _context,
+        _system_signature,
+        _validate_conditional_lineage,
+    )
+
+    config = load_config(
+        "configs/v2/current/formal_identity_logit_amplitude_finite_crop_identity.yaml"
+    )
+    manifest = SimpleNamespace(
+        architecture_kind="conditional_identity_logit_amplitude_v2",
+        system_signature=_system_signature(config),
+        config_hash=canonical_config_hash(config),
+        initialization_seed=config.conditional_generation.initialization_seed,
+        initialization_state_hash="b" * 64,
+        evaluator_checkpoint_hash="e" * 64,
+        dataset_split_manifest_hash="s" * 64,
+    )
+    record = EvidenceRecordV2(
+        2,
+        "conditional_training",
+        "acceptance",
+        "passed",
+        "commit",
+        None,
+        manifest.config_hash,
+        _context(
+            config,
+            evaluator_hash=manifest.evaluator_checkpoint_hash,
+            split_hash=manifest.dataset_split_manifest_hash,
+            checkpoint_hash="c" * 64,
+        ),
+        {
+            "checkpoint": "c" * 64,
+            "initialization_checkpoint": "i" * 64,
+            "initialization_state_hash": "b" * 64,
+        },
+        (GateResult("lineage", True, {}),),
+        (),
+    )
+    _validate_conditional_lineage(
+        config, manifest, checkpoint_hash="c" * 64, evidence=record
+    )
+    tampered = EvidenceRecordV2.from_dict(
+        record.to_dict()
+        | {"input_hashes": {**record.input_hashes, "initialization_state_hash": "x" * 64}}
+    )
+    with pytest.raises(ValueError, match="initialization_state_hash"):
+        _validate_conditional_lineage(
+            config, manifest, checkpoint_hash="c" * 64, evidence=tampered
+        )
+    with pytest.raises(ValueError, match="checkpoint"):
+        _validate_conditional_lineage(
+            config, manifest, checkpoint_hash="d" * 64, evidence=record
+        )
+
+
+def canonical_config_hash(config: object) -> str:
+    from ldm_project.v2.evidence import canonical_sha256
+
+    return canonical_sha256(config.model_dump(mode="json"))
 
 
 def _git(repo: Path, *args: str) -> None:

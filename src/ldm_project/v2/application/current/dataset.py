@@ -4,24 +4,49 @@ from __future__ import annotations
 from .runtime import (
     EvidenceRecordV2, FrozenMNISTEvaluator, GateResult, Path, V2Config,
     _context, _load_bundle, _new_run, _random_codes, _require_conditional,
+    _validate_conditional_lineage,
     _write_evidence, atomic_torch_save, atomic_write_json, canonical_sha256,
     file_sha256, fixed_exposure_view, load_candidate_dataset,
     load_frozen_evaluator, load_local_mnist, memorization_statistics,
     paired_bootstrap_lower_bound, raw_from_generator_batched, tensor_sha256,
-    torch,
+    torch, require_evidence_action, require_input_hashes,
 )
 from .admission import _passed_evidence
 
 def export_conditional_dataset(args, config: V2Config) -> int:
     _require_conditional(config)
-    checkpoint_hash = file_sha256(args.checkpoint)
     admission = _passed_evidence(
         args.acceptance_evidence, kind="conditional_generation_admission"
+    )
+    checkpoint_hash = admission.input_hashes.get("checkpoint")
+    if not isinstance(checkpoint_hash, str):
+        raise ValueError("generation admission lacks checkpoint binding")
+    require_evidence_action(
+        admission,
+        kind="conditional_generation_admission",
+        action="export",
+        expected_context=_context(
+            config,
+            evaluator_hash=admission.context.evaluator_checkpoint_hash,
+            split_hash=admission.context.dataset_split_manifest_hash,
+            checkpoint_hash=checkpoint_hash,
+        ),
     )
     device = torch.device(config.run.device)
     bundle, manifest = _load_bundle(
         config, args.checkpoint, device=device, checkpoint_sha256=checkpoint_hash
     )
+    _validate_conditional_lineage(
+        config,
+        manifest,
+        checkpoint_hash=checkpoint_hash,
+        evidence=admission,
+    )
+    initialization_checkpoint_hash = admission.input_hashes.get(
+        "initialization_checkpoint"
+    )
+    if not isinstance(initialization_checkpoint_hash, str):
+        raise ValueError("generation admission lacks initialization checkpoint binding")
     settings = config.conditional_generation
     assert settings is not None
     count = args.samples_per_label or settings.samples_per_label
@@ -82,6 +107,8 @@ def export_conditional_dataset(args, config: V2Config) -> int:
         "checkpoint_hash": checkpoint_hash,
         "evaluator_checkpoint_hash": manifest.evaluator_checkpoint_hash,
         "dataset_split_manifest_hash": manifest.dataset_split_manifest_hash,
+        "initialization_checkpoint_hash": initialization_checkpoint_hash,
+        "initialization_state_hash": manifest.initialization_state_hash,
         "exposure_scale": settings.fixed_exposure_scale,
         "samples_per_label": count,
         "seed": args.seed,
@@ -136,6 +163,18 @@ def audit_memorization(args, config: V2Config) -> int:
         raise ValueError(
             "candidate evidence does not match the candidate dataset manifest"
         )
+    require_evidence_action(
+        candidate,
+        kind="conditional_dataset_candidate",
+        action="audit_memorization",
+        expected_context=_context(
+            config,
+            evaluator_hash=candidate.context.evaluator_checkpoint_hash,
+            split_hash=candidate.context.dataset_split_manifest_hash,
+            checkpoint_hash=candidate.context.checkpoint_hash,
+            candidate_manifest_hash=manifest_hash,
+        ),
+    )
     device = torch.device(config.run.device)
     evaluator, _ = load_frozen_evaluator(args.evaluator_checkpoint, device=device)
     real_images, real_labels = load_local_mnist(args.dataset_root, train=True)
@@ -243,6 +282,18 @@ def evaluate_utility(args, config: V2Config) -> int:
         raise ValueError(
             "candidate evidence does not match the candidate dataset manifest"
         )
+    require_evidence_action(
+        candidate,
+        kind="conditional_dataset_candidate",
+        action="evaluate_utility",
+        expected_context=_context(
+            config,
+            evaluator_hash=candidate.context.evaluator_checkpoint_hash,
+            split_hash=candidate.context.dataset_split_manifest_hash,
+            checkpoint_hash=candidate.context.checkpoint_hash,
+            candidate_manifest_hash=manifest_hash,
+        ),
+    )
     device = torch.device(config.run.device)
     train_images, train_labels = load_local_mnist(args.dataset_root, train=True)
     test_images, test_labels = load_local_mnist(args.dataset_root, train=False)
@@ -358,6 +409,18 @@ def admit_dataset(args, config: V2Config) -> int:
     utility = _passed_evidence(args.utility_evidence, kind="conditional_utility")
     payload, _, _ = load_candidate_dataset(args.candidate_dataset)
     manifest_hash = canonical_sha256(payload)
+    lineage_context = _context(
+        config,
+        evaluator_hash=payload["evaluator_checkpoint_hash"],
+        split_hash=payload["dataset_split_manifest_hash"],
+        checkpoint_hash=payload["checkpoint_hash"],
+    )
+    require_evidence_action(
+        admission,
+        kind="conditional_generation_admission",
+        action="export",
+        expected_context=lineage_context,
+    )
     expected = _context(
         config,
         evaluator_hash=payload["evaluator_checkpoint_hash"],
@@ -365,8 +428,18 @@ def admit_dataset(args, config: V2Config) -> int:
         checkpoint_hash=payload["checkpoint_hash"],
         candidate_manifest_hash=manifest_hash,
     )
-    for record in (memorization, utility):
-        record.context.assert_matches(expected)
+    require_evidence_action(
+        memorization,
+        kind="conditional_memorization_audit",
+        action="admit_dataset",
+        expected_context=expected,
+    )
+    require_evidence_action(
+        utility,
+        kind="conditional_utility",
+        action="admit_dataset",
+        expected_context=expected,
+    )
     if (
         admission.context.system_signature != expected.system_signature
         or admission.context.config_hash != expected.config_hash
@@ -375,6 +448,26 @@ def admit_dataset(args, config: V2Config) -> int:
         raise ValueError(
             "generation admission context does not match candidate dataset"
         )
+    initialization_checkpoint_hash = payload.get("initialization_checkpoint_hash")
+    initialization_state_hash = payload.get("initialization_state_hash")
+    checkpoint_hash = payload.get("checkpoint_hash")
+    if any(
+        not isinstance(value, str) or len(value) != 64
+        for value in (
+            checkpoint_hash,
+            initialization_checkpoint_hash,
+            initialization_state_hash,
+        )
+    ):
+        raise ValueError("candidate manifest lacks complete checkpoint lineage")
+    require_input_hashes(
+        admission,
+        {
+            "checkpoint": checkpoint_hash,
+            "initialization_checkpoint": initialization_checkpoint_hash,
+            "initialization_state_hash": initialization_state_hash,
+        },
+    )
     accepted = {
         **payload,
         "status": "accepted",

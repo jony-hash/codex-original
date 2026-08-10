@@ -202,6 +202,46 @@ def _validate_initialization_payload(
         raise ValueError("initialization checkpoint seed is inconsistent")
 
 
+def _validate_conditional_lineage(
+    config: V2Config,
+    manifest: ConditionalCheckpointManifestV2,
+    *,
+    checkpoint_hash: str | None = None,
+    evidence: EvidenceRecordV2 | None = None,
+) -> None:
+    """Validate the current seed/checkpoint/evidence lineage before work starts."""
+    settings = config.conditional_generation
+    if settings is None or manifest.architecture_kind != IDENTITY_ARCHITECTURE:
+        raise ValueError("current lineage requires the identity architecture")
+    if manifest.system_signature != _system_signature(config):
+        raise ValueError("current lineage system signature mismatch")
+    if manifest.config_hash != canonical_sha256(config.model_dump(mode="json")):
+        raise ValueError("current lineage configuration hash mismatch")
+    if manifest.initialization_seed != settings.initialization_seed:
+        raise ValueError("current lineage initialization seed mismatch")
+    if not manifest.initialization_state_hash:
+        raise ValueError("current lineage lacks initialization state hash")
+    if checkpoint_hash is None or evidence is None:
+        return
+    expected = _context(
+        config,
+        evaluator_hash=manifest.evaluator_checkpoint_hash,
+        split_hash=manifest.dataset_split_manifest_hash,
+        checkpoint_hash=checkpoint_hash,
+    )
+    evidence.context.assert_matches(expected)
+    require_input_hashes(
+        evidence,
+        {
+            "checkpoint": checkpoint_hash,
+            "initialization_state_hash": manifest.initialization_state_hash,
+        },
+    )
+    initialization_checkpoint = evidence.input_hashes.get("initialization_checkpoint")
+    if not isinstance(initialization_checkpoint, str) or len(initialization_checkpoint) != 64:
+        raise ValueError("current evidence lacks initialization checkpoint binding")
+
+
 def _load_bundle(
     config: V2Config,
     checkpoint: str,
@@ -243,22 +283,13 @@ def _load_bundle_with_payload(
     if not isinstance(payload, dict) or not isinstance(payload.get("manifest"), dict):
         raise ValueError("invalid conditional checkpoint")
     manifest = ConditionalCheckpointManifestV2(**payload["manifest"])
-    if (
-        manifest.architecture_kind != IDENTITY_ARCHITECTURE
-        or manifest.system_signature != _system_signature(config)
-        or manifest.config_hash != canonical_sha256(config.model_dump(mode="json"))
-    ):
+    if manifest.system_signature != _system_signature(config):
         raise ValueError("conditional checkpoint belongs to a different architecture/system/config")
+    _validate_conditional_lineage(config, manifest)
     if evaluator_hash is not None and manifest.evaluator_checkpoint_hash != evaluator_hash:
         raise ValueError("conditional checkpoint uses another evaluator")
     if split_hash is not None and manifest.dataset_split_manifest_hash != split_hash:
         raise ValueError("conditional checkpoint uses another MNIST split")
-    if (
-        config.conditional_generation is None
-        or manifest.initialization_seed
-        != config.conditional_generation.initialization_seed
-    ):
-        raise ValueError("identity checkpoint initialization seed mismatch")
     valid_schedules = {TRAINING_SCHEDULE_CONTRACT}
     if allow_balanced_schedule:
         valid_schedules.add(BALANCED_TRAINING_SCHEDULE_CONTRACT)

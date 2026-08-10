@@ -4,13 +4,13 @@ from __future__ import annotations
 from .runtime import (
     EvidenceRecordV2, GateResult, Path, V2Config, _context, _load_bundle,
     _new_run, _random_codes, _require_conditional, _require_current_acceptance,
-    _split, _write_evidence, atomic_torch_save, balanced_batches,
+    _split, _validate_conditional_lineage, _write_evidence, atomic_torch_save, balanced_batches,
     conditional_coverage_ratio, evaluator_checkpoint_hash, file_sha256,
     fixed_exposure_view, json, load_conditional_manual_review,
     load_frozen_evaluator, load_local_mnist, raw_from_generator_batched,
     relative_diversity_ratios, tensor_sha256, torch,
     safe_torch_load,
-    require_input_hashes,
+    require_evidence_action, require_input_hashes,
     write_conditional_review_artifacts,
 )
 from .admission import _code_fraction, _passed_evidence
@@ -66,7 +66,20 @@ def conditional_evaluate(args, config: V2Config) -> int:
     )
     evaluator, _ = load_frozen_evaluator(args.evaluator_checkpoint, device=device)
     evaluator_hash = evaluator_checkpoint_hash(args.evaluator_checkpoint)
-    checkpoint_hash = file_sha256(args.checkpoint)
+    checkpoint_hash = training_record.input_hashes.get("checkpoint")
+    if not isinstance(checkpoint_hash, str):
+        raise ValueError("training evidence lacks checkpoint binding")
+    require_evidence_action(
+        training_record,
+        kind="conditional_training",
+        action="evaluate",
+        expected_context=_context(
+            config,
+            evaluator_hash=evaluator_hash,
+            split_hash=split.manifest_hash,
+            checkpoint_hash=checkpoint_hash,
+        ),
+    )
     bundle, manifest = _load_bundle(
         config,
         args.checkpoint,
@@ -76,8 +89,12 @@ def conditional_evaluate(args, config: V2Config) -> int:
         allow_balanced_schedule=False,
         checkpoint_sha256=checkpoint_hash,
     )
-    if training_record.context.checkpoint_hash != checkpoint_hash:
-        raise ValueError("training evidence does not bind the evaluation checkpoint")
+    _validate_conditional_lineage(
+        config,
+        manifest,
+        checkpoint_hash=checkpoint_hash,
+        evidence=training_record,
+    )
     require_input_hashes(
         training_record,
         {
@@ -228,6 +245,8 @@ def conditional_evaluate(args, config: V2Config) -> int:
         {
             "training_evidence": file_sha256(args.training_evidence),
             "checkpoint": checkpoint_hash,
+            "initialization_checkpoint": initialization_checkpoint_hash,
+            "initialization_state_hash": manifest.initialization_state_hash,
             "raw_cmos": file_sha256(raw_path),
             "labels": file_sha256(labels_path),
             "review_raw_cmos": review_artifacts.raw_tensor_sha256,
@@ -256,17 +275,47 @@ def admit_conditional_evaluation(args, config: V2Config) -> int:
         raise ValueError(
             "conditional evaluation evidence cannot authorize manual admission"
         )
+    source.context.assert_matches(
+        _context(
+            config,
+            evaluator_hash=source.context.evaluator_checkpoint_hash,
+            split_hash=source.context.dataset_split_manifest_hash,
+            checkpoint_hash=source.context.checkpoint_hash,
+        )
+    )
+    source_checkpoint_hash = source.context.checkpoint_hash
+    if not isinstance(source_checkpoint_hash, str) or len(source_checkpoint_hash) != 64:
+        raise ValueError("conditional acceptance lacks checkpoint binding")
+    source_initialization_state_hash = source.input_hashes.get(
+        "initialization_state_hash"
+    )
+    if (
+        not isinstance(source_initialization_state_hash, str)
+        or len(source_initialization_state_hash) != 64
+    ):
+        raise ValueError("conditional acceptance lacks initialization state binding")
+    require_input_hashes(
+        source,
+        {
+            "checkpoint": source_checkpoint_hash,
+            "initialization_state_hash": source_initialization_state_hash,
+        },
+    )
+    if not isinstance(source.input_hashes.get("initialization_checkpoint"), str):
+        raise ValueError("conditional acceptance lacks initialization checkpoint binding")
+    raw_hash = source.input_hashes.get("raw_cmos")
+    labels_hash = source.input_hashes.get("labels")
+    if not isinstance(raw_hash, str) or not isinstance(labels_hash, str):
+        raise ValueError("conditional evaluation evidence lacks tensor bindings")
     raw = safe_torch_load(
         args.evaluation_raw_cmos,
-        expected_sha256=source.input_hashes.get("raw_cmos"),
+        expected_sha256=raw_hash,
     )
     labels = safe_torch_load(
         args.evaluation_labels,
-        expected_sha256=source.input_hashes.get("labels"),
+        expected_sha256=labels_hash,
     )
-    if not torch.is_tensor(raw) or file_sha256(
-        args.evaluation_raw_cmos
-    ) != source.input_hashes.get("raw_cmos"):
+    if not torch.is_tensor(raw):
         raise ValueError(
             "evaluation raw CMOS does not match conditional acceptance evidence"
         )
@@ -274,7 +323,6 @@ def admit_conditional_evaluation(args, config: V2Config) -> int:
         not torch.is_tensor(labels)
         or labels.ndim != 1
         or labels.shape[0] != raw.shape[0]
-        or file_sha256(args.evaluation_labels) != source.input_hashes.get("labels")
     ):
         raise ValueError(
             "evaluation labels do not match conditional acceptance evidence"
