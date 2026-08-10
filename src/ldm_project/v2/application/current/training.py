@@ -10,6 +10,7 @@ from .runtime import (
     _carrier_logits, _context, _load_bundle, _load_bundle_with_payload, _new_run, _random_codes,
     _require_conditional, _require_current_acceptance, _require_identity, _split,
     _system_signature, _validate_conditional_lineage, _write_evidence, asdict, balanced_batches,
+    balanced_schedule_steps,
     canonical_sha256, conditional_loss, evaluator_checkpoint_hash, file_sha256,
     json, load_frozen_evaluator, load_local_mnist, require_evidence_action,
     require_input_hashes,
@@ -234,7 +235,14 @@ def conditional_train(args, config: V2Config) -> int:
     gradient_seen: set[int] = set()
     update_steps = 0
     update_audit_completed = False
+    expected_steps_per_epoch, expected_total_steps = balanced_schedule_steps(
+        train_labels,
+        batch_size=settings.logical_batch_size,
+        epochs=settings.epochs,
+    )
+    epoch_step_counts: list[int] = []
     for epoch in range(settings.epochs):
+        epoch_steps = 0
         for batch_number, indices in enumerate(
             balanced_batches(
                 train_labels, batch_size=settings.logical_batch_size, seed=1234 + epoch
@@ -266,6 +274,7 @@ def conditional_train(args, config: V2Config) -> int:
                             gradient_seen.add(id(parameter))
             optimizer.step()
             update_steps += 1
+            epoch_steps += 1
             if config.architecture == IDENTITY_ARCHITECTURE and update_steps == 2:
                 _validate_two_step_parameter_updates(
                     bundle,
@@ -276,8 +285,17 @@ def conditional_train(args, config: V2Config) -> int:
                 )
                 update_audit_completed = True
             history.append(asdict(summary) | {"epoch": float(epoch + 1)})
+        epoch_step_counts.append(epoch_steps)
     if config.architecture == IDENTITY_ARCHITECTURE and not update_audit_completed:
         raise ValueError("current training requires at least two optimizer steps")
+    if config.architecture == IDENTITY_ARCHITECTURE and (
+        update_steps != expected_total_steps
+        or epoch_step_counts != [expected_steps_per_epoch] * settings.epochs
+    ):
+        raise ValueError(
+            "current training history does not match the balanced schedule "
+            f"({expected_steps_per_epoch} steps/epoch, {expected_total_steps} total)"
+        )
     run = _new_run(config)
     checkpoint_path = run.root / "conditional_optical_generator.pt"
     manifest = ConditionalCheckpointManifestV2(
@@ -296,14 +314,25 @@ def conditional_train(args, config: V2Config) -> int:
         canonical_sha256(CONDITIONAL_CONTROL_METRIC_CONTRACT)
         if config.architecture == IDENTITY_ARCHITECTURE
         else None,
-        TRAINING_SCHEDULE_CONTRACT
+        BALANCED_TRAINING_SCHEDULE_CONTRACT
         if config.architecture == IDENTITY_ARCHITECTURE
         else None,
         settings.initialization_seed if config.architecture == IDENTITY_ARCHITECTURE else None,
         init_manifest.initialization_state_hash if init_manifest is not None else None,
     )
     save_conditional_checkpoint(
-        checkpoint_path, bundle, manifest, extra={"history": history}
+        checkpoint_path,
+        bundle,
+        manifest,
+        extra={
+            "history": history,
+            "schedule_steps_per_epoch": expected_steps_per_epoch
+            if config.architecture == IDENTITY_ARCHITECTURE
+            else None,
+            "schedule_total_steps": expected_total_steps
+            if config.architecture == IDENTITY_ARCHITECTURE
+            else None,
+        },
     )
     checkpoint_hash = file_sha256(checkpoint_path)
     finite = bool(torch.isfinite(torch.tensor([row["total"] for row in history])).all())
@@ -318,6 +347,9 @@ def conditional_train(args, config: V2Config) -> int:
         inputs["first_100_schedule_hash"] = _first_hundred_schedule_hash(train_labels)
         inputs["initialization_checkpoint"] = initialization_checkpoint_hash
         inputs["initialization_state_hash"] = manifest.initialization_state_hash
+        inputs["schedule_contract"] = BALANCED_TRAINING_SCHEDULE_CONTRACT
+        inputs["schedule_steps_per_epoch"] = str(expected_steps_per_epoch)
+        inputs["schedule_total_steps"] = str(expected_total_steps)
     record = EvidenceRecordV2(
         2,
         "conditional_training",

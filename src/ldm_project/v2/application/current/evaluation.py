@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 from .runtime import (
-    EvidenceRecordV2, GateResult, Path, V2Config, _context, _load_bundle,
+    BALANCED_TRAINING_SCHEDULE_CONTRACT, EvidenceRecordV2, GateResult, Path, V2Config,
+    _context, _load_bundle, _load_bundle_with_payload,
     _new_run, _random_codes, _require_conditional, _require_current_acceptance,
-    _split, _validate_conditional_lineage, _write_evidence, atomic_torch_save, balanced_batches,
+    _split, _validate_conditional_lineage, _validate_balanced_training_payload,
+    _write_evidence, atomic_torch_save, balanced_batches,
+    balanced_schedule_steps,
     conditional_coverage_ratio, evaluator_checkpoint_hash, file_sha256,
     fixed_exposure_view, json, load_conditional_manual_review,
     load_frozen_evaluator, load_local_mnist, raw_from_generator_batched,
@@ -80,20 +83,42 @@ def conditional_evaluate(args, config: V2Config) -> int:
             checkpoint_hash=checkpoint_hash,
         ),
     )
-    bundle, manifest = _load_bundle(
+    bundle, manifest, payload = _load_bundle_with_payload(
         config,
         args.checkpoint,
         device=device,
         evaluator_hash=evaluator_hash,
         split_hash=split.manifest_hash,
-        allow_balanced_schedule=False,
+        allow_balanced_schedule=True,
         checkpoint_sha256=checkpoint_hash,
     )
+    if manifest.training_schedule_hash != BALANCED_TRAINING_SCHEDULE_CONTRACT:
+        raise ValueError("current evaluation requires the balanced training schedule")
     _validate_conditional_lineage(
         config,
         manifest,
         checkpoint_hash=checkpoint_hash,
         evidence=training_record,
+    )
+    _, expected_total_steps = balanced_schedule_steps(
+        all_labels,
+        batch_size=config.conditional_generation.logical_batch_size,
+        epochs=config.conditional_generation.epochs,
+        batch_iterator=balanced_batches,
+    )
+    expected_steps_per_epoch = expected_total_steps // config.conditional_generation.epochs
+    _validate_balanced_training_payload(
+        payload,
+        steps_per_epoch=expected_steps_per_epoch,
+        total_steps=expected_total_steps,
+    )
+    require_input_hashes(
+        training_record,
+        {
+            "schedule_contract": BALANCED_TRAINING_SCHEDULE_CONTRACT,
+            "schedule_steps_per_epoch": str(expected_steps_per_epoch),
+            "schedule_total_steps": str(expected_total_steps),
+        },
     )
     require_input_hashes(
         training_record,

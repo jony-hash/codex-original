@@ -1,4 +1,30 @@
-# 当前主线交接：v2.2 条件性负结果已封存（2026-08-04）
+# 当前主线交接：v2 current identity schedule gate（2026-08-10）
+
+## Current identity status
+
+The latest clean current CLI/evidence implementation is commit `b937509`.
+Its evaluator qualification, initialization admission, observability, control
+isolation, and semantic-localization evidence form one clean chain.  The
+100-step controllability smoke is a valid diagnostic failure in semantic
+accuracy only (`0.217647 < 0.30`); code fraction, finite gradients, six-group
+updates, code-projection recovery, saturation, and provenance gates passed.
+The smoke checkpoint is diagnostic-only and must never be used as a warm start.
+
+Before any recovery or formal training, the current final-checkpoint schedule
+contract is being corrected to match the production balanced iterator: 984
+steps/epoch and 4,920 steps over five epochs.  The old 5,500-step contract and
+the historical 400-step recovery are predictive/reference material only; they
+do not authorize a new current run.  After the schedule fix, the full current
+evidence chain must be reissued from a clean commit before one 400-step semantic
+recovery is considered.  No formal 5-epoch training, evaluation, dataset export,
+or promotion is authorized by this handoff.
+
+The remainder of this file records immutable historical closures and is retained
+for context; those records must not be rewritten or used as current acceptance.
+
+---
+
+# 历史主线记录：v2.2 条件性负结果已封存（2026-08-04）
 
 ## 当前状态
 

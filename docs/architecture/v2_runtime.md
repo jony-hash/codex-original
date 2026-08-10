@@ -39,6 +39,18 @@ A(z,y) = sigmoid(By + 0.5 × Σk ck(z,y) P̂k)
 MNIST 只用于训练和验收。冻结 evaluator 不进入最终光学推理；MNIST 到 SLM
 的 carrier 初始化是电子端实值输入准备，不是传播过程中的 complex resize。
 
+### Current training schedule
+
+Current identity training uses the `balanced_min_class_exhaustion` iterator with
+the configured logical batch size and seed.  The schedule contract is therefore
+split-derived: for the formal MNIST split it produces 984 steps per epoch and
+4,920 steps over five epochs.  A current final training checkpoint must carry
+`BALANCED_TRAINING_SCHEDULE_CONTRACT`, and its history, manifest and training
+evidence must agree on the per-epoch and total step counts.  The older 5,500-step
+contract remains readable only for historical/initialization compatibility; it
+cannot authorize current evaluation.  Metadata-only correction evidence for an
+old run is historical and is not a replacement for a newly executed current run.
+
 ## 当前执行顺序
 
 ```text

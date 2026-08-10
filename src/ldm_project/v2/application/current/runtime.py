@@ -121,6 +121,52 @@ BALANCED_TRAINING_SCHEDULE = {
     "code_seed": "(epoch+1)*100000+batch_number",
 }
 BALANCED_TRAINING_SCHEDULE_CONTRACT = canonical_sha256(BALANCED_TRAINING_SCHEDULE)
+
+
+def balanced_schedule_steps(
+    labels: torch.Tensor, *, batch_size: int, epochs: int, batch_iterator=None
+) -> tuple[int, int]:
+    """Return the exact steps implied by the production balanced iterator.
+
+    The schedule contract intentionally describes the batching policy rather
+    than a machine-specific sample count.  The split-derived count is carried
+    in training evidence and checked by every current consumer.
+    """
+    if batch_size < 1 or epochs < 1:
+        raise ValueError("balanced schedule dimensions must be positive")
+    iterator = balanced_batches if batch_iterator is None else batch_iterator
+    per_epoch = sum(1 for _ in iterator(labels, batch_size=batch_size, seed=1234))
+    if per_epoch < 1:
+        raise ValueError("balanced schedule produced no batches")
+    return per_epoch, per_epoch * epochs
+
+
+def _validate_balanced_training_payload(
+    payload: dict[str, object], *, steps_per_epoch: int, total_steps: int
+) -> None:
+    """Validate the schedule metadata stored beside a current final bundle."""
+    extra = payload.get("extra")
+    if not isinstance(extra, dict):
+        raise ValueError("current final checkpoint lacks training schedule metadata")
+    if extra.get("schedule_steps_per_epoch") != steps_per_epoch:
+        raise ValueError("current final checkpoint has an inconsistent schedule step count")
+    if extra.get("schedule_total_steps") != total_steps:
+        raise ValueError("current final checkpoint has an inconsistent total step count")
+    history = extra.get("history")
+    if not isinstance(history, list) or len(history) != total_steps:
+        raise ValueError("current final checkpoint history does not match the balanced schedule")
+    counts = [0] * (total_steps // steps_per_epoch)
+    for row in history:
+        if not isinstance(row, dict):
+            raise ValueError("current final checkpoint history contains an invalid row")
+        epoch = row.get("epoch")
+        if not isinstance(epoch, (int, float)) or int(epoch) < 1 or int(epoch) > len(counts):
+            raise ValueError("current final checkpoint history contains an invalid epoch")
+        if float(epoch) != int(epoch):
+            raise ValueError("current final checkpoint history contains a fractional epoch")
+        counts[int(epoch) - 1] += 1
+    if counts != [steps_per_epoch] * len(counts):
+        raise ValueError("current final checkpoint history has inconsistent epoch counts")
 SEMANTIC_RECOVERY_STEPS = 400
 SEMANTIC_RECOVERY_CONTRACT = canonical_sha256(
     {

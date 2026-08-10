@@ -13,10 +13,11 @@ from ldm_project.v2.application.current import training as current_training
 from ldm_project.v2.application.current.runtime import (
     CONDITIONAL_CONTROL_ADMISSION_CONTRACT,
     CONDITIONAL_CONTROL_METRIC_CONTRACT,
+    BALANCED_TRAINING_SCHEDULE_CONTRACT,
     IDENTITY_GENERATOR_CONTRACT,
     IDENTITY_ARCHITECTURE,
-    TRAINING_SCHEDULE_CONTRACT,
     _context,
+    balanced_schedule_steps,
     _seeded_conditional_bundle,
     _system_signature,
 )
@@ -85,6 +86,7 @@ def _manifest(config, *, state_hash: str = STATE_HASH):
         initialization_state_hash=state_hash,
         evaluator_checkpoint_hash=EVALUATOR_HASH,
         dataset_split_manifest_hash=SPLIT_HASH,
+        training_schedule_hash=BALANCED_TRAINING_SCHEDULE_CONTRACT,
     )
 
 
@@ -109,6 +111,16 @@ def _stub_mnist(monkeypatch, module) -> None:
     )
     monkeypatch.setattr(module, "evaluator_checkpoint_hash", lambda _: EVALUATOR_HASH)
     monkeypatch.setattr(module, "load_frozen_evaluator", lambda *args, **kwargs: (object(), None))
+
+
+def test_balanced_schedule_contract_is_split_derived_and_stable() -> None:
+    labels = torch.arange(500, dtype=torch.long) % 10
+    assert balanced_schedule_steps(labels, batch_size=50, epochs=5) == (10, 50)
+    changed = torch.cat([labels, torch.zeros(50, dtype=torch.long)])
+    assert balanced_schedule_steps(changed, batch_size=50, epochs=5) == (10, 50)
+    reduced = labels[labels != 9]
+    with pytest.raises(ValueError, match="no batches"):
+        balanced_schedule_steps(reduced, batch_size=50, epochs=5)
 
 
 def test_conditional_train_consumes_injection_action_before_checkpoint(
@@ -292,14 +304,21 @@ def test_conditional_evaluate_requires_action_and_rejects_state_tampering(
             "checkpoint": CHECKPOINT_HASH,
             "initialization_checkpoint": INITIALIZATION_HASH,
             "initialization_state_hash": "x" * 64,
+            "schedule_contract": BALANCED_TRAINING_SCHEDULE_CONTRACT,
+            "schedule_steps_per_epoch": "984",
+            "schedule_total_steps": "4920",
         },
         ("evaluate",),
     )
     _write_record(evidence_path, valid)
     monkeypatch.setattr(
         current_evaluation,
-        "_load_bundle",
-        lambda *args, **kwargs: (object(), _manifest(config)),
+        "_load_bundle_with_payload",
+        lambda *args, **kwargs: (
+            object(),
+            _manifest(config),
+            {"extra": {"history": [{"epoch": 1}] * 5, "schedule_steps_per_epoch": 1, "schedule_total_steps": 5}},
+        ),
     )
     with pytest.raises(ValueError, match="initialization_state_hash"):
         current_evaluation.conditional_evaluate(args, config)
@@ -552,7 +571,7 @@ def test_conditional_evaluate_hashes_and_loads_checkpoint_once(
         state_hash,
         IDENTITY_GENERATOR_CONTRACT,
         canonical_sha256(CONDITIONAL_CONTROL_METRIC_CONTRACT),
-        TRAINING_SCHEDULE_CONTRACT,
+        BALANCED_TRAINING_SCHEDULE_CONTRACT,
         settings.initialization_seed,
         state_hash,
     )
@@ -577,6 +596,9 @@ def test_conditional_evaluate_hashes_and_loads_checkpoint_once(
             "checkpoint": checkpoint_hash,
             "initialization_checkpoint": INITIALIZATION_HASH,
             "initialization_state_hash": state_hash,
+            "schedule_contract": BALANCED_TRAINING_SCHEDULE_CONTRACT,
+            "schedule_steps_per_epoch": "1",
+            "schedule_total_steps": "5",
         },
         ("evaluate",),
     )
