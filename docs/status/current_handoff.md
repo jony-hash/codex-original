@@ -1,23 +1,37 @@
-# 当前主线交接：v2 current identity schedule gate（2026-08-10）
+# 当前主线交接：v2 current identity schedule gate（2026-08-11）
 
 ## Current identity status
 
-The pre-schedule baseline chain was clean commit `b937509`.  The schedule-corrected
-runtime and its reissued current evidence chain are bound to commit `1003767`:
-evaluator qualification, initialization admission, observability, control
-isolation, and semantic-localization all passed their gates.  The 100-step
-controllability smoke is a valid diagnostic failure in semantic accuracy only
-(`0.217647 < 0.30`); code fraction, finite gradients, six-group updates,
-code-projection recovery, saturation, and provenance gates passed.  The smoke
-checkpoint is diagnostic-only and must never be used as a warm start.
+The runtime-equivalent evidence-lineage guard was implemented at clean commit
+`4aac9c0`.  The reissued current evidence chain is bound to that commit:
+evaluator qualification (`outputs/20260811_v2/runs/20260811_011455_509777_formal_v2_identity_logit_amplitude_finite_crop_identity`),
+initialization admission
+(`outputs/20260811_v2/runs/20260811_011510_366668_formal_v2_identity_logit_amplitude_finite_crop_identity`),
+observability
+(`outputs/20260811_v2/runs/20260811_011528_573879_formal_v2_identity_logit_amplitude_finite_crop_identity`),
+control isolation
+(`outputs/20260811_v2/runs/20260811_011548_110334_formal_v2_identity_logit_amplitude_finite_crop_identity`),
+and semantic-localization
+(`outputs/20260811_v2/runs/20260811_011638_725751_formal_v2_identity_logit_amplitude_finite_crop_identity`)
+all passed their gates.  The
+100-step controllability smoke
+(`outputs/20260811_v2/runs/20260811_012127_036513_formal_v2_identity_logit_amplitude_finite_crop_identity`)
+is a valid diagnostic
+failure in semantic accuracy only (`0.217647 < 0.30`); code fraction, finite
+gradients, six-group updates, code-projection recovery, saturation, and
+provenance gates passed.  The smoke checkpoint is diagnostic-only and must never
+be used as a warm start.
 
 The current final-checkpoint schedule is bound to the production balanced
 iterator: 984 steps/epoch and 4,920 steps over five epochs.  The old 5,500-step
 contract and historical recovery remain predictive/reference material only.
-The reissued 400-step semantic recovery is a passed diagnostic gate (accuracy
-`0.435294`, classification loss `3.849→1.876`, code fraction `0.31030`,
-saturation `0.05674`) and permits `train`, but no formal 5-epoch training,
-evaluation, dataset export, or promotion has been run or authorized here.
+The reissued 400-step semantic recovery
+(`outputs/20260811_v2/runs/20260811_013934_467132_formal_v2_identity_logit_amplitude_finite_crop_identity`)
+is a passed diagnostic gate (accuracy `0.435294`,
+classification loss `3.849→1.876`, code fraction `0.31031`, saturation
+`0.05674`) and permits `train`, but no formal 5-epoch training, evaluation,
+dataset export, or promotion has been run or authorized here.  Recovery and all
+upstream records report `dirty_patch_hash=None` and commit `4aac9c0`.
 
 The remainder of this file records immutable historical closures and is retained
 for context; those records must not be rewritten or used as current acceptance.
