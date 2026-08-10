@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from ldm_project.v2.application import cli
+from ldm_project.v2.application.cli_handlers import _IDENTITY_HANDLERS
 from ldm_project.v2.application.legacy import cli_impl
 from ldm_project.v2.config import load_config
 
@@ -78,3 +79,22 @@ def test_current_and_diagnostic_recovery_share_the_same_workflow_implementation(
         assert current_workflow.__module__.endswith("_conditional_recovery_shared")
         assert diagnostic_workflow.__module__ == current_workflow.__module__
         assert diagnostic_workflow.__code__ is current_workflow.__code__
+
+
+def test_identity_commands_resolve_to_current_and_unsupported_commands_fail_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert _IDENTITY_HANDLERS[("audit", "conditional-semantic-localization")].target.startswith(
+        ".current."
+    )
+    assert _IDENTITY_HANDLERS[("student", "admit-dataset")].target.startswith(
+        ".current."
+    )
+    assert _IDENTITY_HANDLERS[("student", "audit-memorization")].target.startswith(
+        ".current."
+    )
+    config = load_config(CONFIG_ROOT / "current" / "formal_identity_logit_amplitude_finite_crop_identity.yaml")
+    monkeypatch.setattr(cli, "_load_config", lambda args: config)
+    args = type("Args", (), {"domain": "student", "action": "preflight"})()
+    with pytest.raises(RuntimeError, match="no current handler"):
+        cli._dispatch(args)

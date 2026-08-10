@@ -79,10 +79,19 @@ _IDENTITY_HANDLERS = {
     ("audit", "conditional-control-isolation"): HandlerSpec(
         ".current.admission:conditional_control_isolation", "args+config"
     ),
+    ("audit", "conditional-semantic-localization"): HandlerSpec(
+        ".current.admission:_identity_semantic_localization", "args+config"
+    ),
     ("audit", "conditional-training-completion"): HandlerSpec(
         ".current.training:conditional_training_completion", "args+config"
     ),
     ("audit", "memorization"): HandlerSpec(
+        ".current.dataset:audit_memorization", "args+config"
+    ),
+    ("student", "admit-dataset"): HandlerSpec(
+        ".current.dataset:admit_dataset", "args+config"
+    ),
+    ("student", "audit-memorization"): HandlerSpec(
         ".current.dataset:audit_memorization", "args+config"
     ),
 }
@@ -187,9 +196,6 @@ _NON_IDENTITY_HANDLERS = {
     ),
     ("student", "train-multi-anchor"): HandlerSpec(
         ".diagnostic.multi_anchor:train_multi_anchor", "args+config"
-    ),
-    ("audit", "conditional-semantic-localization"): HandlerSpec(
-        ".diagnostic.admission:_identity_semantic_localization", "args+config"
     ),
     ("audit", "conditional-diversity-observability"): HandlerSpec(
         ".diagnostic.diversity:conditional_diversity_observability", "args+config"
@@ -415,12 +421,6 @@ _NON_IDENTITY_HANDLERS = {
         ".diagnostic.optical_feasibility:conditional_optical_generation_feasibility",
         "args+config",
     ),
-    ("student", "admit-dataset"): HandlerSpec(
-        ".diagnostic.evaluation:admit_dataset", "args+config"
-    ),
-    ("student", "audit-memorization"): HandlerSpec(
-        ".diagnostic.evaluation:audit_memorization", "args+config"
-    ),
 }
 
 # Diagnostic commands remain available through the public parser, but they are
@@ -462,11 +462,12 @@ def _summarize(args: argparse.Namespace) -> int:
 def _dispatch(args: argparse.Namespace) -> int:
     config = _load_config(args)
     spec = _IDENTITY_HANDLERS.get((args.domain, args.action))
-    if (
-        spec is not None
-        and config is not None
-        and config.architecture == IDENTITY_ARCHITECTURE
-    ):
+    if config is not None and config.architecture == IDENTITY_ARCHITECTURE:
+        if spec is None:
+            raise RuntimeError(
+                f"identity architecture has no current handler for "
+                f"{args.domain}/{args.action}"
+            )
         target = _resolve(spec)
         return int(target(args, config) or 0)
     spec = _DIAGNOSTIC_HANDLERS.get((args.domain, args.action))

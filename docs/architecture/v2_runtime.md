@@ -46,8 +46,8 @@ evaluator qualification
 → generator-only injection admission
 → no-update optical observability
 → no-update control isolation
-→ 唯一一次 100-step controllability smoke
-→ 用户运行 5-epoch joint training
+→ 根据 control-isolation 分类选择 semantic-localization 或 controllability smoke
+→ 通过 controllability smoke 或 semantic-recovery evidence 授权 5-epoch joint training
 → raw-CMOS evaluation
 → manual review
 → candidate dataset export
@@ -58,7 +58,16 @@ evaluator qualification
 公开命令继续使用通用的 `student train/sample/evaluate`，但由
 `architecture` 严格分派。identity 主线的 evidence 必须逐项绑定 system、config、
 evaluator、MNIST split、initialization checkpoint 和 action；校验失败时不能创建
-optimizer 或 run 工件。
+optimizer 或 run 工件。正式 identity 当前只注册 current handler；未注册的 identity
+命令（例如 legacy preflight）直接 fail-closed，不会回退到 diagnostic 或 legacy。
+
+训练授权必须且只能提供一种前置证据：通过的 `controllability_smoke`（100-step
+合同、控制 metric contract、初始化 checkpoint/state 和 schedule hash 完整绑定），
+或通过的 `conditional_semantic_recovery_smoke`（400-step 合同）。两条路径均从原始
+immutable initialization checkpoint 构造 bundle，smoke/recovery checkpoint 不能作为
+正式训练 warm start。当前命令 `audit conditional-semantic-localization`、
+`student admit-dataset` 和 `student audit-memorization` 均由 current 实现处理；
+`audit memorization` 是保留的兼容别名。
 
 候选数据集始终写入：
 

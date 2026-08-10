@@ -64,7 +64,12 @@ def _dispatch(args: argparse.Namespace) -> int:
         return int(dispatch(args) or 0)
     config = _load_config(args)
     spec = _IDENTITY_HANDLERS.get((args.domain, args.action))
-    if spec is not None and config is not None and config.architecture == IDENTITY_ARCHITECTURE:
+    if config is not None and config.architecture == IDENTITY_ARCHITECTURE:
+        if spec is None:
+            raise RuntimeError(
+                f"identity architecture has no current handler for "
+                f"{args.domain}/{args.action}"
+            )
         return int(_resolve(spec)(args, config) or 0)
     spec = _DIAGNOSTIC_HANDLERS.get((args.domain, args.action))
     if spec is None:

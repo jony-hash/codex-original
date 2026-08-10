@@ -420,6 +420,7 @@ def controllability_smoke(args, config: V2Config) -> int:
                 "injection": file_sha256(args.injection_evidence),
                 "isolation": file_sha256(args.isolation_evidence),
                 "initialization_checkpoint": file_sha256(args.checkpoint),
+                "initialization_state_hash": initialization_manifest.initialization_state_hash,
                 "first_100_schedule_hash": schedule_hash,
                 "diagnostic_final_checkpoint": file_sha256(smoke_checkpoint_path),
             }

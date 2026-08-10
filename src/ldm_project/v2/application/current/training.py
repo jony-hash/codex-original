@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from .runtime import (
     BALANCED_TRAINING_SCHEDULE_CONTRACT, CONDITIONAL_CONTROL_METRIC_CONTRACT,
+    CONDITIONAL_CONTROL_ADMISSION_CONTRACT,
     ConditionalBundle, ConditionalCheckpointManifestV2, EvidenceRecordV2,
     GateResult, IDENTITY_ARCHITECTURE, IDENTITY_GENERATOR_CONTRACT, Path,
     SEMANTIC_RECOVERY_STEPS, TRAINING_SCHEDULE_CONTRACT, V2Config,
@@ -82,6 +83,13 @@ def conditional_train(args, config: V2Config) -> int:
     _require_conditional(config)
     _require_current_acceptance(config)
     if config.architecture == IDENTITY_ARCHITECTURE:
+        controllability_path = getattr(args, "controllability_evidence", None)
+        recovery_path = getattr(args, "semantic_recovery_evidence", None)
+        if bool(controllability_path) == bool(recovery_path):
+            raise ValueError(
+                "identity training requires exactly one controllability or "
+                "semantic-recovery evidence"
+            )
         images, all_labels = load_local_mnist(args.dataset_root, train=True)
         train_images, train_labels, _, _, split = _split(
             images, all_labels, args.dataset_root
@@ -91,11 +99,6 @@ def conditional_train(args, config: V2Config) -> int:
         )
         observability = EvidenceRecordV2.from_dict(
             json.loads(Path(args.observability_evidence).read_text(encoding="utf-8"))
-        )
-        recovery = EvidenceRecordV2.from_dict(
-            json.loads(
-                Path(args.semantic_recovery_evidence).read_text(encoding="utf-8")
-            )
         )
         initialization_checkpoint_hash = injection.input_hashes.get(
             "initialization_checkpoint"
@@ -120,18 +123,52 @@ def conditional_train(args, config: V2Config) -> int:
             action="conditional_control_isolation",
             expected_context=expected,
         )
-        require_evidence_action(
-            recovery,
-            kind="conditional_semantic_recovery_smoke",
-            action="train",
-            expected_context=expected,
-        )
-        if recovery.input_hashes.get("first_400_schedule_hash") != _schedule_hash(
-            train_labels, SEMANTIC_RECOVERY_STEPS
-        ):
-            raise ValueError(
-                "semantic recovery does not reproduce the formal training first-400 batch/code schedule"
+        if controllability_path:
+            control = _passed_evidence(
+                controllability_path, kind="controllability_smoke"
             )
+            require_evidence_action(
+                control,
+                kind="controllability_smoke",
+                action="train",
+                expected_context=expected,
+            )
+            initialization_state_hash = injection.input_hashes.get(
+                "initialization_state_hash"
+            )
+            if not isinstance(initialization_state_hash, str):
+                raise ValueError("injection evidence lacks initialization state binding")
+            require_input_hashes(
+                control,
+                {
+                    "initialization_checkpoint": initialization_checkpoint_hash,
+                    "initialization_state_hash": initialization_state_hash,
+                    "metric_contract": canonical_sha256(
+                        CONDITIONAL_CONTROL_ADMISSION_CONTRACT
+                    ),
+                    "first_100_schedule_hash": _first_hundred_schedule_hash(
+                        train_labels
+                    ),
+                },
+            )
+            if control.input_hashes.get("initialization_state_hash") != initialization_state_hash:
+                raise ValueError(
+                    "controllability evidence initialization state does not match admission"
+                )
+        else:
+            recovery = _passed_evidence(recovery_path, kind="conditional_semantic_recovery_smoke")
+            require_evidence_action(
+                recovery,
+                kind="conditional_semantic_recovery_smoke",
+                action="train",
+                expected_context=expected,
+            )
+            if recovery.input_hashes.get("first_400_schedule_hash") != _schedule_hash(
+                train_labels, SEMANTIC_RECOVERY_STEPS
+            ):
+                raise ValueError(
+                    "semantic recovery does not reproduce the formal training first-400 batch/code schedule"
+                )
     else:
         _passed_evidence(args.observability_evidence, kind="conditional_observability")
         _passed_evidence(args.controllability_evidence, kind="controllability_smoke")

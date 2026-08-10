@@ -11,6 +11,7 @@ from ldm_project.v2.application.current import dataset as current_dataset
 from ldm_project.v2.application.current import evaluation as current_evaluation
 from ldm_project.v2.application.current import training as current_training
 from ldm_project.v2.application.current.runtime import (
+    CONDITIONAL_CONTROL_ADMISSION_CONTRACT,
     CONDITIONAL_CONTROL_METRIC_CONTRACT,
     IDENTITY_GENERATOR_CONTRACT,
     IDENTITY_ARCHITECTURE,
@@ -163,6 +164,90 @@ def test_conditional_train_consumes_injection_action_before_checkpoint(
         lambda *args, **kwargs: pytest.fail("checkpoint loaded before action rejection"),
     )
     with pytest.raises(ValueError, match="conditional_observability"):
+        current_training.conditional_train(args, config)
+
+
+def test_conditional_train_accepts_controllability_authorization_before_loading(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = _config()
+    _stub_mnist(monkeypatch, current_training)
+    context = _lineage_context(config, checkpoint_hash=INITIALIZATION_HASH)
+    injection = _record(
+        config,
+        "conditional_injection_admission",
+        context,
+        {
+            "initialization_checkpoint": INITIALIZATION_HASH,
+            "initialization_state_hash": STATE_HASH,
+        },
+        ("conditional_observability",),
+    )
+    observability = _record(
+        config,
+        "conditional_observability",
+        context,
+        {},
+        ("conditional_control_isolation",),
+    )
+    control = _record(
+        config,
+        "controllability_smoke",
+        context,
+        {
+            "initialization_checkpoint": INITIALIZATION_HASH,
+            "initialization_state_hash": STATE_HASH,
+            "metric_contract": canonical_sha256(CONDITIONAL_CONTROL_ADMISSION_CONTRACT),
+            "first_100_schedule_hash": "unused-in-stub",
+        },
+        ("train",),
+    )
+    paths = {
+        name: tmp_path / f"{name}.json"
+        for name in ("injection", "observability", "control")
+    }
+    for name, record in (("injection", injection), ("observability", observability), ("control", control)):
+        _write_record(paths[name], record)
+    args = SimpleNamespace(
+        dataset_root=str(tmp_path),
+        evaluator_checkpoint=str(tmp_path / "evaluator.pt"),
+        injection_evidence=str(paths["injection"]),
+        observability_evidence=str(paths["observability"]),
+        controllability_evidence=str(paths["control"]),
+        semantic_recovery_evidence=None,
+        initialization_checkpoint=str(tmp_path / "initialization.pt"),
+    )
+    monkeypatch.setattr(
+        current_training,
+        "_first_hundred_schedule_hash",
+        lambda labels: "unused-in-stub",
+    )
+    monkeypatch.setattr(
+        current_training,
+        "_load_bundle",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            RuntimeError("authorization unexpectedly loaded checkpoint")
+        ),
+    )
+    with pytest.raises(RuntimeError, match="authorization unexpectedly"):
+        current_training.conditional_train(args, config)
+
+
+def test_conditional_train_rejects_both_training_authorizations_before_loading(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = _config()
+    _stub_mnist(monkeypatch, current_training)
+    args = SimpleNamespace(
+        dataset_root=str(tmp_path),
+        evaluator_checkpoint=str(tmp_path / "evaluator.pt"),
+        injection_evidence=str(tmp_path / "missing-injection.json"),
+        observability_evidence=str(tmp_path / "missing-observability.json"),
+        controllability_evidence=str(tmp_path / "control.json"),
+        semantic_recovery_evidence=str(tmp_path / "recovery.json"),
+        initialization_checkpoint=str(tmp_path / "initialization.pt"),
+    )
+    with pytest.raises(ValueError, match="exactly one"):
         current_training.conditional_train(args, config)
 
 
