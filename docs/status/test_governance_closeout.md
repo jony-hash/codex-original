@@ -21,7 +21,8 @@ scientific acceptance evidence.
 
 - Active test source: 18,785 lines (target <=19,100).
 - Largest active test file: 1,739 lines (target <2,000).
-- Fresh full-suite measurement: 524 tests and 25 subtests passed in 90.03s;
+- Final clean-commit full-suite measurement: 524 tests and 25 subtests passed
+  in 88.57s;
   no repository warnings were emitted and the 113s budget was met.
 - `pytest --collect-only` reports 524 active tests and no archive nodeids;
   compileall, Ruff, `git diff --check`, and Hash inventory `--check` pass.
@@ -34,9 +35,8 @@ scientific acceptance evidence.
   see `hash_consumer_audit.md` and `hash_consumer_inventory.tsv`.
 - Current, diagnostic, and research v2 paths contain no direct
   `weights_only=False`; the only unsafe loader is the explicit legacy boundary.
-- The working tree remains intentionally dirty with 83 changed/untracked paths
-  and therefore cannot produce acceptance evidence until the user reviews and
-  commits the intended changes.
+- Final clean provenance check returned `None` from both the repository root and
+  `src/ldm_project/` subdirectory; `git status --short` was empty.
 
 ## Governance status
 
@@ -45,6 +45,6 @@ criterion is: every archived nodeid has a specific disposition, every claimed
 replacement is collected, and archive files remain outside default pytest
 collection. Historical `experiment_history.md` entries are not rewritten.
 
-The clean-commit provenance and formal acceptance rerun remain pending user
-integration; this document must be refreshed again if that rerun changes the
-measurements.
+The engineering clean-commit gate is complete. CUDA, hardware, promotion and
+scientific acceptance remain separate follow-up gates and are not authorized by
+this audit.
