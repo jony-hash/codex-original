@@ -1,7 +1,5 @@
 # AGENTS.md
 
-- **Codex only**: In the first assistant message of each new task, the first line must be exactly `【AGENTS effective】`.
-- Do not repeat this marker later unless the user explicitly asks for it.
 - Claude Code 请参见 [CLAUDE.md](CLAUDE.md) 获取 Claude 专用行为规则；项目合同以本文件和适用的 scoped `AGENTS.md` 为准。
 
 Primary execution contract for this repository. This file overrides `docs/`; scoped files may add constraints but may not relax this contract.
@@ -27,6 +25,10 @@ This explicit routing is required when Codex starts at the repository root, beca
 5. Use focused searches and the smallest sufficient verification. Do not reread large logs or rerun fresh green checks without a relevant change.
 6. A valid failed acceptance gate stops downstream training or promotion; repair and revalidate an invalid gate before drawing a model conclusion.
 7. Do not claim success without verification. State exactly what could not be verified.
+
+8. Governance artifacts must identify a real consumer, rejection decision, or
+   compatibility contract. Test counts, line counts, digest counts, and archive
+   entry counts are measurements only and cannot independently define success.
 
 ### Pre-change reverse verification
 
@@ -78,10 +80,8 @@ are compatibility facades only. Archived files are reference-only.
 
 Formal optical-field artifacts must carry shape, pixel pitch, physical FOV, wavelength, upstream plane, propagation distance, and operation. Tensor equality alone is not physical-coordinate validation; generic complex resize is forbidden in the formal path.
 
-The LightGen paper is an architecture reference only. Its exact parameters are
-not silently substituted into the formal v2 contract. v68-v79, A2/B,
-prototype/capacity, direct-template, and LightGen measurements belong in status
-or archive documents and cannot authorize a current v2 run.
+Diagnostic variants, LightGen comparisons, and historical experiment numbers
+are status or archive material only; they cannot authorize a current v2 run.
 
 The formal D2NN boundary is `finite_crop`, meaning a propagation-after-crop ideal hard-aperture computation contract; it is not a claim that printed glass is opaque. `transparent_identity` is diagnostic-only: it models a zero-thickness phase surface with an identity exterior on a full propagation grid and must pass the v67.1 convergence gate before any paired diagnostic training.
 
@@ -101,10 +101,10 @@ The formal D2NN boundary is `finite_crop`, meaning a propagation-after-crop idea
 
 ## 6. Commands And Verification
 
-- Prefix: `source "$(conda info --base)/etc/profile.d/conda.sh" && conda activate optical-generative-models &&`
-- Build: `python -m compileall src tests train.py`; targeted baseline: `pytest tests/student tests/teacher tests/application tests/diagnostics tests/test_one_shot.py tests/test_train_script.py tests/test_repo_layout.py -q`.
-- Full: `pytest -q`; lint: `ruff check src tests *.py`; docs/meta: `git diff --check`.
-- Run targeted checks during iteration; run the full suite after targeted checks for shared/final changes, and rerun only checks invalidated by a corrective edit.
+- Verification commands for repository tests live in `tests/AGENTS.md`.
+- Run targeted checks during iteration; run the full suite after targeted checks
+  for shared/final changes, and rerun only checks invalidated by a corrective
+  edit.
 - Use CUDA for formal training and acceptance, CPU only for labeled smoke tests, and `auto` only for compatibility checks. Codex prepares long CUDA/hardware jobs for the user unless explicitly delegated.
 
 ## 7. Boundaries
@@ -115,12 +115,6 @@ The formal D2NN boundary is `finite_crop`, meaning a propagation-after-crop idea
 
 ## 8. Capacity-map Research Lifecycle
 
-- `python -m ldm_project.v2 research capacity-map` is diagnostic-only. Its
-  `research` failures close a single declared variant; only formal
-  `acceptance` evidence is global fail-closed.
-- Capacity-map evidence is immutable and content-hashed. A repaired harness
-  must use an evidence revision; invalid-harness records are excluded from
-  Pareto ranking and causal attribution.
-- `docs/status/capacity_map_hypothesis_ledger.md` is the single current
-  hypothesis ledger. Keep handoff notes to current status, blocker, and next
-  command; move completed history to immutable evidence/report artifacts.
+Capacity-map lifecycle rules and the current hypothesis ledger live in
+`docs/status/capacity_map_hypothesis_ledger.md`; research failures remain
+variant-local and cannot authorize formal acceptance.

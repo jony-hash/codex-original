@@ -27,3 +27,12 @@ Scope: `tests/**` and verification for repository changes. Read the repository-r
 - Tests for formal train/eval layouts must keep `relay_identity` audit-only.
 - Use temporary directories for generated test artifacts. Do not write tests into existing `outputs/` runs.
 - Report skipped or unavailable verification precisely; do not convert it into a passing result.
+
+## Verification commands
+
+- Build: `python -m compileall src tests train.py`.
+- Lint: `ruff check src tests *.py`.
+- Full default lane: `pytest -q`.
+- Scheduled diagnostic lane: `pytest -q -o addopts='' -m scheduled_diagnostic`.
+- Metadata-only changes require `git diff --check`; do not run CUDA or formal
+  training as a substitute for unavailable acceptance inputs.

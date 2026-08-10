@@ -66,6 +66,7 @@ def _artifact(root: Path, name: str) -> Path:
     return next(root.rglob(name))
 
 
+@pytest.mark.scheduled_diagnostic
 def test_cpu_diagnostic_cli_vertical_slice_is_never_acceptance(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     first, diffusion = tmp_path / "first.pt", tmp_path / "diffusion.pt"
     _checkpoint(first, {"model_version": "first-v1", "train_config": {"first": 1}})

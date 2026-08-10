@@ -51,6 +51,7 @@ def test_stateless_delta_restores_parameter_exactly() -> None:
     assert torch.equal(parameter, original)
 
 
+@pytest.mark.scheduled_diagnostic
 def test_reachability_contact_sheet_contains_all_170_samples(tmp_path) -> None:
     raw = torch.arange(170 * 1 * 4 * 4, dtype=torch.float32).reshape(170, 1, 4, 4)
     labels = torch.arange(170, dtype=torch.long).remainder(10)
