@@ -28,6 +28,26 @@ This explicit routing is required when Codex starts at the repository root, beca
 6. A valid failed acceptance gate stops downstream training or promotion; repair and revalidate an invalid gate before drawing a model conclusion.
 7. Do not claim success without verification. State exactly what could not be verified.
 
+### Pre-change reverse verification
+
+Before implementing any modification, classify its risk and record the smallest
+adequate reverse check in the task or PR description. Every level must state the
+purpose, affected scope, invariants that must remain true, verification method,
+and failure condition. Low-risk documentation or formatting changes only need a
+no-behavior-impact check and the applicable repository checks. Medium-risk code
+or non-contract configuration changes require a reproducer or failing regression
+case, caller/impact inspection, and a preselected targeted test. High-risk
+changes—public CLI or runtime boundaries, training/evaluation, optical
+parameters, SLM/OLS/CMOS behavior, checkpoint/output policy, or scientific
+claims—require a no-update preflight, an independent reference or negative
+control, explicit acceptance gates, and fail-closed stop conditions before
+training, promotion, or a physical conclusion can proceed.
+
+If adequate reverse verification cannot be established, record the blocker and
+the guarantee that is lost; do not silently downgrade the result or claim the
+modification is correct. This policy is recorded in the task/PR description and
+does not require a new versioned plan file for every change.
+
 For long optical-training or one-shot readability debugging, follow the **Experimental Debugging Decision Policy** in `docs/operations/stage_guide.md`.
 
 ## 3. Skill Policy

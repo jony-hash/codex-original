@@ -4,6 +4,10 @@ Scope: `tests/**` and verification for repository changes. Read the repository-r
 
 ## Test Selection
 
+- Before implementation, identify the affected behavior and the smallest
+  sufficient test set in the task or PR description. For a fix, first establish
+  a reproducer or regression test that fails against the relevant baseline; do
+  not select only convenient checks after the implementation is complete.
 - Start with tests nearest the changed behavior.
 - One-shot model, optics, visualization, config, or checkpoint changes normally require `tests/student/`, `tests/teacher/`, `tests/application/`, `tests/diagnostics/`, the compatibility smoke files, and `tests/test_repo_layout.py` as applicable.
 - Teacher/first-stage/diffusion changes normally require the matching conditioned, diffusion, data, or optical-path tests rather than an unrelated fixed bundle.
