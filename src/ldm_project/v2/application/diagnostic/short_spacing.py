@@ -11,7 +11,7 @@ from pathlib import Path
 import torch
 from torch.nn import functional as F
 
-from ...evidence import EvidenceRecordV2, GateResult, atomic_torch_save, atomic_write_json, canonical_sha256, file_sha256, tensor_sha256
+from ...evidence import safe_torch_load, EvidenceRecordV2, GateResult, atomic_torch_save, atomic_write_json, canonical_sha256, file_sha256, tensor_sha256
 from ...student.checkpoints import ConditionalCheckpointManifestV2, save_conditional_checkpoint, state_content_hash, state_signature
 from ...student.conditional import camera_code_fraction, fixed_exposure_view, raw_from_generator_batched
 from ...student.evaluator import evaluator_checkpoint_hash, load_frozen_evaluator, load_local_mnist
@@ -42,7 +42,7 @@ def _panels(device):
 
 
 def _load_source(path: str):
-    payload = torch.load(path, map_location="cpu", weights_only=False)
+    payload = safe_torch_load(path)
     if not isinstance(payload, dict) or not isinstance(payload.get("state_dict"), dict) or not isinstance(payload.get("manifest"), dict):
         raise ValueError("invalid semantic source checkpoint")
     manifest = ConditionalCheckpointManifestV2(**payload["manifest"])
@@ -65,7 +65,7 @@ def _high_saturation_fraction(raw: torch.Tensor, exposure: float) -> float:
 
 
 def _electronic_payload(path: str | Path) -> dict:
-    payload = torch.load(path, map_location="cpu", weights_only=False)
+    payload = safe_torch_load(path)
     required = {"architecture_kind", "carrier", "basis", "scale_logits", "scales"}
     if not isinstance(payload, dict) or not required.issubset(payload) or payload["architecture_kind"] != SHORT_SPACING_ARCHITECTURE:
         raise ValueError("invalid short-spacing electronic initialization")
@@ -306,7 +306,7 @@ def conditional_short_spacing_observability(args, config) -> int:
         raise ValueError("missing short-spacing initialization checkpoint")
     from .support import _load_bundle
     bundle, _ = _load_bundle(config, args.initialization_checkpoint, device=torch.device("cuda"))
-    checkpoint_payload = torch.load(args.initialization_checkpoint, map_location="cpu", weights_only=False)
+    checkpoint_payload = safe_torch_load(args.initialization_checkpoint)
     kappa = float(checkpoint_payload.get("extra", {}).get("self_imaging", {}).get("kappa", float("nan")))
     if not torch.isfinite(torch.tensor(kappa)):
         raise ValueError("short-spacing initialization lacks frozen kappa")

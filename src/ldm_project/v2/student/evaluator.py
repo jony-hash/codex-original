@@ -9,7 +9,7 @@ from typing import Iterator
 import torch
 from torch import nn
 
-from ..evidence import atomic_torch_save, canonical_sha256, file_sha256
+from ..evidence import atomic_torch_save, canonical_sha256, file_sha256, safe_torch_load
 
 
 class FrozenMNISTEvaluator(nn.Module):
@@ -175,7 +175,7 @@ def save_evaluator_checkpoint(
 def load_frozen_evaluator(
     path: str | Path, *, device: torch.device, min_validation_accuracy: float = 0.985
 ) -> tuple[FrozenMNISTEvaluator, dict[str, object]]:
-    payload = torch.load(path, map_location="cpu", weights_only=False)
+    payload = safe_torch_load(path)
     if (
         not isinstance(payload, dict)
         or payload.get("architecture_kind") != "frozen_mnist_evaluator_v1"

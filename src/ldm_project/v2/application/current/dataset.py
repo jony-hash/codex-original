@@ -14,11 +14,14 @@ from .admission import _passed_evidence
 
 def export_conditional_dataset(args, config: V2Config) -> int:
     _require_conditional(config)
+    checkpoint_hash = file_sha256(args.checkpoint)
     admission = _passed_evidence(
         args.acceptance_evidence, kind="conditional_generation_admission"
     )
     device = torch.device(config.run.device)
-    bundle, manifest = _load_bundle(config, args.checkpoint, device=device)
+    bundle, manifest = _load_bundle(
+        config, args.checkpoint, device=device, checkpoint_sha256=checkpoint_hash
+    )
     settings = config.conditional_generation
     assert settings is not None
     count = args.samples_per_label or settings.samples_per_label
@@ -76,7 +79,7 @@ def export_conditional_dataset(args, config: V2Config) -> int:
         "status": "candidate",
         "architecture_kind": manifest.architecture_kind,
         "system_signature": manifest.system_signature,
-        "checkpoint_hash": file_sha256(args.checkpoint),
+        "checkpoint_hash": checkpoint_hash,
         "evaluator_checkpoint_hash": manifest.evaluator_checkpoint_hash,
         "dataset_split_manifest_hash": manifest.dataset_split_manifest_hash,
         "exposure_scale": settings.fixed_exposure_scale,
@@ -104,7 +107,7 @@ def export_conditional_dataset(args, config: V2Config) -> int:
             config,
             evaluator_hash=manifest.evaluator_checkpoint_hash,
             split_hash=manifest.dataset_split_manifest_hash,
-            checkpoint_hash=file_sha256(args.checkpoint),
+            checkpoint_hash=checkpoint_hash,
             candidate_manifest_hash=manifest_hash,
         ),
         {

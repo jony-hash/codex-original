@@ -17,6 +17,7 @@ from torch import nn
 from torch.utils.checkpoint import checkpoint
 
 from .._cli_dependencies import install as _install_dependencies
+from .serialization import _trusted_legacy_torch_load
 
 _install_dependencies(globals())
 
@@ -660,7 +661,7 @@ def _rebind_manifest(args: argparse.Namespace, config: V2Config) -> int:
     if args.kind == "clean-target":
         old = CleanTargetManifestV2.from_dict(source)
         old.validate()
-        targets = torch.load(old.targets.path, map_location="cpu", weights_only=False)
+        targets = _trusted_legacy_torch_load(old.targets.path, map_location="cpu")
         reference = tensor_artifact_ref(
             old.targets.path, role="clean_mnist_targets", git_commit=commit
         )

@@ -14,8 +14,31 @@ from ..evidence import (
     atomic_torch_save,
     canonical_sha256,
     file_sha256,
+    safe_torch_load,
     tensor_sha256,
 )
+
+
+def _load_weights_only(
+    path: str | Path, *, expected_sha256: str | None = None
+) -> Mapping[str, Any]:
+    """Load a v2 checkpoint without executing arbitrary pickle globals."""
+    try:
+        payload = safe_torch_load(path, expected_sha256=expected_sha256)
+    except ValueError as exc:
+        raise ValueError("v2 checkpoint is not a safe weights-only payload") from exc
+    if not isinstance(payload, Mapping):
+        raise ValueError("invalid v2 checkpoint payload")
+    return payload
+
+
+def _validate_state_dict_payload(state: object) -> Mapping[str, torch.Tensor]:
+    if not isinstance(state, Mapping) or not all(
+        isinstance(key, str) and torch.is_tensor(value)
+        for key, value in state.items()
+    ):
+        raise ValueError("v2 checkpoint state_dict must contain only named tensors")
+    return state
 
 
 def state_signature(state: Mapping[str, torch.Tensor]) -> str:
@@ -77,7 +100,7 @@ def save_exact_checkpoint(
 def load_exact_checkpoint(
     path: str | Path, model: torch.nn.Module, expected: CheckpointManifestV2
 ) -> Mapping[str, Any]:
-    payload = torch.load(path, map_location="cpu", weights_only=False)
+    payload = _load_weights_only(path)
     if (
         not isinstance(payload, dict)
         or not isinstance(payload.get("manifest"), dict)
@@ -89,7 +112,7 @@ def load_exact_checkpoint(
         raise ValueError(
             "v2 checkpoint manifest does not match the requested formal system"
         )
-    state = payload["state_dict"]
+    state = _validate_state_dict_payload(payload["state_dict"])
     if (
         state_signature(state) != actual.state_signature
         or state_content_hash(state) != actual.state_content_hash
@@ -124,7 +147,7 @@ def load_prototype_warm_start(
     path: str | Path, model: torch.nn.Module, *, expected_system_signature: str
 ) -> WarmStartManifestV2:
     """Load only the auditable prototype/template and phase state boundary."""
-    payload = torch.load(path, map_location="cpu", weights_only=False)
+    payload = _load_weights_only(path)
     state = payload.get("state_dict") if isinstance(payload, dict) else None
     manifest_payload = payload.get("manifest") if isinstance(payload, dict) else None
     if not isinstance(state, dict) or not isinstance(manifest_payload, dict):
@@ -225,9 +248,22 @@ def save_conditional_checkpoint(
 
 
 def load_conditional_checkpoint(
-    path: str | Path, model: torch.nn.Module, expected: ConditionalCheckpointManifestV2
+    path: str | Path,
+    model: torch.nn.Module,
+    expected: ConditionalCheckpointManifestV2,
+    *,
+    expected_sha256: str | None = None,
 ) -> Mapping[str, Any]:
-    payload = torch.load(path, map_location="cpu", weights_only=False)
+    payload = _load_weights_only(path, expected_sha256=expected_sha256)
+    return load_conditional_checkpoint_payload(payload, model, expected)
+
+
+def load_conditional_checkpoint_payload(
+    payload: Mapping[str, Any],
+    model: torch.nn.Module,
+    expected: ConditionalCheckpointManifestV2,
+) -> Mapping[str, Any]:
+    """Validate and restore an already safely-loaded conditional payload."""
     if (
         not isinstance(payload, dict)
         or not isinstance(payload.get("manifest"), dict)
@@ -243,7 +279,7 @@ def load_conditional_checkpoint(
         raise ValueError(
             "conditional checkpoint does not match the requested architecture/system/config"
         )
-    state = payload["state_dict"]
+    state = _validate_state_dict_payload(payload["state_dict"])
     if (
         state_signature(state) != actual.state_signature
         or state_content_hash(state) != actual.state_content_hash

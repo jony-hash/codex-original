@@ -7,7 +7,7 @@ from typing import Any
 
 import torch
 
-from ..evidence import ArtifactRefV2, canonical_sha256, file_sha256, tensor_sha256
+from ..evidence import ArtifactRefV2, canonical_sha256, file_sha256, safe_torch_load, tensor_sha256
 
 
 @dataclass(frozen=True)
@@ -110,7 +110,7 @@ class TeacherTargetManifestV2:
         self.dataset.validate()
         if file_sha256(self.dataset.path) != self.dataset_hash:
             raise ValueError("teacher dataset hash changed")
-        payload = torch.load(self.dataset.path, map_location="cpu", weights_only=False)
+        payload = safe_torch_load(self.dataset.path, expected_sha256=self.dataset.sha256)
         if not isinstance(payload, dict):
             raise ValueError("teacher dataset must be a tensor bundle")
         required = {"codes", "class_labels", "teacher_camera", "teacher_latents", "teacher_initial_noise", "guidance_scale", "config"}
@@ -154,7 +154,7 @@ class TeacherTargetManifestV2:
 
 
 def _payload(path: str | Path) -> dict[str, Any]:
-    payload = torch.load(path, map_location="cpu", weights_only=False)
+    payload = safe_torch_load(path)
     if not isinstance(payload, dict):
         raise ValueError("teacher checkpoint payload must be a mapping")
     return payload
@@ -204,7 +204,8 @@ def build_teacher_target_manifest(dataset_path: str | Path, pair: TeacherPairMan
     """Validate a legacy export once, then expose a strict v2 dataset boundary."""
     pair.validate()
     target = Path(dataset_path)
-    payload = torch.load(target, map_location="cpu", weights_only=False)
+    target_hash = file_sha256(target)
+    payload = safe_torch_load(target, expected_sha256=target_hash)
     if not isinstance(payload, dict):
         raise ValueError("teacher export must be a tensor bundle")
     try:
@@ -221,7 +222,7 @@ def build_teacher_target_manifest(dataset_path: str | Path, pair: TeacherPairMan
         raise ValueError("teacher export guidance scale does not match pair manifest")
     if labels.numel() == 0 or labels.numel() % 10:
         raise ValueError("teacher export must contain balanced ten-label samples")
-    dataset_ref = ArtifactRefV2(str(target.resolve()), file_sha256(target), "teacher_target_dataset")
+    dataset_ref = ArtifactRefV2(str(target.resolve()), target_hash, "teacher_target_dataset")
     manifest = TeacherTargetManifestV2(
         schema_version=2,
         teacher_pair_manifest_hash=pair.manifest_hash,

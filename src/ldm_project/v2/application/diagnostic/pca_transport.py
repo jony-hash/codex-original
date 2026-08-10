@@ -15,6 +15,7 @@ from torch import nn
 from torch.nn import functional as F
 
 from ...evidence import (
+    safe_torch_load,
     EvidenceRecordV2,
     GateResult,
     atomic_torch_save,
@@ -206,7 +207,7 @@ def _real_panel_views(
 def _source_state(
     path: str, *, expected_system: str, evaluator_hash: str, split_hash: str
 ) -> tuple[dict, ConditionalCheckpointManifestV2]:
-    payload = torch.load(path, map_location="cpu", weights_only=False)
+    payload = safe_torch_load(path)
     if (
         not isinstance(payload, dict)
         or not isinstance(payload.get("state_dict"), dict)
@@ -636,7 +637,7 @@ def _load(args, config):
         raise ValueError("evaluator split mismatch")
     bundle = ConditionalBundle(config).to(device)
     # Loading is strict but the initialization-state hash is checked from its own manifest below.
-    payload_cp = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
+    payload_cp = safe_torch_load(args.checkpoint)
     actual = ConditionalCheckpointManifestV2(**payload_cp["manifest"])
     if (
         actual.architecture_kind != PCA_TRANSPORT_ARCHITECTURE
@@ -1106,7 +1107,7 @@ def conditional_pca_transport_smoke_revalidation(args, config) -> int:
             raw_path = raw_root / f"pca_transport_{name}_step_{step}_raw.pt"
             if not raw_path.is_file():
                 raise ValueError(f"missing immutable raw probe: {raw_path}")
-            raw = torch.load(raw_path, map_location=device, weights_only=True)
+            raw = safe_torch_load(raw_path, map_location=device)
             if raw.shape[0] != 170 or raw.ndim != 4:
                 raise ValueError("saved v6 raw probe must have shape [170,1,H,W]")
             view = fixed_exposure_view(raw, config.conditional_generation.fixed_exposure_scale)
@@ -1124,7 +1125,7 @@ def conditional_pca_transport_smoke_revalidation(args, config) -> int:
                 "finite": bool(torch.isfinite(raw).all().item()),
             }
         report_probes[str(step)] = payload
-    axis_raw = torch.load(raw_root / "pca_transport_axis_step_400_raw.pt", map_location="cpu", weights_only=True)
+    axis_raw = safe_torch_load(raw_root / "pca_transport_axis_step_400_raw.pt")
     zero = axis_raw[::17]
     direction_rms = []
     zero_rms = zero.square().mean().sqrt().clamp_min(1.0e-12)
@@ -1133,7 +1134,7 @@ def conditional_pca_transport_smoke_revalidation(args, config) -> int:
         minus = axis_raw[9 + direction::17]
         direction_rms.append(float((plus - minus).square().mean().sqrt().div(zero_rms).item()))
     initial_state = state_content_hash(bundle.state_dict())
-    final_payload = torch.load(raw_root / "pca_transport_smoke_final.pt", map_location="cpu", weights_only=False)
+    final_payload = safe_torch_load(raw_root / "pca_transport_smoke_final.pt")
     final_state = state_content_hash({k: v for k, v in final_payload["state_dict"].items()})
     trainable = {"generator.class_carrier_logits", "generator.class_modes", "generator.scale_logits", "system.encoder.phase", "system.decoder.phase"}
     update_norms = {k: float((final_payload["state_dict"][k] - v.detach().cpu()).norm().item()) for k, v in bundle.state_dict().items() if k in trainable}

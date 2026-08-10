@@ -44,6 +44,22 @@ def file_sha256(path: str | Path) -> str:
     return digest.hexdigest()
 
 
+def safe_torch_load(
+    path: str | Path,
+    *,
+    expected_sha256: str | None = None,
+    map_location: str | torch.device = "cpu",
+) -> Any:
+    """Load a v2 tensor/container artifact with an optional pre-load digest check."""
+    target = Path(path)
+    if expected_sha256 is not None and file_sha256(target) != expected_sha256:
+        raise ValueError(f"artifact content no longer matches {target}")
+    try:
+        return torch.load(target, map_location=map_location, weights_only=True)
+    except Exception as exc:
+        raise ValueError(f"artifact {target} is not safely loadable") from exc
+
+
 @dataclass(frozen=True)
 class ArtifactRefV2:
     path: str
@@ -61,7 +77,10 @@ class ArtifactRefV2:
         if not target.is_file() or file_sha256(target) != self.sha256:
             raise ValueError(f"artifact content no longer matches {self.role}")
         if self.shape is not None or self.dtype is not None:
-            value = torch.load(target, map_location="cpu", weights_only=False)
+            try:
+                value = safe_torch_load(target, expected_sha256=self.sha256)
+            except Exception as exc:
+                raise ValueError(f"tensor artifact {self.role} is not safely loadable") from exc
             if not torch.is_tensor(value):
                 raise ValueError(f"tensor artifact {self.role} is no longer a tensor")
             if self.shape is not None and tuple(value.shape) != self.shape:
@@ -72,7 +91,10 @@ class ArtifactRefV2:
 
 def tensor_artifact_ref(path: str | Path, *, role: str, git_commit: str | None = None) -> ArtifactRefV2:
     target = Path(path)
-    value = torch.load(target, map_location="cpu", weights_only=False)
+    try:
+        value = safe_torch_load(target)
+    except Exception as exc:
+        raise ValueError(f"{target} is not safely loadable as a tensor") from exc
     if not torch.is_tensor(value):
         raise ValueError(f"{target} must contain one tensor")
     return ArtifactRefV2(str(target.resolve()), file_sha256(target), role, tuple(value.shape), str(value.dtype), git_commit)

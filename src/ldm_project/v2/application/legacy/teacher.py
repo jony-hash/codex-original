@@ -17,6 +17,7 @@ from torch import nn
 from torch.utils.checkpoint import checkpoint
 
 from ...config import V2Config
+from .serialization import _trusted_legacy_torch_load
 from ...evidence import (
     EvidenceContextV2,
     EvidenceRecordV2,
@@ -52,7 +53,7 @@ class StudentBundle(nn.Module):
 
 
 def _tensor(path: str, *, device: torch.device) -> torch.Tensor:
-    value = torch.load(path, map_location=device, weights_only=False)
+    value = _trusted_legacy_torch_load(path, map_location=device)
     if not torch.is_tensor(value):
         raise ValueError(f"{path} must contain one tensor")
     return value.to(device)

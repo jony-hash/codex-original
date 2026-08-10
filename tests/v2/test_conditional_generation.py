@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import torch
 from torch import nn
 
 from ldm_project.v2.config import load_config
+from ldm_project.v2.evidence import canonical_sha256
 from ldm_project.v2.student.admission import balanced_code_fraction
 from ldm_project.v2.student.checkpoints import (
     ConditionalCheckpointManifestV2,
@@ -16,6 +18,7 @@ from ldm_project.v2.student.checkpoints import (
     state_signature,
 )
 from ldm_project.v2.student.conditional import (
+    conditional_loss,
     conditional_sinkhorn_loss,
     fixed_exposure_view,
     sinkhorn_cost_view,
@@ -42,6 +45,38 @@ from ldm_project.v2.application.conditional import (
     _semantic_localization_classification,
 )
 from ldm_project.v2.student.evaluator import MNISTSplitManifest
+
+
+class _ToyPhaseSystem(nn.Module):
+    """Small differentiable camera preserving the production phase parameter boundary."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.encoder = nn.Module()
+        self.encoder.phase = nn.Parameter(torch.zeros(1, 1, 8, 8))
+        self.decoder = nn.Module()
+        self.decoder.phase = nn.Parameter(torch.zeros(1, 1, 8, 8))
+        self.frozen = nn.Parameter(torch.ones(1), requires_grad=False)
+
+    def command(self, value: torch.Tensor) -> torch.Tensor:
+        return value
+
+    def forward(self, command: torch.Tensor) -> SimpleNamespace:
+        gain = torch.sigmoid(self.encoder.phase.mean() + self.decoder.phase.mean())
+        return SimpleNamespace(raw_camera=SimpleNamespace(tensor=command * gain))
+
+
+class _ToyEvaluator(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        self.projection = nn.Linear(28 * 28, 16, bias=False)
+        self.classifier = nn.Linear(16, 10, bias=False)
+        for parameter in self.parameters():
+            parameter.requires_grad_(False)
+
+    def forward(self, images: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        features = self.projection(images.flatten(1))
+        return features, self.classifier(features)
 
 
 def test_conditional_generator_is_bounded_zero_code_carrier_and_global() -> None:
@@ -94,6 +129,21 @@ def test_identity_anchored_generator_initialization_is_deterministic() -> None:
             first.state_dict().values(), second.state_dict().values()
         )
     )
+
+
+def test_current_bundle_seed_is_bound_before_construction() -> None:
+    from ldm_project.v2.application.current.runtime import _seeded_conditional_bundle
+
+    config = load_config(
+        "configs/v2/current/formal_identity_logit_amplitude_finite_crop_identity.yaml"
+    )
+    # Perturb the caller's RNG; construction must still use the scoped config
+    # seed before any module parameter is created.
+    torch.manual_seed(9876)
+    first = _seeded_conditional_bundle(config)
+    torch.manual_seed(4321)
+    second = _seeded_conditional_bundle(config)
+    assert state_content_hash(first.state_dict()) == state_content_hash(second.state_dict())
 
 
 def test_class_conditioned_modes_are_identity_anchored_and_rank_eight() -> None:
@@ -555,6 +605,114 @@ def test_identity_logit_v2_checkpoint_requires_complete_context(tmp_path: Path) 
         save_conditional_checkpoint(tmp_path / "incomplete.pt", model, incomplete)
 
 
+def test_initialization_payload_rejects_seed_or_state_hash_tampering() -> None:
+    from ldm_project.v2.application.current.runtime import _validate_initialization_payload
+
+    config = load_config(
+        "configs/v2/current/formal_identity_logit_amplitude_finite_crop_identity.yaml"
+    )
+    manifest = SimpleNamespace(
+        state_content_hash="state",
+        initialization_state_hash="state",
+        initialization_seed=1234,
+    )
+    _validate_initialization_payload(
+        config, manifest, {"initialization": True, "seed": 1234}
+    )
+    with pytest.raises(ValueError, match="state hash"):
+        _validate_initialization_payload(
+            config,
+            SimpleNamespace(
+                state_content_hash="changed",
+                initialization_state_hash="state",
+                initialization_seed=1234,
+            ),
+            {"initialization": True, "seed": 1234},
+        )
+    with pytest.raises(ValueError, match="seed"):
+        _validate_initialization_payload(
+            config, manifest, {"initialization": True, "seed": 4321}
+        )
+
+
+def test_initialization_payload_rejects_config_seed_mismatch() -> None:
+    from ldm_project.v2.application.current.runtime import _validate_initialization_payload
+
+    config = load_config(
+        "configs/v2/current/formal_identity_logit_amplitude_finite_crop_identity.yaml"
+    )
+    with pytest.raises(ValueError, match="initialization seed"):
+        _validate_initialization_payload(
+            config,
+            SimpleNamespace(
+                state_content_hash="state",
+                initialization_state_hash="state",
+                initialization_seed=4321,
+            ),
+            {"initialization": True, "seed": 4321},
+        )
+
+
+def test_current_bundle_loader_rejects_initialization_manifest_tampering(
+    tmp_path: Path,
+) -> None:
+    from ldm_project.v2.application.current.runtime import (
+        CONDITIONAL_CONTROL_METRIC_CONTRACT,
+        IDENTITY_GENERATOR_CONTRACT,
+        TRAINING_SCHEDULE_CONTRACT,
+        _load_bundle,
+        _seeded_conditional_bundle,
+        _system_signature,
+    )
+
+    config = load_config(
+        "configs/v2/current/formal_identity_logit_amplitude_finite_crop_identity.yaml"
+    )
+    bundle = _seeded_conditional_bundle(config)
+    settings = config.conditional_generation
+    assert settings is not None
+    state_hash = state_content_hash(bundle.state_dict())
+    manifest = ConditionalCheckpointManifestV2(
+        2,
+        config.architecture,
+        _system_signature(config),
+        canonical_sha256(config.model_dump(mode="json")),
+        "split",
+        "evaluator",
+        settings.fixed_exposure_scale,
+        state_signature(bundle.state_dict()),
+        state_hash,
+        IDENTITY_GENERATOR_CONTRACT,
+        canonical_sha256(CONDITIONAL_CONTROL_METRIC_CONTRACT),
+        TRAINING_SCHEDULE_CONTRACT,
+        settings.initialization_seed,
+        state_hash,
+    )
+    checkpoint = tmp_path / "initialization.pt"
+    save_conditional_checkpoint(
+        checkpoint,
+        bundle,
+        manifest,
+        extra={"initialization": True, "seed": settings.initialization_seed},
+    )
+    loaded, loaded_manifest = _load_bundle(
+        config, str(checkpoint), device=torch.device("cpu")
+    )
+    assert state_content_hash(loaded.state_dict()) == loaded_manifest.initialization_state_hash
+
+    payload = torch.load(checkpoint, weights_only=False)
+    payload["manifest"]["initialization_seed"] = 4321
+    torch.save(payload, checkpoint)
+    with pytest.raises(ValueError, match="initialization seed"):
+        _load_bundle(config, str(checkpoint), device=torch.device("cpu"))
+
+    payload["manifest"]["initialization_seed"] = settings.initialization_seed
+    payload["manifest"]["initialization_state_hash"] = "0" * 64
+    torch.save(payload, checkpoint)
+    with pytest.raises(ValueError, match="state hash"):
+        _load_bundle(config, str(checkpoint), device=torch.device("cpu"))
+
+
 def test_identity_logit_config_is_separate_and_locks_gain_and_seed() -> None:
     config = load_config(
         "configs/v2/current/formal_identity_logit_amplitude_finite_crop_identity.yaml"
@@ -603,6 +761,104 @@ def test_current_identity_parameter_groups_have_no_candidate_architecture_branch
     )
 
 
+def test_current_optimizer_updates_every_declared_trainable_group() -> None:
+    from ldm_project.v2.application.current.recovery import _conditional_optimizer
+
+    config = load_config(
+        "configs/v2/current/formal_identity_logit_amplitude_finite_crop_identity.yaml"
+    )
+    generator = IdentityAnchoredConditionalAmplitudeGenerator(shape=(8, 8))
+    system = _ToyPhaseSystem()
+    evaluator = _ToyEvaluator().eval()
+    bundle = SimpleNamespace(
+        generator=generator,
+        system=system,
+    )
+    bundle.parameters = lambda: list(generator.parameters()) + list(system.parameters())
+    optimizer = _conditional_optimizer(bundle, config)
+    declared = [parameter for group in optimizer.param_groups for parameter in group["params"]]
+    assert len({id(parameter) for parameter in declared}) == 6
+    labels = torch.arange(10).repeat_interleave(2)
+    codes = torch.randn(20, 8)
+    real_views = torch.rand(20, 1, 28, 28)
+    before = [parameter.detach().clone() for parameter in declared]
+    for _ in range(2):
+        optimizer.zero_grad(set_to_none=True)
+        loss, _, _ = conditional_loss(
+            system=system,
+            generator=generator,
+            evaluator=evaluator,
+            codes=codes,
+            labels=labels,
+            real_views=real_views,
+            exposure_scale=1.0,
+            sinkhorn_epsilon=0.1,
+            sinkhorn_iterations=1,
+            activation_checkpoint=False,
+            microbatch_size=2,
+        )
+        loss.backward()
+        optimizer.step()
+    assert all(not torch.equal(previous, parameter) for previous, parameter in zip(before, declared))
+    assert torch.equal(system.frozen.detach(), torch.ones(1))
+
+    optimizer.zero_grad(set_to_none=True)
+    loss, _, _ = conditional_loss(
+        system=system,
+        generator=generator,
+        evaluator=evaluator,
+        codes=codes,
+        labels=labels,
+        real_views=real_views,
+        exposure_scale=1.0,
+        sinkhorn_epsilon=0.1,
+        sinkhorn_iterations=1,
+        activation_checkpoint=False,
+        microbatch_size=2,
+    )
+    loss.backward()
+    assert any(parameter.grad is not None for parameter in declared)
+    no_step = [parameter.detach().clone() for parameter in declared]
+    assert all(torch.equal(previous, parameter) for previous, parameter in zip(no_step, declared))
+    from ldm_project.v2.application.current.admission import _conditional_parameter_groups
+    from ldm_project.v2.application.current.training import (
+        _validate_current_optimizer_coverage,
+        _validate_two_step_parameter_updates,
+    )
+
+    groups = _conditional_parameter_groups(bundle)
+    _validate_current_optimizer_coverage(optimizer, groups)
+    with pytest.raises(ValueError, match="did not update"):
+        _validate_two_step_parameter_updates(
+            bundle,
+            groups,
+            {id(parameter): parameter.detach().clone() for parameter in declared},
+            {
+                id(parameter): parameter.detach().clone()
+                for parameter in bundle.parameters()
+                if id(parameter) not in {id(item) for item in declared}
+            },
+            {id(parameter) for parameter in declared if parameter.grad is not None},
+        )
+
+
+def test_current_optimizer_coverage_rejects_missing_declared_parameter() -> None:
+    from ldm_project.v2.application.current.admission import _conditional_parameter_groups
+    from ldm_project.v2.application.current.recovery import _conditional_optimizer
+    from ldm_project.v2.application.current.runtime import ConditionalBundle
+    from ldm_project.v2.application.current.training import _validate_current_optimizer_coverage
+
+    config = load_config(
+        "configs/v2/current/formal_identity_logit_amplitude_finite_crop_identity.yaml"
+    )
+    bundle = ConditionalBundle(config)
+    groups = _conditional_parameter_groups(bundle)
+    optimizer = _conditional_optimizer(bundle, config)
+    optimizer.param_groups[0]["params"] = optimizer.param_groups[0]["params"][1:]
+    with pytest.raises(ValueError, match="coverage changed"):
+        _validate_current_optimizer_coverage(optimizer, groups)
+
+
 def test_multi_anchor_config_locks_gain_batch_and_seed() -> None:
     config = load_config(
         "configs/v2/diagnostic/conditional_multi_anchor_local_modes_finite_crop_identity.yaml"
@@ -614,7 +870,7 @@ def test_multi_anchor_config_locks_gain_batch_and_seed() -> None:
     assert config.conditional_generation.initialization_seed == 1234
 
 
-def test_v2_config_migration_resolves_exact_legacy_path() -> None:
+def test_config_migration_resolves_exact_legacy_path() -> None:
     with pytest.warns(UserWarning, match="deprecated v2 config path"):
         legacy = load_config("configs/v2/formal_amplitude_finite_crop_identity.yaml")
     assert legacy.architecture == "conditional_global_amplitude_v1"
@@ -625,7 +881,7 @@ def test_v2_config_migration_resolves_exact_legacy_path() -> None:
     assert legacy.run.evidence_tier == "diagnostic"
 
 
-def test_v2_config_migration_does_not_guess_unknown_paths() -> None:
+def test_config_migration_does_not_guess_unknown_paths() -> None:
     with pytest.raises(FileNotFoundError, match="v2 config does not exist"):
         load_config(
             "configs/v2/formal_identity_logit_amplitude_finite_crop_identity_typo.yaml"

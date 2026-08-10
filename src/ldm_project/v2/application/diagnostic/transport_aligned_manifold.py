@@ -14,6 +14,7 @@ import torch
 from torch.nn import functional as F
 
 from ...evidence import (
+    safe_torch_load,
     EvidenceRecordV2, GateResult, atomic_torch_save, atomic_write_json,
     canonical_sha256, file_sha256, tensor_sha256,
 )
@@ -115,7 +116,7 @@ def _bundle_from_artifact(config, artifact: dict, device: torch.device) -> Condi
 
 
 def _load_checkpoint_bundle(path: str, config, *, device: torch.device, evaluator_hash: str, split_hash: str):
-    payload = torch.load(path, map_location="cpu", weights_only=False)
+    payload = safe_torch_load(path)
     if not isinstance(payload, dict) or not isinstance(payload.get("manifest"), dict) or not isinstance(payload.get("state_dict"), dict):
         raise ValueError("invalid transport-aligned checkpoint")
     manifest = ConditionalCheckpointManifestV2(**payload["manifest"])
@@ -257,7 +258,7 @@ def conditional_transport_aligned_manifold_design(args, config) -> int:
     _require(config)
     source = _source(args.electronic_initialization)
     v7 = _load_evidence(args.v7_capacity_evidence, kind="conditional_nonlinear_expanded_manifold_capacity")
-    v7_artifact = torch.load(args.v7_basis_artifact, map_location="cpu", weights_only=False)
+    v7_artifact = safe_torch_load(args.v7_basis_artifact)
     if not isinstance(v7_artifact, dict) or v7.input_hashes.get("basis_artifact") != file_sha256(args.v7_basis_artifact) or v7.context.checkpoint_hash != file_sha256(args.electronic_initialization):
         raise ValueError("v7 capacity inputs are not content-bound to this source")
     if v7_artifact.get("source_basis_hash") != source["basis_hash"] or v7_artifact.get("source_electronic_hash") != source["source_checkpoint_hash"]:
@@ -349,7 +350,7 @@ def _admission_gates(metrics, feature_rank, unique, crops, command_rank, raw_ran
 def conditional_transport_aligned_manifold_admission(args, config) -> int:
     _require(config)
     design_evidence = _load_evidence(args.design_evidence, kind="conditional_transport_aligned_manifold_design", action="conditional-transport-aligned-manifold-admission")
-    artifact = torch.load(args.design_artifact, map_location="cpu", weights_only=False)
+    artifact = safe_torch_load(args.design_artifact)
     required = {"contract", "carrier", "candidate_modes", "transport_mixing", "manifold_scales", "carrier_hash", "source_basis_hash", "source_electronic_hash", "candidate_basis_hash", "mixing_hash", "scale_hash", "v7_capacity_evidence_hash", "v7_basis_artifact_hash"}
     if not isinstance(artifact, dict) or not required.issubset(artifact) or artifact["contract"] != DESIGN_CONTRACT or not _artifact_hashes(artifact):
         raise ValueError("invalid or internally inconsistent transport design artifact")

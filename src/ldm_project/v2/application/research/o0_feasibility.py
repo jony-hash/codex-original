@@ -20,7 +20,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from ...evidence import atomic_torch_save, atomic_write_json, canonical_sha256, file_sha256, tensor_sha256
+from ...evidence import safe_torch_load, atomic_torch_save, atomic_write_json, canonical_sha256, file_sha256, tensor_sha256
 from ...student.evaluator import SmoothMNISTEvaluator, load_frozen_evaluator, load_local_mnist, stratified_mnist_indices
 from .measurement import measure_candidate
 from .o0_models import ProjectionDiscriminator, build_o0_candidate, inference_state_dict
@@ -90,7 +90,7 @@ def _load_evaluators(spec: O0FeasibilitySpec, device: torch.device) -> tuple[nn.
     if bundle.get("primary_checkpoint") != file_sha256(spec.evaluator_checkpoint) or bundle.get("smooth_checkpoint") != file_sha256(spec.smooth_evaluator_checkpoint):
         raise ValueError("v2.3 evaluator bundle checkpoint hash mismatch")
     primary, payload = load_frozen_evaluator(spec.evaluator_checkpoint, device=device)
-    smooth_payload = torch.load(spec.smooth_evaluator_checkpoint, map_location="cpu", weights_only=False)
+    smooth_payload = safe_torch_load(spec.smooth_evaluator_checkpoint)
     if not isinstance(smooth_payload, dict) or smooth_payload.get("architecture_kind") != SmoothMNISTEvaluator.architecture_kind:
         raise ValueError("v2.3 smooth evaluator architecture mismatch")
     if smooth_payload.get("split_manifest_hash") != payload.get("split_manifest_hash"):
@@ -333,7 +333,7 @@ def _train(spec: O0FeasibilitySpec, args: argparse.Namespace, *, steps: int, roo
     discriminator_optimizer = torch.optim.Adam(discriminator.parameters(), lr=2.0e-4, betas=(0.0, .9))
     start_step = 0
     if args.resume_checkpoint:
-        payload = torch.load(args.resume_checkpoint, map_location=device, weights_only=False)
+        payload = safe_torch_load(args.resume_checkpoint, map_location=device)
         if not isinstance(payload, dict) or payload.get("config_hash") != spec.config_hash or payload.get("candidate") != args.candidate or payload.get("seed") != args.seed:
             raise ValueError("resume checkpoint context does not match v2.3 request")
         candidate.load_state_dict(payload["generator"], strict=True)
@@ -445,7 +445,7 @@ def _evaluate_model(spec: O0FeasibilitySpec, args: argparse.Namespace, state_dic
 
 def _evaluate_checkpoint(spec: O0FeasibilitySpec, args: argparse.Namespace, checkpoint: str) -> dict[str, object]:
     """Replay a generator checkpoint with the complete four-panel contract."""
-    payload = torch.load(checkpoint, map_location="cpu", weights_only=False)
+    payload = safe_torch_load(checkpoint)
     if not isinstance(payload, dict) or payload.get("inference_only") is not True:
         raise ValueError("training did not produce an inference-only checkpoint")
     if payload.get("config_hash") != spec.config_hash or payload.get("candidate") != args.candidate or payload.get("seed") != args.seed:
@@ -548,7 +548,7 @@ def final(args: argparse.Namespace) -> int:
             if source_seed in source_seeds or source_seed not in spec.seeds:
                 raise ValueError("locked-final requires distinct pre-registered confirm seeds")
             source_seeds.append(source_seed)
-            payload = torch.load(checkpoint_path, map_location=device, weights_only=False)
+            payload = safe_torch_load(checkpoint_path, map_location=device)
             if not isinstance(payload, dict) or payload.get("inference_only") is not True or payload.get("config_hash") != spec.config_hash or payload.get("candidate") != args.candidate:
                 raise ValueError("final checkpoint is not an inference-only v2.3 checkpoint")
             if source.get("metrics", {}).get("checkpoint_sha256") != file_sha256(checkpoint_path):

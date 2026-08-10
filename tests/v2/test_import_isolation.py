@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from pathlib import Path
 
 
 def _run(script: str) -> str:
@@ -128,4 +129,20 @@ assert not any(name.startswith(forbidden) for name in sys.modules), sorted(
     name for name in sys.modules if name.startswith(forbidden)
 )
 """
+    )
+
+
+def test_v2_unsafe_load_boundary_is_unique_and_private() -> None:
+    root = Path(__file__).parents[2] / "src" / "ldm_project" / "v2"
+    unsafe_files = []
+    direct_load_files = []
+    for path in root.rglob("*.py"):
+        text = path.read_text(encoding="utf-8")
+        if "weights_only=False" in text:
+            unsafe_files.append(path.relative_to(root))
+        if "torch.load(" in text:
+            direct_load_files.append(path.relative_to(root))
+    assert unsafe_files == [Path("application/legacy/serialization.py")]
+    assert sorted(direct_load_files) == sorted(
+        [Path("application/legacy/serialization.py"), Path("evidence/io.py")]
     )

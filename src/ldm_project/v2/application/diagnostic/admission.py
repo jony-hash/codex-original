@@ -13,8 +13,8 @@ def sample_conditional(args, config: V2Config) -> int:
     _require_conditional(config)
     device = torch.device(config.run.device)
     bundle, _ = _load_bundle(config, args.checkpoint, device=device)
-    codes = torch.load(args.codes, map_location=device, weights_only=False)
-    labels = torch.load(args.labels, map_location=device, weights_only=False).long()
+    codes = safe_torch_load(args.codes, map_location=device)
+    labels = safe_torch_load(args.labels, map_location=device).long()
     if not torch.is_tensor(codes) or not torch.is_tensor(labels):
         raise ValueError("codes and labels must be tensor files")
     raw = raw_from_generator_batched(

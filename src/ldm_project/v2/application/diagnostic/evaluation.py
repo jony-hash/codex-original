@@ -242,8 +242,8 @@ def admit_conditional_evaluation(args, config: V2Config) -> int:
         raise ValueError(
             "conditional evaluation evidence cannot authorize manual admission"
         )
-    raw = torch.load(args.evaluation_raw_cmos, map_location="cpu", weights_only=False)
-    labels = torch.load(args.evaluation_labels, map_location="cpu", weights_only=False)
+    raw = safe_torch_load(args.evaluation_raw_cmos)
+    labels = safe_torch_load(args.evaluation_labels)
     if not torch.is_tensor(raw) or file_sha256(
         args.evaluation_raw_cmos
     ) != source.input_hashes.get("raw_cmos"):

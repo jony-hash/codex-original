@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 import torch
 
-from ..evidence import atomic_torch_save
+from ..evidence import atomic_torch_save, safe_torch_load
 from .admission import balanced_code_fraction
 
 
@@ -34,7 +34,7 @@ class CodeBasisArtifactV2:
 
     @classmethod
     def load(cls, path: str) -> "CodeBasisArtifactV2":
-        payload = torch.load(path, map_location="cpu", weights_only=False)
+        payload = safe_torch_load(path)
         if not isinstance(payload, dict):
             raise ValueError("invalid code basis artifact")
         artifact = cls(payload["basis"], payload["normalizer"], int(payload["candidate_count"]), int(payload["seed"]), str(payload["source_hash"]), payload.get("singular_values"), payload.get("mode_indices"), payload.get("frequencies_cycles_per_mm"))

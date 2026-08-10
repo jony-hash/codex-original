@@ -210,7 +210,7 @@ def _multi_anchor_modes(
 def _multi_anchor_source_phases(
     source_checkpoint: str, bundle: ConditionalBundle
 ) -> None:
-    payload = torch.load(source_checkpoint, map_location="cpu", weights_only=False)
+    payload = safe_torch_load(source_checkpoint)
     if (
         not isinstance(payload, dict)
         or not isinstance(payload.get("manifest"), dict)

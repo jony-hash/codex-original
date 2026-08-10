@@ -22,7 +22,7 @@ class RepoLayoutTests(unittest.TestCase):
         self.assertEqual(offenders, [])
         self.assertTrue((ROOT / "experiments" / "archive" / "v57_v67" / "tools").is_dir())
 
-    def test_v1_v2_namespaces_and_legacy_facades_are_isolated(self) -> None:
+    def test_namespaces_and_legacy_facades_are_isolated(self) -> None:
         package_root = ROOT / "src" / "ldm_project"
         for namespace in ("v1", "v2"):
             self.assertTrue((package_root / namespace / "__init__.py").is_file())
@@ -54,7 +54,7 @@ class RepoLayoutTests(unittest.TestCase):
                     forbidden.append(str(path.relative_to(ROOT)))
         self.assertEqual(forbidden, [])
 
-    def test_v2_current_runtime_is_physically_isolated_and_split(self) -> None:
+    def test_current_runtime_is_physically_isolated_and_split(self) -> None:
         application = ROOT / "src" / "ldm_project" / "v2" / "application"
         self.assertLessEqual(len((application / "cli.py").read_text(encoding="utf-8").splitlines()), 250)
         self.assertLessEqual(len((application / "identity_runtime.py").read_text(encoding="utf-8").splitlines()), 100)
@@ -165,7 +165,7 @@ class RepoLayoutTests(unittest.TestCase):
         self.assertFalse((ROOT / "train_ldm.py").exists(), "legacy entry script should be removed: train_ldm.py")
         self.assertFalse((ROOT / "sample_ldm.py").exists(), "legacy entry script should be removed: sample_ldm.py")
 
-    def test_v2_current_legacy_diagnostic_taxonomy(self) -> None:
+    def test_current_legacy_diagnostic_taxonomy(self) -> None:
         current = ROOT / "configs" / "v2" / "current" / "formal_identity_logit_amplitude_finite_crop_identity.yaml"
         legacy = ROOT / "configs" / "v2" / "legacy" / "formal_global_amplitude_finite_crop_identity.yaml"
         diagnostic = ROOT / "configs" / "v2" / "diagnostic" / "lightgen_amplitude_fiber_ols_400.yaml"

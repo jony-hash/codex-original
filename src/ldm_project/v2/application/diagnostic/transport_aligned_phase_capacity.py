@@ -12,6 +12,7 @@ import json
 import torch
 
 from ...evidence import (
+    safe_torch_load,
     EvidenceRecordV2,
     GateResult,
     atomic_torch_save,
@@ -100,8 +101,8 @@ def conditional_transport_aligned_phase_capacity_design(args, config) -> int:
         or v7.status != "passed"
     ):
         raise ValueError("v7 capacity evidence must be passed")
-    v7_artifact = torch.load(
-        args.v7_basis_artifact, map_location="cpu", weights_only=False
+    v7_artifact = safe_torch_load(
+        args.v7_basis_artifact
     )
     if not isinstance(v7_artifact, dict) or v7.input_hashes.get(
         "basis_artifact"

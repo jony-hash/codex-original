@@ -9,6 +9,8 @@ from .runtime import (
     fixed_exposure_view, json, load_conditional_manual_review,
     load_frozen_evaluator, load_local_mnist, raw_from_generator_batched,
     relative_diversity_ratios, tensor_sha256, torch,
+    safe_torch_load,
+    require_input_hashes,
     write_conditional_review_artifacts,
 )
 from .admission import _code_fraction, _passed_evidence
@@ -18,9 +20,14 @@ def sample_conditional(args, config: V2Config) -> int:
     """Render formal identity samples from an exact identity checkpoint."""
     _require_conditional(config)
     device = torch.device(config.run.device)
-    bundle, _ = _load_bundle(config, args.checkpoint, device=device)
-    codes = torch.load(args.codes, map_location=device, weights_only=False)
-    labels = torch.load(args.labels, map_location=device, weights_only=False).long()
+    bundle, _ = _load_bundle(
+        config,
+        args.checkpoint,
+        device=device,
+        checkpoint_sha256=file_sha256(args.checkpoint),
+    )
+    codes = safe_torch_load(args.codes)
+    labels = safe_torch_load(args.labels)
     if not torch.is_tensor(codes) or not torch.is_tensor(labels):
         raise ValueError("codes and labels must be tensor files")
     raw = (
@@ -59,6 +66,7 @@ def conditional_evaluate(args, config: V2Config) -> int:
     )
     evaluator, _ = load_frozen_evaluator(args.evaluator_checkpoint, device=device)
     evaluator_hash = evaluator_checkpoint_hash(args.evaluator_checkpoint)
+    checkpoint_hash = file_sha256(args.checkpoint)
     bundle, manifest = _load_bundle(
         config,
         args.checkpoint,
@@ -66,9 +74,22 @@ def conditional_evaluate(args, config: V2Config) -> int:
         evaluator_hash=evaluator_hash,
         split_hash=split.manifest_hash,
         allow_balanced_schedule=False,
+        checkpoint_sha256=checkpoint_hash,
     )
-    if training_record.context.checkpoint_hash != file_sha256(args.checkpoint):
+    if training_record.context.checkpoint_hash != checkpoint_hash:
         raise ValueError("training evidence does not bind the evaluation checkpoint")
+    require_input_hashes(
+        training_record,
+        {
+            "checkpoint": checkpoint_hash,
+            "initialization_state_hash": manifest.initialization_state_hash,
+        },
+    )
+    initialization_checkpoint_hash = training_record.input_hashes.get(
+        "initialization_checkpoint"
+    )
+    if not isinstance(initialization_checkpoint_hash, str) or len(initialization_checkpoint_hash) != 64:
+        raise ValueError("training evidence lacks initialization checkpoint binding")
     settings = config.conditional_generation
     assert settings is not None
     (
@@ -202,11 +223,11 @@ def conditional_evaluate(args, config: V2Config) -> int:
             config,
             evaluator_hash=evaluator_hash,
             split_hash=split.manifest_hash,
-            checkpoint_hash=file_sha256(args.checkpoint),
+            checkpoint_hash=checkpoint_hash,
         ),
         {
             "training_evidence": file_sha256(args.training_evidence),
-            "checkpoint": file_sha256(args.checkpoint),
+            "checkpoint": checkpoint_hash,
             "raw_cmos": file_sha256(raw_path),
             "labels": file_sha256(labels_path),
             "review_raw_cmos": review_artifacts.raw_tensor_sha256,
@@ -235,8 +256,14 @@ def admit_conditional_evaluation(args, config: V2Config) -> int:
         raise ValueError(
             "conditional evaluation evidence cannot authorize manual admission"
         )
-    raw = torch.load(args.evaluation_raw_cmos, map_location="cpu", weights_only=False)
-    labels = torch.load(args.evaluation_labels, map_location="cpu", weights_only=False)
+    raw = safe_torch_load(
+        args.evaluation_raw_cmos,
+        expected_sha256=source.input_hashes.get("raw_cmos"),
+    )
+    labels = safe_torch_load(
+        args.evaluation_labels,
+        expected_sha256=source.input_hashes.get("labels"),
+    )
     if not torch.is_tensor(raw) or file_sha256(
         args.evaluation_raw_cmos
     ) != source.input_hashes.get("raw_cmos"):

@@ -1,14 +1,30 @@
 from __future__ import annotations
 
 from pathlib import Path
+import subprocess
 
 import pytest
 import torch
 
-from ldm_project.v2.evidence import atomic_write_json, tensor_artifact_ref, tensor_sha256
+from ldm_project.v2.evidence import (
+    EvidenceContextV2,
+    EvidenceRecordV2,
+    GateResult,
+    atomic_write_json,
+    file_sha256,
+    require_input_hashes,
+    safe_torch_load,
+    tensor_artifact_ref,
+    tensor_sha256,
+)
+from ldm_project.v2.application.runs import _worktree_fingerprint
 from ldm_project.v2.student.clean_targets import CleanTargetManifestV2
 from ldm_project.v2.student.checkpoints import CheckpointManifestV2, load_exact_checkpoint, save_exact_checkpoint, state_content_hash, state_signature
 from ldm_project.v2.teacher import build_teacher_pair_manifest, build_teacher_target_manifest
+
+
+class _UnsafeCheckpointPayload:
+    pass
 
 
 def _teacher_payload(model_version: str, *, first_stage_model_version: str | None = None) -> dict[str, object]:
@@ -48,6 +64,149 @@ def test_exact_checkpoint_refuses_any_contract_or_state_change(tmp_path: Path) -
     torch.save(payload, path)
     with pytest.raises(ValueError, match="signature"):
         load_exact_checkpoint(path, torch.nn.Linear(3, 2), manifest)
+
+
+def test_exact_checkpoint_rejects_unsafe_pickle_payload(tmp_path: Path) -> None:
+    model = torch.nn.Linear(3, 2)
+    manifest = CheckpointManifestV2(2, "formal_amplitude_finite_crop_identity", "finite_crop", "system", "config", "dataset", "teacher", "calibration", "basis", state_signature(model.state_dict()), state_content_hash(model.state_dict()))
+    path = tmp_path / "unsafe.pt"
+    torch.save(_UnsafeCheckpointPayload(), path)
+    with pytest.raises(ValueError, match="safe weights-only"):
+        load_exact_checkpoint(path, model, manifest)
+
+
+def test_safe_artifact_load_checks_digest_before_deserialization(tmp_path: Path) -> None:
+    path = tmp_path / "tensor.pt"
+    torch.save(torch.ones(2), path)
+    assert torch.equal(safe_torch_load(path, expected_sha256=file_sha256(path)), torch.ones(2))
+    with pytest.raises(ValueError, match="content no longer matches"):
+        safe_torch_load(path, expected_sha256="0" * 64)
+
+
+def test_exact_checkpoint_deserializes_once_after_one_digest_check(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    model = torch.nn.Linear(3, 2)
+    manifest = CheckpointManifestV2(
+        2,
+        "formal_amplitude_finite_crop_identity",
+        "finite_crop",
+        "system",
+        "config",
+        "dataset",
+        "teacher",
+        "calibration",
+        "basis",
+        state_signature(model.state_dict()),
+        state_content_hash(model.state_dict()),
+    )
+    path = tmp_path / "checkpoint.pt"
+    save_exact_checkpoint(path, model, manifest)
+    original_load = torch.load
+    calls = 0
+
+    def counted_load(*args: object, **kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        return original_load(*args, **kwargs)
+
+    monkeypatch.setattr(torch, "load", counted_load)
+    load_exact_checkpoint(path, torch.nn.Linear(3, 2), manifest)
+    assert calls == 1
+
+
+def test_evidence_input_hash_binding_rejects_tampering() -> None:
+    record = EvidenceRecordV2(
+        2,
+        "unit",
+        "diagnostic",
+        "passed",
+        "commit",
+        None,
+        "config",
+        EvidenceContextV2("system", "config"),
+        {"initialization_checkpoint": "a" * 64, "initialization_state_hash": "b" * 64},
+        (GateResult("unit", True, {}),),
+        (),
+    )
+    require_input_hashes(
+        record,
+        {"initialization_checkpoint": "a" * 64, "initialization_state_hash": "b" * 64},
+    )
+    with pytest.raises(ValueError, match="initialization_state_hash"):
+        require_input_hashes(
+            record,
+            {"initialization_state_hash": "c" * 64},
+        )
+
+
+def _git(repo: Path, *args: str) -> None:
+    subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True)
+
+
+def _init_git_repo(tmp_path: Path) -> Path:
+    _git(tmp_path, "init", "-q")
+    _git(tmp_path, "config", "user.email", "unit@example.invalid")
+    _git(tmp_path, "config", "user.name", "Unit Test")
+    tracked = tmp_path / "tracked.py"
+    tracked.write_text("value = 1\n", encoding="utf-8")
+    _git(tmp_path, "add", "tracked.py")
+    _git(tmp_path, "commit", "-qm", "initial")
+    return tracked
+
+
+def test_worktree_fingerprint_is_none_for_clean_and_ignored_only(tmp_path: Path) -> None:
+    _init_git_repo(tmp_path)
+    assert _worktree_fingerprint(tmp_path) is None
+    ignored = tmp_path / ".gitignore"
+    ignored.write_text("ignored.bin\n", encoding="utf-8")
+    _git(tmp_path, "add", ".gitignore")
+    _git(tmp_path, "commit", "-qm", "ignore")
+    (tmp_path / "ignored.bin").write_bytes(b"cache")
+    assert _worktree_fingerprint(tmp_path) is None
+
+
+def test_worktree_fingerprint_covers_unstaged_content_stably(tmp_path: Path) -> None:
+    tracked = _init_git_repo(tmp_path)
+    tracked.write_text("value = 2\n", encoding="utf-8")
+    first = _worktree_fingerprint(tmp_path)
+    assert first is not None
+    assert _worktree_fingerprint(tmp_path) == first
+    tracked.write_text("value = 3\n", encoding="utf-8")
+    assert _worktree_fingerprint(tmp_path) != first
+
+
+def test_worktree_fingerprint_covers_staged_content_independently(tmp_path: Path) -> None:
+    tracked = _init_git_repo(tmp_path)
+    tracked.write_text("value = staged\n", encoding="utf-8")
+    _git(tmp_path, "add", "tracked.py")
+    first = _worktree_fingerprint(tmp_path)
+    assert first is not None
+    assert _worktree_fingerprint(tmp_path) == first
+    tracked.write_text("value = staged-again\n", encoding="utf-8")
+    _git(tmp_path, "add", "tracked.py")
+    assert _worktree_fingerprint(tmp_path) != first
+
+
+def test_worktree_fingerprint_covers_untracked_content_independently(tmp_path: Path) -> None:
+    _init_git_repo(tmp_path)
+    untracked = tmp_path / "new_module.py"
+    untracked.write_text("value = 2\n", encoding="utf-8")
+    first = _worktree_fingerprint(tmp_path)
+    assert first is not None
+    assert _worktree_fingerprint(tmp_path) == first
+    untracked.write_text("value = 3\n", encoding="utf-8")
+    assert _worktree_fingerprint(tmp_path) != first
+
+
+def test_worktree_fingerprint_from_subdirectory_covers_repository_root(
+    tmp_path: Path,
+) -> None:
+    tracked = _init_git_repo(tmp_path)
+    nested = tmp_path / "src" / "nested"
+    nested.mkdir(parents=True)
+    tracked.write_text("value = from-root\n", encoding="utf-8")
+    assert _worktree_fingerprint(nested) is not None
 
 
 def test_atomic_json_write_replaces_only_complete_file(tmp_path: Path) -> None:

@@ -28,12 +28,13 @@ from ...evidence import (
     canonical_sha256,
     file_sha256,
     load_conditional_manual_review,
+    safe_torch_load,
     tensor_sha256,
 )
 from ...optics import FormalAmplitudeFiniteCropIdentitySystem
 from ...student.checkpoints import (
     ConditionalCheckpointManifestV2,
-    load_conditional_checkpoint,
+    load_conditional_checkpoint_payload,
     save_conditional_checkpoint,
     state_content_hash,
     state_signature,
@@ -69,7 +70,7 @@ from ...student.evaluator import (
     stratified_mnist_indices,
 )
 from ...student.identity_generator import IdentityAnchoredConditionalAmplitudeGenerator
-from ...evidence.records import require_evidence_action
+from ...evidence.records import require_evidence_action, require_input_hashes
 from ...student.review_artifacts import (
     write_conditional_review_artifacts,
     write_review_artifacts,
@@ -154,6 +155,22 @@ class ConditionalBundle(nn.Module):
             class_carrier_logits=carrier_logits,
         )
 
+
+def _seeded_conditional_bundle(
+    config: V2Config,
+    *,
+    carrier_logits: torch.Tensor | None = None,
+) -> ConditionalBundle:
+    """Construct one identity bundle from the scoped configuration seed."""
+    if config.conditional_generation is None:
+        raise ValueError("conditional initialization requires conditional_generation")
+    seed = config.conditional_generation.initialization_seed
+    if seed < 0:
+        raise ValueError("conditional initialization seed must be non-negative")
+    with torch.random.fork_rng(devices=[]):
+        torch.manual_seed(seed)
+        return ConditionalBundle(config, carrier_logits=carrier_logits)
+
 def _require_identity(config: V2Config) -> None:
     if config.architecture != IDENTITY_ARCHITECTURE or config.conditional_generation is None:
         raise ValueError("this command requires architecture: conditional_identity_logit_amplitude_v2")
@@ -165,6 +182,26 @@ def _require_current_acceptance(config: V2Config) -> None:
     _require_identity(config)
 
 
+def _validate_initialization_payload(
+    config: V2Config,
+    manifest: ConditionalCheckpointManifestV2,
+    extra: object,
+) -> None:
+    settings = config.conditional_generation
+    if settings is None:
+        raise ValueError("identity checkpoint requires conditional_generation")
+    if manifest.initialization_seed != settings.initialization_seed:
+        raise ValueError("identity checkpoint initialization seed is inconsistent")
+    if manifest.initialization_state_hash is None:
+        raise ValueError("identity checkpoint lacks initialization state hash")
+    if not isinstance(extra, dict) or not extra.get("initialization"):
+        return
+    if manifest.state_content_hash != manifest.initialization_state_hash:
+        raise ValueError("initialization checkpoint state hash is inconsistent")
+    if extra.get("seed") != manifest.initialization_seed:
+        raise ValueError("initialization checkpoint seed is inconsistent")
+
+
 def _load_bundle(
     config: V2Config,
     checkpoint: str,
@@ -173,9 +210,36 @@ def _load_bundle(
     evaluator_hash: str | None = None,
     split_hash: str | None = None,
     allow_balanced_schedule: bool = False,
+    checkpoint_sha256: str | None = None,
 ) -> tuple[ConditionalBundle, ConditionalCheckpointManifestV2]:
+    bundle, manifest, _ = _load_bundle_with_payload(
+        config,
+        checkpoint,
+        device=device,
+        evaluator_hash=evaluator_hash,
+        split_hash=split_hash,
+        allow_balanced_schedule=allow_balanced_schedule,
+        checkpoint_sha256=checkpoint_sha256,
+    )
+    return bundle, manifest
+
+
+def _load_bundle_with_payload(
+    config: V2Config,
+    checkpoint: str,
+    *,
+    device: torch.device,
+    evaluator_hash: str | None = None,
+    split_hash: str | None = None,
+    allow_balanced_schedule: bool = False,
+    checkpoint_sha256: str | None = None,
+) -> tuple[
+    ConditionalBundle,
+    ConditionalCheckpointManifestV2,
+    dict[str, object],
+]:
     _require_identity(config)
-    payload = torch.load(checkpoint, map_location="cpu", weights_only=False)
+    payload = safe_torch_load(checkpoint, expected_sha256=checkpoint_sha256)
     if not isinstance(payload, dict) or not isinstance(payload.get("manifest"), dict):
         raise ValueError("invalid conditional checkpoint")
     manifest = ConditionalCheckpointManifestV2(**payload["manifest"])
@@ -189,6 +253,12 @@ def _load_bundle(
         raise ValueError("conditional checkpoint uses another evaluator")
     if split_hash is not None and manifest.dataset_split_manifest_hash != split_hash:
         raise ValueError("conditional checkpoint uses another MNIST split")
+    if (
+        config.conditional_generation is None
+        or manifest.initialization_seed
+        != config.conditional_generation.initialization_seed
+    ):
+        raise ValueError("identity checkpoint initialization seed mismatch")
     valid_schedules = {TRAINING_SCHEDULE_CONTRACT}
     if allow_balanced_schedule:
         valid_schedules.add(BALANCED_TRAINING_SCHEDULE_CONTRACT)
@@ -196,9 +266,10 @@ def _load_bundle(
         manifest.generator_contract_hash != IDENTITY_GENERATOR_CONTRACT
         or manifest.metric_contract_hash != canonical_sha256(CONDITIONAL_CONTROL_METRIC_CONTRACT)
         or manifest.training_schedule_hash not in valid_schedules
-        or manifest.initialization_seed != 1234
+        or config.conditional_generation is None
     ):
         raise ValueError("identity checkpoint has an incomplete or mismatched contract")
-    bundle = ConditionalBundle(config).to(device)
-    load_conditional_checkpoint(checkpoint, bundle, manifest)
-    return bundle, manifest
+    _validate_initialization_payload(config, manifest, payload.get("extra"))
+    bundle = _seeded_conditional_bundle(config).to(device)
+    load_conditional_checkpoint_payload(payload, bundle, manifest)
+    return bundle, manifest, payload

@@ -16,6 +16,7 @@ import torch
 from torch.nn import functional as F
 
 from ...evidence import (
+    safe_torch_load,
     EvidenceRecordV2,
     GateResult,
     atomic_torch_save,
@@ -170,7 +171,7 @@ def _require(config) -> None:
 
 
 def _electronic_payload(path: str) -> dict:
-    payload = torch.load(path, map_location="cpu", weights_only=False)
+    payload = safe_torch_load(path)
     required = {
         "architecture_kind",
         "carrier",
@@ -316,7 +317,7 @@ def _load_checkpoint(args, config):
     train_images, train_labels, split, evaluator_hash, evaluator, device = _load_common(
         args, config
     )
-    payload = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
+    payload = safe_torch_load(args.checkpoint)
     if not isinstance(payload, dict) or not isinstance(payload.get("manifest"), dict):
         raise ValueError("invalid v6.3 initialization checkpoint")
     manifest = ConditionalCheckpointManifestV2(**payload["manifest"])

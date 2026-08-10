@@ -12,6 +12,7 @@ import torch
 from torch.nn import functional as F
 
 from ...evidence import (
+    safe_torch_load,
     EvidenceRecordV2,
     GateResult,
     atomic_write_json,
@@ -220,8 +221,8 @@ def conditional_evaluator_curvature_baseline(args, config) -> int:
     v7 = _record(
         args.v7_capacity_evidence, "conditional_nonlinear_expanded_manifold_capacity"
     )
-    artifact = torch.load(
-        args.v7_basis_artifact, map_location="cpu", weights_only=False
+    artifact = safe_torch_load(
+        args.v7_basis_artifact
     )
     if not isinstance(artifact, dict) or v7.input_hashes.get(
         "basis_artifact"
@@ -409,8 +410,8 @@ def _design_inputs(args, config):
     v7 = _record(
         args.v7_capacity_evidence, "conditional_nonlinear_expanded_manifold_capacity"
     )
-    artifact = torch.load(
-        args.v7_basis_artifact, map_location="cpu", weights_only=False
+    artifact = safe_torch_load(
+        args.v7_basis_artifact
     )
     if not isinstance(artifact, dict) or v7.input_hashes.get(
         "basis_artifact"
@@ -660,7 +661,7 @@ def conditional_evaluation_qualified_transport_design(args, config) -> int:
 
 def _artifact(args, action: str):
     evidence = load_record(args.design_evidence, "conditional_evaluation_qualified_transport_design", action=action)
-    artifact = torch.load(args.design_artifact, map_location="cpu", weights_only=False)
+    artifact = safe_torch_load(args.design_artifact)
     required = {"contract", "architecture", "carrier", "candidate_modes", "transport_mixing", "manifold_scales", "carrier_hash", "candidate_basis_hash", "mixing_hash", "scale_hash", "curvature_evidence_hash", "evaluator_bundle_hash", "electronic_initialization_hash", "v7_capacity_evidence_hash", "v7_basis_artifact_hash", "qualification_evidence_hash"}
     if not isinstance(artifact, dict) or not required.issubset(artifact) or artifact["contract"] != DESIGN_CONTRACT or artifact["architecture"] != EVALUATION_QUALIFIED_TRANSPORT_ARCHITECTURE:
         raise ValueError("invalid evaluation-qualified design artifact")
@@ -745,7 +746,7 @@ def _load_initialization(args, config, action: str):
     images, labels = load_local_mnist(args.dataset_root, train=True)
     train_images, train_labels, validation_images, validation_labels, split = _split(images, labels, args.dataset_root)
     device, primary, smooth, _, _ = load_evaluators(args, config, split.manifest_hash)
-    payload = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
+    payload = safe_torch_load(args.checkpoint)
     if not isinstance(payload, dict) or not isinstance(payload.get("manifest"), dict) or payload["manifest"].get("architecture_kind") != EVALUATION_QUALIFIED_TRANSPORT_ARCHITECTURE:
         raise ValueError("checkpoint architecture is incompatible before optimizer construction")
     state = payload["state_dict"]

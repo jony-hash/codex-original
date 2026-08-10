@@ -17,6 +17,7 @@ from torch import nn
 from torch.utils.checkpoint import checkpoint
 
 from .._cli_dependencies import install as _install_dependencies
+from .serialization import _trusted_legacy_torch_load
 
 _DEPENDENCIES_INSTALLED = False
 
@@ -300,8 +301,8 @@ def _admit_prototypes(args: argparse.Namespace, config: V2Config) -> int:
         raise ValueError("clean targets content does not match calibration evidence")
     basis = _zero_basis(config.system.slm_shape)
     bundle = StudentBundle(config, basis).to(device)
-    payload = torch.load(
-        args.prototype_checkpoint, map_location="cpu", weights_only=False
+    payload = _trusted_legacy_torch_load(
+        args.prototype_checkpoint, map_location="cpu"
     )
     actual = CheckpointManifestV2(**payload["manifest"])
     load_exact_checkpoint(args.prototype_checkpoint, bundle, actual)
@@ -547,7 +548,7 @@ def _capacity(args: argparse.Namespace, config: V2Config) -> int:
 def _teacher_dataset(
     manifest: TeacherTargetManifestV2,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    payload = torch.load(manifest.dataset.path, map_location="cpu", weights_only=False)
+    payload = _trusted_legacy_torch_load(manifest.dataset.path, map_location="cpu")
     return (
         payload["codes"].cpu(),
         payload["class_labels"].cpu().long(),
@@ -832,7 +833,7 @@ def _load_student_bundle(
 ) -> tuple[StudentBundle, CheckpointManifestV2]:
     basis = CodeBasisArtifactV2.load(basis_path)
     bundle = StudentBundle(config, basis).to(device)
-    payload = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+    payload = _trusted_legacy_torch_load(checkpoint_path, map_location="cpu")
     actual = CheckpointManifestV2(**payload["manifest"])
     if (
         actual.system_signature != _system_signature(config)
@@ -1267,8 +1268,8 @@ def _reachability(args: argparse.Namespace, config: V2Config) -> int:
         raise ValueError(
             "failed prototype checkpoint does not match failed calibration evidence"
         )
-    failed_payload = torch.load(
-        args.failed_prototype_checkpoint, map_location="cpu", weights_only=False
+    failed_payload = _trusted_legacy_torch_load(
+        args.failed_prototype_checkpoint, map_location="cpu"
     )
     if not isinstance(failed_payload, dict) or "state_dict" not in failed_payload:
         raise ValueError("failed prototype checkpoint payload is invalid")

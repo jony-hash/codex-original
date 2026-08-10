@@ -11,7 +11,7 @@ from pathlib import Path
 
 import torch
 
-from ...evidence import EvidenceRecordV2, GateResult, atomic_torch_save, atomic_write_json, canonical_sha256, file_sha256, tensor_sha256
+from ...evidence import safe_torch_load, EvidenceRecordV2, GateResult, atomic_torch_save, atomic_write_json, canonical_sha256, file_sha256, tensor_sha256
 from ...student.checkpoints import state_content_hash
 from ...student.conditional import fixed_exposure_view, raw_from_generator_batched
 from ...student.evaluator import MNISTSplitManifest, evaluator_checkpoint_hash, load_frozen_evaluator, load_local_mnist
@@ -47,7 +47,7 @@ def _require(config) -> None:
 
 
 def _source(path: str) -> dict[str, torch.Tensor | str]:
-    payload = torch.load(path, map_location="cpu", weights_only=False)
+    payload = safe_torch_load(path)
     required = {"carrier", "basis", "scales", "basis_hash", "source_checkpoint_hash"}
     if not isinstance(payload, dict) or not required.issubset(payload):
         raise ValueError("expanded manifold requires a v6.2 electronic initialization artifact")
@@ -219,7 +219,7 @@ def conditional_nonlinear_expanded_manifold_admission(args, config) -> int:
     capacity.validate()
     if capacity.evidence_kind != "conditional_nonlinear_expanded_manifold_capacity" or capacity.status != "passed" or "conditional-nonlinear-expanded-manifold-admission" not in capacity.permitted_next_actions:
         raise ValueError("expanded manifold capacity evidence does not authorize admission")
-    artifact = torch.load(args.basis_artifact, map_location="cpu", weights_only=False)
+    artifact = safe_torch_load(args.basis_artifact)
     if not isinstance(artifact, dict) or artifact.get("contract") != EXPANDED_MANIFOLD_CAPACITY_CONTRACT:
         raise ValueError("invalid expanded manifold basis artifact")
     images, labels = load_local_mnist(args.dataset_root, train=True)

@@ -8,6 +8,7 @@ from pathlib import Path
 import torch
 
 from ...evidence import (
+    safe_torch_load,
     EvidenceRecordV2,
     GateResult,
     atomic_write_json,
@@ -181,8 +182,8 @@ def conditional_transport_curvature_attribution(args, config) -> int:
         or v7.status != "passed"
     ):
         raise ValueError("curvature attribution requires passed v7 capacity evidence")
-    artifact = torch.load(
-        args.v7_basis_artifact, map_location="cpu", weights_only=False
+    artifact = safe_torch_load(
+        args.v7_basis_artifact
     )
     if not isinstance(artifact, dict) or v7.input_hashes.get(
         "basis_artifact"

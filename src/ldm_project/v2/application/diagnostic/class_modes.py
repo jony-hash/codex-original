@@ -264,7 +264,7 @@ def conditional_class_mode_admission(args, config: V2Config) -> int:
             "shared-mode conflict evidence is not compatible with the explicit v3 migration"
         )
     device = torch.device(config.run.device)
-    source_payload = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
+    source_payload = safe_torch_load(args.checkpoint)
     if not isinstance(source_payload, dict) or not isinstance(
         source_payload.get("manifest"), dict
     ):

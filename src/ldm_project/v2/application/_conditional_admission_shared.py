@@ -169,9 +169,8 @@ def conditional_injection_admission(args, config: V2Config) -> int:
     payload_split = MNISTSplitManifest(**evaluator_payload["split_manifest"])
     if payload_split.manifest_hash != split.manifest_hash:
         raise ValueError("evaluator checkpoint uses a different fixed MNIST split")
-    torch.manual_seed(1234)
     bundle = (
-        ConditionalBundle(
+        _seeded_conditional_bundle(
             config,
             carrier_logits=_carrier_logits(
                 train_images, train_labels, config.system.slm_shape
@@ -248,11 +247,17 @@ def conditional_injection_admission(args, config: V2Config) -> int:
         IDENTITY_GENERATOR_CONTRACT,
         canonical_sha256(CONDITIONAL_CONTROL_METRIC_CONTRACT),
         TRAINING_SCHEDULE_CONTRACT,
-        1234,
+        config.conditional_generation.initialization_seed,
         state_content_hash(bundle.state_dict()),
     )
     save_conditional_checkpoint(
-        init_path, bundle, manifest, extra={"initialization": True, "seed": 1234}
+        init_path,
+        bundle,
+        manifest,
+        extra={
+            "initialization": True,
+            "seed": config.conditional_generation.initialization_seed,
+        },
     )
     report = {
         "architecture_kind": IDENTITY_ARCHITECTURE,
@@ -267,6 +272,7 @@ def conditional_injection_admission(args, config: V2Config) -> int:
     }
     report_path = run.root / "conditional_injection_admission_report.json"
     atomic_write_json(report_path, report)
+    init_path_hash = file_sha256(init_path)
     passed = all(gate.passed for gate in checks)
     record = EvidenceRecordV2(
         2,
@@ -280,10 +286,13 @@ def conditional_injection_admission(args, config: V2Config) -> int:
             config,
             evaluator_hash=evaluator_hash,
             split_hash=split.manifest_hash,
-            checkpoint_hash=file_sha256(init_path),
+            checkpoint_hash=init_path_hash,
         ),
         {
-            "checkpoint": file_sha256(init_path),
+            "checkpoint": init_path_hash,
+            "initialization_checkpoint": init_path_hash,
+            "initialization_seed": str(manifest.initialization_seed),
+            "initialization_state_hash": manifest.initialization_state_hash,
             "report": file_sha256(report_path),
             "evaluator": evaluator_hash,
         },
@@ -327,6 +336,7 @@ def _identity_observability(args, config: V2Config) -> int:
         device=device,
         evaluator_hash=evaluator_hash,
         split_hash=split.manifest_hash,
+        checkpoint_sha256=init_hash,
     )
     codes_probe, labels_probe = _fixed_control_probe(device=device)
     codes_probe, labels_probe = codes_probe[:20], labels_probe[:20]
@@ -720,6 +730,7 @@ def _identity_control_isolation(args, config: V2Config) -> int:
         device=device,
         evaluator_hash=evaluator_hash,
         split_hash=split.manifest_hash,
+        checkpoint_sha256=init_hash,
     )
     codes, probe_labels = _fixed_control_probe(device=device)
     before = state_content_hash(bundle.state_dict())
@@ -1269,6 +1280,7 @@ def _identity_semantic_localization(args, config: V2Config) -> int:
         device=device,
         evaluator_hash=evaluator_hash,
         split_hash=split.manifest_hash,
+        checkpoint_sha256=init_hash,
     )
     bundle.eval()
     groups = _conditional_parameter_groups(bundle)

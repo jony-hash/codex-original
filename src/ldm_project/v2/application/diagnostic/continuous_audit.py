@@ -11,7 +11,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from ...evidence import EvidenceRecordV2, GateResult, atomic_torch_save, atomic_write_json, file_sha256, canonical_sha256, tensor_sha256
+from ...evidence import safe_torch_load, EvidenceRecordV2, GateResult, atomic_torch_save, atomic_write_json, file_sha256, canonical_sha256, tensor_sha256
 from ...student.checkpoints import state_content_hash
 from ...student.checkpoints import ConditionalCheckpointManifestV2, load_conditional_checkpoint
 from ...student.conditional import camera_code_fraction, fixed_exposure_view, raw_from_generator_batched, relative_diversity_ratios
@@ -157,7 +157,7 @@ def conditional_continuous_mode_capacity(args, config) -> int:
     payload_split = MNISTSplitManifest(**payload["split_manifest"])
     if payload_split.manifest_hash != split.manifest_hash:
         raise ValueError("evaluator checkpoint uses another MNIST split")
-    payload = torch.load(args.semantic_checkpoint, map_location="cpu", weights_only=False)
+    payload = safe_torch_load(args.semantic_checkpoint)
     if not isinstance(payload, dict) or not isinstance(payload.get("manifest"), dict):
         raise ValueError("semantic checkpoint is invalid")
     source_manifest = ConditionalCheckpointManifestV2(**payload["manifest"])

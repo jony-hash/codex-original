@@ -13,7 +13,7 @@ from pathlib import Path
 import torch
 from torch.nn import functional as F
 
-from ...evidence import EvidenceRecordV2, canonical_sha256, file_sha256, tensor_sha256
+from ...evidence import safe_torch_load, EvidenceRecordV2, canonical_sha256, file_sha256, tensor_sha256
 from ...student.checkpoints import ConditionalCheckpointManifestV2, state_content_hash, state_signature
 from ...student.conditional import fixed_exposure_view, raw_from_generator_batched, relative_diversity_ratios
 from ...student.evaluator import MNISTSplitManifest, SmoothMNISTEvaluator, load_frozen_evaluator
@@ -52,7 +52,7 @@ def load_evaluators(args, config, split_hash: str):
     primary, payload = load_frozen_evaluator(args.primary_evaluator_checkpoint, device=device)
     if MNISTSplitManifest(**payload["split_manifest"]).manifest_hash != split_hash:
         raise ValueError("primary evaluator split mismatch")
-    smooth_payload = torch.load(args.smooth_evaluator_checkpoint, map_location="cpu", weights_only=False)
+    smooth_payload = safe_torch_load(args.smooth_evaluator_checkpoint)
     required = {"architecture_kind": SmoothMNISTEvaluator.architecture_kind, "contract": V21_CONTRACT, "split_manifest_hash": split_hash, "training_seed": 2234}
     if not isinstance(smooth_payload, dict) or any(smooth_payload.get(key) != value for key, value in required.items()):
         raise ValueError("smooth evaluator is not qualified evaluator v2.1")

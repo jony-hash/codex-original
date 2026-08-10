@@ -1020,7 +1020,7 @@ def conditional_training_completion(args, config: V2Config) -> int:
         raise ValueError(
             "training evidence does not bind the requested semantic checkpoint context"
         )
-    payload = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
+    payload = safe_torch_load(args.checkpoint)
     history = (
         payload.get("extra", {}).get("history") if isinstance(payload, dict) else None
     )

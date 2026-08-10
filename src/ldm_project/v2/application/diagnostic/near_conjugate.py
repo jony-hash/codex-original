@@ -15,6 +15,7 @@ import torch
 from torch.nn import functional as F
 
 from ...evidence import (
+    safe_torch_load,
     EvidenceRecordV2,
     GateResult,
     atomic_torch_save,
@@ -249,7 +250,7 @@ def _load_init(args, config):
     train_images, train_labels, split, evaluator_hash, evaluator, device = _common(
         args, config
     )
-    payload = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
+    payload = safe_torch_load(args.checkpoint)
     if not isinstance(payload, dict) or not isinstance(payload.get("manifest"), dict):
         raise ValueError("invalid v6.4 initialization checkpoint")
     manifest = ConditionalCheckpointManifestV2(**payload["manifest"])
@@ -351,7 +352,7 @@ def _gate_by_name(record, name):
 
 
 def _load_readonly_checkpoint(path, config):
-    payload = torch.load(path, map_location="cpu", weights_only=False)
+    payload = safe_torch_load(path)
     if not isinstance(payload, dict) or not isinstance(payload.get("manifest"), dict):
         raise ValueError("invalid v6.4 checkpoint")
     manifest = ConditionalCheckpointManifestV2(**payload["manifest"])
@@ -377,7 +378,7 @@ def _raw_artifact_summary(history_path, probes):
                 valid = False
                 summary[f"{panel}:{step}"] = {"present": False}
                 continue
-            value = torch.load(path, map_location="cpu", weights_only=False)
+            value = safe_torch_load(path)
             shape_ok = torch.is_tensor(value) and tuple(value.shape) == (170, 1, 200, 200)
             finite = bool(shape_ok and torch.isfinite(value).all())
             valid = valid and finite
@@ -403,10 +404,8 @@ def _crop_retention_summary(bundle, panels, *, raw_root, step):
                     values[stack].append(forward.crop_statistics[f"{stack}_crop_retention"].cpu())
                 values["raw"].append(forward.raw_camera.tensor.cpu())
             merged = {key: torch.cat(rows, dim=0) for key, rows in values.items()}
-            saved = torch.load(
+            saved = safe_torch_load(
                 raw_root / f"near_conjugate_{name}_step_{step}_raw.pt",
-                map_location="cpu",
-                weights_only=False,
             )
             raw_matches[name] = bool(
                 torch.allclose(merged.pop("raw"), saved, atol=1.0e-6, rtol=1.0e-5)

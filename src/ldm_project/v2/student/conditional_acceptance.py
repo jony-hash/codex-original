@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 import torch
 
-from ..evidence import canonical_sha256, file_sha256
+from ..evidence import canonical_sha256, file_sha256, safe_torch_load
 from .conditional import conditional_sinkhorn_loss
 
 
@@ -130,7 +130,7 @@ def load_candidate_dataset(path: str | Path) -> tuple[dict[str, object], torch.T
         shard_path = root / str(shard["path"])
         if not shard_path.is_file() or file_sha256(shard_path) != shard["sha256"]:
             raise ValueError("candidate dataset shard hash changed")
-        value = torch.load(shard_path, map_location="cpu", weights_only=False)
+        value = safe_torch_load(shard_path, expected_sha256=str(shard["sha256"]))
         images.append(value["mnist_view_uint8"].to(torch.float32).div_(255.0))
         labels.append(value["labels"].to(torch.long))
     if not images:

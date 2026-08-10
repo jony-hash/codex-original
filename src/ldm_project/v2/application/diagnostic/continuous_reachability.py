@@ -9,7 +9,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from ...evidence import EvidenceRecordV2, GateResult, atomic_torch_save, atomic_write_json, canonical_sha256, file_sha256, tensor_sha256
+from ...evidence import safe_torch_load, EvidenceRecordV2, GateResult, atomic_torch_save, atomic_write_json, canonical_sha256, file_sha256, tensor_sha256
 from ...student.checkpoints import ConditionalCheckpointManifestV2, load_conditional_checkpoint, state_content_hash
 from ...student.conditional import camera_code_fraction, fixed_exposure_view, raw_from_generator_batched, relative_diversity_ratios
 from ...student.evaluator import MNISTSplitManifest, evaluator_checkpoint_hash, load_frozen_evaluator, load_local_mnist
@@ -327,7 +327,7 @@ def conditional_continuous_mode_reachability(args, config) -> int:
     evaluator, payload = load_frozen_evaluator(args.evaluator_checkpoint, device=torch.device("cpu"))
     if MNISTSplitManifest(**payload["split_manifest"]).manifest_hash != split.manifest_hash:
         raise ValueError("evaluator split mismatch")
-    source_payload = torch.load(args.semantic_checkpoint, map_location="cpu", weights_only=False)
+    source_payload = safe_torch_load(args.semantic_checkpoint)
     source_manifest = ConditionalCheckpointManifestV2(**source_payload["manifest"])
     if source_manifest.architecture_kind != IDENTITY_ARCHITECTURE or source_manifest.system_signature != expected.system_signature or source_manifest.evaluator_checkpoint_hash != evaluator_hash or source_manifest.dataset_split_manifest_hash != split.manifest_hash:
         raise ValueError("semantic checkpoint is not the bound identity checkpoint")

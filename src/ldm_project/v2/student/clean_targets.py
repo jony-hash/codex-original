@@ -7,7 +7,7 @@ from typing import Any
 
 import torch
 
-from ..evidence import ArtifactRefV2, canonical_sha256, file_sha256, tensor_sha256
+from ..evidence import ArtifactRefV2, canonical_sha256, file_sha256, safe_torch_load, tensor_sha256
 
 
 @dataclass(frozen=True)
@@ -55,7 +55,7 @@ class CleanTargetManifestV2:
         self.targets.validate()
         if file_sha256(self.targets.path) != self.targets.sha256:
             raise ValueError("clean-target artifact hash changed")
-        value = torch.load(self.targets.path, map_location="cpu", weights_only=False)
+        value = safe_torch_load(self.targets.path, expected_sha256=self.targets.sha256)
         if not torch.is_tensor(value) or tuple(value.shape) != self.shape:
             raise ValueError("clean-target tensor shape changed")
         if self.shape[0:2] != (10, 1) or not torch.isfinite(value).all() or value.min() < 0.0 or value.max() > 1.0:

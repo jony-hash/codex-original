@@ -20,6 +20,7 @@ from torch import nn
 from ...config import V2Config
 from ...contracts import ComplexField
 from ...evidence import (
+    safe_torch_load,
     EvidenceContextV2,
     EvidenceRecordV2,
     GateResult,
@@ -488,7 +489,7 @@ def _load_bundle(
     allow_balanced_schedule: bool = False,
 ) -> tuple[ConditionalBundle, ConditionalCheckpointManifestV2]:
     _require_conditional(config)
-    payload = torch.load(checkpoint, map_location="cpu", weights_only=False)
+    payload = safe_torch_load(checkpoint)
     if not isinstance(payload, dict) or not isinstance(payload.get("manifest"), dict):
         raise ValueError("invalid conditional checkpoint")
     manifest = ConditionalCheckpointManifestV2(**payload["manifest"])
@@ -596,7 +597,7 @@ def _load_parity_source(
     config: V2Config, checkpoint: str, *, device: torch.device
 ) -> tuple[ConditionalBundle, dict]:
     """Explicitly migrate the v3 physical state into a zero-Q v4 bundle."""
-    payload = torch.load(checkpoint, map_location="cpu", weights_only=False)
+    payload = safe_torch_load(checkpoint)
     if (
         not isinstance(payload, dict)
         or not isinstance(payload.get("manifest"), dict)

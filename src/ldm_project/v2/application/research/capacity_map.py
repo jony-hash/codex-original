@@ -19,7 +19,7 @@ from torch import nn
 from torch.nn import functional as F
 
 from ...config import FormalSystemConfig
-from ...evidence import atomic_torch_save, atomic_write_json, canonical_sha256, file_sha256
+from ...evidence import safe_torch_load, atomic_torch_save, atomic_write_json, canonical_sha256, file_sha256
 from ...optics.system import FormalAmplitudeFiniteCropIdentitySystem
 from ...student.conditional_generator import ConditionalClassConditionedModesGenerator
 from ...student.evaluator import SmoothMNISTEvaluator, load_frozen_evaluator, load_local_mnist, stratified_mnist_indices
@@ -121,7 +121,7 @@ def _load_evaluators(spec: CapacityMapSpec, device: torch.device) -> tuple[nn.Mo
     primary, primary_payload = load_frozen_evaluator(spec.evaluator_checkpoint, device=device)
     if bundle.get("split_manifest_hash") != primary_payload.get("split_manifest_hash"):
         raise ValueError("capacity-map evaluator split hash disagrees with bundle")
-    payload = torch.load(spec.smooth_evaluator_checkpoint, map_location="cpu", weights_only=False)
+    payload = safe_torch_load(spec.smooth_evaluator_checkpoint)
     if not isinstance(payload, dict) or payload.get("architecture_kind") != SmoothMNISTEvaluator.architecture_kind or payload.get("split_manifest_hash") != bundle.get("split_manifest_hash"):
         raise ValueError("smooth evaluator checkpoint has an incompatible architecture")
     smooth = SmoothMNISTEvaluator().to(device)
@@ -133,7 +133,7 @@ def _load_shape_evaluator(checkpoint: str, qualification: str, *, device: torch.
     evidence = json.loads(Path(qualification).read_text(encoding="utf-8"))
     if evidence.get("action") != "qualify-shape" or evidence.get("state") != "screen_passed":
         raise ValueError("shape evaluator qualification evidence did not pass")
-    payload = torch.load(checkpoint, map_location="cpu", weights_only=False)
+    payload = safe_torch_load(checkpoint)
     if not isinstance(payload, dict) or payload.get("architecture_kind") != ShapeMNISTEvaluator.architecture_kind:
         raise ValueError("shape evaluator checkpoint has an incompatible architecture")
     if evidence.get("metrics", {}).get("checkpoint_sha256") != file_sha256(checkpoint):
@@ -568,7 +568,7 @@ def _smoke_train(spec: CapacityMapSpec, electronic: ElectronicVariantSpec, optic
     optimizer_steps = spec.smoke_steps if steps is None else steps
     start_step = 0
     if resume_checkpoint:
-        resumed = torch.load(resume_checkpoint, map_location=device, weights_only=False)
+        resumed = safe_torch_load(resume_checkpoint, map_location=device)
         if resumed.get("config_hash") != spec.config_hash or resumed.get("variant") != f"{electronic.variant_id}:{optical.variant_id}" or int(resumed.get("seed", -1)) != seed:
             raise ValueError("resume checkpoint does not match capacity-map variant/config/seed")
         model.load_state_dict(resumed["electronic"], strict=True)
@@ -709,7 +709,7 @@ def diagnose(args: argparse.Namespace) -> int:
             raise ValueError("source evidence content hash mismatch")
         if source.get("action") != "confirm" or source.get("variant") != args.variant:
             raise ValueError("diagnose source must be an E2:O0 confirm evidence record")
-        checkpoint = torch.load(args.checkpoint, map_location=device, weights_only=False)
+        checkpoint = safe_torch_load(args.checkpoint, map_location=device)
         if not isinstance(checkpoint, dict) or checkpoint.get("variant") != args.variant:
             raise ValueError("diagnose checkpoint does not match E2:O0")
         if source.get("metrics", {}).get("checkpoint_sha256") != file_sha256(args.checkpoint):

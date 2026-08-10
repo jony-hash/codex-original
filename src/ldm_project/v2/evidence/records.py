@@ -110,3 +110,13 @@ def require_evidence_action(record: EvidenceRecordV2, *, kind: str, action: str,
         return
     if record.status != "passed" or action not in record.permitted_next_actions:
         raise ValueError(f"{kind} evidence must pass before {action}")
+
+
+def require_input_hashes(
+    record: EvidenceRecordV2, expected: Mapping[str, str]
+) -> None:
+    """Require evidence to bind every supplied input hash before consumption."""
+    record.validate()
+    for name, value in expected.items():
+        if record.input_hashes.get(name) != value:
+            raise ValueError(f"evidence input hash mismatch for {name}")

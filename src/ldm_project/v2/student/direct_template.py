@@ -6,7 +6,7 @@ from typing import Any, Mapping
 
 import torch
 
-from ..evidence import ArtifactRefV2, canonical_sha256
+from ..evidence import ArtifactRefV2, canonical_sha256, safe_torch_load
 
 
 @dataclass(frozen=True)
@@ -48,9 +48,9 @@ class DirectTemplatePrototypeArtifactV2:
             raise ValueError("unsupported direct-template prototype artifact schema")
         for reference in (self.commands, self.raw_cmos, self.supports):
             reference.validate()
-        commands = torch.load(self.commands.path, map_location="cpu", weights_only=False)
-        raw = torch.load(self.raw_cmos.path, map_location="cpu", weights_only=False)
-        supports = torch.load(self.supports.path, map_location="cpu", weights_only=False)
+        commands = safe_torch_load(self.commands.path, expected_sha256=self.commands.sha256)
+        raw = safe_torch_load(self.raw_cmos.path, expected_sha256=self.raw_cmos.sha256)
+        supports = safe_torch_load(self.supports.path, expected_sha256=self.supports.sha256)
         if not all(torch.is_tensor(value) for value in (commands, raw, supports)):
             raise ValueError("direct-template artifact payloads must be tensors")
         if commands.ndim != 4 or commands.shape[:2] != (10, 1) or raw.shape != commands.shape:

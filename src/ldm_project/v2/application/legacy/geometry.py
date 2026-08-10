@@ -17,6 +17,7 @@ from torch import nn
 from torch.utils.checkpoint import checkpoint
 
 from .._cli_dependencies import install as _install_dependencies
+from .serialization import _trusted_legacy_torch_load
 
 _CONTROL_ORACLE_ARMS = ("formal_amplitude_only", "diagnostic_complex_slm")
 _CONTROL_ORACLE_STEPS = 400
@@ -49,8 +50,8 @@ def _prototype_topology(args: argparse.Namespace, config: V2Config) -> int:
     device = torch.device(config.run.device)
     clean_manifest = _clean_target_manifest(args.clean_target_manifest, config)
     clean = _tensor(clean_manifest.targets.path, device=device)
-    payload = torch.load(
-        args.prototype_checkpoint, map_location="cpu", weights_only=False
+    payload = _trusted_legacy_torch_load(
+        args.prototype_checkpoint, map_location="cpu"
     )
     if (
         not isinstance(payload, dict)
