@@ -171,6 +171,91 @@ def test_balanced_schedule_contract_is_split_derived_and_stable() -> None:
         balanced_schedule_steps(reduced, batch_size=50, epochs=5)
 
 
+def test_conditional_evaluate_validates_schedule_against_train_split(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = _config()
+    all_images = torch.zeros(600, 1, 28, 28)
+    all_labels = torch.arange(600, dtype=torch.long) % 10
+    train_images = all_images[:500]
+    train_labels = all_labels[:500]
+    validation_images = all_images[500:]
+    validation_labels = all_labels[500:]
+    split = SimpleNamespace(manifest_hash=SPLIT_HASH)
+    monkeypatch.setattr(
+        current_evaluation,
+        "load_local_mnist",
+        lambda *args, **kwargs: (all_images, all_labels),
+    )
+    monkeypatch.setattr(
+        current_evaluation,
+        "_split",
+        lambda *args, **kwargs: (
+            train_images,
+            train_labels,
+            validation_images,
+            validation_labels,
+            split,
+        ),
+    )
+    monkeypatch.setattr(current_evaluation, "evaluator_checkpoint_hash", lambda _: EVALUATOR_HASH)
+    monkeypatch.setattr(current_evaluation, "load_frozen_evaluator", lambda *args, **kwargs: (object(), None))
+    context = _lineage_context(config)
+    record = _record(
+        config,
+        "conditional_training",
+        context,
+        {
+            "checkpoint": CHECKPOINT_HASH,
+            "initialization_checkpoint": INITIALIZATION_HASH,
+            "initialization_state_hash": STATE_HASH,
+            "schedule_contract": BALANCED_TRAINING_SCHEDULE_CONTRACT,
+            "schedule_steps_per_epoch": "10",
+            "schedule_total_steps": "50",
+        },
+        ("evaluate",),
+    )
+    evidence_path = tmp_path / "training.json"
+    _write_record(evidence_path, record)
+    monkeypatch.setattr(
+        current_evaluation,
+        "_load_bundle_with_payload",
+        lambda *args, **kwargs: (
+            SimpleNamespace(system=object(), generator=object()),
+            _manifest(config),
+            {
+                "extra": {
+                    "history": [{"epoch": epoch} for epoch in range(1, 6) for _ in range(10)],
+                    "schedule_steps_per_epoch": 10,
+                    "schedule_total_steps": 50,
+                }
+            },
+        ),
+    )
+    monkeypatch.setattr(current_evaluation, "_validate_conditional_lineage", lambda *args, **kwargs: None)
+    captured: dict[str, int] = {}
+
+    def capture_schedule(payload, *, steps_per_epoch, total_steps):
+        captured["steps_per_epoch"] = steps_per_epoch
+        captured["total_steps"] = total_steps
+
+    monkeypatch.setattr(current_evaluation, "_validate_balanced_training_payload", capture_schedule)
+    monkeypatch.setattr(
+        current_evaluation,
+        "raw_from_generator_batched",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("stop after schedule validation")),
+    )
+    args = SimpleNamespace(
+        training_evidence=str(evidence_path),
+        dataset_root=str(tmp_path),
+        evaluator_checkpoint=str(tmp_path / "evaluator.pt"),
+        checkpoint=str(tmp_path / "checkpoint.pt"),
+    )
+    with pytest.raises(RuntimeError, match="stop after schedule validation"):
+        current_evaluation.conditional_evaluate(args, config)
+    assert captured == {"steps_per_epoch": 10, "total_steps": 50}
+
+
 @pytest.mark.parametrize(
     "extra",
     [

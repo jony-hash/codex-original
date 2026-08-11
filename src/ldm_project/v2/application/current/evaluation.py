@@ -66,7 +66,7 @@ def conditional_evaluate(args, config: V2Config) -> int:
     _validate_current_evidence_source(training_record)
     device = torch.device(config.run.device)
     images, all_labels = load_local_mnist(args.dataset_root, train=True)
-    _, _, validation_images, validation_labels, split = _split(
+    _, train_labels, validation_images, validation_labels, split = _split(
         images, all_labels, args.dataset_root
     )
     evaluator, _ = load_frozen_evaluator(args.evaluator_checkpoint, device=device)
@@ -103,7 +103,7 @@ def conditional_evaluate(args, config: V2Config) -> int:
         evidence=training_record,
     )
     _, expected_total_steps = balanced_schedule_steps(
-        all_labels,
+        train_labels,
         batch_size=config.conditional_generation.logical_batch_size,
         epochs=config.conditional_generation.epochs,
         batch_iterator=balanced_batches,
