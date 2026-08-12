@@ -16,7 +16,6 @@ from ..config import V2Config
 from ..evidence import EvidenceContextV2, EvidenceRecordV2, atomic_write_json, canonical_sha256, tensor_sha256
 from ..student.evaluator import MNISTSplitManifest, stratified_mnist_indices
 from .runs import V2Run
-from .runtime_lineage import lineage_inputs
 
 
 def system_signature(config: V2Config) -> str:
@@ -45,8 +44,6 @@ def build_context(
 
 
 def write_evidence(run: V2Run, name: str, record: EvidenceRecordV2) -> Path:
-    input_hashes = dict(record.input_hashes)
-    input_hashes.update(lineage_inputs(Path.cwd(), run.git_commit, record.evidence_kind))
     record = EvidenceRecordV2(
         record.schema_version,
         record.evidence_kind,
@@ -56,7 +53,7 @@ def write_evidence(run: V2Run, name: str, record: EvidenceRecordV2) -> Path:
         record.dirty_patch_hash,
         record.config_hash,
         record.context,
-        input_hashes,
+        record.input_hashes,
         record.gates,
         record.permitted_next_actions,
         record.invalidation_reason,

@@ -84,7 +84,6 @@ from .._runtime_shared import (
     system_signature as _system_signature,
     write_evidence as _write_evidence,
 )
-from ..runtime_lineage import RUNTIME_COMPONENT_REGISTRY_VERSION, component_fingerprints, components_for_kind
 from ..runs import V2Run
 
 
@@ -163,16 +162,14 @@ def _validate_current_evidence_source(*records: EvidenceRecordV2) -> None:
             ancestor = subprocess.run(["git", "merge-base", "--is-ancestor", commit, head], cwd=repo_root, capture_output=True)
             if ancestor.returncode != 0:
                 raise ValueError("current evidence commit is not an ancestor of HEAD")
-            expected_components = components_for_kind(record.evidence_kind)
-            if record.input_hashes.get("runtime_component_registry") != RUNTIME_COMPONENT_REGISTRY_VERSION or tuple(record.input_hashes.get("runtime_components", ())) != expected_components:
-                raise ValueError("current evidence lacks runtime component lineage")
-            recorded = record.input_hashes.get("runtime_component_fingerprints")
-            if not isinstance(recorded, dict):
-                raise ValueError("current evidence lacks runtime component fingerprints")
-            produced = component_fingerprints(repo_root, commit, record.evidence_kind)
-            current = component_fingerprints(repo_root, head, record.evidence_kind)
-            if recorded != produced or recorded != current:
-                raise ValueError("current runtime component tree changed after evidence was produced")
+            for path in _CURRENT_EVIDENCE_RUNTIME_PATHS:
+                changed = subprocess.run(
+                    ["git", "diff", "--quiet", f"{commit}..{head}", "--", path],
+                    cwd=repo_root,
+                    capture_output=True,
+                )
+                if changed.returncode != 0:
+                    raise ValueError("current runtime tree changed after evidence was produced")
     except (OSError, subprocess.CalledProcessError) as error:
         raise ValueError("current evidence source validation is unavailable") from error
 
