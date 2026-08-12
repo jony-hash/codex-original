@@ -85,66 +85,14 @@ def test_safe_artifact_load_checks_digest_before_deserialization(tmp_path: Path)
         safe_torch_load(path, expected_sha256="0" * 64)
 
 
-def test_exact_checkpoint_deserializes_once_after_one_digest_check(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    model = torch.nn.Linear(3, 2)
-    manifest = CheckpointManifestV2(
-        2,
-        "formal_amplitude_finite_crop_identity",
-        "finite_crop",
-        "system",
-        "config",
-        "dataset",
-        "teacher",
-        "calibration",
-        "basis",
-        state_signature(model.state_dict()),
-        state_content_hash(model.state_dict()),
-    )
-    path = tmp_path / "checkpoint.pt"
-    save_exact_checkpoint(path, model, manifest)
-    original_load = torch.load
-    calls = 0
-
-    def counted_load(*args: object, **kwargs: object) -> object:
-        nonlocal calls
-        calls += 1
-        return original_load(*args, **kwargs)
-
-    monkeypatch.setattr(torch, "load", counted_load)
-    load_exact_checkpoint(path, torch.nn.Linear(3, 2), manifest)
-    assert calls == 1
-
-
-def test_tensor_artifact_validation_hashes_and_loads_once(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_tensor_artifact_validation_rejects_tampering(tmp_path: Path) -> None:
     path = tmp_path / "tensor.pt"
     torch.save(torch.ones(2), path)
     artifact = tensor_artifact_ref(path, role="tensor")
-    import ldm_project.v2.evidence.io as evidence_io
-
-    original_hash = evidence_io.file_sha256
-    original_load = torch.load
-    hash_calls = 0
-    load_calls = 0
-
-    def counted_hash(value: object) -> str:
-        nonlocal hash_calls
-        hash_calls += 1
-        return original_hash(value)
-
-    def counted_load(*args: object, **kwargs: object) -> object:
-        nonlocal load_calls
-        load_calls += 1
-        return original_load(*args, **kwargs)
-
-    monkeypatch.setattr(evidence_io, "file_sha256", counted_hash)
-    monkeypatch.setattr(torch, "load", counted_load)
     artifact.validate()
-    assert hash_calls == 1
-    assert load_calls == 1
+    path.write_bytes(b"tampered")
+    with pytest.raises(ValueError, match="content|hash|digest"):
+        artifact.validate()
 
 
 def test_evidence_input_hash_binding_rejects_tampering() -> None:

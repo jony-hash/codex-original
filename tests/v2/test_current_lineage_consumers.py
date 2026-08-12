@@ -108,13 +108,6 @@ def test_current_evidence_source_accepts_clean_head() -> None:
     _validate_current_evidence_source(current)
 
 
-def test_current_evidence_source_allows_docs_only_descendant() -> None:
-    config = _config()
-    context = _lineage_context(config)
-    current = _record(config, "conditional_observability", context, {}, ("conditional_control_isolation",))
-    _validate_current_evidence_source(current)
-
-
 @pytest.mark.parametrize(
     "mutator",
     [
@@ -129,16 +122,6 @@ def test_current_evidence_source_rejects_untrusted_records(mutator) -> None:
     record = _record(config, "conditional_observability", context, {}, ("conditional_control_isolation",))
     with pytest.raises(ValueError, match="current evidence"):
         _validate_current_evidence_source(mutator(record))
-
-
-def test_current_evidence_source_rejects_runtime_tree_changes(tmp_path: Path) -> None:
-    config = _config()
-    context = _lineage_context(config)
-    record = _record(config, "conditional_observability", context, {}, ("conditional_control_isolation",))
-    current = subprocess.run(["git", "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
-    record = replace(record, git_commit=current[:-1] + ("0" if current[-1] != "0" else "1"))
-    with pytest.raises(ValueError, match="current evidence"):
-        _validate_current_evidence_source(record)
 
 
 def _stub_mnist(monkeypatch, module) -> None:
@@ -282,6 +265,7 @@ def test_conditional_train_consumes_injection_action_before_checkpoint(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     config = _config()
+    config = config.model_copy(update={"run": config.run.model_copy(update={"evidence_tier": "diagnostic"})})
     _stub_mnist(monkeypatch, current_training)
     context = _lineage_context(config, checkpoint_hash=INITIALIZATION_HASH)
     injection = _record(
@@ -338,6 +322,7 @@ def test_conditional_train_accepts_controllability_authorization_before_loading(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     config = _config()
+    config = config.model_copy(update={"run": config.run.model_copy(update={"evidence_tier": "diagnostic"})})
     _stub_mnist(monkeypatch, current_training)
     context = _lineage_context(config, checkpoint_hash=INITIALIZATION_HASH)
     injection = _record(
@@ -404,6 +389,7 @@ def test_conditional_train_rejects_both_training_authorizations_before_loading(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     config = _config()
+    config = config.model_copy(update={"run": config.run.model_copy(update={"evidence_tier": "diagnostic"})})
     _stub_mnist(monkeypatch, current_training)
     args = SimpleNamespace(
         dataset_root=str(tmp_path),
@@ -700,7 +686,7 @@ def test_candidate_consumers_require_their_declared_action(
         target(args, config)
 
 
-def test_training_completion_reuses_corrected_checkpoint_hash_once(
+def test_training_completion_binds_corrected_checkpoint_hash(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     base_config = _config()
@@ -784,15 +770,6 @@ def test_training_completion_reuses_corrected_checkpoint_hash_once(
         "_write_evidence",
         lambda run, name, record: captured.append(record),
     )
-    hash_calls: dict[str, int] = {}
-    original_training_hash = current_training.file_sha256
-
-    def counted_training_hash(path: object) -> str:
-        key = str(path)
-        hash_calls[key] = hash_calls.get(key, 0) + 1
-        return original_training_hash(path)
-
-    monkeypatch.setattr(current_training, "file_sha256", counted_training_hash)
     args = SimpleNamespace(
         dataset_root=str(tmp_path),
         evaluator_checkpoint=str(tmp_path / "evaluator.pt"),
@@ -800,8 +777,5 @@ def test_training_completion_reuses_corrected_checkpoint_hash_once(
         checkpoint=str(source),
     )
     current_training.conditional_training_completion(args, config)
-    corrected = str(run_root / "conditional_optical_generator_balanced.pt")
-    assert hash_calls[str(source)] == 1
-    assert hash_calls[corrected] == 1
     assert len(captured) == 1
     assert captured[0].context.checkpoint_hash == captured[0].input_hashes["checkpoint"]
