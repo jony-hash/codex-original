@@ -221,6 +221,7 @@ def _gradient_calibration(args, config, train_images, train_labels, split, prima
     selected = tuple(parameter for name in groups for parameter in groups[name])
     control_names = ("global_modes", "code_projection", "class_heads")
     control_selected = tuple(parameter for name in control_names for parameter in groups[name])
+    selected_positions = {id(parameter): index for index, parameter in enumerate(selected)}
     sums = {name: torch.zeros((), device=selected[0].device) for name in ("base", "camera", "pairwise", "coverage")}
     steps = 0
     batch_records = []
@@ -259,7 +260,7 @@ def _gradient_calibration(args, config, train_images, train_labels, split, prima
             group_norms = {}
             for name, loss in losses.items():
                 gradients = torch.autograd.grad(loss, selected, retain_graph=True, allow_unused=True)
-                control_gradients = tuple(gradients[selected.index(parameter)] for parameter in control_selected)
+                control_gradients = tuple(gradients[selected_positions[id(parameter)]] for parameter in control_selected)
                 norm = _parameter_norm(control_selected, control_gradients)
                 gradient_vectors[name] = _gradient_vector(control_selected, control_gradients)
                 batch_norms[name] = float(norm.item())
