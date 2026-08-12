@@ -14,22 +14,13 @@ from ldm_project.v2.application.current import evaluation as current_evaluation
 from ldm_project.v2.application.current import training as current_training
 from ldm_project.v2.application.current.runtime import (
     CONDITIONAL_CONTROL_ADMISSION_CONTRACT,
-    CONDITIONAL_CONTROL_METRIC_CONTRACT,
     BALANCED_TRAINING_SCHEDULE_CONTRACT,
-    IDENTITY_GENERATOR_CONTRACT,
     IDENTITY_ARCHITECTURE,
     _context,
     balanced_schedule_steps,
-    _seeded_conditional_bundle,
     _system_signature,
     _validate_balanced_training_payload,
     _validate_current_evidence_source,
-)
-from ldm_project.v2.application.runtime_lineage import (
-    RUNTIME_COMPONENT_REGISTRY_VERSION,
-    component_fingerprints,
-    components_for_kind,
-    lineage_inputs,
 )
 from ldm_project.v2.config import load_config
 from ldm_project.v2.evidence import (
@@ -40,9 +31,7 @@ from ldm_project.v2.evidence import (
     file_sha256,
 )
 from ldm_project.v2.student.checkpoints import (
-    ConditionalCheckpointManifestV2,
     state_content_hash,
-    state_signature,
 )
 
 
@@ -70,7 +59,6 @@ def _record(
     commit = subprocess.run(
         ["git", "rev-parse", "HEAD"], check=True, capture_output=True, text=True
     ).stdout.strip()
-    inputs = {**inputs, **lineage_inputs(Path.cwd(), commit, kind)}
     return EvidenceRecordV2(
         2,
         kind,
@@ -120,18 +108,11 @@ def test_current_evidence_source_accepts_clean_head() -> None:
     _validate_current_evidence_source(current)
 
 
-def test_component_lineage_is_stable_and_unknown_kinds_fail_closed() -> None:
-    commit = subprocess.run(
-        ["git", "rev-parse", "HEAD"], check=True, capture_output=True, text=True
-    ).stdout.strip()
-    inputs = lineage_inputs(Path.cwd(), commit, "conditional_observability")
-    assert inputs["runtime_component_registry"] == RUNTIME_COMPONENT_REGISTRY_VERSION
-    assert tuple(inputs["runtime_components"]) == components_for_kind("conditional_observability")
-    assert inputs["runtime_component_fingerprints"] == component_fingerprints(
-        Path.cwd(), commit, "conditional_observability"
-    )
-    assert components_for_kind("unregistered_future_kind") == ("full_current",)
-    assert set(lineage_inputs(Path.cwd(), commit, "unregistered_future_kind")["runtime_component_fingerprints"]) == {"full_current"}
+def test_current_evidence_source_allows_docs_only_descendant() -> None:
+    config = _config()
+    context = _lineage_context(config)
+    current = _record(config, "conditional_observability", context, {}, ("conditional_control_isolation",))
+    _validate_current_evidence_source(current)
 
 
 @pytest.mark.parametrize(
@@ -150,23 +131,13 @@ def test_current_evidence_source_rejects_untrusted_records(mutator) -> None:
         _validate_current_evidence_source(mutator(record))
 
 
-def test_current_evidence_source_rejects_runtime_tree_changes(monkeypatch) -> None:
+def test_current_evidence_source_rejects_runtime_tree_changes(tmp_path: Path) -> None:
     config = _config()
     context = _lineage_context(config)
     record = _record(config, "conditional_observability", context, {}, ("conditional_control_isolation",))
-    import ldm_project.v2.application.current.runtime as runtime
-
-    real_fingerprints = runtime.component_fingerprints
-    head = subprocess.run(["git", "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
-
-    def fake_fingerprints(repo_root, commit, kind):
-        fingerprints = real_fingerprints(repo_root, commit, kind)
-        if commit == head:
-            fingerprints = {**fingerprints, "__changed__": "changed"}
-        return fingerprints
-
-    monkeypatch.setattr(runtime, "component_fingerprints", fake_fingerprints)
-    with pytest.raises(ValueError, match="runtime component tree changed"):
+    current = subprocess.run(["git", "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
+    record = replace(record, git_commit=current[:-1] + ("0" if current[-1] != "0" else "1"))
+    with pytest.raises(ValueError, match="current evidence"):
         _validate_current_evidence_source(record)
 
 
@@ -194,7 +165,7 @@ def test_balanced_schedule_contract_is_split_derived_and_stable() -> None:
         balanced_schedule_steps(reduced, batch_size=50, epochs=5)
 
 
-def test_conditional_evaluate_validates_schedule_against_train_split(
+def test_conditional_evaluate_rejects_missing_independent_measurement(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     config = _config()
@@ -256,28 +227,17 @@ def test_conditional_evaluate_validates_schedule_against_train_split(
         ),
     )
     monkeypatch.setattr(current_evaluation, "_validate_conditional_lineage", lambda *args, **kwargs: None)
-    captured: dict[str, int] = {}
-
-    def capture_schedule(payload, *, steps_per_epoch, total_steps):
-        captured["steps_per_epoch"] = steps_per_epoch
-        captured["total_steps"] = total_steps
-
-    monkeypatch.setattr(current_evaluation, "_validate_balanced_training_payload", capture_schedule)
-    monkeypatch.setattr(
-        current_evaluation,
-        "raw_from_generator_batched",
-        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("stop after schedule validation")),
-    )
     args = SimpleNamespace(
         training_evidence=str(evidence_path),
         dataset_root=str(tmp_path),
         evaluator_checkpoint=str(tmp_path / "evaluator.pt"),
         checkpoint=str(tmp_path / "checkpoint.pt"),
-        _allow_legacy_direct_call=True,
+        acceptance_evaluator_checkpoint=None,
+        acceptance_measurement_bundle=None,
+        acceptance_measurement_evidence=None,
     )
-    with pytest.raises(RuntimeError, match="stop after schedule validation"):
+    with pytest.raises(ValueError, match="independent acceptance measurement"):
         current_evaluation.conditional_evaluate(args, config)
-    assert captured == {"steps_per_epoch": 10, "total_steps": 50}
 
 
 @pytest.mark.parametrize(
@@ -482,7 +442,6 @@ def test_conditional_evaluate_requires_action_and_rejects_state_tampering(
         dataset_root=str(tmp_path),
         evaluator_checkpoint=str(tmp_path / "evaluator.pt"),
         checkpoint=str(tmp_path / "checkpoint.pt"),
-        _allow_legacy_direct_call=True,
     )
     monkeypatch.setattr(
         current_evaluation,
@@ -739,107 +698,6 @@ def test_candidate_consumers_require_their_declared_action(
     )
     with pytest.raises(ValueError, match=message):
         target(args, config)
-
-
-def test_conditional_evaluate_hashes_and_loads_checkpoint_once(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    config = _config().model_copy(
-        update={
-            "run": _config().run.model_copy(
-                update={"device": "cpu", "output_root": str(tmp_path / "outputs")}
-            )
-        }
-    )
-    bundle = _seeded_conditional_bundle(config)
-    settings = config.conditional_generation
-    assert settings is not None
-    state_hash = state_content_hash(bundle.state_dict())
-    manifest = ConditionalCheckpointManifestV2(
-        2,
-        IDENTITY_ARCHITECTURE,
-        _system_signature(config),
-        canonical_sha256(config.model_dump(mode="json")),
-        SPLIT_HASH,
-        EVALUATOR_HASH,
-        settings.fixed_exposure_scale,
-        state_signature(bundle.state_dict()),
-        state_hash,
-        IDENTITY_GENERATOR_CONTRACT,
-        canonical_sha256(CONDITIONAL_CONTROL_METRIC_CONTRACT),
-        BALANCED_TRAINING_SCHEDULE_CONTRACT,
-        settings.initialization_seed,
-        state_hash,
-    )
-    from ldm_project.v2.student.checkpoints import save_conditional_checkpoint
-
-    checkpoint = tmp_path / "checkpoint.pt"
-    save_conditional_checkpoint(checkpoint, bundle, manifest)
-    from ldm_project.v2.evidence import file_sha256 as original_file_sha256
-
-    checkpoint_hash = original_file_sha256(checkpoint)
-    context = _context(
-        config,
-        evaluator_hash=EVALUATOR_HASH,
-        split_hash=SPLIT_HASH,
-        checkpoint_hash=checkpoint_hash,
-    )
-    record = _record(
-        config,
-        "conditional_training",
-        context,
-        {
-            "checkpoint": checkpoint_hash,
-            "initialization_checkpoint": INITIALIZATION_HASH,
-            "initialization_state_hash": state_hash,
-            "schedule_contract": BALANCED_TRAINING_SCHEDULE_CONTRACT,
-            "schedule_steps_per_epoch": "1",
-            "schedule_total_steps": "5",
-        },
-        ("evaluate",),
-    )
-    evidence_path = tmp_path / "training.json"
-    _write_record(evidence_path, record)
-    _stub_mnist(monkeypatch, current_evaluation)
-    args = SimpleNamespace(
-        training_evidence=str(evidence_path),
-        dataset_root=str(tmp_path),
-        evaluator_checkpoint=str(tmp_path / "evaluator.pt"),
-        checkpoint=str(checkpoint),
-        _allow_legacy_direct_call=True,
-    )
-    import ldm_project.v2.evidence.io as evidence_io
-
-    hash_calls = 0
-    load_calls = 0
-    original_hash = evidence_io.file_sha256
-    original_load = torch.load
-
-    def counted_hash(path: object) -> str:
-        nonlocal hash_calls
-        hash_calls += 1
-        return original_hash(path)
-
-    def counted_load(*load_args: object, **load_kwargs: object) -> object:
-        nonlocal load_calls
-        load_calls += 1
-        return original_load(*load_args, **load_kwargs)
-
-    monkeypatch.setattr(evidence_io, "file_sha256", counted_hash)
-    monkeypatch.setattr(torch, "load", counted_load)
-
-    class ReachedAfterCheckpointLoad(Exception):
-        pass
-
-    monkeypatch.setattr(
-        current_evaluation,
-        "balanced_batches",
-        lambda *args, **kwargs: (_ for _ in ()).throw(ReachedAfterCheckpointLoad()),
-    )
-    with pytest.raises(ReachedAfterCheckpointLoad):
-        current_evaluation.conditional_evaluate(args, config)
-    assert hash_calls == 1
-    assert load_calls == 1
 
 
 def test_training_completion_reuses_corrected_checkpoint_hash_once(

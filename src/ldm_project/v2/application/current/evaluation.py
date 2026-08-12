@@ -72,42 +72,6 @@ def conditional_evaluate(args, config: V2Config) -> int:
         images, all_labels, args.dataset_root
     )
     evaluator, _ = load_frozen_evaluator(args.evaluator_checkpoint, device=device)
-    # The validation/primary-only path is test-only compatibility and must be
-    # explicitly opted into; ordinary Python callers cannot silently weaken the
-    # current acceptance contract.
-    legacy_direct_call = bool(getattr(args, "_allow_legacy_direct_call", False))
-    measurement = None
-    measurement_bundle_hash = None
-    test_manifest_path = None
-    if legacy_direct_call:
-        secondary = evaluator
-        test_images, test_labels = validation_images, validation_labels
-    else:
-        if not all((args.acceptance_evaluator_checkpoint, args.acceptance_measurement_bundle, args.acceptance_measurement_evidence)):
-            raise ValueError("current identity evaluation requires the independent acceptance measurement inputs")
-        measurement = EvidenceRecordV2.from_dict(json.loads(Path(args.acceptance_measurement_evidence).read_text(encoding="utf-8")))
-        if measurement.evidence_kind != "conditional_acceptance_measurement" or measurement.status != "passed":
-            raise ValueError("acceptance measurement evidence is not qualified")
-        _validate_current_evidence_source(training_record, measurement)
-        measurement_bundle_hash = file_sha256(args.acceptance_measurement_bundle)
-        require_input_hashes(measurement, {"measurement_bundle": measurement_bundle_hash})
-        bundle_payload = json.loads(Path(args.acceptance_measurement_bundle).read_text(encoding="utf-8"))
-        if not isinstance(bundle_payload, dict) or bundle_payload.get("contract") != ACCEPTANCE_MEASUREMENT_CONTRACT:
-            raise ValueError("acceptance measurement bundle is malformed")
-        if bundle_payload.get("primary_checkpoint") != evaluator_checkpoint_hash(args.evaluator_checkpoint) or bundle_payload.get("secondary_checkpoint") != file_sha256(args.acceptance_evaluator_checkpoint):
-            raise ValueError("acceptance measurement evaluator hash mismatch")
-        manifest_name = bundle_payload.get("test_manifest_filename")
-        if not isinstance(manifest_name, str) or not manifest_name or Path(manifest_name).is_absolute() or ".." in Path(manifest_name).parts:
-            raise ValueError("acceptance measurement bundle has an unsafe test manifest filename")
-        test_manifest_path = Path(args.acceptance_measurement_bundle).parent / manifest_name
-        if file_sha256(test_manifest_path) != bundle_payload.get("test_manifest_hash") or measurement.input_hashes.get("test_manifest") != file_sha256(test_manifest_path):
-            raise ValueError("acceptance measurement test manifest hash mismatch")
-        secondary_payload = safe_torch_load(args.acceptance_evaluator_checkpoint)
-        if not isinstance(secondary_payload, dict) or secondary_payload.get("architecture_kind") != SmoothMNISTEvaluator.architecture_kind:
-            raise ValueError("acceptance evaluator checkpoint has an incompatible architecture")
-        secondary = SmoothMNISTEvaluator().to(device)
-        secondary.load_state_dict(secondary_payload["state_dict"], strict=True)
-        secondary.freeze()
     evaluator_hash = evaluator_checkpoint_hash(args.evaluator_checkpoint)
     checkpoint_hash = training_record.input_hashes.get("checkpoint")
     if not isinstance(checkpoint_hash, str):
@@ -160,22 +124,46 @@ def conditional_evaluate(args, config: V2Config) -> int:
             "schedule_total_steps": str(expected_total_steps),
         },
     )
-    test_manifest = None
-    if not legacy_direct_call:
-        assert measurement is not None and test_manifest_path is not None
-        require_input_hashes(
-            measurement,
-            {
-                "primary_evaluator": evaluator_hash,
-                "secondary_evaluator": file_sha256(args.acceptance_evaluator_checkpoint),
-                "measurement_bundle": measurement_bundle_hash,
-                "test_manifest": file_sha256(test_manifest_path),
-            },
-        )
-        test_images, test_labels = load_local_mnist(args.dataset_root, train=False)
-        test_manifest = json.loads(test_manifest_path.read_text(encoding="utf-8"))
-        if test_manifest.get("count") != int(test_labels.numel()) or test_manifest.get("images_sha256") != tensor_sha256(test_images) or test_manifest.get("labels_sha256") != tensor_sha256(test_labels):
-            raise ValueError("local official MNIST test split does not match the qualified manifest")
+    if not all((args.acceptance_evaluator_checkpoint, args.acceptance_measurement_bundle, args.acceptance_measurement_evidence)):
+        raise ValueError("current identity evaluation requires the independent acceptance measurement inputs")
+    measurement = EvidenceRecordV2.from_dict(json.loads(Path(args.acceptance_measurement_evidence).read_text(encoding="utf-8")))
+    if measurement.evidence_kind != "conditional_acceptance_measurement" or measurement.status != "passed":
+        raise ValueError("acceptance measurement evidence is not qualified")
+    _validate_current_evidence_source(training_record, measurement)
+    measurement_bundle_hash = file_sha256(args.acceptance_measurement_bundle)
+    secondary_hash = file_sha256(args.acceptance_evaluator_checkpoint)
+    require_input_hashes(measurement, {"measurement_bundle": measurement_bundle_hash})
+    bundle_payload = json.loads(Path(args.acceptance_measurement_bundle).read_text(encoding="utf-8"))
+    if not isinstance(bundle_payload, dict) or bundle_payload.get("contract") != ACCEPTANCE_MEASUREMENT_CONTRACT:
+        raise ValueError("acceptance measurement bundle is malformed")
+    if bundle_payload.get("primary_checkpoint") != evaluator_hash or bundle_payload.get("secondary_checkpoint") != secondary_hash:
+        raise ValueError("acceptance measurement evaluator hash mismatch")
+    manifest_name = bundle_payload.get("test_manifest_filename")
+    if not isinstance(manifest_name, str) or not manifest_name or Path(manifest_name).is_absolute() or ".." in Path(manifest_name).parts:
+        raise ValueError("acceptance measurement bundle has an unsafe test manifest filename")
+    test_manifest_path = Path(args.acceptance_measurement_bundle).parent / manifest_name
+    test_manifest_hash = file_sha256(test_manifest_path)
+    if test_manifest_hash != bundle_payload.get("test_manifest_hash") or measurement.input_hashes.get("test_manifest") != test_manifest_hash:
+        raise ValueError("acceptance measurement test manifest hash mismatch")
+    secondary_payload = safe_torch_load(args.acceptance_evaluator_checkpoint, expected_sha256=secondary_hash)
+    if not isinstance(secondary_payload, dict) or secondary_payload.get("architecture_kind") != SmoothMNISTEvaluator.architecture_kind:
+        raise ValueError("acceptance evaluator checkpoint has an incompatible architecture")
+    secondary = SmoothMNISTEvaluator().to(device)
+    secondary.load_state_dict(secondary_payload["state_dict"], strict=True)
+    secondary.freeze()
+    require_input_hashes(
+        measurement,
+        {
+            "primary_evaluator": evaluator_hash,
+            "secondary_evaluator": secondary_hash,
+            "measurement_bundle": measurement_bundle_hash,
+            "test_manifest": test_manifest_hash,
+        },
+    )
+    test_images, test_labels = load_local_mnist(args.dataset_root, train=False)
+    test_manifest = json.loads(test_manifest_path.read_text(encoding="utf-8"))
+    if test_manifest.get("count") != int(test_labels.numel()) or test_manifest.get("images_sha256") != tensor_sha256(test_images) or test_manifest.get("labels_sha256") != tensor_sha256(test_labels):
+        raise ValueError("local official MNIST test split does not match the qualified manifest")
     require_input_hashes(
         training_record,
         {
@@ -203,13 +191,8 @@ def conditional_evaluate(args, config: V2Config) -> int:
         real_view_rows,
     ) = [], [], [], [], [], [], [], [], [], []
     with torch.no_grad():
-        batches = (
-            ((indices, None) for indices in balanced_batches(validation_labels, batch_size=settings.logical_batch_size, seed=4321))
-            if legacy_direct_call
-            else ((None, start) for start in range(0, test_labels.numel(), settings.logical_batch_size))
-        )
-        for batch_number, (legacy_indices, start) in enumerate(batches):
-            indices = legacy_indices if legacy_direct_call else torch.arange(start, min(start + settings.logical_batch_size, test_labels.numel()))
+        batches = (torch.arange(start, min(start + settings.logical_batch_size, test_labels.numel())) for start in range(0, test_labels.numel(), settings.logical_batch_size))
+        for batch_number, indices in enumerate(batches):
             labels = test_labels.index_select(0, indices).to(device)
             codes = _random_codes(
                 labels.numel(), device=device, seed=4321 + batch_number
