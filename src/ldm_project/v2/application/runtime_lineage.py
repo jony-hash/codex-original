@@ -7,7 +7,7 @@ from pathlib import Path
 from ..evidence import canonical_sha256
 
 
-RUNTIME_COMPONENT_REGISTRY_VERSION = "v2-runtime-components-1"
+RUNTIME_COMPONENT_REGISTRY_VERSION = "v2-runtime-components-2"
 
 _FULL_CURRENT = ("src/ldm_project/v2/", "configs/v2/current/", "pyproject.toml")
 _COMPONENT_PATHS = {
@@ -15,6 +15,7 @@ _COMPONENT_PATHS = {
         "src/ldm_project/v2/evidence/",
         "src/ldm_project/v2/application/runs.py",
         "src/ldm_project/v2/application/_runtime_shared.py",
+        "src/ldm_project/v2/application/runtime_lineage.py",
         "src/ldm_project/v2/config.py",
         "pyproject.toml",
     ),
@@ -27,16 +28,37 @@ _COMPONENT_PATHS = {
         "src/ldm_project/v2/student/identity_generator.py",
         "src/ldm_project/v2/student/checkpoints.py",
     ),
-    "control_admission": ("src/ldm_project/v2/application/_conditional_admission_shared.py",),
-    "recovery": ("src/ldm_project/v2/application/_conditional_recovery_shared.py",),
+    "control_admission": (
+        "src/ldm_project/v2/application/_conditional_admission_shared.py",
+        "src/ldm_project/v2/application/current/admission.py",
+    ),
+    "recovery": (
+        "src/ldm_project/v2/application/_conditional_recovery_shared.py",
+        "src/ldm_project/v2/application/current/recovery.py",
+    ),
     "formal_objective_training": (
         "src/ldm_project/v2/student/conditional.py",
         "src/ldm_project/v2/application/current/training.py",
+        "src/ldm_project/v2/application/current/admission.py",
     ),
     "acceptance_measurement": ("src/ldm_project/v2/application/current/measurement.py",),
-    "formal_evaluation": ("src/ldm_project/v2/application/current/evaluation.py",),
-    "dataset_admission": ("src/ldm_project/v2/application/current/dataset.py",),
-    "objective_diagnostic": ("src/ldm_project/v2/application/diagnostic/objective.py",),
+    "formal_evaluation": (
+        "src/ldm_project/v2/application/current/evaluation.py",
+        "src/ldm_project/v2/application/current/admission.py",
+    ),
+    "dataset_admission": (
+        "src/ldm_project/v2/application/current/dataset.py",
+        "src/ldm_project/v2/application/current/admission.py",
+        "src/ldm_project/v2/application/current/measurement.py",
+    ),
+    "objective_diagnostic": (
+        "src/ldm_project/v2/application/diagnostic/objective.py",
+        "src/ldm_project/v2/student/conditional.py",
+        "src/ldm_project/v2/application/current/training.py",
+        "src/ldm_project/v2/application/current/recovery.py",
+        "src/ldm_project/v2/application/_conditional_recovery_shared.py",
+        "src/ldm_project/v2/application/current/admission.py",
+    ),
 }
 
 _KIND_COMPONENTS = {
