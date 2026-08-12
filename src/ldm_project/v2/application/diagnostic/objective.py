@@ -211,7 +211,7 @@ def _calibrated_weight(base: float, auxiliary: float) -> float:
 
 def _fixed_panel(device: torch.device, code_dim: int = 8):
     generator = torch.Generator(device="cpu").manual_seed(9012)
-    codes = torch.randn((170, code_dim), generator=generator, device=device)
+    codes = torch.randn((170, code_dim), generator=generator).to(device)
     labels = torch.arange(10, device=device).repeat_interleave(17)
     return codes, labels
 
@@ -357,9 +357,14 @@ def _run_steps(bundle, primary, train_images, train_labels, config, objective_ki
     return history, canonical_sha256(companion_schedule)
 
 
-def _diagnostic_record(config, kind, status, context, input_hashes, gates, permitted=(), reason=None, extra=None):
+def _diagnostic_record(config, kind, status, context, input_hashes, gates, permitted=(), reason=None, extra=None, artifact_payloads=None):
     run = _new_run(config)
-    record = EvidenceRecordV2(2, kind, "diagnostic", status, run.git_commit, run.dirty_patch_hash, run.config_hash, context, input_hashes, tuple(gates), tuple(permitted) if status == "passed" else (), reason)
+    artifact_hashes = {}
+    for filename, payload in (artifact_payloads or {}).items():
+        artifact_path = run.root / filename
+        atomic_torch_save(artifact_path, payload)
+        artifact_hashes[filename] = file_sha256(artifact_path)
+    record = EvidenceRecordV2(2, kind, "diagnostic", status, run.git_commit, run.dirty_patch_hash, run.config_hash, context, {**input_hashes, "artifacts": canonical_sha256(artifact_hashes), **artifact_hashes}, tuple(gates), tuple(permitted) if status == "passed" else (), reason)
     path = run.root / f"{kind}_evidence.json"
     _write_evidence(run, path.name, record)
     if extra:
@@ -435,9 +440,8 @@ def objective_alignment_screen(args, config) -> int:
     winner = min(candidates, key=lambda kind: (-scores[kind], kind)) if candidates else None
     gates.append(GateResult("winner_exists", winner is not None, {"winner": winner or "none"}))
     report_payload = {"contract": OBJECTIVE_DIAGNOSTIC_CONTRACT, "winner": winner, "scores": scores, "reports": {kind: {key: value for key, value in row.items() if key != "state_dict"} for kind, row in reports.items()}, "weights": weights}
-    run, _ = _diagnostic_record(config, "conditional_objective_alignment_screen", "passed" if winner else "failed", _record_context(config, evaluator_hash, split.manifest_hash, init_hash), {"initialization_checkpoint": init_hash, "injection_evidence": file_sha256(args.injection_evidence), "evaluator": evaluator_hash, "secondary_evaluator": secondary_hash, "measurement_evidence": file_sha256(args.acceptance_measurement_evidence), "measurement_bundle": file_sha256(args.acceptance_measurement_bundle), "calibration": file_sha256(calibration_path), "companion_schedule": canonical_sha256({kind: reports[kind]["companion_schedule_hash"] for kind in reports})}, tuple(gates), ("confirm",) if winner else (), extra=report_payload)
-    for kind, row in reports.items():
-        atomic_torch_save(run.root / f"conditional_objective_alignment_{kind}_checkpoint.pt", {"objective_kind": kind, "state_dict": row["state_dict"], "state_content_hash": row["state_hash"]})
+    artifacts = {f"conditional_objective_alignment_{kind}_checkpoint.pt": {"objective_kind": kind, "state_dict": row["state_dict"], "state_content_hash": row["state_hash"]} for kind, row in reports.items()}
+    _diagnostic_record(config, "conditional_objective_alignment_screen", "passed" if winner else "failed", _record_context(config, evaluator_hash, split.manifest_hash, init_hash), {"initialization_checkpoint": init_hash, "injection_evidence": file_sha256(args.injection_evidence), "evaluator": evaluator_hash, "secondary_evaluator": secondary_hash, "measurement_evidence": file_sha256(args.acceptance_measurement_evidence), "measurement_bundle": file_sha256(args.acceptance_measurement_bundle), "calibration": file_sha256(calibration_path), "companion_schedule": canonical_sha256({kind: reports[kind]["companion_schedule_hash"] for kind in reports})}, tuple(gates), ("confirm",) if winner else (), extra=report_payload, artifact_payloads=artifacts)
     return 0 if winner else 1
 
 
@@ -481,8 +485,6 @@ def objective_alignment_confirm(args, config) -> int:
     gates.append(GateResult("finite_confirmation", all(torch.isfinite(torch.tensor(list(item["measurement"].values()))).all() for item in joint), {}))
     passed = all(gate.passed for gate in gates)
     report_payload = {"contract": OBJECTIVE_DIAGNOSTIC_CONTRACT, "winner": winner, "seeds": {seed: {kind: {key: value for key, value in row.items() if key != "state_dict"} for kind, row in seed_rows.items()} for seed, seed_rows in rows.items()}, "formal_promotion_authorized": False}
-    run, _ = _diagnostic_record(config, "conditional_objective_alignment_confirm", "passed" if passed else "failed", _record_context(config, evaluator_hash, split.manifest_hash, init_hash), {"screen_evidence": screen.evidence_hash, "initialization_checkpoint": init_hash, "injection_evidence": file_sha256(args.injection_evidence), "evaluator": evaluator_hash, "secondary_evaluator": secondary_hash, "measurement_evidence": file_sha256(args.acceptance_measurement_evidence), "measurement_bundle": file_sha256(args.acceptance_measurement_bundle), "companion_schedule": canonical_sha256({seed: {kind: rows[str(seed)][kind]["companion_schedule_hash"] for kind in ("A", winner)} for seed in (1234, 1235, 1236)})}, tuple(gates), (), extra=report_payload)
-    for seed, seed_rows in rows.items():
-        for kind, row in seed_rows.items():
-            atomic_torch_save(run.root / f"conditional_objective_alignment_confirm_{seed}_{kind}_checkpoint.pt", {"objective_kind": kind, "seed": int(seed), "state_dict": row["state_dict"], "state_content_hash": row["state_hash"]})
+    artifacts = {f"conditional_objective_alignment_confirm_{seed}_{kind}_checkpoint.pt": {"objective_kind": kind, "seed": int(seed), "state_dict": row["state_dict"], "state_content_hash": row["state_hash"]} for seed, seed_rows in rows.items() for kind, row in seed_rows.items()}
+    _diagnostic_record(config, "conditional_objective_alignment_confirm", "passed" if passed else "failed", _record_context(config, evaluator_hash, split.manifest_hash, init_hash), {"screen_evidence": screen.evidence_hash, "initialization_checkpoint": init_hash, "injection_evidence": file_sha256(args.injection_evidence), "evaluator": evaluator_hash, "secondary_evaluator": secondary_hash, "measurement_evidence": file_sha256(args.acceptance_measurement_evidence), "measurement_bundle": file_sha256(args.acceptance_measurement_bundle), "companion_schedule": canonical_sha256({seed: {kind: rows[str(seed)][kind]["companion_schedule_hash"] for kind in ("A", winner)} for seed in (1234, 1235, 1236)})}, tuple(gates), (), extra=report_payload, artifact_payloads=artifacts)
     return 0 if passed else 1
