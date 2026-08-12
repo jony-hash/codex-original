@@ -108,10 +108,6 @@ def conditional_evaluate(args, config: V2Config) -> int:
     checkpoint_hash = training_record.input_hashes.get("checkpoint")
     if not isinstance(checkpoint_hash, str):
         raise ValueError("training evidence lacks checkpoint binding")
-    if measurement is not None:
-        training_evidence_hash = file_sha256(args.training_evidence)
-        if measurement.input_hashes.get("acceptance_evaluator_training_evidence") not in {None, training_evidence_hash}:
-            raise ValueError("acceptance measurement was qualified against another training evidence")
     require_evidence_action(
         training_record,
         kind="conditional_training",

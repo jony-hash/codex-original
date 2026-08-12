@@ -3,7 +3,7 @@ from __future__ import annotations
 import torch
 
 from ldm_project.v2.application.cli_schema import _parser
-from ldm_project.v2.application.diagnostic.objective import _companion_indices
+from ldm_project.v2.application.diagnostic.objective import _code_seed, _companion_indices
 from ldm_project.v2.student.conditional import coverage_ratio_upper_loss
 
 
@@ -15,6 +15,11 @@ def test_companion_schedule_is_deterministic_and_disjoint() -> None:
     assert torch.equal(first, second)
     assert not torch.isin(first, primary).any()
     assert torch.bincount(labels.index_select(0, first), minlength=10).tolist() == [5] * 10
+
+
+def test_registered_confirmation_seeds_reproduce_formal_code_schedule() -> None:
+    assert [_code_seed(seed, 0) for seed in (1234, 1235, 1236)] == [100000, 200000, 300000]
+    assert _code_seed(1234, 99) == 100099
 
 
 def test_coverage_companion_contract_uses_matching_primary_counts() -> None:
