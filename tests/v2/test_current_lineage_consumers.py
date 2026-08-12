@@ -25,6 +25,12 @@ from ldm_project.v2.application.current.runtime import (
     _validate_balanced_training_payload,
     _validate_current_evidence_source,
 )
+from ldm_project.v2.application.runtime_lineage import (
+    RUNTIME_COMPONENT_REGISTRY_VERSION,
+    component_fingerprints,
+    components_for_kind,
+    lineage_inputs,
+)
 from ldm_project.v2.config import load_config
 from ldm_project.v2.evidence import (
     EvidenceContextV2,
@@ -64,6 +70,7 @@ def _record(
     commit = subprocess.run(
         ["git", "rev-parse", "HEAD"], check=True, capture_output=True, text=True
     ).stdout.strip()
+    inputs = {**inputs, **lineage_inputs(Path.cwd(), commit, kind)}
     return EvidenceRecordV2(
         2,
         kind,
@@ -113,6 +120,20 @@ def test_current_evidence_source_accepts_clean_head() -> None:
     _validate_current_evidence_source(current)
 
 
+def test_component_lineage_is_stable_and_unknown_kinds_fail_closed() -> None:
+    commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"], check=True, capture_output=True, text=True
+    ).stdout.strip()
+    inputs = lineage_inputs(Path.cwd(), commit, "conditional_observability")
+    assert inputs["runtime_component_registry"] == RUNTIME_COMPONENT_REGISTRY_VERSION
+    assert tuple(inputs["runtime_components"]) == components_for_kind("conditional_observability")
+    assert inputs["runtime_component_fingerprints"] == component_fingerprints(
+        Path.cwd(), commit, "conditional_observability"
+    )
+    assert components_for_kind("unregistered_future_kind") == ("full_current",)
+    assert set(lineage_inputs(Path.cwd(), commit, "unregistered_future_kind")["runtime_component_fingerprints"]) == {"full_current"}
+
+
 @pytest.mark.parametrize(
     "mutator",
     [
@@ -135,15 +156,17 @@ def test_current_evidence_source_rejects_runtime_tree_changes(monkeypatch) -> No
     record = _record(config, "conditional_observability", context, {}, ("conditional_control_isolation",))
     import ldm_project.v2.application.current.runtime as runtime
 
-    real_run = runtime.subprocess.run
+    real_fingerprints = runtime.component_fingerprints
+    head = subprocess.run(["git", "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
 
-    def fake_run(command, *args, **kwargs):
-        if command[:2] == ["git", "diff"]:
-            return subprocess.CompletedProcess(command, 1, b"", b"changed")
-        return real_run(command, *args, **kwargs)
+    def fake_fingerprints(repo_root, commit, kind):
+        fingerprints = real_fingerprints(repo_root, commit, kind)
+        if commit == head:
+            fingerprints = {**fingerprints, "__changed__": "changed"}
+        return fingerprints
 
-    monkeypatch.setattr(runtime.subprocess, "run", fake_run)
-    with pytest.raises(ValueError, match="runtime tree changed"):
+    monkeypatch.setattr(runtime, "component_fingerprints", fake_fingerprints)
+    with pytest.raises(ValueError, match="runtime component tree changed"):
         _validate_current_evidence_source(record)
 
 

@@ -2,6 +2,16 @@
 
 ## Current identity status
 
+The current evidence-lineage policy is now component-scoped.  New evidence
+records carry the registry version, the applicable runtime components, and a
+Git-tree fingerprint for each component; consumers still require clean
+ancestor commits and independently verify config, split, checkpoint, and
+artifact hashes.  Evidence created before this registry was introduced is
+fail-closed and must be reissued once on the migrated clean baseline.  A
+change to an unrelated component no longer invalidates every current record,
+while unknown evidence kinds conservatively retain the full-current invalidation
+scope.
+
 The evaluation schedule harness was repaired at clean commit `ae3273d`. The
 earlier evaluation attempt mixed the 55,000-sample training split with the
 60,000-sample full label set and was therefore an `invalid_harness` attempt,
