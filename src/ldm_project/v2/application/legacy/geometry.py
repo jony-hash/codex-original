@@ -111,7 +111,12 @@ def _prototype_topology(args: argparse.Namespace, config: V2Config) -> int:
                 )
                 raw_rows.append(result.raw_camera.tensor.detach().cpu())
                 for name, value in result.crop_statistics.items():
-                    crops[name].append(value.detach().cpu())
+                    # Formal v2 may expose additional relay instrumentation
+                    # (pupil retention, cutoff diagnostics).  The legacy
+                    # topology audit owns only the historical D2NN crop
+                    # fields and must not reject a richer formal result.
+                    if name in crops:
+                        crops[name].append(value.detach().cpu())
                 if trace_rows is None:
                     trace_rows = [[] for _ in result.optical_trace or ()]
                     trace_fields = result.optical_trace
