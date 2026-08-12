@@ -171,6 +171,9 @@ def coverage_ratio_upper_loss(
     iterations: int,
     target: float = 1.35,
     temperature: float = 0.10,
+    companion_features: torch.Tensor | None = None,
+    companion_view: torch.Tensor | None = None,
+    companion_labels: torch.Tensor | None = None,
 ) -> torch.Tensor:
     """Differentiable generated/real coverage ratio with a detached real baseline."""
     if target <= 0.0 or temperature <= 0.0:
@@ -184,19 +187,37 @@ def coverage_ratio_upper_loss(
         pixel_cost = torch.cdist(generated_pixels, real_pixels, p=1) / generated_pixels.shape[1]
         return log_sinkhorn(feature_cost + 0.25 * pixel_cost, epsilon=epsilon, iterations=iterations)
 
+    if (companion_features is None) != (companion_view is None) or (companion_features is None) != (companion_labels is None):
+        raise ValueError("coverage companion tensors must be supplied together")
     observed_terms, baseline_terms = [], []
     for label in range(10):
         selected = torch.nonzero(labels == label, as_tuple=False).flatten()
-        if selected.numel() < 4:
-            raise ValueError("coverage objective needs at least four samples per class")
-        count = selected.numel() // 2
-        left, right = selected[:count], selected[count : 2 * count]
+        if selected.numel() < 2:
+            raise ValueError("coverage objective needs at least two samples per class")
+        if companion_features is None:
+            count = selected.numel() // 2
+            if count < 2:
+                raise ValueError("coverage objective needs at least four samples per class")
+            left, right = selected[:count], selected[count : 2 * count]
+            generated_left = generated_features.index_select(0, left)
+            generated_view_left = generated_view.index_select(0, left)
+            real_left = real_features.index_select(0, left)
+            real_view_left = real_view.index_select(0, left)
+        else:
+            companion_selected = torch.nonzero(companion_labels == label, as_tuple=False).flatten()
+            if companion_selected.numel() != selected.numel():
+                raise ValueError("coverage companion schedule must match primary samples per class")
+            left, right = companion_selected, selected
+            generated_left = generated_features.index_select(0, right)
+            generated_view_left = generated_view.index_select(0, right)
+            real_left = companion_features.index_select(0, left)
+            real_view_left = companion_view.index_select(0, left)
         observed_terms.append(class_sinkhorn(
-            generated_features.index_select(0, selected[:count]), generated_view.index_select(0, selected[:count]),
+            generated_left, generated_view_left,
             real_features.index_select(0, right), real_view.index_select(0, right),
         ))
         baseline_terms.append(class_sinkhorn(
-            real_features.index_select(0, left), real_view.index_select(0, left),
+            real_left, real_view_left,
             real_features.index_select(0, right), real_view.index_select(0, right),
         ).detach())
     ratio = torch.stack(observed_terms).mean() / torch.stack(baseline_terms).mean().clamp_min(1.0e-12)
@@ -263,6 +284,8 @@ def conditional_loss(
     camera_code_safety_weight: float = 0.0,
     pairwise_diversity_weight: float = 0.0,
     coverage_ratio_weight: float = 0.0,
+    coverage_companion_views: torch.Tensor | None = None,
+    coverage_companion_labels: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, ConditionalLossSummary, torch.Tensor]:
     raw = raw_from_generator_batched(system, generator, codes, labels, microbatch_size=microbatch_size, activation_checkpoint=activation_checkpoint)
     generated_view = fixed_exposure_view(raw, exposure_scale)
@@ -282,9 +305,18 @@ def conditional_loss(
         total = total + camera_code_safety_weight * camera_code_safety_loss(raw, labels, target=0.30, temperature=0.02)
         total = total + pairwise_diversity_weight * pairwise_diversity_distribution_loss(generated_features, real_features, labels)
     if objective_kind == "C":
+        companion_features = None
+        if coverage_companion_views is not None:
+            if coverage_companion_labels is None:
+                raise ValueError("coverage companion labels are required")
+            with torch.no_grad():
+                companion_features, _ = evaluator(coverage_companion_views)
         total = total + coverage_ratio_weight * coverage_ratio_upper_loss(
             generated_features, generated_view, real_features, real_views, labels,
             epsilon=sinkhorn_epsilon, iterations=sinkhorn_iterations,
+            companion_features=companion_features,
+            companion_view=coverage_companion_views,
+            companion_labels=coverage_companion_labels,
         )
     summary = ConditionalLossSummary(*(float(value.detach().item()) for value in (total, sinkhorn, classification, diversity, saturation, orthogonality, phase_tv)))
     return total, summary, raw

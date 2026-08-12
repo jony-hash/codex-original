@@ -67,12 +67,12 @@ def register_student(root: argparse._SubParsersAction) -> None:
         qualify_measurement.add_argument("--" + name.replace("_", "-"), required=True)
     objective_screen = student.add_parser("objective-alignment-screen")
     objective_screen.add_argument("--config", required=True)
-    objective_screen.add_argument("--baseline-measurement", required=True)
-    objective_screen.add_argument("--candidate-measurement", nargs=3, required=True)
+    for name in ("dataset_root", "evaluator_checkpoint", "acceptance_evaluator_checkpoint", "acceptance_measurement_bundle", "acceptance_measurement_evidence", "initialization_checkpoint", "injection_evidence", "weight_calibration"):
+        objective_screen.add_argument("--" + name.replace("_", "-"), required=True)
     objective_confirm = student.add_parser("objective-alignment-confirm")
     objective_confirm.add_argument("--config", required=True)
-    objective_confirm.add_argument("--candidate", choices=("B", "C"), required=True)
-    objective_confirm.add_argument("--confirmation-measurement", required=True)
+    for name in ("dataset_root", "evaluator_checkpoint", "acceptance_evaluator_checkpoint", "acceptance_measurement_bundle", "acceptance_measurement_evidence", "initialization_checkpoint", "injection_evidence", "screen_evidence"):
+        objective_confirm.add_argument("--" + name.replace("_", "-"), required=True)
     controllability = student.add_parser("controllability-smoke")
     for name in (
         "config",

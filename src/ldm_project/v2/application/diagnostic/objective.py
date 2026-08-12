@@ -1,104 +1,488 @@
-"""Pre-registered, short objective-alignment diagnostics.
-
-These commands are diagnostic-only.  They use the training evaluator and a
-fixed validation panel; no result from this module can authorize formal
-training or acceptance.
-"""
+"""End-to-end, diagnostic-only objective alignment experiments."""
 from __future__ import annotations
 
-from dataclasses import asdict
+import json
 from pathlib import Path
-
 import torch
 
-from ...evidence import GateResult, atomic_write_json, canonical_sha256, file_sha256
-from ..current.runtime import _new_run, _require_identity
+from ...evidence import (
+    EvidenceContextV2,
+    EvidenceRecordV2,
+    GateResult,
+    atomic_torch_save,
+    atomic_write_json,
+    canonical_sha256,
+    file_sha256,
+    safe_torch_load,
+)
+from ...student.conditional import (
+    camera_code_fraction,
+    camera_code_safety_loss,
+    conditional_loss,
+    fixed_exposure_view,
+    pairwise_diversity_distribution_loss,
+    raw_from_generator_batched,
+    relative_diversity_ratios,
+    coverage_ratio_upper_loss,
+    log_sinkhorn,
+)
+from ...student.evaluator import (
+    SmoothMNISTEvaluator,
+    balanced_batches,
+    evaluator_checkpoint_hash,
+    load_frozen_evaluator,
+    load_local_mnist,
+)
+from ..current.runtime import (
+    _context,
+    _load_bundle,
+    _new_run,
+    _random_codes,
+    _require_identity,
+    _split,
+    _validate_conditional_lineage,
+    _write_evidence,
+)
+from ..current.recovery import _conditional_optimizer
+from ..current.training import _conditional_parameter_groups, _validate_current_optimizer_coverage
+from ...student.checkpoints import state_content_hash
+from ...evidence.records import require_evidence_action, require_input_hashes
 
 
 OBJECTIVE_DIAGNOSTIC_CONTRACT = canonical_sha256(
     {
-        "kind": "conditional_objective_alignment_v1",
+        "kind": "conditional_objective_alignment_v2",
         "candidates": ["A", "B", "C"],
         "screen_steps": 100,
         "confirm_steps": 400,
         "seeds": [1234, 1235, 1236],
-        "panel": "17_samples_per_class",
+        "panel_seed": 9012,
+        "panel_per_class": 17,
+        "reference_per_class": 34,
         "weight_rule": "0.25*base_gradient_norm/auxiliary_gradient_norm",
         "camera_target": 0.30,
         "camera_temperature": 0.02,
         "coverage_target": 1.35,
         "coverage_temperature": 0.10,
+        "companion": "five_per_label_excluding_primary_v1",
     }
 )
 
 
-def calibrate_weights(base_gradient_norm: float, auxiliary_gradient_norm: float) -> float:
-    if auxiliary_gradient_norm <= 1.0e-12 or not torch.isfinite(torch.tensor([base_gradient_norm, auxiliary_gradient_norm])).all():
-        raise ValueError("objective gradient calibration encountered a zero or non-finite norm")
-    weight = 0.25 * base_gradient_norm / auxiliary_gradient_norm
-    if not 1.0e-3 <= weight <= 10.0:
+def _record_context(config, evaluator_hash: str, split_hash: str, checkpoint_hash: str | None = None) -> EvidenceContextV2:
+    return _context(config, evaluator_hash=evaluator_hash, split_hash=split_hash, checkpoint_hash=checkpoint_hash)
+
+
+def _load_primary_inputs(args, config):
+    images, labels = load_local_mnist(args.dataset_root, train=True)
+    train_images, train_labels, validation_images, validation_labels, split = _split(images, labels, args.dataset_root)
+    primary, _ = load_frozen_evaluator(args.evaluator_checkpoint, device=torch.device(config.run.device))
+    primary_hash = evaluator_checkpoint_hash(args.evaluator_checkpoint)
+    injection = _load_injection(args, config, split, primary_hash)
+    bundle, manifest, init_hash = _load_initialization(args, config, train_labels, split, primary_hash, injection)
+    return train_images, train_labels, validation_images, validation_labels, split, primary, injection, bundle, manifest, init_hash, primary_hash
+
+
+def _load_measurement_inputs(args, config):
+    images, labels = load_local_mnist(args.dataset_root, train=True)
+    train_images, train_labels, validation_images, validation_labels, split = _split(images, labels, args.dataset_root)
+    primary, _ = load_frozen_evaluator(args.evaluator_checkpoint, device=torch.device(config.run.device))
+    measurement = EvidenceRecordV2.from_dict(json.loads(Path(args.acceptance_measurement_evidence).read_text(encoding="utf-8")))
+    if measurement.evidence_kind != "conditional_acceptance_measurement" or measurement.status != "passed":
+        raise ValueError("objective diagnostic requires passed acceptance measurement evidence")
+    from ..current.runtime import _validate_current_evidence_source
+    _validate_current_evidence_source(measurement)
+    bundle_path = Path(args.acceptance_measurement_bundle)
+    bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+    if measurement.input_hashes.get("measurement_bundle") != file_sha256(bundle_path):
+        raise ValueError("objective diagnostic measurement bundle hash mismatch")
+    primary_hash = evaluator_checkpoint_hash(args.evaluator_checkpoint)
+    secondary_hash = file_sha256(args.acceptance_evaluator_checkpoint)
+    if bundle.get("primary_checkpoint") != primary_hash or bundle.get("secondary_checkpoint") != secondary_hash:
+        raise ValueError("objective diagnostic evaluator hash mismatch")
+    if bundle.get("split_manifest_hash") != split.manifest_hash:
+        raise ValueError("objective diagnostic measurement split mismatch")
+    manifest_name = bundle.get("test_manifest_filename")
+    if not isinstance(manifest_name, str) or not manifest_name or Path(manifest_name).is_absolute() or ".." in Path(manifest_name).parts:
+        raise ValueError("objective diagnostic measurement test manifest filename is unsafe")
+    test_manifest = bundle_path.parent / manifest_name
+    if file_sha256(test_manifest) != bundle.get("test_manifest_hash") or measurement.input_hashes.get("test_manifest") != file_sha256(test_manifest):
+        raise ValueError("objective diagnostic measurement test manifest hash mismatch")
+    secondary_payload = safe_torch_load(args.acceptance_evaluator_checkpoint, expected_sha256=secondary_hash)
+    if not isinstance(secondary_payload, dict) or secondary_payload.get("architecture_kind") != SmoothMNISTEvaluator.architecture_kind:
+        raise ValueError("objective diagnostic secondary evaluator architecture mismatch")
+    secondary = SmoothMNISTEvaluator().to(torch.device(config.run.device))
+    secondary.load_state_dict(secondary_payload["state_dict"], strict=True)
+    secondary.freeze()
+    return train_images, train_labels, validation_images, validation_labels, split, primary, secondary, measurement, primary_hash, secondary_hash
+
+
+def _load_initialization(args, config, train_labels, split, evaluator_hash, injection):
+    init_hash = injection.input_hashes.get("initialization_checkpoint")
+    if not isinstance(init_hash, str):
+        raise ValueError("injection evidence lacks initialization checkpoint")
+    bundle, manifest = _load_bundle(
+        config,
+        args.initialization_checkpoint,
+        device=torch.device(config.run.device),
+        evaluator_hash=evaluator_hash,
+        split_hash=split.manifest_hash,
+        checkpoint_sha256=init_hash,
+    )
+    _validate_conditional_lineage(config, manifest, checkpoint_hash=init_hash, evidence=injection)
+    require_input_hashes(injection, {"initialization_checkpoint": init_hash, "initialization_state_hash": manifest.initialization_state_hash})
+    return bundle, manifest, init_hash
+
+
+def _load_injection(args, config, split, evaluator_hash):
+    injection = EvidenceRecordV2.from_dict(json.loads(Path(args.injection_evidence).read_text(encoding="utf-8")))
+    if injection.evidence_kind != "conditional_injection_admission" or injection.status != "passed":
+        raise ValueError("objective diagnostic requires passed injection admission evidence")
+    from ..current.runtime import _validate_current_evidence_source
+    _validate_current_evidence_source(injection)
+    require_evidence_action(injection, kind="conditional_injection_admission", action="conditional_observability", expected_context=_record_context(config, evaluator_hash, split.manifest_hash, injection.input_hashes.get("initialization_checkpoint")))
+    return injection
+
+
+def _parameter_norm(parameters, gradients) -> torch.Tensor:
+    values = [gradient.detach().square().sum() for parameter, gradient in zip(parameters, gradients, strict=True) if gradient is not None]
+    if not values:
+        return torch.zeros((), device=parameters[0].device)
+    return torch.stack(values).sum().sqrt()
+
+
+def _auxiliary_loss(raw, generated_view, generated_features, real_features, labels, real_views, kind: str, epsilon: float, iterations: int) -> torch.Tensor:
+    if kind == "camera":
+        return torch.nn.functional.softplus((torch.as_tensor(0.30, device=raw.device, dtype=raw.dtype) - camera_code_fraction(raw, labels)) / 0.02) * 0.02
+    if kind == "pairwise":
+        return pairwise_diversity_distribution_loss(generated_features, real_features, labels)
+    if kind == "coverage":
+        return coverage_ratio_upper_loss(generated_features, generated_view, real_features, real_views, labels, epsilon=epsilon, iterations=iterations)
+    raise ValueError(f"unknown auxiliary objective {kind}")
+
+
+def _gradient_calibration(args, config, train_images, train_labels, split, primary, bundle, evaluator_hash, input_hashes):
+    settings = config.conditional_generation
+    assert settings is not None
+    groups = _conditional_parameter_groups(bundle)
+    selected = tuple(parameter for name in ("global_modes", "code_projection", "class_heads") for parameter in groups[name])
+    sums = {name: torch.zeros((), device=selected[0].device) for name in ("base", "camera", "pairwise", "coverage")}
+    steps = 0
+    for epoch in range(1):
+        for batch_number, indices in enumerate(balanced_batches(train_labels, batch_size=settings.logical_batch_size, seed=1234 + epoch)):
+            if steps >= 4:
+                break
+            device = selected[0].device
+            labels = train_labels.index_select(0, indices).to(device)
+            codes = _random_codes(labels.numel(), device=selected[0].device, seed=(epoch + 1) * 100000 + batch_number)
+            real_views = train_images.index_select(0, indices).to(device)
+            base, _, raw = conditional_loss(system=bundle.system, generator=bundle.generator, evaluator=primary, codes=codes, labels=labels, real_views=real_views, exposure_scale=settings.fixed_exposure_scale, sinkhorn_epsilon=settings.sinkhorn_epsilon, sinkhorn_iterations=settings.sinkhorn_iterations, activation_checkpoint=False, microbatch_size=config.execution.training_microbatch_size)
+            generated_view = fixed_exposure_view(raw, settings.fixed_exposure_scale)
+            generated_features, _ = primary(generated_view)
+            with torch.no_grad():
+                real_features, _ = primary(real_views)
+            losses = {"base": base}
+            for kind in ("camera", "pairwise", "coverage"):
+                losses[kind] = _auxiliary_loss(raw, generated_view, generated_features, real_features, labels, real_views, kind, settings.sinkhorn_epsilon, settings.sinkhorn_iterations)
+            for name, loss in losses.items():
+                gradients = torch.autograd.grad(loss, selected, retain_graph=True, allow_unused=True)
+                norm = _parameter_norm(selected, gradients)
+                if not torch.isfinite(norm):
+                    raise ValueError(f"non-finite {name} calibration gradient")
+                sums[name] = sums[name] + norm.square()
+            steps += 1
+        if steps >= 4:
+            break
+    if steps != 4:
+        raise ValueError("gradient calibration did not obtain four balanced batches")
+    norms = {name: float((value / 4.0).sqrt().item()) for name, value in sums.items()}
+    weights = {name: _calibrated_weight(norms["base"], norms[name]) for name in ("camera", "pairwise", "coverage")}
+    return norms, weights
+
+
+def _calibrated_weight(base: float, auxiliary: float) -> float:
+    if not torch.isfinite(torch.tensor([base, auxiliary])).all() or auxiliary <= 1.0e-12:
+        raise ValueError("objective gradient calibration encountered invalid norm")
+    value = 0.25 * base / auxiliary
+    if not 1.0e-3 <= value <= 10.0:
         raise ValueError("objective gradient calibration produced a weight outside [1e-3,10]")
-    return float(weight)
+    return float(value)
 
 
-def _write_diagnostic(config, *, name: str, input_hashes: dict[str, str], gates: tuple[GateResult, ...], payload: dict[str, object]) -> int:
+def _fixed_panel(device: torch.device, code_dim: int = 8):
+    generator = torch.Generator(device="cpu").manual_seed(9012)
+    codes = torch.randn((170, code_dim), generator=generator, device=device)
+    labels = torch.arange(10, device=device).repeat_interleave(17)
+    return codes, labels
+
+
+def _panel_coverage(generated_features, generated_view, labels, real_features, real_views, real_labels, epsilon, iterations):
+    observed, baseline = [], []
+    for label in range(10):
+        gi = torch.nonzero(labels == label, as_tuple=False).flatten()
+        ri = torch.nonzero(real_labels == label, as_tuple=False).flatten()
+        if gi.numel() != 17 or ri.numel() != 34:
+            raise ValueError("objective panel requires 17 generated and 34 real samples per label")
+        def cost(left_f, left_v, right_f, right_v):
+            left_f = torch.nn.functional.normalize(left_f, dim=1)
+            right_f = torch.nn.functional.normalize(right_f, dim=1)
+            fcost = torch.cdist(left_f, right_f).square()
+            lp = left_v.flatten(1)
+            rp = right_v.flatten(1)
+            return log_sinkhorn(fcost + 0.25 * torch.cdist(lp, rp, p=1) / lp.shape[1], epsilon=epsilon, iterations=iterations)
+        first, second = ri[:17], ri[17:]
+        observed.append(cost(generated_features[gi], generated_view[gi], real_features[second], real_views[second]))
+        baseline.append(cost(real_features[first], real_views[first], real_features[second], real_views[second]).detach())
+    return float((torch.stack(observed).mean() / torch.stack(baseline).mean().clamp_min(1.0e-12)).item())
+
+
+def _measure_panel(bundle, primary, secondary, validation_images, validation_labels, config):
+    device = next(bundle.parameters()).device
+    settings = config.conditional_generation
+    assert settings is not None
+    codes, labels = _fixed_panel(device)
+    with torch.no_grad():
+        raw = raw_from_generator_batched(bundle.system, bundle.generator, codes, labels, microbatch_size=config.execution.evaluation_microbatch_size, activation_checkpoint=False)
+        generated_view = fixed_exposure_view(raw, settings.fixed_exposure_scale)
+        generated_features, primary_logits = primary(generated_view)
+        secondary_features, secondary_logits = secondary(generated_view)
+        real_indices = torch.cat([torch.nonzero(validation_labels == label, as_tuple=False).flatten()[:34] for label in range(10)])
+        real_view = validation_images.index_select(0, real_indices).to(device)
+        real_labels = validation_labels.index_select(0, real_indices).to(device)
+        real_features, primary_real_logits = primary(real_view)
+        secondary_real_features, secondary_real_logits = secondary(real_view)
+    primary_pred, secondary_pred = primary_logits.argmax(1), secondary_logits.argmax(1)
+    primary_recall = [float((primary_pred[labels == label] == label).float().mean().item()) for label in range(10)]
+    secondary_recall = [float((secondary_pred[labels == label] == label).float().mean().item()) for label in range(10)]
+    return {
+        "camera_code_fraction": float(camera_code_fraction(raw, labels).item()),
+        "saturation": float((raw / settings.fixed_exposure_scale >= 1.0).float().mean().item()),
+        "primary_accuracy": float((primary_pred == labels).float().mean().item()),
+        "secondary_accuracy": float((secondary_pred == labels).float().mean().item()),
+        "primary_min_recall": min(primary_recall),
+        "secondary_min_recall": min(secondary_recall),
+        "prediction_agreement": float((primary_pred == secondary_pred).float().mean().item()),
+        "minimum_diversity_ratio": min(relative_diversity_ratios(generated_features, real_features[:170], labels)),
+        "secondary_minimum_diversity_ratio": min(relative_diversity_ratios(secondary_features, secondary_real_features[:170], labels)),
+        "coverage_ratio": _panel_coverage(generated_features, generated_view, labels, real_features, real_view, real_labels, settings.sinkhorn_epsilon, settings.sinkhorn_iterations),
+        "secondary_coverage_ratio": _panel_coverage(secondary_features, generated_view, labels, secondary_real_features, real_view, real_labels, settings.sinkhorn_epsilon, settings.sinkhorn_iterations),
+    }
+
+
+def _companion_indices(labels: torch.Tensor, primary_indices: torch.Tensor, *, seed: int) -> torch.Tensor:
+    generator = torch.Generator(device="cpu").manual_seed(seed)
+    primary_labels = labels.index_select(0, primary_indices)
+    selected: list[torch.Tensor] = []
+    for label in range(10):
+        primary = primary_indices[primary_labels == label]
+        candidates = torch.nonzero(labels == label, as_tuple=False).flatten()
+        candidates = candidates[~torch.isin(candidates, primary)]
+        if candidates.numel() < primary.numel():
+            raise ValueError("companion schedule cannot exclude primary samples")
+        order = torch.randperm(candidates.numel(), generator=generator)
+        selected.append(candidates.index_select(0, order[: primary.numel()]))
+    return torch.cat(selected)
+
+
+def _run_steps(bundle, primary, train_images, train_labels, config, objective_kind, weights, steps, seed):
+    settings = config.conditional_generation
+    assert settings is not None
+    optimizer = _conditional_optimizer(bundle, config)
+    groups = _conditional_parameter_groups(bundle)
+    _validate_current_optimizer_coverage(optimizer, groups)
+    history = []
+    companion_schedule: list[str] = []
+    device = next(bundle.parameters()).device
+    iterator = iter(balanced_batches(train_labels, batch_size=settings.logical_batch_size, seed=seed))
+    for step in range(steps):
+        indices = next(iterator)
+        labels = train_labels.index_select(0, indices).to(device)
+        codes = _random_codes(labels.numel(), device=device, seed=seed * 100000 + step)
+        real_views = train_images.index_select(0, indices).to(device)
+        companion_views = None
+        companion_labels = None
+        if objective_kind == "C":
+            companions = _companion_indices(train_labels, indices, seed=seed * 100000 + step)
+            companion_schedule.append(canonical_sha256(companions))
+            companion_views = train_images.index_select(0, companions).to(device)
+            companion_labels = train_labels.index_select(0, companions).to(device)
+        optimizer.zero_grad(set_to_none=True)
+        loss, summary, raw = conditional_loss(
+            system=bundle.system,
+            generator=bundle.generator,
+            evaluator=primary,
+            codes=codes,
+            labels=labels,
+            real_views=real_views,
+            exposure_scale=settings.fixed_exposure_scale,
+            sinkhorn_epsilon=settings.sinkhorn_epsilon,
+            sinkhorn_iterations=settings.sinkhorn_iterations,
+            activation_checkpoint=False,
+            microbatch_size=config.execution.training_microbatch_size,
+            objective_kind=objective_kind,
+            camera_code_safety_weight=weights["camera"],
+            pairwise_diversity_weight=weights["pairwise"],
+            coverage_ratio_weight=weights["coverage"],
+            coverage_companion_views=companion_views,
+            coverage_companion_labels=companion_labels,
+        )
+        if not torch.isfinite(loss):
+            raise ValueError(f"objective {objective_kind} produced non-finite loss at step {step + 1}")
+        loss.backward()
+        optimizer.step()
+        with torch.no_grad():
+            generated_view = fixed_exposure_view(raw.detach(), settings.fixed_exposure_scale)
+            generated_features, _ = primary(generated_view)
+            real_features, _ = primary(real_views)
+            companion_features = None
+            if companion_views is not None:
+                companion_features, _ = primary(companion_views)
+            auxiliary = {
+                "camera": float(camera_code_safety_loss(raw.detach(), labels).item()),
+                "pairwise": float(pairwise_diversity_distribution_loss(generated_features, real_features, labels).item()),
+                "coverage": float(coverage_ratio_upper_loss(generated_features, generated_view, real_features, real_views, labels, epsilon=settings.sinkhorn_epsilon, iterations=settings.sinkhorn_iterations, companion_features=companion_features, companion_view=companion_views, companion_labels=companion_labels).item()),
+            }
+        history.append({
+            "step": step + 1,
+            "total": float(summary.total),
+            "sinkhorn": float(summary.sinkhorn),
+            "classification": float(summary.classification),
+            "diversity": float(summary.diversity),
+            "saturation": float(summary.saturation),
+            "camera_code_fraction": float(camera_code_fraction(raw.detach(), labels).item()),
+            "auxiliary_raw": auxiliary,
+            "frozen_weights": dict(weights),
+            "differentiable_coverage_ratio": auxiliary["coverage"],
+        })
+    return history, canonical_sha256(companion_schedule)
+
+
+def _diagnostic_record(config, kind, status, context, input_hashes, gates, permitted=(), reason=None, extra=None):
     run = _new_run(config)
-    output = {"schema_version": 1, "contract": OBJECTIVE_DIAGNOSTIC_CONTRACT, "kind": name, "status": "passed" if all(gate.passed for gate in gates) else "failed", "input_hashes": input_hashes, "gates": [asdict(gate) for gate in gates], "payload": payload, "formal_promotion_authorized": False}
-    atomic_write_json(run.root / f"{name}_evidence.json", output)
+    record = EvidenceRecordV2(2, kind, "diagnostic", status, run.git_commit, run.dirty_patch_hash, run.config_hash, context, input_hashes, tuple(gates), tuple(permitted) if status == "passed" else (), reason)
+    path = run.root / f"{kind}_evidence.json"
+    _write_evidence(run, path.name, record)
+    if extra:
+        atomic_write_json(run.root / f"{kind}_report.json", extra)
     print(run.root)
-    return 0 if all(gate.passed for gate in gates) else 1
+    return run, record
 
 
 def conditional_objective_weight_calibration(args, config) -> int:
     _require_identity(config)
-    base = float(args.base_gradient_norm)
-    auxiliary = [float(value) for value in args.auxiliary_gradient_norm]
-    weights = [calibrate_weights(base, value) for value in auxiliary]
+    train_images, train_labels, _, _, split, primary, injection, bundle, manifest, init_hash, evaluator_hash = _load_primary_inputs(args, config)
+    context = _record_context(config, evaluator_hash, split.manifest_hash, init_hash)
+    input_hashes = {"initialization_checkpoint": init_hash, "injection_evidence": file_sha256(args.injection_evidence), "evaluator": evaluator_hash, "split": split.manifest_hash}
+    try:
+        norms, weights = _gradient_calibration(args, config, train_images, train_labels, split, primary, bundle, evaluator_hash, {"initialization": init_hash})
+    except ValueError as error:
+        _diagnostic_record(config, "conditional_objective_weight_calibration", "failed", context, input_hashes, (GateResult("gradient_calibration", False, {}, str(error)),), reason=str(error))
+        return 1
+    artifact = {"schema_version": 1, "contract": OBJECTIVE_DIAGNOSTIC_CONTRACT, "norms": norms, "weights": weights, "frozen": True, "input_hashes": {"initialization_checkpoint": init_hash, "injection_evidence": file_sha256(args.injection_evidence), "evaluator": evaluator_hash, "split": split.manifest_hash}}
     run = _new_run(config)
-    artifact = run.root / "conditional_objective_weight_calibration.json"
-    atomic_write_json(artifact, {"schema_version": 1, "contract": OBJECTIVE_DIAGNOSTIC_CONTRACT, "base_gradient_norm": base, "auxiliary_gradient_norm": auxiliary, "weights": weights, "frozen": True})
+    artifact_path = run.root / "conditional_objective_weight_calibration.json"
+    atomic_write_json(artifact_path, artifact)
+    gates = (GateResult("four_balanced_batches", True, {"count": 4.0}), GateResult("finite_gradient_norms", True, norms), GateResult("weights_in_range", True, weights))
+    record = EvidenceRecordV2(2, "conditional_objective_weight_calibration", "diagnostic", "passed", run.git_commit, run.dirty_patch_hash, run.config_hash, context, {"artifact": file_sha256(artifact_path), **input_hashes}, gates, ("screen",), None)
+    _write_evidence(run, "conditional_objective_weight_calibration_evidence.json", record)
     print(run.root)
     return 0
 
 
-def _parse_metric(payload: object, key: str) -> float:
-    if not isinstance(payload, dict) or not isinstance(payload.get(key), (int, float)):
-        raise ValueError(f"objective diagnostic payload lacks finite {key}")
-    value = float(payload[key])
-    if not torch.isfinite(torch.tensor(value)):
-        raise ValueError(f"objective diagnostic {key} is non-finite")
-    return value
+def _read_calibration(path: str, config, evaluator_hash: str, init_hash: str):
+    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    if payload.get("contract") != OBJECTIVE_DIAGNOSTIC_CONTRACT or payload.get("frozen") is not True:
+        raise ValueError("objective calibration contract mismatch")
+    inputs = payload.get("input_hashes")
+    if not isinstance(inputs, dict) or inputs.get("evaluator") != evaluator_hash or inputs.get("initialization_checkpoint") != init_hash:
+        raise ValueError("objective calibration lineage mismatch")
+    weights = payload.get("weights")
+    if not isinstance(weights, dict) or set(weights) != {"camera", "pairwise", "coverage"}:
+        raise ValueError("objective calibration lacks all auxiliary weights")
+    return {name: float(weights[name]) for name in ("camera", "pairwise", "coverage")}
 
 
 def objective_alignment_screen(args, config) -> int:
-    """Compare seed-matched A/B/C measurement payloads without selecting a formal objective."""
     _require_identity(config)
-    baseline = __import__("json").loads(Path(args.baseline_measurement).read_text(encoding="utf-8"))
-    candidates = {name: __import__("json").loads(Path(path).read_text(encoding="utf-8")) for name, path in zip(("A", "B", "C"), args.candidate_measurement, strict=True)}
-    base_camera = _parse_metric(baseline, "camera_code_fraction")
-    base_diversity = _parse_metric(baseline, "minimum_diversity_ratio")
-    base_coverage = _parse_metric(baseline, "coverage_ratio")
+    train_images, train_labels, validation_images, validation_labels, split, primary, secondary, measurement, evaluator_hash, secondary_hash = _load_measurement_inputs(args, config)
+    injection = _load_injection(args, config, split, evaluator_hash)
+    bundle, manifest, init_hash = _load_initialization(args, config, train_labels, split, evaluator_hash, injection)
+    calibration_path = args.weight_calibration
+    weights = _read_calibration(calibration_path, config, evaluator_hash, init_hash)
+    reports = {}
+    for kind in ("A", "B", "C"):
+        candidate = _load_bundle(args.config, args.initialization_checkpoint, device=torch.device(config.run.device), evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, checkpoint_sha256=init_hash)[0]
+        candidate_weights = {name: 0.0 for name in weights} if kind == "A" else weights
+        history, companion_hash = _run_steps(candidate, primary, train_images, train_labels, config, kind, candidate_weights, 100, 1234)
+        reports[kind] = {"measurement": _measure_panel(candidate, primary, secondary, validation_images, validation_labels, config), "history": history, "companion_schedule_hash": companion_hash, "state_hash": state_content_hash(candidate.state_dict()), "state_dict": {name: value.detach().cpu() for name, value in candidate.state_dict().items()}}
+    baseline = reports["A"]["measurement"]
     gates = []
     scores = {}
-    for name, payload in candidates.items():
-        camera = _parse_metric(payload, "camera_code_fraction")
-        diversity = _parse_metric(payload, "minimum_diversity_ratio")
-        coverage = _parse_metric(payload, "coverage_ratio")
-        score = min((camera - base_camera) / 0.02, (diversity - base_diversity) / 0.05, (base_coverage - coverage) / 0.05)
-        scores[name] = {"camera_code_fraction": camera, "minimum_diversity_ratio": diversity, "coverage_ratio": coverage, "normalized_minimum_improvement": score}
-        if name != "A":
-            gates.append(GateResult(f"{name}_screen_gate", camera >= base_camera + 0.02 and diversity >= base_diversity + 0.05 and coverage <= base_coverage - 0.05, scores[name]))
-    gates.append(GateResult("finite_payload", True, {"candidates": 3.0}))
-    return _write_diagnostic(config, name="conditional_objective_alignment_screen", input_hashes={"baseline": file_sha256(args.baseline_measurement), **{f"candidate_{name}": file_sha256(path) for name, path in zip(("A", "B", "C"), args.candidate_measurement, strict=True)}}, gates=tuple(gates), payload={"scores": scores, "selection": "diagnostic_only"})
+    for kind in ("B", "C"):
+        row = reports[kind]["measurement"]
+        checks = {
+            "camera": row["camera_code_fraction"] >= baseline["camera_code_fraction"] + 0.02,
+            "diversity": row["minimum_diversity_ratio"] >= baseline["minimum_diversity_ratio"] + 0.05,
+            "coverage": row["coverage_ratio"] <= baseline["coverage_ratio"] - 0.05,
+            "accuracy": row["primary_accuracy"] >= baseline["primary_accuracy"] - 0.03 and row["secondary_accuracy"] >= baseline["secondary_accuracy"] - 0.03,
+            "recall": row["primary_min_recall"] >= baseline["primary_min_recall"] - 0.05 and row["secondary_min_recall"] >= baseline["secondary_min_recall"] - 0.05,
+            "saturation": row["saturation"] <= 0.08,
+            "finite": all(torch.isfinite(torch.tensor(value)) for value in row.values()),
+        }
+        gates.append(GateResult(f"{kind}_screen_gate", all(checks.values()), checks))
+        scores[kind] = min((row["camera_code_fraction"] - baseline["camera_code_fraction"]) / 0.02, (row["minimum_diversity_ratio"] - baseline["minimum_diversity_ratio"]) / 0.05, (baseline["coverage_ratio"] - row["coverage_ratio"]) / 0.05)
+    candidates = [kind for kind in ("B", "C") if next(g for g in gates if g.name == f"{kind}_screen_gate").passed]
+    winner = min(candidates, key=lambda kind: (-scores[kind], kind)) if candidates else None
+    gates.append(GateResult("winner_exists", winner is not None, {"winner": winner or "none"}))
+    report_payload = {"contract": OBJECTIVE_DIAGNOSTIC_CONTRACT, "winner": winner, "scores": scores, "reports": {kind: {key: value for key, value in row.items() if key != "state_dict"} for kind, row in reports.items()}, "weights": weights}
+    run, _ = _diagnostic_record(config, "conditional_objective_alignment_screen", "passed" if winner else "failed", _record_context(config, evaluator_hash, split.manifest_hash, init_hash), {"initialization_checkpoint": init_hash, "injection_evidence": file_sha256(args.injection_evidence), "evaluator": evaluator_hash, "secondary_evaluator": secondary_hash, "measurement_evidence": file_sha256(args.acceptance_measurement_evidence), "measurement_bundle": file_sha256(args.acceptance_measurement_bundle), "calibration": file_sha256(calibration_path), "companion_schedule": canonical_sha256({kind: reports[kind]["companion_schedule_hash"] for kind in reports})}, tuple(gates), ("confirm",) if winner else (), extra=report_payload)
+    for kind, row in reports.items():
+        atomic_torch_save(run.root / f"conditional_objective_alignment_{kind}_checkpoint.pt", {"objective_kind": kind, "state_dict": row["state_dict"], "state_content_hash": row["state_hash"]})
+    return 0 if winner else 1
 
 
 def objective_alignment_confirm(args, config) -> int:
     _require_identity(config)
-    import json
-
-    payload = json.loads(Path(args.confirmation_measurement).read_text(encoding="utf-8"))
-    rows = payload.get("seeds")
-    if not isinstance(rows, list) or len(rows) != 3:
-        raise ValueError("objective confirmation requires exactly three seed rows")
-    gates = (GateResult("three_seed_rows", True, {"count": 3.0}),)
-    return _write_diagnostic(config, name="conditional_objective_alignment_confirm", input_hashes={"confirmation": file_sha256(args.confirmation_measurement)}, gates=gates, payload={"candidate": args.candidate, "seeds": rows, "formal_promotion_authorized": False})
+    screen = EvidenceRecordV2.from_dict(json.loads(Path(args.screen_evidence).read_text(encoding="utf-8")))
+    if screen.evidence_kind != "conditional_objective_alignment_screen" or screen.status != "passed" or "confirm" not in screen.permitted_next_actions:
+        raise ValueError("objective confirmation requires passed screen evidence")
+    from ..current.runtime import _validate_current_evidence_source
+    _validate_current_evidence_source(screen)
+    report_path = Path(args.screen_evidence).with_name("conditional_objective_alignment_screen_report.json")
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    winner = report.get("winner")
+    if winner not in {"B", "C"}:
+        raise ValueError("screen evidence lacks a unique B/C winner")
+    train_images, train_labels, validation_images, validation_labels, split, primary, secondary, measurement, evaluator_hash, secondary_hash = _load_measurement_inputs(args, config)
+    _validate_current_evidence_source(screen, measurement)
+    if screen.input_hashes.get("measurement_evidence") != measurement.evidence_hash or screen.input_hashes.get("measurement_bundle") != file_sha256(args.acceptance_measurement_bundle):
+        raise ValueError("screen evidence measurement lineage mismatch")
+    injection = _load_injection(args, config, split, evaluator_hash)
+    bundle, manifest, init_hash = _load_initialization(args, config, train_labels, split, evaluator_hash, injection)
+    weights = report.get("weights")
+    if not isinstance(weights, dict):
+        raise ValueError("screen report lacks frozen weights")
+    rows = {}
+    gates = []
+    for seed in (1234, 1235, 1236):
+        seed_rows = {}
+        for kind in ("A", winner):
+            candidate = _load_bundle(config, args.initialization_checkpoint, device=torch.device(config.run.device), evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, checkpoint_sha256=init_hash)[0]
+            candidate_weights = {name: 0.0 for name in weights} if kind == "A" else {name: float(weights[name]) for name in weights}
+            history, companion_hash = _run_steps(candidate, primary, train_images, train_labels, config, kind, candidate_weights, 400, seed)
+            seed_rows[kind] = {"measurement": _measure_panel(candidate, primary, secondary, validation_images, validation_labels, config), "history": history, "companion_schedule_hash": companion_hash, "state_hash": state_content_hash(candidate.state_dict()), "state_dict": {name: value.detach().cpu() for name, value in candidate.state_dict().items()}}
+        rows[str(seed)] = seed_rows
+        a = seed_rows["A"]["measurement"]
+        w = seed_rows[winner]["measurement"]
+        gates.append(GateResult(f"seed_{seed}_improvement", w["camera_code_fraction"] >= a["camera_code_fraction"] + 0.03 and w["minimum_diversity_ratio"] >= a["minimum_diversity_ratio"] + 0.10 and w["coverage_ratio"] <= a["coverage_ratio"] - 0.10, {"camera_delta": w["camera_code_fraction"] - a["camera_code_fraction"], "diversity_delta": w["minimum_diversity_ratio"] - a["minimum_diversity_ratio"], "coverage_delta": w["coverage_ratio"] - a["coverage_ratio"]}))
+    joint = [rows[str(seed)][winner]["measurement"] for seed in (1234, 1235, 1236)]
+    joint_count = sum(item["camera_code_fraction"] >= 0.25 and item["minimum_diversity_ratio"] >= 0.55 and item["coverage_ratio"] <= 1.5 for item in joint)
+    gates.append(GateResult("two_seed_absolute_gate", joint_count >= 2, {"count": float(joint_count)}))
+    gates.append(GateResult("finite_confirmation", all(torch.isfinite(torch.tensor(list(item["measurement"].values()))).all() for item in joint), {}))
+    passed = all(gate.passed for gate in gates)
+    report_payload = {"contract": OBJECTIVE_DIAGNOSTIC_CONTRACT, "winner": winner, "seeds": {seed: {kind: {key: value for key, value in row.items() if key != "state_dict"} for kind, row in seed_rows.items()} for seed, seed_rows in rows.items()}, "formal_promotion_authorized": False}
+    run, _ = _diagnostic_record(config, "conditional_objective_alignment_confirm", "passed" if passed else "failed", _record_context(config, evaluator_hash, split.manifest_hash, init_hash), {"screen_evidence": screen.evidence_hash, "initialization_checkpoint": init_hash, "injection_evidence": file_sha256(args.injection_evidence), "evaluator": evaluator_hash, "secondary_evaluator": secondary_hash, "measurement_evidence": file_sha256(args.acceptance_measurement_evidence), "measurement_bundle": file_sha256(args.acceptance_measurement_bundle), "companion_schedule": canonical_sha256({seed: {kind: rows[str(seed)][kind]["companion_schedule_hash"] for kind in ("A", winner)} for seed in (1234, 1235, 1236)})}, tuple(gates), (), extra=report_payload)
+    for seed, seed_rows in rows.items():
+        for kind, row in seed_rows.items():
+            atomic_torch_save(run.root / f"conditional_objective_alignment_confirm_{seed}_{kind}_checkpoint.pt", {"objective_kind": kind, "seed": int(seed), "state_dict": row["state_dict"], "state_content_hash": row["state_hash"]})
+    return 0 if passed else 1

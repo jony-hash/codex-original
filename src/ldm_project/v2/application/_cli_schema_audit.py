@@ -646,5 +646,5 @@ def register_audit(root: argparse._SubParsersAction) -> None:
         )
     objective_calibration = audit.add_parser("conditional-objective-weight-calibration")
     objective_calibration.add_argument("--config", required=True)
-    objective_calibration.add_argument("--base-gradient-norm", type=float, required=True)
-    objective_calibration.add_argument("--auxiliary-gradient-norm", type=float, nargs=3, required=True)
+    for name in ("dataset_root", "evaluator_checkpoint", "initialization_checkpoint", "injection_evidence"):
+        objective_calibration.add_argument("--" + name.replace("_", "-"), required=True)
