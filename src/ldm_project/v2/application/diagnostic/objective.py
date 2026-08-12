@@ -159,6 +159,24 @@ def _gradient_vector(parameters, gradients) -> torch.Tensor:
     ])
 
 
+def _group_gradient_norms(groups, selected, gradients) -> dict[str, float]:
+    """Return per-optimizer-group norms without changing the autograd graph."""
+    result = {}
+    positions = {id(parameter): index for index, parameter in enumerate(selected)}
+    for name, parameters in groups.items():
+        values = []
+        for parameter in parameters:
+            index = positions.get(id(parameter))
+            if index is None:
+                values.append(torch.zeros_like(parameter).reshape(-1))
+                continue
+            gradient = gradients[index]
+            values.append((gradient.detach() if gradient is not None else torch.zeros_like(parameter)).reshape(-1))
+        vector = torch.cat(values)
+        result[name] = float(vector.norm().item())
+    return result
+
+
 def _gradient_cosine(left: torch.Tensor, right: torch.Tensor) -> float | None:
     left_norm = left.norm()
     right_norm = right.norm()
@@ -192,6 +210,7 @@ def _gradient_calibration(args, config, train_images, train_labels, split, prima
     sums = {name: torch.zeros((), device=selected[0].device) for name in ("base", "camera", "pairwise", "coverage")}
     steps = 0
     batch_records = []
+    batch_vectors = []
     for epoch in range(1):
         for batch_number, indices in enumerate(balanced_batches(train_labels, batch_size=settings.logical_batch_size, seed=1234 + epoch)):
             if steps >= 4:
@@ -223,21 +242,26 @@ def _gradient_calibration(args, config, train_images, train_labels, split, prima
             }
             gradient_vectors = {}
             batch_norms = {}
+            group_norms = {}
             for name, loss in losses.items():
                 gradients = torch.autograd.grad(loss, selected, retain_graph=True, allow_unused=True)
                 norm = _parameter_norm(selected, gradients)
                 gradient_vectors[name] = _gradient_vector(selected, gradients)
                 batch_norms[name] = float(norm.item())
+                group_norms[name] = _group_gradient_norms(groups, selected, gradients)
                 sums[name] = sums[name] + norm.square()
             batch_records.append({
                 "batch_index_hash": canonical_sha256(indices),
                 "code_seed": (epoch + 1) * 100000 + batch_number,
                 "gradient_norms": batch_norms,
+                "gradient_norms_by_group": group_norms,
+                "losses": {name: float(loss.detach().item()) for name, loss in losses.items()},
                 "gradient_cosines": {
                     f"{left}_vs_{right}": _gradient_cosine(gradient_vectors[left], gradient_vectors[right])
                     for left, right in (("base", "camera"), ("base", "pairwise"), ("base", "coverage"), ("camera", "pairwise"), ("camera", "coverage"), ("pairwise", "coverage"))
                 },
             })
+            batch_vectors.append(gradient_vectors)
             steps += 1
         if steps >= 4:
             break
@@ -249,7 +273,27 @@ def _gradient_calibration(args, config, train_images, train_labels, split, prima
         name: (value is None or not 1.0e-3 <= value <= 10.0)
         for name, value in weights.items()
     }
-    return norms, weights, {"batches": batch_records, "rms_norms": norms, "raw_weights": weights, "violations": violations}
+    effective = []
+    for record, vectors in zip(batch_records, batch_vectors, strict=True):
+        base_vector = vectors["base"]
+        base_norm = base_vector.norm()
+        weighted = {
+            name: (vectors[name] * float(weights[name]) if weights[name] is not None else torch.full_like(base_vector, float("nan")))
+            for name in ("camera", "pairwise", "coverage")
+        }
+        ratios = {name: float((value.norm() / base_norm).item()) if torch.isfinite(base_norm) and base_norm > 1.0e-12 else None for name, value in weighted.items()}
+        combined = {}
+        for kind, names in (("B", ("camera", "pairwise")), ("C", ("camera", "pairwise", "coverage"))):
+            vector = base_vector + sum((weighted[name] for name in names), torch.zeros_like(base_vector))
+            combined[kind] = float((vector.norm() / base_norm).item()) if torch.isfinite(base_norm) and base_norm > 1.0e-12 else None
+        record["weighted_gradient_ratios"] = ratios
+        record["combined_gradient_ratios"] = combined
+        effective.append({"weighted_gradient_ratios": ratios, "combined_gradient_ratios": combined})
+    aggregate = {
+        "weighted_gradient_ratios": {name: float(sum(row["weighted_gradient_ratios"][name] for row in effective) / len(effective)) for name in ("camera", "pairwise", "coverage")},
+        "combined_gradient_ratios": {kind: float(sum(row["combined_gradient_ratios"][kind] for row in effective) / len(effective)) for kind in ("B", "C")},
+    }
+    return norms, weights, {"batches": batch_records, "rms_norms": norms, "raw_weights": weights, "violations": violations, "effective_gradients": aggregate}
 
 
 def _calibrated_weight(base: float, auxiliary: float) -> float:
@@ -259,6 +303,37 @@ def _calibrated_weight(base: float, auxiliary: float) -> float:
     if not 1.0e-3 <= value <= 10.0:
         raise ValueError("objective gradient calibration produced a weight outside [1e-3,10]")
     return float(value)
+
+
+def _effective_gradient_gate(diagnostics: dict[str, object]) -> tuple[bool, dict[str, object]]:
+    """Apply scale-invariant per-batch and aggregate gradient budgets."""
+    rows = diagnostics.get("batches", [])
+    effective = diagnostics.get("effective_gradients", {})
+    if not isinstance(rows, list) or not isinstance(effective, dict):
+        return False, {"reason": "missing effective gradient diagnostics"}
+    weighted = effective.get("weighted_gradient_ratios", {})
+    combined = effective.get("combined_gradient_ratios", {})
+    batch_safe = all(
+        isinstance(row, dict)
+        and all(value is not None and float(value) <= 0.50 for value in row.get("weighted_gradient_ratios", {}).values())
+        and row.get("combined_gradient_ratios", {}).get("B") is not None
+        and float(row["combined_gradient_ratios"]["B"]) <= 0.75
+        and row.get("combined_gradient_ratios", {}).get("C") is not None
+        and float(row["combined_gradient_ratios"]["C"]) <= 1.00
+        for row in rows
+    )
+    aggregate_safe = (
+        set(weighted) == {"camera", "pairwise", "coverage"}
+        and all(abs(float(value) - 0.25) <= 0.05 for value in weighted.values())
+        and float(combined.get("B", float("inf"))) <= 0.75
+        and float(combined.get("C", float("inf"))) <= 1.00
+    )
+    return batch_safe and aggregate_safe, {
+        "batch_safe": batch_safe,
+        "aggregate_safe": aggregate_safe,
+        "weighted": weighted,
+        "combined": combined,
+    }
 
 
 def _fixed_panel(device: torch.device, code_dim: int = 8):
@@ -461,13 +536,18 @@ def conditional_objective_weight_calibration(args, config) -> int:
     violations = diagnostics.get("violations", {})
     finite = bool(norms) and all(torch.isfinite(torch.tensor(value)) and value > 1.0e-12 for value in norms.values())
     in_range = bool(weights) and not any(violations.values())
-    passed = finite and in_range and len(diagnostics.get("batches", [])) == 4 and "execution_error" not in diagnostics
+    effective_passed, effective_report = _effective_gradient_gate(diagnostics)
+    weighted_ratios = effective_report.get("weighted", {})
+    combined_ratios = effective_report.get("combined", {})
+    batch_safe = bool(effective_report.get("batch_safe", False))
+    aggregate_safe = bool(effective_report.get("aggregate_safe", False))
+    passed = finite and len(diagnostics.get("batches", [])) == 4 and effective_passed and "execution_error" not in diagnostics
     artifact = {
-        "schema_version": 2,
+        "schema_version": 3,
         "contract": OBJECTIVE_DIAGNOSTIC_CONTRACT,
         "formula": "0.25*base_gradient_norm/auxiliary_gradient_norm",
         "target_ratio": 0.25,
-        "weight_range": [1.0e-3, 10.0],
+        "legacy_raw_weight_range": [1.0e-3, 10.0],
         "norms": norms,
         "weights": weights,
         "diagnostics": diagnostics,
@@ -481,9 +561,11 @@ def conditional_objective_weight_calibration(args, config) -> int:
     gates = (
         GateResult("four_balanced_batches", len(diagnostics.get("batches", [])) == 4, {"count": float(len(diagnostics.get("batches", [])))}),
         GateResult("finite_gradient_norms", finite, norms),
-        GateResult("weights_in_range", in_range, {name: value for name, value in weights.items() if value is not None}),
+        GateResult("legacy_raw_weight_range", in_range, {name: value for name, value in weights.items() if value is not None}),
+        GateResult("effective_gradient_batches", batch_safe, {"max_weighted_ratio": 0.50, "max_B_ratio": 0.75, "max_C_ratio": 1.00}),
+        GateResult("effective_gradient_aggregate", aggregate_safe, {"weighted": weighted_ratios, "combined": combined_ratios}),
     )
-    reason = diagnostics.get("execution_error") or ("objective gradient calibration produced a weight outside [1e-3,10]" if not in_range else None)
+    reason = diagnostics.get("execution_error") or ("effective gradient safety gate failed" if not (batch_safe and aggregate_safe) else None)
     record = EvidenceRecordV2(2, "conditional_objective_weight_calibration", "diagnostic", "passed" if passed else "failed", run.git_commit, run.dirty_patch_hash, run.config_hash, context, {"artifact": file_sha256(artifact_path), **input_hashes}, gates, ("screen",) if passed else (), reason)
     _write_evidence(run, "conditional_objective_weight_calibration_evidence.json", record)
     print(run.root)
@@ -492,7 +574,7 @@ def conditional_objective_weight_calibration(args, config) -> int:
 
 def _read_calibration(path: str, config, evaluator_hash: str, init_hash: str):
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
-    if payload.get("contract") != OBJECTIVE_DIAGNOSTIC_CONTRACT or payload.get("frozen") is not True:
+    if payload.get("contract") != OBJECTIVE_DIAGNOSTIC_CONTRACT or payload.get("schema_version") != 3 or payload.get("frozen") is not True:
         raise ValueError("objective calibration contract mismatch")
     inputs = payload.get("input_hashes")
     if not isinstance(inputs, dict) or inputs.get("evaluator") != evaluator_hash or inputs.get("initialization_checkpoint") != init_hash:

@@ -4,7 +4,7 @@ import torch
 import pytest
 
 from ldm_project.v2.application.cli_schema import _parser
-from ldm_project.v2.application.diagnostic.objective import _calibrated_weight, _code_seed, _companion_indices, _gradient_cosine, _scheduled_batches
+from ldm_project.v2.application.diagnostic.objective import _calibrated_weight, _code_seed, _companion_indices, _effective_gradient_gate, _gradient_cosine, _scheduled_batches
 from ldm_project.v2.evidence import canonical_sha256
 from ldm_project.v2.student.conditional import coverage_ratio_upper_loss
 
@@ -76,6 +76,38 @@ def test_gradient_cosine_reports_alignment_and_zero_as_unavailable() -> None:
     assert _gradient_cosine(torch.tensor([1.0, 0.0]), torch.tensor([0.0, 1.0])) == 0.0
     assert _gradient_cosine(torch.tensor([1.0, 0.0]), torch.tensor([1.0, 0.0])) == 1.0
     assert _gradient_cosine(torch.zeros(2), torch.ones(2)) is None
+
+
+def test_effective_gradient_gate_is_invariant_to_raw_loss_units() -> None:
+    diagnostics = {
+        "batches": [
+            {"weighted_gradient_ratios": {"camera": 0.25, "pairwise": 0.25, "coverage": 0.25}, "combined_gradient_ratios": {"B": 0.40, "C": 0.55}}
+            for _ in range(4)
+        ],
+        "effective_gradients": {
+            "weighted_gradient_ratios": {"camera": 0.25, "pairwise": 0.25, "coverage": 0.25},
+            "combined_gradient_ratios": {"B": 0.40, "C": 0.55},
+        },
+    }
+    passed, report = _effective_gradient_gate(diagnostics)
+    assert passed and report["aggregate_safe"]
+    diagnostics["effective_gradients"]["weighted_gradient_ratios"]["camera"] = 0.60
+    assert not _effective_gradient_gate(diagnostics)[0]
+
+
+def test_effective_gradient_gate_rejects_spikes_and_missing_components() -> None:
+    diagnostics = {
+        "batches": [
+            {"weighted_gradient_ratios": {"camera": 0.25, "pairwise": 0.25, "coverage": 0.25}, "combined_gradient_ratios": {"B": 0.40, "C": 0.55}},
+            {"weighted_gradient_ratios": {"camera": 0.51, "pairwise": 0.25, "coverage": 0.25}, "combined_gradient_ratios": {"B": 0.40, "C": 0.55}},
+        ],
+        "effective_gradients": {
+            "weighted_gradient_ratios": {"camera": 0.25, "pairwise": 0.25, "coverage": 0.25},
+            "combined_gradient_ratios": {"B": 0.40, "C": 0.55},
+        },
+    }
+    assert not _effective_gradient_gate(diagnostics)[0]
+    assert not _effective_gradient_gate({})[0]
 
 
 def test_objective_commands_are_content_bound() -> None:
