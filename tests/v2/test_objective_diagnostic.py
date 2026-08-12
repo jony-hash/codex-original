@@ -4,7 +4,7 @@ import torch
 import pytest
 
 from ldm_project.v2.application.cli_schema import _parser
-from ldm_project.v2.application.diagnostic.objective import _calibrated_weight, _code_seed, _companion_indices, _effective_gradient_gate, _gradient_cosine, _scheduled_batches
+from ldm_project.v2.application.diagnostic.objective import _code_seed, _companion_indices, _effective_gradient_gate, _gradient_cosine, _scheduled_batches
 from ldm_project.v2.evidence import canonical_sha256
 from ldm_project.v2.student.conditional import coverage_ratio_upper_loss
 
@@ -63,13 +63,6 @@ def test_coverage_companion_contract_uses_matching_primary_counts() -> None:
         companion_labels=labels,
     )
     assert torch.isfinite(value)
-
-
-def test_calibrated_weight_keeps_registered_hard_bounds() -> None:
-    assert _calibrated_weight(4.0, 0.1) == 10.0
-    assert _calibrated_weight(0.0004, 0.1) == 0.001
-    with pytest.raises(ValueError, match="outside"):
-        _calibrated_weight(4.0001, 0.1)
 
 
 def test_gradient_cosine_reports_alignment_and_zero_as_unavailable() -> None:
@@ -131,10 +124,11 @@ def test_objective_commands_are_content_bound() -> None:
             "student", "objective-alignment-screen", "--config", "c", "--dataset-root", "d",
             "--evaluator-checkpoint", "p", "--acceptance-evaluator-checkpoint", "s",
             "--acceptance-measurement-bundle", "b", "--acceptance-measurement-evidence", "m",
-            "--initialization-checkpoint", "i", "--injection-evidence", "j", "--weight-calibration", "w",
+            "--initialization-checkpoint", "i", "--injection-evidence", "j", "--weight-calibration", "w", "--weight-calibration-evidence", "we",
         ]
     )
     assert screen.weight_calibration == "w"
+    assert screen.weight_calibration_evidence == "we"
     assert not hasattr(screen, "baseline_measurement")
     confirm = parser.parse_args(
         [

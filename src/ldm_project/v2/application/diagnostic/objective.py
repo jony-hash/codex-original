@@ -42,6 +42,7 @@ from ..current.runtime import (
     _require_identity,
     _split,
     _validate_conditional_lineage,
+    _validate_current_evidence_source,
     _write_evidence,
 )
 from ..current.recovery import _conditional_optimizer
@@ -269,6 +270,9 @@ def _gradient_calibration(args, config, train_images, train_labels, split, prima
             batch_records.append({
                 "batch_index_hash": canonical_sha256(indices),
                 "code_seed": (epoch + 1) * 100000 + batch_number,
+                "companion_index_hash": canonical_sha256(companion_indices),
+                "companion_count_by_label": torch.bincount(companion_labels, minlength=10).tolist(),
+                "companion_primary_overlap": bool(torch.isin(companion_indices, indices).any().item()),
                 "gradient_norms": batch_norms,
                 "gradient_norms_by_group": group_norms,
                 "losses": {name: float(loss.detach().item()) for name, loss in losses.items()},
@@ -329,15 +333,6 @@ def _gradient_calibration(args, config, train_images, train_labels, split, prima
     return norms, weights, {"batches": batch_records, "rms_norms": norms, "raw_weights": weights, "violations": violations, "effective_gradients": aggregate}
 
 
-def _calibrated_weight(base: float, auxiliary: float) -> float:
-    if not torch.isfinite(torch.tensor([base, auxiliary])).all() or auxiliary <= 1.0e-12:
-        raise ValueError("objective gradient calibration encountered invalid norm")
-    value = 0.25 * base / auxiliary
-    if not 1.0e-3 <= value <= 10.0:
-        raise ValueError("objective gradient calibration produced a weight outside [1e-3,10]")
-    return float(value)
-
-
 def _effective_gradient_gate(diagnostics: dict[str, object]) -> tuple[bool, dict[str, object]]:
     """Apply scale-invariant per-batch and aggregate gradient budgets."""
     rows = diagnostics.get("batches", [])
@@ -349,7 +344,7 @@ def _effective_gradient_gate(diagnostics: dict[str, object]) -> tuple[bool, dict
     batch_safe = all(
         isinstance(row, dict)
         and all(value is not None and float(value) <= 0.50 for value in row.get("weighted_gradient_ratios", {}).values())
-        and all(value is None or float(value) <= 1.0 for auxiliary in row.get("weighted_gradient_ratios_by_group", {}).values() for value in auxiliary.values())
+        and all(value is not None and float(value) <= 1.0 for auxiliary in row.get("weighted_gradient_ratios_by_group", {}).values() for value in auxiliary.values())
         and row.get("combined_gradient_ratios", {}).get("B") is not None
         and float(row["combined_gradient_ratios"]["B"]) <= 0.75
         and row.get("combined_gradient_ratios", {}).get("C") is not None
@@ -546,11 +541,18 @@ def _diagnostic_record(config, kind, status, context, input_hashes, gates, permi
         artifact_path = run.root / filename
         atomic_torch_save(artifact_path, payload)
         artifact_hashes[filename] = file_sha256(artifact_path)
-    record = EvidenceRecordV2(2, kind, "diagnostic", status, run.git_commit, run.dirty_patch_hash, run.config_hash, context, {**input_hashes, "artifacts": canonical_sha256(artifact_hashes), **artifact_hashes}, tuple(gates), tuple(permitted) if status == "passed" else (), reason)
+    report_hash = None
+    if extra is not None:
+        extra.setdefault("formal_promotion_authorized", False)
+        report_path = run.root / f"{kind}_report.json"
+        atomic_write_json(report_path, extra)
+        report_hash = file_sha256(report_path)
+    bound_inputs = {**input_hashes, "artifacts": canonical_sha256(artifact_hashes), **artifact_hashes}
+    if report_hash is not None:
+        bound_inputs["report"] = report_hash
+    record = EvidenceRecordV2(2, kind, "diagnostic", status, run.git_commit, run.dirty_patch_hash, run.config_hash, context, bound_inputs, tuple(gates), tuple(permitted) if status == "passed" else (), reason)
     path = run.root / f"{kind}_evidence.json"
     _write_evidence(run, path.name, record)
-    if extra:
-        atomic_write_json(run.root / f"{kind}_report.json", extra)
     print(run.root)
     return run, record
 
@@ -575,7 +577,7 @@ def conditional_objective_weight_calibration(args, config) -> int:
     aggregate_safe = bool(effective_report.get("aggregate_safe", False))
     passed = finite and len(diagnostics.get("batches", [])) == 4 and effective_passed and "execution_error" not in diagnostics
     artifact = {
-        "schema_version": 4,
+        "schema_version": 5,
         "contract": OBJECTIVE_DIAGNOSTIC_CONTRACT,
         "formula": "0.25*base_gradient_norm/auxiliary_gradient_norm",
         "target_ratio": 0.25,
@@ -603,9 +605,20 @@ def conditional_objective_weight_calibration(args, config) -> int:
     return 0 if passed else 1
 
 
-def _read_calibration(path: str, config, evaluator_hash: str, init_hash: str):
+def _read_calibration(path: str, evidence_path: str, config, evaluator_hash: str, init_hash: str):
+    evidence = EvidenceRecordV2.from_dict(json.loads(Path(evidence_path).read_text(encoding="utf-8")))
+    if evidence.evidence_kind != "conditional_objective_weight_calibration" or evidence.tier != "diagnostic" or evidence.status != "passed" or evidence.permitted_next_actions != ("screen",):
+        raise ValueError("objective calibration evidence cannot authorize screen")
+    _validate_current_evidence_source(evidence)
+    require_evidence_action(
+        evidence,
+        kind="conditional_objective_weight_calibration",
+        action="screen",
+        expected_context=_record_context(config, evaluator_hash, evidence.context.dataset_split_manifest_hash, init_hash),
+    )
+    require_input_hashes(evidence, {"artifact": file_sha256(path), "evaluator": evaluator_hash, "initialization_checkpoint": init_hash})
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
-    if payload.get("contract") != OBJECTIVE_DIAGNOSTIC_CONTRACT or payload.get("schema_version") != 4 or payload.get("frozen") is not True:
+    if payload.get("contract") != OBJECTIVE_DIAGNOSTIC_CONTRACT or payload.get("schema_version") != 5 or payload.get("frozen") is not True or payload.get("formal_promotion_authorized") is not False:
         raise ValueError("objective calibration contract mismatch")
     inputs = payload.get("input_hashes")
     if not isinstance(inputs, dict) or inputs.get("evaluator") != evaluator_hash or inputs.get("initialization_checkpoint") != init_hash:
@@ -622,7 +635,7 @@ def objective_alignment_screen(args, config) -> int:
     injection = _load_injection(args, config, split, evaluator_hash)
     bundle, manifest, init_hash = _load_initialization(args, config, train_labels, split, evaluator_hash, injection)
     calibration_path = args.weight_calibration
-    weights = _read_calibration(calibration_path, config, evaluator_hash, init_hash)
+    weights = _read_calibration(calibration_path, args.weight_calibration_evidence, config, evaluator_hash, init_hash)
     reports = {}
     for kind in ("A", "B", "C"):
         candidate = _load_bundle(config, args.initialization_checkpoint, device=torch.device(config.run.device), evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, checkpoint_sha256=init_hash)[0]
@@ -673,7 +686,11 @@ def objective_alignment_confirm(args, config) -> int:
     from ..current.runtime import _validate_current_evidence_source
     _validate_current_evidence_source(screen)
     report_path = Path(args.screen_evidence).with_name("conditional_objective_alignment_screen_report.json")
+    if screen.input_hashes.get("report") != file_sha256(report_path):
+        raise ValueError("screen evidence report hash mismatch")
     report = json.loads(report_path.read_text(encoding="utf-8"))
+    if report.get("formal_promotion_authorized") is not False or report.get("contract") != OBJECTIVE_DIAGNOSTIC_CONTRACT:
+        raise ValueError("screen report contract mismatch")
     winner = report.get("winner")
     if winner not in {"B", "C"}:
         raise ValueError("screen evidence lacks a unique B/C winner")
