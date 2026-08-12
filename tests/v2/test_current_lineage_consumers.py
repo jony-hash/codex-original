@@ -139,7 +139,6 @@ def test_current_evidence_source_accepts_clean_head() -> None:
 def test_current_evidence_source_allows_docs_and_tests_descendants(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _init_git_repo(tmp_path)
     base = subprocess.run(["git", "-C", str(tmp_path), "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
-    branch = subprocess.run(["git", "-C", str(tmp_path), "branch", "--show-current"], check=True, capture_output=True, text=True).stdout.strip()
     config = _config()
     monkeypatch.chdir(tmp_path)
     record = replace(_record(config, "conditional_observability", _lineage_context(config), {}, ("conditional_control_isolation",)), git_commit=base)

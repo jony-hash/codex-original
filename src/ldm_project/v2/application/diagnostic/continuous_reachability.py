@@ -158,8 +158,6 @@ def _safe_group_probe(
     checkpoint.  The two safety limits are enforced on the actual generated
     command/phase perturbation, followed by the 1% raw-CMOS target.
     """
-    if gradient is None or not torch.isfinite(gradient).all() or gradient.norm() <= 1.0e-12:
-        return {"valid": False, "reason": "missing_or_zero_gradient", "group": group_name}
     direction = gradient.detach() / gradient.detach().norm().clamp_min(1.0e-12)
     base_view = fixed_exposure_view(baseline_raw, exposure)
     with torch.no_grad():
@@ -421,10 +419,10 @@ def conditional_continuous_mode_reachability(args, config) -> int:
             )
             tangent_metrics[name] = {}
             for group_name, parameters in groups.items():
-                gradient = group_gradients.get(group_name)
-                if gradient is None:
+                if group_name not in group_gradients:
                     tangent_metrics[name][group_name] = {"valid": False, "reason": "gradient_gate_failed"}
                     continue
+                gradient = group_gradients[group_name]
                 tangent_metrics[name][group_name] = _safe_group_probe(
                     group_name=group_name,
                     parameter=parameters[0],
@@ -439,31 +437,32 @@ def conditional_continuous_mode_reachability(args, config) -> int:
                     exposure=config.conditional_generation.fixed_exposure_scale,
                     microbatch_size=config.execution.evaluation_microbatch_size,
                 )
-                derivatives = torch.tensor(tangent_metrics[name][group_name].get("direction_derivative", []), device=device)
+                derivatives = torch.tensor(tangent_metrics[name][group_name]["direction_derivative"], device=device)
                 class_fractions = {
                     str(label): float((derivatives[panel_labels == label] > 0).float().mean().item())
                     for label in range(10)
-                } if derivatives.numel() else {}
+                }
                 tangent_metrics[name][group_name]["class_positive_fraction"] = class_fractions
         tangent_checks: list[GateResult] = []
         for group_name in groups:
-            result_by_panel = {name: tangent_metrics[name].get(group_name, {}) for name in panels}
+            result_by_panel = {name: tangent_metrics[name][group_name] for name in panels}
             if group_name == "continuous_modes":
                 positive_limits = {"axis": 0.90, "uniform_1234": 0.80, "uniform_5678": 0.80}
                 direction_ok = all(
-                    bool(item.get("valid", False))
-                    and float(item.get("low_margin_positive_fraction", 0.0)) >= positive_limits[name]
-                    and float(item.get("class_positive_fraction", {}).get("5", 0.0)) >= 0.90
-                    and float(item.get("class_positive_fraction", {}).get("7", 0.0)) >= 0.90
+                    item["valid"]
+                    and float(item["low_margin_positive_fraction"]) >= positive_limits[name]
+                    and float(item["class_positive_fraction"]["5"]) >= 0.90
+                    and float(item["class_positive_fraction"]["7"]) >= 0.90
                     for name, item in result_by_panel.items()
                 )
                 semantic_probe_ok = all(
-                    float(item.get("low_margin_median_delta", -1.0)) >= 0.01
-                    and int(item.get("correct_count_delta", -1)) >= 0
-                    and float(item.get("camera_fraction_delta", -1.0)) >= -0.01
-                    and min(float(value) for value in item.get("feature_ratio_delta", [-1.0])) >= -0.03
-                    and float(item.get("saturation", 1.0)) <= 0.08
-                    and float(item.get("zero_code_max_abs", 1.0)) <= 1.0e-6
+                    item["valid"]
+                    and float(item["low_margin_median_delta"]) >= 0.01
+                    and int(item["correct_count_delta"]) >= 0
+                    and float(item["camera_fraction_delta"]) >= -0.01
+                    and min(float(value) for value in item["feature_ratio_delta"]) >= -0.03
+                    and float(item["saturation"]) <= 0.08
+                    and float(item["zero_code_max_abs"]) <= 1.0e-6
                     for item in result_by_panel.values()
                 )
                 tangent_checks.extend((
@@ -471,7 +470,7 @@ def conditional_continuous_mode_reachability(args, config) -> int:
                     GateResult("continuous_modes_protected_probe", semantic_probe_ok, {name: item for name, item in result_by_panel.items()}),
                 ))
             else:
-                tangent_checks.append(GateResult(f"{group_name}_stateless_probe", all(bool(item.get("valid", False)) for item in result_by_panel.values()), result_by_panel))
+                tangent_checks.append(GateResult(f"{group_name}_stateless_probe", all(bool(item["valid"]) for item in result_by_panel.values()), result_by_panel))
         checks.append(GateResult("gradient_observability", all(item[group]["finite_nonzero"] for item in gradient_metrics.values() for group in item), gradient_metrics))
         checks.extend(tangent_checks)
         tangent_passed = all(item.passed for item in tangent_checks if item.name in {"continuous_modes_directional_semantics", "continuous_modes_protected_probe"})
