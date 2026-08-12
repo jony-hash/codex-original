@@ -64,16 +64,21 @@ def write_evidence(run: V2Run, name: str, record: EvidenceRecordV2) -> Path:
     return path
 
 
+def require_clean_acceptance_worktree(config: V2Config) -> None:
+    if config.run.evidence_tier != "acceptance":
+        return
+    dirty = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=normal"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    if dirty:
+        raise ValueError("acceptance operations require a clean git commit")
+
+
 def new_run(config: V2Config) -> V2Run:
-    if config.run.evidence_tier == "acceptance":
-        dirty = subprocess.run(
-            ["git", "status", "--porcelain", "--untracked-files=normal"],
-            check=True,
-            capture_output=True,
-            text=True,
-        ).stdout.strip()
-        if dirty:
-            raise ValueError("acceptance operations require a clean git commit")
+    require_clean_acceptance_worktree(config)
     return V2Run.create(
         output_root=config.run.output_root,
         run_name=config.run.run_name,

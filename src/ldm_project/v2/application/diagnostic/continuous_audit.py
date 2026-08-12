@@ -148,6 +148,9 @@ def conditional_continuous_mode_capacity(args, config) -> int:
     """Run the fixed data-capacity audit and, if it passes, one read-only optical probe."""
     if config.architecture != IDENTITY_ARCHITECTURE or config.conditional_generation is None:
         raise ValueError("continuous-mode audit requires the identity v2 configuration")
+    device = torch.device(config.run.device)
+    if device.type == "cuda" and not torch.cuda.is_available():
+        raise RuntimeError("continuous-mode audit requires an available CUDA device")
     images, labels = load_local_mnist(args.dataset_root, train=True)
     train_images, train_labels, _, _, split = _split(images, labels, args.dataset_root)
     evaluator_hash = evaluator_checkpoint_hash(args.evaluator_checkpoint)
@@ -217,12 +220,7 @@ def conditional_continuous_mode_capacity(args, config) -> int:
     probe_checks: list[GateResult] = []
     panel_metrics: dict[str, object] = {}
     panel_artifacts: dict[str, object] = {}
-    probe_harness_invalid = False
-    if data_passed and str(config.run.device) == "cuda" and not torch.cuda.is_available():
-        probe_harness_invalid = True
-        probe_checks.append(GateResult("cuda_available_for_optical_probe", False, {"cuda_available": False}))
-    elif data_passed:
-        device = torch.device(config.run.device)
+    if data_passed:
         evaluator = evaluator.to(device).eval()
         bundle = bundle.to(device)
         modes = modes.to(device=device, dtype=torch.float32)
@@ -249,7 +247,7 @@ def conditional_continuous_mode_capacity(args, config) -> int:
     probe_checks.append(GateResult("parameters_unchanged", before == after, {}))
     checks = data_checks + tuple(probe_checks)
     passed = data_passed and all(item.passed for item in checks)
-    classification = "continuous_class_modes_supported" if passed else ("continuous_manifold_capacity_unconfirmed" if not data_passed else ("harness_invalid" if probe_harness_invalid else "optical_continuous_mode_unreachable"))
+    classification = "continuous_class_modes_supported" if passed else ("continuous_manifold_capacity_unconfirmed" if not data_passed else "optical_continuous_mode_unreachable")
     report_payload.update({"panel_metrics": panel_metrics, "classification": classification, "state_hash_before": before, "state_hash_after": after, "provenance_complete": any(item.name == "complete_optical_trace" and item.passed for item in probe_checks)})
     run = _new_run(config)
     report = run.root / "conditional_continuous_mode_capacity_report.json"

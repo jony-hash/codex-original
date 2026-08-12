@@ -693,16 +693,15 @@ def build_one_shot_optical_identity_audit(
                 entry["back"][mk] = metrics[back_key][mk]
         relay_psf_acceptance[sigma_label] = entry
     # Auto-judge: sigma0 variants must have corr >= 0.95 and dice >= 0.95.
-    try:
-        f0 = relay_psf_acceptance.get("sigma0", {})
-        relay_psf_acceptance["sigma0_acceptance"] = bool(
-            f0.get("front", {}).get("corr_to_slm", 0.0) >= 0.95
-            and f0.get("back", {}).get("corr_to_slm", 0.0) >= 0.95
-            and f0.get("front", {}).get("foreground_dice_to_prototype", 0.0) >= 0.95
-            and f0.get("back", {}).get("foreground_dice_to_prototype", 0.0) >= 0.95
-        )
-    except Exception:
-        relay_psf_acceptance["sigma0_acceptance"] = False
+    f0 = relay_psf_acceptance["sigma0"]
+    front0 = f0["front"]
+    back0 = f0["back"]
+    relay_psf_acceptance["sigma0_acceptance"] = bool(
+        front0["corr_to_slm"] >= 0.95
+        and back0["corr_to_slm"] >= 0.95
+        and front0["foreground_dice_to_prototype"] >= 0.95
+        and back0["foreground_dice_to_prototype"] >= 0.95
+    )
     # --- end relay PSF acceptance ---
 
     return {

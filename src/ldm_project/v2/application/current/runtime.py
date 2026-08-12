@@ -79,6 +79,7 @@ from .._runtime_shared import (
     build_context as _context,
     carrier_logits as _carrier_logits,
     new_run as _new_run,
+    require_clean_acceptance_worktree,
     random_codes as _random_codes,
     split_mnist as _split,
     system_signature as _system_signature,

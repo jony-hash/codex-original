@@ -10,6 +10,7 @@ from .runtime import (
     SEMANTIC_RECOVERY_STEPS, TRAINING_SCHEDULE_CONTRACT, V2Config,
     _carrier_logits, _context, _load_bundle, _load_bundle_with_payload, _new_run, _random_codes,
     _require_conditional, _require_current_acceptance, _require_identity, _split,
+    require_clean_acceptance_worktree,
     _system_signature, _validate_conditional_lineage, _validate_current_evidence_source,
     _write_evidence, asdict, balanced_batches,
     balanced_schedule_steps,
@@ -85,6 +86,7 @@ def _validate_current_optimizer_coverage(
 def conditional_train(args, config: V2Config) -> int:
     _require_conditional(config)
     _require_current_acceptance(config)
+    require_clean_acceptance_worktree(config)
     if config.architecture == IDENTITY_ARCHITECTURE:
         controllability_path = getattr(args, "controllability_evidence", None)
         recovery_path = getattr(args, "semantic_recovery_evidence", None)

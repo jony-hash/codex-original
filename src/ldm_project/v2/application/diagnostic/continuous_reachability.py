@@ -315,6 +315,9 @@ def _streaming_panel_gradients(
 def conditional_continuous_mode_reachability(args, config) -> int:
     if config.architecture != IDENTITY_ARCHITECTURE or config.conditional_generation is None:
         raise ValueError("continuous reachability requires identity v2 configuration")
+    device = torch.device(config.run.device)
+    if device.type != "cuda" or not torch.cuda.is_available():
+        raise RuntimeError("continuous reachability requires an available CUDA device")
     images, labels_all = load_local_mnist(args.dataset_root, train=True)
     train_images, train_labels, _, _, split = _split(images, labels_all, args.dataset_root)
     evaluator_hash = evaluator_checkpoint_hash(args.evaluator_checkpoint)
@@ -334,7 +337,6 @@ def conditional_continuous_mode_reachability(args, config) -> int:
     bundle = ConditionalBundle(config).cpu()
     load_conditional_checkpoint(args.semantic_checkpoint, bundle, source_manifest)
     before = state_content_hash(bundle.state_dict())
-    device = torch.device(config.run.device)
     run = _new_run(config)
     report_path = run.root / "conditional_continuous_mode_reachability_report.json"
     basis = _build_modes(train_images, train_labels, evaluator, config)
@@ -343,9 +345,10 @@ def conditional_continuous_mode_reachability(args, config) -> int:
     panel_hashes: dict[str, object] = {}
     checks: list[GateResult] = []
     checks.append(GateResult("basis_hash", basis_hash == EXPECTED_CONTINUOUS_BASIS_HASH, {"observed": basis_hash, "expected": EXPECTED_CONTINUOUS_BASIS_HASH}))
+    probe_state_before = None
+    report_extra: dict[str, object] = {}
     if device.type != "cuda" or not torch.cuda.is_available():
-        checks.append(GateResult("cuda_available", False, {"requested_device": str(device), "cuda_available": torch.cuda.is_available()}))
-        classification = "harness_invalid"
+        raise RuntimeError("continuous reachability requires an available CUDA device")
     else:
         evaluator = evaluator.to(device).eval()
         bundle = bundle.to(device)
@@ -488,12 +491,12 @@ def conditional_continuous_mode_reachability(args, config) -> int:
             classification = "continuous_semantic_objective_conflict"
         report_extra = {"direction_response_min": min(direction_response), "direction_response": direction_response, "axis_logit_rms": axis_logit_rms, "gradient_metrics": gradient_metrics, "tangent_metrics": tangent_metrics, "tangent_checks": [{"name": item.name, "passed": item.passed, "metrics": dict(item.metrics)} for item in tangent_checks], "panel_hashes": panel_hashes}
     after = state_content_hash(bundle.state_dict())
-    probe_state_after = state_content_hash(probe.state_dict()) if "probe" in locals() else None
-    parameters_unchanged = before == after and (probe_state_before == probe_state_after if "probe_state_before" in locals() else True)
-    checks.append(GateResult("parameters_unchanged", parameters_unchanged, {"bundle_before": before, "bundle_after": after, "probe_before": probe_state_before if "probe_state_before" in locals() else None, "probe_after": probe_state_after}))
+    probe_state_after = state_content_hash(probe.state_dict())
+    parameters_unchanged = before == after and probe_state_before == probe_state_after
+    checks.append(GateResult("parameters_unchanged", parameters_unchanged, {"bundle_before": before, "bundle_after": after, "probe_before": probe_state_before, "probe_after": probe_state_after}))
     if not parameters_unchanged:
         classification = "harness_invalid"
-    report = {"contract": CONTINUOUS_REACHABILITY_CONTRACT, "classification": classification, "basis_hash": basis_hash, "safe_probe_alpha": SAFE_PROBE_ALPHA, "panels": panel_metrics, "artifacts": panel_hashes, "state_hash_before": before, "state_hash_after": after, "probe_state_hash_before": probe_state_before if "probe_state_before" in locals() else None, "probe_state_hash_after": probe_state_after, "optimizer_created": False, **locals().get("report_extra", {})}
+    report = {"contract": CONTINUOUS_REACHABILITY_CONTRACT, "classification": classification, "basis_hash": basis_hash, "safe_probe_alpha": SAFE_PROBE_ALPHA, "panels": panel_metrics, "artifacts": panel_hashes, "state_hash_before": before, "state_hash_after": after, "probe_state_hash_before": probe_state_before, "probe_state_hash_after": probe_state_after, "optimizer_created": False, **report_extra}
     report["probe_mode"] = "reversible_single_delta_no_optimizer"
     atomic_write_json(report_path, report)
     basis_manifest = run.root / "continuous_mode_basis_manifest.json"
