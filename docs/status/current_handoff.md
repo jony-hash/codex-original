@@ -71,18 +71,26 @@ scientific diagnostic must be a separate research line.
 
 ## Objective diagnostic closeout (2026-08-12)
 
-The effective-gradient calibration fix was completed at clean commit
-`32ac4c5` (primary implementation `c942481`). Component-bound upstream
-qualification, measurement, and injection evidence from `a945f61` remained
-reusable and was checked before calibration. The new run
+The v3 calibration run
 `outputs/20260812_v2/runs/20260812_183756_552830_formal_v2_identity_logit_amplitude_finite_crop_identity`
-ended with valid `conditional_objective_weight_calibration / diagnostic / failed`
-evidence. Raw weights remain diagnostic metadata; the effective single-auxiliary
-ratios were within budget, but combined B and C ratios were `1.0604` and
-`1.2445`, exceeding the fail-closed limits `0.75` and `1.00`. No screen,
-confirmation, objective promotion, or formal training was authorized. This is
-an objective-diagnostic budget failure, not a model, optical, hardware, or
-execution-invalid claim.
+was reclassified as `invalid_harness`: its B/C combined metric included the
+base gradient while applying an auxiliary-only budget, and its aggregate used
+an arithmetic mean instead of the RMS contract. It did not establish an
+objective failure. The correction was committed at `f0861e6`, with the
+parameter-index and evidence-gate follow-ups at `8bbf78d` and `ab620be`.
+
+The corrected calibration
+`outputs/20260812_v2/runs/20260812_185926_470787_formal_v2_identity_logit_amplitude_finite_crop_identity`
+passed its four-batch effective-gradient gates: single auxiliary ratios were
+approximately `0.25`, B was `0.3424`, and C was `0.4162`; it authorized only
+`screen`. Screen then ended at
+`outputs/20260812_v2/runs/20260812_191311_132000_formal_v2_identity_logit_amplitude_finite_crop_identity`
+with valid `conditional_objective_alignment_screen / diagnostic / failed`
+evidence. B and C both failed the registered camera/diversity/coverage screen
+gates; all six parameter groups updated and all candidates shared the same
+schedule. No winner, confirmation, objective promotion, or formal training was
+authorized. This is a diagnostic objective failure, not a model-wide optical,
+hardware, or execution-invalid claim.
 
 The remainder of this file records immutable historical closures and is retained
 for context; those records must not be rewritten or used as current acceptance.
