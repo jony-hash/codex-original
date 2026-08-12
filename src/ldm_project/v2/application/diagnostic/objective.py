@@ -411,7 +411,7 @@ def objective_alignment_screen(args, config) -> int:
     weights = _read_calibration(calibration_path, config, evaluator_hash, init_hash)
     reports = {}
     for kind in ("A", "B", "C"):
-        candidate = _load_bundle(args.config, args.initialization_checkpoint, device=torch.device(config.run.device), evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, checkpoint_sha256=init_hash)[0]
+        candidate = _load_bundle(config, args.initialization_checkpoint, device=torch.device(config.run.device), evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, checkpoint_sha256=init_hash)[0]
         candidate_weights = {name: 0.0 for name in weights} if kind == "A" else weights
         history, companion_hash = _run_steps(candidate, primary, train_images, train_labels, config, kind, candidate_weights, 100, 1234)
         reports[kind] = {"measurement": _measure_panel(candidate, primary, secondary, validation_images, validation_labels, config), "history": history, "companion_schedule_hash": companion_hash, "state_hash": state_content_hash(candidate.state_dict()), "state_dict": {name: value.detach().cpu() for name, value in candidate.state_dict().items()}}
