@@ -151,6 +151,22 @@ def _parameter_norm(parameters, gradients) -> torch.Tensor:
     return torch.stack(values).sum().sqrt()
 
 
+def _gradient_vector(parameters, gradients) -> torch.Tensor:
+    """Flatten a gradient tuple, preserving zero entries for unused params."""
+    return torch.cat([
+        (gradient.detach() if gradient is not None else torch.zeros_like(parameter)).reshape(-1)
+        for parameter, gradient in zip(parameters, gradients, strict=True)
+    ])
+
+
+def _gradient_cosine(left: torch.Tensor, right: torch.Tensor) -> float | None:
+    left_norm = left.norm()
+    right_norm = right.norm()
+    if not torch.isfinite(torch.stack((left_norm, right_norm))).all() or left_norm <= 1.0e-12 or right_norm <= 1.0e-12:
+        return None
+    return float(torch.dot(left, right).div(left_norm * right_norm).item())
+
+
 def _auxiliary_loss(raw, generated_view, generated_features, real_features, labels, real_views, kind: str, epsilon: float, iterations: int) -> torch.Tensor:
     if kind == "camera":
         return torch.nn.functional.softplus((torch.as_tensor(0.30, device=raw.device, dtype=raw.dtype) - camera_code_fraction(raw, labels)) / 0.02) * 0.02
@@ -175,6 +191,7 @@ def _gradient_calibration(args, config, train_images, train_labels, split, prima
     selected = tuple(parameter for name in ("global_modes", "code_projection", "class_heads") for parameter in groups[name])
     sums = {name: torch.zeros((), device=selected[0].device) for name in ("base", "camera", "pairwise", "coverage")}
     steps = 0
+    batch_records = []
     for epoch in range(1):
         for batch_number, indices in enumerate(balanced_batches(train_labels, batch_size=settings.logical_batch_size, seed=1234 + epoch)):
             if steps >= 4:
@@ -204,20 +221,35 @@ def _gradient_calibration(args, config, train_images, train_labels, split, prima
                     companion_labels=companion_labels,
                 ),
             }
+            gradient_vectors = {}
+            batch_norms = {}
             for name, loss in losses.items():
                 gradients = torch.autograd.grad(loss, selected, retain_graph=True, allow_unused=True)
                 norm = _parameter_norm(selected, gradients)
-                if not torch.isfinite(norm):
-                    raise ValueError(f"non-finite {name} calibration gradient")
+                gradient_vectors[name] = _gradient_vector(selected, gradients)
+                batch_norms[name] = float(norm.item())
                 sums[name] = sums[name] + norm.square()
+            batch_records.append({
+                "batch_index_hash": canonical_sha256(indices),
+                "code_seed": (epoch + 1) * 100000 + batch_number,
+                "gradient_norms": batch_norms,
+                "gradient_cosines": {
+                    f"{left}_vs_{right}": _gradient_cosine(gradient_vectors[left], gradient_vectors[right])
+                    for left, right in (("base", "camera"), ("base", "pairwise"), ("base", "coverage"), ("camera", "pairwise"), ("camera", "coverage"), ("pairwise", "coverage"))
+                },
+            })
             steps += 1
         if steps >= 4:
             break
     if steps != 4:
         raise ValueError("gradient calibration did not obtain four balanced batches")
     norms = {name: float((value / 4.0).sqrt().item()) for name, value in sums.items()}
-    weights = {name: _calibrated_weight(norms["base"], norms[name]) for name in ("camera", "pairwise", "coverage")}
-    return norms, weights
+    weights = {name: 0.25 * norms["base"] / norms[name] if torch.isfinite(torch.tensor([norms["base"], norms[name]])).all() and norms[name] > 1.0e-12 else None for name in ("camera", "pairwise", "coverage")}
+    violations = {
+        name: (value is None or not 1.0e-3 <= value <= 10.0)
+        for name, value in weights.items()
+    }
+    return norms, weights, {"batches": batch_records, "rms_norms": norms, "raw_weights": weights, "violations": violations}
 
 
 def _calibrated_weight(base: float, auxiliary: float) -> float:
@@ -420,19 +452,42 @@ def conditional_objective_weight_calibration(args, config) -> int:
     context = _record_context(config, evaluator_hash, split.manifest_hash, init_hash)
     input_hashes = {"initialization_checkpoint": init_hash, "injection_evidence": file_sha256(args.injection_evidence), "evaluator": evaluator_hash, "split": split.manifest_hash}
     try:
-        norms, weights = _gradient_calibration(args, config, train_images, train_labels, split, primary, bundle, evaluator_hash, {"initialization": init_hash})
-    except ValueError as error:
-        _diagnostic_record(config, "conditional_objective_weight_calibration", "failed", context, input_hashes, (GateResult("gradient_calibration", False, {}, str(error)),), reason=str(error))
-        return 1
-    artifact = {"schema_version": 1, "contract": OBJECTIVE_DIAGNOSTIC_CONTRACT, "norms": norms, "weights": weights, "frozen": True, "input_hashes": {"initialization_checkpoint": init_hash, "injection_evidence": file_sha256(args.injection_evidence), "evaluator": evaluator_hash, "split": split.manifest_hash}}
+        norms, weights, diagnostics = _gradient_calibration(args, config, train_images, train_labels, split, primary, bundle, evaluator_hash, {"initialization": init_hash})
+    except (ValueError, RuntimeError) as error:
+        reason = str(error)
+        diagnostics = {"batches": [], "rms_norms": {}, "raw_weights": {}, "violations": {}, "execution_error": reason}
+        norms, weights = {}, {}
+    input_bindings = {"initialization_checkpoint": init_hash, "injection_evidence": file_sha256(args.injection_evidence), "evaluator": evaluator_hash, "split": split.manifest_hash}
+    violations = diagnostics.get("violations", {})
+    finite = bool(norms) and all(torch.isfinite(torch.tensor(value)) and value > 1.0e-12 for value in norms.values())
+    in_range = bool(weights) and not any(violations.values())
+    passed = finite and in_range and len(diagnostics.get("batches", [])) == 4 and "execution_error" not in diagnostics
+    artifact = {
+        "schema_version": 2,
+        "contract": OBJECTIVE_DIAGNOSTIC_CONTRACT,
+        "formula": "0.25*base_gradient_norm/auxiliary_gradient_norm",
+        "target_ratio": 0.25,
+        "weight_range": [1.0e-3, 10.0],
+        "norms": norms,
+        "weights": weights,
+        "diagnostics": diagnostics,
+        "frozen": passed,
+        "formal_promotion_authorized": False,
+        "input_hashes": input_bindings,
+    }
     run = _new_run(config)
     artifact_path = run.root / "conditional_objective_weight_calibration.json"
     atomic_write_json(artifact_path, artifact)
-    gates = (GateResult("four_balanced_batches", True, {"count": 4.0}), GateResult("finite_gradient_norms", True, norms), GateResult("weights_in_range", True, weights))
-    record = EvidenceRecordV2(2, "conditional_objective_weight_calibration", "diagnostic", "passed", run.git_commit, run.dirty_patch_hash, run.config_hash, context, {"artifact": file_sha256(artifact_path), **input_hashes}, gates, ("screen",), None)
+    gates = (
+        GateResult("four_balanced_batches", len(diagnostics.get("batches", [])) == 4, {"count": float(len(diagnostics.get("batches", [])))}),
+        GateResult("finite_gradient_norms", finite, norms),
+        GateResult("weights_in_range", in_range, {name: value for name, value in weights.items() if value is not None}),
+    )
+    reason = diagnostics.get("execution_error") or ("objective gradient calibration produced a weight outside [1e-3,10]" if not in_range else None)
+    record = EvidenceRecordV2(2, "conditional_objective_weight_calibration", "diagnostic", "passed" if passed else "failed", run.git_commit, run.dirty_patch_hash, run.config_hash, context, {"artifact": file_sha256(artifact_path), **input_hashes}, gates, ("screen",) if passed else (), reason)
     _write_evidence(run, "conditional_objective_weight_calibration_evidence.json", record)
     print(run.root)
-    return 0
+    return 0 if passed else 1
 
 
 def _read_calibration(path: str, config, evaluator_hash: str, init_hash: str):

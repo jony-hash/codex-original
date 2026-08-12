@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import torch
+import pytest
 
 from ldm_project.v2.application.cli_schema import _parser
-from ldm_project.v2.application.diagnostic.objective import _code_seed, _companion_indices, _scheduled_batches
+from ldm_project.v2.application.diagnostic.objective import _calibrated_weight, _code_seed, _companion_indices, _gradient_cosine, _scheduled_batches
 from ldm_project.v2.evidence import canonical_sha256
 from ldm_project.v2.student.conditional import coverage_ratio_upper_loss
 
@@ -62,6 +63,19 @@ def test_coverage_companion_contract_uses_matching_primary_counts() -> None:
         companion_labels=labels,
     )
     assert torch.isfinite(value)
+
+
+def test_calibrated_weight_keeps_registered_hard_bounds() -> None:
+    assert _calibrated_weight(4.0, 0.1) == 10.0
+    assert _calibrated_weight(0.0004, 0.1) == 0.001
+    with pytest.raises(ValueError, match="outside"):
+        _calibrated_weight(4.0001, 0.1)
+
+
+def test_gradient_cosine_reports_alignment_and_zero_as_unavailable() -> None:
+    assert _gradient_cosine(torch.tensor([1.0, 0.0]), torch.tensor([0.0, 1.0])) == 0.0
+    assert _gradient_cosine(torch.tensor([1.0, 0.0]), torch.tensor([1.0, 0.0])) == 1.0
+    assert _gradient_cosine(torch.zeros(2), torch.ones(2)) is None
 
 
 def test_objective_commands_are_content_bound() -> None:
