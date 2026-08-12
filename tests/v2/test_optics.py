@@ -101,6 +101,30 @@ def test_coherent_relay_pupil_preserves_complex_gradients() -> None:
     assert torch.isfinite(field.tensor.grad.real).all() and torch.isfinite(field.tensor.grad.imag).all()
 
 
+def test_coherent_relay_pupil_has_independent_bandwidth_and_overlap_contract() -> None:
+    source = PlaneSpec("source", (64, 64), (2e-6, 2e-6), 532e-9, 0.0, "unit")
+    target = PlaneSpec("target", (64, 64), (2e-6, 2e-6), 532e-9, 0.4, "unit")
+    yy, xx = torch.meshgrid(torch.arange(64), torch.arange(64), indexing="ij")
+    def make_field(cycles_per_m: float) -> ComplexField:
+        tensor = torch.exp(2j * torch.pi * cycles_per_m * (xx - 31.5) * 2e-6).to(torch.complex128)[None, None]
+        return ComplexField(tensor, source, OperationProvenance("source", None, None))
+
+    low_relay = CoherentImagingRelay(source, target, -1.0, name="low", segments_m=(0.2, 0.2), focal_lengths_m=(0.1,), clear_aperture_m=0.02)
+    high_relay = CoherentImagingRelay(source, target, -1.0, name="high", segments_m=(0.2, 0.2), focal_lengths_m=(0.1,), clear_aperture_m=0.02)
+    low_relay(make_field(80e3))
+    high_relay(make_field(120e3))
+    assert float(low_relay.last_diagnostic["source_pupil_retention"].mean()) >= 0.90
+    assert float(high_relay.last_diagnostic["source_pupil_retention"].mean()) <= 0.10
+
+    reference_relay = CoherentImagingRelay(source, target, -1.0, name="reference", segments_m=(0.2, 0.2), focal_lengths_m=(0.1,), clear_aperture_m=0.1)
+    field = make_field(0.0)
+    production = reference_relay(field).tensor
+    reference = reference_b0_imaging(field, target, reference_relay.abcd, name="reference").tensor
+    phase = torch.angle((production.conj() * reference).sum())
+    overlap = (production * torch.exp(-1j * phase).to(production.dtype) * reference.conj()).sum().abs() / (production.abs().square().sum().sqrt() * reference.abs().square().sum().sqrt())
+    assert float(overlap) >= 0.99
+
+
 def test_finite_crop_phase_stack_preserves_shape_and_unit_mask() -> None:
     field = _field((8, 8))
     stack = FiniteCropPhaseStack(layers=2, active_shape=(8, 8), propagation_shape=(16, 16), spacing_m=1e-3)
