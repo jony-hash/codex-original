@@ -107,17 +107,14 @@ state hash、最终 checkpoint 摘要、配置和数据 split。evaluation、dat
 manifest 或 evidence 输入摘要被篡改都必须 fail-closed。此链路只证明工程来源和
 更新真实性，不替代 CUDA、硬件或科学 acceptance。
 
-Current evidence uses component-scoped runtime lineage (registry
-`v2-runtime-components-2`). Every record must come
-from a clean commit that is an ancestor of the current `HEAD`; the consumer
-compares the Git-tree fingerprint only for the components registered for that
-evidence kind. Configuration, split, checkpoint, and artifact hashes remain
-independent content bindings. Unknown evidence kinds conservatively use the
-`full_current` scope. Missing registry data, missing fingerprints, unavailable
-Git comparison, or an invalid commit fails closed before loading a checkpoint,
-creating an optimizer, or writing run artifacts. A change to an unrelated
-component therefore does not invalidate every record, while a change to an
-applicable component does.
+Current evidence uses a clean-ancestor plus scoped Git-diff lineage. Every
+record must come from a clean commit that is an ancestor of the current `HEAD`;
+the consumer rejects any change between that commit and `HEAD` under
+`src/ldm_project/v2/`, `configs/v2/current/`, or `pyproject.toml`. Configuration,
+split, checkpoint, and artifact hashes remain independent content bindings.
+Documentation- and test-only descendants may reuse evidence. Invalid commits,
+dirty provenance, unavailable Git, or a change in any scoped path fails closed
+before loading a checkpoint, creating an optimizer, or writing run artifacts.
 
 所有 current、student、teacher、evidence、diagnostic 和 research v2 artifact 都通过
 `safe_torch_load` 反序列化，默认 `weights_only=True`，并在有期望摘要时先校验文件。

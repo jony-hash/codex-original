@@ -2,19 +2,14 @@
 
 ## Current identity status
 
-The current evidence-lineage policy is now component-scoped.  New evidence
-records carry the registry version, the applicable runtime components, and a
-Git-tree fingerprint for each component; consumers still require clean
-ancestor commits and independently verify config, split, checkpoint, and
-artifact hashes.  Evidence created before this registry was introduced is
-fail-closed and must be reissued once on the migrated clean baseline.  A
-change to an unrelated component no longer invalidates every current record,
-while unknown evidence kinds conservatively retain the full-current invalidation
-scope.
-The registry has since been tightened to `v2-runtime-components-2`, including
-its own source and the actual loss, optimizer, admission, recovery, and
-measurement dependencies. Evidence carrying the prior registry version is
-historical and cannot authorize a new run.
+The current evidence-lineage policy is clean ancestor plus scoped Git diff.
+Consumers require clean ancestor commits and independently verify config, split,
+checkpoint, and artifact hashes; documentation- and test-only descendants may
+reuse evidence, while any change under `src/ldm_project/v2/`,
+`configs/v2/current/`, or `pyproject.toml` requires reissue. Invalid commits,
+dirty provenance, unavailable Git, or failed comparison is fail-closed.
+Historical component-registry evidence remains read-only and cannot authorize a
+new run; it is not migrated or backfilled.
 
 The evaluation schedule harness was repaired at clean commit `ae3273d`. The
 earlier evaluation attempt mixed the 55,000-sample training split with the
@@ -26,6 +21,8 @@ The runtime-equivalent evidence-lineage guard was implemented at clean commit
 `ae3273d`; its upstream qualification, initialization, observability, control
 isolation, localization, controllability failure, and semantic recovery remain
 diagnostic lineage only.
+This engineering closeout does not reopen the failed formal evaluation or
+objective screen; no evidence is re-signed and no new mainline is authorized.
 evaluator qualification (`outputs/20260811_v2/runs/20260811_011455_509777_formal_v2_identity_logit_amplitude_finite_crop_identity`),
 initialization admission
 (`outputs/20260811_v2/runs/20260811_011510_366668_formal_v2_identity_logit_amplitude_finite_crop_identity`),
