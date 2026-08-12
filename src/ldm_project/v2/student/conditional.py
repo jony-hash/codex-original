@@ -189,9 +189,10 @@ def coverage_ratio_upper_loss(
         selected = torch.nonzero(labels == label, as_tuple=False).flatten()
         if selected.numel() < 4:
             raise ValueError("coverage objective needs at least four samples per class")
-        left, right = selected[::2], selected[1::2]
+        count = selected.numel() // 2
+        left, right = selected[:count], selected[count : 2 * count]
         observed_terms.append(class_sinkhorn(
-            generated_features.index_select(0, selected), generated_view.index_select(0, selected),
+            generated_features.index_select(0, selected[:count]), generated_view.index_select(0, selected[:count]),
             real_features.index_select(0, right), real_view.index_select(0, right),
         ))
         baseline_terms.append(class_sinkhorn(
