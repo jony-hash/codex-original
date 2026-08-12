@@ -1,9 +1,17 @@
-# 当前主线交接：v2 current identity schedule gate（2026-08-11）
+# 当前主线交接：v2 current identity evaluation closeout（2026-08-12）
 
 ## Current identity status
 
+The evaluation schedule harness was repaired at clean commit `ae3273d`. The
+earlier evaluation attempt mixed the 55,000-sample training split with the
+60,000-sample full label set and was therefore an `invalid_harness` attempt,
+not a model failure.
+
 The runtime-equivalent evidence-lineage guard was implemented at clean commit
-`4aac9c0`.  The reissued current evidence chain is bound to that commit:
+`4aac9c0`. The reissued current evidence chain was then regenerated on
+`ae3273d`; its upstream qualification, initialization, observability, control
+isolation, localization, controllability failure, and semantic recovery remain
+diagnostic lineage only.
 evaluator qualification (`outputs/20260811_v2/runs/20260811_011455_509777_formal_v2_identity_logit_amplitude_finite_crop_identity`),
 initialization admission
 (`outputs/20260811_v2/runs/20260811_011510_366668_formal_v2_identity_logit_amplitude_finite_crop_identity`),
@@ -29,9 +37,27 @@ The reissued 400-step semantic recovery
 (`outputs/20260811_v2/runs/20260811_013934_467132_formal_v2_identity_logit_amplitude_finite_crop_identity`)
 is a passed diagnostic gate (accuracy `0.435294`,
 classification loss `3.849→1.876`, code fraction `0.31031`, saturation
-`0.05674`) and permits `train`, but no formal 5-epoch training, evaluation,
-dataset export, or promotion has been run or authorized here.  Recovery and all
-upstream records report `dirty_patch_hash=None` and commit `4aac9c0`.
+`0.05674`) and permits `train`. Formal training subsequently passed at
+`outputs/20260812_v2/runs/20260812_012817_770553_formal_v2_identity_logit_amplitude_finite_crop_identity`,
+with `dirty_patch_hash=null`, checkpoint hash
+`423328bf472bb7468f131b351850d1b6f7c5a282796444ecbec5e10bad12c2b9`, and only
+`evaluate` authorized.
+
+Formal evaluation ended at
+`outputs/20260812_v2/runs/20260812_132740_122683_formal_v2_identity_logit_amplitude_finite_crop_identity`
+with `conditional_acceptance / acceptance / failed`, evidence hash
+`7a3ded3c14bbb64936bcbd9fdfe59a3694e5e939c045b6684625b19a01a91bd8`, and no
+permitted next actions. Accuracy and recall were 1.0 and saturation was
+0.0501; camera code fraction was 0.1389, class diversity ratios were
+0.278–0.458, and coverage was 1.758. Raw-CMOS and 5,000 validation labels are
+complete, so this is a valid model acceptance failure rather than an invalid
+harness.
+
+No manual review, candidate export, memorization, utility evaluation, or
+dataset admission was authorized. The failure does not establish phase-only,
+optical-capacity, hardware, or universal semantic-diversity impossibility.
+Maintenance governance is now the next permitted work; any new objective or
+scientific diagnostic must be a separate research line.
 
 The remainder of this file records immutable historical closures and is retained
 for context; those records must not be rewritten or used as current acceptance.

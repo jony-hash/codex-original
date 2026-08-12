@@ -30,6 +30,11 @@ This explicit routing is required when Codex starts at the repository root, beca
    compatibility contract. Test counts, line counts, digest counts, and archive
    entry counts are measurements only and cannot independently define success.
 
+9. Necessity gate: before a medium- or high-risk modification, record the
+   substantive consequence of not changing, the real consumer or rejection
+   decision that requires the change, and the stop condition. If no substantive
+   loss or rejected decision exists, stop without modifying the repository.
+
 ### Pre-change reverse verification
 
 Before implementing any modification, classify its risk and record the smallest

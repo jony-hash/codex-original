@@ -75,7 +75,6 @@ v1 研究线已冻结在 v79：固定 label-only normalization 的八维 support
 | `tests/application/` | stage runtime、CLI、输出和 checkpoint resolution 测试 |
 | `tests/diagnostics/` | 当前 diagnostic boundary 验证；版本专用测试在 archive |
 | `docs/` | 架构、运行指南、输出语义和历史证据 |
-| `experiments/archive/` | 仅供溯源的历史 config/tool/test 与 manifest |
 | `scripts/` | 版本中立的维护与展示辅助脚本 |
 | `outputs/` | 按真实日期前缀版本目录分组的 managed run artifacts；`outputs/final_pt/` 保持固定 |
 | `data/raw/` | 不可变原始数据 |

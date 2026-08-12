@@ -1,6 +1,6 @@
 # Git 分支治理与回档指南
 
-> 状态快照：2026-07-30。本文的远端引用和提交关系仍是带日期快照；后续操作前应重新执行只读 Git 核验。
+> 状态快照：2026-08-12。本文的拓扑、远端引用和提交关系仍是带日期快照；后续操作前应重新执行只读 Git 核验。
 
 ## 当前拓扑
 
@@ -19,7 +19,8 @@ main (660763e, scaffold)
 ```
 
 `rewrite/v2` 从 `e21dba1` 线性分出，是 teacher-free identity conditional generation 的稳定
-基线。当前活动诊断位于 `experiment/v2-near-conjugate-relay-v64`；旧 v2
+基线。v2 当前本地分支是 `experiment/v2-o0-feasibility-v23`；其正式 identity 链已在
+`ae3273d` 以有效 evaluation failure 收口，维护提交不会推送或整合到远端。旧 v2
 teacher/prototype/capacity 内容仍可从 archive 追溯，但不再是当前命令来源。
 
 为便于不切换分支地查阅证据，`e21dba1` 中原有的 v68–v79 交接全文已逐字归档到 [v68–v79 原始主线交接归档](../archive/current_handoff_v68_v79_archive.md)。归档不定义当前行为；当前状态仍以 [当前主线交接](../status/current_handoff.md) 为准。
@@ -36,7 +37,8 @@ teacher/prototype/capacity 内容仍可从 archive 追溯，但不再是当前�
 | `基于-LDM-蒸馏的单次曝光光学生成模型` | `161555b` | one-shot 蒸馏、评估与审计主线。 |
 | `适用于实验室双光子打印加工的尺寸` | `e21dba1` | 已封存的 v68–v79 诊断研究和正式物理几何快照。 |
 | `rewrite/v2` | `135b5ed` | teacher-free identity v2 稳定基线；当前不直接运行实验。 |
-| `experiment/v2-near-conjugate-relay-v64` | `44981b1` scientific-state anchor | 当前活动诊断分支；v6.4 smoke 已归档为 harness-invalid，未 promotion。 |
+| `experiment/v2-near-conjugate-relay-v64` | `e885acb` | 历史 diagnostic 分支；v6.4 smoke 已归档为 harness-invalid，未 promotion。 |
+| `experiment/v2-o0-feasibility-v23` | `ae3273d` | 当前本地 v2 分支；正式 identity evaluation 已有效失败收口，未推送远端。 |
 
 此前的 v6、宏观可行性、v6.2 和 v6.3 实验提交已经线性包含在 v6.4 分支中。为减少重复 branch
 指针，它们已改为以下本地只读 tags：
