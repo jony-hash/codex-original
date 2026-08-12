@@ -713,7 +713,7 @@ def conditional_near_conjugate_phase_distribution_tangent(args, config) -> int:
 def conditional_near_conjugate_relay_equivalence(args, config) -> int:
     """CPU-only audit of the declared two-lens relay geometry."""
     _require(config)
-    from ..contracts import ComplexField, OperationProvenance, PlaneSpec
+    from ...contracts import ComplexField, OperationProvenance, PlaneSpec
 
     plane = PlaneSpec("relay_a", (16, 16), (2e-6, 2e-6), 532e-9, 0.0, "test")
     target = plane.with_plane("relay_b", z_m=sum(NearConjugateRelay.segments_m))

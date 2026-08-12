@@ -1,5 +1,9 @@
-import torch
+import hashlib
+import json
 from types import SimpleNamespace
+from pathlib import Path
+
+import torch
 
 from ldm_project.v2.application.cli import _parser
 from ldm_project.v2.application.conditional_near_conjugate import _replay_checks
@@ -10,6 +14,29 @@ from ldm_project.v2.optics import (
     NearConjugateRelay,
     reference_near_conjugate_lens_relay,
 )
+
+
+def test_near_conjugate_relay_equivalence_workflow_writes_bound_passed_evidence(tmp_path: Path):
+    from ldm_project.v2.application.diagnostic.near_conjugate import (
+        conditional_near_conjugate_relay_equivalence,
+    )
+
+    config = load_config(
+        "configs/v2/diagnostic/conditional_pca_near_conjugate_relay.yaml"
+    )
+    config = config.model_copy(
+        update={"run": config.run.model_copy(update={"output_root": str(tmp_path)})}
+    )
+    assert conditional_near_conjugate_relay_equivalence(None, config) == 0
+    evidence = next(tmp_path.rglob("conditional_near_conjugate_relay_equivalence_evidence.json"))
+    report = next(tmp_path.rglob("conditional_near_conjugate_relay_equivalence_report.json"))
+    payload = json.loads(evidence.read_text(encoding="utf-8"))
+    assert payload["status"] == "passed"
+    assert payload["input_hashes"]["report"]
+    assert payload["permitted_next_actions"] == ["conditional-near-conjugate-admission"]
+    assert payload["input_hashes"]["report"] == hashlib.sha256(
+        report.read_bytes()
+    ).hexdigest()
 
 
 def test_near_conjugate_config_is_explicit_and_generator_is_frozen_by_stage():
