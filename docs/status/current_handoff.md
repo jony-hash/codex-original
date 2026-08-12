@@ -19,6 +19,13 @@ evidence readers and the formal evaluation gate; the A run is the registered
 negative control.  A failed calibration, screen, or confirmation closes this
 objective family without changing the optical contract.
 
+The first `f1accba` calibration passed its numeric gates, but its screen
+consumer exposed an invalid warmup comparison: a step-400 milestone mapping was
+compared directly with a state-hash string.  That calibration remains
+read-only and superseded; it does not constitute a D failure.  The harness fix
+requires a new clean commit, fresh qualification lineage, calibration, and
+screen before any confirmation decision.
+
 ## Current identity status
 
 The current evidence-lineage policy is clean ancestor plus scoped Git diff.

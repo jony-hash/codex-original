@@ -4,7 +4,7 @@ import torch
 import pytest
 
 from ldm_project.v2.application.cli_schema import _parser
-from ldm_project.v2.application.diagnostic.objective import _code_seed, _companion_indices, _effective_gradient_gate, _gradient_cosine, _scheduled_batches, OBJECTIVE_DIAGNOSTIC_CONTRACT_SPEC
+from ldm_project.v2.application.diagnostic.objective import _code_seed, _companion_indices, _effective_gradient_gate, _gradient_cosine, _scheduled_batches, _warmup_lineage_gate, OBJECTIVE_DIAGNOSTIC_CONTRACT_SPEC
 from ldm_project.v2.config import ConditionalGenerationConfig
 from ldm_project.v2.student.conditional import active_objective_kind, deterministic_companion_indices, objective_contract_payload, relative_diversity_worst_class_loss
 from ldm_project.v2.evidence import canonical_sha256
@@ -221,3 +221,32 @@ def test_formal_and_diagnostic_companion_schedule_share_contract() -> None:
     diagnostic = _companion_indices(labels, primary, seed=1234 * 100000 + 400)
     assert torch.equal(formal, diagnostic)
     assert not torch.isin(formal, primary).any()
+
+
+def test_warmup_lineage_gate_compares_declared_hash_fields() -> None:
+    hashes = {name: f"{name}-hash" for name in ("state_hash", "optimizer_hash", "primary_schedule_hash", "companion_schedule_hash")}
+    milestone = {"state_hash": hashes["state_hash"], "optimizer_hash": hashes["optimizer_hash"]}
+    report = {
+        "A": {"update_status": {"milestones": {"400": milestone}}, "warmup_primary_schedule_hash": hashes["primary_schedule_hash"], "warmup_companion_schedule_hash": hashes["companion_schedule_hash"]},
+        "D": {"update_status": {"milestones": {"400": dict(milestone)}}, "warmup_primary_schedule_hash": hashes["primary_schedule_hash"], "warmup_companion_schedule_hash": hashes["companion_schedule_hash"]},
+    }
+    calibration = {"diagnostics": {"warmup": {"state_hash": hashes["state_hash"], "optimizer_hash": hashes["optimizer_hash"], "schedule_hash": hashes["primary_schedule_hash"], "companion_schedule_hash": hashes["companion_schedule_hash"]}}}
+    assert _warmup_lineage_gate(report, calibration)[0]
+    report["D"]["update_status"]["milestones"]["400"]["state_hash"] = "tampered"
+    assert not _warmup_lineage_gate(report, calibration)[0]
+
+
+@pytest.mark.parametrize("field", ["optimizer_hash", "warmup_primary_schedule_hash", "warmup_companion_schedule_hash"])
+def test_warmup_lineage_gate_rejects_each_schedule_or_optimizer_tamper(field: str) -> None:
+    hashes = {name: f"{name}-hash" for name in ("state_hash", "optimizer_hash", "primary_schedule_hash", "companion_schedule_hash")}
+    milestone = {"state_hash": hashes["state_hash"], "optimizer_hash": hashes["optimizer_hash"]}
+    report = {
+        "A": {"update_status": {"milestones": {"400": dict(milestone)}}, "warmup_primary_schedule_hash": hashes["primary_schedule_hash"], "warmup_companion_schedule_hash": hashes["companion_schedule_hash"]},
+        "D": {"update_status": {"milestones": {"400": dict(milestone)}}, "warmup_primary_schedule_hash": hashes["primary_schedule_hash"], "warmup_companion_schedule_hash": hashes["companion_schedule_hash"]},
+    }
+    calibration = {"diagnostics": {"warmup": {"state_hash": hashes["state_hash"], "optimizer_hash": hashes["optimizer_hash"], "schedule_hash": hashes["primary_schedule_hash"], "companion_schedule_hash": hashes["companion_schedule_hash"]}}}
+    if field in {"state_hash", "optimizer_hash"}:
+        report["D"]["update_status"]["milestones"]["400"][field] = "tampered"
+    else:
+        report["D"][field] = "tampered"
+    assert not _warmup_lineage_gate(report, calibration)[0]

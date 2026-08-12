@@ -57,7 +57,7 @@ from ...evidence.records import require_evidence_action, require_input_hashes
 
 
 OBJECTIVE_DIAGNOSTIC_CONTRACT_SPEC = {
-        "kind": "conditional_objective_alignment_v3",
+        "kind": "conditional_objective_alignment_v4",
         "candidates": ["A", "D"],
         "screen_steps": 984,
         "confirm_steps": 984,
@@ -460,6 +460,33 @@ def _scheduled_batches(labels: torch.Tensor, *, batch_size: int, seed: int, star
     return batches[start_step:end]
 
 
+def _warmup_lineage_gate(reports: dict[str, object], calibration_payload: dict[str, object]) -> tuple[bool, dict[str, object]]:
+    """Compare each warmup lineage field by its declared type and value."""
+    warmup = calibration_payload.get("diagnostics", {}).get("warmup", {})
+    if not isinstance(warmup, dict):
+        return False, {"reason": "missing calibration warmup metadata"}
+    a = reports.get("A", {})
+    d = reports.get("D", {})
+    if not isinstance(a, dict) or not isinstance(d, dict):
+        return False, {"reason": "missing A/D screen report"}
+    a_milestone = a.get("update_status", {}).get("milestones", {}).get("400")
+    d_milestone = d.get("update_status", {}).get("milestones", {}).get("400")
+    if not isinstance(a_milestone, dict) or not isinstance(d_milestone, dict):
+        return False, {"reason": "missing step-400 milestone"}
+    fields = {
+        "state_hash": (a_milestone.get("state_hash"), d_milestone.get("state_hash"), warmup.get("state_hash")),
+        "optimizer_hash": (a_milestone.get("optimizer_hash"), d_milestone.get("optimizer_hash"), warmup.get("optimizer_hash")),
+        "primary_schedule_hash": (a.get("warmup_primary_schedule_hash"), d.get("warmup_primary_schedule_hash"), warmup.get("schedule_hash")),
+        "companion_schedule_hash": (a.get("warmup_companion_schedule_hash"), d.get("warmup_companion_schedule_hash"), warmup.get("companion_schedule_hash")),
+    }
+    valid = all(
+        all(isinstance(value, str) for value in (value_a, value_d, value_w))
+        and value_a == value_d == value_w
+        for value_a, value_d, value_w in fields.values()
+    )
+    return valid, fields
+
+
 def _run_steps(bundle, primary, train_images, train_labels, config, objective_kind, weights, steps, seed, *, optimizer=None, start_step=0, history=None, primary_schedule=None, companion_schedule=None):
     settings = config.conditional_generation
     assert settings is not None
@@ -722,15 +749,8 @@ def objective_alignment_screen(args, config) -> int:
     gates.append(schedule_gate)
     companion_gate = GateResult("screen_companion_schedule", len({row["companion_schedule_hash"] for row in reports.values()}) == 1, {kind: row["companion_schedule_hash"] for kind, row in reports.items()})
     gates.append(companion_gate)
-    warmup_gate = GateResult(
-        "screen_shared_warmup_state",
-        reports["A"]["update_status"]["milestones"].get("400") == reports["D"]["update_status"]["milestones"].get("400")
-        and reports["A"]["update_status"]["milestones"].get("400") == calibration_payload.get("diagnostics", {}).get("warmup", {}).get("state_hash")
-        and reports["A"]["update_status"]["milestones"].get("400", {}).get("optimizer_hash") == calibration_payload.get("diagnostics", {}).get("warmup", {}).get("optimizer_hash")
-        and reports["A"]["warmup_primary_schedule_hash"] == calibration_payload.get("diagnostics", {}).get("warmup", {}).get("schedule_hash")
-        and reports["A"]["warmup_companion_schedule_hash"] == calibration_payload.get("diagnostics", {}).get("warmup", {}).get("companion_schedule_hash"),
-        {"A": reports["A"]["update_status"]["milestones"].get("400"), "D": reports["D"]["update_status"]["milestones"].get("400"), "calibration": calibration_payload.get("diagnostics", {}).get("warmup", {})},
-    )
+    warmup_passed, warmup_metrics = _warmup_lineage_gate(reports, calibration_payload)
+    warmup_gate = GateResult("screen_shared_warmup_state", warmup_passed, warmup_metrics)
     gates.append(warmup_gate)
     candidates = [kind for kind in ("D",) if next(g for g in gates if g.name == f"{kind}_screen_gate").passed]
     if not update_gate.passed or not schedule_gate.passed or not companion_gate.passed or not warmup_gate.passed:
