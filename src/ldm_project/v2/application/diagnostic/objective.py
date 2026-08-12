@@ -320,6 +320,20 @@ def _gradient_calibration(args, config, train_images, train_labels, split, prima
             }
             for name in ("camera", "pairwise", "coverage")
         }
+        record["gradient_group_status"] = {
+            name: {
+                group: (
+                    "inactive_neutral"
+                    if base_groups[group] <= 1.0e-12
+                    and record["gradient_norms_by_group"][name][group] <= 1.0e-12
+                    else "unsafe_base_zero_aux_active"
+                    if base_groups[group] <= 1.0e-12
+                    else "active"
+                )
+                for group in groups
+            }
+            for name in ("camera", "pairwise", "coverage")
+        }
         aggregate_squares["base"] += float(base_norm.square().item())
         for name, vector in weighted.items():
             aggregate_squares[name] += float(vector.norm().square().item())
@@ -344,7 +358,26 @@ def _effective_gradient_gate(diagnostics: dict[str, object]) -> tuple[bool, dict
     batch_safe = all(
         isinstance(row, dict)
         and all(value is not None and float(value) <= 0.50 for value in row.get("weighted_gradient_ratios", {}).values())
-        and all(value is not None and float(value) <= 1.0 for auxiliary in row.get("weighted_gradient_ratios_by_group", {}).values() for value in auxiliary.values())
+        and all(
+            status == "inactive_neutral"
+            or (status == "active"
+                and row.get("weighted_gradient_ratios_by_group", {}).get(auxiliary, {}).get(group) is not None
+                and float(row["weighted_gradient_ratios_by_group"][auxiliary][group]) <= 1.0)
+            for auxiliary, statuses in row.get("gradient_group_status", {}).items()
+            for group, status in statuses.items()
+        )
+        and set(row.get("gradient_group_status", {})) == {"camera", "pairwise", "coverage"}
+        and all(
+            set(statuses) == {
+                "class_carrier",
+                "global_modes",
+                "code_projection",
+                "class_heads",
+                "encoder_phase",
+                "decoder_phase",
+            }
+            for statuses in row.get("gradient_group_status", {}).values()
+        )
         and row.get("combined_gradient_ratios", {}).get("B") is not None
         and float(row["combined_gradient_ratios"]["B"]) <= 0.75
         and row.get("combined_gradient_ratios", {}).get("C") is not None

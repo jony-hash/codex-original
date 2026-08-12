@@ -71,9 +71,16 @@ def test_gradient_cosine_reports_alignment_and_zero_as_unavailable() -> None:
 
 
 def test_effective_gradient_gate_is_invariant_to_raw_loss_units() -> None:
+    statuses = {
+        name: {
+            group: "inactive_neutral"
+            for group in ("class_carrier", "global_modes", "code_projection", "class_heads", "encoder_phase", "decoder_phase")
+        }
+        for name in ("camera", "pairwise", "coverage")
+    }
     diagnostics = {
         "batches": [
-            {"weighted_gradient_ratios": {"camera": 0.25, "pairwise": 0.25, "coverage": 0.25}, "combined_gradient_ratios": {"B": 0.40, "C": 0.55}}
+            {"weighted_gradient_ratios": {"camera": 0.25, "pairwise": 0.25, "coverage": 0.25}, "combined_gradient_ratios": {"B": 0.40, "C": 0.55}, "gradient_group_status": statuses}
             for _ in range(4)
         ],
         "effective_gradients": {
@@ -103,9 +110,16 @@ def test_effective_gradient_gate_rejects_spikes_and_missing_components() -> None
 
 
 def test_effective_gradient_gate_uses_auxiliary_delta_not_base_plus_delta() -> None:
+    statuses = {
+        name: {
+            group: "inactive_neutral"
+            for group in ("class_carrier", "global_modes", "code_projection", "class_heads", "encoder_phase", "decoder_phase")
+        }
+        for name in ("camera", "pairwise", "coverage")
+    }
     diagnostics = {
         "batches": [
-            {"weighted_gradient_ratios": {"camera": 0.25, "pairwise": 0.25, "coverage": 0.25}, "combined_gradient_ratios": {"B": 0.35, "C": 0.45}}
+            {"weighted_gradient_ratios": {"camera": 0.25, "pairwise": 0.25, "coverage": 0.25}, "combined_gradient_ratios": {"B": 0.35, "C": 0.45}, "gradient_group_status": statuses}
             for _ in range(4)
         ],
         "effective_gradients": {
