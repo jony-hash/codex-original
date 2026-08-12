@@ -7,6 +7,7 @@ instrument and is only consumed by formal acceptance evaluation.
 from __future__ import annotations
 
 from dataclasses import asdict
+from pathlib import Path
 
 import torch
 from torch.nn import functional as F
@@ -160,6 +161,13 @@ def qualify_acceptance_measurement(args, config) -> int:
     _require_identity(config)
     _require_current_acceptance(config)
     device = torch.device(config.run.device)
+    training_evidence = EvidenceRecordV2.from_dict(
+        __import__("json").loads(Path(args.acceptance_evaluator_training_evidence).read_text(encoding="utf-8"))
+    )
+    if training_evidence.evidence_kind != "acceptance_evaluator_training" or training_evidence.status != "passed":
+        raise ValueError("acceptance evaluator training evidence is not passed")
+    from .runtime import _validate_current_evidence_source
+    _validate_current_evidence_source(training_evidence)
     images, labels = load_local_mnist(args.dataset_root, train=True)
     _, _, validation_images, validation_labels, split = _split(images, labels, args.dataset_root)
     primary, primary_payload = load_frozen_evaluator(args.evaluator_checkpoint, device=device)
@@ -172,6 +180,11 @@ def qualify_acceptance_measurement(args, config) -> int:
         raise ValueError("acceptance evaluator contract mismatch")
     if MNISTSplitManifest(**secondary_payload["split_manifest"]).manifest_hash != split.manifest_hash:
         raise ValueError("acceptance evaluator split mismatch")
+    secondary_hash = file_sha256(args.acceptance_evaluator_checkpoint)
+    if training_evidence.input_hashes.get("acceptance_evaluator") != secondary_hash:
+        raise ValueError("acceptance evaluator training evidence does not bind checkpoint")
+    if training_evidence.context.dataset_split_manifest_hash != split.manifest_hash:
+        raise ValueError("acceptance evaluator training evidence split mismatch")
     secondary = SmoothMNISTEvaluator().to(device)
     secondary.load_state_dict(secondary_payload["state_dict"], strict=True)
     secondary.freeze()
@@ -192,7 +205,6 @@ def qualify_acceptance_measurement(args, config) -> int:
     run = _new_run(config)
     test_manifest_path = run.root / "mnist_test_manifest.json"
     atomic_write_json(test_manifest_path, test_manifest)
-    secondary_hash = file_sha256(args.acceptance_evaluator_checkpoint)
     bundle = {
         "schema_version": 1,
         "contract": ACCEPTANCE_MEASUREMENT_CONTRACT,
@@ -201,6 +213,8 @@ def qualify_acceptance_measurement(args, config) -> int:
         "split_manifest_hash": split.manifest_hash,
         "test_manifest_hash": file_sha256(test_manifest_path),
         "test_content_manifest_hash": test_manifest["manifest_hash"],
+        "test_manifest_filename": test_manifest_path.name,
+        "training_evidence_hash": training_evidence.evidence_hash,
         "preprocessing": "fixed_exposure_28x28",
         "feature_dim": 128,
     }
@@ -231,6 +245,7 @@ def qualify_acceptance_measurement(args, config) -> int:
             "measurement_bundle": file_sha256(bundle_path),
             "test_manifest": file_sha256(test_manifest_path),
             "test_content_manifest": str(test_manifest["manifest_hash"]),
+            "acceptance_evaluator_training_evidence": training_evidence.evidence_hash,
             "contract": ACCEPTANCE_MEASUREMENT_CONTRACT,
         },
         gates,

@@ -84,7 +84,7 @@ def conditional_evaluate(args, config: V2Config) -> int:
         measurement = EvidenceRecordV2.from_dict(json.loads(Path(args.acceptance_measurement_evidence).read_text(encoding="utf-8")))
         if measurement.evidence_kind != "conditional_acceptance_measurement" or measurement.status != "passed":
             raise ValueError("acceptance measurement evidence is not qualified")
-        _validate_current_evidence_source(measurement)
+        _validate_current_evidence_source(training_record, measurement)
         measurement_bundle_hash = file_sha256(args.acceptance_measurement_bundle)
         require_input_hashes(measurement, {"measurement_bundle": measurement_bundle_hash})
         bundle_payload = json.loads(Path(args.acceptance_measurement_bundle).read_text(encoding="utf-8"))
@@ -92,7 +92,10 @@ def conditional_evaluate(args, config: V2Config) -> int:
             raise ValueError("acceptance measurement bundle is malformed")
         if bundle_payload.get("primary_checkpoint") != evaluator_checkpoint_hash(args.evaluator_checkpoint) or bundle_payload.get("secondary_checkpoint") != file_sha256(args.acceptance_evaluator_checkpoint):
             raise ValueError("acceptance measurement evaluator hash mismatch")
-        test_manifest_path = Path(args.acceptance_measurement_bundle).with_name("mnist_test_manifest.json")
+        manifest_name = bundle_payload.get("test_manifest_filename")
+        if not isinstance(manifest_name, str) or not manifest_name or Path(manifest_name).is_absolute() or ".." in Path(manifest_name).parts:
+            raise ValueError("acceptance measurement bundle has an unsafe test manifest filename")
+        test_manifest_path = Path(args.acceptance_measurement_bundle).parent / manifest_name
         if file_sha256(test_manifest_path) != bundle_payload.get("test_manifest_hash") or measurement.input_hashes.get("test_manifest") != file_sha256(test_manifest_path):
             raise ValueError("acceptance measurement test manifest hash mismatch")
         secondary_payload = safe_torch_load(args.acceptance_evaluator_checkpoint)
@@ -105,6 +108,10 @@ def conditional_evaluate(args, config: V2Config) -> int:
     checkpoint_hash = training_record.input_hashes.get("checkpoint")
     if not isinstance(checkpoint_hash, str):
         raise ValueError("training evidence lacks checkpoint binding")
+    if measurement is not None:
+        training_evidence_hash = file_sha256(args.training_evidence)
+        if measurement.input_hashes.get("acceptance_evaluator_training_evidence") not in {None, training_evidence_hash}:
+            raise ValueError("acceptance measurement was qualified against another training evidence")
     require_evidence_action(
         training_record,
         kind="conditional_training",

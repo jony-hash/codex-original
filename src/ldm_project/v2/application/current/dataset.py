@@ -29,6 +29,14 @@ def _measurement_inputs(record: EvidenceRecordV2) -> dict[str, str]:
         if isinstance((value := record.input_hashes.get(name)), str)
     }
 
+
+def _require_measurement_inputs(record: EvidenceRecordV2) -> dict[str, str]:
+    values = _measurement_inputs(record)
+    required = ("secondary_evaluator", "measurement_bundle", "measurement_evidence", "test_manifest", "test_content_manifest")
+    if any(name not in values for name in required):
+        raise ValueError("downstream dataset evidence lacks complete acceptance measurement lineage")
+    return values
+
 def export_conditional_dataset(args, config: V2Config) -> int:
     _require_conditional(config)
     admission = _passed_evidence(
@@ -49,6 +57,7 @@ def export_conditional_dataset(args, config: V2Config) -> int:
             checkpoint_hash=checkpoint_hash,
         ),
     )
+    measurement_inputs = _require_measurement_inputs(admission)
     device = torch.device(config.run.device)
     bundle, manifest = _load_bundle(
         config, args.checkpoint, device=device, checkpoint_sha256=checkpoint_hash
@@ -130,7 +139,7 @@ def export_conditional_dataset(args, config: V2Config) -> int:
         "samples_per_label": count,
         "seed": args.seed,
         "code_distribution": "uniform[-1,1]^8",
-        "acceptance_measurement": _measurement_inputs(admission),
+        "acceptance_measurement": measurement_inputs,
         "shards": shard_hashes,
         "raw_shape": [1, *config.system.slm_shape],
         "mnist_shape": [1, 28, 28],
@@ -158,7 +167,7 @@ def export_conditional_dataset(args, config: V2Config) -> int:
         {
             "generation_admission": admission.evidence_hash,
             "candidate_manifest": file_sha256(dataset_root / "manifest.json"),
-            **_measurement_inputs(admission),
+            **measurement_inputs,
         },
         (GateResult("candidate_shards_complete", True, {"samples": float(index)}),),
         ("audit_memorization", "evaluate_utility"),
@@ -195,6 +204,7 @@ def audit_memorization(args, config: V2Config) -> int:
             candidate_manifest_hash=manifest_hash,
         ),
     )
+    measurement_inputs = _require_measurement_inputs(candidate)
     device = torch.device(config.run.device)
     evaluator, _ = load_frozen_evaluator(args.evaluator_checkpoint, device=device)
     real_images, real_labels = load_local_mnist(args.dataset_root, train=True)
@@ -246,7 +256,7 @@ def audit_memorization(args, config: V2Config) -> int:
                 Path(args.candidate_dataset) / "manifest.json"
             ),
             "report": file_sha256(report_path),
-            **_measurement_inputs(candidate),
+            **measurement_inputs,
         },
         (gate,),
         ("admit_dataset",) if passed else (),
@@ -316,6 +326,7 @@ def evaluate_utility(args, config: V2Config) -> int:
             candidate_manifest_hash=manifest_hash,
         ),
     )
+    measurement_inputs = _require_measurement_inputs(candidate)
     device = torch.device(config.run.device)
     train_images, train_labels = load_local_mnist(args.dataset_root, train=True)
     test_images, test_labels = load_local_mnist(args.dataset_root, train=False)
@@ -410,7 +421,7 @@ def evaluate_utility(args, config: V2Config) -> int:
                 Path(args.candidate_dataset) / "manifest.json"
             ),
             "report": file_sha256(report_path),
-            **_measurement_inputs(candidate),
+            **measurement_inputs,
         },
         (gate,),
         ("admit_dataset",) if all_passed else (),
@@ -445,6 +456,7 @@ def admit_dataset(args, config: V2Config) -> int:
         action="export",
         expected_context=lineage_context,
     )
+    measurement_inputs = _require_measurement_inputs(admission)
     expected = _context(
         config,
         evaluator_hash=payload["evaluator_checkpoint_hash"],
@@ -519,7 +531,7 @@ def admit_dataset(args, config: V2Config) -> int:
             "utility": utility.evidence_hash,
             "candidate_manifest": file_sha256(root / "manifest.json"),
             "accepted_manifest": file_sha256(accepted_path),
-            **_measurement_inputs(admission),
+            **measurement_inputs,
         },
         (
             GateResult(

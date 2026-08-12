@@ -63,7 +63,7 @@ def register_student(root: argparse._SubParsersAction) -> None:
     acceptance_evaluator.add_argument("--epochs", type=int, default=10)
     acceptance_evaluator.add_argument("--batch-size", type=int, default=256)
     qualify_measurement = student.add_parser("qualify-acceptance-measurement")
-    for name in ("config", "dataset_root", "evaluator_checkpoint", "acceptance_evaluator_checkpoint"):
+    for name in ("config", "dataset_root", "evaluator_checkpoint", "acceptance_evaluator_checkpoint", "acceptance_evaluator_training_evidence"):
         qualify_measurement.add_argument("--" + name.replace("_", "-"), required=True)
     objective_screen = student.add_parser("objective-alignment-screen")
     objective_screen.add_argument("--config", required=True)
