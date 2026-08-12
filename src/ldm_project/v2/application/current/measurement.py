@@ -108,9 +108,22 @@ def _test_manifest(images: torch.Tensor, labels: torch.Tensor) -> dict[str, obje
     return payload
 
 
+def _require_official_test_split(images: torch.Tensor, labels: torch.Tensor) -> None:
+    if (
+        images.ndim != 4
+        or tuple(images.shape[1:]) != (1, 28, 28)
+        or labels.ndim != 1
+        or labels.numel() != 10_000
+        or images.shape[0] != 10_000
+    ):
+        raise ValueError("official MNIST test split must contain exactly 10000 28x28 samples")
+
+
 def train_acceptance_evaluator(args, config) -> int:
     _require_identity(config)
     _require_current_acceptance(config)
+    if args.epochs != 10 or args.batch_size != 256:
+        raise ValueError("acceptance evaluator contract fixes epochs=10 and batch_size=256")
     device = torch.device(config.run.device)
     images, labels = load_local_mnist(args.dataset_root, train=True)
     train_images, train_labels, validation_images, validation_labels, split = _split(images, labels, args.dataset_root)
@@ -166,6 +179,8 @@ def qualify_acceptance_measurement(args, config) -> int:
     )
     if training_evidence.evidence_kind != "acceptance_evaluator_training" or training_evidence.status != "passed":
         raise ValueError("acceptance evaluator training evidence is not passed")
+    if training_evidence.permitted_next_actions != ("qualify_acceptance_measurement",):
+        raise ValueError("acceptance evaluator training evidence does not authorize measurement qualification")
     from .runtime import _validate_current_evidence_source
     _validate_current_evidence_source(training_evidence)
     images, labels = load_local_mnist(args.dataset_root, train=True)
@@ -201,6 +216,7 @@ def qualify_acceptance_measurement(args, config) -> int:
             "secondary": float((s == secondary_prediction).float().mean().item()),
         }
     test_images, test_labels = load_local_mnist(args.dataset_root, train=False)
+    _require_official_test_split(test_images, test_labels)
     test_manifest = _test_manifest(test_images, test_labels)
     run = _new_run(config)
     test_manifest_path = run.root / "mnist_test_manifest.json"

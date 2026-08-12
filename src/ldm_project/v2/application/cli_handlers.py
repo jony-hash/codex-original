@@ -484,6 +484,7 @@ def _dispatch(args: argparse.Namespace) -> int:
                 f"{args.domain}/{args.action}"
             )
         target = _resolve(spec)
+        setattr(args, "_from_cli", True)
         return int(target(args, config) or 0)
     spec = _DIAGNOSTIC_HANDLERS.get((args.domain, args.action))
     if spec is None:

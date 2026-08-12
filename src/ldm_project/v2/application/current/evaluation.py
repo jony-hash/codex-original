@@ -18,6 +18,7 @@ from .runtime import (
     write_conditional_review_artifacts,
 )
 from .admission import _code_fraction, _passed_evidence
+from .measurement import ACCEPTANCE_MEASUREMENT_CONTRACT
 from ...student.evaluator import SmoothMNISTEvaluator
 
 
@@ -71,7 +72,7 @@ def conditional_evaluate(args, config: V2Config) -> int:
         images, all_labels, args.dataset_root
     )
     evaluator, _ = load_frozen_evaluator(args.evaluator_checkpoint, device=device)
-    legacy_direct_call = not hasattr(args, "acceptance_evaluator_checkpoint")
+    legacy_direct_call = not getattr(args, "_from_cli", False) and not hasattr(args, "acceptance_evaluator_checkpoint")
     measurement = None
     measurement_bundle_hash = None
     test_manifest_path = None
@@ -88,7 +89,7 @@ def conditional_evaluate(args, config: V2Config) -> int:
         measurement_bundle_hash = file_sha256(args.acceptance_measurement_bundle)
         require_input_hashes(measurement, {"measurement_bundle": measurement_bundle_hash})
         bundle_payload = json.loads(Path(args.acceptance_measurement_bundle).read_text(encoding="utf-8"))
-        if not isinstance(bundle_payload, dict) or bundle_payload.get("contract") is None:
+        if not isinstance(bundle_payload, dict) or bundle_payload.get("contract") != ACCEPTANCE_MEASUREMENT_CONTRACT:
             raise ValueError("acceptance measurement bundle is malformed")
         if bundle_payload.get("primary_checkpoint") != evaluator_checkpoint_hash(args.evaluator_checkpoint) or bundle_payload.get("secondary_checkpoint") != file_sha256(args.acceptance_evaluator_checkpoint):
             raise ValueError("acceptance measurement evaluator hash mismatch")
