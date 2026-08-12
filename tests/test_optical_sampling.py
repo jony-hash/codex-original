@@ -1,3 +1,5 @@
+import copy
+
 import pytest
 import torch
 
@@ -108,7 +110,13 @@ def test_free_space_back_path_reports_lens_magnification_and_camera_sampling():
 
 
 def test_physical_forward_contract_rejects_non_identity_ols_and_wrong_d2nn_geometry():
-    from ldm_project.config import D2NNConfig, OneShotConfig, PhysicsConfig, TrainingConfig, validate_physical_forward_contract
+    from ldm_project.config import (
+        D2NNConfig,
+        OneShotConfig,
+        PhysicsConfig,
+        TrainingConfig,
+        validate_physical_forward_contract,
+    )
 
     config = TrainingConfig(
         one_shot=OneShotConfig(
@@ -120,6 +128,28 @@ def test_physical_forward_contract_rejects_non_identity_ols_and_wrong_d2nn_geome
 
     with pytest.raises(ValueError, match="identity OLS"):
         validate_physical_forward_contract(config, PhysicsConfig(front_path_model="free_space", back_path_model="free_space"))
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("ols_kind", "tanh", "identity OLS"),
+        ("target_code_diagnostic_mode", "small_sharp_stroke_digit_code", "target-code"),
+        ("target_code_bridge_source", "encoded_amplitude", "target-code"),
+        ("ols_transfer_calibration", "phase_screen", "calibration"),
+    ],
+)
+def test_physical_contract_rejects_non_identity_interventions(field, value, message):
+    from ldm_project.config import load_training_config, validate_physical_forward_contract
+
+    config = load_training_config("configs/v1/diagnostic/validate_v52_physical_forward_model.yaml")
+    config.one_shot.physical_forward_contract = True
+    config.physics.physical_forward_contract = True
+    config.physics.front_path_model = "coherent_imaging_4f"
+    candidate = copy.deepcopy(config)
+    setattr(candidate.one_shot, field, value)
+    with pytest.raises(ValueError, match=message):
+        validate_physical_forward_contract(candidate, candidate.physics)
 
 
 def test_identity_ols_is_complex_linear():

@@ -163,3 +163,4 @@ def test_transparent_boundary_keeps_physical_relay_but_routes_experimental() -> 
     model = OneShotOpticalGenerator(physics, config, image_size=8)
     assert model.__class__.__name__ == "_LegacyDiagnosticOneShotOpticalGenerator"
     assert model.physics.physical_forward_contract is True
+
