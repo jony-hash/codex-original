@@ -69,6 +69,21 @@ optical-capacity, hardware, or universal semantic-diversity impossibility.
 Maintenance governance is now the next permitted work; any new objective or
 scientific diagnostic must be a separate research line.
 
+## Objective diagnostic closeout (2026-08-12)
+
+The effective-gradient calibration fix was completed at clean commit
+`32ac4c5` (primary implementation `c942481`). Component-bound upstream
+qualification, measurement, and injection evidence from `a945f61` remained
+reusable and was checked before calibration. The new run
+`outputs/20260812_v2/runs/20260812_183756_552830_formal_v2_identity_logit_amplitude_finite_crop_identity`
+ended with valid `conditional_objective_weight_calibration / diagnostic / failed`
+evidence. Raw weights remain diagnostic metadata; the effective single-auxiliary
+ratios were within budget, but combined B and C ratios were `1.0604` and
+`1.2445`, exceeding the fail-closed limits `0.75` and `1.00`. No screen,
+confirmation, objective promotion, or formal training was authorized. This is
+an objective-diagnostic budget failure, not a model, optical, hardware, or
+execution-invalid claim.
+
 The remainder of this file records immutable historical closures and is retained
 for context; those records must not be rewritten or used as current acceptance.
 
