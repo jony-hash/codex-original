@@ -18,6 +18,7 @@ from .runtime import (
     json, load_frozen_evaluator, load_local_mnist, require_evidence_action,
     require_input_hashes,
     safe_torch_load, save_conditional_checkpoint, state_content_hash, state_signature, torch,
+    deterministic_companion_indices, objective_contract_payload, active_objective_kind,
 )
 from .admission import (
     _conditional_parameter_groups,
@@ -249,6 +250,8 @@ def conditional_train(args, config: V2Config) -> int:
         epochs=settings.epochs,
     )
     epoch_step_counts: list[int] = []
+    companion_schedule: list[str] = []
+    active_objectives: list[str] = []
     for epoch in range(settings.epochs):
         epoch_steps = 0
         for batch_number, indices in enumerate(
@@ -261,6 +264,18 @@ def conditional_train(args, config: V2Config) -> int:
                 labels.numel(), device=device, seed=(epoch + 1) * 100000 + batch_number
             )
             optimizer.zero_grad(set_to_none=True)
+            active_objective = active_objective_kind(settings.objective_kind, settings.objective_activation_step, update_steps)
+            companions = deterministic_companion_indices(
+                train_labels,
+                indices,
+                seed=1234 * 100000 + update_steps,
+            )
+            companion_schedule.append(canonical_sha256(companions))
+            companion_views = None
+            companion_labels = None
+            if active_objective == "D":
+                companion_views = train_images.index_select(0, companions).to(device)
+                companion_labels = train_labels.index_select(0, companions).to(device)
             loss, summary, _ = conditional_loss(
                 system=bundle.system,
                 generator=bundle.generator,
@@ -273,10 +288,12 @@ def conditional_train(args, config: V2Config) -> int:
                 sinkhorn_iterations=settings.sinkhorn_iterations,
                 activation_checkpoint=config.execution.activation_checkpoint,
                 microbatch_size=config.execution.training_microbatch_size,
-                objective_kind=settings.objective_kind,
+                objective_kind=active_objective,
                 camera_code_safety_weight=settings.camera_code_safety_weight,
                 pairwise_diversity_weight=settings.pairwise_diversity_weight,
                 coverage_ratio_weight=settings.coverage_ratio_weight,
+                coverage_companion_views=companion_views,
+                coverage_companion_labels=companion_labels,
             )
             loss.backward()
             if config.architecture == IDENTITY_ARCHITECTURE:
@@ -296,7 +313,8 @@ def conditional_train(args, config: V2Config) -> int:
                     gradient_seen,
                 )
                 update_audit_completed = True
-            history.append(asdict(summary) | {"epoch": float(epoch + 1)})
+            history.append(asdict(summary) | {"epoch": float(epoch + 1), "active_objective": active_objective})
+            active_objectives.append(active_objective)
         epoch_step_counts.append(epoch_steps)
     if config.architecture == IDENTITY_ARCHITECTURE and not update_audit_completed:
         raise ValueError("current training requires at least two optimizer steps")
@@ -331,7 +349,13 @@ def conditional_train(args, config: V2Config) -> int:
         else None,
         settings.initialization_seed if config.architecture == IDENTITY_ARCHITECTURE else None,
         init_manifest.initialization_state_hash if init_manifest is not None else None,
-        canonical_sha256({"version": OBJECTIVE_CONTRACT_VERSION, "kind": settings.objective_kind, "camera": settings.camera_code_safety_weight, "pairwise": settings.pairwise_diversity_weight, "coverage": settings.coverage_ratio_weight}) if settings.objective_kind != "A" else None,
+        canonical_sha256(objective_contract_payload(
+            settings.objective_kind,
+            settings.objective_activation_step,
+            settings.camera_code_safety_weight,
+            settings.pairwise_diversity_weight,
+            settings.coverage_ratio_weight,
+        )) if settings.objective_kind != "A" else None,
     )
     save_conditional_checkpoint(
         checkpoint_path,
@@ -339,6 +363,8 @@ def conditional_train(args, config: V2Config) -> int:
         manifest,
         extra={
             "history": history,
+            "active_objectives": active_objectives,
+            "companion_schedule_hash": canonical_sha256(companion_schedule),
             "schedule_steps_per_epoch": expected_steps_per_epoch
             if config.architecture == IDENTITY_ARCHITECTURE
             else None,
@@ -363,6 +389,7 @@ def conditional_train(args, config: V2Config) -> int:
         inputs["schedule_contract"] = BALANCED_TRAINING_SCHEDULE_CONTRACT
         inputs["schedule_steps_per_epoch"] = str(expected_steps_per_epoch)
         inputs["schedule_total_steps"] = str(expected_total_steps)
+        inputs["companion_schedule_hash"] = canonical_sha256(companion_schedule)
     record = EvidenceRecordV2(
         2,
         "conditional_training",

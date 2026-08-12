@@ -1,5 +1,24 @@
 # 当前主线交接：v2 formal evaluation 与 objective diagnostic 收口（2026-08-12）
 
+## Objective D diagnostic implementation (2026-08-12)
+
+The branch `experiment/v2-late-objective-v25` contains an engineering-only
+diagnostic implementation of registered candidate D.  D preserves the formal
+identity optical path and activates at global step 400 after an A-equivalent
+warmup; it adds the camera, smooth worst-class relative-diversity, and coverage
+auxiliaries with a shared deterministic companion schedule.  Runtime,
+checkpoint, training, and diagnostic objective hashes use one neutral contract
+builder and bind the warmup model/optimizer state plus primary and companion
+schedules.
+
+This implementation is not an objective-selection decision.  The current YAML
+remains objective A, old A/B/C evidence is read-only, and no D calibration,
+screen, confirmation, formal training, evaluation, promotion, or dataset action
+is authorized.  The real consumers are the D calibration/screen/confirmation
+evidence readers and the formal evaluation gate; the A run is the registered
+negative control.  A failed calibration, screen, or confirmation closes this
+objective family without changing the optical contract.
+
 ## Current identity status
 
 The current evidence-lineage policy is clean ancestor plus scoped Git diff.

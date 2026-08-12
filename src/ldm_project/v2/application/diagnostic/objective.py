@@ -24,6 +24,11 @@ from ...student.conditional import (
     pairwise_diversity_distribution_loss,
     raw_from_generator_batched,
     relative_diversity_ratios,
+    relative_diversity_worst_class_loss,
+    deterministic_companion_indices,
+    active_objective_kind,
+    objective_contract_payload,
+    OBJECTIVE_CONTRACT_VERSION,
     coverage_ratio_upper_loss,
     log_sinkhorn,
 )
@@ -51,25 +56,27 @@ from ...student.checkpoints import state_content_hash
 from ...evidence.records import require_evidence_action, require_input_hashes
 
 
-OBJECTIVE_DIAGNOSTIC_CONTRACT = canonical_sha256(
-    {
-        "kind": "conditional_objective_alignment_v2",
-        "candidates": ["A", "B", "C"],
-        "screen_steps": 100,
-        "confirm_steps": 400,
+OBJECTIVE_DIAGNOSTIC_CONTRACT_SPEC = {
+        "kind": "conditional_objective_alignment_v3",
+        "candidates": ["A", "D"],
+        "screen_steps": 984,
+        "confirm_steps": 984,
         "seeds": [1234, 1235, 1236],
         "panel_seed": 9012,
         "panel_per_class": 17,
         "reference_per_class": 34,
         "weight_rule": "0.25*base_gradient_norm/auxiliary_gradient_norm",
-        "calibration_version": "effective_auxiliary_delta_v4",
+        "calibration_version": "effective_auxiliary_delta_v5_late_warmup",
+        "activation_step": 400,
+        "diversity": "smooth_worst_class_relative_v1",
         "camera_target": 0.30,
         "camera_temperature": 0.02,
         "coverage_target": 1.35,
         "coverage_temperature": 0.10,
-        "companion": "five_per_label_excluding_primary_v1",
-    }
-)
+        "companion": "seed_times_100000_plus_global_step_v2",
+        "objective_contract_version": OBJECTIVE_CONTRACT_VERSION,
+}
+OBJECTIVE_DIAGNOSTIC_CONTRACT = canonical_sha256(OBJECTIVE_DIAGNOSTIC_CONTRACT_SPEC)
 
 
 def _record_context(config, evaluator_hash: str, split_hash: str, checkpoint_hash: str | None = None) -> EvidenceContextV2:
@@ -203,7 +210,7 @@ def _code_seed(seed: int, step: int) -> int:
     return bases[seed] + step
 
 
-def _gradient_calibration(args, config, train_images, train_labels, split, primary, bundle, evaluator_hash, input_hashes):
+def _gradient_calibration(args, config, train_images, train_labels, split, primary, bundle, evaluator_hash, input_hashes, *, start_step: int = 400, steps: int = 4):
     settings = config.conditional_generation
     assert settings is not None
     groups = _conditional_parameter_groups(bundle)
@@ -212,23 +219,21 @@ def _gradient_calibration(args, config, train_images, train_labels, split, prima
     control_selected = tuple(parameter for name in control_names for parameter in groups[name])
     selected_positions = {id(parameter): index for index, parameter in enumerate(selected)}
     sums = {name: torch.zeros((), device=selected[0].device) for name in ("base", "camera", "pairwise", "coverage")}
-    steps = 0
+    collected = 0
     batch_records = []
     batch_vectors = []
-    for epoch in range(1):
-        for batch_number, indices in enumerate(balanced_batches(train_labels, batch_size=settings.logical_batch_size, seed=1234 + epoch)):
-            if steps >= 4:
-                break
+    for local_step, indices in enumerate(_scheduled_batches(train_labels, batch_size=settings.logical_batch_size, seed=1234, start_step=start_step, steps=steps)):
+            step = start_step + local_step
             device = selected[0].device
             labels = train_labels.index_select(0, indices).to(device)
-            codes = _random_codes(labels.numel(), device=selected[0].device, seed=(epoch + 1) * 100000 + batch_number)
+            codes = _random_codes(labels.numel(), device=selected[0].device, seed=_code_seed(1234, step))
             real_views = train_images.index_select(0, indices).to(device)
             base, _, raw = conditional_loss(system=bundle.system, generator=bundle.generator, evaluator=primary, codes=codes, labels=labels, real_views=real_views, exposure_scale=settings.fixed_exposure_scale, sinkhorn_epsilon=settings.sinkhorn_epsilon, sinkhorn_iterations=settings.sinkhorn_iterations, activation_checkpoint=False, microbatch_size=config.execution.training_microbatch_size)
             generated_view = fixed_exposure_view(raw, settings.fixed_exposure_scale)
             generated_features, _ = primary(generated_view)
             with torch.no_grad():
                 real_features, _ = primary(real_views)
-            companion_indices = _companion_indices(train_labels, indices, seed=1234 * 100000 + batch_number)
+            companion_indices = _companion_indices(train_labels, indices, seed=1234 * 100000 + step)
             companion_views = train_images.index_select(0, companion_indices).to(device)
             companion_labels = train_labels.index_select(0, companion_indices).to(device)
             with torch.no_grad():
@@ -236,7 +241,7 @@ def _gradient_calibration(args, config, train_images, train_labels, split, prima
             losses = {
                 "base": base,
                 "camera": _auxiliary_loss(raw, generated_view, generated_features, real_features, labels, real_views, "camera", settings.sinkhorn_epsilon, settings.sinkhorn_iterations),
-                "pairwise": _auxiliary_loss(raw, generated_view, generated_features, real_features, labels, real_views, "pairwise", settings.sinkhorn_epsilon, settings.sinkhorn_iterations),
+                "pairwise": relative_diversity_worst_class_loss(generated_features, real_features, labels),
                 "coverage": coverage_ratio_upper_loss(
                     generated_features, generated_view, real_features, real_views, labels,
                     epsilon=settings.sinkhorn_epsilon, iterations=settings.sinkhorn_iterations,
@@ -257,7 +262,8 @@ def _gradient_calibration(args, config, train_images, train_labels, split, prima
                 sums[name] = sums[name] + norm.square()
             batch_records.append({
                 "batch_index_hash": canonical_sha256(indices),
-                "code_seed": (epoch + 1) * 100000 + batch_number,
+                "global_step": step,
+                "code_seed": _code_seed(1234, step),
                 "companion_index_hash": canonical_sha256(companion_indices),
                 "companion_count_by_label": torch.bincount(companion_labels, minlength=10).tolist(),
                 "companion_primary_overlap": bool(torch.isin(companion_indices, indices).any().item()),
@@ -270,10 +276,8 @@ def _gradient_calibration(args, config, train_images, train_labels, split, prima
                 },
             })
             batch_vectors.append(gradient_vectors)
-            steps += 1
-        if steps >= 4:
-            break
-    if steps != 4:
+            collected += 1
+    if collected != steps:
         raise ValueError("gradient calibration did not obtain four balanced batches")
     norms = {name: float((value / 4.0).sqrt().item()) for name, value in sums.items()}
     weights = {name: 0.25 * norms["base"] / norms[name] if torch.isfinite(torch.tensor([norms["base"], norms[name]])).all() and norms[name] > 1.0e-12 else None for name in ("camera", "pairwise", "coverage")}
@@ -444,18 +448,7 @@ def _measure_panel(bundle, primary, secondary, validation_images, validation_lab
 
 
 def _companion_indices(labels: torch.Tensor, primary_indices: torch.Tensor, *, seed: int) -> torch.Tensor:
-    generator = torch.Generator(device="cpu").manual_seed(seed)
-    primary_labels = labels.index_select(0, primary_indices)
-    selected: list[torch.Tensor] = []
-    for label in range(10):
-        primary = primary_indices[primary_labels == label]
-        candidates = torch.nonzero(labels == label, as_tuple=False).flatten()
-        candidates = candidates[~torch.isin(candidates, primary)]
-        if candidates.numel() < primary.numel():
-            raise ValueError("companion schedule cannot exclude primary samples")
-        order = torch.randperm(candidates.numel(), generator=generator)
-        selected.append(candidates.index_select(0, order[: primary.numel()]))
-    return torch.cat(selected)
+    return deterministic_companion_indices(labels, primary_indices, seed=seed)
 
 
 def _scheduled_batches(labels: torch.Tensor, *, batch_size: int, seed: int, start_step: int, steps: int) -> list[torch.Tensor]:
@@ -478,6 +471,7 @@ def _run_steps(bundle, primary, train_images, train_labels, config, objective_ki
     companion_schedule = [] if companion_schedule is None else companion_schedule
     gradient_seen = {name: False for name in groups}
     before = {name: [parameter.detach().clone() for parameter in parameters] for name, parameters in groups.items()}
+    milestones: dict[str, dict[str, str]] = {}
     device = next(bundle.parameters()).device
     iterator = iter(_scheduled_batches(train_labels, batch_size=settings.logical_batch_size, seed=seed, start_step=start_step, steps=steps))
     for local_step in range(steps):
@@ -489,8 +483,10 @@ def _run_steps(bundle, primary, train_images, train_labels, config, objective_ki
         real_views = train_images.index_select(0, indices).to(device)
         companion_views = None
         companion_labels = None
-        if objective_kind == "C":
-            companions = _companion_indices(train_labels, indices, seed=seed * 100000 + step)
+        companions = _companion_indices(train_labels, indices, seed=seed * 100000 + step)
+        companion_schedule.append(canonical_sha256(companions))
+        active_kind = active_objective_kind(objective_kind, 400, step)
+        if active_kind in {"C", "D"}:
             companion_views = train_images.index_select(0, companions).to(device)
             companion_labels = train_labels.index_select(0, companions).to(device)
         optimizer.zero_grad(set_to_none=True)
@@ -506,7 +502,7 @@ def _run_steps(bundle, primary, train_images, train_labels, config, objective_ki
             sinkhorn_iterations=settings.sinkhorn_iterations,
             activation_checkpoint=False,
             microbatch_size=config.execution.training_microbatch_size,
-            objective_kind=objective_kind,
+            objective_kind=active_kind,
             camera_code_safety_weight=weights["camera"],
             pairwise_diversity_weight=weights["pairwise"],
             coverage_ratio_weight=weights["coverage"],
@@ -520,6 +516,11 @@ def _run_steps(bundle, primary, train_images, train_labels, config, objective_ki
             if any(parameter.grad is not None and torch.isfinite(parameter.grad).all() and parameter.grad.detach().norm() > 0 for parameter in parameters):
                 gradient_seen[name] = True
         optimizer.step()
+        if step + 1 in {400, 984}:
+            milestones[str(step + 1)] = {
+                "state_hash": state_content_hash(bundle.state_dict()),
+                "optimizer_hash": canonical_sha256(optimizer.state_dict()),
+            }
         with torch.no_grad():
             generated_view = fixed_exposure_view(raw.detach(), settings.fixed_exposure_scale)
             generated_features, _ = primary(generated_view)
@@ -543,12 +544,17 @@ def _run_steps(bundle, primary, train_images, train_labels, config, objective_ki
             "auxiliary_raw": auxiliary,
             "frozen_weights": dict(weights),
             "differentiable_coverage_ratio": auxiliary["coverage"],
+            "active_objective": active_kind,
         })
     updated = {
         name: gradient_seen[name] and any(not torch.equal(parameter.detach(), previous) for parameter, previous in zip(parameters, before[name], strict=True))
         for name, parameters in groups.items()
     }
-    return history, primary_schedule, companion_schedule, optimizer, {"gradient_seen": gradient_seen, "updated": updated}
+    return history, primary_schedule, companion_schedule, optimizer, {
+        "gradient_seen": gradient_seen,
+        "updated": updated,
+        "milestones": milestones,
+    }
 
 
 def _diagnostic_record(config, kind, status, context, input_hashes, gates, permitted=(), reason=None, extra=None, artifact_payloads=None):
@@ -577,10 +583,19 @@ def _diagnostic_record(config, kind, status, context, input_hashes, gates, permi
 def conditional_objective_weight_calibration(args, config) -> int:
     _require_identity(config)
     train_images, train_labels, _, _, split, primary, injection, bundle, manifest, init_hash, evaluator_hash = _load_primary_inputs(args, config)
+    warmup_history, warmup_primary_schedule, warmup_companion_schedule, warmup_optimizer, warmup_updates = _run_steps(
+        bundle, primary, train_images, train_labels, config, "A",
+        {"camera": 0.0, "pairwise": 0.0, "coverage": 0.0}, 400, 1234,
+    )
+    warmup_state_hash = state_content_hash(bundle.state_dict())
+    warmup_optimizer_hash = canonical_sha256(warmup_optimizer.state_dict())
+    warmup_companion_hash = canonical_sha256(warmup_companion_schedule)
     context = _record_context(config, evaluator_hash, split.manifest_hash, init_hash)
-    input_hashes = {"initialization_checkpoint": init_hash, "injection_evidence": file_sha256(args.injection_evidence), "evaluator": evaluator_hash, "split": split.manifest_hash}
-    norms, weights, diagnostics = _gradient_calibration(args, config, train_images, train_labels, split, primary, bundle, evaluator_hash, {"initialization": init_hash})
-    input_bindings = {"initialization_checkpoint": init_hash, "injection_evidence": file_sha256(args.injection_evidence), "evaluator": evaluator_hash, "split": split.manifest_hash}
+    input_hashes = {"initialization_checkpoint": init_hash, "injection_evidence": file_sha256(args.injection_evidence), "evaluator": evaluator_hash, "split": split.manifest_hash, "warmup_state_hash": warmup_state_hash, "warmup_optimizer_hash": warmup_optimizer_hash, "warmup_schedule": canonical_sha256(warmup_primary_schedule), "warmup_companion_schedule": warmup_companion_hash}
+    norms, weights, diagnostics = _gradient_calibration(args, config, train_images, train_labels, split, primary, bundle, evaluator_hash, input_hashes, start_step=400, steps=4)
+    diagnostics["warmup"] = {"steps": 400, "state_hash": warmup_state_hash, "optimizer_hash": warmup_optimizer_hash, "schedule_hash": canonical_sha256(warmup_primary_schedule), "companion_schedule_hash": warmup_companion_hash, "updates": warmup_updates, "history_tail": warmup_history[-1]}
+    diagnostics["calibration_steps"] = [400, 401, 402, 403]
+    input_bindings = input_hashes
     finite = bool(norms) and all(torch.isfinite(torch.tensor(value)) and value > 1.0e-12 for value in norms.values())
     effective_passed, effective_report = _effective_gradient_gate(diagnostics)
     weighted_ratios = effective_report.get("weighted", {})
@@ -588,14 +603,23 @@ def conditional_objective_weight_calibration(args, config) -> int:
     batch_safe = bool(effective_report.get("batch_safe", False))
     aggregate_safe = bool(effective_report.get("aggregate_safe", False))
     passed = finite and len(diagnostics["batches"]) == 4 and effective_passed
+    objective_payload = objective_contract_payload(
+        "D",
+        400,
+        float(weights.get("camera") or 0.0),
+        float(weights.get("pairwise") or 0.0),
+        float(weights.get("coverage") or 0.0),
+    )
     artifact = {
-        "schema_version": 5,
+        "schema_version": 6,
         "contract": OBJECTIVE_DIAGNOSTIC_CONTRACT,
         "formula": "0.25*base_gradient_norm/auxiliary_gradient_norm",
         "target_ratio": 0.25,
         "legacy_raw_weight_range": [1.0e-3, 10.0],
         "norms": norms,
         "weights": weights,
+        "objective_contract_payload": objective_payload,
+        "objective_contract_hash": canonical_sha256(objective_payload),
         "diagnostics": diagnostics,
         "frozen": passed,
         "formal_promotion_authorized": False,
@@ -630,15 +654,37 @@ def _read_calibration(path: str, evidence_path: str, config, evaluator_hash: str
     )
     require_input_hashes(evidence, {"artifact": file_sha256(path), "evaluator": evaluator_hash, "initialization_checkpoint": init_hash})
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
-    if payload.get("contract") != OBJECTIVE_DIAGNOSTIC_CONTRACT or payload.get("schema_version") != 5 or payload.get("frozen") is not True or payload.get("formal_promotion_authorized") is not False:
+    if payload.get("contract") != OBJECTIVE_DIAGNOSTIC_CONTRACT or payload.get("schema_version") != 6 or payload.get("frozen") is not True or payload.get("formal_promotion_authorized") is not False:
         raise ValueError("objective calibration contract mismatch")
     inputs = payload.get("input_hashes")
     if not isinstance(inputs, dict) or inputs.get("evaluator") != evaluator_hash or inputs.get("initialization_checkpoint") != init_hash:
         raise ValueError("objective calibration lineage mismatch")
+    if not all(isinstance(inputs.get(name), str) for name in ("warmup_state_hash", "warmup_optimizer_hash", "warmup_schedule", "warmup_companion_schedule")):
+        raise ValueError("objective calibration lacks late warmup lineage")
+    if payload.get("diagnostics", {}).get("calibration_steps") != [400, 401, 402, 403]:
+        raise ValueError("objective calibration does not use the registered late steps")
+    warmup = payload.get("diagnostics", {}).get("warmup")
+    if not isinstance(warmup, dict):
+        raise ValueError("objective calibration lacks warmup state metadata")
+    for input_name, warmup_name in (
+        ("warmup_state_hash", "state_hash"),
+        ("warmup_optimizer_hash", "optimizer_hash"),
+        ("warmup_schedule", "schedule_hash"),
+        ("warmup_companion_schedule", "companion_schedule_hash"),
+    ):
+        if inputs.get(input_name) != warmup.get(warmup_name):
+            raise ValueError("objective calibration warmup binding mismatch")
     weights = payload.get("weights")
     if not isinstance(weights, dict) or set(weights) != {"camera", "pairwise", "coverage"}:
         raise ValueError("objective calibration lacks all auxiliary weights")
-    return {name: float(weights[name]) for name in ("camera", "pairwise", "coverage")}
+    if not all(isinstance(weights[name], (int, float)) and math.isfinite(float(weights[name])) and float(weights[name]) > 0.0 for name in ("camera", "pairwise", "coverage")):
+        raise ValueError("objective calibration contains invalid frozen weights")
+    contract_payload = payload.get("objective_contract_payload")
+    contract_hash = payload.get("objective_contract_hash")
+    expected_payload = objective_contract_payload("D", 400, float(weights["camera"]), float(weights["pairwise"]), float(weights["coverage"]))
+    if contract_payload != expected_payload or contract_hash != canonical_sha256(expected_payload):
+        raise ValueError("objective calibration objective contract mismatch")
+    return {name: float(weights[name]) for name in ("camera", "pairwise", "coverage")}, payload
 
 
 def objective_alignment_screen(args, config) -> int:
@@ -647,17 +693,17 @@ def objective_alignment_screen(args, config) -> int:
     injection = _load_injection(args, config, split, evaluator_hash)
     bundle, manifest, init_hash = _load_initialization(args, config, train_labels, split, evaluator_hash, injection)
     calibration_path = args.weight_calibration
-    weights = _read_calibration(calibration_path, args.weight_calibration_evidence, config, evaluator_hash, init_hash)
+    weights, calibration_payload = _read_calibration(calibration_path, args.weight_calibration_evidence, config, evaluator_hash, init_hash)
     reports = {}
-    for kind in ("A", "B", "C"):
+    for kind in ("A", "D"):
         candidate = _load_bundle(config, args.initialization_checkpoint, device=torch.device(config.run.device), evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, checkpoint_sha256=init_hash)[0]
         candidate_weights = {name: 0.0 for name in weights} if kind == "A" else weights
-        history, primary_schedule, companion_schedule, _, update_status = _run_steps(candidate, primary, train_images, train_labels, config, kind, candidate_weights, 100, 1234)
-        reports[kind] = {"measurement": _measure_panel(candidate, primary, secondary, validation_images, validation_labels, config), "history": history, "primary_schedule_hash": canonical_sha256(primary_schedule), "update_status": update_status, "state_hash": state_content_hash(candidate.state_dict()), "state_dict": {name: value.detach().cpu() for name, value in candidate.state_dict().items()}}
+        history, primary_schedule, companion_schedule, _, update_status = _run_steps(candidate, primary, train_images, train_labels, config, kind, candidate_weights, 984, 1234)
+        reports[kind] = {"measurement": _measure_panel(candidate, primary, secondary, validation_images, validation_labels, config), "history": history, "primary_schedule_hash": canonical_sha256(primary_schedule), "companion_schedule_hash": canonical_sha256(companion_schedule), "warmup_primary_schedule_hash": canonical_sha256(primary_schedule[:400]), "warmup_companion_schedule_hash": canonical_sha256(companion_schedule[:400]), "update_status": update_status, "state_hash": state_content_hash(candidate.state_dict()), "state_dict": {name: value.detach().cpu() for name, value in candidate.state_dict().items()}}
     baseline = reports["A"]["measurement"]
     gates = []
     scores = {}
-    for kind in ("B", "C"):
+    for kind in ("D",):
         row = reports[kind]["measurement"]
         checks = {
             "camera": row["camera_code_fraction"] >= baseline["camera_code_fraction"] + 0.02,
@@ -674,19 +720,32 @@ def objective_alignment_screen(args, config) -> int:
     gates.append(update_gate)
     schedule_gate = GateResult("screen_primary_schedule", len({row["primary_schedule_hash"] for row in reports.values()}) == 1, {kind: row["primary_schedule_hash"] for kind, row in reports.items()})
     gates.append(schedule_gate)
-    candidates = [kind for kind in ("B", "C") if next(g for g in gates if g.name == f"{kind}_screen_gate").passed]
-    if not update_gate.passed or not schedule_gate.passed:
+    companion_gate = GateResult("screen_companion_schedule", len({row["companion_schedule_hash"] for row in reports.values()}) == 1, {kind: row["companion_schedule_hash"] for kind, row in reports.items()})
+    gates.append(companion_gate)
+    warmup_gate = GateResult(
+        "screen_shared_warmup_state",
+        reports["A"]["update_status"]["milestones"].get("400") == reports["D"]["update_status"]["milestones"].get("400")
+        and reports["A"]["update_status"]["milestones"].get("400") == calibration_payload.get("diagnostics", {}).get("warmup", {}).get("state_hash")
+        and reports["A"]["update_status"]["milestones"].get("400", {}).get("optimizer_hash") == calibration_payload.get("diagnostics", {}).get("warmup", {}).get("optimizer_hash")
+        and reports["A"]["warmup_primary_schedule_hash"] == calibration_payload.get("diagnostics", {}).get("warmup", {}).get("schedule_hash")
+        and reports["A"]["warmup_companion_schedule_hash"] == calibration_payload.get("diagnostics", {}).get("warmup", {}).get("companion_schedule_hash"),
+        {"A": reports["A"]["update_status"]["milestones"].get("400"), "D": reports["D"]["update_status"]["milestones"].get("400"), "calibration": calibration_payload.get("diagnostics", {}).get("warmup", {})},
+    )
+    gates.append(warmup_gate)
+    candidates = [kind for kind in ("D",) if next(g for g in gates if g.name == f"{kind}_screen_gate").passed]
+    if not update_gate.passed or not schedule_gate.passed or not companion_gate.passed or not warmup_gate.passed:
         candidates = []
     winner = min(candidates, key=lambda kind: (-scores[kind], kind)) if candidates else None
     gates.append(GateResult("winner_exists", winner is not None, {"winner": winner or "none"}))
-    report_payload = {"contract": OBJECTIVE_DIAGNOSTIC_CONTRACT, "winner": winner, "scores": scores, "reports": {kind: {key: value for key, value in row.items() if key != "state_dict"} for kind, row in reports.items()}, "weights": weights, "all_gates": [gate.__dict__ for gate in gates]}
+    objective_payload = objective_contract_payload("D", 400, weights["camera"], weights["pairwise"], weights["coverage"])
+    report_payload = {"contract": OBJECTIVE_DIAGNOSTIC_CONTRACT, "objective_contract_payload": objective_payload, "objective_contract_hash": canonical_sha256(objective_payload), "winner": winner, "scores": scores, "reports": {kind: {key: value for key, value in row.items() if key != "state_dict"} for kind, row in reports.items()}, "weights": weights, "all_gates": [gate.__dict__ for gate in gates]}
     evidence_gates = tuple(
         gate
         for gate in gates
-        if winner is None or gate.name == f"{winner}_screen_gate" or gate.name not in {"B_screen_gate", "C_screen_gate"}
+        if winner is None or gate.name == f"{winner}_screen_gate" or gate.name not in {"D_screen_gate"}
     )
     artifacts = {f"conditional_objective_alignment_{kind}_checkpoint.pt": {"objective_kind": kind, "state_dict": row["state_dict"], "state_content_hash": row["state_hash"]} for kind, row in reports.items()}
-    _diagnostic_record(config, "conditional_objective_alignment_screen", "passed" if winner else "failed", _record_context(config, evaluator_hash, split.manifest_hash, init_hash), {"initialization_checkpoint": init_hash, "injection_evidence": file_sha256(args.injection_evidence), "evaluator": evaluator_hash, "secondary_evaluator": secondary_hash, "measurement_evidence": measurement.evidence_hash, "measurement_bundle": file_sha256(args.acceptance_measurement_bundle), "calibration": file_sha256(calibration_path)}, evidence_gates, ("confirm",) if winner else (), extra=report_payload, artifact_payloads=artifacts)
+    _diagnostic_record(config, "conditional_objective_alignment_screen", "passed" if winner else "failed", _record_context(config, evaluator_hash, split.manifest_hash, init_hash), {"initialization_checkpoint": init_hash, "injection_evidence": file_sha256(args.injection_evidence), "evaluator": evaluator_hash, "secondary_evaluator": secondary_hash, "measurement_evidence": measurement.evidence_hash, "measurement_bundle": file_sha256(args.acceptance_measurement_bundle), "calibration": file_sha256(calibration_path), "calibration_evidence": file_sha256(args.weight_calibration_evidence)}, evidence_gates, ("confirm",) if winner else (), extra=report_payload, artifact_payloads=artifacts)
     return 0 if winner else 1
 
 
@@ -704,8 +763,8 @@ def objective_alignment_confirm(args, config) -> int:
     if report.get("formal_promotion_authorized") is not False or report.get("contract") != OBJECTIVE_DIAGNOSTIC_CONTRACT:
         raise ValueError("screen report contract mismatch")
     winner = report.get("winner")
-    if winner not in {"B", "C"}:
-        raise ValueError("screen evidence lacks a unique B/C winner")
+    if winner != "D":
+        raise ValueError("screen evidence lacks the registered D winner")
     train_images, train_labels, validation_images, validation_labels, split, primary, secondary, measurement, evaluator_hash, secondary_hash = _load_measurement_inputs(args, config)
     _validate_current_evidence_source(screen, measurement)
     if screen.input_hashes.get("measurement_evidence") != measurement.evidence_hash or screen.input_hashes.get("measurement_bundle") != file_sha256(args.acceptance_measurement_bundle):
@@ -715,6 +774,9 @@ def objective_alignment_confirm(args, config) -> int:
     weights = report.get("weights")
     if not isinstance(weights, dict):
         raise ValueError("screen report lacks frozen weights")
+    expected_objective_payload = objective_contract_payload("D", 400, float(weights["camera"]), float(weights["pairwise"]), float(weights["coverage"]))
+    if report.get("objective_contract_payload") != expected_objective_payload or report.get("objective_contract_hash") != canonical_sha256(expected_objective_payload):
+        raise ValueError("screen report objective contract mismatch")
     rows = {}
     gates = []
     for seed in (1234, 1235, 1236):
@@ -722,31 +784,28 @@ def objective_alignment_confirm(args, config) -> int:
         for kind in ("A", winner):
             candidate = _load_bundle(config, args.initialization_checkpoint, device=torch.device(config.run.device), evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, checkpoint_sha256=init_hash)[0]
             candidate_weights = {name: 0.0 for name in weights} if kind == "A" else {name: float(weights[name]) for name in weights}
-            history, primary_schedule, companion_schedule, optimizer, update_status_100 = _run_steps(candidate, primary, train_images, train_labels, config, kind, candidate_weights, 100, seed)
-            measurement_100 = _measure_panel(candidate, primary, secondary, validation_images, validation_labels, config)
-            history, primary_schedule, companion_schedule, _, update_status_400 = _run_steps(candidate, primary, train_images, train_labels, config, kind, candidate_weights, 300, seed, optimizer=optimizer, start_step=100, history=history, primary_schedule=primary_schedule, companion_schedule=companion_schedule)
-            seed_rows[kind] = {"measurement_100": measurement_100, "measurement_400": _measure_panel(candidate, primary, secondary, validation_images, validation_labels, config), "history": history, "primary_schedule_hash": canonical_sha256(primary_schedule), "update_status_100": update_status_100, "update_status_400": update_status_400, "state_hash": state_content_hash(candidate.state_dict()), "state_dict": {name: value.detach().cpu() for name, value in candidate.state_dict().items()}}
+            history, primary_schedule, companion_schedule, _, update_status = _run_steps(candidate, primary, train_images, train_labels, config, kind, candidate_weights, 984, seed)
+            seed_rows[kind] = {"measurement_984": _measure_panel(candidate, primary, secondary, validation_images, validation_labels, config), "history": history, "primary_schedule_hash": canonical_sha256(primary_schedule), "companion_schedule_hash": canonical_sha256(companion_schedule), "warmup_primary_schedule_hash": canonical_sha256(primary_schedule[:400]), "warmup_companion_schedule_hash": canonical_sha256(companion_schedule[:400]), "update_status": update_status, "state_hash": state_content_hash(candidate.state_dict()), "state_dict": {name: value.detach().cpu() for name, value in candidate.state_dict().items()}}
         rows[str(seed)] = seed_rows
-        a = seed_rows["A"]["measurement_400"]
-        w = seed_rows[winner]["measurement_400"]
+        a = seed_rows["A"]["measurement_984"]
+        w = seed_rows[winner]["measurement_984"]
         gates.append(GateResult(f"seed_{seed}_improvement", w["camera_code_fraction"] >= a["camera_code_fraction"] + 0.03 and w["minimum_diversity_ratio"] >= a["minimum_diversity_ratio"] + 0.10 and w["coverage_ratio"] <= a["coverage_ratio"] - 0.10, {"camera_delta": w["camera_code_fraction"] - a["camera_code_fraction"], "diversity_delta": w["minimum_diversity_ratio"] - a["minimum_diversity_ratio"], "coverage_delta": w["coverage_ratio"] - a["coverage_ratio"]}))
-    joint = [rows[str(seed)][winner]["measurement_400"] for seed in (1234, 1235, 1236)]
+    joint = [rows[str(seed)][winner]["measurement_984"] for seed in (1234, 1235, 1236)]
     joint_count = sum(item["camera_code_fraction"] >= 0.25 and item["minimum_diversity_ratio"] >= 0.55 and item["coverage_ratio"] <= 1.5 for item in joint)
     gates.append(GateResult("two_seed_absolute_gate", joint_count >= 2, {"count": float(joint_count)}))
-    finite = all(torch.isfinite(torch.tensor(list(item["measurement_400"].values()))).all() and torch.isfinite(torch.tensor(list(item["measurement_100"].values()))).all() for item in [rows[str(seed)][winner] for seed in (1234, 1235, 1236)])
+    finite = all(torch.isfinite(torch.tensor(list(item["measurement_984"].values()))).all() for item in [rows[str(seed)][winner] for seed in (1234, 1235, 1236)])
     gates.append(GateResult("finite_confirmation", finite, {}))
     for seed in (1234, 1235, 1236):
         row = rows[str(seed)][winner]
-        a400 = rows[str(seed)]["A"]["measurement_400"]
-        w100 = row["measurement_100"]
-        w400 = row["measurement_400"]
-        gates.append(GateResult(f"seed_{seed}_trend", w400["camera_code_fraction"] >= w100["camera_code_fraction"] - 0.03, {"camera_delta_100_to_400": w400["camera_code_fraction"] - w100["camera_code_fraction"]}))
+        a400 = rows[str(seed)]["A"]["measurement_984"]
         gates.append(GateResult(f"seed_{seed}_primary_schedule", rows[str(seed)]["A"]["primary_schedule_hash"] == row["primary_schedule_hash"], {"A": rows[str(seed)]["A"]["primary_schedule_hash"], "winner": row["primary_schedule_hash"]}))
+        gates.append(GateResult(f"seed_{seed}_companion_schedule", rows[str(seed)]["A"]["companion_schedule_hash"] == row["companion_schedule_hash"], {"A": rows[str(seed)]["A"]["companion_schedule_hash"], "winner": row["companion_schedule_hash"]}))
+        gates.append(GateResult(f"seed_{seed}_shared_warmup_state", rows[str(seed)]["A"]["update_status"]["milestones"].get("400") == row["update_status"]["milestones"].get("400"), {"A": rows[str(seed)]["A"]["update_status"]["milestones"].get("400"), "D": row["update_status"]["milestones"].get("400")}))
         for candidate_kind in ("A", winner):
             candidate_row = rows[str(seed)][candidate_kind]
-            for label, status in ((f"{candidate_kind}_step_100", candidate_row["update_status_100"]), (f"{candidate_kind}_step_400", candidate_row["update_status_400"])):
+            for label, status in ((f"{candidate_kind}_step_984", candidate_row["update_status"]),):
                 gates.append(GateResult(f"seed_{seed}_{label}_updates", all(status["gradient_seen"].values()) and all(status["updated"].values()), status))
-        gates.append(GateResult(f"seed_{seed}_measurement_fidelity", w400["primary_accuracy"] >= a400["primary_accuracy"] - 0.03 and w400["secondary_accuracy"] >= a400["secondary_accuracy"] - 0.03 and w400["primary_min_recall"] >= a400["primary_min_recall"] - 0.05 and w400["secondary_min_recall"] >= a400["secondary_min_recall"] - 0.05 and w400["saturation"] <= 0.08, {"step_100": w100, "step_400": w400}))
+        gates.append(GateResult(f"seed_{seed}_measurement_fidelity", row["measurement_984"]["primary_accuracy"] >= a400["primary_accuracy"] - 0.03 and row["measurement_984"]["secondary_accuracy"] >= a400["secondary_accuracy"] - 0.03 and row["measurement_984"]["primary_min_recall"] >= a400["primary_min_recall"] - 0.05 and row["measurement_984"]["secondary_min_recall"] >= a400["secondary_min_recall"] - 0.05 and row["measurement_984"]["saturation"] <= 0.08, {"step_984": row["measurement_984"]}))
     passed = all(gate.passed for gate in gates)
     report_payload = {"contract": OBJECTIVE_DIAGNOSTIC_CONTRACT, "winner": winner, "seeds": {seed: {kind: {key: value for key, value in row.items() if key != "state_dict"} for kind, row in seed_rows.items()} for seed, seed_rows in rows.items()}, "formal_promotion_authorized": False}
     artifacts = {f"conditional_objective_alignment_confirm_{seed}_{kind}_checkpoint.pt": {"objective_kind": kind, "seed": int(seed), "state_dict": row["state_dict"], "state_content_hash": row["state_hash"]} for seed, seed_rows in rows.items() for kind, row in seed_rows.items()}

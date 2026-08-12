@@ -12,6 +12,58 @@ import torch
 from torch import nn
 from torch.utils.checkpoint import checkpoint
 
+
+OBJECTIVE_CONTRACT_VERSION = "gate_aligned_objective_v3|camera_target_0.30_temp_0.02|coverage_target_1.35_temp_0.10|D_late_worst_class_relative_diversity_v1|activation_400|companion_v2"
+LEGACY_OBJECTIVE_CONTRACT_VERSION = "gate_aligned_objective_v1|camera_target_0.30_temp_0.02|coverage_target_1.35_temp_0.10|real_relative_pairwise_sorted_v1"
+
+
+def objective_contract_payload(
+    kind: str,
+    activation_step: int,
+    camera_weight: float,
+    pairwise_weight: float,
+    coverage_weight: float,
+) -> dict[str, object]:
+    if kind not in {"A", "B", "C", "D"}:
+        raise ValueError("unknown objective contract kind")
+    return {
+        "version": OBJECTIVE_CONTRACT_VERSION,
+        "kind": kind,
+        "activation_step": int(activation_step),
+        "camera": float(camera_weight),
+        "pairwise": float(pairwise_weight),
+        "coverage": float(coverage_weight),
+        "companion_schedule": "seed_times_100000_plus_global_step_v2",
+        "diversity": "smooth_worst_class_relative_v1" if kind == "D" else "sorted_pairwise_v1",
+    }
+
+
+def deterministic_companion_indices(
+    labels: torch.Tensor,
+    primary_indices: torch.Tensor,
+    *,
+    seed: int,
+) -> torch.Tensor:
+    """Select same-label, disjoint companions using a registered CPU schedule."""
+    generator = torch.Generator(device="cpu").manual_seed(seed)
+    primary_labels = labels.index_select(0, primary_indices)
+    selected: list[torch.Tensor] = []
+    for label in range(10):
+        primary = primary_indices[primary_labels == label]
+        candidates = torch.nonzero(labels == label, as_tuple=False).flatten()
+        candidates = candidates[~torch.isin(candidates, primary)]
+        if candidates.numel() < primary.numel():
+            raise ValueError("companion schedule cannot exclude primary samples")
+        order = torch.randperm(candidates.numel(), generator=generator)
+        selected.append(candidates.index_select(0, order[: primary.numel()]))
+    return torch.cat(selected)
+
+
+def active_objective_kind(kind: str, activation_step: int, global_step: int) -> str:
+    if kind == "D":
+        return "D" if global_step >= activation_step else "A"
+    return kind
+
 @dataclass(frozen=True)
 class ConditionalLossSummary:
     total: float
@@ -143,6 +195,28 @@ def relative_diversity_loss(features: torch.Tensor, real_features: torch.Tensor,
         ratio = generated_distance / real_distance.clamp_min(1.0e-8)
         terms.append(torch.relu(torch.as_tensor(lower, device=ratio.device, dtype=ratio.dtype) - ratio).square() + 0.25 * torch.relu(ratio - upper).square())
     return torch.stack(terms).mean()
+
+
+def relative_diversity_worst_class_loss(features: torch.Tensor, real_features: torch.Tensor, labels: torch.Tensor, *, lower: float = 0.70, upper: float = 1.30, temperature: float = 0.05) -> torch.Tensor:
+    """Smooth worst-class penalty for acceptance-aligned diversity."""
+    if not (0.0 < lower < upper) or temperature <= 0.0:
+        raise ValueError("invalid relative-diversity worst-class contract")
+    generated = torch.nn.functional.normalize(features, dim=1)
+    real = torch.nn.functional.normalize(real_features, dim=1)
+    violations = []
+    for label in range(10):
+        selected = torch.nonzero(labels == label, as_tuple=False).flatten()
+        if selected.numel() < 2:
+            raise ValueError("relative diversity needs at least two samples per class")
+        generated_distance = torch.pdist(generated.index_select(0, selected), p=2).median()
+        real_distance = torch.pdist(real.index_select(0, selected), p=2).median().detach()
+        ratio = generated_distance / real_distance.clamp_min(1.0e-8)
+        violations.append(
+            torch.relu(torch.as_tensor(lower, device=ratio.device, dtype=ratio.dtype) - ratio).square()
+            + 0.25 * torch.relu(ratio - upper).square()
+        )
+    values = torch.stack(violations)
+    return temperature * torch.logsumexp(values / temperature, dim=0)
 
 
 def pairwise_diversity_distribution_loss(features: torch.Tensor, real_features: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
@@ -299,12 +373,13 @@ def conditional_loss(
     orthogonality = generator.mode_orthogonality_penalty()
     phase_tv = phase_total_variation(system)
     total = sinkhorn + 0.5 * classification + 0.1 * diversity + 0.1 * saturation + 1.0e-3 * orthogonality + 1.0e-5 * phase_tv
-    if objective_kind not in {"A", "B", "C"}:
+    if objective_kind not in {"A", "B", "C", "D"}:
         raise ValueError("unknown conditional objective kind")
-    if objective_kind in {"B", "C"}:
+    if objective_kind in {"B", "C", "D"}:
         total = total + camera_code_safety_weight * camera_code_safety_loss(raw, labels, target=0.30, temperature=0.02)
-        total = total + pairwise_diversity_weight * pairwise_diversity_distribution_loss(generated_features, real_features, labels)
-    if objective_kind == "C":
+        diversity_term = relative_diversity_worst_class_loss(generated_features, real_features, labels) if objective_kind == "D" else pairwise_diversity_distribution_loss(generated_features, real_features, labels)
+        total = total + pairwise_diversity_weight * diversity_term
+    if objective_kind in {"C", "D"}:
         companion_features = None
         if coverage_companion_views is not None:
             if coverage_companion_labels is None:

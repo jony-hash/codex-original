@@ -4,7 +4,9 @@ import torch
 import pytest
 
 from ldm_project.v2.application.cli_schema import _parser
-from ldm_project.v2.application.diagnostic.objective import _code_seed, _companion_indices, _effective_gradient_gate, _gradient_cosine, _scheduled_batches
+from ldm_project.v2.application.diagnostic.objective import _code_seed, _companion_indices, _effective_gradient_gate, _gradient_cosine, _scheduled_batches, OBJECTIVE_DIAGNOSTIC_CONTRACT_SPEC
+from ldm_project.v2.config import ConditionalGenerationConfig
+from ldm_project.v2.student.conditional import active_objective_kind, deterministic_companion_indices, objective_contract_payload, relative_diversity_worst_class_loss
 from ldm_project.v2.evidence import canonical_sha256
 from ldm_project.v2.student.conditional import coverage_ratio_upper_loss
 
@@ -156,3 +158,66 @@ def test_objective_commands_are_content_bound() -> None:
     )
     assert confirm.screen_evidence == "e"
     assert not hasattr(confirm, "candidate")
+
+
+def test_late_objective_contract_and_schema_are_registered() -> None:
+    config = ConditionalGenerationConfig(
+        objective_kind="D",
+        objective_activation_step=400,
+        camera_code_safety_weight=1.0,
+        pairwise_diversity_weight=1.0,
+        coverage_ratio_weight=1.0,
+    )
+    assert config.objective_kind == "D"
+    assert config.objective_activation_step == 400
+    assert OBJECTIVE_DIAGNOSTIC_CONTRACT_SPEC["activation_step"] == 400
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"objective_activation_step": 399},
+        {"camera_code_safety_weight": 0.0},
+        {"pairwise_diversity_weight": 0.0},
+        {"coverage_ratio_weight": 0.0},
+    ],
+)
+def test_late_objective_schema_rejects_unregistered_contract(kwargs: dict[str, object]) -> None:
+    values = {
+        "objective_kind": "D",
+        "objective_activation_step": 400,
+        "camera_code_safety_weight": 1.0,
+        "pairwise_diversity_weight": 1.0,
+        "coverage_ratio_weight": 1.0,
+    }
+    values.update(kwargs)
+    with pytest.raises(ValueError):
+        ConditionalGenerationConfig(**values)
+
+
+def test_late_objective_worst_class_penalty_is_finite_and_differentiable() -> None:
+    torch.manual_seed(9)
+    features = torch.randn(50, 8, requires_grad=True)
+    real = torch.randn(50, 8)
+    labels = torch.arange(10).repeat_interleave(5)
+    value = relative_diversity_worst_class_loss(features, real, labels)
+    value.backward()
+    assert torch.isfinite(value)
+    assert features.grad is not None and torch.isfinite(features.grad).all()
+
+
+def test_late_objective_activation_boundary_and_contract_binding() -> None:
+    assert active_objective_kind("D", 400, 399) == "A"
+    assert active_objective_kind("D", 400, 400) == "D"
+    base = objective_contract_payload("D", 400, 1.0, 2.0, 3.0)
+    changed = objective_contract_payload("D", 401, 1.0, 2.0, 3.0)
+    assert canonical_sha256(base) != canonical_sha256(changed)
+
+
+def test_formal_and_diagnostic_companion_schedule_share_contract() -> None:
+    labels = torch.arange(10).repeat_interleave(20)
+    primary = torch.cat([torch.nonzero(labels == label, as_tuple=False).flatten()[:5] for label in range(10)])
+    formal = deterministic_companion_indices(labels, primary, seed=1234 * 100000 + 400)
+    diagnostic = _companion_indices(labels, primary, seed=1234 * 100000 + 400)
+    assert torch.equal(formal, diagnostic)
+    assert not torch.isin(formal, primary).any()
