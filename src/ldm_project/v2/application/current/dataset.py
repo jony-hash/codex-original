@@ -14,6 +14,21 @@ from .runtime import (
 )
 from .admission import _passed_evidence
 
+
+def _measurement_inputs(record: EvidenceRecordV2) -> dict[str, str]:
+    return {
+        name: value
+        for name in (
+            "primary_evaluator",
+            "secondary_evaluator",
+            "measurement_bundle",
+            "measurement_evidence",
+            "test_manifest",
+            "test_content_manifest",
+        )
+        if isinstance((value := record.input_hashes.get(name)), str)
+    }
+
 def export_conditional_dataset(args, config: V2Config) -> int:
     _require_conditional(config)
     admission = _passed_evidence(
@@ -115,6 +130,7 @@ def export_conditional_dataset(args, config: V2Config) -> int:
         "samples_per_label": count,
         "seed": args.seed,
         "code_distribution": "uniform[-1,1]^8",
+        "acceptance_measurement": _measurement_inputs(admission),
         "shards": shard_hashes,
         "raw_shape": [1, *config.system.slm_shape],
         "mnist_shape": [1, 28, 28],
@@ -142,6 +158,7 @@ def export_conditional_dataset(args, config: V2Config) -> int:
         {
             "generation_admission": admission.evidence_hash,
             "candidate_manifest": file_sha256(dataset_root / "manifest.json"),
+            **_measurement_inputs(admission),
         },
         (GateResult("candidate_shards_complete", True, {"samples": float(index)}),),
         ("audit_memorization", "evaluate_utility"),
@@ -229,6 +246,7 @@ def audit_memorization(args, config: V2Config) -> int:
                 Path(args.candidate_dataset) / "manifest.json"
             ),
             "report": file_sha256(report_path),
+            **_measurement_inputs(candidate),
         },
         (gate,),
         ("admit_dataset",) if passed else (),
@@ -392,6 +410,7 @@ def evaluate_utility(args, config: V2Config) -> int:
                 Path(args.candidate_dataset) / "manifest.json"
             ),
             "report": file_sha256(report_path),
+            **_measurement_inputs(candidate),
         },
         (gate,),
         ("admit_dataset",) if all_passed else (),
@@ -500,6 +519,7 @@ def admit_dataset(args, config: V2Config) -> int:
             "utility": utility.evidence_hash,
             "candidate_manifest": file_sha256(root / "manifest.json"),
             "accepted_manifest": file_sha256(accepted_path),
+            **_measurement_inputs(admission),
         },
         (
             GateResult(

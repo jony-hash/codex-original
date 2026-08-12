@@ -55,6 +55,12 @@ _IDENTITY_HANDLERS = {
     ("student", "qualify-evaluator"): HandlerSpec(
         ".current.admission:qualify_evaluator", "args+config"
     ),
+    ("student", "train-acceptance-evaluator"): HandlerSpec(
+        ".current.measurement:train_acceptance_evaluator", "args+config"
+    ),
+    ("student", "qualify-acceptance-measurement"): HandlerSpec(
+        ".current.measurement:qualify_acceptance_measurement", "args+config"
+    ),
     ("student", "controllability-smoke"): HandlerSpec(
         ".current.recovery:controllability_smoke", "args+config"
     ),

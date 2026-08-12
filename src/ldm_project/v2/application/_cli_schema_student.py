@@ -57,6 +57,14 @@ def register_student(root: argparse._SubParsersAction) -> None:
     qualify.add_argument("--config", required=True)
     qualify.add_argument("--dataset-root", required=True)
     qualify.add_argument("--evaluator-checkpoint", required=True)
+    acceptance_evaluator = student.add_parser("train-acceptance-evaluator")
+    acceptance_evaluator.add_argument("--config", required=True)
+    acceptance_evaluator.add_argument("--dataset-root", required=True)
+    acceptance_evaluator.add_argument("--epochs", type=int, default=10)
+    acceptance_evaluator.add_argument("--batch-size", type=int, default=256)
+    qualify_measurement = student.add_parser("qualify-acceptance-measurement")
+    for name in ("config", "dataset_root", "evaluator_checkpoint", "acceptance_evaluator_checkpoint"):
+        qualify_measurement.add_argument("--" + name.replace("_", "-"), required=True)
     controllability = student.add_parser("controllability-smoke")
     for name in (
         "config",
@@ -273,6 +281,9 @@ def register_student(root: argparse._SubParsersAction) -> None:
         "evaluator_checkpoint",
     ):
         evaluate.add_argument("--" + name.replace("_", "-"))
+    evaluate.add_argument("--acceptance-evaluator-checkpoint")
+    evaluate.add_argument("--acceptance-measurement-bundle")
+    evaluate.add_argument("--acceptance-measurement-evidence")
     admit_evaluation = student.add_parser("admit-evaluation")
     for name in (
         "config",
@@ -367,4 +378,3 @@ def register_student(root: argparse._SubParsersAction) -> None:
         "smoke_evidence",
     ):
         transport_train.add_argument("--" + name.replace("_", "-"), required=True)
-

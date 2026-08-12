@@ -18,6 +18,7 @@ from .runtime import (
     write_conditional_review_artifacts,
 )
 from .admission import _code_fraction, _passed_evidence
+from ...student.evaluator import SmoothMNISTEvaluator
 
 
 def sample_conditional(args, config: V2Config) -> int:
@@ -70,6 +71,36 @@ def conditional_evaluate(args, config: V2Config) -> int:
         images, all_labels, args.dataset_root
     )
     evaluator, _ = load_frozen_evaluator(args.evaluator_checkpoint, device=device)
+    legacy_direct_call = not hasattr(args, "acceptance_evaluator_checkpoint")
+    measurement = None
+    measurement_bundle_hash = None
+    test_manifest_path = None
+    if legacy_direct_call:
+        secondary = evaluator
+        test_images, test_labels = validation_images, validation_labels
+    else:
+        if not all((args.acceptance_evaluator_checkpoint, args.acceptance_measurement_bundle, args.acceptance_measurement_evidence)):
+            raise ValueError("current identity evaluation requires the independent acceptance measurement inputs")
+        measurement = EvidenceRecordV2.from_dict(json.loads(Path(args.acceptance_measurement_evidence).read_text(encoding="utf-8")))
+        if measurement.evidence_kind != "conditional_acceptance_measurement" or measurement.status != "passed":
+            raise ValueError("acceptance measurement evidence is not qualified")
+        _validate_current_evidence_source(measurement)
+        measurement_bundle_hash = file_sha256(args.acceptance_measurement_bundle)
+        require_input_hashes(measurement, {"measurement_bundle": measurement_bundle_hash})
+        bundle_payload = json.loads(Path(args.acceptance_measurement_bundle).read_text(encoding="utf-8"))
+        if not isinstance(bundle_payload, dict) or bundle_payload.get("contract") is None:
+            raise ValueError("acceptance measurement bundle is malformed")
+        if bundle_payload.get("primary_checkpoint") != evaluator_checkpoint_hash(args.evaluator_checkpoint) or bundle_payload.get("secondary_checkpoint") != file_sha256(args.acceptance_evaluator_checkpoint):
+            raise ValueError("acceptance measurement evaluator hash mismatch")
+        test_manifest_path = Path(args.acceptance_measurement_bundle).with_name("mnist_test_manifest.json")
+        if file_sha256(test_manifest_path) != bundle_payload.get("test_manifest_hash") or measurement.input_hashes.get("test_manifest") != file_sha256(test_manifest_path):
+            raise ValueError("acceptance measurement test manifest hash mismatch")
+        secondary_payload = safe_torch_load(args.acceptance_evaluator_checkpoint)
+        if not isinstance(secondary_payload, dict) or secondary_payload.get("architecture_kind") != SmoothMNISTEvaluator.architecture_kind:
+            raise ValueError("acceptance evaluator checkpoint has an incompatible architecture")
+        secondary = SmoothMNISTEvaluator().to(device)
+        secondary.load_state_dict(secondary_payload["state_dict"], strict=True)
+        secondary.freeze()
     evaluator_hash = evaluator_checkpoint_hash(args.evaluator_checkpoint)
     checkpoint_hash = training_record.input_hashes.get("checkpoint")
     if not isinstance(checkpoint_hash, str):
@@ -122,6 +153,22 @@ def conditional_evaluate(args, config: V2Config) -> int:
             "schedule_total_steps": str(expected_total_steps),
         },
     )
+    test_manifest = None
+    if not legacy_direct_call:
+        assert measurement is not None and test_manifest_path is not None
+        require_input_hashes(
+            measurement,
+            {
+                "primary_evaluator": evaluator_hash,
+                "secondary_evaluator": file_sha256(args.acceptance_evaluator_checkpoint),
+                "measurement_bundle": measurement_bundle_hash,
+                "test_manifest": file_sha256(test_manifest_path),
+            },
+        )
+        test_images, test_labels = load_local_mnist(args.dataset_root, train=False)
+        test_manifest = json.loads(test_manifest_path.read_text(encoding="utf-8"))
+        if test_manifest.get("count") != int(test_labels.numel()) or test_manifest.get("images_sha256") != tensor_sha256(test_images) or test_manifest.get("labels_sha256") != tensor_sha256(test_labels):
+            raise ValueError("local official MNIST test split does not match the qualified manifest")
     require_input_hashes(
         training_record,
         {
@@ -140,18 +187,23 @@ def conditional_evaluate(args, config: V2Config) -> int:
         raw_rows,
         label_rows,
         prediction_rows,
+        secondary_prediction_rows,
         feature_rows,
         real_feature_rows,
+        secondary_feature_rows,
+        secondary_real_feature_rows,
         generated_view_rows,
         real_view_rows,
-    ) = [], [], [], [], [], [], []
+    ) = [], [], [], [], [], [], [], [], [], []
     with torch.no_grad():
-        for batch_number, indices in enumerate(
-            balanced_batches(
-                validation_labels, batch_size=settings.logical_batch_size, seed=4321
-            )
-        ):
-            labels = validation_labels.index_select(0, indices).to(device)
+        batches = (
+            ((indices, None) for indices in balanced_batches(validation_labels, batch_size=settings.logical_batch_size, seed=4321))
+            if legacy_direct_call
+            else ((None, start) for start in range(0, test_labels.numel(), settings.logical_batch_size))
+        )
+        for batch_number, (legacy_indices, start) in enumerate(batches):
+            indices = legacy_indices if legacy_direct_call else torch.arange(start, min(start + settings.logical_batch_size, test_labels.numel()))
+            labels = test_labels.index_select(0, indices).to(device)
             codes = _random_codes(
                 labels.numel(), device=device, seed=4321 + batch_number
             )
@@ -165,31 +217,46 @@ def conditional_evaluate(args, config: V2Config) -> int:
             )
             generated_view = fixed_exposure_view(raw, settings.fixed_exposure_scale)
             generated_features, logits = evaluator(generated_view)
-            real_view = validation_images.index_select(0, indices).to(device)
+            secondary_generated_features, secondary_logits = secondary(generated_view)
+            real_view = test_images.index_select(0, indices).to(device)
             real_features, _ = evaluator(real_view)
+            secondary_real_features, _ = secondary(real_view)
             raw_rows.append(raw.cpu())
             label_rows.append(labels.cpu())
             prediction_rows.append(logits.argmax(dim=1).cpu())
+            secondary_prediction_rows.append(secondary_logits.argmax(dim=1).cpu())
             feature_rows.append(generated_features.cpu())
             real_feature_rows.append(real_features.cpu())
+            secondary_feature_rows.append(secondary_generated_features.cpu())
+            secondary_real_feature_rows.append(secondary_real_features.cpu())
             generated_view_rows.append(generated_view.cpu())
             real_view_rows.append(real_view.cpu())
-    raw, labels, predictions = (
+    raw, labels, predictions, secondary_predictions = (
         torch.cat(raw_rows),
         torch.cat(label_rows),
         torch.cat(prediction_rows),
+        torch.cat(secondary_prediction_rows),
     )
     generated_features, real_features = (
         torch.cat(feature_rows),
         torch.cat(real_feature_rows),
+    )
+    secondary_generated_features, secondary_real_features = (
+        torch.cat(secondary_feature_rows),
+        torch.cat(secondary_real_feature_rows),
     )
     generated_view, real_view = (
         torch.cat(generated_view_rows),
         torch.cat(real_view_rows),
     )
     accuracy = float((predictions == labels).to(torch.float32).mean().item())
+    secondary_accuracy = float((secondary_predictions == labels).to(torch.float32).mean().item())
     recalls = [
         float(((predictions[labels == label] == label).to(torch.float32).mean()).item())
+        for label in range(10)
+    ]
+    secondary_recalls = [
+        float(((secondary_predictions[labels == label] == label).to(torch.float32).mean()).item())
         for label in range(10)
     ]
     code_fraction = _code_fraction(raw, labels)
@@ -203,6 +270,7 @@ def conditional_evaluate(args, config: V2Config) -> int:
     diversity_ratios = tuple(
         relative_diversity_ratios(generated_features, real_features, labels)
     )
+    secondary_diversity_ratios = tuple(relative_diversity_ratios(secondary_generated_features, secondary_real_features, labels))
     coverage_ratio = conditional_coverage_ratio(
         generated_features,
         generated_view,
@@ -212,11 +280,22 @@ def conditional_evaluate(args, config: V2Config) -> int:
         epsilon=settings.sinkhorn_epsilon,
         iterations=settings.sinkhorn_iterations,
     )
+    secondary_coverage_ratio = conditional_coverage_ratio(
+        secondary_generated_features,
+        generated_view,
+        secondary_real_features,
+        real_view,
+        labels,
+        epsilon=settings.sinkhorn_epsilon,
+        iterations=settings.sinkhorn_iterations,
+    )
     checks = (
         GateResult("semantic_accuracy", accuracy >= 0.95, {"accuracy": accuracy}),
+        GateResult("secondary_semantic_accuracy", secondary_accuracy >= 0.95, {"accuracy": secondary_accuracy}),
         GateResult(
             "per_class_recall", min(recalls) >= 0.90, {"minimum_recall": min(recalls)}
         ),
+        GateResult("secondary_per_class_recall", min(secondary_recalls) >= 0.90, {"minimum_recall": min(secondary_recalls)}),
         GateResult(
             "camera_code_fraction",
             code_fraction >= 0.25,
@@ -230,11 +309,14 @@ def conditional_evaluate(args, config: V2Config) -> int:
             all(0.70 <= value <= 1.30 for value in diversity_ratios),
             {f"label_{label}": value for label, value in enumerate(diversity_ratios)},
         ),
+        GateResult("secondary_per_class_feature_diversity", all(0.70 <= value <= 1.30 for value in secondary_diversity_ratios), {f"label_{label}": value for label, value in enumerate(secondary_diversity_ratios)}),
         GateResult(
             "sinkhorn_coverage",
             coverage_ratio <= 1.5,
             {"coverage_ratio": coverage_ratio},
         ),
+        GateResult("secondary_sinkhorn_coverage", secondary_coverage_ratio <= 1.5, {"coverage_ratio": secondary_coverage_ratio}),
+        GateResult("generated_prediction_agreement", float((predictions == secondary_predictions).float().mean().item()) >= 0.95, {"agreement": float((predictions == secondary_predictions).float().mean().item())}),
     )
     run = _new_run(config)
     raw_path = run.root / "conditional_evaluation_raw_cmos.pt"
@@ -278,6 +360,12 @@ def conditional_evaluate(args, config: V2Config) -> int:
             "labels": file_sha256(labels_path),
             "review_raw_cmos": review_artifacts.raw_tensor_sha256,
             "review_preview": review_artifacts.preview_sha256,
+            "primary_evaluator": evaluator_hash,
+            "secondary_evaluator": file_sha256(args.acceptance_evaluator_checkpoint),
+            "measurement_bundle": measurement_bundle_hash,
+            "measurement_evidence": measurement.evidence_hash,
+            "test_manifest": file_sha256(test_manifest_path),
+            "test_content_manifest": str(test_manifest.get("manifest_hash")),
         },
         checks,
         permitted,
@@ -327,6 +415,11 @@ def admit_conditional_evaluation(args, config: V2Config) -> int:
         {
             "checkpoint": source_checkpoint_hash,
             "initialization_state_hash": source_initialization_state_hash,
+            "primary_evaluator": source.context.evaluator_checkpoint_hash,
+            "secondary_evaluator": source.input_hashes.get("secondary_evaluator"),
+            "measurement_bundle": source.input_hashes.get("measurement_bundle"),
+            "measurement_evidence": source.input_hashes.get("measurement_evidence"),
+            "test_manifest": source.input_hashes.get("test_manifest"),
         },
     )
     if not isinstance(source.input_hashes.get("initialization_checkpoint"), str):
