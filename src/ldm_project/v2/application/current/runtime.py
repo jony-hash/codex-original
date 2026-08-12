@@ -169,8 +169,10 @@ def _validate_current_evidence_source(*records: EvidenceRecordV2) -> None:
                     cwd=repo_root,
                     capture_output=True,
                 )
-                if changed.returncode != 0:
+                if changed.returncode == 1:
                     raise ValueError("current runtime tree changed after evidence was produced")
+                if changed.returncode > 1:
+                    raise ValueError("current evidence source comparison is unavailable")
     except (OSError, subprocess.CalledProcessError) as error:
         raise ValueError("current evidence source validation is unavailable") from error
 

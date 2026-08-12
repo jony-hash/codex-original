@@ -49,6 +49,21 @@ def _config():
     return load_config(CONFIG_PATH)
 
 
+def _git(repo: Path, *args: str) -> None:
+    subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True)
+
+
+def _init_git_repo(tmp_path: Path) -> Path:
+    _git(tmp_path, "init", "-q")
+    _git(tmp_path, "config", "user.email", "unit@example.invalid")
+    _git(tmp_path, "config", "user.name", "Unit Test")
+    tracked = tmp_path / "tracked.py"
+    tracked.write_text("value = 1\n", encoding="utf-8")
+    _git(tmp_path, "add", "tracked.py")
+    _git(tmp_path, "commit", "-qm", "initial")
+    return tracked
+
+
 def test_acceptance_preflight_rejects_dirty_worktree(monkeypatch: pytest.MonkeyPatch) -> None:
     config = _config()
     monkeypatch.setattr(
@@ -121,20 +136,64 @@ def test_current_evidence_source_accepts_clean_head() -> None:
     _validate_current_evidence_source(current)
 
 
-@pytest.mark.parametrize(
-    "mutator",
-    [
-        pytest.param(lambda record: replace(record, git_commit="0" * 40), id="non_ancestor"),
-        pytest.param(lambda record: replace(record, dirty_patch_hash="d" * 64), id="dirty"),
-        pytest.param(lambda record: replace(record, git_commit="f" * 40), id="different_commit"),
-    ],
-)
-def test_current_evidence_source_rejects_untrusted_records(mutator) -> None:
+def test_current_evidence_source_allows_docs_and_tests_descendants(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _init_git_repo(tmp_path)
+    base = subprocess.run(["git", "-C", str(tmp_path), "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
+    branch = subprocess.run(["git", "-C", str(tmp_path), "branch", "--show-current"], check=True, capture_output=True, text=True).stdout.strip()
+    config = _config()
+    monkeypatch.chdir(tmp_path)
+    record = replace(_record(config, "conditional_observability", _lineage_context(config), {}, ("conditional_control_isolation",)), git_commit=base)
+    for relative in ("docs/note.md", "tests/note.txt"):
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("follow-up\n", encoding="utf-8")
+        _git(tmp_path, "add", relative)
+        _git(tmp_path, "commit", "-qm", relative)
+        _validate_current_evidence_source(record)
+
+
+@pytest.mark.parametrize("relative", ["src/ldm_project/v2/runtime.py", "configs/v2/current/test.yaml", "pyproject.toml"])
+def test_current_evidence_source_rejects_scoped_descendant(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, relative: str) -> None:
+    _init_git_repo(tmp_path)
+    base = subprocess.run(["git", "-C", str(tmp_path), "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
+    config = _config()
+    monkeypatch.chdir(tmp_path)
+    record = replace(_record(config, "conditional_observability", _lineage_context(config), {}, ("conditional_control_isolation",)), git_commit=base)
+    path = tmp_path / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("changed\n", encoding="utf-8")
+    _git(tmp_path, "add", relative)
+    _git(tmp_path, "commit", "-qm", relative)
+    with pytest.raises(ValueError, match="runtime tree changed"):
+        _validate_current_evidence_source(record)
+
+
+def test_current_evidence_source_rejects_non_ancestor_and_non_git(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _init_git_repo(tmp_path)
+    base = subprocess.run(["git", "-C", str(tmp_path), "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
+    branch = subprocess.run(["git", "-C", str(tmp_path), "branch", "--show-current"], check=True, capture_output=True, text=True).stdout.strip()
+    _git(tmp_path, "checkout", "-qb", "side")
+    (tmp_path / "side.py").write_text("side\n", encoding="utf-8")
+    _git(tmp_path, "add", "side.py")
+    _git(tmp_path, "commit", "-qm", "side")
+    side = subprocess.run(["git", "-C", str(tmp_path), "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
+    _git(tmp_path, "checkout", "-q", branch)
+    config = _config()
+    monkeypatch.chdir(tmp_path)
+    record = replace(_record(config, "conditional_observability", _lineage_context(config), {}, ("conditional_control_isolation",)), git_commit=side)
+    with pytest.raises(ValueError, match="not an ancestor"):
+        _validate_current_evidence_source(record)
+    monkeypatch.chdir(tmp_path.parent)
+    with pytest.raises(ValueError, match="unavailable"):
+        _validate_current_evidence_source(replace(record, git_commit=base))
+
+
+def test_current_evidence_source_rejects_dirty_provenance() -> None:
     config = _config()
     context = _lineage_context(config)
     record = _record(config, "conditional_observability", context, {}, ("conditional_control_isolation",))
     with pytest.raises(ValueError, match="current evidence"):
-        _validate_current_evidence_source(mutator(record))
+        _validate_current_evidence_source(replace(record, dirty_patch_hash="d" * 64))
 
 
 def _stub_mnist(monkeypatch, module) -> None:
