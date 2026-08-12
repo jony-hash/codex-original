@@ -27,6 +27,9 @@ Scope: `tests/**` and verification for repository changes. Read the repository-r
   not invalidate an evidence record, that unknown evidence kinds fall back to
   `full_current`, and that component fingerprints do not replace independent
   config, context, checkpoint, split, or artifact-hash validation.
+  Diagnostic tests must also bind authorization evidence to the consumed
+  artifact and bind reports/checkpoints by file hash before any downstream
+  action is accepted.
 
 ## Acceptance Semantics
 

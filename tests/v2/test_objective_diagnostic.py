@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import torch
-import pytest
 
 from ldm_project.v2.application.cli_schema import _parser
 from ldm_project.v2.application.diagnostic.objective import _code_seed, _companion_indices, _effective_gradient_gate, _gradient_cosine, _scheduled_batches

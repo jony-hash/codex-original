@@ -11,6 +11,10 @@ fail-closed and must be reissued once on the migrated clean baseline.  A
 change to an unrelated component no longer invalidates every current record,
 while unknown evidence kinds conservatively retain the full-current invalidation
 scope.
+The registry has since been tightened to `v2-runtime-components-2`, including
+its own source and the actual loss, optimizer, admission, recovery, and
+measurement dependencies. Evidence carrying the prior registry version is
+historical and cannot authorize a new run.
 
 The evaluation schedule harness was repaired at clean commit `ae3273d`. The
 earlier evaluation attempt mixed the 55,000-sample training split with the
@@ -118,6 +122,9 @@ of the tested B/C definitions, frozen weights, and 100-step contract. It is
 not evidence of an optical-path, hardware, generator-capacity, or universal
 auxiliary-objective failure. No winner, confirmation, objective promotion, or
 formal training was authorized.
+That historical screen was produced before the strict calibration-evidence and
+report-hash consumer checks; it remains a read-only diagnostic observation and
+cannot be reused for promotion or confirmation.
 
 ## Mainline decision point
 

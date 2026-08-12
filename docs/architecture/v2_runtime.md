@@ -54,13 +54,15 @@ old run is historical and is not a replacement for a newly executed current run.
 ## 当前执行顺序
 
 ```text
-evaluator qualification
+primary evaluator qualification
+→ secondary acceptance evaluator training
+→ acceptance measurement qualification and official 10,000-test manifest
 → generator-only injection admission
 → no-update optical observability
 → no-update control isolation
 → 根据 control-isolation 分类选择 semantic-localization 或 controllability smoke
 → 通过 controllability smoke 或 semantic-recovery evidence 授权 5-epoch joint training
-→ raw-CMOS evaluation
+→ dual-evaluator official-test raw-CMOS evaluation
 → manual review
 → candidate dataset export
 → memorization and utility
@@ -105,7 +107,8 @@ state hash、最终 checkpoint 摘要、配置和数据 split。evaluation、dat
 manifest 或 evidence 输入摘要被篡改都必须 fail-closed。此链路只证明工程来源和
 更新真实性，不替代 CUDA、硬件或科学 acceptance。
 
-Current evidence uses component-scoped runtime lineage. Every record must come
+Current evidence uses component-scoped runtime lineage (registry
+`v2-runtime-components-2`). Every record must come
 from a clean commit that is an ancestor of the current `HEAD`; the consumer
 compares the Git-tree fingerprint only for the components registered for that
 evidence kind. Configuration, split, checkpoint, and artifact hashes remain
