@@ -72,7 +72,10 @@ def conditional_evaluate(args, config: V2Config) -> int:
         images, all_labels, args.dataset_root
     )
     evaluator, _ = load_frozen_evaluator(args.evaluator_checkpoint, device=device)
-    legacy_direct_call = not getattr(args, "_from_cli", False) and not hasattr(args, "acceptance_evaluator_checkpoint")
+    # The validation/primary-only path is test-only compatibility and must be
+    # explicitly opted into; ordinary Python callers cannot silently weaken the
+    # current acceptance contract.
+    legacy_direct_call = bool(getattr(args, "_allow_legacy_direct_call", False))
     measurement = None
     measurement_bundle_hash = None
     test_manifest_path = None

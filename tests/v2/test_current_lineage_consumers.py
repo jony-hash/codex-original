@@ -273,6 +273,7 @@ def test_conditional_evaluate_validates_schedule_against_train_split(
         dataset_root=str(tmp_path),
         evaluator_checkpoint=str(tmp_path / "evaluator.pt"),
         checkpoint=str(tmp_path / "checkpoint.pt"),
+        _allow_legacy_direct_call=True,
     )
     with pytest.raises(RuntimeError, match="stop after schedule validation"):
         current_evaluation.conditional_evaluate(args, config)
@@ -481,6 +482,7 @@ def test_conditional_evaluate_requires_action_and_rejects_state_tampering(
         dataset_root=str(tmp_path),
         evaluator_checkpoint=str(tmp_path / "evaluator.pt"),
         checkpoint=str(tmp_path / "checkpoint.pt"),
+        _allow_legacy_direct_call=True,
     )
     monkeypatch.setattr(
         current_evaluation,
@@ -804,6 +806,7 @@ def test_conditional_evaluate_hashes_and_loads_checkpoint_once(
         dataset_root=str(tmp_path),
         evaluator_checkpoint=str(tmp_path / "evaluator.pt"),
         checkpoint=str(checkpoint),
+        _allow_legacy_direct_call=True,
     )
     import ldm_project.v2.evidence.io as evidence_io
 
