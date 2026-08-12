@@ -109,7 +109,8 @@ def _load_measurement_inputs(args, config):
     if not isinstance(manifest_name, str) or not manifest_name or Path(manifest_name).is_absolute() or ".." in Path(manifest_name).parts:
         raise ValueError("objective diagnostic measurement test manifest filename is unsafe")
     test_manifest = bundle_path.parent / manifest_name
-    if file_sha256(test_manifest) != bundle.get("test_manifest_hash") or measurement.input_hashes.get("test_manifest") != file_sha256(test_manifest):
+    test_manifest_hash = file_sha256(test_manifest)
+    if test_manifest_hash != bundle.get("test_manifest_hash") or measurement.input_hashes.get("test_manifest") != test_manifest_hash:
         raise ValueError("objective diagnostic measurement test manifest hash mismatch")
     secondary_payload = safe_torch_load(args.acceptance_evaluator_checkpoint, expected_sha256=secondary_hash)
     if not isinstance(secondary_payload, dict) or secondary_payload.get("architecture_kind") != SmoothMNISTEvaluator.architecture_kind:
@@ -162,16 +163,6 @@ def _gradient_vector(parameters, gradients) -> torch.Tensor:
     ])
 
 
-def _gradient_vector_for_groups(groups, names, selected, gradients) -> torch.Tensor:
-    positions = {id(parameter): index for index, parameter in enumerate(selected)}
-    values = []
-    for name in names:
-        for parameter in groups[name]:
-            gradient = gradients[positions[id(parameter)]]
-            values.append((gradient.detach() if gradient is not None else torch.zeros_like(parameter)).reshape(-1))
-    return torch.cat(values)
-
-
 def _group_gradient_norms(groups, selected, gradients) -> dict[str, float]:
     """Return per-optimizer-group norms without changing the autograd graph."""
     result = {}
@@ -179,10 +170,7 @@ def _group_gradient_norms(groups, selected, gradients) -> dict[str, float]:
     for name, parameters in groups.items():
         values = []
         for parameter in parameters:
-            index = positions.get(id(parameter))
-            if index is None:
-                values.append(torch.zeros_like(parameter).reshape(-1))
-                continue
+            index = positions[id(parameter)]
             gradient = gradients[index]
             values.append((gradient.detach() if gradient is not None else torch.zeros_like(parameter)).reshape(-1))
         vector = torch.cat(values)
@@ -349,24 +337,21 @@ def _gradient_calibration(args, config, train_images, train_labels, split, prima
 
 def _effective_gradient_gate(diagnostics: dict[str, object]) -> tuple[bool, dict[str, object]]:
     """Apply scale-invariant per-batch and aggregate gradient budgets."""
-    rows = diagnostics.get("batches", [])
-    effective = diagnostics.get("effective_gradients", {})
-    if not isinstance(rows, list) or not isinstance(effective, dict):
-        return False, {"reason": "missing effective gradient diagnostics"}
-    weighted = effective.get("weighted_gradient_ratios", {})
-    combined = effective.get("combined_gradient_ratios", {})
+    rows = diagnostics["batches"]
+    effective = diagnostics["effective_gradients"]
+    weighted = effective["weighted_gradient_ratios"]
+    combined = effective["combined_gradient_ratios"]
     batch_safe = all(
-        isinstance(row, dict)
-        and all(value is not None and float(value) <= 0.50 for value in row.get("weighted_gradient_ratios", {}).values())
+        all(value is not None and float(value) <= 0.50 for value in row["weighted_gradient_ratios"].values())
         and all(
             status == "inactive_neutral"
             or (status == "active"
-                and row.get("weighted_gradient_ratios_by_group", {}).get(auxiliary, {}).get(group) is not None
+                and row["weighted_gradient_ratios_by_group"][auxiliary][group] is not None
                 and float(row["weighted_gradient_ratios_by_group"][auxiliary][group]) <= 1.0)
-            for auxiliary, statuses in row.get("gradient_group_status", {}).items()
+            for auxiliary, statuses in row["gradient_group_status"].items()
             for group, status in statuses.items()
         )
-        and set(row.get("gradient_group_status", {})) == {"camera", "pairwise", "coverage"}
+        and set(row["gradient_group_status"]) == {"camera", "pairwise", "coverage"}
         and all(
             set(statuses) == {
                 "class_carrier",
@@ -376,19 +361,19 @@ def _effective_gradient_gate(diagnostics: dict[str, object]) -> tuple[bool, dict
                 "encoder_phase",
                 "decoder_phase",
             }
-            for statuses in row.get("gradient_group_status", {}).values()
+            for statuses in row["gradient_group_status"].values()
         )
-        and row.get("combined_gradient_ratios", {}).get("B") is not None
+        and row["combined_gradient_ratios"]["B"] is not None
         and float(row["combined_gradient_ratios"]["B"]) <= 0.75
-        and row.get("combined_gradient_ratios", {}).get("C") is not None
+        and row["combined_gradient_ratios"]["C"] is not None
         and float(row["combined_gradient_ratios"]["C"]) <= 1.00
         for row in rows
     )
     aggregate_safe = (
         set(weighted) == {"camera", "pairwise", "coverage"}
         and all(abs(float(value) - 0.25) <= 0.05 for value in weighted.values())
-        and float(combined.get("B", float("inf"))) <= 0.75
-        and float(combined.get("C", float("inf"))) <= 1.00
+        and float(combined["B"]) <= 0.75
+        and float(combined["C"]) <= 1.00
     )
     return batch_safe and aggregate_safe, {
         "batch_safe": batch_safe,
@@ -580,7 +565,7 @@ def _diagnostic_record(config, kind, status, context, input_hashes, gates, permi
         report_path = run.root / f"{kind}_report.json"
         atomic_write_json(report_path, extra)
         report_hash = file_sha256(report_path)
-    bound_inputs = {**input_hashes, "artifacts": canonical_sha256(artifact_hashes), **artifact_hashes}
+    bound_inputs = {**input_hashes, **artifact_hashes}
     if report_hash is not None:
         bound_inputs["report"] = report_hash
     record = EvidenceRecordV2(2, kind, "diagnostic", status, run.git_commit, run.dirty_patch_hash, run.config_hash, context, bound_inputs, tuple(gates), tuple(permitted) if status == "passed" else (), reason)
@@ -595,12 +580,7 @@ def conditional_objective_weight_calibration(args, config) -> int:
     train_images, train_labels, _, _, split, primary, injection, bundle, manifest, init_hash, evaluator_hash = _load_primary_inputs(args, config)
     context = _record_context(config, evaluator_hash, split.manifest_hash, init_hash)
     input_hashes = {"initialization_checkpoint": init_hash, "injection_evidence": file_sha256(args.injection_evidence), "evaluator": evaluator_hash, "split": split.manifest_hash}
-    try:
-        norms, weights, diagnostics = _gradient_calibration(args, config, train_images, train_labels, split, primary, bundle, evaluator_hash, {"initialization": init_hash})
-    except ValueError as error:
-        reason = str(error)
-        diagnostics = {"batches": [], "rms_norms": {}, "raw_weights": {}, "violations": {}, "execution_error": reason}
-        norms, weights = {}, {}
+    norms, weights, diagnostics = _gradient_calibration(args, config, train_images, train_labels, split, primary, bundle, evaluator_hash, {"initialization": init_hash})
     input_bindings = {"initialization_checkpoint": init_hash, "injection_evidence": file_sha256(args.injection_evidence), "evaluator": evaluator_hash, "split": split.manifest_hash}
     finite = bool(norms) and all(torch.isfinite(torch.tensor(value)) and value > 1.0e-12 for value in norms.values())
     effective_passed, effective_report = _effective_gradient_gate(diagnostics)
@@ -608,7 +588,7 @@ def conditional_objective_weight_calibration(args, config) -> int:
     combined_ratios = effective_report.get("combined", {})
     batch_safe = bool(effective_report.get("batch_safe", False))
     aggregate_safe = bool(effective_report.get("aggregate_safe", False))
-    passed = finite and len(diagnostics.get("batches", [])) == 4 and effective_passed and "execution_error" not in diagnostics
+    passed = finite and len(diagnostics["batches"]) == 4 and effective_passed
     artifact = {
         "schema_version": 5,
         "contract": OBJECTIVE_DIAGNOSTIC_CONTRACT,
@@ -626,12 +606,12 @@ def conditional_objective_weight_calibration(args, config) -> int:
     artifact_path = run.root / "conditional_objective_weight_calibration.json"
     atomic_write_json(artifact_path, artifact)
     gates = (
-        GateResult("four_balanced_batches", len(diagnostics.get("batches", [])) == 4, {"count": float(len(diagnostics.get("batches", [])))}),
+        GateResult("four_balanced_batches", len(diagnostics["batches"]) == 4, {"count": float(len(diagnostics["batches"]))}),
         GateResult("finite_gradient_norms", finite, norms),
         GateResult("effective_gradient_batches", batch_safe, {"max_weighted_ratio": 0.50, "max_B_ratio": 0.75, "max_C_ratio": 1.00}),
         GateResult("effective_gradient_aggregate", aggregate_safe, {"weighted": weighted_ratios, "combined": combined_ratios}),
     )
-    reason = diagnostics.get("execution_error") or ("effective gradient safety gate failed" if not (batch_safe and aggregate_safe) else None)
+    reason = "effective gradient safety gate failed" if not (batch_safe and aggregate_safe) else None
     record = EvidenceRecordV2(2, "conditional_objective_weight_calibration", "diagnostic", "passed" if passed else "failed", run.git_commit, run.dirty_patch_hash, run.config_hash, context, {"artifact": file_sha256(artifact_path), **input_hashes}, gates, ("screen",) if passed else (), reason)
     _write_evidence(run, "conditional_objective_weight_calibration_evidence.json", record)
     print(run.root)

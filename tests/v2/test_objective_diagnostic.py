@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import torch
+import pytest
 
 from ldm_project.v2.application.cli_schema import _parser
 from ldm_project.v2.application.diagnostic.objective import _code_seed, _companion_indices, _effective_gradient_gate, _gradient_cosine, _scheduled_batches
@@ -105,8 +106,10 @@ def test_effective_gradient_gate_rejects_spikes_and_missing_components() -> None
             "combined_gradient_ratios": {"B": 0.40, "C": 0.55},
         },
     }
-    assert not _effective_gradient_gate(diagnostics)[0]
-    assert not _effective_gradient_gate({})[0]
+    with pytest.raises(KeyError):
+        _effective_gradient_gate(diagnostics)
+    with pytest.raises(KeyError):
+        _effective_gradient_gate({})
 
 
 def test_effective_gradient_gate_uses_auxiliary_delta_not_base_plus_delta() -> None:
