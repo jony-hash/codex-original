@@ -851,3 +851,12 @@ def test_training_completion_binds_corrected_checkpoint_hash(
     current_training.conditional_training_completion(args, config)
     assert len(captured) == 1
     assert captured[0].context.checkpoint_hash == captured[0].input_hashes["checkpoint"]
+
+    history[0] = "invalid"
+    monkeypatch.setattr(
+        current_training,
+        "_new_run",
+        lambda *args, **kwargs: pytest.fail("malformed history reached run creation"),
+    )
+    with pytest.raises(ValueError, match="invalid history row"):
+        current_training.conditional_training_completion(args, config)

@@ -433,12 +433,13 @@ def conditional_training_completion(args, config: V2Config) -> int:
         raise ValueError(
             f"completed checkpoint history must contain exactly {expected_steps} balanced steps"
         )
-    if any(
-        not torch.isfinite(torch.tensor(float(row.get("total", float("nan")))))
-        for row in history
-        if isinstance(row, dict)
-    ):
-        raise ValueError("completed checkpoint contains non-finite history")
+    for row in history:
+        if not isinstance(row, dict):
+            raise ValueError("completed checkpoint contains an invalid history row")
+        if not torch.isfinite(
+            torch.tensor(float(row.get("total", float("nan"))))
+        ):
+            raise ValueError("completed checkpoint contains non-finite history")
     run = _new_run(config)
     corrected = run.root / "conditional_optical_generator_balanced.pt"
     new_manifest = ConditionalCheckpointManifestV2(
