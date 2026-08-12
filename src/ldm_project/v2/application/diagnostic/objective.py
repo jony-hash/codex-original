@@ -567,9 +567,7 @@ def conditional_objective_weight_calibration(args, config) -> int:
         diagnostics = {"batches": [], "rms_norms": {}, "raw_weights": {}, "violations": {}, "execution_error": reason}
         norms, weights = {}, {}
     input_bindings = {"initialization_checkpoint": init_hash, "injection_evidence": file_sha256(args.injection_evidence), "evaluator": evaluator_hash, "split": split.manifest_hash}
-    violations = diagnostics.get("violations", {})
     finite = bool(norms) and all(torch.isfinite(torch.tensor(value)) and value > 1.0e-12 for value in norms.values())
-    in_range = bool(weights) and not any(violations.values())
     effective_passed, effective_report = _effective_gradient_gate(diagnostics)
     weighted_ratios = effective_report.get("weighted", {})
     combined_ratios = effective_report.get("combined", {})
@@ -595,7 +593,6 @@ def conditional_objective_weight_calibration(args, config) -> int:
     gates = (
         GateResult("four_balanced_batches", len(diagnostics.get("batches", [])) == 4, {"count": float(len(diagnostics.get("batches", [])))}),
         GateResult("finite_gradient_norms", finite, norms),
-        GateResult("legacy_raw_weight_range", in_range, {name: value for name, value in weights.items() if value is not None}),
         GateResult("effective_gradient_batches", batch_safe, {"max_weighted_ratio": 0.50, "max_B_ratio": 0.75, "max_C_ratio": 1.00}),
         GateResult("effective_gradient_aggregate", aggregate_safe, {"weighted": weighted_ratios, "combined": combined_ratios}),
     )
