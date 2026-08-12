@@ -1847,6 +1847,6 @@ def _load_one_shot_checkpoint_state(
     checkpoint_state: Mapping[str, torch.Tensor],
     **kwargs: Any,
 ) -> dict[str, int]:
-    from .checkpoints import _load_one_shot_checkpoint_state as canonical_loader
+    from ..checkpoints import _load_one_shot_checkpoint_state as canonical_loader
 
     return canonical_loader(model, checkpoint_state, **kwargs)
