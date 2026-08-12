@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 import torch
 
@@ -60,6 +61,7 @@ OBJECTIVE_DIAGNOSTIC_CONTRACT = canonical_sha256(
         "panel_per_class": 17,
         "reference_per_class": 34,
         "weight_rule": "0.25*base_gradient_norm/auxiliary_gradient_norm",
+        "calibration_version": "effective_auxiliary_delta_v4",
         "camera_target": 0.30,
         "camera_temperature": 0.02,
         "coverage_target": 1.35,
@@ -159,6 +161,16 @@ def _gradient_vector(parameters, gradients) -> torch.Tensor:
     ])
 
 
+def _gradient_vector_for_groups(groups, names, selected, gradients) -> torch.Tensor:
+    positions = {id(parameter): index for index, parameter in enumerate(selected)}
+    values = []
+    for name in names:
+        for parameter in groups[name]:
+            gradient = gradients[positions[id(parameter)]]
+            values.append((gradient.detach() if gradient is not None else torch.zeros_like(parameter)).reshape(-1))
+    return torch.cat(values)
+
+
 def _group_gradient_norms(groups, selected, gradients) -> dict[str, float]:
     """Return per-optimizer-group norms without changing the autograd graph."""
     result = {}
@@ -206,7 +218,9 @@ def _gradient_calibration(args, config, train_images, train_labels, split, prima
     settings = config.conditional_generation
     assert settings is not None
     groups = _conditional_parameter_groups(bundle)
-    selected = tuple(parameter for name in ("global_modes", "code_projection", "class_heads") for parameter in groups[name])
+    selected = tuple(parameter for name in groups for parameter in groups[name])
+    control_names = ("global_modes", "code_projection", "class_heads")
+    control_selected = tuple(parameter for name in control_names for parameter in groups[name])
     sums = {name: torch.zeros((), device=selected[0].device) for name in ("base", "camera", "pairwise", "coverage")}
     steps = 0
     batch_records = []
@@ -245,8 +259,9 @@ def _gradient_calibration(args, config, train_images, train_labels, split, prima
             group_norms = {}
             for name, loss in losses.items():
                 gradients = torch.autograd.grad(loss, selected, retain_graph=True, allow_unused=True)
-                norm = _parameter_norm(selected, gradients)
-                gradient_vectors[name] = _gradient_vector(selected, gradients)
+                control_gradients = tuple(gradients[selected.index(parameter)] for parameter in control_selected)
+                norm = _parameter_norm(control_selected, control_gradients)
+                gradient_vectors[name] = _gradient_vector(control_selected, control_gradients)
                 batch_norms[name] = float(norm.item())
                 group_norms[name] = _group_gradient_norms(groups, selected, gradients)
                 sums[name] = sums[name] + norm.square()
@@ -274,7 +289,10 @@ def _gradient_calibration(args, config, train_images, train_labels, split, prima
         for name, value in weights.items()
     }
     effective = []
+    aggregate_squares = {"base": 0.0, "camera": 0.0, "pairwise": 0.0, "coverage": 0.0, "B": 0.0, "C": 0.0}
     for record, vectors in zip(batch_records, batch_vectors, strict=True):
+        # Calibration ratios are defined on the three control-bearing groups;
+        # the per-group records below retain all six optimizer groups.
         base_vector = vectors["base"]
         base_norm = base_vector.norm()
         weighted = {
@@ -284,7 +302,7 @@ def _gradient_calibration(args, config, train_images, train_labels, split, prima
         ratios = {name: float((value.norm() / base_norm).item()) if torch.isfinite(base_norm) and base_norm > 1.0e-12 else None for name, value in weighted.items()}
         combined = {}
         for kind, names in (("B", ("camera", "pairwise")), ("C", ("camera", "pairwise", "coverage"))):
-            vector = base_vector + sum((weighted[name] for name in names), torch.zeros_like(base_vector))
+            vector = sum((weighted[name] for name in names), torch.zeros_like(base_vector))
             combined[kind] = float((vector.norm() / base_norm).item()) if torch.isfinite(base_norm) and base_norm > 1.0e-12 else None
         record["weighted_gradient_ratios"] = ratios
         record["combined_gradient_ratios"] = combined
@@ -297,10 +315,15 @@ def _gradient_calibration(args, config, train_images, train_labels, split, prima
             }
             for name in ("camera", "pairwise", "coverage")
         }
+        aggregate_squares["base"] += float(base_norm.square().item())
+        for name, vector in weighted.items():
+            aggregate_squares[name] += float(vector.norm().square().item())
+        for kind, names in (("B", ("camera", "pairwise")), ("C", ("camera", "pairwise", "coverage"))):
+            aggregate_squares[kind] += float(sum((weighted[name] for name in names), torch.zeros_like(base_vector)).norm().square().item())
         effective.append({"weighted_gradient_ratios": ratios, "combined_gradient_ratios": combined, "weighted_gradient_ratios_by_group": record["weighted_gradient_ratios_by_group"]})
     aggregate = {
-        "weighted_gradient_ratios": {name: float(sum(row["weighted_gradient_ratios"][name] for row in effective) / len(effective)) for name in ("camera", "pairwise", "coverage")},
-        "combined_gradient_ratios": {kind: float(sum(row["combined_gradient_ratios"][kind] for row in effective) / len(effective)) for kind in ("B", "C")},
+        "weighted_gradient_ratios": {name: math.sqrt(aggregate_squares[name] / aggregate_squares["base"]) for name in ("camera", "pairwise", "coverage")},
+        "combined_gradient_ratios": {kind: math.sqrt(aggregate_squares[kind] / aggregate_squares["base"]) for kind in ("B", "C")},
     }
     return norms, weights, {"batches": batch_records, "rms_norms": norms, "raw_weights": weights, "violations": violations, "effective_gradients": aggregate}
 
@@ -538,7 +561,7 @@ def conditional_objective_weight_calibration(args, config) -> int:
     input_hashes = {"initialization_checkpoint": init_hash, "injection_evidence": file_sha256(args.injection_evidence), "evaluator": evaluator_hash, "split": split.manifest_hash}
     try:
         norms, weights, diagnostics = _gradient_calibration(args, config, train_images, train_labels, split, primary, bundle, evaluator_hash, {"initialization": init_hash})
-    except (ValueError, RuntimeError) as error:
+    except ValueError as error:
         reason = str(error)
         diagnostics = {"batches": [], "rms_norms": {}, "raw_weights": {}, "violations": {}, "execution_error": reason}
         norms, weights = {}, {}
@@ -553,7 +576,7 @@ def conditional_objective_weight_calibration(args, config) -> int:
     aggregate_safe = bool(effective_report.get("aggregate_safe", False))
     passed = finite and len(diagnostics.get("batches", [])) == 4 and effective_passed and "execution_error" not in diagnostics
     artifact = {
-        "schema_version": 3,
+        "schema_version": 4,
         "contract": OBJECTIVE_DIAGNOSTIC_CONTRACT,
         "formula": "0.25*base_gradient_norm/auxiliary_gradient_norm",
         "target_ratio": 0.25,
@@ -584,7 +607,7 @@ def conditional_objective_weight_calibration(args, config) -> int:
 
 def _read_calibration(path: str, config, evaluator_hash: str, init_hash: str):
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
-    if payload.get("contract") != OBJECTIVE_DIAGNOSTIC_CONTRACT or payload.get("schema_version") != 3 or payload.get("frozen") is not True:
+    if payload.get("contract") != OBJECTIVE_DIAGNOSTIC_CONTRACT or payload.get("schema_version") != 4 or payload.get("frozen") is not True:
         raise ValueError("objective calibration contract mismatch")
     inputs = payload.get("input_hashes")
     if not isinstance(inputs, dict) or inputs.get("evaluator") != evaluator_hash or inputs.get("initialization_checkpoint") != init_hash:

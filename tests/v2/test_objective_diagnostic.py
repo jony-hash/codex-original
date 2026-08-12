@@ -110,6 +110,20 @@ def test_effective_gradient_gate_rejects_spikes_and_missing_components() -> None
     assert not _effective_gradient_gate({})[0]
 
 
+def test_effective_gradient_gate_uses_auxiliary_delta_not_base_plus_delta() -> None:
+    diagnostics = {
+        "batches": [
+            {"weighted_gradient_ratios": {"camera": 0.25, "pairwise": 0.25, "coverage": 0.25}, "combined_gradient_ratios": {"B": 0.35, "C": 0.45}}
+            for _ in range(4)
+        ],
+        "effective_gradients": {
+            "weighted_gradient_ratios": {"camera": 0.25, "pairwise": 0.25, "coverage": 0.25},
+            "combined_gradient_ratios": {"B": 0.35, "C": 0.45},
+        },
+    }
+    assert _effective_gradient_gate(diagnostics)[0]
+
+
 def test_objective_commands_are_content_bound() -> None:
     parser = _parser()
     screen = parser.parse_args(
