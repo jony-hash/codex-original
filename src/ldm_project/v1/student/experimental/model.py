@@ -1836,17 +1836,3 @@ class OneShotOpticalGenerator(FormalOneShotOpticalGenerator):
 
     def __init__(self, physics, config=None, image_size=200):
         super().__init__(physics, config, image_size=image_size)
-
-
-# Compatibility symbol for callers that historically imported the private
-# loader from ``student.model``.  The implementation now lives in the
-# checkpoint contract module; keeping this forwarding wrapper avoids changing
-# old tooling while preventing new code from depending on model internals.
-def _load_one_shot_checkpoint_state(
-    model: nn.Module,
-    checkpoint_state: Mapping[str, torch.Tensor],
-    **kwargs: Any,
-) -> dict[str, int]:
-    from ..checkpoints import _load_one_shot_checkpoint_state as canonical_loader
-
-    return canonical_loader(model, checkpoint_state, **kwargs)

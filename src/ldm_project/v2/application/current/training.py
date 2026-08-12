@@ -88,8 +88,8 @@ def conditional_train(args, config: V2Config) -> int:
     _require_current_acceptance(config)
     require_clean_acceptance_worktree(config)
     if config.architecture == IDENTITY_ARCHITECTURE:
-        controllability_path = getattr(args, "controllability_evidence", None)
-        recovery_path = getattr(args, "semantic_recovery_evidence", None)
+        controllability_path = args.controllability_evidence
+        recovery_path = args.semantic_recovery_evidence
         if bool(controllability_path) == bool(recovery_path):
             raise ValueError(
                 "identity training requires exactly one controllability or "

@@ -96,7 +96,7 @@ def controllability_smoke(args, config: V2Config) -> int:
                 allow_diagnostic=True,
             )
         else:
-            localization_path = getattr(args, "semantic_localization_evidence", None)
+            localization_path = args.semantic_localization_evidence
             if not localization_path:
                 raise ValueError(
                     "semantic-alignment isolation requires semantic-localization evidence before smoke"
@@ -454,8 +454,6 @@ def controllability_smoke(args, config: V2Config) -> int:
 def semantic_recovery_smoke(args, config: V2Config) -> int:
     """Run the single registered 400-step recovery smoke from initialization."""
     _require_identity(config)
-    if getattr(args, "steps", SEMANTIC_RECOVERY_STEPS) != SEMANTIC_RECOVERY_STEPS:
-        raise ValueError("semantic recovery smoke is locked to exactly 400 steps")
     images, all_labels = load_local_mnist(args.dataset_root, train=True)
     train_images, train_labels, _, _, split = _split(
         images, all_labels, args.dataset_root

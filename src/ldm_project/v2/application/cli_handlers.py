@@ -6,10 +6,7 @@ imported after argparse and v2 configuration validation have completed.
 
 from __future__ import annotations
 
-import argparse
-import importlib
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Literal
 
 CallKind = Literal["args", "args+config", "architecture-dispatch"]
@@ -19,13 +16,6 @@ IDENTITY_ARCHITECTURE = "conditional_identity_logit_amplitude_v2"
 _CONTROL_ORACLE_STEPS = 400
 _CONTROL_ORACLE_LR = 1.0e-2
 _CONTROL_ORACLE_PROGRESS_INTERVAL = 40
-
-
-def _parser() -> argparse.ArgumentParser:
-    """Construct the public schema without making it a dispatcher dependency."""
-    from .cli_schema import _parser as build_parser
-
-    return build_parser()
 
 
 @dataclass(frozen=True)
@@ -450,72 +440,3 @@ _LEGACY_HANDLERS = {
     for key, spec in _NON_IDENTITY_HANDLERS.items()
     if key not in _DIAGNOSTIC_HANDLERS
 }
-
-
-def _load_config(args: argparse.Namespace):
-    path = getattr(args, "config", None)
-    if path is None:
-        return None
-    from ..config import load_config
-
-    return load_config(path)
-
-
-def _resolve(spec: HandlerSpec):
-    module_name, separator, name = spec.target.partition(":")
-    if not separator:
-        raise ValueError(f"invalid CLI target: {spec.target}")
-    module = importlib.import_module(module_name, __package__)
-    return getattr(module, name)
-
-
-def _summarize(args: argparse.Namespace) -> int:
-    print(Path(args.run).read_text(encoding="utf-8"))
-    return 0
-
-
-def _dispatch(args: argparse.Namespace) -> int:
-    config = _load_config(args)
-    spec = _IDENTITY_HANDLERS.get((args.domain, args.action))
-    if config is not None and config.architecture == IDENTITY_ARCHITECTURE:
-        if spec is None:
-            raise RuntimeError(
-                f"identity architecture has no current handler for "
-                f"{args.domain}/{args.action}"
-            )
-        target = _resolve(spec)
-        setattr(args, "_from_cli", True)
-        return int(target(args, config) or 0)
-    spec = _DIAGNOSTIC_HANDLERS.get((args.domain, args.action))
-    if spec is None:
-        spec = _LEGACY_HANDLERS.get((args.domain, args.action))
-    if spec is not None and spec.call_kind == "args":
-        return int(_resolve(spec)(args) or 0)
-    if spec is not None and config is not None:
-        target = _resolve(spec)
-        module = importlib.import_module(spec.target.partition(":")[0], __package__)
-        for name in (
-            "_CONTROL_ORACLE_STEPS",
-            "_CONTROL_ORACLE_PROGRESS_INTERVAL",
-            "_CONTROL_ORACLE_LR",
-        ):
-            if hasattr(module, name):
-                setattr(module, name, globals()[name])
-        return int(target(args, config) or 0)
-    raise RuntimeError(f"no static v2 command handler for {args.domain}/{args.action}")
-
-
-def __getattr__(name: str):
-    """Compatibility access for diagnostic helpers without eager imports."""
-    if name == "_lightgen_seeds":
-        module = importlib.import_module(".legacy.teacher", __package__)
-        value = getattr(module, name)
-        globals()[name] = value
-        return value
-    raise AttributeError(name)
-
-
-def main(argv: list[str] | None = None) -> int:
-    arguments = list(argv) if argv is not None else None
-    args = _parser().parse_args(arguments)
-    return _dispatch(args)

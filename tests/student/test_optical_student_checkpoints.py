@@ -14,26 +14,6 @@ from tests.tests_support import (
 )
 @unittest.skipUnless(importlib.util.find_spec("torch"), "torch is required for one-shot tests")
 class OneShotOpticalStudentCheckpointsTests(unittest.TestCase):
-    def test_experimental_model_checkpoint_loader_forwards_to_canonical_loader(self) -> None:
-        import torch
-        from ldm_project.v1.student.experimental.model import (
-            _load_one_shot_checkpoint_state,
-        )
-
-        torch.manual_seed(7)
-        source = torch.nn.Linear(3, 2)
-        target = torch.nn.Linear(3, 2)
-        summary = _load_one_shot_checkpoint_state(
-            target, source.state_dict(), description="compatibility test checkpoint"
-        )
-
-        self.assertEqual(summary["loaded"], 2)
-        self.assertEqual(summary["skipped"], 0)
-        self.assertEqual(summary["missing"], 0)
-        self.assertEqual(summary["unexpected"], 0)
-        for actual, expected in zip(target.parameters(), source.parameters()):
-            torch.testing.assert_close(actual, expected)
-
     def test_two_layer_checkpoint_loads_into_four_layer_decoder_with_sliced_phase(self) -> None:
         import torch
 
