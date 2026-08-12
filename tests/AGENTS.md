@@ -13,7 +13,7 @@ Scope: `tests/**` and verification for repository changes. Read the repository-r
 - Teacher/first-stage/diffusion changes normally require the matching conditioned, diffusion, data, or optical-path tests rather than an unrelated fixed bundle.
 - Docs-only and repository-instruction changes require `git diff --check`; do not run Python or CUDA tests unless behavior-bearing files also changed.
 - Run `python -m compileall src tests train.py` for shared Python changes and `ruff check src tests *.py` when lint-relevant files change.
-- Run the full suite only after targeted checks pass for shared/final changes. If a corrective edit can affect the result, rerun the invalidated check.
+- Run the full suite only after targeted checks pass for shared/final changes or a cross-package contract change. Local fixes may stop after their targeted tests, compile, and lint checks; rerun only checks invalidated by a corrective edit.
 - Keep architecture-boundary and lazy-stage assertions separate from physics/numerical assertions; legacy imports must resolve to canonical package implementations.
 - v2 conditional tests must separately cover current identity architecture,
   legacy compatibility, evidence action/context binding, evaluator qualification,

@@ -8,7 +8,9 @@ Primary execution contract for this repository. This file overrides `docs/`; sco
 
 Before changing a scoped path, read its local contract:
 
-- `src/ldm_project/v1/**`, `src/ldm_project/v2/**`, and root compatibility facades -> `src/ldm_project/AGENTS.md`
+- `src/ldm_project/v1/**` -> read `src/ldm_project/AGENTS.md` and `src/ldm_project/v1/AGENTS.md`
+- `src/ldm_project/v2/**` -> read `src/ldm_project/AGENTS.md` and `src/ldm_project/v2/AGENTS.md`
+- root compatibility facades -> `src/ldm_project/AGENTS.md`
 - `configs/**` -> `configs/AGENTS.md`
 - `tests/**`, or repository verification work -> `tests/AGENTS.md`
 - `experiments/**` -> `experiments/AGENTS.md`
@@ -30,30 +32,18 @@ This explicit routing is required when Codex starts at the repository root, beca
    compatibility contract. Test counts, line counts, digest counts, and archive
    entry counts are measurements only and cannot independently define success.
 
-9. Necessity gate: before a medium- or high-risk modification, record the
-   substantive consequence of not changing, the real consumer or rejection
-   decision that requires the change, and the stop condition. If no substantive
-   loss or rejected decision exists, stop without modifying the repository.
-
-### Pre-change reverse verification
-
-Before implementing any modification, classify its risk and record the smallest
-adequate reverse check in the task or PR description. Every level must state the
-purpose, affected scope, invariants that must remain true, verification method,
-and failure condition. Low-risk documentation or formatting changes only need a
-no-behavior-impact check and the applicable repository checks. Medium-risk code
-or non-contract configuration changes require a reproducer or failing regression
-case, caller/impact inspection, and a preselected targeted test. High-risk
-changes—public CLI or runtime boundaries, training/evaluation, optical
-parameters, SLM/OLS/CMOS behavior, checkpoint/output policy, or scientific
-claims—require a no-update preflight, an independent reference or negative
-control, explicit acceptance gates, and fail-closed stop conditions before
-training, promotion, or a physical conclusion can proceed.
-
-If adequate reverse verification cannot be established, record the blocker and
-the guarantee that is lost; do not silently downgrade the result or claim the
-modification is correct. This policy is recorded in the task/PR description and
-does not require a new versioned plan file for every change.
+9. Before a medium- or high-risk modification, record its substantive
+   consequence, real consumer or rejection decision, affected scope, preserved
+   invariants, smallest adequate verification, and stop condition. Classify by
+   behavioral impact: a local implementation fix that changes no public contract,
+   runtime semantics, or scientific decision is medium risk even if it is under
+   training or evaluation. High-risk changes are public interfaces, acceptance
+   boundaries, training/evaluation semantics, optical or hardware behavior,
+   checkpoint/output policy, or scientific claims. If no substantive loss or
+   rejected decision exists, stop without modifying the repository. High-risk
+   work requires a no-update preflight, independent reference or negative control,
+   explicit gates, and fail-closed stops. If verification is unavailable, report
+   the blocker and lost guarantee; do not silently downgrade the result.
 
 ### Minimal Implementation And Failure Semantics
 
@@ -116,7 +106,7 @@ Formal optical-field artifacts must carry shape, pixel pitch, physical FOV, wave
 Diagnostic variants, LightGen comparisons, and historical experiment numbers
 are status or archive material only; they cannot authorize a current v2 run.
 
-The formal D2NN boundary is `finite_crop`, meaning a propagation-after-crop ideal hard-aperture computation contract; it is not a claim that printed glass is opaque. `transparent_identity` is diagnostic-only: it models a zero-thickness phase surface with an identity exterior on a full propagation grid and must pass the v67.1 convergence gate before any paired diagnostic training.
+The formal D2NN boundary is `finite_crop`, meaning a propagation-after-crop ideal hard-aperture computation contract; it is not a claim that printed glass is opaque. `transparent_identity` is diagnostic-only: it models a zero-thickness phase surface with an identity exterior on a full propagation grid and requires its applicable convergence gate before paired diagnostic training.
 
 - Neither runtime may require diffusion denoising, iterative latent sampling,
   software-only VAE decoding, or inference-time optimization at final inference.

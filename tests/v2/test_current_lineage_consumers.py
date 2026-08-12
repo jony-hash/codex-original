@@ -12,6 +12,7 @@ import torch
 from ldm_project.v2.application.current import dataset as current_dataset
 from ldm_project.v2.application.current import evaluation as current_evaluation
 from ldm_project.v2.application.current import training as current_training
+from ldm_project.v2.application.current import runtime as current_runtime
 from ldm_project.v2.application.current.runtime import (
     CONDITIONAL_CONTROL_ADMISSION_CONTRACT,
     BALANCED_TRAINING_SCHEDULE_CONTRACT,
@@ -21,6 +22,7 @@ from ldm_project.v2.application.current.runtime import (
     _system_signature,
     _validate_balanced_training_payload,
     _validate_current_evidence_source,
+    require_clean_acceptance_worktree,
 )
 from ldm_project.v2.config import load_config
 from ldm_project.v2.evidence import (
@@ -45,6 +47,17 @@ SPLIT_HASH = "p" * 64
 
 def _config():
     return load_config(CONFIG_PATH)
+
+
+def test_acceptance_preflight_rejects_dirty_worktree(monkeypatch: pytest.MonkeyPatch) -> None:
+    config = _config()
+    monkeypatch.setattr(
+        current_runtime.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(stdout=" M src/changed.py\n"),
+    )
+    with pytest.raises(ValueError, match="clean git commit"):
+        require_clean_acceptance_worktree(config)
 
 
 def _record(
@@ -307,6 +320,7 @@ def test_conditional_train_consumes_injection_action_before_checkpoint(
         injection_evidence=str(injection_path),
         observability_evidence=str(observability_path),
         semantic_recovery_evidence=str(recovery_path),
+        controllability_evidence=None,
         initialization_checkpoint=str(tmp_path / "initialization.pt"),
     )
     monkeypatch.setattr(
