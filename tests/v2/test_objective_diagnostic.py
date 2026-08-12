@@ -3,7 +3,8 @@ from __future__ import annotations
 import torch
 
 from ldm_project.v2.application.cli_schema import _parser
-from ldm_project.v2.application.diagnostic.objective import _code_seed, _companion_indices
+from ldm_project.v2.application.diagnostic.objective import _code_seed, _companion_indices, _scheduled_batches
+from ldm_project.v2.evidence import canonical_sha256
 from ldm_project.v2.student.conditional import coverage_ratio_upper_loss
 
 
@@ -20,6 +21,23 @@ def test_companion_schedule_is_deterministic_and_disjoint() -> None:
 def test_registered_confirmation_seeds_reproduce_formal_code_schedule() -> None:
     assert [_code_seed(seed, 0) for seed in (1234, 1235, 1236)] == [100000, 200000, 300000]
     assert _code_seed(1234, 99) == 100099
+
+
+def test_segmented_confirmation_schedule_is_contiguous_and_reproducible() -> None:
+    labels = torch.arange(10).repeat_interleave(2500)
+    whole = _scheduled_batches(labels, batch_size=50, seed=1234, start_step=0, steps=400)
+    segmented = _scheduled_batches(labels, batch_size=50, seed=1234, start_step=0, steps=100)
+    segmented += _scheduled_batches(labels, batch_size=50, seed=1234, start_step=100, steps=300)
+    assert canonical_sha256(whole) == canonical_sha256(segmented)
+    assert all(torch.equal(left, right) for left, right in zip(whole, segmented, strict=True))
+
+
+def test_confirmation_primary_schedule_is_shared_by_candidates() -> None:
+    labels = torch.arange(10).repeat_interleave(2500)
+    a = _scheduled_batches(labels, batch_size=50, seed=1235, start_step=0, steps=400)
+    winner = _scheduled_batches(labels, batch_size=50, seed=1235, start_step=0, steps=100)
+    winner += _scheduled_batches(labels, batch_size=50, seed=1235, start_step=100, steps=300)
+    assert canonical_sha256(a) == canonical_sha256(winner)
 
 
 def test_coverage_companion_contract_uses_matching_primary_counts() -> None:

@@ -304,21 +304,32 @@ def _companion_indices(labels: torch.Tensor, primary_indices: torch.Tensor, *, s
     return torch.cat(selected)
 
 
-def _run_steps(bundle, primary, train_images, train_labels, config, objective_kind, weights, steps, seed, *, optimizer=None, start_step=0, history=None, companion_schedule=None):
+def _scheduled_batches(labels: torch.Tensor, *, batch_size: int, seed: int, start_step: int, steps: int) -> list[torch.Tensor]:
+    """Return the exact contiguous slice of the registered balanced schedule."""
+    batches = list(balanced_batches(labels, batch_size=batch_size, seed=seed))
+    end = start_step + steps
+    if start_step < 0 or steps < 0 or end > len(batches):
+        raise ValueError("objective diagnostic schedule is shorter than requested range")
+    return batches[start_step:end]
+
+
+def _run_steps(bundle, primary, train_images, train_labels, config, objective_kind, weights, steps, seed, *, optimizer=None, start_step=0, history=None, primary_schedule=None, companion_schedule=None):
     settings = config.conditional_generation
     assert settings is not None
     optimizer = optimizer or _conditional_optimizer(bundle, config)
     groups = _conditional_parameter_groups(bundle)
     _validate_current_optimizer_coverage(optimizer, groups)
     history = [] if history is None else history
+    primary_schedule = [] if primary_schedule is None else primary_schedule
     companion_schedule = [] if companion_schedule is None else companion_schedule
     gradient_seen = {name: False for name in groups}
     before = {name: [parameter.detach().clone() for parameter in parameters] for name, parameters in groups.items()}
     device = next(bundle.parameters()).device
-    iterator = iter(balanced_batches(train_labels, batch_size=settings.logical_batch_size, seed=seed))
+    iterator = iter(_scheduled_batches(train_labels, batch_size=settings.logical_batch_size, seed=seed, start_step=start_step, steps=steps))
     for local_step in range(steps):
         step = start_step + local_step
         indices = next(iterator)
+        primary_schedule.append({"batch_hash": canonical_sha256(indices), "code_seed": _code_seed(seed, step)})
         labels = train_labels.index_select(0, indices).to(device)
         codes = _random_codes(labels.numel(), device=device, seed=_code_seed(seed, step))
         real_views = train_images.index_select(0, indices).to(device)
@@ -384,7 +395,7 @@ def _run_steps(bundle, primary, train_images, train_labels, config, objective_ki
         name: gradient_seen[name] and any(not torch.equal(parameter.detach(), previous) for parameter, previous in zip(parameters, before[name], strict=True))
         for name, parameters in groups.items()
     }
-    return history, companion_schedule, optimizer, {"gradient_seen": gradient_seen, "updated": updated}
+    return history, primary_schedule, companion_schedule, optimizer, {"gradient_seen": gradient_seen, "updated": updated}
 
 
 def _diagnostic_record(config, kind, status, context, input_hashes, gates, permitted=(), reason=None, extra=None, artifact_payloads=None):
@@ -448,8 +459,8 @@ def objective_alignment_screen(args, config) -> int:
     for kind in ("A", "B", "C"):
         candidate = _load_bundle(config, args.initialization_checkpoint, device=torch.device(config.run.device), evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, checkpoint_sha256=init_hash)[0]
         candidate_weights = {name: 0.0 for name in weights} if kind == "A" else weights
-        history, companion_schedule, _, update_status = _run_steps(candidate, primary, train_images, train_labels, config, kind, candidate_weights, 100, 1234)
-        reports[kind] = {"measurement": _measure_panel(candidate, primary, secondary, validation_images, validation_labels, config), "history": history, "companion_schedule_hash": canonical_sha256(companion_schedule), "update_status": update_status, "state_hash": state_content_hash(candidate.state_dict()), "state_dict": {name: value.detach().cpu() for name, value in candidate.state_dict().items()}}
+        history, primary_schedule, companion_schedule, _, update_status = _run_steps(candidate, primary, train_images, train_labels, config, kind, candidate_weights, 100, 1234)
+        reports[kind] = {"measurement": _measure_panel(candidate, primary, secondary, validation_images, validation_labels, config), "history": history, "primary_schedule_hash": canonical_sha256(primary_schedule), "companion_schedule_hash": canonical_sha256(companion_schedule), "update_status": update_status, "state_hash": state_content_hash(candidate.state_dict()), "state_dict": {name: value.detach().cpu() for name, value in candidate.state_dict().items()}}
     baseline = reports["A"]["measurement"]
     gates = []
     scores = {}
@@ -466,13 +477,23 @@ def objective_alignment_screen(args, config) -> int:
         }
         gates.append(GateResult(f"{kind}_screen_gate", all(checks.values()), checks))
         scores[kind] = min((row["camera_code_fraction"] - baseline["camera_code_fraction"]) / 0.02, (row["minimum_diversity_ratio"] - baseline["minimum_diversity_ratio"]) / 0.05, (baseline["coverage_ratio"] - row["coverage_ratio"]) / 0.05)
-    gates.append(GateResult("screen_update_groups", all(all(row["update_status"][key].values()) for key in ("gradient_seen", "updated") for row in reports.values()), {kind: row["update_status"] for kind, row in reports.items()}))
+    update_gate = GateResult("screen_update_groups", all(all(row["update_status"][key].values()) for key in ("gradient_seen", "updated") for row in reports.values()), {kind: row["update_status"] for kind, row in reports.items()})
+    gates.append(update_gate)
+    schedule_gate = GateResult("screen_primary_schedule", len({row["primary_schedule_hash"] for row in reports.values()}) == 1, {kind: row["primary_schedule_hash"] for kind, row in reports.items()})
+    gates.append(schedule_gate)
     candidates = [kind for kind in ("B", "C") if next(g for g in gates if g.name == f"{kind}_screen_gate").passed]
+    if not update_gate.passed or not schedule_gate.passed:
+        candidates = []
     winner = min(candidates, key=lambda kind: (-scores[kind], kind)) if candidates else None
     gates.append(GateResult("winner_exists", winner is not None, {"winner": winner or "none"}))
-    report_payload = {"contract": OBJECTIVE_DIAGNOSTIC_CONTRACT, "winner": winner, "scores": scores, "reports": {kind: {key: value for key, value in row.items() if key != "state_dict"} for kind, row in reports.items()}, "weights": weights}
+    report_payload = {"contract": OBJECTIVE_DIAGNOSTIC_CONTRACT, "winner": winner, "scores": scores, "reports": {kind: {key: value for key, value in row.items() if key != "state_dict"} for kind, row in reports.items()}, "weights": weights, "all_gates": [gate.__dict__ for gate in gates]}
+    evidence_gates = tuple(
+        gate
+        for gate in gates
+        if winner is None or gate.name == f"{winner}_screen_gate" or gate.name not in {"B_screen_gate", "C_screen_gate"}
+    )
     artifacts = {f"conditional_objective_alignment_{kind}_checkpoint.pt": {"objective_kind": kind, "state_dict": row["state_dict"], "state_content_hash": row["state_hash"]} for kind, row in reports.items()}
-    _diagnostic_record(config, "conditional_objective_alignment_screen", "passed" if winner else "failed", _record_context(config, evaluator_hash, split.manifest_hash, init_hash), {"initialization_checkpoint": init_hash, "injection_evidence": file_sha256(args.injection_evidence), "evaluator": evaluator_hash, "secondary_evaluator": secondary_hash, "measurement_evidence": measurement.evidence_hash, "measurement_bundle": file_sha256(args.acceptance_measurement_bundle), "calibration": file_sha256(calibration_path), "companion_schedule": canonical_sha256({kind: reports[kind]["companion_schedule_hash"] for kind in reports})}, tuple(gates), ("confirm",) if winner else (), extra=report_payload, artifact_payloads=artifacts)
+    _diagnostic_record(config, "conditional_objective_alignment_screen", "passed" if winner else "failed", _record_context(config, evaluator_hash, split.manifest_hash, init_hash), {"initialization_checkpoint": init_hash, "injection_evidence": file_sha256(args.injection_evidence), "evaluator": evaluator_hash, "secondary_evaluator": secondary_hash, "measurement_evidence": measurement.evidence_hash, "measurement_bundle": file_sha256(args.acceptance_measurement_bundle), "calibration": file_sha256(calibration_path), "companion_schedule": canonical_sha256({kind: reports[kind]["companion_schedule_hash"] for kind in reports})}, evidence_gates, ("confirm",) if winner else (), extra=report_payload, artifact_payloads=artifacts)
     return 0 if winner else 1
 
 
@@ -504,10 +525,10 @@ def objective_alignment_confirm(args, config) -> int:
         for kind in ("A", winner):
             candidate = _load_bundle(config, args.initialization_checkpoint, device=torch.device(config.run.device), evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, checkpoint_sha256=init_hash)[0]
             candidate_weights = {name: 0.0 for name in weights} if kind == "A" else {name: float(weights[name]) for name in weights}
-            history, companion_schedule, optimizer, update_status_100 = _run_steps(candidate, primary, train_images, train_labels, config, kind, candidate_weights, 100, seed)
+            history, primary_schedule, companion_schedule, optimizer, update_status_100 = _run_steps(candidate, primary, train_images, train_labels, config, kind, candidate_weights, 100, seed)
             measurement_100 = _measure_panel(candidate, primary, secondary, validation_images, validation_labels, config)
-            history, companion_schedule, _, update_status_400 = _run_steps(candidate, primary, train_images, train_labels, config, kind, candidate_weights, 300, seed, optimizer=optimizer, start_step=100, history=history, companion_schedule=companion_schedule)
-            seed_rows[kind] = {"measurement_100": measurement_100, "measurement_400": _measure_panel(candidate, primary, secondary, validation_images, validation_labels, config), "history": history, "companion_schedule_hash": canonical_sha256(companion_schedule), "update_status_100": update_status_100, "update_status_400": update_status_400, "state_hash": state_content_hash(candidate.state_dict()), "state_dict": {name: value.detach().cpu() for name, value in candidate.state_dict().items()}}
+            history, primary_schedule, companion_schedule, _, update_status_400 = _run_steps(candidate, primary, train_images, train_labels, config, kind, candidate_weights, 300, seed, optimizer=optimizer, start_step=100, history=history, primary_schedule=primary_schedule, companion_schedule=companion_schedule)
+            seed_rows[kind] = {"measurement_100": measurement_100, "measurement_400": _measure_panel(candidate, primary, secondary, validation_images, validation_labels, config), "history": history, "primary_schedule_hash": canonical_sha256(primary_schedule), "companion_schedule_hash": canonical_sha256(companion_schedule), "update_status_100": update_status_100, "update_status_400": update_status_400, "state_hash": state_content_hash(candidate.state_dict()), "state_dict": {name: value.detach().cpu() for name, value in candidate.state_dict().items()}}
         rows[str(seed)] = seed_rows
         a = seed_rows["A"]["measurement_400"]
         w = seed_rows[winner]["measurement_400"]
@@ -523,11 +544,14 @@ def objective_alignment_confirm(args, config) -> int:
         w100 = row["measurement_100"]
         w400 = row["measurement_400"]
         gates.append(GateResult(f"seed_{seed}_trend", w400["camera_code_fraction"] >= w100["camera_code_fraction"] - 0.03, {"camera_delta_100_to_400": w400["camera_code_fraction"] - w100["camera_code_fraction"]}))
-        for label, status in (("winner_step_100", row["update_status_100"]), ("winner_step_400", row["update_status_400"])):
-            gates.append(GateResult(f"seed_{seed}_{label}_updates", all(status["gradient_seen"].values()) and all(status["updated"].values()), status))
+        gates.append(GateResult(f"seed_{seed}_primary_schedule", rows[str(seed)]["A"]["primary_schedule_hash"] == row["primary_schedule_hash"], {"A": rows[str(seed)]["A"]["primary_schedule_hash"], "winner": row["primary_schedule_hash"]}))
+        for candidate_kind in ("A", winner):
+            candidate_row = rows[str(seed)][candidate_kind]
+            for label, status in ((f"{candidate_kind}_step_100", candidate_row["update_status_100"]), (f"{candidate_kind}_step_400", candidate_row["update_status_400"])):
+                gates.append(GateResult(f"seed_{seed}_{label}_updates", all(status["gradient_seen"].values()) and all(status["updated"].values()), status))
         gates.append(GateResult(f"seed_{seed}_measurement_fidelity", w400["primary_accuracy"] >= a400["primary_accuracy"] - 0.03 and w400["secondary_accuracy"] >= a400["secondary_accuracy"] - 0.03 and w400["primary_min_recall"] >= a400["primary_min_recall"] - 0.05 and w400["secondary_min_recall"] >= a400["secondary_min_recall"] - 0.05 and w400["saturation"] <= 0.08, {"step_100": w100, "step_400": w400}))
     passed = all(gate.passed for gate in gates)
     report_payload = {"contract": OBJECTIVE_DIAGNOSTIC_CONTRACT, "winner": winner, "seeds": {seed: {kind: {key: value for key, value in row.items() if key != "state_dict"} for kind, row in seed_rows.items()} for seed, seed_rows in rows.items()}, "formal_promotion_authorized": False}
     artifacts = {f"conditional_objective_alignment_confirm_{seed}_{kind}_checkpoint.pt": {"objective_kind": kind, "seed": int(seed), "state_dict": row["state_dict"], "state_content_hash": row["state_hash"]} for seed, seed_rows in rows.items() for kind, row in seed_rows.items()}
-    _diagnostic_record(config, "conditional_objective_alignment_confirm", "passed" if passed else "failed", _record_context(config, evaluator_hash, split.manifest_hash, init_hash), {"screen_evidence": screen.evidence_hash, "initialization_checkpoint": init_hash, "injection_evidence": file_sha256(args.injection_evidence), "evaluator": evaluator_hash, "secondary_evaluator": secondary_hash, "measurement_evidence": file_sha256(args.acceptance_measurement_evidence), "measurement_bundle": file_sha256(args.acceptance_measurement_bundle), "companion_schedule": canonical_sha256({seed: {kind: rows[str(seed)][kind]["companion_schedule_hash"] for kind in ("A", winner)} for seed in (1234, 1235, 1236)})}, tuple(gates), (), extra=report_payload, artifact_payloads=artifacts)
+    _diagnostic_record(config, "conditional_objective_alignment_confirm", "passed" if passed else "failed", _record_context(config, evaluator_hash, split.manifest_hash, init_hash), {"screen_evidence": screen.evidence_hash, "initialization_checkpoint": init_hash, "injection_evidence": file_sha256(args.injection_evidence), "evaluator": evaluator_hash, "secondary_evaluator": secondary_hash, "measurement_evidence": measurement.evidence_hash, "measurement_bundle": file_sha256(args.acceptance_measurement_bundle), "companion_schedule": canonical_sha256({seed: {kind: rows[str(seed)][kind]["companion_schedule_hash"] for kind in ("A", winner)} for seed in (1234, 1235, 1236)})}, tuple(gates), (), extra=report_payload, artifact_payloads=artifacts)
     return 0 if passed else 1
