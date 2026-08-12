@@ -182,6 +182,19 @@ class FormalAmplitudeFiniteCropIdentitySystem(nn.Module):
         decoded, decoder_records, decoder_stats = self.decoder(ols, "decoder")
         chip = ComplexField(decoded.tensor, self.chip_plane, decoded.provenance)
         camera_field = self.back(chip)
+        front_source_retention = self.front.last_diagnostic.get("source_pupil_retention")
+        front_target_retention = self.front.last_diagnostic.get("target_pupil_retention")
+        back_source_retention = self.back.last_diagnostic.get("source_pupil_retention")
+        back_target_retention = self.back.last_diagnostic.get("target_pupil_retention")
+        relay_stats = {
+            "front_source_pupil_retention": front_source_retention,
+            "front_target_pupil_retention": front_target_retention,
+            "back_source_pupil_retention": back_source_retention,
+            "back_target_pupil_retention": back_target_retention,
+        }
+        for name, value in relay_stats.items():
+            if not isinstance(value, torch.Tensor) or not torch.isfinite(value).all() or (value < 0).any() or (value > 1.0 + 1.0e-4).any():
+                raise ValueError(f"formal relay pupil retention is invalid: {name}")
         raw_camera = IntensityFrame(
             camera_field.tensor.abs().square(),
             self.camera_plane,
@@ -206,6 +219,7 @@ class FormalAmplitudeFiniteCropIdentitySystem(nn.Module):
             crop_statistics={
                 "encoder_crop_retention": encoder_stats["crop_retention"],
                 "decoder_crop_retention": decoder_stats["crop_retention"],
+                **relay_stats,
             },
             optical_trace=trace,
         )

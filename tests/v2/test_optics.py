@@ -58,12 +58,47 @@ def test_named_relay_preserves_constant_field_and_provenance() -> None:
     target = PlaneSpec("target", (4, 4), (4e-6, 4e-6), 532e-9, 0.4, "target")
     relay = CoherentImagingRelay(field.plane, target, -1.0, name="unit_relay", segments_m=(0.2, 0.2), focal_lengths_m=(0.1,), clear_aperture_m=1e-3)
     output = relay(field)
-    reference = reference_b0_imaging(field, target, relay.abcd, name="unit_relay")
+    reference = reference_b0_imaging(
+        field,
+        target,
+        relay.abcd,
+        name="unit_relay",
+        clear_aperture_m=relay.clear_aperture_m,
+        source_distance_m=relay.matrix_segments_m[0],
+        target_distance_m=relay.matrix_segments_m[-1],
+    )
     assert output.plane == target
     assert torch.allclose(output.tensor.abs(), torch.ones_like(output.tensor.abs()))
     assert torch.allclose(output.tensor, reference.tensor)
     assert output.provenance.parameters["relay"] == "unit_relay"
     assert output.provenance.parameters["abcd"]["B_m"] == pytest.approx(0.0)
+    assert output.provenance.parameters["pupil_effective"] is True
+    assert output.provenance.parameters["pupil_model"] == "circular_coherent_source_target_v1"
+
+
+def test_coherent_relay_pupil_is_active_and_retention_is_bounded() -> None:
+    field = _field((32, 32))
+    target = PlaneSpec("target", (16, 16), (4e-6, 4e-6), 532e-9, 0.4, "target")
+    wide = CoherentImagingRelay(field.plane, target, -1.0, name="wide", segments_m=(0.2, 0.2), focal_lengths_m=(0.1,), clear_aperture_m=0.02)
+    narrow = CoherentImagingRelay(field.plane, target, -1.0, name="narrow", segments_m=(0.2, 0.2), focal_lengths_m=(0.1,), clear_aperture_m=0.001)
+    wide_out, narrow_out = wide(field), narrow(field)
+    assert not torch.equal(wide_out.tensor, narrow_out.tensor)
+    for relay in (wide, narrow):
+        for key in ("source_pupil_retention", "target_pupil_retention"):
+            value = relay.last_diagnostic[key]
+            assert torch.isfinite(value).all()
+            assert (value >= 0).all() and (value <= 1.0 + 1.0e-4).all()
+    assert float(narrow.last_diagnostic["source_pupil_retention"].mean()) <= float(wide.last_diagnostic["source_pupil_retention"].mean())
+
+
+def test_coherent_relay_pupil_preserves_complex_gradients() -> None:
+    field = _field((16, 16))
+    field.tensor.requires_grad_(True)
+    target = PlaneSpec("target", (8, 8), (4e-6, 4e-6), 532e-9, 0.4, "target")
+    relay = CoherentImagingRelay(field.plane, target, -1.0, name="grad", segments_m=(0.2, 0.2), focal_lengths_m=(0.1,), clear_aperture_m=0.01)
+    relay(field).tensor.abs().square().mean().backward()
+    assert field.tensor.grad is not None
+    assert torch.isfinite(field.tensor.grad.real).all() and torch.isfinite(field.tensor.grad.imag).all()
 
 
 def test_finite_crop_phase_stack_preserves_shape_and_unit_mask() -> None:

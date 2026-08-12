@@ -5,7 +5,6 @@ from dataclasses import dataclass
 import math
 
 import torch
-import torch.nn.functional as functional
 
 from ..contracts import ComplexField, OperationProvenance, PlaneSpec
 from .propagation import angular_spectrum_propagate
@@ -62,6 +61,39 @@ def _physical_grid(source: PlaneSpec, target: PlaneSpec, magnification: float, *
     return torch.stack((norm_x, norm_y), dim=-1).unsqueeze(0)
 
 
+def _frequency_grid(shape: tuple[int, int], pixel_pitch: tuple[float, float], *, device: torch.device, dtype: torch.dtype) -> tuple[torch.Tensor, torch.Tensor]:
+    fy = torch.fft.fftfreq(shape[0], d=pixel_pitch[0], device=device, dtype=dtype)
+    fx = torch.fft.fftfreq(shape[1], d=pixel_pitch[1], device=device, dtype=dtype)
+    return torch.meshgrid(fy, fx, indexing="ij")
+
+
+def _circular_pupil(shape: tuple[int, int], pixel_pitch: tuple[float, float], cutoff: float, *, device: torch.device, dtype: torch.dtype) -> torch.Tensor:
+    fy, fx = _frequency_grid(shape, pixel_pitch, device=device, dtype=dtype)
+    return ((fx.square() + fy.square()).sqrt() <= cutoff * (1.0 + 1.0e-6))
+
+
+def _fourier_resample(field: torch.Tensor, source: PlaneSpec, target: PlaneSpec, magnification: float) -> torch.Tensor:
+    """Evaluate the source's periodic band-limited Fourier series at target coordinates.
+
+    This is the B=0 coordinate map used by the formal relay.  It keeps the
+    physical plane coordinates explicit and avoids treating a tensor resize as
+    an optical propagation step.
+    """
+    dtype = field.real.dtype
+    target_y = (torch.arange(target.shape[0], device=field.device, dtype=dtype) - (target.shape[0] - 1.0) / 2.0) * target.pixel_pitch_m[0]
+    target_x = (torch.arange(target.shape[1], device=field.device, dtype=dtype) - (target.shape[1] - 1.0) / 2.0) * target.pixel_pitch_m[1]
+    source_y, source_x = torch.meshgrid(target_y / magnification, target_x / magnification, indexing="ij")
+    source_h, source_w = source.shape
+    source_y0 = -(source_h - 1.0) * source.pixel_pitch_m[0] / 2.0
+    source_x0 = -(source_w - 1.0) * source.pixel_pitch_m[1] / 2.0
+    fy = torch.fft.fftfreq(source_h, d=source.pixel_pitch_m[0], device=field.device, dtype=dtype)
+    fx = torch.fft.fftfreq(source_w, d=source.pixel_pitch_m[1], device=field.device, dtype=dtype)
+    phase_y = torch.exp(2j * math.pi * (source_y[:, 0, None] - source_y0) * fy[None, :]).to(field.dtype)
+    phase_x = torch.exp(2j * math.pi * (source_x[0, :, None] - source_x0) * fx[None, :]).to(field.dtype)
+    spectrum = torch.fft.fft2(field.contiguous())
+    return torch.einsum("bcij,ui,vj->bcuv", spectrum, phase_y, phase_x) / float(source_h * source_w)
+
+
 def _quadratic_phase(target: PlaneSpec, matrix: ABCDMatrix, *, device: torch.device, dtype: torch.dtype) -> torch.Tensor:
     y = (torch.arange(target.shape[0], device=device, dtype=dtype) - (target.shape[0] - 1.0) / 2.0) * target.pixel_pitch_m[0]
     x = (torch.arange(target.shape[1], device=device, dtype=dtype) - (target.shape[1] - 1.0) / 2.0) * target.pixel_pitch_m[1]
@@ -77,6 +109,7 @@ class CoherentImagingRelay:
         self.source, self.target, self.magnification, self.name = source, target, magnification, name
         self.segments_m, self.focal_lengths_m, self.clear_aperture_m = segments_m, focal_lengths_m, clear_aperture_m
         self.matrix_segments_m = matrix_segments_m or segments_m
+        self.last_diagnostic: dict[str, torch.Tensor | float | str] = {}
         self.abcd = path_abcd(self.matrix_segments_m, focal_lengths_m)
         if abs(self.abcd.a - magnification) > 1.0e-9 or abs(self.abcd.b_m) > 1.0e-9:
             raise ValueError("relay path must realize the declared B=0 magnification")
@@ -89,16 +122,39 @@ class CoherentImagingRelay:
         if abs((target.z_m - source.z_m) - sum(segments_m)) > 1.0e-12:
             raise ValueError("relay plane z coordinates must equal its physical segment sum")
 
+    @property
+    def source_cutoff_cycles_m(self) -> float:
+        return self.clear_aperture_m / (2.0 * self.source.wavelength_m * self.matrix_segments_m[0])
+
+    @property
+    def target_cutoff_cycles_m(self) -> float:
+        return self.clear_aperture_m / (2.0 * self.target.wavelength_m * self.matrix_segments_m[-1])
+
     def __call__(self, field: ComplexField) -> ComplexField:
         if field.plane != self.source:
             raise ValueError(f"{self.name} received an unexpected source plane")
-        grid = _physical_grid(self.source, self.target, self.magnification, device=field.tensor.device, dtype=field.tensor.real.dtype).expand(field.tensor.shape[0], -1, -1, -1)
-        sampled = torch.complex(functional.grid_sample(field.tensor.real, grid, mode="bilinear", padding_mode="zeros", align_corners=True), functional.grid_sample(field.tensor.imag, grid, mode="bilinear", padding_mode="zeros", align_corners=True))
-        output = sampled * _quadratic_phase(self.target, self.abcd, device=field.tensor.device, dtype=field.tensor.real.dtype) * (1.0 / abs(self.abcd.a))
-        return ComplexField(output, self.target, OperationProvenance("coherent_b0_imaging", field.plane.plane_id, sum(self.segments_m), {"relay": self.name, "magnification": self.magnification, "segments_m": list(self.segments_m), "matrix_segments_m": list(self.matrix_segments_m), "focal_lengths_m": list(self.focal_lengths_m), "clear_aperture_m": self.clear_aperture_m, "abcd": self.abcd.to_dict(), "source_sampling": self.source.to_dict(), "target_sampling": self.target.to_dict()}))
+        source_pupil = _circular_pupil(self.source.shape, self.source.pixel_pitch_m, self.source_cutoff_cycles_m, device=field.tensor.device, dtype=field.tensor.real.dtype)
+        target_pupil = _circular_pupil(self.target.shape, self.target.pixel_pitch_m, self.target_cutoff_cycles_m, device=field.tensor.device, dtype=field.tensor.real.dtype)
+        source_spectrum = torch.fft.fft2(field.tensor.contiguous())
+        source_filtered = torch.fft.ifft2(source_spectrum * source_pupil.to(field.tensor.dtype))
+        sampled = _fourier_resample(source_filtered, self.source, self.target, self.magnification)
+        output_before_target_pupil = sampled * _quadratic_phase(self.target, self.abcd, device=field.tensor.device, dtype=field.tensor.real.dtype) * (1.0 / abs(self.abcd.a))
+        output = torch.fft.ifft2(torch.fft.fft2(output_before_target_pupil) * target_pupil.to(output_before_target_pupil.dtype))
+        source_energy = field.tensor.abs().square().sum(dim=(-2, -1)).clamp_min(1.0e-12)
+        source_retention = source_filtered.abs().square().sum(dim=(-2, -1)) / source_energy
+        target_energy = output_before_target_pupil.abs().square().sum(dim=(-2, -1)).clamp_min(1.0e-12)
+        target_retention = output.abs().square().sum(dim=(-2, -1)) / target_energy
+        self.last_diagnostic = {
+            "source_pupil_retention": source_retention.detach(),
+            "target_pupil_retention": target_retention.detach(),
+            "source_cutoff_cycles_m": self.source_cutoff_cycles_m,
+            "target_cutoff_cycles_m": self.target_cutoff_cycles_m,
+        }
+        parameters = {"relay": self.name, "magnification": self.magnification, "segments_m": list(self.segments_m), "matrix_segments_m": list(self.matrix_segments_m), "focal_lengths_m": list(self.focal_lengths_m), "clear_aperture_m": self.clear_aperture_m, "abcd": self.abcd.to_dict(), "source_sampling": self.source.to_dict(), "target_sampling": self.target.to_dict(), "pupil_model": "circular_coherent_source_target_v1", "source_cutoff_cycles_m": self.source_cutoff_cycles_m, "target_cutoff_cycles_m": self.target_cutoff_cycles_m, "source_distance_m": self.matrix_segments_m[0], "target_distance_m": self.matrix_segments_m[-1], "pupil_effective": True}
+        return ComplexField(output, self.target, OperationProvenance("coherent_b0_imaging", field.plane.plane_id, sum(self.segments_m), parameters))
 
 
-def reference_b0_imaging(field: ComplexField, target: PlaneSpec, matrix: ABCDMatrix, *, name: str) -> ComplexField:
+def reference_b0_imaging(field: ComplexField, target: PlaneSpec, matrix: ABCDMatrix, *, name: str, clear_aperture_m: float | None = None, source_distance_m: float | None = None, target_distance_m: float | None = None) -> ComplexField:
     """Independent closed-form B=0 reference using explicit nearest physical samples."""
     if abs(matrix.b_m) > 1.0e-9:
         raise ValueError("reference only supports B=0 imaging")
@@ -110,7 +166,20 @@ def reference_b0_imaging(field: ComplexField, target: PlaneSpec, matrix: ABCDMat
     valid = ((sy >= 0) & (sy < source.shape[0]))[:, None] & ((sx >= 0) & (sx < source.shape[1]))[None, :]
     sampled = field.tensor.index_select(-2, sy.clamp(0, source.shape[0] - 1)).index_select(-1, sx.clamp(0, source.shape[1] - 1))
     output = sampled * valid.to(sampled.dtype) * _quadratic_phase(target, matrix, device=field.tensor.device, dtype=field.tensor.real.dtype) * (1.0 / abs(matrix.a))
-    return ComplexField(output, target, OperationProvenance("reference_closed_form_b0_imaging", source.plane_id, target.z_m - source.z_m, {"relay": name, "abcd": matrix.to_dict()}))
+    if clear_aperture_m is not None:
+        if clear_aperture_m <= 0.0 or source_distance_m is None or target_distance_m is None or source_distance_m <= 0.0 or target_distance_m <= 0.0:
+            raise ValueError("reference pupil geometry is invalid")
+        source_cutoff = clear_aperture_m / (2.0 * source.wavelength_m * source_distance_m)
+        target_cutoff = clear_aperture_m / (2.0 * target.wavelength_m * target_distance_m)
+        source_fy, source_fx = _frequency_grid(source.shape, source.pixel_pitch_m, device=field.tensor.device, dtype=field.tensor.real.dtype)
+        target_fy, target_fx = _frequency_grid(target.shape, target.pixel_pitch_m, device=field.tensor.device, dtype=field.tensor.real.dtype)
+        source_pupil = ((source_fx.square() + source_fy.square()).sqrt() <= source_cutoff * (1.0 + 1.0e-6)).to(output.dtype)
+        target_pupil = ((target_fx.square() + target_fy.square()).sqrt() <= target_cutoff * (1.0 + 1.0e-6)).to(output.dtype)
+        filtered = torch.fft.ifft2(torch.fft.fft2(field.tensor) * source_pupil)
+        filtered = filtered.index_select(-2, sy.clamp(0, source.shape[0] - 1)).index_select(-1, sx.clamp(0, source.shape[1] - 1))
+        filtered = filtered * valid.to(filtered.dtype) * _quadratic_phase(target, matrix, device=field.tensor.device, dtype=field.tensor.real.dtype) * (1.0 / abs(matrix.a))
+        output = torch.fft.ifft2(torch.fft.fft2(filtered) * target_pupil)
+    return ComplexField(output, target, OperationProvenance("reference_closed_form_b0_imaging", source.plane_id, target.z_m - source.z_m, {"relay": name, "abcd": matrix.to_dict(), "pupil_effective": clear_aperture_m is not None}))
 
 
 class NearConjugateRelay:
