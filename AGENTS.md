@@ -19,8 +19,8 @@ This explicit routing is required when Codex starts at the repository root, beca
 ## 2. Execution Rules
 
 1. Start with the answer or action; do not fabricate.
-2. Resolve ambiguity from the local source of truth; ask only when reasonable interpretations materially change the result.
-3. Touch only requested scope, follow existing patterns, and inspect necessary files and callers before editing.
+2. Resolve ambiguity from the local source of truth; state material uncertainty and tradeoffs, and ask when interpretations materially change the result.
+3. Make the smallest change that satisfies the request. Touch only required files, add no speculative behavior, and clean only problems introduced by the current change.
 4. Missing required inputs, checkpoints, datasets, CUDA, hardware, external resources, or valid gates block the formal task. Do not substitute another path without explicit user approval; report the blocker, smallest unblock action, and lost guarantee. An approved weaker run is `diagnostic-only` and cannot satisfy acceptance.
 5. Use focused searches and the smallest sufficient verification. Do not reread large logs or rerun fresh green checks without a relevant change.
 6. A valid failed acceptance gate stops downstream training or promotion; repair and revalidate an invalid gate before drawing a model conclusion.
@@ -54,6 +54,34 @@ If adequate reverse verification cannot be established, record the blocker and
 the guarantee that is lost; do not silently downgrade the result or claim the
 modification is correct. This policy is recorded in the task/PR description and
 does not require a new versioned plan file for every change.
+
+### Minimal Implementation And Failure Semantics
+
+- Trust documented internal types, framework guarantees, and established
+  invariants. Validate user input, CLI/file/checkpoint/evidence inputs,
+  external APIs, network, hardware, and other process boundaries. Inside
+  trusted code, use direct access and let invariant violations fail immediately.
+- Use fail-closed checks at real acceptance or external boundaries. Use
+  fail-fast behavior for internal programming and execution errors.
+- Do not catch broad exceptions or convert execution, configuration, or
+  programming errors into scientific/model gate failures. A failed scientific
+  evidence record requires a complete, valid measurement whose explicit gate
+  failed.
+- Do not add test-only production branches, `hasattr`/`getattr` compatibility
+  fallbacks, silent defaults, null substitutes, automatic latest-output
+  resolution, or impossible-state recovery solely to keep callers or tests
+  working.
+- Do not create a helper, registry, schema, manifest, wrapper, or compatibility
+  layer for one call site unless it represents an existing public boundary.
+- Add a digest only when a mutable artifact crosses a process or run boundary
+  and a named consumer compares it to make a rejection decision. Compute it
+  once per operation. Do not add digest inventories, digest-count gates,
+  duplicate bindings, nested hash-of-hashes, or speculative component
+  fingerprints.
+- Tests must exercise the production contract; production code must not
+  contain a weaker path solely for tests. For one rejection mechanism, prefer
+  one valid case and one representative negative case unless different inputs
+  cause materially different decisions.
 
 For long optical-training or one-shot readability debugging, follow the **Experimental Debugging Decision Policy** in `docs/operations/stage_guide.md`.
 

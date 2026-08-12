@@ -19,17 +19,14 @@ Scope: `tests/**` and verification for repository changes. Read the repository-r
   legacy compatibility, evidence action/context binding, evaluator qualification,
   candidate dataset status, and manual admission. A CPU smoke is diagnostic and
   cannot stand in for CUDA or scientific acceptance.
-- Current evidence-consumer tests must cover component-scoped provenance: every
-  upstream record uses a clean ancestor commit, records the applicable runtime
-  component fingerprints, and rejects changes to those components before
+- Current evidence-consumer tests must prove one valid lineage path and one
+  representative stale, mismatched, or tampered-input rejection before
   checkpoint loading, optimizer creation, run creation, or artifact writes.
-  Tests must also prove that unrelated docs/tests or other component changes do
-  not invalidate an evidence record, that unknown evidence kinds fall back to
-  `full_current`, and that component fingerprints do not replace independent
-  config, context, checkpoint, split, or artifact-hash validation.
-  Diagnostic tests must also bind authorization evidence to the consumed
-  artifact and bind reports/checkpoints by file hash before any downstream
-  action is accepted.
+  Retain separate cases only when different inputs cause materially different
+  rejection decisions. Test observable artifact-binding behavior when a real
+  downstream consumer reads the artifact; do not prescribe a digest
+  representation, fingerprint registry, digest count, or hash call count.
+  Production code must not expose a weaker compatibility path solely for tests.
 
 ## Acceptance Semantics
 
