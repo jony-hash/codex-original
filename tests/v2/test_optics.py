@@ -101,6 +101,32 @@ def test_coherent_relay_pupil_preserves_complex_gradients() -> None:
     assert torch.isfinite(field.tensor.grad.real).all() and torch.isfinite(field.tensor.grad.imag).all()
 
 
+def test_pupil_diagnostics_are_detached_and_do_not_change_forward() -> None:
+    field = _field((16, 16))
+    target = PlaneSpec("target", (8, 8), (4e-6, 4e-6), 532e-9, 0.4, "target")
+    relay = CoherentImagingRelay(field.plane, target, -1.0, name="detached", segments_m=(0.2, 0.2), focal_lengths_m=(0.1,), clear_aperture_m=0.01)
+    first = relay(field).tensor.clone()
+    diagnostics = relay.last_diagnostic
+    second = relay(field).tensor
+    assert torch.equal(first, second)
+    assert all(not value.requires_grad and value.grad_fn is None for value in diagnostics.values() if torch.is_tensor(value))
+
+
+def test_nontrivial_b0_relay_matches_independent_intensity_reference() -> None:
+    source = PlaneSpec("source", (32, 32), (2e-6, 2e-6), 532e-9, 0.0, "unit")
+    target = PlaneSpec("target", (32, 32), (2e-6, 2e-6), 532e-9, 0.4, "unit")
+    yy, xx = torch.meshgrid(torch.arange(32), torch.arange(32), indexing="ij")
+    tensor = (torch.exp(-((xx - 15.5).square() + (yy - 15.5).square()) / 80.0) * torch.exp(0.2j * xx)).to(torch.complex128)[None, None]
+    field = ComplexField(tensor, source, OperationProvenance("source", None, None))
+    relay = CoherentImagingRelay(source, target, -1.0, name="nontrivial", segments_m=(0.2, 0.2), focal_lengths_m=(0.1,), clear_aperture_m=0.1)
+    production = relay(field).tensor
+    reference = reference_b0_imaging(field, target, relay.abcd, name="nontrivial").tensor
+    production_intensity = production.abs().square().flatten()
+    reference_intensity = reference.abs().square().flatten()
+    correlation = torch.corrcoef(torch.stack((production_intensity, reference_intensity)))[0, 1]
+    assert float(correlation) >= 0.95
+
+
 def test_coherent_relay_pupil_has_independent_bandwidth_and_overlap_contract() -> None:
     source = PlaneSpec("source", (64, 64), (2e-6, 2e-6), 532e-9, 0.0, "unit")
     target = PlaneSpec("target", (64, 64), (2e-6, 2e-6), 532e-9, 0.4, "unit")
@@ -123,6 +149,21 @@ def test_coherent_relay_pupil_has_independent_bandwidth_and_overlap_contract() -
     phase = torch.angle((production.conj() * reference).sum())
     overlap = (production * torch.exp(-1j * phase).to(production.dtype) * reference.conj()).sum().abs() / (production.abs().square().sum().sqrt() * reference.abs().square().sum().sqrt())
     assert float(overlap) >= 0.99
+
+
+def test_pupil_bandwidth_and_energy_are_monotone_over_four_apertures() -> None:
+    source = PlaneSpec("source", (32, 32), (2e-6, 2e-6), 532e-9, 0.0, "unit")
+    target = PlaneSpec("target", (32, 32), (2e-6, 2e-6), 532e-9, 0.4, "unit")
+    field = _field((32, 32))
+    relays = [CoherentImagingRelay(source, target, -1.0, name=f"aperture_{i}", segments_m=(0.2, 0.2), focal_lengths_m=(0.1,), clear_aperture_m=aperture) for i, aperture in enumerate((0.02, 0.01, 0.005, 0.0025))]
+    energies = []
+    retentions = []
+    for relay in relays:
+        output = relay(field)
+        energies.append(float(output.tensor.abs().square().sum()))
+        retentions.append(float(relay.last_diagnostic["source_pupil_retention"].mean()))
+    assert energies == sorted(energies, reverse=True)
+    assert retentions == sorted(retentions, reverse=True)
 
 
 def test_finite_crop_phase_stack_preserves_shape_and_unit_mask() -> None:
