@@ -1,4 +1,4 @@
-# 当前主线交接：v2 current identity evaluation closeout（2026-08-12）
+# 当前主线交接：v2 formal evaluation 与 objective diagnostic 收口（2026-08-12）
 
 ## Current identity status
 
@@ -66,10 +66,17 @@ harness.
 No manual review, candidate export, memorization, utility evaluation, or
 dataset admission was authorized. The failure does not establish phase-only,
 optical-capacity, hardware, or universal semantic-diversity impossibility.
-Maintenance governance is now the next permitted work; any new objective or
-scientific diagnostic must be a separate research line.
+The formal current chain is closed at this valid acceptance failure; it does
+not authorize repeating the same A-objective run or promoting an alternative.
 
 ## Objective diagnostic closeout (2026-08-12)
+
+The earlier raw-weight calibration
+(`outputs/20260812_v2/runs/20260812_180102_738872_formal_v2_identity_logit_amplitude_finite_crop_identity`)
+reported camera `6578.77` and pairwise `10.93` as out of range.  Because those
+raw values depend on loss units, that result only showed that the old
+authorization contract was insufficient; it did not establish a scientific
+objective failure.
 
 The v3 calibration run
 `outputs/20260812_v2/runs/20260812_183756_552830_formal_v2_identity_logit_amplitude_finite_crop_identity`
@@ -79,18 +86,48 @@ an arithmetic mean instead of the RMS contract. It did not establish an
 objective failure. The correction was committed at `f0861e6`, with the
 parameter-index and evidence-gate follow-ups at `8bbf78d` and `ab620be`.
 
+The run
+`outputs/20260812_v2/runs/20260812_185456_859190_formal_v2_identity_logit_amplitude_finite_crop_identity`
+produced an artifact but no consumable evidence record. It is an
+execution-invalid attempt, not a scientific endpoint and not an authorization
+for screen.
+
 The corrected calibration
 `outputs/20260812_v2/runs/20260812_185926_470787_formal_v2_identity_logit_amplitude_finite_crop_identity`
 passed its four-batch effective-gradient gates: single auxiliary ratios were
 approximately `0.25`, B was `0.3424`, and C was `0.4162`; it authorized only
-`screen`. Screen then ended at
+`screen`. Its artifact SHA256 is
+`1401a4562cfda6aa3afb7a6650b5d56bf956f463eac1262175fc42f074991bb9`, and its
+evidence SHA256 is
+`7d9afe982d728071fd816e76bbf1b863d9a24648836d19b9b67ecd0ef2a634f6`.
+Screen then ended at
 `outputs/20260812_v2/runs/20260812_191311_132000_formal_v2_identity_logit_amplitude_finite_crop_identity`
 with valid `conditional_objective_alignment_screen / diagnostic / failed`
 evidence. B and C both failed the registered camera/diversity/coverage screen
 gates; all six parameter groups updated and all candidates shared the same
-schedule. No winner, confirmation, objective promotion, or formal training was
-authorized. This is a diagnostic objective failure, not a model-wide optical,
-hardware, or execution-invalid claim.
+schedule. The report SHA256 is
+`a135e5b43e42a052c4308afe2f62de5d354dd42c50b6823d1f74727a1adaedc1`, and the
+evidence SHA256 is
+`2e68540c385931a5ec47c516de7a470ebb7607dc26827335951178146ef2ea68`.
+
+Relative to A, B changed camera by `+0.00394`, minimum diversity by `+0.00475`,
+and coverage by `+0.00757`; C changed them by `+0.00375`, `+0.00222`, and
+`-0.00338`, respectively. Neither candidate reached the registered
+`+0.02 / +0.05 / -0.05` screen thresholds. This is a valid diagnostic failure
+of the tested B/C definitions, frozen weights, and 100-step contract. It is
+not evidence of an optical-path, hardware, generator-capacity, or universal
+auxiliary-objective failure. No winner, confirmation, objective promotion, or
+formal training was authorized.
+
+## Mainline decision point
+
+The current configuration remains objective A. The prior A formal run is
+already closed by a valid acceptance failure, while B and C have no promotion
+qualification. A new mainline attempt must therefore begin with a separately
+pre-registered objective hypothesis and repeat calibration → screen →
+confirmation. Even a passed confirmation would only qualify a candidate for an
+explicit objective-selection commit and a newly issued formal evidence chain;
+it would not directly authorize five-epoch training or evaluation.
 
 The remainder of this file records immutable historical closures and is retained
 for context; those records must not be rewritten or used as current acceptance.

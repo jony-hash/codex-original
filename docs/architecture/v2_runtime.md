@@ -105,13 +105,16 @@ state hash、最终 checkpoint 摘要、配置和数据 split。evaluation、dat
 manifest 或 evidence 输入摘要被篡改都必须 fail-closed。此链路只证明工程来源和
 更新真实性，不替代 CUDA、硬件或科学 acceptance。
 
-Current evidence 还受 runtime-tree 来源约束：同一消费操作的上游记录必须使用相同的
-`git_commit`，且所有记录的 `dirty_patch_hash` 必须为 `None`。记录的提交必须是当前
-`HEAD` 的祖先，并且从该提交到当前 `HEAD` 的以下路径不得有差异：
-`src/ldm_project/v2/`、`configs/v2/current/` 和 `pyproject.toml`。因此 docs/tests-only
-后续提交可以继续消费既有 evidence；runtime、current 配置或项目依赖变化必须重新签发
-整条 evidence 链。Git 不可用、提交无效或比较失败时，current 入口在加载 checkpoint、
-创建 optimizer、写入 run 工件之前 fail-closed。
+Current evidence uses component-scoped runtime lineage. Every record must come
+from a clean commit that is an ancestor of the current `HEAD`; the consumer
+compares the Git-tree fingerprint only for the components registered for that
+evidence kind. Configuration, split, checkpoint, and artifact hashes remain
+independent content bindings. Unknown evidence kinds conservatively use the
+`full_current` scope. Missing registry data, missing fingerprints, unavailable
+Git comparison, or an invalid commit fails closed before loading a checkpoint,
+creating an optimizer, or writing run artifacts. A change to an unrelated
+component therefore does not invalidate every record, while a change to an
+applicable component does.
 
 所有 current、student、teacher、evidence、diagnostic 和 research v2 artifact 都通过
 `safe_torch_load` 反序列化，默认 `weights_only=True`，并在有期望摘要时先校验文件。
@@ -143,9 +146,18 @@ diagnostic 仅共享不含架构分派或 acceptance 判定的运行时辅助函
 导入 diagnostic 或 legacy。旧 `legacy.cli_impl` 同样转发到唯一的公共 parser/dispatcher，
 不再维护第二份 CLI 定义。
 
-当前 identity 尚未产生可 promotion 的正式 checkpoint。旧 smoke、prototype 和诊断结果
-保持历史状态；若 split、config 或 evidence context 变化，必须从 evaluator qualification
-重新签发。
+Current identity has produced a passed formal-training checkpoint, but its
+formal raw-CMOS evaluation ended in a valid acceptance failure. That checkpoint
+is not promotion-ready and cannot authorize manual review, dataset export, or
+dataset admission. Old smoke, prototype, and diagnostic results remain
+historical. If split, config, evidence context, or an applicable runtime
+component changes, the affected evidence must be reissued from the appropriate
+qualification boundary.
+
+Objective calibration, screen, and confirmation are diagnostic-only stages.
+Their artifacts never authorize formal training by themselves: a failed screen
+stops confirmation, and a passed confirmation still requires an explicit
+objective-selection commit followed by a newly issued formal evidence chain.
 
 ## v5 多锚点候选（已拒绝，diagnostic-only）
 

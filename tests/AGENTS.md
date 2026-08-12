@@ -19,10 +19,14 @@ Scope: `tests/**` and verification for repository changes. Read the repository-r
   legacy compatibility, evidence action/context binding, evaluator qualification,
   candidate dataset status, and manual admission. A CPU smoke is diagnostic and
   cannot stand in for CUDA or scientific acceptance.
-- Current evidence-consumer tests must cover runtime-tree provenance: all upstream
-  records share a clean ancestor commit, and changes under
-  `src/ldm_project/v2/`, `configs/v2/current/`, or `pyproject.toml` reject before
+- Current evidence-consumer tests must cover component-scoped provenance: every
+  upstream record uses a clean ancestor commit, records the applicable runtime
+  component fingerprints, and rejects changes to those components before
   checkpoint loading, optimizer creation, run creation, or artifact writes.
+  Tests must also prove that unrelated docs/tests or other component changes do
+  not invalidate an evidence record, that unknown evidence kinds fall back to
+  `full_current`, and that component fingerprints do not replace independent
+  config, context, checkpoint, split, or artifact-hash validation.
 
 ## Acceptance Semantics
 
