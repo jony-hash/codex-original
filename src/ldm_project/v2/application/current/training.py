@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from .runtime import (
     BALANCED_TRAINING_SCHEDULE_CONTRACT, CONDITIONAL_CONTROL_METRIC_CONTRACT,
+    OBJECTIVE_CONTRACT_VERSION,
     CONDITIONAL_CONTROL_ADMISSION_CONTRACT,
     ConditionalBundle, ConditionalCheckpointManifestV2, EvidenceRecordV2,
     GateResult, IDENTITY_ARCHITECTURE, IDENTITY_GENERATOR_CONTRACT, Path,
@@ -270,6 +271,10 @@ def conditional_train(args, config: V2Config) -> int:
                 sinkhorn_iterations=settings.sinkhorn_iterations,
                 activation_checkpoint=config.execution.activation_checkpoint,
                 microbatch_size=config.execution.training_microbatch_size,
+                objective_kind=settings.objective_kind,
+                camera_code_safety_weight=settings.camera_code_safety_weight,
+                pairwise_diversity_weight=settings.pairwise_diversity_weight,
+                coverage_ratio_weight=settings.coverage_ratio_weight,
             )
             loss.backward()
             if config.architecture == IDENTITY_ARCHITECTURE:
@@ -324,6 +329,7 @@ def conditional_train(args, config: V2Config) -> int:
         else None,
         settings.initialization_seed if config.architecture == IDENTITY_ARCHITECTURE else None,
         init_manifest.initialization_state_hash if init_manifest is not None else None,
+        canonical_sha256({"version": OBJECTIVE_CONTRACT_VERSION, "kind": settings.objective_kind, "camera": settings.camera_code_safety_weight, "pairwise": settings.pairwise_diversity_weight, "coverage": settings.coverage_ratio_weight}) if settings.objective_kind != "A" else None,
     )
     save_conditional_checkpoint(
         checkpoint_path,

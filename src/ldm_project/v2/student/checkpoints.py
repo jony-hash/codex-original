@@ -217,6 +217,7 @@ class ConditionalCheckpointManifestV2:
     semantic_source_checkpoint_hash: str | None = None
     safe_scale_evidence_hash: str | None = None
     first_400_schedule_hash: str | None = None
+    objective_contract_hash: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

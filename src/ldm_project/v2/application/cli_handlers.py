@@ -61,6 +61,15 @@ _IDENTITY_HANDLERS = {
     ("student", "qualify-acceptance-measurement"): HandlerSpec(
         ".current.measurement:qualify_acceptance_measurement", "args+config"
     ),
+    ("student", "objective-alignment-screen"): HandlerSpec(
+        ".diagnostic.objective:objective_alignment_screen", "args+config"
+    ),
+    ("student", "objective-alignment-confirm"): HandlerSpec(
+        ".diagnostic.objective:objective_alignment_confirm", "args+config"
+    ),
+    ("audit", "conditional-objective-weight-calibration"): HandlerSpec(
+        ".diagnostic.objective:conditional_objective_weight_calibration", "args+config"
+    ),
     ("student", "controllability-smoke"): HandlerSpec(
         ".current.recovery:controllability_smoke", "args+config"
     ),

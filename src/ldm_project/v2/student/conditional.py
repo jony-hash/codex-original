@@ -145,6 +145,63 @@ def relative_diversity_loss(features: torch.Tensor, real_features: torch.Tensor,
     return torch.stack(terms).mean()
 
 
+def pairwise_diversity_distribution_loss(features: torch.Tensor, real_features: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+    """Match sorted within-class feature-distance distributions."""
+    generated = torch.nn.functional.normalize(features, dim=1)
+    real = torch.nn.functional.normalize(real_features, dim=1)
+    terms = []
+    for label in range(10):
+        selected = torch.nonzero(labels == label, as_tuple=False).flatten()
+        if selected.numel() < 2:
+            raise ValueError("pairwise diversity needs at least two samples per class")
+        generated_distance = torch.sort(torch.pdist(generated.index_select(0, selected), p=2)).values
+        real_distance = torch.sort(torch.pdist(real.index_select(0, selected), p=2)).values.detach()
+        terms.append(torch.nn.functional.smooth_l1_loss(generated_distance, real_distance))
+    return torch.stack(terms).mean()
+
+
+def coverage_ratio_upper_loss(
+    generated_features: torch.Tensor,
+    generated_view: torch.Tensor,
+    real_features: torch.Tensor,
+    real_view: torch.Tensor,
+    labels: torch.Tensor,
+    *,
+    epsilon: float,
+    iterations: int,
+    target: float = 1.35,
+    temperature: float = 0.10,
+) -> torch.Tensor:
+    """Differentiable generated/real coverage ratio with a detached real baseline."""
+    if target <= 0.0 or temperature <= 0.0:
+        raise ValueError("coverage target and temperature must be positive")
+    def class_sinkhorn(generated_f: torch.Tensor, generated_v: torch.Tensor, real_f: torch.Tensor, real_v: torch.Tensor) -> torch.Tensor:
+        generated_n = torch.nn.functional.normalize(generated_f, dim=1)
+        real_n = torch.nn.functional.normalize(real_f, dim=1)
+        feature_cost = torch.cdist(generated_n, real_n).square()
+        generated_pixels = sinkhorn_cost_view(generated_v).flatten(1)
+        real_pixels = sinkhorn_cost_view(real_v).flatten(1)
+        pixel_cost = torch.cdist(generated_pixels, real_pixels, p=1) / generated_pixels.shape[1]
+        return log_sinkhorn(feature_cost + 0.25 * pixel_cost, epsilon=epsilon, iterations=iterations)
+
+    observed_terms, baseline_terms = [], []
+    for label in range(10):
+        selected = torch.nonzero(labels == label, as_tuple=False).flatten()
+        if selected.numel() < 4:
+            raise ValueError("coverage objective needs at least four samples per class")
+        left, right = selected[::2], selected[1::2]
+        observed_terms.append(class_sinkhorn(
+            generated_features.index_select(0, selected), generated_view.index_select(0, selected),
+            real_features.index_select(0, right), real_view.index_select(0, right),
+        ))
+        baseline_terms.append(class_sinkhorn(
+            real_features.index_select(0, left), real_view.index_select(0, left),
+            real_features.index_select(0, right), real_view.index_select(0, right),
+        ).detach())
+    ratio = torch.stack(observed_terms).mean() / torch.stack(baseline_terms).mean().clamp_min(1.0e-12)
+    return torch.nn.functional.softplus((ratio - target) / temperature) * temperature
+
+
 def camera_code_fraction(values: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
     """Differentiable sample-centered ANOVA code fraction on raw CMOS."""
     if values.ndim != 4 or values.shape[1] != 1 or labels.ndim != 1 or values.shape[0] != labels.numel():
@@ -160,6 +217,13 @@ def camera_code_fraction_loss(raw: torch.Tensor, labels: torch.Tensor, *, target
         raise ValueError("camera code fraction target must lie in (0,1)")
     fraction = camera_code_fraction(raw, labels)
     return torch.relu(torch.as_tensor(target, device=raw.device, dtype=raw.dtype) - fraction).square()
+
+
+def camera_code_safety_loss(raw: torch.Tensor, labels: torch.Tensor, *, target: float = 0.30, temperature: float = 0.02) -> torch.Tensor:
+    if temperature <= 0.0:
+        raise ValueError("camera safety temperature must be positive")
+    gap = torch.as_tensor(target, device=raw.device, dtype=raw.dtype) - camera_code_fraction(raw, labels)
+    return torch.nn.functional.softplus(gap / temperature) * temperature
 
 
 def raw_from_generator(system: nn.Module, generator: nn.Module, codes: torch.Tensor, labels: torch.Tensor, *, activation_checkpoint: bool) -> torch.Tensor:
@@ -194,6 +258,10 @@ def conditional_loss(
     sinkhorn_iterations: int,
     activation_checkpoint: bool,
     microbatch_size: int = 1,
+    objective_kind: str = "A",
+    camera_code_safety_weight: float = 0.0,
+    pairwise_diversity_weight: float = 0.0,
+    coverage_ratio_weight: float = 0.0,
 ) -> tuple[torch.Tensor, ConditionalLossSummary, torch.Tensor]:
     raw = raw_from_generator_batched(system, generator, codes, labels, microbatch_size=microbatch_size, activation_checkpoint=activation_checkpoint)
     generated_view = fixed_exposure_view(raw, exposure_scale)
@@ -207,5 +275,15 @@ def conditional_loss(
     orthogonality = generator.mode_orthogonality_penalty()
     phase_tv = phase_total_variation(system)
     total = sinkhorn + 0.5 * classification + 0.1 * diversity + 0.1 * saturation + 1.0e-3 * orthogonality + 1.0e-5 * phase_tv
+    if objective_kind not in {"A", "B", "C"}:
+        raise ValueError("unknown conditional objective kind")
+    if objective_kind in {"B", "C"}:
+        total = total + camera_code_safety_weight * camera_code_safety_loss(raw, labels, target=0.30, temperature=0.02)
+        total = total + pairwise_diversity_weight * pairwise_diversity_distribution_loss(generated_features, real_features, labels)
+    if objective_kind == "C":
+        total = total + coverage_ratio_weight * coverage_ratio_upper_loss(
+            generated_features, generated_view, real_features, real_views, labels,
+            epsilon=sinkhorn_epsilon, iterations=sinkhorn_iterations,
+        )
     summary = ConditionalLossSummary(*(float(value.detach().item()) for value in (total, sinkhorn, classification, diversity, saturation, orthogonality, phase_tv)))
     return total, summary, raw

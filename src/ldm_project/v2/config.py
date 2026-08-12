@@ -257,6 +257,10 @@ class ConditionalGenerationConfig(StrictModel):
     # seed in the scoped config makes it part of the configuration hash rather
     # than an implicit CLI default.
     initialization_seed: Literal[1234] = 1234
+    objective_kind: Literal["A", "B", "C"] = "A"
+    camera_code_safety_weight: float = Field(default=0.0, ge=0.0)
+    pairwise_diversity_weight: float = Field(default=0.0, ge=0.0)
+    coverage_ratio_weight: float = Field(default=0.0, ge=0.0)
 
     @model_validator(mode="after")
     def conditional_contract_is_explicit(self) -> "ConditionalGenerationConfig":
@@ -268,6 +272,12 @@ class ConditionalGenerationConfig(StrictModel):
             )
         if self.samples_per_label % self.shard_size:
             raise ValueError("samples_per_label must divide exactly into shards")
+        if self.objective_kind == "A" and any((self.camera_code_safety_weight, self.pairwise_diversity_weight, self.coverage_ratio_weight)):
+            raise ValueError("objective A must retain the historical auxiliary weights")
+        if self.objective_kind == "B" and self.coverage_ratio_weight != 0.0:
+            raise ValueError("objective B cannot enable the coverage auxiliary")
+        if self.objective_kind == "C" and self.coverage_ratio_weight <= 0.0:
+            raise ValueError("objective C requires a positive coverage auxiliary weight")
         return self
 
 

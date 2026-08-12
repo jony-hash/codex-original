@@ -644,4 +644,7 @@ def register_audit(root: argparse._SubParsersAction) -> None:
         lightgen_observability.add_argument(
             "--" + name.replace("_", "-"), required=True
         )
-
+    objective_calibration = audit.add_parser("conditional-objective-weight-calibration")
+    objective_calibration.add_argument("--config", required=True)
+    objective_calibration.add_argument("--base-gradient-norm", type=float, required=True)
+    objective_calibration.add_argument("--auxiliary-gradient-norm", type=float, nargs=3, required=True)

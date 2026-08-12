@@ -95,6 +95,7 @@ CONDITIONAL_CONTROL_METRIC_CONTRACT = (
 # the latter; new isolation evidence cannot be mistaken for the old gate.
 CONDITIONAL_CONTROL_ADMISSION_CONTRACT = "sample_centered_anova_v1|sinkhorn_feature_l2_v1|coverage_disjoint_real_ab_v1|physical_command_semantics_v2"
 CONDITIONAL_SEMANTIC_LOCALIZATION_CONTRACT = "identity_semantic_localization_v1|zero_code_vs_formal_gradient_cosine_v1|no_optimizer_state_change_v1"
+OBJECTIVE_CONTRACT_VERSION = "gate_aligned_objective_v1|camera_target_0.30_temp_0.02|coverage_target_1.35_temp_0.10|real_relative_pairwise_sorted_v1"
 IDENTITY_ARCHITECTURE = "conditional_identity_logit_amplitude_v2"
 IDENTITY_GENERATOR_CONTRACT = canonical_sha256(
     {
@@ -419,6 +420,9 @@ def _load_bundle_with_payload(
         or config.conditional_generation is None
     ):
         raise ValueError("identity checkpoint has an incomplete or mismatched contract")
+    objective_hash = canonical_sha256({"version": OBJECTIVE_CONTRACT_VERSION, "kind": config.conditional_generation.objective_kind, "camera": config.conditional_generation.camera_code_safety_weight, "pairwise": config.conditional_generation.pairwise_diversity_weight, "coverage": config.conditional_generation.coverage_ratio_weight})
+    if config.conditional_generation.objective_kind != "A" and manifest.objective_contract_hash != objective_hash:
+        raise ValueError("identity checkpoint lacks the selected objective contract")
     _validate_initialization_payload(config, manifest, payload.get("extra"))
     bundle = _seeded_conditional_bundle(config).to(device)
     load_conditional_checkpoint_payload(payload, bundle, manifest)
