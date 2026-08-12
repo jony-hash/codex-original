@@ -288,7 +288,16 @@ def _gradient_calibration(args, config, train_images, train_labels, split, prima
             combined[kind] = float((vector.norm() / base_norm).item()) if torch.isfinite(base_norm) and base_norm > 1.0e-12 else None
         record["weighted_gradient_ratios"] = ratios
         record["combined_gradient_ratios"] = combined
-        effective.append({"weighted_gradient_ratios": ratios, "combined_gradient_ratios": combined})
+        base_groups = record["gradient_norms_by_group"]["base"]
+        record["weighted_gradient_ratios_by_group"] = {
+            name: {
+                group: (float(weights[name]) * record["gradient_norms_by_group"][name][group] / base_groups[group]
+                        if base_groups[group] > 1.0e-12 else None)
+                for group in groups
+            }
+            for name in ("camera", "pairwise", "coverage")
+        }
+        effective.append({"weighted_gradient_ratios": ratios, "combined_gradient_ratios": combined, "weighted_gradient_ratios_by_group": record["weighted_gradient_ratios_by_group"]})
     aggregate = {
         "weighted_gradient_ratios": {name: float(sum(row["weighted_gradient_ratios"][name] for row in effective) / len(effective)) for name in ("camera", "pairwise", "coverage")},
         "combined_gradient_ratios": {kind: float(sum(row["combined_gradient_ratios"][kind] for row in effective) / len(effective)) for kind in ("B", "C")},
@@ -316,6 +325,7 @@ def _effective_gradient_gate(diagnostics: dict[str, object]) -> tuple[bool, dict
     batch_safe = all(
         isinstance(row, dict)
         and all(value is not None and float(value) <= 0.50 for value in row.get("weighted_gradient_ratios", {}).values())
+        and all(value is None or float(value) <= 1.0 for auxiliary in row.get("weighted_gradient_ratios_by_group", {}).values() for value in auxiliary.values())
         and row.get("combined_gradient_ratios", {}).get("B") is not None
         and float(row["combined_gradient_ratios"]["B"]) <= 0.75
         and row.get("combined_gradient_ratios", {}).get("C") is not None
