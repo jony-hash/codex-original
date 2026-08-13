@@ -48,12 +48,10 @@ the blocker and lost guarantee; do not silently downgrade the result.
 ### Turn Opening Compliance
 
 At the beginning of every repository task that may inspect, modify, or run
-code, state the effective instruction set: the root `AGENTS.md`, every scoped
-`AGENTS.md` that applies, the task scope, and whether the action is diagnostic
-or acceptance-tier. When handling a hash or evidence value, also state the
-named downstream consumer, the rejection decision it supports, and the
-artifact path being compared. A hash, count, or digest alone is never a
-success criterion.
+code, write exactly `Agent effective: AGENTS.md`. Do not expand this opening
+line into a scope, task, or tier inventory. Hashes and evidence still require
+a named consumer and rejection decision; a hash, count, or digest alone is
+never a success criterion.
 
 ### Long-Training Gate
 
