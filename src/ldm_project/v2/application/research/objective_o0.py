@@ -723,7 +723,7 @@ def _calibrate(args: argparse.Namespace, spec: ElectronicO0Spec) -> tuple[dict[s
     records: list[dict[str, Any]] = []
     violation_presence = {name: [] for name in auxiliary_names}
     for step in spec.calibration_steps:
-        joint_indices, joint_labels = deterministic_joint_companion_indices(labels, seed=1234, global_step=step, primary_per_class=spec.logical_batch_size // 20)
+        joint_indices, joint_labels = deterministic_joint_companion_indices(labels, seed=1234, global_step=step, primary_per_class=spec.logical_batch_size // 10)
         indices, batch_labels = joint_indices[: spec.logical_batch_size], joint_labels[: spec.logical_batch_size]
         companion_indices, companion_labels = joint_indices[spec.logical_batch_size :], joint_labels[spec.logical_batch_size :]
         codes = torch.randn(spec.logical_batch_size, spec.code_dim, device=device, generator=torch.Generator(device=device).manual_seed(100000 + step))
