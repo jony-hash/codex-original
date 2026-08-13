@@ -86,8 +86,6 @@ def _validate_current_optimizer_coverage(
 
 
 def conditional_train(args, config: V2Config) -> int:
-    if getattr(args, "resume_checkpoint", None):
-        raise ValueError("current training resume is not enabled; use a diagnostic resumable runner")
     _require_conditional(config)
     _require_current_acceptance(config)
     require_clean_acceptance_worktree(config)
