@@ -4,7 +4,7 @@ import torch
 import pytest
 
 from ldm_project.v2.application.cli_schema import _parser
-from ldm_project.v2.application.diagnostic.objective import _code_seed, _companion_indices, _effective_gradient_gate, _gradient_cosine, _scheduled_batches, _warmup_lineage_gate, OBJECTIVE_DIAGNOSTIC_CONTRACT_SPEC
+from ldm_project.v2.application.diagnostic.objective import _code_seed, _companion_indices, _effective_gradient_gate, _gradient_cosine, _scheduled_batches, _warmup_lineage_gate, OBJECTIVE_DIAGNOSTIC_CONTRACT_SPEC, DETERMINISTIC_RUNTIME_SPEC
 from ldm_project.v2.config import ConditionalGenerationConfig
 from ldm_project.v2.student.conditional import active_objective_kind, deterministic_companion_indices, objective_contract_payload, relative_diversity_worst_class_loss
 from ldm_project.v2.evidence import canonical_sha256
@@ -181,8 +181,10 @@ def test_late_objective_contract_and_schema_are_registered() -> None:
     assert config.objective_kind == "D"
     assert config.objective_activation_step == 400
     assert OBJECTIVE_DIAGNOSTIC_CONTRACT_SPEC["activation_step"] == 400
-    assert OBJECTIVE_DIAGNOSTIC_CONTRACT_SPEC["kind"] == "conditional_objective_alignment_v5"
+    assert OBJECTIVE_DIAGNOSTIC_CONTRACT_SPEC["kind"] == "conditional_objective_alignment_v6"
     assert OBJECTIVE_DIAGNOSTIC_CONTRACT_SPEC["checkpoint_cadence"][-1] == 984
+    assert DETERMINISTIC_RUNTIME_SPEC["warn_only"] is False
+    assert OBJECTIVE_DIAGNOSTIC_CONTRACT_SPEC["effective_weight_dispatch"] == "warmup_A_zero_auxiliary_weights_v1"
 
 
 @pytest.mark.parametrize(

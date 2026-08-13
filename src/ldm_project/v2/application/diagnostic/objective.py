@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 from pathlib import Path
 import torch
 
@@ -58,7 +59,7 @@ from ..runs import V2Run
 
 
 OBJECTIVE_DIAGNOSTIC_CONTRACT_SPEC = {
-        "kind": "conditional_objective_alignment_v5",
+        "kind": "conditional_objective_alignment_v6",
         "candidates": ["A", "D"],
         "screen_steps": 984,
         "confirm_steps": 984,
@@ -78,8 +79,29 @@ OBJECTIVE_DIAGNOSTIC_CONTRACT_SPEC = {
         "objective_contract_version": OBJECTIVE_CONTRACT_VERSION,
         "resumable_screen": "explicit_checkpoint_v1",
         "checkpoint_cadence": [100, 200, 300, 400, 500, 600, 700, 800, 900, 984],
+        "deterministic_runtime": {
+            "version": "strict_cuda_determinism_v1",
+            "cublas_workspace_config": ":4096:8",
+            "torch_deterministic_algorithms": True,
+            "cudnn_benchmark": False,
+            "cudnn_deterministic": True,
+            "warn_only": False,
+        },
+        "effective_weight_dispatch": "warmup_A_zero_auxiliary_weights_v1",
 }
 OBJECTIVE_DIAGNOSTIC_CONTRACT = canonical_sha256(OBJECTIVE_DIAGNOSTIC_CONTRACT_SPEC)
+DETERMINISTIC_RUNTIME_SPEC = OBJECTIVE_DIAGNOSTIC_CONTRACT_SPEC["deterministic_runtime"]
+
+
+def _configure_deterministic_runtime() -> None:
+    """Install the registered strict CUDA/CPU execution contract."""
+    os.environ["CUBLAS_WORKSPACE_CONFIG"] = DETERMINISTIC_RUNTIME_SPEC["cublas_workspace_config"]
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
+    torch.use_deterministic_algorithms(True, warn_only=False)
+    torch.manual_seed(1234)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(1234)
 
 
 def _record_context(config, evaluator_hash: str, split_hash: str, checkpoint_hash: str | None = None) -> EvidenceContextV2:
@@ -516,6 +538,7 @@ def _run_steps(bundle, primary, train_images, train_labels, config, objective_ki
         companions = _companion_indices(train_labels, indices, seed=seed * 100000 + step)
         companion_schedule.append(canonical_sha256(companions))
         active_kind = active_objective_kind(objective_kind, 400, step)
+        effective_weights = weights if active_kind == "D" else {name: 0.0 for name in weights}
         if active_kind in {"C", "D"}:
             companion_views = train_images.index_select(0, companions).to(device)
             companion_labels = train_labels.index_select(0, companions).to(device)
@@ -533,9 +556,9 @@ def _run_steps(bundle, primary, train_images, train_labels, config, objective_ki
             activation_checkpoint=False,
             microbatch_size=config.execution.training_microbatch_size,
             objective_kind=active_kind,
-            camera_code_safety_weight=weights["camera"],
-            pairwise_diversity_weight=weights["pairwise"],
-            coverage_ratio_weight=weights["coverage"],
+            camera_code_safety_weight=effective_weights["camera"],
+            pairwise_diversity_weight=effective_weights["pairwise"],
+            coverage_ratio_weight=effective_weights["coverage"],
             coverage_companion_views=companion_views,
             coverage_companion_labels=companion_labels,
         )
@@ -572,7 +595,8 @@ def _run_steps(bundle, primary, train_images, train_labels, config, objective_ki
             "saturation": float(summary.saturation),
             "camera_code_fraction": float(camera_code_fraction(raw.detach(), labels).item()),
             "auxiliary_raw": auxiliary,
-            "frozen_weights": dict(weights),
+            "frozen_weights": dict(effective_weights),
+            "registered_weights": dict(weights),
             "differentiable_coverage_ratio": auxiliary["coverage"],
             "active_objective": active_kind,
         })
@@ -738,6 +762,7 @@ def _run_resumable_candidate(run, candidate, primary, train_images, train_labels
 
 
 def conditional_objective_weight_calibration(args, config) -> int:
+    _configure_deterministic_runtime()
     _require_identity(config)
     train_images, train_labels, _, _, split, primary, injection, bundle, manifest, init_hash, evaluator_hash = _load_primary_inputs(args, config)
     warmup_history, warmup_primary_schedule, warmup_companion_schedule, warmup_optimizer, warmup_updates = _run_steps(
@@ -845,6 +870,7 @@ def _read_calibration(path: str, evidence_path: str, config, evaluator_hash: str
 
 
 def objective_alignment_screen(args, config) -> int:
+    _configure_deterministic_runtime()
     _require_identity(config)
     train_images, train_labels, validation_images, validation_labels, split, primary, secondary, measurement, evaluator_hash, secondary_hash = _load_measurement_inputs(args, config)
     injection = _load_injection(args, config, split, evaluator_hash)
@@ -946,6 +972,7 @@ def objective_alignment_screen(args, config) -> int:
 
 
 def objective_alignment_confirm(args, config) -> int:
+    _configure_deterministic_runtime()
     _require_identity(config)
     screen = EvidenceRecordV2.from_dict(json.loads(Path(args.screen_evidence).read_text(encoding="utf-8")))
     if screen.evidence_kind != "conditional_objective_alignment_screen" or screen.status != "passed" or "confirm" not in screen.permitted_next_actions:

@@ -181,6 +181,12 @@ screen、物理架构、current YAML 和正式验收阈值均不变。
 1234 screen。有效 screen 失败则按预注册规则关闭 Objective D family；通过也只
 允许 `confirm`，不能直接进入 objective selection、formal training 或 evaluation。
 
+v5 screen 已完成 A/D 各 984 步并留下完整 checkpoint，但因 CUDA warmup 在
+step 400 无法逐位复现而被判定为 `invalid_harness`；其指标只读，不构成
+Objective D 的科学失败。后续 v6 修复启用 strict deterministic runtime，并要求
+warmup 使用实际消费的零 auxiliary weights；v5 calibration、screen 与 checkpoint
+不得授权 v6。
+
 ---
 
 # 历史主线记录：v2.2 条件性负结果已封存（2026-08-04）
