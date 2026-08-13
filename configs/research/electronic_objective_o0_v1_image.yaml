@@ -3,7 +3,7 @@ name: electronic_objective_o0_v2_image
 version: electronic_objective_o0_v2
 dataset_root: data
 output_root: outputs
-objective_id: objective_e_active_set_v1
+objective_id: objective_e_active_set_v2
 split_seed: 1234
 code_dim: 8
 logical_batch_size: 50

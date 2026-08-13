@@ -401,8 +401,8 @@ def _validate_calibration(
     for name, weight in weights.items():
         if not isinstance(weight, (int, float)) or not math.isfinite(float(weight)) or float(weight) < 0:
             raise ValueError("Objective E calibration contains a non-finite weight")
-        if statuses.get(name) == "active" and not 1.0e-3 <= float(weight) <= 10.0:
-            raise ValueError("Objective E active weight is outside the registered range")
+        if statuses.get(name) == "active" and (not math.isfinite(float(weight)) or float(weight) <= 0.0):
+            raise ValueError("Objective E active weight must be finite and positive")
         if statuses.get(name) == "inactive_satisfied" and float(weight) != 0.0:
             raise ValueError("satisfied Objective E auxiliary must have zero weight")
     warmup_path = Path(str(artifact.get("warmup_checkpoint", "")))
@@ -719,6 +719,7 @@ def _calibrate(args: argparse.Namespace, spec: ElectronicO0Spec) -> tuple[dict[s
     parameter_groups = _parameter_groups(model, spec.candidate)
     auxiliary_names = ("camera", "diversity", "coverage")
     raw_norms = {name: [] for name in auxiliary_names}
+    gradient_snapshots: list[dict[str, tuple[torch.Tensor | None, ...]]] = []
     base_norms: list[torch.Tensor] = []
     records: list[dict[str, Any]] = []
     violation_presence = {name: [] for name in auxiliary_names}
@@ -733,9 +734,12 @@ def _calibrate(args: argparse.Namespace, spec: ElectronicO0Spec) -> tuple[dict[s
         base, values, view = _base_loss(model, spec.candidate, evaluator, real, batch_labels, codes, companion_images=companion, companion_labels=companion_labels)
         generated_features, _ = evaluator(view)
         real_features, _ = evaluator(real)
+        diversity_control, diversity_telemetry = objective_e2_diversity_penalty(
+            generated_features, real_features.detach(), batch_labels
+        )
         controls: dict[str, torch.Tensor] = {
             "camera": camera_safety_penalty(view, batch_labels),
-            "diversity": objective_e2_diversity_penalty(generated_features, real_features.detach(), batch_labels)[0],
+            "diversity": diversity_control,
             "coverage": coverage_penalty(values["coverage_ratio_raw"]),
         }
         base_grad = torch.autograd.grad(base, parameters, retain_graph=True, allow_unused=True)
@@ -747,7 +751,15 @@ def _calibrate(args: argparse.Namespace, spec: ElectronicO0Spec) -> tuple[dict[s
         for group_name, group_parameters in parameter_groups.items():
             group_grad = tuple(base_grad[parameter_indices[id(parameter)]] for parameter in group_parameters)
             base_group_norms[group_name] = float(torch.sqrt(sum((g.detach().square().sum() for g in group_grad if g is not None), torch.zeros((), device=device))).detach())
-        batch_record: dict[str, Any] = {"step": step, "base_gradient_norm": float(base_norm.detach()), "base_group_gradient_norms": base_group_norms, "auxiliaries": {}}
+        batch_record: dict[str, Any] = {
+            "step": step,
+            "base_gradient_norm": float(base_norm.detach()),
+            "base_group_gradient_norms": base_group_norms,
+            "diversity_telemetry": diversity_telemetry,
+            "coverage_ratio_raw": float(values["coverage_ratio_raw"].detach()),
+            "auxiliaries": {},
+        }
+        batch_gradients: dict[str, tuple[torch.Tensor | None, ...]] = {}
         for name, control in controls.items():
             if not torch.isfinite(control):
                 raise ObjectiveScalingNotQualified(name, float("nan"))
@@ -759,12 +771,14 @@ def _calibrate(args: argparse.Namespace, spec: ElectronicO0Spec) -> tuple[dict[s
                 raise ObjectiveScalingNotQualified(name, float(aux_norm.detach()))
             if violated:
                 raw_norms[name].append(aux_norm)
+                batch_gradients[name] = tuple(None if gradient is None else gradient.detach().clone() for gradient in aux_grad)
             group_norms = {}
             for group_name, group_parameters in parameter_groups.items():
                 group_grad = tuple(aux_grad[parameter_indices[id(parameter)]] for parameter in group_parameters)
                 group_norms[group_name] = float(torch.sqrt(sum((g.detach().square().sum() for g in group_grad if g is not None), torch.zeros((), device=device))).detach())
             batch_record["auxiliaries"][name] = {"raw_penalty": float(control.detach()), "violated": violated, "raw_gradient_norm": float(aux_norm.detach()), "group_gradient_norms": group_norms}
         records.append(batch_record)
+        gradient_snapshots.append(batch_gradients)
     statuses = {name: ("active" if any(violation_presence[name]) else "inactive_satisfied") for name in auxiliary_names}
     base_rms = torch.stack(base_norms).square().mean().sqrt()
     normalizers: dict[str, float] = {}
@@ -793,14 +807,39 @@ def _calibrate(args: argparse.Namespace, spec: ElectronicO0Spec) -> tuple[dict[s
                 if row["auxiliaries"][name]["violated"]:
                     base_group = row["base_group_gradient_norms"][group_name]
                     aux_group = row["auxiliaries"][name]["group_gradient_norms"][group_name]
-                    if base_group <= 1.0e-12 or not math.isfinite(base_group):
+                    if base_group <= 1.0e-12 or not math.isfinite(base_group) or aux_group <= 1.0e-12 or not math.isfinite(aux_group):
                         raise ObjectiveScalingNotQualified(f"{name}:{group_name}", base_group)
-                    values.append(coefficients[name] * normalizers[name] * aux_group / base_group)
+                    ratio = coefficients[name] * normalizers[name] * aux_group / base_group
+                    values.append(ratio)
             group_ratios[group_name] = values
-            if not values or not all(math.isfinite(value) and value <= 1.0 for value in values):
+            if not values or not all(math.isfinite(value) and 0.0 < value <= 1.0 for value in values):
                 raise ObjectiveScalingNotQualified(f"{name}:{group_name}", float(max(values, default=0.0)))
-        combined_ratio = max(ratios)
-        safety[name] = {"weighted_base_ratios": ratios, "group_ratios": group_ratios, "combined_ratio": combined_ratio}
+        safety[name] = {"weighted_base_ratios": ratios, "group_ratios": group_ratios}
+    combined_ratios: list[float] = []
+    combined_group_ratios: dict[str, list[float]] = {group_name: [] for group_name in parameter_groups}
+    for row_index, row in enumerate(records):
+        active_names = [name for name in auxiliary_names if row["auxiliaries"][name]["violated"]]
+        if not active_names:
+            continue
+        combined_gradients: list[torch.Tensor] = []
+        for parameter_index, parameter in enumerate(parameters):
+            terms = [weights[name] * gradient_snapshots[row_index][name][parameter_index] for name in active_names if gradient_snapshots[row_index][name][parameter_index] is not None]
+            combined_gradients.append(sum(terms, torch.zeros_like(parameter.detach())))
+        combined_norm = torch.sqrt(sum((gradient.square().sum() for gradient in combined_gradients), torch.zeros((), device=device)))
+        combined_ratio = float((combined_norm / row["base_gradient_norm"]).detach())
+        if not math.isfinite(combined_ratio) or not 0.0 < combined_ratio <= 1.0:
+            raise ObjectiveScalingNotQualified("combined", combined_ratio)
+        combined_ratios.append(combined_ratio)
+        for group_name, group_parameters in parameter_groups.items():
+            group_norm = torch.sqrt(sum((combined_gradients[parameter_indices[id(parameter)]].square().sum() for parameter in group_parameters), torch.zeros((), device=device)))
+            base_group = row["base_group_gradient_norms"][group_name]
+            group_ratio = float((group_norm / base_group).detach()) if base_group > 1.0e-12 else float("nan")
+            if not math.isfinite(group_ratio) or not 0.0 < group_ratio <= 1.0:
+                raise ObjectiveScalingNotQualified(f"combined:{group_name}", group_ratio)
+            combined_group_ratios[group_name].append(group_ratio)
+    for name in auxiliary_names:
+        safety.setdefault(name, {})["combined_ratio"] = max(combined_ratios, default=0.0)
+        safety[name]["combined_group_ratios"] = combined_group_ratios
     run = {"model_state": warmup_state, "optimizer_state": warmup_optimizer, "warmup_steps": spec.warmup_steps, "calibration_steps": list(spec.calibration_steps), "weights": weights, "normalizers": normalizers, "coefficients": coefficients, "statuses": statuses, "records": records, "parameter_groups": list(parameter_groups), "safety": safety, "contract": OBJECTIVE_E_CONTRACT}
     return weights, run
 
@@ -1033,8 +1072,9 @@ def locked_final(args: argparse.Namespace) -> int:
     calibration, _ = _validate_calibration(args, spec, provenance, inputs)
     _validate_o0_evidence(args.confirm_evidence, spec=spec, provenance=provenance, action="confirm", state="confirm_passed", permitted=["locked-final"], expected_inputs=inputs)
     device = torch.device(args.device)
-    images, labels = load_local_mnist(spec.dataset_root, train=False)
-    if images.shape[0] != 10_000 or labels.shape[0] != 10_000 or tuple(images.shape[1:]) != (1, 28, 28):
+    train_images, train_labels = load_local_mnist(spec.dataset_root, train=True)
+    test_images, test_labels = load_local_mnist(spec.dataset_root, train=False)
+    if test_images.shape[0] != 10_000 or test_labels.shape[0] != 10_000 or tuple(test_images.shape[1:]) != (1, 28, 28):
         raise ValueError("locked-final requires the official 10000-sample test split")
     primary, secondary = _load_evaluators(args, device)
     rows = []
@@ -1043,9 +1083,9 @@ def locked_final(args: argparse.Namespace) -> int:
         model = _load_candidate(spec, device)
         optimizer = torch.optim.Adam(model.parameters(), lr=2.0e-4)
         zero = {"camera": 0.0, "diversity": 0.0, "coverage": 0.0}
-        _run_e_steps(model, optimizer, spec, primary, images, labels, start_step=0, end_step=400, weights=zero, active=False, device=device, seed=seed)
-        _run_e_steps(model, optimizer, spec, primary, images, labels, start_step=400, end_step=spec.final_steps, weights=calibration["weights"], active=True, device=device, seed=seed)
-        measurement = _measurement(model, spec, primary, secondary, images, labels, device)
+        _run_e_steps(model, optimizer, spec, primary, train_images, train_labels, start_step=0, end_step=400, weights=zero, active=False, device=device, seed=seed)
+        _run_e_steps(model, optimizer, spec, primary, train_images, train_labels, start_step=400, end_step=spec.final_steps, weights=calibration["weights"], active=True, device=device, seed=seed)
+        measurement = _measurement(model, spec, primary, secondary, test_images, test_labels, device)
         gates = {"primary_accuracy": measurement["primary_accuracy"] >= .95, "secondary_accuracy": measurement["secondary_accuracy"] >= .95, "primary_recall": measurement["primary_min_recall"] >= .90, "secondary_recall": measurement["secondary_min_recall"] >= .90, "agreement": measurement["prediction_agreement"] >= .95, "camera": measurement["camera_code_fraction"] >= .25, "diversity": measurement["minimum_diversity_ratio"] >= .70 and measurement["minimum_diversity_ratio"] <= 1.30 and measurement["secondary_minimum_diversity_ratio"] >= .70 and measurement["secondary_minimum_diversity_ratio"] <= 1.30, "coverage": measurement["coverage_ratio"] <= 1.5 and measurement["secondary_coverage_ratio"] <= 1.5, "saturation": measurement["saturation"] <= .08}
         rows.append({"seed": seed, "measurement": measurement, "gates": gates, "passed": all(gates.values())})
     passed = sum(row["passed"] for row in rows) == 1

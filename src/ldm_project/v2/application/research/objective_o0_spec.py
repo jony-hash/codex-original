@@ -51,7 +51,7 @@ class ElectronicO0Spec:
     def validate(self) -> None:
         if self.schema_version != 1 or self.objective_contract_version != OBJECTIVE_O0_CONTRACT_VERSION:
             raise ValueError("electronic O0 schema/contract version is unsupported")
-        if self.objective_id != "objective_e_active_set_v1":
+        if self.objective_id != "objective_e_active_set_v2":
             raise ValueError("electronic O0 requires Objective E active-set semantics")
         if self.candidate not in {"O0-I", "O0-G"}:
             raise ValueError("electronic O0 candidate must be O0-I or O0-G")
