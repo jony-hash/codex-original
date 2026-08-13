@@ -400,6 +400,10 @@ def _validate_calibration(
     statuses = artifact.get("statuses")
     if not isinstance(weights, dict) or set(weights) != {"camera", "diversity", "coverage"} or not isinstance(statuses, dict) or not isinstance(normalizers, dict) or not isinstance(coefficients, dict) or not isinstance(records, list) or len(records) != 4 or not isinstance(safety, dict):
         raise ValueError("Objective E calibration weights/statuses are malformed")
+    if artifact.get("warmup_schedule_hash") != canonical_sha256(artifact.get("warmup_schedule")) or artifact.get("calibration_schedule_hash") != canonical_sha256(artifact.get("calibration_schedule")):
+        raise ValueError("Objective E calibration schedule hash mismatch")
+    if not isinstance(artifact.get("warmup_model_state_hash"), str) or not isinstance(artifact.get("warmup_optimizer_state_hash"), str) or not isinstance(artifact.get("warmup_schedule"), list) or len(artifact["warmup_schedule"]) != spec.warmup_steps or not isinstance(artifact.get("calibration_schedule"), list) or len(artifact["calibration_schedule"]) != len(spec.calibration_steps):
+        raise ValueError("Objective E calibration warmup/schedule binding is incomplete")
     for name, weight in weights.items():
         if not isinstance(weight, (int, float)) or not math.isfinite(float(weight)) or float(weight) < 0:
             raise ValueError("Objective E calibration contains a non-finite weight")
@@ -411,6 +415,9 @@ def _validate_calibration(
     warmup_hash = artifact.get("warmup_checkpoint_sha256")
     if not warmup_path.is_absolute() or not warmup_path.is_file() or not isinstance(warmup_hash, str) or file_sha256(warmup_path) != warmup_hash:
         raise ValueError("Objective E calibration warmup checkpoint is missing or tampered")
+    warmup_payload = safe_torch_load(warmup_path)
+    if not isinstance(warmup_payload, dict) or canonical_sha256(warmup_payload.get("model_state")) != artifact["warmup_model_state_hash"] or canonical_sha256(warmup_payload.get("optimizer_state")) != artifact["warmup_optimizer_state_hash"]:
+        raise ValueError("Objective E calibration warmup state hash mismatch")
     if evidence["inputs"].get("warmup_checkpoint") != warmup_hash or evidence["inputs"].get("calibration_artifact") != file_sha256(args.calibration_artifact):
         raise ValueError("Objective E calibration evidence does not bind artifact and warmup")
     return artifact, evidence
@@ -725,10 +732,19 @@ def _calibrate(args: argparse.Namespace, spec: ElectronicO0Spec) -> tuple[dict[s
     base_norms: list[torch.Tensor] = []
     records: list[dict[str, Any]] = []
     violation_presence = {name: [] for name in auxiliary_names}
+    warmup_schedule = [{"global_step": step, "batch_seed": 1234 + step, "code_seed": 100000 + step} for step in range(spec.warmup_steps)]
+    calibration_schedule: list[dict[str, Any]] = []
     for step in spec.calibration_steps:
         joint_indices, joint_labels = deterministic_joint_companion_indices(labels, seed=1234, global_step=step, primary_per_class=spec.logical_batch_size // 10)
         indices, batch_labels = joint_indices[: spec.logical_batch_size], joint_labels[: spec.logical_batch_size]
         companion_indices, companion_labels = joint_indices[spec.logical_batch_size :], joint_labels[spec.logical_batch_size :]
+        calibration_schedule.append({
+            "global_step": step,
+            "code_seed": 100000 + step,
+            "primary_indices_hash": canonical_sha256(indices.detach().cpu().tolist()),
+            "companion_indices_hash": canonical_sha256(companion_indices.detach().cpu().tolist()),
+            "schedule_hash": canonical_sha256({"step": step, "primary": indices.detach().cpu().tolist(), "companion": companion_indices.detach().cpu().tolist(), "code_seed": 100000 + step}),
+        })
         codes = torch.randn(spec.logical_batch_size, spec.code_dim, device=device, generator=torch.Generator(device=device).manual_seed(100000 + step))
         real = images.index_select(0, indices)
         companion = images.index_select(0, companion_indices)
@@ -842,7 +858,7 @@ def _calibrate(args: argparse.Namespace, spec: ElectronicO0Spec) -> tuple[dict[s
     for name in auxiliary_names:
         safety.setdefault(name, {})["combined_ratio"] = max(combined_ratios, default=0.0)
         safety[name]["combined_group_ratios"] = combined_group_ratios
-    run = {"model_state": warmup_state, "optimizer_state": warmup_optimizer, "warmup_steps": spec.warmup_steps, "calibration_steps": list(spec.calibration_steps), "weights": weights, "normalizers": normalizers, "coefficients": coefficients, "statuses": statuses, "records": records, "parameter_groups": list(parameter_groups), "safety": safety, "contract": OBJECTIVE_E_CONTRACT}
+    run = {"model_state": warmup_state, "optimizer_state": warmup_optimizer, "warmup_steps": spec.warmup_steps, "calibration_steps": list(spec.calibration_steps), "weights": weights, "normalizers": normalizers, "coefficients": coefficients, "statuses": statuses, "records": records, "parameter_groups": list(parameter_groups), "safety": safety, "warmup_schedule": warmup_schedule, "calibration_schedule": calibration_schedule, "warmup_model_state_hash": canonical_sha256(warmup_state), "warmup_optimizer_state_hash": canonical_sha256(warmup_optimizer), "warmup_schedule_hash": canonical_sha256(warmup_schedule), "calibration_schedule_hash": canonical_sha256(calibration_schedule), "contract": OBJECTIVE_E_CONTRACT}
     return weights, run
 
 
@@ -880,7 +896,7 @@ def calibrate(args: argparse.Namespace) -> int:
     root = _root(spec, "calibrate")
     checkpoint = root / "objective_o0_warmup_step_400.pt"
     atomic_torch_save(checkpoint, payload)
-    artifact = {"schema_version": 2, "contract": OBJECTIVE_E_CONTRACT, "candidate": spec.candidate, "weights": weights, "normalizers": payload["normalizers"], "coefficients": payload["coefficients"], "statuses": payload["statuses"], "records": payload["records"], "parameter_groups": payload["parameter_groups"], "safety": payload["safety"], "warmup_steps": 400, "calibration_steps": [400, 401, 402, 403], "warmup_checkpoint": str(checkpoint.resolve()), "warmup_checkpoint_sha256": file_sha256(checkpoint), "formal_promotion_authorized": False, "permitted_next_actions": ["screen"]}
+    artifact = {"schema_version": 2, "contract": OBJECTIVE_E_CONTRACT, "candidate": spec.candidate, "weights": weights, "normalizers": payload["normalizers"], "coefficients": payload["coefficients"], "statuses": payload["statuses"], "records": payload["records"], "parameter_groups": payload["parameter_groups"], "safety": payload["safety"], "warmup_schedule": payload["warmup_schedule"], "calibration_schedule": payload["calibration_schedule"], "warmup_model_state_hash": payload["warmup_model_state_hash"], "warmup_optimizer_state_hash": payload["warmup_optimizer_state_hash"], "warmup_schedule_hash": payload["warmup_schedule_hash"], "calibration_schedule_hash": payload["calibration_schedule_hash"], "warmup_steps": 400, "calibration_steps": [400, 401, 402, 403], "warmup_checkpoint": str(checkpoint.resolve()), "warmup_checkpoint_sha256": file_sha256(checkpoint), "formal_promotion_authorized": False, "permitted_next_actions": ["screen"]}
     atomic_write_json(root / "objective_o0_calibration.json", artifact)
     evidence = _write_evidence(
         root,
