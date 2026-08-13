@@ -303,3 +303,14 @@ primary/companion batches, scale-invariant `0.25` gradient calibration, strict
 preflight determinism, and explicit closeout admission before O0-G. Current
 formal YAML remains Objective A; no optical or formal training action is
 authorized by this research contract.
+
+## Objective E2 lifecycle harness closure (2026-08-13)
+
+The earlier E2 validation, preflight, and calibration artifacts are read-only
+numeric references. They were issued under the superseded lifecycle harness
+and cannot authorize a screen. The current O0-I work upgrades the contract to
+classwise joint schedules, independent warmup reconstruction, per-parameter
+group update gates, RNG/schedule/lineage-bound checkpoints, and official
+10,000-test locked-final measurement. No E2 screen result exists yet; CUDA
+execution remains stopped until fresh evidence is issued from the clean
+implementation commit.

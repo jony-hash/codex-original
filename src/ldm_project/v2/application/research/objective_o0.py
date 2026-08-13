@@ -29,6 +29,7 @@ from ...evidence import (
     canonical_sha256,
     file_sha256,
     safe_torch_load,
+    tensor_sha256,
 )
 from ...student.conditional import (
     camera_code_fraction,
@@ -56,7 +57,11 @@ OBJECTIVE_E_CONTRACT = canonical_sha256({
     "measurement": "fixed_panel_dual_evaluator_v1",
     "evidence_chain": "fresh_primary_secondary_measurement_v1",
     "deterministic_runtime": "strict_cuda_v1",
-    "resume": "explicit_bound_checkpoint_v2",
+    "schedule": "classwise_joint_primary_companion_v2",
+    "preflight": "per_parameter_group_and_negative_control_v2",
+    "checkpoint": "rng_schedule_lineage_bound_v3",
+    "measurement_panel": "official_panel_content_bound_v2",
+    "resume": "explicit_bound_checkpoint_v3",
 })
 
 _DETERMINISTIC_RUNTIME = {
@@ -261,6 +266,46 @@ def _configure_deterministic_runtime(seed: int) -> None:
     torch.backends.cudnn.deterministic = True
 
 
+def _training_batch(
+    labels: torch.Tensor,
+    *,
+    run_seed: int,
+    global_step: int,
+    batch_size: int,
+    code_dim: int,
+    device: torch.device,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, dict[str, Any]]:
+    """Return one reproducible primary/companion pair and its bound schedule."""
+    if batch_size % 10 != 0:
+        raise ValueError("O0 training batch must be divisible by ten")
+    per_class = batch_size // 10
+    joint, joint_labels = deterministic_joint_companion_indices(
+        labels,
+        seed=run_seed,
+        global_step=global_step,
+        primary_per_class=per_class,
+    )
+    primary_count = batch_size
+    primary_indices = joint[:primary_count]
+    companion_indices = joint[primary_count:]
+    code_seed = run_seed * 100000 + global_step
+    schedule = {
+        "global_step": global_step,
+        "run_seed": run_seed,
+        "code_seed": code_seed,
+        "primary_indices_hash": canonical_sha256(primary_indices.detach().cpu().tolist()),
+        "companion_indices_hash": canonical_sha256(companion_indices.detach().cpu().tolist()),
+        "schedule_hash": canonical_sha256({
+            "global_step": global_step,
+            "run_seed": run_seed,
+            "code_seed": code_seed,
+            "primary": primary_indices.detach().cpu().tolist(),
+            "companion": companion_indices.detach().cpu().tolist(),
+        }),
+    }
+    return primary_indices, joint_labels[:primary_count], companion_indices, joint_labels[primary_count:], schedule
+
+
 def _read_mapping(path: str | Path, *, description: str) -> dict[str, Any]:
     value = Path(path)
     if not value.is_file():
@@ -386,7 +431,7 @@ def _validate_calibration(
         permitted=["screen"],
         expected_inputs=inputs,
     )
-    if artifact.get("schema_version") != 2 or artifact.get("contract") != OBJECTIVE_E_CONTRACT or artifact.get("candidate") != spec.candidate:
+    if artifact.get("schema_version") != 3 or artifact.get("contract") != OBJECTIVE_E_CONTRACT or artifact.get("candidate") != spec.candidate:
         raise ValueError("Objective E calibration artifact contract mismatch")
     if artifact.get("formal_promotion_authorized") is not False or artifact.get("permitted_next_actions") != ["screen"]:
         raise ValueError("Objective E calibration artifact cannot authorize promotion")
@@ -485,11 +530,30 @@ def _save_o0_checkpoint(
     optimizer: torch.optim.Optimizer,
     *,
     history: list[dict[str, Any]] | None = None,
+    input_hashes: dict[str, str] | None = None,
+    provenance: dict[str, str | None] | None = None,
+    stage: str = "training",
 ) -> Path:
     checkpoint = root / f"objective_o0_{candidate}_seed_{seed}_step_{completed_step}.pt"
-    payload = {"schema_version": 2, "contract": OBJECTIVE_E_CONTRACT, "config_hash": spec.config_hash, "candidate": candidate, "seed": seed, "completed_step": completed_step, "model_state": {name: value.detach().cpu() for name, value in model.state_dict().items()}, "optimizer_state": optimizer.state_dict(), "history": list(history or []), "formal_promotion_authorized": False, "permitted_next_actions": []}
+    payload = {
+        "schema_version": 3,
+        "contract": OBJECTIVE_E_CONTRACT,
+        "config_hash": spec.config_hash,
+        "candidate": candidate,
+        "seed": seed,
+        "completed_step": completed_step,
+        "stage": stage,
+        "model_state": {name: value.detach().cpu() for name, value in model.state_dict().items()},
+        "optimizer_state": optimizer.state_dict(),
+        "rng_state": {"cpu": torch.get_rng_state(), "cuda": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else []},
+        "history": list(history or []),
+        "input_hashes": dict(input_hashes or {}),
+        "provenance": dict(provenance or {}),
+        "formal_promotion_authorized": False,
+        "permitted_next_actions": [],
+    }
     atomic_torch_save(checkpoint, payload)
-    atomic_write_json(checkpoint.with_suffix(".json"), {"schema_version": 2, "contract": OBJECTIVE_E_CONTRACT, "config_hash": spec.config_hash, "candidate": candidate, "seed": seed, "completed_step": completed_step, "checkpoint": checkpoint.name, "checkpoint_sha256": file_sha256(checkpoint), "formal_promotion_authorized": False, "permitted_next_actions": []})
+    atomic_write_json(checkpoint.with_suffix(".json"), {"schema_version": 3, "contract": OBJECTIVE_E_CONTRACT, "config_hash": spec.config_hash, "candidate": candidate, "seed": seed, "completed_step": completed_step, "stage": stage, "checkpoint": checkpoint.name, "checkpoint_sha256": file_sha256(checkpoint), "input_hashes": dict(input_hashes or {}), "provenance": dict(provenance or {}), "formal_promotion_authorized": False, "permitted_next_actions": []})
     return checkpoint
 
 
@@ -563,6 +627,9 @@ def _preflight_model(model: nn.Module, spec: ElectronicO0Spec, device: torch.dev
     codes = torch.randn(labels.numel(), spec.code_dim, device=device, generator=torch.Generator(device=device).manual_seed(1234))
     optimizer = torch.optim.Adam(model.parameters(), lr=2.0e-4)
     before = canonical_sha256({name: value.detach().cpu().tolist() for name, value in model.state_dict().items()})
+    parameter_groups = _parameter_groups(model, spec.candidate)
+    group_before = {name: canonical_sha256({str(index): value.detach().cpu().tolist() for index, value in enumerate(parameters)}) for name, parameters in parameter_groups.items()}
+    evaluator_before = canonical_sha256({"primary": {name: value.detach().cpu().tolist() for name, value in primary.state_dict().items()}, "secondary": {name: value.detach().cpu().tolist() for name, value in secondary.state_dict().items()}})
     raw = _render(model, spec.candidate, codes, labels, exposure_scale=spec.fixed_exposure_scale)
     primary_features, primary_logits = primary(raw)
     secondary_features, secondary_logits = secondary(raw)
@@ -571,6 +638,13 @@ def _preflight_model(model: nn.Module, spec: ElectronicO0Spec, device: torch.dev
     finite = bool(torch.isfinite(loss)) and all(parameter.grad is not None and torch.isfinite(parameter.grad).all() for parameter in model.parameters())
     optimizer.step()
     after = canonical_sha256({name: value.detach().cpu().tolist() for name, value in model.state_dict().items()})
+    group_after = {name: canonical_sha256({str(index): value.detach().cpu().tolist() for index, value in enumerate(parameters)}) for name, parameters in parameter_groups.items()}
+    group_updates = {name: group_before[name] != group_after[name] for name in parameter_groups}
+    group_gradients = {
+        name: all(parameter.grad is not None and torch.isfinite(parameter.grad).all() and bool(parameter.grad.detach().abs().sum() > 0) for parameter in parameters)
+        for name, parameters in parameter_groups.items()
+    }
+    evaluator_after = canonical_sha256({"primary": {name: value.detach().cpu().tolist() for name, value in primary.state_dict().items()}, "secondary": {name: value.detach().cpu().tolist() for name, value in secondary.state_dict().items()}})
     def state_hash(module: nn.Module) -> str:
         return canonical_sha256({name: value.detach().cpu().tolist() for name, value in module.state_dict().items()})
 
@@ -628,10 +702,10 @@ def _preflight_model(model: nn.Module, spec: ElectronicO0Spec, device: torch.dev
         "resume_final_match": first["state_hash"] == split["state_hash"] and first["optimizer_hash"] == split["optimizer_hash"] and first["losses"] == split["losses"],
         "losses": first["losses"],
     }
-    return {"finite": finite, "all_parameters_updated": before != after, "optimizer_created": True, "primary_evaluator_gradients_clean": all(parameter.grad is None for parameter in primary.parameters()), "secondary_evaluator_gradients_clean": all(parameter.grad is None for parameter in secondary.parameters()), "loss": float(loss.detach()), "candidate": spec.candidate, "deterministic_preflight": deterministic}
+    return {"finite": finite, "all_parameters_updated": before != after, "parameter_group_gradients": group_gradients, "parameter_group_updates": group_updates, "all_parameter_groups_updated": all(group_updates.values()), "optimizer_created": True, "primary_evaluator_gradients_clean": all(parameter.grad is None for parameter in primary.parameters()), "secondary_evaluator_gradients_clean": all(parameter.grad is None for parameter in secondary.parameters()), "evaluator_state_unchanged": evaluator_before == evaluator_after, "loss": float(loss.detach()), "candidate": spec.candidate, "deterministic_preflight": deterministic}
 
 
-def _control_metrics(spec: ElectronicO0Spec, primary: nn.Module, secondary: nn.Module, device: torch.device) -> dict[str, Any]:
+def _control_metrics(spec: ElectronicO0Spec, model: nn.Module, primary: nn.Module, secondary: nn.Module, device: torch.device) -> dict[str, Any]:
     images, labels = load_local_mnist(spec.dataset_root, train=True)
     images, labels = images[:1000].to(device), labels[:1000].to(device)
     with torch.no_grad():
@@ -639,11 +713,19 @@ def _control_metrics(spec: ElectronicO0Spec, primary: nn.Module, secondary: nn.M
         _, secondary_logits = secondary(images)
     primary_pred, secondary_pred = primary_logits.argmax(1), secondary_logits.argmax(1)
     shuffled = (labels + 1) % 10
-    template = torch.cat([images[labels == label][:1].repeat(10, 1, 1, 1) for label in range(10)])
+    template = torch.cat([images[labels == label][:1].repeat(17, 1, 1, 1) for label in range(10)])
+    template_labels = torch.arange(10, device=device).repeat_interleave(17)
+    reference, reference_labels = validation_reference(images, labels, device=device)
+    with torch.no_grad():
+        template_features, template_logits = primary(template)
+        reference_features, reference_logits = primary(reference)
+    template_ratios = relative_diversity_ratios(template_features, reference_features, template_labels)
+    template_coverage = float(coverage_ratio_raw(template_features, template, reference_features, reference, template_labels).detach())
     template_unique = int(torch.unique(template.flatten(1), dim=0).shape[0])
     real = {"primary_accuracy": float((primary_pred == labels).float().mean()), "secondary_accuracy": float((secondary_pred == labels).float().mean()), "agreement": float((primary_pred == secondary_pred).float().mean())}
     shuffle = {"primary_accuracy": float((primary_pred == shuffled).float().mean()), "secondary_accuracy": float((secondary_pred == shuffled).float().mean())}
-    return {"real": real, "label_shuffle": shuffle, "template_unique": template_unique, "passed": min(real["primary_accuracy"], real["secondary_accuracy"]) >= 0.90 and max(shuffle.values()) < 0.95 and template_unique < 80}
+    template_negative = {"minimum_diversity_ratio": float(min(template_ratios)), "coverage_ratio": template_coverage, "failed_expected_gate": float(min(template_ratios)) < spec.diversity_lower or template_coverage > 1.5}
+    return {"real": real, "label_shuffle": shuffle, "template_unique": template_unique, "template_negative": template_negative, "passed": min(real["primary_accuracy"], real["secondary_accuracy"]) >= 0.90 and max(shuffle.values()) < 0.95 and template_negative["failed_expected_gate"]}
 
 
 def _prepare_runtime(args: argparse.Namespace, spec: ElectronicO0Spec) -> tuple[dict[str, str | None], dict[str, str]]:
@@ -680,16 +762,19 @@ def preflight(args: argparse.Namespace) -> int:
         raise ValueError("O0-G requires a passed O0-I closeout path")
     if spec.candidate == "O0-G":
         closeout = _read_mapping(args.o0_i_closeout, description="O0-I closeout")
+        closeout_hash = closeout.pop("content_hash", None)
+        if not isinstance(closeout_hash, str) or closeout_hash != canonical_sha256(closeout):
+            raise ValueError("O0-I closeout content hash mismatch")
         if closeout.get("status") != "closed" or closeout.get("candidate") != "O0-I" or closeout.get("formal_promotion_authorized") is not False or closeout.get("permitted_next_actions") != []:
             raise ValueError("O0-G requires a closed O0-I lifecycle")
     device = torch.device(args.device)
     model = _load_candidate(spec, device)
     primary, secondary = _load_evaluators(args, device)
     metrics = _preflight_model(model, spec, device, primary, secondary)
-    metrics["controls"] = _control_metrics(spec, primary, secondary, device)
+    metrics["controls"] = _control_metrics(spec, model, primary, secondary, device)
     metrics["provenance"] = provenance
     deterministic = metrics.get("deterministic_preflight", {})
-    state = "preflight_passed" if all(metrics[k] for k in ("finite", "all_parameters_updated", "primary_evaluator_gradients_clean", "secondary_evaluator_gradients_clean")) and deterministic.get("independent_match") is True and deterministic.get("resume_final_match") is True and metrics["controls"]["passed"] else "preflight_failed"
+    state = "preflight_passed" if all(metrics[k] for k in ("finite", "all_parameters_updated", "all_parameter_groups_updated", "primary_evaluator_gradients_clean", "secondary_evaluator_gradients_clean", "evaluator_state_unchanged")) and all(metrics["parameter_group_gradients"].values()) and deterministic.get("independent_match") is True and deterministic.get("resume_final_match") is True and metrics["controls"]["passed"] else "preflight_failed"
     root = _root(spec, "preflight")
     path = _write_evidence(
         root,
@@ -714,9 +799,18 @@ def _calibrate(args: argparse.Namespace, spec: ElectronicO0Spec) -> tuple[dict[s
     model = _load_candidate(spec, device)
     evaluator = _load_evaluators(args, device)[0]
     optimizer = torch.optim.Adam(model.parameters(), lr=2.0e-4)
+    warmup_schedule: list[dict[str, Any]] = []
     for step in range(spec.warmup_steps):
-        indices, batch_labels = _balanced_batch(labels, seed=1234 + step, batch_size=spec.logical_batch_size, device=device)
-        codes = torch.randn(spec.logical_batch_size, spec.code_dim, device=device, generator=torch.Generator(device=device).manual_seed(100000 + step))
+        indices, batch_labels, companion_indices, companion_labels, schedule = _training_batch(
+            labels,
+            run_seed=spec.split_seed,
+            global_step=step,
+            batch_size=spec.logical_batch_size,
+            code_dim=spec.code_dim,
+            device=device,
+        )
+        warmup_schedule.append(schedule)
+        codes = torch.randn(spec.logical_batch_size, spec.code_dim, device=device, generator=torch.Generator(device=device).manual_seed(spec.split_seed * 100000 + step))
         optimizer.zero_grad(set_to_none=True)
         base, _, _ = _base_loss(model, spec.candidate, evaluator, images.index_select(0, indices), batch_labels, codes)
         base.backward()
@@ -732,20 +826,18 @@ def _calibrate(args: argparse.Namespace, spec: ElectronicO0Spec) -> tuple[dict[s
     base_norms: list[torch.Tensor] = []
     records: list[dict[str, Any]] = []
     violation_presence = {name: [] for name in auxiliary_names}
-    warmup_schedule = [{"global_step": step, "batch_seed": 1234 + step, "code_seed": 100000 + step} for step in range(spec.warmup_steps)]
     calibration_schedule: list[dict[str, Any]] = []
     for step in spec.calibration_steps:
-        joint_indices, joint_labels = deterministic_joint_companion_indices(labels, seed=1234, global_step=step, primary_per_class=spec.logical_batch_size // 10)
-        indices, batch_labels = joint_indices[: spec.logical_batch_size], joint_labels[: spec.logical_batch_size]
-        companion_indices, companion_labels = joint_indices[spec.logical_batch_size :], joint_labels[spec.logical_batch_size :]
-        calibration_schedule.append({
-            "global_step": step,
-            "code_seed": 100000 + step,
-            "primary_indices_hash": canonical_sha256(indices.detach().cpu().tolist()),
-            "companion_indices_hash": canonical_sha256(companion_indices.detach().cpu().tolist()),
-            "schedule_hash": canonical_sha256({"step": step, "primary": indices.detach().cpu().tolist(), "companion": companion_indices.detach().cpu().tolist(), "code_seed": 100000 + step}),
-        })
-        codes = torch.randn(spec.logical_batch_size, spec.code_dim, device=device, generator=torch.Generator(device=device).manual_seed(100000 + step))
+        indices, batch_labels, companion_indices, companion_labels, schedule = _training_batch(
+            labels,
+            run_seed=spec.split_seed,
+            global_step=step,
+            batch_size=spec.logical_batch_size,
+            code_dim=spec.code_dim,
+            device=device,
+        )
+        calibration_schedule.append(schedule)
+        codes = torch.randn(spec.logical_batch_size, spec.code_dim, device=device, generator=torch.Generator(device=device).manual_seed(spec.split_seed * 100000 + step))
         real = images.index_select(0, indices)
         companion = images.index_select(0, companion_indices)
         model.zero_grad(set_to_none=True)
@@ -801,7 +893,7 @@ def _calibrate(args: argparse.Namespace, spec: ElectronicO0Spec) -> tuple[dict[s
     base_rms = torch.stack(base_norms).square().mean().sqrt()
     normalizers: dict[str, float] = {}
     coefficients = {name: 0.0 for name in auxiliary_names}
-    weights: dict[str, float] = {}
+    weights: dict[str, float] = {name: 0.0 for name in auxiliary_names}
     safety: dict[str, Any] = {}
     for name in auxiliary_names:
         if statuses[name] == "inactive_satisfied":
@@ -896,7 +988,7 @@ def calibrate(args: argparse.Namespace) -> int:
     root = _root(spec, "calibrate")
     checkpoint = root / "objective_o0_warmup_step_400.pt"
     atomic_torch_save(checkpoint, payload)
-    artifact = {"schema_version": 2, "contract": OBJECTIVE_E_CONTRACT, "candidate": spec.candidate, "weights": weights, "normalizers": payload["normalizers"], "coefficients": payload["coefficients"], "statuses": payload["statuses"], "records": payload["records"], "parameter_groups": payload["parameter_groups"], "safety": payload["safety"], "warmup_schedule": payload["warmup_schedule"], "calibration_schedule": payload["calibration_schedule"], "warmup_model_state_hash": payload["warmup_model_state_hash"], "warmup_optimizer_state_hash": payload["warmup_optimizer_state_hash"], "warmup_schedule_hash": payload["warmup_schedule_hash"], "calibration_schedule_hash": payload["calibration_schedule_hash"], "warmup_steps": 400, "calibration_steps": [400, 401, 402, 403], "warmup_checkpoint": str(checkpoint.resolve()), "warmup_checkpoint_sha256": file_sha256(checkpoint), "formal_promotion_authorized": False, "permitted_next_actions": ["screen"]}
+    artifact = {"schema_version": 3, "contract": OBJECTIVE_E_CONTRACT, "candidate": spec.candidate, "weights": weights, "normalizers": payload["normalizers"], "coefficients": payload["coefficients"], "statuses": payload["statuses"], "records": payload["records"], "parameter_groups": payload["parameter_groups"], "safety": payload["safety"], "warmup_schedule": payload["warmup_schedule"], "calibration_schedule": payload["calibration_schedule"], "warmup_model_state_hash": payload["warmup_model_state_hash"], "warmup_optimizer_state_hash": payload["warmup_optimizer_state_hash"], "warmup_schedule_hash": payload["warmup_schedule_hash"], "calibration_schedule_hash": payload["calibration_schedule_hash"], "warmup_steps": 400, "calibration_steps": [400, 401, 402, 403], "warmup_checkpoint": str(checkpoint.resolve()), "warmup_checkpoint_sha256": file_sha256(checkpoint), "formal_promotion_authorized": False, "permitted_next_actions": ["screen"]}
     atomic_write_json(root / "objective_o0_calibration.json", artifact)
     evidence = _write_evidence(
         root,
@@ -936,10 +1028,60 @@ def _measurement(model: nn.Module, spec: ElectronicO0Spec, primary: nn.Module, s
     return {name: (max(row[name] for row in rows) if name == "saturation" else min(row[name] for row in rows)) for name in names}
 
 
-def _run_e_steps(model: nn.Module, optimizer: torch.optim.Optimizer, spec: ElectronicO0Spec, primary: nn.Module, images: torch.Tensor, labels: torch.Tensor, *, start_step: int, end_step: int, weights: dict[str, float], active: bool, device: torch.device, seed: int = 1234) -> None:
+def _official_measurement(model: nn.Module, spec: ElectronicO0Spec, primary: nn.Module, secondary: nn.Module, images: torch.Tensor, labels: torch.Tensor, device: torch.device) -> dict[str, Any]:
+    """Evaluate the registered 10,000-image test split, not a diagnostic panel."""
+    if images.shape[0] != 10_000 or labels.shape[0] != 10_000:
+        raise ValueError("official O0 measurement requires exactly 10000 test samples")
+    labels = labels.to(device)
+    codes = torch.randn((10_000, spec.code_dim), device=device, generator=torch.Generator(device=device).manual_seed(spec.split_seed * 100000 + spec.final_steps))
+    views, primary_features, primary_logits, secondary_features, secondary_logits = [], [], [], [], []
+    with torch.no_grad():
+        for start in range(0, 10_000, 250):
+            view = _render(model, spec.candidate, codes[start : start + 250], labels[start : start + 250], exposure_scale=spec.fixed_exposure_scale).clamp(0, 1)
+            pf, pl = primary(view)
+            sf, sl = secondary(view)
+            views.append(view)
+            primary_features.append(pf)
+            primary_logits.append(pl)
+            secondary_features.append(sf)
+            secondary_logits.append(sl)
+        reference_features, _ = primary(images.to(device))
+        secondary_reference_features, _ = secondary(images.to(device))
+    view = torch.cat(views)
+    pf, pl = torch.cat(primary_features), torch.cat(primary_logits)
+    sf, sl = torch.cat(secondary_features), torch.cat(secondary_logits)
+    primary_pred, secondary_pred = pl.argmax(1), sl.argmax(1)
+    primary_ratios = relative_diversity_ratios(pf, reference_features, labels)
+    secondary_ratios = relative_diversity_ratios(sf, secondary_reference_features, labels)
+    return {
+        "official_test_count": int(images.shape[0]),
+        "official_test_content_hash_bound": True,
+        "camera_code_fraction": float(camera_code_fraction(view, labels)),
+        "primary_accuracy": float((primary_pred == labels).float().mean()),
+        "secondary_accuracy": float((secondary_pred == labels).float().mean()),
+        "primary_min_recall": min(float((primary_pred[labels == label] == label).float().mean()) for label in range(10)),
+        "secondary_min_recall": min(float((secondary_pred[labels == label] == label).float().mean()) for label in range(10)),
+        "prediction_agreement": float((primary_pred == secondary_pred).float().mean()),
+        "minimum_diversity_ratio": min(primary_ratios),
+        "secondary_minimum_diversity_ratio": min(secondary_ratios),
+        "primary_diversity_ratios": primary_ratios,
+        "secondary_diversity_ratios": secondary_ratios,
+        "saturation": float((view >= 1.0).float().mean()),
+        "coverage_ratio": float(coverage_ratio_raw(pf, view, reference_features, images.to(device), labels).detach()),
+        "secondary_coverage_ratio": float(coverage_ratio_raw(sf, view, secondary_reference_features, images.to(device), labels).detach()),
+    }
+
+
+def _run_e_steps(model: nn.Module, optimizer: torch.optim.Optimizer, spec: ElectronicO0Spec, primary: nn.Module, images: torch.Tensor, labels: torch.Tensor, *, start_step: int, end_step: int, weights: dict[str, float], active: bool, device: torch.device, seed: int = 1234, checkpoint_callback: Any | None = None) -> None:
     for step in range(start_step, end_step):
-        indices, batch_labels = _balanced_batch(labels, seed=seed + step, batch_size=spec.logical_batch_size, device=device)
-        companion_indices, companion_labels = _balanced_batch(labels, seed=seed * 100000 + step, batch_size=spec.logical_batch_size, device=device)
+        indices, batch_labels, companion_indices, companion_labels, schedule = _training_batch(
+            labels,
+            run_seed=seed,
+            global_step=step,
+            batch_size=spec.logical_batch_size,
+            code_dim=spec.code_dim,
+            device=device,
+        )
         codes = torch.randn(spec.logical_batch_size, spec.code_dim, device=device, generator=torch.Generator(device=device).manual_seed(seed * 100000 + step))
         real = images.index_select(0, indices).to(device)
         companion = images.index_select(0, companion_indices).to(device)
@@ -955,6 +1097,8 @@ def _run_e_steps(model: nn.Module, optimizer: torch.optim.Optimizer, spec: Elect
             loss = base
         loss.backward()
         optimizer.step()
+        if checkpoint_callback is not None:
+            checkpoint_callback(step + 1, schedule)
 
 
 def screen(args: argparse.Namespace) -> int:
@@ -972,16 +1116,20 @@ def screen(args: argparse.Namespace) -> int:
         if not resume_path.is_absolute() or not resume_path.is_file() or not resume_path.with_suffix(".json").is_file():
             raise ValueError("resume checkpoint must be an absolute path with an adjacent manifest")
         manifest = json.loads(resume_path.with_suffix(".json").read_text(encoding="utf-8"))
-        if manifest.get("checkpoint_sha256") != file_sha256(resume_path) or manifest.get("contract") != OBJECTIVE_E_CONTRACT or manifest.get("config_hash") != spec.config_hash or manifest.get("formal_promotion_authorized") is not False or manifest.get("permitted_next_actions") != []:
+        if manifest.get("schema_version") != 3 or manifest.get("checkpoint_sha256") != file_sha256(resume_path) or manifest.get("contract") != OBJECTIVE_E_CONTRACT or manifest.get("config_hash") != spec.config_hash or manifest.get("formal_promotion_authorized") is not False or manifest.get("permitted_next_actions") != []:
             raise ValueError("resume checkpoint manifest is invalid")
         resume_payload = safe_torch_load(resume_path)
-        if not isinstance(resume_payload, dict) or resume_payload.get("config_hash") != spec.config_hash or resume_payload.get("candidate") not in {"A", "E"} or resume_payload.get("seed") != 1234 or resume_payload.get("contract") != OBJECTIVE_E_CONTRACT:
+        if not isinstance(resume_payload, dict) or resume_payload.get("schema_version") != 3 or resume_payload.get("config_hash") != spec.config_hash or resume_payload.get("candidate") not in {"A", "E"} or resume_payload.get("seed") != 1234 or resume_payload.get("contract") != OBJECTIVE_E_CONTRACT or resume_payload.get("input_hashes") != inputs or resume_payload.get("provenance") != provenance:
             raise ValueError("resume checkpoint payload context is invalid")
-        if int(resume_payload.get("completed_step", -1)) not in {400, 500, 600, 700, 800, 900, 984}:
+        if int(resume_payload.get("completed_step", -1)) not in {100, 200, 300, 400, 500, 600, 700, 800, 900, 984}:
             raise ValueError("resume checkpoint completed step is not registered")
         root = resume_path.parent
-        if not isinstance(resume_payload.get("history"), list):
+        if not isinstance(resume_payload.get("history"), list) or not isinstance(resume_payload.get("rng_state"), dict):
             raise ValueError("resume checkpoint history is missing")
+        history_steps = [row.get("step") for row in resume_payload["history"] if isinstance(row, dict)]
+        completed = int(resume_payload.get("completed_step", -1))
+        if history_steps != list(range(1, completed + 1)):
+            raise ValueError("resume checkpoint history is not contiguous")
         if resume_payload.get("candidate") == "E":
             baseline_path = root / "objective_o0_A_report.json"
             if not baseline_path.is_file():
@@ -1002,20 +1150,70 @@ def screen(args: argparse.Namespace) -> int:
         warmup = safe_torch_load(warmup_path, map_location=device)
         if not isinstance(warmup, dict) or warmup.get("contract") != OBJECTIVE_E_CONTRACT or warmup.get("warmup_steps") != 400:
             raise ValueError("Objective E warmup checkpoint contract mismatch")
-        model.load_state_dict(warmup["model_state"], strict=True)
-        optimizer.load_state_dict(warmup["optimizer_state"])
-        history = list(resume_payload.get("history", [])) if resume_payload is not None and resume_payload.get("candidate") == candidate_kind else [{"step": 400, "active_objective": "A", "effective_weights": {name: 0.0 for name in ("camera", "diversity", "coverage")}}]
+        # Rebuild the shared warmup from immutable initialization. Loading the
+        # calibration state directly would conceal a schedule or runtime fork.
+        warmup_history: list[dict[str, Any]] = []
+        def save_warmup(completed_step: int, schedule: dict[str, Any]) -> None:
+            if candidate_kind != "A":
+                return
+            warmup_history.append({"step": completed_step, "active_objective": "A", "effective_weights": {name: 0.0 for name in ("camera", "diversity", "coverage")}, "schedule": schedule})
+            if completed_step not in {100, 200, 300, 400}:
+                return
+            _save_o0_checkpoint(root, spec, candidate_kind, 1234, completed_step, model, optimizer, history=warmup_history, input_hashes=inputs, provenance=provenance, stage="warmup")
+        _run_e_steps(
+            model,
+            optimizer,
+            spec,
+            primary,
+            images,
+            labels,
+            start_step=0,
+            end_step=spec.warmup_steps,
+            weights={"camera": 0.0, "diversity": 0.0, "coverage": 0.0},
+            active=False,
+            device=device,
+            seed=spec.split_seed,
+            checkpoint_callback=save_warmup,
+        )
+        rebuilt_state_hash = canonical_sha256({name: value.detach().cpu() for name, value in model.state_dict().items()})
+        rebuilt_optimizer_hash = canonical_sha256(optimizer.state_dict())
+        rebuilt_schedule = []
+        for warmup_step in range(spec.warmup_steps):
+            _, _, _, _, schedule = _training_batch(
+                labels,
+                run_seed=spec.split_seed,
+                global_step=warmup_step,
+                batch_size=spec.logical_batch_size,
+                code_dim=spec.code_dim,
+                device=device,
+            )
+            rebuilt_schedule.append(schedule)
+        if rebuilt_state_hash != calibration.get("warmup_model_state_hash") or rebuilt_optimizer_hash != calibration.get("warmup_optimizer_state_hash") or canonical_sha256(rebuilt_schedule) != calibration.get("warmup_schedule_hash"):
+            raise ValueError("Objective E screen warmup does not match calibration lineage")
+        history = list(resume_payload.get("history", [])) if resume_payload is not None and resume_payload.get("candidate") == candidate_kind else [
+            {"step": warmup_step + 1, "active_objective": "A", "effective_weights": {name: 0.0 for name in ("camera", "diversity", "coverage")}, "schedule": rebuilt_schedule[warmup_step]}
+            for warmup_step in range(spec.warmup_steps)
+        ]
         start_step = 400
         if resume_payload is not None and resume_payload.get("candidate") == candidate_kind:
             model.load_state_dict(resume_payload["model_state"], strict=True)
             optimizer.load_state_dict(resume_payload["optimizer_state"])
+            torch.set_rng_state(resume_payload["rng_state"]["cpu"])
+            if torch.cuda.is_available() and resume_payload["rng_state"].get("cuda"):
+                torch.cuda.set_rng_state_all(resume_payload["rng_state"]["cuda"])
             start_step = int(resume_payload["completed_step"])
         elif start_step == 400:
-            _save_o0_checkpoint(root, spec, candidate_kind, 1234, 400, model, optimizer, history=history)
+            _save_o0_checkpoint(root, spec, candidate_kind, 1234, 400, model, optimizer, history=history, input_hashes=inputs, provenance=provenance, stage="warmup")
         for step in range(start_step, spec.screen_steps):
-            indices, batch_labels = _balanced_batch(labels, seed=1234 + step, batch_size=spec.logical_batch_size, device=device)
-            companion_indices, companion_labels = _balanced_batch(labels, seed=1234 * 100000 + step, batch_size=spec.logical_batch_size, device=device)
-            codes = torch.randn(spec.logical_batch_size, spec.code_dim, device=device, generator=torch.Generator(device=device).manual_seed(100000 + step))
+            indices, batch_labels, companion_indices, companion_labels, schedule = _training_batch(
+                labels,
+                run_seed=1234,
+                global_step=step,
+                batch_size=spec.logical_batch_size,
+                code_dim=spec.code_dim,
+                device=device,
+            )
+            codes = torch.randn(spec.logical_batch_size, spec.code_dim, device=device, generator=torch.Generator(device=device).manual_seed(1234 * 100000 + step))
             real, companion = images.index_select(0, indices).to(device), images.index_select(0, companion_indices).to(device)
             optimizer.zero_grad(set_to_none=True)
             base, values, view = _base_loss(model, spec.candidate, primary, real, batch_labels, codes, companion_images=companion, companion_labels=companion_labels)
@@ -1027,9 +1225,9 @@ def screen(args: argparse.Namespace) -> int:
                 loss = base
             loss.backward()
             optimizer.step()
+            history.append({"step": step + 1, "active_objective": "A" if step < 400 else candidate_kind, "effective_weights": {name: (0.0 if step < 400 else float(weights[name])) for name in weights}, "loss": float(loss.detach()), "schedule": schedule})
             if step + 1 in {400, 500, 600, 700, 800, 900, 984}:
-                history.append({"step": step + 1, "active_objective": "A" if step < 400 else candidate_kind, "effective_weights": {name: (0.0 if step < 400 else float(weights[name])) for name in weights}, "loss": float(loss.detach())})
-                _save_o0_checkpoint(root, spec, candidate_kind, 1234, step + 1, model, optimizer, history=history)
+                _save_o0_checkpoint(root, spec, candidate_kind, 1234, step + 1, model, optimizer, history=history, input_hashes=inputs, provenance=provenance, stage=candidate_kind)
         reports[candidate_kind] = _measurement(model, spec, primary, secondary, images, labels, device)
         if candidate_kind == "A":
             atomic_write_json(root / "objective_o0_A_report.json", reports[candidate_kind])
@@ -1094,6 +1292,11 @@ def locked_final(args: argparse.Namespace) -> int:
     test_images, test_labels = load_local_mnist(spec.dataset_root, train=False)
     if test_images.shape[0] != 10_000 or test_labels.shape[0] != 10_000 or tuple(test_images.shape[1:]) != (1, 28, 28):
         raise ValueError("locked-final requires the official 10000-sample test split")
+    bundle = _read_mapping(args.measurement_bundle, description="measurement bundle")
+    test_manifest = Path(args.measurement_bundle).parent / str(bundle["test_manifest_filename"])
+    test_payload = _read_mapping(test_manifest, description="official test manifest")
+    if test_payload.get("manifest_hash") != bundle.get("test_content_manifest_hash") or test_payload.get("count") != 10_000 or test_payload.get("images_sha256") != tensor_sha256(test_images) or test_payload.get("labels_sha256") != tensor_sha256(test_labels):
+        raise ValueError("official test content does not match the qualified measurement manifest")
     primary, secondary = _load_evaluators(args, device)
     rows = []
     for seed in (1234,):
@@ -1103,7 +1306,7 @@ def locked_final(args: argparse.Namespace) -> int:
         zero = {"camera": 0.0, "diversity": 0.0, "coverage": 0.0}
         _run_e_steps(model, optimizer, spec, primary, train_images, train_labels, start_step=0, end_step=400, weights=zero, active=False, device=device, seed=seed)
         _run_e_steps(model, optimizer, spec, primary, train_images, train_labels, start_step=400, end_step=spec.final_steps, weights=calibration["weights"], active=True, device=device, seed=seed)
-        measurement = _measurement(model, spec, primary, secondary, test_images, test_labels, device)
+        measurement = _official_measurement(model, spec, primary, secondary, test_images, test_labels, device)
         gates = {"primary_accuracy": measurement["primary_accuracy"] >= .95, "secondary_accuracy": measurement["secondary_accuracy"] >= .95, "primary_recall": measurement["primary_min_recall"] >= .90, "secondary_recall": measurement["secondary_min_recall"] >= .90, "agreement": measurement["prediction_agreement"] >= .95, "camera": measurement["camera_code_fraction"] >= .25, "diversity": measurement["minimum_diversity_ratio"] >= .70 and measurement["minimum_diversity_ratio"] <= 1.30 and measurement["secondary_minimum_diversity_ratio"] >= .70 and measurement["secondary_minimum_diversity_ratio"] <= 1.30, "coverage": measurement["coverage_ratio"] <= 1.5 and measurement["secondary_coverage_ratio"] <= 1.5, "saturation": measurement["saturation"] <= .08}
         rows.append({"seed": seed, "measurement": measurement, "gates": gates, "passed": all(gates.values())})
     passed = sum(row["passed"] for row in rows) == 1
@@ -1120,6 +1323,7 @@ def closeout(args: argparse.Namespace) -> int:
     _validate_o0_evidence(args.source_evidence, spec=spec, provenance=provenance, action="locked-final", state="locked_final_passed", permitted=["closeout"], expected_inputs=inputs)
     root = _root(spec, "closeout")
     summary = {"candidate": spec.candidate, "contract": OBJECTIVE_E_CONTRACT, "status": "closed", "source_evidence": file_sha256(args.source_evidence), "formal_promotion_authorized": False, "permitted_next_actions": []}
+    summary["content_hash"] = canonical_sha256(summary)
     path = root / "objective_o0_closeout.json"
     atomic_write_json(path, summary)
     print(path)

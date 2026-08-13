@@ -22,4 +22,4 @@ diversity_upper: 1.30
 coverage_target: 1.35
 fixed_exposure_scale: 0.4913053810596466
 require_clean_git: true
-harness_revision: 3
+harness_revision: 4

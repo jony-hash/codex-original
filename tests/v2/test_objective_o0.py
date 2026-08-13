@@ -13,6 +13,7 @@ from ldm_project.v2.application.research.objective_o0 import (
     objective_e2_diversity_penalty,
     deterministic_joint_companion_indices,
     objective_e_dispatch,
+    _training_batch,
 )
 from ldm_project.v2.application.research.objective_o0_spec import load_objective_o0_spec
 from ldm_project.v2.application.research.o0_models import ElectronicImageOracleGenerator, build_o0_candidate
@@ -92,3 +93,19 @@ def test_joint_companion_schedule_is_classwise_disjoint_and_deterministic() -> N
         assert primary.numel() == 5
         assert companion.numel() == 5
         assert torch.unique(torch.cat([primary, companion])).numel() == 10
+
+
+def test_training_batch_binds_same_schedule_across_candidates_and_steps() -> None:
+    labels = torch.arange(10).repeat_interleave(10)
+    first = _training_batch(labels, run_seed=1234, global_step=400, batch_size=50, code_dim=8, device=torch.device("cpu"))
+    second = _training_batch(labels, run_seed=1234, global_step=400, batch_size=50, code_dim=8, device=torch.device("cpu"))
+    next_step = _training_batch(labels, run_seed=1234, global_step=401, batch_size=50, code_dim=8, device=torch.device("cpu"))
+    assert first[-1] == second[-1]
+    assert first[-1]["schedule_hash"] != next_step[-1]["schedule_hash"]
+    assert set(first[-1]) == {"global_step", "run_seed", "code_seed", "primary_indices_hash", "companion_indices_hash", "schedule_hash"}
+
+
+def test_o0_harness_revision_is_bumped_for_lifecycle_contract() -> None:
+    image = load_objective_o0_spec("configs/research/electronic_objective_o0_v1_image.yaml")
+    generator = load_objective_o0_spec("configs/research/electronic_objective_o0_v1_generator.yaml")
+    assert image.harness_revision == generator.harness_revision == 4
