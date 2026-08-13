@@ -41,9 +41,19 @@ This explicit routing is required when Codex starts at the repository root, beca
    boundaries, training/evaluation semantics, optical or hardware behavior,
    checkpoint/output policy, or scientific claims. If no substantive loss or
    rejected decision exists, stop without modifying the repository. High-risk
-   work requires a no-update preflight, independent reference or negative control,
-   explicit gates, and fail-closed stops. If verification is unavailable, report
-   the blocker and lost guarantee; do not silently downgrade the result.
+work requires a no-update preflight, independent reference or negative control,
+explicit gates, and fail-closed stops. If verification is unavailable, report
+the blocker and lost guarantee; do not silently downgrade the result.
+
+### Turn Opening Compliance
+
+At the beginning of every repository task that may inspect, modify, or run
+code, state the effective instruction set: the root `AGENTS.md`, every scoped
+`AGENTS.md` that applies, the task scope, and whether the action is diagnostic
+or acceptance-tier. When handling a hash or evidence value, also state the
+named downstream consumer, the rejection decision it supports, and the
+artifact path being compared. A hash, count, or digest alone is never a
+success criterion.
 
 ### Long-Training Gate
 
