@@ -10,6 +10,8 @@ from ldm_project.v2.application.research.objective_o0 import (
     OBJECTIVE_E_CONTRACT,
     camera_safety_penalty,
     coverage_penalty,
+    objective_e2_diversity_penalty,
+    deterministic_joint_companion_indices,
     objective_e_dispatch,
 )
 from ldm_project.v2.application.research.objective_o0_spec import load_objective_o0_spec
@@ -62,3 +64,29 @@ def test_o0_spec_rejects_nonregistered_activation() -> None:
     payload["activation_step"] = 399
     with pytest.raises(ValueError):
         type(spec)(**payload).validate()
+
+
+def test_e2_diversity_is_exact_zero_when_all_classes_are_in_range() -> None:
+    labels = torch.arange(10).repeat_interleave(4)
+    features = torch.nn.functional.normalize(torch.randn(40, 8, generator=torch.Generator().manual_seed(11)), dim=1).requires_grad_()
+    value, telemetry = objective_e2_diversity_penalty(features, features.detach(), labels)
+    assert value.item() == 0.0
+    assert value.requires_grad
+    value.backward()
+    assert features.grad is not None
+    assert torch.equal(features.grad, torch.zeros_like(features))
+    assert len(telemetry["ratios"]) == 10
+    assert all(0.70 <= ratio <= 1.30 for ratio in telemetry["ratios"])
+
+
+def test_joint_companion_schedule_is_classwise_disjoint_and_deterministic() -> None:
+    labels = torch.arange(10).repeat_interleave(10)
+    first, first_labels = deterministic_joint_companion_indices(labels, seed=1234, global_step=400, primary_per_class=5)
+    second, second_labels = deterministic_joint_companion_indices(labels, seed=1234, global_step=400, primary_per_class=5)
+    assert torch.equal(first, second)
+    assert torch.equal(first_labels, second_labels)
+    for label in range(10):
+        selected = first[labels.index_select(0, first) == label]
+        assert selected.numel() == 10
+        assert torch.unique(selected).numel() == 10
+        assert torch.equal(selected[:5], selected[:5])

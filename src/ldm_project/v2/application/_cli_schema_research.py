@@ -90,7 +90,7 @@ def register_research(root: argparse._SubParsersAction) -> None:
             command.add_argument("--seed", type=int, default=1234)
         if action == "preflight":
             command.add_argument("--validate-evidence", required=True)
-            command.add_argument("--o0-i-evidence")
+            command.add_argument("--o0-i-closeout")
         if action == "calibrate":
             command.add_argument("--preflight-evidence", required=True)
         if action == "screen":

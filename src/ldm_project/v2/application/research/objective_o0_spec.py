@@ -13,7 +13,7 @@ from ...evidence import canonical_sha256, file_sha256
 
 O0Candidate = Literal["O0-I", "O0-G"]
 O0Actions = ("validate", "preflight", "calibrate", "screen", "confirm", "locked-final", "closeout")
-OBJECTIVE_O0_CONTRACT_VERSION = "electronic_objective_o0_v1"
+OBJECTIVE_O0_CONTRACT_VERSION = "electronic_objective_o0_v2"
 
 
 @dataclass(frozen=True)

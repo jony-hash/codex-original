@@ -289,3 +289,17 @@ electronic image oracle; O0-G is the current 8D amplitude generator followed
 by an ideal amplitude-square detector. O0-G is blocked until O0-I reaches a
 passed screen or locked-final state. Neither candidate can authorize optical
 training, objective selection, or formal promotion.
+
+## Objective E2 / electronic O0 v2 (2026-08-13)
+
+The electronic O0 v1 calibration result is superseded as an invalid harness:
+its raw diversity coefficient (`0.0007977245`) was below a dimensional
+coefficient floor, while the implementation did not yet bind exact-zero
+diversity, four-batch active-set truth, or per-group gradient budgets. It is
+read-only and does not close the objective, generator, or optical branches.
+
+The v2 contract uses exact-zero bounded diversity, deterministic disjoint
+primary/companion batches, scale-invariant `0.25` gradient calibration, strict
+preflight determinism, and explicit closeout admission before O0-G. Current
+formal YAML remains Objective A; no optical or formal training action is
+authorized by this research contract.
