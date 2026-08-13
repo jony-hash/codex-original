@@ -108,4 +108,4 @@ def test_training_batch_binds_same_schedule_across_candidates_and_steps() -> Non
 def test_o0_harness_revision_is_bumped_for_lifecycle_contract() -> None:
     image = load_objective_o0_spec("configs/research/electronic_objective_o0_v1_image.yaml")
     generator = load_objective_o0_spec("configs/research/electronic_objective_o0_v1_generator.yaml")
-    assert image.harness_revision == generator.harness_revision == 4
+    assert image.harness_revision == generator.harness_revision == 5

@@ -14,6 +14,7 @@ import json
 import math
 import os
 import subprocess
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -533,6 +534,7 @@ def _save_o0_checkpoint(
     input_hashes: dict[str, str] | None = None,
     provenance: dict[str, str | None] | None = None,
     stage: str = "training",
+    metadata: dict[str, Any] | None = None,
 ) -> Path:
     checkpoint = root / f"objective_o0_{candidate}_seed_{seed}_step_{completed_step}.pt"
     payload = {
@@ -551,10 +553,27 @@ def _save_o0_checkpoint(
         "provenance": dict(provenance or {}),
         "formal_promotion_authorized": False,
         "permitted_next_actions": [],
+        "metadata": dict(metadata or {}),
     }
     atomic_torch_save(checkpoint, payload)
-    atomic_write_json(checkpoint.with_suffix(".json"), {"schema_version": 3, "contract": OBJECTIVE_E_CONTRACT, "config_hash": spec.config_hash, "candidate": candidate, "seed": seed, "completed_step": completed_step, "stage": stage, "checkpoint": checkpoint.name, "checkpoint_sha256": file_sha256(checkpoint), "input_hashes": dict(input_hashes or {}), "provenance": dict(provenance or {}), "formal_promotion_authorized": False, "permitted_next_actions": []})
+    atomic_write_json(checkpoint.with_suffix(".json"), {"schema_version": 3, "contract": OBJECTIVE_E_CONTRACT, "config_hash": spec.config_hash, "candidate": candidate, "seed": seed, "completed_step": completed_step, "stage": stage, "checkpoint": checkpoint.name, "checkpoint_sha256": file_sha256(checkpoint), "input_hashes": dict(input_hashes or {}), "provenance": dict(provenance or {}), "metadata": dict(metadata or {}), "formal_promotion_authorized": False, "permitted_next_actions": []})
     return checkpoint
+
+
+def _load_lifecycle_checkpoint(path: str, *, spec: ElectronicO0Spec, inputs: dict[str, str], provenance: dict[str, str | None], action: str) -> dict[str, Any]:
+    checkpoint = Path(path)
+    manifest_path = checkpoint.with_suffix(".json")
+    if not checkpoint.is_absolute() or not checkpoint.is_file() or not manifest_path.is_file():
+        raise ValueError("resume checkpoint must be an absolute path with an adjacent manifest")
+    manifest = _read_mapping(manifest_path, description="resume checkpoint manifest")
+    if manifest.get("schema_version") != 3 or manifest.get("checkpoint_sha256") != file_sha256(checkpoint) or manifest.get("contract") != OBJECTIVE_E_CONTRACT or manifest.get("config_hash") != spec.config_hash or manifest.get("formal_promotion_authorized") is not False or manifest.get("permitted_next_actions") != [] or manifest.get("input_hashes") != inputs or manifest.get("provenance") != provenance:
+        raise ValueError("resume checkpoint manifest is invalid")
+    payload = safe_torch_load(checkpoint)
+    if not isinstance(payload, dict) or payload.get("schema_version") != 3 or payload.get("contract") != OBJECTIVE_E_CONTRACT or payload.get("config_hash") != spec.config_hash or payload.get("input_hashes") != inputs or payload.get("provenance") != provenance or payload.get("action") not in {None, action}:
+        raise ValueError("resume checkpoint payload context is invalid")
+    if not isinstance(payload.get("history"), list) or not isinstance(payload.get("rng_state"), dict):
+        raise ValueError("resume checkpoint state is incomplete")
+    return payload
 
 
 def _render(model: nn.Module, candidate: str, code: torch.Tensor, labels: torch.Tensor, *, exposure_scale: float = 0.4913053810596466) -> torch.Tensor:
@@ -624,19 +643,25 @@ def _load_evaluators(args: argparse.Namespace, device: torch.device) -> tuple[nn
 
 def _preflight_model(model: nn.Module, spec: ElectronicO0Spec, device: torch.device, primary: nn.Module, secondary: nn.Module) -> dict[str, Any]:
     labels = torch.arange(10, device=device).repeat_interleave(5)
-    codes = torch.randn(labels.numel(), spec.code_dim, device=device, generator=torch.Generator(device=device).manual_seed(1234))
     optimizer = torch.optim.Adam(model.parameters(), lr=2.0e-4)
     before = canonical_sha256({name: value.detach().cpu().tolist() for name, value in model.state_dict().items()})
     parameter_groups = _parameter_groups(model, spec.candidate)
     group_before = {name: canonical_sha256({str(index): value.detach().cpu().tolist() for index, value in enumerate(parameters)}) for name, parameters in parameter_groups.items()}
     evaluator_before = canonical_sha256({"primary": {name: value.detach().cpu().tolist() for name, value in primary.state_dict().items()}, "secondary": {name: value.detach().cpu().tolist() for name, value in secondary.state_dict().items()}})
-    raw = _render(model, spec.candidate, codes, labels, exposure_scale=spec.fixed_exposure_scale)
-    primary_features, primary_logits = primary(raw)
-    secondary_features, secondary_logits = secondary(raw)
-    loss = F.cross_entropy(primary_logits, labels) + F.cross_entropy(secondary_logits, labels) + F.mse_loss(primary_features, primary_features.detach())
-    loss.backward()
-    finite = bool(torch.isfinite(loss)) and all(parameter.grad is not None and torch.isfinite(parameter.grad).all() for parameter in model.parameters())
-    optimizer.step()
+    started = time.perf_counter()
+    loss = torch.zeros((), device=device)
+    finite = True
+    for update_step in range(3):
+        optimizer.zero_grad(set_to_none=True)
+        step_codes = torch.randn(labels.numel(), spec.code_dim, device=device, generator=torch.Generator(device=device).manual_seed(1234 + update_step))
+        raw = _render(model, spec.candidate, step_codes, labels, exposure_scale=spec.fixed_exposure_scale)
+        primary_features, primary_logits = primary(raw)
+        secondary_features, secondary_logits = secondary(raw)
+        loss = F.cross_entropy(primary_logits, labels) + F.cross_entropy(secondary_logits, labels) + F.mse_loss(primary_features, primary_features.detach())
+        loss.backward()
+        finite = finite and bool(torch.isfinite(loss)) and all(parameter.grad is not None and torch.isfinite(parameter.grad).all() for parameter in model.parameters())
+        optimizer.step()
+    elapsed_seconds = time.perf_counter() - started
     after = canonical_sha256({name: value.detach().cpu().tolist() for name, value in model.state_dict().items()})
     group_after = {name: canonical_sha256({str(index): value.detach().cpu().tolist() for index, value in enumerate(parameters)}) for name, parameters in parameter_groups.items()}
     group_updates = {name: group_before[name] != group_after[name] for name in parameter_groups}
@@ -702,12 +727,14 @@ def _preflight_model(model: nn.Module, spec: ElectronicO0Spec, device: torch.dev
         "resume_final_match": first["state_hash"] == split["state_hash"] and first["optimizer_hash"] == split["optimizer_hash"] and first["losses"] == split["losses"],
         "losses": first["losses"],
     }
-    return {"finite": finite, "all_parameters_updated": before != after, "parameter_group_gradients": group_gradients, "parameter_group_updates": group_updates, "all_parameter_groups_updated": all(group_updates.values()), "optimizer_created": True, "primary_evaluator_gradients_clean": all(parameter.grad is None for parameter in primary.parameters()), "secondary_evaluator_gradients_clean": all(parameter.grad is None for parameter in secondary.parameters()), "evaluator_state_unchanged": evaluator_before == evaluator_after, "loss": float(loss.detach()), "candidate": spec.candidate, "deterministic_preflight": deterministic}
+    peak_memory = int(torch.cuda.max_memory_allocated(device)) if device.type == "cuda" else 0
+    return {"finite": finite, "all_parameters_updated": before != after, "parameter_group_gradients": group_gradients, "parameter_group_updates": group_updates, "all_parameter_groups_updated": all(group_updates.values()), "optimizer_created": True, "primary_evaluator_gradients_clean": all(parameter.grad is None for parameter in primary.parameters()), "secondary_evaluator_gradients_clean": all(parameter.grad is None for parameter in secondary.parameters()), "evaluator_state_unchanged": evaluator_before == evaluator_after, "loss": float(loss.detach()), "candidate": spec.candidate, "preflight_steps": 3, "elapsed_seconds": elapsed_seconds, "peak_cuda_memory_bytes": peak_memory, "budget_passed": elapsed_seconds <= 600.0 and (peak_memory == 0 or peak_memory <= int(torch.cuda.get_device_properties(device).total_memory * 0.95)), "deterministic_preflight": deterministic}
 
 
 def _control_metrics(spec: ElectronicO0Spec, model: nn.Module, primary: nn.Module, secondary: nn.Module, device: torch.device) -> dict[str, Any]:
-    images, labels = load_local_mnist(spec.dataset_root, train=True)
-    images, labels = images[:1000].to(device), labels[:1000].to(device)
+    full_images, full_labels = load_local_mnist(spec.dataset_root, train=True)
+    reference, reference_labels = validation_reference(full_images, full_labels, device=device)
+    images, labels = full_images[:1000].to(device), full_labels[:1000].to(device)
     with torch.no_grad():
         _, primary_logits = primary(images)
         _, secondary_logits = secondary(images)
@@ -715,12 +742,14 @@ def _control_metrics(spec: ElectronicO0Spec, model: nn.Module, primary: nn.Modul
     shuffled = (labels + 1) % 10
     template = torch.cat([images[labels == label][:1].repeat(17, 1, 1, 1) for label in range(10)])
     template_labels = torch.arange(10, device=device).repeat_interleave(17)
-    reference, reference_labels = validation_reference(images, labels, device=device)
     with torch.no_grad():
         template_features, template_logits = primary(template)
         reference_features, reference_logits = primary(reference)
-    template_ratios = relative_diversity_ratios(template_features, reference_features, template_labels)
-    template_coverage = float(coverage_ratio_raw(template_features, template, reference_features, reference, template_labels).detach())
+    reference_panel_indices = torch.cat([torch.nonzero(reference_labels == label, as_tuple=False).flatten()[:17] for label in range(10)])
+    reference_panel = reference.index_select(0, reference_panel_indices)
+    reference_panel_features = reference_features.index_select(0, reference_panel_indices)
+    template_ratios = relative_diversity_ratios(template_features, reference_panel_features, template_labels)
+    template_coverage = float(coverage_ratio_raw(template_features, template, reference_panel_features, reference_panel, template_labels).detach())
     template_unique = int(torch.unique(template.flatten(1), dim=0).shape[0])
     real = {"primary_accuracy": float((primary_pred == labels).float().mean()), "secondary_accuracy": float((secondary_pred == labels).float().mean()), "agreement": float((primary_pred == secondary_pred).float().mean())}
     shuffle = {"primary_accuracy": float((primary_pred == shuffled).float().mean()), "secondary_accuracy": float((secondary_pred == shuffled).float().mean())}
@@ -774,7 +803,7 @@ def preflight(args: argparse.Namespace) -> int:
     metrics["controls"] = _control_metrics(spec, model, primary, secondary, device)
     metrics["provenance"] = provenance
     deterministic = metrics.get("deterministic_preflight", {})
-    state = "preflight_passed" if all(metrics[k] for k in ("finite", "all_parameters_updated", "all_parameter_groups_updated", "primary_evaluator_gradients_clean", "secondary_evaluator_gradients_clean", "evaluator_state_unchanged")) and all(metrics["parameter_group_gradients"].values()) and deterministic.get("independent_match") is True and deterministic.get("resume_final_match") is True and metrics["controls"]["passed"] else "preflight_failed"
+    state = "preflight_passed" if all(metrics[k] for k in ("finite", "all_parameters_updated", "all_parameter_groups_updated", "primary_evaluator_gradients_clean", "secondary_evaluator_gradients_clean", "evaluator_state_unchanged", "budget_passed")) and all(metrics["parameter_group_gradients"].values()) and deterministic.get("independent_match") is True and deterministic.get("resume_final_match") is True and metrics["controls"]["passed"] else "preflight_failed"
     root = _root(spec, "preflight")
     path = _write_evidence(
         root,
@@ -1032,24 +1061,30 @@ def _official_measurement(model: nn.Module, spec: ElectronicO0Spec, primary: nn.
     """Evaluate the registered 10,000-image test split, not a diagnostic panel."""
     if images.shape[0] != 10_000 or labels.shape[0] != 10_000:
         raise ValueError("official O0 measurement requires exactly 10000 test samples")
-    labels = labels.to(device)
+    labels_device = labels.to(device)
     codes = torch.randn((10_000, spec.code_dim), device=device, generator=torch.Generator(device=device).manual_seed(spec.split_seed * 100000 + spec.final_steps))
     views, primary_features, primary_logits, secondary_features, secondary_logits = [], [], [], [], []
+    reference_features, secondary_reference_features = [], []
     with torch.no_grad():
         for start in range(0, 10_000, 250):
-            view = _render(model, spec.candidate, codes[start : start + 250], labels[start : start + 250], exposure_scale=spec.fixed_exposure_scale).clamp(0, 1)
+            view = _render(model, spec.candidate, codes[start : start + 250], labels_device[start : start + 250], exposure_scale=spec.fixed_exposure_scale).clamp(0, 1)
             pf, pl = primary(view)
             sf, sl = secondary(view)
-            views.append(view)
-            primary_features.append(pf)
-            primary_logits.append(pl)
-            secondary_features.append(sf)
-            secondary_logits.append(sl)
-        reference_features, _ = primary(images.to(device))
-        secondary_reference_features, _ = secondary(images.to(device))
+            views.append(view.cpu())
+            primary_features.append(pf.cpu())
+            primary_logits.append(pl.cpu())
+            secondary_features.append(sf.cpu())
+            secondary_logits.append(sl.cpu())
+            rf, _ = primary(images[start : start + 250].to(device))
+            srf, _ = secondary(images[start : start + 250].to(device))
+            reference_features.append(rf.cpu())
+            secondary_reference_features.append(srf.cpu())
     view = torch.cat(views)
     pf, pl = torch.cat(primary_features), torch.cat(primary_logits)
     sf, sl = torch.cat(secondary_features), torch.cat(secondary_logits)
+    reference_features = torch.cat(reference_features)
+    secondary_reference_features = torch.cat(secondary_reference_features)
+    labels = labels.cpu()
     primary_pred, secondary_pred = pl.argmax(1), sl.argmax(1)
     primary_ratios = relative_diversity_ratios(pf, reference_features, labels)
     secondary_ratios = relative_diversity_ratios(sf, secondary_reference_features, labels)
@@ -1067,8 +1102,8 @@ def _official_measurement(model: nn.Module, spec: ElectronicO0Spec, primary: nn.
         "primary_diversity_ratios": primary_ratios,
         "secondary_diversity_ratios": secondary_ratios,
         "saturation": float((view >= 1.0).float().mean()),
-        "coverage_ratio": float(coverage_ratio_raw(pf, view, reference_features, images.to(device), labels).detach()),
-        "secondary_coverage_ratio": float(coverage_ratio_raw(sf, view, secondary_reference_features, images.to(device), labels).detach()),
+        "coverage_ratio": float(coverage_ratio_raw(pf, view, reference_features, images, labels).detach()),
+        "secondary_coverage_ratio": float(coverage_ratio_raw(sf, view, secondary_reference_features, images, labels).detach()),
     }
 
 
@@ -1260,7 +1295,18 @@ def confirm(args: argparse.Namespace) -> int:
     images, labels = load_local_mnist(spec.dataset_root, train=True)
     primary, secondary = _load_evaluators(args, device)
     seed_rows = []
-    for seed in spec.confirm_seeds:
+    resume_root = None
+    resume_index = 0
+    if args.resume_checkpoint:
+        resume_payload = _load_lifecycle_checkpoint(args.resume_checkpoint, spec=spec, inputs=inputs, provenance=provenance, action="confirm")
+        if resume_payload.get("stage") != "confirm" or resume_payload.get("metadata", {}).get("next_seed_index") is None:
+            raise ValueError("confirmation resume checkpoint stage is invalid")
+        seed_rows = list(resume_payload.get("metadata", {}).get("seed_rows", []))
+        resume_index = int(resume_payload["metadata"]["next_seed_index"])
+        resume_root = Path(args.resume_checkpoint).parent
+    for seed_index, seed in enumerate(spec.confirm_seeds):
+        if seed_index < resume_index:
+            continue
         torch.manual_seed(seed)
         model_a = _load_candidate(spec, device)
         optimizer_a = torch.optim.Adam(model_a.parameters(), lr=2.0e-4)
@@ -1274,6 +1320,9 @@ def confirm(args: argparse.Namespace) -> int:
         a, e = _measurement(model_a, spec, primary, secondary, images, labels, device), _measurement(model_e, spec, primary, secondary, images, labels, device)
         passed = e["camera_code_fraction"] >= a["camera_code_fraction"] + .02 and e["minimum_diversity_ratio"] >= a["minimum_diversity_ratio"] + .05 and e["secondary_minimum_diversity_ratio"] >= a["secondary_minimum_diversity_ratio"] + .05 and e["coverage_ratio"] <= a["coverage_ratio"] - .05 and e["secondary_coverage_ratio"] <= a["secondary_coverage_ratio"] - .05 and e["primary_accuracy"] >= a["primary_accuracy"] - .03 and e["secondary_accuracy"] >= a["secondary_accuracy"] - .03 and e["primary_min_recall"] >= a["primary_min_recall"] - .05 and e["secondary_min_recall"] >= a["secondary_min_recall"] - .05 and e["saturation"] <= .08
         seed_rows.append({"seed": seed, "passed": passed, "A": a, "E": e})
+        root = resume_root or _root(spec, "confirm")
+        _save_o0_checkpoint(root, spec, "E", seed, spec.screen_steps, model_e, optimizer_e, history=[], input_hashes=inputs, provenance=provenance, stage="confirm", metadata={"next_seed_index": seed_index + 1, "seed_rows": seed_rows})
+        resume_root = root
     passed = sum(row["passed"] for row in seed_rows) >= 2
     root = _root(spec, "confirm")
     payload = {"seeds": seed_rows, "screen_evidence": file_sha256(args.screen_evidence), "formal_promotion_authorized": False, "permitted_next_actions": ["locked-final"] if passed else []}
@@ -1304,8 +1353,21 @@ def locked_final(args: argparse.Namespace) -> int:
         model = _load_candidate(spec, device)
         optimizer = torch.optim.Adam(model.parameters(), lr=2.0e-4)
         zero = {"camera": 0.0, "diversity": 0.0, "coverage": 0.0}
-        _run_e_steps(model, optimizer, spec, primary, train_images, train_labels, start_step=0, end_step=400, weights=zero, active=False, device=device, seed=seed)
-        _run_e_steps(model, optimizer, spec, primary, train_images, train_labels, start_step=400, end_step=spec.final_steps, weights=calibration["weights"], active=True, device=device, seed=seed)
+        final_root = None
+        if args.resume_checkpoint:
+            resume_payload = _load_lifecycle_checkpoint(args.resume_checkpoint, spec=spec, inputs=inputs, provenance=provenance, action="locked-final")
+            if resume_payload.get("stage") != "locked-final" or resume_payload.get("completed_step") != spec.final_steps:
+                raise ValueError("locked-final resume checkpoint must be the completed training boundary")
+            model.load_state_dict(resume_payload["model_state"], strict=True)
+            optimizer.load_state_dict(resume_payload["optimizer_state"])
+            final_root = Path(args.resume_checkpoint).parent
+        else:
+            final_root = _root(spec, "locked-final")
+            def save_final_boundary(completed_step: int, schedule: dict[str, Any]) -> None:
+                if completed_step == 400 or completed_step % 246 == 0 or completed_step == spec.final_steps:
+                    _save_o0_checkpoint(final_root, spec, "E", seed, completed_step, model, optimizer, history=[], input_hashes=inputs, provenance=provenance, stage="locked-final", metadata={"measurement_ready": completed_step == spec.final_steps, "schedule": schedule})
+            _run_e_steps(model, optimizer, spec, primary, train_images, train_labels, start_step=0, end_step=400, weights=zero, active=False, device=device, seed=seed, checkpoint_callback=save_final_boundary)
+            _run_e_steps(model, optimizer, spec, primary, train_images, train_labels, start_step=400, end_step=spec.final_steps, weights=calibration["weights"], active=True, device=device, seed=seed, checkpoint_callback=save_final_boundary)
         measurement = _official_measurement(model, spec, primary, secondary, test_images, test_labels, device)
         gates = {"primary_accuracy": measurement["primary_accuracy"] >= .95, "secondary_accuracy": measurement["secondary_accuracy"] >= .95, "primary_recall": measurement["primary_min_recall"] >= .90, "secondary_recall": measurement["secondary_min_recall"] >= .90, "agreement": measurement["prediction_agreement"] >= .95, "camera": measurement["camera_code_fraction"] >= .25, "diversity": measurement["minimum_diversity_ratio"] >= .70 and measurement["minimum_diversity_ratio"] <= 1.30 and measurement["secondary_minimum_diversity_ratio"] >= .70 and measurement["secondary_minimum_diversity_ratio"] <= 1.30, "coverage": measurement["coverage_ratio"] <= 1.5 and measurement["secondary_coverage_ratio"] <= 1.5, "saturation": measurement["saturation"] <= .08}
         rows.append({"seed": seed, "measurement": measurement, "gates": gates, "passed": all(gates.values())})

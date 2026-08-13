@@ -101,9 +101,11 @@ def register_research(root: argparse._SubParsersAction) -> None:
             command.add_argument("--screen-evidence", required=True)
             command.add_argument("--calibration-artifact", required=True)
             command.add_argument("--calibration-evidence", required=True)
+            command.add_argument("--resume-checkpoint")
         if action == "locked-final":
             command.add_argument("--confirm-evidence", required=True)
             command.add_argument("--calibration-artifact", required=True)
             command.add_argument("--calibration-evidence", required=True)
+            command.add_argument("--resume-checkpoint")
         if action == "closeout":
             command.add_argument("--source-evidence", required=True)

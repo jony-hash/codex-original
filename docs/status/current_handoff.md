@@ -314,3 +314,9 @@ group update gates, RNG/schedule/lineage-bound checkpoints, and official
 10,000-test locked-final measurement. No E2 screen result exists yet; CUDA
 execution remains stopped until fresh evidence is issued from the clean
 implementation commit.
+
+The next harness revision also repairs the full-train-set preflight reference,
+bounds official evaluator measurement to 250-sample microbatches, and exposes
+explicit confirmation and locked-final resume checkpoints. These changes are
+implementation-only until fresh qualification is issued from their clean
+commit.
