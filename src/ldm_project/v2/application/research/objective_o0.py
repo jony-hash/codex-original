@@ -9,6 +9,7 @@ authorize the formal v2 runtime.
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import math
 import os
@@ -466,7 +467,64 @@ def _preflight_model(model: nn.Module, spec: ElectronicO0Spec, device: torch.dev
     finite = bool(torch.isfinite(loss)) and all(parameter.grad is not None and torch.isfinite(parameter.grad).all() for parameter in model.parameters())
     optimizer.step()
     after = canonical_sha256({name: value.detach().cpu().tolist() for name, value in model.state_dict().items()})
-    return {"finite": finite, "all_parameters_updated": before != after, "optimizer_created": True, "primary_evaluator_gradients_clean": all(parameter.grad is None for parameter in primary.parameters()), "secondary_evaluator_gradients_clean": all(parameter.grad is None for parameter in secondary.parameters()), "loss": float(loss.detach()), "candidate": spec.candidate}
+    def state_hash(module: nn.Module) -> str:
+        return canonical_sha256({name: value.detach().cpu().tolist() for name, value in module.state_dict().items()})
+
+    def optimizer_hash(value: dict[str, Any]) -> str:
+        def normalize(item: Any) -> Any:
+            if isinstance(item, torch.Tensor):
+                return item.detach().cpu().tolist()
+            if isinstance(item, dict):
+                return {str(key): normalize(child) for key, child in item.items()}
+            if isinstance(item, (list, tuple)):
+                return [normalize(child) for child in item]
+            return item
+        return canonical_sha256(normalize(value))
+
+    def trajectory(seed: int, split_at: int | None = None) -> dict[str, Any]:
+        torch.manual_seed(seed)
+        local_model = _load_candidate(spec, device)
+        local_optimizer = torch.optim.Adam(local_model.parameters(), lr=2.0e-4)
+        losses: list[float] = []
+        steps = range(10) if split_at is None else range(split_at)
+        for step in steps:
+            batch_labels = torch.arange(10, device=device).repeat_interleave(5)
+            codes = torch.randn(batch_labels.numel(), spec.code_dim, device=device, generator=torch.Generator(device=device).manual_seed(100000 + step))
+            local_optimizer.zero_grad(set_to_none=True)
+            local_view = _render(local_model, spec.candidate, codes, batch_labels, exposure_scale=spec.fixed_exposure_scale)
+            _, local_logits = primary(local_view)
+            local_loss = F.cross_entropy(local_logits, batch_labels)
+            local_loss.backward()
+            local_optimizer.step()
+            losses.append(float(local_loss.detach()))
+        if split_at is not None:
+            saved_model = copy.deepcopy(local_model.state_dict())
+            saved_optimizer = copy.deepcopy(local_optimizer.state_dict())
+            resumed_model = _load_candidate(spec, device)
+            resumed_model.load_state_dict(saved_model, strict=True)
+            resumed_optimizer = torch.optim.Adam(resumed_model.parameters(), lr=2.0e-4)
+            resumed_optimizer.load_state_dict(saved_optimizer)
+            for step in range(split_at, 10):
+                codes = torch.randn(50, spec.code_dim, device=device, generator=torch.Generator(device=device).manual_seed(100000 + step))
+                resumed_optimizer.zero_grad(set_to_none=True)
+                local_view = _render(resumed_model, spec.candidate, codes, torch.arange(10, device=device).repeat_interleave(5), exposure_scale=spec.fixed_exposure_scale)
+                _, local_logits = primary(local_view)
+                local_loss = F.cross_entropy(local_logits, torch.arange(10, device=device).repeat_interleave(5))
+                local_loss.backward()
+                resumed_optimizer.step()
+                losses.append(float(local_loss.detach()))
+            return {"losses": losses, "state_hash": state_hash(resumed_model), "optimizer_hash": optimizer_hash(resumed_optimizer.state_dict())}
+        return {"losses": losses, "state_hash": state_hash(local_model), "optimizer_hash": optimizer_hash(local_optimizer.state_dict())}
+
+    first = trajectory(1234)
+    second = trajectory(1234)
+    split = trajectory(1234, split_at=5)
+    deterministic = {
+        "independent_match": first == second,
+        "resume_final_match": first["state_hash"] == split["state_hash"] and first["optimizer_hash"] == split["optimizer_hash"] and first["losses"] == split["losses"],
+        "losses": first["losses"],
+    }
+    return {"finite": finite, "all_parameters_updated": before != after, "optimizer_created": True, "primary_evaluator_gradients_clean": all(parameter.grad is None for parameter in primary.parameters()), "secondary_evaluator_gradients_clean": all(parameter.grad is None for parameter in secondary.parameters()), "loss": float(loss.detach()), "candidate": spec.candidate, "deterministic_preflight": deterministic}
 
 
 def _control_metrics(spec: ElectronicO0Spec, primary: nn.Module, secondary: nn.Module, device: torch.device) -> dict[str, Any]:
