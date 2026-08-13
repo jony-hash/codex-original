@@ -4,7 +4,7 @@ import torch
 import pytest
 
 from ldm_project.v2.application.cli_schema import _parser
-from ldm_project.v2.application.diagnostic.objective import _code_seed, _companion_indices, _effective_gradient_gate, _gradient_cosine, _scheduled_batches, _warmup_lineage_gate, OBJECTIVE_DIAGNOSTIC_CONTRACT_SPEC, DETERMINISTIC_RUNTIME_SPEC
+from ldm_project.v2.application.diagnostic.objective import _code_seed, _companion_indices, _effective_gradient_gate, _effective_objective_weights, _gradient_cosine, _paired_warmup_gate, _scheduled_batches, _warmup_lineage_gate, OBJECTIVE_DIAGNOSTIC_CONTRACT_SPEC
 from ldm_project.v2.config import ConditionalGenerationConfig
 from ldm_project.v2.student.conditional import active_objective_kind, deterministic_companion_indices, objective_contract_payload, relative_diversity_worst_class_loss
 from ldm_project.v2.evidence import canonical_sha256
@@ -142,7 +142,7 @@ def test_objective_commands_are_content_bound() -> None:
             "student", "objective-alignment-screen", "--config", "c", "--dataset-root", "d",
             "--evaluator-checkpoint", "p", "--acceptance-evaluator-checkpoint", "s",
             "--acceptance-measurement-bundle", "b", "--acceptance-measurement-evidence", "m",
-            "--initialization-checkpoint", "i", "--injection-evidence", "j", "--weight-calibration", "w", "--weight-calibration-evidence", "we",
+            "--initialization-checkpoint", "i", "--injection-evidence", "j", "--weight-calibration", "w", "--weight-calibration-evidence", "we", "--warmup-checkpoint", "wu",
         ]
     )
     assert screen.weight_calibration == "w"
@@ -153,7 +153,7 @@ def test_objective_commands_are_content_bound() -> None:
             "--evaluator-checkpoint", "p", "--acceptance-evaluator-checkpoint", "s",
             "--acceptance-measurement-bundle", "b", "--acceptance-measurement-evidence", "m",
             "--initialization-checkpoint", "i", "--injection-evidence", "j", "--weight-calibration", "w",
-            "--weight-calibration-evidence", "we", "--resume-checkpoint", "/tmp/screen.pt",
+            "--weight-calibration-evidence", "we", "--warmup-checkpoint", "wu", "--resume-checkpoint", "/tmp/screen.pt",
         ]
     )
     assert resumed.resume_checkpoint == "/tmp/screen.pt"
@@ -181,9 +181,9 @@ def test_late_objective_contract_and_schema_are_registered() -> None:
     assert config.objective_kind == "D"
     assert config.objective_activation_step == 400
     assert OBJECTIVE_DIAGNOSTIC_CONTRACT_SPEC["activation_step"] == 400
-    assert OBJECTIVE_DIAGNOSTIC_CONTRACT_SPEC["kind"] == "conditional_objective_alignment_v6"
+    assert OBJECTIVE_DIAGNOSTIC_CONTRACT_SPEC["kind"] == "conditional_objective_alignment_v7"
     assert OBJECTIVE_DIAGNOSTIC_CONTRACT_SPEC["checkpoint_cadence"][-1] == 984
-    assert DETERMINISTIC_RUNTIME_SPEC["warn_only"] is False
+    assert OBJECTIVE_DIAGNOSTIC_CONTRACT_SPEC["warmup_fork"] == "single_calibration_state_and_optimizer_fork_v1"
     assert OBJECTIVE_DIAGNOSTIC_CONTRACT_SPEC["effective_weight_dispatch"] == "warmup_A_zero_auxiliary_weights_v1"
 
 
@@ -223,6 +223,9 @@ def test_late_objective_worst_class_penalty_is_finite_and_differentiable() -> No
 def test_late_objective_activation_boundary_and_contract_binding() -> None:
     assert active_objective_kind("D", 400, 399) == "A"
     assert active_objective_kind("D", 400, 400) == "D"
+    registered = {"camera": 1.0, "pairwise": 2.0, "coverage": 3.0}
+    assert _effective_objective_weights("A", registered) == {"camera": 0.0, "pairwise": 0.0, "coverage": 0.0}
+    assert _effective_objective_weights("D", registered) == registered
     base = objective_contract_payload("D", 400, 1.0, 2.0, 3.0)
     changed = objective_contract_payload("D", 401, 1.0, 2.0, 3.0)
     assert canonical_sha256(base) != canonical_sha256(changed)
@@ -248,6 +251,15 @@ def test_warmup_lineage_gate_compares_declared_hash_fields() -> None:
     assert _warmup_lineage_gate(report, calibration)[0]
     report["D"]["update_status"]["milestones"]["400"]["state_hash"] = "tampered"
     assert not _warmup_lineage_gate(report, calibration)[0]
+
+
+def test_paired_warmup_gate_requires_exact_typed_fork() -> None:
+    milestone = {"state_hash": "state", "optimizer_hash": "optimizer"}
+    left = {"update_status": {"milestones": {"400": milestone}}, "warmup_primary_schedule_hash": "primary", "warmup_companion_schedule_hash": "companion"}
+    right = {"update_status": {"milestones": {"400": dict(milestone)}}, "warmup_primary_schedule_hash": "primary", "warmup_companion_schedule_hash": "companion"}
+    assert _paired_warmup_gate(left, right)[0]
+    right["update_status"]["milestones"]["400"]["optimizer_hash"] = "tampered"
+    assert not _paired_warmup_gate(left, right)[0]
 
 
 @pytest.mark.parametrize("field", ["optimizer_hash", "warmup_primary_schedule_hash", "warmup_companion_schedule_hash"])

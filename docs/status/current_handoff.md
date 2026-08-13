@@ -193,6 +193,13 @@ warmup 使用实际消费的零 auxiliary weights；v5 calibration、screen 与 
 v6 calibration 或 screen。该阻断是 invalid harness/环境能力问题，不构成 Objective D
 失败；在获得支持 deterministic backward 的运行环境或批准新的等价实现前，保持停止。
 
+后续根因收口取消了对当前 CUDA 环境无法提供的独立逐位重演要求，不替换或弱化
+正式 pooling 算子。v7 calibration 将唯一的 step-400 A model/optimizer state作为
+无 promotion 权限的显式 warmup artifact；screen 的 A/D 从该同一artifact分叉，
+confirmation则为每个seed只计算一次warmup后在内存中精确分叉。消费者在创建run前
+验证artifact、evidence、state、optimizer、history、schedule与初始化lineage。
+v5/v6 evidence及checkpoint均不得授权v7。
+
 ---
 
 # 历史主线记录：v2.2 条件性负结果已封存（2026-08-04）

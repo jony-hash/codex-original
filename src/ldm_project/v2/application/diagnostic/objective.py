@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 import math
-import os
 from pathlib import Path
 import torch
 
@@ -59,7 +58,7 @@ from ..runs import V2Run
 
 
 OBJECTIVE_DIAGNOSTIC_CONTRACT_SPEC = {
-        "kind": "conditional_objective_alignment_v6",
+        "kind": "conditional_objective_alignment_v7",
         "candidates": ["A", "D"],
         "screen_steps": 984,
         "confirm_steps": 984,
@@ -79,29 +78,10 @@ OBJECTIVE_DIAGNOSTIC_CONTRACT_SPEC = {
         "objective_contract_version": OBJECTIVE_CONTRACT_VERSION,
         "resumable_screen": "explicit_checkpoint_v1",
         "checkpoint_cadence": [100, 200, 300, 400, 500, 600, 700, 800, 900, 984],
-        "deterministic_runtime": {
-            "version": "strict_cuda_determinism_v1",
-            "cublas_workspace_config": ":4096:8",
-            "torch_deterministic_algorithms": True,
-            "cudnn_benchmark": False,
-            "cudnn_deterministic": True,
-            "warn_only": False,
-        },
+        "warmup_fork": "single_calibration_state_and_optimizer_fork_v1",
         "effective_weight_dispatch": "warmup_A_zero_auxiliary_weights_v1",
 }
 OBJECTIVE_DIAGNOSTIC_CONTRACT = canonical_sha256(OBJECTIVE_DIAGNOSTIC_CONTRACT_SPEC)
-DETERMINISTIC_RUNTIME_SPEC = OBJECTIVE_DIAGNOSTIC_CONTRACT_SPEC["deterministic_runtime"]
-
-
-def _configure_deterministic_runtime() -> None:
-    """Install the registered strict CUDA/CPU execution contract."""
-    os.environ["CUBLAS_WORKSPACE_CONFIG"] = DETERMINISTIC_RUNTIME_SPEC["cublas_workspace_config"]
-    torch.backends.cudnn.benchmark = False
-    torch.backends.cudnn.deterministic = True
-    torch.use_deterministic_algorithms(True, warn_only=False)
-    torch.manual_seed(1234)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(1234)
 
 
 def _record_context(config, evaluator_hash: str, split_hash: str, checkpoint_hash: str | None = None) -> EvidenceContextV2:
@@ -512,6 +492,33 @@ def _warmup_lineage_gate(reports: dict[str, object], calibration_payload: dict[s
     return valid, fields
 
 
+def _paired_warmup_gate(left: dict[str, object], right: dict[str, object]) -> tuple[bool, dict[str, object]]:
+    """Validate the exact state/optimizer and schedule fork for one seed."""
+    left_milestone = left.get("update_status", {}).get("milestones", {}).get("400")
+    right_milestone = right.get("update_status", {}).get("milestones", {}).get("400")
+    if not isinstance(left_milestone, dict) or not isinstance(right_milestone, dict):
+        return False, {"reason": "missing step-400 milestone"}
+    fields = {
+        "state_hash": (left_milestone.get("state_hash"), right_milestone.get("state_hash")),
+        "optimizer_hash": (left_milestone.get("optimizer_hash"), right_milestone.get("optimizer_hash")),
+        "primary_schedule_hash": (left.get("warmup_primary_schedule_hash"), right.get("warmup_primary_schedule_hash")),
+        "companion_schedule_hash": (left.get("warmup_companion_schedule_hash"), right.get("warmup_companion_schedule_hash")),
+    }
+    valid = all(
+        isinstance(value_left, str)
+        and isinstance(value_right, str)
+        and value_left == value_right
+        for value_left, value_right in fields.values()
+    )
+    return valid, fields
+
+
+def _effective_objective_weights(active_kind: str, registered: dict[str, float]) -> dict[str, float]:
+    if set(registered) != {"camera", "pairwise", "coverage"}:
+        raise ValueError("objective weights must contain all registered auxiliaries")
+    return dict(registered) if active_kind == "D" else {name: 0.0 for name in registered}
+
+
 def _run_steps(bundle, primary, train_images, train_labels, config, objective_kind, weights, steps, seed, *, optimizer=None, start_step=0, history=None, primary_schedule=None, companion_schedule=None):
     settings = config.conditional_generation
     assert settings is not None
@@ -538,7 +545,7 @@ def _run_steps(bundle, primary, train_images, train_labels, config, objective_ki
         companions = _companion_indices(train_labels, indices, seed=seed * 100000 + step)
         companion_schedule.append(canonical_sha256(companions))
         active_kind = active_objective_kind(objective_kind, 400, step)
-        effective_weights = weights if active_kind == "D" else {name: 0.0 for name in weights}
+        effective_weights = _effective_objective_weights(active_kind, weights)
         if active_kind in {"C", "D"}:
             companion_views = train_images.index_select(0, companions).to(device)
             companion_labels = train_labels.index_select(0, companions).to(device)
@@ -762,7 +769,6 @@ def _run_resumable_candidate(run, candidate, primary, train_images, train_labels
 
 
 def conditional_objective_weight_calibration(args, config) -> int:
-    _configure_deterministic_runtime()
     _require_identity(config)
     train_images, train_labels, _, _, split, primary, injection, bundle, manifest, init_hash, evaluator_hash = _load_primary_inputs(args, config)
     warmup_history, warmup_primary_schedule, warmup_companion_schedule, warmup_optimizer, warmup_updates = _run_steps(
@@ -808,6 +814,33 @@ def conditional_objective_weight_calibration(args, config) -> int:
         "input_hashes": input_bindings,
     }
     run = _new_run(config)
+    warmup_checkpoint = run.root / "conditional_objective_warmup_step_400.pt"
+    atomic_torch_save(
+        warmup_checkpoint,
+        {
+            "schema_version": 1,
+            "contract": OBJECTIVE_DIAGNOSTIC_CONTRACT,
+            "objective_kind": "A",
+            "completed_step": 400,
+            "seed": 1234,
+            "model_state": {name: value.detach().cpu() for name, value in bundle.state_dict().items()},
+            "optimizer_state": warmup_optimizer.state_dict(),
+            "history": warmup_history,
+            "primary_schedule": warmup_primary_schedule,
+            "companion_schedule": warmup_companion_schedule,
+            "update_status": warmup_updates,
+            "state_hash": warmup_state_hash,
+            "optimizer_hash": warmup_optimizer_hash,
+            "input_hashes": input_hashes,
+            "formal_promotion_authorized": False,
+            "permitted_next_actions": [],
+        },
+    )
+    warmup_checkpoint_hash = file_sha256(warmup_checkpoint)
+    artifact["warmup_checkpoint"] = {
+        "filename": warmup_checkpoint.name,
+        "sha256": warmup_checkpoint_hash,
+    }
     artifact_path = run.root / "conditional_objective_weight_calibration.json"
     atomic_write_json(artifact_path, artifact)
     gates = (
@@ -817,13 +850,15 @@ def conditional_objective_weight_calibration(args, config) -> int:
         GateResult("effective_gradient_aggregate", aggregate_safe, {"weighted": weighted_ratios, "combined": combined_ratios}),
     )
     reason = "effective gradient safety gate failed" if not (batch_safe and aggregate_safe) else None
-    record = EvidenceRecordV2(2, "conditional_objective_weight_calibration", "diagnostic", "passed" if passed else "failed", run.git_commit, run.dirty_patch_hash, run.config_hash, context, {"artifact": file_sha256(artifact_path), **input_hashes}, gates, ("screen",) if passed else (), reason)
+    record = EvidenceRecordV2(2, "conditional_objective_weight_calibration", "diagnostic", "passed" if passed else "failed", run.git_commit, run.dirty_patch_hash, run.config_hash, context, {"artifact": file_sha256(artifact_path), "warmup_checkpoint": warmup_checkpoint_hash, **input_hashes}, gates, ("screen",) if passed else (), reason)
     _write_evidence(run, "conditional_objective_weight_calibration_evidence.json", record)
     print(run.root)
     return 0 if passed else 1
 
 
-def _read_calibration(path: str, evidence_path: str, config, evaluator_hash: str, init_hash: str):
+def _read_calibration(path: str, evidence_path: str, warmup_path: str, config, evaluator_hash: str, init_hash: str):
+    if not Path(warmup_path).is_absolute():
+        raise ValueError("objective calibration warmup checkpoint path must be absolute")
     evidence = EvidenceRecordV2.from_dict(json.loads(Path(evidence_path).read_text(encoding="utf-8")))
     if evidence.evidence_kind != "conditional_objective_weight_calibration" or evidence.tier != "diagnostic" or evidence.status != "passed" or evidence.permitted_next_actions != ("screen",):
         raise ValueError("objective calibration evidence cannot authorize screen")
@@ -834,7 +869,8 @@ def _read_calibration(path: str, evidence_path: str, config, evaluator_hash: str
         action="screen",
         expected_context=_record_context(config, evaluator_hash, evidence.context.dataset_split_manifest_hash, init_hash),
     )
-    require_input_hashes(evidence, {"artifact": file_sha256(path), "evaluator": evaluator_hash, "initialization_checkpoint": init_hash})
+    warmup_hash = file_sha256(warmup_path)
+    require_input_hashes(evidence, {"artifact": file_sha256(path), "warmup_checkpoint": warmup_hash, "evaluator": evaluator_hash, "initialization_checkpoint": init_hash})
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
     if payload.get("contract") != OBJECTIVE_DIAGNOSTIC_CONTRACT or payload.get("schema_version") != 6 or payload.get("frozen") is not True or payload.get("formal_promotion_authorized") is not False:
         raise ValueError("objective calibration contract mismatch")
@@ -866,18 +902,39 @@ def _read_calibration(path: str, evidence_path: str, config, evaluator_hash: str
     expected_payload = objective_contract_payload("D", 400, float(weights["camera"]), float(weights["pairwise"]), float(weights["coverage"]))
     if contract_payload != expected_payload or contract_hash != canonical_sha256(expected_payload):
         raise ValueError("objective calibration objective contract mismatch")
-    return {name: float(weights[name]) for name in ("camera", "pairwise", "coverage")}, payload
+    warmup_ref = payload.get("warmup_checkpoint")
+    if not isinstance(warmup_ref, dict) or warmup_ref.get("sha256") != warmup_hash or warmup_ref.get("filename") != Path(warmup_path).name:
+        raise ValueError("objective calibration warmup checkpoint binding mismatch")
+    warmup_payload = safe_torch_load(warmup_path, expected_sha256=warmup_hash)
+    if not isinstance(warmup_payload, dict) or warmup_payload.get("contract") != OBJECTIVE_DIAGNOSTIC_CONTRACT:
+        raise ValueError("objective calibration warmup checkpoint contract mismatch")
+    if warmup_payload.get("completed_step") != 400 or warmup_payload.get("seed") != 1234 or warmup_payload.get("objective_kind") != "A":
+        raise ValueError("objective calibration warmup checkpoint stage mismatch")
+    if warmup_payload.get("formal_promotion_authorized") is not False or warmup_payload.get("permitted_next_actions") != []:
+        raise ValueError("objective calibration warmup checkpoint cannot authorize promotion")
+    if warmup_payload.get("input_hashes") != inputs:
+        raise ValueError("objective calibration warmup checkpoint input mismatch")
+    if warmup_payload.get("state_hash") != inputs["warmup_state_hash"] or warmup_payload.get("optimizer_hash") != inputs["warmup_optimizer_hash"]:
+        raise ValueError("objective calibration warmup checkpoint state mismatch")
+    if state_content_hash(warmup_payload.get("model_state", {})) != inputs["warmup_state_hash"] or canonical_sha256(warmup_payload.get("optimizer_state")) != inputs["warmup_optimizer_hash"]:
+        raise ValueError("objective calibration warmup checkpoint content mismatch")
+    if canonical_sha256(warmup_payload.get("primary_schedule")) != inputs["warmup_schedule"] or canonical_sha256(warmup_payload.get("companion_schedule")) != inputs["warmup_companion_schedule"]:
+        raise ValueError("objective calibration warmup checkpoint schedule mismatch")
+    if len(warmup_payload.get("history", [])) != 400 or [row.get("step") for row in warmup_payload["history"]] != list(range(1, 401)):
+        raise ValueError("objective calibration warmup checkpoint history mismatch")
+    if any(row.get("active_objective") != "A" or any(float(value) != 0.0 for value in row.get("frozen_weights", {}).values()) for row in warmup_payload["history"]):
+        raise ValueError("objective calibration warmup checkpoint consumed auxiliary objective")
+    return {name: float(weights[name]) for name in ("camera", "pairwise", "coverage")}, payload, warmup_payload
 
 
 def objective_alignment_screen(args, config) -> int:
-    _configure_deterministic_runtime()
     _require_identity(config)
     train_images, train_labels, validation_images, validation_labels, split, primary, secondary, measurement, evaluator_hash, secondary_hash = _load_measurement_inputs(args, config)
     injection = _load_injection(args, config, split, evaluator_hash)
     bundle, manifest, init_hash = _load_initialization(args, config, train_labels, split, evaluator_hash, injection)
     calibration_path = args.weight_calibration
-    weights, calibration_payload = _read_calibration(calibration_path, args.weight_calibration_evidence, config, evaluator_hash, init_hash)
-    input_hashes = {"initialization_checkpoint": init_hash, "injection_evidence": file_sha256(args.injection_evidence), "evaluator": evaluator_hash, "secondary_evaluator": secondary_hash, "measurement_evidence": measurement.evidence_hash, "measurement_bundle": file_sha256(args.acceptance_measurement_bundle), "calibration": file_sha256(calibration_path), "calibration_evidence": file_sha256(args.weight_calibration_evidence), "split": split.manifest_hash}
+    weights, calibration_payload, warmup_payload = _read_calibration(calibration_path, args.weight_calibration_evidence, args.warmup_checkpoint, config, evaluator_hash, init_hash)
+    input_hashes = {"initialization_checkpoint": init_hash, "injection_evidence": file_sha256(args.injection_evidence), "evaluator": evaluator_hash, "secondary_evaluator": secondary_hash, "measurement_evidence": measurement.evidence_hash, "measurement_bundle": file_sha256(args.acceptance_measurement_bundle), "calibration": file_sha256(calibration_path), "calibration_evidence": file_sha256(args.weight_calibration_evidence), "warmup_checkpoint": file_sha256(args.warmup_checkpoint), "split": split.manifest_hash}
     if args.resume_checkpoint:
         run, checkpoint = _load_screen_checkpoint(args.resume_checkpoint, config, input_hashes)
         reports = checkpoint.get("reports", {})
@@ -898,24 +955,28 @@ def objective_alignment_screen(args, config) -> int:
             reports = {"A": a_report}
             kind = "D"
             candidate = _load_bundle(config, args.initialization_checkpoint, device=torch.device(config.run.device), evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, checkpoint_sha256=init_hash)[0]
-            optimizer = None
-            history = []
-            primary_schedule = []
-            companion_schedule = []
-            update_status = None
-            start_step = 0
+            candidate.load_state_dict(warmup_payload["model_state"], strict=True)
+            optimizer = _conditional_optimizer(candidate, config)
+            optimizer.load_state_dict(warmup_payload["optimizer_state"])
+            history = list(warmup_payload["history"])
+            primary_schedule = list(warmup_payload["primary_schedule"])
+            companion_schedule = list(warmup_payload["companion_schedule"])
+            update_status = warmup_payload["update_status"]
+            start_step = 400
     else:
         run = _new_run(config)
         print(f"screen run={run.root}", flush=True)
         reports = {}
         kind = "A"
         candidate = _load_bundle(config, args.initialization_checkpoint, device=torch.device(config.run.device), evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, checkpoint_sha256=init_hash)[0]
-        optimizer = None
-        history = []
-        primary_schedule = []
-        companion_schedule = []
-        update_status = None
-        start_step = 0
+        candidate.load_state_dict(warmup_payload["model_state"], strict=True)
+        optimizer = _conditional_optimizer(candidate, config)
+        optimizer.load_state_dict(warmup_payload["optimizer_state"])
+        history = list(warmup_payload["history"])
+        primary_schedule = list(warmup_payload["primary_schedule"])
+        companion_schedule = list(warmup_payload["companion_schedule"])
+        update_status = warmup_payload["update_status"]
+        start_step = 400
     for candidate_kind in (kind, "D") if kind == "A" else (kind,):
         candidate_weights = {name: 0.0 for name in weights} if candidate_kind == "A" else weights
         history, primary_schedule, companion_schedule, optimizer, update_status, reports = _run_resumable_candidate(run, candidate, primary, train_images, train_labels, config, candidate_kind, candidate_weights, input_hashes=input_hashes, start_step=start_step, optimizer=optimizer, history=history, primary_schedule=primary_schedule, companion_schedule=companion_schedule, update_status=update_status, reports=reports)
@@ -923,8 +984,14 @@ def objective_alignment_screen(args, config) -> int:
         if candidate_kind == "A":
             _screen_checkpoint(run, kind="A", completed_step=984, bundle=candidate, optimizer=optimizer, history=history, primary_schedule=primary_schedule, companion_schedule=companion_schedule, update_status=update_status, reports={"A": reports["A"]}, input_hashes=input_hashes, filename="objective_screen_A_complete.pt")
             candidate = _load_bundle(config, args.initialization_checkpoint, device=torch.device(config.run.device), evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, checkpoint_sha256=init_hash)[0]
-            optimizer = None
-            history, primary_schedule, companion_schedule, update_status, start_step = [], [], [], None, 0
+            candidate.load_state_dict(warmup_payload["model_state"], strict=True)
+            optimizer = _conditional_optimizer(candidate, config)
+            optimizer.load_state_dict(warmup_payload["optimizer_state"])
+            history = list(warmup_payload["history"])
+            primary_schedule = list(warmup_payload["primary_schedule"])
+            companion_schedule = list(warmup_payload["companion_schedule"])
+            update_status = warmup_payload["update_status"]
+            start_step = 400
     baseline = reports["A"]["measurement"]
     gates = []
     scores = {}
@@ -972,7 +1039,6 @@ def objective_alignment_screen(args, config) -> int:
 
 
 def objective_alignment_confirm(args, config) -> int:
-    _configure_deterministic_runtime()
     _require_identity(config)
     screen = EvidenceRecordV2.from_dict(json.loads(Path(args.screen_evidence).read_text(encoding="utf-8")))
     if screen.evidence_kind != "conditional_objective_alignment_screen" or screen.status != "passed" or "confirm" not in screen.permitted_next_actions:
@@ -1003,11 +1069,44 @@ def objective_alignment_confirm(args, config) -> int:
     rows = {}
     gates = []
     for seed in (1234, 1235, 1236):
+        warmup_candidate = _load_bundle(config, args.initialization_checkpoint, device=torch.device(config.run.device), evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, checkpoint_sha256=init_hash)[0]
+        warmup_history, warmup_primary, warmup_companion, warmup_optimizer, warmup_status = _run_steps(
+            warmup_candidate,
+            primary,
+            train_images,
+            train_labels,
+            config,
+            "A",
+            {name: 0.0 for name in weights},
+            400,
+            seed,
+        )
+        warmup_model_state = {name: value.detach().cpu() for name, value in warmup_candidate.state_dict().items()}
+        warmup_optimizer_state = warmup_optimizer.state_dict()
         seed_rows = {}
         for kind in ("A", winner):
             candidate = _load_bundle(config, args.initialization_checkpoint, device=torch.device(config.run.device), evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, checkpoint_sha256=init_hash)[0]
+            candidate.load_state_dict(warmup_model_state, strict=True)
+            optimizer = _conditional_optimizer(candidate, config)
+            optimizer.load_state_dict(warmup_optimizer_state)
             candidate_weights = {name: 0.0 for name in weights} if kind == "A" else {name: float(weights[name]) for name in weights}
-            history, primary_schedule, companion_schedule, _, update_status = _run_steps(candidate, primary, train_images, train_labels, config, kind, candidate_weights, 984, seed)
+            history, primary_schedule, companion_schedule, _, continuation_status = _run_steps(
+                candidate,
+                primary,
+                train_images,
+                train_labels,
+                config,
+                kind,
+                candidate_weights,
+                584,
+                seed,
+                optimizer=optimizer,
+                start_step=400,
+                history=list(warmup_history),
+                primary_schedule=list(warmup_primary),
+                companion_schedule=list(warmup_companion),
+            )
+            update_status = _merge_update_status(warmup_status, continuation_status)
             seed_rows[kind] = {"measurement_984": _measure_panel(candidate, primary, secondary, validation_images, validation_labels, config), "history": history, "primary_schedule_hash": canonical_sha256(primary_schedule), "companion_schedule_hash": canonical_sha256(companion_schedule), "warmup_primary_schedule_hash": canonical_sha256(primary_schedule[:400]), "warmup_companion_schedule_hash": canonical_sha256(companion_schedule[:400]), "update_status": update_status, "state_hash": state_content_hash(candidate.state_dict()), "state_dict": {name: value.detach().cpu() for name, value in candidate.state_dict().items()}}
         rows[str(seed)] = seed_rows
         a = seed_rows["A"]["measurement_984"]
@@ -1023,7 +1122,8 @@ def objective_alignment_confirm(args, config) -> int:
         a400 = rows[str(seed)]["A"]["measurement_984"]
         gates.append(GateResult(f"seed_{seed}_primary_schedule", rows[str(seed)]["A"]["primary_schedule_hash"] == row["primary_schedule_hash"], {"A": rows[str(seed)]["A"]["primary_schedule_hash"], "winner": row["primary_schedule_hash"]}))
         gates.append(GateResult(f"seed_{seed}_companion_schedule", rows[str(seed)]["A"]["companion_schedule_hash"] == row["companion_schedule_hash"], {"A": rows[str(seed)]["A"]["companion_schedule_hash"], "winner": row["companion_schedule_hash"]}))
-        gates.append(GateResult(f"seed_{seed}_shared_warmup_state", rows[str(seed)]["A"]["update_status"]["milestones"].get("400") == row["update_status"]["milestones"].get("400"), {"A": rows[str(seed)]["A"]["update_status"]["milestones"].get("400"), "D": row["update_status"]["milestones"].get("400")}))
+        warmup_passed, warmup_metrics = _paired_warmup_gate(rows[str(seed)]["A"], row)
+        gates.append(GateResult(f"seed_{seed}_shared_warmup_state", warmup_passed, warmup_metrics))
         for candidate_kind in ("A", winner):
             candidate_row = rows[str(seed)][candidate_kind]
             for label, status in ((f"{candidate_kind}_step_984", candidate_row["update_status"]),):
