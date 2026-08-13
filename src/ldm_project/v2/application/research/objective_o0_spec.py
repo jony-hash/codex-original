@@ -23,8 +23,6 @@ class ElectronicO0Spec:
     version: str
     dataset_root: str
     output_root: str
-    evaluator_checkpoint: str
-    secondary_evaluator_checkpoint: str
     objective_id: str
     split_seed: int
     code_dim: int
@@ -86,9 +84,22 @@ def load_objective_o0_spec(path: str | Path) -> ElectronicO0Spec:
     return spec
 
 
-def objective_o0_input_hashes(spec: ElectronicO0Spec, config_path: str | Path) -> dict[str, str]:
+def objective_o0_input_hashes(
+    config_path: str | Path,
+    *,
+    evaluator_checkpoint: str,
+    primary_qualification_evidence: str,
+    secondary_evaluator_checkpoint: str,
+    secondary_training_evidence: str,
+    measurement_bundle: str,
+    measurement_evidence: str,
+) -> dict[str, str]:
     return {
         "o0_config": file_sha256(config_path),
-        "primary_evaluator": file_sha256(spec.evaluator_checkpoint),
-        "secondary_evaluator": file_sha256(spec.secondary_evaluator_checkpoint),
+        "primary_evaluator": file_sha256(evaluator_checkpoint),
+        "primary_qualification_evidence": file_sha256(primary_qualification_evidence),
+        "secondary_evaluator": file_sha256(secondary_evaluator_checkpoint),
+        "secondary_training_evidence": file_sha256(secondary_training_evidence),
+        "measurement_bundle": file_sha256(measurement_bundle),
+        "measurement_evidence": file_sha256(measurement_evidence),
     }

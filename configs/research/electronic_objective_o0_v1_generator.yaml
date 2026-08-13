@@ -3,8 +3,6 @@ name: electronic_objective_o0_v1_generator
 version: electronic_objective_o0_v1
 dataset_root: data
 output_root: outputs
-evaluator_checkpoint: outputs/20260724_v2/runs/20260724_162422_705459_formal_v2_identity_logit_amplitude_finite_crop_identity/frozen_mnist_evaluator.pt
-secondary_evaluator_checkpoint: outputs/20260813_v2/runs/20260813_180819_622585_formal_v2_identity_logit_amplitude_finite_crop_identity/smooth_mnist_acceptance_evaluator.pt
 objective_id: objective_e_active_set_v1
 split_seed: 1234
 code_dim: 8
@@ -24,4 +22,4 @@ diversity_upper: 1.30
 coverage_target: 1.35
 fixed_exposure_scale: 0.4913053810596466
 require_clean_git: true
-harness_revision: 1
+harness_revision: 2

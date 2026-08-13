@@ -21,6 +21,13 @@ def test_objective_o0_cli_and_specs_are_separate_from_formal_runtime() -> None:
         "research", "objective-o0", "preflight",
         "--config", "configs/research/electronic_objective_o0_v1_image.yaml",
         "--device", "cpu",
+        "--validate-evidence", "validate.json",
+        "--evaluator-checkpoint", "primary.pt",
+        "--primary-qualification-evidence", "primary.json",
+        "--secondary-evaluator-checkpoint", "secondary.pt",
+        "--secondary-training-evidence", "secondary.json",
+        "--measurement-bundle", "bundle.json",
+        "--measurement-evidence", "measurement.json",
     ])
     assert parsed.research_program == "objective-o0"
     assert load_objective_o0_spec(parsed.config).candidate == "O0-I"

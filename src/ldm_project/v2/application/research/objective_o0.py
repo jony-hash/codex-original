@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import subprocess
 from datetime import datetime
 from pathlib import Path
@@ -20,7 +21,14 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from ...evidence import atomic_torch_save, atomic_write_json, canonical_sha256, file_sha256, safe_torch_load
+from ...evidence import (
+    EvidenceRecordV2,
+    atomic_torch_save,
+    atomic_write_json,
+    canonical_sha256,
+    file_sha256,
+    safe_torch_load,
+)
 from ...student.conditional import (
     camera_code_fraction,
     relative_diversity_worst_class_loss,
@@ -46,7 +54,17 @@ OBJECTIVE_E_CONTRACT = canonical_sha256({
     "calibration": "active_set_0.25_base_gradient_v1",
     "domains": {"O0-I": "electronic_image_28", "O0-G": "amplitude_square_200_to_28"},
     "measurement": "fixed_panel_dual_evaluator_v1",
+    "evidence_chain": "fresh_primary_secondary_measurement_v1",
+    "deterministic_runtime": "strict_cuda_v1",
+    "resume": "explicit_bound_checkpoint_v1",
 })
+
+_DETERMINISTIC_RUNTIME = {
+    "CUBLAS_WORKSPACE_CONFIG": ":4096:8",
+    "deterministic_algorithms": True,
+    "cudnn_benchmark": False,
+    "cudnn_deterministic": True,
+}
 
 
 def objective_e_dispatch(step: int, registered_weights: dict[str, float]) -> tuple[str, dict[str, float]]:
@@ -138,18 +156,187 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[5]
 
 
-def _provenance(spec: ElectronicO0Spec, config_path: str) -> dict[str, str]:
+def _provenance(spec: ElectronicO0Spec, config_path: str) -> dict[str, str | None]:
     root = _repo_root()
     status = subprocess.run(("git", "status", "--porcelain", "--untracked-files=all"), cwd=root, check=True, capture_output=True, text=True).stdout
     patch = subprocess.run(("git", "diff", "--binary"), cwd=root, check=True, capture_output=True, text=True).stdout + subprocess.run(("git", "diff", "--cached", "--binary"), cwd=root, check=True, capture_output=True, text=True).stdout
-    return {"git_commit": subprocess.run(("git", "rev-parse", "HEAD"), cwd=root, check=True, capture_output=True, text=True).stdout.strip(), "git_status_hash": canonical_sha256(status), "dirty_patch_hash": canonical_sha256(patch), "config_hash": file_sha256(config_path), "contract_hash": OBJECTIVE_E_CONTRACT}
+    return {
+        "git_commit": subprocess.run(("git", "rev-parse", "HEAD"), cwd=root, check=True, capture_output=True, text=True).stdout.strip(),
+        "git_status_hash": canonical_sha256(status),
+        "dirty_patch_hash": None if not patch else canonical_sha256(patch),
+        "config_hash": file_sha256(config_path),
+        "contract_hash": OBJECTIVE_E_CONTRACT,
+    }
 
 
-def _require_clean(spec: ElectronicO0Spec, config_path: str) -> dict[str, str]:
+def _require_clean(spec: ElectronicO0Spec, config_path: str) -> dict[str, str | None]:
     provenance = _provenance(spec, config_path)
     if spec.require_clean_git and provenance["git_status_hash"] != canonical_sha256(""):
         raise RuntimeError("electronic O0 evidence requires a clean worktree")
     return provenance
+
+
+def _configure_deterministic_runtime(seed: int) -> None:
+    configured = os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
+    if configured != ":4096:8":
+        raise RuntimeError("electronic O0 requires CUBLAS_WORKSPACE_CONFIG=:4096:8")
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+    torch.use_deterministic_algorithms(True)
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
+
+
+def _read_mapping(path: str | Path, *, description: str) -> dict[str, Any]:
+    value = Path(path)
+    if not value.is_file():
+        raise ValueError(f"{description} is missing")
+    payload = json.loads(value.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"{description} must be a JSON mapping")
+    return payload
+
+
+def _validate_acceptance_chain(
+    args: argparse.Namespace,
+    spec: ElectronicO0Spec,
+    provenance: dict[str, str | None],
+) -> dict[str, str]:
+    inputs = objective_o0_input_hashes(
+        args.config,
+        evaluator_checkpoint=args.evaluator_checkpoint,
+        primary_qualification_evidence=args.primary_qualification_evidence,
+        secondary_evaluator_checkpoint=args.secondary_evaluator_checkpoint,
+        secondary_training_evidence=args.secondary_training_evidence,
+        measurement_bundle=args.measurement_bundle,
+        measurement_evidence=args.measurement_evidence,
+    )
+    primary = EvidenceRecordV2.from_dict(_read_mapping(args.primary_qualification_evidence, description="primary qualification evidence"))
+    secondary = EvidenceRecordV2.from_dict(_read_mapping(args.secondary_training_evidence, description="secondary training evidence"))
+    measurement = EvidenceRecordV2.from_dict(_read_mapping(args.measurement_evidence, description="measurement evidence"))
+    for record in (primary, secondary, measurement):
+        record.validate()
+        if record.git_commit != provenance["git_commit"] or record.dirty_patch_hash is not None:
+            raise ValueError("electronic O0 requires freshly issued clean acceptance evidence")
+    if primary.evidence_kind != "evaluator_qualification" or primary.status != "passed":
+        raise ValueError("primary evaluator qualification must be passed")
+    if secondary.evidence_kind != "acceptance_evaluator_training" or secondary.status != "passed" or secondary.permitted_next_actions != ("qualify_acceptance_measurement",):
+        raise ValueError("secondary evaluator training evidence is not qualified")
+    if measurement.evidence_kind != "conditional_acceptance_measurement" or measurement.status != "passed" or measurement.permitted_next_actions != ("evaluate",):
+        raise ValueError("acceptance measurement evidence is not qualified")
+    primary_hash = inputs["primary_evaluator"]
+    secondary_hash = inputs["secondary_evaluator"]
+    if primary.input_hashes.get("evaluator_checkpoint") != primary_hash or primary.context.evaluator_checkpoint_hash != primary_hash:
+        raise ValueError("primary qualification does not bind the evaluator checkpoint")
+    if secondary.input_hashes.get("acceptance_evaluator") != secondary_hash or secondary.context.evaluator_checkpoint_hash != secondary_hash:
+        raise ValueError("secondary training evidence does not bind its checkpoint")
+    if measurement.input_hashes.get("primary_evaluator") != primary_hash or measurement.input_hashes.get("secondary_evaluator") != secondary_hash:
+        raise ValueError("measurement evidence does not bind both evaluators")
+    if measurement.input_hashes.get("acceptance_evaluator_training_evidence") != secondary.evidence_hash:
+        raise ValueError("measurement evidence does not bind secondary training evidence")
+    bundle = _read_mapping(args.measurement_bundle, description="measurement bundle")
+    if measurement.input_hashes.get("measurement_bundle") != inputs["measurement_bundle"]:
+        raise ValueError("measurement evidence does not bind the measurement bundle")
+    if bundle.get("primary_checkpoint") != primary_hash or bundle.get("secondary_checkpoint") != secondary_hash:
+        raise ValueError("measurement bundle evaluator hashes mismatch")
+    if bundle.get("training_evidence_hash") != secondary.evidence_hash:
+        raise ValueError("measurement bundle does not bind secondary training evidence")
+    split_hashes = {
+        primary.context.dataset_split_manifest_hash,
+        secondary.context.dataset_split_manifest_hash,
+        measurement.context.dataset_split_manifest_hash,
+        bundle.get("split_manifest_hash"),
+    }
+    if None in split_hashes or len(split_hashes) != 1:
+        raise ValueError("acceptance evidence split lineage mismatch")
+    if primary.config_hash != secondary.config_hash or primary.config_hash != measurement.config_hash:
+        raise ValueError("acceptance evidence formal configuration mismatch")
+    test_manifest = Path(args.measurement_bundle).parent / str(bundle.get("test_manifest_filename", ""))
+    if not test_manifest.is_file() or file_sha256(test_manifest) != bundle.get("test_manifest_hash"):
+        raise ValueError("measurement test manifest is missing or tampered")
+    if measurement.input_hashes.get("test_manifest") != bundle.get("test_manifest_hash"):
+        raise ValueError("measurement evidence does not bind the test manifest")
+    test_payload = _read_mapping(test_manifest, description="measurement test manifest")
+    if test_payload.get("manifest_hash") != bundle.get("test_content_manifest_hash") or measurement.input_hashes.get("test_content_manifest") != bundle.get("test_content_manifest_hash"):
+        raise ValueError("measurement test content manifest mismatch")
+    return inputs
+
+
+def _validate_o0_evidence(
+    path: str | Path,
+    *,
+    spec: ElectronicO0Spec | None,
+    provenance: dict[str, str | None],
+    action: str,
+    state: str,
+    permitted: list[str],
+    expected_inputs: dict[str, str],
+    candidate: str | None = None,
+) -> dict[str, Any]:
+    payload = _read_mapping(path, description=f"Objective O0 {action} evidence")
+    content_hash = payload.pop("content_hash", None)
+    if not isinstance(content_hash, str) or content_hash != canonical_sha256(payload):
+        raise ValueError("Objective O0 evidence content hash mismatch")
+    payload["content_hash"] = content_hash
+    if payload.get("evidence_kind") != "electronic_objective_o0" or payload.get("contract") != OBJECTIVE_E_CONTRACT:
+        raise ValueError("Objective O0 evidence contract mismatch")
+    if payload.get("action") != action or payload.get("state") != state or payload.get("permitted_next_actions") != permitted:
+        raise ValueError("Objective O0 evidence action or state mismatch")
+    if payload.get("git_commit") != provenance["git_commit"] or payload.get("dirty_patch_hash") is not None:
+        raise ValueError("Objective O0 evidence provenance mismatch")
+    if spec is not None and (payload.get("candidate") != spec.candidate or payload.get("config_hash") != spec.config_hash):
+        raise ValueError("Objective O0 evidence candidate/config mismatch")
+    if candidate is not None and payload.get("candidate") != candidate:
+        raise ValueError("Objective O0 evidence candidate mismatch")
+    actual_inputs = payload.get("inputs")
+    if not isinstance(actual_inputs, dict) or any(actual_inputs.get(name) != value for name, value in expected_inputs.items()):
+        raise ValueError("Objective O0 evidence input lineage mismatch")
+    if payload.get("formal_promotion_authorized") is not False:
+        raise ValueError("Objective O0 evidence cannot authorize formal promotion")
+    return payload
+
+
+def _validate_calibration(
+    args: argparse.Namespace,
+    spec: ElectronicO0Spec,
+    provenance: dict[str, str | None],
+    inputs: dict[str, str],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    artifact = _read_mapping(args.calibration_artifact, description="Objective E calibration artifact")
+    evidence = _validate_o0_evidence(
+        args.calibration_evidence,
+        spec=spec,
+        provenance=provenance,
+        action="calibrate",
+        state="calibration_passed",
+        permitted=["screen"],
+        expected_inputs=inputs,
+    )
+    if artifact.get("contract") != OBJECTIVE_E_CONTRACT or artifact.get("candidate") != spec.candidate:
+        raise ValueError("Objective E calibration artifact contract mismatch")
+    if artifact.get("formal_promotion_authorized") is not False or artifact.get("permitted_next_actions") != ["screen"]:
+        raise ValueError("Objective E calibration artifact cannot authorize promotion")
+    if artifact.get("warmup_steps") != spec.warmup_steps or artifact.get("calibration_steps") != list(spec.calibration_steps):
+        raise ValueError("Objective E calibration step contract mismatch")
+    weights = artifact.get("weights")
+    statuses = artifact.get("statuses")
+    if not isinstance(weights, dict) or set(weights) != {"camera", "diversity", "coverage"} or not isinstance(statuses, dict):
+        raise ValueError("Objective E calibration weights/statuses are malformed")
+    for name, weight in weights.items():
+        if not isinstance(weight, (int, float)) or not math.isfinite(float(weight)) or float(weight) < 0:
+            raise ValueError("Objective E calibration contains a non-finite weight")
+        if statuses.get(name) == "active" and not 1.0e-3 <= float(weight) <= 10.0:
+            raise ValueError("Objective E active weight is outside the registered range")
+        if statuses.get(name) == "inactive_satisfied" and float(weight) != 0.0:
+            raise ValueError("satisfied Objective E auxiliary must have zero weight")
+    warmup_path = Path(str(artifact.get("warmup_checkpoint", "")))
+    warmup_hash = artifact.get("warmup_checkpoint_sha256")
+    if not warmup_path.is_absolute() or not warmup_path.is_file() or not isinstance(warmup_hash, str) or file_sha256(warmup_path) != warmup_hash:
+        raise ValueError("Objective E calibration warmup checkpoint is missing or tampered")
+    if evidence["inputs"].get("warmup_checkpoint") != warmup_hash or evidence["inputs"].get("calibration_artifact") != file_sha256(args.calibration_artifact):
+        raise ValueError("Objective E calibration evidence does not bind artifact and warmup")
+    return artifact, evidence
 
 
 def _root(spec: ElectronicO0Spec, action: str) -> Path:
@@ -158,8 +345,39 @@ def _root(spec: ElectronicO0Spec, action: str) -> Path:
     return root
 
 
-def _write_evidence(root: Path, spec: ElectronicO0Spec, args: argparse.Namespace, action: str, state: str, metrics: dict[str, Any], *, reason: str | None = None, extra: dict[str, str] | None = None, permitted: list[str] | None = None) -> Path:
-    payload = {"schema_version": 1, "evidence_kind": "electronic_objective_o0", "contract": OBJECTIVE_E_CONTRACT, "action": action, "state": state, "candidate": spec.candidate, "dataset": args.dataset, "seed": getattr(args, "seed", None), "config_hash": spec.config_hash, "inputs": {**objective_o0_input_hashes(spec, args.config), **_provenance(spec, args.config), **(extra or {})}, "metrics": metrics, "reason": reason, "formal_promotion_authorized": False, "permitted_next_actions": permitted or []}
+def _write_evidence(
+    root: Path,
+    spec: ElectronicO0Spec,
+    args: argparse.Namespace,
+    action: str,
+    state: str,
+    metrics: dict[str, Any],
+    *,
+    inputs: dict[str, str],
+    provenance: dict[str, str | None],
+    reason: str | None = None,
+    extra: dict[str, str] | None = None,
+    permitted: list[str] | None = None,
+) -> Path:
+    payload = {
+        "schema_version": 2,
+        "evidence_kind": "electronic_objective_o0",
+        "contract": OBJECTIVE_E_CONTRACT,
+        "action": action,
+        "state": state,
+        "candidate": spec.candidate,
+        "dataset": args.dataset,
+        "seed": getattr(args, "seed", None),
+        "config_hash": spec.config_hash,
+        "git_commit": provenance["git_commit"],
+        "dirty_patch_hash": provenance["dirty_patch_hash"],
+        "inputs": {**inputs, **(extra or {})},
+        "runtime": _DETERMINISTIC_RUNTIME,
+        "metrics": metrics,
+        "reason": reason,
+        "formal_promotion_authorized": False,
+        "permitted_next_actions": permitted or [],
+    }
     payload["content_hash"] = canonical_sha256(payload)
     path = root / f"objective_o0_{action}_evidence.json"
     atomic_write_json(path, payload)
@@ -173,11 +391,21 @@ def _load_candidate(spec: ElectronicO0Spec, device: torch.device) -> nn.Module:
     return model
 
 
-def _save_o0_checkpoint(root: Path, spec: ElectronicO0Spec, candidate: str, seed: int, completed_step: int, model: nn.Module, optimizer: torch.optim.Optimizer) -> Path:
+def _save_o0_checkpoint(
+    root: Path,
+    spec: ElectronicO0Spec,
+    candidate: str,
+    seed: int,
+    completed_step: int,
+    model: nn.Module,
+    optimizer: torch.optim.Optimizer,
+    *,
+    history: list[dict[str, Any]] | None = None,
+) -> Path:
     checkpoint = root / f"objective_o0_{candidate}_seed_{seed}_step_{completed_step}.pt"
-    payload = {"schema_version": 1, "contract": OBJECTIVE_E_CONTRACT, "config_hash": spec.config_hash, "candidate": candidate, "seed": seed, "completed_step": completed_step, "model_state": {name: value.detach().cpu() for name, value in model.state_dict().items()}, "optimizer_state": optimizer.state_dict(), "formal_promotion_authorized": False, "permitted_next_actions": []}
+    payload = {"schema_version": 2, "contract": OBJECTIVE_E_CONTRACT, "config_hash": spec.config_hash, "candidate": candidate, "seed": seed, "completed_step": completed_step, "model_state": {name: value.detach().cpu() for name, value in model.state_dict().items()}, "optimizer_state": optimizer.state_dict(), "history": list(history or []), "formal_promotion_authorized": False, "permitted_next_actions": []}
     atomic_torch_save(checkpoint, payload)
-    atomic_write_json(checkpoint.with_suffix(".json"), {"schema_version": 1, "contract": OBJECTIVE_E_CONTRACT, "config_hash": spec.config_hash, "candidate": candidate, "seed": seed, "completed_step": completed_step, "checkpoint": checkpoint.name, "checkpoint_sha256": file_sha256(checkpoint), "formal_promotion_authorized": False, "permitted_next_actions": []})
+    atomic_write_json(checkpoint.with_suffix(".json"), {"schema_version": 2, "contract": OBJECTIVE_E_CONTRACT, "config_hash": spec.config_hash, "candidate": candidate, "seed": seed, "completed_step": completed_step, "checkpoint": checkpoint.name, "checkpoint_sha256": file_sha256(checkpoint), "formal_promotion_authorized": False, "permitted_next_actions": []})
     return checkpoint
 
 
@@ -215,9 +443,9 @@ def _base_loss(model: nn.Module, candidate: str, evaluator: nn.Module, images: t
     return base, values, view
 
 
-def _load_evaluators(spec: ElectronicO0Spec, device: torch.device) -> tuple[nn.Module, nn.Module]:
-    primary, _ = load_frozen_evaluator(spec.evaluator_checkpoint, device=device)
-    secondary_payload = safe_torch_load(spec.secondary_evaluator_checkpoint)
+def _load_evaluators(args: argparse.Namespace, device: torch.device) -> tuple[nn.Module, nn.Module]:
+    primary, _ = load_frozen_evaluator(args.evaluator_checkpoint, device=device)
+    secondary_payload = safe_torch_load(args.secondary_evaluator_checkpoint)
     if not isinstance(secondary_payload, dict) or secondary_payload.get("architecture_kind") != SmoothMNISTEvaluator.architecture_kind:
         raise ValueError("electronic O0 secondary evaluator architecture mismatch")
     secondary = SmoothMNISTEvaluator().to(device)
@@ -256,34 +484,69 @@ def _control_metrics(spec: ElectronicO0Spec, primary: nn.Module, secondary: nn.M
     return {"real": real, "label_shuffle": shuffle, "template_unique": template_unique, "passed": min(real["primary_accuracy"], real["secondary_accuracy"]) >= 0.90 and max(shuffle.values()) < 0.95 and template_unique < 80}
 
 
+def _prepare_runtime(args: argparse.Namespace, spec: ElectronicO0Spec) -> tuple[dict[str, str | None], dict[str, str]]:
+    provenance = _require_clean(spec, args.config)
+    inputs = _validate_acceptance_chain(args, spec, provenance)
+    _configure_deterministic_runtime(int(args.seed))
+    return provenance, inputs
+
+
 def validate(args: argparse.Namespace) -> int:
     spec = load_objective_o0_spec(args.config)
     provenance = _require_clean(spec, args.config)
+    inputs = {"o0_config": file_sha256(args.config)}
     root = _root(spec, "validate")
     metrics = {"candidate": spec.candidate, "parameter_budget": spec.parameter_budget, "provenance": provenance}
-    path = _write_evidence(root, spec, args, "validate", "passed", metrics, permitted=["preflight"])
+    path = _write_evidence(root, spec, args, "validate", "passed", metrics, inputs=inputs, provenance=provenance, permitted=["preflight"])
     print(path)
     return 0
 
 
 def preflight(args: argparse.Namespace) -> int:
     spec = load_objective_o0_spec(args.config)
-    provenance = _require_clean(spec, args.config)
+    provenance, inputs = _prepare_runtime(args, spec)
+    _validate_o0_evidence(
+        args.validate_evidence,
+        spec=spec,
+        provenance=provenance,
+        action="validate",
+        state="passed",
+        permitted=["preflight"],
+        expected_inputs={"o0_config": inputs["o0_config"]},
+    )
     if spec.candidate == "O0-G" and not args.o0_i_evidence:
         raise ValueError("O0-G requires a passed O0-I evidence path")
     if spec.candidate == "O0-G":
-        upstream = json.loads(Path(args.o0_i_evidence).read_text(encoding="utf-8"))
-        if upstream.get("candidate") != "O0-I" or upstream.get("state") not in {"screen_passed", "locked_final_passed"}:
-            raise ValueError("O0-G requires a passed O0-I screen or locked-final evidence")
+        _validate_o0_evidence(
+            args.o0_i_evidence,
+            spec=None,
+            provenance=provenance,
+            action="locked-final",
+            state="locked_final_passed",
+            permitted=["closeout"],
+            expected_inputs={name: value for name, value in inputs.items() if name != "o0_config"},
+            candidate="O0-I",
+        )
     device = torch.device(args.device)
     model = _load_candidate(spec, device)
-    primary, secondary = _load_evaluators(spec, device)
+    primary, secondary = _load_evaluators(args, device)
     metrics = _preflight_model(model, spec, device, primary, secondary)
     metrics["controls"] = _control_metrics(spec, primary, secondary, device)
     metrics["provenance"] = provenance
     state = "preflight_passed" if all(metrics[k] for k in ("finite", "all_parameters_updated", "primary_evaluator_gradients_clean", "secondary_evaluator_gradients_clean")) and metrics["controls"]["passed"] else "preflight_failed"
     root = _root(spec, "preflight")
-    path = _write_evidence(root, spec, args, "preflight", state, metrics, permitted=["calibrate"] if state == "preflight_passed" else [])
+    path = _write_evidence(
+        root,
+        spec,
+        args,
+        "preflight",
+        state,
+        metrics,
+        inputs=inputs,
+        provenance=provenance,
+        extra={"validate_evidence": file_sha256(args.validate_evidence)},
+        permitted=["calibrate"] if state == "preflight_passed" else [],
+    )
     print(path)
     return 0 if state == "preflight_passed" else 1
 
@@ -293,7 +556,7 @@ def _calibrate(args: argparse.Namespace, spec: ElectronicO0Spec) -> tuple[dict[s
     images, labels = load_local_mnist(spec.dataset_root, train=True)
     images, labels = images.to(device), labels.to(device)
     model = _load_candidate(spec, device)
-    evaluator = _load_evaluators(spec, device)[0]
+    evaluator = _load_evaluators(args, device)[0]
     optimizer = torch.optim.Adam(model.parameters(), lr=2.0e-4)
     for step in range(spec.warmup_steps):
         indices, batch_labels = _balanced_batch(labels, seed=1234 + step, batch_size=spec.logical_batch_size, device=device)
@@ -338,17 +601,38 @@ def _calibrate(args: argparse.Namespace, spec: ElectronicO0Spec) -> tuple[dict[s
 
 def calibrate(args: argparse.Namespace) -> int:
     spec = load_objective_o0_spec(args.config)
-    _require_clean(spec, args.config)
-    prior = json.loads(Path(args.preflight_evidence).read_text(encoding="utf-8"))
-    if prior.get("state") != "preflight_passed" or prior.get("candidate") != spec.candidate:
-        raise ValueError("calibration requires passed matching preflight evidence")
+    provenance, inputs = _prepare_runtime(args, spec)
+    _validate_o0_evidence(
+        args.preflight_evidence,
+        spec=spec,
+        provenance=provenance,
+        action="preflight",
+        state="preflight_passed",
+        permitted=["calibrate"],
+        expected_inputs=inputs,
+    )
     weights, payload = _calibrate(args, spec)
     root = _root(spec, "calibrate")
     checkpoint = root / "objective_o0_warmup_step_400.pt"
     atomic_torch_save(checkpoint, payload)
     artifact = {"schema_version": 1, "contract": OBJECTIVE_E_CONTRACT, "candidate": spec.candidate, "weights": weights, "statuses": payload["statuses"], "warmup_steps": 400, "calibration_steps": [400, 401, 402, 403], "warmup_checkpoint": str(checkpoint.resolve()), "warmup_checkpoint_sha256": file_sha256(checkpoint), "formal_promotion_authorized": False, "permitted_next_actions": ["screen"]}
     atomic_write_json(root / "objective_o0_calibration.json", artifact)
-    evidence = _write_evidence(root, spec, args, "calibrate", "calibration_passed", artifact, extra={"preflight_evidence": file_sha256(args.preflight_evidence), "warmup_checkpoint": file_sha256(checkpoint)}, permitted=["screen"])
+    evidence = _write_evidence(
+        root,
+        spec,
+        args,
+        "calibrate",
+        "calibration_passed",
+        artifact,
+        inputs=inputs,
+        provenance=provenance,
+        extra={
+            "preflight_evidence": file_sha256(args.preflight_evidence),
+            "warmup_checkpoint": file_sha256(checkpoint),
+            "calibration_artifact": file_sha256(root / "objective_o0_calibration.json"),
+        },
+        permitted=["screen"],
+    )
     print(evidence)
     return 0
 
@@ -394,18 +678,14 @@ def _run_e_steps(model: nn.Module, optimizer: torch.optim.Optimizer, spec: Elect
 
 def screen(args: argparse.Namespace) -> int:
     spec = load_objective_o0_spec(args.config)
-    _require_clean(spec, args.config)
-    calibration = json.loads(Path(args.calibration_artifact).read_text(encoding="utf-8"))
-    evidence = json.loads(Path(args.calibration_evidence).read_text(encoding="utf-8"))
-    if evidence.get("state") != "calibration_passed" or evidence.get("permitted_next_actions") != ["screen"] or calibration.get("contract") != OBJECTIVE_E_CONTRACT:
-        raise ValueError("screen requires passed Objective E calibration")
+    provenance, inputs = _prepare_runtime(args, spec)
+    calibration, calibration_evidence = _validate_calibration(args, spec, provenance, inputs)
     device = torch.device(args.device)
     images, labels = load_local_mnist(spec.dataset_root, train=True)
-    primary, secondary = _load_evaluators(spec, device)
-    model = _load_candidate(spec, device)
-    root = _root(spec, "screen")
+    primary, secondary = _load_evaluators(args, device)
     reports = {}
     resume_payload = None
+    root: Path | None = None
     if args.resume_checkpoint:
         resume_path = Path(args.resume_checkpoint)
         if not resume_path.is_absolute() or not resume_path.is_file() or not resume_path.with_suffix(".json").is_file():
@@ -414,16 +694,21 @@ def screen(args: argparse.Namespace) -> int:
         if manifest.get("checkpoint_sha256") != file_sha256(resume_path) or manifest.get("contract") != OBJECTIVE_E_CONTRACT or manifest.get("config_hash") != spec.config_hash or manifest.get("formal_promotion_authorized") is not False or manifest.get("permitted_next_actions") != []:
             raise ValueError("resume checkpoint manifest is invalid")
         resume_payload = safe_torch_load(resume_path)
-        if not isinstance(resume_payload, dict) or resume_payload.get("config_hash") != spec.config_hash or resume_payload.get("candidate") not in {"A", "E"} or resume_payload.get("seed") != 1234:
+        if not isinstance(resume_payload, dict) or resume_payload.get("config_hash") != spec.config_hash or resume_payload.get("candidate") not in {"A", "E"} or resume_payload.get("seed") != 1234 or resume_payload.get("contract") != OBJECTIVE_E_CONTRACT:
             raise ValueError("resume checkpoint payload context is invalid")
-        if int(resume_payload.get("completed_step", -1)) not in {500, 600, 700, 800, 900, 984}:
+        if int(resume_payload.get("completed_step", -1)) not in {400, 500, 600, 700, 800, 900, 984}:
             raise ValueError("resume checkpoint completed step is not registered")
         root = resume_path.parent
+        if not isinstance(resume_payload.get("history"), list):
+            raise ValueError("resume checkpoint history is missing")
         if resume_payload.get("candidate") == "E":
             baseline_path = root / "objective_o0_A_report.json"
             if not baseline_path.is_file():
                 raise ValueError("E resume requires the completed A report")
             reports["A"] = json.loads(baseline_path.read_text(encoding="utf-8"))
+    if root is None:
+        root = _root(spec, "screen")
+    model = _load_candidate(spec, device)
     optimizer = torch.optim.Adam(model.parameters(), lr=2.0e-4)
     for candidate_kind in ("A", "E"):
         if resume_payload is not None and resume_payload.get("candidate") == "E" and candidate_kind == "A":
@@ -438,12 +723,14 @@ def screen(args: argparse.Namespace) -> int:
             raise ValueError("Objective E warmup checkpoint contract mismatch")
         model.load_state_dict(warmup["model_state"], strict=True)
         optimizer.load_state_dict(warmup["optimizer_state"])
-        history = []
+        history = list(resume_payload.get("history", [])) if resume_payload is not None and resume_payload.get("candidate") == candidate_kind else [{"step": 400, "active_objective": "A", "effective_weights": {name: 0.0 for name in ("camera", "diversity", "coverage")}}]
         start_step = 400
         if resume_payload is not None and resume_payload.get("candidate") == candidate_kind:
             model.load_state_dict(resume_payload["model_state"], strict=True)
             optimizer.load_state_dict(resume_payload["optimizer_state"])
             start_step = int(resume_payload["completed_step"])
+        elif start_step == 400:
+            _save_o0_checkpoint(root, spec, candidate_kind, 1234, 400, model, optimizer, history=history)
         for step in range(start_step, spec.screen_steps):
             indices, batch_labels = _balanced_batch(labels, seed=1234 + step, batch_size=spec.logical_batch_size, device=device)
             companion_indices, companion_labels = _balanced_batch(labels, seed=1234 * 100000 + step, batch_size=spec.logical_batch_size, device=device)
@@ -459,33 +746,40 @@ def screen(args: argparse.Namespace) -> int:
                 loss = base
             loss.backward()
             optimizer.step()
-            if step + 1 in {500, 600, 700, 800, 900, 984}:
-                _save_o0_checkpoint(root, spec, candidate_kind, 1234, step + 1, model, optimizer)
-            if step + 1 in {400, 984}:
+            if step + 1 in {400, 500, 600, 700, 800, 900, 984}:
                 history.append({"step": step + 1, "active_objective": "A" if step < 400 else candidate_kind, "effective_weights": {name: (0.0 if step < 400 else float(weights[name])) for name in weights}, "loss": float(loss.detach())})
+                _save_o0_checkpoint(root, spec, candidate_kind, 1234, step + 1, model, optimizer, history=history)
         reports[candidate_kind] = _measurement(model, spec, primary, secondary, images, labels, device)
         if candidate_kind == "A":
             atomic_write_json(root / "objective_o0_A_report.json", reports[candidate_kind])
+            atomic_write_json(root / "objective_o0_A_complete.json", {"candidate": "A", "completed_step": 984, "report_sha256": file_sha256(root / "objective_o0_A_report.json"), "formal_promotion_authorized": False, "permitted_next_actions": []})
     baseline, candidate = reports["A"], reports["E"]
     gates = {"camera": candidate["camera_code_fraction"] >= baseline["camera_code_fraction"] + .02, "diversity": candidate["minimum_diversity_ratio"] >= baseline["minimum_diversity_ratio"] + .05 and candidate["secondary_minimum_diversity_ratio"] >= baseline["secondary_minimum_diversity_ratio"] + .05, "coverage": candidate["coverage_ratio"] <= baseline["coverage_ratio"] - .05 and candidate["secondary_coverage_ratio"] <= baseline["secondary_coverage_ratio"] - .05, "accuracy": candidate["primary_accuracy"] >= baseline["primary_accuracy"] - .03 and candidate["secondary_accuracy"] >= baseline["secondary_accuracy"] - .03, "recall": candidate["primary_min_recall"] >= baseline["primary_min_recall"] - .05 and candidate["secondary_min_recall"] >= baseline["secondary_min_recall"] - .05, "saturation": candidate["saturation"] <= .08}
     state = "screen_passed" if all(gates.values()) else "screen_failed"
-    path = _write_evidence(root, spec, args, "screen", state, {"baseline": baseline, "candidate": candidate, "gates": gates, "formal_promotion_authorized": False}, extra={"calibration_evidence": file_sha256(args.calibration_evidence)}, permitted=["confirm"] if state == "screen_passed" else [])
+    path = _write_evidence(
+        root,
+        spec,
+        args,
+        "screen",
+        state,
+        {"baseline": baseline, "candidate": candidate, "gates": gates, "formal_promotion_authorized": False},
+        inputs=inputs,
+        provenance=provenance,
+        extra={"calibration_evidence": file_sha256(args.calibration_evidence), "calibration_artifact": file_sha256(args.calibration_artifact)},
+        permitted=["confirm"] if state == "screen_passed" else [],
+    )
     print(path)
     return 0 if state == "screen_passed" else 1
 
 
 def confirm(args: argparse.Namespace) -> int:
     spec = load_objective_o0_spec(args.config)
-    _require_clean(spec, args.config)
-    screen_evidence = json.loads(Path(args.screen_evidence).read_text(encoding="utf-8"))
-    if screen_evidence.get("state") != "screen_passed" or screen_evidence.get("permitted_next_actions") != ["confirm"]:
-        raise ValueError("confirmation requires passed screen evidence")
-    calibration = json.loads(Path(args.calibration_artifact).read_text(encoding="utf-8"))
-    if calibration.get("contract") != OBJECTIVE_E_CONTRACT or calibration.get("permitted_next_actions") != ["screen"]:
-        raise ValueError("confirmation calibration contract mismatch")
+    provenance, inputs = _prepare_runtime(args, spec)
+    calibration, _ = _validate_calibration(args, spec, provenance, inputs)
+    _validate_o0_evidence(args.screen_evidence, spec=spec, provenance=provenance, action="screen", state="screen_passed", permitted=["confirm"], expected_inputs=inputs)
     device = torch.device(args.device)
     images, labels = load_local_mnist(spec.dataset_root, train=True)
-    primary, secondary = _load_evaluators(spec, device)
+    primary, secondary = _load_evaluators(args, device)
     seed_rows = []
     for seed in spec.confirm_seeds:
         torch.manual_seed(seed)
@@ -504,23 +798,19 @@ def confirm(args: argparse.Namespace) -> int:
     passed = sum(row["passed"] for row in seed_rows) >= 2
     root = _root(spec, "confirm")
     payload = {"seeds": seed_rows, "screen_evidence": file_sha256(args.screen_evidence), "formal_promotion_authorized": False, "permitted_next_actions": ["locked-final"] if passed else []}
-    path = _write_evidence(root, spec, args, "confirm", "confirm_passed" if passed else "confirm_failed", payload, permitted=["locked-final"] if passed else [])
+    path = _write_evidence(root, spec, args, "confirm", "confirm_passed" if passed else "confirm_failed", payload, inputs=inputs, provenance=provenance, extra={"screen_evidence": file_sha256(args.screen_evidence), "calibration_evidence": file_sha256(args.calibration_evidence), "calibration_artifact": file_sha256(args.calibration_artifact)}, permitted=["locked-final"] if passed else [])
     print(path)
     return 0 if passed else 1
 
 
 def locked_final(args: argparse.Namespace) -> int:
     spec = load_objective_o0_spec(args.config)
-    _require_clean(spec, args.config)
-    evidence = json.loads(Path(args.confirm_evidence).read_text(encoding="utf-8"))
-    if evidence.get("state") != "confirm_passed" or evidence.get("permitted_next_actions") != ["locked-final"]:
-        raise ValueError("locked-final requires passed confirmation")
-    calibration = json.loads(Path(args.calibration_artifact).read_text(encoding="utf-8"))
-    if calibration.get("contract") != OBJECTIVE_E_CONTRACT or calibration.get("permitted_next_actions") != ["screen"]:
-        raise ValueError("locked-final calibration contract mismatch")
+    provenance, inputs = _prepare_runtime(args, spec)
+    calibration, _ = _validate_calibration(args, spec, provenance, inputs)
+    _validate_o0_evidence(args.confirm_evidence, spec=spec, provenance=provenance, action="confirm", state="confirm_passed", permitted=["locked-final"], expected_inputs=inputs)
     device = torch.device(args.device)
     images, labels = load_local_mnist(spec.dataset_root, train=True)
-    primary, secondary = _load_evaluators(spec, device)
+    primary, secondary = _load_evaluators(args, device)
     rows = []
     for seed in spec.confirm_seeds:
         torch.manual_seed(seed)
@@ -535,16 +825,17 @@ def locked_final(args: argparse.Namespace) -> int:
     passed = sum(row["passed"] for row in rows) >= 2
     root = _root(spec, "locked-final")
     payload = {"rows": rows, "confirm_evidence": file_sha256(args.confirm_evidence), "formal_promotion_authorized": False, "permitted_next_actions": ["closeout"] if passed else []}
-    path = _write_evidence(root, spec, args, "locked-final", "locked_final_passed" if passed else "locked_final_failed", payload, permitted=["closeout"] if passed else [])
+    path = _write_evidence(root, spec, args, "locked-final", "locked_final_passed" if passed else "locked_final_failed", payload, inputs=inputs, provenance=provenance, extra={"confirm_evidence": file_sha256(args.confirm_evidence), "calibration_evidence": file_sha256(args.calibration_evidence), "calibration_artifact": file_sha256(args.calibration_artifact)}, permitted=["closeout"] if passed else [])
     print(path)
     return 0 if passed else 1
 
 
 def closeout(args: argparse.Namespace) -> int:
     spec = load_objective_o0_spec(args.config)
-    _require_clean(spec, args.config)
+    provenance, inputs = _prepare_runtime(args, spec)
+    _validate_o0_evidence(args.source_evidence, spec=spec, provenance=provenance, action="locked-final", state="locked_final_passed", permitted=["closeout"], expected_inputs=inputs)
     root = _root(spec, "closeout")
-    summary = {"candidate": spec.candidate, "contract": OBJECTIVE_E_CONTRACT, "status": "closed", "formal_promotion_authorized": False, "permitted_next_actions": []}
+    summary = {"candidate": spec.candidate, "contract": OBJECTIVE_E_CONTRACT, "status": "closed", "source_evidence": file_sha256(args.source_evidence), "formal_promotion_authorized": False, "permitted_next_actions": []}
     path = root / "objective_o0_closeout.json"
     atomic_write_json(path, summary)
     print(path)

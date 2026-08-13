@@ -79,9 +79,17 @@ def register_research(root: argparse._SubParsersAction) -> None:
         command.add_argument("--config", required=True)
         command.add_argument("--dataset", choices=("mnist",), default="mnist")
         command.add_argument("--device", choices=("cuda", "cpu"), default="cuda")
+        if action != "validate":
+            command.add_argument("--evaluator-checkpoint", required=True)
+            command.add_argument("--primary-qualification-evidence", required=True)
+            command.add_argument("--secondary-evaluator-checkpoint", required=True)
+            command.add_argument("--secondary-training-evidence", required=True)
+            command.add_argument("--measurement-bundle", required=True)
+            command.add_argument("--measurement-evidence", required=True)
         if action in {"preflight", "calibrate", "screen", "confirm", "locked-final"}:
             command.add_argument("--seed", type=int, default=1234)
         if action == "preflight":
+            command.add_argument("--validate-evidence", required=True)
             command.add_argument("--o0-i-evidence")
         if action == "calibrate":
             command.add_argument("--preflight-evidence", required=True)
@@ -92,6 +100,10 @@ def register_research(root: argparse._SubParsersAction) -> None:
         if action == "confirm":
             command.add_argument("--screen-evidence", required=True)
             command.add_argument("--calibration-artifact", required=True)
+            command.add_argument("--calibration-evidence", required=True)
         if action == "locked-final":
             command.add_argument("--confirm-evidence", required=True)
             command.add_argument("--calibration-artifact", required=True)
+            command.add_argument("--calibration-evidence", required=True)
+        if action == "closeout":
+            command.add_argument("--source-evidence", required=True)
