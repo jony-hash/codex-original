@@ -45,6 +45,49 @@ This explicit routing is required when Codex starts at the repository root, beca
    explicit gates, and fail-closed stops. If verification is unavailable, report
    the blocker and lost guarantee; do not silently downgrade the result.
 
+### Long-Training Preflight And Counterfactual Gate
+
+This rule applies to every repository training path, including v1, v2,
+research, diagnostics, one-off scripts, and newly added trainers. A run is
+long when it is expected to use at least 15 GPU-minutes or 30 wall-clock
+minutes, or when its result will select a model/objective, support a scientific
+claim, or authorize a downstream stage.
+
+- Before starting a long run, execute a short real-update trial through the
+  same entrypoint, model, loss, optimizer, data path, evaluator, device, and
+  essential configuration. By default use three optimizer steps; use the
+  smallest representative batch that exercises every registered trainable
+  parameter group. Verify finite inputs/loss/gradients/parameters, a real
+  update in every intended group, no update in frozen/evaluator parameters,
+  expected tensor/physical semantics, and sufficient memory headroom.
+- Before a comparative, objective-selection, or scientific run, also execute
+  the smallest domain-appropriate counterfactual that should fail the claimed
+  direction, such as shuffled labels/codes, a disabled control, a frozen
+  objective term, or a deliberately mismatched lineage input. State the
+  expected rejection before running it. If the negative control passes the
+  intended gate, classify the harness as invalid and do not start the long run.
+- When checkpoint recovery will be relied on, the short trial must include one
+  interrupted/resumed segment and prove that it continues at the next batch
+  with compatible model, optimizer, RNG, schedule, and history state. If this
+  cannot be demonstrated, either run without claiming resumability or stop;
+  never advertise or silently attempt an unverified resume.
+- Keep the entire ordinary preflight within the smaller of five minutes and
+  5% of the planned run time. For high-risk scientific or acceptance runs,
+  the cap is the smaller of ten minutes and 10%. If even one representative
+  update cannot fit the applicable cap, stop and report the compute blocker;
+  do not replace it with a non-representative CPU or reduced-model success.
+- Record the short-trial command, immutable inputs, elapsed time, peak memory,
+  observed gates, counterfactual result, and the exact long command it
+  authorizes. A source/config/data/optimizer/evaluator change that can affect
+  these observations invalidates the authorization; documentation-only or
+  unrelated changes do not.
+- A valid short trial authorizes only the predeclared long run. It does not
+  predict final model quality. A valid scientific failure still stops the
+  registered branch, while an invalid harness is repaired and rechecked.
+- Satisfy this rule with the existing trainer's smallest safe controls. Do not
+  introduce a generic contract framework, new public CLI, or evidence schema
+  solely to comply unless the user explicitly requests that engineering work.
+
 ### Minimal Implementation And Failure Semantics
 
 - Trust documented internal types, framework guarantees, and established
