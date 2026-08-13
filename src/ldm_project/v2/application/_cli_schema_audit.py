@@ -648,3 +648,5 @@ def register_audit(root: argparse._SubParsersAction) -> None:
     objective_calibration.add_argument("--config", required=True)
     for name in ("dataset_root", "evaluator_checkpoint", "initialization_checkpoint", "injection_evidence"):
         objective_calibration.add_argument("--" + name.replace("_", "-"), required=True)
+    objective_calibration.add_argument("--contract")
+    objective_calibration.add_argument("--run-root")

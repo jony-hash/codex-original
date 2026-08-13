@@ -1060,6 +1060,7 @@ def objective_alignment_screen(args, config) -> int:
 
 
 def objective_alignment_confirm(args, config) -> int:
+    _optional_experiment_contract(args, config)
     _require_identity(config)
     screen = EvidenceRecordV2.from_dict(json.loads(Path(args.screen_evidence).read_text(encoding="utf-8")))
     if screen.evidence_kind != "conditional_objective_alignment_screen" or screen.status != "passed" or "confirm" not in screen.permitted_next_actions:
