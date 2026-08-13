@@ -42,7 +42,7 @@ class ElectronicO0Spec:
     coverage_target: float = 1.35
     fixed_exposure_scale: float = 0.4913053810596466
     require_clean_git: bool = True
-    harness_revision: int = 1
+    harness_revision: int = 6
 
     @property
     def config_hash(self) -> str:
@@ -69,8 +69,8 @@ class ElectronicO0Spec:
             raise ValueError("electronic O0 parameter budget is invalid")
         if not (0.0 < self.camera_target < 1.0 and self.diversity_lower < self.diversity_upper and self.coverage_target > 0.0 and self.fixed_exposure_scale > 0.0):
             raise ValueError("electronic O0 acceptance targets are invalid")
-        if self.harness_revision < 1:
-            raise ValueError("electronic O0 harness revision is invalid")
+        if self.harness_revision != 6:
+            raise ValueError("electronic O0 harness revision 6 is required")
 
 
 def load_objective_o0_spec(path: str | Path) -> ElectronicO0Spec:

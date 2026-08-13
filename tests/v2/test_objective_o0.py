@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import torch
 import pytest
+import json
 
 from ldm_project.v2.application.cli import _parser
 from ldm_project.v2.application.research.objective_o0 import (
@@ -14,6 +15,8 @@ from ldm_project.v2.application.research.objective_o0 import (
     deterministic_joint_companion_indices,
     objective_e_dispatch,
     _training_batch,
+    _save_o0_checkpoint,
+    _load_lifecycle_checkpoint,
 )
 from ldm_project.v2.application.research.objective_o0_spec import load_objective_o0_spec
 from ldm_project.v2.application.research.o0_models import ElectronicImageOracleGenerator, build_o0_candidate
@@ -108,4 +111,33 @@ def test_training_batch_binds_same_schedule_across_candidates_and_steps() -> Non
 def test_o0_harness_revision_is_bumped_for_lifecycle_contract() -> None:
     image = load_objective_o0_spec("configs/research/electronic_objective_o0_v1_image.yaml")
     generator = load_objective_o0_spec("configs/research/electronic_objective_o0_v1_generator.yaml")
-    assert image.harness_revision == generator.harness_revision == 5
+    assert image.harness_revision == generator.harness_revision == 6
+
+
+def test_lifecycle_checkpoint_requires_explicit_action_and_run_root(tmp_path) -> None:
+    spec = load_objective_o0_spec("configs/research/electronic_objective_o0_v1_image.yaml")
+    model = build_o0_candidate("O0-I")
+    optimizer = torch.optim.Adam(model.parameters(), lr=1.0e-3)
+    inputs = {"input": "hash"}
+    provenance = {"git_commit": "commit", "dirty_patch_hash": None}
+    checkpoint = _save_o0_checkpoint(
+        tmp_path,
+        spec,
+        "O0-I",
+        1234,
+        100,
+        model,
+        optimizer,
+        input_hashes=inputs,
+        provenance=provenance,
+        action="screen",
+        run_root=str(tmp_path),
+    )
+    loaded = _load_lifecycle_checkpoint(str(checkpoint), spec=spec, inputs=inputs, provenance=provenance, action="screen")
+    assert loaded["action"] == "screen"
+    manifest_path = checkpoint.with_suffix(".json")
+    manifest = json.loads(manifest_path.read_text())
+    manifest.pop("action")
+    manifest_path.write_text(json.dumps(manifest))
+    with pytest.raises(ValueError, match="manifest"):
+        _load_lifecycle_checkpoint(str(checkpoint), spec=spec, inputs=inputs, provenance=provenance, action="screen")

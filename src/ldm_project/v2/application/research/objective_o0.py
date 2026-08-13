@@ -63,6 +63,7 @@ OBJECTIVE_E_CONTRACT = canonical_sha256({
     "checkpoint": "rng_schedule_lineage_bound_v3",
     "measurement_panel": "official_panel_content_bound_v2",
     "resume": "explicit_bound_checkpoint_v3",
+    "harness_revision": 6,
 })
 
 _DETERMINISTIC_RUNTIME = {
@@ -475,6 +476,13 @@ def _root(spec: ElectronicO0Spec, action: str) -> Path:
     return root
 
 
+def _announce_run_root(root: Path, *, resumed: bool) -> None:
+    """Expose the sole run directory before any long-running work starts."""
+    print(f"RUN_ROOT={root.resolve()}", flush=True)
+    if resumed:
+        print(f"RESUMED_FROM={root.resolve()}", flush=True)
+
+
 def _write_evidence(
     root: Path,
     spec: ElectronicO0Spec,
@@ -534,17 +542,21 @@ def _save_o0_checkpoint(
     input_hashes: dict[str, str] | None = None,
     provenance: dict[str, str | None] | None = None,
     stage: str = "training",
+    action: str = "screen",
+    run_root: str | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> Path:
     checkpoint = root / f"objective_o0_{candidate}_seed_{seed}_step_{completed_step}.pt"
     payload = {
-        "schema_version": 3,
+        "schema_version": 4,
         "contract": OBJECTIVE_E_CONTRACT,
         "config_hash": spec.config_hash,
         "candidate": candidate,
         "seed": seed,
         "completed_step": completed_step,
         "stage": stage,
+        "action": action,
+        "run_root": str(Path(run_root or root).resolve()),
         "model_state": {name: value.detach().cpu() for name, value in model.state_dict().items()},
         "optimizer_state": optimizer.state_dict(),
         "rng_state": {"cpu": torch.get_rng_state(), "cuda": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else []},
@@ -556,7 +568,7 @@ def _save_o0_checkpoint(
         "metadata": dict(metadata or {}),
     }
     atomic_torch_save(checkpoint, payload)
-    atomic_write_json(checkpoint.with_suffix(".json"), {"schema_version": 3, "contract": OBJECTIVE_E_CONTRACT, "config_hash": spec.config_hash, "candidate": candidate, "seed": seed, "completed_step": completed_step, "stage": stage, "checkpoint": checkpoint.name, "checkpoint_sha256": file_sha256(checkpoint), "input_hashes": dict(input_hashes or {}), "provenance": dict(provenance or {}), "metadata": dict(metadata or {}), "formal_promotion_authorized": False, "permitted_next_actions": []})
+    atomic_write_json(checkpoint.with_suffix(".json"), {"schema_version": 4, "contract": OBJECTIVE_E_CONTRACT, "config_hash": spec.config_hash, "candidate": candidate, "seed": seed, "completed_step": completed_step, "stage": stage, "action": action, "run_root": str(Path(run_root or root).resolve()), "checkpoint": checkpoint.name, "checkpoint_sha256": file_sha256(checkpoint), "input_hashes": dict(input_hashes or {}), "provenance": dict(provenance or {}), "metadata": dict(metadata or {}), "formal_promotion_authorized": False, "permitted_next_actions": []})
     return checkpoint
 
 
@@ -566,10 +578,10 @@ def _load_lifecycle_checkpoint(path: str, *, spec: ElectronicO0Spec, inputs: dic
     if not checkpoint.is_absolute() or not checkpoint.is_file() or not manifest_path.is_file():
         raise ValueError("resume checkpoint must be an absolute path with an adjacent manifest")
     manifest = _read_mapping(manifest_path, description="resume checkpoint manifest")
-    if manifest.get("schema_version") != 3 or manifest.get("checkpoint_sha256") != file_sha256(checkpoint) or manifest.get("contract") != OBJECTIVE_E_CONTRACT or manifest.get("config_hash") != spec.config_hash or manifest.get("formal_promotion_authorized") is not False or manifest.get("permitted_next_actions") != [] or manifest.get("input_hashes") != inputs or manifest.get("provenance") != provenance:
+    if manifest.get("schema_version") != 4 or manifest.get("checkpoint_sha256") != file_sha256(checkpoint) or manifest.get("contract") != OBJECTIVE_E_CONTRACT or manifest.get("config_hash") != spec.config_hash or manifest.get("formal_promotion_authorized") is not False or manifest.get("permitted_next_actions") != [] or manifest.get("input_hashes") != inputs or manifest.get("provenance") != provenance or manifest.get("action") != action or manifest.get("run_root") != str(checkpoint.parent.resolve()):
         raise ValueError("resume checkpoint manifest is invalid")
     payload = safe_torch_load(checkpoint)
-    if not isinstance(payload, dict) or payload.get("schema_version") != 3 or payload.get("contract") != OBJECTIVE_E_CONTRACT or payload.get("config_hash") != spec.config_hash or payload.get("input_hashes") != inputs or payload.get("provenance") != provenance or payload.get("action") not in {None, action}:
+    if not isinstance(payload, dict) or payload.get("schema_version") != 4 or payload.get("contract") != OBJECTIVE_E_CONTRACT or payload.get("config_hash") != spec.config_hash or payload.get("input_hashes") != inputs or payload.get("provenance") != provenance or payload.get("action") != action or payload.get("run_root") != str(checkpoint.parent.resolve()):
         raise ValueError("resume checkpoint payload context is invalid")
     if not isinstance(payload.get("history"), list) or not isinstance(payload.get("rng_state"), dict):
         raise ValueError("resume checkpoint state is incomplete")
@@ -1107,7 +1119,7 @@ def _official_measurement(model: nn.Module, spec: ElectronicO0Spec, primary: nn.
     }
 
 
-def _run_e_steps(model: nn.Module, optimizer: torch.optim.Optimizer, spec: ElectronicO0Spec, primary: nn.Module, images: torch.Tensor, labels: torch.Tensor, *, start_step: int, end_step: int, weights: dict[str, float], active: bool, device: torch.device, seed: int = 1234, checkpoint_callback: Any | None = None) -> None:
+def _run_e_steps(model: nn.Module, optimizer: torch.optim.Optimizer, spec: ElectronicO0Spec, primary: nn.Module, images: torch.Tensor, labels: torch.Tensor, *, start_step: int, end_step: int, weights: dict[str, float], active: bool, device: torch.device, seed: int = 1234, checkpoint_callback: Any | None = None, history: list[dict[str, Any]] | None = None) -> None:
     for step in range(start_step, end_step):
         indices, batch_labels, companion_indices, companion_labels, schedule = _training_batch(
             labels,
@@ -1132,6 +1144,8 @@ def _run_e_steps(model: nn.Module, optimizer: torch.optim.Optimizer, spec: Elect
             loss = base
         loss.backward()
         optimizer.step()
+        if history is not None:
+            history.append({"step": step + 1, "active_objective": "E" if active else "A", "effective_weights": dict(weights), "schedule": schedule})
         if checkpoint_callback is not None:
             checkpoint_callback(step + 1, schedule)
 
@@ -1143,37 +1157,21 @@ def screen(args: argparse.Namespace) -> int:
     device = torch.device(args.device)
     images, labels = load_local_mnist(spec.dataset_root, train=True)
     primary, secondary = _load_evaluators(args, device)
-    reports = {}
-    resume_payload = None
-    root: Path | None = None
-    if args.resume_checkpoint:
-        resume_path = Path(args.resume_checkpoint)
-        if not resume_path.is_absolute() or not resume_path.is_file() or not resume_path.with_suffix(".json").is_file():
-            raise ValueError("resume checkpoint must be an absolute path with an adjacent manifest")
-        manifest = json.loads(resume_path.with_suffix(".json").read_text(encoding="utf-8"))
-        if manifest.get("schema_version") != 3 or manifest.get("checkpoint_sha256") != file_sha256(resume_path) or manifest.get("contract") != OBJECTIVE_E_CONTRACT or manifest.get("config_hash") != spec.config_hash or manifest.get("formal_promotion_authorized") is not False or manifest.get("permitted_next_actions") != []:
-            raise ValueError("resume checkpoint manifest is invalid")
-        resume_payload = safe_torch_load(resume_path)
-        if not isinstance(resume_payload, dict) or resume_payload.get("schema_version") != 3 or resume_payload.get("config_hash") != spec.config_hash or resume_payload.get("candidate") not in {"A", "E"} or resume_payload.get("seed") != 1234 or resume_payload.get("contract") != OBJECTIVE_E_CONTRACT or resume_payload.get("input_hashes") != inputs or resume_payload.get("provenance") != provenance:
-            raise ValueError("resume checkpoint payload context is invalid")
-        if int(resume_payload.get("completed_step", -1)) not in {100, 200, 300, 400, 500, 600, 700, 800, 900, 984}:
-            raise ValueError("resume checkpoint completed step is not registered")
-        root = resume_path.parent
-        if not isinstance(resume_payload.get("history"), list) or not isinstance(resume_payload.get("rng_state"), dict):
-            raise ValueError("resume checkpoint history is missing")
-        history_steps = [row.get("step") for row in resume_payload["history"] if isinstance(row, dict)]
+    reports: dict[str, Any] = {}
+    resume_payload = _load_lifecycle_checkpoint(args.resume_checkpoint, spec=spec, inputs=inputs, provenance=provenance, action="screen") if args.resume_checkpoint else None
+    root = Path(args.resume_checkpoint).parent if args.resume_checkpoint else _root(spec, "screen")
+    _announce_run_root(root, resumed=resume_payload is not None)
+    if resume_payload is not None:
+        if resume_payload.get("candidate") not in {"A", "E"} or resume_payload.get("seed") != 1234:
+            raise ValueError("screen resume checkpoint candidate or seed is invalid")
         completed = int(resume_payload.get("completed_step", -1))
-        if history_steps != list(range(1, completed + 1)):
-            raise ValueError("resume checkpoint history is not contiguous")
+        if completed not in {100, 200, 300, 400, 500, 600, 700, 800, 900, 984}:
+            raise ValueError("screen resume checkpoint completed step is not registered")
         if resume_payload.get("candidate") == "E":
             baseline_path = root / "objective_o0_A_report.json"
             if not baseline_path.is_file():
                 raise ValueError("E resume requires the completed A report")
             reports["A"] = json.loads(baseline_path.read_text(encoding="utf-8"))
-    if root is None:
-        root = _root(spec, "screen")
-    model = _load_candidate(spec, device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=2.0e-4)
     for candidate_kind in ("A", "E"):
         if resume_payload is not None and resume_payload.get("candidate") == "E" and candidate_kind == "A":
             continue
@@ -1185,8 +1183,7 @@ def screen(args: argparse.Namespace) -> int:
         warmup = safe_torch_load(warmup_path, map_location=device)
         if not isinstance(warmup, dict) or warmup.get("contract") != OBJECTIVE_E_CONTRACT or warmup.get("warmup_steps") != 400:
             raise ValueError("Objective E warmup checkpoint contract mismatch")
-        # Rebuild the shared warmup from immutable initialization. Loading the
-        # calibration state directly would conceal a schedule or runtime fork.
+        # Resume warmup directly from its checkpoint; never replay completed steps.
         warmup_history: list[dict[str, Any]] = []
         def save_warmup(completed_step: int, schedule: dict[str, Any]) -> None:
             if candidate_kind != "A":
@@ -1194,22 +1191,22 @@ def screen(args: argparse.Namespace) -> int:
             warmup_history.append({"step": completed_step, "active_objective": "A", "effective_weights": {name: 0.0 for name in ("camera", "diversity", "coverage")}, "schedule": schedule})
             if completed_step not in {100, 200, 300, 400}:
                 return
-            _save_o0_checkpoint(root, spec, candidate_kind, 1234, completed_step, model, optimizer, history=warmup_history, input_hashes=inputs, provenance=provenance, stage="warmup")
-        _run_e_steps(
-            model,
-            optimizer,
-            spec,
-            primary,
-            images,
-            labels,
-            start_step=0,
-            end_step=spec.warmup_steps,
-            weights={"camera": 0.0, "diversity": 0.0, "coverage": 0.0},
-            active=False,
-            device=device,
-            seed=spec.split_seed,
-            checkpoint_callback=save_warmup,
-        )
+            _save_o0_checkpoint(root, spec, candidate_kind, 1234, completed_step, model, optimizer, history=warmup_history, input_hashes=inputs, provenance=provenance, stage="warmup", action="screen", run_root=str(root))
+        history: list[dict[str, Any]] = []
+        candidate_resume = resume_payload is not None and resume_payload.get("candidate") == candidate_kind
+        resume_step = int(resume_payload.get("completed_step", 0)) if candidate_resume else 0
+        if candidate_resume:
+            model.load_state_dict(resume_payload["model_state"], strict=True)
+            optimizer.load_state_dict(resume_payload["optimizer_state"])
+            torch.set_rng_state(resume_payload["rng_state"]["cpu"])
+            if torch.cuda.is_available() and resume_payload["rng_state"].get("cuda"):
+                torch.cuda.set_rng_state_all(resume_payload["rng_state"]["cuda"])
+            history = list(resume_payload["history"])
+            if resume_step < spec.warmup_steps:
+                warmup_history = history
+                _run_e_steps(model, optimizer, spec, primary, images, labels, start_step=resume_step, end_step=spec.warmup_steps, weights={"camera": 0.0, "diversity": 0.0, "coverage": 0.0}, active=False, device=device, seed=spec.split_seed, checkpoint_callback=save_warmup)
+        else:
+            _run_e_steps(model, optimizer, spec, primary, images, labels, start_step=0, end_step=spec.warmup_steps, weights={"camera": 0.0, "diversity": 0.0, "coverage": 0.0}, active=False, device=device, seed=spec.split_seed, checkpoint_callback=save_warmup)
         rebuilt_state_hash = canonical_sha256({name: value.detach().cpu() for name, value in model.state_dict().items()})
         rebuilt_optimizer_hash = canonical_sha256(optimizer.state_dict())
         rebuilt_schedule = []
@@ -1223,22 +1220,17 @@ def screen(args: argparse.Namespace) -> int:
                 device=device,
             )
             rebuilt_schedule.append(schedule)
-        if rebuilt_state_hash != calibration.get("warmup_model_state_hash") or rebuilt_optimizer_hash != calibration.get("warmup_optimizer_state_hash") or canonical_sha256(rebuilt_schedule) != calibration.get("warmup_schedule_hash"):
+        if not (candidate_resume and resume_step > spec.warmup_steps) and (rebuilt_state_hash != calibration.get("warmup_model_state_hash") or rebuilt_optimizer_hash != calibration.get("warmup_optimizer_state_hash") or canonical_sha256(rebuilt_schedule) != calibration.get("warmup_schedule_hash")):
             raise ValueError("Objective E screen warmup does not match calibration lineage")
-        history = list(resume_payload.get("history", [])) if resume_payload is not None and resume_payload.get("candidate") == candidate_kind else [
+        history = history if candidate_resume else [
             {"step": warmup_step + 1, "active_objective": "A", "effective_weights": {name: 0.0 for name in ("camera", "diversity", "coverage")}, "schedule": rebuilt_schedule[warmup_step]}
             for warmup_step in range(spec.warmup_steps)
         ]
         start_step = 400
-        if resume_payload is not None and resume_payload.get("candidate") == candidate_kind:
-            model.load_state_dict(resume_payload["model_state"], strict=True)
-            optimizer.load_state_dict(resume_payload["optimizer_state"])
-            torch.set_rng_state(resume_payload["rng_state"]["cpu"])
-            if torch.cuda.is_available() and resume_payload["rng_state"].get("cuda"):
-                torch.cuda.set_rng_state_all(resume_payload["rng_state"]["cuda"])
-            start_step = int(resume_payload["completed_step"])
-        elif start_step == 400:
-            _save_o0_checkpoint(root, spec, candidate_kind, 1234, 400, model, optimizer, history=history, input_hashes=inputs, provenance=provenance, stage="warmup")
+        if candidate_resume:
+            start_step = max(400, resume_step)
+        else:
+            _save_o0_checkpoint(root, spec, candidate_kind, 1234, 400, model, optimizer, history=history, input_hashes=inputs, provenance=provenance, stage="warmup", action="screen", run_root=str(root))
         for step in range(start_step, spec.screen_steps):
             indices, batch_labels, companion_indices, companion_labels, schedule = _training_batch(
                 labels,
@@ -1262,11 +1254,12 @@ def screen(args: argparse.Namespace) -> int:
             optimizer.step()
             history.append({"step": step + 1, "active_objective": "A" if step < 400 else candidate_kind, "effective_weights": {name: (0.0 if step < 400 else float(weights[name])) for name in weights}, "loss": float(loss.detach()), "schedule": schedule})
             if step + 1 in {400, 500, 600, 700, 800, 900, 984}:
-                _save_o0_checkpoint(root, spec, candidate_kind, 1234, step + 1, model, optimizer, history=history, input_hashes=inputs, provenance=provenance, stage=candidate_kind)
+                _save_o0_checkpoint(root, spec, candidate_kind, 1234, step + 1, model, optimizer, history=history, input_hashes=inputs, provenance=provenance, stage=candidate_kind, action="screen", run_root=str(root))
         reports[candidate_kind] = _measurement(model, spec, primary, secondary, images, labels, device)
         if candidate_kind == "A":
             atomic_write_json(root / "objective_o0_A_report.json", reports[candidate_kind])
-            atomic_write_json(root / "objective_o0_A_complete.json", {"candidate": "A", "completed_step": 984, "report_sha256": file_sha256(root / "objective_o0_A_report.json"), "formal_promotion_authorized": False, "permitted_next_actions": []})
+            _save_o0_checkpoint(root, spec, "A", 1234, 984, model, optimizer, history=history, input_hashes=inputs, provenance=provenance, stage="A-complete", action="screen", run_root=str(root), metadata={"report_sha256": file_sha256(root / "objective_o0_A_report.json")})
+            atomic_write_json(root / "objective_o0_A_complete.json", {"candidate": "A", "completed_step": 984, "checkpoint": "objective_o0_A_seed_1234_step_984.pt", "report_sha256": file_sha256(root / "objective_o0_A_report.json"), "formal_promotion_authorized": False, "permitted_next_actions": []})
     baseline, candidate = reports["A"], reports["E"]
     gates = {"camera": candidate["camera_code_fraction"] >= baseline["camera_code_fraction"] + .02, "diversity": candidate["minimum_diversity_ratio"] >= baseline["minimum_diversity_ratio"] + .05 and candidate["secondary_minimum_diversity_ratio"] >= baseline["secondary_minimum_diversity_ratio"] + .05, "coverage": candidate["coverage_ratio"] <= baseline["coverage_ratio"] - .05 and candidate["secondary_coverage_ratio"] <= baseline["secondary_coverage_ratio"] - .05, "accuracy": candidate["primary_accuracy"] >= baseline["primary_accuracy"] - .03 and candidate["secondary_accuracy"] >= baseline["secondary_accuracy"] - .03, "recall": candidate["primary_min_recall"] >= baseline["primary_min_recall"] - .05 and candidate["secondary_min_recall"] >= baseline["secondary_min_recall"] - .05, "saturation": candidate["saturation"] <= .08}
     state = "screen_passed" if all(gates.values()) else "screen_failed"
@@ -1299,29 +1292,83 @@ def confirm(args: argparse.Namespace) -> int:
     resume_index = 0
     if args.resume_checkpoint:
         resume_payload = _load_lifecycle_checkpoint(args.resume_checkpoint, spec=spec, inputs=inputs, provenance=provenance, action="confirm")
-        if resume_payload.get("stage") != "confirm" or resume_payload.get("metadata", {}).get("next_seed_index") is None:
+        if resume_payload.get("stage") not in {"warmup", "A", "A-complete", "E", "seed-complete"}:
             raise ValueError("confirmation resume checkpoint stage is invalid")
         seed_rows = list(resume_payload.get("metadata", {}).get("seed_rows", []))
-        resume_index = int(resume_payload["metadata"]["next_seed_index"])
+        metadata = resume_payload.get("metadata", {})
+        resume_index = int(metadata.get("next_seed_index", metadata.get("seed_index", 0)))
         resume_root = Path(args.resume_checkpoint).parent
+        _announce_run_root(resume_root, resumed=True)
+    else:
+        resume_root = _root(spec, "confirm")
+        _announce_run_root(resume_root, resumed=False)
     for seed_index, seed in enumerate(spec.confirm_seeds):
         if seed_index < resume_index:
+            continue
+        if args.resume_checkpoint and seed == int(resume_payload.get("seed", -1)) and resume_index == seed_index and resume_payload.get("stage") != "seed-complete":
+            if resume_payload.get("candidate") == "E":
+                a_checkpoint = resume_root / f"objective_o0_A_seed_{seed}_step_{spec.screen_steps}.pt"
+                a_payload = _load_lifecycle_checkpoint(str(a_checkpoint), spec=spec, inputs=inputs, provenance=provenance, action="confirm")
+                model_a = _load_candidate(spec, device)
+                optimizer_a = torch.optim.Adam(model_a.parameters(), lr=2.0e-4)
+                model_a.load_state_dict(a_payload["model_state"], strict=True)
+                optimizer_a.load_state_dict(a_payload["optimizer_state"])
+                model_e = _load_candidate(spec, device)
+                optimizer_e = torch.optim.Adam(model_e.parameters(), lr=2.0e-4)
+                model_e.load_state_dict(resume_payload["model_state"], strict=True)
+                optimizer_e.load_state_dict(resume_payload["optimizer_state"])
+                history_e = list(resume_payload["history"])
+                def resume_e(step: int, schedule: dict[str, Any]) -> None:
+                    if step in {500, 600, 700, 800, 900, 984}:
+                        _save_o0_checkpoint(resume_root, spec, "E", seed, step, model_e, optimizer_e, history=history_e, input_hashes=inputs, provenance=provenance, stage="seed-complete" if step == 984 else "E", action="confirm", run_root=str(resume_root), metadata={"next_seed_index": seed_index + (1 if step == 984 else 0), "seed_index": seed_index, "seed_rows": seed_rows})
+                _run_e_steps(model_e, optimizer_e, spec, primary, images, labels, start_step=int(resume_payload["completed_step"]), end_step=spec.screen_steps, weights=calibration["weights"], active=True, device=device, seed=seed, checkpoint_callback=resume_e, history=history_e)
+            else:
+                model_a = _load_candidate(spec, device)
+                optimizer_a = torch.optim.Adam(model_a.parameters(), lr=2.0e-4)
+                model_a.load_state_dict(resume_payload["model_state"], strict=True)
+                optimizer_a.load_state_dict(resume_payload["optimizer_state"])
+                history_a = list(resume_payload["history"])
+                def resume_a(step: int, schedule: dict[str, Any]) -> None:
+                    if step in {500, 600, 700, 800, 900, 984}:
+                        _save_o0_checkpoint(resume_root, spec, "A", seed, step, model_a, optimizer_a, history=history_a, input_hashes=inputs, provenance=provenance, stage="A-complete" if step == 984 else "A", action="confirm", run_root=str(resume_root), metadata={"next_seed_index": seed_index, "seed_index": seed_index, "seed_rows": seed_rows})
+                completed = int(resume_payload["completed_step"])
+                if completed < spec.screen_steps:
+                    _run_e_steps(model_a, optimizer_a, spec, primary, images, labels, start_step=completed, end_step=spec.screen_steps, weights={"camera": 0.0, "diversity": 0.0, "coverage": 0.0}, active=False, device=device, seed=seed, checkpoint_callback=resume_a, history=history_a)
+                model_e = _load_candidate(spec, device)
+                model_e.load_state_dict(model_a.state_dict(), strict=True)
+                optimizer_e = torch.optim.Adam(model_e.parameters(), lr=2.0e-4)
+                optimizer_e.load_state_dict(optimizer_a.state_dict())
+                history_e = []
+                _run_e_steps(model_e, optimizer_e, spec, primary, images, labels, start_step=400, end_step=spec.screen_steps, weights=calibration["weights"], active=True, device=device, seed=seed, history=history_e)
+            a, e = _measurement(model_a, spec, primary, secondary, images, labels, device), _measurement(model_e, spec, primary, secondary, images, labels, device)
+            passed = e["camera_code_fraction"] >= a["camera_code_fraction"] + .02 and e["minimum_diversity_ratio"] >= a["minimum_diversity_ratio"] + .05 and e["secondary_minimum_diversity_ratio"] >= a["secondary_minimum_diversity_ratio"] + .05 and e["coverage_ratio"] <= a["coverage_ratio"] - .05 and e["secondary_coverage_ratio"] <= a["secondary_coverage_ratio"] - .05 and e["primary_accuracy"] >= a["primary_accuracy"] - .03 and e["secondary_accuracy"] >= a["secondary_accuracy"] - .03 and e["primary_min_recall"] >= a["primary_min_recall"] - .05 and e["secondary_min_recall"] >= a["secondary_min_recall"] - .05 and e["saturation"] <= .08
+            seed_rows.append({"seed": seed, "passed": passed, "A": a, "E": e})
+            _save_o0_checkpoint(resume_root, spec, "E", seed, spec.screen_steps, model_e, optimizer_e, history=history_e, input_hashes=inputs, provenance=provenance, stage="seed-complete", action="confirm", run_root=str(resume_root), metadata={"next_seed_index": seed_index + 1, "seed_rows": seed_rows})
+            resume_payload = None
             continue
         torch.manual_seed(seed)
         model_a = _load_candidate(spec, device)
         optimizer_a = torch.optim.Adam(model_a.parameters(), lr=2.0e-4)
-        _run_e_steps(model_a, optimizer_a, spec, primary, images, labels, start_step=0, end_step=400, weights={"camera": 0.0, "diversity": 0.0, "coverage": 0.0}, active=False, device=device, seed=seed)
+        history_a: list[dict[str, Any]] = []
+        def save_confirm_a(completed_step: int, schedule: dict[str, Any]) -> None:
+            if completed_step in {100, 200, 300, 400, 500, 600, 700, 800, 900, 984}:
+                _save_o0_checkpoint(resume_root, spec, "A", seed, completed_step, model_a, optimizer_a, history=history_a, input_hashes=inputs, provenance=provenance, stage="warmup" if completed_step <= 400 else ("A-complete" if completed_step == 984 else "A"), action="confirm", run_root=str(resume_root), metadata={"seed_index": seed_index, "next_seed_index": seed_index, "seed_rows": seed_rows})
+        _run_e_steps(model_a, optimizer_a, spec, primary, images, labels, start_step=0, end_step=400, weights={"camera": 0.0, "diversity": 0.0, "coverage": 0.0}, active=False, device=device, seed=seed, checkpoint_callback=save_confirm_a, history=history_a)
         model_e = _load_candidate(spec, device)
         model_e.load_state_dict(model_a.state_dict(), strict=True)
         optimizer_e = torch.optim.Adam(model_e.parameters(), lr=2.0e-4)
         optimizer_e.load_state_dict(optimizer_a.state_dict())
-        _run_e_steps(model_a, optimizer_a, spec, primary, images, labels, start_step=400, end_step=spec.screen_steps, weights={"camera": 0.0, "diversity": 0.0, "coverage": 0.0}, active=False, device=device, seed=seed)
-        _run_e_steps(model_e, optimizer_e, spec, primary, images, labels, start_step=400, end_step=spec.screen_steps, weights=calibration["weights"], active=True, device=device, seed=seed)
+        _run_e_steps(model_a, optimizer_a, spec, primary, images, labels, start_step=400, end_step=spec.screen_steps, weights={"camera": 0.0, "diversity": 0.0, "coverage": 0.0}, active=False, device=device, seed=seed, checkpoint_callback=save_confirm_a, history=history_a)
+        history_e: list[dict[str, Any]] = []
+        def save_confirm_e(completed_step: int, schedule: dict[str, Any]) -> None:
+            if completed_step in {500, 600, 700, 800, 900, 984}:
+                _save_o0_checkpoint(resume_root, spec, "E", seed, completed_step, model_e, optimizer_e, history=history_e, input_hashes=inputs, provenance=provenance, stage="seed-complete" if completed_step == 984 else "E", action="confirm", run_root=str(resume_root), metadata={"next_seed_index": seed_index + (1 if completed_step == 984 else 0), "seed_index": seed_index, "seed_rows": seed_rows})
+        _run_e_steps(model_e, optimizer_e, spec, primary, images, labels, start_step=400, end_step=spec.screen_steps, weights=calibration["weights"], active=True, device=device, seed=seed, checkpoint_callback=save_confirm_e, history=history_e)
         a, e = _measurement(model_a, spec, primary, secondary, images, labels, device), _measurement(model_e, spec, primary, secondary, images, labels, device)
         passed = e["camera_code_fraction"] >= a["camera_code_fraction"] + .02 and e["minimum_diversity_ratio"] >= a["minimum_diversity_ratio"] + .05 and e["secondary_minimum_diversity_ratio"] >= a["secondary_minimum_diversity_ratio"] + .05 and e["coverage_ratio"] <= a["coverage_ratio"] - .05 and e["secondary_coverage_ratio"] <= a["secondary_coverage_ratio"] - .05 and e["primary_accuracy"] >= a["primary_accuracy"] - .03 and e["secondary_accuracy"] >= a["secondary_accuracy"] - .03 and e["primary_min_recall"] >= a["primary_min_recall"] - .05 and e["secondary_min_recall"] >= a["secondary_min_recall"] - .05 and e["saturation"] <= .08
         seed_rows.append({"seed": seed, "passed": passed, "A": a, "E": e})
         root = resume_root or _root(spec, "confirm")
-        _save_o0_checkpoint(root, spec, "E", seed, spec.screen_steps, model_e, optimizer_e, history=[], input_hashes=inputs, provenance=provenance, stage="confirm", metadata={"next_seed_index": seed_index + 1, "seed_rows": seed_rows})
+        _save_o0_checkpoint(root, spec, "E", seed, spec.screen_steps, model_e, optimizer_e, history=[], input_hashes=inputs, provenance=provenance, stage="seed-complete", action="confirm", run_root=str(root), metadata={"next_seed_index": seed_index + 1, "seed_rows": seed_rows})
         resume_root = root
     passed = sum(row["passed"] for row in seed_rows) >= 2
     root = _root(spec, "confirm")
@@ -1353,21 +1400,39 @@ def locked_final(args: argparse.Namespace) -> int:
         model = _load_candidate(spec, device)
         optimizer = torch.optim.Adam(model.parameters(), lr=2.0e-4)
         zero = {"camera": 0.0, "diversity": 0.0, "coverage": 0.0}
+        final_history: list[dict[str, Any]] = []
         final_root = None
+        resume_step = 0
         if args.resume_checkpoint:
             resume_payload = _load_lifecycle_checkpoint(args.resume_checkpoint, spec=spec, inputs=inputs, provenance=provenance, action="locked-final")
-            if resume_payload.get("stage") != "locked-final" or resume_payload.get("completed_step") != spec.final_steps:
-                raise ValueError("locked-final resume checkpoint must be the completed training boundary")
+            if resume_payload.get("stage") != "locked-final":
+                raise ValueError("locked-final resume checkpoint stage is invalid")
             model.load_state_dict(resume_payload["model_state"], strict=True)
             optimizer.load_state_dict(resume_payload["optimizer_state"])
             final_root = Path(args.resume_checkpoint).parent
+            resume_step = int(resume_payload["completed_step"])
+            if resume_step < 0 or resume_step > spec.final_steps:
+                raise ValueError("locked-final resume step is outside the registered budget")
+            _announce_run_root(final_root, resumed=True)
         else:
             final_root = _root(spec, "locked-final")
+            _announce_run_root(final_root, resumed=False)
             def save_final_boundary(completed_step: int, schedule: dict[str, Any]) -> None:
                 if completed_step == 400 or completed_step % 246 == 0 or completed_step == spec.final_steps:
-                    _save_o0_checkpoint(final_root, spec, "E", seed, completed_step, model, optimizer, history=[], input_hashes=inputs, provenance=provenance, stage="locked-final", metadata={"measurement_ready": completed_step == spec.final_steps, "schedule": schedule})
-            _run_e_steps(model, optimizer, spec, primary, train_images, train_labels, start_step=0, end_step=400, weights=zero, active=False, device=device, seed=seed, checkpoint_callback=save_final_boundary)
-            _run_e_steps(model, optimizer, spec, primary, train_images, train_labels, start_step=400, end_step=spec.final_steps, weights=calibration["weights"], active=True, device=device, seed=seed, checkpoint_callback=save_final_boundary)
+                    _save_o0_checkpoint(final_root, spec, "E", seed, completed_step, model, optimizer, history=final_history, input_hashes=inputs, provenance=provenance, stage="locked-final", action="locked-final", run_root=str(final_root), metadata={"measurement_ready": completed_step == spec.final_steps, "schedule": schedule})
+            _run_e_steps(model, optimizer, spec, primary, train_images, train_labels, start_step=0, end_step=400, weights=zero, active=False, device=device, seed=seed, checkpoint_callback=save_final_boundary, history=final_history)
+            _run_e_steps(model, optimizer, spec, primary, train_images, train_labels, start_step=400, end_step=spec.final_steps, weights=calibration["weights"], active=True, device=device, seed=seed, checkpoint_callback=save_final_boundary, history=final_history)
+        if args.resume_checkpoint and resume_step < 400:
+            def resume_boundary(completed_step: int, schedule: dict[str, Any]) -> None:
+                if completed_step == 400 or completed_step % 246 == 0 or completed_step == spec.final_steps:
+                    _save_o0_checkpoint(final_root, spec, "E", seed, completed_step, model, optimizer, history=final_history, input_hashes=inputs, provenance=provenance, stage="locked-final", action="locked-final", run_root=str(final_root), metadata={"measurement_ready": completed_step == spec.final_steps, "schedule": schedule})
+            _run_e_steps(model, optimizer, spec, primary, train_images, train_labels, start_step=resume_step, end_step=400, weights=zero, active=False, device=device, seed=seed, checkpoint_callback=resume_boundary, history=final_history)
+            _run_e_steps(model, optimizer, spec, primary, train_images, train_labels, start_step=400, end_step=spec.final_steps, weights=calibration["weights"], active=True, device=device, seed=seed, checkpoint_callback=resume_boundary, history=final_history)
+        elif args.resume_checkpoint and resume_step < spec.final_steps:
+            def resume_active_boundary(completed_step: int, schedule: dict[str, Any]) -> None:
+                if completed_step % 246 == 0 or completed_step == spec.final_steps:
+                    _save_o0_checkpoint(final_root, spec, "E", seed, completed_step, model, optimizer, history=final_history, input_hashes=inputs, provenance=provenance, stage="locked-final", action="locked-final", run_root=str(final_root), metadata={"measurement_ready": completed_step == spec.final_steps, "schedule": schedule})
+            _run_e_steps(model, optimizer, spec, primary, train_images, train_labels, start_step=resume_step, end_step=spec.final_steps, weights=calibration["weights"], active=True, device=device, seed=seed, checkpoint_callback=resume_active_boundary, history=final_history)
         measurement = _official_measurement(model, spec, primary, secondary, test_images, test_labels, device)
         gates = {"primary_accuracy": measurement["primary_accuracy"] >= .95, "secondary_accuracy": measurement["secondary_accuracy"] >= .95, "primary_recall": measurement["primary_min_recall"] >= .90, "secondary_recall": measurement["secondary_min_recall"] >= .90, "agreement": measurement["prediction_agreement"] >= .95, "camera": measurement["camera_code_fraction"] >= .25, "diversity": measurement["minimum_diversity_ratio"] >= .70 and measurement["minimum_diversity_ratio"] <= 1.30 and measurement["secondary_minimum_diversity_ratio"] >= .70 and measurement["secondary_minimum_diversity_ratio"] <= 1.30, "coverage": measurement["coverage_ratio"] <= 1.5 and measurement["secondary_coverage_ratio"] <= 1.5, "saturation": measurement["saturation"] <= .08}
         rows.append({"seed": seed, "measurement": measurement, "gates": gates, "passed": all(gates.values())})
