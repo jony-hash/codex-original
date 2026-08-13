@@ -423,10 +423,10 @@ def _balanced_batch(labels: torch.Tensor, *, seed: int, batch_size: int, device:
     rows = []
     per_class = batch_size // 10
     for label in range(10):
-        choices = torch.nonzero(labels == label, as_tuple=False).flatten()
+        choices = torch.nonzero(labels == label, as_tuple=False).flatten().cpu()
         rows.append(choices.index_select(0, torch.randint(choices.numel(), (per_class,), generator=generator)))
-    indices = torch.cat(rows)
-    return indices.to(device), labels.index_select(0, indices).to(device)
+    indices = torch.cat(rows).to(device)
+    return indices, labels.index_select(0, indices).to(device)
 
 
 def _base_loss(model: nn.Module, candidate: str, evaluator: nn.Module, images: torch.Tensor, labels: torch.Tensor, codes: torch.Tensor, *, companion_images: torch.Tensor | None = None, companion_labels: torch.Tensor | None = None) -> tuple[torch.Tensor, dict[str, torch.Tensor], torch.Tensor]:
