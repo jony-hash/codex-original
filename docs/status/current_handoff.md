@@ -187,6 +187,12 @@ Objective D 的科学失败。后续 v6 修复启用 strict deterministic runtim
 warmup 使用实际消费的零 auxiliary weights；v5 calibration、screen 与 checkpoint
 不得授权 v6。
 
+在 `b7f1638` 上的 CUDA deterministic preflight 已 fail closed：
+`adaptive_avg_pool2d_backward_cuda does not have a deterministic implementation`。
+因此当前 PyTorch/CUDA 环境无法满足 v6 的逐位 warmup 合同；未重签资格链、未运行
+v6 calibration 或 screen。该阻断是 invalid harness/环境能力问题，不构成 Objective D
+失败；在获得支持 deterministic backward 的运行环境或批准新的等价实现前，保持停止。
+
 ---
 
 # 历史主线记录：v2.2 条件性负结果已封存（2026-08-04）
