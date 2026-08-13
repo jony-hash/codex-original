@@ -26,9 +26,6 @@ def register_student(root: argparse._SubParsersAction) -> None:
         admit.add_argument("--" + name.replace("_", "-"), required=True)
     train = student.add_parser("train")
     train.add_argument("--config", required=True)
-    train.add_argument("--contract")
-    train.add_argument("--run-root")
-    train.add_argument("--resume-checkpoint")
     for name in (
         "prototype_evidence",
         "capacity_evidence",
@@ -53,8 +50,6 @@ def register_student(root: argparse._SubParsersAction) -> None:
         )
     evaluator = student.add_parser("train-evaluator")
     evaluator.add_argument("--config", required=True)
-    evaluator.add_argument("--contract")
-    evaluator.add_argument("--run-root")
     evaluator.add_argument("--dataset-root", required=True)
     evaluator.add_argument("--epochs", type=int, default=20)
     evaluator.add_argument("--batch-size", type=int, default=128)
@@ -64,8 +59,6 @@ def register_student(root: argparse._SubParsersAction) -> None:
     qualify.add_argument("--evaluator-checkpoint", required=True)
     acceptance_evaluator = student.add_parser("train-acceptance-evaluator")
     acceptance_evaluator.add_argument("--config", required=True)
-    acceptance_evaluator.add_argument("--contract")
-    acceptance_evaluator.add_argument("--run-root")
     acceptance_evaluator.add_argument("--dataset-root", required=True)
     acceptance_evaluator.add_argument("--epochs", type=int, default=10)
     acceptance_evaluator.add_argument("--batch-size", type=int, default=256)
@@ -77,12 +70,8 @@ def register_student(root: argparse._SubParsersAction) -> None:
     for name in ("dataset_root", "evaluator_checkpoint", "acceptance_evaluator_checkpoint", "acceptance_measurement_bundle", "acceptance_measurement_evidence", "initialization_checkpoint", "injection_evidence", "weight_calibration", "weight_calibration_evidence", "warmup_checkpoint"):
         objective_screen.add_argument("--" + name.replace("_", "-"), required=True)
     objective_screen.add_argument("--resume-checkpoint")
-    objective_screen.add_argument("--contract")
-    objective_screen.add_argument("--run-root")
     objective_confirm = student.add_parser("objective-alignment-confirm")
     objective_confirm.add_argument("--config", required=True)
-    objective_confirm.add_argument("--contract")
-    objective_confirm.add_argument("--run-root")
     for name in ("dataset_root", "evaluator_checkpoint", "acceptance_evaluator_checkpoint", "acceptance_measurement_bundle", "acceptance_measurement_evidence", "initialization_checkpoint", "injection_evidence", "screen_evidence"):
         objective_confirm.add_argument("--" + name.replace("_", "-"), required=True)
     controllability = student.add_parser("controllability-smoke")

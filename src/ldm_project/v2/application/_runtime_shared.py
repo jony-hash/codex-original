@@ -77,10 +77,10 @@ def require_clean_acceptance_worktree(config: V2Config) -> None:
         raise ValueError("acceptance operations require a clean git commit")
 
 
-def new_run(config: V2Config, *, output_root: str | None = None) -> V2Run:
+def new_run(config: V2Config) -> V2Run:
     require_clean_acceptance_worktree(config)
     return V2Run.create(
-        output_root=output_root or config.run.output_root,
+        output_root=config.run.output_root,
         run_name=config.run.run_name,
         config_payload=config.model_dump(mode="json"),
     )

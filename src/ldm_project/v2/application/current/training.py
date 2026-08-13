@@ -27,7 +27,6 @@ from .admission import (
     _schedule_hash,
 )
 from .recovery import _conditional_optimizer
-from ...experiment_contract import capture_rng_state, load_experiment_contract, validate_contract_inputs
 
 
 def _validate_two_step_parameter_updates(
@@ -189,23 +188,6 @@ def conditional_train(args, config: V2Config) -> int:
         images, all_labels, args.dataset_root
     )
     evaluator, _ = load_frozen_evaluator(args.evaluator_checkpoint, device=device)
-    experiment_contract = None
-    if getattr(args, "contract", None):
-        if not getattr(args, "run_root", None):
-            raise ValueError("--run-root is required when --contract is supplied")
-        if not Path(args.run_root).is_absolute():
-            raise ValueError("--run-root must be an absolute path")
-        experiment_contract = load_experiment_contract(args.contract)
-        validate_contract_inputs(
-            experiment_contract,
-            {
-                "config": canonical_sha256(config.model_dump(mode="json")),
-                "dataset_split": split.manifest_hash,
-                "evaluator": evaluator_checkpoint_hash(args.evaluator_checkpoint),
-            },
-        )
-        if experiment_contract.level not in {"L2", "L3"}:
-            raise ValueError("current long training requires an L2 or L3 experiment contract")
     if config.architecture == IDENTITY_ARCHITECTURE:
         bundle, init_manifest = _load_bundle(
             config,
@@ -344,7 +326,7 @@ def conditional_train(args, config: V2Config) -> int:
             "current training history does not match the balanced schedule "
             f"({expected_steps_per_epoch} steps/epoch, {expected_total_steps} total)"
         )
-    run = _new_run(config, output_root=args.run_root) if experiment_contract is not None else _new_run(config)
+    run = _new_run(config)
     checkpoint_path = run.root / "conditional_optical_generator.pt"
     manifest = ConditionalCheckpointManifestV2(
         2,
@@ -389,10 +371,6 @@ def conditional_train(args, config: V2Config) -> int:
             "schedule_total_steps": expected_total_steps
             if config.architecture == IDENTITY_ARCHITECTURE
             else None,
-            "optimizer_state": optimizer.state_dict(),
-            "rng_state": capture_rng_state(),
-            "completed_step": update_steps,
-            "experiment_contract_hash": experiment_contract.digest if experiment_contract is not None else None,
         },
     )
     checkpoint_hash = file_sha256(checkpoint_path)
@@ -412,8 +390,6 @@ def conditional_train(args, config: V2Config) -> int:
         inputs["schedule_steps_per_epoch"] = str(expected_steps_per_epoch)
         inputs["schedule_total_steps"] = str(expected_total_steps)
         inputs["companion_schedule_hash"] = canonical_sha256(companion_schedule)
-    if experiment_contract is not None:
-        inputs["experiment_contract"] = experiment_contract.digest
     record = EvidenceRecordV2(
         2,
         "conditional_training",
