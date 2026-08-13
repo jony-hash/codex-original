@@ -55,6 +55,25 @@ from ..current.training import _conditional_parameter_groups, _validate_current_
 from ...student.checkpoints import state_content_hash
 from ...evidence.records import require_evidence_action, require_input_hashes
 from ..runs import V2Run
+from ...experiment_contract import load_experiment_contract, validate_contract_inputs
+
+
+def _optional_experiment_contract(args, config):
+    path = getattr(args, "contract", None)
+    if not path:
+        return None
+    if not getattr(args, "run_root", None):
+        raise ValueError("--run-root is required when --contract is supplied")
+    if not Path(args.run_root).is_absolute():
+        raise ValueError("--run-root must be an absolute path")
+    contract = load_experiment_contract(path)
+    if contract.level != "L3":
+        raise ValueError("objective alignment requires an L3 experiment contract")
+    validate_contract_inputs(
+        contract,
+        {"config": canonical_sha256(config.model_dump(mode="json"))},
+    )
+    return contract
 
 
 OBJECTIVE_DIAGNOSTIC_CONTRACT_SPEC = {
@@ -769,6 +788,7 @@ def _run_resumable_candidate(run, candidate, primary, train_images, train_labels
 
 
 def conditional_objective_weight_calibration(args, config) -> int:
+    experiment_contract = _optional_experiment_contract(args, config)
     _require_identity(config)
     train_images, train_labels, _, _, split, primary, injection, bundle, manifest, init_hash, evaluator_hash = _load_primary_inputs(args, config)
     warmup_history, warmup_primary_schedule, warmup_companion_schedule, warmup_optimizer, warmup_updates = _run_steps(
@@ -813,7 +833,7 @@ def conditional_objective_weight_calibration(args, config) -> int:
         "formal_promotion_authorized": False,
         "input_hashes": input_bindings,
     }
-    run = _new_run(config)
+    run = _new_run(config, output_root=args.run_root) if experiment_contract is not None else _new_run(config)
     warmup_checkpoint = run.root / "conditional_objective_warmup_step_400.pt"
     atomic_torch_save(
         warmup_checkpoint,
@@ -928,6 +948,7 @@ def _read_calibration(path: str, evidence_path: str, warmup_path: str, config, e
 
 
 def objective_alignment_screen(args, config) -> int:
+    experiment_contract = _optional_experiment_contract(args, config)
     _require_identity(config)
     train_images, train_labels, validation_images, validation_labels, split, primary, secondary, measurement, evaluator_hash, secondary_hash = _load_measurement_inputs(args, config)
     injection = _load_injection(args, config, split, evaluator_hash)
@@ -964,7 +985,7 @@ def objective_alignment_screen(args, config) -> int:
             update_status = warmup_payload["update_status"]
             start_step = 400
     else:
-        run = _new_run(config)
+        run = _new_run(config, output_root=args.run_root) if experiment_contract is not None else _new_run(config)
         print(f"screen run={run.root}", flush=True)
         reports = {}
         kind = "A"

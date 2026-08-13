@@ -61,6 +61,10 @@ def _dispatch(args: argparse.Namespace) -> int:
             from .research.objective_o0 import dispatch
 
             return int(dispatch(args) or 0)
+        if args.research_program == "experiment":
+            from .research.experiment import dispatch
+
+            return int(dispatch(args) or 0)
         if args.research_program != "capacity-map":
             raise RuntimeError(f"unknown research program {args.research_program}")
         from .research.capacity_map import dispatch

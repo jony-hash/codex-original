@@ -36,6 +36,7 @@ from .runtime import (
     _split,
     _write_evidence,
 )
+from ...experiment_contract import load_experiment_contract, validate_contract_inputs
 
 
 ACCEPTANCE_MEASUREMENT_CONTRACT = canonical_sha256(
@@ -127,9 +128,19 @@ def train_acceptance_evaluator(args, config) -> int:
     device = torch.device(config.run.device)
     images, labels = load_local_mnist(args.dataset_root, train=True)
     train_images, train_labels, validation_images, validation_labels, split = _split(images, labels, args.dataset_root)
+    contract = None
+    if getattr(args, "contract", None):
+        if not getattr(args, "run_root", None):
+            raise ValueError("--run-root is required when --contract is supplied")
+        if not Path(args.run_root).is_absolute():
+            raise ValueError("--run-root must be an absolute path")
+        contract = load_experiment_contract(args.contract)
+        if contract.level not in {"L2", "L3"}:
+            raise ValueError("acceptance evaluator training requires an L2 or L3 contract")
+        validate_contract_inputs(contract, {"config": canonical_sha256(config.model_dump(mode="json")), "dataset_split": split.manifest_hash})
     model = _train_smooth(train_images, train_labels, device, epochs=args.epochs, batch_size=args.batch_size)
     accuracy, recall, _ = _accuracy_recall(model, validation_images.to(device), validation_labels.to(device))
-    run = _new_run(config)
+    run = _new_run(config, output_root=args.run_root) if contract is not None else _new_run(config)
     checkpoint = run.root / "smooth_mnist_acceptance_evaluator.pt"
     atomic_torch_save(
         checkpoint,
@@ -160,7 +171,7 @@ def train_acceptance_evaluator(args, config) -> int:
         run.dirty_patch_hash,
         run.config_hash,
         _context(config, evaluator_hash=file_sha256(checkpoint), split_hash=split.manifest_hash),
-        {"acceptance_evaluator": file_sha256(checkpoint), "contract": ACCEPTANCE_MEASUREMENT_CONTRACT},
+        {"acceptance_evaluator": file_sha256(checkpoint), "contract": ACCEPTANCE_MEASUREMENT_CONTRACT} | ({"experiment_contract": contract.digest} if contract is not None else {}),
         (gate,),
         ("qualify_acceptance_measurement",) if gate.passed else (),
         None if gate.passed else "secondary acceptance evaluator qualification failed",
