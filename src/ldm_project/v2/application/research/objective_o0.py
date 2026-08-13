@@ -68,6 +68,15 @@ _DETERMINISTIC_RUNTIME = {
 }
 
 
+class ObjectiveScalingNotQualified(ValueError):
+    """Calibration violated a registered active-set safety bound."""
+
+    def __init__(self, name: str, weight: float) -> None:
+        super().__init__(f"active-set calibration produced unsafe {name} weight")
+        self.name = name
+        self.weight = weight
+
+
 def objective_e_dispatch(step: int, registered_weights: dict[str, float]) -> tuple[str, dict[str, float]]:
     """Return the active objective and consumed weights for a zero-based step."""
     if step < 0:
@@ -652,7 +661,7 @@ def _calibrate(args: argparse.Namespace, spec: ElectronicO0Spec) -> tuple[dict[s
         aux_rms = torch.stack(norms[name]).square().mean().sqrt()
         weights[name] = 0.0 if statuses[name] == "inactive_satisfied" else float((0.25 * base_rms / aux_rms.clamp_min(1.0e-12)).item())
         if weights[name] and not 1.0e-3 <= weights[name] <= 10.0:
-            raise ValueError(f"active-set calibration produced unsafe {name} weight")
+            raise ObjectiveScalingNotQualified(name, weights[name])
     run = {"model_state": warmup_state, "optimizer_state": warmup_optimizer, "warmup_steps": spec.warmup_steps, "calibration_steps": list(spec.calibration_steps), "weights": weights, "statuses": statuses, "contract": OBJECTIVE_E_CONTRACT}
     return weights, run
 
@@ -669,7 +678,25 @@ def calibrate(args: argparse.Namespace) -> int:
         permitted=["calibrate"],
         expected_inputs=inputs,
     )
-    weights, payload = _calibrate(args, spec)
+    try:
+        weights, payload = _calibrate(args, spec)
+    except ObjectiveScalingNotQualified as error:
+        root = _root(spec, "calibrate")
+        path = _write_evidence(
+            root,
+            spec,
+            args,
+            "calibrate",
+            "calibration_failed",
+            {"classification": "objective_scaling_not_qualified", "auxiliary": error.name, "unsafe_weight": error.weight},
+            inputs=inputs,
+            provenance=provenance,
+            reason="registered active-set weight safety bound failed",
+            extra={"preflight_evidence": file_sha256(args.preflight_evidence)},
+            permitted=[],
+        )
+        print(path)
+        return 1
     root = _root(spec, "calibrate")
     checkpoint = root / "objective_o0_warmup_step_400.pt"
     atomic_torch_save(checkpoint, payload)
