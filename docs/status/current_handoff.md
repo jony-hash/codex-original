@@ -164,6 +164,25 @@ for context; those records must not be rewritten or used as current acceptance.
 
 ---
 
+## Objective D 可恢复 screen 工程状态（2026-08-13）
+
+当前分支仍保持 objective A；`7de2a87` 上的 v4 calibration 仅为只读数值
+记录。此前 screen 未产生可恢复 checkpoint，且运行时未持久化阶段状态，因此
+不能复用已消耗的训练步骤，也不构成 Objective D 的有效失败。
+
+本次收口将 diagnostic contract 升级为 v5，并引入显式绝对路径
+`--resume-checkpoint`。checkpoint 只服务 screen consumer，绑定干净提交、配置、
+split、初始化、evaluator、measurement、injection、calibration 和自身 hash；中间
+状态始终 `formal_promotion_authorized=false` 且无下一 action。恢复 lineage、状态、
+schedule 或 manifest 任一不匹配即停止。训练 objective、400 步 activation、984 步
+screen、物理架构、current YAML 和正式验收阈值均不变。
+
+代码提交和全新资格链完成前，不授权 screen；新 calibration 通过后才启动 seed
+1234 screen。有效 screen 失败则按预注册规则关闭 Objective D family；通过也只
+允许 `confirm`，不能直接进入 objective selection、formal training 或 evaluation。
+
+---
+
 # 历史主线记录：v2.2 条件性负结果已封存（2026-08-04）
 
 ## 当前状态

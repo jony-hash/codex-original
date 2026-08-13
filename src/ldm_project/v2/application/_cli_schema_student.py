@@ -69,6 +69,7 @@ def register_student(root: argparse._SubParsersAction) -> None:
     objective_screen.add_argument("--config", required=True)
     for name in ("dataset_root", "evaluator_checkpoint", "acceptance_evaluator_checkpoint", "acceptance_measurement_bundle", "acceptance_measurement_evidence", "initialization_checkpoint", "injection_evidence", "weight_calibration", "weight_calibration_evidence"):
         objective_screen.add_argument("--" + name.replace("_", "-"), required=True)
+    objective_screen.add_argument("--resume-checkpoint")
     objective_confirm = student.add_parser("objective-alignment-confirm")
     objective_confirm.add_argument("--config", required=True)
     for name in ("dataset_root", "evaluator_checkpoint", "acceptance_evaluator_checkpoint", "acceptance_measurement_bundle", "acceptance_measurement_evidence", "initialization_checkpoint", "injection_evidence", "screen_evidence"):

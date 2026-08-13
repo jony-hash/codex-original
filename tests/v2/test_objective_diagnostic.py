@@ -147,6 +147,16 @@ def test_objective_commands_are_content_bound() -> None:
     )
     assert screen.weight_calibration == "w"
     assert screen.weight_calibration_evidence == "we"
+    resumed = parser.parse_args(
+        [
+            "student", "objective-alignment-screen", "--config", "c", "--dataset-root", "d",
+            "--evaluator-checkpoint", "p", "--acceptance-evaluator-checkpoint", "s",
+            "--acceptance-measurement-bundle", "b", "--acceptance-measurement-evidence", "m",
+            "--initialization-checkpoint", "i", "--injection-evidence", "j", "--weight-calibration", "w",
+            "--weight-calibration-evidence", "we", "--resume-checkpoint", "/tmp/screen.pt",
+        ]
+    )
+    assert resumed.resume_checkpoint == "/tmp/screen.pt"
     assert not hasattr(screen, "baseline_measurement")
     confirm = parser.parse_args(
         [
@@ -171,6 +181,8 @@ def test_late_objective_contract_and_schema_are_registered() -> None:
     assert config.objective_kind == "D"
     assert config.objective_activation_step == 400
     assert OBJECTIVE_DIAGNOSTIC_CONTRACT_SPEC["activation_step"] == 400
+    assert OBJECTIVE_DIAGNOSTIC_CONTRACT_SPEC["kind"] == "conditional_objective_alignment_v5"
+    assert OBJECTIVE_DIAGNOSTIC_CONTRACT_SPEC["checkpoint_cadence"][-1] == 984
 
 
 @pytest.mark.parametrize(

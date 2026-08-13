@@ -54,10 +54,11 @@ from ..current.recovery import _conditional_optimizer
 from ..current.training import _conditional_parameter_groups, _validate_current_optimizer_coverage
 from ...student.checkpoints import state_content_hash
 from ...evidence.records import require_evidence_action, require_input_hashes
+from ..runs import V2Run
 
 
 OBJECTIVE_DIAGNOSTIC_CONTRACT_SPEC = {
-        "kind": "conditional_objective_alignment_v4",
+        "kind": "conditional_objective_alignment_v5",
         "candidates": ["A", "D"],
         "screen_steps": 984,
         "confirm_steps": 984,
@@ -75,6 +76,8 @@ OBJECTIVE_DIAGNOSTIC_CONTRACT_SPEC = {
         "coverage_temperature": 0.10,
         "companion": "seed_times_100000_plus_global_step_v2",
         "objective_contract_version": OBJECTIVE_CONTRACT_VERSION,
+        "resumable_screen": "explicit_checkpoint_v1",
+        "checkpoint_cadence": [100, 200, 300, 400, 500, 600, 700, 800, 900, 984],
 }
 OBJECTIVE_DIAGNOSTIC_CONTRACT = canonical_sha256(OBJECTIVE_DIAGNOSTIC_CONTRACT_SPEC)
 
@@ -584,8 +587,8 @@ def _run_steps(bundle, primary, train_images, train_labels, config, objective_ki
     }
 
 
-def _diagnostic_record(config, kind, status, context, input_hashes, gates, permitted=(), reason=None, extra=None, artifact_payloads=None):
-    run = _new_run(config)
+def _diagnostic_record(config, kind, status, context, input_hashes, gates, permitted=(), reason=None, extra=None, artifact_payloads=None, *, run=None):
+    run = _new_run(config) if run is None else run
     artifact_hashes = {}
     for filename, payload in (artifact_payloads or {}).items():
         artifact_path = run.root / filename
@@ -605,6 +608,133 @@ def _diagnostic_record(config, kind, status, context, input_hashes, gates, permi
     _write_evidence(run, path.name, record)
     print(run.root)
     return run, record
+
+
+def _screen_checkpoint(run, *, kind, completed_step, bundle, optimizer, history, primary_schedule, companion_schedule, update_status, reports, input_hashes, filename=None):
+    """Persist a diagnostic-only, explicitly resumable screen state."""
+    payload = {
+        "schema_version": 1,
+        "contract": OBJECTIVE_DIAGNOSTIC_CONTRACT,
+        "kind": kind,
+        "completed_step": int(completed_step),
+        "seed": 1234,
+        "input_hashes": dict(input_hashes),
+        "run_root": str(run.root),
+        "git_commit": run.git_commit,
+        "dirty_patch_hash": run.dirty_patch_hash,
+        "config_hash": run.config_hash,
+        "model_state": {name: value.detach().cpu() for name, value in bundle.state_dict().items()},
+        "optimizer_state": optimizer.state_dict(),
+        "history": list(history),
+        "primary_schedule": list(primary_schedule),
+        "companion_schedule": list(companion_schedule),
+        "update_status": update_status,
+        "reports": reports,
+        "formal_promotion_authorized": False,
+        "permitted_next_actions": [],
+    }
+    checkpoint = run.root / (filename or f"objective_screen_{kind}_step_{completed_step}.pt")
+    atomic_torch_save(checkpoint, payload)
+    manifest = {
+        "schema_version": 1,
+        "contract": OBJECTIVE_DIAGNOSTIC_CONTRACT,
+        "checkpoint": checkpoint.name,
+        "checkpoint_sha256": file_sha256(checkpoint),
+        "kind": kind,
+        "completed_step": int(completed_step),
+        "run_root": str(run.root),
+        "git_commit": run.git_commit,
+        "dirty_patch_hash": run.dirty_patch_hash,
+        "config_hash": run.config_hash,
+        "input_hashes": dict(input_hashes),
+        "formal_promotion_authorized": False,
+        "permitted_next_actions": [],
+    }
+    atomic_write_json(checkpoint.with_suffix(".json"), manifest)
+    print(f"screen checkpoint candidate={kind} completed_step={completed_step} path={checkpoint}", flush=True)
+    return checkpoint
+
+
+def _load_screen_checkpoint(path, config, input_hashes):
+    raw_path = Path(path)
+    if not raw_path.is_absolute():
+        raise ValueError("resume checkpoint must be an absolute path")
+    checkpoint = raw_path.resolve()
+    manifest_path = checkpoint.with_suffix(".json")
+    if not manifest_path.is_file():
+        raise ValueError("resume checkpoint requires an adjacent manifest")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if manifest.get("checkpoint") != checkpoint.name or manifest.get("checkpoint_sha256") != file_sha256(checkpoint):
+        raise ValueError("resume checkpoint manifest hash mismatch")
+    if manifest.get("contract") != OBJECTIVE_DIAGNOSTIC_CONTRACT or manifest.get("formal_promotion_authorized") is not False or manifest.get("permitted_next_actions") != []:
+        raise ValueError("resume checkpoint contract mismatch")
+    current_commit = __import__("subprocess").run(["git", "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
+    if manifest.get("git_commit") != current_commit or manifest.get("dirty_patch_hash") is not None:
+        raise ValueError("resume checkpoint source commit is not the current clean commit")
+    if manifest.get("config_hash") != canonical_sha256(config.model_dump(mode="json")):
+        raise ValueError("resume checkpoint config hash mismatch")
+    if manifest.get("input_hashes") != input_hashes:
+        raise ValueError("resume checkpoint input lineage mismatch")
+    payload = safe_torch_load(checkpoint)
+    if not isinstance(payload, dict) or payload.get("schema_version") != 1 or payload.get("contract") != OBJECTIVE_DIAGNOSTIC_CONTRACT:
+        raise ValueError("resume checkpoint payload contract mismatch")
+    if payload.get("run_root") != str(checkpoint.parent) or payload.get("input_hashes") != input_hashes:
+        raise ValueError("resume checkpoint payload lineage mismatch")
+    if payload.get("formal_promotion_authorized") is not False or payload.get("permitted_next_actions") != []:
+        raise ValueError("resume checkpoint cannot authorize promotion")
+    completed_step = int(payload.get("completed_step", -1))
+    if manifest.get("kind") != payload.get("kind") or manifest.get("completed_step") != completed_step:
+        raise ValueError("resume checkpoint manifest payload mismatch")
+    if payload.get("kind") not in {"A", "D"} or int(payload.get("seed", -1)) != 1234:
+        raise ValueError("resume checkpoint candidate or seed mismatch")
+    if completed_step not in {100, 200, 300, 400, 500, 600, 700, 800, 900, 984}:
+        raise ValueError("resume checkpoint completed step is not registered")
+    if not isinstance(payload.get("model_state"), dict) or not isinstance(payload.get("optimizer_state"), dict):
+        raise ValueError("resume checkpoint lacks model or optimizer state")
+    history = payload.get("history")
+    primary_schedule = payload.get("primary_schedule")
+    companion_schedule = payload.get("companion_schedule")
+    if not isinstance(history, list) or not isinstance(primary_schedule, list) or not isinstance(companion_schedule, list):
+        raise ValueError("resume checkpoint schedules are malformed")
+    if len(history) != completed_step or len(primary_schedule) != completed_step or len(companion_schedule) != completed_step:
+        raise ValueError("resume checkpoint has incomplete history or schedule")
+    if [int(row.get("step", -1)) for row in history] != list(range(1, completed_step + 1)):
+        raise ValueError("resume checkpoint history is not contiguous")
+    meta = json.loads((checkpoint.parent / "run_meta.json").read_text(encoding="utf-8"))
+    if meta.get("git_commit") != current_commit or meta.get("dirty_patch_hash") is not None:
+        raise ValueError("resume run metadata is not clean or current")
+    run = V2Run(checkpoint.parent, meta["config_hash"], meta["git_commit"], meta.get("dirty_patch_hash"))
+    return run, payload
+
+
+def _merge_update_status(left, right):
+    groups = set(left.get("gradient_seen", {})) | set(right.get("gradient_seen", {}))
+    return {
+        "gradient_seen": {name: bool(left.get("gradient_seen", {}).get(name, False) or right.get("gradient_seen", {}).get(name, False)) for name in groups},
+        "updated": {name: bool(left.get("updated", {}).get(name, False) or right.get("updated", {}).get(name, False)) for name in groups},
+        "milestones": {**left.get("milestones", {}), **right.get("milestones", {})},
+    }
+
+
+def _run_resumable_candidate(run, candidate, primary, train_images, train_labels, config, kind, weights, *, input_hashes, start_step=0, optimizer=None, history=None, primary_schedule=None, companion_schedule=None, update_status=None, reports=None):
+    history = [] if history is None else list(history)
+    primary_schedule = [] if primary_schedule is None else list(primary_schedule)
+    companion_schedule = [] if companion_schedule is None else list(companion_schedule)
+    update_status = {"gradient_seen": {}, "updated": {}, "milestones": {}} if update_status is None else update_status
+    reports = {} if reports is None else dict(reports)
+    optimizer = optimizer or _conditional_optimizer(candidate, config)
+    endpoints = [step for step in range(100, 901, 100) if step > start_step]
+    if 984 > start_step:
+        endpoints.append(984)
+    for target in endpoints:
+        count = target - start_step
+        history, primary_schedule, companion_schedule, optimizer, status = _run_steps(candidate, primary, train_images, train_labels, config, kind, weights, count, 1234, optimizer=optimizer, start_step=start_step, history=history, primary_schedule=primary_schedule, companion_schedule=companion_schedule)
+        update_status = _merge_update_status(update_status, status)
+        _screen_checkpoint(run, kind=kind, completed_step=target, bundle=candidate, optimizer=optimizer, history=history, primary_schedule=primary_schedule, companion_schedule=companion_schedule, update_status=update_status, reports=reports, input_hashes=input_hashes)
+        start_step = target
+        if target == 984:
+            break
+    return history, primary_schedule, companion_schedule, optimizer, update_status, reports
 
 
 def conditional_objective_weight_calibration(args, config) -> int:
@@ -721,12 +851,54 @@ def objective_alignment_screen(args, config) -> int:
     bundle, manifest, init_hash = _load_initialization(args, config, train_labels, split, evaluator_hash, injection)
     calibration_path = args.weight_calibration
     weights, calibration_payload = _read_calibration(calibration_path, args.weight_calibration_evidence, config, evaluator_hash, init_hash)
-    reports = {}
-    for kind in ("A", "D"):
+    input_hashes = {"initialization_checkpoint": init_hash, "injection_evidence": file_sha256(args.injection_evidence), "evaluator": evaluator_hash, "secondary_evaluator": secondary_hash, "measurement_evidence": measurement.evidence_hash, "measurement_bundle": file_sha256(args.acceptance_measurement_bundle), "calibration": file_sha256(calibration_path), "calibration_evidence": file_sha256(args.weight_calibration_evidence), "split": split.manifest_hash}
+    if args.resume_checkpoint:
+        run, checkpoint = _load_screen_checkpoint(args.resume_checkpoint, config, input_hashes)
+        reports = checkpoint.get("reports", {})
+        kind = checkpoint.get("kind")
+        if kind not in {"A", "D"}:
+            raise ValueError("resume checkpoint candidate is invalid")
         candidate = _load_bundle(config, args.initialization_checkpoint, device=torch.device(config.run.device), evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, checkpoint_sha256=init_hash)[0]
-        candidate_weights = {name: 0.0 for name in weights} if kind == "A" else weights
-        history, primary_schedule, companion_schedule, _, update_status = _run_steps(candidate, primary, train_images, train_labels, config, kind, candidate_weights, 984, 1234)
-        reports[kind] = {"measurement": _measure_panel(candidate, primary, secondary, validation_images, validation_labels, config), "history": history, "primary_schedule_hash": canonical_sha256(primary_schedule), "companion_schedule_hash": canonical_sha256(companion_schedule), "warmup_primary_schedule_hash": canonical_sha256(primary_schedule[:400]), "warmup_companion_schedule_hash": canonical_sha256(companion_schedule[:400]), "update_status": update_status, "state_hash": state_content_hash(candidate.state_dict()), "state_dict": {name: value.detach().cpu() for name, value in candidate.state_dict().items()}}
+        candidate.load_state_dict(checkpoint["model_state"], strict=True)
+        optimizer = _conditional_optimizer(candidate, config)
+        optimizer.load_state_dict(checkpoint["optimizer_state"])
+        history = checkpoint["history"]
+        primary_schedule = checkpoint["primary_schedule"]
+        companion_schedule = checkpoint["companion_schedule"]
+        update_status = checkpoint["update_status"]
+        start_step = int(checkpoint["completed_step"])
+        if kind == "A" and start_step == 984:
+            a_report = {"measurement": _measure_panel(candidate, primary, secondary, validation_images, validation_labels, config), "history": history, "primary_schedule_hash": canonical_sha256(primary_schedule), "companion_schedule_hash": canonical_sha256(companion_schedule), "warmup_primary_schedule_hash": canonical_sha256(primary_schedule[:400]), "warmup_companion_schedule_hash": canonical_sha256(companion_schedule[:400]), "update_status": update_status, "state_hash": state_content_hash(candidate.state_dict()), "state_dict": {name: value.detach().cpu() for name, value in candidate.state_dict().items()}}
+            reports = {"A": a_report}
+            kind = "D"
+            candidate = _load_bundle(config, args.initialization_checkpoint, device=torch.device(config.run.device), evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, checkpoint_sha256=init_hash)[0]
+            optimizer = None
+            history = []
+            primary_schedule = []
+            companion_schedule = []
+            update_status = None
+            start_step = 0
+    else:
+        run = _new_run(config)
+        print(f"screen run={run.root}", flush=True)
+        reports = {}
+        kind = "A"
+        candidate = _load_bundle(config, args.initialization_checkpoint, device=torch.device(config.run.device), evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, checkpoint_sha256=init_hash)[0]
+        optimizer = None
+        history = []
+        primary_schedule = []
+        companion_schedule = []
+        update_status = None
+        start_step = 0
+    for candidate_kind in (kind, "D") if kind == "A" else (kind,):
+        candidate_weights = {name: 0.0 for name in weights} if candidate_kind == "A" else weights
+        history, primary_schedule, companion_schedule, optimizer, update_status, reports = _run_resumable_candidate(run, candidate, primary, train_images, train_labels, config, candidate_kind, candidate_weights, input_hashes=input_hashes, start_step=start_step, optimizer=optimizer, history=history, primary_schedule=primary_schedule, companion_schedule=companion_schedule, update_status=update_status, reports=reports)
+        reports[candidate_kind] = {"measurement": _measure_panel(candidate, primary, secondary, validation_images, validation_labels, config), "history": history, "primary_schedule_hash": canonical_sha256(primary_schedule), "companion_schedule_hash": canonical_sha256(companion_schedule), "warmup_primary_schedule_hash": canonical_sha256(primary_schedule[:400]), "warmup_companion_schedule_hash": canonical_sha256(companion_schedule[:400]), "update_status": update_status, "state_hash": state_content_hash(candidate.state_dict()), "state_dict": {name: value.detach().cpu() for name, value in candidate.state_dict().items()}}
+        if candidate_kind == "A":
+            _screen_checkpoint(run, kind="A", completed_step=984, bundle=candidate, optimizer=optimizer, history=history, primary_schedule=primary_schedule, companion_schedule=companion_schedule, update_status=update_status, reports={"A": reports["A"]}, input_hashes=input_hashes, filename="objective_screen_A_complete.pt")
+            candidate = _load_bundle(config, args.initialization_checkpoint, device=torch.device(config.run.device), evaluator_hash=evaluator_hash, split_hash=split.manifest_hash, checkpoint_sha256=init_hash)[0]
+            optimizer = None
+            history, primary_schedule, companion_schedule, update_status, start_step = [], [], [], None, 0
     baseline = reports["A"]["measurement"]
     gates = []
     scores = {}
@@ -765,7 +937,11 @@ def objective_alignment_screen(args, config) -> int:
         if winner is None or gate.name == f"{winner}_screen_gate" or gate.name not in {"D_screen_gate"}
     )
     artifacts = {f"conditional_objective_alignment_{kind}_checkpoint.pt": {"objective_kind": kind, "state_dict": row["state_dict"], "state_content_hash": row["state_hash"]} for kind, row in reports.items()}
-    _diagnostic_record(config, "conditional_objective_alignment_screen", "passed" if winner else "failed", _record_context(config, evaluator_hash, split.manifest_hash, init_hash), {"initialization_checkpoint": init_hash, "injection_evidence": file_sha256(args.injection_evidence), "evaluator": evaluator_hash, "secondary_evaluator": secondary_hash, "measurement_evidence": measurement.evidence_hash, "measurement_bundle": file_sha256(args.acceptance_measurement_bundle), "calibration": file_sha256(calibration_path), "calibration_evidence": file_sha256(args.weight_calibration_evidence)}, evidence_gates, ("confirm",) if winner else (), extra=report_payload, artifact_payloads=artifacts)
+    report_payload["resume_checkpoints"] = {
+        path.name: file_sha256(path)
+        for path in sorted(run.root.glob("objective_screen_*.pt"))
+    }
+    _diagnostic_record(config, "conditional_objective_alignment_screen", "passed" if winner else "failed", _record_context(config, evaluator_hash, split.manifest_hash, init_hash), input_hashes, evidence_gates, ("confirm",) if winner else (), extra=report_payload, artifact_payloads=artifacts, run=run)
     return 0 if winner else 1
 
 
