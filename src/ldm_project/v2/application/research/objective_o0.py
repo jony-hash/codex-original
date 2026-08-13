@@ -77,7 +77,8 @@ def deterministic_joint_companion_indices(
     """Select a deterministic, classwise-disjoint primary/companion batch."""
     if labels.ndim != 1 or primary_per_class < 1 or global_step < 0:
         raise ValueError("joint companion schedule inputs are invalid")
-    rows: list[torch.Tensor] = []
+    primary_rows: list[torch.Tensor] = []
+    companion_rows: list[torch.Tensor] = []
     for label in range(10):
         choices = torch.nonzero(labels == label, as_tuple=False).flatten().cpu()
         required = primary_per_class * 2
@@ -85,8 +86,9 @@ def deterministic_joint_companion_indices(
             raise ValueError("joint companion schedule needs two disjoint class batches")
         generator = torch.Generator(device="cpu").manual_seed((seed * 100000 + global_step) * 10 + label)
         permutation = choices.index_select(0, torch.randperm(choices.numel(), generator=generator))
-        rows.append(permutation[:required])
-    indices = torch.cat(rows).to(labels.device)
+        primary_rows.append(permutation[:primary_per_class])
+        companion_rows.append(permutation[primary_per_class:required])
+    indices = torch.cat([*primary_rows, *companion_rows]).to(labels.device)
     return indices, labels.index_select(0, indices)
 
 

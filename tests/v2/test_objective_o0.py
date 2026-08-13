@@ -85,8 +85,10 @@ def test_joint_companion_schedule_is_classwise_disjoint_and_deterministic() -> N
     second, second_labels = deterministic_joint_companion_indices(labels, seed=1234, global_step=400, primary_per_class=5)
     assert torch.equal(first, second)
     assert torch.equal(first_labels, second_labels)
+    assert torch.equal(first_labels[:50], first_labels[50:])
     for label in range(10):
-        selected = first[labels.index_select(0, first) == label]
-        assert selected.numel() == 10
-        assert torch.unique(selected).numel() == 10
-        assert torch.equal(selected[:5], selected[:5])
+        primary = first[:50][first_labels[:50] == label]
+        companion = first[50:][first_labels[50:] == label]
+        assert primary.numel() == 5
+        assert companion.numel() == 5
+        assert torch.unique(torch.cat([primary, companion])).numel() == 10
