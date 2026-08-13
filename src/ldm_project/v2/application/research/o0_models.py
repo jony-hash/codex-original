@@ -73,12 +73,32 @@ class D0ImageGenerator(_ConditionalUpsampleGenerator):
         super().__init__(code_dim=32, output_size=28, anchor="none", parameter_budget=5_000_000)
 
 
+class ElectronicImageOracleGenerator(_ConditionalUpsampleGenerator):
+    """High-capacity 28x28 electronic upper bound for the O0 contract.
+
+    This model has no optical operator or command-space bottleneck.  It is
+    deliberately separate from the historical D0 GAN candidates and uses the
+    same label/code interface as the current conditional student.
+    """
+
+    architecture_kind = "electronic_objective_o0_image_v1"
+
+    def __init__(self) -> None:
+        super().__init__(code_dim=8, output_size=28, anchor="none", parameter_budget=6_000_000)
+
+
 class HighCapacityCommandGenerator(_ConditionalUpsampleGenerator):
     def __init__(self, *, code_dim: int, anchor: str) -> None:
         super().__init__(code_dim=code_dim, output_size=200, anchor=anchor, parameter_budget=6_000_000)
 
 
 def build_o0_candidate(candidate: str) -> nn.Module:
+    if candidate == "O0-I":
+        return ElectronicImageOracleGenerator()
+    if candidate == "O0-G":
+        from ...student.identity_generator import IdentityAnchoredConditionalAmplitudeGenerator
+
+        return IdentityAnchoredConditionalAmplitudeGenerator()
     if candidate == "D0":
         return D0ImageGenerator()
     if candidate == "C0":

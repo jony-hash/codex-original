@@ -264,3 +264,28 @@ failure，也不得解释为光学、phase-only、空间 DOF 或普适容量失�
 唯一 probe 已完成并有效失败为 `discriminator_identifiability_failure`：real auxiliary
 classifier accuracy 从 0.10 提升到 0.26，但 Q latent error 未达到预注册的 10% 改善门。
 因此 v2.4 在首个有效停止门关闭；这不是 D0 分布可达性或 generator capacity 结论。
+
+## Objective D closeout and electronic O0 v1 (2026-08-13)
+
+The v7 Objective D screen at
+`outputs/20260813_v2/runs/20260813_183155_849434_formal_v2_identity_logit_amplitude_finite_crop_identity`
+is a valid diagnostic failure, not an invalid harness. Its evidence SHA256 is
+`533f35a71e2569c4691e707cec9940d0ea97de9cc721ec8820ea31da84d89594` and its
+report SHA256 is
+`bdb163afe3ee27cfeb7d53ba7ad32cf9e81d0cdddc2a7bad5acb212b95920ff6`.
+A/D shared warmup, optimizer, schedules, finite gradients, and all six real
+updates passed. D improved camera by `+0.1547` and primary diversity by
+`+0.0691`, but primary coverage worsened by `+0.0562`, primary accuracy fell
+by `0.10`, and primary minimum recall fell by `0.1765`. No confirmation or
+formal action is authorized; the D family is closed and all D artifacts are
+read-only.
+
+A new research-only `electronic_objective_o0_v1` contract is registered on
+`experiment/v2-electronic-objective-o0-v26`. It uses Objective E active-set
+penalties: already-satisfied camera/diversity/coverage constraints receive
+zero weight and zero gradient, while violated constraints are calibrated in
+the electronic domain on steps `400--403`. O0-I is a high-capacity 28x28
+electronic image oracle; O0-G is the current 8D amplitude generator followed
+by an ideal amplitude-square detector. O0-G is blocked until O0-I reaches a
+passed screen or locked-final state. Neither candidate can authorize optical
+training, objective selection, or formal promotion.

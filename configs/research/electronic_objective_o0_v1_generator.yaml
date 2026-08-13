@@ -1,0 +1,27 @@
+schema_version: 1
+name: electronic_objective_o0_v1_generator
+version: electronic_objective_o0_v1
+dataset_root: data
+output_root: outputs
+evaluator_checkpoint: outputs/20260724_v2/runs/20260724_162422_705459_formal_v2_identity_logit_amplitude_finite_crop_identity/frozen_mnist_evaluator.pt
+secondary_evaluator_checkpoint: outputs/20260813_v2/runs/20260813_180819_622585_formal_v2_identity_logit_amplitude_finite_crop_identity/smooth_mnist_acceptance_evaluator.pt
+objective_id: objective_e_active_set_v1
+split_seed: 1234
+code_dim: 8
+logical_batch_size: 50
+warmup_steps: 400
+calibration_steps: [400, 401, 402, 403]
+screen_steps: 984
+confirm_seeds: [1234, 1235, 1236]
+final_steps: 4920
+candidate: O0-G
+parameter_budget: 6000000
+objective_contract_version: electronic_objective_o0_v1
+activation_step: 400
+camera_target: 0.30
+diversity_lower: 0.70
+diversity_upper: 1.30
+coverage_target: 1.35
+fixed_exposure_scale: 0.4913053810596466
+require_clean_git: true
+harness_revision: 1

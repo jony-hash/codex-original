@@ -72,4 +72,26 @@ def register_research(root: argparse._SubParsersAction) -> None:
             command.add_argument("--resume-checkpoint")
         if action in {"summarize", "closeout"}:
             command.add_argument("--evidence-root", required=True)
-
+    o0e = research_programs.add_parser("objective-o0")
+    o0e_actions = o0e.add_subparsers(dest="research_action", required=True)
+    for action in ("validate", "preflight", "calibrate", "screen", "confirm", "locked-final", "closeout"):
+        command = o0e_actions.add_parser(action)
+        command.add_argument("--config", required=True)
+        command.add_argument("--dataset", choices=("mnist",), default="mnist")
+        command.add_argument("--device", choices=("cuda", "cpu"), default="cuda")
+        if action in {"preflight", "calibrate", "screen", "confirm", "locked-final"}:
+            command.add_argument("--seed", type=int, default=1234)
+        if action == "preflight":
+            command.add_argument("--o0-i-evidence")
+        if action == "calibrate":
+            command.add_argument("--preflight-evidence", required=True)
+        if action == "screen":
+            command.add_argument("--calibration-artifact", required=True)
+            command.add_argument("--calibration-evidence", required=True)
+            command.add_argument("--resume-checkpoint")
+        if action == "confirm":
+            command.add_argument("--screen-evidence", required=True)
+            command.add_argument("--calibration-artifact", required=True)
+        if action == "locked-final":
+            command.add_argument("--confirm-evidence", required=True)
+            command.add_argument("--calibration-artifact", required=True)
