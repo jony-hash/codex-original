@@ -1,5 +1,31 @@
 # 当前主线交接：v2 formal evaluation 与 objective diagnostic 收口（2026-08-12）
 
+## 项目级 harness 封存（2026-08-16）
+
+Phase 1 harness governance 已在干净提交 `69c5c24`（`harden v2 formal
+acceptance lineage`）中独立形成。该提交包含 current gate registry、
+`invalid_harness`/`valid_failed` 语义、primary→secondary evaluator lineage、
+training authorization 双边绑定、official-test exposure 链，以及 current
+consumer 的 fail-closed 检查。提交前验证为：current lineage/CLI 47 passed、完整
+套件 527 passed（138 deselected，25 subtests）、research 70 passed、compatibility
+66 passed、scheduled-diagnostic 2 passed、compileall、ruff 和 diff 检查全部通过。
+
+本提交不迁移、不补签任何旧 evidence。旧 current training/measurement/evaluation
+记录缺少新版 contract、status 或 exposure 要求时，只能作为审计材料读取，不能授权
+recovery、training、evaluation、manual admission、candidate export、memorization、
+utility、dataset admission 或 accepted manifest。历史 Objective A evaluation 的
+输入和 raw-CMOS 测量已完成但未达到预注册科学 gate；其旧 `failed` record 保持原样，
+不转换为新版 `valid_failed` evidence。
+
+因此当前项目状态为 `closed_historical_valid_failure`。这是项目管理和审计状态，不是
+`EvidenceRecordV2` 新 status，也不授予任何 permitted action。项目重启必须先提出并
+记录新的 objective hypothesis，再从 primary evaluator qualification 开始签发全新
+current evidence chain；不得直接重复已关闭的 Objective A。
+
+本节封存不代表生成 accepted manifest，也不启动 CUDA、训练、正式 evaluation 或人工
+review。工作区中与 research/diagnostic 实验有关的其他用户修改继续保留，未纳入
+`69c5c24`。
+
 ## Objective D diagnostic implementation (2026-08-12)
 
 The branch `experiment/v2-late-objective-v25` contains an engineering-only
@@ -320,3 +346,37 @@ bounds official evaluator measurement to 250-sample microbatches, and exposes
 explicit confirmation and locked-final resume checkpoints. These changes are
 implementation-only until fresh qualification is issued from their clean
 commit.
+
+## Objective E O0-I v3 screen closure (2026-08-14)
+
+The v3 O0-I calibration, preflight, and shared-warmup screen harness were
+executed under the frozen research contract. The final screen evidence is
+`outputs/20260814_electronic_objective_o0_v3/runs/20260814_123854_840883_research_screen_O0-I/objective_o0_screen_evidence.json`.
+Both candidates reused the same step-400 model and optimizer hashes and each
+completed 584 post-warmup updates (1,168 total). The shared-warmup and
+saturation checks passed, but camera, diversity, coverage, accuracy, and recall
+gates failed: candidate camera fraction was `0.01675`, primary diversity ratio
+`0.05564`, primary coverage `1.29147`, secondary accuracy `0.90000`, and
+secondary minimum recall `0.0`. This is a valid scientific screen failure,
+not an invalid harness. Confirmation, locked-final, closeout, O0-G, objective
+selection, and formal optical training are stopped. The v3 artifacts remain
+diagnostic-only and historical evidence remains read-only.
+
+## Objective F/F2 invalid-harness closeout (2026-08-14)
+
+Objective F and F2 remain read-only diagnostic observations. Their numeric
+outputs are preserved in
+`experiments/archive/v2_electronic_objective_f_f2_invalid_harness/`, but the
+evidence is reclassified as `invalid_harness`: the records do not bind the
+complete execution provenance contract (exact command, commit/dirty patch,
+runtime/device, elapsed time, and all upstream audit/preflight/calibration
+content hashes). The reported camera, diversity, coverage, accuracy, and
+recall values therefore do not establish an F/F2 objective failure or any
+electronic, optical, phase-only, or universal capacity conclusion.
+
+The original outputs and checkpoints remain untouched at their managed paths.
+The F/F2 active CLI, runtime, configs, and tests are retired; the archive is
+not runnable or resumable and has `permitted_next_actions=[]`. No confirmation,
+locked-final, O0-G, objective selection, or formal optical training is
+authorized. The current mainline has no authorized candidate; a future branch
+requires a separately pre-registered hypothesis and explicit authorization.
