@@ -88,9 +88,22 @@ from .._runtime_shared import (
     random_codes as _random_codes,
     split_mnist as _split,
     system_signature as _system_signature,
-    write_evidence as _write_evidence,
+    write_evidence as _write_evidence_raw,
 )
 from ..runs import V2Run
+from .gates import (
+    CURRENT_GATE_CONTRACTS,
+    current_gate_outcome,
+    require_current_gate_action,
+    validate_current_gate_record,
+)
+
+
+def _write_evidence(run: V2Run, name: str, record: EvidenceRecordV2) -> Path:
+    """Validate current gate semantics before publishing an evidence record."""
+    if record.evidence_kind in CURRENT_GATE_CONTRACTS:
+        validate_current_gate_record(record)
+    return _write_evidence_raw(run, name, record)
 
 
 CONDITIONAL_CONTROL_METRIC_CONTRACT = (
@@ -128,10 +141,69 @@ BALANCED_TRAINING_SCHEDULE = {
 }
 BALANCED_TRAINING_SCHEDULE_CONTRACT = canonical_sha256(BALANCED_TRAINING_SCHEDULE)
 
+TRAINING_AUTHORIZATION_KINDS = frozenset(
+    {"controllability_smoke", "conditional_semantic_recovery_smoke"}
+)
+TRAINING_AUTHORIZATION_KIND_KEY = "training_authorization_kind"
+TRAINING_AUTHORIZATION_EVIDENCE_HASH_KEY = "training_authorization_evidence_hash"
+
+
+def training_authorization_binding(record: EvidenceRecordV2) -> dict[str, str]:
+    """Return the sole canonical binding carried into formal training outputs."""
+    record.validate()
+    if (
+        record.evidence_kind not in TRAINING_AUTHORIZATION_KINDS
+        or record.status != "passed"
+        or "train" not in record.permitted_next_actions
+    ):
+        raise ValueError("training authorization evidence is not a passed train authorization")
+    return {
+        TRAINING_AUTHORIZATION_KIND_KEY: record.evidence_kind,
+        TRAINING_AUTHORIZATION_EVIDENCE_HASH_KEY: record.evidence_hash,
+    }
+
+
+def validate_training_authorization_binding(
+    record: EvidenceRecordV2, checkpoint_extra: object
+) -> None:
+    """Fail closed unless training evidence and checkpoint carry identical binding."""
+    kind = record.input_hashes.get(TRAINING_AUTHORIZATION_KIND_KEY)
+    digest = record.input_hashes.get(TRAINING_AUTHORIZATION_EVIDENCE_HASH_KEY)
+    if kind not in TRAINING_AUTHORIZATION_KINDS:
+        raise ValueError("training evidence lacks a recognized authorization kind")
+    if (
+        not isinstance(digest, str)
+        or len(digest) != 64
+        or any(character not in "0123456789abcdef" for character in digest.lower())
+    ):
+        raise ValueError("training evidence has an invalid authorization evidence hash")
+    if not isinstance(checkpoint_extra, dict):
+        raise ValueError("training checkpoint lacks authorization binding")
+    if (
+        checkpoint_extra.get(TRAINING_AUTHORIZATION_KIND_KEY) != kind
+        or checkpoint_extra.get(TRAINING_AUTHORIZATION_EVIDENCE_HASH_KEY) != digest
+    ):
+        raise ValueError("training authorization binding disagrees with checkpoint")
+
 # Evidence is allowed to survive documentation and test-only follow-up commits,
 # but not a change to the executable v2 runtime or its formal configuration.
 _CURRENT_EVIDENCE_RUNTIME_PATHS = (
-    "src/ldm_project/v2/",
+    "src/ldm_project/v2/application/current/",
+    "src/ldm_project/v2/application/_conditional_admission_shared.py",
+    "src/ldm_project/v2/application/_conditional_recovery_shared.py",
+    "src/ldm_project/v2/application/_runtime_shared.py",
+    "src/ldm_project/v2/application/runs.py",
+    "src/ldm_project/v2/application/cli.py",
+    "src/ldm_project/v2/application/cli_handlers.py",
+    "src/ldm_project/v2/application/cli_schema.py",
+    "src/ldm_project/v2/application/_cli_schema_student.py",
+    "src/ldm_project/v2/application/_cli_schema_audit.py",
+    "src/ldm_project/v2/configuration/",
+    "src/ldm_project/v2/config.py",
+    "src/ldm_project/v2/evidence/",
+    "src/ldm_project/v2/contracts/",
+    "src/ldm_project/v2/student/",
+    "src/ldm_project/v2/optics/",
     "configs/v2/current/",
     "pyproject.toml",
 )
@@ -312,6 +384,7 @@ def _validate_conditional_lineage(
     *,
     checkpoint_hash: str | None = None,
     evidence: EvidenceRecordV2 | None = None,
+    config_hash_override: str | None = None,
 ) -> None:
     """Validate the current seed/checkpoint/evidence lineage before work starts."""
     settings = config.conditional_generation
@@ -319,7 +392,8 @@ def _validate_conditional_lineage(
         raise ValueError("current lineage requires the identity architecture")
     if manifest.system_signature != _system_signature(config):
         raise ValueError("current lineage system signature mismatch")
-    if manifest.config_hash != canonical_sha256(config.model_dump(mode="json")):
+    expected_config_hash = config_hash_override or canonical_sha256(config.model_dump(mode="json"))
+    if manifest.config_hash != expected_config_hash:
         raise ValueError("current lineage configuration hash mismatch")
     if manifest.initialization_seed != settings.initialization_seed:
         raise ValueError("current lineage initialization seed mismatch")
@@ -355,6 +429,7 @@ def _load_bundle(
     split_hash: str | None = None,
     allow_balanced_schedule: bool = False,
     checkpoint_sha256: str | None = None,
+    config_hash_override: str | None = None,
 ) -> tuple[ConditionalBundle, ConditionalCheckpointManifestV2]:
     bundle, manifest, _ = _load_bundle_with_payload(
         config,
@@ -364,6 +439,7 @@ def _load_bundle(
         split_hash=split_hash,
         allow_balanced_schedule=allow_balanced_schedule,
         checkpoint_sha256=checkpoint_sha256,
+        config_hash_override=config_hash_override,
     )
     return bundle, manifest
 
@@ -377,6 +453,7 @@ def _load_bundle_with_payload(
     split_hash: str | None = None,
     allow_balanced_schedule: bool = False,
     checkpoint_sha256: str | None = None,
+    config_hash_override: str | None = None,
 ) -> tuple[
     ConditionalBundle,
     ConditionalCheckpointManifestV2,
@@ -389,7 +466,7 @@ def _load_bundle_with_payload(
     manifest = ConditionalCheckpointManifestV2(**payload["manifest"])
     if manifest.system_signature != _system_signature(config):
         raise ValueError("conditional checkpoint belongs to a different architecture/system/config")
-    _validate_conditional_lineage(config, manifest)
+    _validate_conditional_lineage(config, manifest, config_hash_override=config_hash_override)
     if evaluator_hash is not None and manifest.evaluator_checkpoint_hash != evaluator_hash:
         raise ValueError("conditional checkpoint uses another evaluator")
     if split_hash is not None and manifest.dataset_split_manifest_hash != split_hash:

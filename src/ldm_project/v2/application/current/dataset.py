@@ -25,6 +25,11 @@ def _measurement_inputs(record: EvidenceRecordV2) -> dict[str, str]:
             "measurement_evidence",
             "test_manifest",
             "test_content_manifest",
+            "exposure_genesis",
+            "exposure_chain_id",
+            "formal_evaluation_exposure",
+            "formal_evaluation_id",
+            "exposure_sequence",
         )
         if isinstance((value := record.input_hashes.get(name)), str)
     }
@@ -32,7 +37,7 @@ def _measurement_inputs(record: EvidenceRecordV2) -> dict[str, str]:
 
 def _require_measurement_inputs(record: EvidenceRecordV2) -> dict[str, str]:
     values = _measurement_inputs(record)
-    required = ("secondary_evaluator", "measurement_bundle", "measurement_evidence", "test_manifest", "test_content_manifest")
+    required = ("secondary_evaluator", "measurement_bundle", "measurement_evidence", "test_manifest", "test_content_manifest", "exposure_genesis", "exposure_chain_id", "formal_evaluation_exposure", "formal_evaluation_id", "exposure_sequence")
     if any(name not in values for name in required):
         raise ValueError("downstream dataset evidence lacks complete acceptance measurement lineage")
     return values
@@ -245,7 +250,7 @@ def audit_memorization(args, config: V2Config) -> int:
         2,
         "conditional_memorization_audit",
         config.run.evidence_tier,
-        "passed" if passed else "failed",
+        "passed" if passed else "valid_failed",
         run.git_commit,
         run.dirty_patch_hash,
         run.config_hash,
@@ -410,7 +415,7 @@ def evaluate_utility(args, config: V2Config) -> int:
         2,
         "conditional_utility",
         config.run.evidence_tier,
-        "passed" if all_passed else "failed",
+        "passed" if all_passed else "valid_failed",
         run.git_commit,
         run.dirty_patch_hash,
         run.config_hash,
@@ -514,8 +519,11 @@ def admit_dataset(args, config: V2Config) -> int:
     accepted_path = root / "accepted_manifest.json"
     if accepted_path.exists():
         raise FileExistsError("accepted dataset manifest already exists")
-    atomic_write_json(accepted_path, accepted | {"manifest_hash": accepted_hash})
+    # Acceptance artifacts must not be published until the acceptance run has
+    # passed the clean-worktree/provenance preflight.  Keep this before the
+    # first write so a failed run cannot leave a misleading accepted manifest.
     run = _new_run(config)
+    atomic_write_json(accepted_path, accepted | {"manifest_hash": accepted_hash})
     record = EvidenceRecordV2(
         2,
         "conditional_dataset_accepted",

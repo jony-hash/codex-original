@@ -17,7 +17,7 @@ def register_audit(root: argparse._SubParsersAction) -> None:
             "--" + name.replace("_", "-"), required=False
         )
     conditional_injection_parser = audit.add_parser("conditional-injection-admission")
-    for name in ("config", "dataset_root", "evaluator_checkpoint"):
+    for name in ("config", "dataset_root", "evaluator_checkpoint", "acceptance_measurement_evidence"):
         conditional_injection_parser.add_argument(
             "--" + name.replace("_", "-"), required=True
         )

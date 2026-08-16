@@ -7,6 +7,7 @@ from .runtime import (
     _new_run, _random_codes, _require_conditional, _require_current_acceptance,
     _split, _validate_conditional_lineage, _validate_balanced_training_payload,
     _validate_current_evidence_source,
+    validate_training_authorization_binding,
     _write_evidence, atomic_torch_save, balanced_batches,
     balanced_schedule_steps,
     conditional_coverage_ratio, evaluator_checkpoint_hash, file_sha256,
@@ -15,11 +16,14 @@ from .runtime import (
     relative_diversity_ratios, tensor_sha256, torch,
     safe_torch_load,
     require_evidence_action, require_input_hashes,
+    require_current_gate_action,
+    canonical_sha256,
     write_conditional_review_artifacts,
 )
 from .admission import _code_fraction, _passed_evidence
 from .measurement import ACCEPTANCE_MEASUREMENT_CONTRACT
 from ...student.evaluator import SmoothMNISTEvaluator
+from .exposure import exposure_chain_id, require_exposure_predecessor, EXPOSURE_CONTRACT
 
 
 def sample_conditional(args, config: V2Config) -> int:
@@ -71,7 +75,6 @@ def conditional_evaluate(args, config: V2Config) -> int:
     _, train_labels, validation_images, validation_labels, split = _split(
         images, all_labels, args.dataset_root
     )
-    evaluator, _ = load_frozen_evaluator(args.evaluator_checkpoint, device=device)
     evaluator_hash = evaluator_checkpoint_hash(args.evaluator_checkpoint)
     checkpoint_hash = training_record.input_hashes.get("checkpoint")
     if not isinstance(checkpoint_hash, str):
@@ -87,6 +90,70 @@ def conditional_evaluate(args, config: V2Config) -> int:
             checkpoint_hash=checkpoint_hash,
         ),
     )
+    if not all((args.acceptance_evaluator_checkpoint, args.acceptance_measurement_bundle, args.acceptance_measurement_evidence)):
+        raise ValueError("current identity evaluation requires the independent acceptance measurement inputs")
+    measurement = EvidenceRecordV2.from_dict(json.loads(Path(args.acceptance_measurement_evidence).read_text(encoding="utf-8")))
+    if measurement.evidence_kind != "conditional_acceptance_measurement" or measurement.status != "passed":
+        raise ValueError("acceptance measurement evidence is not qualified")
+    _validate_current_evidence_source(training_record, measurement)
+    require_evidence_action(
+        measurement,
+        kind="conditional_acceptance_measurement",
+        action="evaluate",
+        expected_context=_context(
+            config,
+            evaluator_hash=evaluator_hash,
+            split_hash=split.manifest_hash,
+        ),
+    )
+    measurement_bundle_hash = file_sha256(args.acceptance_measurement_bundle)
+    secondary_hash = file_sha256(args.acceptance_evaluator_checkpoint)
+    require_input_hashes(measurement, {"measurement_bundle": measurement_bundle_hash})
+    bundle_payload = json.loads(Path(args.acceptance_measurement_bundle).read_text(encoding="utf-8"))
+    if not isinstance(bundle_payload, dict) or bundle_payload.get("contract") != ACCEPTANCE_MEASUREMENT_CONTRACT:
+        raise ValueError("acceptance measurement bundle is malformed")
+    if bundle_payload.get("primary_checkpoint") != evaluator_hash or bundle_payload.get("secondary_checkpoint") != secondary_hash:
+        raise ValueError("acceptance measurement evaluator hash mismatch")
+    manifest_name = bundle_payload.get("test_manifest_filename")
+    if not isinstance(manifest_name, str) or not manifest_name or Path(manifest_name).is_absolute() or ".." in Path(manifest_name).parts:
+        raise ValueError("acceptance measurement bundle has an unsafe test manifest filename")
+    test_manifest_path = Path(args.acceptance_measurement_bundle).parent / manifest_name
+    test_manifest_hash = file_sha256(test_manifest_path)
+    if test_manifest_hash != bundle_payload.get("test_manifest_hash") or measurement.input_hashes.get("test_manifest") != test_manifest_hash:
+        raise ValueError("acceptance measurement test manifest hash mismatch")
+    require_input_hashes(
+        measurement,
+        {
+            "primary_evaluator": evaluator_hash,
+            "secondary_evaluator": secondary_hash,
+            "measurement_bundle": measurement_bundle_hash,
+            "test_manifest": test_manifest_hash,
+        },
+    )
+    if not args.official_test_exposure_evidence:
+        raise ValueError("current evaluation requires official-test exposure evidence")
+    predecessor = EvidenceRecordV2.from_dict(
+        json.loads(Path(args.official_test_exposure_evidence).read_text(encoding="utf-8"))
+    )
+    chain_id = measurement.input_hashes.get("exposure_chain_id")
+    genesis_hash = measurement.input_hashes.get("exposure_genesis")
+    if not isinstance(chain_id, str) or not isinstance(genesis_hash, str):
+        raise ValueError("acceptance measurement lacks official-test exposure genesis")
+    if predecessor.input_hashes.get("exposure_sequence") == "0" and predecessor.evidence_hash != genesis_hash:
+        raise ValueError("official-test exposure genesis does not match measurement")
+    previous_sequence = require_exposure_predecessor(
+        predecessor,
+        config=config,
+        primary_evaluator=evaluator_hash,
+        secondary_evaluator=secondary_hash,
+        test_manifest=test_manifest_hash,
+        measurement_evidence=measurement.evidence_hash,
+        chain_id=chain_id,
+        split_hash=split.manifest_hash,
+    )
+    # All measurement authorization and artifact bindings are checked before
+    # deserializing either evaluator or the trained optical checkpoint.
+    evaluator, _ = load_frozen_evaluator(args.evaluator_checkpoint, device=device)
     bundle, manifest, payload = _load_bundle_with_payload(
         config,
         args.checkpoint,
@@ -116,6 +183,10 @@ def conditional_evaluate(args, config: V2Config) -> int:
         steps_per_epoch=expected_steps_per_epoch,
         total_steps=expected_total_steps,
     )
+    validate_training_authorization_binding(
+        training_record,
+        payload.get("extra") if isinstance(payload, dict) else None,
+    )
     require_input_hashes(
         training_record,
         {
@@ -124,46 +195,66 @@ def conditional_evaluate(args, config: V2Config) -> int:
             "schedule_total_steps": str(expected_total_steps),
         },
     )
-    if not all((args.acceptance_evaluator_checkpoint, args.acceptance_measurement_bundle, args.acceptance_measurement_evidence)):
-        raise ValueError("current identity evaluation requires the independent acceptance measurement inputs")
-    measurement = EvidenceRecordV2.from_dict(json.loads(Path(args.acceptance_measurement_evidence).read_text(encoding="utf-8")))
-    if measurement.evidence_kind != "conditional_acceptance_measurement" or measurement.status != "passed":
-        raise ValueError("acceptance measurement evidence is not qualified")
-    _validate_current_evidence_source(training_record, measurement)
-    measurement_bundle_hash = file_sha256(args.acceptance_measurement_bundle)
-    secondary_hash = file_sha256(args.acceptance_evaluator_checkpoint)
-    require_input_hashes(measurement, {"measurement_bundle": measurement_bundle_hash})
-    bundle_payload = json.loads(Path(args.acceptance_measurement_bundle).read_text(encoding="utf-8"))
-    if not isinstance(bundle_payload, dict) or bundle_payload.get("contract") != ACCEPTANCE_MEASUREMENT_CONTRACT:
-        raise ValueError("acceptance measurement bundle is malformed")
-    if bundle_payload.get("primary_checkpoint") != evaluator_hash or bundle_payload.get("secondary_checkpoint") != secondary_hash:
-        raise ValueError("acceptance measurement evaluator hash mismatch")
-    manifest_name = bundle_payload.get("test_manifest_filename")
-    if not isinstance(manifest_name, str) or not manifest_name or Path(manifest_name).is_absolute() or ".." in Path(manifest_name).parts:
-        raise ValueError("acceptance measurement bundle has an unsafe test manifest filename")
-    test_manifest_path = Path(args.acceptance_measurement_bundle).parent / manifest_name
-    test_manifest_hash = file_sha256(test_manifest_path)
-    if test_manifest_hash != bundle_payload.get("test_manifest_hash") or measurement.input_hashes.get("test_manifest") != test_manifest_hash:
-        raise ValueError("acceptance measurement test manifest hash mismatch")
     secondary_payload = safe_torch_load(args.acceptance_evaluator_checkpoint, expected_sha256=secondary_hash)
     if not isinstance(secondary_payload, dict) or secondary_payload.get("architecture_kind") != SmoothMNISTEvaluator.architecture_kind:
         raise ValueError("acceptance evaluator checkpoint has an incompatible architecture")
     secondary = SmoothMNISTEvaluator().to(device)
     secondary.load_state_dict(secondary_payload["state_dict"], strict=True)
     secondary.freeze()
-    require_input_hashes(
-        measurement,
-        {
-            "primary_evaluator": evaluator_hash,
-            "secondary_evaluator": secondary_hash,
-            "measurement_bundle": measurement_bundle_hash,
-            "test_manifest": test_manifest_hash,
-        },
-    )
     test_images, test_labels = load_local_mnist(args.dataset_root, train=False)
     test_manifest = json.loads(test_manifest_path.read_text(encoding="utf-8"))
     if test_manifest.get("count") != int(test_labels.numel()) or test_manifest.get("images_sha256") != tensor_sha256(test_images) or test_manifest.get("labels_sha256") != tensor_sha256(test_labels):
         raise ValueError("local official MNIST test split does not match the qualified manifest")
+    run = _new_run(config)
+    exposure_id = canonical_sha256(
+        {
+            "run": run.root.name,
+            "chain": chain_id,
+            "sequence": previous_sequence + 1,
+            "checkpoint": checkpoint_hash,
+        }
+    )
+    exposure = EvidenceRecordV2(
+        2,
+        "formal_evaluation_exposure",
+        config.run.evidence_tier,
+        "passed",
+        run.git_commit,
+        run.dirty_patch_hash,
+        run.config_hash,
+        _context(
+            config,
+            evaluator_hash=evaluator_hash,
+            split_hash=split.manifest_hash,
+            checkpoint_hash=checkpoint_hash,
+        ),
+        {
+            "exposure_contract": EXPOSURE_CONTRACT,
+            "exposure_chain_id": chain_id,
+            "exposure_sequence": str(previous_sequence + 1),
+            "previous_exposure": predecessor.evidence_hash,
+            "formal_evaluation_id": exposure_id,
+            "primary_evaluator": evaluator_hash,
+            "secondary_evaluator": secondary_hash,
+            "test_manifest": test_manifest_hash,
+            "measurement_evidence": measurement.evidence_hash,
+        },
+        (GateResult("exposure_declared_before_inference", True, {}),),
+        ("evaluate_official_test", "record_next_official_test_exposure"),
+        None,
+    )
+    _write_evidence(run, "formal_evaluation_exposure_evidence.json", exposure)
+    require_current_gate_action(
+        exposure,
+        kind="formal_evaluation_exposure",
+        action="evaluate_official_test",
+        expected_context=_context(
+            config,
+            evaluator_hash=evaluator_hash,
+            split_hash=split.manifest_hash,
+            checkpoint_hash=checkpoint_hash,
+        ),
+    )
     require_input_hashes(
         training_record,
         {
@@ -308,7 +399,6 @@ def conditional_evaluate(args, config: V2Config) -> int:
         GateResult("secondary_sinkhorn_coverage", secondary_coverage_ratio <= 1.5, {"coverage_ratio": secondary_coverage_ratio}),
         GateResult("generated_prediction_agreement", float((predictions == secondary_predictions).float().mean().item()) >= 0.95, {"agreement": float((predictions == secondary_predictions).float().mean().item())}),
     )
-    run = _new_run(config)
     raw_path = run.root / "conditional_evaluation_raw_cmos.pt"
     labels_path = run.root / "conditional_evaluation_labels.pt"
     atomic_torch_save(raw_path, raw)
@@ -324,7 +414,7 @@ def conditional_evaluate(args, config: V2Config) -> int:
     status = (
         "pending_review"
         if passed and acceptance
-        else ("diagnostic" if passed else "failed")
+        else ("diagnostic" if passed else "valid_failed")
     )
     permitted = ("admit_conditional_evaluation",) if status == "pending_review" else ()
     record = EvidenceRecordV2(
@@ -342,7 +432,7 @@ def conditional_evaluate(args, config: V2Config) -> int:
             checkpoint_hash=checkpoint_hash,
         ),
         {
-            "training_evidence": file_sha256(args.training_evidence),
+            "training_evidence": training_record.evidence_hash,
             "checkpoint": checkpoint_hash,
             "initialization_checkpoint": initialization_checkpoint_hash,
             "initialization_state_hash": manifest.initialization_state_hash,
@@ -356,6 +446,9 @@ def conditional_evaluate(args, config: V2Config) -> int:
             "measurement_evidence": measurement.evidence_hash,
             "test_manifest": file_sha256(test_manifest_path),
             "test_content_manifest": str(test_manifest.get("manifest_hash")),
+            "formal_evaluation_exposure": exposure.evidence_hash,
+            "formal_evaluation_id": exposure_id,
+            "exposure_sequence": str(previous_sequence + 1),
         },
         checks,
         permitted,
@@ -389,6 +482,24 @@ def admit_conditional_evaluation(args, config: V2Config) -> int:
             checkpoint_hash=source.context.checkpoint_hash,
         )
     )
+    if not args.formal_evaluation_exposure_evidence:
+        raise ValueError("manual admission requires official-test exposure evidence")
+    exposure = EvidenceRecordV2.from_dict(
+        json.loads(Path(args.formal_evaluation_exposure_evidence).read_text(encoding="utf-8"))
+    )
+    require_current_gate_action(
+        exposure,
+        kind="formal_evaluation_exposure",
+        action="record_next_official_test_exposure",
+        expected_context=_context(
+            config,
+            evaluator_hash=source.context.evaluator_checkpoint_hash,
+            split_hash=source.context.dataset_split_manifest_hash,
+            checkpoint_hash=source.context.checkpoint_hash,
+        ),
+    )
+    if source.input_hashes.get("formal_evaluation_exposure") != exposure.evidence_hash:
+        raise ValueError("conditional acceptance does not bind its exposure evidence")
     source_checkpoint_hash = source.context.checkpoint_hash
     if not isinstance(source_checkpoint_hash, str) or len(source_checkpoint_hash) != 64:
         raise ValueError("conditional acceptance lacks checkpoint binding")
@@ -410,6 +521,9 @@ def admit_conditional_evaluation(args, config: V2Config) -> int:
             "measurement_bundle": source.input_hashes.get("measurement_bundle"),
             "measurement_evidence": source.input_hashes.get("measurement_evidence"),
             "test_manifest": source.input_hashes.get("test_manifest"),
+            "formal_evaluation_exposure": exposure.evidence_hash,
+            "formal_evaluation_id": source.input_hashes.get("formal_evaluation_id"),
+            "exposure_sequence": source.input_hashes.get("exposure_sequence"),
         },
     )
     if not isinstance(source.input_hashes.get("initialization_checkpoint"), str):
@@ -464,7 +578,7 @@ def admit_conditional_evaluation(args, config: V2Config) -> int:
         None if readable else "every label requires at least fourteen readable samples",
     )
     run = _new_run(config)
-    status = "passed" if readable else "failed"
+    status = "passed" if readable else "valid_failed"
     record = EvidenceRecordV2(
         2,
         "conditional_generation_admission",

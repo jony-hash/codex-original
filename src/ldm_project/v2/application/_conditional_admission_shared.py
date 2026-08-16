@@ -77,7 +77,7 @@ def train_evaluator(args, config: V2Config) -> int:
         2,
         "evaluator_qualification",
         config.run.evidence_tier,
-        "passed" if accuracy >= 0.985 else "failed",
+        "passed" if accuracy >= 0.985 else ("valid_failed" if config.architecture == IDENTITY_ARCHITECTURE else "failed"),
         run.git_commit,
         run.dirty_patch_hash,
         run.config_hash,
@@ -94,7 +94,7 @@ def train_evaluator(args, config: V2Config) -> int:
                 {"validation_accuracy": accuracy},
             ),
         ),
-        ("conditional_observability",) if accuracy >= 0.985 else (),
+        (("train_acceptance_evaluator",) if config.architecture == IDENTITY_ARCHITECTURE else ("conditional_observability",)) if accuracy >= 0.985 else (),
         None
         if accuracy >= 0.985
         else "frozen evaluator did not reach 98.5% validation accuracy",
@@ -140,14 +140,14 @@ def qualify_evaluator(args, config: V2Config) -> int:
         2,
         "evaluator_qualification",
         config.run.evidence_tier,
-        "passed" if passed else "failed",
+        "passed" if passed else ("valid_failed" if config.architecture == IDENTITY_ARCHITECTURE else "failed"),
         run.git_commit,
         run.dirty_patch_hash,
         run.config_hash,
         _context(config, evaluator_hash=evaluator_hash, split_hash=split.manifest_hash),
         {"evaluator_checkpoint": evaluator_hash},
         (GateResult("validation_accuracy", passed, {"validation_accuracy": accuracy}),),
-        ("conditional_observability",)
+        (("train_acceptance_evaluator",) if config.architecture == IDENTITY_ARCHITECTURE else ("conditional_observability",))
         if passed and config.run.evidence_tier == "acceptance"
         else (),
         None if passed else "replayed evaluator validation accuracy is below 98.5%",
@@ -162,10 +162,24 @@ def conditional_injection_admission(args, config: V2Config) -> int:
     _require_identity(config)
     images, labels = load_local_mnist(args.dataset_root, train=True)
     train_images, train_labels, _, _, split = _split(images, labels, args.dataset_root)
+    measurement = EvidenceRecordV2.from_dict(
+        json.loads(Path(args.acceptance_measurement_evidence).read_text(encoding="utf-8"))
+    )
+    evaluator_hash = evaluator_checkpoint_hash(args.evaluator_checkpoint)
+    _validate_current_evidence_source(measurement)
+    require_current_gate_action(
+        measurement,
+        kind="conditional_acceptance_measurement",
+        action="conditional_injection_admission",
+        expected_context=_context(
+            config,
+            evaluator_hash=evaluator_hash,
+            split_hash=split.manifest_hash,
+        ),
+    )
     evaluator, evaluator_payload = load_frozen_evaluator(
         args.evaluator_checkpoint, device=torch.device("cpu")
     )
-    evaluator_hash = evaluator_checkpoint_hash(args.evaluator_checkpoint)
     payload_split = MNISTSplitManifest(**evaluator_payload["split_manifest"])
     if payload_split.manifest_hash != split.manifest_hash:
         raise ValueError("evaluator checkpoint uses a different fixed MNIST split")
@@ -278,7 +292,7 @@ def conditional_injection_admission(args, config: V2Config) -> int:
         2,
         "conditional_injection_admission",
         config.run.evidence_tier,
-        "passed" if passed else "failed",
+        "passed" if passed else "valid_failed",
         run.git_commit,
         run.dirty_patch_hash,
         run.config_hash,
@@ -295,6 +309,7 @@ def conditional_injection_admission(args, config: V2Config) -> int:
             "initialization_state_hash": manifest.initialization_state_hash,
             "report": file_sha256(report_path),
             "evaluator": evaluator_hash,
+            "measurement_evidence": measurement.evidence_hash,
         },
         checks,
         ("conditional_observability",) if passed else (),
@@ -407,7 +422,7 @@ def _identity_observability(args, config: V2Config) -> int:
         2,
         "conditional_observability",
         config.run.evidence_tier,
-        "passed" if passed else "failed",
+        "passed" if passed else "invalid_harness",
         run.git_commit,
         run.dirty_patch_hash,
         run.config_hash,
@@ -865,17 +880,22 @@ def _identity_control_isolation(args, config: V2Config) -> int:
             "fixed_exposure_saturation", saturation <= 0.08, {"saturation": saturation}
         ),
     )
-    if classification == "semantic_alignment_required":
+    if classification == "semantic_alignment_required" and config.run.evidence_tier == "acceptance":
         permitted_actions = ("conditional_semantic_localization",)
-    elif classification == "controllable_upper_bound":
+    elif classification == "controllable_upper_bound" and config.run.evidence_tier == "acceptance":
         permitted_actions = ("controllability_smoke",)
     else:
         permitted_actions = ()
+    status = (
+        "passed"
+        if harness_valid and permitted_actions
+        else ("valid_failed" if harness_valid else "invalid_harness")
+    )
     record = EvidenceRecordV2(
         2,
         "conditional_control_isolation",
-        "diagnostic",
-        "diagnostic" if harness_valid else "failed",
+        config.run.evidence_tier,
+        status,
         run.git_commit,
         run.dirty_patch_hash,
         run.config_hash,
@@ -1267,7 +1287,7 @@ def _identity_semantic_localization(args, config: V2Config) -> int:
         kind="conditional_control_isolation",
         action="conditional_semantic_localization",
         expected_context=expected,
-        allow_diagnostic=True,
+        allow_diagnostic=config.run.evidence_tier != "acceptance",
     )
     if isolation.input_hashes.get(
         "control_admission_metric_contract"
@@ -1483,13 +1503,19 @@ def _identity_semantic_localization(args, config: V2Config) -> int:
     permitted = (
         ("controllability_smoke",)
         if classification == "local_semantic_alignment_plausible"
+        and config.run.evidence_tier == "acceptance"
         else ()
+    )
+    status = (
+        "passed"
+        if classification == "local_semantic_alignment_plausible"
+        else ("valid_failed" if valid else "invalid_harness")
     )
     record = EvidenceRecordV2(
         2,
         "conditional_semantic_localization",
-        "diagnostic",
-        "diagnostic" if valid else "failed",
+        config.run.evidence_tier,
+        status,
         run.git_commit,
         run.dirty_patch_hash,
         run.config_hash,

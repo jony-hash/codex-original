@@ -78,7 +78,14 @@ class EvidenceRecordV2:
     def validate(self) -> None:
         if self.schema_version != 2:
             raise ValueError("unsupported evidence schema")
-        if self.status not in {"passed", "failed", "diagnostic", "pending_review"}:
+        if self.status not in {
+            "passed",
+            "failed",
+            "diagnostic",
+            "pending_review",
+            "invalid_harness",
+            "valid_failed",
+        }:
             raise ValueError("invalid evidence status")
         if self.tier == "acceptance" and self.dirty_patch_hash is not None:
             raise ValueError("acceptance evidence requires a clean commit")

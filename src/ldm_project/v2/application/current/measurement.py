@@ -30,12 +30,17 @@ from ...student.evaluator import (
 )
 from .runtime import (
     _context,
+    _validate_current_evidence_source,
     _new_run,
     _require_current_acceptance,
     _require_identity,
     _split,
     _write_evidence,
+    evaluator_checkpoint_hash,
+    require_current_gate_action,
+    require_input_hashes,
 )
+from .exposure import exposure_chain_id, EXPOSURE_CONTRACT
 
 
 ACCEPTANCE_MEASUREMENT_CONTRACT = canonical_sha256(
@@ -48,6 +53,7 @@ ACCEPTANCE_MEASUREMENT_CONTRACT = canonical_sha256(
         "secondary_batch_size": 256,
         "preprocessing": "fixed_exposure_28x28",
         "test_split": "official_mnist_test_10000_v1",
+        "exposure_chain": EXPOSURE_CONTRACT,
     }
 )
 
@@ -124,9 +130,27 @@ def train_acceptance_evaluator(args, config) -> int:
     _require_current_acceptance(config)
     if args.epochs != 10 or args.batch_size != 256:
         raise ValueError("acceptance evaluator contract fixes epochs=10 and batch_size=256")
-    device = torch.device(config.run.device)
+    primary_evidence = EvidenceRecordV2.from_dict(
+        __import__("json").loads(
+            Path(args.evaluator_qualification_evidence).read_text(encoding="utf-8")
+        )
+    )
     images, labels = load_local_mnist(args.dataset_root, train=True)
     train_images, train_labels, validation_images, validation_labels, split = _split(images, labels, args.dataset_root)
+    primary_hash = evaluator_checkpoint_hash(args.evaluator_checkpoint)
+    _validate_current_evidence_source(primary_evidence)
+    require_current_gate_action(
+        primary_evidence,
+        kind="evaluator_qualification",
+        action="train_acceptance_evaluator",
+        expected_context=_context(
+            config,
+            evaluator_hash=primary_hash,
+            split_hash=split.manifest_hash,
+        ),
+    )
+    require_input_hashes(primary_evidence, {"evaluator_checkpoint": primary_hash})
+    device = torch.device(config.run.device)
     model = _train_smooth(train_images, train_labels, device, epochs=args.epochs, batch_size=args.batch_size)
     accuracy, recall, _ = _accuracy_recall(model, validation_images.to(device), validation_labels.to(device))
     run = _new_run(config)
@@ -155,12 +179,17 @@ def train_acceptance_evaluator(args, config) -> int:
         2,
         "acceptance_evaluator_training",
         config.run.evidence_tier,
-        "passed" if gate.passed else "failed",
+        "passed" if gate.passed else "valid_failed",
         run.git_commit,
         run.dirty_patch_hash,
         run.config_hash,
         _context(config, evaluator_hash=file_sha256(checkpoint), split_hash=split.manifest_hash),
-        {"acceptance_evaluator": file_sha256(checkpoint), "contract": ACCEPTANCE_MEASUREMENT_CONTRACT},
+        {
+            "acceptance_evaluator": file_sha256(checkpoint),
+            "primary_evaluator": primary_hash,
+            "primary_evaluator_qualification": primary_evidence.evidence_hash,
+            "contract": ACCEPTANCE_MEASUREMENT_CONTRACT,
+        },
         (gate,),
         ("qualify_acceptance_measurement",) if gate.passed else (),
         None if gate.passed else "secondary acceptance evaluator qualification failed",
@@ -177,11 +206,6 @@ def qualify_acceptance_measurement(args, config) -> int:
     training_evidence = EvidenceRecordV2.from_dict(
         __import__("json").loads(Path(args.acceptance_evaluator_training_evidence).read_text(encoding="utf-8"))
     )
-    if training_evidence.evidence_kind != "acceptance_evaluator_training" or training_evidence.status != "passed":
-        raise ValueError("acceptance evaluator training evidence is not passed")
-    if training_evidence.permitted_next_actions != ("qualify_acceptance_measurement",):
-        raise ValueError("acceptance evaluator training evidence does not authorize measurement qualification")
-    from .runtime import _validate_current_evidence_source
     _validate_current_evidence_source(training_evidence)
     images, labels = load_local_mnist(args.dataset_root, train=True)
     _, _, validation_images, validation_labels, split = _split(images, labels, args.dataset_root)
@@ -196,6 +220,18 @@ def qualify_acceptance_measurement(args, config) -> int:
     if MNISTSplitManifest(**secondary_payload["split_manifest"]).manifest_hash != split.manifest_hash:
         raise ValueError("acceptance evaluator split mismatch")
     secondary_hash = file_sha256(args.acceptance_evaluator_checkpoint)
+    require_current_gate_action(
+        training_evidence,
+        kind="acceptance_evaluator_training",
+        action="qualify_acceptance_measurement",
+        expected_context=_context(
+            config,
+            evaluator_hash=secondary_hash,
+            split_hash=split.manifest_hash,
+        ),
+    )
+    if training_evidence.input_hashes.get("primary_evaluator") != file_sha256(args.evaluator_checkpoint):
+        raise ValueError("acceptance evaluator training evidence primary checkpoint mismatch")
     if training_evidence.input_hashes.get("acceptance_evaluator") != secondary_hash:
         raise ValueError("acceptance evaluator training evidence does not bind checkpoint")
     if training_evidence.context.dataset_split_manifest_hash != split.manifest_hash:
@@ -236,6 +272,43 @@ def qualify_acceptance_measurement(args, config) -> int:
     }
     bundle_path = run.root / "conditional_acceptance_measurement_bundle.json"
     atomic_write_json(bundle_path, bundle)
+    bundle_hash = file_sha256(bundle_path)
+    chain_id = exposure_chain_id(
+        config,
+        primary_evaluator=file_sha256(args.evaluator_checkpoint),
+        secondary_evaluator=secondary_hash,
+        test_manifest=file_sha256(test_manifest_path),
+        measurement_bundle=bundle_hash,
+    )
+    genesis = EvidenceRecordV2(
+        2,
+        "formal_evaluation_exposure",
+        config.run.evidence_tier,
+        "passed",
+        run.git_commit,
+        run.dirty_patch_hash,
+        run.config_hash,
+        _context(
+            config,
+            evaluator_hash=file_sha256(args.evaluator_checkpoint),
+            split_hash=split.manifest_hash,
+        ),
+        {
+            "exposure_contract": EXPOSURE_CONTRACT,
+            "exposure_chain_id": chain_id,
+            "exposure_sequence": "0",
+            "primary_evaluator": file_sha256(args.evaluator_checkpoint),
+            "secondary_evaluator": secondary_hash,
+            "test_manifest": file_sha256(test_manifest_path),
+            "measurement_evidence": "genesis",
+            "measurement_bundle": bundle_hash,
+            "formal_evaluation_id": chain_id,
+        },
+        (GateResult("exposure_genesis_declared", True, {}),),
+        ("record_next_official_test_exposure",),
+        None,
+    )
+    _write_evidence(run, "formal_evaluation_exposure_genesis_evidence.json", genesis)
     gates = (
         GateResult("primary_validation", primary_accuracy >= 0.985 and sum(primary_recall) / 10 >= 0.985 and min(primary_recall) >= 0.95, {"accuracy": primary_accuracy, "macro_recall": sum(primary_recall) / 10, "recall": primary_recall}),
         GateResult("secondary_validation", secondary_accuracy >= 0.985 and sum(secondary_recall) / 10 >= 0.985 and min(secondary_recall) >= 0.95, {"accuracy": secondary_accuracy, "macro_recall": sum(secondary_recall) / 10, "recall": secondary_recall}),
@@ -250,7 +323,7 @@ def qualify_acceptance_measurement(args, config) -> int:
         2,
         "conditional_acceptance_measurement",
         config.run.evidence_tier,
-        "passed" if passed else "failed",
+        "passed" if passed else "valid_failed",
         run.git_commit,
         run.dirty_patch_hash,
         run.config_hash,
@@ -263,9 +336,11 @@ def qualify_acceptance_measurement(args, config) -> int:
             "test_content_manifest": str(test_manifest["manifest_hash"]),
             "acceptance_evaluator_training_evidence": training_evidence.evidence_hash,
             "contract": ACCEPTANCE_MEASUREMENT_CONTRACT,
+            "exposure_genesis": genesis.evidence_hash,
+            "exposure_chain_id": chain_id,
         },
         gates,
-        ("evaluate",) if passed else (),
+        ("conditional_injection_admission", "evaluate") if passed else (),
         None if passed else "independent acceptance measurement qualification failed",
     )
     _write_evidence(run, "conditional_acceptance_measurement_evidence.json", record)

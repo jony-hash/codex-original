@@ -19,6 +19,7 @@ from .runtime import (
     require_input_hashes,
     safe_torch_load, save_conditional_checkpoint, state_content_hash, state_signature, torch,
     deterministic_companion_indices, objective_contract_payload, active_objective_kind,
+    training_authorization_binding,
 )
 from .admission import (
     _conditional_parameter_groups,
@@ -179,7 +180,9 @@ def conditional_train(args, config: V2Config) -> int:
                     "semantic recovery does not reproduce the formal training first-400 batch/code schedule"
                 )
         _validate_current_evidence_source(injection, observability, authorization)
+        authorization_binding = training_authorization_binding(authorization)
     else:
+        authorization_binding = {}
         _passed_evidence(args.observability_evidence, kind="conditional_observability")
         _passed_evidence(args.controllability_evidence, kind="controllability_smoke")
     device = torch.device(config.run.device)
@@ -364,6 +367,7 @@ def conditional_train(args, config: V2Config) -> int:
         extra={
             "history": history,
             "active_objectives": active_objectives,
+            **authorization_binding,
             "companion_schedule_hash": canonical_sha256(companion_schedule),
             "schedule_steps_per_epoch": expected_steps_per_epoch
             if config.architecture == IDENTITY_ARCHITECTURE
@@ -383,6 +387,7 @@ def conditional_train(args, config: V2Config) -> int:
         "evaluator": manifest.evaluator_checkpoint_hash,
     }
     if config.architecture == IDENTITY_ARCHITECTURE:
+        inputs.update(authorization_binding)
         inputs["first_100_schedule_hash"] = _first_hundred_schedule_hash(train_labels)
         inputs["initialization_checkpoint"] = initialization_checkpoint_hash
         inputs["initialization_state_hash"] = manifest.initialization_state_hash
@@ -394,7 +399,7 @@ def conditional_train(args, config: V2Config) -> int:
         2,
         "conditional_training",
         config.run.evidence_tier,
-        "passed" if finite else "failed",
+        "passed" if finite else "invalid_harness",
         run.git_commit,
         run.dirty_patch_hash,
         run.config_hash,

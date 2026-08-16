@@ -93,7 +93,7 @@ def controllability_smoke(args, config: V2Config) -> int:
                 kind="conditional_control_isolation",
                 action="controllability_smoke",
                 expected_context=expected,
-                allow_diagnostic=True,
+                allow_diagnostic=config.run.evidence_tier != "acceptance",
             )
         else:
             localization_path = args.semantic_localization_evidence
@@ -106,7 +106,7 @@ def controllability_smoke(args, config: V2Config) -> int:
                 kind="conditional_control_isolation",
                 action="conditional_semantic_localization",
                 expected_context=expected,
-                allow_diagnostic=True,
+                allow_diagnostic=config.run.evidence_tier != "acceptance",
             )
             localization = EvidenceRecordV2.from_dict(
                 json.loads(Path(localization_path).read_text(encoding="utf-8"))
@@ -116,7 +116,7 @@ def controllability_smoke(args, config: V2Config) -> int:
                 kind="conditional_semantic_localization",
                 action="controllability_smoke",
                 expected_context=expected,
-                allow_diagnostic=True,
+                allow_diagnostic=config.run.evidence_tier != "acceptance",
             )
         if localization is None:
             _validate_current_evidence_source(injection, observability, isolation)
@@ -405,11 +405,23 @@ def controllability_smoke(args, config: V2Config) -> int:
         if config.architecture == IDENTITY_ARCHITECTURE
         else None,
     )
-    permitted = (
-        ("train",) if passed and config.run.evidence_tier == "acceptance" else ()
-    )
+    if config.architecture == IDENTITY_ARCHITECTURE:
+        harness_ok = all(
+            checks[index].passed for index in (0, 3, 4, 5)
+        )
+        status = "passed" if passed else ("valid_failed" if harness_ok else "invalid_harness")
+        permitted = (
+            ("train",)
+            if passed and config.run.evidence_tier == "acceptance"
+            else (("semantic_recovery_smoke",) if status == "valid_failed" and config.run.evidence_tier == "acceptance" else ())
+        )
+    else:
+        status = "passed" if passed else "failed"
+        permitted = ("train",) if passed and config.run.evidence_tier == "acceptance" else ()
     inputs = {
-        "observability": file_sha256(args.observability_evidence),
+        "observability": observability.evidence_hash
+        if config.architecture == IDENTITY_ARCHITECTURE
+        else file_sha256(args.observability_evidence),
         "evaluator": evaluator_checkpoint_hash(args.evaluator_checkpoint),
         "metric_contract": canonical_sha256(
             CONDITIONAL_CONTROL_ADMISSION_CONTRACT
@@ -424,8 +436,8 @@ def controllability_smoke(args, config: V2Config) -> int:
     if config.architecture == IDENTITY_ARCHITECTURE:
         inputs.update(
             {
-                "injection": file_sha256(args.injection_evidence),
-                "isolation": file_sha256(args.isolation_evidence),
+                "injection": injection.evidence_hash,
+                "isolation": isolation.evidence_hash,
                 "initialization_checkpoint": file_sha256(args.checkpoint),
                 "initialization_state_hash": initialization_manifest.initialization_state_hash,
                 "first_100_schedule_hash": schedule_hash,
@@ -436,7 +448,7 @@ def controllability_smoke(args, config: V2Config) -> int:
         2,
         "controllability_smoke",
         config.run.evidence_tier,
-        "passed" if passed else "failed",
+        status,
         run.git_commit,
         run.dirty_patch_hash,
         run.config_hash,
@@ -507,19 +519,19 @@ def semantic_recovery_smoke(args, config: V2Config) -> int:
         kind="conditional_control_isolation",
         action="conditional_semantic_localization",
         expected_context=expected,
-        allow_diagnostic=True,
+                allow_diagnostic=config.run.evidence_tier != "acceptance",
     )
     require_evidence_action(
         localization,
         kind="conditional_semantic_localization",
         action="controllability_smoke",
         expected_context=expected,
-        allow_diagnostic=True,
+        allow_diagnostic=config.run.evidence_tier != "acceptance",
     )
     failed_smoke.validate()
     if (
         failed_smoke.evidence_kind != "controllability_smoke"
-        or failed_smoke.status != "failed"
+        or failed_smoke.status != "valid_failed"
     ):
         raise ValueError(
             "semantic recovery requires the immutable failed 100-step smoke evidence"
@@ -808,6 +820,15 @@ def semantic_recovery_smoke(args, config: V2Config) -> int:
         },
     )
     passed = all(check.passed for check in checks)
+    if config.run.evidence_tier == "acceptance":
+        harness_ok = all(
+            checks[index].passed for index in (0, 5, 6, 7, 8)
+        )
+        status = "passed" if passed else ("valid_failed" if harness_ok else "invalid_harness")
+        permitted = ("train",) if passed else ()
+    else:
+        status = "passed" if passed else "failed"
+        permitted = ()
     context = _context(
         config,
         evaluator_hash=evaluator_hash,
@@ -815,11 +836,11 @@ def semantic_recovery_smoke(args, config: V2Config) -> int:
         checkpoint_hash=init_hash,
     )
     inputs = {
-        "injection": file_sha256(args.injection_evidence),
-        "observability": file_sha256(args.observability_evidence),
-        "isolation": file_sha256(args.isolation_evidence),
-        "semantic_localization": file_sha256(args.semantic_localization_evidence),
-        "failed_controllability": file_sha256(args.failed_controllability_evidence),
+        "injection": injection.evidence_hash,
+        "observability": observability.evidence_hash,
+        "isolation": isolation.evidence_hash,
+        "semantic_localization": localization.evidence_hash,
+        "failed_controllability": failed_smoke.evidence_hash,
         "initialization_checkpoint": init_hash,
         "evaluator": evaluator_hash,
         "report": file_sha256(report_path),
@@ -833,14 +854,14 @@ def semantic_recovery_smoke(args, config: V2Config) -> int:
         2,
         "conditional_semantic_recovery_smoke",
         config.run.evidence_tier,
-        "passed" if passed else "failed",
+        status,
         run.git_commit,
         run.dirty_patch_hash,
         run.config_hash,
         context,
         inputs,
         checks,
-        ("train",) if passed else (),
+        permitted,
         None if passed else "conditional semantic recovery smoke failed",
     )
     _write_evidence(run, "semantic_recovery_evidence.json", record)

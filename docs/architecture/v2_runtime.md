@@ -69,6 +69,13 @@ primary evaluator qualification
 → accepted manifest
 ```
 
+current gate transitions are defined by the executable registry in
+`application/current/gates.py`; producers and consumers validate the same
+contract before publishing or consuming evidence.  A current formal record uses
+`invalid_harness` for an invalid execution/preflight and `valid_failed` for a
+complete measurement that misses a scientific gate.  The ambiguous legacy
+`failed` status cannot authorize the current chain.
+
 公开命令继续使用通用的 `student train/sample/evaluate`，但由
 `architecture` 严格分派。identity 主线的 evidence 必须逐项绑定 system、config、
 evaluator、MNIST split、initialization checkpoint 和 action；校验失败时不能创建
@@ -82,6 +89,25 @@ immutable initialization checkpoint 构造 bundle，smoke/recovery checkpoint �
 正式训练 warm start。当前命令 `audit conditional-semantic-localization`、
 `student admit-dataset` 和 `student audit-memorization` 均由 current 实现处理；
 `audit memorization` 是保留的兼容别名。
+
+训练完成后，evidence 与最终 checkpoint 会共同保存唯一授权来源的 kind 及其
+canonical evidence hash。formal evaluation 会逐项比较这两个绑定；因此它明确区分并
+验证 100-step controllability 与 400-step semantic-recovery 授权，缺失或不一致的旧产物
+不能作为当前 evaluation 的兼容路径。
+
+primary evaluator participates in optical training loss, localization, smoke,
+recovery and formal evaluation.  The separately qualified secondary evaluator
+is never part of optical optimization or smoke/recovery; it is consumed for
+measurement qualification and dual-evaluator formal evaluation.  Utility audits
+train their own fixed-seed utility models and do not reuse either acceptance
+evaluator.
+
+Acceptance measurement creates a sequence-0 `formal_evaluation_exposure`
+genesis record.  Each formal evaluation writes a successor exposure record
+before official-test inference, binding the chain, checkpoint, both evaluators,
+test manifest and measurement evidence.  The exposure evidence is consumed by
+manual admission and carried through dataset acceptance; repeated evaluation is
+recorded, not silently treated as a sealed final test.
 
 候选数据集始终写入：
 

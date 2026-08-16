@@ -22,8 +22,17 @@ from ldm_project.v2.application.current.runtime import (
     _system_signature,
     _validate_balanced_training_payload,
     _validate_current_evidence_source,
+    TRAINING_AUTHORIZATION_EVIDENCE_HASH_KEY,
+    TRAINING_AUTHORIZATION_KIND_KEY,
+    training_authorization_binding,
+    validate_training_authorization_binding,
+    CURRENT_GATE_CONTRACTS,
+    validate_current_gate_record,
+    require_current_gate_action,
     require_clean_acceptance_worktree,
 )
+from ldm_project.v2.application.current.measurement import ACCEPTANCE_MEASUREMENT_CONTRACT
+from ldm_project.v2.application.current.exposure import EXPOSURE_CONTRACT, require_exposure_predecessor
 from ldm_project.v2.config import load_config
 from ldm_project.v2.evidence import (
     EvidenceContextV2,
@@ -107,6 +116,220 @@ def _write_record(path: Path, record: EvidenceRecordV2) -> None:
     path.write_text(json.dumps(record.to_dict()), encoding="utf-8")
 
 
+@pytest.mark.parametrize(
+    "kind", ["controllability_smoke", "conditional_semantic_recovery_smoke"]
+)
+def test_training_authorization_binding_round_trips_for_formal_sources(kind: str) -> None:
+    config = _config()
+    source = _record(config, kind, _lineage_context(config), {}, ("train",))
+    binding = training_authorization_binding(source)
+    bound = replace(source, input_hashes=binding)
+    validate_training_authorization_binding(bound, binding)
+    assert binding[TRAINING_AUTHORIZATION_KIND_KEY] == kind
+    assert len(binding[TRAINING_AUTHORIZATION_EVIDENCE_HASH_KEY]) == 64
+
+
+@pytest.mark.parametrize(
+    "input_hashes, extra",
+    [
+        ({}, {}),
+        ({TRAINING_AUTHORIZATION_KIND_KEY: "unknown", TRAINING_AUTHORIZATION_EVIDENCE_HASH_KEY: "a" * 64}, {}),
+        ({TRAINING_AUTHORIZATION_KIND_KEY: "controllability_smoke", TRAINING_AUTHORIZATION_EVIDENCE_HASH_KEY: "a" * 63}, {}),
+    ],
+)
+def test_training_authorization_binding_rejects_invalid_or_missing_values(
+    input_hashes: dict[str, str], extra: dict[str, str]
+) -> None:
+    config = _config()
+    record = _record(config, "conditional_training", _lineage_context(config), input_hashes, ("evaluate",))
+    with pytest.raises(ValueError, match="authorization"):
+        validate_training_authorization_binding(record, extra)
+
+
+def test_training_authorization_binding_rejects_checkpoint_mismatch() -> None:
+    config = _config()
+    source = _record(config, "controllability_smoke", _lineage_context(config), {}, ("train",))
+    binding = training_authorization_binding(source)
+    record = replace(source, input_hashes=binding)
+    with pytest.raises(ValueError, match="disagrees"):
+        validate_training_authorization_binding(
+            record,
+            {TRAINING_AUTHORIZATION_KIND_KEY: binding[TRAINING_AUTHORIZATION_KIND_KEY], TRAINING_AUTHORIZATION_EVIDENCE_HASH_KEY: "b" * 64},
+        )
+
+
+def test_current_gate_contract_registers_formal_transitions() -> None:
+    assert {
+        "evaluator_qualification",
+        "acceptance_evaluator_training",
+        "conditional_acceptance_measurement",
+        "conditional_injection_admission",
+        "conditional_observability",
+        "conditional_control_isolation",
+        "conditional_semantic_localization",
+        "controllability_smoke",
+        "conditional_semantic_recovery_smoke",
+        "conditional_training",
+        "conditional_acceptance",
+        "conditional_generation_admission",
+        "conditional_dataset_candidate",
+        "conditional_memorization_audit",
+        "conditional_utility",
+        "conditional_dataset_accepted",
+        "formal_evaluation_exposure",
+    } <= set(CURRENT_GATE_CONTRACTS)
+
+
+@pytest.mark.parametrize("status", ["failed", "diagnostic"])
+def test_current_formal_gate_rejects_ambiguous_or_diagnostic_authorization(status: str) -> None:
+    config = _config()
+    record = _record(
+        config,
+        "controllability_smoke",
+        _lineage_context(config),
+        {},
+        (),
+        status=status,
+    )
+    with pytest.raises(ValueError):
+        validate_current_gate_record(record)
+
+
+def test_valid_failed_smoke_is_the_only_recovery_transition() -> None:
+    config = _config()
+    failed = _record(
+        config,
+        "controllability_smoke",
+        _lineage_context(config),
+        {},
+        ("semantic_recovery_smoke",),
+        status="valid_failed",
+    )
+    require_current_gate_action(
+        failed,
+        kind="controllability_smoke",
+        action="semantic_recovery_smoke",
+        expected_context=_lineage_context(config),
+    )
+    invalid = replace(failed, status="invalid_harness", permitted_next_actions=())
+    with pytest.raises(ValueError):
+        require_current_gate_action(
+            invalid,
+            kind="controllability_smoke",
+            action="semantic_recovery_smoke",
+            expected_context=_lineage_context(config),
+        )
+
+
+def test_exposure_predecessor_binds_chain_and_rejects_cross_measurement() -> None:
+    config = _config()
+    context = _context(config, evaluator_hash=EVALUATOR_HASH, split_hash=SPLIT_HASH)
+    predecessor = _record(
+        config,
+        "formal_evaluation_exposure",
+        context,
+        {
+            "exposure_chain_id": "h" * 64,
+            "exposure_contract": EXPOSURE_CONTRACT,
+            "exposure_sequence": "0",
+            "primary_evaluator": EVALUATOR_HASH,
+            "secondary_evaluator": "s" * 64,
+            "test_manifest": "t" * 64,
+            "measurement_evidence": "genesis",
+            "formal_evaluation_id": "i" * 64,
+        },
+        ("record_next_official_test_exposure",),
+    )
+    assert require_exposure_predecessor(
+        predecessor,
+        config=config,
+        primary_evaluator=EVALUATOR_HASH,
+        secondary_evaluator="s" * 64,
+        test_manifest="t" * 64,
+        measurement_evidence="m" * 64,
+        chain_id="h" * 64,
+        split_hash=SPLIT_HASH,
+    ) == 0
+    with pytest.raises(ValueError, match="chain"):
+        require_exposure_predecessor(
+            predecessor,
+            config=config,
+            primary_evaluator=EVALUATOR_HASH,
+            secondary_evaluator="s" * 64,
+            test_manifest="t" * 64,
+            measurement_evidence="m" * 64,
+            chain_id="x" * 64,
+            split_hash=SPLIT_HASH,
+        )
+
+
+def _measurement_fixture(tmp_path: Path, config, *, context=None, actions=("evaluate",)) -> Path:
+    secondary = tmp_path / "secondary.pt"
+    secondary.write_bytes(b"secondary")
+    test_manifest = tmp_path / "mnist_test_manifest.json"
+    test_manifest.write_text("{}", encoding="utf-8")
+    bundle = tmp_path / "measurement_bundle.json"
+    bundle.write_text(
+        json.dumps(
+            {
+                "contract": ACCEPTANCE_MEASUREMENT_CONTRACT,
+                "primary_checkpoint": EVALUATOR_HASH,
+                "secondary_checkpoint": file_sha256(secondary),
+                "test_manifest_filename": test_manifest.name,
+                "test_manifest_hash": file_sha256(test_manifest),
+            }
+        ),
+        encoding="utf-8",
+    )
+    record = _record(
+        config,
+        "conditional_acceptance_measurement",
+        context or _context(config, evaluator_hash=EVALUATOR_HASH, split_hash=SPLIT_HASH),
+        {
+            "primary_evaluator": EVALUATOR_HASH,
+            "secondary_evaluator": file_sha256(secondary),
+            "measurement_bundle": file_sha256(bundle),
+            "test_manifest": file_sha256(test_manifest),
+            "exposure_genesis": "g" * 64,
+            "exposure_chain_id": "h" * 64,
+        },
+        actions,
+    )
+    path = tmp_path / "measurement.json"
+    _write_record(path, record)
+    return path
+
+
+def _exposure_fixture(tmp_path: Path, config, measurement_path: Path) -> Path:
+    measurement = EvidenceRecordV2.from_dict(
+        json.loads(measurement_path.read_text(encoding="utf-8"))
+    )
+    record = _record(
+        config,
+        "formal_evaluation_exposure",
+        measurement.context,
+        {
+            "exposure_chain_id": "h" * 64,
+            "exposure_sequence": "0",
+            "exposure_contract": EXPOSURE_CONTRACT,
+            "primary_evaluator": EVALUATOR_HASH,
+            "secondary_evaluator": measurement.input_hashes["secondary_evaluator"],
+            "test_manifest": measurement.input_hashes["test_manifest"],
+            "measurement_evidence": "genesis",
+            "formal_evaluation_id": "h" * 64,
+        },
+        ("record_next_official_test_exposure",),
+    )
+    path = tmp_path / "exposure.json"
+    _write_record(path, record)
+    measurement = replace(
+        measurement,
+        input_hashes={**measurement.input_hashes, "exposure_genesis": record.evidence_hash},
+    )
+    _write_record(measurement_path, measurement)
+    return path
+
+
 def _manifest(config, *, state_hash: str = STATE_HASH):
     return SimpleNamespace(
         architecture_kind=IDENTITY_ARCHITECTURE,
@@ -151,7 +374,7 @@ def test_current_evidence_source_allows_docs_and_tests_descendants(tmp_path: Pat
         _validate_current_evidence_source(record)
 
 
-@pytest.mark.parametrize("relative", ["src/ldm_project/v2/runtime.py", "configs/v2/current/test.yaml", "pyproject.toml"])
+@pytest.mark.parametrize("relative", ["src/ldm_project/v2/application/current/runtime.py", "configs/v2/current/test.yaml", "pyproject.toml"])
 def test_current_evidence_source_rejects_scoped_descendant(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, relative: str) -> None:
     _init_git_repo(tmp_path)
     base = subprocess.run(["git", "-C", str(tmp_path), "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
@@ -291,6 +514,126 @@ def test_conditional_evaluate_rejects_missing_independent_measurement(
         acceptance_measurement_evidence=None,
     )
     with pytest.raises(ValueError, match="independent acceptance measurement"):
+        current_evaluation.conditional_evaluate(args, config)
+
+
+def test_conditional_evaluate_rejects_measurement_without_evaluate_before_loading(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = _config()
+    _stub_mnist(monkeypatch, current_evaluation)
+    context = _lineage_context(config)
+    training = _record(
+        config,
+        "conditional_training",
+        context,
+        {"checkpoint": CHECKPOINT_HASH},
+        ("evaluate",),
+    )
+    training_path = tmp_path / "training.json"
+    _write_record(training_path, training)
+    measurement_path = _measurement_fixture(tmp_path, config, actions=())
+    args = SimpleNamespace(
+        training_evidence=str(training_path),
+        dataset_root=str(tmp_path),
+        evaluator_checkpoint=str(tmp_path / "evaluator.pt"),
+        checkpoint=str(tmp_path / "checkpoint.pt"),
+        acceptance_evaluator_checkpoint=str(tmp_path / "secondary.pt"),
+        acceptance_measurement_bundle=str(tmp_path / "measurement_bundle.json"),
+        acceptance_measurement_evidence=str(measurement_path),
+    )
+    monkeypatch.setattr(
+        current_evaluation,
+        "load_frozen_evaluator",
+        lambda *args, **kwargs: pytest.fail("evaluator loaded before measurement action rejection"),
+    )
+    monkeypatch.setattr(
+        current_evaluation,
+        "_load_bundle_with_payload",
+        lambda *args, **kwargs: pytest.fail("checkpoint loaded before measurement action rejection"),
+    )
+    with pytest.raises(ValueError, match="evaluate"):
+        current_evaluation.conditional_evaluate(args, config)
+
+
+@pytest.mark.parametrize("field", ["evaluator", "split"])
+def test_conditional_evaluate_rejects_measurement_context_mismatch_before_loading(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, field: str
+) -> None:
+    config = _config()
+    _stub_mnist(monkeypatch, current_evaluation)
+    context = _lineage_context(config)
+    training = _record(
+        config,
+        "conditional_training",
+        context,
+        {"checkpoint": CHECKPOINT_HASH},
+        ("evaluate",),
+    )
+    training_path = tmp_path / "training.json"
+    _write_record(training_path, training)
+    mismatch = _context(
+        config,
+        evaluator_hash=("z" * 64 if field == "evaluator" else EVALUATOR_HASH),
+        split_hash=("z" * 64 if field == "split" else SPLIT_HASH),
+    )
+    measurement_path = _measurement_fixture(tmp_path, config, context=mismatch)
+    args = SimpleNamespace(
+        training_evidence=str(training_path),
+        dataset_root=str(tmp_path),
+        evaluator_checkpoint=str(tmp_path / "evaluator.pt"),
+        checkpoint=str(tmp_path / "checkpoint.pt"),
+        acceptance_evaluator_checkpoint=str(tmp_path / "secondary.pt"),
+        acceptance_measurement_bundle=str(tmp_path / "measurement_bundle.json"),
+        acceptance_measurement_evidence=str(measurement_path),
+    )
+    monkeypatch.setattr(
+        current_evaluation,
+        "load_frozen_evaluator",
+        lambda *args, **kwargs: pytest.fail("evaluator loaded before measurement context rejection"),
+    )
+    monkeypatch.setattr(
+        current_evaluation,
+        "_load_bundle_with_payload",
+        lambda *args, **kwargs: pytest.fail("checkpoint loaded before measurement context rejection"),
+    )
+    with pytest.raises(ValueError, match="context mismatch"):
+        current_evaluation.conditional_evaluate(args, config)
+
+
+def test_conditional_evaluate_accepts_measurement_authorization_before_checkpoint_boundary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = _config()
+    _stub_mnist(monkeypatch, current_evaluation)
+    context = _lineage_context(config)
+    training = _record(
+        config,
+        "conditional_training",
+        context,
+        {"checkpoint": CHECKPOINT_HASH},
+        ("evaluate",),
+    )
+    training_path = tmp_path / "training.json"
+    _write_record(training_path, training)
+    measurement_path = _measurement_fixture(tmp_path, config)
+    exposure_path = _exposure_fixture(tmp_path, config, measurement_path)
+    args = SimpleNamespace(
+        training_evidence=str(training_path),
+        dataset_root=str(tmp_path),
+        evaluator_checkpoint=str(tmp_path / "evaluator.pt"),
+        checkpoint=str(tmp_path / "checkpoint.pt"),
+        acceptance_evaluator_checkpoint=str(tmp_path / "secondary.pt"),
+        acceptance_measurement_bundle=str(tmp_path / "measurement_bundle.json"),
+        acceptance_measurement_evidence=str(measurement_path),
+        official_test_exposure_evidence=str(exposure_path),
+    )
+    monkeypatch.setattr(
+        current_evaluation,
+        "_load_bundle_with_payload",
+        lambda *args, **kwargs: pytest.fail("valid measurement did not reach checkpoint boundary"),
+    )
+    with pytest.raises(pytest.fail.Exception, match="checkpoint boundary"):
         current_evaluation.conditional_evaluate(args, config)
 
 
@@ -500,6 +843,9 @@ def test_conditional_evaluate_requires_action_and_rejects_state_tampering(
         dataset_root=str(tmp_path),
         evaluator_checkpoint=str(tmp_path / "evaluator.pt"),
         checkpoint=str(tmp_path / "checkpoint.pt"),
+        acceptance_evaluator_checkpoint=None,
+        acceptance_measurement_bundle=None,
+        acceptance_measurement_evidence=None,
     )
     monkeypatch.setattr(
         current_evaluation,
@@ -524,6 +870,12 @@ def test_conditional_evaluate_requires_action_and_rejects_state_tampering(
         ("evaluate",),
     )
     _write_record(evidence_path, valid)
+    measurement_path = _measurement_fixture(tmp_path, config)
+    exposure_path = _exposure_fixture(tmp_path, config, measurement_path)
+    args.acceptance_evaluator_checkpoint = str(tmp_path / "secondary.pt")
+    args.acceptance_measurement_bundle = str(tmp_path / "measurement_bundle.json")
+    args.acceptance_measurement_evidence = str(measurement_path)
+    args.official_test_exposure_evidence = str(exposure_path)
     monkeypatch.setattr(
         current_evaluation,
         "_load_bundle_with_payload",
@@ -712,6 +1064,130 @@ def test_admit_dataset_rejects_generation_evaluator_split_mismatch_before_accept
     )
     with pytest.raises(ValueError, match="evidence context mismatch"):
         current_dataset.admit_dataset(args, config)
+
+
+def test_admit_dataset_does_not_publish_manifest_if_run_creation_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = _config()
+    root, payload, candidate_context = _candidate_fixture(tmp_path, config)
+    measurement_inputs = {
+        "secondary_evaluator": "s" * 64,
+        "measurement_bundle": "b" * 64,
+        "measurement_evidence": "m" * 64,
+        "test_manifest": "t" * 64,
+        "test_content_manifest": "c" * 64,
+        "exposure_genesis": "g" * 64,
+        "exposure_chain_id": "h" * 64,
+        "formal_evaluation_exposure": "x" * 64,
+        "formal_evaluation_id": "y" * 64,
+        "exposure_sequence": "1",
+    }
+    admission = _record(
+        config,
+        "conditional_generation_admission",
+        _context(config, evaluator_hash=EVALUATOR_HASH, split_hash=SPLIT_HASH, checkpoint_hash=CHECKPOINT_HASH),
+        {
+            "checkpoint": CHECKPOINT_HASH,
+            "initialization_checkpoint": INITIALIZATION_HASH,
+            "initialization_state_hash": STATE_HASH,
+            **measurement_inputs,
+        },
+        ("export",),
+    )
+    memorization = _record(
+        config,
+        "conditional_memorization_audit",
+        candidate_context,
+        {},
+        ("admit_dataset",),
+    )
+    utility = _record(
+        config,
+        "conditional_utility",
+        candidate_context,
+        {},
+        ("admit_dataset",),
+    )
+    paths = {}
+    for name, record in (("admission", admission), ("memorization", memorization), ("utility", utility)):
+        path = tmp_path / f"{name}.json"
+        _write_record(path, record)
+        paths[name] = path
+    args = SimpleNamespace(
+        generation_admission_evidence=str(paths["admission"]),
+        memorization_evidence=str(paths["memorization"]),
+        utility_evidence=str(paths["utility"]),
+        candidate_dataset=str(root),
+    )
+    monkeypatch.setattr(
+        current_dataset,
+        "_new_run",
+        lambda *args, **kwargs: pytest.fail("run creation failure"),
+    )
+    with pytest.raises(pytest.fail.Exception, match="run creation failure"):
+        current_dataset.admit_dataset(args, config)
+    assert not (root / "accepted_manifest.json").exists()
+
+
+def test_admit_dataset_publishes_manifest_and_evidence_after_valid_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = _config()
+    root, payload, candidate_context = _candidate_fixture(tmp_path, config)
+    measurement_inputs = {
+        "secondary_evaluator": "s" * 64,
+        "measurement_bundle": "b" * 64,
+        "measurement_evidence": "m" * 64,
+        "test_manifest": "t" * 64,
+        "test_content_manifest": "c" * 64,
+        "exposure_genesis": "g" * 64,
+        "exposure_chain_id": "h" * 64,
+        "formal_evaluation_exposure": "x" * 64,
+        "formal_evaluation_id": "y" * 64,
+        "exposure_sequence": "1",
+    }
+    admission = _record(
+        config,
+        "conditional_generation_admission",
+        _context(config, evaluator_hash=EVALUATOR_HASH, split_hash=SPLIT_HASH, checkpoint_hash=CHECKPOINT_HASH),
+        {
+            "checkpoint": CHECKPOINT_HASH,
+            "initialization_checkpoint": INITIALIZATION_HASH,
+            "initialization_state_hash": STATE_HASH,
+            **measurement_inputs,
+        },
+        ("export",),
+    )
+    memorization = _record(config, "conditional_memorization_audit", candidate_context, {}, ("admit_dataset",))
+    utility = _record(config, "conditional_utility", candidate_context, {}, ("admit_dataset",))
+    paths = {}
+    for name, record in (("admission", admission), ("memorization", memorization), ("utility", utility)):
+        path = tmp_path / f"{name}.json"
+        _write_record(path, record)
+        paths[name] = path
+    run_root = tmp_path / "run"
+    run_root.mkdir()
+    commit = subprocess.run(["git", "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
+    monkeypatch.setattr(
+        current_dataset,
+        "_new_run",
+        lambda *args, **kwargs: SimpleNamespace(
+            root=run_root,
+            git_commit=commit,
+            dirty_patch_hash=None,
+            config_hash=canonical_sha256(config.model_dump(mode="json")),
+        ),
+    )
+    args = SimpleNamespace(
+        generation_admission_evidence=str(paths["admission"]),
+        memorization_evidence=str(paths["memorization"]),
+        utility_evidence=str(paths["utility"]),
+        candidate_dataset=str(root),
+    )
+    assert current_dataset.admit_dataset(args, config) == 0
+    assert (root / "accepted_manifest.json").exists()
+    assert (run_root / "conditional_dataset_accepted_evidence.json").exists()
 
 
 @pytest.mark.parametrize(

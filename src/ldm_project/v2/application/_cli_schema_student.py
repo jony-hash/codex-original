@@ -60,6 +60,8 @@ def register_student(root: argparse._SubParsersAction) -> None:
     acceptance_evaluator = student.add_parser("train-acceptance-evaluator")
     acceptance_evaluator.add_argument("--config", required=True)
     acceptance_evaluator.add_argument("--dataset-root", required=True)
+    acceptance_evaluator.add_argument("--evaluator-checkpoint", required=True)
+    acceptance_evaluator.add_argument("--evaluator-qualification-evidence", required=True)
     acceptance_evaluator.add_argument("--epochs", type=int, default=10)
     acceptance_evaluator.add_argument("--batch-size", type=int, default=256)
     qualify_measurement = student.add_parser("qualify-acceptance-measurement")
@@ -253,6 +255,7 @@ def register_student(root: argparse._SubParsersAction) -> None:
         "evaluation_labels",
         "evaluation_preview",
         "manual_review",
+        "formal_evaluation_exposure_evidence",
     ):
         admit_conditional.add_argument("--" + name.replace("_", "-"), required=True)
     utility = student.add_parser("evaluate-utility")
@@ -293,6 +296,7 @@ def register_student(root: argparse._SubParsersAction) -> None:
     evaluate.add_argument("--acceptance-evaluator-checkpoint")
     evaluate.add_argument("--acceptance-measurement-bundle")
     evaluate.add_argument("--acceptance-measurement-evidence")
+    evaluate.add_argument("--official-test-exposure-evidence")
     admit_evaluation = student.add_parser("admit-evaluation")
     for name in (
         "config",
