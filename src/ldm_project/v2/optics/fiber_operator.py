@@ -227,7 +227,7 @@ class FiberArrayOLS(nn.Module):
         return self.input_modes.to(field.tensor), self.output_modes.to(field.tensor)
 
     def forward(self, field: ComplexField) -> ComplexField:
-        if field.plane != self.input_plane:
+        if (field.plane.shape != self.input_plane.shape or field.plane.pixel_pitch_m != self.input_plane.pixel_pitch_m or abs(field.plane.wavelength_m - self.input_plane.wavelength_m) > 1.0e-15 or field.plane.fov_m != self.input_plane.fov_m):
             raise ValueError("fiber input plane mismatch")
         if field.tensor.ndim not in {3, 4} or (field.tensor.ndim == 4 and field.tensor.shape[1] != 1):
             raise ValueError("fiber OLS requires [batch,H,W] or [batch,1,H,W] complex fields")
