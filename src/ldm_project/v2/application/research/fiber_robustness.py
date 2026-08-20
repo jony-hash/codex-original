@@ -92,6 +92,7 @@ def _context(args: Any):
     secondary = _load_secondary(secondary_path, device)
     checkpoint_hash = file_sha256(checkpoint_path)
     bundle, manifest, initialization = _research_initialization(config, checkpoint_path, checkpoint_hash)
+    bundle = bundle.to(device)
     pool = FiberTransportPool()
     operator = FiberTransportEnsembleOLS(bundle.system.encoder_plane, pool).to(device)
     bundle.system.ols = operator
