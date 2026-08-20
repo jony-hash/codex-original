@@ -151,8 +151,7 @@ def _panel(context: tuple[Any, ...], *, matrix_id: str, seed: int, count: int = 
         secondary_prediction = secondary_logits.argmax(1)
         recalls = [float((primary_prediction[target_labels == label] == label).float().mean()) for label in range(10)]
         secondary_recalls = [float((secondary_prediction[target_labels == label] == label).float().mean()) for label in range(10)]
-    if not identity:
-        bundle.system.ols = fiber_operator
+    bundle.system.ols = fiber_operator
     result: dict[str, Any] = {"primary_accuracy": float((primary_prediction == target_labels).float().mean()), "secondary_accuracy": float((secondary_prediction == target_labels).float().mean()), "primary_min_recall": min(recalls), "secondary_min_recall": min(secondary_recalls), "agreement": float((primary_prediction == secondary_prediction).float().mean()), "accuracy": float((primary_prediction == target_labels).float().mean()), "finite": bool(torch.isfinite(raw).all()), "nonnegative": bool((raw >= 0.0).all()), "saturation": float((raw > settings.fixed_exposure_scale * exposure_factor).float().mean()), "raw_l2": float(raw.square().mean().sqrt())}
     if return_response:
         result["_response"] = raw.detach()
