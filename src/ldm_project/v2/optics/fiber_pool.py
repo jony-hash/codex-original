@@ -79,7 +79,8 @@ class FiberTransportPool:
             phase = torch.rand(self.spec.ports, generator=generator, dtype=torch.float64) * (2.0 * torch.pi) - torch.pi
             gain = torch.ones_like(phase)
             parameters: dict[str, object] = {"phase_distribution": "uniform", "phase_range_rad": [-math.pi, math.pi]}
-            offset_range = self.spec.offset_range_m
+            # The negative control isolates phase mismatch; offsets remain zero.
+            offset_range = 0.0
         else:
             stress = pool == "stress"
             target_rms = 0.39269908 if stress else self.spec.phase_rms_rad

@@ -27,6 +27,7 @@ class FiberArraySpec:
     facet_magnification: float = 1.0
     lateral_offset_m: tuple[float, float] = (0.0, 0.0)
     mode_model: str = "step_index_lp01_ports"
+    expected_fov_m: tuple[float, float] = (200.0e-6, 200.0e-6)
 
     def __post_init__(self) -> None:
         if self.grid_shape != (10, 10):
@@ -35,6 +36,8 @@ class FiberArraySpec:
             raise ValueError("LP01 requires 0 < V < LP11 cutoff")
         if self.pitch_m <= 0.0 or self.wavelength_m <= 0.0 or self.waist_m <= 0.0:
             raise ValueError("fiber geometry values must be positive")
+        if len(self.expected_fov_m) != 2 or any(value <= 0.0 for value in self.expected_fov_m):
+            raise ValueError("expected_fov_m must contain two positive values")
         if not 0.0 < self.fill <= 1.0 or self.facet_magnification <= 0.0:
             raise ValueError("fill and facet_magnification must be positive and bounded")
         if len(self.lateral_offset_m) != 2:
@@ -107,6 +110,50 @@ def lp01_reference_metrics(v_number: float = 2.2) -> dict[str, float]:
     return {"u": u, "w": w, "v_number": float(v_number), "closure_error": abs(u * u + w * w - v_number * v_number), "characteristic_residual": abs(_characteristic(u, v_number)), "boundary_derivative_relative_error": abs(inside_derivative - outside_derivative) / max(abs(inside_derivative), 1.0e-30), "amplitude_1e_radius_rho": rho_e}
 
 
+def lp01_finite_difference_eigenpair(v_number: float = 2.2, *, points: int = 512, radius: float = 8.0) -> tuple[float, float]:
+    """Independent radial finite-volume bound-state estimate.
+
+    This deliberately does not call the scalar Bessel characteristic equation.
+    It discretizes ``-(r R')'/r - V² 1[r<1] R = lambda R`` on a weighted
+    finite-volume grid; the fundamental negative eigenvalue gives ``w`` and
+    ``u`` through ``lambda=-w²`` and ``u²+w²=V²``.
+    """
+    if points < 64 or radius <= 1.0:
+        raise ValueError("finite-difference radial grid is too small")
+    dr = radius / float(points)
+    r = (torch.arange(points, dtype=torch.float64) + 0.5) * dr
+    faces = torch.arange(points + 1, dtype=torch.float64) * dr
+    mass = r
+    stiffness = torch.zeros((points, points), dtype=torch.float64)
+    conductance = faces[1:-1] / dr
+    diagonal = torch.zeros(points, dtype=torch.float64)
+    diagonal[:-1] += conductance / dr
+    diagonal[1:] += conductance / dr
+    diagonal[-1] += faces[-1] / dr
+    stiffness.diagonal().copy_(diagonal - float(v_number * v_number) * mass * (r <= 1.0))
+    stiffness.diagonal(1).copy_(-conductance / dr)
+    stiffness.diagonal(-1).copy_(-conductance / dr)
+    inv_sqrt_mass = mass.rsqrt()
+    symmetric = inv_sqrt_mass[:, None] * stiffness * inv_sqrt_mass[None, :]
+    eigenvalues = torch.linalg.eigvalsh(symmetric)
+    negative = eigenvalues[eigenvalues < 0.0]
+    if negative.numel() == 0:
+        raise ValueError("finite-difference radial solve found no bound LP01 mode")
+    w = float((-negative[0]).sqrt())
+    u = math.sqrt(max(float(v_number * v_number) - w * w, 0.0))
+    return u, w
+
+
+def lp01_mode_overlap_metrics(plane: PlaneSpec, spec: FiberArraySpec) -> dict[str, float]:
+    """Measure the actual Lowdin-vs-reference overlap used by validation."""
+    raw = _mode_bank(plane, spec, offset_m=(0.0, 0.0), lowdin=False)
+    lowdin = _mode_bank(plane, spec, offset_m=(0.0, 0.0), lowdin=True)
+    area = plane.pixel_pitch_m[0] * plane.pixel_pitch_m[1]
+    overlaps = (lowdin.flatten(1).conj() * raw.flatten(1)).sum(dim=1).abs() * area
+    return {"lowdin_overlap_min": float(overlaps.min()), "lowdin_overlap_median": float(overlaps.median())}
+
+
+@lru_cache(maxsize=64)
 def _mode_bank(plane: PlaneSpec, spec: FiberArraySpec, *, offset_m: tuple[float, float], lowdin: bool = False) -> torch.Tensor:
     h, w = plane.shape
     y = (torch.arange(h, dtype=torch.float64) + 0.5) * plane.pixel_pitch_m[0] - plane.fov_m[0] / 2.0
@@ -156,6 +203,12 @@ class FiberArrayOLS(nn.Module):
         super().__init__()
         if input_plane.shape != (100, 100):
             raise ValueError("fiber OLS requires the formal 100x100 encoder plane")
+        if any(abs(a - b) > 1.0e-15 for a, b in zip(input_plane.pixel_pitch_m, (spec.pitch_m, spec.pitch_m), strict=True)):
+            raise ValueError("fiber pixel pitch does not match the encoder PlaneSpec")
+        if any(abs(a - b) > 1.0e-12 for a, b in zip(input_plane.fov_m, spec.expected_fov_m, strict=True)):
+            raise ValueError("fiber FOV does not match the research geometry")
+        if abs(input_plane.wavelength_m - spec.wavelength_m) > 1.0e-15:
+            raise ValueError("fiber wavelength does not match the encoder PlaneSpec")
         if transport is None:
             transport = torch.eye(100, dtype=torch.complex64)
         if transport.shape != (100, 100) or not torch.is_complex(transport):
@@ -188,11 +241,13 @@ class FiberArrayOLS(nn.Module):
         output_values = torch.einsum("bm,mhw->bhw", output_coefficients, output_modes)
         input_energy = values.abs().square().sum(dim=(-2, -1)) * area
         output_energy = output_values.abs().square().sum(dim=(-2, -1)) * area
+        if torch.any(output_energy > input_energy * (1.0 + 1.0e-5) + 1.0e-12):
+            raise ValueError("fiber OLS violates the input/output energy gate")
         input_energy_max = float(input_energy.max().detach())
         output_energy_max = float(output_energy.max().detach())
-        if output_energy_max > input_energy_max * (1.0 + 1.0e-5) + 1.0e-12:
-            raise ValueError("fiber OLS violates the input/output energy gate")
-        self.last_diagnostics = {"input_energy_max": input_energy_max, "output_energy_max": output_energy_max, "coupling_efficiency": (coefficients.abs().square().sum(dim=1) / input_energy.clamp_min(1.0e-30)).detach(), "transport_singular_max": float(torch.linalg.svdvals(self.transport).max()), "active_offset_m": list(self.spec.lateral_offset_m)}
+        gram = input_modes.flatten(1).conj() @ input_modes.flatten(1).T * area
+        singular_values = torch.linalg.svdvals(self.transport)
+        self.last_diagnostics = {"input_energy_max": input_energy_max, "output_energy_max": output_energy_max, "input_energy": input_energy.detach(), "output_energy": output_energy.detach(), "coupling_efficiency": (coefficients.abs().square().sum(dim=1) / input_energy.clamp_min(1.0e-30)).detach(), "transport_singular_max": float(singular_values.max()), "transport_singular_min": float(singular_values.min()), "port_gram_rank": int(torch.linalg.matrix_rank(gram).item()), "port_gram_condition": float(torch.linalg.cond(gram)), "active_offset_m": list(self.spec.lateral_offset_m)}
         output = output_values.unsqueeze(1) if field.tensor.ndim == 4 else output_values
         return ComplexField(output, self.input_plane.with_plane("ols_output"), OperationProvenance("synthetic_smf_lp01_port_transport", self.input_plane.plane_id, 0.0, {"mode_model": self.spec.mode_model, "v_number": self.spec.v_number, "facet_magnification": self.spec.facet_magnification, "lateral_offset_m": list(self.spec.lateral_offset_m), "physical_parameter_status": "synthetic diagnostic-only"}))
 
@@ -215,5 +270,5 @@ class FiberTransportEnsembleOLS(FiberArrayOLS):
         record = self.pool.record(matrix_id)
         self.spec = FiberArraySpec(**{**self.spec.__dict__, "lateral_offset_m": record.offset_m})
         self.transport.copy_(self.pool.matrix_by_id(matrix_id).to(self.transport))
-        self._buffers["input_modes"] = _mode_bank(self.input_plane, self.spec, offset_m=record.offset_m, lowdin=self.spec.mode_model == "step_index_lp01_lowdin")
+        self.input_modes.copy_(_mode_bank(self.input_plane, self.spec, offset_m=record.offset_m, lowdin=self.spec.mode_model == "step_index_lp01_lowdin").to(self.input_modes))
         self._active_id = matrix_id
