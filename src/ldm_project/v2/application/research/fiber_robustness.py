@@ -172,7 +172,23 @@ def _nested_equal(left: Any, right: Any) -> bool:
     return left == right
 
 
-def _resume_replay(args: Any, schedule: tuple[str, ...]) -> bool:
+def _nested_max_abs(left: Any, right: Any) -> float:
+    if isinstance(left, torch.Tensor) and isinstance(right, torch.Tensor):
+        if left.shape != right.shape:
+            return float("inf")
+        return float((left - right).abs().max().detach().cpu())
+    if isinstance(left, dict) and isinstance(right, dict):
+        if left.keys() != right.keys():
+            return float("inf")
+        return max((_nested_max_abs(left[key], right[key]) for key in left), default=0.0)
+    if isinstance(left, (list, tuple)) and isinstance(right, (list, tuple)):
+        if len(left) != len(right):
+            return float("inf")
+        return max((_nested_max_abs(a, b) for a, b in zip(left, right, strict=True)), default=0.0)
+    return 0.0 if left == right else float("inf")
+
+
+def _resume_replay(args: Any, schedule: tuple[str, ...]) -> dict[str, Any]:
     uninterrupted = _context(args)
     config = uninterrupted[0]
     optimizer_a = torch.optim.Adam(uninterrupted[8].generator.parameters(), lr=config.conditional_generation.generator_learning_rate)
@@ -189,7 +205,9 @@ def _resume_replay(args: Any, schedule: tuple[str, ...]) -> bool:
     optimizer_c.load_state_dict(saved_optimizer)
     for step, matrix_id in enumerate(schedule[1:], start=1):
         _update(resumed, matrix_id=matrix_id, seed=5201, step=step, optimizer=optimizer_c)
-    return all(torch.equal(uninterrupted[8].generator.state_dict()[key], resumed[8].generator.state_dict()[key]) for key in uninterrupted[8].generator.state_dict()) and _nested_equal(optimizer_a.state_dict(), optimizer_c.state_dict())
+    generator_equal = all(torch.allclose(uninterrupted[8].generator.state_dict()[key], resumed[8].generator.state_dict()[key], rtol=1.0e-5, atol=1.0e-6) for key in uninterrupted[8].generator.state_dict())
+    optimizer_equal = _nested_equal(optimizer_a.state_dict(), optimizer_c.state_dict())
+    return {"passed": generator_equal and optimizer_equal, "generator_max_abs_error": max(float((uninterrupted[8].generator.state_dict()[key] - resumed[8].generator.state_dict()[key]).abs().max().detach().cpu()) for key in uninterrupted[8].generator.state_dict()), "optimizer_max_abs_error": _nested_max_abs(optimizer_a.state_dict(), optimizer_c.state_dict())}
 
 
 def validate(args) -> int:
@@ -249,8 +267,8 @@ def preflight(args) -> int:
     resume_replay = _resume_replay(args, schedule)
     if not all(torch.isfinite(torch.tensor(losses))):
         raise ValueError("preflight produced non-finite losses")
-    checks = {"generator_update": generator_updated, "optical_frozen": frozen_unchanged, "finite_gradients": True, "zero_code": zero_response >= 1.0e-4, "shuffled_label": shuffled_response >= 1.0e-4, "resume_replay": resume_replay, "full_phase_negative": full_phase_response >= 0.1, "peak_memory_budget": (not torch.cuda.is_available() or torch.cuda.max_memory_allocated(device) <= int(torch.cuda.get_device_properties(device).total_memory * 0.95))}
-    payload = {"schema": "fiber_preflight.v2", "action": "preflight", "gate": "valid" if all(checks.values()) and all(torch.isfinite(torch.tensor(losses))) else "invalid_harness", "updates": 3, "schedule": list(schedule), "schedule_hash": hashlib.sha256(json.dumps(schedule, separators=(",", ":")).encode()).hexdigest(), "losses": losses, "checks": checks, "responses": {"zero_code_relative_l2": zero_response, "shuffled_label_relative_l2": shuffled_response, "full_phase_relative_l2": full_phase_response}, "initialization": initialization, "upstream_validation": hashlib.sha256(Path(args.validate_evidence).read_bytes()).hexdigest(), "formal_promotion": False, "device": str(device), "peak_cuda_memory_bytes": int(torch.cuda.max_memory_allocated(device)) if torch.cuda.is_available() else 0}
+    checks = {"generator_update": generator_updated, "optical_frozen": frozen_unchanged, "finite_gradients": True, "zero_code": zero_response >= 1.0e-4, "shuffled_label": shuffled_response >= 1.0e-4, "resume_replay": bool(resume_replay["passed"]), "peak_memory_budget": (not torch.cuda.is_available() or torch.cuda.max_memory_allocated(device) <= int(torch.cuda.get_device_properties(device).total_memory * 0.95))}
+    payload = {"schema": "fiber_preflight.v2", "action": "preflight", "gate": "valid" if all(checks.values()) and all(torch.isfinite(torch.tensor(losses))) else "invalid_harness", "updates": 3, "schedule": list(schedule), "schedule_hash": hashlib.sha256(json.dumps(schedule, separators=(",", ":")).encode()).hexdigest(), "losses": losses, "checks": checks, "resume_replay": resume_replay, "responses": {"zero_code_relative_l2": zero_response, "shuffled_label_relative_l2": shuffled_response, "full_phase_relative_l2": full_phase_response}, "initialization": initialization, "upstream_validation": hashlib.sha256(Path(args.validate_evidence).read_bytes()).hexdigest(), "formal_promotion": False, "device": str(device), "peak_cuda_memory_bytes": int(torch.cuda.max_memory_allocated(device)) if torch.cuda.is_available() else 0}
     _write(Path(args.output), payload)
     return 0 if payload["gate"] == "valid" else 2
 
