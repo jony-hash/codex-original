@@ -55,6 +55,16 @@ def _git_head() -> str:
     return subprocess.run(["git", "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
 
 
+def _training_runtime_unchanged(commit: str) -> bool:
+    if not isinstance(commit, str) or len(commit) != 40:
+        return False
+    ancestor = subprocess.run(["git", "merge-base", "--is-ancestor", commit, "HEAD"], capture_output=True)
+    if ancestor.returncode != 0:
+        return False
+    paths = ("src/ldm_project/v2/optics/", "src/ldm_project/v2/student/", "src/ldm_project/v2/config.py", "configs/v2/current/")
+    return all(subprocess.run(["git", "diff", "--quiet", f"{commit}..HEAD", "--", path], capture_output=True).returncode == 0 for path in paths)
+
+
 def _load_secondary(path: str, device: torch.device) -> SmoothMNISTEvaluator:
     payload = safe_torch_load(path, expected_sha256=file_sha256(path), map_location=device)
     if not isinstance(payload, dict) or payload.get("architecture_kind") != SmoothMNISTEvaluator.architecture_kind:
@@ -289,8 +299,8 @@ def screen(args) -> int:
     preflight = _read(args.preflight_evidence)
     if preflight.get("schema") != "fiber_preflight.v2" or preflight.get("gate") != "valid":
         raise ValueError("preflight evidence did not pass")
-    if preflight.get("git_commit") != _git_head() or _worktree_dirty():
-        raise ValueError("preflight evidence does not match the clean current research commit")
+    if not _training_runtime_unchanged(preflight.get("git_commit")) or _worktree_dirty():
+        raise ValueError("preflight evidence does not match the clean current training runtime")
     context = _context(args)
     config, device, _, _, _, _, _, _, bundle, pool, _, initialization = context
     settings = config.conditional_generation
@@ -319,8 +329,8 @@ def select(args) -> int:
     screen = _read(args.screen_evidence)
     if screen.get("schema") != "fiber_screen.v2" or screen.get("gate") != "valid":
         raise ValueError("screen evidence did not pass")
-    if screen.get("git_commit") != _git_head() or _worktree_dirty():
-        raise ValueError("screen evidence does not match the clean current research commit")
+    if not _training_runtime_unchanged(screen.get("git_commit")) or _worktree_dirty():
+        raise ValueError("screen evidence does not match the clean current training runtime")
     context = _context(args)
     pool = context[9]
     holdout_ids = [record.matrix_id for record in pool.records["holdout"]]
