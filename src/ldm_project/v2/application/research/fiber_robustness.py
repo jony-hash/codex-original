@@ -51,6 +51,10 @@ def _worktree_dirty() -> bool:
     return bool(dirty)
 
 
+def _git_head() -> str:
+    return subprocess.run(["git", "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
+
+
 def _load_secondary(path: str, device: torch.device) -> SmoothMNISTEvaluator:
     payload = safe_torch_load(path, expected_sha256=file_sha256(path), map_location=device)
     if not isinstance(payload, dict) or payload.get("architecture_kind") != SmoothMNISTEvaluator.architecture_kind:
@@ -276,7 +280,7 @@ def preflight(args) -> int:
     if not all(torch.isfinite(torch.tensor(losses))):
         raise ValueError("preflight produced non-finite losses")
     checks = {"generator_update": generator_updated, "optical_frozen": frozen_unchanged, "finite_gradients": True, "zero_code": zero_response >= 1.0e-4, "shuffled_label": shuffled_response >= 1.0e-4, "resume_replay": bool(resume_replay["passed"]), "peak_memory_budget": (not torch.cuda.is_available() or torch.cuda.max_memory_allocated(device) <= int(torch.cuda.get_device_properties(device).total_memory * 0.95))}
-    payload = {"schema": "fiber_preflight.v2", "action": "preflight", "gate": "valid" if all(checks.values()) and all(torch.isfinite(torch.tensor(losses))) else "invalid_harness", "updates": 3, "schedule": list(schedule), "schedule_hash": hashlib.sha256(json.dumps(schedule, separators=(",", ":")).encode()).hexdigest(), "losses": losses, "checks": checks, "resume_replay": resume_replay, "responses": {"zero_code_relative_l2": zero_response, "shuffled_label_relative_l2": shuffled_response, "full_phase_relative_l2": full_phase_response}, "initialization": initialization, "upstream_validation": hashlib.sha256(Path(args.validate_evidence).read_bytes()).hexdigest(), "formal_promotion": False, "device": str(device), "peak_cuda_memory_bytes": int(torch.cuda.max_memory_allocated(device)) if torch.cuda.is_available() else 0}
+    payload = {"schema": "fiber_preflight.v2", "action": "preflight", "gate": "valid" if all(checks.values()) and all(torch.isfinite(torch.tensor(losses))) else "invalid_harness", "updates": 3, "schedule": list(schedule), "schedule_hash": hashlib.sha256(json.dumps(schedule, separators=(",", ":")).encode()).hexdigest(), "losses": losses, "checks": checks, "resume_replay": resume_replay, "responses": {"zero_code_relative_l2": zero_response, "shuffled_label_relative_l2": shuffled_response, "full_phase_relative_l2": full_phase_response}, "initialization": initialization, "upstream_validation": hashlib.sha256(Path(args.validate_evidence).read_bytes()).hexdigest(), "formal_promotion": False, "device": str(device), "peak_cuda_memory_bytes": int(torch.cuda.max_memory_allocated(device)) if torch.cuda.is_available() else 0, "git_commit": _git_head(), "dirty_patch_hash": None}
     _write(Path(args.output), payload)
     return 0 if payload["gate"] == "valid" else 2
 
@@ -285,6 +289,8 @@ def screen(args) -> int:
     preflight = _read(args.preflight_evidence)
     if preflight.get("schema") != "fiber_preflight.v2" or preflight.get("gate") != "valid":
         raise ValueError("preflight evidence did not pass")
+    if preflight.get("git_commit") != _git_head() or _worktree_dirty():
+        raise ValueError("preflight evidence does not match the clean current research commit")
     context = _context(args)
     config, device, _, _, _, _, _, _, bundle, pool, _, initialization = context
     settings = config.conditional_generation
@@ -304,7 +310,7 @@ def screen(args) -> int:
                 checkpoints.append({"step": step, "path": str(checkpoint), "checkpoint_sha256": file_sha256(checkpoint), "validation": validation})
         rows.append({"seed": seed, "schedule": list(schedule), "checkpoints": checkpoints})
     screen_valid = all(all(item["validation"]["1.0"][matrix]["finite"] and item["validation"]["1.0"][matrix]["nonnegative"] for matrix in item["validation"]["1.0"]) for row in rows for item in row["checkpoints"])
-    payload = {"schema": "fiber_screen.v2", "action": "screen", "gate": "valid" if screen_valid else "invalid_harness", "seeds": [5201, 5202, 5203], "steps": 50, "rows": rows, "exposures": {"formal_fixed_factor": 1.0, "diagnostic_inherited_factor": 0.75}, "initialization": initialization, "upstream_preflight": hashlib.sha256(Path(args.preflight_evidence).read_bytes()).hexdigest(), "status": "synthetic diagnostic-only", "formal_promotion": False}
+    payload = {"schema": "fiber_screen.v2", "action": "screen", "gate": "valid" if screen_valid else "invalid_harness", "seeds": [5201, 5202, 5203], "steps": 50, "rows": rows, "exposures": {"formal_fixed_factor": 1.0, "diagnostic_inherited_factor": 0.75}, "initialization": initialization, "upstream_preflight": hashlib.sha256(Path(args.preflight_evidence).read_bytes()).hexdigest(), "git_commit": _git_head(), "dirty_patch_hash": None, "status": "synthetic diagnostic-only", "formal_promotion": False}
     _write(Path(args.output), payload)
     return 0 if screen_valid else 2
 
@@ -313,6 +319,8 @@ def select(args) -> int:
     screen = _read(args.screen_evidence)
     if screen.get("schema") != "fiber_screen.v2" or screen.get("gate") != "valid":
         raise ValueError("screen evidence did not pass")
+    if screen.get("git_commit") != _git_head() or _worktree_dirty():
+        raise ValueError("screen evidence does not match the clean current research commit")
     context = _context(args)
     pool = context[9]
     holdout_ids = [record.matrix_id for record in pool.records["holdout"]]
