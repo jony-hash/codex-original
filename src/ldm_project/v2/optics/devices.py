@@ -23,3 +23,10 @@ class IdealAmplitudeSLM:
 def identity_ols(field: ComplexField) -> ComplexField:
     """Strict complex-linear identity OLS preserving the complex-field interface."""
     return ComplexField(field.tensor, field.plane.with_plane("ols_output"), OperationProvenance("identity_ols", field.plane.plane_id, None))
+
+
+class IdentityOLS:
+    """Instantiable identity implementation for injected research builders."""
+
+    def __call__(self, field: ComplexField) -> ComplexField:
+        return identity_ols(field)

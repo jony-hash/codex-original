@@ -5,7 +5,10 @@ from __future__ import annotations
 from importlib import import_module
 
 from .d2nn import FiniteCropPhaseStack, NearConjugateFiniteCropPhaseStack
-from .devices import IdealAmplitudeSLM, identity_ols
+from .devices import IdealAmplitudeSLM, IdentityOLS, identity_ols
+from .fiber_operator import FiberArrayOLS, FiberArraySpec, FiberTransportEnsembleOLS, lp01_radial_profile
+from .fiber_pool import FiberResearchSpec, FiberTransportPool
+from .operator import OpticalLatentOperator
 from .propagation import angular_spectrum_propagate, reference_angular_spectrum_propagate
 from .relays import ABCDMatrix, CoherentImagingRelay, NearConjugateRelay, reference_b0_imaging, reference_near_conjugate_lens_relay
 from .system import FormalAmplitudeFiniteCropIdentitySystem, FormalForwardResult
@@ -25,6 +28,14 @@ __all__ = [
     "LightGenForwardResultV2",
     "angular_spectrum_propagate",
     "identity_ols",
+    "IdentityOLS",
+    "OpticalLatentOperator",
+    "FiberArrayOLS",
+    "FiberArraySpec",
+    "FiberTransportEnsembleOLS",
+    "FiberResearchSpec",
+    "FiberTransportPool",
+    "lp01_radial_profile",
     "gaussian_single_mode_bank",
     "project_single_mode_fibers",
     "reference_project_single_mode_fibers",

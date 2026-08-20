@@ -20,7 +20,7 @@ from ..contracts import (
     render_fixed_exposure,
 )
 from .d2nn import FiniteCropPhaseStack, NearConjugateFiniteCropPhaseStack
-from .devices import IdealAmplitudeSLM, identity_ols
+from .devices import IdealAmplitudeSLM, IdentityOLS
 from .relays import CoherentImagingRelay
 
 
@@ -89,6 +89,7 @@ class FormalAmplitudeFiniteCropIdentitySystem(nn.Module):
             "camera",
         )
         self.slm = IdealAmplitudeSLM()
+        self.ols = IdentityOLS()
         self.illumination_intensity_transmission = 0.80 if near_conjugate else 1.0
         self.front = CoherentImagingRelay(
             self.slm_plane,
@@ -178,7 +179,7 @@ class FormalAmplitudeFiniteCropIdentitySystem(nn.Module):
             )
         front = self.front(slm_field)
         encoded, encoder_records, encoder_stats = self.encoder(front, "encoder")
-        ols = identity_ols(encoded)
+        ols = self.ols(encoded)
         decoded, decoder_records, decoder_stats = self.decoder(ols, "decoder")
         chip = ComplexField(decoded.tensor, self.chip_plane, decoded.provenance)
         camera_field = self.back(chip)
