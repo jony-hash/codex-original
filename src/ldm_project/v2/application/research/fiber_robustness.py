@@ -38,8 +38,15 @@ def validate(args) -> int:
     overlap = float(torch.dot(actual, expected) / (actual.norm() * expected.norm()))
     if overlap < 0.995:
         raise ValueError("LP01 offline reference overlap gate failed")
+    dense_rho = torch.linspace(0.0, 3.0, 30001)
+    dense = lp01_radial_profile(dense_rho)
+    crossing = dense_rho[torch.argmin((dense - 2.718281828459045 ** -1).abs())]
+    radius_error = abs(float(crossing) - 1.0614585377601147) / 1.0614585377601147
+    energy_error = float((actual.square().sum() - expected.square().sum()).abs()) / float(expected.square().sum())
+    if radius_error > 0.01 or energy_error > 1e-4:
+        raise ValueError("LP01 offline reference radius or energy gate failed")
     payload = pool.evidence()
-    payload.update({"action": "validate", "consumer": "fiber-robustness preflight", "gate": "valid", "formal_promotion": False, "lp01_fixture": {"v_number": 2.2, "phase_aligned_overlap": overlap, "amplitude_1e_radius_relative_error": 0.0, "normalized_energy_error": 0.0}})
+    payload.update({"action": "validate", "consumer": "fiber-robustness preflight", "gate": "valid", "formal_promotion": False, "lp01_fixture": {"v_number": 2.2, "phase_aligned_overlap": overlap, "amplitude_1e_radius_relative_error": radius_error, "normalized_energy_error": energy_error}})
     _write(Path(args.output), payload)
     return 0
 
