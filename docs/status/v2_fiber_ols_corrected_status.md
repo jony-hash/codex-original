@@ -39,6 +39,9 @@ The corrected lifecycle completed on the clean research runtime:
 - locked selection: `d69d28c2331a43bf18f4973e5d57ac0f296824b925a1e1e459c6e39937eb59fc`;
 - closeout: `4247abf6ae2386952591ab3c33c9c16a4401551eeeb45404c2e5d238a5b7e2ca`.
 
+The persistent research artifacts are under
+`outputs/20260821_v2/runs/20260821_robustness_fiber_ols_v1_closeout/`.
+
 All measurements were finite and passive, but secondary median gains were
 approximately zero with bootstrap lower bounds not above zero. The automatic
 conclusion is `no_reproducible_generator_gain` with `valid_failed`; no formal
