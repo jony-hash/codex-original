@@ -1,10 +1,12 @@
 {
   "schema": "offline_lp01_fixture.v1",
-  "generator": "scipy.special analytic step-index reference",
-  "generator_version": "scipy-independent-reference",
+  "generator": "mpmath high-precision independent scalar characteristic solve",
+  "generator_version": "mpmath-1.3.0-dps-80",
   "v_number": 2.2,
+  "u": 1.59105928243730191048365019454,
+  "w": 1.51938486229463861549887734199,
   "rho": [0.0, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0],
-  "normalized_amplitude": [1.0, 0.9566402157743096, 0.8321873395187517, 0.6427100682474245, 0.4124097539999989, 0.16825347920321723, 0.07216287684757913, 0.014307528590732192],
-  "amplitude_1e_radius_rho": 1.0614585377601147,
+  "normalized_amplitude": [1.0, 0.960835206058864378890748231488, 0.847932355667295319054881254465, 0.67446826921644894117534530303, 0.460493431961227884132955362251, 0.179234301703763101534789246032, 0.0733649532021510413041428888503, 0.0132545810955014296642712242503],
+  "amplitude_1e_radius_rho": 1.1155144501711396,
   "direct_consumer": "tests/v2/test_fiber_operator.py"
 }
