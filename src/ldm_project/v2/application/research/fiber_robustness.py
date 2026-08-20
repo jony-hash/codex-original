@@ -8,9 +8,10 @@ from pathlib import Path
 from typing import Any
 
 import torch
+from torch import nn
 
 from ...contracts import PlaneSpec
-from ...optics.devices import IdentityOLS
+from ...optics.devices import identity_ols
 from ...optics.fiber_operator import (
     FiberArraySpec,
     FiberTransportEnsembleOLS,
@@ -133,7 +134,7 @@ def _panel(context: tuple[Any, ...], *, matrix_id: str, seed: int, count: int = 
     assert settings is not None
     fiber_operator = bundle.system.ols
     if identity:
-        bundle.system.ols = IdentityOLS()
+        bundle.system.ols = _IdentityOLSModule()
     else:
         fiber_operator.select(matrix_id)
     codes = torch.zeros(count, 8, device=device) if zero_code else random_codes(count, device=device, seed=seed)
@@ -160,6 +161,13 @@ def _panel(context: tuple[Any, ...], *, matrix_id: str, seed: int, count: int = 
 
 def _strip_private(metrics: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in metrics.items() if not key.startswith("_")}
+
+
+class _IdentityOLSModule(nn.Module):
+    """Research-only adapter; the formal IdentityOLS type remains unchanged."""
+
+    def forward(self, field):
+        return identity_ols(field)
 
 
 def _nested_equal(left: Any, right: Any) -> bool:
