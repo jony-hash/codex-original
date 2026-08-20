@@ -143,7 +143,8 @@ def _panel(context: tuple[Any, ...], *, matrix_id: str, seed: int, count: int = 
     if shuffled_labels:
         labels = labels.roll(1)
     with torch.inference_mode():
-        raw = raw_from_generator_batched(bundle.system, bundle.generator, codes, labels, microbatch_size=config.execution.evaluation_microbatch_size, activation_checkpoint=False)
+        evaluation_microbatch = min(count, max(config.execution.evaluation_microbatch_size, 100))
+        raw = raw_from_generator_batched(bundle.system, bundle.generator, codes, labels, microbatch_size=evaluation_microbatch, activation_checkpoint=False)
         view = fixed_exposure_view(raw, settings.fixed_exposure_scale * exposure_factor)
         _, logits = evaluator(view)
         _, secondary_logits = secondary(view)
