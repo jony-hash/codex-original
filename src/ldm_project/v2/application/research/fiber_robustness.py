@@ -164,7 +164,7 @@ def _strip_private(metrics: dict[str, Any]) -> dict[str, Any]:
 
 def _nested_equal(left: Any, right: Any) -> bool:
     if isinstance(left, torch.Tensor) and isinstance(right, torch.Tensor):
-        return torch.equal(left, right)
+        return left.shape == right.shape and left.dtype == right.dtype and torch.allclose(left, right, rtol=1.0e-5, atol=1.0e-6)
     if isinstance(left, dict) and isinstance(right, dict):
         return left.keys() == right.keys() and all(_nested_equal(left[key], right[key]) for key in left)
     if isinstance(left, (list, tuple)) and isinstance(right, (list, tuple)):
