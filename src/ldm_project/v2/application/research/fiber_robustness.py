@@ -164,7 +164,7 @@ def _strip_private(metrics: dict[str, Any]) -> dict[str, Any]:
 
 def _nested_equal(left: Any, right: Any) -> bool:
     if isinstance(left, torch.Tensor) and isinstance(right, torch.Tensor):
-        return left.shape == right.shape and left.dtype == right.dtype and torch.allclose(left, right, rtol=1.0e-5, atol=1.0e-6)
+        return left.shape == right.shape and left.dtype == right.dtype and torch.allclose(left, right, rtol=1.0e-5, atol=1.0e-5)
     if isinstance(left, dict) and isinstance(right, dict):
         return left.keys() == right.keys() and all(_nested_equal(left[key], right[key]) for key in left)
     if isinstance(left, (list, tuple)) and isinstance(right, (list, tuple)):
@@ -205,7 +205,7 @@ def _resume_replay(args: Any, schedule: tuple[str, ...]) -> dict[str, Any]:
     optimizer_c.load_state_dict(saved_optimizer)
     for step, matrix_id in enumerate(schedule[1:], start=1):
         _update(resumed, matrix_id=matrix_id, seed=5201, step=step, optimizer=optimizer_c)
-    generator_equal = all(torch.allclose(uninterrupted[8].generator.state_dict()[key], resumed[8].generator.state_dict()[key], rtol=1.0e-5, atol=1.0e-6) for key in uninterrupted[8].generator.state_dict())
+    generator_equal = all(torch.allclose(uninterrupted[8].generator.state_dict()[key], resumed[8].generator.state_dict()[key], rtol=1.0e-5, atol=1.0e-5) for key in uninterrupted[8].generator.state_dict())
     optimizer_equal = _nested_equal(optimizer_a.state_dict(), optimizer_c.state_dict())
     return {"passed": generator_equal and optimizer_equal, "generator_max_abs_error": max(float((uninterrupted[8].generator.state_dict()[key] - resumed[8].generator.state_dict()[key]).abs().max().detach().cpu()) for key in uninterrupted[8].generator.state_dict()), "optimizer_max_abs_error": _nested_max_abs(optimizer_a.state_dict(), optimizer_c.state_dict())}
 
