@@ -167,7 +167,20 @@ def select(args) -> int:
     screen = _read(args.screen_evidence)
     if screen.get("schema") != "fiber_screen.v2" or screen.get("gate") != "valid":
         raise ValueError("screen evidence did not pass")
-    payload = {"schema": "fiber_selection.v2", "action": "select", "gate": "valid", "locked_code_panels": [4242, 104729, 161803], "samples_per_panel": 500, "holdout_matrices": [record.matrix_id for record in FiberTransportPool().records["holdout"]], "stress_report_only": True, "full_phase_report_only": True, "screen_sha256": hashlib.sha256(Path(args.screen_evidence).read_bytes()).hexdigest(), "status": "synthetic diagnostic-only", "formal_promotion": False}
+    context = _context(args)
+    pool = context[8]
+    holdout_ids = [record.matrix_id for record in pool.records["holdout"]]
+    rows = []
+    for seed_row in screen["rows"]:
+        checkpoints = seed_row.get("checkpoints", [])
+        if not checkpoints:
+            raise ValueError("screen evidence has no checkpoints")
+        selected = max(checkpoints, key=lambda row: sum(item["accuracy"] for item in row["validation"].values()) / len(row["validation"]))
+        payload = torch.load(selected["path"], map_location=context[1], weights_only=False)
+        context[7].generator.load_state_dict(payload["generator_state"], strict=True)
+        panels = {str(panel_seed): {matrix: _panel(context, matrix_id=matrix, seed=panel_seed, count=500) for matrix in holdout_ids} for panel_seed in (4242, 104729, 161803)}
+        rows.append({"seed": seed_row["seed"], "selected_step": selected["step"], "selected_checkpoint": selected["path"], "holdout_panels": panels})
+    payload = {"schema": "fiber_selection.v2", "action": "select", "gate": "valid", "locked_code_panels": [4242, 104729, 161803], "samples_per_panel": 500, "holdout_matrices": holdout_ids, "rows": rows, "stress_report_only": True, "full_phase_report_only": True, "screen_sha256": hashlib.sha256(Path(args.screen_evidence).read_bytes()).hexdigest(), "status": "synthetic diagnostic-only", "formal_promotion": False}
     _write(Path(args.output), payload)
     return 0
 
@@ -176,8 +189,10 @@ def closeout(args) -> int:
     selection = _read(args.selection_evidence)
     if selection.get("schema") != "fiber_selection.v2" or selection.get("gate") != "valid":
         raise ValueError("selection evidence did not pass")
-    conclusion = "no_reproducible_generator_gain"
-    _write(Path(args.output), {"schema": "fiber_closeout.v2", "action": "closeout", "gate": "valid_failed", "conclusion": conclusion, "selection_sha256": hashlib.sha256(Path(args.selection_evidence).read_bytes()).hexdigest(), "formal_promotion": False, "status": "synthetic diagnostic-only"})
+    rows = selection.get("rows", [])
+    finite = all(item["finite"] and item["nonnegative"] and item["saturation"] <= 0.08 for row in rows for panel in row["holdout_panels"].values() for item in panel.values())
+    conclusion = "no_reproducible_generator_gain" if finite else "synthetic_matrix_sensitive_generator_gain"
+    _write(Path(args.output), {"schema": "fiber_closeout.v2", "action": "closeout", "gate": "valid_failed", "conclusion": conclusion, "finite_holdout_measurements": finite, "selection_sha256": hashlib.sha256(Path(args.selection_evidence).read_bytes()).hexdigest(), "formal_promotion": False, "status": "synthetic diagnostic-only", "reason": "primary-only implementation cannot authorize the complete secondary-evaluator scientific gate"})
     return 0
 
 
