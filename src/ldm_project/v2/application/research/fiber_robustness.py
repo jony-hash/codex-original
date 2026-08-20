@@ -13,7 +13,7 @@ from ...optics.fiber_operator import FiberTransportEnsembleOLS, lp01_radial_prof
 from ...optics.fiber_pool import FiberTransportPool
 from ...student.conditional import fixed_exposure_view, raw_from_generator_batched
 from ...student.evaluator import balanced_batches, evaluator_checkpoint_hash, load_frozen_evaluator, load_local_mnist
-from ...evidence import file_sha256
+from ...evidence import file_sha256, safe_torch_load
 from .._runtime_shared import split_mnist, random_codes
 from ..current.runtime import _load_bundle, conditional_loss
 from ...config import load_config
@@ -112,6 +112,9 @@ def validate(args) -> int:
 
 
 def preflight(args) -> int:
+    if getattr(args, "dirty_patch_hash", ""):
+        _write(Path(args.output), {"schema": "fiber_preflight.v2", "action": "preflight", "gate": "invalid_harness", "reason": "dirty_patch_hash is non-empty", "formal_promotion": False})
+        return 2
     if _worktree_dirty():
         _write(Path(args.output), {"schema": "fiber_preflight.v2", "action": "preflight", "gate": "invalid_harness", "reason": "dirty worktree", "formal_promotion": False})
         return 2
@@ -176,7 +179,7 @@ def select(args) -> int:
         if not checkpoints:
             raise ValueError("screen evidence has no checkpoints")
         selected = max(checkpoints, key=lambda row: sum(item["accuracy"] for item in row["validation"].values()) / len(row["validation"]))
-        payload = torch.load(selected["path"], map_location=context[1], weights_only=False)
+        payload = safe_torch_load(selected["path"], map_location=context[1])
         context[7].generator.load_state_dict(payload["generator_state"], strict=True)
         panels = {str(panel_seed): {matrix: _panel(context, matrix_id=matrix, seed=panel_seed, count=500) for matrix in holdout_ids} for panel_seed in (4242, 104729, 161803)}
         rows.append({"seed": seed_row["seed"], "selected_step": selected["step"], "selected_checkpoint": selected["path"], "holdout_panels": panels})
