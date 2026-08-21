@@ -491,7 +491,6 @@ def _panel(
         [],
         [],
         [],
-        [],
     )
     try:
         for start in range(0, count, config.execution.evaluation_microbatch_size):
