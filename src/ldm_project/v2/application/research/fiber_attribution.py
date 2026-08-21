@@ -320,12 +320,14 @@ def run(args: Any) -> int:
     return 0 if payload["gate"] == "valid" else 2
 
 
-def _load_measurement(args: Any) -> tuple[Path, dict[str, Any]]:
+def _load_measurement(args: Any, *, report_only: bool = False) -> tuple[Path, dict[str, Any]]:
     evidence = _require(args.measurement_evidence)
     payload = json.loads(evidence.read_text(encoding="utf-8"))
     if payload.get("schema") != "fiber_attribution_measurement.v1" or payload.get("gate") != "valid":
         raise ValueError("invalid attribution measurement")
-    if payload.get("git_commit") != image._git() or image._dirty():
+    if image._dirty():
+        raise ValueError("measurement is stale or worktree is dirty")
+    if payload.get("git_commit") != image._git() and not report_only:
         raise ValueError("measurement is stale or worktree is dirty")
     return evidence.parent, payload
 
@@ -382,7 +384,8 @@ def _digit_pipeline_report(root: Path, output: Path, variant: str) -> dict[str, 
     import matplotlib.pyplot as plt
     import numpy as np
 
-    row = json.loads((root / "measurement.json").read_text(encoding="utf-8"))["rows"][variant][str(PANELS[0])]
+    measurement_payload = json.loads((root / "measurement.json").read_text(encoding="utf-8"))
+    row = measurement_payload["rows"][variant][str(PANELS[0])]
     digit_rows, labels, codes = _trace_stage_rows(root, row, variant)
     fixed_cmos = _load_tensor(root, row["artifacts"]["fixed_cmos"])
     fields = [item["trace"]["fields"] for item in digit_rows]
@@ -398,6 +401,8 @@ def _digit_pipeline_report(root: Path, output: Path, variant: str) -> dict[str, 
         "gate": "valid",
         "variant": variant,
         "panel": PANELS[0],
+        "source_measurement_git_commit": measurement_payload.get("git_commit"),
+        "report_git_commit": image._git(),
         "sample_policy": "first sample of each class in fixed panel ordering",
         "input_contract": "digit label 0-9 plus fixed 8D code; not a direct MNIST image input",
         "amplitude_vmax_global": amplitude_vmax,
@@ -493,7 +498,10 @@ def _digit_pipeline_report(root: Path, output: Path, variant: str) -> dict[str, 
 
 
 def report(args: Any) -> int:
-    root, payload = _load_measurement(args)
+    # Report-only consumers may render an immutable historical measurement after
+    # a presentation-layer commit; the source Git commit remains in the output
+    # manifest and the scientific measurement is never rewritten.
+    root, payload = _load_measurement(args, report_only=True)
     out = _root(args.output)
     import matplotlib
     matplotlib.use("Agg")
@@ -593,7 +601,7 @@ def report(args: Any) -> int:
                 writer.writerow([variant, panel, row["primary_accuracy"], row["secondary_accuracy"], row["secondary_min_recall"], row["camera_fraction"], row["minimum_diversity"], row["coverage_ratio"]])
     (out / "ppt_outline.md").write_text("# Synthetic fiber attribution PPT outline\n\n1. Question and contract — fixed G0, paired codes/labels, no-update attribution.\n2. Optical chain — SLM -> encoder -> LP01 coupling/transport -> decoder -> CMOS.\n3. Function comparison — I0/S0/P1/L1/O1/M1 under one exposure and one panel.\n4. Training result — v3 gains remain below 0.015; closeout is no reproducible gain.\n5. Attribution — waterfall and decoder-neutral comparison; synthetic observation only.\n6. Boundary — no calibrated NA/MFD/index/length or measured matrix; no hardware claim.\n", encoding="utf-8")
     _digit_pipeline_report(root, out / "digit_pipeline_s0", args.digit_pipeline_variant)
-    _write(out / "presentation.json", {"schema": "fiber_attribution_presentation.v1", "gate": "valid", "measurement_sha256": file_sha256(args.measurement_evidence), "status": "synthetic diagnostic-only"})
+    _write(out / "presentation.json", {"schema": "fiber_attribution_presentation.v1", "gate": "valid", "measurement_sha256": file_sha256(args.measurement_evidence), "source_measurement_git_commit": payload.get("git_commit"), "report_git_commit": image._git(), "status": "synthetic diagnostic-only"})
     return 0
 
 
