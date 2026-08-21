@@ -503,6 +503,10 @@ def report(args: Any) -> int:
     # manifest and the scientific measurement is never rewritten.
     root, payload = _load_measurement(args, report_only=True)
     out = _root(args.output)
+    if args.digit_pipeline_only:
+        _digit_pipeline_report(root, out, args.digit_pipeline_variant)
+        _write(out / "presentation.json", {"schema": "fiber_digit_pipeline_presentation.v1", "gate": "valid", "measurement_sha256": file_sha256(args.measurement_evidence), "source_measurement_git_commit": payload.get("git_commit"), "report_git_commit": image._git(), "status": "synthetic diagnostic-only"})
+        return 0
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
