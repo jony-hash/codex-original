@@ -378,6 +378,15 @@ def _save_figure_formats(fig: Any, output: Path, stem: str, *, dpi: int = 300) -
     return references
 
 
+def _stage_display_title(stage_id: str, title: str, field: dict[str, Any] | None) -> str:
+    if stage_id == "fixed_cmos":
+        return f"{title}\n28×28 · fixed exposure"
+    plane = field["plane"]
+    shape = "×".join(str(value) for value in plane["shape"])
+    pitch = "×".join(f"{value * 1e6:g}" for value in plane["pixel_pitch_m"])
+    return f"{title}\n{shape} · {pitch} µm\n{plane['plane_id']}"
+
+
 def _digit_pipeline_report(root: Path, output: Path, variant: str) -> dict[str, Any]:
     import matplotlib
     matplotlib.use("Agg")
@@ -416,6 +425,7 @@ def _digit_pipeline_report(root: Path, output: Path, variant: str) -> dict[str, 
         trace_fields = digit["trace"]["fields"]
         values = [field["tensor"][0, 0] for field in trace_fields]
         values.append(fixed_cmos[digit["sample_index"], 0].to(torch.complex64))
+        display_titles = [_stage_display_title(stage_id, stage_title, trace_fields[index] if index < len(trace_fields) else None) for index, (stage_id, stage_title) in enumerate(DIGIT_PIPELINE_STAGES)]
         for mode in ("amplitude", "phase"):
             fig, axes = plt.subplots(1, len(DIGIT_PIPELINE_STAGES), figsize=(18, 3.0), squeeze=False)
             for index, (stage_id, stage_title) in enumerate(DIGIT_PIPELINE_STAGES):
@@ -426,7 +436,7 @@ def _digit_pipeline_report(root: Path, output: Path, variant: str) -> dict[str, 
                 else:
                     image_value = values[index].abs().numpy() if mode == "amplitude" else values[index].angle().numpy()
                     axis.imshow(image_value, cmap="gray" if mode == "amplitude" else "twilight", vmin=0 if mode == "amplitude" else -np.pi, vmax=amplitude_vmax if mode == "amplitude" else np.pi)
-                axis.set_title(stage_title, fontsize=8)
+                axis.set_title(display_titles[index], fontsize=7)
                 axis.axis("off")
             fig.suptitle(f"Digit {label} · {mode} · Synthetic SMF-LP01 {variant}, V=2.2, unit transport, zero offset", fontsize=12)
             fig.text(0.5, 0.01, "Fixed G0; panel 4242; common scale across digits and stages; diagnostic-only synthetic proxy", ha="center", fontsize=8)
@@ -443,7 +453,9 @@ def _digit_pipeline_report(root: Path, output: Path, variant: str) -> dict[str, 
             "files": digit["files"],
         })
 
-    def overview(mode: str, stem: str) -> list[str]:
+    display_titles = [_stage_display_title(stage_id, stage_title, fields[0][index] if index < len(fields[0]) else None) for index, (stage_id, stage_title) in enumerate(DIGIT_PIPELINE_STAGES)]
+
+    def overview(mode: str, stem: str) -> list[dict[str, Any]]:
         fig, axes = plt.subplots(10, len(DIGIT_PIPELINE_STAGES), figsize=(20, 15), squeeze=False)
         for row_index, digit in enumerate(digit_rows):
             values = [field["tensor"][0, 0] for field in digit["trace"]["fields"]]
@@ -458,7 +470,7 @@ def _digit_pipeline_report(root: Path, output: Path, variant: str) -> dict[str, 
                     axis.imshow(image_value, cmap="gray" if mode == "amplitude" else "twilight", vmin=0 if mode == "amplitude" else -np.pi, vmax=amplitude_vmax if mode == "amplitude" else np.pi)
                 axis.axis("off")
                 if row_index == 0:
-                    axis.set_title(stage_titles[col], fontsize=8)
+                    axis.set_title(display_titles[col], fontsize=7)
             axes[row_index, 0].set_ylabel(str(digit["label"]), rotation=0, ha="right", va="center", fontsize=10)
         fig.suptitle(f"Digits 0–9 · {mode} through {variant} synthetic SMF-LP01 · V=2.2", fontsize=16)
         fig.text(0.5, 0.005, "Input: digit label + fixed 8D code; common scale; CMOS phase is unavailable", ha="center", fontsize=9)
