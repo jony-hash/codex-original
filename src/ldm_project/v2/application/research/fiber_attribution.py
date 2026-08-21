@@ -269,7 +269,8 @@ def _bootstrap(rows: dict[str, dict[int, dict[str, Any]]]) -> dict[str, Any]:
             samples.append(torch.stack(panel_means).mean())
         values = torch.stack(samples)
         output[stage] = {"observed_effect": observed, "ci95": [float(torch.quantile(values, 0.025)), float(torch.quantile(values, 0.975))], "seed": 90210, "replicates": 10000}
-    ranked = sorted(((stage, max(0.0, -value["observed_effect"])) for stage, value in output.items()), key=lambda item: item[1], reverse=True)
+    directions = {"coupling": 1.0, "phase": -1.0, "loss": -1.0, "offset": -1.0, "decoder": -1.0}
+    ranked = sorted(((stage, max(0.0, directions[stage] * value["observed_effect"])) for stage, value in output.items()), key=lambda item: item[1], reverse=True)
     dominant = ranked[0][0] if len(ranked) > 1 and ranked[0][1] - ranked[1][1] >= 0.015 else None
     output["classification"] = {"conclusion": f"{dominant}_dominant_observed_drop" if dominant else "distributed_or_inconclusive", "ranked_effects": ranked}
     return output
