@@ -362,6 +362,12 @@ def _panel(
     p, s = torch.cat(primary_logits).argmax(1), torch.cat(secondary_logits).argmax(1)
     generated_features = torch.cat(secondary_features)
     reference_images, reference_labels = context[4], context[5]
+    diversity_indices = torch.cat(
+        [
+            torch.where(reference_labels == label)[0][: count // 10]
+            for label in range(10)
+        ]
+    )
     reference_count = max(count // 10, 4)
     reference_indices = torch.cat(
         [
@@ -370,6 +376,9 @@ def _panel(
         ]
     )
     with torch.inference_mode():
+        diversity_features, _ = secondary(
+            reference_images.index_select(0, diversity_indices)
+        )
         reference_features, _ = secondary(
             reference_images.index_select(0, reference_indices)
         )
@@ -388,7 +397,7 @@ def _panel(
         "saturation": float((raw > settings.fixed_exposure_scale).float().mean()),
         "camera_fraction": float(camera_code_fraction(raw, labels).item()),
         "minimum_diversity": min(
-            relative_diversity_ratios(generated_features, reference_features, labels)
+            relative_diversity_ratios(generated_features, diversity_features, labels)
         ),
         "coverage_ratio": conditional_coverage_ratio(
             generated_features,
