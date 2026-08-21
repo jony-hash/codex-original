@@ -334,6 +334,28 @@ def report(args: Any) -> int:
     import matplotlib.pyplot as plt
     import numpy as np
     rows = payload["rows"]
+    fig, ax = plt.subplots(figsize=(16, 3.2))
+    stages = [
+        ("SLM", "200×200\n2.5 µm"),
+        ("Encoder", "100×100\n2 µm"),
+        ("LP01 coupling", "100 ports\nV=2.2"),
+        ("Transport", "complex\ndiagonal"),
+        ("Re-emission", "100×100\n2 µm"),
+        ("Decoder", "finite crop\n2 layers"),
+        ("CMOS", "200×200\nfixed exposure"),
+    ]
+    for index, (title, detail) in enumerate(stages):
+        ax.text(index, 0.5, f"{title}\n{detail}", ha="center", va="center", fontsize=10,
+                bbox={"boxstyle": "round,pad=0.6", "facecolor": "#d9eaf7" if index not in {2, 3} else "#fce4b2", "edgecolor": "#355c7d"})
+        if index < len(stages) - 1:
+            ax.annotate("", xy=(index + 0.72, 0.5), xytext=(index + 0.28, 0.5), arrowprops={"arrowstyle": "->", "lw": 1.5})
+    ax.set_xlim(-0.6, len(stages) - 0.4)
+    ax.set_ylim(0, 1)
+    ax.axis("off")
+    ax.set_title("Synthetic SMF optical generation path; all coordinates are diagnostic proxies")
+    fig.tight_layout()
+    fig.savefig(out / "01_pipeline_overview.png", dpi=220)
+    plt.close(fig)
     order = ("I0", "S0", "P1", "L1", "O1", "M1")
     fig, axes = plt.subplots(len(order), 10, figsize=(12, 7), squeeze=False)
     for row, variant in enumerate(order):
