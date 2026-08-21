@@ -65,6 +65,10 @@ def _dispatch(args: argparse.Namespace) -> int:
             from .research.fiber_robustness import dispatch
 
             return int(dispatch(args) or 0)
+        if args.research_program == "fiber-image":
+            from .research.fiber_image_generation import dispatch
+
+            return int(dispatch(args) or 0)
         if args.research_program != "capacity-map":
             raise RuntimeError(f"unknown research program {args.research_program}")
         from .research.capacity_map import dispatch
