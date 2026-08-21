@@ -22,3 +22,36 @@ relaxed.
 Consequently no isolated screen, locked select, E1 shared-matrix training, or
 scientific closeout was authorized. There is no claim of fiber-dependent or
 fiber-specific generator gain, and no archive tag was moved.
+
+## Deterministic replay repair and completed paired rerun (2026-08-21)
+
+The stale S0 screen above remains historical diagnostic evidence only. The
+research lane now uses a mathematically equivalent fixed linear pooling
+operator for the 200-to-28 exposure view and 28-to-14 Sinkhorn view. The
+native-versus-research forward error in the new validation is
+`5.55e-16`; CUDA interrupted/resumed replay passed for all four functions with
+generator maximum error `0.0` and equal optimizer state.
+
+The new run is
+`outputs/20260821_v2/runs/20260821_fiber_image_v2/`. Its validation and paired
+baseline are bound to commit `914206e`; the baseline contains I0, S0, S1a,
+S1b, S1c and N0 tensors, optical trace amplitude/phase artifacts, field
+provenance, port coefficients and contact sheets. The baseline reproduces the
+main attribution: I0 primary/secondary accuracy is `1.00/0.40`, while S0 is
+`0.60/0.16`; N0/S0 remains observable in both port and CMOS domains.
+
+All twelve isolated screens passed their structural gates. Locked selection
+was completed on three 500-sample panels with 10,000-replicate stratified
+paired bootstrap (`90210`). The largest panel median secondary adaptation gain
+was approximately `0.006`, below the preregistered `0.015` threshold; every
+cross-function confidence interval included zero. The automatic closeout is
+`valid_failed / no_reproducible_fiber_gain`. No function passed the isolated
+scientific gates, so E1 shared-matrix training was correctly not run. This is a
+synthetic diagnostic negative result, not a formal identity or hardware
+conclusion, and no archive tag or formal checkpoint was changed.
+
+The two WSL interruptions occurred outside the Python evidence path. The WSL
+kernel log recorded unclean journal restart, DXG adapter query failures and
+DNS `getaddrinfo -5`; no model exception or OOM record was present. The run
+was resumed from the last completed stage using independent output paths, not
+from a partial checkpoint.
