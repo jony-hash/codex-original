@@ -146,7 +146,9 @@ manifest and 20 per-digit images remain available.
 `df` inside WSL reports the ext4 VHD logical capacity, not the Windows host's
 physical free space. Before compaction, PowerShell measured
 `D:\WSL\Ubuntu\ext4.vhdx` at approximately 324.42 GiB and D: with 50.97 GiB
-free; the VHD was not sparse. The non-fiber portion of `outputs/` remains
-approximately 210 GiB and was outside this cleanup authorization. Windows
-VHDX compaction and its before/after measurements are a separate final step
-and are not claimed until an administrator completes `diskpart compact vdisk`.
+free; the VHD was not sparse. The administrator then completed
+`diskpart compact vdisk`: the VHDX is now 228.65 GiB and D: has 146.74 GiB
+free, an observed physical recovery of approximately 95.77 GiB. The VHD
+remains non-sparse; sparse mode was not enabled as part of this verification.
+The non-fiber portion of `outputs/` remains approximately 210 GiB and was
+outside this cleanup authorization.
