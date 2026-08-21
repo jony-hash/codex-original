@@ -392,6 +392,8 @@ def _sheet(
         for index in torch.where(labels == label)[0][:10].tolist()
     ]
     values = diff if diff is not None else images
+    if values.ndim == 4 and values.shape[1] == 1:
+        values = values[:, 0]
     vmax = float(values.abs().max().clamp_min(1e-12))
     fig, axes = plt.subplots(10, 10, figsize=(10, 10), squeeze=False)
     for cell, index in enumerate(selected):
