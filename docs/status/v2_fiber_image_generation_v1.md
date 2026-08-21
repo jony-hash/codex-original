@@ -66,3 +66,34 @@ not persist the required 500-sample field/image artifacts. The v1 closeout is
 therefore treated as `invalid_harness diagnostic`; it is not eligible for an
 archive tag or downstream promotion. The strict repair continues on
 `research/v2-fiber-image-generation-v2` and writes only to a new v3 run.
+
+## Strict v3 evidence closeout (2026-08-21)
+
+The repaired lifecycle completed on clean commit `cb5260f` in
+`outputs/20260821_v2/runs/20260821_fiber_image_v3/`. Validation, paired
+baseline, four function-specific CUDA preflights, all twelve isolated screens,
+and locked selection completed with current lineage. The selection persisted
+36 locked artifacts (four functions × three training seeds × three panels),
+including content-hashed tensors, optical traces, port coefficients, fixed
+exposure CMOS tensors, contact sheets, and paired difference sheets. Its
+selection hash is
+`0e5a41fef5c697d2e2da17049ba0e0a3a35645e54ebc1ae03d5c8b1ac281d7c6`.
+
+The structural and measurement validity gates passed. The scientific closeout
+is `valid_failed / no_reproducible_fiber_gain`:
+
+- S0 median secondary adaptation gain reached at most `0.006`, S1a at most
+  `0.004`, and S1b/S1c were `0` on the locked panels; all 95% bootstrap lower
+  bounds were `0`.
+- No function passed the preregistered `0.015` gain and semantic gates. The
+  observed identity gaps were approximately `0.272` (S0), `0.314` (S1a),
+  `0.326` (S1b), and `0.320` (S1c), while primary minimum recall remained
+  zero.
+- Cross-function differences were small (`0.002–0.006`) and every paired
+  10,000-replicate confidence interval included zero.
+
+Accordingly E1 shared-matrix training was gated off. This is a structurally
+valid, synthetic diagnostic negative result: it does not promote a fiber
+operator, generator, checkpoint, or hardware claim, and the formal identity
+mainline remains unchanged. The v3 closeout is the first lifecycle result
+eligible for local archival consideration; no tag was moved or pushed.
