@@ -171,6 +171,59 @@ def _write(path: Path, value: dict[str, Any]) -> None:
     atomic_write_json(path, value)
 
 
+def _tensor_content_hash(value: torch.Tensor) -> str:
+    """Hash tensor content, independent of the PyTorch container format."""
+    tensor = value.detach().cpu().contiguous()
+    digest = hashlib.sha256()
+    digest.update(str(tensor.dtype).encode())
+    digest.update(json.dumps(list(tensor.shape)).encode())
+    digest.update(tensor.numpy().tobytes())
+    return digest.hexdigest()
+
+
+def _spec_hash(pool: FiberTransportPool) -> str:
+    return hashlib.sha256(
+        json.dumps(
+            {"spec": asdict(FiberImageResearchSpec()), "pool": pool.evidence()},
+            sort_keys=True,
+            default=str,
+        ).encode()
+    ).hexdigest()
+
+
+def _dataset_manifest(dataset_root: Path) -> dict[str, Any]:
+    images, labels = load_local_mnist(str(dataset_root), train=True)
+    _, _, _, _, split = split_mnist(images, labels, str(dataset_root))
+    return {"manifest_hash": split.manifest_hash, "manifest": asdict(split)}
+
+
+def _assert_validation_current(args: Any, *, validation: dict[str, Any], baseline: dict[str, Any] | None = None) -> None:
+    if validation.get("schema") != "fiber_image_validation.v2" or validation.get("gate") != "valid":
+        raise ValueError("validation evidence is not a valid v2 artifact")
+    if validation.get("git_commit") != _git() or _dirty():
+        raise ValueError("validation evidence is stale or worktree is dirty")
+    config = load_config(str(_required(args, "config")))
+    if validation.get("config_hash") != robust._config_hash(config):
+        raise ValueError("validation config hash mismatch")
+    dataset = _dataset_manifest(_required(args, "dataset_root", directory=True))
+    if validation.get("dataset_split_manifest_hash") != dataset["manifest_hash"]:
+        raise ValueError("validation dataset split mismatch")
+    primary = _required(args, "primary_evaluator_checkpoint")
+    secondary = _required(args, "secondary_evaluator_checkpoint")
+    if validation.get("primary_evaluator_sha256") != file_sha256(primary) or validation.get("secondary_evaluator_sha256") != file_sha256(secondary):
+        raise ValueError("validation evaluator binding mismatch")
+    pool = FiberTransportPool()
+    if validation.get("pool_hash") != _spec_hash(pool):
+        raise ValueError("validation pool/spec hash mismatch")
+    if baseline is not None:
+        if baseline.get("schema") != "fiber_image_baseline.v2" or baseline.get("gate") != "valid":
+            raise ValueError("baseline evidence is not a valid v2 artifact")
+        if baseline.get("validation_sha256") != file_sha256(_required(args, "validate_evidence")):
+            raise ValueError("baseline validation binding mismatch")
+        if baseline.get("git_commit") != _git():
+            raise ValueError("baseline Git binding mismatch")
+
+
 def _git() -> str:
     return subprocess.run(
         ["git", "rev-parse", "HEAD"], check=True, capture_output=True, text=True
@@ -224,6 +277,12 @@ def _resolve(reference: dict[str, Any], root: Path) -> Path:
     return path
 
 
+def _tensor_ref(path: Path, value: torch.Tensor, root: Path) -> dict[str, str]:
+    reference = _ref(path, root)
+    reference["tensor_sha256"] = _tensor_content_hash(value)
+    return reference
+
+
 def _mapping(pool: FiberTransportPool) -> dict[str, str]:
     by_seed = {record.seed: record.matrix_id for record in pool.records["train"]}
     return {
@@ -271,6 +330,8 @@ def _lineage(args: Any, *, initialization: bool) -> dict[str, Any]:
         source_payload = robust._validate_historical_evidence(
             source, expected_kind="conditional_training"
         )
+        if source_payload.get("status") != "passed" or source_payload.get("dirty_patch_hash") not in {None, ""}:
+            raise ValueError("source training evidence is not a clean passed artifact")
         recorded = (
             source_payload.get("input_hashes", {}).get("checkpoint")
             or source_payload.get("context", {}).get("checkpoint_hash")
@@ -286,10 +347,16 @@ def _lineage(args: Any, *, initialization: bool) -> dict[str, Any]:
         )
         bundle_payload, evidence_payload = _read(bundle), _read(evidence)
         if (
-            bundle_payload.get("schema") != "fiber_image_measurement_bundle.v1"
-            or evidence_payload.get("schema") != "fiber_image_measurement_evidence.v1"
+            bundle_payload.get("schema") != "fiber_image_measurement_bundle.v2"
+            or evidence_payload.get("schema") != "fiber_image_measurement_evidence.v2"
             or evidence_payload.get("bundle_sha256") != file_sha256(bundle)
             or evidence_payload.get("config_hash") != result["config_hash"]
+            or bundle_payload.get("config_hash") != result["config_hash"]
+            or bundle_payload.get("primary_evaluator_sha256") != result["primary_hash"]
+            or bundle_payload.get("secondary_evaluator_sha256") != result["secondary_hash"]
+            or evidence_payload.get("git_commit") != _git()
+            or evidence_payload.get("dataset_split_manifest_hash") != bundle_payload.get("dataset_split_manifest_hash")
+            or bundle_payload.get("pool_hash") != bundle_payload.get("spec_hash")
         ):
             raise ValueError("measurement lineage mismatch")
         result.update(
@@ -411,7 +478,12 @@ def _panel(
         traces,
         port_inputs,
         port_outputs,
+        input_energies,
+        output_energies,
     ) = (
+        [],
+        [],
+        [],
         [],
         [],
         [],
@@ -461,6 +533,10 @@ def _panel(
                     .detach()
                     .cpu()
                 )
+                input_energy = bundle.system.ols.last_diagnostics["input_energy"].detach().cpu()
+                output_energy = bundle.system.ols.last_diagnostics["output_energy"].detach().cpu()
+                input_energies.append(input_energy)
+                output_energies.append(output_energy)
     finally:
         bundle.system.ols = original_ols
     raw, view = torch.cat(rows), torch.cat(views)
@@ -527,8 +603,15 @@ def _panel(
         metric["trace_rows"] = traces
     if function_id == "I0":
         metric["port_available"] = False
+        metric["passive_available"] = False
     else:
         metric["port_available"] = True
+        input_energy = torch.cat(input_energies)
+        output_energy = torch.cat(output_energies)
+        metric["passive_available"] = True
+        metric["passive"] = bool(torch.all(output_energy <= input_energy * (1.0 + 1.0e-5) + 1.0e-12))
+        metric["input_energy_max"] = float(input_energy.max())
+        metric["output_energy_max"] = float(output_energy.max())
         metric["port_input_coefficients"] = (
             torch.cat(port_inputs) if port_inputs else None
         )
@@ -597,7 +680,7 @@ def _bundle(
     ):
         path = directory / f"{name}.pt"
         atomic_torch_save(path, result[name])
-        refs[name] = _ref(path, root)
+        refs[name] = _tensor_ref(path, result[name], root)
     _sheet(directory / "contact_sheet.png", result["fixed_cmos"], result["labels"])
     refs["contact_sheet"] = _ref(directory / "contact_sheet.png", root)
     if "trace_rows" in result:
@@ -609,7 +692,11 @@ def _bundle(
             command_path,
             torch.cat([row["command"] for row in result["trace_rows"]], dim=0),
         )
-        refs["slm_amplitude"] = _ref(command_path, root)
+        refs["slm_amplitude"] = _tensor_ref(
+            command_path,
+            torch.cat([row["command"] for row in result["trace_rows"]], dim=0),
+            root,
+        )
         # Trace fields are keyed by their declared plane/provenance, never by
         # tuple position.  The field immediately upstream of ``ols_output``
         # is the encoder-side fiber input plane in the formal trace contract.
@@ -626,8 +713,16 @@ def _bundle(
                 phase_path = directory / f"{prefix}_phase.pt"
                 atomic_torch_save(amplitude_path, torch.stack([row["fields"][output_index - 1 if prefix == "fiber_input" else output_index]["tensor"] for row in result["trace_rows"]]).abs())
                 atomic_torch_save(phase_path, torch.stack([row["fields"][output_index - 1 if prefix == "fiber_input" else output_index]["tensor"] for row in result["trace_rows"]]).angle())
-                refs[f"{prefix}_amplitude"] = _ref(amplitude_path, root)
-                refs[f"{prefix}_phase"] = _ref(phase_path, root)
+                refs[f"{prefix}_amplitude"] = _tensor_ref(
+                    amplitude_path,
+                    torch.stack([row["fields"][output_index - 1 if prefix == "fiber_input" else output_index]["tensor"] for row in result["trace_rows"]]).abs(),
+                    root,
+                )
+                refs[f"{prefix}_phase"] = _tensor_ref(
+                    phase_path,
+                    torch.stack([row["fields"][output_index - 1 if prefix == "fiber_input" else output_index]["tensor"] for row in result["trace_rows"]]).angle(),
+                    root,
+                )
             provenance_path = directory / "fiber_field_provenance.json"
             _write(provenance_path, {"input": input_field["provenance"], "output": output_field["provenance"], "input_plane": input_field["plane"], "output_plane": output_field["plane"]})
             refs["fiber_field_provenance"] = _ref(provenance_path, root)
@@ -635,7 +730,7 @@ def _bundle(
         for name in ("port_input_coefficients", "port_output_coefficients"):
             path = directory / f"{name}.pt"
             atomic_torch_save(path, result[name])
-            refs[name] = _ref(path, root)
+            refs[name] = _tensor_ref(path, result[name], root)
     if identity is not None:
         difference = result["fixed_cmos"] - identity
         _sheet(
@@ -653,7 +748,7 @@ def validate(args) -> int:
         _write(
             Path(args.output),
             {
-                "schema": "fiber_image_validation.v1",
+                "schema": "fiber_image_validation.v2",
                 "gate": "invalid_harness",
                 "reason": "dirty worktree",
             },
@@ -662,6 +757,43 @@ def validate(args) -> int:
     fixture, config_path = _required(args, "lp01_fixture"), _required(args, "config")
     config = load_config(str(config_path))
     pool = FiberTransportPool()
+    dataset_root = _required(args, "dataset_root", directory=True)
+    primary_path = _required(args, "primary_evaluator_checkpoint")
+    secondary_path = _required(args, "secondary_evaluator_checkpoint")
+    images, labels = load_local_mnist(str(dataset_root), train=True)
+    _, _, validation_images, validation_labels, split = split_mnist(images, labels, str(dataset_root))
+    primary, _ = load_frozen_evaluator(str(primary_path), device=torch.device("cpu"))
+    secondary_payload = safe_torch_load(
+        secondary_path,
+        expected_sha256=file_sha256(secondary_path),
+        map_location="cpu",
+    )
+    if not isinstance(secondary_payload, dict) or secondary_payload.get("architecture_kind") != SmoothMNISTEvaluator.architecture_kind:
+        raise ValueError("secondary evaluator architecture mismatch")
+    secondary_model = SmoothMNISTEvaluator()
+    secondary_model.load_state_dict(secondary_payload["state_dict"], strict=True)
+    secondary_model.freeze()
+    primary_predictions, secondary_predictions = [], []
+    with torch.inference_mode():
+        for start in range(0, validation_images.shape[0], 256):
+            batch = validation_images[start : start + 256]
+            _, primary_logits = primary(batch)
+            _, secondary_logits = secondary_model(batch)
+            primary_predictions.append(primary_logits.argmax(1))
+            secondary_predictions.append(secondary_logits.argmax(1))
+    primary_prediction = torch.cat(primary_predictions)
+    secondary_prediction = torch.cat(secondary_predictions)
+    qualification = {
+        "sample_count": int(validation_labels.numel()),
+        "primary_accuracy": float((primary_prediction == validation_labels).float().mean()),
+        "secondary_accuracy": float((secondary_prediction == validation_labels).float().mean()),
+        "agreement": float((primary_prediction == secondary_prediction).float().mean()),
+        "primary_min_recall": min(float((primary_prediction[validation_labels == label] == label).float().mean()) for label in range(10)),
+        "secondary_min_recall": min(float((secondary_prediction[validation_labels == label] == label).float().mean()) for label in range(10)),
+        "finite": bool(torch.isfinite(primary_prediction.float()).all() and torch.isfinite(secondary_prediction.float()).all()),
+    }
+    if not qualification["finite"] or qualification["primary_accuracy"] < 0.90 or qualification["secondary_accuracy"] < 0.90 or qualification["agreement"] < 0.90:
+        raise ValueError("current evaluator qualification failed")
     fixture_payload = _read(fixture)
     rho = torch.tensor(fixture_payload["rho"], dtype=torch.float64)
     fixture_field = torch.tensor(fixture_payload["normalized_amplitude"], dtype=torch.float64)
@@ -697,16 +829,19 @@ def validate(args) -> int:
         raise ValueError("deterministic research pooling does not match native forward")
     spec = asdict(FiberImageResearchSpec())
     payload = {
-        "schema": "fiber_image_validation.v1",
+        "schema": "fiber_image_validation.v2",
         "gate": "valid",
         "git_commit": _git(),
         "config_hash": robust._config_hash(config),
         "fixture_sha256": file_sha256(fixture),
+        "dataset_root": str(dataset_root.resolve()),
+        "dataset_split_manifest_hash": split.manifest_hash,
+        "primary_evaluator_sha256": file_sha256(primary_path),
+        "secondary_evaluator_sha256": file_sha256(secondary_path),
+        "qualification": qualification,
         "spec": spec,
         "functions": _mapping(pool),
-        "pool_hash": hashlib.sha256(
-            json.dumps(pool.evidence(), sort_keys=True, default=str).encode()
-        ).hexdigest(),
+        "pool_hash": _spec_hash(pool),
         "deterministic_pooling": {
             "forward_max_abs_error": pooling_forward_error,
             "gate": "valid" if pooling_gate else "invalid_harness",
@@ -726,20 +861,31 @@ def validate(args) -> int:
     _write(
         Path(args.measurement_bundle_output),
         {
-            "schema": "fiber_image_measurement_bundle.v1",
+            "schema": "fiber_image_measurement_bundle.v2",
             "gate": "valid",
             "validation_sha256": file_sha256(args.output),
             "config_hash": payload["config_hash"],
+            "fixture_sha256": payload["fixture_sha256"],
+            "dataset_split_manifest_hash": split.manifest_hash,
+            "primary_evaluator_sha256": payload["primary_evaluator_sha256"],
+            "secondary_evaluator_sha256": payload["secondary_evaluator_sha256"],
+            "pool_hash": payload["pool_hash"],
+            "spec_hash": payload["pool_hash"],
         },
     )
     _write(
         Path(args.measurement_evidence_output),
         {
-            "schema": "fiber_image_measurement_evidence.v1",
+            "schema": "fiber_image_measurement_evidence.v2",
             "gate": "valid",
             "bundle_sha256": file_sha256(args.measurement_bundle_output),
             "config_hash": payload["config_hash"],
             "git_commit": _git(),
+            "dataset_split_manifest_hash": split.manifest_hash,
+            "primary_evaluator_sha256": payload["primary_evaluator_sha256"],
+            "secondary_evaluator_sha256": payload["secondary_evaluator_sha256"],
+            "pool_hash": payload["pool_hash"],
+            "consumer": "fiber-image baseline and preflight",
         },
     )
     return 0
@@ -747,13 +893,7 @@ def validate(args) -> int:
 
 def baseline(args) -> int:
     validation = _read(_required(args, "validate_evidence"))
-    if (
-        validation.get("schema") != "fiber_image_validation.v1"
-        or validation.get("gate") != "valid"
-        or validation.get("git_commit") != _git()
-        or _dirty()
-    ):
-        raise ValueError("validation is stale or worktree is dirty")
+    _assert_validation_current(args, validation=validation)
     context = _context(args)
     output_path = Path(args.output)
     root = output_path.parent if output_path.suffix == ".json" else output_path
@@ -780,15 +920,40 @@ def baseline(args) -> int:
                 None if function_id == "I0" else identity["fixed_cmos"],
             ),
         }
+    pair_hashes = {"labels": {}, "codes": {}}
+    for field in pair_hashes:
+        for function_id in FUNCTION_IDS:
+            path = _resolve(outputs[function_id]["artifacts"][field], root)
+            value = safe_torch_load(path, map_location="cpu")
+            pair_hashes[field][function_id] = _tensor_content_hash(value)
+    paired = {
+        field: len(set(values.values())) == 1
+        for field, values in pair_hashes.items()
+    }
+    nominal_result = outputs["S0"]
+    full_phase_result = outputs["N0"]
+    # Use the retained tensors for the observability gate; metrics intentionally
+    # remain scalar-only in the manifest.
+    nominal_raw = safe_torch_load(_resolve(nominal_result["artifacts"]["raw_cmos"], root), map_location="cpu")
+    full_phase_raw = safe_torch_load(_resolve(full_phase_result["artifacts"]["raw_cmos"], root), map_location="cpu")
+    cmos_observability = float((full_phase_raw - nominal_raw).norm() / nominal_raw.norm().clamp_min(1.0e-12))
+    nominal_ports = safe_torch_load(_resolve(nominal_result["artifacts"]["port_output_coefficients"], root), map_location="cpu")
+    full_phase_ports = safe_torch_load(_resolve(full_phase_result["artifacts"]["port_output_coefficients"], root), map_location="cpu")
+    port_observability = float((full_phase_ports - nominal_ports).norm() / nominal_ports.norm().clamp_min(1.0e-12))
+    if not all(paired.values()) or cmos_observability < 0.1 or port_observability < 0.1:
+        raise ValueError("paired baseline or full-phase observability gate failed")
     _write(
         output_path if output_path.suffix == ".json" else root / "baseline.json",
         {
-            "schema": "fiber_image_baseline.v1",
+            "schema": "fiber_image_baseline.v2",
             "gate": "valid",
             "paired_seed": 2027,
             "sample_count": 100,
             "outputs": outputs,
             "validation_sha256": file_sha256(args.validate_evidence),
+            "git_commit": _git(),
+            "pairing": {"hashes": pair_hashes, "gates": paired},
+            "observability": {"cmos_normalized_l2": cmos_observability, "port_normalized_l2": port_observability},
         },
     )
     return 0
@@ -869,18 +1034,17 @@ def preflight(args) -> int:
         _write(
             Path(args.output),
             {
-                "schema": "fiber_image_preflight.v1",
+                "schema": "fiber_image_preflight.v2",
                 "gate": "invalid_harness",
                 "reason": "dirty worktree",
             },
         )
         return 2
-    validation = _read(_required(args, "validate_evidence"))
-    if (
-        validation.get("schema") != "fiber_image_validation.v1"
-        or validation.get("gate") != "valid"
-    ):
-        raise ValueError("validation evidence did not pass")
+    validation_path = _required(args, "validate_evidence")
+    validation = _read(validation_path)
+    baseline_path = _required(args, "baseline_evidence")
+    baseline = _read(baseline_path)
+    _assert_validation_current(args, validation=validation, baseline=baseline)
     context = _context(args)
     config, bundle, pool = context[0], context[8], context[9]
     matrix_id = _mapping(pool)[args.function_id]
@@ -942,7 +1106,7 @@ def preflight(args) -> int:
     _write(
         Path(args.output),
         {
-            "schema": "fiber_image_preflight.v1",
+            "schema": "fiber_image_preflight.v2",
             "gate": "valid" if gate else "invalid_harness",
             "function_id": args.function_id,
             "updates": 3,
@@ -960,6 +1124,13 @@ def preflight(args) -> int:
                     full_phase["raw_cmos"], nominal["raw_cmos"]
                 ),
             },
+            "git_commit": _git(),
+            "config_hash": robust._config_hash(config),
+            "validation_sha256": file_sha256(validation_path),
+            "baseline_sha256": file_sha256(baseline_path),
+            "measurement_bundle_sha256": file_sha256(_required(args, "measurement_bundle")),
+            "measurement_evidence_sha256": file_sha256(_required(args, "measurement_evidence")),
+            "initialization_checkpoint_sha256": file_sha256(_required(args, "research_initialization_checkpoint")),
         },
     )
     return 0 if gate else 2
@@ -968,19 +1139,19 @@ def preflight(args) -> int:
 def screen(args) -> int:
     evidence = _read(_required(args, "preflight_evidence"))
     if (
-        evidence.get("schema") != "fiber_image_preflight.v1"
+        evidence.get("schema") != "fiber_image_preflight.v2"
         or evidence.get("gate") != "valid"
     ):
         _write(
             Path(args.output),
             {
-                "schema": "fiber_image_screen.v1",
+                "schema": "fiber_image_screen.v2",
                 "gate": "invalid_harness",
                 "reason": "preflight did not pass",
             },
         )
         return 2
-    if evidence.get("function_id") != args.function_id or _dirty():
+    if evidence.get("function_id") != args.function_id or evidence.get("git_commit") != _git() or _dirty():
         raise ValueError("preflight function or clean worktree mismatch")
     output_path = Path(args.output)
     root = output_path.parent if output_path.suffix == ".json" else output_path
@@ -1007,15 +1178,22 @@ def screen(args) -> int:
         )
         if (
             not isinstance(payload, dict)
-            or payload.get("schema") != "fiber_image_checkpoint.v1"
+            or payload.get("schema") != "fiber_image_checkpoint.v2"
             or payload.get("function_id") != args.function_id
             or payload.get("seed") != args.seed
             or payload.get("git_commit") != _git()
+            or payload.get("preflight_sha256") != file_sha256(args.preflight_evidence)
+            or payload.get("config_hash") != robust._config_hash(config)
+            or payload.get("measurement_bundle_sha256") != file_sha256(_required(args, "measurement_bundle"))
+            or payload.get("measurement_evidence_sha256") != file_sha256(_required(args, "measurement_evidence"))
+            or payload.get("initialization_checkpoint_sha256") != file_sha256(_required(args, "research_initialization_checkpoint"))
         ):
             raise ValueError("resume checkpoint lineage mismatch")
         bundle.generator.load_state_dict(payload["generator_state"], strict=True)
         optimizer.load_state_dict(payload["optimizer_state"])
         start_step = int(payload["step"])
+        if int(payload.get("cursor", -1)) != start_step or not 0 <= start_step <= 50:
+            raise ValueError("resume checkpoint cursor mismatch")
         if tuple(payload.get("schedule", ())) != tuple(schedule):
             raise ValueError("resume matrix schedule mismatch")
     checkpoints = []
@@ -1042,7 +1220,7 @@ def screen(args) -> int:
             atomic_torch_save(
                 checkpoint,
                 {
-                    "schema": "fiber_image_checkpoint.v1",
+                    "schema": "fiber_image_checkpoint.v2",
                     "function_id": args.function_id,
                     "seed": args.seed,
                     "step": current_step,
@@ -1056,6 +1234,10 @@ def screen(args) -> int:
                     "validation": validation,
                     "config_hash": robust._config_hash(config),
                     "git_commit": _git(),
+                    "preflight_sha256": file_sha256(args.preflight_evidence),
+                    "measurement_bundle_sha256": file_sha256(_required(args, "measurement_bundle")),
+                    "measurement_evidence_sha256": file_sha256(_required(args, "measurement_evidence")),
+                    "initialization_checkpoint_sha256": file_sha256(_required(args, "research_initialization_checkpoint")),
                 },
             )
             checkpoints.append(
@@ -1073,7 +1255,7 @@ def screen(args) -> int:
         for item in checkpoints
     )
     payload = {
-        "schema": "fiber_image_screen.v1",
+        "schema": "fiber_image_screen.v2",
         "gate": "valid" if gate else "invalid_harness",
         "function_id": args.function_id,
         "seed": args.seed,
@@ -1082,6 +1264,10 @@ def screen(args) -> int:
         "checkpoints": checkpoints,
         "git_commit": _git(),
         "preflight_sha256": file_sha256(args.preflight_evidence),
+        "config_hash": robust._config_hash(config),
+        "measurement_bundle_sha256": file_sha256(_required(args, "measurement_bundle")),
+        "measurement_evidence_sha256": file_sha256(_required(args, "measurement_evidence")),
+        "initialization_checkpoint_sha256": file_sha256(_required(args, "research_initialization_checkpoint")),
     }
     _write(
         output_path if output_path.suffix == ".json" else root / "screen.json", payload
@@ -1091,14 +1277,14 @@ def screen(args) -> int:
 
 def select(args) -> int:
     evidence = [_read(path) for path in args.screen_evidence]
-    if len(evidence) != 12 or any(
-        item.get("schema") != "fiber_image_screen.v1" or item.get("gate") != "valid"
+    if len(evidence) != 12 or len(set(args.screen_evidence)) != 12 or any(
+        item.get("schema") != "fiber_image_screen.v2" or item.get("gate") != "valid"
         for item in evidence
     ):
         _write(
             Path(args.output),
             {
-                "schema": "fiber_image_selection.v1",
+                "schema": "fiber_image_selection.v2",
                 "gate": "invalid_harness",
                 "reason": "twelve valid screen evidences are required",
             },
@@ -1116,12 +1302,20 @@ def select(args) -> int:
         _write(
             Path(args.output),
             {
-                "schema": "fiber_image_selection.v1",
+                "schema": "fiber_image_selection.v2",
                 "gate": "invalid_harness",
                 "reason": "screen evidence must cover four functions and three seeds",
             },
         )
         return 2
+    if _dirty() or any(item.get("git_commit") != _git() for item in evidence):
+        raise ValueError("screen evidence is stale or worktree is dirty")
+    config_hashes = {item.get("config_hash") for item in evidence}
+    if len(config_hashes) != 1 or None in config_hashes:
+        raise ValueError("screen configuration lineage is inconsistent")
+    output_path = Path(args.output)
+    selection_root = output_path.parent if output_path.suffix == ".json" else output_path
+    selection_root.mkdir(parents=True, exist_ok=True)
     context_template = _context(args)
     rows = []
     for screen, screen_path in zip(evidence, args.screen_evidence, strict=True):
@@ -1151,9 +1345,10 @@ def select(args) -> int:
         seed_rows = []
         function_id, train_seed = screen["function_id"], screen["seed"]
         for panel_seed in PANEL_SEEDS:
-            candidate_metrics = _panel(candidate, function_id, panel_seed, 500)
-            b0_metrics = _panel(_context(args), function_id, panel_seed, 500)
-            identity_metrics = _panel(candidate, "I0", panel_seed, 500)
+            candidate_metrics = _panel(candidate, function_id, panel_seed, 500, trace=True)
+            b0_context = _context(args)
+            b0_metrics = _panel(b0_context, function_id, panel_seed, 500, trace=True)
+            identity_metrics = _panel(candidate, "I0", panel_seed, 500, trace=True)
             candidate_correct = (
                 candidate_metrics["secondary_prediction"] == candidate_metrics["labels"]
             ).to(torch.float32)
@@ -1183,6 +1378,20 @@ def select(args) -> int:
                     - candidate_metrics["secondary_accuracy"],
                 }
             )
+            artifact_base = selection_root / "locked_artifacts" / f"{function_id}_{train_seed}_{panel_seed}"
+            artifact_refs = {
+                "candidate_fiber": _bundle(artifact_base, "candidate_fiber", candidate_metrics, identity_metrics["fixed_cmos"]),
+                "same_fiber_b0": _bundle(artifact_base, "same_fiber_b0", b0_metrics, identity_metrics["fixed_cmos"]),
+                "candidate_identity": _bundle(artifact_base, "candidate_identity", identity_metrics),
+            }
+            panel_record = seed_rows[-1]
+            panel_record["artifact_root"] = artifact_base.relative_to(selection_root).as_posix()
+            panel_record["artifacts"] = artifact_refs
+            correctness_path = artifact_base / "correctness.pt"
+            correctness_path.parent.mkdir(parents=True, exist_ok=True)
+            correctness = torch.stack([candidate_correct.cpu(), b0_correct.cpu()])
+            atomic_torch_save(correctness_path, correctness)
+            panel_record["correctness_artifact"] = _tensor_ref(correctness_path, correctness, artifact_base)
         rows.append(
             {
                 "function_id": function_id,
@@ -1194,9 +1403,9 @@ def select(args) -> int:
         )
     bootstrap = _bootstrap_rows(rows)
     _write(
-        Path(args.output),
+        output_path,
         {
-            "schema": "fiber_image_selection.v1",
+            "schema": "fiber_image_selection.v2",
             "gate": "valid",
             "rows": rows,
             "bootstrap": bootstrap,
@@ -1263,13 +1472,13 @@ def _bootstrap_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
 def closeout(args) -> int:
     selection = _read(_required(args, "selection_evidence"))
     if (
-        selection.get("schema") != "fiber_image_selection.v1"
+        selection.get("schema") != "fiber_image_selection.v2"
         or selection.get("gate") != "valid"
     ):
         _write(
             Path(args.output),
             {
-                "schema": "fiber_image_closeout.v1",
+                "schema": "fiber_image_closeout.v2",
                 "gate": "invalid_harness",
                 "conclusion": "invalid_harness",
                 "structural_validity": False,
@@ -1284,11 +1493,46 @@ def closeout(args) -> int:
         _write(
             Path(args.output),
             {
-                "schema": "fiber_image_closeout.v1",
+                "schema": "fiber_image_closeout.v2",
                 "gate": "invalid_harness",
                 "conclusion": "invalid_harness",
                 "structural_validity": False,
                 "measurement_validity": False,
+            },
+        )
+        return 2
+    selection_root = Path(args.selection_evidence).resolve().parent
+    required_roles = {"candidate_fiber", "same_fiber_b0", "candidate_identity"}
+    try:
+        for row in rows:
+            for panel in row["panels"]:
+                artifact_root = (selection_root / panel["artifact_root"]).resolve()
+                if selection_root not in artifact_root.parents:
+                    raise ValueError("locked artifact root escaped selection run")
+                if set(panel.get("artifacts", {})) != required_roles:
+                    raise ValueError("locked artifact roles are incomplete")
+                for role in required_roles:
+                    refs = panel["artifacts"][role]
+                    for name in ("labels", "codes", "raw_cmos", "fixed_cmos", "primary_prediction", "secondary_prediction"):
+                        path = _resolve(refs[name], artifact_root)
+                        value = safe_torch_load(path, map_location="cpu")
+                        if refs[name].get("tensor_sha256") != _tensor_content_hash(value):
+                            raise ValueError("locked tensor content hash mismatch")
+                    if role != "candidate_identity":
+                        for name in ("port_input_coefficients", "port_output_coefficients", "fiber_input_amplitude", "fiber_output_amplitude", "fiber_input_phase", "fiber_output_phase", "fiber_field_provenance"):
+                            if name not in refs:
+                                raise ValueError("fiber locked field artifact is missing")
+                _resolve(panel["correctness_artifact"], artifact_root)
+    except (KeyError, TypeError, ValueError):
+        _write(
+            Path(args.output),
+            {
+                "schema": "fiber_image_closeout.v2",
+                "gate": "invalid_harness",
+                "conclusion": "invalid_harness",
+                "structural_validity": False,
+                "measurement_validity": False,
+                "reason": "locked artifacts are incomplete or tampered",
             },
         )
         return 2
@@ -1323,6 +1567,8 @@ def closeout(args) -> int:
         quality = all(
             item.get("finite")
             and item.get("nonnegative")
+            and item.get("passive_available")
+            and item.get("passive")
             and item.get("saturation", 1.0) <= 0.08
             and item.get("primary_min_recall", 0.0) > 0
             and item.get("camera_fraction", 0.0) >= 0.15
@@ -1378,7 +1624,7 @@ def closeout(args) -> int:
     _write(
         Path(args.output),
         {
-            "schema": "fiber_image_closeout.v1",
+            "schema": "fiber_image_closeout.v2",
             "gate": gate,
             "conclusion": conclusion,
             "structural_validity": True,

@@ -95,6 +95,8 @@ def register_research(root: argparse._SubParsersAction) -> None:
         command = image_actions.add_parser(action)
         image_common(command)
         command.add_argument(f"--{upstream}", dest=upstream.replace("-", "_"), required=True)
+        if action == "preflight":
+            command.add_argument("--baseline-evidence", required=True)
         if action in {"preflight", "screen"}:
             command.add_argument("--function-id", choices=("S0", "S1a", "S1b", "S1c"), required=True)
         if action == "screen":
