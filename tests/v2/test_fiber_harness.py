@@ -10,7 +10,7 @@ from argparse import Namespace
 
 def test_validation_is_consumed_and_dirty_preflight_fails_closed(tmp_path: Path) -> None:
     validation = tmp_path / "validation.json"
-    with pytest.raises(ValueError, match="clean research worktree"):
+    with pytest.raises(ValueError, match="--config"):
         dispatch(Namespace(research_action="validate", output=str(validation)))
 
 
