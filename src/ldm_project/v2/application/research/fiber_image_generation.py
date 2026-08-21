@@ -26,12 +26,17 @@ from ...optics.fiber_operator import FiberTransportEnsembleOLS
 from ...optics.fiber_pool import FiberTransportPool
 from ...student.conditional import (
     camera_code_fraction,
+    diversity_hinge,
     fixed_exposure_view,
+    log_sinkhorn,
+    phase_total_variation,
+    raw_from_generator_batched,
     relative_diversity_ratios,
 )
 from ...student.conditional_acceptance import conditional_coverage_ratio
 from ...student.evaluator import (
     SmoothMNISTEvaluator,
+    balanced_batches,
     load_frozen_evaluator,
     load_local_mnist,
 )
@@ -42,6 +47,101 @@ from . import fiber_robustness as robust
 FUNCTION_IDS = ("I0", "S0", "S1a", "S1b", "S1c", "N0")
 TRAIN_SEEDS = (5201, 5202, 5203)
 PANEL_SEEDS = (4242, 104729, 161803)
+
+
+def _adaptive_average_weights(input_size: int, output_size: int, *, device: torch.device, dtype: torch.dtype) -> torch.Tensor:
+    """Return the exact linear weights used by adaptive average pooling."""
+    if input_size < 1 or output_size < 1:
+        raise ValueError("pool dimensions must be positive")
+    weights = torch.zeros(output_size, input_size, device=device, dtype=dtype)
+    for index in range(output_size):
+        start = (index * input_size) // output_size
+        end = ((index + 1) * input_size + output_size - 1) // output_size
+        weights[index, start:end] = 1.0 / float(end - start)
+    return weights
+
+
+def _deterministic_adaptive_average(values: torch.Tensor, output_size: int | tuple[int, int]) -> torch.Tensor:
+    """Adaptive average pooling as two fixed matrix multiplies.
+
+    The research lane uses this replacement because CUDA's native adaptive
+    pooling backward is not deterministic for the 200->28 and 28->14 paths.
+    """
+    if values.ndim != 4 or values.shape[1] != 1:
+        raise ValueError("deterministic pooling expects [N,1,H,W]")
+    target_h, target_w = (output_size, output_size) if isinstance(output_size, int) else output_size
+    height, width = values.shape[-2:]
+    wy = _adaptive_average_weights(height, target_h, device=values.device, dtype=values.dtype)
+    wx = _adaptive_average_weights(width, target_w, device=values.device, dtype=values.dtype)
+    image = values[:, 0]
+    return torch.matmul(torch.matmul(wy, image), wx.t()).unsqueeze(1)
+
+
+def _deterministic_fixed_exposure_view(raw_cmos: torch.Tensor, exposure_scale: float, *, output_size: int = 28) -> torch.Tensor:
+    if raw_cmos.ndim != 4 or raw_cmos.shape[1] != 1 or exposure_scale <= 0.0:
+        raise ValueError("raw CMOS must be [batch, 1, H, W] with a positive fixed exposure")
+    return _deterministic_adaptive_average((raw_cmos / exposure_scale).clamp(0.0, 1.0), output_size)
+
+
+def _deterministic_sinkhorn_cost_view(view: torch.Tensor, *, output_size: int = 14) -> torch.Tensor:
+    if view.ndim != 4 or view.shape[1] != 1:
+        raise ValueError("view must be [batch, 1, H, W]")
+    return _deterministic_adaptive_average(view, output_size)
+
+
+def _research_sinkhorn_loss(generated_features: torch.Tensor, generated_view: torch.Tensor, real_features: torch.Tensor, real_view: torch.Tensor, labels: torch.Tensor, *, epsilon: float, iterations: int) -> torch.Tensor:
+    if generated_features.shape != real_features.shape or generated_view.shape != real_view.shape:
+        raise ValueError("generated and real batches must have matching shapes")
+    terms = []
+    for label in range(10):
+        selected = torch.nonzero(labels == label, as_tuple=False).flatten()
+        if selected.numel() < 2:
+            raise ValueError("each conditional Sinkhorn batch needs at least two samples per label")
+        generated_f = torch.nn.functional.normalize(generated_features.index_select(0, selected), dim=1)
+        real_f = torch.nn.functional.normalize(real_features.index_select(0, selected), dim=1)
+        feature_cost = torch.cdist(generated_f, real_f).square()
+        generated_pixels = _deterministic_sinkhorn_cost_view(generated_view.index_select(0, selected)).flatten(1)
+        real_pixels = _deterministic_sinkhorn_cost_view(real_view.index_select(0, selected)).flatten(1)
+        pixel_cost = torch.cdist(generated_pixels, real_pixels, p=1) / generated_pixels.shape[1]
+        terms.append(log_sinkhorn(feature_cost + 0.25 * pixel_cost, epsilon=epsilon, iterations=iterations))
+    return torch.stack(terms).mean()
+
+
+def _research_conditional_loss(*, system: Any, generator: Any, evaluator: Any, codes: torch.Tensor, labels: torch.Tensor, real_views: torch.Tensor, exposure_scale: float, sinkhorn_epsilon: float, sinkhorn_iterations: int, microbatch_size: int) -> torch.Tensor:
+    raw = raw_from_generator_batched(system, generator, codes, labels, microbatch_size=microbatch_size, activation_checkpoint=False)
+    generated_view = _deterministic_fixed_exposure_view(raw, exposure_scale)
+    generated_features, logits = evaluator(generated_view)
+    with torch.no_grad():
+        real_features, _ = evaluator(real_views)
+    sinkhorn = _research_sinkhorn_loss(generated_features, generated_view, real_features, real_views, labels, epsilon=sinkhorn_epsilon, iterations=sinkhorn_iterations)
+    total = sinkhorn + 0.5 * torch.nn.functional.cross_entropy(logits, labels)
+    total = total + 0.1 * diversity_hinge(generated_features, codes, labels)
+    total = total + 0.1 * torch.relu(raw / exposure_scale - 1.0).square().mean()
+    total = total + 1.0e-3 * generator.mode_orthogonality_penalty()
+    total = total + 1.0e-5 * phase_total_variation(system)
+    return total
+
+
+def _update(context: tuple[Any, ...], *, matrix_id: str, seed: int, step: int, optimizer: torch.optim.Optimizer) -> float:
+    config, device, images, labels, _, _, _, _, bundle, _, _, _ = context
+    settings = config.conditional_generation
+    if settings is None or not isinstance(bundle.system.ols, FiberTransportEnsembleOLS):
+        raise ValueError("fiber image update requires a fiber system")
+    bundle.system.ols.select(matrix_id)
+    indices = next(iter(balanced_batches(labels.detach().cpu(), batch_size=settings.logical_batch_size, seed=seed + step)))
+    batch_labels = labels.index_select(0, indices.to(device))
+    batch_images = images.index_select(0, indices.to(device))
+    codes = random_codes(batch_labels.numel(), device=device, seed=(seed + 1) * 100000 + step)
+    optimizer.zero_grad(set_to_none=True)
+    loss = _research_conditional_loss(system=bundle.system, generator=bundle.generator, evaluator=context[6], codes=codes, labels=batch_labels, real_views=batch_images, exposure_scale=settings.fixed_exposure_scale, sinkhorn_epsilon=settings.sinkhorn_epsilon, sinkhorn_iterations=settings.sinkhorn_iterations, microbatch_size=config.execution.training_microbatch_size)
+    if not torch.isfinite(loss):
+        raise ValueError("fiber image update loss is non-finite")
+    loss.backward()
+    gradients = [parameter.grad for parameter in bundle.generator.parameters()]
+    if any(gradient is None or not torch.isfinite(gradient).all() for gradient in gradients):
+        raise ValueError("fiber image generator gradient is missing/non-finite")
+    optimizer.step()
+    return float(loss.detach().cpu())
 
 
 @dataclass(frozen=True)
@@ -382,6 +482,7 @@ def _panel(
         reference_features, _ = secondary(
             reference_images.index_select(0, reference_indices)
         )
+    coverage_available = count >= 40
     metric = {
         "primary_accuracy": float((p == labels).float().mean()),
         "secondary_accuracy": float((s == labels).float().mean()),
@@ -399,9 +500,8 @@ def _panel(
         "minimum_diversity": min(
             relative_diversity_ratios(generated_features, diversity_features, labels)
         ),
-        "coverage_ratio": 0.0
-        if count < 40
-        else conditional_coverage_ratio(
+        "coverage_ratio_available": coverage_available,
+        "coverage_ratio": conditional_coverage_ratio(
             generated_features,
             view,
             reference_features,
@@ -410,7 +510,7 @@ def _panel(
             epsilon=settings.sinkhorn_epsilon,
             iterations=settings.sinkhorn_iterations,
             seed=2027,
-        ),
+        ) if coverage_available else None,
         "labels": labels.cpu(),
         "codes": codes.cpu(),
         "raw_cmos": raw.cpu(),
@@ -505,6 +605,27 @@ def _bundle(
             torch.cat([row["command"] for row in result["trace_rows"]], dim=0),
         )
         refs["slm_amplitude"] = _ref(command_path, root)
+        # Trace fields are keyed by their declared plane/provenance, never by
+        # tuple position.  The field immediately upstream of ``ols_output``
+        # is the encoder-side fiber input plane in the formal trace contract.
+        fields = result["trace_rows"][0]["fields"] if result["trace_rows"] else []
+        output_index = next(
+            (index for index, field in enumerate(fields) if field["plane"].get("plane_id") == "ols_output"),
+            None,
+        )
+        if output_index is not None and output_index > 0:
+            input_field = fields[output_index - 1]
+            output_field = fields[output_index]
+            for prefix in ("fiber_input", "fiber_output"):
+                amplitude_path = directory / f"{prefix}_amplitude.pt"
+                phase_path = directory / f"{prefix}_phase.pt"
+                atomic_torch_save(amplitude_path, torch.stack([row["fields"][output_index - 1 if prefix == "fiber_input" else output_index]["tensor"] for row in result["trace_rows"]]).abs())
+                atomic_torch_save(phase_path, torch.stack([row["fields"][output_index - 1 if prefix == "fiber_input" else output_index]["tensor"] for row in result["trace_rows"]]).angle())
+                refs[f"{prefix}_amplitude"] = _ref(amplitude_path, root)
+                refs[f"{prefix}_phase"] = _ref(phase_path, root)
+            provenance_path = directory / "fiber_field_provenance.json"
+            _write(provenance_path, {"input": input_field["provenance"], "output": output_field["provenance"], "input_plane": input_field["plane"], "output_plane": output_field["plane"]})
+            refs["fiber_field_provenance"] = _ref(provenance_path, root)
     if result.get("port_available"):
         for name in ("port_input_coefficients", "port_output_coefficients"):
             path = directory / f"{name}.pt"
@@ -536,6 +657,15 @@ def validate(args) -> int:
     fixture, config_path = _required(args, "lp01_fixture"), _required(args, "config")
     config = load_config(str(config_path))
     pool = FiberTransportPool()
+    probe = torch.linspace(0.0, 1.0, 2 * 200 * 200, dtype=torch.float64).reshape(2, 1, 200, 200)
+    native_28 = torch.nn.functional.adaptive_avg_pool2d(probe, (28, 28))
+    research_28 = _deterministic_adaptive_average(probe, 28)
+    native_14 = torch.nn.functional.adaptive_avg_pool2d(native_28, (14, 14))
+    research_14 = _deterministic_adaptive_average(research_28, 14)
+    pooling_forward_error = max(float((native_28 - research_28).abs().max()), float((native_14 - research_14).abs().max()))
+    pooling_gate = pooling_forward_error <= 1.0e-6
+    if not pooling_gate:
+        raise ValueError("deterministic research pooling does not match native forward")
     spec = asdict(FiberImageResearchSpec())
     payload = {
         "schema": "fiber_image_validation.v1",
@@ -548,6 +678,11 @@ def validate(args) -> int:
         "pool_hash": hashlib.sha256(
             json.dumps(pool.evidence(), sort_keys=True, default=str).encode()
         ).hexdigest(),
+        "deterministic_pooling": {
+            "forward_max_abs_error": pooling_forward_error,
+            "gate": "valid" if pooling_gate else "invalid_harness",
+            "paths": ["200->28", "28->14"],
+        },
     }
     _write(Path(args.output), payload)
     _write(
@@ -625,7 +760,7 @@ def _resume_replay(args: Any, matrix_id: str) -> dict[str, Any]:
     deterministic_before = torch.are_deterministic_algorithms_enabled()
     cudnn_before = (torch.backends.cudnn.deterministic, torch.backends.cudnn.benchmark)
     tf32_before = torch.backends.cuda.matmul.allow_tf32
-    torch.use_deterministic_algorithms(True, warn_only=True)
+    torch.use_deterministic_algorithms(True)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     torch.backends.cuda.matmul.allow_tf32 = False
@@ -634,7 +769,7 @@ def _resume_replay(args: Any, matrix_id: str) -> dict[str, Any]:
         context: tuple[Any, ...], optimizer: torch.optim.Optimizer, steps: range
     ) -> None:
         for step in steps:
-            robust._update(
+            _update(
                 context, matrix_id=matrix_id, seed=5201, step=step, optimizer=optimizer
             )
 
@@ -726,7 +861,7 @@ def preflight(args) -> int:
         if not key.startswith("ols.")
     }
     losses = [
-        robust._update(
+        _update(
             context, matrix_id=matrix_id, seed=5201, step=step, optimizer=optimizer
         )
         for step in range(3)
@@ -847,19 +982,19 @@ def screen(args) -> int:
             raise ValueError("resume matrix schedule mismatch")
     checkpoints = []
     for step in range(start_step, 50):
-        loss = robust._update(
+        loss = _update(
             context, matrix_id=matrix_id, seed=args.seed, step=step, optimizer=optimizer
         )
         current_step = step + 1
         if current_step % 10 == 0:
-            validation = {}
-            for record in pool.records["validation"]:
-                measurement = _panel(context, args.function_id, 2027, 170)
-                validation[record.matrix_id] = {
+            measurement = _panel(context, args.function_id, 2027, 170)
+            validation = {
+                "fixed_function": {
                     key: value
                     for key, value in measurement.items()
                     if isinstance(value, (bool, int, float, str))
                 }
+            }
             checkpoint = (
                 root
                 / args.function_id
@@ -950,9 +1085,8 @@ def select(args) -> int:
         )
         return 2
     context_template = _context(args)
-    root = Path(args.screen_evidence[0]).parent
     rows = []
-    for screen in evidence:
+    for screen, screen_path in zip(evidence, args.screen_evidence, strict=True):
         selected = max(
             screen["checkpoints"],
             key=lambda item: (
@@ -966,7 +1100,7 @@ def select(args) -> int:
                 -int(item["step"]),
             ),
         )
-        checkpoint_path = _resolve(selected["artifact"], root)
+        checkpoint_path = _resolve(selected["artifact"], Path(screen_path).parent)
         checkpoint = safe_torch_load(
             checkpoint_path,
             expected_sha256=selected["artifact"]["sha256"],
@@ -1040,8 +1174,14 @@ def _bootstrap_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
     result = {}
     for panel_seed in PANEL_SEEDS:
         by_function = {}
+        sampled_by_function: dict[str, torch.Tensor] = {}
+        indices_by_class = torch.stack(
+            [torch.randint(start, start + 50, (10000, 50), generator=generator) for start in range(0, 500, 50)]
+        )
         for function_id in ("S0", "S1a", "S1b", "S1c"):
             selected = [row for row in rows if row["function_id"] == function_id]
+            if len(selected) != 3:
+                raise ValueError("bootstrap requires exactly three training seeds per function")
             vectors = torch.tensor(
                 [
                     next(
@@ -1053,20 +1193,31 @@ def _bootstrap_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
                 ],
                 dtype=torch.float32,
             )
-            indices = torch.cat(
-                [
-                    torch.randint(start, start + 50, (10000, 50), generator=generator)
-                    for start in range(0, 500, 50)
-                ],
-                dim=1,
+            class_gains = torch.stack(
+                [vectors[:, indices_by_class[class_index]].mean(dim=2) for class_index in range(10)], dim=1
             )
-            gains = vectors[:, indices].mean(dim=2).median(dim=0).values
+            gains_by_seed = class_gains.mean(dim=1)
+            gains = gains_by_seed.median(dim=0).values
+            sampled_by_function[function_id] = gains
             by_function[function_id] = {
                 "median_gain": float(vectors.mean(dim=1).median()),
                 "ci95": [float(gains.quantile(0.025)), float(gains.quantile(0.975))],
+                "seed_median_gains": [float(value) for value in gains_by_seed.mean(dim=1)],
                 "seed": 90210,
                 "replicates": 10000,
             }
+        observed = {function_id: by_function[function_id]["median_gain"] for function_id in by_function}
+        maximum = max(observed, key=observed.get)
+        minimum = min(observed, key=observed.get)
+        difference = sampled_by_function[maximum] - sampled_by_function[minimum]
+        by_function["cross_function"] = {
+            "maximum_function": maximum,
+            "minimum_function": minimum,
+            "observed_difference": float(observed[maximum] - observed[minimum]),
+            "ci95": [float(difference.quantile(0.025)), float(difference.quantile(0.975))],
+            "seed": 90210,
+            "replicates": 10000,
+        }
         result[str(panel_seed)] = by_function
     return result
 
@@ -1141,9 +1292,16 @@ def closeout(args) -> int:
             and item.get("coverage_ratio", 99.0) <= 1.35
             for item in candidates
         )
+        primary_quality = all(
+            item["candidate"].get("primary_accuracy", -1.0)
+            >= item["b0"].get("primary_accuracy", 99.0) - 0.03
+            for row in function_rows
+            for item in row["panels"]
+        )
         functions[function_id] = {
             "panel_gain": all(panel_gates),
-            "quality": quality,
+            "quality": quality and primary_quality,
+            "primary_quality": primary_quality,
             "identity_gap": max(identity_gaps, default=99.0),
             "passed": all(panel_gates)
             and quality
@@ -1159,12 +1317,24 @@ def closeout(args) -> int:
         for row in rows
         for item in row["panels"]
     )
+    cross = {
+        str(panel): selection["bootstrap"][str(panel)].get("cross_function")
+        for panel in PANEL_SEEDS
+    }
+    cross_difference_valid = all(
+        item is not None and item.get("ci95", [0.0, 0.0])[0] > 0.0
+        for item in cross.values()
+    )
     if not measurement_validity:
         conclusion, gate = "invalid_harness", "invalid_harness"
     elif len(passed) == 0:
         conclusion, gate = "no_reproducible_fiber_gain", "valid_failed"
     elif len(passed) == 1:
         conclusion, gate = "fiber_specific_only_gain", "valid_failed"
+    elif cross_difference_valid and all(
+        float(item["observed_difference"]) >= 0.015 for item in cross.values()
+    ):
+        conclusion, gate = "fiber_function_dependent_generator_gain", "valid_failed"
     else:
         conclusion, gate = "common_fiber_generator_gain", "valid_failed"
     _write(
@@ -1178,7 +1348,7 @@ def closeout(args) -> int:
             "scientific_gates": {
                 "functions": functions,
                 "passed_functions": passed,
-                "cross_function_bootstrap": False,
+                "cross_function_bootstrap": cross,
             },
             "formal_promotion": False,
             "synthetic_diagnostic_only": True,
