@@ -70,5 +70,28 @@ persist all checkpoints inside one run directory, bind the research harness
 commit, and rerun `validate → preflight → screen → select → closeout` from a
 clean commit.
 
+## Strict replacement lifecycle (2026-08-21)
+
+The replacement run was executed from clean commit `fcbee0f` with a research
+measurement manifest and a fresh generator initialization. Its persistent
+artifacts are under
+`outputs/20260821_v2/runs/20260821_robustness_fiber_ols_v2_closeout/`:
+
+- validation: `ea244c82cbbdef9fea7a0b4c1620a24b6bf1a1325411493c02678bef3a7862bc`;
+- measurement bundle: `542942df9505ce5f5a39f41405ff3ef767ad1a49a08d97ba7781cbff01764085`;
+- measurement evidence: `a14c2807222839fe97996ab900046bac9ab238ea2c0a69f9844f3671aa39bef9`;
+- CUDA preflight: `1b589da05cb34dfb062a0a95a96ac4c30ad3515d52cdd8285db76654dddd92d9`;
+- screen: `aeee0de2d2ec1582b56b0189a4cf4db49bab2323da9494b8a81b1cf7feb7bca6`;
+- locked selection: `f3ecb443f50b6038cfbd36103aaa83017711c5fb31ad086eda422433bfc325ec`;
+- closeout: `c495986c3811457d986ceb2a798e70ac394ec98c9acf64a98743bf44e2d1e37e`.
+
+The lifecycle passed structural and measurement validity, including the
+full-phase port/CMOS preflight gates. The scientific conclusion is
+`no_reproducible_generator_gain` with `valid_failed`: all three locked-panel
+bootstrap median gains are zero and their 95% CI lower bounds are zero;
+identity gap and seed-consistency gates also fail. This remains synthetic
+diagnostic-only, does not authorize additional training or formal promotion,
+and does not establish calibrated hardware behavior.
+
 The local final archive tag must not be treated as valid until the replacement
 lifecycle completes. It is not pushed.
