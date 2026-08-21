@@ -55,3 +55,14 @@ kernel log recorded unclean journal restart, DXG adapter query failures and
 DNS `getaddrinfo -5`; no model exception or OOM record was present. The run
 was resumed from the last completed stage using independent output paths, not
 from a partial checkpoint.
+
+## v1 closeout invalidation
+
+The v1 numerical measurements remain useful diagnostic observations, but the
+`valid_failed` closeout is not an authoritative lifecycle result. Its
+measurement bundle did not bind the complete dataset/evaluator/source/pool
+lineage, preflight did not persist all upstream hashes, and locked select did
+not persist the required 500-sample field/image artifacts. The v1 closeout is
+therefore treated as `invalid_harness diagnostic`; it is not eligible for an
+archive tag or downstream promotion. The strict repair continues on
+`research/v2-fiber-image-generation-v2` and writes only to a new v3 run.
