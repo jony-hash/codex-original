@@ -799,10 +799,14 @@ def screen(args) -> int:
         )
         current_step = step + 1
         if current_step % 10 == 0:
-            validation = {
-                record.matrix_id: _panel(context, args.function_id, 2027, 170)
-                for record in pool.records["validation"]
-            }
+            validation = {}
+            for record in pool.records["validation"]:
+                measurement = _panel(context, args.function_id, 2027, 170)
+                validation[record.matrix_id] = {
+                    key: value
+                    for key, value in measurement.items()
+                    if isinstance(value, (bool, int, float, str))
+                }
             checkpoint = (
                 root
                 / args.function_id
