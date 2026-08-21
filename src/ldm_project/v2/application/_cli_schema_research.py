@@ -91,11 +91,20 @@ def register_research(root: argparse._SubParsersAction) -> None:
     image_common(image_baseline)
     image_baseline.add_argument("--validate-evidence", required=True)
     image_baseline.add_argument("--output", required=True)
-    for action, upstream in (("preflight", "validate-evidence"), ("screen", "preflight-evidence"), ("select", "screen-evidence")):
+    for action, upstream in (("preflight", "validate-evidence"), ("screen", "preflight-evidence")):
         command = image_actions.add_parser(action)
         image_common(command)
         command.add_argument(f"--{upstream}", dest=upstream.replace("-", "_"), required=True)
+        if action in {"preflight", "screen"}:
+            command.add_argument("--function-id", choices=("S0", "S1a", "S1b", "S1c"), required=True)
+        if action == "screen":
+            command.add_argument("--seed", type=int, choices=(5201, 5202, 5203), required=True)
+            command.add_argument("--resume-checkpoint")
         command.add_argument("--output", required=True)
+    image_select = image_actions.add_parser("select")
+    image_common(image_select)
+    image_select.add_argument("--screen-evidence", action="append", required=True)
+    image_select.add_argument("--output", required=True)
     image_closeout = image_actions.add_parser("closeout")
     image_closeout.add_argument("--selection-evidence", required=True)
     image_closeout.add_argument("--output", required=True)

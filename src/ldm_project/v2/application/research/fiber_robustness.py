@@ -141,7 +141,7 @@ def _research_input_lineage(args: Any, *, measurement_required: bool = True) -> 
         evidence_path = _required_file(args, "measurement_evidence")
         bundle = _read(str(bundle_path))
         evidence = _read(str(evidence_path))
-        if bundle.get("schema") not in {"fiber_measurement_bundle.v1", "fiber_image_measurement_bundle.v1"} or evidence.get("schema") not in {"fiber_measurement_evidence.v1", "fiber_image_measurement_evidence.v1"}:
+        if bundle.get("schema") != "fiber_measurement_bundle.v1" or evidence.get("schema") != "fiber_measurement_evidence.v1":
             raise ValueError("research measurement schema is unsupported")
         if evidence.get("bundle_sha256") != file_sha256(bundle_path) or evidence.get("config_hash") != result["config_hash"]:
             raise ValueError("research measurement lineage mismatch")
