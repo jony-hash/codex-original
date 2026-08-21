@@ -566,6 +566,14 @@ def baseline(args) -> int:
 
 
 def _resume_replay(args: Any, matrix_id: str) -> dict[str, Any]:
+    deterministic_before = torch.are_deterministic_algorithms_enabled()
+    cudnn_before = (torch.backends.cudnn.deterministic, torch.backends.cudnn.benchmark)
+    tf32_before = torch.backends.cuda.matmul.allow_tf32
+    torch.use_deterministic_algorithms(True)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cuda.matmul.allow_tf32 = False
+
     def run(
         context: tuple[Any, ...], optimizer: torch.optim.Optimizer, steps: range
     ) -> None:
@@ -574,50 +582,57 @@ def _resume_replay(args: Any, matrix_id: str) -> dict[str, Any]:
                 context, matrix_id=matrix_id, seed=5201, step=step, optimizer=optimizer
             )
 
-    continuous = _context(args)
-    opt_a = torch.optim.Adam(
-        continuous[8].generator.parameters(),
-        lr=continuous[0].conditional_generation.generator_learning_rate,
-    )
-    run(continuous, opt_a, range(3))
-    partial = _context(args)
-    opt_b = torch.optim.Adam(
-        partial[8].generator.parameters(),
-        lr=partial[0].conditional_generation.generator_learning_rate,
-    )
-    run(partial, opt_b, range(1))
-    saved_generator = {
-        key: value.detach().clone()
-        for key, value in partial[8].generator.state_dict().items()
-    }
-    saved_optimizer = opt_b.state_dict()
-    resumed = _context(args)
-    resumed[8].generator.load_state_dict(saved_generator, strict=True)
-    opt_c = torch.optim.Adam(
-        resumed[8].generator.parameters(),
-        lr=resumed[0].conditional_generation.generator_learning_rate,
-    )
-    opt_c.load_state_dict(saved_optimizer)
-    run(resumed, opt_c, range(1, 3))
-    generator_error = max(
-        float(
-            (
-                continuous[8].generator.state_dict()[key]
-                - resumed[8].generator.state_dict()[key]
-            )
-            .abs()
-            .max()
+    try:
+        continuous = _context(args)
+        opt_a = torch.optim.Adam(
+            continuous[8].generator.parameters(),
+            lr=continuous[0].conditional_generation.generator_learning_rate,
         )
-        for key in continuous[8].generator.state_dict()
-    )
-    optimizer_equal = robust._nested_equal(opt_a.state_dict(), opt_c.state_dict())
-    return {
-        "passed": generator_error <= 1.0e-5 and optimizer_equal,
-        "generator_max_abs_error": generator_error,
-        "optimizer_equal": optimizer_equal,
-        "rtol": 1.0e-5,
-        "atol": 1.0e-5,
-    }
+        run(continuous, opt_a, range(3))
+        partial = _context(args)
+        opt_b = torch.optim.Adam(
+            partial[8].generator.parameters(),
+            lr=partial[0].conditional_generation.generator_learning_rate,
+        )
+        run(partial, opt_b, range(1))
+        saved_generator = {
+            key: value.detach().clone()
+            for key, value in partial[8].generator.state_dict().items()
+        }
+        saved_optimizer = opt_b.state_dict()
+        resumed = _context(args)
+        resumed[8].generator.load_state_dict(saved_generator, strict=True)
+        opt_c = torch.optim.Adam(
+            resumed[8].generator.parameters(),
+            lr=resumed[0].conditional_generation.generator_learning_rate,
+        )
+        opt_c.load_state_dict(saved_optimizer)
+        run(resumed, opt_c, range(1, 3))
+        generator_error = max(
+            float(
+                (
+                    continuous[8].generator.state_dict()[key]
+                    - resumed[8].generator.state_dict()[key]
+                )
+                .abs()
+                .max()
+            )
+            for key in continuous[8].generator.state_dict()
+        )
+        optimizer_equal = robust._nested_equal(opt_a.state_dict(), opt_c.state_dict())
+        return {
+            "passed": generator_error <= 1.0e-5 and optimizer_equal,
+            "generator_max_abs_error": generator_error,
+            "optimizer_equal": optimizer_equal,
+            "rtol": 1.0e-5,
+            "atol": 1.0e-5,
+        }
+    finally:
+        torch.use_deterministic_algorithms(deterministic_before)
+        torch.backends.cudnn.deterministic, torch.backends.cudnn.benchmark = (
+            cudnn_before
+        )
+        torch.backends.cuda.matmul.allow_tf32 = tf32_before
 
 
 def preflight(args) -> int:
