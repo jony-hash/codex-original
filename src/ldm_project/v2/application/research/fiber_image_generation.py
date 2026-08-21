@@ -572,7 +572,7 @@ def _resume_replay(args: Any, matrix_id: str) -> dict[str, Any]:
     deterministic_before = torch.are_deterministic_algorithms_enabled()
     cudnn_before = (torch.backends.cudnn.deterministic, torch.backends.cudnn.benchmark)
     tf32_before = torch.backends.cuda.matmul.allow_tf32
-    torch.use_deterministic_algorithms(True)
+    torch.use_deterministic_algorithms(True, warn_only=True)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     torch.backends.cuda.matmul.allow_tf32 = False
