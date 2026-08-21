@@ -209,7 +209,7 @@ def _measure(context: tuple[Any, ...], variant: str, panel: int, root: Path) -> 
         "finite": bool(torch.isfinite(raw).all()),
         "nonnegative": bool((raw >= 0).all()),
         "saturation": float((raw > settings.fixed_exposure_scale).float().mean()),
-        "camera_fraction": float(camera_code_fraction(raw, labels).item()),
+        "camera_fraction": float(camera_code_fraction(raw, labels.cpu()).item()),
         "minimum_diversity": min(relative_diversity_ratios(features, reference_features.cpu(), labels.cpu())),
         "coverage_ratio": float(conditional_coverage_ratio(features, view, reference_features.cpu(), reference_images.index_select(0, reference_indices), labels.cpu(), epsilon=settings.sinkhorn_epsilon, iterations=settings.sinkhorn_iterations, seed=2027)),
         "passive_available": variant != "I0",
