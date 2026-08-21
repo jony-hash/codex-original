@@ -72,11 +72,11 @@ archive tag or downstream promotion. The strict repair continues on
 The repaired lifecycle completed on clean commit `cb5260f` in
 `outputs/20260821_v2/runs/20260821_fiber_image_v3/`. Validation, paired
 baseline, four function-specific CUDA preflights, all twelve isolated screens,
-and locked selection completed with current lineage. The selection persisted
-36 locked artifacts (four functions × three training seeds × three panels),
-including content-hashed tensors, optical traces, port coefficients, fixed
-exposure CMOS tensors, contact sheets, and paired difference sheets. Its
-selection hash is
+and locked selection completed with current lineage. At closeout time the
+selection persisted 36 locked artifacts (four functions × three training seeds
+× three panels), including content-hashed tensors, optical traces, port
+coefficients, fixed exposure CMOS tensors, contact sheets, and paired
+difference sheets. Its selection hash is
 `0e5a41fef5c697d2e2da17049ba0e0a3a35645e54ebc1ae03d5c8b1ac281d7c6`.
 
 The structural and measurement validity gates passed. The scientific closeout
@@ -121,3 +121,32 @@ amplitude/phase trace, fixed-exposure function comparison, v3 training-gain
 plot, attribution waterfall, decoder-neutral comparison, CSV metrics, and a
 slide outline. Closeout is `valid` with `formal_promotion=false`; no training
 or E1 shared-matrix run was authorized.
+
+## Evidence storage pruning and replay boundary (2026-08-21)
+
+The raw v3 evidence was pruned under the approved Plan B storage contract.
+The atomic manifest is
+`outputs/20260821_v2/runs/20260821_fiber_image_v3/storage_pruning_manifest.v1.json`
+with SHA-256
+`ab05c5ded07d2af17bfbd0dd228d4307455f90a24c7fc993738fb7698aa4741b`.
+It records 1,756 explicitly hashed files totalling 93.181 GiB: 756 locked
+raw tensor files totalling 88.78 GiB and 4.40 GiB of invalid or superseded
+historical runs and duplicate presentation artifacts. All listed targets were
+removed; no unlisted path was deleted. The v3 run is now approximately 1.8 GiB
+and the attribution run approximately 694 MiB.
+
+The pruning does not alter any scientific value or closeout conclusion. It
+does mean that v3 full raw optical-trace replay and raw-artifact integrity
+revalidation are intentionally unavailable. The retained consumers are the
+closeout/selection summaries, aggregate metrics, checkpoints, fixed-exposure
+images, provenance, contact sheets, and the valid attribution/PPT bundle.
+Training resume and formal promotion remain rejected. The 0–9 S0 pipeline
+manifest and 20 per-digit images remain available.
+
+`df` inside WSL reports the ext4 VHD logical capacity, not the Windows host's
+physical free space. Before compaction, PowerShell measured
+`D:\WSL\Ubuntu\ext4.vhdx` at approximately 324.42 GiB and D: with 50.97 GiB
+free; the VHD was not sparse. The non-fiber portion of `outputs/` remains
+approximately 210 GiB and was outside this cleanup authorization. Windows
+VHDX compaction and its before/after measurements are a separate final step
+and are not claimed until an administrator completes `diskpart compact vdisk`.
