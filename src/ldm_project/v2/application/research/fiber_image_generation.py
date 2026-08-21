@@ -22,7 +22,12 @@ from ...evidence import (
     file_sha256,
     safe_torch_load,
 )
-from ...optics.fiber_operator import FiberTransportEnsembleOLS
+from ...optics.fiber_operator import (
+    FiberTransportEnsembleOLS,
+    lp01_finite_difference_eigenpair,
+    lp01_radial_profile,
+    lp01_reference_metrics,
+)
 from ...optics.fiber_pool import FiberTransportPool
 from ...student.conditional import (
     camera_code_fraction,
@@ -657,6 +662,30 @@ def validate(args) -> int:
     fixture, config_path = _required(args, "lp01_fixture"), _required(args, "config")
     config = load_config(str(config_path))
     pool = FiberTransportPool()
+    fixture_payload = _read(fixture)
+    rho = torch.tensor(fixture_payload["rho"], dtype=torch.float64)
+    fixture_field = torch.tensor(fixture_payload["normalized_amplitude"], dtype=torch.float64)
+    v_number = float(fixture_payload["v_number"])
+    reference = lp01_reference_metrics(v_number)
+    finite_difference = lp01_finite_difference_eigenpair(v_number)
+    actual_field = lp01_radial_profile(rho, v_number).to(torch.float64)
+    overlap = float(torch.dot(actual_field, fixture_field) / (actual_field.norm() * fixture_field.norm()))
+    expected_energy = torch.trapezoid(fixture_field.square() * rho, rho)
+    actual_energy = torch.trapezoid(actual_field.square() * rho, rho)
+    energy_error = float((actual_energy - expected_energy).abs() / expected_energy.clamp_min(1.0e-30))
+    radius_error = abs(reference["amplitude_1e_radius_rho"] - float(fixture_payload["amplitude_1e_radius_rho"])) / float(fixture_payload["amplitude_1e_radius_rho"])
+    lp01_gate = (
+        reference["closure_error"] <= 1.0e-12
+        and reference["characteristic_residual"] <= 1.0e-10
+        and reference["boundary_derivative_relative_error"] <= 1.0e-6
+        and overlap >= 0.995
+        and radius_error <= 0.01
+        and energy_error <= 1.0e-4
+        and abs(finite_difference[0] - reference["u"]) / reference["u"] <= 0.005
+        and abs(finite_difference[1] - reference["w"]) / reference["w"] <= 0.005
+    )
+    if not lp01_gate:
+        raise ValueError("LP01 reverse-validation gate failed")
     probe = torch.linspace(0.0, 1.0, 2 * 200 * 200, dtype=torch.float64).reshape(2, 1, 200, 200)
     native_28 = torch.nn.functional.adaptive_avg_pool2d(probe, (28, 28))
     research_28 = _deterministic_adaptive_average(probe, 28)
@@ -682,6 +711,15 @@ def validate(args) -> int:
             "forward_max_abs_error": pooling_forward_error,
             "gate": "valid" if pooling_gate else "invalid_harness",
             "paths": ["200->28", "28->14"],
+        },
+        "lp01_fixture": {
+            **reference,
+            "phase_aligned_overlap": overlap,
+            "amplitude_1e_radius_relative_error": radius_error,
+            "normalized_energy_error": energy_error,
+            "finite_difference_u": finite_difference[0],
+            "finite_difference_w": finite_difference[1],
+            "gate": "valid" if lp01_gate else "invalid_harness",
         },
     }
     _write(Path(args.output), payload)
