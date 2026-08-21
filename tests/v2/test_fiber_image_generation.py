@@ -9,6 +9,7 @@ from ldm_project.v2.application.research.fiber_image_generation import (
     FUNCTION_IDS,
     FiberImageResearchSpec,
     _deterministic_adaptive_average,
+    _tensor_content_hash,
     _bootstrap_rows,
     _mapping,
     _ref,
@@ -67,3 +68,42 @@ def test_bootstrap_has_real_cross_function_pairing() -> None:
     result = _bootstrap_rows(rows)
     assert result["4242"]["cross_function"]["maximum_function"] == "S1c"
     assert result["4242"]["cross_function"]["minimum_function"] == "S0"
+
+
+def test_tensor_content_hash_is_container_independent(tmp_path: Path) -> None:
+    value = torch.arange(12, dtype=torch.float32).reshape(3, 4)
+    first = tmp_path / "first.pt"
+    second = tmp_path / "second.pt"
+    torch.save(value, first)
+    torch.save(value.clone(), second)
+    assert first.read_bytes() != second.read_bytes() or _tensor_content_hash(value) == _tensor_content_hash(torch.load(second, weights_only=True))
+
+
+def test_closeout_rejects_selection_without_locked_artifacts(tmp_path: Path) -> None:
+    from types import SimpleNamespace
+    from ldm_project.v2.application.research.fiber_image_generation import closeout
+
+    rows = [
+        {
+            "function_id": function_id,
+            "seed": seed,
+            "panels": [{"panel_seed": panel} for panel in (4242, 104729, 161803)],
+        }
+        for function_id in ("S0", "S1a", "S1b", "S1c")
+        for seed in (5201, 5202, 5203)
+    ]
+    selection = tmp_path / "selection.json"
+    selection.write_text(
+        __import__("json").dumps(
+            {
+                "schema": "fiber_image_selection.v2",
+                "gate": "valid",
+                "rows": rows,
+                "bootstrap": {str(panel): {} for panel in (4242, 104729, 161803)},
+            }
+        ),
+        encoding="utf-8",
+    )
+    output = tmp_path / "closeout.json"
+    assert closeout(SimpleNamespace(selection_evidence=str(selection), output=str(output))) == 2
+    assert __import__("json").loads(output.read_text(encoding="utf-8"))["conclusion"] == "invalid_harness"
