@@ -399,7 +399,9 @@ def _panel(
         "minimum_diversity": min(
             relative_diversity_ratios(generated_features, diversity_features, labels)
         ),
-        "coverage_ratio": conditional_coverage_ratio(
+        "coverage_ratio": 0.0
+        if count < 40
+        else conditional_coverage_ratio(
             generated_features,
             view,
             reference_features,
