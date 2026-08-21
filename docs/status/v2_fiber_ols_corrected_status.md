@@ -29,9 +29,26 @@ re-signed. Until the resulting clean-branch CUDA preflight passes, no screen,
 locked selection, tag movement, or scientific closeout was authorized until the
 corrected lifecycle recorded below completed.
 
-## Synthetic ensemble closeout (2026-08-21)
+## Historical synthetic ensemble attempt (2026-08-21; invalidated)
 
-The corrected lifecycle completed on the clean research runtime:
+The following artifact set is retained as a numerical diagnostic record only.
+It is not a valid scientific closeout. The attempt at `b7e6108` used
+non-replayable `/tmp` checkpoint paths, did not consume source/evaluator
+qualification and measurement evidence, did not bind the research harness
+commit through selection, omitted the full-phase port gate, and mixed
+measurement validity with scientific quality gates. Its existing
+`valid_failed` label is therefore superseded by `invalid_harness`.
+
+The old archive targets are preserved for audit:
+
+- invalid preliminary target: `b873eba`;
+- invalid corrected-attempt target: `b7e6108`.
+
+No checkpoint from this attempt may be used for the next run.
+
+## Historical synthetic ensemble result (diagnostic only)
+
+The corrected lifecycle executed numerically on the research runtime:
 
 - validation: `37d9d5edf3d82f2a6fe868b2c3e744e16c09efc0dd815c8137263f249237fbf`;
 - CUDA preflight: `9c94e8d5dd7e0f35634af21f96012278fb7af9c522b63e4193f593cf405faa75`;
@@ -43,11 +60,15 @@ The persistent research artifacts are under
 `outputs/20260821_v2/runs/20260821_robustness_fiber_ols_v1_closeout/`.
 
 All measurements were finite and passive, but secondary median gains were
-approximately zero with bootstrap lower bounds not above zero. The automatic
-conclusion is `no_reproducible_generator_gain` with `valid_failed`; no formal
-promotion or additional training is permitted. The result is synthetic,
-diagnostic-only, and does not establish hardware or calibrated-fiber behavior.
+approximately zero with bootstrap lower bounds not above zero. These values
+remain useful diagnostic observations, but the evidence chain is invalid and
+does not authorize a `valid_failed` scientific conclusion. No formal promotion
+or additional training is permitted.
 
-The historical invalid archive target remains recorded as `b873eba`. The local
-archive tag may now be moved to the final closeout documentation commit while
-preserving that old target in this audit record; it is not pushed.
+The next lifecycle must generate a research-only measurement manifest,
+persist all checkpoints inside one run directory, bind the research harness
+commit, and rerun `validate → preflight → screen → select → closeout` from a
+clean commit.
+
+The local final archive tag must not be treated as valid until the replacement
+lifecycle completes. It is not pushed.
