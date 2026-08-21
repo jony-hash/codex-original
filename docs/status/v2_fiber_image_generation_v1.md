@@ -97,3 +97,27 @@ valid, synthetic diagnostic negative result: it does not promote a fiber
 operator, generator, checkpoint, or hardware claim, and the formal identity
 mainline remains unchanged. The v3 closeout is the first lifecycle result
 eligible for local archival consideration; no tag was moved or pushed.
+
+## No-update attribution and presentation bundle (2026-08-21)
+
+The follow-up branch `research/v2-fiber-image-attribution-v1` completed a
+no-update attribution run from the same research initialization. It evaluated
+I0, nominal S0, phase-only, loss-only, offset-only, complete mild S1a, and
+decoder-neutral S0/M1 controls on the same three 500-sample panels. The compact
+measurement output is 655MB and is bounded by a 2GiB storage gate; the prior
+91G v3 raw evidence remains unchanged and is not consumed as a writable
+training source.
+
+The observed secondary-evaluator drop is dominated by the LP01 coupling and
+re-emission boundary: coupling effect `0.2413` with paired bootstrap 95% CI
+`[0.2200, 0.2633]`. Loss contribution is approximately `0.0493` in the
+registered direction, offset is `0.0067`, and phase/decoder effects are not
+separated from zero at this panel resolution. The automatic attribution label
+is `coupling_dominant_observed_drop`. This is a synthetic observation, not a
+physical causal claim about a calibrated fiber.
+
+The presentation bundle contains a labeled pipeline diagram, representative
+amplitude/phase trace, fixed-exposure function comparison, v3 training-gain
+plot, attribution waterfall, decoder-neutral comparison, CSV metrics, and a
+slide outline. Closeout is `valid` with `formal_promotion=false`; no training
+or E1 shared-matrix run was authorized.

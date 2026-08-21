@@ -10,7 +10,7 @@ from typing import Any
 
 import torch
 
-from ...evidence import atomic_torch_save, atomic_write_json, file_sha256
+from ...evidence import atomic_torch_save, atomic_write_json, file_sha256, safe_torch_load
 from ...optics.fiber_operator import FiberArrayOLS, FiberArraySpec
 from ...optics.fiber_pool import FiberTransportPool
 from ...student.conditional import camera_code_fraction, fixed_exposure_view, relative_diversity_ratios
@@ -323,7 +323,7 @@ def _load_tensor(root: Path, reference: dict[str, Any]) -> torch.Tensor:
     path = (root / reference["relative_path"]).resolve()
     if root.resolve() not in path.parents or file_sha256(path) != reference["sha256"]:
         raise ValueError("attribution artifact hash mismatch")
-    return torch.load(path, map_location="cpu", weights_only=True)
+    return safe_torch_load(path, expected_sha256=reference["sha256"], map_location="cpu")
 
 
 def report(args: Any) -> int:
@@ -372,7 +372,8 @@ def report(args: Any) -> int:
     fig.savefig(out / "03_fiber_function_comparison.png", dpi=220)
     plt.close(fig)
     trace_ref = rows["M1"][str(PANELS[0])]["artifacts"]["representative_trace"]
-    trace = torch.load((root / trace_ref["relative_path"]).resolve(), map_location="cpu", weights_only=False)[0]
+    trace_path = (root / trace_ref["relative_path"]).resolve()
+    trace = safe_torch_load(trace_path, expected_sha256=trace_ref["sha256"], map_location="cpu")[0]
     fields = trace["fields"]
     fig, axes = plt.subplots(2, len(fields), figsize=(18, 5), squeeze=False)
     for index, field in enumerate(fields):

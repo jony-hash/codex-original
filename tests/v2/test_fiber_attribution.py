@@ -27,6 +27,18 @@ def test_bootstrap_is_reproducible_and_uses_registered_seed() -> None:
     assert first["coupling"]["replicates"] == 10000
 
 
+def test_bootstrap_direction_preserves_coupling_drop() -> None:
+    rows = {}
+    for variant in attribution.VARIANTS:
+        rows[variant] = {
+            panel: {"secondary_correctness": torch.ones(30, dtype=torch.bool)}
+            for panel in attribution.PANELS
+        }
+    rows["S0"] = {panel: {"secondary_correctness": torch.zeros(30, dtype=torch.bool)} for panel in attribution.PANELS}
+    result = attribution._bootstrap(rows)
+    assert result["classification"]["ranked_effects"][0] == ("coupling", 1.0)
+
+
 def test_load_tensor_rejects_path_escape(tmp_path) -> None:
     root = tmp_path / "run"
     root.mkdir()
