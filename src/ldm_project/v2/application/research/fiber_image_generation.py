@@ -7,6 +7,7 @@ import json
 import subprocess
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import torch
@@ -272,6 +273,8 @@ def _panel(
     count: int,
     *,
     trace: bool = False,
+    zero_code: bool = False,
+    shuffled_labels: bool = False,
 ) -> dict[str, Any]:
     config, device, _, _, _, _, primary, secondary, bundle, pool, _, _ = context
     settings = config.conditional_generation
@@ -279,8 +282,13 @@ def _panel(
         raise ValueError("conditional generation settings are required")
     original_ols = bundle.system.ols
     _select(bundle, pool, function_id)
-    codes = random_codes(count, device=device, seed=seed)
+    codes = (
+        torch.zeros(count, 8, device=device)
+        if zero_code
+        else random_codes(count, device=device, seed=seed)
+    )
     labels = torch.arange(10, device=device).repeat_interleave(count // 10)
+    input_labels = labels.roll(1) if shuffled_labels else labels
     rows, views, primary_logits, secondary_logits, traces, port_inputs, port_outputs = (
         [],
         [],
@@ -292,12 +300,9 @@ def _panel(
     )
     try:
         for start in range(0, count, config.execution.evaluation_microbatch_size):
-            c, y = (
-                codes[start : start + config.execution.evaluation_microbatch_size],
-                labels[start : start + config.execution.evaluation_microbatch_size],
-            )
+            c = codes[start : start + config.execution.evaluation_microbatch_size]
             with torch.inference_mode():
-                command = bundle.generator(c, y)
+                command = bundle.generator(c, input_labels[start : start + c.shape[0]])
                 result = bundle.system.forward(
                     bundle.system.command(command), return_optical_trace=trace
                 )
@@ -560,6 +565,61 @@ def baseline(args) -> int:
     return 0
 
 
+def _resume_replay(args: Any, matrix_id: str) -> dict[str, Any]:
+    def run(
+        context: tuple[Any, ...], optimizer: torch.optim.Optimizer, steps: range
+    ) -> None:
+        for step in steps:
+            robust._update(
+                context, matrix_id=matrix_id, seed=5201, step=step, optimizer=optimizer
+            )
+
+    continuous = _context(args)
+    opt_a = torch.optim.Adam(
+        continuous[8].generator.parameters(),
+        lr=continuous[0].conditional_generation.generator_learning_rate,
+    )
+    run(continuous, opt_a, range(3))
+    partial = _context(args)
+    opt_b = torch.optim.Adam(
+        partial[8].generator.parameters(),
+        lr=partial[0].conditional_generation.generator_learning_rate,
+    )
+    run(partial, opt_b, range(1))
+    saved_generator = {
+        key: value.detach().clone()
+        for key, value in partial[8].generator.state_dict().items()
+    }
+    saved_optimizer = opt_b.state_dict()
+    resumed = _context(args)
+    resumed[8].generator.load_state_dict(saved_generator, strict=True)
+    opt_c = torch.optim.Adam(
+        resumed[8].generator.parameters(),
+        lr=resumed[0].conditional_generation.generator_learning_rate,
+    )
+    opt_c.load_state_dict(saved_optimizer)
+    run(resumed, opt_c, range(1, 3))
+    generator_error = max(
+        float(
+            (
+                continuous[8].generator.state_dict()[key]
+                - resumed[8].generator.state_dict()[key]
+            )
+            .abs()
+            .max()
+        )
+        for key in continuous[8].generator.state_dict()
+    )
+    optimizer_equal = robust._nested_equal(opt_a.state_dict(), opt_c.state_dict())
+    return {
+        "passed": generator_error <= 1.0e-5 and optimizer_equal,
+        "generator_max_abs_error": generator_error,
+        "optimizer_equal": optimizer_equal,
+        "rtol": 1.0e-5,
+        "atol": 1.0e-5,
+    }
+
+
 def preflight(args) -> int:
     if _dirty():
         _write(
@@ -579,6 +639,7 @@ def preflight(args) -> int:
         raise ValueError("validation evidence did not pass")
     context = _context(args)
     config, bundle, pool = context[0], context[8], context[9]
+    matrix_id = _mapping(pool)[args.function_id]
     _select(bundle, pool, args.function_id)
     optimizer = torch.optim.Adam(
         bundle.generator.parameters(),
@@ -588,40 +649,76 @@ def preflight(args) -> int:
         key: value.detach().clone()
         for key, value in bundle.generator.state_dict().items()
     }
-    losses = []
-    for step in range(3):
-        losses.append(
-            robust._update(
-                context,
-                matrix_id=_mapping(pool)[args.function_id],
-                seed=5201,
-                step=step,
-                optimizer=optimizer,
-            )
+    frozen_before = {
+        key: value.detach().clone()
+        for key, value in bundle.system.state_dict().items()
+        if not key.startswith("ols.")
+    }
+    losses = [
+        robust._update(
+            context, matrix_id=matrix_id, seed=5201, step=step, optimizer=optimizer
         )
+        for step in range(3)
+    ]
+    normal = _panel(context, args.function_id, 2027, 20, trace=True)
+    zero = _panel(context, args.function_id, 2027, 20, zero_code=True)
+    labelled = _panel(context, args.function_id, 2028, 20)
+    shuffled = _panel(context, args.function_id, 2028, 20, shuffled_labels=True)
+    nominal = _panel(context, "S0", 2029, 20, trace=True)
+    full_phase = _panel(context, "N0", 2029, 20, trace=True)
+
+    def relative(left: torch.Tensor, right: torch.Tensor) -> float:
+        return float((left - right).norm() / right.norm().clamp_min(1.0e-12))
+
+    resume = _resume_replay(args, matrix_id)
     checks = {
         "generator_update": any(
             not torch.equal(before[key], bundle.generator.state_dict()[key])
             for key in before
         ),
-        "finite": all(torch.isfinite(torch.tensor(losses))),
-        "full_phase_port": False,
-        "full_phase_cmos": False,
-        "resume_replay": False,
+        "finite": bool(torch.isfinite(torch.tensor(losses)).all()),
+        "optical_frozen": all(
+            torch.equal(value, bundle.system.state_dict()[key])
+            for key, value in frozen_before.items()
+        ),
+        "zero_code": relative(zero["raw_cmos"], normal["raw_cmos"]) >= 1.0e-4,
+        "shuffled_label": relative(shuffled["raw_cmos"], labelled["raw_cmos"])
+        >= 1.0e-4,
+        "full_phase_port": relative(
+            full_phase["port_output_coefficients"], nominal["port_output_coefficients"]
+        )
+        >= 0.1,
+        "full_phase_cmos": relative(full_phase["raw_cmos"], nominal["raw_cmos"]) >= 0.1,
+        "resume_replay": resume["passed"],
+        "peak_memory_budget": not torch.cuda.is_available()
+        or torch.cuda.max_memory_allocated(context[1])
+        <= int(torch.cuda.get_device_properties(context[1]).total_memory * 0.95),
     }
+    gate = all(checks.values()) and bool(torch.isfinite(torch.tensor(losses)).all())
     _write(
         Path(args.output),
         {
             "schema": "fiber_image_preflight.v1",
-            "gate": "invalid_harness",
+            "gate": "valid" if gate else "invalid_harness",
             "function_id": args.function_id,
             "updates": 3,
             "losses": losses,
             "checks": checks,
-            "reason": "negative-control and resume gates are mandatory and not yet passed",
+            "resume_replay": resume,
+            "responses": {
+                "zero_code": relative(zero["raw_cmos"], normal["raw_cmos"]),
+                "shuffled_label": relative(shuffled["raw_cmos"], labelled["raw_cmos"]),
+                "full_phase_port": relative(
+                    full_phase["port_output_coefficients"],
+                    nominal["port_output_coefficients"],
+                ),
+                "full_phase_cmos": relative(
+                    full_phase["raw_cmos"], nominal["raw_cmos"]
+                ),
+            },
         },
     )
-    return 2
+    return 0 if gate else 2
 
 
 def screen(args) -> int:
@@ -639,7 +736,109 @@ def screen(args) -> int:
             },
         )
         return 2
-    raise ValueError("screen is blocked until valid image preflight exists")
+    if evidence.get("function_id") != args.function_id or _dirty():
+        raise ValueError("preflight function or clean worktree mismatch")
+    output_path = Path(args.output)
+    root = output_path.parent if output_path.suffix == ".json" else output_path
+    root.mkdir(parents=True, exist_ok=True)
+    context = _context(args)
+    config, bundle, pool = context[0], context[8], context[9]
+    matrix_id = _mapping(pool)[args.function_id]
+    _select(bundle, pool, args.function_id)
+    optimizer = torch.optim.Adam(
+        bundle.generator.parameters(),
+        lr=config.conditional_generation.generator_learning_rate,
+    )
+    start_step = 0
+    schedule = [matrix_id] * 50
+    if args.resume_checkpoint:
+        checkpoint_path = _required(
+            SimpleNamespace(resume_checkpoint=args.resume_checkpoint),
+            "resume_checkpoint",
+        )
+        payload = safe_torch_load(
+            checkpoint_path,
+            expected_sha256=file_sha256(checkpoint_path),
+            map_location=context[1],
+        )
+        if (
+            not isinstance(payload, dict)
+            or payload.get("schema") != "fiber_image_checkpoint.v1"
+            or payload.get("function_id") != args.function_id
+            or payload.get("seed") != args.seed
+            or payload.get("git_commit") != _git()
+        ):
+            raise ValueError("resume checkpoint lineage mismatch")
+        bundle.generator.load_state_dict(payload["generator_state"], strict=True)
+        optimizer.load_state_dict(payload["optimizer_state"])
+        start_step = int(payload["step"])
+        if tuple(payload.get("schedule", ())) != tuple(schedule):
+            raise ValueError("resume matrix schedule mismatch")
+    checkpoints = []
+    for step in range(start_step, 50):
+        loss = robust._update(
+            context, matrix_id=matrix_id, seed=args.seed, step=step, optimizer=optimizer
+        )
+        current_step = step + 1
+        if current_step % 10 == 0:
+            validation = {
+                record.matrix_id: _panel(context, args.function_id, 2027, 170)
+                for record in pool.records["validation"]
+            }
+            checkpoint = (
+                root
+                / args.function_id
+                / f"seed_{args.seed}"
+                / f"step_{current_step}.pt"
+            )
+            atomic_torch_save(
+                checkpoint,
+                {
+                    "schema": "fiber_image_checkpoint.v1",
+                    "function_id": args.function_id,
+                    "seed": args.seed,
+                    "step": current_step,
+                    "schedule": schedule,
+                    "cursor": current_step,
+                    "generator_state": {
+                        key: value.detach().cpu()
+                        for key, value in bundle.generator.state_dict().items()
+                    },
+                    "optimizer_state": optimizer.state_dict(),
+                    "validation": validation,
+                    "config_hash": robust._config_hash(config),
+                    "git_commit": _git(),
+                },
+            )
+            checkpoints.append(
+                {
+                    "step": current_step,
+                    "artifact": _ref(checkpoint, root),
+                    "validation": validation,
+                    "loss": loss,
+                }
+            )
+    gate = bool(checkpoints) and all(
+        item["metrics"]["finite"]
+        if "metrics" in item
+        else all(value["finite"] for value in item["validation"].values())
+        for item in checkpoints
+    )
+    payload = {
+        "schema": "fiber_image_screen.v1",
+        "gate": "valid" if gate else "invalid_harness",
+        "function_id": args.function_id,
+        "seed": args.seed,
+        "steps": 50,
+        "schedule": schedule,
+        "checkpoints": checkpoints,
+        "git_commit": _git(),
+        "preflight_sha256": file_sha256(args.preflight_evidence),
+    }
+    _write(
+        output_path if output_path.suffix == ".json" else root / "screen.json", payload
+    )
+    return 0 if gate else 2
 
 
 def select(args) -> int:
