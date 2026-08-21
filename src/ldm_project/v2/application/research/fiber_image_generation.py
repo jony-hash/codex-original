@@ -24,7 +24,12 @@ from ...evidence import (
 )
 from ...optics.fiber_operator import FiberTransportEnsembleOLS
 from ...optics.fiber_pool import FiberTransportPool
-from ...student.conditional import camera_code_fraction, fixed_exposure_view
+from ...student.conditional import (
+    camera_code_fraction,
+    fixed_exposure_view,
+    relative_diversity_ratios,
+)
+from ...student.conditional_acceptance import conditional_coverage_ratio
 from ...student.evaluator import (
     SmoothMNISTEvaluator,
     load_frozen_evaluator,
@@ -292,7 +297,17 @@ def _panel(
     )
     labels = torch.arange(10, device=device).repeat_interleave(count // 10)
     input_labels = labels.roll(1) if shuffled_labels else labels
-    rows, views, primary_logits, secondary_logits, traces, port_inputs, port_outputs = (
+    (
+        rows,
+        views,
+        primary_logits,
+        secondary_logits,
+        secondary_features,
+        traces,
+        port_inputs,
+        port_outputs,
+    ) = (
+        [],
         [],
         [],
         [],
@@ -312,11 +327,12 @@ def _panel(
                 raw = result.raw_camera.tensor
                 view = fixed_exposure_view(raw, settings.fixed_exposure_scale)
                 _, p = primary(view)
-                _, s = secondary(view)
+                sf, s = secondary(view)
             rows.append(raw.detach())
             views.append(view.detach())
             primary_logits.append(p.detach())
             secondary_logits.append(s.detach())
+            secondary_features.append(sf.detach())
             if trace:
                 fields = []
                 for field in result.optical_trace or ():
@@ -344,6 +360,19 @@ def _panel(
         bundle.system.ols = original_ols
     raw, view = torch.cat(rows), torch.cat(views)
     p, s = torch.cat(primary_logits).argmax(1), torch.cat(secondary_logits).argmax(1)
+    generated_features = torch.cat(secondary_features)
+    reference_images, reference_labels = context[4], context[5]
+    reference_count = max(count // 10, 4)
+    reference_indices = torch.cat(
+        [
+            torch.where(reference_labels == label)[0][:reference_count]
+            for label in range(10)
+        ]
+    )
+    with torch.inference_mode():
+        reference_features, _ = secondary(
+            reference_images.index_select(0, reference_indices)
+        )
     metric = {
         "primary_accuracy": float((p == labels).float().mean()),
         "secondary_accuracy": float((s == labels).float().mean()),
@@ -358,6 +387,19 @@ def _panel(
         "nonnegative": bool((raw >= 0).all()),
         "saturation": float((raw > settings.fixed_exposure_scale).float().mean()),
         "camera_fraction": float(camera_code_fraction(raw, labels).item()),
+        "minimum_diversity": min(
+            relative_diversity_ratios(generated_features, reference_features, labels)
+        ),
+        "coverage_ratio": conditional_coverage_ratio(
+            generated_features,
+            view,
+            reference_features,
+            reference_images.index_select(0, reference_indices),
+            labels,
+            epsilon=settings.sinkhorn_epsilon,
+            iterations=settings.sinkhorn_iterations,
+            seed=2027,
+        ),
         "labels": labels.cpu(),
         "codes": codes.cpu(),
         "raw_cmos": raw.cpu(),
@@ -878,7 +920,144 @@ def select(args) -> int:
             },
         )
         return 2
-    raise ValueError("selection is blocked until real screens exist")
+    keys = {(item.get("function_id"), item.get("seed")) for item in evidence}
+    expected = {
+        (function_id, seed)
+        for function_id in ("S0", "S1a", "S1b", "S1c")
+        for seed in TRAIN_SEEDS
+    }
+    if keys != expected or any(
+        len(item.get("checkpoints", ())) != 5 for item in evidence
+    ):
+        _write(
+            Path(args.output),
+            {
+                "schema": "fiber_image_selection.v1",
+                "gate": "invalid_harness",
+                "reason": "screen evidence must cover four functions and three seeds",
+            },
+        )
+        return 2
+    context_template = _context(args)
+    root = Path(args.screen_evidence[0]).parent
+    rows = []
+    for screen in evidence:
+        selected = max(
+            screen["checkpoints"],
+            key=lambda item: (
+                sum(
+                    (m["primary_accuracy"] + m["secondary_accuracy"]) / 2
+                    for m in item["validation"].values()
+                )
+                / len(item["validation"]),
+                sum(m["secondary_accuracy"] for m in item["validation"].values())
+                / len(item["validation"]),
+                -int(item["step"]),
+            ),
+        )
+        checkpoint_path = _resolve(selected["artifact"], root)
+        checkpoint = safe_torch_load(
+            checkpoint_path,
+            expected_sha256=selected["artifact"]["sha256"],
+            map_location=context_template[1],
+        )
+        candidate = _context(args)
+        candidate[8].generator.load_state_dict(
+            checkpoint["generator_state"], strict=True
+        )
+        seed_rows = []
+        function_id, train_seed = screen["function_id"], screen["seed"]
+        for panel_seed in PANEL_SEEDS:
+            candidate_metrics = _panel(candidate, function_id, panel_seed, 500)
+            b0_metrics = _panel(_context(args), function_id, panel_seed, 500)
+            identity_metrics = _panel(candidate, "I0", panel_seed, 500)
+            candidate_correct = (
+                candidate_metrics["secondary_prediction"] == candidate_metrics["labels"]
+            ).to(torch.float32)
+            b0_correct = (
+                b0_metrics["secondary_prediction"] == b0_metrics["labels"]
+            ).to(torch.float32)
+            seed_rows.append(
+                {
+                    "panel_seed": panel_seed,
+                    "candidate": {
+                        key: value
+                        for key, value in candidate_metrics.items()
+                        if isinstance(value, (bool, int, float, str))
+                    },
+                    "b0": {
+                        key: value
+                        for key, value in b0_metrics.items()
+                        if isinstance(value, (bool, int, float, str))
+                    },
+                    "identity": {
+                        key: value
+                        for key, value in identity_metrics.items()
+                        if isinstance(value, (bool, int, float, str))
+                    },
+                    "gain_vector": (candidate_correct - b0_correct).tolist(),
+                    "identity_gap": identity_metrics["secondary_accuracy"]
+                    - candidate_metrics["secondary_accuracy"],
+                }
+            )
+        rows.append(
+            {
+                "function_id": function_id,
+                "seed": train_seed,
+                "selected_step": selected["step"],
+                "selected_checkpoint": selected["artifact"],
+                "panels": seed_rows,
+            }
+        )
+    bootstrap = _bootstrap_rows(rows)
+    _write(
+        Path(args.output),
+        {
+            "schema": "fiber_image_selection.v1",
+            "gate": "valid",
+            "rows": rows,
+            "bootstrap": bootstrap,
+            "git_commit": _git(),
+            "screen_hashes": [file_sha256(path) for path in args.screen_evidence],
+        },
+    )
+    return 0
+
+
+def _bootstrap_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    generator = torch.Generator(device="cpu").manual_seed(90210)
+    result = {}
+    for panel_seed in PANEL_SEEDS:
+        by_function = {}
+        for function_id in ("S0", "S1a", "S1b", "S1c"):
+            selected = [row for row in rows if row["function_id"] == function_id]
+            vectors = torch.tensor(
+                [
+                    next(
+                        panel["gain_vector"]
+                        for panel in row["panels"]
+                        if panel["panel_seed"] == panel_seed
+                    )
+                    for row in selected
+                ],
+                dtype=torch.float32,
+            )
+            indices = torch.cat(
+                [
+                    torch.randint(start, start + 50, (10000, 50), generator=generator)
+                    for start in range(0, 500, 50)
+                ],
+                dim=1,
+            )
+            gains = vectors[:, indices].mean(dim=2).median(dim=0).values
+            by_function[function_id] = {
+                "median_gain": float(vectors.mean(dim=1).median()),
+                "ci95": [float(gains.quantile(0.025)), float(gains.quantile(0.975))],
+                "seed": 90210,
+                "replicates": 10000,
+            }
+        result[str(panel_seed)] = by_function
+    return result
 
 
 def closeout(args) -> int:
@@ -898,7 +1077,104 @@ def closeout(args) -> int:
             },
         )
         return 2
-    raise ValueError("closeout requires complete paired selection evidence")
+    rows = selection.get("rows", [])
+    if len(rows) != 12 or set(selection.get("bootstrap", {})) != {
+        str(seed) for seed in PANEL_SEEDS
+    }:
+        _write(
+            Path(args.output),
+            {
+                "schema": "fiber_image_closeout.v1",
+                "gate": "invalid_harness",
+                "conclusion": "invalid_harness",
+                "structural_validity": False,
+                "measurement_validity": False,
+            },
+        )
+        return 2
+    functions = {}
+    for function_id in ("S0", "S1a", "S1b", "S1c"):
+        function_rows = [row for row in rows if row["function_id"] == function_id]
+        panel_gates = []
+        identity_gaps = []
+        for panel in PANEL_SEEDS:
+            measurements = [
+                next(item for item in row["panels"] if item["panel_seed"] == panel)
+                for row in function_rows
+            ]
+            gains = [
+                float(
+                    item["candidate"]["secondary_accuracy"]
+                    - item["b0"]["secondary_accuracy"]
+                )
+                for item in measurements
+            ]
+            panel_gates.append(
+                float(selection["bootstrap"][str(panel)][function_id]["median_gain"])
+                >= 0.015
+                and float(selection["bootstrap"][str(panel)][function_id]["ci95"][0])
+                > 0
+                and sum(gain > 0 for gain in gains) >= 2
+            )
+            identity_gaps.extend(float(item["identity_gap"]) for item in measurements)
+        candidates = [
+            item["candidate"] for row in function_rows for item in row["panels"]
+        ]
+        quality = all(
+            item.get("finite")
+            and item.get("nonnegative")
+            and item.get("saturation", 1.0) <= 0.08
+            and item.get("primary_min_recall", 0.0) > 0
+            and item.get("camera_fraction", 0.0) >= 0.15
+            and item.get("minimum_diversity", 0.0) >= 0.35
+            and item.get("coverage_ratio", 99.0) <= 1.35
+            for item in candidates
+        )
+        functions[function_id] = {
+            "panel_gain": all(panel_gates),
+            "quality": quality,
+            "identity_gap": max(identity_gaps, default=99.0),
+            "passed": all(panel_gates)
+            and quality
+            and max(identity_gaps, default=99.0) <= 0.05,
+        }
+    passed = [
+        function_id for function_id, result in functions.items() if result["passed"]
+    ]
+    measurement_validity = bool(rows) and all(
+        item["candidate"].get("finite")
+        and item["b0"].get("finite")
+        and item["identity"].get("finite")
+        for row in rows
+        for item in row["panels"]
+    )
+    if not measurement_validity:
+        conclusion, gate = "invalid_harness", "invalid_harness"
+    elif len(passed) == 0:
+        conclusion, gate = "no_reproducible_fiber_gain", "valid_failed"
+    elif len(passed) == 1:
+        conclusion, gate = "fiber_specific_only_gain", "valid_failed"
+    else:
+        conclusion, gate = "common_fiber_generator_gain", "valid_failed"
+    _write(
+        Path(args.output),
+        {
+            "schema": "fiber_image_closeout.v1",
+            "gate": gate,
+            "conclusion": conclusion,
+            "structural_validity": True,
+            "measurement_validity": measurement_validity,
+            "scientific_gates": {
+                "functions": functions,
+                "passed_functions": passed,
+                "cross_function_bootstrap": False,
+            },
+            "formal_promotion": False,
+            "synthetic_diagnostic_only": True,
+            "selection_sha256": file_sha256(args.selection_evidence),
+        },
+    )
+    return 0 if gate == "valid_failed" else 2
 
 
 def dispatch(args) -> int:
