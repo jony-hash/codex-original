@@ -21,6 +21,17 @@ from . import fiber_robustness as robust
 
 VARIANTS = ("I0", "S0", "P1", "L1", "O1", "M1", "S0-D0", "M1-D0")
 PANELS = (4242, 104729, 161803)
+DIGIT_PIPELINE_STAGES = (
+    ("slm_output", "SLM output"),
+    ("encoder_input", "Encoder input / front 4f"),
+    ("encoder_layer_1", "Encoder layer 1"),
+    ("encoder_layer_2", "Encoder layer 2 / fiber input"),
+    ("ols_output", "LP01 fiber output"),
+    ("decoder_layer_1", "Decoder layer 1"),
+    ("decoder_layer_2", "Decoder layer 2"),
+    ("camera", "Camera incident field"),
+    ("fixed_cmos", "Fixed-exposure CMOS"),
+)
 
 
 def _root(path: str | Path) -> Path:
@@ -326,6 +337,161 @@ def _load_tensor(root: Path, reference: dict[str, Any]) -> torch.Tensor:
     return safe_torch_load(path, expected_sha256=reference["sha256"], map_location="cpu")
 
 
+def _trace_stage_rows(root: Path, row: dict[str, Any], variant: str) -> tuple[list[dict[str, Any]], torch.Tensor, torch.Tensor]:
+    labels = _load_tensor(root, row["artifacts"]["labels"])
+    codes = _load_tensor(root, row["artifacts"]["codes"])
+    trace = safe_torch_load(
+        (root / row["artifacts"]["representative_trace"]["relative_path"]).resolve(),
+        expected_sha256=row["artifacts"]["representative_trace"]["sha256"],
+        map_location="cpu",
+    )
+    if len(trace) != 20 or labels.numel() != 500 or codes.shape[0] != 500:
+        raise ValueError("digit pipeline requires the complete 20-trace and 500-sample S0 panel")
+    actual = [field["plane"]["plane_id"] for field in trace[0]["fields"]]
+    expected = [name for name, _ in DIGIT_PIPELINE_STAGES[:-1]]
+    if actual != expected:
+        raise ValueError(f"unexpected optical trace stage order for {variant}: {actual}")
+    rows = []
+    for label in range(10):
+        trace_index = label * 2
+        sample_index = label * 50
+        if int(labels[sample_index]) != label or int(labels[sample_index + 1]) != label:
+            raise ValueError("digit trace is not aligned with the panel's fixed class ordering")
+        rows.append({
+            "label": label,
+            "sample_index": sample_index,
+            "trace_index": trace_index,
+            "trace": trace[trace_index],
+            "code_sha256": image._tensor_content_hash(codes[sample_index]),
+        })
+    return rows, labels, codes
+
+
+def _save_figure_formats(fig: Any, output: Path, stem: str, *, dpi: int = 300) -> list[dict[str, Any]]:
+    references = []
+    for suffix in ("png", "svg", "pdf"):
+        path = output / f"{stem}.{suffix}"
+        fig.savefig(path, dpi=dpi, bbox_inches="tight")
+        references.append({"relative_path": path.name, "sha256": file_sha256(path)})
+    return references
+
+
+def _digit_pipeline_report(root: Path, output: Path, variant: str) -> dict[str, Any]:
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    row = json.loads((root / "measurement.json").read_text(encoding="utf-8"))["rows"][variant][str(PANELS[0])]
+    digit_rows, labels, codes = _trace_stage_rows(root, row, variant)
+    fixed_cmos = _load_tensor(root, row["artifacts"]["fixed_cmos"])
+    fields = [item["trace"]["fields"] for item in digit_rows]
+    amplitudes = [field["tensor"][0, 0].abs().numpy() for digit in fields for field in digit]
+    amplitudes.extend(fixed_cmos[digit["sample_index"], 0].numpy() for digit in digit_rows)
+    amplitude_vmax = float(max(np.max(value) for value in amplitudes))
+    if not np.isfinite(amplitude_vmax) or amplitude_vmax <= 0:
+        raise ValueError("invalid global amplitude display scale")
+    output.mkdir(parents=True, exist_ok=True)
+    stage_titles = [title for _, title in DIGIT_PIPELINE_STAGES]
+    manifest: dict[str, Any] = {
+        "schema": "fiber_digit_pipeline_presentation.v1",
+        "gate": "valid",
+        "variant": variant,
+        "panel": PANELS[0],
+        "sample_policy": "first sample of each class in fixed panel ordering",
+        "input_contract": "digit label 0-9 plus fixed 8D code; not a direct MNIST image input",
+        "amplitude_vmax_global": amplitude_vmax,
+        "phase_range": [-float(np.pi), float(np.pi)],
+        "cmos_phase": "N/A — intensity-only detector",
+        "digits": [],
+    }
+
+    for digit in digit_rows:
+        label = digit["label"]
+        trace_fields = digit["trace"]["fields"]
+        values = [field["tensor"][0, 0] for field in trace_fields]
+        values.append(fixed_cmos[digit["sample_index"], 0].to(torch.complex64))
+        for mode in ("amplitude", "phase"):
+            fig, axes = plt.subplots(1, len(DIGIT_PIPELINE_STAGES), figsize=(18, 3.0), squeeze=False)
+            for index, (stage_id, stage_title) in enumerate(DIGIT_PIPELINE_STAGES):
+                axis = axes[0, index]
+                if mode == "phase" and stage_id == "fixed_cmos":
+                    axis.text(0.5, 0.5, "N/A\nintensity-only\ndetector", ha="center", va="center", fontsize=10)
+                    axis.set_facecolor("#eeeeee")
+                else:
+                    image_value = values[index].abs().numpy() if mode == "amplitude" else values[index].angle().numpy()
+                    axis.imshow(image_value, cmap="gray" if mode == "amplitude" else "twilight", vmin=0 if mode == "amplitude" else -np.pi, vmax=amplitude_vmax if mode == "amplitude" else np.pi)
+                axis.set_title(stage_title, fontsize=8)
+                axis.axis("off")
+            fig.suptitle(f"Digit {label} · {mode} · Synthetic SMF-LP01 {variant}, V=2.2, unit transport, zero offset", fontsize=12)
+            fig.text(0.5, 0.01, "Fixed G0; panel 4242; common scale across digits and stages; diagnostic-only synthetic proxy", ha="center", fontsize=8)
+            names = _save_figure_formats(fig, output, f"digit_{label}_{mode}")
+            plt.close(fig)
+            digit.setdefault("files", {})[mode] = names
+        manifest["digits"].append({
+            "label": label,
+            "panel_sample_index": digit["sample_index"],
+            "trace_index": digit["trace_index"],
+            "code_sha256": digit["code_sha256"],
+            "trace_artifact_sha256": row["artifacts"]["representative_trace"]["sha256"],
+            "stages": [{"stage_id": field_id, "title": title, "plane": trace_fields[index]["plane"], "provenance": trace_fields[index]["provenance"]} for index, (field_id, title) in enumerate(DIGIT_PIPELINE_STAGES[:-1])],
+            "files": digit["files"],
+        })
+
+    def overview(mode: str, stem: str) -> list[str]:
+        fig, axes = plt.subplots(10, len(DIGIT_PIPELINE_STAGES), figsize=(20, 15), squeeze=False)
+        for row_index, digit in enumerate(digit_rows):
+            values = [field["tensor"][0, 0] for field in digit["trace"]["fields"]]
+            values.append(fixed_cmos[digit["sample_index"], 0].to(torch.complex64))
+            for col, value in enumerate(values):
+                axis = axes[row_index, col]
+                if mode == "phase" and col == len(values) - 1:
+                    axis.text(0.5, 0.5, "N/A", ha="center", va="center", fontsize=8)
+                    axis.set_facecolor("#eeeeee")
+                else:
+                    image_value = value.abs().numpy() if mode == "amplitude" else value.angle().numpy()
+                    axis.imshow(image_value, cmap="gray" if mode == "amplitude" else "twilight", vmin=0 if mode == "amplitude" else -np.pi, vmax=amplitude_vmax if mode == "amplitude" else np.pi)
+                axis.axis("off")
+                if row_index == 0:
+                    axis.set_title(stage_titles[col], fontsize=8)
+            axes[row_index, 0].set_ylabel(str(digit["label"]), rotation=0, ha="right", va="center", fontsize=10)
+        fig.suptitle(f"Digits 0–9 · {mode} through {variant} synthetic SMF-LP01 · V=2.2", fontsize=16)
+        fig.text(0.5, 0.005, "Input: digit label + fixed 8D code; common scale; CMOS phase is unavailable", ha="center", fontsize=9)
+        names = _save_figure_formats(fig, output, stem)
+        plt.close(fig)
+        return names
+
+    manifest["overview_files"] = {
+        "amplitude": overview("amplitude", "digits_0_9_amplitude_pipeline"),
+        "phase": overview("phase", "digits_0_9_phase_pipeline"),
+    }
+    # Compact two-row-per-digit view, matching the requested PPT composition.
+    fig, axes = plt.subplots(20, len(DIGIT_PIPELINE_STAGES), figsize=(20, 28), squeeze=False)
+    for digit_index, digit in enumerate(digit_rows):
+        values = [field["tensor"][0, 0] for field in digit["trace"]["fields"]]
+        values.append(fixed_cmos[digit["sample_index"], 0].to(torch.complex64))
+        for col, value in enumerate(values):
+            for offset, mode in enumerate(("amplitude", "phase")):
+                axis = axes[digit_index * 2 + offset, col]
+                if mode == "phase" and col == len(values) - 1:
+                    axis.text(0.5, 0.5, "N/A", ha="center", va="center", fontsize=7)
+                    axis.set_facecolor("#eeeeee")
+                else:
+                    image_value = value.abs().numpy() if mode == "amplitude" else value.angle().numpy()
+                    axis.imshow(image_value, cmap="gray" if mode == "amplitude" else "twilight", vmin=0 if mode == "amplitude" else -np.pi, vmax=amplitude_vmax if mode == "amplitude" else np.pi)
+                axis.axis("off")
+                if digit_index == 0 and offset == 0:
+                    axis.set_title(stage_titles[col], fontsize=8)
+        axes[digit_index * 2, 0].set_ylabel(f"{digit['label']}\namp", rotation=0, ha="right", va="center", fontsize=8)
+        axes[digit_index * 2 + 1, 0].set_ylabel("phase", rotation=0, ha="right", va="center", fontsize=8)
+    fig.suptitle(f"Digits 0–9 · amplitude / phase full pipeline · {variant} synthetic SMF-LP01", fontsize=16)
+    fig.text(0.5, 0.005, "Common amplitude scale; phase range [−π, π]; CMOS phase N/A", ha="center", fontsize=9)
+    manifest["overview_files"]["compact"] = _save_figure_formats(fig, output, "digits_0_9_amplitude_phase_compact")
+    plt.close(fig)
+    _write(output / "digit_pipeline_manifest.json", manifest)
+    return manifest
+
+
 def report(args: Any) -> int:
     root, payload = _load_measurement(args)
     out = _root(args.output)
@@ -426,6 +592,7 @@ def report(args: Any) -> int:
                 row = rows[variant][str(panel)]
                 writer.writerow([variant, panel, row["primary_accuracy"], row["secondary_accuracy"], row["secondary_min_recall"], row["camera_fraction"], row["minimum_diversity"], row["coverage_ratio"]])
     (out / "ppt_outline.md").write_text("# Synthetic fiber attribution PPT outline\n\n1. Question and contract — fixed G0, paired codes/labels, no-update attribution.\n2. Optical chain — SLM -> encoder -> LP01 coupling/transport -> decoder -> CMOS.\n3. Function comparison — I0/S0/P1/L1/O1/M1 under one exposure and one panel.\n4. Training result — v3 gains remain below 0.015; closeout is no reproducible gain.\n5. Attribution — waterfall and decoder-neutral comparison; synthetic observation only.\n6. Boundary — no calibrated NA/MFD/index/length or measured matrix; no hardware claim.\n", encoding="utf-8")
+    _digit_pipeline_report(root, out / "digit_pipeline_s0", args.digit_pipeline_variant)
     _write(out / "presentation.json", {"schema": "fiber_attribution_presentation.v1", "gate": "valid", "measurement_sha256": file_sha256(args.measurement_evidence), "status": "synthetic diagnostic-only"})
     return 0
 

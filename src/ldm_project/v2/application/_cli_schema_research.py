@@ -138,6 +138,7 @@ def register_research(root: argparse._SubParsersAction) -> None:
     attribution_report = attribution_actions.add_parser("report")
     attribution_report.add_argument("--measurement-evidence", required=True)
     attribution_report.add_argument("--v3-selection", required=True)
+    attribution_report.add_argument("--digit-pipeline-variant", choices=("S0",), default="S0")
     attribution_report.add_argument("--output", required=True)
     attribution_closeout = attribution_actions.add_parser("closeout")
     attribution_closeout.add_argument("--measurement-evidence", required=True)

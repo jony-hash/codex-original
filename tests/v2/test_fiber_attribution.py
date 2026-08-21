@@ -13,6 +13,14 @@ def test_attribution_variants_are_fixed_and_ordered() -> None:
     assert attribution.PANELS == (4242, 104729, 161803)
 
 
+def test_digit_pipeline_contract_is_fixed_and_detector_phase_is_unavailable() -> None:
+    assert tuple(stage_id for stage_id, _ in attribution.DIGIT_PIPELINE_STAGES) == (
+        "slm_output", "encoder_input", "encoder_layer_1", "encoder_layer_2",
+        "ols_output", "decoder_layer_1", "decoder_layer_2", "camera", "fixed_cmos",
+    )
+    assert attribution.DIGIT_PIPELINE_STAGES[-1][0] == "fixed_cmos"
+
+
 def test_bootstrap_is_reproducible_and_uses_registered_seed() -> None:
     rows = {}
     for variant in attribution.VARIANTS:
