@@ -291,6 +291,8 @@ def _zero_phase(bundle: Any) -> None:
 
 
 def _decode_ols(bundle: Any, ols_tensor: torch.Tensor, plane: Any, provenance: Any) -> dict[str, Any]:
+    with torch.inference_mode(False):
+        ols_tensor = ols_tensor.clone()
     field = ComplexField(ols_tensor, plane, provenance)
     decoded, records, stats = bundle.system.decoder(field, "decoder")
     chip = ComplexField(decoded.tensor, bundle.system.chip_plane, decoded.provenance)
