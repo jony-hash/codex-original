@@ -151,3 +151,18 @@ archives:
       - experiments/archive/v2_fiber_route_no_e1_closeout/fiber_route_closeout_summary.json
       - experiments/archive/v2_fiber_route_no_e1_closeout/archive_index.json
     source_commit: 90c1161e6b7f4d0e50294cecdcda917a1fb7ee89
+  - id: v2-wae-o0-v1-invalid-harness
+    version_range: 2026-08-22
+    original_path: outputs/20260822_v2/runs/20260822_electronic_o0_wae_v1/O0-I/*
+    archived_path: experiments/archive/v2_wae_o0_v1_invalid_harness/
+    role: immutable correction capsule for the superseded WAE O0 v1 harness
+    diagnostic_only: true
+    runnable: false
+    status: invalid_harness
+    formal_promotion_authorized: false
+    training_authorized: false
+    replacement: electronic_o0_wae_v2 on a new clean commit
+    evidence_paths:
+      - experiments/archive/v2_wae_o0_v1_invalid_harness/correction_summary.json
+      - experiments/archive/v2_wae_o0_v1_invalid_harness/archive_index.json
+    source_commit: 5d53e62

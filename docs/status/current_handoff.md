@@ -2,26 +2,33 @@
 
 ## WAE electronic O0 / SMF density branch closed (2026-08-22)
 
-The new teacher-free WAE O0 branch was implemented and exercised on clean
-research commits through `e069a4d`. CUDA validation and the three-update
-preflight passed after the harness repairs. The fixed seed-7301 screen
-completed 492 balanced updates and the five-epoch confirm completed without
-evaluator use during training or calibration.
+The first WAE O0 implementation was reclassified as `invalid_harness` and
+preserved in `experiments/archive/v2_wae_o0_v1_invalid_harness/`; its old
+`wae_image_manifold_failed` record has no downstream authority. The corrected
+v2 contract was then run on clean commits `17ee681`, `e6673b0`, and `ed03cf5`.
+It used encoded-latent reconstruction, full-coverage balancing (625 steps and
+55,000 unique train rows), deterministic CUDA replay, true random-label
+rerendering, independent reference diversity/coverage, official 10,000-test
+generation, JVP Jacobians, and chunked memorization checks. Evaluators were
+not loaded during calibration or training.
 
-The valid confirm result was `wae_image_manifold_failed`, so the gate stopped
-before O0-G and before every optical or SMF branch. Across locked panels,
-primary accuracy was `0.996–1.000` with minimum recall passing, but secondary
-accuracy was only `0.766–0.784`, secondary minimum recall was `0.04–0.08`, and
-evaluator agreement was `0.766–0.784`. Camera fraction, diversity, coverage,
-saturation, and parameter isolation passed. This separates “a trainable
-electronic image generator exists” from “the current dual-evaluator semantic
-contract is satisfied”; it does not establish an optical or fibre failure.
+The corrected seed-7301 confirm is a valid scientific failure, not a harness
+failure. Across locked panels, primary accuracy was `0.930–0.952`, secondary
+accuracy `0.826–0.852`, secondary minimum recall `0.36–0.44`, and agreement
+`0.828–0.856`; official-test secondary accuracy was `0.8374` with minimum
+recall `0.3683`. Camera code fraction was about `0.637`, label-shuffled
+primary accuracy `0.090–0.102`, all 30 Jacobian points had rank 8, and replay
+was exact. The semantic contract therefore failed upstream of any O0-G or
+fiber interpretation, while the acceptance harness remained valid.
 
-The closeout is diagnostic-only with `formal_promotion=false` and
-`training_authorized=false`; its next action is `close_fiber_restart`. O0-G,
-P100/P196/P400, ridge readout, E1, fibre-aware training, and formal promotion
-were not run. Any future restart must register a new electronic hypothesis and
-qualification contract; no extra WAE epochs or seed substitution is authorized.
+The gate stopped before 7302/7303, locked-final, O0-G, P100/P196/P400, ridge
+readout, E1, and fiber-aware training. The result is
+`training_authorized=false`, `formal_promotion=false`, and
+`synthetic_diagnostic_only=true`; the fixed action remains
+`close_fiber_restart`. This does not establish an optical, SMF, modal-density,
+phase-only, hardware, or universal evaluator failure. No additional WAE
+epochs, seed substitution, or downstream fiber run is authorized without a
+new electronic hypothesis that can change this decision.
 
 ## v2 synthetic fiber route closed (2026-08-22)
 

@@ -23,28 +23,32 @@ Research failures close only their own variant. Formal acceptance remains
 fail-closed. Invalid harness records are excluded from Pareto ranking and may
 not support a capacity conclusion.
 
-## v2.5 WAE electronic O0 stop (2026-08-22)
+## v2.5 WAE electronic O0 correction and valid stop (2026-08-22)
 
-The new WAE-MMD electronic O0 contract tested the necessary upstream gate for
-reopening the synthetic fibre route. It used a class-conditional 8D encoder
-only during training and a decoder-only inference artifact; the fixed
-seed-7301 screen and five-epoch confirm used no evaluator in loss construction,
-auxiliary calibration, or checkpoint selection. CUDA validation and the
-three-update no-update preflight passed after two device-boundary repairs and
-one encoder-shape repair, each reissued on a new commit.
+The earlier WAE-MMD O0 record was invalidated because reconstruction decoded
+random prior codes and several acceptance metrics were placeholders; the
+correction capsule is `experiments/archive/v2_wae_o0_v1_invalid_harness/`.
+The corrected v2 contract used encoded-latent reconstruction, full-coverage
+balancing, deterministic resume, independent reference metrics, true shuffled
+conditioning, official 10,000-test generation, JVP Jacobians, and chunked
+memorization. It passed validation and preflight on clean commits and used no
+evaluator in calibration or training.
 
-The confirm is a valid failure, not an invalid harness: primary accuracy was
-`0.996–1.000`, secondary accuracy was `0.766–0.784`, secondary minimum recall
-was `0.04–0.08`, and evaluator agreement was `0.766–0.784`. Camera fraction,
-diversity, coverage, saturation, and decoder-only checkpoint isolation passed.
+The corrected seed-7301 confirm is a valid scientific failure: locked-panel
+primary accuracy `0.930–0.952`, secondary accuracy `0.826–0.852`, secondary
+minimum recall `0.36–0.44`, agreement `0.828–0.856`, and official-test
+secondary accuracy/minimum recall `0.8374/0.3683`. Camera fraction was about
+`0.637`, shuffled-label primary accuracy `0.090–0.102`, all 30 code Jacobians
+had rank 8, and deterministic replay passed. Thus the electronic image
+manifold still does not satisfy the dual-evaluator gate; this is not evidence
+of an optical or fiber bottleneck.
 
 The precise classification is `wae_image_manifold_failed`; the fixed next
-action is `close_fiber_restart`. O0-G and P100/P196/P400 were intentionally not
-executed. This establishes only that this particular teacher-free WAE image
-manifold did not satisfy the qualified dual-evaluator semantic gate; it does
-not identify an optical, SMF, modal-density, phase-only, hardware, or universal
-evaluator bottleneck. The route remains `training_authorized=false`,
-`formal_promotion=false`, and `synthetic_diagnostic_only=true`.
+action is `close_fiber_restart`. The gate stopped before seeds 7302/7303,
+locked-final, O0-G, and P100/P196/P400. The route remains
+`training_authorized=false`, `formal_promotion=false`, and
+`synthetic_diagnostic_only=true`; no extra epochs, seed substitution, or
+fiber-aware training is authorized.
 
 ## v2.3-r2 correction boundary
 
