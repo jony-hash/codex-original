@@ -1,0 +1,4692 @@
+{
+  "bootstrap": {
+    "I0-Acal": {
+      "baseline": "S0-E0",
+      "ci95": [
+        0.041333332657814026,
+        0.06866666674613953
+      ],
+      "class_ci95": {
+        "104729": [
+          [
+            -0.1599999964237213,
+            0.05999999865889549
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.14000000059604645
+          ],
+          [
+            0.11999999731779099,
+            0.3400000035762787
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.20000000298023224,
+            0.46000000834465027
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ]
+        ],
+        "161803": [
+          [
+            -0.2199999988079071,
+            0.019999999552965164
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.10000000149011612
+          ],
+          [
+            0.10000000149011612,
+            0.3199999928474426
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.18000000715255737,
+            0.41999998688697815
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ]
+        ],
+        "4242": [
+          [
+            -0.20000000298023224,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.019999999552965164,
+            0.18000000715255737
+          ],
+          [
+            0.14000000059604645,
+            0.3799999952316284
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.23999999463558197,
+            0.5199999809265137
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ]
+        ]
+      },
+      "class_observed_gain": {
+        "104729": [
+          -0.03999999910593033,
+          0.0,
+          0.05999999865889549,
+          0.2199999988079071,
+          0.0,
+          0.0,
+          0.3199999928474426,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "161803": [
+          -0.10000000149011612,
+          0.0,
+          0.03999999910593033,
+          0.20000000298023224,
+          0.0,
+          0.0,
+          0.30000001192092896,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "4242": [
+          -0.10000000149011612,
+          0.0,
+          0.10000000149011612,
+          0.25999999046325684,
+          0.0,
+          0.0,
+          0.3799999952316284,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "observed_gain": 0.054666668176651,
+      "panel_ci95": {
+        "104729": [
+          0.03200000151991844,
+          0.07999999821186066
+        ],
+        "161803": [
+          0.02199999988079071,
+          0.06800000369548798
+        ],
+        "4242": [
+          0.03999999910593033,
+          0.09000000357627869
+        ]
+      },
+      "panel_observed_gain": {
+        "104729": 0.0560000017285347,
+        "161803": 0.04399999976158142,
+        "4242": 0.06400000303983688
+      },
+      "replicates": 10000,
+      "seed": 90210
+    },
+    "S0-Ecal": {
+      "baseline": "S0-E0",
+      "ci95": [
+        0.05666666850447655,
+        0.08266666531562805
+      ],
+      "class_ci95": {
+        "104729": [
+          [
+            0.2800000011920929,
+            0.5600000023841858
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.019999999552965164,
+            0.1599999964237213
+          ],
+          [
+            0.11999999731779099,
+            0.36000001430511475
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ]
+        ],
+        "161803": [
+          [
+            0.25999999046325684,
+            0.5400000214576721
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.10000000149011612
+          ],
+          [
+            0.07999999821186066,
+            0.30000001192092896
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ]
+        ],
+        "4242": [
+          [
+            0.25999999046325684,
+            0.5400000214576721
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.14000000059604645
+          ],
+          [
+            0.14000000059604645,
+            0.3799999952316284
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ]
+        ]
+      },
+      "class_observed_gain": {
+        "104729": [
+          0.41999998688697815,
+          0.0,
+          0.07999999821186066,
+          0.23999999463558197,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "161803": [
+          0.4000000059604645,
+          0.0,
+          0.03999999910593033,
+          0.18000000715255737,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "4242": [
+          0.4000000059604645,
+          0.0,
+          0.05999999865889549,
+          0.25999999046325684,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "observed_gain": 0.06933332979679108,
+      "panel_ci95": {
+        "104729": [
+          0.052000001072883606,
+          0.09799999743700027
+        ],
+        "161803": [
+          0.041999999433755875,
+          0.08399999886751175
+        ],
+        "4242": [
+          0.05000000074505806,
+          0.09600000083446503
+        ]
+      },
+      "panel_observed_gain": {
+        "104729": 0.07400000095367432,
+        "161803": 0.06199999898672104,
+        "4242": 0.07199999690055847
+      },
+      "replicates": 10000,
+      "seed": 90210
+    },
+    "S0-per-sample-oracle": {
+      "baseline": "S0-E0",
+      "ci95": [
+        0.05999999865889549,
+        0.0860000029206276
+      ],
+      "class_ci95": {
+        "104729": [
+          [
+            0.2800000011920929,
+            0.5600000023841858
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.019999999552965164,
+            0.1599999964237213
+          ],
+          [
+            0.14000000059604645,
+            0.3799999952316284
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ]
+        ],
+        "161803": [
+          [
+            0.25999999046325684,
+            0.5400000214576721
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.10000000149011612
+          ],
+          [
+            0.10000000149011612,
+            0.3400000035762787
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ]
+        ],
+        "4242": [
+          [
+            0.25999999046325684,
+            0.5400000214576721
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.14000000059604645
+          ],
+          [
+            0.18000000715255737,
+            0.41999998688697815
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ]
+        ]
+      },
+      "class_observed_gain": {
+        "104729": [
+          0.41999998688697815,
+          0.0,
+          0.07999999821186066,
+          0.25999999046325684,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "161803": [
+          0.4000000059604645,
+          0.0,
+          0.03999999910593033,
+          0.2199999988079071,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "4242": [
+          0.4000000059604645,
+          0.0,
+          0.05999999865889549,
+          0.30000001192092896,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "observed_gain": 0.07266666740179062,
+      "panel_ci95": {
+        "104729": [
+          0.05400000140070915,
+          0.10000000149011612
+        ],
+        "161803": [
+          0.04600000008940697,
+          0.08799999952316284
+        ],
+        "4242": [
+          0.05400000140070915,
+          0.10000000149011612
+        ]
+      },
+      "panel_observed_gain": {
+        "104729": 0.07599999755620956,
+        "161803": 0.06599999964237213,
+        "4242": 0.07599999755620956
+      },
+      "replicates": 10000,
+      "seed": 90210
+    }
+  },
+  "calibrated_exposure_scale": 0.36080148140911383,
+  "calibration_panel": 271828,
+  "calibration_sha256": "b2b3d26cf600fa2c7e5b2612b4af88bcc449629c97b988665da14fd10ac0184c",
+  "formal_promotion": false,
+  "gate": "valid",
+  "git_commit": "1e21b6642c6eb01e908ebaecb078150361fc457e",
+  "global_gain": 1.36170555381549,
+  "harness_gates": {
+    "baseline_reproduction": true,
+    "calibration": true,
+    "candidate_saturation": true,
+    "field_gain_exposure_equivalence": true,
+    "finite_nonnegative": true,
+    "no_optimizer": true,
+    "pairing_codes": true,
+    "pairing_labels": true,
+    "parameter_isolation": true,
+    "passive_global_branches": true,
+    "storage": true
+  },
+  "interface_closeout_sha256": "7fada9a7a636b31ba944224178d2f2b6fd820914a6811798d203e3e52afc4d56",
+  "interface_measurement_sha256": "ad6929307de081c54518152de0632195e705963018e13b48325cd738f4965860",
+  "interface_validation_sha256": "64b105787b48b33a2df9839918520e4044604c6ccf6673b057404767318365a0",
+  "locked_projection_fraction_mean": {
+    "104729": 0.7338865995407104,
+    "161803": 0.7339878082275391,
+    "4242": 0.734045147895813
+  },
+  "nominal_exposure_scale": 0.4913053810596466,
+  "pairing": {
+    "codes": {
+      "I0-Acal": {
+        "104729": "81d43602a20a020284f1a6d5990461596a9cb21d0a3b1840d07ebd94abc5e209",
+        "161803": "182375abc3278324417adc12922a3dfb2fc3f2c7fcfa9e3bf7118b07ab5e4010",
+        "4242": "4174780d4ac6938c7dc091a531d1ad4d4395773888ebbd40f3d7e0625624f2db"
+      },
+      "I0-E0": {
+        "104729": "81d43602a20a020284f1a6d5990461596a9cb21d0a3b1840d07ebd94abc5e209",
+        "161803": "182375abc3278324417adc12922a3dfb2fc3f2c7fcfa9e3bf7118b07ab5e4010",
+        "4242": "4174780d4ac6938c7dc091a531d1ad4d4395773888ebbd40f3d7e0625624f2db"
+      },
+      "S0-E0": {
+        "104729": "81d43602a20a020284f1a6d5990461596a9cb21d0a3b1840d07ebd94abc5e209",
+        "161803": "182375abc3278324417adc12922a3dfb2fc3f2c7fcfa9e3bf7118b07ab5e4010",
+        "4242": "4174780d4ac6938c7dc091a531d1ad4d4395773888ebbd40f3d7e0625624f2db"
+      },
+      "S0-Ecal": {
+        "104729": "81d43602a20a020284f1a6d5990461596a9cb21d0a3b1840d07ebd94abc5e209",
+        "161803": "182375abc3278324417adc12922a3dfb2fc3f2c7fcfa9e3bf7118b07ab5e4010",
+        "4242": "4174780d4ac6938c7dc091a531d1ad4d4395773888ebbd40f3d7e0625624f2db"
+      },
+      "S0-field-gain-reference": {
+        "104729": "81d43602a20a020284f1a6d5990461596a9cb21d0a3b1840d07ebd94abc5e209",
+        "161803": "182375abc3278324417adc12922a3dfb2fc3f2c7fcfa9e3bf7118b07ab5e4010",
+        "4242": "4174780d4ac6938c7dc091a531d1ad4d4395773888ebbd40f3d7e0625624f2db"
+      },
+      "S0-gain-075": {
+        "104729": "81d43602a20a020284f1a6d5990461596a9cb21d0a3b1840d07ebd94abc5e209",
+        "161803": "182375abc3278324417adc12922a3dfb2fc3f2c7fcfa9e3bf7118b07ab5e4010",
+        "4242": "4174780d4ac6938c7dc091a531d1ad4d4395773888ebbd40f3d7e0625624f2db"
+      },
+      "S0-gain-100": {
+        "104729": "81d43602a20a020284f1a6d5990461596a9cb21d0a3b1840d07ebd94abc5e209",
+        "161803": "182375abc3278324417adc12922a3dfb2fc3f2c7fcfa9e3bf7118b07ab5e4010",
+        "4242": "4174780d4ac6938c7dc091a531d1ad4d4395773888ebbd40f3d7e0625624f2db"
+      },
+      "S0-gain-115": {
+        "104729": "81d43602a20a020284f1a6d5990461596a9cb21d0a3b1840d07ebd94abc5e209",
+        "161803": "182375abc3278324417adc12922a3dfb2fc3f2c7fcfa9e3bf7118b07ab5e4010",
+        "4242": "4174780d4ac6938c7dc091a531d1ad4d4395773888ebbd40f3d7e0625624f2db"
+      },
+      "S0-gain-150": {
+        "104729": "81d43602a20a020284f1a6d5990461596a9cb21d0a3b1840d07ebd94abc5e209",
+        "161803": "182375abc3278324417adc12922a3dfb2fc3f2c7fcfa9e3bf7118b07ab5e4010",
+        "4242": "4174780d4ac6938c7dc091a531d1ad4d4395773888ebbd40f3d7e0625624f2db"
+      },
+      "S0-gain-175": {
+        "104729": "81d43602a20a020284f1a6d5990461596a9cb21d0a3b1840d07ebd94abc5e209",
+        "161803": "182375abc3278324417adc12922a3dfb2fc3f2c7fcfa9e3bf7118b07ab5e4010",
+        "4242": "4174780d4ac6938c7dc091a531d1ad4d4395773888ebbd40f3d7e0625624f2db"
+      },
+      "S0-gain-200": {
+        "104729": "81d43602a20a020284f1a6d5990461596a9cb21d0a3b1840d07ebd94abc5e209",
+        "161803": "182375abc3278324417adc12922a3dfb2fc3f2c7fcfa9e3bf7118b07ab5e4010",
+        "4242": "4174780d4ac6938c7dc091a531d1ad4d4395773888ebbd40f3d7e0625624f2db"
+      },
+      "S0-per-sample-oracle": {
+        "104729": "81d43602a20a020284f1a6d5990461596a9cb21d0a3b1840d07ebd94abc5e209",
+        "161803": "182375abc3278324417adc12922a3dfb2fc3f2c7fcfa9e3bf7118b07ab5e4010",
+        "4242": "4174780d4ac6938c7dc091a531d1ad4d4395773888ebbd40f3d7e0625624f2db"
+      }
+    },
+    "labels": {
+      "I0-Acal": {
+        "104729": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "161803": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "4242": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+      },
+      "I0-E0": {
+        "104729": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "161803": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "4242": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+      },
+      "S0-E0": {
+        "104729": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "161803": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "4242": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+      },
+      "S0-Ecal": {
+        "104729": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "161803": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "4242": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+      },
+      "S0-field-gain-reference": {
+        "104729": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "161803": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "4242": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+      },
+      "S0-gain-075": {
+        "104729": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "161803": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "4242": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+      },
+      "S0-gain-100": {
+        "104729": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "161803": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "4242": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+      },
+      "S0-gain-115": {
+        "104729": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "161803": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "4242": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+      },
+      "S0-gain-150": {
+        "104729": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "161803": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "4242": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+      },
+      "S0-gain-175": {
+        "104729": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "161803": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "4242": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+      },
+      "S0-gain-200": {
+        "104729": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "161803": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "4242": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+      },
+      "S0-per-sample-oracle": {
+        "104729": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "161803": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "4242": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+      }
+    }
+  },
+  "panels": [
+    4242,
+    104729,
+    161803
+  ],
+  "parameter_state_after": {
+    "__state_hash__": "0d5bf4451c4cde914e1db3762f5637e126e758a361f064e462552f465825af93",
+    "generator.class_carrier_logits": "2d03d0b6917ad2624a69be85bf6868fc651aa51d856ab8499155748d93d86048",
+    "generator.class_heads": "b6dfb188b81a253f66791d1e3248e1604fe5960dffc97a859b752435e3054435",
+    "generator.code_projection.weight": "5fa23fcdee524c3cb9ebc1c3f1df4eabb249308ce61e26286b5e9e4709d93167",
+    "generator.global_modes": "8c2393517934d5445fe62afab7641ab9361bd3721d6b17883772f32f72691265",
+    "system.decoder.phase": "042ba26dbf43051eb9f65a9d14d85cc6885d689d516862f9212afa115ca03b03",
+    "system.encoder.phase": "042ba26dbf43051eb9f65a9d14d85cc6885d689d516862f9212afa115ca03b03"
+  },
+  "parameter_state_before": {
+    "__state_hash__": "0d5bf4451c4cde914e1db3762f5637e126e758a361f064e462552f465825af93",
+    "generator.class_carrier_logits": "2d03d0b6917ad2624a69be85bf6868fc651aa51d856ab8499155748d93d86048",
+    "generator.class_heads": "b6dfb188b81a253f66791d1e3248e1604fe5960dffc97a859b752435e3054435",
+    "generator.code_projection.weight": "5fa23fcdee524c3cb9ebc1c3f1df4eabb249308ce61e26286b5e9e4709d93167",
+    "generator.global_modes": "8c2393517934d5445fe62afab7641ab9361bd3721d6b17883772f32f72691265",
+    "system.decoder.phase": "042ba26dbf43051eb9f65a9d14d85cc6885d689d516862f9212afa115ca03b03",
+    "system.encoder.phase": "042ba26dbf43051eb9f65a9d14d85cc6885d689d516862f9212afa115ca03b03"
+  },
+  "projection_fraction_max_abs_deviation_from_calibration": 0.00048655271530151367,
+  "rho_cal": 0.734373152256012,
+  "rows": {
+    "I0-Acal": {
+      "104729": {
+        "agreement": 0.10199999809265137,
+        "amplitude_scale": 0.8569557469648079,
+        "artifacts": {
+          "codes": {
+            "relative_path": "measurements/I0-Acal/104729/codes.pt",
+            "sha256": "b9666ee00ab20eb0da353d9958b3089687df186bfd54167dd2dee1ddc439d25a",
+            "tensor_sha256": "81d43602a20a020284f1a6d5990461596a9cb21d0a3b1840d07ebd94abc5e209"
+          },
+          "fixed_cmos": {
+            "relative_path": "measurements/I0-Acal/104729/fixed_cmos.pt",
+            "sha256": "a61ef86e0e1cc093c5dc56f7d9cb874bb50df9f819b9e791e3a09bd2b38a1db5",
+            "tensor_sha256": "6bdfc670362955b7007b653d58fe9bd791160178d6dc9bb27a6d65f6a8587f42"
+          },
+          "labels": {
+            "relative_path": "measurements/I0-Acal/104729/labels.pt",
+            "sha256": "8c325d34c5a83dea348edc30791c15131000838a5edab02f882750ab1aa2068e",
+            "tensor_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+          },
+          "primary_prediction": {
+            "relative_path": "measurements/I0-Acal/104729/primary_prediction.pt",
+            "sha256": "fc2cfb2bb0c13e509cb65f59121d121f48d2a7f294b07035af8fc50d27cf8452",
+            "tensor_sha256": "9194da1bd27d6f7f92239d4e1313b05631f445c51b9fec99a2b33068027df549"
+          },
+          "representative_trace": {
+            "relative_path": "measurements/I0-Acal/104729/representative_trace.pt",
+            "sha256": "8c182a0dd1f6332040ac67aa10fd26cf282b29fca652987c5b216f80fb2e7e5c"
+          },
+          "secondary_correctness": {
+            "relative_path": "measurements/I0-Acal/104729/secondary_correctness.pt",
+            "sha256": "5e15602b30d332c2948798118f6080dd39689e902485f3a89eb5035652e5670e",
+            "tensor_sha256": "966890fff4c4b264886b6c3061e0550e8c0452b8722ae1ce5e6c7f82bd1a5bb2"
+          },
+          "secondary_prediction": {
+            "relative_path": "measurements/I0-Acal/104729/secondary_prediction.pt",
+            "sha256": "27f153bdd08f653ccb2764bb719994d67b876841f817cf81864fb6b4aa4deded",
+            "tensor_sha256": "1ab90df84b410d41ad48645073b68997b72c4b683212877d3f4755490de41ef9"
+          }
+        },
+        "camera_fraction": 0.1478884369134903,
+        "clipped_fraction": 0.019514499232172966,
+        "codes_sha256": "81d43602a20a020284f1a6d5990461596a9cb21d0a3b1840d07ebd94abc5e209",
+        "coverage_ratio": 3.1519815921783447,
+        "energy_oracle": false,
+        "energy_retention_mean": 0.7343732714653015,
+        "exposure_scale": 0.4913053810596466,
+        "finite": true,
+        "input_energy_mean": 3.295113870649402e-08,
+        "labels_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "minimum_diversity": 0.21541081368923187,
+        "nonnegative": true,
+        "nonphysical_upper_bound": false,
+        "normalized_raw_mean": 0.19372662901878357,
+        "normalized_raw_p01": 0.0001510762085672468,
+        "normalized_raw_p50": 0.08408945798873901,
+        "normalized_raw_p99": 1.1705278158187866,
+        "normalized_raw_quantile_sample_count": 1000000,
+        "output_energy_mean": 2.4198435255584627e-08,
+        "panel": 104729,
+        "passive": true,
+        "passive_available": true,
+        "primary_accuracy": 0.8059999942779541,
+        "primary_min_recall": 0.0,
+        "primary_recall": [
+          0.41999998688697815,
+          0.9599999785423279,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          0.8399999737739563,
+          0.0,
+          0.8399999737739563
+        ],
+        "raw_finite": true,
+        "raw_nonnegative": true,
+        "saturation": 0.019514450803399086,
+        "secondary_accuracy": 0.21400000154972076,
+        "secondary_min_recall": 0.0,
+        "secondary_prediction_histogram": [
+          27,
+          0,
+          3,
+          11,
+          27,
+          0,
+          16,
+          0,
+          416,
+          0
+        ],
+        "secondary_recall": [
+          0.5400000214576721,
+          0.0,
+          0.05999999865889549,
+          0.2199999988079071,
+          0.0,
+          0.0,
+          0.3199999928474426,
+          0.0,
+          1.0,
+          0.0
+        ],
+        "variant": "I0-Acal"
+      },
+      "161803": {
+        "agreement": 0.09799999743700027,
+        "amplitude_scale": 0.8569557469648079,
+        "artifacts": {
+          "codes": {
+            "relative_path": "measurements/I0-Acal/161803/codes.pt",
+            "sha256": "1bc78237bea1fb64a318fe3374006c76bd9dc7a283c5dc9adfab70a8d911468a",
+            "tensor_sha256": "182375abc3278324417adc12922a3dfb2fc3f2c7fcfa9e3bf7118b07ab5e4010"
+          },
+          "fixed_cmos": {
+            "relative_path": "measurements/I0-Acal/161803/fixed_cmos.pt",
+            "sha256": "9f7d3c52f70a0522bba878dd0b3974faf1f615d71b1f27649e3988a1604d4d39",
+            "tensor_sha256": "989036fbf6c4862e08ec263456269d376d63ce19c3f878e30ecfbbc948e04d4b"
+          },
+          "labels": {
+            "relative_path": "measurements/I0-Acal/161803/labels.pt",
+            "sha256": "bfa7408d9c37e0cd8f39320a037f29737bc6dffade09384a97df35e779f6a667",
+            "tensor_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+          },
+          "primary_prediction": {
+            "relative_path": "measurements/I0-Acal/161803/primary_prediction.pt",
+            "sha256": "ee9c4a6b34f62958aa39b70b45d36f0d1dd8d6baa903c00f195d220b2ade2b2f",
+            "tensor_sha256": "12411a37570d3456c9f6624324c57cb597a646e8c621731cd9c8a43f33e3c3b7"
+          },
+          "representative_trace": {
+            "relative_path": "measurements/I0-Acal/161803/representative_trace.pt",
+            "sha256": "49310818221f5354dfefd0c88aa942dd63b05e5dd4eb4225a717d4f99bb76111"
+          },
+          "secondary_correctness": {
+            "relative_path": "measurements/I0-Acal/161803/secondary_correctness.pt",
+            "sha256": "a78e2063c9b294c2235324598a3e5d3551643d82f0122ccf495c90d57ccfbbb8",
+            "tensor_sha256": "23bafde0bc80fb59357f3e8834b0dbc7608d78c390afc5f23e35ed25c20db5d4"
+          },
+          "secondary_prediction": {
+            "relative_path": "measurements/I0-Acal/161803/secondary_prediction.pt",
+            "sha256": "7c880d58a537f515bf89a4c06d7726d77d000164eb2fce81bb0c59b77a84dcae",
+            "tensor_sha256": "ad27dffbfb731662682271100434bd45bb276c202c94561b219f9f91e827891f"
+          }
+        },
+        "camera_fraction": 0.1310819536447525,
+        "clipped_fraction": 0.01980930007994175,
+        "codes_sha256": "182375abc3278324417adc12922a3dfb2fc3f2c7fcfa9e3bf7118b07ab5e4010",
+        "coverage_ratio": 3.159420967102051,
+        "energy_oracle": false,
+        "energy_retention_mean": 0.7343732118606567,
+        "exposure_scale": 0.4913053810596466,
+        "finite": true,
+        "input_energy_mean": 3.2866243060425404e-08,
+        "labels_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "minimum_diversity": 0.1968759000301361,
+        "nonnegative": true,
+        "nonphysical_upper_bound": false,
+        "normalized_raw_mean": 0.1932586133480072,
+        "normalized_raw_p01": 0.00015043896564748138,
+        "normalized_raw_p50": 0.08334292471408844,
+        "normalized_raw_p99": 1.178966999053955,
+        "normalized_raw_quantile_sample_count": 1000000,
+        "output_energy_mean": 2.4136088683235357e-08,
+        "panel": 161803,
+        "passive": true,
+        "passive_available": true,
+        "primary_accuracy": 0.8220000267028809,
+        "primary_min_recall": 0.0,
+        "primary_recall": [
+          0.46000000834465027,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          0.800000011920929,
+          0.0,
+          0.9599999785423279
+        ],
+        "raw_finite": true,
+        "raw_nonnegative": true,
+        "saturation": 0.01980930007994175,
+        "secondary_accuracy": 0.20399999618530273,
+        "secondary_min_recall": 0.0,
+        "secondary_prediction_histogram": [
+          25,
+          0,
+          2,
+          10,
+          25,
+          0,
+          15,
+          0,
+          423,
+          0
+        ],
+        "secondary_recall": [
+          0.5,
+          0.0,
+          0.03999999910593033,
+          0.20000000298023224,
+          0.0,
+          0.0,
+          0.30000001192092896,
+          0.0,
+          1.0,
+          0.0
+        ],
+        "variant": "I0-Acal"
+      },
+      "4242": {
+        "agreement": 0.11800000071525574,
+        "amplitude_scale": 0.8569557469648079,
+        "artifacts": {
+          "codes": {
+            "relative_path": "measurements/I0-Acal/4242/codes.pt",
+            "sha256": "b75fe63db22c048b9338a756f69be771579aaa6a0fffe4d62958d6c6c4fca403",
+            "tensor_sha256": "4174780d4ac6938c7dc091a531d1ad4d4395773888ebbd40f3d7e0625624f2db"
+          },
+          "fixed_cmos": {
+            "relative_path": "measurements/I0-Acal/4242/fixed_cmos.pt",
+            "sha256": "fbdf6f461acb9aa99926dbaef95807b11ae585331a1f649ffdf9cafc3b01e6d0",
+            "tensor_sha256": "187159f2375002b9a712c0a50e2f50bc20cb129b5238ca4dd7ce87aabcbf7d84"
+          },
+          "labels": {
+            "relative_path": "measurements/I0-Acal/4242/labels.pt",
+            "sha256": "21f1c1f77546e0327e1798ae3cd0f7da9917bd5deb0d9d436796d6c62a2e8f31",
+            "tensor_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+          },
+          "primary_prediction": {
+            "relative_path": "measurements/I0-Acal/4242/primary_prediction.pt",
+            "sha256": "44ebce7a4dc38284ddae2c5e70876319778aed875736be6e3aafda06bb0c64f5",
+            "tensor_sha256": "60302849ba3b6dcbc5e2bb4a6a783539c398731c10276e6b0ccd410e1a8ddd26"
+          },
+          "representative_trace": {
+            "relative_path": "measurements/I0-Acal/4242/representative_trace.pt",
+            "sha256": "ededfadf4bb316a2b4324c4a7057ca0885c91b030b167cbf7758d38e463a0e1b"
+          },
+          "secondary_correctness": {
+            "relative_path": "measurements/I0-Acal/4242/secondary_correctness.pt",
+            "sha256": "6c38296f93f0ab2cece00423f2d60e1d614c82130062b15ba729b6265cc69c07",
+            "tensor_sha256": "5b0e706374edc57ad51df5a85d60769f7a9d60d6605a4ccc78e4b9bbf6e1d6bf"
+          },
+          "secondary_prediction": {
+            "relative_path": "measurements/I0-Acal/4242/secondary_prediction.pt",
+            "sha256": "a337dd5ba84c5ab107b732ae8ed71431aa6eb9926537461fb37ce318daaad60d",
+            "tensor_sha256": "b5dee90aec85c77f11112859d16f0cfa1af4e39bd588c024fc1d2480194c04fb"
+          }
+        },
+        "camera_fraction": 0.13895168900489807,
+        "clipped_fraction": 0.019534150138497353,
+        "codes_sha256": "4174780d4ac6938c7dc091a531d1ad4d4395773888ebbd40f3d7e0625624f2db",
+        "coverage_ratio": 3.1575846672058105,
+        "energy_oracle": false,
+        "energy_retention_mean": 0.7343732118606567,
+        "exposure_scale": 0.4913053810596466,
+        "finite": true,
+        "input_energy_mean": 3.279733462591139e-08,
+        "labels_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "minimum_diversity": 0.2073771208524704,
+        "nonnegative": true,
+        "nonphysical_upper_bound": false,
+        "normalized_raw_mean": 0.19285272061824799,
+        "normalized_raw_p01": 0.000151522210217081,
+        "normalized_raw_p50": 0.08301915228366852,
+        "normalized_raw_p99": 1.1750869750976562,
+        "normalized_raw_quantile_sample_count": 1000000,
+        "output_energy_mean": 2.4085483829594523e-08,
+        "panel": 4242,
+        "passive": true,
+        "passive_available": true,
+        "primary_accuracy": 0.8159999847412109,
+        "primary_min_recall": 0.0,
+        "primary_recall": [
+          0.47999998927116394,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          0.8600000143051147,
+          0.0,
+          0.8199999928474426
+        ],
+        "raw_finite": true,
+        "raw_nonnegative": true,
+        "saturation": 0.019534150138497353,
+        "secondary_accuracy": 0.2240000069141388,
+        "secondary_min_recall": 0.0,
+        "secondary_prediction_histogram": [
+          25,
+          0,
+          5,
+          13,
+          17,
+          0,
+          19,
+          0,
+          421,
+          0
+        ],
+        "secondary_recall": [
+          0.5,
+          0.0,
+          0.10000000149011612,
+          0.25999999046325684,
+          0.0,
+          0.0,
+          0.3799999952316284,
+          0.0,
+          1.0,
+          0.0
+        ],
+        "variant": "I0-Acal"
+      }
+    },
+    "I0-E0": {
+      "104729": {
+        "agreement": 0.4099999964237213,
+        "amplitude_scale": 1.0,
+        "artifacts": {
+          "codes": {
+            "relative_path": "measurements/I0-E0/104729/codes.pt",
+            "sha256": "3bc9fcd2dea587c9f18d1e45ca4426bcf4dfadfc185f147686f3cb113260e2e1",
+            "tensor_sha256": "81d43602a20a020284f1a6d5990461596a9cb21d0a3b1840d07ebd94abc5e209"
+          },
+          "fixed_cmos": {
+            "relative_path": "measurements/I0-E0/104729/fixed_cmos.pt",
+            "sha256": "4352e54d9baec7930444d2d420b33917d009073a2f3969b99da9a67e1572b608",
+            "tensor_sha256": "6995d7a63c9bac949aa662aac671c99fc5dc306c724e639407f433f66fb3ffa8"
+          },
+          "labels": {
+            "relative_path": "measurements/I0-E0/104729/labels.pt",
+            "sha256": "b7bae41b139aab0941d43697d7d0181c05d711b2b194e2376fc4fb3e30ad6afe",
+            "tensor_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+          },
+          "primary_prediction": {
+            "relative_path": "measurements/I0-E0/104729/primary_prediction.pt",
+            "sha256": "256ea1d11f0e1c69bf3088862078f6c44da69753046e42b1438e81b5f7cee10f",
+            "tensor_sha256": "508eea281d63da79f8a27aa1c334a55978c639d947cf74d7c0faaf4657518d58"
+          },
+          "representative_trace": {
+            "relative_path": "measurements/I0-E0/104729/representative_trace.pt",
+            "sha256": "863912aaae8facff6e52a0ef38db0f3e41895d7adf06dd6ef9d8ba811302b6d8"
+          },
+          "secondary_correctness": {
+            "relative_path": "measurements/I0-E0/104729/secondary_correctness.pt",
+            "sha256": "459970a8dd007504c8cbd9b43d635b88cb947ffe2003293943080623ff1e0765",
+            "tensor_sha256": "b35ab9b489fc236fe63c39976b3cb4a7784dcb7aa364f2ede190b085fe6bc58e"
+          },
+          "secondary_prediction": {
+            "relative_path": "measurements/I0-E0/104729/secondary_prediction.pt",
+            "sha256": "7b903d574bade6a09f074e876bd6baa0f242502e5333f30cfbbd36354a699bfe",
+            "tensor_sha256": "aac7e9e5288fdd95ff4a3d5017d3170ae7ec3dbcfef12364abb27388a12f8a77"
+          }
+        },
+        "camera_fraction": 0.1478884369134903,
+        "clipped_fraction": 0.05165860056877136,
+        "codes_sha256": "81d43602a20a020284f1a6d5990461596a9cb21d0a3b1840d07ebd94abc5e209",
+        "coverage_ratio": 3.020536422729492,
+        "energy_oracle": false,
+        "energy_retention_mean": 1.0,
+        "exposure_scale": 0.4913053810596466,
+        "finite": true,
+        "input_energy_mean": 3.295113870649402e-08,
+        "labels_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "minimum_diversity": 0.2060941904783249,
+        "nonnegative": true,
+        "nonphysical_upper_bound": false,
+        "normalized_raw_mean": 0.26379862427711487,
+        "normalized_raw_p01": 0.00020572132780216634,
+        "normalized_raw_p50": 0.1145050898194313,
+        "normalized_raw_p99": 1.5939141511917114,
+        "normalized_raw_quantile_sample_count": 1000000,
+        "output_energy_mean": 3.295113870649402e-08,
+        "panel": 104729,
+        "passive": true,
+        "passive_available": false,
+        "primary_accuracy": 0.9980000257492065,
+        "primary_min_recall": 0.9800000190734863,
+        "primary_recall": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          0.9800000190734863,
+          1.0,
+          1.0
+        ],
+        "raw_finite": true,
+        "raw_nonnegative": true,
+        "saturation": 0.051658548414707184,
+        "secondary_accuracy": 0.4099999964237213,
+        "secondary_min_recall": 0.0,
+        "secondary_prediction_histogram": [
+          50,
+          0,
+          13,
+          52,
+          20,
+          0,
+          37,
+          0,
+          328,
+          0
+        ],
+        "secondary_recall": [
+          1.0,
+          0.0,
+          0.25999999046325684,
+          0.9599999785423279,
+          0.14000000059604645,
+          0.0,
+          0.7400000095367432,
+          0.0,
+          1.0,
+          0.0
+        ],
+        "variant": "I0-E0"
+      },
+      "161803": {
+        "agreement": 0.39399999380111694,
+        "amplitude_scale": 1.0,
+        "artifacts": {
+          "codes": {
+            "relative_path": "measurements/I0-E0/161803/codes.pt",
+            "sha256": "d8ba338970eaf15a888c045b8a6ee7941f8ec3e1685e5b1256aa784cf9dd26d0",
+            "tensor_sha256": "182375abc3278324417adc12922a3dfb2fc3f2c7fcfa9e3bf7118b07ab5e4010"
+          },
+          "fixed_cmos": {
+            "relative_path": "measurements/I0-E0/161803/fixed_cmos.pt",
+            "sha256": "3957ddd3ead287a2becec5a14d66fe9b80937b03fd088422fc1b7447c0fda623",
+            "tensor_sha256": "1ef2ac49547f616b2d5f0cbcc7c5405482839e94a53088a25c334a10564d6eb6"
+          },
+          "labels": {
+            "relative_path": "measurements/I0-E0/161803/labels.pt",
+            "sha256": "ebca46a93853b5b4865d28b47992873c34530b125a1973726c53ff4cef6c78ac",
+            "tensor_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+          },
+          "primary_prediction": {
+            "relative_path": "measurements/I0-E0/161803/primary_prediction.pt",
+            "sha256": "043cd3d8de5a760cc10ec217ccfd03422aa4b02dcb4afe3ffa1d6da17962204e",
+            "tensor_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+          },
+          "representative_trace": {
+            "relative_path": "measurements/I0-E0/161803/representative_trace.pt",
+            "sha256": "0fc4af117a49effbda3d7ba990a0b197df6ba84e2d7262accf8a6396f1387d4b"
+          },
+          "secondary_correctness": {
+            "relative_path": "measurements/I0-E0/161803/secondary_correctness.pt",
+            "sha256": "d727c677f7569a508ffe3e033e0c2bc9178867b409795cdb0df902d4a13f439a",
+            "tensor_sha256": "269a4b64820d7a6c28e0b0113308accc41eb8da9ca02802543167162b3e72a7d"
+          },
+          "secondary_prediction": {
+            "relative_path": "measurements/I0-E0/161803/secondary_prediction.pt",
+            "sha256": "3933a8f68c896ae0207e69657a07d7b7d4f59442cfa8107958f79c27654247a8",
+            "tensor_sha256": "104ea0428f068d5878a56626373fd98bcc0ef89155369c91e9364a608b598c5d"
+          }
+        },
+        "camera_fraction": 0.1310819685459137,
+        "clipped_fraction": 0.05276240035891533,
+        "codes_sha256": "182375abc3278324417adc12922a3dfb2fc3f2c7fcfa9e3bf7118b07ab5e4010",
+        "coverage_ratio": 3.0350844860076904,
+        "energy_oracle": false,
+        "energy_retention_mean": 1.0,
+        "exposure_scale": 0.4913053810596466,
+        "finite": true,
+        "input_energy_mean": 3.2866243060425404e-08,
+        "labels_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "minimum_diversity": 0.1930522471666336,
+        "nonnegative": true,
+        "nonphysical_upper_bound": false,
+        "normalized_raw_mean": 0.2631613314151764,
+        "normalized_raw_p01": 0.00020485355344135314,
+        "normalized_raw_p50": 0.11348852515220642,
+        "normalized_raw_p99": 1.6054058074951172,
+        "normalized_raw_quantile_sample_count": 1000000,
+        "output_energy_mean": 3.2866243060425404e-08,
+        "panel": 161803,
+        "passive": true,
+        "passive_available": false,
+        "primary_accuracy": 1.0,
+        "primary_min_recall": 1.0,
+        "primary_recall": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "raw_finite": true,
+        "raw_nonnegative": true,
+        "saturation": 0.05276240035891533,
+        "secondary_accuracy": 0.39399999380111694,
+        "secondary_min_recall": 0.0,
+        "secondary_prediction_histogram": [
+          50,
+          0,
+          10,
+          59,
+          21,
+          0,
+          35,
+          0,
+          325,
+          0
+        ],
+        "secondary_recall": [
+          1.0,
+          0.0,
+          0.20000000298023224,
+          0.9599999785423279,
+          0.07999999821186066,
+          0.0,
+          0.699999988079071,
+          0.0,
+          1.0,
+          0.0
+        ],
+        "variant": "I0-E0"
+      },
+      "4242": {
+        "agreement": 0.39800000190734863,
+        "amplitude_scale": 1.0,
+        "artifacts": {
+          "codes": {
+            "relative_path": "measurements/I0-E0/4242/codes.pt",
+            "sha256": "0b9fc5219762c76e4aaae388ad357ef8ebc3eb7fee68459a68010becfd7cefdb",
+            "tensor_sha256": "4174780d4ac6938c7dc091a531d1ad4d4395773888ebbd40f3d7e0625624f2db"
+          },
+          "fixed_cmos": {
+            "relative_path": "measurements/I0-E0/4242/fixed_cmos.pt",
+            "sha256": "11e96e849dc737509a2239da41ef8df396fda0969354b8388d9396942dc580a0",
+            "tensor_sha256": "6fb7343c2f7e9de7909b53f8c69eeda06b469aba9c94c53ba955f0c19fd57ffc"
+          },
+          "labels": {
+            "relative_path": "measurements/I0-E0/4242/labels.pt",
+            "sha256": "3ed23b0d14472e3af106146f42b243d7c33b66fcbd19a32c96110df330d4057b",
+            "tensor_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+          },
+          "primary_prediction": {
+            "relative_path": "measurements/I0-E0/4242/primary_prediction.pt",
+            "sha256": "13d490f32fe34a82c588898a6600693ae5301278cbf5225f4352829392fc5b71",
+            "tensor_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+          },
+          "representative_trace": {
+            "relative_path": "measurements/I0-E0/4242/representative_trace.pt",
+            "sha256": "04d02ca46e1517c1ca119f2a3e734b0a1f03e27772b99e5b715905a2563d0641"
+          },
+          "secondary_correctness": {
+            "relative_path": "measurements/I0-E0/4242/secondary_correctness.pt",
+            "sha256": "bf20a6d41ae2e2fd4cfc57ed9f8c7c0ecfb954b4386fe83e09d894bcc23fe433",
+            "tensor_sha256": "c291fc822ede7478b093ed755c8d0399208a902df9df31d0bf25bb237c2b0c38"
+          },
+          "secondary_prediction": {
+            "relative_path": "measurements/I0-E0/4242/secondary_prediction.pt",
+            "sha256": "2fdf179ff4a1df76de20739d057658aac2709b475e31a3818ecf3e642c0fe1d5",
+            "tensor_sha256": "52a96c5a1cd6d2c679bf05ec13153b5e1af04bba6e912951369d4989249c7845"
+          }
+        },
+        "camera_fraction": 0.13895168900489807,
+        "clipped_fraction": 0.05155149847269058,
+        "codes_sha256": "4174780d4ac6938c7dc091a531d1ad4d4395773888ebbd40f3d7e0625624f2db",
+        "coverage_ratio": 3.0310306549072266,
+        "energy_oracle": false,
+        "energy_retention_mean": 1.0,
+        "exposure_scale": 0.4913053810596466,
+        "finite": true,
+        "input_energy_mean": 3.279733462591139e-08,
+        "labels_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "minimum_diversity": 0.2002611607313156,
+        "nonnegative": true,
+        "nonphysical_upper_bound": false,
+        "normalized_raw_mean": 0.2626086175441742,
+        "normalized_raw_p01": 0.000206328637432307,
+        "normalized_raw_p50": 0.11304764449596405,
+        "normalized_raw_p99": 1.6001224517822266,
+        "normalized_raw_quantile_sample_count": 1000000,
+        "output_energy_mean": 3.279733462591139e-08,
+        "panel": 4242,
+        "passive": true,
+        "passive_available": false,
+        "primary_accuracy": 1.0,
+        "primary_min_recall": 1.0,
+        "primary_recall": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "raw_finite": true,
+        "raw_nonnegative": true,
+        "saturation": 0.05155140161514282,
+        "secondary_accuracy": 0.39800000190734863,
+        "secondary_min_recall": 0.0,
+        "secondary_prediction_histogram": [
+          50,
+          0,
+          13,
+          55,
+          19,
+          0,
+          35,
+          0,
+          328,
+          0
+        ],
+        "secondary_recall": [
+          1.0,
+          0.0,
+          0.25999999046325684,
+          0.9399999976158142,
+          0.07999999821186066,
+          0.0,
+          0.699999988079071,
+          0.0,
+          1.0,
+          0.0
+        ],
+        "variant": "I0-E0"
+      }
+    },
+    "S0-E0": {
+      "104729": {
+        "agreement": 0.14800000190734863,
+        "amplitude_scale": 1.0,
+        "artifacts": {
+          "codes": {
+            "relative_path": "measurements/S0-E0/104729/codes.pt",
+            "sha256": "3a93421624f4bf4531f22e72f6366d50a4ddca4f99e7f167698ce98fbcfd1956",
+            "tensor_sha256": "81d43602a20a020284f1a6d5990461596a9cb21d0a3b1840d07ebd94abc5e209"
+          },
+          "fixed_cmos": {
+            "relative_path": "measurements/S0-E0/104729/fixed_cmos.pt",
+            "sha256": "114f3740f9675ce49a0aa21e515388d9e6d59fc489a2c7e958b2f2d44a9f839b",
+            "tensor_sha256": "bab18dde6475421dbfe8a22210ff91301342f6d9453175ea653334ef2a75c206"
+          },
+          "labels": {
+            "relative_path": "measurements/S0-E0/104729/labels.pt",
+            "sha256": "576de72ef946ccbeeceb902ee3137e821108045568fac88f4f50a11e2ddb84c2",
+            "tensor_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+          },
+          "primary_prediction": {
+            "relative_path": "measurements/S0-E0/104729/primary_prediction.pt",
+            "sha256": "337e1939760fe45c6b605c1174823373b3bdbbe0255323ea90806bef1cae9763",
+            "tensor_sha256": "edcf941396e4314b65ca12efb5622211b2e27de52e164c9167e6383dff20be7b"
+          },
+          "representative_trace": {
+            "relative_path": "measurements/S0-E0/104729/representative_trace.pt",
+            "sha256": "02c449b4f9082a818d2be6e5ea2617bfeff6655ff652bce25f0cf1450248b1a1"
+          },
+          "secondary_correctness": {
+            "relative_path": "measurements/S0-E0/104729/secondary_correctness.pt",
+            "sha256": "eda0af0fc3deb70265632467dfe00db04abca422b654fc4969dcbd210b1956bc",
+            "tensor_sha256": "cdaa369f688a4e18e5dcdc9e367b62cac304a20645ebda5f003046d1255f809d"
+          },
+          "secondary_prediction": {
+            "relative_path": "measurements/S0-E0/104729/secondary_prediction.pt",
+            "sha256": "d58ad9a646c1156fcca12e5598f92f1327c4030fa4d512c22af59ff592768a87",
+            "tensor_sha256": "e61d36700c12fa778be6f3949ef94b23b6239daa5474d79295a8605752b4f225"
+          }
+        },
+        "camera_fraction": 0.13799914717674255,
+        "clipped_fraction": 0.009542199783027172,
+        "codes_sha256": "81d43602a20a020284f1a6d5990461596a9cb21d0a3b1840d07ebd94abc5e209",
+        "coverage_ratio": 3.560364246368408,
+        "energy_oracle": false,
+        "energy_retention_mean": 0.7343348261402981,
+        "exposure_scale": 0.4913053810596466,
+        "finite": true,
+        "input_energy_mean": 3.295113870649402e-08,
+        "labels_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "minimum_diversity": 0.18306566774845123,
+        "nonnegative": true,
+        "nonphysical_upper_bound": false,
+        "normalized_raw_mean": 0.17515450716018677,
+        "normalized_raw_p01": 0.0006487758364528418,
+        "normalized_raw_p50": 0.07264856994152069,
+        "normalized_raw_p99": 0.9897496104240417,
+        "normalized_raw_quantile_sample_count": 1000000,
+        "output_energy_mean": 2.4197168713158135e-08,
+        "panel": 104729,
+        "passive": true,
+        "passive_available": true,
+        "primary_accuracy": 0.5559999942779541,
+        "primary_min_recall": 0.0,
+        "primary_recall": [
+          0.07999999821186066,
+          0.0,
+          0.8399999737739563,
+          0.9800000190734863,
+          0.6800000071525574,
+          1.0,
+          0.41999998688697815,
+          0.4399999976158142,
+          0.18000000715255737,
+          0.9399999976158142
+        ],
+        "projection_fraction_mean": 0.7338865995407104,
+        "raw_finite": true,
+        "raw_nonnegative": true,
+        "residual_fraction_mean": 0.26611340045928955,
+        "saturation": 0.009542199783027172,
+        "secondary_accuracy": 0.15800000727176666,
+        "secondary_min_recall": 0.0,
+        "secondary_prediction_histogram": [
+          29,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          470,
+          0
+        ],
+        "secondary_recall": [
+          0.5799999833106995,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        "variant": "S0-E0"
+      },
+      "161803": {
+        "agreement": 0.13600000739097595,
+        "amplitude_scale": 1.0,
+        "artifacts": {
+          "codes": {
+            "relative_path": "measurements/S0-E0/161803/codes.pt",
+            "sha256": "5feaea3bbf73de2a2ac6ec808ce8a15b59326eb37b4d78462078f956b82fe885",
+            "tensor_sha256": "182375abc3278324417adc12922a3dfb2fc3f2c7fcfa9e3bf7118b07ab5e4010"
+          },
+          "fixed_cmos": {
+            "relative_path": "measurements/S0-E0/161803/fixed_cmos.pt",
+            "sha256": "dfffde4c9ac588ecf910e4e49bb705f4c69b90e8a6b39d97ff5d464641b71ab4",
+            "tensor_sha256": "895a2f61c55f37cd01428aaae98334e0f47d2df876afa8cb24f7e44014b6eb55"
+          },
+          "labels": {
+            "relative_path": "measurements/S0-E0/161803/labels.pt",
+            "sha256": "216fd53a36cc2d5db49d2940db36accc0f4ec5d8b081311f2996f76f162af67d",
+            "tensor_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+          },
+          "primary_prediction": {
+            "relative_path": "measurements/S0-E0/161803/primary_prediction.pt",
+            "sha256": "904f3e769b81a622e91b2566a1f876a09a62ce735601f14f337e13a62fe840c7",
+            "tensor_sha256": "074be5bde0b71ed8a6a985e56a0b8252a7de37d3524a9555a6a10ddf513f4323"
+          },
+          "representative_trace": {
+            "relative_path": "measurements/S0-E0/161803/representative_trace.pt",
+            "sha256": "be239a327545be27117dedee14aaaaae8e9d989205368c1202c62ce5eed1bcee"
+          },
+          "secondary_correctness": {
+            "relative_path": "measurements/S0-E0/161803/secondary_correctness.pt",
+            "sha256": "db99b04a5f626429058c7a391e8d976a54d0fab3ee12ad66a9778eea200a5e12",
+            "tensor_sha256": "48903382c9d04d04cf6b4f58292d5017b4ab8080fdd53997790253d3a2dc7273"
+          },
+          "secondary_prediction": {
+            "relative_path": "measurements/S0-E0/161803/secondary_prediction.pt",
+            "sha256": "c7bf312d1f72d052cd95a6be1e3172355124054b649e449eac228272f1fc7508",
+            "tensor_sha256": "fd68621014a22b1d4543c30c570325883d84e5c252ee5d7de4e8233f3a546eae"
+          }
+        },
+        "camera_fraction": 0.12333305925130844,
+        "clipped_fraction": 0.00984949991106987,
+        "codes_sha256": "182375abc3278324417adc12922a3dfb2fc3f2c7fcfa9e3bf7118b07ab5e4010",
+        "coverage_ratio": 3.5729358196258545,
+        "energy_oracle": false,
+        "energy_retention_mean": 0.7345354703938213,
+        "exposure_scale": 0.4913053810596466,
+        "finite": true,
+        "input_energy_mean": 3.2866243060425404e-08,
+        "labels_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "minimum_diversity": 0.16396339237689972,
+        "nonnegative": true,
+        "nonphysical_upper_bound": false,
+        "normalized_raw_mean": 0.17482636868953705,
+        "normalized_raw_p01": 0.0006611268036067486,
+        "normalized_raw_p50": 0.07234804332256317,
+        "normalized_raw_p99": 0.9930177927017212,
+        "normalized_raw_quantile_sample_count": 1000000,
+        "output_energy_mean": 2.4141421306467237e-08,
+        "panel": 161803,
+        "passive": true,
+        "passive_available": true,
+        "primary_accuracy": 0.6000000238418579,
+        "primary_min_recall": 0.0,
+        "primary_recall": [
+          0.07999999821186066,
+          0.0,
+          0.9399999976158142,
+          1.0,
+          0.7599999904632568,
+          1.0,
+          0.5,
+          0.6600000262260437,
+          0.10000000149011612,
+          0.9599999785423279
+        ],
+        "projection_fraction_mean": 0.7339878082275391,
+        "raw_finite": true,
+        "raw_nonnegative": true,
+        "residual_fraction_mean": 0.2660123407840729,
+        "saturation": 0.00984949991106987,
+        "secondary_accuracy": 0.1599999964237213,
+        "secondary_min_recall": 0.0,
+        "secondary_prediction_histogram": [
+          30,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          470,
+          0
+        ],
+        "secondary_recall": [
+          0.6000000238418579,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        "variant": "S0-E0"
+      },
+      "4242": {
+        "agreement": 0.15000000596046448,
+        "amplitude_scale": 1.0,
+        "artifacts": {
+          "codes": {
+            "relative_path": "measurements/S0-E0/4242/codes.pt",
+            "sha256": "9f2cd24df61c927612bc0541e4f3d9a2991f38b2cabd303da10474a671e623ae",
+            "tensor_sha256": "4174780d4ac6938c7dc091a531d1ad4d4395773888ebbd40f3d7e0625624f2db"
+          },
+          "fixed_cmos": {
+            "relative_path": "measurements/S0-E0/4242/fixed_cmos.pt",
+            "sha256": "5503cc3fbf1581efc98bc65dc874ee0bb81d9158f2e2652a6964d50cfea93c73",
+            "tensor_sha256": "9f1fdeedfaeefa98961b7fcf12f5a806519405deee377bc0fb7839964dd4a6c8"
+          },
+          "labels": {
+            "relative_path": "measurements/S0-E0/4242/labels.pt",
+            "sha256": "7e712126975a9a92523ef84d4754bf33ca6b54d749b5ea1449b5c5fc393aefcf",
+            "tensor_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+          },
+          "primary_prediction": {
+            "relative_path": "measurements/S0-E0/4242/primary_prediction.pt",
+            "sha256": "de881f7b9c286bd2d58acd6685b990fee2b87dd5b104ebab7b6a3de366f3ba81",
+            "tensor_sha256": "5dd8a9ca865b984e97be3c42191188cf66d860fcfe2d66c7dc93afffa060e3ff"
+          },
+          "representative_trace": {
+            "relative_path": "measurements/S0-E0/4242/representative_trace.pt",
+            "sha256": "147470c41ba5868e99cddcaddf0d6713ea58e8c06b22f376548c4adb5abb7b07"
+          },
+          "secondary_correctness": {
+            "relative_path": "measurements/S0-E0/4242/secondary_correctness.pt",
+            "sha256": "99435b63bbb1d4a87be4e32caca7f400bda85d71f9889fcab86c24f64235d2cc",
+            "tensor_sha256": "0c28eb23af32ce21267f22069a77d8c7fce8e22e55fe991478e2a0ada01e2400"
+          },
+          "secondary_prediction": {
+            "relative_path": "measurements/S0-E0/4242/secondary_prediction.pt",
+            "sha256": "18679207adbd81dcd8f8aad369393f03f8d60859d72d95a475f1d6e88171a13f",
+            "tensor_sha256": "d5fb0ca2c5e1777cc3df4ad7907231f0f2e733701237315741bf659d4a173388"
+          }
+        },
+        "camera_fraction": 0.12979008257389069,
+        "clipped_fraction": 0.009637949988245964,
+        "codes_sha256": "4174780d4ac6938c7dc091a531d1ad4d4395773888ebbd40f3d7e0625624f2db",
+        "coverage_ratio": 3.569108247756958,
+        "energy_oracle": false,
+        "energy_retention_mean": 0.7345034121280221,
+        "exposure_scale": 0.4913053810596466,
+        "finite": true,
+        "input_energy_mean": 3.279733462591139e-08,
+        "labels_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "minimum_diversity": 0.17537282407283783,
+        "nonnegative": true,
+        "nonphysical_upper_bound": false,
+        "normalized_raw_mean": 0.17442601919174194,
+        "normalized_raw_p01": 0.0006597845931537449,
+        "normalized_raw_p50": 0.07197120785713196,
+        "normalized_raw_p99": 0.9904987812042236,
+        "normalized_raw_quantile_sample_count": 1000000,
+        "output_energy_mean": 2.408975419143644e-08,
+        "panel": 4242,
+        "passive": true,
+        "passive_available": true,
+        "primary_accuracy": 0.5920000076293945,
+        "primary_min_recall": 0.0,
+        "primary_recall": [
+          0.05999999865889549,
+          0.0,
+          0.8600000143051147,
+          0.9800000190734863,
+          0.9200000166893005,
+          1.0,
+          0.3799999952316284,
+          0.5199999809265137,
+          0.23999999463558197,
+          0.9599999785423279
+        ],
+        "projection_fraction_mean": 0.734045147895813,
+        "raw_finite": true,
+        "raw_nonnegative": true,
+        "residual_fraction_mean": 0.26595479249954224,
+        "saturation": 0.009637949988245964,
+        "secondary_accuracy": 0.1599999964237213,
+        "secondary_min_recall": 0.0,
+        "secondary_prediction_histogram": [
+          30,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          469,
+          0
+        ],
+        "secondary_recall": [
+          0.6000000238418579,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        "variant": "S0-E0"
+      }
+    },
+    "S0-Ecal": {
+      "104729": {
+        "agreement": 0.2619999945163727,
+        "amplitude_scale": 1.0,
+        "artifacts": {
+          "codes": {
+            "relative_path": "measurements/S0-Ecal/104729/codes.pt",
+            "sha256": "67f0a1f7957d4368e240c7925e90cad6e6cd88ebd4bbea4745f813ecd9c59735",
+            "tensor_sha256": "81d43602a20a020284f1a6d5990461596a9cb21d0a3b1840d07ebd94abc5e209"
+          },
+          "fixed_cmos": {
+            "relative_path": "measurements/S0-Ecal/104729/fixed_cmos.pt",
+            "sha256": "93f2c4dc1f86fc6f683a66fff50c5bd95bfafbd9c04a87e39e88174413193c17",
+            "tensor_sha256": "9434476077f0405566438bceea8c0214905223205cc97ba8d979ff87981bbfe9"
+          },
+          "labels": {
+            "relative_path": "measurements/S0-Ecal/104729/labels.pt",
+            "sha256": "2e339eaf55b832966fad6f5a2e17f8e74cc04399c564261357050eae2de68931",
+            "tensor_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+          },
+          "primary_prediction": {
+            "relative_path": "measurements/S0-Ecal/104729/primary_prediction.pt",
+            "sha256": "946f7b4d01eb11c0c528b4e50bd72a5d00caa72be28e8a4f0f1e9f14859e2723",
+            "tensor_sha256": "c6ee2c9c53b94b8c6c210ec70bd1b16a56dca58c83dd8ccb85be708632d78ac0"
+          },
+          "representative_trace": {
+            "relative_path": "measurements/S0-Ecal/104729/representative_trace.pt",
+            "sha256": "1f6d90a2180cda925f746947e0e7ad862440e509330b6e258a6c3a80fc0448fa"
+          },
+          "secondary_correctness": {
+            "relative_path": "measurements/S0-Ecal/104729/secondary_correctness.pt",
+            "sha256": "21b0d9ebef5f8ea09b7932f7bc4688cdf78341b97c7c50828667ebb088e5803e",
+            "tensor_sha256": "151467ec4755233a3f2730f3406b7f438f168172f2a140df0728b9aa1bad3211"
+          },
+          "secondary_prediction": {
+            "relative_path": "measurements/S0-Ecal/104729/secondary_prediction.pt",
+            "sha256": "e9a30698b4abeb97362d8f3bc64fef6d363ae63da4e5055d69c9f2507bfe2bdb",
+            "tensor_sha256": "e80375085cb7215d543b05aba1763561f4d34e854d76d83d82046d2d7393a303"
+          }
+        },
+        "camera_fraction": 0.13799914717674255,
+        "clipped_fraction": 0.03270604833960533,
+        "codes_sha256": "81d43602a20a020284f1a6d5990461596a9cb21d0a3b1840d07ebd94abc5e209",
+        "coverage_ratio": 3.5032851696014404,
+        "energy_oracle": false,
+        "energy_retention_mean": 0.7343348261402981,
+        "exposure_scale": 0.36080148140911383,
+        "finite": true,
+        "input_energy_mean": 3.295113870649402e-08,
+        "labels_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "minimum_diversity": 0.2035207450389862,
+        "nonnegative": true,
+        "nonphysical_upper_bound": false,
+        "normalized_raw_mean": 0.23850885033607483,
+        "normalized_raw_p01": 0.0008834415930323303,
+        "normalized_raw_p50": 0.09892595559358597,
+        "normalized_raw_p99": 1.3477474451065063,
+        "normalized_raw_quantile_sample_count": 1000000,
+        "output_energy_mean": 2.4197168713158135e-08,
+        "panel": 104729,
+        "passive": true,
+        "passive_available": true,
+        "primary_accuracy": 0.8360000252723694,
+        "primary_min_recall": 0.019999999552965164,
+        "primary_recall": [
+          0.5199999809265137,
+          0.019999999552965164,
+          1.0,
+          1.0,
+          0.8799999952316284,
+          1.0,
+          1.0,
+          0.9399999976158142,
+          1.0,
+          1.0
+        ],
+        "projection_fraction_mean": 0.7338865995407104,
+        "raw_finite": true,
+        "raw_nonnegative": true,
+        "residual_fraction_mean": 0.26611340045928955,
+        "saturation": 0.03270604833960533,
+        "secondary_accuracy": 0.23199999332427979,
+        "secondary_min_recall": 0.0,
+        "secondary_prediction_histogram": [
+          50,
+          0,
+          4,
+          12,
+          45,
+          0,
+          0,
+          0,
+          389,
+          0
+        ],
+        "secondary_recall": [
+          1.0,
+          0.0,
+          0.07999999821186066,
+          0.23999999463558197,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        "variant": "S0-Ecal"
+      },
+      "161803": {
+        "agreement": 0.2280000001192093,
+        "amplitude_scale": 1.0,
+        "artifacts": {
+          "codes": {
+            "relative_path": "measurements/S0-Ecal/161803/codes.pt",
+            "sha256": "5066aaaf9aeef8172258e26299c63b7c452e957e40359c7f505121a2e57ab03e",
+            "tensor_sha256": "182375abc3278324417adc12922a3dfb2fc3f2c7fcfa9e3bf7118b07ab5e4010"
+          },
+          "fixed_cmos": {
+            "relative_path": "measurements/S0-Ecal/161803/fixed_cmos.pt",
+            "sha256": "942a1b01051e2d6dd7b2cbfcfac49b6956c9ef66ad557dc99e7e332ec2112bf5",
+            "tensor_sha256": "b514566e4e8f0f11b83ac7a877c2f21871b1c7ccedf29ce5884774f968cc8f93"
+          },
+          "labels": {
+            "relative_path": "measurements/S0-Ecal/161803/labels.pt",
+            "sha256": "9492a389b4abac3964310b565c5ff42b129e998b9c081dd2da9b8f96c97feef4",
+            "tensor_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+          },
+          "primary_prediction": {
+            "relative_path": "measurements/S0-Ecal/161803/primary_prediction.pt",
+            "sha256": "7ac4043fb7a8f17c32450266e35857f5b765927a4ff55c1e78d66bfa4ec8624a",
+            "tensor_sha256": "c1ac97fe87667d235d19ce67e5b74f6d793bd3479ea33fc26a584e8615f4a834"
+          },
+          "representative_trace": {
+            "relative_path": "measurements/S0-Ecal/161803/representative_trace.pt",
+            "sha256": "dba5011f3f7e074702b49b6fdebf28cf225ccd79d00e0734430af0bebfd512a9"
+          },
+          "secondary_correctness": {
+            "relative_path": "measurements/S0-Ecal/161803/secondary_correctness.pt",
+            "sha256": "aa8031a47b146a5f27745342844726a5f515e7142a48e7ceaf115c5650b093d7",
+            "tensor_sha256": "f4394ff5cbeb485cb652cc6556338170e19c0a2d01d8d704d531e4d19cffead0"
+          },
+          "secondary_prediction": {
+            "relative_path": "measurements/S0-Ecal/161803/secondary_prediction.pt",
+            "sha256": "d550df79c6bac8b599589143f7c4057d8a4f57109476293d24e29dff2b55553b",
+            "tensor_sha256": "c9ab1579c1db74beb2ea48222840545a195d6d7f8e2eb7fac68e9b4816c80437"
+          }
+        },
+        "camera_fraction": 0.12333305925130844,
+        "clipped_fraction": 0.03318919986486435,
+        "codes_sha256": "182375abc3278324417adc12922a3dfb2fc3f2c7fcfa9e3bf7118b07ab5e4010",
+        "coverage_ratio": 3.5171704292297363,
+        "energy_oracle": false,
+        "energy_retention_mean": 0.7345354703938213,
+        "exposure_scale": 0.36080148140911383,
+        "finite": true,
+        "input_energy_mean": 3.2866243060425404e-08,
+        "labels_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "minimum_diversity": 0.18519730865955353,
+        "nonnegative": true,
+        "nonphysical_upper_bound": false,
+        "normalized_raw_mean": 0.2380620539188385,
+        "normalized_raw_p01": 0.0009002601145766675,
+        "normalized_raw_p50": 0.09851673245429993,
+        "normalized_raw_p99": 1.3521977663040161,
+        "normalized_raw_quantile_sample_count": 1000000,
+        "output_energy_mean": 2.4141421306467237e-08,
+        "panel": 161803,
+        "passive": true,
+        "passive_available": true,
+        "primary_accuracy": 0.8339999914169312,
+        "primary_min_recall": 0.0,
+        "primary_recall": [
+          0.41999998688697815,
+          0.0,
+          1.0,
+          1.0,
+          0.9200000166893005,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "projection_fraction_mean": 0.7339878082275391,
+        "raw_finite": true,
+        "raw_nonnegative": true,
+        "residual_fraction_mean": 0.2660123407840729,
+        "saturation": 0.03318919986486435,
+        "secondary_accuracy": 0.22200000286102295,
+        "secondary_min_recall": 0.0,
+        "secondary_prediction_histogram": [
+          50,
+          0,
+          2,
+          10,
+          46,
+          0,
+          0,
+          0,
+          392,
+          0
+        ],
+        "secondary_recall": [
+          1.0,
+          0.0,
+          0.03999999910593033,
+          0.18000000715255737,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        "variant": "S0-Ecal"
+      },
+      "4242": {
+        "agreement": 0.28200000524520874,
+        "amplitude_scale": 1.0,
+        "artifacts": {
+          "codes": {
+            "relative_path": "measurements/S0-Ecal/4242/codes.pt",
+            "sha256": "33cc5de8f8b5ac5f2bcff1df102aef1214fe12e2d4541167c44ec9a36451538e",
+            "tensor_sha256": "4174780d4ac6938c7dc091a531d1ad4d4395773888ebbd40f3d7e0625624f2db"
+          },
+          "fixed_cmos": {
+            "relative_path": "measurements/S0-Ecal/4242/fixed_cmos.pt",
+            "sha256": "1cc2037bb08229ef41c863f0c2b9272b33462f9660486a2f512a00ad26e38e4c",
+            "tensor_sha256": "d35c46525b869a5a764bd9f692bf3b8f230d97b67232d6524d8e56f8cff9c279"
+          },
+          "labels": {
+            "relative_path": "measurements/S0-Ecal/4242/labels.pt",
+            "sha256": "35277733a17dd3f3739fa77305db6ddc287db1c876fa181eb139adca51bce8fb",
+            "tensor_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+          },
+          "primary_prediction": {
+            "relative_path": "measurements/S0-Ecal/4242/primary_prediction.pt",
+            "sha256": "fa46fcbcb5aebdcca2d3d945194cc117ae0f809527c800406f4800ed58cf7f30",
+            "tensor_sha256": "ee7926969af65599ef2648acf5e9f24826d6cc30a2ea885cbf002e22044d4e6a"
+          },
+          "representative_trace": {
+            "relative_path": "measurements/S0-Ecal/4242/representative_trace.pt",
+            "sha256": "fc97f89f24e9ffe89f52196740d4072d25634d7bf8749205025bb7ae0af6a4a5"
+          },
+          "secondary_correctness": {
+            "relative_path": "measurements/S0-Ecal/4242/secondary_correctness.pt",
+            "sha256": "bce3f9bde612a3c5e0c50817750b90682e14e6e3850743902cc3755fd691a30b",
+            "tensor_sha256": "27860fe5802ab6d13535c374f8a88bddac6e50be7dfb2f2c440b07c3c29ce002"
+          },
+          "secondary_prediction": {
+            "relative_path": "measurements/S0-Ecal/4242/secondary_prediction.pt",
+            "sha256": "9695927abc3f807b452e6fc9bd11835227450d214875ad88526ef20c9583644d",
+            "tensor_sha256": "a53073dee1cc6d08ce25562f82a30eefb5e10130bdd64284fe8bcd5748571ee7"
+          }
+        },
+        "camera_fraction": 0.12979008257389069,
+        "clipped_fraction": 0.032653551548719406,
+        "codes_sha256": "4174780d4ac6938c7dc091a531d1ad4d4395773888ebbd40f3d7e0625624f2db",
+        "coverage_ratio": 3.516435146331787,
+        "energy_oracle": false,
+        "energy_retention_mean": 0.7345034121280221,
+        "exposure_scale": 0.36080148140911383,
+        "finite": true,
+        "input_energy_mean": 3.279733462591139e-08,
+        "labels_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "minimum_diversity": 0.19445601105690002,
+        "nonnegative": true,
+        "nonphysical_upper_bound": false,
+        "normalized_raw_mean": 0.23751689493656158,
+        "normalized_raw_p01": 0.0008984323940239847,
+        "normalized_raw_p50": 0.09800359606742859,
+        "normalized_raw_p99": 1.348767638206482,
+        "normalized_raw_quantile_sample_count": 1000000,
+        "output_energy_mean": 2.408975419143644e-08,
+        "panel": 4242,
+        "passive": true,
+        "passive_available": true,
+        "primary_accuracy": 0.8640000224113464,
+        "primary_min_recall": 0.019999999552965164,
+        "primary_recall": [
+          0.6800000071525574,
+          0.019999999552965164,
+          1.0,
+          1.0,
+          0.9800000190734863,
+          1.0,
+          1.0,
+          0.9599999785423279,
+          1.0,
+          1.0
+        ],
+        "projection_fraction_mean": 0.734045147895813,
+        "raw_finite": true,
+        "raw_nonnegative": true,
+        "residual_fraction_mean": 0.26595479249954224,
+        "saturation": 0.03265349939465523,
+        "secondary_accuracy": 0.23199999332427979,
+        "secondary_min_recall": 0.0,
+        "secondary_prediction_histogram": [
+          50,
+          0,
+          3,
+          14,
+          43,
+          0,
+          0,
+          0,
+          390,
+          0
+        ],
+        "secondary_recall": [
+          1.0,
+          0.0,
+          0.05999999865889549,
+          0.25999999046325684,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        "variant": "S0-Ecal"
+      }
+    },
+    "S0-field-gain-reference": {
+      "104729": {
+        "agreement": 0.2619999945163727,
+        "amplitude_scale": 1.1669214000160808,
+        "artifacts": {
+          "codes": {
+            "relative_path": "measurements/S0-field-gain-reference/104729/codes.pt",
+            "sha256": "5800b0aae55f9155c298ba6b8d4ed6bf918fe1df62e22d5a071e5705394d10a2",
+            "tensor_sha256": "81d43602a20a020284f1a6d5990461596a9cb21d0a3b1840d07ebd94abc5e209"
+          },
+          "fixed_cmos": {
+            "relative_path": "measurements/S0-field-gain-reference/104729/fixed_cmos.pt",
+            "sha256": "95a150b11d9ff25b6035d653bf77ce499e36a6a9dece208d8c1842a6cfa4f21d",
+            "tensor_sha256": "8beaf4fc43c89e003eecfcc134f1aa2b94bac8ae01da3b43bfa17889dd776906"
+          },
+          "labels": {
+            "relative_path": "measurements/S0-field-gain-reference/104729/labels.pt",
+            "sha256": "d23818ee5fcb551acea85f97c058ce9bd1635361210d1c788f94ad1abf067fe2",
+            "tensor_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+          },
+          "primary_prediction": {
+            "relative_path": "measurements/S0-field-gain-reference/104729/primary_prediction.pt",
+            "sha256": "488988b44d9a820f20487029ec2a5fa18714e2472bc7cbe8ff2cd69190ca2119",
+            "tensor_sha256": "c6ee2c9c53b94b8c6c210ec70bd1b16a56dca58c83dd8ccb85be708632d78ac0"
+          },
+          "representative_trace": {
+            "relative_path": "measurements/S0-field-gain-reference/104729/representative_trace.pt",
+            "sha256": "f01123787d3eb6706541ddfcd7ea6a620d4381b8cacf748fd6c7221a7f5b7cce"
+          },
+          "secondary_correctness": {
+            "relative_path": "measurements/S0-field-gain-reference/104729/secondary_correctness.pt",
+            "sha256": "256b795f93c51b483a9ef8c84c412c3d2f1603f0b3ba6497db9381ce6d6358ee",
+            "tensor_sha256": "151467ec4755233a3f2730f3406b7f438f168172f2a140df0728b9aa1bad3211"
+          },
+          "secondary_prediction": {
+            "relative_path": "measurements/S0-field-gain-reference/104729/secondary_prediction.pt",
+            "sha256": "b9e9db3ef21ebb4c695c9760a07c133ed65a04dc2e01e1463cf838dde7730bee",
+            "tensor_sha256": "e80375085cb7215d543b05aba1763561f4d34e854d76d83d82046d2d7393a303"
+          }
+        },
+        "camera_fraction": 0.13799913227558136,
+        "clipped_fraction": 0.03270604833960533,
+        "codes_sha256": "81d43602a20a020284f1a6d5990461596a9cb21d0a3b1840d07ebd94abc5e209",
+        "coverage_ratio": 3.5032856464385986,
+        "energy_oracle": false,
+        "energy_retention_mean": 0.9999479240847442,
+        "exposure_scale": 0.4913053810596466,
+        "finite": true,
+        "input_energy_mean": 3.295113870649402e-08,
+        "labels_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "minimum_diversity": 0.2035207450389862,
+        "nonnegative": true,
+        "nonphysical_upper_bound": true,
+        "normalized_raw_mean": 0.23850885033607483,
+        "normalized_raw_p01": 0.0008834415930323303,
+        "normalized_raw_p50": 0.09892595559358597,
+        "normalized_raw_p99": 1.3477474451065063,
+        "normalized_raw_quantile_sample_count": 1000000,
+        "output_energy_mean": 3.294942274578716e-08,
+        "panel": 104729,
+        "passive": true,
+        "passive_available": false,
+        "primary_accuracy": 0.8360000252723694,
+        "primary_min_recall": 0.019999999552965164,
+        "primary_recall": [
+          0.5199999809265137,
+          0.019999999552965164,
+          1.0,
+          1.0,
+          0.8799999952316284,
+          1.0,
+          1.0,
+          0.9399999976158142,
+          1.0,
+          1.0
+        ],
+        "projection_fraction_mean": 0.7338865995407104,
+        "raw_finite": true,
+        "raw_nonnegative": true,
+        "residual_fraction_mean": 0.26611340045928955,
+        "saturation": 0.03270604833960533,
+        "secondary_accuracy": 0.23199999332427979,
+        "secondary_min_recall": 0.0,
+        "secondary_prediction_histogram": [
+          50,
+          0,
+          4,
+          12,
+          45,
+          0,
+          0,
+          0,
+          389,
+          0
+        ],
+        "secondary_recall": [
+          1.0,
+          0.0,
+          0.07999999821186066,
+          0.23999999463558197,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        "variant": "S0-field-gain-reference"
+      },
+      "161803": {
+        "agreement": 0.2280000001192093,
+        "amplitude_scale": 1.1669214000160808,
+        "artifacts": {
+          "codes": {
+            "relative_path": "measurements/S0-field-gain-reference/161803/codes.pt",
+            "sha256": "54913ef8825b86c1547a5e2dc66d80ae37a6f44c816a86de08459f640c75a6e6",
+            "tensor_sha256": "182375abc3278324417adc12922a3dfb2fc3f2c7fcfa9e3bf7118b07ab5e4010"
+          },
+          "fixed_cmos": {
+            "relative_path": "measurements/S0-field-gain-reference/161803/fixed_cmos.pt",
+            "sha256": "133b8f17a70c4827c6dec01b0cfb8c242a301821b43e34cdb70d768c2def0308",
+            "tensor_sha256": "4d2c24dd527c316471744a01a0b8baaf96989f295ab0b3f40d734375643bfcfb"
+          },
+          "labels": {
+            "relative_path": "measurements/S0-field-gain-reference/161803/labels.pt",
+            "sha256": "640abc1d65587662099ef5a74b61e4eaebf642f81258110d22b794930de004ac",
+            "tensor_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+          },
+          "primary_prediction": {
+            "relative_path": "measurements/S0-field-gain-reference/161803/primary_prediction.pt",
+            "sha256": "3929c351991f439cd30648accaad177f456c0d834c950757b62115a24c5e4135",
+            "tensor_sha256": "c1ac97fe87667d235d19ce67e5b74f6d793bd3479ea33fc26a584e8615f4a834"
+          },
+          "representative_trace": {
+            "relative_path": "measurements/S0-field-gain-reference/161803/representative_trace.pt",
+            "sha256": "1ab4927c636a7e22c23948102052e49973c795ddea7b7eedddfeb6fa7d1f5077"
+          },
+          "secondary_correctness": {
+            "relative_path": "measurements/S0-field-gain-reference/161803/secondary_correctness.pt",
+            "sha256": "b8d908a2e0c041feb88406d1dd15b1501bbf85716e9e723f6c7be28db56a01db",
+            "tensor_sha256": "f4394ff5cbeb485cb652cc6556338170e19c0a2d01d8d704d531e4d19cffead0"
+          },
+          "secondary_prediction": {
+            "relative_path": "measurements/S0-field-gain-reference/161803/secondary_prediction.pt",
+            "sha256": "0f5ddcdaca8941457e980c620265eab3fe574f4ddc3ae3f0202f171d778c4e0e",
+            "tensor_sha256": "c9ab1579c1db74beb2ea48222840545a195d6d7f8e2eb7fac68e9b4816c80437"
+          }
+        },
+        "camera_fraction": 0.12333305925130844,
+        "clipped_fraction": 0.03318919986486435,
+        "codes_sha256": "182375abc3278324417adc12922a3dfb2fc3f2c7fcfa9e3bf7118b07ab5e4010",
+        "coverage_ratio": 3.517169952392578,
+        "energy_oracle": false,
+        "energy_retention_mean": 1.0002210565856215,
+        "exposure_scale": 0.4913053810596466,
+        "finite": true,
+        "input_energy_mean": 3.2866243060425404e-08,
+        "labels_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "minimum_diversity": 0.18519726395606995,
+        "nonnegative": true,
+        "nonphysical_upper_bound": true,
+        "normalized_raw_mean": 0.2380620539188385,
+        "normalized_raw_p01": 0.0009002601145766675,
+        "normalized_raw_p50": 0.09851673245429993,
+        "normalized_raw_p99": 1.3521977663040161,
+        "normalized_raw_quantile_sample_count": 1000000,
+        "output_energy_mean": 3.287350835989855e-08,
+        "panel": 161803,
+        "passive": false,
+        "passive_available": false,
+        "primary_accuracy": 0.8339999914169312,
+        "primary_min_recall": 0.0,
+        "primary_recall": [
+          0.41999998688697815,
+          0.0,
+          1.0,
+          1.0,
+          0.9200000166893005,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "projection_fraction_mean": 0.7339878082275391,
+        "raw_finite": true,
+        "raw_nonnegative": true,
+        "residual_fraction_mean": 0.2660123407840729,
+        "saturation": 0.03318919986486435,
+        "secondary_accuracy": 0.22200000286102295,
+        "secondary_min_recall": 0.0,
+        "secondary_prediction_histogram": [
+          50,
+          0,
+          2,
+          10,
+          46,
+          0,
+          0,
+          0,
+          392,
+          0
+        ],
+        "secondary_recall": [
+          1.0,
+          0.0,
+          0.03999999910593033,
+          0.18000000715255737,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        "variant": "S0-field-gain-reference"
+      },
+      "4242": {
+        "agreement": 0.28200000524520874,
+        "amplitude_scale": 1.1669214000160808,
+        "artifacts": {
+          "codes": {
+            "relative_path": "measurements/S0-field-gain-reference/4242/codes.pt",
+            "sha256": "60154b0c4f7a7281d5ebcbeb9f04e007e607adc353ac7e5202780ea93e5c84ab",
+            "tensor_sha256": "4174780d4ac6938c7dc091a531d1ad4d4395773888ebbd40f3d7e0625624f2db"
+          },
+          "fixed_cmos": {
+            "relative_path": "measurements/S0-field-gain-reference/4242/fixed_cmos.pt",
+            "sha256": "fa083daca80a737b9f99ac36dcb365ffcdf57fa8cf1e9635db23b355bed119f1",
+            "tensor_sha256": "4ec8fbc3f0a3959c9a7b565f2884c138b0efabeb2f979285a1c4725d135288d4"
+          },
+          "labels": {
+            "relative_path": "measurements/S0-field-gain-reference/4242/labels.pt",
+            "sha256": "5e2301a961179d9b085d874b51ecec5a78c38db7f7697ab75531212d0739b7bd",
+            "tensor_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+          },
+          "primary_prediction": {
+            "relative_path": "measurements/S0-field-gain-reference/4242/primary_prediction.pt",
+            "sha256": "06bf94f29938330a1041ee28e40064c0c86a75d0cedb6bb74fbc883e8e0ba295",
+            "tensor_sha256": "ee7926969af65599ef2648acf5e9f24826d6cc30a2ea885cbf002e22044d4e6a"
+          },
+          "representative_trace": {
+            "relative_path": "measurements/S0-field-gain-reference/4242/representative_trace.pt",
+            "sha256": "73e577c6bd103ae471ea8cf2cc0f6acc21c9b3391959c92a72b169c2c740b6bb"
+          },
+          "secondary_correctness": {
+            "relative_path": "measurements/S0-field-gain-reference/4242/secondary_correctness.pt",
+            "sha256": "3e5e62644d4c3821573fbf18df007479f0eced1e7a768e88e7904c1d983c0356",
+            "tensor_sha256": "27860fe5802ab6d13535c374f8a88bddac6e50be7dfb2f2c440b07c3c29ce002"
+          },
+          "secondary_prediction": {
+            "relative_path": "measurements/S0-field-gain-reference/4242/secondary_prediction.pt",
+            "sha256": "a2ebdb6a7a3e364c0a24127c9d3bfde0ed7d76cdbde030333460f6245112c1c3",
+            "tensor_sha256": "a53073dee1cc6d08ce25562f82a30eefb5e10130bdd64284fe8bcd5748571ee7"
+          }
+        },
+        "camera_fraction": 0.12979009747505188,
+        "clipped_fraction": 0.032653551548719406,
+        "codes_sha256": "4174780d4ac6938c7dc091a531d1ad4d4395773888ebbd40f3d7e0625624f2db",
+        "coverage_ratio": 3.516434669494629,
+        "energy_oracle": false,
+        "energy_retention_mean": 1.0001774334735505,
+        "exposure_scale": 0.4913053810596466,
+        "finite": true,
+        "input_energy_mean": 3.279733462591139e-08,
+        "labels_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "minimum_diversity": 0.19445601105690002,
+        "nonnegative": true,
+        "nonphysical_upper_bound": true,
+        "normalized_raw_mean": 0.23751689493656158,
+        "normalized_raw_p01": 0.0008984323358163238,
+        "normalized_raw_p50": 0.09800359606742859,
+        "normalized_raw_p99": 1.3487677574157715,
+        "normalized_raw_quantile_sample_count": 1000000,
+        "output_energy_mean": 3.2803153970917265e-08,
+        "panel": 4242,
+        "passive": false,
+        "passive_available": false,
+        "primary_accuracy": 0.8640000224113464,
+        "primary_min_recall": 0.019999999552965164,
+        "primary_recall": [
+          0.6800000071525574,
+          0.019999999552965164,
+          1.0,
+          1.0,
+          0.9800000190734863,
+          1.0,
+          1.0,
+          0.9599999785423279,
+          1.0,
+          1.0
+        ],
+        "projection_fraction_mean": 0.734045147895813,
+        "raw_finite": true,
+        "raw_nonnegative": true,
+        "residual_fraction_mean": 0.26595479249954224,
+        "saturation": 0.03265349939465523,
+        "secondary_accuracy": 0.23199999332427979,
+        "secondary_min_recall": 0.0,
+        "secondary_prediction_histogram": [
+          50,
+          0,
+          3,
+          14,
+          43,
+          0,
+          0,
+          0,
+          390,
+          0
+        ],
+        "secondary_recall": [
+          1.0,
+          0.0,
+          0.05999999865889549,
+          0.25999999046325684,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        "variant": "S0-field-gain-reference"
+      }
+    },
+    "S0-gain-075": {
+      "104729": {
+        "agreement": 0.15199999511241913,
+        "amplitude_scale": 1.0,
+        "artifacts": {
+          "codes": {
+            "relative_path": "measurements/S0-gain-075/104729/codes.pt",
+            "sha256": "47483efcc64e1c820bd5fe612c6d48dc61900464e66f0f6ed4f7876e9b88ada2",
+            "tensor_sha256": "81d43602a20a020284f1a6d5990461596a9cb21d0a3b1840d07ebd94abc5e209"
+          },
+          "fixed_cmos": {
+            "relative_path": "measurements/S0-gain-075/104729/fixed_cmos.pt",
+            "sha256": "655fbcbc6da4fb37591c4c67b8de1f8478486a89133ac3da1bf3043b0b83201b",
+            "tensor_sha256": "c0f2a25c714b6f061842e481af847725358fd25415206bf0c7dd9bf230a81eb5"
+          },
+          "labels": {
+            "relative_path": "measurements/S0-gain-075/104729/labels.pt",
+            "sha256": "4a523a874119bbccd88eaf86f219cbd21b4e22ff2df1ec5570cfeea8898242ea",
+            "tensor_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+          },
+          "primary_prediction": {
+            "relative_path": "measurements/S0-gain-075/104729/primary_prediction.pt",
+            "sha256": "30ada10f623d0003287379876bd6056d446ae34b048a3a20b086670a2ad5b52c",
+            "tensor_sha256": "6549991a4a68851e86a530f17b4e1f95c45a279ae5ae57af66d03eff6f3d6564"
+          },
+          "representative_trace": {
+            "relative_path": "measurements/S0-gain-075/104729/representative_trace.pt",
+            "sha256": "6fb0e99ec6f74e9e074718ca0765978803cdfb9d6b44eb6059d2c52684cbcb90"
+          },
+          "secondary_correctness": {
+            "relative_path": "measurements/S0-gain-075/104729/secondary_correctness.pt",
+            "sha256": "77c9ccc5e9088a5e39f719a298e94c8b34470106bc2cae0fededd6f90f066931",
+            "tensor_sha256": "eab48831de401d9a14e3bed6fa625e48caf5de432966ec31f14de15719e7ec5b"
+          },
+          "secondary_prediction": {
+            "relative_path": "measurements/S0-gain-075/104729/secondary_prediction.pt",
+            "sha256": "372383c91567f7f36f46966f1fa138836286ab75bd7fea611a7e447a0b664029",
+            "tensor_sha256": "2a7e54999410277888d196c86e97a341d8cc80e3084dbd4ff635cd14b33a2db9"
+          }
+        },
+        "camera_fraction": 0.13799914717674255,
+        "clipped_fraction": 0.0013412500265985727,
+        "codes_sha256": "81d43602a20a020284f1a6d5990461596a9cb21d0a3b1840d07ebd94abc5e209",
+        "coverage_ratio": 3.6206274032592773,
+        "energy_oracle": false,
+        "energy_retention_mean": 0.7343348261402981,
+        "exposure_scale": 0.6550738414128622,
+        "finite": true,
+        "input_energy_mean": 3.295113870649402e-08,
+        "labels_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "minimum_diversity": 0.14536376297473907,
+        "nonnegative": true,
+        "nonphysical_upper_bound": false,
+        "normalized_raw_mean": 0.13136588037014008,
+        "normalized_raw_p01": 0.0004865818773396313,
+        "normalized_raw_p50": 0.05448642745614052,
+        "normalized_raw_p99": 0.7423121929168701,
+        "normalized_raw_quantile_sample_count": 1000000,
+        "output_energy_mean": 2.4197168713158135e-08,
+        "panel": 104729,
+        "passive": true,
+        "passive_available": false,
+        "primary_accuracy": 0.29600000381469727,
+        "primary_min_recall": 0.0,
+        "primary_recall": [
+          0.019999999552965164,
+          0.0,
+          0.36000001430511475,
+          0.8600000143051147,
+          0.07999999821186066,
+          1.0,
+          0.019999999552965164,
+          0.41999998688697815,
+          0.0,
+          0.20000000298023224
+        ],
+        "projection_fraction_mean": 0.7338865995407104,
+        "raw_finite": true,
+        "raw_nonnegative": true,
+        "residual_fraction_mean": 0.26611340045928955,
+        "saturation": 0.0013412500265985727,
+        "secondary_accuracy": 0.10000000149011612,
+        "secondary_min_recall": 0.0,
+        "secondary_prediction_histogram": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          500,
+          0
+        ],
+        "secondary_recall": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        "variant": "S0-gain-075"
+      },
+      "161803": {
+        "agreement": 0.13199999928474426,
+        "amplitude_scale": 1.0,
+        "artifacts": {
+          "codes": {
+            "relative_path": "measurements/S0-gain-075/161803/codes.pt",
+            "sha256": "89a78f8aa7fd28f326affca521f9e515292b30196dba3fe0c4a3f4bc28368cb6",
+            "tensor_sha256": "182375abc3278324417adc12922a3dfb2fc3f2c7fcfa9e3bf7118b07ab5e4010"
+          },
+          "fixed_cmos": {
+            "relative_path": "measurements/S0-gain-075/161803/fixed_cmos.pt",
+            "sha256": "29e6601f233a1a7620af8c6a4dacb5a6eaf6bce9646fe801b65563873c70b200",
+            "tensor_sha256": "a2cfcfa14e3e2ee182cf16a0e0fd2d623d21f915179bec0cd0bdcabb03d614e4"
+          },
+          "labels": {
+            "relative_path": "measurements/S0-gain-075/161803/labels.pt",
+            "sha256": "2a5f65b5aa5642daef23cf6a98c4716b9afb3efc7827496c844824fb398b6ad4",
+            "tensor_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+          },
+          "primary_prediction": {
+            "relative_path": "measurements/S0-gain-075/161803/primary_prediction.pt",
+            "sha256": "5af6bda468662c3e40e44e75e2a39f192b23c5f1372bb5fe8cd473f349791c26",
+            "tensor_sha256": "88ffb3e4cdeaa3b69deaa58547d5f843c31a197d2817a4b4e146b7b552a0a838"
+          },
+          "representative_trace": {
+            "relative_path": "measurements/S0-gain-075/161803/representative_trace.pt",
+            "sha256": "9e1f7d2e242056608238c5cfaa2143d4bab6bf337b92fc633e2017da5675f980"
+          },
+          "secondary_correctness": {
+            "relative_path": "measurements/S0-gain-075/161803/secondary_correctness.pt",
+            "sha256": "44887e47dc27f5a5af7e871760789a137c98227b0cad9e6dc8fc2a153406726d",
+            "tensor_sha256": "eab48831de401d9a14e3bed6fa625e48caf5de432966ec31f14de15719e7ec5b"
+          },
+          "secondary_prediction": {
+            "relative_path": "measurements/S0-gain-075/161803/secondary_prediction.pt",
+            "sha256": "3a117cffdfe63d2511ae91d2537410472dba67dc56db7d02ee97452322f8b6f7",
+            "tensor_sha256": "2a7e54999410277888d196c86e97a341d8cc80e3084dbd4ff635cd14b33a2db9"
+          }
+        },
+        "camera_fraction": 0.12333305925130844,
+        "clipped_fraction": 0.0015474499668926,
+        "codes_sha256": "182375abc3278324417adc12922a3dfb2fc3f2c7fcfa9e3bf7118b07ab5e4010",
+        "coverage_ratio": 3.6319937705993652,
+        "energy_oracle": false,
+        "energy_retention_mean": 0.7345354703938213,
+        "exposure_scale": 0.6550738414128622,
+        "finite": true,
+        "input_energy_mean": 3.2866243060425404e-08,
+        "labels_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "minimum_diversity": 0.12901103496551514,
+        "nonnegative": true,
+        "nonphysical_upper_bound": false,
+        "normalized_raw_mean": 0.13111980259418488,
+        "normalized_raw_p01": 0.0004958451609127223,
+        "normalized_raw_p50": 0.05426103621721268,
+        "normalized_raw_p99": 0.7447633743286133,
+        "normalized_raw_quantile_sample_count": 1000000,
+        "output_energy_mean": 2.4141421306467237e-08,
+        "panel": 161803,
+        "passive": true,
+        "passive_available": false,
+        "primary_accuracy": 0.3319999873638153,
+        "primary_min_recall": 0.0,
+        "primary_recall": [
+          0.0,
+          0.0,
+          0.46000000834465027,
+          0.9399999976158142,
+          0.05999999865889549,
+          1.0,
+          0.019999999552965164,
+          0.6200000047683716,
+          0.0,
+          0.2199999988079071
+        ],
+        "projection_fraction_mean": 0.7339878082275391,
+        "raw_finite": true,
+        "raw_nonnegative": true,
+        "residual_fraction_mean": 0.2660123407840729,
+        "saturation": 0.0015474499668926,
+        "secondary_accuracy": 0.10000000149011612,
+        "secondary_min_recall": 0.0,
+        "secondary_prediction_histogram": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          500,
+          0
+        ],
+        "secondary_recall": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        "variant": "S0-gain-075"
+      },
+      "4242": {
+        "agreement": 0.15600000321865082,
+        "amplitude_scale": 1.0,
+        "artifacts": {
+          "codes": {
+            "relative_path": "measurements/S0-gain-075/4242/codes.pt",
+            "sha256": "186c4e080f39f31128c6a6ff1239adaff1b2ac3f8877beb5df6c924616fee4b0",
+            "tensor_sha256": "4174780d4ac6938c7dc091a531d1ad4d4395773888ebbd40f3d7e0625624f2db"
+          },
+          "fixed_cmos": {
+            "relative_path": "measurements/S0-gain-075/4242/fixed_cmos.pt",
+            "sha256": "d8cd43d6bb66942dde786a0c4eec545a5ad80a50c1605039b24ddf285ec800a3",
+            "tensor_sha256": "7c8ac8a561e797f979d1e3b6febab540e650dc3a3987df8c4d2b2fda02ca8351"
+          },
+          "labels": {
+            "relative_path": "measurements/S0-gain-075/4242/labels.pt",
+            "sha256": "b8546210cbbb49acfaac05f7973019212be4cfc3e20ea020908421aff36bc61a",
+            "tensor_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+          },
+          "primary_prediction": {
+            "relative_path": "measurements/S0-gain-075/4242/primary_prediction.pt",
+            "sha256": "5aa3dac60b07abca166e9c12886df2ccb5487dcdf905df0c64d98961390ec467",
+            "tensor_sha256": "92fcf4ffeae2f8666ecc85df40fead7086995b33b4eb0dccce708c82206fe719"
+          },
+          "representative_trace": {
+            "relative_path": "measurements/S0-gain-075/4242/representative_trace.pt",
+            "sha256": "3d9cf0a96e44f8a1bab30da750dacffebc090780f6d5c952064bb3c16fc5667e"
+          },
+          "secondary_correctness": {
+            "relative_path": "measurements/S0-gain-075/4242/secondary_correctness.pt",
+            "sha256": "f91bcae6e657cd98685c523241f2aa84f94441b671ad23dd2a8ed104ff1b2d6f",
+            "tensor_sha256": "eab48831de401d9a14e3bed6fa625e48caf5de432966ec31f14de15719e7ec5b"
+          },
+          "secondary_prediction": {
+            "relative_path": "measurements/S0-gain-075/4242/secondary_prediction.pt",
+            "sha256": "9ca7edf4bff398cc2c8e16ec9920259c842834d1e49178818e68fe30cdd08cd2",
+            "tensor_sha256": "2a7e54999410277888d196c86e97a341d8cc80e3084dbd4ff635cd14b33a2db9"
+          }
+        },
+        "camera_fraction": 0.12979008257389069,
+        "clipped_fraction": 0.0014739000471308827,
+        "codes_sha256": "4174780d4ac6938c7dc091a531d1ad4d4395773888ebbd40f3d7e0625624f2db",
+        "coverage_ratio": 3.6285581588745117,
+        "energy_oracle": false,
+        "energy_retention_mean": 0.7345034121280221,
+        "exposure_scale": 0.6550738414128622,
+        "finite": true,
+        "input_energy_mean": 3.279733462591139e-08,
+        "labels_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "minimum_diversity": 0.13953259587287903,
+        "nonnegative": true,
+        "nonphysical_upper_bound": false,
+        "normalized_raw_mean": 0.13081951439380646,
+        "normalized_raw_p01": 0.0004948384594172239,
+        "normalized_raw_p50": 0.05397840961813927,
+        "normalized_raw_p99": 0.7428740859031677,
+        "normalized_raw_quantile_sample_count": 1000000,
+        "output_energy_mean": 2.408975419143644e-08,
+        "panel": 4242,
+        "passive": true,
+        "passive_available": false,
+        "primary_accuracy": 0.3100000023841858,
+        "primary_min_recall": 0.0,
+        "primary_recall": [
+          0.0,
+          0.0,
+          0.47999998927116394,
+          0.8199999928474426,
+          0.07999999821186066,
+          1.0,
+          0.0,
+          0.46000000834465027,
+          0.0,
+          0.25999999046325684
+        ],
+        "projection_fraction_mean": 0.734045147895813,
+        "raw_finite": true,
+        "raw_nonnegative": true,
+        "residual_fraction_mean": 0.26595479249954224,
+        "saturation": 0.0014739000471308827,
+        "secondary_accuracy": 0.10000000149011612,
+        "secondary_min_recall": 0.0,
+        "secondary_prediction_histogram": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          500,
+          0
+        ],
+        "secondary_recall": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        "variant": "S0-gain-075"
+      }
+    },
+    "S0-gain-100": {
+      "104729": {
+        "agreement": 0.14800000190734863,
+        "amplitude_scale": 1.0,
+        "artifacts": {
+          "codes": {
+            "relative_path": "measurements/S0-gain-100/104729/codes.pt",
+            "sha256": "522fd739d2463cf3f054443940230899e116dcc5326d7c086134285f8666998f",
+            "tensor_sha256": "81d43602a20a020284f1a6d5990461596a9cb21d0a3b1840d07ebd94abc5e209"
+          },
+          "fixed_cmos": {
+            "relative_path": "measurements/S0-gain-100/104729/fixed_cmos.pt",
+            "sha256": "05a267fb4c35f0cccaec21517b911bd38ae439621f4f36e3e5853fd8b1e6395e",
+            "tensor_sha256": "bab18dde6475421dbfe8a22210ff91301342f6d9453175ea653334ef2a75c206"
+          },
+          "labels": {
+            "relative_path": "measurements/S0-gain-100/104729/labels.pt",
+            "sha256": "6f2fa0deb21915765f7e3b2fd5f3ffb0e450e0db43b306f7568663409b446aad",
+            "tensor_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+          },
+          "primary_prediction": {
+            "relative_path": "measurements/S0-gain-100/104729/primary_prediction.pt",
+            "sha256": "fe97bb036e2a9231acdb934357999010d92961242461005b10c62ed48bed4f0c",
+            "tensor_sha256": "edcf941396e4314b65ca12efb5622211b2e27de52e164c9167e6383dff20be7b"
+          },
+          "representative_trace": {
+            "relative_path": "measurements/S0-gain-100/104729/representative_trace.pt",
+            "sha256": "1eaf170bdbee09e2ca9fb73741c9191d238539de55978031180386f429b6cdb9"
+          },
+          "secondary_correctness": {
+            "relative_path": "measurements/S0-gain-100/104729/secondary_correctness.pt",
+            "sha256": "46069b994137ef8cbf453775b50225128dd16f10059a8040973bd7351f28ce85",
+            "tensor_sha256": "cdaa369f688a4e18e5dcdc9e367b62cac304a20645ebda5f003046d1255f809d"
+          },
+          "secondary_prediction": {
+            "relative_path": "measurements/S0-gain-100/104729/secondary_prediction.pt",
+            "sha256": "ba928c2825d3ed276865323d82e4ab4024b8117c78b0139d9073c515f9e0c2b7",
+            "tensor_sha256": "e61d36700c12fa778be6f3949ef94b23b6239daa5474d79295a8605752b4f225"
+          }
+        },
+        "camera_fraction": 0.13799914717674255,
+        "clipped_fraction": 0.009542199783027172,
+        "codes_sha256": "81d43602a20a020284f1a6d5990461596a9cb21d0a3b1840d07ebd94abc5e209",
+        "coverage_ratio": 3.560364246368408,
+        "energy_oracle": false,
+        "energy_retention_mean": 0.7343348261402981,
+        "exposure_scale": 0.4913053810596466,
+        "finite": true,
+        "input_energy_mean": 3.295113870649402e-08,
+        "labels_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "minimum_diversity": 0.18306566774845123,
+        "nonnegative": true,
+        "nonphysical_upper_bound": false,
+        "normalized_raw_mean": 0.17515450716018677,
+        "normalized_raw_p01": 0.0006487758364528418,
+        "normalized_raw_p50": 0.07264856994152069,
+        "normalized_raw_p99": 0.9897496104240417,
+        "normalized_raw_quantile_sample_count": 1000000,
+        "output_energy_mean": 2.4197168713158135e-08,
+        "panel": 104729,
+        "passive": true,
+        "passive_available": false,
+        "primary_accuracy": 0.5559999942779541,
+        "primary_min_recall": 0.0,
+        "primary_recall": [
+          0.07999999821186066,
+          0.0,
+          0.8399999737739563,
+          0.9800000190734863,
+          0.6800000071525574,
+          1.0,
+          0.41999998688697815,
+          0.4399999976158142,
+          0.18000000715255737,
+          0.9399999976158142
+        ],
+        "projection_fraction_mean": 0.7338865995407104,
+        "raw_finite": true,
+        "raw_nonnegative": true,
+        "residual_fraction_mean": 0.26611340045928955,
+        "saturation": 0.009542199783027172,
+        "secondary_accuracy": 0.15800000727176666,
+        "secondary_min_recall": 0.0,
+        "secondary_prediction_histogram": [
+          29,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          470,
+          0
+        ],
+        "secondary_recall": [
+          0.5799999833106995,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        "variant": "S0-gain-100"
+      },
+      "161803": {
+        "agreement": 0.13600000739097595,
+        "amplitude_scale": 1.0,
+        "artifacts": {
+          "codes": {
+            "relative_path": "measurements/S0-gain-100/161803/codes.pt",
+            "sha256": "fbc645f7cf5d136d885f4b14fbb580363ed67ac81d414c7b4a049b7b09703e5f",
+            "tensor_sha256": "182375abc3278324417adc12922a3dfb2fc3f2c7fcfa9e3bf7118b07ab5e4010"
+          },
+          "fixed_cmos": {
+            "relative_path": "measurements/S0-gain-100/161803/fixed_cmos.pt",
+            "sha256": "cc44403a87b0926a1344918a89bc354fffb4ccc2964448d0cb9e1094aae6df54",
+            "tensor_sha256": "895a2f61c55f37cd01428aaae98334e0f47d2df876afa8cb24f7e44014b6eb55"
+          },
+          "labels": {
+            "relative_path": "measurements/S0-gain-100/161803/labels.pt",
+            "sha256": "bb2e364e6029f986b0dd5848d87fab52afdee983008b4e71d011a076686e6ad5",
+            "tensor_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+          },
+          "primary_prediction": {
+            "relative_path": "measurements/S0-gain-100/161803/primary_prediction.pt",
+            "sha256": "4b2d25f94bd71a1fadae06bd74123cf64b101dbaddb6292ca5a4630096447c30",
+            "tensor_sha256": "074be5bde0b71ed8a6a985e56a0b8252a7de37d3524a9555a6a10ddf513f4323"
+          },
+          "representative_trace": {
+            "relative_path": "measurements/S0-gain-100/161803/representative_trace.pt",
+            "sha256": "4737d1519c6160ba2eadaa3ca86d77cf28448f6bf2b83c6a178d84539d15ff7f"
+          },
+          "secondary_correctness": {
+            "relative_path": "measurements/S0-gain-100/161803/secondary_correctness.pt",
+            "sha256": "ed1443831ce2b38869024f35073b2d2537c6445daf53194bb07bedf717c92beb",
+            "tensor_sha256": "48903382c9d04d04cf6b4f58292d5017b4ab8080fdd53997790253d3a2dc7273"
+          },
+          "secondary_prediction": {
+            "relative_path": "measurements/S0-gain-100/161803/secondary_prediction.pt",
+            "sha256": "a0c6f0ac311158f41d8a0b696e867be21a39c131b4751983ab8d6895c1fa1404",
+            "tensor_sha256": "fd68621014a22b1d4543c30c570325883d84e5c252ee5d7de4e8233f3a546eae"
+          }
+        },
+        "camera_fraction": 0.12333305925130844,
+        "clipped_fraction": 0.00984949991106987,
+        "codes_sha256": "182375abc3278324417adc12922a3dfb2fc3f2c7fcfa9e3bf7118b07ab5e4010",
+        "coverage_ratio": 3.5729358196258545,
+        "energy_oracle": false,
+        "energy_retention_mean": 0.7345354703938213,
+        "exposure_scale": 0.4913053810596466,
+        "finite": true,
+        "input_energy_mean": 3.2866243060425404e-08,
+        "labels_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "minimum_diversity": 0.16396339237689972,
+        "nonnegative": true,
+        "nonphysical_upper_bound": false,
+        "normalized_raw_mean": 0.17482636868953705,
+        "normalized_raw_p01": 0.0006611268036067486,
+        "normalized_raw_p50": 0.07234804332256317,
+        "normalized_raw_p99": 0.9930177927017212,
+        "normalized_raw_quantile_sample_count": 1000000,
+        "output_energy_mean": 2.4141421306467237e-08,
+        "panel": 161803,
+        "passive": true,
+        "passive_available": false,
+        "primary_accuracy": 0.6000000238418579,
+        "primary_min_recall": 0.0,
+        "primary_recall": [
+          0.07999999821186066,
+          0.0,
+          0.9399999976158142,
+          1.0,
+          0.7599999904632568,
+          1.0,
+          0.5,
+          0.6600000262260437,
+          0.10000000149011612,
+          0.9599999785423279
+        ],
+        "projection_fraction_mean": 0.7339878082275391,
+        "raw_finite": true,
+        "raw_nonnegative": true,
+        "residual_fraction_mean": 0.2660123407840729,
+        "saturation": 0.00984949991106987,
+        "secondary_accuracy": 0.1599999964237213,
+        "secondary_min_recall": 0.0,
+        "secondary_prediction_histogram": [
+          30,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          470,
+          0
+        ],
+        "secondary_recall": [
+          0.6000000238418579,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        "variant": "S0-gain-100"
+      },
+      "4242": {
+        "agreement": 0.15000000596046448,
+        "amplitude_scale": 1.0,
+        "artifacts": {
+          "codes": {
+            "relative_path": "measurements/S0-gain-100/4242/codes.pt",
+            "sha256": "5d76a0ae854384c52b3e6ec57688b9e9e77cbb66c9535d527db0237a25e7fbe9",
+            "tensor_sha256": "4174780d4ac6938c7dc091a531d1ad4d4395773888ebbd40f3d7e0625624f2db"
+          },
+          "fixed_cmos": {
+            "relative_path": "measurements/S0-gain-100/4242/fixed_cmos.pt",
+            "sha256": "b66db9d733fc04f661b3d074d6327a15a36b1543211edc877ec5d9eb4be28e6d",
+            "tensor_sha256": "9f1fdeedfaeefa98961b7fcf12f5a806519405deee377bc0fb7839964dd4a6c8"
+          },
+          "labels": {
+            "relative_path": "measurements/S0-gain-100/4242/labels.pt",
+            "sha256": "9a07b348622a8306db4de6edae54598f9cef973d72132e5ccf8fd4f3e2b11f0f",
+            "tensor_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+          },
+          "primary_prediction": {
+            "relative_path": "measurements/S0-gain-100/4242/primary_prediction.pt",
+            "sha256": "f0c817dfb672b040cf23d4461280cf33e185a2ce9867604a118eb33f7ac71991",
+            "tensor_sha256": "5dd8a9ca865b984e97be3c42191188cf66d860fcfe2d66c7dc93afffa060e3ff"
+          },
+          "representative_trace": {
+            "relative_path": "measurements/S0-gain-100/4242/representative_trace.pt",
+            "sha256": "0ce2b95886085233bbdbc71bb2cdca0f1eb2a9e9be2e28f1eaba7ae6c2ae7ab8"
+          },
+          "secondary_correctness": {
+            "relative_path": "measurements/S0-gain-100/4242/secondary_correctness.pt",
+            "sha256": "4eb60a3345b07d29ee4957a51d6e4fa4f7516ec7133676ccfcfb60bf667878b1",
+            "tensor_sha256": "0c28eb23af32ce21267f22069a77d8c7fce8e22e55fe991478e2a0ada01e2400"
+          },
+          "secondary_prediction": {
+            "relative_path": "measurements/S0-gain-100/4242/secondary_prediction.pt",
+            "sha256": "4bc36e6a8d97ba81bb9feba75c3b80c18c9493dc1f16f723fa063a9c77862667",
+            "tensor_sha256": "d5fb0ca2c5e1777cc3df4ad7907231f0f2e733701237315741bf659d4a173388"
+          }
+        },
+        "camera_fraction": 0.12979008257389069,
+        "clipped_fraction": 0.009637949988245964,
+        "codes_sha256": "4174780d4ac6938c7dc091a531d1ad4d4395773888ebbd40f3d7e0625624f2db",
+        "coverage_ratio": 3.569108247756958,
+        "energy_oracle": false,
+        "energy_retention_mean": 0.7345034121280221,
+        "exposure_scale": 0.4913053810596466,
+        "finite": true,
+        "input_energy_mean": 3.279733462591139e-08,
+        "labels_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "minimum_diversity": 0.17537282407283783,
+        "nonnegative": true,
+        "nonphysical_upper_bound": false,
+        "normalized_raw_mean": 0.17442601919174194,
+        "normalized_raw_p01": 0.0006597845931537449,
+        "normalized_raw_p50": 0.07197120785713196,
+        "normalized_raw_p99": 0.9904987812042236,
+        "normalized_raw_quantile_sample_count": 1000000,
+        "output_energy_mean": 2.408975419143644e-08,
+        "panel": 4242,
+        "passive": true,
+        "passive_available": false,
+        "primary_accuracy": 0.5920000076293945,
+        "primary_min_recall": 0.0,
+        "primary_recall": [
+          0.05999999865889549,
+          0.0,
+          0.8600000143051147,
+          0.9800000190734863,
+          0.9200000166893005,
+          1.0,
+          0.3799999952316284,
+          0.5199999809265137,
+          0.23999999463558197,
+          0.9599999785423279
+        ],
+        "projection_fraction_mean": 0.734045147895813,
+        "raw_finite": true,
+        "raw_nonnegative": true,
+        "residual_fraction_mean": 0.26595479249954224,
+        "saturation": 0.009637949988245964,
+        "secondary_accuracy": 0.1599999964237213,
+        "secondary_min_recall": 0.0,
+        "secondary_prediction_histogram": [
+          30,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          469,
+          0
+        ],
+        "secondary_recall": [
+          0.6000000238418579,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        "variant": "S0-gain-100"
+      }
+    },
+    "S0-gain-115": {
+      "104729": {
+        "agreement": 0.18199999630451202,
+        "amplitude_scale": 1.0,
+        "artifacts": {
+          "codes": {
+            "relative_path": "measurements/S0-gain-115/104729/codes.pt",
+            "sha256": "d1d310879cf704afedc0ef0b68b61d49c36afbf5ad10a5d0fed42589c72aee36",
+            "tensor_sha256": "81d43602a20a020284f1a6d5990461596a9cb21d0a3b1840d07ebd94abc5e209"
+          },
+          "fixed_cmos": {
+            "relative_path": "measurements/S0-gain-115/104729/fixed_cmos.pt",
+            "sha256": "6207c8fae48b15d768922763f8dabf28ac70a3001069010674cbb43e0c710556",
+            "tensor_sha256": "04d6864f69baa7116ceaa6a93d6eecd3204f489bb3a3f769ec44a5003932aa6e"
+          },
+          "labels": {
+            "relative_path": "measurements/S0-gain-115/104729/labels.pt",
+            "sha256": "c8b12981218efff8767ec0c368a24d6c66f9f605a72a40ecc8a239b0c169bd04",
+            "tensor_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+          },
+          "primary_prediction": {
+            "relative_path": "measurements/S0-gain-115/104729/primary_prediction.pt",
+            "sha256": "35202e226c350720e3373e730b7234fdf453f3b2fb9cf9ff43d601b41042eb0c",
+            "tensor_sha256": "35686f4fc7f911c729e260cf9482d37682f7eef4e9738b77fd01caa784771a33"
+          },
+          "representative_trace": {
+            "relative_path": "measurements/S0-gain-115/104729/representative_trace.pt",
+            "sha256": "289a8abab3899c8f3174909230f07c54e613aa345637df045204ab68742a2136"
+          },
+          "secondary_correctness": {
+            "relative_path": "measurements/S0-gain-115/104729/secondary_correctness.pt",
+            "sha256": "6fb9c7221f5fdaa2aed90f9c6bc5dee324c1eae20c59572825d35f4cf19814ac",
+            "tensor_sha256": "8e6f497fe44536c4f5d36ba759fe5974bb4f6c434afb2eca46cd4be542af16cb"
+          },
+          "secondary_prediction": {
+            "relative_path": "measurements/S0-gain-115/104729/secondary_prediction.pt",
+            "sha256": "23a3da58bf3c5e428003a91f8476331d503eddffeb14145cf6c06fb1c7a77ad2",
+            "tensor_sha256": "c49ed9bda3187a6e768d71a65cd7850ce2a86bb6f428db7cd01e3586e0d1817f"
+          }
+        },
+        "camera_fraction": 0.13799914717674255,
+        "clipped_fraction": 0.01783915050327778,
+        "codes_sha256": "81d43602a20a020284f1a6d5990461596a9cb21d0a3b1840d07ebd94abc5e209",
+        "coverage_ratio": 3.5273964405059814,
+        "energy_oracle": false,
+        "energy_retention_mean": 0.7343348261402981,
+        "exposure_scale": 0.42722207048664923,
+        "finite": true,
+        "input_energy_mean": 3.295113870649402e-08,
+        "labels_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "minimum_diversity": 0.1948615312576294,
+        "nonnegative": true,
+        "nonphysical_upper_bound": false,
+        "normalized_raw_mean": 0.2014276683330536,
+        "normalized_raw_p01": 0.0007460921769961715,
+        "normalized_raw_p50": 0.08354584872722626,
+        "normalized_raw_p99": 1.138211965560913,
+        "normalized_raw_quantile_sample_count": 1000000,
+        "output_energy_mean": 2.4197168713158135e-08,
+        "panel": 104729,
+        "passive": true,
+        "passive_available": false,
+        "primary_accuracy": 0.7400000095367432,
+        "primary_min_recall": 0.0,
+        "primary_recall": [
+          0.23999999463558197,
+          0.0,
+          0.9800000190734863,
+          1.0,
+          0.7799999713897705,
+          1.0,
+          0.9200000166893005,
+          0.7599999904632568,
+          0.7200000286102295,
+          1.0
+        ],
+        "projection_fraction_mean": 0.7338865995407104,
+        "raw_finite": true,
+        "raw_nonnegative": true,
+        "residual_fraction_mean": 0.26611340045928955,
+        "saturation": 0.01783915050327778,
+        "secondary_accuracy": 0.1979999989271164,
+        "secondary_min_recall": 0.0,
+        "secondary_prediction_histogram": [
+          49,
+          0,
+          0,
+          0,
+          29,
+          0,
+          0,
+          0,
+          422,
+          0
+        ],
+        "secondary_recall": [
+          0.9800000190734863,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        "variant": "S0-gain-115"
+      },
+      "161803": {
+        "agreement": 0.16599999368190765,
+        "amplitude_scale": 1.0,
+        "artifacts": {
+          "codes": {
+            "relative_path": "measurements/S0-gain-115/161803/codes.pt",
+            "sha256": "0da2b169b49d716938a5796015ebe133d26e856908e965db625a7a7e9064d588",
+            "tensor_sha256": "182375abc3278324417adc12922a3dfb2fc3f2c7fcfa9e3bf7118b07ab5e4010"
+          },
+          "fixed_cmos": {
+            "relative_path": "measurements/S0-gain-115/161803/fixed_cmos.pt",
+            "sha256": "7448620bc1eea3a18811e657c7fc5821e961f4a0cc4a0808b57f74fb96ac91f5",
+            "tensor_sha256": "c50877bc2bcca521eb43312a9386c8a03a5fe0d864b1147970fee4193e2d3d5c"
+          },
+          "labels": {
+            "relative_path": "measurements/S0-gain-115/161803/labels.pt",
+            "sha256": "4de5f7081c38e62cde2cc26d74e09fff61232ba2f2c01ccfc3eafb839253d699",
+            "tensor_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+          },
+          "primary_prediction": {
+            "relative_path": "measurements/S0-gain-115/161803/primary_prediction.pt",
+            "sha256": "3b498941b609f468878f760caea89cdbc7e07ed6beb21e88b6f03b0b273394f7",
+            "tensor_sha256": "1bc6b4f9e0106b7b43fbb2976786425a6394140fa179213755427c4523f8174b"
+          },
+          "representative_trace": {
+            "relative_path": "measurements/S0-gain-115/161803/representative_trace.pt",
+            "sha256": "735406f61803ac5d4a887aa6e3e5823dd482da91cfa993256120bb46f0b80f40"
+          },
+          "secondary_correctness": {
+            "relative_path": "measurements/S0-gain-115/161803/secondary_correctness.pt",
+            "sha256": "f95e634c1b834a8e480f5010729ffb5d59b5ae11ed13183db9843b3899c473f7",
+            "tensor_sha256": "3fef800bd2c7740a99033c67b45bb050c9ad77e2ec95874001e85b8264c20074"
+          },
+          "secondary_prediction": {
+            "relative_path": "measurements/S0-gain-115/161803/secondary_prediction.pt",
+            "sha256": "287221466333be9ff367505c556aed36d4aaa532e6512704194590be20c2242f",
+            "tensor_sha256": "6e420eac5cb4fbc17443044fa5c9a54dbed9da3aa9f51f9390b46cf9ef75de29"
+          }
+        },
+        "camera_fraction": 0.12333305925130844,
+        "clipped_fraction": 0.018246449530124664,
+        "codes_sha256": "182375abc3278324417adc12922a3dfb2fc3f2c7fcfa9e3bf7118b07ab5e4010",
+        "coverage_ratio": 3.5405962467193604,
+        "energy_oracle": false,
+        "energy_retention_mean": 0.7345354703938213,
+        "exposure_scale": 0.42722207048664923,
+        "finite": true,
+        "input_energy_mean": 3.2866243060425404e-08,
+        "labels_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "minimum_diversity": 0.17683814465999603,
+        "nonnegative": true,
+        "nonphysical_upper_bound": false,
+        "normalized_raw_mean": 0.20105035603046417,
+        "normalized_raw_p01": 0.000760295893996954,
+        "normalized_raw_p50": 0.08320025354623795,
+        "normalized_raw_p99": 1.1419703960418701,
+        "normalized_raw_quantile_sample_count": 1000000,
+        "output_energy_mean": 2.4141421306467237e-08,
+        "panel": 161803,
+        "passive": true,
+        "passive_available": false,
+        "primary_accuracy": 0.7400000095367432,
+        "primary_min_recall": 0.0,
+        "primary_recall": [
+          0.1599999964237213,
+          0.0,
+          0.9800000190734863,
+          1.0,
+          0.8399999737739563,
+          1.0,
+          0.9399999976158142,
+          0.7799999713897705,
+          0.699999988079071,
+          1.0
+        ],
+        "projection_fraction_mean": 0.7339878082275391,
+        "raw_finite": true,
+        "raw_nonnegative": true,
+        "residual_fraction_mean": 0.2660123407840729,
+        "saturation": 0.018246399238705635,
+        "secondary_accuracy": 0.1979999989271164,
+        "secondary_min_recall": 0.0,
+        "secondary_prediction_histogram": [
+          49,
+          0,
+          0,
+          0,
+          28,
+          0,
+          0,
+          0,
+          423,
+          0
+        ],
+        "secondary_recall": [
+          0.9800000190734863,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        "variant": "S0-gain-115"
+      },
+      "4242": {
+        "agreement": 0.19200000166893005,
+        "amplitude_scale": 1.0,
+        "artifacts": {
+          "codes": {
+            "relative_path": "measurements/S0-gain-115/4242/codes.pt",
+            "sha256": "17ceeae64792f119fa89d6ba6523b87a8da2ba8e6d7e90afd0c72b0a0a456275",
+            "tensor_sha256": "4174780d4ac6938c7dc091a531d1ad4d4395773888ebbd40f3d7e0625624f2db"
+          },
+          "fixed_cmos": {
+            "relative_path": "measurements/S0-gain-115/4242/fixed_cmos.pt",
+            "sha256": "e39b133198a20dbccb844b06018f4552aa0f5b2c2d56ee7d4888b44f03977e09",
+            "tensor_sha256": "a9dac83512950f53563075a6599aeb334ae405c13918b0b723c0ecfb662c3fcf"
+          },
+          "labels": {
+            "relative_path": "measurements/S0-gain-115/4242/labels.pt",
+            "sha256": "f89af09874bb36bdfd21a4a6fa7a507bf4ef053c276781b564f4d729571063e9",
+            "tensor_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+          },
+          "primary_prediction": {
+            "relative_path": "measurements/S0-gain-115/4242/primary_prediction.pt",
+            "sha256": "54c5b2138fbc7a0aee524057a441fb93a7d2fde7fe5319dc549fac8725a308b3",
+            "tensor_sha256": "56f10d5402e4f78e3e5b4dabb3e689cc732a415d621f1fcfb8fe2876a7cc47e7"
+          },
+          "representative_trace": {
+            "relative_path": "measurements/S0-gain-115/4242/representative_trace.pt",
+            "sha256": "6b0adfd6d0cfd6a09455a3cf41d3e1d7d5471c2c2ae7e72293c016fd467118fc"
+          },
+          "secondary_correctness": {
+            "relative_path": "measurements/S0-gain-115/4242/secondary_correctness.pt",
+            "sha256": "f33e3fe8aadc445762bb57d63b824eec275c46fa3d03cf3a66444ed9ce035a7d",
+            "tensor_sha256": "06f1f2472dbb8cf9a9707847ab269294f21fd4f442b6f8b84510f8918da6007c"
+          },
+          "secondary_prediction": {
+            "relative_path": "measurements/S0-gain-115/4242/secondary_prediction.pt",
+            "sha256": "722279ac29734c928e3c7647dc72407a535df8bc7c0f7fa465172c40a90aed93",
+            "tensor_sha256": "e283922516a3b7899b85b82709dbf6cabdaad6640e430291f74d98627432eafd"
+          }
+        },
+        "camera_fraction": 0.12979008257389069,
+        "clipped_fraction": 0.017917100340127945,
+        "codes_sha256": "4174780d4ac6938c7dc091a531d1ad4d4395773888ebbd40f3d7e0625624f2db",
+        "coverage_ratio": 3.5382699966430664,
+        "energy_oracle": false,
+        "energy_retention_mean": 0.7345034121280221,
+        "exposure_scale": 0.42722207048664923,
+        "finite": true,
+        "input_energy_mean": 3.279733462591139e-08,
+        "labels_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "minimum_diversity": 0.18712691962718964,
+        "nonnegative": true,
+        "nonphysical_upper_bound": false,
+        "normalized_raw_mean": 0.20058992505073547,
+        "normalized_raw_p01": 0.0007587522850371897,
+        "normalized_raw_p50": 0.08276689052581787,
+        "normalized_raw_p99": 1.1390736103057861,
+        "normalized_raw_quantile_sample_count": 1000000,
+        "output_energy_mean": 2.408975419143644e-08,
+        "panel": 4242,
+        "passive": true,
+        "passive_available": false,
+        "primary_accuracy": 0.7620000243186951,
+        "primary_min_recall": 0.0,
+        "primary_recall": [
+          0.2800000011920929,
+          0.0,
+          0.9599999785423279,
+          1.0,
+          0.9599999785423279,
+          1.0,
+          0.8999999761581421,
+          0.7599999904632568,
+          0.7599999904632568,
+          1.0
+        ],
+        "projection_fraction_mean": 0.734045147895813,
+        "raw_finite": true,
+        "raw_nonnegative": true,
+        "residual_fraction_mean": 0.26595479249954224,
+        "saturation": 0.017917100340127945,
+        "secondary_accuracy": 0.20000000298023224,
+        "secondary_min_recall": 0.0,
+        "secondary_prediction_histogram": [
+          50,
+          0,
+          0,
+          0,
+          20,
+          0,
+          0,
+          0,
+          430,
+          0
+        ],
+        "secondary_recall": [
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        "variant": "S0-gain-115"
+      }
+    },
+    "S0-gain-150": {
+      "104729": {
+        "agreement": 0.31200000643730164,
+        "amplitude_scale": 1.0,
+        "artifacts": {
+          "codes": {
+            "relative_path": "measurements/S0-gain-150/104729/codes.pt",
+            "sha256": "b8396fb7c99e738954d2cb72306a9cf80592c1741e3e86447e49277acb90a646",
+            "tensor_sha256": "81d43602a20a020284f1a6d5990461596a9cb21d0a3b1840d07ebd94abc5e209"
+          },
+          "fixed_cmos": {
+            "relative_path": "measurements/S0-gain-150/104729/fixed_cmos.pt",
+            "sha256": "13dcfd1b1243a7242f3203665ec14555d72b988c3d60cad37c0fc7644aa7669b",
+            "tensor_sha256": "3fa2a4f00a96d8ea2e7f92150cd7275b9e7008f8f38ca0933be09b2ec04a08d7"
+          },
+          "labels": {
+            "relative_path": "measurements/S0-gain-150/104729/labels.pt",
+            "sha256": "ef6cd2a77712b87ce7f4f7d3d5592cd431b81a0a27ea2a4ca0c60ede26da861d",
+            "tensor_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+          },
+          "primary_prediction": {
+            "relative_path": "measurements/S0-gain-150/104729/primary_prediction.pt",
+            "sha256": "1f45c21f4121bb1d7de06e907cd0efae6ea272102c75ae2a2203207ad986978b",
+            "tensor_sha256": "6bf289399681db3c7075ebda03a052661dca60fb3551e630867cb12312523561"
+          },
+          "representative_trace": {
+            "relative_path": "measurements/S0-gain-150/104729/representative_trace.pt",
+            "sha256": "37669125257dd52f802bf7462e3f558d8f7c3484bcb2529e86a3875608badd09"
+          },
+          "secondary_correctness": {
+            "relative_path": "measurements/S0-gain-150/104729/secondary_correctness.pt",
+            "sha256": "e48dd16b5818534424e855771c111366984019169971b2207d04cd0a1b14bb21",
+            "tensor_sha256": "f707226137ca8d5935ac63aa2f1648920d11e2f02f5dbd64c16801c39b38a79e"
+          },
+          "secondary_prediction": {
+            "relative_path": "measurements/S0-gain-150/104729/secondary_prediction.pt",
+            "sha256": "d611f401d9ba50695aa685d5807df0e43d8557269d21a9aa4228535a20ee6609",
+            "tensor_sha256": "331c619fc6cd3b8565fc59e6cb84a7675ece4481643e08ee0c38c52af7681503"
+          }
+        },
+        "camera_fraction": 0.13799914717674255,
+        "clipped_fraction": 0.04414840042591095,
+        "codes_sha256": "81d43602a20a020284f1a6d5990461596a9cb21d0a3b1840d07ebd94abc5e209",
+        "coverage_ratio": 3.505117654800415,
+        "energy_oracle": false,
+        "energy_retention_mean": 0.7343348261402981,
+        "exposure_scale": 0.3275369207064311,
+        "finite": true,
+        "input_energy_mean": 3.295113870649402e-08,
+        "labels_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "minimum_diversity": 0.19926874339580536,
+        "nonnegative": true,
+        "nonphysical_upper_bound": false,
+        "normalized_raw_mean": 0.26273176074028015,
+        "normalized_raw_p01": 0.0009731637546792626,
+        "normalized_raw_p50": 0.10897285491228104,
+        "normalized_raw_p99": 1.4846243858337402,
+        "normalized_raw_quantile_sample_count": 1000000,
+        "output_energy_mean": 2.4197168713158135e-08,
+        "panel": 104729,
+        "passive": true,
+        "passive_available": false,
+        "primary_accuracy": 0.8740000128746033,
+        "primary_min_recall": 0.03999999910593033,
+        "primary_recall": [
+          0.7799999713897705,
+          0.03999999910593033,
+          1.0,
+          1.0,
+          0.9399999976158142,
+          1.0,
+          1.0,
+          0.9800000190734863,
+          1.0,
+          1.0
+        ],
+        "projection_fraction_mean": 0.7338865995407104,
+        "raw_finite": true,
+        "raw_nonnegative": true,
+        "residual_fraction_mean": 0.26611340045928955,
+        "saturation": 0.04414840042591095,
+        "secondary_accuracy": 0.25999999046325684,
+        "secondary_min_recall": 0.0,
+        "secondary_prediction_histogram": [
+          50,
+          0,
+          6,
+          27,
+          53,
+          0,
+          0,
+          0,
+          364,
+          0
+        ],
+        "secondary_recall": [
+          1.0,
+          0.0,
+          0.11999999731779099,
+          0.47999998927116394,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        "variant": "S0-gain-150"
+      },
+      "161803": {
+        "agreement": 0.29600000381469727,
+        "amplitude_scale": 1.0,
+        "artifacts": {
+          "codes": {
+            "relative_path": "measurements/S0-gain-150/161803/codes.pt",
+            "sha256": "9c7a41c4843000bc2aac4c8e5947de70891ff02a41f4226fad1b93d02872d41d",
+            "tensor_sha256": "182375abc3278324417adc12922a3dfb2fc3f2c7fcfa9e3bf7118b07ab5e4010"
+          },
+          "fixed_cmos": {
+            "relative_path": "measurements/S0-gain-150/161803/fixed_cmos.pt",
+            "sha256": "4907d293b6b245285ca847ea2b82cb3390beb45b5186ee52a6106078b70c3afa",
+            "tensor_sha256": "87bf579d05dd872d10ac58fc98b136aae6ebd4de3b52444dc7ccc2f6a919e060"
+          },
+          "labels": {
+            "relative_path": "measurements/S0-gain-150/161803/labels.pt",
+            "sha256": "9b1aaea95b90992877461eb0e99d48e70d2832a73103ecef9ed14017cbcb0aea",
+            "tensor_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+          },
+          "primary_prediction": {
+            "relative_path": "measurements/S0-gain-150/161803/primary_prediction.pt",
+            "sha256": "380d02d27f70e391bd0d0164ab8c8ce52ca116f704a00362b322d44ec5adcfb0",
+            "tensor_sha256": "8a8de81d04b6284ceece7c2786cfa512099d9497015bd0ec112168f6fb05aed4"
+          },
+          "representative_trace": {
+            "relative_path": "measurements/S0-gain-150/161803/representative_trace.pt",
+            "sha256": "ed7c472b641ecfa2112d49d4a0cef9e508c6d03858e4fc1f524b0f56e02bc42d"
+          },
+          "secondary_correctness": {
+            "relative_path": "measurements/S0-gain-150/161803/secondary_correctness.pt",
+            "sha256": "c66a6bd759d876db19891a3fdb277bf8275e8d03c4af6a1d068337b6e33d00e5",
+            "tensor_sha256": "b32111fe302375228f37432ea306c2261100736f9c4a079e9e66d31f964f9ffb"
+          },
+          "secondary_prediction": {
+            "relative_path": "measurements/S0-gain-150/161803/secondary_prediction.pt",
+            "sha256": "ffdc66d9e654991e2223faabb0e937259a819cc643d3b9102b19eb275b2a3604",
+            "tensor_sha256": "f052491c974202988ca8f4f44576c7edd30558d4499172f49f75ebc8f689b134"
+          }
+        },
+        "camera_fraction": 0.12333305925130844,
+        "clipped_fraction": 0.04456280171871185,
+        "codes_sha256": "182375abc3278324417adc12922a3dfb2fc3f2c7fcfa9e3bf7118b07ab5e4010",
+        "coverage_ratio": 3.519618034362793,
+        "energy_oracle": false,
+        "energy_retention_mean": 0.7345354703938213,
+        "exposure_scale": 0.3275369207064311,
+        "finite": true,
+        "input_energy_mean": 3.2866243060425404e-08,
+        "labels_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "minimum_diversity": 0.18341045081615448,
+        "nonnegative": true,
+        "nonphysical_upper_bound": false,
+        "normalized_raw_mean": 0.26223960518836975,
+        "normalized_raw_p01": 0.0009916903218254447,
+        "normalized_raw_p50": 0.10852207243442535,
+        "normalized_raw_p99": 1.4895267486572266,
+        "normalized_raw_quantile_sample_count": 1000000,
+        "output_energy_mean": 2.4141421306467237e-08,
+        "panel": 161803,
+        "passive": true,
+        "passive_available": false,
+        "primary_accuracy": 0.8799999952316284,
+        "primary_min_recall": 0.05999999865889549,
+        "primary_recall": [
+          0.7799999713897705,
+          0.05999999865889549,
+          1.0,
+          1.0,
+          0.9599999785423279,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "projection_fraction_mean": 0.7339878082275391,
+        "raw_finite": true,
+        "raw_nonnegative": true,
+        "residual_fraction_mean": 0.2660123407840729,
+        "saturation": 0.04456280171871185,
+        "secondary_accuracy": 0.257999986410141,
+        "secondary_min_recall": 0.0,
+        "secondary_prediction_histogram": [
+          51,
+          0,
+          3,
+          32,
+          50,
+          0,
+          1,
+          0,
+          363,
+          0
+        ],
+        "secondary_recall": [
+          1.0,
+          0.0,
+          0.03999999910593033,
+          0.5199999809265137,
+          0.0,
+          0.0,
+          0.019999999552965164,
+          0.0,
+          1.0,
+          0.0
+        ],
+        "variant": "S0-gain-150"
+      },
+      "4242": {
+        "agreement": 0.34599998593330383,
+        "amplitude_scale": 1.0,
+        "artifacts": {
+          "codes": {
+            "relative_path": "measurements/S0-gain-150/4242/codes.pt",
+            "sha256": "bd453c587d5d6fed81668554de96bbf81776b4b5cbdc2234ec95f90fef5ab174",
+            "tensor_sha256": "4174780d4ac6938c7dc091a531d1ad4d4395773888ebbd40f3d7e0625624f2db"
+          },
+          "fixed_cmos": {
+            "relative_path": "measurements/S0-gain-150/4242/fixed_cmos.pt",
+            "sha256": "2e8f186235359a37a2c48defebeef2154122aa3d0cb4dd580865273fc9046488",
+            "tensor_sha256": "425d45bcacf34744904b80445cd837390cf4e628b3eefe7d43fd6771cbae744a"
+          },
+          "labels": {
+            "relative_path": "measurements/S0-gain-150/4242/labels.pt",
+            "sha256": "05815a4c044a2258064e2b20fe88d4598c6203b3d91b5075209db0df0601eacb",
+            "tensor_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+          },
+          "primary_prediction": {
+            "relative_path": "measurements/S0-gain-150/4242/primary_prediction.pt",
+            "sha256": "88877278c72c04648585f6cdbc8f89fc4486cf29fe1ebaee4b2ca6ee41e9c6e9",
+            "tensor_sha256": "10216c634fb3b12e2742b17678ae7d7791b65d6c52e6c6490958bbfcefa31e72"
+          },
+          "representative_trace": {
+            "relative_path": "measurements/S0-gain-150/4242/representative_trace.pt",
+            "sha256": "c193cb72f6d60e4616195d38df109da27fcba8e114628e797d178b2d18fbf54e"
+          },
+          "secondary_correctness": {
+            "relative_path": "measurements/S0-gain-150/4242/secondary_correctness.pt",
+            "sha256": "f056a5d666f96d38641d4fd57717b19666bb508f438b31700f89a7fc7dcff259",
+            "tensor_sha256": "1b3b406067a50281d7c1feb79c091589c5bb587fe9a9c410093b416f50898d29"
+          },
+          "secondary_prediction": {
+            "relative_path": "measurements/S0-gain-150/4242/secondary_prediction.pt",
+            "sha256": "ac2097020dbd2b89a85fc72b5e40247f714d5df59c756d8ed0605c2c8ede53c0",
+            "tensor_sha256": "ddb9a4116713305148c5b3ee8b52c464339738644ba8c8dcf5e07ee38d47dc74"
+          }
+        },
+        "camera_fraction": 0.12979008257389069,
+        "clipped_fraction": 0.043914251029491425,
+        "codes_sha256": "4174780d4ac6938c7dc091a531d1ad4d4395773888ebbd40f3d7e0625624f2db",
+        "coverage_ratio": 3.518415927886963,
+        "energy_oracle": false,
+        "energy_retention_mean": 0.7345034121280221,
+        "exposure_scale": 0.3275369207064311,
+        "finite": true,
+        "input_energy_mean": 3.279733462591139e-08,
+        "labels_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "minimum_diversity": 0.19124232232570648,
+        "nonnegative": true,
+        "nonphysical_upper_bound": false,
+        "normalized_raw_mean": 0.2616390287876129,
+        "normalized_raw_p01": 0.0009896769188344479,
+        "normalized_raw_p50": 0.10795681923627853,
+        "normalized_raw_p99": 1.4857481718063354,
+        "normalized_raw_quantile_sample_count": 1000000,
+        "output_energy_mean": 2.408975419143644e-08,
+        "panel": 4242,
+        "passive": true,
+        "passive_available": false,
+        "primary_accuracy": 0.8960000276565552,
+        "primary_min_recall": 0.019999999552965164,
+        "primary_recall": [
+          0.9399999976158142,
+          0.019999999552965164,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "projection_fraction_mean": 0.734045147895813,
+        "raw_finite": true,
+        "raw_nonnegative": true,
+        "residual_fraction_mean": 0.26595479249954224,
+        "saturation": 0.043914251029491425,
+        "secondary_accuracy": 0.27000001072883606,
+        "secondary_min_recall": 0.0,
+        "secondary_prediction_histogram": [
+          52,
+          0,
+          7,
+          32,
+          49,
+          0,
+          2,
+          0,
+          358,
+          0
+        ],
+        "secondary_recall": [
+          1.0,
+          0.0,
+          0.11999999731779099,
+          0.5400000214576721,
+          0.0,
+          0.0,
+          0.03999999910593033,
+          0.0,
+          1.0,
+          0.0
+        ],
+        "variant": "S0-gain-150"
+      }
+    },
+    "S0-gain-175": {
+      "104729": {
+        "agreement": 0.3440000116825104,
+        "amplitude_scale": 1.0,
+        "artifacts": {
+          "codes": {
+            "relative_path": "measurements/S0-gain-175/104729/codes.pt",
+            "sha256": "ed113d2824ffbcb6cddaf04fd63abf8ae4e8dced8cebcd4cd59bbc6931a5d043",
+            "tensor_sha256": "81d43602a20a020284f1a6d5990461596a9cb21d0a3b1840d07ebd94abc5e209"
+          },
+          "fixed_cmos": {
+            "relative_path": "measurements/S0-gain-175/104729/fixed_cmos.pt",
+            "sha256": "d9053743aa4b3f329fd6c225dca788621c0c48fd32ee075f856717e7e3e22675",
+            "tensor_sha256": "a1a85093383d37de3e6cbbae32f8649930ab62df772f4115c676e6dd80d8e951"
+          },
+          "labels": {
+            "relative_path": "measurements/S0-gain-175/104729/labels.pt",
+            "sha256": "e58f79576ad2b0aa92044ddc664863673c798d2835c45ebd4ca71c892542d993",
+            "tensor_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+          },
+          "primary_prediction": {
+            "relative_path": "measurements/S0-gain-175/104729/primary_prediction.pt",
+            "sha256": "845e5aafa0cefc816e02eb5f13ec9f3b8ec2f5a6494fdc4b0948866f5bfaccf4",
+            "tensor_sha256": "7208bc7e0aa06884c5b851374d16eb1e3d995735f5ebd9dfbd2fe2dbb9b717b4"
+          },
+          "representative_trace": {
+            "relative_path": "measurements/S0-gain-175/104729/representative_trace.pt",
+            "sha256": "a2469f8412cad0528990383bc969db67a266a98588e5d50a39ccd86bb37c6642"
+          },
+          "secondary_correctness": {
+            "relative_path": "measurements/S0-gain-175/104729/secondary_correctness.pt",
+            "sha256": "bc92dd5fef8db52be7d8941b5fbadd3c6ea79f527550149112761460ff4e5176",
+            "tensor_sha256": "848e8838ae846fec907d4986d03037913154e9f165242712863366520b3895a0"
+          },
+          "secondary_prediction": {
+            "relative_path": "measurements/S0-gain-175/104729/secondary_prediction.pt",
+            "sha256": "fae1caac958eb25e4fde7d6b1ed6ebcd6eb2429e61f471ee2f03213333d96454",
+            "tensor_sha256": "2f6398f21c26c3fc0e213636bffc41d23cbe6e98075ff9a9d828ca502388df81"
+          }
+        },
+        "camera_fraction": 0.13799914717674255,
+        "clipped_fraction": 0.0664297491312027,
+        "codes_sha256": "81d43602a20a020284f1a6d5990461596a9cb21d0a3b1840d07ebd94abc5e209",
+        "coverage_ratio": 3.5488460063934326,
+        "energy_oracle": false,
+        "energy_retention_mean": 0.7343348261402981,
+        "exposure_scale": 0.28074593203408377,
+        "finite": true,
+        "input_energy_mean": 3.295113870649402e-08,
+        "labels_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "minimum_diversity": 0.1835191398859024,
+        "nonnegative": true,
+        "nonphysical_upper_bound": false,
+        "normalized_raw_mean": 0.30652040243148804,
+        "normalized_raw_p01": 0.0011353576555848122,
+        "normalized_raw_p50": 0.1271349936723709,
+        "normalized_raw_p99": 1.7320618629455566,
+        "normalized_raw_quantile_sample_count": 1000000,
+        "output_energy_mean": 2.4197168713158135e-08,
+        "panel": 104729,
+        "passive": true,
+        "passive_available": false,
+        "primary_accuracy": 0.9300000071525574,
+        "primary_min_recall": 0.3400000035762787,
+        "primary_recall": [
+          0.9599999785423279,
+          0.3400000035762787,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "projection_fraction_mean": 0.7338865995407104,
+        "raw_finite": true,
+        "raw_nonnegative": true,
+        "residual_fraction_mean": 0.26611340045928955,
+        "saturation": 0.0664297491312027,
+        "secondary_accuracy": 0.31200000643730164,
+        "secondary_min_recall": 0.0,
+        "secondary_prediction_histogram": [
+          51,
+          0,
+          12,
+          58,
+          47,
+          0,
+          7,
+          0,
+          325,
+          0
+        ],
+        "secondary_recall": [
+          1.0,
+          0.0,
+          0.18000000715255737,
+          0.7799999713897705,
+          0.019999999552965164,
+          0.0,
+          0.14000000059604645,
+          0.0,
+          1.0,
+          0.0
+        ],
+        "variant": "S0-gain-175"
+      },
+      "161803": {
+        "agreement": 0.3400000035762787,
+        "amplitude_scale": 1.0,
+        "artifacts": {
+          "codes": {
+            "relative_path": "measurements/S0-gain-175/161803/codes.pt",
+            "sha256": "0c643fab44aa00aeddf45301224876d56f5030dbce4db380804074fa731de59e",
+            "tensor_sha256": "182375abc3278324417adc12922a3dfb2fc3f2c7fcfa9e3bf7118b07ab5e4010"
+          },
+          "fixed_cmos": {
+            "relative_path": "measurements/S0-gain-175/161803/fixed_cmos.pt",
+            "sha256": "e60b0aa49b8a23d0910ed19ad75a93221de120aa99ce710bea59e55547ba643c",
+            "tensor_sha256": "15a2af90f5bc8df256383d6f705096b103bb69516baf7b8216df983a19ecbf23"
+          },
+          "labels": {
+            "relative_path": "measurements/S0-gain-175/161803/labels.pt",
+            "sha256": "1076105c5240596ace209b5c2ad00e0a8f421f60a95b6dfe61239f39c1b13bd3",
+            "tensor_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+          },
+          "primary_prediction": {
+            "relative_path": "measurements/S0-gain-175/161803/primary_prediction.pt",
+            "sha256": "a83c3d24887c00c952ba974b77aecef35f4944f6c4e03678dfaf947f1b6b2c54",
+            "tensor_sha256": "4b549abd98de6821262698a25337dc2bbc0053ede1695bbb0d01c113f066f68a"
+          },
+          "representative_trace": {
+            "relative_path": "measurements/S0-gain-175/161803/representative_trace.pt",
+            "sha256": "364a34bc5778ce3aef8c01d9cd6cc53546821b3d99509c47bd02fa255c7b00d3"
+          },
+          "secondary_correctness": {
+            "relative_path": "measurements/S0-gain-175/161803/secondary_correctness.pt",
+            "sha256": "54f179335e49c7bab7e357f97e3f32f9c7e0f8e69b619ca793f441cf772f999a",
+            "tensor_sha256": "f7861b634797a5187fc8e65e1c54f049113f1cd2a95b0c8449dde563869d3fd9"
+          },
+          "secondary_prediction": {
+            "relative_path": "measurements/S0-gain-175/161803/secondary_prediction.pt",
+            "sha256": "60e22fa974d92292e2a16377d5424bf974caf61a0fb04577c3631a618f06a5f9",
+            "tensor_sha256": "582c06528fd001cf85fe1f86fe3ca88375f6fbfc58a5130e80e5540b5ae5d3db"
+          }
+        },
+        "camera_fraction": 0.12333305925130844,
+        "clipped_fraction": 0.06661184877157211,
+        "codes_sha256": "182375abc3278324417adc12922a3dfb2fc3f2c7fcfa9e3bf7118b07ab5e4010",
+        "coverage_ratio": 3.564840078353882,
+        "energy_oracle": false,
+        "energy_retention_mean": 0.7345354703938213,
+        "exposure_scale": 0.28074593203408377,
+        "finite": true,
+        "input_energy_mean": 3.2866243060425404e-08,
+        "labels_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "minimum_diversity": 0.17064987123012543,
+        "nonnegative": true,
+        "nonphysical_upper_bound": false,
+        "normalized_raw_mean": 0.3059462010860443,
+        "normalized_raw_p01": 0.0011569720227271318,
+        "normalized_raw_p50": 0.12660908699035645,
+        "normalized_raw_p99": 1.7377811670303345,
+        "normalized_raw_quantile_sample_count": 1000000,
+        "output_energy_mean": 2.4141421306467237e-08,
+        "panel": 161803,
+        "passive": true,
+        "passive_available": false,
+        "primary_accuracy": 0.9240000247955322,
+        "primary_min_recall": 0.30000001192092896,
+        "primary_recall": [
+          0.9800000190734863,
+          0.30000001192092896,
+          1.0,
+          1.0,
+          0.9599999785423279,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "projection_fraction_mean": 0.7339878082275391,
+        "raw_finite": true,
+        "raw_nonnegative": true,
+        "residual_fraction_mean": 0.2660123407840729,
+        "saturation": 0.06661184877157211,
+        "secondary_accuracy": 0.30799999833106995,
+        "secondary_min_recall": 0.0,
+        "secondary_prediction_histogram": [
+          57,
+          0,
+          9,
+          54,
+          48,
+          0,
+          5,
+          0,
+          327,
+          0
+        ],
+        "secondary_recall": [
+          1.0,
+          0.0,
+          0.1599999964237213,
+          0.8199999928474426,
+          0.0,
+          0.0,
+          0.10000000149011612,
+          0.0,
+          1.0,
+          0.0
+        ],
+        "variant": "S0-gain-175"
+      },
+      "4242": {
+        "agreement": 0.36000001430511475,
+        "amplitude_scale": 1.0,
+        "artifacts": {
+          "codes": {
+            "relative_path": "measurements/S0-gain-175/4242/codes.pt",
+            "sha256": "053f84f6998181387db56ba99552457566a5791d71dd3228c974d74d5ed03175",
+            "tensor_sha256": "4174780d4ac6938c7dc091a531d1ad4d4395773888ebbd40f3d7e0625624f2db"
+          },
+          "fixed_cmos": {
+            "relative_path": "measurements/S0-gain-175/4242/fixed_cmos.pt",
+            "sha256": "9338996ab0f1c7d457bebe146e7cca875390c271d74d2edbdafb0902d0e8641c",
+            "tensor_sha256": "603d845334f7be7895cc60d5ab2aa386a6e2c4fc35c47e15f0215dd5a8faea06"
+          },
+          "labels": {
+            "relative_path": "measurements/S0-gain-175/4242/labels.pt",
+            "sha256": "522da03cb5308d65367c986d996df181f97681d899d7e5cb6c09f702ba9a6595",
+            "tensor_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+          },
+          "primary_prediction": {
+            "relative_path": "measurements/S0-gain-175/4242/primary_prediction.pt",
+            "sha256": "909fe4f1c0aea63084a8e82ab4efc22b60f97c525d232757c831d31d6eb5ab4f",
+            "tensor_sha256": "a3ea6bb21ea1b1fbcaa26aa58d28849b44ed2c8000deda90ab2e79a27d2b6a07"
+          },
+          "representative_trace": {
+            "relative_path": "measurements/S0-gain-175/4242/representative_trace.pt",
+            "sha256": "65da207024f1bf604e38d30148f3a07c540cb40282997d233b2aaa481a8224b9"
+          },
+          "secondary_correctness": {
+            "relative_path": "measurements/S0-gain-175/4242/secondary_correctness.pt",
+            "sha256": "7d022cf20bfd53d2372b75630a4326e87ba86d9da96eb297b9cb7e516fa42b4f",
+            "tensor_sha256": "471f2f422a2eed3d9eee7612dd20134462f93499c7bee1ad0629fc8820e0d5d3"
+          },
+          "secondary_prediction": {
+            "relative_path": "measurements/S0-gain-175/4242/secondary_prediction.pt",
+            "sha256": "3f2f52b0222ed6b7de6c02cb03fc5d9979a96044b438d3aae7ca2a8cf503b745",
+            "tensor_sha256": "8a217bc5a9a5cceebb93af404cbe21002baddd6bfe0728ef91edade625cb1bce"
+          }
+        },
+        "camera_fraction": 0.12979008257389069,
+        "clipped_fraction": 0.06602639704942703,
+        "codes_sha256": "4174780d4ac6938c7dc091a531d1ad4d4395773888ebbd40f3d7e0625624f2db",
+        "coverage_ratio": 3.5615222454071045,
+        "energy_oracle": false,
+        "energy_retention_mean": 0.7345034121280221,
+        "exposure_scale": 0.28074593203408377,
+        "finite": true,
+        "input_energy_mean": 3.279733462591139e-08,
+        "labels_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "minimum_diversity": 0.17753006517887115,
+        "nonnegative": true,
+        "nonphysical_upper_bound": false,
+        "normalized_raw_mean": 0.305245578289032,
+        "normalized_raw_p01": 0.0011546231107786298,
+        "normalized_raw_p50": 0.12594962120056152,
+        "normalized_raw_p99": 1.7333729267120361,
+        "normalized_raw_quantile_sample_count": 1000000,
+        "output_energy_mean": 2.408975419143644e-08,
+        "panel": 4242,
+        "passive": true,
+        "passive_available": false,
+        "primary_accuracy": 0.9240000247955322,
+        "primary_min_recall": 0.23999999463558197,
+        "primary_recall": [
+          1.0,
+          0.23999999463558197,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "projection_fraction_mean": 0.734045147895813,
+        "raw_finite": true,
+        "raw_nonnegative": true,
+        "residual_fraction_mean": 0.26595479249954224,
+        "saturation": 0.06602639704942703,
+        "secondary_accuracy": 0.3140000104904175,
+        "secondary_min_recall": 0.0,
+        "secondary_prediction_histogram": [
+          58,
+          0,
+          6,
+          58,
+          43,
+          0,
+          10,
+          0,
+          325,
+          0
+        ],
+        "secondary_recall": [
+          1.0,
+          0.0,
+          0.10000000149011612,
+          0.8399999737739563,
+          0.0,
+          0.0,
+          0.20000000298023224,
+          0.0,
+          1.0,
+          0.0
+        ],
+        "variant": "S0-gain-175"
+      }
+    },
+    "S0-gain-200": {
+      "104729": {
+        "agreement": 0.3659999966621399,
+        "amplitude_scale": 1.0,
+        "artifacts": {
+          "codes": {
+            "relative_path": "measurements/S0-gain-200/104729/codes.pt",
+            "sha256": "1fc6d44392243e718b94a6b18c1e9f3c6af95838ae84e0203c55aaa619551ccd",
+            "tensor_sha256": "81d43602a20a020284f1a6d5990461596a9cb21d0a3b1840d07ebd94abc5e209"
+          },
+          "fixed_cmos": {
+            "relative_path": "measurements/S0-gain-200/104729/fixed_cmos.pt",
+            "sha256": "32f229425aa34275654679c1853d1b41df7d56917a18c90cd752dcbc34bca0af",
+            "tensor_sha256": "506c2b53487ee35feb118b837eaeac40e1170d12f40af361cfa08f5b7c0b592d"
+          },
+          "labels": {
+            "relative_path": "measurements/S0-gain-200/104729/labels.pt",
+            "sha256": "6e28c072728bb160617912b7e0558b3de7483b88fb0b0c26ded3a69ba718128c",
+            "tensor_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+          },
+          "primary_prediction": {
+            "relative_path": "measurements/S0-gain-200/104729/primary_prediction.pt",
+            "sha256": "00267623754e0441d74eeb2e062fe68c1360144b5257155d00ec7680e347d0cd",
+            "tensor_sha256": "3e43d44419b80446747821e81157b97f3e1ffc77e54a73d9866ff707b980d0d0"
+          },
+          "representative_trace": {
+            "relative_path": "measurements/S0-gain-200/104729/representative_trace.pt",
+            "sha256": "1e46581d0b8f04068331dd5e523b42f9c95e6c18614f440e232e1a7da7570a12"
+          },
+          "secondary_correctness": {
+            "relative_path": "measurements/S0-gain-200/104729/secondary_correctness.pt",
+            "sha256": "11c396f11da4ddd7cce1d7c3fd5f159eed5f7992c066a30ba7954993f9f9f1fd",
+            "tensor_sha256": "272e289052c0eb62154b8dc6d617bce42ee6f6476ded417964f0965d73e1d147"
+          },
+          "secondary_prediction": {
+            "relative_path": "measurements/S0-gain-200/104729/secondary_prediction.pt",
+            "sha256": "e6b5a445eda68e5af0099e068b2664ef69bd6d6c074e6602ce9b43797fa1d81c",
+            "tensor_sha256": "34624d006a5ba043c53d243d2b6e1a65ae544ff04dd35d5c428c050b0db7b4de"
+          }
+        },
+        "camera_fraction": 0.13799914717674255,
+        "clipped_fraction": 0.08994054794311523,
+        "codes_sha256": "81d43602a20a020284f1a6d5990461596a9cb21d0a3b1840d07ebd94abc5e209",
+        "coverage_ratio": 3.638643264770508,
+        "energy_oracle": false,
+        "energy_retention_mean": 0.7343348261402981,
+        "exposure_scale": 0.2456526905298233,
+        "finite": true,
+        "input_energy_mean": 3.295113870649402e-08,
+        "labels_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "minimum_diversity": 0.16967728734016418,
+        "nonnegative": true,
+        "nonphysical_upper_bound": false,
+        "normalized_raw_mean": 0.35030901432037354,
+        "normalized_raw_p01": 0.0012975516729056835,
+        "normalized_raw_p50": 0.14529713988304138,
+        "normalized_raw_p99": 1.9794992208480835,
+        "normalized_raw_quantile_sample_count": 1000000,
+        "output_energy_mean": 2.4197168713158135e-08,
+        "panel": 104729,
+        "passive": true,
+        "passive_available": false,
+        "primary_accuracy": 0.949999988079071,
+        "primary_min_recall": 0.6800000071525574,
+        "primary_recall": [
+          1.0,
+          0.6800000071525574,
+          1.0,
+          1.0,
+          0.9200000166893005,
+          0.8999999761581421,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "projection_fraction_mean": 0.7338865995407104,
+        "raw_finite": true,
+        "raw_nonnegative": true,
+        "residual_fraction_mean": 0.26611340045928955,
+        "saturation": 0.08994050323963165,
+        "secondary_accuracy": 0.3540000021457672,
+        "secondary_min_recall": 0.0,
+        "secondary_prediction_histogram": [
+          85,
+          0,
+          10,
+          77,
+          43,
+          0,
+          20,
+          0,
+          265,
+          0
+        ],
+        "secondary_recall": [
+          1.0,
+          0.0,
+          0.11999999731779099,
+          0.8600000143051147,
+          0.20000000298023224,
+          0.0,
+          0.4000000059604645,
+          0.0,
+          0.9599999785423279,
+          0.0
+        ],
+        "variant": "S0-gain-200"
+      },
+      "161803": {
+        "agreement": 0.35199999809265137,
+        "amplitude_scale": 1.0,
+        "artifacts": {
+          "codes": {
+            "relative_path": "measurements/S0-gain-200/161803/codes.pt",
+            "sha256": "e0bb9ba5e348c7c56022a7fcc79a0f457c98c168ab5787fcdd1b2db55cd46352",
+            "tensor_sha256": "182375abc3278324417adc12922a3dfb2fc3f2c7fcfa9e3bf7118b07ab5e4010"
+          },
+          "fixed_cmos": {
+            "relative_path": "measurements/S0-gain-200/161803/fixed_cmos.pt",
+            "sha256": "06d0615a6c1ae4769fdef00ad285b958fbbab677aa924b3f1b2e6f65b064a1e6",
+            "tensor_sha256": "f1fde16563fe4e939cca7d1bdee296e2523334b4c059c2bf8e92d621cece2225"
+          },
+          "labels": {
+            "relative_path": "measurements/S0-gain-200/161803/labels.pt",
+            "sha256": "efbf7ee083ef89cc2c587ae55228429129839dc8ea01d2d75a0901e981186a95",
+            "tensor_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+          },
+          "primary_prediction": {
+            "relative_path": "measurements/S0-gain-200/161803/primary_prediction.pt",
+            "sha256": "b1f7b79abc10e2d8618ef2059a2adf92f6f7180608d42bbeaee57cd7cda97a4b",
+            "tensor_sha256": "e70a0f19dc8f39125beb9f6853083f0bfb5aff9ca37d7a5007cdd79304cf963a"
+          },
+          "representative_trace": {
+            "relative_path": "measurements/S0-gain-200/161803/representative_trace.pt",
+            "sha256": "b563318c6fdebbdec2fa4327db4f60bf3ee9890e0c8cec1bd9b6f7795c7d70c5"
+          },
+          "secondary_correctness": {
+            "relative_path": "measurements/S0-gain-200/161803/secondary_correctness.pt",
+            "sha256": "3abc524e4cc55fd6737bdfcb4ec0f9fe467d8f13f96aeb08bc30fe536ce359f0",
+            "tensor_sha256": "0ce74d0e3777068260b3089cd469b85abddbb95bd904b25058e70803e7ca1a58"
+          },
+          "secondary_prediction": {
+            "relative_path": "measurements/S0-gain-200/161803/secondary_prediction.pt",
+            "sha256": "1aa7d6b55fb8610b36c74506168fc0a33dc066b2708316ab7a5c7eca9a6148da",
+            "tensor_sha256": "f57f37101f84cc2e5b347542410aea00d3feb79ab20e16faa560f9a07f6339b1"
+          }
+        },
+        "camera_fraction": 0.12333305925130844,
+        "clipped_fraction": 0.08986649662256241,
+        "codes_sha256": "182375abc3278324417adc12922a3dfb2fc3f2c7fcfa9e3bf7118b07ab5e4010",
+        "coverage_ratio": 3.6550869941711426,
+        "energy_oracle": false,
+        "energy_retention_mean": 0.7345354703938213,
+        "exposure_scale": 0.2456526905298233,
+        "finite": true,
+        "input_energy_mean": 3.2866243060425404e-08,
+        "labels_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "minimum_diversity": 0.15692424774169922,
+        "nonnegative": true,
+        "nonphysical_upper_bound": false,
+        "normalized_raw_mean": 0.3496527373790741,
+        "normalized_raw_p01": 0.0013222536072134972,
+        "normalized_raw_p50": 0.14469608664512634,
+        "normalized_raw_p99": 1.9860355854034424,
+        "normalized_raw_quantile_sample_count": 1000000,
+        "output_energy_mean": 2.4141421306467237e-08,
+        "panel": 161803,
+        "passive": true,
+        "passive_available": false,
+        "primary_accuracy": 0.9520000219345093,
+        "primary_min_recall": 0.6200000047683716,
+        "primary_recall": [
+          1.0,
+          0.6200000047683716,
+          1.0,
+          1.0,
+          0.9200000166893005,
+          0.9800000190734863,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "projection_fraction_mean": 0.7339878082275391,
+        "raw_finite": true,
+        "raw_nonnegative": true,
+        "residual_fraction_mean": 0.2660123407840729,
+        "saturation": 0.08986649662256241,
+        "secondary_accuracy": 0.3479999899864197,
+        "secondary_min_recall": 0.0,
+        "secondary_prediction_histogram": [
+          97,
+          0,
+          10,
+          71,
+          45,
+          0,
+          14,
+          0,
+          263,
+          0
+        ],
+        "secondary_recall": [
+          1.0,
+          0.0,
+          0.18000000715255737,
+          0.9399999976158142,
+          0.14000000059604645,
+          0.0,
+          0.2800000011920929,
+          0.0,
+          0.9399999976158142,
+          0.0
+        ],
+        "variant": "S0-gain-200"
+      },
+      "4242": {
+        "agreement": 0.3440000116825104,
+        "amplitude_scale": 1.0,
+        "artifacts": {
+          "codes": {
+            "relative_path": "measurements/S0-gain-200/4242/codes.pt",
+            "sha256": "6fba2bb697690d2ea7709bd38568916a8685a44f10c81dc862e25abb8dc271b1",
+            "tensor_sha256": "4174780d4ac6938c7dc091a531d1ad4d4395773888ebbd40f3d7e0625624f2db"
+          },
+          "fixed_cmos": {
+            "relative_path": "measurements/S0-gain-200/4242/fixed_cmos.pt",
+            "sha256": "f4cd72a3fd0ae46834a53e1b1098cc1f8dfe0ba296b18dee26d5d72762607cd9",
+            "tensor_sha256": "ec589bb78346a9b10e676507a1935ead857edc9f6101f5b48c446c67d610b3f8"
+          },
+          "labels": {
+            "relative_path": "measurements/S0-gain-200/4242/labels.pt",
+            "sha256": "bee0cf29de40cfb8217e08b98e5c206555f00f8ebccff3c6eb459154d728e13d",
+            "tensor_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+          },
+          "primary_prediction": {
+            "relative_path": "measurements/S0-gain-200/4242/primary_prediction.pt",
+            "sha256": "5f547c3587269bac5cde448ad65c357c753b77ebb8489280a4af01bd3921a849",
+            "tensor_sha256": "ce89599ddeac3d00f7374ee02b2360cee39e8b72ec5657c277d43f56e241db3d"
+          },
+          "representative_trace": {
+            "relative_path": "measurements/S0-gain-200/4242/representative_trace.pt",
+            "sha256": "c878f637bc9f9e6117a9e17c8a2f007bcb46571f7abe0a86d608389b9c0d6331"
+          },
+          "secondary_correctness": {
+            "relative_path": "measurements/S0-gain-200/4242/secondary_correctness.pt",
+            "sha256": "da3b28e82dd48cb19bfd010783d113e6b82118d594416cfe43c4ff59644f56e8",
+            "tensor_sha256": "4320a4907bb4f618cf8aa713378cae5e26db2ac46c060e178c51a39f51fa71be"
+          },
+          "secondary_prediction": {
+            "relative_path": "measurements/S0-gain-200/4242/secondary_prediction.pt",
+            "sha256": "d4fe2eeaded25d86e0d38856b1e0fdce8b55b6b6dd3e394c8d8e418c0f9af361",
+            "tensor_sha256": "113b21d3bbf29504f907e4c1b0b2ed34ea746462ab0a55f86fa5a9a13d47f961"
+          }
+        },
+        "camera_fraction": 0.12979008257389069,
+        "clipped_fraction": 0.08926194906234741,
+        "codes_sha256": "4174780d4ac6938c7dc091a531d1ad4d4395773888ebbd40f3d7e0625624f2db",
+        "coverage_ratio": 3.6501591205596924,
+        "energy_oracle": false,
+        "energy_retention_mean": 0.7345034121280221,
+        "exposure_scale": 0.2456526905298233,
+        "finite": true,
+        "input_energy_mean": 3.279733462591139e-08,
+        "labels_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "minimum_diversity": 0.1641026884317398,
+        "nonnegative": true,
+        "nonphysical_upper_bound": false,
+        "normalized_raw_mean": 0.3488520383834839,
+        "normalized_raw_p01": 0.0013195691863074899,
+        "normalized_raw_p50": 0.14394241571426392,
+        "normalized_raw_p99": 1.9809975624084473,
+        "normalized_raw_quantile_sample_count": 1000000,
+        "output_energy_mean": 2.408975419143644e-08,
+        "panel": 4242,
+        "passive": true,
+        "passive_available": false,
+        "primary_accuracy": 0.9660000205039978,
+        "primary_min_recall": 0.7200000286102295,
+        "primary_recall": [
+          1.0,
+          0.7200000286102295,
+          1.0,
+          1.0,
+          1.0,
+          0.9399999976158142,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "projection_fraction_mean": 0.734045147895813,
+        "raw_finite": true,
+        "raw_nonnegative": true,
+        "residual_fraction_mean": 0.26595479249954224,
+        "saturation": 0.08926194906234741,
+        "secondary_accuracy": 0.33799999952316284,
+        "secondary_min_recall": 0.0,
+        "secondary_prediction_histogram": [
+          88,
+          0,
+          5,
+          70,
+          36,
+          0,
+          18,
+          0,
+          283,
+          0
+        ],
+        "secondary_recall": [
+          1.0,
+          0.0,
+          0.07999999821186066,
+          0.9200000166893005,
+          0.05999999865889549,
+          0.0,
+          0.36000001430511475,
+          0.0,
+          0.9599999785423279,
+          0.0
+        ],
+        "variant": "S0-gain-200"
+      }
+    },
+    "S0-per-sample-oracle": {
+      "104729": {
+        "agreement": 0.25999999046325684,
+        "amplitude_scale": "samplewise",
+        "artifacts": {
+          "codes": {
+            "relative_path": "measurements/S0-per-sample-oracle/104729/codes.pt",
+            "sha256": "9aced6f502d2631a0afd28de26ca606db1c54ec17002ccd5ed2bb9e177bd5cd4",
+            "tensor_sha256": "81d43602a20a020284f1a6d5990461596a9cb21d0a3b1840d07ebd94abc5e209"
+          },
+          "fixed_cmos": {
+            "relative_path": "measurements/S0-per-sample-oracle/104729/fixed_cmos.pt",
+            "sha256": "e51608f9c86aea7aba24c84d02780c78e08a19544f337ab8f5f46e062e9b46b9",
+            "tensor_sha256": "4e7851595d059746d31cd776e99e569c88c47f59fab78eb4c596610621af0917"
+          },
+          "labels": {
+            "relative_path": "measurements/S0-per-sample-oracle/104729/labels.pt",
+            "sha256": "b27f3645365b09d5a38bf65c12b9843f6300bddc149cf7afb96cafceeb04c63a",
+            "tensor_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+          },
+          "primary_prediction": {
+            "relative_path": "measurements/S0-per-sample-oracle/104729/primary_prediction.pt",
+            "sha256": "e3843ab1abc25e7dec6c3ae84fd2c17d11bf6b15c06f4a7f663397a533dc8dc3",
+            "tensor_sha256": "12157b2731875ea36e5f0364f468e368e5e025b5326119c61908834503954f95"
+          },
+          "representative_trace": {
+            "relative_path": "measurements/S0-per-sample-oracle/104729/representative_trace.pt",
+            "sha256": "2526456451a738cb622754433952e3f84a2860786f2a0c0ab58b2b71f37d9e85"
+          },
+          "secondary_correctness": {
+            "relative_path": "measurements/S0-per-sample-oracle/104729/secondary_correctness.pt",
+            "sha256": "274c95caa5fbdb19b541ce1ba9a2c3864cb38da2d3b02ef37e60f9945c3de1aa",
+            "tensor_sha256": "efaf41ba6e678f30fdbcb297697e8048882c1b4a74fe8ccccfc647d3307c121d"
+          },
+          "secondary_prediction": {
+            "relative_path": "measurements/S0-per-sample-oracle/104729/secondary_prediction.pt",
+            "sha256": "5f0658c424c1def2f577c6ddb176751f4ecf70f3daefab5d6e06c54e6080eaf2",
+            "tensor_sha256": "c056fa91948a7c4197a09e4581f74eb995c671533a153a3c8e186b0d005af4b2"
+          }
+        },
+        "camera_fraction": 0.13751348853111267,
+        "clipped_fraction": 0.03261544927954674,
+        "codes_sha256": "81d43602a20a020284f1a6d5990461596a9cb21d0a3b1840d07ebd94abc5e209",
+        "coverage_ratio": 3.5032131671905518,
+        "energy_oracle": true,
+        "energy_retention_mean": 1.0,
+        "exposure_scale": 0.4913053810596466,
+        "finite": true,
+        "input_energy_mean": 3.295113870649402e-08,
+        "labels_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "minimum_diversity": 0.2034177929162979,
+        "nonnegative": true,
+        "nonphysical_upper_bound": true,
+        "normalized_raw_mean": 0.23851139843463898,
+        "normalized_raw_p01": 0.0008842297829687595,
+        "normalized_raw_p50": 0.09897898137569427,
+        "normalized_raw_p99": 1.3448535203933716,
+        "normalized_raw_quantile_sample_count": 1000000,
+        "output_energy_mean": 3.295113870649402e-08,
+        "panel": 104729,
+        "passive": true,
+        "passive_available": false,
+        "primary_accuracy": 0.8339999914169312,
+        "primary_min_recall": 0.019999999552965164,
+        "primary_recall": [
+          0.5,
+          0.019999999552965164,
+          1.0,
+          1.0,
+          0.8799999952316284,
+          1.0,
+          1.0,
+          0.9399999976158142,
+          1.0,
+          1.0
+        ],
+        "projection_fraction_mean": 0.7338865995407104,
+        "raw_finite": true,
+        "raw_nonnegative": true,
+        "residual_fraction_mean": 0.26611340045928955,
+        "saturation": 0.03261544927954674,
+        "secondary_accuracy": 0.23399999737739563,
+        "secondary_min_recall": 0.0,
+        "secondary_prediction_histogram": [
+          50,
+          0,
+          4,
+          13,
+          45,
+          0,
+          0,
+          0,
+          388,
+          0
+        ],
+        "secondary_recall": [
+          1.0,
+          0.0,
+          0.07999999821186066,
+          0.25999999046325684,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        "variant": "S0-per-sample-oracle"
+      },
+      "161803": {
+        "agreement": 0.22599999606609344,
+        "amplitude_scale": "samplewise",
+        "artifacts": {
+          "codes": {
+            "relative_path": "measurements/S0-per-sample-oracle/161803/codes.pt",
+            "sha256": "42fba6eafad972357de089f7741919528bd873753069ed982e23c8d5b5fe5f61",
+            "tensor_sha256": "182375abc3278324417adc12922a3dfb2fc3f2c7fcfa9e3bf7118b07ab5e4010"
+          },
+          "fixed_cmos": {
+            "relative_path": "measurements/S0-per-sample-oracle/161803/fixed_cmos.pt",
+            "sha256": "a5e9fa763aae50fd5df73f5e5ce68fdd2258eccf43fcc484747a829b648f9204",
+            "tensor_sha256": "a9a32cbcd4084eae34ea06d8c686af187b2f0db829f225e3bb311bbb8b30ab67"
+          },
+          "labels": {
+            "relative_path": "measurements/S0-per-sample-oracle/161803/labels.pt",
+            "sha256": "2f21362ebc604b81be83f78ebc853ce269d1853219ee2198d6fc32d5d8421378",
+            "tensor_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+          },
+          "primary_prediction": {
+            "relative_path": "measurements/S0-per-sample-oracle/161803/primary_prediction.pt",
+            "sha256": "7ea4dbe09adf1af71624f8046bf9f8f539998be7000e38d07cf5762225279328",
+            "tensor_sha256": "c9287d9e786a1e331001e14324de27ef6bdcd7a563c9f4a7b6efedc81591ed31"
+          },
+          "representative_trace": {
+            "relative_path": "measurements/S0-per-sample-oracle/161803/representative_trace.pt",
+            "sha256": "c061f9210dca396badbcd42fb1fabbbe63288cb03a539a30904e2ca591cf5ab5"
+          },
+          "secondary_correctness": {
+            "relative_path": "measurements/S0-per-sample-oracle/161803/secondary_correctness.pt",
+            "sha256": "674c7a801028460104683241a389bdc5ab8edfd6ed0707a5e8179a8c33f4128f",
+            "tensor_sha256": "7e7dda9f33d603ea6c36a2fec54b010d0fac56d8eaa3ff50e998195f6656c296"
+          },
+          "secondary_prediction": {
+            "relative_path": "measurements/S0-per-sample-oracle/161803/secondary_prediction.pt",
+            "sha256": "d946554f1a0628bed5decb3cdd843d15e0c392eb76bb70e0cdc5ade869550eac",
+            "tensor_sha256": "37eeecefe15602b86123b3b373191b85dac1b9fd8df0dcaf570d886b011caede"
+          }
+        },
+        "camera_fraction": 0.12284161895513535,
+        "clipped_fraction": 0.0330641008913517,
+        "codes_sha256": "182375abc3278324417adc12922a3dfb2fc3f2c7fcfa9e3bf7118b07ab5e4010",
+        "coverage_ratio": 3.517102003097534,
+        "energy_oracle": true,
+        "energy_retention_mean": 1.0,
+        "exposure_scale": 0.4913053810596466,
+        "finite": true,
+        "input_energy_mean": 3.2866243060425404e-08,
+        "labels_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "minimum_diversity": 0.1851796954870224,
+        "nonnegative": true,
+        "nonphysical_upper_bound": true,
+        "normalized_raw_mean": 0.23800022900104523,
+        "normalized_raw_p01": 0.0009007740882225335,
+        "normalized_raw_p50": 0.09855296462774277,
+        "normalized_raw_p99": 1.3482613563537598,
+        "normalized_raw_quantile_sample_count": 1000000,
+        "output_energy_mean": 3.2866243060425404e-08,
+        "panel": 161803,
+        "passive": true,
+        "passive_available": false,
+        "primary_accuracy": 0.8299999833106995,
+        "primary_min_recall": 0.019999999552965164,
+        "primary_recall": [
+          0.3799999952316284,
+          0.019999999552965164,
+          1.0,
+          1.0,
+          0.9200000166893005,
+          1.0,
+          1.0,
+          1.0,
+          0.9800000190734863,
+          1.0
+        ],
+        "projection_fraction_mean": 0.7339878082275391,
+        "raw_finite": true,
+        "raw_nonnegative": true,
+        "residual_fraction_mean": 0.2660123407840729,
+        "saturation": 0.0330641008913517,
+        "secondary_accuracy": 0.22599999606609344,
+        "secondary_min_recall": 0.0,
+        "secondary_prediction_histogram": [
+          50,
+          0,
+          2,
+          12,
+          46,
+          0,
+          0,
+          0,
+          390,
+          0
+        ],
+        "secondary_recall": [
+          1.0,
+          0.0,
+          0.03999999910593033,
+          0.2199999988079071,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        "variant": "S0-per-sample-oracle"
+      },
+      "4242": {
+        "agreement": 0.2840000092983246,
+        "amplitude_scale": "samplewise",
+        "artifacts": {
+          "codes": {
+            "relative_path": "measurements/S0-per-sample-oracle/4242/codes.pt",
+            "sha256": "9de696bdee4f252c80c90f860fe8f551f5b8b36a698c9dd4de0cf4295c4bd822",
+            "tensor_sha256": "4174780d4ac6938c7dc091a531d1ad4d4395773888ebbd40f3d7e0625624f2db"
+          },
+          "fixed_cmos": {
+            "relative_path": "measurements/S0-per-sample-oracle/4242/fixed_cmos.pt",
+            "sha256": "5ac159252066155f93aeb279447a375554d57db577414a30b47fcc7c2f53a4ad",
+            "tensor_sha256": "f4cb4050302134c6b3d53d4b8273082366e873b36983dde1debb0d45f3612985"
+          },
+          "labels": {
+            "relative_path": "measurements/S0-per-sample-oracle/4242/labels.pt",
+            "sha256": "f32148e5c2a08db6e357289ddd04da546c41331935bf76072de337c904f8b5aa",
+            "tensor_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+          },
+          "primary_prediction": {
+            "relative_path": "measurements/S0-per-sample-oracle/4242/primary_prediction.pt",
+            "sha256": "64ca1658fc527323831ee220cb5b7e527dda47059856a6356c28b2b7e60446b7",
+            "tensor_sha256": "410a30cde6d058ae8e16e777d04285dd184ac033d9a2a250705f7a38ca489bba"
+          },
+          "representative_trace": {
+            "relative_path": "measurements/S0-per-sample-oracle/4242/representative_trace.pt",
+            "sha256": "50d81540c7cef73ea38365f3dcefe576ec632ac1b67185b4460b4367217e05ee"
+          },
+          "secondary_correctness": {
+            "relative_path": "measurements/S0-per-sample-oracle/4242/secondary_correctness.pt",
+            "sha256": "152662b457b31bfdf3c60800b99f87d069b8f43beaf5414185262196c42b6241",
+            "tensor_sha256": "b60d52b14d8866e9ce2433cc1c147dae1dd4a3ef68b6ec15dcbdb1a51f8678c1"
+          },
+          "secondary_prediction": {
+            "relative_path": "measurements/S0-per-sample-oracle/4242/secondary_prediction.pt",
+            "sha256": "22bb648010fa219bc2cc214c26841614ab8ef48555d0d0aa1401712abb880a67",
+            "tensor_sha256": "4c9f6f6e9a4df3fca74468cb2d075f1c2d75b69897765ac063b69ed265f03717"
+          }
+        },
+        "camera_fraction": 0.1291242390871048,
+        "clipped_fraction": 0.0325470007956028,
+        "codes_sha256": "4174780d4ac6938c7dc091a531d1ad4d4395773888ebbd40f3d7e0625624f2db",
+        "coverage_ratio": 3.516225576400757,
+        "energy_oracle": true,
+        "energy_retention_mean": 1.0,
+        "exposure_scale": 0.4913053810596466,
+        "finite": true,
+        "input_energy_mean": 3.279733462591139e-08,
+        "labels_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "minimum_diversity": 0.19417604804039001,
+        "nonnegative": true,
+        "nonphysical_upper_bound": true,
+        "normalized_raw_mean": 0.23746608197689056,
+        "normalized_raw_p01": 0.0008984452579170465,
+        "normalized_raw_p50": 0.09805014729499817,
+        "normalized_raw_p99": 1.3458839654922485,
+        "normalized_raw_quantile_sample_count": 1000000,
+        "output_energy_mean": 3.279733462591139e-08,
+        "panel": 4242,
+        "passive": true,
+        "passive_available": false,
+        "primary_accuracy": 0.8619999885559082,
+        "primary_min_recall": 0.019999999552965164,
+        "primary_recall": [
+          0.6600000262260437,
+          0.019999999552965164,
+          1.0,
+          1.0,
+          0.9800000190734863,
+          1.0,
+          1.0,
+          0.9599999785423279,
+          1.0,
+          1.0
+        ],
+        "projection_fraction_mean": 0.734045147895813,
+        "raw_finite": true,
+        "raw_nonnegative": true,
+        "residual_fraction_mean": 0.26595479249954224,
+        "saturation": 0.0325470007956028,
+        "secondary_accuracy": 0.23600000143051147,
+        "secondary_min_recall": 0.0,
+        "secondary_prediction_histogram": [
+          50,
+          0,
+          3,
+          16,
+          43,
+          0,
+          0,
+          0,
+          388,
+          0
+        ],
+        "secondary_recall": [
+          1.0,
+          0.0,
+          0.05999999865889549,
+          0.30000001192092896,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        "variant": "S0-per-sample-oracle"
+      }
+    }
+  },
+  "schema": "fiber_loss_exposure_measurement.v1",
+  "status": "synthetic diagnostic-only",
+  "storage_bytes": 864404511,
+  "storage_limit_bytes": 2147483648,
+  "synthetic_diagnostic_only": true,
+  "training_authorized": false,
+  "validation_sha256": "95dd1841ecab385b133a283436a8ba70972c68a6db6a3a9595dcb4481d27de63",
+  "variants": [
+    "I0-E0",
+    "S0-E0",
+    "S0-Ecal",
+    "I0-Acal",
+    "S0-field-gain-reference",
+    "S0-per-sample-oracle",
+    "S0-gain-075",
+    "S0-gain-100",
+    "S0-gain-115",
+    "S0-gain-150",
+    "S0-gain-175",
+    "S0-gain-200"
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "schema": "fiber_route_closeout_summary.v1",
+  "status": "closed_synthetic_fiber_route_no_e1",
+  "consumer": "current v2 handoff and future research authorization gate",
+  "rejection_decision": ["no_fiber_training", "no_e1", "no_modal_regularizer", "no_formal_promotion"],
+  "source_commits": {
+    "v3": "cb5260f6bdabca6fcdc86934c8bc84da99e58a82",
+    "interface": "42d7cab3c30c499bd0fc69470d935a5fd9cf7b63",
+    "loss_exposure": "1e21b6642c6eb01e908ebaecb078150361fc457e",
+    "decoder": "90c1161e6b7f4d0e50294cecdcda917a1fb7ee89"
+  },
+  "reverse_necessity_check": {
+    "sufficient_for_rejection": true,
+    "cuda_used": false,
+    "new_forward_or_optimizer": false,
+    "rejected_work": ["gradient-disagreement lifecycle", "secondary-selected phase direction", "third evaluator", "exposure/phase/mode-bank/fiber sweeps", "generator or decoder training"]
+  },
+  "attribution_chain": [
+    {"stage":"v3","schema":"fiber_image_closeout.v2","gate":"valid_failed","classification":"no_reproducible_fiber_gain","key_metrics":{"selection_sha256":"0e5a41fef5c697d2e2da17049ba0e0a3a35645e54ebc1ae03d5c8b1ac281d7c6"}},
+    {"stage":"interface","schema":"fiber_interface_closeout.v1","gate":"valid","classification":"class_encoding_retained_semantic_manifold_mismatch","key_metrics":{"cross_panel_nearest_centroid":"near 1.0","jacobian_rank":"complete","next_action":"loss_exposure_budget_only"}},
+    {"stage":"loss_exposure","schema":"fiber_loss_exposure_closeout.v1","gate":"valid","classification":"global_exposure_explains_oracle_only","key_metrics":{"rho_cal":0.734373152256012,"global_gain":1.36170555381549,"secondary_gain":0.06933333333333333,"ci95":[0.05666666666666667,0.08266666666666667],"oracle_gain_recovery":0.954,"minimum_recall":"0 on all locked panels","next_action":"register_zero_phase_decoder_controllability_attribution"}},
+    {"stage":"decoder","schema":"fiber_decoder_controllability_closeout.v1","gate":"valid","classification":"zero_phase_decoder_local_reachability_failed","key_metrics":{"dshared_plus_primary":"0.936-0.942","dshared_plus_secondary_gain":-0.009333333333333334,"ci95":[-0.014666666666666667,-0.004666666666666667],"dclass_oracle_secondary_gain":0.0,"minimum_recall":"0 for all directions","next_action":"close_current_fiber_route_no_e1"}}
+  ],
+  "established_claim": "Under the current synthetic S0, fixed generator, 100-port LP01, fixed exposure, and local phase-only decoder contract, no fiber follow-up is authorized.",
+  "prohibited_claims": ["real-fiber performance failure", "phase-only capacity failure", "modal-capacity failure", "generator class encoding absent", "universal evaluator incompatibility"],
+  "restart_contract": [
+    "Propose a new electronic O0 hypothesis that can change the rejection decision.",
+    "Pass independent qualification and a multi-seed dual-evaluator digital oracle.",
+    "Only after electronic O0 passes may a new synthetic fiber lifecycle be registered.",
+    "Any real hardware conclusion still requires an independent fiber and camera calibration contract."
+  ],
+  "formal_promotion": false,
+  "training_authorized": false,
+  "synthetic_diagnostic_only": true,
+  "outputs_modified": false,
+  "optimizer_created": false
+}

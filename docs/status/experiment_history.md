@@ -2,6 +2,24 @@
 
 本文件保存带日期的实验事实和验收证据，不定义当前执行契约。迁移或续接当前主线时先读 [当前主线交接（v79 冻结与 v2）](current_handoff.md)；当前架构见 [D2NN 单次曝光蒸馏主线](../architecture/v1_single_shot_distillation.md)，stage 命令与输入要求见 [Stage Guide](../operations/stage_guide.md)，完整导航见 [Documentation](../README.md)。本文件的“当前/下一步”均表示各记录当时的结论；历史证据保留，不应覆盖现行合同。
 
+## 2026-08-22：synthetic fiber route formally archived without E1
+
+The v2 synthetic fiber attribution chain was closed and archived at
+`experiments/archive/v2_fiber_route_no_e1_closeout/` after a read-only reverse
+necessity check. v3 remained `valid_failed /
+no_reproducible_fiber_gain`; interface attribution retained class structure
+and local port observability; global exposure explained approximately 95.4%
+of the per-sample oracle gain but did not restore minimum recall; and decoder
+controllability did not recover secondary semantics. The final decision is
+`no_fiber_training`, `no_e1`, `no_modal_regularizer`, and
+`no_formal_promotion`.
+
+This record is synthetic diagnostic-only and is not a formal optical contract.
+No new CUDA measurement, training, evaluator comparison, checkpoint, or
+hardware claim was created. Restart requires a new electronic O0 hypothesis
+that can change the rejection decision, independent qualification, and a
+multi-seed dual-evaluator digital oracle before any new synthetic fiber route.
+
 ## 2026-07-30：v7.1 transport-aligned manifold 合同预注册
 
 在 v7 的有效 CUDA admission 失败后，唯一允许的电子候选为 v7.1：冻结 carrier、

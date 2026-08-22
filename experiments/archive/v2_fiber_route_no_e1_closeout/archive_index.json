@@ -1,0 +1,31 @@
+{
+  "schema": "v2_fiber_route_archive_index.v1",
+  "status": "closed_synthetic_fiber_route_no_e1",
+  "diagnostic_only": true,
+  "runnable": false,
+  "source_commits": {
+    "v3": "cb5260f6bdabca6fcdc86934c8bc84da99e58a82",
+    "interface": "42d7cab3c30c499bd0fc69470d935a5fd9cf7b63",
+    "loss_exposure": "1e21b6642c6eb01e908ebaecb078150361fc457e",
+    "decoder": "90c1161e6b7f4d0e50294cecdcda917a1fb7ee89"
+  },
+  "files": [
+    {"role":"attribution_v1_measurement","source_path":"outputs/20260821_v2/runs/20260821_fiber_image_attribution_v1/measurement.json","archive_path":"experiments/archive/v2_fiber_route_no_e1_closeout/evidence/attribution_v1_measurement.json","bytes":72071,"sha256":"acc07dbf39ea9452f41c43c26b32ac9542b7a7be86daea9dd75e672e3ff2bba0"},
+    {"role":"decoder_closeout","source_path":"outputs/20260822_v2/runs/20260822_fiber_decoder_controllability_attribution_v1/closeout.json","archive_path":"experiments/archive/v2_fiber_route_no_e1_closeout/evidence/decoder_closeout.json","bytes":722,"sha256":"3427d8d9a73079ba107d04bce43dcdff9799b57175fbb77a77dd50028a481d76"},
+    {"role":"decoder_design","source_path":"outputs/20260822_v2/runs/20260822_fiber_decoder_controllability_attribution_v1/design/direction_design.json","archive_path":"experiments/archive/v2_fiber_route_no_e1_closeout/evidence/decoder_design.json","bytes":8195,"sha256":"c75db1612651e4ecdf49be747b0bf85876ae189743cd5cedd27d36271247744d"},
+    {"role":"decoder_measurement","source_path":"outputs/20260822_v2/runs/20260822_fiber_decoder_controllability_attribution_v1/measurement/measurement.json","archive_path":"experiments/archive/v2_fiber_route_no_e1_closeout/evidence/decoder_measurement.json","bytes":88076,"sha256":"98b3fceb98747b12f3746e222a222faefdd72642641efc7071c37bccf463fe66"},
+    {"role":"decoder_presentation","source_path":"outputs/20260822_v2/runs/20260822_fiber_decoder_controllability_attribution_v1/presentation/presentation.json","archive_path":"experiments/archive/v2_fiber_route_no_e1_closeout/evidence/decoder_presentation.json","bytes":5707,"sha256":"805a667f24b434c17d4c4237af2c09a78ef72fbfd887392ac2c248d4ce8de999"},
+    {"role":"decoder_validation","source_path":"outputs/20260822_v2/runs/20260822_fiber_decoder_controllability_attribution_v1/validation/decoder_controllability_validation.json","archive_path":"experiments/archive/v2_fiber_route_no_e1_closeout/evidence/decoder_validation.json","bytes":5979,"sha256":"518651c9229f2254e55f9f11a94604b65f7283e457529d3c2569dc770b54d36d"},
+    {"role":"interface_closeout","source_path":"outputs/20260821_v2/runs/20260821_fiber_interface_attribution_v1/closeout.json","archive_path":"experiments/archive/v2_fiber_route_no_e1_closeout/evidence/interface_closeout.json","bytes":1447,"sha256":"7fada9a7a636b31ba944224178d2f2b6fd820914a6811798d203e3e52afc4d56"},
+    {"role":"interface_measurement","source_path":"outputs/20260821_v2/runs/20260821_fiber_interface_attribution_v1/measurement/measurement.json","archive_path":"experiments/archive/v2_fiber_route_no_e1_closeout/evidence/interface_measurement.json","bytes":332385,"sha256":"ad6929307de081c54518152de0632195e705963018e13b48325cd738f4965860"},
+    {"role":"interface_presentation","source_path":"outputs/20260821_v2/runs/20260821_fiber_interface_attribution_v1/presentation/presentation.json","archive_path":"experiments/archive/v2_fiber_route_no_e1_closeout/evidence/interface_presentation.json","bytes":80464,"sha256":"bac7978cf9d3779864754b324464c06d5be324dee0b60d234f4803e601001be3"},
+    {"role":"interface_validation","source_path":"outputs/20260821_v2/runs/20260821_fiber_interface_attribution_v1/validation/interface_validation.json","archive_path":"experiments/archive/v2_fiber_route_no_e1_closeout/evidence/interface_validation.json","bytes":6140,"sha256":"64b105787b48b33a2df9839918520e4044604c6ccf6673b057404767318365a0"},
+    {"role":"loss_exposure_calibration","source_path":"outputs/20260822_v2/runs/20260822_fiber_loss_exposure_attribution_v1/measurement/calibration.json","archive_path":"experiments/archive/v2_fiber_route_no_e1_closeout/evidence/loss_exposure_calibration.json","bytes":855,"sha256":"b2b3d26cf600fa2c7e5b2612b4af88bcc449629c97b988665da14fd10ac0184c"},
+    {"role":"loss_exposure_closeout","source_path":"outputs/20260822_v2/runs/20260822_fiber_loss_exposure_attribution_v1/closeout.json","archive_path":"experiments/archive/v2_fiber_route_no_e1_closeout/evidence/loss_exposure_closeout.json","bytes":1002,"sha256":"78a5b9b71f01a4bd9a6c1a979dcaa7792e7660cf55b340ed91cdb34b52ce8c27"},
+    {"role":"loss_exposure_measurement","source_path":"outputs/20260822_v2/runs/20260822_fiber_loss_exposure_attribution_v1/measurement/measurement.json","archive_path":"experiments/archive/v2_fiber_route_no_e1_closeout/evidence/loss_exposure_measurement.json","bytes":177638,"sha256":"ded4daea1e7afe1d86775fa96900c3aef60dce7aeab54ee3b1aff1066063d011"},
+    {"role":"loss_exposure_presentation","source_path":"outputs/20260822_v2/runs/20260822_fiber_loss_exposure_attribution_v1/presentation/presentation.json","archive_path":"experiments/archive/v2_fiber_route_no_e1_closeout/evidence/loss_exposure_presentation.json","bytes":11752,"sha256":"a0ed6894a727a33fc1b4516c6742a5b44c1ccd50956b8d8158311341c15fd385"},
+    {"role":"loss_exposure_validation","source_path":"outputs/20260822_v2/runs/20260822_fiber_loss_exposure_attribution_v1/validation/loss_exposure_validation.json","archive_path":"experiments/archive/v2_fiber_route_no_e1_closeout/evidence/loss_exposure_validation.json","bytes":5467,"sha256":"95dd1841ecab385b133a283436a8ba70972c68a6db6a3a9595dcb4481d27de63"},
+    {"role":"v3_closeout","source_path":"outputs/20260821_v2/runs/20260821_fiber_image_v3/closeout.json","archive_path":"experiments/archive/v2_fiber_route_no_e1_closeout/evidence/v3_closeout.json","bytes":1998,"sha256":"0aad43992fab429b905acddbd6b1a89235c63fd5265831d2af2d98147989b73d"},
+    {"role":"v3_selection","source_path":"outputs/20260821_v2/runs/20260821_fiber_image_v3/selection.json","archive_path":"experiments/archive/v2_fiber_route_no_e1_closeout/evidence/v3_selection.json","bytes":929065,"sha256":"0e5a41fef5c697d2e2da17049ba0e0a3a35645e54ebc1ae03d5c8b1ac281d7c6"}
+  ]
+}

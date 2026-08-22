@@ -1,0 +1,15 @@
+{
+  "conclusion": "zero_phase_decoder_local_reachability_failed",
+  "design_sha256": "c75db1612651e4ecdf49be747b0bf85876ae189743cd5cedd27d36271247744d",
+  "formal_promotion": false,
+  "gate": "valid",
+  "measurement_sha256": "98b3fceb98747b12f3746e222a222faefdd72642641efc7071c37bccf463fe66",
+  "next_action": "close_current_fiber_route_no_e1",
+  "presentation_sha256": "805a667f24b434c17d4c4237af2c09a78ef72fbfd887392ac2c248d4ce8de999",
+  "schema": "fiber_decoder_controllability_closeout.v1",
+  "storage_bytes": 57336727,
+  "storage_limit_bytes": 2147483648,
+  "synthetic_diagnostic_only": true,
+  "training_authorized": false,
+  "validation_sha256": "518651c9229f2254e55f9f11a94604b65f7283e457529d3c2569dc770b54d36d"
+}

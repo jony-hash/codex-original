@@ -1,0 +1,21 @@
+{
+  "calibrated_exposure_scale": 0.36080148140911383,
+  "codes_sha256": "fa9f1d8bdf73300f2d7d95d1911a70b896eb9a213ebabc27875ce8f55a49e55c",
+  "evaluator_used": false,
+  "formal_promotion": false,
+  "gate": "valid",
+  "git_commit": "1e21b6642c6eb01e908ebaecb078150361fc457e",
+  "global_gain": 1.36170555381549,
+  "input_energy_sum": 1.650349258852657e-05,
+  "labels_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+  "nominal_exposure_scale": 0.4913053810596466,
+  "optimizer_created": false,
+  "panel": 271828,
+  "projected_energy_sum": 1.2119721759518143e-05,
+  "rho_cal": 0.734373152256012,
+  "sample_count": 500,
+  "schema": "fiber_loss_exposure_calibration.v1",
+  "synthetic_diagnostic_only": true,
+  "training_authorized": false,
+  "validation_sha256": "95dd1841ecab385b133a283436a8ba70972c68a6db6a3a9595dcb4481d27de63"
+}

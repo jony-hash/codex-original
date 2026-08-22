@@ -1,0 +1,78 @@
+{
+  "conclusion": "no_reproducible_fiber_gain",
+  "formal_promotion": false,
+  "gate": "valid_failed",
+  "measurement_validity": true,
+  "schema": "fiber_image_closeout.v2",
+  "scientific_gates": {
+    "cross_function_bootstrap": {
+      "104729": {
+        "ci95": [
+          0.0,
+          0.014000000432133675
+        ],
+        "maximum_function": "S0",
+        "minimum_function": "S1b",
+        "observed_difference": 0.006000000052154064,
+        "replicates": 10000,
+        "seed": 90210
+      },
+      "161803": {
+        "ci95": [
+          0.0,
+          0.006000000052154064
+        ],
+        "maximum_function": "S1a",
+        "minimum_function": "S0",
+        "observed_difference": 0.0020000000949949026,
+        "replicates": 10000,
+        "seed": 90210
+      },
+      "4242": {
+        "ci95": [
+          0.0,
+          0.014000000432133675
+        ],
+        "maximum_function": "S0",
+        "minimum_function": "S1a",
+        "observed_difference": 0.006000000052154064,
+        "replicates": 10000,
+        "seed": 90210
+      }
+    },
+    "functions": {
+      "S0": {
+        "identity_gap": 0.2720000147819519,
+        "panel_gain": false,
+        "passed": false,
+        "primary_quality": true,
+        "quality": false
+      },
+      "S1a": {
+        "identity_gap": 0.3140000253915787,
+        "panel_gain": false,
+        "passed": false,
+        "primary_quality": true,
+        "quality": false
+      },
+      "S1b": {
+        "identity_gap": 0.32600002735853195,
+        "panel_gain": false,
+        "passed": false,
+        "primary_quality": true,
+        "quality": false
+      },
+      "S1c": {
+        "identity_gap": 0.3200000151991844,
+        "panel_gain": false,
+        "passed": false,
+        "primary_quality": true,
+        "quality": false
+      }
+    },
+    "passed_functions": []
+  },
+  "selection_sha256": "0e5a41fef5c697d2e2da17049ba0e0a3a35645e54ebc1ae03d5c8b1ac281d7c6",
+  "structural_validity": true,
+  "synthetic_diagnostic_only": true
+}

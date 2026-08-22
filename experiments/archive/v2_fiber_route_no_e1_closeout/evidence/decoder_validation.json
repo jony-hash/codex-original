@@ -1,0 +1,147 @@
+{
+  "attribution_measurement_sha256": "acc07dbf39ea9452f41c43c26b32ac9542b7a7be86daea9dd75e672e3ff2bba0",
+  "config_hash": "c585bc683dc9af347699c24c79431f3fab398efc533a17778c7c9103dcc7e987",
+  "dataset_split_manifest_hash": "8a51217b1ed6833250226255930ab598bf1539e27772ade0188592e5bc0b3912",
+  "design_panel": 314159,
+  "fixed_exposure_scale": 0.36080148140911383,
+  "formal_promotion": false,
+  "gate": "valid",
+  "git_commit": "90c1161e6b7f4d0e50294cecdcda917a1fb7ee89",
+  "harness_gates": {
+    "design_panel_disjoint": true,
+    "device_cuda": true,
+    "fixed_exposure_matches_signed_evidence": true,
+    "generator_frozen": true,
+    "interface_lineage": true,
+    "loss_exposure_lineage": true,
+    "mode_bank_rank": true,
+    "no_optical_trainable_parameters": true,
+    "no_optimizer": true,
+    "plane_provenance": true,
+    "runtime_zero_phase": true,
+    "source_generator_scope": true,
+    "source_system_keys_ignored": true
+  },
+  "historical_binding": {
+    "attribution_measurement_sha256": "acc07dbf39ea9452f41c43c26b32ac9542b7a7be86daea9dd75e672e3ff2bba0",
+    "lp01_fixture_sha256": "c066c1f4387ea71c662e6464e7a211994c05e4108a2172ce705de517b46146d2",
+    "v3_closeout_sha256": "0aad43992fab429b905acddbd6b1a89235c63fd5265831d2af2d98147989b73d"
+  },
+  "interface_closeout_sha256": "7fada9a7a636b31ba944224178d2f2b6fd820914a6811798d203e3e52afc4d56",
+  "interface_measurement_sha256": "ad6929307de081c54518152de0632195e705963018e13b48325cd738f4965860",
+  "interface_validation_sha256": "64b105787b48b33a2df9839918520e4044604c6ccf6673b057404767318365a0",
+  "loss_exposure_closeout_sha256": "78a5b9b71f01a4bd9a6c1a979dcaa7792e7660cf55b340ed91cdb34b52ce8c27",
+  "loss_exposure_measurement_sha256": "ded4daea1e7afe1d86775fa96900c3aef60dce7aeab54ee3b1aff1066063d011",
+  "loss_exposure_presentation_sha256": "a0ed6894a727a33fc1b4516c6742a5b44c1ccd50956b8d8158311341c15fd385",
+  "loss_exposure_validation_sha256": "95dd1841ecab385b133a283436a8ba70972c68a6db6a3a9595dcb4481d27de63",
+  "lp01_fixture_sha256": "c066c1f4387ea71c662e6464e7a211994c05e4108a2172ce705de517b46146d2",
+  "panels": [
+    4242,
+    104729,
+    161803
+  ],
+  "phase_rms_grid": [
+    0.005,
+    0.01,
+    0.025,
+    0.05
+  ],
+  "primary_evaluator_sha256": "46741ec76e45653c9dcb76e7b4f1645c9c057a47cdd9e4c1778d9debb553ec57",
+  "research_initialization_checkpoint_sha256": "423328bf472bb7468f131b351850d1b6f7c5a282796444ecbec5e10bad12c2b9",
+  "sample_count_per_panel": 500,
+  "schema": "fiber_decoder_controllability_validation.v1",
+  "secondary_evaluator_sha256": "45879962cf8a6dc51e141a2f2a9892356ede97dd45063f38d830299aa877e26c",
+  "source_state_audit": {
+    "ignored_state_keys": [
+      "system.decoder.phase",
+      "system.encoder.phase"
+    ],
+    "loaded_generator_state_keys": [
+      "generator.class_carrier_logits",
+      "generator.class_heads",
+      "generator.code_projection.weight",
+      "generator.global_modes"
+    ],
+    "runtime_decoder_phase_zero": true,
+    "runtime_encoder_phase_zero": true,
+    "runtime_generator_trainable": [],
+    "runtime_optical_trainable": [],
+    "source_decoder_phase_max_abs": 0.14959503710269928,
+    "source_decoder_phase_norm": 7.351612091064453,
+    "source_encoder_phase_max_abs": 0.1864502727985382,
+    "source_encoder_phase_norm": 7.002781867980957,
+    "source_state_key_count": 6
+  },
+  "source_training_evidence_sha256": "534453cc1590caa1e632d375f17144fcbf517c522b0b8d47145daaab796e059e",
+  "synthetic_diagnostic_only": true,
+  "training_authorized": false,
+  "upstream_validation": {
+    "config_hash": "c585bc683dc9af347699c24c79431f3fab398efc533a17778c7c9103dcc7e987",
+    "dataset_root": "/home/dingzhen/projects/codex-original/data",
+    "dataset_split_manifest_hash": "8a51217b1ed6833250226255930ab598bf1539e27772ade0188592e5bc0b3912",
+    "deterministic_pooling": {
+      "forward_max_abs_error": 5.551115123125783e-16,
+      "gate": "valid",
+      "paths": [
+        "200->28",
+        "28->14"
+      ]
+    },
+    "fixture_sha256": "c066c1f4387ea71c662e6464e7a211994c05e4108a2172ce705de517b46146d2",
+    "functions": {
+      "I0": "identity",
+      "N0": "full_phase-00",
+      "S0": "train-00",
+      "S1a": "train-01",
+      "S1b": "train-12",
+      "S1c": "train-24"
+    },
+    "gate": "valid",
+    "git_commit": "90c1161e6b7f4d0e50294cecdcda917a1fb7ee89",
+    "lp01_fixture": {
+      "amplitude_1e_radius_relative_error": 0.0,
+      "amplitude_1e_radius_rho": 1.1155144501711396,
+      "boundary_derivative_relative_error": 1.716901401361502e-15,
+      "characteristic_residual": 3.3306690738754696e-15,
+      "closure_error": 8.881784197001252e-16,
+      "finite_difference_u": 1.5909817535796398,
+      "finite_difference_w": 1.5194660442986725,
+      "gate": "valid",
+      "normalized_energy_error": 0.0,
+      "phase_aligned_overlap": 1.0000000000000002,
+      "u": 1.5910592824373024,
+      "v_number": 2.2,
+      "w": 1.5193848622946382
+    },
+    "pool_hash": "c118b470eb10a847b2f05117f737ccf75319181b3999c3454a77cb0dd1f12874",
+    "primary_evaluator_sha256": "46741ec76e45653c9dcb76e7b4f1645c9c057a47cdd9e4c1778d9debb553ec57",
+    "qualification": {
+      "agreement": 0.9860000014305115,
+      "finite": true,
+      "primary_accuracy": 0.9876000285148621,
+      "primary_min_recall": 0.9539999961853027,
+      "sample_count": 5000,
+      "secondary_accuracy": 0.9879999756813049,
+      "secondary_min_recall": 0.9760000109672546
+    },
+    "schema": "fiber_image_validation.v2",
+    "secondary_evaluator_sha256": "45879962cf8a6dc51e141a2f2a9892356ede97dd45063f38d830299aa877e26c",
+    "spec": {
+      "baseline_samples": 100,
+      "baseline_seed": 2027,
+      "bootstrap_replicates": 10000,
+      "bootstrap_seed": 90210,
+      "locked_samples": 500,
+      "schema": "fiber_image_spec.v1",
+      "steps": 50
+    }
+  },
+  "v3_closeout_sha256": "0aad43992fab429b905acddbd6b1a89235c63fd5265831d2af2d98147989b73d",
+  "variants": [
+    "D0",
+    "Dshared+",
+    "Dshared-",
+    "Dscrambled",
+    "Dclass-oracle"
+  ]
+}

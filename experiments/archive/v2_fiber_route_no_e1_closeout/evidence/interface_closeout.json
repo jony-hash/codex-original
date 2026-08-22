@@ -1,0 +1,27 @@
+{
+  "attribution_measurement_sha256": "acc07dbf39ea9452f41c43c26b32ac9542b7a7be86daea9dd75e672e3ff2bba0",
+  "conclusion": "class_encoding_retained_semantic_manifold_mismatch",
+  "config_hash": "c585bc683dc9af347699c24c79431f3fab398efc533a17778c7c9103dcc7e987",
+  "dataset_split_manifest_hash": "8a51217b1ed6833250226255930ab598bf1539e27772ade0188592e5bc0b3912",
+  "formal_promotion": false,
+  "gate": "valid",
+  "lp01_fixture_sha256": "c066c1f4387ea71c662e6464e7a211994c05e4108a2172ce705de517b46146d2",
+  "measurement_sha256": "ad6929307de081c54518152de0632195e705963018e13b48325cd738f4965860",
+  "mode_bank_spec_sha256": "d23c0be23b4bb5e90f7fd58b4932e6a6b34083f1530becb9dc56e88b8cdd8e24",
+  "next_action": "loss_exposure_budget_only",
+  "panel_seeds": [
+    4242,
+    104729,
+    161803
+  ],
+  "presentation_sha256": "bac7978cf9d3779864754b324464c06d5be324dee0b60d234f4803e601001be3",
+  "primary_evaluator_sha256": "46741ec76e45653c9dcb76e7b4f1645c9c057a47cdd9e4c1778d9debb553ec57",
+  "schema": "fiber_interface_closeout.v1",
+  "secondary_evaluator_sha256": "45879962cf8a6dc51e141a2f2a9892356ede97dd45063f38d830299aa877e26c",
+  "storage_bytes": 593664697,
+  "storage_limit_bytes": 2147483648,
+  "synthetic_diagnostic_only": true,
+  "training_authorized": false,
+  "v3_closeout_sha256": "0aad43992fab429b905acddbd6b1a89235c63fd5265831d2af2d98147989b73d",
+  "validation_sha256": "64b105787b48b33a2df9839918520e4044604c6ccf6673b057404767318365a0"
+}

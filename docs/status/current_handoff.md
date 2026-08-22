@@ -1,5 +1,30 @@
 # 当前主线交接：v2 formal evaluation 与 objective diagnostic 收口（2026-08-12）
 
+## v2 synthetic fiber route closed (2026-08-22)
+
+The synthetic fiber route is closed with status
+`closed_synthetic_fiber_route_no_e1`. The final evidence capsule is
+`experiments/archive/v2_fiber_route_no_e1_closeout/`. Its real consumer is
+this handoff and the future research-authorization gate. The fixed rejection
+decision is `no_fiber_training`, `no_e1`, `no_modal_regularizer`, and
+`no_formal_promotion`.
+
+The reverse necessity audit passed before archival: v3 is a valid failed
+closeout; interface attribution retained class structure and local port
+Jacobian rank; global exposure recovered most oracle gain without restoring
+minimum recall; and the decoder attribution ended with
+`close_current_fiber_route_no_e1`. No additional CUDA measurement, evaluator
+comparison, training, or E1 is authorized for this route.
+
+The only restart condition is a new electronic O0 hypothesis that can change
+the rejection decision, followed by independent qualification and a multi-seed
+dual-evaluator digital oracle. Even then, a new synthetic fiber lifecycle must
+be registered before any fiber work, and real hardware still requires an
+independent fiber/camera calibration contract.
+
+This state is diagnostic-only: `formal_promotion=false`,
+`training_authorized=false`, and `synthetic_diagnostic_only=true`.
+
 ## 项目级 harness 封存（2026-08-16）
 
 Phase 1 harness governance 已在干净提交 `69c5c24`（`harden v2 formal

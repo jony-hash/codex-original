@@ -95,3 +95,27 @@ and does not establish calibrated hardware behavior.
 
 The local final archive tag must not be treated as valid until the replacement
 lifecycle completes. It is not pushed.
+
+## Final attribution chain and route closure (2026-08-22)
+
+The replacement v3 evidence and the three follow-up diagnostic lifecycles are
+now closed in the immutable capsule
+`experiments/archive/v2_fiber_route_no_e1_closeout/`. The chain is:
+
+1. v3: `valid_failed / no_reproducible_fiber_gain`.
+2. Interface attribution: `class_encoding_retained_semantic_manifold_mismatch`;
+   class structure and local 100-port Jacobian rank remain present.
+3. Loss/exposure attribution: `global_exposure_explains_oracle_only`;
+   global exposure recovers approximately 95.4% of oracle gain, but minimum
+   recall remains zero on all locked panels.
+4. Decoder controllability attribution:
+   `zero_phase_decoder_local_reachability_failed`; the shared phase direction
+   improves primary locally but not secondary semantics, and class-oracle
+   directions do not recover secondary.
+
+This is a synthetic diagnostic conclusion about the fixed contract, not a
+real-fiber, universal phase-only-capacity, modal-capacity, or hardware
+feasibility claim. The fiber route is closed: no fiber training, E1, modal
+regularizer, or formal promotion. Only a new electronic O0 hypothesis capable
+of changing this rejection decision may restart research, after independent
+qualification and a multi-seed dual-evaluator digital oracle.

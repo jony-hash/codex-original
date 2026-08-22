@@ -137,3 +137,17 @@ archives:
     evidence_paths:
       - experiments/archive/v2_3_r2_invalid_harness/archive_manifest.json
       - experiments/archive/v2_3_r2_invalid_harness/revision_3_correction.json
+  - id: v2-fiber-route-no-e1-closeout
+    version_range: 2026-08-22
+    original_path: outputs/20260821_v2/runs/20260821_fiber_*; outputs/20260822_v2/runs/20260822_fiber_*
+    archived_path: experiments/archive/v2_fiber_route_no_e1_closeout/
+    role: immutable synthetic fiber attribution closeout capsule
+    diagnostic_only: true
+    runnable: false
+    formal_promotion_authorized: false
+    status: closed_synthetic_fiber_route_no_e1
+    replacement: a newly qualified electronic O0 hypothesis only; no direct fiber continuation
+    evidence_paths:
+      - experiments/archive/v2_fiber_route_no_e1_closeout/fiber_route_closeout_summary.json
+      - experiments/archive/v2_fiber_route_no_e1_closeout/archive_index.json
+    source_commit: 90c1161e6b7f4d0e50294cecdcda917a1fb7ee89

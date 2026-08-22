@@ -1,0 +1,228 @@
+{
+  "attribution_measurement_sha256": "acc07dbf39ea9452f41c43c26b32ac9542b7a7be86daea9dd75e672e3ff2bba0",
+  "config_hash": "c585bc683dc9af347699c24c79431f3fab398efc533a17778c7c9103dcc7e987",
+  "dataset_split_manifest_hash": "8a51217b1ed6833250226255930ab598bf1539e27772ade0188592e5bc0b3912",
+  "equivalence": {
+    "r0_vs_s0_complex_l2": 0.0,
+    "r100_vs_i0_complex_l2": 1.3649653851643961e-08
+  },
+  "evaluator_qualification": {
+    "agreement": 0.9860000014305115,
+    "finite": true,
+    "primary_accuracy": 0.9876000285148621,
+    "primary_min_recall": 0.9539999961853027,
+    "sample_count": 5000,
+    "secondary_accuracy": 0.9879999756813049,
+    "secondary_min_recall": 0.9760000109672546
+  },
+  "formal_promotion": false,
+  "full_state_audit": {
+    "checkpoint_load_scope": "generator_only",
+    "decoder_phase_max_abs": 0.0,
+    "decoder_phase_norm": 0.0,
+    "decoder_phase_zero": true,
+    "encoder_phase_max_abs": 0.0,
+    "encoder_phase_norm": 0.0,
+    "encoder_phase_zero": true,
+    "generator_trainable_parameters": [
+      "class_carrier_logits",
+      "global_modes",
+      "class_heads",
+      "code_projection.weight"
+    ],
+    "optical_trainable_parameters": []
+  },
+  "gate": "valid",
+  "git_commit": "42d7cab3c30c499bd0fc69470d935a5fd9cf7b63",
+  "harness_gates": {
+    "device_cuda": true,
+    "evaluator_qualification": true,
+    "fixed_exposure_positive": true,
+    "input_gram_identity": true,
+    "input_mode_rank": true,
+    "mode_bank_finite": true,
+    "no_optical_trainable_parameters": true,
+    "no_optimizer": true,
+    "output_gram_identity": true,
+    "output_mode_rank": true,
+    "phase_state": true,
+    "plane_provenance": true,
+    "r0_s0_equivalence": true,
+    "r100_i0_equivalence": true
+  },
+  "ignored_state_keys": [
+    "system.decoder.phase",
+    "system.encoder.phase"
+  ],
+  "loaded_generator_state_keys": [
+    "generator.class_carrier_logits",
+    "generator.class_heads",
+    "generator.code_projection.weight",
+    "generator.global_modes"
+  ],
+  "lp01_fixture_sha256": "c066c1f4387ea71c662e6464e7a211994c05e4108a2172ce705de517b46146d2",
+  "mode_bank": {
+    "input": {
+      "condition": 1.0000005960464478,
+      "finite": true,
+      "gram_identity_max_abs": 2.980232238769531e-07,
+      "rank": 100,
+      "shape": [
+        100,
+        100
+      ],
+      "singular_values": [
+        1.000000238418579,
+        1.000000238418579,
+        1.000000238418579,
+        1.000000238418579,
+        1.000000238418579,
+        1.0000001192092896,
+        1.0000001192092896,
+        1.0000001192092896,
+        1.0000001192092896,
+        1.0000001192092896,
+        1.0000001192092896,
+        1.0000001192092896,
+        1.0000001192092896,
+        1.0000001192092896,
+        1.0000001192092896,
+        1.0
+      ]
+    },
+    "output": {
+      "condition": 1.0000005960464478,
+      "finite": true,
+      "gram_identity_max_abs": 2.980232238769531e-07,
+      "rank": 100,
+      "shape": [
+        100,
+        100
+      ],
+      "singular_values": [
+        1.000000238418579,
+        1.000000238418579,
+        1.000000238418579,
+        1.000000238418579,
+        1.000000238418579,
+        1.0000001192092896,
+        1.0000001192092896,
+        1.0000001192092896,
+        1.0000001192092896,
+        1.0000001192092896,
+        1.0000001192092896,
+        1.0000001192092896,
+        1.0000001192092896,
+        1.0000001192092896,
+        1.0000001192092896,
+        1.0
+      ]
+    },
+    "spec": {
+      "expected_fov_m": [
+        0.0002,
+        0.0002
+      ],
+      "facet_magnification": 1.0,
+      "fill": 0.8,
+      "grid_shape": [
+        10,
+        10
+      ],
+      "lateral_offset_m": [
+        0.0,
+        0.0
+      ],
+      "mode_model": "step_index_lp01_ports",
+      "pitch_m": 2e-06,
+      "v_number": 2.2,
+      "waist_m": 7.111e-06,
+      "wavelength_m": 5.32e-07
+    }
+  },
+  "mode_bank_spec": {
+    "expected_fov_m": [
+      0.0002,
+      0.0002
+    ],
+    "facet_magnification": 1.0,
+    "fill": 0.8,
+    "grid_shape": [
+      10,
+      10
+    ],
+    "lateral_offset_m": [
+      0.0,
+      0.0
+    ],
+    "mode_model": "step_index_lp01_ports",
+    "pitch_m": 2e-06,
+    "v_number": 2.2,
+    "waist_m": 7.111e-06,
+    "wavelength_m": 5.32e-07
+  },
+  "mode_bank_spec_sha256": "d23c0be23b4bb5e90f7fd58b4932e6a6b34083f1530becb9dc56e88b8cdd8e24",
+  "no_optimizer": true,
+  "optimizer_created": false,
+  "panel_seeds": [
+    4242,
+    104729,
+    161803
+  ],
+  "panels": [
+    4242,
+    104729,
+    161803
+  ],
+  "plane": {
+    "fov_m": [
+      0.00019999999999999998,
+      0.00019999999999999998
+    ],
+    "pixel_pitch_m": [
+      2e-06,
+      2e-06
+    ],
+    "plane_id": "encoder_input",
+    "shape": [
+      100,
+      100
+    ],
+    "wavelength_m": 5.32e-07
+  },
+  "pool_hash": "c118b470eb10a847b2f05117f737ccf75319181b3999c3454a77cb0dd1f12874",
+  "primary_evaluator_sha256": "46741ec76e45653c9dcb76e7b4f1645c9c057a47cdd9e4c1778d9debb553ec57",
+  "research_initialization_checkpoint_sha256": "423328bf472bb7468f131b351850d1b6f7c5a282796444ecbec5e10bad12c2b9",
+  "sample_count_per_panel": 500,
+  "schema": "fiber_interface_validation.v1",
+  "secondary_evaluator_sha256": "45879962cf8a6dc51e141a2f2a9892356ede97dd45063f38d830299aa877e26c",
+  "source_checkpoint_state_keys": [
+    "generator.class_carrier_logits",
+    "generator.class_heads",
+    "generator.code_projection.weight",
+    "generator.global_modes",
+    "system.decoder.phase",
+    "system.encoder.phase"
+  ],
+  "source_phase": {
+    "decoder_max_abs": 0.14959503710269928,
+    "decoder_norm": 7.351612091064453,
+    "encoder_max_abs": 0.1864502727985382,
+    "encoder_norm": 7.002781867980957
+  },
+  "source_training_evidence_sha256": "534453cc1590caa1e632d375f17144fcbf517c522b0b8d47145daaab796e059e",
+  "status": "synthetic diagnostic-only",
+  "training_authorized": false,
+  "upstream_validation_sha256": "239663ae26d2f28a4ce59d082e2db457e2c09b7e58e111cf09138c10b9269de0",
+  "v3_closeout_sha256": "0aad43992fab429b905acddbd6b1a89235c63fd5265831d2af2d98147989b73d",
+  "variants": [
+    "I0",
+    "S0",
+    "L0",
+    "R25",
+    "R50",
+    "R75",
+    "R100",
+    "S0-energy-oracle"
+  ]
+}

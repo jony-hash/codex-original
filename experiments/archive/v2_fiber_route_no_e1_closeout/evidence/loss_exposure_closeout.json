@@ -1,0 +1,19 @@
+{
+  "calibration_sha256": "b2b3d26cf600fa2c7e5b2612b4af88bcc449629c97b988665da14fd10ac0184c",
+  "conclusion": "global_exposure_explains_oracle_only",
+  "formal_promotion": false,
+  "gate": "valid",
+  "global_gain": 1.36170555381549,
+  "interface_closeout_sha256": "7fada9a7a636b31ba944224178d2f2b6fd820914a6811798d203e3e52afc4d56",
+  "interface_measurement_sha256": "ad6929307de081c54518152de0632195e705963018e13b48325cd738f4965860",
+  "measurement_sha256": "ded4daea1e7afe1d86775fa96900c3aef60dce7aeab54ee3b1aff1066063d011",
+  "next_action": "register_zero_phase_decoder_controllability_attribution",
+  "presentation_sha256": "a0ed6894a727a33fc1b4516c6742a5b44c1ccd50956b8d8158311341c15fd385",
+  "rho_cal": 0.734373152256012,
+  "schema": "fiber_loss_exposure_closeout.v1",
+  "storage_bytes": 864610591,
+  "storage_limit_bytes": 2147483648,
+  "synthetic_diagnostic_only": true,
+  "training_authorized": false,
+  "validation_sha256": "95dd1841ecab385b133a283436a8ba70972c68a6db6a3a9595dcb4481d27de63"
+}

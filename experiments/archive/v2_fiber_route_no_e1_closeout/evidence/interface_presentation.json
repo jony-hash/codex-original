@@ -1,0 +1,2602 @@
+{
+  "classification": {
+    "admission_details": {
+      "R100": {
+        "admitted_ci_gate": true,
+        "admitted_gain_gate": true,
+        "minimum_recall_recovered_panels": [],
+        "panel_gains": [
+          0.23800000548362732,
+          0.25199998915195465,
+          0.23399999737739563
+        ],
+        "same_direction_panel_count": 3
+      },
+      "R25": {
+        "admitted_ci_gate": true,
+        "admitted_gain_gate": true,
+        "minimum_recall_recovered_panels": [],
+        "panel_gains": [
+          0.01600000262260437,
+          0.015999987721443176,
+          0.01600000262260437
+        ],
+        "same_direction_panel_count": 3
+      },
+      "R50": {
+        "admitted_ci_gate": true,
+        "admitted_gain_gate": true,
+        "minimum_recall_recovered_panels": [],
+        "panel_gains": [
+          0.07400000095367432,
+          0.07399998605251312,
+          0.04999999701976776
+        ],
+        "same_direction_panel_count": 3
+      },
+      "R75": {
+        "admitted_ci_gate": true,
+        "admitted_gain_gate": true,
+        "minimum_recall_recovered_panels": [],
+        "panel_gains": [
+          0.18000000715255737,
+          0.18799997866153717,
+          0.171999990940094
+        ],
+        "same_direction_panel_count": 3
+      }
+    },
+    "conclusion": "class_encoding_retained_semantic_manifold_mismatch",
+    "energy_oracle_only": true,
+    "energy_oracle_row": {
+      "104729": {
+        "agreement": 0.25999999046325684,
+        "artifacts": {
+          "codes": {
+            "relative_path": "measurements/S0-energy-oracle/104729/codes.pt",
+            "sha256": "a60310fbf39133b3d810275aaae7730e0e330a7eb88fb738321d0980f50dcc5a",
+            "tensor_sha256": "81d43602a20a020284f1a6d5990461596a9cb21d0a3b1840d07ebd94abc5e209"
+          },
+          "fixed_cmos": {
+            "relative_path": "measurements/S0-energy-oracle/104729/fixed_cmos.pt",
+            "sha256": "663d04d078835ec9e4dbccc56d02ec4d4a18c32bef47f42c34d31244e71663ca",
+            "tensor_sha256": "b7318901fc26a57e677131385a1f4099c9c3c0970b0bf5d73e144b1ae7bad11c"
+          },
+          "labels": {
+            "relative_path": "measurements/S0-energy-oracle/104729/labels.pt",
+            "sha256": "e802922ab25d3eb3be795a6d0326c85b3b44faf2e5f8c7c9544f0e6265b54219",
+            "tensor_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+          },
+          "port_input_coefficients": {
+            "relative_path": "measurements/S0-energy-oracle/104729/port_input_coefficients.pt",
+            "sha256": "ecc0cfde6707362ca2694bd1b22abed93b23f467dd17e2811eb8a0cd04e09403",
+            "tensor_sha256": "24105fc20010123e30cf9e0945fdd23d638fd3324a35d5e8fa9f6450d7632575"
+          },
+          "port_output_coefficients": {
+            "relative_path": "measurements/S0-energy-oracle/104729/port_output_coefficients.pt",
+            "sha256": "33eac3ca9041b30da0099f58d353fb95177b0a98ea3ef57921a85aed6ebacf86",
+            "tensor_sha256": "24105fc20010123e30cf9e0945fdd23d638fd3324a35d5e8fa9f6450d7632575"
+          },
+          "primary_prediction": {
+            "relative_path": "measurements/S0-energy-oracle/104729/primary_prediction.pt",
+            "sha256": "eb652d1f341c27712288dbf07ef1836d6f7ac2f62c5852d8cd4865824f50fbb1",
+            "tensor_sha256": "12157b2731875ea36e5f0364f468e368e5e025b5326119c61908834503954f95"
+          },
+          "representative_trace": {
+            "relative_path": "measurements/S0-energy-oracle/104729/representative_trace.pt",
+            "sha256": "e32ebebbe59e5d4905dd32976335fa1e84a30798696e9d076d2b61658d4a5e7c"
+          },
+          "secondary_correctness": {
+            "relative_path": "measurements/S0-energy-oracle/104729/secondary_correctness.pt",
+            "sha256": "fa18acbac5f0e48ccdfcf8cbc2a552796b3c9c661c142fc7593ffa8e0fe5c83e",
+            "tensor_sha256": "efaf41ba6e678f30fdbcb297697e8048882c1b4a74fe8ccccfc647d3307c121d"
+          },
+          "secondary_prediction": {
+            "relative_path": "measurements/S0-energy-oracle/104729/secondary_prediction.pt",
+            "sha256": "0c3f2a16f564df0de601768070341d83a2b9cf935b25fdca2b52ce729cf55004",
+            "tensor_sha256": "c056fa91948a7c4197a09e4581f74eb995c671533a153a3c8e186b0d005af4b2"
+          }
+        },
+        "camera_fraction": 0.13751348853111267,
+        "codes_sha256": "81d43602a20a020284f1a6d5990461596a9cb21d0a3b1840d07ebd94abc5e209",
+        "coverage_ratio": 3.503213405609131,
+        "energy_closure_error_max": 2.0247794907390926e-07,
+        "energy_oracle": true,
+        "energy_retention_mean": 1.0,
+        "finite": true,
+        "input_energy_mean": 3.295113870649402e-08,
+        "labels_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "minimum_diversity": 0.2034176141023636,
+        "nearest_centroid": {
+          "camera": {
+            "raw": 1.0,
+            "shuffled_raw": 0.1080000010454872,
+            "shuffled_unit": 0.10583333501320642,
+            "unit": 1.0
+          },
+          "decoder_layer_1": {
+            "raw": 1.0,
+            "shuffled_raw": 0.10841666752821766,
+            "shuffled_unit": 0.11166666673185925,
+            "unit": 1.0
+          },
+          "decoder_layer_2": {
+            "raw": 1.0,
+            "shuffled_raw": 0.09200000033403437,
+            "shuffled_unit": 0.09983333415584639,
+            "unit": 1.0
+          },
+          "encoder_input": {
+            "raw": 1.0,
+            "shuffled_raw": 0.1060833331818382,
+            "shuffled_unit": 0.10008333359534542,
+            "unit": 1.0
+          },
+          "encoder_layer_1": {
+            "raw": 1.0,
+            "shuffled_raw": 0.08216666657244787,
+            "shuffled_unit": 0.07991666672751307,
+            "unit": 1.0
+          },
+          "encoder_layer_2": {
+            "raw": 1.0,
+            "shuffled_raw": 0.12449999991804361,
+            "shuffled_unit": 0.11016666652479519,
+            "unit": 1.0
+          },
+          "fixed_cmos": {
+            "raw": 1.0,
+            "shuffled_raw": 0.12999999987854002,
+            "shuffled_unit": 0.12575000030725883,
+            "unit": 1.0
+          },
+          "ols_output": {
+            "raw": 1.0,
+            "shuffled_raw": 0.10966666795623799,
+            "shuffled_unit": 0.11250000003686485,
+            "unit": 1.0
+          },
+          "slm_output": {
+            "raw": 1.0,
+            "shuffled_raw": 0.11025000121056412,
+            "shuffled_unit": 0.10741666733520105,
+            "unit": 1.0
+          }
+        },
+        "nonnegative": true,
+        "nonphysical_upper_bound": true,
+        "output_energy_mean": 3.295113870649402e-08,
+        "panel": 104729,
+        "passive": false,
+        "passive_available": false,
+        "port_geometry": {
+          "between_centroid_mean": 8.997118129627779e-05,
+          "centroid_between_over_within": 4.525063991546631,
+          "per_class_within_rms": [
+            2.7944755856879056e-05,
+            1.8277190974913538e-05,
+            1.96275159396464e-05,
+            2.615313496789895e-05,
+            1.536007403046824e-05,
+            2.0152789147687145e-05,
+            1.5660638382541947e-05,
+            2.524814772186801e-05,
+            1.3619665878650267e-05,
+            1.6784608305897564e-05
+          ],
+          "within_rms": 1.9882852939190343e-05
+        },
+        "port_rank": {
+          "effective_rank": 8.306902252052893,
+          "rank_at_1e-8": 200,
+          "singular_values": [
+            0.0007212115876763105,
+            0.0006804671785793279,
+            0.000533803527736705,
+            0.00047802070523620364,
+            0.0003836612458442941,
+            0.0003677517308770375,
+            0.00033038143332046705,
+            0.0002650634493734155,
+            0.00020264485657722097,
+            0.0001416535371830515,
+            0.0001223131922614303,
+            9.26119421549267e-05,
+            8.258056447560445e-05,
+            7.966138801526953e-05,
+            6.448148548143075e-05,
+            5.2846914198837185e-05
+          ],
+          "top16_energy_fraction": 0.9942388209229442,
+          "top8_energy_fraction": 0.9437457076622521
+        },
+        "primary_accuracy": 0.8339999914169312,
+        "primary_min_recall": 0.019999999552965164,
+        "primary_recall": [
+          0.5,
+          0.019999999552965164,
+          1.0,
+          1.0,
+          0.8799999952316284,
+          1.0,
+          1.0,
+          0.9399999976158142,
+          1.0,
+          1.0
+        ],
+        "projection_fraction_mean": 0.7338865995407104,
+        "projection_fraction_per_class": [
+          0.7361278533935547,
+          0.7317909002304077,
+          0.7370147109031677,
+          0.7273080348968506,
+          0.7358114123344421,
+          0.7277523279190063,
+          0.7355614304542542,
+          0.7342261672019958,
+          0.7358709573745728,
+          0.7374022006988525
+        ],
+        "residual_fraction_mean": 0.26611340045928955,
+        "residual_fraction_per_class": [
+          0.26387205719947815,
+          0.2682090997695923,
+          0.2629852592945099,
+          0.2726919949054718,
+          0.26418864727020264,
+          0.27224770188331604,
+          0.2644386887550354,
+          0.265773743391037,
+          0.26412898302078247,
+          0.2625977396965027
+        ],
+        "residual_spectrum_band_edges": [
+          [
+            0.0,
+            0.1
+          ],
+          [
+            0.1,
+            0.25
+          ],
+          [
+            0.25,
+            0.5
+          ],
+          [
+            0.5,
+            1.01
+          ]
+        ],
+        "residual_spectrum_bands_mean": [
+          0.28829169273376465,
+          0.7025312781333923,
+          0.008200954645872116,
+          0.0009760998073033988
+        ],
+        "saturation": 0.03261540085077286,
+        "secondary_accuracy": 0.23399999737739563,
+        "secondary_min_recall": 0.0,
+        "secondary_prediction_histogram": [
+          50,
+          0,
+          4,
+          13,
+          45,
+          0,
+          0,
+          0,
+          388,
+          0
+        ],
+        "secondary_recall": [
+          1.0,
+          0.0,
+          0.07999999821186066,
+          0.25999999046325684,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        "stage_energy_mean": {
+          "camera": 4687.27783203125,
+          "decoder_layer_1": 8094.982421875,
+          "decoder_layer_2": 7323.94140625,
+          "encoder_input": 8291.720703125,
+          "encoder_layer_1": 8278.7548828125,
+          "encoder_layer_2": 8237.78515625,
+          "ols_output": 8237.78515625,
+          "slm_output": 5307.39501953125
+        },
+        "stage_energy_retention": {
+          "decoder_layer_1_to_decoder_layer_2": 0.9047507486191171,
+          "decoder_layer_2_to_camera": 0.6399939011023884,
+          "encoder_input_to_encoder_layer_1": 0.9984362931680015,
+          "encoder_layer_1_to_encoder_layer_2": 0.9950512212111078,
+          "encoder_layer_2_to_ols_output": 1.0,
+          "ols_output_to_decoder_layer_1": 0.9826649115428003,
+          "slm_output_to_encoder_input": 1.562295753870102
+        },
+        "stage_finite": true,
+        "stagewise_complex_l2_vs_i0": {
+          "camera": 0.4236244559288025,
+          "decoder_layer_1": 0.5199276208877563,
+          "decoder_layer_2": 0.42362985014915466,
+          "encoder_input": 0.0,
+          "encoder_layer_1": 0.0,
+          "encoder_layer_2": 0.0,
+          "ols_output": 0.534919798374176,
+          "slm_output": 0.0
+        },
+        "variant": "S0-energy-oracle"
+      },
+      "161803": {
+        "agreement": 0.22599999606609344,
+        "artifacts": {
+          "codes": {
+            "relative_path": "measurements/S0-energy-oracle/161803/codes.pt",
+            "sha256": "be89ff96fb588f808ade8ac959f2909c3bedbcd28dcfe20aee0cadd6647bcaa0",
+            "tensor_sha256": "182375abc3278324417adc12922a3dfb2fc3f2c7fcfa9e3bf7118b07ab5e4010"
+          },
+          "fixed_cmos": {
+            "relative_path": "measurements/S0-energy-oracle/161803/fixed_cmos.pt",
+            "sha256": "7ab75794eaee6f46c90dac52590ac21dd2a967974b3a2d5cc96e2a8366a63ace",
+            "tensor_sha256": "f7c9005836fc1655ed9dfefb1c5e6611a8e9f526fa406a784fc62219f5f0fd70"
+          },
+          "labels": {
+            "relative_path": "measurements/S0-energy-oracle/161803/labels.pt",
+            "sha256": "1bcfced891d9bbcb003ed886fd5040b580a5082bdd3f6d2fbe561224b84783d0",
+            "tensor_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+          },
+          "port_input_coefficients": {
+            "relative_path": "measurements/S0-energy-oracle/161803/port_input_coefficients.pt",
+            "sha256": "48f9d7eaaf12d1fa9d18f122447aa29d389989a130d31c8ca73ade0f04d9d4b2",
+            "tensor_sha256": "b56a24cde922a4c74fd36927eb0572b69b985a13007ca18d07b8834be5f253e8"
+          },
+          "port_output_coefficients": {
+            "relative_path": "measurements/S0-energy-oracle/161803/port_output_coefficients.pt",
+            "sha256": "96e5cf402c15b726926ac60a60080433763e6427e9634123fbd9799be2e477af",
+            "tensor_sha256": "b56a24cde922a4c74fd36927eb0572b69b985a13007ca18d07b8834be5f253e8"
+          },
+          "primary_prediction": {
+            "relative_path": "measurements/S0-energy-oracle/161803/primary_prediction.pt",
+            "sha256": "b11ae7d5a621c2fd3b6c125cef6b61bc407a7b972ec5b00b6ad4908e4fc80885",
+            "tensor_sha256": "c9287d9e786a1e331001e14324de27ef6bdcd7a563c9f4a7b6efedc81591ed31"
+          },
+          "representative_trace": {
+            "relative_path": "measurements/S0-energy-oracle/161803/representative_trace.pt",
+            "sha256": "6ac128688bfc64319bcc6250219e83e62731b36d954febc9fa3d6cb18b992af8"
+          },
+          "secondary_correctness": {
+            "relative_path": "measurements/S0-energy-oracle/161803/secondary_correctness.pt",
+            "sha256": "f8a31a2398aae746faa3f59f8d2a988742f64b511fa285ae9c0f8399625b2bad",
+            "tensor_sha256": "7e7dda9f33d603ea6c36a2fec54b010d0fac56d8eaa3ff50e998195f6656c296"
+          },
+          "secondary_prediction": {
+            "relative_path": "measurements/S0-energy-oracle/161803/secondary_prediction.pt",
+            "sha256": "8c4ef5bbc34564cc972e56df713dfb8f76087a42103beec5b5f7c3c8066de371",
+            "tensor_sha256": "37eeecefe15602b86123b3b373191b85dac1b9fd8df0dcaf570d886b011caede"
+          }
+        },
+        "camera_fraction": 0.12284163385629654,
+        "codes_sha256": "182375abc3278324417adc12922a3dfb2fc3f2c7fcfa9e3bf7118b07ab5e4010",
+        "coverage_ratio": 3.517101764678955,
+        "energy_closure_error_max": 2.0815365076032322e-07,
+        "energy_oracle": true,
+        "energy_retention_mean": 1.0,
+        "finite": true,
+        "input_energy_mean": 3.2866243060425404e-08,
+        "labels_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "minimum_diversity": 0.18517953157424927,
+        "nearest_centroid": {
+          "camera": {
+            "raw": 1.0,
+            "shuffled_raw": 0.1080000010454872,
+            "shuffled_unit": 0.10583333501320642,
+            "unit": 1.0
+          },
+          "decoder_layer_1": {
+            "raw": 1.0,
+            "shuffled_raw": 0.10841666752821766,
+            "shuffled_unit": 0.11166666673185925,
+            "unit": 1.0
+          },
+          "decoder_layer_2": {
+            "raw": 1.0,
+            "shuffled_raw": 0.09200000033403437,
+            "shuffled_unit": 0.09983333415584639,
+            "unit": 1.0
+          },
+          "encoder_input": {
+            "raw": 1.0,
+            "shuffled_raw": 0.1060833331818382,
+            "shuffled_unit": 0.10008333359534542,
+            "unit": 1.0
+          },
+          "encoder_layer_1": {
+            "raw": 1.0,
+            "shuffled_raw": 0.08216666657244787,
+            "shuffled_unit": 0.07991666672751307,
+            "unit": 1.0
+          },
+          "encoder_layer_2": {
+            "raw": 1.0,
+            "shuffled_raw": 0.12449999991804361,
+            "shuffled_unit": 0.11016666652479519,
+            "unit": 1.0
+          },
+          "fixed_cmos": {
+            "raw": 1.0,
+            "shuffled_raw": 0.12999999987854002,
+            "shuffled_unit": 0.12575000030725883,
+            "unit": 1.0
+          },
+          "ols_output": {
+            "raw": 1.0,
+            "shuffled_raw": 0.10966666795623799,
+            "shuffled_unit": 0.11250000003686485,
+            "unit": 1.0
+          },
+          "slm_output": {
+            "raw": 1.0,
+            "shuffled_raw": 0.11025000121056412,
+            "shuffled_unit": 0.10741666733520105,
+            "unit": 1.0
+          }
+        },
+        "nonnegative": true,
+        "nonphysical_upper_bound": true,
+        "output_energy_mean": 3.2866243060425404e-08,
+        "panel": 161803,
+        "passive": false,
+        "passive_available": false,
+        "port_geometry": {
+          "between_centroid_mean": 9.012317605083808e-05,
+          "centroid_between_over_within": 4.708259582519531,
+          "per_class_within_rms": [
+            2.8052418201696128e-05,
+            1.819787939894013e-05,
+            1.8595806977828033e-05,
+            2.3529779355158098e-05,
+            1.5025739230623003e-05,
+            1.9906779925804585e-05,
+            1.618982059881091e-05,
+            2.3667982532060705e-05,
+            1.2299415175220929e-05,
+            1.5949441149132326e-05
+          ],
+          "within_rms": 1.9141505617881194e-05
+        },
+        "port_rank": {
+          "effective_rank": 8.267217082236193,
+          "rank_at_1e-8": 200,
+          "singular_values": [
+            0.0007118181247980622,
+            0.0006854862699231534,
+            0.0005328684782878717,
+            0.0004826213918873955,
+            0.00037955116954663937,
+            0.0003652714828129052,
+            0.0003363229169433083,
+            0.0002703498017490858,
+            0.00020104968941189527,
+            0.0001330431586518777,
+            0.00011262163663946295,
+            9.169412162742903e-05,
+            7.768730940171459e-05,
+            7.578976397497885e-05,
+            6.840605315542233e-05,
+            5.320129136257707e-05
+          ],
+          "top16_energy_fraction": 0.9943827674311273,
+          "top8_energy_fraction": 0.9467338627033962
+        },
+        "primary_accuracy": 0.8299999833106995,
+        "primary_min_recall": 0.019999999552965164,
+        "primary_recall": [
+          0.3799999952316284,
+          0.019999999552965164,
+          1.0,
+          1.0,
+          0.9200000166893005,
+          1.0,
+          1.0,
+          1.0,
+          0.9800000190734863,
+          1.0
+        ],
+        "projection_fraction_mean": 0.7339878082275391,
+        "projection_fraction_per_class": [
+          0.7373840808868408,
+          0.7314714789390564,
+          0.7372965812683105,
+          0.7277262210845947,
+          0.7358973622322083,
+          0.7274693846702576,
+          0.7354291677474976,
+          0.7338270545005798,
+          0.7360914349555969,
+          0.7372840046882629
+        ],
+        "residual_fraction_mean": 0.2660123407840729,
+        "residual_fraction_per_class": [
+          0.262615829706192,
+          0.26852843165397644,
+          0.26270341873168945,
+          0.2722737789154053,
+          0.26410263776779175,
+          0.2725306749343872,
+          0.2645708918571472,
+          0.26617294549942017,
+          0.2639085650444031,
+          0.2627159357070923
+        ],
+        "residual_spectrum_band_edges": [
+          [
+            0.0,
+            0.1
+          ],
+          [
+            0.1,
+            0.25
+          ],
+          [
+            0.25,
+            0.5
+          ],
+          [
+            0.5,
+            1.01
+          ]
+        ],
+        "residual_spectrum_bands_mean": [
+          0.2879743278026581,
+          0.7028653621673584,
+          0.0081870686262846,
+          0.0009732756880111992
+        ],
+        "saturation": 0.0330641008913517,
+        "secondary_accuracy": 0.22599999606609344,
+        "secondary_min_recall": 0.0,
+        "secondary_prediction_histogram": [
+          50,
+          0,
+          2,
+          12,
+          46,
+          0,
+          0,
+          0,
+          390,
+          0
+        ],
+        "secondary_recall": [
+          1.0,
+          0.0,
+          0.03999999910593033,
+          0.2199999988079071,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        "stage_energy_mean": {
+          "camera": 4677.23095703125,
+          "decoder_layer_1": 8076.51611328125,
+          "decoder_layer_2": 7308.244140625,
+          "encoder_input": 8268.8466796875,
+          "encoder_layer_1": 8256.3662109375,
+          "encoder_layer_2": 8216.560546875,
+          "ols_output": 8216.560546875,
+          "slm_output": 5292.7412109375
+        },
+        "stage_energy_retention": {
+          "decoder_layer_1_to_decoder_layer_2": 0.9048758199846983,
+          "decoder_layer_2_to_camera": 0.6399938024828018,
+          "encoder_input_to_encoder_layer_1": 0.998490663905928,
+          "encoder_layer_1_to_encoder_layer_2": 0.9951787913658956,
+          "encoder_layer_2_to_ols_output": 1.0,
+          "ols_output_to_decoder_layer_1": 0.9829558325780228,
+          "slm_output_to_encoder_input": 1.5622994494043747
+        },
+        "stage_finite": true,
+        "stagewise_complex_l2_vs_i0": {
+          "camera": 0.42353588342666626,
+          "decoder_layer_1": 0.5199151635169983,
+          "decoder_layer_2": 0.42354124784469604,
+          "encoder_input": 0.0,
+          "encoder_layer_1": 0.0,
+          "encoder_layer_2": 0.0,
+          "ols_output": 0.5347013473510742,
+          "slm_output": 0.0
+        },
+        "variant": "S0-energy-oracle"
+      },
+      "4242": {
+        "agreement": 0.2840000092983246,
+        "artifacts": {
+          "codes": {
+            "relative_path": "measurements/S0-energy-oracle/4242/codes.pt",
+            "sha256": "88ad54c1f5ce7bcb48e874e0b3bf50ab1e0699307112a55f8dd58cd3984701f4",
+            "tensor_sha256": "4174780d4ac6938c7dc091a531d1ad4d4395773888ebbd40f3d7e0625624f2db"
+          },
+          "fixed_cmos": {
+            "relative_path": "measurements/S0-energy-oracle/4242/fixed_cmos.pt",
+            "sha256": "128b4a1203f3c23dd1fc9f06d2dee79b51a5fa601a3383077221d8bd057b8033",
+            "tensor_sha256": "c94e531df29926444c2c93df51d42e1279f1158187adc33d70ae78b84e62a819"
+          },
+          "labels": {
+            "relative_path": "measurements/S0-energy-oracle/4242/labels.pt",
+            "sha256": "2b7ef3b6f2d019347245184c51ab78b600a03a0d3fa0f07b4cea08bd22925cc8",
+            "tensor_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+          },
+          "port_input_coefficients": {
+            "relative_path": "measurements/S0-energy-oracle/4242/port_input_coefficients.pt",
+            "sha256": "c63a9d396a3844013fb8818f3679fb245d779e8757d56cb94d40dc594f59b49f",
+            "tensor_sha256": "4e4e49af18e4b2ff3dcaa06ef1349d5c8f162bc8d0f4967e59cd82289988b53e"
+          },
+          "port_output_coefficients": {
+            "relative_path": "measurements/S0-energy-oracle/4242/port_output_coefficients.pt",
+            "sha256": "bd6950aa8c048d9b67c938cd1a85e20aa446c36c68fc885ab550e86b4043cb9d",
+            "tensor_sha256": "4e4e49af18e4b2ff3dcaa06ef1349d5c8f162bc8d0f4967e59cd82289988b53e"
+          },
+          "primary_prediction": {
+            "relative_path": "measurements/S0-energy-oracle/4242/primary_prediction.pt",
+            "sha256": "c947da5c87717613407817191c920bd30c961353cb70b455a5bde294cf8ca1e2",
+            "tensor_sha256": "410a30cde6d058ae8e16e777d04285dd184ac033d9a2a250705f7a38ca489bba"
+          },
+          "representative_trace": {
+            "relative_path": "measurements/S0-energy-oracle/4242/representative_trace.pt",
+            "sha256": "f66cb7527e12f980218f26a2beab6819c7f2640a99ee0eac79a152471b096f5b"
+          },
+          "secondary_correctness": {
+            "relative_path": "measurements/S0-energy-oracle/4242/secondary_correctness.pt",
+            "sha256": "d8bce1fc14b9834893c7ec3977982868ebb2dbcbd50653a393b55472dc965254",
+            "tensor_sha256": "b60d52b14d8866e9ce2433cc1c147dae1dd4a3ef68b6ec15dcbdb1a51f8678c1"
+          },
+          "secondary_prediction": {
+            "relative_path": "measurements/S0-energy-oracle/4242/secondary_prediction.pt",
+            "sha256": "b374ef7f9c77008548053f325a4100a24ea160101794bd6ecfbcf1949c923bcd",
+            "tensor_sha256": "4c9f6f6e9a4df3fca74468cb2d075f1c2d75b69897765ac063b69ed265f03717"
+          }
+        },
+        "camera_fraction": 0.1291242241859436,
+        "codes_sha256": "4174780d4ac6938c7dc091a531d1ad4d4395773888ebbd40f3d7e0625624f2db",
+        "coverage_ratio": 3.516225576400757,
+        "energy_closure_error_max": 2.167448371892533e-07,
+        "energy_oracle": true,
+        "energy_retention_mean": 1.0,
+        "finite": true,
+        "input_energy_mean": 3.279733462591139e-08,
+        "labels_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "minimum_diversity": 0.19417616724967957,
+        "nearest_centroid": {
+          "camera": {
+            "raw": 1.0,
+            "shuffled_raw": 0.1080000010454872,
+            "shuffled_unit": 0.10583333501320642,
+            "unit": 1.0
+          },
+          "decoder_layer_1": {
+            "raw": 1.0,
+            "shuffled_raw": 0.10841666752821766,
+            "shuffled_unit": 0.11166666673185925,
+            "unit": 1.0
+          },
+          "decoder_layer_2": {
+            "raw": 1.0,
+            "shuffled_raw": 0.09200000033403437,
+            "shuffled_unit": 0.09983333415584639,
+            "unit": 1.0
+          },
+          "encoder_input": {
+            "raw": 1.0,
+            "shuffled_raw": 0.1060833331818382,
+            "shuffled_unit": 0.10008333359534542,
+            "unit": 1.0
+          },
+          "encoder_layer_1": {
+            "raw": 1.0,
+            "shuffled_raw": 0.08216666657244787,
+            "shuffled_unit": 0.07991666672751307,
+            "unit": 1.0
+          },
+          "encoder_layer_2": {
+            "raw": 1.0,
+            "shuffled_raw": 0.12449999991804361,
+            "shuffled_unit": 0.11016666652479519,
+            "unit": 1.0
+          },
+          "fixed_cmos": {
+            "raw": 1.0,
+            "shuffled_raw": 0.12999999987854002,
+            "shuffled_unit": 0.12575000030725883,
+            "unit": 1.0
+          },
+          "ols_output": {
+            "raw": 1.0,
+            "shuffled_raw": 0.10966666795623799,
+            "shuffled_unit": 0.11250000003686485,
+            "unit": 1.0
+          },
+          "slm_output": {
+            "raw": 1.0,
+            "shuffled_raw": 0.11025000121056412,
+            "shuffled_unit": 0.10741666733520105,
+            "unit": 1.0
+          }
+        },
+        "nonnegative": true,
+        "nonphysical_upper_bound": true,
+        "output_energy_mean": 3.279733462591139e-08,
+        "panel": 4242,
+        "passive": false,
+        "passive_available": false,
+        "port_geometry": {
+          "between_centroid_mean": 8.941437408793718e-05,
+          "centroid_between_over_within": 4.625784397125244,
+          "per_class_within_rms": [
+            2.7895743187400512e-05,
+            1.8284383259015158e-05,
+            1.9451999833108857e-05,
+            2.358593155804556e-05,
+            1.1907431144209113e-05,
+            2.047324232989922e-05,
+            1.718277962936554e-05,
+            2.454231071169488e-05,
+            1.318038903264096e-05,
+            1.6791391317383386e-05
+          ],
+          "within_rms": 1.932956001837738e-05
+        },
+        "port_rank": {
+          "effective_rank": 8.217234886586915,
+          "rank_at_1e-8": 200,
+          "singular_values": [
+            0.0007250723415371248,
+            0.0006776070529689904,
+            0.000531521475877183,
+            0.00046478818333249675,
+            0.0003757386342809493,
+            0.0003647714454333417,
+            0.00031992225951396326,
+            0.0002688694894565007,
+            0.00020282232936659857,
+            0.00013095810904481983,
+            0.00011748194529376053,
+            9.631732083074156e-05,
+            8.349681493085224e-05,
+            7.512269910891426e-05,
+            7.068653967468844e-05,
+            5.249266030307616e-05
+          ],
+          "top16_energy_fraction": 0.9945115621731734,
+          "top8_energy_fraction": 0.9447706575331499
+        },
+        "primary_accuracy": 0.8619999885559082,
+        "primary_min_recall": 0.019999999552965164,
+        "primary_recall": [
+          0.6600000262260437,
+          0.019999999552965164,
+          1.0,
+          1.0,
+          0.9800000190734863,
+          1.0,
+          1.0,
+          0.9599999785423279,
+          1.0,
+          1.0
+        ],
+        "projection_fraction_mean": 0.734045147895813,
+        "projection_fraction_per_class": [
+          0.7364871501922607,
+          0.731737494468689,
+          0.7373325824737549,
+          0.7280319333076477,
+          0.7358320355415344,
+          0.7281935214996338,
+          0.7351856827735901,
+          0.7342559695243835,
+          0.7358783483505249,
+          0.7375168800354004
+        ],
+        "residual_fraction_mean": 0.26595479249954224,
+        "residual_fraction_per_class": [
+          0.26351284980773926,
+          0.2682623863220215,
+          0.26266735792160034,
+          0.27196797728538513,
+          0.2641679346561432,
+          0.2718064785003662,
+          0.2648143172264099,
+          0.26574406027793884,
+          0.26412156224250793,
+          0.2624831199645996
+        ],
+        "residual_spectrum_band_edges": [
+          [
+            0.0,
+            0.1
+          ],
+          [
+            0.1,
+            0.25
+          ],
+          [
+            0.25,
+            0.5
+          ],
+          [
+            0.5,
+            1.01
+          ]
+        ],
+        "residual_spectrum_bands_mean": [
+          0.28801894187927246,
+          0.7028385400772095,
+          0.008174976333975792,
+          0.0009675258188508451
+        ],
+        "saturation": 0.0325470007956028,
+        "secondary_accuracy": 0.23600000143051147,
+        "secondary_min_recall": 0.0,
+        "secondary_prediction_histogram": [
+          50,
+          0,
+          3,
+          16,
+          43,
+          0,
+          0,
+          0,
+          388,
+          0
+        ],
+        "secondary_recall": [
+          1.0,
+          0.0,
+          0.05999999865889549,
+          0.30000001192092896,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        "stage_energy_mean": {
+          "camera": 4666.73388671875,
+          "decoder_layer_1": 8059.212890625,
+          "decoder_layer_2": 7291.841796875,
+          "encoder_input": 8251.900390625,
+          "encoder_layer_1": 8239.3974609375,
+          "encoder_layer_2": 8199.3349609375,
+          "ols_output": 8199.333984375,
+          "slm_output": 5281.89599609375
+        },
+        "stage_energy_retention": {
+          "decoder_layer_1_to_decoder_layer_2": 0.9047833697701849,
+          "decoder_layer_2_to_camera": 0.6399938474691992,
+          "encoder_input_to_encoder_layer_1": 0.9984848423883419,
+          "encoder_layer_1_to_encoder_layer_2": 0.9951376905665816,
+          "encoder_layer_2_to_ols_output": 0.9999998808973527,
+          "ols_output_to_decoder_layer_1": 0.982910673718497,
+          "slm_output_to_encoder_input": 1.5622989162845557
+        },
+        "stage_finite": true,
+        "stagewise_complex_l2_vs_i0": {
+          "camera": 0.42350995540618896,
+          "decoder_layer_1": 0.5199147462844849,
+          "decoder_layer_2": 0.42351529002189636,
+          "encoder_input": 0.0,
+          "encoder_layer_1": 0.0,
+          "encoder_layer_2": 0.0,
+          "ols_output": 0.5347356796264648,
+          "slm_output": 0.0
+        },
+        "variant": "S0-energy-oracle"
+      }
+    },
+    "physical_candidate_gains": {
+      "R100": {
+        "ci95": [
+          0.2199999839067459,
+          0.2633333206176758
+        ],
+        "class_ci95": {
+          "104729": [
+            [
+              0.2800000011920929,
+              0.5600000023841858
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.14000000059604645,
+              0.3799999952316284
+            ],
+            [
+              0.8999999761581421,
+              1.0
+            ],
+            [
+              0.05999999865889549,
+              0.23999999463558197
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.6200000047683716,
+              0.8600000143051147
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ]
+          ],
+          "161803": [
+            [
+              0.25999999046325684,
+              0.5400000214576721
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.10000000149011612,
+              0.3199999928474426
+            ],
+            [
+              0.8999999761581421,
+              1.0
+            ],
+            [
+              0.019999999552965164,
+              0.1599999964237213
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.5600000023841858,
+              0.8199999928474426
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ]
+          ],
+          "4242": [
+            [
+              0.25999999046325684,
+              0.5400000214576721
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.14000000059604645,
+              0.3799999952316284
+            ],
+            [
+              0.8600000143051147,
+              1.0
+            ],
+            [
+              0.019999999552965164,
+              0.1599999964237213
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.5799999833106995,
+              0.8199999928474426
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ]
+          ]
+        },
+        "class_observed_gain": {
+          "104729": [
+            0.41999998688697815,
+            0.0,
+            0.25999999046325684,
+            0.9599999785423279,
+            0.14000000059604645,
+            0.0,
+            0.7400000095367432,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "161803": [
+            0.4000000059604645,
+            0.0,
+            0.20000000298023224,
+            0.9599999785423279,
+            0.07999999821186066,
+            0.0,
+            0.699999988079071,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "4242": [
+            0.4000000059604645,
+            0.0,
+            0.25999999046325684,
+            0.9399999976158142,
+            0.07999999821186066,
+            0.0,
+            0.699999988079071,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "observed_gain": 0.24133333563804626,
+        "panel_ci95": {
+          "104729": [
+            0.21400000154972076,
+            0.28999999165534973
+          ],
+          "161803": [
+            0.1979999989271164,
+            0.2720000147819519
+          ],
+          "4242": [
+            0.20200000703334808,
+            0.2759999930858612
+          ]
+        },
+        "panel_observed_gain": {
+          "104729": 0.25200000405311584,
+          "161803": 0.23399999737739563,
+          "4242": 0.23800000548362732
+        },
+        "replicates": 10000,
+        "seed": 90210
+      },
+      "R25": {
+        "ci95": [
+          0.010000000707805157,
+          0.02266666851937771
+        ],
+        "class_ci95": {
+          "104729": [
+            [
+              0.05999999865889549,
+              0.25999999046325684
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ]
+          ],
+          "161803": [
+            [
+              0.05999999865889549,
+              0.25999999046325684
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ]
+          ],
+          "4242": [
+            [
+              0.05999999865889549,
+              0.25999999046325684
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ]
+          ]
+        },
+        "class_observed_gain": {
+          "104729": [
+            0.1599999964237213,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "161803": [
+            0.1599999964237213,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "4242": [
+            0.1599999964237213,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "observed_gain": 0.01600000075995922,
+        "panel_ci95": {
+          "104729": [
+            0.006000000052154064,
+            0.02800000086426735
+          ],
+          "161803": [
+            0.006000000052154064,
+            0.02800000086426735
+          ],
+          "4242": [
+            0.006000000052154064,
+            0.02800000086426735
+          ]
+        },
+        "panel_observed_gain": {
+          "104729": 0.01600000075995922,
+          "161803": 0.01600000075995922,
+          "4242": 0.01600000075995922
+        },
+        "replicates": 10000,
+        "seed": 90210
+      },
+      "R50": {
+        "ci95": [
+          0.05400000140070915,
+          0.07866666465997696
+        ],
+        "class_ci95": {
+          "104729": [
+            [
+              0.20000000298023224,
+              0.4399999976158142
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.019999999552965164,
+              0.1805078238248825
+            ],
+            [
+              0.11999999731779099,
+              0.36000001430511475
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.019999999552965164,
+              0.1599999964237213
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ]
+          ],
+          "161803": [
+            [
+              0.18000000715255737,
+              0.4399999976158142
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.05999999865889549
+            ],
+            [
+              0.019999999552965164,
+              0.1599999964237213
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.019999999552965164,
+              0.20000000298023224
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ]
+          ],
+          "4242": [
+            [
+              0.23999999463558197,
+              0.5
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.14000000059604645
+            ],
+            [
+              0.019999999552965164,
+              0.18000000715255737
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.11999999731779099,
+              0.3400000035762787
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ]
+          ]
+        },
+        "class_observed_gain": {
+          "104729": [
+            0.3199999928474426,
+            0.0,
+            0.10000000149011612,
+            0.23999999463558197,
+            0.0,
+            0.0,
+            0.07999999821186066,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "161803": [
+            0.30000001192092896,
+            0.0,
+            0.019999999552965164,
+            0.07999999821186066,
+            0.0,
+            0.0,
+            0.10000000149011612,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "4242": [
+            0.36000001430511475,
+            0.0,
+            0.05999999865889549,
+            0.10000000149011612,
+            0.0,
+            0.0,
+            0.2199999988079071,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "observed_gain": 0.06599999964237213,
+        "panel_ci95": {
+          "104729": [
+            0.052000001072883606,
+            0.09799999743700027
+          ],
+          "161803": [
+            0.03200000151991844,
+            0.07000000029802322
+          ],
+          "4242": [
+            0.052000001072883606,
+            0.09799999743700027
+          ]
+        },
+        "panel_observed_gain": {
+          "104729": 0.07400000095367432,
+          "161803": 0.05000000074505806,
+          "4242": 0.07400000095367432
+        },
+        "replicates": 10000,
+        "seed": 90210
+      },
+      "R75": {
+        "ci95": [
+          0.16066665947437286,
+          0.20000000298023224
+        ],
+        "class_ci95": {
+          "104729": [
+            [
+              0.2800000011920929,
+              0.5600000023841858
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.11999999731779099,
+              0.3400000035762787
+            ],
+            [
+              0.6000000238418579,
+              0.8399999737739563
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.3799999952316284,
+              0.6600000262260437
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ]
+          ],
+          "161803": [
+            [
+              0.23999999463558197,
+              0.5199999809265137
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.03999999910593033,
+              0.2199999988079071
+            ],
+            [
+              0.6399999856948853,
+              0.8799999952316284
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.3199999928474426,
+              0.6000000238418579
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ]
+          ],
+          "4242": [
+            [
+              0.25999999046325684,
+              0.5400000214576721
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.07999999821186066,
+              0.30000001192092896
+            ],
+            [
+              0.6000000238418579,
+              0.8399999737739563
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.36000001430511475,
+              0.6399999856948853
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0
+            ]
+          ]
+        },
+        "class_observed_gain": {
+          "104729": [
+            0.41999998688697815,
+            0.0,
+            0.2199999988079071,
+            0.7200000286102295,
+            0.0,
+            0.0,
+            0.5199999809265137,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "161803": [
+            0.3799999952316284,
+            0.0,
+            0.11999999731779099,
+            0.7599999904632568,
+            0.0,
+            0.0,
+            0.46000000834465027,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "4242": [
+            0.4000000059604645,
+            0.0,
+            0.18000000715255737,
+            0.7200000286102295,
+            0.0,
+            0.0,
+            0.5,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "observed_gain": 0.18000000715255737,
+        "panel_ci95": {
+          "104729": [
+            0.15399999916553497,
+            0.22200000286102295
+          ],
+          "161803": [
+            0.14000000059604645,
+            0.20600000023841858
+          ],
+          "4242": [
+            0.1459999978542328,
+            0.21400000154972076
+          ]
+        },
+        "panel_observed_gain": {
+          "104729": 0.18799999356269836,
+          "161803": 0.1720000058412552,
+          "4242": 0.18000000715255737
+        },
+        "replicates": 10000,
+        "seed": 90210
+      }
+    },
+    "s0_nearest_centroid": {
+      "camera": {
+        "raw": 1.0,
+        "shuffled_raw": 0.08483333306503482,
+        "shuffled_unit": 0.08733333360093336,
+        "unit": 1.0
+      },
+      "decoder_layer_1": {
+        "raw": 1.0,
+        "shuffled_raw": 0.09091666699775185,
+        "shuffled_unit": 0.10208333388436586,
+        "unit": 1.0
+      },
+      "decoder_layer_2": {
+        "raw": 1.0,
+        "shuffled_raw": 0.07816666689662573,
+        "shuffled_unit": 0.0875000008478916,
+        "unit": 1.0
+      },
+      "encoder_input": {
+        "raw": 1.0,
+        "shuffled_raw": 0.09958333359099925,
+        "shuffled_unit": 0.09583333421808977,
+        "unit": 1.0
+      },
+      "encoder_layer_1": {
+        "raw": 1.0,
+        "shuffled_raw": 0.09916666817540924,
+        "shuffled_unit": 0.10166666687776645,
+        "unit": 1.0
+      },
+      "encoder_layer_2": {
+        "raw": 1.0,
+        "shuffled_raw": 0.09808333330632497,
+        "shuffled_unit": 0.09883333335164934,
+        "unit": 1.0
+      },
+      "fixed_cmos": {
+        "raw": 0.9980000058809916,
+        "shuffled_raw": 0.08966666714210685,
+        "shuffled_unit": 0.0816666676546447,
+        "unit": 1.0
+      },
+      "ols_output": {
+        "raw": 1.0,
+        "shuffled_raw": 0.1059166672154485,
+        "shuffled_unit": 0.10675000111223198,
+        "unit": 1.0
+      },
+      "slm_output": {
+        "raw": 1.0,
+        "shuffled_raw": 0.08983333394280635,
+        "shuffled_unit": 0.09599999912704031,
+        "unit": 1.0
+      }
+    },
+    "s0_secondary_rows": [
+      {
+        "agreement": 0.15000000596046448,
+        "artifacts": {
+          "codes": {
+            "relative_path": "measurements/S0/4242/codes.pt",
+            "sha256": "bdbb9621108d884630b57ab11129cae251257b2d648ae09e90e168c58aaddcdf",
+            "tensor_sha256": "4174780d4ac6938c7dc091a531d1ad4d4395773888ebbd40f3d7e0625624f2db"
+          },
+          "fixed_cmos": {
+            "relative_path": "measurements/S0/4242/fixed_cmos.pt",
+            "sha256": "740c704049ea75a40d091e631907009228dd8a99e9aea2f8c704de3c763cc3ff",
+            "tensor_sha256": "9294a8d98002622ee8e4dbfbb4cd2b137e8b450cd9574d36a1125b79c273fc41"
+          },
+          "labels": {
+            "relative_path": "measurements/S0/4242/labels.pt",
+            "sha256": "29175872774c72088203e4c25cae64a76cf9f653bd7ffed9e9ab50dc24a19074",
+            "tensor_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+          },
+          "port_input_coefficients": {
+            "relative_path": "measurements/S0/4242/port_input_coefficients.pt",
+            "sha256": "60d02b7255e133d46b37a792b4a27ecdf9ead99396b4a3c52805bcb710fab0fe",
+            "tensor_sha256": "4e4e49af18e4b2ff3dcaa06ef1349d5c8f162bc8d0f4967e59cd82289988b53e"
+          },
+          "port_output_coefficients": {
+            "relative_path": "measurements/S0/4242/port_output_coefficients.pt",
+            "sha256": "89b085ac2156ac3fd0d9d6dd3c82972da3f4c581eac0096e744d81cf00de529a",
+            "tensor_sha256": "4e4e49af18e4b2ff3dcaa06ef1349d5c8f162bc8d0f4967e59cd82289988b53e"
+          },
+          "primary_prediction": {
+            "relative_path": "measurements/S0/4242/primary_prediction.pt",
+            "sha256": "679d1c330e1e6638d2b63754343a1364f0bd7b9a111997b39258aedd6860f960",
+            "tensor_sha256": "5dd8a9ca865b984e97be3c42191188cf66d860fcfe2d66c7dc93afffa060e3ff"
+          },
+          "representative_trace": {
+            "relative_path": "measurements/S0/4242/representative_trace.pt",
+            "sha256": "f0a7c1307f3eee1de21cda8bacf125e258cfdce2c239f4ed8bc7facf63243f23"
+          },
+          "secondary_correctness": {
+            "relative_path": "measurements/S0/4242/secondary_correctness.pt",
+            "sha256": "0355982030623f72436dd11969041472a19b651d4d48381d106c61a38113c3e0",
+            "tensor_sha256": "0c28eb23af32ce21267f22069a77d8c7fce8e22e55fe991478e2a0ada01e2400"
+          },
+          "secondary_prediction": {
+            "relative_path": "measurements/S0/4242/secondary_prediction.pt",
+            "sha256": "39bee0f60180cef6f82cb087c8e6afb3057282b170449cb97009231092d479a9",
+            "tensor_sha256": "d5fb0ca2c5e1777cc3df4ad7907231f0f2e733701237315741bf659d4a173388"
+          }
+        },
+        "camera_fraction": 0.12979008257389069,
+        "codes_sha256": "4174780d4ac6938c7dc091a531d1ad4d4395773888ebbd40f3d7e0625624f2db",
+        "coverage_ratio": 3.569108247756958,
+        "energy_closure_error_max": 2.167448371892533e-07,
+        "energy_oracle": false,
+        "energy_retention_mean": 0.734045147895813,
+        "finite": true,
+        "input_energy_mean": 3.279733462591139e-08,
+        "labels_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "minimum_diversity": 0.17537282407283783,
+        "nearest_centroid": {
+          "camera": {
+            "raw": 1.0,
+            "shuffled_raw": 0.08483333306503482,
+            "shuffled_unit": 0.08733333360093336,
+            "unit": 1.0
+          },
+          "decoder_layer_1": {
+            "raw": 1.0,
+            "shuffled_raw": 0.09091666699775185,
+            "shuffled_unit": 0.10208333388436586,
+            "unit": 1.0
+          },
+          "decoder_layer_2": {
+            "raw": 1.0,
+            "shuffled_raw": 0.07816666689662573,
+            "shuffled_unit": 0.0875000008478916,
+            "unit": 1.0
+          },
+          "encoder_input": {
+            "raw": 1.0,
+            "shuffled_raw": 0.09958333359099925,
+            "shuffled_unit": 0.09583333421808977,
+            "unit": 1.0
+          },
+          "encoder_layer_1": {
+            "raw": 1.0,
+            "shuffled_raw": 0.09916666817540924,
+            "shuffled_unit": 0.10166666687776645,
+            "unit": 1.0
+          },
+          "encoder_layer_2": {
+            "raw": 1.0,
+            "shuffled_raw": 0.09808333330632497,
+            "shuffled_unit": 0.09883333335164934,
+            "unit": 1.0
+          },
+          "fixed_cmos": {
+            "raw": 0.9980000058809916,
+            "shuffled_raw": 0.08966666714210685,
+            "shuffled_unit": 0.0816666676546447,
+            "unit": 1.0
+          },
+          "ols_output": {
+            "raw": 1.0,
+            "shuffled_raw": 0.1059166672154485,
+            "shuffled_unit": 0.10675000111223198,
+            "unit": 1.0
+          },
+          "slm_output": {
+            "raw": 1.0,
+            "shuffled_raw": 0.08983333394280635,
+            "shuffled_unit": 0.09599999912704031,
+            "unit": 1.0
+          }
+        },
+        "nonnegative": true,
+        "nonphysical_upper_bound": false,
+        "output_energy_mean": 2.408975419143644e-08,
+        "panel": 4242,
+        "passive": true,
+        "passive_available": true,
+        "port_geometry": {
+          "between_centroid_mean": 8.941437408793718e-05,
+          "centroid_between_over_within": 4.625784397125244,
+          "per_class_within_rms": [
+            2.7895743187400512e-05,
+            1.8284383259015158e-05,
+            1.9451999833108857e-05,
+            2.358593155804556e-05,
+            1.1907431144209113e-05,
+            2.047324232989922e-05,
+            1.718277962936554e-05,
+            2.454231071169488e-05,
+            1.318038903264096e-05,
+            1.6791391317383386e-05
+          ],
+          "within_rms": 1.932956001837738e-05
+        },
+        "port_rank": {
+          "effective_rank": 8.217234886586915,
+          "rank_at_1e-8": 200,
+          "singular_values": [
+            0.0007250723415371248,
+            0.0006776070529689904,
+            0.000531521475877183,
+            0.00046478818333249675,
+            0.0003757386342809493,
+            0.0003647714454333417,
+            0.00031992225951396326,
+            0.0002688694894565007,
+            0.00020282232936659857,
+            0.00013095810904481983,
+            0.00011748194529376053,
+            9.631732083074156e-05,
+            8.349681493085224e-05,
+            7.512269910891426e-05,
+            7.068653967468844e-05,
+            5.249266030307616e-05
+          ],
+          "top16_energy_fraction": 0.9945115621731734,
+          "top8_energy_fraction": 0.9447706575331499
+        },
+        "primary_accuracy": 0.5920000076293945,
+        "primary_min_recall": 0.0,
+        "primary_recall": [
+          0.05999999865889549,
+          0.0,
+          0.8600000143051147,
+          0.9800000190734863,
+          0.9200000166893005,
+          1.0,
+          0.3799999952316284,
+          0.5199999809265137,
+          0.23999999463558197,
+          0.9599999785423279
+        ],
+        "projection_fraction_mean": 0.734045147895813,
+        "projection_fraction_per_class": [
+          0.7364871501922607,
+          0.731737494468689,
+          0.7373325824737549,
+          0.7280319333076477,
+          0.7358320355415344,
+          0.7281935214996338,
+          0.7351856827735901,
+          0.7342559695243835,
+          0.7358783483505249,
+          0.7375168800354004
+        ],
+        "residual_fraction_mean": 0.26595479249954224,
+        "residual_fraction_per_class": [
+          0.26351284980773926,
+          0.2682623863220215,
+          0.26266735792160034,
+          0.27196797728538513,
+          0.2641679346561432,
+          0.2718064785003662,
+          0.2648143172264099,
+          0.26574406027793884,
+          0.26412156224250793,
+          0.2624831199645996
+        ],
+        "residual_spectrum_band_edges": [
+          [
+            0.0,
+            0.1
+          ],
+          [
+            0.1,
+            0.25
+          ],
+          [
+            0.25,
+            0.5
+          ],
+          [
+            0.5,
+            1.01
+          ]
+        ],
+        "residual_spectrum_bands_mean": [
+          0.28801894187927246,
+          0.7028385400772095,
+          0.008174976333975792,
+          0.0009675258188508451
+        ],
+        "saturation": 0.009637949988245964,
+        "secondary_accuracy": 0.1599999964237213,
+        "secondary_min_recall": 0.0,
+        "secondary_prediction_histogram": [
+          30,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          469,
+          0
+        ],
+        "secondary_recall": [
+          0.6000000238418579,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        "stage_energy_mean": {
+          "camera": 3427.85791015625,
+          "decoder_layer_1": 5919.64013671875,
+          "decoder_layer_2": 5356.0791015625,
+          "encoder_input": 8251.900390625,
+          "encoder_layer_1": 8239.3974609375,
+          "encoder_layer_2": 8199.3349609375,
+          "ols_output": 6022.43896484375,
+          "slm_output": 5281.89599609375
+        },
+        "stage_energy_retention": {
+          "decoder_layer_1_to_decoder_layer_2": 0.9047980920899981,
+          "decoder_layer_2_to_camera": 0.6399938920163184,
+          "encoder_input_to_encoder_layer_1": 0.9984848423883419,
+          "encoder_layer_1_to_encoder_layer_2": 0.9951376905665816,
+          "encoder_layer_2_to_ols_output": 0.7345033461293248,
+          "ols_output_to_decoder_layer_1": 0.9829306982229139,
+          "slm_output_to_encoder_input": 1.5622989162845557
+        },
+        "stage_finite": true,
+        "stagewise_complex_l2_vs_i0": {
+          "camera": 0.4311516582965851,
+          "decoder_layer_1": 0.5033225417137146,
+          "decoder_layer_2": 0.43115586042404175,
+          "encoder_input": 0.0,
+          "encoder_layer_1": 0.0,
+          "encoder_layer_2": 0.0,
+          "ols_output": 0.5152636170387268,
+          "slm_output": 0.0
+        },
+        "variant": "S0"
+      },
+      {
+        "agreement": 0.14800000190734863,
+        "artifacts": {
+          "codes": {
+            "relative_path": "measurements/S0/104729/codes.pt",
+            "sha256": "e09eb434fdc5cc458e22b9e74a860dd01a78a2e82d104e2b1906003ed78daafd",
+            "tensor_sha256": "81d43602a20a020284f1a6d5990461596a9cb21d0a3b1840d07ebd94abc5e209"
+          },
+          "fixed_cmos": {
+            "relative_path": "measurements/S0/104729/fixed_cmos.pt",
+            "sha256": "ba31078a7b1e7ba2840ecd235bbe9db83419eba37012a4fc6ea52e94e0a6f7f7",
+            "tensor_sha256": "d9b7eff8e4dec795b4fed5752495d9637596690deca3e78e277368bb3b55240e"
+          },
+          "labels": {
+            "relative_path": "measurements/S0/104729/labels.pt",
+            "sha256": "467ec56e154705192b96e9364cee1d13f35ea8198ce1b7ec16d09b8899371ff7",
+            "tensor_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+          },
+          "port_input_coefficients": {
+            "relative_path": "measurements/S0/104729/port_input_coefficients.pt",
+            "sha256": "d74eb6d785bcc5f36693f66758ec7237fba8b6c3877a1f0d42d00d27ad41cd7c",
+            "tensor_sha256": "24105fc20010123e30cf9e0945fdd23d638fd3324a35d5e8fa9f6450d7632575"
+          },
+          "port_output_coefficients": {
+            "relative_path": "measurements/S0/104729/port_output_coefficients.pt",
+            "sha256": "f76bbad41cf7d077aebc30e50553786ee18000af9f2ce839b2fbf36d72e72703",
+            "tensor_sha256": "24105fc20010123e30cf9e0945fdd23d638fd3324a35d5e8fa9f6450d7632575"
+          },
+          "primary_prediction": {
+            "relative_path": "measurements/S0/104729/primary_prediction.pt",
+            "sha256": "b3509a508acc58957584bb50b45faf6906cafa4f73e06370bd97133de6ae5cc7",
+            "tensor_sha256": "edcf941396e4314b65ca12efb5622211b2e27de52e164c9167e6383dff20be7b"
+          },
+          "representative_trace": {
+            "relative_path": "measurements/S0/104729/representative_trace.pt",
+            "sha256": "11ff67de72e50de8d5f91ae3c1d11735d219d2f9a0f0d1ab12895e9e80f488d8"
+          },
+          "secondary_correctness": {
+            "relative_path": "measurements/S0/104729/secondary_correctness.pt",
+            "sha256": "20939298fddd7f296023de600cb81d83413b21f05f68c6ea7ca99dd8edca3c7d",
+            "tensor_sha256": "cdaa369f688a4e18e5dcdc9e367b62cac304a20645ebda5f003046d1255f809d"
+          },
+          "secondary_prediction": {
+            "relative_path": "measurements/S0/104729/secondary_prediction.pt",
+            "sha256": "34acc8477e7f12e2c2bf7f775f3813866346cb8c60002edd5443bebd791ff7c2",
+            "tensor_sha256": "e61d36700c12fa778be6f3949ef94b23b6239daa5474d79295a8605752b4f225"
+          }
+        },
+        "camera_fraction": 0.13799914717674255,
+        "codes_sha256": "81d43602a20a020284f1a6d5990461596a9cb21d0a3b1840d07ebd94abc5e209",
+        "coverage_ratio": 3.560364246368408,
+        "energy_closure_error_max": 2.0247794907390926e-07,
+        "energy_oracle": false,
+        "energy_retention_mean": 0.7338865995407104,
+        "finite": true,
+        "input_energy_mean": 3.295113870649402e-08,
+        "labels_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "minimum_diversity": 0.18306566774845123,
+        "nearest_centroid": {
+          "camera": {
+            "raw": 1.0,
+            "shuffled_raw": 0.08483333306503482,
+            "shuffled_unit": 0.08733333360093336,
+            "unit": 1.0
+          },
+          "decoder_layer_1": {
+            "raw": 1.0,
+            "shuffled_raw": 0.09091666699775185,
+            "shuffled_unit": 0.10208333388436586,
+            "unit": 1.0
+          },
+          "decoder_layer_2": {
+            "raw": 1.0,
+            "shuffled_raw": 0.07816666689662573,
+            "shuffled_unit": 0.0875000008478916,
+            "unit": 1.0
+          },
+          "encoder_input": {
+            "raw": 1.0,
+            "shuffled_raw": 0.09958333359099925,
+            "shuffled_unit": 0.09583333421808977,
+            "unit": 1.0
+          },
+          "encoder_layer_1": {
+            "raw": 1.0,
+            "shuffled_raw": 0.09916666817540924,
+            "shuffled_unit": 0.10166666687776645,
+            "unit": 1.0
+          },
+          "encoder_layer_2": {
+            "raw": 1.0,
+            "shuffled_raw": 0.09808333330632497,
+            "shuffled_unit": 0.09883333335164934,
+            "unit": 1.0
+          },
+          "fixed_cmos": {
+            "raw": 0.9980000058809916,
+            "shuffled_raw": 0.08966666714210685,
+            "shuffled_unit": 0.0816666676546447,
+            "unit": 1.0
+          },
+          "ols_output": {
+            "raw": 1.0,
+            "shuffled_raw": 0.1059166672154485,
+            "shuffled_unit": 0.10675000111223198,
+            "unit": 1.0
+          },
+          "slm_output": {
+            "raw": 1.0,
+            "shuffled_raw": 0.08983333394280635,
+            "shuffled_unit": 0.09599999912704031,
+            "unit": 1.0
+          }
+        },
+        "nonnegative": true,
+        "nonphysical_upper_bound": false,
+        "output_energy_mean": 2.4197168713158135e-08,
+        "panel": 104729,
+        "passive": true,
+        "passive_available": true,
+        "port_geometry": {
+          "between_centroid_mean": 8.997118129627779e-05,
+          "centroid_between_over_within": 4.525063991546631,
+          "per_class_within_rms": [
+            2.7944755856879056e-05,
+            1.8277190974913538e-05,
+            1.96275159396464e-05,
+            2.615313496789895e-05,
+            1.536007403046824e-05,
+            2.0152789147687145e-05,
+            1.5660638382541947e-05,
+            2.524814772186801e-05,
+            1.3619665878650267e-05,
+            1.6784608305897564e-05
+          ],
+          "within_rms": 1.9882852939190343e-05
+        },
+        "port_rank": {
+          "effective_rank": 8.306902252052893,
+          "rank_at_1e-8": 200,
+          "singular_values": [
+            0.0007212115876763105,
+            0.0006804671785793279,
+            0.000533803527736705,
+            0.00047802070523620364,
+            0.0003836612458442941,
+            0.0003677517308770375,
+            0.00033038143332046705,
+            0.0002650634493734155,
+            0.00020264485657722097,
+            0.0001416535371830515,
+            0.0001223131922614303,
+            9.26119421549267e-05,
+            8.258056447560445e-05,
+            7.966138801526953e-05,
+            6.448148548143075e-05,
+            5.2846914198837185e-05
+          ],
+          "top16_energy_fraction": 0.9942388209229442,
+          "top8_energy_fraction": 0.9437457076622521
+        },
+        "primary_accuracy": 0.5559999942779541,
+        "primary_min_recall": 0.0,
+        "primary_recall": [
+          0.07999999821186066,
+          0.0,
+          0.8399999737739563,
+          0.9800000190734863,
+          0.6800000071525574,
+          1.0,
+          0.41999998688697815,
+          0.4399999976158142,
+          0.18000000715255737,
+          0.9399999976158142
+        ],
+        "projection_fraction_mean": 0.7338865995407104,
+        "projection_fraction_per_class": [
+          0.7361278533935547,
+          0.7317909002304077,
+          0.7370147109031677,
+          0.7273080348968506,
+          0.7358114123344421,
+          0.7277523279190063,
+          0.7355614304542542,
+          0.7342261672019958,
+          0.7358709573745728,
+          0.7374022006988525
+        ],
+        "residual_fraction_mean": 0.26611340045928955,
+        "residual_fraction_per_class": [
+          0.26387205719947815,
+          0.2682090997695923,
+          0.2629852592945099,
+          0.2726919949054718,
+          0.26418864727020264,
+          0.27224770188331604,
+          0.2644386887550354,
+          0.265773743391037,
+          0.26412898302078247,
+          0.2625977396965027
+        ],
+        "residual_spectrum_band_edges": [
+          [
+            0.0,
+            0.1
+          ],
+          [
+            0.1,
+            0.25
+          ],
+          [
+            0.25,
+            0.5
+          ],
+          [
+            0.5,
+            1.01
+          ]
+        ],
+        "residual_spectrum_bands_mean": [
+          0.28829169273376465,
+          0.7025312781333923,
+          0.008200954645872116,
+          0.0009760998073033988
+        ],
+        "saturation": 0.009542199783027172,
+        "secondary_accuracy": 0.15800000727176666,
+        "secondary_min_recall": 0.0,
+        "secondary_prediction_histogram": [
+          29,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          470,
+          0
+        ],
+        "secondary_recall": [
+          0.5799999833106995,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        "stage_energy_mean": {
+          "camera": 3442.174072265625,
+          "decoder_layer_1": 5944.55859375,
+          "decoder_layer_2": 5378.44921875,
+          "encoder_input": 8291.720703125,
+          "encoder_layer_1": 8278.7548828125,
+          "encoder_layer_2": 8237.78515625,
+          "ols_output": 6049.29248046875,
+          "slm_output": 5307.39501953125
+        },
+        "stage_energy_retention": {
+          "decoder_layer_1_to_decoder_layer_2": 0.9047684758974035,
+          "decoder_layer_2_to_camera": 0.6399937848749676,
+          "encoder_input_to_encoder_layer_1": 0.9984362931680015,
+          "encoder_layer_1_to_encoder_layer_2": 0.9950512212111078,
+          "encoder_layer_2_to_ols_output": 0.7343348200674009,
+          "ols_output_to_decoder_layer_1": 0.9826865890421231,
+          "slm_output_to_encoder_input": 1.562295753870102
+        },
+        "stage_finite": true,
+        "stagewise_complex_l2_vs_i0": {
+          "camera": 0.4312859773635864,
+          "decoder_layer_1": 0.5033570528030396,
+          "decoder_layer_2": 0.43129026889801025,
+          "encoder_input": 0.0,
+          "encoder_layer_1": 0.0,
+          "encoder_layer_2": 0.0,
+          "ols_output": 0.5154271721839905,
+          "slm_output": 0.0
+        },
+        "variant": "S0"
+      },
+      {
+        "agreement": 0.13600000739097595,
+        "artifacts": {
+          "codes": {
+            "relative_path": "measurements/S0/161803/codes.pt",
+            "sha256": "2ed75c1b0dd2534d5c6e400db71543ecad0d1048572ed108a0bb3a1fd456f419",
+            "tensor_sha256": "182375abc3278324417adc12922a3dfb2fc3f2c7fcfa9e3bf7118b07ab5e4010"
+          },
+          "fixed_cmos": {
+            "relative_path": "measurements/S0/161803/fixed_cmos.pt",
+            "sha256": "b3faa6f145315dbe49a2dda3d1d2e50b7773a878641a703ff853d7527ce64788",
+            "tensor_sha256": "86f2057e5cb42568df17ffebe3eb38e02cfa38f70276865e172f408d12248bf8"
+          },
+          "labels": {
+            "relative_path": "measurements/S0/161803/labels.pt",
+            "sha256": "8de086b21202d0fad6c9c28cd21473d4dc3e4ac3f3f84dc26b0b8790c1192870",
+            "tensor_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27"
+          },
+          "port_input_coefficients": {
+            "relative_path": "measurements/S0/161803/port_input_coefficients.pt",
+            "sha256": "02a629e3182a510a36248f4c8f68a97fd7cef00ce18bb90b29030391854b9bce",
+            "tensor_sha256": "b56a24cde922a4c74fd36927eb0572b69b985a13007ca18d07b8834be5f253e8"
+          },
+          "port_output_coefficients": {
+            "relative_path": "measurements/S0/161803/port_output_coefficients.pt",
+            "sha256": "4d7a7b6b4c6145efef2d5c4e8d0d19031a761a6813dae8bd0eca1df83118159a",
+            "tensor_sha256": "b56a24cde922a4c74fd36927eb0572b69b985a13007ca18d07b8834be5f253e8"
+          },
+          "primary_prediction": {
+            "relative_path": "measurements/S0/161803/primary_prediction.pt",
+            "sha256": "41bf8b449eeb3c3d7fe5c36c3479b6d31b37f9b29e9be2fda90df38aeb39ff6d",
+            "tensor_sha256": "074be5bde0b71ed8a6a985e56a0b8252a7de37d3524a9555a6a10ddf513f4323"
+          },
+          "representative_trace": {
+            "relative_path": "measurements/S0/161803/representative_trace.pt",
+            "sha256": "9363c48baa4d452d37e235959f3d4a25a942c7349c5d58030d377a46e2ec516f"
+          },
+          "secondary_correctness": {
+            "relative_path": "measurements/S0/161803/secondary_correctness.pt",
+            "sha256": "c027b0fd14489d764e7a027b68c3710e357285e7de4ca57a422bbc05c3516dd5",
+            "tensor_sha256": "48903382c9d04d04cf6b4f58292d5017b4ab8080fdd53997790253d3a2dc7273"
+          },
+          "secondary_prediction": {
+            "relative_path": "measurements/S0/161803/secondary_prediction.pt",
+            "sha256": "bac380dde8a00dcc1175da8aa9f9d14259bfa523246df28bd8cc4baa0b511284",
+            "tensor_sha256": "fd68621014a22b1d4543c30c570325883d84e5c252ee5d7de4e8233f3a546eae"
+          }
+        },
+        "camera_fraction": 0.12333305925130844,
+        "codes_sha256": "182375abc3278324417adc12922a3dfb2fc3f2c7fcfa9e3bf7118b07ab5e4010",
+        "coverage_ratio": 3.5729358196258545,
+        "energy_closure_error_max": 2.0815365076032322e-07,
+        "energy_oracle": false,
+        "energy_retention_mean": 0.7339878082275391,
+        "finite": true,
+        "input_energy_mean": 3.2866243060425404e-08,
+        "labels_sha256": "a030453057fee7df25c7c22ad551af4a24b380b3e9c3bc347795c56d4d0e4e27",
+        "minimum_diversity": 0.16396339237689972,
+        "nearest_centroid": {
+          "camera": {
+            "raw": 1.0,
+            "shuffled_raw": 0.08483333306503482,
+            "shuffled_unit": 0.08733333360093336,
+            "unit": 1.0
+          },
+          "decoder_layer_1": {
+            "raw": 1.0,
+            "shuffled_raw": 0.09091666699775185,
+            "shuffled_unit": 0.10208333388436586,
+            "unit": 1.0
+          },
+          "decoder_layer_2": {
+            "raw": 1.0,
+            "shuffled_raw": 0.07816666689662573,
+            "shuffled_unit": 0.0875000008478916,
+            "unit": 1.0
+          },
+          "encoder_input": {
+            "raw": 1.0,
+            "shuffled_raw": 0.09958333359099925,
+            "shuffled_unit": 0.09583333421808977,
+            "unit": 1.0
+          },
+          "encoder_layer_1": {
+            "raw": 1.0,
+            "shuffled_raw": 0.09916666817540924,
+            "shuffled_unit": 0.10166666687776645,
+            "unit": 1.0
+          },
+          "encoder_layer_2": {
+            "raw": 1.0,
+            "shuffled_raw": 0.09808333330632497,
+            "shuffled_unit": 0.09883333335164934,
+            "unit": 1.0
+          },
+          "fixed_cmos": {
+            "raw": 0.9980000058809916,
+            "shuffled_raw": 0.08966666714210685,
+            "shuffled_unit": 0.0816666676546447,
+            "unit": 1.0
+          },
+          "ols_output": {
+            "raw": 1.0,
+            "shuffled_raw": 0.1059166672154485,
+            "shuffled_unit": 0.10675000111223198,
+            "unit": 1.0
+          },
+          "slm_output": {
+            "raw": 1.0,
+            "shuffled_raw": 0.08983333394280635,
+            "shuffled_unit": 0.09599999912704031,
+            "unit": 1.0
+          }
+        },
+        "nonnegative": true,
+        "nonphysical_upper_bound": false,
+        "output_energy_mean": 2.4141421306467237e-08,
+        "panel": 161803,
+        "passive": true,
+        "passive_available": true,
+        "port_geometry": {
+          "between_centroid_mean": 9.012317605083808e-05,
+          "centroid_between_over_within": 4.708259582519531,
+          "per_class_within_rms": [
+            2.8052418201696128e-05,
+            1.819787939894013e-05,
+            1.8595806977828033e-05,
+            2.3529779355158098e-05,
+            1.5025739230623003e-05,
+            1.9906779925804585e-05,
+            1.618982059881091e-05,
+            2.3667982532060705e-05,
+            1.2299415175220929e-05,
+            1.5949441149132326e-05
+          ],
+          "within_rms": 1.9141505617881194e-05
+        },
+        "port_rank": {
+          "effective_rank": 8.267217082236193,
+          "rank_at_1e-8": 200,
+          "singular_values": [
+            0.0007118181247980622,
+            0.0006854862699231534,
+            0.0005328684782878717,
+            0.0004826213918873955,
+            0.00037955116954663937,
+            0.0003652714828129052,
+            0.0003363229169433083,
+            0.0002703498017490858,
+            0.00020104968941189527,
+            0.0001330431586518777,
+            0.00011262163663946295,
+            9.169412162742903e-05,
+            7.768730940171459e-05,
+            7.578976397497885e-05,
+            6.840605315542233e-05,
+            5.320129136257707e-05
+          ],
+          "top16_energy_fraction": 0.9943827674311273,
+          "top8_energy_fraction": 0.9467338627033962
+        },
+        "primary_accuracy": 0.6000000238418579,
+        "primary_min_recall": 0.0,
+        "primary_recall": [
+          0.07999999821186066,
+          0.0,
+          0.9399999976158142,
+          1.0,
+          0.7599999904632568,
+          1.0,
+          0.5,
+          0.6600000262260437,
+          0.10000000149011612,
+          0.9599999785423279
+        ],
+        "projection_fraction_mean": 0.7339878082275391,
+        "projection_fraction_per_class": [
+          0.7373840808868408,
+          0.7314714789390564,
+          0.7372965812683105,
+          0.7277262210845947,
+          0.7358973622322083,
+          0.7274693846702576,
+          0.7354291677474976,
+          0.7338270545005798,
+          0.7360914349555969,
+          0.7372840046882629
+        ],
+        "residual_fraction_mean": 0.2660123407840729,
+        "residual_fraction_per_class": [
+          0.262615829706192,
+          0.26852843165397644,
+          0.26270341873168945,
+          0.2722737789154053,
+          0.26410263776779175,
+          0.2725306749343872,
+          0.2645708918571472,
+          0.26617294549942017,
+          0.2639085650444031,
+          0.2627159357070923
+        ],
+        "residual_spectrum_band_edges": [
+          [
+            0.0,
+            0.1
+          ],
+          [
+            0.1,
+            0.25
+          ],
+          [
+            0.25,
+            0.5
+          ],
+          [
+            0.5,
+            1.01
+          ]
+        ],
+        "residual_spectrum_bands_mean": [
+          0.2879743278026581,
+          0.7028653621673584,
+          0.0081870686262846,
+          0.0009732756880111992
+        ],
+        "saturation": 0.00984949991106987,
+        "secondary_accuracy": 0.1599999964237213,
+        "secondary_min_recall": 0.0,
+        "secondary_prediction_histogram": [
+          30,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          470,
+          0
+        ],
+        "secondary_recall": [
+          0.6000000238418579,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        "stage_energy_mean": {
+          "camera": 3435.725830078125,
+          "decoder_layer_1": 5932.623046875,
+          "decoder_layer_2": 5368.37255859375,
+          "encoder_input": 8268.8466796875,
+          "encoder_layer_1": 8256.3662109375,
+          "encoder_layer_2": 8216.560546875,
+          "ols_output": 6035.35546875,
+          "slm_output": 5292.7412109375
+        },
+        "stage_energy_retention": {
+          "decoder_layer_1_to_decoder_layer_2": 0.9048902173923778,
+          "decoder_layer_2_to_camera": 0.6399939260136067,
+          "encoder_input_to_encoder_layer_1": 0.998490663905928,
+          "encoder_layer_1_to_encoder_layer_2": 0.9951787913658956,
+          "encoder_layer_2_to_ols_output": 0.7345355072014194,
+          "ols_output_to_decoder_layer_1": 0.9829782317865235,
+          "slm_output_to_encoder_input": 1.5622994494043747
+        },
+        "stage_finite": true,
+        "stagewise_complex_l2_vs_i0": {
+          "camera": 0.43115028738975525,
+          "decoder_layer_1": 0.5033172965049744,
+          "decoder_layer_2": 0.4311545491218567,
+          "encoder_input": 0.0,
+          "encoder_layer_1": 0.0,
+          "encoder_layer_2": 0.0,
+          "ols_output": 0.515232503414154,
+          "slm_output": 0.0
+        },
+        "variant": "S0"
+      }
+    ]
+  },
+  "formal_promotion": false,
+  "gate": "valid",
+  "measurement_sha256": "ad6929307de081c54518152de0632195e705963018e13b48325cd738f4965860",
+  "report_git_commit": "42d7cab3c30c499bd0fc69470d935a5fd9cf7b63",
+  "schema": "fiber_interface_presentation.v1",
+  "source_measurement_git_commit": "42d7cab3c30c499bd0fc69470d935a5fd9cf7b63",
+  "status": "synthetic diagnostic-only",
+  "training_authorized": false
+}
