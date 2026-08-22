@@ -386,3 +386,74 @@ def register_research(root: argparse._SubParsersAction) -> None:
             command.add_argument("--resume-checkpoint")
         if action == "closeout":
             command.add_argument("--source-evidence", required=True)
+
+    wae = research_programs.add_parser(
+        "electronic-o0-wae",
+        help="teacher-free WAE electronic O0 lifecycle",
+    )
+    wae_actions = wae.add_subparsers(dest="research_action", required=True)
+
+    def wae_lineage(command):
+        command.add_argument("--config", required=True)
+        command.add_argument("--dataset-root", required=True)
+        command.add_argument("--device", choices=("cuda", "cpu"), default="cuda")
+        command.add_argument("--candidate", choices=("O0-I", "O0-G"), required=True)
+        command.add_argument("--output", required=True)
+        command.add_argument("--primary-evaluator-checkpoint", required=True)
+        command.add_argument("--secondary-evaluator-checkpoint", required=True)
+        command.add_argument("--primary-qualification-evidence", required=True)
+        command.add_argument("--secondary-qualification-evidence", required=True)
+        command.add_argument("--o0-i-closeout")
+
+    for action in ("validate", "preflight", "screen", "confirm", "locked-final", "closeout"):
+        command = wae_actions.add_parser(action)
+        wae_lineage(command)
+        if action in {"preflight", "screen", "confirm", "locked-final"}:
+            command.add_argument("--seed", type=int, default=7301)
+        if action == "preflight":
+            command.add_argument("--validation-evidence", required=True)
+        if action == "screen":
+            command.add_argument("--validation-evidence", required=True)
+            command.add_argument("--resume-checkpoint")
+        if action == "confirm":
+            command.add_argument("--screen-evidence", required=True)
+            command.add_argument("--resume-checkpoint")
+        if action == "locked-final":
+            command.add_argument("--confirm-evidence", required=True)
+            command.add_argument("--checkpoint", required=True)
+        if action == "closeout":
+            command.add_argument("--locked-evidence", required=True)
+
+    smf = research_programs.add_parser(
+        "smf-modal-density-attribution",
+        help="synthetic single-mode port-density upper-bound lifecycle",
+    )
+    smf_actions = smf.add_subparsers(dest="research_action", required=True)
+
+    def smf_lineage(command):
+        command.add_argument("--config", required=True)
+        command.add_argument("--dataset-root", required=True)
+        command.add_argument("--device", choices=("cuda", "cpu"), default="cuda")
+        command.add_argument("--output", required=True)
+        command.add_argument("--o0-g-decoder", required=True)
+        command.add_argument("--o0-i-closeout", required=True)
+        command.add_argument("--o0-g-closeout", required=True)
+        command.add_argument("--fiber-closeout", required=True)
+        command.add_argument("--lp01-fixture", required=True)
+        command.add_argument("--primary-evaluator-checkpoint", required=True)
+        command.add_argument("--secondary-evaluator-checkpoint", required=True)
+        command.add_argument("--primary-qualification-evidence", required=True)
+        command.add_argument("--secondary-qualification-evidence", required=True)
+
+    smf_validate = smf_actions.add_parser("validate")
+    smf_lineage(smf_validate)
+    smf_validate.add_argument("--formal-config", required=True)
+    smf_run = smf_actions.add_parser("run")
+    smf_lineage(smf_run)
+    smf_run.add_argument("--validation-evidence", required=True)
+    for action in ("report", "closeout"):
+        command = smf_actions.add_parser(action)
+        command.add_argument("--measurement-evidence", required=True)
+        if action == "closeout":
+            command.add_argument("--presentation-evidence", required=True)
+        command.add_argument("--output", required=True)

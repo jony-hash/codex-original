@@ -1,0 +1,16 @@
+schema_version: 1
+name: electronic_o0_wae_v1
+version: 20260822
+dataset_root: data
+output_root: outputs/20260822_v2/runs/20260822_electronic_o0_wae_v1
+split_seed: 1234
+code_dim: 8
+logical_batch_size: 100
+epochs_screen: 1
+epochs_confirm: 5
+train_seeds: [7301, 7302, 7303]
+fixed_exposure_scale: 0.4913053810596466
+parameter_budget: 8000000
+decoder_parameter_budget: 6000000
+bootstrap_samples: 10000
+bootstrap_seed: 90210

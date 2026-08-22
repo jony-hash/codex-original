@@ -85,6 +85,14 @@ def _dispatch(args: argparse.Namespace) -> int:
             from .research.fiber_decoder_controllability_attribution import dispatch
 
             return int(dispatch(args) or 0)
+        if args.research_program == "electronic-o0-wae":
+            from .research.electronic_o0_wae import dispatch
+
+            return int(dispatch(args) or 0)
+        if args.research_program == "smf-modal-density-attribution":
+            from .research.smf_modal_density_attribution import dispatch
+
+            return int(dispatch(args) or 0)
         if args.research_program != "capacity-map":
             raise RuntimeError(f"unknown research program {args.research_program}")
         from .research.capacity_map import dispatch
