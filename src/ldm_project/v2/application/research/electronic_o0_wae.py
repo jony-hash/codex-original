@@ -683,6 +683,7 @@ def dispatch(args: argparse.Namespace) -> int:
             train_labels.index_select(0, split).to(device),
         )
         calibration_index, _ = _balanced_indices(train_labels, seed=7701, count=100)
+        calibration_index = calibration_index.to(device)
         train_images = train_images.index_select(0, calibration_index)
         train_labels = train_labels.index_select(0, calibration_index)
         encoder, decoder = _instantiate(args.candidate, device)
