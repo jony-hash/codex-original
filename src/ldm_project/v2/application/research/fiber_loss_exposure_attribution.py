@@ -428,7 +428,7 @@ def _view_metric(
         metric["energy_retention_mean"] = float(scaled_output.mean() / base["input_energy"].mean().clamp_min(1.0e-30))
         metric["passive"] = bool(torch.all(scaled_output <= base["input_energy"] * (1.0 + 1.0e-5) + 1.0e-12))
     values = {
-        "labels": labels,
+        "labels": labels.cpu(),
         "codes": codes,
         "fixed_cmos": view,
         "primary_prediction": primary_prediction,
@@ -673,7 +673,7 @@ def run(args: Any) -> int:
             raw_by_variant[variant] = (s0["raw"], settings.fixed_exposure_scale / grid_gain, 1.0, s0)
         for variant in all_variants:
             raw, exposure_scale, amplitude_scale, base = raw_by_variant[variant]
-            metric, values = _view_metric(context, variant, panel, raw, exposure_scale, labels.cpu(), codes.cpu(), base, amplitude_scale)
+            metric, values = _view_metric(context, variant, panel, raw, exposure_scale, labels, codes.cpu(), base, amplitude_scale)
             refs = _save_artifacts(root, variant, panel, values)
             metric["artifacts"] = refs
             rows[variant][str(panel)] = metric
