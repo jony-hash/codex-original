@@ -24,6 +24,7 @@ def test_wae_shapes_and_inference_budget() -> None:
     command_decoder = ConditionalWAEDecoder("O0-G")
     codes = torch.randn(20, 8)
     labels = torch.arange(10).repeat_interleave(2)
+    assert encoder(torch.randn(20, 1, 28, 28), labels).shape == (20, 8)
     images = image_decoder(codes, labels)
     commands = command_decoder(codes, labels)
     assert images.shape == (20, 1, 28, 28)

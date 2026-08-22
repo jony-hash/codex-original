@@ -44,9 +44,8 @@ class ConditionalWAEEncoder(nn.Module):
     def forward(self, images: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
         if images.ndim != 4 or images.shape[1:] != (1, 28, 28):
             raise ValueError("WAE encoder expects [batch,1,28,28]")
-        return self.projection(
-            torch.cat((self.features(images), self.label(labels)), dim=1)
-        )
+        features = self.features(images).flatten(1)
+        return self.projection(torch.cat((features, self.label(labels)), dim=1))
 
 
 class FiLMResidualBlock(nn.Module):
