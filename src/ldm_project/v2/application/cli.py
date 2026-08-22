@@ -81,6 +81,10 @@ def _dispatch(args: argparse.Namespace) -> int:
             from .research.fiber_loss_exposure_attribution import dispatch
 
             return int(dispatch(args) or 0)
+        if args.research_program == "fiber-decoder-controllability-attribution":
+            from .research.fiber_decoder_controllability_attribution import dispatch
+
+            return int(dispatch(args) or 0)
         if args.research_program != "capacity-map":
             raise RuntimeError(f"unknown research program {args.research_program}")
         from .research.capacity_map import dispatch

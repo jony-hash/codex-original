@@ -232,6 +232,57 @@ def register_research(root: argparse._SubParsersAction) -> None:
     exposure_closeout.add_argument("--presentation-evidence", required=True)
     exposure_closeout.add_argument("--output", required=True)
 
+    decoder = research_programs.add_parser(
+        "fiber-decoder-controllability-attribution",
+        help="no-update synthetic zero-phase decoder controllability attribution",
+    )
+    decoder_actions = decoder.add_subparsers(dest="research_action", required=True)
+
+    def decoder_lineage(command):
+        command.add_argument("--config", required=True)
+        command.add_argument("--dataset-root", required=True)
+        command.add_argument("--primary-evaluator-checkpoint", required=True)
+        command.add_argument("--secondary-evaluator-checkpoint", required=True)
+        command.add_argument("--primary-qualification-evidence", required=True)
+        command.add_argument("--secondary-qualification-evidence", required=True)
+        command.add_argument(
+            "--research-initialization-checkpoint",
+            "--checkpoint",
+            dest="research_initialization_checkpoint",
+            required=True,
+        )
+        command.add_argument("--source-training-evidence", required=True)
+        command.add_argument("--device", choices=("cuda", "cpu"), default="cuda")
+        command.add_argument("--v3-closeout", required=True)
+        command.add_argument("--attribution-measurement", required=True)
+        command.add_argument("--interface-validation", required=True)
+        command.add_argument("--interface-measurement", required=True)
+        command.add_argument("--interface-closeout", required=True)
+        command.add_argument("--loss-exposure-validation", required=True)
+        command.add_argument("--loss-exposure-measurement", required=True)
+        command.add_argument("--loss-exposure-presentation", required=True)
+        command.add_argument("--loss-exposure-closeout", required=True)
+
+    decoder_validate = decoder_actions.add_parser("validate")
+    decoder_lineage(decoder_validate)
+    decoder_validate.add_argument("--lp01-fixture", required=True)
+    decoder_validate.add_argument("--output", required=True)
+
+    decoder_run = decoder_actions.add_parser("run")
+    decoder_lineage(decoder_run)
+    decoder_run.add_argument("--lp01-fixture", required=True)
+    decoder_run.add_argument("--validation-evidence", required=True)
+    decoder_run.add_argument("--output", required=True)
+
+    decoder_report = decoder_actions.add_parser("report")
+    decoder_report.add_argument("--measurement-evidence", required=True)
+    decoder_report.add_argument("--output", required=True)
+
+    decoder_closeout = decoder_actions.add_parser("closeout")
+    decoder_closeout.add_argument("--measurement-evidence", required=True)
+    decoder_closeout.add_argument("--presentation-evidence", required=True)
+    decoder_closeout.add_argument("--output", required=True)
+
     capacity_map = research_programs.add_parser("capacity-map")
     capacity_actions = capacity_map.add_subparsers(dest="research_action", required=True)
     for action in ("validate", "screen", "train-smoke", "confirm", "summarize", "diagnose", "qualify-shape", "closeout"):
