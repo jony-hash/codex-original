@@ -572,7 +572,7 @@ def _design(context: tuple[Any, ...], root: Path, validation_path: Path, exposur
 
 
 def _evaluator_metrics(context: tuple[Any, ...], raw: torch.Tensor, labels: torch.Tensor, variant: str, exposure_scale: float, base: dict[str, Any], amplitude: torch.Tensor | float, representative_trace: list[dict[str, Any]], decoded_fields: torch.Tensor, baseline_decoded: torch.Tensor | None) -> tuple[dict[str, Any], dict[str, Any]]:
-    config, _, _, _, reference_images, reference_labels, primary, secondary, _, _, _, _ = context
+    config, _, _, _, reference_images, reference_labels, primary, secondary, bundle, _, _, _ = context
     settings = config.conditional_generation
     if settings is None:
         raise ValueError("conditional generation settings are required")
@@ -585,7 +585,7 @@ def _evaluator_metrics(context: tuple[Any, ...], raw: torch.Tensor, labels: torc
         _, secondary_logits = secondary(view.to(reference_images.device))
     labels_cpu = labels.cpu()
     secondary_recall = [float((secondary_prediction[labels_cpu == label] == label).float().mean()) for label in range(10)]
-    scaled_energy = decoded_fields.abs().square().sum(dim=(-3, -2, -1))
+    scaled_energy = _energy(decoded_fields, bundle.system.encoder_plane.pixel_pitch_m)
     input_energy = base["input_energy"]
     metric.update({
         "variant": variant,
