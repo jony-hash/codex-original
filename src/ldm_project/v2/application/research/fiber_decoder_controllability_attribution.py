@@ -329,6 +329,8 @@ def _collect_ols_panel(context: tuple[Any, ...], labels: torch.Tensor, codes: to
         full_camera.append(fields[-1].tensor.detach().cpu())
     if plane is None or provenance is None:
         raise ValueError("S0 panel produced no OLS field")
+    with torch.inference_mode(False):
+        tensors = [value.clone() for value in tensors]
     return {
         "ols": tensors,
         "plane": plane,
