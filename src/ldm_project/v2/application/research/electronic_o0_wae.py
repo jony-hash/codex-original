@@ -732,8 +732,8 @@ def _measure_checkpoint(
             decoder, torch.zeros_like(codes), labels, candidate=candidate
         )
         repeated_hash = tensor_sha256(_generate_views(decoder, codes, labels, candidate=candidate)[1]) == tensor_sha256(views)
-        p_coverage = conditional_coverage_ratio(p_features, views, p_ref_features, reference_images, labels, epsilon=0.05, iterations=20, seed=panel_seed)
-        s_coverage = conditional_coverage_ratio(s_features, views, s_ref_features, reference_images, labels, epsilon=0.05, iterations=20, seed=panel_seed)
+        p_coverage = conditional_coverage_ratio(p_features, views, p_ref_features, reference_images, labels.cpu(), epsilon=0.05, iterations=20, seed=panel_seed)
+        s_coverage = conditional_coverage_ratio(s_features, views, s_ref_features, reference_images, labels.cpu(), epsilon=0.05, iterations=20, seed=panel_seed)
         row = {
             "primary": {
                 "accuracy": float((p_pred == labels.cpu()).float().mean()),
