@@ -424,6 +424,7 @@ def _gradient_for_panel(
     config, device, _, _, _, _, primary, _, bundle, _, _, _ = context
     del config
     phase = bundle.system.decoder.phase
+    interface.clear_production_transfer_cache()
     phase.requires_grad_(True)
     _zero_phase(bundle)
     total = torch.zeros_like(phase)
