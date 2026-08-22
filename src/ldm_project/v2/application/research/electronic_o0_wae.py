@@ -107,7 +107,7 @@ def _balanced_indices(
             )[:count]
         )
     indices = torch.cat(rows)
-    return indices, labels.index_select(0, indices)
+    return indices, labels.index_select(0, indices.to(labels.device))
 
 
 def panel_codes(
