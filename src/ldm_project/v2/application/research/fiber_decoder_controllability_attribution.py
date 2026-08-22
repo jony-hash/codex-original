@@ -299,6 +299,7 @@ def _decode_ols(bundle: Any, ols_tensor: torch.Tensor, plane: Any, provenance: A
     camera = bundle.system.back(chip)
     return {
         "raw": camera.tensor.abs().square(),
+        "camera": camera,
         "camera_field": camera.tensor,
         "decoded_field": decoded.tensor,
         "records": records,
@@ -660,7 +661,7 @@ def _measure_variant(context: tuple[Any, ...], panel: dict[str, Any], labels: to
                 if index == 0:
                     trace.append({"tensor": record.tensor.detach().cpu(), "plane": asdict(record.plane), "provenance": asdict(record.provenance)})
             if index == 0:
-                trace.append({"tensor": decoded["camera_field"].detach().cpu(), "plane": asdict(decoded["camera_field"].plane), "provenance": asdict(decoded["camera_field"].provenance)})
+                trace.append({"tensor": decoded["camera_field"].detach().cpu(), "plane": asdict(decoded["camera"].plane), "provenance": asdict(decoded["camera"].provenance)})
     phase_only_unit_error = float(
         (torch.polar(torch.ones_like(current_phase), current_phase).abs() - 1.0).abs().max()
     )
