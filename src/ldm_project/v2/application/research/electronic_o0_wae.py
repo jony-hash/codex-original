@@ -290,6 +290,12 @@ def _run_preflight_update(
     return float(loss.detach().cpu())
 
 
+def _enable_deterministic_cuda() -> None:
+    if torch.cuda.is_available():
+        torch.backends.cudnn.benchmark = False
+        torch.use_deterministic_algorithms(True)
+
+
 def _clone_state(module: nn.Module) -> dict[str, torch.Tensor]:
     return {name: value.detach().clone() for name, value in module.state_dict().items()}
 
@@ -398,6 +404,7 @@ def _train(
     evidence_path: str | Path,
     resume: str | None,
 ) -> tuple[Path, dict[str, Any]]:
+    _enable_deterministic_cuda()
     torch.manual_seed(seed)
     if device.type == "cuda":
         torch.cuda.manual_seed_all(seed)
@@ -955,6 +962,7 @@ def dispatch(args: argparse.Namespace) -> int:
         if validation.get("status") != "valid":
             raise ValueError("WAE preflight requires valid validation evidence")
         device = torch.device(args.device)
+        _enable_deterministic_cuda()
         train_images, train_labels = load_local_mnist(args.dataset_root, train=True)
         split, _ = stratified_mnist_indices(train_labels)
         train_images, train_labels = (
