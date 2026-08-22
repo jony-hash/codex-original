@@ -200,6 +200,8 @@ def _load_loss_inputs(args: Any) -> dict[str, Any]:
 def _validation_payload(args: Any, root: Path) -> dict[str, Any]:
     loss = _load_loss_inputs(args)
     interface_inputs = exposure._validate_interface_inputs(args)
+    upstream = interface._validate_upstream(args, root)
+    historical = interface._validate_historical_inputs(args, upstream)
     context = _context(args, root)
     config, device, _, _, _, _, _, _, bundle, _, _, _ = context
     if config.conditional_generation is None:
@@ -241,6 +243,12 @@ def _validation_payload(args: Any, root: Path) -> dict[str, Any]:
         "lp01_fixture_sha256": loss["validation"].get("lp01_fixture_sha256"),
         "v3_closeout_sha256": loss["validation"].get("v3_closeout_sha256"),
         "attribution_measurement_sha256": loss["validation"].get("attribution_measurement_sha256"),
+        "upstream_validation": upstream,
+        "historical_binding": {
+            "v3_closeout_sha256": historical["v3_closeout_sha256"],
+            "attribution_measurement_sha256": historical["attribution_measurement_sha256"],
+            "lp01_fixture_sha256": historical["lp01_fixture_sha256"],
+        },
         "interface_validation_sha256": interface_inputs["validation_sha256"],
         "interface_measurement_sha256": interface_inputs["measurement_sha256"],
         "interface_closeout_sha256": interface_inputs["closeout_sha256"],
