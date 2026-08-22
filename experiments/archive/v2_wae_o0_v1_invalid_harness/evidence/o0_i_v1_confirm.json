@@ -1,0 +1,348 @@
+{
+  "checkpoint": "outputs/20260822_v2/runs/20260822_electronic_o0_wae_v1/O0-I/confirm/seed_7301_decoder.pt",
+  "classification": "wae_image_manifold_failed",
+  "lineage_sha256": "14c0a7737b9c2a681038cd3600d1e86e9ad9c606d2808ede19bd36cfb5174370",
+  "measurement": {
+    "candidate": "O0-I",
+    "checkpoint": "outputs/20260822_v2/runs/20260822_electronic_o0_wae_v1/O0-I/confirm/seed_7301_decoder.pt",
+    "checkpoint_sha256": "4728c9967e7b05f69380295792b9fc49ece3447f282550f5d7bfdd31ec482393",
+    "evaluator_calls_during_training": 0,
+    "gates": {
+      "agreement": false,
+      "camera_code_fraction": true,
+      "coverage": true,
+      "diversity": true,
+      "label_shuffled": false,
+      "primary_accuracy": true,
+      "primary_minimum_recall": true,
+      "saturation": true,
+      "secondary_accuracy": false,
+      "secondary_minimum_recall": false
+    },
+    "panel_pass_count": {
+      "primary": 3,
+      "secondary": 0
+    },
+    "panels": {
+      "104729": {
+        "agreement": 0.7839999794960022,
+        "camera_code_fraction": 1.0,
+        "coverage": {
+          "primary": 1.0,
+          "secondary": 1.0
+        },
+        "diversity_ratio": {
+          "primary": [
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "secondary": [
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "label_shuffled_primary_accuracy": 0.9800000190734863,
+        "prediction_histogram": {
+          "primary": [
+            50,
+            50,
+            50,
+            50,
+            50,
+            50,
+            50,
+            50,
+            50,
+            50
+          ],
+          "secondary": [
+            50,
+            3,
+            38,
+            48,
+            50,
+            10,
+            50,
+            44,
+            158,
+            49
+          ]
+        },
+        "primary": {
+          "accuracy": 1.0,
+          "minimum_recall": 1.0,
+          "recall": [
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "saturation": 0.0,
+        "secondary": {
+          "accuracy": 0.7839999794960022,
+          "minimum_recall": 0.05999999865889549,
+          "recall": [
+            1.0,
+            0.05999999865889549,
+            0.7599999904632568,
+            0.9599999785423279,
+            1.0,
+            0.20000000298023224,
+            1.0,
+            0.8799999952316284,
+            1.0,
+            0.9800000190734863
+          ]
+        },
+        "view_hash": "3265b73533ae8d0a9e1c35cf0d6aa7669937b6d47233a7ba22f2f3859ee15d05"
+      },
+      "161803": {
+        "agreement": 0.7799999713897705,
+        "camera_code_fraction": 1.0,
+        "coverage": {
+          "primary": 1.0,
+          "secondary": 1.0
+        },
+        "diversity_ratio": {
+          "primary": [
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "secondary": [
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "label_shuffled_primary_accuracy": 0.9760000109672546,
+        "prediction_histogram": {
+          "primary": [
+            50,
+            49,
+            51,
+            51,
+            50,
+            50,
+            50,
+            50,
+            49,
+            50
+          ],
+          "secondary": [
+            50,
+            2,
+            39,
+            49,
+            50,
+            7,
+            50,
+            45,
+            159,
+            49
+          ]
+        },
+        "primary": {
+          "accuracy": 0.9959999918937683,
+          "minimum_recall": 0.9800000190734863,
+          "recall": [
+            1.0,
+            0.9800000190734863,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            0.9800000190734863,
+            1.0
+          ]
+        },
+        "saturation": 0.0,
+        "secondary": {
+          "accuracy": 0.7820000052452087,
+          "minimum_recall": 0.03999999910593033,
+          "recall": [
+            1.0,
+            0.03999999910593033,
+            0.7799999713897705,
+            0.9800000190734863,
+            1.0,
+            0.14000000059604645,
+            1.0,
+            0.8999999761581421,
+            1.0,
+            0.9800000190734863
+          ]
+        },
+        "view_hash": "b681cb610b567e7c314e6c5d961602a79ef2c93fa070dca4e25b3bf691f45140"
+      },
+      "4242": {
+        "agreement": 0.765999972820282,
+        "camera_code_fraction": 1.0,
+        "coverage": {
+          "primary": 1.0,
+          "secondary": 1.0
+        },
+        "diversity_ratio": {
+          "primary": [
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "secondary": [
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "label_shuffled_primary_accuracy": 0.9800000190734863,
+        "prediction_histogram": {
+          "primary": [
+            50,
+            50,
+            50,
+            50,
+            50,
+            50,
+            50,
+            50,
+            50,
+            50
+          ],
+          "secondary": [
+            50,
+            4,
+            38,
+            47,
+            50,
+            9,
+            50,
+            36,
+            167,
+            49
+          ]
+        },
+        "primary": {
+          "accuracy": 1.0,
+          "minimum_recall": 1.0,
+          "recall": [
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "saturation": 0.0,
+        "secondary": {
+          "accuracy": 0.765999972820282,
+          "minimum_recall": 0.07999999821186066,
+          "recall": [
+            1.0,
+            0.07999999821186066,
+            0.7599999904632568,
+            0.9399999976158142,
+            1.0,
+            0.18000000715255737,
+            1.0,
+            0.7200000286102295,
+            1.0,
+            0.9800000190734863
+          ]
+        },
+        "view_hash": "aee4eff892f86bffac32eaeb254163ddb973b40a364eaae0c811a988d5bd878e"
+      }
+    },
+    "passed": false,
+    "primary_qualification": 0.9875999689102173,
+    "test_set_bound": "7df90f098418af9e4a2baf75e6d2f9a31c1c18d19ad1ae09c026acb3bbeabb6b",
+    "test_set_count": 10000
+  },
+  "next_action": "close_fiber_restart",
+  "schema": "electronic_o0_wae_confirm.v1",
+  "status": "valid",
+  "training": {
+    "epoch": 5,
+    "inference_checkpoint": "outputs/20260822_v2/runs/20260822_electronic_o0_wae_v1/O0-I/confirm/seed_7301_decoder.pt",
+    "parameter_counts": {
+      "decoder": 667073,
+      "encoder": 83304,
+      "total": 750377
+    },
+    "seed": 7301,
+    "steps": 2460,
+    "training_checkpoint": "outputs/20260822_v2/runs/20260822_electronic_o0_wae_v1/O0-I/confirm/seed_7301_training.pt",
+    "weights": {
+      "batch_seeds": [
+        11,
+        23,
+        37,
+        51
+      ],
+      "decoder_gradient_norms": {
+        "cycle": 0.06850859522819519,
+        "mmd": 0.041726309806108475,
+        "reconstruction": 0.44033172726631165
+      },
+      "w_cycle": 1.606848475726335,
+      "w_mmd": 2.638213930925242
+    }
+  }
+}

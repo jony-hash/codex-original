@@ -1,0 +1,26 @@
+{
+  "schema": "electronic_o0_wae_correction_summary.v1",
+  "status": "invalid_harness",
+  "superseded_classification": "wae_image_manifold_failed",
+  "reason": [
+    "reconstruction decoded random prior codes instead of encoded image latents",
+    "camera fraction, diversity, coverage, shuffled control, official test, Jacobian, memorization and deterministic resume did not implement the registered acceptance contract"
+  ],
+  "read_only_findings": {
+    "true_camera_code_fraction_range": [0.10197, 0.10999],
+    "encoded_vs_random_reconstruction_bce": [0.22119, 0.23219],
+    "scientific_permission": "v1 evidence cannot authorize O0-G, SMF, training, or promotion"
+  },
+  "replacement_contract": {
+    "schema_revision": "electronic_o0_wae_*.v2",
+    "new_clean_commit_required": true,
+    "old_checkpoint_may_warm_start": false,
+    "o0_g_requires_v2_o0_i_admission": true,
+    "smf_requires_v2_o0_g_admission": true
+  },
+  "formal_promotion": false,
+  "training_authorized": false,
+  "o0_g_authorized": false,
+  "smf_authorized": false,
+  "synthetic_diagnostic_only": true
+}

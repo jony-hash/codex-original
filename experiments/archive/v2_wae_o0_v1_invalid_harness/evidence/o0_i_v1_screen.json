@@ -1,0 +1,34 @@
+{
+  "checkpoint": "outputs/20260822_v2/runs/20260822_electronic_o0_wae_v1/O0-I/screen/seed_7301_decoder.pt",
+  "details": {
+    "epoch": 1,
+    "inference_checkpoint": "outputs/20260822_v2/runs/20260822_electronic_o0_wae_v1/O0-I/screen/seed_7301_decoder.pt",
+    "parameter_counts": {
+      "decoder": 667073,
+      "encoder": 83304,
+      "total": 750377
+    },
+    "seed": 7301,
+    "steps": 492,
+    "training_checkpoint": "outputs/20260822_v2/runs/20260822_electronic_o0_wae_v1/O0-I/screen/seed_7301_training.pt",
+    "weights": {
+      "batch_seeds": [
+        11,
+        23,
+        37,
+        51
+      ],
+      "decoder_gradient_norms": {
+        "cycle": 0.06850859522819519,
+        "mmd": 0.041726309806108475,
+        "reconstruction": 0.44033172726631165
+      },
+      "w_cycle": 1.606848475726335,
+      "w_mmd": 2.638213930925242
+    }
+  },
+  "evaluator_calls": 0,
+  "lineage_sha256": "14c0a7737b9c2a681038cd3600d1e86e9ad9c606d2808ede19bd36cfb5174370",
+  "schema": "electronic_o0_wae_screen.v1",
+  "status": "valid"
+}

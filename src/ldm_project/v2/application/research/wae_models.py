@@ -177,18 +177,21 @@ def wae_loss(
     encoder: ConditionalWAEEncoder,
     images: torch.Tensor,
     labels: torch.Tensor,
-    codes: torch.Tensor,
+    prior_codes: torch.Tensor | None = None,
     *,
     w_mmd: float,
     w_cycle: float,
 ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
-    commands = decoder(codes, labels)
+    encoded_codes = encoder(images, labels)
+    commands = decoder(encoded_codes, labels)
     prediction = render_view(commands, decoder.candidate)
     reconstruction = F.binary_cross_entropy(prediction, images) + 0.25 * sobel_l1(
         prediction, images
     )
-    mmd = classwise_mmd(encoder(images, labels), labels)
-    prior = torch.randn_like(codes)
+    mmd = classwise_mmd(encoded_codes, labels)
+    prior = torch.randn_like(encoded_codes) if prior_codes is None else prior_codes
+    if prior.shape != encoded_codes.shape:
+        raise ValueError("WAE prior code shape must match encoded latent shape")
     cycle_images = render_view(decoder(prior, labels), decoder.candidate)
     cycle = F.smooth_l1_loss(encoder(cycle_images, labels), prior)
     total = reconstruction + float(w_mmd) * mmd + float(w_cycle) * cycle
@@ -196,6 +199,8 @@ def wae_loss(
         "reconstruction": reconstruction.detach(),
         "mmd": mmd.detach(),
         "cycle": cycle.detach(),
+        "encoded_code_mean": encoded_codes.detach().mean(),
+        "encoded_code_std": encoded_codes.detach().std(),
     }
 
 

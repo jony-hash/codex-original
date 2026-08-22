@@ -32,6 +32,8 @@ from ...student.evaluator import (
     load_local_mnist,
     stratified_mnist_indices,
 )
+from ...student.conditional import camera_code_fraction, relative_diversity_ratios
+from ...student.conditional_acceptance import conditional_coverage_ratio
 from .wae_models import (
     FIXED_EXPOSURE_SCALE,
     ConditionalWAEEncoder,
@@ -46,7 +48,7 @@ SCHEMA_PREFIX = "electronic_o0_wae"
 TRAIN_SEEDS = (7301, 7302, 7303)
 LOCKED_SEEDS = (4242, 104729, 161803)
 BOOTSTRAP_SEED = 90210
-OUTPUT_ROOT = Path("outputs/20260822_v2/runs/20260822_electronic_o0_wae_v1")
+OUTPUT_ROOT = Path("outputs/20260822_v2/runs/20260822_electronic_o0_wae_v2")
 
 
 def _git() -> dict[str, Any]:
@@ -65,6 +67,8 @@ def _load_config(path: str | Path) -> dict[str, Any]:
     payload = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
     if (
         not isinstance(payload, dict)
+        or payload.get("schema_version") != 2
+        or payload.get("harness_revision") != 2
         or payload.get("code_dim") != 8
         or payload.get("logical_batch_size") != 100
     ):
@@ -119,6 +123,49 @@ def panel_codes(
     return codes, labels
 
 
+def balanced_epoch_schedule(
+    labels: torch.Tensor, *, seed: int, per_class: int = 10
+) -> tuple[torch.Tensor, ...]:
+    """Return a deterministic full-coverage class-balanced epoch schedule."""
+    if labels.ndim != 1 or per_class < 1:
+        raise ValueError("balanced schedule inputs are invalid")
+    cpu_labels = labels.detach().cpu()
+    class_rows: dict[int, torch.Tensor] = {}
+    generator = torch.Generator(device="cpu").manual_seed(seed)
+    for label in range(10):
+        choices = torch.nonzero(cpu_labels == label, as_tuple=False).flatten()
+        if choices.numel() == 0:
+            raise ValueError("balanced schedule requires every class")
+        class_rows[label] = choices.index_select(
+            0, torch.randperm(choices.numel(), generator=generator)
+        )
+    steps = max((rows.numel() + per_class - 1) // per_class for rows in class_rows.values())
+    schedule = []
+    for step in range(steps):
+        rows = []
+        for label in range(10):
+            values = class_rows[label]
+            start = step * per_class
+            rows.append(values[(torch.arange(per_class) + start) % values.numel()])
+        schedule.append(torch.cat(rows))
+    return tuple(schedule)
+
+
+def balanced_schedule_summary(
+    labels: torch.Tensor, schedule: tuple[torch.Tensor, ...]
+) -> dict[str, int | float]:
+    flat = torch.cat(schedule)
+    counts = torch.bincount(flat, minlength=labels.numel())
+    return {
+        "steps": len(schedule),
+        "logical_samples": int(flat.numel()),
+        "unique_samples": int((counts > 0).sum()),
+        "minimum_coverage": int(counts[counts > 0].min()),
+        "maximum_repeats": int(counts.max()),
+        "repeat_samples": int((counts > 1).sum()),
+    }
+
+
 def calibrate_auxiliary_weights(
     encoder: ConditionalWAEEncoder,
     decoder: ConditionalWAEDecoder,
@@ -157,14 +204,14 @@ def calibrate_auxiliary_weights(
         ).to(images.device)
         # Recompute scalar terms so the gradient calibration is genuine and
         # does not rely on detached telemetry values.
-        commands = decoder(codes, batch_labels)
+        encoded = encoder(batch_images, batch_labels)
+        commands = decoder(encoded, batch_labels)
         prediction = render_view(commands, decoder.candidate)
         rec = torch.nn.functional.binary_cross_entropy(prediction, batch_images)
         rec = rec + 0.25 * (prediction - batch_images).abs().mean()
-        enc = encoder(batch_images, batch_labels)
         from .wae_models import classwise_mmd
 
-        mmd = classwise_mmd(enc, batch_labels)
+        mmd = classwise_mmd(encoded, batch_labels)
         prior = torch.randn_like(codes)
         cycle = torch.nn.functional.smooth_l1_loss(
             encoder(
@@ -217,6 +264,65 @@ def _instantiate(
     return encoder, decoder
 
 
+def _run_preflight_update(
+    encoder: ConditionalWAEEncoder,
+    decoder: ConditionalWAEDecoder,
+    optimizer: torch.optim.Optimizer,
+    images: torch.Tensor,
+    labels: torch.Tensor,
+    weights: dict[str, float],
+) -> float:
+    codes = torch.randn((images.shape[0], 8), device=images.device)
+    optimizer.zero_grad(set_to_none=True)
+    loss, _ = wae_loss(
+        decoder,
+        encoder,
+        images,
+        labels,
+        codes,
+        w_mmd=weights["w_mmd"],
+        w_cycle=weights["w_cycle"],
+    )
+    if not torch.isfinite(loss):
+        raise FloatingPointError("WAE preflight loss became non-finite")
+    loss.backward()
+    optimizer.step()
+    return float(loss.detach().cpu())
+
+
+def _clone_state(module: nn.Module) -> dict[str, torch.Tensor]:
+    return {name: value.detach().clone() for name, value in module.state_dict().items()}
+
+
+def _states_equal(
+    left: dict[str, torch.Tensor], right: dict[str, torch.Tensor]
+) -> bool:
+    return left.keys() == right.keys() and all(
+        torch.equal(left[name], right[name]) for name in left
+    )
+
+
+def _optimizer_state_equal(
+    left: dict[str, Any], right: dict[str, Any]
+) -> bool:
+    if left.keys() != right.keys() or left["param_groups"] != right["param_groups"]:
+        return False
+    left_state, right_state = left["state"], right["state"]
+    if left_state.keys() != right_state.keys():
+        return False
+    for key in left_state:
+        if left_state[key].keys() != right_state[key].keys():
+            return False
+        for name in left_state[key]:
+            left_value, right_value = left_state[key][name], right_state[key][name]
+            if isinstance(left_value, torch.Tensor):
+                if not torch.equal(left_value, right_value):
+                    return False
+            elif left_value != right_value:
+                return False
+    return True
+
+
 def _training_path(evidence_path: str | Path, seed: int) -> Path:
     path = Path(evidence_path)
     return path.with_name(f"seed_{seed}_training.pt")
@@ -236,9 +342,10 @@ def _checkpoint_payload(
     step: int,
     weights: dict[str, float],
     seed: int,
+    sampler_state: dict[str, Any],
 ) -> dict[str, Any]:
     return {
-        "schema": "electronic_o0_wae_training.v1",
+        "schema": "electronic_o0_wae_training.v2",
         "seed": seed,
         "epoch": epoch,
         "step": step,
@@ -246,7 +353,11 @@ def _checkpoint_payload(
         "decoder": decoder.state_dict(),
         "optimizer": optimizer.state_dict(),
         "weights": weights,
-        "rng_state": torch.get_rng_state(),
+        "rng_state": {
+            "cpu": torch.get_rng_state(),
+            "cuda": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else [],
+        },
+        "sampler_state": sampler_state,
     }
 
 
@@ -259,7 +370,7 @@ def _save_inference(
     source_checkpoint: Path,
 ) -> None:
     payload = {
-        "schema": "electronic_o0_wae_decoder.v1",
+        "schema": "electronic_o0_wae_decoder.v2",
         "candidate": decoder.candidate,
         "seed": seed,
         "epoch": epoch,
@@ -312,7 +423,7 @@ def _train(
         payload = safe_torch_load(resume)
         if (
             not isinstance(payload, dict)
-            or payload.get("schema") != "electronic_o0_wae_training.v1"
+            or payload.get("schema") != "electronic_o0_wae_training.v2"
         ):
             raise ValueError("WAE resume checkpoint schema mismatch")
         encoder.load_state_dict(payload["encoder"], strict=True)
@@ -323,24 +434,14 @@ def _train(
             int(payload["step"]),
             dict(payload["weights"]),
         )
+        rng_state = payload.get("rng_state", {})
+        if isinstance(rng_state, dict) and isinstance(rng_state.get("cpu"), torch.Tensor):
+            torch.set_rng_state(rng_state["cpu"])
+        if torch.cuda.is_available() and isinstance(rng_state, dict) and rng_state.get("cuda"):
+            torch.cuda.set_rng_state_all(rng_state["cuda"])
     for epoch in range(start_epoch, epochs):
-        generator = torch.Generator(device="cpu").manual_seed(seed + epoch)
-        class_permutations = {
-            label: torch.nonzero(train_labels == label, as_tuple=False)
-            .flatten()
-            .index_select(
-                0,
-                torch.randperm(int((train_labels == label).sum()), generator=generator),
-            )
-            for label in range(10)
-        }
-        batch_count = min(rows.numel() for rows in class_permutations.values()) // 10
-        for batch_number in range(batch_count):
-            rows = [
-                class_permutations[label][batch_number * 10 : (batch_number + 1) * 10]
-                for label in range(10)
-            ]
-            index = torch.cat(rows)
+        schedule = balanced_epoch_schedule(train_labels, seed=seed + epoch)
+        for index in schedule:
             images = train_images.index_select(0, index).to(device, non_blocking=True)
             labels = train_labels.index_select(0, index).to(device, non_blocking=True)
             codes = torch.randn((100, 8), device=device)
@@ -370,6 +471,11 @@ def _train(
                 step=step,
                 weights=weights,
                 seed=seed,
+                sampler_state={
+                    "epoch_seed": seed + epoch,
+                    "summary": balanced_schedule_summary(train_labels, schedule),
+                    "cursor": len(schedule),
+                },
             ),
         )
     inference = _inference_path(evidence_path, seed)
@@ -388,6 +494,7 @@ def _train(
         "parameter_counts": parameter_counts(encoder, decoder),
         "training_checkpoint": str(_training_path(evidence_path, seed)),
         "inference_checkpoint": str(inference),
+        "schedule": balanced_schedule_summary(train_labels, balanced_epoch_schedule(train_labels, seed=seed + epochs - 1)),
     }
 
 
@@ -397,7 +504,7 @@ def load_decoder_checkpoint(
     payload = safe_torch_load(path)
     if (
         not isinstance(payload, dict)
-        or payload.get("schema") != "electronic_o0_wae_decoder.v1"
+        or payload.get("schema") != "electronic_o0_wae_decoder.v2"
         or payload.get("candidate") != candidate
     ):
         raise ValueError("WAE decoder checkpoint is incompatible")
@@ -434,6 +541,145 @@ def _recall(prediction: torch.Tensor, labels: torch.Tensor) -> list[float]:
     ]
 
 
+def _bootstrap_ci(values: torch.Tensor, *, seed: int, samples: int = 10_000) -> list[float]:
+    if values.ndim != 1 or values.numel() == 0:
+        raise ValueError("bootstrap values must be a non-empty vector")
+    generator = torch.Generator(device="cpu").manual_seed(seed)
+    means = []
+    for start in range(0, samples, 100):
+        count = min(100, samples - start)
+        indices = torch.randint(
+            values.numel(), (count, values.numel()), generator=generator
+        )
+        means.append(values.cpu().index_select(0, indices.flatten()).reshape(count, -1).mean(1))
+    result = torch.cat(means)
+    return [float(torch.quantile(result, q)) for q in (0.025, 0.975)]
+
+
+def _generate_views(
+    decoder: ConditionalWAEDecoder,
+    codes: torch.Tensor,
+    labels: torch.Tensor,
+    *,
+    candidate: Candidate,
+    batch_size: int = 100,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    raw, views = [], []
+    with torch.no_grad():
+        for start in range(0, codes.shape[0], batch_size):
+            commands = decoder(
+                codes[start : start + batch_size], labels[start : start + batch_size]
+            )
+            value = (
+                commands
+                if candidate == "O0-I"
+                else torch.nn.functional.adaptive_avg_pool2d(
+                    commands.square() / FIXED_EXPOSURE_SCALE, (28, 28)
+                )
+            )
+            raw.append(value.cpu())
+            views.append(value.clamp(0, 1).cpu())
+    return torch.cat(raw), torch.cat(views)
+
+
+def _balanced_reference(
+    images: torch.Tensor, labels: torch.Tensor, *, seed: int, count: int = 50
+) -> tuple[torch.Tensor, torch.Tensor]:
+    generator = torch.Generator(device="cpu").manual_seed(seed)
+    rows = []
+    for label in range(10):
+        choices = torch.nonzero(labels.cpu() == label, as_tuple=False).flatten()
+        if choices.numel() < count:
+            raise ValueError("reference panel does not contain enough examples per class")
+        rows.append(choices.index_select(0, torch.randperm(choices.numel(), generator=generator))[:count])
+    index = torch.cat(rows)
+    return images.index_select(0, index), labels.index_select(0, index)
+
+
+def _jacobian_summary(
+    decoder: ConditionalWAEDecoder,
+    codes: torch.Tensor,
+    labels: torch.Tensor,
+    *,
+    candidate: Candidate,
+) -> dict[str, Any]:
+    rows = []
+    for code, label in zip(codes, labels, strict=True):
+        code = code.detach().requires_grad_(True)
+        target = label.reshape(1)
+        columns = []
+        for direction in torch.eye(8, device=code.device):
+            _, derivative = torch.autograd.functional.jvp(
+                lambda value: render_view(
+                    decoder(value.unsqueeze(0), target), candidate
+                ).flatten(),
+                code,
+                direction,
+                create_graph=False,
+            )
+            columns.append(derivative)
+        singular = torch.linalg.svdvals(torch.stack(columns, dim=1))
+        threshold_3 = singular[0].clamp_min(1.0e-12) * 1.0e-3
+        threshold_8 = singular[0].clamp_min(1.0e-12) * 1.0e-8
+        rows.append(
+            {
+                "rank_1e-3": int((singular >= threshold_3).sum()),
+                "rank_1e-8": int((singular >= threshold_8).sum()),
+                "condition": float((singular[0] / singular[-1].clamp_min(1.0e-12)).detach().cpu()),
+                "singular_values": [float(value) for value in singular.detach().cpu()],
+            }
+        )
+    return {
+        "points": rows,
+        "rank_1e-3_pass_fraction": float(sum(row["rank_1e-3"] >= 7 for row in rows) / len(rows)),
+        "rank_1e-8_pass_fraction": float(sum(row["rank_1e-8"] >= 7 for row in rows) / len(rows)),
+    }
+
+
+def _memorization_audit(
+    generated: torch.Tensor,
+    generated_labels: torch.Tensor,
+    train_images: torch.Tensor,
+    train_labels: torch.Tensor,
+    validation_images: torch.Tensor,
+    validation_labels: torch.Tensor,
+    *,
+    device: torch.device,
+) -> dict[str, Any]:
+    generated = generated.flatten(1).to(device)
+    train_images = train_images.flatten(1).to(device)
+    validation_images = validation_images.flatten(1).to(device)
+    thresholds, nearest_by_class, duplicates = [], {}, 0
+    train_uint8 = (train_images.clamp(0, 1) * 255).round().to(torch.uint8).cpu()
+    train_hashes = {tensor_sha256(row) for row in train_uint8}
+    generated_uint8 = (generated.clamp(0, 1) * 255).round().to(torch.uint8).cpu()
+    duplicates = sum(tensor_sha256(row) in train_hashes for row in generated_uint8)
+    for label in range(10):
+        train = train_images[train_labels.to(device) == label]
+        heldout = validation_images[validation_labels.to(device) == label]
+        query = generated[generated_labels.to(device) == label]
+        heldout_distances = []
+        for start in range(0, heldout.shape[0], 64):
+            heldout_distances.append(torch.cdist(heldout[start : start + 64], train).square().min(1).values)
+        threshold = float(torch.quantile(torch.cat(heldout_distances), 0.05).detach().cpu())
+        generated_distances = []
+        for start in range(0, query.shape[0], 64):
+            generated_distances.append(torch.cdist(query[start : start + 64], train).square().min(1).values)
+        nearest_by_class[label] = torch.cat(generated_distances).detach().cpu()
+        thresholds.append(threshold)
+    per_class_pass = []
+    for label in range(10):
+        nearest = nearest_by_class[label]
+        per_class_pass.append(float((nearest >= thresholds[label]).float().mean()))
+    return {
+        "exact_duplicate_count": duplicates,
+        "per_class_thresholds": thresholds,
+        "per_class_pass_fraction": per_class_pass,
+        "pass_fraction": float(sum(per_class_pass) / len(per_class_pass)),
+        "passed": duplicates == 0 and min(per_class_pass) >= 0.95,
+    }
+
+
 def _measure_checkpoint(
     path: str | Path,
     *,
@@ -456,48 +702,31 @@ def _measure_checkpoint(
     secondary.load_state_dict(secondary_payload["state_dict"], strict=True)
     secondary.freeze()
     test_images, test_labels = load_local_mnist(dataset_root, train=False)
-    test_images, test_labels = test_images.to(device), test_labels.to(device)
+    train_images, train_labels = load_local_mnist(dataset_root, train=True)
+    train_index, validation_index = stratified_mnist_indices(train_labels)
+    all_images, all_labels = load_local_mnist(dataset_root, train=True)
+    train_images, train_labels = all_images.index_select(0, train_index), all_labels.index_select(0, train_index)
+    validation_images, validation_labels = all_images.index_select(0, validation_index), all_labels.index_select(0, validation_index)
     all_rows: dict[str, Any] = {}
-    predictions_for_shuffle: list[torch.Tensor] = []
     for panel_seed in LOCKED_SEEDS:
         codes, labels = panel_codes(panel_seed, device=device)
-        views = []
-        with torch.no_grad():
-            for start in range(0, 500, 100):
-                views.append(
-                    render_view(
-                        decoder(
-                            codes[start : start + 100], labels[start : start + 100]
-                        ),
-                        candidate,
-                    )
-                    .clamp(0, 1)
-                    .cpu()
-                )
-        views = torch.cat(views)
+        raw_views, views = _generate_views(decoder, codes, labels, candidate=candidate)
+        reference_images, reference_labels = _balanced_reference(test_images, test_labels, seed=panel_seed + 17)
         p_features, p_logits = _eval_model(primary, views.to(device))
         s_features, s_logits = _eval_model(secondary, views.to(device))
+        p_ref_features, _ = _eval_model(primary, reference_images.to(device))
+        s_ref_features, _ = _eval_model(secondary, reference_images.to(device))
         p_pred, s_pred = p_logits.argmax(1), s_logits.argmax(1)
-        predictions_for_shuffle.append(p_pred)
-        shuffle = labels.cpu().roll(1)
-        p_shuffle = (p_pred == shuffle).float().mean().item()
-
-        def dist_ratio(features: torch.Tensor) -> list[float]:
-            result = []
-            for label in range(10):
-                selected = features[labels.cpu() == label]
-                reference = features.new_zeros((50, features.shape[1]))
-                result.append(
-                    float(
-                        torch.pdist(selected).median().item()
-                        / torch.pdist(selected + 1.0e-7 * reference)
-                        .median()
-                        .clamp_min(1.0e-8)
-                        .item()
-                    )
-                )
-            return result
-
+        shuffle_generator = torch.Generator(device="cpu").manual_seed(8675309 + panel_seed)
+        shuffled_labels = labels.cpu().index_select(0, torch.randperm(labels.numel(), generator=shuffle_generator))
+        _, shuffled_views = _generate_views(decoder, codes, shuffled_labels.to(device), candidate=candidate)
+        shuffled_prediction = _eval_model(primary, shuffled_views.to(device))[1].argmax(1)
+        _, zero_views = _generate_views(
+            decoder, torch.zeros_like(codes), labels, candidate=candidate
+        )
+        repeated_hash = tensor_sha256(_generate_views(decoder, codes, labels, candidate=candidate)[1]) == tensor_sha256(views)
+        p_coverage = conditional_coverage_ratio(p_features, views, p_ref_features, reference_images, labels, epsilon=0.05, iterations=20, seed=panel_seed)
+        s_coverage = conditional_coverage_ratio(s_features, views, s_ref_features, reference_images, labels, epsilon=0.05, iterations=20, seed=panel_seed)
         row = {
             "primary": {
                 "accuracy": float((p_pred == labels.cpu()).float().mean()),
@@ -510,23 +739,65 @@ def _measure_checkpoint(
                 "minimum_recall": float(min(_recall(s_pred, labels.cpu()))),
             },
             "agreement": float((p_pred == s_pred).float().mean()),
-            "camera_code_fraction": float(
-                ((views.sum((1, 2, 3)) > 0.25).float().mean())
-            ),
-            "saturation": float((views >= 1.0).float().mean()),
-            "coverage": {"primary": 1.0, "secondary": 1.0},
+            "camera_code_fraction": float(camera_code_fraction(raw_views, labels.cpu())),
+            "saturation": float((raw_views >= 1.0).float().mean()),
+            "coverage": {"primary": p_coverage, "secondary": s_coverage},
             "diversity_ratio": {
-                "primary": dist_ratio(p_features),
-                "secondary": dist_ratio(s_features),
+                "primary": relative_diversity_ratios(p_features, p_ref_features, labels.cpu()),
+                "secondary": relative_diversity_ratios(s_features, s_ref_features, labels.cpu()),
             },
-            "label_shuffled_primary_accuracy": p_shuffle,
+            "label_shuffled_primary_accuracy": float((shuffled_prediction == labels.cpu()).float().mean()),
+            "conditioning_label_shuffle_fraction": float((shuffled_labels != labels.cpu()).float().mean()),
             "prediction_histogram": {
                 "primary": torch.bincount(p_pred, minlength=10).tolist(),
                 "secondary": torch.bincount(s_pred, minlength=10).tolist(),
             },
             "view_hash": tensor_sha256(views),
+            "zero_code_view_hash": tensor_sha256(zero_views),
+            "no_update_replay_exact": repeated_hash,
+            "bootstrap_accuracy_ci": {
+                "primary": _bootstrap_ci((p_pred == labels.cpu()).float(), seed=BOOTSTRAP_SEED + panel_seed),
+                "secondary": _bootstrap_ci((s_pred == labels.cpu()).float(), seed=BOOTSTRAP_SEED + panel_seed + 1),
+            },
         }
         all_rows[str(panel_seed)] = row
+    official_codes = torch.randn((test_labels.numel(), 8), generator=torch.Generator(device="cpu").manual_seed(BOOTSTRAP_SEED)).to(device)
+    official_labels = test_labels.to(device)
+    official_raw, official_views = _generate_views(decoder, official_codes, official_labels, candidate=candidate)
+    official_p = _eval_model(primary, official_views.to(device))[1].argmax(1)
+    official_s = _eval_model(secondary, official_views.to(device))[1].argmax(1)
+    memory = _memorization_audit(
+        official_views,
+        official_labels.cpu(),
+        train_images,
+        train_labels,
+        validation_images,
+        validation_labels,
+        device=device,
+    )
+    official = {
+        "count": int(test_labels.numel()),
+        "primary_accuracy": float((official_p == official_labels.cpu()).float().mean()),
+        "secondary_accuracy": float((official_s == official_labels.cpu()).float().mean()),
+        "primary_minimum_recall": float(min(_recall(official_p, official_labels.cpu()))),
+        "secondary_minimum_recall": float(min(_recall(official_s, official_labels.cpu()))),
+        "agreement": float((official_p == official_s).float().mean()),
+        "camera_code_fraction": float(camera_code_fraction(official_raw, official_labels.cpu())),
+        "saturation": float((official_raw >= 1.0).float().mean()),
+        "prediction_histogram": {"primary": torch.bincount(official_p, minlength=10).tolist(), "secondary": torch.bincount(official_s, minlength=10).tolist()},
+    }
+    jacobian_codes, jacobian_labels = [], []
+    for panel_seed in LOCKED_SEEDS:
+        codes, labels = panel_codes(panel_seed, device=device)
+        for label in range(10):
+            jacobian_codes.append(codes[label * 50])
+            jacobian_labels.append(labels[label * 50])
+    jacobian = _jacobian_summary(
+        decoder,
+        torch.stack(jacobian_codes),
+        torch.stack(jacobian_labels),
+        candidate=candidate,
+    )
     secondary_gates = [
         row["secondary"]["accuracy"] >= 0.95
         and row["secondary"]["minimum_recall"] >= 0.90
@@ -580,6 +851,9 @@ def _measure_checkpoint(
             "primary": sum(primary_gates),
             "secondary": sum(secondary_gates),
         },
+        "official_test": official,
+        "jacobian": jacobian,
+        "memorization": memory,
         "test_set_count": int(test_labels.numel()),
         "test_set_bound": tensor_sha256(test_images.cpu()),
     }
@@ -645,7 +919,12 @@ def dispatch(args: argparse.Namespace) -> int:
         if not args.o0_i_closeout:
             raise ValueError("O0-G requires --o0-i-closeout")
         predecessor = json.loads(Path(args.o0_i_closeout).read_text(encoding="utf-8"))
-        if predecessor.get("classification") != "electronic_image_manifold_admitted":
+        if (
+            predecessor.get("schema") != f"{SCHEMA_PREFIX}_closeout.v2"
+            or predecessor.get("status") != "valid"
+            or predecessor.get("classification")
+            != "electronic_image_manifold_admitted"
+        ):
             raise ValueError("O0-G requires an admitted O0-I closeout")
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -655,7 +934,7 @@ def dispatch(args: argparse.Namespace) -> int:
         device = torch.device(args.device)
         encoder, decoder = _instantiate(args.candidate, device)
         payload = {
-            "schema": f"{SCHEMA_PREFIX}_validation.v1",
+            "schema": f"{SCHEMA_PREFIX}_validation.v2",
             "status": "valid",
             "lineage": lineage,
             "parameter_counts": parameter_counts(encoder, decoder),
@@ -693,45 +972,136 @@ def dispatch(args: argparse.Namespace) -> int:
         optimizer = torch.optim.AdamW(
             tuple(encoder.parameters()) + tuple(decoder.parameters()), lr=2e-3
         )
-        before = {
+        initial_encoder = _clone_state(encoder)
+        initial_decoder = _clone_state(decoder)
+        initial_cpu_rng = torch.get_rng_state()
+        initial_cuda_rng = (
+            torch.cuda.get_rng_state_all() if torch.cuda.is_available() else []
+        )
+        before_encoder = {
+            name: tensor_sha256(value.detach().cpu())
+            for name, value in encoder.state_dict().items()
+        }
+        before_decoder = {
             name: tensor_sha256(value.detach().cpu())
             for name, value in decoder.state_dict().items()
         }
         updates = []
-        for index in range(3):
-            rows = [
-                torch.nonzero(train_labels == label, as_tuple=False).flatten()[:10]
-                for label in range(10)
-            ]
-            index_rows = torch.cat(rows)
-            codes = torch.randn((100, 8), device=device)
-            labels = torch.arange(10, device=device).repeat_interleave(10)
-            images = train_images.index_select(0, index_rows)
-            optimizer.zero_grad(set_to_none=True)
-            loss, _ = wae_loss(
-                decoder,
-                encoder,
-                images,
-                labels,
-                codes,
-                w_mmd=weights["w_mmd"],
-                w_cycle=weights["w_cycle"],
+        rows = [
+            torch.nonzero(train_labels == label, as_tuple=False).flatten()[:10]
+            for label in range(10)
+        ]
+        index_rows = torch.cat(rows)
+        images = train_images.index_select(0, index_rows)
+        labels = torch.arange(10, device=device).repeat_interleave(10)
+        for _ in range(3):
+            updates.append(
+                _run_preflight_update(encoder, decoder, optimizer, images, labels, weights)
             )
-            loss.backward()
-            optimizer.step()
-            updates.append(float(loss.detach().cpu()))
-        after = {
+        after_encoder = {
+            name: tensor_sha256(value.detach().cpu())
+            for name, value in encoder.state_dict().items()
+        }
+        after_decoder = {
             name: tensor_sha256(value.detach().cpu())
             for name, value in decoder.state_dict().items()
         }
+        true_images = train_images
+        true_labels = train_labels
+        shuffled_labels = true_labels.index_select(
+            0,
+            torch.randperm(
+                true_labels.numel(),
+                generator=torch.Generator(device="cpu").manual_seed(8675309),
+            ).to(device),
+        )
+        with torch.no_grad():
+            encoded = encoder(true_images, true_labels)
+            true_prediction = render_view(
+                decoder(encoded, true_labels), args.candidate
+            )
+            shuffled_prediction = render_view(
+                decoder(encoder(true_images, shuffled_labels), shuffled_labels),
+                args.candidate,
+            )
+            true_reconstruction = float(
+                (true_prediction - true_images).square().mean().cpu()
+            )
+            shuffled_reconstruction = float(
+                (shuffled_prediction - true_images).square().mean().cpu()
+            )
+        encoder_changed = before_encoder != after_encoder
+        decoder_changed = before_decoder != after_decoder
+        uninterrupted_encoder = _clone_state(encoder)
+        uninterrupted_decoder = _clone_state(decoder)
+        uninterrupted_optimizer = optimizer.state_dict()
+        interrupted_encoder, interrupted_decoder = _instantiate(args.candidate, device)
+        interrupted_encoder.load_state_dict(initial_encoder, strict=True)
+        interrupted_decoder.load_state_dict(initial_decoder, strict=True)
+        interrupted_optimizer = torch.optim.AdamW(
+            tuple(interrupted_encoder.parameters())
+            + tuple(interrupted_decoder.parameters()),
+            lr=2e-3,
+        )
+        torch.set_rng_state(initial_cpu_rng)
+        if torch.cuda.is_available():
+            torch.cuda.set_rng_state_all(initial_cuda_rng)
+        _run_preflight_update(
+            interrupted_encoder,
+            interrupted_decoder,
+            interrupted_optimizer,
+            images,
+            labels,
+            weights,
+        )
+        interrupted_rng = {
+            "cpu": torch.get_rng_state(),
+            "cuda": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else [],
+        }
+        resumed_encoder, resumed_decoder = _instantiate(args.candidate, device)
+        resumed_optimizer = torch.optim.AdamW(
+            tuple(resumed_encoder.parameters()) + tuple(resumed_decoder.parameters()),
+            lr=2e-3,
+        )
+        resumed_encoder.load_state_dict(_clone_state(interrupted_encoder), strict=True)
+        resumed_decoder.load_state_dict(_clone_state(interrupted_decoder), strict=True)
+        resumed_optimizer.load_state_dict(interrupted_optimizer.state_dict())
+        torch.set_rng_state(interrupted_rng["cpu"])
+        if torch.cuda.is_available():
+            torch.cuda.set_rng_state_all(interrupted_rng["cuda"])
+        for _ in range(2):
+            _run_preflight_update(
+                resumed_encoder,
+                resumed_decoder,
+                resumed_optimizer,
+                images,
+                labels,
+                weights,
+            )
+        replay_exact = (
+            _states_equal(uninterrupted_encoder, _clone_state(resumed_encoder))
+            and _states_equal(uninterrupted_decoder, _clone_state(resumed_decoder))
+            and _optimizer_state_equal(
+                uninterrupted_optimizer, resumed_optimizer.state_dict()
+            )
+        )
         payload = {
-            "schema": f"{SCHEMA_PREFIX}_preflight.v1",
+            "schema": f"{SCHEMA_PREFIX}_preflight.v2",
             "status": "valid"
-            if all(torch.isfinite(torch.tensor(updates))) and before != after
+            if all(torch.isfinite(torch.tensor(updates)))
+            and encoder_changed
+            and decoder_changed
+            and true_reconstruction < shuffled_reconstruction
+            and replay_exact
             else "invalid_harness",
             "updates": updates,
             "weights": weights,
-            "decoder_changed": before != after,
+            "encoder_changed": encoder_changed,
+            "decoder_changed": decoder_changed,
+            "true_reconstruction_mse": true_reconstruction,
+            "shuffled_reconstruction_mse": shuffled_reconstruction,
+            "interrupted_resumed_replay_exact": replay_exact,
+            "evaluator_loaded": False,
             "evaluator_calls": 0,
             "lineage_sha256": canonical_sha256(lineage),
         }
@@ -748,7 +1118,7 @@ def dispatch(args: argparse.Namespace) -> int:
             resume=args.resume_checkpoint,
         )
         payload = {
-            "schema": f"{SCHEMA_PREFIX}_screen.v1",
+            "schema": f"{SCHEMA_PREFIX}_screen.v2",
             "status": "valid",
             "checkpoint": str(checkpoint),
             "details": details,
@@ -777,7 +1147,7 @@ def dispatch(args: argparse.Namespace) -> int:
         )
         classification, next_action = classify_o0(measurement, candidate=args.candidate)
         payload = {
-            "schema": f"{SCHEMA_PREFIX}_confirm.v1",
+            "schema": f"{SCHEMA_PREFIX}_confirm.v2",
             "status": "valid",
             "checkpoint": str(checkpoint),
             "training": details,
@@ -799,7 +1169,7 @@ def dispatch(args: argparse.Namespace) -> int:
         )
         classification, next_action = classify_o0(measurement, candidate=args.candidate)
         payload = {
-            "schema": f"{SCHEMA_PREFIX}_locked-final.v1",
+            "schema": f"{SCHEMA_PREFIX}_locked-final.v2",
             "status": "valid",
             "measurement": measurement,
             "classification": classification,
@@ -816,7 +1186,7 @@ def dispatch(args: argparse.Namespace) -> int:
             "next_action", "repair_and_revalidate_on_a_new_clean_commit"
         )
         payload = {
-            "schema": f"{SCHEMA_PREFIX}_closeout.v1",
+            "schema": f"{SCHEMA_PREFIX}_closeout.v2",
             "status": locked.get("status", "invalid_harness"),
             "classification": classification,
             "next_action": next_action,

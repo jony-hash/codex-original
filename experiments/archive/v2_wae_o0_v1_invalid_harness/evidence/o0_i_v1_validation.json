@@ -1,0 +1,68 @@
+{
+  "decoder_contract": {
+    "candidate": "O0-I",
+    "fixed_exposure_scale": 0.4913053810596466,
+    "output": [
+      28,
+      28
+    ]
+  },
+  "evaluator_calls": 0,
+  "lineage": {
+    "candidate": "O0-I",
+    "config_content": {
+      "bootstrap_samples": 10000,
+      "bootstrap_seed": 90210,
+      "code_dim": 8,
+      "dataset_root": "data",
+      "decoder_parameter_budget": 6000000,
+      "epochs_confirm": 5,
+      "epochs_screen": 1,
+      "fixed_exposure_scale": 0.4913053810596466,
+      "logical_batch_size": 100,
+      "name": "electronic_o0_wae_v1",
+      "output_root": "outputs/20260822_v2/runs/20260822_electronic_o0_wae_v1",
+      "parameter_budget": 8000000,
+      "schema_version": 1,
+      "split_seed": 1234,
+      "train_seeds": [
+        7301,
+        7302,
+        7303
+      ],
+      "version": 20260822
+    },
+    "config_sha256": "48c8dd79a33a170906bf8b8accee2cb41c92dd9dab49b84cd77ca7dc6f751593",
+    "device": "cuda",
+    "git": {
+      "clean": true,
+      "commit": "e069a4d6de6df1859042c5c35f6083955750e055",
+      "status": []
+    },
+    "primary_evaluator_sha256": "46741ec76e45653c9dcb76e7b4f1645c9c057a47cdd9e4c1778d9debb553ec57",
+    "primary_qualification_sha256": "26fea381bec5d6be2a2ed69806c190f7a7051b5f0944e5f90941a7d93f35695e",
+    "secondary_evaluator_sha256": "45879962cf8a6dc51e141a2f2a9892356ede97dd45063f38d830299aa877e26c",
+    "secondary_qualification_sha256": "93592543306b5a3da8c238d86e41805fc2de0080459d217dfbc3e7161d374d88",
+    "seeds": {
+      "bootstrap": 90210,
+      "locked_panels": [
+        4242,
+        104729,
+        161803
+      ],
+      "train": [
+        7301,
+        7302,
+        7303
+      ]
+    }
+  },
+  "optimizer_created": false,
+  "parameter_counts": {
+    "decoder": 667073,
+    "encoder": 83304,
+    "total": 750377
+  },
+  "schema": "electronic_o0_wae_validation.v1",
+  "status": "valid"
+}

@@ -7,6 +7,7 @@ from ldm_project.v2.application.research.smf_modal_density_attribution import (
     build_nested_modal_banks,
     gram_summary,
     project_reemit,
+    require_smf_v2_implementation,
 )
 from ldm_project.v2.contracts import PlaneSpec
 from ldm_project.v2.optics.fiber_operator import FiberArraySpec
@@ -42,3 +43,12 @@ def test_projection_is_finite_and_energy_nonincreasing() -> None:
         assert torch.isfinite(output).all()
         retentions.append(float(output.abs().square().sum((-2, -1)).mean() / input_energy.mean()))
     assert retentions[0] <= retentions[1] + 1e-5 <= retentions[2] + 1e-5
+
+
+def test_placeholder_smf_lifecycle_fails_closed() -> None:
+    try:
+        require_smf_v2_implementation()
+    except RuntimeError as error:
+        assert "non-consumable" in str(error)
+    else:
+        raise AssertionError("incomplete SMF lifecycle must not issue evidence")

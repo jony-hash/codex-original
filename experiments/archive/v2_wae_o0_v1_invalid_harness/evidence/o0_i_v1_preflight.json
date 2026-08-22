@@ -1,0 +1,27 @@
+{
+  "decoder_changed": true,
+  "evaluator_calls": 0,
+  "lineage_sha256": "14c0a7737b9c2a681038cd3600d1e86e9ad9c606d2808ede19bd36cfb5174370",
+  "schema": "electronic_o0_wae_preflight.v1",
+  "status": "valid",
+  "updates": [
+    5.265482425689697,
+    5.18473482131958,
+    5.089792728424072
+  ],
+  "weights": {
+    "batch_seeds": [
+      11,
+      23,
+      37,
+      51
+    ],
+    "decoder_gradient_norms": {
+      "cycle": 0.06336800381541252,
+      "mmd": 0.03370405314490199,
+      "reconstruction": 0.45925622433423996
+    },
+    "w_cycle": 1.8118616521045379,
+    "w_mmd": 3.4065355757049813
+  }
+}

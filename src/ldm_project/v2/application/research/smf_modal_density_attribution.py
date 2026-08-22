@@ -31,6 +31,17 @@ SCHEMA_PREFIX = "smf_modal_density_attribution"
 MODES = (100, 196, 400)
 PANELS = (4242, 104729, 161803)
 STORAGE_LIMIT_BYTES = 2 * 1024**3
+SMF_V2_IMPLEMENTED = False
+
+
+def require_smf_v2_implementation() -> None:
+    """Prevent the historical measurement placeholder from issuing evidence."""
+    if not SMF_V2_IMPLEMENTED:
+        raise RuntimeError(
+            "SMF modal-density attribution v1 is non-consumable: O0-G v2 "
+            "admission and the formal OI0/ridge/exposure/evaluator contract "
+            "must be implemented before this lifecycle can run"
+        )
 
 
 def _git() -> dict[str, Any]:
@@ -218,6 +229,7 @@ def _lineage(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def dispatch(args: argparse.Namespace) -> int:
+    require_smf_v2_implementation()
     if args.research_action == "validate":
         lineage = _lineage(args)
         from ...configuration.loading import load_config

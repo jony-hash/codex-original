@@ -1,0 +1,11 @@
+{
+  "classification": "wae_image_manifold_failed",
+  "formal_promotion": false,
+  "lineage_sha256": "14c0a7737b9c2a681038cd3600d1e86e9ad9c606d2808ede19bd36cfb5174370",
+  "locked_evidence_sha256": "159efc3a8b4ad7c157e8b6c783391e7d21b67b0f1de6a42a49f383a878f39e92",
+  "next_action": "close_fiber_restart",
+  "schema": "electronic_o0_wae_closeout.v1",
+  "status": "valid",
+  "synthetic_diagnostic_only": true,
+  "training_authorized": false
+}
