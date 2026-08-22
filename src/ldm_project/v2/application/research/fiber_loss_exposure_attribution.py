@@ -299,6 +299,14 @@ def _energy(tensor: torch.Tensor, pixel_pitch: tuple[float, float]) -> torch.Ten
     return tensor.abs().square().sum(dim=(-3, -2, -1)) * area
 
 
+def _quantile_summary(value: torch.Tensor, *, maximum_samples: int = 1_000_000) -> tuple[float, float, float, int]:
+    flattened = value.flatten()
+    stride = max(1, (flattened.numel() + maximum_samples - 1) // maximum_samples)
+    sampled = flattened[::stride]
+    quantiles = torch.quantile(sampled, torch.tensor((0.01, 0.50, 0.99), device=sampled.device))
+    return float(quantiles[0]), float(quantiles[1]), float(quantiles[2]), int(sampled.numel())
+
+
 def _forward_raw(
     context: tuple[Any, ...],
     variant: str,
@@ -395,6 +403,7 @@ def _view_metric(
         settings,
     )
     normalized = raw / exposure_scale
+    normalized_p01, normalized_p50, normalized_p99, normalized_quantile_sample_count = _quantile_summary(normalized)
     metric.update({
         "variant": variant,
         "panel": panel,
@@ -404,9 +413,10 @@ def _view_metric(
         "saturation": float((raw > exposure_scale).float().mean()),
         "clipped_fraction": float((normalized >= 1.0).float().mean()),
         "normalized_raw_mean": float(normalized.mean()),
-        "normalized_raw_p01": float(torch.quantile(normalized.flatten(), 0.01)),
-        "normalized_raw_p50": float(torch.quantile(normalized.flatten(), 0.50)),
-        "normalized_raw_p99": float(torch.quantile(normalized.flatten(), 0.99)),
+        "normalized_raw_p01": normalized_p01,
+        "normalized_raw_p50": normalized_p50,
+        "normalized_raw_p99": normalized_p99,
+        "normalized_raw_quantile_sample_count": normalized_quantile_sample_count,
         "raw_finite": bool(torch.isfinite(raw).all()),
         "raw_nonnegative": bool((raw >= 0).all()),
         "passive_available": variant in {"S0-E0", "S0-Ecal", "I0-Acal"},
