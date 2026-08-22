@@ -443,7 +443,7 @@ def _view_metric(
         "fixed_cmos": view,
         "primary_prediction": primary_prediction,
         "secondary_prediction": secondary_prediction,
-        "secondary_correctness": (secondary_prediction == labels),
+        "secondary_correctness": (secondary_prediction == labels.cpu()),
         "representative_trace": base["representative_trace"],
     }
     return metric, values
