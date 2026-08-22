@@ -185,6 +185,53 @@ def register_research(root: argparse._SubParsersAction) -> None:
     interface_closeout.add_argument("--presentation-evidence", required=True)
     interface_closeout.add_argument("--output", required=True)
 
+    exposure = research_programs.add_parser(
+        "fiber-loss-exposure-attribution",
+        help="no-update synthetic fiber loss and exposure-budget attribution",
+    )
+    exposure_actions = exposure.add_subparsers(dest="research_action", required=True)
+
+    def exposure_lineage(command):
+        command.add_argument("--config", required=True)
+        command.add_argument("--dataset-root", required=True)
+        command.add_argument("--primary-evaluator-checkpoint", required=True)
+        command.add_argument("--secondary-evaluator-checkpoint", required=True)
+        command.add_argument("--primary-qualification-evidence", required=True)
+        command.add_argument("--secondary-qualification-evidence", required=True)
+        command.add_argument(
+            "--research-initialization-checkpoint",
+            "--checkpoint",
+            dest="research_initialization_checkpoint",
+            required=True,
+        )
+        command.add_argument("--source-training-evidence", required=True)
+        command.add_argument("--device", choices=("cuda", "cpu"), default="cuda")
+        command.add_argument("--v3-closeout", required=True)
+        command.add_argument("--attribution-measurement", required=True)
+        command.add_argument("--interface-validation", required=True)
+        command.add_argument("--interface-measurement", required=True)
+        command.add_argument("--interface-closeout", required=True)
+
+    exposure_validate = exposure_actions.add_parser("validate")
+    exposure_lineage(exposure_validate)
+    exposure_validate.add_argument("--lp01-fixture", required=True)
+    exposure_validate.add_argument("--output", required=True)
+
+    exposure_run = exposure_actions.add_parser("run")
+    exposure_lineage(exposure_run)
+    exposure_run.add_argument("--lp01-fixture", required=True)
+    exposure_run.add_argument("--validation-evidence", required=True)
+    exposure_run.add_argument("--output", required=True)
+
+    exposure_report = exposure_actions.add_parser("report")
+    exposure_report.add_argument("--measurement-evidence", required=True)
+    exposure_report.add_argument("--output", required=True)
+
+    exposure_closeout = exposure_actions.add_parser("closeout")
+    exposure_closeout.add_argument("--measurement-evidence", required=True)
+    exposure_closeout.add_argument("--presentation-evidence", required=True)
+    exposure_closeout.add_argument("--output", required=True)
+
     capacity_map = research_programs.add_parser("capacity-map")
     capacity_actions = capacity_map.add_subparsers(dest="research_action", required=True)
     for action in ("validate", "screen", "train-smoke", "confirm", "summarize", "diagnose", "qualify-shape", "closeout"):
