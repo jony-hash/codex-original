@@ -662,7 +662,12 @@ def run(args: Any) -> int:
             "S0-Ecal": (s0["raw"], exposure, 1.0, s0),
             "I0-Acal": (identity["raw"] * rho, settings.fixed_exposure_scale, rho**0.5, identity),
             "S0-field-gain-reference": (s0["raw"] * gain, settings.fixed_exposure_scale, gain**0.5, s0),
-            "S0-per-sample-oracle": (s0["raw"] * oracle_factor, settings.fixed_exposure_scale, oracle_factor.sqrt(), s0),
+            "S0-per-sample-oracle": (
+                s0["raw"] * oracle_factor.reshape(-1, 1, 1, 1),
+                settings.fixed_exposure_scale,
+                oracle_factor.sqrt(),
+                s0,
+            ),
         }
         for grid_gain, variant in zip(GAIN_GRID, all_variants[len(BASE_VARIANTS):], strict=True):
             raw_by_variant[variant] = (s0["raw"], settings.fixed_exposure_scale / grid_gain, 1.0, s0)
