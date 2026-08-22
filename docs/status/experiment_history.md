@@ -1,5 +1,22 @@
 # D2NN 实验与验收历史
 
+## 2026-08-22：WAE electronic O0 closes before SMF attribution
+
+按预注册顺序实现新的 teacher-free 8D WAE O0-I，并在 CUDA 上完成
+validate、三更新 preflight、seed-7301 一轮 screen 和五轮 confirm。screen
+使用492个 balanced updates；confirm 的 primary 为 `0.996–1.000`，但
+secondary 仅 `0.766–0.784`，minimum recall 为 `0.04–0.08`，双 evaluator
+agreement 为 `0.766–0.784`。camera fraction、diversity、coverage、saturation
+以及 decoder-only checkpoint 边界通过。结果是有效的
+`wae_image_manifold_failed`，不是 harness 失败。
+
+该门控失败在 O0-I，故没有运行 O0-G、SMF 100/196/400 端口密度上界、ridge
+readout、E1 或任何 fiber-aware training。它只说明当前 WAE 电子图像流形
+未通过既定 dual-evaluator semantic contract，不能外推为单模/少模/多模光纤
+性能结论，也不能授权新的光学生命周期。源码提交为 `741c183`，随后三个
+fail-closed harness 修复提交为 `5169250`、`bbad86e`、`e069a4d`；outputs
+仅作运行证据，未提交。
+
 本文件保存带日期的实验事实和验收证据，不定义当前执行契约。迁移或续接当前主线时先读 [当前主线交接（v79 冻结与 v2）](current_handoff.md)；当前架构见 [D2NN 单次曝光蒸馏主线](../architecture/v1_single_shot_distillation.md)，stage 命令与输入要求见 [Stage Guide](../operations/stage_guide.md)，完整导航见 [Documentation](../README.md)。本文件的“当前/下一步”均表示各记录当时的结论；历史证据保留，不应覆盖现行合同。
 
 ## 2026-08-22：synthetic fiber route formally archived without E1

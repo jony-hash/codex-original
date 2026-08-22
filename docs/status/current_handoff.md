@@ -1,5 +1,28 @@
 # 当前主线交接：v2 formal evaluation 与 objective diagnostic 收口（2026-08-12）
 
+## WAE electronic O0 / SMF density branch closed (2026-08-22)
+
+The new teacher-free WAE O0 branch was implemented and exercised on clean
+research commits through `e069a4d`. CUDA validation and the three-update
+preflight passed after the harness repairs. The fixed seed-7301 screen
+completed 492 balanced updates and the five-epoch confirm completed without
+evaluator use during training or calibration.
+
+The valid confirm result was `wae_image_manifold_failed`, so the gate stopped
+before O0-G and before every optical or SMF branch. Across locked panels,
+primary accuracy was `0.996–1.000` with minimum recall passing, but secondary
+accuracy was only `0.766–0.784`, secondary minimum recall was `0.04–0.08`, and
+evaluator agreement was `0.766–0.784`. Camera fraction, diversity, coverage,
+saturation, and parameter isolation passed. This separates “a trainable
+electronic image generator exists” from “the current dual-evaluator semantic
+contract is satisfied”; it does not establish an optical or fibre failure.
+
+The closeout is diagnostic-only with `formal_promotion=false` and
+`training_authorized=false`; its next action is `close_fiber_restart`. O0-G,
+P100/P196/P400, ridge readout, E1, fibre-aware training, and formal promotion
+were not run. Any future restart must register a new electronic hypothesis and
+qualification contract; no extra WAE epochs or seed substitution is authorized.
+
 ## v2 synthetic fiber route closed (2026-08-22)
 
 The synthetic fiber route is closed with status

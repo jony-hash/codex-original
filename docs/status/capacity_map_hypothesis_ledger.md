@@ -23,6 +23,29 @@ Research failures close only their own variant. Formal acceptance remains
 fail-closed. Invalid harness records are excluded from Pareto ranking and may
 not support a capacity conclusion.
 
+## v2.5 WAE electronic O0 stop (2026-08-22)
+
+The new WAE-MMD electronic O0 contract tested the necessary upstream gate for
+reopening the synthetic fibre route. It used a class-conditional 8D encoder
+only during training and a decoder-only inference artifact; the fixed
+seed-7301 screen and five-epoch confirm used no evaluator in loss construction,
+auxiliary calibration, or checkpoint selection. CUDA validation and the
+three-update no-update preflight passed after two device-boundary repairs and
+one encoder-shape repair, each reissued on a new commit.
+
+The confirm is a valid failure, not an invalid harness: primary accuracy was
+`0.996–1.000`, secondary accuracy was `0.766–0.784`, secondary minimum recall
+was `0.04–0.08`, and evaluator agreement was `0.766–0.784`. Camera fraction,
+diversity, coverage, saturation, and decoder-only checkpoint isolation passed.
+
+The precise classification is `wae_image_manifold_failed`; the fixed next
+action is `close_fiber_restart`. O0-G and P100/P196/P400 were intentionally not
+executed. This establishes only that this particular teacher-free WAE image
+manifold did not satisfy the qualified dual-evaluator semantic gate; it does
+not identify an optical, SMF, modal-density, phase-only, hardware, or universal
+evaluator bottleneck. The route remains `training_authorized=false`,
+`formal_promotion=false`, and `synthetic_diagnostic_only=true`.
+
 ## v2.3-r2 correction boundary
 
 Revision-2 D0 evidence is archived as `invalid_harness` under
