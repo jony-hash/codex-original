@@ -40,6 +40,7 @@ from ...student.evaluator import (
 from .electronic_o0_wae import (
     LOCKED_SEEDS,
     _bootstrap_ci,
+    _enable_deterministic_cuda,
     _eval_model,
     _memorization_audit,
     _recall,
@@ -655,6 +656,7 @@ def classify_attribution(payload: dict[str, Any]) -> tuple[str, str]:
 def dispatch(args: argparse.Namespace) -> int:
     config = _config(args.config)
     lineage = _lineage(args, config)
+    _enable_deterministic_cuda()
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     if args.research_action == "validate":
