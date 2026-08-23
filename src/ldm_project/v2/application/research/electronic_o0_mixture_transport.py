@@ -733,7 +733,17 @@ def _dispatch(args: argparse.Namespace) -> int:
         result["status"] = "valid" if result["status"] == "valid" and mixture_replay["interrupted_resumed_replay_exact"] else "invalid_harness"
         output = Path(args.output)
         output.parent.mkdir(parents=True, exist_ok=True)
-        result.update({"program": "electronic-o0-mixture-transport", "stage": "canary", "producer_contract_revision": "electronic-o0-canary.v1", "output_artifact": str(output), "permitted_consumers": [], "formal_promotion": False})
+        result.update({
+            "program": "electronic-o0-mixture-transport",
+            "stage": "canary",
+            "producer_contract_revision": "electronic-o0-canary.v1",
+            "producer_commit": _git()["commit"],
+            "clean_commit": _git()["clean"],
+            "input_artifact_hashes": {"posterior": file_sha256(args.posterior_artifact)},
+            "output_artifact": str(output),
+            "permitted_consumers": [],
+            "formal_promotion": False,
+        })
         _write_checked(output, result)
         return 0
     if args.research_action == "closeout":

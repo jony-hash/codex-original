@@ -793,7 +793,16 @@ def _dispatch(args: argparse.Namespace) -> int:
         result = run_flow_canary(posterior, device=torch.device(args.device), temporary_root=Path(args.output).parent)
         output = Path(args.output)
         output.parent.mkdir(parents=True, exist_ok=True)
-        result.update({"stage": "canary", "producer_contract_revision": "electronic-o0-canary.v1", "output_artifact": str(output), "permitted_consumers": [], "formal_promotion": False})
+        result.update({
+            "stage": "canary",
+            "producer_contract_revision": "electronic-o0-canary.v1",
+            "producer_commit": _git()["commit"],
+            "clean_commit": _git()["clean"],
+            "input_artifact_hashes": {"posterior": file_sha256(args.posterior_artifact)},
+            "output_artifact": str(output),
+            "permitted_consumers": [],
+            "formal_promotion": False,
+        })
         _write_checked(output, result)
         return 0
     if args.research_action == "closeout":
