@@ -1,0 +1,20 @@
+schema_version: 1
+name: electronic_o0_mixture_transport_v1
+version: 20260823
+dataset_root: data
+code_dim: 8
+mixture_components: [2, 4, 8]
+em_iterations: 50
+em_tolerance: 1.0e-5
+covariance_shrinkage: 0.05
+minimum_component_weight: 0.01
+minimum_effective_count: 100
+maximum_covariance_condition: 1000000.0
+temperature_candidates: [1.0, 1.1, 1.2, 1.35]
+design_seed: 173205
+mixture_seeds: [8501, 8502, 8503]
+locked_panel_seeds: [4242, 104729, 161803]
+bootstrap_seed: 90210
+bootstrap_samples: 10000
+logical_batch_size: 100
+harness_revision: 1

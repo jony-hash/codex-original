@@ -465,6 +465,50 @@ def register_research(root: argparse._SubParsersAction) -> None:
         if action == "closeout":
             command.add_argument("--locked-evidence", required=True)
 
+    mixture = research_programs.add_parser(
+        "electronic-o0-mixture-transport",
+        help="diagnostic regularized class-conditional Gaussian-mixture transport lifecycle",
+    )
+    mixture_actions = mixture.add_subparsers(dest="research_action", required=True)
+
+    def mixture_lineage(command):
+        command.add_argument("--config", required=True)
+        command.add_argument("--dataset-root", required=True)
+        command.add_argument("--device", choices=("cuda", "cpu"), default="cuda")
+        command.add_argument("--output", required=True)
+        command.add_argument("--wae-training-checkpoint", required=True)
+        command.add_argument("--wae-decoder-checkpoint", required=True)
+        command.add_argument("--wae-confirm-evidence", required=True)
+        command.add_argument("--latent-transport-attribution", required=True)
+        command.add_argument("--latent-transport-confirm-evidence", required=True)
+        command.add_argument("--primary-evaluator-checkpoint", required=True)
+        command.add_argument("--secondary-evaluator-checkpoint", required=True)
+        command.add_argument("--primary-qualification-evidence", required=True)
+        command.add_argument("--secondary-qualification-evidence", required=True)
+
+    for action in ("validate", "preflight", "screen", "confirm", "locked-final", "report", "closeout"):
+        command = mixture_actions.add_parser(action)
+        mixture_lineage(command)
+        if action in {"preflight", "screen", "confirm", "locked-final"}:
+            command.add_argument("--seed", type=int, choices=(8501, 8502, 8503), default=8501)
+        if action == "preflight":
+            command.add_argument("--validation-evidence", required=True)
+        if action == "screen":
+            command.add_argument("--preflight-evidence", required=True)
+            command.add_argument("--resume-checkpoint")
+        if action == "confirm":
+            command.add_argument("--screen-evidence", required=True)
+            command.add_argument("--resume-checkpoint")
+        if action == "locked-final":
+            command.add_argument("--confirm-evidence", required=True)
+            command.add_argument("--peer-confirm-evidence", action="append", default=[])
+            command.add_argument("--mixture-checkpoint", required=True)
+        if action == "report":
+            command.add_argument("--measurement-evidence", required=True)
+        if action == "closeout":
+            command.add_argument("--locked-evidence", required=True)
+            command.add_argument("--presentation-evidence")
+
     smf = research_programs.add_parser(
         "smf-modal-density-attribution",
         help="synthetic single-mode port-density upper-bound lifecycle",
