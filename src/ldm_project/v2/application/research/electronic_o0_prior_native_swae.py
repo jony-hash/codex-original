@@ -448,7 +448,7 @@ def _balanced_batch(
                 0, torch.randperm(choices.numel(), generator=generator)
             )[:per_class]
         )
-    index = torch.cat(rows)
+    index = torch.cat(rows).to(device=images.device)
     return images.index_select(0, index), labels.index_select(0, index)
 
 
