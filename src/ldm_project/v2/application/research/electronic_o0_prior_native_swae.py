@@ -665,7 +665,9 @@ def _load_training(
 ) -> tuple[
     ConditionalWAEEncoder, ConditionalWAEDecoder, torch.optim.Optimizer, dict[str, Any]
 ]:
-    payload = safe_torch_load(path, map_location=device)
+    # Keep RNG tensors on CPU while loading; passing the CUDA device here
+    # remaps torch.get_rng_state() and makes torch.set_rng_state reject it.
+    payload = safe_torch_load(path, map_location="cpu")
     if (
         not isinstance(payload, dict)
         or payload.get("schema") != f"{SCHEMA_PREFIX}_training.v1"
