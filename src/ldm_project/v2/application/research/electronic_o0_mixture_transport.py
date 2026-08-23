@@ -778,7 +778,14 @@ def dispatch(args: argparse.Namespace) -> int:
             posterior["validation_labels"],
         )
         fit_nll = sum(
-            float(_mixture_nll(validation_values[validation_labels == label], mixture["classes"][label]["means"], mixture["classes"][label]["cholesky"], mixture["classes"][label]["weights"]).cpu())
+            float(
+                _mixture_nll(
+                    validation_values[validation_labels == label].cpu(),
+                    mixture["classes"][label]["means"],
+                    mixture["classes"][label]["cholesky"],
+                    mixture["classes"][label]["weights"],
+                ).cpu()
+            )
             for label in range(10)
         ) / 10.0
         gaussian_nll = float((0.5 * posterior["validation_codes"].square().sum(1) + 0.5 * CODE_DIM * math.log(2.0 * math.pi)).mean())
