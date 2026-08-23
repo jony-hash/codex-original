@@ -241,7 +241,6 @@ def _posterior_metadata(args: argparse.Namespace, posterior: dict[str, torch.Ten
     metadata = {
         "producer_contract": "electronic_o0_latent_transport.posterior.v1",
         "posterior_contract_revision": POSTERIOR_CONTRACT,
-        "encoder_sha256": file_sha256(args.wae_training_checkpoint),
         "dataset_root": str(Path(args.dataset_root).resolve()),
         "dataset_split_sha256": canonical_sha256({
             "train": tensor_sha256(posterior["train_labels"]),
@@ -254,6 +253,9 @@ def _posterior_metadata(args: argparse.Namespace, posterior: dict[str, torch.Ten
         "row_order": "stratified_mnist_indices.v1",
         "transform": "load_local_mnist.v1",
     }
+    encoder_checkpoint = getattr(args, "wae_training_checkpoint", None)
+    if encoder_checkpoint:
+        metadata["encoder_sha256"] = file_sha256(encoder_checkpoint)
     if include_transport_config:
         metadata["transport_config_sha256"] = file_sha256(args.config)
     return metadata
@@ -268,6 +270,11 @@ def _posterior_for_args(args: argparse.Namespace, device: torch.device, encoder:
         declared_hash = getattr(args, "posterior_artifact_sha256", None)
         if declared_hash is not None and file_sha256(artifact) != declared_hash:
             raise ValueError("posterior artifact content no longer matches manifest hash")
+        # Canary and other manifest consumers intentionally load the frozen
+        # posterior without loading the encoder checkpoint.  In that mode the
+        # artifact's producer/contract, tensor hashes, split and shapes are
+        # still checked, while the checkpoint hash remains an upstream field
+        # for stages that explicitly provide the immutable checkpoint.
         expected = _posterior_metadata(args, include_transport_config=False)
         decision = reuse_decision(
             "posterior",
