@@ -34,13 +34,17 @@ from .electronic_o0_latent_transport import (
     _load_evaluators,
     _load_wae,
     _metrics,
+    _module_state_hash,
     _posterior,
+    _posterior_for_args,
+    _posterior_metadata,
     _sliced_distance,
-    _write_checked,
+    _write_checked as _latent_write_checked,
     panel_codes,
 )
 from .electronic_o0_wae import _bootstrap_ci, _jacobian_summary, _memorization_audit
 from ...student.evaluator import load_local_mnist
+from .lifecycle_artifacts import POSTERIOR_CONTRACT, load_manifest, prepare_args, require_artifact_hash, stage_action_decision, validate_evidence_inputs, validate_manifest_namespace, write_failure_record, write_posterior
 
 
 SCHEMA_PREFIX = "electronic_o0_mixture_transport"
@@ -58,6 +62,15 @@ MAX_CONDITION = 1.0e6
 OUTPUT_ROOT = Path(
     "outputs/20260823_v2/runs/20260823_electronic_o0_mixture_transport_v1"
 )
+_INVOCATION_MODE = "legacy"
+
+
+def _write_checked(path: str | Path, payload: dict[str, Any]) -> None:
+    payload.setdefault("invocation_mode", _INVOCATION_MODE)
+    payload.setdefault("legacy_diagnostic_only", _INVOCATION_MODE == "legacy")
+    if _INVOCATION_MODE == "legacy":
+        payload["permitted_consumers"] = []
+    _latent_write_checked(path, payload)
 
 
 def _git() -> dict[str, Any]:
@@ -68,6 +81,14 @@ def _git() -> dict[str, Any]:
         ["git", "status", "--porcelain"], check=True, capture_output=True, text=True
     ).stdout.splitlines()
     return {"commit": commit, "clean": not status, "status": status}
+
+
+def _start_cuda(args: argparse.Namespace) -> None:
+    if args.device == "cuda" and not torch.cuda.is_available():
+        raise RuntimeError("formal mixture transport lifecycle requires CUDA")
+    if args.device == "cuda" and os.environ.get("CUBLAS_WORKSPACE_CONFIG") != ":4096:8":
+        raise RuntimeError("CUDA lifecycle requires CUBLAS_WORKSPACE_CONFIG=:4096:8")
+    _enable_deterministic_cuda()
 
 
 def _config(path: str | Path) -> dict[str, Any]:
@@ -99,36 +120,34 @@ def _require_files(paths: list[str | Path], dataset_root: str | Path) -> None:
 
 
 def _lineage(args: argparse.Namespace, config: dict[str, Any]) -> dict[str, Any]:
-    paths = [
-        args.config,
-        args.wae_training_checkpoint,
-        args.wae_decoder_checkpoint,
-        args.wae_confirm_evidence,
-        args.latent_transport_attribution,
-        args.latent_transport_confirm_evidence,
-        args.primary_evaluator_checkpoint,
-        args.secondary_evaluator_checkpoint,
-        args.primary_qualification_evidence,
-        args.secondary_qualification_evidence,
-    ]
+    lightweight = {"encode-posterior", "fit-mixture", "calibrate-temperature", "screen-measure", "closeout"}
+    paths = [args.config]
+    if args.research_action != "closeout":
+        paths.extend([args.wae_training_checkpoint, args.wae_decoder_checkpoint])
+    if args.research_action not in lightweight:
+        paths.extend([
+            args.wae_confirm_evidence,
+            args.latent_transport_attribution,
+            args.latent_transport_confirm_evidence,
+            args.primary_evaluator_checkpoint,
+            args.secondary_evaluator_checkpoint,
+            args.primary_qualification_evidence,
+            args.secondary_qualification_evidence,
+        ])
     _require_files(paths, args.dataset_root)
-    if args.device == "cuda" and not torch.cuda.is_available():
-        raise RuntimeError("formal mixture transport lifecycle requires CUDA")
-    if args.device == "cuda" and os.environ.get("CUBLAS_WORKSPACE_CONFIG") != ":4096:8":
-        raise RuntimeError("CUDA lifecycle requires CUBLAS_WORKSPACE_CONFIG=:4096:8")
     return {
         "git": _git(),
         "config_sha256": file_sha256(args.config),
         "config_content": config,
-        "wae_training_sha256": file_sha256(args.wae_training_checkpoint),
-        "wae_decoder_sha256": file_sha256(args.wae_decoder_checkpoint),
-        "wae_confirm_sha256": file_sha256(args.wae_confirm_evidence),
-        "latent_transport_attribution_sha256": file_sha256(args.latent_transport_attribution),
-        "latent_transport_confirm_sha256": file_sha256(args.latent_transport_confirm_evidence),
-        "primary_evaluator_sha256": file_sha256(args.primary_evaluator_checkpoint),
-        "secondary_evaluator_sha256": file_sha256(args.secondary_evaluator_checkpoint),
-        "primary_qualification_sha256": file_sha256(args.primary_qualification_evidence),
-        "secondary_qualification_sha256": file_sha256(args.secondary_qualification_evidence),
+        "wae_training_sha256": file_sha256(args.wae_training_checkpoint) if args.research_action not in {"encode-posterior", "closeout"} else None,
+        "wae_decoder_sha256": file_sha256(args.wae_decoder_checkpoint) if args.research_action not in {"encode-posterior", "closeout"} else None,
+        "wae_confirm_sha256": file_sha256(args.wae_confirm_evidence) if args.research_action not in lightweight else None,
+        "latent_transport_attribution_sha256": file_sha256(args.latent_transport_attribution) if args.research_action not in lightweight else None,
+        "latent_transport_confirm_sha256": file_sha256(args.latent_transport_confirm_evidence) if args.research_action not in lightweight else None,
+        "primary_evaluator_sha256": file_sha256(args.primary_evaluator_checkpoint) if args.research_action not in lightweight else None,
+        "secondary_evaluator_sha256": file_sha256(args.secondary_evaluator_checkpoint) if args.research_action not in lightweight else None,
+        "primary_qualification_sha256": file_sha256(args.primary_qualification_evidence) if args.research_action not in lightweight else None,
+        "secondary_qualification_sha256": file_sha256(args.secondary_qualification_evidence) if args.research_action not in lightweight else None,
         "dataset_root": str(args.dataset_root),
         "device": args.device,
         "cublas_workspace_config": os.environ.get("CUBLAS_WORKSPACE_CONFIG"),
@@ -698,21 +717,112 @@ def _classification(measurement: dict[str, Any]) -> tuple[str, str]:
     return "mixture_semantic_or_novelty_failed", "close_current_mixture_hypothesis_no_more_sweeps"
 
 
-def dispatch(args: argparse.Namespace) -> int:
+def _dispatch(args: argparse.Namespace) -> int:
     config = _config(args.config)
+    if args.research_action == "canary":
+        if not getattr(args, "_run_manifest", None):
+            raise ValueError("canary is manifest-only")
+        if not args.posterior_artifact:
+            raise ValueError("canary requires posterior artifact")
+        posterior = _posterior_for_args(args, torch.device("cpu"))
+        from .transport_canary import run_flow_canary
+
+        result = run_flow_canary(posterior, device=torch.device(args.device), temporary_root=Path(args.output).parent)
+        mixture_replay = _preflight_replay(posterior, 8501, torch.device(args.device))
+        result["mixture_replay"] = mixture_replay
+        result["status"] = "valid" if result["status"] == "valid" and mixture_replay["interrupted_resumed_replay_exact"] else "invalid_harness"
+        output = Path(args.output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        result.update({"program": "electronic-o0-mixture-transport", "stage": "canary", "producer_contract_revision": "electronic-o0-canary.v1", "output_artifact": str(output), "permitted_consumers": [], "formal_promotion": False})
+        _write_checked(output, result)
+        return 0
+    if args.research_action == "closeout":
+        source_path = getattr(args, "measurement_evidence", None) if getattr(args, "_run_manifest", None) else getattr(args, "locked_evidence", None)
+        if source_path:
+            source = json.loads(Path(source_path).read_text(encoding="utf-8"))
+            if getattr(args, "_run_manifest", None):
+                if source.get("schema") not in {f"{SCHEMA_PREFIX}_screen.v1", f"{SCHEMA_PREFIX}_screen-measure.v1"} or source.get("status") != "valid":
+                    raise ValueError("manifest mixture closeout requires valid measurement evidence")
+            elif source.get("schema") != f"{SCHEMA_PREFIX}_locked-final.v1" or source.get("status") != "valid":
+                raise ValueError("mixture transport closeout requires valid locked-final evidence")
+        elif getattr(args, "screen_evidence", None):
+            source_path = args.screen_evidence
+            source = json.loads(Path(source_path).read_text(encoding="utf-8"))
+            if source.get("schema") not in {f"{SCHEMA_PREFIX}_screen.v1", f"{SCHEMA_PREFIX}_screen-measure.v1"} or source.get("status") != "valid" or source.get("passed"):
+                raise ValueError("mixture closeout requires a valid failed screen")
+        else:
+            raise ValueError("closeout requires measurement evidence in manifest mode or locked evidence in legacy mode")
+        if getattr(args, "_run_manifest", None):
+            args._stage_decision = stage_action_decision("closeout", producer_contract="mixture-closeout.v1", expected_inputs={"measurement": file_sha256(source_path), "classification_revision": "mixture-closeout.v1"}, evidence=args.output)
+            if args._stage_decision["decision"] == "reuse":
+                return 0
+        output = Path(args.output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        classification = source.get("classification", "mixture_latent_fit_failed" if not source.get("latent_fit_passed", True) else "mixture_semantic_or_novelty_failed")
+        payload = {"schema": f"{SCHEMA_PREFIX}_closeout.v1", "stage": "closeout", "status": "valid", "classification": classification, "next_action": source.get("next_action", "close_current_wae_posterior_sampler_family"), "source_evidence_sha256": file_sha256(source_path), "producer_contract_revision": "mixture-closeout.v1", "consumer_contract": "mixture-closeout.v1", "input_artifact_hashes": {"measurement": file_sha256(source_path)}, "classification_revision": "mixture-closeout.v1", "reuse_decision": getattr(args, "_stage_decision", None), "formal_promotion": False, "training_authorized": False, "optical_training_authorized": False, "fiber_training_authorized": False, "synthetic_diagnostic_only": True}
+        _write_checked(output, payload)
+        return 0
+    if getattr(args, "posterior_artifact", None) and args.research_action in {"preflight", "fit-mixture", "calibrate-temperature", "screen-measure", "screen", "confirm"}:
+        args._validated_posterior = _posterior_for_args(args, torch.device("cpu"))
     lineage = _lineage(args, config)
-    _enable_deterministic_cuda()
     output = Path(args.output)
-    output.parent.mkdir(parents=True, exist_ok=True)
+    if args.research_action == "encode-posterior":
+        if not args.posterior_artifact:
+            raise ValueError("encode-posterior requires --posterior-artifact")
+        if getattr(args, "_run_manifest", None):
+            args._stage_decision = stage_action_decision("encode-posterior", producer_contract=POSTERIOR_CONTRACT, expected_inputs={"encoder": file_sha256(args.wae_training_checkpoint), "config": file_sha256(args.config)}, evidence=args.output)
+            if args._stage_decision["decision"] == "reuse":
+                return 0
+        _start_cuda(args)
+        device = torch.device(args.device)
+        encoder, _ = _load_wae(args.wae_training_checkpoint, args.wae_decoder_checkpoint, device)
+        encoder_before = _module_state_hash(encoder)
+        posterior = _posterior(encoder, args.dataset_root, device)
+        encoder_after = _module_state_hash(encoder)
+        metadata = _posterior_metadata(args, posterior)
+        artifact_sha256 = write_posterior(args.posterior_artifact, posterior, metadata)
+        payload = {
+            "schema": "encoded_posterior_evidence.v1",
+            "status": "valid",
+            "stage": "encode-posterior",
+            "producer_commit": lineage["git"]["commit"],
+            "producer_contract_revision": POSTERIOR_CONTRACT,
+            "artifact_path": str(Path(args.posterior_artifact).resolve()),
+            "artifact_sha256": artifact_sha256,
+            "metadata": metadata,
+            "input_artifact_hashes": {"encoder": file_sha256(args.wae_training_checkpoint), "config": file_sha256(args.config)},
+            "frozen_encoder_before_after": {"before": encoder_before, "after": encoder_after, "unchanged": encoder_before == encoder_after},
+            "optimizer_created": False,
+            "evaluator_calls": 0,
+            "permitted_consumers": ["preflight", "fit-mixture", "calibrate-temperature", "screen", "screen-measure", "closeout"],
+            "formal_promotion": False,
+            "training_authorized": False,
+            "synthetic_diagnostic_only": True,
+            "reuse_decision": getattr(args, "_stage_decision", None),
+        }
+        _write_checked(output, payload)
+        return 0
     if args.research_action == "validate":
         upstream = _validate_upstream(args)
         if not lineage["git"]["clean"]:
             raise RuntimeError("mixture transport validation requires a clean worktree")
+        if getattr(args, "_run_manifest", None):
+            args._stage_decision = stage_action_decision("validate", producer_contract="mixture-validate.v1", expected_inputs={"config": file_sha256(args.config), "latent_confirm": file_sha256(args.latent_transport_confirm_evidence)}, evidence=args.output)
+            if args._stage_decision["decision"] == "reuse":
+                return 0
+        _start_cuda(args)
         device = torch.device(args.device)
         encoder, decoder = _load_wae(args.wae_training_checkpoint, args.wae_decoder_checkpoint, device)
         payload = {
             "schema": f"{SCHEMA_PREFIX}_validation.v1",
             "status": "valid",
+            "stage": "validate",
+            "producer_commit": lineage["git"]["commit"],
+            "producer_contract_revision": "mixture-validate.v1",
+            "input_artifact_hashes": {"config": file_sha256(args.config), "latent_confirm": file_sha256(args.latent_transport_confirm_evidence)},
+            "output_artifact": str(output),
+            "consumer_contract": "mixture-preflight.v1",
+            "permitted_consumers": ["preflight"],
             "lineage": lineage,
             "upstream": {
                 "wae_classification": upstream["wae"]["classification"],
@@ -727,6 +837,7 @@ def dispatch(args: argparse.Namespace) -> int:
             "formal_promotion": False,
             "training_authorized": False,
             "synthetic_diagnostic_only": True,
+            "reuse_decision": getattr(args, "_stage_decision", None),
         }
         _write_checked(output, payload)
         return 0
@@ -734,33 +845,102 @@ def dispatch(args: argparse.Namespace) -> int:
         validation = json.loads(Path(args.validation_evidence).read_text(encoding="utf-8"))
         if validation.get("schema") != f"{SCHEMA_PREFIX}_validation.v1" or validation.get("status") != "valid":
             raise ValueError("mixture preflight requires valid validation evidence")
+        if getattr(args, "_run_manifest", None):
+            args._stage_decision = stage_action_decision("preflight", producer_contract="mixture-preflight.v1", expected_inputs={"attribution": file_sha256(args.validation_evidence), "posterior": file_sha256(args.posterior_artifact)}, evidence=args.output)
+            if args._stage_decision["decision"] == "reuse":
+                return 0
+        _start_cuda(args)
         device = torch.device(args.device)
         encoder, decoder = _load_wae(args.wae_training_checkpoint, args.wae_decoder_checkpoint, device)
         before = {"encoder": _state_hash(encoder), "decoder": _state_hash(decoder)}
-        posterior = _posterior(encoder, args.dataset_root, device)
+        posterior = _posterior_for_args(args, device, encoder)
         replay = _preflight_replay(posterior, args.seed, device)
         payload = {
             "schema": f"{SCHEMA_PREFIX}_preflight.v1",
+            "stage": "preflight",
+            "producer_contract_revision": "mixture-preflight.v1",
+            "producer_commit": lineage["git"]["commit"],
             "status": "valid" if replay["finite"] and replay["interrupted_resumed_replay_exact"] else "invalid_harness",
             "replay": replay,
             "frozen_state_hash_before": before,
             "frozen_state_hash_after": {"encoder": _state_hash(encoder), "decoder": _state_hash(decoder)},
             "optimizer_created": False,
             "attribution": file_sha256(args.validation_evidence),
+            "input_artifact_hashes": {"posterior": file_sha256(args.posterior_artifact) if getattr(args, "posterior_artifact", None) else None},
+            "permitted_consumers": ["fit-mixture"],
             "formal_promotion": False,
             "training_authorized": False,
             "synthetic_diagnostic_only": True,
         }
         _write_checked(output, payload)
         return 0
-    if args.research_action == "screen":
+    if args.research_action == "fit-mixture":
         preflight = json.loads(Path(args.preflight_evidence).read_text(encoding="utf-8"))
         if preflight.get("status") != "valid":
-            raise ValueError("mixture screen requires valid preflight")
+            raise ValueError("mixture fitting requires valid preflight")
+        if getattr(args, "_run_manifest", None):
+            args._stage_decision = stage_action_decision("fit-mixture", producer_contract="mixture-fit.v1", expected_inputs={"posterior": file_sha256(args.posterior_artifact), "preflight": file_sha256(args.preflight_evidence)}, evidence=args.output)
+            if args._stage_decision["decision"] == "reuse":
+                return 0
+        _start_cuda(args)
+        device = torch.device(args.device)
+        encoder, _ = _load_wae(args.wae_training_checkpoint, args.wae_decoder_checkpoint, device)
+        posterior = _posterior_for_args(args, device, encoder)
+        mixture = fit_classwise_mixtures(posterior["train_codes"], posterior["train_labels"], posterior["validation_codes"], posterior["validation_labels"], seed=args.seed)
+        artifact = output.with_suffix(".mixture.pt")
+        atomic_torch_save(artifact, {"schema": f"{SCHEMA_PREFIX}_fit.v1", "mixture": _mixture_to_cpu(mixture), "posterior_artifact": str(args.posterior_artifact), "producer_contract": "mixture-fit.v1"})
+        payload = {"schema": f"{SCHEMA_PREFIX}_fit-mixture.v1", "stage": "fit-mixture", "status": "valid", "producer_commit": lineage["git"]["commit"], "producer_contract_revision": "mixture-fit.v1", "mixture_checkpoint": str(artifact), "mixture_checkpoint_sha256": file_sha256(artifact), "input_artifact_hashes": {"posterior": file_sha256(args.posterior_artifact) if getattr(args, "posterior_artifact", None) else None, "preflight": file_sha256(args.preflight_evidence)}, "output_artifact": str(output), "consumer_contract": "mixture-calibration.v1", "evaluator_calls": 0, "permitted_consumers": ["calibrate-temperature", "screen-measure"], "synthetic_diagnostic_only": True, "formal_promotion": False, "training_authorized": False, "reuse_decision": getattr(args, "_stage_decision", None)}
+        _write_checked(output, payload)
+        return 0
+    if args.research_action == "calibrate-temperature":
+        fit = json.loads(Path(args.fit_evidence).read_text(encoding="utf-8"))
+        if fit.get("schema") != f"{SCHEMA_PREFIX}_fit-mixture.v1" or fit.get("status") != "valid":
+            raise ValueError("temperature calibration requires valid fit-mixture evidence")
+        if getattr(args, "_run_manifest", None):
+            args._stage_decision = stage_action_decision("calibrate-temperature", producer_contract="mixture-calibration.v1", expected_inputs={"posterior": file_sha256(args.posterior_artifact), "fit": file_sha256(args.fit_evidence)}, evidence=args.output)
+            if args._stage_decision["decision"] == "reuse":
+                return 0
+        require_artifact_hash(fit["mixture_checkpoint"], fit.get("mixture_checkpoint_sha256"), role="mixture fit")
+        _start_cuda(args)
         device = torch.device(args.device)
         encoder, decoder = _load_wae(args.wae_training_checkpoint, args.wae_decoder_checkpoint, device)
-        posterior = _posterior(encoder, args.dataset_root, device)
-        mixture, temperature, calibration = _fit_and_calibrate(posterior, decoder, device, seed=args.seed)
+        posterior = _posterior_for_args(args, device, encoder)
+        fit_payload = safe_torch_load(fit["mixture_checkpoint"])
+        if not isinstance(fit_payload, dict) or fit_payload.get("schema") != f"{SCHEMA_PREFIX}_fit.v1":
+            raise ValueError("mixture fit artifact schema is invalid")
+        mixture = fit_payload["mixture"]
+        temperature, calibration = _design_temperature(mixture, decoder, posterior, device)
+        artifact = output.with_suffix(".calibration.pt")
+        atomic_torch_save(artifact, {"schema": f"{SCHEMA_PREFIX}_calibration.v1", "mixture": mixture, "temperature": temperature, "fit_sha256": file_sha256(fit["mixture_checkpoint"]), "calibration": calibration})
+        payload = {"schema": f"{SCHEMA_PREFIX}_calibrate-temperature.v1", "stage": "calibrate-temperature", "status": "valid", "producer_commit": lineage["git"]["commit"], "producer_contract_revision": "mixture-calibration.v1", "calibration_artifact": str(artifact), "calibration_artifact_sha256": file_sha256(artifact), "input_artifact_hashes": {"posterior": file_sha256(args.posterior_artifact) if getattr(args, "posterior_artifact", None) else None, "fit": file_sha256(args.fit_evidence)}, "fit_evidence_sha256": file_sha256(args.fit_evidence), "output_artifact": str(output), "consumer_contract": "mixture-measurement.v1", "evaluator_calls": 0, "permitted_consumers": ["screen-measure", "closeout"], "synthetic_diagnostic_only": True, "formal_promotion": False, "training_authorized": False, "reuse_decision": getattr(args, "_stage_decision", None)}
+        _write_checked(output, payload)
+        return 0
+    if args.research_action in {"screen", "screen-measure"}:
+        manifest_screen = bool(getattr(args, "_manifest_screen_consumer", False))
+        if args.research_action == "screen-measure" or manifest_screen:
+            calibration_evidence = json.loads(Path(args.calibration_evidence).read_text(encoding="utf-8"))
+            if calibration_evidence.get("schema") != f"{SCHEMA_PREFIX}_calibrate-temperature.v1" or calibration_evidence.get("status") != "valid":
+                raise ValueError("mixture measurement requires valid temperature calibration")
+        else:
+            preflight = json.loads(Path(args.preflight_evidence).read_text(encoding="utf-8"))
+            if preflight.get("status") != "valid":
+                raise ValueError("mixture screen requires valid preflight")
+        if getattr(args, "_run_manifest", None):
+            args._stage_decision = stage_action_decision("screen-measure", producer_contract="mixture-measurement.v1", expected_inputs={"posterior": file_sha256(args.posterior_artifact), "calibration": file_sha256(args.calibration_evidence)}, evidence=args.output)
+            if args._stage_decision["decision"] == "reuse":
+                return 0
+        _start_cuda(args)
+        device = torch.device(args.device)
+        encoder, decoder = _load_wae(args.wae_training_checkpoint, args.wae_decoder_checkpoint, device)
+        posterior = _posterior_for_args(args, device, encoder)
+        if args.research_action == "screen-measure" or manifest_screen:
+            require_artifact_hash(calibration_evidence["calibration_artifact"], calibration_evidence.get("calibration_artifact_sha256"), role="mixture calibration")
+            calibration_payload = safe_torch_load(calibration_evidence["calibration_artifact"])
+            mixture = calibration_payload["mixture"]
+            temperature = float(calibration_payload["temperature"])
+            calibration = calibration_payload["calibration"]
+        else:
+            mixture, temperature, calibration = _fit_and_calibrate(posterior, decoder, device, seed=args.seed)
         validation_values = posterior["validation_codes"].to(device)
         validation_labels = posterior["validation_labels"].to(device)
         epsilon = torch.randn(validation_values.shape, generator=torch.Generator(device="cpu").manual_seed(args.seed)).to(device)
@@ -793,7 +973,10 @@ def dispatch(args: argparse.Namespace) -> int:
         atomic_torch_save(artifact, {"schema": f"{SCHEMA_PREFIX}_artifact.v1", "seed": args.seed, "mixture": _mixture_to_cpu(mixture), "artifact_contract": {"encoder": False, "decoder": False, "optimizer": False, "evaluator": False}, "source_sha256": file_sha256(args.wae_decoder_checkpoint)})
         latent_fit_passed = math.isfinite(fit_nll) and fit_nll < gaussian_nll and mixture_distance <= 0.70 * p0_distance and calibration["passed"]
         payload = {
-            "schema": f"{SCHEMA_PREFIX}_screen.v1",
+            "schema": f"{SCHEMA_PREFIX}_{'screen-measure' if args.research_action == 'screen-measure' or manifest_screen else 'screen'}.v1",
+            "stage": "screen-measure" if args.research_action == "screen-measure" or manifest_screen else "screen",
+            "producer_contract_revision": "mixture-measurement.v1",
+            "producer_commit": lineage["git"]["commit"],
             "status": "valid",
             "passed": latent_fit_passed,
             "latent_fit_passed": latent_fit_passed,
@@ -806,6 +989,11 @@ def dispatch(args: argparse.Namespace) -> int:
             "calibration": calibration,
             "evaluator_calls": 0,
             "lineage_sha256": canonical_sha256(lineage),
+            "input_artifact_hashes": {"posterior": file_sha256(args.posterior_artifact) if getattr(args, "posterior_artifact", None) else None, "calibration": file_sha256(args.calibration_evidence) if args.research_action == "screen-measure" or manifest_screen else None},
+            "output_artifact": str(output),
+            "consumer_contract": "mixture-closeout.v1",
+            "permitted_consumers": ["closeout"],
+            "reuse_decision": getattr(args, "_stage_decision", None),
             "formal_promotion": False,
             "training_authorized": False,
             "synthetic_diagnostic_only": True,
@@ -816,6 +1004,7 @@ def dispatch(args: argparse.Namespace) -> int:
         screen = json.loads(Path(args.screen_evidence).read_text(encoding="utf-8"))
         if screen.get("status") != "valid" or not screen.get("passed"):
             raise ValueError("mixture confirm requires a passed screen")
+        _start_cuda(args)
         device = torch.device(args.device)
         _, decoder = _load_wae(args.wae_training_checkpoint, args.wae_decoder_checkpoint, device)
         measurement = _measure_mixture(screen["mixture_checkpoint"], decoder, device, args.dataset_root, args.primary_evaluator_checkpoint, args.secondary_evaluator_checkpoint)
@@ -828,6 +1017,7 @@ def dispatch(args: argparse.Namespace) -> int:
         confirmations = [json.loads(Path(path).read_text(encoding="utf-8")) for path in evidence_paths]
         if len(confirmations) < 2 or sum(item.get("classification") == "electronic_mixture_transport_admitted" for item in confirmations) < 2:
             raise ValueError("locked-final requires at least two admitted mixture confirmations")
+        _start_cuda(args)
         device = torch.device(args.device)
         _, decoder = _load_wae(args.wae_training_checkpoint, args.wae_decoder_checkpoint, device)
         measurement = _measure_mixture(args.mixture_checkpoint, decoder, device, args.dataset_root, args.primary_evaluator_checkpoint, args.secondary_evaluator_checkpoint)
@@ -843,32 +1033,57 @@ def dispatch(args: argparse.Namespace) -> int:
         payload = {"schema": f"{SCHEMA_PREFIX}_presentation.v1", "status": "valid", "source_sha256": file_sha256(args.measurement_evidence), "classification": measurement.get("classification", "pending"), "key_metrics": {"official_test": source.get("official_test", {}), "gates": source.get("gates", {})}, "synthetic_diagnostic_only": True, "formal_promotion": False, "training_authorized": False}
         _write_checked(output, payload)
         return 0
-    if args.research_action == "closeout":
-        if args.locked_evidence:
-            source_path = args.locked_evidence
-            source = json.loads(Path(source_path).read_text(encoding="utf-8"))
-            if source.get("schema") != f"{SCHEMA_PREFIX}_locked-final.v1" or source.get("status") != "valid":
-                raise ValueError("mixture closeout requires valid locked-final evidence")
-            classification = source.get("classification", "invalid_harness")
-            next_action = source.get("next_action", "repair_and_revalidate_on_a_new_clean_commit")
-        elif args.screen_evidence:
-            source_path = args.screen_evidence
-            source = json.loads(Path(source_path).read_text(encoding="utf-8"))
-            if source.get("schema") != f"{SCHEMA_PREFIX}_screen.v1" or source.get("status") != "valid" or source.get("passed"):
-                raise ValueError("screen closeout requires a valid failed screen")
-            classification = (
-                "mixture_latent_fit_failed"
-                if not source.get("latent_fit_passed")
-                else "mixture_semantic_or_novelty_failed"
-            )
-            next_action = (
-                "close_current_wae_posterior_sampler_family"
-                if classification == "mixture_latent_fit_failed"
-                else "close_current_mixture_hypothesis_no_more_sweeps"
-            )
-        else:
-            raise ValueError("mixture closeout requires locked-final or failed screen evidence")
-        payload = {"schema": f"{SCHEMA_PREFIX}_closeout.v1", "status": "valid", "classification": classification, "next_action": next_action, "source_evidence_sha256": file_sha256(source_path), "formal_promotion": False, "training_authorized": False, "optical_training_authorized": False, "fiber_training_authorized": False, "synthetic_diagnostic_only": True}
-        _write_checked(output, payload)
-        return 0
     raise RuntimeError(f"unsupported mixture transport action {args.research_action}")
+
+
+def dispatch(args: argparse.Namespace) -> int:
+    action = args.research_action
+    required_by_action = {
+        "validate": ("config", "dataset_root", "output", "wae_training_checkpoint", "wae_decoder_checkpoint", "wae_confirm_evidence", "latent_transport_attribution", "latent_transport_confirm_evidence", "primary_evaluator_checkpoint", "secondary_evaluator_checkpoint", "primary_qualification_evidence", "secondary_qualification_evidence"),
+        "encode-posterior": ("config", "dataset_root", "output", "wae_training_checkpoint", "wae_decoder_checkpoint", "posterior_artifact"),
+        "preflight": ("config", "dataset_root", "output", "wae_training_checkpoint", "wae_decoder_checkpoint", "wae_confirm_evidence", "validation_evidence", "posterior_artifact"),
+        "fit-mixture": ("config", "dataset_root", "output", "wae_training_checkpoint", "wae_decoder_checkpoint", "wae_confirm_evidence", "preflight_evidence", "posterior_artifact"),
+        "calibrate-temperature": ("config", "dataset_root", "output", "wae_training_checkpoint", "wae_decoder_checkpoint", "fit_evidence", "posterior_artifact"),
+        "screen-measure": ("config", "dataset_root", "output", "wae_training_checkpoint", "wae_decoder_checkpoint", "calibration_evidence", "posterior_artifact"),
+        "screen": ("config", "dataset_root", "output", "wae_training_checkpoint", "wae_decoder_checkpoint", "wae_confirm_evidence", "preflight_evidence", "posterior_artifact"),
+        "confirm": ("config", "dataset_root", "output", "wae_training_checkpoint", "wae_decoder_checkpoint", "wae_confirm_evidence", "screen_evidence"),
+        "locked-final": ("config", "dataset_root", "output", "wae_training_checkpoint", "wae_decoder_checkpoint", "wae_confirm_evidence", "confirm_evidence", "mixture_checkpoint"),
+        "report": ("config", "dataset_root", "output", "measurement_evidence"),
+        "closeout": ("config", "dataset_root", "output"),
+        "canary": ("config", "dataset_root", "output", "posterior_artifact"),
+    }
+    defaults = {"device": "cuda", "seed": 8501}
+    mixed = ("config", "dataset_root", "device", "output", "seed", "posterior_artifact", "wae_training_checkpoint", "wae_decoder_checkpoint", "wae_confirm_evidence", "latent_transport_attribution", "latent_transport_confirm_evidence", "primary_evaluator_checkpoint", "secondary_evaluator_checkpoint", "primary_qualification_evidence", "secondary_qualification_evidence", "validation_evidence", "preflight_evidence", "fit_evidence", "calibration_evidence", "screen_evidence", "measurement_evidence", "confirm_evidence", "locked_evidence", "presentation_evidence", "resume_checkpoint", "peer_confirm_evidence", "mixture_checkpoint")
+    required = required_by_action.get(action, ())
+    if action == "closeout" and getattr(args, "run_manifest", None):
+        required = tuple(name for name in required if name not in {"locked_evidence", "screen_evidence"}) + ("measurement_evidence",)
+    if action == "screen" and getattr(args, "run_manifest", None):
+        required = tuple(name for name in required if name != "preflight_evidence") + ("calibration_evidence",)
+    if not getattr(args, "run_manifest", None):
+        required = tuple(name for name in required if name != "posterior_artifact")
+    try:
+        args = prepare_args(args, program="electronic-o0-mixture-transport", action=action, required=required, defaults=defaults, mixed_fields=mixed)
+        validate_manifest_namespace(args, action=action)
+        validate_evidence_inputs(args, program="electronic-o0-mixture-transport", action=action)
+        global _INVOCATION_MODE
+        _INVOCATION_MODE = args.invocation_mode
+        if action == "screen" and getattr(args, "_run_manifest", None):
+            args._manifest_screen_consumer = True
+        return _dispatch(args)
+    except Exception as exc:
+        manifest = getattr(args, "_run_manifest", None)
+        if manifest is None and getattr(args, "run_manifest", None):
+            try:
+                manifest = load_manifest(args.run_manifest, program="electronic-o0-mixture-transport", action=action)
+            except Exception:
+                manifest = None
+        if manifest is not None:
+            if getattr(args, "_stage_decision", None) is not None:
+                manifest["_reuse_decisions"] = {action: args._stage_decision}
+            completed = {}
+            for name in ("posterior_artifact", "output", "mixture_checkpoint", "calibration_evidence"):
+                candidate = getattr(args, name, None)
+                if candidate and Path(candidate).is_file():
+                    completed[name] = {"path": str(candidate), "sha256": file_sha256(candidate), "reusable": name == "posterior_artifact", "reuse_reason": "posterior_contract_match" if name == "posterior_artifact" else "completed_before_failure"}
+            write_failure_record(manifest, stage=action, exc=exc, completed=completed)
+        raise

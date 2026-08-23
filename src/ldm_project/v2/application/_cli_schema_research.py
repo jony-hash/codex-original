@@ -431,39 +431,48 @@ def register_research(root: argparse._SubParsersAction) -> None:
     transport_actions = transport.add_subparsers(dest="research_action", required=True)
 
     def transport_lineage(command):
-        command.add_argument("--config", required=True)
-        command.add_argument("--dataset-root", required=True)
-        command.add_argument("--device", choices=("cuda", "cpu"), default="cuda")
-        command.add_argument("--output", required=True)
-        command.add_argument("--wae-training-checkpoint", required=True)
-        command.add_argument("--wae-decoder-checkpoint", required=True)
-        command.add_argument("--wae-confirm-evidence", required=True)
-        command.add_argument("--primary-evaluator-checkpoint", required=True)
-        command.add_argument("--secondary-evaluator-checkpoint", required=True)
-        command.add_argument("--primary-qualification-evidence", required=True)
-        command.add_argument("--secondary-qualification-evidence", required=True)
+        command.add_argument("--run-manifest")
+        command.add_argument("--config")
+        command.add_argument("--dataset-root")
+        command.add_argument("--device", choices=("cuda", "cpu"))
+        command.add_argument("--output")
+        command.add_argument("--posterior-artifact")
+        command.add_argument("--wae-training-checkpoint")
+        command.add_argument("--wae-decoder-checkpoint")
+        command.add_argument("--wae-confirm-evidence")
+        command.add_argument("--primary-evaluator-checkpoint")
+        command.add_argument("--secondary-evaluator-checkpoint")
+        command.add_argument("--primary-qualification-evidence")
+        command.add_argument("--secondary-qualification-evidence")
 
-    for action in ("validate", "attribute", "preflight", "screen", "confirm", "locked-final", "closeout"):
+    for action in ("validate", "encode-posterior", "attribute", "preflight", "fit-flow", "screen", "measure-flow", "confirm", "locked-final", "closeout", "canary"):
         command = transport_actions.add_parser(action)
         transport_lineage(command)
         if action in {"preflight", "screen", "confirm", "locked-final"}:
-            command.add_argument("--seed", type=int, choices=(8401, 8402, 8403), default=8401)
+            command.add_argument("--seed", type=int, choices=(8401, 8402, 8403))
         if action == "attribute":
-            command.add_argument("--validation-evidence", required=True)
+            command.add_argument("--validation-evidence")
         if action == "preflight":
-            command.add_argument("--attribution-evidence", required=True)
+            command.add_argument("--attribution-evidence")
         if action == "screen":
-            command.add_argument("--preflight-evidence", required=True)
+            command.add_argument("--preflight-evidence")
+            command.add_argument("--fit-evidence")
             command.add_argument("--resume-checkpoint")
+        if action == "fit-flow":
+            command.add_argument("--preflight-evidence")
+            command.add_argument("--resume-checkpoint")
+        if action == "measure-flow":
+            command.add_argument("--fit-evidence")
         if action == "confirm":
-            command.add_argument("--screen-evidence", required=True)
+            command.add_argument("--screen-evidence")
             command.add_argument("--resume-checkpoint")
         if action == "locked-final":
-            command.add_argument("--confirm-evidence", required=True)
+            command.add_argument("--confirm-evidence")
             command.add_argument("--peer-confirm-evidence", action="append", default=[])
-            command.add_argument("--flow-checkpoint", required=True)
+            command.add_argument("--flow-checkpoint")
         if action == "closeout":
-            command.add_argument("--locked-evidence", required=True)
+            command.add_argument("--locked-evidence")
+            command.add_argument("--measurement-evidence")
 
     mixture = research_programs.add_parser(
         "electronic-o0-mixture-transport",
@@ -472,39 +481,49 @@ def register_research(root: argparse._SubParsersAction) -> None:
     mixture_actions = mixture.add_subparsers(dest="research_action", required=True)
 
     def mixture_lineage(command):
-        command.add_argument("--config", required=True)
-        command.add_argument("--dataset-root", required=True)
-        command.add_argument("--device", choices=("cuda", "cpu"), default="cuda")
-        command.add_argument("--output", required=True)
-        command.add_argument("--wae-training-checkpoint", required=True)
-        command.add_argument("--wae-decoder-checkpoint", required=True)
-        command.add_argument("--wae-confirm-evidence", required=True)
-        command.add_argument("--latent-transport-attribution", required=True)
-        command.add_argument("--latent-transport-confirm-evidence", required=True)
-        command.add_argument("--primary-evaluator-checkpoint", required=True)
-        command.add_argument("--secondary-evaluator-checkpoint", required=True)
-        command.add_argument("--primary-qualification-evidence", required=True)
-        command.add_argument("--secondary-qualification-evidence", required=True)
+        command.add_argument("--run-manifest")
+        command.add_argument("--config")
+        command.add_argument("--dataset-root")
+        command.add_argument("--device", choices=("cuda", "cpu"))
+        command.add_argument("--output")
+        command.add_argument("--posterior-artifact")
+        command.add_argument("--wae-training-checkpoint")
+        command.add_argument("--wae-decoder-checkpoint")
+        command.add_argument("--wae-confirm-evidence")
+        command.add_argument("--latent-transport-attribution")
+        command.add_argument("--latent-transport-confirm-evidence")
+        command.add_argument("--primary-evaluator-checkpoint")
+        command.add_argument("--secondary-evaluator-checkpoint")
+        command.add_argument("--primary-qualification-evidence")
+        command.add_argument("--secondary-qualification-evidence")
 
-    for action in ("validate", "preflight", "screen", "confirm", "locked-final", "report", "closeout"):
+    for action in ("validate", "encode-posterior", "preflight", "fit-mixture", "calibrate-temperature", "screen-measure", "screen", "confirm", "locked-final", "report", "closeout", "canary"):
         command = mixture_actions.add_parser(action)
         mixture_lineage(command)
         if action in {"preflight", "screen", "confirm", "locked-final"}:
-            command.add_argument("--seed", type=int, choices=(8501, 8502, 8503), default=8501)
+            command.add_argument("--seed", type=int, choices=(8501, 8502, 8503))
         if action == "preflight":
-            command.add_argument("--validation-evidence", required=True)
+            command.add_argument("--validation-evidence")
         if action == "screen":
-            command.add_argument("--preflight-evidence", required=True)
+            command.add_argument("--preflight-evidence")
+            command.add_argument("--calibration-evidence")
             command.add_argument("--resume-checkpoint")
+        if action == "fit-mixture":
+            command.add_argument("--preflight-evidence")
+            command.add_argument("--fit-evidence")
+        if action == "calibrate-temperature":
+            command.add_argument("--fit-evidence")
+        if action == "screen-measure":
+            command.add_argument("--calibration-evidence")
         if action == "confirm":
-            command.add_argument("--screen-evidence", required=True)
+            command.add_argument("--screen-evidence")
             command.add_argument("--resume-checkpoint")
         if action == "locked-final":
-            command.add_argument("--confirm-evidence", required=True)
+            command.add_argument("--confirm-evidence")
             command.add_argument("--peer-confirm-evidence", action="append", default=[])
-            command.add_argument("--mixture-checkpoint", required=True)
+            command.add_argument("--mixture-checkpoint")
         if action == "report":
-            command.add_argument("--measurement-evidence", required=True)
+            command.add_argument("--measurement-evidence")
         if action == "closeout":
             command.add_argument("--locked-evidence")
             command.add_argument("--screen-evidence")
