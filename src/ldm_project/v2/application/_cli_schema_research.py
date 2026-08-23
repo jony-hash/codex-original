@@ -729,6 +729,63 @@ def register_research(root: argparse._SubParsersAction) -> None:
         if action == "closeout":
             command.add_argument("--measurement-evidence")
 
+    sced = research_programs.add_parser(
+        "electronic-o0-prior-native-sced",
+        help="diagnostic prior-native sliced Cramer/energy electronic O0 lifecycle",
+    )
+    sced_actions = sced.add_subparsers(dest="research_action", required=True)
+
+    def sced_lineage(command):
+        command.add_argument("--run-manifest")
+        command.add_argument("--config")
+        command.add_argument("--dataset-root")
+        command.add_argument("--device", choices=("cuda", "cpu"))
+        command.add_argument("--output")
+        command.add_argument("--wae-training-checkpoint")
+        command.add_argument("--wae-decoder-checkpoint")
+        command.add_argument("--wae-confirm-evidence")
+        command.add_argument("--latent-transport-confirm-evidence")
+        command.add_argument("--mixture-closeout")
+        command.add_argument("--h-swae-closeout")
+        command.add_argument("--anchor-confirm-evidence")
+        command.add_argument("--primary-evaluator-checkpoint")
+        command.add_argument("--secondary-evaluator-checkpoint")
+        command.add_argument("--primary-qualification-evidence")
+        command.add_argument("--secondary-qualification-evidence")
+
+    for action in (
+        "validate",
+        "audit",
+        "preflight",
+        "screen",
+        "confirm",
+        "locked-final",
+        "report",
+        "closeout",
+    ):
+        command = sced_actions.add_parser(action)
+        sced_lineage(command)
+        if action in {"preflight", "screen", "confirm", "locked-final"}:
+            command.add_argument("--seed", type=int, choices=(8601, 8602, 8603))
+        if action == "audit":
+            command.add_argument("--validation-evidence")
+        if action == "preflight":
+            command.add_argument("--audit-evidence")
+        if action == "screen":
+            command.add_argument("--preflight-evidence")
+            command.add_argument("--resume-checkpoint")
+        if action == "confirm":
+            command.add_argument("--screen-evidence")
+            command.add_argument("--resume-checkpoint")
+        if action == "locked-final":
+            command.add_argument("--confirm-evidence")
+            command.add_argument("--peer-confirm-evidence", action="append", default=[])
+            command.add_argument("--checkpoint")
+        if action == "report":
+            command.add_argument("--measurement-evidence")
+        if action == "closeout":
+            command.add_argument("--measurement-evidence")
+
     smf = research_programs.add_parser(
         "smf-modal-density-attribution",
         help="synthetic single-mode port-density upper-bound lifecycle",

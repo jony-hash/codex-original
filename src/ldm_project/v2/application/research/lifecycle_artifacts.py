@@ -62,6 +62,16 @@ _PROGRAM_ACTIONS = {
         "report",
         "closeout",
     },
+    "electronic-o0-prior-native-sced": {
+        "validate",
+        "audit",
+        "preflight",
+        "screen",
+        "confirm",
+        "locked-final",
+        "report",
+        "closeout",
+    },
 }
 
 _HASH_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -283,6 +293,7 @@ def manifest_args(
             "latent_transport_confirm_evidence",
         ),
         "mixture_closeout": ("mixture_closeout", "mixture_transport_closeout"),
+        "h_swae_closeout": ("h_swae_closeout", "prior_native_swae_closeout"),
         "primary_evaluator_checkpoint": (
             "primary_evaluator",
             "primary_evaluator_checkpoint",
@@ -330,7 +341,7 @@ def manifest_args(
         namespace.posterior_artifact_sha256 = str(posterior_ref["sha256"])
     seeds = manifest.get("seeds", {})
     if isinstance(seeds, Mapping):
-        for key in ("flow", "mixture", "swae", "run", "seed"):
+        for key in ("flow", "mixture", "swae", "sced", "run", "seed"):
             if key in seeds:
                 namespace.seed = int(
                     seeds[key][0] if isinstance(seeds[key], list) else seeds[key]
@@ -402,6 +413,7 @@ def validate_manifest_namespace(namespace: Any, *, action: str) -> None:
         "wae_confirm_evidence",
         "latent_transport_confirm_evidence",
         "mixture_closeout",
+        "h_swae_closeout",
         "primary_evaluator_checkpoint",
         "secondary_evaluator_checkpoint",
         "primary_qualification_evidence",

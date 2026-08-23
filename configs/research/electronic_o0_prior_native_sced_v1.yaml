@@ -1,0 +1,28 @@
+schema_version: 1
+name: electronic_o0_prior_native_sced_v1
+version: 20260824
+dataset_root: data
+code_dim: 8
+logical_batch_size: 100
+projection_count: 256
+projection_seed: 271829
+reference_projection_seed: 314159
+learning_rate: 0.0002
+screen_epochs: 1
+confirm_epochs: 3
+train_seeds: [8601, 8602, 8603]
+locked_panel_seeds: [4242, 104729, 161803]
+bootstrap_seed: 90210
+fixed_exposure_scale: 0.4913053810596466
+w_sced_gradient_ratio: 0.50
+w_cycle_gradient_ratio: 0.25
+screen_swd_reduction: 0.50
+screen_reconstruction_tolerance: 1.05
+parameter_budget: 8000000
+decoder_parameter_budget: 6000000
+harness_revision: 1
+objective_revision: gaussian_sliced_energy_u_v1
+formal_promotion: false
+optical_training_authorized: false
+fiber_training_authorized: false
+synthetic_diagnostic_only: true
