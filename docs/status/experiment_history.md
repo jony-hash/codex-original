@@ -1,5 +1,30 @@
 # D2NN 实验与验收历史
 
+## 2026-08-23：electronic O0 latent transport attribution and flow stop
+
+在不修改 WAE v2 encoder/decoder、无 evaluator 训练调用的条件下，冻结
+55,000-row train posterior 与 5,000-row validation posterior，完成
+`electronic_o0_latent_transport_attribution.v1`。P0 标准 Gaussian 与
+Aglobal/Aclass affine transport 未通过完整 dual-evaluator gate；独立
+Eposterior 与 Rencoded 上界各有 2/3 locked panels 通过，第三 panel
+secondary 同方向改善，因此只授权一次 latent-only RealNVP preflight。
+
+preflight 的三次 CUDA update、WAE 隔离和 deterministic interrupted/resumed
+replay 通过；seed8401 screen 的 validation NLL 为 `10.0161`，P0 为
+`12.0450`，flow sliced distance 为 `0.05688`，P0 为 `0.15620`。固定
+10-epoch seed8401 confirm 是有效科学失败
+`latent_flow_semantic_failed`，不是 harness failure。locked panels 的
+primary/secondary accuracy 为 `0.982–0.986`/`0.972–0.992`，但 minimum
+recall 分别为 `0.88–0.94`/`0.90–0.96`；memorization pass fraction 为
+`0.7876`，低于 `0.95`，虽 exact duplicate 为 0。官方 10k accuracy 为
+`0.9869/0.9798`，不能覆盖 locked-panel 与 memorization 失败。
+
+依据 seed8401 fail-fast 合同，没有训练 8402/8403，没有 locked-final、
+O0-G、SMF、E1 或 fiber-aware training。该记录关闭的是当前 electronic
+latent-transport family，不外推为 decoder、光纤、phase-only 或硬件的
+普遍不可能性；outputs 保持未提交的诊断证据，当前 action 为
+`no_o0_g/no_smf/no_e1/no_fiber_training/no_formal_promotion`。
+
 ## 2026-08-22：WAE electronic O0 v1 invalid-harness correction and v2 stop
 
 旧 v1 WAE evidence 经只读复核后归档为 `invalid_harness`，原因是重建分支

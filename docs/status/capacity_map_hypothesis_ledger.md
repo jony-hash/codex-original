@@ -6,6 +6,13 @@ revision and never a silent architecture-version bump. Rows that describe
 O1--O5 are historical preregistration context only: O0 failed and no physical
 capacity attribution is currently permitted.
 
+The 2026-08-23 electronic latent-transport branch is also closed at the
+pre-optical gate. Its empirical-posterior upper bound localized the remaining
+issue to the standard-Gaussian-to-encoded-posterior transport contract, but a
+single fixed conditional RealNVP seed did not pass locked semantic recall and
+memorization gates. This is an electronic-family failure, not a fiber or
+optical-capacity conclusion.
+
 | ID | Unique variable | Prediction | Falsification / attribution rule | Status |
 | --- | --- | --- | --- | --- |
 | H-E | E0/E1 versus E2--E4 seed manifold | A spatial nonlinear seed raises a Pareto axis without reducing the other two | E2--E4 pass while E0/E1 fail: input-manifold bottleneck | v2.2 full-panel replay of revision-9 E2:O0: primary min=0.876, smooth min=0.488, agreement min=0.482, min recall=0; no optical attribution |
@@ -18,6 +25,7 @@ capacity attribution is currently permitted.
 | H-M | Fixed global exposure | A single global exposure rescues both qualified evaluators without saturation | Any selected exposure must be real-data qualified and shared by both evaluators | v2.2 holdout sweep: no scale jointly improves smooth/agreement while retaining saturation ≤0.08; report-only, no selection |
 | H-Q | Third Shape evaluator | A spatially distinct evaluator can adjudicate the primary/smooth disagreement | It may enter diagnostic agreement only after v2.1-equivalent qualification | valid local failure: specified global-average architecture, seed 7319, 10 epochs reached 0.9234 validation accuracy; excluded from adjudication |
 | H-O | Dual-bundle objective | Normalized primary+smooth loss improves smooth semantics without primary regression | 2/3 seeds: smooth median gain ≥0.10, primary loss ≤0.02, no safety failure | smoke selection passed (smooth median 0.571 vs 0.100); 5-epoch three-seed E2:O0 confirm failed all complete gates: smooth 0.747/0.753/0.747, agreement 0.735/0.741/0.671, min recall 0.412/0.353/0.294 |
+| H-LT | Standard Gaussian versus encoded-posterior transport | Frozen WAE decoder can recover semantic contract after posterior transport | Empirical posterior upper bound passes, then fixed flow must pass locked dual semantics and memorization | attribution: nonlinear candidate; seed-8401 flow confirm validly failed: locked primary/secondary min recall `0.88–0.94`/`0.90–0.96`, memorization `0.7876`; closed before O0-G |
 
 Research failures close only their own variant. Formal acceptance remains
 fail-closed. Invalid harness records are excluded from Pareto ranking and may

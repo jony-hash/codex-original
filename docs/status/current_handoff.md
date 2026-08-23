@@ -1,5 +1,35 @@
 # 当前主线交接：v2 formal evaluation 与 objective diagnostic 收口（2026-08-12）
 
+## v2 electronic O0 latent transport closed (2026-08-23)
+
+The latent-transport attribution was validated on clean commit `583c9be`.
+The frozen WAE v2 encoder and decoder were not modified; 55,000 train rows
+and 5,000 validation rows were used, with zero evaluator calls during
+transport selection or flow training.
+
+The result was a valid `nonlinear_latent_transport_candidate`: standard
+Gaussian P0 and affine transport did not satisfy the dual-evaluator contract,
+while independent validation-posterior and encoded-reconstruction upper
+bounds each passed on 2/3 locked panels and improved on the third. The flow
+preflight and seed-8401 screen passed: deterministic replay was exact, WAE
+hashes were unchanged, evaluator calls were zero, validation NLL was `10.0161`
+versus P0 `12.0450`, and sliced distance was `0.05688` versus P0 `0.15620`.
+
+The fixed 10-epoch seed-8401 confirm was a valid scientific failure,
+`latent_flow_semantic_failed`. Locked-panel primary/secondary accuracies were
+`0.982–0.986`/`0.972–0.992`, but minimum recall was `0.88–0.94`/`0.90–0.96`
+and memorization pass fraction was `0.7876 < 0.95` (exact duplicate count
+zero). Official-test accuracy was `0.9869/0.9798`, which does not repair the
+locked-panel and memorization failures.
+
+Fail-fast stopped before seeds 8402/8403, locked-final, O0-G, SMF, E1, and
+fiber-aware training. This closes the current electronic flow family without
+claiming universal decoder or optical impossibility. The fixed actions are
+`no_o0_g`, `no_smf`, `no_e1`, `no_fiber_training`, and `no_formal_promotion`;
+all evidence remains `formal_promotion=false`, `training_authorized=false`,
+and `synthetic_diagnostic_only=true`. A future restart requires a new
+electronic hypothesis that can change this rejection decision.
+
 ## WAE electronic O0 / SMF density branch closed (2026-08-22)
 
 The first WAE O0 implementation was reclassified as `invalid_harness` and
