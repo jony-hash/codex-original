@@ -363,7 +363,10 @@ def mixture_transport(
         weights = fit["weights"].to(epsilon.device)
         means = fit["means"].to(epsilon.device)
         cholesky = fit["cholesky"].to(epsilon.device) * covariance_temperature
-        cdf = torch.cumsum(weights, 0)
+        # CUDA has no deterministic cumsum kernel on the supported runtime.
+        # The mixture has at most eight weights, so computing this boundary on
+        # CPU is exact for the frozen artifact and preserves the CUDA contract.
+        cdf = torch.cumsum(weights.cpu(), 0).to(epsilon.device)
         local_u = u.index_select(0, rows)
         component = torch.searchsorted(cdf, local_u).clamp_max(weights.numel() - 1)
         previous = torch.cat((torch.zeros(1, device=epsilon.device), cdf[:-1]))
