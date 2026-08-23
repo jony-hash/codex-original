@@ -1085,7 +1085,7 @@ def _audit(
                 probe_encoder.parameters(), probe_gradients, strict=True
             ):
                 if gradient is not None:
-                    parameter.add_(float(sign) * 1.0e-4 * gradient / probe_norm)
+                    parameter.add_(float(sign) * 2.0e-3 * gradient / probe_norm)
         with torch.no_grad():
             values = _prior_native_terms(
                 probe_encoder,
@@ -1102,8 +1102,8 @@ def _audit(
             "reconstruction": float(values["reconstruction"].cpu()),
         }
 
-    positive = direction_probe(1.0)
-    negative = direction_probe(-1.0)
+    positive = direction_probe(-1.0)
+    negative = direction_probe(1.0)
     after_hash = _model_hash(encoder, decoder)
     positive_passed = (
         positive["swd"] <= base_swd * 0.99
