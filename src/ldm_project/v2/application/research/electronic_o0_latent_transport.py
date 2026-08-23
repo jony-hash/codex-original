@@ -40,6 +40,7 @@ from ...student.evaluator import (
 from .electronic_o0_wae import (
     LOCKED_SEEDS,
     _bootstrap_ci,
+    _balanced_reference,
     _enable_deterministic_cuda,
     _eval_model,
     _memorization_audit,
@@ -306,13 +307,12 @@ def _metrics(
     secondary: nn.Module,
     *,
     branch: str,
+    panel_seed: int,
 ) -> dict[str, Any]:
     views = _decode_views(decoder, z, labels)
-    reference_index = torch.cat([
-        torch.nonzero(test_labels == label, as_tuple=False).flatten()[:50]
-        for label in range(10)
-    ])
-    reference_images = test_images.index_select(0, reference_index)
+    reference_images, _ = _balanced_reference(
+        test_images, test_labels, seed=panel_seed + 17
+    )
     device = next(primary.parameters()).device
     p_features, p_logits = _evaluate_views(primary, views, device)
     s_features, s_logits = _evaluate_views(secondary, views, device)
@@ -582,7 +582,17 @@ def _flow_measure(
         codes, labels = panel_codes(panel_seed, device=device)
         with torch.no_grad():
             z = flow(codes, labels)
-        row = _metrics(decoder, z, labels, test_images, test_labels, primary, secondary, branch="flow")
+        row = _metrics(
+            decoder,
+            z,
+            labels,
+            test_images,
+            test_labels,
+            primary,
+            secondary,
+            branch="flow",
+            panel_seed=panel_seed,
+        )
         row["latent_norm_mean"] = float(z.norm(dim=1).mean())
         row["latent_norm_p95"] = float(torch.quantile(z.norm(dim=1), 0.95))
         row["no_update_replay_exact"] = tensor_sha256(z.cpu()) == tensor_sha256(flow(codes, labels).cpu())
@@ -690,7 +700,17 @@ def dispatch(args: argparse.Namespace) -> int:
                 empirical = _balanced_empirical(posterior["validation_codes"], posterior["validation_labels"], panel_seed + 2718)
                 selected = empirical if branch in {"Eposterior", "Rencoded"} else None
                 z = _transport(epsilon, labels, statistics, branch, selected)
-                panel_rows[str(panel_seed)] = _metrics(decoder, z, labels, test_images, test_labels, primary, secondary, branch=branch)
+                panel_rows[str(panel_seed)] = _metrics(
+                    decoder,
+                    z,
+                    labels,
+                    test_images,
+                    test_labels,
+                    primary,
+                    secondary,
+                    branch=branch,
+                    panel_seed=panel_seed,
+                )
                 latent_rows[str(panel_seed)] = _latent_summary(z.cpu(), posterior["validation_codes"], labels.cpu())
                 if branch == "P0" and panel_rows[str(panel_seed)]["view_hash"] != confirm_measurement[str(panel_seed)]["view_hash"]:
                     raise RuntimeError("P0 latent transport does not reproduce WAE v2 confirm tensor")
