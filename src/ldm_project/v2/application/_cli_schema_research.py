@@ -506,7 +506,8 @@ def register_research(root: argparse._SubParsersAction) -> None:
         if action == "report":
             command.add_argument("--measurement-evidence", required=True)
         if action == "closeout":
-            command.add_argument("--locked-evidence", required=True)
+            command.add_argument("--locked-evidence")
+            command.add_argument("--screen-evidence")
             command.add_argument("--presentation-evidence")
 
     smf = research_programs.add_parser(

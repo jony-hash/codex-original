@@ -844,10 +844,31 @@ def dispatch(args: argparse.Namespace) -> int:
         _write_checked(output, payload)
         return 0
     if args.research_action == "closeout":
-        locked = json.loads(Path(args.locked_evidence).read_text(encoding="utf-8"))
-        if locked.get("schema") != f"{SCHEMA_PREFIX}_locked-final.v1" or locked.get("status") != "valid":
-            raise ValueError("mixture closeout requires valid locked-final evidence")
-        payload = {"schema": f"{SCHEMA_PREFIX}_closeout.v1", "status": "valid", "classification": locked.get("classification", "invalid_harness"), "next_action": locked.get("next_action", "repair_and_revalidate_on_a_new_clean_commit"), "locked_evidence_sha256": file_sha256(args.locked_evidence), "formal_promotion": False, "training_authorized": False, "optical_training_authorized": False, "fiber_training_authorized": False, "synthetic_diagnostic_only": True}
+        if args.locked_evidence:
+            source_path = args.locked_evidence
+            source = json.loads(Path(source_path).read_text(encoding="utf-8"))
+            if source.get("schema") != f"{SCHEMA_PREFIX}_locked-final.v1" or source.get("status") != "valid":
+                raise ValueError("mixture closeout requires valid locked-final evidence")
+            classification = source.get("classification", "invalid_harness")
+            next_action = source.get("next_action", "repair_and_revalidate_on_a_new_clean_commit")
+        elif args.screen_evidence:
+            source_path = args.screen_evidence
+            source = json.loads(Path(source_path).read_text(encoding="utf-8"))
+            if source.get("schema") != f"{SCHEMA_PREFIX}_screen.v1" or source.get("status") != "valid" or source.get("passed"):
+                raise ValueError("screen closeout requires a valid failed screen")
+            classification = (
+                "mixture_latent_fit_failed"
+                if not source.get("latent_fit_passed")
+                else "mixture_semantic_or_novelty_failed"
+            )
+            next_action = (
+                "close_current_wae_posterior_sampler_family"
+                if classification == "mixture_latent_fit_failed"
+                else "close_current_mixture_hypothesis_no_more_sweeps"
+            )
+        else:
+            raise ValueError("mixture closeout requires locked-final or failed screen evidence")
+        payload = {"schema": f"{SCHEMA_PREFIX}_closeout.v1", "status": "valid", "classification": classification, "next_action": next_action, "source_evidence_sha256": file_sha256(source_path), "formal_promotion": False, "training_authorized": False, "optical_training_authorized": False, "fiber_training_authorized": False, "synthetic_diagnostic_only": True}
         _write_checked(output, payload)
         return 0
     raise RuntimeError(f"unsupported mixture transport action {args.research_action}")
