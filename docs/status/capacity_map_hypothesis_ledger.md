@@ -13,6 +13,14 @@ single fixed conditional RealNVP seed did not pass locked semantic recall and
 memorization gates. This is an electronic-family failure, not a fiber or
 optical-capacity conclusion.
 
+The follow-up class-conditional mixture transport was screened under the same
+frozen WAE contract. Its NLL improved over P0, but classwise sliced-distance
+reduction was `12.58%` rather than the required `30%`, and the independent
+novelty design reached only `0.894` memorization pass fraction at the largest
+registered temperature. It therefore closed as
+`mixture_latent_fit_failed` before evaluator confirmation; no O0-G or fiber
+consumer is authorized.
+
 | ID | Unique variable | Prediction | Falsification / attribution rule | Status |
 | --- | --- | --- | --- | --- |
 | H-E | E0/E1 versus E2--E4 seed manifold | A spatial nonlinear seed raises a Pareto axis without reducing the other two | E2--E4 pass while E0/E1 fail: input-manifold bottleneck | v2.2 full-panel replay of revision-9 E2:O0: primary min=0.876, smooth min=0.488, agreement min=0.482, min recall=0; no optical attribution |
@@ -26,6 +34,7 @@ optical-capacity conclusion.
 | H-Q | Third Shape evaluator | A spatially distinct evaluator can adjudicate the primary/smooth disagreement | It may enter diagnostic agreement only after v2.1-equivalent qualification | valid local failure: specified global-average architecture, seed 7319, 10 epochs reached 0.9234 validation accuracy; excluded from adjudication |
 | H-O | Dual-bundle objective | Normalized primary+smooth loss improves smooth semantics without primary regression | 2/3 seeds: smooth median gain ≥0.10, primary loss ≤0.02, no safety failure | smoke selection passed (smooth median 0.571 vs 0.100); 5-epoch three-seed E2:O0 confirm failed all complete gates: smooth 0.747/0.753/0.747, agreement 0.735/0.741/0.671, min recall 0.412/0.353/0.294 |
 | H-LT | Standard Gaussian versus encoded-posterior transport | Frozen WAE decoder can recover semantic contract after posterior transport | Empirical posterior upper bound passes, then fixed flow must pass locked dual semantics and memorization | attribution: nonlinear candidate; seed-8401 flow confirm validly failed: locked primary/secondary min recall `0.88–0.94`/`0.90–0.96`, memorization `0.7876`; closed before O0-G |
+| H-MIX | Regularized class-conditional Gaussian mixture versus standard latent transport | A fixed multimodal posterior transport can pass the electronic image gate without evaluator-based selection | NLL, classwise SWD, and independent novelty gates must pass before evaluator confirmation | valid screen failure on clean commit `67f9d50`: NLL `9.3646` vs `12.0450`, SWD reduction `12.58%`, novelty pass `0.894`; closed before O0-G |
 
 Research failures close only their own variant. Formal acceptance remains
 fail-closed. Invalid harness records are excluded from Pareto ranking and may

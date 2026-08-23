@@ -1,5 +1,27 @@
 # D2NN 实验与验收历史
 
+## 2026-08-23：electronic O0 mixture transport screen stop
+
+在冻结 WAE v2 encoder/decoder 的条件下，建立了
+`electronic_o0_mixture_transport_v1`。每个类别拟合 `K=2/4/8` 的
+full-covariance Gaussian mixture，使用 validation NLL 选择 component 数，
+并以独立 design seed `173205` 选择 covariance temperature；evaluator 在
+拟合与选择阶段调用次数为零。
+
+clean commit `67f9d50` 上的 CUDA validation 与 preflight 通过：EM 三次更新
+finite、分量更新完整、interrupted/resumed replay exact。seed `8501` screen
+为有效科学失败：mixture validation NLL 为 `9.364574`，standard Gaussian
+为 `12.044989`，但 classwise sliced-distance reduction 只有 `12.5758%`，
+低于 `30%`；temperature `1.35` 下独立 novelty memorization pass fraction
+为 `0.894`，低于 `0.95`，exact duplicate 为零。
+
+依据 fail-fast 合同，没有运行 evaluator confirm、8502/8503、locked-final、
+O0-G、SMF、E1 或 fiber-aware training。closeout classification 为
+`mixture_latent_fit_failed`，唯一下一动作是
+`close_current_wae_posterior_sampler_family`。该结果只关闭当前 mixture
+posterior-sampler 假设，不外推为 decoder、光纤或 phase-only 的普遍失败；
+所有结果保持 diagnostic-only，未提交 outputs。
+
 ## 2026-08-23：electronic O0 latent transport attribution and flow stop
 
 在不修改 WAE v2 encoder/decoder、无 evaluator 训练调用的条件下，冻结

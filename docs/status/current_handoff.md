@@ -1,5 +1,30 @@
 # 当前主线交接：v2 formal evaluation 与 objective diagnostic 收口（2026-08-12）
 
+## v2 electronic O0 mixture transport closed (2026-08-23)
+
+The regularized class-conditional full-covariance mixture transport lifecycle
+was validated and screened on clean commit `67f9d50`. It consumed the frozen
+WAE v2 posterior (55,000 train rows and 5,000 validation rows), used no
+optimizer and made zero evaluator calls during mixture fitting, component
+selection, or temperature selection. CUDA preflight passed: three EM updates
+were finite, all components updated, and interrupted/resumed replay was exact.
+
+The seed-8501 screen was a valid scientific failure, not a harness failure.
+Mixture validation NLL improved over standard Gaussian (`9.3646` versus
+`12.0450`), but classwise sliced-distance reduction was only `12.58%`, below
+the registered `30%` gate. The independent design temperature reached `1.35`
+without passing the novelty gate: memorization pass fraction was `0.894`,
+below `0.95`, with zero exact duplicates. The screen therefore failed before
+evaluator confirm; seeds 8502/8503, locked-final, O0-G, SMF, E1, and
+fiber-aware training were not run.
+
+The immutable closeout is
+`mixture_latent_fit_failed`, with next action
+`close_current_wae_posterior_sampler_family`. This closes the current
+posterior-sampler family, not the decoder, optical chain, or fiber universally.
+The fixed state remains `formal_promotion=false`,
+`training_authorized=false`, and `synthetic_diagnostic_only=true`.
+
 ## v2 electronic O0 latent transport closed (2026-08-23)
 
 The latent-transport attribution was validated on clean commit `583c9be`.
