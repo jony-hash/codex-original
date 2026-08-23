@@ -650,6 +650,24 @@ def _storage_ok(root: Path) -> bool:
     return sum(path.stat().st_size for path in root.rglob("*") if path.is_file()) <= 2 * 1024**3
 
 
+def _branch_passed(
+    branch: str,
+    panel_rows: dict[str, dict[str, Any]],
+    reference_rows: dict[str, dict[str, Any]] | None = None,
+) -> bool:
+    gates = {seed: _dual_passed(row) for seed, row in panel_rows.items()}
+    if branch not in {"Eposterior", "Rencoded"}:
+        return all(gates.values())
+    if reference_rows is None:
+        raise ValueError("empirical upper-bound classification needs P0 rows")
+    same_direction = all(
+        panel_rows[seed]["secondary"]["accuracy"]
+        > reference_rows[seed]["secondary"]["accuracy"]
+        for seed in panel_rows
+    )
+    return sum(gates.values()) >= 2 and same_direction
+
+
 def classify_attribution(payload: dict[str, Any]) -> tuple[str, str]:
     if payload.get("status") == "invalid_harness":
         return "invalid_harness", "repair_and_revalidate_on_a_new_clean_commit"
@@ -714,7 +732,17 @@ def dispatch(args: argparse.Namespace) -> int:
                 latent_rows[str(panel_seed)] = _latent_summary(z.cpu(), posterior["validation_codes"], labels.cpu())
                 if branch == "P0" and panel_rows[str(panel_seed)]["view_hash"] != confirm_measurement[str(panel_seed)]["view_hash"]:
                     raise RuntimeError("P0 latent transport does not reproduce WAE v2 confirm tensor")
-            branches[branch] = {"panels": panel_rows, "latent": latent_rows, "passed": all(_dual_passed(row) for row in panel_rows.values()), "nonphysical": branch in {"Eposterior", "Rencoded"}}
+            branches[branch] = {
+                "panels": panel_rows,
+                "latent": latent_rows,
+                "passed": _branch_passed(
+                    branch,
+                    panel_rows,
+                    branches["P0"]["panels"] if branch in {"Eposterior", "Rencoded"} else None,
+                ),
+                "panel_pass_count": sum(_dual_passed(row) for row in panel_rows.values()),
+                "nonphysical": branch in {"Eposterior", "Rencoded"},
+            }
         classification, next_action = classify_attribution({"branches": branches})
         payload = {"schema": f"{SCHEMA_PREFIX}_attribution.v1", "status": "valid", "lineage": lineage, "upstream_confirm_sha256": file_sha256(args.wae_confirm_evidence), "posterior": {"train_count": int(posterior["train_codes"].shape[0]), "validation_count": int(posterior["validation_codes"].shape[0]), "train_hash": tensor_sha256(posterior["train_codes"]), "validation_hash": tensor_sha256(posterior["validation_codes"])}, "branches": branches, "classification": classification, "next_action": next_action, "formal_promotion": False, "training_authorized": False, "synthetic_diagnostic_only": True}
         _write_checked(output, payload)
