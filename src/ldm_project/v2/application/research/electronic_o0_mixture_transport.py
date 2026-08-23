@@ -397,9 +397,20 @@ def _mixture_to_cpu(mixture: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _classwise_swd(generated: torch.Tensor, target: torch.Tensor, labels: torch.Tensor) -> float:
+def _classwise_swd(
+    generated: torch.Tensor,
+    target: torch.Tensor,
+    generated_labels: torch.Tensor,
+    target_labels: torch.Tensor | None = None,
+) -> float:
+    if target_labels is None:
+        target_labels = generated_labels
     return sum(
-        _sliced_distance(generated[labels == label], target[target.new_tensor(labels == label)], seed=9000 + label)
+        _sliced_distance(
+            generated[generated_labels == label],
+            target[target_labels == label],
+            seed=9000 + label,
+        )
         for label in range(10)
     ) / 10.0
 
@@ -423,7 +434,10 @@ def _design_temperature(
         device=device,
     )
     baseline_swd = _classwise_swd(
-        baseline.cpu(), posterior["validation_codes"], posterior["validation_labels"]
+        baseline.cpu(),
+        posterior["validation_codes"],
+        labels.cpu(),
+        posterior["validation_labels"],
     )
     attempts = []
     selected = None
@@ -439,7 +453,12 @@ def _design_temperature(
             posterior["validation_labels"],
             device=device,
         )
-        swd = _classwise_swd(values.cpu(), posterior["validation_codes"], posterior["validation_labels"])
+        swd = _classwise_swd(
+            values.cpu(),
+            posterior["validation_codes"],
+            labels.cpu(),
+            posterior["validation_labels"],
+        )
         row = {
             "temperature": temperature,
             "memorization": memory,
@@ -746,8 +765,18 @@ def dispatch(args: argparse.Namespace) -> int:
         validation_labels = posterior["validation_labels"].to(device)
         epsilon = torch.randn(validation_values.shape, generator=torch.Generator(device="cpu").manual_seed(args.seed)).to(device)
         generated = mixture_transport(epsilon, validation_labels, mixture, covariance_temperature=temperature)
-        p0_distance = _classwise_swd(epsilon.cpu(), posterior["validation_codes"], posterior["validation_labels"])
-        mixture_distance = _classwise_swd(generated.cpu(), posterior["validation_codes"], posterior["validation_labels"])
+        p0_distance = _classwise_swd(
+            epsilon.cpu(),
+            posterior["validation_codes"],
+            validation_labels.cpu(),
+            posterior["validation_labels"],
+        )
+        mixture_distance = _classwise_swd(
+            generated.cpu(),
+            posterior["validation_codes"],
+            validation_labels.cpu(),
+            posterior["validation_labels"],
+        )
         fit_nll = sum(
             float(_mixture_nll(validation_values[validation_labels == label], mixture["classes"][label]["means"], mixture["classes"][label]["cholesky"], mixture["classes"][label]["weights"]).cpu())
             for label in range(10)
