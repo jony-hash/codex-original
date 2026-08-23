@@ -692,6 +692,7 @@ def register_research(root: argparse._SubParsersAction) -> None:
         command.add_argument("--wae-training-checkpoint")
         command.add_argument("--wae-decoder-checkpoint")
         command.add_argument("--wae-confirm-evidence")
+        command.add_argument("--anchor-confirm-evidence")
         command.add_argument("--primary-evaluator-checkpoint")
         command.add_argument("--secondary-evaluator-checkpoint")
         command.add_argument("--primary-qualification-evidence")

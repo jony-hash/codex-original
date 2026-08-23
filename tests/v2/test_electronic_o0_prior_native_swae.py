@@ -11,9 +11,14 @@ import torch
 from ldm_project.v2.application.research.electronic_o0_prior_native_swae import (
     CODE_DIM,
     PROJECTION_COUNT,
+    _apply_complete_o0_gate,
     _closeout,
+    _objective_hash,
     _optimizer,
     _prior_native_terms,
+    _schedule_hash,
+    _validate_anchor,
+    balanced_epoch_schedule,
     classwise_sliced_wasserstein_quantile,
     fixed_projections,
     gaussian_quantiles,
@@ -222,3 +227,125 @@ def test_stage_reuse_and_invalid_existing_evidence_are_fail_closed(
             "contract.v1",
             {"source": "source-hash"},
         )
+
+
+def test_manifest_resolves_checkpoint_and_peer_list(tmp_path: Path) -> None:
+    from ldm_project.v2.application.research.lifecycle_artifacts import (
+        load_manifest,
+        manifest_args,
+    )
+
+    config = tmp_path / "config.yaml"
+    config.write_text("schema_version: 1\n", encoding="utf-8")
+    dataset = tmp_path / "data"
+    dataset.mkdir()
+    source = tmp_path / "source.pt"
+    source.write_bytes(b"source")
+    digest = hashlib.sha256(source.read_bytes()).hexdigest()
+    manifest = tmp_path / "run.yaml"
+    manifest.write_text(
+        "\n".join(
+            [
+                "schema: research_run_manifest.v1",
+                "program: electronic-o0-prior-native-swae",
+                "action: locked-final",
+                f"config: {config}",
+                f"dataset_root: {dataset}",
+                "device: cuda",
+                "deterministic:",
+                "  cublas_workspace_config: ':4096:8'",
+                "inputs:",
+                "  checkpoints: {}",
+                "  evaluator_evidence: {}",
+                "  upstream_evidence: {}",
+                "artifacts:",
+                "  posterior: {}",
+                "  fit: {}",
+                "  calibration: {}",
+                "  measurement: {}",
+                f"  checkpoint:\n    path: {source}\n    role: checkpoint\n    sha256: {digest}",
+                f"  peer_confirm_evidence:\n    - path: {source}\n      role: peer_confirm_evidence[0]\n      sha256: {digest}",
+                "seeds:",
+                "  swae: 8601",
+                f"output_root: {tmp_path / 'run'}",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    namespace = Namespace(
+        run_manifest=str(manifest),
+        config=None,
+        dataset_root=None,
+        device=None,
+        output=None,
+        checkpoint=None,
+        resume_checkpoint=None,
+        anchor_confirm_evidence=None,
+        peer_confirm_evidence=[],
+    )
+    loaded = load_manifest(
+        manifest, program="electronic-o0-prior-native-swae", action="locked-final"
+    )
+    expanded = manifest_args(
+        namespace,
+        program="electronic-o0-prior-native-swae",
+        action="locked-final",
+        field_names=(
+            "config",
+            "dataset_root",
+            "device",
+            "output",
+            "checkpoint",
+            "resume_checkpoint",
+            "anchor_confirm_evidence",
+            "peer_confirm_evidence",
+        ),
+    )
+    assert loaded["program"] == "electronic-o0-prior-native-swae"
+    assert expanded.checkpoint == str(source)
+    assert expanded.peer_confirm_evidence == [str(source)]
+
+
+def test_schedule_and_objective_hashes_are_deterministic() -> None:
+    labels = torch.arange(10).repeat_interleave(10)
+    first = balanced_epoch_schedule(labels, seed=8601)
+    second = balanced_epoch_schedule(labels, seed=8601)
+    assert _schedule_hash(first) == _schedule_hash(second)
+    assert _objective_hash({"w_swd": 1.0, "w_cycle": 2.0}) == _objective_hash(
+        {"w_swd": 1.0, "w_cycle": 2.0}
+    )
+    assert _objective_hash({"w_swd": 1.0, "w_cycle": 2.0}) != _objective_hash(
+        {"w_swd": 1.1, "w_cycle": 2.0}
+    )
+
+
+def test_anchor_requires_admitted_seed_8601(tmp_path: Path) -> None:
+    anchor = tmp_path / "anchor.json"
+    anchor.write_text(
+        json.dumps(
+            {
+                "schema": "electronic_o0_prior_native_swae_confirm.v1",
+                "status": "valid",
+                "classification": "electronic_prior_native_swae_admitted",
+                "seed": 8601,
+            }
+        ),
+        encoding="utf-8",
+    )
+    args = Namespace(seed=8602, anchor_confirm_evidence=str(anchor))
+    _validate_anchor(args)
+    args.anchor_confirm_evidence = None
+    with pytest.raises(ValueError, match="anchor confirmation"):
+        _validate_anchor(args)
+
+
+def test_complete_gate_rejects_missing_jacobian_evidence() -> None:
+    measurement = {
+        "gates": {"panel": True},
+        "official_test": {"count": 10_000},
+        "jacobian": {"rank_1e-3_pass_fraction": 0.0},
+        "memorization": {"pass_fraction": 1.0, "exact_duplicate_count": 0},
+    }
+    result = _apply_complete_o0_gate(measurement)
+    assert result["passed"] is False
+    assert result["gates"]["jacobian_rank"] is False

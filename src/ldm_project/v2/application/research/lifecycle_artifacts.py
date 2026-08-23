@@ -165,6 +165,13 @@ def load_manifest(path: str | Path, *, program: str, action: str) -> dict[str, A
     for section_name in ("checkpoints", "evaluator_evidence", "upstream_evidence"):
         for role, value in inputs[section_name].items():
             _validate_input_section(value, role, section_name)
+    artifact_section = payload["artifacts"]
+    peer_values = artifact_section.get("peer_confirm_evidence", payload.get("peer_confirm_evidence"))
+    if peer_values is not None:
+        if not isinstance(peer_values, list) or not peer_values:
+            raise ValueError("research manifest peer_confirm_evidence must be a non-empty list")
+        for index, value in enumerate(peer_values):
+            _validate_input_section(value, f"peer_confirm_evidence[{index}]", "artifacts")
     payload["_manifest_path"] = str(manifest_path.resolve())
     payload["_invocation_mode"] = "manifest"
     return payload
@@ -303,11 +310,17 @@ def manifest_args(
         "posterior_artifact": ("posterior", "posterior_artifact"),
         "audit_evidence": ("audit", "audit_evidence"),
         "confirm_evidence": ("confirm", "confirm_evidence"),
+        "checkpoint": ("checkpoint", "decoder_checkpoint_artifact"),
+        "resume_checkpoint": ("resume_checkpoint", "resume"),
+        "anchor_confirm_evidence": ("anchor_confirm", "anchor_confirm_evidence"),
     }
     for field, names in aliases.items():
         value = manifest_value(manifest, *names)
         if value is not None:
             setattr(namespace, field, value)
+    peer_values = manifest_list_value(manifest, "peer_confirm_evidence", "peer_confirms")
+    if peer_values is not None:
+        namespace.peer_confirm_evidence = peer_values
     posterior_ref = (
         manifest.get("artifacts", {}).get("posterior")
         if isinstance(manifest.get("artifacts", {}), Mapping)
@@ -347,7 +360,35 @@ def _manifest_hashes(manifest: Mapping[str, Any]) -> dict[str, str]:
                 and isinstance(value.get("sha256"), str)
             ):
                 hashes[str(Path(value["path"]).resolve())] = value["sha256"]
+            elif isinstance(value, list):
+                for item in value:
+                    if (
+                        isinstance(item, Mapping)
+                        and isinstance(item.get("path"), str)
+                        and isinstance(item.get("sha256"), str)
+                    ):
+                        hashes[str(Path(item["path"]).resolve())] = item["sha256"]
     return hashes
+
+
+def manifest_list_value(manifest: Mapping[str, Any], *names: str) -> list[str] | None:
+    """Resolve a validated list of artifact paths from a manifest boundary."""
+    sections = _sections(manifest) + (manifest,)
+    for section in sections:
+        for name in names:
+            values = section.get(name) if isinstance(section, Mapping) else None
+            if values is None:
+                continue
+            if not isinstance(values, list):
+                raise ValueError(f"manifest field {name} must be a list")
+            paths = []
+            for value in values:
+                candidate = _path_from(value)
+                if candidate is None:
+                    raise ValueError(f"manifest field {name} contains a value without a path")
+                paths.append(candidate)
+            return paths
+    return None
 
 
 def validate_manifest_namespace(namespace: Any, *, action: str) -> None:
@@ -382,19 +423,22 @@ def validate_manifest_namespace(namespace: Any, *, action: str) -> None:
         "confirm_evidence",
         "measurement_evidence",
         "checkpoint",
+        "resume_checkpoint", "anchor_confirm_evidence", "peer_confirm_evidence",
     ):
         value = getattr(namespace, name, None)
         if not value:
             continue
-        target = Path(value)
-        declared = namespace._manifest_hashes.get(str(target.resolve()))
-        if target.exists():
-            if not target.is_file():
-                raise ValueError(f"manifest input {name} is not a file: {target}")
-            if declared is not None and file_sha256(target) != declared:
-                raise ValueError(f"manifest input {name} hash mismatch")
-        elif name != "posterior_artifact" or action != "encode-posterior":
-            raise FileNotFoundError(f"manifest input {name} is missing: {target}")
+        values = value if isinstance(value, list) else [value]
+        for item in values:
+            target = Path(item)
+            declared = namespace._manifest_hashes.get(str(target.resolve()))
+            if target.exists():
+                if not target.is_file():
+                    raise ValueError(f"manifest input {name} is not a file: {target}")
+                if declared is not None and file_sha256(target) != declared:
+                    raise ValueError(f"manifest input {name} hash mismatch")
+            elif name != "posterior_artifact" or action != "encode-posterior":
+                raise FileNotFoundError(f"manifest input {name} is missing: {target}")
     output = Path(namespace.output)
     root = Path(manifest["output_root"]).resolve()
     if output.exists() and not output.is_file():

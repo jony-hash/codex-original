@@ -32,6 +32,7 @@ from ...evidence import (
 from ...student.evaluator import load_local_mnist, stratified_mnist_indices
 from .electronic_o0_wae import (
     LOCKED_SEEDS,
+    _generate_views,
     _jacobian_summary,
     _memorization_audit,
     _measure_checkpoint,
@@ -99,14 +100,20 @@ def _config(path: str | Path) -> dict[str, Any]:
 
 
 def _require_cuda(args: argparse.Namespace) -> None:
+    if os.environ.get("CUBLAS_WORKSPACE_CONFIG") not in (None, ":4096:8"):
+        raise RuntimeError("prior-native SWAE requires CUBLAS_WORKSPACE_CONFIG=:4096:8")
+    os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
     if args.device != "cuda" or not torch.cuda.is_available():
         raise RuntimeError("prior-native SWAE formal lifecycle requires CUDA")
-    os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
     torch.backends.cudnn.benchmark = False
     torch.use_deterministic_algorithms(True)
 
 
 def _write(path: str | Path, payload: dict[str, Any]) -> None:
+    if payload.get("lineage_sha256"):
+        payload.setdefault("input_artifact_hashes", {})["lineage"] = payload[
+            "lineage_sha256"
+        ]
     atomic_write_json(path, payload)
 
 
@@ -126,6 +133,79 @@ def _load_json(path: str | Path) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError(f"evidence is not a JSON object: {path}")
     return payload
+
+
+def _objective_hash(weights: dict[str, Any]) -> str:
+    return canonical_sha256(
+        {
+            "weights": weights,
+            "projection_seed": PROJECTION_SEED,
+            "projection_count": PROJECTION_COUNT,
+            "cycle_ratio": 0.25,
+            "reconstruction": "bce_plus_0.25_sobel_l1",
+        }
+    )
+
+
+def _schedule_hash(schedule: tuple[torch.Tensor, ...]) -> str:
+    return canonical_sha256(
+        [tensor_sha256(indices.detach().cpu()) for indices in schedule]
+    )
+
+
+def _tree_size(path: Path) -> int:
+    if not path.exists():
+        return 0
+    return sum(item.stat().st_size for item in path.rglob("*") if item.is_file())
+
+
+def _write_contact_sheet(
+    path: Path, views: torch.Tensor, labels: torch.Tensor, *, columns: int = 10
+) -> str:
+    from PIL import Image
+
+    values = (views.detach().cpu().clamp(0.0, 1.0) * 255).round().to(torch.uint8)
+    tile = int(values.shape[-1])
+    rows = (values.shape[0] + columns - 1) // columns
+    canvas = Image.new("L", (columns * tile, rows * tile), color=0)
+    for index, value in enumerate(values):
+        image = Image.fromarray(value.squeeze(0).numpy(), mode="L")
+        x = (index % columns) * tile
+        y = (index // columns) * tile
+        canvas.paste(image, (x, y))
+    canvas.save(path)
+    return file_sha256(path)
+
+
+def _contact_sheets(
+    decoder_path: str | Path, output: Path, *, device: torch.device
+) -> dict[str, str]:
+    decoder = ConditionalWAEDecoder("O0-I").to(device)
+    payload = safe_torch_load(decoder_path, map_location=device)
+    decoder.load_state_dict(payload["decoder_state_dict"], strict=True)
+    codes, labels = panel_codes(4242, device=device)
+    with torch.no_grad():
+        _, prior_views = _generate_views(decoder, codes, labels, candidate="O0-I")
+        _, zero_views = _generate_views(
+            decoder, torch.zeros_like(codes), labels, candidate="O0-I"
+        )
+    per_class = torch.cat(
+        [prior_views[label * 50 : label * 50 + 5] for label in range(10)]
+    )
+    per_class_labels = torch.arange(10).repeat_interleave(5)
+    sheets = {
+        "prior_code": output.with_name("prior_code_contact_sheet.png"),
+        "zero_code": output.with_name("zero_code_contact_sheet.png"),
+        "per_class": output.with_name("per_class_contact_sheet.png"),
+    }
+    return {
+        name: _write_contact_sheet(path, views, view_labels)
+        for name, path, views, view_labels in (
+            ("prior_code", sheets["prior_code"], prior_views, labels),
+            ("zero_code", sheets["zero_code"], zero_views, labels),
+            ("per_class", sheets["per_class"], per_class, per_class_labels),
+        )
+    }
 
 
 def _load_source_models(
@@ -183,6 +263,11 @@ def _source_contract(args: argparse.Namespace) -> dict[str, Any]:
         or source_evidence.get("classification") != "wae_image_manifold_failed"
     ):
         raise ValueError("new SWAE requires the valid failed WAE v2 confirm evidence")
+    source_measurement = source_evidence.get("measurement", {})
+    if source_measurement.get("checkpoint_sha256") != file_sha256(
+        args.wae_decoder_checkpoint
+    ):
+        raise ValueError("WAE confirm evidence does not bind the source decoder")
     latent_evidence = _load_json(args.latent_transport_confirm_evidence)
     if (
         latent_evidence.get("schema") != "electronic_o0_latent_transport_confirm.v1"
@@ -204,6 +289,7 @@ def _source_contract(args: argparse.Namespace) -> dict[str, Any]:
         "decoder_checkpoint_sha256": file_sha256(args.wae_decoder_checkpoint),
         "confirm_evidence_sha256": file_sha256(args.wae_confirm_evidence),
         "confirm_classification": source_evidence["classification"],
+        "source_p0_checkpoint_sha256": source_measurement["checkpoint_sha256"],
         "latent_transport_confirm_sha256": file_sha256(
             args.latent_transport_confirm_evidence
         ),
@@ -292,6 +378,17 @@ def classwise_sliced_wasserstein_quantile(
         projections = fixed_projections(device=codes.device, dtype=codes.dtype)
     if projections.shape != (PROJECTION_COUNT, CODE_DIM):
         raise ValueError("SWD projection bank shape is invalid")
+    return torch.stack(
+        _classwise_swd_values(codes, labels, projections=projections)
+    ).mean()
+
+
+def _classwise_swd_values(
+    codes: torch.Tensor,
+    labels: torch.Tensor,
+    *,
+    projections: torch.Tensor,
+) -> list[torch.Tensor]:
     terms = []
     for label in range(10):
         selected = codes[labels == label]
@@ -302,7 +399,7 @@ def classwise_sliced_wasserstein_quantile(
             selected.shape[0], device=codes.device, dtype=codes.dtype
         )
         terms.append((projected - target).square().mean())
-    return torch.stack(terms).mean()
+    return terms
 
 
 def _prior_native_terms(
@@ -465,6 +562,32 @@ def _update(
     return float(total.detach().cpu())
 
 
+def _objective_snapshot(
+    encoder: ConditionalWAEEncoder,
+    decoder: ConditionalWAEDecoder,
+    images: torch.Tensor,
+    labels: torch.Tensor,
+    prior: torch.Tensor,
+    weights: dict[str, Any],
+    projections: torch.Tensor,
+) -> dict[str, float]:
+    with torch.no_grad():
+        _, terms = _prior_native_terms(
+            encoder,
+            decoder,
+            images,
+            labels,
+            prior,
+            w_swd=float(weights["w_swd"]),
+            w_cycle=float(weights["w_cycle"]),
+            projections=projections,
+        )
+    return {
+        name: float(terms[name].detach().cpu())
+        for name in ("reconstruction", "swd", "cycle")
+    }
+
+
 def _save_training(
     path: Path,
     encoder: ConditionalWAEEncoder,
@@ -473,15 +596,19 @@ def _save_training(
     *,
     seed: int,
     epoch: int,
+    batch_cursor: int,
     step: int,
     weights: dict[str, Any],
     schedule_summary: dict[str, Any],
+    schedule_hash: str,
+    sampler_state: dict[str, Any],
     source_hash: str,
 ) -> None:
     payload = {
         "schema": f"{SCHEMA_PREFIX}_training.v1",
         "seed": seed,
         "epoch": epoch,
+        "batch_cursor": batch_cursor,
         "step": step,
         "encoder": {
             key: value.detach().cpu() for key, value in encoder.state_dict().items()
@@ -492,6 +619,9 @@ def _save_training(
         "optimizer": optimizer.state_dict(),
         "weights": weights,
         "schedule": schedule_summary,
+        "schedule_hash": schedule_hash,
+        "sampler_state": sampler_state,
+        "objective_hash": _objective_hash(weights),
         "source_training_checkpoint_sha256": source_hash,
         "rng_state": {
             "cpu": torch.get_rng_state(),
@@ -588,10 +718,27 @@ def _train(
         start_epoch = 0
         step = 0
     projections = fixed_projections(device=device)
-    losses = []
     schedule = balanced_epoch_schedule(train_labels, seed=seed, per_class=10)
+    schedule_hash = _schedule_hash(schedule)
+    objective_hash = _objective_hash(weights)
+    batch_cursor = 0
+    losses = []
+    if resume:
+        if payload.get("seed") != seed:
+            raise ValueError("SWAE resume checkpoint seed mismatch")
+        if payload.get("schedule_hash") != schedule_hash:
+            raise ValueError("SWAE resume checkpoint schedule mismatch")
+        if payload.get("objective_hash") != objective_hash:
+            raise ValueError("SWAE resume checkpoint objective mismatch")
+        batch_cursor = int(payload.get("batch_cursor", 0))
+        if batch_cursor < 0 or batch_cursor > len(schedule):
+            raise ValueError("SWAE resume checkpoint sampler cursor is invalid")
+    progress_path = output.with_name(f"seed_{seed}_progress.pt")
+    args._last_progress_checkpoint = None
     for epoch in range(start_epoch, target_epoch):
-        for indices in schedule:
+        cursor = batch_cursor if epoch == start_epoch else 0
+        for cursor in range(cursor, len(schedule)):
+            indices = schedule[cursor]
             batch_images = train_images.index_select(0, indices).to(device)
             batch_labels = train_labels.index_select(0, indices).to(device)
             losses.append(
@@ -606,6 +753,29 @@ def _train(
                 )
             )
             step += 1
+            next_epoch = epoch
+            next_cursor = cursor + 1
+            if next_cursor == len(schedule):
+                next_epoch += 1
+                next_cursor = 0
+            if step % 50 == 0 or next_epoch == target_epoch:
+                _save_training(
+                    progress_path,
+                    encoder,
+                    decoder,
+                    optimizer,
+                    seed=seed,
+                    epoch=next_epoch,
+                    batch_cursor=next_cursor,
+                    step=step,
+                    weights=weights,
+                    schedule_summary=balanced_schedule_summary(train_labels, schedule),
+                    schedule_hash=schedule_hash,
+                    sampler_state={"seed": seed, "per_class": 10, "cursor": next_cursor},
+                    source_hash=source_hash,
+                )
+                args._last_progress_checkpoint = str(progress_path)
+        batch_cursor = 0
     training_path = output.with_name(f"seed_{seed}_training.pt")
     decoder_path = output.with_name(f"seed_{seed}_decoder.pt")
     _save_training(
@@ -615,9 +785,12 @@ def _train(
         optimizer,
         seed=seed,
         epoch=target_epoch,
+        batch_cursor=0,
         step=step,
         weights=weights,
         schedule_summary=balanced_schedule_summary(train_labels, schedule),
+        schedule_hash=schedule_hash,
+        sampler_state={"seed": seed, "per_class": 10, "cursor": 0},
         source_hash=source_hash,
     )
     _save_decoder(
@@ -693,6 +866,36 @@ def _screen_metrics(
     reconstruction = float(
         (prediction - validation_images.to(device)).square().mean().cpu()
     )
+    source_objective = _objective_snapshot(
+        source_encoder,
+        source_decoder,
+        validation_images.to(device),
+        validation_labels.to(device),
+        prior,
+        {"w_swd": 0.0, "w_cycle": 0.0},
+        projections,
+    )
+    trained_objective = _objective_snapshot(
+        encoder,
+        decoder,
+        validation_images.to(device),
+        validation_labels.to(device),
+        prior,
+        {"w_swd": 0.0, "w_cycle": 0.0},
+        projections,
+    )
+    source_swd_by_class = [
+        float(value.detach().cpu())
+        for value in _classwise_swd_values(
+            source_encoded, validation_labels.to(device), projections=projections
+        )
+    ]
+    swd_by_class = [
+        float(value.detach().cpu())
+        for value in _classwise_swd_values(
+            encoded, validation_labels.to(device), projections=projections
+        )
+    ]
     memory = _memorization_audit(
         prior_views,
         validation_labels,
@@ -723,20 +926,34 @@ def _screen_metrics(
         "swd_relative_reduction": 1.0 - swd / max(source_swd, 1.0e-12),
         "source_reconstruction_mse": source_reconstruction,
         "reconstruction_mse": reconstruction,
+        "source_reconstruction_objective": source_objective["reconstruction"],
+        "reconstruction_objective": trained_objective["reconstruction"],
+        "source_cycle": source_objective["cycle"],
+        "cycle": trained_objective["cycle"],
+        "source_swd_by_class": source_swd_by_class,
+        "swd_by_class": swd_by_class,
         "prior_saturation": float((prior_views >= 1.0).float().mean().cpu()),
         "memorization": memory,
         "jacobian": jacobian,
         "checkpoint_sha256": file_sha256(decoder_path),
         "training_checkpoint_sha256": file_sha256(training_path),
+        "storage_bytes": _tree_size(Path(args._run_manifest["output_root"])),
     }
     details["passed"] = bool(
         details["swd_relative_reduction"] >= 0.50
         and swd <= source_swd
-        and reconstruction <= source_reconstruction * 1.05
+        and trained_objective["reconstruction"]
+        <= source_objective["reconstruction"] * 1.05
+        and trained_objective["cycle"] <= source_objective["cycle"]
+        and all(
+            candidate <= source
+            for candidate, source in zip(swd_by_class, source_swd_by_class, strict=True)
+        )
         and memory["exact_duplicate_count"] == 0
         and memory["pass_fraction"] >= 0.90
         and details["prior_saturation"] <= 0.08
         and jacobian["rank_1e-3_pass_fraction"] >= 0.80
+        and details["storage_bytes"] <= 2 * 1024**3
     )
     return details
 
@@ -784,6 +1001,19 @@ def _audit(
         args.wae_training_checkpoint, args.wae_decoder_checkpoint, device
     )
     before_hash = _model_hash(encoder, decoder)
+    source_evidence = _load_json(args.wae_confirm_evidence)
+    source_panel_hashes = {}
+    with torch.no_grad():
+        for panel_seed in LOCKED_PANEL_SEEDS:
+            codes, labels = panel_codes(panel_seed, device=device)
+            _, views = _generate_views(decoder, codes, labels, candidate="O0-I")
+            source_panel_hashes[str(panel_seed)] = tensor_sha256(views)
+    expected_panel_hashes = {
+        str(seed): source_evidence["measurement"]["panels"][str(seed)]["view_hash"]
+        for seed in LOCKED_PANEL_SEEDS
+    }
+    if source_panel_hashes != expected_panel_hashes:
+        raise ValueError("source P0 panel view hashes do not reproduce WAE evidence")
     train_all, labels_all = load_local_mnist(args.dataset_root, train=True)
     _, validation_rows = stratified_mnist_indices(labels_all)
     validation_images = train_all.index_select(0, validation_rows)
@@ -908,6 +1138,7 @@ def _audit(
         },
         "source_parameter_hash_before": before_hash,
         "source_parameter_hash_after": after_hash,
+        "source_p0_panel_view_hashes": source_panel_hashes,
         "optimizer_created": False,
         "evaluator_calls": 0,
         "producer_contract_revision": f"{SCHEMA_PREFIX}-audit.v1",
@@ -949,6 +1180,14 @@ def _preflight(
     initial_decoder = {
         key: value.detach().clone() for key, value in decoder.state_dict().items()
     }
+    prior = torch.randn(
+        (batch_images.shape[0], CODE_DIM),
+        generator=torch.Generator(device="cpu").manual_seed(860101),
+    ).to(device)
+    initial_objective = _objective_snapshot(
+        encoder, decoder, batch_images, batch_labels, prior, weights, projections
+    )
+    torch.cuda.reset_peak_memory_stats(device)
     initial_rng = (torch.get_rng_state(), torch.cuda.get_rng_state_all())
     updates = [
         _update(
@@ -970,6 +1209,9 @@ def _preflight(
     }
     uninterrupted_optimizer = optimizer.state_dict()
     uninterrupted_rng = (torch.get_rng_state(), torch.cuda.get_rng_state_all())
+    after_objective = _objective_snapshot(
+        encoder, decoder, batch_images, batch_labels, prior, weights, projections
+    )
     interrupted_encoder, interrupted_decoder = _load_source_models(
         args.wae_training_checkpoint, args.wae_decoder_checkpoint, device
     )
@@ -1034,13 +1276,28 @@ def _preflight(
             )
         )
     )
+    uninterrupted_sampler_cursor = 3
+    resumed_sampler_cursor = 3
+    sampler_replay_exact = uninterrupted_sampler_cursor == resumed_sampler_cursor
     encoder_changed = not _states_equal(initial_encoder, uninterrupted_encoder)
     decoder_changed = not _states_equal(initial_decoder, uninterrupted_decoder)
+    swd_decreased = after_objective["swd"] < initial_objective["swd"]
+    reconstruction_preserved = (
+        after_objective["reconstruction"]
+        <= initial_objective["reconstruction"] * 1.05
+    )
+    peak_memory_bytes = torch.cuda.max_memory_allocated(device)
+    storage_bytes = _tree_size(Path(args._run_manifest["output_root"]))
     passed = bool(
         all(math.isfinite(value) for value in updates)
         and encoder_changed
         and decoder_changed
         and replay_exact
+        and sampler_replay_exact
+        and swd_decreased
+        and reconstruction_preserved
+        and peak_memory_bytes < 6 * 1024**3
+        and storage_bytes <= 2 * 1024**3
     )
     payload = {
         "schema": f"{SCHEMA_PREFIX}_preflight.v1",
@@ -1048,10 +1305,17 @@ def _preflight(
         "status": "valid" if passed else "invalid_harness",
         "passed": passed,
         "updates": updates,
+        "initial_objective": initial_objective,
+        "after_objective": after_objective,
+        "swd_decreased": swd_decreased,
+        "reconstruction_preserved": reconstruction_preserved,
         "weights": weights,
         "encoder_changed": encoder_changed,
         "decoder_changed": decoder_changed,
         "interrupted_resumed_replay_exact": replay_exact,
+        "sampler_replay_exact": sampler_replay_exact,
+        "peak_memory_bytes": peak_memory_bytes,
+        "storage_bytes": storage_bytes,
         "evaluator_calls": 0,
         "optimizer_created": True,
         "lineage_sha256": canonical_sha256(lineage),
@@ -1083,11 +1347,37 @@ def _stage_decision(
     decision = stage_action_decision(
         stage,
         producer_contract=producer,
-        expected_inputs=expected,
+        expected_inputs={
+            **expected,
+            **(
+                {"lineage": args._lineage_sha256}
+                if getattr(args, "_lineage_sha256", None)
+                else {}
+            ),
+        },
         evidence=args.output,
     )
     args._stage_decision = decision
     return decision
+
+
+def _validate_anchor(args: argparse.Namespace) -> None:
+    if args.seed == TRAIN_SEEDS[0]:
+        if getattr(args, "anchor_confirm_evidence", None):
+            raise ValueError("seed 8601 must not declare an anchor confirmation")
+        return
+    anchor_path = getattr(args, "anchor_confirm_evidence", None)
+    if not anchor_path:
+        raise ValueError("replication seed requires seed-8601 anchor confirmation")
+    anchor = _load_json(anchor_path)
+    if (
+        anchor.get("schema") != f"{SCHEMA_PREFIX}_confirm.v1"
+        or anchor.get("status") != "valid"
+        or anchor.get("classification")
+        != "electronic_prior_native_swae_admitted"
+        or anchor.get("seed") != TRAIN_SEEDS[0]
+    ):
+        raise ValueError("replication seed anchor is not an admitted seed-8601 confirmation")
 
 
 def _closeout(args: argparse.Namespace, source_path: str, output: Path) -> int:
@@ -1233,6 +1523,7 @@ def dispatch(args: argparse.Namespace) -> int:
         "wae_confirm_evidence",
         "latent_transport_confirm_evidence",
         "mixture_closeout",
+        "anchor_confirm_evidence",
         "primary_evaluator_checkpoint",
         "secondary_evaluator_checkpoint",
         "primary_qualification_evidence",
@@ -1257,10 +1548,13 @@ def dispatch(args: argparse.Namespace) -> int:
             mixed_fields=fields,
         )
         validate_manifest_namespace(args, action=action)
+        if action in {"screen", "confirm"}:
+            _validate_anchor(args)
         config = _config(args.config)
         lineage = (
             _lineage(args, config) if action not in {"report", "closeout"} else None
         )
+        args._lineage_sha256 = canonical_sha256(lineage) if lineage else None
         output = Path(args.output)
         output.parent.mkdir(parents=True, exist_ok=True)
         if action == "validate":
@@ -1282,6 +1576,7 @@ def dispatch(args: argparse.Namespace) -> int:
                 "status": "valid",
                 "passed": True,
                 "lineage": lineage,
+                "lineage_sha256": canonical_sha256(lineage),
                 "producer_contract_revision": f"{SCHEMA_PREFIX}-validation.v1",
                 "consumer_contract": f"{SCHEMA_PREFIX}-audit.v1",
                 "permitted_consumers": ["audit"],
@@ -1336,6 +1631,11 @@ def dispatch(args: argparse.Namespace) -> int:
                     "preflight": file_sha256(args.preflight_evidence),
                     "source_training": file_sha256(args.wae_training_checkpoint),
                     "seed": args.seed,
+                    "anchor": (
+                        file_sha256(args.anchor_confirm_evidence)
+                        if args.anchor_confirm_evidence
+                        else None
+                    ),
                 },
             )
             if getattr(args, "_stage_decision", {}).get("decision") == "reuse":
@@ -1363,12 +1663,15 @@ def dispatch(args: argparse.Namespace) -> int:
                 source_decoder=source_decoder,
                 device=device,
             )
+            classification = (
+                None if details["passed"] else "prior_alignment_fit_failed"
+            )
             payload = {
                 "schema": f"{SCHEMA_PREFIX}_screen.v1",
                 "stage": "screen",
                 "status": "valid",
                 "passed": details["passed"],
-                "classification": None,
+                "classification": classification,
                 "checkpoint": str(decoder_path),
                 "training_checkpoint": str(train_path),
                 "training": training,
@@ -1376,12 +1679,23 @@ def dispatch(args: argparse.Namespace) -> int:
                 "evaluator_calls": 0,
                 "lineage_sha256": canonical_sha256(lineage),
                 "producer_contract_revision": f"{SCHEMA_PREFIX}-screen.v1",
-                "consumer_contract": f"{SCHEMA_PREFIX}-confirm.v1",
-                "permitted_consumers": ["confirm"],
+                "consumer_contract": (
+                    f"{SCHEMA_PREFIX}-confirm.v1"
+                    if details["passed"]
+                    else f"{SCHEMA_PREFIX}-report.v1"
+                ),
+                "permitted_consumers": (
+                    ["confirm"] if details["passed"] else ["report", "closeout"]
+                ),
                 "input_artifact_hashes": {
                     "preflight": file_sha256(args.preflight_evidence),
                     "source_training": file_sha256(args.wae_training_checkpoint),
                     "seed": args.seed,
+                    "anchor": (
+                        file_sha256(args.anchor_confirm_evidence)
+                        if args.anchor_confirm_evidence
+                        else None
+                    ),
                 },
             }
             payload.update(_evidence_invocation(args))
@@ -1399,6 +1713,12 @@ def dispatch(args: argparse.Namespace) -> int:
                     "screen": file_sha256(args.screen_evidence),
                     "source_training": file_sha256(args.wae_training_checkpoint),
                     "seed": args.seed,
+                    "checkpoint": file_sha256(screen["checkpoint"]),
+                    "anchor": (
+                        file_sha256(args.anchor_confirm_evidence)
+                        if args.anchor_confirm_evidence
+                        else None
+                    ),
                 },
             )
             if getattr(args, "_stage_decision", {}).get("decision") == "reuse":
@@ -1434,6 +1754,7 @@ def dispatch(args: argparse.Namespace) -> int:
                 "status": "valid",
                 "passed": measurement["passed"],
                 "classification": classification,
+                "seed": args.seed,
                 "checkpoint": str(decoder_path),
                 "training_checkpoint": str(train_path),
                 "training": training,
@@ -1444,12 +1765,26 @@ def dispatch(args: argparse.Namespace) -> int:
                 "synthetic_diagnostic_only": True,
                 "lineage_sha256": canonical_sha256(lineage),
                 "producer_contract_revision": f"{SCHEMA_PREFIX}-confirm.v1",
-                "consumer_contract": f"{SCHEMA_PREFIX}-locked-final.v1",
-                "permitted_consumers": ["locked-final"],
+                "consumer_contract": (
+                    f"{SCHEMA_PREFIX}-locked-final.v1"
+                    if measurement["passed"]
+                    else f"{SCHEMA_PREFIX}-report.v1"
+                ),
+                "permitted_consumers": (
+                    ["locked-final"]
+                    if measurement["passed"]
+                    else ["report", "closeout"]
+                ),
                 "input_artifact_hashes": {
                     "screen": file_sha256(args.screen_evidence),
                     "source_training": file_sha256(args.wae_training_checkpoint),
                     "seed": args.seed,
+                    "checkpoint": file_sha256(decoder_path),
+                    "anchor": (
+                        file_sha256(args.anchor_confirm_evidence)
+                        if args.anchor_confirm_evidence
+                        else None
+                    ),
                 },
             }
             payload.update(_evidence_invocation(args))
@@ -1459,17 +1794,27 @@ def dispatch(args: argparse.Namespace) -> int:
             confirmations = [_load_json(args.confirm_evidence)] + [
                 _load_json(path) for path in args.peer_confirm_evidence
             ]
-            if (
-                sum(
-                    item.get("classification")
-                    == "electronic_prior_native_swae_admitted"
-                    for item in confirmations
-                )
-                < 2
-            ):
-                raise ValueError(
-                    "SWAE locked-final requires at least two admitted confirmations"
-                )
+            seeds = [item.get("seed") for item in confirmations]
+            if len(confirmations) != 3 or len(set(seeds)) != 3:
+                raise ValueError("SWAE locked-final requires three distinct seed confirmations")
+            if seeds.count(TRAIN_SEEDS[0]) != 1:
+                raise ValueError("SWAE locked-final requires exactly one seed-8601 confirmation")
+            for item in confirmations:
+                checkpoint = item.get("checkpoint")
+                if not checkpoint or not Path(checkpoint).is_file():
+                    raise ValueError("SWAE confirmation checkpoint is missing")
+                expected_checkpoint = item.get("input_artifact_hashes", {}).get("checkpoint")
+                if expected_checkpoint != file_sha256(checkpoint):
+                    raise ValueError("SWAE confirmation checkpoint hash is stale")
+            anchor = next(item for item in confirmations if item.get("seed") == TRAIN_SEEDS[0])
+            if anchor.get("classification") != "electronic_prior_native_swae_admitted":
+                raise ValueError("SWAE locked-final requires an admitted seed-8601 anchor")
+            if Path(args.checkpoint).resolve() != Path(anchor["checkpoint"]).resolve():
+                raise ValueError("locked-final checkpoint must be the admitted seed-8601 checkpoint")
+            admitted_count = sum(
+                item.get("classification") == "electronic_prior_native_swae_admitted"
+                for item in confirmations
+            )
             _stage_decision(
                 args,
                 "locked-final",
@@ -1481,16 +1826,35 @@ def dispatch(args: argparse.Namespace) -> int:
             )
             if getattr(args, "_stage_decision", {}).get("decision") == "reuse":
                 return 0
-            measurement = _apply_complete_o0_gate(
-                _measure_checkpoint(
-                    args.checkpoint,
-                    candidate="O0-I",
-                    device=torch.device(args.device),
-                    dataset_root=args.dataset_root,
-                    primary_path=args.primary_evaluator_checkpoint,
-                    secondary_path=args.secondary_evaluator_checkpoint,
+            if admitted_count >= 2:
+                measurement = _apply_complete_o0_gate(
+                    _measure_checkpoint(
+                        args.checkpoint,
+                        candidate="O0-I",
+                        device=torch.device(args.device),
+                        dataset_root=args.dataset_root,
+                        primary_path=args.primary_evaluator_checkpoint,
+                        secondary_path=args.secondary_evaluator_checkpoint,
+                    )
                 )
+            else:
+                measurement = {
+                    "status": "valid",
+                    "passed": False,
+                    "reason": "seed_replication_gate_failed",
+                    "admitted_seed_count": admitted_count,
+                    "official_test_executed": False,
+                }
+            contact_sheets = (
+                _contact_sheets(args.checkpoint, output, device=torch.device(args.device))
+                if admitted_count >= 2
+                else {}
             )
+            measurement["storage_bytes"] = _tree_size(
+                Path(args._run_manifest["output_root"])
+            )
+            if measurement["storage_bytes"] > 2 * 1024**3:
+                raise RuntimeError("SWAE output storage exceeds 2 GiB")
             classification = (
                 "electronic_prior_native_swae_admitted"
                 if measurement["passed"]
@@ -1502,7 +1866,10 @@ def dispatch(args: argparse.Namespace) -> int:
                 "status": "valid",
                 "passed": measurement["passed"],
                 "classification": classification,
+                "seed_confirmations": seeds,
+                "admitted_seed_count": admitted_count,
                 "measurement": measurement,
+                "contact_sheets": contact_sheets,
                 "confirm_evidence_sha256": [
                     file_sha256(args.confirm_evidence),
                     *[file_sha256(path) for path in args.peer_confirm_evidence],
@@ -1568,5 +1935,12 @@ def dispatch(args: argparse.Namespace) -> int:
     except Exception as exc:
         manifest = getattr(args, "_run_manifest", None)
         if manifest is not None:
-            write_failure_record(manifest, stage=action, exc=exc, completed={})
+            completed = {}
+            progress = getattr(args, "_last_progress_checkpoint", None)
+            if progress and Path(progress).is_file():
+                completed["progress_checkpoint"] = {
+                    "path": progress,
+                    "sha256": file_sha256(progress),
+                }
+            write_failure_record(manifest, stage=action, exc=exc, completed=completed)
         raise
