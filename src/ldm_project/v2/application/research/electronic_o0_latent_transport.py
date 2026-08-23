@@ -286,6 +286,15 @@ def _decode_views(
     return torch.cat(views, dim=0)
 
 
+def _evaluate_views(
+    model: nn.Module,
+    views: torch.Tensor,
+    device: torch.device,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Run a frozen evaluator on CPU-held views without changing its device."""
+    return _eval_model(model, views.to(device))
+
+
 def _metrics(
     decoder: ConditionalWAEDecoder,
     z: torch.Tensor,
@@ -303,17 +312,18 @@ def _metrics(
         for label in range(10)
     ])
     reference_images = test_images.index_select(0, reference_index)
-    p_features, p_logits = _eval_model(primary, views)
-    s_features, s_logits = _eval_model(secondary, views)
-    p_ref, _ = _eval_model(primary, reference_images)
-    s_ref, _ = _eval_model(secondary, reference_images)
+    device = next(primary.parameters()).device
+    p_features, p_logits = _evaluate_views(primary, views, device)
+    s_features, s_logits = _evaluate_views(secondary, views, device)
+    p_ref, _ = _evaluate_views(primary, reference_images, device)
+    s_ref, _ = _evaluate_views(secondary, reference_images, device)
     p_pred, s_pred = p_logits.argmax(1), s_logits.argmax(1)
     p_recall, s_recall = _recall(p_pred, labels.cpu()), _recall(s_pred, labels.cpu())
     shuffled = labels.cpu().index_select(
         0, torch.randperm(labels.numel(), generator=torch.Generator(device="cpu").manual_seed(8675309))
     ).to(labels.device)
     shuffled_views = _decode_views(decoder, z, shuffled)
-    shuffled_prediction = _eval_model(primary, shuffled_views)[1].argmax(1)
+    shuffled_prediction = _evaluate_views(primary, shuffled_views, device)[1].argmax(1)
     coverage = {
         "primary": conditional_coverage_ratio(p_features, views, p_ref, reference_images, labels.cpu(), epsilon=0.05, iterations=20),
         "secondary": conditional_coverage_ratio(s_features, views, s_ref, reference_images, labels.cpu(), epsilon=0.05, iterations=20),
@@ -581,8 +591,9 @@ def _flow_measure(
     with torch.no_grad():
         official_z = flow(official_codes, official_labels)
     official_views = _decode_views(decoder, official_z, official_labels)
-    official_p = _eval_model(primary, official_views)[1].argmax(1)
-    official_s = _eval_model(secondary, official_views)[1].argmax(1)
+    evaluator_device = next(primary.parameters()).device
+    official_p = _evaluate_views(primary, official_views, evaluator_device)[1].argmax(1)
+    official_s = _evaluate_views(secondary, official_views, evaluator_device)[1].argmax(1)
     official = {
         "count": int(official_labels.numel()),
         "primary_accuracy": float((official_p == official_labels.cpu()).float().mean()),
