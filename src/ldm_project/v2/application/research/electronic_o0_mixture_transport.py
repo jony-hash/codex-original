@@ -643,8 +643,11 @@ def _preflight_replay(posterior: dict[str, torch.Tensor], seed: int, device: tor
     for iteration in range(3):
         schedules.append(torch.randperm(values.shape[0], generator=generator))
     def run(current, indices):
+        device_indices = indices.to(values.device)
+        selected_values = values.index_select(0, device_indices)
+        selected_labels = labels.index_select(0, indices)
         for label in range(10):
-            subset = values.index_select(0, indices)[labels.index_select(0, indices) == label]
+            subset = selected_values[selected_labels.to(values.device) == label]
             updated = _em_step(subset, current["classes"][label])
             current["classes"][label].update(updated)
         return current
