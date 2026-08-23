@@ -4,9 +4,13 @@ import argparse
 
 
 def register_research(root: argparse._SubParsersAction) -> None:
-    research = root.add_parser("research", help="diagnostic-only pre-registered research programs")
+    research = root.add_parser(
+        "research", help="diagnostic-only pre-registered research programs"
+    )
     research_programs = research.add_subparsers(dest="research_program", required=True)
-    fiber = research_programs.add_parser("fiber-robustness", help="synthetic multi-matrix fiber diagnostics")
+    fiber = research_programs.add_parser(
+        "fiber-robustness", help="synthetic multi-matrix fiber diagnostics"
+    )
     fiber_actions = fiber.add_subparsers(dest="research_action", required=True)
     validate = fiber_actions.add_parser("validate")
     validate.add_argument("--config", required=True)
@@ -22,42 +26,72 @@ def register_research(root: argparse._SubParsersAction) -> None:
     preflight = fiber_actions.add_parser("preflight")
     preflight.add_argument("--validate-evidence", required=True)
     preflight.add_argument("--config", required=True)
-    preflight.add_argument("--research-initialization-checkpoint", "--checkpoint", dest="research_initialization_checkpoint", required=True)
+    preflight.add_argument(
+        "--research-initialization-checkpoint",
+        "--checkpoint",
+        dest="research_initialization_checkpoint",
+        required=True,
+    )
     preflight.add_argument("--source-training-evidence", required=True)
     preflight.add_argument("--measurement-bundle", required=True)
     preflight.add_argument("--measurement-evidence", required=True)
     preflight.add_argument("--primary-qualification-evidence", required=True)
     preflight.add_argument("--secondary-qualification-evidence", required=True)
     preflight.add_argument("--dataset-root", required=True)
-    preflight.add_argument("--primary-evaluator-checkpoint", "--evaluator-checkpoint", dest="primary_evaluator_checkpoint", required=True)
+    preflight.add_argument(
+        "--primary-evaluator-checkpoint",
+        "--evaluator-checkpoint",
+        dest="primary_evaluator_checkpoint",
+        required=True,
+    )
     preflight.add_argument("--secondary-evaluator-checkpoint", required=True)
     preflight.add_argument("--device", choices=("cuda", "cpu"), default="cuda")
     preflight.add_argument("--output", required=True)
     screen = fiber_actions.add_parser("screen")
     screen.add_argument("--preflight-evidence", required=True)
     screen.add_argument("--config", required=True)
-    screen.add_argument("--research-initialization-checkpoint", "--checkpoint", dest="research_initialization_checkpoint", required=True)
+    screen.add_argument(
+        "--research-initialization-checkpoint",
+        "--checkpoint",
+        dest="research_initialization_checkpoint",
+        required=True,
+    )
     screen.add_argument("--source-training-evidence", required=True)
     screen.add_argument("--measurement-bundle", required=True)
     screen.add_argument("--measurement-evidence", required=True)
     screen.add_argument("--primary-qualification-evidence", required=True)
     screen.add_argument("--secondary-qualification-evidence", required=True)
     screen.add_argument("--dataset-root", required=True)
-    screen.add_argument("--primary-evaluator-checkpoint", "--evaluator-checkpoint", dest="primary_evaluator_checkpoint", required=True)
+    screen.add_argument(
+        "--primary-evaluator-checkpoint",
+        "--evaluator-checkpoint",
+        dest="primary_evaluator_checkpoint",
+        required=True,
+    )
     screen.add_argument("--secondary-evaluator-checkpoint", required=True)
     screen.add_argument("--device", choices=("cuda", "cpu"), default="cuda")
     screen.add_argument("--output", required=True)
     select = fiber_actions.add_parser("select")
     select.add_argument("--screen-evidence", required=True)
     select.add_argument("--config", required=True)
-    select.add_argument("--research-initialization-checkpoint", "--checkpoint", dest="research_initialization_checkpoint", required=True)
+    select.add_argument(
+        "--research-initialization-checkpoint",
+        "--checkpoint",
+        dest="research_initialization_checkpoint",
+        required=True,
+    )
     select.add_argument("--source-training-evidence", required=True)
     select.add_argument("--measurement-bundle", required=True)
     select.add_argument("--measurement-evidence", required=True)
     select.add_argument("--primary-qualification-evidence", required=True)
     select.add_argument("--secondary-qualification-evidence", required=True)
     select.add_argument("--dataset-root", required=True)
-    select.add_argument("--primary-evaluator-checkpoint", "--evaluator-checkpoint", dest="primary_evaluator_checkpoint", required=True)
+    select.add_argument(
+        "--primary-evaluator-checkpoint",
+        "--evaluator-checkpoint",
+        dest="primary_evaluator_checkpoint",
+        required=True,
+    )
     select.add_argument("--secondary-evaluator-checkpoint", required=True)
     select.add_argument("--device", choices=("cuda", "cpu"), default="cuda")
     select.add_argument("--output", required=True)
@@ -65,8 +99,11 @@ def register_research(root: argparse._SubParsersAction) -> None:
     closeout.add_argument("--selection-evidence", required=True)
     closeout.add_argument("--output", required=True)
 
-    image = research_programs.add_parser("fiber-image", help="paired synthetic fiber image-generation diagnostics")
+    image = research_programs.add_parser(
+        "fiber-image", help="paired synthetic fiber image-generation diagnostics"
+    )
     image_actions = image.add_subparsers(dest="research_action", required=True)
+
     def image_common(command, *, validation=False):
         command.add_argument("--config", required=True)
         command.add_argument("--dataset-root", required=True)
@@ -78,10 +115,16 @@ def register_research(root: argparse._SubParsersAction) -> None:
         if validation:
             command.add_argument("--lp01-fixture", required=True)
         else:
-            command.add_argument("--research-initialization-checkpoint", "--checkpoint", dest="research_initialization_checkpoint", required=True)
+            command.add_argument(
+                "--research-initialization-checkpoint",
+                "--checkpoint",
+                dest="research_initialization_checkpoint",
+                required=True,
+            )
             command.add_argument("--source-training-evidence", required=True)
             command.add_argument("--measurement-bundle", required=True)
             command.add_argument("--measurement-evidence", required=True)
+
     image_validate = image_actions.add_parser("validate")
     image_common(image_validate, validation=True)
     image_validate.add_argument("--measurement-bundle-output", required=True)
@@ -91,16 +134,25 @@ def register_research(root: argparse._SubParsersAction) -> None:
     image_common(image_baseline)
     image_baseline.add_argument("--validate-evidence", required=True)
     image_baseline.add_argument("--output", required=True)
-    for action, upstream in (("preflight", "validate-evidence"), ("screen", "preflight-evidence")):
+    for action, upstream in (
+        ("preflight", "validate-evidence"),
+        ("screen", "preflight-evidence"),
+    ):
         command = image_actions.add_parser(action)
         image_common(command)
-        command.add_argument(f"--{upstream}", dest=upstream.replace("-", "_"), required=True)
+        command.add_argument(
+            f"--{upstream}", dest=upstream.replace("-", "_"), required=True
+        )
         if action == "preflight":
             command.add_argument("--baseline-evidence", required=True)
         if action in {"preflight", "screen"}:
-            command.add_argument("--function-id", choices=("S0", "S1a", "S1b", "S1c"), required=True)
+            command.add_argument(
+                "--function-id", choices=("S0", "S1a", "S1b", "S1c"), required=True
+            )
         if action == "screen":
-            command.add_argument("--seed", type=int, choices=(5201, 5202, 5203), required=True)
+            command.add_argument(
+                "--seed", type=int, choices=(5201, 5202, 5203), required=True
+            )
             command.add_argument("--resume-checkpoint")
         command.add_argument("--output", required=True)
     image_select = image_actions.add_parser("select")
@@ -111,8 +163,13 @@ def register_research(root: argparse._SubParsersAction) -> None:
     image_closeout.add_argument("--selection-evidence", required=True)
     image_closeout.add_argument("--output", required=True)
 
-    attribution = research_programs.add_parser("fiber-attribution", help="no-update synthetic fiber attribution and presentation diagnostics")
-    attribution_actions = attribution.add_subparsers(dest="research_action", required=True)
+    attribution = research_programs.add_parser(
+        "fiber-attribution",
+        help="no-update synthetic fiber attribution and presentation diagnostics",
+    )
+    attribution_actions = attribution.add_subparsers(
+        dest="research_action", required=True
+    )
 
     def attribution_lineage(command, *, fixture=False):
         command.add_argument("--config", required=True)
@@ -138,7 +195,9 @@ def register_research(root: argparse._SubParsersAction) -> None:
     attribution_report = attribution_actions.add_parser("report")
     attribution_report.add_argument("--measurement-evidence", required=True)
     attribution_report.add_argument("--v3-selection", required=True)
-    attribution_report.add_argument("--digit-pipeline-variant", choices=("S0",), default="S0")
+    attribution_report.add_argument(
+        "--digit-pipeline-variant", choices=("S0",), default="S0"
+    )
     attribution_report.add_argument("--digit-pipeline-only", action="store_true")
     attribution_report.add_argument("--output", required=True)
     attribution_closeout = attribution_actions.add_parser("closeout")
@@ -159,7 +218,12 @@ def register_research(root: argparse._SubParsersAction) -> None:
         command.add_argument("--secondary-evaluator-checkpoint", required=True)
         command.add_argument("--primary-qualification-evidence", required=True)
         command.add_argument("--secondary-qualification-evidence", required=True)
-        command.add_argument("--research-initialization-checkpoint", "--checkpoint", dest="research_initialization_checkpoint", required=True)
+        command.add_argument(
+            "--research-initialization-checkpoint",
+            "--checkpoint",
+            dest="research_initialization_checkpoint",
+            required=True,
+        )
         command.add_argument("--source-training-evidence", required=True)
         command.add_argument("--device", choices=("cuda", "cpu"), default="cuda")
         command.add_argument("--v3-closeout", required=True)
@@ -284,19 +348,40 @@ def register_research(root: argparse._SubParsersAction) -> None:
     decoder_closeout.add_argument("--output", required=True)
 
     capacity_map = research_programs.add_parser("capacity-map")
-    capacity_actions = capacity_map.add_subparsers(dest="research_action", required=True)
-    for action in ("validate", "screen", "train-smoke", "confirm", "summarize", "diagnose", "qualify-shape", "closeout"):
+    capacity_actions = capacity_map.add_subparsers(
+        dest="research_action", required=True
+    )
+    for action in (
+        "validate",
+        "screen",
+        "train-smoke",
+        "confirm",
+        "summarize",
+        "diagnose",
+        "qualify-shape",
+        "closeout",
+    ):
         command = capacity_actions.add_parser(action)
         command.add_argument("--config", required=True)
         command.add_argument("--evidence-revision", type=int, default=1)
-        command.add_argument("--dataset", choices=("mnist", "controlled_shapes", "fashion_mnist"), default="mnist")
-        command.add_argument("--device", choices=("cuda", "cpu"), default="cpu" if action == "closeout" else "cuda")
+        command.add_argument(
+            "--dataset",
+            choices=("mnist", "controlled_shapes", "fashion_mnist"),
+            default="mnist",
+        )
+        command.add_argument(
+            "--device",
+            choices=("cuda", "cpu"),
+            default="cpu" if action == "closeout" else "cuda",
+        )
         if action not in {"validate", "summarize", "qualify-shape", "closeout"}:
             command.add_argument("--variant", required=True)
         else:
             command.add_argument("--variant")
         if action in {"screen", "train-smoke", "confirm", "diagnose", "qualify-shape"}:
-            command.add_argument("--seed", type=int, default=7319 if action == "qualify-shape" else 1234)
+            command.add_argument(
+                "--seed", type=int, default=7319 if action == "qualify-shape" else 1234
+            )
         if action == "screen":
             command.add_argument("--preflight-only", action="store_true")
             command.add_argument("--stage", choices=("audit", "probe"), default="audit")
@@ -316,13 +401,27 @@ def register_research(root: argparse._SubParsersAction) -> None:
             command.add_argument("--evidence-root", required=True)
     o0 = research_programs.add_parser("o0-feasibility")
     o0_actions = o0.add_subparsers(dest="research_action", required=True)
-    for action in ("validate", "preflight", "controls", "probe", "smoke", "confirm", "final", "summarize", "closeout"):
+    for action in (
+        "validate",
+        "preflight",
+        "controls",
+        "probe",
+        "smoke",
+        "confirm",
+        "final",
+        "summarize",
+        "closeout",
+    ):
         command = o0_actions.add_parser(action)
         command.add_argument("--config", required=True)
         command.add_argument("--evidence-revision", type=int, default=1)
         command.add_argument("--dataset", choices=("mnist",), default="mnist")
         command.add_argument("--device", choices=("cuda", "cpu"), default="cuda")
-        command.add_argument("--candidate", choices=("D0", "C0", "C1", "C2", "C3"), required=action in {"preflight", "probe", "smoke", "confirm", "final"})
+        command.add_argument(
+            "--candidate",
+            choices=("D0", "C0", "C1", "C2", "C3"),
+            required=action in {"preflight", "probe", "smoke", "confirm", "final"},
+        )
         if action in {"preflight", "probe", "smoke", "confirm"}:
             command.add_argument("--seed", type=int, default=1234)
         if action in {"probe", "smoke", "confirm"}:
@@ -335,7 +434,14 @@ def register_research(root: argparse._SubParsersAction) -> None:
             command.add_argument("--evidence-root", required=True)
     ident = research_programs.add_parser("o0-identifiability")
     ident_actions = ident.add_subparsers(dest="research_action", required=True)
-    for action in ("validate", "preflight", "audit-update", "probe", "summarize", "closeout"):
+    for action in (
+        "validate",
+        "preflight",
+        "audit-update",
+        "probe",
+        "summarize",
+        "closeout",
+    ):
         command = ident_actions.add_parser(action)
         command.add_argument("--config", required=True)
         command.add_argument("--evidence-revision", type=int, default=1)
@@ -351,7 +457,15 @@ def register_research(root: argparse._SubParsersAction) -> None:
             command.add_argument("--evidence-root", required=True)
     o0e = research_programs.add_parser("objective-o0")
     o0e_actions = o0e.add_subparsers(dest="research_action", required=True)
-    for action in ("validate", "preflight", "calibrate", "screen", "confirm", "locked-final", "closeout"):
+    for action in (
+        "validate",
+        "preflight",
+        "calibrate",
+        "screen",
+        "confirm",
+        "locked-final",
+        "closeout",
+    ):
         command = o0e_actions.add_parser(action)
         command.add_argument("--config", required=True)
         command.add_argument("--dataset", choices=("mnist",), default="mnist")
@@ -405,7 +519,14 @@ def register_research(root: argparse._SubParsersAction) -> None:
         command.add_argument("--secondary-qualification-evidence", required=True)
         command.add_argument("--o0-i-closeout")
 
-    for action in ("validate", "preflight", "screen", "confirm", "locked-final", "closeout"):
+    for action in (
+        "validate",
+        "preflight",
+        "screen",
+        "confirm",
+        "locked-final",
+        "closeout",
+    ):
         command = wae_actions.add_parser(action)
         wae_lineage(command)
         if action in {"preflight", "screen", "confirm", "locked-final"}:
@@ -440,12 +561,26 @@ def register_research(root: argparse._SubParsersAction) -> None:
         command.add_argument("--wae-training-checkpoint")
         command.add_argument("--wae-decoder-checkpoint")
         command.add_argument("--wae-confirm-evidence")
+        command.add_argument("--latent-transport-confirm-evidence")
+        command.add_argument("--mixture-closeout")
         command.add_argument("--primary-evaluator-checkpoint")
         command.add_argument("--secondary-evaluator-checkpoint")
         command.add_argument("--primary-qualification-evidence")
         command.add_argument("--secondary-qualification-evidence")
 
-    for action in ("validate", "encode-posterior", "attribute", "preflight", "fit-flow", "screen", "measure-flow", "confirm", "locked-final", "closeout", "canary"):
+    for action in (
+        "validate",
+        "encode-posterior",
+        "attribute",
+        "preflight",
+        "fit-flow",
+        "screen",
+        "measure-flow",
+        "confirm",
+        "locked-final",
+        "closeout",
+        "canary",
+    ):
         command = transport_actions.add_parser(action)
         transport_lineage(command)
         if action in {"preflight", "screen", "confirm", "locked-final"}:
@@ -497,7 +632,20 @@ def register_research(root: argparse._SubParsersAction) -> None:
         command.add_argument("--primary-qualification-evidence")
         command.add_argument("--secondary-qualification-evidence")
 
-    for action in ("validate", "encode-posterior", "preflight", "fit-mixture", "calibrate-temperature", "screen-measure", "screen", "confirm", "locked-final", "report", "closeout", "canary"):
+    for action in (
+        "validate",
+        "encode-posterior",
+        "preflight",
+        "fit-mixture",
+        "calibrate-temperature",
+        "screen-measure",
+        "screen",
+        "confirm",
+        "locked-final",
+        "report",
+        "closeout",
+        "canary",
+    ):
         command = mixture_actions.add_parser(action)
         mixture_lineage(command)
         if action in {"preflight", "screen", "confirm", "locked-final"}:
@@ -528,6 +676,57 @@ def register_research(root: argparse._SubParsersAction) -> None:
             command.add_argument("--locked-evidence")
             command.add_argument("--screen-evidence")
             command.add_argument("--presentation-evidence")
+
+    swae = research_programs.add_parser(
+        "electronic-o0-prior-native-swae",
+        help="diagnostic prior-native sliced-Wasserstein electronic O0 lifecycle",
+    )
+    swae_actions = swae.add_subparsers(dest="research_action", required=True)
+
+    def swae_lineage(command):
+        command.add_argument("--run-manifest")
+        command.add_argument("--config")
+        command.add_argument("--dataset-root")
+        command.add_argument("--device", choices=("cuda", "cpu"))
+        command.add_argument("--output")
+        command.add_argument("--wae-training-checkpoint")
+        command.add_argument("--wae-decoder-checkpoint")
+        command.add_argument("--wae-confirm-evidence")
+        command.add_argument("--primary-evaluator-checkpoint")
+        command.add_argument("--secondary-evaluator-checkpoint")
+        command.add_argument("--primary-qualification-evidence")
+        command.add_argument("--secondary-qualification-evidence")
+
+    for action in (
+        "validate",
+        "audit",
+        "preflight",
+        "screen",
+        "confirm",
+        "locked-final",
+        "report",
+        "closeout",
+    ):
+        command = swae_actions.add_parser(action)
+        swae_lineage(command)
+        if action in {"preflight", "screen", "confirm", "locked-final"}:
+            command.add_argument("--seed", type=int, choices=(8601, 8602, 8603))
+        if action == "preflight":
+            command.add_argument("--audit-evidence")
+        if action == "screen":
+            command.add_argument("--preflight-evidence")
+            command.add_argument("--resume-checkpoint")
+        if action == "confirm":
+            command.add_argument("--screen-evidence")
+            command.add_argument("--resume-checkpoint")
+        if action == "locked-final":
+            command.add_argument("--confirm-evidence")
+            command.add_argument("--peer-confirm-evidence", action="append", default=[])
+            command.add_argument("--checkpoint")
+        if action == "report":
+            command.add_argument("--measurement-evidence")
+        if action == "closeout":
+            command.add_argument("--measurement-evidence")
 
     smf = research_programs.add_parser(
         "smf-modal-density-attribution",

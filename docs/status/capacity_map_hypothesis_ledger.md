@@ -21,6 +21,15 @@ registered temperature. It therefore closed as
 `mixture_latent_fit_failed` before evaluator confirmation; no O0-G or fiber
 consumer is authorized.
 
+The next registered electronic hypothesis is `H-SWAE`: warm-start the
+content-bound WAE v2 seed-7301 weights, create a fresh optimizer, and replace
+MMD with a deterministic classwise sliced-Wasserstein quantile objective. The
+purpose is to make standard `N(0,I8)` a native decoder input distribution,
+rather than fitting another post-hoc posterior sampler. The source WAE,
+flow, and mixture artifacts remain read-only. The lifecycle is stopped before
+O0-G and fiber work unless its evaluator-free latent-fit gates and its full
+dual-evaluator semantic/novelty gates both pass.
+
 | ID | Unique variable | Prediction | Falsification / attribution rule | Status |
 | --- | --- | --- | --- | --- |
 | H-E | E0/E1 versus E2--E4 seed manifold | A spatial nonlinear seed raises a Pareto axis without reducing the other two | E2--E4 pass while E0/E1 fail: input-manifold bottleneck | v2.2 full-panel replay of revision-9 E2:O0: primary min=0.876, smooth min=0.488, agreement min=0.482, min recall=0; no optical attribution |
@@ -35,6 +44,7 @@ consumer is authorized.
 | H-O | Dual-bundle objective | Normalized primary+smooth loss improves smooth semantics without primary regression | 2/3 seeds: smooth median gain ≥0.10, primary loss ≤0.02, no safety failure | smoke selection passed (smooth median 0.571 vs 0.100); 5-epoch three-seed E2:O0 confirm failed all complete gates: smooth 0.747/0.753/0.747, agreement 0.735/0.741/0.671, min recall 0.412/0.353/0.294 |
 | H-LT | Standard Gaussian versus encoded-posterior transport | Frozen WAE decoder can recover semantic contract after posterior transport | Empirical posterior upper bound passes, then fixed flow must pass locked dual semantics and memorization | attribution: nonlinear candidate; seed-8401 flow confirm validly failed: locked primary/secondary min recall `0.88–0.94`/`0.90–0.96`, memorization `0.7876`; closed before O0-G |
 | H-MIX | Regularized class-conditional Gaussian mixture versus standard latent transport | A fixed multimodal posterior transport can pass the electronic image gate without evaluator-based selection | NLL, classwise SWD, and independent novelty gates must pass before evaluator confirmation | valid screen failure on clean commit `67f9d50`: NLL `9.3646` vs `12.0450`, SWD reduction `12.58%`, novelty pass `0.894`; closed before O0-G |
+| H-SWAE | Train-time sliced-Wasserstein prior alignment versus WAE MMD | A prior-native decoder can consume standard Gaussian without post-hoc flow/GMM transport | SWD fit, reconstruction preservation, novelty, and dual-evaluator gates must all pass | registered; no CUDA run authorized until clean lifecycle validation |
 
 Research failures close only their own variant. Formal acceptance remains
 fail-closed. Invalid harness records are excluded from Pareto ranking and may
