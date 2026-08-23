@@ -424,6 +424,47 @@ def register_research(root: argparse._SubParsersAction) -> None:
         if action == "closeout":
             command.add_argument("--locked-evidence", required=True)
 
+    transport = research_programs.add_parser(
+        "electronic-o0-latent-transport",
+        help="diagnostic class-conditional latent transport lifecycle",
+    )
+    transport_actions = transport.add_subparsers(dest="research_action", required=True)
+
+    def transport_lineage(command):
+        command.add_argument("--config", required=True)
+        command.add_argument("--dataset-root", required=True)
+        command.add_argument("--device", choices=("cuda", "cpu"), default="cuda")
+        command.add_argument("--output", required=True)
+        command.add_argument("--wae-training-checkpoint", required=True)
+        command.add_argument("--wae-decoder-checkpoint", required=True)
+        command.add_argument("--wae-confirm-evidence", required=True)
+        command.add_argument("--primary-evaluator-checkpoint", required=True)
+        command.add_argument("--secondary-evaluator-checkpoint", required=True)
+        command.add_argument("--primary-qualification-evidence", required=True)
+        command.add_argument("--secondary-qualification-evidence", required=True)
+
+    for action in ("validate", "attribute", "preflight", "screen", "confirm", "locked-final", "closeout"):
+        command = transport_actions.add_parser(action)
+        transport_lineage(command)
+        if action in {"preflight", "screen", "confirm", "locked-final"}:
+            command.add_argument("--seed", type=int, choices=(8401, 8402, 8403), default=8401)
+        if action == "attribute":
+            command.add_argument("--validation-evidence", required=True)
+        if action == "preflight":
+            command.add_argument("--attribution-evidence", required=True)
+        if action == "screen":
+            command.add_argument("--preflight-evidence", required=True)
+            command.add_argument("--resume-checkpoint")
+        if action == "confirm":
+            command.add_argument("--screen-evidence", required=True)
+            command.add_argument("--resume-checkpoint")
+        if action == "locked-final":
+            command.add_argument("--confirm-evidence", required=True)
+            command.add_argument("--peer-confirm-evidence", action="append", default=[])
+            command.add_argument("--flow-checkpoint", required=True)
+        if action == "closeout":
+            command.add_argument("--locked-evidence", required=True)
+
     smf = research_programs.add_parser(
         "smf-modal-density-attribution",
         help="synthetic single-mode port-density upper-bound lifecycle",

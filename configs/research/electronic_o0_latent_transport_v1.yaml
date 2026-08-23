@@ -1,0 +1,17 @@
+schema_version: 1
+name: electronic_o0_latent_transport_v1
+version: 20260823
+dataset_root: data
+code_dim: 8
+logical_batch_size: 100
+flow_hidden_dim: 128
+flow_blocks: 8
+flow_epochs_screen: 1
+flow_epochs_confirm: 10
+flow_seeds: [8401, 8402, 8403]
+locked_panel_seeds: [4242, 104729, 161803]
+bootstrap_seed: 90210
+bootstrap_samples: 10000
+fixed_exposure_scale: 0.4913053810596466
+flow_parameter_budget: 500000
+harness_revision: 1
