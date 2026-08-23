@@ -322,7 +322,9 @@ def _optimizer_state_equal(
         for name in left_state[key]:
             left_value, right_value = left_state[key][name], right_state[key][name]
             if isinstance(left_value, torch.Tensor):
-                if not torch.equal(left_value, right_value):
+                if not isinstance(right_value, torch.Tensor) or not torch.equal(
+                    left_value.detach().cpu(), right_value.detach().cpu()
+                ):
                     return False
             elif left_value != right_value:
                 return False
