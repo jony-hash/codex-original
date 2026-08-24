@@ -1016,6 +1016,48 @@ def register_research(root: argparse._SubParsersAction) -> None:
         command.add_argument("--output")
         command.add_argument("--measurement-evidence")
 
+    semantic_factorial = research_programs.add_parser(
+        "electronic-o0-semantic-code-factorial",
+        help="no-update decoder/code-source semantic factorial for electronic O0",
+    )
+    semantic_factorial_actions = semantic_factorial.add_subparsers(
+        dest="research_action", required=True
+    )
+
+    def semantic_factorial_lineage(command):
+        command.add_argument("--run-manifest")
+        command.add_argument("--config")
+        command.add_argument("--dataset-root")
+        command.add_argument("--device", choices=("cuda", "cpu"))
+        command.add_argument("--output")
+        command.add_argument("--wae-training-checkpoint")
+        command.add_argument("--wae-decoder-checkpoint")
+        command.add_argument("--wae-confirm-evidence")
+        command.add_argument("--latent-transport-attribution")
+        command.add_argument("--h-scf-final-decoder-checkpoint")
+        command.add_argument("--h-didm-screen-evidence")
+        command.add_argument("--h-didm-report-evidence")
+        command.add_argument("--h-didm-closeout-evidence")
+        command.add_argument("--primary-evaluator-checkpoint")
+        command.add_argument("--secondary-evaluator-checkpoint")
+        command.add_argument("--primary-qualification-evidence")
+        command.add_argument("--secondary-qualification-evidence")
+
+    for action in ("validate", "preflight", "audit"):
+        command = semantic_factorial_actions.add_parser(action)
+        semantic_factorial_lineage(command)
+        if action == "preflight":
+            command.add_argument("--validation-evidence")
+        elif action == "audit":
+            command.add_argument("--preflight-evidence")
+    for action in ("report", "closeout"):
+        command = semantic_factorial_actions.add_parser(action)
+        command.add_argument("--run-manifest")
+        command.add_argument("--config")
+        command.add_argument("--dataset-root")
+        command.add_argument("--output")
+        command.add_argument("--measurement-evidence")
+
     smf = research_programs.add_parser(
         "smf-modal-density-attribution",
         help="synthetic single-mode port-density upper-bound lifecycle",

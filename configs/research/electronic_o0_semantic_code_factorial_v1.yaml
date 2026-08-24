@@ -1,0 +1,23 @@
+schema_version: 1
+name: electronic_o0_semantic_code_factorial_v1
+version: 20260824
+code_dim: 8
+harness_seed: 8811
+gaussian_bank_seeds: [223607, 244949]
+samples_per_class_per_bank: 250
+posterior_split_seed: 1234
+historical_panel_seeds: [4242, 104729, 161803]
+evaluator_accuracy_minimum: 0.95
+evaluator_minimum_recall: 0.90
+evaluator_agreement_minimum: 0.95
+camera_code_fraction_minimum: 0.25
+diversity_ratio_minimum: 0.70
+diversity_ratio_maximum: 1.30
+coverage_ratio_maximum: 1.50
+saturation_maximum: 0.08
+memorization_pass_fraction_minimum: 0.95
+label_shift_accuracy_maximum: 0.20
+formal_promotion: false
+optical_training_authorized: false
+fiber_training_authorized: false
+synthetic_diagnostic_only: true

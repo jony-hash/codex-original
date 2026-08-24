@@ -38,6 +38,7 @@ utility、dataset admission 或 accepted manifest。项目治理状态保持
 | H-CCF cycle composition | `cycle_composition_attribution_underdetermined` | prior-native attribution family closed |
 | H-DPGC direct-prior canary | `direct_prior_linear_semantic_capacity_failed` | linear canary closed; no neural training |
 | H-DIDM direct image distribution | `direct_image_distribution_failed` on the sole authorized seed-8801 screen; route closed | same nonlinear decoder; no encoder/cycle; no confirm or promotion |
+| H-SCF semantic code-source factorial | `registered/unexecuted` | frozen-decoder no-update diagnostic only; no evidence, model, or promotion consumer |
 
 H-SWAE 的 validation、synthetic direction audit 和 CUDA preflight 均通过。唯一执行的
 seed-8601 screen 是有效科学失败：aggregate SWD reduction 为 `34.62% < 50%`，类别
@@ -278,3 +279,19 @@ screen decoder/training checkpoint SHA256 分别为
 WAE、H-DPGC 与全部 prior-native artifacts 保持只读。该 valid failure 关闭 H-DIDM，禁止
 重跑、延长 epoch、调 loss、换 seed、confirm、decoder v2、O0-G、光学、fiber training
 或 formal promotion；若继续研究必须另行注册无训练证据和新 lineage。
+
+## 当前注册假设：H-SCF（registered/unexecuted）
+
+H-SCF（Semantic Code-source Factorial）已登记为 manifest-only、diagnostic-only 的无更新
+析因路线，尚未执行 validate、preflight、audit、report 或 closeout，也不存在 H-SCF
+evidence、分类或科学结论。它只读绑定 WAE confirm/training/decoder、latent attribution、
+H-DIDM final decoder/screen/report/closeout、MNIST split 和既有双 evaluator qualification
+的固定摘要；配置固定为 `version=20260824`、`harness_seed=8811`、Gaussian seeds
+`223607/244949`、posterior split seed `1234`、每类每 bank `250`。
+
+核心 arms 是 WAE/H-DIDM decoder 分别配 Gaussian/validation-posterior code；D-P 另做
+within-class permutation、conditioning-label cyclic shift 和 zero-code controls。所有结果只
+能被 H-SCF report、closeout 与 hypothesis ledger 消费。唯一允许的下一动作是
+`run_h_scf_validate`；不得由该路线直接授权 optimizer、checkpoint、candidate、confirm、
+decoder v2、O0-G、光学、fiber training 或 formal promotion。有效 closeout 后才可在单独
+文档变更中登记 hashes、分类和唯一 next action；`invalid_harness` 不得产生下游消费者。

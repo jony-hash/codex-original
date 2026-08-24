@@ -79,3 +79,19 @@ Peak allocation was `517880320` bytes and audit storage was `41238` bytes.
 This closes only the fixed linear canary. It does not prove that every
 nonlinear direct generator is impossible; it does block neural direct-generator
 training until a new, independent no-training capacity argument is registered.
+
+## H-SCF registered/unexecuted
+
+After the valid H-DIDM failure, `H-SCF` (Semantic Code-source Factorial) is
+registered as a new manifest-only, diagnostic-only no-update counterfactual.
+It freezes the WAE source decoder, H-DIDM final decoder, WAE encoder, and the
+qualified primary/secondary evaluators. Its four arms compare source/final
+decoder with Gaussian/validation-posterior codes; two disjoint 250-per-class
+posterior banks, two fixed Gaussian banks, historical panel replay, D-P
+permutation, label-shift, and zero-code controls are fixed by the v1 contract.
+
+The route is registered but unexecuted: no validation, preflight, audit,
+report, closeout, hashes, or classification exists yet. Its only consumer is
+the H-SCF report/closeout and this ledger. The only next action is
+`run_h_scf_validate`; no optimizer, checkpoint, candidate model, confirm,
+decoder v2, O0-G, optical, fiber, or promotion consumer is authorized.

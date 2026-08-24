@@ -1083,3 +1083,19 @@ screen decoder/training checkpoint SHA256 为
 `646068224` bytes、storage `18826955` bytes。report→closeout 均为纯消费者，H-DIDM 路线
 现已关闭，不得重跑、调参、换 seed、confirm 或设计 decoder v2；后续如有必要只能另行
 提出无训练容量证据并建立新 lineage。
+
+## 2026-08-24：H-SCF semantic code-source factorial 注册（未执行）
+
+在 H-DIDM valid failure 之后登记 `electronic_o0_semantic_code_factorial_v1`，作为新的
+无更新、manifest-only、diagnostic-only 析因路线。H-SCF 冻结 WAE source decoder、H-DIDM
+final decoder、WAE encoder 与既有双 evaluator，不创建 optimizer、checkpoint 或候选模型。
+当前仅完成实现、配置和测试注册；`validate → preflight → audit → report → closeout` 尚未
+执行，因此没有 H-SCF evidence、hash、分类、closeout 或科学结果。
+
+固定 arms 为 S-G/S-P/D-G/D-P；validation posterior 每类拆为两个互斥的 250-row banks，
+Gaussian 使用 `223607/244949`，历史复现 panel 使用 `4242/104729/161803`。D-P 的
+within-class cyclic permutation、conditioning-label cyclic shift 和 zero-code controls 以及
+双 evaluator、安全、finite、no-update、资源和跨 panel gates 均属于预注册合同。唯一消费者
+是 H-SCF report、closeout 和 hypothesis ledger；唯一下一动作是 `run_h_scf_validate`。在
+有效 closeout 前不得据此授权 nonlinear canary、decoder v2、O0-G、光学、fiber training
+或 formal promotion；invalid harness 不得有下游消费者。
