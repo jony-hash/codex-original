@@ -140,6 +140,21 @@ landmark。classwise locator 固定记录于 `0/250/350/500/625`，class 6/8 仅
 这只允许登记无更新 counterfactual hypothesis，不授权修改 optimizer/objective/架构、
 任何新训练、confirm、其他 seed、O0-G、光学、fiber 或 formal promotion。
 
+## 2026-08-24：H-CCF prior cycle composition factorial 注册
+
+H-DLTA 已有效关闭 optimizer/trajectory attribution family，未发现可重复的 raw-gradient、
+momentum、adaptive preconditioning、weight-decay、finite-step curvature 或 observer
+distribution 机制。下一条只读反事实注册为 `H-CCF`：对 WAE source、H-SWAE final 和
+H-SCED final 的 encoder/decoder 做 2×2 factorial 组合，测量
+`L00/L10/L01/L11` cycle，并计算 encoder、decoder、interaction 与 Shapley 贡献。
+
+H-CCF 不创建 optimizer、不加载 evaluator、不生成候选 checkpoint、不修改旧 evidence，
+只允许登记下一条 no-update diagnostic hypothesis。正式执行顺序固定为
+`validate → preflight → audit → report → closeout`；任一 lineage、null swap、historical
+cycle reproduction、finite、hash 或资源门失败均停止，不形成科学结论。confirm、其他 seed、
+projected-gradient、SGD、trust-region、adapter、O0-G、光学、fiber training 和 formal
+promotion 继续关闭。
+
 ## 2026-08-23：electronic O0 mixture transport screen stop
 
 在冻结 WAE v2 encoder/decoder 的条件下，建立了

@@ -133,4 +133,7 @@ distribution mismatch 均 unsupported。下一动作固定为
 不得修改 optimizer、objective、阈值或架构，不得启动 projected-gradient、SGD、trust-region、
 adapter、confirm、其他 seed、O0-G、SMF/FMF/MMF、E1、光学、fiber training 或 formal promotion。
 
-除 H-PGC 已完成的归因 lifecycle 外，没有其他已授权研究或训练动作。
+下一注册假设为 `H-CCF`（Prior Cycle Composition Factorial）：在不创建 optimizer、
+不加载 evaluator、不生成 checkpoint 的条件下，将 source/final encoder 与 decoder 做
+2×2 factorial 组合，分解 cycle 恶化的 encoder、decoder 和交互贡献。它只允许 no-update
+counterfactual attribution，不重新打开 optimizer/trajectory attribution family。
