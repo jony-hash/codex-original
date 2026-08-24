@@ -1129,3 +1129,31 @@ Jacobian、curvature 和资源门。
 候选模型或生成图像全集。当前状态为 `registered/unexecuted`；在形成有效
 closeout 前不允许 neural training、confirm、decoder v2、O0-G、光学、fiber
 或 promotion。
+
+## 2026-08-25：H-NDMC nonlinear manifold capacity closeout
+
+H-NDMC retry3 从 clean commit `acc22f5` 完成
+`validate → preflight → audit → report → closeout`。retry1 的 classwise bank
+长度 harness 错误和 retry2 的参数 hash 符号引用错误均保留为
+`invalid_harness`，没有创建下游 consumer；修复后没有覆盖旧 evidence。
+
+最终五阶段 evidence 均为 `status=valid`，分类为
+`nonlinear_manifold_safety_failed`，唯一 next action 为
+`close_nonlinear_direct_manifold_capacity_canary`。两 Gaussian banks 的
+primary correct 为 `2500/2500`，secondary correct 为 `2000/2500`，agreement
+为 `2000/2500`；camera-code fraction 约 `1.48e-5`，diversity 约
+`0.004–0.007`，coverage `1.67–2.13`。memorization pass fraction 为 `1.0`、
+exact duplicates 为 `0`；H-DPGC historical replay、identity-copula、
+label-shift、zero-code、64/257 chunk、finite、Jacobian、curvature、参数不变、
+no-optimizer 和资源门均已记录。
+
+retry3 evidence SHA256 依次为 validation
+`3d3a8cf1c3d30e3923172bc937b6f21295083d2d8963815de1a1ca9e37480d32`、preflight
+`6e0a52880b6e222e79ce9a9b63f368f0d9fb6afb62b73f19297aed0114c45783`、audit
+`e0fdf0b32fff2159c735f92f67c4c621eaca02aac8c26270fc82e506d5aa6544`、report
+`b82d5379863068a8dfa22fcb362e36a1dcfaf37305c1692f728b9719007f267e`、closeout
+`f0e21b76723c187056cfb930c306036fbf58e390ebadbda96ccf04a8dcbee43b`。
+
+该 valid failure 关闭 H-NDMC 经验流形 canary，不授权 direct-generator
+architecture preflight、neural training、confirm、decoder v2、O0-G、光学、
+fiber 或 promotion。

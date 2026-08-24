@@ -110,15 +110,22 @@ seconds, and storage `10316` bytes; audit storage was `110601` bytes. No
 optimizer, checkpoint, candidate model, confirm, decoder v2, O0-G, optical,
 fiber, or promotion consumer is authorized.
 
-## H-NDMC registered/unexecuted
+## H-NDMC closeout: nonlinear manifold safety failure
 
-`H-NDMC` is the next independent no-update capacity argument. It constructs an
-ephemeral classwise exact PCA-8/Gaussian-copula/continuous-kernel empirical
-manifold for the preserved `label + 8D N(0,I) → image` interface. The route is
-diagnostic-only and does not reuse frozen WAE/H-DIDM decoder parameters or
-create an optimizer, checkpoint, candidate model, or deployable software
-decoder.
+H-NDMC completed a valid retry3 manifest-only no-update lifecycle. The canary
+was an ephemeral classwise exact PCA-8/Gaussian-copula/continuous-kernel
+empirical manifold for the preserved `label + 8D N(0,I) → image` interface; it
+did not reuse frozen WAE/H-DIDM decoder parameters and created no optimizer,
+checkpoint, candidate model, or deployable software decoder.
 
-Its only permitted positive consumer is a future direct-generator architecture
-preflight registration. Until a valid closeout exists, the current no-training
-stop remains unchanged and H-NDMC is `registered/unexecuted`.
+The valid classification is `nonlinear_manifold_safety_failed`, with the unique
+next action `close_nonlinear_direct_manifold_capacity_canary`. Both Gaussian
+banks had primary correct `2500/2500`, secondary correct `2000/2500`, and
+agreement `2000/2500`; camera-code fraction was about `1.48e-5`, diversity was
+`0.004–0.007`, and coverage was `1.67–2.13`. Memorization and exact-duplicate,
+historical replay, finite, chunk, no-update, and resource gates passed.
+
+This valid failure closes the empirical nonlinear canary. It does not authorize
+the future architecture preflight, neural training, confirm, decoder v2, O0-G,
+optical, fiber, or promotion. The five retry3 evidence hashes are recorded in
+the current handoff; outputs and manifests remain read-only and untracked.

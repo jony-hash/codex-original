@@ -39,6 +39,7 @@ utility、dataset admission 或 accepted manifest。项目治理状态保持
 | H-DPGC direct-prior canary | `direct_prior_linear_semantic_capacity_failed` | linear canary closed; no neural training |
 | H-DIDM direct image distribution | `direct_image_distribution_failed` on the sole authorized seed-8801 screen; route closed | same nonlinear decoder; no encoder/cycle; no confirm or promotion |
 | H-SCF semantic code-source factorial | `semantic_counterfactual_safety_failed` | valid retry4 closeout; unique next action `close_frozen_decoder_derived_semantic_route`; no evidence-derived model, training, or promotion consumer |
+| H-NDMC nonlinear direct manifold capacity | `nonlinear_manifold_safety_failed` | valid retry3 closeout; unique next action `close_nonlinear_direct_manifold_capacity_canary`; empirical canary closed, no architecture preflight or training consumer |
 
 H-SWAE 的 validation、synthetic direction audit 和 CUDA preflight 均通过。唯一执行的
 seed-8601 screen 是有效科学失败：aggregate SWD reduction 为 `34.62% < 50%`，类别
@@ -311,18 +312,36 @@ D-G `2270/2244/2303`、`2290/2240/2308`，D-P `2311/2321/2364`、`2305/2329/2381
 停止，不将 D-P 的后续失败重新解释为单一 decoder 或 pairing 结论。旧 WAE、H-DIDM 和 evaluator
 artifacts 仍为只读；本轮不执行任何下游路线。
 
-## H-NDMC registered/unexecuted (2026-08-25)
+## H-NDMC closeout（valid scientific failure）
 
-`H-NDMC` (Nonlinear Direct Manifold Capacity) is registered as an independent,
-diagnostic-only no-update empirical upper bound. It uses exact classwise PCA-8,
-a stable Gaussian copula, and continuous Gaussian-kernel reconstruction over
-all same-class training rows. It does not reuse a WAE/H-DIDM decoder, v5 hard
-anchors, or v7 optical manifold, and it creates no optimizer, checkpoint,
-candidate model, or generated-image archive.
+H-NDMC（Nonlinear Direct Manifold Capacity）已完成 retry3 的
+`validate → preflight → audit → report → closeout`。retry1 因 classwise training
+bank 长度不等而错误 `stack`、retry2 因参数 hash 符号引用错误，均在 evidence
+创建前作为 `invalid_harness` 保留；修复后从 clean commit `acc22f5` 重建
+lineage。
 
-The manifest-only lifecycle is
-`validate → preflight → audit → report → closeout`. Its only consumers are its
-own report/closeout and the hypothesis ledger. A valid pass may register a
-future direct-generator architecture preflight; it cannot authorize neural
-training, confirm, decoder v2, O0-G, optical, fiber, or promotion. No H-NDMC
-evidence has been executed or registered yet.
+retry3 五个 evidence 均为 `status=valid`，最终分类为
+`nonlinear_manifold_safety_failed`，唯一 next action 为
+`close_nonlinear_direct_manifold_capacity_canary`。audit 使用 exact classwise
+PCA-8、Gaussian copula、连续全同类 kernel reconstruction、两 Gaussian banks、
+identity-copula ablation、H-DPGC historical replay、zero-code、label-shift、
+64/257 chunk、finite-difference Jacobian 和 curvature controls；不创建
+optimizer、checkpoint、candidate 或生成图像全集。
+
+retry3 evidence 位于
+`outputs/20260825_v2/runs/20260825_electronic_o0_nonlinear_direct_manifold_capacity_v1_retry3/`，SHA256 为：
+
+- validation `3d3a8cf1c3d30e3923172bc937b6f21295083d2d8963815de1a1ca9e37480d32`
+- preflight `6e0a52880b6e222e79ce9a9b63f368f0d9fb6afb62b73f19297aed0114c45783`
+- audit `e0fdf0b32fff2159c735f92f67c4c621eaca02aac8c26270fc82e506d5aa6544`
+- report `b82d5379863068a8dfa22fcb362e36a1dcfaf37305c1692f728b9719007f267e`
+- closeout `f0e21b76723c187056cfb930c306036fbf58e390ebadbda96ccf04a8dcbee43b`
+
+两正式 bank 的 primary correct 均为 `2500/2500`，secondary 为 `2000/2500`，
+agreement 为 `2000/2500`；camera-code fraction 为 `1.48e-5`，primary diversity
+约 `0.0042–0.0070`，coverage 为 `1.67–2.13`，因此安全门失败。memorization
+pass fraction 为 `1.0`、exact duplicates 为 `0`；preflight peak allocation
+`922167808` bytes、wall time `14.303609110007528` seconds、storage `10120`
+bytes；audit storage `54366` bytes。该结果关闭 H-NDMC 经验流形 canary，不能
+授权 direct-generator architecture preflight、neural training、confirm、decoder
+v2、O0-G、optical、fiber 或 promotion。
