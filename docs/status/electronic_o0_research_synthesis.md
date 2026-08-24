@@ -80,18 +80,32 @@ This closes only the fixed linear canary. It does not prove that every
 nonlinear direct generator is impossible; it does block neural direct-generator
 training until a new, independent no-training capacity argument is registered.
 
-## H-SCF registered/unexecuted
+## H-SCF closeout: semantic counterfactual safety failure
 
-After the valid H-DIDM failure, `H-SCF` (Semantic Code-source Factorial) is
-registered as a new manifest-only, diagnostic-only no-update counterfactual.
-It freezes the WAE source decoder, H-DIDM final decoder, WAE encoder, and the
-qualified primary/secondary evaluators. Its four arms compare source/final
-decoder with Gaussian/validation-posterior codes; two disjoint 250-per-class
-posterior banks, two fixed Gaussian banks, historical panel replay, D-P
-permutation, label-shift, and zero-code controls are fixed by the v1 contract.
+`H-SCF` (Semantic Code-source Factorial) completed the retry4 manifest-only,
+diagnostic-only no-update lifecycle. Validation, CUDA preflight, audit, report,
+and closeout are all valid. The final classification is
+`semantic_counterfactual_safety_failed`, with the unique next action
+`close_frozen_decoder_derived_semantic_route`.
 
-The route is registered but unexecuted: no validation, preflight, audit,
-report, closeout, hashes, or classification exists yet. Its only consumer is
-the H-SCF report/closeout and this ledger. The only next action is
-`run_h_scf_validate`; no optimizer, checkpoint, candidate model, confirm,
-decoder v2, O0-G, optical, fiber, or promotion consumer is authorized.
+The frozen WAE/H-DIDM decoder × Gaussian/validation-posterior arms were
+evaluated with two disjoint 250-per-class posterior banks, two Gaussian banks,
+historical panel replay, D-P within-class permutation, label-shift, zero-code,
+dual-evaluator, finite, no-update, and anti-collapse controls. Historical view
+hashes and evaluator counts, posterior hashes, chunk equality, parameter hashes,
+and resource gates passed. Audit results were: S-G safety failed on both banks;
+S-P semantic passed on both banks but safety failed; D-G semantic failed on both
+banks; D-P semantic failed on both banks and both permutation controls failed.
+The safety classification has precedence, so the audit does not claim a unique
+decoder-reachability or pairing diagnosis.
+
+Final retry4 evidence hashes are validation
+`252b0ebf226859e618c3fdb342a69e80269098bc09d1deebe4b411378d1ab491`, preflight
+`25fd79f3b1194299c32f7c0e963849523caf3d4f3cfb596c461bb9a72da05104`, audit
+`aca75439aa2fce3f5414f697f34505e91bcc0052c9532aee8ff8b8e24eaef930`, report
+`4a60eda420884d7a19d30aa6712482de4f4394aec6cac7e9c8035b3f6c0da9f6`, and
+closeout `59d927f7d7ed3b9633fe613e5b9ce14814ba9b5e15776e9ef47352594026ef94`.
+Preflight peak allocation was `720658432` bytes, wall time `9.480835378999473`
+seconds, and storage `10316` bytes; audit storage was `110601` bytes. No
+optimizer, checkpoint, candidate model, confirm, decoder v2, O0-G, optical,
+fiber, or promotion consumer is authorized.

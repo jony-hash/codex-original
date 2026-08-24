@@ -38,7 +38,7 @@ utility、dataset admission 或 accepted manifest。项目治理状态保持
 | H-CCF cycle composition | `cycle_composition_attribution_underdetermined` | prior-native attribution family closed |
 | H-DPGC direct-prior canary | `direct_prior_linear_semantic_capacity_failed` | linear canary closed; no neural training |
 | H-DIDM direct image distribution | `direct_image_distribution_failed` on the sole authorized seed-8801 screen; route closed | same nonlinear decoder; no encoder/cycle; no confirm or promotion |
-| H-SCF semantic code-source factorial | `registered/unexecuted` | frozen-decoder no-update diagnostic only; no evidence, model, or promotion consumer |
+| H-SCF semantic code-source factorial | `semantic_counterfactual_safety_failed` | valid retry4 closeout; unique next action `close_frozen_decoder_derived_semantic_route`; no evidence-derived model, training, or promotion consumer |
 
 H-SWAE 的 validation、synthetic direction audit 和 CUDA preflight 均通过。唯一执行的
 seed-8601 screen 是有效科学失败：aggregate SWD reduction 为 `34.62% < 50%`，类别
@@ -280,18 +280,33 @@ WAE、H-DPGC 与全部 prior-native artifacts 保持只读。该 valid failure �
 重跑、延长 epoch、调 loss、换 seed、confirm、decoder v2、O0-G、光学、fiber training
 或 formal promotion；若继续研究必须另行注册无训练证据和新 lineage。
 
-## 当前注册假设：H-SCF（registered/unexecuted）
+## H-SCF closeout（valid scientific failure）
 
-H-SCF（Semantic Code-source Factorial）已登记为 manifest-only、diagnostic-only 的无更新
-析因路线，尚未执行 validate、preflight、audit、report 或 closeout，也不存在 H-SCF
-evidence、分类或科学结论。它只读绑定 WAE confirm/training/decoder、latent attribution、
-H-DIDM final decoder/screen/report/closeout、MNIST split 和既有双 evaluator qualification
-的固定摘要；配置固定为 `version=20260824`、`harness_seed=8811`、Gaussian seeds
-`223607/244949`、posterior split seed `1234`、每类每 bank `250`。
+H-SCF（Semantic Code-source Factorial）已完成 retry4 的
+`validate → preflight → audit → report → closeout`。五阶段均为 `status=valid`，最终分类为
+`semantic_counterfactual_safety_failed`，唯一 next action 为
+`close_frozen_decoder_derived_semantic_route`。这是一项 diagnostic-only、no-update 的有效科学
+失败，不授权任何训练、confirm、decoder v2、O0-G、光学、fiber 或 promotion。
 
-核心 arms 是 WAE/H-DIDM decoder 分别配 Gaussian/validation-posterior code；D-P 另做
-within-class permutation、conditioning-label cyclic shift 和 zero-code controls。所有结果只
-能被 H-SCF report、closeout 与 hypothesis ledger 消费。唯一允许的下一动作是
-`run_h_scf_validate`；不得由该路线直接授权 optimizer、checkpoint、candidate、confirm、
-decoder v2、O0-G、光学、fiber training 或 formal promotion。有效 closeout 后才可在单独
-文档变更中登记 hashes、分类和唯一 next action；`invalid_harness` 不得产生下游消费者。
+最终 evidence 位于
+`outputs/20260824_v2/runs/20260824_electronic_o0_semantic_code_factorial_v1_retry4/`，SHA256 为：
+
+- validation `252b0ebf226859e618c3fdb342a69e80269098bc09d1deebe4b411378d1ab491`
+- preflight `25fd79f3b1194299c32f7c0e963849523caf3d4f3cfb596c461bb9a72da05104`
+- audit `aca75439aa2fce3f5414f697f34505e91bcc0052c9532aee8ff8b8e24eaef930`
+- report `4a60eda420884d7a19d30aa6712482de4f4394aec6cac7e9c8035b3f6c0da9f6`
+- closeout `59d927f7d7ed3b9633fe613e5b9ce14814ba9b5e15776e9ef47352594026ef94`
+
+preflight 资源为 peak allocation `720658432` bytes、storage `10316` bytes、wall time
+`9.480835378999473` seconds；audit peak allocation `720658432` bytes、storage `110601` bytes。
+历史三 panel 的 view hash 与双 evaluator correct/recall/agreement counts、posterior hashes、
+finite、64/257 chunk、参数不变和 `optimizer_created=false` 均通过。
+
+audit arm 摘要：S-G 两 Gaussian banks 的 safety gate 均失败；S-P 两 posterior banks 的
+semantic gate 均通过但 safety gate 均失败；D-G 两 Gaussian banks semantic gate 均失败；D-P
+两 posterior banks semantic gate 均失败，within-class permutation 两 banks 也均失败。计数为
+S-G `2330/2115/2117`、`2320/2129/2121`，S-P `2466/2463/2454`、`2459/2462/2442`，
+D-G `2270/2244/2303`、`2290/2240/2308`，D-P `2311/2321/2364`、`2305/2329/2381`
+（每项依次为 primary correct、secondary correct、agreement count）。分类按 safety 优先级
+停止，不将 D-P 的后续失败重新解释为单一 decoder 或 pairing 结论。旧 WAE、H-DIDM 和 evaluator
+artifacts 仍为只读；本轮不执行任何下游路线。

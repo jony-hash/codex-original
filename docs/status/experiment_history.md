@@ -1084,18 +1084,34 @@ screen decoder/training checkpoint SHA256 为
 现已关闭，不得重跑、调参、换 seed、confirm 或设计 decoder v2；后续如有必要只能另行
 提出无训练容量证据并建立新 lineage。
 
-## 2026-08-24：H-SCF semantic code-source factorial 注册（未执行）
+## 2026-08-25：H-SCF semantic code-source factorial closeout
 
-在 H-DIDM valid failure 之后登记 `electronic_o0_semantic_code_factorial_v1`，作为新的
-无更新、manifest-only、diagnostic-only 析因路线。H-SCF 冻结 WAE source decoder、H-DIDM
-final decoder、WAE encoder 与既有双 evaluator，不创建 optimizer、checkpoint 或候选模型。
-当前仅完成实现、配置和测试注册；`validate → preflight → audit → report → closeout` 尚未
-执行，因此没有 H-SCF evidence、hash、分类、closeout 或科学结果。
+`electronic_o0_semantic_code_factorial_v1` 完成 retry4 的
+`validate → preflight → audit → report → closeout`。此前三次 clean retry 的 harness
+失败均保留在各自 `failed-runs/`：canonical MNIST train-count 假设、decoder/camera label
+device 边界、64/257 `torch.cdist` bitwise 差异和 permutation finite 结构均已最小修复并
+重新验证；未覆盖或改写失败 evidence。最终 lineage commit 为 `54771ff`。
 
-固定 arms 为 S-G/S-P/D-G/D-P；validation posterior 每类拆为两个互斥的 250-row banks，
-Gaussian 使用 `223607/244949`，历史复现 panel 使用 `4242/104729/161803`。D-P 的
-within-class cyclic permutation、conditioning-label cyclic shift 和 zero-code controls 以及
-双 evaluator、安全、finite、no-update、资源和跨 panel gates 均属于预注册合同。唯一消费者
-是 H-SCF report、closeout 和 hypothesis ledger；唯一下一动作是 `run_h_scf_validate`。在
-有效 closeout 前不得据此授权 nonlinear canary、decoder v2、O0-G、光学、fiber training
-或 formal promotion；invalid harness 不得有下游消费者。
+retry4 五个 evidence 全部 `status=valid`，最终分类为
+`semantic_counterfactual_safety_failed`，唯一 next action 为
+`close_frozen_decoder_derived_semantic_route`。preflight peak allocation 为 `720658432`
+bytes、wall time `9.480835378999473` seconds、storage `10316` bytes；audit peak allocation
+为 `720658432` bytes、storage `110601` bytes。历史三 panel view hashes 与双 evaluator
+correct/recall/agreement counts、posterior hashes、finite、chunk、参数不变和 no-optimizer
+门均通过。
+
+四 arm 结果按每 bank `primary correct / secondary correct / agreement count` 记录为：S-G
+`2330/2115/2117`, `2320/2129/2121`（两 bank safety 均失败）；S-P `2466/2463/2454`,
+`2459/2462/2442`（semantic 均通过但 safety 均失败）；D-G `2270/2244/2303`,
+`2290/2240/2308`（semantic 均失败）；D-P `2311/2321/2364`, `2305/2329/2381`
+（semantic 均失败，两个 within-class permutation controls 也失败）。分类按 safety 优先级
+fail-closed，不把后续 D-P 结果提升为唯一 decoder 或 pairing 结论。该 valid scientific
+failure 不授权 nonlinear canary、训练、confirm、decoder v2、O0-G、光学、fiber training
+或 formal promotion。
+
+最终 evidence SHA256：validation
+`252b0ebf226859e618c3fdb342a69e80269098bc09d1deebe4b411378d1ab491`；preflight
+`25fd79f3b1194299c32f7c0e963849523caf3d4f3cfb596c461bb9a72da05104`；audit
+`aca75439aa2fce3f5414f697f34505e91bcc0052c9532aee8ff8b8e24eaef930`；report
+`4a60eda420884d7a19d30aa6712482de4f4394aec6cac7e9c8035b3f6c0da9f6`；closeout
+`59d927f7d7ed3b9633fe613e5b9ce14814ba9b5e15776e9ef47352594026ef94`。
