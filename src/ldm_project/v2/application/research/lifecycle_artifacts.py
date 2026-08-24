@@ -78,6 +78,13 @@ _PROGRAM_ACTIONS = {
         "report",
         "closeout",
     },
+    "electronic-o0-prior-trajectory-curvature": {
+        "validate",
+        "preflight",
+        "audit",
+        "report",
+        "closeout",
+    },
 }
 
 _HASH_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -336,6 +343,9 @@ def manifest_args(
         "sced_training_checkpoint": ("sced_training", "sced_training_checkpoint"),
         "sced_screen_evidence": ("sced_screen", "sced_screen_evidence"),
         "sced_closeout_evidence": ("sced_closeout", "sced_closeout_evidence"),
+        "h_pgc_audit_evidence": ("h_pgc_audit", "pgc_audit", "audit_evidence"),
+        "h_pgc_report_evidence": ("h_pgc_report", "pgc_report", "report_evidence"),
+        "h_pgc_closeout_evidence": ("h_pgc_closeout", "pgc_closeout", "closeout_evidence"),
     }
     for field, names in aliases.items():
         value = manifest_value(manifest, *names)
@@ -450,6 +460,7 @@ def validate_manifest_namespace(namespace: Any, *, action: str) -> None:
         "resume_checkpoint", "anchor_confirm_evidence", "peer_confirm_evidence",
         "swae_training_checkpoint", "swae_screen_evidence", "swae_closeout_evidence",
         "sced_training_checkpoint", "sced_screen_evidence", "sced_closeout_evidence",
+        "h_pgc_audit_evidence", "h_pgc_report_evidence", "h_pgc_closeout_evidence",
     ):
         value = getattr(namespace, name, None)
         if not value:

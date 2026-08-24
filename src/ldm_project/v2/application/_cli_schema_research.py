@@ -825,6 +825,45 @@ def register_research(root: argparse._SubParsersAction) -> None:
     pgc_closeout.add_argument("--output")
     pgc_closeout.add_argument("--measurement-evidence")
 
+    tca = research_programs.add_parser(
+        "electronic-o0-prior-trajectory-curvature",
+        help="deterministic paired prior trajectory and curvature attribution for electronic O0",
+    )
+    tca_actions = tca.add_subparsers(dest="research_action", required=True)
+
+    def tca_lineage(command):
+        command.add_argument("--run-manifest")
+        command.add_argument("--config")
+        command.add_argument("--dataset-root")
+        command.add_argument("--device", choices=("cuda", "cpu"))
+        command.add_argument("--output")
+        command.add_argument("--wae-training-checkpoint")
+        command.add_argument("--wae-decoder-checkpoint")
+        command.add_argument("--swae-training-checkpoint")
+        command.add_argument("--swae-screen-evidence")
+        command.add_argument("--swae-closeout-evidence")
+        command.add_argument("--sced-training-checkpoint")
+        command.add_argument("--sced-screen-evidence")
+        command.add_argument("--sced-closeout-evidence")
+        command.add_argument("--h-pgc-audit-evidence")
+        command.add_argument("--h-pgc-report-evidence")
+        command.add_argument("--h-pgc-closeout-evidence")
+
+    for action in ("validate", "preflight", "audit"):
+        command = tca_actions.add_parser(action)
+        tca_lineage(command)
+        if action == "preflight":
+            command.add_argument("--validation-evidence")
+        if action == "audit":
+            command.add_argument("--preflight-evidence")
+    for action in ("report", "closeout"):
+        command = tca_actions.add_parser(action)
+        command.add_argument("--run-manifest")
+        command.add_argument("--config")
+        command.add_argument("--dataset-root")
+        command.add_argument("--output")
+        command.add_argument("--measurement-evidence")
+
     smf = research_programs.add_parser(
         "smf-modal-density-attribution",
         help="synthetic single-mode port-density upper-bound lifecycle",

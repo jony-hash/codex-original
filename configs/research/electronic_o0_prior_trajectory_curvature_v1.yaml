@@ -1,0 +1,26 @@
+schema_version: 1
+name: electronic_o0_prior_trajectory_curvature_v1
+version: 20260824
+code_dim: 8
+logical_batch_size: 100
+per_class: 10
+trajectory_seed: 8741
+historical_seed: 8601
+historical_steps: 625
+landmark_steps: [0, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500, 550, 600, 625]
+batch_seeds: [11, 23, 37, 51]
+prior_seeds: [1011, 1023, 1037, 1051]
+projection_seeds: [271829, 314159]
+finite_difference_relative_step: 0.0001
+cycle_conflict_cosine: 0.05
+required_support_landmarks: 2
+required_observer_batches: 3
+curvature_remainder_fraction: 0.50
+cycle_delta_absolute_tolerance: 0.0000001
+cycle_delta_relative_tolerance: 0.0001
+parameter_budget: 8000000
+decoder_parameter_budget: 6000000
+formal_promotion: false
+optical_training_authorized: false
+fiber_training_authorized: false
+synthetic_diagnostic_only: true

@@ -109,6 +109,10 @@ def _dispatch(args: argparse.Namespace) -> int:
             from .research.electronic_o0_prior_gradient_conflict import dispatch
 
             return int(dispatch(args) or 0)
+        if args.research_program == "electronic-o0-prior-trajectory-curvature":
+            from .research.electronic_o0_prior_trajectory_curvature import dispatch
+
+            return int(dispatch(args) or 0)
         if args.research_program == "smf-modal-density-attribution":
             from .research.smf_modal_density_attribution import dispatch
 
