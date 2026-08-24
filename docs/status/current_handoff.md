@@ -137,3 +137,28 @@ adapter、confirm、其他 seed、O0-G、SMF/FMF/MMF、E1、光学、fiber train
 不加载 evaluator、不生成 checkpoint 的条件下，将 source/final encoder 与 decoder 做
 2×2 factorial 组合，分解 cycle 恶化的 encoder、decoder 和交互贡献。它只允许 no-update
 counterfactual attribution，不重新打开 optimizer/trajectory attribution family。
+
+## H-CCF 已关闭：cycle composition attribution underdetermined
+
+H-CCF 实现提交于 `dcd9528`；首次 preflight 因 chunk-128/257 radial reference 的
+`2.6e-7` 浮点差超过原门槛而按 `invalid_harness` 保留，修复提交为 `c306f46`，并从
+新 clean HEAD 重建 validate lineage。最终 retry validation、preflight、audit、report、
+closeout 的 SHA256 分别为 `5076dc…159d6`、`7bed53…4839`、`e89061…c2bf`、
+`a0c5d5…21d7` 和 `702c6f…d61f`。
+
+最终 audit 为 `status=valid, passed=true`，classification 为
+`cycle_composition_attribution_underdetermined`，next action 为
+`close_prior_native_attribution_family`。SWAE 与 SCED 的 full-bank source/final cycle
+分别复现为 `0.01649122442/0.02642731884` 与 `0.01649122442/0.02250728432`，均在
+`atol=1e-8, rtol=1e-6` 内；四个 stability banks、factorial identity、source/source
+null swap、chunk equivalence、primary/MSE finite 与 hash isolation 均通过。SWAE 的
+cycle drift 为 `0.00993609441`，SCED 为 `0.00601605990`；两条路线均未达到单一
+encoder/decoder/interaction 或 mixed component 的稳定归因门，故不能把 cycle 恶化归因
+到某一个组合因子。peak allocation 为 `147424256` bytes，storage 为 `50846` bytes，
+optimizer_created=false、evaluator_calls=0，旧 artifacts/checkpoints 保持只读。
+
+H-CCF report/closeout 是纯消费者，未创建候选模型。该结果关闭 prior-native attribution
+family；不得启动 encoder geometry、decoder invertibility、interface Jacobian、hybrid
+mediation、projected-gradient、SGD、trust-region、adapter、confirm、其他 seed、O0-G、
+SMF/FMF/MMF、E1、光学、fiber training 或 formal promotion。若继续研究，必须另行注册
+无更新诊断假设并建立新的 lineage。
