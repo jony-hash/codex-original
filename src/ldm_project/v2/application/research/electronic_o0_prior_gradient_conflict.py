@@ -29,11 +29,14 @@ from ...evidence import (
 )
 from ...student.evaluator import load_local_mnist, stratified_mnist_indices
 from .electronic_o0_prior_native_sced import (
+    _ordered_pairwise_absolute_mean,
     classwise_sliced_energy_gaussian,
     fixed_projections as sced_projections,
+    gaussian_absolute_moment,
 )
 from .electronic_o0_prior_native_swae import (
     classwise_sliced_wasserstein_quantile,
+    gaussian_quantiles,
 )
 from .lifecycle_artifacts import (
     prepare_args,
@@ -409,6 +412,26 @@ def _terms(
     return {"reconstruction": reconstruction, "alignment": prior_alignment, "cycle": cycle}
 
 
+def _class_alignment_value(
+    encoded: torch.Tensor,
+    *,
+    alignment: str,
+    projections: torch.Tensor,
+) -> torch.Tensor:
+    projected = encoded @ projections.t()
+    if alignment == "sced":
+        cross = 2.0 * gaussian_absolute_moment(projected).mean(0)
+        within = _ordered_pairwise_absolute_mean(projected, dim=0)
+        return (cross - within - 2.0 / math.sqrt(math.pi)).mean()
+    if alignment == "swae":
+        ordered = torch.sort(projected, dim=0).values
+        target = gaussian_quantiles(
+            encoded.shape[0], device=encoded.device, dtype=encoded.dtype
+        )
+        return (ordered - target).square().mean()
+    raise ValueError(f"unknown H-PGC alignment: {alignment}")
+
+
 def _weights(payload: dict[str, Any], *, alignment: str) -> tuple[float, float]:
     weights = payload.get("weights")
     if not isinstance(weights, dict):
@@ -626,15 +649,28 @@ def _gradient_measurement(
     classwise: list[dict[str, Any]] = []
     for class_id in range(10):
         mask = labels == class_id
-        class_terms = _terms(
-            encoder,
-            decoder,
-            images[mask],
-            labels[mask],
-            prior[mask],
-            alignment=alignment,
-            projections=projections,
+        class_images = images[mask]
+        class_labels = labels[mask]
+        class_prior = prior[mask]
+        class_encoded = encoder(class_images, class_labels)
+        class_prediction = render_view(decoder(class_encoded, class_labels), "O0-I")
+        class_reconstruction_value = F.binary_cross_entropy(
+            class_prediction, class_images
+        ) + 0.25 * sobel_l1(class_prediction, class_images)
+        class_cycle_prediction = render_view(
+            decoder(class_prior, class_labels), "O0-I"
         )
+        class_terms = {
+            "reconstruction": class_reconstruction_value,
+            "alignment": _class_alignment_value(
+                class_encoded,
+                alignment=alignment,
+                projections=projections,
+            ),
+            "cycle": F.smooth_l1_loss(
+                encoder(class_cycle_prediction, class_labels), class_prior
+            ),
+        }
         class_gradients = {
             name: _gradient_tree(
                 torch.autograd.grad(
