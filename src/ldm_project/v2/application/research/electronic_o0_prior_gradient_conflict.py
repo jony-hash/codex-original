@@ -150,7 +150,6 @@ def _write(path: str | Path, payload: dict[str, Any], args: argparse.Namespace) 
 def _config_lineage(args: argparse.Namespace, config: dict[str, Any]) -> dict[str, Any]:
     files = [
         args.config,
-        args.dataset_root,
         args.wae_training_checkpoint,
         args.wae_decoder_checkpoint,
         args.swae_training_checkpoint,
