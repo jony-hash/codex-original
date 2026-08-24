@@ -37,7 +37,7 @@ utility、dataset admission 或 accepted manifest。项目治理状态保持
 | Prior-native H-SCED | `prior_alignment_fit_failed` | seed 8601 screen 后停止，未进入 confirm |
 | H-CCF cycle composition | `cycle_composition_attribution_underdetermined` | prior-native attribution family closed |
 | H-DPGC direct-prior canary | `direct_prior_linear_semantic_capacity_failed` | linear canary closed; no neural training |
-| H-DIDM direct image distribution | registered, not yet run | same nonlinear decoder; no encoder/cycle; audit before preflight |
+| H-DIDM direct image distribution | direction audit and three-step preflight passed; screen pending explicit authorization | same nonlinear decoder; no encoder/cycle; no candidate checkpoint |
 
 H-SWAE 的 validation、synthetic direction audit 和 CUDA preflight 均通过。唯一执行的
 seed-8601 screen 是有效科学失败：aggregate SWD reduction 为 `34.62% < 50%`，类别
@@ -207,6 +207,39 @@ alignment 和 cycle，直接用 `label + 8D N(0,I)` 生成 O0-I image，并以�
 classwise sliced-energy U-statistic 对齐真实图像分布。
 
 H-DIDM 是 diagnostic-only 训练结构实验。evaluator 不进入 audit、训练、权重或 checkpoint
-选择；不改变 latent 维度、decoder backbone、光学结构或最终单次推理接口。必须先通过无
-optimizer direction audit，再通过三步 CUDA preflight，才可准备 seed-8801 screen；本轮
-不启动长 screen。任何 valid failure 都关闭 H-DIDM，不增加 epoch、不调 loss、不换 seed。
+选择；不改变 latent 维度、decoder backbone、光学结构或最终单次推理接口。retry3 已通过
+无 optimizer direction audit 和三步 CUDA preflight，screen manifest 已按实际 preflight
+hash 准备，但本轮不启动 seed-8801 长 screen。该 preflight 只证明直接分布目标在 source
+decoder 上具有可更新、可恢复且资源安全的局部方向，不是语义准入或 promotion 结果。
+
+不得据此启动 encoder geometry、decoder invertibility、interface Jacobian、hybrid mediation、
+projected-gradient、SGD、trust-region、adapter、confirm、其他 seed、O0-G、SMF/FMF/MMF、
+E1、光学、fiber training 或 formal promotion；screen 需另行明确授权并沿用当前 immutable
+manifest lineage。
+
+## 2026-08-24：H-DIDM direction audit 与 preflight 收口
+
+H-DIDM 实现提交为 `db391ef`；保护门修复分别提交为 `85c155f`、`e78951d` 和 `66d974f`。
+按 fail-closed 规则，修复后从 clean HEAD `66d974f` 重建 retry3 lineage；此前三次
+validation/audit/preflight 尝试保留但不被消费。
+
+retry3 validation、audit 和 preflight evidence 的 immutable SHA256 分别为
+`5b0f35aea831cebbece92ccd22a20607ab29978d0c5f9a8fc1c4497475540543`、
+`4a3f350bc79a1a80f9464a1a3dd5552fe5dd53a8bf203163d5968554c20b58a3` 和
+`c88c7b2911ea209a76bee10421023a359f0f3e97d59413a6d1df81a39ee72cd4`；screen manifest
+为 `manifests/screen_8801.yaml`，未执行 screen。
+
+audit 为 `status=valid, passed=true`：四个固定 balanced batches 在 training/reference
+projection banks 上均由 `-g` 降低、`+g` 反向控制失败；decoder label/input/FiLM/upsample/output
+梯度均 finite 且非零；optimizer-created 与 evaluator calls 均为零。audit peak allocation
+`505892352` bytes，storage `15990` bytes。
+
+preflight 为 `status=valid, passed=true`：三步 training/reference observer loss 均下降，
+decoder input/FiLM/upsample/output 均发生 finite 更新；camera-code fraction 为
+`0.6011002`（source `0.5840523`），pairwise diversity 为 `6.4604182`（source
+`6.3081684`），两者 source-relative 保护门通过，saturation 为 `0.0`；interrupted/resumed
+decoder、optimizer、CPU/CUDA RNG、sampler、schedule 和 history replay exact。peak allocation
+`1516388352` bytes，storage `47738` bytes，evaluator calls `0`。
+
+这只授权未来 seed-8801 screen，不授权训练延长、动态调权重、换 seed 或 confirm；screen 若
+valid failure 必须固定关闭 H-DIDM route，不能把 preflight 通过解释为科学成功。
