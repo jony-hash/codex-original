@@ -855,6 +855,43 @@ def _replay_arm(
                 history_window = []
             if step % 50 == 0 or step == EXPECTED_STEP:
                 _save_progress(progress, route=route, step=step, epoch=1 if step == EXPECTED_STEP else 0, cursor=cursor, encoder=encoder, decoder=decoder, optimizer=optimizer, history=history, history_window=history_window, landmarks=[{key: value for key, value in item.items() if key != "records"} for item in landmarks])
+    if step == EXPECTED_STEP and (not landmarks or landmarks[-1]["step"] != EXPECTED_STEP):
+        final_records = _observer_measurement(
+            encoder,
+            decoder,
+            images.to(device),
+            labels.to(device),
+            route=route,
+            weights=weights,
+            include_classwise=True,
+        )
+        final_cycle_median = float(
+            torch.tensor(
+                [item["losses"]["cycle"] for item in final_records], dtype=torch.float64
+            ).median()
+        )
+        final_curvature = []
+        if measure_curvature:
+            for item in final_records:
+                final_curvature.append(
+                    _curvature(
+                        encoder,
+                        decoder,
+                        item,
+                        route=route,
+                        weights=weights,
+                        direction_name="raw",
+                        direction=item["_d_raw"],
+                    )
+                )
+        landmarks.append(
+            {
+                "step": EXPECTED_STEP,
+                "cycle_median": final_cycle_median,
+                "records": final_records,
+                "curvature": final_curvature,
+            }
+        )
     if step != EXPECTED_STEP:
         raise RuntimeError(f"{route} replay stopped at step {step}")
     final = _final_match(encoder, decoder, optimizer, final_payload, history=history, route=route, step=step, schedule_hash=schedule_hash)
