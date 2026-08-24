@@ -1,0 +1,30 @@
+schema_version: 1
+name: electronic_o0_nonlinear_direct_manifold_capacity_v1
+version: 20260825
+code_dim: 8
+harness_seed: 8891
+gaussian_bank_seeds: [271828, 314159]
+historical_panel_seeds: [4242, 104729, 161803]
+samples_per_class_per_bank: 250
+preflight_samples_per_class: 32
+pca_rank: 8
+kernel_reference_neighbors: 32
+bandwidth_anchor_count_per_class: 512
+logit_epsilon: 0.00392156862745098
+evaluator_accuracy_minimum: 0.95
+evaluator_minimum_recall: 0.90
+evaluator_agreement_minimum: 0.95
+camera_code_fraction_minimum: 0.25
+diversity_ratio_minimum: 0.70
+diversity_ratio_maximum: 1.30
+coverage_ratio_maximum: 1.50
+saturation_maximum: 0.08
+memorization_pass_fraction_minimum: 0.95
+label_shift_accuracy_maximum: 0.20
+finite_difference_rank: 8
+finite_difference_rank_threshold: 0.001
+curvature_minimum: 0.001
+formal_promotion: false
+optical_training_authorized: false
+fiber_training_authorized: false
+synthetic_diagnostic_only: true

@@ -121,6 +121,13 @@ _PROGRAM_ACTIONS = {
         "report",
         "closeout",
     },
+    "electronic-o0-nonlinear-direct-manifold-capacity": {
+        "validate",
+        "preflight",
+        "audit",
+        "report",
+        "closeout",
+    },
 }
 
 _HASH_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -390,6 +397,7 @@ def manifest_args(
         "h_dlta_closeout_evidence": ("h_dlta_closeout", "dense_local_closeout"),
         "h_ccf_closeout_evidence": ("h_ccf_closeout", "cycle_composition_closeout"),
         "h_dpgc_closeout_evidence": ("h_dpgc_closeout", "direct_prior_capacity_closeout"),
+        "h_scf_closeout_evidence": ("h_scf_closeout", "semantic_code_factorial_closeout"),
         "h_scf_final_decoder_checkpoint": ("h_scf_final_decoder", "didm_final_decoder"),
         "h_didm_screen_evidence": ("h_didm_screen", "direct_image_distribution_screen"),
         "h_didm_report_evidence": ("h_didm_report", "direct_image_distribution_report"),
@@ -420,6 +428,7 @@ def manifest_args(
             "dense_local_attribution",
             "cycle_composition",
             "direct_prior_capacity_canary",
+            "nonlinear_direct_manifold_capacity",
             "direct_image_distribution",
             "run",
             "seed",
@@ -523,6 +532,7 @@ def validate_manifest_namespace(namespace: Any, *, action: str) -> None:
         "h_pgc_audit_evidence", "h_pgc_report_evidence", "h_pgc_closeout_evidence",
         "h_ccf_closeout_evidence",
         "h_dpgc_closeout_evidence",
+        "h_scf_closeout_evidence",
         "h_scf_final_decoder_checkpoint",
         "h_didm_screen_evidence",
         "h_didm_report_evidence",

@@ -1058,6 +1058,40 @@ def register_research(root: argparse._SubParsersAction) -> None:
         command.add_argument("--output")
         command.add_argument("--measurement-evidence")
 
+    manifold = research_programs.add_parser(
+        "electronic-o0-nonlinear-direct-manifold-capacity",
+        help="no-update nonlinear direct manifold capacity lifecycle for electronic O0",
+    )
+    manifold_actions = manifold.add_subparsers(dest="research_action", required=True)
+
+    def manifold_lineage(command):
+        command.add_argument("--run-manifest")
+        command.add_argument("--config")
+        command.add_argument("--dataset-root")
+        command.add_argument("--device", choices=("cuda", "cpu"))
+        command.add_argument("--output")
+        command.add_argument("--h-dpgc-closeout-evidence")
+        command.add_argument("--h-scf-closeout-evidence")
+        command.add_argument("--primary-evaluator-checkpoint")
+        command.add_argument("--secondary-evaluator-checkpoint")
+        command.add_argument("--primary-qualification-evidence")
+        command.add_argument("--secondary-qualification-evidence")
+
+    for action in ("validate", "preflight", "audit"):
+        command = manifold_actions.add_parser(action)
+        manifold_lineage(command)
+        if action == "preflight":
+            command.add_argument("--validation-evidence")
+        elif action == "audit":
+            command.add_argument("--preflight-evidence")
+    for action in ("report", "closeout"):
+        command = manifold_actions.add_parser(action)
+        command.add_argument("--run-manifest")
+        command.add_argument("--config")
+        command.add_argument("--dataset-root")
+        command.add_argument("--output")
+        command.add_argument("--measurement-evidence")
+
     smf = research_programs.add_parser(
         "smf-modal-density-attribution",
         help="synthetic single-mode port-density upper-bound lifecycle",

@@ -109,3 +109,16 @@ Preflight peak allocation was `720658432` bytes, wall time `9.480835378999473`
 seconds, and storage `10316` bytes; audit storage was `110601` bytes. No
 optimizer, checkpoint, candidate model, confirm, decoder v2, O0-G, optical,
 fiber, or promotion consumer is authorized.
+
+## H-NDMC registered/unexecuted
+
+`H-NDMC` is the next independent no-update capacity argument. It constructs an
+ephemeral classwise exact PCA-8/Gaussian-copula/continuous-kernel empirical
+manifold for the preserved `label + 8D N(0,I) → image` interface. The route is
+diagnostic-only and does not reuse frozen WAE/H-DIDM decoder parameters or
+create an optimizer, checkpoint, candidate model, or deployable software
+decoder.
+
+Its only permitted positive consumer is a future direct-generator architecture
+preflight registration. Until a valid closeout exists, the current no-training
+stop remains unchanged and H-NDMC is `registered/unexecuted`.

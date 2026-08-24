@@ -1115,3 +1115,17 @@ failure 不授权 nonlinear canary、训练、confirm、decoder v2、O0-G、光�
 `aca75439aa2fce3f5414f697f34505e91bcc0052c9532aee8ff8b8e24eaef930`；report
 `4a60eda420884d7a19d30aa6712482de4f4394aec6cac7e9c8035b3f6c0da9f6`；closeout
 `59d927f7d7ed3b9633fe613e5b9ce14814ba9b5e15776e9ef47352594026ef94`。
+
+## 2026-08-25：H-NDMC registered/unexecuted
+
+H-NDMC（Nonlinear Direct Manifold Capacity）登记为下一条独立的无更新容量
+诊断。它固定 `label + 8D N(0,I) → image` 接口，在 MNIST training split 上
+使用 exact classwise PCA-8、稳定 Gaussian copula 和全同类训练行的连续
+Gaussian-kernel reconstruction，配套 H-DPGC historical replay、H-SCF
+closed-route binding、双 evaluator、安全门、label-shift、zero-code、chunk、
+Jacobian、curvature 和资源门。
+
+该路线不复用 WAE/H-DIDM decoder，不重开 v5/v7，不创建 optimizer、checkpoint、
+候选模型或生成图像全集。当前状态为 `registered/unexecuted`；在形成有效
+closeout 前不允许 neural training、confirm、decoder v2、O0-G、光学、fiber
+或 promotion。

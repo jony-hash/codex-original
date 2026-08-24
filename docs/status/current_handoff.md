@@ -310,3 +310,19 @@ D-G `2270/2244/2303`、`2290/2240/2308`，D-P `2311/2321/2364`、`2305/2329/2381
 （每项依次为 primary correct、secondary correct、agreement count）。分类按 safety 优先级
 停止，不将 D-P 的后续失败重新解释为单一 decoder 或 pairing 结论。旧 WAE、H-DIDM 和 evaluator
 artifacts 仍为只读；本轮不执行任何下游路线。
+
+## H-NDMC registered/unexecuted (2026-08-25)
+
+`H-NDMC` (Nonlinear Direct Manifold Capacity) is registered as an independent,
+diagnostic-only no-update empirical upper bound. It uses exact classwise PCA-8,
+a stable Gaussian copula, and continuous Gaussian-kernel reconstruction over
+all same-class training rows. It does not reuse a WAE/H-DIDM decoder, v5 hard
+anchors, or v7 optical manifold, and it creates no optimizer, checkpoint,
+candidate model, or generated-image archive.
+
+The manifest-only lifecycle is
+`validate → preflight → audit → report → closeout`. Its only consumers are its
+own report/closeout and the hypothesis ledger. A valid pass may register a
+future direct-generator architecture preflight; it cannot authorize neural
+training, confirm, decoder v2, O0-G, optical, fiber, or promotion. No H-NDMC
+evidence has been executed or registered yet.
