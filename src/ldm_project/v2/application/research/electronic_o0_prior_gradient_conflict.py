@@ -514,18 +514,19 @@ def _finite_difference(
     direction: torch.Tensor,
 ) -> dict[str, Any]:
     deltas = _parameter_delta(params, direction, relative_step=FD_RELATIVE_STEP)
+    original = [parameter.detach().clone() for parameter in params]
     before = _loss_values(encoder, decoder, images, labels, prior, alignment=alignment, projections=projections)
     with torch.no_grad():
-        for parameter, delta in zip(params, deltas, strict=True):
-            parameter.add_(delta)
+        for index, (parameter, delta) in enumerate(zip(params, deltas, strict=True)):
+            parameter.copy_(original[index] + delta)
     plus = _loss_values(encoder, decoder, images, labels, prior, alignment=alignment, projections=projections)
     with torch.no_grad():
-        for parameter, delta in zip(params, deltas, strict=True):
-            parameter.sub_(2.0 * delta)
+        for index, (parameter, delta) in enumerate(zip(params, deltas, strict=True)):
+            parameter.copy_(original[index] - delta)
     minus = _loss_values(encoder, decoder, images, labels, prior, alignment=alignment, projections=projections)
     with torch.no_grad():
-        for parameter, delta in zip(params, deltas, strict=True):
-            parameter.add_(delta)
+        for index, parameter in enumerate(params):
+            parameter.copy_(original[index])
     signs = {}
     for name in ("reconstruction", "alignment", "cycle"):
         central = plus[name] - minus[name]
