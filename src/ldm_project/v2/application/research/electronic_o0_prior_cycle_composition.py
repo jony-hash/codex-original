@@ -38,6 +38,7 @@ from .wae_models import (
     ConditionalWAEDecoder,
     parameter_counts,
     render_view,
+    sobel_l1,
 )
 
 
@@ -279,6 +280,7 @@ def _cycle_metrics(
     class_values: dict[str, list[torch.Tensor]] = {name: [] for name in METRICS}
     radius_values: dict[str, list[torch.Tensor]] = {name: [] for name in METRICS}
     image_displacements: list[torch.Tensor] = []
+    reconstruction_sum = torch.zeros((), device=labels.device, dtype=torch.float64)
     with torch.no_grad():
         for start in range(0, labels.shape[0], chunk_size):
             stop = min(start + chunk_size, labels.shape[0])
@@ -305,6 +307,10 @@ def _cycle_metrics(
                     decoder(encoder(images[start:stop], batch_labels), batch_labels),
                     "O0-I",
                 )
+                reconstruction_sum += (
+                    F.binary_cross_entropy(reconstruction, images[start:stop])
+                    + 0.25 * sobel_l1(reconstruction, images[start:stop])
+                ).to(torch.float64) * (stop - start)
                 image_displacements.append(
                     (reconstruction - images[start:stop]).abs().mean().detach()
                 )
@@ -331,6 +337,7 @@ def _cycle_metrics(
         metrics["decoder_image_displacement"] = float(
             torch.stack(image_displacements).mean().cpu()
         )
+        metrics["reconstruction_objective"] = float((reconstruction_sum / count).cpu())
     metrics["finite"] = bool(
         all(
             math.isfinite(float(value))
