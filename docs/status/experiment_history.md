@@ -1,5 +1,30 @@
 # D2NN 实验与验收历史
 
+## 2026-08-24：H-SCED 注册，尚未形成运行结果
+
+`H-SCED` 注册为 H-SWAE 之后的新 electronic O0 假设。唯一变量是把每类小批量
+quantile-SWD prior alignment 替换为 Gaussian sliced Cramér/energy U-statistic，目标是
+避免 `n=10` 条件下的 variance-shrink optimum，同时保持 reconstruction、cycle、novelty
+和 dual-evaluator semantic gates。
+
+实现、配置和测试已提交于 `0d83a4d`，并已准备 `validate` manifest；尚无有效 validation
+evidence，也没有 CUDA preflight、screen、confirm、locked-final、O0-G、SMF、E1 或
+fiber-aware training 结果。该条目是预注册状态，不是实验通过或训练授权。当前治理文档
+提交完成后，下一动作才是执行 manifest-bound lifecycle validation。
+
+## 2026-08-23：prior-native H-SWAE screen stop
+
+`electronic_o0_prior_native_swae_v1` 使用冻结 WAE v2 seed-7301 权重和全新 optimizer，
+以 deterministic classwise sliced-Wasserstein quantile objective 替换 MMD。validation、
+synthetic scale-direction audit 和 CUDA interrupted/resumed preflight 均通过；source WAE、
+flow 和 mixture artifacts 保持只读，训练期间没有 evaluator selection。
+
+唯一 seed-8601 screen 是有效科学失败 `prior_alignment_fit_failed`：aggregate SWD
+reduction 为 `34.62% < 50%`，类别 6/7 退化且 cycle 指标变差。依据 fail-fast 合同，
+没有进入 confirm、8602/8603、locked-final、O0-G、SMF、E1 或 fiber-aware training。
+closeout 固定下一动作 `close_current_prior_native_swae_route`；该结果只关闭 H-SWAE，
+不支持 decoder、光学、fiber、phase-only 或硬件的普遍失败结论。
+
 ## 2026-08-23：electronic O0 mixture transport screen stop
 
 在冻结 WAE v2 encoder/decoder 的条件下，建立了

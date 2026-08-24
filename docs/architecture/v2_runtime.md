@@ -185,6 +185,23 @@ Their artifacts never authorize formal training by themselves: a failed screen
 stops confirmation, and a passed confirmation still requires an explicit
 objective-selection commit followed by a newly issued formal evidence chain.
 
+## Research boundary
+
+`python -m ldm_project.v2 research ...` exposes separately registered,
+diagnostic-only lifecycles under `application/research/`, with configurations in
+`configs/research/`. A research command cannot alter the formal identity config,
+sign current acceptance, or bypass current evidence consumers. Its result closes
+only the named variant unless an explicit downstream consumer and newly issued
+formal chain say otherwise.
+
+The mutable source for the active research hypothesis and permitted next action
+is the [capacity-map hypothesis ledger](../status/capacity_map_hypothesis_ledger.md).
+The [current handoff](../status/current_handoff.md) summarizes project-wide stop
+conditions; dated measurements remain in
+[experiment history](../status/experiment_history.md). Research registration is
+not execution evidence, and a prepared manifest is not a passed validation or
+CUDA preflight.
+
 ## v5 多锚点候选（已拒绝，diagnostic-only）
 
 `conditional_multi_anchor_local_modes_v5` 保留完整宏观光路，但将电子端入口改为每类4个振幅锚点和每个锚点6个局部模式。前两维code只选择锚点，后六维code只调制所选锚点；没有Wz/Wy、软件decoder或光路后latent。无更新容量审计未通过，因此该候选不属于当前正式运行时；不得继续运行v5 admission、observability或smoke。旧v1-v4 checkpoint/evidence不能部分迁移。

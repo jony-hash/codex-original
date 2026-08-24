@@ -10,7 +10,17 @@ candidate manifest 必须保持 `status: candidate`；只有 generation admissio
 和 utility 全部通过后才写入 `accepted_manifest.json`。这些 artifact 不得写入
 `outputs/final_pt/`，也不能与 v1 teacher/distillation bundle 混用。
 
-## Teacher 与蒸馏数据
+## v2 Research Artifacts
+
+Research lifecycle outputs also use persistent versioned `outputs/` run paths,
+but remain explicitly `synthetic_diagnostic_only` or equivalent. A prepared run
+manifest records intended inputs and actions; it is not validation evidence.
+Only artifacts whose producer status and declared consumer both pass may reach
+the next registered research action. Research checkpoints, closeouts and
+presentation bundles never enter `outputs/final_pt/` and cannot warm-start the
+formal identity chain unless a new formal contract explicitly authorizes them.
+
+## v1 Teacher 与蒸馏数据
 
 Teacher first-stage / diffusion 只用于训练和导出蒸馏目标。新 run 默认写入真实版本目录 `outputs/YYYYMMDD_<version>/runs/<run_name>/`；其中日期前缀取该版本当前已知最早 run 日期。相关图像仍可能出现在：
 
@@ -20,7 +30,7 @@ Teacher first-stage / diffusion 只用于训练和导出蒸馏目标。新 run �
 
 这些图用于检查 teacher 是否能提供可用的 `camera` target，不代表最终 D2NN 硬件推理路径。
 
-## D2NN One-shot 输出
+## v1 D2NN One-shot 输出
 
 主线严格复光场输出位于：
 
@@ -35,13 +45,13 @@ SLM command、generator desired intensity、target code、mask transmittance 和
 
 若 target-code、bridge 注入或 `relay_intensity_psf` 破坏复场连续性，provenance 会标记 `field-chain-invalid`，完整链图不会写出；最多只允许 intervention 前、实际存在的复场平面。v48–v50 旧的完整 physical-chain amplitude/phase 图已由 v51 追溯报告标为 `visualization-harness-invalid`，不作为光场证据。
 
-`camera/student` 是训练和评估的主输出。v55 physical-forward contract 固定 SLM/CMOS 为 `200 × 200 @ 2.5 µm`（500 µm FOV），LightGen encoder/decoder 为 `100 × 100 @ 2 µm`（200 µm FOV）。SLM→Encoder 使用倍率 `−0.4` 的相干 4f relay，完整 SLM FOV 映射到完整 Encoder 面；不再使用自由传播后的中央 aperture 截取。不要把 raw D2NN camera diagnostics 和 loss 图像尺寸混为同一个物理平面，也不要把 raw diagnostics 当成另一条产品输出路径。
+`camera/student` 是训练和评估的主输出。由 v55 建立并由当前正式合同保留的几何固定 SLM/CMOS 为 `200 × 200 @ 2.5 µm`（500 µm FOV），formal encoder/decoder metasurface 为 `100 × 100 @ 2 µm`（200 µm FOV）。SLM→Encoder 使用倍率 `−0.4` 的相干 4f relay，完整 SLM FOV 映射到完整 Encoder 面；不再使用自由传播后的中央 aperture 截取。LightGen 仅指隔离的 reference/diagnostic proxy，不是 formal encoder/decoder 的运行时名称。不要把 raw D2NN camera diagnostics 和 loss 图像尺寸混为同一个物理平面，也不要把 raw diagnostics 当成另一条产品输出路径。
 
 ## Raw Tensor Bundle
 
 `*_optical_fields.pt` 只保存严格光场链的原始 `real/imag`、shape 和 provenance；renderer 由这些 tensor 现场计算 `abs(E)` 与 `angle(E)`。`one_shot_sample_tensors.pt`、`one_shot_distill_eval_tensors.pt` 和训练 artifact 仍可保存 control、mask、intensity 与其他 raw diagnostics，但它们不是严格复光场证据。
 
-写入责任已收敛到 `student.artifacts`（预览与 device diagnostics）和 `student.evaluation`（strict field provenance）；`application/` 只提供 run manager/输出布局，不改变 artifact 字段语义。
+v1 写入责任已收敛到 `ldm_project.v1.student.artifacts`（预览与 device diagnostics）和 `ldm_project.v1.student.evaluation`（strict field provenance）；v1 `application/` 只提供 run manager/输出布局，不改变 artifact 字段语义。v2 current/research 使用自己的 evidence 和 lifecycle writers，不能与这些 v1 tensor bundle 名称互相推断兼容性。
 
 - `camera_plane`：用于 loss 和主评估的 `200 × 200` 相机强度输出，是 one-shot student 的主输出。
 - D2NN raw diagnostics：内部衍射层与 high-res camera 的原始诊断 tensor；其尺寸由 `one_shot.d2nn.grid_size` 和 chip grid 决定。

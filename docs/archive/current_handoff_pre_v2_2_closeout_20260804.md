@@ -164,7 +164,7 @@ LightGen evidence 不能授权 identity 主线。
 ## 历史证据
 
 旧运行手册与完整指标保留在 [`docs/archive`](../archive/)，阶段摘要在
-[`experiment_history.md`](experiment_history.md)。它们具有参考价值，但不提供当前执行权。
+[`experiment_history.md`](../status/experiment_history.md)。它们具有参考价值，但不提供当前执行权。
 
 ## 历史下一动作记录：v5 后的连续模式审计
 
