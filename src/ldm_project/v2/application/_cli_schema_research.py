@@ -864,6 +864,49 @@ def register_research(root: argparse._SubParsersAction) -> None:
         command.add_argument("--output")
         command.add_argument("--measurement-evidence")
 
+    dlta = research_programs.add_parser(
+        "electronic-o0-prior-dense-local-attribution",
+        help="dense local prior trajectory attribution for electronic O0",
+    )
+    dlta_actions = dlta.add_subparsers(dest="research_action", required=True)
+
+    def dlta_lineage(command):
+        command.add_argument("--run-manifest")
+        command.add_argument("--config")
+        command.add_argument("--dataset-root")
+        command.add_argument("--device", choices=("cuda", "cpu"))
+        command.add_argument("--output")
+        command.add_argument("--wae-training-checkpoint")
+        command.add_argument("--wae-decoder-checkpoint")
+        command.add_argument("--swae-training-checkpoint")
+        command.add_argument("--swae-screen-evidence")
+        command.add_argument("--swae-closeout-evidence")
+        command.add_argument("--sced-training-checkpoint")
+        command.add_argument("--sced-screen-evidence")
+        command.add_argument("--sced-closeout-evidence")
+        command.add_argument("--h-pgc-audit-evidence")
+        command.add_argument("--h-pgc-report-evidence")
+        command.add_argument("--h-pgc-closeout-evidence")
+        command.add_argument("--h-tca-audit-evidence")
+        command.add_argument("--h-tca-report-evidence")
+        command.add_argument("--h-tca-closeout-evidence")
+        command.add_argument("--resume-checkpoint")
+
+    for action in ("validate", "preflight", "audit"):
+        command = dlta_actions.add_parser(action)
+        dlta_lineage(command)
+        if action == "preflight":
+            command.add_argument("--validation-evidence")
+        if action == "audit":
+            command.add_argument("--preflight-evidence")
+    for action in ("report", "closeout"):
+        command = dlta_actions.add_parser(action)
+        command.add_argument("--run-manifest")
+        command.add_argument("--config")
+        command.add_argument("--dataset-root")
+        command.add_argument("--output")
+        command.add_argument("--measurement-evidence")
+
     smf = research_programs.add_parser(
         "smf-modal-density-attribution",
         help="synthetic single-mode port-density upper-bound lifecycle",
