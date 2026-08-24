@@ -623,12 +623,70 @@ def _gradient_measurement(
             projections=projections,
             direction=direction,
         )
+    classwise: list[dict[str, Any]] = []
+    for class_id in range(10):
+        mask = labels == class_id
+        class_terms = _terms(
+            encoder,
+            decoder,
+            images[mask],
+            labels[mask],
+            prior[mask],
+            alignment=alignment,
+            projections=projections,
+        )
+        class_gradients = {
+            name: _gradient_tree(
+                torch.autograd.grad(
+                    class_terms[name],
+                    params,
+                    retain_graph=True,
+                    allow_unused=True,
+                ),
+                params,
+                groups,
+                device=images.device,
+            )
+            for name in ("reconstruction", "alignment", "cycle")
+        }
+        class_alignment = class_gradients["alignment"]["full_joint"]
+        class_reconstruction = class_gradients["reconstruction"]["full_joint"]
+        class_cycle = class_gradients["cycle"]["full_joint"]
+        if float(class_alignment.norm()) <= 1.0e-20:
+            class_projected = torch.zeros_like(class_alignment)
+            class_projection = {
+                "active_constraints": [],
+                "alignment_retention": 0.0,
+                "alignment_zero": True,
+            }
+        else:
+            class_projected, class_projection = _project_halfspaces(
+                -class_alignment,
+                class_reconstruction,
+                class_cycle,
+            )
+        classwise.append(
+            {
+                "class": class_id,
+                "alignment_gradient_norm": float(class_alignment.norm().detach().cpu()),
+                "fixed_directional_derivatives": {
+                    name: float(_dot(class_gradients[name]["full_joint"], fixed["full_joint"]).detach().cpu())
+                    for name in ("reconstruction", "alignment", "cycle")
+                },
+                "projected_directional_derivatives": {
+                    name: float(_dot(class_gradients[name]["full_joint"], class_projected).detach().cpu())
+                    for name in ("reconstruction", "alignment", "cycle")
+                },
+                "projected_retention": class_projection["alignment_retention"],
+            }
+        )
     return {
         "alignment": alignment,
         "weights": {"alignment": w_alignment, "cycle": w_cycle},
         "losses": {name: float(value.detach().cpu()) for name, value in values.items()},
         "alignment_decoder_gradient_norm": alignment_decoder_norm,
         "groups": group_records,
+        "classwise": classwise,
         "finite": finite,
         "finite_difference": finite_difference,
     }
@@ -657,6 +715,15 @@ def _measurement_valid(records: list[dict[str, Any]]) -> tuple[bool, list[str]]:
                     )
         if groups["encoder_aggregate"]["gradient_norms"]["alignment"] <= 1.0e-12:
             failures.append(f"measurement_{index}_alignment_encoder_zero")
+        for item in record.get("classwise", ()):
+            for value in (
+                item["alignment_gradient_norm"],
+                item["projected_retention"],
+                *item["fixed_directional_derivatives"].values(),
+                *item["projected_directional_derivatives"].values(),
+            ):
+                if not math.isfinite(value):
+                    failures.append(f"measurement_{index}_classwise_nonfinite")
         for name, direction in record["finite_difference"].items():
             for term, values in direction.items():
                 if isinstance(values, dict) and not values.get("finite", False):
