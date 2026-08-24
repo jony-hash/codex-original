@@ -34,6 +34,26 @@ reduction 为 `34.62% < 50%`，类别 6/7 退化且 cycle 指标变差。依据 
 closeout 固定下一动作 `close_current_prior_native_swae_route`；该结果只关闭 H-SWAE，
 不支持 decoder、光学、fiber、phase-only 或硬件的普遍失败结论。
 
+## 2026-08-24：H-SCED seed-8601 screen stop
+
+H-SCED 在冻结 WAE v2 seed-7301 权重上使用 Gaussian sliced Cramér/energy U-statistic，
+完成了 validation、512-replication synthetic audit、CUDA preflight 和一次完整的
+seed-8601 full-coverage screen。训练期间 evaluator calls 为零；screen checkpoint、
+training history、decoder hash 和 report/closeout consumer chain 均完整。
+
+该 screen 是有效科学失败 `prior_alignment_fit_failed`：training-bank aggregate SWD
+reduction 为 `39.7259% < 50%`，reference-bank reduction 为 `36.6652% < 50%`，cycle
+由 source `0.0164912` 变为 `0.0225073`。SCED aggregate 从 `0.0390378` 降至
+`0.0204746`，reconstruction objective 从 `0.2676530` 降至 `0.2533920`，但不足以
+满足完整 screen gate。novelty exact duplicates 为 `0`、aggregate memorization pass
+fraction 为 `0.9246`、prior saturation 为 `1.28e-6`、Jacobian rank pass fraction 为
+`1.0`；这些通过项不能抵消 SWD/cycle 失败。
+
+screen 后仅执行了纯消费者 `report → closeout`。closeout 分类为
+`prior_alignment_fit_failed`，下一动作为 `close_current_prior_native_sced_route`。
+没有进入 confirm、seed-8602/8603、locked-final、O0-G、SMF、E1 或 fiber-aware training；
+该结果只关闭 H-SCED，不构成 decoder、光学或 fiber 容量失败结论。
+
 ## 2026-08-23：electronic O0 mixture transport screen stop
 
 在冻结 WAE v2 encoder/decoder 的条件下，建立了

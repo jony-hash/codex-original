@@ -34,6 +34,7 @@ utility、dataset admission 或 accepted manifest。项目治理状态保持
 | Latent RealNVP transport | `latent_flow_semantic_failed` | seed 8401 confirm 后停止 |
 | Class-conditional mixture transport | `mixture_latent_fit_failed` | seed 8501 screen 后停止 |
 | Prior-native H-SWAE | `prior_alignment_fit_failed` | seed 8601 screen 后停止，未进入 confirm |
+| Prior-native H-SCED | `prior_alignment_fit_failed` | seed 8601 screen 后停止，未进入 confirm |
 
 H-SWAE 的 validation、synthetic direction audit 和 CUDA preflight 均通过。唯一执行的
 seed-8601 screen 是有效科学失败：aggregate SWD reduction 为 `34.62% < 50%`，类别
@@ -57,15 +58,18 @@ seed-8601 screen，不代表科学假设已通过或获得正式 promotion。
 `outputs/20260824_v2/runs/20260824_electronic_o0_prior_native_sced_v1/`：
 validation `b6f4f4…16850`、audit `5e7884…f36b1`、preflight `2aea7a…75bb`。
 
+seed-8601 screen 是完整有效的科学失败：training-bank aggregate SWD reduction
+`39.73% < 50%`，reference-bank reduction `36.67% < 50%`，cycle
+`0.0225073 > 0.0164912`；screen evidence、report 和 closeout 均保持 evaluator
+calls 为零，且 closeout 固定下一动作为 `close_current_prior_native_sced_route`。
+该结果只关闭 H-SCED，不证明 WAE decoder、光学、fiber、phase-only 或硬件的普遍
+不可行性。
+
 ## 唯一允许的下一动作
 
-完成当前治理文档提交后，执行已校验的 manifest-bound seed-8601 screen。screen 必须
-同时通过 training/reference SWD、逐类不退化、SCED、reconstruction、cycle、novelty、
-saturation、Jacobian 和 storage gates。有效失败只能流向 report/closeout；有效通过后
-才可另行准备 seed-8601 confirm，不能在本动作中自动进入 confirm 或其他 seed。
-
-任何 invalid harness 必须保留失败尝试、修复并重新签发上游 evidence；任何有效科学
-gate 失败立即关闭 H-SCED，不得继续 seed-8602/8603、locked-final、O0-G、SMF、E1、
-fiber-aware training 或 formal promotion。
+H-SCED 当前路线已按有效失败关闭。不得继续 seed-8601 confirm、seed-8602/8603、
+locked-final、O0-G、SMF、E1、fiber-aware training 或 formal promotion。任何未来
+探索必须注册新的 electronic O0 假设、变量和 lifecycle，不得在本路线内调 epoch、
+seed、权重或阈值。
 
 除上述 H-SCED clean lifecycle validation 外，没有其他已授权研究或训练动作。
