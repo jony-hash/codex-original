@@ -113,11 +113,24 @@ evaluator calls 为零。该结果只授权 `register_denser_local_trajectory_at
 光学或 fiber 路线。正式 promotion、
 O0-G、SMF/FMF/MMF、E1、光学和 fiber training 继续禁止。
 
-H-DLTA（Dense Local Trajectory Attribution）已注册为下一条独立 diagnostic-only 路线。
-它只在固定的 0–20、230–270、330–370、480–520 和 625 landmark 上重放两条历史轨迹，
-分解 AdamW 的 raw gradient、momentum、adaptive preconditioner 和 weight decay，并用
-actual-step HVP/有限差分区分局部曲率与 observer-batch mismatch。它绑定 H-TCA retry7
-的 valid underdetermined closeout；不加载 evaluator、不修改旧 artifacts、不输出候选模型，
-也不授权任何新训练。当前尚无 H-DLTA validation、preflight、audit 或科学结果。
+H-DLTA（Dense Local Trajectory Attribution）已完成其 diagnostic-only lifecycle。实现与
+harness 修复提交为 `95e61c5`、`f3d5962`、`d5670e3`；首轮 SCED history-window mismatch
+（audit `0eba96…6d3a`）按 fail-closed 保留，修复后从新 clean HEAD 重建 lineage。固定的
+0–20、230–270、330–370、480–520 和 625 共 39 个 landmark、AdamW 四分量分解、
+actual-step HVP/有限差分、reverse-direction negative control、paired replay/resume 和
+SCED 13 个 history windows 均通过。H-DLTA validation、preflight、audit、report、closeout
+的 retry evidence SHA256 依次为 `a2045d…0edf`、`1207f1…1502`、`d168f8…b18e`、
+`797e5a…2506`、`a80ef1…bd55`；peak allocation 为 `3457404416` bytes，run storage
+为 `22407988` bytes，evaluator calls 为零，旧 artifacts/checkpoints hash 未改变。
+
+最终分类为 `dense_local_attribution_underdetermined`：H-SWAE 与 H-SCED 在 early、W250、
+W350、W500 四个预注册窗口均没有任何机制同时满足三个连续 landmark、至少 3/4 observer
+batches 和两个 projection banks 的支持门；没有 first-supported landmark，classwise
+locator（0/250/350/500/625，含 class 6/8 定位字段）也不改变主分类。raw gradient rotation、
+momentum、adaptive preconditioning、weight decay、finite-step curvature 和 observer sample
+distribution mismatch 均 unsupported。下一动作固定为
+`close_optimizer_trajectory_attribution_family`，只允许登记无更新 counterfactual hypothesis；
+不得修改 optimizer、objective、阈值或架构，不得启动 projected-gradient、SGD、trust-region、
+adapter、confirm、其他 seed、O0-G、SMF/FMF/MMF、E1、光学、fiber training 或 formal promotion。
 
 除 H-PGC 已完成的归因 lifecycle 外，没有其他已授权研究或训练动作。

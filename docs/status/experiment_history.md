@@ -109,6 +109,37 @@ preflight → audit → report → closeout；任一 harness/资源门失败均�
 重建 lineage。所有有效分类只能注册无更新 counterfactual 假设；confirm、projected-gradient、
 SGD、trust-region、adapter、O0-G、光学和 fiber training 继续关闭。
 
+## 2026-08-24：H-DLTA dense local attribution closeout
+
+H-DLTA 实现提交为 `95e61c5`，manifest lineage alias 修复为 `f3d5962`，SCED
+13th partial history window flush 修复为 `d5670e3`。首轮 audit 因 SCED 最终 history
+只有 12 个窗口而 fail-closed 为 `invalid_harness`（audit SHA256
+`0eba966b0e5644ccf1518b45d3522fc5c078d5e98f88a1d85a68b5acaeec2fe0`）；该尝试保留，
+未被后续 evidence 消费。修复后从新 clean HEAD 重建 lineage，retry validation、preflight、
+audit、report、closeout 的 SHA256 分别为：
+
+`a2045d600065a87c4db89cb305d19931a646241363cd53eb61750ba387d50edf`、
+`1207f1a9426876300008b4e237c505b56ab016668130801bb915175d49fd1502`、
+`d168f8bd23e6ed60c8a84175af88408d3a73f6a220b5df7bba4749018740b18e`、
+`797e5aacc817ca3bb763a170b8310645f3a25547c52985c4ab9ae5c1f22e2506`、
+`a80ef182b88c5d16e2400ca80ded1053c7ede0ffc7387dbbe601f8b3109abd55`。
+
+retry replay 覆盖固定 39 个 landmark：early `0,2,…,20`、W250 `230–270`、W350
+`330–370`、W500 `480–520`、anchor `625`。两条 arm 的 encoder、decoder、optimizer、
+CPU/CUDA RNG、sampler、schedule 和终态 canonical hash exact；SCED 13 个 history windows
+exact；AdamW predicted/actual displacement、reverse-direction control、HVP 和
+`α=0.25/0.5/1.0` finite-difference 均通过。peak allocation 为 `3457404416` bytes，
+run storage 为 `22407988` bytes，evaluator calls 为零，旧 source/route checkpoint 与
+upstream evidence hash 未改变。
+
+最终分类为 `dense_local_attribution_underdetermined`：H-SWAE 与 H-SCED 在四个窗口均未
+支持 raw gradient rotation、momentum、adaptive preconditioning、weight decay、
+finite-step curvature 或 observer sample distribution mismatch；没有 first-supported
+landmark。classwise locator 固定记录于 `0/250/350/500/625`，class 6/8 仅作定位字段，
+不改变主分类。closeout 下一动作是 `close_optimizer_trajectory_attribution_family`；
+这只允许登记无更新 counterfactual hypothesis，不授权修改 optimizer/objective/架构、
+任何新训练、confirm、其他 seed、O0-G、光学、fiber 或 formal promotion。
+
 ## 2026-08-23：electronic O0 mixture transport screen stop
 
 在冻结 WAE v2 encoder/decoder 的条件下，建立了
