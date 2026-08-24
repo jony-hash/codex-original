@@ -87,3 +87,32 @@ def test_registered_config_is_exact() -> None:
     assert config["audit_seed"] == 8731
     assert config["batch_seeds"] == [11, 23, 37, 51]
     assert config["projection_seeds"] == [271829, 314159]
+
+
+def test_classification_keeps_paired_arm_and_requires_each_bank() -> None:
+    def record(seed: int, cycle_rho: float) -> dict:
+        return {
+            "projection_seed": seed,
+            "groups": {
+                "full_joint": {
+                    "fixed_rho": {"cycle": cycle_rho},
+                    "projected": {"alignment_retention": 1.0},
+                }
+            },
+            "finite_difference": {
+                "projected": {
+                    "alignment": {"plus": 0.0, "before": 1.0},
+                    "reconstruction": {"plus": 1.0, "before": 1.0},
+                    "cycle": {"plus": 1.0, "before": 1.0},
+                }
+            },
+        }
+
+    sced = [record(seed, -0.2) for seed in (271829, 314159) for _ in range(4)]
+    swae = [record(seed, 0.2) for seed in (271829, 314159) for _ in range(4)]
+    classification, _, decision = pgc._classify(
+        sced, swae, [0.95] * 4, controls_passed=True
+    )
+    assert classification == "gradient_conflict_not_supported"
+    assert decision["swae_cycle_rho_by_bank"][271829] == [0.2] * 4
+    assert decision["alignment_estimator_independent"] is True

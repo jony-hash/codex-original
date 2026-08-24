@@ -693,55 +693,103 @@ def _classify(
         record["groups"]["full_joint"]["fixed_rho"]["cycle"]
         for record in sced_records
     ]
-    sced_conflict = sum(value >= CYCLE_CONFLICT_COSINE for value in sced_cycle_rho) >= REQUIRED_CONFLICT_BATCHES
+    swae_cycle_rho = [
+        record["groups"]["full_joint"]["fixed_rho"]["cycle"]
+        for record in swae_records
+    ]
+    sced_rho_by_bank = {
+        seed: [
+            record["groups"]["full_joint"]["fixed_rho"]["cycle"]
+            for record in sced_records
+            if int(record["projection_seed"]) == seed
+        ]
+        for seed in sorted({int(record["projection_seed"]) for record in sced_records})
+    }
+    swae_rho_by_bank = {
+        seed: [
+            record["groups"]["full_joint"]["fixed_rho"]["cycle"]
+            for record in swae_records
+            if int(record["projection_seed"]) == seed
+        ]
+        for seed in sorted({int(record["projection_seed"]) for record in swae_records})
+    }
+    sced_conflict = bool(sced_rho_by_bank) and all(
+        sum(value >= CYCLE_CONFLICT_COSINE for value in values)
+        >= REQUIRED_CONFLICT_BATCHES
+        for values in sced_rho_by_bank.values()
+    )
     retention = [
         record["groups"]["full_joint"]["projected"]["alignment_retention"]
         for record in sced_records
     ]
+    retention_by_bank = {
+        seed: [
+            record["groups"]["full_joint"]["projected"]["alignment_retention"]
+            for record in sced_records
+            if int(record["projection_seed"]) == seed
+        ]
+        for seed in sorted({int(record["projection_seed"]) for record in sced_records})
+    }
     projected_fd = [
         record["finite_difference"]["projected"]
         for record in sced_records
     ]
-    projected_feasible = sum(
-        item["alignment"]["plus"] < item["alignment"]["before"]
-        and item["reconstruction"]["plus"] <= item["reconstruction"]["before"]
-        and item["cycle"]["plus"] <= item["cycle"]["before"]
-        for item in projected_fd
-    ) >= REQUIRED_CONFLICT_BATCHES
+    projected_feasible_by_bank = {
+        seed: sum(
+            item["alignment"]["plus"] < item["alignment"]["before"]
+            and item["reconstruction"]["plus"] <= item["reconstruction"]["before"]
+            and item["cycle"]["plus"] <= item["cycle"]["before"]
+            for item, record in zip(
+                projected_fd,
+                sced_records,
+                strict=True,
+            )
+            if int(record["projection_seed"]) == seed
+        )
+        >= REQUIRED_CONFLICT_BATCHES
+        for seed in sorted({int(record["projection_seed"]) for record in sced_records})
+    }
+    projected_feasible = bool(projected_feasible_by_bank) and all(
+        projected_feasible_by_bank.values()
+    )
+    estimator_independent = bool(swae_rho_by_bank) and all(
+        sum(value >= CYCLE_CONFLICT_COSINE for value in values)
+        >= REQUIRED_CONFLICT_BATCHES
+        for values in swae_rho_by_bank.values()
+    )
+    shared = {
+        "sced_cycle_rho": sced_cycle_rho,
+        "swae_cycle_rho": swae_cycle_rho,
+        "sced_cycle_rho_by_bank": sced_rho_by_bank,
+        "swae_cycle_rho_by_bank": swae_rho_by_bank,
+        "alignment_retention": retention,
+        "alignment_retention_by_bank": retention_by_bank,
+        "projected_feasible": projected_feasible,
+        "projected_feasible_by_bank": projected_feasible_by_bank,
+        "alignment_estimator_independent": estimator_independent,
+        "sced_specific": not estimator_independent,
+    }
     if not sced_conflict:
-        return "gradient_conflict_not_supported", "register_trajectory_or_curvature_attribution", {
-            "sced_cycle_rho": sced_cycle_rho,
-            "alignment_retention": retention,
-            "projected_feasible": projected_feasible,
-        }
+        return "gradient_conflict_not_supported", "register_trajectory_or_curvature_attribution", shared
     if min(sced_cosines) < 0.90:
         return "invalid_harness", "repair_projection_gradient_stability", {
             "sced_cycle_rho": sced_cycle_rho,
             "alignment_retention": retention,
             "projected_feasible": projected_feasible,
         }
-    if projected_feasible and statistics_median(retention) >= PROJECTED_RETENTION_AVAILABLE:
+    bank_retention_medians = [
+        statistics_median(values) for values in retention_by_bank.values()
+    ]
+    if projected_feasible and min(bank_retention_medians) >= PROJECTED_RETENTION_AVAILABLE:
         classification = "fixed_weight_conflict_projected_descent_available"
         next_action = "register_constraint_projected_gradient_hypothesis"
-    elif statistics_median(retention) <= STRUCTURAL_RETENTION_UPPER_BOUND:
+    elif max(bank_retention_medians) <= STRUCTURAL_RETENTION_UPPER_BOUND:
         classification = "local_structural_prior_cycle_incompatibility"
         next_action = "register_structural_prior_consistency_hypothesis"
     else:
         classification = "conflict_confirmed_resolution_underdetermined"
         next_action = "register_local_curvature_trust_region_attribution"
-    swae_cycle_rho = [
-        record["groups"]["full_joint"]["fixed_rho"]["cycle"]
-        for record in swae_records
-    ]
-    estimator_independent = sum(value >= CYCLE_CONFLICT_COSINE for value in swae_cycle_rho) >= REQUIRED_CONFLICT_BATCHES
-    return classification, next_action, {
-        "sced_cycle_rho": sced_cycle_rho,
-        "swae_cycle_rho": swae_cycle_rho,
-        "alignment_retention": retention,
-        "projected_feasible": projected_feasible,
-        "alignment_estimator_independent": estimator_independent,
-        "sced_specific": not estimator_independent,
-    }
+    return classification, next_action, shared
 
 
 def statistics_median(values: list[float]) -> float:
