@@ -353,6 +353,9 @@ def manifest_args(
         "h_pgc_audit_evidence": ("h_pgc_audit", "pgc_audit", "audit_evidence"),
         "h_pgc_report_evidence": ("h_pgc_report", "pgc_report", "report_evidence"),
         "h_pgc_closeout_evidence": ("h_pgc_closeout", "pgc_closeout", "closeout_evidence"),
+        "h_tca_audit_evidence": ("h_tca_audit", "trajectory_curvature_audit"),
+        "h_tca_report_evidence": ("h_tca_report", "trajectory_curvature_report"),
+        "h_tca_closeout_evidence": ("h_tca_closeout", "trajectory_curvature_closeout"),
     }
     for field, names in aliases.items():
         value = manifest_value(manifest, *names)
@@ -370,7 +373,16 @@ def manifest_args(
         namespace.posterior_artifact_sha256 = str(posterior_ref["sha256"])
     seeds = manifest.get("seeds", {})
     if isinstance(seeds, Mapping):
-        for key in ("flow", "mixture", "swae", "sced", "run", "seed"):
+        for key in (
+            "flow",
+            "mixture",
+            "swae",
+            "sced",
+            "trajectory_curvature",
+            "dense_local_attribution",
+            "run",
+            "seed",
+        ):
             if key in seeds:
                 namespace.seed = int(
                     seeds[key][0] if isinstance(seeds[key], list) else seeds[key]
