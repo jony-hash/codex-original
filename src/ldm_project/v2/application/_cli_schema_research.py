@@ -946,6 +946,39 @@ def register_research(root: argparse._SubParsersAction) -> None:
         command.add_argument("--output")
         command.add_argument("--measurement-evidence")
 
+    dpgc = research_programs.add_parser(
+        "electronic-o0-direct-prior-capacity-canary",
+        help="no-update direct-prior capacity canary for electronic O0",
+    )
+    dpgc_actions = dpgc.add_subparsers(dest="research_action", required=True)
+
+    def dpgc_lineage(command):
+        command.add_argument("--run-manifest")
+        command.add_argument("--config")
+        command.add_argument("--dataset-root")
+        command.add_argument("--device", choices=("cuda", "cpu"))
+        command.add_argument("--output")
+        command.add_argument("--primary-evaluator-checkpoint")
+        command.add_argument("--secondary-evaluator-checkpoint")
+        command.add_argument("--primary-qualification-evidence")
+        command.add_argument("--secondary-qualification-evidence")
+        command.add_argument("--h-ccf-closeout-evidence")
+
+    for action in ("validate", "preflight", "audit"):
+        command = dpgc_actions.add_parser(action)
+        dpgc_lineage(command)
+        if action == "preflight":
+            command.add_argument("--validation-evidence")
+        if action == "audit":
+            command.add_argument("--preflight-evidence")
+    for action in ("report", "closeout"):
+        command = dpgc_actions.add_parser(action)
+        command.add_argument("--run-manifest")
+        command.add_argument("--config")
+        command.add_argument("--dataset-root")
+        command.add_argument("--output")
+        command.add_argument("--measurement-evidence")
+
     smf = research_programs.add_parser(
         "smf-modal-density-attribution",
         help="synthetic single-mode port-density upper-bound lifecycle",
