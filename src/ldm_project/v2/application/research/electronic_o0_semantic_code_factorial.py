@@ -326,12 +326,16 @@ def _quartiles(values: Tensor) -> dict[str, float]:
 def _nearest_distances(rows: Tensor, references: Tensor, *, chunk_size: int = 64) -> Tensor:
     values = []
     for start in range(0, rows.shape[0], chunk_size):
-        values.append(
-            torch.cdist(rows[start : start + chunk_size], references)
-            .square()
-            .min(dim=1)
-            .values
-        )
+        block = rows[start : start + chunk_size]
+        for inner_start in range(0, block.shape[0], 8):
+            inner = block[inner_start : inner_start + 8]
+            values.append(
+                (inner[:, None, :] - references[None, :, :])
+                .square()
+                .sum(dim=2)
+                .min(dim=1)
+                .values
+            )
     return torch.cat(values)
 
 
