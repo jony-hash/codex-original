@@ -321,6 +321,65 @@ def _loss(
     return classwise_multiscale_energy(generated, images, labels, banks)
 
 
+def _camera_fraction(values: Tensor, labels: Tensor) -> Tensor:
+    means = torch.stack([values[labels == label].mean(dim=0) for label in range(10)])
+    residual = values - means.index_select(0, labels)
+    centered = values - values.mean(dim=0, keepdim=True)
+    return residual.square().sum() / centered.square().sum().clamp_min(1.0e-12)
+
+
+def _pairwise_diversity(values: Tensor, labels: Tensor) -> Tensor:
+    rows: list[Tensor] = []
+    for label in range(10):
+        selected = values[labels == label].flatten(1)
+        if selected.shape[0] < 2:
+            raise ValueError("H-DIDM diversity requires two samples per class")
+        rows.append(torch.pdist(selected, p=2).mean())
+    return torch.stack(rows).mean()
+
+
+def _protected_metrics(
+    source: ConditionalWAEDecoder,
+    candidate: ConditionalWAEDecoder,
+    train_images: Tensor,
+    train_labels: Tensor,
+) -> dict[str, float | bool]:
+    source_fractions: list[Tensor] = []
+    candidate_fractions: list[Tensor] = []
+    source_diversities: list[Tensor] = []
+    candidate_diversities: list[Tensor] = []
+    source_saturation: list[Tensor] = []
+    candidate_saturation: list[Tensor] = []
+    for batch_seed, prior_seed in zip(BATCH_SEEDS, PRIOR_SEEDS, strict=True):
+        images, labels = _balanced_batch(train_images, train_labels, batch_seed)
+        prior = _prior(labels, prior_seed, device=train_images.device, dtype=train_images.dtype)
+        source_values = source(prior, labels)
+        candidate_values = candidate(prior, labels)
+        source_fractions.append(_camera_fraction(source_values, labels))
+        candidate_fractions.append(_camera_fraction(candidate_values, labels))
+        source_diversities.append(_pairwise_diversity(source_values, labels))
+        candidate_diversities.append(_pairwise_diversity(candidate_values, labels))
+        source_saturation.append(((source_values < 0.01) | (source_values > 0.99)).float().mean())
+        candidate_saturation.append(((candidate_values < 0.01) | (candidate_values > 0.99)).float().mean())
+    source_fraction = float(torch.stack(source_fractions).mean())
+    candidate_fraction = float(torch.stack(candidate_fractions).mean())
+    source_diversity = float(torch.stack(source_diversities).mean())
+    candidate_diversity = float(torch.stack(candidate_diversities).mean())
+    source_sat = float(torch.stack(source_saturation).mean())
+    candidate_sat = float(torch.stack(candidate_saturation).mean())
+    return {
+        "source_camera_code_fraction": source_fraction,
+        "candidate_camera_code_fraction": candidate_fraction,
+        "camera_code_fraction_gate": candidate_fraction >= max(0.25, 0.95 * source_fraction),
+        "source_pairwise_diversity": source_diversity,
+        "candidate_pairwise_diversity": candidate_diversity,
+        "pairwise_diversity_gate": candidate_diversity >= 0.95 * source_diversity,
+        "source_saturation": source_sat,
+        "candidate_saturation": candidate_sat,
+        "saturation_gate": candidate_sat <= max(source_sat, 0.08),
+    }
+
+
 def _clone_with_state(decoder: ConditionalWAEDecoder, state: Mapping[str, Tensor], device: torch.device) -> ConditionalWAEDecoder:
     clone = ConditionalWAEDecoder("O0-I").to(device)
     clone.load_state_dict(copy.deepcopy(dict(state)), strict=True)
@@ -458,6 +517,8 @@ def _preflight_measurement(decoder: ConditionalWAEDecoder, train_images: Tensor,
     torch.random.set_rng_state(before_cpu)
     if torch.cuda.is_available():
         torch.cuda.set_rng_state_all(before_cuda)
+    source = _clone_with_state(decoder, initial, device)
+    protected = _protected_metrics(source, decoder, train_images, train_labels)
     changed = {"input": False, "film_block": False, "upsample": False, "output": False}
     for (name, before), after in zip(initial.items(), decoder.state_dict().values(), strict=True):
         changed[_param_group(name)] = changed.get(_param_group(name), False) or bool(not torch.equal(before.detach().cpu(), after.detach().cpu()))
@@ -483,6 +544,7 @@ def _preflight_measurement(decoder: ConditionalWAEDecoder, train_images: Tensor,
         "sampler_cursor": sampler_cursor,
         "schedule_hash": canonical_sha256({"steps": EXPECTED_STEPS, "lr": LEARNING_RATE, "batches": list(BATCH_SEEDS)}),
         "objective_hash": canonical_sha256({"schema": SCHEMA_PREFIX, "views": list(VIEWS), "projection_seeds": list(PROJECTION_SEEDS)}),
+        "protected_metrics": protected,
         "optimizer_created": True,
         "evaluator_calls": 0,
     }
