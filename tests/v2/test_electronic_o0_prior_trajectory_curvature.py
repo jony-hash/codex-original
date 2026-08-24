@@ -55,7 +55,13 @@ def test_state_hash_uses_tensor_content_not_serialization() -> None:
     assert tca._state_dict_hash({"weight": torch.tensor([1.0, 3.0])}) != tca._state_dict_hash(state)
 
 
-def _landmark(*, cycle_rho: float, adam_rho: float = -0.2, cycle_delta: float = -1.0e-8) -> dict:
+def _landmark(
+    *,
+    cycle_rho: float,
+    adam_rho: float = -0.2,
+    cycle_delta: float = -1.0e-8,
+    training_cycle_delta: float | None = None,
+) -> dict:
     records = []
     for batch_seed in tca.BATCH_SEEDS:
         for projection_seed in tca.PROJECTION_SEEDS:
@@ -68,7 +74,10 @@ def _landmark(*, cycle_rho: float, adam_rho: float = -0.2, cycle_delta: float = 
                     "actual_delta": {"cycle": cycle_delta},
                 }
             )
-    return {"step": len(records), "records": records, "curvature": []}
+    landmark = {"step": len(records), "records": records, "curvature": []}
+    if training_cycle_delta is not None:
+        landmark["training_cycle_delta"] = training_cycle_delta
+    return landmark
 
 
 def test_classification_detects_shared_gradient_rotation() -> None:
@@ -91,6 +100,60 @@ def test_classification_keeps_underdetermined_path_fail_closed() -> None:
     assert classification == "trajectory_attribution_underdetermined"
     assert next_action == "register_denser_local_trajectory_attribution"
     assert decision["shared_supported_mechanisms"] == []
+
+
+def test_observer_mismatch_requires_nonincreasing_training_batch() -> None:
+    mismatch_arms = {
+        route: {
+            "landmarks": [
+                _landmark(cycle_rho=-0.2, cycle_delta=2.0e-7, training_cycle_delta=-1.0e-8)
+                for _ in range(4)
+            ]
+        }
+        for route in ("swae", "sced")
+    }
+    classification, _, decision = tca._classify(mismatch_arms)
+    assert classification == "observer_distribution_mismatch"
+    assert decision["shared_supported_mechanisms"] == ["observer_distribution_mismatch"]
+
+    observer_only_arms = {
+        route: {
+            "landmarks": [
+                _landmark(cycle_rho=-0.2, cycle_delta=2.0e-7, training_cycle_delta=2.0e-7)
+                for _ in range(4)
+            ]
+        }
+        for route in ("swae", "sced")
+    }
+    classification, _, decision = tca._classify(observer_only_arms)
+    assert classification == "trajectory_attribution_underdetermined"
+    assert decision["shared_supported_mechanisms"] == []
+
+
+def test_curvature_support_requires_first_order_and_remainder_fields() -> None:
+    base = _landmark(cycle_rho=-0.2)
+    valid_curvature = {
+        "direction": "adam",
+        "finite": True,
+        "hvp_quadratic": 1.0,
+        "finite_difference_forward": 2.0e-6,
+        "first_order_cycle": 0.0,
+        "actual_cycle_delta": 2.0e-6,
+        "taylor_remainder_cycle": 1.0e-6,
+    }
+    invalid_curvature = dict(valid_curvature)
+    invalid_curvature.pop("first_order_cycle")
+    invalid_curvature.pop("taylor_remainder_cycle")
+    valid_arms = {
+        route: {"landmarks": [{**base, "curvature": [dict(valid_curvature)]} for _ in range(2)]}
+        for route in ("swae", "sced")
+    }
+    assert tca._classify(valid_arms)[0] == "finite_step_curvature_cycle_drift"
+    invalid_arms = {
+        route: {"landmarks": [{**base, "curvature": [dict(invalid_curvature)]} for _ in range(2)]}
+        for route in ("swae", "sced")
+    }
+    assert tca._classify(invalid_arms)[0] == "trajectory_attribution_underdetermined"
 
 
 def test_progress_schema_contains_partial_history_window(tmp_path: Path) -> None:

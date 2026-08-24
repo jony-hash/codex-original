@@ -71,6 +71,7 @@ FD_RELATIVE_STEP = 1.0e-4
 REQUIRED_SUPPORT_LANDMARKS = 2
 REQUIRED_OBSERVER_BATCHES = 3
 CYCLE_CONFLICT_COSINE = 0.05
+CURVATURE_REMAINDER_FRACTION = 0.50
 SCED_SCHEMA = "electronic_o0_prior_native_sced_training.v1"
 SWAE_SCHEMA = "electronic_o0_prior_native_swae_training.v1"
 SOURCE_TRAIN_SCHEMA = "electronic_o0_wae_training.v2"
@@ -648,8 +649,12 @@ def _curvature(
         "finite_difference_central": central,
         "finite_difference_plus": plus,
         "finite_difference_minus": minus,
+        "finite_difference_forward": plus - before,
         "baseline_cycle": before,
-        "finite": all(math.isfinite(value) for value in (curvature, central, plus, minus, before)),
+        "finite": all(
+            math.isfinite(value)
+            for value in (curvature, central, plus, minus, plus - before, before)
+        ),
     }
 
 
@@ -817,6 +822,22 @@ def _replay_arm(
             indices = schedule[cursor]
             batch_images = images.index_select(0, indices).to(device)
             batch_labels = labels.index_select(0, indices).to(device)
+            training_prior = None
+            training_before = None
+            if "landmark" in locals() and landmark.get("step") == step:
+                rng_before = torch.cuda.get_rng_state()
+                training_prior = torch.randn((batch_images.shape[0], CODE_DIM), device=device)
+                torch.cuda.set_rng_state(rng_before)
+                training_before = _loss_values(
+                    encoder,
+                    decoder,
+                    batch_images,
+                    batch_labels,
+                    training_prior,
+                    route=route,
+                    weights=weights,
+                    projections=train_projection,
+                )
             before = _parameter_vector(encoder, decoder)
             values = _update(encoder, decoder, optimizer, batch_images, batch_labels, route=route, weights=weights, projections=train_projection)
             after = _parameter_vector(encoder, decoder)
@@ -831,12 +852,28 @@ def _replay_arm(
                     item["post_losses"] = post
                     item["actual_delta"] = {name: post[name] - item["losses"][name] for name in ("reconstruction", "alignment", "cycle")}
                     item["taylor_remainder_cycle"] = item["actual_delta"]["cycle"] - item["adam_directional_derivatives"]["cycle"]
+                training_after = _loss_values(
+                    encoder,
+                    decoder,
+                    batch_images,
+                    batch_labels,
+                    training_prior,
+                    route=route,
+                    weights=weights,
+                    projections=train_projection,
+                )
+                landmark["training_losses_before"] = training_before
+                landmark["training_losses_after"] = training_after
+                landmark["training_cycle_delta"] = training_after["cycle"] - training_before["cycle"]
                 if pre_parameters is not None:
                     post_parameters = [parameter.detach().clone() for parameter in tuple(encoder.parameters()) + tuple(decoder.parameters())]
                     _restore_parameters(encoder, decoder, pre_parameters)
                     for item in landmark["records"]:
                         if item["projection_seed"] == PROJECTION_SEEDS[0]:
                             landmark["curvature"].append(_curvature(encoder, decoder, item, route=route, weights=weights, direction_name="adam", direction=actual_delta))
+                            landmark["curvature"][-1]["first_order_cycle"] = item["adam_directional_derivatives"]["cycle"]
+                            landmark["curvature"][-1]["actual_cycle_delta"] = item["actual_delta"]["cycle"]
+                            landmark["curvature"][-1]["taylor_remainder_cycle"] = item["taylor_remainder_cycle"]
                     _restore_parameters(encoder, decoder, post_parameters)
                 landmarks.append(landmark)
                 del landmark
@@ -972,17 +1009,54 @@ def _classify(arms: dict[str, dict[str, Any]]) -> tuple[str, str, dict[str, Any]
                 hits = 0
                 for batch_seed in BATCH_SEEDS:
                     batch_records = [r for landmark in window for r in landmark["records"] if r["batch_seed"] == batch_seed]
-                    if mechanism == "trajectory_gradient_rotation" and sum(r["fixed_rho"]["cycle"] >= CYCLE_CONFLICT_COSINE for r in batch_records) >= 2:
+                    def bank_hits(predicate):
+                        return all(
+                            sum(predicate(record) for record in batch_records if record["projection_seed"] == projection_seed)
+                            >= 2
+                            for projection_seed in PROJECTION_SEEDS
+                        )
+
+                    if mechanism == "trajectory_gradient_rotation" and bank_hits(
+                        lambda record: record["fixed_rho"]["cycle"] >= CYCLE_CONFLICT_COSINE
+                    ):
                         hits += 1
-                    elif mechanism == "optimizer_preconditioning_cycle_conflict" and sum(r.get("fixed_rho", {}).get("cycle", 0.0) < CYCLE_CONFLICT_COSINE and r.get("adam_rho", 0.0) >= CYCLE_CONFLICT_COSINE for r in batch_records) >= 2:
+                    elif mechanism == "optimizer_preconditioning_cycle_conflict" and bank_hits(
+                        lambda record: record.get("fixed_rho", {}).get("cycle", 0.0) < CYCLE_CONFLICT_COSINE
+                        and record.get("adam_rho", 0.0) >= CYCLE_CONFLICT_COSINE
+                    ):
                         hits += 1
                     elif mechanism == "observer_distribution_mismatch":
-                        if sum(r.get("actual_delta", {}).get("cycle", 0.0) > 1.0e-7 for r in batch_records) >= 2:
+                        # A mismatch is only supported when the actual training
+                        # batch is non-increasing while each fixed observer bank
+                        # is increasing over the same consecutive landmark
+                        # window. Observer-only drift is insufficient to
+                        # distinguish a distribution mismatch from ordinary
+                        # trajectory drift.
+                        training_cycle_deltas = [
+                            landmark.get("training_cycle_delta")
+                            for landmark in window
+                        ]
+                        training_non_increasing = all(
+                            delta is not None and delta <= 1.0e-7
+                            for delta in training_cycle_deltas
+                        )
+                        if training_non_increasing and bank_hits(
+                            lambda record: record.get("actual_delta", {}).get("cycle", 0.0) > 1.0e-7
+                        ):
                             hits += 1
                 if hits >= REQUIRED_OBSERVER_BATCHES:
                     route_support[mechanism] = True
         curvature_items = [item for landmark in landmarks for item in landmark.get("curvature", []) if item["direction"] == "adam"]
-        if curvature_items and sum(item["finite"] and item["hvp_quadratic"] > 0.0 and item["finite_difference_central"] > 0.0 for item in curvature_items) >= REQUIRED_SUPPORT_LANDMARKS:
+        if curvature_items and sum(
+            item["finite"]
+            and item["hvp_quadratic"] > 0.0
+            and item["finite_difference_forward"] > 1.0e-7
+            and item.get("first_order_cycle", 1.0) <= 1.0e-12
+            and item.get("actual_cycle_delta", 0.0) > 1.0e-7
+            and item.get("taylor_remainder_cycle", 0.0)
+            >= CURVATURE_REMAINDER_FRACTION * item.get("actual_cycle_delta", 0.0)
+            for item in curvature_items
+        ) >= REQUIRED_SUPPORT_LANDMARKS:
             route_support["finite_step_curvature_cycle_drift"] = True
         support[route] = route_support
     supported = [name for name in ("trajectory_gradient_rotation", "optimizer_preconditioning_cycle_conflict", "finite_step_curvature_cycle_drift", "observer_distribution_mismatch") if all(support[route].get(name, False) for route in arms)]
