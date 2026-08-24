@@ -436,7 +436,13 @@ def _group_vectors(
     ]
     def selected(predicate):
         return _flat(
-            (by_id[id(value)] for name, value in named if predicate(name)),
+            (
+                torch.zeros_like(value)
+                if by_id[id(value)] is None
+                else by_id[id(value)]
+                for name, value in named
+                if predicate(name)
+            ),
             device=params[0].device,
         )
     result = {
