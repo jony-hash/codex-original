@@ -1007,6 +1007,7 @@ def register_research(root: argparse._SubParsersAction) -> None:
             command.add_argument("--audit-evidence")
         elif action == "screen":
             command.add_argument("--preflight-evidence")
+            command.add_argument("--resume-checkpoint")
     for action in ("report", "closeout"):
         command = didm_actions.add_parser(action)
         command.add_argument("--run-manifest")
