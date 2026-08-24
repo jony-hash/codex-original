@@ -841,10 +841,17 @@ def _replay_arm(
                 landmarks.append(landmark)
                 del landmark
             history_window.append(values)
+            if route == "sced":
+                history_window[-1] = {
+                    "total": values["total"],
+                    "reconstruction": values["reconstruction"],
+                    "sced": values["alignment"],
+                    "cycle": values["cycle"],
+                }
             step += 1
             cursor += 1
             if route == "sced" and (step % 50 == 0 or step == EXPECTED_STEP):
-                history.append({name: sum(row[name] for row in history_window) / len(history_window) for name in ("total", "reconstruction", "alignment", "cycle")})
+                history.append({name: sum(row[name] for row in history_window) / len(history_window) for name in ("total", "reconstruction", "sced", "cycle")})
                 history_window = []
             if step % 50 == 0 or step == EXPECTED_STEP:
                 _save_progress(progress, route=route, step=step, epoch=1 if step == EXPECTED_STEP else 0, cursor=cursor, encoder=encoder, decoder=decoder, optimizer=optimizer, history=history, history_window=history_window, landmarks=[{key: value for key, value in item.items() if key != "records"} for item in landmarks])
