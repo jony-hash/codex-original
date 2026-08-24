@@ -77,23 +77,23 @@ class ManifoldCanary:
     means: Tensor
     bases: Tensor
     scales: Tensor
-    sorted_coordinates: Tensor
+    sorted_coordinates: tuple[Tensor, ...]
     coordinate_scales: Tensor
     copula_cholesky: Tensor
-    train_coordinates: Tensor
-    train_images: Tensor
+    train_coordinates: tuple[Tensor, ...]
+    train_images: tuple[Tensor, ...]
     bandwidths: Tensor
     image_shape: tuple[int, ...]
 
-    def _inverse_coordinates(self, codes: Tensor, labels: Tensor, *, copula: bool) -> Tensor:
+    def _inverse_coordinates(self, codes: Tensor, label: int, *, copula: bool) -> Tensor:
         transformed = codes
         if copula:
-            cholesky = self.copula_cholesky.index_select(0, labels)
+            cholesky = self.copula_cholesky[label].expand(codes.shape[0], -1, -1)
             transformed = torch.bmm(cholesky, codes.unsqueeze(-1)).squeeze(-1)
         unit = 0.5 * (1.0 + torch.erf(transformed / math.sqrt(2.0)))
         rows: list[Tensor] = []
         for dimension in range(CODE_DIM):
-            sorted_values = self.sorted_coordinates.index_select(0, labels)[:, :, dimension]
+            sorted_values = self.sorted_coordinates[label][:, dimension].unsqueeze(0).expand(codes.shape[0], -1)
             values = sorted_values
             positions = torch.searchsorted(values.contiguous(), unit[:, dimension].contiguous().unsqueeze(1), right=True).squeeze(1)
             positions = positions.clamp(1, values.shape[1] - 1)
@@ -117,7 +117,7 @@ class ManifoldCanary:
         if not torch.isfinite(codes).all() or int(labels.min()) < 0 or int(labels.max()) >= CLASS_COUNT:
             raise ValueError("H-NDMC inputs are invalid")
 
-        output = torch.empty((labels.numel(), self.train_images.shape[-1]), device=labels.device, dtype=self.train_images.dtype)
+        output = torch.empty((labels.numel(), self.train_images[0].shape[-1]), device=labels.device, dtype=self.train_images[0].dtype)
         # This canonical internal chunk is part of the numerical contract.  The
         # public probe may request 64 or 257, but reduction order stays fixed.
         canonical_chunk = 64
@@ -125,7 +125,7 @@ class ManifoldCanary:
             selected = torch.nonzero(labels == label, as_tuple=False).flatten()
             if selected.numel() == 0:
                 continue
-            target = self._inverse_coordinates(codes.index_select(0, selected), labels.index_select(0, selected), copula=copula)
+            target = self._inverse_coordinates(codes.index_select(0, selected), label, copula=copula)
             target = target / self.coordinate_scales[label].clamp_min(1.0e-8)
             reference = self.train_coordinates[label] / self.coordinate_scales[label].clamp_min(1.0e-8)
             reference_norm = reference.square().sum(1)
@@ -291,12 +291,12 @@ def _fit_canary(images: Tensor, labels: Tensor, *, seed: int = HARNESS_SEED) -> 
         image_rows.append(class_images)
         bandwidths.append(bandwidth)
     result = ManifoldCanary(
-        torch.stack(means), torch.stack(bases), torch.stack(scales), torch.stack(sorted_coordinates),
-        torch.stack(coordinate_scales), torch.stack(cholesky_rows), torch.stack(coordinate_rows),
-        torch.stack(image_rows), torch.stack(bandwidths), tuple(images.shape[1:]),
+        torch.stack(means), torch.stack(bases), torch.stack(scales), tuple(sorted_coordinates),
+        torch.stack(coordinate_scales), torch.stack(cholesky_rows), tuple(coordinate_rows),
+        tuple(image_rows), torch.stack(bandwidths), tuple(images.shape[1:]),
     )
-    tensors = (result.means, result.bases, result.scales, result.sorted_coordinates, result.coordinate_scales, result.copula_cholesky, result.train_coordinates, result.train_images, result.bandwidths)
-    if not all(torch.isfinite(value).all() for value in tensors):
+    tensors = (result.means, result.bases, result.scales, result.coordinate_scales, result.copula_cholesky, result.bandwidths)
+    if not all(torch.isfinite(value).all() for value in tensors) or not all(torch.isfinite(value).all() for value in result.sorted_coordinates + result.train_coordinates + result.train_images):
         raise ValueError("H-NDMC canary parameters are non-finite")
     return result
 
@@ -622,7 +622,7 @@ def _build_measurement(args: argparse.Namespace, *, samples_per_class: int, incl
     after = {"primary": dpgc.state_content_hash(primary.state_dict()), "secondary": dpgc.state_content_hash(secondary.state_dict())}
     historical = _historical_audit(args.h_dpgc_closeout_evidence, args) if include_history else {"matches": True, "replayed": False}
     result = {
-        "canary": {"code_dim": CODE_DIM, "pca_rank": PCA_RANK, "kernel_neighbors": KERNEL_NEIGHBORS, "bandwidth_anchor_count": BANDWIDTH_ANCHORS, "fit_seed": HARNESS_SEED, "mean_hash": tensor_sha256(canary.means), "basis_hash": tensor_sha256(canary.bases), "coordinate_hash": tensor_sha256(canary.train_coordinates), "copula_hash": tensor_sha256(canary.copula_cholesky), "bandwidth_hash": tensor_sha256(canary.bandwidths)},
+        "canary": {"code_dim": CODE_DIM, "pca_rank": PCA_RANK, "kernel_neighbors": KERNEL_NEIGHBORS, "bandwidth_anchor_count": BANDWIDTH_ANCHORS, "fit_seed": HARNESS_SEED, "mean_hash": tensor_sha256(canary.means), "basis_hash": tensor_sha256(canary.bases), "coordinate_hash": canonical_sha256([tensor_sha256(value) for value in canary.train_coordinates]), "copula_hash": tensor_sha256(canary.copula_cholesky), "bandwidth_hash": tensor_sha256(canary.bandwidths)},
         "banks": banks,
         "identity_copula": identity_copula,
         "controls": {"zero_code": {seed: banks[str(seed)]["zero_code"] for seed in GAUSSIAN_BANK_SEEDS}, "label_shift": {seed: banks[str(seed)]["label_shuffled_primary_counts"] for seed in GAUSSIAN_BANK_SEEDS}},
