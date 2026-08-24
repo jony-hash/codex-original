@@ -786,6 +786,45 @@ def register_research(root: argparse._SubParsersAction) -> None:
         if action == "closeout":
             command.add_argument("--measurement-evidence")
 
+    pgc = research_programs.add_parser(
+        "electronic-o0-prior-gradient-conflict",
+        help="read-only prior-gradient conflict attribution for electronic O0",
+    )
+    pgc_actions = pgc.add_subparsers(dest="research_action", required=True)
+
+    def pgc_lineage(command):
+        command.add_argument("--run-manifest")
+        command.add_argument("--config")
+        command.add_argument("--dataset-root")
+        command.add_argument("--device", choices=("cuda", "cpu"))
+        command.add_argument("--output")
+        command.add_argument("--wae-training-checkpoint")
+        command.add_argument("--wae-decoder-checkpoint")
+        command.add_argument("--swae-training-checkpoint")
+        command.add_argument("--swae-screen-evidence")
+        command.add_argument("--swae-closeout-evidence")
+        command.add_argument("--sced-training-checkpoint")
+        command.add_argument("--sced-screen-evidence")
+        command.add_argument("--sced-closeout-evidence")
+
+    pgc_validate = pgc_actions.add_parser("validate")
+    pgc_lineage(pgc_validate)
+    pgc_audit = pgc_actions.add_parser("audit")
+    pgc_lineage(pgc_audit)
+    pgc_audit.add_argument("--validation-evidence")
+    pgc_report = pgc_actions.add_parser("report")
+    pgc_report.add_argument("--run-manifest")
+    pgc_report.add_argument("--config")
+    pgc_report.add_argument("--dataset-root")
+    pgc_report.add_argument("--output")
+    pgc_report.add_argument("--measurement-evidence")
+    pgc_closeout = pgc_actions.add_parser("closeout")
+    pgc_closeout.add_argument("--run-manifest")
+    pgc_closeout.add_argument("--config")
+    pgc_closeout.add_argument("--dataset-root")
+    pgc_closeout.add_argument("--output")
+    pgc_closeout.add_argument("--measurement-evidence")
+
     smf = research_programs.add_parser(
         "smf-modal-density-attribution",
         help="synthetic single-mode port-density upper-bound lifecycle",

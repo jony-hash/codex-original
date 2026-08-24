@@ -105,6 +105,10 @@ def _dispatch(args: argparse.Namespace) -> int:
             from .research.electronic_o0_prior_native_sced import dispatch
 
             return int(dispatch(args) or 0)
+        if args.research_program == "electronic-o0-prior-gradient-conflict":
+            from .research.electronic_o0_prior_gradient_conflict import dispatch
+
+            return int(dispatch(args) or 0)
         if args.research_program == "smf-modal-density-attribution":
             from .research.smf_modal_density_attribution import dispatch
 

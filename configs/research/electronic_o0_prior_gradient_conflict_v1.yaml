@@ -1,0 +1,21 @@
+schema_version: 1
+name: electronic_o0_prior_gradient_conflict_v1
+version: 20260824
+dataset_root: data
+code_dim: 8
+logical_batch_size: 100
+batch_seeds: [11, 23, 37, 51]
+prior_seeds: [1011, 1023, 1037, 1051]
+projection_seeds: [271829, 314159]
+audit_seed: 8731
+finite_difference_relative_step: 0.0001
+cycle_conflict_cosine: 0.05
+projected_retention_available: 0.50
+structural_retention_upper_bound: 0.10
+required_conflict_batches: 3
+source_step: 625
+train_seed: 8601
+formal_promotion: false
+optical_training_authorized: false
+fiber_training_authorized: false
+synthetic_diagnostic_only: true
