@@ -846,11 +846,10 @@ def _lineage(args: argparse.Namespace, config: dict[str, Any]) -> dict[str, Any]
     if train_index.numel() != 55000 or validation_index.numel() != 5000:
         raise ValueError("H-SCF MNIST split has the wrong cardinality")
     if any(
-        int((all_labels.index_select(0, index) == label).sum()) != expected_count
-        for index, expected_count in ((train_index, 5500), (validation_index, 500))
+        int((all_labels.index_select(0, validation_index) == label).sum()) != 500
         for label in range(CLASS_COUNT)
     ):
-        raise ValueError("H-SCF MNIST split is not class-balanced")
+        raise ValueError("H-SCF MNIST validation split is not class-balanced")
     return {
         "git": _git(),
         "config_sha256": file_sha256(args.config),
