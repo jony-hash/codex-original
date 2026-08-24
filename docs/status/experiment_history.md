@@ -959,7 +959,7 @@ resource gate 均通过。SWAE
 total drift 为 `0.00993609441`，SCED 为 `0.00601605990`；两条路线的 encoder、decoder、
 interaction 与 mixed component 均未达到稳定分类门，最终分类为
 `cycle_composition_attribution_underdetermined`，next action 为
-`close_prior_native_attribution_family`。peak allocation `147424256` bytes、storage
+`close_prior_native_attribution_family`。peak allocation `147424768` bytes、storage
 `416895` bytes、optimizer_created=false、evaluator_calls=0；report→closeout 为纯消费者。
 
 该结果关闭 prior-native attribution family。不得据此启动 encoder geometry、decoder
