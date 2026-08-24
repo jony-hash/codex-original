@@ -1,0 +1,25 @@
+schema_version: 1
+name: electronic_o0_prior_cycle_composition_v1
+version: 20260824
+code_dim: 8
+cycle_composition_seed: 8761
+historical_seed: 8601
+historical_steps: 625
+historical_bootstrap_seed: 90210
+stability_prior_seeds: [1011, 1023, 1037, 1051]
+stability_samples_per_class: 100
+cycle_chunk_sizes: [128, 257]
+factorial_components: [source_source, final_source, source_final, final_final]
+dominant_fraction: 0.70
+interaction_fraction: 0.50
+mixed_fraction: 0.25
+required_stability_banks: 3
+null_effect_tolerance: 0.0000000001
+historical_cycle_absolute_tolerance: 0.00000001
+historical_cycle_relative_tolerance: 0.000001
+parameter_budget: 8000000
+decoder_parameter_budget: 6000000
+formal_promotion: false
+optical_training_authorized: false
+fiber_training_authorized: false
+synthetic_diagnostic_only: true

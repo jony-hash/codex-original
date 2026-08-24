@@ -92,6 +92,13 @@ _PROGRAM_ACTIONS = {
         "report",
         "closeout",
     },
+    "electronic-o0-prior-cycle-composition": {
+        "validate",
+        "preflight",
+        "audit",
+        "report",
+        "closeout",
+    },
 }
 
 _HASH_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -356,6 +363,9 @@ def manifest_args(
         "h_tca_audit_evidence": ("h_tca_audit", "trajectory_curvature_audit"),
         "h_tca_report_evidence": ("h_tca_report", "trajectory_curvature_report"),
         "h_tca_closeout_evidence": ("h_tca_closeout", "trajectory_curvature_closeout"),
+        "h_dlta_audit_evidence": ("h_dlta_audit", "dense_local_audit"),
+        "h_dlta_report_evidence": ("h_dlta_report", "dense_local_report"),
+        "h_dlta_closeout_evidence": ("h_dlta_closeout", "dense_local_closeout"),
     }
     for field, names in aliases.items():
         value = manifest_value(manifest, *names)
@@ -380,6 +390,7 @@ def manifest_args(
             "sced",
             "trajectory_curvature",
             "dense_local_attribution",
+            "cycle_composition",
             "run",
             "seed",
         ):
