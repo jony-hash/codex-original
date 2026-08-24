@@ -428,7 +428,7 @@ def _dot(left: torch.Tensor, right: torch.Tensor) -> torch.Tensor:
 def _rho(gradient: torch.Tensor, direction: torch.Tensor) -> float:
     denominator = gradient.norm() * direction.norm()
     if float(denominator) <= 1.0e-20:
-        raise ValueError("H-PGC directional derivative has zero norm")
+        return 0.0
     return float((_dot(gradient, direction) / denominator).detach().cpu())
 
 
