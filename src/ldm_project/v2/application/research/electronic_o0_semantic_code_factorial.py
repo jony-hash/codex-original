@@ -559,6 +559,9 @@ def _measure_permutation(
     _, primary_logits = _eval_model(primary, views, device)
     _, secondary_logits = _eval_model(secondary, views, device)
     row = _semantic_row(primary_logits, secondary_logits, labels.cpu())
+    row["evaluator_finite"] = bool(
+        torch.isfinite(primary_logits).all() and torch.isfinite(secondary_logits).all()
+    )
     row["view_hash"] = tensor_sha256(views)
     row["finite"] = _all_finite(row)
     return row
