@@ -116,3 +116,4 @@ def test_classification_keeps_paired_arm_and_requires_each_bank() -> None:
     assert classification == "gradient_conflict_not_supported"
     assert decision["swae_cycle_rho_by_bank"][271829] == [0.2] * 4
     assert decision["alignment_estimator_independent"] is True
+    assert decision["sced_specific"] is False

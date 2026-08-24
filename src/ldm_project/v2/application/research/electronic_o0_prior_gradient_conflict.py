@@ -870,10 +870,11 @@ def _classify(
         "projected_feasible": projected_feasible,
         "projected_feasible_by_bank": projected_feasible_by_bank,
         "alignment_estimator_independent": estimator_independent,
-        "sced_specific": not estimator_independent,
+        "sced_specific": False,
     }
     if not sced_conflict:
         return "gradient_conflict_not_supported", "register_trajectory_or_curvature_attribution", shared
+    shared["sced_specific"] = not estimator_independent
     if min(sced_cosines) < 0.90:
         return "invalid_harness", "repair_projection_gradient_stability", {
             "sced_cycle_rho": sced_cycle_rho,
