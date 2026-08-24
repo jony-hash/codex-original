@@ -966,3 +966,17 @@ interaction 与 mixed component 均未达到稳定分类门，最终分类为
 invertibility、interface Jacobian、hybrid mediation、projected-gradient、SGD、trust-region、
 adapter、confirm、其他 seed、O0-G、SMF/FMF/MMF、E1、光学、fiber training 或 formal
 promotion；任何继续工作必须另行注册无更新假设并建立新的 manifest lineage。
+
+## 2026-08-24：电子 O0 综合收口与 H-DPGC 注册
+
+WAE、Flow、mixture、H-SWAE、H-SCED、H-PGC、H-TCA、H-DLTA 和 H-CCF 的可比证据已整理至
+`docs/status/electronic_o0_research_synthesis.md`。语义、先验、cycle、记忆化和治理有效性
+分别保留，不形成不可解释的总分。WAE 的主要失败轴是双 evaluator 语义覆盖和类别召回；
+后续 prior-native 目标与归因路线均未形成可消费的通过结果。
+
+因此固定 `prior_native_attribution_family_closed=true`，所有既有 checkpoint 保持只读且
+不得 promotion。下一注册假设为 H-DPGC（Direct Prior Generator Capacity Canary）：只
+测试一个固定的、类条件 rank-8 logit-Gaussian 直接生成 canary，保持
+`label + 8D N(0,I)` 和单次推理接口；不创建 optimizer、不更新模型、不保存候选
+checkpoint。H-DPGC 的 valid pass 只允许注册未来架构 preflight，valid failure 只关闭该
+线性 canary，均不能授权神经训练、confirm、O0-G、光学或 fiber 路线。

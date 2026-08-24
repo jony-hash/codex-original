@@ -35,6 +35,8 @@ utility、dataset admission 或 accepted manifest。项目治理状态保持
 | Class-conditional mixture transport | `mixture_latent_fit_failed` | seed 8501 screen 后停止 |
 | Prior-native H-SWAE | `prior_alignment_fit_failed` | seed 8601 screen 后停止，未进入 confirm |
 | Prior-native H-SCED | `prior_alignment_fit_failed` | seed 8601 screen 后停止，未进入 confirm |
+| H-CCF cycle composition | `cycle_composition_attribution_underdetermined` | prior-native attribution family closed |
+| H-DPGC direct-prior canary | registered, not yet run | no optimizer, no candidate checkpoint, no training |
 
 H-SWAE 的 validation、synthetic direction audit 和 CUDA preflight 均通过。唯一执行的
 seed-8601 screen 是有效科学失败：aggregate SWD reduction 为 `34.62% < 50%`，类别
@@ -164,3 +166,19 @@ family；不得启动 encoder geometry、decoder invertibility、interface Jacob
 mediation、projected-gradient、SGD、trust-region、adapter、confirm、其他 seed、O0-G、
 SMF/FMF/MMF、E1、光学、fiber training 或 formal promotion。若继续研究，必须另行注册
 无更新诊断假设并建立新的 lineage。
+
+## Electronic O0 综合结论与 H-DPGC
+
+跨路线的正式比较记录见
+[electronic O0 research synthesis](electronic_o0_research_synthesis.md)。WAE 的主瓶颈是
+双 evaluator 语义覆盖和类别召回；Flow、mixture、H-SWAE 与 H-SCED 只改善局部轴，未
+同时满足语义、先验、cycle 和记忆化门槛。H-PGC、H-TCA、H-DLTA 未找到稳定的梯度、
+AdamW、曲率或 observer 分布机制，H-CCF 又显示 encoder、decoder 与 interaction 存在
+抵消，因此不再继续修补 prior-native 训练路线。
+
+当前固定状态为 `prior_native_attribution_family_closed=true`，所有现有 checkpoint
+均不得 promotion。下一条只读假设是 H-DPGC（Direct Prior Generator Capacity Canary）：
+移除训练期 encoder/cycle 的未来直接条件生成器方向，但本阶段只运行无 optimizer 的
+固定 rank-8 logit-Gaussian canary，不训练神经网络、不创建候选 checkpoint。H-DPGC 的
+唯一后继消费者是其 report/closeout；通过只允许注册后续架构 preflight，失败则关闭该
+线性 canary 并要求新的无训练容量证据。
