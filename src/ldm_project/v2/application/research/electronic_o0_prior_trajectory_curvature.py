@@ -36,7 +36,6 @@ from .electronic_o0_prior_native_sced import (
 )
 from .electronic_o0_prior_native_swae import (
     classwise_sliced_wasserstein_quantile,
-    fixed_projections as swae_projections,
 )
 from .electronic_o0_prior_native_sced import balanced_epoch_schedule
 from .lifecycle_artifacts import (
@@ -62,6 +61,7 @@ CODE_DIM = 8
 BATCH_SEEDS = (11, 23, 37, 51)
 PRIOR_SEEDS = (1011, 1023, 1037, 1051)
 PROJECTION_SEEDS = (271829, 314159)
+PROJECTION_COUNT = 256
 LANDMARK_STEPS = (0, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500, 550, 600, 625)
 LEARNING_RATE = 2.0e-4
 FD_RELATIVE_STEP = 1.0e-4
@@ -384,6 +384,19 @@ def _alignment(
     raise ValueError(f"unknown H-TCA route: {route}")
 
 
+def _projection_bank(*, route: str, seed: int, device: torch.device) -> torch.Tensor:
+    if route == "sced":
+        return sced_projections(seed=seed, device=device)
+    if route == "swae":
+        # The historical SWAE helper fixes the training seed internally.  H-TCA
+        # needs the second locked bank as well, so reproduce its exact CPU
+        # generator/normalization contract with an explicit seed.
+        generator = torch.Generator(device="cpu").manual_seed(seed)
+        values = torch.randn((PROJECTION_COUNT, CODE_DIM), generator=generator, dtype=torch.float32)
+        return F.normalize(values, dim=1).to(device)
+    raise ValueError(f"unknown H-TCA route: {route}")
+
+
 def _terms(
     encoder: ConditionalWAEEncoder,
     decoder: ConditionalWAEDecoder,
@@ -467,7 +480,6 @@ def _observer_measurement(
 ) -> list[dict[str, Any]]:
     params = tuple(encoder.parameters()) + tuple(decoder.parameters())
     records: list[dict[str, Any]] = []
-    projection_fn = sced_projections if route == "sced" else swae_projections
     weight_key = "w_sced" if route == "sced" else "w_swd"
     for batch_seed, prior_seed in zip(BATCH_SEEDS, PRIOR_SEEDS, strict=True):
         batch_images, batch_labels = _balanced_batch(images, labels, seed=batch_seed)
@@ -476,7 +488,7 @@ def _observer_measurement(
             generator=torch.Generator(device="cpu").manual_seed(prior_seed),
         ).to(images.device)
         for projection_seed in PROJECTION_SEEDS:
-            projections = projection_fn(seed=projection_seed, device=images.device)
+            projections = _projection_bank(route=route, seed=projection_seed, device=images.device)
             values = _terms(encoder, decoder, batch_images, batch_labels, prior, route=route, weights=weights, projections=projections)
             gradients = {
                 name: _group_vectors(
@@ -739,8 +751,7 @@ def _replay_arm(
     schedule_hash = canonical_sha256([tensor_sha256(item.detach().cpu()) for item in schedule])
     if schedule_hash != final_payload.get("schedule_hash"):
         raise ValueError(f"{route} schedule hash does not reproduce historical schedule")
-    projection_fn = sced_projections if route == "sced" else swae_projections
-    train_projection = projection_fn(device=device)
+    train_projection = _projection_bank(route=route, seed=PROJECTION_SEEDS[0], device=device)
     history: list[dict[str, float]] = []
     history_window: list[dict[str, float]] = []
     landmarks: list[dict[str, Any]] = []
@@ -838,12 +849,11 @@ def _short_replay(
 ) -> dict[str, Any]:
     device = torch.device(args.device)
     schedule = balanced_epoch_schedule(labels, seed=TRAIN_SEED, per_class=10)
-    projection_fn = sced_projections if route == "sced" else swae_projections
     torch.manual_seed(TRAIN_SEED)
     torch.cuda.manual_seed_all(TRAIN_SEED)
     encoder, decoder = _load_source_models(args.wae_training_checkpoint, args.wae_decoder_checkpoint, device)
     optimizer = _optimizer(device, encoder, decoder)
-    projection = projection_fn(device=device)
+    projection = _projection_bank(route=route, seed=PROJECTION_SEEDS[0], device=device)
     uninterrupted = []
     for index in range(3):
         batch_images = images.index_select(0, schedule[index]).to(device)
