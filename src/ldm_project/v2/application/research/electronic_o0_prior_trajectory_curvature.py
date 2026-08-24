@@ -31,11 +31,14 @@ from ...evidence import (
 )
 from ...student.evaluator import load_local_mnist, stratified_mnist_indices
 from .electronic_o0_prior_native_sced import (
+    _ordered_pairwise_absolute_mean,
     classwise_sliced_energy_gaussian,
     fixed_projections as sced_projections,
+    gaussian_absolute_moment,
 )
 from .electronic_o0_prior_native_swae import (
     classwise_sliced_wasserstein_quantile,
+    gaussian_quantiles,
 )
 from .electronic_o0_prior_native_sced import balanced_epoch_schedule
 from .lifecycle_artifacts import (
@@ -384,6 +387,26 @@ def _alignment(
     raise ValueError(f"unknown H-TCA route: {route}")
 
 
+def _class_alignment(
+    encoded: torch.Tensor,
+    *,
+    route: str,
+    projections: torch.Tensor,
+) -> torch.Tensor:
+    projected = encoded @ projections.t()
+    if encoded.shape[0] < 2:
+        raise ValueError("H-TCA classwise alignment requires at least two samples")
+    if route == "sced":
+        cross = 2.0 * gaussian_absolute_moment(projected).mean(0)
+        within = _ordered_pairwise_absolute_mean(projected, dim=0)
+        return (cross - within - 2.0 / math.sqrt(math.pi)).mean()
+    if route == "swae":
+        ordered = torch.sort(projected, dim=0).values
+        target = gaussian_quantiles(encoded.shape[0], device=encoded.device, dtype=encoded.dtype)
+        return (ordered - target).square().mean()
+    raise ValueError(f"unknown H-TCA route: {route}")
+
+
 def _projection_bank(*, route: str, seed: int, device: torch.device) -> torch.Tensor:
     if route == "sced":
         return sced_projections(seed=seed, device=device)
@@ -514,7 +537,7 @@ def _observer_measurement(
                 for class_id in range(10):
                     mask = batch_labels == class_id
                     class_encoded = encoder(batch_images[mask], batch_labels[mask])
-                    class_value = _alignment(class_encoded, batch_labels[mask], route=route, projections=projections)
+                    class_value = _class_alignment(class_encoded, route=route, projections=projections)
                     class_gradients = torch.autograd.grad(class_value, params, allow_unused=True)
                     class_vector = _group_vectors(encoder, decoder, class_gradients, params)["full_joint"]
                     classwise.append({"class": class_id, "alignment_gradient_norm": float(class_vector.norm().detach().cpu())})
