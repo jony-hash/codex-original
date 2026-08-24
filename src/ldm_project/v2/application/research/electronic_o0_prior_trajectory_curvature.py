@@ -1048,7 +1048,7 @@ def dispatch(args: argparse.Namespace) -> int:
         config = _config(args.config)
         lineage = None
     if action == "validate":
-        decision = _stage(args, "validate", {"config": file_sha256(args.config), "source_training": file_sha256(args.wae_training_checkpoint)})
+        decision = _stage(args, "validate", {"config": file_sha256(args.config), "source_training": file_sha256(args.wae_training_checkpoint), "lineage_sha256": canonical_sha256(lineage)})
         if decision["action"] == "REUSE":
             return 0
         _require_cuda(args)
@@ -1058,7 +1058,7 @@ def dispatch(args: argparse.Namespace) -> int:
         validation = _check_consumer(args.validation_evidence, action="preflight", schemas=(f"{SCHEMA_PREFIX}_validation.v1",))
         if not validation.get("passed"):
             raise ValueError("H-TCA preflight requires passed validation")
-        decision = _stage(args, "preflight", {"validation": file_sha256(args.validation_evidence), "source_training": file_sha256(args.wae_training_checkpoint)})
+        decision = _stage(args, "preflight", {"validation": file_sha256(args.validation_evidence), "source_training": file_sha256(args.wae_training_checkpoint), "lineage_sha256": canonical_sha256(lineage)})
         if decision["action"] == "REUSE":
             return 0
         _require_cuda(args)
@@ -1077,7 +1077,7 @@ def dispatch(args: argparse.Namespace) -> int:
         preflight = _check_consumer(args.preflight_evidence, action="audit", schemas=(f"{SCHEMA_PREFIX}_preflight.v1",))
         if not preflight.get("passed"):
             raise ValueError("H-TCA audit requires passed preflight")
-        decision = _stage(args, "audit", {"preflight": file_sha256(args.preflight_evidence), "source_training": file_sha256(args.wae_training_checkpoint)})
+        decision = _stage(args, "audit", {"preflight": file_sha256(args.preflight_evidence), "source_training": file_sha256(args.wae_training_checkpoint), "lineage_sha256": canonical_sha256(lineage)})
         if decision["action"] == "REUSE":
             return 0
         _audit(args, lineage, output)
