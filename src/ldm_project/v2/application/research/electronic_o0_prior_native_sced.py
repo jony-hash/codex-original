@@ -59,6 +59,7 @@ from .wae_models import (
 SCHEMA_PREFIX = "electronic_o0_prior_native_sced"
 PROGRAM = "electronic-o0-prior-native-sced"
 TRAIN_SEEDS = (8601, 8602, 8603)
+BATCH_SEEDS = (11, 23, 37, 51)
 PROJECTION_SEED = 271829
 REFERENCE_PROJECTION_SEED = 314159
 BOOTSTRAP_SEED = 90210
@@ -436,7 +437,7 @@ def _calibrate_weights(
     params = tuple(encoder.parameters()) + tuple(decoder.parameters())
     projections = fixed_projections(device=images.device, dtype=images.dtype)
     rows = []
-    for seed in (11, 23, 37, 51):
+    for seed in BATCH_SEEDS:
         batch_images, batch_labels = _balanced_batch(images, labels, seed=seed)
         prior = torch.randn((batch_images.shape[0], CODE_DIM), generator=torch.Generator(device="cpu").manual_seed(seed + 1000)).to(images.device)
         encoded = encoder(batch_images, batch_labels)
@@ -476,7 +477,7 @@ def _objective_hash(
             "reconstruction": "bce_plus_0.25_sobel_l1",
             "learning_rate": LEARNING_RATE,
             "schedule": {
-                "batch_seeds": [11, 23, 37, 51],
+                "batch_seeds": list(BATCH_SEEDS),
                 "logical_batch_size": 100,
                 "per_class": 10,
                 "sampler": "balanced_epoch_schedule",
@@ -791,8 +792,11 @@ def _preflight(args: argparse.Namespace, lineage: dict[str, Any], output: Path, 
     rows, _ = stratified_mnist_indices(all_labels)
     images = all_images.index_select(0, rows)
     labels = all_labels.index_select(0, rows)
-    batch_images, batch_labels = _balanced_batch(images, labels, seed=11)
-    batch_images, batch_labels = batch_images.to(device), batch_labels.to(device)
+    batches = tuple(
+        tuple(item.to(device) for item in _balanced_batch(images, labels, seed=seed))
+        for seed in BATCH_SEEDS
+    )
+    batch_images, batch_labels = batches[0]
     weights = _calibrate_weights(*_load_source_models(args.wae_training_checkpoint, args.wae_decoder_checkpoint, device), batch_images, batch_labels)
     projections = fixed_projections(device=device)
     reference_projections = fixed_projections(seed=REFERENCE_PROJECTION_SEED, device=device)
@@ -801,11 +805,11 @@ def _preflight(args: argparse.Namespace, lineage: dict[str, Any], output: Path, 
     initial_encoder_state = _clone_state(first_encoder)
     initial_decoder_state = _clone_state(first_decoder)
     first_optimizer = _optimizer(device, first_encoder, first_decoder)
-    schedule = (torch.arange(100),)
+    schedule = tuple(torch.tensor([seed], dtype=torch.int64) for seed in BATCH_SEEDS)
     schedule_summary = {
-        "steps": 1,
-        "logical_samples": 100,
-        "unique_samples": 100,
+        "steps": len(schedule),
+        "logical_samples": len(schedule),
+        "unique_samples": len(schedule),
         "minimum_coverage": 1,
         "maximum_repeats": 1,
         "repeat_samples": 0,
@@ -824,7 +828,8 @@ def _preflight(args: argparse.Namespace, lineage: dict[str, Any], output: Path, 
     updates = []
     checkpoint = None
     for step in range(3):
-        updates.append(_update(first_encoder, first_decoder, first_optimizer, batch_images, batch_labels, weights, projections))
+        update_images, update_labels = batches[step]
+        updates.append(_update(first_encoder, first_decoder, first_optimizer, update_images, update_labels, weights, projections))
         if step == 1:
             checkpoint = _snapshot(
                 first_encoder,
@@ -857,7 +862,15 @@ def _preflight(args: argparse.Namespace, lineage: dict[str, Any], output: Path, 
     if checkpoint is None:
         raise RuntimeError("SCED preflight checkpoint was not captured")
     _restore(checkpoint, replay_encoder, replay_decoder, replay_optimizer, device)
-    replay_update = _update(replay_encoder, replay_decoder, replay_optimizer, batch_images, batch_labels, weights, projections)
+    replay_update = _update(
+        replay_encoder,
+        replay_decoder,
+        replay_optimizer,
+        batches[2][0],
+        batches[2][1],
+        weights,
+        projections,
+    )
     replay_exact = _states_equal(_clone_state(first_encoder), _clone_state(replay_encoder)) and _states_equal(_clone_state(first_decoder), _clone_state(replay_decoder))
     optimizer_replay_exact = _optimizer_state_equal(first_optimizer.state_dict(), replay_optimizer.state_dict())
     cpu_rng_replay_exact = torch.equal(first_cpu_rng_state, torch.get_rng_state())
