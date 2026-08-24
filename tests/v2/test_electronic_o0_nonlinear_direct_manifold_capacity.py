@@ -132,3 +132,50 @@ def test_consumer_rejects_wrong_stage_before_runtime(tmp_path: Path) -> None:
     )
     with pytest.raises(ValueError, match="invalid H-NDMC report evidence"):
         ndmc._check_consumer(str(evidence), "report")
+
+
+@pytest.mark.parametrize("action", ["report", "closeout"])
+def test_report_and_closeout_are_pure_consumers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, action: str) -> None:
+    manifest = tmp_path / "manifest.yaml"
+    manifest.write_text("manifest: test\n", encoding="utf-8")
+    source_stage = "audit" if action == "report" else "report"
+    consumer = action
+    evidence = tmp_path / "source.json"
+    evidence.write_text(
+        json.dumps(
+            {
+                "schema": f"{ndmc.SCHEMA_PREFIX}_{source_stage}.v1",
+                "status": "valid",
+                "invocation_mode": "manifest",
+                "legacy_diagnostic_only": False,
+                "permitted_consumers": [consumer],
+                "passed": False,
+                "measurement_valid": True,
+                "classification": "nonlinear_manifold_safety_failed",
+                "next_action": "close_nonlinear_direct_manifold_capacity_canary",
+            }
+        ),
+        encoding="utf-8",
+    )
+    output = tmp_path / f"{action}.json"
+
+    def fake_prepare(namespace, **_kwargs):
+        namespace.invocation_mode = "manifest"
+        namespace.legacy_diagnostic_only = False
+        return namespace
+
+    monkeypatch.setattr(ndmc, "prepare_args", fake_prepare)
+    monkeypatch.setattr(ndmc, "validate_manifest_namespace", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(ndmc, "_stage", lambda *_args, **_kwargs: {"action": "RUN"})
+    monkeypatch.setattr(ndmc, "_require_cuda", lambda *_args: pytest.fail("consumer initialized CUDA"))
+    monkeypatch.setattr(ndmc, "_build_measurement", lambda *_args, **_kwargs: pytest.fail("consumer built a canary"))
+    args = Namespace(
+        research_action=action,
+        run_manifest=str(manifest),
+        config="configs/research/electronic_o0_nonlinear_direct_manifold_capacity_v1.yaml",
+        dataset_root="data",
+        output=str(output),
+        measurement_evidence=str(evidence),
+    )
+    assert ndmc.dispatch(args) == 0
+    assert json.loads(output.read_text(encoding="utf-8"))["stage"] == action
