@@ -77,11 +77,11 @@ WAE seed-7301、H-SWAE seed-8601 和 H-SCED seed-8601 的完整 valid closeout�
 reconstruction/alignment/cycle 梯度、固定权重方向与解析约束投影；不创建 optimizer、
 不加载 evaluator、不修改旧 evidence，也不能授权训练。H-PGC validation、audit 和
 纯消费者 report/closeout 已完成，均为 valid；immutable SHA256 分别为
-`76d7d1…168696`、`290a59…c2b248`、`87dc91…f812e1` 和
-`fe3ca9…a46ed`。最终分类为 `gradient_conflict_not_supported`：两个 projection
+`ac2f28…b14f`、`7496ca…6beb`、`105d57…2476` 和
+`d777af…e1e0`。最终分类为 `gradient_conflict_not_supported`：两个 projection
 bank 的 SCED full-joint cycle rho 均未达到 `0.05`，H-SWAE paired arm 也未达到，
 故不能把历史 cycle 恶化归因于一阶固定权重冲突。peak allocation 为
-`821096448` bytes、run storage `790518` bytes，optimizer/evaluator calls 均为零，
+`821096448` bytes、run storage `1183663` bytes，optimizer/evaluator calls 均为零，
 参数 hash、finite-difference、KKT 和 classwise 10 类报告均通过。下一动作只注册
 `trajectory_or_curvature_attribution`，不授权 projected-gradient、可逆 adapter、
 confirm、O0-G、光学或 fiber 路线。

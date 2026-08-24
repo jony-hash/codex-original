@@ -39,6 +39,17 @@ reduction was `36.67%`, and cycle worsened. The route is closed as
 `prior_alignment_fit_failed`; formal promotion, optical training, and fiber
 training remain false.
 
+H-PGC completed its read-only paired attribution on clean commit lineage. The
+immutable validation/audit/report/closeout hashes are
+`ac2f28…b14f`/`7496ca…6beb`/`105d57…2476`/`d777af…e1e0`. Both SCED projection
+banks and the paired SWAE arm stayed below the cycle-conflict threshold at the
+full-joint level; the classwise report found class 8 and class 6 as the lowest
+projected-retention locator, without using that locator for classification.
+Peak allocation was `821096448` bytes and run storage `1183663` bytes, with
+zero optimizer/evaluator calls. The valid classification is
+`gradient_conflict_not_supported`; only trajectory/curvature attribution may
+be registered next.
+
 | ID | Unique variable | Prediction | Falsification / attribution rule | Status |
 | --- | --- | --- | --- | --- |
 | H-E | E0/E1 versus E2--E4 seed manifold | A spatial nonlinear seed raises a Pareto axis without reducing the other two | E2--E4 pass while E0/E1 fail: input-manifold bottleneck | v2.2 full-panel replay of revision-9 E2:O0: primary min=0.876, smooth min=0.488, agreement min=0.482, min recall=0; no optical attribution |

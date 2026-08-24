@@ -23,15 +23,15 @@ H-PGC（Prior Gradient Conflict）随后注册为新的无更新归因 lifecycle
 WAE seed-7301、H-SWAE/H-SCED seed-8601 final checkpoints 和两个 projection banks，
 测量 blockwise/classwise objective gradients、固定权重 cycle 冲突及解析 half-space
 projection；无 optimizer、无 evaluator、无训练。最终 validation、audit、report、
-closeout 均为 valid，SHA256 依次为 `76d7d1…168696`、`290a59…c2b248`、
-`87dc91…f812e1`、`fe3ca9…a46ed`。SCED full-joint cycle rho 在两个 bank 的四个
+closeout 均为 valid，SHA256 依次为 `ac2f28…b14f`、`7496ca…6beb`、
+`105d57…2476`、`d777af…e1e0`。SCED full-joint cycle rho 在两个 bank 的四个
 batch 均为负（范围约 `-0.663` 到 `-0.239`），H-SWAE paired arm 同样为负（约
 `-0.595` 到 `-0.230`），所以分类为 `gradient_conflict_not_supported`，不能用一阶
 固定权重冲突解释历史 cycle 恶化。SCED blockwise decoder aggregate rho 仍为负，
 SWAE decoder upsample/output block 出现局部正值但 full-joint 未冲突；classwise 10
 类报告完整，SCED class 8 的 projected retention 约 `0.874`，与 class 6 为定位上的
 最低两类，不单独决定分类。peak allocation 为 `821096448` bytes，storage 为
-`790518` bytes，参数 hash、FD/KKT、optimizer/evaluator 隔离均通过。唯一下一动作
+`1183663` bytes，参数 hash、FD/KKT、optimizer/evaluator 隔离均通过。唯一下一动作
 是注册 trajectory/curvature attribution；不授权任何训练或下游路线。
 
 ## 2026-08-23：prior-native H-SWAE screen stop
