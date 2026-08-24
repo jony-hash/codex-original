@@ -187,6 +187,7 @@ def test_validate_reuse_returns_before_cuda(tmp_path, monkeypatch) -> None:
         "source_training": file_sha256(training),
         "source_decoder": file_sha256(decoder),
         "h_swae_closeout": file_sha256(closeout),
+        "lineage_sha256": sced.canonical_sha256({"git": {}}),
     }
     output = tmp_path / "validation.json"
     output.write_text(

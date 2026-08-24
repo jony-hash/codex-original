@@ -1069,6 +1069,10 @@ def _apply_complete_o0_gate(measurement: dict[str, Any]) -> dict[str, Any]:
 
 
 def _stage(args: argparse.Namespace, stage: str, contract: str, expected: dict[str, Any]) -> dict[str, Any]:
+    expected = dict(expected)
+    lineage_sha256 = getattr(args, "_lineage_sha256", None)
+    if lineage_sha256 is not None:
+        expected["lineage_sha256"] = lineage_sha256
     decision = stage_action_decision(stage, producer_contract=contract, expected_inputs=expected, evidence=args.output)
     args._stage_decision = decision
     return decision
