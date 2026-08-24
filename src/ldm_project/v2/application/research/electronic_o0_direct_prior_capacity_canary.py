@@ -225,7 +225,9 @@ def _memorization(generated: Tensor, generated_labels: Tensor, train: Tensor, tr
     hashes = {tensor_sha256(row) for row in train_u8}
     exact = sum(tensor_sha256(row) in hashes for row in generated_u8)
     thresholds, passes = [], []
-    train_flat, validation_flat, generated_flat = train.flatten(1), validation.flatten(1), generated.flatten(1)
+    train_flat = train.detach().cpu().flatten(1)
+    validation_flat = validation.detach().cpu().flatten(1)
+    generated_flat = generated.detach().cpu().flatten(1)
     for label in range(10):
         train_rows = train_flat[train_labels.cpu() == label]
         heldout_rows = validation_flat[validation_labels.cpu() == label]

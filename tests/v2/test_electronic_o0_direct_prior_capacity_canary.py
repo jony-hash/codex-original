@@ -57,6 +57,14 @@ def test_canary_rejects_bad_shapes_and_nonfinite_codes() -> None:
         canary.sample(labels[:3], bad)
 
 
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA device test")
+def test_memorization_accepts_cuda_generated_images() -> None:
+    images, labels = _synthetic()
+    generated = images[:20].to("cuda")
+    result = dpgc._memorization(generated, labels[:20].to("cuda"), images, labels, images, labels)
+    assert result["exact_duplicate_count"] >= 0
+
+
 def test_canonical_basis_has_deterministic_signs() -> None:
     value = torch.tensor([[0.0, -2.0], [-1.0, 0.5]])
     result = dpgc._canonical_basis(value)
