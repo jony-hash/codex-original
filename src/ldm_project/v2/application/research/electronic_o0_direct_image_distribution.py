@@ -359,8 +359,10 @@ def _protected_metrics(
         candidate_fractions.append(_camera_fraction(candidate_values, labels))
         source_diversities.append(_pairwise_diversity(source_values, labels))
         candidate_diversities.append(_pairwise_diversity(candidate_values, labels))
-        source_saturation.append(((source_values < 0.01) | (source_values > 0.99)).float().mean())
-        candidate_saturation.append(((candidate_values < 0.01) | (candidate_values > 0.99)).float().mean())
+        # Keep the formal O0 evaluator's saturation definition: sigmoid output
+        # is saturated only when the command is exactly at its upper bound.
+        source_saturation.append((source_values >= 1.0).float().mean())
+        candidate_saturation.append((candidate_values >= 1.0).float().mean())
     source_fraction = float(torch.stack(source_fractions).mean())
     candidate_fraction = float(torch.stack(candidate_fractions).mean())
     source_diversity = float(torch.stack(source_diversities).mean())
@@ -640,7 +642,8 @@ def dispatch(args: argparse.Namespace) -> int:
         peak = int(torch.cuda.max_memory_allocated(args.device))
         storage = _storage_bytes(Path(args._run_manifest["output_root"]))
         groups = measurement["decoder_groups_changed"]
-        valid = bool(measurement["optimizer_created"] and measurement["evaluator_calls"] == 0 and measurement["replay_exact"] and measurement["observer_reference_decreased"] and all(groups.get(k, False) for k in ("input", "film_block", "upsample", "output")) and peak < 6 * 1024**3 and storage <= 2 * 1024**3)
+        protected = measurement["protected_metrics"]
+        valid = bool(measurement["optimizer_created"] and measurement["evaluator_calls"] == 0 and measurement["replay_exact"] and measurement["observer_reference_decreased"] and all(groups.get(k, False) for k in ("input", "film_block", "upsample", "output")) and protected["camera_code_fraction_gate"] and protected["pairwise_diversity_gate"] and protected["saturation_gate"] and peak < 6 * 1024**3 and storage <= 2 * 1024**3)
         _write(args.output, {"schema": f"{SCHEMA_PREFIX}_preflight.v1", "stage": "preflight", "status": "valid" if valid else "invalid_harness", "passed": valid, "measurement_valid": valid, "measurement": measurement, "peak_memory_bytes": peak, "storage_bytes": storage, "memory_gate": peak < 6 * 1024**3, "storage_gate": storage <= 2 * 1024**3, "producer_contract_revision": f"{SCHEMA_PREFIX}-preflight.v1", "consumer_contract": f"{SCHEMA_PREFIX}-screen.v1", "permitted_consumers": ["screen"] if valid else [], "input_artifact_hashes": {"audit": file_sha256(args.audit_evidence), "lineage": canonical_sha256(lineage)}}, args)
         return 0
     if action == "screen":
