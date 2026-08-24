@@ -37,6 +37,7 @@ utility、dataset admission 或 accepted manifest。项目治理状态保持
 | Prior-native H-SCED | `prior_alignment_fit_failed` | seed 8601 screen 后停止，未进入 confirm |
 | H-CCF cycle composition | `cycle_composition_attribution_underdetermined` | prior-native attribution family closed |
 | H-DPGC direct-prior canary | `direct_prior_linear_semantic_capacity_failed` | linear canary closed; no neural training |
+| H-DIDM direct image distribution | registered, not yet run | same nonlinear decoder; no encoder/cycle; audit before preflight |
 
 H-SWAE 的 validation、synthetic direction audit 和 CUDA preflight 均通过。唯一执行的
 seed-8601 screen 是有效科学失败：aggregate SWD reduction 为 `34.62% < 50%`，类别
@@ -196,3 +197,16 @@ pass fraction 为 `0.914/0.932/0.908`。official 10k primary/secondary accuracy 
 该 valid failure 仅关闭固定线性 canary，不外推为所有非线性直接生成器失败；但在获得新的
 无训练容量证据前，不得注册或启动 neural direct-generator training。正式 promotion、
 confirm、O0-G、SMF/FMF/MMF、E1、光学和 fiber training 继续禁止。
+
+## 当前注册假设：H-DIDM
+
+H-DPGC 只否定了固定线性 rank-8 logit-Gaussian canary，未否定现有 nonlinear decoder
+在直接分布训练下的可行性。下一路线为 H-DIDM（Direct Image Distribution Matching）：
+只读 warm-start WAE seed-7301 decoder，删除训练期 encoder、reconstruction、latent
+alignment 和 cycle，直接用 `label + 8D N(0,I)` 生成 O0-I image，并以固定多尺度
+classwise sliced-energy U-statistic 对齐真实图像分布。
+
+H-DIDM 是 diagnostic-only 训练结构实验。evaluator 不进入 audit、训练、权重或 checkpoint
+选择；不改变 latent 维度、decoder backbone、光学结构或最终单次推理接口。必须先通过无
+optimizer direction audit，再通过三步 CUDA preflight，才可准备 seed-8801 screen；本轮
+不启动长 screen。任何 valid failure 都关闭 H-DIDM，不增加 epoch、不调 loss、不换 seed。

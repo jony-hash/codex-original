@@ -1008,3 +1008,17 @@ primary minimum recall `0.8768`，agreement `0.9470`。
 该 valid failure 只关闭固定线性 canary，不证明所有非线性 direct generator 不可行；在
 新的无训练容量证据之前，不得注册或启动 neural direct-generator training。confirm、
 O0-G、光学、fiber 和 formal promotion 继续禁止。
+
+## 2026-08-24：H-DIDM direct image distribution matching 注册
+
+H-DPGC 的 valid failure 仅否定固定线性 rank-8 logit-Gaussian canary，未否定现有 nonlinear
+decoder 在直接分布训练下的可行性。注册 H-DIDM（Direct Image Distribution Matching）作为
+下一条独立 electronic O0 训练结构假设：WAE seed-7301 decoder 只读 warm-start，删除
+encoder、reconstruction、latent alignment 和 cycle，保持 `label + 8D N(0,I)` 单次生成
+接口，并以 raw/pyramid/Sobel 多尺度 classwise sliced-energy U-statistic 对齐真实图像分布。
+
+固定 seeds 为 harness `8781`、future screen `8801`、balanced batches `11/23/37/51`、
+prior `1011/1023/1037/1051`、projection banks `271829/314159`。正式顺序为
+`validate → audit → preflight`；audit 不创建 optimizer 或 evaluator，只能授权三步
+preflight。preflight 通过后才准备 screen manifest，本注册不授权长 screen、confirm、
+O0-G、光学、fiber 或 formal promotion。
