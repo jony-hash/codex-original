@@ -80,9 +80,21 @@ H-TCA 注册为 diagnostic-only lifecycle。它将从 WAE seed-7301 source 克�
 实际 cycle 漂移，并在选定点做 HVP 与有限差分。终态必须逐项匹配旧 final checkpoint；
 evaluator calls 为零，旧 checkpoint/evidence 只读，且不生成可训练 consumer 的模型。
 
-截至本记录，H-TCA 尚无 validation、preflight、audit 或科学结果。任一 replay/hash/
-finite/资源门失败均停止并标记 `invalid_harness`；有效分类只能注册下一诊断假设，
-不得启动 projected-gradient、SGD、trust-region、adapter、confirm、O0-G、光学或 fiber。
+H-TCA 实现及加固提交为 `84fbb7d`、`1ba714b`、`f18d71b`、`c616c7a`、`4486033`、
+`3634221`、`6bd465c`、`44c032e`。retry6 validation/preflight/audit/report/closeout
+均 valid，SHA256 依次为 `725aec…42335`、`a27a4f…abe3c`、`072eff…955c`、
+`28619b…e6bf`、`9cd714…9c82`。两条 arm 的 625-step replay 均 exact 重现旧 final
+encoder/decoder/optimizer/RNG/sampler/schedule，SCED history 13 个窗口 exact；14 个
+landmark（含终点 625）、peak allocation `1771866112` bytes、storage `9148775` bytes、
+optimizer 只在临时副本创建，evaluator calls 为零。
+
+有效分类为 `trajectory_attribution_underdetermined`，两条路线的四种机制均未满足
+连续 landmark、双 projection bank 和 observer-batch 归因门；因此不能把历史 cycle
+恶化归因于 trajectory rotation、AdamW preconditioning、finite-step curvature 或
+observer distribution mismatch。H-TCA closeout 的下一动作是
+`register_denser_local_trajectory_attribution`，仅允许更密集的局部诊断注册，不得直接
+启动 projected-gradient、SGD、trust-region、adapter 或任何新训练；confirm、O0-G、
+光学、fiber 和 formal promotion 继续关闭。
 
 ## 2026-08-23：electronic O0 mixture transport screen stop
 

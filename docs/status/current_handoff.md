@@ -94,9 +94,23 @@ rotation、AdamW preconditioning、finite-step curvature 或 observer distributi
 mismatch。有效结果只能被 report/closeout 和 hypothesis ledger 消费；不能直接授权
 任何 optimizer 替换、trust-region、adapter、confirm 或训练。
 
-H-TCA 尚无 validation、preflight、audit 或科学归因结果。replay 终态的模型、optimizer、
-CPU/CUDA RNG、sampler、schedule 和 SCED history 必须与旧 checkpoint 精确匹配；任一
-不匹配、finite/资源门失败均为 `invalid_harness`，停止后续 lifecycle。正式 promotion、
+H-TCA 实现及加固提交为 `84fbb7d`、`1ba714b`、`f18d71b`、`c616c7a`、`4486033`、
+`3634221`、`6bd465c`、`44c032e`；早期 projection-bank、gradient layout、classwise、
+history、terminal-landmark 和 attribution-gate 缺陷均按 fail-closed 保留，未消费旧
+retry evidence，并从 clean HEAD 重建 lineage。retry6 validation、preflight、audit、
+report、closeout 均 valid，immutable SHA256 依次为 `725aec…42335`、`a27a4f…abe3c`、
+`072eff…955c`、`28619b…e6bf` 和 `9cd714…9c82`。
+
+retry6 的 H-TCA 分类为 `trajectory_attribution_underdetermined`，
+`alignment_estimator_independent=false`：H-SWAE 与 H-SCED 均未在两个 projection bank、
+连续 landmark 和至少 3/4 observer batches 上支持 trajectory gradient rotation、AdamW
+preconditioning conflict、finite-step curvature cycle drift 或 observer distribution
+mismatch。两条 arm 的 encoder/decoder/optimizer/RNG/sampler/schedule 终态均 exact，SCED
+13 个 history windows exact，14 个 landmark（含 625）完整；peak allocation 为
+`1771866112` bytes，storage 为 `9148775` bytes，optimizer 只存在于临时 replay 副本，
+evaluator calls 为零。该结果只授权 `register_denser_local_trajectory_attribution`，不
+授权 optimizer 替换、trust-region、adapter、projected-gradient、SGD、confirm、O0-G、
+光学或 fiber 路线。正式 promotion、
 O0-G、SMF/FMF/MMF、E1、光学和 fiber training 继续禁止。
 
 除 H-PGC 已完成的归因 lifecycle 外，没有其他已授权研究或训练动作。
