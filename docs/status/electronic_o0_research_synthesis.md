@@ -56,3 +56,26 @@ The canary's only valid consumer is its own report/closeout and this ledger:
 - neither result authorizes neural training or formal promotion.
 
 All old checkpoints, manifests, evidence, and outputs remain read-only.
+
+## H-DPGC closeout
+
+The retry3 lineage was valid after three earlier device-boundary harness fixes.
+Its validation, preflight, audit, report, and closeout hashes are
+`af09945e6d085891c6113e19a5330ad480b3ee589e13b99d70fc2a4f1a354ef4`,
+`890ad59a26f0c4f3e76099270d38d17da01c60940d4525dbcde8f1d2927a8818`,
+`7fc08c89c8d86f31b93873c742496f9e219365980a022b3aea1b0db5eecf501`,
+`e3d5737c01886854a65a4d732bc3dba143e13914641313134c10b537bbcbe58b`, and
+`e61e40c18a6f09a272a16414ae369699356cd7ca6fc56e666d4f5735b121d075`.
+
+The audit was valid but failed the semantic gate as
+`direct_prior_linear_semantic_capacity_failed`. Primary minimum recall on the
+three panels was `0.76/0.80/0.92`; secondary minimum recall was
+`0.90/0.96/0.96`. The analytic Jacobian rank pass fraction was `1.00` and
+exact duplicates were zero, but memorization pass fractions were
+`0.914/0.932/0.908`. Official 10k primary/secondary accuracy was
+`0.9544/0.9761`, with primary minimum recall `0.8768` and agreement `0.9470`.
+Peak allocation was `517880320` bytes and audit storage was `41238` bytes.
+
+This closes only the fixed linear canary. It does not prove that every
+nonlinear direct generator is impossible; it does block neural direct-generator
+training until a new, independent no-training capacity argument is registered.

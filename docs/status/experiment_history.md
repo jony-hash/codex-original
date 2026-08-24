@@ -980,3 +980,31 @@ WAE、Flow、mixture、H-SWAE、H-SCED、H-PGC、H-TCA、H-DLTA 和 H-CCF 的可
 `label + 8D N(0,I)` 和单次推理接口；不创建 optimizer、不更新模型、不保存候选
 checkpoint。H-DPGC 的 valid pass 只允许注册未来架构 preflight，valid failure 只关闭该
 线性 canary，均不能授权神经训练、confirm、O0-G、光学或 fiber 路线。
+
+## 2026-08-24：H-DPGC direct-prior capacity canary closeout
+
+H-DPGC 实现提交为 `9d4c73c`；三次设备边界 harness 修复分别提交为
+`1b5f1ac`（coverage CPU/CUDA）、`46b1ebb`（camera-code labels）和 `43e008c`
+（memorization reference distances）。早期 preflight 尝试均在完整 measurement 前异常退出，
+按 invalid harness 保留且未生成科学结论；retry3 从新 clean validation lineage 开始。
+
+retry3 validation、preflight、audit、report、closeout 的 immutable SHA256 依次为
+`af09945e6d085891c6113e19a5330ad480b3ee589e13b99d70fc2a4f1a354ef4`、
+`890ad59a26f0c4f3e76099270d38d17da01c60940d4525dbcde8f1d2927a8818`、
+`7fc08c89c8d86f31b93873c742496f9e219365980a022b3aea1b0db5eecf501`、
+`e3d5737c01886854a65a4d732bc3dba143e13914641313134c10b537bbcbe58b` 和
+`e61e40c18a6f09a272a16414ae369699356cd7ca6fc56e666d4f5735b121d075`。
+
+preflight harness 通过，peak allocation `517880320` bytes、storage `24479` bytes；
+audit peak allocation 同样为 `517880320` bytes、storage `41238` bytes，optimizer-created
+为 false。audit/closeout 为 `status=valid, measurement_valid=true, passed=false`，分类
+`direct_prior_linear_semantic_capacity_failed`，next action
+`close_direct_prior_linear_capacity_canary`。三个 panel primary minimum recall 为
+`0.76/0.80/0.92`，secondary minimum recall 为 `0.90/0.96/0.96`；Jacobian rank pass
+fraction `1.00`，exact duplicates 为零，但 memorization pass fraction 为
+`0.914/0.932/0.908`。official 10k primary/secondary accuracy 为 `0.9544/0.9761`，
+primary minimum recall `0.8768`，agreement `0.9470`。
+
+该 valid failure 只关闭固定线性 canary，不证明所有非线性 direct generator 不可行；在
+新的无训练容量证据之前，不得注册或启动 neural direct-generator training。confirm、
+O0-G、光学、fiber 和 formal promotion 继续禁止。

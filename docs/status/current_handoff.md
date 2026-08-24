@@ -36,7 +36,7 @@ utility、dataset admission 或 accepted manifest。项目治理状态保持
 | Prior-native H-SWAE | `prior_alignment_fit_failed` | seed 8601 screen 后停止，未进入 confirm |
 | Prior-native H-SCED | `prior_alignment_fit_failed` | seed 8601 screen 后停止，未进入 confirm |
 | H-CCF cycle composition | `cycle_composition_attribution_underdetermined` | prior-native attribution family closed |
-| H-DPGC direct-prior canary | registered, not yet run | no optimizer, no candidate checkpoint, no training |
+| H-DPGC direct-prior canary | `direct_prior_linear_semantic_capacity_failed` | linear canary closed; no neural training |
 
 H-SWAE 的 validation、synthetic direction audit 和 CUDA preflight 均通过。唯一执行的
 seed-8601 screen 是有效科学失败：aggregate SWD reduction 为 `34.62% < 50%`，类别
@@ -177,8 +177,22 @@ AdamW、曲率或 observer 分布机制，H-CCF 又显示 encoder、decoder 与 
 抵消，因此不再继续修补 prior-native 训练路线。
 
 当前固定状态为 `prior_native_attribution_family_closed=true`，所有现有 checkpoint
-均不得 promotion。下一条只读假设是 H-DPGC（Direct Prior Generator Capacity Canary）：
-移除训练期 encoder/cycle 的未来直接条件生成器方向，但本阶段只运行无 optimizer 的
-固定 rank-8 logit-Gaussian canary，不训练神经网络、不创建候选 checkpoint。H-DPGC 的
-唯一后继消费者是其 report/closeout；通过只允许注册后续架构 preflight，失败则关闭该
-线性 canary 并要求新的无训练容量证据。
+均不得 promotion。H-DPGC（Direct Prior Generator Capacity Canary）已完成无 optimizer 的
+固定 rank-8 logit-Gaussian canary；它只测试线性直接容量，不代表所有非线性直接生成器。
+
+H-DPGC retry3 的 validation/preflight/audit/report/closeout SHA256 依次为
+`af0994…54ef`、`890ad5…8818`、`7fc08c…f501`、`e3d573…be58` 和
+`e61e4…d075`。三次早期 preflight 尝试分别保留了 coverage device、camera-label device
+和 memorization device 的 harness 异常；每次均未形成 evidence，修复后从新 clean commit
+重建 lineage。最终 audit/closeout 为 valid scientific failure：分类
+`direct_prior_linear_semantic_capacity_failed`，next action 为
+`close_direct_prior_linear_capacity_canary`。三个 locked panels 的 primary minimum recall
+为 `0.76/0.80/0.92`，未达到 `0.90`；secondary minimum recall 为 `0.90/0.96/0.96`，
+Jacobian rank-1e-3 pass fraction 为 `1.00`，exact duplicates 均为 `0`，但 memorization
+pass fraction 为 `0.914/0.932/0.908`。official 10k primary/secondary accuracy 为
+`0.9544/0.9761`，primary minimum recall `0.8768`，agreement `0.9470`。peak allocation
+为 `517880320` bytes，audit storage `41238` bytes，optimizer-created 为 false。
+
+该 valid failure 仅关闭固定线性 canary，不外推为所有非线性直接生成器失败；但在获得新的
+无训练容量证据前，不得注册或启动 neural direct-generator training。正式 promotion、
+confirm、O0-G、SMF/FMF/MMF、E1、光学和 fiber training 继续禁止。
