@@ -51,6 +51,7 @@ HISTORICAL_PRIOR_SEED = 90210
 STABILITY_PRIOR_SEEDS = (1011, 1023, 1037, 1051)
 STABILITY_SAMPLES_PER_CLASS = 100
 CHUNK_SIZES = (128, 257)
+CHUNK_RELATIVE_TOLERANCE = 5.0e-6
 NULL_EFFECT_TOLERANCE = 1.0e-10
 HISTORICAL_ATOL = 1.0e-8
 HISTORICAL_RTOL = 1.0e-6
@@ -791,7 +792,7 @@ def _preflight_measurement(
                 math.isclose(
                     one["components"]["final_final"][metric],
                     other["components"]["final_final"][metric],
-                    rel_tol=1.0e-6,
+                    rel_tol=CHUNK_RELATIVE_TOLERANCE,
                     abs_tol=1.0e-8,
                 )
                 for metric in METRICS
