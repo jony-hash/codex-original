@@ -1023,26 +1023,22 @@ prior `1011/1023/1037/1051`、projection banks `271829/314159`。正式顺序为
 preflight。preflight 通过后才准备 screen manifest，本注册不授权长 screen、confirm、
 O0-G、光学、fiber 或 formal promotion。
 
-## 2026-08-24：H-DIDM direction audit 与 CUDA preflight 收口
+## 2026-08-24：H-DIDM retry3 harness evidence 废弃
 
 H-DIDM 实现提交为 `db391ef`；保护门修复提交为 `85c155f`、`e78951d` 和 `66d974f`。
 修复后的 retry3 从 clean HEAD `66d974f` 重建 lineage，旧尝试保留但不复用。validation、
 audit、preflight evidence SHA256 分别为
 `5b0f35aea831cebbece92ccd22a20607ab29978d0c5f9a8fc1c4497475540543`、
 `4a3f350bc79a1a80f9464a1a3dd5552fe5dd53a8bf203163d5968554c20b58a3` 和
-`c88c7b2911ea209a76bee10421023a359f0f3e97d59413a6d1df81a39ee72cd4`。
+`c88c7b2911ea209a76bee10421023a359f0f3e97d59413a6d1df81a39ee72cd4`。后审发现 audit
+未绑定 collapse/blur/label-shuffle 与 chunk/formula controls；preflight 的恢复点在
+step 3 后没有重放更新。因此 retry3 全部标记为 `superseded/invalid_harness`，不形成
+科学结论，也不授权 screen。
 
-无更新 audit 为 `status=valid, passed=true`：四个固定 batches 在两个固定 projection
-banks 上均由 `-g` 降低 distribution loss，`+g` 反向负对照未通过；decoder 的 label、input、
-FiLM block、upsample 和 output 梯度均 finite/nonzero，optimizer-created 与 evaluator
-calls 均为零。audit peak allocation 为 `505892352` bytes，storage 为 `15990` bytes。
+审查只保留上述 hash 作为不可变历史记录，不消费其 direction-admitted 字段。
 
-三步 preflight 为 `status=valid, passed=true`：training/reference observer aggregate
-loss 均下降，decoder input/FiLM/upsample/output 均发生 finite 更新；camera-code fraction
-`0.6011002`（source `0.5840523`），pairwise diversity `6.4604182`（source `6.3081684`），
-saturation `0.0`，source-relative 保护门均通过；decoder、optimizer、CPU/CUDA RNG、sampler、
-schedule 和 history interrupted/resumed replay exact。peak allocation `1516388352` bytes，
-storage `47738` bytes，evaluator calls `0`。
+下一动作是修复 controls、真实 step-2→step-3 replay、625-step screen/checkpoint contract，
+然后从新 clean commit 重建 validate → audit → preflight；在此之前不得启动 seed-8801。
 
 这只是 direct image-distribution 目标的局部方向与恢复性证据，不是 semantic screen 或模型
 准入。seed-8801 screen manifest 已生成并通过只读 hash/lineage 校验，但本轮不启动 screen；
