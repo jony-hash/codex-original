@@ -140,11 +140,12 @@ counterfactual attribution，不重新打开 optimizer/trajectory attribution fa
 
 ## H-CCF 已关闭：cycle composition attribution underdetermined
 
-H-CCF 实现提交于 `dcd9528`，direction/source consistency gate 修复于 `629e1aa`；首次
+H-CCF 实现提交于 `dcd9528`，direction/source consistency gate 修复于 `629e1aa`，
+reconstruction locator 补齐于 `2d5a288`；首次
 preflight 因 chunk-128/257 radial reference 的 `2.6e-7` 浮点差超过原门槛而按
 `invalid_harness` 保留，修复提交为 `c306f46`，并从新 clean HEAD 重建 validate lineage。
-最终 retry2 validation、preflight、audit、report、closeout 的 SHA256 分别为
-`d30f74…28c1`、`85992c…c023`、`27f2c3…df3`、`af2b6e…77c1` 和 `4eea18…b3b4`。
+最终 retry3 validation、preflight、audit、report、closeout 的 SHA256 分别为
+`9163c5…a714`、`d605fa…2e2e`、`559af9…b476`、`30e629…107b` 和 `65eaa0…c342`。
 
 最终 audit 为 `status=valid, passed=true`，classification 为
 `cycle_composition_attribution_underdetermined`，next action 为
@@ -154,7 +155,8 @@ preflight 因 chunk-128/257 radial reference 的 `2.6e-7` 浮点差超过原门�
 null swap、chunk equivalence、primary/MSE direction consistency 与 hash isolation 均通过。SWAE 的
 cycle drift 为 `0.00993609441`，SCED 为 `0.00601605990`；两条路线均未达到单一
 encoder/decoder/interaction 或 mixed component 的稳定归因门，故不能把 cycle 恶化归因
-到某一个组合因子。peak allocation 为 `147424256` bytes，storage 为 `233849` bytes，
+到某一个组合因子。reconstruction objective 与 decoder image displacement 定位字段均已记录。
+peak allocation 为 `147424768` bytes，storage 为 `416895` bytes，
 optimizer_created=false、evaluator_calls=0，旧 artifacts/checkpoints 保持只读。
 
 H-CCF report/closeout 是纯消费者，未创建候选模型。该结果关闭 prior-native attribution
