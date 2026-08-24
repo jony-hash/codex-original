@@ -270,8 +270,12 @@ def _panel_measurement(canary: DirectPriorCanary, primary: torch.nn.Module, seco
     shuffled_primary = _eval_model(primary, shuffled)[1].argmax(1)
     zero = canary.sample(labels, torch.zeros_like(codes))
     repeated = tensor_sha256(canary.sample(labels, codes)) == tensor_sha256(views)
-    p_coverage = conditional_coverage_ratio(p_features, views, p_ref, reference.to(device), labels.cpu(), epsilon=0.05, iterations=20, seed=seed)
-    s_coverage = conditional_coverage_ratio(s_features, views, s_ref, reference.to(device), labels.cpu(), epsilon=0.05, iterations=20, seed=seed)
+    # Evaluator features are returned on CPU by the shared evaluation helper;
+    # keep the paired image tensors on that same device for index_select.
+    coverage_views = views.cpu()
+    coverage_reference = reference.cpu()
+    p_coverage = conditional_coverage_ratio(p_features, coverage_views, p_ref, coverage_reference, labels.cpu(), epsilon=0.05, iterations=20, seed=seed)
+    s_coverage = conditional_coverage_ratio(s_features, coverage_views, s_ref, coverage_reference, labels.cpu(), epsilon=0.05, iterations=20, seed=seed)
     return {
         "seed": seed,
         "count": int(labels.numel()),
