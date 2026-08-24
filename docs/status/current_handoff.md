@@ -95,19 +95,19 @@ mismatch。有效结果只能被 report/closeout 和 hypothesis ledger 消费；
 任何 optimizer 替换、trust-region、adapter、confirm 或训练。
 
 H-TCA 实现及加固提交为 `84fbb7d`、`1ba714b`、`f18d71b`、`c616c7a`、`4486033`、
-`3634221`、`6bd465c`、`44c032e`；早期 projection-bank、gradient layout、classwise、
-history、terminal-landmark 和 attribution-gate 缺陷均按 fail-closed 保留，未消费旧
-retry evidence，并从 clean HEAD 重建 lineage。retry6 validation、preflight、audit、
-report、closeout 均 valid，immutable SHA256 依次为 `725aec…42335`、`a27a4f…abe3c`、
-`072eff…955c`、`28619b…e6bf` 和 `9cd714…9c82`。
+`3634221`、`6bd465c`、`44c032e`、`7929779`；早期 projection-bank、gradient layout、
+classwise、history、terminal-landmark、attribution-gate 和 preflight-replay-contract
+缺陷均按 fail-closed 保留，未消费旧 retry evidence，并从 clean HEAD 重建 lineage。
+retry7 validation、preflight、audit、report、closeout 均 valid，immutable SHA256 依次为
+`0f5c40…c2b`、`e1d6be…c024`、`8d17ef…aa44`、`b424f1…6707` 和 `53d0d5…3a9c`。
 
-retry6 的 H-TCA 分类为 `trajectory_attribution_underdetermined`，
+retry7 的 H-TCA 分类为 `trajectory_attribution_underdetermined`，
 `alignment_estimator_independent=false`：H-SWAE 与 H-SCED 均未在两个 projection bank、
 连续 landmark 和至少 3/4 observer batches 上支持 trajectory gradient rotation、AdamW
 preconditioning conflict、finite-step curvature cycle drift 或 observer distribution
 mismatch。两条 arm 的 encoder/decoder/optimizer/RNG/sampler/schedule 终态均 exact，SCED
 13 个 history windows exact，14 个 landmark（含 625）完整；peak allocation 为
-`1771866112` bytes，storage 为 `9148775` bytes，optimizer 只存在于临时 replay 副本，
+`1771866112` bytes，storage 为 `10217971` bytes，optimizer 只存在于临时 replay 副本，
 evaluator calls 为零。该结果只授权 `register_denser_local_trajectory_attribution`，不
 授权 optimizer 替换、trust-region、adapter、projected-gradient、SGD、confirm、O0-G、
 光学或 fiber 路线。正式 promotion、

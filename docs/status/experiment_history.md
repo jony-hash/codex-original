@@ -81,11 +81,11 @@ H-TCA 注册为 diagnostic-only lifecycle。它将从 WAE seed-7301 source 克�
 evaluator calls 为零，旧 checkpoint/evidence 只读，且不生成可训练 consumer 的模型。
 
 H-TCA 实现及加固提交为 `84fbb7d`、`1ba714b`、`f18d71b`、`c616c7a`、`4486033`、
-`3634221`、`6bd465c`、`44c032e`。retry6 validation/preflight/audit/report/closeout
-均 valid，SHA256 依次为 `725aec…42335`、`a27a4f…abe3c`、`072eff…955c`、
-`28619b…e6bf`、`9cd714…9c82`。两条 arm 的 625-step replay 均 exact 重现旧 final
+`3634221`、`6bd465c`、`44c032e`、`7929779`。retry7 validation/preflight/audit/report/
+closeout 均 valid，SHA256 依次为 `0f5c40…c2b`、`e1d6be…c024`、`8d17ef…aa44`、
+`b424f1…6707`、`53d0d5…3a9c`。两条 arm 的 625-step replay 均 exact 重现旧 final
 encoder/decoder/optimizer/RNG/sampler/schedule，SCED history 13 个窗口 exact；14 个
-landmark（含终点 625）、peak allocation `1771866112` bytes、storage `9148775` bytes、
+landmark（含终点 625）、peak allocation `1771866112` bytes、storage `10217971` bytes、
 optimizer 只在临时副本创建，evaluator calls 为零。
 
 有效分类为 `trajectory_attribution_underdetermined`，两条路线的四种机制均未满足
