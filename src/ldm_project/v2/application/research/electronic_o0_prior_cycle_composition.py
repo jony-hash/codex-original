@@ -385,6 +385,27 @@ def _factorial_identity(
     return all(abs(row["identity_residual"]) <= atol for row in effects.values())
 
 
+def _effect_direction_match(
+    primary: dict[str, float], reference: dict[str, float]
+) -> bool:
+    """Require the primary and latent-MSE decomposition to point the same way."""
+    keys = (
+        "encoder_effect",
+        "decoder_effect",
+        "interaction_effect",
+        "total_drift",
+    )
+    for key in keys:
+        left = float(primary[key])
+        right = float(reference[key])
+        if abs(left) <= 1.0e-12 or abs(right) <= 1.0e-12:
+            if abs(left - right) > 1.0e-8:
+                return False
+        elif (left > 0.0) != (right > 0.0):
+            return False
+    return True
+
+
 def _factorial(
     encoder_source: ConditionalWAEEncoder,
     decoder_source: ConditionalWAEDecoder,
@@ -842,8 +863,22 @@ def _audit(args: argparse.Namespace, lineage: dict[str, Any], output: Path) -> N
             failures.append(f"{route}_historical_final_cycle_mismatch")
         if not result["finite"] or not result["historical"]["identity_closed"]:
             failures.append(f"{route}_factorial_invalid")
+        if not _effect_direction_match(
+            result["historical"]["effects"]["cycle"],
+            result["historical"]["effects"]["latent_mse"],
+        ):
+            failures.append(f"{route}_primary_reference_direction_mismatch")
         if any(not row["passed"] for row in result["stability"] if "passed" in row):
             failures.append(f"{route}_stability_invalid")
+    reference_route = arms["swae"]["historical"]["components"]["source_source"]
+    for metric in METRICS:
+        if not math.isclose(
+            float(reference_route[metric]),
+            float(arms["sced"]["historical"]["components"]["source_source"][metric]),
+            rel_tol=HISTORICAL_RTOL,
+            abs_tol=HISTORICAL_ATOL,
+        ):
+            failures.append(f"source_source_{metric}_route_mismatch")
     classification, next_action, decision = _classify(arms)
     peak = int(torch.cuda.max_memory_allocated(device))
     root = Path(args._run_manifest["output_root"])
