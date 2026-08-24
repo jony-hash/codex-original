@@ -482,9 +482,10 @@ def _measure_arm(
     _, zero_primary_logits = _eval_model(primary, zero, device)
     _, zero_secondary_logits = _eval_model(secondary, zero, device)
     replay = _decode(decoder, codes, labels, device)
+    camera_fraction = float(camera_code_fraction(views, labels.to(device)))
     safety = {
-        "camera_code_fraction": float(camera_code_fraction(views, labels)),
-        "camera_code_gate": float(camera_code_fraction(views, labels)) >= CAMERA_CODE_MINIMUM,
+        "camera_code_fraction": camera_fraction,
+        "camera_code_gate": camera_fraction >= CAMERA_CODE_MINIMUM,
         "diversity": diversity,
         "diversity_gate": all(DIVERSITY_MINIMUM <= value <= DIVERSITY_MAXIMUM for values in diversity.values() for value in values),
         "coverage": {"primary": float(primary_coverage), "secondary": float(secondary_coverage)},
