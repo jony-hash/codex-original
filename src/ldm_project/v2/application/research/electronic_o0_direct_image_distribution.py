@@ -526,6 +526,8 @@ def _preflight_measurement(decoder: ConditionalWAEDecoder, train_images: Tensor,
         changed[_param_group(name)] = changed.get(_param_group(name), False) or bool(not torch.equal(before.detach().cpu(), after.detach().cpu()))
     observer_before: list[float] = []
     observer_after: list[float] = []
+    training_before: list[float] = []
+    training_after: list[float] = []
     for batch_seed, prior_seed in zip(BATCH_SEEDS, PRIOR_SEEDS, strict=True):
         images, labels = _balanced_batch(train_images, train_labels, batch_seed)
         prior = _prior(labels, prior_seed, device=device, dtype=images.dtype)
@@ -534,11 +536,17 @@ def _preflight_measurement(decoder: ConditionalWAEDecoder, train_images: Tensor,
         fresh.load_state_dict(initial, strict=True)
         observer_before.append(float(_loss(fresh, images, labels, prior, banks).detach()))
         observer_after.append(float(_loss(decoder, images, labels, prior, banks).detach()))
+        training_banks = multiscale_projection_banks(PROJECTION_SEEDS[0], device=device, dtype=images.dtype)
+        training_before.append(float(_loss(fresh, images, labels, prior, training_banks).detach()))
+        training_after.append(float(_loss(decoder, images, labels, prior, training_banks).detach()))
     return {
         "history": history,
         "observer_reference_before": observer_before,
         "observer_reference_after": observer_after,
         "observer_reference_decreased": sum(a < b for a, b in zip(observer_after, observer_before, strict=True)) >= 3,
+        "observer_training_before": training_before,
+        "observer_training_after": training_after,
+        "observer_training_decreased": sum(a < b for a, b in zip(training_after, training_before, strict=True)) >= 3,
         "decoder_groups_changed": changed,
         "decoder_state_hash": after_hash,
         "optimizer_state_hash": _state_dict_hash(optimizer.state_dict()),
@@ -643,7 +651,7 @@ def dispatch(args: argparse.Namespace) -> int:
         storage = _storage_bytes(Path(args._run_manifest["output_root"]))
         groups = measurement["decoder_groups_changed"]
         protected = measurement["protected_metrics"]
-        valid = bool(measurement["optimizer_created"] and measurement["evaluator_calls"] == 0 and measurement["replay_exact"] and measurement["observer_reference_decreased"] and all(groups.get(k, False) for k in ("input", "film_block", "upsample", "output")) and protected["camera_code_fraction_gate"] and protected["pairwise_diversity_gate"] and protected["saturation_gate"] and peak < 6 * 1024**3 and storage <= 2 * 1024**3)
+        valid = bool(measurement["optimizer_created"] and measurement["evaluator_calls"] == 0 and measurement["replay_exact"] and measurement["observer_reference_decreased"] and measurement["observer_training_decreased"] and all(groups.get(k, False) for k in ("input", "film_block", "upsample", "output")) and protected["camera_code_fraction_gate"] and protected["pairwise_diversity_gate"] and protected["saturation_gate"] and peak < 6 * 1024**3 and storage <= 2 * 1024**3)
         _write(args.output, {"schema": f"{SCHEMA_PREFIX}_preflight.v1", "stage": "preflight", "status": "valid" if valid else "invalid_harness", "passed": valid, "measurement_valid": valid, "measurement": measurement, "peak_memory_bytes": peak, "storage_bytes": storage, "memory_gate": peak < 6 * 1024**3, "storage_gate": storage <= 2 * 1024**3, "producer_contract_revision": f"{SCHEMA_PREFIX}-preflight.v1", "consumer_contract": f"{SCHEMA_PREFIX}-screen.v1", "permitted_consumers": ["screen"] if valid else [], "input_artifact_hashes": {"audit": file_sha256(args.audit_evidence), "lineage": canonical_sha256(lineage)}}, args)
         return 0
     if action == "screen":
