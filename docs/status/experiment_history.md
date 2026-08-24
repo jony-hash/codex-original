@@ -67,6 +67,23 @@ screen 后仅执行了纯消费者 `report → closeout`。closeout 分类为
 没有进入 confirm、seed-8602/8603、locked-final、O0-G、SMF、E1 或 fiber-aware training；
 该结果只关闭 H-SCED，不构成 decoder、光学或 fiber 容量失败结论。
 
+## 2026-08-24：H-TCA prior trajectory/curvature attribution 注册
+
+H-PGC 的有效 paired attribution 否定了终点固定权重的一阶 cycle conflict：H-SWAE 与
+H-SCED 的 full-joint cycle rho 在两个 projection bank、四个 batch 上均未达到冲突阈值。
+但两条旧路线没有保留中间 checkpoint，因而无法定位 cycle 恶化是在梯度场旋转、AdamW
+实际位移、有限步长曲率还是 observer 分布偏差中产生。
+
+H-TCA 注册为 diagnostic-only lifecycle。它将从 WAE seed-7301 source 克隆临时模型，
+按两条旧路线各自的原始 objective、seed-8601、schedule 和 625 steps 做确定性 replay，
+在 0/50/.../600/625 landmark 记录 raw 与 AdamW 方向、固定 observer 方向导数和
+实际 cycle 漂移，并在选定点做 HVP 与有限差分。终态必须逐项匹配旧 final checkpoint；
+evaluator calls 为零，旧 checkpoint/evidence 只读，且不生成可训练 consumer 的模型。
+
+截至本记录，H-TCA 尚无 validation、preflight、audit 或科学结果。任一 replay/hash/
+finite/资源门失败均停止并标记 `invalid_harness`；有效分类只能注册下一诊断假设，
+不得启动 projected-gradient、SGD、trust-region、adapter、confirm、O0-G、光学或 fiber。
+
 ## 2026-08-23：electronic O0 mixture transport screen stop
 
 在冻结 WAE v2 encoder/decoder 的条件下，建立了

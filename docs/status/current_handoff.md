@@ -65,14 +65,14 @@ calls 为零，且 closeout 固定下一动作为 `close_current_prior_native_sc
 该结果只关闭 H-SCED，不证明 WAE decoder、光学、fiber、phase-only 或硬件的普遍
 不可行性。
 
-## 当前注册假设：H-PGC
+## 当前注册假设：H-PGC → H-TCA
 
 H-SCED 当前路线已按有效失败关闭。不得继续 seed-8601 confirm、seed-8602/8603、
 locked-final、O0-G、SMF、E1、fiber-aware training 或 formal promotion。任何未来
 探索必须注册新的 electronic O0 假设、变量和 lifecycle，不得在本路线内调 epoch、
 seed、权重或阈值。
 
-H-PGC（Prior Gradient Conflict）是新的 diagnostic-only、无更新归因路线。它只读消费
+H-PGC（Prior Gradient Conflict）是 diagnostic-only、无更新归因路线。它只读消费
 WAE seed-7301、H-SWAE seed-8601 和 H-SCED seed-8601 的完整 valid closeout，比较
 reconstruction/alignment/cycle 梯度、固定权重方向与解析约束投影；不创建 optimizer、
 不加载 evaluator、不修改旧 evidence，也不能授权训练。H-PGC validation、audit 和
@@ -83,7 +83,20 @@ bank 的 SCED full-joint cycle rho 均未达到 `0.05`，H-SWAE paired arm 也�
 故不能把历史 cycle 恶化归因于一阶固定权重冲突。peak allocation 为
 `821096448` bytes、run storage `1183663` bytes，optimizer/evaluator calls 均为零，
 参数 hash、finite-difference、KKT 和 classwise 10 类报告均通过。下一动作只注册
-`trajectory_or_curvature_attribution`，不授权 projected-gradient、可逆 adapter、
-confirm、O0-G、光学或 fiber 路线。
+`H-TCA`，不授权 projected-gradient、可逆 adapter、confirm、O0-G、光学或 fiber 路线。
+
+H-TCA（Prior Trajectory/Curvature Attribution）已注册为独立的临时副本诊断路线。
+它只读绑定 WAE seed-7301、H-SWAE/H-SCED seed-8601 final checkpoints 和 H-PGC
+closeout；在不加载 evaluator、不修改旧 artifacts、不产生候选 checkpoint 的条件下，
+精确重放两条 625-step 历史轨迹，并测量 landmark 的 raw gradient、AdamW 实际位移、
+observer 方向导数、Taylor remainder 与 cycle HVP。唯一变量是路径归因机制：gradient
+rotation、AdamW preconditioning、finite-step curvature 或 observer distribution
+mismatch。有效结果只能被 report/closeout 和 hypothesis ledger 消费；不能直接授权
+任何 optimizer 替换、trust-region、adapter、confirm 或训练。
+
+H-TCA 尚无 validation、preflight、audit 或科学归因结果。replay 终态的模型、optimizer、
+CPU/CUDA RNG、sampler、schedule 和 SCED history 必须与旧 checkpoint 精确匹配；任一
+不匹配、finite/资源门失败均为 `invalid_harness`，停止后续 lifecycle。正式 promotion、
+O0-G、SMF/FMF/MMF、E1、光学和 fiber training 继续禁止。
 
 除 H-PGC 已完成的归因 lifecycle 外，没有其他已授权研究或训练动作。
