@@ -125,6 +125,10 @@ def _dispatch(args: argparse.Namespace) -> int:
             from .research.electronic_o0_direct_prior_capacity_canary import dispatch
 
             return int(dispatch(args) or 0)
+        if args.research_program == "electronic-o0-direct-image-distribution":
+            from .research.electronic_o0_direct_image_distribution import dispatch
+
+            return int(dispatch(args) or 0)
         if args.research_program == "smf-modal-density-attribution":
             from .research.smf_modal_density_attribution import dispatch
 

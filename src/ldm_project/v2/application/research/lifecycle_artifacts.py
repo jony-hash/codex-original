@@ -106,6 +106,14 @@ _PROGRAM_ACTIONS = {
         "report",
         "closeout",
     },
+    "electronic-o0-direct-image-distribution": {
+        "validate",
+        "audit",
+        "preflight",
+        "screen",
+        "report",
+        "closeout",
+    },
 }
 
 _HASH_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -374,6 +382,7 @@ def manifest_args(
         "h_dlta_report_evidence": ("h_dlta_report", "dense_local_report"),
         "h_dlta_closeout_evidence": ("h_dlta_closeout", "dense_local_closeout"),
         "h_ccf_closeout_evidence": ("h_ccf_closeout", "cycle_composition_closeout"),
+        "h_dpgc_closeout_evidence": ("h_dpgc_closeout", "direct_prior_capacity_closeout"),
     }
     for field, names in aliases.items():
         value = manifest_value(manifest, *names)
@@ -400,6 +409,7 @@ def manifest_args(
             "dense_local_attribution",
             "cycle_composition",
             "direct_prior_capacity_canary",
+            "direct_image_distribution",
             "run",
             "seed",
         ):
@@ -501,6 +511,7 @@ def validate_manifest_namespace(namespace: Any, *, action: str) -> None:
         "sced_training_checkpoint", "sced_screen_evidence", "sced_closeout_evidence",
         "h_pgc_audit_evidence", "h_pgc_report_evidence", "h_pgc_closeout_evidence",
         "h_ccf_closeout_evidence",
+        "h_dpgc_closeout_evidence",
     ):
         value = getattr(namespace, name, None)
         if not value:

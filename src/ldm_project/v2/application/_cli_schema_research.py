@@ -979,6 +979,42 @@ def register_research(root: argparse._SubParsersAction) -> None:
         command.add_argument("--output")
         command.add_argument("--measurement-evidence")
 
+    didm = research_programs.add_parser(
+        "electronic-o0-direct-image-distribution",
+        help="direct classwise multiscale image-distribution matching for electronic O0",
+    )
+    didm_actions = didm.add_subparsers(dest="research_action", required=True)
+
+    def didm_lineage(command):
+        command.add_argument("--run-manifest")
+        command.add_argument("--config")
+        command.add_argument("--dataset-root")
+        command.add_argument("--device", choices=("cuda", "cpu"))
+        command.add_argument("--output")
+        command.add_argument("--wae-decoder-checkpoint")
+        command.add_argument("--h-dpgc-closeout-evidence")
+        command.add_argument("--primary-evaluator-checkpoint")
+        command.add_argument("--secondary-evaluator-checkpoint")
+        command.add_argument("--primary-qualification-evidence")
+        command.add_argument("--secondary-qualification-evidence")
+
+    for action in ("validate", "audit", "preflight", "screen"):
+        command = didm_actions.add_parser(action)
+        didm_lineage(command)
+        if action == "audit":
+            command.add_argument("--validation-evidence")
+        elif action == "preflight":
+            command.add_argument("--audit-evidence")
+        elif action == "screen":
+            command.add_argument("--preflight-evidence")
+    for action in ("report", "closeout"):
+        command = didm_actions.add_parser(action)
+        command.add_argument("--run-manifest")
+        command.add_argument("--config")
+        command.add_argument("--dataset-root")
+        command.add_argument("--output")
+        command.add_argument("--measurement-evidence")
+
     smf = research_programs.add_parser(
         "smf-modal-density-attribution",
         help="synthetic single-mode port-density upper-bound lifecycle",

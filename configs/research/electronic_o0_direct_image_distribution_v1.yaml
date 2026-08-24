@@ -1,0 +1,26 @@
+schema_version: 1
+name: electronic_o0_direct_image_distribution_v1
+version: 20260824
+direct_image_distribution_seed: 8781
+future_screen_seed: 8801
+code_dim: 8
+projection_count: 256
+projection_seeds: [271829, 314159]
+balanced_batch_seeds: [11, 23, 37, 51]
+prior_seeds: [1011, 1023, 1037, 1051]
+steps: 625
+learning_rate: 0.0002
+history_interval: 50
+views: [raw28, pool14, pool7, sobel_x, sobel_y]
+finite_difference_scale: 0.0001
+camera_code_fraction_minimum: 0.25
+camera_code_fraction_source_ratio: 0.95
+diversity_source_ratio: 0.95
+saturation_maximum: 0.08
+locked_panel_seeds: [4242, 104729, 161803]
+official_seed: 90210
+official_count: 10000
+formal_promotion: false
+optical_training_authorized: false
+fiber_training_authorized: false
+synthetic_diagnostic_only: true
