@@ -1043,3 +1043,43 @@ step 3 后没有重放更新。因此 retry3 全部标记为 `superseded/invalid
 这只是 direct image-distribution 目标的局部方向与恢复性证据，不是 semantic screen 或模型
 准入。seed-8801 screen manifest 已生成并通过只读 hash/lineage 校验，但本轮不启动 screen；
 不得延长训练、调权重、换 seed、confirm、O0-G、光学、fiber 或 formal promotion。
+
+## 2026-08-24：H-DIDM retry4 lifecycle 与 seed-8801 screen closeout
+
+retry3 的 audit/preflight 因缺少 collapse/blur/label-shuffle、chunk/formula controls 以及
+step-2→step-3 真实恢复更新而被标记 `superseded/invalid_harness`，未形成科学结论。修复
+提交 `727568b` 后，从新 clean HEAD 建立 retry4 `validate → audit → preflight → screen`
+lineage；旧 artifacts 与 evidence 保持只读。retry4 validation、audit、preflight、screen、
+report、closeout 的 immutable SHA256 依次为：
+
+`1c38fcebe218823246ec9f253769bf95f15049ce0657d7faaffd6992ea333862`、
+`c76d69c974ca6ed89ef19935c358688495b3c4234c91f1ae6a8e6f9ea3303b99`、
+`338e150c10c0cd8f1b8d20eccf6848900be28ea59080cbe838af51425f1af363`、
+`f2ccc0cb7ce72c8e6866bac5fa48be3d873cd636ecc52e47f2eb31374041d369`、
+`7e1626c98a089f4db632d0170bcb9f430cdad6e4f549ec45083c9d3ce2c7afa9`、
+`d65a36cdc7637f76799c5bd763bf2ea51f1973bea55cd55ed7f6845bbb07fab3`。
+
+Audit 通过 real-vs-real matched、class-mean collapse、blur、label-shuffle、朴素 U-statistic
+逐值/逐梯度、chunk invariance 和 projection repeat controls；四个 batch 的两个 projection
+bank 上 `-g` 方向均通过，`+g` 负对照不通过，optimizer/evaluator calls 均为零。Preflight
+使用 seed-8801 正式 schedule，step 2 checkpoint 恢复后真实执行 step 3；decoder、optimizer、
+CPU/CUDA RNG、sampler、schedule 与 partial history exact，两个 observer bank 均下降，peak
+allocation `1515885568` bytes、storage `64606` bytes。
+
+唯一授权的 seed-8801 screen 执行 625 steps，训练期间 evaluator calls 为零，training
+checkpoint 为 `electronic_o0_direct_image_distribution_training.v1`。两 projection bank
+aggregate distribution loss 均低于 source（`-0.0126091`、`-0.0113928` vs source
+`0.0142719`、`0.0145378`），且每类不退化；但 locked panels `4242/104729/161803` 的
+primary accuracy 为 `0.918/0.910/0.894`、minimum recall 为 `0.72/0.78/0.78`，secondary
+accuracy 为 `0.898/0.896/0.870`、minimum recall 为 `0.80/0.80/0.74`，双 evaluator
+panel pass count 为 `0/0`。memorization pass fraction `0.998687`、exact duplicates `0`、
+Jacobian rank pass fraction `1.0`，camera-code/diversity/saturation/coverage/label-shuffle
+保护门通过；official 10k 仅报告不参与选择。screen 为 valid scientific failure，分类
+`direct_image_distribution_failed`，next action `close_current_direct_image_distribution_route`。
+
+screen decoder/training checkpoint SHA256 为
+`c066349955608e2c170f7732a7ecc63be4fb97f6673271373016544b10b5b6f2` /
+`df58662371220c5305e48b65ea71f51378f8637860fcc2e7ead3172f4fa72f6a`；screen peak allocation
+`646068224` bytes、storage `18826955` bytes。report→closeout 均为纯消费者，H-DIDM 路线
+现已关闭，不得重跑、调参、换 seed、confirm 或设计 decoder v2；后续如有必要只能另行
+提出无训练容量证据并建立新 lineage。

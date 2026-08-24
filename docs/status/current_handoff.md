@@ -37,7 +37,7 @@ utility、dataset admission 或 accepted manifest。项目治理状态保持
 | Prior-native H-SCED | `prior_alignment_fit_failed` | seed 8601 screen 后停止，未进入 confirm |
 | H-CCF cycle composition | `cycle_composition_attribution_underdetermined` | prior-native attribution family closed |
 | H-DPGC direct-prior canary | `direct_prior_linear_semantic_capacity_failed` | linear canary closed; no neural training |
-| H-DIDM direct image distribution | direction audit and three-step preflight passed; screen pending explicit authorization | same nonlinear decoder; no encoder/cycle; no candidate checkpoint |
+| H-DIDM direct image distribution | `direct_image_distribution_failed` on the sole authorized seed-8801 screen; route closed | same nonlinear decoder; no encoder/cycle; no confirm or promotion |
 
 H-SWAE 的 validation、synthetic direction audit 和 CUDA preflight 均通过。唯一执行的
 seed-8601 screen 是有效科学失败：aggregate SWD reduction 为 `34.62% < 50%`，类别
@@ -198,10 +198,10 @@ pass fraction 为 `0.914/0.932/0.908`。official 10k primary/secondary accuracy 
 无训练容量证据前，不得注册或启动 neural direct-generator training。正式 promotion、
 confirm、O0-G、SMF/FMF/MMF、E1、光学和 fiber training 继续禁止。
 
-## 当前注册假设：H-DIDM
+## H-DIDM（retry3 历史状态；已由 retry4 closeout 取代）
 
 H-DPGC 只否定了固定线性 rank-8 logit-Gaussian canary，未否定现有 nonlinear decoder
-在直接分布训练下的可行性。下一路线为 H-DIDM（Direct Image Distribution Matching）：
+在直接分布训练下的可行性；当时注册的 H-DIDM（Direct Image Distribution Matching）为：
 只读 warm-start WAE seed-7301 decoder，删除训练期 encoder、reconstruction、latent
 alignment 和 cycle，直接用 `label + 8D N(0,I)` 生成 O0-I image，并以固定多尺度
 classwise sliced-energy U-statistic 对齐真实图像分布。
@@ -212,10 +212,10 @@ direction audit/preflight 曾通过，但后审发现 preflight 在 step 3 后�
 也未绑定 collapse/blur/label-shuffle 与 chunk/formula controls；这些 evidence 现标记为
 superseded/invalid_harness，不形成科学结论，也不再授权 screen。
 
-不得据此启动 encoder geometry、decoder invertibility、interface Jacobian、hybrid mediation、
-projected-gradient、SGD、trust-region、adapter、confirm、其他 seed、O0-G、SMF/FMF/MMF、
-E1、光学、fiber training 或 formal promotion；screen 需另行明确授权并沿用当前 immutable
-manifest lineage。
+retry3 的局部证据不得授权 encoder geometry、decoder invertibility、interface Jacobian、
+hybrid mediation、projected-gradient、SGD、trust-region、adapter、confirm、其他 seed、
+O0-G、SMF/FMF/MMF、E1、光学、fiber training 或 formal promotion；其 screen 需另行明确
+授权并沿用 immutable manifest lineage。最终 retry4 结果见下方 closeout。
 
 ## 2026-08-24：H-DIDM retry3 harness evidence 废弃
 
@@ -235,6 +235,46 @@ label-shuffle、chunk invariance 与朴素公式 controls，因此不形成 dire
 preflight 虽记录了三步更新和保护指标，但所谓 interrupted/resumed replay 在恢复后执行
 了零步，未证明 step-2 checkpoint 到 step-3 的真实续接，因此按 harness 规则废弃。
 
-下一动作是修复 controls、真实 replay、625-step checkpoint/screen lifecycle，并从新 clean
-commit 重建 validate → audit → preflight；修复前禁止 seed-8801 screen、confirm、调参或
-任何下游路线。
+该历史下一动作已由 `727568b` 的 controls、真实 replay、625-step checkpoint/screen lifecycle
+修复执行；retry4 lineage 与最终分类见下方 closeout。retry3 evidence 不得被消费。
+
+## 2026-08-24：H-DIDM retry4 screen closeout
+
+retry3 的 audit/preflight 已按 fail-closed 规则标记为 `superseded/invalid_harness`；它们
+不形成科学结论且不被 retry4 消费。修复提交为 `727568b`，在 clean HEAD 上重新建立
+`validate → audit → preflight → screen` lineage。retry4 的 validation、audit、preflight、
+screen、report、closeout SHA256 分别为：
+
+`1c38fcebe218823246ec9f253769bf95f15049ce0657d7faaffd6992ea333862`、
+`c76d69c974ca6ed89ef19935c358688495b3c4234c91f1ae6a8e6f9ea3303b99`、
+`338e150c10c0cd8f1b8d20eccf6848900be28ea59080cbe838af51425f1af363`、
+`f2ccc0cb7ce72c8e6866bac5fa48be3d873cd636ecc52e47f2eb31374041d369`、
+`7e1626c98a089f4db632d0170bcb9f430cdad6e4f549ec45083c9d3ce2c7afa9`、
+`d65a36cdc7637f76799c5bd763bf2ea51f1973bea55cd55ed7f6845bbb07fab3`。
+
+retry4 audit 绑定了 real-vs-real、class-mean collapse、blur、label-shuffle、朴素公式、
+chunk 和 projection-determinism controls，四个 batch 的 `-g` 双 bank 方向通过，且
+optimizer/evaluator calls 均为零。三步 preflight 的 step-2→step-3 interrupted/resumed
+replay、decoder/optimizer/RNG/sampler/schedule/history exact gate 通过；两个 observer
+bank 均下降，peak allocation 为 `1515885568` bytes，storage 为 `64606` bytes。
+
+唯一授权的 seed-8801、625-step full-coverage screen 正常完成，training checkpoint
+schema 为 `electronic_o0_direct_image_distribution_training.v1`，训练期间 evaluator calls
+为零。两 projection bank 的 aggregate distribution loss 均低于 source，且十类均未退化；
+但三 locked panels 的语义门全部未同时通过（panel pass count primary/secondary 为
+`0/0`）：primary accuracy 为 `0.918/0.910/0.894`、minimum recall 为
+`0.72/0.78/0.78`，secondary accuracy 为 `0.898/0.896/0.870`、minimum recall 为
+`0.80/0.80/0.74`（panel 顺序 `4242/104729/161803`）。memorization pass fraction
+为 `0.998687`、exact duplicates 为 `0`，Jacobian rank pass fraction 为 `1.0`，camera-code、
+diversity、saturation、coverage 和 label-shuffle 保护门通过；official 10k 仅作完整报告，
+不参与选择。screen 为 `status=valid, passed=false`，固定分类
+`direct_image_distribution_failed`，next action 为
+`close_current_direct_image_distribution_route`。
+
+screen decoder/training checkpoint SHA256 分别为
+`c066349955608e2c170f7732a7ecc63be4fb97f6673271373016544b10b5b6f2` 和
+`df58662371220c5305e48b65ea71f51378f8637860fcc2e7ead3172f4fa72f6a`；screen peak allocation
+为 `646068224` bytes，storage 为 `18826955` bytes。report/closeout 为纯消费者，旧
+WAE、H-DPGC 与全部 prior-native artifacts 保持只读。该 valid failure 关闭 H-DIDM，禁止
+重跑、延长 epoch、调 loss、换 seed、confirm、decoder v2、O0-G、光学、fiber training
+或 formal promotion；若继续研究必须另行注册无训练证据和新 lineage。
