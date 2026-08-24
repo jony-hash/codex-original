@@ -96,6 +96,19 @@ observer distribution mismatch。H-TCA closeout 的下一动作是
 启动 projected-gradient、SGD、trust-region、adapter 或任何新训练；confirm、O0-G、
 光学、fiber 和 formal promotion 继续关闭。
 
+## 2026-08-24：H-DLTA dense local trajectory attribution 注册
+
+H-DLTA 注册为 H-TCA 的独立 follow-up diagnostic-only lifecycle。它不改变模型、objective、
+seed、训练 schedule 或 checkpoint policy，只把 landmark 固定加密为 39 个点，并在相同
+历史 replay 中解析 AdamW 的 raw gradient、momentum、adaptive preconditioner、weight
+decay 与实际 displacement，同时测量 actual-step cycle curvature 和 observer mismatch。
+
+H-DLTA 只读绑定 WAE seed-7301、H-SWAE/H-SCED seed-8601、H-PGC 与 H-TCA retry7 lineage，
+不创建 evaluator、不生成候选模型、不修改旧 evidence。它必须先完成独立的 validate →
+preflight → audit → report → closeout；任一 harness/资源门失败均停止并从新 clean commit
+重建 lineage。所有有效分类只能注册无更新 counterfactual 假设；confirm、projected-gradient、
+SGD、trust-region、adapter、O0-G、光学和 fiber training 继续关闭。
+
 ## 2026-08-23：electronic O0 mixture transport screen stop
 
 在冻结 WAE v2 encoder/decoder 的条件下，建立了

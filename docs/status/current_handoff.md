@@ -113,4 +113,11 @@ evaluator calls 为零。该结果只授权 `register_denser_local_trajectory_at
 光学或 fiber 路线。正式 promotion、
 O0-G、SMF/FMF/MMF、E1、光学和 fiber training 继续禁止。
 
+H-DLTA（Dense Local Trajectory Attribution）已注册为下一条独立 diagnostic-only 路线。
+它只在固定的 0–20、230–270、330–370、480–520 和 625 landmark 上重放两条历史轨迹，
+分解 AdamW 的 raw gradient、momentum、adaptive preconditioner 和 weight decay，并用
+actual-step HVP/有限差分区分局部曲率与 observer-batch mismatch。它绑定 H-TCA retry7
+的 valid underdetermined closeout；不加载 evaluator、不修改旧 artifacts、不输出候选模型，
+也不授权任何新训练。当前尚无 H-DLTA validation、preflight、audit 或科学结果。
+
 除 H-PGC 已完成的归因 lifecycle 外，没有其他已授权研究或训练动作。
