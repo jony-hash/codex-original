@@ -1,6 +1,6 @@
 # D2NN 实验与验收历史
 
-## 2026-08-24：H-SCED lifecycle 通过，seed-8601 screen 待执行
+## 2026-08-24：H-SCED lifecycle screen closeout与 H-PGC 注册
 
 `H-SCED` 注册为 H-SWAE 之后的新 electronic O0 假设。唯一变量是把每类小批量
 quantile-SWD prior alignment 替换为 Gaussian sliced Cramér/energy U-statistic，目标是
@@ -16,10 +16,15 @@ validation、512 个固定 replication 的 synthetic audit 和三步 CUDA prefli
 preflight 的实际结果包括 encoder/decoder finite 更新、SCED `0.0211737 → 0.0117856`、
 reference SWD `0.280985 → 0.264564`、cycle `0.0221913 → 0.0220756`，所有模型、
 optimizer、CPU/CUDA RNG、sampler 和 partial-history replay 均 exact；peak allocation
-为 `685118976` bytes，storage 为 `26619` bytes。当前尚无 screen、confirm、locked-final、
-O0-G、SMF、E1 或 fiber-aware training 结果。该条目仍是预注册 research lifecycle，
-只授权执行 manifest-bound seed-8601 screen，不代表 H-SCED 科学假设已通过或获得正式
-promotion。
+为 `685118976` bytes，storage 为 `26619` bytes。后续 seed-8601 screen 已在本文件
+下方记录为有效科学失败，H-SCED 不再有 confirm 或下游权限。
+
+H-PGC（Prior Gradient Conflict）随后注册为新的无更新归因 lifecycle。它固定消费
+WAE seed-7301、H-SWAE/H-SCED seed-8601 final checkpoints 和两个 projection banks，
+测量 blockwise/classwise objective gradients、固定权重 cycle 冲突及解析 half-space
+projection；无 optimizer、无 evaluator、无训练。当前尚无 H-PGC validation、audit 或
+科学结论；唯一下一动作是 `validate → audit → report → closeout`，任何分类只授权注册
+后续假设。
 
 ## 2026-08-23：prior-native H-SWAE screen stop
 

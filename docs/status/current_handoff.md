@@ -42,7 +42,7 @@ seed-8601 screen 是有效科学失败：aggregate SWD reduction 为 `34.62% < 5
 `close_current_prior_native_swae_route`；该结论只关闭 H-SWAE，不证明 decoder、光学、
 fiber、phase-only 或硬件的普遍不可行。
 
-## 当前注册假设：H-SCED
+## 已关闭的 H-SCED 与新注册 H-PGC
 
 下一研究假设是 `H-SCED`：以 Gaussian sliced Cramér/energy U-statistic 替换
 finite-batch quantile-SWD，检验其是否避免每类小批量下的 variance-shrink optimum，
@@ -65,11 +65,19 @@ calls 为零，且 closeout 固定下一动作为 `close_current_prior_native_sc
 该结果只关闭 H-SCED，不证明 WAE decoder、光学、fiber、phase-only 或硬件的普遍
 不可行性。
 
-## 唯一允许的下一动作
+## 当前注册假设：H-PGC
 
 H-SCED 当前路线已按有效失败关闭。不得继续 seed-8601 confirm、seed-8602/8603、
 locked-final、O0-G、SMF、E1、fiber-aware training 或 formal promotion。任何未来
 探索必须注册新的 electronic O0 假设、变量和 lifecycle，不得在本路线内调 epoch、
 seed、权重或阈值。
 
-除上述 H-SCED clean lifecycle validation 外，没有其他已授权研究或训练动作。
+H-PGC（Prior Gradient Conflict）是新的 diagnostic-only、无更新归因路线。它只读消费
+WAE seed-7301、H-SWAE seed-8601 和 H-SCED seed-8601 的完整 valid closeout，比较
+reconstruction/alignment/cycle 梯度、固定权重方向与解析约束投影；不创建 optimizer、
+不加载 evaluator、不修改旧 evidence，也不能授权训练。实现尚未产生 validation 或
+audit 证据；唯一下一动作是 manifest-bound H-PGC `validate`，随后按实际 hash 执行
+`audit`，再进行纯消费者 `report → closeout`。任何归因结果只注册下一假设，不授权
+projected-gradient、可逆 adapter、confirm、O0-G、光学或 fiber 路线。
+
+除 H-PGC 这条已注册的归因 lifecycle 外，没有其他已授权研究或训练动作。
