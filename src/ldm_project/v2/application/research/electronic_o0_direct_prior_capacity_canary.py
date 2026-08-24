@@ -282,7 +282,7 @@ def _panel_measurement(canary: DirectPriorCanary, primary: torch.nn.Module, seco
         "primary": {"accuracy": float((p_pred == labels.cpu()).float().mean()), "recall": _recall(p_pred, labels.cpu()), "minimum_recall": min(_recall(p_pred, labels.cpu()))},
         "secondary": {"accuracy": float((s_pred == labels.cpu()).float().mean()), "recall": _recall(s_pred, labels.cpu()), "minimum_recall": min(_recall(s_pred, labels.cpu()))},
         "agreement": float((p_pred == s_pred).float().mean()),
-        "camera_code_fraction": float(camera_code_fraction(views, labels.cpu())),
+        "camera_code_fraction": float(camera_code_fraction(views, labels)),
         "saturation": float((views >= 1.0).float().mean()),
         "coverage": {"primary": p_coverage, "secondary": s_coverage},
         "diversity_ratio": {"primary": relative_diversity_ratios(p_features, p_ref, labels.cpu()), "secondary": relative_diversity_ratios(s_features, s_ref, labels.cpu())},
@@ -318,7 +318,7 @@ def _official_measurement(canary: DirectPriorCanary, primary: torch.nn.Module, s
     views = canary.sample(labels, codes)
     p_features, p_logits, s_features, s_logits = _eval_pair(primary, secondary, views)
     p_pred, s_pred = p_logits.argmax(1), s_logits.argmax(1)
-    return {"count": int(labels.numel()), "primary_accuracy": float((p_pred == test_labels).float().mean()), "secondary_accuracy": float((s_pred == test_labels).float().mean()), "primary_minimum_recall": min(_recall(p_pred, test_labels)), "secondary_minimum_recall": min(_recall(s_pred, test_labels)), "agreement": float((p_pred == s_pred).float().mean()), "camera_code_fraction": float(camera_code_fraction(views, labels.cpu())), "saturation": float((views >= 1.0).float().mean()), "view_hash": tensor_sha256(views)}
+    return {"count": int(labels.numel()), "primary_accuracy": float((p_pred == test_labels).float().mean()), "secondary_accuracy": float((s_pred == test_labels).float().mean()), "primary_minimum_recall": min(_recall(p_pred, test_labels)), "secondary_minimum_recall": min(_recall(s_pred, test_labels)), "agreement": float((p_pred == s_pred).float().mean()), "camera_code_fraction": float(camera_code_fraction(views, labels)), "saturation": float((views >= 1.0).float().mean()), "view_hash": tensor_sha256(views)}
 
 
 def _build_measurement(args: argparse.Namespace, *, samples_per_class: int) -> dict[str, Any]:
