@@ -1,16 +1,25 @@
 # D2NN 实验与验收历史
 
-## 2026-08-24：H-SCED 注册，尚未形成运行结果
+## 2026-08-24：H-SCED lifecycle 通过，seed-8601 screen 待执行
 
 `H-SCED` 注册为 H-SWAE 之后的新 electronic O0 假设。唯一变量是把每类小批量
 quantile-SWD prior alignment 替换为 Gaussian sliced Cramér/energy U-statistic，目标是
 避免 `n=10` 条件下的 variance-shrink optimum，同时保持 reconstruction、cycle、novelty
 和 dual-evaluator semantic gates。
 
-实现、配置和测试已提交于 `0d83a4d`，并已准备 `validate` manifest；尚无有效 validation
-evidence，也没有 CUDA preflight、screen、confirm、locked-final、O0-G、SMF、E1 或
-fiber-aware training 结果。该条目是预注册状态，不是实验通过或训练授权。当前治理文档
-提交完成后，下一动作才是执行 manifest-bound lifecycle validation。
+实现、配置和测试已提交于 `0d83a4d`；paired-batch preflight 修复提交于 `9290016`，
+lineage-bound lifecycle 修复提交于 `70b8e32`。clean HEAD 上的 manifest-bound
+validation、512 个固定 replication 的 synthetic audit 和三步 CUDA preflight 均为
+`status=valid, passed=true`，evaluator calls 为零；对应 evidence 位于
+`outputs/20260824_v2/runs/20260824_electronic_o0_prior_native_sced_v1/`。
+
+preflight 的实际结果包括 encoder/decoder finite 更新、SCED `0.0211737 → 0.0117856`、
+reference SWD `0.280985 → 0.264564`、cycle `0.0221913 → 0.0220756`，所有模型、
+optimizer、CPU/CUDA RNG、sampler 和 partial-history replay 均 exact；peak allocation
+为 `685118976` bytes，storage 为 `26619` bytes。当前尚无 screen、confirm、locked-final、
+O0-G、SMF、E1 或 fiber-aware training 结果。该条目仍是预注册 research lifecycle，
+只授权执行 manifest-bound seed-8601 screen，不代表 H-SCED 科学假设已通过或获得正式
+promotion。
 
 ## 2026-08-23：prior-native H-SWAE screen stop
 

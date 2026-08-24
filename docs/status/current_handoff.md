@@ -47,16 +47,25 @@ fiber、phase-only 或硬件的普遍不可行。
 finite-batch quantile-SWD，检验其是否避免每类小批量下的 variance-shrink optimum，
 同时保持 reconstruction、cycle、novelty 和 dual-evaluator electronic O0 合同。
 
-H-SCED 实现、配置和测试已提交于 `0d83a4d`，并已准备 `validate` manifest；但没有有效
-validation evidence，也没有 CUDA preflight、screen、confirm、locked-final、O0-G 或
-fiber 结果。这些文件只能表示“已注册待验证”，不能表示 harness 已通过或训练已获授权。
+H-SCED 实现、配置和测试已提交于 `0d83a4d`；paired-batch preflight 修复于
+`9290016`，lineage-bound lifecycle 修复于 `70b8e32`。validate、512-replication
+synthetic audit 和 CUDA preflight 均已通过，且 evaluator calls 为零。当前尚无
+screen、confirm、locked-final、O0-G 或 fiber 结果；这些通过项只授权预注册的
+seed-8601 screen，不代表科学假设已通过或获得正式 promotion。
+
+当前 immutable evidence 位于
+`outputs/20260824_v2/runs/20260824_electronic_o0_prior_native_sced_v1/`：
+validation `b6f4f4…16850`、audit `5e7884…f36b1`、preflight `2aea7a…75bb`。
 
 ## 唯一允许的下一动作
 
-完成当前治理文档提交后，执行 manifest-bound `validate`。只有 validation 和 synthetic
-scale-direction audit 完整通过后，才可按照
-预注册顺序进入代表性 CUDA preflight。任何 invalid harness 必须修复并重新签发上游
-evidence；任何有效科学 gate 失败立即关闭 H-SCED，不得继续 confirm、O0-G、SMF、E1、
+完成当前治理文档提交后，执行已校验的 manifest-bound seed-8601 screen。screen 必须
+同时通过 training/reference SWD、逐类不退化、SCED、reconstruction、cycle、novelty、
+saturation、Jacobian 和 storage gates。有效失败只能流向 report/closeout；有效通过后
+才可另行准备 seed-8601 confirm，不能在本动作中自动进入 confirm 或其他 seed。
+
+任何 invalid harness 必须保留失败尝试、修复并重新签发上游 evidence；任何有效科学
+gate 失败立即关闭 H-SCED，不得继续 seed-8602/8603、locked-final、O0-G、SMF、E1、
 fiber-aware training 或 formal promotion。
 
 除上述 H-SCED clean lifecycle validation 外，没有其他已授权研究或训练动作。

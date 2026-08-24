@@ -30,9 +30,11 @@ The route closed before evaluator confirmation, O0-G, or fiber work.
 The next registered electronic hypothesis is `H-SCED`: warm-start the same
 content-bound WAE v2 seed-7301 weights with a fresh optimizer and replace the
 finite-batch quantile-SWD objective with a Gaussian sliced Cramér/energy
-U-statistic. Its implementation, config, tests, and `validate` manifest are
-registered, but no valid validation evidence or CUDA result exists yet.
-Only clean lifecycle validation is currently permitted; formal promotion,
+U-statistic. Its implementation/config/tests were committed at `0d83a4d`, with
+paired-batch preflight repair at `9290016` and lineage-bound lifecycle repair at
+`70b8e32`. Manifest-bound validation, the 512-replication synthetic audit, and
+CUDA preflight all passed; no screen or scientific result exists yet. The only
+authorized next action is the locked seed-8601 screen. Formal promotion,
 optical training, and fiber training remain false.
 
 | ID | Unique variable | Prediction | Falsification / attribution rule | Status |
@@ -50,7 +52,7 @@ optical training, and fiber training remain false.
 | H-LT | Standard Gaussian versus encoded-posterior transport | Frozen WAE decoder can recover semantic contract after posterior transport | Empirical posterior upper bound passes, then fixed flow must pass locked dual semantics and memorization | attribution: nonlinear candidate; seed-8401 flow confirm validly failed: locked primary/secondary min recall `0.88–0.94`/`0.90–0.96`, memorization `0.7876`; closed before O0-G |
 | H-MIX | Regularized class-conditional Gaussian mixture versus standard latent transport | A fixed multimodal posterior transport can pass the electronic image gate without evaluator-based selection | NLL, classwise SWD, and independent novelty gates must pass before evaluator confirmation | valid screen failure on clean commit `67f9d50`: NLL `9.3646` vs `12.0450`, SWD reduction `12.58%`, novelty pass `0.894`; closed before O0-G |
 | H-SWAE | Train-time sliced-Wasserstein prior alignment versus WAE MMD | A prior-native decoder can consume standard Gaussian without post-hoc flow/GMM transport | SWD fit, reconstruction preservation, novelty, and dual-evaluator gates must all pass | valid scientific failure: seed-8601 aggregate SWD reduction 34.62% < 50%, classes 6/7 regressed, cycle worsened; closed before confirm |
-| H-SCED | Train-time Gaussian sliced Cramér/energy U-statistic versus finite-batch quantile-SWD | An unbiased finite-batch prior-alignment objective avoids the n=10 variance-shrink optimum and preserves the electronic O0 contract | synthetic scale-direction audit, SCED/SWD fit, reconstruction, cycle, novelty, and dual-evaluator gates must all pass | registered; no CUDA run authorized until clean lifecycle validation |
+| H-SCED | Train-time Gaussian sliced Cramér/energy U-statistic versus finite-batch quantile-SWD | An unbiased finite-batch prior-alignment objective avoids the n=10 variance-shrink optimum and preserves the electronic O0 contract | synthetic scale-direction audit, SCED/SWD fit, reconstruction, cycle, novelty, and dual-evaluator gates must all pass | validation, audit, and CUDA preflight passed; seed-8601 screen pending |
 
 Research failures close only their own variant. Formal acceptance remains
 fail-closed. Invalid harness records are excluded from Pareto ranking and may
