@@ -971,6 +971,29 @@ def _replay_arm(
                 "curvature": [],
             }
         )
+    if route == "sced" and history_window:
+        history.append(
+            {
+                name: sum(row[name] for row in history_window) / len(history_window)
+                for name in ("total", "reconstruction", "sced", "cycle")
+            }
+        )
+        history_window = []
+    _save_progress(
+        progress,
+        route=route,
+        step=EXPECTED_STEP,
+        cursor=EXPECTED_STEP,
+        encoder=encoder,
+        decoder=decoder,
+        optimizer=optimizer,
+        history=history,
+        history_window=history_window,
+        landmarks=[_serializable(item) for item in landmarks],
+        schedule_hash=schedule_hash,
+        objective_hash=str(final_payload["objective_hash"]),
+        source_training_sha256=file_sha256(args.wae_training_checkpoint),
+    )
     final_match = tca._final_match(
         encoder,
         decoder,
