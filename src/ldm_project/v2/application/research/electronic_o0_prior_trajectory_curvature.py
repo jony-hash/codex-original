@@ -959,25 +959,135 @@ def _short_replay(
 ) -> dict[str, Any]:
     device = torch.device(args.device)
     schedule = balanced_epoch_schedule(labels, seed=TRAIN_SEED, per_class=10)
+    schedule_hash = canonical_sha256([tensor_sha256(item.detach().cpu()) for item in schedule])
     torch.manual_seed(TRAIN_SEED)
     torch.cuda.manual_seed_all(TRAIN_SEED)
     encoder, decoder = _load_source_models(args.wae_training_checkpoint, args.wae_decoder_checkpoint, device)
     optimizer = _optimizer(device, encoder, decoder)
     projection = _projection_bank(route=route, seed=PROJECTION_SEEDS[0], device=device)
     uninterrupted = []
+    uninterrupted_history_window: list[dict[str, float]] = []
+    last_delta: torch.Tensor | None = None
     for index in range(3):
         batch_images = images.index_select(0, schedule[index]).to(device)
         batch_labels = labels.index_select(0, schedule[index]).to(device)
-        uninterrupted.append(_update(encoder, decoder, optimizer, batch_images, batch_labels, route=route, weights=weights, projections=projection))
-    uninterrupted_hash = _tree_hash({"encoder": encoder.state_dict(), "decoder": decoder.state_dict(), "optimizer": optimizer.state_dict(), "rng": _rng_hash()})
+        before = _parameter_vector(encoder, decoder)
+        values = _update(encoder, decoder, optimizer, batch_images, batch_labels, route=route, weights=weights, projections=projection)
+        last_delta = _parameter_vector(encoder, decoder) - before
+        uninterrupted.append(values)
+        if route == "sced":
+            uninterrupted_history_window.append(
+                {
+                    "total": values["total"],
+                    "reconstruction": values["reconstruction"],
+                    "sced": values["alignment"],
+                    "cycle": values["cycle"],
+                }
+            )
+
+    def state_digest(
+        model_encoder,
+        model_decoder,
+        model_optimizer,
+        *,
+        step: int,
+        cursor: int,
+        history_window: list[dict[str, float]],
+    ) -> dict[str, Any]:
+        return {
+            "encoder": _state_hash(model_encoder),
+            "decoder": _state_hash(model_decoder),
+            "optimizer": _tree_hash(model_optimizer.state_dict()),
+            "rng": _rng_hash(),
+            "schedule_hash": schedule_hash,
+            "step": step,
+            "cursor": cursor,
+            "history": [],
+            "history_window": history_window if route == "sced" else [],
+        }
+
+    uninterrupted_digest = state_digest(
+        encoder,
+        decoder,
+        optimizer,
+        step=3,
+        cursor=3,
+        history_window=uninterrupted_history_window,
+    )
+
+    observer_records = _observer_measurement(
+        encoder,
+        decoder,
+        images.to(device),
+        labels.to(device),
+        route=route,
+        weights=weights,
+        actual_delta=last_delta,
+        include_classwise=False,
+    )
+    observer_finite = all(
+        record.get("finite")
+        and all(math.isfinite(float(value)) for value in record.get("adam_directional_derivatives", {}).values())
+        for record in observer_records
+    )
+    curvature_finite = False
+    if observer_records and last_delta is not None:
+        curvature_records = [
+            _curvature(
+                encoder,
+                decoder,
+                observer_records[0],
+                route=route,
+                weights=weights,
+                direction_name="raw",
+                direction=observer_records[0]["_d_raw"],
+            ),
+            _curvature(
+                encoder,
+                decoder,
+                observer_records[0],
+                route=route,
+                weights=weights,
+                direction_name="adam",
+                direction=last_delta,
+            ),
+        ]
+        curvature_finite = all(item.get("finite") for item in curvature_records)
+
     with tempfile.TemporaryDirectory(prefix="h_tca_replay_") as directory:
         torch.manual_seed(TRAIN_SEED)
         torch.cuda.manual_seed_all(TRAIN_SEED)
         interrupted_encoder, interrupted_decoder = _load_source_models(args.wae_training_checkpoint, args.wae_decoder_checkpoint, device)
         interrupted_optimizer = _optimizer(device, interrupted_encoder, interrupted_decoder)
         first = _update(interrupted_encoder, interrupted_decoder, interrupted_optimizer, images.index_select(0, schedule[0]).to(device), labels.index_select(0, schedule[0]).to(device), route=route, weights=weights, projections=projection)
+        resumed_history_window = []
+        if route == "sced":
+            resumed_history_window.append(
+                {
+                    "total": first["total"],
+                    "reconstruction": first["reconstruction"],
+                    "sced": first["alignment"],
+                    "cycle": first["cycle"],
+                }
+            )
         checkpoint = Path(directory) / "replay.pt"
-        atomic_torch_save(checkpoint, {"schema": f"{SCHEMA_PREFIX}_replay.v1", "encoder": {key: value.detach().cpu() for key, value in interrupted_encoder.state_dict().items()}, "decoder": {key: value.detach().cpu() for key, value in interrupted_decoder.state_dict().items()}, "optimizer": _canonical_tree(interrupted_optimizer.state_dict()), "optimizer_state": interrupted_optimizer.state_dict(), "rng_state": {"cpu": torch.get_rng_state().clone(), "cuda": [state.clone() for state in torch.cuda.get_rng_state_all()]}, "rng": _rng_hash(), "step": 1, "history_window": [first]})
+        atomic_torch_save(
+            checkpoint,
+            {
+                "schema": f"{SCHEMA_PREFIX}_replay.v1",
+                "encoder": {key: value.detach().cpu() for key, value in interrupted_encoder.state_dict().items()},
+                "decoder": {key: value.detach().cpu() for key, value in interrupted_decoder.state_dict().items()},
+                "optimizer": _canonical_tree(interrupted_optimizer.state_dict()),
+                "optimizer_state": interrupted_optimizer.state_dict(),
+                "rng_state": {"cpu": torch.get_rng_state().clone(), "cuda": [state.clone() for state in torch.cuda.get_rng_state_all()]},
+                "rng": _rng_hash(),
+                "schedule_hash": schedule_hash,
+                "step": 1,
+                "batch_cursor": 1,
+                "history": [],
+                "history_window": resumed_history_window,
+            },
+        )
         resumed_encoder, resumed_decoder = _load_source_models(args.wae_training_checkpoint, args.wae_decoder_checkpoint, device)
         resumed_optimizer = _optimizer(device, resumed_encoder, resumed_decoder)
         payload = safe_torch_load(checkpoint, map_location="cpu")
@@ -991,9 +1101,37 @@ def _short_replay(
         torch.set_rng_state(payload["rng_state"]["cpu"])
         torch.cuda.set_rng_state_all(payload["rng_state"]["cuda"])
         for index in (1, 2):
-            _update(resumed_encoder, resumed_decoder, resumed_optimizer, images.index_select(0, schedule[index]).to(device), labels.index_select(0, schedule[index]).to(device), route=route, weights=weights, projections=projection)
-        resumed_hash = _tree_hash({"encoder": resumed_encoder.state_dict(), "decoder": resumed_decoder.state_dict(), "optimizer": resumed_optimizer.state_dict(), "rng": _rng_hash()})
-    return {"route": route, "finite": True, "interrupted_resumed_exact": uninterrupted_hash == resumed_hash, "uninterrupted_updates": uninterrupted}
+            values = _update(resumed_encoder, resumed_decoder, resumed_optimizer, images.index_select(0, schedule[index]).to(device), labels.index_select(0, schedule[index]).to(device), route=route, weights=weights, projections=projection)
+            if route == "sced":
+                resumed_history_window.append(
+                    {
+                        "total": values["total"],
+                        "reconstruction": values["reconstruction"],
+                        "sced": values["alignment"],
+                        "cycle": values["cycle"],
+                    }
+                )
+        resumed_digest = state_digest(
+            resumed_encoder,
+            resumed_decoder,
+            resumed_optimizer,
+            step=3,
+            cursor=3,
+            history_window=resumed_history_window,
+        )
+    interrupted_resumed_exact = uninterrupted_digest == resumed_digest
+    return {
+        "route": route,
+        "finite": bool(all(math.isfinite(float(value)) for row in uninterrupted for value in row.values())),
+        "interrupted_resumed_exact": interrupted_resumed_exact,
+        "schedule_exact": uninterrupted_digest["schedule_hash"] == resumed_digest["schedule_hash"],
+        "sampler_cursor_exact": uninterrupted_digest["cursor"] == resumed_digest["cursor"],
+        "partial_history_exact": uninterrupted_digest["history_window"] == resumed_digest["history_window"],
+        "observer_finite": observer_finite,
+        "directional_derivatives_finite": observer_finite,
+        "curvature_finite": curvature_finite,
+        "uninterrupted_updates": uninterrupted,
+    }
 
 
 def _classify(arms: dict[str, dict[str, Any]]) -> tuple[str, str, dict[str, Any]]:
@@ -1209,16 +1347,31 @@ def dispatch(args: argparse.Namespace) -> int:
         if decision["action"] == "REUSE":
             return 0
         _require_cuda(args)
+        device = torch.device(args.device)
+        torch.cuda.reset_peak_memory_stats(device)
         images, labels = _prepare_data(args.dataset_root)
         results = {
             route: _short_replay(args, route=route, weights=dict(payload["weights"]), images=images, labels=labels)
             for route, payload in (("swae", _route_payload(args.swae_training_checkpoint, SWAE_SCHEMA)), ("sced", _route_payload(args.sced_training_checkpoint, SCED_SCHEMA)))
         }
-        passed = all(item["finite"] and item["interrupted_resumed_exact"] for item in results.values())
-        peak = int(torch.cuda.max_memory_allocated(torch.device(args.device)))
+        storage = sum(item.stat().st_size for item in Path(args._run_manifest["output_root"]).rglob("*") if item.is_file())
+        passed = all(
+            item["finite"]
+            and item["interrupted_resumed_exact"]
+            and item["schedule_exact"]
+            and item["sampler_cursor_exact"]
+            and item["partial_history_exact"]
+            and item["observer_finite"]
+            and item["directional_derivatives_finite"]
+            and item["curvature_finite"]
+            for item in results.values()
+        )
+        peak = int(torch.cuda.max_memory_allocated(device))
         if peak >= 6 * 1024**3:
             passed = False
-        _write(output, {"schema": f"{SCHEMA_PREFIX}_preflight.v1", "stage": "preflight", "status": "valid" if passed else "invalid_harness", "passed": passed, "measurement_valid": passed, "results": results, "optimizer_created": True, "evaluator_calls": 0, "peak_memory_bytes": peak, "memory_gate": peak < 6 * 1024**3, "input_artifact_hashes": {"validation": file_sha256(args.validation_evidence)}, "lineage_sha256": canonical_sha256(lineage), "consumer_contract": f"{SCHEMA_PREFIX}-audit.v1", "permitted_consumers": ["audit"] if passed else [], "producer_contract_revision": f"{SCHEMA_PREFIX}-preflight.v1"}, args)
+        if storage > 2 * 1024**3:
+            passed = False
+        _write(output, {"schema": f"{SCHEMA_PREFIX}_preflight.v1", "stage": "preflight", "status": "valid" if passed else "invalid_harness", "passed": passed, "measurement_valid": passed, "results": results, "optimizer_created": True, "evaluator_calls": 0, "peak_memory_bytes": peak, "memory_gate": peak < 6 * 1024**3, "storage_bytes": storage, "storage_gate": storage <= 2 * 1024**3, "input_artifact_hashes": {"validation": file_sha256(args.validation_evidence)}, "lineage_sha256": canonical_sha256(lineage), "consumer_contract": f"{SCHEMA_PREFIX}-audit.v1", "permitted_consumers": ["audit"] if passed else [], "producer_contract_revision": f"{SCHEMA_PREFIX}-preflight.v1"}, args)
         return 0
     if action == "audit":
         preflight = _check_consumer(args.preflight_evidence, action="audit", schemas=(f"{SCHEMA_PREFIX}_preflight.v1",))
