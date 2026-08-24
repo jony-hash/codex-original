@@ -280,7 +280,8 @@ def _decode(
         for start in range(0, codes.shape[0], batch_size):
             rows.append(
                 decoder(
-                    codes[start : start + batch_size], labels[start : start + batch_size]
+                    codes[start : start + batch_size].to(device),
+                    labels[start : start + batch_size].to(device),
                 ).clamp(0.0, 1.0)
             )
     result = torch.cat(rows, dim=0)
