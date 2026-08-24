@@ -25,6 +25,7 @@ from torch import Tensor
 from ...evidence import atomic_write_json, canonical_sha256, file_sha256, tensor_sha256
 from ...student.conditional import camera_code_fraction, relative_diversity_ratios
 from ...student.conditional_acceptance import conditional_coverage_ratio
+from ...student.checkpoints import state_content_hash
 from ...student.evaluator import SmoothMNISTEvaluator, load_frozen_evaluator, load_local_mnist, stratified_mnist_indices
 from . import electronic_o0_direct_prior_capacity_canary as dpgc
 from .electronic_o0_wae import _balanced_reference, _eval_model, _recall
@@ -607,7 +608,7 @@ def _build_measurement(args: argparse.Namespace, *, samples_per_class: int, incl
     canary = _fit_canary(train_images, train_labels)
     primary, primary_payload = load_frozen_evaluator(args.primary_evaluator_checkpoint, device=device)
     secondary = dpgc._secondary(args.secondary_evaluator_checkpoint, device=device)
-    before = {"primary": dpgc.state_content_hash(primary.state_dict()), "secondary": dpgc.state_content_hash(secondary.state_dict())}
+    before = {"primary": state_content_hash(primary.state_dict()), "secondary": state_content_hash(secondary.state_dict())}
     context = _memorization_context(train_images, train_labels, validation_images, validation_labels)
     banks = {}
     for seed in GAUSSIAN_BANK_SEEDS:
@@ -619,7 +620,7 @@ def _build_measurement(args: argparse.Namespace, *, samples_per_class: int, incl
     observed_chunk_codes, observed_chunk_labels = _panel(271828, samples_per_class=PREFLIGHT_SAMPLES_PER_CLASS, device=device)
     chunk_a = canary.sample(observed_chunk_labels, observed_chunk_codes, copula=True, chunk_size=64).cpu()
     chunk_b = canary.sample(observed_chunk_labels, observed_chunk_codes, copula=True, chunk_size=257).cpu()
-    after = {"primary": dpgc.state_content_hash(primary.state_dict()), "secondary": dpgc.state_content_hash(secondary.state_dict())}
+    after = {"primary": state_content_hash(primary.state_dict()), "secondary": state_content_hash(secondary.state_dict())}
     historical = _historical_audit(args.h_dpgc_closeout_evidence, args) if include_history else {"matches": True, "replayed": False}
     result = {
         "canary": {"code_dim": CODE_DIM, "pca_rank": PCA_RANK, "kernel_neighbors": KERNEL_NEIGHBORS, "bandwidth_anchor_count": BANDWIDTH_ANCHORS, "fit_seed": HARNESS_SEED, "mean_hash": tensor_sha256(canary.means), "basis_hash": tensor_sha256(canary.bases), "coordinate_hash": canonical_sha256([tensor_sha256(value) for value in canary.train_coordinates]), "copula_hash": tensor_sha256(canary.copula_cholesky), "bandwidth_hash": tensor_sha256(canary.bandwidths)},
