@@ -591,7 +591,7 @@ def _gate_audit(args: argparse.Namespace, config: dict[str, Any], lineage: dict[
         }
         metrics["passed"] = _gfa_gate(metrics, config)
         banks.append(metrics)
-    shifted_labels = (first[1] + 1).to(device)
+    shifted_labels = ((first[1] + 1) % CLASS_COUNT).to(device)
     shifted_prediction = _eval_chunks(primary, first[0].to(device), train_counter)[1].argmax(1)
     negative = _classification_metrics(shifted_prediction, shifted_labels)
     negative["rejected"] = not (negative["accuracy"] >= config["primary_accuracy_minimum"] and negative["minimum_recall"] >= config["minimum_recall_minimum"])
