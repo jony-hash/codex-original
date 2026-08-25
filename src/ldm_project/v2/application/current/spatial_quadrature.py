@@ -167,6 +167,13 @@ def _bank(images: torch.Tensor, labels: torch.Tensor, *, seed: int, half: int) -
 
 
 def _electronic_views(bundle: SpatialQuadratureBundle, codes: torch.Tensor, labels: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    if codes.shape[0] > 50:
+        views, commands = [], []
+        for start in range(0, codes.shape[0], 50):
+            view, command = _electronic_views(bundle, codes[start : start + 50], labels[start : start + 50])
+            views.append(view)
+            commands.append(command)
+        return torch.cat(views, dim=0), torch.cat(commands, dim=0)
     command = bundle.generator(codes, labels)
     return F.adaptive_avg_pool2d(command, (28, 28)), command
 
