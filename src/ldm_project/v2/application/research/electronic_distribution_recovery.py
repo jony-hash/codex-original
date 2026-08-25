@@ -492,6 +492,15 @@ def _generator_views(generator: HierarchicalSpatialAmplitudeGenerator, codes: Te
     return _deterministic_adaptive_pool(generator(codes, labels), 28)
 
 
+def _generator_views_chunked(generator: HierarchicalSpatialAmplitudeGenerator, codes: Tensor, labels: Tensor, microbatch: int) -> Tensor:
+    views = []
+    for start in range(0, codes.shape[0], microbatch):
+        with torch.inference_mode():
+            views.append(_generator_views(generator, codes[start : start + microbatch], labels[start : start + microbatch]))
+        _release_cuda()
+    return torch.cat(views, dim=0)
+
+
 def _optimize_codes(generator: HierarchicalSpatialAmplitudeGenerator, initial: Tensor, labels: Tensor, targets: Tensor, *, steps: int, lr: float, microbatch: int, radius: float | None, scales: Tensor, state_path: str | Path | None = None) -> tuple[Tensor, dict[str, Any]]:
     output = torch.empty_like(initial)
     losses = []
@@ -757,8 +766,7 @@ def _audit(args: argparse.Namespace, config: dict[str, Any], lineage: dict[str, 
         unconstrained, u_info = _optimize_codes(generator, initial, labels, targets, steps=config["inversion_steps"], lr=config["inversion_learning_rate"], microbatch=config["latent_microbatch_size"], radius=None, scales=scales)
         arms = {}
         for name, codes, info in (("random", initial, {"state_hash": tensor_sha256(initial)}), ("constrained", constrained, c_info), ("unconstrained", unconstrained, u_info)):
-            with torch.inference_mode():
-                generated = _generator_views(generator, codes, labels)
+            generated = _generator_views_chunked(generator, codes, labels, config["latent_microbatch_size"])
             metrics, calls = _arm_metrics(primary, secondary, generated, targets, reference, labels, train_images, train_labels, config, train_primary_features, train_secondary_features)
             evaluator_calls += calls
             metrics["inversion"] = info
