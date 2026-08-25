@@ -74,6 +74,33 @@ be registered next.
 | H-DIDM | WAE decoder warm-start with direct classwise multi-scale image-distribution matching from standard Gaussian codes | Removing encoder/reconstruction/latent-alignment/cycle while preserving the nonlinear decoder will make the Gaussian prior native and improve independent classwise image coverage without evaluator participation | Fixed multi-scale raw/pyramid/Sobel sliced-energy U-statistic, no-update direction audit, three-step replay, exact resume, source/reference-bank descent, dual-evaluator screen and anti-collapse gates; valid results only authorize a later confirm or close this route | retry3 superseded as `invalid_harness`; retry4 audit/preflight controls and exact replay passed, but sole seed-8801 screen was `status=valid, passed=false`, classification `direct_image_distribution_failed`: both distribution banks improved and all classwise values did not regress, while all three locked-panel semantic gates failed (panel pass count `0/0`); memorization/Jacobian/resource gates passed. Next action `close_current_direct_image_distribution_route`; no rerun, tuning, confirm, or decoder-v2 consumer |
 | H-SCF | Frozen WAE/H-DIDM decoder × Gaussian/validation-posterior code source | Separate decoder semantic reachability, posterior instance-pairing dependence, Gaussian semantic mass, evaluator consensus, and cross-panel stability without any update | Manifest-only no-update factorial; fixed upstream hashes, historical panel replay, two disjoint 250/class posterior banks, two Gaussian banks, D-P permutation/label-shift/zero-code controls, dual-evaluator and safety gates; only report/closeout and this ledger consume it | valid closeout: `semantic_counterfactual_safety_failed`; S-G safety failed, while S-P semantic passed but its safety gate failed; D-G and D-P semantic gates failed, and both D-P permutation banks failed; retry4 preflight/audit resource and no-update gates passed. Unique next action `close_frozen_decoder_derived_semantic_route`; no optimizer, checkpoint, candidate, confirm, decoder-v2, O0-G, optical, fiber, or promotion consumer |
 | H-NDMC | Exact classwise PCA-8 + Gaussian-copula + continuous all-row kernel reconstruction from `label + 8D N(0,I)` | An independent empirical nonlinear manifold upper bound can satisfy dual semantics, diversity, and anti-memorization safety simultaneously | Manifest-only no-update canary; H-DPGC historical replay, H-SCF closed-route binding, two 250/class Gaussian banks, identity-copula ablation, label-shift/zero-code/chunk/Jacobian/curvature and finite/resource gates; a pass can only register a future direct-generator architecture preflight | valid closeout: `nonlinear_manifold_safety_failed`; both banks had primary `2500/2500`, secondary `2000/2500`, agreement `2000/2500`, camera-code fraction about `1.48e-5`, diversity `0.004–0.007`, coverage `1.67–2.13`; memorization/exact-duplicate, replay, finite, chunk, no-update and resource gates passed. Next action `close_nonlinear_direct_manifold_capacity_canary`; no optimizer, checkpoint, candidate, training, confirm, optical, fiber, or promotion consumer |
+| H-JQOC | Structured electronic DCT code dimensions 8/16/32 × frozen raw-intensity versus four-port single-exposure I/Q readout | A preregistered structured input canary must first pass electronic semantics/safety; only then can quadrature observability rescue be interpreted | Manifest-only no-update audit; fixed v69 phase state, v75/v76 replay, H-NDMC closed-route binding, two 100/class Gaussian banks per dimension, zero-code/label-shift/LO-off/sign-swap/packing/replay controls, finite-difference rank and resource gates; only report/closeout consume it | valid closeout: `electronic_structured_input_capacity_failed`; all 8/16/32D electronic banks failed semantic/safety gates, so raw/IQ optical results cannot rescue the input contract. Preflight/audit controls, no-update and resource gates passed. Unique next action `close_joint_quadrature_capacity_route`; no intensity or quadrature architecture preflight, training, checkpoint, confirm, optical, fiber, or promotion consumer |
+
+## H-JQOC closeout (2026-08-26)
+
+The valid retry7 lifecycle used final lineage commit `266083e4752d947cbbd28dd16d8b0152ad4a5e4c`.
+The five immutable evidence hashes are validation
+`f8a6231b9910cc3cab0a95c61594237ec4e72c3fa2c02e9d6891556a70e11d5a`, preflight
+`43351251e919981c98eb37698a01b660ed87a3b7ded4734f51eb039b8d8ae7e0`, audit
+`08b0eb64c7a02e4b0ebec7dd3f7f23818abc98d29431033efcf3cd5b17296fa7`, report
+`c56d4bb4d172753ab6c97d7d40171628f3a823fecdfa96deb1ef6a3aa227b982`, and closeout
+`07806d105e8745a83fba65cc65258adb8733c8da53ed8d1a0c70e574dd69699c`.
+
+The audit was `status=valid` and classified
+`electronic_structured_input_capacity_failed`. Primary/secondary electronic minimum
+recall across the two banks was `0.73–0.78`/`0.92–0.98` for 8D, `0.69–0.78`/
+`0.96–0.98` for 16D, and `0.57–0.69`/`0.91–0.95` for 32D; no dimension passed the
+registered electronic semantic/safety gate. Raw-intensity semantic accuracy was only
+`0.075–0.092`/`0.421–0.436`, while the I/Q control itself had finite balanced identities,
+LO-off code fraction `0`, full finite-difference ranks for 8/16/32D, and passed packing,
+sign/swap, replay, and resource controls. Those later optical observations cannot rescue
+an earlier failed input gate.
+
+Preflight used `3353651200` peak bytes, `32.109134116` seconds, and `11065` bytes of
+storage. Audit used `4788746752` peak bytes, `260.960760050` seconds, and `87355` bytes
+of storage. The only next action is `close_joint_quadrature_capacity_route`.
+No intensity or quadrature architecture preflight, neural training, checkpoint,
+confirm, decoder v2, O0-G, optical, fiber, or promotion consumer is authorized.
 
 Research failures close only their own variant. Formal acceptance remains
 fail-closed. Invalid harness records are excluded from Pareto ranking and may

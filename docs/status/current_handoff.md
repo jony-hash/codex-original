@@ -1,4 +1,4 @@
-# 当前主线交接（2026-08-24）
+# 当前主线交接（2026-08-26）
 
 本文件是当前执行状态的稳定入口。架构合同见
 [v2 runtime](../architecture/v2_runtime.md)，研究假设与唯一下一动作见
@@ -40,6 +40,7 @@ utility、dataset admission 或 accepted manifest。项目治理状态保持
 | H-DIDM direct image distribution | `direct_image_distribution_failed` on the sole authorized seed-8801 screen; route closed | same nonlinear decoder; no encoder/cycle; no confirm or promotion |
 | H-SCF semantic code-source factorial | `semantic_counterfactual_safety_failed` | valid retry4 closeout; unique next action `close_frozen_decoder_derived_semantic_route`; no evidence-derived model, training, or promotion consumer |
 | H-NDMC nonlinear direct manifold capacity | `nonlinear_manifold_safety_failed` | valid retry3 closeout; unique next action `close_nonlinear_direct_manifold_capacity_canary`; empirical canary closed, no architecture preflight or training consumer |
+| H-JQOC joint quadrature optical capacity | `electronic_structured_input_capacity_failed` | valid retry7; input gate stopped before optical interpretation; no architecture preflight or training consumer |
 
 H-SWAE 的 validation、synthetic direction audit 和 CUDA preflight 均通过。唯一执行的
 seed-8601 screen 是有效科学失败：aggregate SWD reduction 为 `34.62% < 50%`，类别
@@ -345,3 +346,36 @@ pass fraction 为 `1.0`、exact duplicates 为 `0`；preflight peak allocation
 bytes；audit storage `54366` bytes。该结果关闭 H-NDMC 经验流形 canary，不能
 授权 direct-generator architecture preflight、neural training、confirm、decoder
 v2、O0-G、optical、fiber 或 promotion。
+
+## H-JQOC closeout（valid scientific failure）
+
+H-JQOC（Joint Quadrature Optical Capacity）已完成 retry7 的
+`validate → preflight → audit → report → closeout`。retry1–retry6 的 harness
+失败均保留在各自 attempt，且在 evidence 创建前或下游 consumer 创建前停止；修复内容仅限
+量化分位数、reference panel device、tuple 解包、evaluator count device 和 qualification
+scalar serialization。最终从 clean lineage `266083e4752d947cbbd28dd16d8b0152ad4a5e4c` 重启。
+
+retry7 五个 evidence 均为 `status=valid`，最终分类为
+`electronic_structured_input_capacity_failed`，唯一 next action 为
+`close_joint_quadrature_capacity_route`。两份正式 bank 中，8D/16D/32D 的 primary
+minimum recall 分别为 `0.73–0.78`、`0.69–0.78`、`0.57–0.69`，secondary minimum
+recall 分别为 `0.92–0.98`、`0.96–0.98`、`0.91–0.95`；三个维度均未通过预注册
+electronic semantic/safety gate。因此不能用后续 raw-intensity 或四端口 I/Q 结果补救输入
+合同。raw-intensity primary/secondary accuracy 仅为 `0.075–0.092`/`0.421–0.436`；
+I/Q 的 port packing、energy identity、LO-off、sign/swap、replay、finite-difference rank
+和资源门通过，但这些结果只属于诊断记录。
+
+retry7 evidence 位于
+`outputs/20260826_v2/runs/20260826_joint_quadrature_optical_capacity_v1_retry7/`，SHA256 为：
+
+- validation `f8a6231b9910cc3cab0a95c61594237ec4e72c3fa2c02e9d6891556a70e11d5a`
+- preflight `43351251e919981c98eb37698a01b660ed87a3b7ded4734f51eb039b8d8ae7e0`
+- audit `08b0eb64c7a02e4b0ebec7dd3f7f23818abc98d29431033efcf3cd5b17296fa7`
+- report `c56d4bb4d172753ab6c97d7d40171628f3a823fecdfa96deb1ef6a3aa227b982`
+- closeout `07806d105e8745a83fba65cc65258adb8733c8da53ed8d1a0c70e574dd69699c`
+
+preflight peak allocation 为 `3353651200` bytes、wall time `32.109134116` seconds、
+storage `11065` bytes；audit peak allocation 为 `4788746752` bytes、wall time
+`260.960760050` seconds、storage `87355` bytes，均低于预注册资源门。结果关闭当前
+joint-quadrature route，不授权 intensity 或 quadrature architecture preflight、neural
+training、checkpoint、confirm、decoder v2、O0-G、optical、fiber 或 promotion。

@@ -129,3 +129,39 @@ This valid failure closes the empirical nonlinear canary. It does not authorize
 the future architecture preflight, neural training, confirm, decoder v2, O0-G,
 optical, fiber, or promotion. The five retry3 evidence hashes are recorded in
 the current handoff; outputs and manifests remain read-only and untracked.
+
+## H-JQOC closeout: structured input capacity failure
+
+H-JQOC (Joint Quadrature Optical Capacity) completed a valid retry7
+manifest-only, no-update lifecycle. It tested a preregistered 8/16/32D
+structured electronic DCT canary against the frozen raw-intensity path and an
+ideal four-port single-exposure I/Q readout. The I/Q receiver is an information
+observability upper bound only; it is not a software image decoder or a change
+to the formal optical runtime.
+
+The valid classification is
+`electronic_structured_input_capacity_failed`, with the unique next action
+`close_joint_quadrature_capacity_route`. All two-bank electronic arms failed
+the registered semantic/safety gate before optical interpretation: primary
+minimum recall was `0.73–0.78` for 8D, `0.69–0.78` for 16D, and `0.57–0.69` for
+32D. Raw-intensity accuracy was only `0.075–0.092`/`0.421–0.436` for the
+primary/secondary evaluators. The Q-diagnostic satisfied its finite-difference
+rank, packing, energy, LO-off, sign/swap, replay, and resource controls, but
+those later observations cannot rescue a failed structured input contract.
+No aggregate score is formed and no dimension is admitted.
+
+The final lineage is `266083e4752d947cbbd28dd16d8b0152ad4a5e4c`. The five
+evidence hashes are validation
+`f8a6231b9910cc3cab0a95c61594237ec4e72c3fa2c02e9d6891556a70e11d5a`, preflight
+`43351251e919981c98eb37698a01b660ed87a3b7ded4734f51eb039b8d8ae7e0`, audit
+`08b0eb64c7a02e4b0ebec7dd3f7f23818abc98d29431033efcf3cd5b17296fa7`, report
+`c56d4bb4d172753ab6c97d7d40171628f3a823fecdfa96deb1ef6a3aa227b982`, and
+closeout `07806d105e8745a83fba65cc65258adb8733c8da53ed8d1a0c70e574dd69699c`.
+Preflight used `3353651200` peak bytes, `32.109134116` seconds, and `11065`
+storage bytes; audit used `4788746752` peak bytes, `260.960760050` seconds,
+and `87355` storage bytes.
+
+This closes the H-JQOC route. It authorizes no intensity or quadrature
+architecture preflight, neural training, checkpoint, confirm, decoder v2,
+O0-G, optical, fiber, or formal promotion. Existing v69/v75/v76, H-NDMC, and
+formal identity evidence remain read-only.

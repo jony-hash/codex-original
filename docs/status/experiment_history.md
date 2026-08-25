@@ -1157,3 +1157,35 @@ retry3 evidence SHA256 依次为 validation
 该 valid failure 关闭 H-NDMC 经验流形 canary，不授权 direct-generator
 architecture preflight、neural training、confirm、decoder v2、O0-G、光学、
 fiber 或 promotion。
+
+## 2026-08-26：H-JQOC joint quadrature optical capacity closeout
+
+H-JQOC（Joint Quadrature Optical Capacity）从最终 clean lineage
+`266083e4752d947cbbd28dd16d8b0152ad4a5e4c` 完成 retry7 的
+`validate → preflight → audit → report → closeout`。retry1–retry6 的 harness
+失败均保留为独立 attempt，未覆盖失败 evidence，也未创建有效下游 consumer；修复只涉及
+量化分位数、reference panel device、tuple 解包、evaluator count device 和 qualification
+scalar serialization。
+
+retry7 五个 evidence 均为 `status=valid`。SHA256 依次为 validation
+`f8a6231b9910cc3cab0a95c61594237ec4e72c3fa2c02e9d6891556a70e11d5a`、preflight
+`43351251e919981c98eb37698a01b660ed87a3b7ded4734f51eb039b8d8ae7e0`、audit
+`08b0eb64c7a02e4b0ebec7dd3f7f23818abc98d29431033efcf3cd5b17296fa7`、report
+`c56d4bb4d172753ab6c97d7d40171628f3a823fecdfa96deb1ef6a3aa227b982`、closeout
+`07806d105e8745a83fba65cc65258adb8733c8da53ed8d1a0c70e574dd69699c`。
+
+正式审计包含 8/16/32D 两个 Gaussian banks、电子 E-d、raw-intensity I-d 和四端口
+I/Q Q-d，以及 label shift、zero-code、LO-off、sign/swap、packing、replay 和
+finite-difference Jacobian controls。三种维度的 electronic primary minimum recall
+范围分别为 `0.73–0.78`、`0.69–0.78`、`0.57–0.69`；secondary 范围分别为
+`0.92–0.98`、`0.96–0.98`、`0.91–0.95`，均未通过输入 semantic/safety gate。raw
+intensity primary/secondary accuracy 为 `0.075–0.092`/`0.421–0.436`。I/Q 的满秩、
+能量恒等式、非饱和、LO-off、port packing、sign/swap 和重复执行 controls 通过，但
+按预注册优先级不用于补救 E-d 失败。
+
+最终 classification 为 `electronic_structured_input_capacity_failed`，唯一 next action
+为 `close_joint_quadrature_capacity_route`。preflight peak/wall/storage 为
+`3353651200` bytes / `32.109134116` s / `11065` bytes；audit 为
+`4788746752` bytes / `260.960760050` s / `87355` bytes，均满足资源门。该路线不授权
+intensity 或 quadrature architecture preflight、neural training、checkpoint、confirm、
+decoder v2、O0-G、optical、fiber 或 promotion；outputs、manifests 和视图保持未跟踪只读。
