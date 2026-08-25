@@ -361,6 +361,7 @@ def train_spatial_electronic(args, config: V2Config) -> int:
 
 def admit_spatial_electronic(args, config: V2Config) -> int:
     _require_spatial(config)
+    training = _load_record(args.training_evidence, kind=ELECTRONIC_TRAINING_KIND)
     images, train_labels, validation_images, validation_labels, split, _, _ = _split(args.dataset_root)
     primary_hash = evaluator_checkpoint_hash(args.evaluator_checkpoint)
     secondary_hash = evaluator_checkpoint_hash(args.secondary_evaluator_checkpoint)
@@ -369,6 +370,9 @@ def admit_spatial_electronic(args, config: V2Config) -> int:
     device = _device(config)
     bundle = seeded_spatial_bundle(config).to(device)
     _load_generator_checkpoint(args.electronic_checkpoint, bundle, config, split_hash=split.manifest_hash, evaluator_hash=primary_hash)
+    checkpoint_hash = file_sha256(args.electronic_checkpoint)
+    if training.input_hashes.get("checkpoint") != checkpoint_hash:
+        raise ValueError("electronic training evidence does not bind the requested checkpoint")
     bank_metrics = []
     for bank, seed in enumerate(config.spatial_quadrature_generation.validation_bank_seeds):
         bank_images, bank_labels = _bank(validation_images, validation_labels, seed=seed, half=250)
@@ -384,7 +388,7 @@ def admit_spatial_electronic(args, config: V2Config) -> int:
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     atomic_write_json(output, {"schema_version": 1, "kind": ELECTRONIC_ADMISSION_KIND, "banks": bank_metrics, "passed": passed})
-    _write_record(config, output.with_suffix(".evidence.json"), kind=ELECTRONIC_ADMISSION_KIND, status="passed" if passed else "valid_failed", gates=gates, input_hashes={"checkpoint": file_sha256(args.electronic_checkpoint), "primary_evaluator": primary_hash, "secondary_evaluator": secondary_hash, "dataset_split": split.manifest_hash}, evaluator_hash=primary_hash, split_hash=split.manifest_hash, checkpoint_hash=file_sha256(args.electronic_checkpoint), permitted=("spatial_quadrature_preflight",) if passed else (), reason=None if passed else "hierarchical spatial electronic capacity failed")
+    _write_record(config, output.with_suffix(".evidence.json"), kind=ELECTRONIC_ADMISSION_KIND, status="passed" if passed else "valid_failed", gates=gates, input_hashes={"training_evidence": training.evidence_hash, "checkpoint": checkpoint_hash, "primary_evaluator": primary_hash, "secondary_evaluator": secondary_hash, "dataset_split": split.manifest_hash}, evaluator_hash=primary_hash, split_hash=split.manifest_hash, checkpoint_hash=checkpoint_hash, permitted=("spatial_quadrature_preflight",) if passed else (), reason=None if passed else "hierarchical spatial electronic capacity failed")
     return 0
 
 
