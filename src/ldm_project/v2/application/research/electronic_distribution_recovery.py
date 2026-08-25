@@ -208,8 +208,13 @@ def _lineage(args: argparse.Namespace, config: dict[str, Any]) -> dict[str, Any]
         raise ValueError("secondary qualification split mismatch")
     if primary_qualification.get("input_hashes", {}).get("evaluator_checkpoint") != actual["primary_evaluator"]:
         raise ValueError("primary qualification evaluator mismatch")
-    secondary_bound_hash = secondary_qualification.get("context", {}).get("evaluator_checkpoint_hash") or secondary_qualification.get("input_hashes", {}).get("evaluator_checkpoint") or secondary_qualification.get("input_hashes", {}).get("smooth_evaluator")
-    if secondary_bound_hash != actual["secondary_evaluator"]:
+    secondary_inputs = secondary_qualification.get("input_hashes", {})
+    secondary_bound_hashes = {
+        secondary_inputs.get("evaluator_checkpoint"),
+        secondary_inputs.get("secondary_evaluator"),
+        secondary_inputs.get("smooth_evaluator"),
+    }
+    if actual["secondary_evaluator"] not in secondary_bound_hashes:
         raise ValueError("secondary qualification evaluator mismatch")
     formal = yaml.safe_load(FORMAL_V3_CONFIG.read_text(encoding="utf-8"))
     if not isinstance(formal, dict) or formal.get("architecture") != FORMAL_V3_ARCHITECTURE:
