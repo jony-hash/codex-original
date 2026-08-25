@@ -71,6 +71,11 @@ FORBIDDEN_ACTIONS = (
 _POOL_WEIGHTS: dict[tuple[int, int, str, str], Tensor] = {}
 
 
+def _release_cuda() -> None:
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+
 def _json(path: str | Path) -> dict[str, Any]:
     value = json.loads(Path(path).read_text(encoding="utf-8"))
     if not isinstance(value, dict):
@@ -509,6 +514,8 @@ def _optimize_codes(generator: HierarchicalSpatialAmplitudeGenerator, initial: T
                     codes.copy_(_project_codes(codes, radius))
         output[start:stop] = codes.detach()
         losses.append(float(loss.detach().item()))
+        del value, loss, codes, optimizer
+        _release_cuda()
     if state_path is not None:
         atomic_torch_save(state_path, {"codes": output.detach().cpu(), "labels": labels.detach().cpu(), "losses": losses, "latent_only": True})
     return output, {"final_loss_per_chunk": losses, "state_hash": tensor_sha256(output)}
@@ -750,13 +757,16 @@ def _audit(args: argparse.Namespace, config: dict[str, Any], lineage: dict[str, 
         unconstrained, u_info = _optimize_codes(generator, initial, labels, targets, steps=config["inversion_steps"], lr=config["inversion_learning_rate"], microbatch=config["latent_microbatch_size"], radius=None, scales=scales)
         arms = {}
         for name, codes, info in (("random", initial, {"state_hash": tensor_sha256(initial)}), ("constrained", constrained, c_info), ("unconstrained", unconstrained, u_info)):
-            generated = _generator_views(generator, codes, labels).detach()
+            with torch.inference_mode():
+                generated = _generator_views(generator, codes, labels)
             metrics, calls = _arm_metrics(primary, secondary, generated, targets, reference, labels, train_images, train_labels, config, train_primary_features, train_secondary_features)
             evaluator_calls += calls
             metrics["inversion"] = info
             metrics["code_norm_squared_mean"] = float(codes.square().sum(1).mean().item())
             arms[name] = metrics
             latent_payload[f"bank_{bank_index}_{name}"] = codes.detach().cpu()
+            del generated, metrics
+            _release_cuda()
         all_arms[f"bank_{bank_index}"] = arms
     state_after = state_content_hash({name: value.detach().cpu() for name, value in generator.state_dict().items()})
     arm_pass = {name: all(all_arms[f"bank_{index}"][name]["range_gate"] for index in (0, 1)) for name in ("random", "constrained", "unconstrained")}
@@ -772,6 +782,8 @@ def _audit(args: argparse.Namespace, config: dict[str, Any], lineage: dict[str, 
     else:
         classification = "generator_range_incomplete"
         findings = ["generator_inductive_bias_suspected"]
+    del primary, secondary, train_images, train_labels, train_primary_features, train_secondary_features
+    _release_cuda()
     geometry = _geometry(generator, latent_payload, first, second, config)
     payload_path = Path(args.output).with_suffix(".latent.pt")
     atomic_torch_save(payload_path, {"schema": f"{SCHEMA_PREFIX}_latent.v1", "latents": latent_payload, "generator_hash": lineage["hashes"]["generator"], "latent_only": True})
