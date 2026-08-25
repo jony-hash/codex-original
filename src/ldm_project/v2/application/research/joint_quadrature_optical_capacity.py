@@ -336,14 +336,15 @@ def _semantic_metrics(primary: torch.nn.Module, secondary: torch.nn.Module, view
     p_reference, _ = _eval_model(primary, reference.to(views.device))
     s_reference, _ = _eval_model(secondary, reference.to(views.device))
     p_pred, s_pred = p_logits.argmax(1), s_logits.argmax(1)
-    counts_p, counts_s = _counts(p_pred, labels), _counts(s_pred, labels)
+    labels_cpu = labels.cpu()
+    counts_p, counts_s = _counts(p_pred, labels_cpu), _counts(s_pred, labels_cpu)
     agreement = _counts(p_pred, s_pred)
-    shuffled = labels.cpu().index_select(0, torch.randperm(labels.numel(), generator=torch.Generator(device="cpu").manual_seed(seed + 8675309))).to(labels.device)
+    shuffled = labels_cpu.index_select(0, torch.randperm(labels.numel(), generator=torch.Generator(device="cpu").manual_seed(seed + 8675309)))
     shuffled_pred = _eval_model(primary, views)[1].argmax(1)
     shuffled_counts = _counts(shuffled_pred, shuffled)
-    coverage = {"primary": conditional_coverage_ratio(p_features, views.cpu(), p_reference, reference, labels.cpu(), epsilon=0.05, iterations=20, seed=seed), "secondary": conditional_coverage_ratio(s_features, views.cpu(), s_reference, reference, labels.cpu(), epsilon=0.05, iterations=20, seed=seed)}
-    diversity = {"primary": relative_diversity_ratios(p_features, p_reference, labels.cpu()), "secondary": relative_diversity_ratios(s_features, s_reference, labels.cpu())}
-    row = {"count": int(labels.numel()), "primary_counts": counts_p, "secondary_counts": counts_s, "agreement_counts": agreement, "primary": {"accuracy": counts_p["correct"] / counts_p["total"], "minimum_recall": min(_recall(p_pred, labels.cpu())), "prediction_histogram": torch.bincount(p_pred, minlength=10).tolist()}, "secondary": {"accuracy": counts_s["correct"] / counts_s["total"], "minimum_recall": min(_recall(s_pred, labels.cpu())), "prediction_histogram": torch.bincount(s_pred, minlength=10).tolist()}, "agreement": agreement["correct"] / agreement["total"], "coverage": coverage, "diversity_ratio": diversity, "label_shuffled_counts": shuffled_counts, "memorization": _memorization(views, labels, context), "finite": bool(torch.isfinite(views).all())}
+    coverage = {"primary": conditional_coverage_ratio(p_features, views.cpu(), p_reference, reference, labels_cpu, epsilon=0.05, iterations=20, seed=seed), "secondary": conditional_coverage_ratio(s_features, views.cpu(), s_reference, reference, labels_cpu, epsilon=0.05, iterations=20, seed=seed)}
+    diversity = {"primary": relative_diversity_ratios(p_features, p_reference, labels_cpu), "secondary": relative_diversity_ratios(s_features, s_reference, labels_cpu)}
+    row = {"count": int(labels.numel()), "primary_counts": counts_p, "secondary_counts": counts_s, "agreement_counts": agreement, "primary": {"accuracy": counts_p["correct"] / counts_p["total"], "minimum_recall": min(_recall(p_pred, labels_cpu)), "prediction_histogram": torch.bincount(p_pred, minlength=10).tolist()}, "secondary": {"accuracy": counts_s["correct"] / counts_s["total"], "minimum_recall": min(_recall(s_pred, labels_cpu)), "prediction_histogram": torch.bincount(s_pred, minlength=10).tolist()}, "agreement": agreement["correct"] / agreement["total"], "coverage": coverage, "diversity_ratio": diversity, "label_shuffled_counts": shuffled_counts, "memorization": _memorization(views, labels, context), "finite": bool(torch.isfinite(views).all())}
     row["semantic_pass"] = bool(counts_p["correct"] >= 950 and counts_s["correct"] >= 950 and min(counts_p["recall_correct"]) >= 90 and min(counts_s["recall_correct"]) >= 90)
     row["agreement_pass"] = agreement["correct"] >= 950
     row["safety_pass"] = bool(row["finite"] and row["agreement_pass"] and float(camera_code_fraction(views, labels).item()) >= CAMERA_CODE_MINIMUM and all(0.70 <= value <= 1.30 for name in diversity for value in diversity[name]) and all(value <= 1.50 for value in coverage.values()) and shuffled_counts["correct"] <= 200 and row["memorization"]["passed"] and float((views >= 1).float().mean()) <= SATURATION_MAXIMUM)
