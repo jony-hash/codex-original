@@ -332,7 +332,7 @@ def _semantic_metrics(primary: torch.nn.Module, secondary: torch.nn.Module, view
     p_features, p_logits = _eval_model(primary, views)
     s_features, s_logits = _eval_model(secondary, views)
     reference_count = int(labels.numel() // CLASS_COUNT)
-    reference = _balanced_reference(reference_images.cpu(), reference_labels.cpu(), seed=seed + 19, count=reference_count)
+    reference, _ = _balanced_reference(reference_images.cpu(), reference_labels.cpu(), seed=seed + 19, count=reference_count)
     p_reference, _ = _eval_model(primary, reference.to(views.device))
     s_reference, _ = _eval_model(secondary, reference.to(views.device))
     p_pred, s_pred = p_logits.argmax(1), s_logits.argmax(1)
