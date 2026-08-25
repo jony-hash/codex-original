@@ -15,6 +15,7 @@ class StrictModel(BaseModel):
 class FormalSystemConfig(StrictModel):
     kind: Literal[
         "formal_amplitude_finite_crop_identity",
+        "formal_amplitude_finite_crop_quadrature_v1",
         "diagnostic_amplitude_finite_crop_identity",
         "diagnostic_amplitude_finite_crop_identity_short_spacing_v1",
         "diagnostic_amplitude_near_conjugate_relay_identity_v1",
@@ -105,6 +106,7 @@ class FormalSystemConfig(StrictModel):
     def is_formal(self) -> bool:
         return self.kind in {
             "formal_amplitude_finite_crop_identity",
+            "formal_amplitude_finite_crop_quadrature_v1",
             "formal_amplitude_near_conjugate_relay_identity_v1",
         }
 
@@ -291,6 +293,65 @@ class ConditionalGenerationConfig(StrictModel):
         return self
 
 
+class SpatialQuadratureGenerationConfig(StrictModel):
+    """Formal v3 hierarchical generator and fixed four-port readout contract."""
+
+    code_dim: Literal[32] = 32
+    global_code_dim: Literal[8] = 8
+    local_code_dim: Literal[24] = 24
+    label_embedding_dim: Literal[32] = 32
+    base_channels: Literal[128] = 128
+    fixed_exposure_scale: float = Field(default=1.0, gt=0.0)
+    receiver_exposure: float = Field(default=1.0, gt=0.0)
+    lo_amplitude: float = Field(default=1.0, gt=0.0)
+    r_calibration_scale: float = Field(default=1.0, gt=0.0)
+    logical_batch_size: int = Field(default=50, ge=50)
+    electronic_epochs: Literal[10] = 10
+    joint_epochs: Literal[5] = 5
+    generator_learning_rate: float = Field(default=2.0e-4, gt=0.0)
+    phase_learning_rate: float = Field(default=5.0e-5, gt=0.0)
+    sinkhorn_epsilon: float = Field(default=0.05, gt=0.0)
+    sinkhorn_iterations: int = Field(default=20, ge=1)
+    initialization_seed: Literal[9241] = 9241
+    training_seed: Literal[1234] = 1234
+    calibration_seed: Literal[173205] = 173205
+    validation_bank_seeds: tuple[Literal[32452843], Literal[49979687]] = (32452843, 49979687)
+    receiver_port_shape: tuple[Literal[200], Literal[200]] = (200, 200)
+    receiver_layout: tuple[Literal[2], Literal[2]] = (2, 2)
+    receiver_sensor_shape: tuple[Literal[400], Literal[400]] = (400, 400)
+    receiver_pixel_pitch_um: Literal[2.5] = 2.5
+    lo_calibration_quantile: Literal[0.999] = 0.999
+    receiver_headroom: Literal[0.80] = 0.80
+    beamsplitter_amplitude_factor: Literal[0.5] = 0.5
+    formal_promotion: Literal[False] = False
+    fiber_training_authorized: Literal[False] = False
+    no_software_decoder: Literal[True] = True
+    objective_sinkhorn_weight: Literal[1.0] = 1.0
+    objective_semantic_weight: Literal[0.5] = 0.5
+    objective_diversity_weight: Literal[0.25] = 0.25
+    objective_code_weight: Literal[0.1] = 0.1
+    objective_code_fraction_weight: Literal[1.0] = 1.0
+    objective_coverage_weight: Literal[0.5] = 0.5
+    objective_saturation_weight: Literal[0.1] = 0.1
+    objective_smoothness_weight: Literal[1.0e-5] = 1.0e-5
+
+    @model_validator(mode="after")
+    def spatial_contract_is_locked(self) -> "SpatialQuadratureGenerationConfig":
+        if self.logical_batch_size % 10:
+            raise ValueError("spatial quadrature logical_batch_size must be divisible by ten")
+        if self.logical_batch_size // 10 < 5:
+            raise ValueError("spatial quadrature batches require at least five samples per label")
+        if self.global_code_dim + self.local_code_dim != self.code_dim:
+            raise ValueError("spatial quadrature code split must equal code_dim")
+        if self.receiver_sensor_shape != (400, 400) or self.receiver_port_shape != (200, 200):
+            raise ValueError("spatial quadrature receiver geometry is fixed at 400x400 with 200x200 ports")
+        if self.receiver_layout != (2, 2) or self.receiver_pixel_pitch_um != 2.5:
+            raise ValueError("spatial quadrature receiver layout and pixel pitch are fixed")
+        if self.r_calibration_scale <= 0.0 or self.receiver_exposure <= 0.0 or self.lo_amplitude <= 0.0:
+            raise ValueError("spatial quadrature receiver calibration must be positive")
+        return self
+
+
 class ExecutionConfig(StrictModel):
     """Memory-safe physical execution controls; they never alter the optics."""
 
@@ -314,6 +375,7 @@ class V2Config(StrictModel):
         "legacy_v2_distillation",
         "conditional_global_amplitude_v1",
         "conditional_identity_logit_amplitude_v2",
+        "conditional_spatial_quadrature_v3",
         "conditional_class_conditioned_modes_v3",
         "conditional_parity_stabilized_modes_v4",
         "conditional_multi_anchor_local_modes_v5",
@@ -333,6 +395,7 @@ class V2Config(StrictModel):
     capacity_audit: CapacityAuditConfig | None = None
     student_training: StudentTrainingConfig | None = None
     conditional_generation: ConditionalGenerationConfig | None = None
+    spatial_quadrature_generation: SpatialQuadratureGenerationConfig | None = None
     execution: ExecutionConfig = Field(default_factory=ExecutionConfig)
     run: RunConfig
 
@@ -343,15 +406,26 @@ class V2Config(StrictModel):
 
     def formal_audit_contract_is_locked(self) -> "V2Config":
         """Compatibility implementation for lifecycle-specific validation."""
-        if (
-            self.run.evidence_tier == "acceptance"
-            and self.architecture != "conditional_identity_logit_amplitude_v2"
-        ):
+        if self.run.evidence_tier == "acceptance" and self.architecture not in {
+            "conditional_identity_logit_amplitude_v2",
+            "conditional_spatial_quadrature_v3",
+        }:
             raise ValueError(
                 "only conditional_identity_logit_amplitude_v2 may use "
                 "evidence_tier=acceptance; legacy and diagnostic v2 "
                 "architectures are diagnostic-only"
             )
+        if self.architecture == "conditional_spatial_quadrature_v3":
+            if self.spatial_quadrature_generation is None:
+                raise ValueError("spatial quadrature architecture requires spatial_quadrature_generation")
+            if self.conditional_generation is not None or any(
+                value is not None
+                for value in (self.teacher, self.prototype_calibration, self.capacity_audit, self.student_training)
+            ):
+                raise ValueError("spatial quadrature architecture rejects legacy and identity generation fields")
+            if not self.system.is_formal or self.system.kind != "formal_amplitude_finite_crop_quadrature_v1":
+                raise ValueError("spatial quadrature architecture requires the formal quadrature system")
+            return self
         if self.architecture in {
             "conditional_global_amplitude_v1",
             "conditional_identity_logit_amplitude_v2",

@@ -1,0 +1,54 @@
+schema_version: 2
+architecture: conditional_spatial_quadrature_v3
+system:
+  kind: formal_amplitude_finite_crop_quadrature_v1
+spatial_quadrature_generation:
+  code_dim: 32
+  global_code_dim: 8
+  local_code_dim: 24
+  label_embedding_dim: 32
+  base_channels: 128
+  fixed_exposure_scale: 1.0
+  receiver_exposure: 1.0
+  lo_amplitude: 1.0
+  r_calibration_scale: 1.0
+  logical_batch_size: 50
+  electronic_epochs: 10
+  joint_epochs: 5
+  generator_learning_rate: 0.0002
+  phase_learning_rate: 0.00005
+  sinkhorn_epsilon: 0.05
+  sinkhorn_iterations: 20
+  initialization_seed: 9241
+  training_seed: 1234
+  calibration_seed: 173205
+  validation_bank_seeds: [32452843, 49979687]
+  receiver_port_shape: [200, 200]
+  receiver_layout: [2, 2]
+  receiver_sensor_shape: [400, 400]
+  receiver_pixel_pitch_um: 2.5
+  lo_calibration_quantile: 0.999
+  receiver_headroom: 0.80
+  beamsplitter_amplitude_factor: 0.5
+  formal_promotion: false
+  fiber_training_authorized: false
+  no_software_decoder: true
+  objective_sinkhorn_weight: 1.0
+  objective_semantic_weight: 0.5
+  objective_diversity_weight: 0.25
+  objective_code_weight: 0.1
+  objective_code_fraction_weight: 1.0
+  objective_coverage_weight: 0.5
+  objective_saturation_weight: 0.1
+  objective_smoothness_weight: 0.00001
+execution:
+  prototype_microbatch_size: 1
+  capacity_microbatch_size: 1
+  training_microbatch_size: 1
+  evaluation_microbatch_size: 1
+  activation_checkpoint: true
+run:
+  run_name: formal_v3_spatial_quadrature
+  output_root: outputs
+  evidence_tier: acceptance
+  device: cuda

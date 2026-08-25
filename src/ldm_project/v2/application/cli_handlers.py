@@ -11,6 +11,7 @@ from typing import Literal
 
 CallKind = Literal["args", "args+config", "architecture-dispatch"]
 IDENTITY_ARCHITECTURE = "conditional_identity_logit_amplitude_v2"
+SPATIAL_QUADRATURE_ARCHITECTURE = "conditional_spatial_quadrature_v3"
 # Public monkeypatch seam retained for the diagnostic prototype oracle.  Values
 # are forwarded only if that legacy command is selected.
 _CONTROL_ORACLE_STEPS = 400
@@ -98,6 +99,33 @@ _IDENTITY_HANDLERS = {
     ),
     ("student", "audit-memorization"): HandlerSpec(
         ".current.dataset:audit_memorization", "args+config"
+    ),
+}
+
+_SPATIAL_QUADRATURE_HANDLERS = {
+    ("student", "train"): HandlerSpec(
+        ".current.spatial_quadrature:spatial_train", "args+config"
+    ),
+    ("student", "sample"): HandlerSpec(
+        ".current.spatial_quadrature:spatial_sample", "args+config"
+    ),
+    ("student", "evaluate"): HandlerSpec(
+        ".current.spatial_quadrature:spatial_evaluate", "args+config"
+    ),
+    ("student", "train-spatial-electronic"): HandlerSpec(
+        ".current.spatial_quadrature:train_spatial_electronic", "args+config"
+    ),
+    ("student", "spatial-quadrature-smoke"): HandlerSpec(
+        ".current.spatial_quadrature:spatial_quadrature_smoke", "args+config"
+    ),
+    ("audit", "spatial-electronic-preflight"): HandlerSpec(
+        ".current.spatial_quadrature:spatial_electronic_preflight", "args+config"
+    ),
+    ("audit", "admit-spatial-electronic"): HandlerSpec(
+        ".current.spatial_quadrature:admit_spatial_electronic", "args+config"
+    ),
+    ("audit", "spatial-quadrature-preflight"): HandlerSpec(
+        ".current.spatial_quadrature:spatial_quadrature_preflight", "args+config"
     ),
 }
 

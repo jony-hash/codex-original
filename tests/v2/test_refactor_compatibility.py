@@ -26,7 +26,10 @@ def test_active_v2_configurations_load_with_explicit_architecture(relative: str)
     config = load_config(CONFIG_ROOT / relative)
     assert config.schema_version == 2
     if relative.startswith("current/"):
-        assert config.architecture == "conditional_identity_logit_amplitude_v2"
+        assert config.architecture in {
+            "conditional_identity_logit_amplitude_v2",
+            "conditional_spatial_quadrature_v3",
+        }
 
 
 @pytest.mark.parametrize(

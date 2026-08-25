@@ -648,3 +648,12 @@ def register_audit(root: argparse._SubParsersAction) -> None:
     objective_calibration.add_argument("--config", required=True)
     for name in ("dataset_root", "evaluator_checkpoint", "initialization_checkpoint", "injection_evidence"):
         objective_calibration.add_argument("--" + name.replace("_", "-"), required=True)
+    spatial_electronic_preflight = audit.add_parser("spatial-electronic-preflight")
+    for name in ("config", "dataset_root", "evaluator_checkpoint", "output"):
+        spatial_electronic_preflight.add_argument("--" + name.replace("_", "-"), required=True)
+    spatial_electronic_admit = audit.add_parser("admit-spatial-electronic")
+    for name in ("config", "dataset_root", "evaluator_checkpoint", "secondary_evaluator_checkpoint", "electronic_checkpoint", "training_evidence", "output"):
+        spatial_electronic_admit.add_argument("--" + name.replace("_", "-"), required=True)
+    spatial_quadrature_preflight = audit.add_parser("spatial-quadrature-preflight")
+    for name in ("config", "dataset_root", "evaluator_checkpoint", "electronic_checkpoint", "electronic_admission_evidence", "output"):
+        spatial_quadrature_preflight.add_argument("--" + name.replace("_", "-"), required=True)

@@ -39,6 +39,9 @@ def register_student(root: argparse._SubParsersAction) -> None:
         "semantic_recovery_evidence",
         "initialization_checkpoint",
         "injection_evidence",
+        "spatial_electronic_admission_evidence",
+        "spatial_quadrature_smoke_evidence",
+        "spatial_electronic_checkpoint",
     ):
         train.add_argument("--" + name.replace("_", "-"))
     sample = student.add_parser("sample")
@@ -48,6 +51,7 @@ def register_student(root: argparse._SubParsersAction) -> None:
             "--" + name.replace("_", "-"),
             required=name in {"checkpoint", "codes", "labels", "output"},
         )
+    sample.add_argument("--view-output")
     evaluator = student.add_parser("train-evaluator")
     evaluator.add_argument("--config", required=True)
     evaluator.add_argument("--dataset-root", required=True)
@@ -391,3 +395,10 @@ def register_student(root: argparse._SubParsersAction) -> None:
         "smoke_evidence",
     ):
         transport_train.add_argument("--" + name.replace("_", "-"), required=True)
+    train_spatial_electronic = student.add_parser("train-spatial-electronic")
+    for name in ("config", "dataset_root", "evaluator_checkpoint", "preflight_evidence", "output"):
+        train_spatial_electronic.add_argument("--" + name.replace("_", "-"), required=True)
+    spatial_smoke = student.add_parser("spatial-quadrature-smoke")
+    for name in ("config", "dataset_root", "evaluator_checkpoint", "electronic_checkpoint", "quadrature_preflight_evidence", "output"):
+        spatial_smoke.add_argument("--" + name.replace("_", "-"), required=True)
+    spatial_smoke.add_argument("--steps", type=int, default=400)

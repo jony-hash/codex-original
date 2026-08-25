@@ -179,7 +179,11 @@ class RepoLayoutTests(unittest.TestCase):
         self.assertNotIn("teacher pair/target manifest", active_runtime)
         self.assertNotIn("prototype-reachability", active_runtime)
         current_configs = sorted((ROOT / "configs" / "v2" / "current").glob("*.yaml"))
-        self.assertEqual(current_configs, [current])
+        self.assertIn(current, current_configs)
+        self.assertIn(
+            ROOT / "configs" / "v2" / "current" / "formal_spatial_quadrature_v3.yaml",
+            current_configs,
+        )
 
     def test_train_entry_delegates_to_package_cli_main(self) -> None:
         from ldm_project.train_cli import main

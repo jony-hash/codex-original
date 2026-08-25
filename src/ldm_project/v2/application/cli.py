@@ -11,8 +11,10 @@ from pathlib import Path
 
 from .cli_handlers import (
     IDENTITY_ARCHITECTURE,
+    SPATIAL_QUADRATURE_ARCHITECTURE,
     _DIAGNOSTIC_HANDLERS,
     _IDENTITY_HANDLERS,
+    _SPATIAL_QUADRATURE_HANDLERS,
     _LEGACY_HANDLERS,
 )
 
@@ -151,6 +153,14 @@ def _dispatch(args: argparse.Namespace) -> int:
 
         return int(dispatch(args) or 0)
     config = _load_config(args)
+    if config is not None and config.architecture == SPATIAL_QUADRATURE_ARCHITECTURE:
+        spec = _SPATIAL_QUADRATURE_HANDLERS.get((args.domain, args.action))
+        if spec is None:
+            raise RuntimeError(
+                f"spatial quadrature architecture has no current handler for "
+                f"{args.domain}/{args.action}"
+            )
+        return int(_resolve(spec)(args, config) or 0)
     spec = _IDENTITY_HANDLERS.get((args.domain, args.action))
     if config is not None and config.architecture == IDENTITY_ARCHITECTURE:
         if spec is None:
