@@ -143,6 +143,10 @@ def _dispatch(args: argparse.Namespace) -> int:
             from .research.joint_quadrature_optical_capacity import dispatch
 
             return int(dispatch(args) or 0)
+        if args.research_program == "electronic-distribution-recovery":
+            from .research.electronic_distribution_recovery import dispatch
+
+            return int(dispatch(args) or 0)
         if args.research_program == "smf-modal-density-attribution":
             from .research.smf_modal_density_attribution import dispatch
 

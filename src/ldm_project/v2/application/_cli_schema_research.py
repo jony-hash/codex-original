@@ -1131,6 +1131,45 @@ def register_research(root: argparse._SubParsersAction) -> None:
         command.add_argument("--output")
         command.add_argument("--measurement-evidence")
 
+    recovery = research_programs.add_parser(
+        "electronic-distribution-recovery",
+        help="fail-closed v3 electronic range diagnosis",
+    )
+    recovery_actions = recovery.add_subparsers(dest="research_action", required=True)
+
+    def recovery_common(command):
+        command.add_argument("--config", required=True)
+        command.add_argument("--dataset-root", required=True)
+        command.add_argument("--generator-checkpoint", required=True)
+        command.add_argument("--primary-evaluator-checkpoint", required=True)
+        command.add_argument("--secondary-evaluator-checkpoint", required=True)
+        command.add_argument("--primary-qualification-evidence", required=True)
+        command.add_argument("--secondary-qualification-evidence", required=True)
+        command.add_argument("--device", choices=("cuda", "cpu"), default="cuda")
+        command.add_argument("--output", required=True)
+
+    validate = recovery_actions.add_parser("validate")
+    recovery_common(validate)
+    gate_audit = recovery_actions.add_parser("gate-audit")
+    recovery_common(gate_audit)
+    gate_audit.add_argument("--validation-evidence", required=True)
+    preflight = recovery_actions.add_parser("preflight")
+    recovery_common(preflight)
+    preflight.add_argument("--validation-evidence", required=True)
+    preflight.add_argument("--gate-audit-evidence", required=True)
+    audit = recovery_actions.add_parser("audit")
+    recovery_common(audit)
+    audit.add_argument("--gate-audit-evidence", required=True)
+    audit.add_argument("--preflight-evidence", required=True)
+    report = recovery_actions.add_parser("report")
+    report.add_argument("--config", required=True)
+    report.add_argument("--output", required=True)
+    report.add_argument("--audit-evidence", required=True)
+    closeout = recovery_actions.add_parser("closeout")
+    closeout.add_argument("--config", required=True)
+    closeout.add_argument("--output", required=True)
+    closeout.add_argument("--report-evidence", required=True)
+
     smf = research_programs.add_parser(
         "smf-modal-density-attribution",
         help="synthetic single-mode port-density upper-bound lifecycle",
