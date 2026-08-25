@@ -36,6 +36,7 @@ from ...student.conditional import (
 from ...student.conditional_acceptance import conditional_coverage_ratio, memorization_statistics
 from ...student.evaluator import (
     FrozenMNISTEvaluator,
+    SmoothMNISTEvaluator,
     balanced_batches,
     evaluator_checkpoint_hash,
     load_frozen_evaluator,
@@ -205,6 +206,19 @@ def _metric_summary(
     return summary
 
 
+def _load_secondary_evaluator(path: str | Path, *, device: torch.device, split_hash: str) -> SmoothMNISTEvaluator:
+    payload = safe_torch_load(path)
+    if not isinstance(payload, dict) or payload.get("architecture_kind") != SmoothMNISTEvaluator.architecture_kind:
+        raise ValueError("secondary evaluator checkpoint has an incompatible architecture")
+    if payload.get("split_manifest_hash") != split_hash:
+        raise ValueError("secondary evaluator checkpoint split mismatch")
+    if float(payload.get("validation_accuracy", 0.0)) < 0.985:
+        raise ValueError("secondary evaluator validation accuracy is below the qualification gate")
+    model = SmoothMNISTEvaluator().to(device)
+    model.load_state_dict(payload["state_dict"], strict=True)
+    return model.freeze()
+
+
 def _electronic_pass(metrics: dict[str, Any]) -> bool:
     memo = metrics.get("memorization", {}).get("per_class", [])
     memo_pass = bool(memo) and all(float(row["anomalous_rate"]) <= 0.05 for row in memo)
@@ -351,7 +365,7 @@ def admit_spatial_electronic(args, config: V2Config) -> int:
     primary_hash = evaluator_checkpoint_hash(args.evaluator_checkpoint)
     secondary_hash = evaluator_checkpoint_hash(args.secondary_evaluator_checkpoint)
     primary, _ = load_frozen_evaluator(args.evaluator_checkpoint, device=_device(config))
-    secondary, _ = load_frozen_evaluator(args.secondary_evaluator_checkpoint, device=_device(config))
+    secondary = _load_secondary_evaluator(args.secondary_evaluator_checkpoint, device=_device(config), split_hash=split.manifest_hash)
     device = _device(config)
     bundle = seeded_spatial_bundle(config).to(device)
     _load_generator_checkpoint(args.electronic_checkpoint, bundle, config, split_hash=split.manifest_hash, evaluator_hash=primary_hash)
@@ -539,7 +553,7 @@ def spatial_evaluate(args, config: V2Config) -> int:
     if file_sha256(bundle_path) != checkpoint_hash:
         raise ValueError("v3 checkpoint does not match training evidence")
     primary, _ = load_frozen_evaluator(args.evaluator_checkpoint, device=device)
-    secondary, _ = load_frozen_evaluator(args.acceptance_evaluator_checkpoint, device=device)
+    secondary = _load_secondary_evaluator(args.acceptance_evaluator_checkpoint, device=device, split_hash=split.manifest_hash)
     test_images, test_labels = load_local_mnist(args.dataset_root, train=False)
     raw_rows, view_rows, label_rows = [], [], []
     settings = config.spatial_quadrature_generation
