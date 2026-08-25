@@ -9,6 +9,7 @@ post-inversion H-LIR are deliberately separated from the image-only objective.
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import math
 import os
@@ -676,7 +677,7 @@ def _preflight(args: argparse.Namespace, config: dict[str, Any], lineage: dict[s
         resumed_optimizer.step()
         with torch.no_grad():
             resumed.copy_(_project_codes(resumed, radius))
-    checkpoint = {"codes": resumed.detach().cpu(), "optimizer": resumed_optimizer.state_dict(), "step": 2}
+    checkpoint = {"codes": resumed.detach().cpu(), "optimizer": copy.deepcopy(resumed_optimizer.state_dict()), "step": 2}
     restored = checkpoint["codes"].to(device).detach().clone().requires_grad_(True)
     restored_optimizer = torch.optim.Adam((restored,), lr=config["inversion_learning_rate"])
     restored_optimizer.load_state_dict(checkpoint["optimizer"])
@@ -695,12 +696,12 @@ def _preflight(args: argparse.Namespace, config: dict[str, Any], lineage: dict[s
         resumed.copy_(_project_codes(resumed, radius))
     resume_max_abs_diff = float(restored.detach().sub(resumed.detach()).abs().max().item())
     resume_exact = torch.equal(restored.detach(), resumed.detach())
-    negative_labels = (labels[:16] + 1) % CLASS_COUNT
-    negative_codes = initial[:16].detach().clone().requires_grad_(True)
+    negative_labels = (labels + 1) % CLASS_COUNT
+    negative_codes = initial.detach().clone().requires_grad_(True)
     negative_optimizer = torch.optim.Adam((negative_codes,), lr=config["inversion_learning_rate"])
     for _ in range(3):
         negative_optimizer.zero_grad(set_to_none=True)
-        loss = _image_loss(_generator_views(generator, negative_codes, negative_labels), targets[:16], scales)
+        loss = _image_loss(_generator_views(generator, negative_codes, negative_labels), targets, scales)
         loss.backward()
         negative_optimizer.step()
         with torch.no_grad():
