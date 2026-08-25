@@ -67,6 +67,7 @@ FORBIDDEN_ACTIONS = (
     "candidate_export",
     "promotion",
 )
+_POOL_WEIGHTS: dict[tuple[int, int, str, str], Tensor] = {}
 
 
 def _json(path: str | Path) -> dict[str, Any]:
@@ -422,13 +423,42 @@ def _sobel(value: Tensor) -> tuple[Tensor, Tensor]:
     return F.conv2d(value, kernel_x, padding=1), F.conv2d(value, kernel_y, padding=1)
 
 
+def _block_pool(value: Tensor, factor: int) -> Tensor:
+    if value.shape[-2] % factor or value.shape[-1] % factor:
+        raise ValueError("deterministic block pooling requires divisible spatial dimensions")
+    height, width = value.shape[-2:]
+    return value.reshape(value.shape[0], value.shape[1], height // factor, factor, width // factor, factor).mean((3, 5))
+
+
+def _adaptive_pool_weights(input_size: int, output_size: int, *, device: torch.device, dtype: torch.dtype) -> Tensor:
+    key = (input_size, output_size, str(device), str(dtype))
+    cached = _POOL_WEIGHTS.get(key)
+    if cached is not None:
+        return cached
+    weights = torch.zeros((output_size, input_size), device=device, dtype=dtype)
+    for output_index in range(output_size):
+        start = (output_index * input_size) // output_size
+        end = ((output_index + 1) * input_size + output_size - 1) // output_size
+        weights[output_index, start:end] = 1.0 / float(end - start)
+    _POOL_WEIGHTS[key] = weights
+    return weights
+
+
+def _deterministic_adaptive_pool(value: Tensor, output_size: int = 28) -> Tensor:
+    height, width = value.shape[-2:]
+    height_weights = _adaptive_pool_weights(height, output_size, device=value.device, dtype=value.dtype)
+    width_weights = _adaptive_pool_weights(width, output_size, device=value.device, dtype=value.dtype)
+    horizontal = torch.einsum("oi,ncij->ncoj", width_weights, value)
+    return torch.einsum("pj,ncoj->ncop", height_weights, horizontal)
+
+
 def _distance_terms(value: Tensor, target: Tensor) -> Tensor:
     value_x, value_y = _sobel(value)
     target_x, target_y = _sobel(target)
     return torch.stack((
         F.smooth_l1_loss(value, target),
-        F.smooth_l1_loss(F.avg_pool2d(value, 2), F.avg_pool2d(target, 2)),
-        F.smooth_l1_loss(F.avg_pool2d(value, 4), F.avg_pool2d(target, 4)),
+        F.smooth_l1_loss(_block_pool(value, 2), _block_pool(target, 2)),
+        F.smooth_l1_loss(_block_pool(value, 4), _block_pool(target, 4)),
         F.smooth_l1_loss(value_x, target_x),
         F.smooth_l1_loss(value_y, target_y),
     ))
@@ -443,7 +473,7 @@ def _image_loss(value: Tensor, target: Tensor, scales: Tensor) -> Tensor:
 
 
 def _generator_views(generator: HierarchicalSpatialAmplitudeGenerator, codes: Tensor, labels: Tensor) -> Tensor:
-    return F.adaptive_avg_pool2d(generator(codes, labels), (28, 28))
+    return _deterministic_adaptive_pool(generator(codes, labels), 28)
 
 
 def _optimize_codes(generator: HierarchicalSpatialAmplitudeGenerator, initial: Tensor, labels: Tensor, targets: Tensor, *, steps: int, lr: float, microbatch: int, radius: float | None, scales: Tensor, state_path: str | Path | None = None) -> tuple[Tensor, dict[str, Any]]:
@@ -489,7 +519,7 @@ def _feature_blocks(value: Tensor) -> tuple[Tensor, ...]:
             v = total - u
             basis = torch.cos(math.pi * (2.0 * xx + 1.0) * u / 56.0) * torch.cos(math.pi * (2.0 * yy + 1.0) * v / 56.0)
             dct.append((value[:, 0] * basis).mean(dim=(-2, -1), keepdim=False))
-    return (value.flatten(1), F.avg_pool2d(value, 2).flatten(1), F.avg_pool2d(value, 4).flatten(1), sobel_x.flatten(1), sobel_y.flatten(1), torch.stack(dct, dim=1))
+    return (value.flatten(1), _block_pool(value, 2).flatten(1), _block_pool(value, 4).flatten(1), sobel_x.flatten(1), sobel_y.flatten(1), torch.stack(dct, dim=1))
 
 
 def _feature_scales(value: Tensor, reference: Tensor) -> Tensor:

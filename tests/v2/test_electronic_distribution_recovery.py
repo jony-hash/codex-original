@@ -7,6 +7,7 @@ from ldm_project.v2.application.research.electronic_distribution_recovery import
     CODE_DIM,
     _chi_square_radius,
     _config,
+    _deterministic_adaptive_pool,
     _effective_rank,
     _geometry_fixture,
     _partition,
@@ -74,6 +75,13 @@ def test_package_a_chi_square_projection_respects_registered_radius() -> None:
     projected = _project_codes(codes, radius)
     assert torch.all(projected.square().sum(dim=1).sqrt() <= radius + 1.0e-5)
     assert radius > 0.0
+
+
+def test_package_a_deterministic_pool_matches_formal_adaptive_average_pool() -> None:
+    value = torch.rand(2, 1, 200, 200)
+    expected = torch.nn.functional.adaptive_avg_pool2d(value, (28, 28))
+    actual = _deterministic_adaptive_pool(value)
+    assert torch.allclose(actual, expected, atol=1.0e-6, rtol=1.0e-6)
 
 
 def test_package_a_jacobian_fixture_has_known_spectrum_and_zero_negative_control() -> None:
