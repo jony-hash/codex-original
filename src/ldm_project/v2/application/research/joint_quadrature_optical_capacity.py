@@ -288,6 +288,7 @@ def _view28(raw: Tensor) -> Tensor:
 
 
 def _counts(prediction: Tensor, labels: Tensor) -> dict[str, Any]:
+    labels = labels.to(prediction.device)
     return {
         "correct": int((prediction == labels).sum()),
         "total": int(labels.numel()),
