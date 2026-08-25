@@ -634,7 +634,10 @@ def _build_measurement(args: argparse.Namespace, *, samples_per_class: int, incl
     lo_amplitude = float(calibration_fields.abs().square().mean().sqrt().item())
     calibration_ports = _balanced_ports(calibration_fields, lo_amplitude, 1.0)
     calibration_max = torch.cat([calibration_ports[name].flatten() for name in ("r_plus", "r_minus", "j_plus", "j_minus")])
-    quantile = float(torch.quantile(calibration_max, 0.999).item())
+    # CUDA quantile rejects this large calibration vector on the supported
+    # runtime.  The calibration buffer is already fixed and non-learned; a
+    # CPU reduction preserves the registered scalar without changing inputs.
+    quantile = float(torch.quantile(calibration_max.detach().cpu(), 0.999).item())
     exposure = 0.80 / max(quantile, 1.0e-12)
     banks = {}
     for seed in BANK_SEEDS:
