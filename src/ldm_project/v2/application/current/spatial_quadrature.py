@@ -178,6 +178,16 @@ def _electronic_views(bundle: SpatialQuadratureBundle, codes: torch.Tensor, labe
     return F.adaptive_avg_pool2d(command, (28, 28)), command
 
 
+def _evaluator_features(evaluator: FrozenMNISTEvaluator, views: torch.Tensor, *, chunk_size: int = 50) -> tuple[torch.Tensor, torch.Tensor]:
+    features, logits = [], []
+    with torch.no_grad():
+        for start in range(0, views.shape[0], chunk_size):
+            feature, logit = evaluator(views[start : start + chunk_size])
+            features.append(feature)
+            logits.append(logit)
+    return torch.cat(features, dim=0), torch.cat(logits, dim=0)
+
+
 def _metric_summary(
     evaluator: FrozenMNISTEvaluator,
     views: torch.Tensor,
@@ -188,9 +198,8 @@ def _metric_summary(
     train_views: torch.Tensor | None = None,
     train_labels: torch.Tensor | None = None,
 ) -> dict[str, Any]:
-    features, logits = evaluator(views)
-    with torch.no_grad():
-        real_features, _ = evaluator(real_views)
+    features, logits = _evaluator_features(evaluator, views)
+    real_features, _ = _evaluator_features(evaluator, real_views)
     prediction = logits.argmax(dim=1)
     recalls = [float((prediction[labels == label] == label).float().mean().item()) for label in range(10)]
     summary: dict[str, Any] = {
@@ -208,7 +217,7 @@ def _metric_summary(
     summary["label_shift_accuracy"] = float((prediction == shifted).float().mean().item())
     if train_views is not None and train_labels is not None:
         with torch.no_grad():
-            train_features, _ = evaluator(train_views)
+            train_features, _ = _evaluator_features(evaluator, train_views)
         summary["memorization"] = memorization_statistics(
             features.cpu(), labels.cpu(), train_features.cpu(), train_labels.cpu()
         )
