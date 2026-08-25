@@ -386,7 +386,8 @@ def admit_spatial_electronic(args, config: V2Config) -> int:
         bank_images = bank_images.to(device)
         bank_labels = bank_labels.to(device)
         codes = spatial_codes(bank_labels.numel(), device=device, seed=int(seed))
-        views, commands = _electronic_views(bundle, codes, bank_labels)
+        with torch.no_grad():
+            views, commands = _electronic_views(bundle, codes, bank_labels)
         primary_metrics = _metric_summary(primary, views, bank_labels, bank_images, commands=commands, train_views=images.to(device), train_labels=train_labels.to(device))
         secondary_metrics = _metric_summary(secondary, views, bank_labels, bank_images, commands=commands)
         bank_metrics.append({"bank": bank, "seed": seed, "primary": primary_metrics, "secondary": secondary_metrics})
