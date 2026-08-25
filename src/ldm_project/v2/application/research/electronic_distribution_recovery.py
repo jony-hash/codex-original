@@ -709,7 +709,7 @@ def _preflight(args: argparse.Namespace, config: dict[str, Any], lineage: dict[s
     primary, secondary = _load_evaluators(args, device)
     counter = Counter()
     negative_predictions = _eval_chunks(primary, _generator_views(generator, negative_codes.detach(), negative_labels), counter)[1].argmax(1)
-    negative_metrics = _classification_metrics(negative_predictions, negative_labels)
+    negative_metrics = _classification_metrics(negative_predictions, labels)
     after_state = state_content_hash({name: value.detach().cpu() for name, value in generator.state_dict().items()})
     memory = int(torch.cuda.max_memory_allocated(device))
     passed = bool(all(torch.isfinite(torch.tensor(losses))) and max(latent_updates) > 0.0 and before_state == after_state and resume_exact and memory < config["memory_limit_bytes"] and not (negative_metrics["accuracy"] >= config["primary_accuracy_minimum"] and negative_metrics["minimum_recall"] >= config["minimum_recall_minimum"]))
