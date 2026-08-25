@@ -553,23 +553,32 @@ def _effective_rank(singular: Tensor, threshold: float) -> dict[str, Any]:
 
 def _jacobian(generator: HierarchicalSpatialAmplitudeGenerator, codes: Tensor, labels: Tensor, scales: Tensor, threshold: float) -> list[dict[str, Any]]:
     rows = []
-    for index in range(codes.shape[0]):
-        code = codes[index].detach().clone().requires_grad_(True)
-        label = labels[index : index + 1]
-        def function(current: Tensor) -> Tensor:
-            return _feature_vector(_generator_views(generator, current.unsqueeze(0), label), scales).squeeze(0)
-        matrix = torch.autograd.functional.jacobian(function, code, create_graph=False, vectorize=True)
+    def function(current: Tensor, current_label: Tensor) -> Tensor:
+        return _feature_vector(
+            _generator_views(generator, current.unsqueeze(0), current_label.unsqueeze(0)), scales
+        ).squeeze(0)
+
+    for code, label in zip(codes.detach(), labels, strict=True):
+        matrix = torch.autograd.functional.jacobian(
+            lambda current: function(current, label),
+            code,
+            create_graph=False,
+            vectorize=True,
+            strategy="forward-mode",
+        )
         if matrix.ndim != 2 or not torch.isfinite(matrix).all():
             raise ValueError("H-LGS Jacobian is invalid")
         direction = torch.ones_like(code)
         direction = direction / direction.norm()
         epsilon = 1.0e-3
-        finite_difference = (function(code + epsilon * direction) - function(code - epsilon * direction)) / (2.0 * epsilon)
+        with torch.no_grad():
+            finite_difference = (function(code + epsilon * direction, label) - function(code - epsilon * direction, label)) / (2.0 * epsilon)
         projected = matrix @ direction
         fd_error = float((finite_difference - projected).abs().max().div(projected.abs().max().clamp_min(1.0e-8)).item())
         row = _effective_rank(torch.linalg.svdvals(matrix), threshold)
         row["finite_difference_relative_max_error"] = fd_error
         rows.append(row)
+        del matrix, finite_difference, projected
     return rows
 
 
