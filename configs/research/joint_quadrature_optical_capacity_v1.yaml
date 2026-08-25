@@ -1,0 +1,38 @@
+schema_version: 1
+name: joint_quadrature_optical_capacity_v1
+version: 20260826
+harness_seed: 8971
+code_dims: [8, 16, 32]
+gaussian_bank_seeds: [57721, 75025]
+calibration_seed: 112358
+samples_per_class_per_bank: 100
+calibration_samples_per_class: 64
+preflight_samples_per_class: 8
+prototype_logit_epsilon: 0.00392156862745098
+slm_code_fraction_target: 0.25
+scale_bisection_bracket: [0.0, 8.0]
+scale_bisection_steps: 32
+scale_tolerance: 0.000001
+maximum_mode_frequency_cycles_per_mm: 20.0
+lo_calibration_quantile: 0.999
+receiver_headroom: 0.80
+beamsplitter_amplitude_factor: 0.5
+receiver_port_shape: [200, 200]
+receiver_layout: [2, 2]
+receiver_sensor_shape: [400, 400]
+receiver_pixel_pitch_um: 2.5
+semantic_accuracy_count: 950
+semantic_recall_count: 90
+agreement_count: 950
+label_shift_correct_max: 200
+camera_code_fraction_min: 0.25
+diversity_ratio_range: [0.70, 1.30]
+coverage_max: 1.50
+saturation_max: 0.08
+memorization_pass_count: 95
+jacobian_minimum_rank: full_dimension
+jacobian_minimum_singular_ratio: 0.001
+formal_promotion: false
+training_authorized: false
+checkpoint_creation_authorized: false
+synthetic_diagnostic_only: true

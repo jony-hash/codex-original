@@ -137,6 +137,10 @@ def _dispatch(args: argparse.Namespace) -> int:
             from .research.electronic_o0_nonlinear_direct_manifold_capacity import dispatch
 
             return int(dispatch(args) or 0)
+        if args.research_program == "joint-quadrature-optical-capacity":
+            from .research.joint_quadrature_optical_capacity import dispatch
+
+            return int(dispatch(args) or 0)
         if args.research_program == "smf-modal-density-attribution":
             from .research.smf_modal_density_attribution import dispatch
 

@@ -128,6 +128,13 @@ _PROGRAM_ACTIONS = {
         "report",
         "closeout",
     },
+    "joint-quadrature-optical-capacity": {
+        "validate",
+        "preflight",
+        "audit",
+        "report",
+        "closeout",
+    },
 }
 
 _HASH_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -402,6 +409,13 @@ def manifest_args(
         "h_didm_screen_evidence": ("h_didm_screen", "direct_image_distribution_screen"),
         "h_didm_report_evidence": ("h_didm_report", "direct_image_distribution_report"),
         "h_didm_closeout_evidence": ("h_didm_closeout", "direct_image_distribution_closeout"),
+        "v69_checkpoint": ("v69_checkpoint", "v69"),
+        "v75_report": ("v75_report",),
+        "v75_decision": ("v75_decision",),
+        "v76_admission": ("v76_admission",),
+        "v76_report": ("v76_report",),
+        "v76_decision": ("v76_decision",),
+        "h_ndmc_closeout_evidence": ("h_ndmc_closeout", "h_ndmc_closeout_evidence"),
     }
     for field, names in aliases.items():
         value = manifest_value(manifest, *names)

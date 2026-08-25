@@ -1092,6 +1092,45 @@ def register_research(root: argparse._SubParsersAction) -> None:
         command.add_argument("--output")
         command.add_argument("--measurement-evidence")
 
+    jqoc = research_programs.add_parser(
+        "joint-quadrature-optical-capacity",
+        help="no-update electronic and single-exposure quadrature capacity lifecycle",
+    )
+    jqoc_actions = jqoc.add_subparsers(dest="research_action", required=True)
+
+    def jqoc_lineage(command):
+        command.add_argument("--run-manifest")
+        command.add_argument("--config")
+        command.add_argument("--dataset-root")
+        command.add_argument("--device", choices=("cuda", "cpu"))
+        command.add_argument("--output")
+        command.add_argument("--v69-checkpoint")
+        command.add_argument("--v75-report")
+        command.add_argument("--v75-decision")
+        command.add_argument("--v76-admission")
+        command.add_argument("--v76-report")
+        command.add_argument("--v76-decision")
+        command.add_argument("--h-ndmc-closeout-evidence")
+        command.add_argument("--primary-evaluator-checkpoint")
+        command.add_argument("--secondary-evaluator-checkpoint")
+        command.add_argument("--primary-qualification-evidence")
+        command.add_argument("--secondary-qualification-evidence")
+
+    for action in ("validate", "preflight", "audit"):
+        command = jqoc_actions.add_parser(action)
+        jqoc_lineage(command)
+        if action == "preflight":
+            command.add_argument("--validation-evidence")
+        elif action == "audit":
+            command.add_argument("--preflight-evidence")
+    for action in ("report", "closeout"):
+        command = jqoc_actions.add_parser(action)
+        command.add_argument("--run-manifest")
+        command.add_argument("--config")
+        command.add_argument("--dataset-root")
+        command.add_argument("--output")
+        command.add_argument("--measurement-evidence")
+
     smf = research_programs.add_parser(
         "smf-modal-density-attribution",
         help="synthetic single-mode port-density upper-bound lifecycle",
