@@ -13,6 +13,7 @@ from ldm_project.v2.application.research.electronic_distribution_recovery import
     _geometry_fixture,
     _partition,
     _project_codes,
+    _real_pca,
     _semantic_gate,
 )
 
@@ -112,3 +113,12 @@ def test_package_a_effective_rank_uses_nominal_singular_values() -> None:
     result = _effective_rank(torch.tensor([4.0, 2.0, 0.01]), 1.0e-3)
     assert result["nominal_rank"] == 3
     assert result["effective_rank"] > 1.0
+
+
+def test_package_a_real_pca_keeps_reference_labels_aligned_with_features() -> None:
+    images = torch.rand(20, 1, 28, 28)
+    labels = torch.arange(10).repeat_interleave(2)
+    scales = torch.ones(6)
+    result = _real_pca(images, labels, scales, 1.0e-3)
+    assert len(result["per_class"]) == 10
+    assert all(row["nominal_rank"] == 1 for row in result["per_class"])

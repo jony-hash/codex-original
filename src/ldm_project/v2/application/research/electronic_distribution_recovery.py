@@ -804,7 +804,7 @@ def _audit(args: argparse.Namespace, config: dict[str, Any], lineage: dict[str, 
 def _geometry(generator: HierarchicalSpatialAmplitudeGenerator, latent_payload: dict[str, Tensor], first: tuple[Tensor, Tensor], second: tuple[Tensor, Tensor], config: dict[str, Any]) -> dict[str, Any]:
     device = next(generator.parameters()).device
     reference = torch.cat((first[0], second[0]), dim=0).to(device)
-    labels = torch.cat((first[1], second[1]), dim=0).to(device)
+    reference_labels = torch.cat((first[1], second[1]), dim=0).to(device)
     scales = _feature_scales(reference, reference.roll(1, 0))
     rows = {}
     geometry_indices = (_class_balanced_indices(first[1], config["geometry_samples_per_class"]), _class_balanced_indices(second[1], config["geometry_samples_per_class"]))
@@ -814,8 +814,8 @@ def _geometry(generator: HierarchicalSpatialAmplitudeGenerator, latent_payload: 
         for bank_index in range(2):
             count = config["geometry_samples_per_class"] * CLASS_COUNT
             codes = latent_payload[f"bank_{bank_index}_{name}"].index_select(0, geometry_indices[bank_index]).to(device)
-            labels = labels_by_bank[bank_index][:count]
-            per_bank.append({"samples": count, "per_sample": _jacobian(generator, codes, labels, scales, config["geometry_rank_threshold"])})
+            bank_labels = labels_by_bank[bank_index][:count]
+            per_bank.append({"samples": count, "per_sample": _jacobian(generator, codes, bank_labels, scales, config["geometry_rank_threshold"])})
         rows[name] = {"banks": per_bank}
     fixture = _geometry_fixture()
     finite_difference_ok = all(
@@ -824,7 +824,7 @@ def _geometry(generator: HierarchicalSpatialAmplitudeGenerator, latent_payload: 
         for bank in arm["banks"]
         for row in bank["per_sample"]
     )
-    return {"passed": fixture["constant_output_nominal_rank"] == 0 and fixture["known_spectrum"] == [4.0, 3.0, 2.0, 1.0] and finite_difference_ok, "fixture": fixture, "real_pca": _real_pca(reference, labels, scales, config["geometry_rank_threshold"]), "arms": rows, "evaluator_calls": 0, "feature_scales": [float(value) for value in scales], "finite_difference_gate": finite_difference_ok}
+    return {"passed": fixture["constant_output_nominal_rank"] == 0 and fixture["known_spectrum"] == [4.0, 3.0, 2.0, 1.0] and finite_difference_ok, "fixture": fixture, "real_pca": _real_pca(reference, reference_labels, scales, config["geometry_rank_threshold"]), "arms": rows, "evaluator_calls": 0, "feature_scales": [float(value) for value in scales], "finite_difference_gate": finite_difference_ok}
 
 
 def _dispatch_validate(args: argparse.Namespace, config: dict[str, Any]) -> int:
