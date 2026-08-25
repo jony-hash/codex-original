@@ -433,6 +433,18 @@ def _evaluate_q(rank_values: list[Tensor], dimension: int) -> dict[str, Any]:
     return {"rank": int((singular >= singular[0] * RANK_RATIO_MINIMUM).sum()), "dimension": dimension, "singular_ratio": ratio, "rank_pass": int((singular >= singular[0] * RANK_RATIO_MINIMUM).sum()) == dimension}
 
 
+def _linear_quantile(values: Tensor, fraction: float) -> Tensor:
+    """Compute a fixed linear quantile without torch.quantile's size limit."""
+    flat = values.detach().cpu().flatten()
+    if flat.numel() == 0 or not 0.0 <= fraction <= 1.0:
+        raise ValueError("H-JQOC quantile input is invalid")
+    position = (flat.numel() - 1) * fraction
+    lower_index, upper_index = math.floor(position), math.ceil(position)
+    lower = torch.kthvalue(flat, lower_index + 1).values
+    upper = torch.kthvalue(flat, upper_index + 1).values
+    return lower + (upper - lower) * (position - lower_index)
+
+
 def _measurement_jacobian(
     system: FormalAmplitudeFiniteCropIdentitySystem,
     canary: StructuredCanary,
@@ -634,10 +646,7 @@ def _build_measurement(args: argparse.Namespace, *, samples_per_class: int, incl
     lo_amplitude = float(calibration_fields.abs().square().mean().sqrt().item())
     calibration_ports = _balanced_ports(calibration_fields, lo_amplitude, 1.0)
     calibration_max = torch.cat([calibration_ports[name].flatten() for name in ("r_plus", "r_minus", "j_plus", "j_minus")])
-    # CUDA quantile rejects this large calibration vector on the supported
-    # runtime.  The calibration buffer is already fixed and non-learned; a
-    # CPU reduction preserves the registered scalar without changing inputs.
-    quantile = float(torch.quantile(calibration_max.detach().cpu(), 0.999).item())
+    quantile = float(_linear_quantile(calibration_max, 0.999).item())
     exposure = 0.80 / max(quantile, 1.0e-12)
     banks = {}
     for seed in BANK_SEEDS:

@@ -72,6 +72,13 @@ def test_dct_basis_is_nested_signed_and_finite() -> None:
     assert torch.all(basis.flatten(1).gather(1, basis.abs().flatten(1).argmax(1, keepdim=True)).squeeze(1) >= 0)
 
 
+def test_large_calibration_quantile_uses_registered_linear_definition() -> None:
+    values = torch.arange(11, dtype=torch.float32)
+    assert torch.equal(jqoc._linear_quantile(values, 0.0), torch.tensor(0.0))
+    assert torch.equal(jqoc._linear_quantile(values, 1.0), torch.tensor(10.0))
+    assert torch.equal(jqoc._linear_quantile(values, 0.95), torch.tensor(9.5))
+
+
 def test_four_port_identity_and_physical_packing() -> None:
     generator = torch.Generator(device="cpu").manual_seed(3)
     field = torch.complex(torch.randn((2, 1, 200, 200), generator=generator), torch.randn((2, 1, 200, 200), generator=generator))
