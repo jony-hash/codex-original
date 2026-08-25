@@ -209,7 +209,9 @@ def _metric_summary(
     if train_views is not None and train_labels is not None:
         with torch.no_grad():
             train_features, _ = evaluator(train_views)
-        summary["memorization"] = memorization_statistics(features, labels, train_features, train_labels)
+        summary["memorization"] = memorization_statistics(
+            features.cpu(), labels.cpu(), train_features.cpu(), train_labels.cpu()
+        )
     return summary
 
 
