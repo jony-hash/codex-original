@@ -194,6 +194,14 @@ sign current acceptance, or bypass current evidence consumers. Its result closes
 only the named variant unless an explicit downstream consumer and newly issued
 formal chain say otherwise.
 
+The independent `conditional_spatial_quadrature_v3` implementation is separately
+dispatched inside the v2 package. It removes the WAE/posterior path, uses a 32D
+hierarchical electronic generator, and defines a fixed four-port R/J receiver
+contract. Electronic admission is a required gate before any phase-mask or
+receiver training. This route is currently closed by a valid electronic
+capacity failure; its checkpoint and evidence are not compatible with the
+formal identity runtime and do not authorize promotion.
+
 The mutable source for the active research hypothesis and permitted next action
 is the [capacity-map hypothesis ledger](../status/capacity_map_hypothesis_ledger.md).
 The [current handoff](../status/current_handoff.md) summarizes project-wide stop

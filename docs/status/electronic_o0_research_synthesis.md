@@ -165,3 +165,25 @@ This closes the H-JQOC route. It authorizes no intensity or quadrature
 architecture preflight, neural training, checkpoint, confirm, decoder v2,
 O0-G, optical, fiber, or formal promotion. Existing v69/v75/v76, H-NDMC, and
 formal identity evidence remain read-only.
+
+## v3 spatial quadrature closeout: hierarchical electronic input failure
+
+The independent `conditional_spatial_quadrature_v3` implementation replaced the
+WAE encoder/posterior pairing path with a trainable 32D hierarchical spatial
+generator and a fixed R-difference four-port receiver contract. Its electronic
+stage was intentionally admitted before any phase-mask or receiver training.
+
+The valid retry6 admission classification is
+`hierarchical_spatial_input_capacity_failed`. Primary accuracy/minimum recall
+were `1.000/1.000` in both 250/class banks, but the independent secondary
+evaluator produced `0.900/0.176` and `0.896/0.116`. Its diversity ranges were
+`0.401–0.611` and `0.385–0.614`, with coverage `1.551` and `1.532`; these fail
+the preregistered secondary semantic, diversity, and coverage gates. Primary
+code fraction, coverage, and memorization passed, but dual-evaluator admission
+is fail-closed.
+
+The only next action is `close_spatial_quadrature_v3_input_route`. No quadrature
+preflight, smoke, phase/generator joint training, formal-test acceptance,
+candidate export, or promotion is authorized. This result closes the v3
+electronic input route; it does not reopen any old route or prove a universal
+impossibility theorem for other architectures.

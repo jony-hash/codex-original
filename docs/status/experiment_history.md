@@ -1189,3 +1189,27 @@ intensity primary/secondary accuracy 为 `0.075–0.092`/`0.421–0.436`。I/Q �
 `4788746752` bytes / `260.960760050` s / `87355` bytes，均满足资源门。该路线不授权
 intensity 或 quadrature architecture preflight、neural training、checkpoint、confirm、
 decoder v2、O0-G、optical、fiber 或 promotion；outputs、manifests 和视图保持未跟踪只读。
+
+## 2026-08-27：v3 spatial quadrature electronic admission closeout
+
+`conditional_spatial_quadrature_v3` was implemented in clean code lineage
+`d9b7a02`; the final consumer-side harness repairs ended at `e1b16c8`. The
+route uses a 32D hierarchical generator (8D global + 24D local) and a fixed
+single-exposure four-port receiver, but its optical stages are downstream of
+electronic admission.
+
+Retry6 electronic preflight passed after preserving earlier invalid attempts.
+The fixed 10-epoch generator-only stage completed `9840` finite steps. The
+valid admission used two disjoint 250/class banks, the fixed primary evaluator
+`46741e…ec57`, and fixed secondary evaluator `458799…e26c`. Primary accuracy/
+minimum recall were `1.000/1.000` in both banks. Secondary accuracy/minimum
+recall were `0.900/0.176` and `0.896/0.116`; diversity and coverage also failed.
+
+Final classification is `hierarchical_spatial_input_capacity_failed`, with the
+unique next action `close_spatial_quadrature_v3_input_route`. Preflight evidence
+SHA256 is `7bd1cc72b96dfd1ca55c39b75c824197dad8f8a992e6d0ba7a0e8895d660cc7e`;
+training evidence is `58ace8919d74aec2952fd2cf908c5ab28a85b825ead2b96e641de8f34da4b161`;
+admission report is `d097f46f7fc8b1addca64536c3dbed885aa434ef40f1acb37989b08e1868b17f`;
+admission evidence is `d897980e47f92ecf5506616f9b316b35667990da595478f80a7d7fa0b6669449`.
+No quadrature preflight, smoke, joint training, formal acceptance, candidate
+export, or promotion was run.

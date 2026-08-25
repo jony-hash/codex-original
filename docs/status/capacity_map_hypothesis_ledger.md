@@ -75,6 +75,7 @@ be registered next.
 | H-SCF | Frozen WAE/H-DIDM decoder × Gaussian/validation-posterior code source | Separate decoder semantic reachability, posterior instance-pairing dependence, Gaussian semantic mass, evaluator consensus, and cross-panel stability without any update | Manifest-only no-update factorial; fixed upstream hashes, historical panel replay, two disjoint 250/class posterior banks, two Gaussian banks, D-P permutation/label-shift/zero-code controls, dual-evaluator and safety gates; only report/closeout and this ledger consume it | valid closeout: `semantic_counterfactual_safety_failed`; S-G safety failed, while S-P semantic passed but its safety gate failed; D-G and D-P semantic gates failed, and both D-P permutation banks failed; retry4 preflight/audit resource and no-update gates passed. Unique next action `close_frozen_decoder_derived_semantic_route`; no optimizer, checkpoint, candidate, confirm, decoder-v2, O0-G, optical, fiber, or promotion consumer |
 | H-NDMC | Exact classwise PCA-8 + Gaussian-copula + continuous all-row kernel reconstruction from `label + 8D N(0,I)` | An independent empirical nonlinear manifold upper bound can satisfy dual semantics, diversity, and anti-memorization safety simultaneously | Manifest-only no-update canary; H-DPGC historical replay, H-SCF closed-route binding, two 250/class Gaussian banks, identity-copula ablation, label-shift/zero-code/chunk/Jacobian/curvature and finite/resource gates; a pass can only register a future direct-generator architecture preflight | valid closeout: `nonlinear_manifold_safety_failed`; both banks had primary `2500/2500`, secondary `2000/2500`, agreement `2000/2500`, camera-code fraction about `1.48e-5`, diversity `0.004–0.007`, coverage `1.67–2.13`; memorization/exact-duplicate, replay, finite, chunk, no-update and resource gates passed. Next action `close_nonlinear_direct_manifold_capacity_canary`; no optimizer, checkpoint, candidate, training, confirm, optical, fiber, or promotion consumer |
 | H-JQOC | Structured electronic DCT code dimensions 8/16/32 × frozen raw-intensity versus four-port single-exposure I/Q readout | A preregistered structured input canary must first pass electronic semantics/safety; only then can quadrature observability rescue be interpreted | Manifest-only no-update audit; fixed v69 phase state, v75/v76 replay, H-NDMC closed-route binding, two 100/class Gaussian banks per dimension, zero-code/label-shift/LO-off/sign-swap/packing/replay controls, finite-difference rank and resource gates; only report/closeout consume it | valid closeout: `electronic_structured_input_capacity_failed`; all 8/16/32D electronic banks failed semantic/safety gates, so raw/IQ optical results cannot rescue the input contract. Preflight/audit controls, no-update and resource gates passed. Unique next action `close_joint_quadrature_capacity_route`; no intensity or quadrature architecture preflight, training, checkpoint, confirm, optical, fiber, or promotion consumer |
+| v3-SQ | `conditional_spatial_quadrature_v3`: trainable 32D hierarchical spatial generator plus fixed R-difference four-port readout | Rebuild the electronic input contract and preserve complex-field observability without WAE encoder, posterior pairing, or software decoder | Electronic preflight, 10-epoch generator-only training, two 250/class dual-evaluator admission banks, finite/safety/coverage/diversity/memorization/label-shift gates; optical stages are downstream consumers only | valid failure at electronic admission: `hierarchical_spatial_input_capacity_failed`; primary semantics passed, but secondary accuracy/minimum recall/diversity/coverage failed in both banks. Unique next action `close_spatial_quadrature_v3_input_route`; no phase/receiver preflight, smoke, joint training, formal checkpoint, or promotion consumer |
 
 ## H-JQOC closeout (2026-08-26)
 
@@ -197,3 +198,32 @@ failure. Smoke, confirm, locked-final, command candidates, and all optical
 branches were stopped and must not be inferred from that artifact. The later
 v2.4 probe is the only valid follow-up and closed at
 `discriminator_identifiability_failure`.
+
+## v3 spatial quadrature closeout (2026-08-27)
+
+The v3 implementation was introduced from clean code lineage `d9b7a02` and
+the final harness repairs were completed in clean commit `e1b16c8`. Retry
+attempts retained the import, dataset-root, secondary-evaluator, inference
+memory, CUDA memorization, and reference-feature chunk failures without
+creating downstream consumers. Retry6 electronic preflight passed; the
+completed generator-only training evidence was reused by hash after the
+consumer-only repairs, and electronic admission was rerun against the same
+checkpoint, split, and evaluators.
+
+The admission evidence is valid and classified
+`hierarchical_spatial_input_capacity_failed`. Primary accuracy/minimum recall
+were `1.000/1.000` in both banks, with code fraction `0.323/0.325`, coverage
+`1.001/0.997`, and zero memorization anomalies. The independent secondary
+evaluator was only `0.900/0.896` accurate, with minimum recall `0.176/0.116`,
+diversity ranges `0.385–0.611`, and coverage `1.551/1.532`; therefore the
+registered dual-evaluator electronic admission failed in both banks.
+
+Retry6 hashes are electronic preflight
+`7bd1cc72b96dfd1ca55c39b75c824197dad8f8a992e6d0ba7a0e8895d660cc7e`, generator
+training evidence `58ace8919d74aec2952fd2cf908c5ab28a85b825ead2b96e641de8f34da4b161`,
+admission report `d097f46f7fc8b1addca64536c3dbed885aa434ef40f1acb37989b08e1868b17f`,
+and admission evidence
+`d897980e47f92ecf5506616f9b316b35667990da595478f80a7d7fa0b6669449`.
+The five-stage v3 chain was not created because the electronic gate is an
+upstream stop; no optical or joint-training evidence exists. The only next
+action is `close_spatial_quadrature_v3_input_route`.

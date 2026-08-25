@@ -41,6 +41,7 @@ utility、dataset admission 或 accepted manifest。项目治理状态保持
 | H-SCF semantic code-source factorial | `semantic_counterfactual_safety_failed` | valid retry4 closeout; unique next action `close_frozen_decoder_derived_semantic_route`; no evidence-derived model, training, or promotion consumer |
 | H-NDMC nonlinear direct manifold capacity | `nonlinear_manifold_safety_failed` | valid retry3 closeout; unique next action `close_nonlinear_direct_manifold_capacity_canary`; empirical canary closed, no architecture preflight or training consumer |
 | H-JQOC joint quadrature optical capacity | `electronic_structured_input_capacity_failed` | valid retry7; input gate stopped before optical interpretation; no architecture preflight or training consumer |
+| v3 spatial quadrature input | `hierarchical_spatial_input_capacity_failed` | valid retry6 electronic admission; secondary evaluator and diversity/coverage gates failed; optical/phase/receiver stages were not started |
 
 H-SWAE 的 validation、synthetic direction audit 和 CUDA preflight 均通过。唯一执行的
 seed-8601 screen 是有效科学失败：aggregate SWD reduction 为 `34.62% < 50%`，类别
@@ -379,3 +380,24 @@ storage `11065` bytes；audit peak allocation 为 `4788746752` bytes、wall time
 `260.960760050` seconds、storage `87355` bytes，均低于预注册资源门。结果关闭当前
 joint-quadrature route，不授权 intensity 或 quadrature architecture preflight、neural
 training、checkpoint、confirm、decoder v2、O0-G、optical、fiber 或 promotion。
+
+## v3 spatial quadrature closeout（valid scientific failure）
+
+`conditional_spatial_quadrature_v3` 已完成 electronic preflight、generator-only
+training 和双 evaluator electronic admission。retry1–retry5 的 harness 失败均
+保留且未创建下游 consumer；retry6 在 clean lineage `e1b16c8` 上通过 preflight
+后完成 admission。该 admission 的 classification 为
+`hierarchical_spatial_input_capacity_failed`，唯一 next action 为
+`close_spatial_quadrature_v3_input_route`。
+
+两份 250/class bank 中，primary accuracy/minimum recall 均为 `1.000/1.000`；
+secondary accuracy/minimum recall 为 `0.900/0.176` 与 `0.896/0.116`。secondary
+diversity ranges 为 `0.401–0.611` 与 `0.385–0.614`，coverage 为 `1.551` 与
+`1.532`，均未达 electronic admission gates。primary code fraction 为
+`0.3226/0.3250`、coverage 为 `1.001/0.997`、memorization anomalous rate 为
+`0/0`，但不能抵消 secondary 失败。
+
+本轮没有执行 quadrature preflight、400-step smoke、phase-mask 更新、联合训练、
+formal-test、candidate export 或 promotion。v3 checkpoint 仅是 electronic
+training artifact，不兼容旧 identity checkpoint；所有 v2 identity、H-DIDM、
+H-SCF、H-NDMC 和 H-JQOC evidence 保持只读。
