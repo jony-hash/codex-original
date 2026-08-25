@@ -288,6 +288,16 @@ def _partition(images: Tensor, labels: Tensor, *, seed: int, samples_per_class: 
     return first, second
 
 
+def _class_balanced_indices(labels: Tensor, samples_per_class: int) -> Tensor:
+    rows = []
+    for label in range(CLASS_COUNT):
+        matches = torch.nonzero(labels == label, as_tuple=False).flatten()
+        if matches.numel() < samples_per_class:
+            raise ValueError("class-balanced selection has too few samples")
+        rows.append(matches[:samples_per_class])
+    return torch.cat(rows)
+
+
 def _load_generator(path: str | Path, device: torch.device) -> tuple[HierarchicalSpatialAmplitudeGenerator, str]:
     payload = safe_torch_load(path, map_location=device)
     state = payload["state_dict"]
@@ -639,8 +649,9 @@ def _preflight(args: argparse.Namespace, config: dict[str, Any], lineage: dict[s
     data = _dataset(args.dataset_root)
     first, _ = _partition(data["validation_images"], data["validation_labels"], seed=config["bank_partition_seed"], samples_per_class=config["bank_samples_per_class"])
     generator, before_state = _load_generator(args.generator_checkpoint, device)
-    labels = first[1][:80].to(device)
-    targets = first[0][:80].to(device)
+    selected = _class_balanced_indices(first[1], 8)
+    labels = first[1].index_select(0, selected).to(device)
+    targets = first[0].index_select(0, selected).to(device)
     initial = torch.randn((labels.numel(), CODE_DIM), generator=torch.Generator(device="cpu").manual_seed(7103)).to(device)
     scales = _distance_scales(targets, targets.roll(1, 0))
     radius = _chi_square_radius(config["chi_square_probability"])
@@ -682,6 +693,7 @@ def _preflight(args: argparse.Namespace, config: dict[str, Any], lineage: dict[s
     resumed_optimizer.step()
     with torch.no_grad():
         resumed.copy_(_project_codes(resumed, radius))
+    resume_max_abs_diff = float(restored.detach().sub(resumed.detach()).abs().max().item())
     resume_exact = torch.equal(restored.detach(), resumed.detach())
     negative_labels = (labels[:16] + 1) % CLASS_COUNT
     negative_codes = initial[:16].detach().clone().requires_grad_(True)
@@ -700,7 +712,7 @@ def _preflight(args: argparse.Namespace, config: dict[str, Any], lineage: dict[s
     after_state = state_content_hash({name: value.detach().cpu() for name, value in generator.state_dict().items()})
     memory = int(torch.cuda.max_memory_allocated(device))
     passed = bool(all(torch.isfinite(torch.tensor(losses))) and max(latent_updates) > 0.0 and before_state == after_state and resume_exact and memory < config["memory_limit_bytes"] and not (negative_metrics["accuracy"] >= config["primary_accuracy_minimum"] and negative_metrics["minimum_recall"] >= config["minimum_recall_minimum"]))
-    return {"passed": passed, "classification": "preflight_passed" if passed else "invalid_harness", "first_failed_gate": None if passed else "preflight_update_resume_or_negative_control", "losses": losses, "latent_updates": latent_updates, "resume_exact": resume_exact, "negative_control": negative_metrics, "generator_state_before": before_state, "generator_state_after": after_state, "evaluator_calls": int(counter["evaluator_forward"]), "optimizer_created": True, "peak_memory_bytes": memory, "memory_gate": memory < config["memory_limit_bytes"], "radius": radius}
+    return {"passed": passed, "classification": "preflight_passed" if passed else "invalid_harness", "first_failed_gate": None if passed else "preflight_update_resume_or_negative_control", "losses": losses, "latent_updates": latent_updates, "resume_exact": resume_exact, "resume_max_abs_diff": resume_max_abs_diff, "negative_control": negative_metrics, "generator_state_before": before_state, "generator_state_after": after_state, "evaluator_calls": int(counter["evaluator_forward"]), "optimizer_created": True, "peak_memory_bytes": memory, "memory_gate": memory < config["memory_limit_bytes"], "radius": radius}
 
 
 def _audit(args: argparse.Namespace, config: dict[str, Any], lineage: dict[str, Any], gate: dict[str, Any], preflight: dict[str, Any]) -> dict[str, Any]:
@@ -765,12 +777,13 @@ def _geometry(generator: HierarchicalSpatialAmplitudeGenerator, latent_payload: 
     labels = torch.cat((first[1], second[1]), dim=0).to(device)
     scales = _feature_scales(reference, reference.roll(1, 0))
     rows = {}
-    labels_by_bank = (first[1].to(device), second[1].to(device))
+    geometry_indices = (_class_balanced_indices(first[1], config["geometry_samples_per_class"]), _class_balanced_indices(second[1], config["geometry_samples_per_class"]))
+    labels_by_bank = (first[1].index_select(0, geometry_indices[0]).to(device), second[1].index_select(0, geometry_indices[1]).to(device))
     for name in ("random", "constrained", "unconstrained"):
         per_bank = []
         for bank_index in range(2):
             count = config["geometry_samples_per_class"] * CLASS_COUNT
-            codes = latent_payload[f"bank_{bank_index}_{name}"][:count].to(device)
+            codes = latent_payload[f"bank_{bank_index}_{name}"].index_select(0, geometry_indices[bank_index]).to(device)
             labels = labels_by_bank[bank_index][:count]
             per_bank.append({"samples": count, "per_sample": _jacobian(generator, codes, labels, scales, config["geometry_rank_threshold"])})
         rows[name] = {"banks": per_bank}

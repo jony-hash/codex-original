@@ -6,6 +6,7 @@ from ldm_project.v2.application.cli import _parser
 from ldm_project.v2.application.research.electronic_distribution_recovery import (
     CODE_DIM,
     _chi_square_radius,
+    _class_balanced_indices,
     _config,
     _deterministic_adaptive_pool,
     _effective_rank,
@@ -67,6 +68,12 @@ def test_package_a_partition_is_strictly_mutually_exclusive() -> None:
     assert first[0].shape == second[0].shape == (2500, 1, 1, 1)
     assert first_values.isdisjoint(second_values)
     assert first[1].tolist() == second[1].tolist()
+
+
+def test_package_a_preflight_selection_is_class_balanced() -> None:
+    labels = torch.arange(10).repeat_interleave(250)
+    selected = _class_balanced_indices(labels, 8)
+    assert torch.bincount(labels.index_select(0, selected), minlength=10).tolist() == [8] * 10
 
 
 def test_package_a_chi_square_projection_respects_registered_radius() -> None:
