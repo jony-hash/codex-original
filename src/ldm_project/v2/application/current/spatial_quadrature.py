@@ -43,7 +43,7 @@ from ...student.evaluator import (
 )
 from ...student.checkpoints import state_content_hash, state_signature
 from .._runtime_shared import split_mnist
-from .runtime import (
+from .spatial_quadrature_runtime import (
     SPATIAL_ARCHITECTURE,
     SPATIAL_GENERATOR_CONTRACT,
     SPATIAL_RECEIVER_CONTRACT,

@@ -10,6 +10,7 @@ from ldm_project.v2.application.current.spatial_quadrature_runtime import (
     seeded_spatial_bundle,
     spatial_codes,
 )
+from ldm_project.v2.application.current.spatial_quadrature import spatial_electronic_preflight
 from ldm_project.v2.config import load_config
 from ldm_project.v2.contracts import ComplexField, OperationProvenance, PlaneSpec
 from ldm_project.v2.optics.quadrature_receiver import BalancedFourPortReceiver
@@ -27,6 +28,7 @@ def test_v3_config_and_dispatch_are_independent_from_identity() -> None:
     assert config.conditional_generation is None
     assert ("student", "train") in _SPATIAL_QUADRATURE_HANDLERS
     assert ("student", "sample") in _SPATIAL_QUADRATURE_HANDLERS
+    assert callable(spatial_electronic_preflight)
 
 
 def test_hierarchical_generator_is_deterministic_and_uses_all_code_blocks() -> None:
