@@ -5,6 +5,7 @@ import json
 import pytest
 
 from ldm_project.v2.application.cli import _parser
+from ldm_project.v2.application.research import teacher_distribution_admission as package_b
 from ldm_project.v2.application.research.electronic_distribution_recovery import _gfa_gate
 from ldm_project.v2.application.research.teacher_distribution_admission import (
     _config,
@@ -48,6 +49,37 @@ def test_package_b_cli_is_registered() -> None:
         parsed = parser.parse_args(argv)
         assert parsed.research_program == "teacher-distribution-admission"
         assert parsed.research_action == action
+
+
+def test_package_b_dispatch_uses_research_action(monkeypatch, tmp_path) -> None:
+    parsed = _parser().parse_args(_args())
+    config = {key: getattr(parsed, key) for key in (
+        "primary_evaluator_checkpoint",
+        "secondary_evaluator_checkpoint",
+        "primary_qualification_evidence",
+        "secondary_qualification_evidence",
+        "package_a_gate_evidence",
+        "package_a_closeout_evidence",
+    )}
+    config = {
+        "primary_evaluator": config["primary_evaluator_checkpoint"],
+        "secondary_evaluator": config["secondary_evaluator_checkpoint"],
+        "primary_qualification": config["primary_qualification_evidence"],
+        "secondary_qualification": config["secondary_qualification_evidence"],
+        "package_a_gate_audit": config["package_a_gate_evidence"],
+        "package_a_closeout": config["package_a_closeout_evidence"],
+    }
+    monkeypatch.setattr(package_b, "_config", lambda _: config)
+    monkeypatch.setattr(package_b, "_args_match_config", lambda *_: None)
+    monkeypatch.setattr(package_b, "_require_clean", lambda: {"head": "test", "dirty_worktree": False})
+    monkeypatch.setattr(package_b, "_validate_lineage", lambda *_: {"lineage": True})
+    monkeypatch.setattr(package_b, "_base", lambda *args, **kwargs: {"schema": "validation"})
+    written = {}
+    monkeypatch.setattr(package_b, "atomic_write_json", lambda path, payload: written.update(path=path, payload=payload))
+    parsed.output = str(tmp_path / "validation.json")
+
+    assert package_b.dispatch(parsed) == 0
+    assert written["payload"]["schema"] == "validation"
 
 
 def test_package_b_manifest_rejects_non_audit_artifact(tmp_path) -> None:

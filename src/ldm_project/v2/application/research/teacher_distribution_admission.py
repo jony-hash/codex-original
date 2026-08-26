@@ -339,7 +339,7 @@ def _audit(config: dict[str, Any], manifest_path: str, manifest: dict[str, Any],
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Package B frozen teacher distribution admission")
-    parser.add_argument("action", choices=("validate", "audit", "report", "closeout"))
+    parser.add_argument("research_action", choices=("validate", "audit", "report", "closeout"))
     parser.add_argument("--config", required=True)
     parser.add_argument("--dataset-root", required=True)
     parser.add_argument("--teacher-bank-manifest", required=True)
@@ -375,13 +375,14 @@ def dispatch(args: argparse.Namespace) -> int:
     config = _config(args.config)
     _args_match_config(args, config)
     git = _require_clean()
-    if args.action == "validate":
+    action = args.research_action
+    if action == "validate":
         lineage = _validate_lineage(config, args.config, args.teacher_bank_manifest, args.package_a_gate_evidence, args.package_a_closeout_evidence, args.dataset_root)
         payload = _base("validation", config, args.config, git, status="valid", passed=True, classification="teacher_lineage_validated", first_failed_gate=None, permitted=["audit"])
         payload.update(lineage)
         atomic_write_json(args.output, payload)
         return 0
-    if args.action == "audit":
+    if action == "audit":
         if not args.validation_evidence:
             raise ValueError("audit requires --validation-evidence")
         validation = _json(args.validation_evidence)
@@ -397,18 +398,18 @@ def dispatch(args: argparse.Namespace) -> int:
         return 0
     evidence_path = (
         args.audit_evidence
-        if args.action == "report"
+        if action == "report"
         else args.report_evidence
-        if args.action == "closeout"
+        if action == "closeout"
         else args.validation_evidence
     )
     if evidence_path is None:
-        raise ValueError(f"{args.action} requires --audit-evidence")
+        raise ValueError(f"{action} requires --audit-evidence")
     evidence = _json(evidence_path)
-    expected_schema = f"{SCHEMA_PREFIX}_audit.v1" if args.action == "report" else f"{SCHEMA_PREFIX}_report.v1"
+    expected_schema = f"{SCHEMA_PREFIX}_audit.v1" if action == "report" else f"{SCHEMA_PREFIX}_report.v1"
     if evidence.get("schema") != expected_schema or evidence.get("status") != "valid":
-        raise ValueError(f"{args.action} requires valid upstream evidence")
-    if args.action == "report":
+        raise ValueError(f"{action} requires valid upstream evidence")
+    if action == "report":
         report = {
             "schema": f"{SCHEMA_PREFIX}_report.v1",
             "status": "valid",
