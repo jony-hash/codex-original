@@ -445,45 +445,58 @@ def _preflight(config: dict[str, Any], lineage: dict[str, Any], dataset_root: st
         for parameter in model.parameters()
     )
     representative_seeds = []
+    first_replay = None
     for bank, bank_data in enumerate((first, second)):
-        labels = torch.arange(CLASS_COUNT, device=device, dtype=torch.long)
-        seeds = [_sample_seed(config, bank=bank, label=label, index=0) for label in range(CLASS_COUNT)]
-        representative_seeds.extend(seeds)
-        real = _resize_inputs(bank_data[0][:CLASS_COUNT], config["image_size"]).to(device)
-        with torch.no_grad():
-            encoded = first_stage.encode(real, deterministic=True)
-            recon = _decode_camera(first_stage, encoded["mu"] * lineage["latent_scale"])
-            noise = package_b._noise(seeds, tuple(config["latent_shape"])).to(device)
-            d_latent_first = package_b.sample_latents(
-                diffusion,
-                scheduler,
-                (CLASS_COUNT, *config["latent_shape"]),
-                device,
-                labels,
-                guidance_scale=config["guidance_scale"],
-                initial_noise=noise,
-                sampling_steps=config["sampling_steps"],
-            )
-            d_first = _decode_camera(first_stage, d_latent_first * lineage["latent_scale"])
-            d_latent_second = package_b.sample_latents(
-                diffusion,
-                scheduler,
-                (CLASS_COUNT, *config["latent_shape"]),
-                device,
-                labels,
-                guidance_scale=config["guidance_scale"],
-                initial_noise=noise,
-                sampling_steps=config["sampling_steps"],
-            )
-            d_second = _decode_camera(first_stage, d_latent_second * lineage["latent_scale"])
-        recon_views.append(recon)
-        diffusion_views.append(d_first)
-        replay_exact = replay_exact and torch.equal(d_first, d_second)
         for label in range(CLASS_COUNT):
-            row = _expected_package_b_shard(lineage["package_b_manifest"], bank, label, 0)
-            expected = _load_package_b_shard(config["package_b_manifest"], row)["images"][0].float()
-            package_b_replay_exact = package_b_replay_exact and torch.equal(d_first[label], expected)
-        del real, encoded, recon, noise, d_latent_first, d_first, d_latent_second, d_second
+            begin, end = 0, config["microbatch_size"]
+            labels = torch.full((end - begin,), label, device=device, dtype=torch.long)
+            seeds = [_sample_seed(config, bank=bank, label=label, index=index) for index in range(begin, end)]
+            representative_seeds.extend(seeds)
+            source = bank_data[0][label * config["samples_per_class"] + begin : label * config["samples_per_class"] + end]
+            real = _resize_inputs(source, config["image_size"]).to(device)
+            with torch.no_grad():
+                encoded = first_stage.encode(real, deterministic=True)
+                recon = _decode_camera(first_stage, encoded["mu"] * lineage["latent_scale"])
+                noise = package_b._noise(seeds, tuple(config["latent_shape"])).to(device)
+                d_latent = package_b.sample_latents(
+                    diffusion,
+                    scheduler,
+                    (end - begin, *config["latent_shape"]),
+                    device,
+                    labels,
+                    guidance_scale=config["guidance_scale"],
+                    initial_noise=noise,
+                    sampling_steps=config["sampling_steps"],
+                )
+                d_first = _decode_camera(first_stage, d_latent * lineage["latent_scale"])
+            expected = _load_package_b_shard(
+                config["package_b_manifest"],
+                _expected_package_b_shard(lineage["package_b_manifest"], bank, label, begin),
+            )["images"].float()
+            package_b_replay_exact = package_b_replay_exact and torch.equal(d_first, expected)
+            if first_replay is None:
+                first_replay = (labels, noise, expected)
+            recon_views.append(recon)
+            diffusion_views.append(d_first)
+            del real, encoded, recon, noise, d_latent, d_first, expected
+            torch.cuda.empty_cache()
+    if first_replay is None:
+        raise RuntimeError("B2 preflight did not create a representative replay")
+    replay_labels, replay_noise, replay_expected = first_replay
+    with torch.no_grad():
+        replay_latent = package_b.sample_latents(
+            diffusion,
+            scheduler,
+            (config["microbatch_size"], *config["latent_shape"]),
+            device,
+            replay_labels,
+            guidance_scale=config["guidance_scale"],
+            initial_noise=replay_noise,
+            sampling_steps=config["sampling_steps"],
+        )
+        replay_images = _decode_camera(first_stage, replay_latent * lineage["latent_scale"])
+    replay_exact = torch.equal(replay_images, replay_expected)
+    del replay_labels, replay_noise, replay_expected, replay_latent, replay_images
     recon = torch.cat(recon_views)
     d_first = torch.cat(diffusion_views)
     state_after = {
