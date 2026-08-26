@@ -1249,3 +1249,43 @@ The real consumer is the separately reviewed Package B teacher audit and the
 future student architecture decision. Package B was not started; all
 DDPM/student/optical/phase/quadrature/OLS/fiber training, promotion, and
 candidate export remain forbidden.
+
+## 2026-08-27：Package B DDPM–VAE teacher distribution admission closeout
+
+Package B completed the locked v1 producer lifecycle and v2 consumer lifecycle
+from clean producer commit `381941f` and consumer commit `ac7baec`. The selected
+first-stage and matched diffusion checkpoints were `e553bf…afdd` and
+`60f759…cd0`, with explicit 2026-06-03 source-run and acceptance-manifest
+lineage. The producer used complete `[1,25,25]` Gaussian noise, guidance `2.0`,
+200-step DDIM, two independent banks, and 250 samples/class. All 320 shards
+were generated and resumed through an atomic state manifest; preflight and
+generation used no evaluator, optimizer, model checkpoint, candidate export, or
+promotion.
+
+All lifecycle records were `status=valid`. The audit rejected the cyclic
+label-shift control (accuracy `0.0598`) and passed its finite/state/hash/resource
+controls, but both teacher banks failed the locked dual-evaluator range contract.
+Bank 0 primary/secondary accuracy was `0.3524/0.2212`, minimum recall was `0/0`,
+agreement `0.1676`, and coverage `3.0909/2.8327`; bank 1 was
+`0.3428/0.2248`, minimum recall `0/0`, agreement `0.1716`, and coverage
+`3.1483/2.8622`. Memorization anomaly was zero in both banks, but diversity and
+semantic gates also failed. The final classification is the valid scientific
+failure `teacher_distribution_failed`, first failed gate
+`teacher_dual_evaluator_range_gate`, with next action `close_teacher_route`.
+
+Immutable evidence is under
+`outputs/20260827_teacher_distribution_admission/runs/20260827_package_b_v1/`:
+lineage `b1e385c2b3cba80b91c81e958c1a26804a39554c09daddb6bca0ba5e73bb1a6c`,
+preflight `66b65fb5ccd04951201a9634fe101e4cff982f2c1a9d9cecd6c3abd6a280d922`,
+bank manifest `c9aebd1e21e8ed185eb1c0db35902a7a4c67c90d01ebd25153a45ca496139ccb`,
+validation `ad9f4896f8d43fa03230c5e0d00b10c7f7c5b0e0c590a171f76b4d8a2084f099`,
+audit `0369e9500158a94a675e393674f3deff6edf8de0e5d6775e617750b17dbfea92`,
+report `0cdd29f6b92656355165926e0ef530fa1e31b40444875476b7c8ca553d1dea5e`,
+and closeout `2620311e2bedb6ba6188afc2eae5af5fb9947410e8d70dac892971e2fdc3c6f7`.
+
+The real consumer is Package C's multiscale student admission and architecture
+choice. That downstream decision is rejected: student distillation, teacher
+training, optical/phase/quadrature/OLS/fiber training, candidate export and
+promotion are not authorized. This closeout does not automatically open Package
+C; the current DDPM–VAE teacher route remains closed until a separately reviewed
+teacher design establishes new lineage and admission evidence.

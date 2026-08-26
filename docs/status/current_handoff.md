@@ -432,3 +432,50 @@ SHA256 依次为 validation
 Package A 的真实消费者是 Package B teacher audit 与未来 student 架构选择；本轮不授权
 Package B 自动启动，必须另行审查并建立新 lineage。DDPM、student、optical、phase、
 quadrature、OLS、fiber training、promotion 和 candidate export 均保持禁止。
+
+## 2026-08-27：Package B teacher distribution admission closeout（valid scientific failure）
+
+Package B（DDPM–VAE Teacher Distribution Admission）在 clean producer commit
+`381941f` 上完成 v1 `lineage → preflight → generate`，随后在 clean consumer
+commit `ac7baec` 上完成 v2 `validate → audit → report → closeout`。producer
+锁定并验证了 first-stage checkpoint `e553bf…afdd`、matched diffusion
+checkpoint `60f759…cd0`、2026-06-03 source runs、acceptance manifest、Package A
+H-GFA evidence、双 evaluator qualification 和 MNIST split。完整 Gaussian latent
+noise、200-step DDIM、guidance 2.0 以及两个独立 250/class bank 均按 manifest
+生成；生成过程 320/320 shard、producer/preflight 无 evaluator calls、无 optimizer
+或 checkpoint，preflight peak CUDA allocation 为 `173581824` bytes，generation
+peak 为 `197254656` bytes。
+
+lineage/preflight/bank/consumer evidence 位于
+`outputs/20260827_teacher_distribution_admission/runs/20260827_package_b_v1/`，
+SHA256 为：
+
+- lineage `b1e385c2b3cba80b91c81e958c1a26804a39554c09daddb6bca0ba5e73bb1a6c`
+- preflight `66b65fb5ccd04951201a9634fe101e4cff982f2c1a9d9cecd6c3abd6a280d922`
+- teacher banks manifest `c9aebd1e21e8ed185eb1c0db35902a7a4c67c90d01ebd25153a45ca496139ccb`
+- validation `ad9f4896f8d43fa03230c5e0d00b10c7f7c5b0e0c590a171f76b4d8a2084f099`
+- audit `0369e9500158a94a675e393674f3deff6edf8de0e5d6775e617750b17dbfea92`
+- report `0cdd29f6b92656355165926e0ef530fa1e31b40444875476b7c8ca553d1dea5e`
+- closeout `2620311e2bedb6ba6188afc2eae5af5fb9947410e8d70dac892971e2fdc3c6f7`
+- synthesis `66f29aff3bf5c915c25195f83914c265335a6f5068ed3e9dbec71b64770b97ec`
+
+The audit was `status=valid`, with negative-control rejection, finite values,
+state/lineage/hash binding and resource gates passing. Its scientific classification
+is `teacher_distribution_failed`, first failed gate
+`teacher_dual_evaluator_range_gate`, and the sole permitted closeout action is
+`close_teacher_route`. Bank 0 had primary/secondary accuracy `0.3524/0.2212`,
+agreement `0.1676`, primary/secondary coverage `3.0909/2.8327`; bank 1 had
+`0.3428/0.2248`, agreement `0.1716`, and coverage `3.1483/2.8622`. Primary
+minimum recall was `0` in both banks; multiple diversity values also missed the
+registered `[0.70, 1.30]` range. Memorization anomalous rate was `0` in both
+banks, but does not rescue the failed semantic/range gate. The cyclic label-shift
+negative control had accuracy `0.0598` and was rejected. Audit peak CUDA allocation
+was `276411392` bytes over `2300` evaluator calls.
+
+This is a valid teacher-distribution failure, not an invalid harness. The named
+consumer is Package C's multiscale student admission and architecture decision;
+that decision is rejected by this evidence. Package C student distillation is
+forbidden, and the current DDPM–VAE teacher route is closed pending a separately
+designed teacher route with new lineage. DDPM/VAE/student/optical/phase/quadrature/
+OLS/fiber training, promotion and candidate export remain forbidden. No Package C
+or other downstream stage was started.
