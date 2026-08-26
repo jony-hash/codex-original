@@ -250,3 +250,23 @@ The named consumer is a separately reviewed Package B teacher audit and future
 student architecture choice; Package B remains unstarted. No downstream
 training, optical, phase, quadrature, OLS, fiber, candidate, or promotion
 consumer is authorized by this result.
+
+| H-TFA | Frozen matched Package B teacher attribution: R real positive control, V `decode(encode(real).mu)`, and D locked DDPM replay over two disjoint 250/class banks | If R fails, reject the harness; if V fails, attribute the earliest supported failure to first-stage reconstruction distribution; only if V passes and D fails attribute diffusion/conditioning; D is not interpreted independently when V fails first | Clean-head lineage, same-batch CUDA sampler preflight, 320 atomic producer shards, consumer schema/source/hash validation, dual evaluator gates, cyclic label-shift controls, evaluator-independent latent statistics, state invariance and resource gates; only teacher redesign may consume a valid attribution | v3 closeout `teacher_first_stage_distribution_failed`; R passed both banks, label-shift controls were rejected, V failed both banks (`P/S` minimum recall `0.892/0.852` and `0.896/0.884`, agreement `0.9316/0.9380`), and D reproduced the locked Package B failure; evidence is under `outputs/20260827_teacher_failure_attribution/runs/20260827_package_b2_v3/`; real consumer is Package B3-VAE redesign, not Package C |
+
+## H-TFA closeout (2026-08-27)
+
+Package B2 is a valid scientific attribution, not an invalid harness. The R
+positive control passed both banks and cyclic label-shift controls were rejected.
+The V first-stage reconstruction view failed both dual-evaluator distribution
+gates, so the fail-closed classification is
+`teacher_first_stage_distribution_failed` with first failed gate
+`first_stage_reconstruction_distribution_gate`. The D arm exactly reproduced
+the locked Package B admission failure, but is not promoted to an independent
+diffusion attribution because V failed first. State hashes were unchanged,
+producer/preflight evaluator calls were zero, and no checkpoint, candidate or
+downstream training artifact was created.
+
+The required consumer decision is a new `Package B3-VAE` design, which must first
+pass the reconstruction distribution gate and then rerun the original Package B
+dual-bank admission. Package B3-DDPM, Package C, optical training, promotion and
+candidate export are not authorized by H-TFA.

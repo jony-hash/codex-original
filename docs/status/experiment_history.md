@@ -1289,3 +1289,56 @@ training, optical/phase/quadrature/OLS/fiber training, candidate export and
 promotion are not authorized. This closeout does not automatically open Package
 C; the current DDPM–VAE teacher route remains closed until a separately reviewed
 teacher design establishes new lineage and admission evidence.
+
+## 2026-08-27：Package B2 teacher failure attribution closeout
+
+Package B2 is a no-update attribution package whose real consumer is the next
+teacher redesign decision. It locked the existing matched first-stage and DDPM
+checkpoints, Package B banks, Package A H-GFA banks, qualified dual evaluators,
+MNIST split, and Package B thresholds. It did not search for a checkpoint and did
+not train or promote a teacher, student, or optical model.
+
+The final run was executed from clean commit `36597b9` after two preserved,
+non-consumed harness failures. The first preflight compared a batch-10 replay to
+historical batch-16 Package B shards; the corrected same-batch replay passed. The
+next run exposed a producer schema omission (`labels`), so it was stopped before
+consumer validation. A new v3 run regenerated all 320 shards under the repaired
+HEAD rather than splicing either earlier run. Lineage, CUDA preflight, generation,
+consumer validation, report, and closeout all passed their structural gates.
+
+The scientific result is the valid failure
+`teacher_first_stage_distribution_failed`, first failed gate
+`first_stage_reconstruction_distribution_gate`:
+
+| Arm | Bank 0 | Bank 1 | Interpretation |
+| --- | --- | --- | --- |
+| R real positive control | passed; P/S acc `0.9880/0.9888`, min recall `0.9640/0.9800`, agreement `0.9868` | passed; P/S acc `0.9872/0.9872`, min recall `0.9440/0.9720`, agreement `0.9852` | evaluator and bank harness valid |
+| V `decode(encode(real).mu)` | failed; P/S acc `0.9692/0.9444`, min recall `0.8920/0.8520`, agreement `0.9316` | failed; P/S acc `0.9704/0.9464`, min recall `0.8960/0.8840`, agreement `0.9380` | first-stage reconstruction distribution gate failed |
+| D locked DDPM replay | failed; P/S acc `0.3524/0.2212`, min recall `0.036/0.008`, agreement `0.1676` | failed; P/S acc `0.3428/0.2248`, min recall `0.036/0.008`, agreement `0.1716` | reproduces Package B; not independently attributed because V failed first |
+
+The cyclic label-shift controls were rejected with accuracy `0.0006`, `0.0024`,
+and `0.0598` for R, V, and D respectively. All state hashes were invariant;
+evaluator calls were zero in producer/preflight and `2500` in the single audit;
+CUDA peaks were `213146112` bytes for generation and `276390912` bytes for audit.
+The latent-only comparison was evaluator-independent and recorded classwise
+mean/covariance/effective-rank/nearest-distance/multiscale statistics; its mean
+distance between normalized encoded-real `mu` and DDPM latent covered
+`5.03–11.08` across classes and banks.
+
+The immutable v3 evidence is under
+`outputs/20260827_teacher_failure_attribution/runs/20260827_package_b2_v3/`:
+lineage `9c91e346127576143fe49bd7ea5f14b479ffd8647cce5b4b24c818bee0db2b00`,
+preflight `c67d195f9c7ce1f9917982c3fc747fbf9a73ddabee0eb049431a84d039a6ad3b`,
+generation state `48b3115441713d0203978403e97f87b2f0fe7a1173f17ed66e72b6e2ae31e1d1`,
+artifact `5f018c0f261d9bd17f6be19cd6f242b1cc2f980caa01200c2664c05d8b3bca0f`,
+validation `f8455fb8f369e9e96a53bca532c3862c1bfae5c5b0b8323cbc1d1de6e34aa307`,
+audit `fffd9be3a03880b76780f168ce54c7aea3bda8193db7c4459c9cad398b8065e3`,
+report `5ad140a9ee8cb431b50c258d6141159fa69b4acb24364ccadb5c10146bfa8fdb`,
+and closeout `0fed705e605fd540309e6904a4214eb7de9f668d2d1496868087e9fda6e58515`.
+
+The only permitted next action is a separately scoped `Package B3-VAE` redesign
+and first-stage training, followed by a reconstruction distribution gate. A
+`Package B3-DDPM` route is not authorized by this attribution, because the
+first-stage gate failed first. Package C and all optical or promotion actions
+remain blocked; a new teacher must pass the original Package B dual-bank
+admission before Package C can be considered.

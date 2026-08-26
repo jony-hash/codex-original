@@ -479,3 +479,52 @@ forbidden, and the current DDPM–VAE teacher route is closed pending a separate
 designed teacher route with new lineage. DDPM/VAE/student/optical/phase/quadrature/
 OLS/fiber training, promotion and candidate export remain forbidden. No Package C
 or other downstream stage was started.
+
+## 2026-08-27：Package B2 teacher failure attribution closeout
+
+Package B2（Teacher Failure Attribution）在 clean commit `36597b9` 上完成独立的
+`lineage → preflight → generate → validate → audit → report → closeout`。本轮锁定
+Package B 的 matched first-stage checkpoint `e553bf…afdd`、matched diffusion
+checkpoint `60f759…cd0`、原 Package B banks、Package A H-GFA banks、双 evaluator、
+MNIST split 和全部正式阈值；没有搜索、选择或训练新模型。
+
+正式结论为有效科学归因 `teacher_first_stage_distribution_failed`，首个失败门为
+`first_stage_reconstruction_distribution_gate`，不是 `invalid_harness`。R（真实
+MNIST 正对照）两个 bank 同时通过；primary accuracy/minimum recall 为
+`0.9880/0.9640` 与 `0.9872/0.9440`，secondary 为 `0.9888/0.9800` 与
+`0.9872/0.9720`，agreement 为 `0.9868/0.9852`。cyclic label-shift 负对照被拒绝，
+R/V/D accuracy 分别为 `0.0006/0.0024/0.0598`。
+
+V=`decode(encode(real).mu)` 在两个 bank 都未通过：bank 0 的 primary/secondary
+accuracy/minimum recall 为 `0.9692/0.8920`、`0.9444/0.8520`，agreement
+`0.9316`；bank 1 为 `0.9704/0.8960`、`0.9464/0.8840`，agreement `0.9380`。
+D 与锁定 Package B teacher replay 完全一致，并重现其 failure（bank 0/1 的
+primary/secondary accuracy `0.3524/0.2212`、`0.3428/0.2248`，minimum recall
+`0.036/0.008`，coverage 约 `3.09/2.83` 和 `3.15/2.86`，agreement 约 `0.17`）。
+由于 V 先失败，B2 不把 D 单独解释为 diffusion failure。evaluator-independent
+latent statistics 已记录；normalized encoded-real `mu` 与 DDPM latent 的
+classwise mean L2 distance 覆盖约 `5.03–11.08`。
+
+v3 evidence 位于
+`outputs/20260827_teacher_failure_attribution/runs/20260827_package_b2_v3/`：
+lineage `9c91e346127576143fe49bd7ea5f14b479ffd8647cce5b4b24c818bee0db2b00`，
+preflight `c67d195f9c7ce1f9917982c3fc747fbf9a73ddabee0eb049431a84d039a6ad3b`，
+generation state `48b3115441713d0203978403e97f87b2f0fe7a1173f17ed66e72b6e2ae31e1d1`，
+artifact `5f018c0f261d9bd17f6be19cd6f242b1cc2f980caa01200c2664c05d8b3bca0f`，
+validation `f8455fb8f369e9e96a53bca532c3862c1bfae5c5b0b8323cbc1d1de6e34aa307`，
+audit `fffd9be3a03880b76780f168ce54c7aea3bda8193db7c4459c9cad398b8065e3`，
+report `5ad140a9ee8cb431b50c258d6141159fa69b4acb24364ccadb5c10146bfa8fdb`，
+closeout `0fed705e605fd540309e6904a4214eb7de9f668d2d1496868087e9fda6e58515`，
+synthesis `3a70799aea9dad02f9126b36b5337f6e6f21c9ab54de2c9792268fcf7266312f`。
+
+此前 v1 preflight 的 batch-10/batch-16 replay mismatch 和 v2 artifact 漏写 labels
+均已 fail-closed 且未被消费；修复后 v3 重新生成 320/320 shards。producer/preflight
+无 evaluator calls，生成峰值 `213146112` bytes，audit 峰值 `276390912` bytes，
+state hash 前后不变。
+
+Package B2 的真实消费者是 teacher redesign 决策；唯一允许的下一步是另立
+`Package B3-VAE`，重新设计/训练 first-stage，并先通过 reconstruction distribution
+gate。当前结果不授权 `Package B3-DDPM`、Package C、student/teacher/optical/
+phase/quadrature/OLS/fiber training、candidate export 或 promotion。若未来 first-stage
+通过，仍须用新 teacher lineage 重新通过原 Package B 双 bank admission，只有得到
+`teacher_distribution_qualified` 才可审查 Package C。
