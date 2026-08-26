@@ -205,6 +205,9 @@ def _base(stage: str, config: dict[str, Any], config_path: str, git: dict[str, A
         "command": list(sys.argv),
         "runtime_seconds": 0.0,
         "cuda_peak_memory_bytes": 0,
+        "dataset_hash": None,
+        "state_hash_before": None,
+        "state_hash_after": None,
     }
 
 
@@ -598,6 +601,12 @@ def dispatch(args: argparse.Namespace) -> int:
     expected_schema = f"{SCHEMA_PREFIX}_audit.v1" if action == "report" else f"{SCHEMA_PREFIX}_report.v1"
     if evidence.get("schema") != expected_schema or evidence.get("status") != "valid":
         raise ValueError(f"{action} requires valid upstream evidence")
+    if (
+        evidence.get("git_head") != git["head"]
+        or evidence.get("dirty_worktree") is not False
+        or evidence.get("config_sha256") != file_sha256(args.config)
+    ):
+        raise ValueError(f"{action} requires upstream evidence bound to current HEAD/config")
     if action == "report":
         payload = {
             "schema": f"{SCHEMA_PREFIX}_report.v1",
@@ -613,10 +622,20 @@ def dispatch(args: argparse.Namespace) -> int:
             "input_artifact_hashes": evidence.get("input_artifact_hashes", {}),
             "dataset_split_hash": config["dataset_split_hash"],
             "dataset_hash": evidence.get("dataset_hash"),
+            "config_sha256": evidence["config_sha256"],
+            "seed": evidence["seed"],
+            "state_hash_before": evidence.get("state_hash_before"),
+            "state_hash_after": evidence.get("state_hash_after"),
+            "optimizer_created": evidence.get("optimizer_created", False),
+            "checkpoint_created": evidence.get("checkpoint_created", False),
+            "candidate_export": evidence.get("candidate_export", False),
+            "synthetic_diagnostic_only": evidence.get("synthetic_diagnostic_only", True),
             "evaluator_calls": evidence.get("evaluator_calls", 0),
+            "source_runtime_seconds": evidence.get("runtime_seconds", 0.0),
+            "source_cuda_peak_memory_bytes": evidence.get("cuda_peak_memory_bytes", 0),
             "command": list(sys.argv),
             "runtime_seconds": 0.0,
-            "cuda_peak_memory_bytes": 0,
+            "cuda_peak_memory_bytes": evidence.get("cuda_peak_memory_bytes", 0),
         }
         atomic_write_json(args.output, payload)
         return 0
@@ -634,16 +653,25 @@ def dispatch(args: argparse.Namespace) -> int:
         "dirty_worktree": git["dirty_worktree"],
         "dataset_split_hash": config["dataset_split_hash"],
         "dataset_hash": evidence.get("dataset_hash"),
+        "config_sha256": evidence["config_sha256"],
+        "seed": evidence["seed"],
+        "state_hash_before": evidence.get("state_hash_before"),
+        "state_hash_after": evidence.get("state_hash_after"),
+        "optimizer_created": evidence.get("optimizer_created", False),
+        "checkpoint_created": evidence.get("checkpoint_created", False),
+        "candidate_export": evidence.get("candidate_export", False),
+        "synthetic_diagnostic_only": evidence.get("synthetic_diagnostic_only", True),
         "input_artifact_hashes": evidence.get("input_artifact_hashes", {}),
         "evaluator_calls": evidence.get("evaluator_calls", 0),
+        "source_runtime_seconds": evidence.get("runtime_seconds", 0.0),
+        "source_cuda_peak_memory_bytes": evidence.get("cuda_peak_memory_bytes", 0),
         "command": list(sys.argv),
         "runtime_seconds": 0.0,
-        "cuda_peak_memory_bytes": 0,
+        "cuda_peak_memory_bytes": evidence.get("cuda_peak_memory_bytes", 0),
         "promotion": "forbidden",
         "teacher_training": "forbidden",
         "student_training": "forbidden",
         "optical_training": "forbidden",
-        "candidate_export": "forbidden",
     }
     atomic_write_json(args.output, payload)
     Path(args.output).with_name("teacher_failure_attribution_synthesis.md").write_text(

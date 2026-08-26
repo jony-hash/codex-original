@@ -408,6 +408,8 @@ def _base(stage: str, config: dict[str, Any], config_path: str, git: dict[str, A
         "command": list(sys.argv),
         "runtime_seconds": 0.0,
         "cuda_peak_memory_bytes": 0,
+        "state_hash_before": None,
+        "state_hash_after": None,
     }
 
 

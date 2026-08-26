@@ -71,10 +71,15 @@ def test_b2_evidence_base_contains_required_fail_closed_fields() -> None:
         "forbidden_next_actions",
         "input_artifact_hashes",
         "dataset_split_hash",
+        "config_sha256",
         "git_head",
         "dirty_worktree",
         "seed",
         "evaluator_calls",
+        "runtime_seconds",
+        "cuda_peak_memory_bytes",
+        "state_hash_before",
+        "state_hash_after",
     ):
         assert key in payload
     assert payload["input_artifact_hashes"]["package_b_config"] == config["package_b_config_sha256"]
