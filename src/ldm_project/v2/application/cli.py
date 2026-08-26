@@ -147,6 +147,10 @@ def _dispatch(args: argparse.Namespace) -> int:
             from .research.electronic_distribution_recovery import dispatch
 
             return int(dispatch(args) or 0)
+        if args.research_program == "teacher-distribution-admission":
+            from .research.teacher_distribution_admission import dispatch
+
+            return int(dispatch(args) or 0)
         if args.research_program == "smf-modal-density-attribution":
             from .research.smf_modal_density_attribution import dispatch
 

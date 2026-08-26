@@ -1170,6 +1170,37 @@ def register_research(root: argparse._SubParsersAction) -> None:
     closeout.add_argument("--output", required=True)
     closeout.add_argument("--report-evidence", required=True)
 
+    teacher = research_programs.add_parser(
+        "teacher-distribution-admission",
+        help="fail-closed admission of frozen v1 DDPM-VAE teacher banks",
+    )
+    teacher_actions = teacher.add_subparsers(dest="research_action", required=True)
+
+    def teacher_common(command):
+        command.add_argument("--config", required=True)
+        command.add_argument("--dataset-root", required=True)
+        command.add_argument("--teacher-bank-manifest", required=True)
+        command.add_argument("--primary-evaluator-checkpoint", required=True)
+        command.add_argument("--secondary-evaluator-checkpoint", required=True)
+        command.add_argument("--primary-qualification-evidence", required=True)
+        command.add_argument("--secondary-qualification-evidence", required=True)
+        command.add_argument("--package-a-gate-evidence", required=True)
+        command.add_argument("--package-a-closeout-evidence", required=True)
+        command.add_argument("--device", choices=("cuda", "cpu"), default="cuda")
+        command.add_argument("--output", required=True)
+
+    for action in ("validate", "audit"):
+        command = teacher_actions.add_parser(action)
+        teacher_common(command)
+        if action == "audit":
+            command.add_argument("--validation-evidence", required=True)
+    report = teacher_actions.add_parser("report")
+    teacher_common(report)
+    report.add_argument("--audit-evidence", required=True)
+    closeout = teacher_actions.add_parser("closeout")
+    teacher_common(closeout)
+    closeout.add_argument("--report-evidence", required=True)
+
     smf = research_programs.add_parser(
         "smf-modal-density-attribution",
         help="synthetic single-mode port-density upper-bound lifecycle",
