@@ -50,6 +50,7 @@ SCHEMA_PREFIX = "electronic_distribution_recovery"
 CONFIG_NAME = "electronic_distribution_recovery_v1"
 CODE_DIM = 32
 CLASS_COUNT = 10
+JACOBIAN_FINITE_DIFFERENCE_EPSILON = 1.0e-1
 PRIMARY_HASH = "46741ec76e45653c9dcb76e7b4f1645c9c057a47cdd9e4c1778d9debb553ec57"
 SECONDARY_HASH = "45879962cf8a6dc51e141a2f2a9892356ede97dd45063f38d830299aa877e26c"
 GENERATOR_HASH = "5f1e36bfa99b9520c41dc1424abb4a629a695d449c52b783ef4cf9cffb40c75c"
@@ -586,7 +587,7 @@ def _jacobian(generator: HierarchicalSpatialAmplitudeGenerator, codes: Tensor, l
             raise ValueError("H-LGS Jacobian is invalid")
         direction = torch.ones_like(code)
         direction = direction / direction.norm()
-        epsilon = 1.0e-2
+        epsilon = JACOBIAN_FINITE_DIFFERENCE_EPSILON
         with torch.no_grad():
             finite_difference = (function(code + epsilon * direction, label) - function(code - epsilon * direction, label)) / (2.0 * epsilon)
         projected = matrix @ direction

@@ -11,6 +11,7 @@ from ldm_project.v2.application.research.electronic_distribution_recovery import
     _deterministic_adaptive_pool,
     _effective_rank,
     _geometry_fixture,
+    JACOBIAN_FINITE_DIFFERENCE_EPSILON,
     _partition,
     _project_codes,
     _real_pca,
@@ -125,7 +126,7 @@ def test_package_a_real_pca_keeps_reference_labels_aligned_with_features() -> No
 
 
 def test_package_a_directional_check_step_avoids_float32_cancellation() -> None:
-    epsilon = 1.0e-2
+    epsilon = JACOBIAN_FINITE_DIFFERENCE_EPSILON
     direction = torch.tensor([1.0, -1.0], dtype=torch.float32)
     direction = direction / direction.norm()
     point = torch.tensor([1000.0, -1000.0], dtype=torch.float32)
