@@ -1265,9 +1265,9 @@ promotion.
 All lifecycle records were `status=valid`. The audit rejected the cyclic
 label-shift control (accuracy `0.0598`) and passed its finite/state/hash/resource
 controls, but both teacher banks failed the locked dual-evaluator range contract.
-Bank 0 primary/secondary accuracy was `0.3524/0.2212`, minimum recall was `0/0`,
+Bank 0 primary/secondary accuracy was `0.3524/0.2212`, minimum recall was `0.036/0.008`,
 agreement `0.1676`, and coverage `3.0909/2.8327`; bank 1 was
-`0.3428/0.2248`, minimum recall `0/0`, agreement `0.1716`, and coverage
+`0.3428/0.2248`, minimum recall `0.036/0.008`, agreement `0.1716`, and coverage
 `3.1483/2.8622`. Memorization anomaly was zero in both banks, but diversity and
 semantic gates also failed. The final classification is the valid scientific
 failure `teacher_distribution_failed`, first failed gate

@@ -466,7 +466,7 @@ is `teacher_distribution_failed`, first failed gate
 `close_teacher_route`. Bank 0 had primary/secondary accuracy `0.3524/0.2212`,
 agreement `0.1676`, primary/secondary coverage `3.0909/2.8327`; bank 1 had
 `0.3428/0.2248`, agreement `0.1716`, and coverage `3.1483/2.8622`. Primary
-minimum recall was `0` in both banks; multiple diversity values also missed the
+minimum recall was `0.036` for primary and `0.008` for secondary in both banks; multiple diversity values also missed the
 registered `[0.70, 1.30]` range. Memorization anomalous rate was `0` in both
 banks, but does not rescue the failed semantic/range gate. The cyclic label-shift
 negative control had accuracy `0.0598` and was rejected. Audit peak CUDA allocation

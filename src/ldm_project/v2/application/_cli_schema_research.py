@@ -1201,6 +1201,37 @@ def register_research(root: argparse._SubParsersAction) -> None:
     teacher_common(closeout)
     closeout.add_argument("--report-evidence", required=True)
 
+    attribution = research_programs.add_parser(
+        "teacher-failure-attribution",
+        help="no-update attribution of the locked Package B teacher failure",
+    )
+    attribution_actions = attribution.add_subparsers(
+        dest="research_action", required=True
+    )
+
+    def attribution_common(command):
+        command.add_argument("--config", required=True)
+        command.add_argument("--dataset-root", required=True)
+        command.add_argument("--attribution-artifact", required=True)
+        command.add_argument("--primary-evaluator-checkpoint", required=True)
+        command.add_argument("--secondary-evaluator-checkpoint", required=True)
+        command.add_argument("--primary-qualification-evidence", required=True)
+        command.add_argument("--secondary-qualification-evidence", required=True)
+        command.add_argument("--device", choices=("cuda", "cpu"), default="cuda")
+        command.add_argument("--output", required=True)
+
+    for action in ("validate", "audit"):
+        command = attribution_actions.add_parser(action)
+        attribution_common(command)
+        if action == "audit":
+            command.add_argument("--validation-evidence", required=True)
+    report = attribution_actions.add_parser("report")
+    attribution_common(report)
+    report.add_argument("--audit-evidence", required=True)
+    closeout = attribution_actions.add_parser("closeout")
+    attribution_common(closeout)
+    closeout.add_argument("--report-evidence", required=True)
+
     smf = research_programs.add_parser(
         "smf-modal-density-attribution",
         help="synthetic single-mode port-density upper-bound lifecycle",
