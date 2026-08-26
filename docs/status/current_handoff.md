@@ -401,3 +401,34 @@ diversity ranges 为 `0.401–0.611` 与 `0.385–0.614`，coverage 为 `1.551` 
 formal-test、candidate export 或 promotion。v3 checkpoint 仅是 electronic
 training artifact，不兼容旧 identity checkpoint；所有 v2 identity、H-DIDM、
 H-SCF、H-NDMC 和 H-JQOC evidence 保持只读。
+
+## 2026-08-26：Package A electronic distribution recovery closeout
+
+Package A（Electronic Distribution Recovery）在 clean commit `a1842b8` 上完成
+`validate → gate-audit → preflight → audit → report → closeout`。retry12 的六份
+evidence 均为 `status=valid`；H-GFA 双 evaluator gate、三步 CUDA preflight、
+H-LIR/H-LGS geometry 与 finite-difference harness、负对照和资源门均通过。
+完整 audit 的有效科学分类为 `generator_range_incomplete`：R/C/U 三个 inversion arm
+在两份严格互斥的 250/class validation bank 上均未同时满足双 evaluator semantics、
+agreement、diversity、coverage 和 memorization 组合门。H-GFA 本身通过，label-shift
+负对照被拒绝；这是 valid scientific failure，不是 invalid harness，不支持继续调参或换 seed。
+
+六次 bank/arm 测量中，primary accuracy/minimum recall 为 `0.9888–1.0000`/
+`0.9600–1.0000`，secondary 为 `0.8956–0.9172`/`0.1160–0.5360`，agreement
+为 `0.8956–0.9168`；R/C/U 的两 bank `range_gate` 均为 false。memorization anomaly
+为零，generator state 前后 hash 完全一致，geometry/finite-difference gate 通过，
+未创建模型 checkpoint。
+
+retry12 evidence 位于
+`outputs/20260825_electronic_distribution_recovery/runs/20260825_package_a_v1_retry12/`。
+SHA256 依次为 validation
+`3d4c71193455c5a1d8afcd62569f4e08dbc741046793418ff8a6841f74340737`、gate-audit
+`99de4cae5f83cda643fd5accd09e54795d24b74d1629539f033f4156e47ac0bf`、preflight
+`be07633ca2deffec1fc3b65226172743c7a0770a00b13087b420516ceee09e06`、audit
+`2253c9ed0f4284b2e81818ba6089fee1ecb82430989edfa9cf678b1c84c957dd`、report
+`fc2d110903b3eaa0a42234a646d4be9249e2ebe2962f58254c2e1dfb9048ae36`、closeout
+`70ed0fe02e9242ec630b44f3e46dd386950ef8d10d1ab5769664b5cb211a8cab`。
+
+Package A 的真实消费者是 Package B teacher audit 与未来 student 架构选择；本轮不授权
+Package B 自动启动，必须另行审查并建立新 lineage。DDPM、student、optical、phase、
+quadrature、OLS、fiber training、promotion 和 candidate export 均保持禁止。

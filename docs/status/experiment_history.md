@@ -1213,3 +1213,39 @@ admission report is `d097f46f7fc8b1addca64536c3dbed885aa434ef40f1acb37989b08e186
 admission evidence is `d897980e47f92ecf5506616f9b316b35667990da595478f80a7d7fa0b6669449`.
 No quadrature preflight, smoke, joint training, formal acceptance, candidate
 export, or promotion was run.
+
+## 2026-08-26：Package A electronic distribution recovery closeout
+
+Package A completed retry12 from clean commit `a1842b8` through
+`validate → gate-audit → preflight → audit → report → closeout`. All six
+evidence records were `status=valid`; the H-GFA two-evaluator gate, CUDA
+three-step preflight, negative control, resource limits, generator-state
+invariance, H-LIR inversion, and H-LGS geometry/finite-difference harness all
+passed. The valid scientific classification was
+`generator_range_incomplete`: random (`R`), constrained (`C`), and
+unconstrained (`U`) inversion arms all failed the registered dual-evaluator
+range combination gate in both disjoint 250/class banks.
+
+The real H-GFA banks passed and the cyclic label-shift control was rejected.
+Across the six bank/arm measurements, primary accuracy/minimum recall ranged
+from `0.9888–1.0000`/`0.9600–1.0000`; secondary accuracy/minimum recall ranged
+from `0.8956–0.9172`/`0.1160–0.5360`; agreement ranged from `0.8956–0.9168`.
+All six `range_gate` values were false. Memorization anomaly was zero,
+generator state before/after was identical, and no model checkpoint was
+created. This is a valid scientific failure, not an invalid harness, and does
+not authorize retuning, seed substitution, or a downstream optical route.
+
+Evidence is at
+`outputs/20260825_electronic_distribution_recovery/runs/20260825_package_a_v1_retry12/`.
+The immutable SHA256 values are validation
+`3d4c71193455c5a1d8afcd62569f4e08dbc741046793418ff8a6841f74340737`, gate-audit
+`99de4cae5f83cda643fd5accd09e54795d24b74d1629539f033f4156e47ac0bf`, preflight
+`be07633ca2deffec1fc3b65226172743c7a0770a00b13087b420516ceee09e06`, audit
+`2253c9ed0f4284b2e81818ba6089fee1ecb82430989edfa9cf678b1c84c957dd`, report
+`fc2d110903b3eaa0a42234a646d4be9249e2ebe2962f58254c2e1dfb9048ae36`, and
+closeout `70ed0fe02e9242ec630b44f3e46dd386950ef8d10d1ab5769664b5cb211a8cab`.
+
+The real consumer is the separately reviewed Package B teacher audit and the
+future student architecture decision. Package B was not started; all
+DDPM/student/optical/phase/quadrature/OLS/fiber training, promotion, and
+candidate export remain forbidden.

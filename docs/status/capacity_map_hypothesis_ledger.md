@@ -227,3 +227,25 @@ and admission evidence
 The five-stage v3 chain was not created because the electronic gate is an
 upstream stop; no optical or joint-training evidence exists. The only next
 action is `close_spatial_quadrature_v3_input_route`.
+
+| H-EDR | Frozen v3 32D electronic generator under Gaussian-prior inversion: random (`R`), chi-square projected Adam (`C`), and unprojected Adam (`U`) ranges | If `R` passes, the Gaussian prior supports the generator; if only `C` or `U` passes, the generator range is supported outside prior mass; if no arm passes stably across both banks, the generator range is incomplete | Clean-lineage validate/gate-audit/preflight, two disjoint 250/class banks, dual evaluator semantics/agreement/diversity/coverage/memorization, paired image-only inversion, label-shift inversion, generator-state/hash isolation, H-LGS Jacobian fixture and finite-difference/resource gates; only report/closeout and separately reviewed Package B teacher audit may consume a valid result | valid closeout retry12: `generator_range_incomplete`; H-GFA and preflight passed, but all R/C/U arms failed the dual-evaluator range combination gate in both banks; primary accuracy/minimum recall `0.9888–1.0000`/`0.9600–1.0000`, secondary `0.8956–0.9172`/`0.1160–0.5360`, agreement `0.8956–0.9168`, memorization anomaly `0`; evidence hashes recorded in current handoff and experiment history; Package B not started, no training/optical/promotion consumer |
+
+## H-EDR closeout (2026-08-26)
+
+Package A retry12 is a valid scientific closeout on clean commit `a1842b8`.
+The real-real H-GFA gate passed in both disjoint banks and the label-shift
+negative control was rejected. The three inversion arms R/C/U all had
+`range_gate=false` in both banks, yielding `generator_range_incomplete`.
+The H-LGS geometry and finite-difference harness passed with zero evaluator
+calls; generator state was unchanged and no model checkpoint was created.
+The six immutable evidence hashes are validation
+`3d4c71193455c5a1d8afcd62569f4e08dbc741046793418ff8a6841f74340737`, gate-audit
+`99de4cae5f83cda643fd5accd09e54795d24b74d1629539f033f4156e47ac0bf`, preflight
+`be07633ca2deffec1fc3b65226172743c7a0770a00b13087b420516ceee09e06`, audit
+`2253c9ed0f4284b2e81818ba6089fee1ecb82430989edfa9cf678b1c84c957dd`, report
+`fc2d110903b3eaa0a42234a646d4be9249e2ebe2962f58254c2e1dfb9048ae36`, and
+closeout `70ed0fe02e9242ec630b44f3e46dd386950ef8d10d1ab5769664b5cb211a8cab`.
+The named consumer is a separately reviewed Package B teacher audit and future
+student architecture choice; Package B remains unstarted. No downstream
+training, optical, phase, quadrature, OLS, fiber, candidate, or promotion
+consumer is authorized by this result.
