@@ -270,3 +270,12 @@ The required consumer decision is a new `Package B3-VAE` design, which must firs
 pass the reconstruction distribution gate and then rerun the original Package B
 dual-bank admission. Package B3-DDPM, Package C, optical training, promotion and
 candidate export are not authorized by H-TFA.
+
+### H-TFA evidence-schema amendment
+
+The v3 artifact is non-consumed because its producer manifest omitted two required
+top-level lineage fields. The authoritative v4 rerun from clean commit `9dddb78`
+contains the complete required evidence schema and reproduces the same valid
+classification: `teacher_first_stage_distribution_failed`. This amendment changes
+only the evidence pointer, not the H-TFA decision or its prohibition on Package C,
+Package B3-DDPM, promotion, and optical training.

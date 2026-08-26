@@ -1342,3 +1342,23 @@ and first-stage training, followed by a reconstruction distribution gate. A
 first-stage gate failed first. Package C and all optical or promotion actions
 remain blocked; a new teacher must pass the original Package B dual-bank
 admission before Package C can be considered.
+
+### B2 evidence-schema amendment (authoritative v4)
+
+The earlier v3 directory is retained as a non-consumed schema diagnostic because
+the producer manifest omitted `seed` and `input_artifact_hashes`. After the
+producer repair, v4 reran the complete lifecycle from clean commit `9dddb78` and
+is the authoritative B2 evidence. Its SHA256 values for lineage, preflight,
+generation state, artifact, validation, audit, report, and closeout are,
+respectively:
+
+`4fae3feabb1bac774827e4c46719095d5084e75ab41df2789df5cb8906587ae3`,
+`812e28350315bddb26023d8f56dd40b65a306d83c68c2ecf119e1b8081e73643`,
+`3f7915386bfe8b2c78b0a9aef8a549b03e5165ce609def3609eb51d0c4684a1d`,
+`af04f5824784943b0d3d0a33f2404802644f4d96bb7cbb9dfb53ef2d56683c45`,
+`9b9a79d3efcd6fb1b8f10eac152acf2d72cf27d6371742999deee48749eae6bc`,
+`a1d64208e3c55cc468229ca11552f43dc55f93c2dae3e163435b06bcdd06a71f`,
+`aecb9b9a4f3a8e521c22b3cf51f11330fcf25678d3788502caebac0742e9b0e7`,
+and `c760ddcc76f378f5517e280d876edaa9015bc3ea7f6216f846ecaf1813388c75`.
+The v4 classification and all arm metrics are unchanged from the preceding
+valid measurement: `teacher_first_stage_distribution_failed`.

@@ -528,3 +528,21 @@ gate。当前结果不授权 `Package B3-DDPM`、Package C、student/teacher/opt
 phase/quadrature/OLS/fiber training、candidate export 或 promotion。若未来 first-stage
 通过，仍须用新 teacher lineage 重新通过原 Package B 双 bank admission，只有得到
 `teacher_distribution_qualified` 才可审查 Package C。
+
+### B2 evidence-schema amendment
+
+上述 v3 目录仅保留为未消费的 schema-diagnostic run：其 producer manifest 缺少
+`seed` 和 `input_artifact_hashes`，因此不承担最终科学证据。修复后的最终权威 run
+是 `outputs/20260827_teacher_failure_attribution/runs/20260827_package_b2_v4/`，在
+clean commit `9dddb78` 上完成全流程；其 attribution artifact 已通过顶层 required
+evidence-field 核验。v4 的 lineage/preflight/state/artifact/validation/audit/report/
+closeout SHA256 依次为：
+
+`4fae3feabb1bac774827e4c46719095d5084e75ab41df2789df5cb8906587ae3`、
+`812e28350315bddb26023d8f56dd40b65a306d83c68c2ecf119e1b8081e73643`、
+`3f7915386bfe8b2c78b0a9aef8a549b03e5165ce609def3609eb51d0c4684a1d`、
+`af04f5824784943b0d3d0a33f2404802644f4d96bb7cbb9dfb53ef2d56683c45`、
+`9b9a79d3efcd6fb1b8f10eac152acf2d72cf27d6371742999deee48749eae6bc`、
+`a1d64208e3c55cc468229ca11552f43dc55f93c2dae3e163435b06bcdd06a71f`、
+`aecb9b9a4f3a8e521c22b3cf51f11330fcf25678d3788502caebac0742e9b0e7`、
+`c760ddcc76f378f5517e280d876edaa9015bc3ea7f6216f846ecaf1813388c75`。
