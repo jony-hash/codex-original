@@ -586,7 +586,7 @@ def _jacobian(generator: HierarchicalSpatialAmplitudeGenerator, codes: Tensor, l
             raise ValueError("H-LGS Jacobian is invalid")
         direction = torch.ones_like(code)
         direction = direction / direction.norm()
-        epsilon = 1.0e-3
+        epsilon = 1.0e-2
         with torch.no_grad():
             finite_difference = (function(code + epsilon * direction, label) - function(code - epsilon * direction, label)) / (2.0 * epsilon)
         projected = matrix @ direction

@@ -122,3 +122,12 @@ def test_package_a_real_pca_keeps_reference_labels_aligned_with_features() -> No
     result = _real_pca(images, labels, scales, 1.0e-3)
     assert len(result["per_class"]) == 10
     assert all(row["nominal_rank"] == 1 for row in result["per_class"])
+
+
+def test_package_a_directional_check_step_avoids_float32_cancellation() -> None:
+    epsilon = 1.0e-2
+    direction = torch.tensor([1.0, -1.0], dtype=torch.float32)
+    direction = direction / direction.norm()
+    point = torch.tensor([1000.0, -1000.0], dtype=torch.float32)
+    finite_difference = ((point + epsilon * direction) - (point - epsilon * direction)) / (2.0 * epsilon)
+    assert torch.allclose(finite_difference, direction, atol=1.0e-3, rtol=1.0e-3)
