@@ -613,6 +613,7 @@ def _generate(config: dict[str, Any], config_path: str, lineage: dict[str, Any],
                     "reconstruction_images": v_camera,
                     "encoded_mu": mu.detach().cpu().float(),
                     "diffusion_latents": d_latent.detach().cpu().float(),
+                    "labels": labels.detach().cpu().long(),
                     "seeds": seeds,
                 }
                 _atomic_torch(shard_path, payload)
