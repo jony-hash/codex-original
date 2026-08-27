@@ -821,3 +821,22 @@ records `training_authorized=false` and `formal_promotion=false`. The only
 permitted next action is `manual_review_optical_latent_ols_contract`; no extra
 epoch, latent/OLS experiment, SMF/FMF, evaluator, generation, or promotion is
 authorized.
+
+### H-LOMA-I0 next action: Identity reconstruction attribution audit
+
+The full-epoch result is sufficient to open one no-update PLAN-3 closeout
+audit, but not to claim a learned latent manifold. The audit is registered on
+branch `research/v2-lightgen-optical-manifold-identity-attribution-v1` and is
+bound to full-epoch evidence SHA256
+`c01dae121210a4dff0534a9979661f92d1e0fc749087c8451ad51be24a458948`, final
+checkpoint SHA256
+`56cb52fae3a13c94ea5a38af60e0934a407cf1ec7b57bbb31fba2a23c624655f`, and MNIST
+manifest SHA256
+`64b1b70dc119dac0cb0aa8b898614962ff993a83d120390d1d6fadd55ade97d8`.
+
+It will use the fixed 1000-image held-out panel and phase/template controls to
+test instance sensitivity, phase dependence, and within-class geometry. No
+optimizer, checkpoint, latent observer, KL, SMF/FMF, evaluator, generation, or
+promotion is authorized. A pass can only request
+`manual_review_identity_latent_observer_contract`; a valid scientific failure
+requests `manual_review_identity_reconstruction_objective_contract`.

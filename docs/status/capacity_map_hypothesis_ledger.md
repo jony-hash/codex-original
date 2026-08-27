@@ -448,3 +448,23 @@ formal-promotion claim. `training_authorized=false` and
 decision is manual review of `manual_review_optical_latent_ols_contract`; all
 extra epochs, latent/OLS experiments, SMF/FMF, evaluator, generation, and
 promotion remain blocked.
+
+### H-LOMA-I0 Identity reconstruction attribution audit authorization
+
+The project owner authorized one no-update, diagnostic-only attribution audit
+on child branch
+`research/v2-lightgen-optical-manifold-identity-attribution-v1`. It consumes
+only the full-epoch final checkpoint at global step `5500`, the authoritative
+full-epoch evidence, and the fixed MNIST manifest. The audit does not create an
+optimizer, modify model state, write a checkpoint, or authorize latent
+observation, KL, SMF/FMF, evaluator, generation, or promotion.
+
+The fixed 1000-image held-out panel compares the learned checkpoint with zero
+phase, one-sided phase removal, deterministic random phase, cyclic target,
+global-template, and per-label-template controls. Its consumer is the
+PLAN-3 closeout decision: determine whether the observed MSE improvement is
+instance-sensitive and phase-dependent rather than only a class/template
+effect. A valid failed gate blocks PLAN 4 and requests
+`manual_review_identity_reconstruction_objective_contract`; a pass can only
+request `manual_review_identity_latent_observer_contract`. Evidence remains
+bound by `training_authorized=false` and `formal_promotion=false`.

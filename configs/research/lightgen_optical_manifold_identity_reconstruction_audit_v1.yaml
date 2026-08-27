@@ -1,0 +1,96 @@
+schema: lightgen_optical_manifold_identity_reconstruction_audit_v1
+hypothesis: H-LOMA-I0
+formal_system_config: configs/v2/current/formal_identity_logit_amplitude_finite_crop_identity.yaml
+source_training_evidence: outputs/20260827_v2/runs/lightgen_optical_manifold_identity_full_epoch_v1_attempt_04/epoch_training.json
+source_training_evidence_sha256: c01dae121210a4dff0534a9979661f92d1e0fc749087c8451ad51be24a458948
+source_checkpoint: outputs/20260827_v2/runs/lightgen_optical_manifold_identity_full_epoch_v1_attempt_04/full_epoch_final_step_005500.pt
+source_checkpoint_sha256: 56cb52fae3a13c94ea5a38af60e0934a407cf1ec7b57bbb31fba2a23c624655f
+source_dataset_manifest_hash: 64b1b70dc119dac0cb0aa8b898614962ff993a83d120390d1d6fadd55ade97d8
+source_checkpoint_step: 5500
+
+dataset:
+  train_count: 55000
+  validation_count: 5000
+  heldout_count: 1000
+  heldout_per_label: 100
+  visual_panel_count: 100
+  visual_panel_per_label: 10
+  visual_panel_selection: first_occurrence_in_heldout_panel
+  train_template_source: fixed_55k_train_split
+  input_shape: [1, 28, 28]
+  rendered_shape: [1, 200, 200]
+  no_training: true
+  label_role: offline_grouping_and_template_baseline_only
+
+optical_contract:
+  formal_system_kind: formal_amplitude_finite_crop_identity
+  wavelength_m: 5.32e-7
+  slm_shape: [200, 200]
+  slm_pixel_pitch_m: 2.5e-6
+  metasurface_shape: [100, 100]
+  metasurface_pixel_pitch_m: 2.0e-6
+  propagation_grid_size: 2048
+  encoder_layers: 2
+  decoder_layers: 2
+  ols: identity
+  boundary: finite_crop
+  front_relay: coherent_imaging_4f
+  back_relay: free_space
+  input_encoding: intensity_sqrt_amplitude
+  target: camera_intensity_same_fov
+  exposure: {scale: 1.0, gamma: 1.0}
+
+controls:
+  trained: learned_full_epoch_checkpoint
+  zero_phase: encoder_and_decoder_phase_zero
+  encoder_zero: encoder_phase_zero_decoder_learned
+  decoder_zero: encoder_learned_decoder_phase_zero
+  random_phase: uniform_phase_both_stacks_seed_1234
+  cyclic_target: target_cyclic_shift_by_one
+  global_template: train_split_global_mean
+  class_templates: train_split_per_label_mean
+  ideal_reference: paired_target_identity_only
+
+metrics:
+  mse: paired_and_cyclic_target_mse
+  sample_correlation: centered_pearson
+  output_variance: global_and_within_label_variance_retention
+  instance_geometry: within_label_pairwise_distance_correlation
+  retrieval: exact_target_and_same_label_top1
+
+gates:
+  source_checkpoint_step: 5500
+  source_metric_tolerance: 1.0e-9
+  trained_below_cyclic: true
+  trained_below_global_template: true
+  trained_below_class_templates: true
+  trained_below_all_phase_controls: true
+  sample_correlation_positive_and_control_superior: true
+  within_label_geometry_positive_and_control_superior: true
+  exact_retrieval_above_templates_and_controls: true
+  model_state_unchanged: true
+  evaluator_calls: 0
+  min_free_cuda_bytes: 4294967296
+  max_peak_cuda_bytes: 5368709120
+  max_wall_seconds: 1800
+  max_storage_bytes: 536870912
+
+authorization:
+  reviewer_role: project_owner
+  decision: approve_bounded_identity_reconstruction_audit
+  no_update_audit_authorized: true
+  training_authorized: false
+  formal_training_authorized: false
+  formal_promotion: false
+  post_pass_next_action: manual_review_identity_latent_observer_contract
+  post_valid_failed_next_action: manual_review_identity_reconstruction_objective_contract
+  prohibited:
+    - optimizer
+    - checkpoint
+    - latent_observer
+    - kl
+    - smf
+    - fmf
+    - evaluator
+    - generation
+    - promotion
