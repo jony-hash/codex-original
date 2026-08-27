@@ -867,3 +867,45 @@ The only permitted next action is
 `manual_review_identity_latent_observer_contract`. PLAN 4 must remain
 observation-only and separately bound to this passed evidence; no optimizer,
 checkpoint, KL, SMF/FMF, evaluator, generation, or promotion is authorized.
+
+### H-LOMA-I0 PLAN 4 latent observer closeout (2026-08-28)
+
+The observer harness was repaired on clean commit `3e1476d` to require
+`CUBLAS_WORKSPACE_CONFIG=:4096:8` before the Python process enters CUDA. A
+first CUDA run in attempt-02 was retained only as an environment startup
+failure. Attempt-03 then completed, but its endpoint comparison emitted a
+broadcasting warning because the channel dimension was dropped; that evidence
+is retained as superseded harness output and is not authoritative. Commit
+`45a6826` added exact camera-shape checking and a regression test.
+
+The authoritative attempt-04 validation evidence is
+`outputs/20260827_v2/runs/lightgen_optical_manifold_identity_latent_observer_v1_attempt_04/latent_observer_validation.json`
+with SHA256
+`4dda0fb96e144c91d48c8ccbf1395e043bc215b988b7f6ac169b0c91a6530724`; the
+passed observer evidence is
+`outputs/20260827_v2/runs/lightgen_optical_manifold_identity_latent_observer_v1_attempt_04/latent_observer.json`
+with SHA256
+`36a1b918991affaf6093033b5ce5139f2d6f87517f72373b16751f357bb63507`.
+The saved pre-OLS field artifact has SHA256
+`c838a2c85ad4597ebde005e79ed4bceb8726beb8597d8622a578f93f455c7341`, and
+the 50-image interpolation panel has SHA256
+`b8c3553de57ee9e36bea463a957d82125c540667b61f572e08dc081c9a6c4954`.
+
+The observer extracted a finite `complex64` field of shape
+`[1000,1,100,100]`. Normalized pre-OLS true-label inter/intra distance ratio
+was `1.2041758298873901`, above one and above the seed-1234 permuted-label
+ratio `1.0003329515457153`; entropy effective rank was `38.74065017700195`
+and participation rank was `20.190610885620117`. The rendered-input reference
+was recorded with the same centered-Gram definitions. Authoritative source
+reconstruction MSE reproduced `0.03437697887420654`; pre/post Identity OLS
+fields were exact, all endpoint camera MSEs were `0.0`, model state was
+unchanged, evaluator calls were `0`, peak CUDA allocation was `446995968`
+bytes, wall time was `64.6113s`, and storage was `176635673` bytes.
+
+This is a valid observation-only result: the Identity pre-OLS representation
+has finite, label-associated and instance-level structure under the registered
+diagnostics. It does not establish a generative latent prior, KL suitability,
+SMF/FMF benefit, or formal promotion. t-SNE remains a separate non-gating
+visualization task. The sole next action is
+`manual_review_identity_manifold_regularization_contract`; evidence continues
+to record `training_authorized=false` and `formal_promotion=false`.

@@ -493,3 +493,38 @@ only permitted next action is
 `manual_review_identity_latent_observer_contract`; PLAN 4 remains separately
 observation-only. `training_authorized=false` and `formal_promotion=false`
 remain mandatory.
+
+### H-LOMA-I0 PLAN 4 latent observer closeout (2026-08-28)
+
+The deterministic CUDA startup harness was repaired on clean commit `3e1476d`
+to require `CUBLAS_WORKSPACE_CONFIG=:4096:8` before CUDA entry. A subsequent
+endpoint-shape repair was committed as `45a6826` after an earlier observer
+attempt exposed an invalid broadcasting comparison. The earlier output is
+retained but is not authoritative.
+
+Authoritative attempt-04 validation and observer evidence are bound to commit
+`45a6826`:
+
+- validation:
+  `outputs/20260827_v2/runs/lightgen_optical_manifold_identity_latent_observer_v1_attempt_04/latent_observer_validation.json`, SHA256
+  `4dda0fb96e144c91d48c8ccbf1395e043bc215b988b7f6ac169b0c91a6530724`;
+- observer:
+  `outputs/20260827_v2/runs/lightgen_optical_manifold_identity_latent_observer_v1_attempt_04/latent_observer.json`, SHA256
+  `36a1b918991affaf6093033b5ce5139f2d6f87517f72373b16751f357bb63507`;
+- pre-OLS field SHA256 `c838a2c85ad4597ebde005e79ed4bceb8726beb8597d8622a578f93f455c7341`;
+- interpolation panel SHA256 `b8c3553de57ee9e36bea463a957d82125c540667b61f572e08dc081c9a6c4954`.
+
+All harness and resource gates passed. Normalized pre-OLS true-label
+inter/intra ratio was `1.2041758298873901`, compared with permuted-label
+`1.0003329515457153`; entropy and participation ranks were `38.74065017700195`
+and `20.190610885620117`. Source reconstruction MSE reproduced exactly,
+pre/post Identity OLS fields were tensor-equal, endpoint MSE was `0.0`, model
+state was unchanged, evaluator calls were `0`, peak CUDA was `446995968`
+bytes, wall time `64.6113s`, and storage `176635673` bytes.
+
+The result supports only the registered claim that Identity pre-OLS fields
+contain finite, label-associated and instance-level diagnostic structure. It
+does not authorize KL, SMF/FMF, generation, or promotion. t-SNE is deferred as
+a non-gating visualization extension. The sole permitted next action is
+`manual_review_identity_manifold_regularization_contract`, while
+`training_authorized=false` and `formal_promotion=false` remain mandatory.
