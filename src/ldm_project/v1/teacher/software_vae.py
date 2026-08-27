@@ -195,7 +195,7 @@ def reconstruction_loss(
     multiscale_weight: float = 1.0,
     sobel_weight: float = 0.5,
     foreground_dice_weight: float = 0.5,
-) -> tuple[Tensor, dict[str, float]]:
+) -> tuple[Tensor, dict[str, Tensor]]:
     _validate_images(reconstruction)
     _validate_images(target)
     if labels.ndim != 1 or labels.shape[0] != target.shape[0]:
@@ -219,10 +219,14 @@ def reconstruction_loss(
     kl = -0.5 * (1.0 + logvar - mu.square() - logvar.exp()).mean()
     total = worst_class + kl_beta * kl
     return total, {
-        "total": float(total.detach().cpu()),
-        "worst_class_reconstruction": float(worst_class.detach().cpu()),
-        "foreground_dice": float(dice_per_sample.mean().detach().cpu()),
-        "kl": float(kl.detach().cpu()),
+        # Keep metrics detached but on the source device.  Converting these to
+        # Python scalars here synchronizes every training batch with the host.
+        # Callers that need JSON should materialize them at an evidence
+        # boundary, not in the loss hot path.
+        "total": total.detach(),
+        "worst_class_reconstruction": worst_class.detach(),
+        "foreground_dice": dice_per_sample.mean().detach(),
+        "kl": kl.detach(),
     }
 
 

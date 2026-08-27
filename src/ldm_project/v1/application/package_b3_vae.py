@@ -15,6 +15,8 @@ import os
 import resource
 import subprocess
 import sys
+import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -36,6 +38,7 @@ from ..teacher.software_vae import (
 PROGRAM = "teacher-first-stage-recovery"
 CONFIG_NAME = "teacher_first_stage_recovery_v1"
 SCHEMA_PREFIX = "teacher_first_stage_recovery"
+STATE_SCHEMA = f"{SCHEMA_PREFIX}_state.v2"
 CAMERA_PREPROCESSING = "bilinear_28_to_200_align_corners_false"
 CLASS_COUNT = 10
 FORMAL_SPLIT_HASH = "8a51217b1ed6833250226255930ab598bf1539e27772ade0188592e5bc0b3912"
@@ -153,6 +156,11 @@ def _config(path: str | Path) -> dict[str, Any]:
         "learning_rate": 0.0002,
         "weight_decay": 0.0001,
         "maximum_epochs": 40,
+        "minimum_epochs": 8,
+        "early_stopping_patience": 3,
+        "early_stopping_min_relative_improvement": 0.001,
+        "checkpoint_interval_optimizer_steps": 100,
+        "projected_epoch_seconds_maximum": 1500,
         "warmup_epochs": 5,
         "kl_beta_maximum": 1.0e-6,
         "kl_warmup_fraction": 0.20,
@@ -305,6 +313,12 @@ def _base(
         "host_rss_peak_bytes": 0,
         "cuda_peak_bytes": 0,
         "synthetic_diagnostic_only": True,
+        "termination_reason": None,
+        "early_stopping_state": None,
+        "actual_last_epoch": None,
+        "optimizer_steps": 0,
+        "checkpoint_interval_optimizer_steps": config.get("checkpoint_interval_optimizer_steps"),
+        "projected_epoch_seconds": None,
     }
 
 
@@ -350,7 +364,7 @@ def _kl_beta(config: dict[str, Any], epoch: int) -> float:
     return config["kl_beta_maximum"] * fraction
 
 
-def _batch_loss(model: SoftwareMultiscaleTeacherVAE, images: torch.Tensor, labels: torch.Tensor, config: dict[str, Any], epoch: int) -> tuple[torch.Tensor, dict[str, float]]:
+def _batch_loss(model: SoftwareMultiscaleTeacherVAE, images: torch.Tensor, labels: torch.Tensor, config: dict[str, Any], epoch: int) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
     output = model(images, deterministic=False)
     loss, metrics = reconstruction_loss(
         output["reconstruction"],
@@ -367,6 +381,99 @@ def _batch_loss(model: SoftwareMultiscaleTeacherVAE, images: torch.Tensor, label
     return loss, metrics
 
 
+def _metric_scalars(metrics: dict[str, torch.Tensor]) -> dict[str, float]:
+    return {key: float(value.detach().cpu()) for key, value in metrics.items()}
+
+
+def _nested_tensor_hash(value: Any) -> str:
+    digest = hashlib.sha256()
+
+    def visit(item: Any, path: str) -> None:
+        digest.update(path.encode())
+        if torch.is_tensor(item):
+            digest.update(tensor_sha256(item).encode())
+            return
+        if isinstance(item, dict):
+            for key in sorted(item, key=str):
+                visit(item[key], f"{path}.{key}")
+            return
+        if isinstance(item, (list, tuple)):
+            for index, child in enumerate(item):
+                visit(child, f"{path}.{index}")
+            return
+        digest.update(repr(item).encode())
+
+    visit(value, "root")
+    return digest.hexdigest()
+
+
+def _gradient_norm_is_finite(model: SoftwareMultiscaleTeacherVAE) -> bool:
+    gradient_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+    return bool(torch.isfinite(gradient_norm).item())
+
+
+def _early_stopping_update(
+    *,
+    best_loss: float,
+    best_epoch: int,
+    no_improvement_epochs: int,
+    development_loss: float,
+    epoch: int,
+    config: dict[str, Any],
+) -> dict[str, Any]:
+    is_best = development_loss < best_loss
+    relative_improvement = (
+        float("inf")
+        if best_loss == float("inf")
+        else (best_loss - development_loss) / max(abs(best_loss), 1.0e-12)
+    )
+    if is_best:
+        best_epoch = epoch
+        best_loss = development_loss
+        if relative_improvement >= config["early_stopping_min_relative_improvement"]:
+            no_improvement_epochs = 0
+        else:
+            no_improvement_epochs += 1
+    else:
+        relative_improvement = 0.0
+        no_improvement_epochs += 1
+    return {
+        "best_loss": best_loss,
+        "best_epoch": best_epoch,
+        "no_improvement_epochs": no_improvement_epochs,
+        "relative_improvement": relative_improvement,
+        "is_best": is_best,
+        "should_stop": bool(
+            epoch >= config["minimum_epochs"]
+            and no_improvement_epochs >= config["early_stopping_patience"]
+        ),
+    }
+
+
+def _preflight_update(
+    model: SoftwareMultiscaleTeacherVAE,
+    optimizer: torch.optim.Optimizer,
+    images: torch.Tensor,
+    labels: torch.Tensor,
+    config: dict[str, Any],
+    epoch: int,
+) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+    optimizer.zero_grad(set_to_none=True)
+    last_loss: torch.Tensor | None = None
+    last_metrics: dict[str, torch.Tensor] | None = None
+    for _ in range(config["gradient_accumulation"]):
+        last_loss, last_metrics = _batch_loss(model, images, labels, config, epoch)
+        if not bool(torch.isfinite(last_loss).item()):
+            raise ValueError("Package B3 preflight loss is non-finite")
+        (last_loss / config["gradient_accumulation"]).backward()
+    if not _gradient_norm_is_finite(model):
+        raise ValueError("Package B3 preflight gradient is non-finite")
+    optimizer.step()
+    if last_loss is None or last_metrics is None:
+        raise RuntimeError("Package B3 preflight update did not execute")
+    return last_loss, last_metrics
+
+
 def _preflight(args: argparse.Namespace, config: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
     device = require_cuda(args.device)
     torch.manual_seed(config["master_seed"])
@@ -380,31 +487,39 @@ def _preflight(args: argparse.Namespace, config: dict[str, Any], data: dict[str,
     before = state_content_hash(model.state_dict())
     losses = []
     updates = []
-    for step in range(3):
-        optimizer.zero_grad(set_to_none=True)
-        loss, metrics = _batch_loss(model, images, labels, config, step + 1)
-        if not torch.isfinite(loss):
-            raise ValueError("Package B3 preflight loss is non-finite")
-        loss.backward()
-        finite_gradients = all(parameter.grad is None or torch.isfinite(parameter.grad).all() for parameter in model.parameters())
-        if not finite_gradients:
-            raise ValueError("Package B3 preflight gradient is non-finite")
-        optimizer.step()
+    for step in range(2):
+        _, metrics = _preflight_update(model, optimizer, images, labels, config, step + 1)
         scheduler.step()
-        losses.append(metrics)
+        losses.append(_metric_scalars(metrics))
         updates.append(state_content_hash(model.state_dict()) != before)
         before = state_content_hash(model.state_dict())
-    after = state_content_hash(model.state_dict())
     checkpoint = {
-        "schema": f"{SCHEMA_PREFIX}_preflight_state.v1",
+        "schema": STATE_SCHEMA,
         "model_version": MODEL_VERSION,
+        "config_sha256": file_sha256(args.config),
+        "git_head": git_state()["git_head"],
+        "phase": "train",
+        "epoch": 1,
+        "next_batch": 2 * config["gradient_accumulation"],
+        "epoch_order": fitting[: 3 * config["gradient_accumulation"] * config["microbatch_size"]].clone(),
+        "train_loss_sum": 0.0,
+        "train_loss_count": 2,
+        "optimizer_steps": 2,
         "state_dict": {key: value.detach().clone() for key, value in model.state_dict().items()},
         "optimizer": copy.deepcopy(optimizer.state_dict()),
         "scheduler": copy.deepcopy(scheduler.state_dict()),
-        "next_step": 3,
+        "history": [],
+        "early_stopping_state": {"best_loss": float("inf"), "best_epoch": 0, "no_improvement_epochs": 0},
+        "loader_generator_state": torch.Generator(device="cpu").get_state(),
+        "cpu_rng_state": torch.get_rng_state(),
+        "cuda_rng_state": torch.cuda.get_rng_state(device),
     }
-    cpu_rng_state = torch.get_rng_state()
-    cuda_rng_state = torch.cuda.get_rng_state(device)
+    with tempfile.TemporaryDirectory(prefix="package_b3_preflight_") as temporary:
+        checkpoint_path = Path(temporary) / "resume.pt"
+        atomic_torch(checkpoint_path, checkpoint)
+        checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
+    cpu_rng_state = checkpoint["cpu_rng_state"]
+    cuda_rng_state = checkpoint["cuda_rng_state"]
     continuation = _model(device)
     continuation.load_state_dict(checkpoint["state_dict"])
     continuation_optimizer = torch.optim.AdamW(continuation.parameters(), lr=config["learning_rate"], weight_decay=config["weight_decay"])
@@ -413,10 +528,7 @@ def _preflight(args: argparse.Namespace, config: dict[str, Any], data: dict[str,
     continuation_scheduler.load_state_dict(copy.deepcopy(checkpoint["scheduler"]))
     torch.set_rng_state(cpu_rng_state)
     torch.cuda.set_rng_state(cuda_rng_state, device)
-    continuation_optimizer.zero_grad(set_to_none=True)
-    resumed_loss, _ = _batch_loss(continuation, images, labels, config, 4)
-    resumed_loss.backward()
-    continuation_optimizer.step()
+    resumed_loss, _ = _preflight_update(continuation, continuation_optimizer, images, labels, config, 3)
     continuation_scheduler.step()
     continuous = _model(device)
     continuous.load_state_dict(checkpoint["state_dict"])
@@ -426,18 +538,75 @@ def _preflight(args: argparse.Namespace, config: dict[str, Any], data: dict[str,
     continuous_scheduler.load_state_dict(copy.deepcopy(checkpoint["scheduler"]))
     torch.set_rng_state(cpu_rng_state)
     torch.cuda.set_rng_state(cuda_rng_state, device)
-    continuous_optimizer.zero_grad(set_to_none=True)
-    continuous_loss, _ = _batch_loss(continuous, images, labels, config, 4)
-    continuous_loss.backward()
-    continuous_optimizer.step()
+    continuous_loss, continuous_metrics = _preflight_update(continuous, continuous_optimizer, images, labels, config, 3)
     continuous_scheduler.step()
+    losses.append(_metric_scalars(continuous_metrics))
+    updates.append(state_content_hash(continuous.state_dict()) != state_content_hash(checkpoint["state_dict"]))
     resume_exact = state_content_hash(continuation.state_dict()) == state_content_hash(continuous.state_dict())
+    resume_model_hash = state_content_hash(continuation.state_dict())
+    continuous_model_hash = state_content_hash(continuous.state_dict())
+    resume_optimizer_hash = _nested_tensor_hash(continuation_optimizer.state_dict())
+    continuous_optimizer_hash = _nested_tensor_hash(continuous_optimizer.state_dict())
+    resume_scheduler_hash = _nested_tensor_hash(continuation_scheduler.state_dict())
+    continuous_scheduler_hash = _nested_tensor_hash(continuous_scheduler.state_dict())
+    resume_exact = bool(
+        resume_model_hash == continuous_model_hash
+        and resume_optimizer_hash == continuous_optimizer_hash
+        and resume_scheduler_hash == continuous_scheduler_hash
+    )
+    after = continuous_model_hash
+
+    del model, optimizer, scheduler, continuation, continuation_optimizer, continuation_scheduler, continuous, continuous_optimizer, continuous_scheduler
+    torch.cuda.empty_cache()
+    torch.cuda.reset_peak_memory_stats(device)
+
+    benchmark_model = _model(device)
+    benchmark_optimizer = torch.optim.AdamW(benchmark_model.parameters(), lr=config["learning_rate"], weight_decay=config["weight_decay"])
+    benchmark_warmup_batches = 10
+    benchmark_batch_count = benchmark_warmup_batches + 200
+    benchmark_indices = fitting[: benchmark_batch_count * config["microbatch_size"]]
+    for start in range(0, benchmark_warmup_batches * config["microbatch_size"], config["microbatch_size"]):
+        batch = benchmark_indices[start : start + config["microbatch_size"]]
+        benchmark_images = _to_camera(data["images"].index_select(0, batch).to(device, non_blocking=True))
+        benchmark_labels = data["labels"].index_select(0, batch).to(device, non_blocking=True)
+        _preflight_update(benchmark_model, benchmark_optimizer, benchmark_images, benchmark_labels, config, 1)
+    torch.cuda.synchronize(device)
+    train_started = time.perf_counter()
+    for start in range(benchmark_warmup_batches * config["microbatch_size"], benchmark_batch_count * config["microbatch_size"], config["microbatch_size"]):
+        batch = benchmark_indices[start : start + config["microbatch_size"]]
+        benchmark_images = _to_camera(data["images"].index_select(0, batch).to(device, non_blocking=True))
+        benchmark_labels = data["labels"].index_select(0, batch).to(device, non_blocking=True)
+        _preflight_update(benchmark_model, benchmark_optimizer, benchmark_images, benchmark_labels, config, 1)
+    torch.cuda.synchronize(device)
+    train_elapsed = time.perf_counter() - train_started
+
+    benchmark_model.eval()
+    development_indices = _select_development(data["train_indices"], data["labels"], seed=config["development_seed"], samples_per_class=config["development_samples_per_class"])[1]
+    development_batch_count = 100
+    development_started = time.perf_counter()
+    with torch.inference_mode():
+        for start in range(0, development_batch_count * config["microbatch_size"], config["microbatch_size"]):
+            batch = development_indices[start : start + config["microbatch_size"]]
+            benchmark_images = _to_camera(data["images"].index_select(0, batch).to(device, non_blocking=True))
+            benchmark_labels = data["labels"].index_select(0, batch).to(device, non_blocking=True)
+            output = benchmark_model(benchmark_images, deterministic=True)
+            reconstruction_loss(output["reconstruction"], benchmark_images, benchmark_labels, output["mu"], output["logvar"], temperature=config["loss_temperature"], kl_beta=_kl_beta(config, 1), multiscale_weight=config["multiscale_weight"], sobel_weight=config["sobel_weight"], foreground_dice_weight=config["foreground_dice_weight"])
+    torch.cuda.synchronize(device)
+    development_elapsed = time.perf_counter() - development_started
     memory = torch.cuda.max_memory_allocated(device)
     rss = _max_rss_bytes()
+    projected_train_seconds = train_elapsed / 200 * math.ceil(fitting.numel() / config["microbatch_size"])
+    projected_development_seconds = development_elapsed / development_batch_count * math.ceil(development_indices.numel() / config["microbatch_size"])
+    projected_epoch_seconds = projected_train_seconds + projected_development_seconds
+    throughput_passed = projected_epoch_seconds <= config["projected_epoch_seconds_maximum"]
+    del benchmark_model, benchmark_optimizer
+    torch.cuda.empty_cache()
     passed = bool(
         all(updates)
-        and torch.isfinite(resumed_loss)
+        and bool(torch.isfinite(resumed_loss).item())
+        and bool(torch.isfinite(continuous_loss).item())
         and resume_exact
+        and throughput_passed
         and memory < config["cuda_memory_limit_bytes"]
         and rss < config["host_rss_limit_bytes"]
         and after != ""
@@ -451,6 +620,17 @@ def _preflight(args: argparse.Namespace, config: dict[str, Any], data: dict[str,
         "parameter_updates": updates,
         "resume_exact": resume_exact,
         "state_hash_after_three_steps": after,
+        "resume_model_exact": resume_model_hash == continuous_model_hash,
+        "resume_optimizer_exact": resume_optimizer_hash == continuous_optimizer_hash,
+        "resume_scheduler_exact": resume_scheduler_hash == continuous_scheduler_hash,
+        "benchmark_training_batches": benchmark_batch_count,
+        "benchmark_development_batches": development_batch_count,
+        "benchmark_training_seconds": train_elapsed,
+        "benchmark_development_seconds": development_elapsed,
+        "projected_train_seconds": projected_train_seconds,
+        "projected_development_seconds": projected_development_seconds,
+        "projected_epoch_seconds": projected_epoch_seconds,
+        "throughput_gate_passed": throughput_passed,
         "cuda_peak_bytes": int(memory),
         "host_rss_peak_bytes": rss,
         "evaluator_calls": 0,
@@ -467,6 +647,7 @@ def _train(args: argparse.Namespace, config: dict[str, Any], data: dict[str, Any
     torch.manual_seed(config["master_seed"])
     model = _model(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=config["learning_rate"], weight_decay=config["weight_decay"])
+
     def lr_schedule(epoch: int) -> float:
         if epoch <= config["warmup_epochs"]:
             return max(1.0 / config["warmup_epochs"], epoch / config["warmup_epochs"])
@@ -474,82 +655,287 @@ def _train(args: argparse.Namespace, config: dict[str, Any], data: dict[str, Any
         return 0.5 * (1.0 + math.cos(math.pi * min(1.0, progress)))
 
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_schedule)
-    fitting_indices, development_indices = _select_development(data["train_indices"], data["labels"], seed=config["development_seed"], samples_per_class=config["development_samples_per_class"])
-    fitting_images = data["images"]
-    development_images = data["images"]
-    development_labels = data["labels"].index_select(0, development_indices)
+    fitting_indices, development_indices = _select_development(
+        data["train_indices"],
+        data["labels"],
+        seed=config["development_seed"],
+        samples_per_class=config["development_samples_per_class"],
+    )
+    fitting_dataset = TensorDataset(data["images"], data["labels"])
     loader_generator = torch.Generator(device="cpu").manual_seed(config["master_seed"])
-    loader_dataset = Subset(TensorDataset(fitting_images, data["labels"]), fitting_indices.tolist())
-    loader = DataLoader(loader_dataset, batch_size=config["microbatch_size"], shuffle=True, generator=loader_generator, num_workers=0, pin_memory=True)
     best_loss = float("inf")
     best_epoch = 0
     history = []
     run_dir = Path(args.run_dir)
     state_dir = run_dir / "states"
-    start_epoch = 1
+    config_sha = file_sha256(args.config)
+    git_head = git_state()["git_head"]
+    current_epoch = 1
+    phase = "train"
+    next_batch = 0
+    epoch_order = torch.empty(0, dtype=torch.long)
+    train_loss_sum = torch.zeros((), dtype=torch.float64, device=device)
+    train_loss_count = 0
+    optimizer_steps = 0
+    no_improvement_epochs = 0
+    resume_source = args.resume_checkpoint
+
+    def ordered_loader(indices: torch.Tensor) -> DataLoader:
+        return DataLoader(
+            Subset(fitting_dataset, indices.tolist()),
+            batch_size=config["microbatch_size"],
+            shuffle=False,
+            num_workers=config["num_workers"],
+            pin_memory=True,
+        )
+
+    def state_payload(
+        *,
+        state_phase: str,
+        state_epoch: int,
+        state_next_batch: int,
+        state_epoch_order: torch.Tensor,
+        state_train_loss_sum: float,
+        state_train_loss_count: int,
+    ) -> dict[str, Any]:
+        return {
+            "schema": STATE_SCHEMA,
+            "model_version": MODEL_VERSION,
+            "config_sha256": config_sha,
+            "git_head": git_head,
+            "phase": state_phase,
+            "epoch": state_epoch,
+            "next_batch": state_next_batch,
+            "epoch_order": state_epoch_order.detach().cpu().clone(),
+            "train_loss_sum": state_train_loss_sum,
+            "train_loss_count": state_train_loss_count,
+            "optimizer_steps": optimizer_steps,
+            "state_dict": model.state_dict(),
+            "optimizer": optimizer.state_dict(),
+            "scheduler": scheduler.state_dict(),
+            "history": history,
+            "early_stopping_state": {
+                "best_loss": best_loss,
+                "best_epoch": best_epoch,
+                "no_improvement_epochs": no_improvement_epochs,
+            },
+            "loader_generator_state": loader_generator.get_state(),
+            "cpu_rng_state": torch.get_rng_state(),
+            "cuda_rng_state": torch.cuda.get_rng_state(device),
+            "cuda_peak_bytes": int(torch.cuda.max_memory_allocated(device)),
+            "host_rss_peak_bytes": _max_rss_bytes(),
+        }
+
     if args.resume_checkpoint:
         resume = torch.load(args.resume_checkpoint, map_location=device, weights_only=True)
-        if not isinstance(resume, dict) or resume.get("schema") != f"{SCHEMA_PREFIX}_state.v1" or resume.get("model_version") != MODEL_VERSION:
+        if (
+            not isinstance(resume, dict)
+            or resume.get("schema") != STATE_SCHEMA
+            or resume.get("model_version") != MODEL_VERSION
+            or resume.get("config_sha256") != config_sha
+            or resume.get("git_head") != git_head
+        ):
             raise ValueError("Package B3 resume checkpoint lineage is invalid")
+        if resume.get("phase") not in {"train", "development"}:
+            raise ValueError("Package B3 resume checkpoint phase is invalid")
         model.load_state_dict(resume["state_dict"], strict=True)
         optimizer.load_state_dict(resume["optimizer"])
         scheduler.load_state_dict(resume["scheduler"])
         if not isinstance(resume.get("history"), list) or not isinstance(resume.get("epoch"), int):
             raise ValueError("Package B3 resume checkpoint metadata is invalid")
         history = resume["history"]
-        if history:
-            best_row = min(history, key=lambda row: (float(row["development_loss"]), int(row["epoch"])))
-            best_loss, best_epoch = float(best_row["development_loss"]), int(best_row["epoch"])
-        start_epoch = int(resume["epoch"]) + 1
-        if start_epoch > config["maximum_epochs"] + 1:
+        early_state = resume.get("early_stopping_state")
+        if not isinstance(early_state, dict):
+            raise ValueError("Package B3 resume checkpoint is missing early-stopping state")
+        best_loss = float(early_state["best_loss"])
+        best_epoch = int(early_state["best_epoch"])
+        no_improvement_epochs = int(early_state["no_improvement_epochs"])
+        phase = resume["phase"]
+        current_epoch = int(resume["epoch"])
+        if current_epoch < 1 or current_epoch > config["maximum_epochs"]:
             raise ValueError("Package B3 resume checkpoint is beyond the registered epoch limit")
+        if not isinstance(resume.get("next_batch"), int) or resume["next_batch"] < 0:
+            raise ValueError("Package B3 resume checkpoint batch cursor is invalid")
+        next_batch = int(resume["next_batch"])
+        train_loss_sum = torch.tensor(float(resume["train_loss_sum"]), dtype=torch.float64, device=device)
+        train_loss_count = int(resume["train_loss_count"])
+        optimizer_steps = int(resume["optimizer_steps"])
+        if not torch.is_tensor(resume.get("epoch_order")):
+            raise ValueError("Package B3 resume checkpoint is missing epoch order")
+        epoch_order = resume["epoch_order"].to(device="cpu", dtype=torch.long)
+        if phase == "train":
+            expected_batches = math.ceil(fitting_indices.numel() / config["microbatch_size"])
+            if epoch_order.numel() not in {0, fitting_indices.numel()} or next_batch > expected_batches:
+                raise ValueError("Package B3 resume checkpoint epoch cursor is invalid")
+            if epoch_order.numel() and next_batch % config["gradient_accumulation"]:
+                raise ValueError("Package B3 resume checkpoint is not at an accumulation boundary")
+            if not epoch_order.numel() and next_batch:
+                raise ValueError("Package B3 empty epoch order has a nonzero cursor")
+        elif next_batch != 0 or epoch_order.numel() != 0:
+            raise ValueError("Package B3 development checkpoint cursor is invalid")
         if not torch.is_tensor(resume.get("loader_generator_state")) or not torch.is_tensor(resume.get("cpu_rng_state")) or not torch.is_tensor(resume.get("cuda_rng_state")):
             raise ValueError("Package B3 resume checkpoint is missing RNG state")
         loader_generator.set_state(resume["loader_generator_state"])
         torch.set_rng_state(resume["cpu_rng_state"])
         torch.cuda.set_rng_state(resume["cuda_rng_state"], device)
-    for epoch in range(start_epoch, config["maximum_epochs"] + 1):
+
+    def memory_gate() -> None:
+        if (
+            torch.cuda.max_memory_allocated(device) >= config["cuda_memory_limit_bytes"]
+            or _max_rss_bytes() >= config["host_rss_limit_bytes"]
+        ):
+            raise RuntimeError("Package B3 training exceeded the registered memory safety limit")
+
+    while phase in {"train", "development"} and current_epoch <= config["maximum_epochs"]:
+        if phase == "train":
+            if epoch_order.numel() == 0:
+                epoch_order = fitting_indices.index_select(
+                    0,
+                    torch.randperm(fitting_indices.numel(), generator=loader_generator),
+                )
+                next_batch = 0
+                train_loss_sum.zero_()
+                train_loss_count = 0
+            total_batches = math.ceil(epoch_order.numel() / config["microbatch_size"])
+            if next_batch > total_batches:
+                raise ValueError("Package B3 training cursor exceeds epoch length")
+            loader = ordered_loader(epoch_order[next_batch * config["microbatch_size"] :])
+            model.train()
+            for local_batch_number, (batch_images, batch_labels) in enumerate(loader):
+                batch_number = next_batch + local_batch_number
+                batch_images = _to_camera(batch_images.to(device, non_blocking=True))
+                batch_labels = batch_labels.to(device, non_blocking=True)
+                loss, metrics = _batch_loss(model, batch_images, batch_labels, config, current_epoch)
+                if not bool(torch.isfinite(loss).item()):
+                    raise ValueError("Package B3 training loss is non-finite")
+                (loss / config["gradient_accumulation"]).backward()
+                train_loss_sum.add_(metrics["total"].double())
+                train_loss_count += 1
+                next_batch = batch_number + 1
+                is_last_batch = next_batch == total_batches
+                if next_batch % config["gradient_accumulation"] == 0 or is_last_batch:
+                    if not _gradient_norm_is_finite(model):
+                        raise ValueError("Package B3 training gradient is non-finite")
+                    optimizer.step()
+                    optimizer.zero_grad(set_to_none=True)
+                    optimizer_steps += 1
+                    if optimizer_steps % config["checkpoint_interval_optimizer_steps"] == 0:
+                        memory_gate()
+                        atomic_torch(
+                            state_dir / "latest.pt",
+                            state_payload(
+                                state_phase="train",
+                                state_epoch=current_epoch,
+                                state_next_batch=next_batch,
+                                state_epoch_order=epoch_order,
+                                state_train_loss_sum=float(train_loss_sum.cpu()),
+                                state_train_loss_count=train_loss_count,
+                            ),
+                        )
+            if next_batch != total_batches:
+                raise RuntimeError("Package B3 training did not consume the complete epoch")
+            scheduler.step()
+            memory_gate()
+            atomic_torch(
+                state_dir / "latest.pt",
+                state_payload(
+                    state_phase="development",
+                    state_epoch=current_epoch,
+                    state_next_batch=0,
+                    state_epoch_order=torch.empty(0, dtype=torch.long),
+                    state_train_loss_sum=float(train_loss_sum.cpu()),
+                    state_train_loss_count=train_loss_count,
+                ),
+            )
+            phase = "development"
+
         model.train()
-        optimizer.zero_grad(set_to_none=True)
-        train_losses = []
-        for batch_number, (batch_images, batch_labels) in enumerate(loader):
-            batch_images = _to_camera(batch_images.to(device, non_blocking=True))
-            batch_labels = batch_labels.to(device, non_blocking=True)
-            loss, metrics = _batch_loss(model, batch_images, batch_labels, config, epoch)
-            if not torch.isfinite(loss):
-                raise ValueError("Package B3 training loss is non-finite")
-            (loss / config["gradient_accumulation"]).backward()
-            if (batch_number + 1) % config["gradient_accumulation"] == 0 or batch_number + 1 == len(loader):
-                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-                if not all(torch.isfinite(parameter.grad).all() for parameter in model.parameters() if parameter.grad is not None):
-                    raise ValueError("Package B3 training gradient is non-finite")
-                optimizer.step()
-                optimizer.zero_grad(set_to_none=True)
-            train_losses.append(metrics["total"])
-        scheduler.step()
         model.eval()
-        development_losses = []
+        development_loss_sum = torch.zeros((), dtype=torch.float64, device=device)
+        development_batch_count = 0
         with torch.inference_mode():
             for start in range(0, development_indices.numel(), config["microbatch_size"]):
                 indices = development_indices[start : start + config["microbatch_size"]]
-                images = _to_camera(development_images.index_select(0, indices).to(device))
-                labels = development_labels[start : start + config["microbatch_size"]].to(device)
+                images = _to_camera(data["images"].index_select(0, indices).to(device, non_blocking=True))
+                labels = data["labels"].index_select(0, indices).to(device, non_blocking=True)
                 output = model(images, deterministic=True)
-                loss, _ = reconstruction_loss(output["reconstruction"], images, labels, output["mu"], output["logvar"], temperature=config["loss_temperature"], kl_beta=_kl_beta(config, epoch), multiscale_weight=config["multiscale_weight"], sobel_weight=config["sobel_weight"], foreground_dice_weight=config["foreground_dice_weight"])
-                development_losses.append(float(loss.cpu()))
-        dev_loss = sum(development_losses) / len(development_losses)
-        row = {"epoch": epoch, "train_loss": sum(train_losses) / len(train_losses), "development_loss": dev_loss, "lr": optimizer.param_groups[0]["lr"]}
+                loss, _ = reconstruction_loss(output["reconstruction"], images, labels, output["mu"], output["logvar"], temperature=config["loss_temperature"], kl_beta=_kl_beta(config, current_epoch), multiscale_weight=config["multiscale_weight"], sobel_weight=config["sobel_weight"], foreground_dice_weight=config["foreground_dice_weight"])
+                if not bool(torch.isfinite(loss).item()):
+                    raise ValueError("Package B3 development loss is non-finite")
+                development_loss_sum.add_(loss.detach().double())
+                development_batch_count += 1
+        dev_loss = float((development_loss_sum / development_batch_count).cpu())
+        train_loss = float((train_loss_sum / train_loss_count).cpu())
+        row = {"epoch": current_epoch, "train_loss": train_loss, "development_loss": dev_loss, "lr": optimizer.param_groups[0]["lr"]}
         history.append(row)
-        cuda_peak = int(torch.cuda.max_memory_allocated(device))
-        rss_peak = _max_rss_bytes()
-        if cuda_peak >= config["cuda_memory_limit_bytes"] or rss_peak >= config["host_rss_limit_bytes"]:
-            raise RuntimeError("Package B3 training exceeded the registered memory safety limit")
-        state_payload = {"schema": f"{SCHEMA_PREFIX}_state.v1", "model_version": MODEL_VERSION, "epoch": epoch, "state_dict": model.state_dict(), "optimizer": optimizer.state_dict(), "scheduler": scheduler.state_dict(), "history": history, "loader_generator_state": loader_generator.get_state(), "cpu_rng_state": torch.get_rng_state(), "cuda_rng_state": torch.cuda.get_rng_state(device), "cuda_peak_bytes": cuda_peak, "host_rss_peak_bytes": rss_peak}
-        atomic_torch(state_dir / "latest.pt", state_payload)
-        if dev_loss < best_loss:
-            best_loss, best_epoch = dev_loss, epoch
-            atomic_torch(run_dir / "first_stage_best.pt", {**state_payload, "selection": "development_composite_loss", "best_development_loss": best_loss})
-    return {"best_epoch": best_epoch, "best_development_loss": best_loss, "history": history, "checkpoint": str(run_dir / "first_stage_best.pt"), "evaluator_calls": 0, "host_rss_peak_bytes": _max_rss_bytes(), "cuda_peak_bytes": int(torch.cuda.max_memory_allocated(device)), "start_epoch": start_epoch, "resume_checkpoint": args.resume_checkpoint}
+        early_state = _early_stopping_update(
+            best_loss=best_loss,
+            best_epoch=best_epoch,
+            no_improvement_epochs=no_improvement_epochs,
+            development_loss=dev_loss,
+            epoch=current_epoch,
+            config=config,
+        )
+        best_loss = early_state["best_loss"]
+        best_epoch = early_state["best_epoch"]
+        no_improvement_epochs = early_state["no_improvement_epochs"]
+        relative_improvement = early_state["relative_improvement"]
+        is_best = early_state["is_best"]
+        should_stop = early_state["should_stop"]
+        memory_gate()
+        next_phase = "complete" if should_stop or current_epoch == config["maximum_epochs"] else "train"
+        checkpoint_payload = state_payload(
+            state_phase=next_phase,
+            state_epoch=current_epoch if next_phase == "complete" else current_epoch + 1,
+            state_next_batch=0,
+            state_epoch_order=torch.empty(0, dtype=torch.long),
+            state_train_loss_sum=0.0,
+            state_train_loss_count=0,
+        )
+        checkpoint_payload["early_stopping_state"]["relative_improvement"] = relative_improvement
+        checkpoint_payload["early_stopping_state"]["stopped"] = should_stop
+        atomic_torch(state_dir / "latest.pt", checkpoint_payload)
+        if is_best:
+            atomic_torch(
+                run_dir / "first_stage_best.pt",
+                {**checkpoint_payload, "selection": "development_composite_loss", "best_development_loss": best_loss},
+            )
+        stopped_by_early_stopping = should_stop and current_epoch < config["maximum_epochs"]
+        if should_stop or current_epoch == config["maximum_epochs"]:
+            phase = "complete"
+        else:
+            current_epoch += 1
+            epoch_order = torch.empty(0, dtype=torch.long)
+            next_batch = 0
+            train_loss_sum.zero_()
+            train_loss_count = 0
+            phase = "train"
+    if best_epoch == 0:
+        raise RuntimeError("Package B3 did not produce a development checkpoint")
+    return {
+        "best_epoch": best_epoch,
+        "best_development_loss": best_loss,
+        "history": history,
+        "checkpoint": str(run_dir / "first_stage_best.pt"),
+        "evaluator_calls": 0,
+        "host_rss_peak_bytes": _max_rss_bytes(),
+        "cuda_peak_bytes": int(torch.cuda.max_memory_allocated(device)),
+        "start_epoch": int(history[0]["epoch"]) if history else current_epoch,
+        "actual_last_epoch": history[-1]["epoch"],
+        "optimizer_steps": optimizer_steps,
+        "termination_reason": "early_stopping" if stopped_by_early_stopping else "maximum_epochs",
+        "early_stopping_state": {
+            "minimum_epochs": config["minimum_epochs"],
+            "patience": config["early_stopping_patience"],
+            "minimum_relative_improvement": config["early_stopping_min_relative_improvement"],
+            "best_epoch": best_epoch,
+            "best_development_loss": best_loss,
+            "no_improvement_epochs": no_improvement_epochs,
+        },
+        "checkpoint_interval_optimizer_steps": config["checkpoint_interval_optimizer_steps"],
+        "resume_checkpoint": resume_source,
+        "resume_contract": STATE_SCHEMA,
+    }
 
 
 def _load_checkpoint(path: str | Path, device: torch.device) -> tuple[SoftwareMultiscaleTeacherVAE, dict[str, Any]]:

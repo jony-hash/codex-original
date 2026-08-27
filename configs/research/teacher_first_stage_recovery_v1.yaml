@@ -38,6 +38,11 @@ num_workers: 0
 learning_rate: 0.0002
 weight_decay: 0.0001
 maximum_epochs: 40
+minimum_epochs: 8
+early_stopping_patience: 3
+early_stopping_min_relative_improvement: 0.001
+checkpoint_interval_optimizer_steps: 100
+projected_epoch_seconds_maximum: 1500
 warmup_epochs: 5
 kl_beta_maximum: 1.0e-6
 kl_warmup_fraction: 0.20

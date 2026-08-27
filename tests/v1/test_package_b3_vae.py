@@ -21,6 +21,10 @@ def test_b3_config_and_model_contract_are_locked() -> None:
     assert config["model_version"] == MODEL_VERSION
     assert tuple(config["latent_shape"]) == LATENT_SHAPE
     assert config["formal_bank_partition_seed"] == 32452843
+    assert config["minimum_epochs"] == 8
+    assert config["early_stopping_patience"] == 3
+    assert config["checkpoint_interval_optimizer_steps"] == 100
+    assert config["projected_epoch_seconds_maximum"] == 1500
     assert config["camera_preprocessing"] == producer.CAMERA_PREPROCESSING
     assert config["formal_evaluator_in_producer"] is False
     model = SoftwareMultiscaleTeacherVAE()
@@ -44,6 +48,7 @@ def test_b3_decoder_has_no_label_shortcut_and_reconstruction_loss_updates() -> N
     optimizer.step()
     assert torch.isfinite(loss)
     assert metrics["total"] == pytest.approx(float(loss.detach()))
+    assert all(torch.is_tensor(value) and not value.requires_grad for value in metrics.values())
     assert state_content_hash(model.state_dict()) != before
     assert not any(name.startswith("label") for name, _ in model.named_parameters())
 
@@ -97,3 +102,54 @@ def test_b3_camera_plane_transform_is_deterministic_and_bounded() -> None:
     assert first.dtype == torch.float32
     assert float(first.min()) >= 0.0
     assert float(first.max()) <= 1.0
+
+
+def test_b3_early_stopping_respects_warmup_and_strict_best_selection() -> None:
+    config = producer._config(CONFIG)
+    state = {"best_loss": float("inf"), "best_epoch": 0, "no_improvement_epochs": 0}
+    for epoch, loss in enumerate([1.0, 0.98, 0.96, 0.94, 0.92, 0.90, 0.88], 1):
+        state = producer._early_stopping_update(
+            best_loss=state["best_loss"],
+            best_epoch=state["best_epoch"],
+            no_improvement_epochs=state["no_improvement_epochs"],
+            development_loss=loss,
+            epoch=epoch,
+            config=config,
+        )
+        assert state["should_stop"] is False
+    state = producer._early_stopping_update(
+        best_loss=state["best_loss"],
+        best_epoch=state["best_epoch"],
+        no_improvement_epochs=state["no_improvement_epochs"],
+        development_loss=0.9990,
+        epoch=8,
+        config=config,
+    )
+    assert state["is_best"] is False
+    assert state["best_epoch"] == 7
+    assert state["should_stop"] is False
+    state = producer._early_stopping_update(
+        best_loss=state["best_loss"],
+        best_epoch=state["best_epoch"],
+        no_improvement_epochs=state["no_improvement_epochs"],
+        development_loss=1.1,
+        epoch=9,
+        config=config,
+    )
+    state = producer._early_stopping_update(
+        best_loss=state["best_loss"],
+        best_epoch=state["best_epoch"],
+        no_improvement_epochs=state["no_improvement_epochs"],
+        development_loss=1.2,
+        epoch=10,
+        config=config,
+    )
+    assert state["should_stop"] is True
+
+
+def test_b3_nested_state_hash_is_ordered_and_tensor_sensitive() -> None:
+    first = {"b": torch.tensor([2.0]), "a": {"x": torch.tensor([1.0])}}
+    second = {"a": {"x": torch.tensor([1.0])}, "b": torch.tensor([2.0])}
+    changed = {"a": {"x": torch.tensor([1.0])}, "b": torch.tensor([3.0])}
+    assert producer._nested_tensor_hash(first) == producer._nested_tensor_hash(second)
+    assert producer._nested_tensor_hash(first) != producer._nested_tensor_hash(changed)
