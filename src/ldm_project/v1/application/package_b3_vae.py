@@ -7,6 +7,7 @@ reconstruction banks and their hashes are fixed.
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 import math
@@ -392,9 +393,9 @@ def _preflight(args: argparse.Namespace, config: dict[str, Any], data: dict[str,
     checkpoint = {
         "schema": f"{SCHEMA_PREFIX}_preflight_state.v1",
         "model_version": MODEL_VERSION,
-        "state_dict": model.state_dict(),
-        "optimizer": optimizer.state_dict(),
-        "scheduler": scheduler.state_dict(),
+        "state_dict": {key: value.detach().clone() for key, value in model.state_dict().items()},
+        "optimizer": copy.deepcopy(optimizer.state_dict()),
+        "scheduler": copy.deepcopy(scheduler.state_dict()),
         "next_step": 3,
     }
     cpu_rng_state = torch.get_rng_state()
@@ -402,9 +403,9 @@ def _preflight(args: argparse.Namespace, config: dict[str, Any], data: dict[str,
     continuation = _model(device)
     continuation.load_state_dict(checkpoint["state_dict"])
     continuation_optimizer = torch.optim.AdamW(continuation.parameters(), lr=config["learning_rate"], weight_decay=config["weight_decay"])
-    continuation_optimizer.load_state_dict(checkpoint["optimizer"])
+    continuation_optimizer.load_state_dict(copy.deepcopy(checkpoint["optimizer"]))
     continuation_scheduler = torch.optim.lr_scheduler.LambdaLR(continuation_optimizer, lambda _: 1.0)
-    continuation_scheduler.load_state_dict(checkpoint["scheduler"])
+    continuation_scheduler.load_state_dict(copy.deepcopy(checkpoint["scheduler"]))
     torch.set_rng_state(cpu_rng_state)
     torch.cuda.set_rng_state(cuda_rng_state, device)
     continuation_optimizer.zero_grad(set_to_none=True)
@@ -415,9 +416,9 @@ def _preflight(args: argparse.Namespace, config: dict[str, Any], data: dict[str,
     continuous = _model(device)
     continuous.load_state_dict(checkpoint["state_dict"])
     continuous_optimizer = torch.optim.AdamW(continuous.parameters(), lr=config["learning_rate"], weight_decay=config["weight_decay"])
-    continuous_optimizer.load_state_dict(checkpoint["optimizer"])
+    continuous_optimizer.load_state_dict(copy.deepcopy(checkpoint["optimizer"]))
     continuous_scheduler = torch.optim.lr_scheduler.LambdaLR(continuous_optimizer, lambda _: 1.0)
-    continuous_scheduler.load_state_dict(checkpoint["scheduler"])
+    continuous_scheduler.load_state_dict(copy.deepcopy(checkpoint["scheduler"]))
     torch.set_rng_state(cpu_rng_state)
     torch.cuda.set_rng_state(cuda_rng_state, device)
     continuous_optimizer.zero_grad(set_to_none=True)
