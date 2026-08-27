@@ -1568,3 +1568,28 @@ diagnostic-only；evidence 保持 `training_authorized=false`、
 `formal_promotion=false`。唯一下一动作是
 `manual_review_optical_latent_ols_contract`；不启动额外 epoch、latent/OLS、
 SMF/FMF、evaluator、生成或 promotion。
+
+### H-LOMA-I0 PLAN 5 regularization pilot（2026-08-28）
+
+项目负责人授权的 `regularized` / `mse_only` 双臂 pilot 在本地分支
+`research/v2-lightgen-optical-manifold-regularization-pilot-v1` 完成。attempt-02
+preflight 因 `378.4344s` 超过 `300s` 资源门而保留为 `invalid_harness`；去除
+重复 control replay 后，attempt-03 preflight 通过，随后唯一一次 pilot
+完成每臂 100 步。validation、preflight、training evidence SHA256 分别为
+`e5e15d4d7f7e170b3a3d8b48ad74b00c29e786ccc25bb684542bebe683a5acb3`、
+`769b88d114157563bfba1ea6864b627c6227f329af080bce50594743cae8a12e`、
+`319526199d0b3ffe26e6ac26bd1e51d984a9a066b4dac7891e50179e91afcab9`。
+
+状态为 `valid_failed`：regularized SWD 从
+`0.25427815318107605` 降至 `0.2532535195350647`，仅改善 `0.40296%`，未达
+预注册 `10%`；但它低于 MSE-only 的 `0.25692102313041687`。regularized
+paired MSE 为 `0.03347916901111603`，source 为 `0.03437697887420654`，
+cyclic 为 `0.0630621686577797`；结构和全部 harness gates 通过。运行 wall
+`2078.0805s`，peak CUDA `492630016` bytes，storage `12952577` bytes，
+evaluator calls `0`。最终 regularized / MSE-only checkpoint SHA256 为
+`cbbf4cc579187e6c7d2d81f782741c73fd7f0050cdeab1025a1590fd2fa0c2f3` /
+`2ee89473c1cee8aadc9153fc318ed7bf4c34f2924cd9e1c5cb19d7acbdc94856`。
+
+该结果是有效的科学门失败，不支持继续正则化训练；唯一下一动作是
+`manual_review_identity_regularization_objective_contract`。所有后续 epoch、
+KL、SMF/FMF、生成和 promotion 继续禁止。

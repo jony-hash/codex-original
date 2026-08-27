@@ -619,3 +619,51 @@ evaluator use, generation, or formal promotion. Evidence and checkpoints must
 remain versioned under the new run directory, with
 `training_authorized=false` and `formal_promotion=false`; `outputs/final_pt/`
 and the formal `label + 8D` runtime remain unchanged.
+
+### H-LOMA-I0 PLAN 5 regularization pilot closeout（2026-08-28）
+
+The pilot implementation was completed on branch
+`research/v2-lightgen-optical-manifold-regularization-pilot-v1`. An initial
+validation invocation exposed a pre-run data-field bug and produced no
+evidence. Attempt-02 then completed its numerical work but was retained as
+`invalid_harness` because the redundant preflight took `378.4344s`, above the
+registered `300s` resource gate. The duplicate control replay was removed on a
+new clean commit; no model or source evidence was changed.
+
+Authoritative attempt-03 validation evidence is
+`outputs/20260828_v2/runs/lightgen_optical_manifold_identity_regularization_pilot_v1_attempt_03/training_validation.json`
+with SHA256
+`e5e15d4d7f7e170b3a3d8b48ad74b00c29e786ccc25bb684542bebe683a5acb3`.
+Preflight evidence is
+`outputs/20260828_v2/runs/lightgen_optical_manifold_identity_regularization_pilot_v1_attempt_03/training_preflight.json`
+with SHA256
+`769b88d114157563bfba1ea6864b627c6227f329af080bce50594743cae8a12e` and
+passed in `264.3439s` with peak CUDA allocation `492956160` bytes; both arms'
+3-step updates, 2+1 resume, rank permutation, gradient isolation, probe SWD
+ordering, MSE safety, and evaluator isolation passed.
+
+The single authorized 100-step-per-arm pilot completed in `2078.0805s`, with
+peak CUDA allocation `492630016` bytes, storage `12952577` bytes, and
+evaluator calls `0`. Training evidence is
+`outputs/20260828_v2/runs/lightgen_optical_manifold_identity_regularization_pilot_v1_attempt_03/training.json`
+with SHA256
+`319526199d0b3ffe26e6ac26bd1e51d984a9a066b4dac7891e50179e91afcab9`; its
+status is `valid_failed` because the fixed held-out regularized SWD decreased
+from `0.25427815318107605` to `0.2532535195350647` (`0.40296%`), below the
+pre-registered `10%` gate. The regularized value was nevertheless below the
+MSE-only control `0.25692102313041687`; paired MSE was
+`0.03347916901111603` versus baseline `0.03437697887420654` and cyclic control
+`0.0630621686577797`. The normalized inter/intra ratio was `1.2041319608688354`
+versus permuted `1.0003312826156616`; all other scientific and harness gates
+passed, including four phase updates, frozen state, finite values, and source
+MSE replay.
+
+Final checkpoints are
+`regularized_final_step_00100.pt` (SHA256
+`cbbf4cc579187e6c7d2d81f782741c73fd7f0050cdeab1025a1590fd2fa0c2f3`) and
+`mse_only_final_step_00100.pt` (SHA256
+`2ee89473c1cee8aadc9153fc318ed7bf4c34f2924cd9e1c5cb19d7acbdc94856`). This
+valid scientific failure does not support a regularization continuation. The
+sole next action is
+`manual_review_identity_regularization_objective_contract`; KL, extra epochs,
+SMF/FMF, generation, and promotion remain blocked.

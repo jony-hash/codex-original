@@ -926,3 +926,38 @@ preflight failure stops the pilot. The pilot is diagnostic-only and does not
 authorize extra epochs, KL, latent sampling, SMF/FMF, generation, evaluator,
 or promotion. All evidence continues to require
 `training_authorized=false` and `formal_promotion=false`.
+
+### H-LOMA-I0 PLAN 5 regularization pilot closeout（2026-08-28）
+
+The bounded two-arm pilot was executed on
+`research/v2-lightgen-optical-manifold-regularization-pilot-v1` after a
+passed attempt-03 validation and CUDA preflight. Attempt-02 is retained as
+`invalid_harness` because its preflight exceeded the fixed `300s` limit; the
+preflight was then optimized by removing duplicate MSE-control replays without
+changing the formal optics, loss, or gate definitions.
+
+Attempt-03 validation SHA256 is
+`e5e15d4d7f7e170b3a3d8b48ad74b00c29e786ccc25bb684542bebe683a5acb3`; preflight
+SHA256 is
+`769b88d114157563bfba1ea6864b627c6227f329af080bce50594743cae8a12e`; training
+evidence SHA256 is
+`319526199d0b3ffe26e6ac26bd1e51d984a9a066b4dac7891e50179e91afcab9`.
+Preflight passed in `264.3439s` and the pilot completed both 100-step arms in
+`2078.0805s`; peak CUDA was `492630016` bytes, storage was `12952577` bytes,
+and evaluator calls were `0`.
+
+The scientific status is `valid_failed`, solely because regularized SWD fell
+from `0.25427815318107605` to `0.2532535195350647`, a `0.40296%` reduction
+below the fixed `10%` gate. It was still below the MSE-only final SWD
+`0.25692102313041687`. Regularized paired MSE was `0.03347916901111603`, below
+the source `0.03437697887420654` and cyclic `0.0630621686577797`; normalized
+true-label inter/intra was `1.2041319608688354`, above permuted
+`1.0003312826156616`. The four phase layers updated, frozen state and source
+MSE replay passed, and no formal candidate was produced.
+
+The final regularized and MSE-only checkpoint hashes are respectively
+`cbbf4cc579187e6c7d2d81f782741c73fd7f0050cdeab1025a1590fd2fa0c2f3` and
+`2ee89473c1cee8aadc9153fc318ed7bf4c34f2924cd9e1c5cb19d7acbdc94856`.
+The sole next action is
+`manual_review_identity_regularization_objective_contract`; do not start
+continuation, extra epochs, KL, SMF/FMF, generation, or promotion.
