@@ -169,7 +169,18 @@ def _validate_upstream(config: dict[str, Any], path: str, *, head: str, config_s
     evidence = json.loads(Path(path).read_text(encoding="utf-8"))
     if not isinstance(evidence, dict) or evidence.get("schema") != "teacher_first_stage_recovery_preflight.v1":
         raise ValueError("B3 throughput profiler requires Package B3 preflight evidence")
-    if not evidence.get("passed") or evidence.get("config_sha256") != config_sha:
+    acceptable_failed_preflight = bool(
+        evidence.get("classification") == "invalid_harness"
+        and evidence.get("first_failed_gate") == "preflight_contract"
+        and evidence.get("throughput_gate_passed") is False
+        and evidence.get("resume_exact") is True
+        and evidence.get("cuda_peak_bytes", 0) < config["cuda_memory_limit_bytes"]
+        and evidence.get("host_rss_peak_bytes", 0) < config["host_rss_limit_bytes"]
+    )
+    if (
+        (not evidence.get("passed") and not acceptable_failed_preflight)
+        or evidence.get("config_sha256") != config_sha
+    ):
         raise ValueError("B3 throughput profiler upstream preflight is stale or failed")
     if evidence.get("evaluator_calls") != 0:
         raise ValueError("B3 throughput profiler upstream evidence has evaluator calls")

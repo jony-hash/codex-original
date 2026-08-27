@@ -51,6 +51,35 @@ def test_b3_throughput_upstream_rejects_stale_preflight(tmp_path: Path) -> None:
         profiler._validate_upstream({}, str(path), head="head", config_sha="config")
 
 
+def test_b3_throughput_accepts_only_complete_failed_throughput_baseline(tmp_path: Path) -> None:
+    path = tmp_path / "preflight.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema": "teacher_first_stage_recovery_preflight.v1",
+                "passed": False,
+                "classification": "invalid_harness",
+                "first_failed_gate": "preflight_contract",
+                "throughput_gate_passed": False,
+                "resume_exact": True,
+                "cuda_peak_bytes": 1,
+                "host_rss_peak_bytes": 1,
+                "git_head": "a" * 40,
+                "config_sha256": "config",
+                "evaluator_calls": 0,
+            }
+        ),
+        encoding="utf-8",
+    )
+    accepted = profiler._validate_upstream(
+        {"cuda_memory_limit_bytes": 2, "host_rss_limit_bytes": 2},
+        str(path),
+        head="a" * 40,
+        config_sha="config",
+    )
+    assert accepted["head_relation"] == "same"
+
+
 def test_b3_throughput_source_does_not_construct_downstream_models() -> None:
     source = Path(profiler.__file__).read_text(encoding="utf-8")
     assert "teacher_distribution_admission" not in source
