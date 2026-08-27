@@ -1362,3 +1362,40 @@ respectively:
 and `c760ddcc76f378f5517e280d876edaa9015bc3ea7f6216f846ecaf1813388c75`.
 The v4 classification and all arm metrics are unchanged from the preceding
 valid measurement: `teacher_first_stage_distribution_failed`.
+
+## Package B3-T.2：FP32 semantic-preserving compute cleanup（2026-08-27）
+
+本轮是 B3-VAE 的纯工程吞吐诊断，不训练或评估正式 VAE。实现先在 clean
+commit `32e2b34` 提交，随后修复两处只影响 evidence writer 的参数传递缺陷，
+最终 authoritative run 使用 clean commit `83e0d74`；中间的 `b3_t2_v1`、
+`b3_t2_v2` 目录保留为未消费的 diagnostic-only 记录，没有与最终 run 拼接。
+
+T2-A 使用与 T1 完全相同的 8 warmup、200 train、100 development、FP32、
+microbatch 16 和 gradient accumulation 4。T1 baseline replay 通过：总窗口
+相对变化 `1.93%`，development 相对变化 `2.16%`，各 phase 均在预注册容差内。
+T2-B/C/D 的静态+动态审查没有找到可安全接受的新增优化：finite 检查保持
+fail-closed；显式 CUDA synchronize 只在 profiler/preflight 边界；T1 已有的
+GPU metric 延迟物化不再重复实施；backward 和 model forward 仍是主要 GPU
+开销。
+
+最终分类为 `b3_fp32_semantic_preserving_optimization_insufficient`，不是模型
+质量失败。T1 投影 epoch `30.543 min`，最终 FP32 投影 `31.135 min`，总比值
+`0.981x`，距 `25 min` 合同 `6.135 min`；backward/model forward/sync 占比
+分别为 `76.86%/15.92%/8.85%`。CUDA 峰值 `2.589 GiB`，host RSS 峰值
+`1.751 GiB`，evaluator calls `0`，finite 与继承的 T1 resume exactness 均通过。
+
+权威 evidence 位于
+`outputs/20260827_teacher_first_stage_recovery/b3_t2_v3/`：baseline replay、
+synchronization attribution、optimization matrix、equivalence evidence、
+final timing、closeout 的 SHA256 依次为：
+
+`64a531ac55a5b8059ad28ac3f040c96c036766db01cffdaa9877dc646eb27dd8`、
+`ab932c6f3da07bbf5c31d69132902eee8663405064992f46aaeefc864b00abc5`、
+`a0d3f6bfaa555cd2ab3ce0d3d5a0392f1e8914b26329d246902ab1fa7668c86a`、
+`7e6674e99bee213e77b0927b021653b530882cd7f9e99abe58ae9c291572d484`、
+`2447c30fe2cb0082c4974097dd950f33e101286299d351d39b2aa987156d26b4`、
+`351b6175deb930f1d7bf6d70ca9f3726f9fee34c0aaaa5f74713744a342341d6`。
+
+本轮唯一允许的后续是另立并审查 `numerical_gpu_acceleration_preflight`；不自动
+打开 AMP/TF32/compile，不开始 formal B3-VAE、B3-DDPM、Package C 或任何光学
+阶段。T2 在此 hard stop。

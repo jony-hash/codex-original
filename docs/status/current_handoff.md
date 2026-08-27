@@ -546,3 +546,48 @@ closeout SHA256 依次为：
 `a1d64208e3c55cc468229ca11552f43dc55f93c2dae3e163435b06bcdd06a71f`、
 `aecb9b9a4f3a8e521c22b3cf51f11330fcf25678d3788502caebac0742e9b0e7`、
 `c760ddcc76f378f5517e280d876edaa9015bc3ea7f6216f846ecaf1813388c75`。
+
+## 2026-08-27：Package B3-T.2 FP32 semantic-preserving compute cleanup closeout
+
+Package B3-T.2 was completed as a research-only throughput diagnostic. It replayed
+the locked B3-T1 CUDA contract (8 warmup batches, 200 measured training batches,
+100 development batches, FP32, microbatch 16, gradient accumulation 4) before
+reviewing synchronization, exact same-batch reuse, and Python/module dispatch.
+The T1 baseline replay was reproducible: total profiling-window deviation was
+`1.93%`, development deviation was `2.16%`, and all registered phase tolerances
+passed.
+
+The authoritative run is
+`outputs/20260827_teacher_first_stage_recovery/b3_t2_v3/`, executed from clean
+commit `83e0d74`. Its classification is
+`b3_fp32_semantic_preserving_optimization_insufficient`; this is an engineering
+throughput result, not a B3 model-quality result. The final FP32 projected epoch
+was `31.135 min` versus the locked `25 min` contract, with total replay ratio
+`0.981x`. Backward remained `76.86%`, model forward `15.92%`, and measured CUDA
+synchronization wait `8.85%`. The low-risk candidate matrix accepted no new
+intervention: safety finite checks remain fail-closed, profiler-only synchronizes
+are not formal training overhead, and the already-small data/host/loss portions
+do not justify unscoped work.
+
+The run remained resource-safe with CUDA peak `2.589 GiB`, host RSS peak
+`1.751 GiB`, finite values verified, inherited T1 resume exactness, and zero
+evaluator calls. The T2 implementation commits are `32e2b34`, `b3a6253`, and
+`83e0d74`. Earlier `b3_t2_v1` and `b3_t2_v2` directories are retained as
+non-consumed diagnostic records: each completed the GPU profiling window but
+hit a T2 evidence-writer programming defect, so neither is a timing or model
+conclusion and neither was spliced into v3.
+
+The six required v3 evidence hashes are:
+
+- baseline replay `64a531ac55a5b8059ad28ac3f040c96c036766db01cffdaa9877dc646eb27dd8`
+- synchronization attribution `ab932c6f3da07bbf5c31d69132902eee8663405064992f46aaeefc864b00abc5`
+- optimization matrix `a0d3f6bfaa555cd2ab3ce0d3d5a0392f1e8914b26329d246902ab1fa7668c86a`
+- equivalence evidence `7e6674e99bee213e77b0927b021653b530882cd7f9e99abe58ae9c291572d484`
+- final timing `2447c30fe2cb0082c4974097dd950f33e101286299d351d39b2aa987156d26b4`
+- closeout `351b6175deb930f1d7bf6d70ca9f3726f9fee34c0aaaa5f74713744a342341d6`
+
+The only permitted follow-up is a separately reviewed
+`numerical_gpu_acceleration_preflight`. T2 itself does not authorize AMP,
+BF16/FP16, TF32 enablement, `torch.compile`, formal B3-VAE training,
+B3-DDPM, Package C, student/optical/phase/quadrature/OLS/fiber training,
+candidate export, or promotion. The T2 closeout is a hard stop.
