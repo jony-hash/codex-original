@@ -1486,3 +1486,23 @@ formal promotion。最终 evidence 必须保留 `training_authorized=false` 和
 `formal_promotion=false`；pilot 通过后的唯一下一动作是人工审查
 `manual_review_full_epoch_identity_reconstruction_contract`，失败则停止且不
 形成模型容量结论。
+
+### H-LOMA-I0 1000 步 pilot closeout（2026-08-27）
+
+修复 held-out cyclic permutation harness 后，attempt-03 在 clean commit
+`45e6f8d` 完成 1000 步 diagnostic research training。training validation、
+training preflight、final training evidence 的 SHA256 分别为
+`6d138a40f1d780f1d8ce1cf6ed6536d523c54e4908833e64d4d4cb84fdc76a6b`、
+`cfa7ed3452ff41800e39a5a35aecb73df2905de2c3bc970fe863f5affe1649c7`、
+`4127f80194f02750737c2e2a1e3f8f7ee4b90df8798cbdd53c4c20369b4a681f`；preflight
+resume artifact SHA256 为
+`d5d16fef76659ca8b236275feeef4f08d760c59bc6a44301bab86f21e013cf9a`。
+
+运行 wall `877.2158s`、peak CUDA `481032704` bytes、storage `5959746` bytes，
+evaluator calls 为 `0`。固定 1000-image held-out panel 的 MSE 从 baseline
+`0.0737866908` 降至 `0.0606269501`（相对下降 `17.8348%`），并低于 cyclic
+permutation control `0.0694154128`，最终状态为 `passed`。这只支持当前
+Identity reconstruction pilot 的预注册诊断门，不授权完整 epoch、SMF/FMF、
+latent sampling、evaluator、生成实验或 formal promotion；evidence 仍为
+`training_authorized=false`、`formal_promotion=false`。唯一下一动作是人工
+审查 `manual_review_full_epoch_identity_reconstruction_contract`。

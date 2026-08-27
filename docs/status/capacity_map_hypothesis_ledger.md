@@ -362,3 +362,24 @@ evaluator, generation, and promotion remain prohibited. A harness or resource
 failure is `invalid_harness`/`resource_aborted`; a complete pilot missing the
 scientific gate is `valid_failed`. A pass can only request
 `manual_review_full_epoch_identity_reconstruction_contract`.
+
+### H-LOMA-I0 1000-step pilot closeout
+
+The corrected attempt-03 completed all 1000 bounded Adam updates on clean commit
+`45e6f8d` and passed the harness and pre-registered scientific gates. Training
+validation, preflight, and final evidence are respectively:
+
+- `outputs/20260827_v2/runs/lightgen_optical_manifold_identity_pilot_v1_attempt_03/training_validation.json`, SHA256 `6d138a40f1d780f1d8ce1cf6ed6536d523c54e4908833e64d4d4cb84fdc76a6b`;
+- `outputs/20260827_v2/runs/lightgen_optical_manifold_identity_pilot_v1_attempt_03/training_preflight.json`, SHA256 `cfa7ed3452ff41800e39a5a35aecb73df2905de2c3bc970fe863f5affe1649c7`;
+- `outputs/20260827_v2/runs/lightgen_optical_manifold_identity_pilot_v1_attempt_03/training.json`, SHA256 `4127f80194f02750737c2e2a1e3f8f7ee4b90df8798cbdd53c4c20369b4a681f`.
+
+The fixed 1000-image held-out panel improved from MSE `0.0737866908` at the
+zero-phase baseline to `0.0606269501`, a relative reduction of `17.8348%`; the
+paired result is below the cyclic-permutation control `0.0694154128`. The run
+used `877.2158s`, peak CUDA allocation `481032704` bytes, and `5959746` bytes of
+storage, with evaluator calls `0`. The pilot is a bounded diagnostic result,
+not a capacity or formal-promotion claim. Its evidence keeps
+`training_authorized=false` and `formal_promotion=false`; the only consumer
+allowed to act is
+`manual_review_full_epoch_identity_reconstruction_contract`. Full epoch,
+SMF/FMF, latent sampling, evaluator, generation, and promotion remain blocked.

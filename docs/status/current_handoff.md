@@ -711,3 +711,30 @@ resume exact）。失败即停止；完整 1000 步但科学门未过记为 `val
 结果如何，evidence 均保持 `training_authorized=false`、`formal_promotion=false`；
 通过后的唯一下一动作是
 `manual_review_full_epoch_identity_reconstruction_contract`。
+
+### H-LOMA-I0 1000 步 pilot closeout
+
+Pilot attempt-03 在 clean commit `45e6f8d` 上完成并通过全部 harness 与科学门。
+training validation evidence 为
+`outputs/20260827_v2/runs/lightgen_optical_manifold_identity_pilot_v1_attempt_03/training_validation.json`
+（SHA256
+`6d138a40f1d780f1d8ce1cf6ed6536d523c54e4908833e64d4d4cb84fdc76a6b`），training
+preflight evidence 为
+`outputs/20260827_v2/runs/lightgen_optical_manifold_identity_pilot_v1_attempt_03/training_preflight.json`
+（SHA256
+`cfa7ed3452ff41800e39a5a35aecb73df2905de2c3bc970fe863f5affe1649c7`），其
+resume artifact SHA256 为
+`d5d16fef76659ca8b236275feeef4f08d760c59bc6a44301bab86f21e013cf9a`。
+最终 training evidence 为
+`outputs/20260827_v2/runs/lightgen_optical_manifold_identity_pilot_v1_attempt_03/training.json`
+（SHA256
+`4127f80194f02750737c2e2a1e3f8f7ee4b90df8798cbdd53c4c20369b4a681f`）。
+
+1000 步完整运行耗时 `877.2158s`、peak CUDA `481032704` bytes、run storage
+`5959746` bytes，evaluator calls 为 `0`。固定 1000-image held-out panel 的
+MSE 从 zero-phase baseline `0.0737866908` 降至 paired `0.0606269501`，相对
+下降 `17.8348%`；paired MSE 低于 cyclic-permuted target 的 `0.0694154128`。
+最终状态为 `passed`，但 evidence 仍记录 `training_authorized=false`、
+`formal_promotion=false`。唯一下一动作是
+`manual_review_full_epoch_identity_reconstruction_contract`；本轮到此停止，
+不启动完整 epoch、SMF/FMF、latent sampling、evaluator 或生成实验。
