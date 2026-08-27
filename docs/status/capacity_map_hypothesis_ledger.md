@@ -553,3 +553,44 @@ failed feasibility gate blocks that pilot and requests
 The audit never creates an optimizer, changes model state, writes a checkpoint,
 loads an evaluator, or modifies formal v2 behavior. All evidence remains
 `training_authorized=false` and `formal_promotion=false`.
+
+### H-LOMA-I0 PLAN 5 aggregate-prior regularization audit closeout（2026-08-28）
+
+The implementation is on clean commit `836ca63` on branch
+`research/v2-lightgen-optical-manifold-regularization-audit-v1`. The first
+CUDA launch was retained as an invalid harness attempt: its gradient replay
+used a CPU projection with a CUDA field before producing an evidence record.
+The device binding was repaired and validation was regenerated; no source
+model, checkpoint, or prior evidence was overwritten.
+
+Authoritative attempt-02 validation is
+`outputs/20260828_v2/runs/lightgen_optical_manifold_identity_regularization_audit_v1_attempt_02/regularization_validation.json`
+with SHA256
+`78778f9ea37982990f9c34aa930840f744bbdc2c3ae2fc6c49a03d0c28f91c8a`.
+Authoritative audit evidence is
+`outputs/20260828_v2/runs/lightgen_optical_manifold_identity_regularization_audit_v1_attempt_02/regularization_audit.json`
+with SHA256
+`6b33f4828cf94542628ca417203420f744bbdc2c3ae2fc6c49a03d0c28f91c8a`.
+The fixed projection artifact has SHA256
+`d7428f9daf323e1f0046a8110ed208b938a5d6f2dec34e0f6fcca36fe58c770d`.
+
+The learned 32-dimensional whitened aggregate had deterministic SWD
+`0.2548302710`, versus Gaussian-control mean `0.0139584639` and collapsed
+control `0.9957112670`. The first-batch lambda was `0.0027336441`; the three
+validation encoder regularizer/reconstruction norm ratios were
+`0.1000`, `0.1251`, and `0.1130`. Reconstruction gradients were non-zero for
+all four phase layers, regularization gradients were non-zero only for the two
+encoder layers, combined gradients were non-zero for all four layers, and both
+combined descent-alignment gates passed. Source reconstruction MSE was exactly
+reproduced at `0.03437697887420654`.
+
+All harness and resource gates passed: model state unchanged, evaluator calls
+`0`, peak CUDA allocation `480596992` bytes, wall time `104.3546s`, and run
+storage `2791305` bytes. This is a valid feasibility result for a deterministic
+`project_approximation` aggregate-prior objective; it is not a VAE KL result,
+latent sampling result, SMF/FMF result, generation result, or promotion.
+
+PLAN 5 therefore closes with status `passed`. The sole next action is
+`manual_review_identity_manifold_regularization_pilot_contract`. No bounded
+regularization training is authorized by this evidence; `training_authorized`
+and `formal_promotion` remain false.
