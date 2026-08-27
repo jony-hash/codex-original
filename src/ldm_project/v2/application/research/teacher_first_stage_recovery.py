@@ -31,6 +31,7 @@ PROGRAM = "teacher-first-stage-recovery"
 CONFIG_NAME = "teacher_first_stage_recovery_v1"
 SCHEMA_PREFIX = "teacher_first_stage_recovery"
 MODEL_VERSION = "software_multiscale_teacher_vae_v1"
+CAMERA_PREPROCESSING = "bilinear_28_to_200_align_corners_false"
 FORMAL_SPLIT_HASH = "8a51217b1ed6833250226255930ab598bf1539e27772ade0188592e5bc0b3912"
 CLASS_COUNT = 10
 FORBIDDEN_ACTIONS = (
@@ -63,6 +64,7 @@ def _config(path: str | Path) -> dict[str, Any]:
         "version": 20260827,
         "program": PROGRAM,
         "model_version": MODEL_VERSION,
+        "camera_preprocessing": CAMERA_PREPROCESSING,
         "formal_split_hash": FORMAL_SPLIT_HASH,
         "formal_bank_partition_seed": 32452843,
         "class_count": 10,
@@ -146,7 +148,7 @@ def _validate_upstream(config: dict[str, Any], manifest_path: str, dataset_root:
     manifest = _json(manifest_path)
     if manifest.get("schema") != f"{SCHEMA_PREFIX}_reconstruction.v1" or manifest.get("status") != "first_stage_reconstruction_bank":
         raise ValueError("Package B3 reconstruction manifest is not a valid producer artifact")
-    if manifest.get("model_version") != MODEL_VERSION or manifest.get("dataset_split_hash") != config["formal_split_hash"]:
+    if manifest.get("model_version") != MODEL_VERSION or manifest.get("camera_preprocessing") != CAMERA_PREPROCESSING or manifest.get("dataset_split_hash") != config["formal_split_hash"]:
         raise ValueError("Package B3 reconstruction lineage mismatch")
     if manifest.get("formal_bank_partition_seed") != config["formal_bank_partition_seed"]:
         raise ValueError("Package B3 formal bank partition seed mismatch")

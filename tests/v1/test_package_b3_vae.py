@@ -21,6 +21,7 @@ def test_b3_config_and_model_contract_are_locked() -> None:
     assert config["model_version"] == MODEL_VERSION
     assert tuple(config["latent_shape"]) == LATENT_SHAPE
     assert config["formal_bank_partition_seed"] == 32452843
+    assert config["camera_preprocessing"] == producer.CAMERA_PREPROCESSING
     assert config["formal_evaluator_in_producer"] is False
     model = SoftwareMultiscaleTeacherVAE()
     images = torch.rand(2, 1, 200, 200)

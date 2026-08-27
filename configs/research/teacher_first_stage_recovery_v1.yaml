@@ -6,6 +6,7 @@ program: teacher-first-stage-recovery
 model_version: software_multiscale_teacher_vae_v1
 image_size: 200
 latent_shape: [1, 25, 25]
+camera_preprocessing: bilinear_28_to_200_align_corners_false
 class_count: 10
 
 package_a_gate_audit: outputs/20260825_electronic_distribution_recovery/runs/20260825_package_a_v1_retry12/gate_audit.json

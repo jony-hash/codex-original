@@ -36,6 +36,7 @@ from ..teacher.software_vae import (
 PROGRAM = "teacher-first-stage-recovery"
 CONFIG_NAME = "teacher_first_stage_recovery_v1"
 SCHEMA_PREFIX = "teacher_first_stage_recovery"
+CAMERA_PREPROCESSING = "bilinear_28_to_200_align_corners_false"
 CLASS_COUNT = 10
 FORMAL_SPLIT_HASH = "8a51217b1ed6833250226255930ab598bf1539e27772ade0188592e5bc0b3912"
 FORBIDDEN_ACTIONS = (
@@ -139,6 +140,7 @@ def _config(path: str | Path) -> dict[str, Any]:
         "model_version": MODEL_VERSION,
         "image_size": IMAGE_SIZE,
         "latent_shape": list(LATENT_SHAPE),
+        "camera_preprocessing": CAMERA_PREPROCESSING,
         "class_count": 10,
         "formal_split_hash": FORMAL_SPLIT_HASH,
         "development_samples_per_class": 500,
@@ -234,7 +236,7 @@ def _load_mnist(dataset_root: str) -> dict[str, torch.Tensor | str]:
 def _to_camera(images: torch.Tensor) -> torch.Tensor:
     if images.ndim != 4 or tuple(images.shape[1:]) != (1, 28, 28):
         raise ValueError(f"MNIST images must be [N,1,28,28], got {tuple(images.shape)}")
-    return F.interpolate(images, (IMAGE_SIZE, IMAGE_SIZE), mode="bilinear", align_corners=False, antialias=True)
+    return F.interpolate(images, (IMAGE_SIZE, IMAGE_SIZE), mode="bilinear", align_corners=False)
 
 
 def _select_development(
@@ -646,7 +648,7 @@ def _reconstruct(args: argparse.Namespace, config: dict[str, Any], data: dict[st
     latent_mean, latent_std, latent_count = _latent_statistics(model, data, config, device)
     stats_path = run_dir / "latent_stats.pt"
     atomic_torch(stats_path, {"schema": f"{SCHEMA_PREFIX}_latent_stats.v1", "model_version": MODEL_VERSION, "latent_shape": list(LATENT_SHAPE), "mean": latent_mean, "std": latent_std, "count": latent_count})
-    manifest = {"schema": f"{SCHEMA_PREFIX}_reconstruction.v1", "status": "first_stage_reconstruction_bank", "model_version": MODEL_VERSION, "checkpoint_sha256": file_sha256(checkpoint), "checkpoint": str(checkpoint), "dataset_hash": data["dataset_hash"], "dataset_split_hash": data["split_hash"], "formal_bank_partition_seed": config["formal_bank_partition_seed"], "bank_count": 2, "samples_per_class": 250, "image_shape": [1, IMAGE_SIZE, IMAGE_SIZE], "latent_shape": list(LATENT_SHAPE), "decoder_input": "encoded_real_mu", "latent_standardization": "training_fit_mu_channelwise", "latent_stats_path": str(stats_path), "latent_stats_sha256": file_sha256(stats_path), "latent_stats_count": latent_count, "evaluator_calls": 0, "state_hash_before": before, "state_hash_after": after, "shards": shards, "latent_mu_sha256": tensor_sha256(latent)}
+    manifest = {"schema": f"{SCHEMA_PREFIX}_reconstruction.v1", "status": "first_stage_reconstruction_bank", "model_version": MODEL_VERSION, "camera_preprocessing": CAMERA_PREPROCESSING, "checkpoint_sha256": file_sha256(checkpoint), "checkpoint": str(checkpoint), "dataset_hash": data["dataset_hash"], "dataset_split_hash": data["split_hash"], "formal_bank_partition_seed": config["formal_bank_partition_seed"], "bank_count": 2, "samples_per_class": 250, "image_shape": [1, IMAGE_SIZE, IMAGE_SIZE], "latent_shape": list(LATENT_SHAPE), "decoder_input": "encoded_real_mu", "latent_standardization": "training_fit_mu_channelwise", "latent_stats_path": str(stats_path), "latent_stats_sha256": file_sha256(stats_path), "latent_stats_count": latent_count, "evaluator_calls": 0, "state_hash_before": before, "state_hash_after": after, "shards": shards, "latent_mu_sha256": tensor_sha256(latent)}
     atomic_json(args.output, manifest)
     return {"manifest": manifest, "evaluator_calls": 0, "host_rss_peak_bytes": _max_rss_bytes(), "cuda_peak_bytes": int(torch.cuda.max_memory_allocated(device)), "state_hash_unchanged": before == after}
 
@@ -671,7 +673,7 @@ def dispatch(args: argparse.Namespace) -> int:
     data = _validate_inputs(config, args.dataset_root)
     if args.action == "lineage":
         payload = _base("lineage", config, args.config, git, status="valid", passed=True, classification="lineage_validated", first_failed_gate=None, permitted=["preflight"])
-        payload.update({"model_version": MODEL_VERSION, "image_size": IMAGE_SIZE, "latent_shape": list(LATENT_SHAPE), "dataset_hash": data["dataset_hash"], "dataset_split_hash": data["split_hash"], "formal_indices_hash": tensor_sha256(data["formal_indices"]), "train_indices_hash": tensor_sha256(data["train_indices"]), "evaluator_calls": 0})
+        payload.update({"model_version": MODEL_VERSION, "image_size": IMAGE_SIZE, "latent_shape": list(LATENT_SHAPE), "camera_preprocessing": CAMERA_PREPROCESSING, "dataset_hash": data["dataset_hash"], "dataset_split_hash": data["split_hash"], "formal_indices_hash": tensor_sha256(data["formal_indices"]), "train_indices_hash": tensor_sha256(data["train_indices"]), "evaluator_calls": 0})
         atomic_json(args.output, payload)
         return 0
     if args.action == "preflight":
