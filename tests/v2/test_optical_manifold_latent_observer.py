@@ -133,6 +133,14 @@ def test_structure_metrics_are_finite_and_report_true_and_permuted_ratios() -> N
     assert metrics["true_label_distance"]["inter_intra_ratio"] > 1.0
 
 
+def test_endpoint_mse_requires_exact_camera_shape() -> None:
+    raw = torch.ones(1, 1, 2, 2)
+    endpoint_raw = torch.ones(2, 1, 2, 2)
+    assert observer._endpoint_mse(raw, endpoint_raw, 0) == 0.0
+    with pytest.raises(ValueError, match="shape mismatch"):
+        observer._endpoint_mse(raw.squeeze(0), endpoint_raw, 0)
+
+
 def test_observer_does_not_modify_source_or_formal_runtime_symbols() -> None:
     source = inspect.getsource(observer)
     assert "FormalForwardResult" not in source

@@ -581,6 +581,13 @@ def _structure_metrics(values: torch.Tensor, labels: torch.Tensor, permuted_labe
     return metrics, scores
 
 
+def _endpoint_mse(raw: torch.Tensor, endpoint_raw: torch.Tensor, endpoint_index: int) -> float:
+    target = endpoint_raw[endpoint_index : endpoint_index + 1]
+    if raw.shape != target.shape:
+        raise ValueError(f"endpoint camera shape mismatch: {tuple(raw.shape)} != {tuple(target.shape)}")
+    return float(F.mse_loss(raw, target).item())
+
+
 def _interpolate(
     model: base.IdentityOpticalManifoldAutoencoder,
     capture: TraceCapture,
@@ -631,7 +638,7 @@ def _interpolate(
                 fixed = (raw / model.exposure.scale).clamp(0.0, 1.0)
                 if t in {0.0, 1.0}:
                     endpoint_position = start if t == 0.0 else end
-                    endpoint_mse.append(float(F.mse_loss(raw.cpu(), capture.endpoint_raw[endpoint_lookup[endpoint_position]]).item()))
+                    endpoint_mse.append(_endpoint_mse(raw.cpu(), capture.endpoint_raw, endpoint_lookup[endpoint_position]))
                 values.append(raw.detach().cpu().float())
                 fixed_values.append(fixed.detach().cpu().float())
                 labels.append(label)
