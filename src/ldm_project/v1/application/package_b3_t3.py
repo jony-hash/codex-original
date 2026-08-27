@@ -614,9 +614,10 @@ def _profile_throughput(
                 loss, _ = throughput._profile_loss(output["reconstruction"], images, labels, output["mu"], output["logvar"], config, 1, events)
                 backward_start = torch.cuda.Event(enable_timing=True)
                 backward_start.record()
+            finite_started = time.perf_counter()
             if not bool(torch.isfinite(loss).item()):
                 raise RuntimeError(f"{mode} throughput loss is non-finite")
-            finite_started = time.perf_counter()
+            finite_sync_values.append((time.perf_counter() - finite_started) * 1000.0)
             if runtime["scaler"] is None:
                 (loss / config["gradient_accumulation"]).backward()
             else:
@@ -628,8 +629,10 @@ def _profile_throughput(
                 if runtime["scaler"] is not None:
                     runtime["scaler"].unscale_(runtime["optimizer"])
                 gradient_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                finite_sync_started = time.perf_counter()
                 if not bool(torch.isfinite(gradient_norm).item()):
                     raise RuntimeError(f"{mode} throughput gradient is non-finite")
+                finite_sync_values.append((time.perf_counter() - finite_sync_started) * 1000.0)
                 old_scale = None if runtime["scaler"] is None else float(runtime["scaler"].get_scale())
                 if runtime["scaler"] is None:
                     runtime["optimizer"].step()
@@ -639,7 +642,6 @@ def _profile_throughput(
                     skipped += int(old_scale is not None and float(runtime["scaler"].get_scale()) < old_scale)
                 runtime["optimizer"].zero_grad(set_to_none=True)
                 events.setdefault("gradient_check", []).append((backward_start, backward_end))
-            finite_sync_values.append((time.perf_counter() - finite_started) * 1000.0)
             if batch_number == warmup - 1:
                 torch.cuda.synchronize(device)
                 window_started = time.perf_counter()
