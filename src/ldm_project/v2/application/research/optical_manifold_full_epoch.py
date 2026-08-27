@@ -134,6 +134,7 @@ def _expected_config_payload() -> dict[str, Any]:
         },
         "training": {
             "optimizer": "Adam",
+            "optimizer_update_device": "cpu_shadow",
             "learning_rate": 1.0e-3,
             "initial_global_step": 1000,
             "continuation_steps": 4500,
@@ -218,6 +219,7 @@ def _load_review(path: str | Path, spec: FullEpochSpec) -> tuple[dict[str, Any],
             "initial_global_step": 1000,
             "continuation_steps": 4500,
             "final_global_step": 5500,
+            "optimizer_update_device": "cpu_shadow",
             "pilot_reference_paired_mse": PILOT_REFERENCE_PAIRED_MSE,
             "post_pass_next_action": NEXT_PASS_ACTION,
         },
@@ -630,7 +632,53 @@ def _phase_names(model: base.IdentityOpticalManifoldAutoencoder) -> tuple[str, .
     return tuple(f"{name}[{index}]" for name in base.EXPECTED_TRAINABLE for index in range(parameters[name].shape[0]))
 
 
-def _full_step(model: base.IdentityOpticalManifoldAutoencoder, optimizer: torch.optim.Optimizer, batch: base.RenderedBatch) -> dict[str, Any]:
+class _DeterministicCpuAdam:
+    """Keep formal CUDA optics while making Adam continuation bitwise resumable."""
+
+    def __init__(self, model: base.IdentityOpticalManifoldAutoencoder) -> None:
+        named = dict(model.named_parameters())
+        if tuple(name for name in named if named[name].requires_grad) != base.EXPECTED_TRAINABLE:
+            raise ValueError("full-epoch CPU Adam trainable parameter contract failed")
+        self._gpu_parameters = tuple(named[name] for name in base.EXPECTED_TRAINABLE)
+        self._cpu_parameters = tuple(
+            torch.nn.Parameter(parameter.detach().cpu().clone())
+            for parameter in self._gpu_parameters
+        )
+        self._optimizer = torch.optim.Adam(self._cpu_parameters, lr=1.0e-3)
+
+    @property
+    def param_groups(self) -> list[dict[str, Any]]:
+        return self._optimizer.param_groups
+
+    def zero_grad(self, *, set_to_none: bool = True) -> None:
+        for parameter in self._gpu_parameters:
+            if set_to_none:
+                parameter.grad = None
+            elif parameter.grad is not None:
+                parameter.grad.zero_()
+        self._optimizer.zero_grad(set_to_none=set_to_none)
+
+    def step(self, closure: Any = None) -> Any:
+        for gpu_parameter, cpu_parameter in zip(self._gpu_parameters, self._cpu_parameters, strict=True):
+            cpu_parameter.data.copy_(gpu_parameter.detach().cpu())
+            cpu_parameter.grad = None if gpu_parameter.grad is None else gpu_parameter.grad.detach().cpu().clone()
+        result = self._optimizer.step(closure)
+        for gpu_parameter, cpu_parameter in zip(self._gpu_parameters, self._cpu_parameters, strict=True):
+            gpu_parameter.data.copy_(cpu_parameter.data)
+        return result
+
+    def state_dict(self) -> dict[str, Any]:
+        return self._optimizer.state_dict()
+
+    def load_state_dict(self, state_dict: Mapping[str, Any]) -> None:
+        self._optimizer.load_state_dict(state_dict)
+
+
+def _make_full_optimizer(model: base.IdentityOpticalManifoldAutoencoder) -> _DeterministicCpuAdam:
+    return _DeterministicCpuAdam(model)
+
+
+def _full_step(model: base.IdentityOpticalManifoldAutoencoder, optimizer: _DeterministicCpuAdam, batch: base.RenderedBatch) -> dict[str, Any]:
     before = {name: dict(model.named_parameters())[name].detach().clone() for name in base.EXPECTED_TRAINABLE}
     result = base._step(model, optimizer, batch, activation_checkpoint=True)
     parameters = dict(model.named_parameters())
@@ -656,18 +704,18 @@ def _frozen(model: base.IdentityOpticalManifoldAutoencoder, initial: Mapping[str
     return all(torch.equal(model.state_dict()[name].detach().cpu(), initial[name]) for name in model.state_dict() if name not in base.EXPECTED_TRAINABLE)
 
 
-def _runtime_from_checkpoint(formal: FormalSystemConfig, checkpoint: Mapping[str, Any], device: torch.device) -> tuple[base.IdentityOpticalManifoldAutoencoder, torch.optim.Adam]:
+def _runtime_from_checkpoint(formal: FormalSystemConfig, checkpoint: Mapping[str, Any], device: torch.device) -> tuple[base.IdentityOpticalManifoldAutoencoder, _DeterministicCpuAdam]:
     torch.manual_seed(1234)
     torch.cuda.manual_seed_all(1234)
     model = base.IdentityOpticalManifoldAutoencoder(formal).to(device)
-    optimizer = base._make_optimizer(model)
+    optimizer = _make_full_optimizer(model)
     model.load_state_dict(checkpoint["model_state"], strict=True)
     optimizer.load_state_dict(checkpoint["optimizer_state"])
     base._restore_rng(checkpoint["rng_state"])
     return model, optimizer
 
 
-def _resume_payload(model: base.IdentityOpticalManifoldAutoencoder, optimizer: torch.optim.Optimizer, *, global_step: int, loss_history: list[float], data: FullEpochData, spec: FullEpochSpec, evidence_hashes: Mapping[str, str]) -> dict[str, Any]:
+def _resume_payload(model: base.IdentityOpticalManifoldAutoencoder, optimizer: _DeterministicCpuAdam, *, global_step: int, loss_history: list[float], data: FullEpochData, spec: FullEpochSpec, evidence_hashes: Mapping[str, str]) -> dict[str, Any]:
     return {
         "schema": RESUME_SCHEMA,
         "model_state": _state_cpu(model),
@@ -685,7 +733,7 @@ def _resume_payload(model: base.IdentityOpticalManifoldAutoencoder, optimizer: t
     }
 
 
-def _load_resume(path: str | Path, model: base.IdentityOpticalManifoldAutoencoder, optimizer: torch.optim.Optimizer, *, data: FullEpochData, spec: FullEpochSpec, evidence_hashes: Mapping[str, str]) -> dict[str, Any]:
+def _load_resume(path: str | Path, model: base.IdentityOpticalManifoldAutoencoder, optimizer: _DeterministicCpuAdam, *, data: FullEpochData, spec: FullEpochSpec, evidence_hashes: Mapping[str, str]) -> dict[str, Any]:
     payload = safe_torch_load(path, map_location="cpu")
     if not isinstance(payload, dict) or payload.get("schema") != RESUME_SCHEMA:
         raise ValueError("invalid full-epoch resume checkpoint")
@@ -844,7 +892,7 @@ def _load_preflight(path: str | Path, spec: FullEpochSpec, data: FullEpochData, 
     return record, file_sha256(target)
 
 
-def _save_checkpoint(path: Path, model: base.IdentityOpticalManifoldAutoencoder, optimizer: torch.optim.Optimizer, *, global_step: int, history: list[float], data: FullEpochData, spec: FullEpochSpec, evidence_hashes: Mapping[str, str]) -> None:
+def _save_checkpoint(path: Path, model: base.IdentityOpticalManifoldAutoencoder, optimizer: _DeterministicCpuAdam, *, global_step: int, history: list[float], data: FullEpochData, spec: FullEpochSpec, evidence_hashes: Mapping[str, str]) -> None:
     if path.exists():
         raise FileExistsError(f"refusing to overwrite full-epoch checkpoint: {path}")
     atomic_torch_save(path, _resume_payload(model, optimizer, global_step=global_step, loss_history=history, data=data, spec=spec, evidence_hashes=evidence_hashes))

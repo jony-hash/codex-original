@@ -31,6 +31,7 @@ dataset:
 
 training:
   optimizer: Adam
+  optimizer_update_device: cpu_shadow
   learning_rate: 1.0e-3
   initial_global_step: 1000
   continuation_steps: 4500

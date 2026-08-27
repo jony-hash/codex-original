@@ -40,6 +40,21 @@ def test_continuation_schedule_is_disjoint_and_covers_the_fixed_train_split() ->
     )
 
 
+def test_full_epoch_uses_cpu_shadow_adam_for_exact_resume() -> None:
+    spec = full_epoch._load_spec(
+        "configs/research/lightgen_optical_manifold_identity_full_epoch_v1.yaml"
+    )
+    formal, _ = full_epoch._load_formal(spec)
+    model = full_epoch.base.IdentityOpticalManifoldAutoencoder(formal)
+    optimizer = full_epoch._make_full_optimizer(model)
+    assert spec.payload["training"]["optimizer_update_device"] == "cpu_shadow"
+    assert len(optimizer.param_groups) == 1
+    assert optimizer.param_groups[0]["lr"] == 1.0e-3
+    assert len(optimizer.param_groups[0]["params"]) == 2
+    assert all(parameter.device.type == "cpu" for parameter in optimizer.param_groups[0]["params"])
+    assert all(parameter.device.type == "cpu" for parameter in optimizer._cpu_parameters)
+
+
 def test_full_epoch_cli_actions_are_registered() -> None:
     parser = _parser()
     common = [

@@ -11,6 +11,7 @@
     "initial_global_step": 1000,
     "continuation_steps": 4500,
     "final_global_step": 5500,
+    "optimizer_update_device": "cpu_shadow",
     "pilot_reference_paired_mse": 0.06062695011496544,
     "post_pass_next_action": "manual_review_optical_latent_ols_contract"
   },
