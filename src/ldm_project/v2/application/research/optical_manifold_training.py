@@ -849,13 +849,15 @@ def _evaluate(
 ) -> float:
     model.eval()
     values: list[torch.Tensor] = []
+    target_indices = indices.roll(shifts=target_roll, dims=0)
     with torch.no_grad():
-        for index in indices:
-            batch = _batch_for_indices(
-                data, index.reshape(1), device, target_roll=target_roll
+        for index, target_index in zip(indices, target_indices, strict=True):
+            input_batch = _batch_for_indices(data, index.reshape(1), device)
+            target_batch = _batch_for_indices(data, target_index.reshape(1), device)
+            output = model(input_batch.amplitude, activation_checkpoint=False)
+            values.append(
+                F.mse_loss(output.reconstruction, target_batch.target).detach()
             )
-            output = model(batch.amplitude, activation_checkpoint=False)
-            values.append(F.mse_loss(output.reconstruction, batch.target).detach())
     model.train()
     return float(torch.stack(values).mean().cpu())
 

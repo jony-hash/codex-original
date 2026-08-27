@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import torch
+from torch import nn
 
 from ldm_project.v2.application.cli import _parser
+from ldm_project.v2.application.research import optical_manifold as base
 from ldm_project.v2.application.research import optical_manifold_training as pilot
 
 
@@ -101,3 +103,30 @@ def test_pilot_step_rejects_nan_measurements() -> None:
             "camera_finite": True,
         }
     ) is False
+
+
+def test_heldout_permutation_is_across_panel_examples() -> None:
+    class Echo(nn.Module):
+        def forward(self, amplitude, *, activation_checkpoint=False):
+            del activation_checkpoint
+            return base.OpticalManifoldOutput(amplitude, amplitude)
+
+    images = torch.stack(
+        [torch.full((1, 28, 28), value) for value in (0.1, 0.2, 0.4, 0.8)]
+    )
+    data = pilot.PilotData(
+        images=images,
+        labels=torch.zeros(4, dtype=torch.long),
+        train_indices=torch.empty(0, dtype=torch.long),
+        validation_indices=torch.empty(0, dtype=torch.long),
+        schedule=torch.empty(0, 10, dtype=torch.long),
+        heldout_indices=torch.empty(0, dtype=torch.long),
+        preflight_heldout_indices=torch.empty(0, dtype=torch.long),
+        manifest={},
+    )
+    indices = torch.arange(4)
+    paired = pilot._evaluate(Echo(), data, indices, torch.device("cpu"))
+    permuted = pilot._evaluate(
+        Echo(), data, indices, torch.device("cpu"), target_roll=1
+    )
+    assert paired != permuted
