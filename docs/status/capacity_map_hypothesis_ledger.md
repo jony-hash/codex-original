@@ -594,3 +594,28 @@ PLAN 5 therefore closes with status `passed`. The sole next action is
 `manual_review_identity_manifold_regularization_pilot_contract`. No bounded
 regularization training is authorized by this evidence; `training_authorized`
 and `formal_promotion` remain false.
+
+### H-LOMA-I0 PLAN 5 aggregate-prior regularization pilot authorization
+
+The project owner authorized one bounded, diagnostic-only two-arm training
+pilot on child branch
+`research/v2-lightgen-optical-manifold-regularization-pilot-v1`. The pilot
+consumes the passed PLAN 5 audit, its fixed 32-component projection and 64
+directions, and the step-5500 Identity checkpoint. The `regularized` and
+`mse_only` arms each run exactly 100 Adam updates over the same 10,000 unique
+training examples; both reset Adam and start from the same source weights.
+
+The regularizer is the locked deterministic sliced-Wasserstein
+`aggregate_prior` `project_approximation` with lambda `0.002733644070001058`.
+It is not a VAE KL, latent-sampling path, or generative experiment. The real
+consumer is the bounded-pilot decision: a passed pilot may request manual
+review of a continuation contract, while a valid scientific failure requests
+`manual_review_identity_regularization_objective_contract`. Lineage, finite,
+resume, rank, isolation, and resource failures are `invalid_harness` or
+`resource_aborted` and form no model conclusion.
+
+The pilot does not authorize extra epochs, VAE KL, latent sampling, SMF/FMF,
+evaluator use, generation, or formal promotion. Evidence and checkpoints must
+remain versioned under the new run directory, with
+`training_authorized=false` and `formal_promotion=false`; `outputs/final_pt/`
+and the formal `label + 8D` runtime remain unchanged.

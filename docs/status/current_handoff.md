@@ -909,3 +909,20 @@ SMF/FMF benefit, or formal promotion. t-SNE remains a separate non-gating
 visualization task. The sole next action is
 `manual_review_identity_manifold_regularization_contract`; evidence continues
 to record `training_authorized=false` and `formal_promotion=false`.
+
+### H-LOMA-I0 PLAN 5 aggregate-prior regularization pilot authorization
+
+The current clean baseline is `154a301` on the new local branch
+`research/v2-lightgen-optical-manifold-regularization-pilot-v1`. The project
+owner has authorized one bounded diagnostic pilot with matched `regularized`
+and `mse_only` arms, 100 updates per arm, 100 examples per update,
+microbatch 1, and a shared 10,000-example no-replacement schedule. Both arms
+reset Adam and inherit only the step-5500 Identity checkpoint weights.
+
+The regularized arm consumes the passed PLAN 5 fixed 32D projection, 64 SWD
+directions, and lambda `0.002733644070001058`. The lifecycle must first pass
+training validation and the real CUDA three-step/2+1-resume preflight; a
+preflight failure stops the pilot. The pilot is diagnostic-only and does not
+authorize extra epochs, KL, latent sampling, SMF/FMF, generation, evaluator,
+or promotion. All evidence continues to require
+`training_authorized=false` and `formal_promotion=false`.
