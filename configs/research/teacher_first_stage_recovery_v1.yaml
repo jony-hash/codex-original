@@ -1,0 +1,68 @@
+schema_version: 1
+name: teacher_first_stage_recovery_v1
+version: 20260827
+program: teacher-first-stage-recovery
+
+model_version: software_multiscale_teacher_vae_v1
+image_size: 200
+latent_shape: [1, 25, 25]
+class_count: 10
+
+package_a_gate_audit: outputs/20260825_electronic_distribution_recovery/runs/20260825_package_a_v1_retry12/gate_audit.json
+package_a_gate_audit_sha256: 99de4cae5f83cda643fd5accd09e54795d24b74d1629539f033f4156e47ac0bf
+package_a_closeout: outputs/20260825_electronic_distribution_recovery/runs/20260825_package_a_v1_retry12/closeout.json
+package_a_closeout_sha256: 70ed0fe02e9242ec630b44f3e46dd386950ef8d10d1ab5769664b5cb211a8cab
+package_b2_closeout: outputs/20260827_teacher_failure_attribution/runs/20260827_package_b2_v4/closeout.json
+package_b2_closeout_sha256: c760ddcc76f378f5517e280d876edaa9015bc3ea7f6216f846ecaf1813388c75
+
+primary_evaluator: outputs/20260724_v2/runs/20260724_162422_705459_formal_v2_identity_logit_amplitude_finite_crop_identity/frozen_mnist_evaluator.pt
+primary_evaluator_sha256: 46741ec76e45653c9dcb76e7b4f1645c9c057a47cdd9e4c1778d9debb553ec57
+secondary_evaluator: outputs/20260730_v2/runs/20260730_171126_556355_diagnostic_v2_transport_aligned_manifold_v71/smooth_mnist_evaluator_v21.pt
+secondary_evaluator_sha256: 45879962cf8a6dc51e141a2f2a9892356ede97dd45063f38d830299aa877e26c
+primary_qualification: outputs/20260724_v2/runs/20260724_162422_705459_formal_v2_identity_logit_amplitude_finite_crop_identity/evaluator_qualification_evidence.json
+primary_qualification_sha256: 26fea381bec5d6be2a2ed69806c190f7a7051b5f0944e5f90941a7d93f35695e
+secondary_qualification: outputs/20260730_v2/runs/20260730_171126_556355_diagnostic_v2_transport_aligned_manifold_v71/conditional_evaluator_qualification_v21_evidence.json
+secondary_qualification_sha256: 93592543306b5a3da8c238d86e41805fc2de0080459d217dfbc3e7161d374d88
+
+formal_split_hash: 8a51217b1ed6833250226255930ab598bf1539e27772ade0188592e5bc0b3912
+bank_count: 2
+samples_per_class: 250
+development_samples_per_class: 500
+development_seed: 49979687
+master_seed: 49979687
+formal_bank_partition_seed: 32452843
+microbatch_size: 16
+gradient_accumulation: 4
+num_workers: 0
+learning_rate: 0.0002
+weight_decay: 0.0001
+maximum_epochs: 40
+warmup_epochs: 5
+kl_beta_maximum: 1.0e-6
+kl_warmup_fraction: 0.20
+loss_temperature: 0.1
+multiscale_weight: 1.0
+sobel_weight: 0.5
+foreground_dice_weight: 0.5
+host_rss_limit_bytes: 5905580032
+cuda_memory_limit_bytes: 6442450944
+
+primary_accuracy_minimum: 0.95
+minimum_recall_minimum: 0.90
+evaluator_agreement_minimum: 0.95
+diversity_ratio_minimum: 0.70
+diversity_ratio_maximum: 1.30
+coverage_ratio_maximum: 1.50
+memorization_anomaly_maximum: 0.05
+
+formal_evaluator_in_producer: false
+ddpm_training_authorized: false
+student_training_authorized: false
+optical_training_authorized: false
+phase_training_authorized: false
+quadrature_training_authorized: false
+ols_training_authorized: false
+fiber_training_authorized: false
+candidate_export_authorized: false
+promotion_authorized: false
+synthetic_diagnostic_only: true

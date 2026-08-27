@@ -1232,6 +1232,37 @@ def register_research(root: argparse._SubParsersAction) -> None:
     attribution_common(closeout)
     closeout.add_argument("--report-evidence", required=True)
 
+    first_stage = research_programs.add_parser(
+        "teacher-first-stage-recovery",
+        help="Package B3 software first-stage reconstruction admission",
+    )
+    first_stage_actions = first_stage.add_subparsers(
+        dest="research_action", required=True
+    )
+
+    def first_stage_common(command):
+        command.add_argument("--config", required=True)
+        command.add_argument("--dataset-root", required=True)
+        command.add_argument("--reconstruction-manifest", required=True)
+        command.add_argument("--primary-evaluator-checkpoint", required=True)
+        command.add_argument("--secondary-evaluator-checkpoint", required=True)
+        command.add_argument("--primary-qualification-evidence", required=True)
+        command.add_argument("--secondary-qualification-evidence", required=True)
+        command.add_argument("--device", choices=("cuda", "cpu"), default="cuda")
+        command.add_argument("--output", required=True)
+
+    validate = first_stage_actions.add_parser("validate")
+    first_stage_common(validate)
+    audit = first_stage_actions.add_parser("audit")
+    first_stage_common(audit)
+    audit.add_argument("--validation-evidence", required=True)
+    report = first_stage_actions.add_parser("report")
+    first_stage_common(report)
+    report.add_argument("--audit-evidence", required=True)
+    closeout = first_stage_actions.add_parser("closeout")
+    first_stage_common(closeout)
+    closeout.add_argument("--report-evidence", required=True)
+
     smf = research_programs.add_parser(
         "smf-modal-density-attribution",
         help="synthetic single-mode port-density upper-bound lifecycle",
