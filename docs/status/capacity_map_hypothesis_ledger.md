@@ -405,3 +405,46 @@ seconds wall time, and 2 GiB storage. A 100-image visual panel is review-only.
 No extra epoch, latent/OLS experiment, SMF/FMF, evaluator, generation, or
 promotion is authorized. A pass can only request
 `manual_review_optical_latent_ols_contract`.
+
+### H-LOMA-I0 full-epoch continuation closeout（2026-08-27）
+
+Full-epoch implementation and evidence are on local branch
+`research/v2-lightgen-optical-manifold-full-epoch-v1`, with authoritative clean
+commit `4bbe438`. Attempts 01 and 02 are retained `invalid_harness` records:
+the first exposed non-zero CUDA Adam bitwise-resume instability, and the second
+exposed shared source optimizer-state mutation. Attempt 03 passed its CUDA
+preflight but was rejected by the train loader for a missing
+`full_epoch_manifest` binding before optimizer/run creation. No model conclusion
+is drawn from those attempts.
+
+Authoritative attempt-04 validation and preflight passed. Their SHA256 values
+are respectively `258af9978653a3552f8786b0fc7d76e8434347ed8c7bd5833f41f0f21f9351cd`
+and `e14f733bd8a83738892404a71452972eff11a7c6014d174aff1a33703e721a75`.
+The preflight resume artifact is
+`d58f7101d5241853abd20795a84274f6a67451142b113a073abc6d074f8b7d92`. The
+continuation used CUDA for the complete formal optical forward/backward path;
+to preserve exact resume, the Adam state/update for the four phase layers is
+an explicitly registered CPU-shadow Adam implementation. This changes neither
+the formal 2+2 Identity OLS optics nor the pilot source checkpoint.
+
+The one authorized continuation completed 4500 updates, global step 5500, and
+passed all harness, resource, and scientific gates. Final training evidence is
+`outputs/20260827_v2/runs/lightgen_optical_manifold_identity_full_epoch_v1_attempt_04/epoch_training.json`
+with SHA256
+`c01dae121210a4dff0534a9979661f92d1e0fc749087c8451ad51be24a458948`. Final
+paired held-out MSE is `0.03437697887420654`, below the pilot reference
+`0.06062695011496544` and the final cyclic control
+`0.06315752118825912`. Wall time is `3809.5485s`, peak CUDA allocation
+`480711168` bytes, storage `75434116` bytes, and evaluator calls `0`.
+Final checkpoint `full_epoch_final_step_005500.pt` has SHA256
+`56cb52fae3a13c94ea5a38af60e0934a407cf1ec7b57bbb31fba2a23c624655f`.
+
+The 100-image visual panel is review-only and has tensor SHA256
+`9328818e029852ff3ee8e9f05071ce30ff325ebcb89ba077773023466dad2a6e`; it is
+not used for loss, gate, or checkpoint selection. This is a bounded diagnostic
+Identity reconstruction result, not a capacity, latent/OLS, generation, or
+formal-promotion claim. `training_authorized=false` and
+`formal_promotion=false` remain mandatory. The unique consumer/rejection
+decision is manual review of `manual_review_optical_latent_ols_contract`; all
+extra epochs, latent/OLS experiments, SMF/FMF, evaluator, generation, and
+promotion remain blocked.

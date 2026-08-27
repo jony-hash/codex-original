@@ -754,3 +754,70 @@ preflight `300s`、full epoch `4500s`、peak CUDA `5GiB`、free CUDA 至少
 `4GiB`、run storage `2GiB`。固定 visual panel 为 held-out 中每类 10 张，
 仅用于人工审查。任何失败均停止；通过后的唯一下一动作是
 `manual_review_optical_latent_ols_contract`。
+
+### H-LOMA-I0 full-epoch continuation closeout
+
+Implementation was completed on local branch
+`research/v2-lightgen-optical-manifold-full-epoch-v1`. The implementation
+commits are `06400b4` (authorization/config/governance), `225cf26`
+(lifecycle/CLI/tests), `ab868d8` (deterministic CPU-shadow Adam contract),
+`83bba25` (source optimizer-state isolation), and `4bbe438` (preflight
+manifest binding). The final clean commit consumed by the authoritative run
+is `4bbe438`.
+
+Three earlier attempts were retained and not overwritten. Attempt-01
+preflight was `invalid_harness` because non-zero CUDA Adam updates were not
+bitwise stable across independently allocated runtimes (SHA256
+`9ba6cae22aa74f0b3c1818046b1149167e5df645b2f32f3610634327102d10d7`).
+Attempt-02 remained `invalid_harness` after the first corrective implementation
+because a runtime mutated the shared source optimizer state (SHA256
+`aa3288cf31ccc76268392cdbd977e742a23aef95d1c6b33f57b083110d9e179c`).
+Attempt-03 passed preflight, but its train loader correctly rejected an
+incomplete preflight manifest binding before creating an optimizer or run
+(SHA256 `7c81172e08de737df2a89179d8c0086e7126a6e50217018005be45a419a1e448`);
+no training occurred in that attempt. These are harness records, not model
+failures.
+
+Authoritative attempt-04 validation evidence is
+`outputs/20260827_v2/runs/lightgen_optical_manifold_identity_full_epoch_v1_attempt_04/epoch_validation.json`
+(SHA256
+`258af9978653a3552f8786b0fc7d76e8434347ed8c7bd5833f41f0f21f9351cd`), and
+preflight evidence is
+`outputs/20260827_v2/runs/lightgen_optical_manifold_identity_full_epoch_v1_attempt_04/epoch_preflight.json`
+(SHA256
+`e14f733bd8a83738892404a71452972eff11a7c6014d174aff1a33703e721a75`). The
+preflight resume artifact SHA256 is
+`d58f7101d5241853abd20795a84274f6a67451142b113a073abc6d074f8b7d92`.
+All preflight gates passed, including real CUDA formal 2+2 Identity OLS,
+four phase-layer gradients and updates, frozen-state isolation, evaluator
+calls `0`, cyclic mismatch control, and exact 2+1 resume. Peak allocation was
+`379527680` bytes, wall time `14.4956s`, and storage `514594` bytes.
+
+The single authorized continuation completed global steps `1001` through
+`5500` in `3809.5485s`. Final training evidence is
+`outputs/20260827_v2/runs/lightgen_optical_manifold_identity_full_epoch_v1_attempt_04/epoch_training.json`
+(SHA256
+`c01dae121210a4dff0534a9979661f92d1e0fc749087c8451ad51be24a458948`). The
+final checkpoint is `full_epoch_final_step_005500.pt` (SHA256
+`56cb52fae3a13c94ea5a38af60e0934a407cf1ec7b57bbb31fba2a23c624655f`). The
+fixed 1000-image held-out paired MSE was
+`0.06062695011496544` at the pilot checkpoint and
+`0.03437697887420654` after continuation; the final cyclic-permuted target
+MSE was `0.06315752118825912`. Thus both preregistered scientific gates
+passed. Peak CUDA allocation was `480711168` bytes, run storage was
+`75434116` bytes, and evaluator calls were `0`.
+
+The review-only 100-image visual panel contains the original 28x28 inputs,
+200x200 targets, raw CMOS tensors, reconstructions, and fixed target/
+reconstruction PNGs. Its tensor artifact is `full_epoch_visual_panel.pt`
+(SHA256 `9328818e029852ff3ee8e9f05071ce30ff325ebcb89ba077773023466dad2a6e`);
+target PNG SHA256 is
+`7f413d88cd0b80219a0c38c054f696295feb0b8f61c58e9213658a6bce006284` and
+reconstruction PNG SHA256 is
+`01d4bd3fec47d2224df560aa45684b3051eb034acb7e723212038c774ebad55e`.
+
+Final status is `passed` for this bounded diagnostic contract. Evidence still
+records `training_authorized=false` and `formal_promotion=false`. The only
+permitted next action is `manual_review_optical_latent_ols_contract`; no extra
+epoch, latent/OLS experiment, SMF/FMF, evaluator, generation, or promotion is
+authorized.

@@ -1523,3 +1523,48 @@ checkpoint SHA256
 permutation control；full epoch wall 上限为 75 分钟。该阶段不进入额外 epoch、
 latent/OLS、SMF/FMF、evaluator、生成或 promotion；通过后的唯一下一动作是
 人工审查 `manual_review_optical_latent_ols_contract`。
+
+### H-LOMA-I0 Identity Reconstruction Full-Epoch Continuation closeout（2026-08-27）
+
+在本地分支 `research/v2-lightgen-optical-manifold-full-epoch-v1` 上，先后
+保留四个 attempt。attempt-01 的 preflight 因非零 CUDA Adam 跨独立 runtime
+分配不能 bitwise exact 而记为 `invalid_harness`；attempt-02 在 CPU-shadow
+修复后仍发现 source optimizer state 被 runtime 共享 mutation；attempt-03
+的 preflight 通过，但训练入口在创建 optimizer/run 前拒绝了缺少
+`full_epoch_manifest` 的 preflight evidence。以上失败均没有启动 full epoch，
+也不形成模型结论。修复提交依次为 `ab868d8`、`83bba25`、`4bbe438`。
+
+attempt-04 在 clean commit `4bbe438` 上完成。validation evidence SHA256 为
+`258af9978653a3552f8786b0fc7d76e8434347ed8c7bd5833f41f0f21f9351cd`，preflight
+evidence SHA256 为
+`e14f733bd8a83738892404a71452972eff11a7c6014d174aff1a33703e721a75`，preflight
+resume artifact SHA256 为
+`d58f7101d5241853abd20795a84274f6a67451142b113a073abc6d074f8b7d92`。preflight
+的 finite、四层 phase gradient/update、冻结隔离、固定 exposure、Identity
+OLS/formal relay、evaluator `0`、cyclic negative control、资源和 2+1 exact
+resume gates 全部通过。
+
+唯一一次 continuation 从 pilot global step `1000` 运行到 `5500`，完成
+`4500` 次 Adam 更新。为满足 exact resume，formal CUDA forward/backward
+保持不变，phase Adam 状态和 update 使用注册的 CPU-shadow implementation；
+pilot checkpoint、schedule、formal optics 和 trainable parameter set 均未改变。
+最终 training evidence 为
+`outputs/20260827_v2/runs/lightgen_optical_manifold_identity_full_epoch_v1_attempt_04/epoch_training.json`
+（SHA256
+`c01dae121210a4dff0534a9979661f92d1e0fc749087c8451ad51be24a458948`）。
+
+固定 1000-image held-out panel 的 paired MSE 从 pilot 的
+`0.06062695011496544` 降至 `0.03437697887420654`，最终 cyclic-permuted
+target MSE 为 `0.06315752118825912`，因此预注册的两个科学门均通过。运行
+wall `3809.5485s`、peak CUDA `480711168` bytes、run storage `75434116` bytes，
+evaluator calls 为 `0`。final checkpoint
+`full_epoch_final_step_005500.pt` SHA256 为
+`56cb52fae3a13c94ea5a38af60e0934a407cf1ec7b57bbb31fba2a23c624655f`。
+
+最终 100-image visual panel 为 review-only：tensor artifact SHA256 为
+`9328818e029852ff3ee8e9f05071ce30ff325ebcb89ba077773023466dad2a6e`，不参与
+loss、gate 或 checkpoint 选择。最终状态为 `passed`，但仍是
+diagnostic-only；evidence 保持 `training_authorized=false`、
+`formal_promotion=false`。唯一下一动作是
+`manual_review_optical_latent_ols_contract`；不启动额外 epoch、latent/OLS、
+SMF/FMF、evaluator、生成或 promotion。
