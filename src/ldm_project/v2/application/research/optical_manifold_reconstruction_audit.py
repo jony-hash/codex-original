@@ -88,6 +88,7 @@ class AuditSpec:
 
 @dataclass(frozen=True)
 class AuditData:
+    pilot_data: full_epoch.pilot.PilotData
     images: torch.Tensor
     labels: torch.Tensor
     train_indices: torch.Tensor
@@ -408,6 +409,7 @@ def _load_data(dataset_root: str | Path) -> AuditData:
     if not torch.equal(heldout_labels, expected):
         raise ValueError("held-out panel is not ordered by label")
     return AuditData(
+        pilot_data=full_data.pilot_data,
         images=full_data.pilot_data.images,
         labels=labels,
         train_indices=full_data.pilot_data.train_indices,
@@ -779,6 +781,37 @@ def _metrics(
     return result
 
 
+def _authoritative_source_replay_mse(
+    model: base.IdentityOpticalManifoldAutoencoder,
+    data: AuditData,
+    device: torch.device,
+) -> float:
+    """Replay the exact source evaluator reduction on the trained phase state."""
+    value = full_epoch.pilot._evaluate(
+        model,
+        data.pilot_data,
+        data.heldout_indices,
+        device,
+    )
+    model.eval()
+    return value
+
+
+def _source_metric_reproduction_gate(
+    authoritative_mse: float,
+    offline_mse: float,
+) -> GateResult:
+    return _gate_bool(
+        "source_metrics_reproduced",
+        abs(authoritative_mse - SOURCE_PAIRED_MSE) <= 1.0e-9,
+        {
+            "source": SOURCE_PAIRED_MSE,
+            "authoritative_source_replay_mse": authoritative_mse,
+            "offline_attribution_mse": offline_mse,
+        },
+    )
+
+
 def _render_targets(data: AuditData) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     images = data.images.index_select(0, data.heldout_indices)
     rendered = base.render_intensity_batch(images)
@@ -1044,11 +1077,14 @@ def run(args: argparse.Namespace) -> int:
     heldout_labels = data.labels.index_select(0, data.heldout_indices)
     evaluations: dict[str, Evaluation] = {}
     phase_variants = ("trained", "zero_phase", "encoder_zero", "decoder_zero", "random_phase")
+    authoritative_source_mse: float | None = None
     try:
         for variant in phase_variants:
             _restore_phases(model, encoder_phase_before, decoder_phase_before)
             _phase_variant(model, variant)
             evaluations[variant] = _evaluate_model(model, amplitudes, target, heldout_labels, device)
+            if variant == "trained":
+                authoritative_source_mse = _authoritative_source_replay_mse(model, data, device)
             if time.monotonic() - started > MAX_WALL_SECONDS:
                 raise TimeoutError("Identity reconstruction attribution audit exceeded its resource stop")
         _restore_phases(model, encoder_phase_before, decoder_phase_before)
@@ -1077,6 +1113,8 @@ def run(args: argparse.Namespace) -> int:
     trained_geometry = trained.metrics["within_label_distance_correlation"]
     control_geometries = [item.metrics["within_label_distance_correlation"] for item in phase_controls]
     finite = all(_finite_metrics(item.metrics) for item in evaluations.values())
+    if authoritative_source_mse is None:
+        raise RuntimeError("trained source replay did not run")
     trained_mse = trained.metrics["paired_mse"]
     controls_mse = [item.metrics["paired_mse"] for item in phase_controls]
     trained_pearson = trained.metrics["centered_pearson_mean"]
@@ -1088,7 +1126,7 @@ def run(args: argparse.Namespace) -> int:
         value is None or trained_geometry > value for value in control_geometries
     )
     gates = (
-        _gate_bool("source_metrics_reproduced", abs(trained_mse - SOURCE_PAIRED_MSE) <= 1.0e-9, {"source": SOURCE_PAIRED_MSE, "measured": trained_mse}),
+        _source_metric_reproduction_gate(authoritative_source_mse, trained_mse),
         _gate_bool("trained_below_cyclic", trained_mse < evaluations["cyclic_target"].metrics["paired_mse"], {"trained": trained_mse, "cyclic": evaluations["cyclic_target"].metrics["paired_mse"]}),
         _gate_bool("trained_below_global_template", trained_mse < template_global.metrics["paired_mse"], {"trained": trained_mse, "global_template": template_global.metrics["paired_mse"]}),
         _gate_bool("trained_below_class_templates", trained_mse < template_class.metrics["paired_mse"], {"trained": trained_mse, "class_templates": template_class.metrics["paired_mse"]}),
@@ -1135,6 +1173,13 @@ def run(args: argparse.Namespace) -> int:
             "source_checkpoint_hash": SOURCE_CHECKPOINT_HASH,
             "validation_evidence_hash": validation_hash,
             "source_checkpoint_step": SOURCE_STEP,
+            "mse_reduction": {
+                "authoritative_source_replay_mse": authoritative_source_mse,
+                "offline_attribution_mse": trained_mse,
+                "absolute_difference": abs(authoritative_source_mse - trained_mse),
+                "authoritative_provenance": "optical_manifold_training._evaluate: singleton CUDA F.mse_loss -> CUDA stack.mean -> CPU scalar",
+                "offline_provenance": "audit._evaluate_model: CPU reconstruction tensors -> CPU singleton F.mse_loss -> CPU mean",
+            },
             "metrics": metrics,
             "panel": panel,
             "variants": list(evaluations),

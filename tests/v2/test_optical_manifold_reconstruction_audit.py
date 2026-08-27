@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import inspect
 import json
+from types import SimpleNamespace
 
 import torch
 
@@ -81,6 +82,35 @@ def test_metric_controls_distinguish_instance_and_template_predictions() -> None
     assert metrics["paired_mse"] == 0.0
     assert metrics["exact_target_top1"] == 1.0
     assert metrics["centered_pearson_mean"] == 1.0
+
+
+def test_source_metric_gate_consumes_authoritative_replay_not_cpu_statistic(monkeypatch) -> None:
+    calls = []
+
+    def fake_evaluate(model, pilot_data, indices, device):
+        calls.append((model, pilot_data, indices, device))
+        return audit.SOURCE_PAIRED_MSE
+
+    monkeypatch.setattr(audit.full_epoch.pilot, "_evaluate", fake_evaluate)
+    model = SimpleNamespace(eval=lambda: None)
+    pilot_data = object()
+    indices = torch.arange(2)
+    data = SimpleNamespace(pilot_data=pilot_data, heldout_indices=indices)
+    measured = audit._authoritative_source_replay_mse(model, data, torch.device("cpu"))
+
+    assert measured == audit.SOURCE_PAIRED_MSE
+    assert calls == [(model, pilot_data, indices, torch.device("cpu"))]
+
+    passed = audit._source_metric_reproduction_gate(
+        audit.SOURCE_PAIRED_MSE,
+        audit.SOURCE_PAIRED_MSE - 3.7e-9,
+    )
+    failed = audit._source_metric_reproduction_gate(
+        audit.SOURCE_PAIRED_MSE + 3.7e-9,
+        audit.SOURCE_PAIRED_MSE,
+    )
+    assert passed.passed is True
+    assert failed.passed is False
 
 
 def test_audit_cli_actions_are_lazy_and_registered() -> None:
