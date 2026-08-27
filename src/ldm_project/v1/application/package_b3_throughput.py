@@ -202,6 +202,8 @@ def _validate_upstream(config: dict[str, Any], path: str, *, head: str, config_s
         allowed = {
             "src/ldm_project/v1/application/package_b3_throughput.py",
             "tests/v1/test_package_b3_throughput.py",
+            "src/ldm_project/v1/application/package_b3_t2.py",
+            "tests/v1/test_package_b3_t2.py",
         }
         if any(path not in allowed for path in changed):
             raise ValueError("B3 throughput profiler upstream HEAD differs in B3-relevant files")
