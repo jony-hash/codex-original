@@ -5,6 +5,8 @@
   "decision": "approve_bounded_identity_reconstruction_audit",
   "source_training_evidence": "outputs/20260827_v2/runs/lightgen_optical_manifold_identity_full_epoch_v1_attempt_04/epoch_training.json",
   "source_training_evidence_sha256": "c01dae121210a4dff0534a9979661f92d1e0fc749087c8451ad51be24a458948",
+  "source_training_config": "configs/research/lightgen_optical_manifold_identity_full_epoch_v1.yaml",
+  "source_training_config_sha256": "f59e79090704319704e9e9161587003d369ed18ad4b502facef202d3b2a954a1",
   "source_checkpoint": "outputs/20260827_v2/runs/lightgen_optical_manifold_identity_full_epoch_v1_attempt_04/full_epoch_final_step_005500.pt",
   "source_checkpoint_sha256": "56cb52fae3a13c94ea5a38af60e0934a407cf1ec7b57bbb31fba2a23c624655f",
   "source_dataset_manifest_hash": "64b1b70dc119dac0cb0aa8b898614962ff993a83d120390d1d6fadd55ade97d8",

@@ -918,9 +918,14 @@ def dispatch(args: argparse.Namespace) -> int:
     if args.research_action in {
         "train-validate", "train-preflight", "train",
         "full-epoch-validate", "full-epoch-preflight", "full-epoch-train",
+        "reconstruction-audit-validate", "reconstruction-audit-run",
     }:
         if args.research_action.startswith("full-epoch"):
             from .optical_manifold_full_epoch import dispatch as training_dispatch
+        elif args.research_action.startswith("reconstruction-audit"):
+            from .optical_manifold_reconstruction_audit import dispatch as audit_dispatch
+
+            return int(audit_dispatch(args) or 0)
         else:
             from .optical_manifold_training import dispatch as training_dispatch
 
