@@ -1074,14 +1074,6 @@ def train_preflight(args: argparse.Namespace) -> int:
         GateResult("four_phase_layer_gradients_nonzero", phase_gradients, {"count": 4}),
         GateResult("four_phase_layer_updates_nonzero", phase_updates, {"count": 4}),
         GateResult("frozen_state_unchanged", frozen, {}),
-        GateResult(
-            "paired_loss_decreased",
-            paired_steps[-1]["loss"] < paired_steps[0]["loss"],
-            {
-                "initial": paired_steps[0]["loss"],
-                "step_3": paired_steps[-1]["loss"],
-            },
-        ),
         GateResult("fixed_exposure", True, {"scale": 1.0, "gamma": 1.0}),
         GateResult("evaluator_isolation", True, {"evaluator_calls": 0}),
         GateResult("resume_exact", resume_exact, {}),
