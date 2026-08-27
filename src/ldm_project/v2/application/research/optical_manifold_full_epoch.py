@@ -783,7 +783,10 @@ def train_preflight(args: argparse.Namespace) -> int:
     if output.exists():
         raise FileExistsError(f"refusing to overwrite full-epoch preflight: {output}")
     output.parent.mkdir(parents=True, exist_ok=True)
-    input_hashes = _source_hash_inputs(spec, review_path, formal_path, validation_hash=validation_hash)
+    input_hashes = {
+        **_source_hash_inputs(spec, review_path, formal_path, validation_hash=validation_hash),
+        "full_epoch_manifest": data.manifest["manifest_hash"],
+    }
     if not torch.cuda.is_available():
         gates = (GateResult("cuda_available", False, {}, "CUDA is unavailable"),)
         record = _preflight_record(state, spec, formal, data, input_hashes, gates, "invalid_harness", (), "CUDA is unavailable")
