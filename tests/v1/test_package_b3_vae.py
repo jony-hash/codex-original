@@ -73,3 +73,14 @@ def test_b3_checkpoint_loader_rejects_wrong_model_version(tmp_path) -> None:
     torch.save({"model_version": "old_linear_metasurface"}, path)
     with pytest.raises(ValueError, match="checkpoint payload"):
         producer._load_checkpoint(path, torch.device("cpu"))
+
+
+def test_b3_camera_cache_is_hash_bound_and_reopened_without_materializing(tmp_path) -> None:
+    images = torch.rand(2, 1, 28, 28)
+    data = {"images": images, "labels": torch.tensor([0, 1]), "dataset_hash": "dataset", "split_hash": producer.FORMAL_SPLIT_HASH}
+    config = {"microbatch_size": 1}
+    first, metadata = producer._prepare_camera_cache(tmp_path, data, config, torch.device("cpu"))
+    second, reopened = producer._prepare_camera_cache(tmp_path, data, config, torch.device("cpu"))
+    assert tuple(first.shape) == (2, 1, 200, 200)
+    assert torch.equal(first, second)
+    assert metadata["sha256"] == reopened["sha256"]
