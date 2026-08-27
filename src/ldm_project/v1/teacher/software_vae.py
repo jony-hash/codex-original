@@ -83,8 +83,8 @@ class SoftwareMultiscaleTeacherVAE(nn.Module):
         )
         self.encoder = nn.Sequential(
             DownsampleBlock(32, 64),
-            DownsampleBlock(64, 96),
-            DownsampleBlock(96, 128),
+            DownsampleBlock(64, 128),
+            DownsampleBlock(128, 128),
             ResidualBlock(128),
         )
         self.mu_head = nn.Conv2d(128, LATENT_SHAPE[0], 1)
@@ -97,8 +97,8 @@ class SoftwareMultiscaleTeacherVAE(nn.Module):
             ResidualBlock(128),
         )
         self.decoder = nn.Sequential(
-            UpsampleBlock(128, 96),
-            UpsampleBlock(96, 64),
+            UpsampleBlock(128, 128),
+            UpsampleBlock(128, 64),
             UpsampleBlock(64, 32),
         )
         self.output_head = nn.Conv2d(32, 1, 3, padding=1)

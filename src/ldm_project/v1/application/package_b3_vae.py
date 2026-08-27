@@ -237,52 +237,6 @@ def _to_camera(images: torch.Tensor) -> torch.Tensor:
     return F.interpolate(images, (IMAGE_SIZE, IMAGE_SIZE), mode="bilinear", align_corners=False, antialias=True)
 
 
-def _prepare_camera_cache(
-    run_dir: Path, data: dict[str, Any], config: dict[str, Any], device: torch.device
-) -> tuple[torch.Tensor, dict[str, Any]]:
-    """Create/open an exact float32 mmap of the fixed camera-plane transform."""
-    cache_path = run_dir / "mnist_camera_plane.float32.bin"
-    metadata_path = run_dir / "mnist_camera_plane.json"
-    element_count = int(data["images"].shape[0]) * IMAGE_SIZE * IMAGE_SIZE
-    metadata = {
-        "schema": f"{SCHEMA_PREFIX}_camera_cache.v1",
-        "dataset_hash": data["dataset_hash"],
-        "dataset_split_hash": data["split_hash"],
-        "transform": "bilinear_antialias_true_28_to_200",
-        "dtype": "torch.float32",
-        "shape": [int(data["images"].shape[0]), 1, IMAGE_SIZE, IMAGE_SIZE],
-        "element_count": element_count,
-    }
-    if cache_path.exists() or metadata_path.exists():
-        if not cache_path.is_file() or not metadata_path.is_file():
-            raise ValueError("Package B3 camera cache is incomplete")
-        saved = read_json(metadata_path)
-        if saved != {**metadata, "sha256": saved.get("sha256")}:
-            raise ValueError("Package B3 camera cache metadata does not match the locked input")
-        if cache_path.stat().st_size != element_count * 4:
-            raise ValueError("Package B3 camera cache size is invalid")
-        if file_sha256(cache_path) != saved["sha256"]:
-            raise ValueError("Package B3 camera cache content hash changed")
-    else:
-        run_dir.mkdir(parents=True, exist_ok=True)
-        temporary = cache_path.with_name(f".{cache_path.name}.tmp")
-        with temporary.open("wb") as handle:
-            handle.truncate(element_count * 4)
-        mapped = torch.from_file(str(temporary), shared=True, size=element_count, dtype=torch.float32)
-        for start in range(0, data["images"].shape[0], 256):
-            stop = min(start + 256, data["images"].shape[0])
-            batch = _to_camera(data["images"][start:stop].to(device)).cpu()
-            mapped[start * IMAGE_SIZE * IMAGE_SIZE : stop * IMAGE_SIZE * IMAGE_SIZE].copy_(batch.flatten())
-        del mapped
-        os.replace(temporary, cache_path)
-        metadata["sha256"] = file_sha256(cache_path)
-        atomic_json(metadata_path, metadata)
-    if "sha256" not in metadata:
-        metadata["sha256"] = file_sha256(cache_path)
-    mapped = torch.from_file(str(cache_path), shared=True, size=element_count, dtype=torch.float32)
-    return mapped.reshape(-1, 1, IMAGE_SIZE, IMAGE_SIZE), metadata
-
-
 def _select_development(
     train_indices: torch.Tensor, labels: torch.Tensor, *, seed: int, samples_per_class: int
 ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -419,8 +373,7 @@ def _preflight(args: argparse.Namespace, config: dict[str, Any], data: dict[str,
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lambda _: 1.0)
     fitting, _ = _select_development(data["train_indices"], data["labels"], seed=config["development_seed"], samples_per_class=config["development_samples_per_class"])
     batch_indices = fitting[: config["microbatch_size"]]
-    camera_cache, camera_cache_metadata = _prepare_camera_cache(Path(args.run_dir), data, config, device)
-    images = camera_cache.index_select(0, batch_indices).to(device)
+    images = _to_camera(data["images"].index_select(0, batch_indices).to(device))
     labels = data["labels"].index_select(0, batch_indices).to(device)
     before = state_content_hash(model.state_dict())
     losses = []
@@ -504,7 +457,6 @@ def _preflight(args: argparse.Namespace, config: dict[str, Any], data: dict[str,
         "optical_objects_created": False,
         "diffusion_objects_created": False,
         "student_objects_created": False,
-        "camera_cache_sha256": camera_cache_metadata["sha256"],
     }
 
 
@@ -521,9 +473,8 @@ def _train(args: argparse.Namespace, config: dict[str, Any], data: dict[str, Any
 
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_schedule)
     fitting_indices, development_indices = _select_development(data["train_indices"], data["labels"], seed=config["development_seed"], samples_per_class=config["development_samples_per_class"])
-    camera_cache, camera_cache_metadata = _prepare_camera_cache(Path(args.run_dir), data, config, device)
-    fitting_images = camera_cache
-    development_images = camera_cache
+    fitting_images = data["images"]
+    development_images = data["images"]
     development_labels = data["labels"].index_select(0, development_indices)
     loader_generator = torch.Generator(device="cpu").manual_seed(config["master_seed"])
     loader_dataset = Subset(TensorDataset(fitting_images, data["labels"]), fitting_indices.tolist())
@@ -560,7 +511,7 @@ def _train(args: argparse.Namespace, config: dict[str, Any], data: dict[str, Any
         optimizer.zero_grad(set_to_none=True)
         train_losses = []
         for batch_number, (batch_images, batch_labels) in enumerate(loader):
-            batch_images = batch_images.to(device, non_blocking=True)
+            batch_images = _to_camera(batch_images.to(device, non_blocking=True))
             batch_labels = batch_labels.to(device, non_blocking=True)
             loss, metrics = _batch_loss(model, batch_images, batch_labels, config, epoch)
             if not torch.isfinite(loss):
@@ -579,7 +530,7 @@ def _train(args: argparse.Namespace, config: dict[str, Any], data: dict[str, Any
         with torch.inference_mode():
             for start in range(0, len(development_images), config["microbatch_size"]):
                 indices = development_indices[start : start + config["microbatch_size"]]
-                images = development_images.index_select(0, indices).to(device)
+                images = _to_camera(development_images.index_select(0, indices).to(device))
                 labels = development_labels[start : start + config["microbatch_size"]].to(device)
                 output = model(images, deterministic=True)
                 loss, _ = reconstruction_loss(output["reconstruction"], images, labels, output["mu"], output["logvar"], temperature=config["loss_temperature"], kl_beta=_kl_beta(config, epoch), multiscale_weight=config["multiscale_weight"], sobel_weight=config["sobel_weight"], foreground_dice_weight=config["foreground_dice_weight"])
@@ -596,7 +547,7 @@ def _train(args: argparse.Namespace, config: dict[str, Any], data: dict[str, Any
         if dev_loss < best_loss:
             best_loss, best_epoch = dev_loss, epoch
             atomic_torch(run_dir / "first_stage_best.pt", {**state_payload, "selection": "development_composite_loss", "best_development_loss": best_loss})
-    return {"best_epoch": best_epoch, "best_development_loss": best_loss, "history": history, "checkpoint": str(run_dir / "first_stage_best.pt"), "camera_cache": str(run_dir / "mnist_camera_plane.float32.bin"), "camera_cache_sha256": camera_cache_metadata["sha256"], "evaluator_calls": 0, "host_rss_peak_bytes": _max_rss_bytes(), "cuda_peak_bytes": int(torch.cuda.max_memory_allocated(device)), "start_epoch": start_epoch, "resume_checkpoint": args.resume_checkpoint}
+    return {"best_epoch": best_epoch, "best_development_loss": best_loss, "history": history, "checkpoint": str(run_dir / "first_stage_best.pt"), "evaluator_calls": 0, "host_rss_peak_bytes": _max_rss_bytes(), "cuda_peak_bytes": int(torch.cuda.max_memory_allocated(device)), "start_epoch": start_epoch, "resume_checkpoint": args.resume_checkpoint}
 
 
 def _load_checkpoint(path: str | Path, device: torch.device) -> tuple[SoftwareMultiscaleTeacherVAE, dict[str, Any]]:
@@ -616,7 +567,6 @@ def _latent_statistics(
     data: dict[str, Any],
     config: dict[str, Any],
     device: torch.device,
-    camera_cache: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor, int]:
     fitting_indices, _ = _select_development(
         data["train_indices"],
@@ -630,10 +580,7 @@ def _latent_statistics(
     with torch.inference_mode():
         for start in range(0, fitting_indices.numel(), config["microbatch_size"]):
             indices = fitting_indices[start : start + config["microbatch_size"]]
-            if camera_cache is None:
-                batch = _to_camera(data["images"].index_select(0, indices).to(device))
-            else:
-                batch = camera_cache.index_select(0, indices).to(device)
+            batch = _to_camera(data["images"].index_select(0, indices).to(device))
             output = model.encode(batch)
             values = output["mu"].double().flatten(2)
             sum_value += values.sum(dim=(0, 2))
@@ -696,11 +643,10 @@ def _reconstruct(args: argparse.Namespace, config: dict[str, Any], data: dict[st
     if before != after:
         raise ValueError("frozen Package B3 candidate changed during reconstruction")
     latent = torch.cat(latent_rows)
-    camera_cache, camera_cache_metadata = _prepare_camera_cache(run_dir, data, config, device)
-    latent_mean, latent_std, latent_count = _latent_statistics(model, data, config, device, camera_cache)
+    latent_mean, latent_std, latent_count = _latent_statistics(model, data, config, device)
     stats_path = run_dir / "latent_stats.pt"
     atomic_torch(stats_path, {"schema": f"{SCHEMA_PREFIX}_latent_stats.v1", "model_version": MODEL_VERSION, "latent_shape": list(LATENT_SHAPE), "mean": latent_mean, "std": latent_std, "count": latent_count})
-    manifest = {"schema": f"{SCHEMA_PREFIX}_reconstruction.v1", "status": "first_stage_reconstruction_bank", "model_version": MODEL_VERSION, "checkpoint_sha256": file_sha256(checkpoint), "checkpoint": str(checkpoint), "dataset_hash": data["dataset_hash"], "dataset_split_hash": data["split_hash"], "formal_bank_partition_seed": config["formal_bank_partition_seed"], "bank_count": 2, "samples_per_class": 250, "image_shape": [1, IMAGE_SIZE, IMAGE_SIZE], "latent_shape": list(LATENT_SHAPE), "decoder_input": "encoded_real_mu", "latent_standardization": "training_fit_mu_channelwise", "latent_stats_path": str(stats_path), "latent_stats_sha256": file_sha256(stats_path), "latent_stats_count": latent_count, "camera_cache_sha256": camera_cache_metadata["sha256"], "evaluator_calls": 0, "state_hash_before": before, "state_hash_after": after, "shards": shards, "latent_mu_sha256": tensor_sha256(latent)}
+    manifest = {"schema": f"{SCHEMA_PREFIX}_reconstruction.v1", "status": "first_stage_reconstruction_bank", "model_version": MODEL_VERSION, "checkpoint_sha256": file_sha256(checkpoint), "checkpoint": str(checkpoint), "dataset_hash": data["dataset_hash"], "dataset_split_hash": data["split_hash"], "formal_bank_partition_seed": config["formal_bank_partition_seed"], "bank_count": 2, "samples_per_class": 250, "image_shape": [1, IMAGE_SIZE, IMAGE_SIZE], "latent_shape": list(LATENT_SHAPE), "decoder_input": "encoded_real_mu", "latent_standardization": "training_fit_mu_channelwise", "latent_stats_path": str(stats_path), "latent_stats_sha256": file_sha256(stats_path), "latent_stats_count": latent_count, "evaluator_calls": 0, "state_hash_before": before, "state_hash_after": after, "shards": shards, "latent_mu_sha256": tensor_sha256(latent)}
     atomic_json(args.output, manifest)
     return {"manifest": manifest, "evaluator_calls": 0, "host_rss_peak_bytes": _max_rss_bytes(), "cuda_peak_bytes": int(torch.cuda.max_memory_allocated(device)), "state_hash_unchanged": before == after}
 
