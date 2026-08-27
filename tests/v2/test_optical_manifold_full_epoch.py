@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import torch
+
 from ldm_project.v2.application.cli import _parser
 from ldm_project.v2.application.research import optical_manifold_full_epoch as full_epoch
 
@@ -53,6 +55,28 @@ def test_full_epoch_uses_cpu_shadow_adam_for_exact_resume() -> None:
     assert len(optimizer.param_groups[0]["params"]) == 2
     assert all(parameter.device.type == "cpu" for parameter in optimizer.param_groups[0]["params"])
     assert all(parameter.device.type == "cpu" for parameter in optimizer._cpu_parameters)
+
+
+def test_runtime_does_not_mutate_source_optimizer_state() -> None:
+    spec = full_epoch._load_spec(
+        "configs/research/lightgen_optical_manifold_identity_full_epoch_v1.yaml"
+    )
+    formal, _ = full_epoch._load_formal(spec)
+    _, checkpoint, _, _ = full_epoch._load_source(
+        spec,
+        full_epoch._resolve(
+            "configs/research/lightgen_optical_manifold_identity_full_epoch_review_v1.json"
+        ),
+        spec.payload["source_training_evidence"],
+        spec.payload["source_checkpoint"],
+        full_epoch._git_state()["commit"],
+    )
+    source_state = full_epoch._clone_tree(checkpoint["optimizer_state"])
+    _, optimizer = full_epoch._runtime_from_checkpoint(
+        formal, checkpoint, torch.device("cpu")
+    )
+    optimizer.state_dict()["state"][0]["step"].add_(1)
+    assert full_epoch._tree_equal(checkpoint["optimizer_state"], source_state)
 
 
 def test_full_epoch_cli_actions_are_registered() -> None:

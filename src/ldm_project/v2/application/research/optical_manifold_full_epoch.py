@@ -710,7 +710,7 @@ def _runtime_from_checkpoint(formal: FormalSystemConfig, checkpoint: Mapping[str
     model = base.IdentityOpticalManifoldAutoencoder(formal).to(device)
     optimizer = _make_full_optimizer(model)
     model.load_state_dict(checkpoint["model_state"], strict=True)
-    optimizer.load_state_dict(checkpoint["optimizer_state"])
+    optimizer.load_state_dict(_clone_tree(checkpoint["optimizer_state"]))
     base._restore_rng(checkpoint["rng_state"])
     return model, optimizer
 
