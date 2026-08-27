@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import json
 import subprocess
 import time
@@ -92,6 +93,7 @@ class TraceCapture:
     endpoint_raw: torch.Tensor
     endpoint_positions: torch.Tensor
     offline_mse: float
+    pre_post_exact: bool
     pre_plane: dict[str, Any]
     pre_provenance: dict[str, Any]
 
@@ -288,7 +290,12 @@ def _load_source(
         or not isinstance(checkpoint.get("rng_state"), dict)
     ):
         raise ValueError("source checkpoint state is incomplete or at the wrong step")
-    if checkpoint["evidence_hashes"].get("full_epoch_validation_evidence") is None or checkpoint["evidence_hashes"].get("full_epoch_preflight_evidence") is None:
+    evidence_hashes = checkpoint.get("evidence_hashes")
+    if (
+        not isinstance(evidence_hashes, dict)
+        or evidence_hashes.get("full_epoch_validation_evidence") is None
+        or evidence_hashes.get("full_epoch_preflight_evidence") is None
+    ):
         raise ValueError("source checkpoint evidence binding is incomplete")
     if data.manifest["heldout_indices_sha256"] != SOURCE_HELDOUT_HASH:
         raise ValueError("observer data binding mismatch")
@@ -304,6 +311,42 @@ def _load_source(
         "heldout_indices": SOURCE_HELDOUT_HASH,
     }
     return audit_payload, validation_payload, checkpoint, hashes
+
+
+def _load_observer_validation(
+    path: str | Path,
+    spec: ObserverSpec,
+    formal: FormalSystemConfig,
+    data: ObserverData,
+    state: Mapping[str, Any],
+    source_hashes: Mapping[str, str],
+) -> tuple[dict[str, Any], str]:
+    target = _resolve(path)
+    validation_hash = file_sha256(target)
+    payload = json.loads(target.read_text(encoding="utf-8"))
+    if (
+        not isinstance(payload, dict)
+        or payload.get("schema") != VALIDATION_SCHEMA
+        or payload.get("hypothesis") != HYPOTHESIS
+        or payload.get("training_authorized") is not False
+        or payload.get("formal_promotion") is not False
+    ):
+        raise ValueError("latent observer validation evidence has an invalid schema or authorization")
+    record = EvidenceRecordV2.from_dict(payload["evidence"])
+    record.validate()
+    if record.evidence_kind != VALIDATION_SCHEMA or record.status != "passed":
+        raise ValueError("latent observer validation evidence must be passed")
+    if record.git_commit != state["commit"] or record.config_hash != spec.config_hash:
+        raise ValueError("latent observer validation evidence is stale")
+    if record.context != _context(spec, formal, data):
+        raise ValueError("latent observer validation context does not match the current run")
+    if record.input_hashes != dict(source_hashes):
+        raise ValueError("latent observer validation source hashes do not match the current inputs")
+    if record.permitted_next_actions != ("run_identity_latent_observer",):
+        raise ValueError("latent observer validation next action is invalid")
+    if payload.get("contract", {}).get("no_update_observer_authorized") is not True:
+        raise ValueError("latent observer validation is missing no-update authorization")
+    return payload, validation_hash
 
 
 def _context(spec: ObserverSpec, formal: FormalSystemConfig, data: ObserverData) -> EvidenceContextV2:
@@ -436,6 +479,7 @@ def _capture_trace(model: base.IdentityOpticalManifoldAutoencoder, data: Observe
     endpoint_raw: dict[int, torch.Tensor] = {}
     pre_plane: dict[str, Any] | None = None
     pre_provenance: dict[str, Any] | None = None
+    pre_post_exact = True
     model.eval()
     with torch.no_grad():
         for position in range(HELDOUT_COUNT):
@@ -476,6 +520,7 @@ def _capture_trace(model: base.IdentityOpticalManifoldAutoencoder, data: Observe
         endpoint_raw=endpoint_tensor,
         endpoint_positions=endpoint_positions,
         offline_mse=float(torch.stack(offline_losses).mean().item()),
+        pre_post_exact=pre_post_exact,
         pre_plane=pre_plane,
         pre_provenance=pre_provenance,
     )
@@ -531,6 +576,7 @@ def _interpolate(
     capture: TraceCapture,
     data: ObserverData,
     device: torch.device,
+    source_hashes: Mapping[str, str],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     values = []
     fixed_values = []
@@ -589,9 +635,9 @@ def _interpolate(
         "labels": torch.tensor(labels, dtype=torch.long),
         "start_indices": torch.tensor(start_indices, dtype=torch.long),
         "end_indices": torch.tensor(end_indices, dtype=torch.long),
-        "endpoint_indices": capture.endpoint_positions.cpu(),
+        "endpoint_indices": data.endpoint_indices.cpu(),
         "t_values": torch.tensor(t_values, dtype=torch.float32),
-        "source_hashes": {"source_checkpoint": SOURCE_CHECKPOINT_HASH, "source_attribution_evidence": SOURCE_AUDIT_HASH, "source_mnist_manifest": SOURCE_MANIFEST_HASH},
+        "source_hashes": dict(source_hashes),
         "pre_ols_plane": capture.pre_plane,
         "pre_ols_provenance": capture.pre_provenance,
         "affects_gate_or_selection": False,
@@ -619,37 +665,30 @@ def _observer_record(state: Mapping[str, Any], spec: ObserverSpec, formal: Forma
     return record
 
 
-def run(args: argparse.Namespace) -> int:
-    if args.device != "cuda":
-        raise ValueError("latent observer requires CUDA")
-    spec = _load_spec(args.config)
-    review, review_path = _load_review(args.review_contract, spec)
-    state = _git_state()
-    _require_clean_branch(state)
-    formal, _ = _load_formal(spec)
-    data = _load_data(args.dataset_root)
-    _, _, checkpoint, hashes = _load_source(spec, review_path, data, state["commit"])
-    validation_path = _resolve(args.validation_evidence)
-    expected_validation_path = _resolve(spec.payload["source"]["attribution_validation"])
-    if validation_path != expected_validation_path or file_sha256(validation_path) != SOURCE_AUDIT_VALIDATION_HASH:
-        raise ValueError("latent observer validation evidence hash mismatch")
-    validation_payload = json.loads(validation_path.read_text(encoding="utf-8"))
-    validation_record = EvidenceRecordV2.from_dict(validation_payload["evidence"])
-    if validation_record.evidence_kind != VALIDATION_SCHEMA or validation_record.status != "passed":
-        raise ValueError("latent observer validation evidence must be passed")
-    if validation_record.git_commit != state["commit"] or validation_record.config_hash != spec.config_hash:
-        raise ValueError("latent observer validation evidence is stale")
-    if output := Path(args.output):
-        if output.exists():
-            raise FileExistsError(f"refusing to overwrite latent observer evidence: {output}")
-    if not torch.cuda.is_available():
-        raise RuntimeError("CUDA is unavailable for latent observer")
-    device = torch.device("cuda")
-    free_bytes, total_bytes = torch.cuda.mem_get_info(device)
-    if free_bytes < MIN_FREE_BYTES:
-        raise RuntimeError(f"free CUDA memory {free_bytes} is below {MIN_FREE_BYTES}")
-    output.parent.mkdir(parents=True, exist_ok=True)
+@contextmanager
+def _deterministic_algorithms() -> Any:
+    previous = torch.are_deterministic_algorithms_enabled()
     torch.use_deterministic_algorithms(True)
+    try:
+        yield
+    finally:
+        torch.use_deterministic_algorithms(previous)
+
+
+def _run_cuda_observer(
+    *,
+    spec: ObserverSpec,
+    state: Mapping[str, Any],
+    formal: FormalSystemConfig,
+    data: ObserverData,
+    checkpoint: Mapping[str, Any],
+    hashes: Mapping[str, str],
+    output: Path,
+    device: torch.device,
+    free_bytes: int,
+    total_bytes: int,
+) -> int:
+    output.parent.mkdir(parents=True, exist_ok=True)
     torch.cuda.reset_peak_memory_stats(device)
     started = time.monotonic()
     model = base.IdentityOpticalManifoldAutoencoder(formal).to(device)
@@ -665,7 +704,7 @@ def run(args: argparse.Namespace) -> int:
     normalized = capture.pre_ols / capture.sample_power.clamp_min(1.0e-20).sqrt().reshape(-1, 1, 1, 1)
     raw_structure, raw_scores = _structure_metrics(capture.pre_ols, labels, permuted_labels)
     normalized_structure, normalized_scores = _structure_metrics(normalized, labels, permuted_labels)
-    input_structure, _ = _structure_metrics(data.target, labels, permuted_labels)
+    input_structure, input_scores = _structure_metrics(data.target, labels, permuted_labels)
     field_payload = {
         "schema": FIELD_SCHEMA,
         "indices": data.heldout_indices.cpu(),
@@ -676,7 +715,8 @@ def run(args: argparse.Namespace) -> int:
         "sample_power": capture.sample_power,
         "raw_pca_scores": raw_scores,
         "normalized_pca_scores": normalized_scores,
-        "source_hashes": hashes,
+        "input_pca_scores": input_scores,
+        "source_hashes": dict(hashes),
         "plane": capture.pre_plane,
         "provenance": capture.pre_provenance,
         "normalization": "unit_sample_power",
@@ -684,7 +724,7 @@ def run(args: argparse.Namespace) -> int:
     }
     field_path = output.parent / "pre_ols_field.pt"
     atomic_torch_save(field_path, field_payload)
-    panel_payload, interpolation = _interpolate(model, capture, data, device)
+    panel_payload, interpolation = _interpolate(model, capture, data, device, hashes)
     panel_path = output.parent / "latent_interpolation_panel.pt"
     atomic_torch_save(panel_path, panel_payload)
     elapsed = time.monotonic() - started
@@ -693,15 +733,16 @@ def run(args: argparse.Namespace) -> int:
     normalized_ratio = normalized_structure["true_label_distance"]["inter_intra_ratio"]
     permuted_ratio = normalized_structure["permuted_label_distance"]["inter_intra_ratio"]
     after = _state_cpu(model)
+    state_unchanged = _state_equal(model, before) and _state_equal(model, after)
     endpoint_gate = interpolation["endpoint_mse_max"] <= ENDPOINT_MSE_TOLERANCE
     gates = (
         GateResult("source_reconstruction_reproduced", abs(source_replay_mse - SOURCE_PAIRED_MSE) <= 1.0e-9, {"source": SOURCE_PAIRED_MSE, "authoritative_source_replay_mse": source_replay_mse, "offline_attribution_mse": capture.offline_mse}),
         GateResult("normalized_inter_intra_gt_one", normalized_ratio > 1.0, {"ratio": normalized_ratio}),
         GateResult("true_ratio_gt_permuted_ratio", normalized_ratio > permuted_ratio, {"true": normalized_ratio, "permuted": permuted_ratio}),
         GateResult("finite_structure_metrics", all(item["finite"] for item in (raw_structure, normalized_structure, input_structure)), {}),
-        GateResult("exact_pre_post_identity_field", True, {"samples": HELDOUT_COUNT}),
+        GateResult("exact_pre_post_identity_field", capture.pre_post_exact, {"samples": HELDOUT_COUNT}),
         GateResult("endpoint_camera_reproduction", endpoint_gate, {"max_mse": interpolation["endpoint_mse_max"], "tolerance": ENDPOINT_MSE_TOLERANCE}),
-        GateResult("model_state_unchanged", _state_equal(model, before) and _state_equal(model, after), {}),
+        GateResult("model_state_unchanged", state_unchanged, {}),
         GateResult("evaluator_isolation", True, {"evaluator_calls": 0}),
         GateResult("optical_provenance", capture.pre_plane["plane_id"] == "encoder_layer_2" and capture.pre_provenance["operation"] == "finite_crop_hard_aperture", {}),
         GateResult("cuda_peak_memory", peak <= MAX_PEAK_BYTES, {"bytes": peak}),
@@ -713,7 +754,7 @@ def run(args: argparse.Namespace) -> int:
     if not all(gate.passed for gate in harness):
         status, actions, reason = "invalid_harness", (), "Identity latent observer harness or resource gate failed"
     elif not all(gate.passed for gate in science):
-        status, actions, reason = "valid_failed", (), "pre-registered Identity normalized representation gate failed"
+        status, actions, reason = "valid_failed", (NEXT_VALID_FAILED_ACTION,), "pre-registered Identity normalized representation gate failed"
     else:
         status, actions, reason = "passed", (NEXT_PASS_ACTION,), None
     hashes = dict(hashes)
@@ -727,11 +768,12 @@ def run(args: argparse.Namespace) -> int:
             "source_attribution_evidence_hash": SOURCE_AUDIT_HASH,
             "source_checkpoint_hash": SOURCE_CHECKPOINT_HASH,
             "source_mnist_manifest_hash": SOURCE_MANIFEST_HASH,
+            "observer_validation_hash": hashes["observer_validation"],
             "source_reconstruction": {"authoritative_source_replay_mse": source_replay_mse, "offline_attribution_mse": capture.offline_mse, "source_tolerance": 1.0e-9},
             "structure": {"raw": raw_structure, "normalized": normalized_structure, "rendered_input_reference": input_structure, "permuted_seed": PERMUTATION_SEED},
             "pre_ols_field": {"path": str(field_path.resolve()), "sha256": hashes["pre_ols_field"], "schema": FIELD_SCHEMA, "shape": list(capture.pre_ols.shape), "dtype": str(capture.pre_ols.dtype)},
             "interpolation_panel": {"path": str(panel_path.resolve()), "sha256": hashes["interpolation_panel"], "schema": INTERPOLATION_SCHEMA, "count": 50, "endpoint": interpolation},
-            "model_state_unchanged": True,
+            "model_state_unchanged": state_unchanged,
             "evaluator_calls": 0,
             "free_cuda_bytes_before": int(free_bytes),
             "total_cuda_bytes": int(total_bytes),
@@ -743,6 +785,50 @@ def run(args: argparse.Namespace) -> int:
     _write_new_json(output, payload)
     print(json.dumps(payload, indent=2, sort_keys=True))
     return 0 if status == "passed" else 2
+
+
+def run(args: argparse.Namespace) -> int:
+    if args.device != "cuda":
+        raise ValueError("latent observer requires CUDA")
+    spec = _load_spec(args.config)
+    _review, review_path = _load_review(args.review_contract, spec)
+    state = _git_state()
+    _require_clean_branch(state)
+    formal, _ = _load_formal(spec)
+    data = _load_data(args.dataset_root)
+    _, _, checkpoint, hashes = _load_source(spec, review_path, data, state["commit"])
+    _validation_payload, validation_hash = _load_observer_validation(
+        args.validation_evidence,
+        spec,
+        formal,
+        data,
+        state,
+        hashes,
+    )
+    hashes = dict(hashes)
+    hashes["observer_validation"] = validation_hash
+    output = Path(args.output)
+    if output.exists():
+        raise FileExistsError(f"refusing to overwrite latent observer evidence: {output}")
+    if not torch.cuda.is_available():
+        raise RuntimeError("CUDA is unavailable for latent observer")
+    device = torch.device("cuda")
+    free_bytes, total_bytes = torch.cuda.mem_get_info(device)
+    if free_bytes < MIN_FREE_BYTES:
+        raise RuntimeError(f"free CUDA memory {free_bytes} is below {MIN_FREE_BYTES}")
+    with _deterministic_algorithms():
+        return _run_cuda_observer(
+            spec=spec,
+            state=state,
+            formal=formal,
+            data=data,
+            checkpoint=checkpoint,
+            hashes=hashes,
+            output=output,
+            device=device,
+            free_bytes=free_bytes,
+            total_bytes=total_bytes,
+        )
 
 
 def dispatch(args: argparse.Namespace) -> int:

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import copy
+import json
 import inspect
+from types import SimpleNamespace
 
 import pytest
 import torch
@@ -106,3 +109,76 @@ def test_observer_does_not_modify_source_or_formal_runtime_symbols() -> None:
     assert "return_optical_trace=True" in source
     assert "encoder_layer_2" in source
     assert "identity_ols" in source
+
+
+def test_observer_validation_is_distinct_from_attribution_validation(tmp_path) -> None:
+    spec = observer._load_spec(CONFIG)
+    formal, _ = observer._load_formal(spec)
+    source_validation = json.loads(
+        observer._resolve(spec.payload["source"]["attribution_validation"])
+        .read_text(encoding="utf-8")
+    )
+    observer_validation_path = observer._resolve(
+        "outputs/20260827_v2/runs/"
+        "lightgen_optical_manifold_identity_latent_observer_v1_attempt_01/"
+        "latent_observer_validation.json"
+    )
+    observer_validation = json.loads(observer_validation_path.read_text(encoding="utf-8"))
+    source_hashes = dict(observer_validation["evidence"]["input_hashes"])
+    data = SimpleNamespace(
+        manifest={"full_epoch_manifest_hash": source_validation["evidence"]["context"]["dataset_hash"]}
+    )
+    state = {"commit": source_validation["evidence"]["git_commit"]}
+
+    with pytest.raises(ValueError, match="invalid schema"):
+        observer._load_observer_validation(
+            spec.payload["source"]["attribution_validation"],
+            spec,
+            formal,
+            data,
+            state,
+            source_hashes,
+        )
+
+    observer_validation = copy.deepcopy(observer_validation)
+    observer_validation["evidence"]["git_commit"] = state["commit"]
+    path = tmp_path / "observer_validation.json"
+    path.write_text(json.dumps(observer_validation), encoding="utf-8")
+    loaded, digest = observer._load_observer_validation(
+        path,
+        spec,
+        formal,
+        data,
+        state,
+        source_hashes,
+    )
+    assert loaded["schema"] == observer.VALIDATION_SCHEMA
+    assert digest == observer.file_sha256(path)
+
+    observer_validation["evidence"]["git_commit"] = "0" * 40
+    path.write_text(json.dumps(observer_validation), encoding="utf-8")
+    with pytest.raises(ValueError, match="stale"):
+        observer._load_observer_validation(path, spec, formal, data, state, source_hashes)
+
+
+def test_observer_validation_rejects_incomplete_source_hashes(tmp_path) -> None:
+    spec = observer._load_spec(CONFIG)
+    formal, _ = observer._load_formal(spec)
+    payload = json.loads(
+        observer._resolve(
+            "outputs/20260827_v2/runs/"
+            "lightgen_optical_manifold_identity_latent_observer_v1_attempt_01/"
+            "latent_observer_validation.json"
+        ).read_text(encoding="utf-8")
+    )
+    source_hashes = dict(payload["evidence"]["input_hashes"])
+    missing = next(iter(source_hashes))
+    del source_hashes[missing]
+    data = SimpleNamespace(
+        manifest={"full_epoch_manifest_hash": payload["evidence"]["context"]["dataset_hash"]}
+    )
+    state = {"commit": payload["evidence"]["git_commit"]}
+    path = tmp_path / "observer_validation.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="source hashes"):
+        observer._load_observer_validation(path, spec, formal, data, state, source_hashes)
