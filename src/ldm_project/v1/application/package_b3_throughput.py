@@ -169,10 +169,32 @@ def _validate_upstream(config: dict[str, Any], path: str, *, head: str, config_s
     evidence = json.loads(Path(path).read_text(encoding="utf-8"))
     if not isinstance(evidence, dict) or evidence.get("schema") != "teacher_first_stage_recovery_preflight.v1":
         raise ValueError("B3 throughput profiler requires Package B3 preflight evidence")
-    if not evidence.get("passed") or evidence.get("git_head") != head or evidence.get("config_sha256") != config_sha:
+    if not evidence.get("passed") or evidence.get("config_sha256") != config_sha:
         raise ValueError("B3 throughput profiler upstream preflight is stale or failed")
     if evidence.get("evaluator_calls") != 0:
         raise ValueError("B3 throughput profiler upstream evidence has evaluator calls")
+    # The profiler itself is a diagnostic-only addition.  Its clean HEAD is
+    # recorded separately; the B3 preflight may come from the immediately
+    # preceding clean HEAD as long as the locked B3 config and inputs match.
+    upstream_head = evidence.get("git_head")
+    if not isinstance(upstream_head, str) or len(upstream_head) != 40:
+        raise ValueError("B3 throughput profiler upstream HEAD is invalid")
+    if upstream_head == head:
+        evidence["head_relation"] = "same"
+    else:
+        changed = subprocess.run(
+            ["git", "diff", "--name-only", f"{upstream_head}..{head}"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.splitlines()
+        allowed = {
+            "src/ldm_project/v1/application/package_b3_throughput.py",
+            "tests/v1/test_package_b3_throughput.py",
+        }
+        if any(path not in allowed for path in changed):
+            raise ValueError("B3 throughput profiler upstream HEAD differs in B3-relevant files")
+        evidence["head_relation"] = "diagnostic_profiler_added_after_upstream"
     return evidence
 
 
