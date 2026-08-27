@@ -373,7 +373,7 @@ def _preflight(args: argparse.Namespace, config: dict[str, Any], data: dict[str,
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lambda _: 1.0)
     fitting, _ = _select_development(data["train_indices"], data["labels"], seed=config["development_seed"], samples_per_class=config["development_samples_per_class"])
     batch_indices = fitting[: config["microbatch_size"]]
-    images = _to_camera(data["images"].index_select(0, batch_indices)).to(device)
+    images = _to_camera(data["images"].index_select(0, batch_indices).to(device))
     labels = data["labels"].index_select(0, batch_indices).to(device)
     before = state_content_hash(model.state_dict())
     losses = []
@@ -511,7 +511,7 @@ def _train(args: argparse.Namespace, config: dict[str, Any], data: dict[str, Any
         optimizer.zero_grad(set_to_none=True)
         train_losses = []
         for batch_number, (batch_images, batch_labels) in enumerate(loader):
-            batch_images = _to_camera(batch_images).to(device, non_blocking=True)
+            batch_images = _to_camera(batch_images.to(device, non_blocking=True))
             batch_labels = batch_labels.to(device, non_blocking=True)
             loss, metrics = _batch_loss(model, batch_images, batch_labels, config, epoch)
             if not torch.isfinite(loss):
@@ -529,7 +529,7 @@ def _train(args: argparse.Namespace, config: dict[str, Any], data: dict[str, Any
         development_losses = []
         with torch.inference_mode():
             for start in range(0, len(development_images), config["microbatch_size"]):
-                images = _to_camera(development_images[start : start + config["microbatch_size"]]).to(device)
+                images = _to_camera(development_images[start : start + config["microbatch_size"]].to(device))
                 labels = development_labels[start : start + config["microbatch_size"]].to(device)
                 output = model(images, deterministic=True)
                 loss, _ = reconstruction_loss(output["reconstruction"], images, labels, output["mu"], output["logvar"], temperature=config["loss_temperature"], kl_beta=_kl_beta(config, epoch), multiscale_weight=config["multiscale_weight"], sobel_weight=config["sobel_weight"], foreground_dice_weight=config["foreground_dice_weight"])
@@ -579,7 +579,7 @@ def _latent_statistics(
     with torch.inference_mode():
         for start in range(0, fitting_indices.numel(), config["microbatch_size"]):
             indices = fitting_indices[start : start + config["microbatch_size"]]
-            output = model.encode(_to_camera(data["images"].index_select(0, indices)).to(device))
+            output = model.encode(_to_camera(data["images"].index_select(0, indices).to(device)))
             values = output["mu"].double().flatten(2)
             sum_value += values.sum(dim=(0, 2))
             sum_square += values.square().sum(dim=(0, 2))
@@ -628,7 +628,7 @@ def _reconstruct(args: argparse.Namespace, config: dict[str, Any], data: dict[st
             for start in range(0, selected.numel(), config["microbatch_size"]):
                 chosen = selected[start : start + config["microbatch_size"]]
                 with torch.inference_mode():
-                    output = model(_to_camera(images.index_select(0, chosen)).to(device), deterministic=True)
+                    output = model(_to_camera(images.index_select(0, chosen).to(device)), deterministic=True)
                 reconstruction = output["reconstruction"].cpu().float()
                 mu = output["mu"].cpu().float()
                 if not torch.isfinite(reconstruction).all() or not torch.isfinite(mu).all():
