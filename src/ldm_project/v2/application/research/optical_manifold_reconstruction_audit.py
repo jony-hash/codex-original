@@ -20,6 +20,7 @@ from typing import Any, Mapping
 
 import torch
 import yaml
+from torch.nn import functional as F
 
 from ...config import FormalSystemConfig
 from ...evidence import (
@@ -671,7 +672,11 @@ def _load_validation(
 
 
 def _mse_per_sample(prediction: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-    return (prediction.flatten(1) - target.flatten(1)).square().mean(dim=1)
+    # Match the authoritative full-epoch evaluator's per-image reduction and
+    # stack order so source-metric reproduction is an actual lineage check.
+    return torch.stack(
+        [F.mse_loss(prediction[index : index + 1], target[index : index + 1]) for index in range(prediction.shape[0])]
+    )
 
 
 def _centered_pearson(prediction: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
