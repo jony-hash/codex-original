@@ -1430,3 +1430,19 @@ reference 为
 本轮唯一允许的下一步是另立并审查 `resource_contract_revalidation`；不得把
 partial arm 当作数值成功/失败，不得自动 retry、扩大资源合同、打开 AMP 或
 组合 compile。T3 在此 hard stop。
+
+## Package B3 research line：temporary pause（2026-08-27）
+
+在 Package B3-T.3 的 `resource_aborted` closeout 后，暂停当前研究推进。
+本次暂停不是新的实验，也不改变既有结论：T3 只完成了硬件能力审计和
+FP32 reference/resume 验证，候选 numerical arms 未完成，因此 scientific
+status 仍为 `not_evaluated`，没有选出 numerical candidate，也没有开始
+formal B3-VAE 训练。
+
+暂停期间不启动 CUDA、训练、retry、资源合同扩张、AMP/TF32/BF16/FP16、
+compile 组合或任何下游阶段；B3-VAE、B3-DDPM、Package C、student/optical
+训练、promotion 和 candidate export 继续禁止。权威证据保留在
+`outputs/20260827_numerical_gpu_acceleration_preflight/runs/20260827_package_b3_t3_v1/`。
+若恢复，只能先由用户明确决定并另行审查
+`resource_contract_revalidation`，不得把 partial arm 证据解释为数值或模型结论，
+也不得自动 retry。

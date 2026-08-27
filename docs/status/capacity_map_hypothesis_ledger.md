@@ -283,3 +283,19 @@ contains the complete required evidence schema and reproduces the same valid
 classification: `teacher_first_stage_distribution_failed`. This amendment changes
 only the evidence pointer, not the H-TFA decision or its prohibition on Package C,
 Package B3-DDPM, promotion, and optical training.
+
+## Package B3 research-line pause (2026-08-27)
+
+Following the H-B3T3 `resource_aborted` closeout, the Package B3 line is
+paused. This is a governance state, not a new capacity-map result: the T3
+partial canary has no numerical-mode or model-quality conclusion, no candidate
+was selected, and formal B3-VAE training did not begin. The authoritative
+consumer/rejection decision remains that no B3-VAE, B3-DDPM, Package C,
+student/optical training, promotion, or candidate export may proceed.
+
+If the line is resumed, the only permitted first action is a separately
+reviewed `resource_contract_revalidation`; it must not silently expand the
+resource contract, automatically retry, or consume incomplete candidate-arm
+evidence. Until then, the T3 evidence under
+`outputs/20260827_numerical_gpu_acceleration_preflight/runs/20260827_package_b3_t3_v1/`
+is retained as the binding audit record.

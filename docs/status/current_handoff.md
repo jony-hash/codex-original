@@ -631,3 +631,20 @@ this requires a separately reviewed plan and must not silently enlarge swap,
 change the 25-minute contract, or rerun partial arms. Formal B3-VAE training,
 B3-DDPM, Package C, student/optical/phase/quadrature/OLS/fiber training,
 AMP/compile combination, candidate export and promotion remain forbidden.
+
+## 2026-08-27：Package B3 research line temporarily paused
+
+The Package B3 research line is now intentionally paused after the
+Package B3-T.3 resource-aborted closeout. The scientific status remains
+`not_evaluated`: no numerical candidate was selected, formal B3-VAE training
+was not started, and no model-quality conclusion may be drawn from the
+partial canary. The authoritative T3 evidence and closeout remain at
+`outputs/20260827_numerical_gpu_acceleration_preflight/runs/20260827_package_b3_t3_v1/`.
+
+No further CUDA job, retry, resource-contract expansion, AMP/TF32/BF16/FP16
+enablement, or compile combination is authorized during this pause. B3-VAE,
+B3-DDPM, Package C, student/optical/phase/quadrature/OLS/fiber training,
+checkpoint promotion and candidate export remain prohibited. The only
+recorded resumption path is a separately reviewed
+`resource_contract_revalidation`; resumption is not automatic and must not
+reuse partial candidate-arm evidence as a scientific result.
