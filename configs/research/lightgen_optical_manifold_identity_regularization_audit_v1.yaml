@@ -1,0 +1,123 @@
+schema: lightgen_optical_manifold_identity_regularization_audit_v1
+hypothesis: H-LOMA-I0
+formal_system_config: configs/v2/current/formal_identity_logit_amplitude_finite_crop_identity.yaml
+
+source:
+  latent_observer_config: configs/research/lightgen_optical_manifold_identity_latent_observer_v1.yaml
+  latent_observer_config_sha256: 33b63495a5d595c60d6c3beb399a44fae27c9f229352844c7b8edfb43f5a6a60
+  latent_observer_review: configs/research/lightgen_optical_manifold_identity_latent_observer_review_v1.json
+  latent_observer_review_sha256: f238bc7fbdb36b2ae74aabdd446bb26f50088b44d39465d80652ba4f24dd43a7
+  latent_observer_validation: outputs/20260827_v2/runs/lightgen_optical_manifold_identity_latent_observer_v1_attempt_04/latent_observer_validation.json
+  latent_observer_validation_sha256: 4dda0fb96e144c91d48c8ccbf1395e043bc215b988b7f6ac169b0c91a6530724
+  latent_observer_evidence: outputs/20260827_v2/runs/lightgen_optical_manifold_identity_latent_observer_v1_attempt_04/latent_observer.json
+  latent_observer_evidence_sha256: 36a1b918991affaf6093033b5ce5139f2d6f87517f72373b16751f357bb63507
+  pre_ols_field: outputs/20260827_v2/runs/lightgen_optical_manifold_identity_latent_observer_v1_attempt_04/pre_ols_field.pt
+  pre_ols_field_sha256: c838a2c85ad4597ebde005e79ed4bceb8726beb8597d8622a578f93f455c7341
+  interpolation_panel: outputs/20260827_v2/runs/lightgen_optical_manifold_identity_latent_observer_v1_attempt_04/latent_interpolation_panel.pt
+  interpolation_panel_sha256: b8c3553de57ee9e36bea463a957d82125c540667b61f572e08dc081c9a6c4954
+  checkpoint: outputs/20260827_v2/runs/lightgen_optical_manifold_identity_full_epoch_v1_attempt_04/full_epoch_final_step_005500.pt
+  checkpoint_sha256: 56cb52fae3a13c94ea5a38af60e0934a407cf1ec7b57bbb31fba2a23c624655f
+  full_epoch_training_evidence: outputs/20260827_v2/runs/lightgen_optical_manifold_identity_full_epoch_v1_attempt_04/epoch_training.json
+  full_epoch_training_evidence_sha256: c01dae121210a4dff0534a9979661f92d1e0fc749087c8451ad51be24a458948
+  mnist_manifest_sha256: 64b1b70dc119dac0cb0aa8b898614962ff993a83d120390d1d6fadd55ade97d8
+  heldout_indices_sha256: 9ffe5fd2df41a1a7627efd926e04159506d8aabb228799d9c384d9cb34565f03
+
+dataset:
+  train_count: 55000
+  validation_count: 5000
+  calibration_count: 1000
+  calibration_per_label: 100
+  gradient_audit_count: 300
+  gradient_batches: 3
+  gradient_batch_size: 100
+  calibration_selection: first_100_train_examples_per_label
+  gradient_selection: next_30_train_examples_per_label_in_three_balanced_batches
+  heldout_exclusion: true
+  label_role: panel_balance_and_provenance_only
+  input_shape: [1, 28, 28]
+  rendered_shape: [1, 200, 200]
+
+optical_contract:
+  formal_system_kind: formal_amplitude_finite_crop_identity
+  wavelength_m: 5.32e-7
+  slm_shape: [200, 200]
+  slm_pixel_pitch_m: 2.5e-6
+  metasurface_shape: [100, 100]
+  metasurface_pixel_pitch_m: 2.0e-6
+  propagation_grid_size: 2048
+  encoder_layers: 2
+  decoder_layers: 2
+  boundary: finite_crop
+  ols: identity
+  front_relay: coherent_imaging_4f
+  back_relay: free_space
+  input_encoding: intensity_sqrt_amplitude
+  target: camera_intensity_same_fov
+  exposure: {scale: 1.0, gamma: 1.0}
+
+projection:
+  source: unit_power_normalized_pre_ols_field
+  metric: real_part_of_x_x_h
+  center_before_pca: true
+  components: 32
+  whitening: calibration_eigenvalue
+  basis_dtype: complex64
+  score_dtype: float32
+
+regularization:
+  family: aggregate_prior
+  name: deterministic_sliced_wasserstein
+  approximation_role: project_approximation
+  prior: standard_normal
+  fixed_directions: 64
+  direction_seed: 1234
+  quantiles: midpoint_standard_normal
+  labels_in_loss: false
+  per_sample_latent_sampling: false
+  vae_kl: false
+
+gradient_audit:
+  replay: two_pass_fixed_rank_coefficients
+  microbatch_size: 1
+  activation_checkpoint: true
+  lambda_rule: 0.1_times_reconstruction_encoder_norm_over_regularizer_encoder_norm_on_batch_0
+  lambda_recalibration: false
+  expected_regularizer_gradient_scope: encoder_phase_only
+  expected_reconstruction_gradient_scope: encoder_and_decoder_phase
+  encoder_ratio_min: 0.025
+  encoder_ratio_max: 0.4
+  required_descent_alignment: true
+
+gates:
+  source_reconstruction_mse_tolerance: 1.0e-9
+  gaussian_control_replicates: 8
+  learned_swd_gt_gaussian_control: true
+  collapsed_control_gt_learned: true
+  finite_metrics: true
+  model_state_unchanged: true
+  evaluator_calls: 0
+  min_free_cuda_bytes: 4294967296
+  max_peak_cuda_bytes: 5368709120
+  max_wall_seconds: 600
+  max_storage_bytes: 536870912
+
+authorization:
+  reviewer_role: project_owner
+  decision: approve_no_update_identity_manifold_regularization_audit
+  no_update_audit_authorized: true
+  training_authorized: false
+  formal_training_authorized: false
+  formal_promotion: false
+  post_pass_next_action: manual_review_identity_manifold_regularization_pilot_contract
+  post_valid_failed_next_action: manual_review_identity_representation_capacity
+  prohibited:
+    - optimizer
+    - model_update
+    - checkpoint
+    - kl_training
+    - extra_epoch
+    - smf
+    - fmf
+    - evaluator
+    - generation
+    - promotion

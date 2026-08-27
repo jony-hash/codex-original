@@ -1,0 +1,37 @@
+{
+  "schema": "lightgen_optical_manifold_identity_regularization_audit_review.v1",
+  "hypothesis": "H-LOMA-I0",
+  "reviewer_role": "project_owner",
+  "decision": "approve_no_update_identity_manifold_regularization_audit",
+  "source_latent_observer_validation_sha256": "4dda0fb96e144c91d48c8ccbf1395e043bc215b988b7f6ac169b0c91a6530724",
+  "source_latent_observer_evidence_sha256": "36a1b918991affaf6093033b5ce5139f2d6f87517f72373b16751f357bb63507",
+  "source_pre_ols_field_sha256": "c838a2c85ad4597ebde005e79ed4bceb8726beb8597d8622a578f93f455c7341",
+  "source_checkpoint_sha256": "56cb52fae3a13c94ea5a38af60e0934a407cf1ec7b57bbb31fba2a23c624655f",
+  "source_mnist_manifest_hash": "64b1b70dc119dac0cb0aa8b898614962ff993a83d120390d1d6fadd55ade97d8",
+  "approved_contract": {
+    "calibration_count": 1000,
+    "gradient_audit_count": 300,
+    "pca_components": 32,
+    "fixed_directions": 64,
+    "direction_seed": 1234,
+    "no_model_update": true,
+    "project_approximation": true,
+    "post_pass_next_action": "manual_review_identity_manifold_regularization_pilot_contract"
+  },
+  "no_update_audit_authorized": true,
+  "training_authorized": false,
+  "formal_training_authorized": false,
+  "formal_promotion": false,
+  "prohibited": [
+    "optimizer",
+    "model_update",
+    "checkpoint",
+    "kl_training",
+    "extra_epoch",
+    "smf",
+    "fmf",
+    "evaluator",
+    "generation",
+    "promotion"
+  ]
+}

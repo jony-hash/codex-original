@@ -920,6 +920,8 @@ def dispatch(args: argparse.Namespace) -> int:
         "full-epoch-validate", "full-epoch-preflight", "full-epoch-train",
         "reconstruction-audit-validate", "reconstruction-audit-run",
         "latent-observer-validate", "latent-observer-run",
+        "manifold-regularization-audit-validate",
+        "manifold-regularization-audit-run",
     }:
         if args.research_action.startswith("full-epoch"):
             from .optical_manifold_full_epoch import dispatch as training_dispatch
@@ -931,6 +933,10 @@ def dispatch(args: argparse.Namespace) -> int:
             from .optical_manifold_latent_observer import dispatch as observer_dispatch
 
             return int(observer_dispatch(args) or 0)
+        elif args.research_action.startswith("manifold-regularization-audit"):
+            from .optical_manifold_regularization_audit import dispatch as regularization_dispatch
+
+            return int(regularization_dispatch(args) or 0)
         else:
             from .optical_manifold_training import dispatch as training_dispatch
 

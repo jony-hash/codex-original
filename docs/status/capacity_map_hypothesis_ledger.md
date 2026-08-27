@@ -528,3 +528,28 @@ does not authorize KL, SMF/FMF, generation, or promotion. t-SNE is deferred as
 a non-gating visualization extension. The sole permitted next action is
 `manual_review_identity_manifold_regularization_contract`, while
 `training_authorized=false` and `formal_promotion=false` remain mandatory.
+
+### H-LOMA-I0 PLAN 5 aggregate-prior regularization audit authorization
+
+The project owner authorized one no-update, diagnostic-only feasibility audit
+on child branch
+`research/v2-lightgen-optical-manifold-regularization-audit-v1`. It consumes
+only the passed PLAN 4 latent-observer validation/evidence, the step-5500
+Identity checkpoint, the pre-OLS field artifact, and the fixed MNIST manifest.
+The audit fits a train-only, fixed 32-component complex-field projection and
+tests a deterministic sliced-Wasserstein aggregate-prior approximation to a
+standard normal. This is explicitly a `project_approximation`, not a VAE KL:
+the current optical field is deterministic and has no `mu/logvar` posterior.
+
+The calibration panel is the first 100 train examples per label; three
+disjoint balanced 100-image gradient panels use the next 30 per label. The
+held-out PLAN 4 panel is excluded from projection fitting and objective
+selection. A two-pass microbatch-1 replay measures reconstruction and
+aggregate-prior gradients without retaining a 100-image optical graph. The
+real consumer is manual authorization of a bounded regularization pilot. A
+failed feasibility gate blocks that pilot and requests
+`manual_review_identity_representation_capacity`.
+
+The audit never creates an optimizer, changes model state, writes a checkpoint,
+loads an evaluator, or modifies formal v2 behavior. All evidence remains
+`training_authorized=false` and `formal_promotion=false`.
