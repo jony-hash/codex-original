@@ -483,6 +483,8 @@ def _closeout(
     t1_output_dir: str,
     input_hashes: dict[str, str],
     state_hash: str | None,
+    dataset_split_hash: str,
+    seed: int,
 ) -> str:
     resource = final_timing["resource"]
     base = _common(
@@ -501,8 +503,8 @@ def _closeout(
         state_hash=state_hash,
         started_at=started_at,
         command=command,
-        dataset_split_hash=throughput._config(config_path)["formal_split_hash"],
-        seed=throughput._config(config_path)["master_seed"],
+        dataset_split_hash=dataset_split_hash,
+        seed=seed,
         resource=resource,
     )
     lines = [
