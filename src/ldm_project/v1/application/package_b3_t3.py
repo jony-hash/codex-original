@@ -872,20 +872,134 @@ def _run(args: argparse.Namespace) -> int:
     return 0 if overall_classification != "invalid_harness" else 2
 
 
+def _finalize_resource_abort(args: argparse.Namespace) -> int:
+    """Close a canary terminated by the external WSL memory guard.
+
+    This action is offline-only.  It consumes the already-written hardware,
+    contract, and FP32 reference artifacts and never initializes CUDA or reruns
+    an arm.  The termination numbers are explicit CLI inputs so the event is
+    auditable rather than inferred from a missing file.
+    """
+    started_at = _now()
+    require_clean()
+    config = _config(args.config)
+    _t2_final, _upstream, input_hashes = _validate_t2(args.config, args.dataset_root, args.t2_output_dir, args.upstream_evidence)
+    output_dir = Path(args.output_dir)
+    hardware_path = output_dir / "b3_t3_hardware_capability.json"
+    contract_path = output_dir / "b3_t3_equivalence_contract.json"
+    reference_path = output_dir / "b3_t3_fp32_reference.json"
+    for path in (hardware_path, contract_path, reference_path):
+        if not path.is_file():
+            raise FileNotFoundError(f"resource-abort finalizer requires partial evidence: {path}")
+    reference = _read_json(reference_path)
+    if reference.get("schema") != f"{SCHEMA_PREFIX}_fp32_reference.v1" or reference.get("evaluator_calls") != 0:
+        raise ValueError("partial FP32 reference is invalid or contains evaluator calls")
+    resource_data = {
+        "cuda_peak_bytes": int(reference.get("cuda_peak_bytes", 0)),
+        "host_rss_peak_bytes": int(reference.get("host_rss_peak_bytes", 0)),
+    }
+    common = {
+        "config_path": args.config,
+        "dataset_root": args.dataset_root,
+        "input_hashes": input_hashes,
+        "config": config,
+        "started_at": started_at,
+    }
+    partial = {
+        "directory": str(output_dir.resolve()),
+        "hardware_sha256": file_sha256(hardware_path),
+        "contract_sha256": file_sha256(contract_path),
+        "reference_sha256": file_sha256(reference_path),
+        "partial_git_head": reference.get("git_head"),
+    }
+    abort = {
+        "termination_reason": args.termination_reason,
+        "guard_process_rss_bytes": int(args.guard_process_rss_bytes),
+        "guard_total_python_rss_bytes": int(args.guard_total_python_rss_bytes),
+        "guard_process_rss_limit_bytes": int(config["host_rss_limit_bytes"]),
+        "guard_total_rss_limit_bytes": 6291456 * 1024,
+        "partial_evidence": partial,
+        "candidate_arms_started": [],
+        "candidate_arms_not_run": ["tf32", "bf16", "fp16"],
+        "evaluator_calls": 0,
+    }
+    candidate_comparison = {
+        **_common(**common, classification="resource_aborted", first_failed_gate="resource_limit", permitted=["resource_contract_revalidation"], resource_data=resource_data, state_hash=reference.get("state_hash")),
+        "schema": f"{SCHEMA_PREFIX}_candidate_comparison.v1",
+        "arms": {mode: {"mode": mode, "classification": "resource_aborted", "first_failed_gate": "resource_limit", "not_run": True} for mode in MODES[1:]},
+        "selected_numerical_candidate": None,
+        "abort": abort,
+    }
+    throughput_comparison = {
+        **_common(**common, classification="resource_aborted", first_failed_gate="resource_limit", permitted=["resource_contract_revalidation"], resource_data=resource_data, state_hash=reference.get("state_hash")),
+        "schema": f"{SCHEMA_PREFIX}_throughput_comparison.v1",
+        "reference": None,
+        "candidates": {},
+        "required_speedup": 31.135088336258004 / 25.0,
+        "formal_epoch_minutes": FORMAL_EPOCH_MINUTES,
+        "throughput_measurement": "not_run_resource_aborted",
+        "abort": abort,
+    }
+    atomic_json(output_dir / "b3_t3_candidate_comparison.json", candidate_comparison)
+    atomic_json(output_dir / "b3_t3_throughput_comparison.json", throughput_comparison)
+    for mode in MODES[1:]:
+        atomic_json(
+            output_dir / f"b3_t3_{mode}_evidence.json",
+            {
+                **_common(**common, classification="resource_aborted", first_failed_gate="resource_limit", permitted=["resource_contract_revalidation"], resource_data=resource_data, state_hash=reference.get("state_hash")),
+                "schema": f"{SCHEMA_PREFIX}_{mode}_evidence.v1",
+                "arm": {"mode": mode, "classification": "resource_aborted", "first_failed_gate": "resource_limit", "not_run": True},
+                "abort": abort,
+            },
+        )
+    closeout = [
+        "# Package B3-T.3 Closeout",
+        "",
+        "- classification: `resource_aborted`",
+        "- first_failed_gate: `resource_limit`",
+        "- scientific_model_status: `not_evaluated`",
+        "- formal_VAE_training: `not_started`",
+        "- resource_contract: `25_min_unchanged`",
+        "- selected_numerical_candidate: `none`",
+        "- numerical_equivalence: `not_completed; candidate arms were not run to completion`",
+        "- projected_epoch: `not_measured`",
+        "- permitted_next_actions: `resource_contract_revalidation`",
+        "- evaluator_calls: `0`",
+        "",
+        f"The external WSL memory guard terminated the process: `{args.termination_reason}`.",
+        f"Guard observation: process RSS `{int(args.guard_process_rss_bytes) / 1024**2:.1f} MiB`, total Python RSS `{int(args.guard_total_python_rss_bytes) / 1024**2:.1f} MiB`.",
+        "The FP32 reference artifact was complete and passed its own finite/resume checks, but no TF32, BF16, or FP16 arm reached a valid equivalence decision and no throughput measurement was run.",
+        "",
+        f"Partial evidence remains bound to `{partial['partial_git_head']}`; its hashes are hardware `{partial['hardware_sha256']}`, contract `{partial['contract_sha256']}`, and FP32 reference `{partial['reference_sha256']}`.",
+        "",
+        "No retry, AMP/compile combination, formal B3-VAE training, DDPM, student, optical, export, promotion, or resource-contract change was performed. T3 stops here.",
+        "",
+    ]
+    (output_dir / "b3_t3_closeout.md").write_text("\n".join(closeout), encoding="utf-8")
+    return 2
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Package B3-T.3 numerical GPU acceleration preflight")
-    parser.add_argument("action", choices=("run",))
+    parser.add_argument("action", choices=("run", "finalize-resource-abort"))
     parser.add_argument("--config", required=True)
     parser.add_argument("--dataset-root", required=True)
     parser.add_argument("--t2-output-dir", required=True)
     parser.add_argument("--upstream-evidence", required=True)
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--device", choices=("cuda",), default="cuda")
+    parser.add_argument("--termination-reason")
+    parser.add_argument("--guard-process-rss-bytes", type=int)
+    parser.add_argument("--guard-total-python-rss-bytes", type=int)
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
+    if args.action == "finalize-resource-abort":
+        if args.termination_reason is None or args.guard_process_rss_bytes is None or args.guard_total_python_rss_bytes is None:
+            raise ValueError("resource-abort finalizer requires explicit termination and watchdog RSS observations")
+        return _finalize_resource_abort(args)
     return _run(args)
 
 
