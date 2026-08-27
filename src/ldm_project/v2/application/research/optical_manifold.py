@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import copy
 import json
+import os
 import subprocess
 import time
 from dataclasses import dataclass
@@ -701,6 +702,7 @@ def _invalid_resource_record(
 def preflight(args: argparse.Namespace) -> int:
     if args.device != "cuda":
         raise ValueError("optical-manifold preflight requires CUDA")
+    os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
     spec = _load_spec(args.config)
     _assert_research_contract(spec)
     state = _git_state()
