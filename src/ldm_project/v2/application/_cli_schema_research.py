@@ -90,6 +90,18 @@ def register_research(root: argparse._SubParsersAction) -> None:
     audit_run.add_argument("--dataset-root", required=True)
     audit_run.add_argument("--device", choices=("cuda",), default="cuda")
     audit_run.add_argument("--output", required=True)
+    observer_validate = optical_actions.add_parser("latent-observer-validate")
+    observer_validate.add_argument("--config", required=True)
+    observer_validate.add_argument("--review-contract", required=True)
+    observer_validate.add_argument("--dataset-root", required=True)
+    observer_validate.add_argument("--output", required=True)
+    observer_run = optical_actions.add_parser("latent-observer-run")
+    observer_run.add_argument("--config", required=True)
+    observer_run.add_argument("--review-contract", required=True)
+    observer_run.add_argument("--validation-evidence", required=True)
+    observer_run.add_argument("--dataset-root", required=True)
+    observer_run.add_argument("--device", choices=("cuda",), default="cuda")
+    observer_run.add_argument("--output", required=True)
     fiber = research_programs.add_parser(
         "fiber-robustness", help="synthetic multi-matrix fiber diagnostics"
     )
