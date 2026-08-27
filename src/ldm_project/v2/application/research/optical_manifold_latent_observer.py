@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from contextlib import contextmanager
 import json
+import os
 import subprocess
 import time
 from dataclasses import dataclass
@@ -63,6 +64,7 @@ MAX_STORAGE_BYTES = 512 * 1024**2
 NEXT_PASS_ACTION = "manual_review_identity_manifold_regularization_contract"
 NEXT_VALID_FAILED_ACTION = "manual_review_identity_representation_capacity"
 EXPECTED_FORMAL_KIND = base.EXPECTED_FORMAL_KIND
+CUBLAS_WORKSPACE_CONFIG = ":4096:8"
 
 
 @dataclass(frozen=True)
@@ -111,6 +113,14 @@ def _require_clean_branch(state: Mapping[str, Any]) -> None:
         raise ValueError("Identity latent observer requires a clean worktree")
     if state["branch"] != BRANCH:
         raise ValueError(f"Identity latent observer requires branch {BRANCH}")
+
+
+def _require_deterministic_cuda_runtime() -> None:
+    if os.environ.get("CUBLAS_WORKSPACE_CONFIG") != CUBLAS_WORKSPACE_CONFIG:
+        raise RuntimeError(
+            "latent observer requires CUBLAS_WORKSPACE_CONFIG=:4096:8 "
+            "before the Python process starts"
+        )
 
 
 def _expected_config_keys() -> set[str]:
@@ -790,6 +800,7 @@ def _run_cuda_observer(
 def run(args: argparse.Namespace) -> int:
     if args.device != "cuda":
         raise ValueError("latent observer requires CUDA")
+    _require_deterministic_cuda_runtime()
     spec = _load_spec(args.config)
     _review, review_path = _load_review(args.review_contract, spec)
     state = _git_state()

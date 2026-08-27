@@ -65,6 +65,36 @@ def test_observer_cli_actions_are_registered() -> None:
     assert run.device == "cuda"
 
 
+def test_observer_requires_process_level_cublas_determinism(monkeypatch) -> None:
+    monkeypatch.delenv("CUBLAS_WORKSPACE_CONFIG", raising=False)
+    with pytest.raises(RuntimeError, match="CUBLAS_WORKSPACE_CONFIG"):
+        observer._require_deterministic_cuda_runtime()
+
+    monkeypatch.setenv("CUBLAS_WORKSPACE_CONFIG", ":16:8")
+    with pytest.raises(RuntimeError, match="CUBLAS_WORKSPACE_CONFIG"):
+        observer._require_deterministic_cuda_runtime()
+
+    monkeypatch.setenv("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
+    observer._require_deterministic_cuda_runtime()
+
+
+def test_observer_rejects_missing_cublas_config_before_run_creation(monkeypatch, tmp_path) -> None:
+    monkeypatch.delenv("CUBLAS_WORKSPACE_CONFIG", raising=False)
+    output = tmp_path / "observer.json"
+    with pytest.raises(RuntimeError, match="CUBLAS_WORKSPACE_CONFIG"):
+        observer.run(SimpleNamespace(device="cuda", output=str(output)))
+    assert not output.exists()
+
+
+def test_observer_restores_deterministic_algorithm_state_on_exception() -> None:
+    previous = torch.are_deterministic_algorithms_enabled()
+    with pytest.raises(RuntimeError, match="sentinel"):
+        with observer._deterministic_algorithms():
+            assert torch.are_deterministic_algorithms_enabled() is True
+            raise RuntimeError("sentinel")
+    assert torch.are_deterministic_algorithms_enabled() is previous
+
+
 def test_trace_lookup_uses_plane_and_operation_not_position() -> None:
     plane = PlaneSpec("encoder_layer_2", (2, 2), (1.0, 1.0), 1.0, 0.0, "encoder")
     pre = ComplexField(
