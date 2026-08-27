@@ -1188,6 +1188,7 @@ def _preflight_arm(
     output_dir: Path,
     spec: PilotSpec,
     evidence_hashes: Mapping[str, str],
+    initial_metrics: Mapping[str, Any],
 ) -> dict[str, Any]:
     model, optimizer = _runtime_from_source(formal, source, device)
     source_state = _state_cpu(model)
@@ -1232,27 +1233,10 @@ def _preflight_arm(
         and continuous_history[2] | {"step": 3} == resumed_third | {"step": 3}
         and resume_payload["step"] == 2
     )
-    probe_initial_model, _probe_optimizer = _runtime_from_source(formal, source, device)
     probe_indices = torch.cat(data.regularization_data.gradient_batches)
-    initial_metrics = _evaluate_model(probe_initial_model, data, projection, directions.cpu(), device, probe_indices)
     after_metrics = _evaluate_model(model, data, projection, directions.cpu(), device, probe_indices)
-    control_model, control_optimizer = _runtime_from_source(formal, source, device)
-    control_history: list[dict[str, Any]] = []
-    for step in range(3):
-        control_history.append(_step(control_model, control_optimizer, _render_batch(data, data.schedule[step], device), projection, directions, "mse_only"))
-    control_metrics = _evaluate_model(control_model, data, projection, directions.cpu(), device, probe_indices)
-    source_mse = full_epoch.pilot._evaluate(
-        probe_initial_model,
-        data.regularization_data.full_data.pilot_data,
-        probe_indices,
-        device,
-    )
-    after_mse = full_epoch.pilot._evaluate(
-        model,
-        data.regularization_data.full_data.pilot_data,
-        probe_indices,
-        device,
-    )
+    source_mse = initial_metrics["paired_mse"]
+    after_mse = after_metrics["paired_mse"]
     relative_degradation = (after_mse - source_mse) / max(source_mse, 1.0e-20)
     return {
         "arm": arm,
@@ -1262,13 +1246,13 @@ def _preflight_arm(
         "resume_artifact_sha256": file_sha256(resume_path),
         "initial_probe": initial_metrics,
         "after_probe": after_metrics,
-        "control_probe": control_metrics,
-        "control_steps": control_history,
+        "control_probe": None,
+        "control_steps": [],
         "source_probe_mse": source_mse,
         "after_probe_mse": after_mse,
         "relative_mse_degradation": relative_degradation,
         "frozen_state_unchanged": _frozen_equal(model, source_state),
-        "finite": all(item["finite"] for item in continuous_history + control_history + [resumed_third]),
+        "finite": all(item["finite"] for item in continuous_history + [resumed_third]),
     }
 
 
@@ -1303,8 +1287,66 @@ def preflight(args: argparse.Namespace) -> int:
     directions = audit._fixed_directions(device)
     started = time.monotonic()
     with _deterministic_context():
-        regularized = _preflight_arm(formal, source, data, projection, directions, device, "regularized", output.parent, spec, {**hashes, "training_validation": validation_hash})
-        mse_only = _preflight_arm(formal, source, data, projection, directions, device, "mse_only", output.parent, spec, {**hashes, "training_validation": validation_hash})
+        probe_indices = torch.cat(data.regularization_data.gradient_batches)
+        probe_initial_model, _probe_optimizer = _runtime_from_source(formal, source, device)
+        initial_metrics = _evaluate_model(
+            probe_initial_model,
+            data,
+            projection,
+            directions.cpu(),
+            device,
+            probe_indices,
+        )
+        regularized = _preflight_arm(
+            formal,
+            source,
+            data,
+            projection,
+            directions,
+            device,
+            "regularized",
+            output.parent,
+            spec,
+            {**hashes, "training_validation": validation_hash},
+            initial_metrics,
+        )
+        mse_only = _preflight_arm(
+            formal,
+            source,
+            data,
+            projection,
+            directions,
+            device,
+            "mse_only",
+            output.parent,
+            spec,
+            {**hashes, "training_validation": validation_hash},
+            initial_metrics,
+        )
+        control_model, control_optimizer = _runtime_from_source(formal, source, device)
+        control_history = [
+            _step(
+                control_model,
+                control_optimizer,
+                _render_batch(data, data.schedule[step], device),
+                projection,
+                directions,
+                "mse_only",
+            )
+            for step in range(3)
+        ]
+        control_metrics = _evaluate_model(
+            control_model,
+            data,
+            projection,
+            directions.cpu(),
+            device,
+            probe_indices,
+        )
+        regularized["control_probe"] = control_metrics
+        regularized["control_steps"] = control_history
+        mse_only["control_probe"] = control_metrics
+        mse_only["control_steps"] = control_history
     elapsed = time.monotonic() - started
     peak = int(torch.cuda.max_memory_allocated(device))
     storage = sum(item.stat().st_size for item in output.parent.rglob("*") if item.is_file())
