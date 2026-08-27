@@ -647,6 +647,7 @@ def _run(args: argparse.Namespace) -> int:
         "started_at": started_at,
         "command": sys.argv,
         "dataset_split_hash": config["formal_split_hash"],
+        "seed": config["master_seed"],
     }
     for name, payload in (
         ("b3_t2_sync_attribution.json", sync),
