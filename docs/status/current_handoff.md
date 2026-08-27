@@ -674,3 +674,23 @@ loss decrease, zero evaluator calls, resource limits, and exact 3-step versus
 even a pass records `training_authorized=false` and
 `formal_promotion=false`. The unique downstream decision is manual review of
 the Identity reconstruction training contract.
+
+### H-LOMA-I0 首轮 preflight closeout
+
+首轮 authoritative attempt 使用 clean commit `20b0301`，validation evidence
+为
+`outputs/20260827_v2/runs/lightgen_optical_manifold_identity_v1_attempt_02/validation.json`
+（SHA256 `9c763024021707314decb945d5b7a692d1b86e20421047a89d81746b70dfe57e`），
+preflight evidence 为
+`outputs/20260827_v2/runs/lightgen_optical_manifold_identity_v1_attempt_02/preflight.json`
+（SHA256 `67a4ff53b86e329596234e8dd7154ce85ac2f22cc6974f089a2acf728eefe166`）。
+resume artifact 为
+`preflight.resume.pt`（SHA256
+`1e888e5fd8020e09df5dbc6ee9ef876c31d168da2e51ccc0501fe7dc67e88267`）。
+
+Validation 与 preflight 均为 `passed`，但仍是 diagnostic-only：3 步 loss
+从 `0.0727686286` 降到 `0.0724386498`，四个 phase mask 均有非零 gradient 和
+真实更新，2+1 resume exact，peak CUDA `380651008` bytes、wall `5.5566s`、
+storage `494451` bytes，evaluator calls 为 `0`。唯一下一动作是
+`manual_review_identity_reconstruction_training_contract`；本轮不启动正式
+reconstruction training、SMF/FMF、latent sampling、evaluator 或 promotion。

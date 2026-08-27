@@ -1458,3 +1458,16 @@ training command and enters no evaluator, KL, latent sampling, SMF, or FMF
 stage. The required decision is manual review of the Identity reconstruction
 training contract; failed gates are `invalid_harness` and cannot support a
 capacity conclusion.
+
+### H-LOMA-I0 首轮 preflight closeout（2026-08-27）
+
+在 clean commit `20b0301` 上完成 validation 与三步 CUDA preflight。validation
+SHA256 为 `9c763024021707314decb945d5b7a692d1b86e20421047a89d81746b70dfe57e`，
+preflight SHA256 为
+`67a4ff53b86e329596234e8dd7154ce85ac2f22cc6974f089a2acf728eefe166`，resume
+artifact SHA256 为
+`1e888e5fd8020e09df5dbc6ee9ef876c31d168da2e51ccc0501fe7dc67e88267`。完整
+harness 通过：loss `0.0727686286 -> 0.0724386498`，四层 phase 更新、finite、
+fixed formal relay/Identity OLS、2+1 exact、zero evaluator calls 和资源门通过。
+本结果保持 diagnostic-only，不授权正式训练；唯一下一动作是人工审查
+`manual_review_identity_reconstruction_training_contract`。

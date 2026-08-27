@@ -323,3 +323,21 @@ and amplitude/phase OLS are `paper_reported`; exact numeric preprocessing is
 The route is diagnostic-only with `formal_promotion=false`, no evaluator, no
 software decoder, no label/code model input, and no SMF/FMF. Its validation and
 preflight records are variant-local and cannot alter current formal acceptance.
+
+### H-LOMA-I0 首轮结果
+
+首轮在 clean commit `20b0301` 完成。validation 和 preflight evidence 分别为
+`outputs/20260827_v2/runs/lightgen_optical_manifold_identity_v1_attempt_02/validation.json`
+（`9c763024021707314decb945d5b7a692d1b86e20421047a89d81746b70dfe57e`）和
+`outputs/20260827_v2/runs/lightgen_optical_manifold_identity_v1_attempt_02/preflight.json`
+（`67a4ff53b86e329596234e8dd7154ce85ac2f22cc6974f089a2acf728eefe166`）。
+Preflight 是完整有效的 `passed` harness：3-step loss
+`0.0727686286 -> 0.0724386498`，phase gradients/updates、finite、frozen
+isolation、Identity OLS/formal relay、evaluator `0`、2+1 resume exact 和资源
+门均通过；peak `380651008` bytes，wall `5.5566s`，storage `494451` bytes。
+
+这只证明 Identity reconstruction 的首轮可训练性 harness 满足合同，不是模型
+容量、图像质量或正式 promotion 结论。`training_authorized=false`、
+`formal_promotion=false` 保持不变；唯一消费者是
+`manual_review_identity_reconstruction_training_contract`，在人工决定前不得
+启动正式 reconstruction training、SMF/FMF、生成实验或恢复其他暂停路线。
