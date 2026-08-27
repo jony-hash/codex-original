@@ -358,6 +358,9 @@ def _batch_loss(model: SoftwareMultiscaleTeacherVAE, images: torch.Tensor, label
         output["logvar"],
         temperature=config["loss_temperature"],
         kl_beta=_kl_beta(config, epoch),
+        multiscale_weight=config["multiscale_weight"],
+        sobel_weight=config["sobel_weight"],
+        foreground_dice_weight=config["foreground_dice_weight"],
     )
     return loss, metrics
 
@@ -474,13 +477,36 @@ def _train(args: argparse.Namespace, config: dict[str, Any], data: dict[str, Any
     fitting_labels = data["labels"].index_select(0, fitting_indices)
     development_images = data["images"].index_select(0, development_indices)
     development_labels = data["labels"].index_select(0, development_indices)
-    loader = DataLoader(TensorDataset(fitting_images, fitting_labels), batch_size=config["microbatch_size"], shuffle=True, generator=torch.Generator().manual_seed(config["master_seed"]), num_workers=0, pin_memory=True)
+    loader_generator = torch.Generator(device="cpu").manual_seed(config["master_seed"])
+    loader = DataLoader(TensorDataset(fitting_images, fitting_labels), batch_size=config["microbatch_size"], shuffle=True, generator=loader_generator, num_workers=0, pin_memory=True)
     best_loss = float("inf")
     best_epoch = 0
     history = []
     run_dir = Path(args.run_dir)
     state_dir = run_dir / "states"
-    for epoch in range(1, config["maximum_epochs"] + 1):
+    start_epoch = 1
+    if args.resume_checkpoint:
+        resume = torch.load(args.resume_checkpoint, map_location=device, weights_only=True)
+        if not isinstance(resume, dict) or resume.get("schema") != f"{SCHEMA_PREFIX}_state.v1" or resume.get("model_version") != MODEL_VERSION:
+            raise ValueError("Package B3 resume checkpoint lineage is invalid")
+        model.load_state_dict(resume["state_dict"], strict=True)
+        optimizer.load_state_dict(resume["optimizer"])
+        scheduler.load_state_dict(resume["scheduler"])
+        if not isinstance(resume.get("history"), list) or not isinstance(resume.get("epoch"), int):
+            raise ValueError("Package B3 resume checkpoint metadata is invalid")
+        history = resume["history"]
+        if history:
+            best_row = min(history, key=lambda row: (float(row["development_loss"]), int(row["epoch"])))
+            best_loss, best_epoch = float(best_row["development_loss"]), int(best_row["epoch"])
+        start_epoch = int(resume["epoch"]) + 1
+        if start_epoch > config["maximum_epochs"] + 1:
+            raise ValueError("Package B3 resume checkpoint is beyond the registered epoch limit")
+        if not torch.is_tensor(resume.get("loader_generator_state")) or not torch.is_tensor(resume.get("cpu_rng_state")) or not torch.is_tensor(resume.get("cuda_rng_state")):
+            raise ValueError("Package B3 resume checkpoint is missing RNG state")
+        loader_generator.set_state(resume["loader_generator_state"])
+        torch.set_rng_state(resume["cpu_rng_state"])
+        torch.cuda.set_rng_state(resume["cuda_rng_state"], device)
+    for epoch in range(start_epoch, config["maximum_epochs"] + 1):
         model.train()
         optimizer.zero_grad(set_to_none=True)
         train_losses = []
@@ -488,9 +514,13 @@ def _train(args: argparse.Namespace, config: dict[str, Any], data: dict[str, Any
             batch_images = _to_camera(batch_images).to(device, non_blocking=True)
             batch_labels = batch_labels.to(device, non_blocking=True)
             loss, metrics = _batch_loss(model, batch_images, batch_labels, config, epoch)
+            if not torch.isfinite(loss):
+                raise ValueError("Package B3 training loss is non-finite")
             (loss / config["gradient_accumulation"]).backward()
             if (batch_number + 1) % config["gradient_accumulation"] == 0 or batch_number + 1 == len(loader):
                 torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                if not all(torch.isfinite(parameter.grad).all() for parameter in model.parameters() if parameter.grad is not None):
+                    raise ValueError("Package B3 training gradient is non-finite")
                 optimizer.step()
                 optimizer.zero_grad(set_to_none=True)
             train_losses.append(metrics["total"])
@@ -502,17 +532,21 @@ def _train(args: argparse.Namespace, config: dict[str, Any], data: dict[str, Any
                 images = _to_camera(development_images[start : start + config["microbatch_size"]]).to(device)
                 labels = development_labels[start : start + config["microbatch_size"]].to(device)
                 output = model(images, deterministic=True)
-                loss, _ = reconstruction_loss(output["reconstruction"], images, labels, output["mu"], output["logvar"], temperature=config["loss_temperature"], kl_beta=_kl_beta(config, epoch))
+                loss, _ = reconstruction_loss(output["reconstruction"], images, labels, output["mu"], output["logvar"], temperature=config["loss_temperature"], kl_beta=_kl_beta(config, epoch), multiscale_weight=config["multiscale_weight"], sobel_weight=config["sobel_weight"], foreground_dice_weight=config["foreground_dice_weight"])
                 development_losses.append(float(loss.cpu()))
         dev_loss = sum(development_losses) / len(development_losses)
         row = {"epoch": epoch, "train_loss": sum(train_losses) / len(train_losses), "development_loss": dev_loss, "lr": optimizer.param_groups[0]["lr"]}
         history.append(row)
-        state_payload = {"schema": f"{SCHEMA_PREFIX}_state.v1", "model_version": MODEL_VERSION, "epoch": epoch, "state_dict": model.state_dict(), "optimizer": optimizer.state_dict(), "scheduler": scheduler.state_dict(), "history": history}
+        cuda_peak = int(torch.cuda.max_memory_allocated(device))
+        rss_peak = _max_rss_bytes()
+        if cuda_peak >= config["cuda_memory_limit_bytes"] or rss_peak >= config["host_rss_limit_bytes"]:
+            raise RuntimeError("Package B3 training exceeded the registered memory safety limit")
+        state_payload = {"schema": f"{SCHEMA_PREFIX}_state.v1", "model_version": MODEL_VERSION, "epoch": epoch, "state_dict": model.state_dict(), "optimizer": optimizer.state_dict(), "scheduler": scheduler.state_dict(), "history": history, "loader_generator_state": loader_generator.get_state(), "cpu_rng_state": torch.get_rng_state(), "cuda_rng_state": torch.cuda.get_rng_state(device), "cuda_peak_bytes": cuda_peak, "host_rss_peak_bytes": rss_peak}
         atomic_torch(state_dir / "latest.pt", state_payload)
         if dev_loss < best_loss:
             best_loss, best_epoch = dev_loss, epoch
             atomic_torch(run_dir / "first_stage_best.pt", {**state_payload, "selection": "development_composite_loss", "best_development_loss": best_loss})
-    return {"best_epoch": best_epoch, "best_development_loss": best_loss, "history": history, "checkpoint": str(run_dir / "first_stage_best.pt"), "evaluator_calls": 0, "host_rss_peak_bytes": _max_rss_bytes(), "cuda_peak_bytes": int(torch.cuda.max_memory_allocated(device))}
+    return {"best_epoch": best_epoch, "best_development_loss": best_loss, "history": history, "checkpoint": str(run_dir / "first_stage_best.pt"), "evaluator_calls": 0, "host_rss_peak_bytes": _max_rss_bytes(), "cuda_peak_bytes": int(torch.cuda.max_memory_allocated(device)), "start_epoch": start_epoch, "resume_checkpoint": args.resume_checkpoint}
 
 
 def _load_checkpoint(path: str | Path, device: torch.device) -> tuple[SoftwareMultiscaleTeacherVAE, dict[str, Any]]:
@@ -625,6 +659,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--output", required=True)
     parser.add_argument("--checkpoint")
     parser.add_argument("--upstream-evidence")
+    parser.add_argument("--resume-checkpoint")
     return parser
 
 

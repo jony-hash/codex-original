@@ -192,18 +192,21 @@ def reconstruction_loss(
     *,
     temperature: float = 0.1,
     kl_beta: float = 1.0e-6,
+    multiscale_weight: float = 1.0,
+    sobel_weight: float = 0.5,
+    foreground_dice_weight: float = 0.5,
 ) -> tuple[Tensor, dict[str, float]]:
     _validate_images(reconstruction)
     _validate_images(target)
     if labels.ndim != 1 or labels.shape[0] != target.shape[0]:
         raise ValueError("labels must be one-dimensional and match the image batch")
-    if temperature <= 0.0 or kl_beta < 0.0:
-        raise ValueError("temperature must be positive and kl_beta cannot be negative")
+    if temperature <= 0.0 or kl_beta < 0.0 or min(multiscale_weight, sobel_weight, foreground_dice_weight) < 0.0:
+        raise ValueError("temperature must be positive and loss weights cannot be negative")
     pixel_terms = _samplewise_terms(reconstruction, target)
     multiscale = pixel_terms[:, :3].mean(dim=1)
     sobel_terms = pixel_terms[:, 3:].mean(dim=1)
     dice_per_sample = _foreground_dice_per_sample(reconstruction, target)
-    sample_loss = multiscale + 0.5 * sobel_terms + 0.5 * dice_per_sample
+    sample_loss = multiscale_weight * multiscale + sobel_weight * sobel_terms + foreground_dice_weight * dice_per_sample
     class_losses = []
     for label in range(10):
         selected = sample_loss[labels == label]
