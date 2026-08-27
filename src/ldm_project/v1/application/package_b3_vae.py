@@ -518,8 +518,8 @@ def _preflight(args: argparse.Namespace, config: dict[str, Any], data: dict[str,
         checkpoint_path = Path(temporary) / "resume.pt"
         atomic_torch(checkpoint_path, checkpoint)
         checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
-    cpu_rng_state = checkpoint["cpu_rng_state"]
-    cuda_rng_state = checkpoint["cuda_rng_state"]
+    cpu_rng_state = checkpoint["cpu_rng_state"].cpu()
+    cuda_rng_state = checkpoint["cuda_rng_state"].cpu()
     continuation = _model(device)
     continuation.load_state_dict(checkpoint["state_dict"])
     continuation_optimizer = torch.optim.AdamW(continuation.parameters(), lr=config["learning_rate"], weight_decay=config["weight_decay"])
@@ -776,8 +776,8 @@ def _train(args: argparse.Namespace, config: dict[str, Any], data: dict[str, Any
         if not torch.is_tensor(resume.get("loader_generator_state")) or not torch.is_tensor(resume.get("cpu_rng_state")) or not torch.is_tensor(resume.get("cuda_rng_state")):
             raise ValueError("Package B3 resume checkpoint is missing RNG state")
         loader_generator.set_state(resume["loader_generator_state"])
-        torch.set_rng_state(resume["cpu_rng_state"])
-        torch.cuda.set_rng_state(resume["cuda_rng_state"], device)
+        torch.set_rng_state(resume["cpu_rng_state"].cpu())
+        torch.cuda.set_rng_state(resume["cuda_rng_state"].cpu(), device)
 
     def memory_gate() -> None:
         if (
