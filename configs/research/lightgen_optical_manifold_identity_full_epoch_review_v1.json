@@ -1,0 +1,30 @@
+{
+  "schema": "lightgen_optical_manifold_identity_full_epoch_review.v1",
+  "hypothesis": "H-LOMA-I0",
+  "reviewer_role": "project_owner",
+  "decision": "approve_bounded_full_epoch_research_training",
+  "source_training_evidence": "outputs/20260827_v2/runs/lightgen_optical_manifold_identity_pilot_v1_attempt_03/training.json",
+  "source_training_evidence_sha256": "4127f80194f02750737c2e2a1e3f8f7ee4b90df8798cbdd53c4c20369b4a681f",
+  "source_checkpoint": "outputs/20260827_v2/runs/lightgen_optical_manifold_identity_pilot_v1_attempt_03/pilot_final_step_001000.pt",
+  "source_checkpoint_sha256": "bb072c7b2193b24eb0d989ba731957b52b382c3ff1c83a2be2ddfd7d6d6a2d20",
+  "approved_contract": {
+    "initial_global_step": 1000,
+    "continuation_steps": 4500,
+    "final_global_step": 5500,
+    "pilot_reference_paired_mse": 0.06062695011496544,
+    "post_pass_next_action": "manual_review_optical_latent_ols_contract"
+  },
+  "full_epoch_research_training_authorized": true,
+  "training_authorized": false,
+  "formal_training_authorized": false,
+  "formal_promotion": false,
+  "prohibited": [
+    "extra_epoch",
+    "latent_ols_experiment",
+    "smf",
+    "fmf",
+    "evaluator",
+    "generation",
+    "promotion"
+  ]
+}

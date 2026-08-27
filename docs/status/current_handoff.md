@@ -738,3 +738,19 @@ MSE 从 zero-phase baseline `0.0737866908` 降至 paired `0.0606269501`，相对
 `formal_promotion=false`。唯一下一动作是
 `manual_review_full_epoch_identity_reconstruction_contract`；本轮到此停止，
 不启动完整 epoch、SMF/FMF、latent sampling、evaluator 或生成实验。
+
+### H-LOMA-I0 full-epoch continuation 授权
+
+基于 pilot attempt-03 的 `passed` evidence，项目负责人授权在
+`research/v2-lightgen-optical-manifold-full-epoch-v1` 分支执行一次受限的
+Identity reconstruction full epoch。该阶段从 pilot final step `1000` 继承
+模型、Adam、RNG 和 data cursor，仅消费剩余 45,000 张 train 样本，至 global
+step `5500` 停止；不授权额外 epoch、latent/OLS 实验、SMF/FMF、evaluator、
+生成或 formal promotion。
+
+full-epoch 的成功门是最终 paired held-out MSE 严格低于 pilot 的
+`0.06062695011496544`，并低于最终 cyclic-permuted target 对照。资源门为
+preflight `300s`、full epoch `4500s`、peak CUDA `5GiB`、free CUDA 至少
+`4GiB`、run storage `2GiB`。固定 visual panel 为 held-out 中每类 10 张，
+仅用于人工审查。任何失败均停止；通过后的唯一下一动作是
+`manual_review_optical_latent_ols_contract`。

@@ -383,3 +383,25 @@ not a capacity or formal-promotion claim. Its evidence keeps
 allowed to act is
 `manual_review_full_epoch_identity_reconstruction_contract`. Full epoch,
 SMF/FMF, latent sampling, evaluator, generation, and promotion remain blocked.
+
+### H-LOMA-I0 full-epoch continuation authorization
+
+The project owner authorized one bounded full-epoch continuation on child branch
+`research/v2-lightgen-optical-manifold-full-epoch-v1`. It consumes the pilot
+final checkpoint at global step `1000` and its remaining 45,000 unique train
+samples, ending at global step `5500`. The authorization is bound to the pilot
+training evidence SHA256
+`4127f80194f02750737c2e2a1e3f8f7ee4b90df8798cbdd53c4c20369b4a681f` and final
+checkpoint SHA256
+`bb072c7b2193b24eb0d989ba731957b52b382c3ff1c83a2be2ddfd7d6d6a2d20`.
+
+The deterministic continuation schedule excludes the pilot's 10,000 samples,
+shuffles the remaining 45,000 with seed `1234`, and has SHA256
+`d15608c4f7f8a5f7709b021155fa252270844bdfab67fc796743014e9897bacf`. The
+scientific gate requires final paired held-out MSE to be strictly below the
+pilot reference `0.06062695011496544` and below the cyclic-permutation control.
+The resource limits are 4 GiB free CUDA memory, 5 GiB peak allocation, 4,500
+seconds wall time, and 2 GiB storage. A 100-image visual panel is review-only.
+No extra epoch, latent/OLS experiment, SMF/FMF, evaluator, generation, or
+promotion is authorized. A pass can only request
+`manual_review_optical_latent_ols_contract`.

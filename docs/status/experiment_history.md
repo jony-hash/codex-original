@@ -1506,3 +1506,20 @@ Identity reconstruction pilot 的预注册诊断门，不授权完整 epoch、SM
 latent sampling、evaluator、生成实验或 formal promotion；evidence 仍为
 `training_authorized=false`、`formal_promotion=false`。唯一下一动作是人工
 审查 `manual_review_full_epoch_identity_reconstruction_contract`。
+
+### H-LOMA-I0 Identity Reconstruction Full-Epoch Continuation 授权（2026-08-27）
+
+基于 pilot attempt-03 的 passed evidence，项目负责人授权从 pilot final step
+`1000` 继续执行一次 full epoch，至 global step `5500`。剩余 45,000 张 train
+样本与 pilot 已用 10,000 张组成一次无重复的 55k 数据遍历；continuation
+schedule SHA256 为
+`d15608c4f7f8a5f7709b021155fa252270844bdfab67fc796743014e9897bacf`。
+
+该授权绑定 pilot training evidence SHA256
+`4127f80194f02750737c2e2a1e3f8f7ee4b90df8798cbdd53c4c20369b4a681f` 与 final
+checkpoint SHA256
+`bb072c7b2193b24eb0d989ba731957b52b382c3ff1c83a2be2ddfd7d6d6a2d20`。成功门
+是最终 paired held-out MSE 严格低于 `0.06062695011496544` 且低于 cyclic
+permutation control；full epoch wall 上限为 75 分钟。该阶段不进入额外 epoch、
+latent/OLS、SMF/FMF、evaluator、生成或 promotion；通过后的唯一下一动作是
+人工审查 `manual_review_optical_latent_ols_contract`。
