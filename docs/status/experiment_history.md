@@ -1399,3 +1399,34 @@ final timing、closeout 的 SHA256 依次为：
 本轮唯一允许的后续是另立并审查 `numerical_gpu_acceleration_preflight`；不自动
 打开 AMP/TF32/compile，不开始 formal B3-VAE、B3-DDPM、Package C 或任何光学
 阶段。T2 在此 hard stop。
+
+## Package B3-T.3：numerical GPU acceleration preflight（2026-08-27）
+
+本轮从 Package B3-T.2 的 `b3_t2_v3` authority 启动，目标是隔离验证
+TF32、BF16 autocast、FP16 AMP 是否同时满足 numerical equivalence 和
+`25 min/epoch` throughput contract。硬件审计通过：RTX 3060 Laptop GPU、
+compute capability `8.6`、CUDA `12.1`、cuDNN `90100`、PyTorch
+`2.5.1+cu121`，TF32/BF16/FP16 Tensor Core 和 GradScaler 均可用。
+
+FP32 reference 已完成 100 optimizer steps；finite、三步 interrupted/resumed
+model/optimizer/scheduler/RNG exactness、parameter update 和 zero evaluator
+calls 均通过。随后唯一 canary 进程在候选 arm 尚未完成前被 WSL Python
+memory guard 主动终止：process RSS `2,992,820 KiB`，total Python RSS
+`6,473,368 KiB`，guard limit `6,291,456 KiB`。因此最终分类是
+`resource_aborted`，不是 numerical equivalence failure，也不是模型质量
+失败；TF32/BF16/FP16 没有形成有效结论，FP32 throughput、candidate throughput
+和第二阶段 `torch.compile` 均未运行。
+
+权威目录为
+`outputs/20260827_numerical_gpu_acceleration_preflight/runs/20260827_package_b3_t3_v1/`。
+其中 closeout SHA256 为
+`eade8b4f013dff8d90e54779d5f6ab0637f34943c69c233158c73b5719a50ae7`，candidate
+comparison 为
+`a3e478ac5d5fa82bbb2fa763aa4c7899d59576df7004b4e9e9f84427b96ac060`，FP32
+reference 为
+`631c34f87dacca77c8dbf35862163cf7c757fd72e236d210fe0158c7d5be8e16`。本轮未
+启动正式 B3-VAE、DDPM、student 或任何光学阶段，未修改 25 分钟合同。
+
+本轮唯一允许的下一步是另立并审查 `resource_contract_revalidation`；不得把
+partial arm 当作数值成功/失败，不得自动 retry、扩大资源合同、打开 AMP 或
+组合 compile。T3 在此 hard stop。

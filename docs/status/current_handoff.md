@@ -591,3 +591,43 @@ The only permitted follow-up is a separately reviewed
 BF16/FP16, TF32 enablement, `torch.compile`, formal B3-VAE training,
 B3-DDPM, Package C, student/optical/phase/quadrature/OLS/fiber training,
 candidate export, or promotion. The T2 closeout is a hard stop.
+
+## 2026-08-27：Package B3-T.3 numerical GPU acceleration preflight closeout
+
+T3 was started from the T2 authority `b3_t2_v3` and clean commit `ce4dfe0`.
+Hardware audit passed for the RTX 3060 Laptop GPU (compute capability `8.6`,
+CUDA `12.1`, cuDNN `90100`, PyTorch `2.5.1+cu121`); native TF32, BF16, FP16
+Tensor Core and GradScaler capabilities were detected. The FP32 reference
+completed 100 optimizer steps with finite values, four parameter updates in the
+three-step resume check, exact model/optimizer/scheduler/RNG restoration, and
+zero evaluator calls.
+
+The numerical arms did not reach a valid decision. The single T3 process was
+terminated by the WSL Python memory guard before TF32/BF16/FP16 arm evidence
+could be completed: the guard recorded process RSS `2,992,820 KiB`, total
+Python RSS `6,473,368 KiB`, and limit `6,291,456 KiB`. The fail-closed
+classification is therefore `resource_aborted`, not numerical equivalence
+failure and not a model-quality result. No throughput comparison and no
+`torch.compile` stage was run. The 25-minute resource contract was unchanged.
+
+Authoritative evidence is under
+`outputs/20260827_numerical_gpu_acceleration_preflight/runs/20260827_package_b3_t3_v1/`.
+The hardware, equivalence contract, FP32 reference, TF32/BF16/FP16 arm records,
+candidate comparison, throughput comparison and closeout SHA256 values are:
+
+- hardware `3e23273842347e6d717b9cb2c3b7cfa38208e8279da8fd4b1f9b160d0f70c6a0`
+- equivalence contract `f9d69526363ff9d5f4c9aa7ae2059fe0a80524c2d1d1418b068f099a74a75fda`
+- FP32 reference `631c34f87dacca77c8dbf35862163cf7c757fd72e236d210fe0158c7d5be8e16`
+- TF32 `51b318974cde1e217aebee78d1bef4dd2aca25e1df00c5242a760ed0063c0f64`
+- BF16 `0263307acd92e1b161fdb6d29304c37e2f33e2e2f291446ab2621fc8266aa7d1`
+- FP16 `0e5321ea0f9b7f57870d2f42db6c8bc35958e5db7354bc689447f9b15f91f77b`
+- candidate comparison `a3e478ac5d5fa82bbb2fa763aa4c7899d59576df7004b4e9e9f84427b96ac060`
+- throughput comparison `4dffcfdf198b4b6ec3d59d9ffc37526f53cb5dcff295bd65ad2521786bdebda1`
+- closeout `eade8b4f013dff8d90e54779d5f6ab0637f34943c69c233158c73b5719a50ae7`
+
+The real consumer is numerical execution-contract design, not a model-quality
+claim. The only permitted next action is `resource_contract_revalidation`;
+this requires a separately reviewed plan and must not silently enlarge swap,
+change the 25-minute contract, or rerun partial arms. Formal B3-VAE training,
+B3-DDPM, Package C, student/optical/phase/quadrature/OLS/fiber training,
+AMP/compile combination, candidate export and promotion remain forbidden.
