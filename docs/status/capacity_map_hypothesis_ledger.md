@@ -468,3 +468,28 @@ effect. A valid failed gate blocks PLAN 4 and requests
 `manual_review_identity_reconstruction_objective_contract`; a pass can only
 request `manual_review_identity_latent_observer_contract`. Evidence remains
 bound by `training_authorized=false` and `formal_promotion=false`.
+
+### H-LOMA-I0 attribution audit closeout (2026-08-27)
+
+Attempt-01 and attempt-02 were retained as `invalid_harness` because their
+source-MSE comparison used a CPU offline reduction instead of the
+authoritative CUDA evaluator path. Commit `f7d38c5` repaired this boundary,
+and attempt-03 was run in a new versioned output directory without overwriting
+either earlier attempt.
+
+Attempt-03 validation SHA256 is
+`fe86d7b1990f65d7f2cf51332bc1acca917302160afc1530471106ecdb442bd6`; the
+authoritative audit evidence SHA256 is
+`31ee69fd050902d0191fbc1b6847ebde040d8f91e0f01d9a6773a7bd8d284905`. The
+audit directly replayed `optical_manifold_training._evaluate`, reproducing
+the source paired MSE exactly at `0.03437697887420654`; the independent CPU
+offline statistic was `0.034376975148916245` and is recorded separately.
+
+All pre-registered phase/template, instance-sensitivity, model-state,
+evaluator-isolation, finite-value, and resource gates passed. This is a valid
+diagnostic attribution that Identity reconstruction is instance-sensitive and
+phase-dependent, but it does not establish a learned latent manifold. The
+only permitted next action is
+`manual_review_identity_latent_observer_contract`; PLAN 4 remains separately
+observation-only. `training_authorized=false` and `formal_promotion=false`
+remain mandatory.

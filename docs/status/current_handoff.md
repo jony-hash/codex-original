@@ -840,3 +840,30 @@ optimizer, checkpoint, latent observer, KL, SMF/FMF, evaluator, generation, or
 promotion is authorized. A pass can only request
 `manual_review_identity_latent_observer_contract`; a valid scientific failure
 requests `manual_review_identity_reconstruction_objective_contract`.
+
+### H-LOMA-I0 PLAN 3 attribution closeout (2026-08-27)
+
+The first two attribution attempts were retained as `invalid_harness` because
+their source-MSE comparison used a CPU offline reduction instead of the
+authoritative CUDA evaluator path. Commit `f7d38c5` added a direct replay of
+`optical_manifold_training._evaluate` and kept the offline attribution metric
+separate. The new attempt-03 validation evidence is
+`outputs/20260827_v2/runs/lightgen_optical_manifold_identity_reconstruction_audit_v1_attempt_03/reconstruction_audit_validation.json`
+with SHA256
+`fe86d7b1990f65d7f2cf51332bc1acca917302160afc1530471106ecdb442bd6`; the
+passed authoritative audit is
+`outputs/20260827_v2/runs/lightgen_optical_manifold_identity_reconstruction_audit_v1_attempt_03/reconstruction_audit.json`
+with SHA256
+`31ee69fd050902d0191fbc1b6847ebde040d8f91e0f01d9a6773a7bd8d284905`.
+
+The replay exactly reproduced source paired MSE `0.03437697887420654`. All
+phase/template controls, instance geometry and retrieval gates passed; model
+state was unchanged, evaluator calls were `0`, wall time was `290.18s`, and
+peak CUDA allocation was `447156736` bytes. This closes PLAN 3's attribution
+audit as a valid diagnostic result: reconstruction is phase-dependent and
+instance-sensitive, but no latent-manifold claim is made.
+
+The only permitted next action is
+`manual_review_identity_latent_observer_contract`. PLAN 4 must remain
+observation-only and separately bound to this passed evidence; no optimizer,
+checkpoint, KL, SMF/FMF, evaluator, generation, or promotion is authorized.
