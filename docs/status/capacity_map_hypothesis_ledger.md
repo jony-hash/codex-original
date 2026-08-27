@@ -341,3 +341,24 @@ isolation、Identity OLS/formal relay、evaluator `0`、2+1 resume exact 和资�
 `formal_promotion=false` 保持不变；唯一消费者是
 `manual_review_identity_reconstruction_training_contract`，在人工决定前不得
 启动正式 reconstruction training、SMF/FMF、生成实验或恢复其他暂停路线。
+
+### H-LOMA-I0 1000-step pilot authorization
+
+The project owner approved a bounded diagnostic pilot on child branch
+`research/v2-lightgen-optical-manifold-pilot-v1`, limited to 1000 Adam updates.
+The authorization consumes the first-round Identity preflight evidence at
+`outputs/20260827_v2/runs/lightgen_optical_manifold_identity_v1_attempt_02/preflight.json`
+with SHA256
+`67a4ff53b86e329596234e8dd7154ce85ac2f22cc6974f089a2acf728eefe166`. It is a
+research decision for the real consumer of the evidence, not formal-training or
+promotion authorization.
+
+The pilot fixes the 55k/5k stratified MNIST split, one sample per class per
+step, zero-phase initialization, 2+2 phase-only formal relays, Identity OLS,
+fixed exposure, and MSE-only reconstruction. Its scientific gate is at least
+5% held-out MSE reduction against the zero-phase baseline and paired MSE below
+the cyclically permuted-target control. Full epoch, SMF/FMF, latent sampling,
+evaluator, generation, and promotion remain prohibited. A harness or resource
+failure is `invalid_harness`/`resource_aborted`; a complete pilot missing the
+scientific gate is `valid_failed`. A pass can only request
+`manual_review_full_epoch_identity_reconstruction_contract`.

@@ -694,3 +694,20 @@ Validation 与 preflight 均为 `passed`，但仍是 diagnostic-only：3 步 los
 storage `494451` bytes，evaluator calls 为 `0`。唯一下一动作是
 `manual_review_identity_reconstruction_training_contract`；本轮不启动正式
 reconstruction training、SMF/FMF、latent sampling、evaluator 或 promotion。
+
+### H-LOMA-I0 1000 步 pilot 授权
+
+项目负责人已将首轮 preflight 结果（SHA256
+`67a4ff53b86e329596234e8dd7154ce85ac2f22cc6974f089a2acf728eefe166`）绑定到
+`lightgen_optical_manifold_identity_pilot_v1` 合同，并人工授权最多 1000 步
+的 diagnostic research training。授权仅覆盖固定 55k/5k MNIST 划分、每步每类
+一个样本、Identity OLS 下的 paired reconstruction；不授权完整 epoch、SMF/FMF、
+latent sampling、evaluator、生成实验或 formal promotion。
+
+Pilot 的预注册科学门是固定 validation 中每类 100 张的 held-out panel 相对零
+相位 baseline 的 MSE 至少下降 5%，且最终 paired MSE 小于循环错配 target 对照。
+训练必须先通过 training validation 与三步 training preflight（含负对照及 2+1
+resume exact）。失败即停止；完整 1000 步但科学门未过记为 `valid_failed`。无论
+结果如何，evidence 均保持 `training_authorized=false`、`formal_promotion=false`；
+通过后的唯一下一动作是
+`manual_review_full_epoch_identity_reconstruction_contract`。

@@ -1471,3 +1471,18 @@ harness 通过：loss `0.0727686286 -> 0.0724386498`，四层 phase 更新、fin
 fixed formal relay/Identity OLS、2+1 exact、zero evaluator calls 和资源门通过。
 本结果保持 diagnostic-only，不授权正式训练；唯一下一动作是人工审查
 `manual_review_identity_reconstruction_training_contract`。
+
+### H-LOMA-I0 1000 步 Identity Reconstruction Pilot 授权（2026-08-27）
+
+项目负责人基于首轮 preflight evidence SHA256
+`67a4ff53b86e329596234e8dd7154ce85ac2f22cc6974f089a2acf728eefe166`，授权
+`research/v2-lightgen-optical-manifold-pilot-v1` 分支最多执行 1000 步
+diagnostic research training。合同预注册 held-out panel 相对 zero-phase
+baseline 的 MSE 至少下降 5%，并要求 paired MSE 低于 cyclic target permutation
+对照；三步 paired/负对照/2+1 resume preflight 是前置门。
+
+该授权不包括完整 epoch、SMF/FMF、latent sampling、evaluator、生成实验或
+formal promotion。最终 evidence 必须保留 `training_authorized=false` 和
+`formal_promotion=false`；pilot 通过后的唯一下一动作是人工审查
+`manual_review_full_epoch_identity_reconstruction_contract`，失败则停止且不
+形成模型容量结论。
