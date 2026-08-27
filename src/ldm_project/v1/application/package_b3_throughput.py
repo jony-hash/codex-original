@@ -510,6 +510,11 @@ def _profile(args: argparse.Namespace) -> int:
             batch_images = batch_images.to(device, non_blocking=True)
             batch_labels = batch_labels.to(device, non_blocking=True)
             h2d_finished.record()
+            preprocess_started = torch.cuda.Event(enable_timing=True)
+            preprocess_finished = torch.cuda.Event(enable_timing=True)
+            preprocess_started.record()
+            batch_images = _to_camera(batch_images)
+            preprocess_finished.record()
             forward_started = torch.cuda.Event(enable_timing=True)
             forward_finished = torch.cuda.Event(enable_timing=True)
             forward_started.record()
@@ -573,6 +578,7 @@ def _profile(args: argparse.Namespace) -> int:
             torch.cuda.synchronize(device)
             if batch_number >= warmup_batches:
                 event_phase_values.setdefault("host_to_device", []).append(float(h2d_started.elapsed_time(h2d_finished)))
+                event_phase_values.setdefault("camera_preprocessing_gpu", []).append(float(preprocess_started.elapsed_time(preprocess_finished)))
                 event_phase_values.setdefault("model_forward", []).append(float(forward_started.elapsed_time(forward_finished)))
                 event_phase_values.setdefault("backward", []).append(float(backward_started.elapsed_time(backward_finished)))
                 for label, pairs in events.items():
@@ -618,6 +624,7 @@ def _profile(args: argparse.Namespace) -> int:
         "dataloader_collate": collate_values,
         "cpu_preprocessing": cpu_preprocess_values,
         "host_to_device": event_phase_values.get("host_to_device", []),
+        "camera_preprocessing_gpu": event_phase_values.get("camera_preprocessing_gpu", []),
         "model_forward": event_phase_values.get("model_forward", []),
         "reconstruction_loss": [
             sum(values)
