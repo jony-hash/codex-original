@@ -299,3 +299,27 @@ resource contract, automatically retry, or consume incomplete candidate-arm
 evidence. Until then, the T3 evidence under
 `outputs/20260827_numerical_gpu_acceleration_preflight/runs/20260827_package_b3_t3_v1/`
 is retained as the binding audit record.
+
+## H-LOMA-I0 registration (2026-08-27)
+
+`H-LOMA-I0` is a new, independent v2 research line and is not a Package B3
+resumption or a reopening of the closed synthetic fiber route. Its consumer is
+a later manual decision on whether Identity reconstruction training deserves an
+explicit contract. Its rejection decision is fail-closed: an invalid
+validation or CUDA preflight forbids formal reconstruction training, SMF/FMF,
+and generation experiments. A passing preflight still does not authorize
+training; its only next action is
+`manual_review_identity_reconstruction_training_contract`.
+
+The preserved invariants are the formal v2 532 nm, 200x200 SLM and 100x100
+metasurface geometry, complete front/backend relays, 2+2 finite-crop
+phase-only layers, complex Identity OLS, and single-exposure CMOS semantics.
+The first route uses real MNIST intensity rendered to both SLM and camera FOV;
+`sqrt` amplitude encoding is explicitly a `project_physics_choice`, not a
+LightGen `paper_reported` preprocessing fact. LightGen's public architecture
+and amplitude/phase OLS are `paper_reported`; exact numeric preprocessing is
+`unknown`.
+
+The route is diagnostic-only with `formal_promotion=false`, no evaluator, no
+software decoder, no label/code model input, and no SMF/FMF. Its validation and
+preflight records are variant-local and cannot alter current formal acceptance.

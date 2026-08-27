@@ -648,3 +648,29 @@ checkpoint promotion and candidate export remain prohibited. The only
 recorded resumption path is a separately reviewed
 `resource_contract_revalidation`; resumption is not automatic and must not
 reuse partial candidate-arm evidence as a scientific result.
+
+## Independent H-LOMA-I0 optical-manifold line (2026-08-27)
+
+The next implementation is an independent diagnostic v2 research line,
+`research/v2-lightgen-optical-manifold-v1`; it does not resume Package B3 and
+does not reopen the closed synthetic fiber route. The registered scientific
+question is whether the complete current formal 2+2 phase-only system with
+complex Identity OLS can learn real-MNIST reconstruction under fixed exposure.
+
+The first delivery is limited to a research contract, configuration, data
+rendering boundary, Identity optical autoencoder, validation, and a three-step
+CUDA preflight. It does not provide formal reconstruction training and does
+not enter KL, latent sampling, SMF, FMF, evaluator, or generation stages. Only
+encoder/decoder phase masks may update; labels select deterministic one-per-
+class representatives and are not model inputs.
+
+Validation must reject dirty/stale lineage, non-formal geometry, non-Identity
+OLS, coordinate or exposure mismatches, missing local MNIST, or any extra
+trainable parameter before creating an optimizer or run. Preflight must use
+the same 2048-grid formal path with microbatch one and activation checkpointing,
+then prove finite values, all four phase-layer updates, frozen-state isolation,
+loss decrease, zero evaluator calls, resource limits, and exact 3-step versus
+2+1 resume. Any failed execution gate is `invalid_harness` and stops the line;
+even a pass records `training_authorized=false` and
+`formal_promotion=false`. The unique downstream decision is manual review of
+the Identity reconstruction training contract.

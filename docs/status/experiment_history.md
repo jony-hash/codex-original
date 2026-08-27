@@ -1446,3 +1446,15 @@ compile 组合或任何下游阶段；B3-VAE、B3-DDPM、Package C、student/opt
 若恢复，只能先由用户明确决定并另行审查
 `resource_contract_revalidation`，不得把 partial arm 证据解释为数值或模型结论，
 也不得自动 retry。
+
+## H-LOMA-I0 registration (2026-08-27)
+
+Registered an independent LightGen-like optical-manifold Identity research
+line on the clean code-equivalent descendant of `bf9acf0`. This registration
+does not resume the paused Package B3 line. The first implementation is limited
+to contract/configuration, real-MNIST rendering, formal 2+2 Identity optical
+autoencoder validation, and a three-step CUDA preflight. It creates no formal
+training command and enters no evaluator, KL, latent sampling, SMF, or FMF
+stage. The required decision is manual review of the Identity reconstruction
+training contract; failed gates are `invalid_harness` and cannot support a
+capacity conclusion.
