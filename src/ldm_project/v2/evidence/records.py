@@ -85,6 +85,7 @@ class EvidenceRecordV2:
             "pending_review",
             "invalid_harness",
             "valid_failed",
+            "resource_aborted",
         }:
             raise ValueError("invalid evidence status")
         if self.tier == "acceptance" and self.dirty_patch_hash is not None:
