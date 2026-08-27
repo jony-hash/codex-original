@@ -349,7 +349,7 @@ def _load_data(dataset_root: str | Path) -> PilotData:
         raise ValueError("regularization pilot schedule is not 10000 unique samples")
     if base.tensor_sha256(schedule.reshape(-1)) != SCHEDULE_HASH:
         raise ValueError("regularization pilot schedule hash mismatch")
-    if torch.isin(schedule.reshape(-1), regularization_data.heldout_indices).any():
+    if torch.isin(schedule.reshape(-1), regularization_data.full_data.pilot_data.heldout_indices).any():
         raise ValueError("regularization pilot schedule overlaps held-out data")
     manifest = {
         "schema": "lightgen_optical_manifold_identity_regularization_training_mnist_manifest.v1",
