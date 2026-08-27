@@ -734,6 +734,13 @@ def _sliced_wasserstein(
     return (ordered - quantiles.reshape(-1, 1)).square().mean()
 
 
+def _rank_assignment_is_permutation(ranks: torch.Tensor) -> bool:
+    if ranks.ndim != 2:
+        return False
+    expected = torch.arange(ranks.shape[0], device=ranks.device).reshape(-1, 1)
+    return bool(torch.equal(torch.sort(ranks, dim=0).values, expected.expand_as(ranks)))
+
+
 def _gaussian_control_swd(
     count: int,
     directions: torch.Tensor,
@@ -862,7 +869,7 @@ def _gradient_replay(
         "plane": plane,
         "provenance": provenance,
         "rank_assignment_shape": list(ranks.shape),
-        "rank_assignment_unique": bool(torch.unique(ranks, dim=0).shape[0] == GRADIENT_AUDIT_COUNT),
+        "rank_assignment_is_permutation": _rank_assignment_is_permutation(ranks),
     }
 
 

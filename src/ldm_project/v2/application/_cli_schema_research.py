@@ -118,6 +118,33 @@ def register_research(root: argparse._SubParsersAction) -> None:
     regularization_run.add_argument("--dataset-root", required=True)
     regularization_run.add_argument("--device", choices=("cuda",), default="cuda")
     regularization_run.add_argument("--output", required=True)
+    pilot_validate = optical_actions.add_parser(
+        "manifold-regularization-pilot-validate"
+    )
+    pilot_validate.add_argument("--config", required=True)
+    pilot_validate.add_argument("--review-contract", required=True)
+    pilot_validate.add_argument("--dataset-root", required=True)
+    pilot_validate.add_argument("--output", required=True)
+    pilot_preflight = optical_actions.add_parser(
+        "manifold-regularization-pilot-preflight"
+    )
+    pilot_preflight.add_argument("--config", required=True)
+    pilot_preflight.add_argument("--review-contract", required=True)
+    pilot_preflight.add_argument("--training-validation-evidence", required=True)
+    pilot_preflight.add_argument("--dataset-root", required=True)
+    pilot_preflight.add_argument("--device", choices=("cuda",), default="cuda")
+    pilot_preflight.add_argument("--output", required=True)
+    pilot_train = optical_actions.add_parser(
+        "manifold-regularization-pilot-train"
+    )
+    pilot_train.add_argument("--config", required=True)
+    pilot_train.add_argument("--review-contract", required=True)
+    pilot_train.add_argument("--training-validation-evidence", required=True)
+    pilot_train.add_argument("--training-preflight-evidence", required=True)
+    pilot_train.add_argument("--dataset-root", required=True)
+    pilot_train.add_argument("--device", choices=("cuda",), default="cuda")
+    pilot_train.add_argument("--output", required=True)
+    pilot_train.add_argument("--resume-checkpoint")
     fiber = research_programs.add_parser(
         "fiber-robustness", help="synthetic multi-matrix fiber diagnostics"
     )
