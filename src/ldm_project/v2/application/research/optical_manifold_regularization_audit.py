@@ -420,7 +420,8 @@ def _source_bundle(
         raise ValueError("PLAN 4 source authorization boundary is invalid")
     if validation_payload.get("formal_promotion") is not False or observer_payload.get("formal_promotion") is not False:
         raise ValueError("PLAN 4 source promotion boundary is invalid")
-    if observer_payload.get("model_state_unchanged") is not True or observer_payload.get("evaluator_calls") != 0:
+    observer_contract = observer_payload.get("contract", {})
+    if observer_contract.get("model_state_unchanged") is not True or observer_contract.get("evaluator_calls") != 0:
         raise ValueError("PLAN 4 source observer isolation is invalid")
     field = safe_torch_load(paths["pre_ols_field"][0], expected_sha256=SOURCE_FIELD_HASH, map_location="cpu")
     if field.get("schema") != "lightgen_optical_manifold_identity_pre_ols_field.v1":
