@@ -697,6 +697,16 @@ def _project_fields(fields: torch.Tensor, projection: Projection) -> torch.Tenso
     return scores / projection.whitening.reshape(1, -1)
 
 
+def _projection_on_device(projection: Projection, device: torch.device) -> Projection:
+    return Projection(
+        mean_field=projection.mean_field.to(device),
+        basis=projection.basis.to(device),
+        whitening=projection.whitening.to(device),
+        eigenvalues=projection.eigenvalues.to(device),
+        explained_variance=projection.explained_variance.to(device),
+    )
+
+
 def _fixed_directions(device: torch.device) -> torch.Tensor:
     generator = torch.Generator(device="cpu").manual_seed(PERMUTATION_SEED)
     directions = torch.randn(
@@ -801,6 +811,7 @@ def _gradient_replay(
 ) -> tuple[dict[str, torch.Tensor], dict[str, torch.Tensor], dict[str, Any]]:
     if indices.numel() != GRADIENT_BATCH_SIZE:
         raise ValueError("gradient replay requires exactly 100 samples")
+    projection = _projection_on_device(projection, device)
     # First pass fixes the piecewise-smooth rank assignment without retaining a graph.
     first_pass: list[torch.Tensor] = []
     plane: dict[str, Any] | None = None
