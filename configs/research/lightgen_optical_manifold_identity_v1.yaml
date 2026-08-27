@@ -1,0 +1,46 @@
+schema: lightgen_optical_manifold_identity_v1
+hypothesis: H-LOMA-I0
+formal_system_config: configs/v2/current/formal_identity_logit_amplitude_finite_crop_identity.yaml
+formal_system:
+  wavelength_m: 5.32e-7
+  slm_shape: [200, 200]
+  slm_pixel_pitch_m: 2.5e-6
+  metasurface_shape: [100, 100]
+  metasurface_pixel_pitch_m: 2.0e-6
+  propagation_grid_size: 2048
+  encoder_layers: 2
+  decoder_layers: 2
+  boundary: finite_crop
+  ols: identity
+dataset:
+  train: true
+  input_shape: [1, 28, 28]
+  rendered_shape: [1, 200, 200]
+  representative_selection: first_occurrence_per_label
+input_encoding: intensity_sqrt_amplitude
+target: camera_intensity_same_fov
+exposure:
+  scale: 1.0
+  gamma: 1.0
+loss: mse
+optimizer:
+  name: Adam
+  learning_rate: 1.0e-3
+  logical_batch_size: 10
+  microbatch_size: 1
+initialization:
+  phase: zero
+  seed: 1234
+execution:
+  propagation_grid_size: 2048
+  activation_checkpoint: true
+  device: cuda
+research:
+  diagnostic_only: true
+  formal_promotion: false
+  training_authorized: false
+  evaluator: none
+  software_decoder: false
+  smf: false
+  fmf: false
+  next_action: manual_review_identity_reconstruction_training_contract

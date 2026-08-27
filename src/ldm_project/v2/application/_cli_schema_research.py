@@ -8,6 +8,22 @@ def register_research(root: argparse._SubParsersAction) -> None:
         "research", help="diagnostic-only pre-registered research programs"
     )
     research_programs = research.add_subparsers(dest="research_program", required=True)
+    optical_manifold = research_programs.add_parser(
+        "optical-manifold", help="LightGen-like Identity optical manifold preflight"
+    )
+    optical_actions = optical_manifold.add_subparsers(
+        dest="research_action", required=True
+    )
+    optical_validate = optical_actions.add_parser("validate")
+    optical_validate.add_argument("--config", required=True)
+    optical_validate.add_argument("--dataset-root", required=True)
+    optical_validate.add_argument("--output", required=True)
+    optical_preflight = optical_actions.add_parser("preflight")
+    optical_preflight.add_argument("--validate-evidence", required=True)
+    optical_preflight.add_argument("--config", required=True)
+    optical_preflight.add_argument("--dataset-root", required=True)
+    optical_preflight.add_argument("--device", choices=("cuda",), default="cuda")
+    optical_preflight.add_argument("--output", required=True)
     fiber = research_programs.add_parser(
         "fiber-robustness", help="synthetic multi-matrix fiber diagnostics"
     )
