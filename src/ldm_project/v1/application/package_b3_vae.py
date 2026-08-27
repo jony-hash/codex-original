@@ -268,7 +268,7 @@ def _prepare_camera_cache(
         temporary = cache_path.with_name(f".{cache_path.name}.tmp")
         with temporary.open("wb") as handle:
             handle.truncate(element_count * 4)
-        mapped = torch.from_file(str(temporary), shared=False, size=element_count, dtype=torch.float32)
+        mapped = torch.from_file(str(temporary), shared=True, size=element_count, dtype=torch.float32)
         for start in range(0, data["images"].shape[0], 256):
             stop = min(start + 256, data["images"].shape[0])
             batch = _to_camera(data["images"][start:stop].to(device)).cpu()
@@ -279,7 +279,7 @@ def _prepare_camera_cache(
         atomic_json(metadata_path, metadata)
     if "sha256" not in metadata:
         metadata["sha256"] = file_sha256(cache_path)
-    mapped = torch.from_file(str(cache_path), shared=False, size=element_count, dtype=torch.float32)
+    mapped = torch.from_file(str(cache_path), shared=True, size=element_count, dtype=torch.float32)
     return mapped.reshape(-1, 1, IMAGE_SIZE, IMAGE_SIZE), metadata
 
 
