@@ -562,21 +562,42 @@ def _preflight(args: argparse.Namespace, config: dict[str, Any], data: dict[str,
 
     benchmark_model = _model(device)
     benchmark_optimizer = torch.optim.AdamW(benchmark_model.parameters(), lr=config["learning_rate"], weight_decay=config["weight_decay"])
-    benchmark_warmup_batches = 10
-    benchmark_batch_count = benchmark_warmup_batches + 200
+    benchmark_warmup_batches = 8
+    benchmark_batch_count = 200
     benchmark_indices = fitting[: benchmark_batch_count * config["microbatch_size"]]
-    for start in range(0, benchmark_warmup_batches * config["microbatch_size"], config["microbatch_size"]):
+    benchmark_optimizer.zero_grad(set_to_none=True)
+    for batch_number in range(benchmark_warmup_batches):
+        start = batch_number * config["microbatch_size"]
         batch = benchmark_indices[start : start + config["microbatch_size"]]
         benchmark_images = _to_camera(data["images"].index_select(0, batch).to(device, non_blocking=True))
         benchmark_labels = data["labels"].index_select(0, batch).to(device, non_blocking=True)
-        _preflight_update(benchmark_model, benchmark_optimizer, benchmark_images, benchmark_labels, config, 1)
+        loss, _ = _batch_loss(benchmark_model, benchmark_images, benchmark_labels, config, 1)
+        if not bool(torch.isfinite(loss).item()):
+            raise ValueError("Package B3 preflight benchmark loss is non-finite")
+        (loss / config["gradient_accumulation"]).backward()
+        if (batch_number + 1) % config["gradient_accumulation"] == 0:
+            if not _gradient_norm_is_finite(benchmark_model):
+                raise ValueError("Package B3 preflight benchmark gradient is non-finite")
+            benchmark_optimizer.step()
+            benchmark_optimizer.zero_grad(set_to_none=True)
     torch.cuda.synchronize(device)
     train_started = time.perf_counter()
-    for start in range(benchmark_warmup_batches * config["microbatch_size"], benchmark_batch_count * config["microbatch_size"], config["microbatch_size"]):
+    for batch_number in range(benchmark_warmup_batches, benchmark_warmup_batches + benchmark_batch_count):
+        start = batch_number * config["microbatch_size"]
         batch = benchmark_indices[start : start + config["microbatch_size"]]
+        if batch.numel() != config["microbatch_size"]:
+            batch = fitting[batch_number * config["microbatch_size"] : (batch_number + 1) * config["microbatch_size"]]
         benchmark_images = _to_camera(data["images"].index_select(0, batch).to(device, non_blocking=True))
         benchmark_labels = data["labels"].index_select(0, batch).to(device, non_blocking=True)
-        _preflight_update(benchmark_model, benchmark_optimizer, benchmark_images, benchmark_labels, config, 1)
+        loss, _ = _batch_loss(benchmark_model, benchmark_images, benchmark_labels, config, 1)
+        if not bool(torch.isfinite(loss).item()):
+            raise ValueError("Package B3 preflight benchmark loss is non-finite")
+        (loss / config["gradient_accumulation"]).backward()
+        if (batch_number + 1) % config["gradient_accumulation"] == 0:
+            if not _gradient_norm_is_finite(benchmark_model):
+                raise ValueError("Package B3 preflight benchmark gradient is non-finite")
+            benchmark_optimizer.step()
+            benchmark_optimizer.zero_grad(set_to_none=True)
     torch.cuda.synchronize(device)
     train_elapsed = time.perf_counter() - train_started
 
