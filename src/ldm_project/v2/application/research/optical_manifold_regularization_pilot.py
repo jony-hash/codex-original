@@ -991,6 +991,7 @@ def _load_resume(
     spec: PilotSpec,
     data: PilotData,
     evidence_hashes: Mapping[str, str],
+    require_completed_regularized: bool = False,
 ) -> dict[str, Any]:
     payload = safe_torch_load(path, map_location="cpu")
     if not isinstance(payload, dict) or payload.get("schema") != RESUME_SCHEMA:
@@ -1009,7 +1010,7 @@ def _load_resume(
         raise ValueError("regularization pilot resume is missing state")
     if arm == "regularized" and payload.get("completed_arms") not in ({}, None):
         raise ValueError("regularized resume has unexpected completed-arm metadata")
-    if arm == "mse_only":
+    if arm == "mse_only" and require_completed_regularized:
         completed = payload.get("completed_arms")
         if not isinstance(completed, Mapping) or not isinstance(completed.get("regularized"), Mapping) or completed["regularized"].get("status") != "completed":
             raise ValueError("mse_only resume lacks completed regularized arm")
@@ -1525,7 +1526,15 @@ def _train(args: argparse.Namespace) -> int:
             history = list(completed_payload["loss_history"])
             checkpoint_hashes["final"] = file_sha256(completed_path)
         elif args.resume_checkpoint and resume_arm == arm:
-            resume = _load_resume(args.resume_checkpoint, model, optimizer, spec=spec, data=data, evidence_hashes=run_hashes)
+            resume = _load_resume(
+                args.resume_checkpoint,
+                model,
+                optimizer,
+                spec=spec,
+                data=data,
+                evidence_hashes=run_hashes,
+                require_completed_regularized=arm == "mse_only",
+            )
             start_step = int(resume["step"])
             history = list(resume["loss_history"])
         if not (resume_arm == "mse_only" and arm == "regularized"):
