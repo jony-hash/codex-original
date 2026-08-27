@@ -288,11 +288,11 @@ def _stratified_split(labels: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]
     validation_parts: list[torch.Tensor] = []
     for label in range(10):
         indices = torch.nonzero(labels == label, as_tuple=False).flatten()
-        if indices.numel() != 6000:
-            raise ValueError("MNIST split is not the expected 6000 examples per label")
+        if indices.numel() < 500:
+            raise ValueError("MNIST split has too few examples for a 500-per-class validation split")
         shuffled = indices[torch.randperm(indices.numel(), generator=generator)]
-        train_parts.append(shuffled[:5500])
-        validation_parts.append(shuffled[5500:])
+        train_parts.append(shuffled[:-500])
+        validation_parts.append(shuffled[-500:])
     return torch.cat(train_parts), torch.cat(validation_parts)
 
 
@@ -300,7 +300,7 @@ def _schedule(train_indices: torch.Tensor, labels: torch.Tensor) -> torch.Tensor
     per_label = []
     for label in range(10):
         selected = train_indices[labels.index_select(0, train_indices) == label]
-        if selected.numel() != 5500:
+        if selected.numel() < MAX_STEPS:
             raise ValueError("stratified train split is incomplete")
         per_label.append(selected[:MAX_STEPS])
     return torch.stack(per_label, dim=1)
