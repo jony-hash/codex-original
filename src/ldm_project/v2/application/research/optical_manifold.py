@@ -915,8 +915,14 @@ def preflight(args: argparse.Namespace) -> int:
 
 
 def dispatch(args: argparse.Namespace) -> int:
-    if args.research_action in {"train-validate", "train-preflight", "train"}:
-        from .optical_manifold_training import dispatch as training_dispatch
+    if args.research_action in {
+        "train-validate", "train-preflight", "train",
+        "full-epoch-validate", "full-epoch-preflight", "full-epoch-train",
+    }:
+        if args.research_action.startswith("full-epoch"):
+            from .optical_manifold_full_epoch import dispatch as training_dispatch
+        else:
+            from .optical_manifold_training import dispatch as training_dispatch
 
         return int(training_dispatch(args) or 0)
     if args.research_action == "validate":
