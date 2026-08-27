@@ -69,6 +69,18 @@ def test_b3_formal_bank_partition_is_disjoint_and_reproducible() -> None:
     assert first_ids.isdisjoint(second_ids)
 
 
+def test_b3_fitting_and_development_indices_are_disjoint() -> None:
+    labels = torch.arange(10).repeat_interleave(600)
+    train_indices = torch.arange(labels.numel())
+    fitting, development = producer._select_development(
+        train_indices, labels, seed=49979687, samples_per_class=50
+    )
+    assert fitting.numel() == 5500
+    assert development.numel() == 500
+    assert set(fitting.tolist()).isdisjoint(set(development.tolist()))
+    assert torch.bincount(labels.index_select(0, development), minlength=10).tolist() == [50] * 10
+
+
 def test_b3_checkpoint_loader_rejects_wrong_model_version(tmp_path) -> None:
     path = tmp_path / "bad.pt"
     torch.save({"model_version": "old_linear_metasurface"}, path)

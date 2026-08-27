@@ -530,7 +530,7 @@ def _train(args: argparse.Namespace, config: dict[str, Any], data: dict[str, Any
         model.eval()
         development_losses = []
         with torch.inference_mode():
-            for start in range(0, len(development_images), config["microbatch_size"]):
+            for start in range(0, development_indices.numel(), config["microbatch_size"]):
                 indices = development_indices[start : start + config["microbatch_size"]]
                 images = _to_camera(development_images.index_select(0, indices).to(device))
                 labels = development_labels[start : start + config["microbatch_size"]].to(device)
