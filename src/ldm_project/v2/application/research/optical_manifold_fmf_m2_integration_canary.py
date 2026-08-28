@@ -783,7 +783,7 @@ def _preflight_controls(model: base.IdentityOpticalManifoldAutoencoder, smf: Fib
         "fmf_coefficients_shape": list(coeff.shape) if isinstance(coeff, torch.Tensor) else None,
         "fmf_provenance": fmf_diag["provenance"].get("operation"),
         "lp01_nested_exact": bool(torch.equal(smf_lp01.cpu(), fmf_lp01.cpu())),
-        "mode_bank_orthonormal": bool((gram - torch.eye(200, dtype=gram.dtype)).abs().max() <= 2.0e-4),
+        "mode_bank_orthonormal": bool((gram - torch.eye(200, dtype=gram.dtype, device=gram.device)).abs().max() <= 2.0e-4),
         "mode_bank_rank": int(torch.linalg.matrix_rank(gram).item()),
         "identity_transport": bool(torch.equal(fmf.transport.cpu(), torch.eye(200, dtype=fmf.transport.dtype))),
         "lp11a_coefficient_nonzero": bool(isinstance(mode_coeff, torch.Tensor) and mode_coeff[..., 1].abs().max() > 1.0e-8),
