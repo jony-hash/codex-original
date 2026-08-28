@@ -1,0 +1,34 @@
+{
+  "schema": "lightgen_optical_manifold_smf_ols_loss_recovery_review.v1",
+  "hypothesis": "H-LOMA-I0",
+  "reviewer_role": "project_owner",
+  "decision": "approve_fixed_ols_projection_loss_recovery_canary",
+  "approved_contract": {
+    "arms": ["optical_mse_control", "optical_coupling", "posterior_no_kl_coupling", "posterior_kl_coupling"],
+    "steps_per_arm": 100,
+    "logical_batch_size": 10,
+    "microbatch_size": 1,
+    "source_global_step": 1000,
+    "preflight_steps": 3,
+    "resume_segment": "2+1",
+    "checkpoint_interval": 50,
+    "projection_loss": "one_minus_smf_power_retention",
+    "fixed_transport": true,
+    "post_canary_next_action": "manual_review_fixed_ols_manifold_full_training_contract",
+    "post_invalid_next_action": "manual_review_smf_bottleneck_attribution_contract"
+  },
+  "bounded_diagnostic_training_authorized": true,
+  "training_authorized": false,
+  "formal_training_authorized": false,
+  "formal_promotion": false,
+  "prohibited": [
+    "formal_v2_change",
+    "formal_smf_or_fmf_change",
+    "trainable_ols_transport",
+    "extra_epoch_before_canary_closeout",
+    "latent_prior_generation",
+    "generation",
+    "evaluator",
+    "promotion"
+  ]
+}

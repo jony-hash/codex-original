@@ -1,0 +1,104 @@
+schema: lightgen_optical_manifold_smf_ols_loss_recovery_v1
+hypothesis: H-LOMA-I0
+formal_system_config: configs/v2/current/formal_identity_logit_amplitude_finite_crop_identity.yaml
+
+source:
+  plan6_checkpoint: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_reconstruction_pilot_v1_attempt_04/smf_mse_reconstruction_step_1000.pt
+  plan6_checkpoint_sha256: 949bf6903db8a6c5c8b76fddfddeef31f9419717486f278cbf0ed9d86534dd94
+  plan6_validation_sha256: d548cf93f2cfefb2258239b066b14f574b098bfa17edc0f377f718fd2cba3ca5
+  plan6_preflight_sha256: 722557fc0bfc058edafa8666772ee87bb927b0a37924b55087467303d3a56623
+  plan6_training_sha256: a95890d8feb38c0682179cbbb4ef612d49c5f1918609596524959b789e672c3e
+  kl_effect_validation: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_vae_kl_effect_v1_attempt_03/validation.json
+  kl_effect_validation_sha256: 67ff61c726c3c95c0cc8625df79300f51af528da3aabd8916305f1cc750e43a2
+  kl_effect_preflight: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_vae_kl_effect_v1_attempt_03/preflight.json
+  kl_effect_preflight_sha256: ede0bc750e927c47b87b7bc6dcc4ffd01bc954d6af1aca7f8c57dce6e3a5fe2e
+  kl_effect_training: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_vae_kl_effect_v1_attempt_03/training.json
+  kl_effect_training_sha256: b1182f804a32596a430f4570383d1b1d8f76cebee611e73943e99a88c7ea7659
+  kl_dose_audit: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_vae_kl_dose_reaudit_v1_attempt_02/dose_reaudit.json
+  kl_dose_audit_sha256: 2d708bc3eea54dcfe8f580261891387c5e04698d6673667b421e53132fe3329f
+  mnist_manifest_sha256: 64b1b70dc119dac0cb0aa8b898614962ff993a83d120390d1d6fadd55ade97d8
+  source_global_step: 1000
+
+dataset:
+  train_count: 55000
+  validation_count: 5000
+  calibration_count: 1000
+  steps_per_arm: 100
+  logical_batch_size: 10
+  microbatch_size: 1
+  schedule: fresh_balanced_one_per_label_without_replacement
+  schedule_seed: 1234
+  excluded_prior_panels: true
+  heldout_excluded: true
+  input_shape: [1, 28, 28]
+  rendered_shape: [1, 200, 200]
+  heldout_panel_count: 1000
+  visual_panel_count: 100
+
+optical_contract:
+  formal_system_kind: formal_amplitude_finite_crop_identity
+  wavelength_m: 5.32e-7
+  slm_shape: [200, 200]
+  slm_pixel_pitch_m: 2.5e-6
+  metasurface_shape: [100, 100]
+  metasurface_pixel_pitch_m: 2.0e-6
+  propagation_grid_size: 2048
+  encoder_layers: 2
+  decoder_layers: 2
+  formal_ols: identity
+  research_ols: 100_port_lp01_smf
+  fixed_transport: true
+  fixed_exposure: {scale: 1.0, gamma: 1.0}
+  projection_loss: one_minus_smf_power_retention
+  projection_loss_status: project_physics_choice
+  posterior_status: project_approximation
+
+training:
+  arms: [optical_mse_control, optical_coupling, posterior_no_kl_coupling, posterior_kl_coupling]
+  execution_order: [posterior_kl_coupling, posterior_no_kl_coupling, optical_coupling, optical_mse_control]
+  optimizer: Adam
+  optimizer_update_device: cpu_shadow
+  learning_rate: 1.0e-3
+  reset_adam_from_source: true
+  steps_per_arm: 100
+  checkpoint_interval: 50
+  reconstruction_activation_checkpoint: true
+  deterministic: true
+  epsilon_seed: 1234
+  registered_beta: 0.0018256452619527068
+  candidate_beta: 0.014605162095621654
+  coupling_lambda_registration: 0.1_encoder_mse_norm_over_projection_norm
+  no_early_stop: true
+  no_tuning: true
+  no_checkpoint_selection: true
+
+gates:
+  min_free_cuda_bytes: 4294967296
+  max_peak_cuda_bytes: 5368709120
+  max_preflight_wall_seconds: 300
+  max_canary_wall_seconds: 1800
+  max_full_training_wall_seconds: 5400
+  max_storage_bytes: 1073741824
+  safety_mse_ratio: 2.0
+  min_power_retention_improvement: 0.05
+  max_mse_relative_to_control: 1.02
+  min_coefficient_rank_retention: 0.90
+  min_posterior_variance_retention: 0.50
+  evaluator_calls: 0
+
+authorization:
+  reviewer_role: project_owner
+  decision: approve_fixed_ols_projection_loss_recovery_canary
+  bounded_diagnostic_training_authorized: true
+  training_authorized: false
+  formal_training_authorized: false
+  formal_promotion: false
+  prohibited:
+    - formal_v2_change
+    - formal_smf_or_fmf_change
+    - trainable_ols_transport
+    - extra_epoch_before_canary_closeout
+    - latent_prior_generation
+    - generation
+    - evaluator
+    - promotion

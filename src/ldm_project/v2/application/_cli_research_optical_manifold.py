@@ -52,6 +52,12 @@ def dispatch(args: argparse.Namespace) -> int:
         "smf-kl-effect-pilot-train",
     }:
         from .research.optical_manifold_smf_vae_kl_effect import dispatch
+    elif action in {
+        "smf-ols-loss-recovery-validate",
+        "smf-ols-loss-recovery-preflight",
+        "smf-ols-loss-recovery-train",
+    }:
+        from .research.optical_manifold_smf_ols_loss_recovery import dispatch
     else:
         from .research.optical_manifold import dispatch
     return int(dispatch(args) or 0)
