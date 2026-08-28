@@ -1015,3 +1015,21 @@ lineage, isolation, numerical, or resource failure is `invalid_harness`.
 This audit does not authorize continuation, VAE KL, latent sampling, SMF/FMF,
 generation, or promotion. Evidence remains
 `training_authorized=false` and `formal_promotion=false`.
+
+### H-LOMA-I0 PLAN 5c adaptive projection audit authorization（2026-08-28）
+
+The project owner authorized one no-update, diagnostic-only cross-fitted
+projection audit on branch
+`research/v2-lightgen-optical-manifold-adaptive-projection-audit-v1`. It
+consumes the authoritative PLAN 5b validation, audit and projection evidence,
+the step-5500 source checkpoint, both 100-step pilot checkpoints, and the
+MNIST manifest. The real consumer is a manual decision on a bounded
+regularization pilot using a stable deterministic projection.
+
+The audit fits candidate ranks 16/24/32 on three fresh train-only calibration
+panels, constructs a fixed consensus projector, and evaluates an independent
+assessment panel plus three gradient-control panels. The assessment panel is
+not used for fitting or selection. The phase model, formal 2+2 Identity path,
+fixed exposure and all source artifacts remain unchanged. No optimizer,
+parameter update, checkpoint, KL, latent sampling, SMF/FMF, generation or
+promotion is permitted.

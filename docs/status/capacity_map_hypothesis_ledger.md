@@ -712,3 +712,22 @@ higher-dose and rank-permuted-control gates identify whether the current
 objective is a viable candidate for a new bounded pilot. All outputs remain
 diagnostic-only with `training_authorized=false` and
 `formal_promotion=false`.
+
+### H-LOMA-I0 PLAN 5c adaptive projection audit authorization（2026-08-28）
+
+The PLAN 5b fixed-projection failure is consumed by one no-update cross-fitted
+projection audit on branch
+`research/v2-lightgen-optical-manifold-adaptive-projection-audit-v1`. Its real
+consumer is a manual decision on whether a stable deterministic projection can
+support a new bounded regularization pilot. The audit binds the authoritative
+PLAN 5b evidence, source and pilot checkpoints, the MNIST manifest, and the
+original 32D projection.
+
+Three disjoint balanced calibration panels fit candidate ranks 16, 24 and 32;
+an independent assessment panel is never used to fit rank, basis or
+whitening. A fixed consensus basis is constructed from the calibration
+projectors. The audit then replays the deterministic aggregate-prior gradient
+with a newly calibrated dose and a fixed rank-permuted negative control. No
+optimizer, model update, checkpoint, VAE KL, latent sampling, SMF/FMF,
+generation or promotion is authorized. Evidence remains
+`training_authorized=false` and `formal_promotion=false`.

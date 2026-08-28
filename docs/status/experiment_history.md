@@ -1635,3 +1635,18 @@ parameter, writes no checkpoint and cannot authorize KL, SMF/FMF, generation
 or promotion. Its real consumer is the manual decision on a possible bounded
 dose-response pilot; all other outcomes stop the line under their registered
 manual review action.
+
+### H-LOMA-I0 PLAN 5c adaptive projection audit（2026-08-28）
+
+Following the valid fixed-projection stability failure, the project owner
+authorized one diagnostic-only, no-update cross-fitted projection audit on
+`research/v2-lightgen-optical-manifold-adaptive-projection-audit-v1`. It uses
+three disjoint balanced calibration panels, an independent assessment panel
+and three gradient-control panels after excluding every prior panel and the
+held-out split. Candidate ranks are 16/24/32; the selected consensus projection
+is fit only from calibration data.
+
+The audit will distinguish finite-sample PCA instability from genuine model
+drift, then retest deterministic sliced-Wasserstein dose compatibility and a
+rank-permuted control. It cannot update a model or create a checkpoint and
+does not authorize KL, SMF/FMF, generation or promotion.
