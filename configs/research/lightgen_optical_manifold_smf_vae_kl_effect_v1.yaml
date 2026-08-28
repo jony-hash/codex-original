@@ -1,0 +1,118 @@
+schema: lightgen_optical_manifold_smf_vae_kl_effect_v1
+hypothesis: H-LOMA-I0
+formal_system_config: configs/v2/current/formal_identity_logit_amplitude_finite_crop_identity.yaml
+
+source:
+  plan6_validation: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_reconstruction_pilot_v1_attempt_04/validation.json
+  plan6_validation_sha256: d548cf93f2cfefb2258239b066b14f574b098bfa17edc0f377f718fd2cba3ca5
+  plan6_preflight: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_reconstruction_pilot_v1_attempt_04/preflight.json
+  plan6_preflight_sha256: 722557fc0bfc058edafa8666772ee87bb927b0a37924b55087467303d3a56623
+  plan6_training: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_reconstruction_pilot_v1_attempt_04/training.json
+  plan6_training_sha256: a95890d8feb38c0682179cbbb4ef612d49c5f1918609596524959b789e672c3e
+  source_checkpoint: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_reconstruction_pilot_v1_attempt_04/smf_mse_reconstruction_step_1000.pt
+  source_checkpoint_sha256: 949bf6903db8a6c5c8b76fddfddeef31f9419717486f278cbf0ed9d86534dd94
+  source_global_step: 1000
+  mnist_manifest_sha256: 64b1b70dc119dac0cb0aa8b898614962ff993a83d120390d1d6fadd55ade97d8
+  vae_validation: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_vae_pilot_v1_attempt_06/validation.json
+  vae_validation_sha256: d50919acb75ffe68453db52a6d87ebdfeb8ae9963f157b0bd3afb582f17de04c
+  vae_preflight: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_vae_pilot_v1_attempt_06/preflight.json
+  vae_preflight_sha256: 5e1f8569e7e58ce086db37a318df76fa81107820323128dafbedd02ad0e8a936
+  vae_training: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_vae_pilot_v1_attempt_06/training.json
+  vae_training_sha256: ec6afc5b15274ce9a7e2446bef43bb6346007480da23408fe1399b412200c476
+  vae_normalization: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_vae_pilot_v1_attempt_06/posterior_normalization.pt
+  vae_normalization_sha256: e764ceb31e9ce1aa24f2cd9ad909011550aa6ad095404916ff84be8f93d07a85
+  kl_attribution_audit: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_vae_kl_attribution_audit_v1_attempt_06/audit.json
+  kl_attribution_audit_sha256: 40d612e20ffc7044c0a8e21bce86c7d07f3076a31ea0d6aadee5fa6f53ea22ce
+  kl_dose_validation: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_vae_kl_dose_reaudit_v1_attempt_02/validation.json
+  kl_dose_validation_sha256: c1314bcd31d2990c7ebc87b5401c100f7b7a081b26011d6a830a3764f104b273
+  kl_dose_audit: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_vae_kl_dose_reaudit_v1_attempt_02/dose_reaudit.json
+  kl_dose_audit_sha256: 2d708bc3eea54dcfe8f580261891387c5e04698d6673667b421e53132fe3329f
+
+dataset:
+  train_count: 55000
+  validation_count: 5000
+  calibration_count: 1000
+  training_count: 1000
+  steps_per_arm: 100
+  logical_batch_size: 10
+  microbatch_size: 1
+  schedule: class_balanced_one_per_label_without_replacement
+  schedule_seed: 1234
+  excluded_prior_panels: true
+  calibration_and_schedule_disjoint: true
+  heldout_excluded: true
+  input_shape: [1, 28, 28]
+  rendered_shape: [1, 200, 200]
+  heldout_panel_count: 1000
+  visual_panel_count: 100
+
+optical_contract:
+  formal_system_kind: formal_amplitude_finite_crop_identity
+  wavelength_m: 5.32e-7
+  slm_shape: [200, 200]
+  slm_pixel_pitch_m: 2.5e-6
+  metasurface_shape: [100, 100]
+  metasurface_pixel_pitch_m: 2.0e-6
+  propagation_grid_size: 2048
+  encoder_layers: 2
+  decoder_layers: 2
+  boundary: finite_crop
+  formal_ols: identity
+  research_ols: 100_port_lp01_smf
+  posterior_domain: 100_complex_coefficients_as_200_real
+  posterior_head: shared_per_port_linear_16_silu
+  posterior_status: project_approximation
+  fixed_transport: true
+  input_encoding: intensity_sqrt_amplitude
+  target: camera_intensity_same_fov
+  exposure: {scale: 1.0, gamma: 1.0}
+
+training:
+  arms: [smf_deterministic_mse, smf_posterior_no_kl, smf_current_beta_vae, smf_candidate_beta_vae]
+  optimizer: Adam
+  optimizer_update_device: cpu_shadow
+  learning_rate: 1.0e-3
+  reset_adam_from_source: true
+  steps_per_arm: 100
+  checkpoint_interval: 50
+  reconstruction_activation_checkpoint: true
+  deterministic: true
+  epsilon_seed: 1234
+  registered_beta: 0.0018256452619527068
+  candidate_multiplier: 8.0
+  candidate_beta: 0.014605162095621654
+  no_early_stop: true
+  no_tuning: true
+  no_checkpoint_selection: true
+
+gates:
+  min_free_cuda_bytes: 4294967296
+  max_peak_cuda_bytes: 5368709120
+  max_preflight_wall_seconds: 300
+  max_wall_seconds: 1800
+  max_storage_bytes: 1073741824
+  safety_mse_ratio: 2.0
+  candidate_kl_reduction_fraction: 0.02
+  max_candidate_mse_relative_to_no_kl: 1.05
+  min_posterior_variance_retention: 0.50
+  min_active_latent_retention: 0.90
+  evaluator_calls: 0
+
+authorization:
+  reviewer_role: project_owner
+  decision: approve_bounded_smf_vae_kl_effect_pilot
+  bounded_diagnostic_training_authorized: true
+  training_authorized: false
+  formal_training_authorized: false
+  formal_promotion: false
+  post_pass_next_action: manual_review_identity_ols_coupling_pilot_contract
+  post_valid_failed_next_action: manual_review_smf_vae_kl_objective_contract
+  prohibited:
+    - formal_v2_change
+    - formal_smf_or_fmf_change
+    - trainable_ols_transport
+    - extra_epoch
+    - latent_prior_generation
+    - generation
+    - evaluator
+    - promotion

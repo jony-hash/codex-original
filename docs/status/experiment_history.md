@@ -1701,6 +1701,19 @@ or authorize FMF. The sole next action is
 `manual_review_smf_canary_visual_and_metric_trends`; all evidence retains
 `training_authorized=false` and `formal_promotion=false`.
 
+### 2026-08-28：H-LOMA-I0 corrected KL effect pilot registration
+
+The corrected no-update KL dose reaudit completed with exact source MSE replay,
+finite gradients, explicit four-layer checks, KL encoder/posterior isolation,
+model freeze and the unique compatible `8x` multiplier. The earlier
+invalid-harness dose attempt remains preserved and is not scientific evidence.
+
+The next authorized consumer is one four-arm, 100-step matched pilot using the
+PLAN 6 SMF checkpoint, a fresh disjoint balanced schedule, shared epsilon for
+posterior arms, reset Adam and persisted `2+1` resume. Its rejection decision
+is the registered KL/reconstruction/collapse gate. No trainable OLS transport,
+FMF long training, prior-only sampling, generation or promotion is authorized.
+
 ## 2026-08-28：H-LOMA-I0 SMF VAE KL chain attribution audit closeout
 
 The authoritative no-update KL audit completed on clean commit `f47e8c6` in

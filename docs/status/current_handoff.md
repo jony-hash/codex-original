@@ -1334,3 +1334,18 @@ pilot、固定 OLS projection/coupling-loss canary 和 1000-step continuation。
 projection loss 只作用于 encoder，KL 只直接作用于 encoder/posterior，CMOS
 MSE 负责全链路 reconstruction。可训练 OLS transport、先验生成、FMF 长训练、
 formal promotion 和 `outputs/final_pt/` 修改均不在授权范围内。
+
+## H-LOMA-I0：corrected KL effect pilot registration（2026-08-28）
+
+The corrected no-update dose reaudit selected the sole common compatible
+multiplier `8x`, giving effective beta `0.014605162095621654`; source replay,
+gradient-boundary, freeze and resource gates passed. The earlier dose attempt
+remains immutable and invalid-harness.
+
+The project owner authorized one four-arm, 100-step diagnostic causal pilot on
+this branch: deterministic MSE, stochastic no-KL, current-beta VAE and
+corrected-beta VAE. It uses a fresh disjoint balanced schedule and shared
+posterior epsilon. Fixed SMF modes, identity transport, formal IdentityOLS,
+relay and exposure are preserved. No trainable OLS transport, prior-only
+generation, FMF extension or promotion is authorized; evidence remains
+`training_authorized=false` and `formal_promotion=false`.

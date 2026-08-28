@@ -761,6 +761,21 @@ objective is a viable candidate for a new bounded pilot. All outputs remain
 diagnostic-only with `training_authorized=false` and
 `formal_promotion=false`.
 
+## H-LOMA-I0：KL causal confirmation and fixed OLS loss recovery（2026-08-28）
+
+The real consumer is the project-owner decision on whether corrected KL has a
+measurable short-budget effect before a physical projection/coupling loss is
+introduced. Fail-closed rejection covers source lineage, beta composition,
+resume, gradient isolation, finite values, state freeze and resource gates.
+
+The dose reaudit selected `8x` of registered beta
+`0.0018256452619527068`, or effective beta `0.014605162095621654`. The
+authorized four-arm pilot and subsequent coupling experiment keep SMF mode
+banks, identity transport, formal IdentityOLS, relay and exposure fixed.
+Trainable transport, FMF long training, prior-only generation and promotion
+remain prohibited; all evidence retains `training_authorized=false` and
+`formal_promotion=false`.
+
 ### H-LOMA-I0 PLAN 5c adaptive projection audit authorization（2026-08-28）
 
 The PLAN 5b fixed-projection failure is consumed by one no-update cross-fitted
