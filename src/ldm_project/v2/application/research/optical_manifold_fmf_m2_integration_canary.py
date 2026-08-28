@@ -767,10 +767,11 @@ def _load_validation(path: str | Path, spec: CanarySpec, formal: FormalSystemCon
 
 def _preflight_controls(model: base.IdentityOpticalManifoldAutoencoder, smf: FiberArrayOLS, fmf: FewModeFiberArrayOLS, data: CanaryData, device: torch.device) -> dict[str, Any]:
     amplitudes, _target = _batch(data, data.schedule[0], device)
-    smf_raw, _smf_pre, smf_diag = _forward(model, smf, amplitudes, trace=True)
-    fmf_raw, _fmf_pre, fmf_diag = _forward(model, fmf, amplitudes, trace=True)
-    zero = _fmf_operator(model, device, zero_transport=True)
-    zero_raw, _zero_pre, zero_diag = _forward(model, zero, amplitudes, trace=True)
+    with torch.no_grad():
+        smf_raw, _smf_pre, smf_diag = _forward(model, smf, amplitudes, trace=True)
+        fmf_raw, _fmf_pre, fmf_diag = _forward(model, fmf, amplitudes, trace=True)
+        zero = _fmf_operator(model, device, zero_transport=True)
+        zero_raw, _zero_pre, zero_diag = _forward(model, zero, amplitudes, trace=True)
     smf_lp01 = smf.input_modes
     fmf_lp01 = fmf.input_modes[0::2]
     area = model.system.encoder_plane.pixel_pitch_m[0] * model.system.encoder_plane.pixel_pitch_m[1]
@@ -803,6 +804,7 @@ def _preflight_controls(model: base.IdentityOpticalManifoldAutoencoder, smf: Fib
 def _exact_resume(formal: FormalSystemConfig, source: SourceBundle, data: CanaryData, arm: str, spec: CanarySpec, hashes: Mapping[str, str], output_dir: Path, device: torch.device) -> dict[str, Any]:
     continuous_history: list[dict[str, Any]] = []
     split_history: list[dict[str, Any]] = []
+    torch.cuda.reset_peak_memory_stats(device)
     continuous_model, continuous_optimizer, continuous_operator = _runtime(formal, source, device, arm)
     for step in range(PREFLIGHT_STEPS):
         amp, target = _batch(data, data.schedule[step], device)
