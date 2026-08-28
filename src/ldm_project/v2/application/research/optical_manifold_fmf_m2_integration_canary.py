@@ -628,7 +628,7 @@ def _evaluate(model: base.IdentityOpticalManifoldAutoencoder, operator: FiberArr
     flat_target = target.flatten(1)
     c0 = flat_camera - flat_camera.mean(1, keepdim=True)
     t0 = flat_target - flat_target.mean(1, keepdim=True)
-    correlation = (c0 * t0).sum(1) / (c0.norm(1) * t0.norm(1)).clamp_min(1.0e-30)
+    correlation = (c0 * t0).sum(1) / (c0.norm(dim=1) * t0.norm(dim=1)).clamp_min(1.0e-30)
     labels = data.labels.index_select(0, data.visual_indices).cpu()
     mode_power = torch.cat(powers) if powers else torch.empty(0)
     power_fraction = (mode_power.mean(0) / mode_power.mean(0).sum().clamp_min(1.0e-30)).tolist() if mode_power.numel() else []
@@ -811,18 +811,24 @@ def _exact_resume(formal: FormalSystemConfig, source: SourceBundle, data: Canary
     continuous_optimizer_state = _tree_clone(continuous_optimizer.state_dict())
     continuous_operator_state = _state_cpu(continuous_operator)
     continuous_rng = _tree_clone(base._rng_state())
+    torch.cuda.synchronize(device)
+    continuous_peak = int(torch.cuda.max_memory_allocated(device))
     del continuous_model, continuous_optimizer, continuous_operator
     gc.collect()
     torch.cuda.empty_cache()
+    torch.cuda.reset_peak_memory_stats(device)
     split_model, split_optimizer, split_operator = _runtime(formal, source, device, arm)
     for step in range(PREFLIGHT_STEPS - 1):
         amp, target = _batch(data, data.schedule[step], device)
         split_history.append(_step(split_model, split_optimizer, split_operator, amp, target, arm))
     path = output_dir / f"preflight_{arm}_step_00002.pt"
     _save_checkpoint(path, _resume_payload(split_model, split_optimizer, split_operator, arm=arm, step=2, history=split_history, initial_losses=[0.0] * STEPS, spec=spec, data=data, hashes=hashes))
+    torch.cuda.synchronize(device)
+    split_peak = int(torch.cuda.max_memory_allocated(device))
     del split_model, split_optimizer, split_operator
     gc.collect()
     torch.cuda.empty_cache()
+    torch.cuda.reset_peak_memory_stats(device)
     resumed_model, resumed_optimizer, resumed_operator = _runtime(formal, source, device, arm)
     _load_resume(path, resumed_model, resumed_optimizer, resumed_operator, arm=arm, spec=spec, data=data, hashes=hashes, output_dir=output_dir)
     amp, target = _batch(data, data.schedule[2], device)
@@ -831,6 +837,8 @@ def _exact_resume(formal: FormalSystemConfig, source: SourceBundle, data: Canary
     resumed_model_state = {name: value.detach().cpu().clone() for name, value in resumed_model.state_dict().items()}
     resumed_optimizer_state = _tree_clone(resumed_optimizer.state_dict())
     resumed_operator_state = _state_cpu(resumed_operator)
+    torch.cuda.synchronize(device)
+    resumed_peak = int(torch.cuda.max_memory_allocated(device))
     loss_exact = all(left["loss"] == right["loss"] for left, right in zip(continuous_history, split_history, strict=True))
     return {
         "continuous": continuous_history,
@@ -843,6 +851,8 @@ def _exact_resume(formal: FormalSystemConfig, source: SourceBundle, data: Canary
         "finite": all(item["finite"] for item in continuous_history + split_history),
         "resume_artifact": str(path.resolve()),
         "resume_artifact_sha256": file_sha256(path),
+        "peak_cuda_bytes": max(continuous_peak, split_peak, resumed_peak),
+        "peak_cuda_phases": {"continuous_3_step": continuous_peak, "split_2_step": split_peak, "resumed_step": resumed_peak},
     }
 
 
@@ -881,7 +891,10 @@ def preflight(args: argparse.Namespace) -> int:
         source_formal_state = _state_cpu(source_model.system.ols)
         source_smf_state = _state_cpu(source_smf)
         source_fmf_state = _state_cpu(source_fmf)
+        torch.cuda.reset_peak_memory_stats(device)
         controls = _preflight_controls(source_model, source_smf, source_fmf, data, device)
+        torch.cuda.synchronize(device)
+        controls_peak = int(torch.cuda.max_memory_allocated(device))
         source_state_after_controls = _state_cpu(source_model)
         source_formal_state_after_controls = _state_cpu(source_model.system.ols)
         source_smf_state_after_controls = _state_cpu(source_smf)
@@ -892,14 +905,17 @@ def preflight(args: argparse.Namespace) -> int:
         exact = {arm: _exact_resume(formal, source, data, arm, spec, hashes, output.parent, device) for arm in ARMS}
         reports: dict[str, Any] = {}
         for arm in ARMS:
+            torch.cuda.reset_peak_memory_stats(device)
             model, optimizer, operator = _runtime(formal, source, device, arm)
             amp, target = _batch(data, data.schedule[0], device)
             reports[arm] = {"step": _step(model, optimizer, operator, amp, target, arm), "exact_resume": exact[arm]}
+            torch.cuda.synchronize(device)
+            reports[arm]["peak_cuda_bytes"] = int(torch.cuda.max_memory_allocated(device))
             del model, optimizer, operator
             gc.collect()
             torch.cuda.empty_cache()
         elapsed = time.monotonic() - started
-        peak = int(torch.cuda.max_memory_allocated(device))
+        peak = max(controls_peak, *(int(item["peak_cuda_bytes"]) for item in reports.values()), *(int(item["exact_resume"]["peak_cuda_bytes"]) for item in reports.values()))
         storage = sum(item.stat().st_size for item in output.parent.rglob("*") if item.is_file())
         gates = (
             GateResult("finite_values", all(item["step"]["finite"] and item["exact_resume"]["finite"] for item in reports.values()), {}),
@@ -918,7 +934,7 @@ def preflight(args: argparse.Namespace) -> int:
         )
         passed = all(gate.passed for gate in gates)
         record = EvidenceRecordV2(2, PREFLIGHT_SCHEMA, "diagnostic", "passed" if passed else "invalid_harness", str(state["commit"]), None, spec.config_hash, _context(spec, formal, data), hashes, gates, ("run_fmf_m2_canary_train",) if passed else (), None if passed else "FMF M=2 preflight gate failed")
-        payload = _record_payload(PREFLIGHT_SCHEMA, record, {"validation_hash": validation_hash, "source_hashes": source.hashes, "training_hashes": hashes, "arms": reports, "controls": controls, "free_cuda_bytes_before": int(free_bytes), "total_cuda_bytes": int(total_bytes), "peak_cuda_bytes": peak, "wall_seconds": elapsed, "run_storage_bytes": storage, "optimizer_created": True})
+        payload = _record_payload(PREFLIGHT_SCHEMA, record, {"validation_hash": validation_hash, "source_hashes": source.hashes, "training_hashes": hashes, "arms": reports, "controls": controls, "free_cuda_bytes_before": int(free_bytes), "total_cuda_bytes": int(total_bytes), "peak_cuda_bytes": peak, "peak_cuda_bytes_by_phase": {"controls": controls_peak, **{arm: {"step": int(reports[arm]["peak_cuda_bytes"]), **reports[arm]["exact_resume"]["peak_cuda_phases"]} for arm in ARMS}}, "wall_seconds": elapsed, "run_storage_bytes": storage, "optimizer_created": True})
         _write_new(output, payload)
         print(json.dumps(payload, indent=2, sort_keys=True, default=str))
         return 0 if passed else 2
@@ -1037,11 +1053,23 @@ def train(args: argparse.Namespace) -> int:
         reference_state = _state_cpu(reference_model)
         reference_formal_state = _state_cpu(reference_model.system.ols)
         reference_operator_state = _state_cpu(reference_operator)
+        reference_model.cpu()
+        reference_operator.cpu()
+        del _reference_optimizer
+        gc.collect()
+        torch.cuda.empty_cache()
         m1_initial_model, _m1_initial_optimizer, m1_initial_operator = _runtime(formal, source, device, "smf_m1_mse_control")
-        m2_initial_model, _m2_initial_optimizer, m2_initial_operator = _runtime(formal, source, device, "fmf_m2_mse_canary")
         m1_initial_metrics, m1_initial_panel = _evaluate(m1_initial_model, m1_initial_operator, data, data.heldout_indices, device)
+        initial_losses = {"smf_m1_mse_control": _initial_losses(m1_initial_model, m1_initial_operator, data, device)}
+        del m1_initial_model, _m1_initial_optimizer, m1_initial_operator
+        gc.collect()
+        torch.cuda.empty_cache()
+        m2_initial_model, _m2_initial_optimizer, m2_initial_operator = _runtime(formal, source, device, "fmf_m2_mse_canary")
         m2_initial_metrics, m2_initial_panel = _evaluate(m2_initial_model, m2_initial_operator, data, data.heldout_indices, device)
-        initial_losses = {"smf_m1_mse_control": _initial_losses(m1_initial_model, m1_initial_operator, data, device), "fmf_m2_mse_canary": _initial_losses(m2_initial_model, m2_initial_operator, data, device)}
+        initial_losses["fmf_m2_mse_canary"] = _initial_losses(m2_initial_model, m2_initial_operator, data, device)
+        del m2_initial_model, _m2_initial_optimizer, m2_initial_operator
+        gc.collect()
+        torch.cuda.empty_cache()
         arm_results: dict[str, Any] = {}
         checkpoints: dict[str, Any] = {}
         resume_payload: Mapping[str, Any] | None = None
@@ -1070,6 +1098,8 @@ def train(args: argparse.Namespace) -> int:
             arm_results[arm] = {"steps_completed": len(history), "history": history, "metrics": metrics, "final_checkpoint": str(final_path.resolve()) if final_path else None, "final_checkpoint_sha256": final_hash, "panel": panel}
             checkpoints[arm] = {"path": arm_results[arm]["final_checkpoint"], "sha256": final_hash}
             _clear_grad(model)
+            del model, optimizer, operator
+            gc.collect()
             torch.cuda.empty_cache()
 
         if resume_arm == "smf_m1_mse_control":
@@ -1083,6 +1113,9 @@ def train(args: argparse.Namespace) -> int:
             m2_metrics, m2_panel = _evaluate(m2_model, m2_operator, data, data.heldout_indices, device)
             arm_results["fmf_m2_mse_canary"] = {"steps_completed": STEPS, "history": list(completed_payload["history"]), "metrics": m2_metrics, "final_checkpoint": str(_resolve(completed["path"]).resolve()), "final_checkpoint_sha256": completed["sha256"], "panel": m2_panel}
             checkpoints["fmf_m2_mse_canary"] = {"path": arm_results["fmf_m2_mse_canary"]["final_checkpoint"], "sha256": completed["sha256"]}
+            del m2_model, m2_optimizer, m2_operator
+            gc.collect()
+            torch.cuda.empty_cache()
             run_arm("smf_m1_mse_control", _resolve(args.resume_checkpoint), {"fmf_m2_mse_canary": checkpoints["fmf_m2_mse_canary"]})
         else:
             run_arm("fmf_m2_mse_canary", _resolve(args.resume_checkpoint) if resume_arm == "fmf_m2_mse_canary" else None)
