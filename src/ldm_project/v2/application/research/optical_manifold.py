@@ -927,6 +927,9 @@ def dispatch(args: argparse.Namespace) -> int:
         "manifold-regularization-pilot-train",
         "manifold-regularization-objective-audit-validate",
         "manifold-regularization-objective-audit-run",
+        "smf-integration-canary-validate",
+        "smf-integration-canary-preflight",
+        "smf-integration-canary-train",
     }:
         if args.research_action.startswith("full-epoch"):
             from .optical_manifold_full_epoch import dispatch as training_dispatch

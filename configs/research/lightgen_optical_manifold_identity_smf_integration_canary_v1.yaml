@@ -1,0 +1,104 @@
+schema: lightgen_optical_manifold_identity_smf_integration_canary_v1
+hypothesis: H-LOMA-I0
+formal_system_config: configs/v2/current/formal_identity_logit_amplitude_finite_crop_identity.yaml
+
+source:
+  adaptive_projection_validation: outputs/20260828_v2/runs/lightgen_optical_manifold_identity_adaptive_projection_audit_v1_attempt_02/adaptive_projection_validation.json
+  adaptive_projection_validation_sha256: 7e11e3d989e2dd558d11f4d13d96b2cbd33c628e337806ef27d888ff071d99b5
+  adaptive_projection_audit: outputs/20260828_v2/runs/lightgen_optical_manifold_identity_adaptive_projection_audit_v1_attempt_02/adaptive_projection_audit.json
+  adaptive_projection_audit_sha256: 98f40cc3312c01f22056424e6a4baa25d6bfd618bb0eb4f3dcbab75934fbb7a3
+  source_checkpoint: outputs/20260827_v2/runs/lightgen_optical_manifold_identity_full_epoch_v1_attempt_04/full_epoch_final_step_005500.pt
+  source_checkpoint_sha256: 56cb52fae3a13c94ea5a38af60e0934a407cf1ec7b57bbb31fba2a23c624655f
+  mnist_manifest_sha256: 64b1b70dc119dac0cb0aa8b898614962ff993a83d120390d1d6fadd55ade97d8
+  source_global_step: 5500
+
+dataset:
+  train_count: 55000
+  validation_count: 5000
+  schedule_steps: 20
+  schedule_batch_size: 10
+  schedule: balanced_one_per_label_without_replacement
+  schedule_seed: 1234
+  excluded_prior_panels: true
+  heldout_excluded: true
+  label_role: schedule_balance_and_offline_metrics_only
+  input_shape: [1, 28, 28]
+  rendered_shape: [1, 200, 200]
+  visual_panel_count: 100
+
+optical_contract:
+  formal_system_kind: formal_amplitude_finite_crop_identity
+  wavelength_m: 5.32e-7
+  slm_shape: [200, 200]
+  slm_pixel_pitch_m: 2.5e-6
+  metasurface_shape: [100, 100]
+  metasurface_pixel_pitch_m: 2.0e-6
+  propagation_grid_size: 2048
+  encoder_layers: 2
+  decoder_layers: 2
+  boundary: finite_crop
+  formal_ols: identity
+  research_ols: 100_port_lp01_smf
+  front_relay: coherent_imaging_4f
+  back_relay: free_space
+  input_encoding: intensity_sqrt_amplitude
+  target: camera_intensity_same_fov
+  exposure: {scale: 1.0, gamma: 1.0}
+
+projection:
+  source_family: plan_5c_cross_fitted_calibration_panels
+  rank: 32
+  status: diagnostic_unstable_projection
+  fit: consensus_from_three_calibration_panels
+  whitening: calibration_score_covariance_eigenvalue
+  directions: 64
+  direction_seed: 1234
+  rank_assignment: fixed_per_direction_permutation
+
+training:
+  arms: [smf_mse_only, smf_rank32_swd]
+  optimizer: Adam
+  optimizer_update_device: cpu_shadow
+  learning_rate: 1.0e-3
+  reset_adam_from_source: true
+  steps_per_arm: 20
+  logical_batch_size: 10
+  microbatch_size: 1
+  checkpoint_interval: 10
+  reconstruction_activation_checkpoint: true
+  swd_trace_activation_checkpoint: false
+  lambda_rule: g_rec_encoder_over_g_swd_encoder_times_0_1_on_g1
+  lambda_frozen_after_preflight: true
+  no_early_stop: true
+  no_tuning: true
+  no_checkpoint_selection: true
+  deterministic: true
+
+gates:
+  source_status: valid_failed_complete_plan_5c_evidence
+  preflight_max_wall_seconds: 300
+  canary_max_wall_seconds: 1800
+  min_free_cuda_bytes: 4294967296
+  max_peak_cuda_bytes: 5368709120
+  max_storage_bytes: 536870912
+  safety_mse_ratio: 2.0
+  trend_metrics_non_gating: true
+  evaluator_calls: 0
+
+authorization:
+  reviewer_role: project_owner
+  decision: approve_diagnostic_smf_integration_canary
+  diagnostic_training_authorized: true
+  training_authorized: false
+  formal_training_authorized: false
+  formal_promotion: false
+  post_completion_next_action: manual_review_smf_canary_visual_and_metric_trends
+  prohibited:
+    - stable_projection_claim
+    - long_training
+    - extra_epoch
+    - vae_kl
+    - latent_sampling
+    - fmf
+    - generation
+    - promotion

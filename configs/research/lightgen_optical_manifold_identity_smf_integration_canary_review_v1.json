@@ -1,0 +1,33 @@
+{
+  "schema": "lightgen_optical_manifold_identity_smf_integration_canary_review.v1",
+  "hypothesis": "H-LOMA-I0",
+  "reviewer_role": "project_owner",
+  "decision": "approve_diagnostic_smf_integration_canary",
+  "approved_contract": {
+    "steps_per_arm": 20,
+    "logical_batch_size": 10,
+    "microbatch_size": 1,
+    "arms": ["smf_mse_only", "smf_rank32_swd"],
+    "smf_port_count": 100,
+    "projection_rank": 32,
+    "projection_status": "diagnostic_unstable_projection",
+    "preflight_steps": 3,
+    "resume_segment": "2+1",
+    "trend_metrics_non_gating": true,
+    "post_completion_next_action": "manual_review_smf_canary_visual_and_metric_trends"
+  },
+  "diagnostic_training_authorized": true,
+  "training_authorized": false,
+  "formal_training_authorized": false,
+  "formal_promotion": false,
+  "prohibited": [
+    "stable_projection_claim",
+    "long_training",
+    "extra_epoch",
+    "vae_kl",
+    "latent_sampling",
+    "fmf",
+    "generation",
+    "promotion"
+  ]
+}
