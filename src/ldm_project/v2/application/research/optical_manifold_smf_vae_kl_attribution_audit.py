@@ -607,7 +607,7 @@ def _posterior_metrics(model: nn.Module, operator: Any, posterior: vae.SharedPer
     coefficients, posterior_mean, logvar, _ = _collect_posterior(model, operator, posterior, data, indices, mean, scale, device)
     terms = _kl_terms(posterior_mean, logvar)
     flat_mean = posterior_mean.flatten(1)
-    normalized = vae._normalize(coefficients, mean, scale).flatten(1)
+    normalized = vae._normalize(coefficients, mean.cpu(), scale.cpu()).flatten(1)
     centered_a = flat_mean - flat_mean.mean(0, keepdim=True)
     centered_b = normalized - normalized.mean(0, keepdim=True)
     input_sensitivity = float(
