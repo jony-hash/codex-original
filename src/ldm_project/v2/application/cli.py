@@ -67,6 +67,14 @@ def _dispatch(args: argparse.Namespace) -> int:
                 from .research.optical_manifold_smf_integration_canary import dispatch
 
                 return int(dispatch(args) or 0)
+            if args.research_action in {
+                "smf-reconstruction-validate",
+                "smf-reconstruction-preflight",
+                "smf-reconstruction-train",
+            }:
+                from .research.optical_manifold_smf_reconstruction_pilot import dispatch
+
+                return int(dispatch(args) or 0)
             from .research.optical_manifold import dispatch
 
             return int(dispatch(args) or 0)
