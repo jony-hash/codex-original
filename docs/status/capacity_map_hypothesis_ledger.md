@@ -849,3 +849,42 @@ SMF versus formal IdentityOLS). No SWD, projection, KL, latent sampling,
 additional epoch, FMF, generation or promotion is authorized. The registered
 scientific gates and safety/resource stops are fail-closed. All evidence must
 retain `training_authorized=false` and `formal_promotion=false`.
+
+### H-LOMA-I0 PLAN 7a FMF M=2 integration canary closeout（2026-08-28）
+
+The project owner authorized one diagnostic-only FMF M=2 integration canary on
+branch `research/v2-lightgen-optical-manifold-fmf-m2-integration-canary-v1`.
+It added the research-only nested `LP01 → LP01+LP11a` operator while leaving
+formal IdentityOLS unchanged. The two arms were `fmf_m2_mse_canary` and
+`smf_m1_mse_control`, both starting from PLAN 6 SMF step-1000 phase weights
+with reset CPU-shadow Adam. Each arm ran exactly 20 MSE updates on the same
+fresh 20-by-10 balanced schedule. SWD, KL, latent sampling, random mode
+coupling, FMF long training, M=3, generation and promotion remained
+prohibited.
+
+Attempts 01--07 did not yield an authoritative preflight/training result and
+remain retained. Attempt-08 passed preflight but failed the 512 MiB storage
+gate because the fixed 100-image panel retained the 1000-image backing
+storage. Authoritative attempt-09 completed at clean commit `f53bd4e` with
+validation, preflight, training and panel hashes:
+`f4af9a87a2f953a4873a11a1f09814e1ab9826dc336638940bb05148a4abacce`,
+`14abce541b0961ca848678f44d600e48c70e13e22b6cbdbf2ef8c32ba38100ca`,
+`f699fccce7da7fb5f1560c5823ee76e2c713ba9e726fb9f6213fe967da36afb6`, and
+`709b1ff2f716a4a77f733ef3e77a376d9f4c234d7fe4d4d3ddd1156f28a5c195`.
+
+On the held-out panel, M2 paired MSE changed `0.0498638563 → 0.0496286638`
+with final cyclic MSE `0.0667282492`; centered correlation changed
+`0.6993410 → 0.7016757`, variance retention `0.1480903 → 0.1489086`,
+effective rank was `8.59913`, final LP01/LP11a power fractions were
+`0.9160477/0.0839523`, active-mode fraction `1.0`, and coupling efficiency
+`0.7191151`. M1 changed `0.0508093871 → 0.0507159270` with final cyclic
+MSE `0.0671152920`. These are diagnostic trends only.
+
+The 200-mode bank was finite, orthonormal and full-rank; LP01 preservation,
+LP11a excitation, passivity, zero-transport/no-bypass controls, four-layer
+updates, exact 2+1 resume, source/formal isolation and evaluator calls `0`
+all passed. Peak CUDA was `2661837824` bytes, wall time `123.8385s`, and
+storage `229115402` bytes. The outcome is `diagnostic_completed`, not a
+scientific FMF superiority claim. The sole next action is
+`manual_review_fmf_m2_reconstruction_pilot_contract`; all evidence retains
+`training_authorized=false` and `formal_promotion=false`.

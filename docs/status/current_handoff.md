@@ -1167,3 +1167,35 @@ generation or promotion. Its only post-run consumers are the registered SMF
 reconstruction or bottleneck-attribution manual reviews. Formal v2 and all
 historical evidence remain unchanged; `training_authorized=false` and
 `formal_promotion=false` remain mandatory.
+
+## H-LOMA-I0 PLAN 7a FMF M=2 integration canary closeout（2026-08-28）
+
+PLAN 7a is complete as an engineering canary on branch
+`research/v2-lightgen-optical-manifold-fmf-m2-integration-canary-v1`, clean
+commit `f53bd4e`. Attempts 01--07 are retained non-authoritative validation or
+preflight attempts; attempt-08 completed the run but failed storage because
+the panel retained its 1000-image backing storage. Attempt-09 is authoritative
+with outcome `diagnostic_completed`.
+
+Evidence hashes are validation
+`f4af9a87a2f953a4873a11a1f09814e1ab9826dc336638940bb05148a4abacce`, preflight
+`14abce541b0961ca848678f44d600e48c70e13e22b6cbdbf2ef8c32ba38100ca`, training
+`f699fccce7da7fb5f1560c5823ee76e2c713ba9e726fb9f6213fe967da36afb6`, and
+panel `709b1ff2f716a4a77f733ef3e77a376d9f4c234d7fe4d4d3ddd1156f28a5c195`.
+
+The nested bank preserved LP01 exactly and added finite orthonormal LP11a,
+producing `[10,200]` coefficients. M2 paired MSE changed
+`0.0498638563 → 0.0496286638` (cyclic `0.0667282492`), centered correlation
+`0.6993410 → 0.7016757`, variance retention `0.1480903 → 0.1489086`, and
+coupling efficiency `0.7191151`. M1 changed paired MSE
+`0.0508093871 → 0.0507159270` (cyclic `0.0671152920`). These are
+non-gating diagnostic trends.
+
+All preflight/training gates passed: finite values, four-layer updates,
+formal IdentityOLS preservation, exact persisted 2+1 resume, passivity,
+zero-transport/no-bypass controls, source isolation, evaluator calls `0`,
+CUDA peak `2661837824` bytes, wall `123.8385s`, and storage `229115402`
+bytes. This proves the M=2 integration chain is executable and updates
+correctly; it does not prove FMF superiority or authorize longer FMF, M=3,
+mode coupling, generation or promotion. The unique next action is
+`manual_review_fmf_m2_reconstruction_pilot_contract`.

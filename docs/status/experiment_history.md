@@ -1755,3 +1755,37 @@ control, with cyclic MSE and safety/resource gates. It does not authorize
 SWD/projection, KL, latent sampling, extra epochs, FMF, generation or
 promotion; all evidence remains `training_authorized=false` and
 `formal_promotion=false`.
+
+## 2026-08-28：H-LOMA-I0 PLAN 7a FMF M=2 integration canary closeout
+
+The project owner authorized one diagnostic-only M=2 FMF integration canary
+on `research/v2-lightgen-optical-manifold-fmf-m2-integration-canary-v1`.
+It used research-only nested `LP01+LP11a` identity transport, with
+`smf_m1_mse_control` and `fmf_m2_mse_canary` sharing reset Adam and an exact
+20-by-10 balanced schedule. No SWD, KL, latent sampling, random coupling,
+FMF long training, M=3, generation or promotion was authorized.
+
+Attempts 01--07 are retained validation/preflight harness attempts. Attempt-08
+passed preflight but failed the storage gate due to panel backing-storage
+retention. Authoritative attempt-09 completed on clean commit `f53bd4e` with
+validation/preflight/training/panel hashes
+`f4af9a87a2f953a4873a11a1f09814e1ab9826dc336638940bb05148a4abacce`,
+`14abce541b0961ca848678f44d600e48c70e13e22b6cbdbf2ef8c32ba38100ca`,
+`f699fccce7da7fb5f1560c5823ee76e2c713ba9e726fb9f6213fe967da36afb6`, and
+`709b1ff2f716a4a77f733ef3e77a376d9f4c234d7fe4d4d3ddd1156f28a5c195`.
+
+M2 held-out paired MSE changed `0.0498638563 → 0.0496286638`, final cyclic
+MSE was `0.0667282492`, centered correlation changed `0.6993410 → 0.7016757`,
+variance retention `0.1480903 → 0.1489086`, effective rank `8.59913`,
+LP01/LP11a power fractions `0.9160477/0.0839523`, and coupling `0.7191151`.
+M1 paired MSE changed `0.0508093871 → 0.0507159270`, with cyclic MSE
+`0.0671152920`. The 200-mode bank, LP01 preservation, LP11a excitation,
+passivity, no-bypass controls, four-layer updates, exact resume, state
+isolation and evaluator calls `0` all passed. Peak CUDA was `2661837824`
+bytes, wall time `123.8385s`, and storage `229115402` bytes.
+
+The record is `diagnostic` with outcome `diagnostic_completed`. It establishes
+an executable M=2 integration chain and short-term update trend only; it does
+not establish FMF superiority or authorize longer FMF, M=3, mode coupling,
+generation or promotion. The sole next action is
+`manual_review_fmf_m2_reconstruction_pilot_contract`.
