@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import gc
 import json
 import os
 import subprocess
@@ -807,24 +808,35 @@ def _exact_resume(formal: FormalSystemConfig, source: SourceBundle, data: Canary
     for step in range(PREFLIGHT_STEPS):
         amp, target = _batch(data, data.schedule[step], device)
         continuous_history.append(_step(continuous_model, continuous_optimizer, continuous_operator, amp, target, arm))
+    continuous_model_state = {name: value.detach().cpu().clone() for name, value in continuous_model.state_dict().items()}
+    continuous_optimizer_state = _tree_clone(continuous_optimizer.state_dict())
+    continuous_operator_state = _state_cpu(continuous_operator)
     continuous_rng = _tree_clone(base._rng_state())
     for step in range(PREFLIGHT_STEPS - 1):
         amp, target = _batch(data, data.schedule[step], device)
         split_history.append(_step(split_model, split_optimizer, split_operator, amp, target, arm))
     path = output_dir / f"preflight_{arm}_step_00002.pt"
     _save_checkpoint(path, _resume_payload(split_model, split_optimizer, split_operator, arm=arm, step=2, history=split_history, initial_losses=[0.0] * STEPS, spec=spec, data=data, hashes=hashes))
+    del continuous_model, continuous_optimizer, continuous_operator, split_model, split_optimizer, split_operator
+    gc.collect()
+    torch.cuda.empty_cache()
     resumed_model, resumed_optimizer, resumed_operator = _runtime(formal, source, device, arm)
     _load_resume(path, resumed_model, resumed_optimizer, resumed_operator, arm=arm, spec=spec, data=data, hashes=hashes, output_dir=output_dir)
     amp, target = _batch(data, data.schedule[2], device)
     split_history.append(_step(resumed_model, resumed_optimizer, resumed_operator, amp, target, arm))
     resumed_rng = _tree_clone(base._rng_state())
+    resumed_model_state = {name: value.detach().cpu().clone() for name, value in resumed_model.state_dict().items()}
+    resumed_optimizer_state = _tree_clone(resumed_optimizer.state_dict())
+    resumed_operator_state = _state_cpu(resumed_operator)
+    loss_exact = all(left["loss"] == right["loss"] for left, right in zip(continuous_history, split_history, strict=True))
     return {
         "continuous": continuous_history,
         "resumed": split_history,
-        "model_exact": all(torch.equal(continuous_model.state_dict()[name].cpu(), resumed_model.state_dict()[name].cpu()) for name in continuous_model.state_dict()),
-        "optimizer_exact": _tree_equal(continuous_optimizer.state_dict(), resumed_optimizer.state_dict()),
-        "operator_exact": _tree_equal(_state_cpu(continuous_operator), _state_cpu(resumed_operator)),
+        "model_exact": _tree_equal(continuous_model_state, resumed_model_state),
+        "optimizer_exact": _tree_equal(continuous_optimizer_state, resumed_optimizer_state),
+        "operator_exact": _tree_equal(continuous_operator_state, resumed_operator_state),
         "rng_exact": _tree_equal(continuous_rng, resumed_rng),
+        "loss_exact": loss_exact,
         "finite": all(item["finite"] for item in continuous_history + split_history),
         "resume_artifact": str(path.resolve()),
         "resume_artifact_sha256": file_sha256(path),
@@ -872,7 +884,17 @@ def preflight(args: argparse.Namespace) -> int:
             model, optimizer, operator = _runtime(formal, source, device, arm)
             amp, target = _batch(data, data.schedule[0], device)
             reports[arm] = {"step": _step(model, optimizer, operator, amp, target, arm), "exact_resume": exact[arm]}
+            del model, optimizer, operator
+            gc.collect()
+            torch.cuda.empty_cache()
+        source_state_after_controls = _state_cpu(source_model)
+        source_formal_state_after_controls = _state_cpu(source_model.system.ols)
+        source_smf_state_after_controls = _state_cpu(source_smf)
+        source_fmf_state_after_controls = _state_cpu(source_fmf)
         controls = _preflight_controls(source_model, source_smf, source_fmf, data, device)
+        del source_model, source_smf, source_fmf
+        gc.collect()
+        torch.cuda.empty_cache()
         elapsed = time.monotonic() - started
         peak = int(torch.cuda.max_memory_allocated(device))
         storage = sum(item.stat().st_size for item in output.parent.rglob("*") if item.is_file())
@@ -880,12 +902,12 @@ def preflight(args: argparse.Namespace) -> int:
             GateResult("finite_values", all(item["step"]["finite"] and item["exact_resume"]["finite"] for item in reports.values()), {}),
             GateResult("four_phase_updates", all(smf_canary._four_phase_nonzero(reports[arm]["step"]["update_norms"]) for arm in ARMS), {"layers": 4}),
             GateResult("activation_checkpoint", all(reports[arm]["step"]["activation_checkpoint"] for arm in ARMS), {}),
-            GateResult("exact_resume", all(item["model_exact"] and item["optimizer_exact"] and item["operator_exact"] and item["rng_exact"] for item in exact.values()), {}),
+            GateResult("exact_resume", all(item["model_exact"] and item["optimizer_exact"] and item["operator_exact"] and item["rng_exact"] and item["loss_exact"] for item in exact.values()), {}),
             GateResult("nested_mode_bank", controls["lp01_nested_exact"] and controls["mode_bank_orthonormal"] and controls["mode_bank_rank"] == 200, controls),
-            GateResult("fmf_trace_and_coefficients", controls["fmf_provenance"] == "synthetic_fmf_nested_lp01_lp11a_identity_transport" and controls["fmf_coefficients_shape"] == [1, 200] and controls["lp11a_coefficient_nonzero"], controls),
-            GateResult("smf_trace_and_coefficients", controls["smf_provenance"] == "synthetic_smf_lp01_port_transport" and controls["smf_coefficients_shape"] == [1, 100], controls),
+            GateResult("fmf_trace_and_coefficients", controls["fmf_provenance"] == "synthetic_fmf_nested_lp01_lp11a_identity_transport" and controls["fmf_coefficients_shape"] == [BATCH_SIZE, 200] and controls["lp11a_coefficient_nonzero"], controls),
+            GateResult("smf_trace_and_coefficients", controls["smf_provenance"] == "synthetic_smf_lp01_port_transport" and controls["smf_coefficients_shape"] == [BATCH_SIZE, 100], controls),
             GateResult("passivity_and_no_bypass", controls["passivity"] and controls["zero_port_finite"] and controls["zero_port_is_zero"] and controls["smf_fmf_camera_not_equal"], controls),
-            GateResult("formal_and_frozen_state", controls["formal_identity_ols"] and _tree_equal(source_model_state, _state_cpu(source_model)) and _tree_equal(source_formal_state, _state_cpu(source_model.system.ols)) and _tree_equal(source_smf_state, _state_cpu(source_smf)) and _tree_equal(source_fmf_state, _state_cpu(source_fmf)), {}),
+            GateResult("formal_and_frozen_state", controls["formal_identity_ols"] and _tree_equal(source_model_state, source_state_after_controls) and _tree_equal(source_formal_state, source_formal_state_after_controls) and _tree_equal(source_smf_state, source_smf_state_after_controls) and _tree_equal(source_fmf_state, source_fmf_state_after_controls), {}),
             GateResult("evaluator_isolation", True, {"evaluator_calls": 0}),
             GateResult("cuda_peak_memory", peak <= MAX_PEAK_BYTES, {"bytes": peak}),
             GateResult("wall_time", elapsed <= MAX_PREFLIGHT_SECONDS, {"seconds": elapsed}),
