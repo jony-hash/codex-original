@@ -749,3 +749,42 @@ isolation and resource limits all passed. The deterministic fixed-projection
 regularization route is therefore not ready for a pilot. The sole next action
 is `manual_review_probabilistic_latent_contract`; no SMF/FMF or generation is
 authorized.
+
+### H-LOMA-I0 SMF integration canary authorization and closeout (2026-08-28)
+
+Following the valid PLAN 5c projection-stability failure, the project owner
+authorized one diagnostic-only SMF integration canary on branch
+`research/v2-lightgen-optical-manifold-smf-integration-canary-v1`. The canary
+was limited to a 100-port LP01 SMF research OLS inserted between the existing
+2-layer encoder and 2-layer decoder, with 20 steps each for an MSE-only and a
+rank-32 diagnostic SWD arm. The rank-32 projection remained explicitly
+`diagnostic_unstable_projection`; no stable-projection or SWD-training claim
+was authorized.
+
+Attempts 01--06 were retained as harness/consumer failures and produced no
+scientific conclusion. The authoritative attempt-07 completed validation,
+CUDA preflight and both 20-step arms at clean commit `da5c13c`. Its evidence
+hashes are: validation `bc87f1c996331dbe88f059b71faac2da0ce891c32969dd195c881a9eeff93bc2`,
+preflight `70fc113ca98a4776d88837e3aab4293d0676d965ab98dbcc19f631820d1fe70f`,
+training `271f934515bde2fddaab413aba05e82472751b1664053c3a27d28de3c76a1860`,
+and visual panel `2b08105870853a81bc8cc59c866de411b8c78cd06cc0da1bac408fc89500058f`.
+
+The run completed as `diagnostic_completed`. On the fixed 100-image panel,
+SMF initialization paired MSE was `0.0639665723`; final MSE-only and
+rank-32-SWD values were `0.0631253868` and `0.0631285161`, while the cyclic
+controls were `0.0748243704` and `0.0748260617`. The final rank-32-SWD probe
+had SWD `0.0288933087`, versus `0.0294856094` for MSE-only, but the two final
+image tensors differed by only `1.86e-8` mean squared error. Coupling
+efficiency was about `0.5339` and active-port fraction `0.9317`. These are
+engineering and trend observations only; no SMF scientific superiority,
+stable projection, FMF, generation or promotion conclusion is formed.
+
+All preflight and training isolation gates passed, including exact 2+1 resume,
+four-layer updates, non-bypass Identity/SMF/zero-port controls, finite values,
+formal IdentityOLS preservation and evaluator calls `0`. Peak allocation was
+`2375665664` bytes, canary wall time `97.0598s`, and storage `86251566` bytes.
+The canary closes the engineering integration checkpoint and its sole next
+consumer is `manual_review_smf_canary_visual_and_metric_trends`. A subsequent
+PLAN 6 matched Identity-versus-SMF MSE reconstruction pilot must be separately
+authorized; `training_authorized=false` and `formal_promotion=false` remain
+mandatory.

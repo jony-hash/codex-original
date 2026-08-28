@@ -1072,3 +1072,42 @@ PLAN 5c therefore closes with `valid_failed`. The sole next action is
 rank, lambda or panel within this attempt, and do not enter VAE KL, SMF/FMF,
 generation or promotion. Evidence remains
 `training_authorized=false` and `formal_promotion=false`.
+
+### H-LOMA-I0 SMF integration canary closeout (2026-08-28)
+
+The project owner authorized a diagnostic-only 100-port LP01 SMF integration
+canary on branch
+`research/v2-lightgen-optical-manifold-smf-integration-canary-v1`. The canary
+used the existing 2+2 phase-only optical path and inserted research-only SMF
+transport between encoder and decoder. It ran exactly 20 steps for each of
+`smf_rank32_swd` and `smf_mse_only`; the rank-32 projection was retained only
+as `diagnostic_unstable_projection` and was not treated as a stable training
+projection.
+
+Attempts 01--06 remain preserved as harness/consumer failures. Attempt-07 is
+the authoritative complete run at clean commit `da5c13c`:
+
+- validation SHA256: `bc87f1c996331dbe88f059b71faac2da0ce891c32969dd195c881a9eeff93bc2`;
+- preflight SHA256: `70fc113ca98a4776d88837e3aab4293d0676d965ab98dbcc19f631820d1fe70f`;
+- training SHA256: `271f934515bde2fddaab413aba05e82472751b1664053c3a27d28de3c76a1860`;
+- panel SHA256: `2b08105870853a81bc8cc59c866de411b8c78cd06cc0da1bac408fc89500058f`.
+
+Evidence status is `diagnostic`, outcome `diagnostic_completed`. The fixed
+panel paired MSE changed from SMF initialization `0.0639665723` to
+`0.0631253868` for MSE-only and `0.0631285161` for rank-32-SWD; cyclic controls
+were `0.0748243704` and `0.0748260617`. Final held-out probe SWD was
+`0.0294856094` for MSE-only and `0.0288933087` for rank-32-SWD. The two final
+arm image tensors differed by only `1.86e-8` MSE, so this short run does not
+support a meaningful SWD-arm effect. Coupling efficiency was approximately
+`0.5339`, active-port fraction `0.9317`, and the final output retained much
+less variance than the Identity reference.
+
+Validation, preflight, exact 2+1 resume, four-layer updates, SMF/Identity/
+zero-port controls, state isolation, formal IdentityOLS preservation and
+evaluator isolation all passed. Peak CUDA allocation was `2375665664` bytes,
+wall time `97.0598s`, storage `86251566` bytes, and evaluator calls `0`.
+This establishes that the SMF path executes and updates correctly; it does
+not establish SMF superiority, stable projection, FMF readiness or formal
+promotion. The only next action is
+`manual_review_smf_canary_visual_and_metric_trends`; a matched PLAN 6
+reconstruction pilot requires a separate project-owner authorization.

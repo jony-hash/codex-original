@@ -1667,3 +1667,36 @@ not a resource or harness failure: source MSE replay, formal Identity trace,
 state isolation, evaluator calls `0`, peak CUDA `446995968` bytes and wall
 `205.8172s` all passed. This closes the deterministic fixed-projection route
 for the current attempt and routes to `manual_review_probabilistic_latent_contract`.
+
+### H-LOMA-I0 SMF integration canary (2026-08-28)
+
+The project owner authorized one diagnostic-only engineering canary on
+`research/v2-lightgen-optical-manifold-smf-integration-canary-v1` after PLAN 5c
+closed as a valid stable-projection failure. The canary inserted the existing
+100-port LP01 SMF research OLS between the formal 2-layer encoder and decoder
+and ran 20 steps each for `smf_rank32_swd` and `smf_mse_only`. The rank-32
+projection remained marked `diagnostic_unstable_projection`; the run did not
+authorize stable-projection training, FMF or generation.
+
+Attempts 01--06 were harness/consumer failures. Attempt-07 at clean commit
+`da5c13c` completed validation, CUDA preflight, exact resume checks and both
+training arms. Validation, preflight, training and panel SHA256 values are
+`bc87f1c996331dbe88f059b71faac2da0ce891c32969dd195c881a9eeff93bc2`,
+`70fc113ca98a4776d88837e3aab4293d0676d965ab98dbcc19f631820d1fe70f`,
+`271f934515bde2fddaab413aba05e82472751b1664053c3a27d28de3c76a1860`, and
+`2b08105870853a81bc8cc59c866de411b8c78cd06cc0da1bac408fc89500058f`.
+
+The evidence outcome is `diagnostic_completed`, not a scientific `passed`.
+Fixed-panel paired MSE was `0.0639665723` at SMF initialization and
+`0.0631253868`/`0.0631285161` after 20 steps for MSE-only/rank-32-SWD; cyclic
+controls were `0.0748243704`/`0.0748260617`. Final SWD was
+`0.0294856094`/`0.0288933087`, but the two final arm tensors differed by only
+`1.86e-8` MSE. Coupling efficiency was `0.5339` and active-port fraction was
+`0.9317`. Peak CUDA was `2375665664` bytes, wall time `97.0598s`, storage
+`86251566` bytes, and evaluator calls were `0`.
+
+The canary establishes executable SMF transport, gradient flow, resume and
+state-isolation contracts. It does not establish SMF scientific superiority
+or authorize FMF. The sole next action is
+`manual_review_smf_canary_visual_and_metric_trends`; all evidence retains
+`training_authorized=false` and `formal_promotion=false`.
