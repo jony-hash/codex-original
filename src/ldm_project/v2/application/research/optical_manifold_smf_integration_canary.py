@@ -38,6 +38,7 @@ from ...evidence import (
     tensor_sha256,
 )
 from ...optics.fiber_operator import FiberArrayOLS, FiberArraySpec
+from ...optics.devices import IdentityOLS
 from . import optical_manifold as base
 from . import optical_manifold_adaptive_projection_audit as adaptive
 from . import optical_manifold_full_epoch as full_epoch
@@ -507,8 +508,12 @@ def _state_cpu(model: base.IdentityOpticalManifoldAutoencoder) -> dict[str, torc
     return {name: value.detach().cpu().clone() for name, value in model.state_dict().items()}
 
 
-def _module_state_cpu(module: torch.nn.Module) -> dict[str, torch.Tensor]:
-    return {name: value.detach().cpu().clone() for name, value in module.state_dict().items()}
+def _module_state_cpu(module: torch.nn.Module | IdentityOLS) -> dict[str, Any]:
+    if isinstance(module, torch.nn.Module):
+        return {name: value.detach().cpu().clone() for name, value in module.state_dict().items()}
+    if isinstance(module, IdentityOLS):
+        return {"type": type(module).__qualname__, "attributes": copy.deepcopy(vars(module))}
+    raise TypeError(f"unsupported state snapshot type: {type(module)!r}")
 
 
 def _nonphase_state_cpu(model: base.IdentityOpticalManifoldAutoencoder) -> dict[str, torch.Tensor]:
