@@ -1,0 +1,31 @@
+{
+  "schema": "lightgen_optical_manifold_smf_vae_kl_attribution_audit_review.v1",
+  "hypothesis": "H-LOMA-I0",
+  "reviewer_role": "project_owner",
+  "decision": "approve_no_update_smf_vae_kl_chain_attribution_audit",
+  "approved_contract": {
+    "source_step": 1000,
+    "final_step": 100,
+    "gradient_panels": 3,
+    "gradient_panel_images": 100,
+    "doses": [1.0, 2.0, 4.0],
+    "visual_sample_count": 16,
+    "post_completed_next_action": "manual_review_smf_vae_kl_dose_or_parameterization_contract",
+    "post_invalid_next_action": "manual_review_smf_vae_kl_objective_contract"
+  },
+  "no_update_diagnostic_authorized": true,
+  "training_authorized": false,
+  "formal_training_authorized": false,
+  "formal_promotion": false,
+  "prohibited": [
+    "optimizer_creation",
+    "parameter_update",
+    "checkpoint_creation",
+    "latent_prior_generation",
+    "extra_reconstruction_training",
+    "fmf_or_smf_extension",
+    "generation",
+    "evaluator",
+    "promotion"
+  ]
+}

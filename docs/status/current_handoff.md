@@ -1270,3 +1270,21 @@ demonstrate the registered KL-success objective. The sole next action is
 epoch, FMF extension, prior-only sampling, generation or promotion is
 authorized. Evidence remains `training_authorized=false` and
 `formal_promotion=false`.
+
+## H-LOMA-I0 SMF VAE KL chain attribution audit（2026-08-28）
+
+Implementation is registered on branch
+`research/v2-lightgen-optical-manifold-smf-kl-attribution-audit-v1`, based on
+clean commit `ecfa4a5`. The audit is no-update and diagnostic-only. It consumes
+attempt-06 source evidence and final checkpoints, verifies the original CUDA
+MSE replay and standard diagonal-Gaussian KL chain, then compares the three
+matched SMF arms. Identity, PLAN 6 SMF and FMF M2 numbers are displayed only
+as non-matched context.
+
+The audit must preserve the existing `valid_failed` absolute-KL conclusion;
+it may only determine whether KL is relatively constraining, whether a
+posterior collapse signature exists, and whether a higher dose has compatible
+local gradients. Its only downstream consumer is manual review of a future
+KL dose or posterior parameterization pilot. No training, checkpoint creation,
+prior-only generation, FMF extension or promotion is permitted. Evidence
+continues to require `training_authorized=false` and `formal_promotion=false`.

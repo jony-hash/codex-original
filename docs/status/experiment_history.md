@@ -1851,3 +1851,26 @@ The next and only consumer is
 `manual_review_identity_posterior_collapse_contract`. No KL retuning, extra
 training, FMF, prior-only generation, generation or promotion is authorized;
 `training_authorized=false` and `formal_promotion=false` remain mandatory.
+
+## 2026-08-28：H-LOMA-I0 SMF VAE KL chain attribution audit authorization
+
+The project owner authorized one no-update, diagnostic-only audit on branch
+`research/v2-lightgen-optical-manifold-smf-kl-attribution-audit-v1`. Its real
+consumer is the manual decision on whether to authorize a bounded KL dose or
+posterior-parameterization experiment. The rejection decision is fail-closed
+when source replay, KL formula, gradient isolation, state freeze, provenance
+or resource gates fail.
+
+The audit consumes only the authoritative attempt-06 VAE validation,
+preflight, training, normalization, panel and final checkpoints. It performs
+no optimizer creation, parameter update or checkpoint creation. The matched
+comparison is limited to deterministic SMF MSE, stochastic SMF without KL and
+SMF beta-VAE. Identity, PLAN 6 SMF and FMF M2 are context-only references with
+different budgets and cannot define an architecture ranking.
+
+The audit preserves the prior valid-failed conclusion: beta-VAE KL rose from
+`2.9956917763` to `3.0639550686`, but remained below no-KL `3.3382956982`.
+It will decompose mean and variance KL terms, verify shared epsilon and
+reparameterization, measure cross-swapped phase/posterior states, and inspect
+1x/2x/4x no-update gradient directions. All evidence remains
+`training_authorized=false` and `formal_promotion=false`.

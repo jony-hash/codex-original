@@ -36,6 +36,11 @@ def dispatch(args: argparse.Namespace) -> int:
         "smf-vae-pilot-train",
     }:
         from .research.optical_manifold_smf_vae_pilot import dispatch
+    elif action in {
+        "smf-kl-chain-audit-validate",
+        "smf-kl-chain-audit-run",
+    }:
+        from .research.optical_manifold_smf_vae_kl_attribution_audit import dispatch
     else:
         from .research.optical_manifold import dispatch
     return int(dispatch(args) or 0)

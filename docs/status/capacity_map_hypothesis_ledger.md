@@ -951,3 +951,20 @@ but fails the pre-registered KL reduction objective. The only permitted next
 action is `manual_review_identity_posterior_collapse_contract`; do not retune
 KL, extend training, enter FMF/generation, or promote. All evidence retains
 `training_authorized=false` and `formal_promotion=false`.
+
+## H-LOMA-I0：SMF VAE KL chain attribution audit（2026-08-28）
+
+The next registered hypothesis is a no-update attribution audit of the
+attempt-06 SMF hybrid-VAE chain. It asks whether the KL path is mathematically
+and causally active, whether its relative constraint is distinguishable from
+no-KL under the same source and epsilon contract, and whether the absolute-KL
+failure is driven by mean drift, variance drift, posterior parameterization,
+or dose incompatibility.
+
+The consumer is a manual decision on a bounded KL dose or posterior
+parameterization pilot. A failed source replay, gradient boundary, freeze,
+lineage or provenance gate rejects all downstream comparison claims. No
+optimizer, checkpoint, parameter update, prior-only sample, FMF extension or
+generation is authorized. The three SMF VAE arms are the only matched
+scientific comparison; Identity, PLAN 6 SMF and FMF M2 remain non-matched
+context.
