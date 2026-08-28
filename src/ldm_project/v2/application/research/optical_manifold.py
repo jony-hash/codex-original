@@ -925,6 +925,8 @@ def dispatch(args: argparse.Namespace) -> int:
         "manifold-regularization-pilot-validate",
         "manifold-regularization-pilot-preflight",
         "manifold-regularization-pilot-train",
+        "manifold-regularization-objective-audit-validate",
+        "manifold-regularization-objective-audit-run",
     }:
         if args.research_action.startswith("full-epoch"):
             from .optical_manifold_full_epoch import dispatch as training_dispatch
@@ -944,6 +946,10 @@ def dispatch(args: argparse.Namespace) -> int:
             from .optical_manifold_regularization_pilot import dispatch as pilot_dispatch
 
             return int(pilot_dispatch(args) or 0)
+        elif args.research_action.startswith("manifold-regularization-objective-audit"):
+            from .optical_manifold_regularization_objective_audit import dispatch as objective_dispatch
+
+            return int(objective_dispatch(args) or 0)
         else:
             from .optical_manifold_training import dispatch as training_dispatch
 

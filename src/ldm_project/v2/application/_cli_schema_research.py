@@ -47,6 +47,22 @@ def register_research(root: argparse._SubParsersAction) -> None:
     pilot_train.add_argument("--device", choices=("cuda",), default="cuda")
     pilot_train.add_argument("--output", required=True)
     pilot_train.add_argument("--resume-checkpoint")
+    objective_validate = optical_actions.add_parser(
+        "manifold-regularization-objective-audit-validate"
+    )
+    objective_validate.add_argument("--config", required=True)
+    objective_validate.add_argument("--review-contract", required=True)
+    objective_validate.add_argument("--dataset-root", required=True)
+    objective_validate.add_argument("--output", required=True)
+    objective_run = optical_actions.add_parser(
+        "manifold-regularization-objective-audit-run"
+    )
+    objective_run.add_argument("--config", required=True)
+    objective_run.add_argument("--review-contract", required=True)
+    objective_run.add_argument("--validation-evidence", required=True)
+    objective_run.add_argument("--dataset-root", required=True)
+    objective_run.add_argument("--device", choices=("cuda",), default="cuda")
+    objective_run.add_argument("--output", required=True)
     full_validate = optical_actions.add_parser("full-epoch-validate")
     full_validate.add_argument("--config", required=True)
     full_validate.add_argument("--review-contract", required=True)

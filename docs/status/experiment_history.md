@@ -1593,3 +1593,23 @@ evaluator calls `0`。最终 regularized / MSE-only checkpoint SHA256 为
 该结果是有效的科学门失败，不支持继续正则化训练；唯一下一动作是
 `manual_review_identity_regularization_objective_contract`。所有后续 epoch、
 KL、SMF/FMF、生成和 promotion 继续禁止。
+
+### H-LOMA-I0 PLAN 5b regularization objective attribution audit（2026-08-28）
+
+Following the valid scientific failure of the fixed aggregate-prior pilot, the
+project owner authorized one diagnostic-only, no-update objective attribution
+audit on branch
+`research/v2-lightgen-optical-manifold-regularization-objective-audit-v1`.
+The audit is bound to the authoritative pilot attempt-03 evidence, the
+step-5500 source checkpoint, both pilot final checkpoints, the fixed PLAN 5
+projection and the MNIST manifest. It uses fresh train-only panels after
+excluding every prior calibration, gradient, pilot-schedule and held-out
+index.
+
+The registered measurements are fixed-projection drift and frozen-model
+gradient reports for `1x`, `2x`, and `4x` the source lambda, with a fixed
+rank-permuted negative control. The audit creates no optimizer, updates no
+parameter, writes no checkpoint and cannot authorize KL, SMF/FMF, generation
+or promotion. Its real consumer is the manual decision on a possible bounded
+dose-response pilot; all other outcomes stop the line under their registered
+manual review action.

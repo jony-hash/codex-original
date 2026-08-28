@@ -961,3 +961,27 @@ The final regularized and MSE-only checkpoint hashes are respectively
 The sole next action is
 `manual_review_identity_regularization_objective_contract`; do not start
 continuation, extra epochs, KL, SMF/FMF, generation, or promotion.
+
+### H-LOMA-I0 PLAN 5b regularization objective attribution audit authorization（2026-08-28）
+
+The PLAN 5 bounded pilot is closed as a valid scientific failure, not as a
+harness failure. The regularized arm reduced fixed held-out SWD by only
+`0.40296%`, although it remained below the MSE-only control and preserved
+reconstruction and instance-structure gates. The project owner authorized one
+no-update objective attribution audit on branch
+`research/v2-lightgen-optical-manifold-regularization-objective-audit-v1`.
+
+The audit consumes the authoritative pilot validation, preflight, training
+evidence, source step-5500 checkpoint, both pilot final checkpoints, PLAN 5
+projection, and MNIST manifest. It uses new train-only panels disjoint from
+all prior calibration, gradient, pilot, and held-out samples. It measures
+fixed-projection drift and tests only the registered `1x`, `2x`, and `4x`
+regularizer gradient doses without creating an optimizer or updating a model.
+
+The real consumer is manual authorization of a bounded dose-response pilot.
+Projection instability, lack of a safe higher dose, or failure against the
+rank-permuted control each route to its registered manual review decision;
+lineage, isolation, numerical, or resource failure is `invalid_harness`.
+This audit does not authorize continuation, VAE KL, latent sampling, SMF/FMF,
+generation, or promotion. Evidence remains
+`training_authorized=false` and `formal_promotion=false`.

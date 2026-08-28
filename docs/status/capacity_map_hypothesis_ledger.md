@@ -667,3 +667,24 @@ valid scientific failure does not support a regularization continuation. The
 sole next action is
 `manual_review_identity_regularization_objective_contract`; KL, extra epochs,
 SMF/FMF, generation, and promotion remain blocked.
+
+### H-LOMA-I0 PLAN 5b regularization objective attribution audit authorization（2026-08-28）
+
+The valid scientific failure of the 100-step aggregate-prior pilot blocks a
+regularization continuation until the objective is attributed. The project
+owner authorized a no-update audit on
+`research/v2-lightgen-optical-manifold-regularization-objective-audit-v1`.
+Its consumer is the manual decision whether a bounded dose-response pilot is
+scientifically justified. It binds the authoritative pilot evidence and final
+checkpoints, the step-5500 Identity checkpoint, the fixed 32D projection and
+the MNIST manifest.
+
+The audit compares source, regularized-final and MSE-only-final projection
+stability on fresh train-only data, then measures `1x`, `2x`, and `4x` fixed
+SWD gradient doses on three fresh balanced batches. No optimizer, update,
+checkpoint, KL, SMF/FMF, generation, or promotion is permitted. Projection
+overlap and captured-energy gates identify fixed-projection drift; safe
+higher-dose and rank-permuted-control gates identify whether the current
+objective is a viable candidate for a new bounded pilot. All outputs remain
+diagnostic-only with `training_authorized=false` and
+`formal_promotion=false`.
