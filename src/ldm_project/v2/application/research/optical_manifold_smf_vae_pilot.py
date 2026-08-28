@@ -1348,6 +1348,25 @@ def preflight(args: argparse.Namespace) -> int:
             data, data.schedule[0], device
         )
         calibration_epsilon = data.epsilon_schedule[0].to(device)
+        with torch.no_grad():
+            direct_camera = _forward_direct(
+                beta_model, beta_operator, calibration_amplitudes
+            )
+            posterior_mean_camera, _posterior_mean, _logvar, _coefficients = (
+                _forward_latent(
+                    beta_model,
+                    beta_operator,
+                    beta_post,
+                    calibration_amplitudes,
+                    torch.zeros_like(calibration_epsilon),
+                    mean.to(device),
+                    scale.to(device),
+                    sample=False,
+                )
+            )
+            posterior_mean_replay_mse = float(
+                F.mse_loss(posterior_mean_camera, direct_camera).cpu()
+            )
         reconstruction_calibration = _objective_gradient_report(
             beta_model,
             beta_operator,
@@ -1375,6 +1394,16 @@ def preflight(args: argparse.Namespace) -> int:
         ]
         kl_encoder_norm = kl_calibration["gradient_norms"]["system.encoder.phase"]
         beta = _calibrate_beta(reconstruction_encoder_norm, kl_encoder_norm)
+        kl_gradient_norms = kl_calibration["gradient_norms"]
+        kl_gradient_boundary = (
+            kl_gradient_norms["system.decoder.phase"] == 0.0
+            and kl_encoder_norm > 0.0
+            and any(
+                value > 0.0
+                for name, value in kl_gradient_norms.items()
+                if name.startswith("posterior.")
+            )
+        )
         beta_history = _run_exact(
             beta_model,
             beta_operator,
@@ -1532,6 +1561,19 @@ def preflight(args: argparse.Namespace) -> int:
                 },
             ),
             GateResult(
+                "posterior_mean_replays_direct_smf",
+                posterior_mean_replay_mse <= 1.0e-9,
+                {"mse": posterior_mean_replay_mse, "tolerance": 1.0e-9},
+            ),
+            GateResult(
+                "kl_gradient_boundary",
+                kl_gradient_boundary,
+                {
+                    "encoder_norm": kl_encoder_norm,
+                    "decoder_norm": kl_gradient_norms["system.decoder.phase"],
+                },
+            ),
+            GateResult(
                 "normalization_provenance", True, {"path": str(norm_path.resolve())}
             ),
             GateResult("evaluator_isolation", True, {"evaluator_calls": 0}),
@@ -1576,6 +1618,7 @@ def preflight(args: argparse.Namespace) -> int:
                     "kl": kl_calibration,
                     "formula": "0.1*g_reconstruction_encoder/g_kl_encoder",
                 },
+                "posterior_mean_replay_mse": posterior_mean_replay_mse,
                 "training_hashes": hashes,
                 "arms": {
                     "smf_beta_vae": beta_history,
@@ -1647,7 +1690,9 @@ def _save_panel(
         "schema": PANEL_SCHEMA,
         "source_hashes": dict(source_hashes),
         "indices_are_global_mnist": True,
+        "panel_count": int(data.visual_indices.numel()),
         "tensors": tensors,
+        "posterior_sample_epsilon_seed": SEED + 1,
         "posterior_sample_is_diagnostic": True,
     }
     atomic_torch_save(path, payload)
@@ -1816,23 +1861,73 @@ def train(args: argparse.Namespace) -> int:
         vae_mse = results["smf_beta_vae"]["metrics"]["paired_mse"]
         vae_metrics = results["smf_beta_vae"]["metrics"]
         no_kl_metrics = results["smf_stochastic_no_kl"]["metrics"]
+        panel_indices = data.visual_indices
+        panel_target = _batch(data, panel_indices, device)[1].cpu()
         panel_results = {
-            "target": _evaluate(
-                models["smf_deterministic_mse"][0],
-                models["smf_deterministic_mse"][1],
-                None,
+            "target": panel_target,
+        }
+        for arm in ARMS:
+            arm_model, arm_operator, arm_posterior = models[arm]
+            _panel_metrics, arm_panel = _evaluate(
+                arm_model,
+                arm_operator,
+                arm_posterior,
                 data,
-                data.heldout_indices[:100],
+                panel_indices,
                 mean.to(device),
                 scale.to(device),
                 device,
-            )[1]["target"],
-            "smf_deterministic_mse": results["smf_deterministic_mse"]["panel"][
-                "camera"
-            ],
-            "smf_stochastic_no_kl": results["smf_stochastic_no_kl"]["panel"]["camera"],
-            "smf_beta_vae": results["smf_beta_vae"]["panel"]["camera"],
-        }
+                sample=arm_posterior is not None,
+                epsilon=torch.zeros((panel_indices.numel(), PORT_COUNT, 2)),
+            )
+            panel_results[arm] = arm_panel["camera"]
+        source_model, source_operator, source_posterior, _source_optimizer = (
+            _make_runtime(formal, source, device, "smf_deterministic_mse")
+        )
+        _source_metrics, source_panel = _evaluate(
+            source_model,
+            source_operator,
+            source_posterior,
+            data,
+            panel_indices,
+            mean.to(device),
+            scale.to(device),
+            device,
+        )
+        panel_results["smf_direct_source"] = source_panel["camera"]
+        beta_model, beta_operator, beta_posterior = models["smf_beta_vae"]
+        _mean_metrics, mean_panel = _evaluate(
+            beta_model,
+            beta_operator,
+            beta_posterior,
+            data,
+            panel_indices,
+            mean.to(device),
+            scale.to(device),
+            device,
+            sample=False,
+            epsilon=torch.zeros((panel_indices.numel(), PORT_COUNT, 2)),
+        )
+        heldout_sample_generator = torch.Generator(device="cpu").manual_seed(SEED + 1)
+        heldout_epsilon = torch.randn(
+            (panel_indices.numel(), PORT_COUNT, 2),
+            generator=heldout_sample_generator,
+            dtype=torch.float32,
+        )
+        _sample_metrics, sample_panel = _evaluate(
+            beta_model,
+            beta_operator,
+            beta_posterior,
+            data,
+            panel_indices,
+            mean.to(device),
+            scale.to(device),
+            device,
+            sample=True,
+            epsilon=heldout_epsilon,
+        )
+        panel_results["smf_beta_vae_posterior_mean"] = mean_panel["camera"]
+        panel_results["smf_beta_vae_posterior_sample"] = sample_panel["camera"]
         panel_path = output.parent / "smf_vae_panel.pt"
         panel_hash = _save_panel(panel_path, data, panel_results, hashes)
         elapsed = time.monotonic() - started
@@ -1860,6 +1955,15 @@ def train(args: argparse.Namespace) -> int:
                 vae_metrics.get("posterior_kl", float("inf"))
                 < no_kl_metrics.get("posterior_kl", float("inf")),
                 {},
+            ),
+            GateResult(
+                "vae_kl_below_initial",
+                vae_metrics.get("posterior_kl", float("inf"))
+                < initial["smf_beta_vae"].get("posterior_kl", float("inf")),
+                {
+                    "initial": initial["smf_beta_vae"].get("posterior_kl"),
+                    "final": vae_metrics.get("posterior_kl"),
+                },
             ),
             GateResult("vae_mse_below_cyclic", vae_mse < vae_metrics["cyclic_mse"], {}),
             GateResult(
@@ -1895,8 +1999,17 @@ def train(args: argparse.Namespace) -> int:
             GateResult("wall_time", elapsed <= MAX_WALL_SECONDS, {"seconds": elapsed}),
             GateResult("run_storage", storage <= MAX_STORAGE_BYTES, {"bytes": storage}),
         )
-        scientific = all(gate.passed for gate in gates[2:8])
-        resource = all(gate.passed for gate in gates[-3:])
+        scientific_names = {
+            "vae_kl_below_no_kl",
+            "vae_kl_below_initial",
+            "vae_mse_below_cyclic",
+            "vae_mse_relative_bound",
+            "posterior_variance_retention",
+            "four_phase_updates",
+        }
+        resource_names = {"cuda_peak_memory", "wall_time", "run_storage"}
+        scientific = all(gate.passed for gate in gates if gate.name in scientific_names)
+        resource = all(gate.passed for gate in gates if gate.name in resource_names)
         status = (
             "passed"
             if scientific and resource
