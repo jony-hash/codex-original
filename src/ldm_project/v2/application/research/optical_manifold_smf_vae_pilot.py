@@ -1477,15 +1477,20 @@ def preflight(args: argparse.Namespace) -> int:
             start_step=2,
         )
         resumed_rng = _tree_clone(base._rng_state())
-        exact = (
-            _tree_equal(_model_state(beta_model), _model_state(resumed_model))
-            and _tree_equal(beta_opt.state_dict(), resumed_opt.state_dict())
-            and _tree_equal(beta_history[2], resumed[0])
-            and _tree_equal(uninterrupted_rng, resumed_rng)
-            and resume_state["history"] == interrupted_history
-            and resume_state["schedule_cursor"]
-            == {"next_step": 2, "batch_size": BATCH_SIZE}
-        )
+        resume_checks = {
+            "model_state": _tree_equal(
+                _model_state(beta_model), _model_state(resumed_model)
+            ),
+            "optimizer_state": _tree_equal(
+                beta_opt.state_dict(), resumed_opt.state_dict()
+            ),
+            "step_report": _tree_equal(beta_history[2], resumed[0]),
+            "rng_state": _tree_equal(uninterrupted_rng, resumed_rng),
+            "persisted_history": resume_state["history"] == interrupted_history,
+            "schedule_cursor": resume_state["schedule_cursor"]
+            == {"next_step": 2, "batch_size": BATCH_SIZE},
+        }
+        exact = all(resume_checks.values())
         finite = all(
             item["finite"]
             for item in beta_history + control_history + det_history + resumed
@@ -1508,7 +1513,7 @@ def preflight(args: argparse.Namespace) -> int:
             GateResult("finite_values", finite, {}),
             GateResult("four_phase_updates", phase_updates, {}),
             GateResult("posterior_updates", posterior_updates, {}),
-            GateResult("persisted_resume_exact", exact, {}),
+            GateResult("persisted_resume_exact", exact, resume_checks),
             GateResult(
                 "fixed_epsilon_and_schedule",
                 True,
