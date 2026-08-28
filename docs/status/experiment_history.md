@@ -1815,3 +1815,39 @@ finite/gradient/isolation checks, and the registered KL/reconstruction
 decision gates. It does not authorize prior-only generation, FMF extension,
 additional epochs, evaluator use or promotion. All evidence retains
 `training_authorized=false` and `formal_promotion=false`.
+
+## 2026-08-28：H-LOMA-I0 PLAN 5 probabilistic latent recovery pilot closeout
+
+The project owner authorized one bounded diagnostic three-arm SMF hybrid-VAE
+pilot on branch `research/v2-lightgen-optical-manifold-smf-vae-pilot-v1`.
+The research-only posterior was inserted between the 100-port LP01 SMF
+projection and re-emission. It used fixed real/imaginary normalization, a
+shared per-port `Linear(2,16) -> SiLU` head, identity-residual `mu`, bounded
+`logvar`, fixed epsilon reparameterization, and standard 200-dimensional
+diagonal-Gaussian KL. This is a `project_approximation`, not a LightGen source
+or formal all-optical hardware implementation.
+
+Attempts 01--04 were retained harness attempts. Attempt-05 completed but was
+superseded because the implementation omitted the mandatory final-KL-below-
+initialization gate. Authoritative attempt-06 ran after repair on clean commit
+`7a415ea`. Validation, preflight, training and panel hashes are
+`d50919acb75ffe68453db52a6d87ebdfeb8ae9963f157b0bd3afb582f17de04c`,
+`5e1f8569e7e58ce086db37a318df76fa81107820323128dafbedd02ad0e8a936`,
+`ec6afc5b15274ce9a7e2446bef43bb6346007480da23408fe1399b412200c476`, and
+`e8134f326dfdbdc33e900be17292f17c01d675427f1409193a27418ce64cb664`.
+
+All arms completed 100 steps with exact persisted 2+1 resume, finite values,
+four-layer phase updates, posterior updates, direct-SMF mean replay MSE
+`2.72e-15`, evaluator calls `0`, peak CUDA `2362135552` bytes, wall time
+`416.0924s`, and storage `116038584` bytes. Deterministic MSE ended at
+`0.0503602326`; stochastic no-KL ended at `0.0379457697` with KL
+`3.3382956982`; beta-VAE ended at paired MSE `0.0380179696`, cyclic MSE
+`0.0669108853`, and KL `3.0639550686` versus its initial `2.9956917763`.
+
+The result is `valid_failed`, not a harness or resource failure: the beta-VAE
+KL did not fall below its own initialization, although it remained below the
+stochastic no-KL arm and all reconstruction/variance/finite gates passed.
+The next and only consumer is
+`manual_review_identity_posterior_collapse_contract`. No KL retuning, extra
+training, FMF, prior-only generation, generation or promotion is authorized;
+`training_authorized=false` and `formal_promotion=false` remain mandatory.

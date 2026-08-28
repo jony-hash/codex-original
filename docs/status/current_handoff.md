@@ -1221,3 +1221,52 @@ with fixed beta-KL. It requires static validation, CUDA three-step and persisted
 2+1 resume preflight before 100 steps. Prior-only generation, KL extension to
 FMF, extra epoch, evaluator use, formal promotion and changes to
 `outputs/final_pt/` remain prohibited.
+
+## H-LOMA-I0 PLAN 5 probabilistic latent recovery pilot closeout（2026-08-28）
+
+The project-owner-authorized bounded SMF hybrid-VAE pilot ran on branch
+`research/v2-lightgen-optical-manifold-smf-vae-pilot-v1`. The posterior is a
+research-only electronic `project_approximation` at the 100-port SMF
+coefficient boundary: shared per-port `Linear(2,16) -> SiLU` heads produce
+identity-residual `mu` and bounded `logvar`, followed by fixed
+reparameterization and SMF re-emission. Formal IdentityOLS, the existing
+SMF/FMF operators, `outputs/final_pt/`, and prior evidence were not changed.
+
+Attempts 01--04 were retained validation/preflight harness attempts. Attempt-05
+completed a run but was superseded because its implementation did not enforce
+the pre-registered requirement that final VAE KL be below initialization. The
+authoritative attempt-06 was run on clean commit `7a415ea` after that gate and
+the panel contract were repaired. Its validation, preflight, training, panel,
+posterior-normalization and final-checkpoint hashes are:
+
+`d50919acb75ffe68453db52a6d87ebdfeb8ae9963f157b0bd3afb582f17de04c`,
+`5e1f8569e7e58ce086db37a318df76fa81107820323128dafbedd02ad0e8a936`,
+`ec6afc5b15274ce9a7e2446bef43bb6346007480da23408fe1399b412200c476`,
+`e8134f326dfdbdc33e900be17292f17c01d675427f1409193a27418ce64cb664`,
+`e764ceb31e9ce1aa24f2cd9ad909011550aa6ad095404916ff84be8f93d07a85`,
+`d4bbad17de2c9623a37825b718aee7dc1e14f99727c1651fe9bfb8bd53f04262`,
+`7885762ffd63b42f2bff3bf82b002c0a4e7cccb4e46c0b4993d4a242b183ec6d`, and
+`8b508be438a73f160a956dc063e359354ccde4ac894de960297ae79eafde2b59`.
+
+All three arms completed 100 steps with finite values, four-layer phase and
+posterior updates, exact persisted 2+1 resume, direct-SMF posterior-mean
+replay MSE `2.72e-15`, evaluator calls `0`, peak CUDA `2362135552` bytes,
+wall time `416.0924s`, and storage `116038584` bytes. The fixed held-out
+metrics were:
+
+- deterministic MSE: `0.0508093871 → 0.0503602326`, cyclic `0.0669119731`;
+- stochastic no-KL: final paired MSE `0.0379457697`, cyclic `0.0672367439`,
+  final KL `3.3382956982`;
+- beta-VAE: final paired MSE `0.0380179696`, cyclic `0.0669108853`, final KL
+  `3.0639550686` versus initialization `2.9956917763`, centered correlation
+  `0.7465408`, posterior-mean variance `1.4764290`.
+
+The authoritative outcome is `valid_failed`: the VAE KL decreased relative to
+the stochastic no-KL arm but increased relative to its own initialization.
+This pilot demonstrates that the hybrid posterior, sampling path and KL
+gradient flow are executable without reconstruction collapse, but it does not
+demonstrate the registered KL-success objective. The sole next action is
+`manual_review_identity_posterior_collapse_contract`; no KL retuning, extra
+epoch, FMF extension, prior-only sampling, generation or promotion is
+authorized. Evidence remains `training_authorized=false` and
+`formal_promotion=false`.

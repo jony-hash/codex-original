@@ -914,3 +914,40 @@ storage `229115402` bytes. The outcome is `diagnostic_completed`, not a
 scientific FMF superiority claim. The sole next action is
 `manual_review_fmf_m2_reconstruction_pilot_contract`; all evidence retains
 `training_authorized=false` and `formal_promotion=false`.
+
+### H-LOMA-I0 PLAN 5 probabilistic latent recovery pilot closeout（2026-08-28）
+
+The project owner authorized one bounded, diagnostic-only three-arm SMF
+hybrid-VAE pilot on `research/v2-lightgen-optical-manifold-smf-vae-pilot-v1`.
+Its consumer is the manual decision on whether a probabilistic SMF posterior
+can be advanced for further representation review; its rejection decision is
+the registered KL/reconstruction/collapse gate. The posterior is explicitly
+`project_approximation` and `research_hybrid_active_latent_injector`, not a
+formal hardware component or LightGen source reproduction. Formal IdentityOLS,
+the existing SMF/FMF operators, historical evidence, `outputs/final_pt/`, and
+the formal v2 runtime remain preserved.
+
+Attempts 01--04 were retained harness attempts. Attempt-05 completed a run but
+is superseded because its implementation omitted the mandatory
+final-KL-below-initialization gate. Authoritative attempt-06 ran after repair
+on clean commit `7a415ea`. Validation, preflight, training and panel hashes
+are `d50919acb75ffe68453db52a6d87ebdfeb8ae9963f157b0bd3afb582f17de04c`,
+`5e1f8569e7e58ce086db37a318df76fa81107820323128dafbedd02ad0e8a936`,
+`ec6afc5b15274ce9a7e2446bef43bb6346007480da23408fe1399b412200c476`, and
+`e8134f326dfdbdc33e900be17292f17c01d675427f1409193a27418ce64cb664`.
+
+All three arms completed the registered 100-step run. The authoritative
+preflight passed finite/gradient/isolation, direct-SMF posterior-mean replay
+MSE `2.72e-15`, and persisted 2+1 resume gates. Final beta-VAE paired MSE was
+`0.0380179696` versus cyclic `0.0669108853`; its KL was `3.0639550686`, above
+initial `2.9956917763` but below stochastic no-KL `3.3382956982`. Posterior
+mean variance remained `1.4764290` versus initial `0.9877587`; all arms were
+finite and completed, evaluator calls were `0`, peak CUDA was `2362135552`
+bytes, wall time `416.0924s`, and storage `116038584` bytes.
+
+The authoritative status is `valid_failed`. The pilot establishes executable
+SMF posterior sampling and KL gradient flow without reconstruction collapse,
+but fails the pre-registered KL reduction objective. The only permitted next
+action is `manual_review_identity_posterior_collapse_contract`; do not retune
+KL, extend training, enter FMF/generation, or promote. All evidence retains
+`training_authorized=false` and `formal_promotion=false`.
