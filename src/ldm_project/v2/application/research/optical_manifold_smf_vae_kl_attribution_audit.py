@@ -345,7 +345,6 @@ def _load_sources(spec: Spec, formal_path: Path, current: str) -> SourceBundle:
     old_spec = vae._load_spec(
         Path("configs/research/lightgen_optical_manifold_smf_vae_pilot_v1.yaml")
     )
-    old_formal, _ = vae._load_formal(old_spec)
     source = vae._load_source(old_spec, formal_path, current)
     checkpoint_hashes = {
         "vae_validation": SOURCE_VAE_VALIDATION_HASH,
@@ -423,11 +422,11 @@ def _load_data(root: str | Path) -> tuple[vae.Data, list[torch.Tensor]]:
 
 def _context(spec: Spec, formal: FormalSystemConfig, data: vae.Data) -> EvidenceContextV2:
     return EvidenceContextV2(
-        canonical_sha256(formal.model_dump(mode="json")),
-        spec.config_hash,
-        data.manifest["manifest_hash"],
-        canonical_sha256({"id": base.EXPOSURE_ID, "scale": 1.0, "gamma": 1.0}),
-        1.0,
+        system_signature=canonical_sha256(formal.model_dump(mode="json")),
+        config_hash=spec.config_hash,
+        teacher_manifest_hash=data.manifest["manifest_hash"],
+        dataset_hash=canonical_sha256({"id": base.EXPOSURE_ID, "scale": 1.0, "gamma": 1.0}),
+        exposure_scale=1.0,
     )
 
 
@@ -559,6 +558,41 @@ def _collect_posterior(model: nn.Module, operator: Any, posterior: vae.SharedPer
     return coeff, post_mean, logvar, torch.empty(0)
 
 
+def _posterior_formula_check(
+    model: nn.Module,
+    operator: Any,
+    posterior: vae.SharedPerPortPosterior,
+    data: vae.Data,
+    indices: torch.Tensor,
+    mean: torch.Tensor,
+    scale: torch.Tensor,
+    epsilon: torch.Tensor,
+    device: torch.device,
+) -> dict[str, Any]:
+    amplitudes, _targets = _batch(data, indices[:1], device)
+    coefficients, _system = vae._encoded_coefficients(model, operator, amplitudes)
+    normalized = vae._normalize(coefficients, mean, scale)
+    posterior_mean, logvar = posterior(normalized)
+    standard_deviation = logvar.mul(0.5).exp()
+    latent = posterior_mean + standard_deviation * epsilon[:1].to(device)
+    restored = vae._denormalize(latent, mean, scale)
+    normalized_again = vae._normalize(restored, mean, scale)
+    return {
+        "finite": bool(
+            torch.isfinite(latent).all()
+            and torch.isfinite(restored).all()
+            and torch.isfinite(standard_deviation).all()
+        ),
+        "complex_real_roundtrip": bool(
+            torch.allclose(normalized_again, latent, atol=1.0e-6, rtol=0.0)
+        ),
+        "reparameterization_formula": {
+            "latent_shape": list(latent.shape),
+            "epsilon_shape": list(epsilon[:1].shape),
+        },
+    }
+
+
 def _kl_terms(mean: torch.Tensor, logvar: torch.Tensor) -> dict[str, float]:
     mu_term = 0.5 * mean.square().mean()
     variance_term = 0.5 * (logvar.exp() - 1.0 - logvar).mean()
@@ -598,6 +632,22 @@ def _posterior_metrics(model: nn.Module, operator: Any, posterior: vae.SharedPer
 
 def _metric(model: nn.Module, operator: Any, posterior: vae.SharedPerPortPosterior | None, data: vae.Data, indices: torch.Tensor, mean: torch.Tensor, scale: torch.Tensor, device: torch.device, epsilon: torch.Tensor | None, sample: bool) -> tuple[dict[str, Any], dict[str, torch.Tensor]]:
     return vae._evaluate(model, operator, posterior, data, indices, mean, scale, device, sample=sample, epsilon=epsilon)
+
+
+def _terminal_metrics_reproduced(
+    measured: Mapping[str, Mapping[str, Any]], training: Mapping[str, Any]
+) -> bool:
+    expected = training["contract"]["arms"]
+    for arm in ("smf_beta_vae", "smf_stochastic_no_kl", "smf_deterministic_mse"):
+        actual = measured[f"{arm}_mean"]
+        source = expected[arm]["metrics"]
+        if abs(actual["paired_mse"] - source["paired_mse"]) > SOURCE_MSE_TOLERANCE:
+            return False
+        if arm != "smf_deterministic_mse" and abs(
+            actual.get("posterior_kl", float("inf")) - source["posterior_kl"]
+        ) > SOURCE_MSE_TOLERANCE:
+            return False
+    return True
 
 
 def _gradient_vectors(model: nn.Module, operator: Any, posterior: vae.SharedPerPortPosterior, data: vae.Data, indices: torch.Tensor, mean: torch.Tensor, scale: torch.Tensor, epsilon: torch.Tensor, device: torch.device, objective: str) -> tuple[dict[str, torch.Tensor], float]:
@@ -756,18 +806,16 @@ def run(args: argparse.Namespace) -> int:
         fixed_generator = torch.Generator(device="cpu").manual_seed(SEED)
         fixed_epsilon = torch.randn((data.heldout_indices.numel(), PORT_COUNT, 2), generator=fixed_generator, dtype=torch.float32)
         heldout_metrics: dict[str, Any] = {}
-        heldout_tensors: dict[str, Any] = {}
         posterior_stats: dict[str, Any] = {}
         for arm, (model, operator, posterior) in runtimes.items():
-            mean_metrics, mean_tensors = _metric(model, operator, posterior, data, data.heldout_indices, mean, scale, device, zeros, False)
+            mean_metrics, _mean_tensors = _metric(model, operator, posterior, data, data.heldout_indices, mean, scale, device, zeros, False)
             heldout_metrics[f"{arm}_mean"] = mean_metrics
-            heldout_tensors[f"{arm}_mean"] = mean_tensors["camera"]
             if posterior is not None:
-                sample_metrics, sample_tensors = _metric(model, operator, posterior, data, data.heldout_indices, mean, scale, device, fixed_epsilon, True)
+                sample_metrics, _sample_tensors = _metric(model, operator, posterior, data, data.heldout_indices, mean, scale, device, fixed_epsilon, True)
                 heldout_metrics[f"{arm}_sample"] = sample_metrics
-                heldout_tensors[f"{arm}_sample"] = sample_tensors["camera"]
                 posterior_stats[arm] = _posterior_metrics(model, operator, posterior, data, data.heldout_indices, mean, scale, device)
         source_model, source_operator, _source_post = _runtime(formal, source, "smf_deterministic_mse", source.source.checkpoint, device)
+        source_snapshot = _load_runtime_snapshot(source_model, source_operator, _source_post)
         source_metrics, source_tensors = _metric(source_model, source_operator, None, data, data.heldout_indices, mean, scale, device, None, False)
         expected_initial = source.vae_training["contract"]["initial_metrics"]["smf_beta_vae"]["paired_mse"]
         source_reproduction = {
@@ -778,6 +826,17 @@ def run(args: argparse.Namespace) -> int:
             "passed": abs(source_metrics["paired_mse"] - expected_initial) <= SOURCE_MSE_TOLERANCE,
         }
         beta_model, beta_operator, beta_post = runtimes["smf_beta_vae"]
+        formula_check = _posterior_formula_check(
+            beta_model,
+            beta_operator,
+            beta_post,
+            data,
+            data.heldout_indices,
+            mean,
+            scale,
+            fixed_epsilon,
+            device,
+        )
         gradient_report = _gradient_audit(beta_model, beta_operator, beta_post, data, panels, mean, scale, device)
         cross_swaps: dict[str, Any] = {}
         for phase_arm, (phase_model, phase_operator, _phase_post) in runtimes.items():
@@ -790,12 +849,33 @@ def run(args: argparse.Namespace) -> int:
                 cross_swaps[key] = metrics
         visual_indices = data.visual_indices
         visual_target = _batch(data, visual_indices, device)[1].cpu()
-        panel_tensors: dict[str, torch.Tensor] = {"target": visual_target, "smf_direct_source": source_tensors["camera"][:100].cpu()}
+        _source_visual_metrics, source_visual_tensors = _metric(
+            source_model,
+            source_operator,
+            None,
+            data,
+            visual_indices,
+            mean,
+            scale,
+            device,
+            None,
+            False,
+        )
+        panel_tensors: dict[str, torch.Tensor] = {
+            "target": visual_target,
+            "smf_direct_source": source_visual_tensors["camera"].cpu(),
+        }
+        visual_generator = torch.Generator(device="cpu").manual_seed(SEED)
+        visual_epsilon = torch.randn(
+            (visual_indices.numel(), PORT_COUNT, 2),
+            generator=visual_generator,
+            dtype=torch.float32,
+        )
         for arm, (model, operator, posterior) in runtimes.items():
             mean_metrics, mean_tensors = _metric(model, operator, posterior, data, visual_indices, mean, scale, device, torch.zeros((visual_indices.numel(), PORT_COUNT, 2)), False)
             panel_tensors[f"{arm}_mean"] = mean_tensors["camera"]
             if posterior is not None:
-                sample_metrics, sample_tensors = _metric(model, operator, posterior, data, visual_indices, mean, scale, device, fixed_epsilon[: visual_indices.numel()], True)
+                sample_metrics, sample_tensors = _metric(model, operator, posterior, data, visual_indices, mean, scale, device, visual_epsilon, True)
                 panel_tensors[f"{arm}_sample"] = sample_tensors["camera"]
         mc_variance: dict[str, Any] = {}
         for arm in ("smf_beta_vae", "smf_stochastic_no_kl"):
@@ -810,9 +890,10 @@ def run(args: argparse.Namespace) -> int:
         hashes = {**source.hashes, "research_config": file_sha256(spec.path), "review_contract": file_sha256(review), "dataset_manifest": data.manifest["manifest_hash"], "training_validation": validation_hash}
         panel_path = output.parent / "smf_vae_kl_comparison_panel.pt"
         panel_hash = _save_panel(panel_path, data, panel_tensors, hashes)
-        for arm, (model, operator, posterior) in runtimes.items():
-            if not _snapshot_equal(snapshots[arm], model, operator, posterior):
-                raise RuntimeError(f"model or optical state changed during KL audit: {arm}")
+        state_unchanged = all(
+            _snapshot_equal(snapshots[arm], model, operator, posterior)
+            for arm, (model, operator, posterior) in runtimes.items()
+        ) and _snapshot_equal(source_snapshot, source_model, source_operator, _source_post)
         elapsed = time.monotonic() - started
         peak = int(torch.cuda.max_memory_allocated(device))
         storage = sum(item.stat().st_size for item in output.parent.rglob("*") if item.is_file())
@@ -823,13 +904,15 @@ def run(args: argparse.Namespace) -> int:
         initial_kl = source.vae_training["contract"]["initial_metrics"]["smf_beta_vae"]["posterior_kl"]
         scientific_gates = (
             GateResult("source_metrics_reproduced", source_reproduction["passed"], source_reproduction),
+            GateResult("authoritative_terminal_metrics_reproduced", _terminal_metrics_reproduced(heldout_metrics, source.vae_training), {}),
+            GateResult("reparameterization_and_complex_roundtrip", formula_check["finite"] and formula_check["complex_real_roundtrip"], formula_check),
             GateResult("kl_decomposition_exact", abs(beta_metrics["kl_mu"] + beta_metrics["kl_variance"] - beta_kl) <= KL_REFERENCE_TOLERANCE, {"beta": beta_metrics}),
             GateResult("beta_kl_below_no_kl", beta_kl < no_kl, {"beta": beta_kl, "no_kl": no_kl}),
             GateResult("posterior_not_collapsed", beta_metrics["posterior_mean_variance"] >= 0.5 * source.vae_training["contract"]["initial_metrics"]["smf_beta_vae"]["posterior_mean_variance"], {"final": beta_metrics["posterior_mean_variance"], "initial": source.vae_training["contract"]["initial_metrics"]["smf_beta_vae"]["posterior_mean_variance"]}),
             GateResult("kl_decoder_gradient_zero", all(panel["kl_decoder_norm"] == 0.0 for panel in gradient_report["panels"]), {}),
             GateResult("kl_encoder_and_posterior_gradient_nonzero", all(panel["kl_gradient_norms"]["system.encoder.phase"] > 0.0 and any(value > 0.0 for value in panel["posterior_kl_gradient_norms"].values()) for panel in gradient_report["panels"]), {}),
             GateResult("reconstruction_and_dose_gradients_finite", all(panel["finite"] and all(dose["finite"] for dose in panel["doses"]) for panel in gradient_report["panels"]), {}),
-            GateResult("runtime_state_unchanged", True, {"evaluator_calls": 0}),
+            GateResult("runtime_state_unchanged", state_unchanged, {"evaluator_calls": 0}),
         )
         resource_gates = (
             GateResult("cuda_peak_memory", peak <= MAX_PEAK_BYTES, {"bytes": peak}),
