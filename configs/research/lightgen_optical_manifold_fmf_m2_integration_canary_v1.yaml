@@ -1,0 +1,103 @@
+schema: lightgen_optical_manifold_fmf_m2_integration_canary_v1
+hypothesis: H-LOMA-I0
+formal_system_config: configs/v2/current/formal_identity_logit_amplitude_finite_crop_identity.yaml
+
+source:
+  plan6_validation: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_reconstruction_pilot_v1_attempt_04/validation.json
+  plan6_validation_sha256: d548cf93f2cfefb2258239b066b14f574b098bfa17edc0f377f718fd2cba3ca5
+  plan6_preflight: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_reconstruction_pilot_v1_attempt_04/preflight.json
+  plan6_preflight_sha256: 722557fc0bfc058edafa8666772ee87bb927b0a37924b55087467303d3a56623
+  plan6_training: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_reconstruction_pilot_v1_attempt_04/training.json
+  plan6_training_sha256: a95890d8feb38c0682179cbbb4ef612d49c5f1918609596524959b789e672c3e
+  plan6_panel: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_reconstruction_pilot_v1_attempt_04/identity_smf_comparison_panel.pt
+  plan6_panel_sha256: 9de2fc9d9c2d43ed9752d8609afcaa5455cfb05b9c411d7d0cca9b2a8cf50fdf
+  source_checkpoint: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_reconstruction_pilot_v1_attempt_04/smf_mse_reconstruction_step_1000.pt
+  source_checkpoint_sha256: 949bf6903db8a6c5c8b76fddfddeef31f9419717486f278cbf0ed9d86534dd94
+  source_global_step: 1000
+  mnist_manifest_sha256: 64b1b70dc119dac0cb0aa8b898614962ff993a83d120390d1d6fadd55ade97d8
+
+dataset:
+  train_count: 55000
+  validation_count: 5000
+  steps_per_arm: 20
+  logical_batch_size: 10
+  microbatch_size: 1
+  schedule: class_balanced_one_per_label_without_replacement
+  schedule_seed: 1234
+  excluded_prior_panels: true
+  excluded_prior_schedules: true
+  heldout_excluded: true
+  input_shape: [1, 28, 28]
+  rendered_shape: [1, 200, 200]
+  heldout_panel_count: 1000
+  visual_panel_count: 100
+
+optical_contract:
+  formal_system_kind: formal_amplitude_finite_crop_identity
+  wavelength_m: 5.32e-7
+  slm_shape: [200, 200]
+  slm_pixel_pitch_m: 2.5e-6
+  metasurface_shape: [100, 100]
+  metasurface_pixel_pitch_m: 2.0e-6
+  propagation_grid_size: 2048
+  encoder_layers: 2
+  decoder_layers: 2
+  boundary: finite_crop
+  formal_ols: identity
+  m1_research_ols: 100_port_lp01_smf
+  m2_research_ols: 100_port_two_mode_fmf
+  m2_modes: [LP01, LP11a]
+  m2_transport: identity_200
+  m2_mode_provenance: synthetic_fmf_nested_lp01_lp11a_identity_transport
+  m2_parameter_status: diagnostic_project_approximation
+  front_relay: coherent_imaging_4f
+  back_relay: free_space
+  input_encoding: intensity_sqrt_amplitude
+  target: camera_intensity_same_fov
+  exposure: {scale: 1.0, gamma: 1.0}
+
+training:
+  arms: [fmf_m2_mse_canary, smf_m1_mse_control]
+  optimizer: Adam
+  optimizer_update_device: cpu_shadow
+  learning_rate: 1.0e-3
+  reset_adam_from_source: true
+  steps_per_arm: 20
+  checkpoint_interval: 10
+  reconstruction_activation_checkpoint: true
+  deterministic: true
+  fixed_execution_order: [fmf_m2_mse_canary, smf_m1_mse_control]
+  no_early_stop: true
+  no_tuning: true
+  no_checkpoint_selection: true
+
+gates:
+  min_free_cuda_bytes: 4294967296
+  max_peak_cuda_bytes: 5368709120
+  max_preflight_wall_seconds: 300
+  max_wall_seconds: 1800
+  max_storage_bytes: 536870912
+  safety_mse_ratio: 2.0
+  evaluator_calls: 0
+  require_lp01_nested_exact: true
+  require_lp11a_nonzero: true
+  require_mode_bank_orthonormal: true
+  require_identity_transport: true
+
+authorization:
+  reviewer_role: project_owner
+  decision: approve_bounded_fmf_m2_integration_canary
+  bounded_diagnostic_training_authorized: true
+  training_authorized: false
+  formal_training_authorized: false
+  formal_promotion: false
+  post_diagnostic_next_action: manual_review_fmf_m2_reconstruction_pilot_contract
+  prohibited:
+    - fmf_long_training
+    - fmf_m3
+    - random_mode_coupling
+    - mode_loss
+    - vae_kl
+    - latent_sampling
+    - generation
+    - promotion

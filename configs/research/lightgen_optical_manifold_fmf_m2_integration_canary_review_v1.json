@@ -1,0 +1,33 @@
+{
+  "schema": "lightgen_optical_manifold_fmf_m2_integration_canary_review.v1",
+  "hypothesis": "H-LOMA-I0",
+  "reviewer_role": "project_owner",
+  "decision": "approve_bounded_fmf_m2_integration_canary",
+  "approved_contract": {
+    "arms": ["fmf_m2_mse_canary", "smf_m1_mse_control"],
+    "steps_per_arm": 20,
+    "logical_batch_size": 10,
+    "microbatch_size": 1,
+    "source_global_step": 1000,
+    "preflight_steps": 3,
+    "resume_segment": "2+1",
+    "checkpoint_interval": 10,
+    "m2_modes": ["LP01", "LP11a"],
+    "m2_transport": "identity_200",
+    "post_diagnostic_next_action": "manual_review_fmf_m2_reconstruction_pilot_contract"
+  },
+  "bounded_diagnostic_training_authorized": true,
+  "training_authorized": false,
+  "formal_training_authorized": false,
+  "formal_promotion": false,
+  "prohibited": [
+    "fmf_long_training",
+    "fmf_m3",
+    "random_mode_coupling",
+    "mode_loss",
+    "vae_kl",
+    "latent_sampling",
+    "generation",
+    "promotion"
+  ]
+}

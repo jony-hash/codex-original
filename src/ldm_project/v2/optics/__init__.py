@@ -7,6 +7,7 @@ from importlib import import_module
 from .d2nn import FiniteCropPhaseStack, NearConjugateFiniteCropPhaseStack
 from .devices import IdealAmplitudeSLM, IdentityOLS, identity_ols
 from .fiber_operator import FiberArrayOLS, FiberArraySpec, FiberTransportEnsembleOLS, lp01_radial_profile
+from .few_mode_fiber_operator import FewModeFiberArrayOLS, FewModeFiberArraySpec
 from .fiber_pool import FiberResearchSpec, FiberTransportPool
 from .operator import OpticalLatentOperator
 from .propagation import angular_spectrum_propagate, reference_angular_spectrum_propagate
@@ -32,6 +33,8 @@ __all__ = [
     "OpticalLatentOperator",
     "FiberArrayOLS",
     "FiberArraySpec",
+    "FewModeFiberArrayOLS",
+    "FewModeFiberArraySpec",
     "FiberTransportEnsembleOLS",
     "FiberResearchSpec",
     "FiberTransportPool",
