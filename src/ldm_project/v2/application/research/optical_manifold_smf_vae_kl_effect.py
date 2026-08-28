@@ -921,7 +921,7 @@ def train(args: argparse.Namespace) -> int:
             GateResult("candidate_mse_below_cyclic", candidate["paired_mse"] < candidate["cyclic_mse"], {}),
             GateResult("posterior_variance_retention", candidate.get("posterior_mean_variance", 0.0) >= MIN_VARIANCE_RETENTION * max(candidate_initial.get("posterior_mean_variance", 0.0), 1.0e-30), {}),
             GateResult("active_latent_retention", candidate.get("active_latent_count", 0) >= MIN_ACTIVE_RETENTION * max(candidate_initial.get("active_latent_count", 0), 1), {"initial": candidate_initial.get("active_latent_count"), "final": candidate.get("active_latent_count")}),
-            GateResult("mean_sample_finite", all(torch.isfinite(value).all() for value in panel_tensors.values())),
+            GateResult("mean_sample_finite", all(torch.isfinite(value).all() for value in panel_tensors.values()), {}),
             GateResult("all_arms_completed", all(result["steps_completed"] == STEPS for result in results.values()), {}),
             GateResult("four_phase_updates", all(_phase_update_gate(result["history"], arm in POSTERIOR_ARMS) for arm, result in results.items()), {}),
             GateResult("fixed_ols_and_evaluator_isolation", True, {"evaluator_calls": 0}),
