@@ -1112,6 +1112,44 @@ promotion. The only next action is
 `manual_review_smf_canary_visual_and_metric_trends`; a matched PLAN 6
 reconstruction pilot requires a separate project-owner authorization.
 
+## H-LOMA-I0 PLAN 6 Identity--SMF reconstruction pilot closeout（2026-08-28）
+
+The authoritative run is attempt-04 on clean commit `bced59f`. Attempts 01–03
+are retained invalid harness attempts: wrong resume-result nesting, an
+impossible self-referential preflight hash consumer, and a dropped batch
+dimension in interpolation. None reached training updates or produced a
+scientific result.
+
+Evidence hashes: validation
+`d548cf93f2cfefb2258239b066b14f574b098bfa17edc0f377f718fd2cba3ca5`,
+preflight
+`722557fc0bfc058edafa8666772ee87bb927b0a37924b55087467303d3a56623`,
+training
+`a95890d8feb38c0682179cbbb4ef612d49c5f1918609596524959b789e672c3e`, and
+panel
+`9de2fc9d9c2d43ed9752d8609afcaa5455cfb05b9c411d7d0cca9b2a8cf50fdf`.
+The SMF and Identity final checkpoint hashes are
+`949bf6903db8a6c5c8b76fddfddeef31f9419717486f278cbf0ed9d86534dd94` and
+`9258eada74bf04e114d5f74fc3722450f56fad684fd978c065fd3f94e0b1683b`.
+
+Both MSE-only arms completed 1000 updates on the same fresh schedule. SMF
+held-out paired MSE improved `0.0659028739 → 0.0508093871` (`22.90%`), with
+final cyclic MSE `0.0671605766`; centered correlation and variance retention
+improved `0.6562196 → 0.7100222` and `0.0627982 → 0.1317942`. Identity control
+improved `0.0344723202 → 0.0303227697`, stayed below cyclic MSE `0.0630837232`,
+and also passed its registered control gate. Four phase layers updated,
+formal IdentityOLS and source state were unchanged, evaluator calls were `0`,
+peak CUDA was `2677763072` bytes, wall time `2212.9581s`, and storage
+`817444396` bytes.
+
+This is a bounded diagnostic `passed`: it establishes trainable SMF MSE
+reconstruction, not SMF superiority or FMF readiness. Active-port fraction was
+unavailable from the reused low-level diagnostic and remains explicitly
+non-gating. The unique next action is
+`manual_review_fmf_m2_integration_canary_contract`; do not start FMF, extra
+training, generation or promotion. `training_authorized=false` and
+`formal_promotion=false` remain mandatory.
+
 ## H-LOMA-I0 PLAN 6 Identity--SMF reconstruction pilot authorization（2026-08-28）
 
 The project owner authorized one diagnostic-only 1000-step matched comparison

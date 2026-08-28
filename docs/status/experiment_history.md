@@ -1701,6 +1701,42 @@ or authorize FMF. The sole next action is
 `manual_review_smf_canary_visual_and_metric_trends`; all evidence retains
 `training_authorized=false` and `formal_promotion=false`.
 
+## 2026-08-28：H-LOMA-I0 PLAN 6 Identity--SMF reconstruction pilot closeout
+
+The authoritative Identity--SMF reconstruction comparison completed on clean
+commit `bced59f` in attempt-04. Attempts 01–03 remain retained invalid
+harness attempts and produced no training result: the first had an incorrect
+preflight gate access, the second rejected a valid preflight because of a
+self-referential hash requirement, and the third failed before updates when
+the interpolation helper received a field without its batch dimension.
+
+The validation, preflight, training and comparison-panel SHA256 values are
+`d548cf93f2cfefb2258239b066b14f574b098bfa17edc0f377f718fd2cba3ca5`,
+`722557fc0bfc058edafa8666772ee87bb927b0a37924b55087467303d3a56623`,
+`a95890d8feb38c0682179cbbb4ef612d49c5f1918609596524959b789e672c3e`, and
+`9de2fc9d9c2d43ed9752d8609afcaa5455cfb05b9c411d7d0cca9b2a8cf50fdf`.
+The final SMF and Identity checkpoint hashes are
+`949bf6903db8a6c5c8b76fddfddeef31f9419717486f278cbf0ed9d86534dd94` and
+`9258eada74bf04e114d5f74fc3722450f56fad684fd978c065fd3f94e0b1683b`.
+
+The fixed held-out panel gave SMF paired MSE `0.0659028739 → 0.0508093871`
+(`22.90%`), final cyclic MSE `0.0671605766`, centered correlation
+`0.6562196 → 0.7100222`, variance retention `0.0627982 → 0.1317942`, and
+power/coupling retention `0.5294868 → 0.6535921`. Identity control paired MSE
+was `0.0344723202 → 0.0303227697`, below cyclic MSE `0.0630837232`; its
+centered correlation and variance retention also improved. Both arms completed
+1000 steps with all four phase layers updating. Source/formal state, exact
+resume, finite/safety/resource gates and evaluator isolation passed; evaluator
+calls were `0`, peak CUDA `2677763072` bytes, wall `2212.9581s`, storage
+`817444396` bytes.
+
+The outcome is `passed` only for the registered bounded SMF reconstruction
+question. It does not authorize FMF, extra epochs, generation or promotion.
+The active-port fraction was unavailable from the reused diagnostic helper and
+is explicitly left non-gating. The sole next action is
+`manual_review_fmf_m2_integration_canary_contract`; all evidence retains
+`training_authorized=false` and `formal_promotion=false`.
+
 ## 2026-08-28：H-LOMA-I0 PLAN 6 Identity--SMF reconstruction pilot
 
 The project owner authorized a new diagnostic-only 1000-step matched

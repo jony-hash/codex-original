@@ -789,6 +789,48 @@ PLAN 6 matched Identity-versus-SMF MSE reconstruction pilot must be separately
 authorized; `training_authorized=false` and `formal_promotion=false` remain
 mandatory.
 
+### H-LOMA-I0 PLAN 6 Identity--SMF reconstruction pilot closeout（2026-08-28）
+
+The matched reconstruction pilot completed on clean commit `bced59f` after
+three retained harness attempts. Attempt-01 stopped in preflight because its
+resume gate indexed the result at the wrong nesting level; attempt-02 passed
+preflight but the training consumer incorrectly required a self-referential
+preflight hash; attempt-03 passed preflight but failed before updates because
+the interpolation diagnostic dropped the decoder batch dimension. These
+attempts produced no training result and are not scientific failures.
+
+Authoritative attempt-04 validation, preflight, training and comparison-panel
+SHA256 values are respectively
+`d548cf93f2cfefb2258239b066b14f574b098bfa17edc0f377f718fd2cba3ca5`,
+`722557fc0bfc058edafa8666772ee87bb927b0a37924b55087467303d3a56623`,
+`a95890d8feb38c0682179cbbb4ef612d49c5f1918609596524959b789e672c3e`, and
+`9de2fc9d9c2d43ed9752d8609afcaa5455cfb05b9c411d7d0cca9b2a8cf50fdf`.
+Final SMF and Identity checkpoint hashes are
+`949bf6903db8a6c5c8b76fddfddeef31f9419717486f278cbf0ed9d86534dd94` and
+`9258eada74bf04e114d5f74fc3722450f56fad684fd978c065fd3f94e0b1683b`.
+
+On the fixed 1000-image held-out panel, SMF paired MSE improved from
+`0.0659028739` to `0.0508093871` (`22.90%`), below its final cyclic MSE
+`0.0671605766`. Its centered correlation rose from `0.6562196` to
+`0.7100222`, variance retention from `0.0627982` to `0.1317942`, and optical
+power/coupling retention from `0.5294868` to `0.6535921`. The Identity control
+changed from `0.0344723202` to `0.0303227697`, remained below final cyclic MSE
+`0.0630837232`, and improved its centered correlation `0.7799304 → 0.8196422`
+and variance retention `0.3029684 → 0.3182850`. Both arms completed 1000 steps;
+all phase layers updated, source state and formal IdentityOLS remained
+unchanged, evaluator calls were `0`, peak CUDA was `2677763072` bytes, wall
+time `2212.9581s`, and storage `817444396` bytes.
+
+The result is `passed` for the registered PLAN 6 question only: the 100-port
+SMF path is trainable for MSE reconstruction under this bounded comparison.
+It does not claim parity with Identity, FMF readiness, or promotion. The
+active-port fraction was not exposed by the reused FiberArrayOLS diagnostic
+helper and is therefore recorded as unavailable/non-gating rather than
+invented. The sole next action is
+`manual_review_fmf_m2_integration_canary_contract`; no FMF implementation,
+extra epoch, generation or promotion is authorized. Evidence remains
+`training_authorized=false` and `formal_promotion=false`.
+
 ### H-LOMA-I0 PLAN 6 Identity--SMF reconstruction pilot authorization（2026-08-28）
 
 The project owner authorized one bounded, diagnostic-only 1000-step matched
