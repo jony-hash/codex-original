@@ -878,6 +878,14 @@ def preflight(args: argparse.Namespace) -> int:
         source_formal_state = _state_cpu(source_model.system.ols)
         source_smf_state = _state_cpu(source_smf)
         source_fmf_state = _state_cpu(source_fmf)
+        controls = _preflight_controls(source_model, source_smf, source_fmf, data, device)
+        source_state_after_controls = _state_cpu(source_model)
+        source_formal_state_after_controls = _state_cpu(source_model.system.ols)
+        source_smf_state_after_controls = _state_cpu(source_smf)
+        source_fmf_state_after_controls = _state_cpu(source_fmf)
+        del source_model, source_smf, source_fmf
+        gc.collect()
+        torch.cuda.empty_cache()
         exact = {arm: _exact_resume(formal, source, data, arm, spec, hashes, output.parent, device) for arm in ARMS}
         reports: dict[str, Any] = {}
         for arm in ARMS:
@@ -887,14 +895,6 @@ def preflight(args: argparse.Namespace) -> int:
             del model, optimizer, operator
             gc.collect()
             torch.cuda.empty_cache()
-        source_state_after_controls = _state_cpu(source_model)
-        source_formal_state_after_controls = _state_cpu(source_model.system.ols)
-        source_smf_state_after_controls = _state_cpu(source_smf)
-        source_fmf_state_after_controls = _state_cpu(source_fmf)
-        controls = _preflight_controls(source_model, source_smf, source_fmf, data, device)
-        del source_model, source_smf, source_fmf
-        gc.collect()
-        torch.cuda.empty_cache()
         elapsed = time.monotonic() - started
         peak = int(torch.cuda.max_memory_allocated(device))
         storage = sum(item.stat().st_size for item in output.parent.rglob("*") if item.is_file())
