@@ -999,13 +999,15 @@ def _save_panel(path: Path, data: CanaryData, source_hashes: Mapping[str, str], 
     tensors = {
         "indices": data.visual_indices.cpu(),
         "input_28": data.images.index_select(0, data.visual_indices).cpu(),
-        "target_200": m1_initial["target"][:100].cpu(),
-        "smf_m1_initial": m1_initial["camera"][:100].cpu(),
-        "smf_m1_final": m1_final["camera"][:100].cpu(),
-        "fmf_m2_initial": m2_initial["camera"][:100].cpu(),
-        "fmf_m2_final": m2_final["camera"][:100].cpu(),
-        "smf_m1_features": m1_initial["features"][:100].cpu(),
-        "fmf_m2_features": m2_initial["features"][:100].cpu(),
+        # Clone panel slices so serialization does not retain the backing
+        # storage of the 1000-image held-out evaluation tensors.
+        "target_200": m1_initial["target"][:100].contiguous().clone(),
+        "smf_m1_initial": m1_initial["camera"][:100].contiguous().clone(),
+        "smf_m1_final": m1_final["camera"][:100].contiguous().clone(),
+        "fmf_m2_initial": m2_initial["camera"][:100].contiguous().clone(),
+        "fmf_m2_final": m2_final["camera"][:100].contiguous().clone(),
+        "smf_m1_features": m1_initial["features"][:100].contiguous().clone(),
+        "fmf_m2_features": m2_initial["features"][:100].contiguous().clone(),
     }
     payload = {"schema": PANEL_SCHEMA, "source_hashes": dict(source_hashes), "indices_are_global_mnist": True, "tensors": tensors, "mode_metrics": dict(mode_metrics)}
     atomic_torch_save(path, payload)
@@ -1142,12 +1144,17 @@ def train(args: argparse.Namespace) -> int:
             GateResult("wall_time", elapsed <= MAX_WALL_SECONDS, {"seconds": elapsed}),
             GateResult("run_storage", storage <= MAX_STORAGE_BYTES, {"bytes": storage}),
         )
-        record = EvidenceRecordV2(2, TRAINING_SCHEMA, "diagnostic", "diagnostic", str(state["commit"]), None, spec.config_hash, _context(spec, formal, data), training_hashes, gates, (NEXT_ACTION,))
+        harness_ok = all(gate.passed for gate in gates)
+        resource_failed = any(gate.name in {"cuda_peak_memory", "wall_time", "run_storage"} and not gate.passed for gate in gates)
+        status = "diagnostic" if harness_ok else ("resource_aborted" if resource_failed else "invalid_harness")
+        outcome = "diagnostic_completed" if harness_ok else ("resource_aborted" if resource_failed else "invalid_harness")
+        reason = None if harness_ok else "FMF M=2 canary resource or harness gate failed"
+        record = EvidenceRecordV2(2, TRAINING_SCHEMA, "diagnostic", status, str(state["commit"]), None, spec.config_hash, _context(spec, formal, data), training_hashes, gates, (NEXT_ACTION,) if harness_ok else (), reason)
         record.validate()
-        payload = _record_payload(TRAINING_SCHEMA, record, {"outcome": "diagnostic_completed", "validation_hash": validation_hash, "preflight_hash": preflight_hash, "source_hashes": source.hashes, "training_hashes": training_hashes, "initial_metrics": {"smf_m1_mse_control": m1_initial_metrics, "fmf_m2_mse_canary": m2_initial_metrics}, "arms": {arm: {key: value for key, value in result.items() if key != "panel"} for arm, result in arm_results.items()}, "checkpoints": checkpoints, "panel_path": str(panel_path.resolve()), "panel_sha256": panel_hash, "free_cuda_bytes_before": int(free_bytes), "total_cuda_bytes": int(total_bytes), "peak_cuda_bytes": peak, "wall_seconds": elapsed, "run_storage_bytes": storage, "evaluator_calls": 0, "formal_candidate_checkpoint": False})
+        payload = _record_payload(TRAINING_SCHEMA, record, {"outcome": outcome, "validation_hash": validation_hash, "preflight_hash": preflight_hash, "source_hashes": source.hashes, "training_hashes": training_hashes, "initial_metrics": {"smf_m1_mse_control": m1_initial_metrics, "fmf_m2_mse_canary": m2_initial_metrics}, "arms": {arm: {key: value for key, value in result.items() if key != "panel"} for arm, result in arm_results.items()}, "checkpoints": checkpoints, "panel_path": str(panel_path.resolve()), "panel_sha256": panel_hash, "free_cuda_bytes_before": int(free_bytes), "total_cuda_bytes": int(total_bytes), "peak_cuda_bytes": peak, "wall_seconds": elapsed, "run_storage_bytes": storage, "evaluator_calls": 0, "formal_candidate_checkpoint": False})
         _write_new(output, payload)
         print(json.dumps(payload, indent=2, sort_keys=True, default=str))
-        return 0
+        return 0 if harness_ok else 2
     except _SafetyAbort as exc:
         raise RuntimeError(f"safety_aborted:{exc}") from exc
     finally:

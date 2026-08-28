@@ -69,6 +69,28 @@ def test_fmf_config_and_review_are_exactly_registered() -> None:
     assert review["approved_contract"]["m2_transport"] == "identity_200"
 
 
+def test_comparison_panel_materializes_only_the_fixed_100_image_panel(tmp_path: Path) -> None:
+    visual = torch.arange(100)
+    data = canary.CanaryData(
+        images=torch.zeros(1000, 1, 28, 28),
+        labels=torch.arange(1000) % 10,
+        train_indices=torch.arange(1000),
+        heldout_indices=torch.arange(1000),
+        schedule=torch.zeros(20, 10, dtype=torch.long),
+        visual_indices=visual,
+        manifest={},
+    )
+    full_camera = torch.zeros(1000, 1, 20, 20)
+    full_target = torch.zeros(1000, 1, 20, 20)
+    full_features = torch.zeros(1000, 100, dtype=torch.complex64)
+    values = {"camera": full_camera, "target": full_target, "features": full_features}
+    path = tmp_path / "panel.pt"
+    canary._save_panel(path, data, {}, values, values, values, values, {})
+    payload = torch.load(path, map_location="cpu", weights_only=False)
+    assert all(payload["tensors"][name].shape[0] == 100 for name in ("target_200", "smf_m1_initial", "smf_m1_features", "fmf_m2_final"))
+    assert path.stat().st_size < 3_000_000
+
+
 def test_fmf_cli_dispatch_is_lazy() -> None:
     source = (Path(__file__).parents[2] / "src/ldm_project/v2/application/cli.py").read_text()
     assert "optical_manifold_fmf_m2_integration_canary" in source
