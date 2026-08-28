@@ -47,3 +47,33 @@ def test_attempt_06_outcome_is_consumed_from_contract_layer() -> None:
     record = json.loads(source.read_text(encoding="utf-8"))
     assert record.get("outcome") is None
     assert record["contract"]["outcome"] == "diagnostic_completed_parameterization_limited"
+
+
+def test_gradient_boundary_reads_stacked_phase_layers() -> None:
+    rec = {
+        "system.encoder.phase": torch.ones(2, 3),
+        "system.decoder.phase": torch.full((2, 3), 2.0),
+    }
+    kl = {
+        "system.encoder.phase": torch.ones(2, 3),
+        "system.decoder.phase": torch.zeros(2, 3),
+        "posterior.trunk.weight": torch.ones(2, 2),
+    }
+    checks = audit._gradient_boundary_checks(rec, kl)
+    assert checks["four_phase_reconstruction"] is True
+    assert checks["kl_encoder_posterior_only"] is True
+    assert checks["reconstruction_encoder_layer_norms"] == pytest.approx([3**0.5, 3**0.5])
+
+
+def test_gradient_boundary_rejects_missing_or_zero_phase_layer() -> None:
+    rec = {
+        "system.encoder.phase": torch.cat((torch.ones(1, 3), torch.zeros(1, 3))),
+        "system.decoder.phase": torch.ones(2, 3),
+    }
+    kl = {
+        "system.encoder.phase": torch.ones(2, 3),
+        "system.decoder.phase": torch.zeros(2, 3),
+        "posterior.trunk.weight": torch.ones(2, 2),
+    }
+    checks = audit._gradient_boundary_checks(rec, kl)
+    assert checks["four_phase_reconstruction"] is False

@@ -310,6 +310,44 @@ def _dose_report(rec: Mapping[str, torch.Tensor], kl: Mapping[str, torch.Tensor]
     }
 
 
+def _phase_layer_norms(values: Mapping[str, torch.Tensor], side: str) -> list[float]:
+    """Return the per-layer norms from the stacked phase parameter tensor.
+
+    The gradient helper intentionally groups each two-layer phase stack under
+    one parameter name.  The audit gate must therefore inspect the leading
+    layer dimension rather than looking for synthetic ``phase[0]`` keys.
+    """
+    phase = values[f"system.{side}.phase"]
+    if phase.ndim < 1 or phase.shape[0] != 2:
+        raise ValueError(f"expected exactly two {side} phase layers")
+    return [float(phase[layer].norm()) for layer in range(phase.shape[0])]
+
+
+def _gradient_boundary_checks(
+    rec: Mapping[str, torch.Tensor], kl: Mapping[str, torch.Tensor]
+) -> dict[str, Any]:
+    rec_encoder_layers = _phase_layer_norms(rec, "encoder")
+    rec_decoder_layers = _phase_layer_norms(rec, "decoder")
+    kl_encoder_layers = _phase_layer_norms(kl, "encoder")
+    kl_decoder_norm = float(kl["system.decoder.phase"].norm())
+    posterior_norms = {
+        name: float(value.norm()) for name, value in kl.items() if name.startswith("posterior.")
+    }
+    return {
+        "reconstruction_encoder_layer_norms": rec_encoder_layers,
+        "reconstruction_decoder_layer_norms": rec_decoder_layers,
+        "kl_encoder_layer_norms": kl_encoder_layers,
+        "kl_decoder_norm": kl_decoder_norm,
+        "kl_posterior_gradient_norms": posterior_norms,
+        "four_phase_reconstruction": all(norm > 0.0 for norm in (*rec_encoder_layers, *rec_decoder_layers)),
+        "kl_encoder_posterior_only": (
+            kl_decoder_norm == 0.0
+            and all(norm > 0.0 for norm in kl_encoder_layers)
+            and any(norm > 0.0 for norm in posterior_norms.values())
+        ),
+    }
+
+
 def _run_panel(model: torch.nn.Module, operator: Any, posterior: vae.SharedPerPortPosterior, data: vae.Data, panel: torch.Tensor, mean: torch.Tensor, scale: torch.Tensor, device: torch.device) -> dict[str, Any]:
     generator = torch.Generator(device="cpu").manual_seed(CONFIRMATION_SEED + int(panel[0]))
     epsilon = torch.randn((panel.numel(), PORT_COUNT, 2), generator=generator, dtype=torch.float32)
@@ -317,17 +355,22 @@ def _run_panel(model: torch.nn.Module, operator: Any, posterior: vae.SharedPerPo
     kl, kl_value = old_audit._gradient_vectors(model, operator, posterior, data, panel, mean, scale, epsilon, device, "kl")
     rec_norms = old_audit._vector_norms(rec)
     kl_norms = old_audit._vector_norms(kl)
+    boundary = _gradient_boundary_checks(rec, kl)
     doses = [_dose_report(rec, kl, multiplier) for multiplier in DOSES]
     return {
         "reconstruction_value": rec_value,
         "kl_value": kl_value,
         "reconstruction_gradient_norms": rec_norms,
         "kl_gradient_norms": kl_norms,
-        "kl_decoder_norm": kl_norms["system.decoder.phase"],
+        "kl_decoder_norm": boundary["kl_decoder_norm"],
+        "reconstruction_encoder_layer_norms": boundary["reconstruction_encoder_layer_norms"],
+        "reconstruction_decoder_layer_norms": boundary["reconstruction_decoder_layer_norms"],
+        "kl_encoder_layer_norms": boundary["kl_encoder_layer_norms"],
+        "kl_posterior_gradient_norms": boundary["kl_posterior_gradient_norms"],
         "doses": doses,
         "finite": all(torch.isfinite(value).all() for value in (*rec.values(), *kl.values())),
-        "four_phase_reconstruction": all(rec_norms.get(f"system.{side}.phase[{index}]", 0.0) > 0.0 for side in ("encoder", "decoder") for index in range(2)),
-        "kl_encoder_posterior_only": kl_norms["system.decoder.phase"] == 0.0 and all(kl_norms.get(f"system.encoder.phase[{index}]", 0.0) > 0.0 for index in range(2)) and any(value > 0.0 for name, value in kl_norms.items() if name.startswith("posterior.")),
+        "four_phase_reconstruction": boundary["four_phase_reconstruction"],
+        "kl_encoder_posterior_only": boundary["kl_encoder_posterior_only"],
     }
 
 
