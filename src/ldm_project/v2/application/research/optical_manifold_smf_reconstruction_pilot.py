@@ -1093,7 +1093,7 @@ def _load_preflight(path: str | Path, spec: PilotSpec, formal: FormalSystemConfi
     if record.permitted_next_actions != ("run_smf_reconstruction_pilot",):
         raise ValueError("SMF reconstruction preflight next action is invalid")
     contract = payload.get("contract")
-    if not isinstance(contract, Mapping) or contract.get("training_hashes") != {**expected, "training_preflight": digest}:
+    if not isinstance(contract, Mapping) or contract.get("training_hashes") != expected:
         raise ValueError("SMF reconstruction preflight training provenance is invalid")
     return payload, digest, {**expected, "training_preflight": digest}
 

@@ -120,6 +120,12 @@ def test_validation_consumer_binds_review_file_hash() -> None:
     assert "record.input_hashes != expected" in source
 
 
+def test_preflight_consumer_does_not_require_a_self_referential_hash() -> None:
+    source = inspect.getsource(pilot._load_preflight)
+    assert 'contract.get("training_hashes") != expected' in source
+    assert '"training_preflight": digest' in source
+
+
 def test_resume_rejects_completed_arm_and_foreign_attempt() -> None:
     source = inspect.getsource(pilot._load_resume)
     assert "target.parent.resolve() != output_dir.resolve()" in source
