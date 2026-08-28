@@ -1,0 +1,33 @@
+{
+  "schema": "lightgen_optical_manifold_smf_bottleneck_attribution_review.v1",
+  "hypothesis": "H-LOMA-I0",
+  "reviewer_role": "project_owner",
+  "decision": "approve_no_update_smf_bottleneck_attribution_audit",
+  "approved_contract": {
+    "assessment_images": 1000,
+    "gradient_panels": 3,
+    "gradient_panel_images": 100,
+    "dose_multipliers": [1.0, 2.0, 4.0, 8.0],
+    "registered_lambda": 0.0071572503388103665,
+    "m2_capacity_comparison_only": true,
+    "no_update": true,
+    "post_dose_limited_next_action": "manual_review_fixed_ols_coupling_dose_response_pilot_contract",
+    "post_mode_capacity_next_action": "manual_review_fmf_mode_capacity_reconstruction_contract",
+    "post_decoder_mismatch_next_action": "manual_review_passive_transport_decoder_mismatch_contract",
+    "post_objective_next_action": "manual_review_smf_projection_objective_replacement_contract"
+  },
+  "no_update_diagnostic_authorized": true,
+  "training_authorized": false,
+  "formal_training_authorized": false,
+  "formal_promotion": false,
+  "prohibited": [
+    "1000_step_continuation",
+    "trainable_ols_transport",
+    "fmf_training",
+    "fmf_long_training",
+    "prior_sampling",
+    "generation",
+    "evaluator",
+    "promotion"
+  ]
+}

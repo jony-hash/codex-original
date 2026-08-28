@@ -927,6 +927,18 @@ authorize extra epochs, KL, latent sampling, SMF/FMF, generation, evaluator,
 or promotion. All evidence continues to require
 `training_authorized=false` and `formal_promotion=false`.
 
+## H-LOMA-I0：SMF bottleneck attribution audit（2026-08-29）
+
+当前 fixed-OLS recovery attempt-02 为有效科学失败：coupling 臂相对 MSE
+control 的 power gain 只有 `0.2014` 个百分点，不能进入 1000-step continuation。
+KL 路径不是当前阻塞，KL 臂已低于初始化和 no-KL 对照。
+
+下一步从 clean `37e2b1b` 的独立分支执行 no-update attribution，消费 attempt-02
+evidence 与 checkpoints。实验拆分 SMF LP01 投影容量、既有 FMF M2 observation-only
+容量、encoder/decoder `2×2` cross-swap，以及 `1×/2×/4×/8×` coupling 梯度剂量；
+不训练、不改 OLS transport、不放宽历史 `+5pp` 门限。审计结果只决定下一个人工
+合同，不自动授权 dose pilot、FMF、生成或 promotion。
+
 ## H-LOMA-I0 SMF VAE KL chain attribution audit closeout（2026-08-28）
 
 The authoritative no-update audit completed on clean implementation commit
@@ -1381,3 +1393,15 @@ posterior epsilon. Fixed SMF modes, identity transport, formal IdentityOLS,
 relay and exposure are preserved. No trainable OLS transport, prior-only
 generation, FMF extension or promotion is authorized; evidence remains
 `training_authorized=false` and `formal_promotion=false`.
+
+## H-LOMA-I0：SMF bottleneck attribution audit（2026-08-29）
+
+当前 fixed-OLS recovery attempt-02 为有效科学失败：coupling 臂相对 MSE
+control 的 power gain 只有 `0.2014` 个百分点，不能进入 1000-step continuation。
+KL 路径不是当前阻塞，KL 臂已低于初始化和 no-KL 对照。
+
+下一步从 clean `37e2b1b` 的独立分支执行 no-update attribution，消费 attempt-02
+evidence 与 checkpoints。实验拆分 SMF LP01 投影容量、既有 FMF M2 observation-only
+容量、encoder/decoder `2×2` cross-swap，以及 `1×/2×/4×/8×` coupling 梯度剂量；
+不训练、不改 OLS transport、不放宽历史 `+5pp` 门限。审计结果只决定下一个人工
+合同，不自动授权 dose pilot、FMF、生成或 promotion。

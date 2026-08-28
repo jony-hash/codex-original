@@ -58,6 +58,11 @@ def dispatch(args: argparse.Namespace) -> int:
         "smf-ols-loss-recovery-train",
     }:
         from .research.optical_manifold_smf_ols_loss_recovery import dispatch
+    elif action in {
+        "smf-bottleneck-attribution-validate",
+        "smf-bottleneck-attribution-run",
+    }:
+        from .research.optical_manifold_smf_bottleneck_attribution import dispatch
     else:
         from .research.optical_manifold import dispatch
     return int(dispatch(args) or 0)

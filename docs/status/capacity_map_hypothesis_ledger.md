@@ -1038,3 +1038,17 @@ projection residual 下降，但相对 MSE control 的 power gain 只有 `0.2014
 `valid_failed`。KL 臂的绝对 KL gate 在修复后通过。唯一消费者为
 `manual_review_smf_bottleneck_attribution_contract`，1000-step fixed-OLS
 continuation 被阻塞；不允许重新调参、训练 OLS transport、FMF、生成或 promotion。
+
+### H-LOMA-I0 SMF bottleneck attribution（2026-08-29）
+
+本条目注册 fixed-OLS recovery attempt-02 之后的一次无更新归因审计。消费者是
+project owner 对 coupling dose、SMF mode-capacity、decoder mismatch 或
+projection objective 后续合同的选择；source replay、数据隔离、冻结状态、梯度
+边界、负对照或资源 gate 失败会拒绝全部下游训练。
+
+审计使用独立 balanced panels，固定 LP01 SMF 与既有 LP01+LP11a FMF M2 做
+observation-only 容量对照，并对 optical control/coupling 执行 encoder-decoder
+cross-swap。它不改变 formal IdentityOLS、SMF/FMF transport、exposure 或历史
+`+5pp` gate，不创建 optimizer/checkpoint，不启动 continuation。结果只能形成
+diagnostic dose-limited 或 `valid_failed_*` 归因，不构成 FMF 优越性或 promotion
+证据。

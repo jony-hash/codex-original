@@ -1701,6 +1701,24 @@ or authorize FMF. The sole next action is
 `manual_review_smf_canary_visual_and_metric_trends`; all evidence retains
 `training_authorized=false` and `formal_promotion=false`.
 
+## H-LOMA-I0：SMF bottleneck attribution audit registration（2026-08-29）
+
+固定 OLS recovery attempt-02 的工程门通过，但 coupling 臂相对 MSE control
+的功率保持率仅提升 `0.2014` 个百分点，未达到预注册 `+5pp`，因此停止
+1000-step continuation。project owner 授权一次 no-update、diagnostic-only
+归因审计，其真实消费者是后续 coupling-dose、FMF mode-capacity、decoder
+mismatch 或 projection-objective 人工合同；lineage、数据隔离、状态冻结、
+负对照、provenance 或资源 gate 失败时 fail-closed。
+
+新分支为
+`research/v2-lightgen-optical-manifold-smf-bottleneck-attribution-v1`。审计
+绑定 attempt-02 validation/preflight/training/panel 和 source/final checkpoints，
+使用新的 balanced assessment/gradient panels，比较冻结 LP01 SMF 与既有 LP01+
+LP11a FMF M2 的 observation-only captured power，执行 control/coupling
+encoder-decoder `2×2` cross-swap，并测试 registered coupling lambda 的
+`1×/2×/4×/8×` 无更新梯度剂量。FMF 不训练，历史 gate 不追溯放宽，所有 evidence
+保持 `training_authorized=false`、`formal_promotion=false`。
+
 ## 2026-08-28：H-LOMA-I0 fixed OLS projection-loss recovery canary
 
 在 corrected KL dose reaudit 和 matched KL effect pilot 之后，执行了从 PLAN 6 SMF

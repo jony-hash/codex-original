@@ -1,0 +1,96 @@
+schema: lightgen_optical_manifold_smf_bottleneck_attribution_v1
+hypothesis: H-LOMA-I0
+formal_system_config: configs/v2/current/formal_identity_logit_amplitude_finite_crop_identity.yaml
+
+source:
+  validation: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_ols_loss_recovery_v1_attempt_02/validation.json
+  preflight: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_ols_loss_recovery_v1_attempt_02/preflight.json
+  training: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_ols_loss_recovery_v1_attempt_02/training.json
+  panel: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_ols_loss_recovery_v1_attempt_02/identity_smf_coupling_panel.pt
+  source_checkpoint: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_reconstruction_pilot_v1_attempt_04/smf_mse_reconstruction_step_1000.pt
+  optical_control_checkpoint: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_ols_loss_recovery_v1_attempt_02/optical_mse_control_step_0100.pt
+  optical_coupling_checkpoint: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_ols_loss_recovery_v1_attempt_02/optical_coupling_step_0100.pt
+  validation_sha256: 18d63ff5e9c3d18db7c669fc8c596423d8a2cc02ed50338cf8043fcc609d06f6
+  preflight_sha256: abf063fa6e39511b01a661923f755e84c1eefd8285c91bdce0651a80066d8833
+  training_sha256: a73b3917d64049509b2c6f025e0025bd506db4d6f95271598c5dc95c43c0b65e
+  panel_sha256: c432221ba0725da3744f66459a3c513ef632d5aa202864123007137aa5798b61
+  source_checkpoint_sha256: 949bf6903db8a6c5c8b76fddfddeef31f9419717486f278cbf0ed9d86534dd94
+  optical_control_checkpoint_sha256: 05aebcfd5c2d2aaa3867d2af789dba9158c0123b7e3085217082c061240b4266
+  optical_coupling_checkpoint_sha256: dc9550233f89f213ca45bd8ccee5144dd2e96255dfe6d447dd2555852a80739a
+  mnist_manifest_sha256: 64b1b70dc119dac0cb0aa8b898614962ff993a83d120390d1d6fadd55ade97d8
+  source_global_step: 1000
+
+context:
+  source_training_outcome: valid_failed
+  source_next_action: manual_review_smf_bottleneck_attribution_contract
+  source_authoritative_terminal_metrics: true
+  fmf_capacity_operator: existing_plan_7a_frozen_m2_operator
+
+dataset:
+  train_count: 55000
+  validation_count: 5000
+  assessment_images: 1000
+  gradient_panels: 3
+  gradient_panel_images: 100
+  panel_seed: 1234
+  schedule: fresh_balanced_panels_without_replacement
+  heldout_excluded: true
+  prior_training_and_audit_indices_excluded: true
+  label_role: balancing_and_offline_grouping_only
+  input_shape: [1, 28, 28]
+  rendered_shape: [1, 200, 200]
+
+optical_contract:
+  formal_system_kind: formal_amplitude_finite_crop_identity
+  wavelength_m: 5.32e-7
+  slm_shape: [200, 200]
+  slm_pixel_pitch_m: 2.5e-6
+  metasurface_shape: [100, 100]
+  metasurface_pixel_pitch_m: 2.0e-6
+  propagation_grid_size: 2048
+  encoder_layers: 2
+  decoder_layers: 2
+  formal_ols: identity
+  research_ols: 100_port_lp01_smf
+  capacity_control_ols: 200_port_lp01_lp11a_fmf
+  fixed_transport: true
+  fixed_exposure: {scale: 1.0, gamma: 1.0}
+  projection_loss: one_minus_smf_power_retention
+  no_complex_resize: true
+
+audit:
+  checkpoint_arms: [optical_mse_control, optical_coupling]
+  context_arms: [posterior_no_kl_coupling, posterior_kl_coupling]
+  dose_multipliers: [1.0, 2.0, 4.0, 8.0]
+  registered_lambda: 0.0071572503388103665
+  reconstruction_direction_retention: 0.25
+  gradient_ratio_range: [0.05, 0.4]
+  m2_capacity_comparison_only: true
+  no_update: true
+  bootstrap_seed: 1234
+
+gates:
+  min_free_cuda_bytes: 4294967296
+  max_peak_cuda_bytes: 5368709120
+  max_wall_seconds: 1200
+  max_storage_bytes: 536870912
+  evaluator_calls: 0
+  cross_swap_required: true
+  model_state_unchanged: true
+
+authorization:
+  reviewer_role: project_owner
+  decision: approve_no_update_smf_bottleneck_attribution_audit
+  no_update_diagnostic_authorized: true
+  training_authorized: false
+  formal_training_authorized: false
+  formal_promotion: false
+  prohibited:
+    - 1000_step_continuation
+    - trainable_ols_transport
+    - fmf_training
+    - fmf_long_training
+    - prior_sampling
+    - generation
+    - evaluator
+    - promotion
