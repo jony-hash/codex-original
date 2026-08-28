@@ -1789,3 +1789,29 @@ an executable M=2 integration chain and short-term update trend only; it does
 not establish FMF superiority or authorize longer FMF, M=3, mode coupling,
 generation or promotion. The sole next action is
 `manual_review_fmf_m2_reconstruction_pilot_contract`.
+
+## 2026-08-28：H-LOMA-I0 PLAN 5 probabilistic latent recovery pilot
+
+The project owner authorized one bounded diagnostic SMF hybrid-VAE pilot on
+`research/v2-lightgen-optical-manifold-smf-vae-pilot-v1`. This is a controlled
+return to the originally planned PLAN 5 probability interface after the
+deterministic PCA+SWD aggregate-prior approximation. The source is the passed
+PLAN 6 SMF step-1000 checkpoint; formal IdentityOLS, the existing SMF/FMF
+operators, old evidence and the current v2 runtime remain unchanged.
+
+The research posterior is located between the 100-port LP01 projection and
+mode-bank re-emission. It represents each complex coefficient by real and
+imaginary parts, uses fixed train-only per-port normalization, and applies a
+shared `Linear(2,16) -> SiLU` head for identity-residual `mu` and `logvar`.
+The reparameterization path is `z=mu+exp(0.5*logvar)*epsilon`, followed by
+fixed inverse normalization and complex SMF re-emission. This is explicitly a
+`project_approximation` and `research_hybrid_active_latent_injector`, not a
+formal all-optical hardware implementation.
+
+The three arms are `smf_deterministic_mse`, `smf_stochastic_no_kl`, and
+`smf_beta_vae`, with a shared balanced schedule and epsilon stream. The pilot
+is gated by clean lineage, a real CUDA three-step and persisted 2+1 resume,
+finite/gradient/isolation checks, and the registered KL/reconstruction
+decision gates. It does not authorize prior-only generation, FMF extension,
+additional epochs, evaluator use or promotion. All evidence retains
+`training_authorized=false` and `formal_promotion=false`.

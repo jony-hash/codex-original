@@ -3,6 +3,7 @@
 The static registry lives in :mod:`cli_handlers` so this public lifecycle
 boundary stays small and imports execution targets only after parsing.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -56,7 +57,9 @@ def _dispatch(args: argparse.Namespace) -> int:
                 "adaptive-projection-audit-validate",
                 "adaptive-projection-audit-run",
             }:
-                from .research.optical_manifold_adaptive_projection_audit import dispatch
+                from .research.optical_manifold_adaptive_projection_audit import (
+                    dispatch,
+                )
 
                 return int(dispatch(args) or 0)
             if args.research_action in {
@@ -80,7 +83,17 @@ def _dispatch(args: argparse.Namespace) -> int:
                 "fmf-m2-integration-canary-preflight",
                 "fmf-m2-integration-canary-train",
             }:
-                from .research.optical_manifold_fmf_m2_integration_canary import dispatch
+                from .research.optical_manifold_fmf_m2_integration_canary import (
+                    dispatch,
+                )
+
+                return int(dispatch(args) or 0)
+            if args.research_action in {
+                "smf-vae-pilot-validate",
+                "smf-vae-pilot-preflight",
+                "smf-vae-pilot-train",
+            }:
+                from .research.optical_manifold_smf_vae_pilot import dispatch
 
                 return int(dispatch(args) or 0)
             from .research.optical_manifold import dispatch
@@ -171,7 +184,9 @@ def _dispatch(args: argparse.Namespace) -> int:
 
             return int(dispatch(args) or 0)
         if args.research_program == "electronic-o0-nonlinear-direct-manifold-capacity":
-            from .research.electronic_o0_nonlinear_direct_manifold_capacity import dispatch
+            from .research.electronic_o0_nonlinear_direct_manifold_capacity import (
+                dispatch,
+            )
 
             return int(dispatch(args) or 0)
         if args.research_program == "joint-quadrature-optical-capacity":
@@ -228,7 +243,11 @@ def _dispatch(args: argparse.Namespace) -> int:
     if spec is not None and config is not None:
         target = _resolve(spec)
         module = importlib.import_module(spec.target.partition(":")[0], __package__)
-        for name in ("_CONTROL_ORACLE_STEPS", "_CONTROL_ORACLE_PROGRESS_INTERVAL", "_CONTROL_ORACLE_LR"):
+        for name in (
+            "_CONTROL_ORACLE_STEPS",
+            "_CONTROL_ORACLE_PROGRESS_INTERVAL",
+            "_CONTROL_ORACLE_LR",
+        ):
             if hasattr(module, name):
                 setattr(module, name, globals()[name])
         return int(target(args, config) or 0)

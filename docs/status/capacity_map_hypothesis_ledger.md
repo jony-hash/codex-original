@@ -554,6 +554,32 @@ The audit never creates an optimizer, changes model state, writes a checkpoint,
 loads an evaluator, or modifies formal v2 behavior. All evidence remains
 `training_authorized=false` and `formal_promotion=false`.
 
+### H-LOMA-I0 PLAN 5 probabilistic latent recovery authorization（2026-08-28）
+
+The project owner authorized one bounded diagnostic SMF hybrid-VAE pilot on
+branch `research/v2-lightgen-optical-manifold-smf-vae-pilot-v1`. This stage
+recovers the originally planned PLAN 5 probability interface after the
+deterministic aggregate-prior SWD approximation. It consumes the authoritative
+PLAN 6 100-port SMF step-1000 checkpoint and leaves the formal IdentityOLS,
+FiberArrayOLS, FMF operator, current v2 runtime and prior evidence unchanged.
+
+The research-only posterior operates between SMF projection and re-emission.
+One hundred complex coefficients are represented as 200 real values, fixed
+calibration mean/scale are applied, and a shared per-port head produces
+`mu/logvar`; reparameterized coefficients are then re-emitted through the
+unchanged SMF mode bank. The posterior and coefficient injector are explicitly
+`project_approximation` and `research_hybrid_active_latent_injector`, not a
+formal all-optical hardware path. The three arms are deterministic MSE,
+stochastic-no-KL, and beta-VAE; all use the same schedule and epsilon stream.
+
+The real consumer is the manual decision on whether a probabilistic OLS
+posterior can reduce aggregate prior mismatch without collapsing instance
+reconstruction. The rejection decision is made by the validation/preflight
+lineage, gradient, resume, finite, isolation and resource gates, followed by
+the registered KL/reconstruction gates. The pilot does not authorize prior
+sampling, generation, FMF extension, formal training or promotion. Evidence
+must retain `training_authorized=false` and `formal_promotion=false`.
+
 ### H-LOMA-I0 PLAN 5 aggregate-prior regularization audit closeout（2026-08-28）
 
 The implementation is on clean commit `836ca63` on branch

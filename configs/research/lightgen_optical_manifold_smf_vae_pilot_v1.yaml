@@ -1,0 +1,107 @@
+schema: lightgen_optical_manifold_smf_vae_pilot_v1
+hypothesis: H-LOMA-I0
+formal_system_config: configs/v2/current/formal_identity_logit_amplitude_finite_crop_identity.yaml
+
+source:
+  plan6_validation: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_reconstruction_pilot_v1_attempt_04/validation.json
+  plan6_validation_sha256: d548cf93f2cfefb2258239b066b14f574b098bfa17edc0f377f718fd2cba3ca5
+  plan6_preflight: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_reconstruction_pilot_v1_attempt_04/preflight.json
+  plan6_preflight_sha256: 722557fc0bfc058edafa8666772ee87bb927b0a37924b55087467303d3a56623
+  plan6_training: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_reconstruction_pilot_v1_attempt_04/training.json
+  plan6_training_sha256: a95890d8feb38c0682179cbbb4ef612d49c5f1918609596524959b789e672c3e
+  plan6_panel: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_reconstruction_pilot_v1_attempt_04/identity_smf_comparison_panel.pt
+  plan6_panel_sha256: 9de2fc9d9c2d43ed9752d8609afcaa5455cfb05b9c411d7d0cca9b2a8cf50fdf
+  source_checkpoint: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_reconstruction_pilot_v1_attempt_04/smf_mse_reconstruction_step_1000.pt
+  source_checkpoint_sha256: 949bf6903db8a6c5c8b76fddfddeef31f9419717486f278cbf0ed9d86534dd94
+  source_global_step: 1000
+  mnist_manifest_sha256: 64b1b70dc119dac0cb0aa8b898614962ff993a83d120390d1d6fadd55ade97d8
+
+dataset:
+  train_count: 55000
+  validation_count: 5000
+  calibration_count: 1000
+  training_count: 1000
+  steps_per_arm: 100
+  logical_batch_size: 10
+  microbatch_size: 1
+  schedule: class_balanced_one_per_label_without_replacement
+  schedule_seed: 1234
+  calibration_and_schedule_disjoint: true
+  prior_schedules_excluded: true
+  heldout_excluded: true
+  input_shape: [1, 28, 28]
+  rendered_shape: [1, 200, 200]
+  heldout_panel_count: 1000
+  visual_panel_count: 100
+
+optical_contract:
+  formal_system_kind: formal_amplitude_finite_crop_identity
+  wavelength_m: 5.32e-7
+  slm_shape: [200, 200]
+  slm_pixel_pitch_m: 2.5e-6
+  metasurface_shape: [100, 100]
+  metasurface_pixel_pitch_m: 2.0e-6
+  propagation_grid_size: 2048
+  encoder_layers: 2
+  decoder_layers: 2
+  boundary: finite_crop
+  formal_ols: identity
+  research_ols: 100_port_lp01_smf
+  posterior_domain: 100_complex_coefficients_as_200_real
+  posterior_head: shared_per_port_linear_16_silu
+  posterior_status: project_approximation
+  injector_status: research_hybrid_active_latent_injector
+  front_relay: coherent_imaging_4f
+  back_relay: free_space
+  input_encoding: intensity_sqrt_amplitude
+  target: camera_intensity_same_fov
+  exposure: {scale: 1.0, gamma: 1.0}
+
+training:
+  arms: [smf_beta_vae, smf_stochastic_no_kl, smf_deterministic_mse]
+  optimizer: Adam
+  optimizer_update_device: cpu_shadow
+  learning_rate: 1.0e-3
+  reset_adam_from_source: true
+  steps_per_arm: 100
+  checkpoint_interval: 50
+  reconstruction_activation_checkpoint: true
+  deterministic: true
+  epsilon_seed: 1234
+  initial_logvar: -6.0
+  logvar_range: [-12.0, 2.0]
+  kl_reduction: mean_over_200_real_dimensions
+  beta_calibration: 0.1_encoder_reconstruction_norm_over_kl_norm
+  no_early_stop: true
+  no_tuning: true
+  no_checkpoint_selection: true
+
+gates:
+  min_free_cuda_bytes: 4294967296
+  max_peak_cuda_bytes: 5368709120
+  max_preflight_wall_seconds: 300
+  max_wall_seconds: 1800
+  max_storage_bytes: 1073741824
+  safety_mse_ratio: 2.0
+  max_heldout_mse_relative_to_deterministic: 1.10
+  min_posterior_variance_retention: 0.50
+  evaluator_calls: 0
+
+authorization:
+  reviewer_role: project_owner
+  decision: approve_bounded_smf_hybrid_vae_pilot
+  bounded_diagnostic_training_authorized: true
+  training_authorized: false
+  formal_training_authorized: false
+  formal_promotion: false
+  post_pass_next_action: manual_review_fmf_m2_reconstruction_pilot_contract
+  post_valid_failed_next_action: manual_review_identity_posterior_collapse_contract
+  prohibited:
+    - formal_v2_change
+    - formal_smf_or_fmf_change
+    - vae_hardware_claim
+    - extra_epoch
+    - latent_prior_generation
+    - generation
+    - evaluator
+    - promotion

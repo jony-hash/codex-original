@@ -1,0 +1,34 @@
+{
+  "schema": "lightgen_optical_manifold_smf_vae_pilot_review.v1",
+  "hypothesis": "H-LOMA-I0",
+  "reviewer_role": "project_owner",
+  "decision": "approve_bounded_smf_hybrid_vae_pilot",
+  "approved_contract": {
+    "arms": ["smf_beta_vae", "smf_stochastic_no_kl", "smf_deterministic_mse"],
+    "steps_per_arm": 100,
+    "logical_batch_size": 10,
+    "microbatch_size": 1,
+    "source_global_step": 1000,
+    "preflight_steps": 3,
+    "resume_segment": "2+1",
+    "checkpoint_interval": 50,
+    "posterior_real_dimension": 200,
+    "posterior_head": "shared_per_port_linear_16_silu",
+    "post_pass_next_action": "manual_review_fmf_m2_reconstruction_pilot_contract",
+    "post_valid_failed_next_action": "manual_review_identity_posterior_collapse_contract"
+  },
+  "bounded_diagnostic_training_authorized": true,
+  "training_authorized": false,
+  "formal_training_authorized": false,
+  "formal_promotion": false,
+  "prohibited": [
+    "formal_v2_change",
+    "formal_smf_or_fmf_change",
+    "vae_hardware_claim",
+    "extra_epoch",
+    "latent_prior_generation",
+    "generation",
+    "evaluator",
+    "promotion"
+  ]
+}

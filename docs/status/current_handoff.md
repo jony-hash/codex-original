@@ -1199,3 +1199,25 @@ bytes. This proves the M=2 integration chain is executable and updates
 correctly; it does not prove FMF superiority or authorize longer FMF, M=3,
 mode coupling, generation or promotion. The unique next action is
 `manual_review_fmf_m2_reconstruction_pilot_contract`.
+
+## H-LOMA-I0 PLAN 5 probabilistic latent recovery pilot authorization（2026-08-28）
+
+The next research branch is
+`research/v2-lightgen-optical-manifold-smf-vae-pilot-v1`, based on clean
+commit `a3af141`. It restores the missing standard probabilistic interface of
+PLAN 5 without changing the completed Identity, SMF or FMF evidence.
+
+The posterior is inserted at the 100-port SMF coefficient boundary. A fixed
+training-only calibration maps real/imaginary coefficients to a 200-dimensional
+real representation. A shared per-port `Linear(2,16) -> SiLU` head produces
+identity-residual `mu` and `logvar`; `z=mu+exp(0.5*logvar)*epsilon` is mapped
+back to complex coefficients and re-emitted by the unchanged SMF bank.
+This is a research-only electronic hybrid and active latent injector, not a
+formal all-optical inference claim.
+
+The bounded pilot contains three matched arms: deterministic SMF MSE,
+stochastic posterior reconstruction without KL, and stochastic reconstruction
+with fixed beta-KL. It requires static validation, CUDA three-step and persisted
+2+1 resume preflight before 100 steps. Prior-only generation, KL extension to
+FMF, extra epoch, evaluator use, formal promotion and changes to
+`outputs/final_pt/` remain prohibited.
