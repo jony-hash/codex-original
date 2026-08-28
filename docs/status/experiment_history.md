@@ -1650,3 +1650,20 @@ The audit will distinguish finite-sample PCA instability from genuine model
 drift, then retest deterministic sliced-Wasserstein dose compatibility and a
 rank-permuted control. It cannot update a model or create a checkpoint and
 does not authorize KL, SMF/FMF, generation or promotion.
+
+### H-LOMA-I0 PLAN 5c adaptive projection audit closeout（2026-08-28）
+
+The no-update cross-fitted projection audit completed on branch
+`research/v2-lightgen-optical-manifold-adaptive-projection-audit-v1`. An
+initial CUDA invocation was invalid before evidence creation because of a
+wrong internal helper reference; it was repaired on clean commit `c7878c6`.
+The new attempt-02 validation and audit evidence SHA256 values are
+`7e11e3d989e2dd558d11f4d13d96b2cbd33c628e337806ef27d888ff071d99b5` and
+`98f40cc3312c01f22056424e6a4baa25d6bfd618bb0eb4f3dcbab75934fbb7a3`.
+
+All candidate ranks 16/24/32 failed the registered stable-projection gate;
+none was selected. The audit was a valid scientific `valid_failed` result,
+not a resource or harness failure: source MSE replay, formal Identity trace,
+state isolation, evaluator calls `0`, peak CUDA `446995968` bytes and wall
+`205.8172s` all passed. This closes the deterministic fixed-projection route
+for the current attempt and routes to `manual_review_probabilistic_latent_contract`.

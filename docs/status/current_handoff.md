@@ -1033,3 +1033,42 @@ not used for fitting or selection. The phase model, formal 2+2 Identity path,
 fixed exposure and all source artifacts remain unchanged. No optimizer,
 parameter update, checkpoint, KL, latent sampling, SMF/FMF, generation or
 promotion is permitted.
+
+### H-LOMA-I0 PLAN 5c adaptive projection audit closeout（2026-08-28）
+
+The implementation was completed on branch
+`research/v2-lightgen-optical-manifold-adaptive-projection-audit-v1`. The first
+validation-bound CUDA launch was retained as an invalid execution attempt
+because the lifecycle referenced the field-capture helper from the wrong
+module; no evidence was written and the defect was repaired on clean commit
+`c7878c6`.
+
+The authoritative attempt-02 validation evidence is
+`outputs/20260828_v2/runs/lightgen_optical_manifold_identity_adaptive_projection_audit_v1_attempt_02/adaptive_projection_validation.json`
+with SHA256
+`7e11e3d989e2dd558d11f4d13d96b2cbd33c628e337806ef27d888ff071d99b5`.
+The authoritative adaptive projection audit is
+`outputs/20260828_v2/runs/lightgen_optical_manifold_identity_adaptive_projection_audit_v1_attempt_02/adaptive_projection_audit.json`
+with SHA256
+`98f40cc3312c01f22056424e6a4baa25d6bfd618bb0eb4f3dcbab75934fbb7a3`.
+
+The audit was a valid scientific `valid_failed` result. Candidate ranks 16,
+24 and 32 all failed the registered stability contract. Their minimum
+cross-fit overlaps were `0.90390`, `0.88964` and `0.92639`; their assessment
+captured-energy retention values were `0.67514`, `0.74007` and `0.84228`.
+Rank 32 also had SWD coefficient of variation `0.07101`, above the `0.05`
+gate. No rank was selected and no consensus projection artifact was written.
+
+Source reconstruction MSE was reproduced exactly at
+`0.03437697887420654`. Formal Identity provenance, finite values, model-state
+isolation and evaluator calls `0` passed. Peak CUDA allocation was
+`446995968` bytes, wall time `205.8172s`, and storage `7319` bytes. The result
+does not show that the optical representation is absent; it shows that the
+tested deterministic PCA coordinates are not stable enough to authorize a
+regularized pilot.
+
+PLAN 5c therefore closes with `valid_failed`. The sole next action is
+`manual_review_probabilistic_latent_contract`. Do not retry by changing the
+rank, lambda or panel within this attempt, and do not enter VAE KL, SMF/FMF,
+generation or promotion. Evidence remains
+`training_authorized=false` and `formal_promotion=false`.

@@ -731,3 +731,21 @@ with a newly calibrated dose and a fixed rank-permuted negative control. No
 optimizer, model update, checkpoint, VAE KL, latent sampling, SMF/FMF,
 generation or promotion is authorized. Evidence remains
 `training_authorized=false` and `formal_promotion=false`.
+
+### H-LOMA-I0 PLAN 5c adaptive projection audit closeout（2026-08-28）
+
+The cross-fitted projection audit completed on clean commit `c7878c6` after
+one pre-evidence helper-reference repair. Attempt-02 validation SHA256 is
+`7e11e3d989e2dd558d11f4d13d96b2cbd33c628e337806ef27d888ff071d99b5`; audit
+evidence SHA256 is
+`98f40cc3312c01f22056424e6a4baa25d6bfd618bb0eb4f3dcbab75934fbb7a3`.
+
+The result is `valid_failed`: no candidate rank in `{16,24,32}` satisfied the
+registered cross-fit stability and captured-energy gates. The minimum overlap
+values were `0.90390`, `0.88964` and `0.92639`; rank-32 SWD coefficient of
+variation was `0.07101`. No consensus projection was selected or saved. Source
+MSE replay, formal trace, finite values, frozen model state, evaluator
+isolation and resource limits all passed. The deterministic fixed-projection
+regularization route is therefore not ready for a pilot. The sole next action
+is `manual_review_probabilistic_latent_contract`; no SMF/FMF or generation is
+authorized.
