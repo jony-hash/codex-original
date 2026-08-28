@@ -433,20 +433,26 @@ def _batch(data: AuditData, indices: torch.Tensor, device: torch.device) -> tupl
     return rendered.amplitude.to(device), rendered.target.to(device)
 
 
-def _forward(model: base.IdentityOpticalManifoldAutoencoder, operator: FiberArrayOLS | FewModeFiberArrayOLS, amplitude: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, dict[str, Any]]:
+def _pre_ols(model: base.IdentityOpticalManifoldAutoencoder, amplitude: torch.Tensor) -> tuple[torch.Tensor, Any, Mapping[str, Any]]:
     system = model.system
     slm_field = system.slm(system.command(amplitude))
     front = system.front(slm_field)
     encoded, encoder_records, encoder_stats = system.encoder(front, "encoder")
+    return encoded.tensor[:, 0], system, encoder_stats
+
+
+def _forward(model: base.IdentityOpticalManifoldAutoencoder, operator: FiberArrayOLS | FewModeFiberArrayOLS, amplitude: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, dict[str, Any]]:
+    pre, system, encoder_stats = _pre_ols(model, amplitude)
+    encoded = ComplexField(pre.unsqueeze(1), system.encoder_plane.with_plane("encoder_layer_2"), OperationProvenance("smf_bottleneck_encoder_boundary", "encoder_layer_2", 0.0))
     transformed = operator(encoded)
     decoded, _decoder_records, decoder_stats = system.decoder(transformed, "decoder")
     camera_field = system.back(ComplexField(decoded.tensor, system.chip_plane, decoded.provenance))
     raw = camera_field.tensor.abs().square()
     area = operator.input_plane.pixel_pitch_m[0] * operator.input_plane.pixel_pitch_m[1]
-    input_energy = encoder_records[-1].tensor[:, 0].abs().square().sum(dim=(-2, -1)) * area
+    input_energy = pre.abs().square().sum(dim=(-2, -1)) * area
     output_energy = transformed.tensor[:, 0].abs().square().sum(dim=(-2, -1)) * area
     diagnostics = {
-        "pre_ols": encoder_records[-1].tensor[:, 0],
+        "pre_ols": pre,
         "input_energy": input_energy,
         "output_energy": output_energy,
         "coefficients": operator.last_diagnostics["port_input_coefficients"],
@@ -549,23 +555,35 @@ def _capacity(model: base.IdentityOpticalManifoldAutoencoder, operators: tuple[F
     with torch.no_grad():
         for start in range(0, indices.numel(), BATCH_SIZE):
             amplitudes, _target = _batch(data, indices[start : start + BATCH_SIZE], device)
-            _camera, field, _diagnostics = _forward(model, operators[0], amplitudes)
-            fields.append(field)
+            field, _system, _encoder_stats = _pre_ols(model, amplitudes)
+            fields.append(field.cpu())
     pre = torch.cat(fields)
     report: dict[str, Any] = {"field_count": int(pre.shape[0]), "finite": bool(torch.isfinite(pre).all()), "operators": {}}
     for name, operator in zip(("smf_m1", "fmf_m2"), operators, strict=True):
+        input_powers: list[torch.Tensor] = []
+        output_powers: list[torch.Tensor] = []
+        coefficients: list[torch.Tensor] = []
+        output_finite = True
+        output = None
         with torch.no_grad():
-            output = operator(ComplexField(pre.unsqueeze(1), model.system.encoder_plane.with_plane("encoder_layer_2"), OperationProvenance("bottleneck_capacity_probe", "encoder_layer_2", 0.0)))
-        diagnostics = operator.last_diagnostics
-        input_power = diagnostics["input_energy"].cpu()
-        output_power = diagnostics["output_energy"].cpu()
+            for start in range(0, pre.shape[0], BATCH_SIZE):
+                field = pre[start : start + BATCH_SIZE].to(device)
+                output = operator(ComplexField(field.unsqueeze(1), model.system.encoder_plane.with_plane("encoder_layer_2"), OperationProvenance("bottleneck_capacity_probe", "encoder_layer_2", 0.0)))
+                diagnostics = operator.last_diagnostics
+                input_powers.append((field.abs().square().sum(dim=(-2, -1)) * operator.input_plane.pixel_pitch_m[0] * operator.input_plane.pixel_pitch_m[1]).cpu())
+                output_powers.append(diagnostics["output_energy"].cpu())
+                coefficients.append(diagnostics["port_input_coefficients"].cpu())
+                output_finite = output_finite and bool(torch.isfinite(output.tensor).all())
+        input_power = torch.cat(input_powers)
+        output_power = torch.cat(output_powers)
+        coefficient = torch.cat(coefficients)
         report["operators"][name] = {
             "power_retention_mean": float((output_power / input_power.clamp_min(1.0e-30)).mean()),
             "power_retention_p05": float((output_power / input_power.clamp_min(1.0e-30)).quantile(0.05)),
             "power_retention_p95": float((output_power / input_power.clamp_min(1.0e-30)).quantile(0.95)),
-            "effective_rank": _structure(diagnostics["port_input_coefficients"].cpu(), data.labels.index_select(0, indices))["effective_rank"],
-            "finite": bool(torch.isfinite(output.tensor).all()),
-            "provenance": output.provenance.to_dict(),
+            "effective_rank": _structure(coefficient, data.labels.index_select(0, indices))["effective_rank"],
+            "finite": output_finite,
+            "provenance": output.provenance.to_dict() if output is not None else None,
         }
     report["m2_minus_m1_power_retention"] = report["operators"]["fmf_m2"]["power_retention_mean"] - report["operators"]["smf_m1"]["power_retention_mean"]
     return report
@@ -768,29 +786,59 @@ def run(args: argparse.Namespace) -> int:
     torch.use_deterministic_algorithms(True)
     try:
         device = torch.device(args.device)
+        model_snapshots = {
+            "source": {name: value.detach().cpu().clone() for name, value in source.source_checkpoint["model_state"].items()},
+            "control": {name: value.detach().cpu().clone() for name, value in source.final_checkpoints["optical_mse_control"]["model_state"].items()},
+            "coupling": {name: value.detach().cpu().clone() for name, value in source.final_checkpoints["optical_coupling"]["model_state"].items()},
+        }
+        operator_snapshots: dict[str, dict[str, torch.Tensor]] = {}
+        after_models: dict[str, dict[str, torch.Tensor]] = {}
+        after_operators: dict[str, dict[str, torch.Tensor]] = {}
+        initial: dict[str, dict[str, Any]] = {}
+        visual_values: dict[str, dict[str, torch.Tensor]] = {}
+
         source_model = _model(formal, source.source_checkpoint, device)
-        control_model = _model(formal, source.final_checkpoints["optical_mse_control"], device)
-        coupling_model = _model(formal, source.final_checkpoints["optical_coupling"], device)
         source_smf = _smf(source_model, device)
-        control_smf = _smf(control_model, device)
-        coupling_smf = _smf(coupling_model, device)
         source_fmf = _fmf(source_model, device)
-        model_snapshots = {"source": _state(source_model), "control": _state(control_model), "coupling": _state(coupling_model)}
-        operator_snapshots = {"source_smf": _operator_snapshot(source_smf), "control_smf": _operator_snapshot(control_smf), "coupling_smf": _operator_snapshot(coupling_smf), "source_fmf": _operator_snapshot(source_fmf)}
-        initial = {
-            "source": _evaluate(source_model, source_smf, data, data.assessment_indices, device, keep_visual=True)[0],
-            "optical_mse_control": _evaluate(control_model, control_smf, data, data.assessment_indices, device, keep_visual=True)[0],
-            "optical_coupling": _evaluate(coupling_model, coupling_smf, data, data.assessment_indices, device, keep_visual=True)[0],
-        }
+        operator_snapshots["source_smf"] = _operator_snapshot(source_smf)
+        operator_snapshots["source_fmf"] = _operator_snapshot(source_fmf)
+        initial["source"], visual_values["source"] = _evaluate(source_model, source_smf, data, data.assessment_indices, device, keep_visual=True)
         capacity = _capacity(source_model, (source_smf, source_fmf), data, data.assessment_indices, device)
-        cross_swap = _cross_swap(formal, source.source_checkpoint["model_state"], source.final_checkpoints["optical_mse_control"]["model_state"], source.final_checkpoints["optical_coupling"]["model_state"], data, data.assessment_indices, device)
+        after_models["source"] = _state(source_model)
+        after_operators["source_smf"] = _operator_snapshot(source_smf)
+        after_operators["source_fmf"] = _operator_snapshot(source_fmf)
+        del source_model, source_smf, source_fmf
+        torch.cuda.empty_cache()
+
+        control_model = _model(formal, source.final_checkpoints["optical_mse_control"], device)
+        control_smf = _smf(control_model, device)
+        operator_snapshots["control_smf"] = _operator_snapshot(control_smf)
+        initial["optical_mse_control"], visual_values["optical_mse_control"] = _evaluate(control_model, control_smf, data, data.assessment_indices, device, keep_visual=True)
+        after_models["control"] = _state(control_model)
+        after_operators["control_smf"] = _operator_snapshot(control_smf)
+        del control_model, control_smf
+        torch.cuda.empty_cache()
+
+        coupling_model = _model(formal, source.final_checkpoints["optical_coupling"], device)
+        coupling_smf = _smf(coupling_model, device)
+        operator_snapshots["coupling_smf"] = _operator_snapshot(coupling_smf)
+        initial["optical_coupling"], visual_values["optical_coupling"] = _evaluate(coupling_model, coupling_smf, data, data.assessment_indices, device, keep_visual=True)
+        after_models["coupling"] = _state(coupling_model)
+        after_operators["coupling_smf"] = _operator_snapshot(coupling_smf)
         dose = {f"G{index + 1}": _dose_panel(coupling_model, data, panel, device) for index, panel in enumerate(data.gradient_panels)}
-        heldout_replay = {
-            "optical_mse_control": _evaluate(control_model, control_smf, data, data.heldout_indices, device)[0],
-            "optical_coupling": _evaluate(coupling_model, coupling_smf, data, data.heldout_indices, device)[0],
-        }
-        final_states_unchanged = _tree_equal(model_snapshots["source"], _state(source_model)) and _tree_equal(model_snapshots["control"], _state(control_model)) and _tree_equal(model_snapshots["coupling"], _state(coupling_model))
-        operators_unchanged = _tree_equal(operator_snapshots["source_smf"], _operator_snapshot(source_smf)) and _tree_equal(operator_snapshots["control_smf"], _operator_snapshot(control_smf)) and _tree_equal(operator_snapshots["coupling_smf"], _operator_snapshot(coupling_smf)) and _tree_equal(operator_snapshots["source_fmf"], _operator_snapshot(source_fmf))
+        del coupling_model, coupling_smf
+        torch.cuda.empty_cache()
+
+        cross_swap = _cross_swap(formal, source.source_checkpoint["model_state"], source.final_checkpoints["optical_mse_control"]["model_state"], source.final_checkpoints["optical_coupling"]["model_state"], data, data.assessment_indices, device)
+        heldout_replay: dict[str, dict[str, Any]] = {}
+        for arm in ("optical_mse_control", "optical_coupling"):
+            replay_model = _model(formal, source.final_checkpoints[arm], device)
+            replay_operator = _smf(replay_model, device)
+            heldout_replay[arm] = _evaluate(replay_model, replay_operator, data, data.heldout_indices, device)[0]
+            del replay_model, replay_operator
+            torch.cuda.empty_cache()
+        final_states_unchanged = all(_tree_equal(model_snapshots[name], after_models[name]) for name in model_snapshots)
+        operators_unchanged = all(_tree_equal(operator_snapshots[name], after_operators[name]) for name in operator_snapshots)
         source_metrics = source.training_payload["contract"]["arms"]
         replay_gates = (
             GateResult("authoritative_terminal_mse_replay", all(abs(heldout_replay[arm]["paired_mse"] - source_metrics[arm]["metrics"]["paired_mse"]) <= 1.0e-9 for arm in ("optical_mse_control", "optical_coupling")), {arm: {"expected": source_metrics[arm]["metrics"]["paired_mse"], "replayed": heldout_replay[arm]["paired_mse"]} for arm in heldout_replay}),
@@ -849,10 +897,10 @@ def run(args: argparse.Namespace) -> int:
             "indices_are_global_mnist": True,
             "assessment_indices": data.assessment_indices[:100].clone(),
             "tensors": {
-                "target": _evaluate(source_model, source_smf, data, data.assessment_indices[:100], device, keep_visual=True)[1]["visual_target"],
-                "source_camera": _evaluate(source_model, source_smf, data, data.assessment_indices[:100], device, keep_visual=True)[1]["visual_camera"],
-                "control_camera": _evaluate(control_model, control_smf, data, data.assessment_indices[:100], device, keep_visual=True)[1]["visual_camera"],
-                "coupling_camera": _evaluate(coupling_model, coupling_smf, data, data.assessment_indices[:100], device, keep_visual=True)[1]["visual_camera"],
+                "target": visual_values["source"]["visual_target"][:100],
+                "source_camera": visual_values["source"]["visual_camera"][:100],
+                "control_camera": visual_values["optical_mse_control"]["visual_camera"][:100],
+                "coupling_camera": visual_values["optical_coupling"]["visual_camera"][:100],
             },
             "cross_swap_metrics": cross_swap,
             "panel_role": "fixed_visual_attribution_only",
