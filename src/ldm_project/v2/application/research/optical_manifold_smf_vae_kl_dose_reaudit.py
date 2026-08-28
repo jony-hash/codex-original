@@ -172,7 +172,7 @@ def _load_sources(spec: Spec, formal_path: Path, current: str) -> old_audit.Sour
     if file_sha256(audit_path) != SOURCE_AUDIT_HASH:
         raise ValueError("KL attribution audit source hash mismatch")
     audit_payload = json.loads(audit_path.read_text(encoding="utf-8"))
-    if audit_payload.get("schema") != old_audit.AUDIT_SCHEMA or audit_payload.get("outcome") != "diagnostic_completed_parameterization_limited":
+    if audit_payload.get("schema") != old_audit.AUDIT_SCHEMA or audit_payload.get("contract", {}).get("outcome") != "diagnostic_completed_parameterization_limited":
         raise ValueError("unexpected attempt-06 KL attribution source")
     return source
 

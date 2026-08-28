@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -38,3 +39,11 @@ def test_old_unscaled_formula_is_not_the_registered_effective_beta() -> None:
     report = audit._dose_report(rec, kl, 1.0)
     assert report["effective_beta"] != 1.0
     assert report["effective_beta"] == pytest.approx(audit.TRAINING_BETA)
+
+
+def test_attempt_06_outcome_is_consumed_from_contract_layer() -> None:
+    root = Path(__file__).parents[2]
+    source = root / "outputs/20260828_v2/runs/lightgen_optical_manifold_smf_vae_kl_attribution_audit_v1_attempt_06/audit.json"
+    record = json.loads(source.read_text(encoding="utf-8"))
+    assert record.get("outcome") is None
+    assert record["contract"]["outcome"] == "diagnostic_completed_parameterization_limited"
