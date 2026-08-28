@@ -25,7 +25,7 @@ from torch.nn import functional as F
 from torch.utils.checkpoint import checkpoint
 
 from ...config import FormalSystemConfig, load_config
-from ...contracts import ComplexField, IntensityFrame, OperationProvenance
+from ...contracts import ComplexField, IntensityFrame
 from ...evidence import (
     EvidenceContextV2,
     EvidenceRecordV2,
@@ -77,6 +77,13 @@ MAX_STORAGE_BYTES = 512 * 1024**2
 SAFETY_MSE_RATIO = 2.0
 NEXT_ACTION = "manual_review_smf_canary_visual_and_metric_trends"
 EXPECTED_TRAINABLE = base.EXPECTED_TRAINABLE
+
+
+class _SafetyAbort(RuntimeError):
+    def __init__(self, step: int, result: Mapping[str, Any]) -> None:
+        super().__init__(f"SMF canary safety MSE bound exceeded at step {step}")
+        self.step = step
+        self.result = dict(result)
 
 
 @dataclass(frozen=True)
@@ -430,6 +437,12 @@ def _write_new(path: str | Path, payload: Mapping[str, Any]) -> None:
     atomic_write_json(target, payload)
 
 
+def _load_authoritative_pilot_data(dataset_root: str | Path) -> tuple[torch.Tensor, torch.Tensor, dict[str, Any]]:
+    """Load the 55k/5k split manifest consumed by the canary."""
+    pilot_data = full_epoch.pilot._load_pilot_data(dataset_root)
+    return pilot_data.images, pilot_data.labels, pilot_data.manifest
+
+
 def validate(args: argparse.Namespace) -> int:
     spec = _load_spec(args.config)
     _assert_contract(spec)
@@ -438,7 +451,10 @@ def validate(args: argparse.Namespace) -> int:
     _require_clean_branch(state)
     formal, formal_path = _load_formal(spec)
     source = _load_source(spec, formal_path, state["commit"])
-    images, labels, manifest = base._load_data_manifest(args.dataset_root)
+    # The canary consumes the authoritative pilot split manifest.  The base
+    # representative manifest is a different schema and is intentionally not
+    # a source-lineage input for this lifecycle.
+    images, labels, manifest = _load_authoritative_pilot_data(args.dataset_root)
     if manifest["manifest_hash"] != SOURCE_MANIFEST_HASH:
         raise ValueError("SMF canary MNIST manifest mismatch")
     data = _load_data(args.dataset_root)
@@ -489,6 +505,18 @@ def _load_validation(path: str | Path, spec: CanarySpec, formal: FormalSystemCon
 
 def _state_cpu(model: base.IdentityOpticalManifoldAutoencoder) -> dict[str, torch.Tensor]:
     return {name: value.detach().cpu().clone() for name, value in model.state_dict().items()}
+
+
+def _module_state_cpu(module: torch.nn.Module) -> dict[str, torch.Tensor]:
+    return {name: value.detach().cpu().clone() for name, value in module.state_dict().items()}
+
+
+def _nonphase_state_cpu(model: base.IdentityOpticalManifoldAutoencoder) -> dict[str, torch.Tensor]:
+    return {
+        name: value.detach().cpu().clone()
+        for name, value in model.state_dict().items()
+        if name not in EXPECTED_TRAINABLE
+    }
 
 
 def _tree_clone(value: Any) -> Any:
@@ -571,6 +599,20 @@ def _smf_forward(model: base.IdentityOpticalManifoldAutoencoder, smf: FiberArray
     return raw.tensor, pre if trace else None, diagnostics
 
 
+def _identity_trace_has_ols(model: base.IdentityOpticalManifoldAutoencoder, amplitude: torch.Tensor) -> bool:
+    result = model.system(
+        model.system.command(amplitude),
+        exposure=model.exposure,
+        return_optical_trace=True,
+    )
+    matches = [
+        field
+        for field in result.optical_trace or ()
+        if field.plane.plane_id == "ols_output" and field.provenance.operation == "identity_ols"
+    ]
+    return len(matches) == 1
+
+
 def _batch(data: CanaryData, indices: torch.Tensor, device: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
     rendered = base.render_intensity_batch(data.images.index_select(0, indices))
     return rendered.amplitude.to(device), rendered.target.to(device)
@@ -610,6 +652,31 @@ def _layer_norms(values: Mapping[str, torch.Tensor]) -> dict[str, float]:
     return result
 
 
+def _phase_layer_keys(model: base.IdentityOpticalManifoldAutoencoder) -> tuple[str, ...]:
+    parameters = dict(model.named_parameters())
+    return tuple(
+        f"{name}[{index}]"
+        for name in EXPECTED_TRAINABLE
+        for index in range(parameters[name].shape[0])
+    )
+
+
+def _four_phase_nonzero(values: Mapping[str, float]) -> bool:
+    expected = {
+        "system.encoder.phase[0]",
+        "system.encoder.phase[1]",
+        "system.decoder.phase[0]",
+        "system.decoder.phase[1]",
+    }
+    return set(values).issuperset(expected) and all(float(values[name]) > 0.0 for name in expected)
+
+
+def _swd_encoder_only(values: Mapping[str, float]) -> bool:
+    encoder = {"system.encoder.phase[0]", "system.encoder.phase[1]"}
+    decoder = {"system.decoder.phase[0]", "system.decoder.phase[1]"}
+    return set(values).issuperset(encoder | decoder) and all(float(values[name]) > 0.0 for name in encoder) and all(float(values[name]) == 0.0 for name in decoder)
+
+
 def _mse_gradients(model: base.IdentityOpticalManifoldAutoencoder, smf: FiberArrayOLS, amplitudes: torch.Tensor, targets: torch.Tensor) -> tuple[dict[str, torch.Tensor], dict[str, Any]]:
     gradients = _grad_zeros(model)
     losses: list[torch.Tensor] = []
@@ -617,7 +684,12 @@ def _mse_gradients(model: base.IdentityOpticalManifoldAutoencoder, smf: FiberArr
     port_shape: list[int] | None = None
     _clear_grad(model)
     for start in range(0, BATCH_SIZE, MICROBATCH):
-        raw, _pre, diagnostics = _smf_forward(model, smf, amplitudes[start : start + 1])
+        raw = checkpoint(
+            lambda value: _smf_forward(model, smf, value)[0],
+            amplitudes[start : start + 1],
+            use_reentrant=False,
+        )
+        diagnostics = smf.last_diagnostics
         coefficients = diagnostics.get("port_coefficients")
         if isinstance(coefficients, torch.Tensor):
             port_shape = list(coefficients.shape)
@@ -689,6 +761,22 @@ def _swd_gradients(model: base.IdentityOpticalManifoldAutoencoder, smf: FiberArr
     }
 
 
+def _swd_observation(model: base.IdentityOpticalManifoldAutoencoder, smf: FiberArrayOLS, amplitudes: torch.Tensor, projection: regularization.Projection, directions: torch.Tensor) -> tuple[float, dict[str, Any]]:
+    projection = _projection_on_device(projection, amplitudes.device)
+    scores: list[torch.Tensor] = []
+    with torch.no_grad():
+        for start in range(0, BATCH_SIZE, MICROBATCH):
+            _raw, pre, _diagnostics = _smf_forward(model, smf, amplitudes[start : start + 1], trace=True)
+            scores.append(regularization._project_fields(pre, projection).detach())
+    score_batch = torch.cat(scores)
+    _coefficients, ranks = _rank_coefficients(score_batch, directions)
+    return float(regularization._sliced_wasserstein(score_batch, directions).detach().cpu()), {
+        "score_shape": list(score_batch.shape),
+        "rank_shape": list(ranks.shape),
+        "rank_assignment_is_permutation": bool(torch.equal(torch.sort(ranks, dim=0).values, torch.arange(BATCH_SIZE, device=ranks.device).reshape(-1, 1).expand_as(ranks))),
+    }
+
+
 def _step(model: base.IdentityOpticalManifoldAutoencoder, optimizer: full_epoch._DeterministicCpuAdam, smf: FiberArrayOLS, amplitudes: torch.Tensor, targets: torch.Tensor, projection: regularization.Projection, directions: torch.Tensor, arm: str, lambda_value: float) -> dict[str, Any]:
     before = {name: value.detach().clone() for name, value in model.named_parameters() if name in EXPECTED_TRAINABLE}
     mse_grad, mse_info = _mse_gradients(model, smf, amplitudes, targets)
@@ -696,16 +784,17 @@ def _step(model: base.IdentityOpticalManifoldAutoencoder, optimizer: full_epoch.
         swd_grad, swd_value, replay = _swd_gradients(model, smf, amplitudes, projection, directions)
     else:
         swd_grad = _grad_zeros(model)
-        swd_value = 0.0
-        replay = {"score_shape": [0, RANK], "rank_assignment_is_permutation": True}
+        swd_value, replay = _swd_observation(model, smf, amplitudes, projection, directions)
     combined = {name: mse_grad[name] + lambda_value * swd_grad[name] for name in mse_grad}
     for name, value in model.named_parameters():
         value.grad = combined[name].to(value.device)
     optimizer.step()
-    updates = {
-        name: float((dict(model.named_parameters())[name].detach() - before[name]).abs().sum().cpu())
-        for name in EXPECTED_TRAINABLE
-    }
+    parameters = dict(model.named_parameters())
+    updates: dict[str, float] = {}
+    for name in EXPECTED_TRAINABLE:
+        updates[name] = float((parameters[name].detach() - before[name]).abs().sum().cpu())
+        for index in range(parameters[name].shape[0]):
+            updates[f"{name}[{index}]"] = float((parameters[name][index].detach() - before[name][index]).abs().sum().cpu())
     combined_norms = _layer_norms(combined)
     _clear_grad(model)
     finite_values = [mse_info["loss"], mse_info["camera_min"], mse_info["camera_max"], swd_value, *combined_norms.values(), *updates.values()]
@@ -726,7 +815,7 @@ def _step(model: base.IdentityOpticalManifoldAutoencoder, optimizer: full_epoch.
     }
 
 
-def _capture_projection_fields(model: base.IdentityOpticalManifoldAutoencoder, smf: FiberArrayOLS, data: CanaryData, panels: tuple[torch.Tensor, ...], device: torch.device) -> tuple[regularization.Projection, dict[str, Any]]:
+def _capture_projection_fields(model: base.IdentityOpticalManifoldAutoencoder, data: CanaryData, panels: tuple[torch.Tensor, ...], device: torch.device, *, spec: CanarySpec, validation_hash: str, source: SourceBundle) -> tuple[regularization.Projection, dict[str, Any]]:
     fields: list[torch.Tensor] = []
     provenance: dict[str, Any] | None = None
     for panel in panels:
@@ -734,9 +823,9 @@ def _capture_projection_fields(model: base.IdentityOpticalManifoldAutoencoder, s
         with torch.no_grad():
             for index in panel:
                 amplitude, _target = _batch(data, index.reshape(1), device)
-                _raw, pre, diagnostics = _smf_forward(model, smf, amplitude, trace=True)
+                _raw, pre, plane, pre_provenance = regularization._forward_trace(model, amplitude)
                 panel_fields.append(pre.detach().cpu().to(torch.complex64))
-                current = {"plane": {"plane_id": "encoder_layer_2", "shape": [100, 100], "pixel_pitch_m": [2.0e-6, 2.0e-6], "wavelength_m": 5.32e-7}, "smf": diagnostics["smf_provenance"]}
+                current = {"pre_ols_plane": plane, "pre_ols_provenance": pre_provenance, "post_ols": {"plane_id": "ols_output", "operation": "identity_ols"}}
                 if provenance is None:
                     provenance = current
                 elif provenance != current:
@@ -746,6 +835,10 @@ def _capture_projection_fields(model: base.IdentityOpticalManifoldAutoencoder, s
     projection = adaptive._consensus_projection(fits, torch.cat(fields), RANK)
     payload = {
         "schema": PROJECTION_SCHEMA,
+        "config_hash": spec.config_hash,
+        "validation_hash": validation_hash,
+        "source_hashes": dict(source.hashes),
+        "dataset_manifest_hash": data.manifest["manifest_hash"],
         "rank": RANK,
         "basis": projection.basis,
         "mean_field": projection.mean_field,
@@ -758,13 +851,6 @@ def _capture_projection_fields(model: base.IdentityOpticalManifoldAutoencoder, s
         "source_projection_audit_sha256": SOURCE_AUDIT_HASH,
     }
     return projection, payload
-
-
-def _make_panels(data: CanaryData) -> tuple[torch.Tensor, ...]:
-    # Reuse the three PLAN 5c calibration panels exactly; the canary's training
-    # schedule is independently excluded from them.
-    adaptive_data = adaptive._load_data("data")
-    return adaptive_data.calibration_panels
 
 
 def _lambda(model: base.IdentityOpticalManifoldAutoencoder, smf: FiberArrayOLS, data: CanaryData, projection: regularization.Projection, directions: torch.Tensor, device: torch.device) -> float:
@@ -782,6 +868,7 @@ def _probe_metrics(model: base.IdentityOpticalManifoldAutoencoder, smf: FiberArr
     losses: list[torch.Tensor] = []
     cyclic: list[torch.Tensor] = []
     scores: list[torch.Tensor] = []
+    fields: list[torch.Tensor] = []
     labels = data.labels.index_select(0, indices)
     with torch.no_grad():
         for position, index in enumerate(indices):
@@ -791,15 +878,28 @@ def _probe_metrics(model: base.IdentityOpticalManifoldAutoencoder, smf: FiberArr
             cyclic_target = _batch(data, indices[(position + 1) % len(indices)].reshape(1), device)[1]
             cyclic.append(F.mse_loss(raw, cyclic_target).cpu())
             scores.append(regularization._project_fields(pre, projection).cpu())
+            fields.append(regularization._unit_power_field(pre).flatten(1).cpu())
     score_tensor = torch.cat(scores)
-    ratio = _structure_ratio(score_tensor, labels)
-    coupling = [float(item) for item in (diagnostics["coupling_efficiency"].reshape(-1).detach().cpu() if isinstance(diagnostics.get("coupling_efficiency"), torch.Tensor) else [])]
+    field_tensor = torch.cat(fields)
+    ratio = _structure_ratio(torch.cat((field_tensor.real, field_tensor.imag), dim=1), labels)
+    coupling_values: list[float] = []
+    active_port_values: list[float] = []
+    for position, index in enumerate(indices):
+        amplitude, _target = _batch(data, index.reshape(1), device)
+        _raw, _pre, current = _smf_forward(model, smf, amplitude, trace=True)
+        coupling = current.get("coupling_efficiency")
+        coefficients = current.get("port_coefficients")
+        if isinstance(coupling, torch.Tensor):
+            coupling_values.extend(float(item) for item in coupling.reshape(-1).detach().cpu())
+        if isinstance(coefficients, torch.Tensor):
+            active_port_values.append(float((coefficients.abs().square().sum(dim=0) > 1.0e-12).float().mean().cpu()))
     return {
         "paired_mse": float(torch.stack(losses).mean()),
         "cyclic_mse": float(torch.stack(cyclic).mean()),
         "swd": float(regularization._sliced_wasserstein(score_tensor.to(device), directions).cpu()),
         "normalized_inter_intra": ratio,
-        "coupling_efficiency_last": coupling,
+        "coupling_efficiency_mean": float(sum(coupling_values) / len(coupling_values)) if coupling_values else 0.0,
+        "active_port_fraction_mean": float(sum(active_port_values) / len(active_port_values)) if active_port_values else 0.0,
         "finite": bool(torch.isfinite(torch.stack(losses)).all() and torch.isfinite(torch.stack(cyclic)).all() and torch.isfinite(score_tensor).all()),
     }
 
@@ -835,7 +935,7 @@ def _structure_ratio(scores: torch.Tensor, labels: torch.Tensor) -> dict[str, fl
     }
 
 
-def _resume_payload(model: base.IdentityOpticalManifoldAutoencoder, optimizer: full_epoch._DeterministicCpuAdam, *, arm: str, step: int, history: list[dict[str, Any]], spec: CanarySpec, data: CanaryData, hashes: Mapping[str, str], completed_arms: Mapping[str, Any] | None = None) -> dict[str, Any]:
+def _resume_payload(model: base.IdentityOpticalManifoldAutoencoder, optimizer: full_epoch._DeterministicCpuAdam, *, arm: str, step: int, history: list[dict[str, Any]], spec: CanarySpec, data: CanaryData, hashes: Mapping[str, str], lambda_value: float, completed_arms: Mapping[str, Any] | None = None) -> dict[str, Any]:
     return {
         "schema": RESUME_SCHEMA,
         "arm": arm,
@@ -848,6 +948,8 @@ def _resume_payload(model: base.IdentityOpticalManifoldAutoencoder, optimizer: f
         "dataset_manifest_hash": data.manifest["manifest_hash"],
         "schedule_sha256": data.manifest["schedule_sha256"],
         "evidence_hashes": dict(hashes),
+        "projection_hash": hashes.get("projection"),
+        "lambda": lambda_value,
         "data_cursor": {"arm": arm, "next_step": step, "logical_batch_size": BATCH_SIZE, "microbatch_size": MICROBATCH},
         "completed_arms": dict(completed_arms or {}),
         "formal_candidate_checkpoint": False,
@@ -861,7 +963,31 @@ def _save_checkpoint(path: Path, payload: Mapping[str, Any]) -> None:
     atomic_torch_save(path, payload)
 
 
-def _run_steps(model: base.IdentityOpticalManifoldAutoencoder, optimizer: full_epoch._DeterministicCpuAdam, smf: FiberArrayOLS, data: CanaryData, projection: regularization.Projection, directions: torch.Tensor, arm: str, lambda_value: float, start: int, history: list[dict[str, Any]], output_dir: Path, spec: CanarySpec, hashes: Mapping[str, str], *, save_checkpoints: bool, completed_arms: Mapping[str, Any] | None = None) -> tuple[list[dict[str, Any]], Path | None, str | None]:
+def _load_resume(path: str | Path, model: base.IdentityOpticalManifoldAutoencoder, optimizer: full_epoch._DeterministicCpuAdam, *, spec: CanarySpec, data: CanaryData, hashes: Mapping[str, str], lambda_value: float, arm: str, output_dir: Path) -> dict[str, Any]:
+    target = _resolve(path)
+    if target.parent.resolve() != output_dir.resolve():
+        raise ValueError("explicit SMF canary resume checkpoint must belong to the requested attempt")
+    payload = safe_torch_load(target, map_location="cpu")
+    if not isinstance(payload, Mapping) or payload.get("schema") != RESUME_SCHEMA:
+        raise ValueError("invalid SMF canary resume artifact")
+    if payload.get("arm") != arm or not 0 < int(payload.get("step", 0)) < STEPS:
+        raise ValueError("SMF canary resume arm or step is invalid")
+    if payload.get("config_hash") != spec.config_hash or payload.get("dataset_manifest_hash") != data.manifest["manifest_hash"] or payload.get("schedule_sha256") != data.manifest["schedule_sha256"]:
+        raise ValueError("SMF canary resume data lineage mismatch")
+    if payload.get("evidence_hashes") != dict(hashes) or payload.get("projection_hash") != hashes.get("projection") or float(payload.get("lambda")) != lambda_value:
+        raise ValueError("SMF canary resume source lineage mismatch")
+    cursor = payload.get("data_cursor")
+    if cursor != {"arm": arm, "next_step": int(payload["step"]), "logical_batch_size": BATCH_SIZE, "microbatch_size": MICROBATCH}:
+        raise ValueError("SMF canary resume data cursor is invalid")
+    if not isinstance(payload.get("history"), list) or len(payload["history"]) != int(payload["step"]):
+        raise ValueError("SMF canary resume history is inconsistent")
+    model.load_state_dict(payload["model_state"], strict=True)
+    optimizer.load_state_dict(payload["optimizer_state"])
+    base._restore_rng(payload["rng_state"])
+    return dict(payload)
+
+
+def _run_steps(model: base.IdentityOpticalManifoldAutoencoder, optimizer: full_epoch._DeterministicCpuAdam, smf: FiberArrayOLS, data: CanaryData, projection: regularization.Projection, directions: torch.Tensor, arm: str, lambda_value: float, start: int, history: list[dict[str, Any]], output_dir: Path, spec: CanarySpec, hashes: Mapping[str, str], *, save_checkpoints: bool, completed_arms: Mapping[str, Any] | None = None, initial_batch_losses: list[float] | None = None) -> tuple[list[dict[str, Any]], Path | None, str | None]:
     final_path: Path | None = None
     final_hash: str | None = None
     for step in range(start, STEPS):
@@ -871,9 +997,11 @@ def _run_steps(model: base.IdentityOpticalManifoldAutoencoder, optimizer: full_e
         history.append(result)
         if not result["finite"]:
             raise ValueError("SMF canary encountered non-finite step values")
+        if initial_batch_losses is not None and result["loss"] > initial_batch_losses[step] * SAFETY_MSE_RATIO:
+            raise _SafetyAbort(step + 1, result)
         if save_checkpoints and ((step + 1) % 10 == 0):
             path = output_dir / f"{arm}_step_{step + 1:05d}.pt"
-            payload = _resume_payload(model, optimizer, arm=arm, step=step + 1, history=history, spec=spec, data=data, hashes=hashes, completed_arms=completed_arms)
+            payload = _resume_payload(model, optimizer, arm=arm, step=step + 1, history=history, spec=spec, data=data, hashes=hashes, lambda_value=lambda_value, completed_arms=completed_arms)
             _save_checkpoint(path, payload)
             final_path, final_hash = path, file_sha256(path)
     return history, final_path, final_hash
@@ -885,30 +1013,41 @@ def _preflight_record(state: Mapping[str, Any], spec: CanarySpec, formal: Formal
     return record
 
 
-def _exact_resume(formal: FormalSystemConfig, source: SourceBundle, data: CanaryData, projection: regularization.Projection, directions: torch.Tensor, arm: str, lambda_value: float, device: torch.device) -> dict[str, Any]:
+def _exact_resume(formal: FormalSystemConfig, source: SourceBundle, data: CanaryData, projection: regularization.Projection, directions: torch.Tensor, arm: str, lambda_value: float, device: torch.device, spec: CanarySpec, hashes: Mapping[str, str], output_dir: Path) -> dict[str, Any]:
     continuous_model, continuous_opt, continuous_smf = _runtime(formal, source, device)
     split_model, split_opt, split_smf = _runtime(formal, source, device)
+    continuous_nonphase = _nonphase_state_cpu(continuous_model)
+    split_nonphase = _nonphase_state_cpu(split_model)
+    continuous_smf_state = _module_state_cpu(continuous_smf)
+    split_smf_state = _module_state_cpu(split_smf)
     continuous_history: list[dict[str, Any]] = []
     split_history: list[dict[str, Any]] = []
     for step in range(3):
         amplitudes, targets = _batch(data, data.schedule[step], device)
         continuous_history.append(_step(continuous_model, continuous_opt, continuous_smf, amplitudes, targets, projection, directions, arm, lambda_value))
+    continuous_rng = _tree_clone(base._rng_state())
     for step in range(2):
         amplitudes, targets = _batch(data, data.schedule[step], device)
         split_history.append(_step(split_model, split_opt, split_smf, amplitudes, targets, projection, directions, arm, lambda_value))
-    resume = _resume_payload(split_model, split_opt, arm=arm, step=2, history=split_history, spec=CanarySpec(Path("canary"), {"schema": CONFIG_SCHEMA}, "unused"), data=data, hashes={}, completed_arms={})
+    resume_path = output_dir / f"preflight_{arm}_step_00002.pt"
+    resume = _resume_payload(split_model, split_opt, arm=arm, step=2, history=split_history, spec=spec, data=data, hashes=hashes, lambda_value=lambda_value, completed_arms={})
+    _save_checkpoint(resume_path, resume)
     resumed_model, resumed_opt, resumed_smf = _runtime(formal, source, device)
-    resumed_model.load_state_dict(resume["model_state"], strict=True)
-    resumed_opt.load_state_dict(resume["optimizer_state"])
-    base._restore_rng(resume["rng_state"])
+    _load_resume(resume_path, resumed_model, resumed_opt, spec=spec, data=data, hashes=hashes, lambda_value=lambda_value, arm=arm, output_dir=output_dir)
     amplitudes, targets = _batch(data, data.schedule[2], device)
     split_history.append(_step(resumed_model, resumed_opt, resumed_smf, amplitudes, targets, projection, directions, arm, lambda_value))
+    # The resumed run has just consumed the same third batch.
+    resumed_rng = _tree_clone(base._rng_state())
     return {
         "continuous": continuous_history,
         "resumed": split_history,
         "model_exact": all(torch.equal(continuous_model.state_dict()[name].detach().cpu(), resumed_model.state_dict()[name].detach().cpu()) for name in continuous_model.state_dict()),
         "optimizer_exact": _tree_equal(continuous_opt.state_dict(), resumed_opt.state_dict()),
-        "rng_exact": _tree_equal(base._rng_state(), base._rng_state()),
+        "rng_exact": _tree_equal(continuous_rng, resumed_rng),
+        "frozen_state_exact": _tree_equal(continuous_nonphase, _nonphase_state_cpu(continuous_model)) and _tree_equal(split_nonphase, _nonphase_state_cpu(resumed_model)),
+        "smf_state_exact": _tree_equal(continuous_smf_state, _module_state_cpu(continuous_smf)) and _tree_equal(split_smf_state, _module_state_cpu(resumed_smf)),
+        "resume_artifact": str(resume_path.resolve()),
+        "resume_artifact_sha256": file_sha256(resume_path),
         "finite": all(item["finite"] for item in continuous_history + split_history),
     }
 
@@ -940,10 +1079,13 @@ def preflight(args: argparse.Namespace) -> int:
     deterministic_before = torch.are_deterministic_algorithms_enabled()
     torch.use_deterministic_algorithms(True)
     try:
-        source_model, source_opt, source_smf = _runtime(formal, source, device)
+        source_model, _source_opt, source_smf = _runtime(formal, source, device)
+        source_model_state = _state_cpu(source_model)
+        source_formal_ols_state = _module_state_cpu(source_model.system.ols)
+        source_smf_state = _module_state_cpu(source_smf)
         calibration_data = adaptive._load_data(args.dataset_root)
         panels = calibration_data.calibration_panels
-        projection, projection_payload = _capture_projection_fields(source_model, source_smf, data, panels, device)
+        projection, projection_payload = _capture_projection_fields(source_model, data, panels, device, spec=spec, validation_hash=validation_hash, source=source)
         directions = regularization._fixed_directions(device)
         projection_path = output.parent / "diagnostic_unstable_rank32_projection.pt"
         output.parent.mkdir(parents=True, exist_ok=True)
@@ -951,7 +1093,7 @@ def preflight(args: argparse.Namespace) -> int:
         projection_hash = file_sha256(projection_path)
         hashes = {**source.hashes, "dataset_manifest": data.manifest["manifest_hash"], "training_validation": validation_hash, "projection": projection_hash}
         lambda_value = _lambda(source_model, source_smf, data, projection, directions, device)
-        exact = {arm: _exact_resume(formal, source, data, projection, directions, arm, lambda_value, device) for arm in ("smf_rank32_swd", "smf_mse_only")}
+        exact = {arm: _exact_resume(formal, source, data, projection, directions, arm, lambda_value, device, spec, hashes, output.parent) for arm in ("smf_rank32_swd", "smf_mse_only")}
         reports: dict[str, Any] = {}
         for arm in ("smf_rank32_swd", "smf_mse_only"):
             model, optimizer, smf = _runtime(formal, source, device)
@@ -962,6 +1104,13 @@ def preflight(args: argparse.Namespace) -> int:
         zero_smf = _smf_operator(zero_model.system, device, zero_transport=True)
         zero_amplitude, _zero_target = _batch(data, data.schedule[0, :1], device)
         zero_raw, _zero_pre, zero_diag = _smf_forward(zero_model, zero_smf, zero_amplitude, trace=True)
+        identity_amplitude, _identity_target = _batch(data, data.schedule[0, :1], device)
+        identity_raw, _identity_pre, identity_plane, identity_provenance = regularization._forward_trace(source_model, identity_amplitude)
+        smf_raw, _smf_pre, smf_diag = _smf_forward(source_model, source_smf, identity_amplitude, trace=True)
+        identity_has_ols = _identity_trace_has_ols(source_model, identity_amplitude)
+        smf_has_transport = smf_diag["smf_provenance"].get("operation") == "synthetic_smf_lp01_port_transport" and smf_diag["port_coefficients"].shape == (1, PORT_COUNT)
+        frozen_formal = _tree_equal(source_model_state, _state_cpu(source_model)) and _tree_equal(source_formal_ols_state, _module_state_cpu(source_model.system.ols))
+        frozen_smf = _tree_equal(source_smf_state, _module_state_cpu(source_smf))
         elapsed = time.monotonic() - started
         peak = int(torch.cuda.max_memory_allocated(device))
         storage = sum(item.stat().st_size for item in output.parent.rglob("*") if item.is_file())
@@ -969,13 +1118,14 @@ def preflight(args: argparse.Namespace) -> int:
         mse_only = reports["smf_mse_only"]["step"]
         gates = (
             GateResult("finite_values", all(item["finite"] for item in (regularized, mse_only)), {}),
-            GateResult("four_phase_reconstruction_updates", all(value > 0.0 for name, value in regularized["update_norms"].items() if "phase[" in name), {"layers": 4}),
+            GateResult("four_phase_reconstruction_updates", _four_phase_nonzero(regularized["update_norms"]), {"layers": 4}),
             GateResult("swd_rank_permutation", regularized["replay"]["rank_assignment_is_permutation"], {}),
-            GateResult("swd_encoder_only", all(value > 0.0 for name, value in regularized["regularizer_gradient_norms"].items() if name.startswith("system.encoder.phase[")) and all(value == 0.0 for name, value in regularized["regularizer_gradient_norms"].items() if name.startswith("system.decoder.phase[")), {}),
-            GateResult("exact_resume_both_arms", all(exact[arm]["model_exact"] and exact[arm]["optimizer_exact"] and exact[arm]["finite"] for arm in exact), {}),
+            GateResult("swd_encoder_only", _swd_encoder_only(regularized["regularizer_gradient_norms"]), {}),
+            GateResult("exact_resume_both_arms", all(exact[arm]["model_exact"] and exact[arm]["optimizer_exact"] and exact[arm]["rng_exact"] and exact[arm]["frozen_state_exact"] and exact[arm]["smf_state_exact"] and exact[arm]["finite"] for arm in exact), {}),
             GateResult("smf_100_port_coefficients", regularized["port_coefficients_shape"] == [1, PORT_COUNT], {"shape": regularized["port_coefficients_shape"], "ports": PORT_COUNT}),
-            GateResult("smf_passive_zero_transport_control", bool(torch.isfinite(zero_raw).all()) and float(zero_raw.abs().max()) <= 1.0e-12, {"output_energy": zero_diag.get("output_energy")}),
-            GateResult("frozen_formal_state", True, {"formal_identity_ols_unchanged": True}),
+            GateResult("smf_passive_zero_transport_control", bool(torch.isfinite(zero_raw).all()) and float(zero_raw.abs().max()) <= 1.0e-12 and bool(torch.isfinite(zero_diag["output_energy"]).all()) and bool((zero_diag["output_energy"] <= zero_diag["input_energy"] * (1.0 + 1.0e-5) + 1.0e-12).all()), {"max_abs": float(zero_raw.abs().max())}),
+            GateResult("identity_and_smf_are_not_bypassed", identity_has_ols and smf_has_transport and not torch.equal(identity_raw, smf_raw), {"identity_has_identity_ols": identity_has_ols, "smf_has_transport": smf_has_transport}),
+            GateResult("frozen_formal_state", frozen_formal and frozen_smf, {"formal_identity_ols_unchanged": frozen_formal, "smf_buffers_unchanged": frozen_smf}),
             GateResult("evaluator_isolation", True, {"evaluator_calls": 0}),
             GateResult("cuda_peak_memory", peak <= MAX_PEAK_BYTES, {"bytes": peak}),
             GateResult("wall_time", elapsed <= MAX_PREFLIGHT_SECONDS, {"seconds": elapsed}),
@@ -1058,6 +1208,37 @@ def _save_panel(path: Path, model_identity: base.IdentityOpticalManifoldAutoenco
     return file_sha256(path)
 
 
+def _initial_batch_losses(model: base.IdentityOpticalManifoldAutoencoder, smf: FiberArrayOLS, data: CanaryData, device: torch.device) -> list[float]:
+    values: list[float] = []
+    with torch.no_grad():
+        for step in range(STEPS):
+            amplitudes, targets = _batch(data, data.schedule[step], device)
+            raw, _pre, _diagnostics = _smf_forward(model, smf, amplitudes)
+            values.append(float(F.mse_loss(raw, targets).cpu()))
+    return values
+
+
+def _load_completed_arm(path: str | Path, model: base.IdentityOpticalManifoldAutoencoder, optimizer: full_epoch._DeterministicCpuAdam, *, spec: CanarySpec, data: CanaryData, hashes: Mapping[str, str], lambda_value: float, arm: str, output_dir: Path, expected_sha256: str) -> dict[str, Any]:
+    target = _resolve(path)
+    if file_sha256(target) != expected_sha256:
+        raise ValueError("completed SMF canary arm checkpoint hash mismatch")
+    payload = safe_torch_load(target, expected_sha256=expected_sha256, map_location="cpu")
+    if payload.get("arm") != arm or int(payload.get("step", 0)) != STEPS:
+        raise ValueError("completed SMF canary arm checkpoint is not a final checkpoint")
+    # Reuse the same lineage fields as an incomplete resume, while allowing
+    # the terminal step for the completed arm.
+    if payload.get("schema") != RESUME_SCHEMA or payload.get("config_hash") != spec.config_hash or payload.get("dataset_manifest_hash") != data.manifest["manifest_hash"] or payload.get("schedule_sha256") != data.manifest["schedule_sha256"] or payload.get("evidence_hashes") != dict(hashes) or payload.get("projection_hash") != hashes.get("projection") or float(payload.get("lambda")) != lambda_value:
+        raise ValueError("completed SMF canary arm checkpoint lineage mismatch")
+    if target.parent.resolve() != output_dir.resolve():
+        raise ValueError("completed SMF canary arm checkpoint belongs to a different attempt")
+    model.load_state_dict(payload["model_state"], strict=True)
+    optimizer.load_state_dict(payload["optimizer_state"])
+    base._restore_rng(payload["rng_state"])
+    if not isinstance(payload.get("history"), list) or len(payload["history"]) != STEPS:
+        raise ValueError("completed SMF canary arm history is inconsistent")
+    return dict(payload)
+
+
 def train(args: argparse.Namespace) -> int:
     if args.device != "cuda":
         raise ValueError("SMF canary training requires CUDA")
@@ -1082,6 +1263,8 @@ def train(args: argparse.Namespace) -> int:
     if free_bytes < MIN_FREE_BYTES:
         raise RuntimeError(f"free CUDA memory {free_bytes} is below {MIN_FREE_BYTES}")
     projection_payload = safe_torch_load(preflight_payload["projection_path"], expected_sha256=preflight_payload["projection_hash"], map_location="cpu")
+    if projection_payload.get("schema") != PROJECTION_SCHEMA or projection_payload.get("config_hash") != spec.config_hash or projection_payload.get("validation_hash") != validation_hash or projection_payload.get("source_hashes") != source.hashes or projection_payload.get("dataset_manifest_hash") != data.manifest["manifest_hash"]:
+        raise ValueError("SMF canary projection provenance does not match training inputs")
     projection = regularization.Projection(projection_payload["mean_field"], projection_payload["basis"], projection_payload["whitening"], projection_payload["eigenvalues"], projection_payload["explained_variance"])
     lambda_value = float(preflight_payload["lambda"])
     directions = regularization._fixed_directions(device)
@@ -1092,30 +1275,42 @@ def train(args: argparse.Namespace) -> int:
     torch.use_deterministic_algorithms(True)
     try:
         source_identity, _source_identity_opt, source_identity_smf = _runtime(formal, source, device)
+        source_identity_state = _state_cpu(source_identity)
+        source_identity_ols_state = _module_state_cpu(source_identity.system.ols)
+        source_identity_smf_state = _module_state_cpu(source_identity_smf)
         baseline = _probe_metrics(source_identity, source_identity_smf, data, data.visual_indices, projection, directions, device)
+        safety_baselines = _initial_batch_losses(source_identity, source_identity_smf, data, device)
         arms: dict[str, Any] = {}
         checkpoints: dict[str, Any] = {}
         trained_models: dict[str, base.IdentityOpticalManifoldAutoencoder] = {}
         trained_smfs: dict[str, FiberArrayOLS] = {}
-        for arm in ("smf_rank32_swd", "smf_mse_only"):
+        training_hashes = {**hashes, "training_preflight": preflight_hash}
+        resume_payload: Mapping[str, Any] | None = None
+        resume_arm: str | None = None
+        if args.resume_checkpoint:
+            resume_target = _resolve(args.resume_checkpoint)
+            if resume_target.parent.resolve() != output.parent.resolve():
+                raise ValueError("explicit SMF canary resume checkpoint must belong to the requested attempt")
+            resume_payload = safe_torch_load(resume_target, map_location="cpu")
+            resume_arm = str(resume_payload.get("arm"))
+            if resume_arm not in {"smf_rank32_swd", "smf_mse_only"}:
+                raise ValueError("explicit SMF canary resume checkpoint has an invalid arm")
+
+        def run_arm(arm: str, *, resume_path: Path | None = None, completed_arms: Mapping[str, Any] | None = None) -> None:
             model, optimizer, smf = _runtime(formal, source, device)
             history: list[dict[str, Any]] = []
             start = 0
-            if args.resume_checkpoint:
-                resume_path = _resolve(args.resume_checkpoint)
-                if resume_path.parent != output.parent.resolve():
-                    raise ValueError("explicit SMF canary resume checkpoint must belong to the requested attempt")
-                resume = safe_torch_load(resume_path, map_location="cpu")
-                if resume.get("schema") != RESUME_SCHEMA or resume.get("arm") != arm or resume.get("config_hash") != spec.config_hash or resume.get("dataset_manifest_hash") != data.manifest["manifest_hash"] or resume.get("evidence_hashes") != hashes:
-                    raise ValueError("SMF canary resume lineage mismatch")
+            if resume_path is not None:
+                resume = _load_resume(resume_path, model, optimizer, spec=spec, data=data, hashes=training_hashes, lambda_value=lambda_value, arm=arm, output_dir=output.parent)
                 start = int(resume["step"])
-                if not 0 < start < STEPS:
-                    raise ValueError("SMF canary resume must identify an incomplete step")
-                model.load_state_dict(resume["model_state"], strict=True)
-                optimizer.load_state_dict(resume["optimizer_state"])
-                base._restore_rng(resume["rng_state"])
                 history = list(resume["history"])
-            history, final_path, final_hash = _run_steps(model, optimizer, smf, data, projection, directions, arm, lambda_value, start, history, output.parent, spec, hashes, save_checkpoints=True)
+            try:
+                history, final_path, final_hash = _run_steps(model, optimizer, smf, data, projection, directions, arm, lambda_value, start, history, output.parent, spec, training_hashes, save_checkpoints=True, completed_arms=completed_arms, initial_batch_losses=safety_baselines)
+            except _SafetyAbort:
+                arms[arm] = {"steps_completed": len(history), "history": history, "metrics": None, "final_checkpoint": None, "final_checkpoint_sha256": None, "model_state": _state_cpu(model)}
+                trained_models[arm] = model
+                trained_smfs[arm] = smf
+                raise
             metrics = _probe_metrics(model, smf, data, data.visual_indices, projection, directions, device)
             arms[arm] = {"steps_completed": len(history), "history": history, "metrics": metrics, "final_checkpoint": str(final_path.resolve()) if final_path else None, "final_checkpoint_sha256": final_hash, "model_state": _state_cpu(model)}
             checkpoints[arm] = {"path": arms[arm]["final_checkpoint"], "sha256": final_hash}
@@ -1123,29 +1318,58 @@ def train(args: argparse.Namespace) -> int:
             trained_smfs[arm] = smf
             _clear_grad(model)
             torch.cuda.empty_cache()
-        panel_path = output.parent / "smf_canary_visual_panel.pt"
-        panel_hash = _save_panel(panel_path, source_identity, trained_models["smf_mse_only"], trained_models["smf_rank32_swd"], source_identity_smf, trained_smfs["smf_mse_only"], trained_smfs["smf_rank32_swd"], data, device, {**hashes, "training_preflight": preflight_hash})
+
+        safety_abort: _SafetyAbort | None = None
+        try:
+            if resume_arm == "smf_mse_only":
+                if not isinstance(resume_payload, Mapping) or not isinstance(resume_payload.get("completed_arms"), Mapping):
+                    raise ValueError("MSE-only resume is missing completed regularized-arm binding")
+                completed = resume_payload["completed_arms"].get("smf_rank32_swd")
+                if not isinstance(completed, Mapping) or not isinstance(completed.get("path"), str) or not isinstance(completed.get("sha256"), str):
+                    raise ValueError("MSE-only resume has no completed regularized-arm checkpoint")
+                reg_model, reg_optimizer, reg_smf = _runtime(formal, source, device)
+                completed_payload = _load_completed_arm(completed["path"], reg_model, reg_optimizer, spec=spec, data=data, hashes=training_hashes, lambda_value=lambda_value, arm="smf_rank32_swd", output_dir=output.parent, expected_sha256=completed["sha256"])
+                trained_models["smf_rank32_swd"] = reg_model
+                trained_smfs["smf_rank32_swd"] = reg_smf
+                arms["smf_rank32_swd"] = {"steps_completed": STEPS, "history": list(completed_payload["history"]), "metrics": _probe_metrics(reg_model, reg_smf, data, data.visual_indices, projection, directions, device), "final_checkpoint": str(_resolve(completed["path"]).resolve()), "final_checkpoint_sha256": completed["sha256"], "model_state": _state_cpu(reg_model)}
+                checkpoints["smf_rank32_swd"] = {"path": arms["smf_rank32_swd"]["final_checkpoint"], "sha256": completed["sha256"]}
+                run_arm("smf_mse_only", resume_path=_resolve(args.resume_checkpoint), completed_arms={"smf_rank32_swd": checkpoints["smf_rank32_swd"]})
+            else:
+                run_arm("smf_rank32_swd", resume_path=_resolve(args.resume_checkpoint) if resume_arm == "smf_rank32_swd" else None)
+                run_arm("smf_mse_only", completed_arms={"smf_rank32_swd": checkpoints["smf_rank32_swd"]})
+        except _SafetyAbort as exc:
+            safety_abort = exc
+
+        panel_path: Path | None = None
+        panel_hash: str | None = None
+        if safety_abort is None:
+            panel_path = output.parent / "smf_canary_visual_panel.pt"
+            panel_hash = _save_panel(panel_path, source_identity, trained_models["smf_mse_only"], trained_models["smf_rank32_swd"], source_identity_smf, trained_smfs["smf_mse_only"], trained_smfs["smf_rank32_swd"], data, device, training_hashes)
         elapsed = time.monotonic() - started
         peak = int(torch.cuda.max_memory_allocated(device))
         storage = sum(item.stat().st_size for item in output.parent.rglob("*") if item.is_file())
-        finite = all(item["finite"] for arm in arms.values() for item in arm["history"]) and all(item["metrics"]["finite"] for item in arms.values())
-        updates = all(value > 0.0 for arm in arms.values() for item in arm["history"] for name, value in item["update_norms"].items() if "phase[" in name)
+        finite = all(item["finite"] for arm in arms.values() for item in arm["history"]) and all(item["metrics"] is not None and item["metrics"]["finite"] for item in arms.values())
+        updates = all(_four_phase_nonzero(item["update_norms"]) for arm in arms.values() for item in arm["history"])
+        frozen = _tree_equal(source_identity_state, _state_cpu(source_identity)) and _tree_equal(source_identity_ols_state, _module_state_cpu(source_identity.system.ols)) and _tree_equal(source_identity_smf_state, _module_state_cpu(source_identity_smf))
         gates = (
             GateResult("finite_values", finite, {}),
             GateResult("both_arms_completed_20_steps", all(item["steps_completed"] == STEPS for item in arms.values()), {}),
             GateResult("four_phase_updates_nonzero", updates, {"layers": 4}),
-            GateResult("frozen_formal_state", True, {}),
+            GateResult("frozen_formal_state", frozen, {"formal_identity_ols_unchanged": _tree_equal(source_identity_ols_state, _module_state_cpu(source_identity.system.ols)), "source_smf_buffers_unchanged": _tree_equal(source_identity_smf_state, _module_state_cpu(source_identity_smf))}),
             GateResult("evaluator_isolation", True, {"evaluator_calls": 0}),
-            GateResult("source_and_panel_provenance", bool(panel_hash), {"panel_sha256": panel_hash}),
-            GateResult("safety_mse_bound", all(item["metrics"]["paired_mse"] <= baseline["paired_mse"] * SAFETY_MSE_RATIO for item in arms.values()), {"ratio": SAFETY_MSE_RATIO}),
+            GateResult("source_and_panel_provenance", panel_hash is not None and panel_path is not None and panel_path.is_file(), {"panel_sha256": panel_hash}),
+            GateResult("safety_mse_bound", all(all(item["loss"] <= safety_baselines[item["step"] - 1] * SAFETY_MSE_RATIO for item in arm["history"]) for arm in arms.values()), {"ratio": SAFETY_MSE_RATIO}),
             GateResult("cuda_peak_memory", peak <= MAX_PEAK_BYTES, {"bytes": peak}),
             GateResult("wall_time", elapsed <= MAX_WALL_SECONDS, {"seconds": elapsed}),
             GateResult("run_storage", storage <= MAX_STORAGE_BYTES, {"bytes": storage}),
         )
-        harness_ok = all(gate.passed for gate in gates)
-        status = "diagnostic_completed" if harness_ok else ("resource_aborted" if any(gate.name in {"cuda_peak_memory", "wall_time", "run_storage"} and not gate.passed for gate in gates) else "invalid_harness")
-        record = _training_record(state, spec, formal, data, {**hashes, "training_preflight": preflight_hash}, status, (NEXT_ACTION,) if harness_ok else (), gates, None if harness_ok else "SMF canary harness or resource gate failed")
-        payload = _record_payload(TRAINING_SCHEMA, record, {"validation_hash": validation_hash, "preflight_hash": preflight_hash, "source_hashes": source.hashes, "baseline": baseline, "arms": {arm: {key: value for key, value in result.items() if key != "model_state"} for arm, result in arms.items()}, "checkpoints": checkpoints, "panel_path": str(panel_path.resolve()), "panel_sha256": panel_hash, "lambda": lambda_value, "formal_candidate_checkpoint": False, "free_cuda_bytes_before": int(free_bytes), "total_cuda_bytes": int(total_bytes), "peak_cuda_bytes": peak, "wall_seconds": elapsed, "run_storage_bytes": storage, "evaluator_calls": 0, "training_authorized": False, "formal_promotion": False})
+        harness_ok = safety_abort is None and all(gate.passed for gate in gates)
+        resource_failed = any(gate.name in {"cuda_peak_memory", "wall_time", "run_storage"} and not gate.passed for gate in gates)
+        status = "diagnostic" if harness_ok else ("failed" if safety_abort is not None else ("resource_aborted" if resource_failed else "invalid_harness"))
+        outcome = "diagnostic_completed" if harness_ok else ("safety_aborted" if safety_abort is not None else ("resource_aborted" if resource_failed else "invalid_harness"))
+        reason = None if harness_ok else (str(safety_abort) if safety_abort is not None else "SMF canary harness or resource gate failed")
+        record = _training_record(state, spec, formal, data, training_hashes, status, (NEXT_ACTION,) if harness_ok else (), gates, reason)
+        payload = _record_payload(TRAINING_SCHEMA, record, {"outcome": outcome, "validation_hash": validation_hash, "preflight_hash": preflight_hash, "source_hashes": source.hashes, "baseline": baseline, "safety_baseline_batch_mse": safety_baselines, "safety_abort": {"step": safety_abort.step, "result": safety_abort.result} if safety_abort is not None else None, "arms": {arm: {key: value for key, value in result.items() if key != "model_state"} for arm, result in arms.items()}, "checkpoints": checkpoints, "panel_path": str(panel_path.resolve()) if panel_path is not None else None, "panel_sha256": panel_hash, "lambda": lambda_value, "formal_candidate_checkpoint": False, "free_cuda_bytes_before": int(free_bytes), "total_cuda_bytes": int(total_bytes), "peak_cuda_bytes": peak, "wall_seconds": elapsed, "run_storage_bytes": storage, "evaluator_calls": 0, "training_authorized": False, "formal_promotion": False})
         _write_new(output, payload)
         print(json.dumps(payload, indent=2, sort_keys=True, default=str))
         return 0 if harness_ok else 2

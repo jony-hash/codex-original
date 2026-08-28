@@ -72,3 +72,39 @@ def test_rank_replay_is_per_direction_permutation() -> None:
     assert coefficients.shape == (10, canary.DIRECTIONS)
     expected = torch.arange(10).reshape(-1, 1).expand_as(ranks)
     assert torch.equal(torch.sort(ranks, dim=0).values, expected)
+
+
+def test_canary_uses_pilot_split_manifest_not_representative_manifest(monkeypatch) -> None:
+    def fail_representative(*_args, **_kwargs):
+        raise AssertionError("representative manifest must not be consumed")
+
+    monkeypatch.setattr(base, "_load_data_manifest", fail_representative)
+    _images, _labels, manifest = canary._load_authoritative_pilot_data("data")
+    assert manifest["manifest_hash"] == canary.SOURCE_MANIFEST_HASH
+    assert manifest["train_count"] == 55000
+    assert manifest["validation_count"] == 5000
+
+
+def test_layer_gates_cannot_pass_on_empty_or_partial_metadata() -> None:
+    assert not canary._four_phase_nonzero({})
+    assert not canary._swd_encoder_only({})
+    assert not canary._four_phase_nonzero({"system.encoder.phase[0]": 1.0})
+    values = {
+        "system.encoder.phase[0]": 1.0,
+        "system.encoder.phase[1]": 1.0,
+        "system.decoder.phase[0]": 0.0,
+        "system.decoder.phase[1]": 0.0,
+    }
+    assert canary._swd_encoder_only(values)
+
+
+def test_activation_checkpoint_is_part_of_mse_production_path() -> None:
+    source = inspect.getsource(canary._mse_gradients)
+    assert "checkpoint(" in source
+    assert "use_reentrant=False" in source
+
+
+def test_completed_training_uses_compatible_evidence_status() -> None:
+    source = inspect.getsource(canary.train)
+    assert 'status = "diagnostic"' in source
+    assert 'outcome = "diagnostic_completed"' in source
