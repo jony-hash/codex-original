@@ -1055,7 +1055,7 @@ def preflight(args: argparse.Namespace) -> int:
             GateResult("finite_values", all(item["step"]["finite"] and item["exact_resume"]["finite"] for item in reports.values()), {}),
             GateResult("four_phase_reconstruction_updates", canary._four_phase_nonzero(smf_step["update_norms"]) and canary._four_phase_nonzero(identity_step["update_norms"]), {"layers": 4}),
             GateResult("activation_checkpoint", all(item["step"]["activation_checkpoint"] for item in reports.values()), {}),
-            GateResult("exact_resume_both_arms", all(item["exact_resume"]["model_exact"] and item["exact_resume"]["optimizer_exact"] and item["exact_resume"]["rng_exact"] and item["exact_resume"]["frozen_state_exact"] and item["exact_resume"]["smf_state_exact"] for item in exact.values()), {}),
+            GateResult("exact_resume_both_arms", all(item["model_exact"] and item["optimizer_exact"] and item["rng_exact"] and item["frozen_state_exact"] and item["smf_state_exact"] for item in exact.values()), {}),
             GateResult("smf_100_port_coefficients", smf_step["port_coefficients_shape"] == [1, PORT_COUNT], {"shape": smf_step["port_coefficients_shape"]}),
             GateResult("smf_passive_zero_transport_control", controls["smf_has_transport"] and controls["passivity"] and controls["zero_port_finite"] and controls["zero_port_is_zero"], controls),
             GateResult("identity_and_smf_are_not_bypassed", controls["identity_has_identity_ols"] and controls["identity_smf_not_equal"], controls),
