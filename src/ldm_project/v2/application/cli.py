@@ -52,6 +52,13 @@ def _summarize(args: argparse.Namespace) -> int:
 def _dispatch(args: argparse.Namespace) -> int:
     if args.domain == "research":
         if args.research_program == "optical-manifold":
+            if args.research_action in {
+                "adaptive-projection-audit-validate",
+                "adaptive-projection-audit-run",
+            }:
+                from .research.optical_manifold_adaptive_projection_audit import dispatch
+
+                return int(dispatch(args) or 0)
             from .research.optical_manifold import dispatch
 
             return int(dispatch(args) or 0)
