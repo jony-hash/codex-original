@@ -126,6 +126,22 @@ def test_preflight_consumer_does_not_require_a_self_referential_hash() -> None:
     assert '"training_preflight": digest' in source
 
 
+def test_interpolation_keeps_a_batch_dimension_for_formal_decoder(monkeypatch) -> None:
+    shapes: list[tuple[int, ...]] = []
+
+    def fake_decode(_model, field, _smf):
+        shapes.append(tuple(field.shape))
+        return field.real
+
+    monkeypatch.setattr(pilot, "_decode_pre_ols", fake_decode)
+    pre = torch.arange(100 * 1 * 2 * 2, dtype=torch.float32).reshape(100, 1, 2, 2).to(torch.complex64)
+    camera = pre.real.clone()
+    result = pilot._interpolation_metrics(None, None, pre, camera, torch.device("cpu"))
+    assert result["finite"] is True
+    assert len(shapes) == 50
+    assert all(shape == (1, 1, 2, 2) for shape in shapes)
+
+
 def test_resume_rejects_completed_arm_and_foreign_attempt() -> None:
     source = inspect.getsource(pilot._load_resume)
     assert "target.parent.resolve() != output_dir.resolve()" in source

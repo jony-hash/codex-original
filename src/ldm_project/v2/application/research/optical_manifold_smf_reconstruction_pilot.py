@@ -782,12 +782,12 @@ def _interpolation_metrics(model: base.IdentityOpticalManifoldAutoencoder, smf: 
     values: list[torch.Tensor] = []
     endpoint_errors: list[torch.Tensor] = []
     for label in range(10):
-        first = pre_visual[label * 10].to(device)
-        last = pre_visual[label * 10 + 9].to(device)
+        first = pre_visual[label * 10 : label * 10 + 1].to(device)
+        last = pre_visual[label * 10 + 9 : label * 10 + 10].to(device)
         ts = (0.0, 0.25, 0.5, 0.75, 1.0)
         outputs = [_decode_pre_ols(model, first.mul(1.0 - t) + last.mul(t), smf).detach() for t in ts]
-        endpoint_errors.append(F.mse_loss(outputs[0], camera_visual[label * 10].to(device)).detach())
-        endpoint_errors.append(F.mse_loss(outputs[-1], camera_visual[label * 10 + 9].to(device)).detach())
+        endpoint_errors.append(F.mse_loss(outputs[0], camera_visual[label * 10 : label * 10 + 1].to(device)).detach())
+        endpoint_errors.append(F.mse_loss(outputs[-1], camera_visual[label * 10 + 9 : label * 10 + 10].to(device)).detach())
         values.extend(outputs)
     stacked = torch.stack(values)
     adjacent = (stacked[1:] - stacked[:-1]).flatten(1).norm(dim=1)
