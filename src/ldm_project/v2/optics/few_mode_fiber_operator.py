@@ -131,7 +131,13 @@ class FewModeFiberArrayOLS(nn.Module):
         return self.input_modes.shape[0]
 
     def _validate_field(self, field: ComplexField) -> None:
-        if field.plane != self.input_plane:
+        if (
+            field.plane.shape != self.input_plane.shape
+            or any(abs(a - b) > 1.0e-15 for a, b in zip(field.plane.pixel_pitch_m, self.input_plane.pixel_pitch_m, strict=True))
+            or abs(field.plane.wavelength_m - self.input_plane.wavelength_m) > 1.0e-15
+            or any(abs(a - b) > 1.0e-12 for a, b in zip(field.plane.fov_m, self.input_plane.fov_m, strict=True))
+            or field.plane.coordinate_frame != self.input_plane.coordinate_frame
+        ):
             raise ValueError("FMF input plane mismatch")
         if field.tensor.ndim not in {3, 4} or (field.tensor.ndim == 4 and field.tensor.shape[1] != 1):
             raise ValueError("FMF OLS requires [batch,H,W] or [batch,1,H,W] fields")
