@@ -1,0 +1,82 @@
+schema: lightgen_optical_manifold_smf_vae_kl_dose_reaudit_v1
+hypothesis: H-LOMA-I0
+formal_system_config: configs/v2/current/formal_identity_logit_amplitude_finite_crop_identity.yaml
+
+source:
+  vae_validation: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_vae_pilot_v1_attempt_06/validation.json
+  vae_validation_sha256: d50919acb75ffe68453db52a6d87ebdfeb8ae9963f157b0bd3afb582f17de04c
+  vae_preflight: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_vae_pilot_v1_attempt_06/preflight.json
+  vae_preflight_sha256: 5e1f8569e7e58ce086db37a318df76fa81107820323128dafbedd02ad0e8a936
+  vae_training: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_vae_pilot_v1_attempt_06/training.json
+  vae_training_sha256: ec6afc5b15274ce9a7e2446bef43bb6346007480da23408fe1399b412200c476
+  vae_panel: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_vae_pilot_v1_attempt_06/smf_vae_panel.pt
+  vae_panel_sha256: e8134f326dfdbdc33e900be17292f17c01d675427f1409193a27418ce64cb664
+  vae_normalization: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_vae_pilot_v1_attempt_06/posterior_normalization.pt
+  vae_normalization_sha256: e764ceb31e9ce1aa24f2cd9ad909011550aa6ad095404916ff84be8f93d07a85
+  source_checkpoint: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_reconstruction_pilot_v1_attempt_04/smf_mse_reconstruction_step_1000.pt
+  source_checkpoint_sha256: 949bf6903db8a6c5c8b76fddfddeef31f9419717486f278cbf0ed9d86534dd94
+  beta_checkpoint: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_vae_pilot_v1_attempt_06/smf_beta_vae_step_0100.pt
+  beta_checkpoint_sha256: d4bbad17de2c9623a37825b718aee7dc1e14f99727c1651fe9bfb8bd53f04262
+  stochastic_checkpoint: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_vae_pilot_v1_attempt_06/smf_stochastic_no_kl_step_0100.pt
+  stochastic_checkpoint_sha256: 7885762ffd63b42f2bff3bf82b002c0a4e7cccb4e46c0b4993d4a242b183ec6d
+  deterministic_checkpoint: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_vae_pilot_v1_attempt_06/smf_deterministic_mse_step_0100.pt
+  deterministic_checkpoint_sha256: 8b508be438a73f160a956dc063e359354ccde4ac894de960297ae79eafde2b59
+  kl_attribution_audit: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_vae_kl_attribution_audit_v1_attempt_06/audit.json
+  mnist_manifest_sha256: 64b1b70dc119dac0cb0aa8b898614962ff993a83d120390d1d6fadd55ade97d8
+  kl_attribution_audit_sha256: 40d612e20ffc7044c0a8e21bce86c7d07f3076a31ea0d6aadee5fa6f53ea22ce
+
+context:
+  plan6_training: outputs/20260828_v2/runs/lightgen_optical_manifold_smf_reconstruction_pilot_v1_attempt_04/training.json
+  plan6_training_sha256: a95890d8feb38c0682179cbbb4ef612d49c5f1918609596524959b789e672c3e
+  fmf_training: outputs/20260828_v2/runs/lightgen_optical_manifold_fmf_m2_integration_canary_v1_attempt_09/training.json
+  fmf_training_sha256: f699fccce7da7fb5f1560c5823ee76e2c713ba9e726fb9f6213fe967da36afb6
+
+audit:
+  training_beta: 0.0018256452619527068
+  calibration_panel_count: 3
+  confirmation_panel_count: 3
+  panel_images: 100
+  calibration_seed: 3234
+  confirmation_seed: 4234
+  candidate_multipliers: [1.0, 2.0, 4.0, 6.0, 8.0, 10.0, 12.0]
+  minimum_reconstruction_descent_fraction: 0.25
+  source_mse_tolerance: 1.0e-9
+
+optical_contract:
+  formal_system_kind: formal_amplitude_finite_crop_identity
+  formal_ols: identity
+  research_ols: 100_port_lp01_smf
+  posterior_domain: 100_complex_coefficients_as_200_real
+  posterior_status: project_approximation
+  input_encoding: intensity_sqrt_amplitude
+  target: camera_intensity_same_fov
+  fixed_exposure: {scale: 1.0, gamma: 1.0}
+  propagation_grid_size: 2048
+  encoder_layers: 2
+  decoder_layers: 2
+  microbatch_size: 1
+  evaluator_calls: 0
+
+authorization:
+  reviewer_role: project_owner
+  decision: approve_no_update_smf_vae_kl_dose_reaudit
+  no_update_diagnostic_authorized: true
+  training_authorized: false
+  formal_training_authorized: false
+  formal_promotion: false
+  prohibited:
+    - optimizer_creation
+    - parameter_update
+    - checkpoint_creation
+    - latent_prior_generation
+    - extra_reconstruction_training
+    - fmf_or_smf_extension
+    - generation
+    - evaluator
+    - promotion
+
+gates:
+  min_free_cuda_bytes: 4294967296
+  max_peak_cuda_bytes: 5368709120
+  max_wall_seconds: 1200
+  max_storage_bytes: 536870912

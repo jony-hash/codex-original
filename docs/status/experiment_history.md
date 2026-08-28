@@ -1904,3 +1904,19 @@ It will decompose mean and variance KL terms, verify shared epsilon and
 reparameterization, measure cross-swapped phase/posterior states, and inspect
 1x/2x/4x no-update gradient directions. All evidence remains
 `training_authorized=false` and `formal_promotion=false`.
+
+## 2026-08-28：H-LOMA-I0 KL dose reaudit and fixed-OLS loss-recovery registration
+
+The project-owner-authorized continuation starts from clean commit `a62b264` on
+`research/v2-lightgen-optical-manifold-kl-ols-loss-recovery-v1`. The first
+no-update consumer repairs the attempt-06 dose formula to
+`g_mse + multiplier * registered_beta * g_kl`; attempt-06 remains immutable and
+its dose classification is not treated as scientific evidence because beta was
+omitted. The subsequent matched KL pilot and fixed-OLS coupling-loss canary are
+independent consumers with fresh schedules and explicit preflight gates.
+
+SMF mode banks, identity transport, formal optics and exposure remain fixed.
+Projection loss is encoder-only, KL is encoder/posterior-only, and CMOS MSE is
+the end-to-end reconstruction objective. No trainable OLS transport, prior-only
+generation, FMF long training or promotion is authorized; evidence remains
+`training_authorized=false` and `formal_promotion=false`.

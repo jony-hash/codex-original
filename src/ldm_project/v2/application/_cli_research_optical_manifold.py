@@ -41,6 +41,11 @@ def dispatch(args: argparse.Namespace) -> int:
         "smf-kl-chain-audit-run",
     }:
         from .research.optical_manifold_smf_vae_kl_attribution_audit import dispatch
+    elif action in {
+        "smf-kl-dose-reaudit-validate",
+        "smf-kl-dose-reaudit-run",
+    }:
+        from .research.optical_manifold_smf_vae_kl_dose_reaudit import dispatch
     else:
         from .research.optical_manifold import dispatch
     return int(dispatch(args) or 0)

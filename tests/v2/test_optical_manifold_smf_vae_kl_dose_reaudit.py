@@ -1,0 +1,40 @@
+from pathlib import Path
+
+import pytest
+import torch
+
+from ldm_project.v2.application.research import (
+    optical_manifold_smf_vae_kl_dose_reaudit as audit,
+)
+
+
+def test_config_locks_corrected_beta_dose_contract() -> None:
+    root = Path(__file__).parents[2]
+    spec = audit._load_spec(
+        root / "configs/research/lightgen_optical_manifold_smf_vae_kl_dose_reaudit_v1.yaml"
+    )
+    audit._assert_contract(spec)
+    review = audit._load_review(
+        root / "configs/research/lightgen_optical_manifold_smf_vae_kl_dose_reaudit_review_v1.json",
+        spec,
+    )
+    assert review.name.endswith("review_v1.json")
+    assert audit.TRAINING_BETA == pytest.approx(0.0018256452619527068)
+    assert audit.DOSES == (1.0, 2.0, 4.0, 6.0, 8.0, 10.0, 12.0)
+
+
+def test_dose_report_multiplies_registered_beta() -> None:
+    rec = {"system.encoder.phase": torch.tensor([1.0, 0.0])}
+    kl = {"system.encoder.phase": torch.tensor([0.0, 1.0])}
+    report = audit._dose_report(rec, kl, 4.0)
+    assert report["effective_beta"] == pytest.approx(4.0 * audit.TRAINING_BETA)
+    assert report["combined_dot_reconstruction"] == pytest.approx(1.0)
+    assert report["combined_dot_kl"] == pytest.approx(4.0 * audit.TRAINING_BETA)
+
+
+def test_old_unscaled_formula_is_not_the_registered_effective_beta() -> None:
+    rec = {"system.encoder.phase": torch.tensor([1.0, 0.0])}
+    kl = {"system.encoder.phase": torch.tensor([0.0, 1.0])}
+    report = audit._dose_report(rec, kl, 1.0)
+    assert report["effective_beta"] != 1.0
+    assert report["effective_beta"] == pytest.approx(audit.TRAINING_BETA)

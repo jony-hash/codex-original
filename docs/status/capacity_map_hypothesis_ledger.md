@@ -990,3 +990,22 @@ optimizer, checkpoint, parameter update, prior-only sample, FMF extension or
 generation is authorized. The three SMF VAE arms are the only matched
 scientific comparison; Identity, PLAN 6 SMF and FMF M2 remain non-matched
 context.
+
+## H-LOMA-I0：KL dose correction and fixed OLS loss recovery registration（2026-08-28）
+
+The real consumer is the project-owner decision on whether a corrected KL dose
+can be used in a bounded pilot and whether a fixed SMF OLS bottleneck can be
+made more power-efficient by encoder shaping. The first rejection decision is
+fail-closed on stale lineage, missing beta multiplication, gradient-boundary
+errors, state mutation or invalid preflight.
+
+The implementation starts from clean `a62b264` on
+`research/v2-lightgen-optical-manifold-kl-ols-loss-recovery-v1`. Fixed SMF mode
+bank, identity transport, formal relay and exposure are preserved. The plan
+separates posterior KL from the physical projection residual:
+`L = L_cmos + lambda_coupling * L_projection + beta * L_KL`.
+`L_projection` is encoder-only, KL is encoder/posterior-only, and CMOS MSE
+provides the full encoder--OLS--decoder feedback path. No trainable transport,
+prior-only sampling, FMF long training or formal promotion is authorized.
+All evidence must retain `training_authorized=false` and
+`formal_promotion=false`.

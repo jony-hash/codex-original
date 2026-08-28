@@ -1319,3 +1319,18 @@ local gradients. Its only downstream consumer is manual review of a future
 KL dose or posterior parameterization pilot. No training, checkpoint creation,
 prior-only generation, FMF extension or promotion is permitted. Evidence
 continues to require `training_authorized=false` and `formal_promotion=false`.
+
+## H-LOMA-I0：KL 因果确认与固定 OLS 流形损耗恢复（2026-08-28）
+
+本阶段从 clean commit `a62b264` 创建分支
+`research/v2-lightgen-optical-manifold-kl-ols-loss-recovery-v1`，固定 SMF
+mode bank、identity transport 和 formal 光学几何。第一步修复 KL attribution
+剂量审计：attempt-06 的 `1x/2x/4x` 漏乘 registered beta，故其剂量归因不得
+支持 `parameterization_limited` 结论；attempt-06 的 KL 公式、source replay、
+cross-swap 和梯度边界结果仍保留为输入。
+
+本阶段后续消费者依次为 corrected KL dose reaudit、同源 100-step KL effect
+pilot、固定 OLS projection/coupling-loss canary 和 1000-step continuation。
+projection loss 只作用于 encoder，KL 只直接作用于 encoder/posterior，CMOS
+MSE 负责全链路 reconstruction。可训练 OLS transport、先验生成、FMF 长训练、
+formal promotion 和 `outputs/final_pt/` 修改均不在授权范围内。
