@@ -1719,6 +1719,38 @@ encoder-decoder `2×2` cross-swap，并测试 registered coupling lambda 的
 `1×/2×/4×/8×` 无更新梯度剂量。FMF 不训练，历史 gate 不追溯放宽，所有 evidence
 保持 `training_authorized=false`、`formal_promotion=false`。
 
+## 2026-08-29：H-LOMA-I0 SMF bottleneck attribution audit closeout
+
+The project-owner-authorized no-update audit consumed the fixed-OLS recovery
+attempt-02 evidence and checkpoints. Its real consumer was the manual choice
+among a higher coupling dose, FMF mode-capacity reconstruction, passive decoder
+mismatch, or projection-objective replacement. Source replay, data isolation,
+mode-bank, gradient-boundary, freeze, provenance and resource failures reject
+all downstream training.
+
+The first CUDA attempt is retained as `invalid_harness`: the initial implementation
+exceeded available memory before writing audit evidence. After serializing model
+and capacity evaluation, authoritative attempt-02 completed on clean commit
+`3e608ee`. Validation, audit, decomposition and panel hashes are
+`4185875318a0a301ab966f99c8ab4eedde517b14c5354864e0520f12fedacb81`,
+`6f9b87adff81069b0b08d2d86e623d5c49565f30b2ca903640aa59b2c9e7b766`,
+`5ad548c4c258f70ada5979c8dfb5e67021a90a3c6e71e923ef3a963a8abac1dd`, and
+`047001891a3e2de4d07d33d85ed9782371b2790927095c5b159904458f7357d5`.
+
+All harness and resource gates passed, including authoritative terminal MSE
+replay, unchanged model/operator state, evaluator calls `0`, `2.305 GiB` peak
+CUDA memory and `201.16 s` wall time. Observation-only LP01 M1 retained
+`65.3577%` power and LP01+LP11a M2 retained `71.8676%`, a `6.5099` percentage-point
+capacity difference. Only the registered `1x` coupling dose was safe across all
+three gradient panels; no higher dose was eligible.
+
+The authoritative outcome is `valid_failed_mode_capacity`; the sole next action
+is `manual_review_fmf_mode_capacity_reconstruction_contract`. This supports a
+mode-capacity review but does not establish FMF reconstruction superiority.
+FMF training, continuation, prior sampling, generation and promotion remain
+unauthorized; evidence retains `training_authorized=false` and
+`formal_promotion=false`.
+
 ## 2026-08-28：H-LOMA-I0 fixed OLS projection-loss recovery canary
 
 在 corrected KL dose reaudit 和 matched KL effect pilot 之后，执行了从 PLAN 6 SMF

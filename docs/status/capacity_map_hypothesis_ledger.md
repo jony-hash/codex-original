@@ -1052,3 +1052,23 @@ cross-swap。它不改变 formal IdentityOLS、SMF/FMF transport、exposure 或�
 `+5pp` gate，不创建 optimizer/checkpoint，不启动 continuation。结果只能形成
 diagnostic dose-limited 或 `valid_failed_*` 归因，不构成 FMF 优越性或 promotion
 证据。
+
+本审计的 attempt-01 CUDA 运行在 evidence 生成前因显存驻留超限而停止，登记为
+`invalid_harness`；修复后 attempt-02 在 clean commit `3e608ee` 上完成唯一权威
+运行。validation、audit、decomposition、panel hashes 分别为
+`4185875318a0a301ab966f99c8ab4eedde517b14c5354864e0520f12fedacb81`、
+`6f9b87adff81069b0b08d2d86e623d5c49565f30b2ca903640aa59b2c9e7b766`、
+`5ad548c4c258f70ada5979c8dfb5e67021a90a3c6e71e923ef3a963a8abac1dd`、
+`047001891a3e2de4d07d33d85ed9782371b2790927095c5b159904458f7357d5`。
+
+attempt-02 的 source replay、capacity、cross-swap、梯度边界、状态冻结、
+provenance、evaluator isolation 和 resource gates 全部通过，evaluator calls 为
+`0`，peak CUDA 为 `2.305 GiB`，wall 为 `201.16 s`。LP01 M1 平均 power
+retention `65.3577%`，LP01+LP11a M2 `71.8676%`，同源差值 `6.5099` 个百分点；
+但 G1/G2/G3 只有 `1x` coupling dose 全部安全，未形成更高剂量候选。
+
+权威状态为 `valid_failed_mode_capacity`，表示 LP01 mode-capacity/geometry
+mismatch 是主要瓶颈候选，但不表示 FMF 重建已被证明更优。唯一消费者为
+`manual_review_fmf_mode_capacity_reconstruction_contract`；在人工批准前不得
+开始 FMF 训练、continuation、prior sampling、生成或 promotion，并继续要求
+`training_authorized=false`、`formal_promotion=false`。

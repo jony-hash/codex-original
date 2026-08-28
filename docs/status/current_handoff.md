@@ -939,6 +939,27 @@ evidence 与 checkpoints。实验拆分 SMF LP01 投影容量、既有 FMF M2 ob
 不训练、不改 OLS transport、不放宽历史 `+5pp` 门限。审计结果只决定下一个人工
 合同，不自动授权 dose pilot、FMF、生成或 promotion。
 
+### SMF bottleneck attribution closeout（attempt-02，2026-08-29）
+
+attempt-01 的 CUDA 运行在审计 evidence 生成前因显存驻留超限而停止，登记为
+`invalid_harness`，不形成科学结论。修复后在 clean commit
+`3e608ee6ad4a7a4c61dbd06876c4fbe50d98dc7c` 完成唯一权威 attempt-02。validation、
+audit、decomposition、panel SHA256 分别为：
+
+`4185875318a0a301ab966f99c8ab4eedde517b14c5354864e0520f12fedacb81`、
+`6f9b87adff81069b0b08d2d86e623d5c49565f30b2ca903640aa59b2c9e7b766`、
+`5ad548c4c258f70ada5979c8dfb5e67021a90a3c6e71e923ef3a963a8abac1dd`、
+`047001891a3e2de4d07d33d85ed9782371b2790927095c5b159904458f7357d5`。
+
+全部 source replay、capacity、cross-swap、梯度边界、冻结状态、evaluator 隔离
+和资源 gate 通过；evaluator calls `0`，peak CUDA `2.305 GiB`，wall `201.16 s`。
+LP01 M1 平均 power retention 为 `65.3577%`，LP01+LP11a M2 为 `71.8676%`，
+同源提升 `6.5099` 个百分点。但 G1--G3 仅 `1x` coupling dose 同时满足安全
+兼容门，没有更高剂量候选。权威状态为 `valid_failed_mode_capacity`，唯一下一
+动作是 `manual_review_fmf_mode_capacity_reconstruction_contract`；不启动 FMF
+训练、continuation、prior sampling、生成或 promotion，仍保持
+`training_authorized=false`、`formal_promotion=false`。
+
 ## H-LOMA-I0 SMF VAE KL chain attribution audit closeout（2026-08-28）
 
 The authoritative no-update audit completed on clean implementation commit
