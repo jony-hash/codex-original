@@ -249,7 +249,7 @@ def _load_formal(spec: Spec) -> tuple[FormalSystemConfig, Path]:
                 raise ValueError(f"formal geometry mismatch: {key}")
         elif actual != expected:
             raise ValueError(f"formal geometry mismatch: {key}")
-    return formal, path
+    return formal.system, path
 
 
 def _ancestor(commit: str, current: str) -> None:
