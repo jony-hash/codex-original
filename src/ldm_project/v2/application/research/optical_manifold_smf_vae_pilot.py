@@ -1344,12 +1344,6 @@ def preflight(args: argparse.Namespace) -> int:
         beta_model, beta_operator, beta_post, beta_opt = _make_runtime(
             formal, source, device, "smf_beta_vae"
         )
-        control_model, control_operator, control_post, control_opt = _make_runtime(
-            formal, source, device, "smf_stochastic_no_kl"
-        )
-        det_model, det_operator, det_post, det_opt = _make_runtime(
-            formal, source, device, "smf_deterministic_mse"
-        )
         calibration_amplitudes, calibration_targets = _batch(
             data, data.schedule[0], device
         )
@@ -1395,6 +1389,12 @@ def preflight(args: argparse.Namespace) -> int:
             PREFLIGHT_STEPS,
         )
         uninterrupted_rng = _tree_clone(base._rng_state())
+        control_model, control_operator, control_post, control_opt = _make_runtime(
+            formal, source, device, "smf_stochastic_no_kl"
+        )
+        det_model, det_operator, det_post, det_opt = _make_runtime(
+            formal, source, device, "smf_deterministic_mse"
+        )
         control_history = _run_exact(
             control_model,
             control_operator,
