@@ -1158,11 +1158,14 @@ def _load_preflight(path: str | Path, spec: CanarySpec, formal: FormalSystemConf
         raise ValueError("SMF canary preflight must be passed")
     if record.git_commit != state["commit"] or record.config_hash != spec.config_hash or record.context != _context(spec, formal, data):
         raise ValueError("SMF canary preflight is stale")
-    projection_hash = payload.get("projection_hash")
+    contract = payload.get("contract")
+    if not isinstance(contract, Mapping):
+        raise ValueError("SMF canary preflight contract is missing")
+    projection_hash = contract.get("projection_hash")
     expected = {**source.hashes, "dataset_manifest": data.manifest["manifest_hash"], "training_validation": validation_hash, "projection": projection_hash}
     if record.input_hashes != expected or not isinstance(projection_hash, str):
         raise ValueError("SMF canary preflight source hashes do not match")
-    projection_path = _resolve(payload["projection_path"])
+    projection_path = _resolve(contract["projection_path"])
     if file_sha256(projection_path) != projection_hash:
         raise ValueError("SMF canary projection artifact hash mismatch")
     if record.permitted_next_actions != ("run_smf_integration_canary",):
@@ -1267,11 +1270,12 @@ def train(args: argparse.Namespace) -> int:
     free_bytes, total_bytes = torch.cuda.mem_get_info(device)
     if free_bytes < MIN_FREE_BYTES:
         raise RuntimeError(f"free CUDA memory {free_bytes} is below {MIN_FREE_BYTES}")
-    projection_payload = safe_torch_load(preflight_payload["projection_path"], expected_sha256=preflight_payload["projection_hash"], map_location="cpu")
+    preflight_contract = preflight_payload["contract"]
+    projection_payload = safe_torch_load(preflight_contract["projection_path"], expected_sha256=preflight_contract["projection_hash"], map_location="cpu")
     if projection_payload.get("schema") != PROJECTION_SCHEMA or projection_payload.get("config_hash") != spec.config_hash or projection_payload.get("validation_hash") != validation_hash or projection_payload.get("source_hashes") != source.hashes or projection_payload.get("dataset_manifest_hash") != data.manifest["manifest_hash"]:
         raise ValueError("SMF canary projection provenance does not match training inputs")
     projection = regularization.Projection(projection_payload["mean_field"], projection_payload["basis"], projection_payload["whitening"], projection_payload["eigenvalues"], projection_payload["explained_variance"])
-    lambda_value = float(preflight_payload["lambda"])
+    lambda_value = float(preflight_contract["lambda"])
     directions = regularization._fixed_directions(device)
     torch.cuda.reset_peak_memory_stats(device)
     output.parent.mkdir(parents=True, exist_ok=True)
