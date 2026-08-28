@@ -962,6 +962,36 @@ The sole next action is
 `manual_review_identity_regularization_objective_contract`; do not start
 continuation, extra epochs, KL, SMF/FMF, generation, or promotion.
 
+### H-LOMA-I0 PLAN 5b regularization objective attribution audit closeout（2026-08-28）
+
+The objective attribution audit completed on clean commit `aece5c2` on branch
+`research/v2-lightgen-optical-manifold-regularization-objective-audit-v1`.
+Validation evidence is
+`outputs/20260828_v2/runs/lightgen_optical_manifold_identity_regularization_objective_audit_v1_attempt_01/objective_audit_validation.json`
+with SHA256
+`138b5e5e7bfb16849c88012faf9673c4f31a338e864fa47cf4fe2254fdf67a4f`.
+The objective audit evidence is
+`outputs/20260828_v2/runs/lightgen_optical_manifold_identity_regularization_objective_audit_v1_attempt_01/objective_audit.json`
+with SHA256
+`e2d9c079f09f37203f2556e43836d237326740a673d7ae6ec633c9e1570908b5`.
+The projection artifact is
+`objective_projection_drift.json` with SHA256
+`13d65c4a12c6b5cb352d861e7874b4d6b5c94a90279cfd7581ebef6aff81afff`.
+
+The run is `valid_failed`, not `invalid_harness` or `resource_aborted`.
+Authoritative source replay reproduced paired MSE `0.03437697887420654`;
+formal trace provenance, finite values, model-state isolation and evaluator
+calls `0` passed. Peak CUDA was `651952128` bytes, wall time was `202.4904s`,
+and storage was `7193` bytes. The fresh-panel fixed-projection overlap was
+`0.92070` for source, `0.91819` for regularized final and `0.91816` for the
+MSE-only final, below the registered `0.95` stability gate. No higher dose was
+selected and no model or checkpoint was changed.
+
+This closes PLAN 5b as a valid projection-stability failure. The sole next
+action is `manual_review_adaptive_projection_contract`; do not continue the
+pilot, introduce VAE KL, enter SMF/FMF, generate samples or promote a model.
+Evidence remains `training_authorized=false` and `formal_promotion=false`.
+
 ### H-LOMA-I0 PLAN 5b regularization objective attribution audit authorization（2026-08-28）
 
 The PLAN 5 bounded pilot is closed as a valid scientific failure, not as a

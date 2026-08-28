@@ -1596,6 +1596,28 @@ KL、SMF/FMF、生成和 promotion 继续禁止。
 
 ### H-LOMA-I0 PLAN 5b regularization objective attribution audit（2026-08-28）
 
+The no-update objective attribution audit completed on branch
+`research/v2-lightgen-optical-manifold-regularization-objective-audit-v1` at
+clean commit `aece5c2`. Validation evidence SHA256 is
+`138b5e5e7bfb16849c88012faf9673c4f31a338e864fa47cf4fe2254fdf67a4f`;
+objective audit evidence SHA256 is
+`e2d9c079f09f37203f2556e43836d237326740a673d7ae6ec633c9e1570908b5`; and
+the projection-drift artifact SHA256 is
+`13d65c4a12c6b5cb352d861e7874b4d6b5c94a90279cfd7581ebef6aff81afff`.
+
+The result is `valid_failed` because the fixed 32D source projection was not
+stable on the fresh train-only panel: source, regularized-final and MSE-only
+principal-subspace overlaps were `0.92070`, `0.91819` and `0.91816`, below the
+registered `0.95` gate. Source reconstruction replay, formal optical trace,
+finite values, model-state isolation, evaluator calls, peak CUDA
+`651952128` bytes, wall `202.4904s` and storage `7193` bytes all passed. The
+audit did not select a dose, update a model or write a checkpoint.
+
+The sole next action is `manual_review_adaptive_projection_contract`.
+Continuation, KL, SMF/FMF, generation and promotion remain prohibited.
+
+### H-LOMA-I0 PLAN 5b regularization objective attribution audit（2026-08-28）
+
 Following the valid scientific failure of the fixed aggregate-prior pilot, the
 project owner authorized one diagnostic-only, no-update objective attribution
 audit on branch

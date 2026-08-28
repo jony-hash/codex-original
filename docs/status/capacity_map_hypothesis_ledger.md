@@ -668,6 +668,30 @@ sole next action is
 `manual_review_identity_regularization_objective_contract`; KL, extra epochs,
 SMF/FMF, generation, and promotion remain blocked.
 
+### H-LOMA-I0 PLAN 5b regularization objective attribution audit closeout（2026-08-28）
+
+The no-update objective audit completed on branch
+`research/v2-lightgen-optical-manifold-regularization-objective-audit-v1` at
+clean commit `aece5c2`. Validation evidence SHA256 is
+`138b5e5e7bfb16849c88012faf9673c4f31a338e864fa47cf4fe2254fdf67a4f` and
+objective audit evidence SHA256 is
+`e2d9c079f09f37203f2556e43836d237326740a673d7ae6ec633c9e1570908b5`.
+The projection-drift artifact SHA256 is
+`13d65c4a12c6b5cb352d861e7874b4d6b5c94a90279cfd7581ebef6aff81afff`.
+
+Source MSE replay, formal Identity provenance, finite values, model isolation,
+resource limits and evaluator isolation all passed. The fixed PLAN 5
+projection did not meet the fresh-panel stability gate: principal-subspace
+overlap was `0.92070` at source, `0.91819` for the regularized final and
+`0.91816` for MSE-only, below the registered `0.95` threshold. This is a valid
+scientific `valid_failed` result for the fixed projection, not evidence that
+the optical reconstruction or phase updates failed. No dose was selected and
+no parameter or checkpoint was modified.
+
+The sole next action is `manual_review_adaptive_projection_contract`.
+Continuation, VAE KL, SMF/FMF, generation and promotion remain blocked;
+`training_authorized=false` and `formal_promotion=false` remain in force.
+
 ### H-LOMA-I0 PLAN 5b regularization objective attribution audit authorization（2026-08-28）
 
 The valid scientific failure of the 100-step aggregate-prior pilot blocks a
