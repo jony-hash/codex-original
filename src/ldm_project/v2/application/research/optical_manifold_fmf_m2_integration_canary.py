@@ -801,10 +801,9 @@ def _preflight_controls(model: base.IdentityOpticalManifoldAutoencoder, smf: Fib
 
 
 def _exact_resume(formal: FormalSystemConfig, source: SourceBundle, data: CanaryData, arm: str, spec: CanarySpec, hashes: Mapping[str, str], output_dir: Path, device: torch.device) -> dict[str, Any]:
-    continuous_model, continuous_optimizer, continuous_operator = _runtime(formal, source, device, arm)
-    split_model, split_optimizer, split_operator = _runtime(formal, source, device, arm)
     continuous_history: list[dict[str, Any]] = []
     split_history: list[dict[str, Any]] = []
+    continuous_model, continuous_optimizer, continuous_operator = _runtime(formal, source, device, arm)
     for step in range(PREFLIGHT_STEPS):
         amp, target = _batch(data, data.schedule[step], device)
         continuous_history.append(_step(continuous_model, continuous_optimizer, continuous_operator, amp, target, arm))
@@ -812,12 +811,16 @@ def _exact_resume(formal: FormalSystemConfig, source: SourceBundle, data: Canary
     continuous_optimizer_state = _tree_clone(continuous_optimizer.state_dict())
     continuous_operator_state = _state_cpu(continuous_operator)
     continuous_rng = _tree_clone(base._rng_state())
+    del continuous_model, continuous_optimizer, continuous_operator
+    gc.collect()
+    torch.cuda.empty_cache()
+    split_model, split_optimizer, split_operator = _runtime(formal, source, device, arm)
     for step in range(PREFLIGHT_STEPS - 1):
         amp, target = _batch(data, data.schedule[step], device)
         split_history.append(_step(split_model, split_optimizer, split_operator, amp, target, arm))
     path = output_dir / f"preflight_{arm}_step_00002.pt"
     _save_checkpoint(path, _resume_payload(split_model, split_optimizer, split_operator, arm=arm, step=2, history=split_history, initial_losses=[0.0] * STEPS, spec=spec, data=data, hashes=hashes))
-    del continuous_model, continuous_optimizer, continuous_operator, split_model, split_optimizer, split_operator
+    del split_model, split_optimizer, split_operator
     gc.collect()
     torch.cuda.empty_cache()
     resumed_model, resumed_optimizer, resumed_operator = _runtime(formal, source, device, arm)
