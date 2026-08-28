@@ -463,6 +463,10 @@ def _load_source(
     old_review, old_review_path = objective._load_review(paths["objective_review"][0], old_spec)
     old_data = data.objective_data
     old_bundle = objective._source_bundle(old_spec, old_review_path, old_data, current_commit)
+    pilot_config_path = _resolve(old_spec.payload["source"]["pilot_config"])
+    if file_sha256(pilot_config_path) != old_spec.payload["source"]["pilot_config_sha256"]:
+        raise ValueError("pilot source config hash mismatch")
+    pilot_spec = pilot._load_spec(pilot_config_path)
     validation = _record_from_file(
         paths["objective_validation"][0], objective.VALIDATION_SCHEMA, "passed"
     )
@@ -498,11 +502,11 @@ def _load_source(
         raise ValueError("source checkpoint state is incomplete")
     regularized_checkpoint = objective._load_arm_checkpoint(
         paths["regularized_checkpoint"][0], paths["regularized_checkpoint"][1],
-        "regularized", old_spec.config_hash, data.objective_data.pilot_training_manifest_hash,
+        "regularized", pilot_spec.config_hash, data.objective_data.pilot_training_manifest_hash,
     )
     mse_only_checkpoint = objective._load_arm_checkpoint(
         paths["mse_only_checkpoint"][0], paths["mse_only_checkpoint"][1],
-        "mse_only", old_spec.config_hash, data.objective_data.pilot_training_manifest_hash,
+        "mse_only", pilot_spec.config_hash, data.objective_data.pilot_training_manifest_hash,
     )
     if old_bundle.formal_path != formal_path:
         raise ValueError("adaptive audit and source formal configs differ")
