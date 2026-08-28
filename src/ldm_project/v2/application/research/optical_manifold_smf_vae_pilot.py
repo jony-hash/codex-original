@@ -1277,9 +1277,13 @@ def _run_exact(
     arm: str,
     beta: float,
     steps: int,
+    *,
+    start_step: int = 0,
 ) -> list[dict[str, Any]]:
     history: list[dict[str, Any]] = []
-    for step in range(steps):
+    if start_step < 0 or start_step + steps > data.schedule.shape[0]:
+        raise ValueError("SMF VAE exact segment is outside the schedule")
+    for step in range(start_step, start_step + steps):
         amp, target = _batch(data, data.schedule[step], device)
         report = _step(
             model,
@@ -1470,6 +1474,7 @@ def preflight(args: argparse.Namespace) -> int:
             "smf_beta_vae",
             beta,
             1,
+            start_step=2,
         )
         resumed_rng = _tree_clone(base._rng_state())
         exact = (
