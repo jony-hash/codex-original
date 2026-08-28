@@ -71,6 +71,11 @@ def test_fresh_panels_exclude_all_prior_panels_and_are_balanced(monkeypatch: pyt
     )
     monkeypatch.setattr(objective.full_epoch, "_load_data", lambda _root: full_data)
     monkeypatch.setattr(objective.audit, "_load_data", lambda _root: regularization_data)
+    monkeypatch.setattr(
+        objective.pilot,
+        "_load_data",
+        lambda _root: SimpleNamespace(manifest={"manifest_hash": "pilot-training-manifest"}),
+    )
 
     data = objective._load_data("unused")
     excluded = torch.cat((calibration, *gradient_batches, pilot._pilot_schedule(pilot_data.train_indices, labels).reshape(-1), pilot_data.heldout_indices))

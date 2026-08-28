@@ -89,6 +89,7 @@ class ObjectiveAuditSpec:
 class ObjectiveAuditData:
     full_data: full_epoch.FullEpochData
     regularization_data: audit.RegularizationData
+    pilot_training_manifest_hash: str
     projection_indices: torch.Tensor
     gradient_batches: tuple[torch.Tensor, ...]
     manifest: dict[str, Any]
@@ -322,6 +323,7 @@ def _assert_ancestor(commit: str, current: str) -> None:
 def _load_data(dataset_root: str | Path) -> ObjectiveAuditData:
     full_data = full_epoch._load_data(dataset_root)
     regularization_data = audit._load_data(dataset_root)
+    pilot_training_data = pilot._load_data(dataset_root)
     pilot_data = full_data.pilot_data
     if pilot_data.manifest["manifest_hash"] != pilot.SOURCE_MANIFEST_HASH:
         raise ValueError("MNIST source manifest changed")
@@ -367,6 +369,7 @@ def _load_data(dataset_root: str | Path) -> ObjectiveAuditData:
         "source_mnist_manifest_hash": pilot.SOURCE_MANIFEST_HASH,
         "source_full_epoch_manifest_hash": full_data.manifest["manifest_hash"],
         "source_regularization_audit_manifest_hash": regularization_data.manifest["manifest_hash"],
+        "source_pilot_training_manifest_hash": pilot_training_data.manifest["manifest_hash"],
         "excluded_indices_sha256": tensor_sha256(torch.sort(excluded).values),
         "projection_indices_sha256": tensor_sha256(projection_indices),
         "projection_count": int(projection_indices.numel()),
@@ -382,6 +385,7 @@ def _load_data(dataset_root: str | Path) -> ObjectiveAuditData:
     return ObjectiveAuditData(
         full_data=full_data,
         regularization_data=regularization_data,
+        pilot_training_manifest_hash=pilot_training_data.manifest["manifest_hash"],
         projection_indices=projection_indices,
         gradient_batches=gradient_batches,
         manifest=manifest,
@@ -496,11 +500,11 @@ def _source_bundle(
         raise ValueError("source step-5500 checkpoint is incomplete")
     regularized_checkpoint = _load_arm_checkpoint(
         paths["regularized_checkpoint"][0], paths["regularized_checkpoint"][1],
-        "regularized", pilot_spec.config_hash, data.full_data.pilot_data.manifest["manifest_hash"],
+        "regularized", pilot_spec.config_hash, data.pilot_training_manifest_hash,
     )
     mse_only_checkpoint = _load_arm_checkpoint(
         paths["mse_only_checkpoint"][0], paths["mse_only_checkpoint"][1],
-        "mse_only", pilot_spec.config_hash, data.full_data.pilot_data.manifest["manifest_hash"],
+        "mse_only", pilot_spec.config_hash, data.pilot_training_manifest_hash,
     )
     formal_path = _resolve(spec.payload["formal_system_config"], base_path=spec.path.parent)
     pilot_formal_path = pilot_bundle.formal_path
@@ -519,6 +523,7 @@ def _source_bundle(
         "projection": paths["projection"][1],
         "mnist_manifest": source["mnist_manifest_sha256"],
         "heldout_indices": source["heldout_indices_sha256"],
+        "pilot_training_manifest": data.pilot_training_manifest_hash,
         "formal_config": file_sha256(formal_path),
         "panel_manifest": data.manifest["manifest_hash"],
     }
