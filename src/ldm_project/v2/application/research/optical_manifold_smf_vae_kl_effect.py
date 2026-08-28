@@ -618,6 +618,19 @@ def _phase_update_gate(history: list[dict[str, Any]], posterior_required: bool) 
     return True
 
 
+def _safety_ok(report: Mapping[str, Any], initial_paired_mse: float) -> bool:
+    """Apply the reconstruction safety gate in the reconstruction metric's units.
+
+    A posterior arm's total objective contains ``beta * KL`` and therefore
+    cannot be compared with the initial paired MSE.  The safety stop is about
+    image reconstruction only; the KL objective has its own explicit gates.
+    """
+    return bool(
+        report["finite"]
+        and report["mse"] <= SAFETY_MSE_RATIO * max(initial_paired_mse, 1.0e-30)
+    )
+
+
 def _gradient_boundary(model: nn.Module, operator: Any, posterior: vae.SharedPerPortPosterior, data: vae.Data, mean: torch.Tensor, scale: torch.Tensor, device: torch.device) -> dict[str, Any]:
     amplitudes, targets = vae._batch(data, data.schedule[0], device)
     epsilon = data.epsilon_schedule[0].to(device)
@@ -870,7 +883,7 @@ def train(args: argparse.Namespace) -> int:
                 report = vae._step(model, operator, posterior, optimizer, amplitudes, targets, data.epsilon_schedule[step].to(device), mean.to(device), scale.to(device), arm, beta)
                 report["step"] = step + 1
                 history.append(report)
-                if not report["finite"] or report["loss"] > SAFETY_MSE_RATIO * max(initial[arm]["paired_mse"], 1.0e-30):
+                if not _safety_ok(report, initial[arm]["paired_mse"]):
                     raise RuntimeError(f"KL effect pilot safety gate failed for {arm} at step {step + 1}")
                 if (step + 1) % CHECKPOINT_INTERVAL == 0:
                     checkpoint_path = output.parent / f"{arm}_step_{step + 1:04d}.pt"

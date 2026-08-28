@@ -49,3 +49,9 @@ def test_tree_equal_is_exact_for_resume_state() -> None:
     changed = {"weight": torch.ones(2, 2), "cursor": {"step": 3}}
     assert effect._tree_equal(left, right)
     assert not effect._tree_equal(left, changed)
+
+
+def test_safety_gate_compares_reconstruction_mse_not_beta_kl_objective() -> None:
+    report = {"finite": True, "mse": 0.09, "loss": 0.14}
+    assert effect._safety_ok(report, 0.05)
+    assert not effect._safety_ok({"finite": True, "mse": 0.11, "loss": 0.15}, 0.05)
