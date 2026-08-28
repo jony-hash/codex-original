@@ -67,7 +67,11 @@ def test_config_review_and_lazy_cli_contract() -> None:
     source = (root / "src/ldm_project/v2/application/cli.py").read_text(
         encoding="utf-8"
     )
-    assert "optical_manifold_smf_vae_pilot" in source
+    router = (
+        root / "src/ldm_project/v2/application/_cli_research_optical_manifold.py"
+    ).read_text(encoding="utf-8")
+    assert "_cli_research_optical_manifold" in source
+    assert "optical_manifold_smf_vae_pilot" in router
     assert "importlib.import_module" in source
 
 

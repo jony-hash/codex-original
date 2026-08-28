@@ -53,50 +53,7 @@ def _summarize(args: argparse.Namespace) -> int:
 def _dispatch(args: argparse.Namespace) -> int:
     if args.domain == "research":
         if args.research_program == "optical-manifold":
-            if args.research_action in {
-                "adaptive-projection-audit-validate",
-                "adaptive-projection-audit-run",
-            }:
-                from .research.optical_manifold_adaptive_projection_audit import (
-                    dispatch,
-                )
-
-                return int(dispatch(args) or 0)
-            if args.research_action in {
-                "smf-integration-canary-validate",
-                "smf-integration-canary-preflight",
-                "smf-integration-canary-train",
-            }:
-                from .research.optical_manifold_smf_integration_canary import dispatch
-
-                return int(dispatch(args) or 0)
-            if args.research_action in {
-                "smf-reconstruction-validate",
-                "smf-reconstruction-preflight",
-                "smf-reconstruction-train",
-            }:
-                from .research.optical_manifold_smf_reconstruction_pilot import dispatch
-
-                return int(dispatch(args) or 0)
-            if args.research_action in {
-                "fmf-m2-integration-canary-validate",
-                "fmf-m2-integration-canary-preflight",
-                "fmf-m2-integration-canary-train",
-            }:
-                from .research.optical_manifold_fmf_m2_integration_canary import (
-                    dispatch,
-                )
-
-                return int(dispatch(args) or 0)
-            if args.research_action in {
-                "smf-vae-pilot-validate",
-                "smf-vae-pilot-preflight",
-                "smf-vae-pilot-train",
-            }:
-                from .research.optical_manifold_smf_vae_pilot import dispatch
-
-                return int(dispatch(args) or 0)
-            from .research.optical_manifold import dispatch
+            from ._cli_research_optical_manifold import dispatch
 
             return int(dispatch(args) or 0)
         if args.research_program == "o0-feasibility":

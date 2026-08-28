@@ -5,14 +5,21 @@ from pathlib import Path
 import pytest
 import torch
 
-from ldm_project.v2.application.research import optical_manifold_fmf_m2_integration_canary as canary
+from ldm_project.v2.application.research import (
+    optical_manifold_fmf_m2_integration_canary as canary,
+)
 from ldm_project.v2.contracts import ComplexField, OperationProvenance, PlaneSpec
 from ldm_project.v2.optics.fiber_operator import FiberArrayOLS, FiberArraySpec
-from ldm_project.v2.optics.few_mode_fiber_operator import FewModeFiberArrayOLS, FewModeFiberArraySpec
+from ldm_project.v2.optics.few_mode_fiber_operator import (
+    FewModeFiberArrayOLS,
+    FewModeFiberArraySpec,
+)
 
 
 def _plane() -> PlaneSpec:
-    return PlaneSpec("fiber_input", (100, 100), (2.0e-6, 2.0e-6), 532.0e-9, 0.0, "encoder")
+    return PlaneSpec(
+        "fiber_input", (100, 100), (2.0e-6, 2.0e-6), 532.0e-9, 0.0, "encoder"
+    )
 
 
 def test_nested_fmf_preserves_smf_lp01_and_has_200_modes() -> None:
@@ -36,18 +43,31 @@ def test_fmf_bank_is_finite_orthonormal_and_full_rank() -> None:
 
 def test_fmf_forward_exposes_200_coefficients_and_mode_power() -> None:
     fmf = FewModeFiberArrayOLS(_plane())
-    field = ComplexField(torch.randn(2, 1, 100, 100, dtype=torch.complex64), _plane(), OperationProvenance("fixture", None, None))
+    field = ComplexField(
+        torch.randn(2, 1, 100, 100, dtype=torch.complex64),
+        _plane(),
+        OperationProvenance("fixture", None, None),
+    )
     output = fmf(field)
     assert output.tensor.shape == (2, 1, 100, 100)
-    assert output.provenance.operation == "synthetic_fmf_nested_lp01_lp11a_identity_transport"
+    assert (
+        output.provenance.operation
+        == "synthetic_fmf_nested_lp01_lp11a_identity_transport"
+    )
     assert fmf.last_diagnostics["port_input_coefficients"].shape == (2, 200)
     assert fmf.last_diagnostics["mode_coefficients"].shape == (2, 100, 2)
     assert torch.isfinite(fmf.last_diagnostics["mode_power"]).all()
 
 
 def test_fmf_zero_transport_is_finite_zero_and_passive() -> None:
-    fmf = FewModeFiberArrayOLS(_plane(), transport=torch.zeros(200, 200, dtype=torch.complex64))
-    field = ComplexField(torch.ones(1, 1, 100, 100, dtype=torch.complex64), _plane(), OperationProvenance("fixture", None, None))
+    fmf = FewModeFiberArrayOLS(
+        _plane(), transport=torch.zeros(200, 200, dtype=torch.complex64)
+    )
+    field = ComplexField(
+        torch.ones(1, 1, 100, 100, dtype=torch.complex64),
+        _plane(),
+        OperationProvenance("fixture", None, None),
+    )
     output = fmf(field)
     assert torch.isfinite(output.tensor).all()
     assert float(output.tensor.abs().max()) == 0.0
@@ -56,20 +76,31 @@ def test_fmf_zero_transport_is_finite_zero_and_passive() -> None:
 
 def test_fmf_rejects_nonpassive_or_unsupported_contract() -> None:
     with pytest.raises(ValueError, match="non-passive"):
-        FewModeFiberArrayOLS(_plane(), transport=torch.eye(200, dtype=torch.complex64) * 1.01)
+        FewModeFiberArrayOLS(
+            _plane(), transport=torch.eye(200, dtype=torch.complex64) * 1.01
+        )
     with pytest.raises(ValueError, match="supported"):
         FewModeFiberArrayOLS(_plane(), FewModeFiberArraySpec(modes=("LP01", "LP11b")))
 
 
 def test_fmf_config_and_review_are_exactly_registered() -> None:
     root = Path(__file__).parents[2]
-    spec = canary._load_spec(root / "configs/research/lightgen_optical_manifold_fmf_m2_integration_canary_v1.yaml")
-    review, _ = canary._load_review(root / "configs/research/lightgen_optical_manifold_fmf_m2_integration_canary_review_v1.json", spec)
+    spec = canary._load_spec(
+        root
+        / "configs/research/lightgen_optical_manifold_fmf_m2_integration_canary_v1.yaml"
+    )
+    review, _ = canary._load_review(
+        root
+        / "configs/research/lightgen_optical_manifold_fmf_m2_integration_canary_review_v1.json",
+        spec,
+    )
     assert spec.payload["optical_contract"]["m2_modes"] == ["LP01", "LP11a"]
     assert review["approved_contract"]["m2_transport"] == "identity_200"
 
 
-def test_comparison_panel_materializes_only_the_fixed_100_image_panel(tmp_path: Path) -> None:
+def test_comparison_panel_materializes_only_the_fixed_100_image_panel(
+    tmp_path: Path,
+) -> None:
     visual = torch.arange(100)
     data = canary.CanaryData(
         images=torch.zeros(1000, 1, 28, 28),
@@ -87,11 +118,19 @@ def test_comparison_panel_materializes_only_the_fixed_100_image_panel(tmp_path: 
     path = tmp_path / "panel.pt"
     canary._save_panel(path, data, {}, values, values, values, values, {})
     payload = torch.load(path, map_location="cpu", weights_only=False)
-    assert all(payload["tensors"][name].shape[0] == 100 for name in ("target_200", "smf_m1_initial", "smf_m1_features", "fmf_m2_final"))
+    assert all(
+        payload["tensors"][name].shape[0] == 100
+        for name in ("target_200", "smf_m1_initial", "smf_m1_features", "fmf_m2_final")
+    )
     assert path.stat().st_size < 3_000_000
 
 
 def test_fmf_cli_dispatch_is_lazy() -> None:
-    source = (Path(__file__).parents[2] / "src/ldm_project/v2/application/cli.py").read_text()
-    assert "optical_manifold_fmf_m2_integration_canary" in source
+    root = Path(__file__).parents[2]
+    source = (root / "src/ldm_project/v2/application/cli.py").read_text()
+    router = (
+        root / "src/ldm_project/v2/application/_cli_research_optical_manifold.py"
+    ).read_text()
+    assert "_cli_research_optical_manifold" in source
+    assert "optical_manifold_fmf_m2_integration_canary" in router
     assert "importlib.import_module" in source
