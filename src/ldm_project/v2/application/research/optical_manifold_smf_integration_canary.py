@@ -695,7 +695,7 @@ def _mse_gradients(model: base.IdentityOpticalManifoldAutoencoder, smf: FiberArr
             use_reentrant=False,
         )
         diagnostics = smf.last_diagnostics
-        coefficients = diagnostics.get("port_coefficients")
+        coefficients = diagnostics.get("port_input_coefficients")
         if isinstance(coefficients, torch.Tensor):
             port_shape = list(coefficients.shape)
         loss = F.mse_loss(raw, targets[start : start + 1])
