@@ -1024,3 +1024,17 @@ provides the full encoder--OLS--decoder feedback path. No trainable transport,
 prior-only sampling, FMF long training or formal promotion is authorized.
 All evidence must retain `training_authorized=false` and
 `formal_promotion=false`.
+
+固定 OLS canary 的 attempt-01 因 terminal KL metric 缺失登记为
+`invalid_harness`，attempt-02 为修复后的 authoritative run。其 validation、
+preflight、training、panel hashes 为
+`18d63ff5e9c3d18db7c669fc8c596423d8a2cc02ed50338cf8043fcc609d06f6`、
+`abf063fa6e39511b01a661923f755e84c1eefd8285c91bdce0651a80066d8833`、
+`a73b3917d64049509b2c6f025e0025bd506db4d6f95271598c5dc95c43c0b65e`、
+`c432221ba0725da3744f66459a3c513ef632d5aa202864123007137aa5798b61`。
+四臂均完成 100 步并通过 finite、四层更新、resume 和 isolation；coupling 臂
+projection residual 下降，但相对 MSE control 的 power gain 只有 `0.2014`
+个百分点，低于注册的 `5` 个百分点，故 authoritative outcome 为
+`valid_failed`。KL 臂的绝对 KL gate 在修复后通过。唯一消费者为
+`manual_review_smf_bottleneck_attribution_contract`，1000-step fixed-OLS
+continuation 被阻塞；不允许重新调参、训练 OLS transport、FMF、生成或 promotion。

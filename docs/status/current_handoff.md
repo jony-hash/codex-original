@@ -1335,6 +1335,38 @@ projection loss 只作用于 encoder，KL 只直接作用于 encoder/posterior�
 MSE 负责全链路 reconstruction。可训练 OLS transport、先验生成、FMF 长训练、
 formal promotion 和 `outputs/final_pt/` 修改均不在授权范围内。
 
+## H-LOMA-I0 固定 OLS 流形损耗恢复 canary closeout（2026-08-28）
+
+修正后的 KL 剂量审计选出 `8x`，同源 KL effect pilot 通过短预算门后，执行了
+固定 SMF OLS 的四臂 100-step canary。固定边界为 100-port LP01 SMF mode bank、
+identity transport、formal IdentityOLS、relay 和 exposure；新增
+`L_projection = 1 - P_smf_out/P_smf_in`，只对 encoder 产生梯度，KL 臂使用已注册
+的 candidate beta `0.014605162095621654`。
+
+attempt-01 保留为 `invalid_harness`：终端 posterior KL 没有写入 evaluator
+metrics，导致 KL gate 无法判定；不把该 attempt 的完整 checkpoint/panel 当作科学
+证据。修复后的 attempt-02 为权威结果，validation、preflight、training、panel
+SHA256 分别为：
+
+`18d63ff5e9c3d18db7c669fc8c596423d8a2cc02ed50338cf8043fcc609d06f6`、
+`abf063fa6e39511b01a661923f755e84c1eefd8285c91bdce0651a80066d8833`、
+`a73b3917d64049509b2c6f025e0025bd506db4d6f95271598c5dc95c43c0b65e`、
+`c432221ba0725da3744f66459a3c513ef632d5aa202864123007137aa5798b61`。
+
+attempt-02 四臂均完成 100 步，finite、四层 phase 更新、固定 OLS 隔离、持久化
+`2+1` resume、evaluator calls `0` 和资源门全部通过。coupling 臂 projection
+residual 从 `0.34640783` 降至 `0.34150791`，paired MSE 为 `0.05036358`；但
+power retention 仅从 `65.3592%` 到 `65.8492%`，相对 optical MSE control
+`65.6478%` 只高 `0.2014` 个百分点，未达到预注册的 `+5` 个百分点。KL 臂的
+KL 为 `2.81820757`，低于初始化 `2.99914436` 和 no-KL `3.37511785`，KL gates
+在修复后通过。
+
+权威状态为 `valid_failed`：固定 OLS projection loss 产生了小幅功率变化，但尚未
+达到损耗恢复 canary 门；这不是 harness 或资源失败。唯一下一动作是
+`manual_review_smf_bottleneck_attribution_contract`。不启动 1000-step continuation、
+不重新调 lambda、不训练 OLS transport、不进入 FMF/生成或 promotion；继续保持
+`training_authorized=false`、`formal_promotion=false`。
+
 ## H-LOMA-I0：corrected KL effect pilot registration（2026-08-28）
 
 The corrected no-update dose reaudit selected the sole common compatible

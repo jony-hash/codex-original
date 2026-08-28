@@ -1701,6 +1701,29 @@ or authorize FMF. The sole next action is
 `manual_review_smf_canary_visual_and_metric_trends`; all evidence retains
 `training_authorized=false` and `formal_promotion=false`.
 
+## 2026-08-28：H-LOMA-I0 fixed OLS projection-loss recovery canary
+
+在 corrected KL dose reaudit 和 matched KL effect pilot 之后，执行了从 PLAN 6 SMF
+source checkpoint 开始的四臂 100-step fixed-OLS canary。固定 100-port LP01 mode
+bank、identity transport、formal IdentityOLS、relay、exposure 和四层 phase-only
+参数；新增 projection objective `1 - P_smf_out/P_smf_in`，KL 臂使用已注册 beta。
+
+attempt-01 因 terminal KL metrics 缺失而登记为 `invalid_harness`；attempt-02 在
+修复 evaluator metrics 后成为 authoritative retry。validation、preflight、training
+和 panel SHA256 为：
+`18d63ff5e9c3d18db7c669fc8c596423d8a2cc02ed50338cf8043fcc609d06f6`、
+`abf063fa6e39511b01a661923f755e84c1eefd8285c91bdce0651a80066d8833`、
+`a73b3917d64049509b2c6f025e0025bd506db4d6f95271598c5dc95c43c0b65e`、
+`c432221ba0725da3744f66459a3c513ef632d5aa202864123007137aa5798b61`。
+
+所有 arm 均完成，四层更新、exact `2+1` resume、状态隔离和资源门通过。coupling
+臂 projection residual 下降，但最终 power retention 仅比 optical MSE control
+高 `0.2014` 个百分点，低于 `5` 个百分点门；candidate KL 臂则低于自身初始 KL
+和 no-KL KL。权威状态为 `valid_failed`，表示固定 OLS coupling recovery 尚未
+成立，而非 harness/resource 失败。唯一下一动作是
+`manual_review_smf_bottleneck_attribution_contract`；因此不执行 1000-step
+continuation，不进入可训练 transport、FMF、生成或 promotion。
+
 ### 2026-08-28：H-LOMA-I0 corrected KL effect pilot registration
 
 The corrected no-update KL dose reaudit completed with exact source MSE replay,
