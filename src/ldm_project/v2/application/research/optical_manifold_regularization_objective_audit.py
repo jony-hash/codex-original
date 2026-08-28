@@ -469,7 +469,7 @@ def _source_bundle(
     if (
         training_payload.get("training_authorized") is not False
         or training_payload.get("formal_promotion") is not False
-        or training_payload.get("formal_candidate_checkpoint") is not False
+        or training_payload.get("contract", {}).get("formal_candidate_checkpoint") is not False
     ):
         raise ValueError("pilot training evidence authorization boundary is invalid")
     if training_payload.get("contract", {}).get("model_state_unchanged") is not True:
