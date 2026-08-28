@@ -992,7 +992,22 @@ def run(args: argparse.Namespace) -> int:
             "absolute_kl_below_initial": beta_kl < initial_kl,
         })
         _write_new(output, audit_payload)
-        comparison_payload = _record_payload(COMPARISON_SCHEMA, record, {
+        comparison_record = EvidenceRecordV2(
+            2,
+            COMPARISON_SCHEMA,
+            "diagnostic",
+            status,
+            str(state["commit"]),
+            None,
+            spec.config_hash,
+            _context(spec, formal, data),
+            hashes,
+            scientific_gates + resource_gates,
+            actions,
+            None if status == "diagnostic" else "KL attribution audit did not satisfy all registered gates",
+        )
+        comparison_record.validate()
+        comparison_payload = _record_payload(COMPARISON_SCHEMA, comparison_record, {
             "outcome": outcome,
             "classification": "matched_same_source_same_budget_for_three_arms",
             "same_source": True,
