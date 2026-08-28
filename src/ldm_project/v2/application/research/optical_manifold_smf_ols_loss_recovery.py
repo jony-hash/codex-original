@@ -677,22 +677,24 @@ def _evaluate(model: nn.Module, smf: FiberArrayOLS, posterior: vae.SharedPerPort
     targets: list[torch.Tensor] = []
     features: list[torch.Tensor] = []
     projections: list[torch.Tensor] = []
+    kls: list[float] = []
     with torch.no_grad():
         for start in range(0, indices.numel(), BATCH_SIZE):
             amplitudes, target = _batch(data, indices[start : start + BATCH_SIZE], device)
             epsilon = data.epsilon_schedule[: amplitudes.shape[0], 0].to(device) if posterior is not None else torch.empty((amplitudes.shape[0], PORT_COUNT, 2), device=device)
-            raw, projection, _kl, coefficients, _diagnostics = _forward(model, smf, posterior, amplitudes, epsilon, mean.to(device), scale.to(device), beta=beta)
+            raw, projection, kl, coefficients, _diagnostics = _forward(model, smf, posterior, amplitudes, epsilon, mean.to(device), scale.to(device), beta=beta)
             cameras.append(raw.cpu())
             targets.append(target.cpu())
             features.append(coefficients.cpu())
             projections.append(projection.detach().reshape(1).cpu().repeat(amplitudes.shape[0]))
+            kls.append(float(kl.detach().cpu()))
     camera = torch.cat(cameras)
     target = torch.cat(targets)
     feature = torch.cat(features)
     centered_camera = camera.flatten(1) - camera.flatten(1).mean(1, keepdim=True)
     centered_target = target.flatten(1) - target.flatten(1).mean(1, keepdim=True)
     corr = (centered_camera * centered_target).sum(1) / (centered_camera.norm(dim=1) * centered_target.norm(dim=1)).clamp_min(1.0e-30)
-    return {"paired_mse": float(F.mse_loss(camera, target)), "cyclic_mse": float(F.mse_loss(camera, target.roll(1, 0))), "centered_correlation": float(corr.mean()), "variance_retention": float(centered_camera.var(0, unbiased=False).mean() / centered_target.var(0, unbiased=False).mean().clamp_min(1.0e-30)), "projection_residual": float(torch.cat(projections).mean()), "power_retention": float(1.0 - torch.cat(projections).mean()), "coefficient_effective_rank": _rank(feature), "finite": bool(torch.isfinite(camera).all() and torch.isfinite(target).all() and torch.isfinite(feature).all()), "evaluation_count": int(indices.numel()), "feature_shape": list(feature.shape)}, {"camera": camera, "target": target, "coefficients": feature}
+    return {"paired_mse": float(F.mse_loss(camera, target)), "cyclic_mse": float(F.mse_loss(camera, target.roll(1, 0))), "centered_correlation": float(corr.mean()), "variance_retention": float(centered_camera.var(0, unbiased=False).mean() / centered_target.var(0, unbiased=False).mean().clamp_min(1.0e-30)), "projection_residual": float(torch.cat(projections).mean()), "power_retention": float(1.0 - torch.cat(projections).mean()), "coefficient_effective_rank": _rank(feature), "posterior_kl": float(sum(kls) / len(kls)), "finite": bool(torch.isfinite(camera).all() and torch.isfinite(target).all() and torch.isfinite(feature).all() and all(bool(torch.isfinite(torch.tensor(value))) for value in kls)), "evaluation_count": int(indices.numel()), "feature_shape": list(feature.shape)}, {"camera": camera, "target": target, "coefficients": feature}
 
 
 def _load_training_preflight(path: str | Path, spec: Spec, formal: FormalSystemConfig, data: vae.Data, source: _Source, review: Path, validation_hash: str, state: Mapping[str, Any]) -> tuple[dict[str, Any], str, dict[str, str], torch.Tensor, torch.Tensor, float]:
