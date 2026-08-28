@@ -78,6 +78,7 @@ KL_REFERENCE_TOLERANCE = 1.0e-6
 ACTIVE_VARIANCE_THRESHOLD = 1.0e-6
 DOSES = (1.0, 2.0, 4.0)
 NEXT_DOSE_ACTION = "manual_review_smf_vae_kl_dose_or_parameterization_contract"
+NEXT_PARAMETERIZATION_ACTION = "manual_review_smf_vae_posterior_parameterization_contract"
 NEXT_OBJECTIVE_ACTION = "manual_review_smf_vae_kl_objective_contract"
 
 
@@ -159,6 +160,7 @@ def _load_review(path: str | Path, spec: Spec) -> Path:
             "doses": [1.0, 2.0, 4.0],
             "visual_sample_count": MC_SAMPLES,
             "post_completed_next_action": NEXT_DOSE_ACTION,
+            "post_parameterization_limited_next_action": NEXT_PARAMETERIZATION_ACTION,
             "post_invalid_next_action": NEXT_OBJECTIVE_ACTION,
         },
         "no_update_diagnostic_authorized": True,
@@ -912,6 +914,30 @@ def run(args: argparse.Namespace) -> int:
             GateResult("kl_decoder_gradient_zero", all(panel["kl_decoder_norm"] == 0.0 for panel in gradient_report["panels"]), {}),
             GateResult("kl_encoder_and_posterior_gradient_nonzero", all(panel["kl_gradient_norms"]["system.encoder.phase"] > 0.0 and any(value > 0.0 for value in panel["posterior_kl_gradient_norms"].values()) for panel in gradient_report["panels"]), {}),
             GateResult("reconstruction_and_dose_gradients_finite", all(panel["finite"] and all(dose["finite"] for dose in panel["doses"]) for panel in gradient_report["panels"]), {}),
+            GateResult(
+                "higher_dose_gradient_compatibility",
+                any(
+                    all(
+                        dose["compatible_with_both"]
+                        for panel in gradient_report["panels"]
+                        for dose in panel["doses"]
+                        if dose["dose"] == candidate
+                    )
+                    for candidate in (2.0, 4.0)
+                ),
+                {
+                    "compatible_doses": [
+                        candidate
+                        for candidate in (2.0, 4.0)
+                        if all(
+                            dose["compatible_with_both"]
+                            for panel in gradient_report["panels"]
+                            for dose in panel["doses"]
+                            if dose["dose"] == candidate
+                        )
+                    ]
+                },
+            ),
             GateResult("runtime_state_unchanged", state_unchanged, {"evaluator_calls": 0}),
         )
         resource_gates = (
@@ -919,14 +945,25 @@ def run(args: argparse.Namespace) -> int:
             GateResult("wall_time", elapsed <= MAX_WALL_SECONDS, {"seconds": elapsed}),
             GateResult("run_storage", storage <= MAX_STORAGE_BYTES, {"bytes": storage}),
         )
-        chain_valid = all(gate.passed for gate in scientific_gates if gate.name not in {"beta_kl_below_no_kl", "posterior_not_collapsed"})
+        chain_valid = all(
+            gate.passed
+            for gate in scientific_gates
+            if gate.name
+            not in {"beta_kl_below_no_kl", "posterior_not_collapsed", "higher_dose_gradient_compatibility"}
+        )
         resources_valid = all(gate.passed for gate in resource_gates)
         if not chain_valid:
             status, outcome, actions = "invalid_harness", "invalid_harness", ()
         elif not resources_valid:
             status, outcome, actions = "resource_aborted", "resource_aborted", ()
-        elif not all(gate.passed for gate in scientific_gates if gate.name in {"source_metrics_reproduced", "kl_decomposition_exact", "beta_kl_below_no_kl", "posterior_not_collapsed"}):
+        elif not all(gate.passed for gate in scientific_gates if gate.name in {"source_metrics_reproduced", "authoritative_terminal_metrics_reproduced", "reparameterization_and_complex_roundtrip", "kl_decomposition_exact", "beta_kl_below_no_kl", "posterior_not_collapsed"}):
             status, outcome, actions = "valid_failed", "valid_failed", (NEXT_OBJECTIVE_ACTION,)
+        elif not next(
+            gate.passed
+            for gate in scientific_gates
+            if gate.name == "higher_dose_gradient_compatibility"
+        ):
+            status, outcome, actions = "diagnostic", "diagnostic_completed_parameterization_limited", (NEXT_PARAMETERIZATION_ACTION,)
         else:
             status, outcome, actions = "diagnostic", "diagnostic_completed_relative_kl_constraint", (NEXT_DOSE_ACTION,)
         hashes.update({"panel": panel_hash})

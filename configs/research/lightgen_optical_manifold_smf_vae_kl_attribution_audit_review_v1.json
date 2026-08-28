@@ -11,6 +11,7 @@
     "doses": [1.0, 2.0, 4.0],
     "visual_sample_count": 16,
     "post_completed_next_action": "manual_review_smf_vae_kl_dose_or_parameterization_contract",
+    "post_parameterization_limited_next_action": "manual_review_smf_vae_posterior_parameterization_contract",
     "post_invalid_next_action": "manual_review_smf_vae_kl_objective_contract"
   },
   "no_update_diagnostic_authorized": true,
