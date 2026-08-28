@@ -1701,6 +1701,36 @@ or authorize FMF. The sole next action is
 `manual_review_smf_canary_visual_and_metric_trends`; all evidence retains
 `training_authorized=false` and `formal_promotion=false`.
 
+## 2026-08-28：H-LOMA-I0 SMF VAE KL chain attribution audit closeout
+
+The authoritative no-update KL audit completed on clean commit `f47e8c6` in
+attempt-06. Attempts 01--05 remain retained as superseded validation or audit
+artifacts: the first used the pre-fix context, attempts 02--03 stopped on
+harness errors, attempt-04 had an incorrect outcome classification, and
+attempt-05 had an incorrect comparison evidence kind.
+
+The validation, audit, horizontal-comparison and panel SHA256 values are
+`e7de7e683b2650cd9ad6e622ac0bc76899f880eface6732fb86ac2cba4f31a74`,
+`40d612e20ffc7044c0a8e21bce86c7d07f3076a31ea0d6aadee5fa6f53ea22ce`,
+`678e9b37d14ef84cacc94819f8cc75f18d83d5bee6ac140481e7b1679667de2b`, and
+`1cc913068aa389e87122abd59bcd9b4e9115e09d86cf5b850d3cd769398c6361`.
+
+The source MSE reproduced with difference `0`; beta KL was `3.0639548`, lower
+than no-KL `3.3382955` but higher than initialization `2.9956918`. Posterior
+mean variance increased to `1.4764290` from `0.9877587`, all 200 latent
+dimensions remained active, and the model/optical state was unchanged. The
+matched three-arm comparison produced mean-path MSE values `0.0380180`
+(beta-VAE), `0.0379458` (no-KL) and `0.0503602` (deterministic).
+
+The diagnostic outcome is `diagnostic_completed_parameterization_limited`:
+the relative KL constraint is real, but every tested 1x/2x/4x combined
+direction conflicted with reconstruction across all three independent panels.
+The sole next action is
+`manual_review_smf_vae_posterior_parameterization_contract`. No KL dose
+response, new training, prior-only generation, FMF extension or promotion is
+authorized; evidence remains `training_authorized=false` and
+`formal_promotion=false`.
+
 ## 2026-08-28：H-LOMA-I0 PLAN 6 Identity--SMF reconstruction pilot closeout
 
 The authoritative Identity--SMF reconstruction comparison completed on clean

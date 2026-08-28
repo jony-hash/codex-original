@@ -927,6 +927,37 @@ authorize extra epochs, KL, latent sampling, SMF/FMF, generation, evaluator,
 or promotion. All evidence continues to require
 `training_authorized=false` and `formal_promotion=false`.
 
+## H-LOMA-I0 SMF VAE KL chain attribution audit closeout（2026-08-28）
+
+The authoritative no-update audit completed on clean implementation commit
+`f47e8c6` in attempt-06. Earlier attempts are retained: attempt-01 is the
+pre-context-fix validation, attempts 02--03 stopped on harness errors before
+evidence, and attempts 04--05 are superseded by classification/schema fixes.
+
+Authoritative hashes are validation
+`e7de7e683b2650cd9ad6e622ac0bc76899f880eface6732fb86ac2cba4f31a74`, audit
+`40d612e20ffc7044c0a8e21bce86c7d07f3076a31ea0d6aadee5fa6f53ea22ce`,
+horizontal comparison
+`678e9b37d14ef84cacc94819f8cc75f18d83d5bee6ac140481e7b1679667de2b`, and
+panel `1cc913068aa389e87122abd59bcd9b4e9115e09d86cf5b850d3cd769398c6361`.
+
+The KL chain is valid and active: source MSE reproduced exactly, KL formula
+and complex round-trip passed, KL decoder gradient was zero, encoder/posterior
+gradients were non-zero, and all model/optical state remained unchanged. The
+beta arm KL was `3.0639548`, below no-KL `3.3382955`, but above initialization
+`2.9956918`; posterior mean variance was `1.4764290` versus `0.9877587`, with
+all 200 latent dimensions active. This rules out posterior collapse under the
+registered screen, but does not satisfy absolute prior matching.
+
+The three-arm comparison is valid only within the matched SMF 100-step budget:
+beta-VAE mean-path MSE `0.0380180`, no-KL `0.0379458`, deterministic MSE
+`0.0503602`. Identity/PLAN 6 SMF/FMF M2 are retained as explicitly non-matched
+context. All 1x/2x/4x combined directions conflicted with reconstruction on
+all three gradient panels, so the outcome is
+`diagnostic_completed_parameterization_limited`. The sole next action is
+`manual_review_smf_vae_posterior_parameterization_contract`; no dose-response,
+new training, prior-only generation, FMF extension or promotion is authorized.
+
 ### H-LOMA-I0 PLAN 5 regularization pilot closeout（2026-08-28）
 
 The bounded two-arm pilot was executed on

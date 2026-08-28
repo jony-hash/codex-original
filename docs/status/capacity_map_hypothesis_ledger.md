@@ -554,6 +554,28 @@ The audit never creates an optimizer, changes model state, writes a checkpoint,
 loads an evaluator, or modifies formal v2 behavior. All evidence remains
 `training_authorized=false` and `formal_promotion=false`.
 
+## H-LOMA-I0：SMF VAE KL chain attribution audit closeout（2026-08-28）
+
+The no-update KL attribution audit is authoritative in attempt-06 on clean
+commit `f47e8c6`. Validation, audit, comparison and panel hashes are
+`e7de7e683b2650cd9ad6e622ac0bc76899f880eface6732fb86ac2cba4f31a74`,
+`40d612e20ffc7044c0a8e21bce86c7d07f3076a31ea0d6aadee5fa6f53ea22ce`,
+`678e9b37d14ef84cacc94819f8cc75f18d83d5bee6ac140481e7b1679667de2b`, and
+`1cc913068aa389e87122abd59bcd9b4e9115e09d86cf5b850d3cd769398c6361`.
+
+The chain passed exact source replay, standard KL decomposition,
+reparameterization, gradient boundary, state-freeze and resource checks.
+Beta-VAE KL remained below the matched no-KL arm but above initialization;
+posterior mean variance and all active-latent checks reject the registered
+collapse signature. The three-arm matched comparison is valid, while
+Identity, PLAN 6 SMF and FMF M2 remain context-only.
+
+Because all 1x/2x/4x combined directions conflicted with reconstruction on
+all three independent panels, the outcome is
+`diagnostic_completed_parameterization_limited`. The consumer is manual review
+of posterior parameterization; no dose-response or new training is authorized
+until that review, and KL, FMF, generation and promotion remain blocked.
+
 ### H-LOMA-I0 PLAN 5 probabilistic latent recovery authorization（2026-08-28）
 
 The project owner authorized one bounded diagnostic SMF hybrid-VAE pilot on
