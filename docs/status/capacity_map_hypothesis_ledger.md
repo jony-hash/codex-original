@@ -788,3 +788,22 @@ consumer is `manual_review_smf_canary_visual_and_metric_trends`. A subsequent
 PLAN 6 matched Identity-versus-SMF MSE reconstruction pilot must be separately
 authorized; `training_authorized=false` and `formal_promotion=false` remain
 mandatory.
+
+### H-LOMA-I0 PLAN 6 Identity--SMF reconstruction pilot authorization（2026-08-28）
+
+The project owner authorized one bounded, diagnostic-only 1000-step matched
+reconstruction comparison on branch
+`research/v2-lightgen-optical-manifold-smf-reconstruction-pilot-v1`. It consumes
+the authoritative completed SMF canary, the unchanged step-5500 Identity
+checkpoint and the MNIST manifest. The real consumer is the manual decision on
+whether the 100-port SMF path can recover reconstruction under the same MSE
+training contract.
+
+The two arms are `smf_mse_reconstruction` and `identity_mse_control`. They use
+the same fresh balanced schedule, reset CPU-shadow Adam, 2+2 phase-only model,
+full formal relay, fixed exposure and microbatch-1 activation-checkpointed
+reconstruction; the sole structural variable is research OLS (100-port LP01
+SMF versus formal IdentityOLS). No SWD, projection, KL, latent sampling,
+additional epoch, FMF, generation or promotion is authorized. The registered
+scientific gates and safety/resource stops are fail-closed. All evidence must
+retain `training_authorized=false` and `formal_promotion=false`.

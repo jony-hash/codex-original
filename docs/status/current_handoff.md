@@ -1111,3 +1111,21 @@ not establish SMF superiority, stable projection, FMF readiness or formal
 promotion. The only next action is
 `manual_review_smf_canary_visual_and_metric_trends`; a matched PLAN 6
 reconstruction pilot requires a separate project-owner authorization.
+
+## H-LOMA-I0 PLAN 6 Identity--SMF reconstruction pilot authorization（2026-08-28）
+
+The project owner authorized one diagnostic-only 1000-step matched comparison
+on `research/v2-lightgen-optical-manifold-smf-reconstruction-pilot-v1`.
+It binds the completed SMF canary, the step-5500 Identity checkpoint and the
+authoritative MNIST manifest. The two arms share a fresh 1000-by-10 balanced
+schedule and reset CPU-shadow Adam; only the research OLS differs:
+`smf_mse_reconstruction` inserts the existing 100-port LP01 transport and
+`identity_mse_control` keeps formal IdentityOLS.
+
+The lifecycle requires static lineage validation, a real CUDA three-step and
+persisted 2+1 resume preflight before one 1000-step run. It is MSE-only and
+diagnostic: no SWD/projection, KL, latent sampling, extra epoch, FMF,
+generation or promotion. Its only post-run consumers are the registered SMF
+reconstruction or bottleneck-attribution manual reviews. Formal v2 and all
+historical evidence remain unchanged; `training_authorized=false` and
+`formal_promotion=false` remain mandatory.

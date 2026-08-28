@@ -1700,3 +1700,22 @@ state-isolation contracts. It does not establish SMF scientific superiority
 or authorize FMF. The sole next action is
 `manual_review_smf_canary_visual_and_metric_trends`; all evidence retains
 `training_authorized=false` and `formal_promotion=false`.
+
+## 2026-08-28：H-LOMA-I0 PLAN 6 Identity--SMF reconstruction pilot
+
+The project owner authorized a new diagnostic-only 1000-step matched
+reconstruction pilot on branch
+`research/v2-lightgen-optical-manifold-smf-reconstruction-pilot-v1`. It is
+bound to the completed canary evidence, the step-5500 Identity checkpoint and
+the authoritative MNIST split. Both arms start from the same source weights
+with reset CPU-shadow Adam and share a fresh balanced schedule; the only
+structural variable is formal IdentityOLS versus the existing 100-port LP01
+SMF research transport between the fixed 2-layer encoder and decoder.
+
+The pre-registered run is MSE-only, microbatch 1, activation-checkpointed and
+requires CUDA three-step plus persisted 2+1 resume preflight. It measures SMF
+reconstruction recovery against its same-run initialization and an Identity
+control, with cyclic MSE and safety/resource gates. It does not authorize
+SWD/projection, KL, latent sampling, extra epochs, FMF, generation or
+promotion; all evidence remains `training_authorized=false` and
+`formal_promotion=false`.

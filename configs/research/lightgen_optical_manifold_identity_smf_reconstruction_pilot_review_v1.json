@@ -1,0 +1,33 @@
+{
+  "schema": "lightgen_optical_manifold_identity_smf_reconstruction_pilot_review.v1",
+  "hypothesis": "H-LOMA-I0",
+  "reviewer_role": "project_owner",
+  "decision": "approve_bounded_identity_smf_reconstruction_pilot",
+  "approved_contract": {
+    "arms": ["smf_mse_reconstruction", "identity_mse_control"],
+    "steps_per_arm": 1000,
+    "logical_batch_size": 10,
+    "microbatch_size": 1,
+    "source_global_step": 5500,
+    "preflight_steps": 3,
+    "resume_segment": "2+1",
+    "checkpoint_interval": 100,
+    "ols_variable_only": true,
+    "post_pass_next_action": "manual_review_fmf_m2_integration_canary_contract",
+    "post_valid_failed_next_action": "manual_review_smf_bottleneck_attribution_contract"
+  },
+  "bounded_diagnostic_training_authorized": true,
+  "training_authorized": false,
+  "formal_training_authorized": false,
+  "formal_promotion": false,
+  "prohibited": [
+    "stable_projection_claim",
+    "regularized_training",
+    "extra_epoch",
+    "vae_kl",
+    "latent_sampling",
+    "fmf",
+    "generation",
+    "promotion"
+  ]
+}
