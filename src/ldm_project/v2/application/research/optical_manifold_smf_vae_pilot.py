@@ -700,6 +700,20 @@ def posterior_kl(mean: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
     return 0.5 * (mean.square() + logvar.exp() - 1.0 - logvar).mean()
 
 
+def _calibrate_beta(
+    reconstruction_encoder_norm: float, kl_encoder_norm: float
+) -> float:
+    """Register the single preflight beta without searching or tuning it."""
+    if (
+        not torch.isfinite(torch.tensor(reconstruction_encoder_norm))
+        or not torch.isfinite(torch.tensor(kl_encoder_norm))
+        or reconstruction_encoder_norm <= 0.0
+        or kl_encoder_norm <= 0.0
+    ):
+        raise ValueError("beta calibration requires finite, non-zero gradient norms")
+    return 0.1 * reconstruction_encoder_norm / kl_encoder_norm
+
+
 def _forward_latent(
     model: base.IdentityOpticalManifoldAutoencoder,
     operator: FiberArrayOLS,
@@ -749,6 +763,63 @@ def _trainable_items(
         )
         if value.requires_grad
     ]
+
+
+def _objective_gradient_report(
+    model: base.IdentityOpticalManifoldAutoencoder,
+    operator: FiberArrayOLS,
+    posterior: SharedPerPortPosterior,
+    amplitudes: torch.Tensor,
+    targets: torch.Tensor,
+    epsilon: torch.Tensor,
+    mean: torch.Tensor,
+    scale: torch.Tensor,
+    objective: str,
+) -> dict[str, Any]:
+    """Measure one objective's gradients without changing model or optimizer state."""
+    if objective not in {"reconstruction", "kl"}:
+        raise ValueError("unsupported SMF VAE gradient objective")
+    all_items = _trainable_items(model, posterior)
+    for _, value in all_items:
+        value.grad = None
+    values: list[float] = []
+    for index in range(BATCH_SIZE):
+        amp = amplitudes[index : index + 1]
+        target = targets[index : index + 1]
+        eps = epsilon[index : index + 1]
+        raw, post_mean, logvar, _ = checkpoint(
+            lambda value, noise: _forward_latent(
+                model, operator, posterior, value, noise, mean, scale, sample=True
+            ),
+            amp,
+            eps,
+            use_reentrant=False,
+        )
+        value = (
+            F.mse_loss(raw, target)
+            if objective == "reconstruction"
+            else posterior_kl(post_mean, logvar)
+        )
+        (value / BATCH_SIZE).backward()
+        values.append(float(value.detach().cpu()))
+    gradients = {
+        name: parameter.grad.detach().cpu().clone()
+        if parameter.grad is not None
+        else torch.zeros_like(parameter, device="cpu")
+        for name, parameter in all_items
+    }
+    norms = {name: float(value.norm()) for name, value in gradients.items()}
+    _clear(model)
+    _clear(posterior)
+    finite = all(
+        torch.isfinite(torch.tensor(value)) for value in (*values, *norms.values())
+    )
+    return {
+        "objective": objective,
+        "value": float(sum(values) / len(values)),
+        "gradient_norms": norms,
+        "finite": finite,
+    }
 
 
 def _step(
@@ -979,6 +1050,7 @@ def _normalization_payload(
         "config_hash": spec.config_hash,
         "dataset_manifest_hash": data.manifest["manifest_hash"],
         "source_checkpoint_sha256": SOURCE_CHECKPOINT_HASH,
+        "source_hashes": dict(source.hashes),
         "validation_sha256": validation_hash,
         "training_authorized": False,
         "formal_promotion": False,
@@ -1154,12 +1226,15 @@ def _load_preflight(
     payload = json.loads(target.read_text(encoding="utf-8"))
     record = EvidenceRecordV2.from_dict(payload["evidence"])
     record.validate()
+    normalization_path = _resolve(payload["contract"]["normalization_path"])
+    normalization_hash = file_sha256(normalization_path)
     expected = {
         **source.hashes,
         "research_config": file_sha256(spec.path),
         "review_contract": file_sha256(review_path),
         "dataset_manifest": data.manifest["manifest_hash"],
         "training_validation": validation_hash,
+        "posterior_normalization": normalization_hash,
     }
     if (
         payload.get("schema") != PREFLIGHT_SCHEMA
@@ -1169,18 +1244,23 @@ def _load_preflight(
         or record.input_hashes != expected
     ):
         raise ValueError("SMF VAE preflight is stale or mismatched")
-    normalization_path = _resolve(payload["contract"]["normalization_path"])
     normalization = safe_torch_load(normalization_path, map_location="cpu")
     if (
         normalization.get("schema") != NORMALIZATION_SCHEMA
         or normalization.get("config_hash") != spec.config_hash
+        or normalization.get("dataset_manifest_hash") != data.manifest["manifest_hash"]
+        or normalization.get("source_checkpoint_sha256") != SOURCE_CHECKPOINT_HASH
+        or normalization.get("source_hashes") != source.hashes
         or normalization.get("validation_sha256") != validation_hash
+        or payload["contract"].get("normalization_sha256") != normalization_hash
+        or tuple(normalization.get("shape", ())) != (PORT_COUNT, 2)
+        or not torch.isfinite(normalization["mean"]).all()
+        or not torch.isfinite(normalization["scale"]).all()
     ):
         raise ValueError("SMF VAE normalization artifact is stale")
     hashes = {
         **expected,
         "training_preflight": digest,
-        "posterior_normalization": file_sha256(normalization_path),
     }
     return payload, digest, hashes, normalization["mean"], normalization["scale"]
 
@@ -1266,6 +1346,37 @@ def preflight(args: argparse.Namespace) -> int:
         det_model, det_operator, det_post, det_opt = _make_runtime(
             formal, source, device, "smf_deterministic_mse"
         )
+        calibration_amplitudes, calibration_targets = _batch(
+            data, data.schedule[0], device
+        )
+        calibration_epsilon = data.epsilon_schedule[0].to(device)
+        reconstruction_calibration = _objective_gradient_report(
+            beta_model,
+            beta_operator,
+            beta_post,
+            calibration_amplitudes,
+            calibration_targets,
+            calibration_epsilon,
+            mean.to(device),
+            scale.to(device),
+            "reconstruction",
+        )
+        kl_calibration = _objective_gradient_report(
+            beta_model,
+            beta_operator,
+            beta_post,
+            calibration_amplitudes,
+            calibration_targets,
+            calibration_epsilon,
+            mean.to(device),
+            scale.to(device),
+            "kl",
+        )
+        reconstruction_encoder_norm = reconstruction_calibration["gradient_norms"][
+            "system.encoder.phase"
+        ]
+        kl_encoder_norm = kl_calibration["gradient_norms"]["system.encoder.phase"]
+        beta = _calibrate_beta(reconstruction_encoder_norm, kl_encoder_norm)
         beta_history = _run_exact(
             beta_model,
             beta_operator,
@@ -1276,11 +1387,10 @@ def preflight(args: argparse.Namespace) -> int:
             scale,
             device,
             "smf_beta_vae",
-            0.0,
+            beta,
             PREFLIGHT_STEPS,
         )
-        # A fixed beta is calibrated from the first real batch; it is then frozen.
-        beta = 0.1
+        uninterrupted_rng = _tree_clone(base._rng_state())
         control_history = _run_exact(
             control_model,
             control_operator,
@@ -1307,28 +1417,10 @@ def preflight(args: argparse.Namespace) -> int:
             0.0,
             PREFLIGHT_STEPS,
         )
-        # Re-run the beta arm from source with the registered scalar.  This is the
-        # preflight arm consumed by training; the calibration is not searched.
-        beta_model, beta_operator, beta_post, beta_opt = _make_runtime(
-            formal, source, device, "smf_beta_vae"
-        )
-        beta_history = _run_exact(
-            beta_model,
-            beta_operator,
-            beta_post,
-            beta_opt,
-            data,
-            mean,
-            scale,
-            device,
-            "smf_beta_vae",
-            beta,
-            PREFLIGHT_STEPS,
-        )
         interrupted_model, interrupted_operator, interrupted_post, interrupted_opt = (
             _make_runtime(formal, source, device, "smf_beta_vae")
         )
-        _run_exact(
+        interrupted_history = _run_exact(
             interrupted_model,
             interrupted_operator,
             interrupted_post,
@@ -1347,10 +1439,14 @@ def preflight(args: argparse.Namespace) -> int:
             interrupted_opt,
             "smf_beta_vae",
             2,
-            [],
+            interrupted_history,
             data,
             spec,
-            {**source.hashes, "training_validation": validation_hash},
+            {
+                **source.hashes,
+                "training_validation": validation_hash,
+                "posterior_normalization": file_sha256(norm_path),
+            },
             beta,
         )
         resume_path = output.parent / "preflight_smf_beta_vae_step_0002.pt"
@@ -1375,10 +1471,15 @@ def preflight(args: argparse.Namespace) -> int:
             beta,
             1,
         )
+        resumed_rng = _tree_clone(base._rng_state())
         exact = (
             _tree_equal(_model_state(beta_model), _model_state(resumed_model))
             and _tree_equal(beta_opt.state_dict(), resumed_opt.state_dict())
-            and beta_history[2]["loss"] == resumed[0]["loss"]
+            and _tree_equal(beta_history[2], resumed[0])
+            and _tree_equal(uninterrupted_rng, resumed_rng)
+            and resume_state["history"] == interrupted_history
+            and resume_state["schedule_cursor"]
+            == {"next_step": 2, "batch_size": BATCH_SIZE}
         )
         finite = all(
             item["finite"]
@@ -1403,7 +1504,23 @@ def preflight(args: argparse.Namespace) -> int:
             GateResult("four_phase_updates", phase_updates, {}),
             GateResult("posterior_updates", posterior_updates, {}),
             GateResult("persisted_resume_exact", exact, {}),
-            GateResult("fixed_epsilon_and_schedule", True, {"epsilon_seed": SEED}),
+            GateResult(
+                "fixed_epsilon_and_schedule",
+                True,
+                {"epsilon_seed": SEED, "schedule_cursor": 3},
+            ),
+            GateResult(
+                "beta_calibration",
+                reconstruction_calibration["finite"]
+                and kl_calibration["finite"]
+                and beta > 0.0,
+                {
+                    "beta": beta,
+                    "reconstruction_encoder_norm": reconstruction_encoder_norm,
+                    "kl_encoder_norm": kl_encoder_norm,
+                    "formula": "0.1*g_reconstruction_encoder/g_kl_encoder",
+                },
+            ),
             GateResult(
                 "normalization_provenance", True, {"path": str(norm_path.resolve())}
             ),
@@ -1420,6 +1537,7 @@ def preflight(args: argparse.Namespace) -> int:
             "review_contract": file_sha256(review_path),
             "dataset_manifest": data.manifest["manifest_hash"],
             "training_validation": validation_hash,
+            "posterior_normalization": file_sha256(norm_path),
         }
         record = EvidenceRecordV2(
             2,
@@ -1443,6 +1561,11 @@ def preflight(args: argparse.Namespace) -> int:
                 "normalization_path": str(norm_path.resolve()),
                 "normalization_sha256": file_sha256(norm_path),
                 "beta": beta,
+                "beta_calibration": {
+                    "reconstruction": reconstruction_calibration,
+                    "kl": kl_calibration,
+                    "formula": "0.1*g_reconstruction_encoder/g_kl_encoder",
+                },
                 "training_hashes": hashes,
                 "arms": {
                     "smf_beta_vae": beta_history,
