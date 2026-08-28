@@ -1083,7 +1083,7 @@ def _run_cuda_audit(
     plane: dict[str, Any] | None = None
     provenance: dict[str, Any] | None = None
     for panel in data.calibration_panels:
-        fields, _mse, current_plane, current_provenance = objective._capture_fields(
+        fields, _mse, current_plane, current_provenance = regularization._capture_fields(
             source_model, data.objective_data, panel, device
         )
         calibration_fields.append(fields)
@@ -1091,7 +1091,7 @@ def _run_cuda_audit(
             plane, provenance = current_plane, current_provenance
         elif plane != current_plane or provenance != current_provenance:
             raise ValueError("adaptive calibration trace provenance changed")
-    assessment_fields, _assessment_mse, assessment_plane, assessment_provenance = objective._capture_fields(
+    assessment_fields, _assessment_mse, assessment_plane, assessment_provenance = regularization._capture_fields(
         source_model, data.objective_data, data.assessment_indices, device
     )
     if plane != assessment_plane or provenance != assessment_provenance:
@@ -1125,7 +1125,7 @@ def _run_cuda_audit(
                 model.load_state_dict(model_state, strict=True)
                 model.eval()
             model_before = _state_cpu(model)
-            fields = assessment_fields if name == "source_step_5500" else objective._capture_fields(
+            fields = assessment_fields if name == "source_step_5500" else regularization._capture_fields(
                 model, data.objective_data, data.assessment_indices, device
             )[0]
             fit = _fit_projection_rank(fields, selected_rank)
