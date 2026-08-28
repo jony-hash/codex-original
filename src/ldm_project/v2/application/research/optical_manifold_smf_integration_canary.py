@@ -870,6 +870,7 @@ def _lambda(model: base.IdentityOpticalManifoldAutoencoder, smf: FiberArrayOLS, 
 
 
 def _probe_metrics(model: base.IdentityOpticalManifoldAutoencoder, smf: FiberArrayOLS, data: CanaryData, indices: torch.Tensor, projection: regularization.Projection, directions: torch.Tensor, device: torch.device) -> dict[str, Any]:
+    projection = _projection_on_device(projection, device)
     losses: list[torch.Tensor] = []
     cyclic: list[torch.Tensor] = []
     scores: list[torch.Tensor] = []
