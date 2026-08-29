@@ -63,6 +63,12 @@ def dispatch(args: argparse.Namespace) -> int:
         "smf-bottleneck-attribution-run",
     }:
         from .research.optical_manifold_smf_bottleneck_attribution import dispatch
+    elif action in {
+        "smf-bogt-validate",
+        "smf-bogt-preflight",
+        "smf-bogt-pilot-train",
+    }:
+        from .research.optical_manifold_smf_bogt import dispatch
     else:
         from .research.optical_manifold import dispatch
     return int(dispatch(args) or 0)

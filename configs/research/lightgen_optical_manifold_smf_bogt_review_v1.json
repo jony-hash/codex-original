@@ -1,0 +1,40 @@
+{
+  "schema": "lightgen_optical_manifold_smf_bogt_review.v1",
+  "hypothesis": "H-LOMA-CBOGT-S0",
+  "reviewer_role": "project_owner",
+  "decision": "authorize_independent_scaled_chen_bogt_lifecycle_only",
+  "approved_contract": {
+    "architecture": "2+2_phase_only_100x100_2um_1.50mm",
+    "ols": "fixed_100_port_scaled_lp01_v2_bank",
+    "aggregate_bogt": true,
+    "electronic_mu_logvar": false,
+    "calibrated_phase": "zero_residual_phase",
+    "backend": "inferred_3mm_magnification_minus_2.5",
+    "arms": ["mse_only", "mse_op", "mse_kl", "mse_kl_op"],
+    "steps_per_arm": 100,
+    "logical_batch_size": 10,
+    "microbatch_size": 1,
+    "preflight_steps": 3,
+    "resume_segment": "2+1",
+    "posthoc_phase_quantization": [0.0, 0.82, 1.63, 2.45, 3.26, 4.08, 4.89, 5.71]
+  },
+  "source_statuses": {
+    "paper_reported": ["Chen BOGT/OLS functional idea"],
+    "user_locked_scaled_deviation": ["2+2 geometry", "scaled LP01 bank", "100x100 @ 2um"],
+    "high_confidence_inference": ["aggregate Gaussian surrogate", "3mm relay geometry", "layer power loss"],
+    "unknown": ["unpublished prior and exact loss implementation"]
+  },
+  "bounded_diagnostic_training_authorized": true,
+  "training_authorized": false,
+  "formal_training_authorized": false,
+  "formal_promotion": false,
+  "prohibited": [
+    "formal_v2_change",
+    "formal_smf_or_fmf_change",
+    "electronic_vae_latent_injector",
+    "fmf_transition",
+    "automatic_long_training",
+    "prior_generation_before_pilot_and_review",
+    "promotion"
+  ]
+}
