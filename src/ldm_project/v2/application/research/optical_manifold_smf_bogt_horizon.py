@@ -311,9 +311,17 @@ def _evaluate_horizon_milestone(model: bogt.ScaledChenBOGTModel, data: HorizonDa
 
 def _record(schema: str, status: str, spec: HorizonSpec, formal: Any, state: Mapping[str, Any], data: HorizonData, hashes: Mapping[str, str], gates: tuple[GateResult, ...], action: str | None, reason: str | None = None) -> dict[str, Any]:
     context = EvidenceContextV2(canonical_sha256({"horizon": spec.payload["optical_contract"], "branch": BRANCH}), spec.config_hash, dataset_hash=data.manifest["manifest_hash"], dataset_split_manifest_hash=data.manifest["manifest_hash"])
-    record = EvidenceRecordV2(2, schema, "diagnostic", status, str(state["commit"]), None, spec.config_hash, context, dict(hashes), gates, (action,) if action else (), reason)
+    # The lifecycle classification is more specific than the shared evidence
+    # status vocabulary.  Keep the former in the outer contract while binding
+    # the latter into EvidenceRecordV2 so all downstream consumers can apply
+    # the repository-wide validation rules.
+    evidence_status = {
+        "passed_scaled_chen_reconstruction_horizon": "passed",
+        "valid_failed_scaled_chen_reconstruction_horizon": "valid_failed",
+    }.get(status, status)
+    record = EvidenceRecordV2(2, schema, "diagnostic", evidence_status, str(state["commit"]), None, spec.config_hash, context, dict(hashes), gates, (action,) if action else (), reason)
     record.validate()
-    return {"schema": schema, "hypothesis": HYPOTHESIS, "training_authorized": False, "formal_promotion": False, "evidence": record.to_dict(), "contract": {"git_state": {"branch": state["branch"], "commit": state["commit"], "clean": state["clean"]}, "source_status": spec.payload["source"]["status"]}}
+    return {"schema": schema, "hypothesis": HYPOTHESIS, "status": status, "training_authorized": False, "formal_promotion": False, "evidence": record.to_dict(), "contract": {"git_state": {"branch": state["branch"], "commit": state["commit"], "clean": state["clean"]}, "source_status": spec.payload["source"]["status"]}}
 
 
 def _write_new(path: str | Path, payload: Mapping[str, Any]) -> None:
