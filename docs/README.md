@@ -11,6 +11,7 @@
 | `configs/research/` 与 `application/research/` 生命周期边界 | [v2 runtime](architecture/v2_runtime.md) / [Current Handoff](status/current_handoff.md) |
 | electronic O0 与 synthetic fiber 路线状态 | [Capacity-map hypothesis ledger](status/capacity_map_hypothesis_ledger.md) / [Fiber image-generation status](status/v2_fiber_image_generation_v1.md) / [Corrected fiber OLS status](status/v2_fiber_ols_corrected_status.md) |
 | v2 旧蒸馏、prototype/capacity 与 LightGen 历史 | [archive](archive/)；活动兼容实现仍在显式 legacy/diagnostic 命名空间 |
+| LightGen 论文补充材料与图源数据 | [`research_assets/lightgen/science_adv7434/`](../research_assets/lightgen/science_adv7434/)；只读 reference-only 证据包 |
 | 命令、stage 和回档 | [Stage Guide](operations/stage_guide.md) / [Git branch management](operations/git_branch_management.md) |
 | 长训练、模型选择和科学结论预检 | [Long-training preflight](operations/long-training-preflight.md) |
 | 输出与 artifact 语义 | [Output notes](operations/output_artifact_notes.md) |

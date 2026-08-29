@@ -1,0 +1,129 @@
+{
+  "schema_version": 1,
+  "status": "reference_only",
+  "source": {
+    "kind": "user_provided_paper_export",
+    "title": "All-optical synthesis chip for large-scale intelligent semantic vision generation",
+    "doi": "10.1126/science.adv7434",
+    "pubmed_url": "https://pubmed.ncbi.nlm.nih.gov/41411438/",
+    "zenodo_doi": "10.5281/zenodo.17385609",
+    "zenodo_record_url": "https://zenodo.org/records/17385609",
+    "supplement_pages": 46,
+    "import_note": "Imported from the user-provided OneDrive export on 2026-08-29."
+  },
+  "consumer": {
+    "name": "LightGen paper-parameter and figure-source audit",
+    "rejection_decision": "A missing file, path mismatch, or SHA256 mismatch rejects paper-reproduction and parameter-comparison claims from this bundle."
+  },
+  "files": [
+    {
+      "path": "paper/sciencesm.pdf",
+      "role": "supplement_pdf",
+      "bytes": 7665077,
+      "sha256": "1325cdfb438f55249224f660a90ec2c21438ba3ce8cffc2677001f2db4e6c211"
+    },
+    {
+      "path": "source_data/Figure 3/Figure 3.csv",
+      "role": "figure_source_data",
+      "bytes": 306,
+      "sha256": "0ee88c149368261bde2e6675d35fd3e20aa0dc70a5695edcc811decd1e44b447"
+    },
+    {
+      "path": "source_data/Figure 4-1/Figure 4-1.csv",
+      "role": "figure_source_data",
+      "bytes": 108,
+      "sha256": "c04978c9addf9118ed81369748612d1edd3bdb24e11e6552bfca09f410418ac4"
+    },
+    {
+      "path": "source_data/Figure 4-10/Figure 4-10.csv",
+      "role": "figure_source_data",
+      "bytes": 322,
+      "sha256": "95c3ad3d0e1c51c633a7f95a04ac44e6cceec151eb1a13031b1608750dbb1832"
+    },
+    {
+      "path": "source_data/Figure 4-11/Figure 4-11.csv",
+      "role": "figure_source_data",
+      "bytes": 213,
+      "sha256": "0faa52f94bee3ac759f8e1f726dbe81e3000f85e706dded11acb24ede979341c"
+    },
+    {
+      "path": "source_data/Figure 4-12/Figure 4-12.csv",
+      "role": "figure_source_data",
+      "bytes": 248,
+      "sha256": "cb53457182b3af1e1abb87a865c9fecf72efb1fbceda37b5e622e6d2bf204179"
+    },
+    {
+      "path": "source_data/Figure 4-13/Figure 4-13.csv",
+      "role": "figure_source_data",
+      "bytes": 326,
+      "sha256": "ae70df3bc206c539c326ed422972eed45c2e083ee7a2103197dd3fe396e02a1a"
+    },
+    {
+      "path": "source_data/Figure 4-2/Figure 4-2.csv",
+      "role": "figure_source_data",
+      "bytes": 273,
+      "sha256": "eaa2412cff6ee9cd55f5654204ef2ea4e05ddfad195b2a7c527ac11448e1c59a"
+    },
+    {
+      "path": "source_data/Figure 4-3/Figure 4-3.csv",
+      "role": "figure_source_data",
+      "bytes": 247,
+      "sha256": "8f921339ccc5a860041af67570872baa3b7378dd9e37b07b3820bf0db7e59eef"
+    },
+    {
+      "path": "source_data/Figure 4-4/Figure 4-4.csv",
+      "role": "figure_source_data",
+      "bytes": 286,
+      "sha256": "abfa464082460a623a9c95e178eb32e46350a29169a49f646ad264559600c92f"
+    },
+    {
+      "path": "source_data/Figure 4-5/Figure 4-5.csv",
+      "role": "figure_source_data",
+      "bytes": 325,
+      "sha256": "0bb7a216cd696343c798cab1ac927ae18693e641e80497f174288aaea9c2a22b"
+    },
+    {
+      "path": "source_data/Figure 4-6/Figure 4-6.csv",
+      "role": "figure_source_data",
+      "bytes": 325,
+      "sha256": "7be98287b9deb5448858b1d3383434d7b50932c7c0839f24f9b2f9f4b1608410"
+    },
+    {
+      "path": "source_data/Figure 4-7/Figure 4-7.csv",
+      "role": "figure_source_data",
+      "bytes": 313,
+      "sha256": "3e2e4d128e9ce3a90475108e1d98af2d938b25f82d511c88b923bf8ed5ede773"
+    },
+    {
+      "path": "source_data/Figure 4-8/Figure 4-8.csv",
+      "role": "figure_source_data",
+      "bytes": 322,
+      "sha256": "a0ef20fcc8e87c1b486c2102376628cee41d6777b61c55703f762edd8149528d"
+    },
+    {
+      "path": "source_data/Figure 4-9/Figure 4-9.csv",
+      "role": "figure_source_data",
+      "bytes": 325,
+      "sha256": "736ae58faf14b5a96a9466a7cd3629a149faea60353dc2b69ca786390b8a6ab2"
+    },
+    {
+      "path": "source_data/Figure S1/Figure S1.csv",
+      "role": "figure_source_data",
+      "bytes": 27581,
+      "sha256": "1b643c7c97d4989ce8c4051e4eb69522bb17e37604750ef99d0027faf5130487"
+    },
+    {
+      "path": "source_data/Figure S6/Figure S6.csv",
+      "role": "figure_source_data",
+      "bytes": 190,
+      "sha256": "88a2246f60534dd1294ad598276a34b935ca4b02db8f18a528fa15eeb4aa3df0"
+    }
+  ],
+  "exclusions": [
+    "LightGen_PyTorch reproduction scaffold",
+    "science.adv7434_movie_s1.mp4",
+    "Video Project.gif",
+    "duplicate ZIP archives",
+    "training checkpoints and outputs"
+  ]
+}

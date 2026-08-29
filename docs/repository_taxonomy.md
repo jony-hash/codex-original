@@ -17,6 +17,16 @@
   They cannot authorize the formal identity runtime or hardware promotion.
 - `scripts/maintenance/` and `scripts/visualization/` contain version-neutral utilities.
 
+## Research reference assets
+
+- `research_assets/lightgen/science_adv7434/` is an immutable, read-only
+  evidence bundle containing the user-provided Science supplement and extracted
+  figure-source CSV files. Its `manifest.json` is consumed by the LightGen
+  paper-parameter and figure-source audit; a missing or tampered file rejects
+  claims based on that bundle.
+- Research reference assets are not runtime inputs, checkpoints, training data,
+  or formal acceptance evidence. They must not be auto-resolved by a CLI.
+
 ## Historical assets
 
 `experiments/archive/` is reference-only. Its `manifest.yaml` and

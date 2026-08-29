@@ -5,6 +5,16 @@ manifold autoencoder. It is an independent v2 research line; it is not a
 resumption of Package B3 and it does not replace the formal
 `label + 8D code` current runtime.
 
+## Pinned paper evidence
+
+The user-provided Science supplement and extracted figure-source CSV files are
+pinned in [`research_assets/lightgen/science_adv7434/`](../../research_assets/lightgen/science_adv7434/).
+Read its `manifest.json` before using the files for a paper comparison. The
+bundle is reference-only: it does not change this research line's source-status
+ledger, formal v2 geometry, or training authorization. The CSV files contain
+figure-level A.U. summaries and two-dimensional OLS display coordinates; they
+are not raw complex fields or training targets.
+
 ## Scientific question and contract
 
 The question is whether the complete formal 2+2 optical path can learn a

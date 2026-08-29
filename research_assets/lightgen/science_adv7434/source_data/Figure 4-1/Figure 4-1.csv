@@ -1,0 +1,5 @@
+﻿,Source data for Figure 4D,,
+,PSNR,,
+,min,mean,max 
+NeRF,7.58,21.32,31.49
+LightGen,8.07,13.79,23.45
