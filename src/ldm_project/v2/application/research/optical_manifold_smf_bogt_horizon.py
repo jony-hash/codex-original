@@ -357,7 +357,7 @@ def validate(args: argparse.Namespace) -> int:
         GateResult("schedule_5000_balanced_and_disjoint", tuple(data.schedule.shape) == (HORIZON_STEPS, BATCH_SIZE), {"schedule_sha256": data.manifest["schedule_sha256"]}),
         GateResult("wall_clock_observational_only", "wall_clock_seconds" in spec.payload["training"] and spec.payload["training"]["wall_clock_seconds"] == "observational_only", {}),
     )
-    hashes = {"formal_config": file_sha256(formal_path), "review_contract": file_sha256(review_path), "dataset_manifest": data.manifest["manifest_hash"], "schedule": data.manifest["schedule_sha256"], "mode_bank": mode_hash}
+    hashes = {"research_config": file_sha256(spec.path), "formal_config": file_sha256(formal_path), "review_contract": file_sha256(review_path), "dataset_manifest": data.manifest["manifest_hash"], "schedule": data.manifest["schedule_sha256"], "mode_bank": mode_hash}
     payload = _record(VALIDATION_SCHEMA, "passed" if all(g.passed for g in gates) else "invalid_harness", spec, formal, state, data, hashes, gates, "run_smf_bogt_horizon_preflight" if all(g.passed for g in gates) else None, None if all(g.passed for g in gates) else "scaled Chen horizon validation failed")
     payload["contract"].update({"formal_config": str(formal_path), "formal_config_sha256": hashes["formal_config"], "review_contract_sha256": hashes["review_contract"], "dataset_manifest": data.manifest, "mode_bank_sha256": mode_hash, "milestones": list(MILESTONES), "wall_clock": "observational_only"})
     _write_new(args.output, payload)
