@@ -39,6 +39,7 @@ def register_research(root: argparse._SubParsersAction) -> None:
     bogt_train = optical_actions.add_parser("smf-bogt-pilot-train", help="run the fail-closed four-arm scaled Chen-BOGT pilot")
     bogt_train.add_argument("--config", required=True)
     bogt_train.add_argument("--review-contract", required=True)
+    bogt_train.add_argument("--pilot-review-contract", required=True)
     bogt_train.add_argument("--validation-evidence", required=True)
     bogt_train.add_argument("--preflight-evidence", required=True)
     bogt_train.add_argument("--dataset-root", required=True)

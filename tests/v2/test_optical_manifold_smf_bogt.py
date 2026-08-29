@@ -102,8 +102,10 @@ def test_pilot_gate_results_are_fail_closed() -> None:
     metrics = {
         "mse_kl_op_heldout_mse": 1.0,
         "mse_op_heldout_mse": 1.0,
+        "mse_only_kl": 1.0,
         "mse_op_kl": 1.0,
         "mse_kl_kl": 0.9,
+        "mse_kl_op_kl": 0.9,
         "mse_only_op": 1.0,
         "mse_op_op": 0.8,
         "ols_effective_rank_retention": 0.95,
@@ -117,6 +119,52 @@ def test_pilot_gate_results_are_fail_closed() -> None:
     assert all(gate.passed for gate in gates)
     metrics["mse_kl_op_heldout_mse"] = 1.2
     assert not bogt.pilot_gate_results(metrics)[0].passed
+
+
+def test_pilot_gate_checks_both_factorial_kl_pairs() -> None:
+    metrics = {
+        "mse_kl_op_heldout_mse": 1.0,
+        "mse_op_heldout_mse": 1.0,
+        "mse_only_kl": 1.0,
+        "mse_kl_kl": 0.9,
+        "mse_op_kl": 1.0,
+        "mse_kl_op_kl": 0.96,
+        "mse_only_op": 1.0,
+        "mse_op_op": 0.8,
+        "ols_effective_rank_retention": 0.95,
+        "paired_mse": 0.5,
+        "template_control_mse": 0.6,
+        "cyclic_control_mse": 0.7,
+    }
+    gates = bogt.pilot_gate_results(metrics)
+    assert gates[1].passed
+    assert not gates[2].passed
+
+
+def test_phase_update_metrics_exposes_each_of_four_layers() -> None:
+    initial = {
+        "system.encoder.phase": torch.zeros(2, 1, 4, 4),
+        "system.decoder.phase": torch.zeros(2, 1, 4, 4),
+    }
+    final = {name: value.clone() for name, value in initial.items()}
+    final["system.encoder.phase"][0, 0, 0, 0] = 0.25
+    final["system.encoder.phase"][1, 0, 0, 0] = 0.5
+    final["system.decoder.phase"][0, 0, 0, 0] = 0.75
+    final["system.decoder.phase"][1, 0, 0, 0] = 1.0
+    updates = bogt._phase_update_metrics(initial, final)
+    assert set(updates) == {
+        "system.encoder.phase[0]",
+        "system.encoder.phase[1]",
+        "system.decoder.phase[0]",
+        "system.decoder.phase[1]",
+    }
+    assert updates["system.decoder.phase[1]"] == pytest.approx(1.0)
+
+
+def test_phase_quantization_uses_registered_eight_levels() -> None:
+    phase = torch.tensor([-0.1, 0.4, 2.5, 5.9])
+    quantized = bogt._phase_quantize(phase)
+    assert torch.all(torch.isin(quantized, torch.tensor(bogt.PHASE_LEVELS)))
 
 
 def test_loss_components_route_kl_to_coefficients_and_power_loss_to_planes() -> None:
@@ -140,3 +188,4 @@ def test_lazy_router_contains_new_actions() -> None:
     for action in ("smf-bogt-validate", "smf-bogt-preflight", "smf-bogt-pilot-train"):
         assert action in router or action in schema
     assert "optical_manifold_smf_bogt" in router
+    assert "--pilot-review-contract" in schema

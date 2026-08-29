@@ -38,6 +38,7 @@ REVIEW_SCHEMA = "lightgen_optical_manifold_smf_bogt_review.v1"
 VALIDATION_SCHEMA = "lightgen_optical_manifold_smf_bogt_validation.v1"
 PREFLIGHT_SCHEMA = "lightgen_optical_manifold_smf_bogt_preflight.v1"
 TRAINING_SCHEMA = "lightgen_optical_manifold_smf_bogt_training.v1"
+PILOT_REVIEW_SCHEMA = "lightgen_optical_manifold_smf_bogt_pilot_review.v1"
 HYPOTHESIS = "H-LOMA-CBOGT-S0"
 BRANCH = "research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1"
 EXPECTED_FORMAL_KIND = "formal_amplitude_finite_crop_identity"
@@ -58,6 +59,7 @@ CALIBRATED_PHASE = 0.0
 MIN_FREE_BYTES = 4 * 1024**3
 MAX_PEAK_BYTES = 5 * 1024**3
 MAX_PREFLIGHT_SECONDS = 600.0
+MAX_PILOT_SECONDS = 1800.0
 MAX_STORAGE_BYTES = 1024**3
 SOURCE_STATUSES = {
     "paper_reported",
@@ -246,6 +248,81 @@ def _load_review(path: str | Path, spec: Spec) -> dict[str, Any]:
     }
     if approved != expected_approved:
         raise ValueError("scaled Chen review does not approve this pilot contract")
+    return payload
+
+
+def _load_pilot_review(
+    path: str | Path,
+    spec: Spec,
+    *,
+    state: Mapping[str, Any],
+    validation_path: Path,
+    preflight_path: Path,
+    lifecycle_review_path: Path,
+    formal_path: Path,
+    data: ResearchData,
+    preflight_payload: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Load the post-preflight human authorization envelope.
+
+    This artifact is intentionally separate from the lifecycle review: it is
+    created only after the new validation/preflight pair exists and binds the
+    exact measured weights and input artifacts consumed by the pilot.
+    """
+    target = _resolve(path)
+    payload = json.loads(target.read_text(encoding="utf-8"))
+    if payload.get("schema") != PILOT_REVIEW_SCHEMA or payload.get("hypothesis") != HYPOTHESIS:
+        raise ValueError("scaled Chen pilot review schema or hypothesis is invalid")
+    if payload.get("reviewer_role") != "project_owner" or payload.get("decision") != "approve_bounded_scaled_chen_bogt_pilot":
+        raise ValueError("scaled Chen pilot review decision is invalid")
+    if payload.get("bounded_diagnostic_training_authorized") is not True or payload.get("training_authorized") is not False or payload.get("formal_promotion") is not False:
+        raise ValueError("scaled Chen pilot review authorization boundary is invalid")
+    contract = payload.get("approved_contract")
+    expected_contract = {
+        "arms": ["mse_only", "mse_op", "mse_kl", "mse_kl_op"],
+        "steps_per_arm": STEPS,
+        "logical_batch_size": BATCH_SIZE,
+        "microbatch_size": 1,
+        "optimizer": "Adam",
+        "learning_rate": LEARNING_RATE,
+        "zero_phase_seed": SEED,
+        "posthoc_phase_quantization": list(PHASE_LEVELS),
+        "post_pass_next_action": "manual_review_scaled_chen_bogt_1000_step_three_seed_continuation_contract",
+    }
+    if contract != expected_contract:
+        raise ValueError("scaled Chen pilot review does not approve this exact pilot contract")
+    preflight_contract = preflight_payload.get("contract")
+    if not isinstance(preflight_contract, Mapping):
+        raise ValueError("scaled Chen preflight contract is missing")
+    calibration_path = _resolve(preflight_contract["calibration_path"])
+    gradient_panels_path = _resolve(preflight_contract["gradient_panels_path"])
+    expected_bindings = {
+        "source_commit": state["commit"],
+        "source_branch": BRANCH,
+        "source_config_sha256": file_sha256(spec.path),
+        "source_formal_config_sha256": file_sha256(formal_path),
+        "source_lifecycle_review_sha256": file_sha256(lifecycle_review_path),
+        "source_validation_sha256": file_sha256(validation_path),
+        "source_preflight_sha256": file_sha256(preflight_path),
+        "source_dataset_manifest_hash": data.manifest["manifest_hash"],
+        "source_schedule_sha256": data.manifest["schedule_sha256"],
+        "source_calibration_sha256": file_sha256(calibration_path),
+        "source_gradient_panels_sha256": file_sha256(gradient_panels_path),
+    }
+    bindings = payload.get("source_bindings")
+    if bindings != expected_bindings:
+        raise ValueError("scaled Chen pilot review source binding is stale or tampered")
+    measured = payload.get("measured_preflight")
+    expected_measured = {
+        "alpha": float(preflight_contract["alpha"]),
+        "gamma": float(preflight_contract["gamma"]),
+        "gradient_panels": preflight_contract.get("panel_norms"),
+    }
+    if measured != expected_measured:
+        raise ValueError("scaled Chen pilot review does not bind measured preflight weights")
+    prohibited = payload.get("prohibited")
+    if prohibited != ["continuation", "generation", "fmf", "formal_promotion"]:
+        raise ValueError("scaled Chen pilot review prohibition boundary is invalid")
     return payload
 
 
@@ -612,7 +689,7 @@ def calibrate_loss_weights(mse_gradient_norm: float, objective_gradient_norm: fl
 
 
 def pilot_gate_results(metrics: Mapping[str, float | bool]) -> tuple[GateResult, ...]:
-    """Evaluate the pre-registered four-arm pilot gates without selecting a checkpoint."""
+    """Evaluate the pre-registered four-arm pilot scientific gates."""
     def number(name: str) -> float:
         value = metrics.get(name)
         if not isinstance(value, (int, float)) or not math.isfinite(float(value)):
@@ -621,8 +698,12 @@ def pilot_gate_results(metrics: Mapping[str, float | bool]) -> tuple[GateResult,
 
     mse_combined = number("mse_kl_op_heldout_mse")
     mse_op = number("mse_op_heldout_mse")
-    kl_no = number("mse_op_kl")
-    kl_yes = number("mse_kl_kl")
+    # The legacy pair names are retained only for the existing unit contract;
+    # a real pilot supplies both factorial KL comparisons explicitly.
+    kl_mse_no = number("mse_only_kl") if "mse_only_kl" in metrics else number("mse_op_kl")
+    kl_mse_yes = number("mse_kl_kl")
+    kl_op_no = number("mse_op_kl") if "mse_op_kl" in metrics else kl_mse_no
+    kl_op_yes = number("mse_kl_op_kl") if "mse_kl_op_kl" in metrics else kl_mse_yes
     op_no = number("mse_only_op")
     op_yes = number("mse_op_op")
     rank_retention = number("ols_effective_rank_retention")
@@ -633,13 +714,132 @@ def pilot_gate_results(metrics: Mapping[str, float | bool]) -> tuple[GateResult,
     frozen = bool(metrics.get("ols_exposure_calibration_evaluator_frozen", False))
     return (
         GateResult("combined_heldout_mse", mse_combined <= 1.10 * mse_op, {"combined": mse_combined, "mse_op": mse_op, "ratio": mse_combined / max(mse_op, 1.0e-30)}),
-        GateResult("aggregate_kl_reduction", kl_yes <= 0.95 * kl_no, {"with_kl": kl_yes, "without_kl": kl_no}),
+        GateResult("aggregate_kl_reduction_without_op", kl_mse_yes <= 0.95 * kl_mse_no, {"with_kl": kl_mse_yes, "without_kl": kl_mse_no}),
+        GateResult("aggregate_kl_reduction_with_op", kl_op_yes <= 0.95 * kl_op_no, {"with_kl": kl_op_yes, "without_kl": kl_op_no}),
         GateResult("optical_power_loss_reduction", op_yes <= 0.90 * op_no, {"with_op": op_yes, "without_op": op_no}),
         GateResult("ols_effective_rank_retention", rank_retention >= 0.90, {"retention": rank_retention}),
         GateResult("paired_mse_controls", paired < control and paired < cyclic, {"paired": paired, "template": control, "cyclic": cyclic}),
         GateResult("four_phase_update", phase_updated, {"updated": phase_updated}),
         GateResult("fixed_boundary_freeze", frozen, {"frozen": frozen}),
     )
+
+
+def _phase_update_metrics(initial: Mapping[str, torch.Tensor], final: Mapping[str, torch.Tensor]) -> dict[str, float]:
+    updates: dict[str, float] = {}
+    for name, before in initial.items():
+        after = final[name]
+        if before.shape != after.shape:
+            raise ValueError(f"phase shape changed for {name}")
+        if before.ndim != 4 or before.shape[0] != 2:
+            raise ValueError(f"scaled Chen phase must expose two layers for {name}")
+        for layer in range(2):
+            updates[f"{name}[{layer}]"] = float((after[layer] - before[layer]).abs().max().detach().cpu())
+    return updates
+
+
+def _set_phase_state(model: ScaledChenBOGTModel, state: Mapping[str, torch.Tensor]) -> None:
+    with torch.no_grad():
+        model.system.encoder.phase.copy_(state["system.encoder.phase"].to(model.system.encoder.phase))
+        model.system.decoder.phase.copy_(state["system.decoder.phase"].to(model.system.decoder.phase))
+
+
+def _phase_state(model: ScaledChenBOGTModel) -> dict[str, torch.Tensor]:
+    return {
+        "system.encoder.phase": model.system.encoder.phase.detach().clone(),
+        "system.decoder.phase": model.system.decoder.phase.detach().clone(),
+    }
+
+
+def _evaluate_model(
+    model: ScaledChenBOGTModel,
+    data: ResearchData,
+    calibration: Calibration,
+    indices: torch.Tensor,
+    device: torch.device,
+    class_templates: torch.Tensor,
+) -> dict[str, Any]:
+    """Evaluate one arm on heldout samples using microbatch-one optics."""
+    if indices.ndim != 1 or indices.numel() == 0:
+        raise ValueError("pilot evaluation requires non-empty one-dimensional indices")
+    if class_templates.shape != (10, 1, 200, 200):
+        raise ValueError("class templates must have shape [10,1,200,200]")
+    was_training = model.training
+    model.eval()
+    camera_values: list[torch.Tensor] = []
+    target_values: list[torch.Tensor] = []
+    coefficient_values: list[torch.Tensor] = []
+    z_values: list[torch.Tensor] = []
+    plane_values: list[torch.Tensor] = []
+    template_error = 0.0
+    first_camera: torch.Tensor | None = None
+    first_target: torch.Tensor | None = None
+    previous_target: torch.Tensor | None = None
+    cyclic_error = 0.0
+    paired_error = 0.0
+    count = 0
+    with torch.no_grad():
+        for batch_indices in indices.split(BATCH_SIZE):
+            rendered = base.render_intensity_batch(data.images.index_select(0, batch_indices))
+            amplitudes = rendered.amplitude
+            targets = rendered.target.float()
+            labels = data.labels.index_select(0, batch_indices)
+            for offset in range(amplitudes.shape[0]):
+                output = model(amplitudes[offset : offset + 1].to(device))
+                camera = output.camera.detach().cpu().float()
+                target = targets[offset : offset + 1]
+                if not torch.isfinite(camera).all() or not torch.isfinite(target).all():
+                    raise RuntimeError("scaled Chen pilot evaluation produced non-finite camera values")
+                camera_values.append(camera)
+                target_values.append(target)
+                paired_error += float(F.mse_loss(camera, target))
+                template = class_templates[int(labels[offset]) : int(labels[offset]) + 1]
+                template_error += float(F.mse_loss(template, target))
+                if first_camera is None:
+                    first_camera = camera.clone()
+                    first_target = target.clone()
+                if previous_target is not None:
+                    cyclic_error += float(F.mse_loss(camera, previous_target))
+                previous_target = target.clone()
+                coefficient_values.append(output.coefficients.detach().cpu())
+                z_values.append(normalize_port_power(output.coefficients.abs().square(), calibration.port_scale).detach().cpu())
+                plane_values.append(torch.stack([value.detach().reshape(-1)[0].cpu() for value in output.plane_powers]))
+                count += 1
+    if first_camera is None or first_target is None or previous_target is None:
+        raise RuntimeError("scaled Chen pilot evaluation returned no samples")
+    cyclic_error += float(F.mse_loss(first_camera, previous_target))
+    coefficients = torch.cat(coefficient_values, dim=0)
+    z = torch.cat(z_values, dim=0)
+    planes = torch.stack(plane_values, dim=0)
+    mean, variance = aggregate_moments(z)
+    camera_tensor = torch.cat(camera_values, dim=0)
+    target_tensor = torch.cat(target_values, dim=0)
+    metrics = {
+        "paired_mse": paired_error / count,
+        "cyclic_mse": cyclic_error / count,
+        "template_control_mse": template_error / count,
+        "kl": float(bogt_kl_surrogate(mean, variance)),
+        "op": float(lop_from_powers(tuple(planes[:, index] for index in range(5)), calibration.plane_reference)),
+        "coefficient_effective_rank": coefficient_effective_rank(coefficients),
+        "finite": bool(torch.isfinite(camera_tensor).all() and torch.isfinite(target_tensor).all() and torch.isfinite(coefficients).all() and torch.isfinite(planes).all()),
+        "evaluation_count": count,
+    }
+    if not all(math.isfinite(float(metrics[key])) for key in ("paired_mse", "cyclic_mse", "template_control_mse", "kl", "op", "coefficient_effective_rank")):
+        raise RuntimeError("scaled Chen pilot evaluation metrics are non-finite")
+    if was_training:
+        model.train()
+    return {"metrics": metrics, "coefficients": coefficients}
+
+
+def _class_templates(data: ResearchData) -> torch.Tensor:
+    """Build train-only per-class target templates for the negative control."""
+    train_indices = torch.arange(55000, dtype=torch.long)
+    labels = data.labels.index_select(0, train_indices)
+    templates: list[torch.Tensor] = []
+    for label in range(10):
+        selected = train_indices[labels == label]
+        image = data.images.index_select(0, selected).float().mean(dim=0, keepdim=True)
+        templates.append(base.render_intensity_batch(image).target.float()[0])
+    return torch.stack(templates, dim=0)
 
 
 def calibrate_objective_weights(panel_norms: Sequence[Mapping[str, float]], *, target_ratio: float = 0.10) -> dict[str, Any]:
@@ -736,6 +936,8 @@ def run_factorial_pilot(
     if str(device).startswith("cuda") and not torch.cuda.is_available():
         raise RuntimeError("scaled Chen pilot requires CUDA")
     results: dict[str, Any] = {}
+    started = time.monotonic()
+    torch.cuda.reset_peak_memory_stats(device) if str(device).startswith("cuda") and torch.cuda.is_available() else None
     checkpoint_root = Path(checkpoint_dir) if checkpoint_dir is not None else None
     if checkpoint_root is not None:
         checkpoint_root.mkdir(parents=True, exist_ok=True)
@@ -744,8 +946,10 @@ def run_factorial_pilot(
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(SEED)
         model = ScaledChenBOGTModel(formal).to(device)
+        initial_phase = _phase_state(model)
         optimizer = torch.optim.Adam((parameter for parameter in model.parameters() if parameter.requires_grad), lr=LEARNING_RATE)
         history: list[dict[str, float]] = []
+        checkpoint_hashes: dict[str, str] = {}
         for step in range(1, steps + 1):
             optimizer.zero_grad(set_to_none=True)
             total, values = _arm_loss(model, amplitude_schedule[step - 1].to(device), target_schedule[step - 1].to(device), calibration, arm, alpha=alpha, gamma=gamma)
@@ -762,10 +966,29 @@ def run_factorial_pilot(
                     checkpoint_path,
                     {"schema": "scaled_chen_bogt_pilot_checkpoint.v1", "arm": arm, "global_step": step, "model_state": model.state_dict(), "optimizer_state": optimizer.state_dict(), "phase_levels_rad": list(PHASE_LEVELS)},
                 )
+                checkpoint_hashes[str(step)] = file_sha256(checkpoint_path)
             if step in {1, steps}:
                 history.append(values)
-        results[arm] = {"history": history, "phase_norm": {name: float(parameter.detach().norm()) for name, parameter in model.named_parameters() if parameter.requires_grad}}
-    return {"schema": "scaled_chen_bogt_factorial_pilot.v1", "steps_per_arm": steps, "arms": results, "posthoc_phase_levels_rad": list(PHASE_LEVELS)}
+        final_phase = _phase_state(model)
+        results[arm] = {
+            "history": history,
+            "phase_norm": {name: float(parameter.detach().norm()) for name, parameter in model.named_parameters() if parameter.requires_grad},
+            "phase_updates": _phase_update_metrics(initial_phase, final_phase),
+            "final_state": {name: value.detach().cpu().clone() for name, value in model.state_dict().items()},
+            "checkpoint_hashes": checkpoint_hashes,
+        }
+        del optimizer, model
+        if str(device).startswith("cuda") and torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    peak = int(torch.cuda.max_memory_allocated(device)) if str(device).startswith("cuda") and torch.cuda.is_available() else 0
+    return {
+        "schema": "scaled_chen_bogt_factorial_pilot.v1",
+        "steps_per_arm": steps,
+        "arms": results,
+        "posthoc_phase_levels_rad": list(PHASE_LEVELS),
+        "peak_memory_bytes": peak,
+        "wall_seconds": time.monotonic() - started,
+    }
 
 
 def _record(
@@ -1034,14 +1257,16 @@ def pilot_train(args: argparse.Namespace) -> int:
     _assert_contract(spec)
     state = _git_state()
     _require_clean_branch(state)
-    review_path = _resolve(args.review_contract)
-    _load_review(review_path, spec)
-    formal, _ = _load_formal(spec)
-    formal_path = _resolve(spec.payload["formal_system_config"], base_path=spec.path.parent)
+    lifecycle_review_path = _resolve(args.review_contract)
+    _load_review(lifecycle_review_path, spec)
+    formal, formal_path = _load_formal(spec)
     data = _load_research_data(args.dataset_root)
-    expected_hashes = {"formal_config": file_sha256(formal_path), "review_contract": file_sha256(review_path), "dataset_manifest": data.manifest["manifest_hash"]}
+    validation_path = _resolve(args.validation_evidence)
+    preflight_path = _resolve(args.preflight_evidence)
+    expected_hashes = {"formal_config": file_sha256(formal_path), "review_contract": file_sha256(lifecycle_review_path), "dataset_manifest": data.manifest["manifest_hash"]}
     _require_evidence(args.validation_evidence, VALIDATION_SCHEMA, spec, state=state, dataset_manifest_hash=data.manifest["manifest_hash"], expected_hashes=expected_hashes)
-    preflight_payload = _require_evidence(args.preflight_evidence, PREFLIGHT_SCHEMA, spec, state=state, dataset_manifest_hash=data.manifest["manifest_hash"], expected_hashes=expected_hashes)
+    preflight_payload = _require_evidence(args.preflight_evidence, PREFLIGHT_SCHEMA, spec, state=state, dataset_manifest_hash=data.manifest["manifest_hash"], expected_hashes={**expected_hashes, "calibration": file_sha256(_resolve(json.loads(preflight_path.read_text(encoding="utf-8"))["contract"]["calibration_path"])), "gradient_panels": file_sha256(_resolve(json.loads(preflight_path.read_text(encoding="utf-8"))["contract"]["gradient_panels_path"]))})
+    _load_pilot_review(args.pilot_review_contract, spec, state=state, validation_path=validation_path, preflight_path=preflight_path, lifecycle_review_path=lifecycle_review_path, formal_path=formal_path, data=data, preflight_payload=preflight_payload)
     preflight_contract = preflight_payload["contract"]
     calibration_path = _resolve(preflight_contract["calibration_path"])
     calibration_payload = safe_torch_load(calibration_path)
@@ -1052,14 +1277,115 @@ def pilot_train(args: argparse.Namespace) -> int:
     rendered = base.render_intensity_batch(data.images.index_select(0, data.schedule.reshape(-1)))
     amplitudes = rendered.amplitude.reshape(STEPS, BATCH_SIZE, 1, 200, 200)
     targets = rendered.target.reshape(STEPS, BATCH_SIZE, 1, 200, 200)
-    results = run_factorial_pilot(formal, amplitudes, targets, calibration, device=args.device, alpha=float(preflight_contract["alpha"]), gamma=float(preflight_contract["gamma"]), checkpoint_dir=Path(args.output).parent / "checkpoints")
-    gates = (GateResult("pilot_scientific_gates_pending_review", False, {"completed": True}, "heldout, rank, and control measurements require the separate review step"), GateResult("formal_promotion", False, {"formal_promotion": False}))
-    input_hashes = {"research_config": file_sha256(spec.path), "formal_config": file_sha256(formal_path), "review_contract": file_sha256(review_path), "dataset_manifest": data.manifest["manifest_hash"], "calibration": file_sha256(calibration_path)}
-    payload = _record(TRAINING_SCHEMA, "pending_review", spec, formal, state=state, input_hashes=input_hashes, dataset_manifest_hash=data.manifest["manifest_hash"], gates=gates, action=None, reason="four-arm pilot complete; scientific gate review is required before continuation")
-    payload["contract"].update({"arms": list(spec.payload["training"]["arms"]), "calibration_sample_count": calibration.sample_count, "calibration_sha256": file_sha256(calibration_path), "alpha": float(preflight_contract["alpha"]), "gamma": float(preflight_contract["gamma"]), "pilot_results": results})
+    started = time.monotonic()
+    device = torch.device(args.device)
+    if not torch.cuda.is_available() or not str(device).startswith("cuda"):
+        raise RuntimeError("scaled Chen pilot requires CUDA; CPU is not a formal substitute")
+    free_bytes, total_bytes = torch.cuda.mem_get_info(device)
+    if free_bytes < MIN_FREE_BYTES:
+        raise RuntimeError(f"scaled Chen pilot requires at least {MIN_FREE_BYTES} free CUDA bytes")
+    torch.manual_seed(SEED)
+    torch.cuda.manual_seed_all(SEED)
+    torch.cuda.reset_peak_memory_stats(device)
+    results = run_factorial_pilot(formal, amplitudes, targets, calibration, device=device, alpha=float(preflight_contract["alpha"]), gamma=float(preflight_contract["gamma"]), checkpoint_dir=Path(args.output).parent / "checkpoints")
+    class_templates = _class_templates(data)
+    baseline_model = ScaledChenBOGTModel(formal).to(device)
+    baseline_state = {name: value.detach().clone() for name, value in baseline_model.ols.state_dict().items()}
+    baseline_eval = _evaluate_model(baseline_model, data, calibration, data.heldout_indices, device, class_templates)
+    baseline_rank = baseline_eval["metrics"]["coefficient_effective_rank"]
+    for arm, arm_result in results["arms"].items():
+        model = ScaledChenBOGTModel(formal).to(device)
+        model.load_state_dict(arm_result.pop("final_state"), strict=True)
+        state_before = _phase_state(model)
+        continuous_eval = _evaluate_model(model, data, calibration, data.heldout_indices, device, class_templates)
+        with torch.no_grad():
+            model.system.encoder.phase.copy_(_phase_quantize(model.system.encoder.phase))
+            model.system.decoder.phase.copy_(_phase_quantize(model.system.decoder.phase))
+        quantized_eval = _evaluate_model(model, data, calibration, data.heldout_indices, device, class_templates)
+        _set_phase_state(model, state_before)
+        frozen = all(torch.equal(value, baseline_state[name]) for name, value in model.ols.state_dict().items()) and all(not parameter.requires_grad for parameter in model.ols.parameters())
+        arm_result.update({
+            "continuous": continuous_eval["metrics"],
+            "quantized": quantized_eval["metrics"],
+            "ols_and_calibration_frozen": frozen,
+        })
+        del model
+        torch.cuda.empty_cache()
+    del baseline_model
+    torch.cuda.empty_cache()
+    metrics = {
+        "mse_kl_op_heldout_mse": results["arms"]["mse_kl_op"]["continuous"]["paired_mse"],
+        "mse_op_heldout_mse": results["arms"]["mse_op"]["continuous"]["paired_mse"],
+        "mse_only_kl": results["arms"]["mse_only"]["continuous"]["kl"],
+        "mse_kl_kl": results["arms"]["mse_kl"]["continuous"]["kl"],
+        "mse_op_kl": results["arms"]["mse_op"]["continuous"]["kl"],
+        "mse_kl_op_kl": results["arms"]["mse_kl_op"]["continuous"]["kl"],
+        "mse_only_op": results["arms"]["mse_only"]["continuous"]["op"],
+        "mse_op_op": results["arms"]["mse_op"]["continuous"]["op"],
+        "ols_effective_rank_retention": results["arms"]["mse_kl_op"]["continuous"]["coefficient_effective_rank"] / max(baseline_rank, 1.0e-30),
+        "paired_mse": results["arms"]["mse_kl_op"]["continuous"]["paired_mse"],
+        "template_control_mse": results["arms"]["mse_kl_op"]["continuous"]["template_control_mse"],
+        "cyclic_control_mse": results["arms"]["mse_kl_op"]["continuous"]["cyclic_mse"],
+    }
+    science_gates = pilot_gate_results(metrics)
+    all_finite = all(
+        value[variant]["finite"]
+        for value in results["arms"].values()
+        for variant in ("continuous", "quantized")
+    )
+    phase_updates = {
+        arm: result["phase_updates"]
+        for arm, result in results["arms"].items()
+    }
+    all_phase_updated = all(all(value > 0.0 for value in updates.values()) for updates in phase_updates.values())
+    frozen = all(result["ols_and_calibration_frozen"] for result in results["arms"].values())
+    harness_gates = (
+        GateResult("all_arms_completed_100_steps", all(len(result["history"]) == 2 and result["checkpoint_hashes"].keys() == {"50", "100"} for result in results["arms"].values()), {"steps_per_arm": STEPS}),
+        GateResult("four_phase_updates_nonzero", all_phase_updated, {"updates": phase_updates}),
+        GateResult("finite_continuous_and_quantized", all_finite, {}),
+        GateResult("fixed_ols_exposure_calibration_evaluator", frozen, {"evaluator_calls": 0}),
+        GateResult("cuda_free_memory", free_bytes >= MIN_FREE_BYTES, {"free_bytes": int(free_bytes), "total_bytes": int(total_bytes)}),
+        GateResult("cuda_peak_memory", int(torch.cuda.max_memory_allocated(device)) <= MAX_PEAK_BYTES, {"bytes": int(torch.cuda.max_memory_allocated(device))}),
+        GateResult("wall_time", time.monotonic() - started <= MAX_PILOT_SECONDS, {"seconds": time.monotonic() - started}),
+    )
+    gates = science_gates + harness_gates
+    if not all(gate.passed for gate in harness_gates):
+        status, action, reason = "invalid_harness", None, "scaled Chen pilot harness or resource gate failed"
+    elif not all(gate.passed for gate in science_gates):
+        status, action, reason = "valid_failed", "manual_review_scaled_chen_bogt_pilot_failure_attribution", "scaled Chen pilot scientific gate failed"
+    else:
+        status, action, reason = "passed", "manual_review_scaled_chen_bogt_1000_step_three_seed_continuation_contract", None
+    input_hashes = {
+        "research_config": file_sha256(spec.path),
+        "formal_config": file_sha256(formal_path),
+        "review_contract": file_sha256(lifecycle_review_path),
+        "pilot_review_contract": file_sha256(_resolve(args.pilot_review_contract)),
+        "validation_evidence": file_sha256(validation_path),
+        "preflight_evidence": file_sha256(preflight_path),
+        "dataset_manifest": data.manifest["manifest_hash"],
+        "calibration": file_sha256(calibration_path),
+        "gradient_panels": file_sha256(_resolve(preflight_contract["gradient_panels_path"])),
+    }
+    payload = _record(TRAINING_SCHEMA, status, spec, formal, state=state, input_hashes=input_hashes, dataset_manifest_hash=data.manifest["manifest_hash"], gates=gates, action=action, reason=reason)
+    payload["contract"].update({
+        "arms": list(spec.payload["training"]["arms"]),
+        "steps_per_arm": STEPS,
+        "calibration_sample_count": calibration.sample_count,
+        "calibration_sha256": file_sha256(calibration_path),
+        "gradient_panels_sha256": file_sha256(_resolve(preflight_contract["gradient_panels_path"])),
+        "alpha": float(preflight_contract["alpha"]),
+        "gamma": float(preflight_contract["gamma"]),
+        "baseline": {"zero_phase": baseline_eval["metrics"]},
+        "pilot_results": results,
+        "science_metrics": metrics,
+        "free_cuda_bytes_before": int(free_bytes),
+        "total_cuda_bytes": int(total_bytes),
+        "peak_memory_bytes": int(torch.cuda.max_memory_allocated(device)),
+        "wall_seconds": time.monotonic() - started,
+    })
     _write_new(args.output, payload)
     print(json.dumps(payload, indent=2, sort_keys=True))
-    return 0
+    return 0 if status in {"passed", "valid_failed"} else 2
 
 
 def dispatch(args: argparse.Namespace) -> int:
