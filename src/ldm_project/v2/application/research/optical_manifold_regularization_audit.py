@@ -324,7 +324,7 @@ def _assert_ancestor(commit: str, current: str) -> None:
 def _load_data(dataset_root: str | Path) -> RegularizationData:
     full_data = full_epoch._load_data(dataset_root)
     pilot_data = full_data.pilot_data
-    if pilot_data.manifest["manifest_hash"] != SOURCE_MANIFEST_HASH:
+    if not full_epoch.pilot.manifest_matches_hash(pilot_data.manifest, SOURCE_MANIFEST_HASH):
         raise ValueError("MNIST source manifest changed")
     train_labels = pilot_data.labels.index_select(0, pilot_data.train_indices)
     calibration: list[torch.Tensor] = []

@@ -387,7 +387,7 @@ def _full_manifest(data: pilot.PilotData, continuation: torch.Tensor, full_sched
 
 def _load_data(dataset_root: str | Path) -> FullEpochData:
     pilot_data = pilot._load_pilot_data(dataset_root)
-    if pilot_data.manifest["manifest_hash"] != SOURCE_MANIFEST_HASH:
+    if not pilot.manifest_matches_hash(pilot_data.manifest, SOURCE_MANIFEST_HASH):
         raise ValueError("pilot dataset manifest changed")
     continuation = _continuation_schedule(pilot_data)
     full_schedule = torch.cat((pilot_data.schedule, continuation))

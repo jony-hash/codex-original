@@ -209,7 +209,7 @@ def _load_formal(spec: ObserverSpec) -> tuple[FormalSystemConfig, Path]:
 def _load_data(dataset_root: str | Path) -> ObserverData:
     full_data = full_epoch._load_data(dataset_root)
     pilot_data = full_data.pilot_data
-    if pilot_data.manifest["manifest_hash"] != SOURCE_MANIFEST_HASH:
+    if not full_epoch.pilot.manifest_matches_hash(pilot_data.manifest, SOURCE_MANIFEST_HASH):
         raise ValueError("MNIST source manifest changed")
     heldout = pilot_data.heldout_indices
     labels = pilot_data.labels.index_select(0, heldout)

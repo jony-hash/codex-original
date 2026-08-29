@@ -169,3 +169,11 @@ The formal D2NN boundary is `finite_crop`, meaning a propagation-after-crop idea
 Capacity-map lifecycle rules and the current hypothesis ledger live in
 `docs/status/capacity_map_hypothesis_ledger.md`; research failures remain
 variant-local and cannot authorize formal acceptance.
+## Windows-native migration operating rules
+
+- The primary workspace is `D:\codex-original`; use PowerShell 7 and the Conda environment `D:\ANACONDA\envs\optical-generative-models-win` for development, tests, training, and Git operations.
+- Activate the Windows Conda environment before running Python or CUDA workloads so its `Library\bin`, `Scripts`, and `bin` directories are available on `PATH`.
+- Historical outputs live in `D:\LDM-Archive\codex-original\outputs` as verified per-directory tar archives. Do not expand or modify those archives unless a task explicitly requires restoring a named historical artifact.
+- `D:\codex-original\outputs` is reserved for current Windows-native runs and Git-tracked formal artifacts; use a distinct run directory for smoke tests.
+- The WSL checkout is a read-only rollback source through 2026-09-06. Do not develop, train, or generate new output there during this window. Do not unregister Ubuntu without a separate explicit approval.
+- Keep `docs\CURRENT_STATUS.md` and the migration record up to date with the current commit, changed files, validation results, experiment paths, and next step.

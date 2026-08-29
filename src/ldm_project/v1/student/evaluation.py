@@ -909,18 +909,18 @@ def run_one_shot_sample_stage(
     run_meta.update(
         {
             "one_shot_checkpoint": one_shot_checkpoint,
-            "one_shot_sample_metric_source": str(
-                metrics_path.relative_to(run_manager.run_dir)
-            ),
-            "one_shot_sample_artifact_metadata_source": str(
-                sample_artifact_metadata_path.relative_to(run_manager.run_dir)
-            ),
-            "one_shot_sample_optical_field_provenance_source": str(
-                optical_field_artifact_path.relative_to(run_manager.run_dir)
-            ),
+            "one_shot_sample_metric_source": metrics_path.relative_to(
+                run_manager.run_dir
+            ).as_posix(),
+            "one_shot_sample_artifact_metadata_source": sample_artifact_metadata_path.relative_to(
+                run_manager.run_dir
+            ).as_posix(),
+            "one_shot_sample_optical_field_provenance_source": optical_field_artifact_path.relative_to(
+                run_manager.run_dir
+            ).as_posix(),
             "one_shot_sample_optical_field_status": optical_field_artifact["status"],
             "one_shot_sample_optical_field_images": {
-                name: str(path.relative_to(run_manager.run_dir))
+                name: path.relative_to(run_manager.run_dir).as_posix()
                 for name, path in optical_field_paths.items()
             },
         }

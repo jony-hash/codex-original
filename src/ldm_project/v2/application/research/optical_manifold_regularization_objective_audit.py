@@ -325,7 +325,9 @@ def _load_data(dataset_root: str | Path) -> ObjectiveAuditData:
     regularization_data = audit._load_data(dataset_root)
     pilot_training_data = pilot._load_data(dataset_root)
     pilot_data = full_data.pilot_data
-    if pilot_data.manifest["manifest_hash"] != pilot.SOURCE_MANIFEST_HASH:
+    if not full_epoch.pilot.manifest_matches_hash(
+        pilot_data.manifest, pilot.SOURCE_MANIFEST_HASH
+    ):
         raise ValueError("MNIST source manifest changed")
     schedule = pilot._pilot_schedule(pilot_data.train_indices, pilot_data.labels)
     train_labels = pilot_data.labels.index_select(0, pilot_data.train_indices)

@@ -16,7 +16,6 @@ import hashlib
 import inspect
 import json
 import math
-import resource
 import sys
 import time
 from pathlib import Path
@@ -43,6 +42,7 @@ from .package_b3_vae import (
     require_clean,
     require_cuda,
 )
+from .resource_compat import max_rss_bytes
 
 
 PROGRAM = "package-b3-t3"
@@ -121,7 +121,7 @@ def _state_hash(model: torch.nn.Module) -> str:
 def _resource_snapshot(device: torch.device) -> dict[str, int]:
     return {
         "cuda_peak_bytes": int(torch.cuda.max_memory_allocated(device)),
-        "host_rss_peak_bytes": int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024),
+        "host_rss_peak_bytes": max_rss_bytes(),
     }
 
 

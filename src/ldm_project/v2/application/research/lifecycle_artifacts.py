@@ -790,7 +790,7 @@ def write_posterior(
         import torch
 
         torch.save(payload, temporary_pt)
-        with temporary_pt.open("rb") as handle:
+        with temporary_pt.open("r+b") as handle:
             os.fsync(handle.fileno())
         artifact_hash = file_sha256(temporary_pt)
         temporary_json.write_text(
@@ -804,7 +804,7 @@ def write_posterior(
             + "\n",
             encoding="utf-8",
         )
-        with temporary_json.open("rb") as handle:
+        with temporary_json.open("r+b") as handle:
             os.fsync(handle.fileno())
         os.replace(temporary_pt, target)
         # The sidecar is the commit marker: consumers reject the intermediate state.

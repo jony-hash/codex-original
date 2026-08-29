@@ -13,7 +13,6 @@ import inspect
 import json
 import math
 import os
-import resource
 import statistics
 import subprocess
 import tempfile
@@ -47,6 +46,7 @@ from .package_b3_vae import (
     file_sha256,
     require_clean,
 )
+from .resource_compat import max_rss_bytes
 
 
 PROGRAM = "package-b3-throughput"
@@ -409,7 +409,7 @@ class _SystemSampler:
     def _run(self) -> None:
         while not self._stop.is_set():
             sample = _gpu_snapshot()
-            sample["rss_bytes"] = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024)
+            sample["rss_bytes"] = max_rss_bytes()
             sample["time"] = _now()
             self.samples.append(sample)
             self._stop.wait(1.0)
@@ -619,7 +619,7 @@ def _profile(args: argparse.Namespace) -> int:
             development_batch_values.append((time.perf_counter() - started) * 1000.0)
 
     cuda_peak = int(torch.cuda.max_memory_allocated(device))
-    rss_peak = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024)
+    rss_peak = max_rss_bytes()
     phase_values: dict[str, list[float]] = {
         "data_index_preparation": data_index_values,
         "dataloader_wait": loader_wait_values,

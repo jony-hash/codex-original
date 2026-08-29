@@ -12,9 +12,7 @@ import hashlib
 import json
 import math
 import os
-import resource
 import subprocess
-import sys
 import tempfile
 import time
 from pathlib import Path
@@ -33,6 +31,7 @@ from ..teacher.software_vae import (
     reconstruction_loss,
     state_content_hash,
 )
+from .resource_compat import max_rss_bytes
 
 
 PROGRAM = "teacher-first-stage-recovery"
@@ -263,8 +262,7 @@ def _select_development(
 
 
 def _max_rss_bytes() -> int:
-    value = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-    return int(value * (1024 if sys.platform != "darwin" else 1))
+    return max_rss_bytes()
 
 
 def _base(

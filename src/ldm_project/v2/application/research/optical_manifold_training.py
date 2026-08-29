@@ -353,6 +353,22 @@ def _pilot_manifest(
     return manifest
 
 
+def manifest_matches_hash(manifest: Mapping[str, Any], expected_hash: str) -> bool:
+    """Match a legacy manifest while allowing the dataset root to move.
+
+    The original pilot evidence was created under WSL and included its
+    absolute dataset path in the canonical hash.  All tensor and split hashes
+    remain strict; only that environment-specific root is replayed for the
+    legacy comparison on a native Windows checkout.
+    """
+    if manifest.get("manifest_hash") == expected_hash:
+        return True
+    candidate = dict(manifest)
+    candidate.pop("manifest_hash", None)
+    candidate["dataset_root"] = "/home/dingzhen/projects/codex-original/data"
+    return canonical_sha256(candidate) == expected_hash
+
+
 def _load_pilot_data(dataset_root: str | Path) -> PilotData:
     images, labels = base.load_local_mnist(dataset_root, train=True)
     if tuple(images.shape) != (60000, 1, 28, 28) or tuple(labels.shape) != (60000,):

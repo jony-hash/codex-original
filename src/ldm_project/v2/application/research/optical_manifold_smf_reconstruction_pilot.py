@@ -384,7 +384,11 @@ def _load_source(spec: PilotSpec, formal_path: Path, current_commit: str) -> Sou
 
 def _load_data(dataset_root: str | Path) -> PilotData:
     images, labels, manifest = canary._load_authoritative_pilot_data(dataset_root)
-    if manifest.get("manifest_hash") != SOURCE_MANIFEST_HASH or manifest.get("train_count") != 55000 or manifest.get("validation_count") != 5000:
+    if (
+        not full_epoch.pilot.manifest_matches_hash(manifest, SOURCE_MANIFEST_HASH)
+        or manifest.get("train_count") != 55000
+        or manifest.get("validation_count") != 5000
+    ):
         raise ValueError("SMF reconstruction requires the authoritative 55k/5k MNIST split")
     adaptive_data = adaptive._load_data(dataset_root)
     pilot_data = adaptive_data.objective_data.full_data.pilot_data

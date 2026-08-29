@@ -395,7 +395,9 @@ def _load_source(
 
 def _load_data(dataset_root: str | Path) -> AuditData:
     full_data = full_epoch._load_data(dataset_root)
-    if full_data.pilot_data.manifest["manifest_hash"] != SOURCE_MANIFEST_HASH:
+    if not full_epoch.pilot.manifest_matches_hash(
+        full_data.pilot_data.manifest, SOURCE_MANIFEST_HASH
+    ):
         raise ValueError("MNIST source manifest changed")
     if full_data.visual_indices.numel() != EXPECTED_VISUAL:
         raise ValueError("visual panel count mismatch")

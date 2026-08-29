@@ -441,7 +441,13 @@ def _write_new(path: str | Path, payload: Mapping[str, Any]) -> None:
 def _load_authoritative_pilot_data(dataset_root: str | Path) -> tuple[torch.Tensor, torch.Tensor, dict[str, Any]]:
     """Load the 55k/5k split manifest consumed by the canary."""
     pilot_data = full_epoch.pilot._load_pilot_data(dataset_root)
-    return pilot_data.images, pilot_data.labels, pilot_data.manifest
+    if not full_epoch.pilot.manifest_matches_hash(
+        pilot_data.manifest, SOURCE_MANIFEST_HASH
+    ):
+        raise ValueError("SMF canary MNIST source manifest changed")
+    manifest = dict(pilot_data.manifest)
+    manifest["manifest_hash"] = SOURCE_MANIFEST_HASH
+    return pilot_data.images, pilot_data.labels, manifest
 
 
 def validate(args: argparse.Namespace) -> int:
@@ -456,7 +462,7 @@ def validate(args: argparse.Namespace) -> int:
     # representative manifest is a different schema and is intentionally not
     # a source-lineage input for this lifecycle.
     images, labels, manifest = _load_authoritative_pilot_data(args.dataset_root)
-    if manifest["manifest_hash"] != SOURCE_MANIFEST_HASH:
+    if not full_epoch.pilot.manifest_matches_hash(manifest, SOURCE_MANIFEST_HASH):
         raise ValueError("SMF canary MNIST manifest mismatch")
     data = _load_data(args.dataset_root)
     model = base.IdentityOpticalManifoldAutoencoder(formal)

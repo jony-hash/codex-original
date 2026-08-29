@@ -689,5 +689,5 @@ def save_post_train_samples(
     )
     metrics_path = run_manager.save_artifact_json("post_train_sample_metrics", sample_metrics)
     return {
-        "sample_metric_source": str(metrics_path.relative_to(run_manager.run_dir)),
+        "sample_metric_source": metrics_path.relative_to(run_manager.run_dir).as_posix(),
     }
