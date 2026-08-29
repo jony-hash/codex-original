@@ -378,7 +378,7 @@ def validate(args: argparse.Namespace) -> int:
         GateResult("clean_lineage", state["clean"] and state["branch"] == BRANCH and state["commit"] != SOURCE_COMMIT, {"commit": state["commit"]}),
         GateResult("source_attempt_05_valid_failed", source_training["evidence"]["status"] == "valid_failed", {"source_commit": SOURCE_COMMIT}),
         GateResult("geometry_and_fixed_boundary", tuple(model.system.encoder.phase.shape) == (2, 1, 100, 100) and tuple(model.system.decoder.phase.shape) == (2, 1, 100, 100) and all(not parameter.requires_grad for parameter in model.ols.parameters()), {}),
-        GateResult("panel_isolation", data.manifest["manifest_hash"] == data.data.manifest["manifest_hash"] and len(data.selection_panels) == len(data.confirmation_panels) == PANEL_COUNT, data.manifest),
+        GateResult("panel_isolation", data.manifest["dataset_manifest_hash"] == data.data.manifest["manifest_hash"] and len(data.selection_panels) == len(data.confirmation_panels) == PANEL_COUNT, data.manifest),
         GateResult("source_artifacts_bound", all(path.exists() for path in source_artifacts.values()), {name: file_sha256(path) for name, path in source_artifacts.items()}),
         GateResult("no_update_boundary", True, {"optimizer_created": False, "cuda_context_created": False}),
     )
