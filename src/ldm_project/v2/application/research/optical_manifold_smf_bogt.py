@@ -1386,7 +1386,7 @@ def validate(args: argparse.Namespace) -> int:
         GateResult("power_accounting_and_mode_condition", math.isfinite(gram_condition) and gram_condition < 1.0e12, {"gram_condition": gram_condition, "mode_area_m2": area}),
         GateResult("no_electronic_vae_or_digital_decoder", no_electronic_posterior and not hasattr(model, "digital_decoder"), {"forbidden_keys": sorted(FORBIDDEN_ELECTRONIC_VAE_KEYS)}),
         GateResult("fixed_layer_transmission", abs(FIELD_TRANSMISSION**2 - POWER_TRANSMISSION) < 1.0e-12, {"power_transmission": POWER_TRANSMISSION}),
-        GateResult("phase_level_contract", tuple(PHASE_LEVELS) == tuple(_phase_quantize(torch.tensor(PHASE_LEVELS)).tolist()), {"levels_rad": list(PHASE_LEVELS)}),
+        GateResult("phase_level_contract", bool(torch.allclose(_phase_quantize(torch.tensor(PHASE_LEVELS, dtype=torch.float64)), torch.tensor(PHASE_LEVELS, dtype=torch.float64), atol=1.0e-12, rtol=1.0e-12)), {"levels_rad": list(PHASE_LEVELS)}),
         GateResult("source_statuses_explicit", all(value in SOURCE_STATUSES for value in spec.payload["source"]["status"].values()), {"passed": True}),
         GateResult("split_isolation", data.manifest["calibration_and_schedule_disjoint"] and data.manifest["heldout_excluded"], {"manifest_hash": data.manifest["manifest_hash"]}),
     )
