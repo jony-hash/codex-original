@@ -442,7 +442,7 @@ def _statistical_audit_panels(data: ResearchData, *, batch_size: int, count: int
     if offset < 0 or any(values.numel() < offset + count * per_label for values in available_by_label):
         raise ValueError("insufficient fresh train-only statistical audit samples")
     panels: list[torch.Tensor] = []
-    shuffled_by_label = [values.index_select(0, values.new_tensor(torch.randperm(values.numel(), generator=torch.Generator(device="cpu").manual_seed(seed + label)))) for label, values in enumerate(available_by_label)]
+    shuffled_by_label = [values.index_select(0, torch.randperm(values.numel(), generator=torch.Generator(device="cpu").manual_seed(seed + label))) for label, values in enumerate(available_by_label)]
     for panel in range(count):
         chunks: list[torch.Tensor] = []
         for values in shuffled_by_label:
@@ -1545,7 +1545,7 @@ def preflight(args: argparse.Namespace) -> int:
     resumed_optimizer.load_state_dict(resume_optimizer_state)
     step_values.append(update(resumed_model, resumed_optimizer))
     resume_ok = all(bool(torch.isfinite(value).all()) for value in resumed_model.parameters() if value.requires_grad)
-    phase_updates = {name: float((value - start_state[name]).abs().max().detach().cpu()) for name, value in model.named_parameters() if value.requires_grad}
+    phase_updates = _phase_update_metrics(start_state, _phase_state(model))
     phase_ok = all(value > 0.0 for value in phase_updates.values())
     with torch.no_grad():
         probe = model(amplitudes[:1]).encoder_records[-1]
