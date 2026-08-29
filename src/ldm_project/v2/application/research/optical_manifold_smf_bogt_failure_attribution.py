@@ -20,6 +20,7 @@ from typing import Any, Mapping, Sequence
 
 import torch
 import yaml
+from torch.nn import functional as F
 
 from ...evidence import (
     EvidenceContextV2,
@@ -278,27 +279,62 @@ def _flatten_gradients(model: bogt.ScaledChenBOGTModel) -> torch.Tensor:
     return torch.cat(values)
 
 
-def _objective_gradient(model: bogt.ScaledChenBOGTModel, amplitudes: torch.Tensor, targets: torch.Tensor, calibration: bogt.Calibration, objective: str) -> tuple[torch.Tensor, float]:
+def _flatten_gradient_values(model: bogt.ScaledChenBOGTModel, gradients: Sequence[torch.Tensor | None]) -> torch.Tensor:
+    values = [torch.zeros_like(parameter).reshape(-1) if gradient is None else gradient.detach().reshape(-1) for parameter, gradient in zip(_phase_parameters(model), gradients, strict=True)]
+    return torch.cat(values)
+
+
+def _objective_gradients(model: bogt.ScaledChenBOGTModel, amplitudes: torch.Tensor, targets: torch.Tensor, calibration: bogt.Calibration, objective: str) -> tuple[tuple[torch.Tensor | None, ...], float]:
     if objective not in {"mse", "kl", "op"}:
         raise ValueError("unknown attribution objective")
-    _clear_grads(model)
-    mse_weight = 1.0 if objective == "mse" else 0.0
-    alpha = 1.0 if objective == "kl" else 0.0
-    gamma = 1.0 if objective == "op" else 0.0
-    value, metrics = bogt._arm_loss(model, amplitudes, targets, calibration, "mse_kl_op", alpha=alpha, gamma=gamma, mse_weight=mse_weight)
-    if not torch.isfinite(value):
-        raise RuntimeError(f"non-finite attribution {objective} objective")
-    value.backward()
-    vector = _flatten_gradients(model)
-    _clear_grads(model)
-    return vector, float(metrics[objective])
+    if amplitudes.ndim != 4 or amplitudes.shape[0] != targets.shape[0] or amplitudes.shape[0] < 2:
+        raise ValueError("attribution objective requires a logical batch of at least two samples")
+    parameters = _phase_parameters(model)
+    accum = [torch.zeros_like(parameter) for parameter in parameters]
+    batch = amplitudes.shape[0]
+    values: list[float] = []
+    if objective in {"mse", "op"}:
+        for index in range(batch):
+            output = model(amplitudes[index : index + 1])
+            scalar = F.mse_loss(output.camera, targets[index : index + 1]) if objective == "mse" else bogt.lop_from_powers(output.plane_powers, calibration.plane_reference)
+            gradients = torch.autograd.grad(scalar, parameters, allow_unused=True)
+            for slot, gradient in zip(accum, gradients, strict=True):
+                if gradient is not None:
+                    slot.add_(gradient.detach() / batch)
+            values.append(float(scalar.detach()))
+        return tuple(accum), sum(values) / batch
+    with torch.no_grad():
+        detached_outputs = [model(amplitudes[index : index + 1]) for index in range(batch)]
+        detached_z = torch.cat([bogt.normalize_port_power(output.coefficients.abs().square(), calibration.port_scale) for output in detached_outputs], dim=0)
+        mean, variance = bogt.aggregate_moments(detached_z)
+        batch_kl = bogt.bogt_kl_surrogate(mean, variance)
+    proxy = detached_z.detach().requires_grad_(True)
+    with torch.enable_grad():
+        proxy_kl = bogt.bogt_kl_surrogate(*bogt.aggregate_moments(proxy))
+    kl_gradient = torch.autograd.grad(proxy_kl, proxy)[0].detach()
+    for index in range(batch):
+        output = model(amplitudes[index : index + 1])
+        live_z = bogt.normalize_port_power(output.coefficients.abs().square(), calibration.port_scale)
+        scalar = (live_z * kl_gradient[index : index + 1].to(live_z)).sum()
+        gradients = torch.autograd.grad(scalar, parameters, allow_unused=True)
+        for slot, gradient in zip(accum, gradients, strict=True):
+            if gradient is not None:
+                slot.add_(gradient.detach())
+    return tuple(accum), float(batch_kl.detach())
+
+
+def _objective_gradient(model: bogt.ScaledChenBOGTModel, amplitudes: torch.Tensor, targets: torch.Tensor, calibration: bogt.Calibration, objective: str) -> tuple[torch.Tensor, float]:
+    gradients, value = _objective_gradients(model, amplitudes, targets, calibration, objective)
+    return _flatten_gradient_values(model, gradients), value
 
 
 def _gradient_report(model: bogt.ScaledChenBOGTModel, amplitudes: torch.Tensor, targets: torch.Tensor, calibration: bogt.Calibration) -> dict[str, Any]:
     vectors: dict[str, torch.Tensor] = {}
     values: dict[str, float] = {}
+    gradients_by_objective: dict[str, tuple[torch.Tensor | None, ...]] = {}
     for objective in ("mse", "kl", "op"):
-        vectors[objective], values[objective] = _objective_gradient(model, amplitudes, targets, calibration, objective)
+        gradients_by_objective[objective], values[objective] = _objective_gradients(model, amplitudes, targets, calibration, objective)
+        vectors[objective] = _flatten_gradient_values(model, gradients_by_objective[objective])
     norms = {name: float(vector.norm()) for name, vector in vectors.items()}
     if any(not math.isfinite(value) or value <= 0.0 for value in norms.values()):
         raise RuntimeError("attribution gradient norm is non-finite or non-positive")
@@ -307,25 +343,11 @@ def _gradient_report(model: bogt.ScaledChenBOGTModel, amplitudes: torch.Tensor, 
         "mse_op": float(torch.dot(vectors["mse"], vectors["op"]) / (vectors["mse"].norm() * vectors["op"].norm())),
         "kl_op": float(torch.dot(vectors["kl"], vectors["op"]) / (vectors["kl"].norm() * vectors["op"].norm())),
     }
-    layer_norms = {objective: _layer_gradient_norms(model, amplitudes, targets, calibration, objective) for objective in ("mse", "kl", "op")}
+    layer_norms = {objective: [float(gradients[0][layer].norm()) for layer in range(2)] + [float(gradients[1][layer].norm()) for layer in range(2)] for objective, gradients in gradients_by_objective.items()}
     finite = all(math.isfinite(value) for value in (*norms.values(), *cosines.values(), *(value for group in layer_norms.values() for value in group)))
     kl_boundary = layer_norms["kl"][2] == 0.0 and layer_norms["kl"][3] == 0.0 and all(value > 0.0 for value in layer_norms["kl"][:2])
     op_boundary = all(value > 0.0 for value in layer_norms["op"])
     return {"values": values, "norms": norms, "cosines": cosines, "layer_norms": layer_norms, "finite": finite, "kl_encoder_only": kl_boundary, "op_four_layers": op_boundary, "vectors": vectors}
-
-
-def _layer_gradient_norms(model: bogt.ScaledChenBOGTModel, amplitudes: torch.Tensor, targets: torch.Tensor, calibration: bogt.Calibration, objective: str) -> list[float]:
-    _clear_grads(model)
-    mse_weight = 1.0 if objective == "mse" else 0.0
-    alpha = 1.0 if objective == "kl" else 0.0
-    gamma = 1.0 if objective == "op" else 0.0
-    value, _ = bogt._arm_loss(model, amplitudes, targets, calibration, "mse_kl_op", alpha=alpha, gamma=gamma, mse_weight=mse_weight)
-    value.backward()
-    encoder_grad = model.system.encoder.phase.grad
-    decoder_grad = model.system.decoder.phase.grad
-    result = [float(encoder_grad[layer].norm()) if encoder_grad is not None else 0.0 for layer in range(2)] + [float(decoder_grad[layer].norm()) if decoder_grad is not None else 0.0 for layer in range(2)]
-    _clear_grads(model)
-    return result
 
 
 def _candidate_report(base_report: Mapping[str, Any], alpha: float, gamma: float) -> dict[str, Any]:
