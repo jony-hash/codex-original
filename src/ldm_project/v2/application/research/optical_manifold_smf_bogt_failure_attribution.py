@@ -398,7 +398,7 @@ def validate(args: argparse.Namespace) -> int:
     _require_clean_branch(state)
     review = _load_review(args.review_contract, spec)
     source_training, source_training_path = _load_source_training(spec)
-    source_artifacts = _load_source_artifacts(spec)
+        source_artifacts = _load_source_artifacts(spec)
     data = _load_data(spec, args.dataset_root)
     formal, formal_path = bogt._load_formal(spec)
     model = bogt.ScaledChenBOGTModel(formal)
@@ -483,7 +483,22 @@ def run(args: argparse.Namespace) -> int:
                 torch.cuda.empty_cache()
         selection_candidates = [report for panel in all_reports["selection"] if panel["finite"] and panel["state_unchanged"] for report in panel["dose_reports"] if report["compatible"] and report["alpha_multiplier"] > 1.0 and report["gamma_multiplier"] > 1.0]
         confirmation_candidates = [report for panel in all_reports["confirmation"] if panel["finite"] and panel["state_unchanged"] for report in panel["dose_reports"] if report["compatible"] and report["alpha_multiplier"] > 1.0 and report["gamma_multiplier"] > 1.0]
-        common = {(item["alpha_multiplier"], item["gamma_multiplier"]) for item in selection_candidates} & {(item["alpha_multiplier"], item["gamma_multiplier"]) for item in confirmation_candidates}
+        source_panel_payload = safe_torch_load(source_artifacts["gradient_panels"])
+        source_panels = source_panel_payload.get("panels")
+        if source_panel_payload.get("dataset_manifest_hash") != data.data.manifest["manifest_hash"] or not isinstance(source_panels, list) or len(source_panels) != PANEL_COUNT:
+            raise ValueError("source gradient-panel artifact has an invalid panel contract")
+        source_compatible: set[tuple[float, float]] = set()
+        for alpha_multiplier in DOSE_MULTIPLIERS:
+            for gamma_multiplier in DOSE_MULTIPLIERS:
+                ratios = []
+                for panel in source_panels:
+                    norms = panel.get("gradient_norms", {})
+                    if set(norms) != {"mse", "kl", "op"} or any(not math.isfinite(float(norms[name])) or float(norms[name]) <= 0.0 for name in norms):
+                        raise ValueError("source gradient-panel norms are invalid")
+                    ratios.append({"kl": PREFLIGHT_ALPHA * alpha_multiplier * float(norms["kl"]) / float(norms["mse"]), "op": PREFLIGHT_GAMMA * gamma_multiplier * float(norms["op"]) / float(norms["mse"])})
+                if all(MIN_RATIO <= value <= MAX_RATIO for panel in ratios for value in panel.values()):
+                    source_compatible.add((alpha_multiplier, gamma_multiplier))
+        common = ({(item["alpha_multiplier"], item["gamma_multiplier"]) for item in selection_candidates} & {(item["alpha_multiplier"], item["gamma_multiplier"]) for item in confirmation_candidates}) & source_compatible
         selected = None
         if common:
             scored = []
@@ -499,6 +514,7 @@ def run(args: argparse.Namespace) -> int:
         storage = sum(item.stat().st_size for item in output.parent.rglob("*") if item.is_file()) if output.parent.exists() else 0
         gates = (
             GateResult("finite_gradient_panels", all(panel["finite"] for split in all_reports.values() for panel in split), {"selection": [panel["finite"] for panel in all_reports["selection"]], "confirmation": [panel["finite"] for panel in all_reports["confirmation"]]}),
+            GateResult("source_preflight_panel_compatibility", bool(source_compatible), {"compatible_multipliers": sorted([list(item) for item in source_compatible])}),
             GateResult("selection_confirmation_common_candidate", selected is not None, {"selected": selected}),
             GateResult("model_state_unchanged", all(panel["state_unchanged"] for split in all_reports.values() for panel in split), {}),
             GateResult("fixed_boundary_and_evaluator", all(panel["finite"] for split in all_reports.values() for panel in split), {"evaluator_calls": 0}),
@@ -520,6 +536,7 @@ def run(args: argparse.Namespace) -> int:
             "selection_panels": all_reports["selection"],
             "confirmation_panels": all_reports["confirmation"],
             "selected": selected,
+            "source_preflight_compatible_multipliers": sorted([list(item) for item in source_compatible]),
             "candidate_multipliers": list(DOSE_MULTIPLIERS),
             "free_cuda_bytes_before": int(free),
             "total_cuda_bytes": int(total_memory),
