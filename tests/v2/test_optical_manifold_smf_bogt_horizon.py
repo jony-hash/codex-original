@@ -29,6 +29,8 @@ def test_horizon_schedule_uses_five_thousand_balanced_steps() -> None:
     assert schedule.shape == (5000, 10)
     assert not torch.isin(calibration, schedule).any()
     assert torch.equal(labels.index_select(0, schedule.reshape(-1)), torch.arange(10).repeat(5000))
+    assert schedule[:, 5].unique().numel() == 4863
+    assert all(schedule[:, label].unique().numel() == 5000 for label in range(10) if label != 5)
 
 
 def test_horizon_contract_rejects_hard_wall_gate() -> None:

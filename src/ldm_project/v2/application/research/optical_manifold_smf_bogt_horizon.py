@@ -90,7 +90,7 @@ def _assert_contract(spec: HorizonSpec) -> None:
         "microbatch_size": 1,
         "horizon_steps": HORIZON_STEPS,
         "milestones": list(MILESTONES),
-        "schedule": "class_balanced_one_per_label_without_replacement",
+        "schedule": "class_balanced_one_per_label_with_bounded_replacement_for_horizon",
         "schedule_seed": SEED,
         "calibration_and_schedule_disjoint": True,
         "input_shape": [1, 28, 28],
@@ -205,10 +205,18 @@ def _horizon_schedule(labels: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]
         candidates = train[labels.index_select(0, train) == label]
         shuffled = candidates.index_select(0, torch.randperm(candidates.numel(), generator=generator))
         calibration_parts.append(shuffled[:100])
-        schedule_parts.append(shuffled[100 : 100 + HORIZON_STEPS])
+        available = shuffled[100:]
+        if available.numel() >= HORIZON_STEPS:
+            schedule_parts.append(available[:HORIZON_STEPS])
+        else:
+            # The first 55k MNIST slice contains only 4,963 examples of digit
+            # 5.  Preserve a balanced ten-class logical batch while allowing
+            # the smallest class to repeat deterministically after exhaustion.
+            repeats = (HORIZON_STEPS + available.numel() - 1) // available.numel()
+            schedule_parts.append(available.repeat(repeats)[:HORIZON_STEPS])
     calibration = torch.cat(calibration_parts)
     schedule = torch.stack([torch.stack([schedule_parts[label][step] for label in range(10)]) for step in range(HORIZON_STEPS)])
-    if torch.unique(calibration).numel() != calibration.numel() or torch.unique(schedule).numel() != schedule.numel() or torch.isin(calibration, schedule).any():
+    if torch.unique(calibration).numel() != calibration.numel() or torch.isin(calibration, schedule).any():
         raise ValueError("horizon calibration and schedule overlap")
     if not torch.equal(labels.index_select(0, schedule.reshape(-1)), torch.arange(10).repeat(HORIZON_STEPS)):
         raise ValueError("horizon schedule is not class balanced")

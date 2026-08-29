@@ -17,7 +17,7 @@ dataset:
   microbatch_size: 1
   horizon_steps: 5000
   milestones: [0, 100, 250, 500, 1000, 2000, 5000]
-  schedule: class_balanced_one_per_label_without_replacement
+  schedule: class_balanced_one_per_label_with_bounded_replacement_for_horizon
   schedule_seed: 1234
   calibration_and_schedule_disjoint: true
   input_shape: [1, 28, 28]
