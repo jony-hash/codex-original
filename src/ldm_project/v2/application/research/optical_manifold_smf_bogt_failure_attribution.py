@@ -307,7 +307,11 @@ def _gradient_report(model: bogt.ScaledChenBOGTModel, amplitudes: torch.Tensor, 
         "mse_op": float(torch.dot(vectors["mse"], vectors["op"]) / (vectors["mse"].norm() * vectors["op"].norm())),
         "kl_op": float(torch.dot(vectors["kl"], vectors["op"]) / (vectors["kl"].norm() * vectors["op"].norm())),
     }
-    return {"values": values, "norms": norms, "cosines": cosines, "vectors": vectors}
+    layer_norms = {objective: _layer_gradient_norms(model, amplitudes, targets, calibration, objective) for objective in ("mse", "kl", "op")}
+    finite = all(math.isfinite(value) for value in (*norms.values(), *cosines.values(), *(value for group in layer_norms.values() for value in group)))
+    kl_boundary = layer_norms["kl"][2] == 0.0 and layer_norms["kl"][3] == 0.0 and all(value > 0.0 for value in layer_norms["kl"][:2])
+    op_boundary = all(value > 0.0 for value in layer_norms["op"])
+    return {"values": values, "norms": norms, "cosines": cosines, "layer_norms": layer_norms, "finite": finite, "kl_encoder_only": kl_boundary, "op_four_layers": op_boundary, "vectors": vectors}
 
 
 def _layer_gradient_norms(model: bogt.ScaledChenBOGTModel, amplitudes: torch.Tensor, targets: torch.Tensor, calibration: bogt.Calibration, objective: str) -> list[float]:
@@ -317,7 +321,9 @@ def _layer_gradient_norms(model: bogt.ScaledChenBOGTModel, amplitudes: torch.Ten
     gamma = 1.0 if objective == "op" else 0.0
     value, _ = bogt._arm_loss(model, amplitudes, targets, calibration, "mse_kl_op", alpha=alpha, gamma=gamma, mse_weight=mse_weight)
     value.backward()
-    result = [float(model.system.encoder.phase.grad[layer].norm()) for layer in range(2)] + [float(model.system.decoder.phase.grad[layer].norm()) for layer in range(2)]
+    encoder_grad = model.system.encoder.phase.grad
+    decoder_grad = model.system.decoder.phase.grad
+    result = [float(encoder_grad[layer].norm()) if encoder_grad is not None else 0.0 for layer in range(2)] + [float(decoder_grad[layer].norm()) if decoder_grad is not None else 0.0 for layer in range(2)]
     _clear_grads(model)
     return result
 
@@ -431,25 +437,30 @@ def run(args: argparse.Namespace) -> int:
                 amplitudes, targets = _panel_inputs(data.data, indices)
                 model = bogt.ScaledChenBOGTModel(formal).to(device)
                 states: dict[str, Any] = {}
+                state_unchanged = True
+                state_snapshot: dict[str, torch.Tensor] = {name: value.detach().clone() for name, value in model.state_dict().items()}
                 zero_report = _gradient_report(model, amplitudes.to(device), targets.to(device), calibration)
                 states["zero"] = zero_report
+                state_unchanged = state_unchanged and all(torch.equal(value, model.state_dict()[name]) for name, value in state_snapshot.items())
                 for step in (50, 100):
                     checkpoint_path = checkpoint_root / f"scaled_chen_mse_kl_op_step_{step}.pt"
                     if file_sha256(checkpoint_path) != SOURCE_CHECKPOINTS[f"mse_kl_op_{step}"]:
                         raise ValueError(f"source checkpoint hash mismatch at step {step}")
                     checkpoint = safe_torch_load(checkpoint_path)
                     model.load_state_dict(checkpoint["model_state"], strict=True)
+                    state_snapshot = {name: value.detach().clone() for name, value in model.state_dict().items()}
                     states[str(step)] = _gradient_report(model, amplitudes.to(device), targets.to(device), calibration)
+                    state_unchanged = state_unchanged and all(torch.equal(value, model.state_dict()[name]) for name, value in state_snapshot.items())
                 dose_reports = []
                 for alpha_multiplier in DOSE_MULTIPLIERS:
                     for gamma_multiplier in DOSE_MULTIPLIERS:
                         reports = [_candidate_report(states[point], PREFLIGHT_ALPHA * alpha_multiplier, PREFLIGHT_GAMMA * gamma_multiplier) for point in ("zero", "50", "100")]
                         dose_reports.append({"alpha_multiplier": alpha_multiplier, "gamma_multiplier": gamma_multiplier, "points": reports, "compatible": all(item["compatible"] for item in reports)})
-                all_reports[split_name].append({"panel": panel_index, "gradient_points": {point: {key: value for key, value in report.items() if key != "vectors"} for point, report in states.items()}, "dose_reports": dose_reports})
+                all_reports[split_name].append({"panel": panel_index, "gradient_points": {point: {key: value for key, value in report.items() if key != "vectors"} for point, report in states.items()}, "dose_reports": dose_reports, "finite": all(report["finite"] and report["kl_encoder_only"] and report["op_four_layers"] for report in states.values()), "state_unchanged": state_unchanged})
                 del model
                 torch.cuda.empty_cache()
-        selection_candidates = [report for panel in all_reports["selection"] for report in panel["dose_reports"] if report["compatible"] and report["alpha_multiplier"] > 1.0 and report["gamma_multiplier"] > 1.0]
-        confirmation_candidates = [report for panel in all_reports["confirmation"] for report in panel["dose_reports"] if report["compatible"] and report["alpha_multiplier"] > 1.0 and report["gamma_multiplier"] > 1.0]
+        selection_candidates = [report for panel in all_reports["selection"] if panel["finite"] and panel["state_unchanged"] for report in panel["dose_reports"] if report["compatible"] and report["alpha_multiplier"] > 1.0 and report["gamma_multiplier"] > 1.0]
+        confirmation_candidates = [report for panel in all_reports["confirmation"] if panel["finite"] and panel["state_unchanged"] for report in panel["dose_reports"] if report["compatible"] and report["alpha_multiplier"] > 1.0 and report["gamma_multiplier"] > 1.0]
         common = {(item["alpha_multiplier"], item["gamma_multiplier"]) for item in selection_candidates} & {(item["alpha_multiplier"], item["gamma_multiplier"]) for item in confirmation_candidates}
         selected = None
         if common:
@@ -465,10 +476,10 @@ def run(args: argparse.Namespace) -> int:
         peak = int(torch.cuda.max_memory_allocated(device))
         storage = sum(item.stat().st_size for item in output.parent.rglob("*") if item.is_file()) if output.parent.exists() else 0
         gates = (
-            GateResult("finite_gradient_panels", True, {}),
+            GateResult("finite_gradient_panels", all(panel["finite"] for split in all_reports.values() for panel in split), {"selection": [panel["finite"] for panel in all_reports["selection"]], "confirmation": [panel["finite"] for panel in all_reports["confirmation"]]}),
             GateResult("selection_confirmation_common_candidate", selected is not None, {"selected": selected}),
-            GateResult("model_state_unchanged", state_unchanged, {}),
-            GateResult("fixed_boundary_and_evaluator", True, {"evaluator_calls": 0}),
+            GateResult("model_state_unchanged", all(panel["state_unchanged"] for split in all_reports.values() for panel in split), {}),
+            GateResult("fixed_boundary_and_evaluator", all(panel["finite"] for split in all_reports.values() for panel in split), {"evaluator_calls": 0}),
             GateResult("cuda_peak_memory", peak <= MAX_PEAK_BYTES, {"bytes": peak}),
             GateResult("wall_time", elapsed <= MAX_WALL_SECONDS, {"seconds": elapsed}),
             GateResult("run_storage", storage <= MAX_STORAGE_BYTES, {"bytes": storage}),
