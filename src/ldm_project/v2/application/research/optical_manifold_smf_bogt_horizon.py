@@ -427,7 +427,7 @@ def preflight(args: argparse.Namespace) -> int:
         GateResult("cuda_peak_memory", peak <= MAX_PEAK_BYTES, {"bytes": peak}),
         GateResult("preflight_wall_time", elapsed <= MAX_PREFLIGHT_SECONDS, {"seconds": elapsed}),
     )
-    hashes = {**expected, "calibration": file_sha256(calibration_path)}
+    hashes = {"research_config": file_sha256(spec.path), **expected, "calibration": file_sha256(calibration_path)}
     status = "passed" if all(g.passed for g in gates) else "invalid_harness"
     payload = _record(PREFLIGHT_SCHEMA, status, spec, formal, state, data, hashes, gates, "manual_review_scaled_chen_bogt_reconstruction_horizon_contract" if status == "passed" else None, None if status == "passed" else "scaled Chen horizon preflight failed")
     payload["contract"].update({"formal_config": str(formal_path), "validation_evidence_sha256": file_sha256(validation_path), "calibration_path": str(calibration_path), "calibration_sha256": hashes["calibration"], "mode_bank_sha256": expected["mode_bank"], "wall_clock_seconds": elapsed, "seconds_per_step": elapsed / 3.0, "estimated_total_runtime": None, "peak_memory_bytes": peak, "free_cuda_bytes_before": int(free_bytes), "total_cuda_bytes": int(total_bytes), "dataset_manifest": data.manifest})
