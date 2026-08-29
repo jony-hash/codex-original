@@ -1,0 +1,88 @@
+schema: lightgen_optical_manifold_smf_bogt_horizon_v2
+hypothesis: H-LOMA-CBOGT-S0-HORIZON
+formal_system_config: configs/v2/current/formal_identity_logit_amplitude_finite_crop_identity.yaml
+
+source:
+  parent_contract: lightgen_optical_manifold_smf_bogt_v1
+  status:
+    geometry: user_locked_scaled_deviation
+    reconstruction_horizon: high_confidence_inference
+    runtime_budget: unknown
+
+dataset:
+  train_count: 55000
+  validation_count: 5000
+  calibration_count: 1000
+  logical_batch_size: 10
+  microbatch_size: 1
+  horizon_steps: 5000
+  milestones: [0, 100, 250, 500, 1000, 2000, 5000]
+  schedule: class_balanced_one_per_label_without_replacement
+  schedule_seed: 1234
+  calibration_and_schedule_disjoint: true
+  input_shape: [1, 28, 28]
+  rendered_shape: [1, 200, 200]
+
+optical_contract:
+  formal_system_kind: formal_amplitude_finite_crop_identity
+  architecture: 2plus2_phase_only
+  wavelength_m: 5.32e-7
+  slm_shape: [200, 200]
+  slm_pixel_pitch_m: 2.5e-6
+  metasurface_shape: [100, 100]
+  metasurface_pixel_pitch_m: 2.0e-6
+  propagation_grid_size: 2048
+  encoder_layers: 2
+  decoder_layers: 2
+  layer_spacing_m: 1.50e-3
+  mode_bank: scaled_lp01_10x10
+  ols_ports: 100
+  mode_model: step_index_lp01_ports
+  mode_v_number: 2.2
+  mode_waist_m: 7.111e-6
+  mode_fill: 0.8
+  fixed_layer_power_transmission: 0.889
+  backend_total_distance_m: 3.0e-3
+  backend_magnification: -2.5
+  software_decoder: false
+  electronic_posterior: false
+  formal_promotion: false
+
+training:
+  objective: mse_only
+  steps: 5000
+  milestones: [0, 100, 250, 500, 1000, 2000, 5000]
+  checkpoint_every_milestone: true
+  optimizer: Adam
+  learning_rate: 1.0e-3
+  zero_phase_seed: 1234
+  posthoc_phase_quantization: [0.0, 0.82, 1.63, 2.45, 3.26, 4.08, 4.89, 5.71]
+  qat: false
+  wall_clock_seconds: observational_only
+  seconds_per_step: observational_only
+  estimated_total_runtime: observational_only
+
+gates:
+  instance_specificity: paired_mse_lt_cyclic_and_template
+  finite_values: true
+  four_layer_updates: true
+  fixed_ols: true
+  no_digital_decoder: true
+  cuda_required: true
+
+authorization:
+  reviewer_role: project_owner
+  decision: authorize_scaled_chen_reconstruction_horizon_only
+  bounded_diagnostic_training_authorized: true
+  training_authorized: false
+  formal_promotion: false
+  prohibited:
+    - aggregate_bogt_factorial
+    - kl
+    - optical_power_loss
+    - continuation
+    - generation
+    - phase_closure
+    - ols_sweep
+    - fmf
+    - promotion

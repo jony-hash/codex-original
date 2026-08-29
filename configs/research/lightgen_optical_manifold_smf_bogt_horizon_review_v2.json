@@ -1,0 +1,24 @@
+{
+  "schema": "lightgen_optical_manifold_smf_bogt_horizon_review_v2",
+  "hypothesis": "H-LOMA-CBOGT-S0-HORIZON",
+  "reviewer_role": "project_owner",
+  "decision": "authorize_scaled_chen_reconstruction_horizon_only",
+  "approved_contract": {
+    "architecture": "2+2_phase_only_100x100_2um_1.50mm",
+    "ols": "fixed_100_port_scaled_lp01_v2_bank",
+    "objective": "mse_only",
+    "milestones": [0, 100, 250, 500, 1000, 2000, 5000],
+    "logical_batch_size": 10,
+    "microbatch_size": 1,
+    "optimizer": "Adam",
+    "learning_rate": 0.001,
+    "zero_phase_seed": 1234,
+    "posthoc_phase_quantization": [0.0, 0.82, 1.63, 2.45, 3.26, 4.08, 4.89, 5.71],
+    "wall_clock": "observational_only",
+    "post_pass_next_action": "manual_review_scaled_chen_bogt_factorial_horizon_contract"
+  },
+  "bounded_diagnostic_training_authorized": true,
+  "training_authorized": false,
+  "formal_promotion": false,
+  "prohibited": ["aggregate_bogt_factorial", "kl", "optical_power_loss", "continuation", "generation", "phase_closure", "ols_sweep", "fmf", "promotion"]
+}

@@ -74,6 +74,12 @@ def dispatch(args: argparse.Namespace) -> int:
         "smf-bogt-failure-attribution-run",
     }:
         from .research.optical_manifold_smf_bogt_failure_attribution import dispatch
+    elif action in {
+        "smf-bogt-horizon-validate",
+        "smf-bogt-horizon-preflight",
+        "smf-bogt-horizon-train",
+    }:
+        from .research.optical_manifold_smf_bogt_horizon import dispatch
     else:
         from .research.optical_manifold import dispatch
     return int(dispatch(args) or 0)
