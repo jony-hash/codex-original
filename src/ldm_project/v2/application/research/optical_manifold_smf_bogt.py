@@ -1332,6 +1332,8 @@ def pilot_train(args: argparse.Namespace) -> int:
     }
     all_phase_updated = all(all(value > 0.0 for value in updates.values()) for updates in phase_updates.values())
     frozen = all(result["ols_and_calibration_frozen"] for result in results["arms"].values())
+    metrics["four_phase_updated"] = all_phase_updated
+    metrics["ols_exposure_calibration_evaluator_frozen"] = frozen
     harness_gates = (
         GateResult("all_arms_completed_100_steps", all(len(result["history"]) == 2 and result["checkpoint_hashes"].keys() == {"50", "100"} for result in results["arms"].values()), {"steps_per_arm": STEPS}),
         GateResult("four_phase_updates_nonzero", all_phase_updated, {"updates": phase_updates}),
