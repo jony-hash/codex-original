@@ -61,6 +61,8 @@ MAX_PEAK_BYTES = 5 * 1024**3
 MAX_PREFLIGHT_SECONDS = 600.0
 MAX_PILOT_SECONDS = 1800.0
 MAX_STORAGE_BYTES = 1024**3
+MIN_GRADIENT_RATIO = 0.05
+MAX_GRADIENT_RATIO = 0.40
 SOURCE_STATUSES = {
     "paper_reported",
     "user_locked_scaled_deviation",
@@ -262,6 +264,7 @@ def _load_pilot_review(
     formal_path: Path,
     data: ResearchData,
     preflight_payload: Mapping[str, Any],
+    attribution_path: Path | None = None,
 ) -> dict[str, Any]:
     """Load the post-preflight human authorization envelope.
 
@@ -309,6 +312,8 @@ def _load_pilot_review(
         "source_calibration_sha256": file_sha256(calibration_path),
         "source_gradient_panels_sha256": file_sha256(gradient_panels_path),
     }
+    if attribution_path is not None:
+        expected_bindings["source_attribution_sha256"] = file_sha256(attribution_path)
     bindings = payload.get("source_bindings")
     if bindings != expected_bindings:
         raise ValueError("scaled Chen pilot review source binding is stale or tampered")
@@ -1051,6 +1056,21 @@ def _require_evidence(
     return payload
 
 
+def _load_attribution_override(path: Path) -> dict[str, Any]:
+    """Load a passed no-update dose audit before any CUDA/optimizer setup."""
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    evidence = payload.get("evidence", {})
+    selected = payload.get("contract", {}).get("selected")
+    if payload.get("schema") != "lightgen_optical_manifold_smf_bogt_failure_attribution.v1" or evidence.get("status") != "passed" or not isinstance(selected, Mapping):
+        raise ValueError("scaled Chen attribution override is not a passed audit")
+    required = {"alpha", "gamma", "alpha_multiplier", "gamma_multiplier"}
+    if set(selected) != required or selected["alpha_multiplier"] <= 1.0 or selected["gamma_multiplier"] <= 1.0:
+        raise ValueError("scaled Chen attribution override candidate is invalid")
+    if not all(isinstance(selected[name], (int, float)) and math.isfinite(float(selected[name])) and float(selected[name]) > 0.0 for name in ("alpha", "gamma")):
+        raise ValueError("scaled Chen attribution override weights are invalid")
+    return payload
+
+
 def independent_bogt_kl_reference(mean_q: torch.Tensor, variance_q: torch.Tensor, *, mean_p: float = PRIOR_MEAN, variance_p: float = PRIOR_VARIANCE) -> torch.Tensor:
     """Independent scalar-loop reference for the aggregate KL formula."""
     if mean_q.shape != variance_q.shape or mean_q.ndim != 1 or variance_p <= 0.0:
@@ -1086,6 +1106,8 @@ def validate(args: argparse.Namespace) -> int:
     state = _git_state()
     _require_clean_branch(state)
     _load_review(args.review_contract, spec)
+    attribution_path = _resolve(args.attribution_evidence) if getattr(args, "attribution_evidence", None) else None
+    attribution_payload = _load_attribution_override(attribution_path) if attribution_path is not None else None
     data = _load_research_data(args.dataset_root)
     formal, formal_path = _load_formal(spec)
     model = ScaledChenBOGTModel(formal)
@@ -1102,8 +1124,12 @@ def validate(args: argparse.Namespace) -> int:
         "review_contract": file_sha256(_resolve(args.review_contract)),
         "dataset_manifest": data.manifest["manifest_hash"],
     }
+    if attribution_path is not None:
+        input_hashes["attribution_evidence"] = file_sha256(attribution_path)
     payload = _record(VALIDATION_SCHEMA, "passed", spec, formal, state=state, input_hashes=input_hashes, dataset_manifest_hash=data.manifest["manifest_hash"], gates=gates, action="run_smf_bogt_preflight")
     payload["contract"].update({"formal_config": str(formal_path), "dataset_manifest": data.manifest, "backend": {"u_m": 3.0e-3 / 3.5, "v_m": 3.0e-3 * 2.5 / 3.5, "f_m": (3.0e-3 / 3.5) * (3.0e-3 * 2.5 / 3.5) / 3.0e-3}, "phase_levels_rad": list(PHASE_LEVELS)})
+    if attribution_payload is not None:
+        payload["contract"]["attribution_override"] = {"path": str(attribution_path), "sha256": file_sha256(attribution_path), "selected": attribution_payload["contract"]["selected"]}
     _write_new(args.output, payload)
     print(json.dumps(payload, indent=2, sort_keys=True))
     return 0
@@ -1116,9 +1142,14 @@ def preflight(args: argparse.Namespace) -> int:
     _require_clean_branch(state)
     review_path = _resolve(args.review_contract)
     _load_review(review_path, spec)
+    attribution_path = _resolve(args.attribution_evidence) if getattr(args, "attribution_evidence", None) else None
+    attribution_payload = _load_attribution_override(attribution_path) if attribution_path is not None else None
+    selected_weights = attribution_payload["contract"]["selected"] if attribution_payload is not None else None
     formal, formal_path = _load_formal(spec)
     data = _load_research_data(args.dataset_root)
     expected_hashes = {"formal_config": file_sha256(formal_path), "review_contract": file_sha256(review_path), "dataset_manifest": data.manifest["manifest_hash"]}
+    if attribution_path is not None:
+        expected_hashes["attribution_evidence"] = file_sha256(attribution_path)
     _require_evidence(args.validate_evidence, VALIDATION_SCHEMA, spec, state=state, dataset_manifest_hash=data.manifest["manifest_hash"], expected_hashes=expected_hashes)
     if os.environ.get("CUBLAS_WORKSPACE_CONFIG") != ":4096:8":
         raise RuntimeError("scaled Chen preflight requires CUBLAS_WORKSPACE_CONFIG=:4096:8")
@@ -1155,13 +1186,20 @@ def preflight(args: argparse.Namespace) -> int:
         del panel_model, amplitudes, targets
     panel_weights: dict[str, Any] | None = None
     panel_gate = True
-    try:
-        panel_weights = calibrate_objective_weights(panel_norms)
-    except ValueError as exc:
-        if "gradient ratio" not in str(exc):
-            raise
-        panel_gate = False
-        panel_weights = {"alpha": None, "gamma": None, "panel_effective_ratios": []}
+    if selected_weights is not None:
+        alpha = float(selected_weights["alpha"])
+        gamma = float(selected_weights["gamma"])
+        panel_effective_ratios = [{"kl": alpha * panel["kl"] / panel["mse"], "op": gamma * panel["op"] / panel["mse"]} for panel in panel_norms]
+        panel_gate = all(MIN_GRADIENT_RATIO <= value <= MAX_GRADIENT_RATIO for ratios in panel_effective_ratios for value in ratios.values())
+        panel_weights = {"alpha": alpha, "gamma": gamma, "target_ratio": None, "source": "failure_attribution", "panel_effective_ratios": panel_effective_ratios}
+    else:
+        try:
+            panel_weights = calibrate_objective_weights(panel_norms)
+        except ValueError as exc:
+            if "gradient ratio" not in str(exc):
+                raise
+            panel_gate = False
+            panel_weights = {"alpha": None, "gamma": None, "panel_effective_ratios": []}
     alpha = float(panel_weights["alpha"]) if panel_weights["alpha"] is not None else 0.0
     gamma = float(panel_weights["gamma"]) if panel_weights["gamma"] is not None else 0.0
     panel_path = Path(args.output).with_name("scaled_chen_bogt_gradient_panels.pt")
@@ -1237,8 +1275,12 @@ def preflight(args: argparse.Namespace) -> int:
     )
     status = "passed" if all(gate.passed for gate in gates) else "invalid_harness"
     input_hashes = {"research_config": file_sha256(spec.path), "formal_config": file_sha256(formal_path), "review_contract": file_sha256(review_path), "dataset_manifest": data.manifest["manifest_hash"], "calibration": file_sha256(calibration_path), "gradient_panels": file_sha256(panel_path)}
+    if attribution_path is not None:
+        input_hashes["attribution_evidence"] = file_sha256(attribution_path)
     payload = _record(PREFLIGHT_SCHEMA, status, spec, formal, state=state, input_hashes=input_hashes, dataset_manifest_hash=data.manifest["manifest_hash"], gates=gates, action="manual_review_scaled_chen_bogt_pilot_contract" if status == "passed" else None, reason=None if status == "passed" else "scaled Chen CUDA preflight gate failed")
     payload["contract"].update({"dataset_manifest": data.manifest, "calibration_path": str(calibration_path), "gradient_panels_path": str(panel_path), "alpha": alpha, "gamma": gamma, "panel_norms": panel_norms, "peak_memory_bytes": peak_bytes, "wall_seconds": elapsed})
+    if attribution_path is not None:
+        payload["contract"]["attribution_override"] = {"path": str(attribution_path), "sha256": file_sha256(attribution_path), "selected": selected_weights}
     _write_new(args.output, payload)
     print(json.dumps(payload, indent=2, sort_keys=True))
     return 0
@@ -1252,15 +1294,23 @@ def pilot_train(args: argparse.Namespace) -> int:
     _require_clean_branch(state)
     lifecycle_review_path = _resolve(args.review_contract)
     _load_review(lifecycle_review_path, spec)
+    attribution_path = _resolve(args.attribution_evidence) if getattr(args, "attribution_evidence", None) else None
+    attribution_payload = _load_attribution_override(attribution_path) if attribution_path is not None else None
     formal, formal_path = _load_formal(spec)
     data = _load_research_data(args.dataset_root)
     validation_path = _resolve(args.validation_evidence)
     preflight_path = _resolve(args.preflight_evidence)
     expected_hashes = {"formal_config": file_sha256(formal_path), "review_contract": file_sha256(lifecycle_review_path), "dataset_manifest": data.manifest["manifest_hash"]}
+    if attribution_path is not None:
+        expected_hashes["attribution_evidence"] = file_sha256(attribution_path)
     _require_evidence(args.validation_evidence, VALIDATION_SCHEMA, spec, state=state, dataset_manifest_hash=data.manifest["manifest_hash"], expected_hashes=expected_hashes)
     preflight_payload = _require_evidence(args.preflight_evidence, PREFLIGHT_SCHEMA, spec, state=state, dataset_manifest_hash=data.manifest["manifest_hash"], expected_hashes={**expected_hashes, "calibration": file_sha256(_resolve(json.loads(preflight_path.read_text(encoding="utf-8"))["contract"]["calibration_path"])), "gradient_panels": file_sha256(_resolve(json.loads(preflight_path.read_text(encoding="utf-8"))["contract"]["gradient_panels_path"]))})
-    _load_pilot_review(args.pilot_review_contract, spec, state=state, validation_path=validation_path, preflight_path=preflight_path, lifecycle_review_path=lifecycle_review_path, formal_path=formal_path, data=data, preflight_payload=preflight_payload)
+    _load_pilot_review(args.pilot_review_contract, spec, state=state, validation_path=validation_path, preflight_path=preflight_path, lifecycle_review_path=lifecycle_review_path, formal_path=formal_path, data=data, preflight_payload=preflight_payload, attribution_path=attribution_path)
     preflight_contract = preflight_payload["contract"]
+    if attribution_payload is not None:
+        selected = attribution_payload["contract"]["selected"]
+        if float(preflight_contract["alpha"]) != float(selected["alpha"]) or float(preflight_contract["gamma"]) != float(selected["gamma"]):
+            raise ValueError("scaled Chen pilot preflight does not consume attribution-selected weights")
     calibration_path = _resolve(preflight_contract["calibration_path"])
     calibration_payload = safe_torch_load(calibration_path)
     if calibration_payload.get("dataset_manifest_hash") != data.manifest["manifest_hash"]:
@@ -1361,6 +1411,8 @@ def pilot_train(args: argparse.Namespace) -> int:
         "calibration": file_sha256(calibration_path),
         "gradient_panels": file_sha256(_resolve(preflight_contract["gradient_panels_path"])),
     }
+    if attribution_path is not None:
+        input_hashes["attribution_evidence"] = file_sha256(attribution_path)
     payload = _record(TRAINING_SCHEMA, status, spec, formal, state=state, input_hashes=input_hashes, dataset_manifest_hash=data.manifest["manifest_hash"], gates=gates, action=action, reason=reason)
     payload["contract"].update({
         "arms": list(spec.payload["training"]["arms"]),
