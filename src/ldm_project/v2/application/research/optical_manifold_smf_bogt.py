@@ -765,14 +765,11 @@ def _evaluate_model(
         raise ValueError("class templates must have shape [10,1,200,200]")
     was_training = model.training
     model.eval()
-    camera_values: list[torch.Tensor] = []
-    target_values: list[torch.Tensor] = []
     coefficient_values: list[torch.Tensor] = []
     z_values: list[torch.Tensor] = []
     plane_values: list[torch.Tensor] = []
     template_error = 0.0
     first_camera: torch.Tensor | None = None
-    first_target: torch.Tensor | None = None
     previous_target: torch.Tensor | None = None
     cyclic_error = 0.0
     paired_error = 0.0
@@ -780,47 +777,43 @@ def _evaluate_model(
     with torch.no_grad():
         for batch_indices in indices.split(BATCH_SIZE):
             rendered = base.render_intensity_batch(data.images.index_select(0, batch_indices))
-            amplitudes = rendered.amplitude
+            amplitudes = rendered.amplitude.to(device)
             targets = rendered.target.float()
             labels = data.labels.index_select(0, batch_indices)
-            for offset in range(amplitudes.shape[0]):
-                output = model(amplitudes[offset : offset + 1].to(device))
-                camera = output.camera.detach().cpu().float()
-                target = targets[offset : offset + 1]
-                if not torch.isfinite(camera).all() or not torch.isfinite(target).all():
-                    raise RuntimeError("scaled Chen pilot evaluation produced non-finite camera values")
-                camera_values.append(camera)
-                target_values.append(target)
-                paired_error += float(F.mse_loss(camera, target))
-                template = class_templates[int(labels[offset]) : int(labels[offset]) + 1]
-                template_error += float(F.mse_loss(template, target))
-                if first_camera is None:
-                    first_camera = camera.clone()
-                    first_target = target.clone()
-                if previous_target is not None:
-                    cyclic_error += float(F.mse_loss(camera, previous_target))
-                previous_target = target.clone()
-                coefficient_values.append(output.coefficients.detach().cpu())
-                z_values.append(normalize_port_power(output.coefficients.abs().square(), calibration.port_scale).detach().cpu())
-                plane_values.append(torch.stack([value.detach().reshape(-1)[0].cpu() for value in output.plane_powers]))
-                count += 1
-    if first_camera is None or first_target is None or previous_target is None:
+            output = model(amplitudes)
+            camera = output.camera.detach().cpu().float()
+            if not torch.isfinite(camera).all() or not torch.isfinite(targets).all():
+                raise RuntimeError("scaled Chen pilot evaluation produced non-finite camera values")
+            paired_error += float(F.mse_loss(camera, targets, reduction="sum"))
+            templates = class_templates.index_select(0, labels)
+            template_error += float(F.mse_loss(templates, targets, reduction="sum"))
+            if first_camera is None:
+                first_camera = camera[0:1].clone()
+                if camera.shape[0] > 1:
+                    cyclic_error += float(F.mse_loss(camera[1:], targets[:-1], reduction="sum"))
+            else:
+                cyclic_targets = torch.cat((previous_target, targets[:-1]), dim=0)
+                cyclic_error += float(F.mse_loss(camera, cyclic_targets, reduction="sum"))
+            previous_target = targets[-1:].clone()
+            coefficient_values.append(output.coefficients.detach().cpu())
+            z_values.append(normalize_port_power(output.coefficients.abs().square(), calibration.port_scale).detach().cpu())
+            plane_values.append(torch.stack([value.detach().cpu() for value in output.plane_powers], dim=1))
+            count += int(camera.shape[0])
+    if first_camera is None or previous_target is None:
         raise RuntimeError("scaled Chen pilot evaluation returned no samples")
     cyclic_error += float(F.mse_loss(first_camera, previous_target))
     coefficients = torch.cat(coefficient_values, dim=0)
     z = torch.cat(z_values, dim=0)
-    planes = torch.stack(plane_values, dim=0)
+    planes = torch.cat(plane_values, dim=0)
     mean, variance = aggregate_moments(z)
-    camera_tensor = torch.cat(camera_values, dim=0)
-    target_tensor = torch.cat(target_values, dim=0)
     metrics = {
-        "paired_mse": paired_error / count,
-        "cyclic_mse": cyclic_error / count,
-        "template_control_mse": template_error / count,
+        "paired_mse": paired_error / (count * 1 * 200 * 200),
+        "cyclic_mse": cyclic_error / (count * 1 * 200 * 200),
+        "template_control_mse": template_error / (count * 1 * 200 * 200),
         "kl": float(bogt_kl_surrogate(mean, variance)),
         "op": float(lop_from_powers(tuple(planes[:, index] for index in range(5)), calibration.plane_reference)),
         "coefficient_effective_rank": coefficient_effective_rank(coefficients),
-        "finite": bool(torch.isfinite(camera_tensor).all() and torch.isfinite(target_tensor).all() and torch.isfinite(coefficients).all() and torch.isfinite(planes).all()),
+        "finite": bool(torch.isfinite(coefficients).all() and torch.isfinite(planes).all()),
         "evaluation_count": count,
     }
     if not all(math.isfinite(float(metrics[key])) for key in ("paired_mse", "cyclic_mse", "template_control_mse", "kl", "op", "coefficient_effective_rank")):
