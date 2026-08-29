@@ -349,7 +349,7 @@ def _select_candidate(reports: Sequence[Mapping[str, Any]]) -> dict[str, Any] | 
     return max(candidates, key=lambda item: (min(item["ratios"].values()), -max(item["alpha"], item["gamma"]), -(item["alpha"] + item["gamma"])))
 
 
-def _record(spec: Spec, state: Mapping[str, Any], data: AttributionData, source_training: Path, source_artifacts: Mapping[str, Path], review: Path, gates: Sequence[GateResult], status: str, action: str | None, reason: str | None) -> dict[str, Any]:
+def _record(spec: Spec, state: Mapping[str, Any], data: AttributionData, source_training: Path, source_artifacts: Mapping[str, Path], review: Path, gates: Sequence[GateResult], status: str, action: str | None, reason: str | None, *, schema: str = AUDIT_SCHEMA) -> dict[str, Any]:
     input_hashes = {
         "research_config": file_sha256(spec.path),
         "review_contract": file_sha256(review),
@@ -359,9 +359,9 @@ def _record(spec: Spec, state: Mapping[str, Any], data: AttributionData, source_
         "attribution_panels": data.manifest["manifest_hash"],
     }
     context = EvidenceContextV2(canonical_sha256({"optical_contract": spec.payload["optical_contract"], "branch": BRANCH}), spec.config_hash, dataset_hash=data.data.manifest["manifest_hash"], dataset_split_manifest_hash=data.data.manifest["manifest_hash"])
-    record = EvidenceRecordV2(2, AUDIT_SCHEMA, "diagnostic", status, str(state["commit"]), None, spec.config_hash, context, input_hashes, tuple(gates), (action,) if action else (), reason)
+    record = EvidenceRecordV2(2, schema, "diagnostic", status, str(state["commit"]), None, spec.config_hash, context, input_hashes, tuple(gates), (action,) if action else (), reason)
     record.validate()
-    return {"schema": AUDIT_SCHEMA, "hypothesis": HYPOTHESIS, "training_authorized": False, "formal_promotion": False, "evidence": record.to_dict()}
+    return {"schema": schema, "hypothesis": HYPOTHESIS, "training_authorized": False, "formal_promotion": False, "evidence": record.to_dict()}
 
 
 def validate(args: argparse.Namespace) -> int:
@@ -383,7 +383,7 @@ def validate(args: argparse.Namespace) -> int:
         GateResult("no_update_boundary", True, {"optimizer_created": False, "cuda_context_created": False}),
     )
     status = "passed" if all(gate.passed for gate in gates) else "invalid_harness"
-    payload = _record(spec, state, data, source_training_path, source_artifacts, review, gates, status, "run_smf_bogt_failure_attribution" if status == "passed" else None, None if status == "passed" else "failure attribution validation failed")
+    payload = _record(spec, state, data, source_training_path, source_artifacts, review, gates, status, "run_smf_bogt_failure_attribution" if status == "passed" else None, None if status == "passed" else "failure attribution validation failed", schema=VALIDATION_SCHEMA)
     payload["contract"] = {"source_commit": SOURCE_COMMIT, "formal_config_sha256": file_sha256(formal_path), "dataset_manifest": data.data.manifest, "attribution_manifest": data.manifest, "source_artifacts": {name: file_sha256(path) for name, path in source_artifacts.items()}}
     target = Path(args.output)
     if target.exists():
