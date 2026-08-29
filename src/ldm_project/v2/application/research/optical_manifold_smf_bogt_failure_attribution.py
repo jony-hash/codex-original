@@ -398,7 +398,7 @@ def validate(args: argparse.Namespace) -> int:
     _require_clean_branch(state)
     review = _load_review(args.review_contract, spec)
     source_training, source_training_path = _load_source_training(spec)
-        source_artifacts = _load_source_artifacts(spec)
+    source_artifacts = _load_source_artifacts(spec)
     data = _load_data(spec, args.dataset_root)
     formal, formal_path = bogt._load_formal(spec)
     model = bogt.ScaledChenBOGTModel(formal)
