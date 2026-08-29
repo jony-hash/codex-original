@@ -141,6 +141,52 @@ def test_pilot_gate_checks_both_factorial_kl_pairs() -> None:
     assert not gates[2].passed
 
 
+def test_gradient_weight_writer_separates_local_and_final_replay() -> None:
+    panels = (
+        {"raw_mse_grad_norm": 1.0, "raw_kl_grad_norm": 2.0, "raw_op_grad_norm": 2.0},
+        {"raw_mse_grad_norm": 2.0, "raw_kl_grad_norm": 2.0, "raw_op_grad_norm": 1.0},
+        {"raw_mse_grad_norm": 4.0, "raw_kl_grad_norm": 2.0, "raw_op_grad_norm": 2.0},
+    )
+    weights = bogt.calibrate_objective_weights(panels)
+    assert all(record["local_target_kl_ratio"] == pytest.approx(0.10) for record in weights["panel_local_calibration"])
+    final = weights["final_fixed_weight_replay"]
+    assert final[0]["effective_kl_ratio_final_weight"] != pytest.approx(0.10)
+    assert len({record["final_alpha"] for record in final}) == 1
+    assert len({record["final_gamma"] for record in final}) == 1
+    assert bogt.final_fixed_weight_ratio_gate(final)
+
+
+def test_final_fixed_replay_changes_all_panels_and_rejects_stale_local_values() -> None:
+    panels = ({"mse": 1.0, "kl": 1.0, "op": 1.0},) * 3
+    left = bogt.replay_fixed_weight_ratios(panels, alpha=0.1, gamma=0.1)
+    right = bogt.replay_fixed_weight_ratios(panels, alpha=0.2, gamma=0.2)
+    assert all(a["effective_kl_ratio_final_weight"] != b["effective_kl_ratio_final_weight"] for a, b in zip(left, right, strict=True))
+    assert all(a["effective_op_ratio_final_weight"] != b["effective_op_ratio_final_weight"] for a, b in zip(left, right, strict=True))
+    stale = [{"kl": 0.10, "op": 0.10}] * 3
+    assert not bogt.final_fixed_weight_ratio_gate(stale)
+
+
+def test_pilot_classification_preserves_multiple_science_failures() -> None:
+    science = bogt.pilot_gate_results({
+        "mse_kl_op_heldout_mse": 2.0,
+        "mse_op_heldout_mse": 1.0,
+        "mse_only_kl": 1.0,
+        "mse_kl_kl": 1.0,
+        "mse_op_kl": 1.0,
+        "mse_kl_op_kl": 1.0,
+        "mse_only_op": 1.0,
+        "mse_op_op": 1.0,
+        "ols_effective_rank_retention": 0.5,
+        "paired_mse": 2.0,
+        "template_control_mse": 1.0,
+        "cyclic_control_mse": 1.0,
+    })
+    status, failed = bogt.classify_pilot_result(science, (bogt.GateResult("resource", True, {}),))
+    assert status == "valid_failed_multiple_science_gates"
+    assert "combined_heldout_mse" in failed
+    assert "ols_effective_rank_retention" in failed
+
+
 def test_phase_update_metrics_exposes_each_of_four_layers() -> None:
     initial = {
         "system.encoder.phase": torch.zeros(2, 1, 4, 4),

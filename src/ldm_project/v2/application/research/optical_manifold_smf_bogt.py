@@ -17,7 +17,7 @@ import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 import torch
 import yaml
@@ -981,6 +981,29 @@ def pilot_gate_results(metrics: Mapping[str, float | bool]) -> tuple[GateResult,
     )
 
 
+def classify_pilot_result(science_gates: Sequence[GateResult], harness_gates: Sequence[GateResult]) -> tuple[str, tuple[str, ...]]:
+    """Classify a completed pilot while retaining every failed science gate."""
+    if not all(gate.passed for gate in harness_gates):
+        return "invalid_harness", tuple(gate.name for gate in harness_gates if not gate.passed)
+    failed = tuple(gate.name for gate in science_gates if not gate.passed)
+    if not failed:
+        return "passed_scaled_chen_bogt_pilot", ()
+    categories: set[str] = set()
+    if any(name in failed for name in ("aggregate_kl_reduction_without_op", "aggregate_kl_reduction_with_op")):
+        categories.add("valid_failed_kl_effect")
+    if "optical_power_loss_reduction" in failed:
+        categories.add("valid_failed_op_effect")
+    if "combined_heldout_mse" in failed:
+        categories.add("valid_failed_reconstruction_compatibility")
+    if "ols_effective_rank_retention" in failed:
+        categories.add("valid_failed_latent_capacity")
+    if "paired_mse_controls" in failed:
+        categories.add("valid_failed_instance_specificity")
+    if len(categories) == 1:
+        return next(iter(categories)), failed
+    return "valid_failed_multiple_science_gates", failed
+
+
 def _phase_update_metrics(initial: Mapping[str, torch.Tensor], final: Mapping[str, torch.Tensor]) -> dict[str, float]:
     updates: dict[str, float] = {}
     for name, before in initial.items():
@@ -1014,6 +1037,8 @@ def _evaluate_model(
     indices: torch.Tensor,
     device: torch.device,
     class_templates: torch.Tensor,
+    calibration_sha256: str | None = None,
+    split: str = "heldout",
 ) -> dict[str, Any]:
     """Evaluate one arm on heldout samples using microbatch-one optics."""
     if indices.ndim != 1 or indices.numel() == 0:
@@ -1025,6 +1050,7 @@ def _evaluate_model(
     coefficient_values: list[torch.Tensor] = []
     z_values: list[torch.Tensor] = []
     plane_values: list[torch.Tensor] = []
+    camera_values: list[torch.Tensor] = []
     template_error = 0.0
     first_camera: torch.Tensor | None = None
     previous_target: torch.Tensor | None = None
@@ -1055,6 +1081,7 @@ def _evaluate_model(
             coefficient_values.append(output.coefficients.detach().cpu())
             z_values.append(normalize_port_power(output.coefficients.abs().square(), calibration.port_scale).detach().cpu())
             plane_values.append(torch.stack([value.detach().cpu() for value in output.plane_powers], dim=1))
+            camera_values.append(camera)
             count += int(camera.shape[0])
     if first_camera is None or previous_target is None:
         raise RuntimeError("scaled Chen pilot evaluation returned no samples")
@@ -1063,18 +1090,45 @@ def _evaluate_model(
     z = torch.cat(z_values, dim=0)
     planes = torch.cat(plane_values, dim=0)
     mean, variance = aggregate_moments(z)
+    lower = calibration.operating_lower.detach().cpu()
+    upper = calibration.operating_upper.detach().cpu()
+    below = planes < lower.unsqueeze(0)
+    above = planes > upper.unsqueeze(0)
+    inside = ~(below | above)
+    saturation = (planes <= torch.finfo(planes.dtype).eps) | (planes >= torch.finfo(planes.dtype).max * 0.5)
+    numerical_kl = truncated_normal_kl_reference(mean, variance)
+    power_retention = float((coefficients.abs().square().sum(dim=1) / calibration.port_scale.sum().clamp_min(1.0e-30)).mean()) if coefficient_values else 0.0
+    cameras = torch.cat(camera_values, dim=0)
     metrics = {
         "paired_mse": paired_error / (count * 1 * 200 * 200),
         "cyclic_mse": cyclic_error / (count * 1 * 200 * 200),
         "template_control_mse": template_error / (count * 1 * 200 * 200),
         "kl": float(bogt_kl_surrogate(mean, variance)),
+        "numerical_truncated_normal_kl": float(numerical_kl),
         "op": float(lop_operating_window_from_powers(tuple(planes[:, index] for index in range(5)), calibration.operating_lower, calibration.operating_upper)),
         "coefficient_effective_rank": coefficient_effective_rank(coefficients),
+        "power_latent_effective_rank": power_latent_effective_rank(z),
+        "power_retention": power_retention,
+        "per_plane_power": planes.mean(dim=0).tolist(),
+        "below_window_fraction": below.float().mean(dim=0).tolist(),
+        "inside_window_fraction": inside.float().mean(dim=0).tolist(),
+        "above_window_fraction": above.float().mean(dim=0).tolist(),
+        "saturation_fraction": saturation.float().mean(dim=0).tolist(),
+        "camera_saturation_fraction": float(((cameras <= 0.0) | (cameras >= 1.0)).float().mean()),
+        "calibration_p_star": calibration.plane_reference.detach().cpu().tolist(),
+        "calibration_p_min": lower.tolist(),
+        "calibration_p_max": upper.tolist(),
+        "calibration_sha256": calibration_sha256,
         "finite": bool(torch.isfinite(coefficients).all() and torch.isfinite(planes).all()),
         "evaluation_count": count,
     }
-    if not all(math.isfinite(float(metrics[key])) for key in ("paired_mse", "cyclic_mse", "template_control_mse", "kl", "op", "coefficient_effective_rank")):
+    if split not in {"train", "heldout"}:
+        raise ValueError("pilot evaluation split must be train or heldout")
+    metrics[f"{split}_mse"] = metrics["paired_mse"]
+    if not all(math.isfinite(float(metrics[key])) for key in ("paired_mse", "cyclic_mse", "template_control_mse", "kl", "numerical_truncated_normal_kl", "op", "coefficient_effective_rank", "power_latent_effective_rank", "power_retention")):
         raise RuntimeError("scaled Chen pilot evaluation metrics are non-finite")
+    if not all(math.isfinite(float(value)) for key in ("per_plane_power", "below_window_fraction", "inside_window_fraction", "above_window_fraction", "saturation_fraction") for value in metrics[key]):
+        raise RuntimeError("scaled Chen pilot optical-state metrics are non-finite")
     if was_training:
         model.train()
     return {"metrics": metrics, "coefficients": coefficients}
@@ -1097,20 +1151,74 @@ def calibrate_objective_weights(panel_norms: Sequence[Mapping[str, float]], *, t
     if len(panel_norms) != 3:
         raise ValueError("scaled Chen loss calibration requires three independent panels")
     weights = []
-    ratios: list[dict[str, float]] = []
+    local: list[dict[str, float]] = []
     for panel in panel_norms:
-        mse = float(panel["mse"])
-        kl = float(panel["kl"])
-        op = float(panel["op"])
+        mse = float(panel.get("raw_mse_grad_norm", panel.get("mse", 0.0)))
+        kl = float(panel.get("raw_kl_grad_norm", panel.get("kl", 0.0)))
+        op = float(panel.get("raw_op_grad_norm", panel.get("op", 0.0)))
         alpha = calibrate_loss_weights(mse, kl, target_ratio=target_ratio)
         gamma = calibrate_loss_weights(mse, op, target_ratio=target_ratio)
         weights.append((alpha, gamma))
-        ratios.append({"kl": alpha * kl / mse, "op": gamma * op / mse})
+        local.append({
+            "raw_mse_grad_norm": mse,
+            "raw_kl_grad_norm": kl,
+            "raw_op_grad_norm": op,
+            "temporary_panel_alpha": alpha,
+            "temporary_panel_gamma": gamma,
+            "local_target_kl_ratio": target_ratio,
+            "local_target_op_ratio": target_ratio,
+        })
     alpha = float(sum(value[0] for value in weights) / len(weights))
     gamma = float(sum(value[1] for value in weights) / len(weights))
-    if any(not 0.05 <= value[term] <= 0.40 for value in ratios for term in ("kl", "op")):
-        raise ValueError("scaled Chen objective gradient ratio is outside [0.05,0.40]")
-    return {"alpha": alpha, "gamma": gamma, "target_ratio": target_ratio, "panel_effective_ratios": ratios}
+    replay = replay_fixed_weight_ratios(panel_norms, alpha=alpha, gamma=gamma)
+    return {
+        "alpha": alpha,
+        "gamma": gamma,
+        "target_ratio": target_ratio,
+        "panel_local_calibration": local,
+        "final_fixed_weight_replay": replay,
+        # Retained as a descriptive alias for older readers; the gate must use
+        # ``final_fixed_weight_replay`` exclusively.
+        "panel_effective_ratios": replay,
+    }
+
+
+def replay_fixed_weight_ratios(
+    panel_norms: Sequence[Mapping[str, float]], *, alpha: float, gamma: float,
+) -> list[dict[str, float]]:
+    """Replay every panel using one final global pair of objective weights."""
+    if not math.isfinite(alpha) or not math.isfinite(gamma) or alpha <= 0.0 or gamma <= 0.0:
+        raise ValueError("final fixed objective weights must be finite and positive")
+    replay: list[dict[str, float]] = []
+    for panel in panel_norms:
+        mse = float(panel.get("raw_mse_grad_norm", panel.get("mse", 0.0)))
+        kl = float(panel.get("raw_kl_grad_norm", panel.get("kl", 0.0)))
+        op = float(panel.get("raw_op_grad_norm", panel.get("op", 0.0)))
+        if not all(math.isfinite(value) and value > 0.0 for value in (mse, kl, op)):
+            raise ValueError("panel gradient norms must be finite and positive")
+        replay.append({
+            "final_alpha": alpha,
+            "final_gamma": gamma,
+            "effective_kl_ratio_final_weight": alpha * kl / mse,
+            "effective_op_ratio_final_weight": gamma * op / mse,
+        })
+    return replay
+
+
+def final_fixed_weight_ratio_gate(replay: Sequence[Mapping[str, float]]) -> bool:
+    """Return whether only final fixed-weight ratios satisfy the registered interval."""
+    if len(replay) != 3:
+        raise ValueError("final fixed-weight replay requires three panels")
+    try:
+        return all(
+            MIN_GRADIENT_RATIO <= float(panel[key]) <= MAX_GRADIENT_RATIO
+            for panel in replay
+            for key in ("effective_kl_ratio_final_weight", "effective_op_ratio_final_weight")
+        )
+    except (KeyError, TypeError, ValueError):
+        # Evidence crossing this acceptance boundary is untrusted; stale local
+        # ratios are rejected rather than interpreted as final weights.
+        return False
 
 
 def _arm_loss(
@@ -1159,6 +1267,66 @@ def _arm_loss(
     return total, {"mse": float(mse.detach()), "op": float(op.detach()), "kl": float(batch_kl.detach())}
 
 
+def observation_gradient_ratios(
+    model: ScaledChenBOGTModel,
+    amplitudes: torch.Tensor,
+    targets: torch.Tensor,
+    calibration: Calibration,
+) -> dict[str, float]:
+    """No-update raw KL/MSE and op/MSE gradient ratios at an observation point."""
+    mse_norm = _gradient_norm_for_arm(model, amplitudes, targets, calibration, "mse_only")
+    kl_norm = _gradient_norm_for_arm(model, amplitudes, targets, calibration, "mse_kl", mse_weight=0.0)
+    op_norm = _gradient_norm_for_arm(model, amplitudes, targets, calibration, "mse_op", mse_weight=0.0)
+    return {
+        "observation_kl_mse_gradient_ratio": kl_norm / mse_norm,
+        "observation_op_mse_gradient_ratio": op_norm / mse_norm,
+        "raw_mse_grad_norm": mse_norm,
+        "raw_kl_grad_norm": kl_norm,
+        "raw_op_grad_norm": op_norm,
+    }
+
+
+def evaluate_pilot_observation(
+    model: ScaledChenBOGTModel,
+    data: ResearchData,
+    calibration: Calibration,
+    *,
+    train_indices: torch.Tensor,
+    heldout_indices: torch.Tensor,
+    class_templates: torch.Tensor,
+    device: torch.device,
+    step: int,
+    initial_phase: Mapping[str, torch.Tensor],
+    calibration_sha256: str | None = None,
+) -> dict[str, Any]:
+    """Evaluate one pilot arm at step 0/50/100 without changing its state."""
+    if step not in {0, CHECKPOINT_INTERVAL, STEPS}:
+        raise ValueError("pilot observations are registered only at steps 0, 50, and 100")
+    train_eval = _evaluate_model(model, data, calibration, train_indices, device, class_templates, calibration_sha256, split="train")
+    heldout_eval = _evaluate_model(model, data, calibration, heldout_indices, device, class_templates, calibration_sha256, split="heldout")
+    rendered = base.render_intensity_batch(data.images.index_select(0, data.panels[0]))
+    ratios = observation_gradient_ratios(model, rendered.amplitude.to(device), rendered.target.to(device), calibration)
+    return {
+        "step": step,
+        "train_mse": train_eval["metrics"]["train_mse"],
+        "heldout_mse": heldout_eval["metrics"]["heldout_mse"],
+        "gaussian_surrogate_kl": heldout_eval["metrics"]["kl"],
+        "numerical_truncated_normal_kl": heldout_eval["metrics"]["numerical_truncated_normal_kl"],
+        "l_op": heldout_eval["metrics"]["op"],
+        "power_retention": heldout_eval["metrics"]["power_retention"],
+        "complex_coefficient_effective_rank": heldout_eval["metrics"]["coefficient_effective_rank"],
+        "power_latent_effective_rank": heldout_eval["metrics"]["power_latent_effective_rank"],
+        "per_plane_power": heldout_eval["metrics"]["per_plane_power"],
+        "below_window_fraction": heldout_eval["metrics"]["below_window_fraction"],
+        "inside_window_fraction": heldout_eval["metrics"]["inside_window_fraction"],
+        "above_window_fraction": heldout_eval["metrics"]["above_window_fraction"],
+        "saturation_fraction": heldout_eval["metrics"]["saturation_fraction"],
+        "finite": heldout_eval["metrics"]["finite"],
+        "phase_update_norms": _phase_update_metrics(initial_phase, _phase_state(model)),
+        **ratios,
+    }
+
+
 def run_factorial_pilot(
     formal: FormalSystemConfig,
     amplitudes: torch.Tensor,
@@ -1170,6 +1338,7 @@ def run_factorial_pilot(
     alpha: float = 1.0,
     gamma: float = 1.0,
     checkpoint_dir: str | Path | None = None,
+    observation_callback: Callable[[ScaledChenBOGTModel, int, Mapping[str, torch.Tensor]], Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Run the bounded four-arm pilot; caller must have passed the CUDA gate."""
     if steps <= 0 or targets.shape != amplitudes.shape:
@@ -1199,7 +1368,10 @@ def run_factorial_pilot(
         initial_phase = _phase_state(model)
         optimizer = torch.optim.Adam((parameter for parameter in model.parameters() if parameter.requires_grad), lr=LEARNING_RATE)
         history: list[dict[str, float]] = []
+        observations: list[dict[str, Any]] = []
         checkpoint_hashes: dict[str, str] = {}
+        if observation_callback is not None:
+            observations.append(dict(observation_callback(model, 0, initial_phase)))
         for step in range(1, steps + 1):
             optimizer.zero_grad(set_to_none=True)
             total, values = _arm_loss(model, amplitude_schedule[step - 1].to(device), target_schedule[step - 1].to(device), calibration, arm, alpha=alpha, gamma=gamma)
@@ -1217,6 +1389,8 @@ def run_factorial_pilot(
                     {"schema": "scaled_chen_bogt_pilot_checkpoint.v1", "arm": arm, "global_step": step, "model_state": model.state_dict(), "optimizer_state": optimizer.state_dict(), "phase_levels_rad": list(PHASE_LEVELS)},
                 )
                 checkpoint_hashes[str(step)] = file_sha256(checkpoint_path)
+            if step in {CHECKPOINT_INTERVAL, steps} and observation_callback is not None:
+                observations.append(dict(observation_callback(model, step, initial_phase)))
             if step in {1, steps}:
                 history.append(values)
         final_phase = _phase_state(model)
@@ -1226,6 +1400,7 @@ def run_factorial_pilot(
             "phase_updates": _phase_update_metrics(initial_phase, final_phase),
             "final_state": {name: value.detach().cpu().clone() for name, value in model.state_dict().items()},
             "checkpoint_hashes": checkpoint_hashes,
+            "observations": observations,
         }
         del optimizer, model
         if str(device).startswith("cuda") and torch.cuda.is_available():
@@ -1466,10 +1641,11 @@ def preflight(args: argparse.Namespace) -> int:
         targets = rendered.target.to(device)
         panel_model = ScaledChenBOGTModel(formal).to(device)
         panel = {
-            "mse": _gradient_norm_for_arm(panel_model, amplitudes, targets, calibration, "mse_only"),
-            "kl": _gradient_norm_for_arm(panel_model, amplitudes, targets, calibration, "mse_kl", mse_weight=0.0),
-            "op": _gradient_norm_for_arm(panel_model, amplitudes, targets, calibration, "mse_op", mse_weight=0.0),
+            "raw_mse_grad_norm": _gradient_norm_for_arm(panel_model, amplitudes, targets, calibration, "mse_only"),
+            "raw_kl_grad_norm": _gradient_norm_for_arm(panel_model, amplitudes, targets, calibration, "mse_kl", mse_weight=0.0),
+            "raw_op_grad_norm": _gradient_norm_for_arm(panel_model, amplitudes, targets, calibration, "mse_op", mse_weight=0.0),
         }
+        panel["mse"], panel["kl"], panel["op"] = panel["raw_mse_grad_norm"], panel["raw_kl_grad_norm"], panel["raw_op_grad_norm"]
         panel_norms.append(panel)
         panel_artifacts.append({"panel": panel_index, "indices_sha256": tensor_sha256(indices), "gradient_norms": panel})
         del panel_model, amplitudes, targets
@@ -1478,9 +1654,9 @@ def preflight(args: argparse.Namespace) -> int:
     if selected_weights is not None:
         alpha = float(selected_weights["alpha"])
         gamma = float(selected_weights["gamma"])
-        panel_effective_ratios = [{"kl": alpha * panel["kl"] / panel["mse"], "op": gamma * panel["op"] / panel["mse"]} for panel in panel_norms]
-        panel_gate = all(MIN_GRADIENT_RATIO <= value <= MAX_GRADIENT_RATIO for ratios in panel_effective_ratios for value in ratios.values())
-        panel_weights = {"alpha": alpha, "gamma": gamma, "target_ratio": None, "source": "failure_attribution", "panel_effective_ratios": panel_effective_ratios}
+        panel_weights = {"alpha": alpha, "gamma": gamma, "target_ratio": None, "source": "failure_attribution", "panel_local_calibration": [], "final_fixed_weight_replay": replay_fixed_weight_ratios(panel_norms, alpha=alpha, gamma=gamma)}
+        panel_weights["panel_effective_ratios"] = panel_weights["final_fixed_weight_replay"]
+        panel_gate = final_fixed_weight_ratio_gate(panel_weights["final_fixed_weight_replay"])
     else:
         try:
             panel_weights = calibrate_objective_weights(panel_norms)
@@ -1488,13 +1664,37 @@ def preflight(args: argparse.Namespace) -> int:
             if "gradient ratio" not in str(exc):
                 raise
             panel_gate = False
-            panel_weights = {"alpha": None, "gamma": None, "panel_effective_ratios": []}
+            panel_weights = {"alpha": None, "gamma": None, "panel_effective_ratios": [], "final_fixed_weight_replay": [], "panel_local_calibration": []}
     alpha = float(panel_weights["alpha"]) if panel_weights["alpha"] is not None else 0.0
     gamma = float(panel_weights["gamma"]) if panel_weights["gamma"] is not None else 0.0
+    if panel_weights.get("panel_local_calibration"):
+        local_records = panel_weights["panel_local_calibration"]
+    else:
+        local_records = []
+        for panel in panel_norms:
+            mse = float(panel["raw_mse_grad_norm"])
+            kl = float(panel["raw_kl_grad_norm"])
+            op = float(panel["raw_op_grad_norm"])
+            local_records.append({
+                "raw_mse_grad_norm": mse,
+                "raw_kl_grad_norm": kl,
+                "raw_op_grad_norm": op,
+                "temporary_panel_alpha": calibrate_loss_weights(mse, kl),
+                "temporary_panel_gamma": calibrate_loss_weights(mse, op),
+                "local_target_kl_ratio": 0.10,
+                "local_target_op_ratio": 0.10,
+            })
+    fixed_replay = replay_fixed_weight_ratios(panel_norms, alpha=alpha, gamma=gamma) if panel_weights["alpha"] is not None else []
+    for artifact, local, replay in zip(panel_artifacts, local_records, fixed_replay, strict=True):
+        artifact.update({**local, **replay})
+    panel_weights["panel_local_calibration"] = local_records
+    panel_weights["final_fixed_weight_replay"] = fixed_replay
+    panel_weights["panel_effective_ratios"] = fixed_replay
+    panel_gate = bool(fixed_replay) and final_fixed_weight_ratio_gate(fixed_replay)
     panel_path = Path(args.output).with_name("scaled_chen_bogt_gradient_panels.pt")
     if panel_path.exists():
         raise FileExistsError(f"refusing to overwrite scaled Chen gradient panels: {panel_path}")
-    atomic_torch_save(panel_path, {"schema": "scaled_chen_bogt_gradient_panels.v1", "panels": panel_artifacts, "weights": panel_weights, "dataset_manifest_hash": data.manifest["manifest_hash"]})
+    atomic_torch_save(panel_path, {"schema": "scaled_chen_bogt_gradient_panels.v2", "panels": panel_artifacts, "weights": panel_weights, "dataset_manifest_hash": data.manifest["manifest_hash"], "mode_bank_sha256": expected_mode_hash})
     reference_mean = torch.linspace(0.8, 1.2, PORT_COUNT, device=device, dtype=torch.float64)
     reference_variance = torch.linspace(0.15, 0.35, PORT_COUNT, device=device, dtype=torch.float64)
     kl_formula_ok = bool(torch.allclose(bogt_kl_surrogate(reference_mean, reference_variance), independent_bogt_kl_reference(reference_mean, reference_variance), atol=1.0e-12, rtol=1.0e-12))
@@ -1571,7 +1771,7 @@ def preflight(args: argparse.Namespace) -> int:
         GateResult("resume_2_plus_1", resume_ok, {"steps": "2+1"}),
         GateResult("formula_independent_reference", kl_formula_ok, {"passed": kl_formula_ok}),
         GateResult("two_pass_gradient_equivalence", two_pass_ok, {"passed": two_pass_ok}),
-        GateResult("gradient_ratio_panels", panel_gate, {"weights": panel_weights}),
+        GateResult("gradient_ratio_panels", panel_gate, {"final_fixed_weight_replay": panel_weights.get("final_fixed_weight_replay", []), "panel_local_calibration": panel_weights.get("panel_local_calibration", [])}),
         GateResult("statistical_bogt_batch_stability", statistical_audit.get("status") == "passed" and selected_batch_size == BATCH_SIZE, {"selected_batch_size": selected_batch_size, "audit": statistical_audit}),
         GateResult("ols_and_calibration_frozen", freeze_ok, {"passed": freeze_ok}),
         GateResult("frozen_encoder_negative_control", encoder_frozen_control, {"passed": encoder_frozen_control}),
@@ -1643,12 +1843,17 @@ def pilot_train(args: argparse.Namespace) -> int:
     torch.manual_seed(SEED)
     torch.cuda.manual_seed_all(SEED)
     torch.cuda.reset_peak_memory_stats(device)
-    results = run_factorial_pilot(formal, amplitudes, targets, calibration, device=device, alpha=float(preflight_contract["alpha"]), gamma=float(preflight_contract["gamma"]), checkpoint_dir=Path(args.output).parent / "checkpoints")
     class_templates = _class_templates(data)
+    calibration_hash = file_sha256(calibration_path)
+    train_indices = data.schedule.reshape(-1)
+    def observation_callback(runtime_model: ScaledChenBOGTModel, step: int, initial_phase: Mapping[str, torch.Tensor]) -> Mapping[str, Any]:
+        return evaluate_pilot_observation(runtime_model, data, calibration, train_indices=train_indices, heldout_indices=data.heldout_indices, class_templates=class_templates, device=device, step=step, initial_phase=initial_phase, calibration_sha256=calibration_hash)
+    results = run_factorial_pilot(formal, amplitudes, targets, calibration, device=device, alpha=float(preflight_contract["alpha"]), gamma=float(preflight_contract["gamma"]), checkpoint_dir=Path(args.output).parent / "checkpoints", observation_callback=observation_callback)
     baseline_model = ScaledChenBOGTModel(formal).to(device)
     baseline_state = {name: value.detach().clone() for name, value in baseline_model.ols.state_dict().items()}
     baseline_eval = _evaluate_model(baseline_model, data, calibration, data.heldout_indices, device, class_templates)
     baseline_rank = baseline_eval["metrics"]["coefficient_effective_rank"]
+    baseline_power_rank = baseline_eval["metrics"]["power_latent_effective_rank"]
     for arm, arm_result in results["arms"].items():
         model = ScaledChenBOGTModel(formal).to(device)
         model.load_state_dict(arm_result.pop("final_state"), strict=True)
@@ -1679,6 +1884,7 @@ def pilot_train(args: argparse.Namespace) -> int:
         "mse_only_op": results["arms"]["mse_only"]["continuous"]["op"],
         "mse_op_op": results["arms"]["mse_op"]["continuous"]["op"],
         "ols_effective_rank_retention": results["arms"]["mse_kl_op"]["continuous"]["coefficient_effective_rank"] / max(baseline_rank, 1.0e-30),
+        "power_latent_effective_rank_retention": results["arms"]["mse_kl_op"]["continuous"]["power_latent_effective_rank"] / max(baseline_power_rank, 1.0e-30),
         "paired_mse": results["arms"]["mse_kl_op"]["continuous"]["paired_mse"],
         "template_control_mse": results["arms"]["mse_kl_op"]["continuous"]["template_control_mse"],
         "cyclic_control_mse": results["arms"]["mse_kl_op"]["continuous"]["cyclic_mse"],
@@ -1707,12 +1913,13 @@ def pilot_train(args: argparse.Namespace) -> int:
         GateResult("wall_time", time.monotonic() - started <= MAX_PILOT_SECONDS, {"seconds": time.monotonic() - started}),
     )
     gates = science_gates + harness_gates
-    if not all(gate.passed for gate in harness_gates):
-        status, action, reason = "invalid_harness", None, "scaled Chen pilot harness or resource gate failed"
-    elif not all(gate.passed for gate in science_gates):
-        status, action, reason = "valid_failed", "manual_review_scaled_chen_bogt_pilot_failure_attribution", "scaled Chen pilot scientific gate failed"
+    status, failed_names = classify_pilot_result(science_gates, harness_gates)
+    if status == "invalid_harness":
+        action, reason = None, "scaled Chen pilot harness or resource gate failed"
+    elif status == "passed_scaled_chen_bogt_pilot":
+        action, reason = "manual_review_scaled_chen_bogt_phase_closure_contract", None
     else:
-        status, action, reason = "passed", "manual_review_scaled_chen_bogt_1000_step_three_seed_continuation_contract", None
+        action, reason = "manual_review_scaled_chen_bogt_pilot_failure_attribution", f"scaled Chen pilot scientific gates failed: {','.join(failed_names)}"
     input_hashes = {
         "research_config": file_sha256(spec.path),
         "formal_config": file_sha256(formal_path),
@@ -1745,7 +1952,7 @@ def pilot_train(args: argparse.Namespace) -> int:
     })
     _write_new(args.output, payload)
     print(json.dumps(payload, indent=2, sort_keys=True))
-    return 0 if status in {"passed", "valid_failed"} else 2
+    return 0 if status != "invalid_harness" else 2
 
 
 def dispatch(args: argparse.Namespace) -> int:
