@@ -1320,7 +1320,6 @@ def pilot_train(args: argparse.Namespace) -> int:
         "template_control_mse": results["arms"]["mse_kl_op"]["continuous"]["template_control_mse"],
         "cyclic_control_mse": results["arms"]["mse_kl_op"]["continuous"]["cyclic_mse"],
     }
-    science_gates = pilot_gate_results(metrics)
     all_finite = all(
         value[variant]["finite"]
         for value in results["arms"].values()
@@ -1334,6 +1333,7 @@ def pilot_train(args: argparse.Namespace) -> int:
     frozen = all(result["ols_and_calibration_frozen"] for result in results["arms"].values())
     metrics["four_phase_updated"] = all_phase_updated
     metrics["ols_exposure_calibration_evaluator_frozen"] = frozen
+    science_gates = pilot_gate_results(metrics)
     harness_gates = (
         GateResult("all_arms_completed_100_steps", all(len(result["history"]) == 2 and result["checkpoint_hashes"].keys() == {"50", "100"} for result in results["arms"].values()), {"steps_per_arm": STEPS}),
         GateResult("four_phase_updates_nonzero", all_phase_updated, {"updates": phase_updates}),
