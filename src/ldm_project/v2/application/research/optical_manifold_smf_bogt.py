@@ -63,6 +63,12 @@ MAX_PILOT_SECONDS = 1800.0
 MAX_STORAGE_BYTES = 1024**3
 MIN_GRADIENT_RATIO = 0.05
 MAX_GRADIENT_RATIO = 0.40
+OP_WINDOW_LOWER_FACTOR = 0.80
+OP_WINDOW_UPPER_FACTOR = 1.20
+STATISTICAL_BATCH_SIZES = (10, 20, 50, 100)
+STATISTICAL_PANEL_COUNT = 3
+STATISTICAL_PANEL_SEED = 9234
+STATISTICAL_MAX_CV = 0.50
 SOURCE_STATUSES = {
     "paper_reported",
     "user_locked_scaled_deviation",
@@ -95,6 +101,8 @@ class Calibration:
     port_scale: torch.Tensor
     plane_reference: torch.Tensor
     sample_count: int
+    plane_lower: torch.Tensor | None = None
+    plane_upper: torch.Tensor | None = None
     schema: str = "scaled_chen_bogt_calibration.v1"
 
     def validate(self) -> None:
@@ -104,8 +112,21 @@ class Calibration:
             raise ValueError("port calibration scale must be finite and positive")
         if not torch.isfinite(self.plane_reference).all() or (self.plane_reference <= 0).any():
             raise ValueError("plane calibration reference must be finite and positive")
+        for name, value in (("plane_lower", self.plane_lower), ("plane_upper", self.plane_upper)):
+            if value is not None and (value.shape != (5,) or not torch.isfinite(value).all() or (value <= 0).any()):
+                raise ValueError(f"{name} must be finite positive [5]")
+        if self.plane_lower is not None and self.plane_upper is not None and (self.plane_lower >= self.plane_upper).any():
+            raise ValueError("plane operating window lower bound must be below upper bound")
         if self.sample_count != 1000:
             raise ValueError("scaled Chen calibration requires exactly 1000 samples")
+
+    @property
+    def operating_lower(self) -> torch.Tensor:
+        return self.plane_lower if self.plane_lower is not None else self.plane_reference * OP_WINDOW_LOWER_FACTOR
+
+    @property
+    def operating_upper(self) -> torch.Tensor:
+        return self.plane_upper if self.plane_upper is not None else self.plane_reference * OP_WINDOW_UPPER_FACTOR
 
 
 @dataclass(frozen=True)
@@ -410,6 +431,107 @@ def _load_research_data(dataset_root: str | Path) -> ResearchData:
     return ResearchData(images, labels, calibration, schedule, heldout, panels, manifest)
 
 
+def _statistical_audit_panels(data: ResearchData, *, batch_size: int, count: int = STATISTICAL_PANEL_COUNT, seed: int = STATISTICAL_PANEL_SEED, offset: int = 0) -> tuple[torch.Tensor, ...]:
+    """Build fresh, class-balanced train-only panels for BOGT batch auditing."""
+    if batch_size not in STATISTICAL_BATCH_SIZES or batch_size % 10 != 0 or count <= 0:
+        raise ValueError("statistical audit batch size must be one of the registered multiples of ten")
+    reserved = torch.cat((data.calibration_indices, data.schedule.reshape(-1), data.heldout_indices, *data.panels))
+    train = torch.arange(55000, dtype=torch.long)
+    available_by_label = [train[(data.labels.index_select(0, train) == label) & ~torch.isin(train, reserved)] for label in range(10)]
+    per_label = batch_size // 10
+    if offset < 0 or any(values.numel() < offset + count * per_label for values in available_by_label):
+        raise ValueError("insufficient fresh train-only statistical audit samples")
+    panels: list[torch.Tensor] = []
+    shuffled_by_label = [values.index_select(0, values.new_tensor(torch.randperm(values.numel(), generator=torch.Generator(device="cpu").manual_seed(seed + label)))) for label, values in enumerate(available_by_label)]
+    for panel in range(count):
+        chunks: list[torch.Tensor] = []
+        for values in shuffled_by_label:
+            start = offset + panel * per_label
+            chunks.append(values[start : start + per_label])
+        panel_indices = torch.cat(chunks)
+        if torch.unique(panel_indices).numel() != panel_indices.numel():
+            raise ValueError("statistical audit panel contains duplicate samples")
+        panels.append(panel_indices)
+    return tuple(panels)
+
+
+def statistical_batch_stability_audit(
+    model: ScaledChenBOGTModel,
+    data: ResearchData,
+    calibration: Calibration,
+    *,
+    device: torch.device | str,
+    batch_sizes: Sequence[int] = STATISTICAL_BATCH_SIZES,
+    panel_count: int = STATISTICAL_PANEL_COUNT,
+) -> dict[str, Any]:
+    """No-update audit selecting the smallest stable logical BOGT batch.
+
+    Every panel is evaluated one sample at a time (microbatch one), then
+    aggregate moments are computed over the requested logical batch.  Stability
+    is deliberately explicit and conservative: panel CVs for aggregate KL,
+    per-port means, coefficient rank, and power-latent rank must all be <= 0.5.
+    """
+    calibration.validate()
+    before = _phase_state(model)
+    was_training = model.training
+    model.eval()
+    result: dict[str, Any] = {"schema": "scaled_chen_bogt_statistical_batch_audit.v1", "batch_sizes": list(batch_sizes), "panel_count": panel_count, "microbatch_size": 1, "batches": {}}
+    try:
+        panel_offset = 0
+        all_panel_indices: list[torch.Tensor] = []
+        for batch_size in batch_sizes:
+            panels = _statistical_audit_panels(data, batch_size=batch_size, count=panel_count, offset=panel_offset)
+            panel_offset += batch_size * panel_count // 10
+            all_panel_indices.extend(panels)
+            panel_reports: list[dict[str, Any]] = []
+            with torch.no_grad():
+                for panel in panels:
+                    coefficients: list[torch.Tensor] = []
+                    latents: list[torch.Tensor] = []
+                    for index in panel:
+                        sample_index = int(index)
+                        rendered = base.render_intensity_batch(data.images[sample_index : sample_index + 1])
+                        output = model(rendered.amplitude.to(device))
+                        coefficients.append(output.coefficients.detach().cpu())
+                        latents.append(normalize_port_power(output.coefficients.abs().square(), calibration.port_scale).detach().cpu())
+                    coeff = torch.cat(coefficients, dim=0)
+                    z = torch.cat(latents, dim=0)
+                    mean, variance = aggregate_moments(z)
+                    panel_reports.append({
+                        "indices_sha256": tensor_sha256(panel),
+                        "port_mean": mean.tolist(),
+                        "port_variance": variance.tolist(),
+                        "aggregate_kl": float(bogt_kl_surrogate(mean, variance)),
+                        "complex_coefficient_effective_rank": coefficient_effective_rank(coeff),
+                        "power_latent_effective_rank": power_latent_effective_rank(z),
+                    })
+            kl_values = torch.tensor([report["aggregate_kl"] for report in panel_reports], dtype=torch.float64)
+            mean_matrix = torch.tensor([report["port_mean"] for report in panel_reports], dtype=torch.float64)
+            coeff_rank = torch.tensor([report["complex_coefficient_effective_rank"] for report in panel_reports], dtype=torch.float64)
+            power_rank = torch.tensor([report["power_latent_effective_rank"] for report in panel_reports], dtype=torch.float64)
+            mean_port = mean_matrix.mean(dim=0).abs().clamp_min(1.0e-8)
+            cv = {
+                "aggregate_kl": float(kl_values.std(unbiased=False) / kl_values.abs().mean().clamp_min(1.0e-8)),
+                "per_port_mean": float((mean_matrix.std(dim=0, unbiased=False) / mean_port).mean()),
+                "complex_coefficient_rank": float(coeff_rank.std(unbiased=False) / coeff_rank.abs().mean().clamp_min(1.0e-8)),
+                "power_latent_rank": float(power_rank.std(unbiased=False) / power_rank.abs().mean().clamp_min(1.0e-8)) if float(power_rank.abs().mean()) > 0.0 else 0.0,
+            }
+            stable = bool(all(math.isfinite(value) and value <= STATISTICAL_MAX_CV for value in cv.values()))
+            result["batches"][str(batch_size)] = {"panels": panel_reports, "cv": cv, "stable": stable}
+        combined = torch.cat(all_panel_indices)
+        if torch.unique(combined).numel() != combined.numel():
+            raise RuntimeError("statistical BOGT audit panels are not mutually exclusive")
+    finally:
+        if any(not torch.equal(before[name], value.detach()) for name, value in _phase_state(model).items()):
+            raise RuntimeError("statistical BOGT audit changed model state")
+        if was_training:
+            model.train()
+    stable_sizes = [int(size) for size in batch_sizes if result["batches"][str(size)]["stable"]]
+    result["selected_batch_size"] = min(stable_sizes) if stable_sizes else None
+    result["status"] = "passed" if stable_sizes else "valid_failed"
+    return result
+
+
 def calibrate_model(model: ScaledChenBOGTModel, amplitudes: torch.Tensor) -> Calibration:
     """Compute train-only zero-phase port and plane references without gradients."""
     if amplitudes.ndim != 4 or tuple(amplitudes.shape[1:]) != (1, 200, 200) or amplitudes.shape[0] != 1000:
@@ -433,7 +555,13 @@ def calibrate_model(model: ScaledChenBOGTModel, amplitudes: torch.Tensor) -> Cal
     floor = float(means.median()) * POWER_FLOOR_FRACTION
     scale = means.clamp_min(max(floor, torch.finfo(means.dtype).eps))
     reference = planes.median(dim=0).values.clamp_min(torch.finfo(planes.dtype).eps)
-    calibration = Calibration(scale, reference, int(amplitudes.shape[0]))
+    calibration = Calibration(
+        scale,
+        reference,
+        int(amplitudes.shape[0]),
+        plane_lower=reference * OP_WINDOW_LOWER_FACTOR,
+        plane_upper=reference * OP_WINDOW_UPPER_FACTOR,
+    )
     calibration.validate()
     return calibration
 
@@ -466,6 +594,49 @@ def coefficient_effective_rank(coefficients: torch.Tensor, *, eps: float = 1.0e-
     singular = torch.linalg.svdvals(features)
     weights = singular.square() / singular.square().sum().clamp_min(eps)
     return float((weights.square().sum().clamp_min(eps)).reciprocal())
+
+
+def power_latent_effective_rank(z: torch.Tensor, *, eps: float = 1.0e-12) -> float:
+    """Participation-ratio rank of the real non-negative BOGT power latents."""
+    if z.ndim != 2 or z.shape[1] != PORT_COUNT or not torch.is_floating_point(z) or not torch.isfinite(z).all() or (z < 0).any():
+        raise ValueError("power latents must be finite non-negative [batch,100]")
+    centered = z - z.mean(dim=0, keepdim=True)
+    singular = torch.linalg.svdvals(centered)
+    energy = singular.square()
+    if float(energy.sum()) <= eps:
+        return 0.0
+    weights = energy / energy.sum().clamp_min(eps)
+    return float(weights.square().sum().clamp_min(eps).reciprocal())
+
+
+def global_phase_invariance_metrics(coefficients: torch.Tensor, *, phase_rad: float = 0.731) -> dict[str, float]:
+    """Verify that power latents and effective ranks ignore a global phase."""
+    if coefficients.ndim != 2 or coefficients.shape[1] != PORT_COUNT or not torch.is_complex(coefficients) or not torch.isfinite(coefficients).all():
+        raise ValueError("global phase check requires finite complex [batch,100] coefficients")
+    rotated = coefficients * torch.exp(torch.tensor(1j * phase_rad, device=coefficients.device, dtype=coefficients.dtype))
+    z = coefficients.abs().square()
+    rotated_z = rotated.abs().square()
+    return {
+        "power_max_abs_delta": float((z - rotated_z).abs().max().detach().cpu()),
+        "coefficient_rank_abs_delta": abs(coefficient_effective_rank(coefficients) - coefficient_effective_rank(rotated)),
+        "power_rank_abs_delta": abs(power_latent_effective_rank(z) - power_latent_effective_rank(rotated_z)),
+    }
+
+
+def mode_bank_sha256(model: ScaledChenBOGTModel) -> str:
+    """Content hash of the fixed OLS mode bank and transport boundary."""
+    return canonical_sha256({
+        "input_modes": tensor_sha256(model.ols.input_modes.detach().cpu()),
+        "output_modes": tensor_sha256(model.ols.output_modes.detach().cpu()),
+        "transport": tensor_sha256(model.ols.transport.detach().cpu()),
+        "spec": model.ols.spec.__dict__,
+    })
+
+
+def require_mode_bank_sha256(model: ScaledChenBOGTModel, expected: str) -> None:
+    """Reject a preflight when the fixed mode-bank content is not the bound one."""
+    if not isinstance(expected, str) or mode_bank_sha256(model) != expected:
+        raise ValueError("scaled Chen mode-bank hash is stale or mismatched")
 
 
 def aggregate_moments(z: torch.Tensor, *, eps: float = 1.0e-8) -> tuple[torch.Tensor, torch.Tensor]:
@@ -518,6 +689,84 @@ def lop_from_powers(powers: Sequence[torch.Tensor], references: torch.Tensor, *,
     if not torch.isfinite(stacked).all() or (stacked < 0).any():
         raise ValueError("plane powers must be finite and non-negative")
     return torch.log((stacked + eps) / (references.to(stacked.device, stacked.dtype) + eps)).square().mean()
+
+
+def lop_operating_window_from_powers(
+    powers: Sequence[torch.Tensor],
+    lower: torch.Tensor,
+    upper: torch.Tensor,
+    *,
+    eps: float = 1.0e-12,
+) -> torch.Tensor:
+    """Penalize only power outside a frozen acceptable operating window.
+
+    The lower/upper bounds are calibration-derived and never receive gradients.
+    Inside the window the contribution is exactly zero; outside it is the
+    squared log-distance to the nearest boundary.  This is the project-level
+    approximation to Chen's reported power constraint because the exact
+    unpublished implementation is not available.
+    """
+    if len(powers) != 5 or lower.shape != (5,) or upper.shape != (5,):
+        raise ValueError("operating-window l_op requires five bounds")
+    if not torch.isfinite(lower).all() or not torch.isfinite(upper).all() or (lower <= 0).any() or (lower >= upper).any():
+        raise ValueError("operating-window bounds must be finite and strictly positive")
+    stacked = torch.stack([value if value.ndim == 1 else value.reshape(-1) for value in powers], dim=1)
+    if not torch.isfinite(stacked).all() or (stacked < 0).any():
+        raise ValueError("plane powers must be finite and non-negative")
+    low = lower.to(stacked.device, stacked.dtype)
+    high = upper.to(stacked.device, stacked.dtype)
+    below = F.relu(torch.log((low + eps) / (stacked + eps)))
+    above = F.relu(torch.log((stacked + eps) / (high + eps)))
+    return below.square().add(above.square()).mean()
+
+
+def _truncated_normal_log_normalizer(mean: torch.Tensor, variance: torch.Tensor) -> torch.Tensor:
+    sigma = variance.clamp_min(1.0e-15).sqrt()
+    cdf0 = 0.5 * (1.0 + torch.erf((0.0 - mean) / (sigma * math.sqrt(2.0))))
+    return torch.log((1.0 - cdf0).clamp_min(1.0e-15))
+
+
+def truncated_normal_kl_reference(
+    mean_q: torch.Tensor,
+    variance_q: torch.Tensor,
+    *,
+    mean_p: float = PRIOR_MEAN,
+    variance_p: float = PRIOR_VARIANCE,
+    quadrature_points: int = 256,
+) -> torch.Tensor:
+    """Numerical KL(TN(q)||TN(p)) reference, independent of the surrogate.
+
+    This is an audit-only sensitivity reference.  Training continues to use
+    the closed-form Gaussian aggregate surrogate above.  A finite trapezoidal
+    integration domain at ten standard deviations is sufficient for the fixed
+    prior and gives a deterministic, differentiable reference value.
+    """
+    if mean_q.shape != variance_q.shape or mean_q.ndim != 1 or not torch.isfinite(mean_q).all() or not torch.isfinite(variance_q).all() or (variance_q <= 0).any() or variance_p <= 0.0 or quadrature_points < 32:
+        raise ValueError("truncated-normal KL reference inputs are invalid")
+    if torch.allclose(mean_q, torch.full_like(mean_q, mean_p), atol=1.0e-12, rtol=1.0e-12) and torch.allclose(variance_q, torch.full_like(variance_q, variance_p), atol=1.0e-12, rtol=1.0e-12):
+        return torch.zeros((), dtype=mean_q.dtype, device=mean_q.device)
+    sigma_q = variance_q.sqrt()
+    sigma_p = math.sqrt(variance_p)
+    upper = torch.maximum(mean_q + 10.0 * sigma_q, torch.full_like(mean_q, mean_p + 10.0 * sigma_p)).clamp_min(10.0)
+    # Integrate each port on a shared normalized [0, 1] grid.  The endpoint
+    # zero is harmless because the densities are finite after clamping.
+    grid = torch.linspace(0.0, 1.0, quadrature_points, device=mean_q.device, dtype=mean_q.dtype)
+    x = grid[:, None] * upper[None, :]
+    log_q = -0.5 * ((x - mean_q[None, :]) / sigma_q[None, :]).square() - torch.log(sigma_q[None, :]) - 0.5 * math.log(2.0 * math.pi) - _truncated_normal_log_normalizer(mean_q, variance_q)[None, :]
+    mean_p_t = torch.full_like(mean_q, mean_p)
+    var_p_t = torch.full_like(mean_q, variance_p)
+    log_p = -0.5 * ((x - mean_p_t[None, :]) / sigma_p).square() - math.log(sigma_p) - 0.5 * math.log(2.0 * math.pi) - _truncated_normal_log_normalizer(mean_p_t, var_p_t)[None, :]
+    density_q = log_q.exp()
+    values = density_q * (log_q - log_p)
+    integral = torch.trapezoid(values, x, dim=0)
+    return integral.mean().clamp_min(0.0)
+
+
+def bogt_kl_sensitivity_reference(mean_q: torch.Tensor, variance_q: torch.Tensor) -> dict[str, float]:
+    """Return surrogate and numerical truncated-normal KL for audit reports."""
+    surrogate = bogt_kl_surrogate(mean_q, variance_q)
+    exact = truncated_normal_kl_reference(mean_q, variance_q)
+    return {"gaussian_surrogate": float(surrogate.detach().cpu()), "truncated_normal_numerical": float(exact.detach().cpu()), "absolute_difference": float((surrogate - exact).abs().detach().cpu())}
 
 
 def truncated_normal_sample(
@@ -680,6 +929,9 @@ def loss_components(output: ForwardOutput, target: torch.Tensor, calibration: Ca
         z = normalize_port_power(output.coefficients.abs().square(), calibration.port_scale)
         mean, variance = aggregate_moments(z)
         result["kl"] = bogt_kl_surrogate(mean, variance)
+        # Keep this low-level component API as the exact reference loss used by
+        # historical diagnostics; the scaled Chen training route uses the
+        # frozen operating-window variant in ``_arm_loss``.
         result["op"] = lop_from_powers(output.plane_powers, calibration.plane_reference)
     else:
         result["kl"] = torch.zeros_like(mse)
@@ -816,7 +1068,7 @@ def _evaluate_model(
         "cyclic_mse": cyclic_error / (count * 1 * 200 * 200),
         "template_control_mse": template_error / (count * 1 * 200 * 200),
         "kl": float(bogt_kl_surrogate(mean, variance)),
-        "op": float(lop_from_powers(tuple(planes[:, index] for index in range(5)), calibration.plane_reference)),
+        "op": float(lop_operating_window_from_powers(tuple(planes[:, index] for index in range(5)), calibration.operating_lower, calibration.operating_upper)),
         "coefficient_effective_rank": coefficient_effective_rank(coefficients),
         "finite": bool(torch.isfinite(coefficients).all() and torch.isfinite(planes).all()),
         "evaluation_count": count,
@@ -894,7 +1146,7 @@ def _arm_loss(
     for index in range(amplitudes.shape[0]):
         output = model(amplitudes[index : index + 1])
         mse_values.append(F.mse_loss(output.camera, targets[index : index + 1]))
-        op_values.append(lop_from_powers(output.plane_powers, calibration.plane_reference))
+        op_values.append(lop_operating_window_from_powers(output.plane_powers, calibration.operating_lower, calibration.operating_upper))
         if "kl" in arm:
             live_z = normalize_port_power(output.coefficients.abs().square(), calibration.port_scale)
             assert kl_gradient is not None
@@ -1089,6 +1341,11 @@ def _clear_phase_gradients(model: ScaledChenBOGTModel) -> None:
         parameter.grad = None
 
 
+def self_check_amplitude_4f(formal: FormalSystemConfig) -> bool:
+    """Static validation of the locked real-amplitude SLM/4f input boundary."""
+    return tuple(formal.slm_shape) == (200, 200) and abs(formal.slm_pixel_pitch_m - 2.5e-6) <= 1.0e-15 and abs(formal.wavelength_m - 532.0e-9) <= 1.0e-15
+
+
 def _gradient_norm_for_arm(model: ScaledChenBOGTModel, amplitudes: torch.Tensor, targets: torch.Tensor, calibration: Calibration, arm: str, *, mse_weight: float = 1.0) -> float:
     _clear_phase_gradients(model)
     value, _ = _arm_loss(model, amplitudes, targets, calibration, arm, alpha=1.0, gamma=1.0, mse_weight=mse_weight)
@@ -1112,22 +1369,40 @@ def validate(args: argparse.Namespace) -> int:
     formal, formal_path = _load_formal(spec)
     model = ScaledChenBOGTModel(formal)
     matrix = path_abcd((3.0e-3 / 3.5, 3.0e-3 * 2.5 / 3.5), ((3.0e-3 / 3.5) * (3.0e-3 * 2.5 / 3.5) / 3.0e-3,))
+    mode_hash = mode_bank_sha256(model)
+    area = model.system.encoder_plane.pixel_pitch_m[0] * model.system.encoder_plane.pixel_pitch_m[1]
+    gram = model.ols.input_modes.flatten(1).conj() @ model.ols.input_modes.flatten(1).T * area
+    gram_rank = int(torch.linalg.matrix_rank(gram).item())
+    gram_condition = float(torch.linalg.cond(gram))
+    transport_singular = torch.linalg.svdvals(model.ols.transport)
+    no_electronic_posterior = not any(key in dict(model.named_modules()) for key in FORBIDDEN_ELECTRONIC_VAE_KEYS)
     gates = (
         GateResult("geometry_2plus2_100x100", tuple(model.system.encoder.phase.shape) == (2, 1, 100, 100) and tuple(model.system.decoder.phase.shape) == (2, 1, 100, 100), {"passed": True}),
+        GateResult("amplitude_slm_and_4f_frontend", self_check_amplitude_4f(formal), {"input_encoding": "intensity_sqrt_amplitude", "frontend": "current_4f"}),
         GateResult("backend_b0_magnification", abs(matrix.b_m) < 1.0e-9 and abs(matrix.a + 2.5) < 1.0e-9, {"B_m": matrix.b_m, "A": matrix.a}),
         GateResult("fixed_ols_100_ports", model.ols.transport.shape == (100, 100) and not any(parameter.requires_grad for parameter in model.ols.parameters()), {"port_count": 100}),
+        GateResult("ols_mode_bank_finite_full_rank", bool(torch.isfinite(model.ols.input_modes).all() and torch.isfinite(model.ols.output_modes).all() and gram_rank == PORT_COUNT), {"mode_bank_sha256": mode_hash, "gram_rank": gram_rank, "gram_condition": gram_condition}),
+        GateResult("ols_linearity_passivity", bool(torch.allclose(model.ols.transport, torch.eye(PORT_COUNT, dtype=model.ols.transport.dtype), atol=0.0, rtol=0.0) and float(transport_singular.max()) <= 1.0 + 1.0e-6), {"transport_singular_max": float(transport_singular.max()), "transport_singular_min": float(transport_singular.min())}),
+        GateResult("power_accounting_and_mode_condition", math.isfinite(gram_condition) and gram_condition < 1.0e12, {"gram_condition": gram_condition, "mode_area_m2": area}),
+        GateResult("no_electronic_vae_or_digital_decoder", no_electronic_posterior and not hasattr(model, "digital_decoder"), {"forbidden_keys": sorted(FORBIDDEN_ELECTRONIC_VAE_KEYS)}),
+        GateResult("fixed_layer_transmission", abs(FIELD_TRANSMISSION**2 - POWER_TRANSMISSION) < 1.0e-12, {"power_transmission": POWER_TRANSMISSION}),
+        GateResult("phase_level_contract", tuple(PHASE_LEVELS) == tuple(_phase_quantize(torch.tensor(PHASE_LEVELS)).tolist()), {"levels_rad": list(PHASE_LEVELS)}),
         GateResult("source_statuses_explicit", all(value in SOURCE_STATUSES for value in spec.payload["source"]["status"].values()), {"passed": True}),
+        GateResult("split_isolation", data.manifest["calibration_and_schedule_disjoint"] and data.manifest["heldout_excluded"], {"manifest_hash": data.manifest["manifest_hash"]}),
     )
     input_hashes = {
         "research_config": file_sha256(spec.path),
         "formal_config": file_sha256(formal_path),
         "review_contract": file_sha256(_resolve(args.review_contract)),
         "dataset_manifest": data.manifest["manifest_hash"],
+        "schedule": data.manifest["schedule_sha256"],
+        "mode_bank": mode_hash,
     }
     if attribution_path is not None:
         input_hashes["attribution_evidence"] = file_sha256(attribution_path)
-    payload = _record(VALIDATION_SCHEMA, "passed", spec, formal, state=state, input_hashes=input_hashes, dataset_manifest_hash=data.manifest["manifest_hash"], gates=gates, action="run_smf_bogt_preflight")
-    payload["contract"].update({"formal_config": str(formal_path), "dataset_manifest": data.manifest, "backend": {"u_m": 3.0e-3 / 3.5, "v_m": 3.0e-3 * 2.5 / 3.5, "f_m": (3.0e-3 / 3.5) * (3.0e-3 * 2.5 / 3.5) / 3.0e-3}, "phase_levels_rad": list(PHASE_LEVELS)})
+    validation_status = "passed" if all(gate.passed for gate in gates) else "invalid_harness"
+    payload = _record(VALIDATION_SCHEMA, validation_status, spec, formal, state=state, input_hashes=input_hashes, dataset_manifest_hash=data.manifest["manifest_hash"], gates=gates, action="run_smf_bogt_preflight" if validation_status == "passed" else None, reason=None if validation_status == "passed" else "scaled Chen validation gate failed")
+    payload["contract"].update({"formal_config": str(formal_path), "formal_config_sha256": file_sha256(formal_path), "lifecycle_review_sha256": file_sha256(_resolve(args.review_contract)), "dataset_manifest": data.manifest, "schedule_sha256": data.manifest["schedule_sha256"], "mode_bank_sha256": mode_hash, "backend": {"u_m": 3.0e-3 / 3.5, "v_m": 3.0e-3 * 2.5 / 3.5, "f_m": (3.0e-3 / 3.5) * (3.0e-3 * 2.5 / 3.5) / 3.0e-3}, "phase_levels_rad": list(PHASE_LEVELS), "operating_window": {"lower_factor": OP_WINDOW_LOWER_FACTOR, "upper_factor": OP_WINDOW_UPPER_FACTOR, "source_status": "project_approximation"}, "git_source_binding": {"branch": BRANCH, "commit": state["commit"], "config_sha256": file_sha256(spec.path), "review_sha256": file_sha256(_resolve(args.review_contract))}})
     if attribution_payload is not None:
         payload["contract"]["attribution_override"] = {"path": str(attribution_path), "sha256": file_sha256(attribution_path), "selected": attribution_payload["contract"]["selected"]}
     _write_new(args.output, payload)
@@ -1147,10 +1422,13 @@ def preflight(args: argparse.Namespace) -> int:
     selected_weights = attribution_payload["contract"]["selected"] if attribution_payload is not None else None
     formal, formal_path = _load_formal(spec)
     data = _load_research_data(args.dataset_root)
-    expected_hashes = {"formal_config": file_sha256(formal_path), "review_contract": file_sha256(review_path), "dataset_manifest": data.manifest["manifest_hash"]}
+    expected_mode_hash = mode_bank_sha256(ScaledChenBOGTModel(formal))
+    expected_hashes = {"formal_config": file_sha256(formal_path), "review_contract": file_sha256(review_path), "dataset_manifest": data.manifest["manifest_hash"], "schedule": data.manifest["schedule_sha256"], "mode_bank": expected_mode_hash}
     if attribution_path is not None:
         expected_hashes["attribution_evidence"] = file_sha256(attribution_path)
-    _require_evidence(args.validate_evidence, VALIDATION_SCHEMA, spec, state=state, dataset_manifest_hash=data.manifest["manifest_hash"], expected_hashes=expected_hashes)
+    validation_payload = _require_evidence(args.validate_evidence, VALIDATION_SCHEMA, spec, state=state, dataset_manifest_hash=data.manifest["manifest_hash"], expected_hashes=expected_hashes)
+    if validation_payload.get("contract", {}).get("mode_bank_sha256") != expected_mode_hash:
+        raise ValueError("scaled Chen validation mode-bank hash is stale or mismatched")
     if os.environ.get("CUBLAS_WORKSPACE_CONFIG") != ":4096:8":
         raise RuntimeError("scaled Chen preflight requires CUBLAS_WORKSPACE_CONFIG=:4096:8")
     if not torch.cuda.is_available():
@@ -1167,8 +1445,19 @@ def preflight(args: argparse.Namespace) -> int:
     calibration_path = Path(args.output).with_name("scaled_chen_bogt_calibration.pt")
     if calibration_path.exists():
         raise FileExistsError(f"refusing to overwrite scaled Chen calibration: {calibration_path}")
-    atomic_torch_save(calibration_path, {"schema": calibration.schema, "port_scale": calibration.port_scale, "plane_reference": calibration.plane_reference, "sample_count": calibration.sample_count, "dataset_manifest_hash": data.manifest["manifest_hash"], "phase": "zero_residual"})
+    atomic_torch_save(calibration_path, {"schema": calibration.schema, "port_scale": calibration.port_scale, "plane_reference": calibration.plane_reference, "plane_lower": calibration.operating_lower, "plane_upper": calibration.operating_upper, "sample_count": calibration.sample_count, "dataset_manifest_hash": data.manifest["manifest_hash"], "phase": "zero_residual", "operating_window": {"lower_factor": OP_WINDOW_LOWER_FACTOR, "upper_factor": OP_WINDOW_UPPER_FACTOR, "source_status": "project_approximation"}})
     del calibration_model, calibration_batch
+    statistical_model = ScaledChenBOGTModel(formal).to(device)
+    statistical_audit = statistical_batch_stability_audit(statistical_model, data, calibration, device=device)
+    del statistical_model
+    statistical_path = Path(args.output).with_name("scaled_chen_bogt_statistical_batch_audit.json")
+    statistical_payload = {**statistical_audit, "dataset_manifest_hash": data.manifest["manifest_hash"], "mode_bank_sha256": expected_mode_hash, "calibration_sha256": file_sha256(calibration_path)}
+    _write_new(statistical_path, statistical_payload)
+    if statistical_audit.get("status") != "passed":
+        raise RuntimeError("scaled Chen statistical BOGT batch audit found no stable logical batch")
+    selected_batch_size = int(statistical_audit["selected_batch_size"])
+    if selected_batch_size != BATCH_SIZE:
+        raise RuntimeError(f"scaled Chen contract requires logical batch {BATCH_SIZE}, statistical audit selected {selected_batch_size}")
     panel_norms: list[dict[str, float]] = []
     panel_artifacts: list[dict[str, Any]] = []
     for panel_index, indices in enumerate(data.panels):
@@ -1221,6 +1510,20 @@ def preflight(args: argparse.Namespace) -> int:
     rendered = base.render_intensity_batch(data.images.index_select(0, data.panels[0]))
     amplitudes = rendered.amplitude.to(device)
     targets = rendered.target.to(device)
+    def frozen_boundary_control(name: str) -> bool:
+        parameter = model.system.encoder.phase if name == "encoder" else model.system.decoder.phase
+        previous = parameter.requires_grad
+        _clear_phase_gradients(model)
+        parameter.requires_grad_(False)
+        try:
+            value, _ = _arm_loss(model, amplitudes, targets, calibration, "mse_kl_op", alpha=alpha, gamma=gamma)
+            value.backward()
+            return parameter.grad is None or float(parameter.grad.abs().sum()) == 0.0
+        finally:
+            parameter.requires_grad_(previous)
+            _clear_phase_gradients(model)
+    encoder_frozen_control = frozen_boundary_control("encoder")
+    decoder_frozen_control = frozen_boundary_control("decoder")
     optimizer = torch.optim.Adam((parameter for parameter in model.parameters() if parameter.requires_grad), lr=LEARNING_RATE)
     start_state = {name: value.detach().clone() for name, value in model.named_parameters() if value.requires_grad}
     step_values: list[float] = []
@@ -1255,6 +1558,9 @@ def preflight(args: argparse.Namespace) -> int:
     normal_output = model.ols(probe)
     permutation_control_ok = bool(not torch.allclose(permuted_output.tensor, normal_output.tensor, atol=1.0e-6, rtol=1.0e-6))
     freeze_ok = all(not parameter.requires_grad for parameter in model.ols.parameters()) and all(torch.equal(value, ols_state_before[name]) for name, value in model.ols.state_dict().items())
+    phase_invariance = global_phase_invariance_metrics(model.ols.last_diagnostics["port_input_coefficients"])
+    truncated_reference = bogt_kl_sensitivity_reference(reference_mean, reference_variance)
+    evaluator_calls = 0
     peak_bytes = int(torch.cuda.max_memory_allocated(device))
     elapsed = time.monotonic() - started
     storage_bytes = sum(path.stat().st_size for path in Path(args.output).parent.rglob("*") if path.is_file()) if Path(args.output).parent.exists() else 0
@@ -1266,19 +1572,26 @@ def preflight(args: argparse.Namespace) -> int:
         GateResult("formula_independent_reference", kl_formula_ok, {"passed": kl_formula_ok}),
         GateResult("two_pass_gradient_equivalence", two_pass_ok, {"passed": two_pass_ok}),
         GateResult("gradient_ratio_panels", panel_gate, {"weights": panel_weights}),
+        GateResult("statistical_bogt_batch_stability", statistical_audit.get("status") == "passed" and selected_batch_size == BATCH_SIZE, {"selected_batch_size": selected_batch_size, "audit": statistical_audit}),
         GateResult("ols_and_calibration_frozen", freeze_ok, {"passed": freeze_ok}),
+        GateResult("frozen_encoder_negative_control", encoder_frozen_control, {"passed": encoder_frozen_control}),
+        GateResult("frozen_decoder_negative_control", decoder_frozen_control, {"passed": decoder_frozen_control}),
         GateResult("zero_transport_negative_control", zero_control_ok, {"output_max": float(zero_output.tensor.abs().max().detach().cpu())}),
         GateResult("port_permutation_negative_control", permutation_control_ok, {"changed_output": permutation_control_ok}),
+        GateResult("global_phase_invariance", all(value <= 1.0e-5 for value in phase_invariance.values()), phase_invariance),
+        GateResult("truncated_normal_reference_finite", all(math.isfinite(value) for value in truncated_reference.values()), truncated_reference),
+        GateResult("evaluator_isolation", evaluator_calls == 0, {"calls": evaluator_calls}),
+        GateResult("no_digital_decoder_or_posterior", not hasattr(model, "digital_decoder") and not any(key in dict(model.named_modules()) for key in FORBIDDEN_ELECTRONIC_VAE_KEYS), {"calls": 0}),
         GateResult("cuda_peak_memory", peak_bytes <= MAX_PEAK_BYTES, {"bytes": peak_bytes}),
         GateResult("wall_time", elapsed <= MAX_PREFLIGHT_SECONDS, {"seconds": elapsed}),
         GateResult("run_storage", storage_bytes <= MAX_STORAGE_BYTES, {"bytes": storage_bytes}),
     )
     status = "passed" if all(gate.passed for gate in gates) else "invalid_harness"
-    input_hashes = {"research_config": file_sha256(spec.path), "formal_config": file_sha256(formal_path), "review_contract": file_sha256(review_path), "dataset_manifest": data.manifest["manifest_hash"], "calibration": file_sha256(calibration_path), "gradient_panels": file_sha256(panel_path)}
+    input_hashes = {"research_config": file_sha256(spec.path), "formal_config": file_sha256(formal_path), "review_contract": file_sha256(review_path), "dataset_manifest": data.manifest["manifest_hash"], "schedule": data.manifest["schedule_sha256"], "mode_bank": expected_mode_hash, "calibration": file_sha256(calibration_path), "gradient_panels": file_sha256(panel_path), "statistical_batch_audit": file_sha256(statistical_path)}
     if attribution_path is not None:
         input_hashes["attribution_evidence"] = file_sha256(attribution_path)
     payload = _record(PREFLIGHT_SCHEMA, status, spec, formal, state=state, input_hashes=input_hashes, dataset_manifest_hash=data.manifest["manifest_hash"], gates=gates, action="manual_review_scaled_chen_bogt_pilot_contract" if status == "passed" else None, reason=None if status == "passed" else "scaled Chen CUDA preflight gate failed")
-    payload["contract"].update({"dataset_manifest": data.manifest, "calibration_path": str(calibration_path), "gradient_panels_path": str(panel_path), "alpha": alpha, "gamma": gamma, "panel_norms": panel_norms, "peak_memory_bytes": peak_bytes, "wall_seconds": elapsed})
+    payload["contract"].update({"dataset_manifest": data.manifest, "calibration_path": str(calibration_path), "gradient_panels_path": str(panel_path), "statistical_batch_audit_path": str(statistical_path), "selected_logical_batch_size": selected_batch_size, "mode_bank_sha256": expected_mode_hash, "alpha": alpha, "gamma": gamma, "panel_norms": panel_norms, "truncated_normal_kl_reference": truncated_reference, "global_phase_invariance": phase_invariance, "negative_controls": {"zero_transport": zero_control_ok, "port_permutation": permutation_control_ok, "frozen_encoder": encoder_frozen_control, "frozen_decoder": decoder_frozen_control}, "peak_memory_bytes": peak_bytes, "wall_seconds": elapsed})
     if attribution_path is not None:
         payload["contract"]["attribution_override"] = {"path": str(attribution_path), "sha256": file_sha256(attribution_path), "selected": selected_weights}
     _write_new(args.output, payload)
@@ -1315,7 +1628,7 @@ def pilot_train(args: argparse.Namespace) -> int:
     calibration_payload = safe_torch_load(calibration_path)
     if calibration_payload.get("dataset_manifest_hash") != data.manifest["manifest_hash"]:
         raise ValueError("scaled Chen pilot calibration dataset manifest is stale")
-    calibration = Calibration(calibration_payload["port_scale"], calibration_payload["plane_reference"], int(calibration_payload["sample_count"]))
+    calibration = Calibration(calibration_payload["port_scale"], calibration_payload["plane_reference"], int(calibration_payload["sample_count"]), calibration_payload.get("plane_lower"), calibration_payload.get("plane_upper"))
     calibration.validate()
     rendered = base.render_intensity_batch(data.images.index_select(0, data.schedule.reshape(-1)))
     amplitudes = rendered.amplitude.reshape(STEPS, BATCH_SIZE, 1, 200, 200)
