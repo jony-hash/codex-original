@@ -297,6 +297,8 @@ def _load_pilot_review(
     payload = json.loads(target.read_text(encoding="utf-8"))
     if payload.get("schema") != PILOT_REVIEW_SCHEMA or payload.get("hypothesis") != HYPOTHESIS:
         raise ValueError("scaled Chen pilot review schema or hypothesis is invalid")
+    if payload.get("status") != "approved" or payload.get("review_status") != "approved":
+        raise ValueError("scaled Chen pilot review must be explicitly approved")
     if payload.get("reviewer_role") != "project_owner" or payload.get("decision") != "approve_bounded_scaled_chen_bogt_pilot":
         raise ValueError("scaled Chen pilot review decision is invalid")
     if payload.get("bounded_diagnostic_training_authorized") is not True or payload.get("training_authorized") is not False or payload.get("formal_promotion") is not False:
@@ -310,8 +312,13 @@ def _load_pilot_review(
         "optimizer": "Adam",
         "learning_rate": LEARNING_RATE,
         "zero_phase_seed": SEED,
-        "posthoc_phase_quantization": list(PHASE_LEVELS),
-        "post_pass_next_action": "manual_review_scaled_chen_bogt_1000_step_three_seed_continuation_contract",
+        "checkpoint_steps": [CHECKPOINT_INTERVAL, STEPS],
+        "alpha": float(preflight_payload["contract"]["alpha"]),
+        "gamma": float(preflight_payload["contract"]["gamma"]),
+        "prior": {"kind": "truncated_normal", "mean": PRIOR_MEAN, "variance": PRIOR_VARIANCE, "lower": 0.0},
+        "operating_window": {"lower_factor": OP_WINDOW_LOWER_FACTOR, "upper_factor": OP_WINDOW_UPPER_FACTOR, "source_status": "project_approximation"},
+        "pilot_gate_schema": "scaled_chen_bogt_factorial_science_gates.v2",
+        "post_pass_next_action": "manual_review_scaled_chen_bogt_phase_closure_contract",
     }
     if contract != expected_contract:
         raise ValueError("scaled Chen pilot review does not approve this exact pilot contract")
@@ -330,14 +337,20 @@ def _load_pilot_review(
         "source_preflight_sha256": file_sha256(preflight_path),
         "source_dataset_manifest_hash": data.manifest["manifest_hash"],
         "source_schedule_sha256": data.manifest["schedule_sha256"],
+        "source_mode_bank_sha256": preflight_contract.get("mode_bank_sha256"),
         "source_calibration_sha256": file_sha256(calibration_path),
         "source_gradient_panels_sha256": file_sha256(gradient_panels_path),
+        "source_statistical_audit_sha256": file_sha256(_resolve(preflight_contract["statistical_batch_audit_path"])),
     }
     if attribution_path is not None:
         expected_bindings["source_attribution_sha256"] = file_sha256(attribution_path)
     bindings = payload.get("source_bindings")
     if bindings != expected_bindings:
         raise ValueError("scaled Chen pilot review source binding is stale or tampered")
+    draft_path = target.with_name("pilot_review_draft.json")
+    draft_digest = file_sha256(draft_path)
+    if payload.get("source_draft_sha256") != draft_digest:
+        raise ValueError("scaled Chen pilot review does not bind the current draft")
     measured = payload.get("measured_preflight")
     expected_measured = {
         "alpha": float(preflight_contract["alpha"]),
@@ -347,7 +360,7 @@ def _load_pilot_review(
     if measured != expected_measured:
         raise ValueError("scaled Chen pilot review does not bind measured preflight weights")
     prohibited = payload.get("prohibited")
-    if prohibited != ["continuation", "generation", "fmf", "formal_promotion"]:
+    if prohibited != ["continuation", "generation", "phase_closure", "ols_sweep", "fmf", "formal_promotion"]:
         raise ValueError("scaled Chen pilot review prohibition boundary is invalid")
     return payload
 
@@ -1391,8 +1404,8 @@ def run_factorial_pilot(
                 checkpoint_hashes[str(step)] = file_sha256(checkpoint_path)
             if step in {CHECKPOINT_INTERVAL, steps} and observation_callback is not None:
                 observations.append(dict(observation_callback(model, step, initial_phase)))
-            if step in {1, steps}:
-                history.append(values)
+            values["step"] = step
+            history.append(values)
         final_phase = _phase_state(model)
         results[arm] = {
             "history": history,
@@ -1813,11 +1826,28 @@ def pilot_train(args: argparse.Namespace) -> int:
     data = _load_research_data(args.dataset_root)
     validation_path = _resolve(args.validation_evidence)
     preflight_path = _resolve(args.preflight_evidence)
-    expected_hashes = {"formal_config": file_sha256(formal_path), "review_contract": file_sha256(lifecycle_review_path), "dataset_manifest": data.manifest["manifest_hash"]}
+    expected_mode_hash = mode_bank_sha256(ScaledChenBOGTModel(formal))
+    expected_hashes = {
+        "formal_config": file_sha256(formal_path),
+        "review_contract": file_sha256(lifecycle_review_path),
+        "dataset_manifest": data.manifest["manifest_hash"],
+        "schedule": data.manifest["schedule_sha256"],
+        "mode_bank": expected_mode_hash,
+    }
     if attribution_path is not None:
         expected_hashes["attribution_evidence"] = file_sha256(attribution_path)
     _require_evidence(args.validation_evidence, VALIDATION_SCHEMA, spec, state=state, dataset_manifest_hash=data.manifest["manifest_hash"], expected_hashes=expected_hashes)
-    preflight_payload = _require_evidence(args.preflight_evidence, PREFLIGHT_SCHEMA, spec, state=state, dataset_manifest_hash=data.manifest["manifest_hash"], expected_hashes={**expected_hashes, "calibration": file_sha256(_resolve(json.loads(preflight_path.read_text(encoding="utf-8"))["contract"]["calibration_path"])), "gradient_panels": file_sha256(_resolve(json.loads(preflight_path.read_text(encoding="utf-8"))["contract"]["gradient_panels_path"]))})
+    preflight_doc = json.loads(preflight_path.read_text(encoding="utf-8"))
+    preflight_contract = preflight_doc.get("contract")
+    if not isinstance(preflight_contract, Mapping):
+        raise ValueError("scaled Chen preflight contract is missing")
+    preflight_expected = {
+        **expected_hashes,
+        "calibration": file_sha256(_resolve(preflight_contract["calibration_path"])),
+        "gradient_panels": file_sha256(_resolve(preflight_contract["gradient_panels_path"])),
+        "statistical_batch_audit": file_sha256(_resolve(preflight_contract["statistical_batch_audit_path"])),
+    }
+    preflight_payload = _require_evidence(args.preflight_evidence, PREFLIGHT_SCHEMA, spec, state=state, dataset_manifest_hash=data.manifest["manifest_hash"], expected_hashes=preflight_expected)
     _load_pilot_review(args.pilot_review_contract, spec, state=state, validation_path=validation_path, preflight_path=preflight_path, lifecycle_review_path=lifecycle_review_path, formal_path=formal_path, data=data, preflight_payload=preflight_payload, attribution_path=attribution_path)
     preflight_contract = preflight_payload["contract"]
     if attribution_payload is not None:
@@ -1904,7 +1934,7 @@ def pilot_train(args: argparse.Namespace) -> int:
     metrics["ols_exposure_calibration_evaluator_frozen"] = frozen
     science_gates = pilot_gate_results(metrics)
     harness_gates = (
-        GateResult("all_arms_completed_100_steps", all(len(result["history"]) == 2 and result["checkpoint_hashes"].keys() == {"50", "100"} for result in results["arms"].values()), {"steps_per_arm": STEPS}),
+        GateResult("all_arms_completed_100_steps", all(len(result["history"]) == STEPS and result["history"][-1]["step"] == STEPS and result["checkpoint_hashes"].keys() == {"50", "100"} for result in results["arms"].values()), {"steps_per_arm": STEPS}),
         GateResult("four_phase_updates_nonzero", all_phase_updated, {"updates": phase_updates}),
         GateResult("finite_continuous_and_quantized", all_finite, {}),
         GateResult("fixed_ols_exposure_calibration_evaluator", frozen, {"evaluator_calls": 0}),
@@ -1928,8 +1958,11 @@ def pilot_train(args: argparse.Namespace) -> int:
         "validation_evidence": file_sha256(validation_path),
         "preflight_evidence": file_sha256(preflight_path),
         "dataset_manifest": data.manifest["manifest_hash"],
+        "schedule": data.manifest["schedule_sha256"],
+        "mode_bank": expected_mode_hash,
         "calibration": file_sha256(calibration_path),
         "gradient_panels": file_sha256(_resolve(preflight_contract["gradient_panels_path"])),
+        "statistical_batch_audit": file_sha256(_resolve(preflight_contract["statistical_batch_audit_path"])),
     }
     if attribution_path is not None:
         input_hashes["attribution_evidence"] = file_sha256(attribution_path)
@@ -1945,6 +1978,8 @@ def pilot_train(args: argparse.Namespace) -> int:
         "baseline": {"zero_phase": baseline_eval["metrics"]},
         "pilot_results": results,
         "science_metrics": metrics,
+        "classification": status,
+        "failed_gates": list(failed_names),
         "free_cuda_bytes_before": int(free_bytes),
         "total_cuda_bytes": int(total_bytes),
         "peak_memory_bytes": int(torch.cuda.max_memory_allocated(device)),
