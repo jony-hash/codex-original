@@ -1,0 +1,27 @@
+{
+  "schema": "lightgen_optical_manifold_smf_bogt_failure_attribution_review.v1",
+  "hypothesis": "H-LOMA-CBOGT-S0",
+  "reviewer_role": "project_owner",
+  "decision": "approve_no_update_scaled_chen_bogt_failure_attribution",
+  "source_commit": "caf1e28a7715ee02f3f1aa56602d05dec4f43621",
+  "source_config_sha256": "2d3920b4a59e3f61cc77a0f5ea721723b6b2380cd35b03114159cc7aec687355",
+  "source_training_sha256": "2079fc306e9403b704440053085597726fed5f6c41b6af6b7239213f38ac54ca",
+  "source_validation_sha256": "bf59c8cb2d868dd779eff98af445700c2102fb87fa9d6ab9c468918d1992f6ba",
+  "source_preflight_sha256": "88e8e2eb079fa29d2eff98893b2b0c80b50d3ed300bbda3608ce9401ed49c691",
+  "source_pilot_review_sha256": "01498b81c6a89b5e23796060083747ea06c453e87d5ee6880ebe06e577735e03",
+  "source_calibration_sha256": "02cccbb28843c27e3598af16acd87310eb6e1ba7f738b3f4a24828ae4c7758cd",
+  "source_gradient_panels_sha256": "208c5f4d67707639bf3d45dceb968b1f9b44f307133248a74b3c0373b17c2158",
+  "approved_contract": {
+    "selection_panels": 3,
+    "confirmation_panels": 3,
+    "panel_size": 10,
+    "candidate_multipliers": [0.5, 1.0, 2.0, 4.0],
+    "no_model_update": true,
+    "heldout_not_used_for_selection": true,
+    "post_candidate_next_action": "manual_review_scaled_chen_bogt_repilot_contract",
+    "post_no_candidate_next_action": "manual_review_scaled_chen_bogt_objective_contract"
+  },
+  "training_authorized": false,
+  "formal_promotion": false,
+  "prohibited": ["optimizer", "cuda_training", "continuation", "generation", "fmf", "formal_promotion"]
+}

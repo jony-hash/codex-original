@@ -1,0 +1,58 @@
+schema: lightgen_optical_manifold_smf_bogt_failure_attribution_v1
+hypothesis: H-LOMA-CBOGT-S0
+formal_system_config: configs/v2/current/formal_identity_logit_amplitude_finite_crop_identity.yaml
+
+source:
+  training_evidence: outputs/20260829_v2/runs/lightgen_optical_manifold_smf_bogt_v1_attempt_05/training.json
+  validation_evidence: outputs/20260829_v2/runs/lightgen_optical_manifold_smf_bogt_v1_attempt_05/validation.json
+  validation_evidence_sha256: bf59c8cb2d868dd779eff98af445700c2102fb87fa9d6ab9c468918d1992f6ba
+  preflight_evidence: outputs/20260829_v2/runs/lightgen_optical_manifold_smf_bogt_v1_attempt_05/preflight.json
+  pilot_review: outputs/20260829_v2/runs/lightgen_optical_manifold_smf_bogt_v1_attempt_05/pilot_review.json
+  calibration: outputs/20260829_v2/runs/lightgen_optical_manifold_smf_bogt_v1_attempt_05/scaled_chen_bogt_calibration.pt
+  gradient_panels: outputs/20260829_v2/runs/lightgen_optical_manifold_smf_bogt_v1_attempt_05/scaled_chen_bogt_gradient_panels.pt
+  checkpoint_root: outputs/20260829_v2/runs/lightgen_optical_manifold_smf_bogt_v1_attempt_05/checkpoints
+
+dataset:
+  train_count: 55000
+  heldout_range: [55000, 60000]
+  panel_count: 6
+  panel_size: 100
+  class_balanced: true
+  train_only: true
+  no_replacement: true
+  exclude_registered_panels: true
+
+optical_contract:
+  formal_system_kind: formal_amplitude_finite_crop_identity
+  encoder_layers: 2
+  decoder_layers: 2
+  metasurface_shape: [100, 100]
+  metasurface_pixel_pitch_m: 2.0e-6
+  layer_spacing_m: 1.50e-3
+  wavelength_m: 5.32e-7
+  ols_ports: 100
+  mode_bank: scaled_lp01_10x10
+  fixed_ols: true
+  fixed_calibration: true
+  fixed_exposure: true
+  evaluator_calls: 0
+
+dose:
+  multipliers: [0.5, 1.0, 2.0, 4.0]
+  selection_panels: 3
+  confirmation_panels: 3
+  panel_size: 10
+  selection_seed: 5234
+  confirmation_seed: 6234
+  min_ratio: 0.05
+  max_ratio: 0.40
+  minimum_descent_fraction: 0.25
+  eligible_requires_both_multipliers_gt_one: true
+
+authorization:
+  reviewer_role: project_owner
+  decision: approve_no_update_scaled_chen_bogt_failure_attribution
+  no_update_authorized: true
+  training_authorized: false
+  formal_promotion: false
+  prohibited: [optimizer, cuda_training, continuation, generation, fmf, formal_promotion]
