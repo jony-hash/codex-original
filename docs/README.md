@@ -4,6 +4,7 @@
 
 | 任务 | 主文档 |
 | --- | --- |
+| ChatGPT 讨论、项目记忆与 Codex 本地交接 | [Project Memory](PROJECT_MEMORY.md) / [ChatGPT ↔ Codex workflow](chatgpt_codex_workflow.md) |
 | 当前停止规则、有效证据与下一门 | [Current Handoff](status/current_handoff.md) |
 | H-SCED（已注册、未运行）、归因边界与唯一下一动作 | [Capacity-map hypothesis ledger](status/capacity_map_hypothesis_ledger.md) |
 | v1 架构与最终推理边界 | [v1 single-shot architecture](architecture/v1_single_shot_distillation.md) |

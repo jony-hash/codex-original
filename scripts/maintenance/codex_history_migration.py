@@ -6,7 +6,7 @@ imports authentication, config, logs, caches, or plugins.  The source tar is
 treated as immutable and the current Codex home is snapshotted before any
 database write.
 
-The two-step apply flow is deliberate::
+The two-step import flow is deliberate::
 
     python ... codex_history_migration.py dry-run
     python ... codex_history_migration.py apply --canary
@@ -14,10 +14,11 @@ The two-step apply flow is deliberate::
     python ... codex_history_migration.py apply --complete
     python ... codex_history_migration.py verify
 
-Run ``rollback`` only after closing the app and only against the snapshot
-created by this tool.  The tool is standard-library-only so it can be run
-with the project's Python 3.11 environment after the ChatGPT desktop app is
-closed.
+The separate ``project-bind`` repair flow is also two-stage: it repairs the
+folder-bound ``cwd`` metadata in three canaries first, then the remaining
+candidate sessions.  Run its apply/rollback actions only after closing the
+app.  The tool is standard-library-only so it can be run with the project's
+Python 3.11 environment after the ChatGPT desktop app is closed.
 """
 
 from __future__ import annotations
@@ -40,6 +41,7 @@ from typing import Any, BinaryIO, NoReturn
 
 
 FORMAT_VERSION = 1
+PROJECT_BIND_FORMAT_VERSION = 2
 DEFAULT_ARCHIVE = Path(r"D:\LDM-Archive\codex-original\backup\wsl-codex-history.tar")
 DEFAULT_CODEX_HOME = Path.home() / ".codex"
 DEFAULT_PROJECT_ROOT = Path(r"D:\codex-original")
@@ -67,6 +69,13 @@ EXPECTED_PROJECT_THREAD_COUNT = 214
 EXPECTED_PROJECT_VISIBLE_COUNT = 144
 EXPECTED_PROJECT_ARCHIVED_COUNT = 70
 EXPECTED_MISC_VISIBLE_COUNT = 3
+EXPECTED_IMPORTED_FILE_COUNT = 217
+PROJECT_BIND_METADATA_TYPES = frozenset({"session_meta", "turn_context"})
+PROJECT_BIND_CANARY_IDS = (
+    "01a04b61-4eca-7260-8437-161edde533cb",
+    "019dd835-d845-7031-b572-2999535d377f",
+    "019f927b-dc1c-7d42-b37a-a8af0b597320",
+)
 
 
 class MigrationError(RuntimeError):
@@ -722,6 +731,9 @@ def apply_import(args: argparse.Namespace, mode: str) -> dict[str, Any]:
 def verify_import(args: argparse.Namespace) -> dict[str, Any]:
     manifest = load_manifest(args.manifest_file)
     plan = load_json(Path(manifest["plan_file"]))
+    binding = None
+    if binding_manifest_path(args).is_file():
+        binding = load_project_binding_manifest(args)
     current = current_state_summary(args.codex_home)
     integrity = integrity_check(args.codex_home / "state_5.sqlite")
     imported_ids = set(manifest.get("imported_ids", []))
@@ -737,7 +749,8 @@ def verify_import(args: argparse.Namespace) -> dict[str, Any]:
         if not path.is_file():
             fail(f"verification found missing imported session file: {path}")
         digest = sha256_file(path)
-        if digest != record["transformed_sha256"]:
+        expected_digest = project_binding_expected_file_hash(args, record, binding)
+        if digest != expected_digest:
             fail(f"verification found changed imported session file: {path}")
         file_checks.append({"id": record["id"], "sha256": digest, "size": path.stat().st_size})
     return {
@@ -752,18 +765,41 @@ def verify_import(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def canonical_path(value: str | Path) -> str:
-    """Compare Windows paths without changing the paths stored in transcripts."""
-    return os.path.normcase(os.path.normpath(os.path.abspath(os.fspath(value))))
+    """Compare Windows paths while treating drive extended paths as equivalent."""
+    try:
+        text = os.fspath(value)
+    except TypeError:
+        fail(f"path value is not path-like: {value!r}")
+    if not isinstance(text, str):
+        text = os.fsdecode(text)
+    if re.match(r"^\\\\\?\\(?=[A-Za-z]:[\\/])", text):
+        text = text[4:]
+    return os.path.normcase(os.path.normpath(os.path.abspath(text)))
 
 
 def binding_manifest_path(args: argparse.Namespace) -> Path:
     return args.binding_manifest or (args.binding_snapshot_root / "binding-manifest.json")
 
 
+def binding_file_path(args: argparse.Namespace, record: dict[str, Any]) -> Path:
+    raw_path = record.get("target_path")
+    if not isinstance(raw_path, str) or not raw_path:
+        fail(f"project binding record has no target path: {record.get('id')}")
+    path = Path(raw_path)
+    try:
+        relative = path.resolve().relative_to(args.codex_home.resolve())
+    except ValueError:
+        fail(f"project binding target escapes Codex Home: {path}")
+    expected_root = "sessions" if record.get("visible") is True else "archived_sessions"
+    if not relative.parts or relative.parts[0].lower() != expected_root:
+        fail(f"project binding target has an unexpected session directory: {path}")
+    return path
+
+
 def load_project_binding_inputs(
     args: argparse.Namespace,
 ) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
-    """Load the completed session migration and derive an exact binding set."""
+    """Load the immutable import manifest and derive the exact folder-bound set."""
     migration = load_manifest(args.manifest_file)
     if migration.get("phase") != "complete":
         fail("project binding requires a complete session migration manifest")
@@ -778,10 +814,22 @@ def load_project_binding_inputs(
     imported_ids = migration.get("imported_ids")
     if not isinstance(records, list) or not isinstance(imported_ids, list):
         fail("session migration manifest has no usable imported session records")
+    if len(records) != EXPECTED_IMPORTED_FILE_COUNT or len(imported_ids) != EXPECTED_IMPORTED_FILE_COUNT:
+        fail(
+            "unexpected imported session count: "
+            f"files={len(records)}, ids={len(imported_ids)} (expected {EXPECTED_IMPORTED_FILE_COUNT})"
+        )
+    if any(not isinstance(record, dict) for record in records):
+        fail("session migration manifest contains a non-object file record")
     normalized_ids = [str(session_id).lower() for session_id in imported_ids]
     if len(normalized_ids) != len(set(normalized_ids)):
         fail("session migration manifest contains duplicate imported IDs")
-    record_ids = [str(record.get("id", "")).lower() for record in records if isinstance(record, dict)]
+    record_ids: list[str] = []
+    for record in records:
+        session_id = record.get("id")
+        if not isinstance(session_id, str) or not session_id:
+            fail("session migration manifest contains a file record without an ID")
+        record_ids.append(session_id.lower())
     if len(records) != len(imported_ids) or set(record_ids) != set(normalized_ids):
         fail("session migration manifest imported IDs and file records do not match")
 
@@ -813,6 +861,8 @@ def load_project_binding_inputs(
             f"visible={visible_count}, archived={archived_count}"
         )
     project_root = canonical_path(args.project_root)
+    for record in records:
+        binding_file_path(args, record)
     for record in candidates:
         if record.get("project_cwd") is not True:
             fail(f"project binding candidate is missing project_cwd marker: {record.get('id')}")
@@ -824,64 +874,47 @@ def load_project_binding_inputs(
     return migration, candidates, misc_visible
 
 
-def resolve_local_project(
+def sqlite_json_value(value: Any) -> Any:
+    if isinstance(value, bytes):
+        return {"__bytes_hex__": value.hex()}
+    if value is None or isinstance(value, (bool, float, int, str)):
+        return value
+    return str(value)
+
+
+def thread_rows(
     connection: sqlite3.Connection,
-    args: argparse.Namespace,
-) -> tuple[str, list[sqlite3.Row]]:
-    """Resolve exactly one UI-created local project rooted at the project path."""
-    required_tables = {"projects", "project_roots", "threads"}
-    available_tables = {
-        str(row[1]) for row in connection.execute("PRAGMA table_list").fetchall()
+    session_ids: list[str],
+) -> dict[str, dict[str, Any]]:
+    if not session_ids:
+        return {}
+    columns = table_columns(connection, "threads")
+    required = {"id", "cwd", "project_id"}
+    missing_columns = sorted(required - set(columns))
+    if missing_columns:
+        fail(f"Codex state database threads table is missing columns: {missing_columns}")
+    placeholders = ",".join("?" for _ in session_ids)
+    rows = connection.execute(
+        f"SELECT * FROM threads WHERE id IN ({placeholders})",
+        session_ids,
+    ).fetchall()
+    return {
+        str(row["id"]).lower(): {
+            column: sqlite_json_value(row[column])
+            for column in columns
+        }
+        for row in rows
     }
-    missing_tables = sorted(required_tables - available_tables)
-    if missing_tables:
-        fail(f"Codex state database is missing project tables: {missing_tables}")
-    project_rows = connection.execute(
-        "SELECT id, name FROM projects WHERE name = ?",
-        (args.project_name,),
-    ).fetchall()
-    if len(project_rows) != 1:
-        fail(
-            f"expected exactly one local project named {args.project_name!r}; "
-            f"found {len(project_rows)}"
-        )
-    project_id = str(project_rows[0]["id"])
-    roots = connection.execute(
-        "SELECT project_id, position, path FROM project_roots "
-        "WHERE project_id = ? ORDER BY position",
-        (project_id,),
-    ).fetchall()
-    primary_roots = [root for root in roots if int(root["position"]) == 0]
-    if len(primary_roots) != 1:
-        fail(f"local project has {len(primary_roots)} primary roots; expected exactly one")
-    if canonical_path(primary_roots[0]["path"]) != canonical_path(args.project_root):
-        fail(
-            "local project's primary root does not match the requested project root: "
-            f"{primary_roots[0]['path']}"
-        )
-    all_roots = connection.execute("SELECT project_id, position, path FROM project_roots").fetchall()
-    matching_roots = [
-        root for root in all_roots if canonical_path(root["path"]) == canonical_path(args.project_root)
-    ]
-    if len(matching_roots) != 1 or str(matching_roots[0]["project_id"]) != project_id:
-        fail("project root is duplicated or is also claimed by another local project")
-    return project_id, roots
 
 
 def thread_project_states(
     connection: sqlite3.Connection,
     session_ids: list[str],
 ) -> dict[str, str | None]:
-    if not session_ids:
-        return {}
-    placeholders = ",".join("?" for _ in session_ids)
-    rows = connection.execute(
-        f"SELECT id, project_id FROM threads WHERE id IN ({placeholders})",
-        session_ids,
-    ).fetchall()
+    rows = thread_rows(connection, session_ids)
     return {
-        str(row["id"]).lower(): (None if row["project_id"] is None else str(row["project_id"]))
-        for row in rows
+        session_id: (None if row["project_id"] is None else str(row["project_id"]))
+        for session_id, row in rows.items()
     }
 
 
@@ -889,222 +922,869 @@ def thread_cwd_states(
     connection: sqlite3.Connection,
     session_ids: list[str],
 ) -> dict[str, str | None]:
-    if not session_ids:
-        return {}
-    placeholders = ",".join("?" for _ in session_ids)
-    rows = connection.execute(
-        f"SELECT id, cwd FROM threads WHERE id IN ({placeholders})",
-        session_ids,
-    ).fetchall()
+    rows = thread_rows(connection, session_ids)
     return {
-        str(row["id"]).lower(): (None if row["cwd"] is None else str(row["cwd"]))
-        for row in rows
+        session_id: (None if row["cwd"] is None else str(row["cwd"]))
+        for session_id, row in rows.items()
     }
+
+
+def edge_rows(connection: sqlite3.Connection) -> list[dict[str, Any]]:
+    columns = table_columns(connection, "thread_spawn_edges")
+    if not columns:
+        fail("Codex state database is missing thread_spawn_edges")
+    return [
+        {column: sqlite_json_value(row[column]) for column in columns}
+        for row in connection.execute("SELECT * FROM thread_spawn_edges").fetchall()
+    ]
 
 
 def project_binding_state(
     args: argparse.Namespace,
     candidates: list[dict[str, Any]],
     misc_visible: list[dict[str, Any]],
-) -> tuple[str, dict[str, str | None], dict[str, str | None]]:
-    connection = readonly_connection(args.codex_home / "state_5.sqlite")
+) -> dict[str, Any]:
+    """Read the folder-bound consumer state without consulting project tables."""
+    database = args.codex_home / "state_5.sqlite"
+    integrity = integrity_check(database)
+    connection = readonly_connection(database)
     try:
-        project_id, _ = resolve_local_project(connection, args)
-        candidate_ids = [str(record["id"]).lower() for record in candidates]
-        misc_ids = [str(record["id"]).lower() for record in misc_visible]
-        candidate_states = thread_project_states(connection, candidate_ids)
-        candidate_cwds = thread_cwd_states(connection, candidate_ids)
-        misc_states = thread_project_states(connection, misc_ids)
+        candidate_ids = sorted(str(record["id"]).lower() for record in candidates)
+        misc_ids = sorted(str(record["id"]).lower() for record in misc_visible)
+        candidate_rows = thread_rows(connection, candidate_ids)
+        misc_rows = thread_rows(connection, misc_ids)
+        baseline_edges = edge_rows(connection)
     finally:
         connection.close()
-    missing_candidates = sorted(set(candidate_ids) - set(candidate_states))
-    missing_misc = sorted(set(misc_ids) - set(misc_states))
-    missing_cwds = sorted(set(candidate_ids) - set(candidate_cwds))
+    missing_candidates = sorted(set(candidate_ids) - set(candidate_rows))
+    missing_misc = sorted(set(misc_ids) - set(misc_rows))
     if missing_candidates or missing_misc:
         fail(
             "project binding found missing imported thread rows: "
             f"candidates={missing_candidates[:5]}, misc={missing_misc[:5]}"
         )
-    if missing_cwds:
-        fail(f"project binding found candidate rows without cwd values: {missing_cwds[:5]}")
-    project_root = canonical_path(args.project_root)
-    cwd_mismatches = sorted(
-        session_id
-        for session_id in candidate_ids
-        if not isinstance(candidate_cwds[session_id], str)
-        or canonical_path(candidate_cwds[session_id]) != project_root
-    )
-    if cwd_mismatches:
-        details = [
-            f"{session_id}={candidate_cwds[session_id]!r}"
-            for session_id in cwd_mismatches[:5]
-        ]
-        fail(
-            "project binding found candidate threads with a non-project cwd; "
-            "refusing to risk a WSL reopen: "
-            f"{details}"
-        )
-    if any(value is not None for value in misc_states.values()):
+    if any(row["project_id"] is not None for row in candidate_rows.values()):
+        fail("project binding found a non-NULL candidate project_id; refusing to overwrite it")
+    if any(row["project_id"] is not None for row in misc_rows.values()):
         fail("miscellaneous imported sessions are already assigned to a project")
-    return project_id, candidate_states, misc_states
 
-
-def project_binding_dry_run(args: argparse.Namespace) -> dict[str, Any]:
-    if not args.codex_home.is_dir():
-        fail(f"Codex Home does not exist: {args.codex_home}")
-    _, candidates, misc_visible = load_project_binding_inputs(args)
-    project_id, candidate_states, _ = project_binding_state(args, candidates, misc_visible)
-    current_values = list(candidate_states.values())
-    target_count = sum(value == project_id for value in current_values)
-    null_count = sum(value is None for value in current_values)
-    conflict_count = len(current_values) - target_count - null_count
-    if conflict_count:
-        fail(f"project binding found {conflict_count} candidate threads assigned to another project")
-    if target_count and null_count:
-        fail("project binding found a partial existing assignment; refusing to guess")
+    target_root = canonical_path(args.project_root)
+    target_count = 0
+    old_count = 0
+    candidate_cwds: dict[str, str] = {}
+    for session_id in candidate_ids:
+        value = candidate_rows[session_id]["cwd"]
+        if not isinstance(value, str):
+            fail(f"project binding found candidate row without a string cwd: {session_id}")
+        candidate_cwds[session_id] = value
+        if value == OLD_PROJECT_CWD:
+            old_count += 1
+        elif canonical_path(value) == target_root:
+            target_count += 1
+        else:
+            fail(
+                "project binding found an unknown candidate cwd; refusing to risk a WSL reopen: "
+                f"{session_id}={value!r}"
+            )
     return {
-        "status": "project_bind_dry_run_ok",
-        "project_name": args.project_name,
-        "project_id": project_id,
-        "project_root": str(args.project_root),
-        "candidate_threads": len(candidates),
-        "visible_threads": sum(1 for record in candidates if record["visible"]),
-        "archived_threads": sum(1 for record in candidates if record["archived"]),
-        "misc_visible_unbound": len(misc_visible),
-        "already_bound": target_count,
-        "ready_to_bind": null_count == len(candidates),
-        "binding_snapshot": str(args.binding_snapshot_root),
+        "integrity": integrity,
+        "candidate_ids": candidate_ids,
+        "misc_ids": misc_ids,
+        "candidate_rows": candidate_rows,
+        "misc_rows": misc_rows,
+        "candidate_cwds": candidate_cwds,
+        "candidate_project_ids": {
+            session_id: row["project_id"] for session_id, row in candidate_rows.items()
+        },
+        "misc_cwds": {
+            session_id: row["cwd"] for session_id, row in misc_rows.items()
+        },
+        "misc_project_ids": {
+            session_id: row["project_id"] for session_id, row in misc_rows.items()
+        },
+        "target_cwd_count": target_count,
+        "old_cwd_count": old_count,
+        "edge_rows": baseline_edges,
+        "edge_count": len(baseline_edges),
     }
+
+
+def parse_jsonl_record(raw_line: bytes, session_id: str, line_number: int) -> dict[str, Any]:
+    try:
+        value = json.loads(raw_line.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        fail(f"invalid JSONL record in {session_id} line {line_number}: {exc}")
+    if not isinstance(value, dict):
+        fail(f"JSONL record is not an object in {session_id} line {line_number}")
+    return value
+
+
+def metadata_cwd_kind(value: Any, args: argparse.Namespace, session_id: str) -> str:
+    if value == OLD_PROJECT_CWD:
+        return "old_wsl"
+    if isinstance(value, str) and canonical_path(value) == canonical_path(args.project_root):
+        return "target_windows"
+    fail(f"unknown metadata cwd in {session_id}: {value!r}")
+
+
+def audit_project_binding_file(
+    path: Path,
+    args: argparse.Namespace,
+    session_id: str,
+) -> dict[str, int]:
+    counts = {
+        "session_meta": 0,
+        "turn_context": 0,
+        "event_msg_old_cwd": 0,
+        "line_count": 0,
+    }
+    with path.open("rb") as source:
+        for line_number, raw_line in enumerate(source, start=1):
+            if not raw_line.strip():
+                fail(f"blank JSONL record in {session_id} line {line_number}")
+            record = parse_jsonl_record(raw_line, session_id, line_number)
+            if line_number == 1:
+                if record.get("type") != "session_meta" or not isinstance(record.get("payload"), dict):
+                    fail(f"first record is not session_meta in {session_id}")
+                if str(record["payload"].get("id", "")).lower() != session_id:
+                    fail(f"session_meta ID mismatch in {session_id}")
+            event_type = record.get("type")
+            payload = record.get("payload")
+            if event_type in PROJECT_BIND_METADATA_TYPES and isinstance(payload, dict) and "cwd" in payload:
+                kind = metadata_cwd_kind(payload["cwd"], args, session_id)
+                if kind == "old_wsl":
+                    counts[event_type] += 1
+            elif event_type == "event_msg" and isinstance(payload, dict):
+                if payload.get("cwd") == OLD_PROJECT_CWD:
+                    counts["event_msg_old_cwd"] += 1
+            counts["line_count"] += 1
+    return counts
+
+
+def project_binding_snapshot_file(snapshot: Path, relative_path: str) -> Path:
+    path = snapshot / "transcripts" / Path(relative_path)
+    try:
+        path.resolve().relative_to((snapshot / "transcripts").resolve())
+    except ValueError:
+        fail(f"project binding snapshot transcript escapes snapshot: {relative_path}")
+    return path
+
+
+def current_relative_path(args: argparse.Namespace, path: Path) -> str:
+    try:
+        relative = path.resolve().relative_to(args.codex_home.resolve())
+    except ValueError:
+        fail(f"project binding target escapes Codex Home: {path}")
+    return relative.as_posix()
+
+
+def snapshot_thread_rows(
+    connection: sqlite3.Connection,
+    session_ids: list[str],
+) -> dict[str, dict[str, Any]]:
+    return thread_rows(connection, session_ids)
 
 
 def create_project_binding_snapshot(
     args: argparse.Namespace,
-    project_id: str,
     candidates: list[dict[str, Any]],
+    misc_visible: list[dict[str, Any]],
+    state: dict[str, Any],
 ) -> dict[str, Any]:
     snapshot = args.binding_snapshot_root
     if snapshot.exists() and any(snapshot.iterdir()):
         fail(f"project binding snapshot directory is not empty: {snapshot}")
     checkpoint_database(args.codex_home / "state_5.sqlite")
     snapshot.mkdir(parents=True, exist_ok=True)
+
+    candidate_file_records: list[dict[str, Any]] = []
+    for record in candidates:
+        source = binding_file_path(args, record)
+        if not source.is_file():
+            fail(f"project binding candidate file is missing: {source}")
+        digest = sha256_file(source)
+        if digest != record.get("transformed_sha256"):
+            fail(f"project binding candidate file hash differs from migration manifest: {source}")
+        relative_path = current_relative_path(args, source)
+        saved = project_binding_snapshot_file(snapshot, relative_path)
+        saved.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, saved)
+        candidate_file_records.append(
+            {
+                "id": str(record["id"]).lower(),
+                "visible": record["visible"],
+                "archived": record["archived"],
+                "relative_path": relative_path,
+                "target_path": str(source),
+                "migration_sha256": str(record["transformed_sha256"]),
+                "original_sha256": digest,
+                "original_size": source.stat().st_size,
+                "session_meta_rewrites": 0,
+                "turn_context_rewrites": 0,
+                "event_msg_old_cwd_count": 0,
+            }
+        )
+
+    baseline = current_state_summary(args.codex_home)
     database_files: list[str] = []
     database_files.extend(copy_db_family(args.codex_home, snapshot, "state_5.sqlite"))
     database_files.extend(copy_db_family(args.codex_home, snapshot, "thread_history_1.sqlite"))
-    baseline = current_state_summary(args.codex_home)
+    database_hashes = {name: sha256_file(snapshot / name) for name in database_files}
     connection = readonly_connection(args.codex_home / "state_5.sqlite")
     try:
-        edge_count = connection.execute("SELECT count(*) FROM thread_spawn_edges").fetchone()[0]
-        candidate_states = thread_project_states(
+        baseline_rows = snapshot_thread_rows(
             connection,
-            [str(record["id"]).lower() for record in candidates],
+            sorted(set(state["candidate_ids"]) | set(state["misc_ids"])),
         )
+        baseline_edges = edge_rows(connection)
     finally:
         connection.close()
-    database_hashes = {name: sha256_file(snapshot / name) for name in database_files}
+    if set(baseline_rows) != set(state["candidate_ids"]) | set(state["misc_ids"]):
+        fail("project binding snapshot found an incomplete baseline thread set")
+
+    metadata_counts = {"session_meta": 0, "turn_context": 0, "event_msg_old_cwd": 0}
+    for file_record in candidate_file_records:
+        counts = audit_project_binding_file(
+            Path(file_record["target_path"]),
+            args,
+            file_record["id"],
+        )
+        file_record["session_meta_rewrites"] = counts["session_meta"]
+        file_record["turn_context_rewrites"] = counts["turn_context"]
+        file_record["event_msg_old_cwd_count"] = counts["event_msg_old_cwd"]
+        metadata_counts["session_meta"] += counts["session_meta"]
+        metadata_counts["turn_context"] += counts["turn_context"]
+        metadata_counts["event_msg_old_cwd"] += counts["event_msg_old_cwd"]
+
     snapshot_info = {
-        "format_version": FORMAT_VERSION,
+        "format_version": PROJECT_BIND_FORMAT_VERSION,
+        "mode": "folder_cwd_repair",
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "snapshot_root": str(snapshot),
         "codex_home": str(args.codex_home),
         "project_name": args.project_name,
-        "project_id": project_id,
         "project_root": str(args.project_root),
         "database_files": database_files,
         "database_sha256": database_hashes,
         "baseline_thread_ids": baseline["thread_ids"],
-        "baseline_edge_count": edge_count,
-        "candidate_ids": sorted(candidate_states),
-        "candidate_original_project_ids": candidate_states,
+        "baseline_file_ids": baseline["file_ids"],
+        "baseline_thread_rows": baseline_rows,
+        "baseline_edge_rows": baseline_edges,
+        "baseline_edge_count": len(baseline_edges),
+        "candidate_ids": state["candidate_ids"],
+        "candidate_original_cwds": state["candidate_cwds"],
+        "candidate_original_project_ids": state["candidate_project_ids"],
+        "misc_ids": state["misc_ids"],
+        "misc_original_cwds": state["misc_cwds"],
+        "misc_original_project_ids": state["misc_project_ids"],
+        "candidate_file_records": candidate_file_records,
+        "metadata_counts": metadata_counts,
     }
     json_dump(snapshot / "snapshot.json", snapshot_info)
     return snapshot_info
 
 
-def bind_project_rows(
+def binding_file_records(binding: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    records = binding.get("file_records")
+    if not isinstance(records, list):
+        fail("project binding manifest has no file_records")
+    result: dict[str, dict[str, Any]] = {}
+    for record in records:
+        if not isinstance(record, dict) or not isinstance(record.get("id"), str):
+            fail("project binding manifest contains an invalid file record")
+        session_id = record["id"].lower()
+        if session_id in result:
+            fail(f"project binding manifest contains duplicate file record: {session_id}")
+        result[session_id] = record
+    return result
+
+
+def repaired_file_records(binding: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    records = binding.get("repaired_file_records", [])
+    if not isinstance(records, list):
+        fail("project binding manifest has invalid repaired_file_records")
+    result: dict[str, dict[str, Any]] = {}
+    for record in records:
+        if not isinstance(record, dict) or not isinstance(record.get("id"), str):
+            fail("project binding manifest contains an invalid repaired file record")
+        session_id = record["id"].lower()
+        if session_id in result:
+            fail(f"project binding manifest contains duplicate repaired file record: {session_id}")
+        if not isinstance(record.get("repaired_sha256"), str):
+            fail(f"project binding manifest repaired file has no hash: {session_id}")
+        result[session_id] = record
+    return result
+
+
+def load_project_binding_manifest(args: argparse.Namespace) -> dict[str, Any]:
+    manifest_path = binding_manifest_path(args)
+    if not manifest_path.is_file():
+        fail(f"project binding manifest does not exist: {manifest_path}")
+    binding = load_json(manifest_path)
+    if binding.get("format_version") != PROJECT_BIND_FORMAT_VERSION:
+        fail(
+            "unsupported project binding manifest format; expected folder-bound v2, "
+            f"found {binding.get('format_version')}"
+        )
+    if binding.get("mode") != "folder_cwd_repair":
+        fail("project binding manifest is not a folder-bound cwd repair manifest")
+    if binding.get("phase") not in {
+        "snapshot_created",
+        "canary_complete",
+        "complete",
+        "rolled_back",
+    }:
+        fail(f"project binding manifest has an invalid phase: {binding.get('phase')}")
+    if canonical_path(binding.get("codex_home", "")) != canonical_path(args.codex_home):
+        fail("project binding manifest Codex Home does not match the requested Codex Home")
+    if canonical_path(binding.get("project_root", "")) != canonical_path(args.project_root):
+        fail("project binding manifest project root does not match the requested project root")
+    if canonical_path(binding.get("migration_manifest", "")) != canonical_path(args.manifest_file):
+        fail("project binding manifest migration manifest does not match the requested manifest")
+    if canonical_path(binding.get("snapshot_root", "")) != canonical_path(args.binding_snapshot_root):
+        fail("project binding manifest snapshot root does not match the requested snapshot root")
+    if binding.get("project_name") != args.project_name:
+        fail("project binding manifest project name does not match the requested project name")
+    candidate_ids = binding.get("candidate_ids")
+    if not isinstance(candidate_ids, list) or [str(value).lower() for value in candidate_ids] != sorted(
+        str(value).lower() for value in candidate_ids
+    ):
+        fail("project binding manifest candidate IDs are not a sorted list")
+    if len(candidate_ids) != EXPECTED_PROJECT_THREAD_COUNT or len(set(candidate_ids)) != len(candidate_ids):
+        fail("project binding manifest candidate ID count is invalid")
+    if binding.get("canary_ids") != list(PROJECT_BIND_CANARY_IDS):
+        fail("project binding manifest fixed canary IDs do not match the repair contract")
+    candidate_id_set = {str(value).lower() for value in candidate_ids}
+    manifest_file_records = binding_file_records(binding)
+    if set(manifest_file_records) != candidate_id_set:
+        fail("project binding manifest file records do not match candidate IDs")
+    for session_id, record in manifest_file_records.items():
+        if not isinstance(record.get("target_path"), str) or not isinstance(record.get("relative_path"), str):
+            fail(f"project binding manifest file path is invalid: {session_id}")
+        if not isinstance(record.get("original_sha256"), str) or not isinstance(record.get("migration_sha256"), str):
+            fail(f"project binding manifest baseline hash is invalid: {session_id}")
+        if not isinstance(record.get("original_size"), int):
+            fail(f"project binding manifest baseline size is invalid: {session_id}")
+    original_cwds = binding.get("candidate_original_cwds")
+    original_project_ids = binding.get("candidate_original_project_ids")
+    if not isinstance(original_cwds, dict) or set(str(key).lower() for key in original_cwds) != candidate_id_set:
+        fail("project binding manifest original cwd map does not match candidate IDs")
+    if not isinstance(original_project_ids, dict) or set(str(key).lower() for key in original_project_ids) != candidate_id_set:
+        fail("project binding manifest original project map does not match candidate IDs")
+    repaired = repaired_file_records(binding)
+    if not set(repaired).issubset(candidate_id_set):
+        fail("project binding manifest repaired records contain a non-candidate ID")
+    return binding
+
+
+def project_binding_expected_file_hash(
     args: argparse.Namespace,
-    project_id: str,
-    candidate_ids: list[str],
-    original_project_ids: dict[str, str | None],
+    migration_record: dict[str, Any],
+    binding: dict[str, Any] | None = None,
+) -> str:
+    if binding is None:
+        binding_path = binding_manifest_path(args)
+        if not binding_path.is_file():
+            return str(migration_record["transformed_sha256"])
+        binding = load_project_binding_manifest(args)
+    if binding.get("phase") == "rolled_back":
+        return str(migration_record["transformed_sha256"])
+    session_id = str(migration_record["id"]).lower()
+    candidate_records = binding_file_records(binding)
+    if session_id not in candidate_records:
+        return str(migration_record["transformed_sha256"])
+    candidate_record = candidate_records[session_id]
+    if candidate_record.get("migration_sha256") != migration_record.get("transformed_sha256"):
+        fail(f"project binding manifest baseline hash differs for {session_id}")
+    repaired = repaired_file_records(binding).get(session_id)
+    if repaired is None:
+        return str(migration_record["transformed_sha256"])
+    return str(repaired["repaired_sha256"])
+
+
+def session_index_audit(args: argparse.Namespace, candidate_ids: set[str]) -> dict[str, Any]:
+    path = args.codex_home / "session_index.jsonl"
+    if not path.is_file():
+        return {"present": False, "line_count": 0, "candidate_count": 0, "parse_errors": 0}
+    indexed: set[str] = set()
+    parse_errors = 0
+    line_count = 0
+    with path.open("r", encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            line_count += 1
+            try:
+                value = json.loads(line)
+            except json.JSONDecodeError:
+                parse_errors += 1
+                continue
+            if isinstance(value, dict):
+                raw_id = value.get("id") or value.get("session_id") or value.get("thread_id")
+                if isinstance(raw_id, str) and raw_id.lower() in candidate_ids:
+                    indexed.add(raw_id.lower())
+    return {
+        "present": True,
+        "line_count": line_count,
+        "candidate_count": len(indexed),
+        "parse_errors": parse_errors,
+    }
+
+
+def project_binding_dry_run(args: argparse.Namespace) -> dict[str, Any]:
+    if not args.codex_home.is_dir():
+        fail(f"Codex Home does not exist: {args.codex_home}")
+    _, candidates, misc_visible = load_project_binding_inputs(args)
+    state = project_binding_state(args, candidates, misc_visible)
+    binding = None
+    manifest_path = binding_manifest_path(args)
+    if manifest_path.is_file():
+        binding = load_project_binding_manifest(args)
+        expected_ids = sorted(str(record["id"]).lower() for record in candidates)
+        if binding["candidate_ids"] != expected_ids:
+            fail("project binding manifest candidate IDs do not match the migration manifest")
+    session_check = verify_import(args)
+    metadata_counts = {"session_meta": 0, "turn_context": 0, "event_msg_old_cwd": 0}
+    for record in candidates:
+        counts = audit_project_binding_file(
+            binding_file_path(args, record),
+            args,
+            str(record["id"]).lower(),
+        )
+        metadata_counts["session_meta"] += counts["session_meta"]
+        metadata_counts["turn_context"] += counts["turn_context"]
+        metadata_counts["event_msg_old_cwd"] += counts["event_msg_old_cwd"]
+    repaired = (
+        repaired_file_records(binding)
+        if binding is not None and binding.get("phase") != "rolled_back"
+        else {}
+    )
+    phase = None if binding is None else binding["phase"]
+    return {
+        "status": "project_bind_dry_run_ok",
+        "mode": "folder_cwd_repair",
+        "phase": phase or "not_started",
+        "project_name": args.project_name,
+        "project_root": str(args.project_root),
+        "candidate_threads": len(candidates),
+        "visible_threads": sum(1 for record in candidates if record["visible"]),
+        "archived_threads": sum(1 for record in candidates if record["archived"]),
+        "misc_visible_unbound": len(misc_visible),
+        "candidate_cwd_target": state["target_cwd_count"],
+        "candidate_cwd_old_wsl": state["old_cwd_count"],
+        "candidate_project_id_null": len(state["candidate_ids"]),
+        "metadata_session_meta_pending": metadata_counts["session_meta"],
+        "metadata_turn_context_pending": metadata_counts["turn_context"],
+        "event_msg_old_cwd_negative_control": metadata_counts["event_msg_old_cwd"],
+        "file_count": session_check["file_count"],
+        "sqlite_integrity": state["integrity"],
+        "session_index_audit": session_index_audit(args, set(state["candidate_ids"])),
+        "already_repaired": len(repaired),
+        "ready_to_bind": phase in (None, "rolled_back"),
+        "binding_snapshot": str(args.binding_snapshot_root),
+        "binding_manifest": str(manifest_path),
+    }
+
+
+def binding_snapshot_info(args: argparse.Namespace, binding: dict[str, Any]) -> dict[str, Any]:
+    snapshot = Path(str(binding["snapshot_root"]))
+    info_path = snapshot / "snapshot.json"
+    info = load_json(info_path)
+    if info.get("format_version") != PROJECT_BIND_FORMAT_VERSION or info.get("mode") != "folder_cwd_repair":
+        fail("project binding snapshot is not a folder-bound v2 snapshot")
+    if canonical_path(info.get("codex_home", "")) != canonical_path(args.codex_home):
+        fail("project binding snapshot Codex Home does not match the requested Codex Home")
+    if canonical_path(info.get("project_root", "")) != canonical_path(args.project_root):
+        fail("project binding snapshot project root does not match the requested project root")
+    if info.get("candidate_ids") != binding.get("candidate_ids"):
+        fail("project binding snapshot candidate IDs do not match the manifest")
+    return info
+
+
+def assert_binding_baseline(
+    args: argparse.Namespace,
+    binding: dict[str, Any],
+    state: dict[str, Any],
+    snapshot_info: dict[str, Any],
+    session_ids: list[str] | None = None,
+) -> None:
+    selected_ids = [] if session_ids is None else [str(value).lower() for value in session_ids]
+    original_cwds = {
+        str(session_id).lower(): value
+        for session_id, value in binding["candidate_original_cwds"].items()
+    }
+    for session_id in selected_ids:
+        if session_id not in state["candidate_rows"]:
+            fail(f"project binding state changed: missing candidate row {session_id}")
+        current = state["candidate_rows"][session_id]
+        if current["project_id"] is not None:
+            fail(f"project binding state changed: candidate project_id is not NULL for {session_id}")
+        expected_cwd = original_cwds[session_id]
+        current_cwd = current["cwd"]
+        if expected_cwd == OLD_PROJECT_CWD:
+            if current_cwd != OLD_PROJECT_CWD:
+                fail(f"project binding state changed after snapshot for {session_id}")
+        elif not isinstance(current_cwd, str) or canonical_path(current_cwd) != canonical_path(expected_cwd):
+            fail(f"project binding state changed after snapshot for {session_id}")
+
+    baseline_rows = snapshot_info.get("baseline_thread_rows")
+    if not isinstance(baseline_rows, dict):
+        fail("project binding snapshot has no baseline thread rows")
+    for session_id, expected_row in baseline_rows.items():
+        current_row = state["candidate_rows"].get(session_id) or state["misc_rows"].get(session_id)
+        if current_row is None:
+            fail(f"project binding state changed: baseline row disappeared {session_id}")
+        for column, expected_value in expected_row.items():
+            if column == "cwd":
+                continue
+            current_value = current_row.get(column)
+            if (
+                column == "rollout_path"
+                and isinstance(expected_value, str)
+                and isinstance(current_value, str)
+                and canonical_path(current_value) == canonical_path(expected_value)
+            ):
+                continue
+            if current_value != expected_value:
+                fail(f"project binding changed thread field {column} for {session_id}")
+
+
+def assert_baseline_edges(
+    args: argparse.Namespace,
+    binding: dict[str, Any],
+    current_edges: list[dict[str, Any]],
+) -> None:
+    del args
+    baseline_edges = binding.get("baseline_edge_rows")
+    if not isinstance(baseline_edges, list):
+        fail("project binding manifest has no baseline parent-child edges")
+    remaining = list(current_edges)
+    for expected in baseline_edges:
+        try:
+            remaining.remove(expected)
+        except ValueError:
+            fail("project binding changed a baseline parent-child edge")
+
+
+def stage_project_binding_file(
+    source: Path,
+    args: argparse.Namespace,
+    session_id: str,
+    expected_sha256: str,
+    expected_size: int,
+    target_cwd: str,
+    stage_path: Path,
+) -> dict[str, Any]:
+    stage_path.parent.mkdir(parents=True, exist_ok=True)
+    source_hash = hashlib.sha256()
+    repaired_hash = hashlib.sha256()
+    source_size = 0
+    repaired_size = 0
+    counts = {"session_meta": 0, "turn_context": 0, "event_msg_old_cwd": 0}
+    with source.open("rb") as input_handle, stage_path.open("wb") as output_handle:
+        for line_number, raw_line in enumerate(input_handle, start=1):
+            source_hash.update(raw_line)
+            source_size += len(raw_line)
+            record = parse_jsonl_record(raw_line, session_id, line_number)
+            output_line = raw_line
+            event_type = record.get("type")
+            payload = record.get("payload")
+            if event_type in PROJECT_BIND_METADATA_TYPES and isinstance(payload, dict) and "cwd" in payload:
+                kind = metadata_cwd_kind(payload["cwd"], args, session_id)
+                if kind == "old_wsl":
+                    payload["cwd"] = target_cwd
+                    ending = b"\r\n" if raw_line.endswith(b"\r\n") else b"\n" if raw_line.endswith(b"\n") else b""
+                    output_line = json.dumps(record, ensure_ascii=False, separators=(",", ":")).encode("utf-8") + ending
+                    counts[event_type] += 1
+            elif event_type == "event_msg" and isinstance(payload, dict):
+                if payload.get("cwd") == OLD_PROJECT_CWD:
+                    counts["event_msg_old_cwd"] += 1
+            repaired_hash.update(output_line)
+            repaired_size += len(output_line)
+            output_handle.write(output_line)
+    if source_size != expected_size or source_hash.hexdigest() != expected_sha256:
+        fail(f"project binding source hash/size changed before repair: {source}")
+    if counts["session_meta"] + counts["turn_context"] == 0:
+        fail(f"project binding candidate has no legacy metadata cwd to repair: {session_id}")
+    return {
+        "id": session_id,
+        "stage_path": str(stage_path),
+        "original_sha256": source_hash.hexdigest(),
+        "original_size": source_size,
+        "repaired_sha256": repaired_hash.hexdigest(),
+        "repaired_size": repaired_size,
+        "session_meta_rewrites": counts["session_meta"],
+        "turn_context_rewrites": counts["turn_context"],
+        "event_msg_old_cwd_count": counts["event_msg_old_cwd"],
+    }
+
+
+def install_project_binding_stage(stage_record: dict[str, Any], target: Path) -> None:
+    temporary = target.with_name(target.name + ".project-bind.tmp")
+    if temporary.exists():
+        fail(f"project binding temporary target already exists: {temporary}")
+    if not target.is_file() or sha256_file(target) != stage_record["original_sha256"]:
+        fail(f"project binding target changed after staging: {target}")
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(stage_record["stage_path"], temporary)
+        if sha256_file(temporary) != stage_record["repaired_sha256"]:
+            fail(f"project binding staged hash mismatch: {target}")
+        os.replace(temporary, target)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
+def restore_project_binding_file(
+    snapshot_info: dict[str, Any],
+    file_record: dict[str, Any],
+    current: Path,
+    quarantine: Path | None,
+) -> None:
+    saved = project_binding_snapshot_file(Path(str(snapshot_info["snapshot_root"])), file_record["relative_path"])
+    if not saved.is_file():
+        fail(f"project binding snapshot file is missing: {saved}")
+    if quarantine is not None and current.exists():
+        quarantined = quarantine / file_record["relative_path"]
+        quarantined.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(current), str(quarantined))
+    temporary = current.with_name(current.name + ".project-bind.restore.tmp")
+    if temporary.exists():
+        fail(f"project binding restore temporary target already exists: {temporary}")
+    try:
+        current.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(saved, temporary)
+        if sha256_file(temporary) != file_record["original_sha256"]:
+            fail(f"project binding snapshot hash mismatch: {saved}")
+        os.replace(temporary, current)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
+def update_project_binding_rows(
+    args: argparse.Namespace,
+    binding: dict[str, Any],
+    state: dict[str, Any],
+    snapshot_info: dict[str, Any],
+    session_ids: list[str],
 ) -> int:
     database = args.codex_home / "state_5.sqlite"
+    target_cwd = str(args.project_root)
     connection = sqlite3.connect(database, timeout=10)
     connection.row_factory = sqlite3.Row
     try:
         connection.execute("PRAGMA busy_timeout=10000")
         connection.execute("BEGIN IMMEDIATE")
-        current = thread_project_states(connection, candidate_ids)
-        if set(current) != set(candidate_ids):
+        current = thread_rows(connection, session_ids)
+        if set(current) != set(session_ids):
             fail("project binding state changed: one or more candidate rows disappeared")
-        if any(current[session_id] != original_project_ids[session_id] for session_id in candidate_ids):
-            fail("project binding state changed after dry-run; refusing to update")
-        for session_id in candidate_ids:
-            connection.execute(
-                "UPDATE threads SET project_id = ? WHERE id = ? AND project_id IS NULL",
-                (project_id, session_id),
-            )
-        changed = sum(
-            1
-            for session_id in candidate_ids
-            if thread_project_states(connection, [session_id])[session_id] == project_id
-        )
-        if changed != len(candidate_ids):
-            fail(f"project binding updated {changed} rows; expected {len(candidate_ids)}")
+        expected = {
+            session_id: state["candidate_rows"][session_id]
+            for session_id in session_ids
+        }
+        for session_id in session_ids:
+            row = current[session_id]
+            if row["project_id"] is not None:
+                fail(f"project binding refuses to write a non-NULL project_id: {session_id}")
+            expected_cwd = expected[session_id]["cwd"]
+            if expected_cwd == OLD_PROJECT_CWD:
+                if row["cwd"] != OLD_PROJECT_CWD:
+                    fail(f"project binding state changed after dry-run: {session_id}")
+            elif not isinstance(row["cwd"], str) or canonical_path(row["cwd"]) != canonical_path(expected_cwd):
+                fail(f"project binding state changed after dry-run: {session_id}")
+            connection.execute("UPDATE threads SET cwd = ? WHERE id = ?", (target_cwd, session_id))
+        updated = thread_rows(connection, session_ids)
+        for session_id in session_ids:
+            if updated[session_id]["project_id"] is not None:
+                fail(f"project binding changed project_id unexpectedly: {session_id}")
+            if canonical_path(updated[session_id]["cwd"]) != canonical_path(target_cwd):
+                fail(f"project binding failed to write target cwd: {session_id}")
+            for column, expected_value in expected[session_id].items():
+                if column in {"cwd", "project_id"}:
+                    continue
+                if updated[session_id].get(column) != expected_value:
+                    fail(f"project binding changed thread field {column} for {session_id}")
         connection.commit()
-        return changed
     except Exception:
         connection.rollback()
         raise
     finally:
         connection.close()
+    del snapshot_info
+    return sum(
+        1
+        for session_id in session_ids
+        if state["candidate_rows"][session_id]["cwd"] != target_cwd
+    )
 
 
-def apply_project_binding(args: argparse.Namespace) -> dict[str, Any]:
-    require_apps_closed()
-    if not args.project_root.is_dir():
-        fail(f"target project folder does not exist: {args.project_root}")
-    migration, candidates, misc_visible = load_project_binding_inputs(args)
-    project_id, candidate_states, _ = project_binding_state(args, candidates, misc_visible)
-    candidate_ids = sorted(candidate_states)
-    if any(value is not None for value in candidate_states.values()):
-        if all(value == project_id for value in candidate_states.values()):
-            fail("all project threads are already bound; run --verify instead")
-        fail("some project threads are already assigned; refusing partial binding")
-    manifest_path = binding_manifest_path(args)
-    if manifest_path.exists():
-        fail(f"project binding manifest already exists: {manifest_path}")
-    snapshot_info = create_project_binding_snapshot(args, project_id, candidates)
-    original_project_ids = {
-        session_id: candidate_states[session_id] for session_id in candidate_ids
-    }
-    binding = {
-        "format_version": FORMAT_VERSION,
+def binding_from_snapshot(
+    args: argparse.Namespace,
+    snapshot_info: dict[str, Any],
+    migration: dict[str, Any],
+    candidates: list[dict[str, Any]],
+    misc_visible: list[dict[str, Any]],
+    state: dict[str, Any],
+) -> dict[str, Any]:
+    candidate_ids = sorted(str(record["id"]).lower() for record in candidates)
+    if candidate_ids != sorted(str(value).lower() for value in snapshot_info["candidate_ids"]):
+        fail("project binding snapshot candidate IDs do not match the migration manifest")
+    return {
+        "format_version": PROJECT_BIND_FORMAT_VERSION,
+        "mode": "folder_cwd_repair",
         "phase": "snapshot_created",
         "created_at": snapshot_info["created_at"],
         "updated_at": snapshot_info["created_at"],
         "migration_manifest": str(args.manifest_file),
         "codex_home": str(args.codex_home),
         "project_name": args.project_name,
-        "project_id": project_id,
         "project_root": str(args.project_root),
         "snapshot_root": str(args.binding_snapshot_root),
         "candidate_ids": candidate_ids,
-        "candidate_original_project_ids": original_project_ids,
+        "canary_ids": list(PROJECT_BIND_CANARY_IDS),
+        "candidate_original_cwds": state["candidate_cwds"],
+        "candidate_original_project_ids": state["candidate_project_ids"],
+        "misc_visible_ids": sorted(str(record["id"]).lower() for record in misc_visible),
         "visible_count": sum(1 for record in candidates if record["visible"]),
         "archived_count": sum(1 for record in candidates if record["archived"]),
-        "misc_visible_ids": sorted(str(record["id"]).lower() for record in misc_visible),
         "baseline_thread_ids": snapshot_info["baseline_thread_ids"],
+        "baseline_edge_rows": snapshot_info["baseline_edge_rows"],
         "baseline_edge_count": snapshot_info["baseline_edge_count"],
+        "file_records": snapshot_info["candidate_file_records"],
+        "repaired_file_records": [],
+        "metadata_counts": snapshot_info["metadata_counts"],
+        "migration_imported_ids": sorted(str(value).lower() for value in migration["imported_ids"]),
+        "session_index_audit": session_index_audit(args, set(candidate_ids)),
     }
-    json_dump(manifest_path, binding)
-    changed = bind_project_rows(args, project_id, candidate_ids, original_project_ids)
-    binding["phase"] = "complete"
+
+
+def assert_binding_inputs_match_manifest(
+    args: argparse.Namespace,
+    binding: dict[str, Any],
+    candidates: list[dict[str, Any]],
+    misc_visible: list[dict[str, Any]],
+) -> None:
+    expected_ids = sorted(str(record["id"]).lower() for record in candidates)
+    if binding.get("candidate_ids") != expected_ids:
+        fail("project binding manifest candidate IDs do not match the migration manifest")
+    if binding.get("misc_visible_ids") != sorted(str(record["id"]).lower() for record in misc_visible):
+        fail("project binding manifest miscellaneous IDs do not match the migration manifest")
+    manifest_records = binding_file_records(binding)
+    for record in candidates:
+        session_id = str(record["id"]).lower()
+        manifest_record = manifest_records.get(session_id)
+        if manifest_record is None:
+            fail(f"project binding manifest is missing candidate file: {session_id}")
+        if manifest_record.get("migration_sha256") != record.get("transformed_sha256"):
+            fail(f"project binding manifest baseline hash differs for {session_id}")
+        if canonical_path(manifest_record.get("target_path", "")) != canonical_path(
+            binding_file_path(args, record)
+        ):
+            fail(f"project binding manifest target path differs for {session_id}")
+
+
+def apply_project_binding(args: argparse.Namespace, stage: str = "complete") -> dict[str, Any]:
+    require_apps_closed()
+    if stage not in {"canary", "complete"}:
+        fail(f"unknown project binding stage: {stage}")
+    if not args.project_root.is_dir():
+        fail(f"target project folder does not exist: {args.project_root}")
+    migration, candidates, misc_visible = load_project_binding_inputs(args)
+    state = project_binding_state(args, candidates, misc_visible)
+    manifest_path = binding_manifest_path(args)
+    if manifest_path.is_file():
+        binding = load_project_binding_manifest(args)
+        assert_binding_inputs_match_manifest(args, binding, candidates, misc_visible)
+        if stage == "canary" and binding["phase"] != "snapshot_created":
+            fail(f"canary apply requires snapshot_created phase; found {binding['phase']}")
+        if stage == "complete" and binding["phase"] != "canary_complete":
+            fail(f"complete apply requires canary_complete phase; found {binding['phase']}")
+        snapshot_info = binding_snapshot_info(args, binding)
+    else:
+        if stage != "canary":
+            fail("complete project binding requires a successful canary apply")
+        snapshot_info = create_project_binding_snapshot(args, candidates, misc_visible, state)
+        binding = binding_from_snapshot(args, snapshot_info, migration, candidates, misc_visible, state)
+        json_dump(manifest_path, binding)
+
+    verify_import(args)
+    repaired = repaired_file_records(binding)
+    candidate_map = {str(record["id"]).lower(): record for record in candidates}
+    if stage == "canary":
+        selected_ids = sorted(str(value).lower() for value in PROJECT_BIND_CANARY_IDS)
+        if not set(selected_ids).issubset(candidate_map):
+            fail("fixed project binding canaries are missing from the migration manifest")
+    else:
+        selected_ids = sorted(set(candidate_map) - set(repaired))
+    if not selected_ids:
+        fail("no project binding sessions remain for this phase")
+    if set(repaired) & set(selected_ids):
+        fail("project binding selected a session that is already repaired")
+    assert_binding_baseline(args, binding, state, snapshot_info, selected_ids)
+
+    stage_root = Path(str(binding["snapshot_root"])) / "staging" / stage
+    staged: list[dict[str, Any]] = []
+    for session_id in selected_ids:
+        manifest_record = binding_file_records(binding)[session_id]
+        source = Path(manifest_record["target_path"])
+        target_record = candidate_map[session_id]
+        staged.append(
+            stage_project_binding_file(
+                source,
+                args,
+                session_id,
+                str(manifest_record["original_sha256"]),
+                int(manifest_record["original_size"]),
+                str(args.project_root),
+                stage_root / f"{session_id}.jsonl",
+            )
+        )
+        if canonical_path(source) != canonical_path(binding_file_path(args, target_record)):
+            fail(f"project binding source path changed for {session_id}")
+
+    installed: list[str] = []
+    try:
+        for staged_record in staged:
+            target = Path(binding_file_records(binding)[staged_record["id"]]["target_path"])
+            install_project_binding_stage(staged_record, target)
+            installed.append(staged_record["id"])
+        changed_rows = update_project_binding_rows(args, binding, state, snapshot_info, selected_ids)
+    except Exception:
+        failure_quarantine = Path(str(binding["snapshot_root"])) / "failed-apply-quarantine" / str(int(time.time()))
+        for session_id in installed:
+            file_record = binding_file_records(binding)[session_id]
+            restore_project_binding_file(
+                snapshot_info,
+                file_record,
+                Path(file_record["target_path"]),
+                failure_quarantine,
+            )
+        raise
+
+    repaired_by_id = repaired_file_records(binding)
+    for staged_record in staged:
+        repaired_by_id[staged_record["id"]] = {
+            "id": staged_record["id"],
+            "repaired_sha256": staged_record["repaired_sha256"],
+            "repaired_size": staged_record["repaired_size"],
+            "session_meta_rewrites": staged_record["session_meta_rewrites"],
+            "turn_context_rewrites": staged_record["turn_context_rewrites"],
+            "event_msg_old_cwd_count": staged_record["event_msg_old_cwd_count"],
+        }
+    binding["repaired_file_records"] = [repaired_by_id[key] for key in sorted(repaired_by_id)]
+    binding["phase"] = "canary_complete" if stage == "canary" else "complete"
     binding["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
-    binding["bound_count"] = changed
+    binding["last_stage"] = stage
+    binding["last_stage_thread_count"] = len(selected_ids)
+    binding["last_stage_changed_db_rows"] = changed_rows
     json_dump(manifest_path, binding)
     return {
         "phase": binding["phase"],
+        "mode": binding["mode"],
         "project_name": args.project_name,
-        "project_id": project_id,
-        "bound_threads": changed,
+        "project_root": str(args.project_root),
+        "repaired_this_run": len(selected_ids),
+        "repaired_total": len(binding["repaired_file_records"]),
         "visible_threads": binding["visible_count"],
         "archived_threads": binding["archived_count"],
         "misc_visible_unbound": len(misc_visible),
@@ -1114,61 +1794,130 @@ def apply_project_binding(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
-def load_project_binding_manifest(args: argparse.Namespace) -> dict[str, Any]:
-    manifest_path = binding_manifest_path(args)
-    if not manifest_path.is_file():
-        fail(f"project binding manifest does not exist: {manifest_path}")
-    binding = load_json(manifest_path)
-    if binding.get("format_version") != FORMAT_VERSION:
-        fail(f"unsupported project binding manifest format: {binding.get('format_version')}")
-    if canonical_path(binding.get("codex_home", "")) != canonical_path(args.codex_home):
-        fail("project binding manifest Codex Home does not match the requested Codex Home")
-    if canonical_path(binding.get("project_root", "")) != canonical_path(args.project_root):
-        fail("project binding manifest project root does not match the requested project root")
-    if binding.get("project_name") != args.project_name:
-        fail("project binding manifest project name does not match the requested project name")
-    return binding
+def compare_project_binding_file(
+    original: Path,
+    current: Path,
+    args: argparse.Namespace,
+    session_id: str,
+) -> dict[str, int]:
+    counts = {
+        "session_meta": 0,
+        "turn_context": 0,
+        "event_msg_old_cwd": 0,
+        "line_count": 0,
+    }
+    with original.open("rb") as old_handle, current.open("rb") as current_handle:
+        line_number = 0
+        while True:
+            old_line = old_handle.readline()
+            current_line = current_handle.readline()
+            if not old_line and not current_line:
+                break
+            line_number += 1
+            if not old_line or not current_line:
+                fail(f"project binding changed line count in {session_id}")
+            old_record = parse_jsonl_record(old_line, session_id, line_number)
+            current_record = parse_jsonl_record(current_line, session_id, line_number)
+            event_type = old_record.get("type")
+            if event_type != current_record.get("type"):
+                fail(f"project binding changed event type in {session_id} line {line_number}")
+            old_payload = old_record.get("payload")
+            current_payload = current_record.get("payload")
+            if event_type in PROJECT_BIND_METADATA_TYPES and isinstance(old_payload, dict):
+                if not isinstance(current_payload, dict):
+                    fail(f"project binding changed payload shape in {session_id} line {line_number}")
+                old_without_cwd = dict(old_record)
+                current_without_cwd = dict(current_record)
+                old_payload_copy = dict(old_payload)
+                current_payload_copy = dict(current_payload)
+                if ("cwd" in old_payload) != ("cwd" in current_payload):
+                    fail(f"project binding changed cwd field presence in {session_id} line {line_number}")
+                old_payload_copy.pop("cwd", None)
+                current_payload_copy.pop("cwd", None)
+                old_without_cwd["payload"] = old_payload_copy
+                current_without_cwd["payload"] = current_payload_copy
+                if old_without_cwd != current_without_cwd:
+                    fail(f"project binding changed non-cwd metadata in {session_id} line {line_number}")
+                if "cwd" in old_payload:
+                    old_kind = metadata_cwd_kind(old_payload["cwd"], args, session_id)
+                    current_kind = metadata_cwd_kind(current_payload.get("cwd"), args, session_id)
+                    if old_kind == "old_wsl":
+                        if current_kind != "target_windows":
+                            fail(f"project binding did not repair cwd in {session_id} line {line_number}")
+                        counts[event_type] += 1
+                    elif current_kind != "target_windows":
+                        fail(f"project binding changed target cwd in {session_id} line {line_number}")
+            else:
+                if old_line != current_line:
+                    fail(f"project binding changed a non-metadata JSONL record in {session_id} line {line_number}")
+                if event_type == "event_msg" and isinstance(old_payload, dict):
+                    if old_payload.get("cwd") == OLD_PROJECT_CWD:
+                        counts["event_msg_old_cwd"] += 1
+            counts["line_count"] += 1
+    return counts
 
 
 def verify_project_binding(args: argparse.Namespace) -> dict[str, Any]:
     binding = load_project_binding_manifest(args)
-    if binding.get("phase") != "complete":
-        fail(f"project binding is not complete: {binding.get('phase')}")
+    if binding.get("phase") not in {"canary_complete", "complete"}:
+        fail(f"project binding is not verifiable at phase {binding.get('phase')}")
     migration, candidates, misc_visible = load_project_binding_inputs(args)
-    expected_ids = sorted(str(record["id"]).lower() for record in candidates)
-    if binding.get("candidate_ids") != expected_ids:
-        fail("project binding manifest candidate IDs do not match the migration manifest")
-    project_id, candidate_states, misc_states = project_binding_state(args, candidates, misc_visible)
-    if project_id != str(binding.get("project_id")):
-        fail("local project ID changed after binding")
-    if any(value != project_id for value in candidate_states.values()):
-        fail("not all project binding candidates point to the target project")
-    if any(value is not None for value in misc_states.values()):
-        fail("a miscellaneous session was assigned to the target project")
-    integrity = integrity_check(args.codex_home / "state_5.sqlite")
+    assert_binding_inputs_match_manifest(args, binding, candidates, misc_visible)
+    state = project_binding_state(args, candidates, misc_visible)
+    snapshot_info = binding_snapshot_info(args, binding)
+    assert_binding_baseline(args, binding, state, snapshot_info)
+    repaired = repaired_file_records(binding)
+    candidate_ids = {str(record["id"]).lower() for record in candidates}
+    expected_repaired = set(PROJECT_BIND_CANARY_IDS) if binding["phase"] == "canary_complete" else candidate_ids
+    if set(repaired) != expected_repaired:
+        fail(
+            "project binding repaired set does not match its phase: "
+            f"{len(repaired)} != {len(expected_repaired)}"
+        )
+    target_root = canonical_path(args.project_root)
+    if any(
+        not isinstance(value, str) or canonical_path(value) != target_root
+        for value in state["candidate_cwds"].values()
+    ):
+        fail("not all project binding candidates have the target Windows cwd")
+    for session_id in candidate_ids:
+        file_record = binding_file_records(binding)[session_id]
+        current = Path(file_record["target_path"])
+        if not current.is_file():
+            fail(f"project binding verification found missing session file: {current}")
+        if session_id in repaired:
+            original = project_binding_snapshot_file(Path(str(binding["snapshot_root"])), file_record["relative_path"])
+            observed = compare_project_binding_file(original, current, args, session_id)
+            if observed["session_meta"] != repaired[session_id]["session_meta_rewrites"]:
+                fail(f"project binding session_meta count differs for {session_id}")
+            if observed["turn_context"] != repaired[session_id]["turn_context_rewrites"]:
+                fail(f"project binding turn_context count differs for {session_id}")
+            if observed["event_msg_old_cwd"] != repaired[session_id]["event_msg_old_cwd_count"]:
+                fail(f"project binding event_msg negative control differs for {session_id}")
+        elif binding["phase"] == "complete":
+            fail(f"project binding complete phase has an unrepaired session: {session_id}")
     connection = readonly_connection(args.codex_home / "state_5.sqlite")
     try:
-        edge_count = connection.execute("SELECT count(*) FROM thread_spawn_edges").fetchone()[0]
+        current_edges = edge_rows(connection)
     finally:
         connection.close()
-    if edge_count != binding.get("baseline_edge_count"):
-        fail(
-            "parent-child edge count changed during project binding: "
-            f"{edge_count} != {binding.get('baseline_edge_count')}"
-        )
+    assert_baseline_edges(args, binding, current_edges)
     session_check = verify_import(args)
     return {
         "status": "project_bind_verify_ok",
+        "mode": binding["mode"],
+        "phase": binding["phase"],
         "project_name": args.project_name,
-        "project_id": project_id,
         "project_root": str(args.project_root),
-        "integrity": integrity,
-        "bound_threads": len(candidate_states),
+        "integrity": state["integrity"],
+        "repaired_threads": len(repaired),
+        "candidate_threads": len(candidates),
         "visible_threads": sum(1 for record in candidates if record["visible"]),
         "archived_threads": sum(1 for record in candidates if record["archived"]),
         "misc_visible_unbound": len(misc_visible),
-        "parent_child_edges": edge_count,
+        "parent_child_edges": len(binding["baseline_edge_rows"]),
         "session_check": session_check,
+        "session_index_audit": binding.get("session_index_audit", {}),
         "migration_manifest": str(migration.get("plan_file", args.manifest_file)),
     }
 
@@ -1176,47 +1925,94 @@ def verify_project_binding(args: argparse.Namespace) -> dict[str, Any]:
 def rollback_project_binding(args: argparse.Namespace) -> dict[str, Any]:
     require_apps_closed()
     binding = load_project_binding_manifest(args)
-    if binding.get("phase") != "complete":
-        fail(f"project binding is not complete: {binding.get('phase')}")
-    snapshot = Path(str(binding["snapshot_root"]))
-    snapshot_info = load_json(snapshot / "snapshot.json")
-    candidate_ids = [str(session_id).lower() for session_id in binding["candidate_ids"]]
-    original = {
-        str(session_id).lower(): value
-        for session_id, value in binding["candidate_original_project_ids"].items()
-    }
-    database = args.codex_home / "state_5.sqlite"
-    connection = sqlite3.connect(database, timeout=10)
-    connection.row_factory = sqlite3.Row
+    if binding.get("phase") not in {"snapshot_created", "canary_complete", "complete"}:
+        fail(f"project binding cannot be rolled back from phase {binding.get('phase')}")
+    migration, candidates, misc_visible = load_project_binding_inputs(args)
+    assert_binding_inputs_match_manifest(args, binding, candidates, misc_visible)
+    state = project_binding_state(args, candidates, misc_visible)
+    snapshot_info = binding_snapshot_info(args, binding)
+    assert_binding_baseline(args, binding, state, snapshot_info)
+    candidate_records = binding_file_records(binding)
+    repaired = repaired_file_records(binding)
+    files_to_restore: list[str] = []
+    for session_id, file_record in candidate_records.items():
+        current = Path(file_record["target_path"])
+        if not current.is_file():
+            fail(f"project binding rollback found missing session file: {current}")
+        digest = sha256_file(current)
+        if digest == file_record["original_sha256"]:
+            continue
+        if session_id not in repaired or digest != repaired[session_id]["repaired_sha256"]:
+            fail(f"project binding rollback found an unexpected current file hash: {current}")
+        files_to_restore.append(session_id)
+
+    quarantine = Path(str(binding["snapshot_root"])) / "rollback-quarantine" / str(int(time.time()))
+    restored_files: list[str] = []
     try:
-        connection.execute("PRAGMA busy_timeout=10000")
-        connection.execute("BEGIN IMMEDIATE")
-        current = thread_project_states(connection, candidate_ids)
-        if set(current) != set(candidate_ids):
-            fail("project binding rollback found missing candidate rows")
-        if any(current[session_id] != str(binding["project_id"]) for session_id in candidate_ids):
-            fail("project binding rollback found a changed project assignment; refusing to overwrite it")
-        for session_id in candidate_ids:
-            connection.execute(
-                "UPDATE threads SET project_id = ? WHERE id = ?",
-                (original[session_id], session_id),
+        for session_id in files_to_restore:
+            restored_files.append(session_id)
+            restore_project_binding_file(
+                snapshot_info,
+                candidate_records[session_id],
+                Path(candidate_records[session_id]["target_path"]),
+                quarantine,
             )
-        connection.commit()
+        database = args.codex_home / "state_5.sqlite"
+        connection = sqlite3.connect(database, timeout=10)
+        connection.row_factory = sqlite3.Row
+        try:
+            connection.execute("PRAGMA busy_timeout=10000")
+            connection.execute("BEGIN IMMEDIATE")
+            current_rows = thread_rows(connection, sorted(candidate_records))
+            if set(current_rows) != set(candidate_records):
+                fail("project binding rollback found missing candidate rows")
+            for session_id, row in current_rows.items():
+                if row["project_id"] is not None:
+                    fail(f"project binding rollback found a non-NULL project_id: {session_id}")
+                value = row["cwd"]
+                if value != OLD_PROJECT_CWD and (
+                    not isinstance(value, str) or canonical_path(value) != canonical_path(args.project_root)
+                ):
+                    fail(f"project binding rollback found an unknown cwd: {session_id}={value!r}")
+                original_cwd = binding["candidate_original_cwds"][session_id]
+                connection.execute("UPDATE threads SET cwd = ? WHERE id = ?", (original_cwd, session_id))
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
     except Exception:
-        connection.rollback()
+        for session_id in restored_files:
+            file_record = candidate_records[session_id]
+            if session_id not in repaired:
+                continue
+            temporary = Path(file_record["target_path"]).with_name(
+                Path(file_record["target_path"]).name + ".project-bind.rollback.tmp"
+            )
+            quarantined = quarantine / file_record["relative_path"]
+            if quarantined.is_file():
+                shutil.copy2(quarantined, temporary)
+                os.replace(temporary, file_record["target_path"])
         raise
-    finally:
-        connection.close()
+
     binding["phase"] = "rolled_back"
     binding["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
-    binding["rolled_back_count"] = len(candidate_ids)
+    binding["rolled_back_threads"] = len(candidate_records)
+    binding["rolled_back_files"] = len(files_to_restore)
+    binding["rollback_quarantine"] = str(quarantine) if files_to_restore else None
     json_dump(binding_manifest_path(args), binding)
+    session_check = verify_import(args)
     return {
         "phase": binding["phase"],
-        "project_id": binding["project_id"],
-        "unbound_threads": len(candidate_ids),
-        "snapshot": str(snapshot),
+        "mode": binding["mode"],
+        "restored_threads": len(candidate_records),
+        "restored_files": len(files_to_restore),
+        "snapshot": str(binding["snapshot_root"]),
+        "quarantine": str(quarantine) if files_to_restore else None,
         "snapshot_baseline_thread_count": len(snapshot_info["baseline_thread_ids"]),
+        "session_check": session_check,
+        "migration_manifest": str(migration.get("plan_file", args.manifest_file)),
     }
 
 
@@ -1439,11 +2235,12 @@ def build_parser() -> argparse.ArgumentParser:
     group.add_argument("--complete", action="store_true")
     verify = subparsers.add_parser("verify", help="verify an applied manifest and imported file hashes")
     add_common_arguments(verify)
+    add_project_binding_arguments(verify)
     rollback = subparsers.add_parser("rollback", help="restore the pre-import snapshot")
     add_common_arguments(rollback)
     project_bind = subparsers.add_parser(
         "project-bind",
-        help="bind migrated project threads to a UI-created local project",
+        help="repair migrated folder-bound cwd metadata for the local project",
     )
     add_common_arguments(project_bind)
     add_project_binding_arguments(project_bind)
@@ -1452,6 +2249,9 @@ def build_parser() -> argparse.ArgumentParser:
     project_group.add_argument("--apply", action="store_true")
     project_group.add_argument("--verify", action="store_true")
     project_group.add_argument("--rollback", action="store_true")
+    project_stage = project_bind.add_mutually_exclusive_group()
+    project_stage.add_argument("--canary", action="store_true")
+    project_stage.add_argument("--complete", action="store_true")
     context = subparsers.add_parser("context", help="generate the external sanitized knowledge layer")
     context.add_argument("--archive", type=Path, default=DEFAULT_ARCHIVE)
     context.add_argument("--context-root", type=Path, default=DEFAULT_CONTEXT_ROOT)
@@ -1491,10 +2291,15 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "rollback":
             print(json.dumps(rollback_import(args), ensure_ascii=False, indent=2))
         elif args.command == "project-bind":
+            if not args.apply and (args.canary or args.complete):
+                parser.error("project-bind --canary/--complete require --apply")
             if args.dry_run:
                 print(json.dumps(project_binding_dry_run(args), ensure_ascii=False, indent=2))
             elif args.apply:
-                print(json.dumps(apply_project_binding(args), ensure_ascii=False, indent=2))
+                if not args.canary and not args.complete:
+                    parser.error("project-bind --apply requires --canary or --complete")
+                stage = "canary" if args.canary else "complete"
+                print(json.dumps(apply_project_binding(args, stage), ensure_ascii=False, indent=2))
             elif args.verify:
                 print(json.dumps(verify_project_binding(args), ensure_ascii=False, indent=2))
             else:
