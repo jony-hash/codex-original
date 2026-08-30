@@ -836,6 +836,7 @@ def _status_result(
     if manifest is not None:
         for field in (
             "git_head",
+            "dirty_paths",
             "snapshot_id",
             "generated_at_utc",
             "allow_dirty",
