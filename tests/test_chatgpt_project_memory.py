@@ -133,6 +133,66 @@ class ChatGPTProjectMemoryTests(unittest.TestCase):
             self.assertTrue(error.startswith("PROJECT MEMORY STOPPED:"))
         return code, error
 
+    def _status(self) -> dict[str, object]:
+        code, result, error = self._invoke(*self._common_arguments("status"))
+        self.assertEqual((code, error), (0, ""))
+        self.assertIsNotNone(result)
+        return result or {}
+
+    def test_refresh_emits_snapshot_and_status_is_current(self) -> None:
+        code, result, error = self._invoke(*self._common_arguments("refresh"))
+        self.assertEqual((code, error), (0, ""))
+        self.assertIsNotNone(result)
+        payload = result or {}
+        self.assertEqual(payload["status"], "refresh_ok")
+        self.assertEqual(payload["build_status"], "build_ok")
+        self.assertEqual(payload["verification_status"], "verify_ok")
+        self.assertRegex(payload["snapshot_id"], r"^[0-9a-f]{12}-")
+        self.assertEqual(payload["source_count"], 6)
+        package_memory = (self.output / "PROJECT_MEMORY.md").read_text(encoding="utf-8")
+        self.assertIn("<!-- Sources bridge snapshot", package_memory)
+        self.assertIn(f"snapshot_id: {payload['snapshot_id']}", package_memory)
+        self.assertIn(f"git_head: {payload['git_head']}", package_memory)
+        self.assertEqual(self._status()["status"], "current")
+
+    def test_status_distinguishes_missing_stale_and_invalid(self) -> None:
+        self.assertEqual(self._status()["status"], "missing")
+        self._build()
+
+        memory_path = self.project / "docs" / "PROJECT_MEMORY.md"
+        original = memory_path.read_bytes()
+        memory_path.write_bytes(original + "新事实\n".encode("utf-8"))
+        self.assertEqual(self._status()["status"], "stale")
+        memory_path.write_bytes(original)
+        self.assertEqual(self._status()["status"], "current")
+
+        output_path = self.output / "CURRENT_STATUS.md"
+        output_original = output_path.read_bytes()
+        output_path.write_bytes(output_original + b"tamper\n")
+        self.assertEqual(self._status()["status"], "invalid")
+
+    def test_clean_worktree_gate_requires_explicit_dirty_override(self) -> None:
+        untracked = self.project / "review-note.txt"
+        untracked.write_text("reviewed local note\n", encoding="utf-8")
+        code, _, error = self._invoke(*self._common_arguments("build"))
+        self.assertEqual(code, 2)
+        self.assertIn("clean Git worktree", error)
+
+        code, result, error = self._invoke(
+            *self._common_arguments("build"),
+            "--allow-dirty",
+        )
+        self.assertEqual((code, error), (0, ""))
+        self.assertIsNotNone(result)
+        self.assertTrue(result["allow_dirty"])
+        self.assertEqual(self._status()["status"], "current")
+        self.assertIn(
+            "worktree: dirty-allowed",
+            (self.output / "PROJECT_MEMORY.md").read_text(encoding="utf-8"),
+        )
+        untracked.unlink()
+        self.assertEqual(self._status()["status"], "stale")
+
     def test_default_package_is_exact_and_verifies(self) -> None:
         source_bytes = {
             path: path.read_bytes()

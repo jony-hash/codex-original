@@ -5,23 +5,27 @@
 ## 目的与事实优先级
 
 这是 `codex-original` 的跨 ChatGPT/Codex 交接入口。它只保存稳定导航、当前边界和
-交接规则，不替代正式证据、实验报告或历史 transcript。
+交接规则，不替代正式证据、实验报告或历史 transcript。云端 ChatGPT 项目使用它的
+受控上传副本；本文件本身仍以本地 Git 版本为准。
 
 事实冲突时按以下顺序处理：
 
 1. `AGENTS.md` 及适用的 scoped `AGENTS.md`：执行合同和禁止事项；
-2. [`CURRENT_STATUS.md`](CURRENT_STATUS.md)：当前 Windows 工作区、迁移和验证状态；
-3. [`status/current_handoff.md`](status/current_handoff.md)：科研状态、门控和唯一下一动作；
-4. Git 状态与正式实验/evidence：可复核的实现和测量事实；
-5. 外部历史索引与按 Session ID 选择的摘要：只用于历史导航，不能覆盖当前事实。
+2. Git 状态、源码、配置、测试和正式实验/evidence：可复核的当前事实；
+3. [`CURRENT_STATUS.md`](CURRENT_STATUS.md) 与 [`status/current_handoff.md`](status/current_handoff.md)：当前状态、门控和下一动作；
+4. 本文件：稳定导航和跨产品交接规则；
+5. 外部历史索引与按 Session ID 选择的摘要：只用于历史导航，不能覆盖当前事实；
+6. 云端 ChatGPT 对话和 Sources：只读规划快照，不能覆盖以上来源。
 
-ChatGPT Sources 包（如果用户明确需要离线上传）中的文件只是受控副本。副本过期、来源
-不明确、出现敏感信息或与本地验证结果冲突时，拒绝使用该副本，回到本地权威文件；
-Sources 不是当前项目的同步机制。
+ChatGPT Sources 包中的文件是由维护工具生成的受控副本。副本必须包含 Git 快照信息；
+副本过期、来源不明确、出现敏感信息或与本地验证结果冲突时，拒绝使用该副本，回到
+本地权威文件。Sources 是人工确认的桥接快照，不是实时同步机制。
 
 ## 当前工作区与运行边界
 
-- 唯一当前工作区是 Windows 原生 `D:\codex-original`。
+- 本地 Codex 项目的唯一当前工作区是 Windows 原生 `D:\codex-original`。
+- 云端 ChatGPT 项目是 `codex-original · ChatGPT`，只负责讨论、检索、规划和总结；它
+  不能直接访问 `D:\codex-original`。
 - 开发、测试和 CUDA 运行唯一使用 `D:\ANACONDA\envs\optical-generative-models-win`；
   旧 `D:\ANACONDA\envs\optical-generative-models` 仅作 Legacy 恢复参考。Ubuntu 已注销，
   当前环境与恢复边界见 `AGENTS.md` 与 `CURRENT_STATUS.md`。
@@ -52,9 +56,9 @@ Sources 不是当前项目的同步机制。
 
 - 当前分支、HEAD、dirty paths 和最近验证结果以 `CURRENT_STATUS.md` 和运行时 Git
   状态为准；这里不复制容易过期的完整提交清单。
-- 注销前审计提交为 `75d0584c379b145b0f0eb45ece14fda160741f23`，已推送到
-  `origin/research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`；远端 SHA 与本地
-  HEAD 一致。最新 C: Git bundle 为
+- 注销前审计提交 `75d0584c379b145b0f0eb45ece14fda160741f23` 是历史恢复点；当前分支
+  HEAD、远端同步状态和桥接治理提交以运行时 Git 与 `CURRENT_STATUS.md` 为准。历史 C:
+  Git bundle 为
   `C:\Users\24567\Documents\Codex\codex-original-final-20260830.bundle`，已通过完整历史
   校验（55 refs，SHA-256 `36F1C6E6FBEE03AB7DCB17B076895606F6166D193249248CB6FB9364512D57FE`）；
   不能把本地 bundle 伪装成远端备份。
@@ -81,13 +85,18 @@ Sources 不是当前项目的同步机制。
 
 ## ChatGPT 与 Codex 的职责边界
 
-唯一主要本地项目是 `codex-original · Windows`：主目录为 `D:\codex-original`，辅助
-目录为 `C:\Users\24567\Documents\Codex\codex-original-history-context`。ChatGPT
-模式负责讨论、规划和总结；Codex 模式负责读取真实工作树、核对 Git、修改代码/文档和
-运行验证。两种模式可以在同一个本地项目中连续工作，但不会把任意聊天自动变成权威事实。
+本地项目 `codex-original · Windows` 的主目录为 `D:\codex-original`，辅助目录为
+`C:\Users\24567\Documents\Codex\codex-original-history-context`。云端项目
+`codex-original · ChatGPT` 与本地项目通过六文件 Sources 快照和标准交接块连接；项目
+名称相似本身不提供技术绑定。
 
-Sources 工具只提供可选的离线导出边界，由用户人工决定是否上传；它不替代本地项目，也
-不声称能直接同步聊天。
+ChatGPT 模式负责讨论、规划和总结；Codex 模式负责读取真实工作树、核对 Git、修改
+代码/文档和运行验证。只有 Codex 在验证后才能写入权威项目记忆；云端 Sources 仅是
+某个 Git HEAD 的只读快照。
+
+Sources 工具的活动输出目录为
+`C:\Users\24567\Documents\Codex\codex-original-chatgpt-bridge\current`，
+上传由用户人工完成，不修改 Codex SQLite 或云端项目状态。
 
 GPT App 中历史会话的项目显示、长会话渲染、搜索和继续会话属于人工验收；本地 Codex
 不能替代该桌面检查，也不能把未知状态写成已通过。
@@ -95,13 +104,13 @@ GPT App 中历史会话的项目显示、长会话渲染、搜索和继续会话
 标准方向是：
 
 ```text
-ChatGPT 讨论/规划/总结
-        ↓ 同一 GPT App 本地项目
-AGENTS.md + docs/PROJECT_MEMORY.md + Git
-        ↓ Codex 本地读取、验证、修改
+云端 ChatGPT 项目：讨论/规划/总结
+        ↓ 六文件 Sources 快照 + 交接块
+本地 Codex 项目：AGENTS.md + Git + docs/PROJECT_MEMORY.md
+        ↓ Codex 读取、验证、修改
 D:\codex-original
-
-（可选：用户明确需要时，离线生成受控 Sources 包）
+        ↓ refresh + verify
+更新下一份云端 Sources 快照
 ```
 
 ## 标准交接模板
@@ -109,6 +118,7 @@ D:\codex-original
 ChatGPT → Codex：
 
 ```text
+来源快照：
 目标：
 依据文件：
 范围内：
@@ -135,6 +145,8 @@ Codex → ChatGPT：
 1. ChatGPT 只提出更新建议，不直接把建议当作事实。
 2. Codex 修改前先读取本文件、`AGENTS.md`、`CURRENT_STATUS.md` 和适用的交接文档。
 3. 只有被 Git、测试、正式 evidence 或明确人工验收支持的事实才能写入“当前”章节。
-4. 若用户明确维护离线 Sources 包，记忆更新后才运行 Sources `build` 和 `verify`；过期包
-   必须在使用前人工替换。没有该需求时，不生成或上传 Sources 包。
-5. 旧 WSL 路径、旧项目副本和历史摘要必须显式标为历史，不能伪装成当前状态。
+4. 记忆或当前状态变化后，先在干净工作树运行 Sources `refresh`，再运行 `status`；
+   只有返回 `current` 的快照才允许人工替换云端项目中的六个 Sources。
+5. Sources 的内部 manifest 不上传；需要历史细节时只按 Session ID 生成临时摘要，任务
+   结束后从云端项目移除。
+6. 旧 WSL 路径、旧项目副本和历史摘要必须显式标为历史，不能伪装成当前状态。

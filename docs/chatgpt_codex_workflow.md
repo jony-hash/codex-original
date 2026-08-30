@@ -1,62 +1,51 @@
-# ChatGPT ↔ Codex Windows 原生工作流
+# ChatGPT ↔ Codex Windows 双项目桥接手册
 
 更新时间：2026-08-30
 
-本手册描述唯一主要入口：GPT App 中的本地项目 `codex-original · Windows`。它不是本机
-文件的自动云同步；当前事实仍以项目文件、Git 和验证结果为准。
+本手册描述当前的双项目工作流。它解决“本地 Codex 项目不能直接进行普通 ChatGPT 对话”的
+界面限制，但不把两个项目伪装成实时共享上下文。
 
-## 单一本地项目
+## 两个项目的职责
 
-| 项目 | 位置 | 用途 |
+| 项目 | 类型 | 用途 |
 | --- | --- | --- |
-| `codex-original · Windows` 主文件夹 | `D:\codex-original` | 源码、Git、测试、训练和 `AGENTS.md` |
-| 同项目辅助文件夹 | `C:\Users\24567\Documents\Codex\codex-original-history-context` | `HISTORY_CONTEXT.md`、`CHAT_INDEX.md`、`CHAT_CATALOG.jsonl` 和摘要导航 |
+| `codex-original · ChatGPT` | 云端 ChatGPT 项目 | 讨论、联网检索、方案设计、总结和交接块 |
+| `codex-original · Windows` | GPT App 本地 Codex 项目 | 源码、Git、测试、CUDA、实现和本地事实核验 |
 
-主文件夹决定默认工作目录、Git 和 `AGENTS.md` 发现。辅助目录只是历史导航层，不替代
-源码、`docs\PROJECT_MEMORY.md` 或原始 Codex transcript。外部历史目录刻意使用
-`HISTORY_CONTEXT.md`，避免与仓库权威的 `docs\PROJECT_MEMORY.md` 混淆。
+本地项目的主文件夹是 `D:\codex-original`，辅助文件夹是
+`C:\Users\24567\Documents\Codex\codex-original-history-context`。云端项目不能直接
+读取这些路径；它只使用人工上传的 Sources 快照。项目名称相似只便于识别，不提供技术
+绑定。
 
-ChatGPT 模式用于讨论、规划和总结；Codex 模式在同一 GPT App 本地项目中读取工作树、
-实现修改、运行验证和更新项目记忆。聊天上下文不会自动覆盖本地事实，长期状态必须写入
-`AGENTS.md`、`docs\CURRENT_STATUS.md`、`docs\PROJECT_MEMORY.md` 或适用的交接文档。
+## 事实优先级
 
-## 打开和查看源码
+发生冲突时依次使用：
 
-在 GPT App 中选择 `codex-original · Windows`，新建 Codex 任务即可执行。查看或手工编辑
-代码时，用 VS Code 打开 `D:\codex-original` 这个同一目录即可；VS Code 只是可选查看器，
-不要重新打开已经注销的 WSL 工作区，也不要让它切换到旧 Conda 环境。首次打开后，在
-VS Code 执行 `Python: Select Interpreter`，选择：
+1. `AGENTS.md` 和适用的 scoped `AGENTS.md`；
+2. 当前 Git、源码、配置、测试和正式 evidence；
+3. `docs\CURRENT_STATUS.md` 与 `docs\status\current_handoff.md`；
+4. `docs\PROJECT_MEMORY.md`；
+5. 外部历史索引和指定 Session 摘要；
+6. 云端 ChatGPT 对话和 Sources 快照。
 
-```text
-D:\ANACONDA\envs\optical-generative-models-win\python.exe
-```
+云端 Sources 必须被视为某一个 Git HEAD 的只读快照。没有快照信息、快照过期或与本地
+事实冲突时，停止使用云端结论并刷新 Sources。
 
-用户设置中不应保留不存在的 `D:\ANACONDA\python.exe`。不需要 VS Code 才能运行 GPT App
-Codex；两者都直接作用于 `D:\codex-original`，因此编辑前后用 Git diff 检查即可。
+## 云端 ChatGPT 项目指令
 
-## Windows 执行入口
-
-PowerShell 7 中推荐显式使用当前解释器：
-
-```powershell
-Set-Location D:\codex-original
-$envRoot = 'D:\ANACONDA\envs\optical-generative-models-win'
-$env:Path = "$envRoot;$envRoot\bin;$envRoot\Library\bin;$envRoot\Scripts;$envRoot\Lib\site-packages\torch\lib;$env:Path"
-$py = Join-Path $envRoot 'python.exe'
-
-& $py -m pytest -q
-& $py -m ldm_project.v2 --help
-```
-
-不要在未激活环境的终端使用裸 `python` 或裸 `pytest`；当前它们可能解析为系统 Python
-3.14。旧环境 `D:\ANACONDA\envs\optical-generative-models` 保留作 Legacy 恢复参考，
-不属于本项目运行时。
-
-## ChatGPT 讨论到 Codex 执行
-
-ChatGPT 讨论结果应落到一个清晰的交接块，再在同一本地项目中新建 Codex 任务：
+将以下规则放入 `codex-original · ChatGPT` 的项目指令：
 
 ```text
+本项目只负责 codex-original 的讨论、检索、规划和总结。
+
+Sources 是某个 Git HEAD 的只读快照，不代表实时访问本机。不要声称已经读取、修改、
+测试或运行 D:\codex-original，也不要把云端聊天结论当作本地事实。
+
+规划前先识别 Sources 中的 snapshot_id、git_head 和生成时间。若缺失、过期或互相冲突，
+明确要求刷新 Sources。
+
+需要交给本地 Codex 执行时，始终输出：
+来源快照：
 目标：
 依据文件：
 范围内：
@@ -67,7 +56,18 @@ ChatGPT 讨论结果应落到一个清晰的交接块，再在同一本地项目
 建议更新的项目记忆：
 ```
 
-Codex 执行前读取 `AGENTS.md`、`docs\PROJECT_MEMORY.md` 和当前 Git 状态；执行后回写：
+所有云端讨论应从该云端项目内部新建聊天；不要使用 Quick chat 作为长期项目记录。
+
+## ChatGPT 到 Codex
+
+1. 在 `codex-original · ChatGPT` 中讨论问题并形成计划。
+2. ChatGPT 输出带有 `来源快照` 的交接块。
+3. 在 `codex-original · Windows` 中新建 Codex 任务，将交接块作为任务输入。
+4. Codex 读取 `AGENTS.md`、`docs\PROJECT_MEMORY.md`、当前 Git 状态和适用的 scoped 合同。
+5. Codex 先核对交接块中的 `git_head`；不一致时以本地 Git 为准并报告差异。
+6. Codex 实现、测试、审查并更新权威状态文档。
+
+Codex 完成后返回：
 
 ```text
 结果：
@@ -78,46 +78,74 @@ Codex 执行前读取 `AGENTS.md`、`docs\PROJECT_MEMORY.md` 和当前 Git 状�
 项目记忆更新：
 ```
 
-新任务不要依赖旧聊天自动携带全部上下文。需要历史细节时，先在辅助目录的
-`CHAT_INDEX.md` 找到 Session ID，再在 GPT App 的本地 Codex 项目打开原始会话；历史摘要
-只用于导航，不能覆盖当前 Git 和验证结果。
+## Sources 刷新
 
-## 可选的离线 Sources 导出
+活动桥接目录固定为：
 
-Sources 不是当前项目的主工作流，也不是自动同步机制。只有用户明确需要把受控摘要提供给
-另一个 ChatGPT 对话时，才在 PowerShell 7 中运行：
+```text
+C:\Users\24567\Documents\Codex\codex-original-chatgpt-bridge\current
+```
+
+该目录不属于源码仓库，也不应添加为本地项目辅助文件夹。使用当前 Windows 环境运行：
 
 ```powershell
 Set-Location D:\codex-original
-$py = 'D:\ANACONDA\envs\optical-generative-models-win\python.exe'
+$envRoot = 'D:\ANACONDA\envs\optical-generative-models-win'
+$env:Path = "$envRoot;$envRoot\bin;$envRoot\Library\bin;$envRoot\Scripts;$envRoot\Lib\site-packages\torch\lib;$env:Path"
+$py = Join-Path $envRoot 'python.exe'
+$historyRoot = 'C:\Users\24567\Documents\Codex\codex-original-history-context'
+$bridgeRoot = 'C:\Users\24567\Documents\Codex\codex-original-chatgpt-bridge\current'
 
-& $py scripts\maintenance\chatgpt_project_memory.py build `
+& $py scripts\maintenance\chatgpt_project_memory.py refresh `
   --project-root D:\codex-original `
-  --history-root C:\Users\24567\Documents\Codex\codex-original-history-context `
-  --output-root C:\Users\24567\Documents\Codex\codex-original-history-context\chatgpt-sources
+  --history-root $historyRoot `
+  --output-root $bridgeRoot
 
-& $py scripts\maintenance\chatgpt_project_memory.py verify `
+& $py scripts\maintenance\chatgpt_project_memory.py status `
   --project-root D:\codex-original `
-  --history-root C:\Users\24567\Documents\Codex\codex-original-history-context `
-  --output-root C:\Users\24567\Documents\Codex\codex-original-history-context\chatgpt-sources
+  --history-root $historyRoot `
+  --output-root $bridgeRoot
 ```
 
-导出器现在从辅助目录读取 `HISTORY_CONTEXT.md`，并将其输出为 Sources 包内的
-`HISTORY_CONTEXT.md`。验证失败或包过期时停止使用，不上传内部 manifest、原始 transcript、
-全部摘要、代码树或临时文件；上传和替换仍由用户人工完成。
+只有 `refresh_ok` 和 `status=current` 时才允许上传。默认上传且仅上传：
 
-## 故障与停止条件
+```text
+PROJECT_MEMORY.md
+CURRENT_STATUS.md
+CURRENT_HANDOFF.md
+V2_RUNTIME.md
+HISTORY_CONTEXT.md
+CHAT_INDEX.md
+```
 
-- 默认 Python/pytest 版本不是当前 Windows 环境：立即停止，检查解释器和 PATH，不运行训练。
-- Git 工作树、`AGENTS.md`、当前状态或实验事实与交接不一致：以本地文件和验证结果为准，
-  先更新交接，不把聊天内容当成授权。
-- 需要旧 WSL 路径、旧 checkpoint 或历史输出：只从保留的归档中恢复明确命名的材料，不把
-  它们展开成当前工作树。
-- D: 可用空间低于 10 GiB：停止大型作业；不要删除归档、旧 Conda 环境或 Codex 历史。
-- Ubuntu 已注销，`docker-desktop` 不是项目运行时；不从 WSL 开发、训练或生成输出。
+不要上传 `.chatgpt-sources-manifest.json`、`CHAT_CATALOG.jsonl`、原始 transcript、全部
+历史摘要、`.codex` 数据、Git 元数据、outputs、临时目录或隔离目录。
 
-## 验收边界
+需要历史细节时，在刷新命令中追加一个明确的 `--session-id <id>`；上传该临时摘要后，
+任务结束即从云端项目移除。未知 Session ID、过期包、dirty 状态变化、密钥扫描命中或
+输出目录中出现未知文件时，停止上传。
 
-代码、Git、环境、测试和 CUDA 由 Codex 本地验证；GPT App 中项目显示、历史搜索、长会话
-渲染和继续会话需要用户人工检查。VS Code 只查看同一 Windows 工作区，不产生第二份源码或
-第二套运行入口。
+## VS Code 与运行环境
+
+查看或手工编辑代码时，VS Code 直接打开 `D:\codex-original`。它与本地 Codex 使用同一
+工作树，不创建副本；不要打开已注销的 WSL 路径，也不要使用旧 Conda 环境。
+
+当前解释器固定为：
+
+```text
+D:\ANACONDA\envs\optical-generative-models-win\python.exe
+```
+
+VS Code 是可选编辑器；GPT App 本地项目是 Codex 执行入口。Ubuntu 已注销，
+`docker-desktop` 不是项目运行时。
+
+## 停止条件与恢复
+
+- Sources 状态不是 `current`：不上传，先刷新。
+- 云端快照 HEAD 与本地 HEAD 不一致：以本地 Git 为准，重新生成交接。
+- 需要旧 WSL 文件或历史输出：只从不可变归档恢复明确命名的材料。
+- D: 可用空间低于 10 GiB：停止大型任务。
+- 不修改 Codex SQLite、历史 transcript、训练算法或正式 outputs。
+
+桥接工具只负责本地生成和验证，永不自动上传或修改云端项目。云端项目的 Sources 替换
+必须由用户人工确认。

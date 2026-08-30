@@ -86,12 +86,13 @@ Windows 验证、GPT App 历史会话人工验收和恢复点复核完成后，�
 
 `scripts/maintenance/codex_history_migration.py` 已通过 compileall、Ruff、dry-run、canary 和 complete。它未覆盖认证或配置；先在 C 盘快照当前 sessions/SQLite，再以 canary→App 抽查→complete 的两阶段方式追加索引。最终迁入 217 个唯一会话（147 可见主聊天、70 归档内部线程），SQLite 完整性和 217 个 JSONL 哈希均通过；旧 10 条父子关系也已保留。脱敏知识层位于 `C:\Users\24567\Documents\Codex\codex-original-history-context`，不提交 GitHub。
 
-## Windows 原生工作流治理（2026-08-30）
+## Windows 原生工作流与双项目桥接治理（2026-08-30）
 
-最终入口固定为 GPT App 本地项目 `codex-original · Windows`：主目录是
+本地执行入口固定为 GPT App 本地项目 `codex-original · Windows`：主目录是
 `D:\codex-original`，辅助目录是 `C:\Users\24567\Documents\Codex\codex-original-history-context`。
-ChatGPT 讨论/规划和 Codex 执行可以在同一项目中连续进行；VS Code 仅打开同一
-`D:\codex-original` 用于查看或手工编辑，不再打开已注销的 WSL 工作区。
+云端规划入口为 `codex-original · ChatGPT`；它通过六文件 Sources 快照和标准交接块与本地
+项目衔接。VS Code 仅打开同一 `D:\codex-original` 用于查看或手工编辑，不再打开已注销的
+WSL 工作区。
 
 当前 Windows 运行环境唯一是 `D:\ANACONDA\envs\optical-generative-models-win`。
 旧 `D:\ANACONDA\envs\optical-generative-models` 保留为 Legacy，不删除、不用于当前
@@ -99,8 +100,10 @@ ChatGPT 讨论/规划和 Codex 执行可以在同一项目中连续进行；VS C
 要求使用当前环境的显式解释器。
 
 外部历史入口已从 `PROJECT_MEMORY.md` 改为 `HISTORY_CONTEXT.md`，仓库权威入口仍为
-`docs\PROJECT_MEMORY.md`。Sources 生成器现在读取新的历史文件名；Sources 包只是用户
-明确需要时的可选离线导出。ACL 异常的旧 Sources 派生目录已移入
+`docs\PROJECT_MEMORY.md`。Sources 生成器现在读取新的历史文件名；活动桥接输出固定为
+`C:\Users\24567\Documents\Codex\codex-original-chatgpt-bridge\current`，支持
+`refresh`/`status`，且只有 `status=current` 的快照才允许人工上传。ACL 异常的旧 Sources 派生目录已移入
 `C:\Users\24567\Documents\Codex\codex-original-closure-quarantine-20260830`，
 `.pytest_cache` 已先移入 `D:\codex-original-acl-quarantine-20260830\.pytest_cache` 后
-重新生成；它们不进入项目主目录或当前 Sources 来源。
+重新生成；它们不进入项目主目录或当前 Sources 来源。默认不上传内部 manifest、原始
+transcript、全部历史摘要、`.codex` 数据、outputs 或临时文件。

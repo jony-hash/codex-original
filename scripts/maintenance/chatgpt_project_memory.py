@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+from datetime import datetime, timezone
 import hashlib
 import json
 import os
@@ -22,7 +23,7 @@ import tempfile
 from typing import Any, Iterable, Sequence
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 MANIFEST_FILENAME = ".chatgpt-sources-manifest.json"
 PACKAGE_KIND = "chatgpt_project_sources"
 
@@ -83,6 +84,7 @@ SECRET_PATTERNS = (
 )
 SESSION_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+SNAPSHOT_ID_PATTERN = re.compile(r"^[0-9a-f]{12}-[0-9T:.Z-]{16,64}$")
 
 
 def _strip_extended_prefix(value: str | os.PathLike[str]) -> str:
@@ -185,6 +187,51 @@ def _selected_session_ids(values: Iterable[str]) -> list[str]:
     if len(selected) != len(set(selected)):
         raise ProjectMemoryError("duplicate --session-id values are not allowed")
     return sorted(selected)
+
+
+def _snapshot_metadata(
+    git_state: dict[str, Any],
+    selected_ids: Sequence[str],
+    allow_dirty: bool,
+) -> dict[str, Any]:
+    generated_at = (
+        datetime.now(timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
+    return {
+        "snapshot_id": f"{git_state['git_head'][:12]}-{generated_at.replace(':', '')}",
+        "generated_at_utc": generated_at,
+        "git_head": git_state["git_head"],
+        "allow_dirty": allow_dirty,
+        "selected_session_ids": list(selected_ids),
+    }
+
+
+def _snapshot_header(metadata: dict[str, Any]) -> bytes:
+    selected = ", ".join(metadata["selected_session_ids"]) or "none"
+    header = (
+        "<!-- Sources bridge snapshot\n"
+        f"snapshot_id: {metadata['snapshot_id']}\n"
+        f"git_head: {metadata['git_head']}\n"
+        f"generated_at_utc: {metadata['generated_at_utc']}\n"
+        f"worktree: {'dirty-allowed' if metadata['allow_dirty'] else 'clean'}\n"
+        f"selected_session_ids: {selected}\n"
+        "This file is a generated upload copy; local Git and AGENTS.md remain authoritative.\n"
+        "-->\n\n"
+    )
+    return header.encode("utf-8")
+
+
+def _packaged_source_bytes(
+    spec: SourceSpec,
+    data: bytes,
+    metadata: dict[str, Any],
+) -> bytes:
+    if spec.output == "PROJECT_MEMORY.md":
+        return _snapshot_header(metadata) + data
+    return data
 
 
 def _source_specs(selected_ids: Sequence[str]) -> list[SourceSpec]:
@@ -321,6 +368,14 @@ def _validate_manifest_structure(manifest: dict[str, Any]) -> None:
         r"[0-9a-f]{40}", manifest["git_head"]
     ):
         raise ProjectMemoryError("manifest git_head is invalid")
+    snapshot_id = manifest.get("snapshot_id")
+    if not isinstance(snapshot_id, str) or not SNAPSHOT_ID_PATTERN.fullmatch(snapshot_id):
+        raise ProjectMemoryError("manifest snapshot_id is invalid")
+    generated_at = manifest.get("generated_at_utc")
+    if not isinstance(generated_at, str) or not generated_at.endswith("Z"):
+        raise ProjectMemoryError("manifest generated_at_utc is invalid")
+    if not isinstance(manifest.get("allow_dirty"), bool):
+        raise ProjectMemoryError("manifest allow_dirty is invalid")
     dirty_paths = manifest.get("dirty_paths")
     if not isinstance(dirty_paths, list) or any(
         not isinstance(path, str) for path in dirty_paths
@@ -362,14 +417,10 @@ def _validate_manifest_structure(manifest: dict[str, Any]) -> None:
         seen_outputs.add(output)
         _hash_entry(source.get("source_sha256"), f"source hash for {output}")
         _hash_entry(source.get("output_sha256"), f"output hash for {output}")
-        if source["source_sha256"] != source["output_sha256"]:
-            raise ProjectMemoryError(f"source/output hash mismatch in manifest: {output}")
         for field in ("source_bytes", "output_bytes"):
             value = source.get(field)
             if isinstance(value, bool) or not isinstance(value, int) or value < 0:
                 raise ProjectMemoryError(f"manifest {field} is invalid for {output}")
-        if source["source_bytes"] != source["output_bytes"]:
-            raise ProjectMemoryError(f"source/output size mismatch in manifest: {output}")
     if sorted(seen_outputs) != normalized_managed:
         raise ProjectMemoryError("manifest managed_files does not match its sources")
     source_count = manifest.get("source_count")
@@ -506,20 +557,21 @@ def _manifest_for_sources(
     output_root: Path,
     git_state: dict[str, Any],
     selected_ids: Sequence[str],
+    snapshot_metadata: dict[str, Any],
     records: Sequence[tuple[SourceSpec, Path, bytes]],
 ) -> dict[str, Any]:
     sources: list[dict[str, Any]] = []
     for spec, _, data in records:
-        digest = sha256_bytes(data)
+        packaged_data = _packaged_source_bytes(spec, data, snapshot_metadata)
         sources.append(
             {
                 "source_root": spec.source_root,
                 "source": spec.relative_source,
                 "output": spec.output,
-                "source_sha256": digest,
+                "source_sha256": sha256_bytes(data),
                 "source_bytes": len(data),
-                "output_sha256": digest,
-                "output_bytes": len(data),
+                "output_sha256": sha256_bytes(packaged_data),
+                "output_bytes": len(packaged_data),
             }
         )
     return {
@@ -531,6 +583,9 @@ def _manifest_for_sources(
         "git_head": git_state["git_head"],
         "dirty_paths": git_state["dirty_paths"],
         "selected_session_ids": list(selected_ids),
+        "snapshot_id": snapshot_metadata["snapshot_id"],
+        "generated_at_utc": snapshot_metadata["generated_at_utc"],
+        "allow_dirty": snapshot_metadata["allow_dirty"],
         "source_count": len(sources),
         "managed_files": sorted(source["output"] for source in sources),
         "sources": sources,
@@ -548,10 +603,17 @@ def _write_staged_bundle(
     manifest: dict[str, Any],
     records: Sequence[tuple[SourceSpec, Path, bytes]],
 ) -> None:
+    snapshot_metadata = {
+        "snapshot_id": manifest["snapshot_id"],
+        "generated_at_utc": manifest["generated_at_utc"],
+        "git_head": manifest["git_head"],
+        "allow_dirty": manifest["allow_dirty"],
+        "selected_session_ids": manifest["selected_session_ids"],
+    }
     for spec, _, data in records:
         target = stage_root / Path(*PurePosixPath(spec.output).parts)
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(data)
+        target.write_bytes(_packaged_source_bytes(spec, data, snapshot_metadata))
     (stage_root / MANIFEST_FILENAME).write_bytes(_json_bytes(manifest))
     _validate_manifest_structure(manifest)
     _validate_output_layout(stage_root, manifest)
@@ -643,6 +705,7 @@ def _build(
     history_root_arg: str,
     output_root_arg: str,
     requested_session_ids: Sequence[str],
+    allow_dirty: bool,
 ) -> dict[str, Any]:
     project_root, history_root, output_root = _validate_roots(
         project_root_arg, history_root_arg, output_root_arg
@@ -652,6 +715,12 @@ def _build(
     selected_ids = _selected_session_ids(requested_session_ids)
     records = _read_sources(project_root, history_root, selected_ids)
     git_state = _git_state(project_root)
+    if git_state["dirty_paths"] and not allow_dirty:
+        raise ProjectMemoryError(
+            "Sources build requires a clean Git worktree; use --allow-dirty "
+            "only for an explicitly reviewed snapshot"
+        )
+    snapshot_metadata = _snapshot_metadata(git_state, selected_ids, allow_dirty)
     _, old_managed_files = _existing_manifest(output_root, project_root, history_root)
     manifest = _manifest_for_sources(
         project_root,
@@ -659,6 +728,7 @@ def _build(
         output_root,
         git_state,
         selected_ids,
+        snapshot_metadata,
         records,
     )
 
@@ -684,6 +754,9 @@ def _build(
         "output_root": str(output_root),
         "git_head": git_state["git_head"],
         "dirty_paths": git_state["dirty_paths"],
+        "snapshot_id": manifest["snapshot_id"],
+        "generated_at_utc": manifest["generated_at_utc"],
+        "allow_dirty": manifest["allow_dirty"],
         "source_count": manifest["source_count"],
         "selected_session_ids": selected_ids,
         "output_files": manifest["managed_files"],
@@ -735,9 +808,202 @@ def _verify(
         "output_root": str(output_root),
         "git_head": git_state["git_head"],
         "dirty_paths": git_state["dirty_paths"],
+        "snapshot_id": manifest["snapshot_id"],
+        "generated_at_utc": manifest["generated_at_utc"],
+        "allow_dirty": manifest["allow_dirty"],
         "source_count": manifest["source_count"],
         "selected_session_ids": selected_ids,
         "output_files": manifest["managed_files"],
+    }
+
+
+def _status_result(
+    status: str,
+    project_root: Path,
+    history_root: Path,
+    output_root: Path,
+    reasons: Sequence[str],
+    manifest: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "status": status,
+        "schema_version": SCHEMA_VERSION,
+        "project_root": str(project_root),
+        "history_root": str(history_root),
+        "output_root": str(output_root),
+        "reasons": list(reasons),
+    }
+    if manifest is not None:
+        for field in (
+            "git_head",
+            "snapshot_id",
+            "generated_at_utc",
+            "allow_dirty",
+            "source_count",
+            "selected_session_ids",
+            "managed_files",
+        ):
+            result[field] = manifest[field]
+    return result
+
+
+def _status(
+    project_root_arg: str,
+    history_root_arg: str,
+    output_root_arg: str,
+) -> dict[str, Any]:
+    project_root, history_root, output_root = _validate_roots(
+        project_root_arg, history_root_arg, output_root_arg
+    )
+    if not output_root.exists():
+        return _status_result(
+            "missing",
+            project_root,
+            history_root,
+            output_root,
+            ["Sources output directory does not exist"],
+        )
+    if not output_root.is_dir():
+        return _status_result(
+            "invalid",
+            project_root,
+            history_root,
+            output_root,
+            ["Sources output path is not a directory"],
+        )
+
+    files, directories = _output_entries(output_root)
+    manifest_path = output_root / MANIFEST_FILENAME
+    if not files and not directories:
+        return _status_result(
+            "missing",
+            project_root,
+            history_root,
+            output_root,
+            ["Sources output directory is empty"],
+        )
+    if not manifest_path.is_file() or manifest_path.is_symlink():
+        return _status_result(
+            "invalid",
+            project_root,
+            history_root,
+            output_root,
+            ["Sources manifest is missing"],
+        )
+
+    manifest: dict[str, Any] | None = None
+    try:
+        manifest = _json_load(manifest_path, "Sources manifest")
+        _validate_manifest_configuration(manifest, project_root, history_root, output_root)
+        _validate_output_layout(output_root, manifest)
+        _validate_output_hashes(output_root, manifest)
+    except ProjectMemoryError as exc:
+        return _status_result(
+            "invalid",
+            project_root,
+            history_root,
+            output_root,
+            [str(exc)],
+            manifest,
+        )
+
+    try:
+        records = _read_sources(
+            project_root,
+            history_root,
+            manifest["selected_session_ids"],
+        )
+    except ProjectMemoryError as exc:
+        return _status_result(
+            "invalid",
+            project_root,
+            history_root,
+            output_root,
+            [str(exc)],
+            manifest,
+        )
+
+    by_spec = {
+        (spec.output, spec.source_root, spec.relative_source): data
+        for spec, _, data in records
+    }
+    for source in manifest["sources"]:
+        key = (source["output"], source["source_root"], source["source"])
+        data = by_spec[key]
+        if sha256_bytes(data) != source["source_sha256"]:
+            return _status_result(
+                "stale",
+                project_root,
+                history_root,
+                output_root,
+                [f"source changed: {source['source']}"],
+                manifest,
+            )
+        if len(data) != source["source_bytes"]:
+            return _status_result(
+                "stale",
+                project_root,
+                history_root,
+                output_root,
+                [f"source size changed: {source['source']}"],
+                manifest,
+            )
+
+    git_state = _git_state(project_root)
+    if git_state["git_head"] != manifest["git_head"]:
+        result = _status_result(
+            "stale",
+            project_root,
+            history_root,
+            output_root,
+            ["Git HEAD changed since Sources were built"],
+            manifest,
+        )
+        result["current_git_head"] = git_state["git_head"]
+        return result
+    if git_state["dirty_paths"] != manifest["dirty_paths"]:
+        result = _status_result(
+            "stale",
+            project_root,
+            history_root,
+            output_root,
+            ["Git dirty paths changed since Sources were built"],
+            manifest,
+        )
+        result["current_dirty_paths"] = git_state["dirty_paths"]
+        return result
+
+    return _status_result(
+        "current",
+        project_root,
+        history_root,
+        output_root,
+        [],
+        manifest,
+    )
+
+
+def _refresh(
+    project_root_arg: str,
+    history_root_arg: str,
+    output_root_arg: str,
+    requested_session_ids: Sequence[str],
+    allow_dirty: bool,
+) -> dict[str, Any]:
+    built = _build(
+        project_root_arg,
+        history_root_arg,
+        output_root_arg,
+        requested_session_ids,
+        allow_dirty,
+    )
+    verified = _verify(project_root_arg, history_root_arg, output_root_arg)
+    return {
+        **verified,
+        "status": "refresh_ok",
+        "build_status": built["status"],
+        "verification_status": verified["status"],
+        "upload_files": verified["output_files"],
     }
 
 
@@ -754,9 +1020,32 @@ def _parser() -> argparse.ArgumentParser:
     build_parser = subparsers.add_parser("build", help="build a controlled Sources package")
     _add_common_arguments(build_parser)
     build_parser.add_argument("--session-id", action="append", default=[])
+    build_parser.add_argument(
+        "--allow-dirty",
+        action="store_true",
+        help="allow an explicitly reviewed dirty-worktree snapshot",
+    )
 
     verify_parser = subparsers.add_parser("verify", help="verify a controlled Sources package")
     _add_common_arguments(verify_parser)
+
+    refresh_parser = subparsers.add_parser(
+        "refresh",
+        help="atomically build and verify a controlled Sources package",
+    )
+    _add_common_arguments(refresh_parser)
+    refresh_parser.add_argument("--session-id", action="append", default=[])
+    refresh_parser.add_argument(
+        "--allow-dirty",
+        action="store_true",
+        help="allow an explicitly reviewed dirty-worktree snapshot",
+    )
+
+    status_parser = subparsers.add_parser(
+        "status",
+        help="report whether a Sources package is current, stale, missing, or invalid",
+    )
+    _add_common_arguments(status_parser)
     return parser
 
 
@@ -769,9 +1058,20 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.history_root,
                 args.output_root,
                 args.session_id,
+                args.allow_dirty,
+            )
+        elif args.command == "verify":
+            result = _verify(args.project_root, args.history_root, args.output_root)
+        elif args.command == "refresh":
+            result = _refresh(
+                args.project_root,
+                args.history_root,
+                args.output_root,
+                args.session_id,
+                args.allow_dirty,
             )
         else:
-            result = _verify(args.project_root, args.history_root, args.output_root)
+            result = _status(args.project_root, args.history_root, args.output_root)
     except ProjectMemoryError as exc:
         print(f"PROJECT MEMORY STOPPED: {exc}", file=sys.stderr)
         return 2
