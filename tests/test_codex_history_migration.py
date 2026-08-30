@@ -67,7 +67,7 @@ class ProjectBindingTests(unittest.TestCase):
                 path TEXT NOT NULL,
                 PRIMARY KEY(project_id, position)
             );
-            CREATE TABLE threads (id TEXT PRIMARY KEY, project_id TEXT);
+            CREATE TABLE threads (id TEXT PRIMARY KEY, project_id TEXT, cwd TEXT);
             CREATE TABLE thread_spawn_edges (
                 parent_thread_id TEXT NOT NULL,
                 child_thread_id TEXT NOT NULL
@@ -84,17 +84,26 @@ class ProjectBindingTests(unittest.TestCase):
             (project_id, str(self.project_root)),
         )
         self.base_id = str(uuid.uuid4())
-        connection.execute("INSERT INTO threads (id, project_id) VALUES (?, NULL)", (self.base_id,))
+        connection.execute(
+            "INSERT INTO threads (id, project_id, cwd) VALUES (?, NULL, ?)",
+            (self.base_id, str(self.root / "misc")),
+        )
         self.candidate_ids: list[str] = []
         for _ in range(214):
             session_id = str(uuid.uuid4())
             self.candidate_ids.append(session_id)
-            connection.execute("INSERT INTO threads (id, project_id) VALUES (?, NULL)", (session_id,))
+            connection.execute(
+                "INSERT INTO threads (id, project_id, cwd) VALUES (?, NULL, ?)",
+                (session_id, str(self.project_root)),
+            )
         self.misc_ids: list[str] = []
         for _ in range(3):
             session_id = str(uuid.uuid4())
             self.misc_ids.append(session_id)
-            connection.execute("INSERT INTO threads (id, project_id) VALUES (?, NULL)", (session_id,))
+            connection.execute(
+                "INSERT INTO threads (id, project_id, cwd) VALUES (?, NULL, ?)",
+                (session_id, str(self.root / "misc")),
+            )
         connection.execute(
             "INSERT INTO thread_spawn_edges (parent_thread_id, child_thread_id) VALUES (?, ?)",
             (self.candidate_ids[0], self.candidate_ids[1]),
@@ -183,6 +192,18 @@ class ProjectBindingTests(unittest.TestCase):
         after = MIGRATION.project_binding_dry_run(self.args)
         self.assertTrue(after["ready_to_bind"])
         self.assertEqual(after["already_bound"], 0)
+
+    def test_dry_run_rejects_non_project_cwd(self) -> None:
+        connection = sqlite3.connect(self.state)
+        connection.execute(
+            "UPDATE threads SET cwd = ? WHERE id = ?",
+            ("/home/dingzhen/projects/codex-original", self.candidate_ids[0]),
+        )
+        connection.commit()
+        connection.close()
+
+        with self.assertRaisesRegex(MIGRATION.MigrationError, "non-project cwd"):
+            MIGRATION.project_binding_dry_run(self.args)
 
 
 if __name__ == "__main__":

@@ -885,6 +885,23 @@ def thread_project_states(
     }
 
 
+def thread_cwd_states(
+    connection: sqlite3.Connection,
+    session_ids: list[str],
+) -> dict[str, str | None]:
+    if not session_ids:
+        return {}
+    placeholders = ",".join("?" for _ in session_ids)
+    rows = connection.execute(
+        f"SELECT id, cwd FROM threads WHERE id IN ({placeholders})",
+        session_ids,
+    ).fetchall()
+    return {
+        str(row["id"]).lower(): (None if row["cwd"] is None else str(row["cwd"]))
+        for row in rows
+    }
+
+
 def project_binding_state(
     args: argparse.Namespace,
     candidates: list[dict[str, Any]],
@@ -896,15 +913,36 @@ def project_binding_state(
         candidate_ids = [str(record["id"]).lower() for record in candidates]
         misc_ids = [str(record["id"]).lower() for record in misc_visible]
         candidate_states = thread_project_states(connection, candidate_ids)
+        candidate_cwds = thread_cwd_states(connection, candidate_ids)
         misc_states = thread_project_states(connection, misc_ids)
     finally:
         connection.close()
     missing_candidates = sorted(set(candidate_ids) - set(candidate_states))
     missing_misc = sorted(set(misc_ids) - set(misc_states))
+    missing_cwds = sorted(set(candidate_ids) - set(candidate_cwds))
     if missing_candidates or missing_misc:
         fail(
             "project binding found missing imported thread rows: "
             f"candidates={missing_candidates[:5]}, misc={missing_misc[:5]}"
+        )
+    if missing_cwds:
+        fail(f"project binding found candidate rows without cwd values: {missing_cwds[:5]}")
+    project_root = canonical_path(args.project_root)
+    cwd_mismatches = sorted(
+        session_id
+        for session_id in candidate_ids
+        if not isinstance(candidate_cwds[session_id], str)
+        or canonical_path(candidate_cwds[session_id]) != project_root
+    )
+    if cwd_mismatches:
+        details = [
+            f"{session_id}={candidate_cwds[session_id]!r}"
+            for session_id in cwd_mismatches[:5]
+        ]
+        fail(
+            "project binding found candidate threads with a non-project cwd; "
+            "refusing to risk a WSL reopen: "
+            f"{details}"
         )
     if any(value is not None for value in misc_states.values()):
         fail("miscellaneous imported sessions are already assigned to a project")

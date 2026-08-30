@@ -29,7 +29,7 @@
 
 ## 本地项目绑定（迁移后步骤）
 
-会话迁移和本地项目归类是两个独立阶段。GPT App 必须先由用户创建本地项目 `codex-original · Windows`，主文件夹为 `D:\codex-original`，并可添加 `C:\Users\24567\Documents\Codex\codex-original-history-context` 为辅助文件夹。当前 214 条项目线程已有正确 Windows 工作目录，但尚未绑定项目；3 条杂项聊天应继续留在项目外。
+会话迁移和本地项目归类是两个独立阶段。GPT App 必须先由用户创建本地项目 `codex-original · Windows`，主文件夹为 `D:\codex-original`，并可添加 `C:\Users\24567\Documents\Codex\codex-original-history-context` 为辅助文件夹。迁移 manifest 的 214 条项目候选目标均为 Windows 工作目录，但状态库当前只有 213 条仍为 `D:\codex-original`；会话 `01a04b61-4eca-7260-8437-161edde533cb` 被打开后又由后续旧 `session_meta` 回写为 `/home/dingzhen/projects/codex-original`。因此 `project-bind` 会在绑定前拒绝这类状态不一致，不会冒险让会话重新打开 WSL；3 条杂项聊天应继续留在项目外。
 
 项目创建完成后，关闭 GPT App、Codex CLI、VS Code 和 VS Code Codex 扩展，在 PowerShell 7 运行：
 
@@ -39,7 +39,7 @@
 & $py scripts\maintenance\codex_history_migration.py project-bind --verify
 ```
 
-`project-bind` 只读取已完成迁移 manifest 中的精确 ID 清单，在独立快照后以单一事务更新 `threads.project_id`；它不会修改 transcript、标题、时间、归档状态、父子边或工作目录。没有唯一项目、主根目录不匹配、线程部分已归类或数据库被占用时会拒绝执行。
+`project-bind` 只读取已完成迁移 manifest 中的精确 ID 清单，在独立快照后以单一事务更新 `threads.project_id`；它不会修改 transcript、标题、时间、归档状态、父子边或工作目录。绑定前还会检查每条候选线程的状态库 `cwd` 与主根目录一致；没有唯一项目、主根目录不匹配、候选 cwd 不一致、线程部分已归类或数据库被占用时会拒绝执行。当前 1 条候选的旧 `session_meta` 序列需要单独决定是否修复，不能在项目绑定事务中隐式改写。
 
 ## 已执行顺序（留作审计）
 
