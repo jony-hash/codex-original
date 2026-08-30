@@ -25,6 +25,8 @@ Windows 原生项目是当前唯一开发和训练入口。PowerShell 7、Window
 - 初始完整 pytest：1,010 passed、9 failed、3 deselected、25 subtests passed；9 项均依赖按归档策略未展开的历史 WSL 输出，不属于当前 Windows 运行环境失败。
 - 默认 pytest 现排除 `historical_artifact` 与 `scheduled_diagnostic`；历史通道保留 9 项测试，仅在明确临时恢复命名归档后运行。
 - 收尾复验：默认 pytest 为 1,010 passed、12 deselected、25 subtests passed（0 失败）；`historical_artifact` collect-only 精确收集 9 项。
+- Codex 历史迁移工具已完成 dry-run：旧归档 218 个文件、217 个唯一会话、147 条主聊天、144 条目标项目聊天、3 条杂项主聊天和 70 条内部线程；当前 Windows 会话未被覆盖，真实合并等待 GPT App 手动创建本地项目并完全退出后执行。
+- 脱敏跨聊天知识层已生成到 `C:\Users\24567\Documents\Codex\codex-original-history-context`，包含 `PROJECT_MEMORY.md`、`CHAT_INDEX.md`、`CHAT_CATALOG.jsonl` 和 147 份摘要；常见密钥模式扫描为 0。
 - 归档自检：163/163 个 tar 存在；抽查 4 个 tar 的 SHA-256 与目录读取通过；5 项核心备份大小与 SHA-256 均匹配。
 - 最近容量检查：D: 可用约 14.59 GiB；回滚窗口内仅运行测试和小型 smoke。
 
@@ -43,4 +45,4 @@ WSL Ubuntu 与 docker-desktop 当前均为 Stopped，未发现 VS Code WSL 后�
 
 ## 下一步
 
-以 Windows 项目作为唯一最新工作树；每次任务更新本文件中的提交、测试、实验路径和下一步。2026-09-06 重新验收，通过后先推送本地迁移提交，再单独请求 Ubuntu 注销批准。
+以 Windows 项目作为唯一最新工作树；每次任务更新本文件中的提交、测试、实验路径和下一步。下一步是按 `docs/codex_history_migration.md` 手动完成 canary、App 验收和全量合并；2026-09-06 重新验收，通过后先推送本地迁移提交，再单独请求 Ubuntu 注销批准。

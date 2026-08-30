@@ -179,3 +179,11 @@ variant-local and cannot authorize formal acceptance.
 - The WSL checkout is a read-only rollback source through 2026-09-06. Do not develop, train, or generate new output there during this window. Do not unregister Ubuntu without a separate explicit approval.
 - During the rollback window, do not start a job whose estimated output could reduce D: below 10 GiB; restrict work to tests and small smoke runs.
 - Keep `docs\CURRENT_STATUS.md` and the migration record up to date with the current commit, changed files, validation results, experiment paths, and next step.
+
+## Codex history operating rules
+
+- The legacy WSL Codex session archive is `D:\LDM-Archive\codex-original\backup\wsl-codex-history.tar`; treat it as immutable reference data.
+- The native Windows Codex Home is `%USERPROFILE%\.codex`. Do not copy the WSL Home over it and do not hand-edit its SQLite files.
+- Use `scripts\maintenance\codex_history_migration.py` for the explicitly approved, snapshot-first session merge. It must run only with ChatGPT, Codex CLI, and VS Code closed, and it must pass the canary gate before the complete phase.
+- The external sanitized context layer is `C:\Users\24567\Documents\Codex\codex-original-history-context`; it is a navigation aid and is not a substitute for the original session transcript.
+- For historical questions, prefer `docs\CURRENT_STATUS.md`, Git, the external `PROJECT_MEMORY.md`, and the imported session ID in that order. Never treat an old WSL path recorded inside historical tool output as the current working directory.

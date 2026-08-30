@@ -59,3 +59,9 @@
 ## WSL 回滚窗口
 
 Windows 验证完成后，WSL 仅保留为回滚源，窗口为 2026-08-30 至 2026-09-06。Ubuntu 与 docker-desktop 当前均为 Stopped，且未发现 VS Code WSL 后台连接或训练进程；保留的 `vmmemWSL` 系统服务占用低于 1 GiB，不强制终止。在此期间不得在 WSL 项目上开发、训练或生成新输出，且不得让 D: 可用空间低于 10 GiB。若 Windows 出现阻断问题，停止 Windows 工作区并恢复 WSL；保留失败日志和两个副本。迁移提交在回滚窗口结束前不推送。窗口结束后，只有在用户再次明确批准后才可执行 Ubuntu 注销流程；不得手动删除 `ext4.vhdx`。
+
+## Codex 会话迁移准备
+
+2026-08-30 对 `wsl-codex-history.tar` 完成只读审计：218 个 JSONL 文件对应 217 个唯一 session ID，其中 1 个 normal/archived 重复项 SHA-256 完全一致；旧 `state_5.sqlite` 有 217 条线程和 10 条父子边，线程 schema 与 Windows 当前版本兼容。147 条 `source=vscode` 主聊天中，144 条记录旧 `codex-original` 工作目录，另外 3 条为杂项；70 条内部线程计划完整保留并默认归档。当前 Windows `.codex` 有 111 条线程，ID 与旧归档无重叠。
+
+`scripts/maintenance/codex_history_migration.py` 已通过 compileall、Ruff 和 dry-run。它不会覆盖认证或配置；会先在 C 盘快照当前 sessions/SQLite，再以 canary→人工 App 验收→complete 的两阶段方式追加索引。由于 GPT App/Codex 界面不能由迁移工具代替用户关闭和验收，实际合并仍是待手动交接步骤。脱敏知识层位于 `C:\Users\24567\Documents\Codex\codex-original-history-context`，不提交 GitHub。
