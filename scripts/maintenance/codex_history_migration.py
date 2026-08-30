@@ -46,6 +46,11 @@ DEFAULT_PROJECT_ROOT = Path(r"D:\codex-original")
 DEFAULT_SNAPSHOT_ROOT = Path.home() / "Documents" / "Codex" / "codex-history-migration-snapshot"
 DEFAULT_PLAN_FILE = Path.home() / "Documents" / "Codex" / "codex-history-migration-plan.json"
 DEFAULT_CONTEXT_ROOT = Path.home() / "Documents" / "Codex" / "codex-original-history-context"
+DEFAULT_PROJECT_NAME = "codex-original · Windows"
+DEFAULT_PROJECT_BIND_SNAPSHOT_ROOT = (
+    Path.home() / "Documents" / "Codex" / "codex-project-binding-snapshot-20260830"
+)
+DEFAULT_PROJECT_BIND_MANIFEST = DEFAULT_PROJECT_BIND_SNAPSHOT_ROOT / "binding-manifest.json"
 OLD_PROJECT_CWD = "/home/dingzhen/projects/codex-original"
 SESSION_ID_RE = re.compile(
     r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$",
@@ -58,6 +63,10 @@ BLOCKED_PROCESS_NAMES = {
     "code.exe",
 }
 CHUNK_SIZE = 1024 * 1024
+EXPECTED_PROJECT_THREAD_COUNT = 214
+EXPECTED_PROJECT_VISIBLE_COUNT = 144
+EXPECTED_PROJECT_ARCHIVED_COUNT = 70
+EXPECTED_MISC_VISIBLE_COUNT = 3
 
 
 class MigrationError(RuntimeError):
@@ -742,6 +751,437 @@ def verify_import(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
+def canonical_path(value: str | Path) -> str:
+    """Compare Windows paths without changing the paths stored in transcripts."""
+    return os.path.normcase(os.path.normpath(os.path.abspath(os.fspath(value))))
+
+
+def binding_manifest_path(args: argparse.Namespace) -> Path:
+    return args.binding_manifest or (args.binding_snapshot_root / "binding-manifest.json")
+
+
+def load_project_binding_inputs(
+    args: argparse.Namespace,
+) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
+    """Load the completed session migration and derive an exact binding set."""
+    migration = load_manifest(args.manifest_file)
+    if migration.get("phase") != "complete":
+        fail("project binding requires a complete session migration manifest")
+    if canonical_path(migration.get("archive", "")) != canonical_path(args.archive):
+        fail("session migration manifest archive does not match the requested archive")
+    if canonical_path(migration.get("codex_home", "")) != canonical_path(args.codex_home):
+        fail("session migration manifest Codex Home does not match the requested Codex Home")
+    if canonical_path(migration.get("project_root", "")) != canonical_path(args.project_root):
+        fail("session migration manifest project root does not match the requested project root")
+
+    records = migration.get("file_records")
+    imported_ids = migration.get("imported_ids")
+    if not isinstance(records, list) or not isinstance(imported_ids, list):
+        fail("session migration manifest has no usable imported session records")
+    normalized_ids = [str(session_id).lower() for session_id in imported_ids]
+    if len(normalized_ids) != len(set(normalized_ids)):
+        fail("session migration manifest contains duplicate imported IDs")
+    record_ids = [str(record.get("id", "")).lower() for record in records if isinstance(record, dict)]
+    if len(records) != len(imported_ids) or set(record_ids) != set(normalized_ids):
+        fail("session migration manifest imported IDs and file records do not match")
+
+    candidates = [
+        record
+        for record in records
+        if record.get("metadata_cwd_rewritten") is True
+    ]
+    misc_visible = [
+        record
+        for record in records
+        if record.get("visible") is True and record.get("metadata_cwd_rewritten") is not True
+    ]
+    if len(candidates) != EXPECTED_PROJECT_THREAD_COUNT:
+        fail(
+            "unexpected project binding candidate count: "
+            f"{len(candidates)} (expected {EXPECTED_PROJECT_THREAD_COUNT})"
+        )
+    if len(misc_visible) != EXPECTED_MISC_VISIBLE_COUNT:
+        fail(
+            "unexpected miscellaneous visible session count: "
+            f"{len(misc_visible)} (expected {EXPECTED_MISC_VISIBLE_COUNT})"
+        )
+    visible_count = sum(1 for record in candidates if record.get("visible") is True)
+    archived_count = sum(1 for record in candidates if record.get("archived") is True)
+    if visible_count != EXPECTED_PROJECT_VISIBLE_COUNT or archived_count != EXPECTED_PROJECT_ARCHIVED_COUNT:
+        fail(
+            "unexpected project binding visibility counts: "
+            f"visible={visible_count}, archived={archived_count}"
+        )
+    project_root = canonical_path(args.project_root)
+    for record in candidates:
+        if record.get("project_cwd") is not True:
+            fail(f"project binding candidate is missing project_cwd marker: {record.get('id')}")
+        if canonical_path(record.get("target_cwd", "")) != project_root:
+            fail(f"project binding candidate has a different target cwd: {record.get('id')}")
+    for record in misc_visible:
+        if record.get("project_cwd") is True:
+            fail(f"miscellaneous session is incorrectly marked project_cwd: {record.get('id')}")
+    return migration, candidates, misc_visible
+
+
+def resolve_local_project(
+    connection: sqlite3.Connection,
+    args: argparse.Namespace,
+) -> tuple[str, list[sqlite3.Row]]:
+    """Resolve exactly one UI-created local project rooted at the project path."""
+    required_tables = {"projects", "project_roots", "threads"}
+    available_tables = {
+        str(row[1]) for row in connection.execute("PRAGMA table_list").fetchall()
+    }
+    missing_tables = sorted(required_tables - available_tables)
+    if missing_tables:
+        fail(f"Codex state database is missing project tables: {missing_tables}")
+    project_rows = connection.execute(
+        "SELECT id, name FROM projects WHERE name = ?",
+        (args.project_name,),
+    ).fetchall()
+    if len(project_rows) != 1:
+        fail(
+            f"expected exactly one local project named {args.project_name!r}; "
+            f"found {len(project_rows)}"
+        )
+    project_id = str(project_rows[0]["id"])
+    roots = connection.execute(
+        "SELECT project_id, position, path FROM project_roots "
+        "WHERE project_id = ? ORDER BY position",
+        (project_id,),
+    ).fetchall()
+    primary_roots = [root for root in roots if int(root["position"]) == 0]
+    if len(primary_roots) != 1:
+        fail(f"local project has {len(primary_roots)} primary roots; expected exactly one")
+    if canonical_path(primary_roots[0]["path"]) != canonical_path(args.project_root):
+        fail(
+            "local project's primary root does not match the requested project root: "
+            f"{primary_roots[0]['path']}"
+        )
+    all_roots = connection.execute("SELECT project_id, position, path FROM project_roots").fetchall()
+    matching_roots = [
+        root for root in all_roots if canonical_path(root["path"]) == canonical_path(args.project_root)
+    ]
+    if len(matching_roots) != 1 or str(matching_roots[0]["project_id"]) != project_id:
+        fail("project root is duplicated or is also claimed by another local project")
+    return project_id, roots
+
+
+def thread_project_states(
+    connection: sqlite3.Connection,
+    session_ids: list[str],
+) -> dict[str, str | None]:
+    if not session_ids:
+        return {}
+    placeholders = ",".join("?" for _ in session_ids)
+    rows = connection.execute(
+        f"SELECT id, project_id FROM threads WHERE id IN ({placeholders})",
+        session_ids,
+    ).fetchall()
+    return {
+        str(row["id"]).lower(): (None if row["project_id"] is None else str(row["project_id"]))
+        for row in rows
+    }
+
+
+def project_binding_state(
+    args: argparse.Namespace,
+    candidates: list[dict[str, Any]],
+    misc_visible: list[dict[str, Any]],
+) -> tuple[str, dict[str, str | None], dict[str, str | None]]:
+    connection = readonly_connection(args.codex_home / "state_5.sqlite")
+    try:
+        project_id, _ = resolve_local_project(connection, args)
+        candidate_ids = [str(record["id"]).lower() for record in candidates]
+        misc_ids = [str(record["id"]).lower() for record in misc_visible]
+        candidate_states = thread_project_states(connection, candidate_ids)
+        misc_states = thread_project_states(connection, misc_ids)
+    finally:
+        connection.close()
+    missing_candidates = sorted(set(candidate_ids) - set(candidate_states))
+    missing_misc = sorted(set(misc_ids) - set(misc_states))
+    if missing_candidates or missing_misc:
+        fail(
+            "project binding found missing imported thread rows: "
+            f"candidates={missing_candidates[:5]}, misc={missing_misc[:5]}"
+        )
+    if any(value is not None for value in misc_states.values()):
+        fail("miscellaneous imported sessions are already assigned to a project")
+    return project_id, candidate_states, misc_states
+
+
+def project_binding_dry_run(args: argparse.Namespace) -> dict[str, Any]:
+    if not args.codex_home.is_dir():
+        fail(f"Codex Home does not exist: {args.codex_home}")
+    _, candidates, misc_visible = load_project_binding_inputs(args)
+    project_id, candidate_states, _ = project_binding_state(args, candidates, misc_visible)
+    current_values = list(candidate_states.values())
+    target_count = sum(value == project_id for value in current_values)
+    null_count = sum(value is None for value in current_values)
+    conflict_count = len(current_values) - target_count - null_count
+    if conflict_count:
+        fail(f"project binding found {conflict_count} candidate threads assigned to another project")
+    if target_count and null_count:
+        fail("project binding found a partial existing assignment; refusing to guess")
+    return {
+        "status": "project_bind_dry_run_ok",
+        "project_name": args.project_name,
+        "project_id": project_id,
+        "project_root": str(args.project_root),
+        "candidate_threads": len(candidates),
+        "visible_threads": sum(1 for record in candidates if record["visible"]),
+        "archived_threads": sum(1 for record in candidates if record["archived"]),
+        "misc_visible_unbound": len(misc_visible),
+        "already_bound": target_count,
+        "ready_to_bind": null_count == len(candidates),
+        "binding_snapshot": str(args.binding_snapshot_root),
+    }
+
+
+def create_project_binding_snapshot(
+    args: argparse.Namespace,
+    project_id: str,
+    candidates: list[dict[str, Any]],
+) -> dict[str, Any]:
+    snapshot = args.binding_snapshot_root
+    if snapshot.exists() and any(snapshot.iterdir()):
+        fail(f"project binding snapshot directory is not empty: {snapshot}")
+    checkpoint_database(args.codex_home / "state_5.sqlite")
+    snapshot.mkdir(parents=True, exist_ok=True)
+    database_files: list[str] = []
+    database_files.extend(copy_db_family(args.codex_home, snapshot, "state_5.sqlite"))
+    database_files.extend(copy_db_family(args.codex_home, snapshot, "thread_history_1.sqlite"))
+    baseline = current_state_summary(args.codex_home)
+    connection = readonly_connection(args.codex_home / "state_5.sqlite")
+    try:
+        edge_count = connection.execute("SELECT count(*) FROM thread_spawn_edges").fetchone()[0]
+        candidate_states = thread_project_states(
+            connection,
+            [str(record["id"]).lower() for record in candidates],
+        )
+    finally:
+        connection.close()
+    database_hashes = {name: sha256_file(snapshot / name) for name in database_files}
+    snapshot_info = {
+        "format_version": FORMAT_VERSION,
+        "created_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "codex_home": str(args.codex_home),
+        "project_name": args.project_name,
+        "project_id": project_id,
+        "project_root": str(args.project_root),
+        "database_files": database_files,
+        "database_sha256": database_hashes,
+        "baseline_thread_ids": baseline["thread_ids"],
+        "baseline_edge_count": edge_count,
+        "candidate_ids": sorted(candidate_states),
+        "candidate_original_project_ids": candidate_states,
+    }
+    json_dump(snapshot / "snapshot.json", snapshot_info)
+    return snapshot_info
+
+
+def bind_project_rows(
+    args: argparse.Namespace,
+    project_id: str,
+    candidate_ids: list[str],
+    original_project_ids: dict[str, str | None],
+) -> int:
+    database = args.codex_home / "state_5.sqlite"
+    connection = sqlite3.connect(database, timeout=10)
+    connection.row_factory = sqlite3.Row
+    try:
+        connection.execute("PRAGMA busy_timeout=10000")
+        connection.execute("BEGIN IMMEDIATE")
+        current = thread_project_states(connection, candidate_ids)
+        if set(current) != set(candidate_ids):
+            fail("project binding state changed: one or more candidate rows disappeared")
+        if any(current[session_id] != original_project_ids[session_id] for session_id in candidate_ids):
+            fail("project binding state changed after dry-run; refusing to update")
+        for session_id in candidate_ids:
+            connection.execute(
+                "UPDATE threads SET project_id = ? WHERE id = ? AND project_id IS NULL",
+                (project_id, session_id),
+            )
+        changed = sum(
+            1
+            for session_id in candidate_ids
+            if thread_project_states(connection, [session_id])[session_id] == project_id
+        )
+        if changed != len(candidate_ids):
+            fail(f"project binding updated {changed} rows; expected {len(candidate_ids)}")
+        connection.commit()
+        return changed
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+def apply_project_binding(args: argparse.Namespace) -> dict[str, Any]:
+    require_apps_closed()
+    if not args.project_root.is_dir():
+        fail(f"target project folder does not exist: {args.project_root}")
+    migration, candidates, misc_visible = load_project_binding_inputs(args)
+    project_id, candidate_states, _ = project_binding_state(args, candidates, misc_visible)
+    candidate_ids = sorted(candidate_states)
+    if any(value is not None for value in candidate_states.values()):
+        if all(value == project_id for value in candidate_states.values()):
+            fail("all project threads are already bound; run --verify instead")
+        fail("some project threads are already assigned; refusing partial binding")
+    manifest_path = binding_manifest_path(args)
+    if manifest_path.exists():
+        fail(f"project binding manifest already exists: {manifest_path}")
+    snapshot_info = create_project_binding_snapshot(args, project_id, candidates)
+    original_project_ids = {
+        session_id: candidate_states[session_id] for session_id in candidate_ids
+    }
+    binding = {
+        "format_version": FORMAT_VERSION,
+        "phase": "snapshot_created",
+        "created_at": snapshot_info["created_at"],
+        "updated_at": snapshot_info["created_at"],
+        "migration_manifest": str(args.manifest_file),
+        "codex_home": str(args.codex_home),
+        "project_name": args.project_name,
+        "project_id": project_id,
+        "project_root": str(args.project_root),
+        "snapshot_root": str(args.binding_snapshot_root),
+        "candidate_ids": candidate_ids,
+        "candidate_original_project_ids": original_project_ids,
+        "visible_count": sum(1 for record in candidates if record["visible"]),
+        "archived_count": sum(1 for record in candidates if record["archived"]),
+        "misc_visible_ids": sorted(str(record["id"]).lower() for record in misc_visible),
+        "baseline_thread_ids": snapshot_info["baseline_thread_ids"],
+        "baseline_edge_count": snapshot_info["baseline_edge_count"],
+    }
+    json_dump(manifest_path, binding)
+    changed = bind_project_rows(args, project_id, candidate_ids, original_project_ids)
+    binding["phase"] = "complete"
+    binding["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+    binding["bound_count"] = changed
+    json_dump(manifest_path, binding)
+    return {
+        "phase": binding["phase"],
+        "project_name": args.project_name,
+        "project_id": project_id,
+        "bound_threads": changed,
+        "visible_threads": binding["visible_count"],
+        "archived_threads": binding["archived_count"],
+        "misc_visible_unbound": len(misc_visible),
+        "manifest": str(manifest_path),
+        "snapshot": str(args.binding_snapshot_root),
+        "migration_manifest": str(migration.get("plan_file", args.manifest_file)),
+    }
+
+
+def load_project_binding_manifest(args: argparse.Namespace) -> dict[str, Any]:
+    manifest_path = binding_manifest_path(args)
+    if not manifest_path.is_file():
+        fail(f"project binding manifest does not exist: {manifest_path}")
+    binding = load_json(manifest_path)
+    if binding.get("format_version") != FORMAT_VERSION:
+        fail(f"unsupported project binding manifest format: {binding.get('format_version')}")
+    if canonical_path(binding.get("codex_home", "")) != canonical_path(args.codex_home):
+        fail("project binding manifest Codex Home does not match the requested Codex Home")
+    if canonical_path(binding.get("project_root", "")) != canonical_path(args.project_root):
+        fail("project binding manifest project root does not match the requested project root")
+    if binding.get("project_name") != args.project_name:
+        fail("project binding manifest project name does not match the requested project name")
+    return binding
+
+
+def verify_project_binding(args: argparse.Namespace) -> dict[str, Any]:
+    binding = load_project_binding_manifest(args)
+    if binding.get("phase") != "complete":
+        fail(f"project binding is not complete: {binding.get('phase')}")
+    migration, candidates, misc_visible = load_project_binding_inputs(args)
+    expected_ids = sorted(str(record["id"]).lower() for record in candidates)
+    if binding.get("candidate_ids") != expected_ids:
+        fail("project binding manifest candidate IDs do not match the migration manifest")
+    project_id, candidate_states, misc_states = project_binding_state(args, candidates, misc_visible)
+    if project_id != str(binding.get("project_id")):
+        fail("local project ID changed after binding")
+    if any(value != project_id for value in candidate_states.values()):
+        fail("not all project binding candidates point to the target project")
+    if any(value is not None for value in misc_states.values()):
+        fail("a miscellaneous session was assigned to the target project")
+    integrity = integrity_check(args.codex_home / "state_5.sqlite")
+    connection = readonly_connection(args.codex_home / "state_5.sqlite")
+    try:
+        edge_count = connection.execute("SELECT count(*) FROM thread_spawn_edges").fetchone()[0]
+    finally:
+        connection.close()
+    if edge_count != binding.get("baseline_edge_count"):
+        fail(
+            "parent-child edge count changed during project binding: "
+            f"{edge_count} != {binding.get('baseline_edge_count')}"
+        )
+    session_check = verify_import(args)
+    return {
+        "status": "project_bind_verify_ok",
+        "project_name": args.project_name,
+        "project_id": project_id,
+        "project_root": str(args.project_root),
+        "integrity": integrity,
+        "bound_threads": len(candidate_states),
+        "visible_threads": sum(1 for record in candidates if record["visible"]),
+        "archived_threads": sum(1 for record in candidates if record["archived"]),
+        "misc_visible_unbound": len(misc_visible),
+        "parent_child_edges": edge_count,
+        "session_check": session_check,
+        "migration_manifest": str(migration.get("plan_file", args.manifest_file)),
+    }
+
+
+def rollback_project_binding(args: argparse.Namespace) -> dict[str, Any]:
+    require_apps_closed()
+    binding = load_project_binding_manifest(args)
+    if binding.get("phase") != "complete":
+        fail(f"project binding is not complete: {binding.get('phase')}")
+    snapshot = Path(str(binding["snapshot_root"]))
+    snapshot_info = load_json(snapshot / "snapshot.json")
+    candidate_ids = [str(session_id).lower() for session_id in binding["candidate_ids"]]
+    original = {
+        str(session_id).lower(): value
+        for session_id, value in binding["candidate_original_project_ids"].items()
+    }
+    database = args.codex_home / "state_5.sqlite"
+    connection = sqlite3.connect(database, timeout=10)
+    connection.row_factory = sqlite3.Row
+    try:
+        connection.execute("PRAGMA busy_timeout=10000")
+        connection.execute("BEGIN IMMEDIATE")
+        current = thread_project_states(connection, candidate_ids)
+        if set(current) != set(candidate_ids):
+            fail("project binding rollback found missing candidate rows")
+        if any(current[session_id] != str(binding["project_id"]) for session_id in candidate_ids):
+            fail("project binding rollback found a changed project assignment; refusing to overwrite it")
+        for session_id in candidate_ids:
+            connection.execute(
+                "UPDATE threads SET project_id = ? WHERE id = ?",
+                (original[session_id], session_id),
+            )
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+    binding["phase"] = "rolled_back"
+    binding["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+    binding["rolled_back_count"] = len(candidate_ids)
+    json_dump(binding_manifest_path(args), binding)
+    return {
+        "phase": binding["phase"],
+        "project_id": binding["project_id"],
+        "unbound_threads": len(candidate_ids),
+        "snapshot": str(snapshot),
+        "snapshot_baseline_thread_count": len(snapshot_info["baseline_thread_ids"]),
+    }
+
+
 def rollback_import(args: argparse.Namespace) -> dict[str, Any]:
     require_apps_closed()
     manifest = load_manifest(args.manifest_file)
@@ -939,6 +1379,16 @@ def add_common_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--manifest-file", type=Path, default=DEFAULT_SNAPSHOT_ROOT / "migration-manifest.json")
 
 
+def add_project_binding_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--project-name", default=DEFAULT_PROJECT_NAME)
+    parser.add_argument(
+        "--binding-snapshot-root",
+        type=Path,
+        default=DEFAULT_PROJECT_BIND_SNAPSHOT_ROOT,
+    )
+    parser.add_argument("--binding-manifest", type=Path, default=None)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -953,6 +1403,17 @@ def build_parser() -> argparse.ArgumentParser:
     add_common_arguments(verify)
     rollback = subparsers.add_parser("rollback", help="restore the pre-import snapshot")
     add_common_arguments(rollback)
+    project_bind = subparsers.add_parser(
+        "project-bind",
+        help="bind migrated project threads to a UI-created local project",
+    )
+    add_common_arguments(project_bind)
+    add_project_binding_arguments(project_bind)
+    project_group = project_bind.add_mutually_exclusive_group(required=True)
+    project_group.add_argument("--dry-run", action="store_true")
+    project_group.add_argument("--apply", action="store_true")
+    project_group.add_argument("--verify", action="store_true")
+    project_group.add_argument("--rollback", action="store_true")
     context = subparsers.add_parser("context", help="generate the external sanitized knowledge layer")
     context.add_argument("--archive", type=Path, default=DEFAULT_ARCHIVE)
     context.add_argument("--context-root", type=Path, default=DEFAULT_CONTEXT_ROOT)
@@ -991,6 +1452,15 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(verify_import(args), ensure_ascii=False, indent=2))
         elif args.command == "rollback":
             print(json.dumps(rollback_import(args), ensure_ascii=False, indent=2))
+        elif args.command == "project-bind":
+            if args.dry_run:
+                print(json.dumps(project_binding_dry_run(args), ensure_ascii=False, indent=2))
+            elif args.apply:
+                print(json.dumps(apply_project_binding(args), ensure_ascii=False, indent=2))
+            elif args.verify:
+                print(json.dumps(verify_project_binding(args), ensure_ascii=False, indent=2))
+            else:
+                print(json.dumps(rollback_project_binding(args), ensure_ascii=False, indent=2))
         elif args.command == "context":
             print(json.dumps(context_from_archive(args), ensure_ascii=False, indent=2))
         else:
