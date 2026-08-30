@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-迁移工具已准备并通过 Windows 原生 Python 3.11 的编译、Ruff 和 dry-run。旧 WSL Codex 历史仍保留在 `D:\LDM-Archive\codex-original\backup\wsl-codex-history.tar`，当前 Windows Codex Home 尚未写入旧会话。
+迁移已于 2026-08-30 完成。旧 WSL Codex 历史仍以不可变归档保留在 `D:\LDM-Archive\codex-original\backup\wsl-codex-history.tar`，217 个唯一会话已安全追加到 Windows Codex Home，未覆盖现有 Windows 会话。
 
 工具位置：`scripts/maintenance/codex_history_migration.py`
 
@@ -19,11 +19,16 @@
 - 不迁入旧认证、`config.toml`、日志、缓存、插件或 WSL 用户配置。
 - 不修改原始 tar，不覆盖现有 Windows session，不推送 Git，不注销 Ubuntu。
 
-## 手动执行顺序
+## 已完成迁移结果
 
-1. 在 GPT App 中创建本地项目 `codex-original · Windows`，主目录设为 `D:\codex-original`。
-2. 将 `C:\Users\24567\Documents\Codex\codex-original-history-context` 作为 `chatgpt-codex工作流` 的独立来源/辅助文件夹。
-3. 关闭 GPT App、Codex CLI、VS Code 及 VS Code Codex 扩展窗口。迁移工具会再次检查进程，发现任何 `ChatGPT.exe`、`Codex.exe`、`codex-cli.exe` 或 `Code.exe` 就停止。
+- canary 导入 3 条代表性会话并通过标题、消息、工具记录和工作目录抽查。
+- complete 阶段导入其余 214 条会话，累计为 217 条唯一会话。
+- 最终校验：SQLite `integrity_check=ok`；217 个导入 JSONL 文件均存在且哈希匹配；147 条可见主聊天、70 条归档内部线程；10 条旧父子关系完整追加。
+- 迁移前快照保留在 `%USERPROFILE%\Documents\Codex\codex-history-migration-snapshot`。回滚窗口内不得删除它或修改原 WSL tar。
+
+## 已执行顺序（留作审计）
+
+1. 关闭 GPT App、Codex CLI、VS Code 及 VS Code Codex 扩展窗口。迁移工具会再次检查进程，发现任何 `ChatGPT.exe`、`Codex.exe`、`codex-cli.exe` 或 `Code.exe` 就停止。
 4. 在 PowerShell 7 中进入 `D:\codex-original`，先运行：
 
    ```powershell
@@ -45,7 +50,7 @@
    & $py scripts\maintenance\codex_history_migration.py verify
    ```
 
-8. 重新打开 GPT App，抽查至少 10 条主聊天，并在 `chatgpt-codex工作流` 中读取 `PROJECT_MEMORY.md` 和 `CHAT_INDEX.md`。
+8. 重新打开 GPT App，使用 Search chats 按标题或短语查找历史会话；本地项目归类可在界面中后续添加 `D:\codex-original` 文件夹，不影响已迁入会话的工作目录。
 
 ## 预期分类
 
