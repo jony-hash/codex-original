@@ -1,0 +1,43 @@
+{
+  "schema": "lightgen_optical_manifold_smf_bogt_geometry_attribution_review.v1",
+  "hypothesis": "H-LOMA-CBOGT-S0-GEOM-RM",
+  "reviewer_role": "project_owner",
+  "decision": "approve_no_update_scaled_chen_geometry_attribution_audit",
+  "approved_contract": {
+    "grid": {
+      "fill": [0.7, 0.8, 0.9],
+      "facet_magnification": [0.8, 1.0, 1.2],
+      "baseline": [0.8, 1.0],
+      "ports": 100,
+      "transport": "identity"
+    },
+    "selection_count": 1000,
+    "selection_source": "mnist_test_indices_5000_9999",
+    "selection_per_label": 100,
+    "confirmation_count": 5000,
+    "confirmation_source": "horizon_heldout_train_indices_55000_59999",
+    "checkpoints": [0, 5000],
+    "material_relative_improvement": 0.05,
+    "bootstrap_replicates": 2000,
+    "bootstrap_seed": 1236,
+    "no_update": true,
+    "fixed_calibration": true,
+    "post_geometry_supported_next_action": "manual_review_scaled_chen_geometry_matched_reconstruction_canary_contract",
+    "post_geometry_not_supported_next_action": "manual_review_scaled_chen_distributed_bottleneck_closeout_contract"
+  },
+  "no_update_diagnostic_authorized": true,
+  "training_authorized": false,
+  "formal_training_authorized": false,
+  "formal_promotion": false,
+  "prohibited": [
+    "optimizer",
+    "backward",
+    "checkpoint_write",
+    "generation",
+    "evaluator",
+    "fmf",
+    "trainable_ols",
+    "exposure_retuning",
+    "promotion"
+  ]
+}

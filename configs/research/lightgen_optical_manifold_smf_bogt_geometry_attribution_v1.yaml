@@ -1,0 +1,120 @@
+schema: lightgen_optical_manifold_smf_bogt_geometry_attribution_v1
+hypothesis: H-LOMA-CBOGT-S0-GEOM-RM
+formal_system_config: configs/v2/current/formal_identity_logit_amplitude_finite_crop_identity.yaml
+
+source:
+  historical_commit: 019b76ef911e0bd16b8d5d4169807323427684af
+  horizon_config_sha256: 304ff57307a7b4b301adf37766d3948c25cab9a83d90da5c85ed6a081003dd18
+  training: outputs/20260829_v2/runs/lightgen_optical_manifold_smf_bogt_horizon_v2_attempt_04/training.json
+  validation: outputs/20260829_v2/runs/lightgen_optical_manifold_smf_bogt_horizon_v2_attempt_04/validation.json
+  preflight: outputs/20260829_v2/runs/lightgen_optical_manifold_smf_bogt_horizon_v2_attempt_04/preflight.json
+  calibration: outputs/20260829_v2/runs/lightgen_optical_manifold_smf_bogt_horizon_v2_attempt_04/scaled_chen_bogt_horizon_calibration.pt
+  step0_checkpoint: outputs/20260829_v2/runs/lightgen_optical_manifold_smf_bogt_horizon_v2_attempt_03/checkpoints/scaled_chen_horizon_step_0.pt
+  step5000_checkpoint: outputs/20260829_v2/runs/lightgen_optical_manifold_smf_bogt_horizon_v2_attempt_03/checkpoints/scaled_chen_horizon_step_5000.pt
+  no_update_attribution_v3: outputs/20260829_v2/runs/lightgen_optical_manifold_smf_bogt_horizon_v2_attempt_04/no_update_attribution_audit_v3.json
+  no_update_core: outputs/20260829_v2/runs/lightgen_optical_manifold_smf_bogt_horizon_v2_attempt_04/no_update_attribution_core.json
+  no_update_variants: outputs/20260829_v2/runs/lightgen_optical_manifold_smf_bogt_horizon_v2_attempt_04/no_update_attribution_variants.json
+  no_update_jacobian: outputs/20260829_v2/runs/lightgen_optical_manifold_smf_bogt_horizon_v2_attempt_04/no_update_attribution_jacobian.json
+  no_update_counterfactual: outputs/20260829_v2/runs/lightgen_optical_manifold_smf_bogt_horizon_v2_attempt_04/no_update_attribution_counterfactual_residual.json
+  hashes:
+    training: bf707a836dabbea6917aa6c8016e6c00764d9219cd67bb41f551f911f28c2c51
+    validation: ddb882b26aa1463a74d41896f0f8ff8b406614a29bf25a72b918f58094d3e945
+    preflight: e988485f18e1f45964bf44e6338308ec882048038a1ba910f09758521fdfea83
+    calibration: a9a871405e216597b2c6058e8c52cd86a242659f8f6729fe06b85d0ef0f32959
+    step0_checkpoint: 460f9745cbce4c231f75cf3443d23a861c07a5159bb57fa2a97543d153bc57ba
+    step5000_checkpoint: ccb89f98cc11725eb80d66c61f4fdef62b24acdf9f6d739f78373f462d10e5de
+    no_update_attribution_v3: 98c55f8c6a2c2063a879e5dbe1eeeec26adc6c49a3f37990d88726097c107e26
+    no_update_core: 4bacfb93bde8df6bf7831a41feaad50738e530dc518cab6f7922f14dcfe8973d
+    no_update_variants: e44fc2dd75e3ed7da4ca9d70074227cf2208e457a10e791e99c11de24b792041
+    no_update_jacobian: 38d7fae07a85371f98c072426e822d53bf5ba9fda8fbec80e69494e020deaab1
+    no_update_counterfactual: c31ab1119835284f293d378e8d13325cb01a9e5ac3f3e6c4fe5038446897a582
+
+dataset:
+  train_count: 55000
+  validation_count: 5000
+  calibration_count: 1000
+  selection_count: 1000
+  selection_source: mnist_test_indices_5000_9999
+  selection_per_label: 100
+  confirmation_source: horizon_heldout_train_indices_55000_59999
+  confirmation_count: 5000
+  selection_seed: 1235
+  logical_batch_size: 10
+  microbatch_size: 1
+  selected_and_confirmation_disjoint: true
+  selection_excludes_horizon_train_and_calibration: true
+  input_shape: [1, 28, 28]
+  rendered_shape: [1, 200, 200]
+
+optical_contract:
+  formal_system_kind: formal_amplitude_finite_crop_identity
+  architecture: 2plus2_phase_only
+  wavelength_m: 5.32e-7
+  slm_shape: [200, 200]
+  slm_pixel_pitch_m: 2.5e-6
+  metasurface_shape: [100, 100]
+  metasurface_pixel_pitch_m: 2.0e-6
+  propagation_grid_size: 2048
+  encoder_layers: 2
+  decoder_layers: 2
+  layer_spacing_m: 1.50e-3
+  ols_ports: 100
+  mode_model: step_index_lp01_ports
+  mode_v_number: 2.2
+  mode_waist_m: 7.111e-6
+  mode_grid_shape: [10, 10]
+  mode_fill_grid: [0.70, 0.80, 0.90]
+  mode_facet_magnification_grid: [0.80, 1.00, 1.20]
+  baseline_fill: 0.80
+  baseline_facet_magnification: 1.00
+  fixed_transport: identity
+  fixed_layer_power_transmission: 0.889
+  backend_total_distance_m: 3.0e-3
+  backend_magnification: -2.5
+  fixed_exposure: {scale: 1.0, gamma: 1.0}
+  no_complex_resize: true
+  software_decoder: false
+  electronic_posterior: false
+  formal_promotion: false
+
+audit:
+  objective: frozen_forward_only
+  checkpoints: [0, 5000]
+  selection_metric: paired_mse
+  confirmation_metric: paired_mse
+  bootstrap_replicates: 2000
+  bootstrap_seed: 1236
+  material_relative_improvement: 0.05
+  confidence_level: 0.95
+  negative_control: cyclic_target
+  independent_reference: class_template
+  fixed_calibration: true
+  no_update: true
+
+gates:
+  min_free_cuda_bytes: 4294967296
+  max_peak_cuda_bytes: 5368709120
+  max_storage_bytes: 536870912
+  model_state_unchanged: true
+  evaluator_calls: 0
+  optimizer_created: false
+  grid_rank: 100
+  wall_clock: observational_only
+
+authorization:
+  reviewer_role: project_owner
+  decision: approve_no_update_scaled_chen_geometry_attribution_audit
+  no_update_diagnostic_authorized: true
+  training_authorized: false
+  formal_training_authorized: false
+  formal_promotion: false
+  prohibited:
+    - optimizer
+    - backward
+    - checkpoint_write
+    - generation
+    - evaluator
+    - fmf
+    - trainable_ols
+    - exposure_retuning
+    - promotion
