@@ -145,7 +145,7 @@ The formal D2NN boundary is `finite_crop`, meaning a propagation-after-crop idea
 
 ## 5. Repository And Artifacts
 
-- Python requirement comes from `pyproject.toml` (`>=3.11`). Conda env: `optical-generative-models`; canonical source: `src/ldm_project/v1/` and `src/ldm_project/v2/`; root modules are compatibility facades; tests: `tests/`; entrypoint: `train.py`; configs: `configs/`.
+- Python requirement comes from `pyproject.toml` (`>=3.11`). The logical Conda environment name in `environment.yml` is `optical-generative-models`; the only supported environment for this Windows checkout is `D:\ANACONDA\envs\optical-generative-models-win`. Canonical source is `src/ldm_project/v1/` and `src/ldm_project/v2/`; root modules are compatibility facades; tests are in `tests/`; the entrypoint is `train.py`; configs are in `configs/`.
 - Explicit CLI checkpoint paths win. Omitted teacher checkpoints resolve first from `outputs/final_pt/`; one-shot sampling requires an explicit student checkpoint unless a documented resolver exists.
 - Generated runs write to `outputs/YYYYMMDD_<version>/runs/...`, with `<version>` derived from the run name or config filename and falling back to `unversioned`; new runs remain in an existing real prefixed version directory.
 - Diagnostic and pre-acceptance runs use persistent versioned `outputs/` paths but remain `diagnostic-only`. Do not modify `outputs/final_pt/`, non-run root files under `outputs/`, `data/raw/`, repository `.tmp/`, or `legacy/`; `outputs/runs/` must not be reintroduced.
@@ -172,7 +172,9 @@ variant-local and cannot authorize formal acceptance.
 ## Windows-native migration operating rules
 
 - The primary workspace is `D:\codex-original`; use PowerShell 7 and the Conda environment `D:\ANACONDA\envs\optical-generative-models-win` for development, tests, training, and Git operations.
-- Activate the Windows Conda environment before running Python or CUDA workloads so its `Library\bin`, `Scripts`, and `bin` directories are available on `PATH`.
+- Do not use bare `python`, bare `pytest`, or the legacy environment for this repository: an unactivated shell currently resolves system Python 3.14, and the legacy environment has a separate editable install. Use the current environment's `python.exe` explicitly (or activate that exact environment) and invoke tests as `python -m pytest`.
+- The legacy environment `D:\ANACONDA\envs\optical-generative-models` (PyTorch 2.4.1, editable install targeting the former `D:\chenyitong fuxian\LDM-CODE\4.21 original\codex original` copy) is retained for recovery/reference only; do not delete it or use it for current work.
+- When Codex invokes the current environment directly, prepend its root, `bin`, `Library\bin`, `Scripts`, and `torch\lib` to `PATH`; this avoids Conda activation's sandbox-sensitive OpenCL temporary-file side effect. A normal user PowerShell activation of the same environment is equivalent.
 - Historical outputs live in `D:\LDM-Archive\codex-original\outputs` as verified per-directory tar archives. Do not expand or modify those archives unless a task explicitly requires restoring a named historical artifact.
 - Tests that directly require those archive-only artifacts use the `historical_artifact` pytest marker. The default pytest lane excludes this marker; use `python -m pytest -q -o addopts="" -m historical_artifact --collect-only` to inspect the preserved historical lane before an explicitly authorized temporary restore.
 - `D:\codex-original\outputs` is reserved for current Windows-native runs and Git-tracked formal artifacts; use a distinct run directory for smoke tests.
@@ -185,13 +187,13 @@ variant-local and cannot authorize formal acceptance.
 - The legacy WSL Codex session archive is `D:\LDM-Archive\codex-original\backup\wsl-codex-history.tar`; treat it as immutable reference data.
 - The native Windows Codex Home is `%USERPROFILE%\.codex`. Do not copy the WSL Home over it and do not hand-edit its SQLite files.
 - Use `scripts\maintenance\codex_history_migration.py` for the explicitly approved, snapshot-first session merge. It must run only with ChatGPT, Codex CLI, and VS Code closed, and it must pass the canary gate before the complete phase.
-- The external sanitized context layer is `C:\Users\24567\Documents\Codex\codex-original-history-context`; it is a navigation aid and is not a substitute for the original session transcript.
-- For historical questions, prefer `docs\CURRENT_STATUS.md`, Git, the external `PROJECT_MEMORY.md`, and the imported session ID in that order. Never treat an old WSL path recorded inside historical tool output as the current working directory.
+- The external sanitized context layer is `C:\Users\24567\Documents\Codex\codex-original-history-context`; it is a navigation aid and is not a substitute for the original session transcript. Its history entry point is `HISTORY_CONTEXT.md`, deliberately distinct from the authoritative repository file `docs\PROJECT_MEMORY.md`.
+- For historical questions, prefer `docs\CURRENT_STATUS.md`, Git, the external `HISTORY_CONTEXT.md`, and the imported session ID in that order. Never treat an old WSL path recorded inside historical tool output as the current working directory.
 
 ## ChatGPT/Codex project memory operating rules
 
 - Before a cross-product task, read `docs\PROJECT_MEMORY.md`; it is the stable bridge entry, not a replacement for this contract or formal evidence.
-- ChatGPT may discuss, plan, summarize, and propose memory updates, but must not claim local-file access or treat an uploaded Sources package as fresher than the local Git/evidence state.
-- Codex is the only writer of the authoritative project memory after checking the working tree, Git, and required verification. Rebuild and verify the controlled ChatGPT Sources package after an accepted memory update.
-- The controlled package is generated by `scripts\maintenance\chatgpt_project_memory.py`; do not upload the internal manifest, raw transcripts, the full summary set, `.pytest-tmp` artifacts, or the old deleted project copy.
+- The single primary local project is `codex-original · Windows`, with `D:\codex-original` as its main folder and the external history directory as an auxiliary folder. ChatGPT discussion/planning and Codex execution may occur in that project, but every current fact still comes from local Git and verification.
+- ChatGPT may discuss, plan, summarize, and propose memory updates, but must not claim local-file access or treat an uploaded Sources package as fresher than the local Git/evidence state. Codex is the only writer of authoritative project memory after checking the working tree, Git, and required verification.
+- `scripts\maintenance\chatgpt_project_memory.py` is an optional, offline export for a user who explicitly needs a sanitized ChatGPT upload; it is not the primary synchronization or project workflow. If used, rebuild and verify it after an accepted memory update, and do not upload the internal manifest, raw transcripts, the full summary set, `.pytest-tmp` artifacts, or the old deleted project copy.
 - A stale, modified, secret-bearing, or unknown-file package is rejected. Do not silently redact authoritative files, modify `.codex` databases, rebuild session indexes, or convert a ChatGPT discussion into training or promotion authority.

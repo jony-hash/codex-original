@@ -12,7 +12,7 @@ Scope: `tests/**` and verification for repository changes. Read the repository-r
 - One-shot model, optics, visualization, config, or checkpoint changes normally require `tests/student/`, `tests/teacher/`, `tests/application/`, `tests/diagnostics/`, the compatibility smoke files, and `tests/test_repo_layout.py` as applicable.
 - Teacher/first-stage/diffusion changes normally require the matching conditioned, diffusion, data, or optical-path tests rather than an unrelated fixed bundle.
 - Docs-only and repository-instruction changes require `git diff --check`; do not run Python or CUDA tests unless behavior-bearing files also changed.
-- Run `python -m compileall src tests train.py` for shared Python changes and `ruff check src tests *.py` when lint-relevant files change.
+- In the Windows-native checkout, set `$py` to `D:\ANACONDA\envs\optical-generative-models-win\python.exe` (with its DLL directories on `PATH`) and use `& $py -m compileall src tests train.py`; use that environment's `ruff.exe` for `ruff check src tests *.py`.
 - Run the full suite only after targeted checks pass for shared/final changes or a cross-package contract change. Local fixes may stop after their targeted tests, compile, and lint checks; rerun only checks invalidated by a corrective edit.
 - Keep architecture-boundary and lazy-stage assertions separate from physics/numerical assertions; legacy imports must resolve to canonical package implementations.
 - v2 conditional tests must separately cover current identity architecture,
@@ -38,9 +38,9 @@ Scope: `tests/**` and verification for repository changes. Read the repository-r
 
 ## Verification commands
 
-- Build: `python -m compileall src tests train.py`.
-- Lint: `ruff check src tests *.py`.
-- Full default lane: `pytest -q`.
-- Scheduled diagnostic lane: `pytest -q -o addopts='' -m scheduled_diagnostic`.
+- Build: `& $py -m compileall src tests train.py`.
+- Lint: `& (Join-Path $envRoot 'Scripts\\ruff.exe') check src tests *.py`.
+- Full default lane: `& $py -m pytest -q`.
+- Scheduled diagnostic lane: `& $py -m pytest -q -o addopts='' -m scheduled_diagnostic`.
 - Metadata-only changes require `git diff --check`; do not run CUDA or formal
   training as a substitute for unavailable acceptance inputs.

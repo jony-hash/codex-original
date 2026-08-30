@@ -15,14 +15,16 @@
 4. Git 状态与正式实验/evidence：可复核的实现和测量事实；
 5. 外部历史索引与按 Session ID 选择的摘要：只用于历史导航，不能覆盖当前事实。
 
-ChatGPT Sources 包中的文件是受控副本。副本过期、来源不明确、出现敏感信息或与本地
-验证结果冲突时，拒绝使用该副本，回到本地权威文件。
+ChatGPT Sources 包（如果用户明确需要离线上传）中的文件只是受控副本。副本过期、来源
+不明确、出现敏感信息或与本地验证结果冲突时，拒绝使用该副本，回到本地权威文件；
+Sources 不是当前项目的同步机制。
 
 ## 当前工作区与运行边界
 
 - 唯一当前工作区是 Windows 原生 `D:\codex-original`。
-- 开发、测试和 CUDA 运行使用 Windows Conda 环境；Ubuntu 已注销，当前环境与恢复边界见
-  `AGENTS.md` 与 `CURRENT_STATUS.md`。
+- 开发、测试和 CUDA 运行唯一使用 `D:\ANACONDA\envs\optical-generative-models-win`；
+  旧 `D:\ANACONDA\envs\optical-generative-models` 仅作 Legacy 恢复参考。Ubuntu 已注销，
+  当前环境与恢复边界见 `AGENTS.md` 与 `CURRENT_STATUS.md`。
 - v1 仍由 `train.py` 维护历史可复现性；v2 是当前 teacher-free conditional optical-generation
   runtime，入口为 `python -m ldm_project.v2`。
 - 正式 v2 光路边界是：`label + 8D code` → identity-anchored electronic amplitude
@@ -42,8 +44,9 @@ ChatGPT Sources 包中的文件是受控副本。副本过期、来源不明确�
 - 当前交接文档记录的唯一允许科研动作是
   `manual_review_fmf_mode_capacity_reconstruction_contract`。如果交接文档更新，
   以最新的 `CURRENT_HANDOFF.md` 和 hypothesis ledger 为准。
-- 本次桥接链路的唯一允许实现动作是维护记忆入口、生成受控 Sources 包并验证其没有
-  过期、秘密或未知文件；不修改训练代码、`outputs`、WSL、SQLite 或历史 transcript。
+- 本次工作流治理允许的实现动作是维护记忆入口、项目文档和环境入口；不修改训练代码、
+  `outputs`、WSL、SQLite 或历史 transcript。只有用户明确需要离线上传时，才生成并验证
+  受控 Sources 包。
 
 ## Git 与验证状态
 
@@ -69,20 +72,22 @@ ChatGPT Sources 包中的文件是受控副本。副本过期、来源不明确�
   `projects`、`project_roots`、`threads.project_id` 或重建 `session_index.jsonl`。
 - 旧 WSL 路径只表示历史记录。`session_meta`/`turn_context` 的修复已将项目路径统一
   到 Windows 目标；`event_msg` 的历史命令位置保留原样，不能把它解释为当前 cwd。
-- 外部历史上下文目录是导航层，不是原始 transcript 的替代品。历史只能按 Session ID
-  选择摘要，默认不把全部摘要上传到 ChatGPT Sources。
+- 外部历史上下文目录是导航层，不是原始 transcript 的替代品；其入口是
+  `HISTORY_CONTEXT.md`，刻意不与本仓库的 `docs/PROJECT_MEMORY.md` 同名。历史只能按
+  Session ID 选择摘要，默认不把全部摘要上传到 ChatGPT Sources。
 - Ubuntu 注销前增量审计仅发现 5 个 WSL Codex 日志/缓存文件；它们已在 C: 独立 tar
   中保留并通过目录读取校验。2026-08-30 已执行精确的 `wsl.exe --unregister Ubuntu`；
   Ubuntu 注册项、`D:\WSL\Ubuntu` 目录和 `ext4.vhdx` 均已消失，`docker-desktop` 保留。
 
 ## ChatGPT 与 Codex 的职责边界
 
-ChatGPT 项目 `codex-original · ChatGPT` 用于讨论、规划、总结和提出记忆更新建议；
-它只读取用户人工上传的受控 Sources，不声称能直接读取或修改本机文件。
+唯一主要本地项目是 `codex-original · Windows`：主目录为 `D:\codex-original`，辅助
+目录为 `C:\Users\24567\Documents\Codex\codex-original-history-context`。ChatGPT
+模式负责讨论、规划和总结；Codex 模式负责读取真实工作树、核对 Git、修改代码/文档和
+运行验证。两种模式可以在同一个本地项目中连续工作，但不会把任意聊天自动变成权威事实。
 
-Codex 本地项目 `codex-original · Windows` 以 `D:\codex-original` 为主目录，负责读取
-真实工作树、核对 Git 和验证结果、修改代码/文档、运行测试，并在事实核对后更新本文件。
-Sources 包由本地工具生成，上传/替换由用户在 ChatGPT 项目中人工确认。
+Sources 工具只提供可选的离线导出边界，由用户人工决定是否上传；它不替代本地项目，也
+不声称能直接同步聊天。
 
 GPT App 中历史会话的项目显示、长会话渲染、搜索和继续会话属于人工验收；本地 Codex
 不能替代该桌面检查，也不能把未知状态写成已通过。
@@ -91,10 +96,12 @@ GPT App 中历史会话的项目显示、长会话渲染、搜索和继续会话
 
 ```text
 ChatGPT 讨论/规划/总结
-        ↓ 受控 Sources 包（人工上传）
-docs/PROJECT_MEMORY.md + 当前文档
+        ↓ 同一 GPT App 本地项目
+AGENTS.md + docs/PROJECT_MEMORY.md + Git
         ↓ Codex 本地读取、验证、修改
 D:\codex-original
+
+（可选：用户明确需要时，离线生成受控 Sources 包）
 ```
 
 ## 标准交接模板
@@ -128,5 +135,6 @@ Codex → ChatGPT：
 1. ChatGPT 只提出更新建议，不直接把建议当作事实。
 2. Codex 修改前先读取本文件、`AGENTS.md`、`CURRENT_STATUS.md` 和适用的交接文档。
 3. 只有被 Git、测试、正式 evidence 或明确人工验收支持的事实才能写入“当前”章节。
-4. 记忆更新后重新运行 Sources `build` 和 `verify`；过期包必须在 ChatGPT 项目中人工替换。
+4. 若用户明确维护离线 Sources 包，记忆更新后才运行 Sources `build` 和 `verify`；过期包
+   必须在使用前人工替换。没有该需求时，不生成或上传 Sources 包。
 5. 旧 WSL 路径、旧项目副本和历史摘要必须显式标为历史，不能伪装成当前状态。

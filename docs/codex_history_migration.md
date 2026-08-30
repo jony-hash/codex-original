@@ -19,8 +19,8 @@
 
 外部知识层：`C:\Users\24567\Documents\Codex\codex-original-history-context`
 
-跨产品交接入口：[`docs/PROJECT_MEMORY.md`](PROJECT_MEMORY.md)；ChatGPT 项目设置、
-受控 Sources 构建/验证和人工替换步骤见
+跨产品交接入口：[`docs/PROJECT_MEMORY.md`](PROJECT_MEMORY.md)；单一本地项目和可选的
+受控 Sources 构建/验证步骤见
 [`docs/chatgpt_codex_workflow.md`](chatgpt_codex_workflow.md)。本手册的历史迁移规则
 仍优先于任何 ChatGPT 讨论或 Sources 副本。
 
@@ -56,7 +56,7 @@ Ubuntu 已注销后，以上快照、原始 WSL tar、用户配置 tar、增量 
 
 ## 本地项目归属修复（folder-bound v2）
 
-会话迁移和本地项目归类是两个独立阶段。GPT App 必须先由用户创建本地项目 `codex-original · Windows`，主文件夹为 `D:\codex-original`，并可添加 `C:\Users\24567\Documents\Codex\codex-original-history-context` 为辅助文件夹。桌面端按 `cwd` 将会话映射到文件夹项目；`projects`/`project_roots` 为空和 `threads.project_id=NULL` 都是正常状态，工具不会伪造 Project ID。
+会话迁移和本地项目归类是两个独立阶段。GPT App 使用本地项目 `codex-original · Windows`，主文件夹为 `D:\codex-original`，辅助文件夹为 `C:\Users\24567\Documents\Codex\codex-original-history-context`。桌面端按 `cwd` 将会话映射到文件夹项目；`projects`/`project_roots` 为空和 `threads.project_id=NULL` 都是正常状态，工具不会伪造 Project ID。辅助目录的历史入口名为 `HISTORY_CONTEXT.md`，不再使用与仓库权威记忆同名的外部 `PROJECT_MEMORY.md`。
 
 旧实现只检查 transcript 首行，导致后续 `session_meta`/`turn_context` 再次把会话的 `cwd` 漂移回 WSL。v2 对 manifest 指定的 214 条候选流式处理：只改 `session_meta.payload.cwd` 和 `turn_context.payload.cwd` 中的精确旧路径 `/home/dingzhen/projects/codex-original`，将其写为 `D:\codex-original`；`event_msg` 中的历史命令 `cwd` 保持原样，作为负控。状态库只在一个事务中把精确候选行的 `threads.cwd` 写为目标目录，`project_id` 必须继续为空。3 条杂项可见聊天、原生 Windows 新聊天、标题、消息、工具输出、source/thread_source、归档状态、父子边和 `session_index.jsonl` 均不改。
 

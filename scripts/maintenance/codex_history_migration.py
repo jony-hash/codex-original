@@ -2148,7 +2148,7 @@ def context_from_archive(args: argparse.Namespace) -> dict[str, Any]:
                 "",
                 "## Full transcript",
                 "",
-                "Open this session by its ID in the imported local Codex project. The immutable source is the WSL history tar listed in PROJECT_MEMORY.md.",
+                "Open this session by its ID in the imported local Codex project. The immutable source is the WSL history tar listed in HISTORY_CONTEXT.md.",
                 "",
             ]
             (summary_dir / f"{session_id}.md").write_text("\n".join(summary), encoding="utf-8", newline="\n")
@@ -2177,10 +2177,10 @@ def context_from_archive(args: argparse.Namespace) -> dict[str, Any]:
         "",
         "## 隐私边界",
         "",
-        "本目录不复制认证文件、密钥、原始工具输出或完整消息流；生成器对常见 token、私钥和 password/secret 赋值做了脱敏。生成后仍应人工抽查再添加到 ChatGPT Project。",
+        "本目录不复制认证文件、密钥、原始工具输出或完整消息流；生成器对常见 token、私钥和 password/secret 赋值做了脱敏。只有明确需要离线上传时，才人工抽查并使用 Sources 工具；本目录不是当前事实源的替代品。",
         "",
     ]
-    (args.context_root / "PROJECT_MEMORY.md").write_text("\n".join(memory), encoding="utf-8", newline="\n")
+    (args.context_root / "HISTORY_CONTEXT.md").write_text("\n".join(memory), encoding="utf-8", newline="\n")
     index_lines = [
         "# Legacy Codex 聊天索引",
         "",
@@ -2200,7 +2200,7 @@ def context_from_archive(args: argparse.Namespace) -> dict[str, Any]:
         "context_root": str(args.context_root),
         "main_chat_count": len(visible),
         "internal_thread_count": len(rows) - len(visible),
-        "files": ["PROJECT_MEMORY.md", "CHAT_INDEX.md", "CHAT_CATALOG.jsonl", "summaries/"],
+        "files": ["HISTORY_CONTEXT.md", "CHAT_INDEX.md", "CHAT_CATALOG.jsonl", "summaries/"],
     }
 
 

@@ -85,3 +85,22 @@ Windows 验证、GPT App 历史会话人工验收和恢复点复核完成后，�
 2026-08-30 对 `wsl-codex-history.tar` 完成只读审计：218 个 JSONL 文件对应 217 个唯一 session ID，其中 1 个 normal/archived 重复项 SHA-256 完全一致；旧 `state_5.sqlite` 有 217 条线程和 10 条父子边，线程 schema 与 Windows 当前版本兼容。147 条 `source=vscode` 主聊天中，144 条记录旧 `codex-original` 工作目录，另外 3 条为杂项；70 条内部线程计划完整保留并默认归档。当前 Windows `.codex` 有 111 条线程，ID 与旧归档无重叠。
 
 `scripts/maintenance/codex_history_migration.py` 已通过 compileall、Ruff、dry-run、canary 和 complete。它未覆盖认证或配置；先在 C 盘快照当前 sessions/SQLite，再以 canary→App 抽查→complete 的两阶段方式追加索引。最终迁入 217 个唯一会话（147 可见主聊天、70 归档内部线程），SQLite 完整性和 217 个 JSONL 哈希均通过；旧 10 条父子关系也已保留。脱敏知识层位于 `C:\Users\24567\Documents\Codex\codex-original-history-context`，不提交 GitHub。
+
+## Windows 原生工作流治理（2026-08-30）
+
+最终入口固定为 GPT App 本地项目 `codex-original · Windows`：主目录是
+`D:\codex-original`，辅助目录是 `C:\Users\24567\Documents\Codex\codex-original-history-context`。
+ChatGPT 讨论/规划和 Codex 执行可以在同一项目中连续进行；VS Code 仅打开同一
+`D:\codex-original` 用于查看或手工编辑，不再打开已注销的 WSL 工作区。
+
+当前 Windows 运行环境唯一是 `D:\ANACONDA\envs\optical-generative-models-win`。
+旧 `D:\ANACONDA\envs\optical-generative-models` 保留为 Legacy，不删除、不用于当前
+测试或训练；未激活终端中的裸 `python`/`pytest` 可能解析到系统 Python，因此操作手册
+要求使用当前环境的显式解释器。
+
+外部历史入口已从 `PROJECT_MEMORY.md` 改为 `HISTORY_CONTEXT.md`，仓库权威入口仍为
+`docs\PROJECT_MEMORY.md`。Sources 生成器现在读取新的历史文件名；Sources 包只是用户
+明确需要时的可选离线导出。ACL 异常的旧 Sources 派生目录已移入
+`C:\Users\24567\Documents\Codex\codex-original-closure-quarantine-20260830`，
+`.pytest_cache` 已先移入 `D:\codex-original-acl-quarantine-20260830\.pytest_cache` 后
+重新生成；它们不进入项目主目录或当前 Sources 来源。

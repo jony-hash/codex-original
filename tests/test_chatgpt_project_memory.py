@@ -53,7 +53,7 @@ class ChatGPTProjectMemoryTests(unittest.TestCase):
         for relative, content in project_sources.items():
             target = self.project / Path(*relative.split("/"))
             target.write_text(content, encoding="utf-8")
-        (self.history / "PROJECT_MEMORY.md").write_text(
+        (self.history / "HISTORY_CONTEXT.md").write_text(
             "# 历史上下文\n仅作导航。\n", encoding="utf-8"
         )
         (self.history / "CHAT_INDEX.md").write_text(
@@ -141,7 +141,7 @@ class ChatGPTProjectMemoryTests(unittest.TestCase):
                 self.project / "docs" / "CURRENT_STATUS.md",
                 self.project / "docs" / "status" / "current_handoff.md",
                 self.project / "docs" / "architecture" / "v2_runtime.md",
-                self.history / "PROJECT_MEMORY.md",
+                self.history / "HISTORY_CONTEXT.md",
                 self.history / "CHAT_INDEX.md",
             )
         }

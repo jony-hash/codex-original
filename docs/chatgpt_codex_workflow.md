@@ -1,50 +1,91 @@
-# ChatGPT ↔ Codex 项目桥接手册
+# ChatGPT ↔ Codex Windows 原生工作流
 
 更新时间：2026-08-30
 
-本手册描述一个受控的“双项目桥接”，不是本地文件的自动云同步。ChatGPT 项目保存
-讨论、规划和总结；Codex 本地项目访问真实工作树并执行修改和验证。ChatGPT 项目使用
-Sources，用户必须人工上传或替换由本地工具生成的 Markdown 包。
+本手册描述唯一主要入口：GPT App 中的本地项目 `codex-original · Windows`。它不是本机
+文件的自动云同步；当前事实仍以项目文件、Git 和验证结果为准。
 
-## 两个项目
+## 单一本地项目
 
-| 角色 | 项目 | 内容 |
+| 项目 | 位置 | 用途 |
 | --- | --- | --- |
-| 讨论层 | `codex-original · ChatGPT` | 讨论、规划、总结、知识问答；只读受控 Sources |
-| 执行层 | `codex-original · Windows` | 主目录 `D:\codex-original`；读代码、改代码、测试 |
+| `codex-original · Windows` 主文件夹 | `D:\codex-original` | 源码、Git、测试、训练和 `AGENTS.md` |
+| 同项目辅助文件夹 | `C:\Users\24567\Documents\Codex\codex-original-history-context` | `HISTORY_CONTEXT.md`、`CHAT_INDEX.md`、`CHAT_CATALOG.jsonl` 和摘要导航 |
 
-本地项目的主目录是 `D:\codex-original`。历史上下文目录只能作为辅助目录和导航层：
-`C:\Users\24567\Documents\Codex\codex-original-history-context`。它不替代 Git 工作树，
-也不应把旧 `.codex` 项目副本或原始 transcript 当作当前事实源。
+主文件夹决定默认工作目录、Git 和 `AGENTS.md` 发现。辅助目录只是历史导航层，不替代
+源码、`docs\PROJECT_MEMORY.md` 或原始 Codex transcript。外部历史目录刻意使用
+`HISTORY_CONTEXT.md`，避免与仓库权威的 `docs\PROJECT_MEMORY.md` 混淆。
 
-## 第一次设置 ChatGPT 项目
+ChatGPT 模式用于讨论、规划和总结；Codex 模式在同一 GPT App 本地项目中读取工作树、
+实现修改、运行验证和更新项目记忆。聊天上下文不会自动覆盖本地事实，长期状态必须写入
+`AGENTS.md`、`docs\CURRENT_STATUS.md`、`docs\PROJECT_MEMORY.md` 或适用的交接文档。
 
-在 GPT App 中：
+## 打开和查看源码
 
-1. 新建标准 ChatGPT 项目，命名为 `codex-original · ChatGPT`。
-2. 使用以下项目指令：
+在 GPT App 中选择 `codex-original · Windows`，新建 Codex 任务即可执行。查看或手工编辑
+代码时，用 VS Code 打开 `D:\codex-original` 这个同一目录即可；VS Code 只是可选查看器，
+不要重新打开已经注销的 WSL 工作区，也不要让它切换到旧 Conda 环境。首次打开后，在
+VS Code 执行 `Python: Select Interpreter`，选择：
 
-   ```text
-   本项目用于讨论、规划和总结 codex-original。
-   PROJECT_MEMORY.md 是入口，但不能覆盖 AGENTS.md、CURRENT_STATUS.md、
-   CURRENT_HANDOFF.md、Git 或正式实验证据。
+```text
+D:\ANACONDA\envs\optical-generative-models-win\python.exe
+```
 
-   不要声称已经读取或修改本机文件。需要实施时，输出 Codex 交接块。
-   旧 WSL 路径只表示历史记录，不是当前工作目录。
-   历史摘要必须按 Session ID 选择，不得一次性假定全部历史有效。
-   ```
+用户设置中不应保留不存在的 `D:\ANACONDA\python.exe`。不需要 VS Code 才能运行 GPT App
+Codex；两者都直接作用于 `D:\codex-original`，因此编辑前后用 Git diff 检查即可。
 
-3. 在本地执行 Sources 工具的 `build`，将生成包中的六个 Markdown 文件上传到该
-   ChatGPT 项目：`PROJECT_MEMORY.md`、`CURRENT_STATUS.md`、`CURRENT_HANDOFF.md`、
-   `V2_RUNTIME.md`、`HISTORY_CONTEXT.md`、`CHAT_INDEX.md`。
-4. 不上传内部 manifest、`CHAT_CATALOG.jsonl`、全部摘要、原始 transcript、代码树或
-   `.pytest-tmp` 文件。
-5. 所有桥接对话都从这个项目内部新建，不使用 Quick chat。Quick chat 不属于该项目
-   的 Sources/聊天边界。
+## Windows 执行入口
 
-## 生成和验证 Sources 包
+PowerShell 7 中推荐显式使用当前解释器：
 
-在 PowerShell 7 中使用用户实际的 Windows Conda 解释器：
+```powershell
+Set-Location D:\codex-original
+$envRoot = 'D:\ANACONDA\envs\optical-generative-models-win'
+$env:Path = "$envRoot;$envRoot\bin;$envRoot\Library\bin;$envRoot\Scripts;$envRoot\Lib\site-packages\torch\lib;$env:Path"
+$py = Join-Path $envRoot 'python.exe'
+
+& $py -m pytest -q
+& $py -m ldm_project.v2 --help
+```
+
+不要在未激活环境的终端使用裸 `python` 或裸 `pytest`；当前它们可能解析为系统 Python
+3.14。旧环境 `D:\ANACONDA\envs\optical-generative-models` 保留作 Legacy 恢复参考，
+不属于本项目运行时。
+
+## ChatGPT 讨论到 Codex 执行
+
+ChatGPT 讨论结果应落到一个清晰的交接块，再在同一本地项目中新建 Codex 任务：
+
+```text
+目标：
+依据文件：
+范围内：
+范围外：
+约束：
+验收标准：
+需要核实的不确定项：
+建议更新的项目记忆：
+```
+
+Codex 执行前读取 `AGENTS.md`、`docs\PROJECT_MEMORY.md` 和当前 Git 状态；执行后回写：
+
+```text
+结果：
+修改文件：
+验证结果：
+未验证内容：
+已知风险：
+项目记忆更新：
+```
+
+新任务不要依赖旧聊天自动携带全部上下文。需要历史细节时，先在辅助目录的
+`CHAT_INDEX.md` 找到 Session ID，再在 GPT App 的本地 Codex 项目打开原始会话；历史摘要
+只用于导航，不能覆盖当前 Git 和验证结果。
+
+## 可选的离线 Sources 导出
+
+Sources 不是当前项目的主工作流，也不是自动同步机制。只有用户明确需要把受控摘要提供给
+另一个 ChatGPT 对话时，才在 PowerShell 7 中运行：
 
 ```powershell
 Set-Location D:\codex-original
@@ -61,66 +102,22 @@ $py = 'D:\ANACONDA\envs\optical-generative-models-win\python.exe'
   --output-root C:\Users\24567\Documents\Codex\codex-original-history-context\chatgpt-sources
 ```
 
-`build` 只复制明确列出的来源，记录 Git HEAD、dirty paths、来源/输出哈希和选中的
-Session ID。`verify` 会拒绝来源变化、输出篡改、Git 状态变化、秘密模式、未知文件、
-缺失摘要、错误项目根目录或包内临时目录。验证失败时不要上传旧包。
+导出器现在从辅助目录读取 `HISTORY_CONTEXT.md`，并将其输出为 Sources 包内的
+`HISTORY_CONTEXT.md`。验证失败或包过期时停止使用，不上传内部 manifest、原始 transcript、
+全部摘要、代码树或临时文件；上传和替换仍由用户人工完成。
 
-需要历史上下文时显式选择 Session ID，例如：
+## 故障与停止条件
 
-```powershell
-& $py scripts\maintenance\chatgpt_project_memory.py build `
-  --project-root D:\codex-original `
-  --history-root C:\Users\24567\Documents\Codex\codex-original-history-context `
-  --output-root C:\Users\24567\Documents\Codex\codex-original-history-context\chatgpt-sources `
-  --session-id 019daa26-d2b2-7501-9990-ae38838e34a6
-```
+- 默认 Python/pytest 版本不是当前 Windows 环境：立即停止，检查解释器和 PATH，不运行训练。
+- Git 工作树、`AGENTS.md`、当前状态或实验事实与交接不一致：以本地文件和验证结果为准，
+  先更新交接，不把聊天内容当成授权。
+- 需要旧 WSL 路径、旧 checkpoint 或历史输出：只从保留的归档中恢复明确命名的材料，不把
+  它们展开成当前工作树。
+- D: 可用空间低于 10 GiB：停止大型作业；不要删除归档、旧 Conda 环境或 Codex 历史。
+- Ubuntu 已注销，`docker-desktop` 不是项目运行时；不从 WSL 开发、训练或生成输出。
 
-这只加入对应的一份 `summaries/<session-id>.md`，不会默认加入 147 份摘要。
+## 验收边界
 
-## 标准交接
-
-ChatGPT 不声称访问本机，也不直接宣称已经实施。需要 Codex 执行时，使用：
-
-```text
-目标：
-依据文件：
-范围内：
-范围外：
-约束：
-验收标准：
-需要核实的不确定项：
-建议更新的项目记忆：
-```
-
-Codex 完成后返回：
-
-```text
-结果：
-修改文件：
-验证结果：
-未验证内容：
-已知风险：
-项目记忆更新：
-```
-
-用户随后用 Codex 重新 `build`/`verify`，在 ChatGPT 项目中删除旧 Sources 并上传新包中的
-六个 Markdown 文件。上传是人工确认步骤；本地工具不调用 ChatGPT 上传 API。
-
-## 故障处理
-
-- ChatGPT 报告的根目录不是 `D:\codex-original`：先检查 Sources 是否过期并重新 verify，
-  不要把旧 WSL 路径当作修复目标。
-- `verify` 报 Git 状态或来源变化：重新 build，确认变化属于预期，再人工替换 Sources。
-- `verify` 报秘密、未知文件或 `.pytest-tmp`：停止上传，检查来源和输出目录；不要静默
-  脱敏权威文件或覆盖未知文件。
-- 历史问题只按 Session ID 加入摘要；若仍无法定位，会话索引问题必须单独审计，不能
-  修改 Codex SQLite、`project_id` 或自动重建索引。
-- Codex 读取本地文件时，以 `AGENTS.md`、Git 和验证结果为准；ChatGPT Sources 仅是
-  受控上下文副本。
-
-## 当前人工验收
-
-新项目设置后，分别验证：ChatGPT 能从 Sources 说出真实工作区、v2 正式边界、当前测试
-状态和旧 WSL 路径语义；Codex 能读取 `AGENTS.md`、`docs/PROJECT_MEMORY.md` 和 Git 状态；
-选定一个 Session ID 后 ChatGPT 能定位该摘要但不把它当成当前事实。历史迁移的 SQLite、
-217 条会话、214 条 folder-bound 修复、归档状态和父子关系不应因 Sources 桥接改变。
+代码、Git、环境、测试和 CUDA 由 Codex 本地验证；GPT App 中项目显示、历史搜索、长会话
+渲染和继续会话需要用户人工检查。VS Code 只查看同一 Windows 工作区，不产生第二份源码或
+第二套运行入口。

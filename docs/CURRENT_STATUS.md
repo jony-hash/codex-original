@@ -34,15 +34,37 @@ Windows 原生项目是当前唯一开发和训练入口。PowerShell 7、Window
 - live `project-bind --verify` 已通过：phase=`complete`、SQLite `integrity=ok`、候选 214、可见 144、归档 70、杂项 3、父子边 16、217 个文件全部核验；最新状态库线程数为 362。`session_index.jsonl` 仍为 34 行、命中候选 0 条，仅作审计观察，不影响成功判定。随后修复了顶层 `verify` 未注册 v2 binding 参数的 CLI 缺陷；修复后的真实顶层 verify 也已通过：217/217 文件、147 可见、70 归档、SQLite `ok`。
 - GPT App 重开后将一个既有线程的 `rollout_path` 从普通 Windows 路径规范化为等价的 `\\?\` extended path，首次触发了验证器的 fail-closed 差异报告。全量只读字段比对确认只有这一处等价差异；验证器现仅对 `rollout_path` 使用已有 `canonical_path()` 比较，其他线程字段仍严格比较，修复后的真实 `project-bind --verify` 已再次通过。
 - 本轮迁移 targeted pytest 为 11 passed；本轮 ChatGPT Sources targeted pytest 为 7 passed；compileall（现有 `src`、`tests`、`train.py`、迁移脚本和 Sources 工具）、ruff 与 `git diff --check` 全部通过。默认全量 pytest 复验为 `1,028 passed, 12 deselected, 25 subtests passed`；所有测试在 Windows Conda/CUDA 环境完成，未启动 WSL。
-- 注销后收尾只更新迁移状态、项目记忆、运行手册和根执行合同；没有修改模型、训练代码、公共 API、outputs 正式产物、SQLite 或 transcript。
-- 脱敏跨聊天知识层位于 `C:\Users\24567\Documents\Codex\codex-original-history-context`，原有 `PROJECT_MEMORY.md`、`CHAT_INDEX.md`、`CHAT_CATALOG.jsonl` 和 147 份摘要保持不变；本轮四个 `.pytest-tmp*` 目录及 761 个测试文件已移动到同级可恢复 quarantine `C:\Users\24567\Documents\Codex\codex-original-history-context-quarantine-20260830`，不作为 Sources 来源。
-- 双项目桥接已落地：权威入口为 [`docs/PROJECT_MEMORY.md`](PROJECT_MEMORY.md)，操作手册为 [`chatgpt_codex_workflow.md`](chatgpt_codex_workflow.md)，本地 Sources 工具为 `scripts/maintenance/chatgpt_project_memory.py`。Sources 包位于 `C:\Users\24567\Documents\Codex\codex-original-history-context\chatgpt-sources-final-20260830`，本次文档收尾后重新构建并验证，精确包含六个受控 Markdown 文件；内部 manifest 不上传。
+- 注销后收尾只更新迁移状态、项目记忆、运行手册和根执行合同；本轮再增加环境入口、历史文件命名和测试契约治理；没有修改模型、训练代码、公共 API、outputs 正式产物、SQLite 或 transcript。
+- 脱敏跨聊天知识层位于 `C:\Users\24567\Documents\Codex\codex-original-history-context`，入口为 `HISTORY_CONTEXT.md`，另有 `CHAT_INDEX.md`、`CHAT_CATALOG.jsonl` 和 147 份摘要；它不与仓库权威 `docs\PROJECT_MEMORY.md` 同名。原有 `chatgpt-sources` 与 `chatgpt-sources-final-20260830` 已移到 `C:\Users\24567\Documents\Codex\codex-original-closure-quarantine-20260830`，不作为当前项目来源。
+- 单一本地项目 `codex-original · Windows` 已落地：主目录为 `D:\codex-original`，辅助目录为上述历史上下文目录。操作手册为 [`chatgpt_codex_workflow.md`](chatgpt_codex_workflow.md)，本地 Sources 工具 `scripts/maintenance/chatgpt_project_memory.py` 降级为用户明确需要时的可选离线导出，不是主同步链路。
 - 活动项目列表中已没有旧的 `chatgpt-codex工作流`；`.codex` 中残留的旧缓存/副本仍作为离线历史材料保留，不读作当前事实源，也未被新 Sources 包扫描或复制。
 - 归档自检：163/163 个 tar 存在；抽查 4 个 tar 的 SHA-256 与目录读取通过；5 项核心备份大小与 SHA-256 均匹配。
 - 注销前 WSL 增量审计：备份时间 `2026-08-29 23:33:29` 后仅发现 5 个用户范围文件（WSL Codex 日志 SQLite/WAL/SHM、`models_cache.json`、空的 `.motd_shown`），未发现 `/home` 其他用户文件、项目文件、`/root`、`/usr/local` 的新增内容；5 个文件已保存为 `C:\Users\24567\Documents\Codex\wsl-post-backup-increment-20260830.tar`，397,127,680 bytes，SHA-256 为 `072212068E3F6D02FFD3B762B8670CB2B5E6A83F967137C6459874D99A07494B`，归档目录读取通过。
 - 注销前最新 Git bundle：`C:\Users\24567\Documents\Codex\codex-original-final-20260830.bundle`，50,768,910 bytes，SHA-256 为 `36F1C6E6FBEE03AB7DCB17B076895606F6166D193249248CB6FB9364512D57FE`；`git bundle verify` 报告包含当前 `75d0584c379b` 和完整历史、55 个 refs。
 - 注销前的 WSL 增量归档仍位于 `C:\Users\24567\Documents\Codex\wsl-post-backup-increment-20260830.tar`，5 个路径、397,127,680 bytes，SHA-256 为 `072212068E3F6D02FFD3B762B8670CB2B5E6A83F967137C6459874D99A07494B`。
 - Ubuntu 已于 2026-08-30 按精确注册名注销；`D:\WSL\Ubuntu\ext4.vhdx` 已消失，D: 可用约 `263.72 GiB`。
+
+## Windows 原生工作流治理复验（2026-08-30）
+
+- 当前唯一支持运行环境为 `D:\ANACONDA\envs\optical-generative-models-win`；旧
+  `D:\ANACONDA\envs\optical-generative-models`（PyTorch 2.4.1、editable install
+  指向旧代码副本）仍保留为 Legacy，不参与当前测试或训练。VS Code 用户设置中的无效
+  `D:\ANACONDA\python.exe` 已移除；VS Code 状态栏选择新解释器仍需用户在界面中确认。
+- 当前历史入口已改名为 `HISTORY_CONTEXT.md`；活动辅助目录可读，包含 147 份摘要、
+  `CHAT_INDEX.md` 和 `CHAT_CATALOG.jsonl`，不存在外部同名 `PROJECT_MEMORY.md`。
+- ACL 异常的旧 Sources 目录已可恢复隔离在
+  `C:\Users\24567\Documents\Codex\codex-original-closure-quarantine-20260830`；
+  原项目 `.pytest_cache` 已先移至
+  `D:\codex-original-acl-quarantine-20260830\.pytest_cache`，再由测试重新生成。最终
+  完整 pytest 没有产生缓存权限警告。当前 Codex 沙箱无法递归清理由 pytest 创建的短临时
+  目录 `D:\ct`，它只含本轮测试副产物，不是项目数据；可由普通 Windows PowerShell
+  在应用关闭后单独清理。
+- 采用 `D:\ct` 短临时根的定向 near-conjugate 测试为 5/5，迁移与 Sources 定向测试为
+  18/18；compileall、Ruff、v2 CLI、迁移 verify、folder-bound verify 和完整默认 pytest
+  均通过，完整结果为 `1,028 passed, 12 deselected, 25 subtests passed`。
+- 环境探针确认 `sys.executable` 为上述新环境、`ldm_project` 来自
+  `D:\codex-original\src\ldm_project`、PyTorch 2.5.1/CUDA 12.1、RTX 3060 和 CUDA
+  张量计算可用。Sources 工具已改读外部 `HISTORY_CONTEXT.md`，仅保留为可选离线导出。
 
 ## Windows 兼容性改动
 
@@ -55,10 +77,10 @@ Windows 原生项目是当前唯一开发和训练入口。PowerShell 7、Window
 
 ## 注销后状态
 
-2026-08-30 已完成 GPT App 固定 canary、最早/最近/最长会话及含子线程会话的人工验收。随后在最后精确检查通过后执行 `wsl.exe --unregister Ubuntu`，命令退出码为 0。注册表和 `wsl --list --verbose` 中已不再有 Ubuntu，`D:\WSL\Ubuntu\ext4.vhdx` 及其目录已消失；`docker-desktop` 保留且停止。Windows 项目、Codex Home、历史 transcript、迁移快照、Git bundle、outputs tar 和 Sources 目录均未删除。
+2026-08-30 已完成 GPT App 固定 canary、最早/最近/最长会话及含子线程会话的人工验收。随后在最后精确检查通过后执行 `wsl.exe --unregister Ubuntu`，命令退出码为 0。注册表和 `wsl --list --verbose` 中已不再有 Ubuntu，`D:\WSL\Ubuntu\ext4.vhdx` 及其目录已消失；`docker-desktop` 保留且停止。Windows 项目、Codex Home、历史 transcript、迁移快照、Git bundle 和 outputs tar 均未删除；旧 Sources 派生目录现保存在 C 盘可恢复隔离区。
 
-注销后复验未发现 Python、训练或 `wslhost` 进程；Windows Conda/PyTorch/CUDA/RTX 3060、完整测试、迁移工具、folder-bound 工具和 Sources 均正常。
+注销后复验未发现 Python、训练或 `wslhost` 进程；Windows Conda/PyTorch/CUDA/RTX 3060、完整测试、迁移工具和 folder-bound 工具均正常；Sources 工具保留为可选离线导出并由其定向测试覆盖。
 
 ## 下一步
 
-以 Windows 项目作为唯一开发、测试、训练和 Git 入口。Ubuntu 已注销，不再存在 WSL 回滚工作区；未来若需恢复 Linux 环境，只能重装 WSL 并使用已保存的 Git bundle、用户配置归档、Codex transcript 归档、增量 tar 和 outputs tar。保留这些恢复材料，不自动删除归档或 `docker-desktop`；继续维护当前 commit、测试、实验路径和 Sources 状态。
+以 Windows 项目作为唯一开发、测试、训练和 Git 入口。Ubuntu 已注销，不再存在 WSL 回滚工作区；未来若需恢复 Linux 环境，只能重装 WSL 并使用已保存的 Git bundle、用户配置归档、Codex transcript 归档、增量 tar 和 outputs tar。保留这些恢复材料，不自动删除归档或 `docker-desktop`；继续维护当前 commit、测试、实验路径和历史上下文状态。

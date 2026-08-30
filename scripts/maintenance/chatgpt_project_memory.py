@@ -53,7 +53,7 @@ PROJECT_SOURCE_SPECS = (
     ),
 )
 HISTORY_SOURCE_SPECS = (
-    SourceSpec("HISTORY_CONTEXT.md", "history", "PROJECT_MEMORY.md"),
+    SourceSpec("HISTORY_CONTEXT.md", "history", "HISTORY_CONTEXT.md"),
     SourceSpec("CHAT_INDEX.md", "history", "CHAT_INDEX.md"),
 )
 
