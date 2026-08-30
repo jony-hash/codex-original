@@ -1,6 +1,6 @@
 # 当前项目状态
 
-更新时间：2026-08-30
+更新时间：2026-08-31
 
 ## 当前主工作区
 
@@ -45,7 +45,12 @@ Windows 原生项目是当前唯一开发和训练入口。PowerShell 7、Window
 - 注销前的 WSL 增量归档仍位于 `C:\Users\24567\Documents\Codex\wsl-post-backup-increment-20260830.tar`，5 个路径、397,127,680 bytes，SHA-256 为 `072212068E3F6D02FFD3B762B8670CB2B5E6A83F967137C6459874D99A07494B`。
 - Ubuntu 已于 2026-08-30 按精确注册名注销；`D:\WSL\Ubuntu\ext4.vhdx` 已消失，D: 可用约 `263.72 GiB`。
 
-## Windows 原生工作流与双项目桥接治理（2026-08-30）
+## Windows 原生工作流与双项目桥接治理（2026-08-31）
+
+- 2026-08-31 已采用 Delta + One Gate + Short Codex Prompt 工作流；完整规范位于
+  docs/operations/delta_one_gate_short_prompt.md，PROJECT_MEMORY.md 和桥接手册
+  只保留短模板与入口。六文件 Sources 合同保持不变；本次治理不改变当前科研 handoff、
+  Scaled-Chen 结论、training_authorized=false 或 formal_promotion=false。
 
 - 当前唯一支持运行环境为 `D:\ANACONDA\envs\optical-generative-models-win`；旧
   `D:\ANACONDA\envs\optical-generative-models`（PyTorch 2.4.1、editable install
@@ -126,3 +131,40 @@ validation、audit、decomposition、panel 的 SHA-256 依次为
 需恢复 Linux 环境，只能重装 WSL 并使用已保存的 Git bundle、用户配置归档、Codex transcript
 归档、增量 tar 和 outputs tar。保留这些恢复材料，不自动删除归档或 `docker-desktop`；继续
 维护当前 commit、测试、实验路径和历史上下文状态。
+
+## Scaled-Chen Manifold Readiness Audit（2026-08-31）
+
+假设 `H-LOMA-CBOGT-S0-MRA` 已在实现提交
+`a041187a6ff6292f2be6602871cfd6d35ca172c` 绑定的干净工作树上完成一次冻结、无更新审计。
+权威运行目录为
+`outputs/20260831_v2/runs/lightgen_optical_manifold_smf_bogt_manifold_readiness_v1_attempt_05/`；
+四个输出的 SHA-256 为：`validation.json`
+`b1713ee2676c4f5ab6e6f45838ed75bb1d2b1843e2ce738b53abe62d8e4b0c35`、`audit.json`
+`6291a2dc03f5ec8d6d3cd9ba88c0bf7f3a4b3f44f83dba7fc16c80375e9dc556`、`compact_report.json`
+`401fe2159f4342a4740b2c40955cb65fc7bb3600f2416fdc4171e1553eebeee0`、`panel.pt`
+`842f5cfd41909a666f19f3c88e7e7199a825b255bd111a44953e53351fd28724`。
+
+结果为 `valid_failed`（harness 完整、科学门失败），瓶颈四分类为
+`distributed_bottleneck_supported`，`generation_readiness=not_ready`，
+`generative_manifold_supported=false`。selection 1000 张、confirmation 5000 张，
+冻结与负对照门通过；step-0→step-5000 paired-MSE 相对改善为 `28.41%`/`27.02%`，
+bootstrap 95% 差值区间分别为 `[0.02395245, 0.02525906]` 和
+`[0.02125572, 0.02182155]`。审计未创建 optimizer、未调用 evaluator、未反传、未写
+checkpoint 或正式产物；峰值 CUDA 为 `3,618,634,752` bytes（上限 5 GiB）。
+
+表征定位：SLM→pre-OLS retention 为 `0.9182/0.9216`，故 encoder 不是当前主要容量
+瓶颈；pre-OLS→modal 为 `0.8145/0.8092`，显示 OLS 前后的 modal 几何压缩；最大且在
+两个 panel 唯一稳定的 discontinuity 是 `decoder_layer_2→CMOS`，retention
+`0.5827/0.5871`。`post-OLS→decoder-input` 为 `1.0`，四个 checkpoint 的新鲜
+decoder Jacobian 数值秩均为 `100`，所以不能把该段仅凭最终 MSE 宣称为 decoder
+capacity-limited；多个独立段同时损失信息，维持 distributed 分类。
+
+`reconstruction_manifold_supported=false`：paired MSE 虽优于 cyclic，但未同时优于
+class-template，class/instance geometry 与 retrieval controls 也未通过。
+同路线 parent contract 的 truncated-normal prior（`z_j=|c_j|²/s_j`，mean 1、variance
+0.25、lower 0、fixed calibrated zero-residual phase）已正确注册且 lineage 有效，但
+learned 分布的 Gaussian/numerical KL、complex/power rank gates 均失败，因而 prior 状态为
+`generation_prior_not_accessible`；没有生成图像，也没有授权 generation canary。唯一下一
+动作是 `manual_review_scaled_chen_distributed_bottleneck_closeout_contract`，不得继续训练、
+FMF、prior-only generation 或 formal promotion。历史 SMF attempt-02 的 preflight/training
+文件不存在，已作为显式零哈希背景保留；未伪造恢复。云端 Sources snapshot 仍落后，本轮未刷新。

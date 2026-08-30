@@ -1100,3 +1100,31 @@ validation/audit/decomposition/panel SHA-256 为
 `manual_review_scaled_chen_distributed_bottleneck_closeout_contract`；该结果不授权 FMF
 训练、继续训练、生成或 formal promotion，证据继续保持 `training_authorized=false`、
 `formal_promotion=false`。
+
+## H-LOMA-CBOGT-S0-MRA：Scaled-Chen Manifold Readiness Audit（2026-08-31）
+
+该假设的消费者是项目负责人对 Scaled-Chen 表征是否具备同路线 prior-accessible
+generation readiness，以及下一段容量归因人工 closeout 的决定；失败时拒绝任何训练、
+FMF、prior-only generation、canary 或 formal promotion。审计绑定实现提交
+`a041187a6ff6292f2be6602871cfd6d35ca172c`，冻结 Identity step-5500 和 Scaled-Chen
+step-0/1000/5000，selection 1000、confirmation 5000，所有模型/OLS/formal config
+只读。
+
+权威 attempt-05 的 validation/audit/compact/panel 哈希为
+`b1713ee2676c4f5ab6e6f45838ed75bb1d2b1843e2ce738b53abe62d8e4b0c35`、
+`6291a2dc03f5ec8d6d3cd9ba88c0bf7f3a4b3f44f83dba7fc16c80375e9dc556`、
+`401fe2159f4342a4740b2c40955cb65fc7bb3600f2416fdc4171e1553eebeee0`、
+`842f5cfd41909a666f19f3c88e7e7199a825b255bd111a44953e53351fd28724`。harness、冻结、
+negative controls、资源和 bootstrap 门通过，科学门有效失败，状态为 `valid_failed`。
+
+结论：`distributed_bottleneck_supported`。SLM→pre-OLS retention
+`0.9182/0.9216`，不支持 encoder 为主要瓶颈；pre-OLS→modal
+`0.8145/0.8092`；最大唯一 discontinuity 为 decoder_layer_2→CMOS，
+`0.5827/0.5871`。decoder Jacobian rank 均为 100，因此不把 decoder 单独判为
+capacity-limited。`reconstruction_manifold_supported=false` 且
+`generative_manifold_supported=false`；parent truncated-normal prior 虽注册，
+但 `generation_prior_not_accessible`，`generation_readiness=not_ready`。
+
+唯一下一动作：`manual_review_scaled_chen_distributed_bottleneck_closeout_contract`。
+历史 SMF preflight/training 缺失文件保留零哈希背景记录；不借用其他路线 prior，
+不把诊断结果写成 generation 或 formal promotion。

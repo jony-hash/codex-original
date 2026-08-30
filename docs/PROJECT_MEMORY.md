@@ -1,6 +1,6 @@
 # codex-original 项目记忆
 
-更新时间：2026-08-30
+更新时间：2026-08-31
 
 ## 目的与事实优先级
 
@@ -109,6 +109,11 @@ validation/audit/decomposition/panel SHA-256 分别为
 
 ## ChatGPT 与 Codex 的职责边界
 
+GPT → Codex 的完整 Delta、One Gate、Short Prompt、预算和失败规范见
+[operations/delta_one_gate_short_prompt.md](operations/delta_one_gate_short_prompt.md)。
+本文件只保留云端可消费的短模板；科研事实、授权和禁止事项仍以本文件前文、
+CURRENT_STATUS.md、status/current_handoff.md 和本地 evidence 为准。
+
 本地项目 `codex-original · Windows` 的主目录为 `D:\codex-original`，辅助目录为
 `C:\Users\24567\Documents\Codex\codex-original-history-context`。云端项目
 `codex-original · ChatGPT` 与本地项目通过六文件 Sources 快照和标准交接块连接；项目
@@ -137,32 +142,55 @@ D:\codex-original
 更新下一份云端 Sources 快照
 ```
 
-## 标准交接模板
+## Delta + One Gate 短交接模板
 
 ChatGPT → Codex：
 
 ```text
-来源快照：
-目标：
-依据文件：
-范围内：
-范围外：
-约束：
-验收标准：
-需要核实的不确定项：
-建议更新的项目记忆：
+状态增量：
+- 云端基准：
+- 本地核验：
+- 决策相关变化：
+- 保持不变：
+- 权威性：
+
+One Gate：
+- ID/单一问题：
+- 决策消费者：
+- 精确输入及 producer/lineage：
+- 指标/阈值：
+- 通过或失败后的唯一下一动作：
+
+执行边界：
+- 允许：
+- 禁止：
+- 不得自动扩大到：
+
+验收与停止：
+- 必须验证：
+- 停止条件：
+- 缺失输入或失败时返回：
+
+反馈格式：
+结果；本地增量核验；Gate 判定与唯一下一动作；修改文件；
+验证结果；未验证内容与已知风险；项目记忆与 Sources 状态。
 ```
 
 Codex → ChatGPT：
 
 ```text
 结果：
+本地增量核验：
+Gate 判定与唯一下一动作：
 修改文件：
 验证结果：
-未验证内容：
-已知风险：
-项目记忆更新：
+未验证内容与已知风险：
+项目记忆与 Sources 状态：
 ```
+
+Short Prompt 目标为 600–1,000 tokens，超过 1,500 tokens 应拆分或说明升级原因；
+完整 Long Prompt 目标为 1,500–3,000 tokens，超过 4,000 tokens 应引用规范或拆分。
+一个任务只能有一个主 Gate；完整预算和失败映射见上述操作规范。
 
 ## 记忆更新规则
 
@@ -174,3 +202,36 @@ Codex → ChatGPT：
 5. Sources 的内部 manifest 不上传；需要历史细节时只按 Session ID 生成临时摘要，任务
    结束后从云端项目移除。
 6. 旧 WSL 路径、旧项目副本和历史摘要必须显式标为历史，不能伪装成当前状态。
+
+## H-LOMA-CBOGT-S0-MRA：Scaled-Chen Manifold Readiness Audit（2026-08-31）
+
+权威实现提交为 `a041187a6ff6292f2be6602871cfd6d35ca172c`，权威输出为
+`outputs/20260831_v2/runs/lightgen_optical_manifold_smf_bogt_manifold_readiness_v1_attempt_05/`。
+冻结 Identity step-5500 与 Scaled-Chen step-0/1000/5000，在独立的 1000 张 selection
+和 5000 张 confirmation panel 上完成了 pre-OLS、modal、post-OLS/decoder input、
+decoder/CMOS、rank、retrieval、cross-swap、Jacobian、重建和同路线 prior 观测。
+审计状态 `valid_failed`，harness 完整，`optimizer_created=false`、`evaluator_calls=0`、
+`training_authorized=false`、`formal_promotion=false`。
+
+当前结论只记录四项：
+
+1. encoder 不是主要瓶颈候选：SLM→pre-OLS retention 为 `0.9182/0.9216`；OLS 前后
+   modal 几何 retention 约 `0.8145/0.8092`，并与下游损失共同支持分布式而非单点归因。
+2. 最大 representation compression 在 `decoder_layer_2→CMOS`，两个 panel retention
+   为 `0.5827/0.5871`；但 decoder Jacobian 有效秩均为 `100`，不能单独归类为 decoder
+   capacity bottleneck。
+3. `reconstruction_manifold_supported=false`，因为 paired MSE 未同时胜过 cyclic 与
+   class-template，且 geometry/retrieval controls 未形成稳定支持；不得把 reconstruction
+   结果写成 generative manifold 结论。`generative_manifold_supported=false`。
+4. parent contract prior 已注册但不可访问（Gaussian/numerical KL improvement 与
+   complex/power rank gates 均失败），故 `generation_readiness=not_ready`。唯一下一步
+   是 `manual_review_scaled_chen_distributed_bottleneck_closeout_contract`；不授权 canary、
+   训练、FMF、prior-only generation 或 promotion。
+
+结果证据哈希：validation
+`b1713ee2676c4f5ab6e6f45838ed75bb1d2b1843e2ce738b53abe62d8e4b0c35`，audit
+`6291a2dc03f5ec8d6d3cd9ba88c0bf7f3a4b3f44f83dba7fc16c80375e9dc556`，compact
+`401fe2159f4342a4740b2c40955cb65fc7bb3600f2416fdc4171e1553eebeee0`，panel
+`842f5cfd41909a666f19f3c88e7e7199a825b255bd111a44953e53351fd28724`。历史 SMF
+background 缺失的 preflight/training 文件保持零哈希记录；未借用其他路线 prior，未刷新
+云端 Sources。

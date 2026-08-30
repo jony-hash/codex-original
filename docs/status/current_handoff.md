@@ -939,6 +939,33 @@ evidence 与 checkpoints。实验拆分 SMF LP01 投影容量、既有 FMF M2 ob
 不训练、不改 OLS transport、不放宽历史 `+5pp` 门限。审计结果只决定下一个人工
 合同，不自动授权 dose pilot、FMF、生成或 promotion。
 
+## H-LOMA-CBOGT-S0-MRA：Scaled-Chen Manifold Readiness Audit closeout（2026-08-31）
+
+从实现提交 `a041187a6ff6292f2be6602871cfd6d35ca172c` 的干净证据运行
+`outputs/20260831_v2/runs/lightgen_optical_manifold_smf_bogt_manifold_readiness_v1_attempt_05/`。
+冻结 Identity step-5500 与 Scaled-Chen step-0/1000/5000；selection/confirmation 为
+1000/5000 张且相互隔离。validation、audit、compact、panel SHA-256 分别为
+`b1713ee2676c4f5ab6e6f45838ed75bb1d2b1843e2ce738b53abe62d8e4b0c35`、
+`6291a2dc03f5ec8d6d3cd9ba88c0bf7f3a4b3f44f83dba7fc16c80375e9dc556`、
+`401fe2159f4342a4740b2c40955cb65fc7bb3600f2416fdc4171e1553eebeee0`、
+`842f5cfd41909a666f19f3c88e7e7199a825b255bd111a44953e53351fd28724`。
+
+结果：`valid_failed`（harness 完整），瓶颈分类
+`distributed_bottleneck_supported`，最大唯一 discontinuity 为
+`decoder_layer_2→CMOS`（selection/confirmation retention `0.5827/0.5871`）。
+encoder 的 SLM→pre-OLS retention 为 `0.9182/0.9216`，不是主要瓶颈；pre-OLS→modal
+为 `0.8145/0.8092`，OLS 与下游均有独立损失。四个 checkpoint 的 fresh decoder
+Jacobian rank 均为 `100`，不支持“decoder 单独 capacity-limited”。
+
+`reconstruction_manifold_supported=false`，`generative_manifold_supported=false`。
+parent prior 已注册但 `generation_prior_not_accessible`：KL improvement、rank retention
+和 reconstruction gate 均未通过，故 `generation_readiness=not_ready`。审计保持
+`optimizer_created=false`、`evaluator_calls=0`、`training_authorized=false`、
+`formal_promotion=false`。唯一允许的人工后续为
+`manual_review_scaled_chen_distributed_bottleneck_closeout_contract`；不启动训练、FMF、
+prior-only generation、canary 或 promotion。旧 SMF background 缺失文件以零哈希明确记录，
+未以其他路线 prior 或不匹配历史 Jacobian 替代。
+
 ## H-LOMA-CBOGT-S0-GEOM-RM：Scaled-Chen 秩匹配 OLS 几何归因 closeout（2026-08-30）
 
 为解决 horizon 无更新审计中“OLS 几何失配与容量不足未分离”的遗留问题，项目负责人
