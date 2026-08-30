@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import torch
+import pytest
 
 from ldm_project.v1.application.teacher_distribution_admission import (
     _config,
@@ -13,6 +14,7 @@ from ldm_project.v1.application.teacher_distribution_admission import (
 CONFIG = "configs/research/teacher_distribution_admission_v1.yaml"
 
 
+@pytest.mark.historical_artifact
 def test_package_b_config_is_locked_and_lineage_is_resolvable() -> None:
     config = _config(CONFIG)
     lineage = _lineage(config)
@@ -34,4 +36,3 @@ def test_package_b_noise_seeds_are_deterministic_and_full_latent_gaussian() -> N
     noise = _noise([first, other_bank], (1, 25, 25))
     assert noise.shape == (2, 1, 25, 25)
     assert torch.isfinite(noise).all()
-

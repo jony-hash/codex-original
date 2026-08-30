@@ -52,8 +52,10 @@
 - `python -m ldm_project.v2 --help`：通过。
 - CUDA smoke：训练 2 个 one-shot step，并完成 epoch 验证；输出包含 run metadata、training history、光学场张量、诊断 JSON 和 PNG。
 
-完整默认 pytest 结果：`1010 passed, 9 failed, 3 deselected, 25 subtests passed`，用时约 3 分 54 秒。9 个失败全部是测试直接读取的历史 WSL 输出未展开：1 个 v1 teacher checkpoint，以及 8 个 20260827/20260828 v2 的历史 training/audit JSON。对应内容已在 `outputs-manifest.jsonl` 和独立 tar 中完成 SHA-256 校验；按本次迁移方案不将这些历史文件展开到 Windows 工作树，因此将其记录为归档布局限制。当前代码、依赖、CUDA 和 smoke 运行验证均通过。
+初始完整 pytest 结果：`1010 passed, 9 failed, 3 deselected, 25 subtests passed`，用时约 3 分 54 秒。9 个失败全部是测试直接读取的历史 WSL 输出未展开：1 个 v1 teacher checkpoint，以及 8 个 20260827/20260828 v2 的历史 training/audit JSON。对应内容已在 `outputs-manifest.jsonl` 和独立 tar 中完成 SHA-256 校验；按本次迁移方案不将这些历史文件展开到 Windows 工作树。它们现带有 `historical_artifact` pytest marker，默认回归套件排除该 marker；只有明确临时恢复命名归档后才执行该历史通道。当前代码、依赖、CUDA 和 smoke 运行验证均通过。
+
+收尾复验结果：默认 pytest 为 `1010 passed, 12 deselected, 25 subtests passed`，退出码为 0；`historical_artifact` collect-only 精确收集 9 项。`compileall`、Ruff、v2 CLI、受影响测试模块、归档抽样 SHA-256 与 tar 目录读取均通过。Git bundle 含 66 个 refs 且完整历史可验证；五项核心备份的大小与 SHA-256 再次匹配。`git fsck --full` 未发现损坏；保留其可恢复 dangling objects，不在回滚期执行清理。
 
 ## WSL 回滚窗口
 
-Windows 验证完成后，WSL 仅保留为回滚源，窗口为 2026-08-30 至 2026-09-06。已尝试停止 Ubuntu，但当前打开的 VS Code WSL 连接会自动重新启动它；因此完全释放 WSL 内存前，需先关闭该 WSL 窗口，再执行一次 `wsl --terminate Ubuntu` 或 `wsl --shutdown`。在此期间不得在 WSL 项目上开发、训练或生成新输出。若 Windows 出现阻断问题，停止 Windows 工作区并恢复 WSL；保留失败日志和两个副本。窗口结束后，只有在用户再次明确批准后才可执行 Ubuntu 注销流程；不得手动删除 `ext4.vhdx`。
+Windows 验证完成后，WSL 仅保留为回滚源，窗口为 2026-08-30 至 2026-09-06。Ubuntu 与 docker-desktop 当前均为 Stopped，且未发现 VS Code WSL 后台连接或训练进程；保留的 `vmmemWSL` 系统服务占用低于 1 GiB，不强制终止。在此期间不得在 WSL 项目上开发、训练或生成新输出，且不得让 D: 可用空间低于 10 GiB。若 Windows 出现阻断问题，停止 Windows 工作区并恢复 WSL；保留失败日志和两个副本。迁移提交在回滚窗口结束前不推送。窗口结束后，只有在用户再次明确批准后才可执行 Ubuntu 注销流程；不得手动删除 `ext4.vhdx`。

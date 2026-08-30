@@ -25,9 +25,10 @@ where = ["src"]
 # Historical experiment tests are preserved under experiments/archive as reference-only
 # material.  The default suite covers only the active runtime and its regression tests.
 testpaths = ["tests"]
-addopts = "-m 'not scheduled_diagnostic'"
+addopts = "-m 'not scheduled_diagnostic and not historical_artifact'"
 markers = [
   "scheduled_diagnostic: slower diagnostic-only workflows run outside the default regression lane",
+  "historical_artifact: requires archived historical outputs that are intentionally absent from the active working tree",
 ]
 # Matplotlib releases supported by the current environment call NumPy 2's
 # __array__ protocol without the new copy keyword.  This is a third-party

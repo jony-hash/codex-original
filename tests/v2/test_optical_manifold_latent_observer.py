@@ -149,6 +149,7 @@ def test_observer_does_not_modify_source_or_formal_runtime_symbols() -> None:
     assert "identity_ols" in source
 
 
+@pytest.mark.historical_artifact
 def test_observer_validation_is_distinct_from_attribution_validation(tmp_path) -> None:
     spec = observer._load_spec(CONFIG)
     formal, _ = observer._load_formal(spec)
@@ -199,6 +200,7 @@ def test_observer_validation_is_distinct_from_attribution_validation(tmp_path) -
         observer._load_observer_validation(path, spec, formal, data, state, source_hashes)
 
 
+@pytest.mark.historical_artifact
 def test_observer_validation_rejects_incomplete_source_hashes(tmp_path) -> None:
     spec = observer._load_spec(CONFIG)
     formal, _ = observer._load_formal(spec)

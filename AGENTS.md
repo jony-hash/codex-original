@@ -174,6 +174,8 @@ variant-local and cannot authorize formal acceptance.
 - The primary workspace is `D:\codex-original`; use PowerShell 7 and the Conda environment `D:\ANACONDA\envs\optical-generative-models-win` for development, tests, training, and Git operations.
 - Activate the Windows Conda environment before running Python or CUDA workloads so its `Library\bin`, `Scripts`, and `bin` directories are available on `PATH`.
 - Historical outputs live in `D:\LDM-Archive\codex-original\outputs` as verified per-directory tar archives. Do not expand or modify those archives unless a task explicitly requires restoring a named historical artifact.
+- Tests that directly require those archive-only artifacts use the `historical_artifact` pytest marker. The default pytest lane excludes this marker; use `python -m pytest -q -o addopts="" -m historical_artifact --collect-only` to inspect the preserved historical lane before an explicitly authorized temporary restore.
 - `D:\codex-original\outputs` is reserved for current Windows-native runs and Git-tracked formal artifacts; use a distinct run directory for smoke tests.
 - The WSL checkout is a read-only rollback source through 2026-09-06. Do not develop, train, or generate new output there during this window. Do not unregister Ubuntu without a separate explicit approval.
+- During the rollback window, do not start a job whose estimated output could reduce D: below 10 GiB; restrict work to tests and small smoke runs.
 - Keep `docs\CURRENT_STATUS.md` and the migration record up to date with the current commit, changed files, validation results, experiment paths, and next step.

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import torch
+import pytest
 
 from ldm_project.v2.application.cli import _parser
 from ldm_project.v2.application.research import optical_manifold_full_epoch as full_epoch
 
 
+@pytest.mark.historical_artifact
 def test_full_epoch_config_review_and_source_checkpoint_are_bound() -> None:
     spec = full_epoch._load_spec(
         "configs/research/lightgen_optical_manifold_identity_full_epoch_v1.yaml"
@@ -57,6 +59,7 @@ def test_full_epoch_uses_cpu_shadow_adam_for_exact_resume() -> None:
     assert all(parameter.device.type == "cpu" for parameter in optimizer._cpu_parameters)
 
 
+@pytest.mark.historical_artifact
 def test_runtime_does_not_mutate_source_optimizer_state() -> None:
     spec = full_epoch._load_spec(
         "configs/research/lightgen_optical_manifold_identity_full_epoch_v1.yaml"

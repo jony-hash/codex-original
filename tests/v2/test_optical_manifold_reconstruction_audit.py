@@ -6,6 +6,7 @@ import json
 from types import SimpleNamespace
 
 import torch
+import pytest
 
 from ldm_project.v2.application.cli import _parser
 from ldm_project.v2.application.research import (
@@ -20,6 +21,7 @@ SOURCE_TRAINING = "outputs/20260827_v2/runs/lightgen_optical_manifold_identity_f
 SOURCE_CHECKPOINT = "outputs/20260827_v2/runs/lightgen_optical_manifold_identity_full_epoch_v1_attempt_04/full_epoch_final_step_005500.pt"
 
 
+@pytest.mark.historical_artifact
 def test_audit_config_review_and_source_are_bound() -> None:
     spec = audit._load_spec(CONFIG)
     review, review_path = audit._load_review(REVIEW, spec)
@@ -160,6 +162,7 @@ def test_audit_cli_actions_are_lazy_and_registered() -> None:
     assert "torch.optim" not in source
 
 
+@pytest.mark.historical_artifact
 def test_validation_artifact_has_no_update_boundary(tmp_path, monkeypatch) -> None:
     state = audit._git_state()
     monkeypatch.setattr(

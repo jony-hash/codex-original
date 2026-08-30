@@ -58,6 +58,7 @@ def test_tree_equal_detects_mode_bank_or_model_mutation() -> None:
     assert not audit._tree_equal(left, changed)
 
 
+@pytest.mark.historical_artifact
 def test_source_training_is_the_authoritative_valid_failed_attempt() -> None:
     root = _root()
     payload = json.loads(
@@ -80,4 +81,3 @@ def test_cli_router_is_lazy_for_bottleneck_audit() -> None:
     assert "smf-bottleneck-attribution-validate" in source
     assert "optical_manifold_smf_bottleneck_attribution" in source
     assert "import optical_manifold_smf_bottleneck_attribution" not in source
-
