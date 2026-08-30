@@ -19,10 +19,10 @@
 
 外部知识层：`C:\Users\24567\Documents\Codex\codex-original-history-context`
 
-跨产品交接入口：[`docs/PROJECT_MEMORY.md`](PROJECT_MEMORY.md)；单一本地项目和可选的
-受控 Sources 构建/验证步骤见
-[`docs/chatgpt_codex_workflow.md`](chatgpt_codex_workflow.md)。本手册的历史迁移规则
-仍优先于任何 ChatGPT 讨论或 Sources 副本。
+跨产品交接入口：[`docs/PROJECT_MEMORY.md`](PROJECT_MEMORY.md)；云端项目
+`codex-original · ChatGPT` 与本地项目 `codex-original · Windows` 的受控 Sources 桥接、
+构建/验证步骤见 [`docs/chatgpt_codex_workflow.md`](chatgpt_codex_workflow.md)。本手册的
+历史迁移规则仍优先于任何 ChatGPT 讨论或 Sources 副本。
 
 ## 固定数据边界
 

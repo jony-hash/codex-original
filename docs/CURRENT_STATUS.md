@@ -87,7 +87,7 @@ Windows 原生项目是当前唯一开发和训练入口。PowerShell 7、Window
 
 2026-08-30 已完成 GPT App 固定 canary、最早/最近/最长会话及含子线程会话的人工验收。随后在最后精确检查通过后执行 `wsl.exe --unregister Ubuntu`，命令退出码为 0。注册表和 `wsl --list --verbose` 中已不再有 Ubuntu，`D:\WSL\Ubuntu\ext4.vhdx` 及其目录已消失；`docker-desktop` 保留且停止。Windows 项目、Codex Home、历史 transcript、迁移快照、Git bundle 和 outputs tar 均未删除；旧 Sources 派生目录现保存在 C 盘可恢复隔离区。
 
-注销后复验未发现 Python、训练或 `wslhost` 进程；Windows Conda/PyTorch/CUDA/RTX 3060、完整测试、迁移工具和 folder-bound 工具均正常；Sources 工具保留为可选离线导出并由其定向测试覆盖。
+注销后复验未发现 Python、训练或 `wslhost` 进程；Windows Conda/PyTorch/CUDA/RTX 3060、完整测试、迁移工具和 folder-bound 工具均正常；Sources 桥接工具已支持 `refresh`/`status`，并由定向测试覆盖，云端上传仍需用户人工确认。
 
 ## 下一步
 
