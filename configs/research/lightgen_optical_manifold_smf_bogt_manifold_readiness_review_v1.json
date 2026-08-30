@@ -1,0 +1,56 @@
+{
+  "schema": "lightgen_optical_manifold_smf_bogt_manifold_readiness_review.v1",
+  "hypothesis": "H-LOMA-CBOGT-S0-MRA",
+  "reviewer_role": "project_owner",
+  "decision": "approve_no_update_scaled_chen_manifold_readiness_audit",
+  "approved_contract": {
+    "selection": {
+      "count": 1000,
+      "per_label": 100,
+      "source": "mnist_test_indices_5000_9999",
+      "seed": 1235
+    },
+    "confirmation": {
+      "count": 5000,
+      "source": "horizon_heldout_train_indices_55000_59999"
+    },
+    "models": [
+      "identity_step_5500",
+      "scaled_chen_step_0",
+      "scaled_chen_step_1000",
+      "scaled_chen_step_5000"
+    ],
+    "stages": [
+      "slm_input",
+      "encoder_layer_1",
+      "encoder_layer_2",
+      "pre_ols",
+      "modal_complex",
+      "modal_power",
+      "post_ols",
+      "decoder_input",
+      "decoder_layer_1",
+      "decoder_layer_2",
+      "cmos"
+    ],
+    "rank_retention": 0.9,
+    "material_relative_improvement": 0.05,
+    "no_update": true,
+    "generation_canary_not_automatic": true,
+    "next_action_if_ready": "manual_review_bounded_scaled_chen_prior_to_cmos_generation_canary_contract"
+  },
+  "no_update_diagnostic_authorized": true,
+  "training_authorized": false,
+  "formal_training_authorized": false,
+  "formal_promotion": false,
+  "prohibited": [
+    "optimizer",
+    "backward",
+    "checkpoint_write",
+    "generation",
+    "evaluator",
+    "fmf",
+    "prior_sampling",
+    "formal_promotion"
+  ]
+}
