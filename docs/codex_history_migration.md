@@ -6,6 +6,13 @@
 
 迁移已于 2026-08-30 完成。旧 WSL Codex 历史仍以不可变归档保留在 `D:\LDM-Archive\codex-original\backup\wsl-codex-history.tar`，217 个唯一会话已安全追加到 Windows Codex Home，未覆盖现有 Windows 会话。历史会话的 folder-bound 项目修复 v2 已在真实 Codex Home 完成 canary/full apply，并通过 `project-bind --verify` 与顶层 `verify`；GPT App 中的项目显示、搜索和继续会话仍需人工抽查。
 
+注销前本地收尾提交为 `0cef23dc2b1e272601f91d3bbba9d13f93215635`，工作树干净；完整 Git
+bundle 位于 `C:\Users\24567\Documents\Codex\codex-original-post-migration-20260830.bundle`，
+已通过 `git bundle verify`。备份时间后的 WSL 增量位于
+`C:\Users\24567\Documents\Codex\wsl-post-backup-increment-20260830.tar`，包含 5 个
+用户范围路径，SHA-256 为
+`072212068E3F6D02FFD3B762B8670CB2B5E6A83F967137C6459874D99A07494B`，原始 Ubuntu 尚未注销。
+
 工具位置：`scripts/maintenance/codex_history_migration.py`
 
 外部知识层：`C:\Users\24567\Documents\Codex\codex-original-history-context`

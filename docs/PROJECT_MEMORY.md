@@ -49,6 +49,9 @@ ChatGPT Sources 包中的文件是受控副本。副本过期、来源不明确�
 
 - 当前分支、HEAD、dirty paths 和最近验证结果以 `CURRENT_STATUS.md` 和运行时 Git
   状态为准；这里不复制容易过期的完整提交清单。
+- 注销前本地收尾提交为 `0cef23dc2b1e272601f91d3bbba9d13f93215635`，工作树已验证干净；
+  对应的 C: Git bundle 已通过完整历史校验。GitHub 推送仍需用户明确确认，不能把本地
+  bundle 伪装成远端备份。
 - 注销前默认全量 pytest 已在 Windows Conda/CUDA 环境通过：`1,028 passed, 12
   deselected, 25 subtests passed`。near-conjugate 单项只有在较长临时根下会触发 Windows
   260 字符路径边界；使用专用短 TEMP `C:\t` 后单项和全量均通过。这不改变模型、训练或
@@ -66,6 +69,8 @@ ChatGPT Sources 包中的文件是受控副本。副本过期、来源不明确�
   到 Windows 目标；`event_msg` 的历史命令位置保留原样，不能把它解释为当前 cwd。
 - 外部历史上下文目录是导航层，不是原始 transcript 的替代品。历史只能按 Session ID
   选择摘要，默认不把全部摘要上传到 ChatGPT Sources。
+- Ubuntu 注销前增量审计仅发现 5 个 WSL Codex 日志/缓存文件；它们已在 C: 独立 tar
+  中保留并通过目录读取校验。Ubuntu、docker-desktop 均已停止，但 Ubuntu 尚未注销。
 
 ## ChatGPT 与 Codex 的职责边界
 
@@ -75,6 +80,9 @@ ChatGPT 项目 `codex-original · ChatGPT` 用于讨论、规划、总结和提�
 Codex 本地项目 `codex-original · Windows` 以 `D:\codex-original` 为主目录，负责读取
 真实工作树、核对 Git 和验证结果、修改代码/文档、运行测试，并在事实核对后更新本文件。
 Sources 包由本地工具生成，上传/替换由用户在 ChatGPT 项目中人工确认。
+
+GPT App 中历史会话的项目显示、长会话渲染、搜索和继续会话属于人工验收；本地 Codex
+不能替代该桌面检查，也不能把未知状态写成已通过。
 
 标准方向是：
 

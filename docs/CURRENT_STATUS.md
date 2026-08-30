@@ -7,6 +7,7 @@
 - 主项目：`D:\codex-original`
 - 基线分支：`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`
 - 基线提交：`019b76ef911e0bd16b8d5d4169807323427684af`
+- 注销前本地收尾提交：`0cef23dc2b1e272601f91d3bbba9d13f93215635`（工作树干净，尚未推送）
 - Windows 原生迁移提交：`6f9015b1ebc8a461f48801c5280ad13a168c14fd`（本地保留，回滚期后再推送）
 - Codex 历史迁移工具检查点：`c383f21`（本地保留，回滚期后再推送）
 - 本地项目绑定工具提交：`6c395da`；绑定前 WSL `cwd` 漂移保护提交：`8efd88d`；folder-bound 修复 v2 当前基于 `d47da23` 的未提交工作树（均本地保留，回滚期后再推送）
@@ -40,7 +41,9 @@ Windows 原生项目是当前唯一开发和训练入口。PowerShell 7、Window
 - 双项目桥接已落地：权威入口为 [`docs/PROJECT_MEMORY.md`](PROJECT_MEMORY.md)，操作手册为 [`chatgpt_codex_workflow.md`](chatgpt_codex_workflow.md)，本地 Sources 工具为 `scripts/maintenance/chatgpt_project_memory.py`。注销前 Sources 包已在 `C:\Users\24567\Documents\Codex\codex-original-history-context\chatgpt-sources-final-20260830` 重建并验证通过，精确包含 `PROJECT_MEMORY.md`、`CURRENT_STATUS.md`、`CURRENT_HANDOFF.md`、`V2_RUNTIME.md`、`HISTORY_CONTEXT.md` 和 `CHAT_INDEX.md` 六个文件；内部 manifest 不上传。
 - 活动项目列表中已没有旧的 `chatgpt-codex工作流`；`.codex` 中残留的旧缓存/副本仍保留为回滚窗口内的待处理数据，不读作当前事实源，也未被新 Sources 包扫描或复制。
 - 归档自检：163/163 个 tar 存在；抽查 4 个 tar 的 SHA-256 与目录读取通过；5 项核心备份大小与 SHA-256 均匹配。
-- 最近容量检查：D: 可用约 14.59 GiB；回滚窗口内仅运行测试和小型 smoke。
+- 注销前 WSL 增量审计：备份时间 `2026-08-29 23:33:29` 后仅发现 5 个用户范围文件（WSL Codex 日志 SQLite/WAL/SHM、`models_cache.json`、空的 `.motd_shown`），未发现 `/home` 其他用户文件、项目文件、`/root`、`/usr/local` 的新增内容；5 个文件已保存为 `C:\Users\24567\Documents\Codex\wsl-post-backup-increment-20260830.tar`，397,127,680 bytes，SHA-256 为 `072212068E3F6D02FFD3B762B8670CB2B5E6A83F967137C6459874D99A07494B`，归档目录读取通过。
+- 注销前最新 Git bundle：`C:\Users\24567\Documents\Codex\codex-original-post-migration-20260830.bundle`，50,766,628 bytes，SHA-256 为 `5F47D9D05FE2949B8D9A3C1BBB949F83211C810CECC6DA0EF9D087EB4F1B5D0D`；`git bundle verify` 报告完整历史和 55 个本地 refs。
+- 最近容量检查：D: 可用约 14.56 GiB；Ubuntu VHD 仍约 249.17 GiB，注销前不启动训练或大型 smoke。
 
 ## Windows 兼容性改动
 
@@ -53,8 +56,8 @@ Windows 原生项目是当前唯一开发和训练入口。PowerShell 7、Window
 
 ## 回滚状态
 
-WSL Ubuntu 与 docker-desktop 当前均为 Stopped，未发现 VS Code WSL 后台连接或训练进程。`vmmemWSL` 仅保留低于 1 GiB 的系统服务占用，不强制终止。迁移日为 2026-08-30，回滚窗口截至 2026-09-06；窗口内不在 WSL 项目上开发、训练或生成新输出，且 D: 不得低于 10 GiB。迁移提交保持本地，不在窗口内推送。Ubuntu 注销未执行，必须在窗口结束后再次取得明确批准。
+WSL Ubuntu 与 docker-desktop 当前均为 Stopped，未发现 VS Code WSL 后台连接、训练或 Python 进程。`vmmemWSL` 不再承担项目运行；不强制终止 Windows ChatGPT/Codex 桌面进程。Ubuntu 注销未执行：本地 GitHub 推送和 GPT App 人工会话验收仍是前置门槛；未获得两项确认前不执行 `wsl --unregister Ubuntu`。
 
 ## 下一步
 
-以 Windows 项目作为唯一最新工作树；每次任务更新本文件中的提交、测试、实验路径和下一步。自动迁移与 folder-bound 修复的 canary、complete、`project-bind --verify` 和顶层 `verify` 均已通过，Windows 默认回归也已全绿。注销前尚需完成 Ubuntu 备份时间后的增量审计，并由用户在 GPT App 中人工确认固定 canary、最早/最近/最长及含子线程会话；本地 CLI 不能替代该桌面验收。全部门槛通过后才执行精确的 `wsl --unregister Ubuntu`，不手动删除 VHD，也不注销 `docker-desktop`。
+以 Windows 项目作为唯一最新工作树；每次任务更新本文件中的提交、测试、实验路径和下一步。自动迁移与 folder-bound 修复的 canary、complete、`project-bind --verify` 和顶层 `verify` 均已通过，Windows 默认回归也已全绿。注销前本地增量审计和恢复点已完成；尚需用户在 GPT App 中人工确认固定 canary、最早/最近/最长及含子线程会话，并明确授权将当前 HEAD 推送到 `https://github.com/jony-hash/codex-original.git` 的 `research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1` 分支。两项完成后才执行精确的 `wsl --unregister Ubuntu`，不手动删除 VHD，也不注销 `docker-desktop`。
