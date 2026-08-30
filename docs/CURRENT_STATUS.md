@@ -8,6 +8,7 @@
 - 基线分支：`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`
 - 基线提交：`019b76ef911e0bd16b8d5d4169807323427684af`
 - Windows 原生迁移提交：`6f9015b1ebc8a461f48801c5280ad13a168c14fd`（本地保留，回滚期后再推送）
+- Codex 历史迁移工具检查点：`c383f21`（本地保留，回滚期后再推送）
 - `origin`：`https://github.com/jony-hash/codex-original.git`
 - Windows 环境：`D:\ANACONDA\envs\optical-generative-models-win`
 - 历史输出归档：`D:\LDM-Archive\codex-original\outputs`
