@@ -45,12 +45,36 @@ ChatGPT Sources 包中的文件是由维护工具生成的受控副本。副本�
 - prior-native、direct-generator、quadrature、fiber、FMF 长训练和 formal promotion
   等已关闭或未授权路线不能因为 ChatGPT 的讨论而重新打开。
 - 所有科研执行仍需遵守 `AGENTS.md` 的 long-training gate；记忆文件本身不提供训练授权。
-- 当前交接文档记录的唯一允许科研动作是
-  `manual_review_fmf_mode_capacity_reconstruction_contract`。如果交接文档更新，
-  以最新的 `CURRENT_HANDOFF.md` 和 hypothesis ledger 为准。
+- 当前最新有效科研结果是 Scaled-Chen 秩匹配 OLS 几何归因的
+  `geometry_not_supported` / `valid_failed`。唯一允许的下一动作是
+  `manual_review_scaled_chen_distributed_bottleneck_closeout_contract`；在新的项目负责人
+  合同前不得进入 FMF、继续训练、exposure retuning、生成或 promotion。若交接文档更新，
+  以最新的 `CURRENT_STATUS.md`、`status/current_handoff.md` 和 hypothesis ledger 为准。
 - 本次工作流治理允许的实现动作是维护记忆入口、项目文档和环境入口；不修改训练代码、
   `outputs`、WSL、SQLite 或历史 transcript。只有用户明确需要离线上传时，才生成并验证
   受控 Sources 包。
+
+## Scaled-Chen 秩匹配 OLS 几何归因（2026-08-30）
+
+在 Windows 原生 CUDA 环境完成了冻结权重的九组 LP01 几何归因审计。模式网格为
+`fill={0.70,0.80,0.90}` × `facet_magnification={0.80,1.00,1.20}`，固定 100 端口、
+身份传输、原 calibration 和 2+2 formal Identity 光学。选择集使用 test 后半段每类 100
+张，确认集使用 horizon 原 5000 张 held-out；两者与 horizon 训练/标定分离。
+
+最佳非基线为 `(fill=0.80, facet_magnification=0.80)`。选择集改善 `4.02%`，确认集
+step 0/5000 改善 `4.48%/3.68%`，bootstrap 95% 差值区间为
+`[0.00210138,0.00215426]`；未达到预注册 `5%` 门槛，且训练后收益没有超过初始收益。
+所有 finite、100 秩、冻结状态、负对照、显存和 lineage 门通过；evaluator calls 为 `0`，
+峰值 CUDA `2279883264` bytes。权威产物在
+`outputs/20260830_v2/runs/lightgen_optical_manifold_smf_bogt_geometry_attribution_v1_attempt_01/`，
+validation/audit/decomposition/panel SHA-256 分别为
+`ff904bfab0ca63208e881d51c3e06650295ca1e09a3f3b0a9a1a79c374bae0bd`、
+`923d2e233cba0f795ec80fbd536846c356cdc177e2dfe0d77957bf4835565f8a`、
+`952d062c8a72b872e299da3a20e870b8c7a414b1fd27dc9d9d57a376ca74e5e4`、
+`94f1ac7fc74a3bf7b78c60ccc56a7fa479ab56fa30e06dcbc27ddecdc702fd4b`。
+
+该结果只支持分布式瓶颈 closeout 人工审查，不证明连续几何穷尽、FMF 优越性或正式光学
+可用性；`training_authorized=false` 与 `formal_promotion=false` 保持不变。
 
 ## Git 与验证状态
 

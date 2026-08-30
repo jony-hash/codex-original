@@ -7,6 +7,7 @@
 - 主项目：`D:\codex-original`
 - 基线分支：`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`
 - 基线提交：`019b76ef911e0bd16b8d5d4169807323427684af`
+- 当前几何归因实现绑定提交：`6419cc523a8b5dd41cb3d3c2531193890fa1481a`
 - 注销前审计提交：`75d0584c379b145b0f0eb45ece14fda160741f23`（已按用户确认推送）
 - Windows 原生迁移、Codex 历史迁移和 folder-bound 修复提交均已包含在当前分支历史中；本次最终注销记录将在其后追加。
 - `origin`：`https://github.com/jony-hash/codex-original.git`
@@ -89,11 +90,39 @@ Windows 原生项目是当前唯一开发和训练入口。PowerShell 7、Window
 
 注销后复验未发现 Python、训练或 `wslhost` 进程；Windows Conda/PyTorch/CUDA/RTX 3060、完整测试、迁移工具和 folder-bound 工具均正常；Sources 桥接工具已支持 `refresh`/`status`，并由定向测试覆盖，云端上传仍需用户人工确认。
 
+## Scaled-Chen 秩匹配 OLS 几何归因（2026-08-30）
+
+在当前 Windows 原生环境执行了冻结权重、无更新的九组秩匹配 LP01 OLS 审计。固定
+10×10/100 端口、身份传输、7.111 µm waist、V=2.2、原 calibration、2+2 相位层和
+formal Identity 几何；选择集为 MNIST test 索引 5000–9999 中每类 100 张，确认集为
+horizon 原 held-out 5000 张。审计不创建 optimizer、不调用 evaluator、不写 checkpoint，
+模型与算子状态前后完全一致，九组模式库均为有限 100 秩，峰值 CUDA 为
+`2279883264` bytes，墙钟 `345.25s`（仅遥测）。
+
+权威输出位于
+`outputs/20260830_v2/runs/lightgen_optical_manifold_smf_bogt_geometry_attribution_v1_attempt_01/`：
+validation、audit、decomposition、panel 的 SHA-256 依次为
+`ff904bfab0ca63208e881d51c3e06650295ca1e09a3f3b0a9a1a79c374bae0bd`、
+`923d2e233cba0f795ec80fbd536846c356cdc177e2dfe0d77957bf4835565f8a`、
+`952d062c8a72b872e299da3a20e870b8c7a414b1fd27dc9d9d57a376ca74e5e4`、
+`94f1ac7fc74a3bf7b78c60ccc56a7fa479ab56fa30e06dcbc27ddecdc702fd4b`。
+
+选择出的最佳非基线为 `fill=0.80, facet_magnification=0.80`。选择集 paired MSE
+相对基线改善 `4.02%`，确认集 step 0 改善 `4.48%`、step 5000 改善 `3.68%`；
+逐样本差值 bootstrap 95% 区间为 `[0.00210138, 0.00215426]`。由于未达到预注册
+`5%` 实质改善门槛，且 step 5000 收益没有超过 step 0，结果为
+`geometry_not_supported` / evidence `valid_failed`，不支持几何匹配 canary。
+
+唯一下一动作是 `manual_review_scaled_chen_distributed_bottleneck_closeout_contract`；
+不得自动进入 FMF、继续训练、exposure retuning、生成或 formal promotion。所有证据继续
+保持 `training_authorized=false`、`formal_promotion=false`。
+
 ## 下一步
 
 以本地 Windows 项目作为唯一开发、测试、训练和 Git 入口，以云端 ChatGPT 项目作为规划和
-检索入口。两者通过经过验证的六文件 Sources 快照和标准交接块衔接；云端快照过期时必须
-刷新，不能覆盖本地事实。Ubuntu 已注销，不再存在 WSL 回滚工作区；未来若需恢复 Linux
-环境，只能重装 WSL 并使用已保存的 Git bundle、用户配置归档、Codex transcript 归档、
-增量 tar 和 outputs tar。保留这些恢复材料，不自动删除归档或 `docker-desktop`；继续维护
-当前 commit、测试、实验路径和历史上下文状态。
+检索入口。当前科研入口先停在上述分布式瓶颈 closeout 人工审查；在获得新的明确合同前，
+不得继续训练或进入 FMF。两者通过经过验证的六文件 Sources 快照和标准交接块衔接；云端
+快照过期时必须刷新，不能覆盖本地事实。Ubuntu 已注销，不再存在 WSL 回滚工作区；未来若
+需恢复 Linux 环境，只能重装 WSL 并使用已保存的 Git bundle、用户配置归档、Codex transcript
+归档、增量 tar 和 outputs tar。保留这些恢复材料，不自动删除归档或 `docker-desktop`；继续
+维护当前 commit、测试、实验路径和历史上下文状态。

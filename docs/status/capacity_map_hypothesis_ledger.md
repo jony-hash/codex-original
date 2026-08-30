@@ -1072,3 +1072,31 @@ mismatch 是主要瓶颈候选，但不表示 FMF 重建已被证明更优。唯
 `manual_review_fmf_mode_capacity_reconstruction_contract`；在人工批准前不得
 开始 FMF 训练、continuation、prior sampling、生成或 promotion，并继续要求
 `training_authorized=false`、`formal_promotion=false`。
+
+## H-LOMA-CBOGT-S0-GEOM-RM：秩匹配 OLS 几何归因 closeout（2026-08-30）
+
+本假设消费 Scaled-Chen horizon 的有效失败与 no-update 归因审计，真实消费者是项目
+负责人对“是否存在足以支持几何匹配 reconstruction canary 的固定 100-port OLS 几何”
+的人工决定；拒绝决定是九组物理网格未达到预注册改善门槛。审计严格冻结 step 0/5000
+权重、身份 transport、原 calibration、formal Identity 光学和 100 端口 LP01 模式库，
+选择集为 MNIST test 后半段每类 100 张，确认集为原 horizon 5000 张 held-out。禁止
+optimizer、backward、checkpoint、evaluator、FMF、exposure retuning、生成和 promotion。
+
+网格为 `fill={0.70,0.80,0.90}` × `facet_magnification={0.80,1.00,1.20}`；九组模式库
+均有限且 rank=100，模型/算子状态未改变，evaluator calls 为 `0`，峰值 CUDA
+`2279883264` bytes。最佳非基线 `(0.80,0.80)` 的选择集改善 `4.02%`，确认集 step
+0/5000 改善 `4.48%/3.68%`，bootstrap 95% 差值区间 `[0.00210138,0.00215426]`。
+差值方向稳定但未达到 `5%` 实质改善门槛，且训练后收益没有超过初始收益。
+
+权威运行位于
+`outputs/20260830_v2/runs/lightgen_optical_manifold_smf_bogt_geometry_attribution_v1_attempt_01/`，
+validation/audit/decomposition/panel SHA-256 为
+`ff904bfab0ca63208e881d51c3e06650295ca1e09a3f3b0a9a1a79c374bae0bd`、
+`923d2e233cba0f795ec80fbd536846c356cdc177e2dfe0d77957bf4835565f8a`、
+`952d062c8a72b872e299da3a20e870b8c7a414b1fd27dc9d9d57a376ca74e5e4`、
+`94f1ac7fc74a3bf7b78c60ccc56a7fa479ab56fa30e06dcbc27ddecdc702fd4b`。
+
+权威分类为 `geometry_not_supported` / evidence `valid_failed`。唯一下一动作是
+`manual_review_scaled_chen_distributed_bottleneck_closeout_contract`；该结果不授权 FMF
+训练、继续训练、生成或 formal promotion，证据继续保持 `training_authorized=false`、
+`formal_promotion=false`。

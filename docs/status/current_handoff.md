@@ -939,6 +939,41 @@ evidence 与 checkpoints。实验拆分 SMF LP01 投影容量、既有 FMF M2 ob
 不训练、不改 OLS transport、不放宽历史 `+5pp` 门限。审计结果只决定下一个人工
 合同，不自动授权 dose pilot、FMF、生成或 promotion。
 
+## H-LOMA-CBOGT-S0-GEOM-RM：Scaled-Chen 秩匹配 OLS 几何归因 closeout（2026-08-30）
+
+为解决 horizon 无更新审计中“OLS 几何失配与容量不足未分离”的遗留问题，项目负责人
+授权一次冻结权重、无更新的九组秩匹配 LP01 OLS 审计。网格为
+`fill={0.70,0.80,0.90}` × `facet_magnification={0.80,1.00,1.20}`，基线为
+`(0.80,1.00)`；100 端口、身份 transport、7.111 µm waist、V=2.2、原 calibration、
+2+2 phase-only formal Identity 光学全部固定。选择集为 MNIST test 后半段的 1000 张
+均衡样本，确认集为原 horizon 5000 张 held-out；没有 optimizer、backward、evaluator、
+checkpoint 写入或 exposure retuning。
+
+指定归档 `D:\LDM-Archive\codex-original\outputs\archive_0157.tar` 仅恢复了 step 0/5000
+checkpoint、horizon validation/preflight/training/calibration 及四类 no-update 归因文件。
+历史 manifest 与当前 Windows 数据的图像、标签、标定索引、日程和 held-out 摘要全部一致；
+仅 `dataset_root` 路径字段变化，已在消费者中显式分离绑定。
+
+权威运行位于
+`outputs/20260830_v2/runs/lightgen_optical_manifold_smf_bogt_geometry_attribution_v1_attempt_01/`。
+最佳非基线 `(fill=0.80, facet_magnification=0.80)` 的选择集 paired MSE 改善 `4.02%`，
+确认集 step 0/5000 改善 `4.48%/3.68%`；bootstrap 95% 差值区间为
+`[0.00210138,0.00215426]`。虽然差值方向稳定且 paired 优于 cyclic，但未达到预注册
+`5%` 实质改善门槛，且 step 5000 收益没有超过 step 0。所有 finite、100 秩、状态冻结、
+负对照、lineage、CUDA 资源门均通过；峰值 `2279883264` bytes，墙钟 `345.25s` 仅作遥测，
+evaluator calls 为 `0`。
+
+validation、audit、decomposition、panel SHA-256 分别为
+`ff904bfab0ca63208e881d51c3e06650295ca1e09a3f3b0a9a1a79c374bae0bd`、
+`923d2e233cba0f795ec80fbd536846c356cdc177e2dfe0d77957bf4835565f8a`、
+`952d062c8a72b872e299da3a20e870b8c7a414b1fd27dc9d9d57a376ca74e5e4`、
+`94f1ac7fc74a3bf7b78c60ccc56a7fa479ab56fa30e06dcbc27ddecdc702fd4b`。
+
+权威分类为 `geometry_not_supported`，evidence status 为 `valid_failed`。唯一下一动作是
+`manual_review_scaled_chen_distributed_bottleneck_closeout_contract`；不得据此自动进入
+FMF、继续训练、生成、exposure retuning 或 formal promotion，所有证据继续保持
+`training_authorized=false`、`formal_promotion=false`。
+
 ### SMF bottleneck attribution closeout（attempt-02，2026-08-29）
 
 attempt-01 的 CUDA 运行在审计 evidence 生成前因显存驻留超限而停止，登记为
