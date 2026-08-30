@@ -4,14 +4,16 @@
 
 ## 当前状态
 
-迁移已于 2026-08-30 完成。旧 WSL Codex 历史仍以不可变归档保留在 `D:\LDM-Archive\codex-original\backup\wsl-codex-history.tar`，217 个唯一会话已安全追加到 Windows Codex Home，未覆盖现有 Windows 会话。历史会话的 folder-bound 项目修复 v2 已在真实 Codex Home 完成 canary/full apply，并通过 `project-bind --verify` 与顶层 `verify`；GPT App 中的项目显示、搜索和继续会话仍需人工抽查。
+迁移已于 2026-08-30 完成。旧 WSL Codex 历史仍以不可变归档保留在 `D:\LDM-Archive\codex-original\backup\wsl-codex-history.tar`，217 个唯一会话已安全追加到 Windows Codex Home，未覆盖现有 Windows 会话。历史会话的 folder-bound 项目修复 v2 已在真实 Codex Home 完成 canary/full apply，并通过 `project-bind --verify` 与顶层 `verify`；GPT App 的项目显示、搜索、长会话滚动和继续会话已由用户完成人工验收。
 
-注销前本地收尾提交为 `0cef23dc2b1e272601f91d3bbba9d13f93215635`，工作树干净；完整 Git
-bundle 位于 `C:\Users\24567\Documents\Codex\codex-original-post-migration-20260830.bundle`，
-已通过 `git bundle verify`。备份时间后的 WSL 增量位于
+注销前审计提交为 `75d0584c379b145b0f0eb45ece14fda160741f23`，已推送到目标 GitHub 分支，
+工作树干净。最终 Git bundle 位于
+`C:\Users\24567\Documents\Codex\codex-original-final-20260830.bundle`，已通过
+`git bundle verify`，包含当前 HEAD 和 55 个 refs。备份时间后的 WSL 增量位于
 `C:\Users\24567\Documents\Codex\wsl-post-backup-increment-20260830.tar`，包含 5 个
 用户范围路径，SHA-256 为
-`072212068E3F6D02FFD3B762B8670CB2B5E6A83F967137C6459874D99A07494B`，原始 Ubuntu 尚未注销。
+`072212068E3F6D02FFD3B762B8670CB2B5E6A83F967137C6459874D99A07494B`；Ubuntu 已在最终审计
+通过后注销。
 
 工具位置：`scripts/maintenance/codex_history_migration.py`
 
@@ -30,7 +32,8 @@ bundle 位于 `C:\Users\24567\Documents\Codex\codex-original-post-migration-2026
 - 迁移快照：`%USERPROFILE%\Documents\Codex\codex-history-migration-snapshot`
 - 项目绑定快照：`%USERPROFILE%\Documents\Codex\codex-project-binding-snapshot-20260830`
 - 不迁入旧认证、`config.toml`、日志、缓存、插件或 WSL 用户配置。
-- 不修改原始 tar，不覆盖现有 Windows session，不推送 Git，不注销 Ubuntu。
+- 不修改原始 tar，不覆盖现有 Windows session；GitHub 推送已完成，Ubuntu 注销已完成，
+  不手动删除或改写历史 VHD/归档。
 - `project-bind` v2 不查询或写入 `projects`、`project_roots` 或 `threads.project_id`；桌面端实际消费者是会话及 transcript 中的 `cwd`。
 
 ## 已完成迁移结果
@@ -38,7 +41,10 @@ bundle 位于 `C:\Users\24567\Documents\Codex\codex-original-post-migration-2026
 - canary 导入 3 条代表性会话并通过标题、消息、工具记录和工作目录抽查。
 - complete 阶段导入其余 214 条会话，累计为 217 条唯一会话。
 - 最终校验：SQLite `integrity_check=ok`；217 个导入 JSONL 文件均存在且哈希匹配；147 条可见主聊天、70 条归档内部线程；10 条旧父子关系完整追加。
-- 迁移前快照保留在 `%USERPROFILE%\Documents\Codex\codex-history-migration-snapshot`。回滚窗口内不得删除它或修改原 WSL tar。
+- 迁移前快照保留在 `%USERPROFILE%\Documents\Codex\codex-history-migration-snapshot`，不自动删除或修改它及原始 WSL tar。
+
+Ubuntu 已注销后，以上快照、原始 WSL tar、用户配置 tar、增量 tar 和 Git bundle 仍作为
+离线恢复材料保留；它们不是当前工作区，也不会被自动展开。
 
 ## 实际 folder-bound 修复结果（2026-08-30）
 

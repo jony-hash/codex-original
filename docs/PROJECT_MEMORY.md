@@ -21,7 +21,7 @@ ChatGPT Sources 包中的文件是受控副本。副本过期、来源不明确�
 ## 当前工作区与运行边界
 
 - 唯一当前工作区是 Windows 原生 `D:\codex-original`。
-- 开发、测试和 CUDA 运行使用 Windows Conda 环境；具体环境和回滚约束见
+- 开发、测试和 CUDA 运行使用 Windows Conda 环境；Ubuntu 已注销，当前环境与恢复边界见
   `AGENTS.md` 与 `CURRENT_STATUS.md`。
 - v1 仍由 `train.py` 维护历史可复现性；v2 是当前 teacher-free conditional optical-generation
   runtime，入口为 `python -m ldm_project.v2`。
@@ -49,13 +49,15 @@ ChatGPT Sources 包中的文件是受控副本。副本过期、来源不明确�
 
 - 当前分支、HEAD、dirty paths 和最近验证结果以 `CURRENT_STATUS.md` 和运行时 Git
   状态为准；这里不复制容易过期的完整提交清单。
-- 注销前本地收尾提交为 `0cef23dc2b1e272601f91d3bbba9d13f93215635`，工作树已验证干净；
-  对应的 C: Git bundle 已通过完整历史校验。GitHub 推送仍需用户明确确认，不能把本地
-  bundle 伪装成远端备份。
-- 注销前默认全量 pytest 已在 Windows Conda/CUDA 环境通过：`1,028 passed, 12
-  deselected, 25 subtests passed`。near-conjugate 单项只有在较长临时根下会触发 Windows
-  260 字符路径边界；使用专用短 TEMP `C:\t` 后单项和全量均通过。这不改变模型、训练或
-  科研结论。
+- 注销前审计提交为 `75d0584c379b145b0f0eb45ece14fda160741f23`，已推送到
+  `origin/research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`；远端 SHA 与本地
+  HEAD 一致。最新 C: Git bundle 为
+  `C:\Users\24567\Documents\Codex\codex-original-final-20260830.bundle`，已通过完整历史
+  校验（55 refs，SHA-256 `36F1C6E6FBEE03AB7DCB17B076895606F6166D193249248CB6FB9364512D57FE`）；
+  不能把本地 bundle 伪装成远端备份。
+- 注销前和注销后默认全量 pytest 均在 Windows Conda/CUDA 环境通过：`1,028 passed, 12
+  deselected, 25 subtests passed`。near-conjugate 单项在专用短 TEMP `C:\t` 下通过；这不
+  改变模型、训练或科研结论。
 - 任何 ChatGPT 结论都必须标明“已验证”“未验证”或“需要人工验收”，不能把历史
   全绿基线写成当前全绿。
 
@@ -70,7 +72,8 @@ ChatGPT Sources 包中的文件是受控副本。副本过期、来源不明确�
 - 外部历史上下文目录是导航层，不是原始 transcript 的替代品。历史只能按 Session ID
   选择摘要，默认不把全部摘要上传到 ChatGPT Sources。
 - Ubuntu 注销前增量审计仅发现 5 个 WSL Codex 日志/缓存文件；它们已在 C: 独立 tar
-  中保留并通过目录读取校验。Ubuntu、docker-desktop 均已停止，但 Ubuntu 尚未注销。
+  中保留并通过目录读取校验。2026-08-30 已执行精确的 `wsl.exe --unregister Ubuntu`；
+  Ubuntu 注册项、`D:\WSL\Ubuntu` 目录和 `ext4.vhdx` 均已消失，`docker-desktop` 保留。
 
 ## ChatGPT 与 Codex 的职责边界
 

@@ -56,9 +56,29 @@
 
 收尾复验结果：默认 pytest 为 `1010 passed, 12 deselected, 25 subtests passed`，退出码为 0；`historical_artifact` collect-only 精确收集 9 项。`compileall`、Ruff、v2 CLI、受影响测试模块、归档抽样 SHA-256 与 tar 目录读取均通过。Git bundle 含 66 个 refs 且完整历史可验证；五项核心备份的大小与 SHA-256 再次匹配。`git fsck --full` 未发现损坏；保留其可恢复 dangling objects，不在回滚期执行清理。
 
-## WSL 回滚窗口
+## WSL 注销收尾
 
-Windows 验证完成后，WSL 仅保留为回滚源，窗口为 2026-08-30 至 2026-09-06。Ubuntu 与 docker-desktop 当前均为 Stopped，且未发现 VS Code WSL 后台连接或训练进程；保留的 `vmmemWSL` 系统服务占用低于 1 GiB，不强制终止。在此期间不得在 WSL 项目上开发、训练或生成新输出，且不得让 D: 可用空间低于 10 GiB。若 Windows 出现阻断问题，停止 Windows 工作区并恢复 WSL；保留失败日志和两个副本。迁移提交在回滚窗口结束前不推送。窗口结束后，只有在用户再次明确批准后才可执行 Ubuntu 注销流程；不得手动删除 `ext4.vhdx`。
+Windows 验证、GPT App 历史会话人工验收和恢复点复核完成后，用户于 2026-08-30 明确授权注销 Ubuntu。最后检查确认注册名唯一为 `Ubuntu`、BasePath 为 `\\?\D:\WSL\Ubuntu`、无 Python/训练/WSL host 进程；随后仅执行 `wsl.exe --unregister Ubuntu`，命令退出码为 0。未注销 `docker-desktop`，未手动删除 `ext4.vhdx`。
+
+注销后独立核验确认：WSL 注册表和 `wsl --list --verbose` 中不再有 Ubuntu，`D:\WSL\Ubuntu\ext4.vhdx` 及其目录已消失；`docker-desktop` 保留且停止。D: 可用空间由约 14.55 GiB 增至约 263.72 GiB。原始 WSL 会话、用户配置、增量数据、Git bundle 和 163 个 outputs tar 均继续保存在归档位置；未来 Linux 恢复只能通过重装 WSL 并恢复这些材料。
+
+## 最终注销验收（2026-08-30）
+
+- 当前分支 `research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1` 的 HEAD
+  `75d0584c379b145b0f0eb45ece14fda160741f23` 已以普通方式推送到
+  `https://github.com/jony-hash/codex-original.git`，远端 SHA 与本地一致。
+- 最新恢复 bundle 为
+  `C:\Users\24567\Documents\Codex\codex-original-final-20260830.bundle`，
+  50,768,910 bytes，SHA-256 为
+  `36F1C6E6FBEE03AB7DCB17B076895606F6166D193249248CB6FB9364512D57FE`；`git bundle verify`
+  通过并包含当前 HEAD 与 55 个 refs。
+- 注销后 Windows 环境复验：Python 3.11.16、PyTorch 2.5.1、CUDA 12.1、RTX 3060
+  可用；v2 CLI、compileall、Ruff、迁移 verify、folder-bound verify、Sources verify
+  通过；默认 pytest 为 `1,028 passed, 12 deselected, 25 subtests passed`。
+- 注销后短 CUDA smoke 完成 2 个 one-shot step 和 epoch 验证，运行目录为
+  `outputs/migration_smoke/20260830_191323_817115_train_windows_native_post_unregister`。
+- GPT App 项目 `codex-original · Windows` 的主目录、辅助目录和导入会话已由用户人工验收；
+  217 个唯一会话、147 条可见主聊天、70 条归档内部线程和 214 条 folder-bound 记录保持不变。
 
 ## Codex 会话迁移完成
 
