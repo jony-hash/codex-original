@@ -12,6 +12,7 @@ from ldm_project.v2.evidence import (
     EvidenceRecordV2,
     GateResult,
     atomic_write_json,
+    atomic_write_new_json,
     file_sha256,
     require_input_hashes,
     safe_torch_load,
@@ -257,6 +258,24 @@ def test_atomic_json_write_replaces_only_complete_file(tmp_path: Path) -> None:
     path = tmp_path / "evidence.json"
     atomic_write_json(path, {"status": "passed"})
     assert path.read_text(encoding="utf-8").strip().endswith("}")
+
+
+def test_atomic_new_json_writes_once_and_cleans_temporary_files(tmp_path: Path) -> None:
+    path = tmp_path / "nested" / "evidence.json"
+    payload = {"status": "passed", "nested": {"b": 2, "a": 1}}
+    expected_path = path.with_name("expected.json")
+    atomic_write_json(expected_path, payload)
+    atomic_write_new_json(path, payload, artifact_kind="test artifact")
+    assert path.read_bytes() == expected_path.read_bytes()
+    original = path.read_bytes()
+    original_hash = file_sha256(path)
+
+    with pytest.raises(FileExistsError, match="refusing to overwrite test artifact"):
+        atomic_write_new_json(path, {"status": "failed"}, artifact_kind="test artifact")
+
+    assert path.read_bytes() == original
+    assert file_sha256(path) == original_hash
+    assert not list(path.parent.glob(f".{path.name}.*.tmp"))
 
 
 def test_tensor_artifact_ref_is_content_addressed(tmp_path: Path) -> None:

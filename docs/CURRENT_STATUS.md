@@ -208,3 +208,29 @@ Windows 路径绑定不一致，未改写历史证据，也不影响默认回归
 根目录已确认为空并删除。三个本轮 pytest 临时目录仍因当前 Windows 身份的 ACL 无法删除，
 不属于项目数据，待具备相应权限时按精确路径清理。Git 不提交 outputs 恢复文件、归档或
 临时材料；本次新增恢复工具和测试已在 `f61aa7b` 提交，并随当前分支普通推送到 GitHub。
+
+## Evidence-core harness 首轮收敛（2026-08-31）
+
+基于维护开始时 `HEAD f9e0a75`，完成 Evidence-core-first 路线的首个叶子原语：在现有
+evidence IO 中新增并导出 `atomic_write_new_json`。它沿用现有 JSON 缩进、排序和换行格式，
+先写同目录临时文件，再以 `os.link` 无覆盖发布；目标已存在时 fail-closed 保留原文件，
+不支持 hard-link 的文件系统直接传播原始 `OSError`，成功或失败均清理临时文件。既有
+`atomic_write_json` 覆盖语义保持不变。
+
+首批仅迁移三个近期 Scaled-Chen consumer 的本地 `_write_new` 薄适配器：horizon、geometry
+attribution 和 manifold readiness。未改变 `EvidenceRecordV2`、配置/CLI、科学 Gate、
+输出格式、checkpoint、Git/资源策略或 Manifold Readiness 的 status、classification、
+readiness 与 next action；geometry decomposition 和 manifold compact report 的既有覆盖
+写入路径也未纳入本轮迁移。
+
+本轮修改文件为 `src/ldm_project/v2/evidence/io.py`、
+`src/ldm_project/v2/evidence/__init__.py`、上述三个 research consumer、
+`tests/v2/test_manifests_and_checkpoints.py` 以及本文件。验证结果：compileall 通过，Ruff
+通过，evidence IO 定向测试 `2 passed`，三个路线定向测试 `20 passed`，默认完整 pytest
+为 `1056 passed, 12 deselected, 25 subtests passed`。完整 pytest 仅有一个非测试语义的
+`PytestCacheWarning`：当前身份无权写入既有 `.pytest_cache`；未影响执行或结果。
+
+本轮未运行 CUDA、训练、科研 audit，也未生成新 evidence；现有科研状态保持不变：
+`valid_failed`、`training_authorized=false`、`formal_promotion=false`，唯一下一动作仍为
+`manual_review_scaled_chen_distributed_bottleneck_closeout_contract`。用户已有的
+`.pytest-tmp-full-20260831/` 和 `.pytest-tmp-history/` 未修改；本轮专用临时目录已清理。

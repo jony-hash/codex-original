@@ -33,6 +33,7 @@ from ...evidence import (
     GateResult,
     atomic_torch_save,
     atomic_write_json,
+    atomic_write_new_json,
     canonical_sha256,
     file_sha256,
     safe_torch_load,
@@ -1050,10 +1051,7 @@ def _record(schema: str, status: str, classification: str | None, spec: Spec, st
 
 
 def _write_new(path: str | Path, payload: Mapping[str, Any]) -> None:
-    target = Path(path)
-    if target.exists():
-        raise FileExistsError(f"refusing to overwrite manifold readiness artifact: {target}")
-    atomic_write_json(target, payload)
+    atomic_write_new_json(path, payload, artifact_kind="manifold readiness artifact")
 
 
 def _load_validation(path: str | Path, spec: Spec, review_path: Path, formal_path: Path, data: AuditData, source: SourceBundle, state: Mapping[str, Any]) -> None:

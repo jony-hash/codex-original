@@ -131,6 +131,25 @@ def atomic_write_json(path: str | Path, payload: Mapping[str, Any]) -> None:
         temporary.unlink(missing_ok=True)
 
 
+def atomic_write_new_json(
+    path: str | Path,
+    payload: Mapping[str, Any],
+    *,
+    artifact_kind: str = "artifact",
+) -> None:
+    """Publish one complete JSON artifact without replacing an existing file."""
+    target = Path(path)
+    temporary = _temporary_path(target)
+    try:
+        temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        try:
+            os.link(temporary, target)
+        except FileExistsError as exc:
+            raise FileExistsError(f"refusing to overwrite {artifact_kind}: {target}") from exc
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def atomic_torch_save(path: str | Path, payload: Any) -> None:
     target = Path(path)
     temporary = _temporary_path(target)

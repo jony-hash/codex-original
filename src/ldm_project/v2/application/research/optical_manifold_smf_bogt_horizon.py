@@ -20,7 +20,7 @@ import torch
 import yaml
 
 from ...config import load_config
-from ...evidence import EvidenceContextV2, EvidenceRecordV2, GateResult, atomic_torch_save, atomic_write_json, canonical_sha256, file_sha256, safe_torch_load, tensor_sha256
+from ...evidence import EvidenceContextV2, EvidenceRecordV2, GateResult, atomic_torch_save, atomic_write_new_json, canonical_sha256, file_sha256, safe_torch_load, tensor_sha256
 from . import optical_manifold as base
 from . import optical_manifold_smf_bogt as bogt
 
@@ -325,10 +325,7 @@ def _record(schema: str, status: str, spec: HorizonSpec, formal: Any, state: Map
 
 
 def _write_new(path: str | Path, payload: Mapping[str, Any]) -> None:
-    target = Path(path)
-    if target.exists():
-        raise FileExistsError(f"refusing to overwrite horizon artifact: {target}")
-    atomic_write_json(target, payload)
+    atomic_write_new_json(path, payload, artifact_kind="horizon artifact")
 
 
 def _require_evidence(path: str | Path, schema: str, spec: HorizonSpec, state: Mapping[str, Any], data: HorizonData, expected: Mapping[str, str]) -> dict[str, Any]:
