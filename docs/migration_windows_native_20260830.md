@@ -107,3 +107,29 @@ WSL 工作区。
 `.pytest_cache` 已先移入 `D:\codex-original-acl-quarantine-20260830\.pytest_cache` 后
 重新生成；它们不进入项目主目录或当前 Sources 来源。默认不上传内部 manifest、原始
 transcript、全部历史摘要、`.codex` 数据、outputs 或临时文件。
+
+## WSL 历史 outputs 恢复（2026-08-31）
+
+用户要求将原 WSL 项目的历史 outputs 重新显示在当前 Windows 项目中。本次使用
+`D:\codex-original\outputs\_wsl_restore_metadata_v4\restore-plan.json`，先完成
+`archive_0001`、`archive_0011`、`archive_0158`、`archive_0002` 四个 canary，再按断点完成其余
+归档。最终结果为 163/163 个归档、33117 个历史文件、240556414616 个源字节；完整 verify
+通过，D: 可用空间约 40.57 GB。
+
+恢复仅补入缺失的历史路径并对 28 个重叠文件逐字节校验；相同文件保留现有 Windows 文件，
+不同内容会 fail-closed，实际未发生覆盖。Linux 无法在 NTFS 中直接表达的 32 个尾随点路径和
+14 个超长路径已确定性映射，原始 Linux 路径与 Windows 路径记录在
+`outputs\_wsl_restore_metadata_v4\path-map.jsonl`。原始 163 个 tar、index、manifest 和旧
+Codex/WSL 归档均未修改。
+
+恢复工具 `scripts/maintenance/restore_wsl_outputs.py` 的 9 项定向测试、compileall、Ruff、
+v2 CLI 和正确 Windows CUDA/PATH 条件下的完整 pytest 均通过：`1055 passed, 12 deselected,
+25 subtests passed`。历史 marker 通道在可写临时目录下为 5 通过、4 失败；失败原因是历史 JSON
+保留 WSL checkpoint 绝对路径，和 Windows 当前解析路径不一致。该历史证据保持原样，未将其
+转换为当前科研结论，也未修改模型、训练代码或公共 API。
+
+恢复后 `D:\codex-original\outputs` 是“当前 Windows 结果 + 历史 outputs”的可见目录；原始 tar
+仍是不可变恢复点。权威 v4 恢复状态和路径映射仍在项目 metadata 目录；旧 v1–v3 元数据与
+失败 staging 已移动到 `D:\LDM-Archive\codex-original\reports\restore-attempts-20260831`，
+空 staging 根目录已删除。三个 pytest 临时目录因当前身份 ACL 仍未删除，明确视为测试残留，
+不进入 Git；恢复 outputs、归档和历史证据也未进入 Git。

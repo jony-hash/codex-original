@@ -183,3 +183,28 @@ learned 分布的 Gaussian/numerical KL、complex/power rank gates 均失败，�
 动作是 `manual_review_scaled_chen_distributed_bottleneck_closeout_contract`，不得继续训练、
 FMF、prior-only generation 或 formal promotion。历史 SMF attempt-02 的 preflight/training
 文件不存在，已作为显式零哈希背景保留；未伪造恢复。云端 Sources snapshot 仍落后，本轮未刷新。
+
+## WSL 历史 outputs 可见性恢复（2026-08-31）
+
+按已批准的恢复边界，历史 outputs 已从只读归档安全恢复到当前 Windows 工作区
+`D:\codex-original\outputs`。原始归档仍保存在
+`D:\LDM-Archive\codex-original\outputs`，未被修改；当前树同时保留 Windows 迁移后的
+`20260830_v2`、`20260831_v2`、`migration_smoke` 和现有正式 checkpoint。
+
+恢复验收使用 `restore-plan.json` v4：163/163 个归档完成，恢复源文件条目
+`33117/33117`，源字节数 `240556414616/240556414616`，路径映射 46 项。32 项 Linux
+尾随点目录映射为 `.__linux_trailing_dot__`，14 项超长路径按确定性哈希缩短；完整映射位于
+`outputs\_wsl_restore_metadata_v4\path-map.jsonl`。四个 canary 归档先通过，28 个与当前
+Windows 输出重叠的文件均逐字节一致后保留现有文件，未覆盖当前结果或 checkpoint。
+
+恢复工具定向测试为 `9 passed`；compileall、Ruff、v2 CLI 和正确 Windows CUDA/PATH 条件下
+的默认回归均通过：`1055 passed, 12 deselected, 25 subtests passed`。历史通道在可写临时
+目录下为 `5 passed, 4 failed`；失败项只反映历史 JSON 内嵌的 WSL checkpoint 绝对路径与当前
+Windows 路径绑定不一致，未改写历史证据，也不影响默认回归。D 盘恢复完成后可用约
+`40.57 GB`，仍高于 10 GiB 安全下限。
+
+恢复状态、计划和路径映射是本次操作的审计材料；旧失败尝试的三个元数据目录和 staging
+已移动到 `D:\LDM-Archive\codex-original\reports\restore-attempts-20260831`，原 staging
+根目录已确认为空并删除。三个本轮 pytest 临时目录仍因当前 Windows 身份的 ACL 无法删除，
+不属于项目数据，待具备相应权限时按精确路径清理。Git 不提交 outputs 恢复文件、归档或
+临时材料；本次新增恢复工具和测试按用户现有工作树状态保留，尚未提交或推送。
