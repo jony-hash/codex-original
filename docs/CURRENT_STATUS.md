@@ -207,4 +207,4 @@ Windows 路径绑定不一致，未改写历史证据，也不影响默认回归
 已移动到 `D:\LDM-Archive\codex-original\reports\restore-attempts-20260831`，原 staging
 根目录已确认为空并删除。三个本轮 pytest 临时目录仍因当前 Windows 身份的 ACL 无法删除，
 不属于项目数据，待具备相应权限时按精确路径清理。Git 不提交 outputs 恢复文件、归档或
-临时材料；本次新增恢复工具和测试按用户现有工作树状态保留，尚未提交或推送。
+临时材料；本次新增恢复工具和测试已在 `f61aa7b` 提交，并随当前分支普通推送到 GitHub。
