@@ -12,7 +12,6 @@ import argparse
 import json
 import math
 import os
-import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -144,11 +143,7 @@ def _resolve(value: str | Path, *, base_path: Path | None = None) -> Path:
 
 
 def _git_state() -> dict[str, Any]:
-    root = base._repo_root()
-    commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, check=True, capture_output=True, text=True).stdout.strip()
-    branch = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=root, check=True, capture_output=True, text=True).stdout.strip()
-    status = subprocess.run(["git", "status", "--porcelain", "--untracked-files=all"], cwd=root, check=True, capture_output=True, text=True).stdout.splitlines()
-    return {"commit": commit, "branch": branch, "clean": not status, "status": status}
+    return base._git_state()
 
 
 def _require_clean_branch(state: Mapping[str, Any]) -> None:

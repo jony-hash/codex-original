@@ -234,3 +234,22 @@ readiness 与 next action；geometry decomposition 和 manifold compact report �
 `valid_failed`、`training_authorized=false`、`formal_promotion=false`，唯一下一动作仍为
 `manual_review_scaled_chen_distributed_bottleneck_closeout_contract`。用户已有的
 `.pytest-tmp-full-20260831/` 和 `.pytest-tmp-history/` 未修改；本轮专用临时目录已清理。
+
+## Git facts harness 第二轮收敛（2026-08-31）
+
+基于首轮提交 `814c5ef`，将 Scaled-Chen BOGT、geometry attribution 和 manifold readiness
+的 `_git_state()` adapter 收敛到既有 `optical_manifold._git_state()`。本轮没有新增
+`GitFacts` 类型、evidence API、schema 或 policy helper；事实返回仍为 `commit`、`branch`、
+`clean` 和原始 `status` 行，Git 异常继续原样传播，三个路线的 branch/clean 拒绝仍由
+各自本地 policy 执行。horizon 的 BOGT 委托关系和 base helper 未改变。
+
+本轮新增的临时 Git 仓库测试覆盖 clean、tracked/untracked dirty、detached HEAD、三个
+route-local policy 拒绝以及非 Git 目录异常传播。定向测试最终为 `45 passed`；compileall、
+Ruff 和默认完整 pytest 均通过，完整结果为 `1063 passed, 12 deselected, 1 warning,
+25 subtests passed`。warning 仅为当前身份无法写入既有 `.pytest_cache`，不影响测试执行。
+
+本轮未运行 CUDA、训练、科研 audit，也未生成新 evidence；`valid_failed`、
+`training_authorized=false`、`formal_promotion=false` 和唯一下一动作
+`manual_review_scaled_chen_distributed_bottleneck_closeout_contract` 均未改变。当前仍不
+刷新 Sources；用户既有 `.pytest-tmp-full-20260831/` 与 `.pytest-tmp-history/` 保持不动，
+本轮专用临时目录已清理。

@@ -1,16 +1,75 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import pytest
 import torch
 
 from ldm_project.v2.application.research import optical_manifold_smf_bogt as bogt
+from ldm_project.v2.application.research import optical_manifold as base
+from ldm_project.v2.application.research import optical_manifold_smf_bogt_geometry_attribution as geometry
+from ldm_project.v2.application.research import optical_manifold_smf_bogt_manifold_readiness as readiness
 
 
 ROOT = Path(__file__).parents[2]
 CONFIG = ROOT / "configs/research/lightgen_optical_manifold_smf_bogt_v1.yaml"
 REVIEW = ROOT / "configs/research/lightgen_optical_manifold_smf_bogt_review_v1.json"
+
+
+def _git(repo: Path, *args: str) -> None:
+    subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True)
+
+
+def _init_git_repo(tmp_path: Path) -> Path:
+    _git(tmp_path, "init", "-q")
+    _git(tmp_path, "config", "user.email", "unit@example.invalid")
+    _git(tmp_path, "config", "user.name", "Unit Test")
+    tracked = tmp_path / "tracked.py"
+    tracked.write_text("value = 1\n", encoding="utf-8")
+    _git(tmp_path, "add", "tracked.py")
+    _git(tmp_path, "commit", "-qm", "initial")
+    return tracked
+
+
+def test_scaled_chen_git_state_adapters_preserve_shared_facts(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    tracked = _init_git_repo(tmp_path)
+    monkeypatch.setattr(base, "_repo_root", lambda: tmp_path)
+    readers = (base._git_state, bogt._git_state, geometry._git_state, readiness._git_state)
+
+    clean = base._git_state()
+    assert clean["clean"] is True
+    assert clean["status"] == []
+    assert all(reader() == clean for reader in readers[1:])
+
+    tracked.write_text("value = 2\n", encoding="utf-8")
+    (tmp_path / "untracked.py").write_text("value = 3\n", encoding="utf-8")
+    dirty = base._git_state()
+    assert dirty["clean"] is False
+    assert dirty["status"] == [" M tracked.py", "?? untracked.py"]
+    assert all(reader() == dirty for reader in readers[1:])
+
+    _git(tmp_path, "checkout", "--detach", "-q")
+    detached = base._git_state()
+    assert detached["branch"] == "HEAD"
+    assert all(reader() == detached for reader in readers[1:])
+    with pytest.raises(ValueError, match="scaled Chen evidence"):
+        bogt._require_clean_branch(detached)
+    with pytest.raises(ValueError, match="geometry attribution"):
+        geometry._require_clean_branch(detached)
+    with pytest.raises(ValueError, match="manifold readiness audit"):
+        readiness._require_clean_branch(detached)
+
+
+def test_scaled_chen_git_state_adapters_propagate_git_failure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    repo = tmp_path / "not-a-repository"
+    repo.mkdir()
+    monkeypatch.setattr(base, "_repo_root", lambda: repo)
+    monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path))
+    readers = (base._git_state, bogt._git_state, geometry._git_state, readiness._git_state)
+    for reader in readers:
+        with pytest.raises(subprocess.CalledProcessError):
+            reader()
 
 
 def test_scaled_contract_and_review_are_explicit() -> None:
