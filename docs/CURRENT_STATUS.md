@@ -1,12 +1,12 @@
 # 当前项目状态
 
-更新时间：2026-08-31
+更新时间：2026-09-01
 
 ## 当前主工作区
 
 - 主项目：`D:\codex-original`
 - 基线分支：`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`
-- 当前 clean HEAD：`d5fbe5e6efd55076aca7020e0e1cb0f1c7763b19`
+- 当前 clean HEAD（本次 BRAC evidence producer）：`0307119ee7da2ad38905fa7f20066eefd927b5c2`
 - 当前提交包含 Scaled-Chen decoder→CMOS readout attribution 实现；真实 CUDA evidence 绑定该 HEAD。
 - 基线提交：`019b76ef911e0bd16b8d5d4169807323427684af`
 - 当前几何归因实现绑定提交：`6419cc523a8b5dd41cb3d3c2531193890fa1481a`
@@ -288,3 +288,44 @@ Ruff 和默认完整 pytest 均通过，完整结果为 `1063 passed, 12 deselec
 `manual_review_scaled_chen_distributed_bottleneck_closeout_contract` 均未改变。当前仍不
 刷新 Sources；用户既有 `.pytest-tmp-full-20260831/` 与 `.pytest-tmp-history/` 保持不动，
 本轮专用临时目录已清理。
+
+## Scaled-Chen Back-Relay Axial / Conjugate 归因（2026-09-01）
+
+基于实现提交 `0307119ee7da2ad38905fa7f20066eefd927b5c2`，完成了假设
+`H-LOMA-CBOGT-S0-BRAC` 的冻结、无更新 CUDA 审计。它严格先重放 DCM baseline，
+再比较 nominal relay 与 detector-side `±1.1681239556097333e-05 m` 的 axial
+offset；模型、OLS、relay、formal config 和 exposure 均只读，未创建 optimizer、
+未 backward、未调用 evaluator、未采样 prior、未写 checkpoint。
+
+唯一权威目录为
+`outputs/20260901_v2/runs/lightgen_scaled_chen_bogt_back_relay_axial_conjugate_v1_attempt_03/`。
+validation、preflight、audit、report、compact、panel、closeout 的 SHA-256 依次为：
+`568670d5ccd4b151335fc8cc97c9c6cd15d5dd4dfd29d40c41c9fa1ce0e9384d`、
+`15116230c4fdb7e8a59593bc754b24748bfe698837a9ef1a7a7a742ebacaf984`、
+`2800a7c0c61008df0450ae3ef6e4ecc9779d7796ab16b29a7b20611d241815aa`、
+`6749b336127e13b70e89c26f39956e52737d40a58344e902d11a90ccdbce579b`、
+`099c77193f56dfb7c5b048b19025a914469e2d9af534bc5acb88ba40a7c6c785`、
+`8a76e6aaf2df491d83f9cd322a6dffb7597de3fb52bb0fd0fc739a1bbf750ed0`、
+`0dd3c67fcedb67df3da7bb4916723c905aa31e3491305522d222f8cee7d7c124`。
+
+preflight、baseline replay、finite/frozen/resource 和 phase/square-law controls 全部通过，
+审计状态为 `valid_failed`，分类为 `relay_axial_conjugate_not_supported`；
+`aperture_effectively_inactive=true`，`numerical_boundary_not_evaluated=true`。
+step-5000 selection 的 relay retention 为 negative/baseline/positive
+`0.656313/0.657125/0.658047`，paired MSE 为 `0.0620113/0.0620485/0.0621269`。
+相对 baseline 的最大 retention 改善仅 `0.0922` 个百分点，paired MSE 反而恶化约
+`0.1265%`，没有达到预注册的实质改善门，故没有 candidate、没有 confirmation arm。
+confirmation panel 未被错误地升级为因果支持；本次 panel 明确保留为
+`mechanism_evidence_only`。
+
+峰值 CUDA `2588578304` bytes（低于 5 GiB），运行目录约 `195799` bytes，D: 安全余量、
+状态 hash、relay fingerprint 和数据隔离门均通过。该结果不推翻父级
+`relay_propagation_bottleneck_supported`，只说明当前 nominal relay 附近的微小轴向/共轭
+偏移未提供可归因的改善证据。`distributed_bottleneck_supported`、
+`reconstruction_manifold_supported=false`、`generative_manifold_supported=false` 和
+`generation_readiness=not_ready` 均保持不变。
+
+唯一下一动作是 `manual_review_scaled_chen_local_relay_tuning_closeout_contract`；在人工
+审查前不训练、不启动 FMF、不采样 prior、不生成、不 promotion，也不把 axial/conjugate
+诊断结果写成新的 decoder 或 geometry 结论。attempt-01/02 产物按 write-once 规则保留，
+但不作为本次权威证据。

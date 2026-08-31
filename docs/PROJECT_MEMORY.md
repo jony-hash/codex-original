@@ -292,3 +292,36 @@ attempt-03 的 validation/audit/compact/panel SHA-256 分别为
 `349ef59d07ca42c6e5446d7bcbe578110b03af27cbc838d0ebe818be38aaa5da`、
 `6120c7cc1dc4832587bfe6d91b118579fbf097849d6c9d9a3668b1eb3952ce28`。attempt-01/02
 产物保留但不作权威证据；未修改正式 runtime、outputs/final_pt、data/raw 或历史归档。
+
+## H-LOMA-CBOGT-S0-BRAC：Scaled-Chen Back-Relay Axial / Conjugate 归因（2026-09-01）
+
+该 no-update 审计消费父级 DCM 的固定 baseline、同一数据 panel 和同一 Scaled-Chen
+step-5000 checkpoint，真实消费者是项目负责人对“nominal back-relay 附近的轴向/共轭
+偏移是否足以支持局部 relay 调整诊断”的人工决定；拒绝决定是三臂选择门未达到实质
+改善。实现提交为 `0307119ee7da2ad38905fa7f20066eefd927b5c2`，权威目录为
+`outputs/20260901_v2/runs/lightgen_scaled_chen_bogt_back_relay_axial_conjugate_v1_attempt_03/`。
+
+validation/preflight/audit/report/compact/panel/closeout SHA-256 依次为
+`568670d5ccd4b151335fc8cc97c9c6cd15d5dd4dfd29d40c41c9fa1ce0e9384d`、
+`15116230c4fdb7e8a59593bc754b24748bfe698837a9ef1a7a7a742ebacaf984`、
+`2800a7c0c61008df0450ae3ef6e4ecc9779d7796ab16b29a7b20611d241815aa`、
+`6749b336127e13b70e89c26f39956e52737d40a58344e902d11a90ccdbce579b`、
+`099c77193f56dfb7c5b048b19025a914469e2d9af534bc5acb88ba40a7c6c785`、
+`8a76e6aaf2df491d83f9cd322a6dffb7597de3fb52bb0fd0fc739a1bbf750ed0`、
+`0dd3c67fcedb67df3da7bb4916723c905aa31e3491305522d222f8cee7d7c124`。
+
+结果为 `valid_failed` / `relay_axial_conjugate_not_supported`，而不是
+`invalid_harness` 或 `resource_aborted`。negative/baseline/positive relay retention
+分别为 `0.656313/0.657125/0.658047`，paired MSE 分别为
+`0.0620113/0.0620485/0.0621269`；最大 retention 增益只有 `0.0922` 个百分点，
+MSE 方向不支持候选，故 `selected_candidate=null` 且没有 confirmation arm。
+baseline replay 与父级 DCM 一致，phase/square-law、冻结和资源门通过；
+`aperture_effectively_inactive=true`、`numerical_boundary_not_evaluated=true`，
+panel 仅为 `mechanism_evidence_only`。
+
+这不是对父级 relay bottleneck 的反证，而是对“微小轴向/共轭偏移可在当前 nominal relay 附近
+恢复重建”的否决。父级 `relay_propagation_bottleneck_supported`、总体系的
+`distributed_bottleneck_supported`、`reconstruction_manifold_supported=false`、
+`generative_manifold_supported=false` 和 `generation_readiness=not_ready` 均保持不变。
+唯一下一动作是 `manual_review_scaled_chen_local_relay_tuning_closeout_contract`；不授权
+训练、FMF、prior sampling、generation 或 promotion。

@@ -1,4 +1,4 @@
-# 当前主线交接（2026-08-31）
+# 当前主线交接（2026-09-01）
 
 本文件是当前执行状态的稳定入口。架构合同见
 [v2 runtime](../architecture/v2_runtime.md)，研究假设与唯一下一动作见
@@ -938,6 +938,42 @@ evidence 与 checkpoints。实验拆分 SMF LP01 投影容量、既有 FMF M2 ob
 容量、encoder/decoder `2×2` cross-swap，以及 `1×/2×/4×/8×` coupling 梯度剂量；
 不训练、不改 OLS transport、不放宽历史 `+5pp` 门限。审计结果只决定下一个人工
 合同，不自动授权 dose pilot、FMF、生成或 promotion。
+
+## H-LOMA-CBOGT-S0-BRAC：Scaled-Chen Back-Relay Axial / Conjugate 归因 closeout（2026-09-01）
+
+从 clean implementation commit `0307119ee7da2ad38905fa7f20066eefd927b5c2` 完成
+冻结、无更新的 detector-side axial/conjugate boundary audit。执行顺序固定为：先重放
+父级 DCM nominal baseline，再测 `-Δz`、`0`、`+Δz`，其中
+`Δz=1.1681239556097333e-05 m`。权威目录为
+`outputs/20260901_v2/runs/lightgen_scaled_chen_bogt_back_relay_axial_conjugate_v1_attempt_03/`；
+validation/preflight/audit/report/compact/panel/closeout SHA-256 依次为
+`568670d5ccd4b151335fc8cc97c9c6cd15d5dd4dfd29d40c41c9fa1ce0e9384d`、
+`15116230c4fdb7e8a59593bc754b24748bfe698837a9ef1a7a7a742ebacaf984`、
+`2800a7c0c61008df0450ae3ef6e4ecc9779d7796ab16b29a7b20611d241815aa`、
+`6749b336127e13b70e89c26f39956e52737d40a58344e902d11a90ccdbce579b`、
+`099c77193f56dfb7c5b048b19025a914469e2d9af534bc5acb88ba40a7c6c785`、
+`8a76e6aaf2df491d83f9cd322a6dffb7597de3fb52bb0fd0fc739a1bbf750ed0`、
+`0dd3c67fcedb67df3da7bb4916723c905aa31e3491305522d222f8cee7d7c124`。
+
+preflight、baseline replay、finite、frozen state、phase/square-law negative controls、
+CUDA/storage resource gates 全部通过；evaluator calls 为 `0`，无 optimizer、backward、
+prior sampling 或 checkpoint 写入。权威状态为 `valid_failed`，分类为
+`relay_axial_conjugate_not_supported`，并记录 `aperture_effectively_inactive=true`、
+`numerical_boundary_not_evaluated=true`。
+
+selection 上 negative/baseline/positive relay retention 为
+`0.656313/0.657125/0.658047`，paired MSE 为 `0.0620113/0.0620485/0.0621269`；
+最大 retention 改善只有 `0.0922` 个百分点，paired MSE 相对 baseline 恶化约 `0.1265%`，
+所以选择门拒绝所有候选且没有 confirmation arm。该测量只能否决“当前 nominal relay
+附近的微小轴向/共轭偏移已经恢复重建”的解释，不能否定父级
+`relay_propagation_bottleneck_supported`；`mechanism_evidence_only` panel 不升级为
+因果证据。
+
+`distributed_bottleneck_supported`、`reconstruction_manifold_supported=false`、
+`generative_manifold_supported=false`、`generation_readiness=not_ready` 继续有效。唯一
+下一动作是 `manual_review_scaled_chen_local_relay_tuning_closeout_contract`；在项目负责人
+审查前不训练、不启动 FMF、不采样 prior、不生成、不 promotion。attempt-01/02 仍保留，
+但已明确标为非权威历史产物。
 
 ## H-LOMA-CBOGT-S0-MRA：Scaled-Chen Manifold Readiness Audit closeout（2026-08-31）
 

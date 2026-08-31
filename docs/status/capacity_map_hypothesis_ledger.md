@@ -1129,3 +1129,37 @@ capacity-limited。`reconstruction_manifold_supported=false` 且
 唯一下一动作：`manual_review_scaled_chen_distributed_bottleneck_closeout_contract`。
 历史 SMF preflight/training 缺失文件保留零哈希背景记录；不借用其他路线 prior，
 不把诊断结果写成 generation 或 formal promotion。
+
+## H-LOMA-CBOGT-S0-BRAC：Back-Relay Axial / Conjugate 归因（2026-09-01）
+
+本假设的消费者是项目负责人对 nominal back-relay 附近局部 axial/conjugate 调整是否值得
+另立诊断合同的决定；拒绝决定是预注册的三臂选择门未达到实质改善。它从实现提交
+`0307119ee7da2ad38905fa7f20066eefd927b5c2` 运行冻结、无更新 CUDA 测量，先重放父级
+DCM baseline，再比较 detector-side `-Δz/0/+Δz`，`Δz=1.1681239556097333e-05 m`。
+formal relay、OLS、checkpoint、数据 panel、exposure 和模型状态均未修改。
+
+权威 attempt-03 位于
+`outputs/20260901_v2/runs/lightgen_scaled_chen_bogt_back_relay_axial_conjugate_v1_attempt_03/`。
+validation/preflight/audit/report/compact/panel/closeout SHA-256 依次为
+`568670d5ccd4b151335fc8cc97c9c6cd15d5dd4dfd29d40c41c9fa1ce0e9384d`、
+`15116230c4fdb7e8a59593bc754b24748bfe698837a9ef1a7a7a742ebacaf984`、
+`2800a7c0c61008df0450ae3ef6e4ecc9779d7796ab16b29a7b20611d241815aa`、
+`6749b336127e13b70e89c26f39956e52737d40a58344e902d11a90ccdbce579b`、
+`099c77193f56dfb7c5b048b19025a914469e2d9af534bc5acb88ba40a7c6c785`、
+`8a76e6aaf2df491d83f9cd322a6dffb7597de3fb52bb0fd0fc739a1bbf750ed0`、
+`0dd3c67fcedb67df3da7bb4916723c905aa31e3491305522d222f8cee7d7c124`。
+
+全部 harness、negative controls 和资源门通过，状态为 `valid_failed`，分类为
+`relay_axial_conjugate_not_supported`；`aperture_effectively_inactive=true`，
+`numerical_boundary_not_evaluated=true`。selection 的 relay retention
+negative/baseline/positive 为 `0.656313/0.657125/0.658047`，paired MSE 为
+`0.0620113/0.0620485/0.0621269`。相对 baseline 的最大 retention 增益仅 `0.0922` 个
+百分点，MSE 反向恶化约 `0.1265%`，故 `selected_candidate=null`，confirmation 不运行。
+baseline replay 与 DCM 一致；panel 仅作 `mechanism_evidence_only`，不能形成新的 relay
+因果结论。
+
+该结果不改变父级 `relay_propagation_bottleneck_supported` 或总体系
+`distributed_bottleneck_supported`，也不改变 `reconstruction_manifold_supported=false`、
+`generative_manifold_supported=false`、`generation_readiness=not_ready`。唯一下一动作是
+`manual_review_scaled_chen_local_relay_tuning_closeout_contract`；不允许训练、FMF、prior
+sampling、generation 或 promotion。attempt-01/02 仅作为保留的非权威历史产物。
