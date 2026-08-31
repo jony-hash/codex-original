@@ -6,8 +6,10 @@
 
 - 主项目：`D:\codex-original`
 - 基线分支：`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`
-- 当前 clean HEAD（本次 BRAC evidence producer）：`0307119ee7da2ad38905fa7f20066eefd927b5c2`
-- 当前提交包含 Scaled-Chen decoder→CMOS readout attribution 实现；真实 CUDA evidence 绑定该 HEAD。
+- 当前 clean HEAD（本次状态更新提交；BOSA evidence producer）：见本次 Git 提交；BOSA
+  evidence 绑定实现提交 `8ece7fb6f0eb8208e4b50ada87bbfaaf981d648b`。
+- 当前提交包含 Scaled-Chen backend observable-subspace attribution 实现；真实 CUDA
+  evidence 绑定上述实现提交，状态文档随后在独立提交中更新。
 - 基线提交：`019b76ef911e0bd16b8d5d4169807323427684af`
 - 当前几何归因实现绑定提交：`6419cc523a8b5dd41cb3d3c2531193890fa1481a`
 - 注销前审计提交：`75d0584c379b145b0f0eb45ece14fda160741f23`（已按用户确认推送）
@@ -329,3 +331,42 @@ confirmation panel 未被错误地升级为因果支持；本次 panel 明确保
 审查前不训练、不启动 FMF、不采样 prior、不生成、不 promotion，也不把 axial/conjugate
 诊断结果写成新的 decoder 或 geometry 结论。attempt-01/02 产物按 write-once 规则保留，
 但不作为本次权威证据。
+
+## Scaled-Chen Backend Observable Subspace Attribution（2026-09-01）
+
+假设 `H-LOMA-CBOGT-S1-BOSA` 在实现提交
+`8ece7fb6f0eb8208e4b50ada87bbfaaf981d648b` 上完成了冻结、无更新的 backend
+observable-subspace 审计。它固定 Identity step-5500 与 Scaled-Chen step-5000，复用
+MRA/DCM 的 selection panel、native replay 和四格 representation/backend 设计：
+`I→I`、`I→S`、`S→I`、`S→S`。没有重新运行 OLS、没有交换/重采样/归一化，也没有创建
+optimizer、调用 evaluator、反传、采样 prior 或写 checkpoint。
+
+权威目录为
+`outputs/20260901_v2/runs/lightgen_scaled_chen_backend_observable_subspace_v1_attempt_05/`；
+`validation.json`、`audit.json`、`compact_report.json`、`panel.pt` 的 SHA-256 分别为
+`105606ac5886c2374d09d49443faa878f130811181f68ccd758d239e64f4a7d7`、
+`1131860efc1500c4807d773eed6e75e49737972eff05e46bbbefea9e9e993baf`、
+`67fbf72f2d7775d87f9c415babadc60f3794e4e3eb251a8ccdda0df1ff2ec6be`、
+`a11a3c356ce7146bd0f491bc29c87f4219f65131e62af08595d27dae7eb08fc7`。attempt-01--04
+按 write-once 规则保留，但不参与结论。
+
+结果为 `valid_failed`，分类为
+`backend_observable_subspace_mismatch_not_supported`，唯一允许的下一动作是
+`manual_review_high_fidelity_relay_numerical_reference_contract`。selection 预注册门只在
+representation contrast 上失败：`R_prop` 为 `I→I=0.9912`、`I→S=0.3256`、
+`S→I=1.0086`、`S→S=0.6571`；Identity 相对 Scaled-Chen 的传播差为
+`-0.01736/-0.33149`，方向与要求的稳定 Identity 优势相反；detector-side 差为
+`+0.11389/+0.11386`，但不能替代四个 representation gap。两 backend 的功率差均低于
+`5%` confound 门（约 `5.5×10⁻⁵` 与 `0`），native replay、平方律/相位控制、finite、
+冻结状态和资源门全部通过。由于 selection gate 失败，confirmation 没有执行；不能把
+该结果写成 backend mismatch 的支持性因果结论。
+
+该结果不改变 parent `distributed_bottleneck_supported`、DCM 的
+`relay_propagation_bottleneck_supported`、`reconstruction_manifold_supported=false`、
+`generative_manifold_supported=false` 或 `generation_readiness=not_ready`。结合
+geometry `geometry_not_supported`、BRAC `aperture_effectively_inactive` 与
+`relay_axial_conjugate_not_supported`，当前本地 Scaled-Chen v1 relay 微调族登记为
+`scaled_chen_v1_local_relay_tuning_family=closed_no_local_correction_supported`；这不
+关闭高保真数值 relay reference 或架构重设计，也不授权训练、FMF、prior sampling、
+generation 或 promotion。CUDA 峰值为 `2575680000` bytes，输出约 `176147` bytes，
+均在资源合同内。

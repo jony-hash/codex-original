@@ -975,6 +975,43 @@ selection 上 negative/baseline/positive relay retention 为
 审查前不训练、不启动 FMF、不采样 prior、不生成、不 promotion。attempt-01/02 仍保留，
 但已明确标为非权威历史产物。
 
+## H-LOMA-CBOGT-S1-BOSA：Scaled-Chen Backend Observable Subspace Attribution（2026-09-01）
+
+在实现提交 `8ece7fb6f0eb8208e4b50ada87bbfaaf981d648b` 上完成冻结、无更新的 backend
+observable-subspace 审计。固定 Identity step-5500 与 Scaled-Chen step-5000，复用 MRA/DCM
+selection panel、native replay 和四格 representation/backend 组合 `I→I`、`I→S`、
+`S→I`、`S→S`；不重新运行 OLS，不交换、重采样或归一化，不创建 optimizer、不调用
+evaluator、不反传、不采样 prior、不写 checkpoint。
+
+权威 attempt-05 位于
+`outputs/20260901_v2/runs/lightgen_scaled_chen_backend_observable_subspace_v1_attempt_05/`。
+validation、audit、compact、panel SHA-256 分别为
+`105606ac5886c2374d09d49443faa878f130811181f68ccd758d239e64f4a7d7`、
+`1131860efc1500c4807d773eed6e75e49737972eff05e46bbbefea9e9e993baf`、
+`67fbf72f2d7775d87f9c415babadc60f3794e4e3eb251a8ccdda0df1ff2ec6be`、
+`a11a3c356ce7146bd0f491bc29c87f4219f65131e62af08595d27dae7eb08fc7`。attempt-01--04
+仅作为保留的非权威历史产物。
+
+结果为 `valid_failed` / `backend_observable_subspace_mismatch_not_supported`。selection
+科学门在 representation contrast 上失败：`R_prop` 为 `I→I=0.9912`、`I→S=0.3256`、
+`S→I=1.0086`、`S→S=0.6571`；Identity 相对 Scaled-Chen 的传播差为
+`-0.01736/-0.33149`，方向与要求的稳定 Identity 优势相反。detector-side 差为
+`+0.11389/+0.11386`，但不能替代四格 representation gate；功率 confound gap 仅
+`5.5×10⁻⁵/0`。native replay、平方律/相位控制、finite、冻结状态、lineage 和资源门均
+通过，因此这是有效科学失败而非 harness/resource failure。按合同 confirmation 未执行，
+不能将该结果升级为 backend mismatch 的支持性因果结论。
+
+该结果不改变 parent `distributed_bottleneck_supported` 或 DCM 的
+`relay_propagation_bottleneck_supported`，也不改变
+`reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、
+`generation_readiness=not_ready`。结合 geometry `geometry_not_supported`、BRAC
+`aperture_effectively_inactive` 和 `relay_axial_conjugate_not_supported`，当前本地
+Scaled-Chen v1 relay 微调族关闭为
+`scaled_chen_v1_local_relay_tuning_family=closed_no_local_correction_supported`；
+高保真数值 relay boundary 仍未评估。唯一下一动作为
+`manual_review_high_fidelity_relay_numerical_reference_contract`，不授权训练、FMF、prior
+sampling、generation 或 promotion。
+
 ## H-LOMA-CBOGT-S0-MRA：Scaled-Chen Manifold Readiness Audit closeout（2026-08-31）
 
 从实现提交 `a041187a6ff6292f2be6602871cfd6d35ca172c` 的干净证据运行

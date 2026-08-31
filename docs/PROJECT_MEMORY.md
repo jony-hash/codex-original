@@ -1,6 +1,6 @@
 # codex-original 项目记忆
 
-更新时间：2026-08-31
+更新时间：2026-09-01
 
 ## 目的与事实优先级
 
@@ -45,11 +45,13 @@ ChatGPT Sources 包中的文件是由维护工具生成的受控副本。副本�
 - prior-native、direct-generator、quadrature、fiber、FMF 长训练和 formal promotion
   等已关闭或未授权路线不能因为 ChatGPT 的讨论而重新打开。
 - 所有科研执行仍需遵守 `AGENTS.md` 的 long-training gate；记忆文件本身不提供训练授权。
-- 当前最新有效科研结果是 Scaled-Chen decoder→CMOS 可观测性归因的
-  `relay_propagation_bottleneck_supported` / `valid_failed`。唯一允许的下一动作是
-  `manual_review_scaled_chen_bounded_back_relay_geometry_diagnostic_contract`；在项目负责人
-  新合同前不得进入 FMF、继续训练、exposure retuning、生成或 promotion。若交接文档更新，
-  以最新的 `CURRENT_STATUS.md`、`status/current_handoff.md` 和 hypothesis ledger 为准。
+- 当前最新有效科研结果是 Scaled-Chen backend observable-subspace 归因的
+  `backend_observable_subspace_mismatch_not_supported` / `valid_failed`。唯一允许的下一
+  动作是 `manual_review_high_fidelity_relay_numerical_reference_contract`；在项目负责人
+  新合同前不得进入 FMF、继续训练、exposure retuning、生成或 promotion。结合 geometry、
+  BRAC 与 BOSA，`scaled_chen_v1_local_relay_tuning_family=closed_no_local_correction_supported`；
+  这不等同于高保真数值 reference 或架构重设计已关闭。若交接文档更新，以最新的
+  `CURRENT_STATUS.md`、`status/current_handoff.md` 和 hypothesis ledger 为准。
 - 本次工作流治理允许的实现动作是维护记忆入口、项目文档和环境入口；不修改训练代码、
   `outputs`、WSL、SQLite 或历史 transcript。只有用户明确需要离线上传时，才生成并验证
   受控 Sources 包。
@@ -325,3 +327,36 @@ panel 仅为 `mechanism_evidence_only`。
 `generative_manifold_supported=false` 和 `generation_readiness=not_ready` 均保持不变。
 唯一下一动作是 `manual_review_scaled_chen_local_relay_tuning_closeout_contract`；不授权
 训练、FMF、prior sampling、generation 或 promotion。
+
+## H-LOMA-CBOGT-S1-BOSA：Scaled-Chen Backend Observable Subspace Attribution（2026-09-01）
+
+该 no-update 审计消费 MRA/DCM 的固定 Identity step-5500、Scaled-Chen step-5000、同一
+selection panel、native replay 和四格 representation/backend 设计（`I→I`、`I→S`、
+`S→I`、`S→S`）。实现提交为 `8ece7fb6f0eb8208e4b50ada87bbfaaf981d648b`，权威运行目录为
+`outputs/20260901_v2/runs/lightgen_scaled_chen_backend_observable_subspace_v1_attempt_05/`。
+
+validation/audit/compact/panel SHA-256 分别为
+`105606ac5886c2374d09d49443faa878f130811181f68ccd758d239e64f4a7d7`、
+`1131860efc1500c4807d773eed6e75e49737972eff05e46bbbefea9e9e993baf`、
+`67fbf72f2d7775d87f9c415babadc60f3794e4e3eb251a8ccdda0df1ff2ec6be`、
+`a11a3c356ce7146bd0f491bc29c87f4219f65131e62af08595d27dae7eb08fc7`。harness、native
+replay、平方律/相位 negative controls、冻结状态和资源门通过；`optimizer_created=false`、
+`evaluator_calls=0`、`training_authorized=false`、`formal_promotion=false`。
+
+selection 的预注册科学门失败，原因是 representation contrast 的方向和实质差未同时
+达到要求，而不是功率混淆或 harness 失败。`R_prop` 为 `I→I=0.9912`、`I→S=0.3256`、
+`S→I=1.0086`、`S→S=0.6571`；Identity 相对 Scaled-Chen 的传播差为
+`-0.01736/-0.33149`，与预注册的稳定 Identity 优势相反；detector-side 差虽为
+`+0.11389/+0.11386`，但不足以替代 representation gate。功率 confound gap 仅
+`5.5×10⁻⁵/0`。因此状态为 `valid_failed`、分类为
+`backend_observable_subspace_mismatch_not_supported`，confirmation 按合同未执行，不能
+形成 backend mismatch 支持性因果结论。
+
+该结果保持 parent `distributed_bottleneck_supported`、DCM 的
+`relay_propagation_bottleneck_supported`、`reconstruction_manifold_supported=false`、
+`generative_manifold_supported=false` 与 `generation_readiness=not_ready`。结合前级
+geometry/BRAC 结果，当前本地 relay 微调族关闭为
+`scaled_chen_v1_local_relay_tuning_family=closed_no_local_correction_supported`；数值
+boundary 仍未评估，故唯一下一动作是
+`manual_review_high_fidelity_relay_numerical_reference_contract`。不授权训练、FMF、prior
+sampling、generation 或 promotion。
