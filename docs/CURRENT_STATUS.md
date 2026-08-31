@@ -6,6 +6,8 @@
 
 - 主项目：`D:\codex-original`
 - 基线分支：`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`
+- 当前 clean HEAD：`d5fbe5e6efd55076aca7020e0e1cb0f1c7763b19`
+- 当前提交包含 Scaled-Chen decoder→CMOS readout attribution 实现；真实 CUDA evidence 绑定该 HEAD。
 - 基线提交：`019b76ef911e0bd16b8d5d4169807323427684af`
 - 当前几何归因实现绑定提交：`6419cc523a8b5dd41cb3d3c2531193890fa1481a`
 - 注销前审计提交：`75d0584c379b145b0f0eb45ece14fda160741f23`（已按用户确认推送）
@@ -183,6 +185,39 @@ learned 分布的 Gaussian/numerical KL、complex/power rank gates 均失败，�
 动作是 `manual_review_scaled_chen_distributed_bottleneck_closeout_contract`，不得继续训练、
 FMF、prior-only generation 或 formal promotion。历史 SMF attempt-02 的 preflight/training
 文件不存在，已作为显式零哈希背景保留；未伪造恢复。云端 Sources snapshot 仍落后，本轮未刷新。
+
+## Scaled-Chen Decoder→CMOS 可观测性归因（2026-08-31）
+
+假设 `H-LOMA-CBOGT-S0-DCM-OBS` 在实现提交
+`d5fbe5e6efd55076aca7020e0e1cb0f1c7763b19` 的 clean HEAD 上完成了冻结、无更新的
+三平面回放。它把旧 MRA 的 `decoder_layer_2→CMOS` 拆为真实的
+`decoder_layer_2 complex field→CMOS incident complex field→CMOS intensity`，
+继续消费同一 1000 张 selection 与 5000 张 confirmation，不修改 formal v2、OLS、
+checkpoint 或训练目标。
+
+唯一权威运行目录为
+`outputs/20260901_v2/runs/lightgen_scaled_chen_decoder_cmos_attribution_v1_attempt_03/`。
+attempt-01/02 的验证或失败运行产物按 write-once 规则保留，但不参与本结论。attempt-03
+的 `validation.json`、`audit.json`、`compact_report.json`、`panel.pt` SHA-256 依次为：
+`89ece3debd73fa3b7738b7604cafb1d1e52085562d0c70c15563a8d8c39691a7`、
+`16975f7f26db13100af134fad70e510a1978093b88c619bc6c3a3e08c067ed68`、
+`349ef59d07ca42c6e5446d7bcbe578110b03af27cbc838d0ebe818be38aaa5da`、
+`6120c7cc1dc4832587bfe6d91b118579fbf097849d6c9d9a3668b1eb3952ce28`。
+
+结果为 `valid_failed`（harness 完整、归因科学门形成有效结果），分类为
+`relay_propagation_bottleneck_supported`。decoder L2→incident retention 为
+selection `0.6571`、confirmation `0.6031`；incident→intensity 为
+`0.8868/0.9735`，相对损失差 `0.3000`，因此只有 back-relay 段获得单点支持。
+最大唯一 discontinuity 也是 decoder L2→incident；CMOS 强度严格由 `|E|²` 产生，
+全局相位和逐像素相位不变性控制通过（最大误差 `<7.2×10⁻⁷`）。模型/OLS 状态
+前后 hash 一致，`optimizer_created=false`、`evaluator_calls=0`，峰值 CUDA
+`2589355520` bytes（上限 5 GiB）。
+
+该结果不推翻已有 `distributed_bottleneck_supported`，也不把 decoder Jacobian rank=100
+改写为 decoder capacity 结论；它只把旧断点中的 relay 可观测性单独定位出来。
+`generation_readiness` 继续为 `not_ready`，`generative_manifold_supported=false`，
+不授权生成、FMF、训练或 promotion。唯一下一动作是
+`manual_review_scaled_chen_bounded_back_relay_geometry_diagnostic_contract`。
 
 ## WSL 历史 outputs 可见性恢复（2026-08-31）
 

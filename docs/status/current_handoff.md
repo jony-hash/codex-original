@@ -1,4 +1,4 @@
-# 当前主线交接（2026-08-26）
+# 当前主线交接（2026-08-31）
 
 本文件是当前执行状态的稳定入口。架构合同见
 [v2 runtime](../architecture/v2_runtime.md)，研究假设与唯一下一动作见
@@ -965,6 +965,36 @@ parent prior 已注册但 `generation_prior_not_accessible`：KL improvement、r
 `manual_review_scaled_chen_distributed_bottleneck_closeout_contract`；不启动训练、FMF、
 prior-only generation、canary 或 promotion。旧 SMF background 缺失文件以零哈希明确记录，
 未以其他路线 prior 或不匹配历史 Jacobian 替代。
+
+## H-LOMA-CBOGT-S0-DCM-OBS：Scaled-Chen Decoder→CMOS 可观测性归因 closeout（2026-08-31）
+
+在实现提交 `d5fbe5e6efd55076aca7020e0e1cb0f1c7763b19` 的 clean HEAD 上，完成了冻结、
+无更新的 readout attribution。该审计只消费 MRA 已注册的 Identity step-5500、Scaled-Chen
+step-0/1000/5000、1000 张 selection 和 5000 张 confirmation，将旧的
+`decoder_layer_2→CMOS` 拆成 decoder L2 复场、formal back-relay 后 CMOS incident 复场、
+以及 detector `|E|²` 强度三个真实平面。
+
+权威运行目录为
+`outputs/20260901_v2/runs/lightgen_scaled_chen_decoder_cmos_attribution_v1_attempt_03/`。
+validation、audit、compact、panel SHA-256 分别为
+`89ece3debd73fa3b7738b7604cafb1d1e52085562d0c70c15563a8d8c39691a7`、
+`16975f7f26db13100af134fad70e510a1978093b88c619bc6c3a3e08c067ed68`、
+`349ef59d07ca42c6e5446d7bcbe578110b03af27cbc838d0ebe818be38aaa5da`、
+`6120c7cc1dc4832587bfe6d91b118579fbf097849d6c9d9a3668b1eb3952ce28`。attempt-01/02
+按 write-once 规则保留但不参与结论。
+
+结果为 `valid_failed`（harness 完整），分类为
+`relay_propagation_bottleneck_supported`。decoder L2→incident retention 为
+`0.6571/0.6031`（selection/confirmation），incident→intensity 为 `0.8868/0.9735`，
+两段平均损失差 `0.3000`，最大唯一 discontinuity 是 back-relay。平方律、全局/逐像素
+相位不变性、finite、冻结、状态 hash、negative control、CUDA/存储资源门均通过；峰值
+CUDA `2589355520` bytes，`optimizer_created=false`、`evaluator_calls=0`。
+
+这只细化 MRA 已有的 `distributed_bottleneck_supported`，不把 decoder Jacobian rank=100
+改写为 decoder capacity 结论。`reconstruction_manifold_supported=false`、
+`generative_manifold_supported=false`、`generation_readiness=not_ready` 均保持不变。
+唯一下一动作是 `manual_review_scaled_chen_bounded_back_relay_geometry_diagnostic_contract`；
+该动作也不授权训练、FMF、prior sampling、generation canary 或 promotion。
 
 ## H-LOMA-CBOGT-S0-GEOM-RM：Scaled-Chen 秩匹配 OLS 几何归因 closeout（2026-08-30）
 

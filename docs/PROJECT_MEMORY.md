@@ -45,10 +45,10 @@ ChatGPT Sources 包中的文件是由维护工具生成的受控副本。副本�
 - prior-native、direct-generator、quadrature、fiber、FMF 长训练和 formal promotion
   等已关闭或未授权路线不能因为 ChatGPT 的讨论而重新打开。
 - 所有科研执行仍需遵守 `AGENTS.md` 的 long-training gate；记忆文件本身不提供训练授权。
-- 当前最新有效科研结果是 Scaled-Chen 秩匹配 OLS 几何归因的
-  `geometry_not_supported` / `valid_failed`。唯一允许的下一动作是
-  `manual_review_scaled_chen_distributed_bottleneck_closeout_contract`；在新的项目负责人
-  合同前不得进入 FMF、继续训练、exposure retuning、生成或 promotion。若交接文档更新，
+- 当前最新有效科研结果是 Scaled-Chen decoder→CMOS 可观测性归因的
+  `relay_propagation_bottleneck_supported` / `valid_failed`。唯一允许的下一动作是
+  `manual_review_scaled_chen_bounded_back_relay_geometry_diagnostic_contract`；在项目负责人
+  新合同前不得进入 FMF、继续训练、exposure retuning、生成或 promotion。若交接文档更新，
   以最新的 `CURRENT_STATUS.md`、`status/current_handoff.md` 和 hypothesis ledger 为准。
 - 本次工作流治理允许的实现动作是维护记忆入口、项目文档和环境入口；不修改训练代码、
   `outputs`、WSL、SQLite 或历史 transcript。只有用户明确需要离线上传时，才生成并验证
@@ -263,3 +263,32 @@ decoder/CMOS、rank、retrieval、cross-swap、Jacobian、重建和同路线 pri
 `842f5cfd41909a666f19f3c88e7e7199a825b255bd111a44953e53351fd28724`。历史 SMF
 background 缺失的 preflight/training 文件保持零哈希记录；未借用其他路线 prior，未刷新
 云端 Sources。
+
+## H-LOMA-CBOGT-S0-DCM-OBS：Scaled-Chen Decoder→CMOS 可观测性归因（2026-08-31）
+
+该 no-update 审计消费同一 MRA 的 Identity step-5500、Scaled-Chen step-0/1000/5000、
+1000 张 selection 和 5000 张 confirmation，将旧的 decoder_layer_2→CMOS 段拆成
+`decoder_layer_2 complex field→CMOS incident complex field→CMOS intensity`。实现提交为
+`d5fbe5e6efd55076aca7020e0e1cb0f1c7763b19`；唯一权威运行目录为
+`outputs/20260901_v2/runs/lightgen_scaled_chen_decoder_cmos_attribution_v1_attempt_03/`。
+
+结论只记录四项：
+
+1. `relay_propagation_bottleneck_supported`：decoder L2→incident retention 为
+   selection `0.6571`、confirmation `0.6031`；incident→intensity 为 `0.8868/0.9735`，
+   两段损失差 `0.3000`，最大唯一断点是 back-relay。
+2. CMOS 强度确实是 incident 复场的 `|E|²`；全局相位与逐像素相位不变性控制通过，
+   因而没有把 detector 平方律误当成可训练容量。模型/OLS 状态 hash 前后相同，峰值
+   CUDA `2589355520` bytes，`optimizer_created=false`、`evaluator_calls=0`。
+3. 该结果仅细化 MRA 的 `distributed_bottleneck_supported`，不改写 decoder Jacobian
+   rank=100、`reconstruction_manifold_supported=false` 或 `generative_manifold_supported=false`。
+4. `generation_readiness` 仍为 `not_ready`。唯一下一动作是
+   `manual_review_scaled_chen_bounded_back_relay_geometry_diagnostic_contract`；不授权
+   back-relay 之外的训练、FMF、prior sampling、generation canary 或 promotion。
+
+attempt-03 的 validation/audit/compact/panel SHA-256 分别为
+`89ece3debd73fa3b7738b7604cafb1d1e52085562d0c70c15563a8d8c39691a7`、
+`16975f7f26db13100af134fad70e510a1978093b88c619bc6c3a3e08c067ed68`、
+`349ef59d07ca42c6e5446d7bcbe578110b03af27cbc838d0ebe818be38aaa5da`、
+`6120c7cc1dc4832587bfe6d91b118579fbf097849d6c9d9a3668b1eb3952ce28`。attempt-01/02
+产物保留但不作权威证据；未修改正式 runtime、outputs/final_pt、data/raw 或历史归档。
