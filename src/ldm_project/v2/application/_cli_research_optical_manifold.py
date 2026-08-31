@@ -79,6 +79,14 @@ def dispatch(args: argparse.Namespace) -> int:
     }:
         from .research.optical_manifold_smf_bogt_decoder_cmos_attribution import dispatch
     elif action in {
+        "scaled-chen-back-relay-axial-conjugate-validate",
+        "scaled-chen-back-relay-axial-conjugate-preflight",
+        "scaled-chen-back-relay-axial-conjugate-run",
+        "scaled-chen-back-relay-axial-conjugate-report",
+        "scaled-chen-back-relay-axial-conjugate-closeout",
+    }:
+        from .research.optical_manifold_smf_bogt_back_relay_axial_conjugate import dispatch
+    elif action in {
         "smf-bogt-validate",
         "smf-bogt-preflight",
         "smf-bogt-pilot-train",
