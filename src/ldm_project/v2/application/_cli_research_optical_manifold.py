@@ -74,6 +74,11 @@ def dispatch(args: argparse.Namespace) -> int:
     }:
         from .research.optical_manifold_smf_bogt_manifold_readiness import dispatch
     elif action in {
+        "scaled-chen-decoder-cmos-attribution-validate",
+        "scaled-chen-decoder-cmos-attribution-run",
+    }:
+        from .research.optical_manifold_smf_bogt_decoder_cmos_attribution import dispatch
+    elif action in {
         "smf-bogt-validate",
         "smf-bogt-preflight",
         "smf-bogt-pilot-train",
