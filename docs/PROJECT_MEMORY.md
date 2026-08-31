@@ -123,6 +123,10 @@ ChatGPT 模式负责讨论、规划和总结；Codex 模式负责读取真实工
 代码/文档和运行验证。只有 Codex 在验证后才能写入权威项目记忆；云端 Sources 仅是
 某个 Git HEAD 的只读快照。
 
+交接使用 `MODE=VERIFY|PLAN|IMPLEMENT|REPORT`。`MODE=IMPLEMENT` 表示计划已经批准；
+Codex 只执行一次 bounded preflight，预检后只能执行或返回 `BLOCKED`，不得因发现更多
+背景而重新规划。完整快照集合和发布资格见操作规范。
+
 Sources 工具的活动输出目录为
 `C:\Users\24567\Documents\Codex\codex-original-chatgpt-bridge\current`，
 上传由用户人工完成，不修改 Codex SQLite 或云端项目状态。
@@ -146,7 +150,15 @@ D:\codex-original
 
 ChatGPT → Codex：
 
+固定协议（不必复制到每次任务）：Short Prompt 默认不预填 artifact SHA-256 清单；
+Hash 只在 Gate 的 evidence consumer 要求精确身份时定向核验，不自动选择 latest。
+六个 Sources 文件必须来自同一 `snapshot_id + git_head` 集合。
+
 ```text
+模式：
+- MODE=<VERIFY|PLAN|IMPLEMENT|REPORT>
+- 若为 IMPLEMENT：计划已批准；一次 preflight 后只允许执行或 BLOCKED，不重新规划。
+
 状态增量：
 - 云端基准：
 - 本地核验：
@@ -157,7 +169,7 @@ ChatGPT → Codex：
 One Gate：
 - ID/单一问题：
 - 决策消费者：
-- 精确输入及 producer/lineage：
+- 精确输入及 producer/lineage（Hash 按需核验）：
 - 指标/阈值：
 - 通过或失败后的唯一下一动作：
 
@@ -181,16 +193,31 @@ Codex → ChatGPT：
 ```text
 结果：
 本地增量核验：
+- Hash：<hash_not_required|hash_verified|hash_mismatch|hash_required_missing>
+- 模式/预检：<MODE=...；preflight=passed|blocked>
 Gate 判定与唯一下一动作：
 修改文件：
 验证结果：
 未验证内容与已知风险：
 项目记忆与 Sources 状态：
+- publication_state=<current_clean|current_dirty_planning_only|stale_or_conflicting>
 ```
 
-Short Prompt 目标为 600–1,000 tokens，超过 1,500 tokens 应拆分或说明升级原因；
+Short Prompt 通常为 300–1,000 tokens，不要求为了达到下限填充固定协议；1,000–1,500
+仅在无法用规范引用压缩时允许；超过 1,500 不再称为 Short Prompt，必须拆 Gate 或按
+操作规范升级为 Long Prompt。
 完整 Long Prompt 目标为 1,500–3,000 tokens，超过 4,000 tokens 应引用规范或拆分。
 一个任务只能有一个主 Gate；完整预算和失败映射见上述操作规范。
+未要求 Hash 时反馈 hash_not_required；必需 Hash 缺失或输入有歧义返回 blocked；
+记录 Hash 与实际 artifact 不一致返回
+invalid_harness；不把 Hash 不一致转换为 valid_failed。正式 evidence 和 bridge manifest
+中的 Hash 保持不变。
+
+Sources 发布资格由 bridge 的 `status` 与 manifest 的 `allow_dirty` 联合判断：
+`status=current` 且 `allow_dirty=false` 为 `current_clean`，才允许人工替换云端；
+`status=current` 且 `allow_dirty=true` 为 `current_dirty_planning_only`，只能讨论和检查；
+其余 stale/invalid/missing 或混合集合为 `stale_or_conflicting`。旧副本不调和，不能按
+时间戳自动选择最新文件。
 
 ## 记忆更新规则
 
@@ -198,7 +225,8 @@ Short Prompt 目标为 600–1,000 tokens，超过 1,500 tokens 应拆分或说�
 2. Codex 修改前先读取本文件、`AGENTS.md`、`CURRENT_STATUS.md` 和适用的交接文档。
 3. 只有被 Git、测试、正式 evidence 或明确人工验收支持的事实才能写入“当前”章节。
 4. 记忆或当前状态变化后，先在干净工作树运行 Sources `refresh`，再运行 `status`；
-   只有返回 `current` 的快照才允许人工替换云端项目中的六个 Sources。
+   只有 `refresh_ok`、`status=current` 且 manifest 的 `allow_dirty=false`（即
+   `publication_state=current_clean`）才允许人工替换云端项目中的六个 Sources。
 5. Sources 的内部 manifest 不上传；需要历史细节时只按 Session ID 生成临时摘要，任务
    结束后从云端项目移除。
 6. 旧 WSL 路径、旧项目副本和历史摘要必须显式标为历史，不能伪装成当前状态。

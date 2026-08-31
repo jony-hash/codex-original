@@ -1,6 +1,6 @@
 # ChatGPT ↔ Codex Windows 双项目桥接手册
 
-更新时间：2026-08-30
+更新时间：2026-08-31
 
 本手册描述当前的双项目工作流。它解决“本地 Codex 项目不能直接进行普通 ChatGPT 对话”的
 界面限制，但不把两个项目伪装成实时共享上下文。
@@ -44,39 +44,66 @@ Sources 是某个 Git HEAD 的只读快照，不代表实时访问本机。不�
 规划前先识别 Sources 中的 snapshot_id、git_head 和生成时间。若缺失、过期或互相冲突，
 明确要求刷新 Sources。
 
-需要交给本地 Codex 执行时，始终输出：
-来源快照：
-目标：
-依据文件：
-范围内：
-范围外：
-约束：
-验收标准：
-需要核实的不确定项：
-建议更新的项目记忆：
+六个 Sources 文件必须作为同一个 `snapshot_id + git_head` 的完整集合使用。旧副本、重复
+同名文件或混合快照不进行调和，直接视为历史/无效并要求完整替换；不能按时间戳自动
+选择“最新”副本。
+
+每次交给本地 Codex 的任务必须使用 Delta + One Gate：
+1. 标注 `MODE=VERIFY|PLAN|IMPLEMENT|REPORT`；`MODE=IMPLEMENT` 表示计划已批准，
+   Codex 不得重新规划，只有人工批准的新交接才能进入 `PLAN`。
+2. 先写状态增量，只列最多五项会改变本轮决策的变化。
+3. 只定义一个会改变下一动作的主 Gate，并写明消费者、输入 lineage、
+   允许/禁止动作、阈值、失败语义和唯一下一动作。
+4. 函数位置、当前 HEAD、helper 可用性和实际路径交给本地 Codex 核验，
+   不在提示中重复粘贴可发现事实。
+5. Short Prompt 默认不预填 artifact SHA-256 清单；由 Codex 自动核验
+   branch、HEAD、worktree 和 Git 增量。
+6. 只有当 Gate 的 evidence consumer 要求精确 artifact 身份时，才核验指定
+   Hash；未要求时反馈 hash_not_required，缺失或歧义返回 blocked，不一致返回
+   invalid_harness，不自动选择 latest。
+7. 先标注模式，再使用短提示的五段结构：状态增量、One Gate、执行边界、验收与停止、
+   反馈格式。
+8. Short Prompt 通常为 300–1,000 tokens；超过 1,500 不再称为 Short Prompt，必须拆 Gate，
+   或满足完整规范的升级条件后改用 Long Prompt；Long Prompt 仍只能有一个主 Gate。
+
+完整规范：
+docs/operations/delta_one_gate_short_prompt.md
 ```
 
 所有云端讨论应从该云端项目内部新建聊天；不要使用 Quick chat 作为长期项目记录。
 
 ## ChatGPT 到 Codex
 
-1. 在 `codex-original · ChatGPT` 中讨论问题并形成计划。
-2. ChatGPT 输出带有 `来源快照` 的交接块。
-3. 在 `codex-original · Windows` 中新建 Codex 任务，将交接块作为任务输入。
-4. Codex 读取 `AGENTS.md`、`docs\PROJECT_MEMORY.md`、当前 Git 状态和适用的 scoped 合同。
-5. Codex 先核对交接块中的 `git_head`；不一致时以本地 Git 为准并报告差异。
-6. Codex 实现、测试、审查并更新权威状态文档。
+1. 在 `codex-original · ChatGPT` 中只压缩基准之后的决策相关 Delta；同一对话内快照
+   未变时不重新初始化，快照变化时只读取新快照头和当前 Gate 所需摘要。
+2. 把本轮问题压缩为一个 One Gate，指定真实消费者和唯一下一动作，并标注模式。
+3. 生成 Short Codex Prompt，并将完整细节放在本地规范或明确命名的输入中。
+4. 在 `codex-original · Windows` 中新建 Codex 任务，将短提示作为任务输入。
+5. Codex 读取 `AGENTS.md`、`docs\PROJECT_MEMORY.md`、当前 Git 状态和适用的 scoped 合同，
+   只按 Gate 需要读取状态小节和命名 evidence。
+6. Codex 只执行一次 bounded preflight：核对 branch/HEAD/worktree、Gate 输入 lineage、
+   授权和保护条件；之后只允许执行或返回 `BLOCKED`，不得静默转入重新规划。
+7. Codex 先核对真实 HEAD、branch、dirty scope、lineage 和授权；快照冲突时以本地事实为准。
+   Hash 仅按 Gate consumer 需要定向核验，不自动选择 latest。
+8. Codex 只执行授权范围，运行最小充分验证，并按固定反馈格式返回。
 
 Codex 完成后返回：
 
 ```text
 结果：
+本地增量核验：
+- Hash：<hash_not_required|hash_verified|hash_mismatch|hash_required_missing>
+- 模式/预检：<MODE=...；preflight=passed|blocked>
+Gate 判定与唯一下一动作：
 修改文件：
 验证结果：
-未验证内容：
-已知风险：
-项目记忆更新：
+未验证内容与已知风险：
+项目记忆与 Sources 状态：
+- publication_state=<current_clean|current_dirty_planning_only|stale_or_conflicting>
 ```
+
+短提示、Long Prompt 升级、失败语义和预算规则见
+[Delta + One Gate + Short Codex Prompt](operations/delta_one_gate_short_prompt.md)。
 
 ## Sources 刷新
 
@@ -107,7 +134,9 @@ $bridgeRoot = 'C:\Users\24567\Documents\Codex\codex-original-chatgpt-bridge\curr
   --output-root $bridgeRoot
 ```
 
-只有 `refresh_ok` 和 `status=current` 时才允许上传。默认上传且仅上传：
+只有工作树已按 bridge 合同验证、`refresh_ok`、`status=current` 且 manifest 的
+`allow_dirty=false`（即 `publication_state=current_clean`）时，才允许用户人工上传。
+默认上传且仅上传：
 
 ```text
 PROJECT_MEMORY.md

@@ -51,6 +51,21 @@ Windows 原生项目是当前唯一开发和训练入口。PowerShell 7、Window
   docs/operations/delta_one_gate_short_prompt.md，PROJECT_MEMORY.md 和桥接手册
   只保留短模板与入口。六文件 Sources 合同保持不变；本次治理不改变当前科研 handoff、
   Scaled-Chen 结论、training_authorized=false 或 formal_promotion=false。
+- 默认 Short Prompt 不预填 artifact SHA-256 清单；Codex 自动核验 branch、HEAD、
+  worktree 和 Git 增量，只有 evidence consumer 要求精确身份时才核验指定 Hash。
+  未要求 Hash 时反馈 hash_not_required；必需 Hash 缺失或输入歧义返回 blocked，
+  记录 Hash 不一致返回 invalid_harness；
+  不自动选择 latest；bridge manifest 与正式 evidence 中的 Hash 保持不变。
+- 本轮工作流收紧为 `MODE=VERIFY|PLAN|IMPLEMENT|REPORT`；`MODE=IMPLEMENT` 表示计划已批准。
+  Codex 只执行一次 bounded preflight，预检后只能执行或返回 `BLOCKED`，不得因新增背景
+  静默重新规划；该变化不修改科研 Gate、handoff 或训练授权。
+- 六个 Sources 文件只能作为同一 `snapshot_id + git_head` 的完整集合使用；旧副本、重复
+  同名文件和混合快照不调和，不能按时间戳自动选择“最新”。bridge 的 `status=current`
+  只有在 `allow_dirty=false` 时才是 `publication_state=current_clean`；`allow_dirty=true`
+  仅为 `current_dirty_planning_only`，不可上传；stale/invalid/missing 或无法确认六文件
+  属于同一快照时为 `stale_or_conflicting`，必须先完整替换集合。
+- Short Prompt 预算改为通常 300–1,000 tokens；超过 1,500 时必须拆 Gate，或满足完整规范
+  第 8 节条件后升级为 Long Prompt。固定 Hash、失败分类和 Sources 发布规则不再重复粘贴。
 
 - 当前唯一支持运行环境为 `D:\ANACONDA\envs\optical-generative-models-win`；旧
   `D:\ANACONDA\envs\optical-generative-models`（PyTorch 2.4.1、editable install
