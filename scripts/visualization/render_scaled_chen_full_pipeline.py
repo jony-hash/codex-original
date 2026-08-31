@@ -13,6 +13,7 @@ import argparse
 import json
 import shutil
 import subprocess
+import textwrap
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -97,15 +98,15 @@ DIGIT_CONFIRMATION_INDICES = {
     9: 55007,
 }
 FIBER_STAGE_LABELS = (
-    "Encoder input",
+    "Encoder input\n(complex field)",
     "Encoder L1",
-    "Encoder L2 / fiber input",
+    "Encoder L2 =\nfiber input",
     "LP01 input ports",
     "LP01 output ports",
-    "Fiber output / decoder input",
+    "Fiber output =\ndecoder input",
     "Decoder L1",
     "Decoder L2",
-    "CMOS incident field",
+    "CMOS incident field\n(pre-detection)",
 )
 FIBER_STAGE_KEYS = (
     "encoder_input",
@@ -143,6 +144,91 @@ DISPLAY_ROTATED_KEYS = frozenset(
     }
 )
 CHECKPOINT_STEPS = (0, 1000, 5000)
+
+# These are deliberately explicit because a visualization must not imply a
+# phase measurement where the source is real-valued or the sensor has already
+# performed square-law detection.  The complex incident field immediately
+# upstream of CMOS remains available in the numerical model; the detector
+# readout is intensity-only.
+FIBER_STAGE_AVAILABILITY = {
+    "encoder_input": {
+        "representation": "complex_field",
+        "amplitude_available": True,
+        "phase_available": True,
+    },
+    "encoder_layer_1": {
+        "representation": "complex_field",
+        "amplitude_available": True,
+        "phase_available": True,
+    },
+    "fiber_input": {
+        "representation": "complex_field",
+        "amplitude_available": True,
+        "phase_available": True,
+        "alias_of": "encoder_layer_2",
+    },
+    "port_input": {
+        "representation": "complex_port_coefficients",
+        "amplitude_available": True,
+        "phase_available": True,
+    },
+    "port_output": {
+        "representation": "complex_port_coefficients",
+        "amplitude_available": True,
+        "phase_available": True,
+    },
+    "fiber_output": {
+        "representation": "complex_field",
+        "amplitude_available": True,
+        "phase_available": True,
+        "alias_of": "decoder_input",
+    },
+    "decoder_layer_1": {
+        "representation": "complex_field",
+        "amplitude_available": True,
+        "phase_available": True,
+    },
+    "decoder_layer_2": {
+        "representation": "complex_field",
+        "amplitude_available": True,
+        "phase_available": True,
+    },
+    "cmos_field": {
+        "representation": "complex_field_upstream_of_detector",
+        "amplitude_available": True,
+        "phase_available": True,
+        "detector_readout": "intensity_only",
+    },
+}
+
+
+def _stage_plane_metadata(
+    field: ComplexField, *, representation: str, **extra: Any
+) -> dict[str, Any]:
+    """Serialize the physical plane and operation that produced a field."""
+    return {
+        "representation": representation,
+        "plane": field.plane.to_dict(),
+        "provenance": field.provenance.to_dict(),
+        **extra,
+    }
+
+
+def _render_phase_unavailable(axis: plt.Axes, message: str) -> None:
+    """Make unavailable phase explicit instead of leaving a misleading blank."""
+    axis.set_aspect("equal", adjustable="box")
+    axis.set_facecolor("#e8e8e8")
+    axis.text(
+        0.5,
+        0.5,
+        textwrap.fill(message, width=14),
+        transform=axis.transAxes,
+        ha="center",
+        va="center",
+        fontsize=6.4,
+        color="#444444",
+        linespacing=1.25,
+    )
 
 
 def _git_state() -> dict[str, Any]:
@@ -184,7 +270,8 @@ def _load_formal_and_checkpoint(
 
 def _trace_model(model: bogt.ScaledChenBOGTModel, amplitude: torch.Tensor) -> tuple[dict[str, torch.Tensor], torch.Tensor, float]:
     """Replay the production research forward path and retain only one sample."""
-    slm_field = model.system.slm(model.system.command(amplitude))
+    slm_command = model.system.command(amplitude)
+    slm_field = model.system.slm(slm_command)
     front_field = model.system.front(slm_field)
     encoded_raw, encoder_records_raw, _ = model.system.encoder(front_field, "encoder")
     encoder_records = bogt._attenuate_records(encoder_records_raw)
@@ -244,7 +331,8 @@ def _trace_fiber_batch(
     """Replay one fixed batch and capture the actual FiberArrayOLS diagnostics."""
     if amplitude.ndim != 4 or amplitude.shape[0] != 10:
         raise ValueError("fiber-chain replay requires the fixed ten-digit batch")
-    slm_field = model.system.slm(model.system.command(amplitude))
+    slm_command = model.system.command(amplitude)
+    slm_field = model.system.slm(slm_command)
     front_field = model.system.front(slm_field)
     encoded_raw, encoder_records_raw, _ = model.system.encoder(front_field, "encoder")
     encoder_records = bogt._attenuate_records(encoder_records_raw)
@@ -290,6 +378,7 @@ def _trace_fiber_batch(
     coefficient_delta = (c_out - c_in).norm(dim=1) / c_in.norm(dim=1).clamp_min(1.0e-30)
     power_retention = output_energy / input_energy.clamp_min(1.0e-30)
     values = {
+        "slm_command": slm_command.tensor,
         "encoder_input": front_field.tensor,
         "encoder_layer_1": encoder_records[0].tensor,
         "fiber_input": encoded.tensor,
@@ -299,6 +388,7 @@ def _trace_fiber_batch(
         "decoder_layer_1": decoder_records[0].tensor,
         "decoder_layer_2": decoder_records[1].tensor,
         "cmos_field": camera_field.tensor,
+        "cmos_detector_intensity": camera_intensity,
     }
     metrics = {
         "coupling_efficiency": coupling.detach(),
@@ -326,6 +416,73 @@ def _trace_fiber_batch(
         "input_energy": input_energy.detach(),
         "output_energy": output_energy.detach(),
         "coupling_efficiency": coupling.detach(),
+        "stage_metadata": {
+            "slm_command": {
+                "representation": "real_amplitude_command",
+                "amplitude_available": True,
+                "phase_available": False,
+                "phase_note": "IdealAmplitudeSLM command is real-valued; no independent phase channel is measured.",
+                "calibration_id": slm_command.calibration_id,
+                "plane": slm_command.plane.to_dict(),
+            },
+            "encoder_input": _stage_plane_metadata(
+                front_field, representation="complex_field"
+            ),
+            "encoder_layer_1": _stage_plane_metadata(
+                encoder_records[0], representation="complex_field"
+            ),
+            "fiber_input": _stage_plane_metadata(
+                encoded,
+                representation="complex_field",
+                alias_of="encoder_layer_2",
+                alias_note="The second encoder record and OLS input share the encoder_layer_2 plane; the fixed group transmission is applied at this boundary.",
+            ),
+            "port_input": {
+                "representation": "complex_port_coefficients",
+                "amplitude_available": True,
+                "phase_available": True,
+                "port_count": 100,
+                "display_shape": [10, 10],
+                "mode_model": "step_index_lp01_ports",
+                "source_plane": encoded.plane.to_dict(),
+            },
+            "port_output": {
+                "representation": "complex_port_coefficients",
+                "amplitude_available": True,
+                "phase_available": True,
+                "port_count": 100,
+                "display_shape": [10, 10],
+                "mode_model": "step_index_lp01_ports",
+                "transport": "100x100 complex identity",
+            },
+            "fiber_output": _stage_plane_metadata(
+                ols_field,
+                representation="complex_field",
+                alias_of="decoder_input",
+                alias_note="The FiberArrayOLS output is the decoder input boundary; no extra propagation slice is inserted.",
+            ),
+            "decoder_layer_1": _stage_plane_metadata(
+                decoder_records[0], representation="complex_field"
+            ),
+            "decoder_layer_2": _stage_plane_metadata(
+                decoder_records[1], representation="complex_field"
+            ),
+            "cmos_field": _stage_plane_metadata(
+                camera_field,
+                representation="complex_field_upstream_of_detector",
+                detector_readout="intensity_only",
+                phase_note="Phase is a model-side upstream field quantity, not a CMOS detector readout.",
+            ),
+            "cmos_detector_intensity": {
+                "representation": "intensity_frame",
+                "amplitude_available": False,
+                "phase_available": False,
+                "intensity_available": True,
+                "formula": "I=|E|^2",
+                "plane": camera_field.plane.to_dict(),
+                "provenance": camera_field.provenance.to_dict(),
+            },
+        },
     }
     return values, {**diagnostics, **diagnostics_out, "metrics": metrics}, camera_intensity, consistency
 
@@ -642,10 +799,10 @@ def _render_fiber_plate(
     figure.text(
         0.5,
         0.035,
-        "Spatial fields share one linear p99.5 amplitude scale across all digits and planes; LP01 ports use a common modal p99.5 scale. Phase is fixed to [−π, π] and masked below 1% of each field maximum. Intermediate planes and 10×10 port maps use a display-only 180° rotation; raw tensors and coordinates are unchanged.",
+        "Spatial fields share one linear p99.5 amplitude scale across all digits and planes; LP01 ports use a common modal p99.5 scale. Phase is fixed to [−π, π] and masked below 1% of each field maximum. Encoder L2/fiber input and fiber output/decoder input are boundary aliases, not extra propagation slices. CMOS incident phase is a model-side upstream quantity; the detector itself records intensity only (see the separate detector panel). Intermediate planes and 10×10 port maps use a display-only 180° rotation; raw tensors and coordinates are unchanged.",
         ha="center",
         va="center",
-        fontsize=6.0,
+        fontsize=5.8,
     )
     amp_cbar_ax = figure.add_axes([0.965, 0.57, 0.010, 0.22])
     phase_cbar_ax = figure.add_axes([0.965, 0.23, 0.010, 0.22])
@@ -663,6 +820,94 @@ def _render_fiber_plate(
         row_groups=row_groups,
         column_groups=column_groups,
         colorbar_axes=[amp_cbar.ax, phase_cbar.ax],
+        raster_dpi=300,
+        include_tiff=False,
+    )
+
+
+def _render_real_reference_plate(
+    values: Mapping[str, torch.Tensor],
+    output_base: Path,
+    *,
+    positions: Sequence[int],
+    labels: Sequence[int],
+    sample_indices: Sequence[int],
+    value_key: str,
+    title: str,
+    top_label: str,
+    unavailable_phase_label: str,
+    scale_label: str,
+    display_scale: float | None = None,
+) -> list[Path]:
+    """Render a real-valued command/readout with an explicit N/A phase row."""
+    if not (len(positions) == len(labels) == len(sample_indices)):
+        raise ValueError("reference plate metadata lengths do not match")
+    arrays = [_display_array(values[value_key], position) for position in positions]
+    scale = _shared_p995(arrays) if display_scale is None else float(display_scale)
+    if not np.isfinite(scale) or scale <= 0.0:
+        raise ValueError("reference plate display scale must be finite and positive")
+    columns = len(arrays)
+    figure, axes = plt.subplots(2, columns, figsize=(max(10.0, columns * 1.6), 3.45), squeeze=False)
+    figure.subplots_adjust(left=0.055, right=0.94, bottom=0.18, top=0.77, wspace=0.10, hspace=0.30)
+    panel_grid = [["" for _ in range(columns)] for _ in range(2)]
+    for column, (position, label, sample_index, array) in enumerate(
+        zip(positions, labels, sample_indices, arrays, strict=True)
+    ):
+        amplitude_axis, phase_axis = axes[0, column], axes[1, column]
+        amplitude_axis.imshow(
+            np.clip(np.abs(array) / max(scale, 1.0e-12), 0.0, 1.0),
+            cmap="gray",
+            vmin=0.0,
+            vmax=1.0,
+            origin="lower",
+            interpolation="nearest",
+        )
+        amplitude_axis.set_title(f"digit {label}\nidx {sample_index}", fontsize=6.2, pad=3)
+        _render_phase_unavailable(phase_axis, unavailable_phase_label)
+        if column == 0:
+            amplitude_axis.set_ylabel("amplitude", fontsize=6.0, labelpad=2)
+            phase_axis.set_ylabel("phase", fontsize=6.0, labelpad=2)
+        for row, axis in enumerate((amplitude_axis, phase_axis)):
+            axis.set_xticks([])
+            axis.set_yticks([])
+            for spine in axis.spines.values():
+                spine.set_visible(False)
+            panel_id = f"{value_key}_{'amplitude' if row == 0 else 'phase_na'}_{label}"
+            panel_grid[row][column] = panel_id
+            _panel_label(
+                axis,
+                chr(ord("a") + row * columns + column),
+                y=0.94,
+                vertical_alignment="top",
+            )
+    panel_ids = [panel_id for row in panel_grid for panel_id in row]
+    row_groups = [list(row) for row in panel_grid]
+    column_groups = [
+        [panel_grid[row][column] for row in range(2)] for column in range(columns)
+    ]
+    figure.suptitle(title, fontsize=10, y=0.91)
+    figure.text(
+        0.5,
+        0.065,
+        f"{top_label}; shared linear p99.5 scale = {scale:.6g}.  {unavailable_phase_label}",
+        ha="center",
+        va="center",
+        fontsize=6.0,
+    )
+    cbar_ax = figure.add_axes([0.952, 0.31, 0.014, 0.36])
+    cbar = figure.colorbar(
+        ScalarMappable(norm=Normalize(0.0, 1.0), cmap="gray"), cax=cbar_ax
+    )
+    cbar.set_label(scale_label, fontsize=5.5)
+    cbar.ax.tick_params(labelsize=5, width=0.5, length=2)
+    return _save_figure_bundle(
+        figure,
+        output_base,
+        axes=[axis for row in axes for axis in row],
+        panel_ids=panel_ids,
+        row_groups=row_groups,
+        column_groups=column_groups,
+        colorbar_axes=[cbar.ax],
         raster_dpi=300,
         include_tiff=False,
     )
@@ -984,15 +1229,53 @@ def _run_fiber_chain(args: argparse.Namespace, output_dir: Path) -> int:
         raise RuntimeError("fiber output energy exceeds input energy")
     if not all(torch.isfinite(value).all() for value in values.values()):
         raise RuntimeError("fiber-chain replay contains a non-finite field or coefficient")
+    if torch.is_complex(values["slm_command"]) or torch.is_complex(values["cmos_detector_intensity"]):
+        raise RuntimeError("SLM command and CMOS detector readout must remain real-valued")
+    if tuple(values["slm_command"].shape) != tuple(amplitude.shape):
+        raise RuntimeError("SLM command shape no longer matches the registered amplitude input")
+    if tuple(values["cmos_detector_intensity"].shape) != tuple(camera_intensity.shape):
+        raise RuntimeError("CMOS detector intensity shape no longer matches the camera readout")
 
     values_cpu = {key: value.detach().cpu() for key, value in values.items()}
     views, spatial_scale, modal_scale = _complex_views(values_cpu, sample_positions=range(10))
+    command_scale = _shared_p995(
+        [_display_array(values_cpu["slm_command"], position) for position in range(10)]
+    )
+    detector_scale = _shared_p995(
+        [_display_array(values_cpu["cmos_detector_intensity"], position) for position in range(10)]
+    )
     metrics = diagnostics["metrics"]
     metric_json = _json_metrics(metrics)
     git_state = _git_state()
     script_path = Path(__file__).resolve()
     output_dir.mkdir(parents=True, exist_ok=False)
     saved: list[Path] = []
+    saved += _render_real_reference_plate(
+        values_cpu,
+        output_dir / f"00_digits_0_4_slm_amplitude_command_reference_step{args.checkpoint_step}",
+        positions=range(5),
+        labels=labels[:5].tolist(),
+        sample_indices=sample_indices[:5],
+        value_key="slm_command",
+        title=f"Scaled-Chen step-{args.checkpoint_step} registered input reference | SLM amplitude command",
+        top_label="This is the real-valued amplitude command sent to the ideal SLM; it is the stage that should retain the MNIST digit silhouette.",
+        unavailable_phase_label="phase N/A — real amplitude command; no independent phase channel",
+        scale_label="shared command amplitude / p99.5",
+        display_scale=command_scale,
+    )
+    saved += _render_real_reference_plate(
+        values_cpu,
+        output_dir / f"00_digits_5_9_slm_amplitude_command_reference_step{args.checkpoint_step}",
+        positions=range(5, 10),
+        labels=labels[5:].tolist(),
+        sample_indices=sample_indices[5:],
+        value_key="slm_command",
+        title=f"Scaled-Chen step-{args.checkpoint_step} registered input reference | SLM amplitude command | digits 5–9",
+        top_label="This is the real-valued amplitude command sent to the ideal SLM; it is the stage that should retain the MNIST digit silhouette.",
+        unavailable_phase_label="phase N/A — real amplitude command; no independent phase channel",
+        scale_label="shared command amplitude / p99.5",
+        display_scale=command_scale,
+    )
     saved += _render_fiber_plate(
         values_cpu,
         output_dir / f"01_digits_0_4_encoder_fiber_decoder_amplitude_phase_step{args.checkpoint_step}",
@@ -1037,6 +1320,32 @@ def _run_fiber_chain(args: argparse.Namespace, output_dir: Path) -> int:
         output_dir / f"04_digits_0_9_fiber_metrics_step{args.checkpoint_step}",
         checkpoint_step=args.checkpoint_step,
     )
+    saved += _render_real_reference_plate(
+        values_cpu,
+        output_dir / f"06_digits_0_4_cmos_detector_intensity_step{args.checkpoint_step}",
+        positions=range(5),
+        labels=labels[:5].tolist(),
+        sample_indices=sample_indices[:5],
+        value_key="cmos_detector_intensity",
+        title=f"Scaled-Chen step-{args.checkpoint_step} CMOS detector readout",
+        top_label="The detector panel is the predicted intensity readout I=|E|² at the camera plane; it is not a complex-field measurement.",
+        unavailable_phase_label="phase N/A — square-law CMOS readout; see the main plate for the modeled upstream incident field",
+        scale_label="detector intensity / p99.5",
+        display_scale=detector_scale,
+    )
+    saved += _render_real_reference_plate(
+        values_cpu,
+        output_dir / f"06_digits_5_9_cmos_detector_intensity_step{args.checkpoint_step}",
+        positions=range(5, 10),
+        labels=labels[5:].tolist(),
+        sample_indices=sample_indices[5:],
+        value_key="cmos_detector_intensity",
+        title=f"Scaled-Chen step-{args.checkpoint_step} CMOS detector readout | digits 5–9",
+        top_label="The detector panel is the predicted intensity readout I=|E|² at the camera plane; it is not a complex-field measurement.",
+        unavailable_phase_label="phase N/A — square-law CMOS readout; see the main plate for the modeled upstream incident field",
+        scale_label="detector intensity / p99.5",
+        display_scale=detector_scale,
+    )
     masks = [
         phase.detach().float().cpu().numpy()
         for phase in (
@@ -1071,15 +1380,51 @@ def _run_fiber_chain(args: argparse.Namespace, output_dir: Path) -> int:
         "labels": [int(label) for label in labels.tolist()],
         "hero": {"index": args.hero_index, "label": hero_label, "position": hero_position},
         "device": str(device),
+        "sample_correspondence": {
+            "selection_rule": "registered confirmation panel first occurrence per label in train indices 55000:60000",
+            "labels_verified": True,
+            "batch_order": [
+                {"position": position, "index": sample_indices[position], "label": int(labels[position])}
+                for position in range(10)
+            ],
+            "expected_labels": list(range(10)),
+            "no_reindex_after_replay": True,
+        },
         "stage_order": list(FIBER_STAGE_KEYS),
         "stage_labels": list(FIBER_STAGE_LABELS),
         "stage_shapes": {key: list(value.shape) for key, value in values_cpu.items()},
+        "stage_availability": {
+            **FIBER_STAGE_AVAILABILITY,
+            "slm_command": {
+                "representation": "real_amplitude_command",
+                "amplitude_available": True,
+                "phase_available": False,
+                "phase_note": "IdealAmplitudeSLM command is real-valued; no independent phase channel is measured.",
+            },
+            "cmos_detector_intensity": {
+                "representation": "intensity_frame",
+                "amplitude_available": False,
+                "phase_available": False,
+                "intensity_available": True,
+                "formula": "I=|E|^2",
+            },
+        },
+        "stage_metadata": diagnostics["stage_metadata"],
+        "stage_aliases": {
+            "encoder_layer_2_equals_fiber_input": True,
+            "fiber_output_equals_decoder_input": True,
+            "note": "The slash/equality labels identify shared boundary tensors; they are not independent measurements.",
+        },
         "spatial_amplitude_shared_p995": spatial_scale,
         "modal_amplitude_shared_p995": modal_scale,
+        "slm_command_amplitude_shared_p995": command_scale,
+        "cmos_detector_intensity_shared_p995": detector_scale,
         "display_contract": {
             "spatial_amplitude": "absolute value, one shared linear p99.5 scale across all ten digits and spatial stages, clipped to [0,1]",
             "modal_amplitude": "absolute value, one shared modal p99.5 scale for c_in and c_out, clipped to [0,1]",
             "phase": "angle in [-pi,pi], masked below 1% of each field maximum",
+            "real_input": "SLM amplitude command is plotted as a real-valued amplitude with an explicit phase N/A panel; it is not treated as a complex measurement",
+            "detector": "CMOS detector readout is plotted as intensity I=|E|^2 with an explicit phase N/A panel; the modeled upstream incident field remains in the main chain plate",
             "rotation": "display-only 180-degree rotation for intermediate spatial planes and 10x10 port maps; raw tensors and physical coordinates unchanged",
             "transport": "100x100 complex matrix shown as magnitude and phase; numerical transport is not rotated or modified",
         },

@@ -53,6 +53,10 @@ def test_fixed_confirmation_panel_is_balanced_and_ordered(renderer) -> None:
         "decoder_layer_2",
         "cmos_field",
     )
+    assert renderer.FIBER_STAGE_AVAILABILITY["cmos_field"]["phase_available"] is True
+    assert renderer.FIBER_STAGE_AVAILABILITY["cmos_field"]["detector_readout"] == "intensity_only"
+    assert renderer.FIBER_STAGE_AVAILABILITY["fiber_input"]["alias_of"] == "encoder_layer_2"
+    assert renderer.FIBER_STAGE_AVAILABILITY["fiber_output"]["alias_of"] == "decoder_input"
 
 
 def test_selection_rejects_wrong_registered_labels(renderer) -> None:
@@ -88,6 +92,15 @@ def test_shared_scale_mask_and_display_rotation_are_pure(renderer) -> None:
     assert np_isnan(phase[-1, -1])
     rotated = renderer._display_array(complex_field, 0, rotate=True)
     assert rotated[0, 0] == pytest.approx(complex_field[0, 0, -1, -1].abs().item())
+
+
+def test_real_command_and_detector_are_not_treated_as_complex_phase(renderer) -> None:
+    real = torch.zeros((10, 1, 4, 4), dtype=torch.float32)
+    real[:, :, 1:3, 1:3] = 1.0
+    assert not torch.is_complex(real)
+    assert renderer.FIBER_STAGE_AVAILABILITY["cmos_field"]["detector_readout"] == "intensity_only"
+    assert renderer._stage_views(real)[1].shape == (4, 4)
+    assert torch.isnan(torch.as_tensor(renderer._stage_views(real)[1])).all()
 
 
 def test_output_boundary_refuses_existing_directory(renderer) -> None:
