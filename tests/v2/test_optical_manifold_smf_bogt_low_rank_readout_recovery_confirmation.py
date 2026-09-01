@@ -274,6 +274,7 @@ def test_source_has_no_update_or_new_decoder_path() -> None:
     assert "optimizer.step" not in source
     assert "return_trace=True" not in source
     assert "decoder(" not in source
+    assert 'payload["cmos_only_replay_executed"] = True' in source
     assert lrrc.AUTHORIZATION["formal_promotion"] is False
     assert lrrc.AUTHORIZATION["training_authorized"] is False
     assert lrrc.TRUNCATION["permanent_W_k_saved"] is False

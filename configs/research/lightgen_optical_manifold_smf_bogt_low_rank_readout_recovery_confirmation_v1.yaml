@@ -8,7 +8,7 @@ lineage:
   rmal_probe_frozen: true
   lsda_passed_required: true
   selection_confirmation_not_consumed: true
-  attempt_name: lightgen_scaled_chen_low_rank_readout_recovery_confirmation_v1_attempt_03
+  attempt_name: lightgen_scaled_chen_low_rank_readout_recovery_confirmation_v1_attempt_04
 rmal_consumer:
   config: configs/research/lightgen_optical_manifold_smf_bogt_reconstruction_mapping_alignment_localization_v1.yaml
   config_sha256: c50b5b2d12830c40fbe619f137aca40f36f799f277e637d1ec20ac7e3403859f

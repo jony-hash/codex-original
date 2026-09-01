@@ -54,7 +54,7 @@
     "interpretation": "first_confirmed_candidate_rank_only",
     "lineage": {
       "amendment": "H-LOMA-CBOGT-S6-LRRC",
-      "attempt_name": "lightgen_scaled_chen_low_rank_readout_recovery_confirmation_v1_attempt_03",
+      "attempt_name": "lightgen_scaled_chen_low_rank_readout_recovery_confirmation_v1_attempt_04",
       "lineage_start_head": "e0e9145836e9d3786dbe643fceae5d72e2e7d96a",
       "lsda_passed_required": true,
       "parent_hypothesis": "H-LOMA-CBOGT-S6-LSDA",

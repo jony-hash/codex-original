@@ -163,7 +163,7 @@ LINEAGE = {
     "lsda_passed_required": True,
     "selection_confirmation_not_consumed": True,
     "attempt_name": (
-        "lightgen_scaled_chen_low_rank_readout_recovery_confirmation_v1_attempt_03"
+        "lightgen_scaled_chen_low_rank_readout_recovery_confirmation_v1_attempt_04"
     ),
 }
 
@@ -1915,6 +1915,7 @@ def run(args: argparse.Namespace) -> int:
             audit_contract,
             "LRRC is diagnostic-only; no downstream training or promotion",
         )
+        payload["cmos_only_replay_executed"] = True
         payload.update(
             {
                 "rank_candidates": list(RANK_CANDIDATES),
