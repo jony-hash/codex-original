@@ -153,3 +153,23 @@ RMAL 的唯一权威 CUDA attempt-01 为
 `manual_review_RMAL_recoverability_result`；不授权训练、FMF、prior sampling、generation 或
 formal promotion。RMAL 定向测试 14 项、直接相关回归 56 项、compileall/Ruff/diff-check 均通过；
 全套 pytest 的既有 near-conjugate 临时路径失败仍单独记录，未修改无关代码。
+
+## H-LOMA-CBOGT-S5-ZCSA（2026-09-01）
+
+Windows-native 环境完成 ZCSA zero-column semantics audit。起始 HEAD 为
+`0dead1b73655b3556450cedbb5d0a2c579385209`，实现提交为
+`1f5e553f6c7ad80217427ab83f5669e7b9758acb`；新增 producer/config/review/tests/CLI 路由，未改动
+RMAL/RWSA 旧产物、probe、renderer 或 formal runtime。正式 attempt 为
+`outputs/20260901_v2/runs/lightgen_scaled_chen_detector_readout_zero_column_semantics_audit_v1_attempt_01/`，
+validation/audit/compact SHA256 为 `d422f1e31e8298f9662896f832b207ad896fb619c5a656bccf54b099cd419954`、
+`0cba5990462e9f8cc238885b14c90c907a7c6f085877b6c8ad0c8b95cbf0bfb8`、
+`772fb739b39d029c213ab42e8f552648782607b5562b6350d4d2c9744b73b9e6`。
+
+审计通过，classification=`zero_column_semantics_attribution_completed`；dynamic active/zero-W 为
+`33502/6498`，zero-W 全部为 `target_zero_static`，其余 taxonomy 类别为 0。fit-zero→selection/
+confirmation active=`1495/2097`；b exact-zero=`6498`；zero mask pixel/edge/interior=`6498/660/5838`，
+4-connected components=`2`（最大/次大=`5105/1393`）。无 optical replay、CUDA forward、model load、
+optimizer、backward、evaluator 或 checkpoint 写入。定向测试 18 项、直接相关回归 57 项、compileall、
+Ruff、diff-check 以及显式短 basetemp 全套 pytest（`1197 passed, 12 deselected, 25 subtests passed`）
+均通过。formal/generative readiness 与 training/promotion flags 继续为 false/not_ready；唯一下一动作
+为 `manual_review_ZCSA_result`。结果/状态 commit 后 refresh bridge 并检查 status，不自动上传。

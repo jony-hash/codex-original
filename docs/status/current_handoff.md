@@ -1766,3 +1766,28 @@ RMFA positive-anchor selection/confirmation replay 均通过。RMAL 固定一次
 RMAL 定向测试 `14 passed`，直接相关回归 `56 passed`，compileall、Ruff、diff-check 通过。全套默认 pytest
 为 `1144 passed, 1 failed, 12 deselected, 25 subtests passed`；唯一失败仍是既有 near-conjugate 临时
 run 目录缺失的 Windows 路径问题，与 RMAL 文件无关。
+
+## H-LOMA-CBOGT-S5-ZCSA（2026-09-01）
+
+ZCSA 已在起始 HEAD `0dead1b73655b3556450cedbb5d0a2c579385209` 完成，实现提交为
+`1f5e553f6c7ad80217427ab83f5669e7b9758acb`。改动仅包含 zero-column semantics audit producer、
+研究 YAML、review contract、测试与 CLI schema/router；RMAL/RWSA 旧产物、冻结 probe、renderer、
+checkpoint、OLS、detector 和 formal runtime 未改动。正式 attempt 路径为
+`outputs/20260901_v2/runs/lightgen_scaled_chen_detector_readout_zero_column_semantics_audit_v1_attempt_01/`，
+validation/audit/compact SHA256 为 `d422f1e31e8298f9662896f832b207ad896fb619c5a656bccf54b099cd419954` /
+`0cba5990462e9f8cc238885b14c90c907a7c6f085877b6c8ad0c8b95cbf0bfb8` /
+`772fb739b39d029c213ab42e8f552648782607b5562b6350d4d2c9744b73b9e6`，probe hash 为
+`3551584a7983619356ea49babe7e5dedca559dfaa8ee5302fa44fd1a152a24ed`。
+
+正式结果 `passed / zero_column_semantics_attribution_completed`。taxonomy 为
+`dynamic_active=33502`、`target_zero_static=6498`，其余三类为 0；zero-W 与 selection/confirmation
+ever-nonzero 交集为 `1495/2097`，b exact-zero=`6498`；空间 pixel/edge/interior=`6498/660/5838`，
+4-connected components=`2`（最大/次大 `5105/1393`）。无 optical replay、CUDA forward、model load、
+optimizer、backward 或 evaluator。定向测试 `18 passed`，直接相关回归 `57 passed`，compileall、Ruff、
+diff-check 通过；全套默认 pytest（短 basetemp）`1197 passed, 12 deselected, 25 subtests passed`。
+
+状态继续为 `reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、
+`generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false`，分类
+`closed_task_relevant_bottleneck_not_supported`。唯一下一动作是 `manual_review_ZCSA_result`；不训练、
+不 FMF、不采样 prior、不生成、不 candidate export、不 formal promotion。result/status commit 后
+执行 bridge refresh/status 检查，不自动上传。

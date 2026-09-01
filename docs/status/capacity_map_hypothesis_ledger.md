@@ -1323,3 +1323,21 @@ RMAL 固定一次 fit（1000、每类 100）的 float64 Moore–Penrose minimum-
 首个 `cmos_intensity` stage selection physical/probe/template/cyclic=`0.0620484613/0.0098129278/0.0324799940/0.0799509138`，relative improvement=`84.18505%`；confirmation=`0.0577895157/0.0101852901/0.0277411994/0.0756082982`，relative improvement=`82.37519%`，固定 bootstrap 95% CI=`[0.0472728200,0.0479231887]`。selection 与 confirmation gate 全部通过，故 RMAL 为 `passed` / `bounded_recoverability_established_at_detector`，`furthest_downstream_recoverable_stage=cmos_intensity`，其余五段按 stop rule 跳过。
 
 这是 bounded diagnostic recoverability positive；`reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、`generation_readiness=not_ready` 保持。治理 flags：optimizer/backward/evaluator/checkpoint/prior/generation/physical-forward modification 均为零或 false，`mechanism_evidence_only=true`。唯一下一动作是 `manual_review_RMAL_recoverability_result`；不得训练、FMF、采样 prior、生成、candidate export 或 formal promotion。
+
+## H-LOMA-CBOGT-S5-ZCSA：Zero-Column Semantics Audit（2026-09-01）
+
+ZCSA 是对冻结 RMAL detector probe 的 target-only 语义归因，非 RMAL producer/probe 重跑，也不改变
+RWSA attempt-02 的 `invalid_harness` 结论。实现提交为 `1f5e553f6c7ad80217427ab83f5669e7b9758acb`，
+正式 audit classification 为 `zero_column_semantics_attribution_completed`。40000 列完整 taxonomy：
+dynamic active=`33502`，target-zero static=`6498`，bias-only constant/variable 与 zero-W constant
+target bias mismatch 均为 0；zero-W b 全部 exact-zero。fit-zero→selection/confirmation active
+分别为 `1495/2097`，空间 zero mask 为 pixel=`6498`、edge=`660`、interior=`5838`、4-connected
+components=`2`（最大/次大=`5105/1393`）。
+
+这说明当前 zero-W 列在 fit panel 上是 static zero target，但部分 held-out panel 出现非零 target；
+它是 bounded target-semantic diagnostic，不能升级为 reconstruction 或 generative manifold 支持，
+也不能替代 detector/CMOS/optical replay。保持 `reconstruction_manifold_supported=false`、
+`generative_manifold_supported=false`、`generation_readiness=not_ready`、`training_authorized=false`、
+`formal_promotion=false` 与 `closed_task_relevant_bottleneck_not_supported`。唯一下一动作是
+`manual_review_ZCSA_result`；不得训练、FMF、prior sampling、generation、candidate export 或 formal
+promotion。结果/状态 commit 后 refresh bridge 并检查 status，不自动上传。

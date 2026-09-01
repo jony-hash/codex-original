@@ -495,3 +495,29 @@ validation/audit/compact/probes SHA-256 为：
 formal/physical `reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、`generation_readiness=not_ready` 保持；治理 flags 全部保持 no-update（optimizer/backward/evaluator/checkpoint/prior/generation/physical-forward modification 均为零或 false，`mechanism_evidence_only=true`）。唯一下一动作是 `manual_review_RMAL_recoverability_result`，不授权训练、FMF、prior sampling、generation、candidate export 或 formal promotion。
 
 本结果把 Scaled-Chen v1 attribution family 正式记录为 `closed_task_relevant_bottleneck_not_supported`；MRA/DCM/HFRR/RMRI/TRBA 历史与 superseding interpretation 均保留。全程 optimizer/backward/evaluator/checkpoint/prior/generation/physical-forward modification 均为零或 false，不授权任何训练、FMF、prior sampling、generation canary 或 promotion。
+
+## H-LOMA-CBOGT-S5-ZCSA（2026-09-01）
+
+在起始 HEAD `0dead1b73655b3556450cedbb5d0a2c579385209` 上完成零列语义审计，实现提交
+`1f5e553f6c7ad80217427ab83f5669e7b9758acb`。新增 producer、YAML、review contract、测试和 CLI
+路由；上游 RMAL/RWSA 产物、冻结 probe、target renderer、checkpoint、OLS、detector 与 formal runtime
+均未修改。冻结 probe SHA256 为
+`3551584a7983619356ea49babe7e5dedca559dfaa8ee5302fa44fd1a152a24ed`；旧 RWSA attempt-02 的
+`invalid_harness` 状态与身份哈希保持不变。
+
+正式 attempt `outputs/20260901_v2/runs/lightgen_scaled_chen_detector_readout_zero_column_semantics_audit_v1_attempt_01/`
+的 validation/audit/compact SHA256 分别为
+`d422f1e31e8298f9662896f832b207ad896fb619c5a656bccf54b099cd419954`、
+`0cba5990462e9f8cc238885b14c90c907a7c6f085877b6c8ad0c8b95cbf0bfb8`、
+`772fb739b39d029c213ab42e8f552648782607b5562b6350d4d2c9744b73b9e6`。结果为
+`passed / zero_column_semantics_attribution_completed`：active=`33502`，zero-W=`6498`，且
+全部 zero-W 均为 `target_zero_static`；其余四类均为 0。fit-zero→selection/confirmation active
+分别为 `1495/2097`；zero-W b exact-zero=`6498`；空间 pixel/edge/interior=`6498/660/5838`，
+4-connected components=`2`，最大/次大=`5105/1393`。
+
+该结果是 target-only、mechanism-evidence-only 的零列归因，不支持 reconstruction/generative
+manifold：`reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、
+`generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false`，
+并保持 `closed_task_relevant_bottleneck_not_supported`。全程无 optical replay、model load、
+optimizer、backward、evaluator、checkpoint、prior 或 generation。唯一下一动作为
+`manual_review_ZCSA_result`；结果/状态 commit 后 refresh bridge 并检查 status，不自动上传。
