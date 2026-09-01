@@ -810,7 +810,7 @@ def _panel_gate(report: Mapping[str, Any], *, require_bootstrap: bool) -> dict[s
 
 
 def _bootstrap_ci(delta: torch.Tensor, labels: torch.Tensor) -> tuple[float, float]:
-    return rmal._stratified_bootstrap_ci(delta, labels)
+    return rmal._stratified_bootstrap_ci(delta.float(), labels)
 
 
 def _evaluate_panel(

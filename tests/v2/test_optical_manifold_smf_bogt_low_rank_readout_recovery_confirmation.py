@@ -157,6 +157,19 @@ def test_gate_inherits_physical_template_cyclic_instance_and_bootstrap_checks() 
     assert set(lrrc.INHERITED_GATE_NAMES).issubset(set(gate["checks"]))
 
 
+def test_bootstrap_wrapper_preserves_rmal_float32_helper_contract(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, torch.dtype] = {}
+
+    def helper(delta: torch.Tensor, labels: torch.Tensor) -> tuple[float, float]:
+        captured["delta"] = delta.dtype
+        captured["labels"] = labels.dtype
+        return (0.0, 1.0)
+
+    monkeypatch.setattr(lrrc.rmal, "_stratified_bootstrap_ci", helper)
+    lrrc._bootstrap_ci(torch.ones(10, dtype=torch.float64), torch.zeros(10, dtype=torch.long))
+    assert captured == {"delta": torch.float32, "labels": torch.int64}
+
+
 def test_sequential_search_selection_failure_skips_confirmation() -> None:
     events: list[tuple[str, int]] = []
 
