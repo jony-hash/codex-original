@@ -426,6 +426,22 @@ def register_research(root: argparse._SubParsersAction) -> None:
     zcsa_run.add_argument("--validation-evidence", required=True)
     zcsa_run.add_argument("--dataset-root", required=True)
     zcsa_run.add_argument("--output", required=True)
+    rwsa_active_validate = optical_actions.add_parser(
+        "scaled-chen-detector-readout-structure-active-domain-validate"
+    )
+    rwsa_active_validate.add_argument("--config", required=True)
+    rwsa_active_validate.add_argument("--review-contract", required=True)
+    rwsa_active_validate.add_argument("--dataset-root", required=True)
+    rwsa_active_validate.add_argument("--output", required=True)
+    rwsa_active_run = optical_actions.add_parser(
+        "scaled-chen-detector-readout-structure-active-domain-run"
+    )
+    rwsa_active_run.add_argument("--config", required=True)
+    rwsa_active_run.add_argument("--review-contract", required=True)
+    rwsa_active_run.add_argument("--validation-evidence", required=True)
+    rwsa_active_run.add_argument("--dataset-root", required=True)
+    rwsa_active_run.add_argument("--device", choices=("cuda",), default="cuda")
+    rwsa_active_run.add_argument("--output", required=True)
     back_relay_validate = optical_actions.add_parser("scaled-chen-back-relay-axial-conjugate-validate")
     back_relay_validate.add_argument("--config", required=True)
     back_relay_validate.add_argument("--review-contract", required=True)
