@@ -129,6 +129,11 @@ def dispatch(args: argparse.Namespace) -> int:
     }:
         from .research.optical_manifold_smf_bogt_linear_readout_structure_decomposition_audit import dispatch
     elif action in {
+        "scaled-chen-low-rank-readout-recovery-confirmation-validate",
+        "scaled-chen-low-rank-readout-recovery-confirmation-run",
+    }:
+        from .research.optical_manifold_smf_bogt_low_rank_readout_recovery_confirmation import dispatch
+    elif action in {
         "scaled-chen-back-relay-axial-conjugate-validate",
         "scaled-chen-back-relay-axial-conjugate-preflight",
         "scaled-chen-back-relay-axial-conjugate-run",

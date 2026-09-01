@@ -457,6 +457,22 @@ def register_research(root: argparse._SubParsersAction) -> None:
     lsda_run.add_argument("--validation-evidence", required=True)
     lsda_run.add_argument("--dataset-root", default="data")
     lsda_run.add_argument("--output", required=True)
+    lrrc_validate = optical_actions.add_parser(
+        "scaled-chen-low-rank-readout-recovery-confirmation-validate"
+    )
+    lrrc_validate.add_argument("--config", required=True)
+    lrrc_validate.add_argument("--review-contract", required=True)
+    lrrc_validate.add_argument("--dataset-root", default="data")
+    lrrc_validate.add_argument("--output", required=True)
+    lrrc_run = optical_actions.add_parser(
+        "scaled-chen-low-rank-readout-recovery-confirmation-run"
+    )
+    lrrc_run.add_argument("--config", required=True)
+    lrrc_run.add_argument("--review-contract", required=True)
+    lrrc_run.add_argument("--validation-evidence", required=True)
+    lrrc_run.add_argument("--dataset-root", default="data")
+    lrrc_run.add_argument("--device", choices=("cuda",), default="cuda")
+    lrrc_run.add_argument("--output", required=True)
     back_relay_validate = optical_actions.add_parser("scaled-chen-back-relay-axial-conjugate-validate")
     back_relay_validate.add_argument("--config", required=True)
     back_relay_validate.add_argument("--review-contract", required=True)
