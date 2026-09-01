@@ -442,6 +442,21 @@ def register_research(root: argparse._SubParsersAction) -> None:
     rwsa_active_run.add_argument("--dataset-root", required=True)
     rwsa_active_run.add_argument("--device", choices=("cuda",), default="cuda")
     rwsa_active_run.add_argument("--output", required=True)
+    lsda_validate = optical_actions.add_parser(
+        "scaled-chen-linear-readout-structure-decomposition-validate"
+    )
+    lsda_validate.add_argument("--config", required=True)
+    lsda_validate.add_argument("--review-contract", required=True)
+    lsda_validate.add_argument("--dataset-root", default="data")
+    lsda_validate.add_argument("--output", required=True)
+    lsda_run = optical_actions.add_parser(
+        "scaled-chen-linear-readout-structure-decomposition-run"
+    )
+    lsda_run.add_argument("--config", required=True)
+    lsda_run.add_argument("--review-contract", required=True)
+    lsda_run.add_argument("--validation-evidence", required=True)
+    lsda_run.add_argument("--dataset-root", default="data")
+    lsda_run.add_argument("--output", required=True)
     back_relay_validate = optical_actions.add_parser("scaled-chen-back-relay-axial-conjugate-validate")
     back_relay_validate.add_argument("--config", required=True)
     back_relay_validate.add_argument("--review-contract", required=True)
