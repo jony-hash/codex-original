@@ -1815,3 +1815,16 @@ zero-W error contribution（paired/full/dynamic-only/bias-only）为 selection=0
 全套默认 pytest 在显式短 basetemp 下为 1214 passed、12 deselected、25 subtests passed；新增 active-domain 定向测试为 17 passed，直接相关回归为 96 passed；compileall、Ruff、git diff --check 与 CLI contract checks 均通过。唯一 warning 是既有 .pytest_cache ACL（C:\TEMP / D:\codex-original\.pytest_cache），不是测试失败。
 
 本结果仍保持 reconstruction_manifold_supported=false、generative_manifold_supported=false、generation_readiness=not_ready、training_authorized=false、formal_promotion=false 与 closed_task_relevant_bottleneck_not_supported。唯一下一动作是 manual_review_RWSA_active_domain_result；不得训练、FMF、prior sampling、generation、candidate export 或 formal promotion。
+
+## H-LOMA-CBOGT-S6-LSDA：Linear Readout Structure Decomposition Audit（2026-09-02）
+
+本轮为 frozen-W、CPU-only descriptive spectral/operator attribution；消费者是项目负责人审查冻结 RMAL detector readout 的谱能量、source/target singular-mode 结构与 bias 归因，拒绝决定是不得把描述性结果升级为 readiness、架构或训练/晋级授权。起始 HEAD=`bd967f64ffb046677fa4204e81e911b226047e6e`，实现 commit=`bed235283d1fa47f4a5a38d41368d87ce2b5d218`。新增 producer/config/review/tests/CLI schema-router，RMAL/ZCSA/RWSA-ACTIVE、probe、renderer、checkpoint、OLS、detector、formal runtime 与历史 evidence 未改。
+
+权威 attempt：
+`outputs/20260901_v2/runs/lightgen_scaled_chen_linear_readout_structure_decomposition_audit_v1_attempt_01/`；validation/audit/compact SHA256=`3f24dcc7d56e098ec778998bb8ddc7871973131f1d7269c86da729395426c2f2` / `97842d5707541516c79adb87c3a1e609ee533156895908c9e99c015cde0f9b13` / `e281daf9a4a62f85828a3bc8055ce044027d0c0fb1af0a522febcf3c2b68185b`。probe SHA256=`3551584a7983619356ea49babe7e5dedca559dfaa8ee5302fa44fd1a152a24ed`。
+
+结果为 `passed / linear_readout_spectral_attribution_completed`。W/b=`[256,40000]/[40000]`，full/active/inactive=`40000/33502/6498`；full/active Gram=`[256,256]`，CPU float64 eigensolver，未构造 40000×40000 Gram。前五 singular values=`12227.8671591/10625.3503547/8724.4504853/8126.3713707/7844.9489846`，top-16 cumulative=`0.8441783201`，effective/stable telemetry=`21.88110383398559/21.881103833985602` 与 `5.528997319328641/5.5289973193286395`。full-vs-active 最大 absolute/relative eigen difference=`4.470348358154297e-08/8.328885261127632e-13`，最大 sigma difference=`2.900790718740609e-12`，inactive identity 保持。
+
+K=16 为 descriptive preview；source/target orthogonality residual=`1.5695833278775036e-15/3.095197802817193e-14`，每个 mode 保存固定 D4、FFT、空间、signed 与 basis-dependent descriptor。global reference 为 RMAL fit panel 1000 个 unlabeled streaming target mean，hash=`513a696e21dafebebe4a862ab814b06294beb662db2afcfd679899fd19b27daf`；class-template、selection、confirmation 与 target bank 均未使用/保存。bias norm²=`114.5276114768678`，top-16 projection energy=`21.21861242530154`，preview 外 residual=`93.30899905156626`。
+
+全程 CPU-only/no-update：cuda、optimizer、backward、refit、decoder、physical forward 与 rank-truncated reconstruction 均为 false/zero。新增定向测试 `18 passed`，直接相关回归 `101 passed`，全套 pytest `1232 passed, 12 deselected, 25 subtests passed`（显式可写 basetemp），compileall/Ruff/diff-check 通过；唯一 warning 为既有 `.pytest_cache` ACL。`reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、`generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false` 与 `closed_task_relevant_bottleneck_not_supported` 保持。唯一下一动作：`manual_review_LSDA_spectral_result`。

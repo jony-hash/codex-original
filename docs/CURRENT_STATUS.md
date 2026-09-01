@@ -649,3 +649,24 @@ zero-W error contribution（paired/full/dynamic-only/bias-only）为 selection=0
 全套默认 pytest 在显式短 basetemp 下为 1214 passed、12 deselected、25 subtests passed；新增 active-domain 定向测试为 17 passed，直接相关回归为 96 passed；compileall、Ruff、git diff --check 与 CLI contract checks 均通过。唯一 warning 是既有 .pytest_cache ACL（C:\TEMP / D:\codex-original\.pytest_cache），不是测试失败。
 
 本结果仍保持 reconstruction_manifold_supported=false、generative_manifold_supported=false、generation_readiness=not_ready、training_authorized=false、formal_promotion=false 与 closed_task_relevant_bottleneck_not_supported。唯一下一动作是 manual_review_RWSA_active_domain_result；不得训练、FMF、prior sampling、generation、candidate export 或 formal promotion。
+
+## H-LOMA-CBOGT-S6-LSDA：Linear Readout Structure Decomposition Audit（2026-09-02）
+
+本轮是 RWSA-ACTIVE 之后唯一获准的 frozen-W、CPU-only descriptive spectral/operator attribution。真实消费者是项目负责人审查冻结 RMAL detector readout 的谱能量、source/target singular-mode 结构与 bias/subspace 归因；拒绝决定是不得把描述性 mode/spectrum 结果写成新的 readiness、架构或训练/晋级授权。起始 lineage HEAD 为 `bd967f64ffb046677fa4204e81e911b226047e6e`，实现提交为 `bed235283d1fa47f4a5a38d41368d87ce2b5d218`。
+
+新增 LSDA producer、YAML、review contract、测试及 research CLI schema/router；RMAL/ZCSA/RWSA-ACTIVE、冻结 probe、renderer、checkpoint、OLS、detector、formal runtime 与历史 evidence 均未修改。权威 attempt 为
+`outputs/20260901_v2/runs/lightgen_scaled_chen_linear_readout_structure_decomposition_audit_v1_attempt_01/`；validation/audit/compact SHA-256 分别为
+`3f24dcc7d56e098ec778998bb8ddc7871973131f1d7269c86da729395426c2f2`、
+`97842d5707541516c79adb87c3a1e609ee533156895908c9e99c015cde0f9b13`、
+`e281daf9a4a62f85828a3bc8055ce044027d0c0fb1af0a522febcf3c2b68185b`。冻结 RMAL probe SHA-256 仍为
+`3551584a7983619356ea49babe7e5dedca559dfaa8ee5302fa44fd1a152a24ed`。
+
+validation 的 10 个 gate 与 audit 的 8 个 completeness/finite/no-update/storage gate 全部通过。audit status=`passed`、classification=`linear_readout_spectral_attribution_completed`；`W=[256,40000]`、`b=[40000]`，source 为 float32，analysis copy 为 CPU float64，full/active Gram 均为 `[256,256]`，未构造 `40000×40000` Gram。full/active 的前五个 singular values 均为 `12227.8671591/10625.3503547/8724.4504853/8126.3713707/7844.9489846`，top-16 cumulative energy 为 `0.8441783201`；effective-rank telemetry 为 `21.88110383398559/21.881103833985602`，stable-rank telemetry 为 `5.528997319328641/5.5289973193286395`，condition profile 为 finite，全部 256 项谱字段已保存。
+
+full-vs-active identity 保持：full/active/inactive columns=`40000/33502/6498`，inactive exact-zero identity=`true`；最大 eigenvalue absolute/relative difference=`4.470348358154297e-08/8.328885261127632e-13`，最大 singular-value difference=`2.900790718740609e-12`，effective/stable telemetry difference=`1.0658141036401503e-14/1.7763568394002505e-15`。PSD raw spectrum 无负值，full/active minimum eigenvalue=`20.898962877319427/20.898962877313448`，tiny-negative clamp=`0`，未使用 cutoff。
+
+K=`16` 仅为 descriptive preview；source/target mode descriptor 均标记 basis-dependent，所有 target preview mode 均可用。source/target preview orthogonality residual=`1.5695833278775036e-15/3.095197802817193e-14`；每个 mode 均保存 sign-canonicalized source、target 的 spatial/finite-difference、FFT low/mid/high、center/middle/edge、D4 sign-invariant residual 与 signed summary，D4 controls 为 identity、x_flip、y_flip、xy_flip、transpose 及四个 transpose+flip 变体，不据此形成额外分类。mode-0 的 source/target spatial smoothness score=`0.2219516623/0.9468270025`，source/target RMS radius=`184.8835/133.7382` µm；对应 source high-frequency fraction=`0.8366757445`、target low-frequency fraction=`0.9982443165`，均为描述性字段。
+
+global reference 严格为 RMAL fit panel 的 1000 个 unlabeled targets，streaming mean hash=`513a696e21dafebebe4a862ab814b06294beb662db2afcfd679899fd19b27daf`，selection/confirmation 未消费，class-template reference=`not_evaluated`，未保存 target bank。bias norm²=`114.5276114768678`，preview top-16 projection energy=`21.21861242530154`，preview 外 residual bias energy=`93.30899905156626`，未 refit。
+
+全程 `cuda_used=false`、`optimizer_created=false`、`backward_calls=0`、`probe_refit=false`、`decoder_called=false`、`physical_forward_called=false`、`rank_truncated_reconstruction=false`；`reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、`generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false` 与 `closed_task_relevant_bottleneck_not_supported` 保持。新增 LSDA 定向测试 `18 passed`，直接相关回归 `101 passed`，全套 Windows-native pytest（显式可写 basetemp）为 `1232 passed, 12 deselected, 25 subtests passed`；compileall、Ruff、git diff --check 均通过。唯一 warning 为既有 `.pytest_cache` ACL。唯一下一动作是 `manual_review_LSDA_spectral_result`；不得训练、decoder、RMAL replay、generation 或 promotion。
