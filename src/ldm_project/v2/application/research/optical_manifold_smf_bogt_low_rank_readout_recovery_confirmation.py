@@ -163,7 +163,7 @@ LINEAGE = {
     "lsda_passed_required": True,
     "selection_confirmation_not_consumed": True,
     "attempt_name": (
-        "lightgen_scaled_chen_low_rank_readout_recovery_confirmation_v1_attempt_02"
+        "lightgen_scaled_chen_low_rank_readout_recovery_confirmation_v1_attempt_03"
     ),
 }
 
@@ -1029,13 +1029,15 @@ def _json_report(report: Mapping[str, Any]) -> dict[str, Any]:
 def _expected_anchor(
     compact: Mapping[str, Any], panel: str
 ) -> tuple[dict[str, float], float]:
-    anchor = compact.get("positive_anchor_replay", {}).get(panel)
+    stage_results = compact.get("stage_results", {})
+    cmos_stage = stage_results.get("cmos_intensity") if isinstance(stage_results, Mapping) else None
+    anchor = cmos_stage.get(panel) if isinstance(cmos_stage, Mapping) else None
     if not isinstance(anchor, Mapping):
-        raise LRRCHarnessFailure(f"RMAL {panel} positive anchor is unavailable")
-    physical = anchor.get("physical")
+        raise LRRCHarnessFailure(f"RMAL cmos_intensity {panel} anchor is unavailable")
+    physical = anchor.get("native_physical_anchor")
     probe = anchor.get("probe")
     if not isinstance(physical, Mapping) or not isinstance(probe, Mapping):
-        raise LRRCHarnessFailure(f"RMAL {panel} anchor metrics are unavailable")
+        raise LRRCHarnessFailure(f"RMAL cmos_intensity {panel} anchor metrics are unavailable")
     values = {
         key: float(physical[key])
         for key in ("paired_mse", "class_template_mse", "cyclic_mse")

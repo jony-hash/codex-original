@@ -98,6 +98,27 @@ def test_rank256_operator_identity_replays_full_operator() -> None:
     assert identity["explicit_factorized_max_abs_residual"] < 1.0e-12
 
 
+def test_expected_anchor_consumes_the_frozen_cmos_stage_not_final_rmal_stage() -> None:
+    compact = {
+        "positive_anchor_replay": {"selection": {"probe": {"paired_mse": 0.003}}},
+        "stage_results": {
+            "cmos_intensity": {
+                "selection": {
+                    "native_physical_anchor": {
+                        "paired_mse": 0.01,
+                        "class_template_mse": 0.02,
+                        "cyclic_mse": 0.03,
+                    },
+                    "probe": {"paired_mse": 0.04},
+                }
+            }
+        },
+    }
+    physical, probe = lrrc._expected_anchor(compact, "selection")
+    assert physical == {"paired_mse": 0.01, "class_template_mse": 0.02, "cyclic_mse": 0.03}
+    assert probe == pytest.approx(0.04)
+
+
 def test_invalid_middle_rank_is_rejected() -> None:
     features, U, W, bias = _operator_fixture()
     with pytest.raises(ValueError, match="registered"):
