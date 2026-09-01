@@ -39,7 +39,6 @@ from . import optical_manifold_smf_bogt_detector_readout_structure_attribution a
 from . import optical_manifold_smf_bogt_detector_readout_zero_column_semantics_audit as zcsa
 from . import optical_manifold_smf_bogt_manifold_readiness as mra
 from . import optical_manifold_smf_bogt_reconstruction_manifold_failure as rmfa
-from . import optical_manifold_smf_bogt_reconstruction_mapping_alignment_localization as rmal
 
 
 CONFIG_SCHEMA = (
@@ -1644,10 +1643,10 @@ def _input_hashes(
     rwsa_identity: Mapping[str, Any],
     zcsa_identity: Mapping[str, Any],
 ) -> dict[str, str]:
-    rmal_config = _resolve(RMAL_CONSUMER["config"])
-    rmal_spec = rmal._load_spec(rmal_config)
-    rmal_review = _resolve(RMAL_CONSUMER["review_contract"])
-    hashes = rwsa._input_hashes(rmal_spec, rmal_review, consumer, fit_indices)
+    rwsa_config = _resolve(RWSA_IDENTITY["config"])
+    rwsa_spec = rwsa._load_spec(rwsa_config)
+    rwsa_review = _resolve(RWSA_IDENTITY["review_contract"])
+    hashes = rwsa._input_hashes(rwsa_spec, rwsa_review, consumer, probe, fit_indices)
     hashes.update(
         {
             "research_config": file_sha256(spec.path),
