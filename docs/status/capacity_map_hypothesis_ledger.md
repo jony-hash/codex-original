@@ -79,6 +79,7 @@ be registered next.
 | v3-SQ | `conditional_spatial_quadrature_v3`: trainable 32D hierarchical spatial generator plus fixed R-difference four-port readout | Rebuild the electronic input contract and preserve complex-field observability without WAE encoder, posterior pairing, or software decoder | Electronic preflight, 10-epoch generator-only training, two 250/class dual-evaluator admission banks, finite/safety/coverage/diversity/memorization/label-shift gates; optical stages are downstream consumers only | valid failure at electronic admission: `hierarchical_spatial_input_capacity_failed`; primary semantics passed, but secondary accuracy/minimum recall/diversity/coverage failed in both banks. Unique next action `close_spatial_quadrature_v3_input_route`; no phase/receiver preflight, smoke, joint training, formal checkpoint, or promotion consumer |
 | H-LOMA-CBOGT-S0-DCM-OBS | Scaled-Chen decoder L2→CMOS incident field→CMOS intensity readout split | The old decoder→CMOS discontinuity is attributable to the coherent back-relay rather than the detector square-law readout | Frozen Identity/Scaled-Chen replay on the fixed MRA panels; two-panel rank retention, label/retrieval geometry, square-law and phase-invariance controls, state/resource isolation; valid result only registers a bounded diagnostic review | valid attribution closeout (`valid_failed`): `relay_propagation_bottleneck_supported`; relay retention `0.6571/0.6031`, detector `0.8868/0.9735`; next action `manual_review_scaled_chen_bounded_back_relay_geometry_diagnostic_contract`; no training, FMF, prior sampling, generation canary, or promotion |
 | H-LOMA-CBOGT-S1-BOSA | Scaled-Chen representation × Identity/Scaled-Chen backend observable-subspace factorial | A stable backend-specific representation mismatch should explain the cross-backend relay/readout contrast without changing the frozen representation | Fixed Identity step-5500 and Scaled-Chen step-5000, MRA/DCM selection panel, native replay, four cells `I→I/I→S/S→I/S→S`, power and square-law/phase controls; confirmation only after all representation gaps meet the preregistered direction/material gate | valid failure (`valid_failed`): `backend_observable_subspace_mismatch_not_supported`; selection `R_prop=0.9912/0.3256/1.0086/0.6571` for `I→I/I→S/S→I/S→S`, representation contrasts `-0.01736/-0.33149` (propagation) and `+0.11389/+0.11386` (detector), power confound absent; confirmation not executed; next action `manual_review_high_fidelity_relay_numerical_reference_contract`; local relay-tuning family closed, no training/FM/FMF/prior/generation/promotion |
+| H-LOMA-CBOGT-S1-HFRR | Independent complex128 high-fidelity reference for Identity/Scaled-Chen relay | The decoder→CMOS complex-retention contrast is a numerical implementation mismatch rather than a coordinate/quadratic-phase metric confound | Frozen Identity step-5500 and Scaled-Chen step-5000; independent CPU direct Fourier-series evaluator; fixed synthetic probes, native task replay, dynamic ABCD/pupil checks, analytic-only canonicalization, state/resource/no-update controls; no physical-forward modification | valid failure (`valid_failed`): `relay_complex_retention_metric_confound_supported` (Class B); native reference consistent, mismatch false, numerical boundary evaluated; raw/canonical backend gaps `0.6517181→0.0081707` (Identity) and `0.3329323→0.0193076` (Scaled-Chen); next action `manual_review_relay_retention_metric_reinterpretation_contract`; generation remains `not_ready`, no training/FM/FMF/prior/generation/promotion |
 
 ## H-JQOC closeout (2026-08-26)
 
@@ -1164,3 +1165,41 @@ baseline replay 与 DCM 一致；panel 仅作 `mechanism_evidence_only`，不能
 `generative_manifold_supported=false`、`generation_readiness=not_ready`。唯一下一动作是
 `manual_review_scaled_chen_local_relay_tuning_closeout_contract`；不允许训练、FMF、prior
 sampling、generation 或 promotion。attempt-01/02 仅作为保留的非权威历史产物。
+
+## H-LOMA-CBOGT-S1-HFRR：High-Fidelity Relay Numerical Reference closeout（2026-09-01）
+
+本假设的消费者是项目负责人对 decoder→CMOS 复场 retention 断点是否来自数值实现
+错配的人工决定；拒绝决定是独立 reference 已与生产 relay 一致，而原始 backend
+contrast 可由坐标/二次相位口径解释。实现提交为
+`8835bb228f074408a596118a907248e0f7c9c609`，固定 Identity step-5500 与
+Scaled-Chen step-5000、既有 panel、formal 光路、OLS、detector 和 exposure；全程
+无 optimizer、backward、evaluator、prior、checkpoint 或 physical-forward 修改。
+
+独立 CPU `complex128` 直接可分离 Fourier-series evaluator 与生产 Identity
+`back_b0`、Scaled-Chen `chen_relay` 分别比较，12 组固定合成 probe 和四个 task
+backend cell 均通过 complex/amplitude/phase/power/intensity 门。Identity 与
+Scaled-Chen native 最大 complex relative L2 为 `8.17e-14/6.15e-14`，task 最大值
+低于 `1.03e-5`；动态 ABCD/pupil 与 formal replay 一致，state hash 前后不变，
+CUDA 峰值 `1323107840` bytes。
+
+权威 attempt-01 位于
+`outputs/20260901_v2/runs/lightgen_scaled_chen_high_fidelity_relay_reference_v1_attempt_01/`，
+validation/audit/compact/panel SHA-256 分别为
+`248983c83cdd122f4a6aa7cf7f38bf6b415d3f080eb8136bb0a4fdb0b8e1c84f`、
+`4045e8e0469a745c637c8dae151d073e5b65e06395bf175297d93245f1031e48`、
+`d85e82d9a98fb36568d16c63d0fc1a4e5e3a311a007c512f2b07be7472427e7b`、
+`dc75d62ed53a2699aa0949fd8bd8a465f0cec2abe46b64279858a304bde9301b`。
+
+状态为 `valid_failed`，科学分类为
+`relay_complex_retention_metric_confound_supported`（Class B），数值子分类为
+`relay_numerical_reference_consistent`；`relay_numerical_reference_mismatch=false`、
+`numerical_boundary_not_evaluated=false`。Identity raw gap `0.6517181` 经
+analytic-only canonicalization 变为 `0.0081707`，Scaled-Chen
+`0.3329323→0.0193076`；该变换仅用于诊断，未进入 physical forward、detector、
+MSE 或训练。HFRR 不推翻 DCM 的 `relay_propagation_bottleneck_supported`，但要求
+重新解释 retention metric 的坐标/相位含义。
+
+唯一下一动作是 `manual_review_relay_retention_metric_reinterpretation_contract`。
+`distributed_bottleneck_supported`、`reconstruction_manifold_supported=false`、
+`generative_manifold_supported=false` 与 `generation_readiness=not_ready` 保持不变；
+不得据此开始训练、FMF、prior sampling、generation 或 promotion。

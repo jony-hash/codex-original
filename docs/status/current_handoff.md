@@ -1565,6 +1565,45 @@ KL 为 `2.81820757`，低于初始化 `2.99914436` 和 no-KL `3.37511785`，KL g
 不重新调 lambda、不训练 OLS transport、不进入 FMF/生成或 promotion；继续保持
 `training_authorized=false`、`formal_promotion=false`。
 
+## H-LOMA-CBOGT-S1-HFRR：Scaled-Chen High-Fidelity Relay Numerical Reference（2026-09-01）
+
+项目负责人批准了一个冻结、无更新的高保真 relay 数值边界审计。实现提交为
+`8835bb228f074408a596118a907248e0f7c9c609`，唯一权威目录为
+`outputs/20260901_v2/runs/lightgen_scaled_chen_high_fidelity_relay_reference_v1_attempt_01/`。
+审计固定 Identity step-5500 与 Scaled-Chen step-5000，保留生产
+`CoherentImagingRelay`、`back_b0`/`chen_relay`、formal 坐标、ABCD、pupil、采样、
+detector 和 exposure；独立 reference 为 CPU `complex128` 直接可分离
+Fourier-series evaluator，不调用生产 transform helper。没有改 physical forward、
+formal runtime、OLS、checkpoint 或训练目标，也没有 optimizer、backward、evaluator、
+prior sampling 或 checkpoint 写入。
+
+`validation.json`、`audit.json`、`compact_report.json`、`panel.pt` 的 SHA-256 分别为
+`248983c83cdd122f4a6aa7cf7f38bf6b415d3f080eb8136bb0a4fdb0b8e1c84f`、
+`4045e8e0469a745c637c8dae151d073e5b65e06395bf175297d93245f1031e48`、
+`d85e82d9a98fb36568d16c63d0fc1a4e5e3a311a007c512f2b07be7472427e7b`、
+`dc75d62ed53a2699aa0949fd8bd8a465f0cec2abe46b64279858a304bde9301b`。12 组固定合成
+probe 与四种 task backend cell 的 complex/amplitude/phase/power/intensity 数值门
+全部通过；Identity/Scaled-Chen 的最大 native complex relative L2 为
+`8.17e-14/6.15e-14`，task 最大值均低于 `1.03e-5`（预注册上限 `2e-3`）。动态
+ABCD/pupil 与 formal replay 一致，模型/OLS state hash 前后不变，峰值 CUDA 为
+`1323107840` bytes，输出总量约 `179883` bytes。
+
+权威状态是 `valid_failed` / `relay_complex_retention_metric_confound_supported`
+（Class B），不是 numerical implementation mismatch：
+`relay_numerical_reference_consistent=true`、`relay_numerical_reference_mismatch=false`、
+`numerical_boundary_not_evaluated=false`。Identity raw backend gap `0.6517181` 经
+仅供诊断的 analytic canonicalization 降至 `0.0081707`，Scaled-Chen
+`0.3329323→0.0193076`；该变换不进入 physical forward、detector、MSE、训练或晋级，
+cross-backend 结果仍只作 pupil-aware diagnostic。HFRR 不推翻 DCM 的
+`relay_propagation_bottleneck_supported`，而是要求复核 retention metric 的坐标/相位
+解释。`distributed_bottleneck_supported`、`reconstruction_manifold_supported=false`、
+`generative_manifold_supported=false` 与 `generation_readiness=not_ready` 保持不变。
+
+唯一下一动作是
+`manual_review_relay_retention_metric_reinterpretation_contract`。在该人工审查前，
+不训练、不启动 FMF、不采样 prior、不生成、不 promotion；本记录不授权新的 relay
+参数扫描或 decoder redesign。
+
 ## H-LOMA-I0：corrected KL effect pilot registration（2026-08-28）
 
 The corrected no-update dose reaudit selected the sole common compatible

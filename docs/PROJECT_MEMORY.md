@@ -45,13 +45,14 @@ ChatGPT Sources 包中的文件是由维护工具生成的受控副本。副本�
 - prior-native、direct-generator、quadrature、fiber、FMF 长训练和 formal promotion
   等已关闭或未授权路线不能因为 ChatGPT 的讨论而重新打开。
 - 所有科研执行仍需遵守 `AGENTS.md` 的 long-training gate；记忆文件本身不提供训练授权。
-- 当前最新有效科研结果是 Scaled-Chen backend observable-subspace 归因的
-  `backend_observable_subspace_mismatch_not_supported` / `valid_failed`。唯一允许的下一
-  动作是 `manual_review_high_fidelity_relay_numerical_reference_contract`；在项目负责人
-  新合同前不得进入 FMF、继续训练、exposure retuning、生成或 promotion。结合 geometry、
-  BRAC 与 BOSA，`scaled_chen_v1_local_relay_tuning_family=closed_no_local_correction_supported`；
-  这不等同于高保真数值 reference 或架构重设计已关闭。若交接文档更新，以最新的
-  `CURRENT_STATUS.md`、`status/current_handoff.md` 和 hypothesis ledger 为准。
+- 当前最新有效科研结果是 Scaled-Chen high-fidelity relay numerical reference 的
+  `relay_complex_retention_metric_confound_supported` / `valid_failed`。独立 reference
+  与生产 Identity/Scaled-Chen relay 一致，未支持 numerical implementation mismatch；
+  唯一允许的下一动作是 `manual_review_relay_retention_metric_reinterpretation_contract`。
+  在项目负责人审查前不得进入 FMF、继续训练、exposure retuning、生成或 promotion。结合
+  geometry、BRAC、BOSA 与 HFRR，`scaled_chen_v1_local_relay_tuning_family=closed_no_local_correction_supported`；
+  这不等同于架构重设计已关闭。若交接文档更新，以最新的 `CURRENT_STATUS.md`、
+  `status/current_handoff.md` 和 hypothesis ledger 为准。
 - 本次工作流治理允许的实现动作是维护记忆入口、项目文档和环境入口；不修改训练代码、
   `outputs`、WSL、SQLite 或历史 transcript。只有用户明确需要离线上传时，才生成并验证
   受控 Sources 包。
@@ -360,3 +361,41 @@ geometry/BRAC 结果，当前本地 relay 微调族关闭为
 boundary 仍未评估，故唯一下一动作是
 `manual_review_high_fidelity_relay_numerical_reference_contract`。不授权训练、FMF、prior
 sampling、generation 或 promotion。
+
+## H-LOMA-CBOGT-S1-HFRR：Scaled-Chen High-Fidelity Relay Numerical Reference（2026-09-01）
+
+该 no-update 审计的消费者是项目负责人对 relay 复场 retention 指标是否能支持
+“数值实现错配”或仅是坐标/相位口径混淆的人工决定；任何结果都不能授权训练、FMF、
+prior sampling、generation 或 promotion。实现提交为
+`8835bb228f074408a596118a907248e0f7c9c609`，冻结 Identity step-5500 与
+Scaled-Chen step-5000，生产 forward、OLS、formal config、exposure 和数据 panel
+均只读。
+
+reference 使用独立 CPU `complex128` 直接 Fourier-series evaluator，未调用生产
+transform helper；12 组固定合成 probe 及 Identity/Scaled-Chen native task replay
+均通过 complex、amplitude、phase、power、intensity 数值门。动态 ABCD/pupil 也与
+formal replay 一致：Identity `A=-2.5,B≈-1.94e-16,C=-14,D=-0.4`，source/target
+occupancy `7843/10000`、`7845/40000`；Scaled-Chen `A=-2.5,B≈2.17e-19,
+C=-1633.333333333333,D=-0.4`，两侧 pupil 均满。状态 hash 前后相同，峰值 CUDA
+`1323107840` bytes，optimizer/backward/evaluator/prior/checkpoint 均为零或未发生。
+
+权威目录为
+`outputs/20260901_v2/runs/lightgen_scaled_chen_high_fidelity_relay_reference_v1_attempt_01/`；
+validation/audit/compact/panel SHA-256 分别为
+`248983c83cdd122f4a6aa7cf7f38bf6b415d3f080eb8136bb0a4fdb0b8e1c84f`、
+`4045e8e0469a745c637c8dae151d073e5b65e06395bf175297d93245f1031e48`、
+`d85e82d9a98fb36568d16c63d0fc1a4e5e3a311a007c512f2b07be7472427e7b`、
+`dc75d62ed53a2699aa0949fd8bd8a465f0cec2abe46b64279858a304bde9301b`。
+
+结果为 `valid_failed` / `relay_complex_retention_metric_confound_supported`（Class B），
+数值子分类为 `relay_numerical_reference_consistent`；
+`relay_numerical_reference_mismatch=false`、`numerical_boundary_not_evaluated=false`。
+原始 backend gap Identity `0.6517181`、Scaled-Chen `0.3329323`，analytic-only
+canonicalization 后分别为 `0.0081707`、`0.0193076`，gap reduction 分别为
+`0.6435474`、`0.3136248`。canonicalization 不进入 physical forward、detector、
+MSE 或任何训练/晋级决策，cross-backend 仍只是 pupil-aware diagnostic。
+
+HFRR 不抹除 DCM 的 `relay_propagation_bottleneck_supported`，而是把后续决策收敛为
+`manual_review_relay_retention_metric_reinterpretation_contract`。总体系的
+`distributed_bottleneck_supported`、`reconstruction_manifold_supported=false`、
+`generative_manifold_supported=false` 与 `generation_readiness=not_ready` 均保持不变。

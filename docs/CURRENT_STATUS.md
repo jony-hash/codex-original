@@ -6,10 +6,10 @@
 
 - 主项目：`D:\codex-original`
 - 基线分支：`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`
-- 当前 clean HEAD（本次状态更新提交；BOSA evidence producer）：见本次 Git 提交；BOSA
-  evidence 绑定实现提交 `8ece7fb6f0eb8208e4b50ada87bbfaaf981d648b`。
-- 当前提交包含 Scaled-Chen backend observable-subspace attribution 实现；真实 CUDA
-  evidence 绑定上述实现提交，状态文档随后在独立提交中更新。
+- 当前 clean HEAD（本次状态更新提交；HFRR evidence producer）：见本次 Git 提交；HFRR
+  evidence 绑定实现提交 `8835bb228f074408a596118a907248e0f7c9c609`。
+- 当前提交包含 Scaled-Chen high-fidelity relay numerical reference 实现；真实 CUDA
+  evidence 绑定上述实现提交，状态文档随后在独立提交中更新。BOSA 仍是其父级输入证据。
 - 基线提交：`019b76ef911e0bd16b8d5d4169807323427684af`
 - 当前几何归因实现绑定提交：`6419cc523a8b5dd41cb3d3c2531193890fa1481a`
 - 注销前审计提交：`75d0584c379b145b0f0eb45ece14fda160741f23`（已按用户确认推送）
@@ -370,3 +370,57 @@ geometry `geometry_not_supported`、BRAC `aperture_effectively_inactive` 与
 关闭高保真数值 relay reference 或架构重设计，也不授权训练、FMF、prior sampling、
 generation 或 promotion。CUDA 峰值为 `2575680000` bytes，输出约 `176147` bytes，
 均在资源合同内。
+
+## Scaled-Chen High-Fidelity Relay Numerical Reference（2026-09-01）
+
+基于实现提交 `8835bb228f074408a596118a907248e0f7c9c609`，完成假设
+`H-LOMA-CBOGT-S1-HFRR` 的冻结、无更新高保真数值 reference 审计。独立 reference
+使用 CPU `complex128` 的直接二维可分离 Fourier-series evaluator，不调用生产
+`_fourier_resample`、`_quadratic_phase` 或 `reference_b0_imaging`；生产 Identity
+`back_b0` 与 Scaled-Chen `chen_relay` 分别按原 formal 坐标、ABCD、pupil、采样、
+detector 与 exposure 回放。没有创建 optimizer、backward、evaluator、prior 或
+checkpoint，也没有修改物理 forward、formal runtime、OLS 或训练目标。
+
+权威目录为
+`outputs/20260901_v2/runs/lightgen_scaled_chen_high_fidelity_relay_reference_v1_attempt_01/`；
+`validation.json`、`audit.json`、`compact_report.json`、`panel.pt` 的 SHA-256 分别为
+`248983c83cdd122f4a6aa7cf7f38bf6b415d3f080eb8136bb0a4fdb0b8e1c84f`、
+`4045e8e0469a745c637c8dae151d073e5b65e06395bf175297d93245f1031e48`、
+`d85e82d9a98fb36568d16c63d0fc1a4e5e3a311a007c512f2b07be7472427e7b`、
+`dc75d62ed53a2699aa0949fd8bd8a465f0cec2abe46b64279858a304bde9301b`。总产物约
+`179883` bytes，低于 `512 MiB`；attempt-01 已占用，后续不得覆盖。
+
+12 组固定合成 probe 以及 Identity/Scaled-Chen native task replay 均通过数值门：
+Identity 最大 complex relative L2 为 `8.17e-14`、Scaled-Chen 为 `6.15e-14`，
+两者最小 normalized correlation 均高于 `0.99999999999999`，最大 phase RMS 分别为
+`2.27e-13`/`2.46e-13`；task replay 最大 complex relative L2 为
+`9.23e-7`（I→I）/`8.81e-6`（I→S）/`1.03e-6`（S→I）/`7.67e-6`（S→S），均低于
+预注册 `2e-3`。动态 ABCD/pupil 检查与参考一致：Identity
+`(A,B,C,D)=(-2.5,-1.94e-16,-14,-0.4)`，source/target pupil occupancy
+`7843/10000`、`7845/40000`；Scaled-Chen
+`(A,B,C,D)=(-2.5,2.17e-19,-1633.333333333333,-0.4)`，source/target 均满 pupil。
+
+审计状态为 `valid_failed`，科学分类为
+`relay_complex_retention_metric_confound_supported`（Class B）；数值子分类为
+`relay_numerical_reference_consistent`，`relay_numerical_reference_mismatch=false`，
+`numerical_boundary_not_evaluated=false`。也就是说，高保真 reference 没有支持
+生产实现错配；但原始复场 retention 的 backend contrast 明显受坐标/二次相位口径
+影响：Identity raw gap `0.6517181` 经 analytic-only canonicalization 降为
+`0.0081707`（减少 `0.6435474`），Scaled-Chen raw gap `0.3329323` 降为
+`0.0193076`（减少 `0.3136248`）。canonicalization 未进入 physical forward、
+detector、MSE、训练或任何晋级决策，cross-backend 仍仅作 pupil-aware diagnostic。
+
+CUDA 回放峰值为 `1323107840` bytes，运行前可用显存 `5368709120` bytes，D: 保持
+高于 `10 GiB`；模型与 OLS state hash 前后完全一致，`optimizer_created=false`、
+`backward=false`、`evaluator_calls=0`、`prior_sampled=false`。相邻测试 48 项和单项
+CUDA relay 回归通过；预加载当前 Windows 环境 CUDA DLL 后默认完整 pytest 为
+`1102 passed, 12 deselected, 1 warning, 25 subtests passed`。未预加载 DLL 的首轮
+失败仅是环境搜索路径问题，不构成代码或科学 evidence 失败。
+
+HFRR 不删除 DCM 的 `relay_propagation_bottleneck_supported`；它将该结论的后续
+决策限定为“复场 retention 指标的物理坐标/相位口径复核”，而非直接改写为数值
+实现错误或 decoder capacity 结论。`distributed_bottleneck_supported`、
+`reconstruction_manifold_supported=false`、`generative_manifold_supported=false`
+和 `generation_readiness=not_ready` 均保持不变。唯一下一动作是
+`manual_review_relay_retention_metric_reinterpretation_contract`；在人工审查前不训练、
+不启动 FMF、不采样 prior、不生成、不 promotion。
