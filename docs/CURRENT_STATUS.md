@@ -6,11 +6,11 @@
 
 - 主项目：`D:\codex-original`
 - 基线分支：`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`
-- 当前 clean HEAD（RMRI result/status commit，由 Git HEAD 绑定）；
-  RMRI validation/audit 绑定 clean implementation commit
-  `16896f06b31549120adf6235587619fe2820af83`，本文件在当前结果提交中更新。
-- 当前最新研究解释是 RMRI 对 HFRR/DCM/MRA/BOSA 的 superseding interpretation；旧 evidence
-  仍不可变，HFRR/DCM/MRA/BOSA 的历史 classification 继续保留为父级事实。
+- 当前 clean HEAD（TRBA result/status commit，由 Git HEAD 绑定）；
+  TRBA validation/audit 绑定 clean implementation commit
+  `7c1c0f8dcfb878049260043441a117456e5ebe6a`，本文件在当前结果提交中更新。
+- 当前最新研究解释是 TRBA 对 RMRI/MRA 的 task-relevant superseding interpretation；旧
+  evidence 仍不可变，HFRR/DCM/MRA/RMRI 的历史 classification 继续保留为父级事实。
 - 基线提交：`019b76ef911e0bd16b8d5d4169807323427684af`
 - 当前几何归因实现绑定提交：`6419cc523a8b5dd41cb3d3c2531193890fa1481a`
 - 注销前审计提交：`75d0584c379b145b0f0eb45ece14fda160741f23`（已按用户确认推送）
@@ -478,3 +478,68 @@ RMRI overall status 为 `valid_failed`（科学重解释完成但不构成晋级
 或 formal promotion。CUDA 峰值 `3626808320` bytes（约 3.63 GiB），输出总量约
 `388685` bytes，均在资源合同内；flags 仍为 optimizer/backward/evaluator/checkpoint/
 prior 全部为零或 false，physical forward 与 historical evidence 未修改。
+
+## H-LOMA-CBOGT-S2-TRBA：Task-Relevant Bottleneck Attribution（2026-09-01）
+
+本 Gate 是 RMRI relay closeout 之后的冻结、无更新 task-relevant 复核；真实消费者是
+项目负责人决定当前 Scaled-Chen v1 是否仍有可归因的 OLS 或 decoder-internal 任务瓶颈。
+它只测两个独立段：`pre-OLS → modal_complex` 与 `decoder_input → decoder_layer_2`，
+不把 relay/CMOS 混入，不修改 formal runtime、FiberArrayOLS、checkpoint、训练目标或
+历史 evidence。实现与 validation/audit 绑定 clean implementation commit
+`7c1c0f8dcfb878049260043441a117456e5ebe6a`；TRBA 的结果/状态由本次文档提交绑定。
+
+attempt-01 保留为 write-once 的发布失败记录：完整 CUDA 测量已完成，但初版 JSON
+contract 错把逐样本 Tensor 带入序列化；该目录只有 validation、panel、compact，未写入
+audit，不参与结论。修复后的权威 attempt-02 为
+`outputs/20260901_v2/runs/lightgen_scaled_chen_task_relevant_bottleneck_v1_attempt_02/`，
+四个产物 SHA-256 依次为 validation
+`3bec36f315c872a05bcb3381929987d8fff57914351a2d5bef4ff1eebda0c659`、audit
+`b6be2c6f97dbdcb1d02ad0f2395eca438ebeb619196758a57eb8cc26f31745c0`、compact
+`a6015a3fa594515fc24ac1af6cb684d3aa70cd703ae22ae9e8ab3924c86f633a`、panel
+`ec76f0760a743ef8fd845b6b93969fac727619e439b4f03109fb40218cc46319`。总输出
+`517995` bytes，低于 `512 MiB`；D: 运行后仍约 `36.5 GiB` 可用。
+
+TRBA 的 invariant sample geometry 使用
+`S_ij=|<z_i,z_j>|²/[(||z_i||²+eps)(||z_j||²+eps)]`，按完整 complex tensor/注册
+port order flatten，逐块计算，不 resize/crop、phase-fit 或 HFRR canonicalize。C0
+no-op、C1 per-sample global phase、C2 common reversal permutation、C3 common diagonal
+unit-modulus phase 均通过；最大 geometry drift `1.48e-7`、label drift `5.63e-7`，
+retrieval drift `0`，均低于预注册容差。MRA 的 panel、bootstrap helper、冻结 state
+检查和 RMRI/HFRR lineage 均被复用。
+
+真实结果（selection/confirmation）：
+
+- OLS geometry retention=`0.828977/0.830021`，即 degradation=`0.171023/0.169979`；
+  power retention=`0.718075/0.703888`。true-label inter/intra
+  `10.873794→11.488753`、`10.590649→11.169436`，permuted-label
+  `9.086486→9.085960`、`8.988460→8.988677`；task-advantage degradation 为
+  `-0.615485/-0.578570`，invariant retrieval degradation 为 `0/0.002600`。因此
+  OLS 只有 `generic_geometry_change_only`，没有 ≥5pp 的 task-relevant secondary loss。
+- decoder-internal geometry retention=`0.989736/0.989383`，degradation=`0.010264/
+  0.010617`；power retention=`0.759560/0.758735`。true-label inter/intra
+  `11.488753→11.519594`、`11.169436→11.199390`，permuted-label
+  `9.085960→9.085983`、`8.988677→8.988709`；task-advantage degradation
+  `-0.030818/-0.029922`，retrieval degradation `-0.002000/-0.001200`。该段未达到
+  material primary 或 secondary 门，分类为 `not_supported`。
+
+两个 panel 的 finite、冻结和 transform controls 全部有效，CUDA 峰值
+`2281484800` bytes（约 2.28 GiB），运行前可用显存 `5368709120` bytes，wall time
+`225.297` 秒仅作观察。`optimizer_created=false`、`backward=false`、
+`evaluator_calls=0`、`checkpoint_written=false`、`prior_sampled=false`、
+`physical_forward_modified=false`、`historical_evidence_modified=false`。
+
+TRBA 整体科学分类为 T4：
+`task_relevant_bottleneck_not_supported`，唯一下一动作是
+`manual_review_scaled_chen_bottleneck_attribution_closeout_contract`。这表示当前数据
+不支持 OLS-only、decoder-only 或 task-relevant distributed bottleneck；OLS 的几何变化
+仍是机制观察，但没有被 task-relevant control 确认为信息瓶颈。历史 RMRI/MRA 的
+`distributed_bottleneck_supported_canonicalized` 继续保留为 raw/rank-context 历史事实，
+不被删除或静默改写。TRBA 不提供 reconstruction 或 generation evidence，
+`reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、
+`generation_readiness=not_ready` 保持；不授权训练、FMF、prior sampling、generation
+或 formal promotion。
+
+默认完整 pytest 为 `1121 passed, 12 deselected, 1 failed`；唯一失败是既有
+`test_near_conjugate_relay_equivalence_workflow_writes_bound_passed_evidence` 在较长
+临时路径下创建缺失父目录，与 TRBA 文件无关。TRBA/邻近 MRA、RMRI、HFRR、BOSA、
+geometry、fiber 测试及 compileall/Ruff/diff-check 均通过。

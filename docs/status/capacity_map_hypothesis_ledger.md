@@ -1261,3 +1261,35 @@ decoder-input→decoder-L2 两段均有独立、稳定的 material failure；BOS
 metric-confound closeout；不得据此训练、继续 Scaled-Chen/FMF、采样 prior、启动
 generation canary 或 formal promotion。RMRI 不宣称已解决所有连续物理传播问题，也不
 把 analytic canonicalization 写入正式模型路径。
+
+## H-LOMA-CBOGT-S2-TRBA：Task-Relevant Bottleneck Attribution（2026-09-01）
+
+本假设的消费者是项目负责人对 Scaled-Chen v1 是否存在可行动的 task-relevant
+OLS/decoder 瓶颈以及是否关闭当前训练生命周期的决定；拒绝决定是两个独立段在
+selection 与 confirmation 上均未形成预注册的 task-relevant material loss。实现提交
+为 `7c1c0f8dcfb878049260043441a117456e5ebe6a`。attempt-01 的 JSON 发布失败产物
+保留但不消费；权威 attempt-02 位于
+`outputs/20260901_v2/runs/lightgen_scaled_chen_task_relevant_bottleneck_v1_attempt_02/`，
+validation/audit/compact/panel SHA-256 为
+`3bec36f315c872a05bcb3381929987d8fff57914351a2d5bef4ff1eebda0c659`、
+`b6be2c6f97dbdcb1d02ad0f2395eca438ebeb619196758a57eb8cc26f31745c0`、
+`a6015a3fa594515fc24ac1af6cb684d3aa70cd703ae22ae9e8ab3924c86f633a`、
+`ec76f0760a743ef8fd845b6b93969fac727619e439b4f03109fb40218cc46319`。
+
+TRBA 固定 MRA selection（MNIST test 5000–9999，每类 100）与 confirmation（train
+55000–59999，5000），主指标为 global-phase/common-unitary invariant normalized
+complex Gram geometry；C0–C3 controls、finite、freeze、parent lineage 与 data
+isolation 全部通过，最大 control drift 为 geometry `1.48e-7`、label `5.63e-7`、
+retrieval `0`。OLS pre-OLS→modal 的 geometry degradation 为
+`0.171023/0.169979`，但 task-advantage degradation 为 `-0.615485/-0.578570`、
+retrieval degradation 为 `0/0.002600`，故只能记录
+`generic_geometry_change_only`。decoder-input→decoder-L2 degradation 为
+`0.010264/0.010617`，无 material task/retrieval loss，段状态为 `not_supported`。
+
+权威结果是 `valid_failed` / T4 `task_relevant_bottleneck_not_supported`；唯一下一动作
+为 `manual_review_scaled_chen_bottleneck_attribution_closeout_contract`。历史 MRA/RMRI
+的 raw/canonicalized classification 仍保留，不把 generic complex geometry change
+重新升级为 task bottleneck。`reconstruction_manifold_supported=false`、
+`generative_manifold_supported=false`、`generation_readiness=not_ready` 保持分离；
+relay family 仍为 `closed_metric_confound_reinterpreted`。本结果不授权继续训练、FMF、
+exposure retuning、prior sampling、generation、canary 或 formal promotion。

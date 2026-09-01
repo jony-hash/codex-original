@@ -939,6 +939,53 @@ evidence 与 checkpoints。实验拆分 SMF LP01 投影容量、既有 FMF M2 ob
 不训练、不改 OLS transport、不放宽历史 `+5pp` 门限。审计结果只决定下一个人工
 合同，不自动授权 dose pilot、FMF、生成或 promotion。
 
+## H-LOMA-CBOGT-S2-TRBA：Task-Relevant Bottleneck Attribution（2026-09-01）
+
+TRBA 是 RMRI metric-confound closeout 后唯一执行的冻结、无更新 task-relevant
+归因，消费者是项目负责人对当前 Scaled-Chen v1 是否存在可行动的 task-relevant
+OLS/decoder 瓶颈及是否关闭本生命周期的决定。它不改 physical forward、formal
+runtime、OLS、checkpoint、训练目标、detector 或 prior；raw MRA retention 只作历史
+上下文，不能作为本次主结论。
+
+实现与审计绑定 clean implementation commit
+`7c1c0f8dcfb878049260043441a117456e5ebe6a`。attempt-01 因首次发布时 contract
+JSON 含未序列化 tensor 而保留为不可消费的部分产物；不得覆盖。权威 CUDA
+attempt-02 位于
+`outputs/20260901_v2/runs/lightgen_scaled_chen_task_relevant_bottleneck_v1_attempt_02/`，
+validation/audit/compact/panel SHA-256 分别为
+`3bec36f315c872a05bcb3381929987d8fff57914351a2d5bef4ff1eebda0c659`、
+`b6be2c6f97dbdcb1d02ad0f2395eca438ebeb619196758a57eb8cc26f31745c0`、
+`a6015a3fa594515fc24ac1af6cb684d3aa70cd703ae22ae9e8ab3924c86f633a`、
+`ec76f0760a743ef8fd845b6b93969fac727619e439b4f03109fb40218cc46319`。
+
+审计固定 MRA selection（MNIST test 5000–9999，每类 100）与 confirmation（train
+55000–59999，5000）。主指标是单样本全局相位、共同坐标变换不变的 normalized
+complex Gram geometry；C0 no-op、C1 global phase、C2 common permutation/reversal、
+C3 common unit-modulus diagonal controls 均通过，最大 control drift 为 geometry
+`1.48e-7`、label `5.63e-7`、retrieval `0`。OLS 段 selection/confirmation geometry
+degradation 为 `0.171023/0.169979`，但 task-advantage degradation 为
+`-0.615485/-0.578570`、retrieval degradation 为 `0/0.002600`，因此仅为
+`generic_geometry_change_only`；decoder-input→decoder-L2 degradation 仅
+`0.010264/0.010617`，任务与 retrieval 均无 material loss，段状态为
+`not_supported`。
+
+TRBA 总体是完整 harness 下的 `valid_failed`，分类 T4
+`task_relevant_bottleneck_not_supported`，唯一下一动作是
+`manual_review_scaled_chen_bottleneck_attribution_closeout_contract`。这不是
+`distributed_bottleneck_supported` 的 task-relevant 复现，也不删除历史 MRA/RMRI
+classification；`reconstruction_manifold_supported=false`、
+`generative_manifold_supported=false`、`generation_readiness=not_ready` 保持分离。
+TRBA 不授权训练、FMF、exposure retuning、prior sampling、generation、canary 或
+formal promotion。relay family 继续保持
+`scaled_chen_v1_local_backend_relay_attribution_family=closed_metric_confound_reinterpreted`。
+
+治理与资源门全部通过：`optimizer_created=false`、`backward=false`、
+`evaluator_calls=0`、`checkpoint_written=false`、`prior_sampled=false`、
+`physical_forward_modified=false`；峰值 CUDA `2281484800` bytes，输出约 `517995`
+bytes。默认全量 pytest 为 `1121 passed, 12 deselected, 1 failed`，唯一失败是与
+TRBA 无关的 near-conjugate Windows 长临时路径创建问题；TRBA/邻近研究测试、
+compileall、Ruff、`git diff --check` 均通过。
+
 ## H-LOMA-CBOGT-S1-RMRI：Relay Metric Reinterpretation Audit closeout（2026-09-01）
 
 RMRI 已从 clean implementation commit

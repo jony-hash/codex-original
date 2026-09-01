@@ -45,18 +45,44 @@ ChatGPT Sources 包中的文件是由维护工具生成的受控副本。副本�
 - prior-native、direct-generator、quadrature、fiber、FMF 长训练和 formal promotion
   等已关闭或未授权路线不能因为 ChatGPT 的讨论而重新打开。
 - 所有科研执行仍需遵守 `AGENTS.md` 的 long-training gate；记忆文件本身不提供训练授权。
-- 当前最新有效科研结果是 RMRI 对 HFRR/DCM/MRA/BOSA 的 superseding interpretation，
-  overall `valid_failed`，DCM=`relay_propagation_bottleneck_reinterpreted_metric_confound`、
-  MRA=`distributed_bottleneck_supported_canonicalized`、BOSA=
-  `backend_observable_subspace_mismatch_not_supported_reinterpreted`。唯一允许的下一动作
-  是 `manual_review_relay_metric_confound_closeout_contract`；在项目负责人审查前不得
-  进入 FMF、继续训练、exposure retuning、生成或 promotion。历史 classification 仍不可变，
-  `scaled_chen_v1_local_relay_tuning_family=closed_no_local_correction_supported` 保持。
+- 当前最新有效科研结果是 TRBA 对 RMRI/MRA 的 task-relevant superseding interpretation，
+  overall `valid_failed` / `task_relevant_bottleneck_not_supported`（T4）；OLS 仅为
+  `generic_geometry_change_only`，decoder-internal 为 `not_supported`。唯一允许的下一动作
+  是 `manual_review_scaled_chen_bottleneck_attribution_closeout_contract`；在项目负责人
+  审查前不得进入 FMF、继续训练、exposure retuning、生成或 promotion。历史 RMRI/MRA/
+  HFRR/DCM/BOSA classification 仍不可变，relay family
+  `scaled_chen_v1_local_backend_relay_attribution_family=closed_metric_confound_reinterpreted`
+  保持。
   若交接文档更新，以最新的 `CURRENT_STATUS.md`、`status/current_handoff.md` 和 hypothesis
   ledger 为准。
 - 本次工作流治理允许的实现动作是维护记忆入口、项目文档和环境入口；不修改训练代码、
   `outputs`、WSL、SQLite 或历史 transcript。只有用户明确需要离线上传时，才生成并验证
   受控 Sources 包。
+
+## H-LOMA-CBOGT-S2-TRBA：Task-Relevant Bottleneck Attribution（2026-09-01）
+
+TRBA 是 RMRI relay closeout 后唯一执行的冻结、无更新 task-relevant 归因。它消费
+RMRI/MRA/HFRR 的已验证 parent evidence，在相同 selection（MNIST test 5000–9999，
+每类 100）与 confirmation（train 55000–59999，5000）上只比较
+`pre-OLS→modal_complex` 与 `decoder_input→decoder_layer_2`。实现提交为
+`7c1c0f8dcfb878049260043441a117456e5ebe6a`；attempt-01 的发布失败产物保留但不消费，
+attempt-02 是权威结果目录：
+`outputs/20260901_v2/runs/lightgen_scaled_chen_task_relevant_bottleneck_v1_attempt_02/`。
+
+Primary 使用不依赖维度、单样本全局相位、共同坐标置换或共同 unit-modulus 对角变换的
+normalized complex Gram geometry。C0–C3 controls、finite、state freeze、panel isolation
+和 parent lineage 全部通过；最大 control drift 为 geometry `1.48e-7`、label `5.63e-7`、
+retrieval `0`。OLS geometry degradation 为 `0.171023/0.169979`，但 task-advantage
+degradation 为 `-0.615485/-0.578570`、retrieval degradation 为 `0/0.002600`，所以只
+记录 `generic_geometry_change_only`，不能称 task bottleneck。decoder-internal geometry
+degradation 仅 `0.010264/0.010617`，task advantage 与 retrieval 同样没有下降。
+
+TRBA 科学分类为 T4：`task_relevant_bottleneck_not_supported`；唯一下一动作是
+`manual_review_scaled_chen_bottleneck_attribution_closeout_contract`。这不删除历史
+MRA/RMRI 的 `distributed_bottleneck_supported_canonicalized`，也不把 raw complex/rank
+变化重新升级为容量结论。`reconstruction_manifold_supported=false`、
+`generative_manifold_supported=false`、`generation_readiness=not_ready` 必须分开保持；
+TRBA 不授权训练、FMF、prior sampling、generation、canary 或 formal promotion。
 
 ## Scaled-Chen 秩匹配 OLS 几何归因（2026-08-30）
 
