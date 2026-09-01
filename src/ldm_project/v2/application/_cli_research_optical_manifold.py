@@ -114,6 +114,11 @@ def dispatch(args: argparse.Namespace) -> int:
     }:
         from .research.optical_manifold_smf_bogt_detector_readout_structure_attribution import dispatch
     elif action in {
+        "scaled-chen-detector-readout-zero-column-semantics-audit-validate",
+        "scaled-chen-detector-readout-zero-column-semantics-audit-run",
+    }:
+        from .research.optical_manifold_smf_bogt_detector_readout_zero_column_semantics_audit import dispatch
+    elif action in {
         "scaled-chen-back-relay-axial-conjugate-validate",
         "scaled-chen-back-relay-axial-conjugate-preflight",
         "scaled-chen-back-relay-axial-conjugate-run",
