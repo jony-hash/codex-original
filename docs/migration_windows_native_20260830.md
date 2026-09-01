@@ -214,6 +214,28 @@ W/b=`[256,40000]/[40000]`，full/active/inactive=`40000/33502/6498`，full/activ
 K=16 仅为 descriptive preview；source/target orthogonality residual=`1.5695833278775036e-15/3.095197802817193e-14`。global reference 为 RMAL fit panel 1000 个 unlabeled streaming targets，hash=`513a696e21dafebebe4a862ab814b06294beb662db2afcfd679899fd19b27daf`；class-template、selection、confirmation 与 target bank 未使用/保存。bias norm²=`114.5276114768678`，preview projection energy=`21.21861242530154`，preview 外 residual=`93.30899905156626`。
 
 validation/audit gates 全部通过；全程无 CUDA、optimizer、backward、refit、decoder、physical forward 或 rank-truncated reconstruction。新增定向测试 `18 passed`，直接相关回归 `101 passed`，显式可写 basetemp 的完整 pytest 为 `1232 passed, 12 deselected, 25 subtests passed`；compileall、Ruff、diff-check 通过，唯一 warning 为既有 `.pytest_cache` ACL。状态 flags 保持 `reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、`generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false` 与 `closed_task_relevant_bottleneck_not_supported`；唯一下一动作是 `manual_review_LSDA_spectral_result`。
-Ruff、diff-check 以及显式短 basetemp 全套 pytest（`1197 passed, 12 deselected, 25 subtests passed`）
-均通过。formal/generative readiness 与 training/promotion flags 继续为 false/not_ready；唯一下一动作
-为 `manual_review_ZCSA_result`。结果/状态 commit 后 refresh bridge 并检查 status，不自动上传。
+
+## H-LOMA-CBOGT-S6-LRRC：Low-Rank Readout Recovery Confirmation（2026-09-02）
+
+Windows-native 环境完成 LRRC 的 frozen-W、no-refit functional recoverability confirmation。实现、
+配置、review contract、测试与 CLI 的 clean commit 为 `2a061db61910a847118e38663d05c05bd9447063`；
+RMAL/ZCSA/RWSA-ACTIVE/LSDA、probe、renderer、checkpoint、OLS、detector、formal runtime 与历史
+evidence 未修改。权威 attempt-04 位于
+`outputs/20260902_v2/runs/lightgen_scaled_chen_low_rank_readout_recovery_confirmation_v1_attempt_04/`；
+validation/audit/compact SHA256=`b305c38dc3c774ff995c98907977d67cfc396d56009b8a88f726e214f9efa004` /
+`5ffcb3550e0a1d635f70cdf965d12c93ded6e99fadf8f0f6ef0cda829b4a6b58` /
+`4ae704104accd8cebfcb0e3c19dba7deb90b4febf38bace3c7e578bd484951b8`。
+
+candidate family 固定为 `[1,2,4,8,16,32,64,128,256]`，rank-256 full positive anchor first 且
+selection/confirmation 均通过；rank `1,2,4,8,16,32,64,128` 按预注册顺序全部 selection 失败，
+confirmation 未执行。故 `first_confirmed_candidate_rank=256`、`rank_256_reused_as_fallback=true`，
+没有第二次 rank-256 run。operator identity、CMOS-only replay、state/no-update、streaming/no-bank
+和 resource gates 全部通过；`cmos_only_replay_executed=true`、`optical_replay_executed=false`。
+
+结果为 `passed / low_rank_readout_recovery_confirmation_completed`；LSDA boundary gaps 与
+rank-36 smallest relative gap=`0.0025793411` 仅作 descriptive telemetry，无新增 threshold。
+flags 继续为 `reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、
+`generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false` 与
+`closed_task_relevant_bottleneck_not_supported`。最终核验：LRRC `26 passed`、相关 `130 passed`、
+默认全套 pytest `1258 passed, 12 deselected, 25 subtests passed`；唯一下一动作是
+`manual_review_LRRC_result`，结果/状态 commit 后 refresh bridge 并检查 status，不自动上传。

@@ -1828,3 +1828,39 @@ zero-W error contribution（paired/full/dynamic-only/bias-only）为 selection=0
 K=16 为 descriptive preview；source/target orthogonality residual=`1.5695833278775036e-15/3.095197802817193e-14`，每个 mode 保存固定 D4、FFT、空间、signed 与 basis-dependent descriptor。global reference 为 RMAL fit panel 1000 个 unlabeled streaming target mean，hash=`513a696e21dafebebe4a862ab814b06294beb662db2afcfd679899fd19b27daf`；class-template、selection、confirmation 与 target bank 均未使用/保存。bias norm²=`114.5276114768678`，top-16 projection energy=`21.21861242530154`，preview 外 residual=`93.30899905156626`。
 
 全程 CPU-only/no-update：cuda、optimizer、backward、refit、decoder、physical forward 与 rank-truncated reconstruction 均为 false/zero。新增定向测试 `18 passed`，直接相关回归 `101 passed`，全套 pytest `1232 passed, 12 deselected, 25 subtests passed`（显式可写 basetemp），compileall/Ruff/diff-check 通过；唯一 warning 为既有 `.pytest_cache` ACL。`reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、`generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false` 与 `closed_task_relevant_bottleneck_not_supported` 保持。唯一下一动作：`manual_review_LSDA_spectral_result`。
+
+## H-LOMA-CBOGT-S6-LRRC：Low-Rank Readout Recovery Confirmation（2026-09-02）
+
+LRRC 在 LSDA 之后执行 frozen RMAL `W=[256,40000]`、`b=[40000]` 的 no-refit functional
+recoverability confirmation。消费者是项目负责人审查预注册 powers-of-two family 内的首个
+confirmed rank；拒绝决定是不能把 LSDA energy 或本结果升级为数学最小秩、intrinsic/physical/
+architecture rank、training、generation 或 formal promotion。实现/config/review/test/CLI 的
+clean commit=`2a061db61910a847118e38663d05c05bd9447063`，上游 evidence/probe/renderer/checkpoint/
+OLS/detector/formal runtime 未修改。
+
+权威 attempt-04：
+`outputs/20260902_v2/runs/lightgen_scaled_chen_low_rank_readout_recovery_confirmation_v1_attempt_04/`；
+validation/audit/compact SHA256=`b305c38dc3c774ff995c98907977d67cfc396d56009b8a88f726e214f9efa004` /
+`5ffcb3550e0a1d635f70cdf965d12c93ded6e99fadf8f0f6ef0cda829b4a6b58` /
+`4ae704104accd8cebfcb0e3c19dba7deb90b4febf38bace3c7e578bd484951b8`；probe hash=
+`3551584a7983619356ea49babe7e5dedca559dfaa8ee5302fa44fd1a152a24ed`。
+
+candidate family 固定为 `[1,2,4,8,16,32,64,128,256]`，rank-0 仅为 bias-only control。rank-256
+full positive anchor 首先执行，selection/confirmation 均通过；factorized-vs-full operator
+max residual=`2.4333037798e-06/2.5858223358e-06`，probe replay abs delta=
+`1.1276390065e-10/7.8544505795e-10`（selection/confirmation）。随后 rank `1,2,4,8,16,32,64,128`
+按注册顺序全部 selection 失败，confirmation 未执行；winner=`256`、
+`rank_256_reused_as_fallback=true`、无第二次 rank-256 run。LSDA candidate boundary gaps 与
+rank-36 smallest-gap=`0.0025793411` 仅作为 descriptive telemetry，无新增 threshold。
+
+结果为 `passed / low_rank_readout_recovery_confirmation_completed`。CMOS-only exact replay、
+state/no-update、streaming/no-bank、anchor 和 resource gates 全部通过；`cmos_only_replay_executed=true`、
+`optical_replay_executed=false`，optimizer/backward/refit/decoder/generation/physical-forward
+modification 均 false/zero。flags 仍为 `reconstruction_manifold_supported=false`、
+`generative_manifold_supported=false`、`generation_readiness=not_ready`、
+`training_authorized=false`、`formal_promotion=false`、`closed_task_relevant_bottleneck_not_supported`。
+
+最终核验：LRRC 定向 `26 passed`，相关回归 `130 passed`，默认 Windows-native 全套 pytest
+`1258 passed, 12 deselected, 25 subtests passed`；compileall、Ruff、diff-check 通过，只有既有
+`.pytest_cache` ACL warning。attempt-01/02/03 保留为 immutable 历史记录，attempt-04 为当前权威。
+唯一下一动作：`manual_review_LRRC_result`；不得训练、candidate export、generation 或 promotion。

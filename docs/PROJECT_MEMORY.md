@@ -1,6 +1,6 @@
 # codex-original 项目记忆
 
-更新时间：2026-09-01
+更新时间：2026-09-02
 
 ## 目的与事实优先级
 
@@ -45,12 +45,13 @@ ChatGPT Sources 包中的文件是由维护工具生成的受控副本。副本�
 - prior-native、direct-generator、quadrature、fiber、FMF 长训练和 formal promotion
   等已关闭或未授权路线不能因为 ChatGPT 的讨论而重新打开。
 - 所有科研执行仍需遵守 `AGENTS.md` 的 long-training gate；记忆文件本身不提供训练授权。
-- 当前最新有效科研结果是 RWSA active-domain 的 `passed` /
-  `descriptive_structural_attribution_completed`：结构指标仅条件于冻结 dynamic-active
-  33502 列，zero-W 6498 列只进入显式误差分解；该结果不改变 RMAL/ZCSA、TRBA/HFRR/DCM/MRA/
-  RMRI/BOSA 的历史或 superseding interpretation。唯一允许的下一动作是
-  `manual_review_RWSA_active_domain_result`；在项目负责人审查前不得进入 FMF、继续训练、
-  exposure retuning、生成或 promotion。relay family
+- 当前最新有效科研结果是 H-LOMA-CBOGT-S6-LRRC 的 `passed` /
+  `low_rank_readout_recovery_confirmation_completed`：冻结 RMAL readout 的结果只在预注册
+  powers-of-two candidate family 内报告 `first_confirmed_candidate_rank=256`，不把 LSDA
+  spectral concentration 解释为 reconstruction sufficiency。该结果不改变 RMAL/ZCSA/
+  RWSA-ACTIVE/LSDA、TRBA/HFRR/DCM/MRA/RMRI/BOSA 的历史或 superseding interpretation。
+  唯一允许的下一动作是 `manual_review_LRRC_result`；在项目负责人审查前不得进入 FMF、继续
+  训练、exposure retuning、生成或 promotion。relay family
   `scaled_chen_v1_local_backend_relay_attribution_family=closed_metric_confound_reinterpreted`
   保持。
   若交接文档更新，以最新的 `CURRENT_STATUS.md`、`status/current_handoff.md` 和 hypothesis
@@ -559,4 +560,40 @@ LSDA 已在起始 HEAD `bd967f64ffb046677fa4204e81e911b226047e6e` 上完成，�
 谱分析保持 full/active/inactive=`40000/33502/6498`，Gram=`[256,256]`，CPU float64；前五 singular values=`12227.8671591/10625.3503547/8724.4504853/8126.3713707/7844.9489846`，top-16 cumulative=`0.8441783201`，effective/stable telemetry=`21.88110383398559/21.881103833985602` 与 `5.528997319328641/5.5289973193286395`。full-vs-active identity 保持，最大 eig absolute/relative difference=`4.470348358154297e-08/8.328885261127632e-13`，最大 sigma difference=`2.900790718740609e-12`。K=16 只作 descriptive preview；global reference 为 RMAL fit panel 的 1000 个 unlabeled streaming targets，未保存 target bank；bias norm²=`114.5276114768678`，preview projection=`21.21861242530154`，preview 外 residual=`93.30899905156626`。
 
 全程 no-update，定向/相关/全套 pytest 为 `18/101/1232 passed`（全套另有 12 deselected、25 subtests），compileall/Ruff/diff-check 通过。`reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、`generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false` 与 `closed_task_relevant_bottleneck_not_supported` 保持；唯一下一动作是 `manual_review_LSDA_spectral_result`。
-`manual_review_ZCSA_result`；结果/状态 commit 后 refresh bridge 并检查 status，不自动上传。
+
+## H-LOMA-CBOGT-S6-LRRC：Low-Rank Readout Recovery Confirmation（2026-09-02）
+
+LRRC 是 LSDA 之后唯一执行的 frozen-W、no-refit functional recoverability confirmation。消费者是
+项目负责人判断预注册 powers-of-two candidate family 内的首个 confirmed rank；拒绝决定是不能
+把谱能量或 rank-256 anchor 写成数学最小秩、intrinsic/physical/architecture rank、训练、生成或
+formal promotion。实现/config/review/test/CLI 的 clean commit=`2a061db61910a847118e38663d05c05bd9447063`，
+上游 RMAL/ZCSA/RWSA-ACTIVE/LSDA、probe、renderer、checkpoint、OLS、detector、formal runtime
+与历史 evidence 均未修改。
+
+权威 attempt-04 为 `outputs/20260902_v2/runs/lightgen_scaled_chen_low_rank_readout_recovery_confirmation_v1_attempt_04/`；
+validation/audit/compact SHA256=`b305c38dc3c774ff995c98907977d67cfc396d56009b8a88f726e214f9efa004` /
+`5ffcb3550e0a1d635f70cdf965d12c93ded6e99fadf8f0f6ef0cda829b4a6b58` /
+`4ae704104accd8cebfcb0e3c19dba7deb90b4febf38bace3c7e578bd484951b8`；probe hash 仍为
+`3551584a7983619356ea49babe7e5dedca559dfaa8ee5302fa44fd1a152a24ed`。
+
+candidate family=`[1,2,4,8,16,32,64,128,256]`；rank-256 anchor first，selection/confirmation 均通过。
+rank `1,2,4,8,16,32,64,128` 按注册顺序全部 selection 失败，confirmation 未执行；因此
+`first_confirmed_candidate_rank=256`、`previous_registered_candidate=128`、
+`rank_256_reused_as_fallback=true`，无第二次 rank-256 run。operator factorized-vs-full max residual
+为 selection/confirmation=`2.4333037798e-06/2.5858223358e-06`，probe replay delta=`1.1276390065e-10/7.8544505795e-10`。
+LSDA candidate-boundary relative gaps（1/2/4/8/16/32/64/128）为
+`0.131054483/0.178902324/0.034630756/0.105670493/0.104494812/0.061605380/0.043964196/0.052600464`；
+full-spectrum smallest gap 是 rank-36=`0.0025793411`，无新 threshold，仅保留 descriptive ambiguity。
+
+结果为 `passed / low_rank_readout_recovery_confirmation_completed`。CMOS-only exact panel replay、
+state/no-update、streaming/no-bank、anchor 与 resource gates 全部通过；`cmos_only_replay_executed=true`、
+`optical_replay_executed=false`，optimizer/backward/refit/decoder/generation/physical-forward modification
+均为 false/zero。flags 仍为 `reconstruction_manifold_supported=false`、
+`generative_manifold_supported=false`、`generation_readiness=not_ready`、
+`training_authorized=false`、`formal_promotion=false` 与 `closed_task_relevant_bottleneck_not_supported`。
+唯一下一动作是 `manual_review_LRRC_result`；不得训练、candidate export、generation 或 promotion。
+
+最终核验：LRRC 定向 `26 passed`，相关回归 `130 passed`，默认 Windows-native 全套 pytest
+`1258 passed, 12 deselected, 25 subtests passed`；compileall、Ruff、diff-check 通过。历史
+attempt-01/02/03 按 write-once 规则保留，attempt-04 为当前权威；结果/状态 commit 后 refresh bridge
+并检查 status，不自动上传。

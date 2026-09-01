@@ -81,6 +81,8 @@ be registered next.
 | H-LOMA-CBOGT-S1-BOSA | Scaled-Chen representation × Identity/Scaled-Chen backend observable-subspace factorial | A stable backend-specific representation mismatch should explain the cross-backend relay/readout contrast without changing the frozen representation | Fixed Identity step-5500 and Scaled-Chen step-5000, MRA/DCM selection panel, native replay, four cells `I→I/I→S/S→I/S→S`, power and square-law/phase controls; confirmation only after all representation gaps meet the preregistered direction/material gate | valid failure (`valid_failed`): `backend_observable_subspace_mismatch_not_supported`; selection `R_prop=0.9912/0.3256/1.0086/0.6571` for `I→I/I→S/S→I/S→S`, representation contrasts `-0.01736/-0.33149` (propagation) and `+0.11389/+0.11386` (detector), power confound absent; confirmation not executed; next action `manual_review_high_fidelity_relay_numerical_reference_contract`; local relay-tuning family closed, no training/FM/FMF/prior/generation/promotion |
 | H-LOMA-CBOGT-S1-HFRR | Independent complex128 high-fidelity reference for Identity/Scaled-Chen relay | The decoder→CMOS complex-retention contrast is a numerical implementation mismatch rather than a coordinate/quadratic-phase metric confound | Frozen Identity step-5500 and Scaled-Chen step-5000; independent CPU direct Fourier-series evaluator; fixed synthetic probes, native task replay, dynamic ABCD/pupil checks, analytic-only canonicalization, state/resource/no-update controls; no physical-forward modification | valid failure (`valid_failed`): `relay_complex_retention_metric_confound_supported` (Class B); native reference consistent, mismatch false, numerical boundary evaluated; raw/canonical backend gaps `0.6517181→0.0081707` (Identity) and `0.3329323→0.0193076` (Scaled-Chen); next action `manual_review_relay_retention_metric_reinterpretation_contract`; generation remains `not_ready`, no training/FM/FMF/prior/generation/promotion |
 
+| H-LOMA-CBOGT-S6-LRRC | Frozen RMAL detector readout `W,b` under LSDA-ordered truncated operators | The earliest preregistered powers-of-two rank whose frozen operator passes both RMAL selection and confirmation gates identifies a functional recoverability result within that candidate family | Rank-256 positive anchor first; then fixed `[1,2,4,8,16,32,64,128]` selection order; confirmation only after selection pass; no refit/training/physical-forward modification; spectral gaps are descriptive telemetry | passed: `low_rank_readout_recovery_confirmation_completed`, `first_confirmed_candidate_rank=256` via fallback after all lower selections failed; next action `manual_review_LRRC_result`, no training/generation/promotion |
+
 ## H-JQOC closeout (2026-08-26)
 
 The valid retry7 lifecycle used final lineage commit `266083e4752d947cbbd28dd16d8b0152ad4a5e4c`.
@@ -1377,3 +1379,32 @@ W/b=`[256,40000]/[40000]`，full/active/inactive=`40000/33502/6498`，CPU float6
 K=16 只作 descriptive preview；source/target orthogonality residual=`1.5695833278775036e-15/3.095197802817193e-14`，每个 mode 保存固定 spatial/FFT/D4/signed/basis-dependent 描述。global reference 为 RMAL fit panel 的 1000 个 unlabeled streaming target mean，hash=`513a696e21dafebebe4a862ab814b06294beb662db2afcfd679899fd19b27daf`；class-template、selection、confirmation 与 target bank 未使用/保存。bias norm²=`114.5276114768678`，preview projection energy=`21.21861242530154`，preview 外 residual=`93.30899905156626`。
 
 全程 no-update：cuda、optimizer、backward、probe refit、decoder、physical forward 与 rank-truncated reconstruction 均未发生。`reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、`generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false` 与 `closed_task_relevant_bottleneck_not_supported` 保持。定向/相关/全套 pytest 为 `18/101/1232 passed`（全套另有 12 deselected、25 subtests），compileall/Ruff/diff-check 通过；唯一下一动作是 `manual_review_LSDA_spectral_result`。
+
+## H-LOMA-CBOGT-S6-LRRC：Low-Rank Readout Recovery Confirmation（2026-09-02）
+
+LRRC 消费 LSDA ordered CPU float64 spectrum 与 RMAL frozen probe，唯一问题是：在预注册
+`[1,2,4,8,16,32,64,128,256]` 中，哪个 rank 的冻结 truncated operator 首次通过完整 RMAL
+selection + confirmation reconstruction gate。rank-256 positive anchor first，rank-0 仅作
+bias-only control；不得 refit、训练、调整 bias、修改 physical forward 或保存 rank-specific `W_k`。
+
+attempt-04 的 validation/audit/compact SHA256 为
+`b305c38dc3c774ff995c98907977d67cfc396d56009b8a88f726e214f9efa004` /
+`5ffcb3550e0a1d635f70cdf965d12c93ded6e99fadf8f0f6ef0cda829b4a6b58` /
+`4ae704104accd8cebfcb0e3c19dba7deb90b4febf38bace3c7e578bd484951b8`，均绑定 clean commit
+`2a061db61910a847118e38663d05c05bd9447063`。rank-256 anchor 的 selection/confirmation 均通过；
+rank `1,2,4,8,16,32,64,128` 严格顺序全部 selection 失败，因此 confirmation 未执行，
+`first_confirmed_candidate_rank=256`、`rank_256_reused_as_fallback=true`，无第二次 rank-256 run。
+operator identity、CMOS-only replay、state/no-update、streaming/no-bank 和 resource gates 均通过。
+
+LSDA boundary gap telemetry（k=`1,2,4,8,16,32,64,128`）为
+`0.131054483, 0.178902324, 0.034630756, 0.105670493, 0.104494812, 0.061605380, 0.043964196, 0.052600464`；
+full spectrum smallest relative gap 为 rank-36=`0.0025793411`。无新增 degeneracy threshold；
+gap 仅标记 descriptive basis-boundary ambiguity。
+
+结果 classification=`low_rank_readout_recovery_confirmation_completed`，interpretation 仅为
+candidate family 内的 `first_confirmed_candidate_rank`。flags 继续为
+`reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、
+`generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false` 与
+`closed_task_relevant_bottleneck_not_supported`。最终核验为 LRRC `26 passed`、相关 `130 passed`、
+默认全套 `1258 passed, 12 deselected, 25 subtests passed`；唯一下一动作是
+`manual_review_LRRC_result`，不得训练、candidate export、generation 或 promotion。

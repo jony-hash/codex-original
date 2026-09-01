@@ -1,16 +1,17 @@
 # 当前项目状态
 
-更新时间：2026-09-01
+更新时间：2026-09-02
 
 ## 当前主工作区
 
 - 主项目：`D:\codex-original`
 - 基线分支：`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`
-- 当前 clean HEAD（本次 RWSA active-domain result/status commit；正式 validation/audit
-  绑定 clean implementation/result commit `e0c442f92dd23b71d048ceb647570b76406c0435`，
-  本文件随结果状态更新）。
-- 当前最新研究解释是 RWSA active-domain 对冻结 detector readout 的 descriptive structural
-  attribution；旧 evidence 仍不可变，RMAL/ZCSA 及 TRBA/HFRR/DCM/MRA/RMRI 的历史
+- 当前 clean HEAD（本次 LRRC result/status 更新提交；正式 validation/audit 绑定 clean
+  implementation/result commit `2a061db61910a847118e38663d05c05bd9447063`，本文件随结果状态更新）。
+- 当前最新研究解释是 H-LOMA-CBOGT-S6-LRRC 对冻结 RMAL detector readout 的
+  functional low-dimensional reconstruction recoverability confirmation；结论只在预注册
+  powers-of-two candidate family 内报告 `first_confirmed_candidate_rank`，不把谱能量解释为
+  reconstruction sufficiency。旧 evidence 仍不可变，RMAL/ZCSA/RWSA-ACTIVE/LSDA 及更早
   classification 继续保留为父级事实。
 - 基线提交：`019b76ef911e0bd16b8d5d4169807323427684af`
 - 当前几何归因实现绑定提交：`6419cc523a8b5dd41cb3d3c2531193890fa1481a`
@@ -670,3 +671,51 @@ K=`16` 仅为 descriptive preview；source/target mode descriptor 均标记 basi
 global reference 严格为 RMAL fit panel 的 1000 个 unlabeled targets，streaming mean hash=`513a696e21dafebebe4a862ab814b06294beb662db2afcfd679899fd19b27daf`，selection/confirmation 未消费，class-template reference=`not_evaluated`，未保存 target bank。bias norm²=`114.5276114768678`，preview top-16 projection energy=`21.21861242530154`，preview 外 residual bias energy=`93.30899905156626`，未 refit。
 
 全程 `cuda_used=false`、`optimizer_created=false`、`backward_calls=0`、`probe_refit=false`、`decoder_called=false`、`physical_forward_called=false`、`rank_truncated_reconstruction=false`；`reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、`generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false` 与 `closed_task_relevant_bottleneck_not_supported` 保持。新增 LSDA 定向测试 `18 passed`，直接相关回归 `101 passed`，全套 Windows-native pytest（显式可写 basetemp）为 `1232 passed, 12 deselected, 25 subtests passed`；compileall、Ruff、git diff --check 均通过。唯一 warning 为既有 `.pytest_cache` ACL。唯一下一动作是 `manual_review_LSDA_spectral_result`；不得训练、decoder、RMAL replay、generation 或 promotion。
+
+## H-LOMA-CBOGT-S6-LRRC：Low-Rank Readout Recovery Confirmation（2026-09-02）
+
+LRRC 的真实消费者是项目负责人确认冻结 RMAL detector readout 的 functional low-dimensional
+recoverability；拒绝决定是不得把 LSDA spectral concentration、任一 candidate rank 或本结果
+升级为 mathematical minimum、intrinsic/physical/architecture rank、training、generation 或
+formal promotion。实现/config/review/test/CLI 的 clean implementation commit 为
+`2a061db61910a847118e38663d05c05bd9447063`；RMAL/ZCSA/RWSA-ACTIVE/LSDA、冻结 probe、
+renderer、checkpoint、OLS、detector、formal runtime 与历史 evidence 未修改。
+
+权威 attempt-04 为
+`outputs/20260902_v2/runs/lightgen_scaled_chen_low_rank_readout_recovery_confirmation_v1_attempt_04/`；
+validation/audit/compact SHA-256 分别为
+`b305c38dc3c774ff995c98907977d67cfc396d56009b8a88f726e214f9efa004`、
+`5ffcb3550e0a1d635f70cdf965d12c93ded6e99fadf8f0f6ef0cda829b4a6b58`、
+`4ae704104accd8cebfcb0e3c19dba7deb90b4febf38bace3c7e578bd484951b8`。输入保持
+`W=[256,40000]`、`b=[40000]`，RMAL probe SHA-256=`3551584a7983619356ea49babe7e5dedca559dfaa8ee5302fa44fd1a152a24ed`，active/inactive=`33502/6498`。
+
+预注册 candidate family 固定为 `[1,2,4,8,16,32,64,128,256]`，rank-0 只作 bias-only control。
+rank-256 full positive anchor 首先执行且 selection/confirmation 均通过；factorized-vs-full
+operator max residual 为 `2.4333037798e-06/2.5858223358e-06`（selection/confirmation），
+probe replay abs delta 为 `1.1276390065e-10/7.8544505795e-10`。随后 rank `1,2,4,8,16,32,64,128`
+严格按注册顺序执行 selection，全部失败，confirmation 均未执行；因此
+`first_confirmed_candidate_rank=256`、`previous_registered_candidate=128`、
+`rank_256_reused_as_fallback=true`，且没有第二次 rank-256 run。这里的 256 是候选家族内的
+首个 confirmed/fallback 结果，不是对一般 rank sufficiency 的声明。
+
+LSDA boundary telemetry 被完整继承：`k=1/2/4/8/16/32/64/128` 的 relative gap 为
+`0.131054483/0.178902324/0.034630756/0.105670493/0.104494812/0.061605380/0.043964196/0.052600464`；
+对应 `sigma_k` 为 `12227.867159/10625.350355/8126.371370/5321.871383/3216.147739/1630.578030/676.140671/169.436259`，
+`sigma_(k+1)` 为 `10625.350355/8724.450485/7844.948985/4759.506609/2880.076987/1530.125651/646.414690/160.523833`。
+full spectrum 最小 gap 仍是 rank-36 的 `0.0025793411`；无新 degeneracy threshold，boundary
+ambiguity 只作 descriptive telemetry。
+
+结果为 `status=passed`、`classification=low_rank_readout_recovery_confirmation_completed`。
+CMOS-only exact panel replay、state/no-update、streaming/no-bank 与 resource gates 全部通过；
+`cmos_only_replay_executed=true`、`optical_replay_executed=false`、optimizer/backward/refit/
+decoder/generation/physical-forward modification 全部为 false/zero。当前 flags 仍为
+`reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、
+`generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false` 与
+`closed_task_relevant_bottleneck_not_supported`。正式下一动作是 `manual_review_LRRC_result`；
+不得训练、candidate export、generation 或 promotion。
+
+本轮最终代码核验：LRRC 定向 `26 passed`，相关 RMAL/LSDA/RWSA-ACTIVE/ZCSA/shared-lifecycle
+回归 `130 passed`，默认 Windows-native 全套 pytest 为 `1258 passed, 12 deselected,
+25 subtests passed`；compileall、Ruff、git diff --check 通过。强制纳入 historical_artifact
+marker 的诊断 lane 中 4 个既有 archive-only tests 仍因历史 checkpoint 路径绑定失败，未计入默认
+lane，也未改变 LRRC 证据。此前 attempt-01/02/03 记录保持 immutable；attempt-04 为当前权威。
