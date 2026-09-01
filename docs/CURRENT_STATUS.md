@@ -6,8 +6,9 @@
 
 - 主项目：`D:\codex-original`
 - 基线分支：`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`
-- 当前 clean HEAD（本次 LRRC result/status 更新提交；正式 validation/audit 绑定 clean
-  implementation/result commit `2a061db61910a847118e38663d05c05bd9447063`，本文件随结果状态更新）。
+- LRRC 正式 validation/audit 绑定 clean implementation/result commit
+  `2a061db61910a847118e38663d05c05bd9447063`；本次 LRRC 状态记录提交为
+  `eee51a21b0fde52f58ac9bb6129d5905b5e122d4`，当前 clean HEAD 以 Git 核验为准。
 - 当前最新研究解释是 H-LOMA-CBOGT-S6-LRRC 对冻结 RMAL detector readout 的
   functional low-dimensional reconstruction recoverability confirmation；结论只在预注册
   powers-of-two candidate family 内报告 `first_confirmed_candidate_rank`，不把谱能量解释为
