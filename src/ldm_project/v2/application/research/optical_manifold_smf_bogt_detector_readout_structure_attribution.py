@@ -416,7 +416,17 @@ def _load_rmal_consumer(spec: Spec, dataset_root: str | Path, *, load_checkpoint
     probe_path = _resolve(RMAL_CONSUMER["probe"])
     probe_payload = safe_torch_load(probe_path, expected_sha256=RMAL_CONSUMER["probe_sha256"], map_location="cpu")
     probe = _load_rmal_probe(probe_payload, rmal._fit_indices(consumer, dataset_root), RMAL_CONSUMER["probe_sha256"])
-    return consumer, {"validation": validation, "audit": audit, "compact": compact}, probe
+    return consumer, {
+        "config_path": rmal_config,
+        "review_path": rmal_review,
+        "validation_path": validation_path,
+        "audit_path": audit_path,
+        "compact_path": compact_path,
+        "probe_path": probe_path,
+        "validation": validation,
+        "audit": audit,
+        "compact": compact,
+    }, probe
 
 
 def _load_rmal_probe(payload: Mapping[str, Any], fit_indices: torch.Tensor, artifact_sha256: str = "") -> ReadoutProbe:
@@ -1179,6 +1189,7 @@ def _resource_values(device: torch.device) -> tuple[bool, int, int]:
 def _validation_gates(
     spec: Spec,
     consumer: rmal.RMFAConsumer,
+    rmal_artifacts: Mapping[str, Any],
     probe: ReadoutProbe,
     fit_indices: torch.Tensor,
     formal: FormalSystemConfig,
@@ -1197,8 +1208,8 @@ def _validation_gates(
     support_indices, support_mask = _expected_support_indices(rows, columns, bins)
     return (
         GateResult("clean_registered_branch", _git_state().get("branch") == BRANCH and _git_state().get("clean") is True, {}),
-        GateResult("rmal_consumer_identity", file_sha256(consumer.spec.path) == RMAL_CONSUMER["config_sha256"] and file_sha256(consumer.probe_path) == RMAL_CONSUMER["probe_sha256"], {}),
-        GateResult("rmal_terminal_classification", consumer.audit.get("classification") == RMAL_CONSUMER["audit_classification"], {}),
+        GateResult("rmal_consumer_identity", file_sha256(rmal_artifacts["config_path"]) == RMAL_CONSUMER["config_sha256"] and file_sha256(rmal_artifacts["probe_path"]) == RMAL_CONSUMER["probe_sha256"], {}),
+        GateResult("rmal_terminal_classification", rmal_artifacts["audit"].get("classification") == RMAL_CONSUMER["audit_classification"] and rmal_artifacts["audit"].get("status") == RMAL_CONSUMER["audit_status"], {}),
         GateResult("checkpoint_identity", file_sha256(checkpoint_path) == REFERENCES["scaled_chen_checkpoint"]["sha256"], {}),
         GateResult("selection_balanced", bool(torch.equal(counts, torch.full((10,), 100, dtype=torch.long))), {"counts": counts.tolist()}),
         GateResult("confirmation_count_locked", data.confirmation_indices.numel() == CONFIRMATION_COUNT and torch.equal(data.confirmation_indices, torch.arange(55000, 60000, dtype=torch.long)), {}),
@@ -1280,11 +1291,11 @@ def validate(args: argparse.Namespace) -> int:
     review_path = _load_review(args.review_contract, spec)
     state = _git_state()
     _require_clean_branch(state)
-    consumer, _, probe = _load_rmal_consumer(spec, args.dataset_root, load_checkpoints=False)
+    consumer, rmal_artifacts, probe = _load_rmal_consumer(spec, args.dataset_root, load_checkpoints=False)
     fit_indices = _fit_indices(consumer, args.dataset_root)
     formal, _ = mra._load_formal(spec)
     output_path = _resolve(args.output)
-    gates = _validation_gates(spec, consumer, probe, fit_indices, formal, output_path)
+    gates = _validation_gates(spec, consumer, rmal_artifacts, probe, fit_indices, formal, output_path)
     valid = all(gate.passed for gate in gates)
     contract = {
         "rmal_consumer": RMAL_CONSUMER,
