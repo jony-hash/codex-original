@@ -939,6 +939,54 @@ evidence 与 checkpoints。实验拆分 SMF LP01 投影容量、既有 FMF M2 ob
 不训练、不改 OLS transport、不放宽历史 `+5pp` 门限。审计结果只决定下一个人工
 合同，不自动授权 dose pilot、FMF、生成或 promotion。
 
+## H-LOMA-CBOGT-S1-RMRI：Relay Metric Reinterpretation Audit closeout（2026-09-01）
+
+RMRI 已从 clean implementation commit
+`16896f06b31549120adf6235587619fe2820af83` 完成冻结、无更新、same-panel、same-threshold
+回放。它消费 HFRR、MRA、DCM、BOSA 的已验证 evidence，只在 decoder L2/chip → CMOS
+incident complex field 的合法 relay 段使用 HFRR analytic B=0 canonicalization；不修改
+physical forward、生产 relay、OLS、detector、checkpoint 或历史 evidence。BOSA 只重放已
+注册的 1000 张 selection，confirmation 仍明确为未执行。
+
+权威 attempt-03 目录为
+`outputs/20260901_v2/runs/lightgen_scaled_chen_relay_metric_reinterpretation_v1_attempt_03/`，
+validation/audit/compact/panel SHA-256 分别为
+`a87769fb638d5bffa1f77bc31c931fd3999c398a23c1a1f17d51d01eb91882eb`、
+`d409729f9b111c024c1913cef90c6cd2ebe778efa9990b836a955783f378ba00`、
+`cd39f2fed5719572a558be2bbbf139cdb7cc657a08d74c2be4cd8b69b71c35b8`、
+`6b7f9225624fa404a0743a417903b27a7113d100315ea9b1804043c63aafb079`。四个 parent hashes、
+checkpoint hashes、selection/confirmation 隔离、canonicalizer identity、state freeze 和
+resource gates 均通过；attempt-01/02 仅有旧实现 validation，未形成 audit，保留但不消费。
+
+### 真实结果
+
+- DCM raw relay selection/confirmation=`0.65712498/0.60306906`，readout=
+  `0.88675454/0.97353794`，与历史 anchors 一致；canonicalized relay=
+  `0.98158839/0.98122396`，canonicalized label/retrieval signal 无 material drop。当前
+  DCM interpretation 为 `relay_propagation_bottleneck_reinterpreted_metric_confound`（D1）。
+  历史 `relay_propagation_bottleneck_supported` 与 HFRR
+  `relay_complex_retention_metric_confound_supported` 必须继续保留。
+- MRA raw retention 完全复现：encoder `slm→pre-OLS=0.91817469/0.92159733`，OLS
+  `pre-OLS→modal=0.81449253/0.80923885`，`modal→post-OLS=0.91388854/0.91189128`，
+  `post-OLS→decoder input=1/1`，decoder internal `decoder input→L2=0.82043698/0.81888384`。
+  OLS 与 decoder internal 两个独立段仍 material，当前 MRA interpretation 为
+  `distributed_bottleneck_supported_canonicalized`（M1）。decoder Jacobian rank=100
+  仍只支持“不能归约为 decoder capacity-only”。
+- BOSA raw `R_prop(I→I/I→S/S→I/S→S)=0.99121143/0.32563974/1.00856667/0.65712498`；
+  canonicalized=`1.00012124/0.99160306/1.00003910/0.98158839`，representation
+  contrasts=`0.00008214/0.01001467`，所以当前 BOSA interpretation 为
+  `backend_observable_subspace_mismatch_not_supported_reinterpreted`（B1），confirmation
+  为 `false`。
+
+RMRI overall status 为 `valid_failed`：这是完整测量后的科学重解释状态，不是
+`invalid_harness`，也不授予任何 promotion。`reconstruction_manifold_supported=false`、
+`generative_manifold_supported=false`、`generation_readiness=not_ready` 和
+`scaled_chen_v1_local_relay_tuning_family=closed_no_local_correction_supported` 均保持。
+唯一下一动作是 `manual_review_relay_metric_confound_closeout_contract`；在项目负责人
+人工审查前不得训练、启动 FMF、采样 prior、生成、调整 relay 或 formal promotion。
+CUDA 峰值 `3626808320` bytes、输出总量约 `388685` bytes；optimizer/backward/evaluator/
+checkpoint/prior flags 全部为零或 false，physical forward 与历史 evidence 未修改。
+
 ## H-LOMA-CBOGT-S0-BRAC：Scaled-Chen Back-Relay Axial / Conjugate 归因 closeout（2026-09-01）
 
 从 clean implementation commit `0307119ee7da2ad38905fa7f20066eefd927b5c2` 完成

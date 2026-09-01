@@ -45,14 +45,15 @@ ChatGPT Sources 包中的文件是由维护工具生成的受控副本。副本�
 - prior-native、direct-generator、quadrature、fiber、FMF 长训练和 formal promotion
   等已关闭或未授权路线不能因为 ChatGPT 的讨论而重新打开。
 - 所有科研执行仍需遵守 `AGENTS.md` 的 long-training gate；记忆文件本身不提供训练授权。
-- 当前最新有效科研结果是 Scaled-Chen high-fidelity relay numerical reference 的
-  `relay_complex_retention_metric_confound_supported` / `valid_failed`。独立 reference
-  与生产 Identity/Scaled-Chen relay 一致，未支持 numerical implementation mismatch；
-  唯一允许的下一动作是 `manual_review_relay_retention_metric_reinterpretation_contract`。
-  在项目负责人审查前不得进入 FMF、继续训练、exposure retuning、生成或 promotion。结合
-  geometry、BRAC、BOSA 与 HFRR，`scaled_chen_v1_local_relay_tuning_family=closed_no_local_correction_supported`；
-  这不等同于架构重设计已关闭。若交接文档更新，以最新的 `CURRENT_STATUS.md`、
-  `status/current_handoff.md` 和 hypothesis ledger 为准。
+- 当前最新有效科研结果是 RMRI 对 HFRR/DCM/MRA/BOSA 的 superseding interpretation，
+  overall `valid_failed`，DCM=`relay_propagation_bottleneck_reinterpreted_metric_confound`、
+  MRA=`distributed_bottleneck_supported_canonicalized`、BOSA=
+  `backend_observable_subspace_mismatch_not_supported_reinterpreted`。唯一允许的下一动作
+  是 `manual_review_relay_metric_confound_closeout_contract`；在项目负责人审查前不得
+  进入 FMF、继续训练、exposure retuning、生成或 promotion。历史 classification 仍不可变，
+  `scaled_chen_v1_local_relay_tuning_family=closed_no_local_correction_supported` 保持。
+  若交接文档更新，以最新的 `CURRENT_STATUS.md`、`status/current_handoff.md` 和 hypothesis
+  ledger 为准。
 - 本次工作流治理允许的实现动作是维护记忆入口、项目文档和环境入口；不修改训练代码、
   `outputs`、WSL、SQLite 或历史 transcript。只有用户明确需要离线上传时，才生成并验证
   受控 Sources 包。
@@ -399,3 +400,45 @@ HFRR 不抹除 DCM 的 `relay_propagation_bottleneck_supported`，而是把后�
 `manual_review_relay_retention_metric_reinterpretation_contract`。总体系的
 `distributed_bottleneck_supported`、`reconstruction_manifold_supported=false`、
 `generative_manifold_supported=false` 与 `generation_readiness=not_ready` 均保持不变。
+
+## H-LOMA-CBOGT-S1-RMRI：Relay Metric Reinterpretation Audit（2026-09-01）
+
+RMRI 是对 HFRR/DCM/MRA/BOSA 的冻结、无更新、同 panel、同 threshold 重解释层。它只在
+合法的 decoder-L2/chip → incident complex field relay 段应用 HFRR 的 analytic B=0
+canonicalization；canonicalized field 不进入 detector、MSE、training 或 generation，旧
+evidence 与历史 classification 不改写。实现提交为
+`16896f06b31549120adf6235587619fe2820af83`，权威 attempt-03 位于
+`outputs/20260901_v2/runs/lightgen_scaled_chen_relay_metric_reinterpretation_v1_attempt_03/`。
+
+权威 validation/audit/compact/panel SHA-256 为：
+`a87769fb638d5bffa1f77bc31c931fd3999c398a23c1a1f17d51d01eb91882eb`、
+`d409729f9b111c024c1913cef90c6cd2ebe778efa9990b836a955783f378ba00`、
+`cd39f2fed5719572a558be2bbbf139cdb7cc657a08d74c2be4cd8b69b71c35b8`、
+`6b7f9225624fa404a0743a417903b27a7113d100315ea9b1804043c63aafb079`。attempt-01/02
+只含旧实现绑定的 validation，按 write-once 规则保留但不消费。
+
+原始 replay 锚点全部通过：MRA 六段与历史 retention 一致；DCM Scaled-Chen selection/
+confirmation raw relay=`0.65712498/0.60306906`、readout=`0.88675454/0.97353794`；
+BOSA selection `R_prop(I→I/I→S/S→I/S→S)=0.99121143/0.32563974/1.00856667/0.65712498`。
+canonicalized DCM relay retention 变为 `0.98158839/0.98122396`，canonicalized relay
+loss 为 `0.01841161/0.01877604`，且 label/retrieval signal 没有出现 material drop。
+
+因此 DCM 当前解释为 `relay_propagation_bottleneck_reinterpreted_metric_confound`（D1），
+历史 `relay_propagation_bottleneck_supported` 和 HFRR
+`relay_complex_retention_metric_confound_supported` 都保留；这是“raw complex-field
+metric 被解析坐标/二次相位混淆”的 superseding interpretation，不是历史实验无效。
+MRA 独立 OLS (`0.81449253/0.80923885`) 与 decoder-internal
+(`0.82043698/0.81888384`) 两段仍同时低于 `0.90`，故为
+`distributed_bottleneck_supported_canonicalized`（M1）；encoder `slm→pre-OLS`
+仍为 `0.91817469/0.92159733`，不能判作 encoder-only 或 decoder-capacity-only。
+BOSA canonicalized `R_prop` 为 `1.00012124/0.99160306/1.00003910/0.98158839`，
+两项 representation contrast 仅 `0.00008214/0.01001467`，故为
+`backend_observable_subspace_mismatch_not_supported_reinterpreted`（B1），confirmation
+保持未执行。
+
+RMRI overall=`valid_failed`（科学重解释有效但不构成晋级），唯一下一动作是
+`manual_review_relay_metric_confound_closeout_contract`。reconstruction/generative
+manifold 与 generation readiness 继续分别为 `false/false/not_ready`；不授权训练、FMF、
+prior sampling、generation 或 formal promotion。峰值 CUDA `3626808320` bytes，输出
+约 `388685` bytes；optimizer/backward/evaluator/checkpoint/prior 均为零或 false，physical
+forward 与历史 evidence 未修改。

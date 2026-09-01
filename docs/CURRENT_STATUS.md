@@ -6,10 +6,11 @@
 
 - 主项目：`D:\codex-original`
 - 基线分支：`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`
-- 当前 clean HEAD（本次状态更新提交；HFRR evidence producer）：见本次 Git 提交；HFRR
-  evidence 绑定实现提交 `8835bb228f074408a596118a907248e0f7c9c609`。
-- 当前提交包含 Scaled-Chen high-fidelity relay numerical reference 实现；真实 CUDA
-  evidence 绑定上述实现提交，状态文档随后在独立提交中更新。BOSA 仍是其父级输入证据。
+- 当前 clean HEAD（RMRI result/status commit，由 Git HEAD 绑定）；
+  RMRI validation/audit 绑定 clean implementation commit
+  `16896f06b31549120adf6235587619fe2820af83`，本文件在当前结果提交中更新。
+- 当前最新研究解释是 RMRI 对 HFRR/DCM/MRA/BOSA 的 superseding interpretation；旧 evidence
+  仍不可变，HFRR/DCM/MRA/BOSA 的历史 classification 继续保留为父级事实。
 - 基线提交：`019b76ef911e0bd16b8d5d4169807323427684af`
 - 当前几何归因实现绑定提交：`6419cc523a8b5dd41cb3d3c2531193890fa1481a`
 - 注销前审计提交：`75d0584c379b145b0f0eb45ece14fda160741f23`（已按用户确认推送）
@@ -424,3 +425,56 @@ HFRR 不删除 DCM 的 `relay_propagation_bottleneck_supported`；它将该结�
 和 `generation_readiness=not_ready` 均保持不变。唯一下一动作是
 `manual_review_relay_retention_metric_reinterpretation_contract`；在人工审查前不训练、
 不启动 FMF、不采样 prior、不生成、不 promotion。
+
+## H-LOMA-CBOGT-S1-RMRI：Relay Metric Reinterpretation Audit（2026-09-01）
+
+项目负责人批准了一个 retrospective、same-panel、same-threshold、no-update 的 RMRI，
+用于在 HFRR 已验证的 analytic B=0 canonicalization 下重新解释 DCM/MRA/BOSA；不修改
+physical forward、生产 relay、OLS、detector、checkpoint 或历史 evidence。实现提交为
+`16896f06b31549120adf6235587619fe2820af83`。静态 validation、冻结 CUDA replay 和证据
+结构校验均绑定该提交；attempt-01/02 仅保留了前一版实现的 validation，未产生 audit，
+不参与当前结论。
+
+权威目录为
+`outputs/20260901_v2/runs/lightgen_scaled_chen_relay_metric_reinterpretation_v1_attempt_03/`；
+`validation.json`、`audit.json`、`compact_report.json`、`panel.pt` 的 SHA-256 分别为
+`a87769fb638d5bffa1f77bc31c931fd3999c398a23c1a1f17d51d01eb91882eb`、
+`d409729f9b111c024c1913cef90c6cd2ebe778efa9990b836a955783f378ba00`、
+`cd39f2fed5719572a558be2bbbf139cdb7cc657a08d74c2be4cd8b69b71c35b8`、
+`6b7f9225624fa404a0743a417903b27a7113d100315ea9b1804043c63aafb079`。四个 parent
+evidence 的 hashes、两个 checkpoint hashes、selection/confirmation 隔离、HFRR
+canonicalizer identity 和 threshold transfer 均通过；BOSA confirmation 按合同未执行。
+
+RMRI 的 raw replay 与历史值完全落在注册 tolerance 内。Scaled-Chen DCM selection/
+confirmation 的 raw relay retention 为 `0.65712498/0.60306906`，readout 为
+`0.88675454/0.97353794`；canonicalized relay retention 为
+`0.98158839/0.98122396`，相应 canonicalized relay loss 为 `0.01841161/0.01877604`，
+detector/readout loss 为 `0.11324546/0.02646206`。canonicalized 复场仍保留 label/
+retrieval geometry（selection/confirmation 的 label-signal drop 为负或接近零），因此
+原始传播断点被 HFRR 解析口径移除，DCM 当前解释为
+`relay_propagation_bottleneck_reinterpreted_metric_confound`（D1）；历史
+`relay_propagation_bottleneck_supported` 和 HFRR 的
+`relay_complex_retention_metric_confound_supported` 均保留。
+
+MRA 的独立段不变：Scaled-Chen `slm→pre-OLS` 为 `0.91817469/0.92159733`，
+`pre-OLS→modal` 为 `0.81449253/0.80923885`，`modal→post-OLS` 为
+`0.91388854/0.91189128`，`post-OLS→decoder input` 为 `1/1`，
+`decoder input→decoder L2` 为 `0.82043698/0.81888384`。因此 OLS 投影与 decoder
+内部仍是两个独立 material failures，RMRI MRA 当前解释为
+`distributed_bottleneck_supported_canonicalized`（M1），不是 encoder-only 或
+decoder-capacity-only 结论；decoder Jacobian rank=100 的历史事实不变。
+
+BOSA selection 四格 raw `R_prop` 仍为 `I→I=0.99121143`、`I→S=0.32563974`、
+`S→I=1.00856667`、`S→S=0.65712498`；canonicalized 后为
+`1.00012124/0.99160306/1.00003910/0.98158839`。canonicalized contrasts 仅为
+`0.00008214/0.01001467`，未达到 `0.05`，故当前解释为
+`backend_observable_subspace_mismatch_not_supported_reinterpreted`（B1）；confirmation
+仍为 `false`，不能把 selection 变成新的支持性 architecture conclusion。
+
+RMRI overall status 为 `valid_failed`（科学重解释完成但不构成晋级），唯一下一动作是
+`manual_review_relay_metric_confound_closeout_contract`。原 MRA 的
+`reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、
+`generation_readiness=not_ready` 继续有效；不授权训练、FMF、prior sampling、generation
+或 formal promotion。CUDA 峰值 `3626808320` bytes（约 3.63 GiB），输出总量约
+`388685` bytes，均在资源合同内；flags 仍为 optimizer/backward/evaluator/checkpoint/
+prior 全部为零或 false，physical forward 与 historical evidence 未修改。

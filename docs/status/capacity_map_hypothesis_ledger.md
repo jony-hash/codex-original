@@ -1203,3 +1203,61 @@ MSE 或训练。HFRR 不推翻 DCM 的 `relay_propagation_bottleneck_supported`�
 `distributed_bottleneck_supported`、`reconstruction_manifold_supported=false`、
 `generative_manifold_supported=false` 与 `generation_readiness=not_ready` 保持不变；
 不得据此开始训练、FMF、prior sampling、generation 或 promotion。
+
+## H-LOMA-CBOGT-S1-RMRI：Relay Metric Reinterpretation Audit（2026-09-01）
+
+本假设是对 HFRR、DCM、MRA 与 BOSA 的冻结复核，消费者是项目负责人对
+decoder-layer-2→CMOS incident-field retention 是否仍可作为物理传播瓶颈证据，
+以及是否关闭当前 Scaled-Chen v1 训练生命周期的人工决定。拒绝决定是：若应用已注册
+的 HFRR B=0 analytic-only canonicalization 后 relay retention 不再支持该物理解释，
+不得把 raw metric 直接升级为 relay 训练或结构改造依据。审计只在 decoder-L2/芯片到
+CMOS incident complex field 观测上应用 canonicalization；不修改 physical forward、
+detector、OLS、checkpoint、训练目标、prior 或正式 runtime。
+
+实现与验证绑定 clean commit
+`16896f06b31549120adf6235587619fe2820af83`，使用 Identity step-5500 与 Scaled-Chen
+step-5000、MRA/DCM/BOSA 已注册的 selection/confirmation panels。静态 validation
+通过，validation SHA-256 为
+`a87769fb638d5bffa1f77bc31c931fd3999c398a23c1a1f17d51d01eb91882eb`；RMRI 配置哈希为
+`f457bd6d7c1b1fb5499ee0525028d5131e45f066ba7e36ab846571378ee59c2b`，canonicalizer
+模块哈希为 `f2f1e0c33666b8538078dc449772c600cfada02ada9c74501043fea4f6d10e7a`。
+父级 HFRR/MRA/DCM/BOSA audit 摘要均与注册值一致，原始 replay anchor 全部通过。
+
+权威 CUDA attempt-03 位于
+`outputs/20260901_v2/runs/lightgen_scaled_chen_relay_metric_reinterpretation_v1_attempt_03/`，
+状态为 `valid_failed`。audit、compact report 与 panel SHA-256 分别为
+`d409729f9b111c024c1913cef90c6cd2ebe778efa9990b836a955783f378ba00`、
+`cd39f2fed5719572a558be2bbbf139cdb7cc657a08d74c2be4cd8b69b71c35b8`、
+`6b7f9225624fa404a0743a417903b27a7113d100315ea9b1804043c63aafb079`。
+峰值 CUDA `3626808320` bytes，输出总量约 `388685` bytes；
+`training_authorized=false`、`formal_promotion=false`、`optimizer_created=false`、
+`evaluator_calls=0`、`backward=false`、`checkpoint_written=false`、
+`prior_sampled=false`、`physical_forward_modified=false`、
+`mechanism_evidence_only=true`。
+
+原始 MRA Scaled-Chen step-5000 的 selection/confirmation retention 为：
+SLM→pre-OLS `0.9182/0.9216`，pre-OLS→modal `0.8145/0.8092`，
+modal→post-OLS `0.9139/0.9119`，post-OLS→decoder input `1.0000/1.0000`，
+decoder input→decoder-L2 `0.8204/0.8189`，decoder-L2→CMOS composite
+`0.5827/0.5871`。原始 DCM relay/readout 为
+`0.6571/0.6031` 与 `0.8868/0.9735`；应用 analytic-only canonicalization 后
+relay retention 变为 `0.9816/0.9812`，canonicalized relay loss 仅
+`0.0186` 平均，且 label/retrieval 信号未丢失；readout loss 保持
+`0.1132/0.0265`。因此 DCM 的 raw `D1` 不再支持物理 relay 单点解释，RMRI 当前
+子分类为 `relay_propagation_bottleneck_reinterpreted_metric_confound`。
+
+RMRI 保留并重新解释上游结果：MRA 仍为
+`distributed_bottleneck_supported_canonicalized`（`M1`），因为 pre-OLS→modal 与
+decoder-input→decoder-L2 两段均有独立、稳定的 material failure；BOSA selection
+仍为 `backend_observable_subspace_mismatch_not_supported_reinterpreted`（`B1`），
+但其 canonicalized backend contrast 为 `0.0100`，低于 `0.05`，confirmation 未运行，
+不形成新的正向后端因果证据。RMRI 总分类为
+`relay_propagation_bottleneck_reinterpreted_metric_confound`，不是
+`invalid_harness`；这是完整有效测量后的科学失败，不授权用调参补救。
+
+`reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、
+`generation_readiness=not_ready` 与 parent 结论不变。唯一下一动作是
+`manual_review_relay_metric_confound_closeout_contract`：仅允许项目负责人审查
+metric-confound closeout；不得据此训练、继续 Scaled-Chen/FMF、采样 prior、启动
+generation canary 或 formal promotion。RMRI 不宣称已解决所有连续物理传播问题，也不
+把 analytic canonicalization 写入正式模型路径。
