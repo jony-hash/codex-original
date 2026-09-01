@@ -1293,3 +1293,15 @@ retrieval degradation 为 `0/0.002600`，故只能记录
 `generative_manifold_supported=false`、`generation_readiness=not_ready` 保持分离；
 relay family 仍为 `closed_metric_confound_reinterpreted`。本结果不授权继续训练、FMF、
 exposure retuning、prior sampling、generation、canary 或 formal promotion。
+
+## H-LOMA-CBOGT-S3-RMFA：Reconstruction-Manifold Failure Attribution（2026-09-01）
+
+消费者是项目负责人对“Scaled-Chen step-5000 的当前 physical reconstruction mapping 是否与 frozen representation 错配”的决定；拒绝决定是：一个冻结、低自由度的 closed-form recovery mapping 若不能跨过已注册 class-template barrier，不得把结果写成 representation insufficiency，也不得继续训练或晋级 decoder。该 Gate 只测试 `bounded frozen recoverability`，不测试 unrestricted/nonlinear universal sufficiency。
+
+实现和 validation 绑定 clean commit `2445d946fd26867d1c9bd98b04f262b50cd0c90e`。权威 CUDA attempt-01 位于 `outputs/20260901_v2/runs/lightgen_scaled_chen_reconstruction_manifold_failure_v1_attempt_01/`，validation/audit/compact/probe SHA-256 分别为 `08e6afd841574a5ac6ba126d11af24b560b6f85bf2d5365d42fd229b373625c0`、`e0a53625171144b7aba9dbdc3258ff94ca2686219a80d0725f535d2625c7d468`、`174bdf09c8b5a33896b3a22396f8dfaea6dd22200836f9bbbe46d53b57c403f5`、`25d9eba0d6203027b3a6be00a9d0a5538225510e45c0927f63cf8f78caaf4a09`。输出 `82223871` bytes，峰值 CUDA `3588494848` bytes，资源与 write-once gates 通过。
+
+固定 fit subset 为 train `[0,55000)` 中按标签排序的每类前 100 个（1000 个），与 selection/confirmation/calibration 不相交；probe 输入为 pre-OLS complex field 的固定 `16×16` real/imag pooled projection 加 bias，`input_dim=513`，target 是原 paired MNIST target，solver 是 float64 Moore–Penrose minimum-norm pseudoinverse (`rcond=1e-12`)。rank/effective rank=`513`，condition number=`7945.41016660053`，fit 后 probe hash `02960c1425fe5ac07325cda8a327ad119f00c41ed1933a20b96aaaaf718a968d`，artifact hash 如上，之后 selection/confirmation 均不 refit。
+
+selection native anchors paired/template/cyclic=`0.0620484613/0.0324799940/0.0799509138`；probe paired=`0.0033369721`，relative improvement=`94.62198%`，template crossing、paired vs cyclic、instance geometry、finite/frozen/disjoint/native replay 全通过。confirmation anchors=`0.0577895157/0.0277411994/0.0756082982`；同一 probe paired=`0.0033930303`，relative improvement=`94.12865%`，instance control 同向，固定 2000-replicate bootstrap 95% CI=`[0.0540225357,0.0547624826]`，下界严格大于零。
+
+RMFA 为 R1、完整 harness 下 `reconstruction_mapping_misalignment_supported`，唯一下一动作是 `manual_review_reconstruction_mapping_alignment_contract`。该正结果只支持 physical mapping misalignment：不证明 universal representation sufficiency，不把 formal/physical `reconstruction_manifold_supported=false` 升级为通用重建通过，且 `generative_manifold_supported=false`、`generation_readiness=not_ready` 保持。Scaled-Chen v1 bottleneck-attribution family 正式关闭为 `closed_task_relevant_bottleneck_not_supported`；MRA/DCM/HFRR/RMRI/TRBA 的 historical 与 superseding interpretation 全部保留。治理 flags：optimizer/backward/evaluator/checkpoint/prior/generation/physical-forward modification 均为零或 false，`mechanism_evidence_only=true`。不得训练、FMF、采样 prior、生成、candidate export 或 formal promotion。

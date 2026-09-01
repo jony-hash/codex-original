@@ -468,3 +468,15 @@ manifold 与 generation readiness 继续分别为 `false/false/not_ready`；不�
 prior sampling、generation 或 formal promotion。峰值 CUDA `3626808320` bytes，输出
 约 `388685` bytes；optimizer/backward/evaluator/checkpoint/prior 均为零或 false，physical
 forward 与历史 evidence 未修改。
+
+## H-LOMA-CBOGT-S3-RMFA：Reconstruction-Manifold Failure Attribution（2026-09-01）
+
+RMFA 是 TRBA closeout 后唯一获准的 no-update bounded frozen recoverability 审计。其消费者是项目负责人判断 Scaled-Chen 的 physical reconstruction mapping 是否错配；不测试 unrestricted representation sufficiency、通用 nonlinear recoverability 或新架构性能。实现与静态 validation 绑定 clean commit `2445d946fd26867d1c9bd98b04f262b50cd0c90e`，只读使用 Scaled-Chen step-5000、固定 MRA selection/confirmation panel，并保留正式 runtime、OLS、checkpoint、target 与历史 evidence 不变。
+
+权威目录为 `outputs/20260901_v2/runs/lightgen_scaled_chen_reconstruction_manifold_failure_v1_attempt_01/`；validation/audit/compact/probe SHA-256 为 `08e6afd841574a5ac6ba126d11af24b560b6f85bf2d5365d42fd229b373625c0`、`e0a53625171144b7aba9dbdc3258ff94ca2686219a80d0725f535d2625c7d468`、`174bdf09c8b5a33896b3a22396f8dfaea6dd22200836f9bbbe46d53b57c403f5`、`25d9eba0d6203027b3a6be00a9d0a5538225510e45c0927f63cf8f78caaf4a09`。
+
+probe 是预注册固定 `16×16` real/imag pooled pre-OLS feature（`input_dim=513`）到 `40000` 维 paired target 的一次性 float64 Moore–Penrose minimum-norm readout，`rcond=1e-12`，fit subset 为 train 前 55000 中每类 100 个、共 1000 个，rank/effective rank=`513`，condition number=`7945.41016660053`。selection 与 confirmation 均未重拟合。selection physical/probe/template/cyclic paired MSE=`0.0620484613/0.0033369721/0.0324799940/0.0799509138`；confirmation 为 `0.0577895157/0.0033930303/0.0277411994/0.0756082982`。相对 physical 改善为 `94.62198%/94.12865%`，instance geometry correlation=`0.97861648/0.97681407`，confirmation fixed bootstrap 95% CI=`[0.0540225357,0.0547624826]`，两个 panel 的 finite/frozen/disjoint/native replay gates 全部通过。
+
+因此 RMFA classification 为 `reconstruction_mapping_misalignment_supported`（R1），唯一下一动作是 `manual_review_reconstruction_mapping_alignment_contract`。该正结果只说明当前冻结 physical mapping 与 representation 存在可恢复错配；不能写成 representation universally sufficient、decoder 已修正或 generation ready。RMFA diagnostic contract 内的 bounded recoverability 为 positive，但 formal/physical `reconstruction_manifold_supported` 仍按上游 MRA 保持 `false`，`generative_manifold_supported=false`，`generation_readiness=not_ready`。
+
+本结果把 Scaled-Chen v1 attribution family 正式记录为 `closed_task_relevant_bottleneck_not_supported`；MRA/DCM/HFRR/RMRI/TRBA 历史与 superseding interpretation 均保留。全程 optimizer/backward/evaluator/checkpoint/prior/generation/physical-forward modification 均为零或 false，不授权任何训练、FMF、prior sampling、generation canary 或 promotion。

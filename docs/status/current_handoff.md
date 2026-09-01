@@ -1725,3 +1725,15 @@ evidence 与 checkpoints。实验拆分 SMF LP01 投影容量、既有 FMF M2 ob
 容量、encoder/decoder `2×2` cross-swap，以及 `1×/2×/4×/8×` coupling 梯度剂量；
 不训练、不改 OLS transport、不放宽历史 `+5pp` 门限。审计结果只决定下一个人工
 合同，不自动授权 dose pilot、FMF、生成或 promotion。
+
+## H-LOMA-CBOGT-S3-RMFA：Reconstruction-Manifold Failure Attribution（2026-09-01）
+
+本次是 TRBA closeout 后的唯一 RMFA 实施。消费者是项目负责人判断当前 Scaled-Chen step-5000 physical reconstruction mapping 是否与 frozen representation 错配；拒绝决定是不得把 bounded probe 失败写成 representation insufficiency，也不得以 probe 结果直接训练或晋级新 decoder。实现绑定 clean commit `2445d946fd26867d1c9bd98b04f262b50cd0c90e`，没有改 formal v2 runtime、OLS、checkpoint、训练目标、detector、prior 或历史 evidence。
+
+RMFA 只使用一次预注册 fit subset（train 前 55000 中每类 100、共 1000）构造固定 Moore–Penrose minimum-norm linear readout，然后在已有 selection（test 5000–9999，每类 100）与 confirmation（train 55000–59999，5000）上复用同一 probe；特征为固定 `16×16` real/imag adaptive-average-pool pre-OLS 加 bias，`input_dim=513`，target 为原 paired reconstruction target，`rcond=1e-12`，rank/effective rank=`513`，condition number=`7945.41016660053`。不存在 lambda sweep、optimizer、backward、evaluator、refit、prior sampling 或 physical-forward modification。
+
+权威 attempt-01 目录为 `outputs/20260901_v2/runs/lightgen_scaled_chen_reconstruction_manifold_failure_v1_attempt_01/`；validation/audit/compact/probe SHA-256 为 `08e6afd841574a5ac6ba126d11af24b560b6f85bf2d5365d42fd229b373625c0`、`e0a53625171144b7aba9dbdc3258ff94ca2686219a80d0725f535d2625c7d468`、`174bdf09c8b5a33896b3a22396f8dfaea6dd22200836f9bbbe46d53b57c403f5`、`25d9eba0d6203027b3a6be00a9d0a5538225510e45c0927f63cf8f78caaf4a09`。selection native paired/template/cyclic=`0.0620484613/0.0324799940/0.0799509138`，probe paired=`0.0033369721`，relative improvement=`94.62198%`；confirmation native=`0.0577895157/0.0277411994/0.0756082982`，probe paired=`0.0033930303`，relative improvement=`94.12865%`，fixed 2000-replicate bootstrap 95% CI=`[0.0540225357,0.0547624826]`。两个 panel 的 gate 全部通过，故 R1 classification 为 `reconstruction_mapping_misalignment_supported`。
+
+该结论只支持“当前 physical mapping 丢失的信息可由预注册冻结线性 readout 恢复”，不支持 universal representation sufficiency、架构已修正或 generation readiness。上游 formal/physical `reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、`generation_readiness=not_ready` 继续有效；RMFA 只在自身 bounded diagnostic 字段中记录 recoverability positive。Scaled-Chen v1 bottleneck-attribution family 现在收敛为 `closed_task_relevant_bottleneck_not_supported`。唯一下一动作是 `manual_review_reconstruction_mapping_alignment_contract`；不训练、不启动 FMF、不采样 prior、不生成、不 candidate export、不 formal promotion。
+
+默认完整 pytest 的 `C:\TEMP` 访问拒绝仍是既有环境问题；在可写新临时根下为 `1131 passed, 12 deselected, 25 subtests passed`。治理状态保持 `training_authorized=false`、`formal_promotion=false`、`mechanism_evidence_only=true`。

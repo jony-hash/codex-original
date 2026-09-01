@@ -543,3 +543,21 @@ TRBA 整体科学分类为 T4：
 `test_near_conjugate_relay_equivalence_workflow_writes_bound_passed_evidence` 在较长
 临时路径下创建缺失父目录，与 TRBA 文件无关。TRBA/邻近 MRA、RMRI、HFRR、BOSA、
 geometry、fiber 测试及 compileall/Ruff/diff-check 均通过。
+
+## H-LOMA-CBOGT-S3-RMFA：Reconstruction-Manifold Failure Attribution（2026-09-01）
+
+这是 TRBA closeout 后唯一获准执行的冻结、无更新 bounded-recoverability 审计。真实消费者是项目负责人决定“当前 physical mapping 是否与 Scaled-Chen representation 错配”，拒绝决定是：若一个在 selection 前锁定、低自由度的 closed-form readout 不能跨过既有 reconstruction barrier，不得把失败写成 representation insufficiency，也不得训练新 decoder 或继续当前 Scaled-Chen 生命周期。实现提交为 `2445d946fd26867d1c9bd98b04f262b50cd0c90e`；没有修改 formal v2 runtime、OLS、checkpoint、训练目标、detector、prior 或历史 evidence。
+
+权威 CUDA attempt-01 位于 `outputs/20260901_v2/runs/lightgen_scaled_chen_reconstruction_manifold_failure_v1_attempt_01/`。validation、audit、compact、probe SHA-256 分别为 `08e6afd841574a5ac6ba126d11af24b560b6f85bf2d5365d42fd229b373625c0`、`e0a53625171144b7aba9dbdc3258ff94ca2686219a80d0725f535d2625c7d468`、`174bdf09c8b5a33896b3a22396f8dfaea6dd22200836f9bbbe46d53b57c403f5`、`25d9eba0d6203027b3a6be00a9d0a5538225510e45c0927f63cf8f78caaf4a09`。输出总量为 `82223871` bytes，低于 `512 MiB`；峰值 CUDA `3588494848` bytes，运行前可用显存 `5368709120` bytes，D: 安全余量与写一次目录门均通过。
+
+probe 只在预注册、与两个评估 panel 不相交的 train fit subset（1000 个、每类 100）上构造一次，输入是复数 pre-OLS 的固定 `16×16` real/imag adaptive-average-pool 投影加 bias，`input_dim=513`；目标是原 paired MNIST reconstruction target，输出 `40000`。求解器为 float64 Moore–Penrose minimum-norm pseudoinverse，固定 `rcond=1e-12`，无 lambda sweep、无 adaptive rank、无 optimizer/backward。矩阵 rank 与 effective rank 均为 `513`，condition number `7945.41016660053`，probe 在 fit 后冻结。
+
+selection（MNIST test 5000–9999，每类 100）native physical anchors 完整复现：paired/template/cyclic MSE=`0.0620484613/0.0324799940/0.0799509138`；冻结 probe paired MSE=`0.0033369721`，相对 physical 改善 `94.62198%`，严格低于 template 和 cyclic，instance-sensitive geometry correlation=`0.97861648`，selection gate 全部通过。confirmation（train 55000–59999，5000）anchors 为 `0.0577895157/0.0277411994/0.0756082982`；同一个 probe paired MSE=`0.0033930303`，相对改善 `94.12865%`，strict template crossing 与 instance control 继续通过，paired-MSE difference 的固定 2000 次 bootstrap 95% CI 为 `[0.0540225357, 0.0547624826]`，下界严格大于零。selection/confirmation 未重新拟合。
+
+因此 RMFA 为完整 harness 下的 `passed` / R1：`reconstruction_mapping_misalignment_supported`。这只证明预注册的冻结线性 readout 能从当前 representation 恢复 physical mapping 丢失的 instance-level target 信息；不证明 representation 对任意非线性 decoder 充分、不证明光学架构已修正，也不授权 generation。RMFA 的 bounded diagnostic field 可记为 recoverability positive，但原 formal/physical `reconstruction_manifold_supported=false` 结论不被静默升级；`generative_manifold_supported=false`、`generation_readiness=not_ready` 保持。
+
+本 Gate 同时正式关闭 task-relevant bottleneck attribution 生命周期：`closed_task_relevant_bottleneck_not_supported`。历史 MRA raw contraction、DCM raw relay attribution、HFRR/RMRI metric reinterpretation 与 TRBA task-relevant negative result 全部保留；RMFA 不是 OLS/decoder 训练授权。唯一下一动作是 `manual_review_reconstruction_mapping_alignment_contract`，不得自动训练、FMF、prior sampling、generation canary、candidate export 或 formal promotion。
+
+治理 flags 全部符合 no-update 合同：`optimizer_created=false`、`backward=false`、`evaluator_calls=0`、`checkpoint_written=false`、`prior_sampled=false`、`generation_started=false`、`physical_forward_modified=false`、`mechanism_evidence_only=true`。
+
+实现后的默认 pytest 仍受同一 Windows 临时根权限问题影响：默认根目录运行得到 `1015 passed, 12 deselected, 116 errors`，错误均为访问 `C:\TEMP\pytest-of-24567`；在新的可写 `C:\Windows\Temp\codex-rmfa-full-20260901` 下得到 `1131 passed, 12 deselected, 25 subtests passed`，无 RMFA 新失败。RMFA/相邻研究测试、compileall、Ruff 与 `git diff --check` 均通过。
