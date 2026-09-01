@@ -73,7 +73,7 @@ def test_amendment_lineage_and_parent_are_explicit() -> None:
     assert audit.LINEAGE["parent_hypothesis"] == "H-LOMA-CBOGT-S5-RWSA"
     assert audit.LINEAGE["old_rwsa_attempt_02_immutable"] is True
     assert audit.LINEAGE["zcsa_passed_evidence_required"] is True
-    assert audit.LINEAGE["attempt_name"].endswith("active_domain_v1_attempt_01")
+    assert audit.LINEAGE["attempt_name"].endswith("active_domain_v1_attempt_02")
 
 
 def test_old_rwsa_and_zcsa_identity_bindings_are_immutable() -> None:

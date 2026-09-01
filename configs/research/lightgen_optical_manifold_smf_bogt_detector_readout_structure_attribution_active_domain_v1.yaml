@@ -7,7 +7,7 @@ lineage:
   lineage_start_head: 86e0862690cdb32173e453869ed33b8eb2b4c017
   old_rwsa_attempt_02_immutable: true
   zcsa_passed_evidence_required: true
-  attempt_name: lightgen_scaled_chen_detector_readout_structure_attribution_active_domain_v1_attempt_01
+  attempt_name: lightgen_scaled_chen_detector_readout_structure_attribution_active_domain_v1_attempt_02
 rmal_consumer:
   config: configs/research/lightgen_optical_manifold_smf_bogt_reconstruction_mapping_alignment_localization_v1.yaml
   config_sha256: c50b5b2d12830c40fbe619f137aca40f36f799f277e637d1ec20ac7e3403859f

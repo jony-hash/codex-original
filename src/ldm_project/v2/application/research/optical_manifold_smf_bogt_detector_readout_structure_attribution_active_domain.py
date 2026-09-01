@@ -163,7 +163,7 @@ LINEAGE = {
     "zcsa_passed_evidence_required": True,
     "attempt_name": (
         "lightgen_scaled_chen_detector_readout_structure_attribution_"
-        "active_domain_v1_attempt_01"
+        "active_domain_v1_attempt_02"
     ),
 }
 ACTIVE_DOMAIN = {
