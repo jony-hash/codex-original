@@ -258,6 +258,26 @@ def test_active_domain_transition_and_decomposition_contract_is_explicit() -> No
     assert audit.ACTIVE_DOMAIN["epsilon_normalization"] is False
 
 
+def test_zcsa_transition_columns_are_zero_w_columns() -> None:
+    compact = json.loads(
+        (ROOT / audit.ZCSA_IDENTITY["compact_report"]).read_text(encoding="utf-8")
+    )
+    probe_identity = audit._probe_identity(_probe())
+    transitions = audit._transition_masks(compact, probe_identity["active_mask"])
+    assert transitions["selection"].sum().item() == 1495
+    assert transitions["confirmation"].sum().item() == 2097
+    assert not bool(
+        (
+            transitions["selection"] & probe_identity["active_mask"]
+        ).any()
+    )
+    assert not bool(
+        (
+            transitions["confirmation"] & probe_identity["active_mask"]
+        ).any()
+    )
+
+
 def test_no_update_and_replay_restrictions_are_visible() -> None:
     source = inspect.getsource(audit)
     assert "torch.optim" not in source

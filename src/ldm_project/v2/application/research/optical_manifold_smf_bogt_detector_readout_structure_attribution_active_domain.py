@@ -1620,15 +1620,17 @@ def _transition_masks(
             )
         counts[name] = torch.tensor(values, dtype=torch.int64)
     fit_zero = counts["fit"].eq(0)
-    selection_active = active_mask & fit_zero & counts["selection"].gt(0)
-    confirmation_active = active_mask & fit_zero & counts["confirmation"].gt(0)
     if int(fit_zero.sum()) != EXPECTED_INACTIVE_COUNT:
         raise RWSAActiveHarnessFailure("ZCSA fit-zero transition base changed")
-    if int(selection_active.sum()) != 1495 or int(confirmation_active.sum()) != 2097:
+    if not torch.equal(fit_zero, ~active_mask):
+        raise RWSAActiveHarnessFailure("ZCSA fit-zero mask is not the zero-W mask")
+    selection_transition = (~active_mask) & fit_zero & counts["selection"].gt(0)
+    confirmation_transition = (~active_mask) & fit_zero & counts["confirmation"].gt(0)
+    if int(selection_transition.sum()) != 1495 or int(confirmation_transition.sum()) != 2097:
         raise RWSAActiveHarnessFailure("ZCSA transition counts changed")
     return {
-        "selection": selection_active,
-        "confirmation": confirmation_active,
+        "selection": selection_transition,
+        "confirmation": confirmation_transition,
         "fit_zero": fit_zero,
     }
 
