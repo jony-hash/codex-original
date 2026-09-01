@@ -470,7 +470,10 @@ def _input_hashes(
     probe: ReadoutProbe,
     fit_indices: torch.Tensor,
 ) -> dict[str, str]:
-    hashes = rmal._input_hashes(rmal._load_spec(consumer.spec.path), consumer.review_path, consumer, fit_indices)
+    rmal_config = _resolve(RMAL_CONSUMER["config"])
+    rmal_spec = rmal._load_spec(rmal_config)
+    rmal_review = _resolve(RMAL_CONSUMER["review_contract"])
+    hashes = rmal._input_hashes(rmal_spec, rmal_review, consumer, fit_indices)
     hashes.update(
         {
             "research_config": file_sha256(spec.path),
