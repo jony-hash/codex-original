@@ -89,6 +89,11 @@ def dispatch(args: argparse.Namespace) -> int:
     }:
         from .research.optical_manifold_smf_bogt_high_fidelity_relay_reference import dispatch
     elif action in {
+        "scaled-chen-relay-metric-reinterpretation-validate",
+        "scaled-chen-relay-metric-reinterpretation-run",
+    }:
+        from .research.optical_manifold_smf_bogt_relay_metric_reinterpretation import dispatch
+    elif action in {
         "scaled-chen-back-relay-axial-conjugate-validate",
         "scaled-chen-back-relay-axial-conjugate-preflight",
         "scaled-chen-back-relay-axial-conjugate-run",
