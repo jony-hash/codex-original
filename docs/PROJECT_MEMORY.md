@@ -45,12 +45,12 @@ ChatGPT Sources 包中的文件是由维护工具生成的受控副本。副本�
 - prior-native、direct-generator、quadrature、fiber、FMF 长训练和 formal promotion
   等已关闭或未授权路线不能因为 ChatGPT 的讨论而重新打开。
 - 所有科研执行仍需遵守 `AGENTS.md` 的 long-training gate；记忆文件本身不提供训练授权。
-- 当前最新有效科研结果是 TRBA 对 RMRI/MRA 的 task-relevant superseding interpretation，
-  overall `valid_failed` / `task_relevant_bottleneck_not_supported`（T4）；OLS 仅为
-  `generic_geometry_change_only`，decoder-internal 为 `not_supported`。唯一允许的下一动作
-  是 `manual_review_scaled_chen_bottleneck_attribution_closeout_contract`；在项目负责人
-  审查前不得进入 FMF、继续训练、exposure retuning、生成或 promotion。历史 RMRI/MRA/
-  HFRR/DCM/BOSA classification 仍不可变，relay family
+- 当前最新有效科研结果是 RMAL 的 `passed` / `bounded_recoverability_established_at_detector`：
+  首个下游 `cmos_intensity` stage 在 selection 与 confirmation 均通过固定 frozen linear
+  readout，故上游五段按 stop rule 未执行。该结果只证明 bounded physical mapping recoverability，
+  不改变 TRBA 的 `task_relevant_bottleneck_not_supported`、RMRI/MRA/HFRR/DCM/BOSA 的历史或
+  superseding interpretation。唯一允许的下一动作是 `manual_review_RMAL_recoverability_result`；
+  在项目负责人审查前不得进入 FMF、继续训练、exposure retuning、生成或 promotion。relay family
   `scaled_chen_v1_local_backend_relay_attribution_family=closed_metric_confound_reinterpreted`
   保持。
   若交接文档更新，以最新的 `CURRENT_STATUS.md`、`status/current_handoff.md` 和 hypothesis
@@ -478,5 +478,20 @@ RMFA 是 TRBA closeout 后唯一获准的 no-update bounded frozen recoverabilit
 probe 是预注册固定 `16×16` real/imag pooled pre-OLS feature（`input_dim=513`）到 `40000` 维 paired target 的一次性 float64 Moore–Penrose minimum-norm readout，`rcond=1e-12`，fit subset 为 train 前 55000 中每类 100 个、共 1000 个，rank/effective rank=`513`，condition number=`7945.41016660053`。selection 与 confirmation 均未重拟合。selection physical/probe/template/cyclic paired MSE=`0.0620484613/0.0033369721/0.0324799940/0.0799509138`；confirmation 为 `0.0577895157/0.0033930303/0.0277411994/0.0756082982`。相对 physical 改善为 `94.62198%/94.12865%`，instance geometry correlation=`0.97861648/0.97681407`，confirmation fixed bootstrap 95% CI=`[0.0540225357,0.0547624826]`，两个 panel 的 finite/frozen/disjoint/native replay gates 全部通过。
 
 因此 RMFA classification 为 `reconstruction_mapping_misalignment_supported`（R1），唯一下一动作是 `manual_review_reconstruction_mapping_alignment_contract`。该正结果只说明当前冻结 physical mapping 与 representation 存在可恢复错配；不能写成 representation universally sufficient、decoder 已修正或 generation ready。RMFA diagnostic contract 内的 bounded recoverability 为 positive，但 formal/physical `reconstruction_manifold_supported` 仍按上游 MRA 保持 `false`，`generative_manifold_supported=false`，`generation_readiness=not_ready`。
+
+## H-LOMA-CBOGT-S4-RMAL：Reconstruction Mapping Alignment Localization（2026-09-01）
+
+RMAL 的消费者是项目负责人对当前 Scaled-Chen physical reconstruction mapping 是否存在可恢复错配的决定；拒绝决定是不能把 bounded probe 的 stage 结果写成通用 representation sufficiency、架构修正或 generation 授权。实现与 validation/audit 绑定 clean commit `5b274b926474784a1ad49744e75190afff31747c`；权威 attempt-01 为
+`outputs/20260901_v2/runs/lightgen_scaled_chen_reconstruction_mapping_alignment_localization_v1_attempt_01/`。
+
+validation/audit/compact/probes SHA-256 为：
+`affb4961626a2caaf4dc2c8bb04c06ac4f8de51d1d4a1ab418858eaa11e536ec`、
+`5ba51e041a266865fc0443b729d31a0c97c35f2b86d6ef45f11dacf6617a15fa`、
+`c335f75124666e9423d66b7a4537c74ff642ef2d71044bda86be16f9333a2137`、
+`3551584a7983619356ea49babe7e5dedca559dfaa8ee5302fa44fd1a152a24ed`。固定一次 fit 的 probe 为 float64 Moore–Penrose minimum-norm (`torch.linalg.pinv`, `rcond=1e-12`)，不含 optimizer/backward/refit/regularization；RMFA positive-anchor replay、finite、native replay、冻结、stop-rule 与 resource gates 全部通过。
+
+固定搜索顺序为 `cmos_intensity → cmos_incident_complex_field → decoder_layer_2 → decoder_input → modal_complex_100 → pre_ols`。首个 `cmos_intensity` stage selection physical/probe/template/cyclic=`0.0620484613/0.0098129278/0.0324799940/0.0799509138`，relative improvement=`84.18505%`；confirmation=`0.0577895157/0.0101852901/0.0277411994/0.0756082982`，relative improvement=`82.37519%`，bootstrap 95% CI=`[0.0472728200,0.0479231887]`。因此 RMAL 为 `passed` / `bounded_recoverability_established_at_detector`，`furthest_downstream_recoverable_stage=cmos_intensity`，其余五段按预注册 stop rule 跳过。
+
+formal/physical `reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、`generation_readiness=not_ready` 保持；治理 flags 全部保持 no-update（optimizer/backward/evaluator/checkpoint/prior/generation/physical-forward modification 均为零或 false，`mechanism_evidence_only=true`）。唯一下一动作是 `manual_review_RMAL_recoverability_result`，不授权训练、FMF、prior sampling、generation、candidate export 或 formal promotion。
 
 本结果把 Scaled-Chen v1 attribution family 正式记录为 `closed_task_relevant_bottleneck_not_supported`；MRA/DCM/HFRR/RMRI/TRBA 历史与 superseding interpretation 均保留。全程 optimizer/backward/evaluator/checkpoint/prior/generation/physical-forward modification 均为零或 false，不授权任何训练、FMF、prior sampling、generation canary 或 promotion。

@@ -133,3 +133,23 @@ v2 CLI 和正确 Windows CUDA/PATH 条件下的完整 pytest 均通过：`1055 p
 失败 staging 已移动到 `D:\LDM-Archive\codex-original\reports\restore-attempts-20260831`，
 空 staging 根目录已删除。三个 pytest 临时目录因当前身份 ACL 仍未删除，明确视为测试残留，
 不进入 Git；恢复 outputs、归档和历史证据也未进入 Git。
+
+## 迁移后当前研究核验注记（2026-09-01）
+
+Windows 原生主工作区当前在分支
+`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`，RMAL implementation commit 为
+`5b274b926474784a1ad49744e75190afff31747c`。本次只新增 RMAL producer、配置、review contract、
+测试和 research CLI 路由，未修改正式 v2 runtime、OLS、checkpoint、训练目标、detector、prior
+或历史 evidence。
+
+RMAL 的唯一权威 CUDA attempt-01 为
+`D:\codex-original\outputs\20260901_v2\runs\lightgen_scaled_chen_reconstruction_mapping_alignment_localization_v1_attempt_01\`；validation/audit/compact/probes SHA-256 为
+`affb4961626a2caaf4dc2c8bb04c06ac4f8de51d1d4a1ab418858eaa11e536ec`、
+`5ba51e041a266865fc0443b729d31a0c97c35f2b86d6ef45f11dacf6617a15fa`、
+`c335f75124666e9423d66b7a4537c74ff642ef2d71044bda86be16f9333a2137`、
+`3551584a7983619356ea49babe7e5dedca559dfaa8ee5302fa44fd1a152a24ed`。
+静态 validation 与正式 audit 均通过；首个下游 `cmos_intensity` 在 selection/confirmation 均通过，
+其余上游阶段按 stop rule 跳过。唯一下一动作是
+`manual_review_RMAL_recoverability_result`；不授权训练、FMF、prior sampling、generation 或
+formal promotion。RMAL 定向测试 14 项、直接相关回归 56 项、compileall/Ruff/diff-check 均通过；
+全套 pytest 的既有 near-conjugate 临时路径失败仍单独记录，未修改无关代码。

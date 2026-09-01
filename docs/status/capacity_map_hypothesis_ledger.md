@@ -1305,3 +1305,21 @@ exposure retuning、prior sampling、generation、canary 或 formal promotion。
 selection native anchors paired/template/cyclic=`0.0620484613/0.0324799940/0.0799509138`；probe paired=`0.0033369721`，relative improvement=`94.62198%`，template crossing、paired vs cyclic、instance geometry、finite/frozen/disjoint/native replay 全通过。confirmation anchors=`0.0577895157/0.0277411994/0.0756082982`；同一 probe paired=`0.0033930303`，relative improvement=`94.12865%`，instance control 同向，固定 2000-replicate bootstrap 95% CI=`[0.0540225357,0.0547624826]`，下界严格大于零。
 
 RMFA 为 R1、完整 harness 下 `reconstruction_mapping_misalignment_supported`，唯一下一动作是 `manual_review_reconstruction_mapping_alignment_contract`。该正结果只支持 physical mapping misalignment：不证明 universal representation sufficiency，不把 formal/physical `reconstruction_manifold_supported=false` 升级为通用重建通过，且 `generative_manifold_supported=false`、`generation_readiness=not_ready` 保持。Scaled-Chen v1 bottleneck-attribution family 正式关闭为 `closed_task_relevant_bottleneck_not_supported`；MRA/DCM/HFRR/RMRI/TRBA 的 historical 与 superseding interpretation 全部保留。治理 flags：optimizer/backward/evaluator/checkpoint/prior/generation/physical-forward modification 均为零或 false，`mechanism_evidence_only=true`。不得训练、FMF、采样 prior、生成、candidate export 或 formal promotion。
+
+## H-LOMA-CBOGT-S4-RMAL：Reconstruction Mapping Alignment Localization（2026-09-01）
+
+本假设的消费者是项目负责人判断当前 Scaled-Chen step-5000 physical reconstruction mapping 是否存在可由冻结 readout 恢复的错配；拒绝决定是不能把 bounded recoverability 结果升级为通用 representation sufficiency、架构修正或 generation 授权。实现提交为 `5b274b926474784a1ad49744e75190afff31747c`，权威 CUDA attempt-01 位于
+`outputs/20260901_v2/runs/lightgen_scaled_chen_reconstruction_mapping_alignment_localization_v1_attempt_01/`。
+
+validation/audit/compact/probes SHA-256 分别为
+`affb4961626a2caaf4dc2c8bb04c06ac4f8de51d1d4a1ab418858eaa11e536ec`、
+`5ba51e041a266865fc0443b729d31a0c97c35f2b86d6ef45f11dacf6617a15fa`、
+`c335f75124666e9423d66b7a4537c74ff642ef2d71044bda86be16f9333a2137`、
+`3551584a7983619356ea49babe7e5dedca559dfaa8ee5302fa44fd1a152a24ed`。attempt 总输出 `41230970` bytes，峰值 CUDA `2274099712` bytes，运行前可用显存 `5368709120` bytes，resource/write-once/no-update gates 全部通过。
+
+RMAL 固定一次 fit（1000、每类 100）的 float64 Moore–Penrose minimum-norm probe（`torch.linalg.pinv`、`rcond=1e-12`），不含 optimizer/backward/refit/regularization；RMFA pre-OLS positive-anchor replay、finite、native replay 与模型/OLS 冻结全部通过。固定搜索顺序为
+`cmos_intensity → cmos_incident_complex_field → decoder_layer_2 → decoder_input → modal_complex_100 → pre_ols`。
+
+首个 `cmos_intensity` stage selection physical/probe/template/cyclic=`0.0620484613/0.0098129278/0.0324799940/0.0799509138`，relative improvement=`84.18505%`；confirmation=`0.0577895157/0.0101852901/0.0277411994/0.0756082982`，relative improvement=`82.37519%`，固定 bootstrap 95% CI=`[0.0472728200,0.0479231887]`。selection 与 confirmation gate 全部通过，故 RMAL 为 `passed` / `bounded_recoverability_established_at_detector`，`furthest_downstream_recoverable_stage=cmos_intensity`，其余五段按 stop rule 跳过。
+
+这是 bounded diagnostic recoverability positive；`reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、`generation_readiness=not_ready` 保持。治理 flags：optimizer/backward/evaluator/checkpoint/prior/generation/physical-forward modification 均为零或 false，`mechanism_evidence_only=true`。唯一下一动作是 `manual_review_RMAL_recoverability_result`；不得训练、FMF、采样 prior、生成、candidate export 或 formal promotion。

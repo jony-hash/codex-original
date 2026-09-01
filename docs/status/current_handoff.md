@@ -1737,3 +1737,32 @@ RMFA 只使用一次预注册 fit subset（train 前 55000 中每类 100、共 1
 该结论只支持“当前 physical mapping 丢失的信息可由预注册冻结线性 readout 恢复”，不支持 universal representation sufficiency、架构已修正或 generation readiness。上游 formal/physical `reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、`generation_readiness=not_ready` 继续有效；RMFA 只在自身 bounded diagnostic 字段中记录 recoverability positive。Scaled-Chen v1 bottleneck-attribution family 现在收敛为 `closed_task_relevant_bottleneck_not_supported`。唯一下一动作是 `manual_review_reconstruction_mapping_alignment_contract`；不训练、不启动 FMF、不采样 prior、不生成、不 candidate export、不 formal promotion。
 
 默认完整 pytest 的 `C:\TEMP` 访问拒绝仍是既有环境问题；在可写新临时根下为 `1131 passed, 12 deselected, 25 subtests passed`。治理状态保持 `training_authorized=false`、`formal_promotion=false`、`mechanism_evidence_only=true`。
+
+## H-LOMA-CBOGT-S4-RMAL：Reconstruction Mapping Alignment Localization（2026-09-01）
+
+本次是 RMFA 之后唯一执行的冻结、无更新 bounded-recoverability 审计。消费者是项目负责人判断当前 Scaled-Chen step-5000 physical reconstruction mapping 是否存在可由固定 readout 恢复的错配；拒绝决定是不能把该结果写成通用 representation sufficiency、架构修正或 generation 授权。实现绑定 clean commit `5b274b926474784a1ad49744e75190afff31747c`，没有改 formal v2 runtime、OLS、checkpoint、训练目标、detector、prior 或历史 evidence。
+
+权威 CUDA attempt-01：
+`outputs/20260901_v2/runs/lightgen_scaled_chen_reconstruction_mapping_alignment_localization_v1_attempt_01/`。
+validation/audit/compact/probes SHA-256 依次为
+`affb4961626a2caaf4dc2c8bb04c06ac4f8de51d1d4a1ab418858eaa11e536ec`、
+`5ba51e041a266865fc0443b729d31a0c97c35f2b86d6ef45f11dacf6617a15fa`、
+`c335f75124666e9423d66b7a4537c74ff642ef2d71044bda86be16f9333a2137`、
+`3551584a7983619356ea49babe7e5dedca559dfaa8ee5302fa44fd1a152a24ed`。
+attempt 总量 `41230970` bytes；峰值 CUDA `2274099712` bytes；运行前可用显存 `5368709120` bytes；validation/audit/compact 均 `passed`，0 个 false gate。
+
+RMFA positive-anchor selection/confirmation replay 均通过。RMAL 固定一次 1000-sample fit 的 float64
+`torch.linalg.pinv(rcond=1e-12)` probe，按
+`cmos_intensity → cmos_incident_complex_field → decoder_layer_2 → decoder_input → modal_complex_100 → pre_ols`
+搜索。首个 `cmos_intensity` stage selection physical/probe/template/cyclic=`0.0620484613/0.0098129278/0.0324799940/0.0799509138`，relative improvement=`84.18505%`；confirmation=`0.0577895157/0.0101852901/0.0277411994/0.0756082982`，relative improvement=`82.37519%`，固定 bootstrap 95% CI=`[0.0472728200,0.0479231887]`。两 panel gate 全部通过，故 `furthest_downstream_recoverable_stage=cmos_intensity`，其余五段按 stop rule 跳过，classification 为 `bounded_recoverability_established_at_detector`。
+
+该结果仅是 bounded diagnostic recoverability positive：`reconstruction_manifold_supported=false`、
+`generative_manifold_supported=false`、`generation_readiness=not_ready` 保持。治理 flags 为
+`optimizer_created=false`、`backward_calls=0`、`evaluator_calls=0`、`checkpoint_written=false`、
+`prior_sampled=false`、`generation_started=false`、`physical_forward_modified=false`、
+`mechanism_evidence_only=true`。唯一下一动作是 `manual_review_RMAL_recoverability_result`；不训练、
+不启动 FMF、不采样 prior、不生成、不 candidate export、不 formal promotion。
+
+RMAL 定向测试 `14 passed`，直接相关回归 `56 passed`，compileall、Ruff、diff-check 通过。全套默认 pytest
+为 `1144 passed, 1 failed, 12 deselected, 25 subtests passed`；唯一失败仍是既有 near-conjugate 临时
+run 目录缺失的 Windows 路径问题，与 RMAL 文件无关。

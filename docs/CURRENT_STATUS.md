@@ -6,11 +6,11 @@
 
 - 主项目：`D:\codex-original`
 - 基线分支：`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`
-- 当前 clean HEAD（TRBA result/status commit，由 Git HEAD 绑定）；
-  TRBA validation/audit 绑定 clean implementation commit
-  `7c1c0f8dcfb878049260043441a117456e5ebe6a`，本文件在当前结果提交中更新。
-- 当前最新研究解释是 TRBA 对 RMRI/MRA 的 task-relevant superseding interpretation；旧
-  evidence 仍不可变，HFRR/DCM/MRA/RMRI 的历史 classification 继续保留为父级事实。
+- 当前 clean HEAD（本次 RMAL result/status commit；RMAL validation/audit 绑定 clean
+  implementation commit `5b274b926474784a1ad49744e75190afff31747c`，本文件在结果/状态提交中更新）。
+- 当前最新研究解释是 RMAL 对 Scaled-Chen physical reconstruction mapping 的 bounded
+  recoverability 结果；旧 evidence 仍不可变，TRBA/HFRR/DCM/MRA/RMRI 的历史 classification
+  继续保留为父级事实。
 - 基线提交：`019b76ef911e0bd16b8d5d4169807323427684af`
 - 当前几何归因实现绑定提交：`6419cc523a8b5dd41cb3d3c2531193890fa1481a`
 - 注销前审计提交：`75d0584c379b145b0f0eb45ece14fda160741f23`（已按用户确认推送）
@@ -561,3 +561,33 @@ selection（MNIST test 5000–9999，每类 100）native physical anchors 完整
 治理 flags 全部符合 no-update 合同：`optimizer_created=false`、`backward=false`、`evaluator_calls=0`、`checkpoint_written=false`、`prior_sampled=false`、`generation_started=false`、`physical_forward_modified=false`、`mechanism_evidence_only=true`。
 
 实现后的默认 pytest 仍受同一 Windows 临时根权限问题影响：默认根目录运行得到 `1015 passed, 12 deselected, 116 errors`，错误均为访问 `C:\TEMP\pytest-of-24567`；在新的可写 `C:\Windows\Temp\codex-rmfa-full-20260901` 下得到 `1131 passed, 12 deselected, 25 subtests passed`，无 RMFA 新失败。RMFA/相邻研究测试、compileall、Ruff 与 `git diff --check` 均通过。
+
+## H-LOMA-CBOGT-S4-RMAL：Reconstruction Mapping Alignment Localization（2026-09-01）
+
+RMAL 是 RMFA 之后唯一获准的冻结、无更新、下游到上游 bounded-recoverability 审计。真实消费者是项目负责人判断当前 Scaled-Chen step-5000 的 physical reconstruction mapping 是否存在可由冻结 readout 恢复的错配；拒绝决定是不得把某个 stage 的 bounded recoverability 结果升级为通用 representation sufficiency、架构修正或 generation 授权。实现 commit 为 `5b274b926474784a1ad49744e75190afff31747c`，没有修改 formal v2 runtime、OLS、checkpoint、训练目标、detector、prior 或历史 evidence。
+
+权威 CUDA attempt-01 位于
+`outputs/20260901_v2/runs/lightgen_scaled_chen_reconstruction_mapping_alignment_localization_v1_attempt_01/`；validation、audit、compact、probes 的 SHA-256 分别为
+`affb4961626a2caaf4dc2c8bb04c06ac4f8de51d1d4a1ab418858eaa11e536ec`、
+`5ba51e041a266865fc0443b729d31a0c97c35f2b86d6ef45f11dacf6617a15fa`、
+`c335f75124666e9423d66b7a4537c74ff642ef2d71044bda86be16f9333a2137`、
+`3551584a7983619356ea49babe7e5dedca559dfaa8ee5302fa44fd1a152a24ed`。attempt 总输出为 `41230970` bytes，低于 `512 MiB`；运行前可用显存 `5368709120` bytes，峰值 CUDA `2274099712` bytes。
+
+审计固定一次 fit（1000、每类 100）的 float64 `torch.linalg.pinv(rcond=1e-12)` minimum-norm probe，并按
+`cmos_intensity → cmos_incident_complex_field → decoder_layer_2 → decoder_input → modal_complex_100 → pre_ols`
+执行。RMFA pre-OLS positive-anchor selection/confirmation replay 通过；RMAL 首个阶段
+`cmos_intensity` 的 selection physical/probe/template/cyclic paired MSE 为
+`0.0620484613/0.0098129278/0.0324799940/0.0799509138`，relative improvement=`84.18505%`；confirmation 为
+`0.0577895157/0.0101852901/0.0277411994/0.0756082982`，relative improvement=`82.37519%`，固定 bootstrap 95% CI=`[0.0472728200,0.0479231887]`。两个 panel 的 selection/confirmation gates 全部通过，因此
+`furthest_downstream_recoverable_stage=cmos_intensity`，其余五个阶段按 stop rule 跳过；classification 为
+`bounded_recoverability_established_at_detector`。
+
+这是 bounded diagnostic recoverability positive，不是 formal reconstruction 或 generation 通过：
+`reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、
+`generation_readiness=not_ready` 保持。全程 `optimizer_created=false`、`backward_calls=0`、
+`evaluator_calls=0`、`checkpoint_written=false`、`prior_sampled=false`、
+`generation_started=false`、`physical_forward_modified=false`、`mechanism_evidence_only=true`；
+唯一下一动作是 `manual_review_RMAL_recoverability_result`，不得自动训练、FMF、prior sampling、generation 或 promotion。
+
+实现文件为：RMAL producer、研究 YAML、review contract、RMAL tests，以及 research CLI schema/router；
+无关既有全套 pytest 中仍有 1 项 near-conjugate 临时 run 目录 `FileNotFoundError`（`1144 passed, 1 failed, 12 deselected, 25 subtests passed`），与本次文件无关。RMAL 定向测试为 `14 passed`，直接相关回归为 `56 passed`，compileall、Ruff 与 diff-check 均通过。
