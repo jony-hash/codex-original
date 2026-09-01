@@ -500,7 +500,9 @@ def _verify_lsda(spec: Spec) -> tuple[Any, ...]:
     if (
         compact.get("status") != "passed"
         or compact.get("classification") != LSDA_CONSUMER["classification"]
-        or compact.get("generation_readiness") != "not_ready"
+        or audit.get("generation_readiness") != "not_ready"
+        or audit.get("reconstruction_manifold_supported") is not False
+        or audit.get("generative_manifold_supported") is not False
     ):
         raise LRRCHarnessFailure("LSDA compact terminal interpretation changed")
     if compact.get("consumer", {}).get("probe_sha256") != RMAL_CONSUMER["probe_sha256"]:
