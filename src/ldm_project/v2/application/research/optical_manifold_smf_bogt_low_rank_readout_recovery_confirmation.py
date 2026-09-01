@@ -601,7 +601,7 @@ def _spectral_lock(
     ):
         raise LRRCHarnessFailure("LSDA singular-value ordering or values changed")
     stored_gaps = compact_spectrum.get("adjacent_relative_gaps")
-    if not isinstance(stored_gaps, list) or len(stored_gaps) != TOTAL_COLUMNS - 1:
+    if not isinstance(stored_gaps, list) or len(stored_gaps) != FEATURE_DIM - 1:
         raise LRRCHarnessFailure("LSDA adjacent-gap telemetry is unavailable")
     for rank, expected_gap in SPECTRAL_BOUNDARY_GAPS.items():
         actual = stored_gaps[rank - 1]
