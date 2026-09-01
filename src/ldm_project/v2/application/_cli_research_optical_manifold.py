@@ -84,6 +84,11 @@ def dispatch(args: argparse.Namespace) -> int:
     }:
         from .research.optical_manifold_smf_bogt_backend_observable_subspace import dispatch
     elif action in {
+        "scaled-chen-high-fidelity-relay-reference-validate",
+        "scaled-chen-high-fidelity-relay-reference-run",
+    }:
+        from .research.optical_manifold_smf_bogt_high_fidelity_relay_reference import dispatch
+    elif action in {
         "scaled-chen-back-relay-axial-conjugate-validate",
         "scaled-chen-back-relay-axial-conjugate-preflight",
         "scaled-chen-back-relay-axial-conjugate-run",
