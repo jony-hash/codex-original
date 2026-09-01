@@ -163,7 +163,7 @@ LINEAGE = {
     "lsda_passed_required": True,
     "selection_confirmation_not_consumed": True,
     "attempt_name": (
-        "lightgen_scaled_chen_low_rank_readout_recovery_confirmation_v1_attempt_01"
+        "lightgen_scaled_chen_low_rank_readout_recovery_confirmation_v1_attempt_02"
     ),
 }
 
