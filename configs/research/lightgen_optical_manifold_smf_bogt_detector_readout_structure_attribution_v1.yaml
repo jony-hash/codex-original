@@ -1,0 +1,165 @@
+schema: lightgen_optical_manifold_smf_bogt_detector_readout_structure_attribution_v1
+hypothesis: H-LOMA-CBOGT-S5-RWSA
+formal_system_config: configs/v2/current/formal_identity_logit_amplitude_finite_crop_identity.yaml
+rmal_consumer:
+  config: configs/research/lightgen_optical_manifold_smf_bogt_reconstruction_mapping_alignment_localization_v1.yaml
+  config_sha256: c50b5b2d12830c40fbe619f137aca40f36f799f277e637d1ec20ac7e3403859f
+  review_contract: configs/research/lightgen_optical_manifold_smf_bogt_reconstruction_mapping_alignment_localization_review_v1.json
+  review_sha256: 73ba944ac5766c88591e0f5125cc031a1c9c55bd84aa2cbc30ea457bd4fb30e8
+  validation: outputs/20260901_v2/runs/lightgen_scaled_chen_reconstruction_mapping_alignment_localization_v1_attempt_01/validation.json
+  validation_sha256: affb4961626a2caaf4dc2c8bb04c06ac4f8de51d1d4a1ab418858eaa11e536ec
+  audit: outputs/20260901_v2/runs/lightgen_scaled_chen_reconstruction_mapping_alignment_localization_v1_attempt_01/audit.json
+  audit_sha256: 5ba51e041a266865fc0443b729d31a0c97c35f2b86d6ef45f11dacf6617a15fa
+  compact_report: outputs/20260901_v2/runs/lightgen_scaled_chen_reconstruction_mapping_alignment_localization_v1_attempt_01/compact_report.json
+  compact_report_sha256: c335f75124666e9423d66b7a4537c74ff642ef2d71044bda86be16f9333a2137
+  probe: outputs/20260901_v2/runs/lightgen_scaled_chen_reconstruction_mapping_alignment_localization_v1_attempt_01/probes.pt
+  probe_sha256: 3551584a7983619356ea49babe7e5dedca559dfaa8ee5302fa44fd1a152a24ed
+  implementation_commit: 5b274b926474784a1ad49744e75190afff31747c
+  audit_status: passed
+  audit_classification: bounded_recoverability_established_at_detector
+references:
+  scaled_chen_checkpoint:
+    path: outputs/20260829_v2/runs/lightgen_optical_manifold_smf_bogt_horizon_v2_attempt_03/checkpoints/scaled_chen_horizon_step_5000.pt
+    sha256: ccb89f98cc11725eb80d66c61f4fdef62b24acdf9f6d739f78373f462d10e5de
+    producer_commit: 019b76ef911e0bd16b8d5d4169807323427684af
+    global_step: 5000
+    role: frozen_scaled_chen_reference
+fit_panel:
+  source: mnist_train_indices_0_54999
+  count: 1000
+  per_label: 100
+  construction: first_100_sorted_per_label_after_excluding_calibration_confirmation_plan3_plan4
+  calibration_excluded: true
+  confirmation_excluded: true
+  plan3_plan4_excluded: true
+  schedule_overlap_allowed_for_fit_only: true
+  indices_sha256: 532f05aa60d235499fdc5c078ad9c3c95c36a0c61f2c8e9d64a8309c1741255d
+evaluation_panels:
+  selection:
+    source: mnist_test_indices_5000_9999
+    count: 1000
+    per_label: 100
+    parent: outputs/20260831_v2/runs/lightgen_optical_manifold_smf_bogt_manifold_readiness_v1_attempt_05/audit.json
+  confirmation:
+    source: horizon_heldout_train_indices_55000_59999
+    count: 5000
+    parent: outputs/20260831_v2/runs/lightgen_optical_manifold_smf_bogt_manifold_readiness_v1_attempt_05/audit.json
+  candidate_prefix:
+    source: mnist_test_indices_0_4999
+    count: 5000
+    consumed: false
+  no_new_samples: true
+pooling:
+  input_shape: [200, 200]
+  output_shape: [16, 16]
+  bin_formula: B_i=[floor(i*200/16),ceil((i+1)*200/16))
+  source_order: row-major i_then_j
+  target_order: row-major r_then_c
+  overlap_semantics: inclusive_membership_in_each_adaptive_pool_bin
+  overlap_is_contractual: true
+coordinate_contract:
+  detector_shape: [200, 200]
+  target_shape: [200, 200]
+  pixel_pitch_m: [2.5e-6, 2.5e-6]
+  physical_fov_m: [500.0e-6, 500.0e-6]
+  origin: centered
+  row_axis: y
+  column_axis: x
+  overall_orientation: identity
+  front_magnification: -0.4
+  back_magnification: -2.5
+  net_magnification: 1.0
+  expected_support: E(r,c)={(i,j):r in B_i and c in B_j}
+  expected_distribution: q(i,j|r,c) proportional to 1/(|B_i||B_j|) over E only
+  cell_center_definition: mean of actual covered raw detector pixel-center coordinates
+d4_controls:
+  - identity
+  - x_flip
+  - y_flip
+  - xy_flip
+  - transpose
+  - transpose_x_flip
+  - transpose_y_flip
+  - transpose_xy_flip
+permutation_null:
+  count: 256
+  seed: 0
+  rng: torch.Generator(device='cpu').manual_seed(seed)
+  operation: source_feature_rows_only
+  marginal_preservation: each_target_column_abs_weight_values_unchanged
+  statistic: identity_expected_support_locality_mass
+measurement:
+  objective: descriptive_16x16_pooled_detector_to_200x200_target_structure_and_bias_attribution
+  primary_checkpoint: scaled_chen_step_5000
+  selection_count: 1000
+  confirmation_count: 5000
+  fit_count: 1000
+  candidate_prefix_consumed: false
+  physical_forward_unchanged: true
+  cmos_source: output.camera
+  no_six_stage_capture: true
+  no_stage_search: true
+  no_raw_cmos_bank: true
+  no_large_feature_bank_artifact: true
+  microbatch_size: 1
+  descriptive_only: true
+bias_attribution:
+  full: zW_plus_b
+  dynamic: zW
+  bias_only: b_broadcast_over_samples
+  feature_source: exact_RMAL_cmos_intensity_pooled_features
+  postprocessing: none
+  refit: false
+  instance_constant_label: not_applicable_degenerate_constant_output
+target:
+  kind: camera_intensity_same_fov
+  shape: [1, 200, 200]
+  preprocessing: base.render_intensity_batch
+  paired_target: true
+  class_template_comparator_only: true
+gates:
+  physical_baseline_tolerance: 1.0e-6
+  permutation_null_count: 256
+  permutation_null_seed: 0
+  min_free_cuda_bytes: 4294967296
+  max_peak_cuda_bytes: 5368709120
+  min_disk_free_bytes: 10737418240
+  max_storage_bytes: 536870912
+  optimizer_created: false
+  backward_calls: 0
+  evaluator_calls: 0
+  checkpoint_written: false
+  prior_sampled: false
+  generation_started: false
+  physical_forward_modified: false
+  formal_promotion: false
+authorization:
+  reviewer_role: project_owner
+  decision: approve_no_update_scaled_chen_detector_readout_structure_attribution
+  no_update_diagnostic_authorized: true
+  training_authorized: false
+  formal_training_authorized: false
+  formal_promotion: false
+  mechanism_evidence_only: true
+  descriptive_only: true
+  prohibited:
+    - optimizer
+    - gradient
+    - backward
+    - probe_refit
+    - probe_regularization
+    - checkpoint_write
+    - prior_sampling
+    - generation
+    - evaluator
+    - DOAA_reconstruction_candidate
+    - FMF
+    - modal_sweep
+    - OLS_redesign
+    - decoder_redesign
+    - relay_tuning
+    - geometry_sweep
+    - training
+    - promotion
+    - physical_forward_modification
+    - new_samples
