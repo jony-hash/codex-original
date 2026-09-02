@@ -45,18 +45,18 @@ ChatGPT Sources 包中的文件是由维护工具生成的受控副本。副本�
 - prior-native、direct-generator、quadrature、fiber、FMF 长训练和 formal promotion
   等已关闭或未授权路线不能因为 ChatGPT 的讨论而重新打开。
 - 所有科研执行仍需遵守 `AGENTS.md` 的 long-training gate；记忆文件本身不提供训练授权。
-- 当前最新有效科研结果是 H-LOMA-CBOGT-S6-MCFA 的 `passed` /
-  `detector_mean_centered_functional_attribution_completed`，正式结果绑定 clean
-  implementation/result commit 为 `069cfa4b3aeda3943d754d739daf6daeba2a54a6`：它只描述
-  冻结 RMAL readout 在 fit/selection/confirmation detector panels 上 `mu W` 与
-  `(z-mu)W` 的 energy、functional MSE gain 与 additive identity，并保持与
-  DMSA/DSFA/LRRC 的 identity 交叉核验，不把 attribution 升级为 reconstruction
-  sufficiency。其 parent DMSA 仍为 `detector_data_metric_spectral_attribution_completed`，
-  DSFA 仍为 `data_weighted_spectral_functional_attribution_completed`，LRRC 仍只在预注册
-  candidate family 内保留 `first_confirmed_candidate_rank=256`。该结果不改变
-  RMAL/ZCSA/RWSA-ACTIVE/LSDA、TRBA/HFRR/DCM/MRA/RMRI/BOSA 的历史或 superseding
-  interpretation。唯一允许的下一动作是 `manual_review_MCFA_result`；在项目负责人审查前
-  不得进入 FMF、继续训练、exposure retuning、生成或 promotion。relay family
+- 当前最新有效科研结果是 H-LOMA-CBOGT-S7-MPCDAR 的 `passed` /
+  `mean_preserving_centered_data_aware_readout_recovery_completed`，正式 replay 绑定
+  clean implementation commit `b59172750d0c88bbc9f7426ab7a21a1d63639f57`：在冻结
+  RMAL `W,b`、fit-derived `mu_fit/C_fit` 与预注册 candidate family
+  `[1,2,4,8,16,32,64,128,256]` 下，rank 16 首次通过 selection + confirmation。
+  该结果只表示预注册家族内的 mean-preserving fit-data-aware candidate 结果，不是
+  minimum/intrinsic/physical rank，也不把 spectral energy 或 data-aware truncation
+  升级为 reconstruction sufficiency。其 parent MCFA 仍为
+  `detector_mean_centered_functional_attribution_completed`，DMSA/DSFA/LRRC 及更早
+  RMAL/ZCSA/RWSA-ACTIVE/LSDA 身份保持不变。唯一允许的下一动作是
+  `manual_review_MPCDAR_result`；在项目负责人审查前不得进入 FMF、继续训练、exposure
+  retuning、生成或 promotion。relay family
   `scaled_chen_v1_local_backend_relay_attribution_family=closed_metric_confound_reinterpreted`
   保持。
   若交接文档更新，以最新的 `CURRENT_STATUS.md`、`status/current_handoff.md` 和 hypothesis
@@ -680,3 +680,46 @@ flags 仍为 `reconstruction_manifold_supported=false`、`generative_manifold_su
 `closed_task_relevant_bottleneck_not_supported`；完整 pytest 为 `1310 passed, 12 deselected,
 25 subtests passed`。唯一下一动作是 `manual_review_MCFA_result`，不得训练、decoder、
 candidate export、generation 或 promotion。
+
+## H-LOMA-CBOGT-S7-MPCDAR：Mean-Preserving Centered Data-Aware Readout Recovery（2026-09-02）
+
+MPCDAR 在 clean implementation commit `b59172750d0c88bbc9f7426ab7a21a1d63639f57` 上完成，
+消费冻结 RMAL `W=[256,40000]`、`b=[40000]`、MCFA fit moment contract 与 LSDA/LRRC/DSFA/DMSA
+及 ZCSA/RWSA-ACTIVE 身份。它是 no-refit、no-training、CMOS-only 的 mean-preserving centered
+data-aware truncation recovery confirmation；真实消费者是项目负责人审查预注册 rank family
+内的 bounded recovery，拒绝决定是不得将其升级为 minimum/intrinsic rank、一般 sufficiency、
+decoder、training、generation 或 promotion authorization。
+
+权威 attempt-03 为
+`outputs/20260902_v2/runs/lightgen_scaled_chen_mean_preserving_centered_data_aware_readout_recovery_v1_attempt_03/`；
+validation/audit/compact SHA256=`b538b3ab242e09a0042699b1b1d0779d504f992498b1fcd75c23bae9937512d2` /
+`43b4cef14202c19cc6aca22ec2c49cf5a65ed1ac05b7b69f7d00390de4b95785` /
+`9e321b457e9e7111e1bf0d800e1d8e724f9753cf34f92e13d1eb2e081034a4e9`；probe SHA256 仍为
+`3551584a7983619356ea49babe7e5dedca559dfaa8ee5302fa44fd1a152a24ed`。attempt-01/02 仅保留
+validation-only 或执行前停止记录，不消费；没有覆盖任何旧 evidence。
+
+fit replay 使用 `N=1000`、float64 population moment contract，`mu`/`C` hash 均与 DMSA
+匹配，moment identity residual `2.9855e-16`，PSD raw minimum eigenvalue=`3.23645e-09`，
+material/tiny negative count=`0/0`。A_fit data-aware spectrum 的 cumulative energy at
+`1/2/4/8/16/32/64/128/256` 为 `0.118309/0.207018/0.355819/0.541212/0.715164/0.868603/
+0.963351/0.994898/1.000000`，effective/stable rank=`37.184239/8.452439`；registered DA
+boundary gaps 只作 descriptive telemetry，未增加 degeneracy threshold。
+
+rank-256 positive anchor 首先通过；V orthogonality max residual=`1.70464e-12`，A_fit/W
+projector max residual=`4.53214e-14/5.68008e-11`，selection/confirmation full prediction
+identity 与 RMAL gates 均通过。随后按 `[1,2,4,8,16,32,64,128]` 顺序执行 data-aware
+selection：实际评估 `1,2,4,8,16`；rank 1/2/4 selection failed，rank 8 selection passed
+但 confirmation failed，rank 16 selection+confirmation passed，故
+`first_confirmed_data_aware_candidate_rank=16`、`previous_registered_candidate=8`，未重复
+rank 256。selection/confirmation rank-16 probe MSE=`0.0210726835/0.0212836881`，相对改善
+=`0.660383/0.631703`。
+
+matched control 对每个实际 evaluated rank 同流计算 old LRRC raw、mean-preserving raw 与
+mean-preserving data-aware 三路 MSE；A/B/C 不参与 stop rule 或 confirmation authorization。
+正式结果为 `passed / mean_preserving_centered_data_aware_readout_recovery_completed`，audit
+14/14 gates 通过；CMOS-only streaming、state/no-update、no-target-fitting、finite/resource
+和 no-bank 条件通过，peak CUDA=`2274099712` bytes、wall=`183.266 s`。治理 flags 保持
+`reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、
+`generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false` 与
+`closed_task_relevant_bottleneck_not_supported`；唯一下一动作是 `manual_review_MPCDAR_result`，
+不得训练、candidate export、generation 或 promotion。

@@ -6,13 +6,13 @@
 
 - 主项目：`D:\codex-original`
 - 基线分支：`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`
-- MCFA 正式 validation/audit 绑定 clean implementation/result commit
-  `069cfa4b3aeda3943d754d739daf6daeba2a54a6`；当前 clean HEAD 以 Git 核验为准。
-- 当前最新研究解释是 H-LOMA-CBOGT-S6-MCFA 对冻结 RMAL detector readout 的
-  mean/centered functional attribution；它只描述 fit/selection/confirmation panel 上
-  `mu W` 与 `(z-mu)W` 的能量、MSE gain 与 additive identity，不把 attribution 解释为
-  reconstruction sufficiency。DMSA、DSFA 与更早 RMAL/ZCSA/RWSA-ACTIVE/LSDA/LRRC
-  evidence 仍保持 immutable，并继续作为父级事实。
+- MPCDAR 正式 validation/audit 绑定 clean implementation/result commit
+  `b59172750d0c88bbc9f7426ab7a21a1d63639f57`；当前 clean HEAD 以 Git 核验为准。
+- 当前最新研究解释是 H-LOMA-CBOGT-S7-MPCDAR 对冻结 RMAL detector readout 的
+  mean-preserving centered data-aware truncation recovery；它只报告预注册 rank family
+  内的 bounded selection/confirmation 结果，不把 rank 16、谱能量或 data-aware truncation
+  解释为 minimum/intrinsic rank 或一般 reconstruction sufficiency。MCFA、DMSA、DSFA 与
+  更早 RMAL/ZCSA/RWSA-ACTIVE/LSDA/LRRC evidence 仍保持 immutable，并继续作为父级事实。
 - 基线提交：`019b76ef911e0bd16b8d5d4169807323427684af`
 - 当前几何归因实现绑定提交：`6419cc523a8b5dd41cb3d3c2531193890fa1481a`
 - 注销前审计提交：`75d0584c379b145b0f0eb45ece14fda160741f23`（已按用户确认推送）
@@ -801,6 +801,51 @@ git diff-check 与 CLI contract checks 通过。全套 pytest 为 `1285 passed, 
 25 subtests passed`，另有 4 个与 DMSA 无关的既有环境失败（3 个 NVRTC DLL/运行时失败、
 1 个 near-conjugate 临时路径失败）。唯一下一动作是 `manual_review_DMSA_result`；不得训练、
 decoder、candidate export、generation 或 promotion。
+
+## H-LOMA-CBOGT-S7-MPCDAR：Mean-Preserving Centered Data-Aware Readout Recovery（2026-09-02）
+
+MPCDAR 的真实消费者是项目负责人确认：在保留冻结 RMAL useful mean branch
+`c_mean=b+mu_fit W` 的条件下，fit-derived centered data-aware output subspace 是否在预注册
+候选族内保留完整 RMAL bounded selection + confirmation recovery。拒绝决定是不得把结果升级为
+minimum/intrinsic/physical rank、一般 reconstruction sufficiency、decoder、training、generation
+或 promotion authorization。实现/config/review/test/CLI 及本轮 preflight 支持改动已提交；RMAL、
+probe、renderer、checkpoint、OLS、detector、formal runtime 与父级 evidence 未修改。
+
+正式 replay 使用 code commit `b59172750d0c88bbc9f7426ab7a21a1d63639f57`，权威 attempt-03 为
+`outputs/20260902_v2/runs/lightgen_scaled_chen_mean_preserving_centered_data_aware_readout_recovery_v1_attempt_03/`；
+validation/audit/compact SHA-256 分别为
+`b538b3ab242e09a0042699b1b1d0779d504f992498b1fcd75c23bae9937512d2`、
+`43b4cef14202c19cc6aca22ec2c49cf5a65ed1ac05b7b69f7d00390de4b95785`、
+`9e321b457e9e7111e1bf0d800e1d8e724f9753cf34f92e13d1eb2e081034a4e9`；RMAL probe SHA-256 仍为
+`3551584a7983619356ea49babe7e5dedca559dfaa8ee5302fa44fd1a152a24ed`。attempt-01/02 仅为
+validation-only 或正式执行前停止记录，均未覆盖或改变旧 evidence。
+
+结果为 `status=passed`、`classification=mean_preserving_centered_data_aware_readout_recovery_completed`，
+audit `14/14` gates 通过。fit replay 使用 `N=1000`、float64 population moments；DMSA 的 mu/C
+hash 均匹配，moment identity relative residual=`2.98546e-16`。C_fit PSD raw minimum eigenvalue
+为 `3.23645e-09`，material/tiny negative count=`0/0`；A_fit spectrum 的 cumulative energy
+at `1/2/4/8/16/32/64/128/256` 为 `0.118309/0.207018/0.355819/0.541212/0.715164/0.868603/
+0.963351/0.994898/1.000000`，effective/stable rank=`37.184239/8.452439`。DA boundary gaps
+使用 A_fit/G_fit 自有 spectrum，仅作 descriptive telemetry；raw LSDA gaps 只存在于 comparator。
+
+rank-256 positive anchor first passed；V orthogonality max residual=`1.70464e-12`，A_fit/W
+projector max residual=`4.53214e-14/5.68008e-11`，selection/confirmation full prediction identity
+与 RMAL gates 均通过。随后 primary DA search 按 `[1,2,4,8,16,32,64,128]` 顺序实际评估
+`1,2,4,8,16`：rank 1 仅 strict-template crossing 失败；rank 2/4 为 instance-sensitive 与
+strict-template crossing 失败；rank 8 selection 通过但 confirmation strict-template crossing
+失败；rank 16 selection/confirmation 均通过。因此
+`first_confirmed_data_aware_candidate_rank=16`、`previous_registered_candidate=8`，没有重复
+rank-256。rank-16 probe MSE selection/confirmation=`0.0210726835/0.0212836881`，relative
+improvement=`0.660383/0.631703`。
+
+每个实际 evaluated rank 同流记录 old LRRC raw (A)、mean-preserving raw (B) 与 mean-preserving
+data-aware (C) MSE 及 A→B/B→C/A→C delta；matched control 不参与 stop rule 或 confirmation。
+正式回放为 CMOS-only streaming/no-bank/no-target-fitting，state/no-update、finite、resource
+gates 通过，peak CUDA=`2274099712` bytes、wall=`183.266 s`。flags 继续为
+`reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、
+`generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false` 与
+`closed_task_relevant_bottleneck_not_supported`；唯一下一动作是 `manual_review_MPCDAR_result`，
+不得训练、candidate export、generation 或 promotion。
 
 ## H-LOMA-CBOGT-S6-MCFA：Detector Mean-Centered Functional Attribution（2026-09-02）
 

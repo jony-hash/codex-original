@@ -1955,3 +1955,46 @@ peak CUDA=`2274099712` bytes，wall=`183.266 s`；完整 pytest=`1310 passed, 12
 `training_authorized=false`、`formal_promotion=false` 与
 `closed_task_relevant_bottleneck_not_supported`。唯一下一动作是 `manual_review_MCFA_result`；
 不得训练、decoder、candidate export、generation 或 promotion。
+
+## H-LOMA-CBOGT-S7-MPCDAR：Mean-Preserving Centered Data-Aware Readout Recovery（2026-09-02）
+
+MPCDAR 在 clean implementation commit `b59172750d0c88bbc9f7426ab7a21a1d63639f57` 上完成，
+消费冻结 RMAL `W=[256,40000]`、`b=[40000]`、MCFA fit moment contract 与 LSDA/LRRC/DSFA/DMSA
+及 ZCSA/RWSA-ACTIVE 身份。其唯一科学问题是预注册
+`[1,2,4,8,16,32,64,128,256]` 内，mean-preserving fit-derived data-aware centered
+operator 首次通过完整 RMAL selection + confirmation Gate 的 rank；rank 0 只作 bias-only
+control，matched mean-preserving raw-SVD 只作 descriptive comparator。
+
+权威 attempt-03 为
+`outputs/20260902_v2/runs/lightgen_scaled_chen_mean_preserving_centered_data_aware_readout_recovery_v1_attempt_03/`；
+validation/audit/compact SHA256=`b538b3ab242e09a0042699b1b1d0779d504f992498b1fcd75c23bae9937512d2` /
+`43b4cef14202c19cc6aca22ec2c49cf5a65ed1ac05b7b69f7d00390de4b95785` /
+`9e321b457e9e7111e1bf0d800e1d8e724f9753cf34f92e13d1eb2e081034a4e9`。attempt-01/02 为
+validation-only 或正式执行前停止记录，按 write-once 保留且不消费；RMAL、probe、renderer、
+checkpoint、OLS、detector 与父级 evidence 均未修改。
+
+fit replay 的 mu/C hash 与 DMSA 匹配，population moment identity relative residual=`2.98546e-16`；
+PSD raw minimum eigenvalue=`3.23645e-09`，material/tiny negative count=`0/0`。A_fit data-aware
+cumulative energy at `1/2/4/8/16/32/64/128/256`=`0.118309/0.207018/0.355819/0.541212/
+0.715164/0.868603/0.963351/0.994898/1.000000`，effective/stable rank=`37.184239/8.452439`。
+DA boundary gaps 来自 A_fit/G_fit spectrum，raw LSDA gaps 只作为明确标记的 comparator，未创建
+degeneracy threshold。
+
+rank-256 anchor first 通过，V orthogonality max residual=`1.70464e-12`，A_fit/W projector
+max residual=`4.53214e-14/5.68008e-11`，selection/confirmation full prediction identity 与
+RMAL gates 通过。primary DA search 严格实际评估 `1,2,4,8,16`：1 的 strict-template crossing
+失败；2/4 的 instance-sensitive 与 strict-template crossing 失败；8 selection 通过但
+confirmation strict-template crossing 失败；16 selection 与 confirmation 均通过。因此
+`first_confirmed_data_aware_candidate_rank=16`、`previous_registered_candidate=8`，未重复
+rank 256。rank-16 selection/confirmation probe MSE=`0.0210726835/0.0212836881`，relative
+improvement=`0.660383/0.631703`。
+
+matched A/B/C control 对每个实际 evaluated rank 同流记录 old LRRC raw、mean-preserving raw、
+mean-preserving data-aware 三路 MSE 及 A→B/B→C/A→C delta，不影响 primary stop 或 confirmation。
+正式结果为 `passed / mean_preserving_centered_data_aware_readout_recovery_completed`，audit
+14/14 gates 通过；CMOS-only streaming/no-bank/no-target-fitting、state/no-update、finite 与
+resource gates 通过，peak CUDA=`2274099712` bytes、wall=`183.266 s`。治理 flags 保持
+`reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、
+`generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false` 与
+`closed_task_relevant_bottleneck_not_supported`。唯一下一动作是 `manual_review_MPCDAR_result`；
+不得训练、candidate export、generation 或 promotion。

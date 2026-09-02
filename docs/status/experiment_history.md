@@ -2031,3 +2031,51 @@ functional gains are `0.0885958794604826` and `0.07750253052523498`. The B256 ta
 selection/confirmation. Exact additive identities, LRRC registered replay, finite/state/no-update,
 streaming/no-bank and resource gates passed. The only next action is `manual_review_DSFA_result`;
 training, generation and promotion remain unauthorized.
+
+## 2026-09-02：H-LOMA-CBOGT-S7-MPCDAR mean-preserving centered data-aware readout recovery
+
+The project owner authorized one frozen RMAL consumer after MCFA, with the scientific question
+restricted to the first confirmed rank in the preregistered family
+`[1,2,4,8,16,32,64,128,256]`. The mean branch `c_mean=b+mu_fit W` was retained, only the centered
+branch was truncated using the fit-derived `A_fit=C_fit^(1/2)W` right-output basis, and the matched
+mean-preserving raw-SVD path was descriptive only. The rejection decision is fail-closed against
+calling rank 16 a minimum/intrinsic/physical rank, general reconstruction sufficiency, or any
+decoder/training/generation/promotion authorization.
+
+Implementation/config/review/tests/CLI and the required preflight support were committed before the
+formal run; the code used for the result is clean commit
+`b59172750d0c88bbc9f7426ab7a21a1d63639f57`. The authoritative attempt is
+`outputs/20260902_v2/runs/lightgen_scaled_chen_mean_preserving_centered_data_aware_readout_recovery_v1_attempt_03/`.
+Validation, audit and compact SHA256 are
+`b538b3ab242e09a0042699b1b1d0779d504f992498b1fcd75c23bae9937512d2`,
+`43b4cef14202c19cc6aca22ec2c49cf5a65ed1ac05b7b69f7d00390de4b95785`, and
+`9e321b457e9e7111e1bf0d800e1d8e724f9753cf34f92e13d1eb2e081034a4e9`; the frozen RMAL probe hash
+remains `3551584a7983619356ea49babe7e5dedca559dfaa8ee5302fa44fd1a152a24ed`. attempt-01/02 were
+retained as validation-only or pre-execution-stop records and are not consumed.
+
+The fit replay used 1000 unlabeled fit samples with float64 population moments; both mu/C hashes
+matched DMSA, the moment identity relative residual was `2.98546e-16`, and the PSD raw minimum
+eigenvalue was `3.23645e-09` with zero material/tiny negative counts. Data-aware cumulative energy
+at registered landmarks `1/2/4/8/16/32/64/128/256` was
+`0.118309/0.207018/0.355819/0.541212/0.715164/0.868603/0.963351/0.994898/1.000000`; effective/
+stable rank telemetry was `37.184239/8.452439`. Boundary gaps used the A_fit/G_fit spectrum and
+remained descriptive; LSDA raw gaps were labeled as comparator telemetry.
+
+The rank-256 positive anchor passed first, including V orthogonality and A_fit/W projector and
+prediction identities. The sequential data-aware search evaluated `1,2,4,8,16`; rank 1 failed
+strict template crossing, ranks 2/4 failed instance-sensitive and strict template crossing, rank 8
+passed selection but failed confirmation strict template crossing, and rank 16 passed both. Thus the
+result is `passed / mean_preserving_centered_data_aware_readout_recovery_completed` with
+`first_confirmed_data_aware_candidate_rank=16` and previous registered candidate `8`; rank 256 was
+not repeated. Rank-16 selection/confirmation probe MSE was `0.0210726835/0.0212836881`, with
+relative improvement `0.660383/0.631703`.
+
+For every evaluated rank, the same stream recorded old LRRC raw, mean-preserving raw and
+mean-preserving data-aware MSE plus A→B/B→C/A→C deltas; the comparator did not affect search or
+confirmation. Audit passed `14/14` gates. The replay was CMOS-only, streaming, no-bank and
+no-target-fitting; model/OLS state, no-update, finite and resource controls passed, with peak CUDA
+`2274099712` bytes and wall time `183.266 s`. Governance flags remain
+`reconstruction_manifold_supported=false`, `generative_manifold_supported=false`,
+`generation_readiness=not_ready`, `training_authorized=false`, `formal_promotion=false` and
+`closed_task_relevant_bottleneck_not_supported`. The only next action is
+`manual_review_MPCDAR_result`; no training, candidate export, generation or promotion is authorized.
