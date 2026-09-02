@@ -913,7 +913,8 @@ confirmation bootstrap 95% CI 保持 `[0.03618517890572548,0.036830976605415344]
 `generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false` 与
 `closed_task_relevant_bottleneck_not_supported`；唯一下一动作是
 `manual_review_MPCDAR_R16_F32_NQ_result`，不得自动切换 default、训练、decoder、generation 或
-promotion。
+promotion。Bridge refresh/status=`invalid`，原因是既有目标目录的
+`.chatgpt-sources-manifest.json` 不合法；按 fail-closed 规则未删除、覆盖或上传该包。
 
 结果为 `status=passed`、`classification=mean_preserving_centered_data_aware_readout_recovery_completed`，
 audit `14/14` gates 通过。fit replay 使用 `N=1000`、float64 population moments；DMSA 的 mu/C

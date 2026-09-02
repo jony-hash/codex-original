@@ -382,4 +382,6 @@ Audit `35/35` gates passed，包含 exact cast identity、strict numerical toler
 identity、fresh reload、CPU boundary、state/no-update、no-bank 与 runtime independence。最终为
 `passed / frozen_mean_preserving_data_aware_rank16_float32_numerically_qualified`，
 `integration_only=true`；唯一下一动作是 `manual_review_MPCDAR_R16_F32_NQ_result`，不授权
-GPU/production/default switch、decoder、training、generation 或 promotion。
+GPU/production/default switch、decoder、training、generation 或 promotion。Bridge
+refresh/status=`invalid`，原因是既有目标目录的 `.chatgpt-sources-manifest.json` 不合法；未删除、
+覆盖或上传该 Sources 包。
