@@ -627,10 +627,13 @@ def _fresh_process_initialization(manifest_path: Path) -> dict[str, Any]:
         f"""
         import json
         import time
+        from importlib import import_module
         from pathlib import Path
 
-        from ldm_project.v2.evidence import safe_torch_load
-        from ldm_project.v2.application.current.frozen_mpcdar_rank16_float32_readout import load_frozen_mpcdar_rank16_float32_readout
+        safe_torch_load = import_module("ldm_project.v2.evidence").safe_torch_load
+        load_frozen_mpcdar_rank16_float32_readout = import_module(
+            "ldm_project.v2.application.current.frozen_mpcdar_rank16_float32_readout"
+        ).load_frozen_mpcdar_rank16_float32_readout
 
         manifest_path = Path({manifest_literal})
         total_start = time.perf_counter_ns()
