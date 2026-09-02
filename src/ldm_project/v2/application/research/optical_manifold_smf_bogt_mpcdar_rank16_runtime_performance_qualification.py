@@ -116,6 +116,7 @@ NEXT_ACTION_RESULT_REVIEW = "manual_review_MPCDAR_R16_RUNTIME_PQ_result"
 PYTHON_EXECUTABLE = r"D:\ANACONDA\envs\optical-generative-models-win\python.exe"
 EXPECTED_PYTHON_VERSION = "3.11.16"
 EXPECTED_TORCH_VERSION = "2.5.1"
+EXPECTED_WINDOWS_VERSION = "10.0.26200.0"
 EXPECTED_WINDOWS_VERSION_PREFIX = "10.0.26200"
 
 
@@ -438,6 +439,15 @@ def _environment() -> dict[str, Any]:
     os_version = platform.version()
     processor = platform.processor().strip() or "not_recorded"
     logical = os.cpu_count()
+    windows_version_match = os_version.startswith(EXPECTED_WINDOWS_VERSION_PREFIX)
+    registered_runtime_match = bool(
+        Path(sys.executable).resolve() == Path(PYTHON_EXECUTABLE).resolve()
+        and python_version == EXPECTED_PYTHON_VERSION
+        and torch_version == EXPECTED_TORCH_VERSION
+        and sys.platform == "win32"
+        and torch.get_num_threads() == 8
+        and torch.get_num_interop_threads() == 8
+    )
     return {
         "python_executable": str(Path(sys.executable).resolve()),
         "python_version": python_version,
@@ -450,16 +460,14 @@ def _environment() -> dict[str, Any]:
         "pytorch_version": torch_version,
         "torch_num_threads": torch.get_num_threads(),
         "torch_num_interop_threads": torch.get_num_interop_threads(),
+        "expected_windows_version": EXPECTED_WINDOWS_VERSION,
+        "observed_windows_version": os_version,
+        "windows_version_match": windows_version_match,
+        "registered_runtime_match": registered_runtime_match,
         "gpu": "not_evaluated",
         "cuda_benchmarked": False,
         "registered_match": bool(
-            Path(sys.executable).resolve() == Path(PYTHON_EXECUTABLE).resolve()
-            and python_version == EXPECTED_PYTHON_VERSION
-            and torch_version == EXPECTED_TORCH_VERSION
-            and sys.platform == "win32"
-            and os_version.startswith(EXPECTED_WINDOWS_VERSION_PREFIX)
-            and torch.get_num_threads() == 8
-            and torch.get_num_interop_threads() == 8
+            registered_runtime_match and windows_version_match
         ),
     }
 
@@ -825,7 +833,7 @@ def _static_check(
         _gate("s9_artifact_identity", artifact_path_ok and file_sha256(parent["manifest_path"]) == S9_ARTIFACT_MANIFEST_SHA256 and file_sha256(parent["payload_path"]) == S9_ARTIFACT_PAYLOAD_SHA256),
         _gate("s9_rank16_float32_contract", parent["artifact"].manifest.get("rank") == RANK and parent["artifact"].manifest.get("dtype") == "torch.float32"),
         _gate("s9_runtime_formula_contract", source_contract["formula_tokens_present"] and source_contract["pure_float32_frozen_runtime"]),
-        _gate("registered_environment", environment["registered_match"]),
+        _gate("registered_environment", environment["registered_runtime_match"]),
         _gate("deterministic_dense_fixture", fixture.shape == (32, FEATURE_DIM) and fixture.dtype == torch.float32 and bool(torch.isfinite(fixture).all()) and int(torch.count_nonzero(fixture)) == fixture.numel()),
         _gate("fixed_cpu_benchmark_contract", tuple(BATCH_SIZES) == (1, 8, 32) and WARMUP_COUNT == 50 and MEASURED_REPETITIONS == 200 and TIMER == "time.perf_counter_ns"),
         _gate("fresh_output_slot", output_fresh),

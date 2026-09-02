@@ -115,6 +115,14 @@ def test_optional_paths_and_readiness_boundary_are_locked() -> None:
     assert contract["authorization"]["formal_promotion"] is False
 
 
+def test_environment_records_expected_and_observed_windows_versions() -> None:
+    environment = s10._environment()
+    assert environment["expected_windows_version"] == "10.0.26200.0"
+    assert environment["observed_windows_version"] == environment["os_version"]
+    assert isinstance(environment["windows_version_match"], bool)
+    assert isinstance(environment["registered_runtime_match"], bool)
+
+
 def test_frozen_s9_runtime_has_no_research_or_training_dependency() -> None:
     source = inspect.getsource(runtime)
     assert "application.research" not in source
