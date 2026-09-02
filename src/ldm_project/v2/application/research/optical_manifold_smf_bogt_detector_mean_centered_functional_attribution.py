@@ -834,7 +834,7 @@ def _verify_panel_identity(upstream: Upstream) -> dict[str, Any]:
 
 
 def _panel_images(upstream: Upstream, panel: str) -> torch.Tensor:
-    return dmsa._panel_images(upstream.runtime, panel)
+    return dmsa._panel_images(upstream.runtime.runtime, panel)
 
 
 def _rmal_runtime(upstream: Upstream) -> Any:
