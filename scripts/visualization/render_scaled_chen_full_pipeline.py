@@ -23,12 +23,18 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+import yaml
 from matplotlib.colors import Normalize
 from matplotlib.cm import ScalarMappable
 
+from ldm_project.v2.application.current import frozen_mpcdar_rank16_float32_readout as mpcdar_f32_runtime
+from ldm_project.v2.application.current import frozen_mpcdar_rank16_readout as mpcdar_f64_runtime
 from ldm_project.v2.application.research import optical_manifold as base
 from ldm_project.v2.application.research import optical_manifold_smf_bogt as bogt
+from ldm_project.v2.application.research import optical_manifold_smf_bogt_mean_preserving_centered_data_aware_readout_recovery as mpcdar
 from ldm_project.v2.application.research import optical_manifold_smf_bogt_manifold_readiness as mra
+from ldm_project.v2.application.research import optical_manifold_smf_bogt_reconstruction_mapping_alignment_localization as rmal
+from ldm_project.v2.application.research import optical_manifold_smf_bogt_reconstruction_manifold_failure as rmfa
 from ldm_project.v2.contracts import ComplexField
 from ldm_project.v2.evidence import canonical_sha256, file_sha256, safe_torch_load
 
@@ -145,6 +151,87 @@ DISPLAY_ROTATED_KEYS = frozenset(
 )
 CHECKPOINT_STEPS = (0, 1000, 5000)
 
+FULL_PATH_TASK = "H-LOMA-CBOGT-S9V-FULL-PATH-VIS"
+FULL_PATH_CLASSIFICATION = "descriptive_visualization_completed"
+FULL_PATH_CONFIG = Path(
+    "configs/research/lightgen_optical_manifold_smf_bogt_full_path_visualization_v1.yaml"
+)
+FULL_PATH_REVIEW = Path(
+    "configs/research/lightgen_optical_manifold_smf_bogt_full_path_visualization_review_v1.json"
+)
+FULL_PATH_RMAL_CONFIG = Path(
+    "configs/research/lightgen_optical_manifold_smf_bogt_reconstruction_mapping_alignment_localization_v1.yaml"
+)
+FULL_PATH_S7_CONFIG = Path(
+    "configs/research/lightgen_optical_manifold_smf_bogt_mean_preserving_centered_data_aware_readout_recovery_v1.yaml"
+)
+FULL_PATH_OUTPUT = Path(
+    "outputs/20260902_v2/visualizations/scaled_chen_full_path_reconstruction_v1_attempt_01"
+)
+FULL_PATH_DETAIL_LABELS = (0, 2, 3, 5, 8)
+FULL_PATH_PHASE_ALPHA = 0.01
+FULL_PATH_PHASE_FLOOR = 1.0e-12
+FULL_PATH_RECON_RANGE = (0.0, 1.0)
+FULL_PATH_ERROR_RANGE = (0.0, 1.0)
+FULL_PATH_F32_DIFF_RANGE = (0.0, 2.0e-4)
+FULL_PATH_F32_DIFF_AMPLIFICATION = 1.0e6
+FULL_PATH_RANK = 16
+FULL_PATH_FULL_RANK = 256
+FULL_PATH_RECON_METHODS = (
+    "target",
+    "class_template",
+    "physical_output_camera",
+    "raw_svd_rank16",
+    "mean_preserving_raw_svd_rank16",
+    "mpcdar_rank16_float64",
+    "mpcdar_rank16_float32",
+    "frozen_full_rank256_rmal",
+)
+FULL_PATH_STAGE_KEYS = (
+    "target",
+    "slm_command",
+    "slm_output",
+    "encoder_input",
+    "encoder_layer_1",
+    "pre_ols",
+    "modal_complex",
+    "post_ols",
+    "decoder_layer_1",
+    "decoder_layer_2",
+    "cmos_field",
+    "cmos_detector_intensity",
+)
+FULL_PATH_STAGE_LABELS = (
+    "Target",
+    "SLM command",
+    "SLM output",
+    "Encoder input",
+    "Encoder L1",
+    "Pre-OLS /\nFiber input",
+    "Modal coefficients\n10×10 display layout",
+    "Post-OLS /\nDecoder input",
+    "Decoder L1",
+    "Decoder L2",
+    "CMOS incident field",
+    "CMOS intensity",
+)
+FULL_PATH_REAL_KEYS = frozenset(
+    {"target", "slm_command", "cmos_detector_intensity"}
+)
+FULL_PATH_MODAL_KEYS = frozenset({"modal_complex"})
+FULL_PATH_COMPLEX_KEYS = frozenset(FULL_PATH_STAGE_KEYS) - FULL_PATH_REAL_KEYS
+FULL_PATH_STAGE_ALIASES = {
+    "pre_ols": {
+        "alias_of": "encoder_layer_2",
+        "display_label": "Pre-OLS / Fiber input",
+    },
+    "post_ols": {
+        "alias_of": "decoder_input",
+        "display_label": "Post-OLS / Decoder input",
+    },
+}
+FULL_PATH_DISPLAY_ROTATED_KEYS = DISPLAY_ROTATED_KEYS | {"slm_output"}
+
 # These are deliberately explicit because a visualization must not imply a
 # phase measurement where the source is real-valued or the sensor has already
 # performed square-law detection.  The complex incident field immediately
@@ -233,6 +320,9 @@ def _render_phase_unavailable(axis: plt.Axes, message: str) -> None:
 
 def _git_state() -> dict[str, Any]:
     root = Path(__file__).resolve().parents[2]
+    branch = subprocess.run(
+        ["git", "branch", "--show-current"], cwd=root, check=True, capture_output=True, text=True
+    ).stdout.strip()
     commit = subprocess.run(
         ["git", "rev-parse", "HEAD"], cwd=root, check=True, capture_output=True, text=True
     ).stdout.strip()
@@ -243,7 +333,7 @@ def _git_state() -> dict[str, Any]:
         capture_output=True,
         text=True,
     ).stdout.splitlines()
-    return {"root": str(root), "commit": commit, "clean": not status, "status": status}
+    return {"root": str(root), "branch": branch, "commit": commit, "clean": not status, "status": status}
 
 
 def _load_formal_and_checkpoint(
@@ -379,6 +469,7 @@ def _trace_fiber_batch(
     power_retention = output_energy / input_energy.clamp_min(1.0e-30)
     values = {
         "slm_command": slm_command.tensor,
+        "slm_output": slm_field.tensor,
         "encoder_input": front_field.tensor,
         "encoder_layer_1": encoder_records[0].tensor,
         "fiber_input": encoded.tensor,
@@ -425,6 +516,9 @@ def _trace_fiber_batch(
                 "calibration_id": slm_command.calibration_id,
                 "plane": slm_command.plane.to_dict(),
             },
+            "slm_output": _stage_plane_metadata(
+                slm_field, representation="complex_field"
+            ),
             "encoder_input": _stage_plane_metadata(
                 front_field, representation="complex_field"
             ),
@@ -919,6 +1013,674 @@ def _phase_mask(array: np.ndarray) -> np.ndarray:
     return np.where(amplitude >= threshold, np.angle(array), np.nan)
 
 
+def _repo_path(value: str | Path) -> Path:
+    path = Path(value)
+    if path.is_absolute():
+        return path.resolve()
+    return (Path(__file__).resolve().parents[2] / path).resolve()
+
+
+def _read_exact_json(path: Path, expected_sha256: str, label: str) -> dict[str, Any]:
+    if not path.is_file() or file_sha256(path) != expected_sha256:
+        raise RuntimeError(f"{label} is missing, stale, or tampered: {path}")
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"{label} is not readable: {path}") from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError(f"{label} is not a mapping: {path}")
+    return payload
+
+
+def _load_full_path_contract(config_path: Path) -> tuple[dict[str, Any], dict[str, Any], Path, Path]:
+    resolved_config = _repo_path(config_path)
+    expected_config = _repo_path(FULL_PATH_CONFIG)
+    if resolved_config != expected_config:
+        raise RuntimeError(f"full-path visualization requires the registered config: {expected_config}")
+    try:
+        payload = yaml.safe_load(resolved_config.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as exc:
+        raise RuntimeError(f"full-path visualization config is unreadable: {resolved_config}") from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError("full-path visualization config is not a mapping")
+    if (
+        payload.get("schema") != "lightgen_optical_manifold_smf_bogt_full_path_visualization_v1"
+        or payload.get("task_id") != FULL_PATH_TASK
+        or payload.get("classification") != "descriptive_visualization_checkpoint"
+        or payload.get("branch") != "research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1"
+        or payload.get("expected_head") != "7da2d066d8a8f1b3dbcff7c94393c51d11d7bcb7"
+    ):
+        raise RuntimeError("full-path visualization contract identity is mismatched")
+    sample_panel = payload.get("sample_panel")
+    if (
+        not isinstance(sample_panel, Mapping)
+        or sample_panel.get("count") != 10
+        or sample_panel.get("order") != list(range(10))
+        or sample_panel.get("detail_labels") != list(FULL_PATH_DETAIL_LABELS)
+    ):
+        raise RuntimeError("full-path visualization sample panel contract is mismatched")
+    indices = sample_panel.get("indices_by_label")
+    expected_indices = {str(label): DIGIT_CONFIRMATION_INDICES[label] for label in range(10)}
+    if indices != expected_indices:
+        raise RuntimeError("full-path visualization sample indices are mismatched")
+    if payload.get("stages") != list(FULL_PATH_STAGE_KEYS[1:]):
+        raise RuntimeError("full-path visualization stage contract is mismatched")
+    if payload.get("methods") != list(FULL_PATH_RECON_METHODS):
+        raise RuntimeError("full-path visualization method contract is mismatched")
+    display = payload.get("display")
+    if not isinstance(display, Mapping):
+        raise RuntimeError("full-path visualization display contract is missing")
+    if (
+        display.get("phase") != "angle(E), raw, range [-pi, pi]"
+        or display.get("phase_mask") != "max(0.01 * max(abs(E)), 1e-12), per stage and sample"
+        or display.get("reconstruction_range") != list(FULL_PATH_RECON_RANGE)
+        or display.get("target_error_range") != list(FULL_PATH_ERROR_RANGE)
+        or display.get("f64_f32_difference_range") != list(FULL_PATH_F32_DIFF_RANGE)
+        or display.get("f64_f32_amplification") != FULL_PATH_F32_DIFF_AMPLIFICATION
+    ):
+        raise RuntimeError("full-path visualization display contract is mismatched")
+    authorization = payload.get("authorization")
+    if not isinstance(authorization, Mapping) or any(
+        authorization.get(name) is not True
+        for name in ("no_training", "no_update", "no_optimizer", "no_backward", "no_new_basis", "no_rank_search")
+    ) or authorization.get("visualization_is_scientific_gate") is not False:
+        raise RuntimeError("full-path visualization authorization boundary is mismatched")
+
+    review_path = _repo_path(FULL_PATH_REVIEW)
+    try:
+        review = json.loads(review_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"full-path visualization review is unreadable: {review_path}") from exc
+    if not isinstance(review, dict):
+        raise RuntimeError("full-path visualization review is not a mapping")
+    if (
+        review.get("schema") != "lightgen_optical_manifold_smf_bogt_full_path_visualization_review.v1"
+        or review.get("task_id") != FULL_PATH_TASK
+        or review.get("decision") != "APPROVED WITH REQUIRED DISPLAY CONTRACT FREEZE"
+        or review.get("classification") != "descriptive_visualization_checkpoint"
+    ):
+        raise RuntimeError("full-path visualization review approval is mismatched")
+    approved = review.get("approved_contract")
+    if (
+        not isinstance(approved, Mapping)
+        or approved.get("sample_count") != 10
+        or approved.get("sample_source") != "confirmation_panel_train_indices_55000_59999"
+        or approved.get("phase_range") != [-np.pi, np.pi]
+        or approved.get("phase_mask") != "max(0.01 * max(abs(E)), 1e-12), per stage and sample"
+        or approved.get("reconstruction_range") != list(FULL_PATH_RECON_RANGE)
+        or approved.get("target_error_range") != list(FULL_PATH_ERROR_RANGE)
+        or approved.get("f64_f32_difference_range") != list(FULL_PATH_F32_DIFF_RANGE)
+        or approved.get("f64_f32_amplification") != FULL_PATH_F32_DIFF_AMPLIFICATION
+        or approved.get("no_phase_shift") is not True
+        or approved.get("no_per_sample_reconstruction_normalization") is not True
+        or approved.get("visualization_is_scientific_gate") is not False
+    ):
+        raise RuntimeError("full-path visualization approved display contract is mismatched")
+    if any(
+        review.get(name) is not False
+        for name in ("training_authorized", "formal_promotion", "generation")
+    ):
+        raise RuntimeError("full-path visualization authorization flags are mismatched")
+    return payload, review, resolved_config, review_path
+
+
+def _verify_full_path_parent_files(contract: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
+    parents = contract.get("parents")
+    if not isinstance(parents, Mapping):
+        raise RuntimeError("full-path visualization parent contract is missing")
+    verified: dict[str, dict[str, Any]] = {}
+    for name in ("s7", "s8", "s9"):
+        parent = parents.get(name)
+        if not isinstance(parent, Mapping):
+            raise RuntimeError(f"full-path visualization parent {name} is missing")
+        records: dict[str, Any] = {"id": parent.get("id"), "status": parent.get("status"), "classification": parent.get("classification")}
+        for field in ("validation", "audit", "compact"):
+            path = _repo_path(parent[field])
+            value = _read_exact_json(path, str(parent[f"{field}_sha256"]), f"S{name[1:]} {field}")
+            if value.get("status") != "passed":
+                raise RuntimeError(f"S{name[1:]} {field} is not passed")
+            records[field] = {"path": str(path), "sha256": str(parent[f"{field}_sha256"]), "status": value.get("status")}
+            if field == "compact" and value.get("classification") != parent.get("classification"):
+                raise RuntimeError(f"S{name[1:]} compact classification is mismatched")
+        for field in ("artifact_manifest", "artifact_payload"):
+            if field in parent:
+                path = _repo_path(parent[field])
+                expected = str(parent[f"{field}_sha256"])
+                if not path.is_file() or file_sha256(path) != expected:
+                    raise RuntimeError(f"S{name[1:]} {field} is missing, stale, or tampered: {path}")
+                records[field] = {"path": str(path), "sha256": expected}
+        verified[name] = records
+    return verified
+
+
+def _load_full_path_authority(
+    contract: Mapping[str, Any], dataset_root: Path, device: torch.device
+) -> dict[str, Any]:
+    parent_files = _verify_full_path_parent_files(contract)
+    rmal_contract = contract.get("rmal")
+    if not isinstance(rmal_contract, Mapping):
+        raise RuntimeError("RMAL authority contract is missing")
+    rmal_config = _repo_path(rmal_contract["config"])
+    if rmal_config != _repo_path(FULL_PATH_RMAL_CONFIG) or file_sha256(rmal_config) != rmal_contract["config_sha256"]:
+        raise RuntimeError("RMAL config identity is mismatched")
+    checkpoint = _repo_path(rmal_contract["checkpoint"])
+    if not checkpoint.is_file() or file_sha256(checkpoint) != rmal_contract["checkpoint_sha256"]:
+        raise RuntimeError("RMAL checkpoint identity is mismatched")
+
+    s7_spec = mpcdar._load_spec(_repo_path(FULL_PATH_S7_CONFIG))
+    upstream = mpcdar._load_upstream(s7_spec, dataset_root)
+    spectral = mpcdar._spectral_lock(upstream)
+    runtime = upstream["runtime"]
+    source = rmfa._load_source(runtime.rmal_consumer.bundle, load_checkpoints=True)
+    formal = runtime.rmal_consumer.bundle.parent.parent.formal
+    checkpoint_from_source = source.checkpoints[rmal.PRIMARY_CHECKPOINT]
+    if source.hashes.get(rmal.PRIMARY_CHECKPOINT) != rmal_contract["checkpoint_sha256"]:
+        raise RuntimeError("loaded RMAL checkpoint is not the registered primary checkpoint")
+    model = mra._load_scaled_model(formal, checkpoint_from_source, device)
+
+    s8_parent = contract["parents"]["s8"]
+    s9_parent = contract["parents"]["s9"]
+    f64_manifest = _repo_path(s8_parent["artifact_manifest"])
+    f32_manifest = _repo_path(s9_parent["artifact_manifest"])
+    f64_reader = mpcdar_f64_runtime.load_frozen_mpcdar_rank16_readout(f64_manifest)
+    f32_reader = mpcdar_f32_runtime.load_frozen_mpcdar_rank16_float32_readout(f32_manifest)
+    if f64_reader.manifest.get("rank") != FULL_PATH_RANK or f32_reader.manifest.get("rank") != FULL_PATH_RANK:
+        raise RuntimeError("frozen MPCDAR artifact rank is not 16")
+    return {
+        "parent_files": parent_files,
+        "rmal_config": str(rmal_config),
+        "rmal_checkpoint": str(checkpoint),
+        "upstream": upstream,
+        "spectral": spectral,
+        "model": model,
+        "formal": formal,
+        "f64_reader": f64_reader,
+        "f32_reader": f32_reader,
+    }
+
+
+def _full_path_views(
+    values: Mapping[str, torch.Tensor], *, sample_positions: Sequence[int]
+) -> tuple[dict[str, dict[str, dict[str, Any]]], dict[str, float]]:
+    views: dict[str, dict[str, dict[str, Any]]] = {}
+    scales: dict[str, float] = {}
+    for key in FULL_PATH_STAGE_KEYS:
+        value = values[key]
+        arrays = [
+            _display_array(
+                value,
+                position,
+                modal=key in FULL_PATH_MODAL_KEYS,
+                rotate=key in FULL_PATH_DISPLAY_ROTATED_KEYS,
+            )
+            for position in sample_positions
+        ]
+        scale = 1.0 if key == "target" else _shared_p995(arrays)
+        scales[key] = scale
+        per_sample: dict[str, dict[str, Any]] = {}
+        for position, raw in zip(sample_positions, arrays, strict=True):
+            amplitude = np.abs(raw)
+            if key in FULL_PATH_REAL_KEYS:
+                phase = None
+                threshold = None
+                valid_fraction = 0.0
+            else:
+                phase = np.angle(raw)
+                threshold = max(float(amplitude.max()) * FULL_PATH_PHASE_ALPHA, FULL_PATH_PHASE_FLOOR)
+                phase = np.where(amplitude >= threshold, phase, np.nan)
+                valid_fraction = float(np.isfinite(phase).mean())
+            per_sample[str(position)] = {
+                "amplitude": np.clip(amplitude / max(scale, FULL_PATH_PHASE_FLOOR), 0.0, 1.0),
+                "phase": phase,
+                "phase_threshold": threshold,
+                "phase_valid_fraction": valid_fraction,
+            }
+        views[key] = per_sample
+    return views, scales
+
+
+def _as_reconstruction_images(value: torch.Tensor, name: str) -> torch.Tensor:
+    if value.ndim == 2 and tuple(value.shape[1:]) == (40000,):
+        result = value.reshape(-1, 1, 200, 200)
+    elif value.ndim == 4 and tuple(value.shape[1:]) == (1, 200, 200):
+        result = value
+    else:
+        raise RuntimeError(f"{name} has an invalid reconstruction shape: {tuple(value.shape)}")
+    if not torch.is_floating_point(result) or torch.is_complex(result) or not bool(torch.isfinite(result).all()):
+        raise RuntimeError(f"{name} is not a finite real reconstruction")
+    return result.detach().cpu().float()
+
+
+def _apply_frozen_rmal_readout(probe: Any, features: torch.Tensor) -> torch.Tensor:
+    if features.ndim != 2 or tuple(features.shape[1:]) != (256,) or not torch.is_floating_point(features):
+        raise RuntimeError("RMAL full-readout features have an invalid shape")
+    if tuple(probe.full_weights.shape) != (257, 40000) or not torch.is_floating_point(probe.full_weights):
+        raise RuntimeError("RMAL frozen full-readout weights have an invalid shape")
+    augmented = torch.cat(
+        (features.float(), torch.ones((features.shape[0], 1), dtype=torch.float32)),
+        dim=1,
+    )
+    result = augmented.mm(probe.full_weights).reshape(-1, 1, 200, 200)
+    if not torch.isfinite(result).all():
+        raise RuntimeError("RMAL frozen full-readout output is not finite")
+    return result
+
+
+def _replay_full_path_reconstructions(
+    authority: Mapping[str, Any],
+    values: Mapping[str, torch.Tensor],
+    images: torch.Tensor,
+    labels: torch.Tensor,
+    target: torch.Tensor,
+) -> tuple[dict[str, torch.Tensor], dict[str, Any]]:
+    camera = values["cmos_detector_intensity"].detach().cpu().float()
+    features = mra._feature_projection(camera, complex_value=False).float()
+    if tuple(features.shape) != (10, 256):
+        raise RuntimeError(f"visualization feature projection shape changed: {tuple(features.shape)}")
+    probe = authority["upstream"]["runtime"].rmal_probe
+    spectral = authority["spectral"]
+    W64 = probe.weights.detach().cpu().to(torch.float64).contiguous()
+    mu_fit = authority["f64_reader"].mu_fit.detach().cpu().to(torch.float64).contiguous()
+    predictions = {
+        "target": target.detach().cpu().float(),
+        "class_template": mpcdar._target_templates(images, labels).detach().cpu().float(),
+        "physical_output_camera": camera,
+        "raw_svd_rank16": _as_reconstruction_images(
+            mpcdar._old_raw_prediction(features, spectral["U"], W64, probe.bias, FULL_PATH_RANK),
+            "raw_svd_rank16",
+        ),
+        "mean_preserving_raw_svd_rank16": _as_reconstruction_images(
+            mpcdar._mean_preserving_raw_prediction(
+                features, spectral["U"], W64, probe.bias, mu_fit, FULL_PATH_RANK
+            ),
+            "mean_preserving_raw_svd_rank16",
+        ),
+        "mpcdar_rank16_float64": _as_reconstruction_images(
+            authority["f64_reader"].predict(features), "mpcdar_rank16_float64"
+        ),
+        "mpcdar_rank16_float32": _as_reconstruction_images(
+            authority["f32_reader"].predict(features), "mpcdar_rank16_float32"
+        ),
+        "frozen_full_rank256_rmal": _as_reconstruction_images(
+            _apply_frozen_rmal_readout(probe, features),
+            "frozen_full_rank256_rmal",
+        ),
+    }
+    target_cpu = predictions["target"]
+    if any(value.shape != target_cpu.shape for value in predictions.values()):
+        raise RuntimeError("reconstruction methods do not share the target shape")
+    method_mse = {
+        name: float((value - target_cpu).square().mean()) for name, value in predictions.items()
+    }
+    per_sample_mse = {
+        name: [float(item) for item in (value - target_cpu).square().flatten(1).mean(dim=1)]
+        for name, value in predictions.items()
+    }
+    metrics = {
+        "method_mse": method_mse,
+        "per_sample_mse": per_sample_mse,
+        "feature_shape": list(features.shape),
+        "feature_contract": "output.camera -> mra._feature_projection(real, complex_value=False)",
+        "reshape": "row_major_[N,40000] -> [N,1,200,200]",
+    }
+    return predictions, metrics
+
+
+def _render_full_path_plate(
+    views: Mapping[str, Mapping[str, Mapping[str, Any]]],
+    output_base: Path,
+    *,
+    positions: Sequence[int],
+    labels: Sequence[int],
+    sample_indices: Sequence[int],
+    page_label: str,
+) -> list[Path]:
+    columns = len(FULL_PATH_STAGE_KEYS)
+    rows = len(positions) * 2
+    figure, axes = plt.subplots(
+        rows,
+        columns,
+        figsize=(24.0, max(7.0, rows * 0.92)),
+        squeeze=False,
+    )
+    figure.subplots_adjust(left=0.045, right=0.955, bottom=0.12, top=0.90, wspace=0.025, hspace=0.18)
+    panel_ids: list[str] = []
+    row_groups: list[list[str]] = []
+    column_groups: list[list[str]] = [[] for _ in range(columns)]
+    for row_position, (position, label, sample_index) in enumerate(
+        zip(positions, labels, sample_indices, strict=True)
+    ):
+        row_ids_amplitude: list[str] = []
+        row_ids_phase: list[str] = []
+        for phase_row in (False, True):
+            row = row_position * 2 + int(phase_row)
+            row_ids = row_ids_phase if phase_row else row_ids_amplitude
+            for column, (key, title) in enumerate(zip(FULL_PATH_STAGE_KEYS, FULL_PATH_STAGE_LABELS, strict=True)):
+                axis = axes[row, column]
+                view = views[key][str(position)]
+                if phase_row:
+                    if key in FULL_PATH_REAL_KEYS:
+                        _render_phase_unavailable(axis, "phase N/A")
+                    else:
+                        axis.imshow(view["phase"], cmap="twilight", vmin=-np.pi, vmax=np.pi, origin="lower", interpolation="nearest")
+                else:
+                    axis.imshow(view["amplitude"], cmap="magma", vmin=0.0, vmax=1.0, origin="lower", interpolation="nearest")
+                if row == 0:
+                    axis.set_title(title, fontsize=6.0, pad=3)
+                axis.set_xticks([])
+                axis.set_yticks([])
+                for spine in axis.spines.values():
+                    spine.set_visible(False)
+                panel_id = f"{page_label}_digit{label}_{'phase' if phase_row else 'amplitude'}_{key}"
+                panel_ids.append(panel_id)
+                row_ids.append(panel_id)
+                column_groups[column].append(panel_id)
+
+        row_groups.extend((row_ids_amplitude, row_ids_phase))
+        axes[row_position * 2, 0].set_ylabel(f"digit {label}\n|E|", fontsize=6.2, labelpad=2)
+        axes[row_position * 2 + 1, 0].set_ylabel("phase", fontsize=6.2, labelpad=2)
+        axes[row_position * 2, -1].text(
+            1.03,
+            0.50,
+            f"idx {sample_index}",
+            transform=axes[row_position * 2, -1].transAxes,
+            rotation=-90,
+            rotation_mode="anchor",
+            va="center",
+            ha="left",
+            fontsize=5.0,
+        )
+    figure.suptitle(
+        f"{FULL_PATH_TASK} | full optical path | digits {labels[0]}–{labels[-1]} | {page_label}",
+        fontsize=10,
+        y=0.955,
+    )
+    figure.text(
+        0.5,
+        0.035,
+        "Amplitude uses one panel-wide p99.5 scale per stage; phase is raw [−π,π] and masked below 1% of each stage/sample maximum. SLM command and CMOS intensity are real-valued; modal coefficients use a 10×10 display layout. Intermediate maps use display-only 180° rotation; aliases are not additional propagation slices.",
+        ha="center",
+        va="center",
+        fontsize=5.6,
+    )
+    amp_cbar_ax = figure.add_axes([0.963, 0.56, 0.010, 0.23])
+    phase_cbar_ax = figure.add_axes([0.963, 0.23, 0.010, 0.23])
+    amp_cbar = figure.colorbar(ScalarMappable(norm=Normalize(0.0, 1.0), cmap="magma"), cax=amp_cbar_ax)
+    phase_cbar = figure.colorbar(ScalarMappable(norm=Normalize(-np.pi, np.pi), cmap="twilight"), cax=phase_cbar_ax)
+    amp_cbar.set_label("display amplitude", fontsize=5.5)
+    phase_cbar.set_label("phase [rad]", fontsize=5.5)
+    for cbar in (amp_cbar, phase_cbar):
+        cbar.ax.tick_params(labelsize=5, width=0.5, length=2)
+    return _save_figure_bundle(
+        figure,
+        output_base,
+        axes=[axis for row in axes for axis in row],
+        panel_ids=panel_ids,
+        row_groups=row_groups,
+        column_groups=column_groups,
+        colorbar_axes=[amp_cbar.ax, phase_cbar.ax],
+        require_panel_labels=False,
+        raster_dpi=300,
+        include_tiff=False,
+    )
+
+
+RECONSTRUCTION_LABELS = {
+    "target": "Target",
+    "class_template": "Class template",
+    "physical_output_camera": "Physical",
+    "raw_svd_rank16": "Raw-SVD R16",
+    "mean_preserving_raw_svd_rank16": "MP-RAW R16",
+    "mpcdar_rank16_float64": "MPCDAR R16 F64",
+    "mpcdar_rank16_float32": "MPCDAR R16 F32",
+    "frozen_full_rank256_rmal": "Full R256",
+}
+
+
+def _render_reconstruction_grid(
+    predictions: Mapping[str, torch.Tensor],
+    output_base: Path,
+    *,
+    positions: Sequence[int],
+    labels: Sequence[int],
+    sample_indices: Sequence[int],
+    method_keys: Sequence[str],
+    method_mse: Mapping[str, float],
+) -> list[Path]:
+    figure, axes = plt.subplots(
+        len(positions),
+        len(method_keys),
+        figsize=(16.0, max(7.5, len(positions) * 1.65)),
+        squeeze=False,
+    )
+    figure.subplots_adjust(left=0.045, right=0.955, bottom=0.09, top=0.88, wspace=0.035, hspace=0.18)
+    panel_ids: list[str] = []
+    row_groups: list[list[str]] = []
+    column_groups: list[list[str]] = [[] for _ in method_keys]
+    for row, (position, label, sample_index) in enumerate(zip(positions, labels, sample_indices, strict=True)):
+        row_ids: list[str] = []
+        for column, key in enumerate(method_keys):
+            axis = axes[row, column]
+            array = _display_array(predictions[key], position)
+            axis.imshow(np.clip(array, 0.0, 1.0), cmap="gray", vmin=0.0, vmax=1.0, origin="lower", interpolation="nearest")
+            if row == 0:
+                axis.set_title(f"{RECONSTRUCTION_LABELS[key]}\nMSE {method_mse[key]:.5g}", fontsize=6.4, pad=3)
+            axis.set_xticks([])
+            axis.set_yticks([])
+            for spine in axis.spines.values():
+                spine.set_visible(False)
+            panel_id = f"reconstruction_digit{label}_{key}"
+            panel_ids.append(panel_id)
+            row_ids.append(panel_id)
+            column_groups[column].append(panel_id)
+        row_groups.append(row_ids)
+        axes[row, 0].set_ylabel(f"digit {label}\nidx {sample_index}", fontsize=6.0, labelpad=2)
+    figure.suptitle(
+        f"{FULL_PATH_TASK} | reconstruction family | fixed [0,1] display range | digits {labels[0]}–{labels[-1]}",
+        fontsize=10,
+        y=0.95,
+    )
+    figure.text(
+        0.5,
+        0.03,
+        "All methods use the same target, row-major [N,40000]→[N,1,200,200] reshape, orientation, colormap, and display range. MSE values are descriptive visualization-panel metrics.",
+        ha="center",
+        va="center",
+        fontsize=5.8,
+    )
+    cbar_ax = figure.add_axes([0.963, 0.33, 0.010, 0.34])
+    cbar = figure.colorbar(ScalarMappable(norm=Normalize(0.0, 1.0), cmap="gray"), cax=cbar_ax)
+    cbar.set_label("fixed display range", fontsize=5.5)
+    cbar.ax.tick_params(labelsize=5, width=0.5, length=2)
+    return _save_figure_bundle(
+        figure,
+        output_base,
+        axes=[axis for row in axes for axis in row],
+        panel_ids=panel_ids,
+        row_groups=row_groups,
+        column_groups=column_groups,
+        colorbar_axes=[cbar.ax],
+        require_panel_labels=False,
+        raster_dpi=300,
+        include_tiff=False,
+    )
+
+
+def _render_repair_detail(
+    predictions: Mapping[str, torch.Tensor],
+    target: torch.Tensor,
+    output_base: Path,
+    *,
+    positions: Sequence[int],
+    labels: Sequence[int],
+    sample_indices: Sequence[int],
+) -> list[Path]:
+    prediction_keys = (
+        "target",
+        "raw_svd_rank16",
+        "mean_preserving_raw_svd_rank16",
+        "mpcdar_rank16_float32",
+        "frozen_full_rank256_rmal",
+    )
+    error_keys = prediction_keys[1:]
+    columns = len(prediction_keys) + len(error_keys)
+    figure, axes = plt.subplots(
+        len(positions),
+        columns,
+        figsize=(18.0, max(5.0, len(positions) * 1.95)),
+        squeeze=False,
+    )
+    figure.subplots_adjust(left=0.05, right=0.955, bottom=0.11, top=0.84, wspace=0.035, hspace=0.20)
+    panel_ids: list[str] = []
+    row_groups: list[list[str]] = []
+    column_groups: list[list[str]] = [[] for _ in range(columns)]
+    for row, (position, label, sample_index) in enumerate(zip(positions, labels, sample_indices, strict=True)):
+        row_ids: list[str] = []
+        for column, key in enumerate(prediction_keys):
+            axis = axes[row, column]
+            array = _display_array(predictions[key], position)
+            axis.imshow(np.clip(array, 0.0, 1.0), cmap="gray", vmin=0.0, vmax=1.0, origin="lower", interpolation="nearest")
+            if row == 0:
+                axis.set_title(RECONSTRUCTION_LABELS[key], fontsize=6.2, pad=3)
+            panel_id = f"detail_digit{label}_{key}"
+            panel_ids.append(panel_id)
+            row_ids.append(panel_id)
+            column_groups[column].append(panel_id)
+            axis.set_xticks([])
+            axis.set_yticks([])
+            for spine in axis.spines.values():
+                spine.set_visible(False)
+        for offset, key in enumerate(error_keys, start=len(prediction_keys)):
+            axis = axes[row, offset]
+            difference = (predictions[key][position] - target[position]).abs().squeeze(0).numpy()
+            axis.imshow(np.clip(difference, 0.0, 1.0), cmap="magma", vmin=0.0, vmax=1.0, origin="lower", interpolation="nearest")
+            if row == 0:
+                axis.set_title(f"|{RECONSTRUCTION_LABELS[key]}−target|", fontsize=6.0, pad=3)
+            panel_id = f"detail_digit{label}_{key}_error"
+            panel_ids.append(panel_id)
+            row_ids.append(panel_id)
+            column_groups[offset].append(panel_id)
+            axis.set_xticks([])
+            axis.set_yticks([])
+            for spine in axis.spines.values():
+                spine.set_visible(False)
+        row_groups.append(row_ids)
+        axes[row, 0].set_ylabel(f"digit {label}\nidx {sample_index}", fontsize=6.0, labelpad=2)
+    figure.suptitle(
+        f"{FULL_PATH_TASK} | descriptive repair/error detail | fixed classes {list(FULL_PATH_DETAIL_LABELS)}",
+        fontsize=10,
+        y=0.94,
+    )
+    figure.text(
+        0.5,
+        0.035,
+        "Prediction panels use fixed [0,1]; target-error panels use one shared fixed [0,1] error range. No per-method contrast adjustment is applied.",
+        ha="center",
+        va="center",
+        fontsize=5.8,
+    )
+    image_cbar_ax = figure.add_axes([0.963, 0.50, 0.010, 0.24])
+    error_cbar_ax = figure.add_axes([0.963, 0.18, 0.010, 0.24])
+    image_cbar = figure.colorbar(ScalarMappable(norm=Normalize(0.0, 1.0), cmap="gray"), cax=image_cbar_ax)
+    error_cbar = figure.colorbar(ScalarMappable(norm=Normalize(0.0, 1.0), cmap="magma"), cax=error_cbar_ax)
+    image_cbar.set_label("image [0,1]", fontsize=5.5)
+    error_cbar.set_label("absolute error [0,1]", fontsize=5.5)
+    for cbar in (image_cbar, error_cbar):
+        cbar.ax.tick_params(labelsize=5, width=0.5, length=2)
+    return _save_figure_bundle(
+        figure,
+        output_base,
+        axes=[axis for row in axes for axis in row],
+        panel_ids=panel_ids,
+        row_groups=row_groups,
+        column_groups=column_groups,
+        colorbar_axes=[image_cbar.ax, error_cbar.ax],
+        require_panel_labels=False,
+        raster_dpi=300,
+        include_tiff=False,
+    )
+
+
+def _render_f64_f32_detail(
+    predictions: Mapping[str, torch.Tensor],
+    output_base: Path,
+    *,
+    positions: Sequence[int],
+    labels: Sequence[int],
+    sample_indices: Sequence[int],
+) -> list[Path]:
+    columns = 4
+    figure, axes = plt.subplots(
+        len(positions),
+        columns,
+        figsize=(8.8, max(4.0, len(positions) * 1.85)),
+        squeeze=False,
+    )
+    figure.subplots_adjust(left=0.055, right=0.925, bottom=0.12, top=0.83, wspace=0.08, hspace=0.22)
+    panel_ids: list[str] = []
+    row_groups: list[list[str]] = []
+    column_groups: list[list[str]] = [[] for _ in range(columns)]
+    for row, (position, label, sample_index) in enumerate(zip(positions, labels, sample_indices, strict=True)):
+        row_ids: list[str] = []
+        f64 = _display_array(predictions["mpcdar_rank16_float64"], position)
+        f32 = _display_array(predictions["mpcdar_rank16_float32"], position)
+        difference = np.abs(f64 - f32)
+        arrays = (
+            (np.clip(f64, 0.0, 1.0), "MPCDAR R16 F64", "gray", 1.0),
+            (np.clip(f32, 0.0, 1.0), "MPCDAR R16 F32", "gray", 1.0),
+            (np.clip(difference, 0.0, FULL_PATH_F32_DIFF_RANGE[1]), "abs(F64−F32) [0,2e−4]", "magma", FULL_PATH_F32_DIFF_RANGE[1]),
+            (np.clip(difference * FULL_PATH_F32_DIFF_AMPLIFICATION, 0.0, FULL_PATH_F32_DIFF_RANGE[1] * FULL_PATH_F32_DIFF_AMPLIFICATION), "display-only ×10⁶", "magma", FULL_PATH_F32_DIFF_RANGE[1] * FULL_PATH_F32_DIFF_AMPLIFICATION),
+        )
+        for column, (array, title, cmap, vmax) in enumerate(arrays):
+            axis = axes[row, column]
+            axis.imshow(array, cmap=cmap, vmin=0.0, vmax=vmax, origin="lower", interpolation="nearest")
+            if row == 0:
+                axis.set_title(title, fontsize=6.0, pad=3)
+            axis.set_xticks([])
+            axis.set_yticks([])
+            for spine in axis.spines.values():
+                spine.set_visible(False)
+            panel_id = f"f64_f32_digit{label}_{column}"
+            panel_ids.append(panel_id)
+            row_ids.append(panel_id)
+            column_groups[column].append(panel_id)
+        row_groups.append(row_ids)
+        axes[row, 0].set_ylabel(f"digit {label}\nidx {sample_index}", fontsize=6.0, labelpad=2)
+    figure.suptitle(
+        f"{FULL_PATH_TASK} | MPCDAR rank-16 F64/F32 descriptive comparison | fixed classes {list(FULL_PATH_DETAIL_LABELS)}",
+        fontsize=9.5,
+        y=0.94,
+    )
+    figure.text(
+        0.5,
+        0.035,
+        "Raw difference uses fixed [0,2e−4] from the S9 registered elementwise absolute contract. The ×10⁶ panel is display-only and never used for metrics.",
+        ha="center",
+        va="center",
+        fontsize=5.8,
+    )
+    image_cbar_ax = figure.add_axes([0.94, 0.49, 0.014, 0.25])
+    diff_cbar_ax = figure.add_axes([0.94, 0.17, 0.014, 0.25])
+    image_cbar = figure.colorbar(ScalarMappable(norm=Normalize(0.0, 1.0), cmap="gray"), cax=image_cbar_ax)
+    diff_cbar = figure.colorbar(ScalarMappable(norm=Normalize(0.0, FULL_PATH_F32_DIFF_RANGE[1]), cmap="magma"), cax=diff_cbar_ax)
+    image_cbar.set_label("image [0,1]", fontsize=5.5)
+    diff_cbar.set_label("raw |Δ| [0,2e−4]", fontsize=5.5)
+    for cbar in (image_cbar, diff_cbar):
+        cbar.ax.tick_params(labelsize=5, width=0.5, length=2)
+    return _save_figure_bundle(
+        figure,
+        output_base,
+        axes=[axis for row in axes for axis in row],
+        panel_ids=panel_ids,
+        row_groups=row_groups,
+        column_groups=column_groups,
+        colorbar_axes=[image_cbar.ax, diff_cbar.ax],
+        require_panel_labels=False,
+        raster_dpi=300,
+        include_tiff=False,
+    )
+
+
 def _render_fiber_cutaway(
     values: Mapping[str, torch.Tensor],
     diagnostics: Mapping[str, Any],
@@ -1078,9 +1840,10 @@ def _render_fiber_metrics(
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=Path("configs/research/lightgen_optical_manifold_smf_bogt_manifold_readiness_v1.yaml"))
+    parser.add_argument("--visualization-config", type=Path, default=FULL_PATH_CONFIG)
     parser.add_argument("--dataset-root", type=Path, default=Path("data"))
     parser.add_argument("--sample-index", type=int, default=55008, help="confirmation-panel train index; default is a held-out digit 3")
-    parser.add_argument("--view", choices=("single", "fiber-chain"), default="single", help="single legacy plate or the ten-digit encoder/fiber/decoder plate")
+    parser.add_argument("--view", choices=("single", "fiber-chain", "full-path-reconstruction"), default="single", help="single legacy plate, encoder/fiber/decoder plate, or the S9V full-path/reconstruction checkpoint")
     parser.add_argument("--checkpoint-step", type=int, choices=CHECKPOINT_STEPS, default=5000)
     parser.add_argument("--hero-index", type=int, default=55008, help="fixed confirmation-panel index used by the fiber cutaway")
     parser.add_argument("--device", default="cuda")
@@ -1089,6 +1852,8 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _default_output_dir(view: str) -> Path:
+    if view == "full-path-reconstruction":
+        return FULL_PATH_OUTPUT
     if view == "fiber-chain":
         return Path("outputs/20260831_v2/visualizations/scaled_chen_encoder_fiber_decoder_step5000_v1_attempt_01")
     return Path("outputs/20260831_v2/visualizations/scaled_chen_step5000_full_pipeline_v1_attempt_01")
@@ -1465,9 +2230,297 @@ def _run_fiber_chain(args: argparse.Namespace, output_dir: Path) -> int:
     return 0
 
 
+def _run_full_path(args: argparse.Namespace, output_dir: Path) -> int:
+    if args.device != "cuda" or not torch.cuda.is_available():
+        raise RuntimeError("full-path visualization requires CUDA; CPU is not a substitute")
+    _check_output_boundary(output_dir)
+    contract, _review, config_path, review_path = _load_full_path_contract(args.visualization_config)
+    git_state = _git_state()
+    if (
+        git_state["root"] != str(_repo_path("."))
+        or git_state["branch"] != contract["branch"]
+        or git_state["commit"] != contract["expected_head"]
+    ):
+        raise RuntimeError("full-path visualization Git identity is mismatched")
+
+    device = torch.device(args.device)
+    authority = _load_full_path_authority(contract, args.dataset_root, device)
+    train_images, train_labels = base.load_local_mnist(args.dataset_root, train=True)
+    images, labels, fixed_indices = _select_confirmation_digits(train_images, train_labels)
+    expected_indices = {
+        digit: int(contract["sample_panel"]["indices_by_label"][str(digit)])
+        for digit in range(10)
+    }
+    if fixed_indices != expected_indices or labels.tolist() != list(range(10)):
+        raise RuntimeError("locked visualization sample panel does not match the approved contract")
+    locked_panel = tuple((int(label), int(fixed_indices[int(label)])) for label in range(10))
+    rendered = base.render_intensity_batch(images)
+    amplitude = rendered.amplitude.to(device)
+    target = rendered.target.to(device)
+    model = authority["model"]
+    model_state_before = _module_state_digest(model)
+    ols_state_before = _module_state_digest(model.ols)
+    with torch.no_grad():
+        values, diagnostics, camera_intensity, consistency = _trace_fiber_batch(model, amplitude, target)
+    model_state_after = _module_state_digest(model)
+    ols_state_after = _module_state_digest(model.ols)
+    if model_state_before != model_state_after or ols_state_before != ols_state_after:
+        raise RuntimeError("full-path visualization changed frozen model or OLS state")
+    if consistency > 1.0e-7:
+        raise RuntimeError(f"full-path forward consistency exceeded contract: {consistency}")
+    if not all(torch.isfinite(value).all() for value in values.values()):
+        raise RuntimeError("full-path visualization contains a non-finite stage")
+    if not torch.equal(values["cmos_detector_intensity"], camera_intensity):
+        raise RuntimeError("CMOS intensity stage is not the explicit traced detector readout")
+
+    values_cpu = {key: value.detach().cpu() for key, value in values.items()}
+    target_cpu = target.detach().cpu().float()
+    stage_values = {
+        "target": target_cpu,
+        "slm_command": values_cpu["slm_command"],
+        "slm_output": values_cpu["slm_output"],
+        "encoder_input": values_cpu["encoder_input"],
+        "encoder_layer_1": values_cpu["encoder_layer_1"],
+        "pre_ols": values_cpu["fiber_input"],
+        "modal_complex": values_cpu["port_output"],
+        "post_ols": values_cpu["fiber_output"],
+        "decoder_layer_1": values_cpu["decoder_layer_1"],
+        "decoder_layer_2": values_cpu["decoder_layer_2"],
+        "cmos_field": values_cpu["cmos_field"],
+        "cmos_detector_intensity": values_cpu["cmos_detector_intensity"],
+    }
+    views, scales = _full_path_views(stage_values, sample_positions=range(10))
+    predictions, reconstruction_metrics = _replay_full_path_reconstructions(
+        authority, values_cpu, images, labels, target_cpu
+    )
+    label_to_position = {int(label): position for position, label in enumerate(labels.tolist())}
+    detail_positions = tuple(label_to_position[label] for label in FULL_PATH_DETAIL_LABELS)
+    detail_indices = tuple(int(fixed_indices[label]) for label in FULL_PATH_DETAIL_LABELS)
+
+    output_dir.mkdir(parents=True, exist_ok=False)
+    saved: list[Path] = []
+    saved += _render_full_path_plate(
+        views,
+        output_dir / "01_full_optical_path_digits_0_4",
+        positions=range(5),
+        labels=labels[:5].tolist(),
+        sample_indices=tuple(int(fixed_indices[int(label)]) for label in labels[:5].tolist()),
+        page_label="digits 0–4",
+    )
+    saved += _render_full_path_plate(
+        views,
+        output_dir / "01_full_optical_path_digits_5_9",
+        positions=range(5, 10),
+        labels=labels[5:].tolist(),
+        sample_indices=tuple(int(fixed_indices[int(label)]) for label in labels[5:].tolist()),
+        page_label="digits 5–9",
+    )
+    saved += _render_reconstruction_grid(
+        predictions,
+        output_dir / "02_reconstruction_family_comparison",
+        positions=range(10),
+        labels=labels.tolist(),
+        sample_indices=tuple(int(fixed_indices[int(label)]) for label in labels.tolist()),
+        method_keys=FULL_PATH_RECON_METHODS,
+        method_mse=reconstruction_metrics["method_mse"],
+    )
+    saved += _render_repair_detail(
+        predictions,
+        target_cpu,
+        output_dir / "03_repair_detail_and_error_maps",
+        positions=detail_positions,
+        labels=FULL_PATH_DETAIL_LABELS,
+        sample_indices=detail_indices,
+    )
+    saved += _render_f64_f32_detail(
+        predictions,
+        output_dir / "04_mpcdar_rank16_f64_f32_difference",
+        positions=detail_positions,
+        labels=FULL_PATH_DETAIL_LABELS,
+        sample_indices=detail_indices,
+    )
+
+    raw_stage_metadata = diagnostics["stage_metadata"]
+    stage_metadata = {
+        "target": {
+            "representation": "intensity_frame",
+            "semantic": "camera_intensity_same_fov",
+            "shape": [1, 200, 200],
+            "display_range": list(FULL_PATH_RECON_RANGE),
+        },
+        "slm_command": raw_stage_metadata["slm_command"],
+        "slm_output": raw_stage_metadata["slm_output"],
+        "encoder_input": raw_stage_metadata["encoder_input"],
+        "encoder_layer_1": raw_stage_metadata["encoder_layer_1"],
+        "pre_ols": raw_stage_metadata["fiber_input"] | {
+            "display_name": "pre_ols / encoder_layer_2 / fiber_input",
+        },
+        "modal_complex": raw_stage_metadata["port_output"] | {
+            "display_name": "modal coefficients — 10×10 display layout",
+            "spatial_plane": False,
+        },
+        "post_ols": raw_stage_metadata["fiber_output"] | {
+            "display_name": "post_ols / decoder_input",
+        },
+        "decoder_layer_1": raw_stage_metadata["decoder_layer_1"],
+        "decoder_layer_2": raw_stage_metadata["decoder_layer_2"],
+        "cmos_field": raw_stage_metadata["cmos_field"],
+        "cmos_detector_intensity": raw_stage_metadata["cmos_detector_intensity"],
+    }
+    stage_stats: dict[str, Any] = {}
+    for key in FULL_PATH_STAGE_KEYS:
+        value = stage_values[key]
+        stage_stats[key] = {
+            "shape": list(value.shape),
+            "dtype": str(value.dtype),
+            "complex": bool(torch.is_complex(value)),
+            "display_scale": scales[key],
+            "phase_thresholds": [
+                views[key][str(position)]["phase_threshold"]
+                for position in range(10)
+            ],
+            "phase_valid_fractions": [
+                views[key][str(position)]["phase_valid_fraction"]
+                for position in range(10)
+            ],
+        }
+    output_files = sorted(path for path in output_dir.rglob("*") if path.is_file())
+    output_bytes = sum(path.stat().st_size for path in output_files)
+    if output_bytes > 512 * 1024**2:
+        raise RuntimeError(f"full-path visualization output exceeds 512 MiB: {output_bytes}")
+    parent_contract = contract["parents"]
+    artifact_identities = {
+        "s8_float64": {
+            "manifest": str(_repo_path(parent_contract["s8"]["artifact_manifest"])),
+            "manifest_sha256": parent_contract["s8"]["artifact_manifest_sha256"],
+            "payload": str(_repo_path(parent_contract["s8"]["artifact_payload"])),
+            "payload_sha256": parent_contract["s8"]["artifact_payload_sha256"],
+            "dtype": "torch.float64",
+            "rank": FULL_PATH_RANK,
+        },
+        "s9_float32": {
+            "manifest": str(_repo_path(parent_contract["s9"]["artifact_manifest"])),
+            "manifest_sha256": parent_contract["s9"]["artifact_manifest_sha256"],
+            "payload": str(_repo_path(parent_contract["s9"]["artifact_payload"])),
+            "payload_sha256": parent_contract["s9"]["artifact_payload_sha256"],
+            "dtype": "torch.float32",
+            "rank": FULL_PATH_RANK,
+        },
+    }
+    manifest = {
+        "schema": "lightgen_optical_manifold_smf_bogt_full_path_visualization.v1",
+        "task_id": FULL_PATH_TASK,
+        "status": "completed",
+        "classification": FULL_PATH_CLASSIFICATION,
+        "diagnostic_only": True,
+        "config_path": str(config_path),
+        "config_sha256": file_sha256(config_path),
+        "review_path": str(review_path),
+        "review_sha256": file_sha256(review_path),
+        "git": git_state,
+        "preflight": {
+            "expected_branch": contract["branch"],
+            "expected_head": contract["expected_head"],
+            "starting_worktree_clean": True,
+        },
+        "parent_evidence": authority["parent_files"],
+        "rmal": {
+            "config": str(_repo_path(contract["rmal"]["config"])),
+            "config_sha256": contract["rmal"]["config_sha256"],
+            "checkpoint": authority["rmal_checkpoint"],
+            "checkpoint_sha256": contract["rmal"]["checkpoint_sha256"],
+            "probe_hash": str(authority["upstream"]["runtime"].rmal_probe.artifact_sha256),
+            "target": contract["rmal"]["target"],
+            "target_shape": contract["rmal"]["target_shape"],
+        },
+        "artifacts": artifact_identities,
+        "sample_panel": {
+            "source": contract["sample_panel"]["source"],
+            "count": 10,
+            "order": list(range(10)),
+            "indices_by_label": {str(label): index for label, index in locked_panel},
+            "labels": labels.tolist(),
+            "locked_before_prediction_replay": True,
+            "error_selection": False,
+            "random_sampling": False,
+            "detail_labels": list(FULL_PATH_DETAIL_LABELS),
+            "detail_indices": list(detail_indices),
+        },
+        "stage_order": list(FULL_PATH_STAGE_KEYS),
+        "stage_aliases": FULL_PATH_STAGE_ALIASES,
+        "stage_metadata": stage_metadata,
+        "stage_stats": stage_stats,
+        "display_contract": {
+            "spatial_amplitude": "abs(E), one panel-wide linear p99.5 scale per named stage over all ten samples",
+            "modal_amplitude": "abs(E), one panel-wide linear p99.5 scale over all ten samples",
+            "cmos_intensity": "one panel-wide linear p99.5 scale over all ten samples",
+            "phase": "angle(E), raw, fixed [-pi,pi], no shift/unwrap/gauge normalization",
+            "phase_mask": "max(0.01 * max(abs(E)), 1e-12), per stage and sample; masked values are NaN/explicit N/A",
+            "reconstruction_range": list(FULL_PATH_RECON_RANGE),
+            "target_error_range": list(FULL_PATH_ERROR_RANGE),
+            "f64_f32_difference_range": list(FULL_PATH_F32_DIFF_RANGE),
+            "f64_f32_amplification": FULL_PATH_F32_DIFF_AMPLIFICATION,
+            "amplitude_colormap": "magma",
+            "phase_colormap": "twilight",
+            "reconstruction_colormap": "gray",
+            "error_colormap": "magma",
+            "rotation": "display-only 180 degrees for intermediate optical maps; no reconstruction rotation",
+        },
+        "reconstruction": {
+            "methods": list(FULL_PATH_RECON_METHODS),
+            "ranks": {"raw_svd": FULL_PATH_RANK, "mean_preserving_raw_svd": FULL_PATH_RANK, "mpcdar_f64": FULL_PATH_RANK, "mpcdar_f32": FULL_PATH_RANK, "full_rmal": FULL_PATH_FULL_RANK},
+            "feature_contract": reconstruction_metrics["feature_contract"],
+            "reshape": reconstruction_metrics["reshape"],
+            "display_range": list(FULL_PATH_RECON_RANGE),
+            "error_range": list(FULL_PATH_ERROR_RANGE),
+            "method_mse_descriptive_panel": reconstruction_metrics["method_mse"],
+            "per_sample_mse_descriptive_panel": reconstruction_metrics["per_sample_mse"],
+        },
+        "forward_consistency_max_abs": consistency,
+        "state_hashes": {
+            "model_before": model_state_before,
+            "model_after": model_state_after,
+            "ols_before": ols_state_before,
+            "ols_after": ols_state_after,
+            "unchanged": True,
+        },
+        "renderer": {
+            "script": str(Path(__file__).resolve()),
+            "script_sha256": file_sha256(Path(__file__).resolve()),
+            "dtype": "frozen optical model and transient CPU display copies; F64/F32 readouts preserve artifact dtype",
+            "device": str(device),
+        },
+        "authorization": {
+            "no_training": True,
+            "no_update": True,
+            "no_optimizer": True,
+            "no_backward": True,
+            "no_new_basis": True,
+            "no_rank_search": True,
+            "visualization_is_scientific_gate": False,
+            "training_authorized": False,
+            "formal_promotion": False,
+            "generation": False,
+        },
+        "outputs": [
+            {"path": str(path.resolve()), "sha256": file_sha256(path), "bytes": path.stat().st_size}
+            for path in output_files
+        ],
+        "output_bytes_before_manifest": output_bytes,
+    }
+    metadata_path = output_dir / "visualization_manifest.json"
+    if metadata_path.exists():
+        raise FileExistsError(f"refusing to overwrite visualization manifest: {metadata_path}")
+    metadata_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    print(json.dumps({"output_dir": str(output_dir.resolve()), "manifest": str(metadata_path.resolve()), "classification": FULL_PATH_CLASSIFICATION, "sample_count": 10, "output_bytes": output_bytes}, indent=2, ensure_ascii=False))
+    return 0
+
+
 def main() -> int:
     args = _parse_args()
     output_dir = args.output_dir if args.output_dir is not None else _default_output_dir(args.view)
+    if args.view == "full-path-reconstruction":
+        return _run_full_path(args, output_dir)
     if args.view == "fiber-chain":
         return _run_fiber_chain(args, output_dir)
     _check_output_boundary(output_dir)

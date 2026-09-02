@@ -125,5 +125,62 @@ def test_cli_contract_keeps_cuda_only_and_read_only_flags(renderer) -> None:
     assert '"prior_sampled": False' in source
 
 
+def test_full_path_contract_locks_registered_parents_and_panel(renderer) -> None:
+    contract, review, config_path, review_path = renderer._load_full_path_contract(
+        renderer.FULL_PATH_CONFIG
+    )
+    parents = renderer._verify_full_path_parent_files(contract)
+    assert config_path.name == "lightgen_optical_manifold_smf_bogt_full_path_visualization_v1.yaml"
+    assert review_path.name == "lightgen_optical_manifold_smf_bogt_full_path_visualization_review_v1.json"
+    assert review["decision"] == "APPROVED WITH REQUIRED DISPLAY CONTRACT FREEZE"
+    assert sorted(parents) == ["s7", "s8", "s9"]
+    assert contract["sample_panel"]["order"] == list(range(10))
+    assert contract["sample_panel"]["detail_labels"] == [0, 2, 3, 5, 8]
+    assert contract["display"]["reconstruction_range"] == [0.0, 1.0]
+    assert contract["display"]["f64_f32_difference_range"] == [0.0, 2.0e-4]
+
+
+def test_full_path_views_use_stage_shared_scales_and_exact_mask(renderer) -> None:
+    real = torch.zeros((10, 1, 4, 4), dtype=torch.float32)
+    real[:, :, 1:3, 1:3] = 1.0
+    values = {}
+    for key in renderer.FULL_PATH_STAGE_KEYS:
+        if key in renderer.FULL_PATH_REAL_KEYS:
+            values[key] = real.clone()
+        elif key in renderer.FULL_PATH_MODAL_KEYS:
+            values[key] = torch.ones((10, 100), dtype=torch.complex64)
+        else:
+            values[key] = torch.ones((10, 1, 4, 4), dtype=torch.complex64)
+    values["encoder_input"][0, 0, 0, 0] = 0.001 + 0.0j
+    values["encoder_input"][1, 0, 0, 0] = 10.0 + 0.0j
+    original = values["encoder_input"].clone()
+    views, scales = renderer._full_path_views(values, sample_positions=range(10))
+    assert scales["target"] == 1.0
+    assert scales["encoder_input"] > 1.0
+    assert views["encoder_input"]["1"]["phase_threshold"] == pytest.approx(0.1)
+    assert bool(torch.isnan(torch.tensor(views["encoder_input"]["0"]["phase"][3, 3])))
+    assert torch.equal(values["encoder_input"], original)
+
+
+def test_full_path_route_and_reconstruction_reshape_are_locked(renderer) -> None:
+    original = sys.argv
+    try:
+        sys.argv = [
+            "render_scaled_chen_full_pipeline.py",
+            "--view",
+            "full-path-reconstruction",
+        ]
+        args = renderer._parse_args()
+    finally:
+        sys.argv = original
+    assert args.view == "full-path-reconstruction"
+    assert args.visualization_config == renderer.FULL_PATH_CONFIG
+    flat = torch.zeros((2, 40000), dtype=torch.float64)
+    image = renderer._as_reconstruction_images(flat, "synthetic")
+    assert image.shape == (2, 1, 200, 200)
+    with pytest.raises(RuntimeError, match="invalid reconstruction shape"):
+        renderer._as_reconstruction_images(torch.zeros((2, 12)), "bad")
+
+
 def np_isnan(value: float) -> bool:
     return bool(torch.isnan(torch.tensor(value)))

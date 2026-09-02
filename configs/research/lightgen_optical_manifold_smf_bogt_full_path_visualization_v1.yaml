@@ -1,0 +1,121 @@
+schema: lightgen_optical_manifold_smf_bogt_full_path_visualization_v1
+task_id: H-LOMA-CBOGT-S9V-FULL-PATH-VIS
+classification: descriptive_visualization_checkpoint
+role: diagnostic_only
+branch: research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1
+expected_head: 7da2d066d8a8f1b3dbcff7c94393c51d11d7bcb7
+
+rmal:
+  config: configs/research/lightgen_optical_manifold_smf_bogt_reconstruction_mapping_alignment_localization_v1.yaml
+  config_sha256: c50b5b2d12830c40fbe619f137aca40f36f799f277e637d1ec20ac7e3403859f
+  checkpoint: outputs/20260829_v2/runs/lightgen_optical_manifold_smf_bogt_horizon_v2_attempt_03/checkpoints/scaled_chen_horizon_step_5000.pt
+  checkpoint_sha256: ccb89f98cc11725eb80d66c61f4fdef62b24acdf9f6d739f78373f462d10e5de
+  target: camera_intensity_same_fov
+  target_shape: [1, 200, 200]
+
+parents:
+  s7:
+    id: H-LOMA-CBOGT-S7-MPCDAR_attempt-03
+    status: passed
+    classification: mean_preserving_centered_data_aware_readout_recovery_completed
+    config: configs/research/lightgen_optical_manifold_smf_bogt_mean_preserving_centered_data_aware_readout_recovery_v1.yaml
+    validation: outputs/20260902_v2/runs/lightgen_scaled_chen_mean_preserving_centered_data_aware_readout_recovery_v1_attempt_03/validation.json
+    validation_sha256: b538b3ab242e09a0042699b1b1d0779d504f992498b1fcd75c23bae9937512d2
+    audit: outputs/20260902_v2/runs/lightgen_scaled_chen_mean_preserving_centered_data_aware_readout_recovery_v1_attempt_03/audit.json
+    audit_sha256: 43b4cef14202c19cc6aca22ec2c49cf5a65ed1ac05b7b69f7d00390de4b95785
+    compact: outputs/20260902_v2/runs/lightgen_scaled_chen_mean_preserving_centered_data_aware_readout_recovery_v1_attempt_03/compact_report.json
+    compact_sha256: 9e321b457e9e7111e1bf0d800e1d8e724f9753cf34f92e13d1eb2e081034a4e9
+  s8:
+    id: H-LOMA-CBOGT-S8-MPCDAR-R16-IQ
+    status: passed
+    classification: frozen_mean_preserving_data_aware_rank16_integration_qualified
+    validation: outputs/20260902_v2/runs/lightgen_scaled_chen_mpcdar_rank16_integration_qualification_v1_attempt_03/validation.json
+    validation_sha256: 844a9dc4187623c380655db63530e13e6ba1a9d4e62d6ef44dd95b29119457cb
+    audit: outputs/20260902_v2/runs/lightgen_scaled_chen_mpcdar_rank16_integration_qualification_v1_attempt_03/audit.json
+    audit_sha256: 3b98c0faa6816b11d2f6da8cc832e89d221344f4b01bd41eadb356968f1b39a4
+    compact: outputs/20260902_v2/runs/lightgen_scaled_chen_mpcdar_rank16_integration_qualification_v1_attempt_03/compact_report.json
+    compact_sha256: 12e342d75119ee143186046490bb14c064f449dc27520168a17e84ae758b8271
+    artifact_manifest: outputs/20260902_v2/runs/lightgen_scaled_chen_mpcdar_rank16_integration_qualification_v1_attempt_03/artifact/manifest.json
+    artifact_manifest_sha256: e580dd59f3e277055a9c0cff6d9f076e06346b5761a8b9f228608e88b3a23c45
+    artifact_payload: outputs/20260902_v2/runs/lightgen_scaled_chen_mpcdar_rank16_integration_qualification_v1_attempt_03/artifact/payload.pt
+    artifact_payload_sha256: e839daaff8d718347d1cd4194651ac0773f842ffa39fe4efaa3e0218ea2e1d4e
+  s9:
+    id: H-LOMA-CBOGT-S9-MPCDAR-R16-F32-NQ
+    status: passed
+    classification: frozen_mean_preserving_data_aware_rank16_float32_numerically_qualified
+    validation: outputs/20260902_v2/runs/lightgen_scaled_chen_mpcdar_rank16_float32_numerical_qualification_v1_attempt_02/validation.json
+    validation_sha256: 5728fb9b50212d5dc7359975b06fe6d3f51be3645a23410683334abab7bb2137
+    audit: outputs/20260902_v2/runs/lightgen_scaled_chen_mpcdar_rank16_float32_numerical_qualification_v1_attempt_02/audit.json
+    audit_sha256: 0ff4aeaddd2035f0ced865a5e9f76331db53a2a8a213ea18064bd8e1d7368bde
+    compact: outputs/20260902_v2/runs/lightgen_scaled_chen_mpcdar_rank16_float32_numerical_qualification_v1_attempt_02/compact_report.json
+    compact_sha256: 5b45f1401489fab63382366045a95f52984505038a379ca8bd8d0a780424c940
+    artifact_manifest: outputs/20260902_v2/runs/lightgen_scaled_chen_mpcdar_rank16_float32_numerical_qualification_v1_attempt_02/artifact/manifest.json
+    artifact_manifest_sha256: 1ad6d9edfb1037564c3aec533904ed8d48bc4614a7bbcb221a56c9a244d802c7
+    artifact_payload: outputs/20260902_v2/runs/lightgen_scaled_chen_mpcdar_rank16_float32_numerical_qualification_v1_attempt_02/artifact/payload.pt
+    artifact_payload_sha256: 480c57bff42e28cdfdf5ba260978234ee98f3d1169407c2523beeba76d39e834
+
+sample_panel:
+  source: confirmation_panel_train_indices_55000_59999
+  count: 10
+  order: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+  indices_by_label:
+    "0": 55006
+    "1": 55000
+    "2": 55001
+    "3": 55008
+    "4": 55004
+    "5": 55010
+    "6": 55012
+    "7": 55003
+    "8": 55002
+    "9": 55007
+  detail_labels: [0, 2, 3, 5, 8]
+
+stages:
+  - slm_command
+  - slm_output
+  - encoder_input
+  - encoder_layer_1
+  - pre_ols
+  - modal_complex
+  - post_ols
+  - decoder_layer_1
+  - decoder_layer_2
+  - cmos_field
+  - cmos_detector_intensity
+
+display:
+  spatial_amplitude: abs(E), panel-wide p99.5 per stage over all ten samples
+  modal_amplitude: abs(E), panel-wide p99.5 over all ten samples
+  cmos_intensity: panel-wide p99.5 over all ten samples
+  phase: angle(E), raw, range [-pi, pi]
+  phase_mask: max(0.01 * max(abs(E)), 1e-12), per stage and sample
+  reconstruction_range: [0.0, 1.0]
+  target_error_range: [0.0, 1.0]
+  f64_f32_difference_range: [0.0, 0.0002]
+  f64_f32_amplification: 1000000.0
+  amplitude_colormap: magma
+  phase_colormap: twilight
+  reconstruction_colormap: gray
+  display_rotation: 180 degrees for intermediate optical maps only
+
+methods:
+  - target
+  - class_template
+  - physical_output_camera
+  - raw_svd_rank16
+  - mean_preserving_raw_svd_rank16
+  - mpcdar_rank16_float64
+  - mpcdar_rank16_float32
+  - frozen_full_rank256_rmal
+
+authorization:
+  no_training: true
+  no_update: true
+  no_optimizer: true
+  no_backward: true
+  no_new_basis: true
+  no_rank_search: true
+  visualization_is_scientific_gate: false
+  formal_promotion: false
+  generation: false

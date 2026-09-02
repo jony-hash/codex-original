@@ -2068,3 +2068,35 @@ identity、fresh reload、CPU boundary、state/no-update、no-bank 与 runtime-i
 audit=`35/35`，classification=`frozen_mean_preserving_data_aware_rank16_float32_numerically_qualified`，
 `integration_only=true`。唯一下一动作是 `manual_review_MPCDAR_R16_F32_NQ_result`；不得训练、
 decoder、generation、promotion 或自动切换 default。
+
+## H-LOMA-CBOGT-S9V-FULL-PATH-VIS：Full-Path Optical Representation Visualization（2026-09-02）
+
+本轮是 descriptive-only visualization consumer，真实消费者为项目负责人对冻结 RMAL readout 的固定
+confirmation panel 完整光学路径、重建方法族、detail/error subset 与 MPCDAR R16 F64/F32 显示进行人工审查。
+不得把图像显示升级为 reconstruction/generative manifold、性能、bottleneck、training、decoder、generation
+或 formal-promotion 证据。执行时 HEAD=`7da2d066d8a8f1b3dbcff7c94393c51d11d7bcb7`、branch=
+`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`，起始 worktree clean；实现后保留未提交变更。
+
+父级只读身份锁定 S7 `H-LOMA-CBOGT-S7-MPCDAR_attempt-03`、S8
+`H-LOMA-CBOGT-S8-MPCDAR-R16-IQ`、S9 `H-LOMA-CBOGT-S9-MPCDAR-R16-F32-NQ`，并核验各自
+validation/audit/compact 与 S8/S9 artifact 哈希。固定样本为
+`{0:55006,1:55000,2:55001,3:55008,4:55004,5:55010,6:55012,7:55003,8:55002,9:55007}`；
+阶段、pre/post-OLS alias、10×10 modal display、p99.5 amplitude、raw phase mask、fixed reconstruction/error
+range 与 real SLM/CMOS phase N/A 均按已批准合同冻结。
+
+权威输出目录为
+`outputs/20260902_v2/visualizations/scaled_chen_full_path_reconstruction_v1_attempt_01/`；
+manifest SHA-256=`ce6eee49822ddee7c3c28c13a6e0e108d499478984c498f2f51b909bebead749`，26 files、
+`16184241` bytes。manifest status=`completed`、classification=
+`descriptive_visualization_completed`、forward consistency max residual=`0`、model/OLS state unchanged；
+包含 full optical path 两页、reconstruction family、detail/error classes `[0,2,3,5,8]` 与 F64/F32 comparison。
+代表性 PNG 已完成人工视觉核验；F64/F32 差异按固定 `[0,2e-4]` raw map 与 display-only ×10^6 保存。
+
+S9V 定向测试=`9 passed`，父级 artifact/回归定向=`48 passed`，默认全量 pytest=
+`1347 passed, 12 deselected, 25 subtests passed`；compileall、Ruff、diff-check 均通过。全程无 training/refit/
+optimizer/backward/evaluator/prior sampling，治理 flags 继续为
+`reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、
+`generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false` 与
+`closed_task_relevant_bottleneck_not_supported`。Bridge 仍为
+`invalid / cloud_sources_sync_blocked`，未修复、未上传。唯一下一动作：
+`manual_review_FULL_PATH_VIS_result`。

@@ -1,0 +1,23 @@
+{
+  "schema": "lightgen_optical_manifold_smf_bogt_full_path_visualization_review.v1",
+  "task_id": "H-LOMA-CBOGT-S9V-FULL-PATH-VIS",
+  "decision": "APPROVED WITH REQUIRED DISPLAY CONTRACT FREEZE",
+  "classification": "descriptive_visualization_checkpoint",
+  "approved_contract": {
+    "sample_count": 10,
+    "sample_source": "confirmation_panel_train_indices_55000_59999",
+    "phase_range": [-3.141592653589793, 3.141592653589793],
+    "phase_mask": "max(0.01 * max(abs(E)), 1e-12), per stage and sample",
+    "reconstruction_range": [0.0, 1.0],
+    "target_error_range": [0.0, 1.0],
+    "f64_f32_difference_range": [0.0, 0.0002],
+    "f64_f32_amplification": 1000000.0,
+    "no_phase_shift": true,
+    "no_per_sample_reconstruction_normalization": true,
+    "visualization_is_scientific_gate": false
+  },
+  "training_authorized": false,
+  "formal_promotion": false,
+  "generation": false,
+  "required_next_action": "manual_review_FULL_PATH_VIS_result"
+}

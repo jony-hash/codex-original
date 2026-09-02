@@ -45,16 +45,16 @@ ChatGPT Sources 包中的文件是由维护工具生成的受控副本。副本�
 - prior-native、direct-generator、quadrature、fiber、FMF 长训练和 formal promotion
   等已关闭或未授权路线不能因为 ChatGPT 的讨论而重新打开。
 - 所有科研执行仍需遵守 `AGENTS.md` 的 long-training gate；记忆文件本身不提供训练授权。
-- 当前最新有效科研结果是 H-LOMA-CBOGT-S9-MPCDAR-R16-F32-NQ 的 `passed` /
-  `frozen_mean_preserving_data_aware_rank16_float32_numerically_qualified`，正式 replay
-  绑定 implementation/fix commits `4b75e4d67efc1dc90a01d1d33a6aa3c1c243c652` /
-  `ebbd0d232c56ee45a69dea830911eff4f697ad47`。它只确认 S8 rank-16 frozen artifact 的
-  pure-float32 CPU readout 在 fresh-process reload 后满足预注册数值 tolerance，并保持
-  RMAL selection/confirmation Gate-vector identity；不是 GPU-ready、production、minimum/
-  intrinsic/physical rank 或一般 reconstruction sufficiency。S8/S7/MCFA/DMSA/DSFA/LRRC 及
+- 当前最新已核验科研 checkpoint 是 H-LOMA-CBOGT-S9V-FULL-PATH-VIS 的 `completed` /
+  `descriptive_visualization_completed`；其 S9 F32 frozen readout parent 仍为
+  `passed / frozen_mean_preserving_data_aware_rank16_float32_numerically_qualified`，正式
+  S9 replay 绑定 implementation/fix commits `4b75e4d67efc1dc90a01d1d33a6aa3c1c243c652` /
+  `ebbd0d232c56ee45a69dea830911eff4f697ad47`。S9V 只完成冻结 RMAL readout 的完整 optical
+  path descriptive visualization 与人工审查 checkpoint，不建立性能、reconstruction/
+  generative manifold、training、decoder、generation 或 formal-promotion 权限；S8/S7/
   更早身份保持不变。唯一允许的下一动作是
-  `manual_review_MPCDAR_R16_F32_NQ_result`；在项目负责人审查前不得进入 FMF、继续训练、
-  exposure retuning、生成或 promotion。relay family
+  `manual_review_MPCDAR_R16_RUNTIME_PQ_implementation_contract`；在 S10 完成及人工审查前，
+  不得进入 rank search、继续训练、exposure retuning、生成或 promotion。relay family
   `scaled_chen_v1_local_backend_relay_attribution_family=closed_metric_confound_reinterpreted`
   保持。
   若交接文档更新，以最新的 `CURRENT_STATUS.md`、`status/current_handoff.md` 和 hypothesis
@@ -791,3 +791,27 @@ runtime-independence gates 通过。audit=`35/35`，classification=
 唯一下一动作是 `manual_review_MPCDAR_R16_F32_NQ_result`；治理 flags 继续保持
 reconstruction/generative false、generation_readiness=`not_ready`、training/promotion=false 与
 `closed_task_relevant_bottleneck_not_supported`。
+
+## H-LOMA-CBOGT-S9V-FULL-PATH-VIS：Full-Path Optical Representation Visualization（2026-09-02）
+
+S9V 是冻结 RMAL detector readout 的 descriptive-only visualization consumer，真实消费者是
+项目负责人对固定 confirmation 10-sample panel 的完整 optical path、重建方法族、detail/error
+subset 与 MPCDAR R16 F64/F32 显示进行人工审查；它不建立 reconstruction/generative manifold、
+性能、bottleneck、training、decoder、generation 或 formal-promotion 权限。
+
+权威 manifest 为
+`outputs/20260902_v2/visualizations/scaled_chen_full_path_reconstruction_v1_attempt_01/visualization_manifest.json`，
+SHA-256=`ce6eee49822ddee7c3c28c13a6e0e108d499478984c498f2f51b909bebead749`，status=`completed`，
+classification=`descriptive_visualization_completed`，固定 panel 为 10 samples，输出目录为
+26 files、`16184241` bytes；forward consistency max residual=`0`，model/OLS state unchanged。
+父级只读绑定为 S7/S8/S9，S9 F32 artifact manifest/payload SHA-256 仍为
+`1ad6d9edfb1037564c3aec533904ed8d48bc4614a7bbcb221a56c9a244d802c7` /
+`480c57bff42e28cdfdfba260978234ee98f3d1169407c2523beeba76d39e834`。
+
+S9V 修改范围仅为 registered visualization config/review、renderer 与 visualization tests；输出
+不加入 Git。定向测试、父级回归、默认 pytest、compileall、Ruff 与 diff-check 均已通过。
+治理 flags 保持 `reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、
+`generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false` 与
+`closed_task_relevant_bottleneck_not_supported`；Bridge 仍为 `invalid / cloud_sources_sync_blocked`。
+S9V closeout 后唯一允许的下一动作是
+`manual_review_MPCDAR_R16_RUNTIME_PQ_implementation_contract`。

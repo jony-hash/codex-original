@@ -990,3 +990,44 @@ decoder/physical-forward modification/generation 均为 false/zero；
 相关回归 `179 passed, 1 warning`、完整 pytest `1310 passed, 12 deselected, 25 subtests passed`，
 compileall、Ruff、git diff-check 通过。唯一下一动作是 `manual_review_MCFA_result`；不得训练、
 decoder、candidate export、generation 或 promotion。
+
+## H-LOMA-CBOGT-S9V-FULL-PATH-VIS：Full-Path Optical Representation Visualization（2026-09-02）
+
+S9V 是基于冻结 RMAL detector readout 的 descriptive-only 可视化 consumer，真实消费者是项目负责人对固定
+confirmation 10-sample panel 的完整 optical path、重建方法族、fixed-class error detail 与 MPCDAR R16
+F64/F32 数值显示进行人工审查；拒绝决定是不把图像显示解释为 reconstruction/generative manifold、性能、
+bottleneck、training、decoder、generation 或 formal-promotion Gate。实现从预期 HEAD
+`7da2d066d8a8f1b3dbcff7c94393c51d11d7bcb7` 执行，当前 worktree 保留本轮未提交实现变更。
+
+本轮新增/修改文件为：
+`configs/research/lightgen_optical_manifold_smf_bogt_full_path_visualization_v1.yaml`、
+`configs/research/lightgen_optical_manifold_smf_bogt_full_path_visualization_review_v1.json`、
+`scripts/visualization/render_scaled_chen_full_pipeline.py` 与
+`tests/v2/test_scaled_chen_visualization.py`。父级只读绑定为 S7
+`H-LOMA-CBOGT-S7-MPCDAR_attempt-03`、S8 `H-LOMA-CBOGT-S8-MPCDAR-R16-IQ`、S9
+`H-LOMA-CBOGT-S9-MPCDAR-R16-F32-NQ`；S7/S8/S9 validation/audit/compact 及 S8/S9 artifact
+哈希均由 manifest 记录并在运行前逐项核验。RMAL checkpoint/config 身份仍为已登记的
+`ccb89f98cc11725eb80d66c61f4fdef62b24acdf9f6d739f78373f462d10e5de` /
+`c50b5b2d12830c40fbe619f137aca40f36f799f277e637d1ec20ac7e3403859f`。
+
+正式回放使用 CUDA、固定样本索引 `{0:55006,1:55000,2:55001,3:55008,4:55004,5:55010,6:55012,7:55003,8:55002,9:55007}`，
+无训练、refit、optimizer、backward、evaluator、prior sampling 或 scientific Gate。图包固定包含：full optical
+path 两页、reconstruction family、detail/error classes `[0,2,3,5,8]`、MPCDAR R16 F64/F32；阶段与 alias
+按合同保存，`modal_complex` 仅作 10×10 modal coefficient display，`pre_ols`/`post_ols` 不作为额外传播步。
+幅度使用 panel-wide p99.5，phase 使用 raw `[-pi,pi]` 与每 stage/sample 的 1% mask，real SLM/CMOS readout
+明确为 phase N/A，reconstruction/error display 均固定 `[0,1]`。manifest classification=
+`descriptive_visualization_completed`，schema=`lightgen_optical_manifold_smf_bogt_full_path_visualization.v1`，
+SHA-256=`ce6eee49822ddee7c3c28c13a6e0e108d499478984c498f2f51b909bebead749`；输出目录为
+`outputs/20260902_v2/visualizations/scaled_chen_full_path_reconstruction_v1_attempt_01/`，26 files、
+`16184241` bytes。manifest 的 forward consistency max residual=`0`，model/OLS state hashes unchanged。
+描述性 panel MSE 为 physical=`0.06047516688704491`、raw-SVD R16=`0.08698886632919312`、MP-RAW R16=
+`0.05387931689620018`、MPCDAR R16 F64/F32=`0.024362197145819664`、frozen full R256/RMAL=
+`0.011573356576263905`；这些 scalar 仅服务本图包显示，不构成新 Gate。
+
+S9V 定向可视化测试为 `9 passed`，父级 artifact/回归定向测试为 `48 passed`；Windows-native 默认全量 pytest
+为 `1347 passed, 12 deselected, 25 subtests passed`，compileall、Ruff、git diff-check 均通过。代表性 PNG 已完成人工
+视觉核验。治理 flags 保持 `reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、
+`generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false` 与
+`closed_task_relevant_bottleneck_not_supported`；唯一下一动作是 `manual_review_FULL_PATH_VIS_result`，
+不得继续训练、decoder、candidate export、generation 或 promotion。Bridge 仍为 `invalid / cloud_sources_sync_blocked`，
+未在本轮修复或上传。
