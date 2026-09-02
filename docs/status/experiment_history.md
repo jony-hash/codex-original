@@ -2154,3 +2154,64 @@ independence. Final status is `passed`, classification is
 `frozen_mean_preserving_data_aware_rank16_float32_numerically_qualified`, and `integration_only=true`.
 The only next action is `manual_review_MPCDAR_R16_F32_NQ_result`; no training, decoder, generation,
 promotion, or automatic default switch is authorized.
+
+## 2026-09-02：H-LOMA-CBOGT-S9V-FULL-PATH-VIS full-path optical representation visualization
+
+S9V was a descriptive-only visualization consumer of the frozen RMAL detector readout. Its consumer
+was manual review of the fixed confirmation panel's full optical path, reconstruction families, detail/
+error subset, and MPCDAR R16 F64/F32 display; it did not create reconstruction/generative-manifold,
+performance, training, decoder, generation, or promotion authority. The closeout commit was
+`013b53a3b5f46cf37b955a224b2701e7f9bcac7f`; output remained outside Git.
+
+The authoritative visualization manifest is
+`outputs/20260902_v2/visualizations/scaled_chen_full_path_reconstruction_v1_attempt_01/visualization_manifest.json`,
+SHA256=`ce6eee49822ddee7c3c28c13a6e0e108d499478984c498f2f51b909bebead749`, with status
+`completed`, classification `descriptive_visualization_completed`, 26 files, and forward-consistency
+max residual `0`. The S9V targeted test passed (`9 passed`); parent/visualization regressions and the
+full Windows-native suite were green at that checkpoint. Governance flags remained not-ready and no
+training/generation/promotion. The next action was
+`manual_review_MPCDAR_R16_RUNTIME_PQ_implementation_contract`.
+
+## 2026-09-03：H-LOMA-CBOGT-S10-MPCDAR-R16-RUNTIME-PQ frozen rank-16 float32 runtime/performance characterization
+
+S10 consumed only the immutable S9 rank-16 float32 artifact and measured a CPU-only, readout-only
+runtime contract. The rejection boundary was explicit: no measured-speedup, GPU/hardware/production-
+readiness, reconstruction-sufficiency, decoder, training, generation, or promotion claim. S10 started
+from HEAD `8680c12be955df72906b955433e6daeabfdfec4a`; implementation/fix commits were
+`dd1c38fa965e32deedd655f00f3cd974e1534cd8`, `488f12fbcf19e3663c7aa685bc4d4ad717db2a30`, and
+`d0655652cd86bdc9f3852a9bbf4faa45f59f069b`.
+
+The first formal attempt was retained write-once after a namespace-isolation source-layout correction;
+authoritative attempt-02 is
+`outputs/20260902_v2/runs/lightgen_scaled_chen_mpcdar_rank16_runtime_performance_qualification_v1_attempt_02/`.
+Validation/audit/compact SHA256 are
+`8293e549b1ae48447e28be924406525aa03fa8843c0f1a71fa1ec21e3f5894c5`,
+`7b519b3a75cdf59ecfe2678d46a8f74ae3084cb7b9de90c95763efecc0f2f4ee`, and
+`ded0959097c88a74031edc1c0aa925d1a95a2df7f1abc5c6d9ba6ca7abdc3173`. Status/classification are
+`passed / frozen_rank16_float32_runtime_performance_characterized`; audit `26/26`.
+
+The frozen formula remained `centered=z-mu_fit; h=centered@T16; prediction=c_mean+h@V16.T`.
+The deterministic dense CPU fixture was `float32[32,256]`, seed `20260902`, SHA256
+`45ca137458856a7305ecf9500220c120aa5b4947e6f58d476b791e49b6337ab6`; direct-formula and repeated-call
+replay residuals were zero for B=`1/8/32`. Fresh-process initialization manifest/payload/consumer/total
+timings were `0.2792/9.1288/20.8566/30.286 ms`, with fresh-process wall `3657.2196 ms`; this was not
+a true cold-disk claim. Fixed steady-state measurement used 50 warmups, 200 repetitions, CPU eager
+synchronous `time.perf_counter_ns`, and linear `(n-1)*q` quantiles. Batch mean latency for B=`1/8/32`
+was `0.5601775/0.8914525/3.277882 ms`; per-sample mean was
+`0.5601775/0.1114315625/0.1024338125 ms`; mean throughput was
+`1836.8588342/9338.7841702/9874.3015643 samples/s`. Full median/p95/p99/min/max telemetry remains in
+the compact evidence.
+
+Storage was manifest=`3219`, serialized=`2739448`, raw/runtime tensors=`2737408` bytes; process memory
+delta/peak/RSS was `not_recorded`. Analytical operation counts were factorized/full-W=`644096/10240000`
+MAC/sample with ratio `15.89825119236884`; `measured_speedup_claim=false`. GPU, full-W runtime and
+end-to-end pipeline were `not_evaluated`. The actual observed Windows version was `10.0.26100` versus
+the task's expected `10.0.26200.0`; the mismatch was recorded, while the registered Python/Torch/
+Windows CPU execution stack passed. Physical cores and RAM were `not_recorded`.
+
+S10 targeted/layout/related regression was `30 passed`; final full Windows-native pytest was
+`1357 passed, 12 deselected, 25 subtests passed`, with one existing pytest-cache ACL warning.
+Compileall, Ruff and `git diff --check` passed. Governance remains reconstruction/generative false,
+`generation_readiness=not_ready`, `training_authorized=false`, and `formal_promotion=false`; Bridge
+remains `invalid / cloud_sources_sync_blocked`. The only next action is
+`manual_review_MPCDAR_R16_RUNTIME_PQ_result`.

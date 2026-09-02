@@ -1,6 +1,6 @@
 # codex-original 项目记忆
 
-更新时间：2026-09-02
+更新时间：2026-09-03
 
 ## 目的与事实优先级
 
@@ -45,16 +45,13 @@ ChatGPT Sources 包中的文件是由维护工具生成的受控副本。副本�
 - prior-native、direct-generator、quadrature、fiber、FMF 长训练和 formal promotion
   等已关闭或未授权路线不能因为 ChatGPT 的讨论而重新打开。
 - 所有科研执行仍需遵守 `AGENTS.md` 的 long-training gate；记忆文件本身不提供训练授权。
-- 当前最新已核验科研 checkpoint 是 H-LOMA-CBOGT-S9V-FULL-PATH-VIS 的 `completed` /
-  `descriptive_visualization_completed`；其 S9 F32 frozen readout parent 仍为
-  `passed / frozen_mean_preserving_data_aware_rank16_float32_numerically_qualified`，正式
-  S9 replay 绑定 implementation/fix commits `4b75e4d67efc1dc90a01d1d33a6aa3c1c243c652` /
-  `ebbd0d232c56ee45a69dea830911eff4f697ad47`。S9V 只完成冻结 RMAL readout 的完整 optical
-  path descriptive visualization 与人工审查 checkpoint，不建立性能、reconstruction/
-  generative manifold、training、decoder、generation 或 formal-promotion 权限；S8/S7/
-  更早身份保持不变。唯一允许的下一动作是
-  `manual_review_MPCDAR_R16_RUNTIME_PQ_implementation_contract`；在 S10 完成及人工审查前，
-  不得进入 rank search、继续训练、exposure retuning、生成或 promotion。relay family
+- 当前最新已核验科研 checkpoint 是 H-LOMA-CBOGT-S10-MPCDAR-R16-RUNTIME-PQ 的 `passed` /
+  `frozen_rank16_float32_runtime_performance_characterized`；它只完成冻结 S9 rank-16
+  float32 readout 的 CPU-only runtime/performance characterization，不建立 measured speedup、
+  GPU/硬件/production readiness、reconstruction/generative manifold、training、decoder、
+  generation 或 formal-promotion 权限。S9V、S9、S8、S7、MCFA、DMSA、DSFA 与更早身份保持
+  不变。唯一允许的下一动作是 `manual_review_MPCDAR_R16_RUNTIME_PQ_result`；在人工审查前，
+  不得继续训练、rank search、exposure retuning、生成或 promotion。relay family
   `scaled_chen_v1_local_backend_relay_attribution_family=closed_metric_confound_reinterpreted`
   保持。
   若交接文档更新，以最新的 `CURRENT_STATUS.md`、`status/current_handoff.md` 和 hypothesis
@@ -806,7 +803,7 @@ classification=`descriptive_visualization_completed`，固定 panel 为 10 sampl
 26 files、`16184241` bytes；forward consistency max residual=`0`，model/OLS state unchanged。
 父级只读绑定为 S7/S8/S9，S9 F32 artifact manifest/payload SHA-256 仍为
 `1ad6d9edfb1037564c3aec533904ed8d48bc4614a7bbcb221a56c9a244d802c7` /
-`480c57bff42e28cdfdfba260978234ee98f3d1169407c2523beeba76d39e834`。
+`480c57bff42e28cdfdf5ba260978234ee98f3d1169407c2523beeba76d39e834`。
 
 S9V closeout commit=`013b53a3b5f46cf37b955a224b2701e7f9bcac7f`。修改范围仅为 registered visualization config/review、renderer 与 visualization tests；输出
 不加入 Git。定向测试、父级回归、默认 pytest、compileall、Ruff 与 diff-check 均已通过。
@@ -815,3 +812,49 @@ S9V closeout commit=`013b53a3b5f46cf37b955a224b2701e7f9bcac7f`。修改范围仅
 `closed_task_relevant_bottleneck_not_supported`；Bridge 仍为 `invalid / cloud_sources_sync_blocked`。
 S9V closeout 后唯一允许的下一动作是
 `manual_review_MPCDAR_R16_RUNTIME_PQ_implementation_contract`。
+
+## H-LOMA-CBOGT-S10-MPCDAR-R16-RUNTIME-PQ：Frozen MPCDAR Rank-16 Float32 Runtime / Performance Characterization（2026-09-03）
+
+S10 是冻结 S9 MPCDAR rank-16 float32 artifact 的 CPU-only、readout-only runtime/performance
+characterization。消费者是项目负责人审查 fresh-process initialization、确定性 correctness、
+latency、throughput 与 storage telemetry；拒绝决定是不把它解释为 measured speedup、GPU/硬件/
+production readiness、reconstruction sufficiency 或 decoder/training/generation/promotion authorization。
+S10 starting HEAD=`8680c12be955df72906b955433e6daeabfdfec4a`；implementation/fix commits 为
+`dd1c38fa965e32deedd655f00f3cd974e1534cd8`、`488f12fbcf19e3663c7aa685bc4d4ad717db2a30`、
+`d0655652cd86bdc9f3852a9bbf4faa45f59f069b`。S9/S9V parent、frozen runtime、model、OLS、probe、
+detector 与既有 evidence 未修改。
+
+权威 write-once attempt-02 为
+`outputs/20260902_v2/runs/lightgen_scaled_chen_mpcdar_rank16_runtime_performance_qualification_v1_attempt_02/`；
+validation/audit/compact SHA256=`8293e549b1ae48447e28be924406525aa03fa8843c0f1a71fa1ec21e3f5894c5` /
+`7b519b3a75cdf59ecfe2678d46a8f74ae3084cb7b9de90c95763efecc0f2f4ee` /
+`ded0959097c88a74031edc1c0aa925d1a95a2df7f1abc5c6d9ba6ca7abdc3173`。attempt-01 在 namespace-
+isolation 修复前完成，按 write-once 保留但不消费。父级 S9 manifest/payload SHA256 为
+`1ad6d9edfb1037564c3aec533904ed8d48bc4614a7bbcb221a56c9a244d802c7` /
+`480c57bff42e28cdfdf5ba260978234ee98f3d1169407c2523beeba76d39e834`；S9V manifest SHA256 为
+`ce6eee49822ddee7c3c28c13a6e0e108d499478984c498f2f51b909bebead749`。
+
+运行公式保持 `centered=z-mu_fit; h=centered@T16; prediction=c_mean+h@V16.T`，fixture 为
+CPU dense finite `float32[32,256]`，seed=`20260902`，SHA256=`45ca137458856a7305ecf9500220c120aa5b4947e6f58d476b791e49b6337ab6`。
+B=`1/8/32` 的独立 direct-formula replay 与 repeated-call determinism 均通过，最大 absolute/
+normalized-L2 residual 均为 `0`。fresh-process initialization 的 manifest/payload/consumer/total
+timings=`0.2792/9.1288/20.8566/30.286 ms`，fresh-process wall=`3657.2196 ms`；这是 fresh-process
+telemetry，不是 true cold-disk claim。
+
+稳态计时固定 warmup=`50`、repetitions=`200`、`time.perf_counter_ns`、CPU eager synchronous，
+quantile method=`linear: index=(n-1)*q`。B=1/8/32 batch mean latency=`0.5601775/0.8914525/3.277882 ms`，
+per-sample mean=`0.5601775/0.1114315625/0.1024338125 ms`，throughput mean=
+`1836.8588342/9338.7841702/9874.3015643 samples/s`；其余 median/p95/p99/min/max 保存在 compact
+evidence 中。storage 为 manifest=`3219`、serialized=`2739448`、raw/runtime tensor=`2737408` bytes；
+process memory/RSS=`not_recorded`。分析 operation count 为 factorized/full-W=`644096/10240000`
+MAC/sample，ratio=`15.89825119236884`，不代表 measured speedup；GPU、full-W runtime、end-to-end
+pipeline=`not_evaluated`。
+
+结果为 `passed / frozen_rank16_float32_runtime_performance_characterized`，audit=`26/26`，
+diagnostic-only。环境为 Python `3.11.16`、PyTorch `2.5.1`、torch threads `8/8`、logical cores=`16`；
+observed Windows=`10.0.26100`，task expected=`10.0.26200.0`，差异已原样记录；physical cores/RAM=
+`not_recorded`。定向/布局/相关回归=`30 passed`，全套 pytest=`1357 passed, 12 deselected, 25 subtests
+passed`，compileall/Ruff/diff-check 通过；唯一 warning 为既有 pytest cache ACL。治理 flags 继续为
+`reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、
+`generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false`；Bridge 仍为
+`invalid / cloud_sources_sync_blocked`。唯一下一动作是 `manual_review_MPCDAR_R16_RUNTIME_PQ_result`。

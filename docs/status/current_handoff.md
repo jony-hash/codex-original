@@ -1,4 +1,4 @@
-# 当前主线交接（2026-09-02）
+# 当前主线交接（2026-09-03）
 
 本文件是当前执行状态的稳定入口。架构合同见
 [v2 runtime](../architecture/v2_runtime.md)，研究假设与唯一下一动作见
@@ -2101,3 +2101,52 @@ optimizer/backward/evaluator/prior sampling，治理 flags 继续为
 `closed_task_relevant_bottleneck_not_supported`。Bridge 仍为
 `invalid / cloud_sources_sync_blocked`，未修复、未上传。唯一下一动作：
 `manual_review_MPCDAR_R16_RUNTIME_PQ_implementation_contract`。
+
+## H-LOMA-CBOGT-S10-MPCDAR-R16-RUNTIME-PQ：Frozen MPCDAR Rank-16 Float32 Runtime / Performance Characterization（2026-09-03）
+
+S10 是冻结 S9 MPCDAR rank-16 float32 artifact 的 CPU-only、readout-only runtime/performance
+characterization。消费者是项目负责人审查 fresh-process initialization、确定性 correctness、
+latency、throughput 与 storage telemetry；拒绝决定是不把结果升级为 measured speedup、GPU/硬件/
+production readiness、reconstruction sufficiency、decoder、training、generation 或 promotion。
+S9V closeout commit=`013b53a3b5f46cf37b955a224b2701e7f9bcac7f`，S10 starting HEAD=
+`8680c12be955df72906b955433e6daeabfdfec4a`；S10 implementation/fix commits 为
+`dd1c38fa965e32deedd655f00f3cd974e1534cd8`、`488f12fbcf19e3663c7aa685bc4d4ad717db2a30`、
+`d0655652cd86bdc9f3852a9bbf4faa45f59f069b`。S9/S9V parent、frozen runtime、model、OLS、probe、
+detector 与既有 evidence 未修改。
+
+当前权威 write-once attempt-02 为
+`outputs/20260902_v2/runs/lightgen_scaled_chen_mpcdar_rank16_runtime_performance_qualification_v1_attempt_02/`；
+validation/audit/compact SHA256=`8293e549b1ae48447e28be924406525aa03fa8843c0f1a71fa1ec21e3f5894c5` /
+`7b519b3a75cdf59ecfe2678d46a8f74ae3084cb7b9de90c95763efecc0f2f4ee` /
+`ded0959097c88a74031edc1c0aa925d1a95a2df7f1abc5c6d9ba6ca7abdc3173`。attempt-01 在 namespace-
+isolation 修复前完成，按 write-once 保留但不消费。父级 S9 manifest/payload SHA256 为
+`1ad6d9edfb1037564c3aec533904ed8d48bc4614a7bbcb221a56c9a244d802c7` /
+`480c57bff42e28cdfdf5ba260978234ee98f3d1169407c2523beeba76d39e834`；S9V manifest SHA256 为
+`ce6eee49822ddee7c3c28c13a6e0e108d499478984c498f2f51b909bebead749`。
+
+冻结公式为 `centered=z-mu_fit; h=centered@T16; prediction=c_mean+h@V16.T`。固定 CPU dense finite
+fixture 为 `float32[32,256]`、seed=`20260902`、SHA256=`45ca137458856a7305ecf9500220c120aa5b4947e6f58d476b791e49b6337ab6`；
+B=`1/8/32` direct-formula replay 与 repeated-call determinism 全部通过，max absolute 与
+normalized-L2 residual 均为 `0`。fresh-process initialization 的 manifest/payload/consumer/total
+timings=`0.2792/9.1288/20.8566/30.286 ms`，fresh-process wall=`3657.2196 ms`；filesystem cache flush
+为 `false`，不声称 true cold-disk latency。
+
+稳态计时为 warmup=`50`、repetitions=`200`、`time.perf_counter_ns`、CPU eager synchronous，quantile
+method=`linear: index=(n-1)*q`。B=1/8/32 batch mean latency=`0.5601775/0.8914525/3.277882 ms`，
+per-sample mean=`0.5601775/0.1114315625/0.1024338125 ms`，throughput mean=
+`1836.8588342/9338.7841702/9874.3015643 samples/s`；compact evidence 保存其余 median/p95/p99/min/max。
+storage telemetry 为 manifest=`3219`、serialized=`2739448`、raw/runtime tensors=`2737408` bytes；
+process memory delta/peak/RSS=`not_recorded`。分析 operation count 为 factorized/full-W=
+`644096/10240000 MAC/sample`、ratio=`15.89825119236884`，不是 measured speedup；GPU、full-W runtime、
+end-to-end pipeline=`not_evaluated`。
+
+环境记录为 Python `3.11.16`、PyTorch `2.5.1`、torch threads `8/8`、logical cores=`16`、CPU model=
+`AMD64 Family 25 Model 68 Stepping 1, AuthenticAMD`；task expected Windows=`10.0.26200.0`，observed=
+`10.0.26100`，因此 version mismatch 已记录但 registered Python/Torch/Windows CPU execution stack 通过；
+physical cores/RAM=`not_recorded`。结果为 `passed / frozen_rank16_float32_runtime_performance_characterized`，
+audit=`26/26`，diagnostic-only。S10 定向/布局/相关回归=`30 passed`，全套 pytest=`1357 passed, 12 deselected,
+25 subtests passed`，compileall/Ruff/diff-check 通过；唯一 warning 为既有 pytest cache ACL。治理 flags
+继续为 `reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、
+`generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false`；Bridge 仍为
+`invalid / cloud_sources_sync_blocked`。当前 worktree 在状态提交后保持 clean；唯一下一动作是
+`manual_review_MPCDAR_R16_RUNTIME_PQ_result`，不得训练、decoder、generation 或 promotion。

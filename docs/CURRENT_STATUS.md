@@ -1,6 +1,6 @@
 # 当前项目状态
 
-更新时间：2026-09-02
+更新时间：2026-09-03
 
 ## 当前主工作区
 
@@ -10,13 +10,12 @@
   parent implementation commit 为 `c0140577fddb56af79d72a6d473cc49ef04f5ffc`；S9
   F32 qualification implementation/fix commits 为 `4b75e4d67efc1dc90a01d1d33a6aa3c1c243c652`
   与 `ebbd0d232c56ee45a69dea830911eff4f697ad47`，当前 clean HEAD 以 Git 核验为准。
-- 当前最新研究解释是 H-LOMA-CBOGT-S9-MPCDAR-R16-F32-NQ 对冻结 S8 rank-16
-  mean-preserving data-aware readout 的纯 float32 numerical qualification；它只报告
-  fresh-process artifact reload、CPU readout 与完整 RMAL selection/confirmation 的有界
-  数值一致性，不把 F32 一致性、rank 16、谱能量或 data-aware truncation 解释为
-  minimum/intrinsic rank、一般 reconstruction sufficiency、native optical reconstruction
-  或 downstream authorization。S8、S7、MCFA、DMSA、DSFA 与更早 evidence 保持
-  immutable，并继续作为父级事实。
+- 当前最新研究解释是 H-LOMA-CBOGT-S10-MPCDAR-R16-RUNTIME-PQ 对冻结 S9
+  rank-16 float32 readout 的 CPU-only runtime/performance characterization；它只报告
+  fresh-process initialization、readout-only latency/throughput、storage 与 deterministic
+  correctness，不把分析 MAC ratio 或 CPU telemetry 解释为 measured speedup、GPU/硬件/
+  production readiness、reconstruction sufficiency 或 downstream authorization。S9V、S9、
+  S8、S7、MCFA、DMSA、DSFA 与更早 evidence 保持 immutable，并继续作为父级事实。
 - 基线提交：`019b76ef911e0bd16b8d5d4169807323427684af`
 - 当前几何归因实现绑定提交：`6419cc523a8b5dd41cb3d3c2531193890fa1481a`
 - 注销前审计提交：`75d0584c379b145b0f0eb45ece14fda160741f23`（已按用户确认推送）
@@ -1033,3 +1032,62 @@ S9V 定向可视化测试为 `9 passed`，父级 artifact/回归定向测试为 
 `manual_review_MPCDAR_R16_RUNTIME_PQ_implementation_contract`，
 不得继续训练、decoder、candidate export、generation 或 promotion。Bridge 仍为 `invalid / cloud_sources_sync_blocked`，
 未在本轮修复或上传。
+
+## H-LOMA-CBOGT-S10-MPCDAR-R16-RUNTIME-PQ：Frozen MPCDAR Rank-16 Float32 Runtime / Performance Characterization（2026-09-03）
+
+S10 是冻结 S9 MPCDAR rank-16 float32 artifact 的 CPU-only、readout-only 工程 characterization。
+真实消费者是项目负责人审查固定运行环境中的 fresh-process initialization、确定性 correctness、
+latency、throughput 与 storage telemetry；拒绝决定是不把这些结果升级为 measured speedup、GPU/
+硬件/production readiness、reconstruction sufficiency、decoder、training、generation 或 promotion。
+S9V closeout commit=`013b53a3b5f46cf37b955a224b2701e7f9bcac7f`，S10 starting HEAD=`8680c12be955df72906b955433e6daeabfdfec4a`；S10 implementation/fix commits
+为 `dd1c38fa965e32deedd655f00f3cd974e1534cd8`、`488f12fbcf19e3663c7aa685bc4d4ad717db2a30`、
+`d0655652cd86bdc9f3852a9bbf4faa45f59f069b`；父级 S9/S9V、runtime、模型、OLS、probe 与 detector
+均未修改。
+
+write-once 权威目录为
+`outputs/20260902_v2/runs/lightgen_scaled_chen_mpcdar_rank16_runtime_performance_qualification_v1_attempt_02/`；
+validation/audit/compact SHA-256 分别为
+`8293e549b1ae48447e28be924406525aa03fa8843c0f1a71fa1ec21e3f5894c5`、
+`7b519b3a75cdf59ecfe2678d46a8f74ae3084cb7b9de90c95763efecc0f2f4ee`、
+`ded0959097c88a74031edc1c0aa925d1a95a2df7f1abc5c6d9ba6ca7abdc3173`。早先 attempt-01 在
+namespace-isolation 修复前完成，按 write-once 保留但不作为当前权威；attempt-02 绑定修复后的
+clean commit `d0655652cd86bdc9f3852a9bbf4faa45f59f069b`。父级 S9 manifest/payload SHA-256 为
+`1ad6d9edfb1037564c3aec533904ed8d48bc4614a7bbcb221a56c9a244d802c7` /
+`480c57bff42e28cdfdf5ba260978234ee98f3d1169407c2523beeba76d39e834`；S9V manifest SHA-256 为
+`ce6eee49822ddee7c3c28c13a6e0e108d499478984c498f2f51b909bebead749`。
+
+父级 artifact contract 保持 rank=`16`、dtype=`torch.float32`、tensor shapes
+`mu_fit[256]`、`c_mean[40000]`、`T16[256,16]`、`V16[40000,16]`，公式为
+`centered=z-mu_fit; h=centered@T16; prediction=c_mean+h@V16.T`。固定 fixture 为 CPU dense finite
+`float32[32,256]`，seed=`20260902`，SHA-256=`45ca137458856a7305ecf9500220c120aa5b4947e6f58d476b791e49b6337ab6`。
+独立 direct-formula replay 与 repeated-call determinism 在 B=`1/8/32` 均通过，max absolute 与
+normalized-L2 residual 均为 `0`。
+
+正式环境记录为 Python `3.11.16`（`D:\ANACONDA\envs\optical-generative-models-win\python.exe`）、
+PyTorch `2.5.1`、torch threads `8/8`、logical cores=`16`、CPU model=`AMD64 Family 25 Model 68
+Stepping 1, AuthenticAMD`。任务预期 Windows=`10.0.26200.0`，实测=`10.0.26100`，因此
+`windows_version_match=false`、`registered_match=false`，但 registered Python/Torch/Windows CPU
+execution stack=`true`；physical cores/RAM=`not_recorded`。这是事实记录差异，不是 benchmark failure。
+
+fresh-process initialization（非 true cold-disk claim）为 manifest parse/load=`0.2792 ms`、payload
+load=`9.1288 ms`、consumer initialization=`20.8566 ms`、total artifact initialization=`30.286 ms`、
+fresh-process wall=`3657.2196 ms`；filesystem cache flush=`false`，stage timers may overlap。
+稳态计时固定 warmup=`50`、measured repetitions=`200`、`time.perf_counter_ns`、CPU eager synchronous，
+quantile method=`linear: index=(n-1)*q`：B=1/8/32 batch mean latency=`0.5601775/0.8914525/3.277882 ms`，
+per-sample mean=`0.5601775/0.1114315625/0.1024338125 ms`，throughput mean=
+`1836.8588342/9338.7841702/9874.3015643 samples/s`。compact evidence 保存每批的 median/p95/p99/min/max
+完整统计；未保存 raw latency samples 或 prediction bank。
+
+storage telemetry 为 manifest=`3219` bytes、serialized artifact=`2739448` bytes、raw/runtime tensors
+均为 `2737408` bytes；process-memory delta/peak/RSS=`not_recorded`。保留的只是 analytical operation
+count：factorized=`644096 MAC/sample`、full-W=`10240000 MAC/sample`、ratio=`15.89825119236884`；
+`measured_speedup_claim=false`。GPU、full-W runtime 与 end-to-end software pipeline 均为
+`not_evaluated`。
+
+结果为 `status=passed / frozen_rank16_float32_runtime_performance_characterized`，audit=`26/26`，
+diagnostic-only；`reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、
+`generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false` 保持不变。
+S10 定向/布局/相关回归=`30 passed`，Windows-native 全套 pytest=`1357 passed, 12 deselected,
+25 subtests passed`，compileall、Ruff、git diff-check 通过；唯一 warning 为既有 pytest cache ACL。
+Bridge 仍为 `invalid / cloud_sources_sync_blocked`，未修复、未上传。唯一下一动作是
+`manual_review_MPCDAR_R16_RUNTIME_PQ_result`；不得训练、decoder、generation 或 promotion。
