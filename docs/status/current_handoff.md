@@ -2075,7 +2075,8 @@ decoder、generation、promotion 或自动切换 default。
 confirmation panel 完整光学路径、重建方法族、detail/error subset 与 MPCDAR R16 F64/F32 显示进行人工审查。
 不得把图像显示升级为 reconstruction/generative manifold、性能、bottleneck、training、decoder、generation
 或 formal-promotion 证据。执行时 HEAD=`7da2d066d8a8f1b3dbcff7c94393c51d11d7bcb7`、branch=
-`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`，起始 worktree clean；实现后保留未提交变更。
+`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`，S9V closeout commit=
+`013b53a3b5f46cf37b955a224b2701e7f9bcac7f`，当前 worktree clean。
 
 父级只读身份锁定 S7 `H-LOMA-CBOGT-S7-MPCDAR_attempt-03`、S8
 `H-LOMA-CBOGT-S8-MPCDAR-R16-IQ`、S9 `H-LOMA-CBOGT-S9-MPCDAR-R16-F32-NQ`，并核验各自
@@ -2099,4 +2100,4 @@ optimizer/backward/evaluator/prior sampling，治理 flags 继续为
 `generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false` 与
 `closed_task_relevant_bottleneck_not_supported`。Bridge 仍为
 `invalid / cloud_sources_sync_blocked`，未修复、未上传。唯一下一动作：
-`manual_review_FULL_PATH_VIS_result`。
+`manual_review_MPCDAR_R16_RUNTIME_PQ_implementation_contract`。

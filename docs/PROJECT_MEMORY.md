@@ -808,7 +808,7 @@ classification=`descriptive_visualization_completed`，固定 panel 为 10 sampl
 `1ad6d9edfb1037564c3aec533904ed8d48bc4614a7bbcb221a56c9a244d802c7` /
 `480c57bff42e28cdfdfba260978234ee98f3d1169407c2523beeba76d39e834`。
 
-S9V 修改范围仅为 registered visualization config/review、renderer 与 visualization tests；输出
+S9V closeout commit=`013b53a3b5f46cf37b955a224b2701e7f9bcac7f`。修改范围仅为 registered visualization config/review、renderer 与 visualization tests；输出
 不加入 Git。定向测试、父级回归、默认 pytest、compileall、Ruff 与 diff-check 均已通过。
 治理 flags 保持 `reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、
 `generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false` 与

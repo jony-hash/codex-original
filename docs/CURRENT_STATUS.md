@@ -997,7 +997,8 @@ S9V 是基于冻结 RMAL detector readout 的 descriptive-only 可视化 consume
 confirmation 10-sample panel 的完整 optical path、重建方法族、fixed-class error detail 与 MPCDAR R16
 F64/F32 数值显示进行人工审查；拒绝决定是不把图像显示解释为 reconstruction/generative manifold、性能、
 bottleneck、training、decoder、generation 或 formal-promotion Gate。实现从预期 HEAD
-`7da2d066d8a8f1b3dbcff7c94393c51d11d7bcb7` 执行，当前 worktree 保留本轮未提交实现变更。
+`7da2d066d8a8f1b3dbcff7c94393c51d11d7bcb7` 执行，S9V closeout 已提交为
+`013b53a3b5f46cf37b955a224b2701e7f9bcac7f`，当前 worktree clean。
 
 本轮新增/修改文件为：
 `configs/research/lightgen_optical_manifold_smf_bogt_full_path_visualization_v1.yaml`、
@@ -1028,6 +1029,7 @@ S9V 定向可视化测试为 `9 passed`，父级 artifact/回归定向测试为 
 为 `1347 passed, 12 deselected, 25 subtests passed`，compileall、Ruff、git diff-check 均通过。代表性 PNG 已完成人工
 视觉核验。治理 flags 保持 `reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、
 `generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false` 与
-`closed_task_relevant_bottleneck_not_supported`；唯一下一动作是 `manual_review_FULL_PATH_VIS_result`，
+`closed_task_relevant_bottleneck_not_supported`；唯一下一动作是
+`manual_review_MPCDAR_R16_RUNTIME_PQ_implementation_contract`，
 不得继续训练、decoder、candidate export、generation 或 promotion。Bridge 仍为 `invalid / cloud_sources_sync_blocked`，
 未在本轮修复或上传。
