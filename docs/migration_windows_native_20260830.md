@@ -328,3 +328,35 @@ resource gates 全部通过；peak CUDA=`2274099712` bytes、wall=`183.266 s`。
 `generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false` 与
 `closed_task_relevant_bottleneck_not_supported`；唯一下一动作是 `manual_review_MCFA_result`，
 不授权训练、decoder、candidate export、generation 或 promotion。
+
+## H-LOMA-CBOGT-S8-MPCDAR-R16-IQ（2026-09-02）
+
+Windows-native 环境完成 S7 MPCDAR rank-16 frozen artifact/runtime integration qualification。
+实现 clean commit=`c0140577fddb56af79d72a6d473cc49ef04f5ffc`；权威 attempt-03 为
+`outputs/20260902_v2/runs/lightgen_scaled_chen_mpcdar_rank16_integration_qualification_v1_attempt_03/`。
+validation/audit/compact SHA256=`844a9dc4187623c380655db63530e13e6ba1a9d4e62d6ef44dd95b29119457cb` /
+`3b98c0faa6816b11d2f6da8cc832e89d221344f4b01bd41eadb356968f1b39a4` /
+`12e342d75119ee143186046490bb14c064f449dc27520168a17e84ae758b8271`；artifact manifest/payload
+SHA256=`e580dd59f3e277055a9c0cff6d9f076e06346b5761a8b9f228608e88b3a23c45` /
+`e839daaff8d718347d1cd4194651ac0773f842ffa39fe4efaa3e0218ea2e1d4e`。旧 attempts 按
+write-once 保留且不消费。
+
+Process A build 后退出，Process B fresh reload 完成；四个 CPU float64 tensor 的 shapes 为
+`[256]`, `[40000]`, `[256,16]`, `[40000,16]`，scalar count=`684352`，raw/serialized payload
+bytes=`5474816/5476856`。mu/C fit replay hash 匹配，moment identity relative residual=
+`2.98546e-16`；rank-256 positive replay max abs/relative-Frobenius residual=
+`5.68008e-11/1.17382e-13`。selection/confirmation loaded/reference residuals 均为零；
+probe MSE=`0.02107268348957069/0.02128368811373826`，relative improvement=
+`0.6603834534521028/0.6317033169406975`，confirmation bootstrap 95% CI=
+`[0.03618517890572548,0.036830976605415344]`；RMAL Gate vectors 与 S7 parent 相同且通过，
+audit=`16/16`，classification=`frozen_mean_preserving_data_aware_rank16_integration_qualified`。
+
+factorized/full-W deterministic operation-count telemetry=`644096/10240000` MAC/sample，ratio=
+`15.9`，不是 latency/throughput/energy-efficiency 测量。runtime independence、default-disabled、
+explicit-artifact、CMOS-only streaming/no-bank、state/no-update、finite/resource gates 通过；
+peak CUDA=`2274099712` bytes，wall=`133 s`。状态保持 reconstruction/generative false、
+generation_readiness=`not_ready`、training/promotion=false 与
+`closed_task_relevant_bottleneck_not_supported`；唯一下一动作是
+`manual_review_MPCDAR_R16_IQ_result`，不自动 make rank16 default、训练、decoder、generation
+或 promotion。Bridge 仍需在 worktree clean 后按合同独立执行 refresh/status；不自动上传或修改
+S8 evidence。

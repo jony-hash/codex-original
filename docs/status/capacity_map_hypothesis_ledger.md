@@ -86,6 +86,7 @@ be registered next.
 | H-LOMA-CBOGT-S6-DMSA | Frozen RMAL detector readout `W,b` with detector data-metric second-moment and centered-variance spectral decomposition | Detector data moments distinguish raw operator, second-moment and centered-variance spectral telemetry while preserving LSDA/DSFA/LRRC identities | Fixed RMAL/ZCSA/RWSA-ACTIVE/LSDA/LRRC/DSFA identities; separate fit/selection/confirmation streaming panels; population-moment, PSD, additive-energy, cross-identity, no-update/state/resource gates; descriptive only and no mechanism, sufficiency, training, generation, or promotion authorization | passed: `detector_data_metric_spectral_attribution_completed`; selection/confirmation mean/variance energy fractions `0.4019555898/0.5980444102` and `0.3704005497/0.6295994503`; next action `manual_review_DMSA_result`, no training/generation/promotion |
 | H-LOMA-CBOGT-S6-MCFA | Frozen RMAL detector readout `W,b` with panel-mean versus centered-response functional attribution | Separate `mu W` from `(z-mu)W` in the detector readout's reconstruction functional MSE gain without changing deployment semantics | Fixed RMAL/LSDA/LRRC/DSFA/DMSA/ZCSA/RWSA-ACTIVE identities; independent fit/selection/confirmation panels; two-pass float64 CMOS-only replay, additive energy/MSE/gain identities, state/no-update/no-bank/finite/resource gates; descriptive only and no dominance, sufficiency, training, generation, or promotion authorization | passed: `detector_mean_centered_functional_attribution_completed`; fit/selection/confirmation mean/centered energy fractions `0.3829179441/0.6170820559`, `0.4019555898/0.5980444102`, `0.3704005497/0.6295994503`; next action `manual_review_MCFA_result`, no training/generation/promotion |
 | H-LOMA-CBOGT-S7-MPCDAR | Frozen RMAL detector readout with fit-derived mean-preserving centered data-aware output-subspace truncation | The earliest preregistered powers-of-two data-aware rank that preserves complete RMAL bounded selection and confirmation is a functional recovery result within that family | Fixed RMAL/MCFA fit moments and LSDA/LRRC/DSFA/DMSA/ZCSA/RWSA-ACTIVE identities; rank-256 positive anchor first; sequential `[1,2,4,8,16,32,64,128]` primary search; matched mean-preserving raw-SVD is descriptive only; no refit/training/new rank family | passed: `mean_preserving_centered_data_aware_readout_recovery_completed`; `first_confirmed_data_aware_candidate_rank=16`, previous registered candidate `8`; rank 8 confirmation failed strict-template crossing, rank 16 selection/confirmation passed; not a minimum/intrinsic rank or general sufficiency claim; next action `manual_review_MPCDAR_result`, no decoder/training/generation/promotion |
+| H-LOMA-CBOGT-S8-MPCDAR-R16-IQ | Frozen S7 MPCDAR rank-16 artifact/runtime integration | The write-once rank-16 post-detector artifact reload reproduces the exact RMAL selection and confirmation result in a fresh process | S7 parent lineage, four CPU float64 tensors, Process A→B separation, artifact/payload/manifest hashes, rank-256 positive replay, selection/confirmation reference equivalence, parent Gate-vector identity, runtime independence, default-disabled and no-update/resource controls; no rank search, refit, training or physical-forward modification | passed: `frozen_mean_preserving_data_aware_rank16_integration_qualified`, `integration_only=true`, selection/confirmation Gate vectors pass; MAC telemetry is deterministic operation count only; next action `manual_review_MPCDAR_R16_IQ_result`, no decoder/training/generation/promotion |
 
 ## H-JQOC closeout (2026-08-26)
 
@@ -1460,3 +1461,36 @@ spectrum、moment、DSFA cross identity、state/no-update、no-bank、finite 与
 `generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false` 与
 `closed_task_relevant_bottleneck_not_supported`。唯一下一动作是 `manual_review_DMSA_result`；
 不得训练、decoder、candidate export、generation 或 promotion。
+
+## H-LOMA-CBOGT-S8-MPCDAR-R16-IQ closeout（2026-09-02）
+
+S8 是 S7 MPCDAR rank-16 的 post-detector frozen artifact/runtime integration qualification，
+不重新搜索 rank、不训练、不 refit、不修改 physical forward。实现 clean commit 为
+`c0140577fddb56af79d72a6d473cc49ef04f5ffc`；权威 attempt-03 为
+`outputs/20260902_v2/runs/lightgen_scaled_chen_mpcdar_rank16_integration_qualification_v1_attempt_03/`。
+validation/audit/compact SHA256=`844a9dc4187623c380655db63530e13e6ba1a9d4e62d6ef44dd95b29119457cb` /
+`3b98c0faa6816b11d2f6da8cc832e89d221344f4b01bd41eadb356968f1b39a4` /
+`12e342d75119ee143186046490bb14c064f449dc27520168a17e84ae758b8271`；manifest/payload SHA256=
+`e580dd59f3e277055a9c0cff6d9f076e06346b5761a8b9f228608e88b3a23c45` /
+`e839daaff8d718347d1cd4194651ac0773f842ffa39fe4efaa3e0218ea2e1d4e`。
+
+四个 CPU float64 tensors 为 `mu_fit[256]`、`c_mean[40000]`、`T16[256,16]`、`V16[40000,16]`；
+scalar count=`684352`，raw tensor bytes=`5474816`，serialized payload bytes=`5476856`。fit
+replay `N=1000` 的 mu/C hash 与 parent 匹配，moment identity relative residual=`2.98546e-16`；
+rank-256 positive replay max abs/relative-Frobenius residual=`5.68008e-11/1.17382e-13`。
+
+Process A build→exit→Process B fresh reload 后，selection/confirmation loaded/reference
+prediction residuals 均为零；rank-16 probe MSE=`0.02107268348957069/0.02128368811373826`，
+relative improvement=`0.6603834534521028/0.6317033169406975`，confirmation bootstrap 95% CI=
+`[0.03618517890572548,0.036830976605415344]`，两 panel Gate vectors 与 S7 parent 相同且
+通过。结果为 `passed / frozen_mean_preserving_data_aware_rank16_integration_qualified`，
+audit `16/16`，`integration_only=true`。
+
+factorized/full-W deterministic MAC telemetry=`644096/10240000` per sample，ratio=`15.9`，不
+代表 latency、throughput 或 energy efficiency。runtime independence、default-disabled、
+explicit-artifact、CMOS-only streaming/no-bank、state/no-update、finite/resource gates 均通过；
+peak CUDA=`2274099712` bytes，wall=`133 s`。治理 flags 继续为 reconstruction/generative false、
+generation_readiness=`not_ready`、training/promotion=false 与
+`closed_task_relevant_bottleneck_not_supported`；唯一下一动作是
+`manual_review_MPCDAR_R16_IQ_result`，不得自动 make rank16 default、训练、decoder、generation
+或 promotion。

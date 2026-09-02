@@ -6,13 +6,16 @@
 
 - 主项目：`D:\codex-original`
 - 基线分支：`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`
-- MPCDAR 正式 validation/audit 绑定 clean implementation/result commit
-  `b59172750d0c88bbc9f7426ab7a21a1d63639f57`；当前 clean HEAD 以 Git 核验为准。
-- 当前最新研究解释是 H-LOMA-CBOGT-S7-MPCDAR 对冻结 RMAL detector readout 的
-  mean-preserving centered data-aware truncation recovery；它只报告预注册 rank family
-  内的 bounded selection/confirmation 结果，不把 rank 16、谱能量或 data-aware truncation
-  解释为 minimum/intrinsic rank 或一般 reconstruction sufficiency。MCFA、DMSA、DSFA 与
-  更早 RMAL/ZCSA/RWSA-ACTIVE/LSDA/LRRC evidence 仍保持 immutable，并继续作为父级事实。
+- MPCDAR 的 S7 producer commit 为 `b59172750d0c88bbc9f7426ab7a21a1d63639f57`；S8
+  formal validation/audit 绑定 clean implementation commit
+  `c0140577fddb56af79d72a6d473cc49ef04f5ffc`，当前 clean HEAD 以 Git 核验为准。
+- 当前最新研究解释是 H-LOMA-CBOGT-S8-MPCDAR-R16-IQ 对冻结 RMAL detector readout
+  rank-16 mean-preserving data-aware artifact/runtime 的 integration qualification；它只
+  报告 post-detector bounded-reconstruction repair candidate 的 reload 与 RMAL
+  selection/confirmation 结果，不把 rank 16、谱能量或 data-aware truncation 解释为
+  minimum/intrinsic rank、一般 reconstruction sufficiency、native optical reconstruction
+  或 downstream authorization。S7 MPCDAR、MCFA、DMSA、DSFA 与更早 evidence 保持
+  immutable，并继续作为父级事实。
 - 基线提交：`019b76ef911e0bd16b8d5d4169807323427684af`
 - 当前几何归因实现绑定提交：`6419cc523a8b5dd41cb3d3c2531193890fa1481a`
 - 注销前审计提交：`75d0584c379b145b0f0eb45ece14fda160741f23`（已按用户确认推送）
@@ -800,7 +803,60 @@ DMSA 定向测试 `21 passed`，直接相关回归 `111 passed, 1 deselected`，
 git diff-check 与 CLI contract checks 通过。全套 pytest 为 `1285 passed, 12 deselected,
 25 subtests passed`，另有 4 个与 DMSA 无关的既有环境失败（3 个 NVRTC DLL/运行时失败、
 1 个 near-conjugate 临时路径失败）。唯一下一动作是 `manual_review_DMSA_result`；不得训练、
-decoder、candidate export、generation 或 promotion。
+ decoder、candidate export、generation 或 promotion。
+
+## H-LOMA-CBOGT-S8-MPCDAR-R16-IQ：Frozen MPCDAR Rank-16 Readout Integration Qualification（2026-09-02）
+
+S8 的真实消费者是项目负责人确认 S7 rank-16 mean-preserving data-aware readout 的
+frozen artifact、fresh-process reload 与完整 RMAL bounded selection/confirmation integration。
+拒绝决定是不得将该 post-detector repair candidate 解释为 minimum/intrinsic rank、native
+optical reconstruction、一般 reconstruction sufficiency，或 decoder/training/generation/
+promotion authorization。S7 producer、RMAL/ZCSA/RWSA-ACTIVE/LSDA/LRRC/DSFA/DMSA/MCFA、
+probe、renderer、checkpoint、OLS、detector 与正式 physical runtime 未修改。
+
+实现最终绑定 clean commit `c0140577fddb56af79d72a6d473cc49ef04f5ffc`；此前的
+`f48afb89286f2051732c8c64e6ee91aa593f7a52` 与
+`5b90b1097522e7b68ffdf80f7f6348307a2b7df8` 为同一实现的前置修复 commits。权威
+attempt-03 位于
+`outputs/20260902_v2/runs/lightgen_scaled_chen_mpcdar_rank16_integration_qualification_v1_attempt_03/`；
+validation/audit/compact SHA-256 分别为
+`844a9dc4187623c380655db63530e13e6ba1a9d4e62d6ef44dd95b29119457cb`、
+`3b98c0faa6816b11d2f6da8cc832e89d221344f4b01bd41eadb356968f1b39a4`、
+`12e342d75119ee143186046490bb14c064f449dc27520168a17e84ae758b8271`；manifest SHA-256 为
+`e580dd59f3e277055a9c0cff6d9f076e06346b5761a8b9f228608e88b3a23c45`，payload SHA-256 为
+`e839daaff8d718347d1cd4194651ac0773f842ffa39fe4efaa3e0218ea2e1d4e`，probe SHA-256 仍为
+`3551584a7983619356ea49babe7e5dedca559dfaa8ee5302fa44fd1a152a24ed`。attempt-01/02 按
+write-once 规则保留；attempt-03 是当前权威结果。
+
+Artifact 为四个 CPU float64 tensors：`mu_fit[256]`、`c_mean[40000]`、`T16[256,16]`、
+`V16[40000,16]`；scalar count=`684352`，raw float64 tensor bytes=`5474816`，serialized
+payload bytes=`5476856`。mu/C fit replay `N=1000`，hash 分别匹配
+`187bb9a64c2142dcb7eb79325f3720bc8d86a6c854c9ddcc4725add4c4069496` /
+`be2ac0c63a6bcf290ee04fde074508d823c462368c9360078f99b9556b2b4d52`；moment identity
+relative residual=`2.98546e-16`。rank-256 positive replay max absolute residual=`5.68008e-11`、
+relative Frobenius residual=`1.17382e-13`，construction identities 全部通过。
+
+Process A build 后退出，Process B 为 fresh process；selection/confirmation loaded-artifact
+与 reference prediction residuals 均为零。selection `N=1000` 的 loaded/reference probe MSE
+均为 `0.02107268348957069`，full RMAL reference=`0.009812927917651195`，relative
+improvement=`0.6603834534521028`，RMAL selection Gate vector 全部通过；confirmation
+`N=5000` loaded/reference probe MSE 均为 `0.02128368811373826`，full RMAL reference=
+`0.010185289342547572`，relative improvement=`0.6317033169406975`，bootstrap 95% CI=
+`[0.03618517890572548,0.036830976605415344]`，confirmation Gate vector 全部通过。audit
+为 `16/16` gates，classification=`frozen_mean_preserving_data_aware_rank16_integration_qualified`，
+`integration_only=true`。
+
+factorized matmul deterministic operation-count telemetry 为 `644096 MAC/sample`，full-W
+comparator 为 `10240000 MAC/sample`，operation-count ratio=`15.9`；这不是 latency、throughput
+或 energy-efficiency 测量。runtime independence 中 W/b/C_fit/dataset/probe/research imports
+均为 false，default-disabled 与 explicit-artifact contract 通过；peak CUDA=`2274099712`
+bytes，wall=`133 s`，CMOS-only streaming/no-bank、state/no-update、finite/resource gates
+通过。状态 flags 保持 `reconstruction_manifold_supported=false`、
+`generative_manifold_supported=false`、`generation_readiness=not_ready`、
+`training_authorized=false`、`formal_promotion=false` 与
+`closed_task_relevant_bottleneck_not_supported`；唯一下一动作是
+`manual_review_MPCDAR_R16_IQ_result`，不得自动 make rank16 default、训练、decoder、
+generation 或 promotion。
 
 ## H-LOMA-CBOGT-S7-MPCDAR：Mean-Preserving Centered Data-Aware Readout Recovery（2026-09-02）
 

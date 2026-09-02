@@ -2079,3 +2079,46 @@ no-target-fitting; model/OLS state, no-update, finite and resource controls pass
 `generation_readiness=not_ready`, `training_authorized=false`, `formal_promotion=false` and
 `closed_task_relevant_bottleneck_not_supported`. The only next action is
 `manual_review_MPCDAR_result`; no training, candidate export, generation or promotion is authorized.
+
+## 2026-09-02：H-LOMA-CBOGT-S8-MPCDAR-R16-IQ frozen rank-16 readout integration qualification
+
+The project owner authorized one post-detector, frozen integration consumer of the S7 MPCDAR
+rank-16 artifact. The question was limited to whether a write-once artifact can be reloaded in a
+fresh process and reproduce the exact RMAL selection and confirmation result; the rejection
+decision remains fail-closed against minimum/intrinsic-rank, native-optical-reconstruction,
+general sufficiency, decoder, training, generation, or promotion claims.
+
+The implementation is bound to clean commit
+`c0140577fddb56af79d72a6d473cc49ef04f5ffc`. The authoritative attempt-03 is
+`outputs/20260902_v2/runs/lightgen_scaled_chen_mpcdar_rank16_integration_qualification_v1_attempt_03/`.
+Validation, audit and compact SHA256 are
+`844a9dc4187623c380655db63530e13e6ba1a9d4e62d6ef44dd95b29119457cb`,
+`3b98c0faa6816b11d2f6da8cc832e89d221344f4b01bd41eadb356968f1b39a4`, and
+`12e342d75119ee143186046490bb14c064f449dc27520168a17e84ae758b8271`; artifact manifest and
+payload SHA256 are `e580dd59f3e277055a9c0cff6d9f076e06346b5761a8b9f228608e88b3a23c45` and
+`e839daaff8d718347d1cd4194651ac0773f842ffa39fe4efaa3e0218ea2e1d4e`. Earlier attempts remain
+immutable and are not consumed.
+
+The artifact contains four CPU float64 tensors: `mu_fit[256]`, `c_mean[40000]`, `T16[256,16]`,
+and `V16[40000,16]`; scalar count is `684352`, raw tensor bytes `5474816`, and serialized
+payload bytes `5476856`. Fit replay used `N=1000`; mu/C hashes matched the parent contract and
+the moment identity relative residual was `2.98546e-16`. Rank-256 positive replay had max
+absolute/relative-Frobenius residual `5.68008e-11/1.17382e-13`.
+
+Process A exited before Process B. Fresh-process loaded/reference residuals were zero for both
+panels. Selection and confirmation rank-16 probe MSE were
+`0.02107268348957069/0.02128368811373826`, relative improvement was
+`0.6603834534521028/0.6317033169406975`, and confirmation bootstrap 95% CI was
+`[0.03618517890572548,0.036830976605415344]`; both RMAL Gate vectors matched the S7 parent and
+passed. The result is `passed / frozen_mean_preserving_data_aware_rank16_integration_qualified`,
+audit `16/16`, with `integration_only=true`.
+
+Factorized/full-W deterministic operation-count telemetry was `644096/10240000` MAC/sample,
+ratio `15.9`; this is not a latency, throughput, or energy-efficiency measurement. Runtime
+independence, default-disabled, explicit-artifact, streaming/no-bank, state/no-update, finite,
+and resource controls passed; peak CUDA was `2274099712` bytes and wall time `133 s`. Governance
+flags remain reconstruction/generative false, `generation_readiness=not_ready`,
+`training_authorized=false`, `formal_promotion=false`, and
+`closed_task_relevant_bottleneck_not_supported`. The only next action is
+`manual_review_MPCDAR_R16_IQ_result`; no automatic default switch, training, decoder, generation,
+or promotion is authorized.

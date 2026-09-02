@@ -723,3 +723,42 @@ mean-preserving data-aware 三路 MSE；A/B/C 不参与 stop rule 或 confirmati
 `generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false` 与
 `closed_task_relevant_bottleneck_not_supported`；唯一下一动作是 `manual_review_MPCDAR_result`，
 不得训练、candidate export、generation 或 promotion。
+
+## H-LOMA-CBOGT-S8-MPCDAR-R16-IQ：Frozen MPCDAR Rank-16 Readout Integration Qualification（2026-09-02）
+
+S8 是 S7 rank-16 data-aware readout 的 post-detector、frozen artifact/runtime integration
+qualification。真实消费者是项目负责人审查四张 CPU float64 artifact tensor 在 fresh process
+reload 后是否复现同一 feature stream 上的 RMAL selection/confirmation；拒绝决定是不得将
+integration qualification 升级为 minimum/intrinsic rank、native optical reconstruction、
+一般 reconstruction sufficiency 或 decoder/training/generation/promotion authorization。
+
+实现 clean commit=`c0140577fddb56af79d72a6d473cc49ef04f5ffc`；权威 attempt-03 为
+`outputs/20260902_v2/runs/lightgen_scaled_chen_mpcdar_rank16_integration_qualification_v1_attempt_03/`，
+validation/audit/compact SHA256=`844a9dc4187623c380655db63530e13e6ba1a9d4e62d6ef44dd95b29119457cb` /
+`3b98c0faa6816b11d2f6da8cc832e89d221344f4b01bd41eadb356968f1b39a4` /
+`12e342d75119ee143186046490bb14c064f449dc27520168a17e84ae758b8271`；manifest/payload SHA256=
+`e580dd59f3e277055a9c0cff6d9f076e06346b5761a8b9f228608e88b3a23c45` /
+`e839daaff8d718347d1cd4194651ac0773f842ffa39fe4efaa3e0218ea2e1d4e`。attempt-01/02 按
+write-once 保留且不消费。
+
+Artifact keys/shapes/dtypes 为 `mu_fit[256]`、`c_mean[40000]`、`T16[256,16]`、
+`V16[40000,16]`，均 `torch.float64`；scalar count=`684352`，raw bytes=`5474816`，serialized
+bytes=`5476856`。fit replay `N=1000` 的 mu/C hash 与 parent/MCFA contract 匹配，moment
+identity relative residual=`2.98546e-16`；rank-256 positive replay max absolute/
+relative-Frobenius residual=`5.68008e-11/1.17382e-13`。
+
+Process A build→exit→Process B fresh reload 完成。selection/confirmation loaded-artifact 与
+reference prediction residuals 全部为零；rank-16 probe MSE=`0.02107268348957069` /
+`0.02128368811373826`，relative improvement=`0.6603834534521028`/`0.6317033169406975`，
+confirmation bootstrap 95% CI=`[0.03618517890572548,0.036830976605415344]`；两 panel 的
+RMAL Gate vectors 均与 S7 parent 相同且全部通过。audit=`16/16`，结果为
+`passed / frozen_mean_preserving_data_aware_rank16_integration_qualified`。
+
+factorized-vs-full-W deterministic MAC telemetry=`644096` vs `10240000` per sample，ratio
+约 `15.9`，不是 measured latency/throughput/energy efficiency。runtime independence、
+default-disabled、explicit-artifact、CMOS-only streaming/no-bank、state/no-update、finite 与
+resource gates 通过；peak CUDA=`2274099712` bytes，wall=`133 s`。治理 flags 保持
+`reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、
+`generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false` 与
+`closed_task_relevant_bottleneck_not_supported`；唯一下一动作是
+`manual_review_MPCDAR_R16_IQ_result`。
