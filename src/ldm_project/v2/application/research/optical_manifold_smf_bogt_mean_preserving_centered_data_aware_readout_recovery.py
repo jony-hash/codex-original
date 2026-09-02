@@ -39,6 +39,7 @@ from . import optical_manifold_smf_bogt_detector_mean_centered_functional_attrib
 from . import optical_manifold_smf_bogt_detector_readout_structure_attribution as rwsa
 from . import optical_manifold_smf_bogt_linear_readout_structure_decomposition_audit as lsda
 from . import optical_manifold_smf_bogt_low_rank_readout_recovery_confirmation as lrrc
+from . import optical_manifold_smf_bogt_reconstruction_mapping_alignment_localization as rmal
 from . import optical_manifold_smf_bogt_reconstruction_manifold_failure as rmfa
 from . import optical_manifold_smf_bogt_manifold_readiness as mra
 
