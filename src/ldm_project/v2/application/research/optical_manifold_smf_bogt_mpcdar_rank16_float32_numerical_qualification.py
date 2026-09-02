@@ -14,6 +14,7 @@ import json
 import os
 import shutil
 import time
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -1243,8 +1244,8 @@ def qualify(args: argparse.Namespace) -> int:
             "selection": _json_report(selection),
             "confirmation": _json_report(confirmation),
             "gate_vector": {"s8_float64": parent["gate_vector"], "s9_float32": {"selection": selection["selection_gate"], "confirmation_selection": confirmation["selection_gate"], "confirmation": confirmation["confirmation_gate"]}},
-            "gate_results": [gate.to_dict() for gate in gates],
-            "static_gate_results": [gate.to_dict() for gate in static_gates],
+            "gate_results": [asdict(gate) for gate in gates],
+            "static_gate_results": [asdict(gate) for gate in static_gates],
             "artifact": {"manifest_sha256": file_sha256(manifest_path), "payload_sha256": file_sha256(artifact_dir / "payload.pt"), "raw_float32_tensor_bytes": RAW_FLOAT32_TENSOR_BYTES, "scalar_count_total": SCALAR_COUNT_TOTAL},
             "cast_identity": _exact_cast_identity({"mu_fit": reference.mu_fit, "c_mean": reference.c_mean, "T16": reference.T16, "V16": reference.V16}, {"mu_fit": candidate.mu_fit, "c_mean": candidate.c_mean, "T16": candidate.T16, "V16": candidate.V16}),
             "runtime_contract": _source_contract(),
