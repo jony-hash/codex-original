@@ -989,7 +989,7 @@ def _panel_report(
         target = base.render_intensity_batch(batch_images).target.float()
         previous = images.index_select(0, (indices - 1) % sample_count)
         cyclic_target = base.render_intensity_batch(previous).target.float()
-        physical = mpcdar._capture_cmos(model, batch_images, device)
+        physical = mpcdar.lrrc._capture_cmos(model, batch_images, device)
         features = mra._feature_projection(physical, complex_value=False).float()
         reference = mpcdar._data_aware_prediction(
             features, basis["V"], W64, probe.bias, mu_fit, RANK
