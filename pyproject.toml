@@ -26,6 +26,7 @@ where = ["src"]
 # material.  The default suite covers only the active runtime and its regression tests.
 testpaths = ["tests"]
 addopts = "-m 'not scheduled_diagnostic and not historical_artifact'"
+cache_dir = "../.codex-pytest-cache"
 markers = [
   "scheduled_diagnostic: slower diagnostic-only workflows run outside the default regression lane",
   "historical_artifact: requires archived historical outputs that are intentionally absent from the active working tree",

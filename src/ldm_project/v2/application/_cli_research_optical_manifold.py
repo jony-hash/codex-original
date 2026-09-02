@@ -149,6 +149,11 @@ def dispatch(args: argparse.Namespace) -> int:
     }:
         from .research.optical_manifold_smf_bogt_detector_mean_centered_functional_attribution import dispatch
     elif action in {
+        "scaled-chen-mean-preserving-centered-data-aware-readout-recovery-validate",
+        "scaled-chen-mean-preserving-centered-data-aware-readout-recovery-run",
+    }:
+        from .research.optical_manifold_smf_bogt_mean_preserving_centered_data_aware_readout_recovery import dispatch
+    elif action in {
         "scaled-chen-back-relay-axial-conjugate-validate",
         "scaled-chen-back-relay-axial-conjugate-preflight",
         "scaled-chen-back-relay-axial-conjugate-run",

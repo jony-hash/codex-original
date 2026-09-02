@@ -3,7 +3,9 @@ __pycache__/
 *.py[cod]
 *.so
 .pytest_cache/
+.pytest_cache_*/
 .pytest-tmp-*/
+mpcdar-preflight-tmp/
 .mypy_cache/
 .ruff_cache/
 

@@ -521,6 +521,22 @@ def register_research(root: argparse._SubParsersAction) -> None:
     mcfa_run.add_argument("--dataset-root", default="data")
     mcfa_run.add_argument("--device", choices=("cuda",), default="cuda")
     mcfa_run.add_argument("--output", required=True)
+    mpcdar_validate = optical_actions.add_parser(
+        "scaled-chen-mean-preserving-centered-data-aware-readout-recovery-validate"
+    )
+    mpcdar_validate.add_argument("--config", required=True)
+    mpcdar_validate.add_argument("--review-contract", required=True)
+    mpcdar_validate.add_argument("--dataset-root", default="data")
+    mpcdar_validate.add_argument("--output", required=True)
+    mpcdar_run = optical_actions.add_parser(
+        "scaled-chen-mean-preserving-centered-data-aware-readout-recovery-run"
+    )
+    mpcdar_run.add_argument("--config", required=True)
+    mpcdar_run.add_argument("--review-contract", required=True)
+    mpcdar_run.add_argument("--validation-evidence", required=True)
+    mpcdar_run.add_argument("--dataset-root", default="data")
+    mpcdar_run.add_argument("--device", choices=("cuda",), default="cuda")
+    mpcdar_run.add_argument("--output", required=True)
     back_relay_validate = optical_actions.add_parser("scaled-chen-back-relay-axial-conjugate-validate")
     back_relay_validate.add_argument("--config", required=True)
     back_relay_validate.add_argument("--review-contract", required=True)

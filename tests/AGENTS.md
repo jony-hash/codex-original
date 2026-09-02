@@ -4,6 +4,12 @@ Scope: `tests/**` and verification for repository changes. Read the repository-r
 
 ## Test Selection
 
+- Test and pytest temporary roots must be outside the repository and use a
+  short, writable path. Never pass `--basetemp` to a path under the checkout;
+  this keeps ACL workarounds from leaving test fixtures in the source tree.
+  Tests that need a temporary directory must use pytest's `tmp_path` or
+  `tempfile.TemporaryDirectory` without a repository-root `dir=` override.
+
 - Before implementation, identify the affected behavior and the smallest
   sufficient test set in the task or PR description. For a fix, first establish
   a reproducer or regression test that fails against the relevant baseline; do

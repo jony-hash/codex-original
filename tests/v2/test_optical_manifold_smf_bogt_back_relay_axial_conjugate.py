@@ -133,7 +133,7 @@ def test_cli_actions_are_registered_and_lazy() -> None:
 
 
 def test_write_once_and_no_update_source_contract() -> None:
-    with tempfile.TemporaryDirectory(prefix=".pytest-tmp-brac-", dir=ROOT) as temporary:
+    with tempfile.TemporaryDirectory(prefix="codex-brac-") as temporary:
         output = Path(temporary) / "audit.json"
         output.write_text("{}", encoding="utf-8")
         with pytest.raises(FileExistsError):
