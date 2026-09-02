@@ -134,6 +134,11 @@ def dispatch(args: argparse.Namespace) -> int:
     }:
         from .research.optical_manifold_smf_bogt_low_rank_readout_recovery_confirmation import dispatch
     elif action in {
+        "scaled-chen-data-weighted-spectral-functional-attribution-validate",
+        "scaled-chen-data-weighted-spectral-functional-attribution-run",
+    }:
+        from .research.optical_manifold_smf_bogt_data_weighted_spectral_functional_attribution import dispatch
+    elif action in {
         "scaled-chen-back-relay-axial-conjugate-validate",
         "scaled-chen-back-relay-axial-conjugate-preflight",
         "scaled-chen-back-relay-axial-conjugate-run",
