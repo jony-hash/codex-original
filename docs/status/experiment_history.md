@@ -2006,3 +2006,28 @@ Projection loss is encoder-only, KL is encoder/posterior-only, and CMOS MSE is
 the end-to-end reconstruction objective. No trainable OLS transport, prior-only
 generation, FMF long training or promotion is authorized; evidence remains
 `training_authorized=false` and `formal_promotion=false`.
+
+## 2026-09-02：H-LOMA-CBOGT-S6-DSFA data-weighted spectral functional attribution
+
+The project owner authorized one frozen, no-update consumer of the RMAL detector readout after
+LSDA and LRRC. The real consumer is manual review of whether low operator-energy LSDA modes have
+large functional effect on real detector data. The rejection decision is fail-closed against
+interpreting spectral concentration or data-weighted attribution as reconstruction sufficiency,
+minimum rank, training readiness, generation readiness, or promotion authority.
+
+Implementation/config/review/tests/CLI were committed at
+`d032738c0f02af5ada85554224e045d238416e0a`; RMAL/ZCSA/RWSA-ACTIVE/LSDA/LRRC evidence, probe,
+renderer, checkpoint, OLS, detector and formal runtime were not modified. The authoritative
+attempt is `outputs/20260902_v2/runs/lightgen_scaled_chen_data_weighted_spectral_functional_attribution_v1_attempt_01/`.
+Validation, audit and compact SHA256 are
+`ff15d6da857f1db12b67b2abb0a182aff0a622b15718c44113ad01389fe7efbe`,
+`2521e0ec4138d55cfaf17f153a493c40aef5151bf5628a4daa9852dc198a265e`, and
+`8aec1e2b718eb6de499f87d81b68203ebbd7d8483bff0c36066ed9e376dea3c3`.
+
+The result is `passed / data_weighted_spectral_functional_attribution_completed`. Selection and
+confirmation full-probe MSE are `0.009812927922827133` and `0.010185289342506197`; total signed
+functional gains are `0.0885958794604826` and `0.07750253052523498`. The B256 tail carries only
+`0.0007625489` of operator energy but `0.3517092/0.3451470` of data-weighted output energy in
+selection/confirmation. Exact additive identities, LRRC registered replay, finite/state/no-update,
+streaming/no-bank and resource gates passed. The only next action is `manual_review_DSFA_result`;
+training, generation and promotion remain unauthorized.

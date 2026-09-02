@@ -239,3 +239,23 @@ flags 继续为 `reconstruction_manifold_supported=false`、`generative_manifold
 `closed_task_relevant_bottleneck_not_supported`。最终核验：LRRC `26 passed`、相关 `130 passed`、
 默认全套 pytest `1258 passed, 12 deselected, 25 subtests passed`；唯一下一动作是
 `manual_review_LRRC_result`，结果/状态 commit 后 refresh bridge 并检查 status，不自动上传。
+
+## H-LOMA-CBOGT-S6-DSFA：Data-Weighted Spectral Functional Attribution（2026-09-02）
+
+Windows-native 环境完成 DSFA frozen-RMAL、no-update data-weighted spectral functional attribution。
+实现/config/review/test/CLI 的 clean commit 为
+`d032738c0f02af5ada85554224e045d238416e0a`；上游 RMAL/ZCSA/RWSA-ACTIVE/LSDA/LRRC、probe、
+renderer、checkpoint、OLS、detector、formal runtime 与历史 evidence 未修改。权威 attempt 为
+`outputs/20260902_v2/runs/lightgen_scaled_chen_data_weighted_spectral_functional_attribution_v1_attempt_01/`，
+validation/audit/compact SHA256 为
+`ff15d6da857f1db12b67b2abb0a182aff0a622b15718c44113ad01389fe7efbe` /
+`2521e0ec4138d55cfaf17f153a493c40aef5151bf5628a4daa9852dc198a265e` /
+`8aec1e2b718eb6de499f87d81b68203ebbd7d8483bff0c36066ed9e376dea3c3`。
+
+结果为 `passed / data_weighted_spectral_functional_attribution_completed`。selection/confirmation
+full-probe MSE=`0.009812927922827133/0.010185289342506197`，B256 operator-energy share
+`0.0007625489` 对应 data-weighted output-energy share `0.3517092/0.3451470`。LSDA q/operator、
+两 panel additive identity、LRRC replay、state/no-update、streaming/no-bank、finite 和 resource
+gates 全部通过；peak CUDA=`2274099712` bytes，wall=`225.532 s`。定向测试 `10 passed`，
+compileall/Ruff/diff-check 通过；唯一下一动作是 `manual_review_DSFA_result`，不授权训练、
+generation 或 promotion。

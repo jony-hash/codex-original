@@ -6,14 +6,13 @@
 
 - 主项目：`D:\codex-original`
 - 基线分支：`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`
-- LRRC 正式 validation/audit 绑定 clean implementation/result commit
-  `2a061db61910a847118e38663d05c05bd9447063`；本次 LRRC 状态记录提交为
-  `eee51a21b0fde52f58ac9bb6129d5905b5e122d4`，当前 clean HEAD 以 Git 核验为准。
-- 当前最新研究解释是 H-LOMA-CBOGT-S6-LRRC 对冻结 RMAL detector readout 的
-  functional low-dimensional reconstruction recoverability confirmation；结论只在预注册
-  powers-of-two candidate family 内报告 `first_confirmed_candidate_rank`，不把谱能量解释为
-  reconstruction sufficiency。旧 evidence 仍不可变，RMAL/ZCSA/RWSA-ACTIVE/LSDA 及更早
-  classification 继续保留为父级事实。
+- DSFA 正式 validation/audit 绑定 clean implementation commit
+  `d032738c0f02af5ada85554224e045d238416e0a`；当前 clean HEAD 以 Git 核验为准。
+- 当前最新研究解释是 H-LOMA-CBOGT-S6-DSFA 对冻结 RMAL detector readout 的
+  data-weighted spectral functional attribution；它只描述真实 detector data 上各 ordered
+  LSDA mode 的 activation/output/alignment/penalty/gain，不把 operator spectral energy 自动
+  解释为 reconstruction sufficiency。LRRC 与更早 RMAL/ZCSA/RWSA-ACTIVE/LSDA evidence
+  仍保持 immutable，并继续作为父级事实。
 - 基线提交：`019b76ef911e0bd16b8d5d4169807323427684af`
 - 当前几何归因实现绑定提交：`6419cc523a8b5dd41cb3d3c2531193890fa1481a`
 - 注销前审计提交：`75d0584c379b145b0f0eb45ece14fda160741f23`（已按用户确认推送）
@@ -720,3 +719,37 @@ decoder/generation/physical-forward modification 全部为 false/zero。当前 f
 25 subtests passed`；compileall、Ruff、git diff --check 通过。强制纳入 historical_artifact
 marker 的诊断 lane 中 4 个既有 archive-only tests 仍因历史 checkpoint 路径绑定失败，未计入默认
 lane，也未改变 LRRC 证据。此前 attempt-01/02/03 记录保持 immutable；attempt-04 为当前权威。
+
+## H-LOMA-CBOGT-S6-DSFA：Data-Weighted Spectral Functional Attribution（2026-09-02）
+
+DSFA 消费冻结 RMAL `W=[256,40000]`、`b=[40000]`、ZCSA/RWSA-ACTIVE/LSDA 及 LRRC attempt-04，
+真实消费者是项目负责人审查低 operator-energy mode 在真实 detector data 上的 functional
+effect；拒绝决定是不得把 data-weighted attribution 升级为 reconstruction sufficiency、
+最低 rank、training、generation 或 promotion。实现提交为
+`d032738c0f02af5ada85554224e045d238416e0a`，未修改上游 evidence、probe、renderer、checkpoint、
+OLS、detector、formal runtime 或物理光路。
+
+权威 attempt 为
+`outputs/20260902_v2/runs/lightgen_scaled_chen_data_weighted_spectral_functional_attribution_v1_attempt_01/`；
+validation/audit/compact SHA-256 分别为
+`ff15d6da857f1db12b67b2abb0a182aff0a622b15718c44113ad01389fe7efbe`、
+`2521e0ec4138d55cfaf17f153a493c40aef5151bf5628a4daa9852dc198a265e`、
+`8aec1e2b718eb6de499f87d81b68203ebbd7d8483bff0c36066ed9e376dea3c3`。probe SHA-256 仍为
+`3551584a7983619356ea49babe7e5dedca559dfaa8ee5302fa44fd1a152a24ed`。
+
+结果为 `passed / data_weighted_spectral_functional_attribution_completed`。LSDA exact ordered
+CPU float64 spectral identity 与 q-norm identity 通过；selection bias/full MSE 为
+`0.09840880738327583/0.009812927922827133`，confirmation 为
+`0.08768781986771307/0.010185289342506197`，对应 total signed functional gain 为
+`0.0885958794604826/0.07750253052523498`。B256（modes 129–256）operator-energy share 为
+`0.0007625489`，但 data-weighted output-energy share 为 selection/confirmation
+`0.3517092/0.3451470`；该差异仅作 descriptive attribution。所有 256 mode 与固定 B1–B256
+band 字段均保存，selection registered-prefix 与 confirmation full-rank LRRC replay 均通过。
+
+正式 replay 为 CUDA CMOS-only no-update streaming；selection/confirmation additive identities、
+finite、state/OLS unchanged、no-bank、peak CUDA `2274099712` bytes 与 resource gates 全部通过。
+optimizer/backward/refit/decoder/physical-forward modification/generation 均为 false/zero；
+`reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、
+`generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false` 与
+`closed_task_relevant_bottleneck_not_supported` 保持。DSFA 定向测试 `10 passed`，compileall、
+Ruff、diff-check 通过；唯一下一动作是 `manual_review_DSFA_result`。

@@ -1,4 +1,4 @@
-# 当前主线交接（2026-09-01）
+# 当前主线交接（2026-09-02）
 
 本文件是当前执行状态的稳定入口。架构合同见
 [v2 runtime](../architecture/v2_runtime.md)，研究假设与唯一下一动作见
@@ -1864,3 +1864,27 @@ modification 均 false/zero。flags 仍为 `reconstruction_manifold_supported=fa
 `1258 passed, 12 deselected, 25 subtests passed`；compileall、Ruff、diff-check 通过，只有既有
 `.pytest_cache` ACL warning。attempt-01/02/03 保留为 immutable 历史记录，attempt-04 为当前权威。
 唯一下一动作：`manual_review_LRRC_result`；不得训练、candidate export、generation 或 promotion。
+
+## H-LOMA-CBOGT-S6-DSFA：Data-Weighted Spectral Functional Attribution（2026-09-02）
+
+DSFA 是 LRRC 之后唯一执行的 frozen-RMAL、no-update data-weighted spectral attribution。消费者是
+项目负责人审查低 operator-energy tail 在真实 detector data 上的 functional effect；拒绝决定是
+不得把该 descriptive attribution 升级为 reconstruction sufficiency、minimum rank、training、
+generation 或 promotion。实现/config/review/test/CLI 的 clean commit 为
+`d032738c0f02af5ada85554224e045d238416e0a`；RMAL/ZCSA/RWSA-ACTIVE/LSDA/LRRC、probe、renderer、
+checkpoint、OLS、detector、formal runtime 与历史 evidence 未修改。
+
+权威 attempt 为 `outputs/20260902_v2/runs/lightgen_scaled_chen_data_weighted_spectral_functional_attribution_v1_attempt_01/`；
+validation/audit/compact SHA256 为
+`ff15d6da857f1db12b67b2abb0a182aff0a622b15718c44113ad01389fe7efbe`、
+`2521e0ec4138d55cfaf17f153a493c40aef5151bf5628a4daa9852dc198a265e`、
+`8aec1e2b718eb6de499f87d81b68203ebbd7d8483bff0c36066ed9e376dea3c3`；probe hash 仍为
+`3551584a7983619356ea49babe7e5dedca559dfaa8ee5302fa44fd1a152a24ed`。结果为 `passed / data_weighted_spectral_functional_attribution_completed`。
+
+selection bias/full MSE=`0.09840880738327583/0.009812927922827133`，confirmation=
+`0.08768781986771307/0.010185289342506197`；total signed functional gain=`0.0885958794604826/0.07750253052523498`。
+B256（129–256）operator-energy share=`0.0007625489`，data-weighted output-energy
+share=`0.3517092/0.3451470`；该结果仅为 descriptive。LSDA q/operator identity、selection/
+confirmation additive identity、LRRC replay、state/no-update、streaming/no-bank、finite 与
+resource gates 全部通过；peak CUDA=`2274099712` bytes，wall=`225.532 s`。唯一下一动作是
+`manual_review_DSFA_result`；治理 flags 继续为 not-ready、no training、no promotion。

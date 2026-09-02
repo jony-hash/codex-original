@@ -82,6 +82,7 @@ be registered next.
 | H-LOMA-CBOGT-S1-HFRR | Independent complex128 high-fidelity reference for Identity/Scaled-Chen relay | The decoder→CMOS complex-retention contrast is a numerical implementation mismatch rather than a coordinate/quadratic-phase metric confound | Frozen Identity step-5500 and Scaled-Chen step-5000; independent CPU direct Fourier-series evaluator; fixed synthetic probes, native task replay, dynamic ABCD/pupil checks, analytic-only canonicalization, state/resource/no-update controls; no physical-forward modification | valid failure (`valid_failed`): `relay_complex_retention_metric_confound_supported` (Class B); native reference consistent, mismatch false, numerical boundary evaluated; raw/canonical backend gaps `0.6517181→0.0081707` (Identity) and `0.3329323→0.0193076` (Scaled-Chen); next action `manual_review_relay_retention_metric_reinterpretation_contract`; generation remains `not_ready`, no training/FM/FMF/prior/generation/promotion |
 
 | H-LOMA-CBOGT-S6-LRRC | Frozen RMAL detector readout `W,b` under LSDA-ordered truncated operators | The earliest preregistered powers-of-two rank whose frozen operator passes both RMAL selection and confirmation gates identifies a functional recoverability result within that candidate family | Rank-256 positive anchor first; then fixed `[1,2,4,8,16,32,64,128]` selection order; confirmation only after selection pass; no refit/training/physical-forward modification; spectral gaps are descriptive telemetry | passed: `low_rank_readout_recovery_confirmation_completed`, `first_confirmed_candidate_rank=256` via fallback after all lower selections failed; next action `manual_review_LRRC_result`, no training/generation/promotion |
+| H-LOMA-CBOGT-S6-DSFA | Frozen RMAL detector readout `W,b` with LSDA-ordered data-weighted mode attribution | Real detector data weight the ordered spectral modes by activation, output energy, alignment benefit, self-energy penalty, and signed MSE gain without refitting or rank search | Fixed RMAL/ZCSA/RWSA-ACTIVE/LSDA/LRRC identities; independent selection/confirmation streaming panels; additive energy/MSE identities, exact LRRC replay, no-update/state/resource gates; attribution is descriptive and cannot authorize sufficiency, training, generation, or promotion | passed: `data_weighted_spectral_functional_attribution_completed`; tail B256 has `0.0007625489` operator-energy share but `0.3517092/0.3451470` selection/confirmation data-weighted output-energy share; next action `manual_review_DSFA_result`, no training/generation/promotion |
 
 ## H-JQOC closeout (2026-08-26)
 
@@ -1408,3 +1409,21 @@ candidate family 内的 `first_confirmed_candidate_rank`。flags 继续为
 `closed_task_relevant_bottleneck_not_supported`。最终核验为 LRRC `26 passed`、相关 `130 passed`、
 默认全套 `1258 passed, 12 deselected, 25 subtests passed`；唯一下一动作是
 `manual_review_LRRC_result`，不得训练、candidate export、generation 或 promotion。
+
+## H-LOMA-CBOGT-S6-DSFA closeout（2026-09-02）
+
+DSFA 的权威实现提交为 `d032738c0f02af5ada85554224e045d238416e0a`，attempt 为
+`outputs/20260902_v2/runs/lightgen_scaled_chen_data_weighted_spectral_functional_attribution_v1_attempt_01/`；
+validation/audit/compact SHA256 为
+`ff15d6da857f1db12b67b2abb0a182aff0a622b15718c44113ad01389fe7efbe` /
+`2521e0ec4138d55cfaf17f153a493c40aef5151bf5628a4daa9852dc198a265e` /
+`8aec1e2b718eb6de499f87d81b68203ebbd7d8483bff0c36066ed9e376dea3c3`。结果为 `passed` /
+`data_weighted_spectral_functional_attribution_completed`。
+
+该 audit 只消费 frozen RMAL `W,b` 与 LSDA ordered CPU float64 modes，在独立 selection/confirmation
+panel 上流式测量 activation、data-weighted output energy、alignment、penalty 与 signed gain。
+所有 q/operator、additive MSE、LRRC replay、finite、state/no-update、no-bank 与 resource gates
+通过。selection/confirmation full MSE=`0.009812927922827133/0.010185289342506197`；B256 的
+operator-energy share=`0.0007625489`，data-weighted output-energy share=`0.3517092/0.3451470`。
+这只是 functional attribution，不能定义 minimum/sufficient rank 或 downstream authorization；
+唯一下一动作是 `manual_review_DSFA_result`。
