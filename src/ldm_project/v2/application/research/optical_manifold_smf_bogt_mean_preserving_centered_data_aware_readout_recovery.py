@@ -903,7 +903,9 @@ def _rank0_prediction(features: torch.Tensor, bias: torch.Tensor) -> torch.Tenso
 
 def _projector_identity(matrix: torch.Tensor, V: torch.Tensor) -> dict[str, Any]:
     projected = matrix.mm(V).mm(V.T)
-    return _matrix_residual(projected, matrix)
+    return _matrix_residual(projected, matrix) | {
+        "passed": bool(torch.allclose(projected, matrix, rtol=1.0e-9, atol=1.0e-9))
+    }
 
 
 def _sign_flip_projector_invariance(
