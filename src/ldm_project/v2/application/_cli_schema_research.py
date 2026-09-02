@@ -554,6 +554,22 @@ def register_research(root: argparse._SubParsersAction) -> None:
     mpcdar_rank16_qualify.add_argument("--device", choices=("cuda",), default="cuda")
     mpcdar_rank16_qualify.add_argument("--artifact-dir", required=True)
     mpcdar_rank16_qualify.add_argument("--output", required=True)
+    mpcdar_rank16_f32_build = optical_actions.add_parser(
+        "scaled-chen-mpcdar-rank16-float32-numerical-qualification-build"
+    )
+    mpcdar_rank16_f32_build.add_argument("--config", required=True)
+    mpcdar_rank16_f32_build.add_argument("--review-contract", required=True)
+    mpcdar_rank16_f32_build.add_argument("--parent-manifest", required=True)
+    mpcdar_rank16_f32_build.add_argument("--artifact-dir", required=True)
+    mpcdar_rank16_f32_qualify = optical_actions.add_parser(
+        "scaled-chen-mpcdar-rank16-float32-numerical-qualification-qualify"
+    )
+    mpcdar_rank16_f32_qualify.add_argument("--config", required=True)
+    mpcdar_rank16_f32_qualify.add_argument("--review-contract", required=True)
+    mpcdar_rank16_f32_qualify.add_argument("--dataset-root", default="data")
+    mpcdar_rank16_f32_qualify.add_argument("--device", choices=("cuda",), default="cuda")
+    mpcdar_rank16_f32_qualify.add_argument("--artifact-dir", required=True)
+    mpcdar_rank16_f32_qualify.add_argument("--output", required=True)
     back_relay_validate = optical_actions.add_parser("scaled-chen-back-relay-axial-conjugate-validate")
     back_relay_validate.add_argument("--config", required=True)
     back_relay_validate.add_argument("--review-contract", required=True)
