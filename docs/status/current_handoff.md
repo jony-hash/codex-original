@@ -2040,3 +2040,31 @@ generation_readiness=`not_ready`、training/promotion=false 与
 `closed_task_relevant_bottleneck_not_supported`；唯一下一动作是
 `manual_review_MPCDAR_R16_IQ_result`，不得自动 make rank16 default、训练、decoder、generation
 或 promotion。
+
+## H-LOMA-CBOGT-S9-MPCDAR-R16-F32-NQ：Frozen MPCDAR Rank-16 Float32 Numerical Qualification（2026-09-02）
+
+S9 是 S8 rank-16 artifact 的独立 no-update float32 qualification。消费者仅审查：S8 CPU
+float64 artifact 经确定性逐元素 cast、Process A→B fresh filesystem reload 后，在同一 CMOS
+feature stream 上满足 preregistered numerical tolerance，并保持 RMAL selection/confirmation
+Gate-vector identity。拒绝决定是不把它解释为 GPU-ready、production、native optical reconstruction、
+minimum/intrinsic rank、一般 reconstruction sufficiency 或 decoder/training/generation/promotion
+authorization。
+
+实现/fix commits=`4b75e4d67efc1dc90a01d1d33a6aa3c1c243c652` /
+`ebbd0d232c56ee45a69dea830911eff4f697ad47`。attempt-01 是 write-once 保留的 GateResult
+serialization harness failure，未消费；权威 attempt-02 为
+`outputs/20260902_v2/runs/lightgen_scaled_chen_mpcdar_rank16_float32_numerical_qualification_v1_attempt_02/`。
+validation/audit/compact SHA256=`5728fb9b50212d5dc7359975b06fe6d3f51be3645a23410683334abab7bb2137` /
+`0ff4aeaddd2035f0ced865a5e9f76331db53a2a8a213ea18064bd8e1d7368bde` /
+`5b45f1401489fab63382366045a95f52984505038a379ca8bd8d0a780424c940`；F32 manifest/payload
+SHA256=`1ad6d9edfb1037564c3aec533904ed8d48bc4614a7bbcb221a56c9a244d802c7` /
+`480c57bff42e28cdfdf5ba260978234ee98f3d1169407c2523beeba76d39e834`。
+
+F32 artifact scalar count=`684352`，raw/serialized bytes=`2737408/2739448`，candidate family=`[16]`。
+selection/confirmation max prediction difference=`7.8160793304e-7/7.8570211703e-7`，normalized
+L2=`1.5589117128e-7/1.5627624021e-7`，aggregate MSE absolute drift=`8.2576945282e-11/
+2.8491427967e-11`，relative drift=`3.9186724995e-9/1.3386508868e-9`；数值门、RMAL Gate-vector
+identity、fresh reload、CPU boundary、state/no-update、no-bank 与 runtime-independence 全部通过。
+audit=`35/35`，classification=`frozen_mean_preserving_data_aware_rank16_float32_numerically_qualified`，
+`integration_only=true`。唯一下一动作是 `manual_review_MPCDAR_R16_F32_NQ_result`；不得训练、
+decoder、generation、promotion 或自动切换 default。

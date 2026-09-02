@@ -7,14 +7,15 @@
 - 主项目：`D:\codex-original`
 - 基线分支：`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`
 - MPCDAR 的 S7 producer commit 为 `b59172750d0c88bbc9f7426ab7a21a1d63639f57`；S8
-  formal validation/audit 绑定 clean implementation commit
-  `c0140577fddb56af79d72a6d473cc49ef04f5ffc`，当前 clean HEAD 以 Git 核验为准。
-- 当前最新研究解释是 H-LOMA-CBOGT-S8-MPCDAR-R16-IQ 对冻结 RMAL detector readout
-  rank-16 mean-preserving data-aware artifact/runtime 的 integration qualification；它只
-  报告 post-detector bounded-reconstruction repair candidate 的 reload 与 RMAL
-  selection/confirmation 结果，不把 rank 16、谱能量或 data-aware truncation 解释为
+  parent implementation commit 为 `c0140577fddb56af79d72a6d473cc49ef04f5ffc`；S9
+  F32 qualification implementation/fix commits 为 `4b75e4d67efc1dc90a01d1d33a6aa3c1c243c652`
+  与 `ebbd0d232c56ee45a69dea830911eff4f697ad47`，当前 clean HEAD 以 Git 核验为准。
+- 当前最新研究解释是 H-LOMA-CBOGT-S9-MPCDAR-R16-F32-NQ 对冻结 S8 rank-16
+  mean-preserving data-aware readout 的纯 float32 numerical qualification；它只报告
+  fresh-process artifact reload、CPU readout 与完整 RMAL selection/confirmation 的有界
+  数值一致性，不把 F32 一致性、rank 16、谱能量或 data-aware truncation 解释为
   minimum/intrinsic rank、一般 reconstruction sufficiency、native optical reconstruction
-  或 downstream authorization。S7 MPCDAR、MCFA、DMSA、DSFA 与更早 evidence 保持
+  或 downstream authorization。S8、S7、MCFA、DMSA、DSFA 与更早 evidence 保持
   immutable，并继续作为父级事实。
 - 基线提交：`019b76ef911e0bd16b8d5d4169807323427684af`
 - 当前几何归因实现绑定提交：`6419cc523a8b5dd41cb3d3c2531193890fa1481a`
@@ -875,6 +876,44 @@ validation/audit/compact SHA-256 分别为
 `9e321b457e9e7111e1bf0d800e1d8e724f9753cf34f92e13d1eb2e081034a4e9`；RMAL probe SHA-256 仍为
 `3551584a7983619356ea49babe7e5dedca559dfaa8ee5302fa44fd1a152a24ed`。attempt-01/02 仅为
 validation-only 或正式执行前停止记录，均未覆盖或改变旧 evidence。
+
+## H-LOMA-CBOGT-S9-MPCDAR-R16-F32-NQ：Frozen MPCDAR Rank-16 Float32 Numerical Qualification（2026-09-02）
+
+S9 是 S8 rank-16 artifact 的独立、窄范围、no-update float32 consumer。真实消费者是项目负责人审查：
+S8 CPU float64 artifact 在独立 Process A→B、文件系统 fresh reload 和同一 CMOS feature stream 下，
+通过严格 preregistered float32 cast/runtime tolerance，并保持 RMAL selection/confirmation Gate
+vector identity。拒绝决定是不得将数值资格升级为 GPU-ready、production、native optical reconstruction、
+minimum/intrinsic rank、一般 reconstruction sufficiency 或 decoder/training/generation/promotion
+authorization。
+
+实现绑定 commits 为 `4b75e4d67efc1dc90a01d1d33a6aa3c1c243c652` 与修复后的
+`ebbd0d232c56ee45a69dea830911eff4f697ad47`。attempt-01 按 write-once 规则保留为 GateResult
+evidence serialization harness failure，不消费；权威 attempt-02 为
+`outputs/20260902_v2/runs/lightgen_scaled_chen_mpcdar_rank16_float32_numerical_qualification_v1_attempt_02/`。
+validation/audit/compact SHA-256 分别为
+`5728fb9b50212d5dc7359975b06fe6d3f51be3645a23410683334abab7bb2137`、
+`0ff4aeaddd2035f0ced865a5e9f76331db53a2a8a213ea18064bd8e1d7368bde`、
+`5b45f1401489fab63382366045a95f52984505038a379ca8bd8d0a780424c940`；F32 manifest/payload
+SHA-256 为 `1ad6d9edfb1037564c3aec533904ed8d48bc4614a7bbcb221a56c9a244d802c7` /
+`480c57bff42e28cdfdf5ba260978234ee98f3d1169407c2523beeba76d39e834`。
+
+F32 artifact 仅包含从 S8 四个 tensor 的逐元素确定性 cast：scalar count=`684352`，raw
+float32 bytes=`2737408`，serialized payload bytes=`2739448`；rank family=`[16]`，无 rank search、
+refit、训练、backward 或 physical-forward modification。selection/confirmation readout 均在 CPU
+执行，candidate/reference prediction residual、fresh-reload residual、state/no-update 与 runtime
+independence gates 通过。audit `35/35` gates 通过，classification=
+`frozen_mean_preserving_data_aware_rank16_float32_numerically_qualified`，`integration_only=true`。
+
+selection 的 max prediction difference / normalized L2 / aggregate MSE absolute-relative drift 为
+`7.8160793304e-7` / `1.5589117128e-7` / `8.2576945282e-11` / `3.9186724995e-9`；confirmation
+分别为 `7.8570211703e-7` / `1.5627624021e-7` / `2.8491427967e-11` /
+`1.3386508868e-9`，均满足 elementwise、normalized-L2、absolute-MSE 与 relative-MSE gates；
+confirmation bootstrap 95% CI 保持 `[0.03618517890572548,0.036830976605415344]`。治理 flags
+保持 `reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、
+`generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false` 与
+`closed_task_relevant_bottleneck_not_supported`；唯一下一动作是
+`manual_review_MPCDAR_R16_F32_NQ_result`，不得自动切换 default、训练、decoder、generation 或
+promotion。
 
 结果为 `status=passed`、`classification=mean_preserving_centered_data_aware_readout_recovery_completed`，
 audit `14/14` gates 通过。fit replay 使用 `N=1000`、float64 population moments；DMSA 的 mu/C

@@ -2122,3 +2122,35 @@ flags remain reconstruction/generative false, `generation_readiness=not_ready`,
 `closed_task_relevant_bottleneck_not_supported`. The only next action is
 `manual_review_MPCDAR_R16_IQ_result`; no automatic default switch, training, decoder, generation,
 or promotion is authorized.
+
+## 2026-09-02：H-LOMA-CBOGT-S9-MPCDAR-R16-F32-NQ frozen rank-16 float32 numerical qualification
+
+S9 consumed only the S8 rank-16 frozen artifact. The registered question was limited to deterministic
+float64→float32 tensor casting, fresh-process filesystem reload, CPU readout, and preservation of the
+RMAL selection/confirmation Gate vectors on the same CMOS feature stream. It did not refit, train, search
+ranks, modify physical forward, or make a GPU/production claim. The rejection boundary remains minimum/
+intrinsic rank, native optical reconstruction, general sufficiency, decoder, training, generation, and
+promotion authorization.
+
+Implementation/fix commits were `4b75e4d67efc1dc90a01d1d33a6aa3c1c243c652` and
+`ebbd0d232c56ee45a69dea830911eff4f697ad47`. Attempt-01 is preserved as an invalid harness serialization
+attempt; authoritative attempt-02 is
+`outputs/20260902_v2/runs/lightgen_scaled_chen_mpcdar_rank16_float32_numerical_qualification_v1_attempt_02/`.
+Validation/audit/compact SHA256 are
+`5728fb9b50212d5dc7359975b06fe6d3f51be3645a23410683334abab7bb2137`,
+`0ff4aeaddd2035f0ced865a5e9f76331db53a2a8a213ea18064bd8e1d7368bde`, and
+`5b45f1401489fab63382366045a95f52984505038a379ca8bd8d0a780424c940`. F32 manifest/payload SHA256
+are `1ad6d9edfb1037564c3aec533904ed8d48bc4614a7bbcb221a56c9a244d802c7` and
+`480c57bff42e28cdfdf5ba260978234ee98f3d1169407c2523beeba76d39e834`.
+
+The artifact has `684352` scalars, raw float32 tensor bytes `2737408`, serialized payload bytes
+`2739448`, and tested rank family `[16]`. Selection/confirmation max prediction differences are
+`7.8160793304e-7/7.8570211703e-7`; normalized L2 differences are
+`1.5589117128e-7/1.5627624021e-7`; aggregate MSE absolute drift is
+`8.2576945282e-11/2.8491427967e-11`; relative drift is
+`3.9186724995e-9/1.3386508868e-9`. All 35 audit gates passed, including exact cast identity, numerical
+tolerances, RMAL Gate-vector identity, fresh reload, CPU boundary, state/no-update, no-bank and runtime
+independence. Final status is `passed`, classification is
+`frozen_mean_preserving_data_aware_rank16_float32_numerically_qualified`, and `integration_only=true`.
+The only next action is `manual_review_MPCDAR_R16_F32_NQ_result`; no training, decoder, generation,
+promotion, or automatic default switch is authorized.

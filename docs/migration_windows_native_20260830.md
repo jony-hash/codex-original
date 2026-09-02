@@ -360,3 +360,26 @@ generation_readiness=`not_ready`、training/promotion=false 与
 `manual_review_MPCDAR_R16_IQ_result`，不自动 make rank16 default、训练、decoder、generation
 或 promotion。Bridge 仍需在 worktree clean 后按合同独立执行 refresh/status；不自动上传或修改
 S8 evidence。
+
+## H-LOMA-CBOGT-S9-MPCDAR-R16-F32-NQ（2026-09-02）
+
+Windows-native 环境完成 S8 rank-16 frozen artifact 的独立 pure-float32 CPU numerical qualification。
+实现/fix commits=`4b75e4d67efc1dc90a01d1d33a6aa3c1c243c652` /
+`ebbd0d232c56ee45a69dea830911eff4f697ad47`；attempt-01 是 write-once 保留的 serialization
+harness failure，权威 attempt-02 为
+`outputs/20260902_v2/runs/lightgen_scaled_chen_mpcdar_rank16_float32_numerical_qualification_v1_attempt_02/`。
+validation/audit/compact SHA256=`5728fb9b50212d5dc7359975b06fe6d3f51be3645a23410683334abab7bb2137` /
+`0ff4aeaddd2035f0ced865a5e9f76331db53a2a8a213ea18064bd8e1d7368bde` /
+`5b45f1401489fab63382366045a95f52984505038a379ca8bd8d0a780424c940`；F32 manifest/payload
+SHA256=`1ad6d9edfb1037564c3aec533904ed8d48bc4614a7bbcb221a56c9a244d802c7` /
+`480c57bff42e28cdfdf5ba260978234ee98f3d1169407c2523beeba76d39e834`。
+
+F32 artifact 的 scalar count=`684352`，raw/serialized payload bytes=`2737408/2739448`，candidate
+family=`[16]`。selection/confirmation max prediction difference=`7.8160793304e-7/7.8570211703e-7`，
+normalized L2=`1.5589117128e-7/1.5627624021e-7`，aggregate MSE absolute drift=
+`8.2576945282e-11/2.8491427967e-11`，relative drift=`3.9186724995e-9/1.3386508868e-9`。
+Audit `35/35` gates passed，包含 exact cast identity、strict numerical tolerances、RMAL Gate-vector
+identity、fresh reload、CPU boundary、state/no-update、no-bank 与 runtime independence。最终为
+`passed / frozen_mean_preserving_data_aware_rank16_float32_numerically_qualified`，
+`integration_only=true`；唯一下一动作是 `manual_review_MPCDAR_R16_F32_NQ_result`，不授权
+GPU/production/default switch、decoder、training、generation 或 promotion。

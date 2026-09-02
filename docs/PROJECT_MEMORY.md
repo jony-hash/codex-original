@@ -45,18 +45,16 @@ ChatGPT Sources 包中的文件是由维护工具生成的受控副本。副本�
 - prior-native、direct-generator、quadrature、fiber、FMF 长训练和 formal promotion
   等已关闭或未授权路线不能因为 ChatGPT 的讨论而重新打开。
 - 所有科研执行仍需遵守 `AGENTS.md` 的 long-training gate；记忆文件本身不提供训练授权。
-- 当前最新有效科研结果是 H-LOMA-CBOGT-S7-MPCDAR 的 `passed` /
-  `mean_preserving_centered_data_aware_readout_recovery_completed`，正式 replay 绑定
-  clean implementation commit `b59172750d0c88bbc9f7426ab7a21a1d63639f57`：在冻结
-  RMAL `W,b`、fit-derived `mu_fit/C_fit` 与预注册 candidate family
-  `[1,2,4,8,16,32,64,128,256]` 下，rank 16 首次通过 selection + confirmation。
-  该结果只表示预注册家族内的 mean-preserving fit-data-aware candidate 结果，不是
-  minimum/intrinsic/physical rank，也不把 spectral energy 或 data-aware truncation
-  升级为 reconstruction sufficiency。其 parent MCFA 仍为
-  `detector_mean_centered_functional_attribution_completed`，DMSA/DSFA/LRRC 及更早
-  RMAL/ZCSA/RWSA-ACTIVE/LSDA 身份保持不变。唯一允许的下一动作是
-  `manual_review_MPCDAR_result`；在项目负责人审查前不得进入 FMF、继续训练、exposure
-  retuning、生成或 promotion。relay family
+- 当前最新有效科研结果是 H-LOMA-CBOGT-S9-MPCDAR-R16-F32-NQ 的 `passed` /
+  `frozen_mean_preserving_data_aware_rank16_float32_numerically_qualified`，正式 replay
+  绑定 implementation/fix commits `4b75e4d67efc1dc90a01d1d33a6aa3c1c243c652` /
+  `ebbd0d232c56ee45a69dea830911eff4f697ad47`。它只确认 S8 rank-16 frozen artifact 的
+  pure-float32 CPU readout 在 fresh-process reload 后满足预注册数值 tolerance，并保持
+  RMAL selection/confirmation Gate-vector identity；不是 GPU-ready、production、minimum/
+  intrinsic/physical rank 或一般 reconstruction sufficiency。S8/S7/MCFA/DMSA/DSFA/LRRC 及
+  更早身份保持不变。唯一允许的下一动作是
+  `manual_review_MPCDAR_R16_F32_NQ_result`；在项目负责人审查前不得进入 FMF、继续训练、
+  exposure retuning、生成或 promotion。relay family
   `scaled_chen_v1_local_backend_relay_attribution_family=closed_metric_confound_reinterpreted`
   保持。
   若交接文档更新，以最新的 `CURRENT_STATUS.md`、`status/current_handoff.md` 和 hypothesis
@@ -762,3 +760,34 @@ resource gates 通过；peak CUDA=`2274099712` bytes，wall=`133 s`。治理 fla
 `generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false` 与
 `closed_task_relevant_bottleneck_not_supported`；唯一下一动作是
 `manual_review_MPCDAR_R16_IQ_result`。
+
+## H-LOMA-CBOGT-S9-MPCDAR-R16-F32-NQ：Frozen MPCDAR Rank-16 Float32 Numerical Qualification（2026-09-02）
+
+S9 是 S8 rank-16 frozen artifact 的独立 no-update numerical consumer。其唯一问题是：从 S8
+CPU float64 tensor 做逐元素确定性 float32 cast 后，fresh-process filesystem reload 的 CPU readout
+是否在同一 CMOS feature stream 上满足预注册 tolerance，并保持 selection/confirmation RMAL
+Gate-vector identity。该结果不表示 GPU-ready、production、minimum/intrinsic/physical rank、
+一般 reconstruction sufficiency 或 decoder/training/generation/promotion authorization。
+
+实现/fix commits 为 `4b75e4d67efc1dc90a01d1d33a6aa3c1c243c652` /
+`ebbd0d232c56ee45a69dea830911eff4f697ad47`。attempt-01 是 write-once 保留的 evidence
+serialization harness failure；权威 attempt-02 为
+`outputs/20260902_v2/runs/lightgen_scaled_chen_mpcdar_rank16_float32_numerical_qualification_v1_attempt_02/`。
+validation/audit/compact SHA256 为
+`5728fb9b50212d5dc7359975b06fe6d3f51be3645a23410683334abab7bb2137` /
+`0ff4aeaddd2035f0ced865a5e9f76331db53a2a8a213ea18064bd8e1d7368bde` /
+`5b45f1401489fab63382366045a95f52984505038a379ca8bd8d0a780424c940`；F32 manifest/payload
+SHA256 为 `1ad6d9edfb1037564c3aec533904ed8d48bc4614a7bbcb221a56c9a244d802c7` /
+`480c57bff42e28cdfdf5ba260978234ee98f3d1169407c2523beeba76d39e834`。
+
+Artifact scalar count=`684352`，raw float32 bytes=`2737408`，serialized payload bytes=`2739448`，
+candidate family=`[16]`。selection/confirmation 的 max prediction difference 分别为
+`7.8160793304e-7`/`7.8570211703e-7`，normalized L2 分别为
+`1.5589117128e-7`/`1.5627624021e-7`，aggregate MSE absolute/relative drift 分别为
+`8.2576945282e-11`/`3.9186724995e-9` 与 `2.8491427967e-11`/`1.3386508868e-9`；全部
+numerical gates、RMAL vector identity、fresh reload、CPU boundary、state/no-update、no-bank 与
+runtime-independence gates 通过。audit=`35/35`，classification=
+`frozen_mean_preserving_data_aware_rank16_float32_numerically_qualified`，`integration_only=true`。
+唯一下一动作是 `manual_review_MPCDAR_R16_F32_NQ_result`；治理 flags 继续保持
+reconstruction/generative false、generation_readiness=`not_ready`、training/promotion=false 与
+`closed_task_relevant_bottleneck_not_supported`。
