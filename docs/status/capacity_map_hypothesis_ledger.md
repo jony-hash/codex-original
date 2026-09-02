@@ -83,6 +83,7 @@ be registered next.
 
 | H-LOMA-CBOGT-S6-LRRC | Frozen RMAL detector readout `W,b` under LSDA-ordered truncated operators | The earliest preregistered powers-of-two rank whose frozen operator passes both RMAL selection and confirmation gates identifies a functional recoverability result within that candidate family | Rank-256 positive anchor first; then fixed `[1,2,4,8,16,32,64,128]` selection order; confirmation only after selection pass; no refit/training/physical-forward modification; spectral gaps are descriptive telemetry | passed: `low_rank_readout_recovery_confirmation_completed`, `first_confirmed_candidate_rank=256` via fallback after all lower selections failed; next action `manual_review_LRRC_result`, no training/generation/promotion |
 | H-LOMA-CBOGT-S6-DSFA | Frozen RMAL detector readout `W,b` with LSDA-ordered data-weighted mode attribution | Real detector data weight the ordered spectral modes by activation, output energy, alignment benefit, self-energy penalty, and signed MSE gain without refitting or rank search | Fixed RMAL/ZCSA/RWSA-ACTIVE/LSDA/LRRC identities; independent selection/confirmation streaming panels; additive energy/MSE identities, exact LRRC replay, no-update/state/resource gates; attribution is descriptive and cannot authorize sufficiency, training, generation, or promotion | passed: `data_weighted_spectral_functional_attribution_completed`; tail B256 has `0.0007625489` operator-energy share but `0.3517092/0.3451470` selection/confirmation data-weighted output-energy share; next action `manual_review_DSFA_result`, no training/generation/promotion |
+| H-LOMA-CBOGT-S6-DMSA | Frozen RMAL detector readout `W,b` with detector data-metric second-moment and centered-variance spectral decomposition | Detector data moments distinguish raw operator, second-moment and centered-variance spectral telemetry while preserving LSDA/DSFA/LRRC identities | Fixed RMAL/ZCSA/RWSA-ACTIVE/LSDA/LRRC/DSFA identities; separate fit/selection/confirmation streaming panels; population-moment, PSD, additive-energy, cross-identity, no-update/state/resource gates; descriptive only and no mechanism, sufficiency, training, generation, or promotion authorization | passed: `detector_data_metric_spectral_attribution_completed`; selection/confirmation mean/variance energy fractions `0.4019555898/0.5980444102` and `0.3704005497/0.6295994503`; next action `manual_review_DMSA_result`, no training/generation/promotion |
 
 ## H-JQOC closeout (2026-08-26)
 
@@ -1427,3 +1428,33 @@ panel 上流式测量 activation、data-weighted output energy、alignment、pen
 operator-energy share=`0.0007625489`，data-weighted output-energy share=`0.3517092/0.3451470`。
 这只是 functional attribution，不能定义 minimum/sufficient rank 或 downstream authorization；
 唯一下一动作是 `manual_review_DSFA_result`。
+
+## H-LOMA-CBOGT-S6-DMSA：Detector Data-Metric Spectral Attribution（2026-09-02）
+
+DMSA 是 DSFA 之后唯一执行的 frozen-RMAL、no-update detector data-metric attribution。消费者是
+项目负责人审查真实 detector data 的 second moment 与 centered variance 对冻结 readout
+spectral structure 的描述性加权；拒绝决定是不得把 weighted spectrum 升级为 mechanism、
+reconstruction sufficiency、minimum rank、training、generation 或 promotion。起始 lineage HEAD 为
+`39b0ac449986df31b9102c0b1296dda912f7b39c`，实现/config/review/test/CLI 的 clean
+implementation/result commit 为 `9818e87441eb2c86eef06c18c1aa646f3e57dea5`。
+
+权威 attempt-02 为
+`outputs/20260902_v2/runs/lightgen_scaled_chen_detector_data_metric_spectral_attribution_v1_attempt_02/`；
+validation/audit/compact SHA256=`f0eebcb978851b9ab58453e1b28e920eddc93e86a2b82133af0bd7ec8e8ce93d` /
+`c9cc448f1b58040d45b8b77c9cfaa9facd536cdcf40d0b4f152efe42e16411fe` /
+`39564f0ce3973bd738d196191a06c7990407f9b7b6ab7e6e8a2eb3366dc2d0ac`。attempt-01 仅为
+validation-only invalid harness，按 write-once 规则保留且不消费。
+
+结果为 `passed / detector_data_metric_spectral_attribution_completed`，15/15 audit gates
+通过。fit/selection/confirmation 使用 1000/1000/5000 样本、population `N` streaming
+moments；selection/confirmation mean/variance energy fractions 为
+`0.4019555898/0.5980444102` 与 `0.3704005497/0.6295994503`，second-moment
+effective/stable rank 为 `14.8728108/2.2436135` 与 `17.4264177/2.4233991`，
+centered-variance 为 `36.6563260/8.1270337` 与 `39.8650006/8.4787742`。raw LSDA
+spectrum、moment、DSFA cross identity、state/no-update、no-bank、finite 与 resource gates
+全部通过；peak CUDA=`2274099712` bytes，wall=`84.922 s`。
+
+状态 flags 继续为 `reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、
+`generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false` 与
+`closed_task_relevant_bottleneck_not_supported`。唯一下一动作是 `manual_review_DMSA_result`；
+不得训练、decoder、candidate export、generation 或 promotion。

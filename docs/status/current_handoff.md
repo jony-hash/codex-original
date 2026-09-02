@@ -1888,3 +1888,38 @@ share=`0.3517092/0.3451470`；该结果仅为 descriptive。LSDA q/operator iden
 confirmation additive identity、LRRC replay、state/no-update、streaming/no-bank、finite 与
 resource gates 全部通过；peak CUDA=`2274099712` bytes，wall=`225.532 s`。唯一下一动作是
 `manual_review_DSFA_result`；治理 flags 继续为 not-ready、no training、no promotion。
+
+## H-LOMA-CBOGT-S6-DMSA：Detector Data-Metric Spectral Attribution（2026-09-02）
+
+DMSA 是 DSFA 之后唯一执行的 frozen-RMAL、no-update detector data-metric attribution。消费者是
+项目负责人审查真实 detector data 的 second-moment 与 centered-variance 如何加权冻结 readout
+的 LSDA spectrum；拒绝决定是不得把 descriptive weighted-spectrum 结果升级为 mechanism、
+reconstruction sufficiency、minimum rank、training、generation 或 promotion。起始 lineage HEAD 为
+`39b0ac449986df31b9102c0b1296dda912f7b39c`，正式结果绑定 clean implementation/result commit 为
+`9818e87441eb2c86eef06c18c1aa646f3e57dea5`；上游 RMAL/ZCSA/RWSA-ACTIVE/LSDA/LRRC/DSFA、
+probe、renderer、checkpoint、OLS、detector、formal runtime 与历史 evidence 未修改。
+
+权威 attempt-02 为
+`outputs/20260902_v2/runs/lightgen_scaled_chen_detector_data_metric_spectral_attribution_v1_attempt_02/`；
+validation/audit/compact SHA256=`f0eebcb978851b9ab58453e1b28e920eddc93e86a2b82133af0bd7ec8e8ce93d` /
+`c9cc448f1b58040d45b8b77c9cfaa9facd536cdcf40d0b4f152efe42e16411fe` /
+`39564f0ce3973bd738d196191a06c7990407f9b7b6ab7e6e8a2eb3366dc2d0ac`；probe SHA256 仍为
+`3551584a7983619356ea49babe7e5dedca559dfaa8ee5302fa44fd1a152a24ed`。attempt-01 保留为
+validation-only invalid harness 记录，不消费。
+
+正式结果为 `passed / detector_data_metric_spectral_attribution_completed`，15/15 audit gates
+通过。fit/selection/confirmation 为 1000/1000/5000 样本，使用 population `N` 的 float64
+streaming moment contract，三组 `S=C+mu muT` identity 均通过；selection/confirmation
+mean/variance energy fractions=`0.4019555898/0.5980444102`、`0.3704005497/0.6295994503`。
+second-moment effective/stable rank=`14.8728108/2.2436135`、`17.4264177/2.4233991`；
+centered-variance=`36.6563260/8.1270337`。raw spectrum 与 LSDA identity residual 为零，
+这些均为 descriptive telemetry，未设置 dominance 或 panel-agreement gate。
+
+回放为 exact-panel CMOS-only streaming/no-bank，peak CUDA=`2274099712` bytes、wall=`84.922 s`；
+optimizer/backward/refit/decoder/optical replay/generation 均未发生，state/OLS unchanged。
+`reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、
+`generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false` 与
+`closed_task_relevant_bottleneck_not_supported` 保持。DMSA 定向 `21 passed`，直接相关回归
+`111 passed, 1 deselected`，compileall/Ruff/diff-check/CLI checks 通过；全套 pytest 为
+`1285 passed, 12 deselected, 25 subtests passed`，另有 4 个无关环境失败。唯一下一动作是
+`manual_review_DMSA_result`；不得训练、decoder、candidate export、generation 或 promotion。

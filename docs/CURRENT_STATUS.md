@@ -6,13 +6,13 @@
 
 - 主项目：`D:\codex-original`
 - 基线分支：`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`
-- DSFA 正式 validation/audit 绑定 clean implementation commit
-  `d032738c0f02af5ada85554224e045d238416e0a`；当前 clean HEAD 以 Git 核验为准。
-- 当前最新研究解释是 H-LOMA-CBOGT-S6-DSFA 对冻结 RMAL detector readout 的
-  data-weighted spectral functional attribution；它只描述真实 detector data 上各 ordered
-  LSDA mode 的 activation/output/alignment/penalty/gain，不把 operator spectral energy 自动
-  解释为 reconstruction sufficiency。LRRC 与更早 RMAL/ZCSA/RWSA-ACTIVE/LSDA evidence
-  仍保持 immutable，并继续作为父级事实。
+- DMSA 正式 validation/audit 绑定 clean implementation/result commit
+  `9818e87441eb2c86eef06c18c1aa646f3e57dea5`；当前 clean HEAD 以 Git 核验为准。
+- 当前最新研究解释是 H-LOMA-CBOGT-S6-DMSA 对冻结 RMAL detector readout 的
+  detector data-metric spectral attribution；它只描述真实 detector data 上 second-moment、
+  centered-variance 与 operator spectrum 的能量、有效秩和 additive identity，不把
+  data-weighted structure 解释为 reconstruction sufficiency。DSFA 与更早
+  RMAL/ZCSA/RWSA-ACTIVE/LSDA/LRRC evidence 仍保持 immutable，并继续作为父级事实。
 - 基线提交：`019b76ef911e0bd16b8d5d4169807323427684af`
 - 当前几何归因实现绑定提交：`6419cc523a8b5dd41cb3d3c2531193890fa1481a`
 - 注销前审计提交：`75d0584c379b145b0f0eb45ece14fda160741f23`（已按用户确认推送）
@@ -753,3 +753,51 @@ optimizer/backward/refit/decoder/physical-forward modification/generation 均为
 `generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false` 与
 `closed_task_relevant_bottleneck_not_supported` 保持。DSFA 定向测试 `10 passed`，compileall、
 Ruff、diff-check 通过；唯一下一动作是 `manual_review_DSFA_result`。
+
+## H-LOMA-CBOGT-S6-DMSA：Detector Data-Metric Spectral Attribution（2026-09-02）
+
+DMSA 消费冻结 RMAL `W=[256,40000]`、`b=[40000]`、LSDA exact ordered CPU float64
+spectrum、LRRC attempt-04 与 DSFA attempt-01；真实消费者是项目负责人审查 detector
+data second moment 与 centered variance 对冻结 readout spectral structure 的描述性分解。
+拒绝决定是不得把 weighted spectral telemetry 升级为 mechanism、reconstruction sufficiency、
+minimum rank、training、generation 或 promotion。起始 lineage HEAD 为
+`39b0ac449986df31b9102c0b1296dda912f7b39c`，正式 validation/audit 绑定 clean
+implementation/result commit 为 `9818e87441eb2c86eef06c18c1aa646f3e57dea5`；上游
+RMAL/ZCSA/RWSA-ACTIVE/LSDA/LRRC/DSFA、probe、renderer、checkpoint、OLS、detector、
+formal runtime 与历史 evidence 未修改。
+
+DMSA attempt-01 仅保留 validation-only 的 invalid harness 记录（`three_panel_isolation`
+修复前停止，validation SHA-256=`94a29d7ad6c065ac0253700524de1f0f1e23c0e92fe3959b340ae04e26ac63b3`）；
+权威 attempt-02 为
+`outputs/20260902_v2/runs/lightgen_scaled_chen_detector_data_metric_spectral_attribution_v1_attempt_02/`，
+validation/audit/compact SHA-256 分别为
+`f0eebcb978851b9ab58453e1b28e920eddc93e86a2b82133af0bd7ec8e8ce93d`、
+`c9cc448f1b58040d45b8b77c9cfaa9facd536cdcf40d0b4f152efe42e16411fe`、
+`39564f0ce3973bd738d196191a06c7990407f9b7b6ab7e6e8a2eb3366dc2d0ac`。研究 config/review/source
+SHA-256 分别为
+`48e3e34d47a486fd50052f2d805d387c84fc216a9e9498775059c2de45560828`、
+`2899715f961a19cdee83b53f709c9b77498ab618afe5963c6c63a5492ea2501a`、
+`88356728b165e7c1ff91fb825292a635901da2d02c60841da972b6434d36112f`。
+
+结果为 `passed / detector_data_metric_spectral_attribution_completed`。fit/selection/confirmation
+分别使用 1000/1000/5000 样本、population `N`、float64 streaming `S=C+mu muT`；三组
+moment identity 通过，selection/confirmation 的 `E_mean/E_var` fractions 为
+`0.4019555898/0.5980444102` 与 `0.3704005497/0.6295994503`。冻结 raw spectrum 与 LSDA
+identity residual 为零；second-moment effective/stable rank 为 selection/confirmation
+`14.8728108/2.2436135`、`17.4264177/2.4233991`，centered-variance 为
+`36.6563260/8.1270337`、`39.8650006/8.4787742`。这些均为 descriptive telemetry，未设置
+scientific dominance 或 panel-agreement gate。
+
+正式 replay 为 exact-panel CMOS-only、no-update、streaming、no-bank；15/15 audit gates
+通过，peak CUDA=`2274099712` bytes、wall=`84.922 s`。`optimizer_created=false`、
+`backward_calls=0`、`probe_refit=false`、`decoder_created=false`、`optical_replay_executed=false`、
+`generation=false`，state/OLS unchanged；`reconstruction_manifold_supported=false`、
+`generative_manifold_supported=false`、`generation_readiness=not_ready`、
+`training_authorized=false`、`formal_promotion=false` 与 `closed_task_relevant_bottleneck_not_supported`
+保持不变。
+
+DMSA 定向测试 `21 passed`，直接相关回归 `111 passed, 1 deselected`，compileall、Ruff、
+git diff-check 与 CLI contract checks 通过。全套 pytest 为 `1285 passed, 12 deselected,
+25 subtests passed`，另有 4 个与 DMSA 无关的既有环境失败（3 个 NVRTC DLL/运行时失败、
+1 个 near-conjugate 临时路径失败）。唯一下一动作是 `manual_review_DMSA_result`；不得训练、
+decoder、candidate export、generation 或 promotion。

@@ -259,3 +259,41 @@ full-probe MSE=`0.009812927922827133/0.010185289342506197`，B256 operator-energ
 gates 全部通过；peak CUDA=`2274099712` bytes，wall=`225.532 s`。定向测试 `10 passed`，
 compileall/Ruff/diff-check 通过；唯一下一动作是 `manual_review_DSFA_result`，不授权训练、
 generation 或 promotion。
+
+## H-LOMA-CBOGT-S6-DMSA：Detector Data-Metric Spectral Attribution（2026-09-02）
+
+Windows-native 环境完成 DMSA frozen-RMAL、no-update detector data-metric spectral attribution。
+起始 lineage HEAD 为 `39b0ac449986df31b9102c0b1296dda912f7b39c`；实现/config/review/test/CLI
+的 clean implementation/result commit 为 `9818e87441eb2c86eef06c18c1aa646f3e57dea5`。
+上游 RMAL/ZCSA/RWSA-ACTIVE/LSDA/LRRC/DSFA、probe、renderer、checkpoint、OLS、detector、
+formal runtime 与历史 evidence 未修改。
+
+attempt-01 为 validation-only invalid harness（`three_panel_isolation` 修复前停止），validation
+SHA-256=`94a29d7ad6c065ac0253700524de1f0f1e23c0e92fe3959b340ae04e26ac63b3`，按 write-once
+规则保留且不消费。权威 attempt-02 为
+`outputs/20260902_v2/runs/lightgen_scaled_chen_detector_data_metric_spectral_attribution_v1_attempt_02/`；
+validation/audit/compact SHA-256 为
+`f0eebcb978851b9ab58453e1b28e920eddc93e86a2b82133af0bd7ec8e8ce93d` /
+`c9cc448f1b58040d45b8b77c9cfaa9facd536cdcf40d0b4f152efe42e16411fe` /
+`39564f0ce3973bd738d196191a06c7990407f9b7b6ab7e6e8a2eb3366dc2d0ac`；research config/review/source
+SHA-256 为 `48e3e34d47a486fd50052f2d805d387c84fc216a9e9498775059c2de45560828` /
+`2899715f961a19cdee83b53f709c9b77498ab618afe5963c6c63a5492ea2501a` /
+`88356728b165e7c1ff91fb825292a635901da2d02c60841da972b6434d36112f`。
+
+结果为 `passed / detector_data_metric_spectral_attribution_completed`。fit/selection/confirmation
+使用 1000/1000/5000 样本与 population `N` streaming moments；15/15 audit gates、raw LSDA
+identity、三组 moment identity、selection/confirmation cross identity、state/no-update、
+no-bank、finite 与 resource gates 全部通过。selection/confirmation mean/variance energy
+fractions=`0.4019555898/0.5980444102`、`0.3704005497/0.6295994503`；second-moment
+effective/stable rank=`14.8728108/2.2436135`、`17.4264177/2.4233991`，centered-variance
+为 `36.6563260/8.1270337`、`39.8650006/8.4787742`。peak CUDA=`2274099712` bytes，
+wall=`84.922 s`，exact-panel CMOS-only replay=true，optical replay=false，optimizer/backward/
+refit/decoder/generation 均为 false/zero。
+
+定向测试 `21 passed`，直接相关回归 `111 passed, 1 deselected`，compileall、Ruff、diff-check
+与 CLI checks 通过。全套 pytest 为 `1285 passed, 12 deselected, 25 subtests passed`，另有
+4 个无关环境失败（3 个 NVRTC DLL/运行时失败、1 个 near-conjugate 临时路径失败）。状态
+flags 继续为 `reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、
+`generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false` 与
+`closed_task_relevant_bottleneck_not_supported`；唯一下一动作是 `manual_review_DMSA_result`，
+不授权训练、decoder、candidate export、generation 或 promotion。

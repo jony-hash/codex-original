@@ -45,16 +45,17 @@ ChatGPT Sources 包中的文件是由维护工具生成的受控副本。副本�
 - prior-native、direct-generator、quadrature、fiber、FMF 长训练和 formal promotion
   等已关闭或未授权路线不能因为 ChatGPT 的讨论而重新打开。
 - 所有科研执行仍需遵守 `AGENTS.md` 的 long-training gate；记忆文件本身不提供训练授权。
-- 当前最新有效科研结果是 H-LOMA-CBOGT-S6-DSFA 的 `passed` /
-  `data_weighted_spectral_functional_attribution_completed`，实现 commit 为
-  `d032738c0f02af5ada85554224e045d238416e0a`：它只描述冻结 RMAL readout 的 ordered LSDA
-  modes 在 selection/confirmation detector data 上的 data-weighted output、alignment、
-  self-energy 与 signed gain，不把 spectral concentration 或 functional attribution 升级为
-  reconstruction sufficiency。其 parent LRRC 仍只在预注册 candidate family 内保留
-  `first_confirmed_candidate_rank=256`。该结果不改变 RMAL/ZCSA/RWSA-ACTIVE/LSDA、TRBA/
-  HFRR/DCM/MRA/RMRI/BOSA 的历史或 superseding interpretation。
-  唯一允许的下一动作是 `manual_review_DSFA_result`；在项目负责人审查前不得进入 FMF、继续
-  训练、exposure retuning、生成或 promotion。relay family
+- 当前最新有效科研结果是 H-LOMA-CBOGT-S6-DMSA 的 `passed` /
+  `detector_data_metric_spectral_attribution_completed`，正式结果绑定 clean
+  implementation/result commit 为 `9818e87441eb2c86eef06c18c1aa646f3e57dea5`：它只描述
+  冻结 RMAL readout 在 selection/confirmation detector data 上的 second-moment、
+  centered-variance 与 raw operator spectral telemetry，并保持与 DSFA/LRRC 的 identity
+  交叉核验，不把 weighted structure 升级为 reconstruction sufficiency。其 parent DSFA
+  仍为 `data_weighted_spectral_functional_attribution_completed`，LRRC 仍只在预注册
+  candidate family 内保留 `first_confirmed_candidate_rank=256`。该结果不改变
+  RMAL/ZCSA/RWSA-ACTIVE/LSDA、TRBA/HFRR/DCM/MRA/RMRI/BOSA 的历史或 superseding
+  interpretation。唯一允许的下一动作是 `manual_review_DMSA_result`；在项目负责人审查前
+  不得进入 FMF、继续训练、exposure retuning、生成或 promotion。relay family
   `scaled_chen_v1_local_backend_relay_attribution_family=closed_metric_confound_reinterpreted`
   保持。
   若交接文档更新，以最新的 `CURRENT_STATUS.md`、`status/current_handoff.md` 和 hypothesis
@@ -621,3 +622,32 @@ LSDA q/operator、两 panel additive identity、LRRC prefix replay、state/no-up
 finite 与 resource gates 全部通过；peak CUDA=`2274099712` bytes，wall time=`225.532 s`。所有
 治理 flags 继续禁止 training/generation/promotion，唯一下一动作是 `manual_review_DSFA_result`。
 DSFA 定向测试 `10 passed`，compileall/Ruff/diff-check 通过；上游 evidence 与历史 attempt 均保持 immutable。
+
+## H-LOMA-CBOGT-S6-DMSA：Detector Data-Metric Spectral Attribution（2026-09-02）
+
+DMSA 在 clean implementation/result commit `9818e87441eb2c86eef06c18c1aa646f3e57dea5`
+上完成，消费冻结 RMAL `W=[256,40000]`、`b=[40000]`、LSDA exact ordered CPU float64
+spectrum、LRRC attempt-04 与 DSFA attempt-01。它是 no-update、descriptive-only 的
+detector data-metric attribution：以 population `N` 流式记录 `S=C+mu muT`，并比较
+raw operator、second-moment 与 centered-variance 的 spectrum、energy decomposition、
+effective/stable rank；不训练、不 refit、不做 rank search 或 reconstruction truncation。
+
+权威 attempt-02 为
+`outputs/20260902_v2/runs/lightgen_scaled_chen_detector_data_metric_spectral_attribution_v1_attempt_02/`；
+validation/audit/compact SHA256=`f0eebcb978851b9ab58453e1b28e920eddc93e86a2b82133af0bd7ec8e8ce93d` /
+`c9cc448f1b58040d45b8b77c9cfaa9facd536cdcf40d0b4f152efe42e16411fe` /
+`39564f0ce3973bd738d196191a06c7990407f9b7b6ab7e6e8a2eb3366dc2d0ac`；probe hash 仍为
+`3551584a7983619356ea49babe7e5dedca559dfaa8ee5302fa44fd1a152a24ed`。attempt-01 为
+validation-only invalid harness，保留且不消费。
+
+结果为 `passed / detector_data_metric_spectral_attribution_completed`，15/15 audit gates
+通过。selection/confirmation 的 mean/variance energy fractions 为
+`0.4019555898/0.5980444102` 与 `0.3704005497/0.6295994503`；second-moment
+effective/stable rank 为 `14.8728108/2.2436135` 与 `17.4264177/2.4233991`，
+centered-variance 为 `36.6563260/8.1270337` 与 `39.8650006/8.4787742`。正式 replay
+为 exact-panel CMOS-only no-update streaming/no-bank，peak CUDA=`2274099712` bytes，
+state/OLS unchanged；`reconstruction_manifold_supported=false`、
+`generative_manifold_supported=false`、`generation_readiness=not_ready`、
+`training_authorized=false`、`formal_promotion=false` 与
+`closed_task_relevant_bottleneck_not_supported` 保持。唯一下一动作是
+`manual_review_DMSA_result`；不得训练、decoder、candidate export、generation 或 promotion。
