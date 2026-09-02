@@ -144,6 +144,11 @@ def dispatch(args: argparse.Namespace) -> int:
     }:
         from .research.optical_manifold_smf_bogt_detector_data_metric_spectral_attribution import dispatch
     elif action in {
+        "scaled-chen-detector-mean-centered-functional-attribution-validate",
+        "scaled-chen-detector-mean-centered-functional-attribution-run",
+    }:
+        from .research.optical_manifold_smf_bogt_detector_mean_centered_functional_attribution import dispatch
+    elif action in {
         "scaled-chen-back-relay-axial-conjugate-validate",
         "scaled-chen-back-relay-axial-conjugate-preflight",
         "scaled-chen-back-relay-axial-conjugate-run",
