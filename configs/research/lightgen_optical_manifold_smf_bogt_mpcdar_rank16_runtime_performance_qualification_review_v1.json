@@ -1,0 +1,100 @@
+{
+  "schema": "lightgen_optical_manifold_smf_bogt_mpcdar_rank16_runtime_performance_qualification_review.v1",
+  "hypothesis": "H-LOMA-CBOGT-S10-MPCDAR-R16-RUNTIME-PQ",
+  "reviewer_role": "project_owner",
+  "decision": "approve_cpu_only_frozen_mpcdar_rank16_runtime_characterization",
+  "approved_contract": {
+    "schema": "lightgen_optical_manifold_smf_bogt_mpcdar_rank16_runtime_performance_qualification_v1",
+    "hypothesis": "H-LOMA-CBOGT-S10-MPCDAR-R16-RUNTIME-PQ",
+    "branch": "research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1",
+    "starting_head": "8680c12be955df72906b955433e6daeabfdfec4a",
+    "parent": {
+      "s9v_manifest": "outputs/20260902_v2/visualizations/scaled_chen_full_path_reconstruction_v1_attempt_01/visualization_manifest.json",
+      "s9v_manifest_sha256": "ce6eee49822ddee7c3c28c13a6e0e108d499478984c498f2f51b909bebead749",
+      "s9v_status": "completed",
+      "s9v_classification": "descriptive_visualization_completed",
+      "s9_artifact_dir": "outputs/20260902_v2/runs/lightgen_scaled_chen_mpcdar_rank16_float32_numerical_qualification_v1_attempt_02/artifact",
+      "s9_manifest_sha256": "1ad6d9edfb1037564c3aec533904ed8d48bc4614a7bbcb221a56c9a244d802c7",
+      "s9_payload_sha256": "480c57bff42e28cdfdf5ba260978234ee98f3d1169407c2523beeba76d39e834",
+      "s9_validation": "outputs/20260902_v2/runs/lightgen_scaled_chen_mpcdar_rank16_float32_numerical_qualification_v1_attempt_02/validation.json",
+      "s9_validation_sha256": "5728fb9b50212d5dc7359975b06fe6d3f51be3645a23410683334abab7bb2137",
+      "s9_audit": "outputs/20260902_v2/runs/lightgen_scaled_chen_mpcdar_rank16_float32_numerical_qualification_v1_attempt_02/audit.json",
+      "s9_audit_sha256": "0ff4aeaddd2035f0ced865a5e9f76331db53a2a8a213ea18064bd8e1d7368bde",
+      "s9_compact": "outputs/20260902_v2/runs/lightgen_scaled_chen_mpcdar_rank16_float32_numerical_qualification_v1_attempt_02/compact_report.json",
+      "s9_compact_sha256": "5b45f1401489fab63382366045a95f52984505038a379ca8bd8d0a780424c940"
+    },
+    "consumer": {
+      "runtime_module": "src/ldm_project/v2/application/current/frozen_mpcdar_rank16_float32_readout.py",
+      "repair_id": "H-LOMA-CBOGT-S9-MPCDAR-R16-F32-NQ",
+      "rank": 16,
+      "dtype": "torch.float32",
+      "feature_dim": 256,
+      "output_dim": 40000,
+      "formula": "centered = z - mu_fit; h = centered @ T16; prediction = c_mean + h @ V16.T",
+      "tensor_shapes": {
+        "mu_fit": [256],
+        "c_mean": [40000],
+        "T16": [256, 16],
+        "V16": [40000, 16]
+      },
+      "raw_tensor_bytes": 2737408,
+      "serialized_bytes": 2739448
+    },
+    "benchmark": {
+      "primary": "cpu_readout_only",
+      "device": "cpu",
+      "dtype": "torch.float32",
+      "fixture_seed": 20260902,
+      "fixture_shape": [32, 256],
+      "batch_sizes": [1, 8, 32],
+      "warmup": 50,
+      "repetitions": 200,
+      "timer": "time.perf_counter_ns",
+      "synchronization": "CPU eager synchronous; no CUDA synchronization",
+      "quantile_method": "linear: index=(n-1)*q",
+      "prediction_bank_saved": false,
+      "steady_state_excludes": ["first_import", "artifact_load", "fixture_generation", "statistics", "json_writes"],
+      "fresh_process_initialization": true
+    },
+    "optional": {
+      "end_to_end_software_pipeline": "not_evaluated",
+      "full_w_runtime": "not_evaluated",
+      "gpu": "not_evaluated",
+      "analytical_factorized_macs_per_sample": 644096,
+      "analytical_full_w_macs_per_sample": 10240000,
+      "analytical_mac_ratio": 15.89825119236884
+    },
+    "memory": {
+      "process_memory_delta": "not_recorded",
+      "peak_memory": "not_recorded",
+      "rss_helper": "not_available_in_v2_contract"
+    },
+    "authorization": {
+      "no_model_load": true,
+      "no_cuda": true,
+      "no_training": true,
+      "no_refit": true,
+      "no_rank_change": true,
+      "no_precision_change": true,
+      "no_optimizer": true,
+      "no_backward": true,
+      "no_quantization": true,
+      "no_compile_or_jit": true,
+      "no_system_tuning": true,
+      "training_authorized": false,
+      "formal_promotion": false,
+      "generation": false
+    }
+  },
+  "no_update_diagnostic_authorized": true,
+  "status_success_semantics": "completed_when_required_cpu_telemetry_and_correctness_are_valid",
+  "no_arbitrary_latency_threshold": true,
+  "classification": "frozen_rank16_float32_runtime_performance_characterized",
+  "gpu_required_for_success": false,
+  "full_w_runtime_required": false,
+  "end_to_end_pipeline_required": false,
+  "training_authorized": false,
+  "formal_promotion": false,
+  "generation": false,
+  "deployment_ready": false
+}
