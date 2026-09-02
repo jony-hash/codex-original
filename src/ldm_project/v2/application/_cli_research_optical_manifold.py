@@ -154,6 +154,11 @@ def dispatch(args: argparse.Namespace) -> int:
     }:
         from .research.optical_manifold_smf_bogt_mean_preserving_centered_data_aware_readout_recovery import dispatch
     elif action in {
+        "scaled-chen-mpcdar-rank16-integration-qualification-build",
+        "scaled-chen-mpcdar-rank16-integration-qualification-qualify",
+    }:
+        from .research.optical_manifold_smf_bogt_mpcdar_rank16_integration_qualification import dispatch
+    elif action in {
         "scaled-chen-back-relay-axial-conjugate-validate",
         "scaled-chen-back-relay-axial-conjugate-preflight",
         "scaled-chen-back-relay-axial-conjugate-run",

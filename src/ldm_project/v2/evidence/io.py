@@ -158,3 +158,22 @@ def atomic_torch_save(path: str | Path, payload: Any) -> None:
         os.replace(temporary, target)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def atomic_torch_save_new(
+    path: str | Path,
+    payload: Any,
+    *,
+    artifact_kind: str = "artifact",
+) -> None:
+    """Publish one complete torch artifact without replacing an existing file."""
+    target = Path(path)
+    temporary = _temporary_path(target)
+    try:
+        torch.save(payload, temporary)
+        try:
+            os.link(temporary, target)
+        except FileExistsError as exc:
+            raise FileExistsError(f"refusing to overwrite {artifact_kind}: {target}") from exc
+    finally:
+        temporary.unlink(missing_ok=True)
