@@ -1330,6 +1330,7 @@ def qualify(args: argparse.Namespace) -> int:
             None if status == "passed" else ("S8 harness mismatch" if status == "invalid_harness" else "rank-16 RMAL Gate failed"),
         )
         audit["integration_only"] = True
+        audit["cmos_only_replay_executed"] = True
         _write_new(output_path, audit, artifact_kind="S8 audit evidence")
         print(json.dumps(audit, indent=2, sort_keys=True))
         return 0 if status == "passed" else 2
