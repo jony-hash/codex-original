@@ -1275,7 +1275,12 @@ def _validation_gates(
         GateResult("lsda_raw_spectrum_inheritance", spectral["q_identity"]["passed"] is True and raw_identity["passed"] is True, raw_identity),
         GateResult("dsfa_terminal_identity", upstream.dsfa["compact"].get("classification") == DSFA_CONSUMER["classification"], {}),
         GateResult("population_moment_contract", MOMENT_CONTRACT["population_denominator"] == "N" and MOMENT_CONTRACT["unbiased_N_minus_1"] is False, {}),
-        GateResult("three_panel_isolation", tuple(PANEL_CONTRACT) == ("fit", "selection", "confirmation") and PANEL_CONTRACT["fit_is_reference_only"], {}),
+        GateResult(
+            "three_panel_isolation",
+            tuple(list(PANEL_CONTRACT)[:3]) == ("fit", "selection", "confirmation")
+            and PANEL_CONTRACT["fit_is_reference_only"],
+            {},
+        ),
         GateResult("no_downstream_path", MEASUREMENT["no_rank_search"] and MEASUREMENT["no_rank_truncated_reconstruction"] and MEASUREMENT["descriptive_only"], {}),
         GateResult("no_update_scope", True, {"optimizer_created": False, "backward_calls": 0, "probe_refit": False, "decoder_called": False, "physical_forward_called": False}),
         GateResult("disk_free_precondition", disk.free >= MIN_DISK_FREE_BYTES, {"free_bytes": int(disk.free), "minimum_bytes": MIN_DISK_FREE_BYTES}),
