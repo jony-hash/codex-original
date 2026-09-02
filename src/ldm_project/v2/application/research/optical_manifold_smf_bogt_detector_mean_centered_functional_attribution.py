@@ -813,7 +813,7 @@ def _load_upstream(spec: Spec, dataset_root: str | Path) -> Upstream:
         runtime = dmsa._load_upstream(spec, dataset_root)
     except (ValueError, dmsa.DMSAHarnessFailure, dsfa.DSFAHarnessFailure, lrrc.LRRCHarnessFailure) as exc:
         raise MCFAHarnessFailure("RMAL/LSDA/DSFA/DMSA upstream identity is invalid") from exc
-    probe = runtime.runtime.rmal_probe
+    probe = runtime.runtime.runtime.rmal_probe
     if (
         probe.artifact_sha256 != RMAL_CONSUMER["probe_sha256"]
         or tuple(probe.weights.shape) != (FEATURE_DIM, TOTAL_COLUMNS)
@@ -835,6 +835,10 @@ def _verify_panel_identity(upstream: Upstream) -> dict[str, Any]:
 
 def _panel_images(upstream: Upstream, panel: str) -> torch.Tensor:
     return dmsa._panel_images(upstream.runtime, panel)
+
+
+def _rmal_runtime(upstream: Upstream) -> Any:
+    return upstream.runtime.runtime.runtime
 
 
 def _feature_batch(
@@ -1186,7 +1190,7 @@ def _input_hashes(
     upstream: Upstream,
     panel_identity: Mapping[str, Any],
 ) -> dict[str, str]:
-    runtime = upstream.runtime.runtime
+    runtime = _rmal_runtime(upstream)
     dsfa_identity = upstream.runtime.dsfa
     hashes = {
         "research_config": file_sha256(spec.path),
@@ -1341,7 +1345,7 @@ def _validation_gates(
     panel_identity: Mapping[str, Any],
     output_path: Path,
 ) -> tuple[GateResult, ...]:
-    probe = upstream.runtime.runtime.rmal_probe
+    probe = _rmal_runtime(upstream).rmal_probe
     disk = shutil.disk_usage(output_path.anchor or str(output_path.parent))
     return (
         GateResult("clean_registered_branch", state.get("branch") == BRANCH and state.get("clean") is True, {}),
@@ -1389,7 +1393,7 @@ def validate(args: argparse.Namespace) -> int:
         None if valid else "invalid_harness",
         spec,
         state,
-        upstream.runtime.runtime.data.manifest["manifest_hash"],
+        _rmal_runtime(upstream).data.manifest["manifest_hash"],
         hashes,
         gates,
         (NEXT_ACTION_RUN,) if valid else (),
@@ -1456,7 +1460,7 @@ def _run_invalid_harness(
         "invalid_harness",
         spec,
         state,
-        upstream.runtime.runtime.data.manifest["manifest_hash"],
+        _rmal_runtime(upstream).data.manifest["manifest_hash"],
         hashes,
         (GateResult("mcfa_harness", False, {"reason": reason}), GateResult("no_update_scope", True, {})),
         (),
@@ -1501,13 +1505,13 @@ def run(args: argparse.Namespace) -> int:
     try:
         free_cuda, total_cuda = _resource_preflight(output_path, device)
         source = lrrc.rmfa._load_source(
-            upstream.runtime.runtime.rmal_consumer.bundle, load_checkpoints=True
+            _rmal_runtime(upstream).rmal_consumer.bundle, load_checkpoints=True
         )
-        formal = upstream.runtime.runtime.rmal_consumer.bundle.parent.parent.formal
+        formal = _rmal_runtime(upstream).rmal_consumer.bundle.parent.parent.formal
         checkpoint = source.checkpoints[lrrc.rmal.PRIMARY_CHECKPOINT]
         model = lrrc.mra._load_scaled_model(formal, checkpoint, device)
         model.eval()
-        probe = upstream.runtime.runtime.rmal_probe
+        probe = _rmal_runtime(upstream).rmal_probe
         W64 = probe.weights.detach().cpu().to(torch.float64).contiguous()
         b64 = probe.bias.detach().cpu().to(torch.float64).contiguous()
         if tuple(W64.shape) != (FEATURE_DIM, TOTAL_COLUMNS) or tuple(b64.shape) != (TOTAL_COLUMNS,):
@@ -1650,7 +1654,7 @@ def run(args: argparse.Namespace) -> int:
             classification,
             spec,
             state,
-            upstream.runtime.runtime.data.manifest["manifest_hash"],
+            _rmal_runtime(upstream).data.manifest["manifest_hash"],
             hashes,
             audit_gates,
             (NEXT_ACTION_RESULT_REVIEW,) if harness_passed else (),
