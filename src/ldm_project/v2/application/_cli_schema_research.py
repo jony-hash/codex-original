@@ -489,6 +489,22 @@ def register_research(root: argparse._SubParsersAction) -> None:
     dsfa_run.add_argument("--dataset-root", default="data")
     dsfa_run.add_argument("--device", choices=("cuda",), default="cuda")
     dsfa_run.add_argument("--output", required=True)
+    dmsa_validate = optical_actions.add_parser(
+        "scaled-chen-detector-data-metric-spectral-attribution-validate"
+    )
+    dmsa_validate.add_argument("--config", required=True)
+    dmsa_validate.add_argument("--review-contract", required=True)
+    dmsa_validate.add_argument("--dataset-root", default="data")
+    dmsa_validate.add_argument("--output", required=True)
+    dmsa_run = optical_actions.add_parser(
+        "scaled-chen-detector-data-metric-spectral-attribution-run"
+    )
+    dmsa_run.add_argument("--config", required=True)
+    dmsa_run.add_argument("--review-contract", required=True)
+    dmsa_run.add_argument("--validation-evidence", required=True)
+    dmsa_run.add_argument("--dataset-root", default="data")
+    dmsa_run.add_argument("--device", choices=("cuda",), default="cuda")
+    dmsa_run.add_argument("--output", required=True)
     back_relay_validate = optical_actions.add_parser("scaled-chen-back-relay-axial-conjugate-validate")
     back_relay_validate.add_argument("--config", required=True)
     back_relay_validate.add_argument("--review-contract", required=True)
