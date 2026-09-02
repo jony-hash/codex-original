@@ -1923,3 +1923,35 @@ optimizer/backward/refit/decoder/optical replay/generation 均未发生，state/
 `111 passed, 1 deselected`，compileall/Ruff/diff-check/CLI checks 通过；全套 pytest 为
 `1285 passed, 12 deselected, 25 subtests passed`，另有 4 个无关环境失败。唯一下一动作是
 `manual_review_DMSA_result`；不得训练、decoder、candidate export、generation 或 promotion。
+
+## H-LOMA-CBOGT-S6-MCFA：Detector Mean-Centered Functional Attribution（2026-09-02）
+
+MCFA 在 clean implementation/result commit `069cfa4b3aeda3943d754d739daf6daeba2a54a6` 上完成。
+它消费冻结 RMAL `W=[256,40000]`、`b=[40000]` 与 LSDA/LRRC/DSFA/DMSA 及 ZCSA/RWSA-ACTIVE
+身份，真实消费者是项目负责人审查独立 fit/selection/confirmation panel 上 `mu W` 与
+`(z-mu)W` 的 functional MSE gain 分解；拒绝决定是不得把结果升级为 dominance、
+reconstruction sufficiency、training、generation 或 promotion。上游 evidence、probe、
+renderer、checkpoint、OLS、detector、formal runtime 与历史产物未修改；本轮只新增 MCFA
+producer/config/review/test/CLI route。
+
+attempt-01 是 validation-only failed harness，正式 replay 在 panel image runtime binding 处
+停止并按 write-once 保留；权威 attempt-02 为
+`outputs/20260902_v2/runs/lightgen_scaled_chen_detector_mean_centered_functional_attribution_v1_attempt_02/`，
+validation/audit/compact SHA256=`35ad479aa931cb2e605bb9b582306549512106a5c2dcd070bfde35a2e552e7f1` /
+`f69664cf9da1d61e90742a09614c4535388402f9228e401d2451e3ebeeefdc0b` /
+`e95c072bde8306dd3f7cb8d6c5af1a671a778cede8f84c285c450af854059494`；probe SHA256 仍为
+`3551584a7983619356ea49babe7e5dedca559dfaa8ee5302fa44fd1a152a24ed`。
+
+正式结果为 `passed / detector_mean_centered_functional_attribution_completed`，audit
+15/15 gates 通过。fit/selection/confirmation 样本数为 `1000/1000/5000`；mean/centered
+output-energy fractions=`0.3829179441/0.6170820559`、`0.4019555898/0.5980444102`、
+`0.3704005497/0.6295994503`；mean/centered/total functional gains=`0.0313323622/0.0504929026/0.0818252648`、
+`0.0396463978/0.0489494817/0.0885958795`、`0.0316138044/0.0458887261/0.0775025305`。
+两遍 CMOS-only streaming replay 共 14000 visits；energy/MSE/gain/cross-identity、
+panel isolation、finite、state/no-update、streaming/no-bank 与 attribution boundary 均通过。
+peak CUDA=`2274099712` bytes，wall=`183.266 s`；完整 pytest=`1310 passed, 12 deselected,
+25 subtests passed`。flags 继续为 `reconstruction_manifold_supported=false`、
+`generative_manifold_supported=false`、`generation_readiness=not_ready`、
+`training_authorized=false`、`formal_promotion=false` 与
+`closed_task_relevant_bottleneck_not_supported`。唯一下一动作是 `manual_review_MCFA_result`；
+不得训练、decoder、candidate export、generation 或 promotion。

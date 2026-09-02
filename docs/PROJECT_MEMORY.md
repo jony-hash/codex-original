@@ -45,16 +45,17 @@ ChatGPT Sources 包中的文件是由维护工具生成的受控副本。副本�
 - prior-native、direct-generator、quadrature、fiber、FMF 长训练和 formal promotion
   等已关闭或未授权路线不能因为 ChatGPT 的讨论而重新打开。
 - 所有科研执行仍需遵守 `AGENTS.md` 的 long-training gate；记忆文件本身不提供训练授权。
-- 当前最新有效科研结果是 H-LOMA-CBOGT-S6-DMSA 的 `passed` /
-  `detector_data_metric_spectral_attribution_completed`，正式结果绑定 clean
-  implementation/result commit 为 `9818e87441eb2c86eef06c18c1aa646f3e57dea5`：它只描述
-  冻结 RMAL readout 在 selection/confirmation detector data 上的 second-moment、
-  centered-variance 与 raw operator spectral telemetry，并保持与 DSFA/LRRC 的 identity
-  交叉核验，不把 weighted structure 升级为 reconstruction sufficiency。其 parent DSFA
-  仍为 `data_weighted_spectral_functional_attribution_completed`，LRRC 仍只在预注册
+- 当前最新有效科研结果是 H-LOMA-CBOGT-S6-MCFA 的 `passed` /
+  `detector_mean_centered_functional_attribution_completed`，正式结果绑定 clean
+  implementation/result commit 为 `069cfa4b3aeda3943d754d739daf6daeba2a54a6`：它只描述
+  冻结 RMAL readout 在 fit/selection/confirmation detector panels 上 `mu W` 与
+  `(z-mu)W` 的 energy、functional MSE gain 与 additive identity，并保持与
+  DMSA/DSFA/LRRC 的 identity 交叉核验，不把 attribution 升级为 reconstruction
+  sufficiency。其 parent DMSA 仍为 `detector_data_metric_spectral_attribution_completed`，
+  DSFA 仍为 `data_weighted_spectral_functional_attribution_completed`，LRRC 仍只在预注册
   candidate family 内保留 `first_confirmed_candidate_rank=256`。该结果不改变
   RMAL/ZCSA/RWSA-ACTIVE/LSDA、TRBA/HFRR/DCM/MRA/RMRI/BOSA 的历史或 superseding
-  interpretation。唯一允许的下一动作是 `manual_review_DMSA_result`；在项目负责人审查前
+  interpretation。唯一允许的下一动作是 `manual_review_MCFA_result`；在项目负责人审查前
   不得进入 FMF、继续训练、exposure retuning、生成或 promotion。relay family
   `scaled_chen_v1_local_backend_relay_attribution_family=closed_metric_confound_reinterpreted`
   保持。
@@ -651,3 +652,31 @@ state/OLS unchanged；`reconstruction_manifold_supported=false`、
 `training_authorized=false`、`formal_promotion=false` 与
 `closed_task_relevant_bottleneck_not_supported` 保持。唯一下一动作是
 `manual_review_DMSA_result`；不得训练、decoder、candidate export、generation 或 promotion。
+
+## H-LOMA-CBOGT-S6-MCFA：Detector Mean-Centered Functional Attribution（2026-09-02）
+
+MCFA 在 clean commit `069cfa4b3aeda3943d754d739daf6daeba2a54a6` 上完成，消费冻结 RMAL
+`W=[256,40000]`、`b=[40000]` 与 LSDA/LRRC/DSFA/DMSA 及 ZCSA/RWSA-ACTIVE 的已验证身份。
+它是 fit/selection/confirmation 独立 panel 上的两遍 CMOS-only、no-update、streaming
+attribution，消费者是项目负责人区分 `mu W` 与 `(z-mu)W` 的功能 MSE gain；拒绝决定是
+不得把结果升级为 dominance、reconstruction sufficiency、training、generation 或 promotion。
+
+权威 attempt-02 为
+`outputs/20260902_v2/runs/lightgen_scaled_chen_detector_mean_centered_functional_attribution_v1_attempt_02/`；
+validation/audit/compact SHA256=`35ad479aa931cb2e605bb9b582306549512106a5c2dcd070bfde35a2e552e7f1` /
+`f69664cf9da1d61e90742a09614c4535388402f9228e401d2451e3ebeeefdc0b` /
+`e95c072bde8306dd3f7cb8d6c5af1a671a778cede8f84c285c450af854059494`；probe hash 仍为
+`3551584a7983619356ea49babe7e5dedca559dfaa8ee5302fa44fd1a152a24ed`。attempt-01 为
+validation-only failed harness，按 write-once 规则保留且不消费。
+
+fit/selection/confirmation 样本数为 `1000/1000/5000`，共 14000 visits；mean/centered
+output-energy fractions=`0.3829179441/0.6170820559`、`0.4019555898/0.5980444102`、
+`0.3704005497/0.6295994503`，mean/centered/total functional gains=`0.0313323622/0.0504929026/0.0818252648`、
+`0.0396463978/0.0489494817/0.0885958795`、`0.0316138044/0.0458887261/0.0775025305`。
+audit 为 15/15 gates，peak CUDA=`2274099712` bytes、wall=`183.266 s`；所有 energy/MSE/
+gain/cross-identity、state/no-update、no-bank、finite 与 attribution boundary gates 通过。
+flags 仍为 `reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、
+`generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false` 与
+`closed_task_relevant_bottleneck_not_supported`；完整 pytest 为 `1310 passed, 12 deselected,
+25 subtests passed`。唯一下一动作是 `manual_review_MCFA_result`，不得训练、decoder、
+candidate export、generation 或 promotion。

@@ -6,13 +6,13 @@
 
 - 主项目：`D:\codex-original`
 - 基线分支：`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`
-- DMSA 正式 validation/audit 绑定 clean implementation/result commit
-  `9818e87441eb2c86eef06c18c1aa646f3e57dea5`；当前 clean HEAD 以 Git 核验为准。
-- 当前最新研究解释是 H-LOMA-CBOGT-S6-DMSA 对冻结 RMAL detector readout 的
-  detector data-metric spectral attribution；它只描述真实 detector data 上 second-moment、
-  centered-variance 与 operator spectrum 的能量、有效秩和 additive identity，不把
-  data-weighted structure 解释为 reconstruction sufficiency。DSFA 与更早
-  RMAL/ZCSA/RWSA-ACTIVE/LSDA/LRRC evidence 仍保持 immutable，并继续作为父级事实。
+- MCFA 正式 validation/audit 绑定 clean implementation/result commit
+  `069cfa4b3aeda3943d754d739daf6daeba2a54a6`；当前 clean HEAD 以 Git 核验为准。
+- 当前最新研究解释是 H-LOMA-CBOGT-S6-MCFA 对冻结 RMAL detector readout 的
+  mean/centered functional attribution；它只描述 fit/selection/confirmation panel 上
+  `mu W` 与 `(z-mu)W` 的能量、MSE gain 与 additive identity，不把 attribution 解释为
+  reconstruction sufficiency。DMSA、DSFA 与更早 RMAL/ZCSA/RWSA-ACTIVE/LSDA/LRRC
+  evidence 仍保持 immutable，并继续作为父级事实。
 - 基线提交：`019b76ef911e0bd16b8d5d4169807323427684af`
 - 当前几何归因实现绑定提交：`6419cc523a8b5dd41cb3d3c2531193890fa1481a`
 - 注销前审计提交：`75d0584c379b145b0f0eb45ece14fda160741f23`（已按用户确认推送）
@@ -800,4 +800,52 @@ DMSA 定向测试 `21 passed`，直接相关回归 `111 passed, 1 deselected`，
 git diff-check 与 CLI contract checks 通过。全套 pytest 为 `1285 passed, 12 deselected,
 25 subtests passed`，另有 4 个与 DMSA 无关的既有环境失败（3 个 NVRTC DLL/运行时失败、
 1 个 near-conjugate 临时路径失败）。唯一下一动作是 `manual_review_DMSA_result`；不得训练、
+decoder、candidate export、generation 或 promotion。
+
+## H-LOMA-CBOGT-S6-MCFA：Detector Mean-Centered Functional Attribution（2026-09-02）
+
+MCFA 消费冻结 RMAL `W=[256,40000]`、`b=[40000]` 及 LSDA、LRRC、DSFA、DMSA、
+ZCSA/RWSA-ACTIVE 的已验证身份；真实消费者是项目负责人区分 panel mean response
+`mu W` 与 centered instance response `(z-mu)W` 对 reconstruction functional MSE gain
+的描述性贡献。拒绝决定是不得把 attribution 升级为 mean/centered dominance、
+reconstruction sufficiency、training、generation 或 promotion。最终实现/config/review/
+test/CLI clean commit 为 `069cfa4b3aeda3943d754d739daf6daeba2a54a6`；本轮改动文件为：
+`src/ldm_project/v2/application/research/optical_manifold_smf_bogt_detector_mean_centered_functional_attribution.py`、
+`configs/research/lightgen_optical_manifold_smf_bogt_detector_mean_centered_functional_attribution_v1.yaml`、
+`configs/research/lightgen_optical_manifold_smf_bogt_detector_mean_centered_functional_attribution_review_v1.json`、
+`tests/v2/test_optical_manifold_smf_bogt_detector_mean_centered_functional_attribution.py`、
+`src/ldm_project/v2/application/_cli_research_optical_manifold.py` 与
+`src/ldm_project/v2/application/_cli_schema_research.py`；上游 evidence/probe/renderer/
+checkpoint/OLS/detector/formal runtime 未修改。
+
+attempt-01 为 validation-only failed harness，正式 replay 在 panel image runtime binding
+处停止，validation SHA-256=`e27c273780387ceb36f1c63cb34746231356236d209ac122f61a2a23a35bb3bb`，
+按 write-once 规则保留且不消费。权威 attempt-02 为
+`outputs/20260902_v2/runs/lightgen_scaled_chen_detector_mean_centered_functional_attribution_v1_attempt_02/`；
+validation/audit/compact SHA-256 分别为
+`35ad479aa931cb2e605bb9b582306549512106a5c2dcd070bfde35a2e552e7f1`、
+`f69664cf9da1d61e90742a09614c4535388402f9228e401d2451e3ebeeefdc0b`、
+`e95c072bde8306dd3f7cb8d6c5af1a671a778cede8f84c285c450af854059494`；probe SHA-256 仍为
+`3551584a7983619356ea49babe7e5dedca559dfaa8ee5302fa44fd1a152a24ed`。
+
+结果为 `passed / detector_mean_centered_functional_attribution_completed`。fit/selection/
+confirmation 分别使用 1000/1000/5000 独立 panel 样本，population denominator=`N`，
+两遍 CMOS-only streaming replay 共 14000 sample visits；mean/centered output-energy
+fractions 分别为 fit `0.3829179441/0.6170820559`、selection `0.4019555898/0.5980444102`、
+confirmation `0.3704005497/0.6295994503`。对应 mean/centered/total functional gains 为
+fit `0.0313323622/0.0504929026/0.0818252648`、selection
+`0.0396463978/0.0489494817/0.0885958795`、confirmation
+`0.0316138044/0.0458887261/0.0775025305`；full-probe MSE 为
+`0.0044580647/0.0098129279/0.0101852893`。
+
+三 panel 的 centered feature/dynamic mean、dynamic decomposition、energy identity、
+MSE/gain identity、DSFA/DMSA/LRRC scalar cross-identity、finite、panel isolation、
+state/no-update、streaming/no-bank 与 attribution boundary gates 全部通过；audit 为
+15/15 gates，peak CUDA=`2274099712` bytes，wall=`183.266 s`。optimizer/backward/refit/
+decoder/physical-forward modification/generation 均为 false/zero；
+`reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、
+`generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false` 与
+`closed_task_relevant_bottleneck_not_supported` 保持。最终核验为 MCFA 定向 `21 passed`、
+相关回归 `179 passed, 1 warning`、完整 pytest `1310 passed, 12 deselected, 25 subtests passed`，
+compileall、Ruff、git diff-check 通过。唯一下一动作是 `manual_review_MCFA_result`；不得训练、
 decoder、candidate export、generation 或 promotion。
