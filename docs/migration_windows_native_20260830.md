@@ -492,3 +492,113 @@ sim-to-real alignment、仅在另有理由时的 optional optimization、重新�
 `refresh`/`status`：`refresh` fail-closed，`status=invalid`，确切原因是
 `invalid Sources manifest: C:\Users\24567\Documents\Codex\codex-original-chatgpt-bridge\current\.chatgpt-sources-manifest.json`。
 记录 `bridge_recovery_blocked=true`；未删除/覆盖现有 package，未自动上传。
+
+## H-LOMA-CBOGT-FIBER-VIS1（2026-09-03，Windows-native，diagnostic-only）
+
+在分支 `research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`、starting HEAD
+`4d2933cb5b49302dd2114d49b56c905ef9d10ca7` 的 clean worktree 上完成已批准的 frozen horizontal VIS1。
+S9V/RMAL/checkpoint/panel/S7-S9 parent evidence 在运行前逐项复核；checkpoint SHA256=
+`ccb89f98cc11725eb80d66c61f4fdef62b24acdf9f6d739f78373f462d10e5de`，RMAL config SHA256=
+`c50b5b2d12830c40fbe619f137aca40f36f799f277e637d1ec20ac7e3403859f`。只比较 native SMF 100、existing FMF M2 200、
+synthetic nested MMF-M6 600 mode coefficients；三臂共用同一 encoder/pre-OLS tensor，decoder、CMOS、frozen MPCDAR R16 F32、
+geometry、panel 和 display policy 均固定。未训练、未 refit、未 rank/seed/fiber sweep、未运行 evaluator、未修改
+S7/S8/S9/S9V/S10、MPCDAR 或 formal runtime。
+
+权威 write-once run 为
+`outputs/20260903_v2/runs/lightgen_scaled_chen_fiber_horizontal_visualization_v1_attempt_06/`；Figure A/B、
+`fiber_contracts.json`、`comparison_manifest.json`、`comparison_metrics.json`、`panel.pt` 与图形 QA artifacts 均已生成。
+attempt-01 至 attempt-05 保留但不消费。MMF-M6 extra families 仅标注为 synthetic mode families，未作 physical LP-mode 或
+real-MMF claim；modal metadata 保留实际 flat ordering，panel 不导出完整 600-mode bank。
+
+固定 CUDA 10-sample replay elapsed=`2.2810000000008586 s`、peak allocation=`1748934144` bytes；learned model state hash
+before/after identical，arm operators parameter-free。最终 scoped targeted suite=`37 passed`；compileall、Ruff、diff-check
+通过。alignment/collision/text QA 分别为两张 PASS/两张 PASS/两张无低于 5 pt 文本；source validator 为
+`20 PASS, 0 FAIL, 1 intentional WARN`，WARN 仅说明固定单 panel 不生成统计 uncertainty encoding。Gate 为
+`descriptive_fiber_visualization_completed`，不改变 mainline closure、generation/training/promotion flags；唯一下一动作为
+`IMPLEMENT_H_LOMA_CBOGT_FIBER_VIS1`。Bridge 仍 `invalid / cloud_sources_sync_blocked`，没有执行 refresh/fix/upload。
+
+## H-LOMA-CBOGT-FIBER-VIS2（2026-09-03，Windows-native，diagnostic-only）
+
+VIS2 canonical clear 0–9 full-pipeline visualization 已完成。branch=
+`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`，starting/ending HEAD=
+`4d2933cb5b49302dd2114d49b56c905ef9d10ca7`；执行前已核验上一轮 VIS1 的预期 dirty paths，未发现额外用户修改。
+执行后只保留两份状态文档、VIS1 renderer/test 与 VIS2 renderer/test 六个预期路径；未提交，HEAD 未改变。
+
+Stage A 使用同一 MNIST train split、S9V confirmation interval `[55000,60000)`，候选按 dataset index ascending、
+每 digit 32 个，选择只基于 raw input。人工复核通过的 canonical indices 为
+`0:55297, 1:55310, 2:55040, 3:55054, 4:55053, 5:55322, 6:55066, 7:55052, 8:55165, 9:55120`；
+clear panel manifest SHA-256=`dbf9aa6741d29e264543f387edf7a4125893ec282c7a3897a57682d2e90388b9`。
+
+上一轮 authority 为 write-once attempt-08：
+`outputs/20260903_v2/runs/lightgen_scaled_chen_fiber_clear_full_pipeline_visualization_v1_attempt_08/`。
+attempt-01 至 attempt-07 保留但不消费；attempt-06 为排版修正后的 partial run，attempt-07 为尚有分片页标题
+碰撞的 completed run，均未覆盖或替代任何既有 evidence。attempt-08 manifest 要求 15/15 artifact、58 output files、
+`396579365` bytes；包含 clear contact/approval、Figure 0、full-pipeline index 与 0–4/5–9 split pages、fiber close-up、
+CMOS/reconstruction、SMF/FMF/MMF-M6 full paths、comparison/visualization manifests 与 panel payload。
+
+三臂固定为 SMF 100、FMF M2 200、synthetic MMF-M6 600 coefficients；frontend 只 replay 一次，三臂共享同一个
+pre-OLS tensor，decoder/relay/CMOS/frozen MPCDAR R16 F32 不变。MMF-M6 extra families `ETA1/XI2/XIETA/ETA2` 为
+synthetic-only labels，不支持 physical guided modes、real propagation、capacity 或 ranking claim。full replay 为
+CUDA 10-sample，elapsed=`2.7030000000013388 s`、peak allocation=`3095443968` bytes、model state unchanged=`true`。
+
+QA：VIS2/VIS1/S9V/SMF/FMF-M2/MMF-M6 targeted tests=`44 passed`，唯一 warning 是既有 pytest cache ACL；compileall、
+Ruff、diff-check 通过。10/10 alignment PASS；10/10 PDF 无低于 5 pt 文本（minimum=`5.0 pt`）；collision audit 无 FAIL，
+4 个 modal-label figures 的 66 个 edge WARN 已人工复核；source validator=`19 PASS/0 FAIL/2 intentional WARN`。
+治理仍为 reconstruction/generative=false、generation_readiness=`not_ready`、training/promotion=false、
+`mainline_state=closed_at_current_evidence_boundary`；VIS1 unchanged，Bridge 仍 `invalid / cloud_sources_sync_blocked`。
+Gate=`canonical_clear_full_pipeline_visualization_completed`。该 attempt 随后由下方 panel-only compact attempt-09
+替代为当前可审查输出；唯一下一动作：`manual_review_VIS2_figures`。
+
+## H-LOMA-CBOGT-FIBER-VIS2 compact rerender（2026-09-03，Windows-native，diagnostic-only）
+
+已批准的 VIS2 attempt-08 `panel.pt` 被直接复用，完成 compact arm-separated attempt-09；未重新 CUDA replay、未改变
+optical data、shared frontend、共同 p99.5 scales、phase mask、三臂 contracts 或 VIS1 attempt-06。branch 与
+starting/ending HEAD 均为 `research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1` /
+`4d2933cb5b49302dd2114d49b56c905ef9d10ca7`，无额外用户修改，未提交 Git commit。
+
+最终输出：
+`outputs/20260903_v2/runs/lightgen_scaled_chen_fiber_clear_full_pipeline_visualization_v1_attempt_09/`；source panel
+SHA-256=`1ff94b0c14ba166531c81c781f0305cd10ae8f6d7efcebe04d457777a9d3f8d3`，panel loader 已实际校验 panel schema、
+task id、APPROVED review、clear-manifest/source manifest hashes、comparison/visualization bindings 与三臂 payload。
+layout schema=`compact_arm_separated_v2`，主图 21 个 bundle，digits 0–4/5–9 分页，三阶段组和三种 arm 独立页面，
+空间场 `aspect=equal`，modal family×port 为显式非空间矩阵，SMF/FMF/MMF-M6 使用蓝/绿/橙色边界，MMF-M6 synthetic
+family labels 保持显式。输出 115 files、70354448 bytes，PNG/PDF/SVG=`22/22/44`，alignment JSON=`22`，无 TIFF、
+隐藏文件或 `.tmp` 残留。
+
+QA：VIS2 panel/布局回归 `13 passed`；22/22 alignment PASS；22/22 PDF collision PASS（0 WARN/0 FAIL）；22/22 PDF
+text audit 无低于 5.0 pt 文本（minimum=5.0 pt）；Nature source validator=`17 PASS/0 FAIL/4 intentional WARN`，其中
+PNG-only raster、300 dpi floor、Stage-A contact-sheet 宽度和固定样本 uncertainty WARN 均是明确的诊断/输出约束；
+compileall、Ruff、`git diff --check` 均通过。
+
+按批准范围精确删除 VIS2 attempt-01–attempt-08 与 VIS1 attempt-01–attempt-05，释放 `2942680973` bytes（约
+`2.7406 GiB`）。当前仅保留 VIS1 attempt-06 与 VIS2 attempt-09，合计 `297510614` bytes；无隐藏文件或 `.tmp` 残留。
+治理仍为 `reconstruction/generative=false`、`generation_readiness=not_ready`、`training/promotion=false`、
+`mainline_state=closed_at_current_evidence_boundary`、Bridge=`invalid / cloud_sources_sync_blocked`。Gate=
+`canonical_clear_full_pipeline_visualization_completed`；唯一下一动作：`manual_review_VIS2_figures`。
+
+## H-LOMA-CBOGT-FIBER-VIS2 attempt-10（2026-09-03，Windows-native，diagnostic-only）
+
+attempt-09 的已捕获 `panel.pt` 被直接复用，完成 attempt-10 分层 panel-only rerender；未重新 CUDA replay、未改变
+optical tensor、display scale、shared frontend、phase mask、三臂 contracts 或 VIS1 attempt-06。attempt-09 保留为
+不可变审计源，attempt-10 为当前结果；未提交 Git commit。branch 与 starting/ending HEAD 为
+`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1` / `4d2933cb5b49302dd2114d49b56c905ef9d10ca7`，
+无额外用户修改。
+
+输出目录为
+`outputs/20260903_v2/runs/lightgen_scaled_chen_fiber_clear_full_pipeline_visualization_v1_attempt_10/`，目录分为
+`digit_visualization`、`pipeline_overview`、`fiber_information/{SMF,FMF,MMF-M6}` 和 `metadata_qa`。共 `115` 个文件、
+`70212115` bytes；主图 21 bundles，PNG/PDF/SVG=`22/22/44`，alignment JSON=`22`，无 TIFF、隐藏文件或 `.tmp`。
+source/target panel SHA-256 均为 `1ff94b0c14ba166531c81c781f0305cd10ae8f6d7efcebe04d457777a9d3f8d3`；
+layout schema=`organized_compact_arm_separated_v3`，manifest 显式绑定 source manifests 并标记
+`supersedes=attempt_09`。所有 row labels 为水平 rotation=`0`；image-space、optical-space 与 modal matrix 的
+origin/rotation 策略均显式记录，空间场保持 `aspect=equal`。
+
+最终 QA：VIS2 回归=`19 passed`；VIS2/VIS1/S9V/SMF/FMF-M2/MMF-M6 targeted suite=`64 passed`（唯一 warning 为既有
+pytest cache ACL）；22/22 alignment PASS；22/22 PDF collision PASS（0 WARN/0 FAIL）；22/22 PDF text audit 无低于
+5.0 pt 文本（minimum=`5.0 pt`）；Nature source validator=`17 PASS/0 FAIL/4 intentional WARN`。代表性的
+pipeline overview、SMF frontend、FMF fiber decoder、MMF-M6 fiber decoder/detector 页面已实际查看并通过版式检查。
+
+治理保持 `reconstruction/generative=false`、`generation_readiness=not_ready`、`training/promotion=false`、
+`mainline_state=closed_at_current_evidence_boundary`、Bridge=`invalid / cloud_sources_sync_blocked`；本轮未执行
+CUDA、训练、refit、rank search、formal runtime 或 bridge。Gate=`canonical_clear_full_pipeline_visualization_completed`；
+唯一下一动作：`manual_review_VIS2_figures`。

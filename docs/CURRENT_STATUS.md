@@ -1234,3 +1234,160 @@ Gate=`synthetic_mmf_m6_operator_implemented_and_validated`。下一动作唯一�
 `training_authorized=false`、`formal_promotion=false`、`generation_readiness=not_ready`
 保持不变。该 operator 不代表 real MMF propagation、physical guided-mode count、hardware
 MMF、real capacity 或 generation readiness。
+
+## H-LOMA-CBOGT-FIBER-VIS1（2026-09-03，descriptive-only）
+
+本轮在分支
+`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`、starting HEAD
+`4d2933cb5b49302dd2114d49b56c905ef9d10ca7` 上执行已批准的 SMF/FMF/合成 MMF-M6 frozen
+horizontal visualization。实施前工作树 clean；本轮之后只保留 renderer、VIS1 契约测试以及本状态/迁移登记的预期增量，
+没有额外用户修改。S7/S8/S9/S9V/S10、MPCDAR、formal runtime、checkpoint、训练代码与既有 outputs 均未修改。
+
+S9V full-path authority、RMAL、固定 step-5000 checkpoint 与 confirmation panel 均在运行前重新核验；checkpoint SHA256 为
+`ccb89f98cc11725eb80d66c61f4fdef62b24acdf9f6d739f78373f462d10e5de`，RMAL config SHA256 为
+`c50b5b2d12830c40fbe619f137aca40f36f799f277e637d1ec20ac7e3403859f`。三臂只改变 frozen modal OLS：SMF=`100`、
+FMF=`200`、MMF-M6=`600` coefficients；同一 encoder replay 的同一 `pre_ols` tensor 通过三臂，decoder/relay/CMOS 与
+现有 frozen MPCDAR R16 F32 不变。MMF-M6 的 `ETA1/XI2/XIETA/ETA2` 在图和 metadata 中均标为 synthetic mode families，
+不作 physical LP11b/LP21/LP02、guided-mode 或 real-MMF propagation claim。
+
+上一轮权威 write-once 输出为
+`outputs/20260903_v2/runs/lightgen_scaled_chen_fiber_horizontal_visualization_v1_attempt_06/`，包含
+`fiber_contracts.json`、`comparison_manifest.json`、`comparison_metrics.json`、`panel.pt`、Figure A/B 的 PNG/TIFF/PDF/SVG
+及 alignment JSON/overlay。Figure A 是固定 digits 0–9 的七列 Target、SMF CMOS/MPCDAR、FMF CMOS/MPCDAR、MMF-M6
+CMOS/MPCDAR；Figure B 保存 shared pre-OLS amplitude/phase、三臂 modal power、post-fiber amplitude/phase 和
+`post_fiber = decoder_input` alias。`panel.pt` 只保存 captured coefficients/family power/fields/z，不保存完整 600-mode bank。
+attempt-01 至 attempt-05 按 write-once 保留但不消费；attempt-06 是通过最终 FMF family-axis 与最终版式 QA 的当前候选。
+
+attempt-06 描述性指标的 MPCDAR R16 F32 mean MSE 为 SMF=`0.024362197145819664`、FMF=`0.033275894820690155`、
+MMF-M6=`0.04628327488899231`；detector z 相对 SMF 的 mean L2 delta 为 FMF=`0.22263486683368683`、
+MMF-M6=`0.4845358431339264`，cosine-like similarity 为 FMF=`0.9905906915664673`、MMF-M6=`0.9773411750793457`。
+这些值只描述固定下游 distribution mismatch，不支持“fiber worse/superior”结论。
+
+固定 CUDA 10-sample run 为 descriptive telemetry：elapsed=`2.2810000000008586 s`、peak CUDA allocation=
+`1748934144` bytes；model learned-state digest before/after 均为
+`fe8bd9ede571917cf622a89cff36c3e6236c416774f3783e95c5ee9800fedef0`，all parameters frozen，optimizer/backward/evaluator/
+refit/rank search 均未执行。最终 targeted tests=`37 passed`（VIS1 7、既有 S9V 9、SMF 4、FMF M2 8、MMF-M6 9）；
+compileall、Ruff、`git diff --check` 通过。Nature Figure QA 为两张 alignment report PASS、两张 PDF collision PASS、
+PDF text minimum=`7.0/5.4 pt` 且无低于 5 pt 文本、source validator=`20 PASS/0 FAIL/1 intentional WARN`；该 WARN 是
+固定单 panel 不提供统计不确定性条，避免伪造 inferential uncertainty。两张图已完成人工 final-size panel inspection。
+
+Gate=`descriptive_fiber_visualization_completed`。治理 flags 仍为
+`mainline_state=closed_at_current_evidence_boundary`、`reconstruction_manifold_supported=false`、
+`generative_manifold_supported=false`、`generation_readiness=not_ready`、`training_authorized=false`、
+`formal_promotion=false`、`closed_task_relevant_bottleneck_not_supported`。唯一下一动作固定为
+`IMPLEMENT_H_LOMA_CBOGT_FIBER_VIS1`。Bridge 仍为 `invalid / cloud_sources_sync_blocked`，本轮未刷新、未修复、未上传。
+
+## H-LOMA-CBOGT-FIBER-VIS2（2026-09-03，Windows-native，diagnostic-only）
+
+本轮完成已批准的 canonical clear 0–9 full-pipeline SMF/FMF/MMF-M6 qualitative visualization。
+分支为 `research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`，starting/ending HEAD 均为
+`4d2933cb5b49302dd2114d49b56c905ef9d10ca7`。执行前已核验并保留上一轮 VIS1 的四个预期改动，
+没有额外用户修改；执行后 worktree 只包含两份状态文档、VIS1 renderer/test 与 VIS2 renderer/test
+六个预期路径。
+
+Stage A 只读取同一 MNIST train split 的 raw images/labels，在 S9V confirmation train interval
+`[55000,60000)` 中按 dataset index ascending、每 digit 最多 32 个候选，未读取任何 fiber、CMOS、
+reconstruction 或 MPCDAR 输出。人工复核通过并冻结 clear 0–9：
+`{0:55297,1:55310,2:55040,3:55054,4:55053,5:55322,6:55066,7:55052,8:55165,9:55120}`。
+`clear_panel_manifest.json` SHA-256 为
+`dbf9aa6741d29e264543f387edf7a4125893ec282c7a3897a57682d2e90388b9`。
+
+当前权威 write-once 输出为
+`outputs/20260903_v2/runs/lightgen_scaled_chen_fiber_clear_full_pipeline_visualization_v1_attempt_08/`；
+要求的 15 个 artifact 全部存在，output file count=`58`，写入 visualization manifest 前总字节数
+`396579365`。包含 clear contact/approval、Figure 0、full-pipeline index 与 0–4/5–9 split pages、
+fiber close-up、CMOS/reconstruction、SMF/FMF/MMF-M6 full paths、comparison/visualization manifests
+与 panel payload。comparison manifest SHA-256=`5a1645f9beb67bb55e8ecaf7141acb2f81ed8586f9d808136c901d47a0cc3d10`；
+visualization manifest SHA-256=`d2456ded7574a33b1941169e6efdac46384e4205438aeeb18cc0850d3c1c7f29`。
+attempt-01 至 attempt-07 按 write-once 保留但不消费；attempt-08 是排版碰撞修正后的上一轮权威，随后由下方
+panel-only compact attempt-09 替代。
+
+三条 frozen arms 为 native SMF=`100`、existing FMF M2=`200`、synthetic nested MMF-M6=`600`。
+raw input → SLM command → SLM output → encoder input → encoder layer 1 → shared pre-OLS 后分支，
+同一 frontend replay 只执行一次，并由三臂复用同一个 pre-OLS tensor；post-fiber 是 decoder input alias，
+后续为 decoder layer 1/2、CMOS incident complex field、CMOS intensity `|E|^2`、z[256] 与冻结 MPCDAR R16 F32
+reconstruction。幅度采用同 stage joint p99.5，phase 为 raw `[-pi,pi]` 加 display-only 1% mask，target/reconstruction
+固定 `[0,1]`，CMOS intensity 使用共同尺度。MMF-M6 的 `ETA1/XI2/XIETA/ETA2` 仅标为 synthetic families，
+不作 physical LP-mode、guided-mode、real-MMF propagation 或 capacity claim；panel 不保存完整 600-mode bank。
+
+固定 CUDA replay 为 10 samples，elapsed=`2.7030000000013388 s`、peak CUDA allocation=`3095443968` bytes，
+learned model state unchanged=`true`。治理拒绝决定保持不变：
+`mainline_state=closed_at_current_evidence_boundary`、`reconstruction_manifold_supported=false`、
+`generative_manifold_supported=false`、`generation_readiness=not_ready`、`training_authorized=false`、
+`formal_promotion=false`、`closed_task_relevant_bottleneck_not_supported`。VIS1 attempt-06 authority
+`not_overwritten=true`、`not_recomputed=true`、`not_modified=true`。
+
+验证结果：VIS2 + VIS1 + existing S9V/SMF/FMF-M2/MMF-M6 targeted suite=`44 passed`（唯一 warning 为既有
+pytest cache ACL）；changed Python compileall、Ruff、`git diff --check` 均通过。Nature Figure QA 为 10/10
+alignment reports PASS；10 个 PDF 均无低于 5 pt 文本，最低检测值=`5.0 pt`；collision audit 无 FAIL，4 个含
+modal family 标签的图共 66 个 intentional text-to-image/fill edge WARN，已完成人工 final-size inspection。
+source validator=`19 PASS/0 FAIL/2 intentional WARN`，WARN 为 diagnostic full-plate 宽度与固定描述性样本不编码
+inferential uncertainty。Gate=`canonical_clear_full_pipeline_visualization_completed`；唯一下一动作固定为
+`manual_review_VIS2_figures`，不授权训练、decoder、candidate export、generation 或 formal promotion。
+
+## H-LOMA-CBOGT-FIBER-VIS2 compact rerender（2026-09-03，Windows-native，diagnostic-only）
+
+基于已批准且未修改的 VIS2 attempt-08 `panel.pt` 完成 panel-only compact rerender；未重新 CUDA replay，未改变任何
+optical data、shared frontend、joint p99.5 scales、phase mask、三臂 contracts 或 VIS1 attempt-06 authority。分支为
+`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`，starting/ending HEAD 均为
+`4d2933cb5b49302dd2114d49b56c905ef9d10ca7`；执行前后均未发现额外用户修改。
+
+当前 VIS2 输出为
+`outputs/20260903_v2/runs/lightgen_scaled_chen_fiber_clear_full_pipeline_visualization_v1_attempt_09/`。source panel
+SHA-256=`1ff94b0c14ba166531c81c781f0305cd10ae8f6d7efcebe04d457777a9d3f8d3`；comparison manifest SHA-256=
+`509aec7df5d9cbee2fe80d57658e9efa2cdd35640ce587d88580babd0232c522`（文件值），visualization manifest
+SHA-256=`c5b1001527c31c54ad51dcca319d3c8f612f9a3c99a44651067ddb5223a4654c`。输出共 `115` 个文件、
+`70354448` bytes：主图 `21` 个 bundle，PNG/PDF/SVG 分别 `22/22/44`，alignment JSON `22`，无 TIFF、隐藏文件或
+`.tmp` 残留；panel.pt 保留在最终版中。详细页使用 `compact_arm_separated_v2`，SMF/FMF/MMF-M6 分别蓝/绿/橙，
+每页 digits `0–4` 或 `5–9`，frontend/fiber_decoder/detector_reconstruction 分组，最多 6 个阶段列，空间场等比例，
+modal family×port 明确作为非空间矩阵显示，MMF-M6 `ETA1/XI2/XIETA/ETA2` 继续显式标注 synthetic。
+
+panel loader 已实际重载 source 并验证 schema、task id、APPROVED review、clear-manifest hash、source comparison/
+visualization bindings、panel SHA-256 与三臂 payload；回归测试覆盖 review/hash/payload-schema mismatch rejection。VIS2
+targeted tests=`13 passed`；alignment=`22/22 PASS`，PDF collision=`22/22 PASS`（0 WARN/0 FAIL），PDF text=`22/22`
+无低于 `5.0 pt` 文本，minimum=`5.0 pt`。Nature source validator=`17 PASS/0 FAIL/4 intentional WARN`：PNG-only
+submission raster、300 dpi floor、Stage-A 候选 contact sheet 的非标准宽度及固定样本无 inferential uncertainty，均为本轮
+明确的诊断/输出约束；compileall、Ruff、`git diff --check` 在最终复核中通过。
+
+按批准清理精确删除 VIS2 attempt-01–attempt-08 与 VIS1 attempt-01–attempt-05，共释放 `2942680973` bytes
+（约 `2.7406 GiB`）；最终仅保留 VIS1
+`lightgen_scaled_chen_fiber_horizontal_visualization_v1_attempt_06` 与 VIS2 attempt-09，合计 `297510614` bytes，
+无隐藏文件、无 `.tmp` 残留。治理仍为 `mainline_state=closed_at_current_evidence_boundary`、
+`reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、`generation_readiness=not_ready`、
+`training_authorized=false`、`formal_promotion=false`、`bridge=invalid / cloud_sources_sync_blocked`。Gate=
+`canonical_clear_full_pipeline_visualization_completed`；唯一下一动作固定为 `manual_review_VIS2_figures`。
+
+## H-LOMA-CBOGT-FIBER-VIS2 attempt-10（2026-09-03，Windows-native，diagnostic-only）
+
+基于未修改的 VIS2 attempt-09 `panel.pt` 完成新的 panel-only 分层重绘；未重新 CUDA replay，未修改任何光学 tensor、
+display scale、shared frontend、phase mask、三臂 contract 或 VIS1 attempt-06。attempt-09 保留为不可变审计源，
+attempt-10 为当前可审查结果。branch=`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`，
+starting/ending HEAD 均为 `4d2933cb5b49302dd2114d49b56c905ef9d10ca7`，未创建 Git commit，也未发现额外用户修改。
+
+当前输出为
+`outputs/20260903_v2/runs/lightgen_scaled_chen_fiber_clear_full_pipeline_visualization_v1_attempt_10/`。
+它按 `digit_visualization/`、`pipeline_overview/`、`fiber_information/{SMF,FMF,MMF-M6}/` 和 `metadata_qa/`
+分层；主图共 21 个 bundle，PNG/PDF/SVG=`22/22/44`，alignment JSON=`22`，总文件数=`115`、总大小=`70212115`
+bytes（visualization manifest 写入前=`70181140` bytes）。无 TIFF、隐藏文件或 `.tmp` 残留。每个详细页仅覆盖
+digits `0–4` 或 `5–9`，最多 6 个阶段列；SMF/FMF/MMF-M6 颜色分别为蓝/绿/橙。
+
+方向策略已固化到 manifest：MNIST image-space 使用 `origin=upper` 且 display rotation=`0`；光学空间场使用显式
+`origin=lower`，保留既有按 stage 的 display-only 180° mapping；modal family×port 使用显式非空间矩阵策略；
+所有 digit/index/amplitude/phase 行标签 rotation=`0`。attempt-10 panel SHA-256 与 attempt-09 完全一致：
+`1ff94b0c14ba166531c81c781f0305cd10ae8f6d7efcebe04d457777a9d3f8d3`。comparison manifest SHA-256=
+`d4229e4f966f911fee510ed4bcfa385eb46821ecf84289c0e6b7a745f679fdd9`，visualization manifest SHA-256=
+`8dcc62732b213c42cd12539b6f9329310ae2ec252113261154ba5f9fe2ed8648`，manifest 显式记录
+`supersedes=attempt_09` 和 source manifest/panel binding。
+
+回归与 QA：VIS2 renderer tests=`19 passed`；VIS2/VIS1/S9V/SMF/FMF-M2/MMF-M6 targeted suite=`64 passed`，唯一
+warning 为既有 pytest cache ACL；changed Python compileall、Ruff、`git diff --check` 通过。全部 `22/22` alignment
+reports PASS；`22/22` PDF collision audit PASS（0 WARN/0 FAIL）；`22/22` PDF text audit 无低于 `5.0 pt` 字符，
+minimum=`5.0 pt`；Nature source validator=`17 PASS/0 FAIL/4 intentional WARN`，WARN 为 PNG-only raster、300 dpi
+floor、Stage-A 候选 contact sheet 非标准宽度及固定样本不编码 inferential uncertainty。代表性的总览、SMF、FMF、
+MMF-M6 页面已完成人工 final-size inspection。
+
+治理仍为 `mainline_state=closed_at_current_evidence_boundary`、`reconstruction_manifold_supported=false`、
+`generative_manifold_supported=false`、`generation_readiness=not_ready`、`training_authorized=false`、
+`formal_promotion=false`、`bridge=invalid / cloud_sources_sync_blocked`。VIS1 authority 保持 unchanged；
+本轮未运行 CUDA、训练、refit、rank search、formal runtime 或 bridge 操作。Gate=
+`canonical_clear_full_pipeline_visualization_completed`；唯一下一动作固定为 `manual_review_VIS2_figures`。
