@@ -1516,6 +1516,46 @@ observer/test、两份状态文档、当前 VIS2 renderer/test；未发现额外
 `formal_promotion=false`、`bridge=invalid / cloud_sources_sync_blocked`。本轮未运行 CUDA、训练、refit、
 rank search、formal runtime 或 bridge；唯一下一动作固定为 `manual_review_VIS2_figures`。
 
+## H-LOMA-GEN-P1-R2-UACR unit-aware calibration contract repair attempt-02（2026-09-04，Windows-native，calibration-only）
+
+R2 只修复 C6 已确认的 modal coefficient-power calibration contract：旧 v1 的
+`torch.finfo(torch.float32).eps` absolute denominator floor 被移除；对同一 C6 raw replay 中每个
+finite positive `mean_cal(|c_j|^2)` 直接登记为 v2 `port_scale`。旧 v1 producer、reader 与 artifact
+保持不变；没有重新运行 CUDA、没有 optical forward、没有 downstream replay，也没有修改 G1/P4 evidence。
+
+新 contract 为 `scaled_chen_bogt_calibration.v2` / `unit_aware_raw_mean_v2`，同时保存
+`raw_port_mean` 与 registered `port_scale` 的一对一审计字段，绑定同一 1000-sample train-only
+zero-phase population、dataset manifest、calibration indices、scaled LP01 mode bank、pre-OLS
+plane identity、C6 source manifest/payload 和 parent v1 SHA。v2 consumer 要求显式 artifact SHA 与
+这些 lineage bindings，并对历史 v1 payload fail-closed；历史 v1 reader 仍可读。
+
+当前 write-once 结果为
+`outputs/20260904_v2/runs/lightgen_scaled_chen_bogt_calibration_contract_repair_v2_attempt_02/`；
+attempt-01 保留为不可覆盖的初始 write-once 结果，attempt-02 为当前 descriptive authority。attempt-02
+包含 `repaired_calibration.pt`、`calibration_manifest.json`、`calibration_metrics.json`、
+`old_new_calibration_comparison.json`、单张 `calibration_scale_summary.png` 与 `compact_report.json`，
+共 `159393` bytes（manifest 外 artifact `153516` bytes），无 TIFF、隐藏文件或 `.tmp`。新 payload SHA-256
+为 `ce31dd816691a08ca9388e0ec086be0e2e3ebd40005598c1ef44a1ba79a9fd07`；parent v1 SHA
+`a9a871405e216597b2c6058e8c52cd86a242659f8f6729fe06b85d0ef0f32959` 前后不变；C6 manifest SHA
+为 `dfe880fecf297099c8c573579c7c064887ac1ded9fbd7b745e5bbadefcafedfe`。
+
+R2 raw FP64 min/median/mean/max=`1.508997e-12 / 1.127986e-10 / 1.741773e-10 /
+6.304158e-10`；registered scale 与 raw mean exact equal，100 个 port 保留独立 variation，且不再
+全为 float32 eps。raw-reference z 的 global mean=`0.9999999986`，最大 per-port mean deviation
+`1.451667e-7`，finite；z variance/range 仅作 calibration sanity description，不改变 prior
+mean=`1.0`、variance=`0.25`、lower=`0.0`。
+
+Gate=`R2_CALIBRATION_REPAIR_PASS`，A–O calibration-only checks 全部通过：raw finite/positive、
+raw/registered equality、variation、global/per-port z mean、v1 immutability、new identity、C6
+state-digest equality，以及 optimizer/backward/checkpoint/refit/training/prior-generation/decoder/
+CMOS/MPCDAR 全部 false。R2 定向、C6、Scaled-Chen BOGT 与 G1 v1 preservation tests=`48 passed`；
+compileall、Ruff、`git diff --check` 通过。治理继续为
+`mainline_state=closed_at_current_evidence_boundary`、`reconstruction_manifold_supported=false`、
+`generative_manifold_supported=false`、`generation_readiness=not_ready`、
+`training_authorized=false`、`formal_promotion=false`。P4 仍是旧 registered coordinate 下的
+support-mismatch measurement，P1 contract mismatch 仍要求后续校准语义审查；R2 不声称 generation
+fixed 或 generative manifold supported。唯一下一动作是 `PLAN_REPAIRED_COORDINATE_REPLAY`。
+
 ## H-LOMA-GEN-P1-C6-RSC raw-scale canary attempt-01（2026-09-03，Windows-native，diagnostic-only）
 
 在不修改 calibration producer 的 floor/clamp 语义、不写 repaired calibration、不进入 decoder/CMOS/MPCDAR、

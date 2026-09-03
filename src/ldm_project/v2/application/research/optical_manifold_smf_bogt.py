@@ -76,6 +76,8 @@ SOURCE_STATUSES = {
 }
 EXPECTED_TRAINABLE = ("system.encoder.phase", "system.decoder.phase")
 FORBIDDEN_ELECTRONIC_VAE_KEYS = {"mu", "logvar", "reparameterization", "active_latent_injector", "posterior_head"}
+UNIT_AWARE_CALIBRATION_SCHEMA = "scaled_chen_bogt_calibration.v2"
+UNIT_AWARE_CALIBRATION_CONTRACT_VERSION = "unit_aware_raw_mean_v2"
 
 
 @dataclass(frozen=True)
@@ -126,6 +128,88 @@ class Calibration:
     @property
     def operating_upper(self) -> torch.Tensor:
         return self.plane_upper if self.plane_upper is not None else self.plane_reference * OP_WINDOW_UPPER_FACTOR
+
+
+@dataclass(frozen=True)
+class UnitAwareCalibration:
+    """Repaired calibration contract with an unmodified positive raw mean per port."""
+
+    raw_port_mean: torch.Tensor
+    port_scale: torch.Tensor
+    plane_reference: torch.Tensor
+    sample_count: int
+    plane_lower: torch.Tensor | None = None
+    plane_upper: torch.Tensor | None = None
+    schema: str = UNIT_AWARE_CALIBRATION_SCHEMA
+    contract_version: str = UNIT_AWARE_CALIBRATION_CONTRACT_VERSION
+
+    def validate(self) -> None:
+        if self.schema != UNIT_AWARE_CALIBRATION_SCHEMA:
+            raise ValueError(f"unit-aware calibration requires {UNIT_AWARE_CALIBRATION_SCHEMA}")
+        if self.contract_version != UNIT_AWARE_CALIBRATION_CONTRACT_VERSION:
+            raise ValueError("unit-aware calibration contract version is invalid")
+        if self.raw_port_mean.shape != (PORT_COUNT,) or self.port_scale.shape != (PORT_COUNT,):
+            raise ValueError("unit-aware port means and scales must be [100]")
+        if not torch.is_floating_point(self.raw_port_mean) or not torch.is_floating_point(self.port_scale):
+            raise ValueError("unit-aware port means and scales must be floating point")
+        if self.raw_port_mean.dtype != self.port_scale.dtype:
+            raise ValueError("unit-aware raw and registered scale dtypes must match")
+        if not torch.isfinite(self.raw_port_mean).all() or (self.raw_port_mean <= 0).any():
+            raise ValueError("unit-aware raw port means must be finite and positive")
+        if not torch.isfinite(self.port_scale).all() or (self.port_scale <= 0).any():
+            raise ValueError("unit-aware port calibration scale must be finite and positive")
+        if not torch.equal(self.raw_port_mean, self.port_scale):
+            raise ValueError("unit-aware registered scale must equal raw port mean one-to-one")
+        if self.plane_reference.shape != (5,):
+            raise ValueError("unit-aware plane reference must be [5]")
+        if not torch.is_floating_point(self.plane_reference) or not torch.isfinite(self.plane_reference).all() or (self.plane_reference <= 0).any():
+            raise ValueError("unit-aware plane calibration reference must be finite and positive")
+        for name, value in (("plane_lower", self.plane_lower), ("plane_upper", self.plane_upper)):
+            if value is not None and (
+                value.shape != (5,)
+                or not torch.is_floating_point(value)
+                or not torch.isfinite(value).all()
+                or (value <= 0).any()
+            ):
+                raise ValueError(f"{name} must be finite positive [5]")
+        if self.plane_lower is not None and self.plane_upper is not None and (self.plane_lower >= self.plane_upper).any():
+            raise ValueError("unit-aware plane operating window lower bound must be below upper bound")
+        if self.sample_count != 1000:
+            raise ValueError("scaled Chen unit-aware calibration requires exactly 1000 samples")
+
+    @property
+    def operating_lower(self) -> torch.Tensor:
+        return self.plane_lower if self.plane_lower is not None else self.plane_reference * OP_WINDOW_LOWER_FACTOR
+
+    @property
+    def operating_upper(self) -> torch.Tensor:
+        return self.plane_upper if self.plane_upper is not None else self.plane_reference * OP_WINDOW_UPPER_FACTOR
+
+
+def build_unit_aware_calibration(
+    raw_port_mean: torch.Tensor,
+    plane_reference: torch.Tensor,
+    *,
+    sample_count: int,
+    plane_lower: torch.Tensor | None = None,
+    plane_upper: torch.Tensor | None = None,
+) -> UnitAwareCalibration:
+    """Register positive raw modal-power means without an absolute epsilon floor."""
+    raw = raw_port_mean.detach().cpu().contiguous().clone()
+    registered = raw.clone()
+    reference = plane_reference.detach().cpu().contiguous().clone()
+    lower = None if plane_lower is None else plane_lower.detach().cpu().contiguous().clone()
+    upper = None if plane_upper is None else plane_upper.detach().cpu().contiguous().clone()
+    calibration = UnitAwareCalibration(
+        raw_port_mean=raw,
+        port_scale=registered,
+        plane_reference=reference,
+        sample_count=sample_count,
+        plane_lower=lower,
+        plane_upper=upper,
+    )
+    calibration.validate()
+    return calibration
 
 
 @dataclass(frozen=True)

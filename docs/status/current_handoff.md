@@ -2212,3 +2212,23 @@ audit=`26/26`，diagnostic-only。S10 定向/布局/相关回归=`30 passed`，�
 `generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false`；Bridge 仍为
 `invalid / cloud_sources_sync_blocked`。当前 worktree 在状态提交后保持 clean；唯一下一动作是
 `manual_review_MPCDAR_R16_RUNTIME_PQ_result`，不得训练、decoder、generation 或 promotion。
+
+## H-LOMA-GEN-P1-R2-UACR：Scaled-Chen Unit-Aware Calibration Contract Repair（2026-09-04）
+
+R2 仅消费不可变 C6 raw-scale replay 与 parent v1 calibration，修复 modal coefficient-power
+coordinate 的 absolute float32-eps floor 语义；没有新的 optical forward/CUDA、downstream replay、
+prior generation、decoder、CMOS/MPCDAR、training 或 refit。新 v2 payload 明确保存 raw mean 与
+registered scale，且 registered scale 逐 port 等于 raw mean；source C6 manifest/payload、dataset
+manifest、calibration indices、mode bank 和 parent v1 SHA 均显式绑定。v2 loader 要求这些 identity
+bindings，并拒绝 historical v1 fallback；v1 reader 与旧 P4 measurement authority 不变。
+
+当前 write-once authority：
+`outputs/20260904_v2/runs/lightgen_scaled_chen_bogt_calibration_contract_repair_v2_attempt_02/`；
+attempt-01 保留且未覆盖。六个输出文件共 `159393` bytes，无 TIFF、隐藏文件或 `.tmp`。Gate=
+`R2_CALIBRATION_REPAIR_PASS`；R2/C6/Scaled-Chen BOGT/G1 直接回归=`48 passed`，compileall、Ruff、
+`git diff --check` 通过。raw FP64 min/median/mean/max=`1.508997e-12 / 1.127986e-10 /
+1.741773e-10 / 6.304158e-10`；z global mean=`0.9999999986`，最大 per-port mean deviation=
+`1.451667e-7`。该结果只修 calibration contract，不声称 P4 旧坐标结论被推翻，也不授权 generation、
+training 或 formal promotion。治理仍为 `mainline_state=closed_at_current_evidence_boundary`、
+reconstruction/generative unsupported、generation not ready、training/promotion=false。唯一下一动作：
+`PLAN_REPAIRED_COORDINATE_REPLAY`。

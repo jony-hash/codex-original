@@ -1,0 +1,63 @@
+{
+  "schema": "lightgen_scaled_chen_bogt_calibration_contract_repair_v2",
+  "task_id": "H-LOMA-GEN-P1-R2-UACR",
+  "hypothesis": "H-LOMA-GEN-P1-R2-UACR",
+  "repaired_schema": "scaled_chen_bogt_calibration.v2",
+  "contract_version": "unit_aware_raw_mean_v2",
+  "source_c6": {
+    "directory": "outputs/20260903_v2/runs/lightgen_scaled_chen_p1_calibration_raw_scale_canary_v1_attempt_01",
+    "manifest": "raw_scale_manifest.json",
+    "manifest_sha256": "dfe880fecf297099c8c573579c7c064887ac1ded9fbd7b745e5bbadefcafedfe",
+    "raw_port_means": "raw_port_means.pt",
+    "raw_port_means_sha256": "4a2ffbf26418d5540db357b20daa56e552e6d8202fbb24af8a8ad869b10ced69",
+    "metrics": "raw_scale_metrics.json",
+    "metrics_sha256": "a46550a2a856a41771763ae2ffd3b2c5256330c4780cedf03ac2a1c78d22fc0f"
+  },
+  "parent_v1": {
+    "path": "outputs/20260829_v2/runs/lightgen_optical_manifold_smf_bogt_horizon_v2_attempt_04/scaled_chen_bogt_horizon_calibration.pt",
+    "schema": "scaled_chen_bogt_calibration.v1",
+    "sha256": "a9a871405e216597b2c6058e8c52cd86a242659f8f6729fe06b85d0ef0f32959"
+  },
+  "lineage": {
+    "dataset_manifest_sha256": "741e6402da754a740a677dbb343d48c35983f62b59911bbc129dfcc44f9e9ae9",
+    "calibration_indices_sha256": "369c5bded5673f901ae5236eaa51a0c8da17934dc2fab139a205c9fce41d5543",
+    "mode_bank_sha256": "75fb38eee956a1d177486e00b22e0b62f0c1bf29e94eb398851bed18d6288ba9",
+    "measurement_head": "2fcd16a0bef7de2a6483f5ec42070a895bbcbcac",
+    "horizon_config_sha256": "aa31584781c3a3f6c91190979fbdd4daed8212cd7aa038fd8b762707e7a37f8f",
+    "horizon_review_sha256": "ca260de2c2d6ade1711047a436ea3f19499edc0599b726005a38f6553d566630",
+    "formal_config_sha256": "0c42035c1a525e27ff787d013ca27b0f5ae91338329eb0607c7042ebc5ae8905",
+    "parent_config_sha256": "e3d1b536aa081a8298b21b0b608f232463444a2863e138f941765adf96d8a701",
+    "preflight_sha256": "e988485f18e1f45964bf44e6338308ec882048038a1ba910f09758521fdfea83",
+    "validation_sha256": "ddb882b26aa1463a74d41896f0f8ff8b406614a29bf25a72b918f58094d3e945"
+  },
+  "floor_policy": "none_for_positive_finite_raw_means",
+  "zero_phase_reference": "independent_train_only_zero_phase",
+  "plane_identity": "pre_ols_plane_power_reference_v1",
+  "optical_forward_dtype": "torch.float32/torch.complex64",
+  "prior_contract": {
+    "kind": "truncated_normal",
+    "mean": 1.0,
+    "variance": 0.25,
+    "lower": 0.0,
+    "unconditional": true
+  },
+  "governance": {
+    "mainline_state": "closed_at_current_evidence_boundary",
+    "reconstruction_manifold_supported": false,
+    "generative_manifold_supported": false,
+    "generation_readiness": "not_ready",
+    "training_authorized": false,
+    "formal_promotion": false
+  },
+  "verification": {
+    "source_gate": "C6_CANARY_PASS",
+    "cuda_replay": false,
+    "downstream_replay": false,
+    "optimizer_created": false,
+    "backward_called": false,
+    "checkpoint_created": false,
+    "refit": false,
+    "training": false,
+    "prior_generation": false
+  }
+}

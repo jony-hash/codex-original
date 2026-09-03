@@ -789,3 +789,27 @@ digest equality 与 no-training flags 已独立核验，raw summary PNG 已实�
 `mainline_state=closed_at_current_evidence_boundary`、reconstruction/generative manifold unsupported、
 generation not ready、training unauthorized、formal promotion false。下一步仅登记为
 `IMPLEMENT_R2_UNIT_AWARE_CALIBRATION_REPAIR`，本记录不执行 repair。
+
+## H-LOMA-GEN-P1-R2-UACR unit-aware calibration contract repair（2026-09-04）
+
+在 branch=`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`、starting HEAD=`877f386657c7b408fdfd1964510a473782607d80`
+上完成 calibration-only R2。消费不可变 C6 attempt-01 的 raw payload（manifest SHA-256
+`dfe880fecf297099c8c573579c7c064887ac1ded9fbd7b745e5bbadefcafedfe`、raw payload SHA-256
+`4a2ffbf26418d5540db357b20daa56e552e6d8202fbb24af8a8ad869b10ced69`）和 v1 calibration（SHA-256
+`a9a871405e216597b2c6058e8c52cd86a242659f8f6729fe06b85d0ef0f32959`）。未重新 CUDA、未运行 optical
+forward、未修改 C6/G1/P4/VIS evidence、未进入 replay 或训练路径。
+
+R2 v2 contract=`scaled_chen_bogt_calibration.v2` / `unit_aware_raw_mean_v2`：每个 finite positive
+raw `mean_cal(|c_j|^2)` 直接作为 registered `port_scale`，无 absolute eps/tiny/median/fallback
+floor；raw 与 registered 字段严格一对一保存。显式 loader 绑定 v2 artifact SHA、dataset manifest、
+calibration indices、mode bank 与 parent v1 SHA，并拒绝 v1 fallback；原 v1 reader 保持可读。
+
+当前 write-once authority 为
+`outputs/20260904_v2/runs/lightgen_scaled_chen_bogt_calibration_contract_repair_v2_attempt_02/`
+（attempt-01 保留），包含 6 个 JSON/PT/PNG 文件、`159393` bytes，无 TIFF、隐藏文件或 `.tmp`。
+Gate=`R2_CALIBRATION_REPAIR_PASS`；raw FP64 min/median/mean/max=`1.508997e-12 / 1.127986e-10 /
+1.741773e-10 / 6.304158e-10`，registered/raw exact equal，z global mean=`0.9999999986`，
+最大 per-port mean deviation=`1.451667e-7`。R2 定向及直接依赖回归=`48 passed`，compileall、Ruff、
+diff-check 通过。治理保持 closed evidence boundary、reconstruction/generative unsupported、
+generation not ready、training unauthorized、formal promotion false；唯一下一动作固定为
+`PLAN_REPAIRED_COORDINATE_REPLAY`。
