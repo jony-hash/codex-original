@@ -75,6 +75,7 @@ UNIQUE_NEXT_ACTION = "manual_review_VIS2_figures"
 AWAITING_NEXT_ACTION = "manual_review_clear_0_9_contact_sheet"
 EXPECTED_BRANCH = "research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1"
 EXPECTED_START_HEAD = "4d2933cb5b49302dd2114d49b56c905ef9d10ca7"
+THREE_PHOTO_EXPECTED_START_HEAD = "d07fdaa17aa91d9f3e5498e9b1f10d91db766777"
 OUTPUT_ROOT = Path("outputs/20260903_v2/runs")
 OUTPUT_PREFIX = "lightgen_scaled_chen_fiber_clear_full_pipeline_visualization_v1_attempt_"
 VIS1_OUTPUT = Path(
@@ -91,6 +92,27 @@ ARTIFACT_FOLDERS = {
     "metadata_qa": "metadata_qa",
 }
 FIGURE_EXPORT_SUFFIXES = (".png", ".pdf", ".svg")
+THREE_PHOTO_LAYOUT_SCHEMA = "same_digit_three_arm_comparison_v1"
+THREE_PHOTO_ARTIFACT_LAYOUT_SCHEMA = "vis2_three_photo_v1"
+THREE_PHOTO_PAGE_RANGES = ((0, 1, 2, 3), (4, 5, 6), (7, 8, 9))
+THREE_PHOTO_COLUMN_KEYS = ("standard_input", "SMF", "FMF", "MMF-M6")
+THREE_PHOTO_OUTPUT_KEY = "mpcdar_rank16_float32"
+THREE_PHOTO_FIGURE_EXPORT_SUFFIXES = (".png", ".pdf", ".svg")
+THREE_PHOTO_PAGE_WIDTH_INCHES = 7.0
+THREE_PHOTO_SPATIAL_ASPECT = "equal"
+THREE_PHOTO_SOURCE_PANEL_SHA256 = "1ff94b0c14ba166531c81c781f0305cd10ae8f6d7efcebe04d457777a9d3f8d3"
+THREE_PHOTO_FIGURE_PREFIX = "fiber_vis2_same_digit_comparison_page"
+THREE_PHOTO_ALLOWED_DIRTY_PATHS = frozenset(
+    {
+        "docs/CURRENT_STATUS.md",
+        "docs/migration_windows_native_20260830.md",
+        "configs/research/lightgen_optical_manifold_smf_bogt_prior_support_accessibility_v1.yaml",
+        "scripts/research/measure_scaled_chen_g1_prior_support_accessibility.py",
+        "tests/v2/test_scaled_chen_g1_prior_support_accessibility.py",
+        "scripts/visualization/render_scaled_chen_fiber_clear_full_pipeline.py",
+        "tests/v2/test_scaled_chen_fiber_clear_full_pipeline.py",
+    }
+)
 ARM_COLORS = {
     "SMF": "#2f6db0",
     "FMF": "#2f8f5b",
@@ -155,6 +177,36 @@ ARM_STAGE_ORDER = (
     "cmos_intensity",
     "mpcdar",
 )
+PROCESS_FLOW_LAYOUT_SCHEMA = "same_digit_interleaved_three_arm_process_flow_v1"
+PROCESS_FLOW_ARTIFACT_LAYOUT_SCHEMA = "vis2_process_flow_interleaved_v1"
+PROCESS_FLOW_PAGE_RANGES = THREE_PHOTO_PAGE_RANGES
+PROCESS_FLOW_ARM_LANES = ARM_ORDER
+PROCESS_FLOW_ROW_ORDER = "digit_then_arm_then_amplitude_phase"
+PROCESS_FLOW_ROWS_PER_DIGIT = len(PROCESS_FLOW_ARM_LANES) * 2
+PROCESS_FLOW_ROW_STRUCTURE = (
+    "for each digit: SMF amplitude/phase, FMF amplitude/phase, "
+    "MMF-M6 amplitude/phase; then the next digit"
+)
+PROCESS_FLOW_PAGE_WIDTH_INCHES = 12.0
+PROCESS_FLOW_SPATIAL_ASPECT = "equal"
+PROCESS_FLOW_FIGURE_PREFIX = "fiber_vis2_process_flow_page"
+PROCESS_FLOW_STAGE_KEYS = COMMON_STAGE_ORDER + ARM_STAGE_ORDER
+PROCESS_FLOW_STAGE_SPECS = (
+    ("Input", "input", "input"),
+    ("SLM command", "slm_command", "real"),
+    ("SLM output", "slm_output", "complex"),
+    ("Encoder in", "encoder_input", "complex"),
+    ("Encoder L1", "encoder_layer_1", "complex"),
+    ("Pre-OLS", "pre_ols", "complex"),
+    ("Modal", "modal", "modal"),
+    ("Post-fiber", "post_fiber", "complex"),
+    ("Decoder L1", "decoder_layer_1", "complex"),
+    ("Decoder L2", "decoder_layer_2", "complex"),
+    ("CMOS field", "cmos_field", "complex"),
+    ("CMOS intensity", "cmos_intensity", "intensity"),
+    ("MPCDAR R16", "mpcdar", "reconstruction"),
+)
+PROCESS_FLOW_OUTPUT_FIELD = "mpcdar_rank16_float32"
 COMPLEX_SPATIAL_KEYS = (
     "slm_output",
     "encoder_input",
@@ -261,27 +313,33 @@ def _git_state() -> dict[str, Any]:
     return s9v._git_state()
 
 
-def _validate_git_boundary() -> dict[str, Any]:
+def _validate_git_boundary(
+    *,
+    expected_start_head: str = EXPECTED_START_HEAD,
+    expected_paths: frozenset[str] | None = None,
+) -> dict[str, Any]:
     state = _git_state()
     if state["branch"] != EXPECTED_BRANCH:
         raise RuntimeError(f"BLOCKED_START_BRANCH_MISMATCH: {state['branch']}")
-    if state["commit"] != EXPECTED_START_HEAD:
+    if state["commit"] != expected_start_head:
         raise RuntimeError(f"BLOCKED_START_HEAD_MISMATCH: {state['commit']}")
     root = Path(state["root"]).resolve()
-    expected_paths = {
-        "docs/CURRENT_STATUS.md",
-        "docs/migration_windows_native_20260830.md",
-        "scripts/visualization/render_scaled_chen_fiber_horizontal.py",
-        "tests/v2/test_scaled_chen_fiber_visualization.py",
-        "scripts/visualization/render_scaled_chen_fiber_clear_full_pipeline.py",
-        "tests/v2/test_scaled_chen_fiber_clear_full_pipeline.py",
-    }
+    allowed_paths = expected_paths or frozenset(
+        {
+            "docs/CURRENT_STATUS.md",
+            "docs/migration_windows_native_20260830.md",
+            "scripts/visualization/render_scaled_chen_fiber_horizontal.py",
+            "tests/v2/test_scaled_chen_fiber_visualization.py",
+            "scripts/visualization/render_scaled_chen_fiber_clear_full_pipeline.py",
+            "tests/v2/test_scaled_chen_fiber_clear_full_pipeline.py",
+        }
+    )
     expected_task_changes: list[str] = []
     unexpected: list[str] = []
     for raw in state["status"]:
         path = raw[3:] if len(raw) >= 3 else raw
         path = path.replace("\\", "/")
-        if path in expected_paths:
+        if path in allowed_paths:
             expected_task_changes.append(raw)
         else:
             unexpected.append(raw)
@@ -295,6 +353,13 @@ def _validate_git_boundary() -> dict[str, Any]:
         "known_expected_dirty_paths": expected_task_changes,
         "unexpected_dirty_paths": [],
     }
+
+
+def _validate_three_photo_git_boundary() -> dict[str, Any]:
+    return _validate_git_boundary(
+        expected_start_head=THREE_PHOTO_EXPECTED_START_HEAD,
+        expected_paths=THREE_PHOTO_ALLOWED_DIRTY_PATHS,
+    )
 
 
 def _next_output_dir() -> Path:
@@ -1755,8 +1820,8 @@ def _render_stage_panel(
 
 def _style_arm_axis(axis: plt.Axes, arm: str) -> None:
     color = ARM_COLORS[arm]
-    for spine in axis.spines.values():
-        spine.set_visible(True)
+    for name, spine in axis.spines.items():
+        spine.set_visible(name != "top")
         spine.set_color(color)
         spine.set_linewidth(0.8)
 
@@ -1961,6 +2026,520 @@ def _render_visualization_suite(
                     output_dir,
                 )
     return saved
+
+
+def _three_photo_row_records(
+    labels: torch.Tensor,
+    indices: Sequence[int] | torch.Tensor,
+    positions: Sequence[int],
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for position in positions:
+        position_int = int(position)
+        columns = {
+            "standard_input": {
+                "position": position_int,
+                "source": "images_28x28",
+            }
+        }
+        columns.update(
+            {
+                arm: {
+                    "position": position_int,
+                    "source": "arm_data[arm][mpcdar_rank16_float32]",
+                }
+                for arm in ARM_ORDER
+            }
+        )
+        rows.append(
+            {
+                "position": position_int,
+                "digit": int(labels[position_int]),
+                "dataset_index": int(indices[position_int]),
+                "columns": columns,
+            }
+        )
+    return rows
+
+
+def _three_photo_figure_base(
+    output_dir: Path,
+    page_number: int,
+    positions: Sequence[int],
+) -> Path:
+    return output_dir / (
+        f"{THREE_PHOTO_FIGURE_PREFIX}_{page_number:02d}_digits_"
+        f"{_digit_page_label(positions)}"
+    )
+
+
+def _three_photo_figure_manifest() -> dict[str, Any]:
+    titles = {
+        "standard_input": "Standard digit input",
+        "SMF": "SMF output",
+        "FMF": "FMF output",
+        "MMF-M6": "MMF-M6 output",
+    }
+    pages = []
+    for page_number, positions in enumerate(THREE_PHOTO_PAGE_RANGES, start=1):
+        base_name = _three_photo_figure_base(Path(), page_number, positions).name
+        pages.append(
+            {
+                "page": page_number,
+                "digits": list(positions),
+                "base": base_name,
+                "files": [
+                    f"{base_name}{suffix}"
+                    for suffix in THREE_PHOTO_FIGURE_EXPORT_SUFFIXES
+                ]
+                + [
+                    f"{base_name}.alignment.json",
+                    f"{base_name}.alignment.svg",
+                ],
+                "columns": [
+                    {
+                        "key": key,
+                        "title": titles[key],
+                        "color": "#555555" if key == "standard_input" else ARM_COLORS[key],
+                    }
+                    for key in THREE_PHOTO_COLUMN_KEYS
+                ],
+            }
+        )
+    return {
+        "pages": pages,
+        "page_count": len(pages),
+        "column_order": list(THREE_PHOTO_COLUMN_KEYS),
+        "input_field": "images_28x28",
+        "output_field": THREE_PHOTO_OUTPUT_KEY,
+    }
+
+
+def _render_three_photo_page(
+    images: torch.Tensor,
+    labels: torch.Tensor,
+    indices: Sequence[int],
+    arm_data: Mapping[str, Mapping[str, Any]],
+    positions: Sequence[int],
+    page_number: int,
+    output_dir: Path,
+) -> list[Path]:
+    columns = (
+        ("Standard digit input", "standard_input"),
+        ("SMF output", "SMF"),
+        ("FMF output", "FMF"),
+        ("MMF-M6 output", "MMF-M6"),
+    )
+    figure, axes = plt.subplots(
+        len(positions),
+        len(columns),
+        figsize=(THREE_PHOTO_PAGE_WIDTH_INCHES, 4.8),
+        squeeze=False,
+    )
+    figure.subplots_adjust(
+        left=0.16,
+        right=0.99,
+        bottom=0.13,
+        top=0.83,
+        wspace=0.08,
+        hspace=0.24,
+    )
+    panel_ids: list[str] = []
+    row_records = _three_photo_row_records(labels, indices, positions)
+    for row, record in enumerate(row_records):
+        position = record["position"]
+        for column, (title, key) in enumerate(columns):
+            axis = axes[row, column]
+            if key == "standard_input":
+                array = images[position, 0].detach().cpu().numpy()
+                color = "#555555"
+            else:
+                array = arm_data[key]["mpcdar"][position, 0].detach().cpu().numpy()
+                color = ARM_COLORS[key]
+            axis.imshow(
+                np.clip(array, 0.0, 1.0),
+                cmap="gray",
+                vmin=0.0,
+                vmax=1.0,
+                interpolation="nearest",
+                aspect=THREE_PHOTO_SPATIAL_ASPECT,
+                origin=IMAGE_ORIGIN,
+            )
+            _finish_image_axis(axis)
+            for spine in axis.spines.values():
+                spine.set_visible(True)
+                spine.set_color(color)
+                spine.set_linewidth(1.0)
+            if row == 0:
+                axis.set_title(title, fontsize=8.0, color=color, pad=4.0)
+            panel_ids.append(f"page-{page_number:02d}-r{row}-c{column}")
+        _horizontal_row_label(
+            axes[row, 0],
+            f"digit {record['digit']}",
+            fontsize=8.0,
+            x=-0.08,
+        )
+    page_label = _digit_page_label(positions).replace("_", "–")
+    figure.suptitle(
+        f"VIS2 · same digit input across three fiber arms · {page_label}",
+        fontsize=11.0,
+        y=0.965,
+    )
+    figure.text(
+        0.5,
+        0.895,
+        "Each row is one identical MNIST input; only the fiber arm changes.",
+        ha="center",
+        va="center",
+        fontsize=6.8,
+        color="#333333",
+    )
+    figure.text(
+        0.5,
+        0.035,
+        "Output = frozen MPCDAR R16 F32 reconstruction; SMF blue · FMF green · MMF-M6 orange. Qualitative matched-input display only.",
+        ha="center",
+        va="bottom",
+        fontsize=5.4,
+        color="#333333",
+    )
+    row_groups = [
+        panel_ids[row * len(columns) : (row + 1) * len(columns)]
+        for row in range(len(positions))
+    ]
+    column_groups = [
+        [panel_ids[row * len(columns) + column] for row in range(len(positions))]
+        for column in range(len(columns))
+    ]
+    return _save_figure_bundle(
+        figure,
+        _three_photo_figure_base(output_dir, page_number, positions),
+        axes=axes.ravel().tolist(),
+        panel_ids=panel_ids,
+        row_groups=row_groups,
+        column_groups=column_groups,
+        raster_dpi=RASTER_DPI,
+    )
+
+
+def _render_three_photo_suite(
+    images: torch.Tensor,
+    labels: torch.Tensor,
+    indices: Sequence[int],
+    arm_data: Mapping[str, Mapping[str, Any]],
+    output_dir: Path,
+) -> list[Path]:
+    return [
+        path
+        for page_number, positions in enumerate(THREE_PHOTO_PAGE_RANGES, start=1)
+        for path in _render_three_photo_page(
+            images,
+            labels,
+            indices,
+            arm_data,
+            positions,
+            page_number,
+            output_dir,
+        )
+    ]
+
+
+def _process_flow_row_records(
+    labels: torch.Tensor,
+    indices: Sequence[int] | torch.Tensor,
+    positions: Sequence[int],
+    arm: str,
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "arm": arm,
+            "position": int(position),
+            "digit": int(labels[int(position)]),
+            "dataset_index": int(indices[int(position)]),
+            "stage_position": {
+                key: int(position) for key in PROCESS_FLOW_STAGE_KEYS
+            },
+        }
+        for position in positions
+    ]
+
+
+def _process_flow_render_row_records(
+    labels: torch.Tensor,
+    indices: Sequence[int] | torch.Tensor,
+    positions: Sequence[int],
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for position in positions:
+        for arm in PROCESS_FLOW_ARM_LANES:
+            record = _process_flow_row_records(
+                labels,
+                indices,
+                (position,),
+                arm,
+            )[0]
+            for phase_row, phase in ((False, "amplitude"), (True, "phase")):
+                rows.append(
+                    {
+                        **record,
+                        "phase": phase,
+                        "phase_row": phase_row,
+                    }
+                )
+    return rows
+
+
+def _process_flow_modal_display_labels(
+    arm_data: Mapping[str, Any],
+    arm: str,
+) -> list[str]:
+    labels = _modal_labels({**arm_data, "arm": arm})
+    return [label.replace(" [synthetic]", "*") for label in labels]
+
+
+def _process_flow_figure_base(
+    output_dir: Path,
+    page_number: int,
+    positions: Sequence[int],
+) -> Path:
+    return output_dir / (
+        f"{PROCESS_FLOW_FIGURE_PREFIX}_{page_number:02d}_digits_"
+        f"{_digit_page_label(positions)}"
+    )
+
+
+def _process_flow_figure_manifest() -> dict[str, Any]:
+    pages = []
+    for page_number, positions in enumerate(PROCESS_FLOW_PAGE_RANGES, start=1):
+        base_name = _process_flow_figure_base(Path(), page_number, positions).name
+        pages.append(
+            {
+                "page": page_number,
+                "digits": list(positions),
+                "base": base_name,
+                "files": [
+                    f"{base_name}{suffix}"
+                    for suffix in THREE_PHOTO_FIGURE_EXPORT_SUFFIXES
+                ]
+                + [
+                    f"{base_name}.alignment.json",
+                    f"{base_name}.alignment.svg",
+                ],
+                "arm_lanes": list(PROCESS_FLOW_ARM_LANES),
+                "row_order": PROCESS_FLOW_ROW_ORDER,
+                "rows_per_digit": PROCESS_FLOW_ROWS_PER_DIGIT,
+                "row_sequence": [
+                    {
+                        "digit": int(position),
+                        "position": int(position),
+                        "arm_rows": [
+                            {
+                                "arm": arm,
+                                "phase_rows": ["amplitude", "phase"],
+                            }
+                            for arm in PROCESS_FLOW_ARM_LANES
+                        ],
+                    }
+                    for position in positions
+                ],
+                "columns": [
+                    {
+                        "key": key,
+                        "title": title,
+                        "kind": kind,
+                        "shared_frontend": key in COMMON_STAGE_ORDER,
+                    }
+                    for title, key, kind in PROCESS_FLOW_STAGE_SPECS
+                ],
+            }
+        )
+    return {
+        "pages": pages,
+        "page_count": len(pages),
+        "arm_lanes": list(PROCESS_FLOW_ARM_LANES),
+        "stage_order": list(PROCESS_FLOW_STAGE_KEYS),
+        "input_field": "images_28x28",
+        "output_field": PROCESS_FLOW_OUTPUT_FIELD,
+        "row_order": PROCESS_FLOW_ROW_ORDER,
+        "rows_per_digit": PROCESS_FLOW_ROWS_PER_DIGIT,
+        "row_structure": PROCESS_FLOW_ROW_STRUCTURE,
+    }
+
+
+def _render_process_flow_page(
+    common: Mapping[str, torch.Tensor],
+    arm_data: Mapping[str, Mapping[str, Any]],
+    images: torch.Tensor,
+    labels: torch.Tensor,
+    indices: Sequence[int],
+    positions: Sequence[int],
+    page_number: int,
+    scales: Mapping[str, Any],
+    output_dir: Path,
+) -> list[Path]:
+    columns = PROCESS_FLOW_STAGE_SPECS
+    render_rows = _process_flow_render_row_records(labels, indices, positions)
+    total_rows = len(render_rows)
+    figure_height = 1.9 + total_rows * 0.53
+    figure, axes = plt.subplots(
+        total_rows,
+        len(columns),
+        figsize=(PROCESS_FLOW_PAGE_WIDTH_INCHES, figure_height),
+        squeeze=False,
+    )
+    figure.subplots_adjust(
+        left=0.10,
+        right=0.995,
+        bottom=0.065,
+        top=0.89,
+        wspace=0.025,
+        hspace=0.28,
+    )
+    panel_ids: list[str] = []
+    row_groups: list[list[str]] = []
+    column_groups: list[list[str]] = [[] for _ in columns]
+    for row, record in enumerate(render_rows):
+        arm = record["arm"]
+        phase_row = bool(record["phase_row"])
+        row_ids: list[str] = []
+        for column, (title, key, kind) in enumerate(columns):
+            axis = axes[row, column]
+            if key == "input":
+                common_value = dict(common)
+                common_value["input"] = images
+            else:
+                common_value = common
+            _render_stage_panel(
+                axis,
+                common_value,
+                arm_data,
+                arm,
+                record["position"],
+                key,
+                kind,
+                scales,
+                phase_row,
+            )
+            _style_arm_axis(axis, arm)
+            for spine in axis.spines.values():
+                spine.set_linewidth(0.65)
+            if (
+                key == "modal"
+                and not phase_row
+                and record["position"] == positions[0]
+            ):
+                family_labels = _process_flow_modal_display_labels(
+                    arm_data[arm],
+                    arm,
+                )
+                axis.yaxis.tick_right()
+                axis.set_yticks(
+                    range(len(family_labels)),
+                    family_labels,
+                    fontsize=5.0,
+                )
+                axis.tick_params(
+                    axis="y",
+                    pad=2.0,
+                    length=1.2,
+                    left=False,
+                    right=True,
+                    labelleft=False,
+                    labelright=True,
+                )
+                axis.spines["right"].set_visible(False)
+            panel_id = (
+                f"{_arm_slug(arm)}-digit{record['digit']}-"
+                f"{'phase' if phase_row else 'amplitude'}-{key}"
+            )
+            panel_ids.append(panel_id)
+            row_ids.append(panel_id)
+            column_groups[column].append(panel_id)
+        row_groups.append(row_ids)
+        row_label = (
+            f"{arm} · digit {record['digit']}\n"
+            f"{'Phase' if phase_row else 'Amplitude'}"
+        )
+        _horizontal_row_label(
+            axes[row, 0],
+            row_label,
+            fontsize=5.8,
+            color=ARM_COLORS[arm],
+            x=-0.075,
+        )
+
+    for column, (title, _, _) in enumerate(columns):
+        axis_position = axes[0, column].get_position()
+        figure.text(
+            (axis_position.x0 + axis_position.x1) / 2.0,
+            axis_position.y1 + 0.012,
+            title,
+            ha="center",
+            va="bottom",
+            fontsize=5.4,
+            color="#333333",
+            linespacing=0.9,
+        )
+
+    page_label = _digit_page_label(positions).replace("_", "–")
+    figure.suptitle(
+        f"VIS2 process flow · matched digits {page_label} · SMF / FMF / MMF-M6",
+        fontsize=11.0,
+        y=0.965,
+    )
+    figure.text(
+        0.5,
+        0.925,
+        "Reference-style amplitude/phase flow; each colored lane reuses the same input and shared frontend before its fiber branch.",
+        ha="center",
+        va="center",
+        fontsize=6.3,
+        color="#333333",
+    )
+    figure.text(
+        0.5,
+        0.020,
+        "Shared frontend: input → SLM → encoder → pre-OLS. Branch: modal/fiber → decoder → CMOS → frozen MPCDAR R16 F32; phase N/A is explicit for real-valued input/command/intensity/reconstruction. In Modal, * marks synthetic MMF-M6 families.",
+        ha="center",
+        va="bottom",
+        fontsize=5.2,
+        color="#333333",
+    )
+    return _save_figure_bundle(
+        figure,
+        _process_flow_figure_base(output_dir, page_number, positions),
+        axes=axes.ravel().tolist(),
+        panel_ids=panel_ids,
+        row_groups=row_groups,
+        column_groups=column_groups,
+        raster_dpi=RASTER_DPI,
+    )
+
+
+def _render_process_flow_suite(
+    common: Mapping[str, torch.Tensor],
+    arm_data: Mapping[str, Mapping[str, Any]],
+    images: torch.Tensor,
+    labels: torch.Tensor,
+    indices: Sequence[int],
+    scales: Mapping[str, Any],
+    output_dir: Path,
+) -> list[Path]:
+    return [
+        path
+        for page_number, positions in enumerate(PROCESS_FLOW_PAGE_RANGES, start=1)
+        for path in _render_process_flow_page(
+            common,
+            arm_data,
+            images,
+            labels,
+            indices,
+            positions,
+            page_number,
+            scales,
+            output_dir,
+        )
+    ]
 
 
 def _stage_payload(
@@ -2402,6 +2981,459 @@ def _layout_manifest_contract() -> dict[str, Any]:
         "maximum_page_width_inches": 7.2,
         "orientation_policy": copy.deepcopy(ORIENTATION_POLICY),
         "relative_paths": True,
+    }
+
+
+def _three_photo_layout_manifest() -> dict[str, Any]:
+    return {
+        "layout_schema": THREE_PHOTO_LAYOUT_SCHEMA,
+        "artifact_layout_schema": THREE_PHOTO_ARTIFACT_LAYOUT_SCHEMA,
+        "figure_folder": ".",
+        "metadata_folder": ARTIFACT_FOLDERS["metadata_qa"],
+        "arm_colors": dict(ARM_COLORS),
+        "digit_page_ranges": [list(positions) for positions in THREE_PHOTO_PAGE_RANGES],
+        "column_order": list(THREE_PHOTO_COLUMN_KEYS),
+        "input_field": "images_28x28",
+        "output_field": THREE_PHOTO_OUTPUT_KEY,
+        "spatial_aspect": THREE_PHOTO_SPATIAL_ASPECT,
+        "modal_aspect": "not_rendered_in_three_photo_comparison",
+        "figure_export_suffixes": list(THREE_PHOTO_FIGURE_EXPORT_SUFFIXES),
+        "alignment_suffixes": [".alignment.json", ".alignment.svg"],
+        "tiff_exported": False,
+        "page_width_inches": THREE_PHOTO_PAGE_WIDTH_INCHES,
+        "maximum_page_width_inches": 7.2,
+        "row_label_policy": "digit only; dataset index remains in matched_input_comparison metadata",
+        "relative_paths": True,
+    }
+
+
+def _three_photo_comparison_manifest(
+    source: Mapping[str, Any],
+    output_dir: Path,
+    labels: torch.Tensor,
+    indices: Sequence[int],
+) -> dict[str, Any]:
+    comparison = copy.deepcopy(source["comparison"])
+    comparison["schema"] = "lightgen_scaled_chen_fiber_vis2_comparison_manifest.v3"
+    comparison["output_dir"] = str(output_dir.resolve())
+    comparison["git"] = {
+        "source": copy.deepcopy(source["comparison"].get("git", {})),
+        "after_render": _git_state(),
+    }
+    comparison["figures"] = _three_photo_figure_manifest()
+    comparison["layout"] = _three_photo_layout_manifest()
+    metadata_dir = Path(ARTIFACT_FOLDERS["metadata_qa"])
+    target_clear_manifest = output_dir / metadata_dir / "clear_panel_manifest.json"
+    target_review = output_dir / metadata_dir / "clear_panel_review.json"
+    comparison["artifact_paths"] = {
+        "clear_manifest": (metadata_dir / "clear_panel_manifest.json").as_posix(),
+        "review": (metadata_dir / "clear_panel_review.json").as_posix(),
+        "candidate_contact_sheet": (
+            metadata_dir / "clear_input_candidate_contact_sheet.png"
+        ).as_posix(),
+        "panel": (metadata_dir / "panel.pt").as_posix(),
+        "comparison_manifest": (metadata_dir / "comparison_manifest.json").as_posix(),
+        "visualization_manifest": "visualization_manifest.json",
+    }
+    comparison["clear_panel"] = {
+        **comparison["clear_panel"],
+        "manifest": comparison["artifact_paths"]["clear_manifest"],
+        "review": comparison["artifact_paths"]["review"],
+        "manifest_sha256": file_sha256(target_clear_manifest),
+        "review_sha256": file_sha256(target_review),
+    }
+    comparison["rendering"] = {
+        "mode": "panel_only_three_photo_rerender",
+        "source_output_dir": str(source["source_dir"].resolve()),
+        "source_panel_sha256": source["panel_sha256"],
+        "source_comparison_manifest_sha256": file_sha256(source["paths"]["comparison"]),
+        "source_visualization_manifest_sha256": file_sha256(source["paths"]["visualization"]),
+        "render_device": "cpu",
+        "cuda_replay": False,
+        "optical_data_changed": False,
+    }
+    resources = comparison.setdefault("resources", {})
+    resources["render_only_from_panel"] = True
+    resources["cuda_replay"] = False
+    resources["optical_data_changed"] = False
+    resources["render_device"] = "cpu"
+    resources["source_panel_sha256"] = source["panel_sha256"]
+    comparison["source_manifest_binding"] = {
+        "source_visualization_manifest": _manifest_relative_path(
+            source["source_dir"],
+            source["paths"]["visualization"],
+            "BLOCKED_PANEL_SOURCE_ARTIFACT_MISSING",
+        ),
+        "source_visualization_manifest_sha256": file_sha256(source["paths"]["visualization"]),
+        "source_comparison_manifest": _manifest_relative_path(
+            source["source_dir"],
+            source["paths"]["comparison"],
+            "BLOCKED_PANEL_SOURCE_ARTIFACT_MISSING",
+        ),
+        "source_comparison_manifest_sha256": file_sha256(source["paths"]["comparison"]),
+        "source_panel": _manifest_relative_path(
+            source["source_dir"],
+            source["paths"]["panel"],
+            "BLOCKED_PANEL_SOURCE_ARTIFACT_MISSING",
+        ),
+        "source_panel_sha256": source["panel_sha256"],
+    }
+    comparison["matched_input_comparison"] = {
+        "row_alignment": "one shared panel position across standard input and all three fiber outputs",
+        "input_field": "images_28x28",
+        "output_field": THREE_PHOTO_OUTPUT_KEY,
+        "pages": [
+            {
+                "page": page_number,
+                "digits": [int(labels[position]) for position in positions],
+                "dataset_indices": [int(indices[position]) for position in positions],
+                "positions": list(positions),
+            }
+            for page_number, positions in enumerate(THREE_PHOTO_PAGE_RANGES, start=1)
+        ],
+    }
+    comparison["supersedes"] = "attempt_10"
+    comparison["interpretation_boundary"] = (
+        "This three-photo VIS2 artifact is a qualitative matched-input comparison only. "
+        "It does not rank fibers or support physical MMF, reconstruction-manifold, "
+        "generation, training, or promotion claims."
+    )
+    return comparison
+
+
+def _three_photo_visualization_manifest(
+    output_dir: Path,
+    comparison: Mapping[str, Any],
+    output_files: Sequence[Path],
+    governance: Mapping[str, Any],
+) -> dict[str, Any]:
+    if any(
+        path.suffix.lower() in {".tif", ".tiff"}
+        for path in output_files
+    ):
+        raise RuntimeError("VIS2 three-photo output must not contain TIFF artifacts")
+    if any(
+        path.name.startswith(".") or ".tmp" in path.name
+        for path in output_files
+    ):
+        raise RuntimeError("VIS2 three-photo output must not contain hidden or temporary files")
+    figures = comparison["figures"]
+    artifact_paths = comparison["artifact_paths"]
+    required_artifacts = [
+        artifact_paths["clear_manifest"],
+        artifact_paths["candidate_contact_sheet"],
+        artifact_paths["review"],
+        artifact_paths["panel"],
+        artifact_paths["comparison_manifest"],
+        *[
+            filename
+            for page in figures["pages"]
+            for filename in page["files"]
+        ],
+    ]
+    missing = [
+        path
+        for path in required_artifacts
+        if not (output_dir / path).is_file()
+    ]
+    if missing:
+        raise RuntimeError(
+            "VIS2 three-photo output is missing required artifacts: "
+            + ", ".join(missing)
+        )
+    comparison_path = artifact_paths["comparison_manifest"]
+    return {
+        "schema": "lightgen_scaled_chen_fiber_vis2_visualization_manifest.v3",
+        "task_id": TASK_ID,
+        "status": "completed",
+        "classification": CLASSIFICATION,
+        "layout_schema": THREE_PHOTO_LAYOUT_SCHEMA,
+        "artifact_layout_schema": THREE_PHOTO_ARTIFACT_LAYOUT_SCHEMA,
+        "folder_layout": {
+            "figures": ".",
+            "metadata_qa": ARTIFACT_FOLDERS["metadata_qa"],
+        },
+        "diagnostic_only": True,
+        "output_dir": str(output_dir.resolve()),
+        "comparison_manifest": {
+            "path": comparison_path,
+            "sha256": file_sha256(output_dir / comparison_path),
+        },
+        "orientation_policy": copy.deepcopy(ORIENTATION_POLICY),
+        "supersedes": comparison.get("supersedes"),
+        "required_artifacts": required_artifacts,
+        "output_files": [
+            {
+                "path": path.relative_to(output_dir).as_posix(),
+                "sha256": file_sha256(path),
+                "bytes": path.stat().st_size,
+            }
+            for path in sorted(output_files)
+        ],
+        "source_panel_sha256": comparison["rendering"]["source_panel_sha256"],
+        "source_manifest_binding": copy.deepcopy(
+            comparison["source_manifest_binding"]
+        ),
+        "governance": dict(governance),
+        "vis1_authority": {
+            "status": "unchanged",
+            "authority_output": str(VIS1_OUTPUT),
+            "not_overwritten": True,
+            "not_recomputed": True,
+            "not_modified": True,
+        },
+        "unique_next_action": UNIQUE_NEXT_ACTION,
+        "render_only_from_panel": True,
+        "cuda_replay": False,
+        "optical_data_changed": False,
+        "manifest_self_hash": "not embedded to avoid self-reference",
+    }
+
+
+def _process_flow_layout_manifest() -> dict[str, Any]:
+    return {
+        "layout_schema": PROCESS_FLOW_LAYOUT_SCHEMA,
+        "artifact_layout_schema": PROCESS_FLOW_ARTIFACT_LAYOUT_SCHEMA,
+        "figure_folder": ".",
+        "metadata_folder": ARTIFACT_FOLDERS["metadata_qa"],
+        "arm_lanes": list(PROCESS_FLOW_ARM_LANES),
+        "arm_colors": dict(ARM_COLORS),
+        "digit_page_ranges": [
+            list(positions) for positions in PROCESS_FLOW_PAGE_RANGES
+        ],
+        "stage_order": list(PROCESS_FLOW_STAGE_KEYS),
+        "stage_columns": [
+            {
+                "key": key,
+                "title": title,
+                "kind": kind,
+                "shared_frontend": key in COMMON_STAGE_ORDER,
+            }
+            for title, key, kind in PROCESS_FLOW_STAGE_SPECS
+        ],
+        "input_field": "images_28x28",
+        "output_field": PROCESS_FLOW_OUTPUT_FIELD,
+        "row_order": PROCESS_FLOW_ROW_ORDER,
+        "rows_per_digit": PROCESS_FLOW_ROWS_PER_DIGIT,
+        "row_structure": PROCESS_FLOW_ROW_STRUCTURE,
+        "spatial_aspect": PROCESS_FLOW_SPATIAL_ASPECT,
+        "modal_aspect": "explicit_nonspatial_matrix",
+        "figure_export_suffixes": list(THREE_PHOTO_FIGURE_EXPORT_SUFFIXES),
+        "alignment_suffixes": [".alignment.json", ".alignment.svg"],
+        "tiff_exported": False,
+        "page_width_inches": PROCESS_FLOW_PAGE_WIDTH_INCHES,
+        "maximum_page_width_inches": PROCESS_FLOW_PAGE_WIDTH_INCHES,
+        "minimum_text_size_pt": 5.0,
+        "row_label_policy": "digit and amplitude/phase only; dataset index remains in matched_input_comparison metadata",
+        "synthetic_label_policy": "MMF-M6 synthetic family labels remain explicit in the modal matrix metadata/display",
+        "relative_paths": True,
+    }
+
+
+def _process_flow_comparison_manifest(
+    source: Mapping[str, Any],
+    output_dir: Path,
+    labels: torch.Tensor,
+    indices: Sequence[int],
+) -> dict[str, Any]:
+    comparison = copy.deepcopy(source["comparison"])
+    comparison["schema"] = "lightgen_scaled_chen_fiber_vis2_comparison_manifest.v5"
+    comparison["output_dir"] = str(output_dir.resolve())
+    comparison["git"] = {
+        "source": copy.deepcopy(source["comparison"].get("git", {})),
+        "after_render": _git_state(),
+    }
+    comparison["layout_schema"] = PROCESS_FLOW_LAYOUT_SCHEMA
+    comparison["figures"] = _process_flow_figure_manifest()
+    comparison["layout"] = _process_flow_layout_manifest()
+    metadata_dir = Path(ARTIFACT_FOLDERS["metadata_qa"])
+    target_clear_manifest = output_dir / metadata_dir / "clear_panel_manifest.json"
+    target_review = output_dir / metadata_dir / "clear_panel_review.json"
+    comparison["artifact_paths"] = {
+        "clear_manifest": (metadata_dir / "clear_panel_manifest.json").as_posix(),
+        "review": (metadata_dir / "clear_panel_review.json").as_posix(),
+        "candidate_contact_sheet": (
+            metadata_dir / "clear_input_candidate_contact_sheet.png"
+        ).as_posix(),
+        "panel": (metadata_dir / "panel.pt").as_posix(),
+        "comparison_manifest": (metadata_dir / "comparison_manifest.json").as_posix(),
+        "visualization_manifest": "visualization_manifest.json",
+    }
+    comparison["clear_panel"] = {
+        **comparison["clear_panel"],
+        "manifest": comparison["artifact_paths"]["clear_manifest"],
+        "review": comparison["artifact_paths"]["review"],
+        "manifest_sha256": file_sha256(target_clear_manifest),
+        "review_sha256": file_sha256(target_review),
+    }
+    source_comparison_sha256 = file_sha256(source["paths"]["comparison"])
+    source_visualization_sha256 = file_sha256(source["paths"]["visualization"])
+    comparison["rendering"] = {
+        "mode": "panel_only_interleaved_process_flow_rerender",
+        "source_output_dir": str(source["source_dir"].resolve()),
+        "source_panel_sha256": source["panel_sha256"],
+        "source_comparison_manifest_sha256": source_comparison_sha256,
+        "source_visualization_manifest_sha256": source_visualization_sha256,
+        "render_device": "cpu",
+        "cuda_replay": False,
+        "optical_data_changed": False,
+    }
+    resources = comparison.setdefault("resources", {})
+    resources["device"] = "cpu"
+    resources["render_device"] = "cpu"
+    resources["render_only_from_panel"] = True
+    resources["cuda_replay"] = False
+    resources["optical_data_changed"] = False
+    resources["source_panel_sha256"] = source["panel_sha256"]
+    comparison["source_manifest_binding"] = {
+        "source_visualization_manifest": _manifest_relative_path(
+            source["source_dir"],
+            source["paths"]["visualization"],
+            "BLOCKED_PANEL_SOURCE_ARTIFACT_MISSING",
+        ),
+        "source_visualization_manifest_sha256": source_visualization_sha256,
+        "source_comparison_manifest": _manifest_relative_path(
+            source["source_dir"],
+            source["paths"]["comparison"],
+            "BLOCKED_PANEL_SOURCE_ARTIFACT_MISSING",
+        ),
+        "source_comparison_manifest_sha256": source_comparison_sha256,
+        "source_panel": _manifest_relative_path(
+            source["source_dir"],
+            source["paths"]["panel"],
+            "BLOCKED_PANEL_SOURCE_ARTIFACT_MISSING",
+        ),
+        "source_panel_sha256": source["panel_sha256"],
+    }
+    comparison["matched_input_comparison"] = {
+        "row_alignment": "for each digit, SMF, FMF, and MMF-M6 amplitude/phase pairs are adjacent before the next digit begins",
+        "row_order": PROCESS_FLOW_ROW_ORDER,
+        "row_structure": PROCESS_FLOW_ROW_STRUCTURE,
+        "input_field": "images_28x28",
+        "output_field": PROCESS_FLOW_OUTPUT_FIELD,
+        "process_stage_order": list(PROCESS_FLOW_STAGE_KEYS),
+        "arm_lanes": list(PROCESS_FLOW_ARM_LANES),
+        "pages": [
+            {
+                "page": page_number,
+                "digits": [int(labels[position]) for position in positions],
+                "dataset_indices": [int(indices[position]) for position in positions],
+                "positions": list(positions),
+                "row_records": [
+                    {
+                        "digit": int(row["digit"]),
+                        "arm": row["arm"],
+                        "phase": row["phase"],
+                        "position": int(row["position"]),
+                        "dataset_index": int(row["dataset_index"]),
+                    }
+                    for row in _process_flow_render_row_records(
+                        labels,
+                        indices,
+                        positions,
+                    )
+                ],
+            }
+            for page_number, positions in enumerate(
+                PROCESS_FLOW_PAGE_RANGES, start=1
+            )
+        ],
+    }
+    comparison["supersedes"] = "attempt_14"
+    comparison["interpretation_boundary"] = (
+        "This process-flow VIS2 artifact is a qualitative matched-input display only. "
+        "The three colored arm lanes expose stage-wise amplitude/phase differences "
+        "for the same digits; they do not rank fibers or support physical MMF, "
+        "reconstruction-manifold, generation, training, or promotion claims."
+    )
+    return comparison
+
+
+def _process_flow_visualization_manifest(
+    output_dir: Path,
+    comparison: Mapping[str, Any],
+    output_files: Sequence[Path],
+    governance: Mapping[str, Any],
+) -> dict[str, Any]:
+    if any(path.suffix.lower() in {".tif", ".tiff"} for path in output_files):
+        raise RuntimeError("VIS2 process-flow output must not contain TIFF artifacts")
+    if any(
+        path.name.startswith(".") or ".tmp" in path.name
+        for path in output_files
+    ):
+        raise RuntimeError(
+            "VIS2 process-flow output must not contain hidden or temporary files"
+        )
+    figures = comparison["figures"]
+    artifact_paths = comparison["artifact_paths"]
+    required_artifacts = [
+        artifact_paths["clear_manifest"],
+        artifact_paths["candidate_contact_sheet"],
+        artifact_paths["review"],
+        artifact_paths["panel"],
+        artifact_paths["comparison_manifest"],
+        *[
+            filename
+            for page in figures["pages"]
+            for filename in page["files"]
+        ],
+    ]
+    missing = [
+        path
+        for path in required_artifacts
+        if not (output_dir / path).is_file()
+    ]
+    if missing:
+        raise RuntimeError(
+            "VIS2 process-flow output is missing required artifacts: "
+            + ", ".join(missing)
+        )
+    comparison_path = artifact_paths["comparison_manifest"]
+    return {
+        "schema": "lightgen_scaled_chen_fiber_vis2_visualization_manifest.v5",
+        "task_id": TASK_ID,
+        "status": "completed",
+        "classification": CLASSIFICATION,
+        "layout_schema": PROCESS_FLOW_LAYOUT_SCHEMA,
+        "artifact_layout_schema": PROCESS_FLOW_ARTIFACT_LAYOUT_SCHEMA,
+        "folder_layout": {
+            "figures": ".",
+            "metadata_qa": ARTIFACT_FOLDERS["metadata_qa"],
+        },
+        "diagnostic_only": True,
+        "output_dir": str(output_dir.resolve()),
+        "comparison_manifest": {
+            "path": comparison_path,
+            "sha256": file_sha256(output_dir / Path(comparison_path)),
+        },
+        "orientation_policy": copy.deepcopy(ORIENTATION_POLICY),
+        "supersedes": comparison.get("supersedes"),
+        "required_artifacts": required_artifacts,
+        "output_files": [
+            {
+                "path": path.relative_to(output_dir).as_posix(),
+                "sha256": file_sha256(path),
+                "bytes": path.stat().st_size,
+            }
+            for path in sorted(output_files)
+        ],
+        "source_panel_sha256": comparison["rendering"]["source_panel_sha256"],
+        "source_manifest_binding": copy.deepcopy(
+            comparison["source_manifest_binding"]
+        ),
+        "governance": dict(governance),
+        "vis1_authority": {
+            "status": "unchanged",
+            "authority_output": str(VIS1_OUTPUT),
+            "not_overwritten": True,
+            "not_recomputed": True,
+            "not_modified": True,
+        },
+        "unique_next_action": UNIQUE_NEXT_ACTION,
+        "render_only_from_panel": True,
+        "cuda_replay": False,
+        "optical_data_changed": False,
+        "manifest_self_hash": "not embedded to avoid self-reference",
     }
 
 
@@ -2944,6 +3976,241 @@ def _render_from_panel(source_dir: str | Path, output_dir: str | Path) -> dict[s
     }
 
 
+def _render_three_photo_from_panel(
+    source_dir: str | Path,
+    output_dir: str | Path,
+) -> dict[str, Any]:
+    git_boundary = _validate_three_photo_git_boundary()
+    source = _load_panel_payload(source_dir)
+    if source["panel_sha256"].lower() != THREE_PHOTO_SOURCE_PANEL_SHA256.lower():
+        raise RuntimeError("BLOCKED_THREE_PHOTO_SOURCE_PANEL_HASH_UNEXPECTED")
+    target_dir = _repo_path(output_dir)
+    if target_dir.exists():
+        raise FileExistsError(f"refusing to overwrite three-photo directory: {target_dir}")
+    _check_disk_and_output_boundary(target_dir)
+    target_dir.mkdir(parents=True, exist_ok=False)
+    _copy_panel_source_artifacts(source, target_dir)
+
+    indices = source["indices"].tolist()
+    saved = _render_three_photo_suite(
+        source["images"],
+        source["labels"],
+        indices,
+        source["arm_data"],
+        target_dir,
+    )
+    expected_figure_count = len(THREE_PHOTO_PAGE_RANGES) * (
+        len(THREE_PHOTO_FIGURE_EXPORT_SUFFIXES) + 2
+    )
+    if len(saved) != expected_figure_count:
+        raise RuntimeError(
+            "VIS2 three-photo renderer produced an unexpected figure count: "
+            f"{len(saved)} != {expected_figure_count}"
+        )
+
+    comparison = _three_photo_comparison_manifest(
+        source,
+        target_dir,
+        source["labels"],
+        indices,
+    )
+    comparison_path = target_dir / Path(comparison["artifact_paths"]["comparison_manifest"])
+    atomic_write_new_json(
+        comparison_path,
+        comparison,
+        artifact_kind="VIS2 three-photo comparison manifest",
+    )
+    output_files = sorted(
+        path
+        for path in target_dir.rglob("*")
+        if path.is_file() and path.name != "visualization_manifest.json"
+    )
+    output_bytes = sum(path.stat().st_size for path in output_files)
+    if output_bytes > 512 * 1024**2:
+        raise RuntimeError(
+            f"VIS2 three-photo output exceeds 512 MiB: {output_bytes} bytes"
+        )
+    governance = {
+        "mainline_state": "closed_at_current_evidence_boundary",
+        "reconstruction_manifold_supported": False,
+        "generative_manifold_supported": False,
+        "generation_readiness": "not_ready",
+        "training_authorized": False,
+        "formal_promotion": False,
+        "closed_task_relevant_bottleneck_not_supported": True,
+        "bridge": "invalid / cloud_sources_sync_blocked",
+        "vis1_authority": "quantitative_fixed_panel_descriptive_authority_unchanged",
+        "vis2_authority": "qualitative_same_digit_three_fiber_comparison_only",
+    }
+    visualization = _three_photo_visualization_manifest(
+        target_dir,
+        comparison,
+        output_files,
+        governance,
+    )
+    atomic_write_new_json(
+        target_dir / "visualization_manifest.json",
+        visualization,
+        artifact_kind="VIS2 three-photo visualization manifest",
+    )
+    final_boundary = _validate_three_photo_git_boundary()
+    return {
+        "status": "completed",
+        "classification": CLASSIFICATION,
+        "layout_schema": THREE_PHOTO_LAYOUT_SCHEMA,
+        "render_only_from_panel": True,
+        "cuda_replay": False,
+        "optical_data_changed": False,
+        "source_output_dir": str(source["source_dir"].resolve()),
+        "source_panel_sha256": source["panel_sha256"],
+        "output_dir": str(target_dir.resolve()),
+        "branch": final_boundary["branch"],
+        "starting_head": git_boundary["starting_head"],
+        "ending_head": final_boundary["starting_head"],
+        "pages": [
+            {
+                "page": page_number,
+                "digits": list(positions),
+                "figure_base": _three_photo_figure_base(
+                    target_dir,
+                    page_number,
+                    positions,
+                ).relative_to(target_dir).as_posix(),
+            }
+            for page_number, positions in enumerate(THREE_PHOTO_PAGE_RANGES, start=1)
+        ],
+        "output_bytes_before_visualization_manifest": output_bytes,
+        "unique_next_action": UNIQUE_NEXT_ACTION,
+    }
+
+
+def _render_process_flow_from_panel(
+    source_dir: str | Path,
+    output_dir: str | Path,
+) -> dict[str, Any]:
+    git_boundary = _validate_three_photo_git_boundary()
+    source = _load_panel_payload(source_dir)
+    if source["panel_sha256"].lower() != THREE_PHOTO_SOURCE_PANEL_SHA256.lower():
+        raise RuntimeError("BLOCKED_PROCESS_FLOW_SOURCE_PANEL_HASH_UNEXPECTED")
+    target_dir = _repo_path(output_dir)
+    if target_dir.exists():
+        raise FileExistsError(
+            f"refusing to overwrite process-flow directory: {target_dir}"
+        )
+    _check_disk_and_output_boundary(target_dir)
+    target_dir.mkdir(parents=True, exist_ok=False)
+    _copy_panel_source_artifacts(source, target_dir)
+
+    indices = source["indices"].tolist()
+    saved = _render_process_flow_suite(
+        source["common"],
+        source["arm_data"],
+        source["images"],
+        source["labels"],
+        indices,
+        source["scales"],
+        target_dir,
+    )
+    expected_figure_count = len(PROCESS_FLOW_PAGE_RANGES) * (
+        len(THREE_PHOTO_FIGURE_EXPORT_SUFFIXES) + 2
+    )
+    if len(saved) != expected_figure_count:
+        raise RuntimeError(
+            "VIS2 process-flow renderer produced an unexpected figure count: "
+            f"{len(saved)} != {expected_figure_count}"
+        )
+
+    comparison = _process_flow_comparison_manifest(
+        source,
+        target_dir,
+        source["labels"],
+        indices,
+    )
+    comparison_path = target_dir / Path(
+        comparison["artifact_paths"]["comparison_manifest"]
+    )
+    atomic_write_new_json(
+        comparison_path,
+        comparison,
+        artifact_kind="VIS2 process-flow comparison manifest",
+    )
+    output_files = sorted(
+        path
+        for path in target_dir.rglob("*")
+        if path.is_file() and path.name != "visualization_manifest.json"
+    )
+    output_bytes = sum(path.stat().st_size for path in output_files)
+    if output_bytes > 512 * 1024**2:
+        raise RuntimeError(
+            f"VIS2 process-flow output exceeds 512 MiB: {output_bytes} bytes"
+        )
+    governance = {
+        "mainline_state": "closed_at_current_evidence_boundary",
+        "reconstruction_manifold_supported": False,
+        "generative_manifold_supported": False,
+        "generation_readiness": "not_ready",
+        "training_authorized": False,
+        "formal_promotion": False,
+        "closed_task_relevant_bottleneck_not_supported": True,
+        "bridge": "invalid / cloud_sources_sync_blocked",
+        "vis1_authority": "quantitative_fixed_panel_descriptive_authority_unchanged",
+        "vis2_authority": "qualitative_same_digit_three_fiber_process_flow_only",
+    }
+    visualization = _process_flow_visualization_manifest(
+        target_dir,
+        comparison,
+        output_files,
+        governance,
+    )
+    atomic_write_new_json(
+        target_dir / "visualization_manifest.json",
+        visualization,
+        artifact_kind="VIS2 process-flow visualization manifest",
+    )
+    final_boundary = _validate_three_photo_git_boundary()
+    return {
+        "status": "completed",
+        "classification": CLASSIFICATION,
+        "layout_schema": PROCESS_FLOW_LAYOUT_SCHEMA,
+        "artifact_layout_schema": PROCESS_FLOW_ARTIFACT_LAYOUT_SCHEMA,
+        "row_order": PROCESS_FLOW_ROW_ORDER,
+        "rows_per_digit": PROCESS_FLOW_ROWS_PER_DIGIT,
+        "supersedes": "attempt_14",
+        "render_only_from_panel": True,
+        "cuda_replay": False,
+        "optical_data_changed": False,
+        "source_output_dir": str(source["source_dir"].resolve()),
+        "source_panel_sha256": source["panel_sha256"],
+        "source_comparison_manifest_sha256": file_sha256(
+            source["paths"]["comparison"]
+        ),
+        "source_visualization_manifest_sha256": file_sha256(
+            source["paths"]["visualization"]
+        ),
+        "output_dir": str(target_dir.resolve()),
+        "branch": final_boundary["branch"],
+        "starting_head": git_boundary["starting_head"],
+        "ending_head": final_boundary["starting_head"],
+        "pages": [
+            {
+                "page": page_number,
+                "digits": [int(source["labels"][position]) for position in positions],
+                "positions": list(positions),
+                "figure_base": _process_flow_figure_base(
+                    target_dir,
+                    page_number,
+                    positions,
+                ).relative_to(target_dir).as_posix(),
+            }
+            for page_number, positions in enumerate(
+                PROCESS_FLOW_PAGE_RANGES, start=1
+            )
+        ],
+        "output_bytes_before_visualization_manifest": output_bytes,
+        "unique_next_action": UNIQUE_NEXT_ACTION,
+    }
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset-root", type=Path, default=Path("data"))
@@ -2953,6 +4220,8 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--stage-a-only", action="store_true")
     parser.add_argument("--approve-clear-panel", action="store_true")
     parser.add_argument("--render-from-panel", type=Path, default=None)
+    parser.add_argument("--render-three-photo-from-panel", type=Path, default=None)
+    parser.add_argument("--render-process-flow-from-panel", type=Path, default=None)
     return parser.parse_args()
 
 
@@ -2960,7 +4229,13 @@ def main() -> int:
     args = _parse_args()
     selected_actions = sum(
         bool(value)
-        for value in (args.stage_a_only, args.approve_clear_panel, args.render_from_panel is not None)
+        for value in (
+            args.stage_a_only,
+            args.approve_clear_panel,
+            args.render_from_panel is not None,
+            args.render_three_photo_from_panel is not None,
+            args.render_process_flow_from_panel is not None,
+        )
     )
     if selected_actions > 1:
         raise RuntimeError("choose only one VIS2 stage action")
@@ -2976,6 +4251,20 @@ def main() -> int:
         if args.output_dir is None:
             raise RuntimeError("--render-from-panel requires --output-dir")
         result = _render_from_panel(args.render_from_panel, args.output_dir)
+    elif args.render_three_photo_from_panel is not None:
+        if args.output_dir is None:
+            raise RuntimeError("--render-three-photo-from-panel requires --output-dir")
+        result = _render_three_photo_from_panel(
+            args.render_three_photo_from_panel,
+            args.output_dir,
+        )
+    elif args.render_process_flow_from_panel is not None:
+        if args.output_dir is None:
+            raise RuntimeError("--render-process-flow-from-panel requires --output-dir")
+        result = _render_process_flow_from_panel(
+            args.render_process_flow_from_panel,
+            args.output_dir,
+        )
     else:
         result = _run_full(args)
     print(json.dumps(result, ensure_ascii=False, indent=2))

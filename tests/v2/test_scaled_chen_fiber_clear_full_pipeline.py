@@ -119,6 +119,190 @@ def test_compact_layout_contract_separates_arms_and_digit_pages(renderer) -> Non
     assert renderer.FIGURE_EXPORT_SUFFIXES == (".png", ".pdf", ".svg")
 
 
+def test_three_photo_layout_contract_matches_same_digit_comparison(renderer) -> None:
+    assert renderer.THREE_PHOTO_LAYOUT_SCHEMA == "same_digit_three_arm_comparison_v1"
+    assert renderer.THREE_PHOTO_PAGE_RANGES == ((0, 1, 2, 3), (4, 5, 6), (7, 8, 9))
+    assert tuple(renderer.THREE_PHOTO_COLUMN_KEYS) == (
+        "standard_input",
+        "SMF",
+        "FMF",
+        "MMF-M6",
+    )
+    assert renderer.THREE_PHOTO_OUTPUT_KEY == "mpcdar_rank16_float32"
+    assert [position for page in renderer.THREE_PHOTO_PAGE_RANGES for position in page] == list(range(10))
+    assert max(map(len, renderer.THREE_PHOTO_PAGE_RANGES)) - min(
+        map(len, renderer.THREE_PHOTO_PAGE_RANGES)
+    ) <= 1
+    assert all(len(renderer.THREE_PHOTO_COLUMN_KEYS) == 4 for _ in renderer.THREE_PHOTO_PAGE_RANGES)
+
+
+def test_three_photo_rows_match_one_input_position_across_all_arms(renderer) -> None:
+    labels = torch.arange(10, dtype=torch.long)
+    indices = torch.arange(10, dtype=torch.long) + 55000
+    rows = renderer._three_photo_row_records(labels, indices, renderer.THREE_PHOTO_PAGE_RANGES[0])
+    assert [row["digit"] for row in rows] == [0, 1, 2, 3]
+    assert [row["dataset_index"] for row in rows] == [55000, 55001, 55002, 55003]
+    for row, position in zip(rows, renderer.THREE_PHOTO_PAGE_RANGES[0], strict=True):
+        assert row["position"] == position
+        assert {column["position"] for column in row["columns"].values()} == {position}
+        assert row["columns"]["standard_input"]["source"] == "images_28x28"
+        for arm in renderer.ARM_ORDER:
+            assert row["columns"][arm]["source"] == "arm_data[arm][mpcdar_rank16_float32]"
+
+
+def test_three_photo_render_contract_is_compact_and_spatially_equal(renderer) -> None:
+    assert renderer.THREE_PHOTO_PAGE_WIDTH_INCHES <= 7.2
+    assert renderer.THREE_PHOTO_SPATIAL_ASPECT == "equal"
+    assert renderer.ARM_COLORS["SMF"] != renderer.ARM_COLORS["FMF"]
+    assert renderer.ARM_COLORS["FMF"] != renderer.ARM_COLORS["MMF-M6"]
+    assert renderer.ARM_COLORS["SMF"] != renderer.ARM_COLORS["MMF-M6"]
+    source = SCRIPT.read_text(encoding="utf-8")
+    assert 'aspect="equal"' in source
+
+
+def test_three_photo_output_contract_excludes_tiff(renderer) -> None:
+    assert renderer.THREE_PHOTO_FIGURE_EXPORT_SUFFIXES == (".png", ".pdf", ".svg")
+    assert all(
+        suffix.lower() not in {".tif", ".tiff"}
+        for suffix in renderer.THREE_PHOTO_FIGURE_EXPORT_SUFFIXES
+    )
+
+
+def test_process_flow_layout_uses_reference_style_stages_and_three_arm_lanes(renderer) -> None:
+    assert renderer.PROCESS_FLOW_LAYOUT_SCHEMA == "same_digit_interleaved_three_arm_process_flow_v1"
+    assert renderer.PROCESS_FLOW_ARTIFACT_LAYOUT_SCHEMA == "vis2_process_flow_interleaved_v1"
+    assert renderer.PROCESS_FLOW_PAGE_RANGES == ((0, 1, 2, 3), (4, 5, 6), (7, 8, 9))
+    assert renderer.PROCESS_FLOW_ARM_LANES == renderer.ARM_ORDER
+    assert renderer.PROCESS_FLOW_ROW_ORDER == "digit_then_arm_then_amplitude_phase"
+    assert renderer.PROCESS_FLOW_ROWS_PER_DIGIT == 6
+    assert renderer.PROCESS_FLOW_STAGE_KEYS == (
+        "input",
+        "slm_command",
+        "slm_output",
+        "encoder_input",
+        "encoder_layer_1",
+        "pre_ols",
+        "modal",
+        "post_fiber",
+        "decoder_layer_1",
+        "decoder_layer_2",
+        "cmos_field",
+        "cmos_intensity",
+        "mpcdar",
+    )
+    assert len(renderer.PROCESS_FLOW_STAGE_KEYS) == 13
+    assert renderer.PROCESS_FLOW_PAGE_WIDTH_INCHES <= 12.0
+    assert renderer.PROCESS_FLOW_SPATIAL_ASPECT == "equal"
+
+
+def test_process_flow_rows_keep_digit_position_and_arm_identity(renderer) -> None:
+    labels = torch.arange(10, dtype=torch.long)
+    indices = torch.arange(10, dtype=torch.long) + 55000
+    rows = renderer._process_flow_row_records(
+        labels,
+        indices,
+        renderer.PROCESS_FLOW_PAGE_RANGES[1],
+        "FMF",
+    )
+    assert [row["digit"] for row in rows] == [4, 5, 6]
+    assert [row["position"] for row in rows] == [4, 5, 6]
+    assert [row["dataset_index"] for row in rows] == [55004, 55005, 55006]
+    assert all(row["arm"] == "FMF" for row in rows)
+
+
+def test_process_flow_render_rows_interleave_arms_within_each_digit(renderer) -> None:
+    labels = torch.arange(10, dtype=torch.long)
+    indices = torch.arange(10, dtype=torch.long) + 55000
+    rows = renderer._process_flow_render_row_records(
+        labels,
+        indices,
+        renderer.PROCESS_FLOW_PAGE_RANGES[1],
+    )
+    assert [
+        (row["digit"], row["arm"], row["phase"])
+        for row in rows
+    ] == [
+        (4, "SMF", "amplitude"),
+        (4, "SMF", "phase"),
+        (4, "FMF", "amplitude"),
+        (4, "FMF", "phase"),
+        (4, "MMF-M6", "amplitude"),
+        (4, "MMF-M6", "phase"),
+        (5, "SMF", "amplitude"),
+        (5, "SMF", "phase"),
+        (5, "FMF", "amplitude"),
+        (5, "FMF", "phase"),
+        (5, "MMF-M6", "amplitude"),
+        (5, "MMF-M6", "phase"),
+        (6, "SMF", "amplitude"),
+        (6, "SMF", "phase"),
+        (6, "FMF", "amplitude"),
+        (6, "FMF", "phase"),
+        (6, "MMF-M6", "amplitude"),
+        (6, "MMF-M6", "phase"),
+    ]
+    assert [row["dataset_index"] for row in rows] == [
+        55004,
+        55004,
+        55004,
+        55004,
+        55004,
+        55004,
+        55005,
+        55005,
+        55005,
+        55005,
+        55005,
+        55005,
+        55006,
+        55006,
+        55006,
+        55006,
+        55006,
+        55006,
+    ]
+    assert all(
+        set(row["stage_position"].values()) == {row["position"]}
+        for row in rows
+    )
+
+
+def test_process_flow_manifest_has_three_pages_and_all_stage_columns(renderer) -> None:
+    manifest = renderer._process_flow_figure_manifest()
+    assert [page["digits"] for page in manifest["pages"]] == [
+        [0, 1, 2, 3],
+        [4, 5, 6],
+        [7, 8, 9],
+    ]
+    assert all(
+        len(page["columns"]) == len(renderer.PROCESS_FLOW_STAGE_KEYS)
+        for page in manifest["pages"]
+    )
+    assert manifest["arm_lanes"] == list(renderer.PROCESS_FLOW_ARM_LANES)
+    assert manifest["output_field"] == "mpcdar_rank16_float32"
+    assert manifest["input_field"] == "images_28x28"
+    assert manifest["row_order"] == renderer.PROCESS_FLOW_ROW_ORDER
+    assert manifest["rows_per_digit"] == renderer.PROCESS_FLOW_ROWS_PER_DIGIT
+    assert manifest["row_structure"] == renderer.PROCESS_FLOW_ROW_STRUCTURE
+
+
+def test_process_flow_entrypoint_and_layout_manifest_are_declared(renderer) -> None:
+    assert callable(renderer._render_process_flow_from_panel)
+    layout = renderer._process_flow_layout_manifest()
+    assert layout["layout_schema"] == "same_digit_interleaved_three_arm_process_flow_v1"
+    assert layout["arm_lanes"] == ["SMF", "FMF", "MMF-M6"]
+    assert layout["input_field"] == "images_28x28"
+    assert layout["output_field"] == "mpcdar_rank16_float32"
+    assert layout["tiff_exported"] is False
+    assert layout["spatial_aspect"] == "equal"
+    assert layout["row_order"] == renderer.PROCESS_FLOW_ROW_ORDER
+    assert layout["rows_per_digit"] == renderer.PROCESS_FLOW_ROWS_PER_DIGIT
+    assert layout["row_structure"] == renderer.PROCESS_FLOW_ROW_STRUCTURE
+    assert [column["key"] for column in layout["stage_columns"]] == list(
+        renderer.PROCESS_FLOW_STAGE_KEYS
+    )
+
+
 def test_organized_layout_and_orientation_contract(renderer) -> None:
     assert renderer.ARTIFACT_FOLDERS == {
         "digit_visualization": "digit_visualization",

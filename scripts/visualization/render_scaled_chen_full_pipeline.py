@@ -1,10 +1,11 @@
 """Render a read-only amplitude/phase plate for the frozen Scaled-Chen route.
 
 The renderer is diagnostic only.  It loads the registered step-5000 checkpoint,
-replays one confirmation-panel sample through the same fixed optical path, and
-writes image exports plus compact provenance.  It never constructs an
-optimizer, calls an evaluator, performs backward, samples the prior, or writes
-model/checkpoint artifacts.
+replays the fixed ten-digit confirmation panel through the same optical path, and
+writes image exports plus compact provenance.  The full-path view is an eight-stage
+amplitude/phase plate with an explicit display-only upright orientation policy.  It
+never constructs an optimizer, calls an evaluator, performs backward, samples the
+prior, or writes model/checkpoint artifacts.
 """
 
 from __future__ import annotations
@@ -153,8 +154,11 @@ CHECKPOINT_STEPS = (0, 1000, 5000)
 
 FULL_PATH_TASK = "H-LOMA-CBOGT-S9V-FULL-PATH-VIS"
 FULL_PATH_CLASSIFICATION = "descriptive_visualization_completed"
+FULL_PATH_CONFIG_SCHEMA = "lightgen_optical_manifold_smf_bogt_full_path_visualization_v2"
+FULL_PATH_LAYOUT_SCHEMA = "full_optical_path_eight_stage_upright_v1"
+FULL_PATH_EXPECTED_HEAD = "d07fdaa17aa91d9f3e5498e9b1f10d91db766777"
 FULL_PATH_CONFIG = Path(
-    "configs/research/lightgen_optical_manifold_smf_bogt_full_path_visualization_v1.yaml"
+    "configs/research/lightgen_optical_manifold_smf_bogt_full_path_visualization_v2.yaml"
 )
 FULL_PATH_REVIEW = Path(
     "configs/research/lightgen_optical_manifold_smf_bogt_full_path_visualization_review_v1.json"
@@ -166,8 +170,13 @@ FULL_PATH_S7_CONFIG = Path(
     "configs/research/lightgen_optical_manifold_smf_bogt_mean_preserving_centered_data_aware_readout_recovery_v1.yaml"
 )
 FULL_PATH_OUTPUT = Path(
+    "outputs/20260902_v2/visualizations/scaled_chen_full_path_reconstruction_v1_attempt_02"
+)
+FULL_PATH_PREVIOUS_OUTPUT = Path(
     "outputs/20260902_v2/visualizations/scaled_chen_full_path_reconstruction_v1_attempt_01"
 )
+FULL_PATH_PREVIOUS_MANIFEST = FULL_PATH_PREVIOUS_OUTPUT / "visualization_manifest.json"
+FULL_PATH_PREVIOUS_MANIFEST_SHA256 = "ce6eee49822ddee7c3c28c13a6e0e108d499478984c498f2f51b909bebead749"
 FULL_PATH_DETAIL_LABELS = (0, 2, 3, 5, 8)
 FULL_PATH_PHASE_ALPHA = 0.01
 FULL_PATH_PHASE_FLOOR = 1.0e-12
@@ -188,37 +197,31 @@ FULL_PATH_RECON_METHODS = (
     "frozen_full_rank256_rmal",
 )
 FULL_PATH_STAGE_KEYS = (
-    "target",
-    "slm_command",
     "slm_output",
     "encoder_input",
     "encoder_layer_1",
     "pre_ols",
-    "modal_complex",
     "post_ols",
     "decoder_layer_1",
     "decoder_layer_2",
     "cmos_field",
-    "cmos_detector_intensity",
 )
 FULL_PATH_STAGE_LABELS = (
-    "Target",
-    "SLM command",
-    "SLM output",
-    "Encoder input",
-    "Encoder L1",
-    "Pre-OLS /\nFiber input",
-    "Modal coefficients\n10×10 display layout",
-    "Post-OLS /\nDecoder input",
-    "Decoder L1",
-    "Decoder L2",
-    "CMOS incident field",
-    "CMOS intensity",
+    "SLM output\n200×200, 2.5×2.5 μm\nMODEL=φ=0",
+    "Front 4f\n100×100, 2×2 μm",
+    "Encoder layer 1\n100×100, 2×2 μm",
+    "Encoder layer 2\n100×100, 2×2 μm\nPre-OLS",
+    "OLS output\n100×100, 2×2 μm",
+    "Decoder layer 1\n100×100, 2×2 μm",
+    "Decoder layer 2\n100×100, 2×2 μm",
+    "Camera incident field\n200×200, 2.5×2.5 μm",
 )
-FULL_PATH_REAL_KEYS = frozenset(
-    {"target", "slm_command", "cmos_detector_intensity"}
+FULL_PATH_PAGE_DIGITS = (
+    (0, 1, 2, 3, 4),
+    (5, 6, 7, 8, 9),
 )
-FULL_PATH_MODAL_KEYS = frozenset({"modal_complex"})
+FULL_PATH_REAL_KEYS = frozenset()
+FULL_PATH_MODAL_KEYS = frozenset()
 FULL_PATH_COMPLEX_KEYS = frozenset(FULL_PATH_STAGE_KEYS) - FULL_PATH_REAL_KEYS
 FULL_PATH_STAGE_ALIASES = {
     "pre_ols": {
@@ -230,7 +233,17 @@ FULL_PATH_STAGE_ALIASES = {
         "display_label": "Post-OLS / Decoder input",
     },
 }
-FULL_PATH_DISPLAY_ROTATED_KEYS = DISPLAY_ROTATED_KEYS | {"slm_output"}
+FULL_PATH_DISPLAY_ROTATED_ORDER = (
+    "encoder_input",
+    "encoder_layer_1",
+    "pre_ols",
+    "post_ols",
+    "decoder_layer_1",
+    "decoder_layer_2",
+)
+FULL_PATH_DISPLAY_ROTATED_KEYS = frozenset(FULL_PATH_DISPLAY_ROTATED_ORDER)
+FULL_PATH_NATIVE_DISPLAY_KEYS = ("slm_output", "cmos_field")
+FULL_PATH_MAIN_FIGURE_WIDTH = 7.2
 
 # These are deliberately explicit because a visualization must not imply a
 # phase measurement where the source is real-valued or the sensor has already
@@ -334,6 +347,20 @@ def _git_state() -> dict[str, Any]:
         text=True,
     ).stdout.splitlines()
     return {"root": str(root), "branch": branch, "commit": commit, "clean": not status, "status": status}
+
+
+def _verify_allowed_dirty_paths(status: Sequence[str], allowed_paths: Sequence[str]) -> list[str]:
+    allowed = {str(Path(path).as_posix()) for path in allowed_paths}
+    unexpected = []
+    for line in status:
+        path = line[3:].split(" -> ", 1)[-1].replace("\\", "/")
+        if path not in allowed:
+            unexpected.append(line)
+    if unexpected:
+        raise RuntimeError(
+            "BLOCKED_UNEXPECTED_DIRTY_PATH: " + "; ".join(unexpected)
+        )
+    return sorted(allowed)
 
 
 def _load_formal_and_checkpoint(
@@ -1044,13 +1071,21 @@ def _load_full_path_contract(config_path: Path) -> tuple[dict[str, Any], dict[st
     if not isinstance(payload, dict):
         raise RuntimeError("full-path visualization config is not a mapping")
     if (
-        payload.get("schema") != "lightgen_optical_manifold_smf_bogt_full_path_visualization_v1"
+        payload.get("schema") != FULL_PATH_CONFIG_SCHEMA
         or payload.get("task_id") != FULL_PATH_TASK
         or payload.get("classification") != "descriptive_visualization_checkpoint"
         or payload.get("branch") != "research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1"
-        or payload.get("expected_head") != "7da2d066d8a8f1b3dbcff7c94393c51d11d7bcb7"
+        or payload.get("expected_head") != FULL_PATH_EXPECTED_HEAD
     ):
         raise RuntimeError("full-path visualization contract identity is mismatched")
+    if (
+        payload.get("layout_schema") != FULL_PATH_LAYOUT_SCHEMA
+        or payload.get("supersedes") != "attempt_01"
+        or str(payload.get("supersedes_manifest", "")).replace("\\", "/")
+        != str(FULL_PATH_PREVIOUS_MANIFEST).replace("\\", "/")
+        or payload.get("supersedes_manifest_sha256") != FULL_PATH_PREVIOUS_MANIFEST_SHA256
+    ):
+        raise RuntimeError("full-path visualization layout lineage is mismatched")
     sample_panel = payload.get("sample_panel")
     if (
         not isinstance(sample_panel, Mapping)
@@ -1063,7 +1098,7 @@ def _load_full_path_contract(config_path: Path) -> tuple[dict[str, Any], dict[st
     expected_indices = {str(label): DIGIT_CONFIRMATION_INDICES[label] for label in range(10)}
     if indices != expected_indices:
         raise RuntimeError("full-path visualization sample indices are mismatched")
-    if payload.get("stages") != list(FULL_PATH_STAGE_KEYS[1:]):
+    if payload.get("stages") != list(FULL_PATH_STAGE_KEYS):
         raise RuntimeError("full-path visualization stage contract is mismatched")
     if payload.get("methods") != list(FULL_PATH_RECON_METHODS):
         raise RuntimeError("full-path visualization method contract is mismatched")
@@ -1077,6 +1112,13 @@ def _load_full_path_contract(config_path: Path) -> tuple[dict[str, Any], dict[st
         or display.get("target_error_range") != list(FULL_PATH_ERROR_RANGE)
         or display.get("f64_f32_difference_range") != list(FULL_PATH_F32_DIFF_RANGE)
         or display.get("f64_f32_amplification") != FULL_PATH_F32_DIFF_AMPLIFICATION
+        or display.get("layout_schema") != FULL_PATH_LAYOUT_SCHEMA
+        or display.get("display_rotation") != "upright_common_object_frame_v1"
+        or display.get("display_rotation_keys") != list(FULL_PATH_DISPLAY_ROTATED_ORDER)
+        or display.get("native_coordinate_keys") != list(FULL_PATH_NATIVE_DISPLAY_KEYS)
+        or display.get("front_relay_magnification") != -0.4
+        or display.get("back_relay_magnification") != -2.5
+        or display.get("net_magnification") != 1.0
     ):
         raise RuntimeError("full-path visualization display contract is mismatched")
     authorization = payload.get("authorization")
@@ -1122,6 +1164,29 @@ def _load_full_path_contract(config_path: Path) -> tuple[dict[str, Any], dict[st
     ):
         raise RuntimeError("full-path visualization authorization flags are mismatched")
     return payload, review, resolved_config, review_path
+
+
+def _verify_full_path_previous_attempt(contract: Mapping[str, Any]) -> dict[str, Any]:
+    manifest_path = _repo_path(contract["supersedes_manifest"])
+    if manifest_path != _repo_path(FULL_PATH_PREVIOUS_MANIFEST):
+        raise RuntimeError("full-path visualization superseded manifest path is mismatched")
+    manifest = _read_exact_json(
+        manifest_path,
+        str(contract["supersedes_manifest_sha256"]),
+        "previous full-path visualization manifest",
+    )
+    if (
+        manifest.get("schema") != "lightgen_optical_manifold_smf_bogt_full_path_visualization.v1"
+        or manifest.get("task_id") != FULL_PATH_TASK
+        or manifest.get("status") != "completed"
+    ):
+        raise RuntimeError("previous full-path visualization manifest is not the registered attempt_01")
+    return {
+        "path": str(manifest_path),
+        "sha256": str(contract["supersedes_manifest_sha256"]),
+        "schema": manifest["schema"],
+        "git": manifest.get("git"),
+    }
 
 
 def _verify_full_path_parent_files(contract: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
@@ -1335,15 +1400,26 @@ def _render_full_path_plate(
     sample_indices: Sequence[int],
     page_label: str,
 ) -> list[Path]:
+    if not (len(positions) == len(labels) == len(sample_indices)):
+        raise ValueError("full-path plate metadata lengths do not match")
+    if not positions:
+        raise ValueError("full-path plate requires at least one digit")
     columns = len(FULL_PATH_STAGE_KEYS)
     rows = len(positions) * 2
     figure, axes = plt.subplots(
         rows,
         columns,
-        figsize=(24.0, max(7.0, rows * 0.92)),
+        figsize=(FULL_PATH_MAIN_FIGURE_WIDTH, max(7.4, rows * 0.72 + 1.2)),
         squeeze=False,
     )
-    figure.subplots_adjust(left=0.045, right=0.955, bottom=0.12, top=0.90, wspace=0.025, hspace=0.18)
+    figure.subplots_adjust(
+        left=0.105,
+        right=0.955,
+        bottom=0.095,
+        top=0.84,
+        wspace=0.035,
+        hspace=0.20,
+    )
     panel_ids: list[str] = []
     row_groups: list[list[str]] = []
     column_groups: list[list[str]] = [[] for _ in range(columns)]
@@ -1362,11 +1438,28 @@ def _render_full_path_plate(
                     if key in FULL_PATH_REAL_KEYS:
                         _render_phase_unavailable(axis, "phase N/A")
                     else:
-                        axis.imshow(view["phase"], cmap="twilight", vmin=-np.pi, vmax=np.pi, origin="lower", interpolation="nearest")
+                        axis.imshow(
+                            view["phase"],
+                            cmap="twilight",
+                            vmin=-np.pi,
+                            vmax=np.pi,
+                            origin="lower",
+                            interpolation="nearest",
+                            aspect="equal",
+                        )
                 else:
-                    axis.imshow(view["amplitude"], cmap="magma", vmin=0.0, vmax=1.0, origin="lower", interpolation="nearest")
+                    axis.imshow(
+                        view["amplitude"],
+                        cmap="magma",
+                        vmin=0.0,
+                        vmax=1.0,
+                        origin="lower",
+                        interpolation="nearest",
+                        aspect="equal",
+                    )
+                axis.set_aspect("equal", adjustable="box")
                 if row == 0:
-                    axis.set_title(title, fontsize=6.0, pad=3)
+                    axis.set_title(title, fontsize=5.0, pad=2)
                 axis.set_xticks([])
                 axis.set_yticks([])
                 for spine in axis.spines.values():
@@ -1377,38 +1470,31 @@ def _render_full_path_plate(
                 column_groups[column].append(panel_id)
 
         row_groups.extend((row_ids_amplitude, row_ids_phase))
-        axes[row_position * 2, 0].set_ylabel(f"digit {label}\n|E|", fontsize=6.2, labelpad=2)
-        axes[row_position * 2 + 1, 0].set_ylabel("phase", fontsize=6.2, labelpad=2)
-        axes[row_position * 2, -1].text(
-            1.03,
-            0.50,
-            f"idx {sample_index}",
-            transform=axes[row_position * 2, -1].transAxes,
-            rotation=-90,
-            rotation_mode="anchor",
-            va="center",
-            ha="left",
-            fontsize=5.0,
-        )
+        axes[row_position * 2, 0].set_ylabel(f"digit {label}\n|E|", fontsize=5.2, labelpad=2)
+        axes[row_position * 2 + 1, 0].set_ylabel("phase", fontsize=5.0, labelpad=2)
     figure.suptitle(
-        f"{FULL_PATH_TASK} | full optical path | digits {labels[0]}–{labels[-1]} | {page_label}",
-        fontsize=10,
+        f"{FULL_PATH_TASK} | eight-stage full optical path | {page_label}",
+        fontsize=8.0,
         y=0.955,
     )
     figure.text(
         0.5,
         0.035,
-        "Amplitude uses one panel-wide p99.5 scale per stage; phase is raw [−π,π] and masked below 1% of each stage/sample maximum. SLM command and CMOS intensity are real-valued; modal coefficients use a 10×10 display layout. Intermediate maps use display-only 180° rotation; aliases are not additional propagation slices.",
+        "Amplitude: shared linear p99.5 scale per stage. Phase: raw [−π,π], masked below 1% of each sample maximum. Upright display is CPU-only normalization; SLM output and camera field retain native coordinates.",
         ha="center",
         va="center",
-        fontsize=5.6,
+        fontsize=5.0,
     )
-    amp_cbar_ax = figure.add_axes([0.963, 0.56, 0.010, 0.23])
-    phase_cbar_ax = figure.add_axes([0.963, 0.23, 0.010, 0.23])
-    amp_cbar = figure.colorbar(ScalarMappable(norm=Normalize(0.0, 1.0), cmap="magma"), cax=amp_cbar_ax)
-    phase_cbar = figure.colorbar(ScalarMappable(norm=Normalize(-np.pi, np.pi), cmap="twilight"), cax=phase_cbar_ax)
-    amp_cbar.set_label("display amplitude", fontsize=5.5)
-    phase_cbar.set_label("phase [rad]", fontsize=5.5)
+    amp_cbar_ax = figure.add_axes([0.968, 0.55, 0.010, 0.22])
+    phase_cbar_ax = figure.add_axes([0.968, 0.24, 0.010, 0.22])
+    amp_cbar = figure.colorbar(
+        ScalarMappable(norm=Normalize(0.0, 1.0), cmap="magma"), cax=amp_cbar_ax
+    )
+    phase_cbar = figure.colorbar(
+        ScalarMappable(norm=Normalize(-np.pi, np.pi), cmap="twilight"), cax=phase_cbar_ax
+    )
+    amp_cbar.set_label("display |E|", fontsize=5.0)
+    phase_cbar.set_label("phase [rad]", fontsize=5.0)
     for cbar in (amp_cbar, phase_cbar):
         cbar.ax.tick_params(labelsize=5, width=0.5, length=2)
     return _save_figure_bundle(
@@ -1462,7 +1548,15 @@ def _render_reconstruction_grid(
         for column, key in enumerate(method_keys):
             axis = axes[row, column]
             array = _display_array(predictions[key], position)
-            axis.imshow(np.clip(array, 0.0, 1.0), cmap="gray", vmin=0.0, vmax=1.0, origin="lower", interpolation="nearest")
+            axis.imshow(
+                np.clip(array, 0.0, 1.0),
+                cmap="gray",
+                vmin=0.0,
+                vmax=1.0,
+                origin="lower",
+                interpolation="nearest",
+                aspect="equal",
+            )
             if row == 0:
                 axis.set_title(f"{RECONSTRUCTION_LABELS[key]}\nMSE {method_mse[key]:.5g}", fontsize=6.4, pad=3)
             axis.set_xticks([])
@@ -1539,7 +1633,15 @@ def _render_repair_detail(
         for column, key in enumerate(prediction_keys):
             axis = axes[row, column]
             array = _display_array(predictions[key], position)
-            axis.imshow(np.clip(array, 0.0, 1.0), cmap="gray", vmin=0.0, vmax=1.0, origin="lower", interpolation="nearest")
+            axis.imshow(
+                np.clip(array, 0.0, 1.0),
+                cmap="gray",
+                vmin=0.0,
+                vmax=1.0,
+                origin="lower",
+                interpolation="nearest",
+                aspect="equal",
+            )
             if row == 0:
                 axis.set_title(RECONSTRUCTION_LABELS[key], fontsize=6.2, pad=3)
             panel_id = f"detail_digit{label}_{key}"
@@ -1553,7 +1655,15 @@ def _render_repair_detail(
         for offset, key in enumerate(error_keys, start=len(prediction_keys)):
             axis = axes[row, offset]
             difference = (predictions[key][position] - target[position]).abs().squeeze(0).numpy()
-            axis.imshow(np.clip(difference, 0.0, 1.0), cmap="magma", vmin=0.0, vmax=1.0, origin="lower", interpolation="nearest")
+            axis.imshow(
+                np.clip(difference, 0.0, 1.0),
+                cmap="magma",
+                vmin=0.0,
+                vmax=1.0,
+                origin="lower",
+                interpolation="nearest",
+                aspect="equal",
+            )
             if row == 0:
                 axis.set_title(f"|{RECONSTRUCTION_LABELS[key]}−target|", fontsize=6.0, pad=3)
             panel_id = f"detail_digit{label}_{key}_error"
@@ -1633,7 +1743,15 @@ def _render_f64_f32_detail(
         )
         for column, (array, title, cmap, vmax) in enumerate(arrays):
             axis = axes[row, column]
-            axis.imshow(array, cmap=cmap, vmin=0.0, vmax=vmax, origin="lower", interpolation="nearest")
+            axis.imshow(
+                array,
+                cmap=cmap,
+                vmin=0.0,
+                vmax=vmax,
+                origin="lower",
+                interpolation="nearest",
+                aspect="equal",
+            )
             if row == 0:
                 axis.set_title(title, fontsize=6.0, pad=3)
             axis.set_xticks([])
@@ -1847,6 +1965,12 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--checkpoint-step", type=int, choices=CHECKPOINT_STEPS, default=5000)
     parser.add_argument("--hero-index", type=int, default=55008, help="fixed confirmation-panel index used by the fiber cutaway")
     parser.add_argument("--device", default="cuda")
+    parser.add_argument(
+        "--allow-dirty-path",
+        action="append",
+        default=[],
+        help="repo-relative dirty path allowed by the visualization preflight; repeat for each path",
+    )
     parser.add_argument("--output-dir", type=Path, default=None)
     return parser.parse_args()
 
@@ -2235,6 +2359,7 @@ def _run_full_path(args: argparse.Namespace, output_dir: Path) -> int:
         raise RuntimeError("full-path visualization requires CUDA; CPU is not a substitute")
     _check_output_boundary(output_dir)
     contract, _review, config_path, review_path = _load_full_path_contract(args.visualization_config)
+    previous_attempt = _verify_full_path_previous_attempt(contract)
     git_state = _git_state()
     if (
         git_state["root"] != str(_repo_path("."))
@@ -2242,6 +2367,9 @@ def _run_full_path(args: argparse.Namespace, output_dir: Path) -> int:
         or git_state["commit"] != contract["expected_head"]
     ):
         raise RuntimeError("full-path visualization Git identity is mismatched")
+    allowed_dirty_paths = _verify_allowed_dirty_paths(
+        git_state["status"], args.allow_dirty_path
+    )
 
     device = torch.device(args.device)
     authority = _load_full_path_authority(contract, args.dataset_root, device)
@@ -2276,18 +2404,14 @@ def _run_full_path(args: argparse.Namespace, output_dir: Path) -> int:
     values_cpu = {key: value.detach().cpu() for key, value in values.items()}
     target_cpu = target.detach().cpu().float()
     stage_values = {
-        "target": target_cpu,
-        "slm_command": values_cpu["slm_command"],
         "slm_output": values_cpu["slm_output"],
         "encoder_input": values_cpu["encoder_input"],
         "encoder_layer_1": values_cpu["encoder_layer_1"],
         "pre_ols": values_cpu["fiber_input"],
-        "modal_complex": values_cpu["port_output"],
         "post_ols": values_cpu["fiber_output"],
         "decoder_layer_1": values_cpu["decoder_layer_1"],
         "decoder_layer_2": values_cpu["decoder_layer_2"],
         "cmos_field": values_cpu["cmos_field"],
-        "cmos_detector_intensity": values_cpu["cmos_detector_intensity"],
     }
     views, scales = _full_path_views(stage_values, sample_positions=range(10))
     predictions, reconstruction_metrics = _replay_full_path_reconstructions(
@@ -2299,22 +2423,17 @@ def _run_full_path(args: argparse.Namespace, output_dir: Path) -> int:
 
     output_dir.mkdir(parents=True, exist_ok=False)
     saved: list[Path] = []
-    saved += _render_full_path_plate(
-        views,
-        output_dir / "01_full_optical_path_digits_0_4",
-        positions=range(5),
-        labels=labels[:5].tolist(),
-        sample_indices=tuple(int(fixed_indices[int(label)]) for label in labels[:5].tolist()),
-        page_label="digits 0–4",
-    )
-    saved += _render_full_path_plate(
-        views,
-        output_dir / "01_full_optical_path_digits_5_9",
-        positions=range(5, 10),
-        labels=labels[5:].tolist(),
-        sample_indices=tuple(int(fixed_indices[int(label)]) for label in labels[5:].tolist()),
-        page_label="digits 5–9",
-    )
+    for page_digits in FULL_PATH_PAGE_DIGITS:
+        page_positions = tuple(label_to_position[digit] for digit in page_digits)
+        page_label = f"digits {page_digits[0]}–{page_digits[-1]}"
+        saved += _render_full_path_plate(
+            views,
+            output_dir / f"01_full_optical_path_digits_{page_digits[0]}_{page_digits[-1]}",
+            positions=page_positions,
+            labels=page_digits,
+            sample_indices=tuple(int(fixed_indices[digit]) for digit in page_digits),
+            page_label=page_label,
+        )
     saved += _render_reconstruction_grid(
         predictions,
         output_dir / "02_reconstruction_family_comparison",
@@ -2342,13 +2461,6 @@ def _run_full_path(args: argparse.Namespace, output_dir: Path) -> int:
 
     raw_stage_metadata = diagnostics["stage_metadata"]
     stage_metadata = {
-        "target": {
-            "representation": "intensity_frame",
-            "semantic": "camera_intensity_same_fov",
-            "shape": [1, 200, 200],
-            "display_range": list(FULL_PATH_RECON_RANGE),
-        },
-        "slm_command": raw_stage_metadata["slm_command"],
         "slm_output": raw_stage_metadata["slm_output"],
         "encoder_input": raw_stage_metadata["encoder_input"],
         "encoder_layer_1": raw_stage_metadata["encoder_layer_1"],
@@ -2365,6 +2477,19 @@ def _run_full_path(args: argparse.Namespace, output_dir: Path) -> int:
         "decoder_layer_1": raw_stage_metadata["decoder_layer_1"],
         "decoder_layer_2": raw_stage_metadata["decoder_layer_2"],
         "cmos_field": raw_stage_metadata["cmos_field"],
+    }
+    auxiliary_stage_metadata = {
+        "target": {
+            "representation": "intensity_frame",
+            "semantic": "camera_intensity_same_fov",
+            "shape": [1, 200, 200],
+            "display_range": list(FULL_PATH_RECON_RANGE),
+        },
+        "slm_command": raw_stage_metadata["slm_command"],
+        "modal_complex": raw_stage_metadata["port_output"] | {
+            "display_name": "modal coefficients — 10×10 display layout",
+            "spatial_plane": False,
+        },
         "cmos_detector_intensity": raw_stage_metadata["cmos_detector_intensity"],
     }
     stage_stats: dict[str, Any] = {}
@@ -2408,11 +2533,16 @@ def _run_full_path(args: argparse.Namespace, output_dir: Path) -> int:
         },
     }
     manifest = {
-        "schema": "lightgen_optical_manifold_smf_bogt_full_path_visualization.v1",
+        "schema": "lightgen_optical_manifold_smf_bogt_full_path_visualization.v2",
         "task_id": FULL_PATH_TASK,
         "status": "completed",
         "classification": FULL_PATH_CLASSIFICATION,
         "diagnostic_only": True,
+        "layout_schema": FULL_PATH_LAYOUT_SCHEMA,
+        "supersedes": "attempt_01",
+        "supersedes_manifest": previous_attempt,
+        "cuda_replay": True,
+        "optical_data_changed": False,
         "config_path": str(config_path),
         "config_sha256": file_sha256(config_path),
         "review_path": str(review_path),
@@ -2421,7 +2551,10 @@ def _run_full_path(args: argparse.Namespace, output_dir: Path) -> int:
         "preflight": {
             "expected_branch": contract["branch"],
             "expected_head": contract["expected_head"],
-            "starting_worktree_clean": True,
+            "starting_worktree_clean": git_state["clean"],
+            "dirty_path_policy": "only explicitly allowed repository paths may be dirty",
+            "allowed_dirty_paths": allowed_dirty_paths,
+            "unexpected_dirty_paths": [],
         },
         "parent_evidence": authority["parent_files"],
         "rmal": {
@@ -2449,11 +2582,10 @@ def _run_full_path(args: argparse.Namespace, output_dir: Path) -> int:
         "stage_order": list(FULL_PATH_STAGE_KEYS),
         "stage_aliases": FULL_PATH_STAGE_ALIASES,
         "stage_metadata": stage_metadata,
+        "auxiliary_trace_stages": auxiliary_stage_metadata,
         "stage_stats": stage_stats,
         "display_contract": {
             "spatial_amplitude": "abs(E), one panel-wide linear p99.5 scale per named stage over all ten samples",
-            "modal_amplitude": "abs(E), one panel-wide linear p99.5 scale over all ten samples",
-            "cmos_intensity": "one panel-wide linear p99.5 scale over all ten samples",
             "phase": "angle(E), raw, fixed [-pi,pi], no shift/unwrap/gauge normalization",
             "phase_mask": "max(0.01 * max(abs(E)), 1e-12), per stage and sample; masked values are NaN/explicit N/A",
             "reconstruction_range": list(FULL_PATH_RECON_RANGE),
@@ -2464,7 +2596,14 @@ def _run_full_path(args: argparse.Namespace, output_dir: Path) -> int:
             "phase_colormap": "twilight",
             "reconstruction_colormap": "gray",
             "error_colormap": "magma",
-            "rotation": "display-only 180 degrees for intermediate optical maps; no reconstruction rotation",
+            "layout_schema": FULL_PATH_LAYOUT_SCHEMA,
+            "display_rotation": "upright_common_object_frame_v1",
+            "display_rotation_keys": list(FULL_PATH_DISPLAY_ROTATED_ORDER),
+            "native_coordinate_keys": list(FULL_PATH_NATIVE_DISPLAY_KEYS),
+            "front_relay_magnification": -0.4,
+            "back_relay_magnification": -2.5,
+            "net_magnification": 1.0,
+            "rotation": "display-only 180 degrees for named intermediate optical maps; no raw tensor or reconstruction rotation",
         },
         "reconstruction": {
             "methods": list(FULL_PATH_RECON_METHODS),

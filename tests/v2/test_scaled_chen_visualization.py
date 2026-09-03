@@ -130,14 +130,123 @@ def test_full_path_contract_locks_registered_parents_and_panel(renderer) -> None
         renderer.FULL_PATH_CONFIG
     )
     parents = renderer._verify_full_path_parent_files(contract)
-    assert config_path.name == "lightgen_optical_manifold_smf_bogt_full_path_visualization_v1.yaml"
+    previous = renderer._verify_full_path_previous_attempt(contract)
+    assert config_path.name == "lightgen_optical_manifold_smf_bogt_full_path_visualization_v2.yaml"
     assert review_path.name == "lightgen_optical_manifold_smf_bogt_full_path_visualization_review_v1.json"
     assert review["decision"] == "APPROVED WITH REQUIRED DISPLAY CONTRACT FREEZE"
     assert sorted(parents) == ["s7", "s8", "s9"]
+    assert previous["sha256"] == renderer.FULL_PATH_PREVIOUS_MANIFEST_SHA256
     assert contract["sample_panel"]["order"] == list(range(10))
+    assert contract["layout_schema"] == "full_optical_path_eight_stage_upright_v1"
     assert contract["sample_panel"]["detail_labels"] == [0, 2, 3, 5, 8]
     assert contract["display"]["reconstruction_range"] == [0.0, 1.0]
     assert contract["display"]["f64_f32_difference_range"] == [0.0, 2.0e-4]
+
+
+def test_full_path_uses_reference_eight_stage_order_and_pages(renderer) -> None:
+    assert renderer.FULL_PATH_STAGE_KEYS == (
+        "slm_output",
+        "encoder_input",
+        "encoder_layer_1",
+        "pre_ols",
+        "post_ols",
+        "decoder_layer_1",
+        "decoder_layer_2",
+        "cmos_field",
+    )
+    assert len(renderer.FULL_PATH_STAGE_KEYS) == len(renderer.FULL_PATH_STAGE_LABELS) == 8
+    assert renderer.FULL_PATH_PAGE_DIGITS == (
+        (0, 1, 2, 3, 4),
+        (5, 6, 7, 8, 9),
+    )
+    assert sorted(digit for page in renderer.FULL_PATH_PAGE_DIGITS for digit in page) == list(range(10))
+
+
+def test_full_path_upright_display_rotation_does_not_rotate_slm_or_camera(renderer) -> None:
+    assert "slm_output" not in renderer.FULL_PATH_DISPLAY_ROTATED_KEYS
+    assert "cmos_field" not in renderer.FULL_PATH_DISPLAY_ROTATED_KEYS
+    assert renderer.FULL_PATH_DISPLAY_ROTATED_KEYS == frozenset(
+        {
+            "encoder_input",
+            "encoder_layer_1",
+            "pre_ols",
+            "post_ols",
+            "decoder_layer_1",
+            "decoder_layer_2",
+        }
+    )
+
+
+def test_full_path_main_plate_is_compact_and_equal_aspect(renderer, monkeypatch) -> None:
+    import matplotlib.pyplot as plt
+
+    field = torch.ones((10, 1, 4, 4), dtype=torch.complex64)
+    values = {key: field.clone() for key in renderer.FULL_PATH_STAGE_KEYS}
+    views, _ = renderer._full_path_views(values, sample_positions=range(10))
+    captured = {}
+
+    def capture(fig, output_base, **kwargs):
+        captured["figure"] = fig
+        captured["axes"] = kwargs["axes"]
+        captured["include_tiff"] = kwargs["include_tiff"]
+        return []
+
+    monkeypatch.setattr(renderer, "_save_figure_bundle", capture)
+    renderer._render_full_path_plate(
+        views,
+        renderer.Path("unused"),
+        positions=range(5),
+        labels=range(5),
+        sample_indices=range(5),
+        page_label="digits 0–4",
+    )
+    figure = captured["figure"]
+    assert figure.get_figwidth() <= 7.2
+    assert all(float(axis.get_aspect()) == 1.0 for axis in captured["axes"])
+    assert captured["include_tiff"] is False
+    plt.close(figure)
+
+
+def test_full_path_contract_rejects_identity_and_review_mutations(renderer, tmp_path, monkeypatch) -> None:
+    original_config = renderer.FULL_PATH_CONFIG
+    source = original_config.read_text(encoding="utf-8")
+    bad_schema = tmp_path / "bad_schema.yaml"
+    bad_schema.write_text(
+        source.replace(
+            "schema: lightgen_optical_manifold_smf_bogt_full_path_visualization_v2",
+            "schema: wrong",
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(renderer, "FULL_PATH_CONFIG", bad_schema)
+    with pytest.raises(RuntimeError, match="identity is mismatched"):
+        renderer._load_full_path_contract(bad_schema)
+
+    bad_head = tmp_path / "bad_head.yaml"
+    bad_head.write_text(source.replace("expected_head: d07fdaa", "expected_head: deadbeef"), encoding="utf-8")
+    monkeypatch.setattr(renderer, "FULL_PATH_CONFIG", bad_head)
+    with pytest.raises(RuntimeError, match="identity is mismatched"):
+        renderer._load_full_path_contract(bad_head)
+
+    monkeypatch.setattr(renderer, "FULL_PATH_CONFIG", original_config)
+    review_source = renderer.FULL_PATH_REVIEW.read_text(encoding="utf-8")
+    bad_review = tmp_path / "bad_review.json"
+    bad_review.write_text(review_source.replace('"decision": "APPROVED WITH REQUIRED DISPLAY CONTRACT FREEZE"', '"decision": "REJECTED"'), encoding="utf-8")
+    monkeypatch.setattr(renderer, "FULL_PATH_REVIEW", bad_review)
+    with pytest.raises(RuntimeError, match="review approval is mismatched"):
+        renderer._load_full_path_contract(renderer.FULL_PATH_CONFIG)
+
+
+def test_full_path_parent_and_dirty_path_guards_fail_closed(renderer) -> None:
+    contract, _review, _config_path, _review_path = renderer._load_full_path_contract(
+        renderer.FULL_PATH_CONFIG
+    )
+    contract["parents"]["s7"]["validation_sha256"] = "0" * 64
+    with pytest.raises(RuntimeError, match="S7 validation is missing"):
+        renderer._verify_full_path_parent_files(contract)
+    assert renderer._verify_allowed_dirty_paths([" M docs/CURRENT_STATUS.md"], ["docs/CURRENT_STATUS.md"]) == ["docs/CURRENT_STATUS.md"]
+    with pytest.raises(RuntimeError, match="BLOCKED_UNEXPECTED_DIRTY_PATH"):
+        renderer._verify_allowed_dirty_paths([" M docs/UNEXPECTED.md"], ["docs/CURRENT_STATUS.md"])
 
 
 def test_full_path_views_use_stage_shared_scales_and_exact_mask(renderer) -> None:
@@ -155,7 +264,6 @@ def test_full_path_views_use_stage_shared_scales_and_exact_mask(renderer) -> Non
     values["encoder_input"][1, 0, 0, 0] = 10.0 + 0.0j
     original = values["encoder_input"].clone()
     views, scales = renderer._full_path_views(values, sample_positions=range(10))
-    assert scales["target"] == 1.0
     assert scales["encoder_input"] > 1.0
     assert views["encoder_input"]["1"]["phase_threshold"] == pytest.approx(0.1)
     assert bool(torch.isnan(torch.tensor(views["encoder_input"]["0"]["phase"][3, 3])))
