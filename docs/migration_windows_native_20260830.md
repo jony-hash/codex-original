@@ -768,3 +768,24 @@ Nature source validator=`20 PASS/0 FAIL/1 WARN`，WARN 仅为既有 legacy expor
 `research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`。当前 dirty path 仅为既有 G1 prior-support 与本次
 renderer/test/config/状态文档，未发现额外用户修改，未创建 Git commit。治理保持 diagnostic-only、training
 unauthorized、formal promotion false、bridge invalid；唯一下一动作固定为 `manual_review_FULL_PATH_VIS_result`。
+
+## H-LOMA-GEN-P1-C6-RSC（2026-09-03）
+
+Windows-native environment `D:\ANACONDA\envs\optical-generative-models-win` 在 branch
+`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`、HEAD
+`2fcd16a0bef7de2a6483f5ec42070a895bbcbcac` 上完成一次受控 CUDA raw-scale canary。校验闭合旧
+calibration v1 SHA、历史 dataset manifest 内容 hash、calibration indices、mode bank、horizon/formal
+config、review、preflight 与 validation；仅允许 Windows dataset root 与 manifest self-hash 的已知路径差异。
+
+新增诊断 helper 只暴露原 producer 的 pre-floor raw port powers，默认 `calibrate_model` 的 floor/clamp
+行为保持不变。新增测试先经 baseline failure，再以 `42 passed` 通过；compileall、Ruff 与 `git diff --check`
+通过。输出目录为
+`outputs/20260903_v2/runs/lightgen_scaled_chen_p1_calibration_raw_scale_canary_v1_attempt_01/`，大小
+`547210` bytes，输出树严格仅含 JSON/PT/PNG；无 TIFF、隐藏文件或 `.tmp`。artifact hash binding、state
+digest equality 与 no-training flags 已独立核验，raw summary PNG 已实际查看。
+
+结论为 `C6_CANARY_PASS`：当前 raw power 均为可表示的正 float32 数，absolute eps 高于真实 raw scale，
+旧 eps-dominated artifact 可由 raw replay 精确解释；zero-phase 为注册 reference coordinate。治理继续为
+`mainline_state=closed_at_current_evidence_boundary`、reconstruction/generative manifold unsupported、
+generation not ready、training unauthorized、formal promotion false。下一步仅登记为
+`IMPLEMENT_R2_UNIT_AWARE_CALIBRATION_REPAIR`，本记录不执行 repair。

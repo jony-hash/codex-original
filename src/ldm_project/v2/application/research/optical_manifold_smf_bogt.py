@@ -540,8 +540,10 @@ def statistical_batch_stability_audit(
     return result
 
 
-def calibrate_model(model: ScaledChenBOGTModel, amplitudes: torch.Tensor) -> Calibration:
-    """Compute train-only zero-phase port and plane references without gradients."""
+def _collect_calibration_values(
+    model: ScaledChenBOGTModel, amplitudes: torch.Tensor
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Collect the unchanged pre-floor calibration values for diagnostics."""
     if amplitudes.ndim != 4 or tuple(amplitudes.shape[1:]) != (1, 200, 200) or amplitudes.shape[0] != 1000:
         raise ValueError("scaled Chen calibration requires [1000,1,200,200] amplitudes")
     if any(not torch.equal(parameter.detach(), torch.zeros_like(parameter)) for name, parameter in model.named_parameters() if name in EXPECTED_TRAINABLE):
@@ -559,6 +561,20 @@ def calibrate_model(model: ScaledChenBOGTModel, amplitudes: torch.Tensor) -> Cal
         model.train()
     ports = torch.cat(port_values, dim=0)
     planes = torch.stack(plane_values)
+    return ports, planes
+
+
+def capture_calibration_raw_port_powers(
+    model: ScaledChenBOGTModel, amplitudes: torch.Tensor
+) -> torch.Tensor:
+    """Capture per-sample pre-floor ``|c_j|^2`` values without changing calibration."""
+    ports, _ = _collect_calibration_values(model, amplitudes)
+    return ports
+
+
+def calibrate_model(model: ScaledChenBOGTModel, amplitudes: torch.Tensor) -> Calibration:
+    """Compute train-only zero-phase port and plane references without gradients."""
+    ports, planes = _collect_calibration_values(model, amplitudes)
     means = ports.mean(dim=0)
     floor = float(means.median()) * POWER_FLOOR_FRACTION
     scale = means.clamp_min(max(floor, torch.finfo(means.dtype).eps))

@@ -1516,6 +1516,31 @@ observer/test、两份状态文档、当前 VIS2 renderer/test；未发现额外
 `formal_promotion=false`、`bridge=invalid / cloud_sources_sync_blocked`。本轮未运行 CUDA、训练、refit、
 rank search、formal runtime 或 bridge；唯一下一动作固定为 `manual_review_VIS2_figures`。
 
+## H-LOMA-GEN-P1-C6-RSC raw-scale canary attempt-01（2026-09-03，Windows-native，diagnostic-only）
+
+在不修改 calibration producer 的 floor/clamp 语义、不写 repaired calibration、不进入 decoder/CMOS/MPCDAR、
+不训练或生成 prior 的前提下，使用注册的 `scaled_chen_bogt_calibration.v1`、同一 1000-sample train-only
+zero-phase calibration population、MNIST preprocessing、SMF mode bank 与 optical prefix，完成一次 raw
+per-port power canary。旧 calibration artifact 未覆盖；其 SHA-256=`a9a871405e216597b2c6058e8c52cd86a242659f8f6729fe06b85d0ef0f32959`。
+
+输出为 `outputs/20260903_v2/runs/lightgen_scaled_chen_p1_calibration_raw_scale_canary_v1_attempt_01/`，
+包含 `raw_scale_manifest.json`、`raw_scale_metrics.json`、`raw_port_means.pt`、`raw_scale_summary.png` 与
+`compact_report.json`，共 `547210` bytes；无 repaired calibration、隐藏文件、`.tmp` 或 TIFF。raw mean
+FP64 的 min/median/mean/max 为 `1.508997e-12 / 1.127986e-10 / 1.741773e-10 / 6.304158e-10`；
+100/100 为正且有限，100/100 小于 float32 eps，0/100 小于 float32 tiny，0/100 小于既有
+`median×0.001` relative floor。`eps=1.192093e-7`、`tiny=1.175494e-38`；FP32 reduction 与 FP64
+reference 最大相对差 `1.451667e-7`，FP64→FP32→FP64 最大相对 cast error `5.324898e-8`，均在登记容差
+`9.536743e-7` 内。旧 absolute floor 为 eps，median/p95/max distortion 为 `1045.03 / 18814.48 /
+78999.02`，且 registered 100-port eps scale 被 raw replay 精确重放。zero-phase reference contract=`YES`；
+raw coordinate sanity 的 global mean=`1.0`，仅作定义恒等式检查；learned-state comparison 跳过。
+
+冻结状态 digest before/after 相同，optimizer/backward/checkpoint/refit/decoder/prior decode/generation/
+CMOS/MPCDAR 均为 false。结果 Gate=`C6_CANARY_PASS`，支持 `C6_ABSOLUTE_EPSILON_FLOOR_INVALID_FOR_UNITS`，
+但不改变现有 P4/P1 authority，也不授权训练或 formal promotion。Windows-native C6/相关 contract tests
+为 `42 passed`；compileall、Ruff、`git diff --check` 通过；PNG 已实际查看。starting/ending HEAD 均为
+`2fcd16a0bef7de2a6483f5ec42070a895bbcbcac`，branch=`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`。
+本轮唯一下一动作固定为 `IMPLEMENT_R2_UNIT_AWARE_CALIBRATION_REPAIR`；本记录不实施 R2。
+
 ## H-LOMA-CBOGT-S9V-FULL-PATH-VIS upright eight-stage rerender attempt-02（2026-09-03，Windows-native，diagnostic-only）
 
 针对 reference-style 反馈，保留不可覆盖的 full-path visualization attempt-01，使用冻结 step-5000
