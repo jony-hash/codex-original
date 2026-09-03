@@ -1391,3 +1391,162 @@ MMF-M6 页面已完成人工 final-size inspection。
 `formal_promotion=false`、`bridge=invalid / cloud_sources_sync_blocked`。VIS1 authority 保持 unchanged；
 本轮未运行 CUDA、训练、refit、rank search、formal runtime 或 bridge 操作。Gate=
 `canonical_clear_full_pipeline_visualization_completed`；唯一下一动作固定为 `manual_review_VIS2_figures`。
+
+## H-LOMA-CBOGT-FIBER-VIS2 three-photo matched-input comparison attempt-11（2026-09-03，Windows-native，diagnostic-only）
+
+针对 attempt-10 难以阅读的问题，基于未修改的 attempt-10 `metadata_qa/panel.pt` 完成新的 panel-only 三页重绘；未重新
+CUDA replay，未改变任何 optical tensor、display scale、shared frontend、phase mask、三臂 contract 或 VIS1
+attempt-06。attempt-10 保留为不可覆盖 source，attempt-11 写入独立目录。执行前后 branch 均为
+`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`，starting/ending HEAD 均为
+`d07fdaa17aa91d9f3e5498e9b1f10d91db766777`；当前 G1 prior-support 的三个未提交路径及两份状态文档均作为受保护基线，
+未发现额外 dirty path。
+
+输出目录为
+`outputs/20260903_v2/runs/lightgen_scaled_chen_fiber_clear_full_pipeline_visualization_v1_attempt_11/`。
+新 layout schema=`same_digit_three_arm_comparison_v1`，三张主图严格按标准数字分为 `0–3`、`4–6`、`7–9`；每行固定为
+`Standard digit input | SMF output | FMF output | MMF-M6 output`，同一行复用同一个 panel position。标准输入来自
+`images_28x28`，三臂输出唯一来自 `mpcdar_rank16_float32`；图中只显示 `digit 0` 等清晰标签，dataset index 保留在
+`matched_input_comparison` manifest。SMF/FMF/MMF-M6 使用蓝/绿/橙边框，空间轴均为等比例显示。
+
+attempt-11 共 `25` 个文件、`38798939` bytes：三张 PNG/PDF/SVG 主图各一份、三张 alignment JSON 与三张 alignment SVG，
+以及 `metadata_qa/` 下复制的 approved clear-panel artifacts、panel、comparison manifest 和 root visualization manifest。
+无 TIFF、隐藏文件或 `.tmp`。source panel SHA-256 与批准值一致：
+`1ff94b0c14ba166531c81c781f0305cd10ae8f6d7efcebe04d457777a9d3f8d3`；comparison manifest SHA-256 与 visualization
+manifest SHA-256 分别为
+`e9b3c329bd3b30449cccf618d54d3b9b22c3edd04e46adb2057597c0ca4a3a99` 与
+`2b457baa83b85620c9ea9374bf5b6bc47389fadcf94991c95064ab325ebc07b`；manifest 明确记录 `source_manifest_binding`、`render_only_from_panel=true`、
+`cuda_replay=false`、`optical_data_changed=false` 与 `supersedes=attempt_10`。
+
+QA：VIS2 renderer targeted=`23 passed`；Windows-native compileall、Ruff、`git diff --check` 通过。三页 alignment=`3/3 PASS`
+（alignment canvas=`504 pt`，每页 4 列）；PDF text audit=`3/3`，最低字号=`5.4 pt`；collision audit=`3/3 PASS`（0 WARN/0 FAIL）。
+实际 PDF tight-bbox 宽度为 `413.4/430.5 pt`，均小于 `7.2 in`；PNG 尺寸为
+`1722×1399`、`1793×1399`、`1793×1399`，三张代表页面已实际查看。Nature source validator 非 strict 为 `18 PASS/0 FAIL/3 WARN`；
+warning 仅来自旧 renderer 的 300 dpi、宽度启发式与固定样本 uncertainty 检查，不影响本次三页无 TIFF 输出。
+
+治理继续为 `mainline_state=closed_at_current_evidence_boundary`、`reconstruction_manifold_supported=false`、
+`generative_manifold_supported=false`、`generation_readiness=not_ready`、`training_authorized=false`、
+`formal_promotion=false`、`bridge=invalid / cloud_sources_sync_blocked`。本轮未运行 CUDA、训练、refit、rank search、
+formal runtime 或 bridge；Gate=`canonical_clear_full_pipeline_visualization_completed`。唯一下一动作固定为
+`manual_review_VIS2_figures`。
+
+## H-LOMA-CBOGT-FIBER-VIS2 reference-style process-flow rerender attempt-14（2026-09-03，Windows-native，diagnostic-only）
+
+针对 attempt-11 仅展示最终输出、无法表达完整链路的问题，复用未修改的 attempt-10
+`metadata_qa/panel.pt`，新增并执行 `--render-process-flow-from-panel` panel-only 入口。未重新 CUDA
+replay，未改变任何 optical tensor、display scale、shared frontend、phase mask、三臂 contract 或 VIS1
+attempt-06 authority；attempt-10/11 保持不可覆盖，attempt-12/13 作为未通过严格 collision QA 的 write-once
+布局迭代保留。当前候选输出为
+`outputs/20260903_v2/runs/lightgen_scaled_chen_fiber_clear_full_pipeline_visualization_v1_attempt_14/`。
+
+新 layout schema=`same_digit_three_arm_process_flow_v1`，三张图按标准数字固定为 `0–3`、`4–6`、`7–9`。
+每页是参考图式的完整流程列：`Input → SLM command → SLM output → Encoder in → Encoder L1 →
+Pre-OLS → Modal → Post-fiber → Decoder L1 → Decoder L2 → CMOS field → CMOS intensity → MPCDAR R16`；
+每个数字在 SMF、FMF、MMF-M6 三条上下对齐的 lane 中各有相邻 amplitude/phase 行。同一 panel position
+保持同一输入和 dataset index，shared frontend 在三条 lane 中重复显示以便横向对照；SMF/FMF/MMF-M6 使用
+蓝/绿/橙边框与行标签区分。Modal 为明确的 family×port 非空间矩阵，MMF-M6 的 `ETA1* / XI2* /
+XIETA* / ETA2*` 保持 synthetic 标识，脚注明确 `*` 含义；不作 fiber ranking、physical MMF、capacity、
+reconstruction-manifold、generation、training 或 promotion 结论。
+
+attempt-14 共 `25` 个文件、`56214710` bytes：3 个 PNG、3 个 PDF、3 个主 SVG、3 个 alignment JSON、3 个
+alignment SVG，以及 `metadata_qa/` 下 9 个 approved source/manifest artifacts。无 TIFF、隐藏文件或
+`.tmp`；PNG 尺寸为 `3363×4204`、`3366×3303`、`3366×3303`，PDF 均为单页。source panel SHA-256 保持批准值
+`1ff94b0c14ba166531c81c781f0305cd10ae8f6d7efcebe04d457777a9d3f8d3`；source comparison/visualization
+manifest SHA-256 分别为 `d4229e4f966f911fee510ed4bcfa385eb46821ecf84289c0e6b7a745f679fdd9` 与
+`8dcc62732b213c42cd12539b6f9329310ae2ec252113261154ba5f9fe2ed8648`。attempt-14 comparison/visualization
+manifest SHA-256 分别为 `71ed3ccd75e7ee2748fd30ba6bc4f60d9fabfe7f1bcd6ec71d22619144e08f1c` 与
+`705ef3d7e041219dac3090ede56701d5f41767860a985ef87c5e5dfb481ce1f5`，并记录
+`render_only_from_panel=true`、`cuda_replay=false`、`optical_data_changed=false`、`supersedes=attempt_11`。
+
+QA：Windows-native relevant suite=`51 passed`；compileall、Ruff、`git diff --check` 通过。3/3 alignment
+audit=`PASS`（0 fail/0 warn），3/3 PDF text audit 无低于 `5.0 pt` 文本，3/3 strict collision audit=`PASS`
+（0 fail/0 warn）；三张 PNG 已实际查看。Nature source validator=`18 PASS/0 FAIL/3 WARN`，WARN 仅为既有
+renderer 的 300 dpi、宽度启发式和固定诊断样本 uncertainty 启发式，不改变本次实际输出的无 TIFF 与严格图形
+QA 结论。
+
+执行前后 branch 均为 `research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`，starting/ending HEAD
+均为 `d07fdaa17aa91d9f3e5498e9b1f10d91db766777`。worktree 仍有且只有受保护的 G1 prior-support config/
+observer/test、两份状态文档、当前 VIS2 renderer/test；未发现额外用户修改，未创建 Git commit。治理保持
+`mainline_state=closed_at_current_evidence_boundary`、`reconstruction_manifold_supported=false`、
+`generative_manifold_supported=false`、`generation_readiness=not_ready`、`training_authorized=false`、
+`formal_promotion=false`、`bridge=invalid / cloud_sources_sync_blocked`。本轮未运行 CUDA、训练、refit、
+rank search、formal runtime 或 bridge；唯一下一动作固定为 `manual_review_VIS2_figures`。
+
+## H-LOMA-CBOGT-S9V-FULL-PATH-VIS upright eight-stage rerender attempt-02（2026-09-03，Windows-native，diagnostic-only）
+
+针对 reference-style 反馈，保留不可覆盖的 full-path visualization attempt-01，使用冻结 step-5000
+checkpoint、RMAL/S7/S8/S9 parent chain 和同一 confirmation panel 执行一次受控 CUDA replay；未训练、未 refit、
+未 rank search、未修改光学参数或 checkpoint。新输出为
+`outputs/20260902_v2/visualizations/scaled_chen_full_path_reconstruction_v1_attempt_02/`，attempt-01
+manifest SHA-256=`ce6eee49822ddee7c3c28c13a6e0e108d499478984c498f2f51b909bebead749`，新 manifest
+SHA-256=`393ebefe6c11537f5e1841a905eb0eed4365d7db57879cd823d477338b146703`。
+
+主流程 layout schema=`full_optical_path_eight_stage_upright_v1`，严格为
+`SLM output → Front 4f → Encoder layer 1 → Encoder layer 2 / Pre-OLS → OLS output / Decoder input →
+Decoder layer 1 → Decoder layer 2 → Camera incident field`。每个数字为 amplitude/phase 两行，分为
+`0–4` 与 `5–9` 两页；主图宽度约 `7.18 in`，PNG 尺寸均为 `2153×2387`。Supporting reconstruction、
+repair/error 与 F64/F32 figures 保持原有科学语义；总计 `26` 个文件、`13413276` bytes，仅含 PNG/PDF/SVG/JSON，
+无 TIFF、隐藏文件或 `.tmp`。
+
+方向解释已写入 v2 contract 与 manifest：`IdealAmplitudeSLM` 将 command 原坐标映射为零相位复场，
+所以 SLM output 不应自行倒置；旧图的 SLM output 倒置来自 renderer 错误的 display-only 180° rotation。
+真实前向 4f relay 的倍率为 `-0.4`，后向 relay 为 `-2.5`，各产生一次倒像，净倍率为 `+1.0`。新图仅对
+中间平面绘图副本做显式 display-only 摆正，SLM output 与 camera incident field 保留 native coordinate；
+raw tensor、CMOS intensity、reconstruction 和实际生成内容均不受影响。
+
+QA：full-path contract/layout 回归与相关 v2 optical tests=`32 passed`；compileall、Ruff、`git diff --check`
+通过。5/5 alignment=`PASS`（0 fail/0 warn），5/5 PDF text audit 最小字号=`5.0 pt`且无低于阈值文本，
+5/5 strict collision=`PASS`（0 fail/0 warn）；两张主流程 PNG 已实际查看。Nature source validator=`20 PASS/0 FAIL/1 WARN`，
+唯一 WARN 为 renderer 中保留的 legacy export/宽度启发式，不影响 attempt-02 的实际无 TIFF 输出与严格图形 QA。
+
+attempt-01 26 个文件逐文件 SHA-256 与运行前完全一致。执行前后 branch 均为
+`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`，HEAD 均为
+`d07fdaa17aa91d9f3e5498e9b1f10d91db766777`；当前 worktree 仅含既有 G1 prior-support 修改、本次 full-path
+renderer/test/config 与两份状态文档，未发现额外 dirty path，未创建 Git commit。manifest 标记
+`diagnostic_only=true`、`cuda_replay=true`、`optical_data_changed=false`、`training_authorized=false`、
+`formal_promotion=false`；治理仍为 `mainline_state=closed_at_current_evidence_boundary`、
+`reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、
+`generation_readiness=not_ready`、`bridge=invalid / cloud_sources_sync_blocked`。唯一下一动作固定为
+`manual_review_FULL_PATH_VIS_result`。
+
+## H-LOMA-CBOGT-FIBER-VIS2 reference-style process-flow rerender attempt-15（2026-09-03，Windows-native，diagnostic-only）
+
+针对人工反馈，将 attempt-14 的按光纤整组排列改为同一数字内交错排列。复用未修改的 attempt-10
+`metadata_qa/panel.pt`，通过 `--render-process-flow-from-panel` panel-only 入口生成
+`outputs/20260903_v2/runs/lightgen_scaled_chen_fiber_clear_full_pipeline_visualization_v1_attempt_15/`；
+attempt-10 与 attempt-14 均保持不可覆盖，attempt-15 supersedes attempt-14。未重新 CUDA replay，未改变
+任何 optical tensor、display scale、shared frontend、phase mask、三臂 contract 或 VIS1 attempt-06 authority。
+
+新 layout schema=`same_digit_interleaved_three_arm_process_flow_v1`，artifact layout schema=
+`vis2_process_flow_interleaved_v1`，row order=`digit_then_arm_then_amplitude_phase`。三页仍固定为标准数字
+`0–3`、`4–6`、`7–9`；每个数字严格按 `SMF amplitude/phase → FMF amplitude/phase → MMF-M6 amplitude/phase`
+排列，再进入下一个数字。完整流程列保持 `Input → SLM command → SLM output → Encoder in → Encoder L1 →
+Pre-OLS → Modal → Post-fiber → Decoder L1 → Decoder L2 → CMOS field → CMOS intensity → MPCDAR R16`。
+每个 arm 使用蓝/绿/橙边框与行标签区分，空间场保持等比例显示；Modal 继续使用显式 family×port 非空间矩阵，
+MMF-M6 的 `ETA1* / XI2* / XIETA* / ETA2*` synthetic 标识保持不变。图中仅显示 digit/arm/amplitude/phase，
+dataset index 写入 manifest；不作 fiber ranking、physical MMF、capacity、reconstruction-manifold、generation、
+training 或 promotion 结论。
+
+attempt-15 共 `25` 个文件、`56234887` bytes：3 个 PNG、3 个 PDF、3 个主 SVG、3 个 alignment JSON、3 个
+alignment SVG，以及 `metadata_qa/` 下 9 个 approved source/manifest artifacts。无 TIFF、隐藏文件或 `.tmp`；
+PNG 尺寸为 `3363×4204`、`3366×3303`、`3366×3303`，PDF 均为单页。source panel SHA-256 保持批准值
+`1ff94b0c14ba166531c81c781f0305cd10ae8f6d7efcebe04d457777a9d3f8d3`；source comparison/visualization
+manifest SHA-256 分别为 `d4229e4f966f911fee510ed4bcfa385eb46821ecf84289c0e6b7a745f679fdd9` 与
+`8dcc62732b213c42cd12539b6f9329310ae2ec252113261154ba5f9fe2ed8648`。attempt-15 comparison/visualization
+manifest SHA-256 分别为 `2d9946b29f1bd24a34081e0cef3dde6a872f894c3d5d2681ac9752198148196a` 与
+`2cfe75f7bf6248504e65ecbf0a769508eba968a38408eb695a23ba95970509f3`；manifest 明确记录
+`render_only_from_panel=true`、`cuda_replay=false`、`optical_data_changed=false`、`rows_per_digit=6`、
+`row_records` 与 `supersedes=attempt_14`。
+
+QA：新增交错行序回归测试先失败后通过；Windows-native relevant suite=`52 passed`；compileall、Ruff、
+`git diff --check` 通过。3/3 alignment audit=`PASS`（0 fail/0 warn），3/3 PDF text audit 最小字号=`5.0 pt`
+且无低于阈值文本，3/3 strict collision audit=`PASS`（0 fail/0 warn）；三张 PNG 已实际查看。Nature source
+validator=`18 PASS/0 FAIL/3 WARN`，WARN 仅为既有 renderer 的 300 dpi、宽度启发式与固定诊断样本 uncertainty
+启发式，不改变本次输出的严格图形 QA 结论。
+
+执行前后 branch 均为 `research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`，starting/ending HEAD 均为
+`d07fdaa17aa91d9f3e5498e9b1f10d91db766777`。worktree 仍只有受保护的 G1 prior-support config/observer/test、
+两份状态文档、当前 VIS2 renderer/test；未发现额外用户修改，未创建 Git commit。治理保持
+`mainline_state=closed_at_current_evidence_boundary`、`reconstruction_manifold_supported=false`、
+`generative_manifold_supported=false`、`generation_readiness=not_ready`、`training_authorized=false`、
+`formal_promotion=false`、`bridge=invalid / cloud_sources_sync_blocked`。本轮未运行 CUDA、训练、refit、
+rank search、formal runtime 或 bridge；唯一下一动作固定为 `manual_review_VIS2_figures`。
