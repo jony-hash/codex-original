@@ -603,6 +603,33 @@ pipeline overview、SMF frontend、FMF fiber decoder、MMF-M6 fiber decoder/dete
 CUDA、训练、refit、rank search、formal runtime 或 bridge。Gate=`canonical_clear_full_pipeline_visualization_completed`；
 唯一下一动作：`manual_review_VIS2_figures`。
 
+## H-LOMA-GEN-G1-SA prior support accessibility observer（2026-09-03）
+
+完成一次 Windows-native、diagnostic-only、no-update 的 G1-SA observer；未重新 fiber comparison，未进入 decoder/CMOS/
+MPCDAR，未训练、refit、rank search、formal runtime 或 bridge。起始与结束 HEAD 均为
+`d07fdaa17aa91d9f3e5498e9b1f10d91db766777`，branch=`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`；
+正式 replay 前 worktree clean，当前新增路径仅为 G1 config、observer 和 targeted test。
+
+按 attempt-05 MRA lineage 固定 step-5000 checkpoint/calibration，使用 exact 100D `z_j=abs(c_j)^2/s_j`。完整 train
+support=`55000`（`[0,55000)`），horizon heldout query=`5000`（`[55000,60000)`），unconditional truncated-normal prior
+query=`5000`，seed=`1237`，距离为 exact chunked Euclidean / `sqrt(100)`。当前可审查输出为
+`outputs/20260903_v2/runs/lightgen_scaled_chen_g1_prior_support_accessibility_v1_attempt_04/`；attempt-01 保存原始
+CUDA measurement，attempt-04 仅从同一 distance artifact 无 CUDA 重绘 figures，write-once 保留中间 attempts。共
+`12` files、`294949` bytes；manifest SHA-256=`257e6b786714b6f0a76fe93e4bba6ddf2f6bc3b691d0ef3f582ebd7c7521f239`，
+distance SHA-256=`05002920d1b73ab8dd1243ce93f44659ba95ad5d4eb35e3f4e737c0f9d8b2c1b`，无 TIFF/隐藏文件/`.tmp`。
+
+结果：`H50=0.0006687190`、`H95=0.0011482780`；`P50=1.1241731`、`P95=1.2017229`；`R50=1681.0843`，95% CI
+`[1657.9121,1705.0805]`；`R95=1046.5435`，95% CI=`[1019.9279,1063.9357]`；prior exceedance of H95=`1.0`
+（descriptive-only）。Gate=`P4_SUPPORTED`，含义是 registered prior 与真实 encoded support 明显不对齐，不是
+decoder/generation/training 成功。冻结审计 state digest before/after 相同，optimizer/backward/refit/checkpoint/
+evaluator=`false/false/false/false/0`；runtime=`372.0281 s`，peak CUDA=`1574747648` bytes。
+
+QA：G1 targeted=`8 passed`；compileall、Ruff、diff-check 通过；PDF text audit=`2/2`（均无低于 5 pt，minimum=`5.6 pt`），
+collision=`2/2 PASS`（0 WARN/0 FAIL），两张 PNG 已实际检查。治理不变：
+`mainline_state=closed_at_current_evidence_boundary`、`generative_manifold_supported=false`、
+`generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false`、
+`bridge=invalid / cloud_sources_sync_blocked`。唯一下一动作：`PLAN_GENERATIVE_TRAINING_FOR_SUPPORT_ALIGNMENT`，仅为
+规划动作，不启动训练。
 
 ## H-LOMA-CBOGT-FIBER-VIS2 three-photo matched-input comparison attempt-11（2026-09-03，Windows-native，diagnostic-only）
 

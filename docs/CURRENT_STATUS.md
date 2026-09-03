@@ -1357,6 +1357,51 @@ submission raster、300 dpi floor、Stage-A 候选 contact sheet 的非标准宽
 `training_authorized=false`、`formal_promotion=false`、`bridge=invalid / cloud_sources_sync_blocked`。Gate=
 `canonical_clear_full_pipeline_visualization_completed`；唯一下一动作固定为 `manual_review_VIS2_figures`。
 
+## H-LOMA-GEN-G1-SA prior support accessibility observer（2026-09-03，Windows-native，diagnostic-only）
+
+在 VIS2 完成后，按已批准的 G1-SA 合同对当前 Scaled-Chen step-5000 做了一次 no-update support-accessibility
+observer。执行前 branch=`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`、HEAD=
+`d07fdaa17aa91d9f3e5498e9b1f10d91db766777`，worktree clean；未修改 VIS1/VIS2、generation code、formal runtime、bridge
+或任何 checkpoint。MRA attempt-05 的 config/review/audit/compact/panel、step-5000 checkpoint 与 calibration 均按
+固定 SHA-256 重新核验；MRA panel 未加载为新样本选择依据。
+
+观测使用精确 100D `z_j=abs(c_j)^2/s_j`：`S_train` 为注册 train split `[0,55000)` 的全部 `55000` 个 encoded
+support，`Q_holdout` 为注册 horizon held-out `[55000,60000)` 的 `5000` 个 query，unconditional truncated-normal
+prior 也固定为 `5000` 个 query、seed=`1237`、mean=`1.0`、variance=`0.25`、lower=`0`。距离为 exact chunked
+normalized Euclidean，仅除以 `sqrt(100)`；没有 PCA、whitening、learned metric、ANN、class conditioning 或 subset
+tuning。仅执行 SLM → front → encoder → pre-OLS coefficient → normalized power prefix，未进入 decoder、relay-after-
+pre-OLS、CMOS、MPCDAR、prior decode 或 evaluator。
+
+当前 QA 通过的结果目录为
+`outputs/20260903_v2/runs/lightgen_scaled_chen_g1_prior_support_accessibility_v1_attempt_04/`。attempt-01 是同一
+次 CUDA measurement 的原始 artifact，attempt-02/03 为保持 write-once 的 render-only QA 迭代，attempt-04 从同一个
+`support_distances.pt` 无 CUDA 重绘并作为当前 figures/manifest；没有重新运行 fiber replay。attempt-04 共 `12` 个文件、
+`294949` bytes；`support_distances.pt` SHA-256=`05002920d1b73ab8dd1243ce93f44659ba95ad5d4eb35e3f4e737c0f9d8b2c1b`，
+`observer_manifest.json` SHA-256=`257e6b786714b6f0a76fe93e4bba6ddf2f6bc3b691d0ef3f582ebd7c7521f239`。输出只有 distance vectors、
+metrics/report、PNG/PDF/SVG 两组图和 single-panel alignment records，不含完整 dataset images、TIFF、隐藏文件或
+`.tmp`。
+
+主统计为 holdout `H50=0.0006687190`、`H95=0.0011482780`，prior `P50=1.1241731`、`P95=1.2017229`；
+`R50=1681.0843`，95% bootstrap CI=`[1657.9121,1705.0805]`；`R95=1046.5435`，95% bootstrap CI=
+`[1019.9279,1063.9357]`，bootstrap replicates=`2000`、seed=`1236`。描述性 `prior_exceedance_H95=1.0` 不参与
+主 gate。两个 ratio CI 下界均大于 1，因此 Gate=`P4_SUPPORTED`：当前 registered unconditional prior 与真实 encoded
+support 显著不对齐；这不是 decoder accessibility、generation quality 或 training result。
+
+Replay anchor 与资源：step-5000 normalized-z mean=`0.0014779161`，与 MRA confirmation anchor 一致；anchor batch
+mean=`0.0015653975`；prior empirical mean=`1.0277389`。device=`cuda`，latent dtype=`torch.float32`，distance
+dtype=`torch.float64`，runtime=`372.0281 s`，peak CUDA allocation=`1574747648` bytes，启动前 free CUDA=
+`5368709120` bytes。learned-state digest before/after 均为
+`cdbf06f03b611f4df38324c1546686bc5fc614644a64130c95cd3a76012e27b5`；state unchanged，optimizer/backward/refit/
+checkpoint/evaluator 均为 false/0。
+
+验证：G1 targeted tests=`8 passed`；changed Python compileall、Ruff、`git diff --check` 通过。两张 PDF 均通过 5 pt
+text audit（minimum=`8.0 pt` 与 `5.6 pt`），collision audit=`2/2 PASS`（0 WARN/0 FAIL），single-panel alignment
+records=`2/2 NOT_APPLICABLE_SINGLE_PANEL`，PNG 代表页面已实际查看；summary 使用 log y 轴以同时显示约三数量级的
+holdout/prior 距离。治理继续为 `mainline_state=closed_at_current_evidence_boundary`、
+`reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、`generation_readiness=not_ready`、
+`training_authorized=false`、`formal_promotion=false`、`bridge=invalid / cloud_sources_sync_blocked`。唯一下一动作：
+`PLAN_GENERATIVE_TRAINING_FOR_SUPPORT_ALIGNMENT`（仅规划，不授权执行训练）。
+
 ## H-LOMA-CBOGT-FIBER-VIS2 attempt-10（2026-09-03，Windows-native，diagnostic-only）
 
 基于未修改的 VIS2 attempt-09 `panel.pt` 完成新的 panel-only 分层重绘；未重新 CUDA replay，未修改任何光学 tensor、
