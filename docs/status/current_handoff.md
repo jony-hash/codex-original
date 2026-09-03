@@ -1,10 +1,72 @@
 # 当前主线交接（2026-09-03）
 
-本文件是当前执行状态的稳定入口。架构合同见
-[v2 runtime](../architecture/v2_runtime.md)，研究假设与唯一下一动作见
+本文件是当前执行状态的稳定入口。最终主线已在当前 evidence boundary 收口；当前没有下一科学
+实验。架构合同见 [v2 runtime](../architecture/v2_runtime.md)，收口边界见
 [capacity-map hypothesis ledger](capacity_map_hypothesis_ledger.md)，带日期的实验事实见
 [experiment history](experiment_history.md)。2026-08-24 重整前的完整长篇记录保存在
 [archived handoff](../archive/current_handoff_pre_sced_20260824.md)，仅供溯源。
+
+## FINAL_MAINLINE_CLOSEOUT：H-LOMA-CBOGT Scaled-Chen（2026-09-03）
+
+### Final state
+
+- Current phase: `MAINLINE CLOSEOUT`
+- Scientific diagnosis: `closed`
+- Repair: `confirmed`
+- Integration: `qualified`
+- F32: `qualified`
+- Visualization: `completed`
+- Runtime performance: `characterized`
+- `mainline_state=closed_at_current_evidence_boundary`
+- Current mainline next scientific task: `none`
+- Future independent track: `REAL-HARDWARE DEPLOYMENT`; explicit future task name:
+  `REAL_CMOS_RASPBERRY_PI_DEPLOYMENT`.
+
+### Frozen authority and conclusion
+
+The authority chain is `RMAL → S7 MPCDAR → S8 F64 R16-IQ → S9 F32-NQ → S9V full-path
+visualization → S10 runtime characterization`. Later consumers use only their named immutable
+parents; write-once earlier attempts remain historical and are never silently substituted.
+
+Within the existing optical-path/CMOS evidence boundary, task-relevant information survives through
+CMOS. The reconstruction failure is primarily supported as mapping/readout misalignment; simple
+locality/raw Euclidean W-SVD is inadequate, useful mean/DC material is present, and centered
+detector information is better represented by a fit-derived data-aware basis. Registered MPCDAR
+rank 16 is the first confirmed candidate in its preregistered powers-of-two family, not a minimum, intrinsic, or
+true rank-16 claim.
+
+Frozen formula: `centered=z-mu_fit; h=centered@T16; prediction=c_mean+h@V16.T`. The S9 F32
+artifact contract is `mu_fit[256]`, `c_mean[40000]`, `T16[256,16]`, `V16[40000,16]`, with
+`684352` scalars, `2737408` raw tensor bytes, and `2739448` serialized bytes. The allowed system
+description is `optical front end → CMOS intensity sensing → lightweight frozen electronic rank-16
+readout`: hybrid optical-electronic reconstruction, not a native CMOS optical image.
+
+S8 F64 is integration-qualified; S9 F32 is numerically qualified; S9V is
+`descriptive_visualization_completed` and adds no scientific Gate; S10 is CPU-only readout
+characterization, not measured speedup or production evidence. S10 recorded Python `3.11.16`,
+PyTorch `2.5.1`, Windows `10.0.26100`, threads `8/8`, logical cores `16`, and CPU string
+`AMD64 Family 25 Model 68 Stepping 1, AuthenticAMD`; expected Windows `10.0.26200.0` did not
+match. Batch mean latency B=`1/8/32` was `0.5601775/0.8914525/3.277882 ms`; mean throughput
+was `1836.8588342/9338.7841702/9874.3015643 samples/s`; analytical MAC ratio was
+`15.89825119236884`, not a measured speedup.
+
+### Non-authorized boundary and future tracks
+
+Native optical target-like CMOS reconstruction, real physical CMOS validation, Raspberry Pi
+benchmarking, sim-to-real detector alignment, end-to-end hardware latency, GPU runtime, full-W
+runtime, quantization, generative manifold, and generation readiness remain unestablished.
+`reconstruction_manifold_supported=false`, `generative_manifold_supported=false`,
+`generation_readiness=not_ready`, `training_authorized=false`, `formal_promotion=false`, and
+`closed_task_relevant_bottleneck_not_supported` remain fixed. Future tracks are separate and require
+new authority: real CMOS/Raspberry Pi deployment, sim-to-real alignment, optional optimization only
+if separately justified, native optical redesign only with explicit authorization, and separate
+generative-manifold/generation evidence. Older hypothesis entries remain for provenance and are not
+deleted; their historical next-action text is superseded by this closeout.
+
+Bridge closeout is `status=invalid`, `bridge_recovery_blocked=true`: the clean-HEAD `refresh`
+stopped fail-closed on the existing invalid manifest
+`C:\Users\24567\Documents\Codex\codex-original-chatgpt-bridge\current\.chatgpt-sources-manifest.json`.
+The package was not deleted or overwritten, and no automatic upload occurred.
 
 ## Formal identity 状态
 

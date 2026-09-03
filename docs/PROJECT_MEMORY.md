@@ -37,7 +37,7 @@ ChatGPT Sources 包中的文件是由维护工具生成的受控副本。副本�
 - formal D2NN boundary 是 `finite_crop`；`transparent_identity` 仅为 diagnostic-only。
 - 不把旧 WSL checkout、`.codex` 旧项目副本、历史输出归档或原始 transcript 当作当前工作树。
 
-## 当前科研状态、禁止事项与唯一下一动作
+## 当前科研状态、禁止事项与主线收口
 
 - 当前 formal identity 链的有效结果是 `closed_historical_valid_failure`；它没有
   `formal_promotion` 权限，也不能授权 manual review、candidate export、memorization、
@@ -45,13 +45,12 @@ ChatGPT Sources 包中的文件是由维护工具生成的受控副本。副本�
 - prior-native、direct-generator、quadrature、fiber、FMF 长训练和 formal promotion
   等已关闭或未授权路线不能因为 ChatGPT 的讨论而重新打开。
 - 所有科研执行仍需遵守 `AGENTS.md` 的 long-training gate；记忆文件本身不提供训练授权。
-- 当前最新已核验科研 checkpoint 是 H-LOMA-CBOGT-S10-MPCDAR-R16-RUNTIME-PQ 的 `passed` /
-  `frozen_rank16_float32_runtime_performance_characterized`；它只完成冻结 S9 rank-16
-  float32 readout 的 CPU-only runtime/performance characterization，不建立 measured speedup、
-  GPU/硬件/production readiness、reconstruction/generative manifold、training、decoder、
-  generation 或 formal-promotion 权限。S9V、S9、S8、S7、MCFA、DMSA、DSFA 与更早身份保持
-  不变。唯一允许的下一动作是 `manual_review_MPCDAR_R16_RUNTIME_PQ_result`；在人工审查前，
-  不得继续训练、rank search、exposure retuning、生成或 promotion。relay family
+- 当前主线已完成 `FINAL_MAINLINE_CLOSEOUT`：H-LOMA-CBOGT-S10-MPCDAR-R16-RUNTIME-PQ 为
+  `passed / frozen_rank16_float32_runtime_performance_characterized`，仅完成冻结 S9 rank-16
+  float32 readout 的 CPU-only runtime/performance characterization。`mainline_state=`
+  `closed_at_current_evidence_boundary`，当前没有下一科学实验；未来若用户另行授权，独立
+  任务名为 `REAL_CMOS_RASPBERRY_PI_DEPLOYMENT`。S9V、S9、S8、S7、MCFA、DMSA、DSFA 与更早
+  identity 保持不变。relay family
   `scaled_chen_v1_local_backend_relay_attribution_family=closed_metric_confound_reinterpreted`
   保持。
   若交接文档更新，以最新的 `CURRENT_STATUS.md`、`status/current_handoff.md` 和 hypothesis
@@ -59,6 +58,52 @@ ChatGPT Sources 包中的文件是由维护工具生成的受控副本。副本�
 - 本次工作流治理允许的实现动作是维护记忆入口、项目文档和环境入口；不修改训练代码、
   `outputs`、WSL、SQLite 或历史 transcript。只有用户明确需要离线上传时，才生成并验证
   受控 Sources 包。
+
+## FINAL_MAINLINE_CLOSEOUT：稳定导航结论（2026-09-03）
+
+Authority chain: `RMAL → S7 MPCDAR → S8 F64 R16-IQ → S9 F32-NQ → S9V full-path visualization
+→ S10 runtime characterization`. Each stage consumed only its named immutable parent; earlier
+or failed attempts remain write-once history and are not consumed in place of later authority.
+
+The current evidence boundary supports that task-relevant information survives the existing
+optical path through CMOS and primarily supports mapping/readout misalignment as the reconstruction
+failure. Simple locality/raw Euclidean W-SVD is inadequate; useful mean/DC material is present;
+centered detector information is better represented by a fit-derived data-aware basis. Registered
+MPCDAR rank 16 is the first confirmed candidate in its preregistered powers-of-two family, not a
+minimum, intrinsic, or true rank-16 claim.
+
+Frozen readout formula: `centered=z-mu_fit; h=centered@T16; prediction=c_mean+h@V16.T`.
+The current S9 F32 artifact is `mu_fit[256]`, `c_mean[40000]`, `T16[256,16]`, `V16[40000,16]`;
+scalar count `684352`, raw tensor bytes `2737408`, serialized bytes `2739448`. S8 F64 integration
+and S9 F32 numerical qualification are frozen qualifications; S9V is descriptive-only and adds
+no scientific Gate. The permitted architecture wording is `optical front end → CMOS intensity
+sensing → lightweight frozen electronic rank-16 readout`: hybrid optical-electronic reconstruction,
+not a native CMOS optical image.
+
+S10 is recorded only as a CPU readout characterization in the registered Windows environment:
+Python `3.11.16`, PyTorch `2.5.1`, Windows observed `10.0.26100`, torch threads `8/8`, logical
+cores `16`, formal CPU string `AMD64 Family 25 Model 68 Stepping 1, AuthenticAMD`; expected
+Windows `10.0.26200.0` did not match. Batch mean latency B=`1/8/32` was
+`0.5601775/0.8914525/3.277882 ms`, mean throughput was
+`1836.8588342/9338.7841702/9874.3015643 samples/s`, and analytical MAC ratio was
+`15.89825119236884`, not measured speedup.
+
+Limitations remain: native optical target-like CMOS reconstruction, real physical CMOS validation,
+Raspberry Pi benchmarking, sim-to-real detector alignment, end-to-end hardware latency, GPU
+runtime, full-W runtime, quantization, generative manifold, and generation readiness are not
+established. `reconstruction_manifold_supported=false`, `generative_manifold_supported=false`,
+`generation_readiness=not_ready`, `training_authorized=false`, `formal_promotion=false`, and
+`closed_task_relevant_bottleneck_not_supported` remain fixed. Future tracks are independent:
+real CMOS/Raspberry Pi deployment, sim-to-real alignment, optional separately justified optimization,
+newly authorized native optical redesign, and separate generative-manifold/generation evidence.
+
+The exact evidence/artifact registry is maintained in
+[`CURRENT_STATUS.md`](CURRENT_STATUS.md), [`status/current_handoff.md`](status/current_handoff.md),
+the hypothesis ledger, and the dated experiment history; this memory file intentionally does not
+duplicate the full hash table. Final bridge validation is `status=invalid` with
+`bridge_recovery_blocked=true` because `refresh` stopped at the existing invalid manifest
+`C:\Users\24567\Documents\Codex\codex-original-chatgpt-bridge\current\.chatgpt-sources-manifest.json`;
+no automatic upload occurred.
 
 ## H-LOMA-CBOGT-S2-TRBA：Task-Relevant Bottleneck Attribution（2026-09-01）
 

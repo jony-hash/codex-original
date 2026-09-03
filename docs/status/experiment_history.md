@@ -2215,3 +2215,55 @@ Compileall, Ruff and `git diff --check` passed. Governance remains reconstructio
 `generation_readiness=not_ready`, `training_authorized=false`, and `formal_promotion=false`; Bridge
 remains `invalid / cloud_sources_sync_blocked`. The only next action is
 `manual_review_MPCDAR_R16_RUNTIME_PQ_result`.
+
+## 2026-09-03：FINAL_MAINLINE_CLOSEOUT H-LOMA-CBOGT Scaled-Chen reconstruction-repair mainline
+
+The final mainline closeout consumes the immutable authority chain
+`RMAL → S7 MPCDAR → S8 F64 R16-IQ → S9 F32-NQ → S9V full-path visualization → S10 runtime
+characterization`. Later consumers are not replaced by earlier attempts; all write-once attempts
+remain available as dated provenance. This entry records no new scientific run, model execution,
+CUDA run, evidence generation, or status mutation outside the closeout documents.
+
+The current state is `MAINLINE CLOSEOUT`: scientific diagnosis `closed`, repair `confirmed`,
+integration `qualified`, F32 `qualified`, visualization `completed`, and runtime performance
+`characterized`. The hypothesis/experiment thread is `closed / resolved to current evidence
+boundary`; current mainline next scientific task is `none`.
+
+Frozen conclusion at the evidence boundary: task-relevant information survives the existing optical
+path through CMOS; reconstruction failure is primarily supported as mapping/readout misalignment;
+simple locality/raw Euclidean W-SVD is inadequate; useful mean/DC material is present; centered
+detector information is better represented by a fit-derived data-aware basis; and registered MPCDAR
+rank 16 is the first confirmed candidate in its preregistered powers-of-two family. Rank 16 is not described as a
+minimum, intrinsic, or true rank.
+
+The frozen formula is `centered=z-mu_fit; h=centered@T16; prediction=c_mean+h@V16.T`, with S9
+F32 tensors `mu_fit[256]`, `c_mean[40000]`, `T16[256,16]`, `V16[40000,16]`, scalar count
+`684352`, raw bytes `2737408`, and serialized bytes `2739448`. S8 remains integration-qualified;
+S9 remains numerically qualified; S9V remains descriptive-only with no new Gate. The allowed
+architecture wording is `optical front end → CMOS intensity sensing → lightweight frozen
+electronic rank-16 readout`: hybrid optical-electronic reconstruction, not a native CMOS optical
+image.
+
+S10's primary CPU record remains Python `3.11.16`, PyTorch `2.5.1`, observed Windows `10.0.26100`,
+threads `8/8`, logical cores `16`, formal CPU string
+`AMD64 Family 25 Model 68 Stepping 1, AuthenticAMD`; expected Windows `10.0.26200.0` did not
+match. Batch mean/median/p95/p99 latency in ms for B=`1/8/32` were
+`0.5601775/0.53135/0.784155/0.943756`, `0.8914525/0.82855/1.25965/1.362798`, and
+`3.277882/3.21995/4.026955/4.434511`; mean throughput was
+`1836.8588342/9338.7841702/9874.3015643` samples/s. Fresh initialization
+manifest/payload/consumer/total was `0.2792/9.1288/20.8566/30.286 ms`, not a true cold-disk
+claim; analytical MAC ratio `15.89825119236884` was not measured speedup.
+
+Governance remains `reconstruction_manifold_supported=false`, `generative_manifold_supported=false`,
+`generation_readiness=not_ready`, `training_authorized=false`, `formal_promotion=false`, and
+`closed_task_relevant_bottleneck_not_supported`. Native optical target-like CMOS reconstruction,
+real physical CMOS validation, Raspberry Pi benchmarking, sim-to-real detector alignment,
+end-to-end hardware latency, GPU/full-W runtime, quantization, generative manifold and generation
+readiness remain unestablished. Future work is independent and requires new authorization:
+`REAL-HARDWARE DEPLOYMENT` / `REAL_CMOS_RASPBERRY_PI_DEPLOYMENT`, real CMOS calibration/alignment,
+separately justified optimization, native optical redesign, or separate generative-manifold evidence.
+
+After the final clean-head check, the bridge `refresh` stopped fail-closed with
+`invalid Sources manifest: C:\Users\24567\Documents\Codex\codex-original-chatgpt-bridge\current\.chatgpt-sources-manifest.json`;
+`status` remained `invalid` for the same reason. `bridge_recovery_blocked=true`; no automatic upload
+occurred and the existing package was not deleted or overwritten.

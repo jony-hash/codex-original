@@ -2,6 +2,65 @@
 
 更新时间：2026-09-03
 
+## FINAL_MAINLINE_CLOSEOUT：H-LOMA-CBOGT Scaled-Chen reconstruction-repair mainline（2026-09-03）
+
+- Current phase: `MAINLINE CLOSEOUT`
+- Scientific diagnosis: `closed`
+- Repair: `confirmed`
+- Integration: `qualified`
+- F32: `qualified`
+- Visualization: `completed`
+- Runtime performance: `characterized`
+- `mainline_state=closed_at_current_evidence_boundary`
+- Current mainline has no next scientific experiment. The future independent track is
+  `REAL-HARDWARE DEPLOYMENT`; if explicitly reopened, use the task name
+  `REAL_CMOS_RASPBERRY_PI_DEPLOYMENT`.
+
+### Frozen authority chain
+
+`RMAL → H-LOMA-CBOGT-S7-MPCDAR → H-LOMA-CBOGT-S8-MPCDAR-R16-F64-IQ →
+H-LOMA-CBOGT-S9-MPCDAR-R16-F32-NQ → H-LOMA-CBOGT-S9V-FULL-PATH-VIS →
+H-LOMA-CBOGT-S10-MPCDAR-R16-RUNTIME-PQ`.
+
+Each consumer uses only its named immutable parent. Write-once non-authoritative attempts remain
+for audit history and are not consumed; no later attempt is replaced by an earlier attempt.
+
+### Frozen scientific boundary
+
+- Within the existing optical-path/CMOS evidence boundary, task-relevant information survives
+  through CMOS.
+- The reconstruction failure is primarily supported as mapping/readout misalignment.
+- Simple locality and raw Euclidean W-SVD are inadequate for this task; useful mean/DC material
+  is present, and centered detector information is better represented by a fit-derived data-aware
+  basis.
+- Registered MPCDAR rank 16 is the first confirmed candidate in its preregistered powers-of-two
+  family. It is
+  not a minimum, intrinsic, or true rank-16 claim.
+
+### Frozen readout and architecture
+
+The frozen candidate is `centered=z-mu_fit; h=centered@T16; prediction=c_mean+h@V16.T`,
+with `mu_fit[256]`, `c_mean[40000]`, `T16[256,16]`, and `V16[40000,16]`. The S9 F32 artifact
+contains `684352` scalars, `2737408` raw tensor bytes, and `2739448` serialized bytes.
+The allowed wording is: `optical front end → CMOS intensity sensing → lightweight frozen
+electronic rank-16 readout`; this is hybrid optical-electronic reconstruction, and MPCDAR is
+not a native CMOS optical image.
+
+### Governance boundary
+
+`reconstruction_manifold_supported=false`; `generative_manifold_supported=false`;
+`generation_readiness=not_ready`; `training_authorized=false`; `formal_promotion=false`;
+`closed_task_relevant_bottleneck_not_supported`. The hypothesis/experiment thread is
+`closed / resolved to current evidence boundary`; historical hypotheses and write-once records
+are retained and are not deleted.
+
+- Not established: native optical target-like CMOS reconstruction, real physical CMOS validation,
+  Raspberry Pi benchmarking, sim-to-real detector alignment, end-to-end hardware latency,
+  GPU runtime, full-W runtime, quantization, generative manifold, or generation readiness.
+- Future tracks remain independent: real CMOS/Raspberry Pi deployment, sim-to-real detector
+  alignment, optional optimization only if a separately justified need appears, native optical
+  redesign only under new explicit authorization, and generative-manifold/generation evidence.
+
 ## 当前主工作区
 
 - 主项目：`D:\codex-original`
@@ -10,10 +69,10 @@
   parent implementation commit 为 `c0140577fddb56af79d72a6d473cc49ef04f5ffc`；S9
   F32 qualification implementation/fix commits 为 `4b75e4d67efc1dc90a01d1d33a6aa3c1c243c652`
   与 `ebbd0d232c56ee45a69dea830911eff4f697ad47`，当前 clean HEAD 以 Git 核验为准。
-- 当前最新研究解释是 H-LOMA-CBOGT-S10-MPCDAR-R16-RUNTIME-PQ 对冻结 S9
-  rank-16 float32 readout 的 CPU-only runtime/performance characterization；它只报告
+- 当前主线已在 H-LOMA-CBOGT-S10-MPCDAR-R16-RUNTIME-PQ 后完成最终收口。S10 对冻结 S9
+  rank-16 float32 readout 的 CPU-only runtime/performance characterization 只报告
   fresh-process initialization、readout-only latency/throughput、storage 与 deterministic
-  correctness，不把分析 MAC ratio 或 CPU telemetry 解释为 measured speedup、GPU/硬件/
+  correctness；不把分析 MAC ratio 或 CPU telemetry 解释为 measured speedup、GPU/硬件、
   production readiness、reconstruction sufficiency 或 downstream authorization。S9V、S9、
   S8、S7、MCFA、DMSA、DSFA 与更早 evidence 保持 immutable，并继续作为父级事实。
 - 基线提交：`019b76ef911e0bd16b8d5d4169807323427684af`
@@ -1091,3 +1150,59 @@ S10 定向/布局/相关回归=`30 passed`，Windows-native 全套 pytest=`1357 
 25 subtests passed`，compileall、Ruff、git diff-check 通过；唯一 warning 为既有 pytest cache ACL。
 Bridge 仍为 `invalid / cloud_sources_sync_blocked`，未修复、未上传。唯一下一动作是
 `manual_review_MPCDAR_R16_RUNTIME_PQ_result`；不得训练、decoder、generation 或 promotion。
+
+## FINAL_MAINLINE_CLOSEOUT registry and primary runtime record
+
+The following is the frozen read-only registry for the final mainline. Paths are relative to this
+repository; hashes are SHA-256. Older attempts remain write-once history and are not substituted for
+the authoritative attempt named here.
+
+- RMAL (`H-LOMA-CBOGT-S4-RMAL`): authoritative directory
+  `outputs/20260901_v2/runs/lightgen_scaled_chen_reconstruction_mapping_alignment_localization_v1_attempt_01/`;
+  validation/audit/compact/probe SHA-256
+  `affb4961626a2caaf4dc2c8bb04c06ac4f8de51d1d4a1ab418858eaa11e536ec` /
+  `5ba51e041a266865fc0443b729d31a0c97c35f2b86d6ef45f11dacf6617a15fa` /
+  `c335f75124666e9423d66b7a4537c74ff642ef2d71044bda86be16f9333a2137` /
+  `3551584a7983619356ea49babe7e5dedca559dfaa8ee5302fa44fd1a152a24ed`; checkpoint SHA-256
+  `ccb89f98cc11725eb80d66c61f4fdef62b24acdf9f6d739f78373f462d10e5de`, config SHA-256
+  `c50b5b2d12830c40fbe619f137aca40f36f799f277e637d1ec20ac7e3403859f`.
+- S7 `attempt-03`: `outputs/20260902_v2/runs/lightgen_scaled_chen_mean_preserving_centered_data_aware_readout_recovery_v1_attempt_03/`; validation/audit/compact SHA-256
+  `b538b3ab242e09a0042699b1b1d0779d504f992498b1fcd75c23bae9937512d2` /
+  `43b4cef14202c19cc6aca22ec2c49cf5a65ed1ac05b7b69f7d00390de4b95785` /
+  `9e321b457e9e7111e1bf0d800e1d8e724f9753cf34f92e13d1eb2e081034a4e9`.
+- S8 `attempt-03`: `outputs/20260902_v2/runs/lightgen_scaled_chen_mpcdar_rank16_integration_qualification_v1_attempt_03/`; validation/audit/compact SHA-256
+  `844a9dc4187623c380655db63530e13e6ba1a9d4e62d6ef44dd95b29119457cb` /
+  `3b98c0faa6816b11d2f6da8cc832e89d221344f4b01bd41eadb356968f1b39a4` /
+  `12e342d75119ee143186046490bb14c064f449dc27520168a17e84ae758b8271`; artifact manifest/payload
+  `e580dd59f3e277055a9c0cff6d9f076e06346b5761a8b9f228608e88b3a23c45` /
+  `e839daaff8d718347d1cd4194651ac0773f842ffa39fe4efaa3e0218ea2e1d4e`.
+- S9 `attempt-02`: `outputs/20260902_v2/runs/lightgen_scaled_chen_mpcdar_rank16_float32_numerical_qualification_v1_attempt_02/`; validation/audit/compact SHA-256
+  `5728fb9b50212d5dc7359975b06fe6d3f51be3645a23410683334abab7bb2137` /
+  `0ff4aeaddd2035f0ced865a5e9f76331db53a2a8a213ea18064bd8e1d7368bde` /
+  `5b45f1401489fab63382366045a95f52984505038a379ca8bd8d0a780424c940`; artifact manifest/payload
+  `1ad6d9edfb1037564c3aec533904ed8d48bc4614a7bbcb221a56c9a244d802c7` /
+  `480c57bff42e28cdfdf5ba260978234ee98f3d1169407c2523beeba76d39e834`.
+- S9V `attempt-01` manifest: `outputs/20260902_v2/visualizations/scaled_chen_full_path_reconstruction_v1_attempt_01/visualization_manifest.json`, SHA-256
+  `ce6eee49822ddee7c3c28c13a6e0e108d499478984c498f2f51b909bebead749`.
+- S10 `attempt-02`: `outputs/20260902_v2/runs/lightgen_scaled_chen_mpcdar_rank16_runtime_performance_qualification_v1_attempt_02/`; validation/audit/compact SHA-256
+  `8293e549b1ae48447e28be924406525aa03fa8843c0f1a71fa1ec21e3f5894c5` /
+  `7b519b3a75cdf59ecfe2678d46a8f74ae3084cb7b9de90c95763efecc0f2f4ee` /
+  `ded0959097c88a74031edc1c0aa925d1a95a2df7f1abc5c6d9ba6ca7abdc3173`.
+
+S10 primary record: Python `3.11.16`, PyTorch `2.5.1`, Windows observed `10.0.26100`,
+`torch_num_threads=8`, `torch_num_interop_threads=8`, logical cores `16`, and formal CPU string
+`AMD64 Family 25 Model 68 Stepping 1, AuthenticAMD`; expected Windows `10.0.26200.0` did not
+match. Batch latency mean/median/p95/p99 in ms for B=`1/8/32` were respectively
+`0.5601775/0.53135/0.784155/0.943756`, `0.8914525/0.82855/1.25965/1.362798`, and
+`3.277882/3.21995/4.026955/4.434511`; per-sample mean was
+`0.5601775/0.1114315625/0.1024338125`, `1836.8588342/9338.7841702/9874.3015643` samples/s
+mean throughput. Fresh-process artifact initialization was `0.2792/9.1288/20.8566/30.286 ms`
+(manifest/payload/consumer/total), with `3657.2196 ms` process wall; it was not true cold-disk.
+Analytical factorized/full-W MACs were `644096/10240000` per sample, ratio
+`15.89825119236884`, not measured speedup. GPU, full-W runtime, end-to-end latency and process
+memory were `not_evaluated`/`not_recorded` as applicable.
+
+Bridge closeout: `refresh` stopped fail-closed with
+`invalid Sources manifest: C:\Users\24567\Documents\Codex\codex-original-chatgpt-bridge\current\.chatgpt-sources-manifest.json`;
+`status=invalid` returned the same reason. `bridge_recovery_blocked=true`; the existing package was
+not deleted or overwritten, and no automatic upload occurred.

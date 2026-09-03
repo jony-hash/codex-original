@@ -1522,3 +1522,48 @@ runtime-independence. Final status/classification are `passed` /
 `frozen_mean_preserving_data_aware_rank16_float32_numerically_qualified`, with `integration_only=true`.
 The only next action is `manual_review_MPCDAR_R16_F32_NQ_result`; no GPU/production/default-switch,
 decoder, training, generation or promotion consumer is authorized.
+
+## FINAL_MAINLINE_CLOSEOUT：H-LOMA-CBOGT Scaled-Chen（2026-09-03）
+
+The H-LOMA-CBOGT reconstruction-repair hypothesis/experiment thread is now
+`closed / resolved to current evidence boundary`. This is a governance closeout, not a new
+scientific classification or experiment. The authority chain is
+`RMAL → S7 MPCDAR → S8 F64 R16-IQ → S9 F32-NQ → S9V full-path visualization → S10 runtime
+characterization`; each later stage consumed only its named immutable parent, and write-once
+non-authoritative attempts remain historical rather than being reused.
+
+The frozen scientific conclusion is: task-relevant information survives the existing optical path
+through CMOS; reconstruction failure is primarily supported as mapping/readout misalignment; simple
+locality/raw Euclidean W-SVD is inadequate; useful mean/DC material is present; centered detector
+information is better represented by a fit-derived data-aware basis; and registered MPCDAR rank 16
+is the first confirmed candidate in its preregistered powers-of-two family. The last statement is not a minimum,
+intrinsic, or true rank-16 claim.
+
+The frozen readout remains `centered=z-mu_fit; h=centered@T16; prediction=c_mean+h@V16.T`,
+with S9 F32 tensors `mu_fit[256]`, `c_mean[40000]`, `T16[256,16]`, `V16[40000,16]`,
+`684352` scalars, raw bytes `2737408`, and serialized bytes `2739448`. S8 is integration-qualified,
+S9 is F32 numerically qualified, S9V is descriptive-only with no new Gate, and S10 is CPU-only
+readout characterization. The architecture wording remains optical front end → CMOS intensity
+sensing → lightweight frozen electronic rank-16 readout: hybrid optical-electronic reconstruction,
+not a native CMOS optical image.
+
+Current phase is `MAINLINE CLOSEOUT`; diagnosis is `closed`; repair, integration, F32 and
+visualization are `confirmed/qualified/qualified/completed`; runtime performance is
+`characterized`; next scientific task is `none`. Preserve
+`reconstruction_manifold_supported=false`, `generative_manifold_supported=false`,
+`generation_readiness=not_ready`, `training_authorized=false`, `formal_promotion=false`, and
+`closed_task_relevant_bottleneck_not_supported`. Native optical target-like CMOS reconstruction,
+real physical CMOS, Raspberry Pi, sim-to-real alignment, end-to-end hardware latency, GPU/full-W
+runtime, quantization, generative manifold and generation readiness remain unestablished.
+
+Future work, if explicitly authorized, is independent of this closed mainline: `REAL-HARDWARE
+DEPLOYMENT` / `REAL_CMOS_RASPBERRY_PI_DEPLOYMENT`, real CMOS calibration and alignment, sim-to-real
+validation, optional optimization only if separately justified, native optical redesign under new
+authorization, and separate generative-manifold/generation evidence. Historical `next action`
+fields above are retained as dated provenance and are superseded by this closeout; no historical
+hypothesis is deleted.
+
+Bridge closeout is `status=invalid` with `bridge_recovery_blocked=true`: clean-HEAD `refresh`
+stopped fail-closed because the existing manifest
+`C:\Users\24567\Documents\Codex\codex-original-chatgpt-bridge\current\.chatgpt-sources-manifest.json`
+is invalid. No package was deleted or overwritten and no automatic upload occurred.

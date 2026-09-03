@@ -435,3 +435,41 @@ S10 定向/布局/相关回归=`30 passed`，Windows-native 全套 pytest=`1357 
 Governance flags 保持 reconstruction/generative false、generation_readiness=`not_ready`、
 training/promotion=false。唯一下一动作是 `manual_review_MPCDAR_R16_RUNTIME_PQ_result`；不得训练、
 decoder、generation 或 promotion。Bridge 仍为 `invalid / cloud_sources_sync_blocked`。
+
+## FINAL_MAINLINE_CLOSEOUT：H-LOMA-CBOGT Scaled-Chen（2026-09-03）
+
+本次记录把 RMAL → S7 MPCDAR → S8 F64 R16-IQ → S9 F32-NQ → S9V full-path visualization →
+S10 runtime characterization 固定为当前主线的最终 authority chain。后续 consumer 只消费命名的
+immutable parent；所有较早或失败 attempt 按 write-once 保留，不以 earlier attempt 替代 later
+authority。本节是文档治理收口，不运行模型/CUDA、不生成 evidence、不修改 outputs 正式产物、
+SQLite、历史 transcript 或训练/推理代码。
+
+最终状态为：Current phase=`MAINLINE CLOSEOUT`；Scientific diagnosis=`closed`；Repair=`confirmed`；
+Integration=`qualified`；F32=`qualified`；Visualization=`completed`；Runtime performance=`characterized`；
+`mainline_state=closed_at_current_evidence_boundary`；current mainline next scientific task=`none`。
+假设/实验 thread 为 `closed / resolved to current evidence boundary`，历史假设不删除，历史
+`next action` 仅作 dated provenance。未来若明确授权，独立 track 为 `REAL-HARDWARE DEPLOYMENT`，
+显式 task name 为 `REAL_CMOS_RASPBERRY_PI_DEPLOYMENT`。
+
+冻结结论为：task-relevant information survives existing optical path through CMOS；重建失败主要
+由 mapping/readout misalignment 支持；simple locality/raw Euclidean W-SVD 不足；存在 useful
+mean/DC material；centered detector information 更适合 fit-derived data-aware basis；registered
+MPCDAR rank 16 是其 preregistered powers-of-two family 内 first confirmed candidate，但不是 minimum、intrinsic
+或 true rank 16。冻结公式为 `centered=z-mu_fit; h=centered@T16; prediction=c_mean+h@V16.T`；
+S9 F32 artifact 为 `mu_fit[256]`、`c_mean[40000]`、`T16[256,16]`、`V16[40000,16]`，
+scalar count=`684352`，raw/serialized=`2737408/2739448` bytes。
+
+允许的架构表述是：`optical front end → CMOS intensity sensing → lightweight frozen electronic
+rank-16 readout`，即 hybrid optical-electronic reconstruction；MPCDAR 不是 native CMOS optical
+image。未建立的边界包括 native optical target-like CMOS reconstruction、real physical CMOS、
+Raspberry Pi benchmark、sim-to-real detector alignment、end-to-end hardware latency、GPU、full-W
+runtime、quantization、generative manifold 与 generation readiness。
+
+flags 继续固定为 `reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、
+`generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false` 与
+`closed_task_relevant_bottleneck_not_supported`。未来 tracks 必须独立注册：real CMOS/Pi deployment、
+sim-to-real alignment、仅在另有理由时的 optional optimization、重新授权的 native optical redesign、
+以及独立 generative-manifold/generation evidence。Bridge 已在最终 clean HEAD 上按工具合同执行
+`refresh`/`status`：`refresh` fail-closed，`status=invalid`，确切原因是
+`invalid Sources manifest: C:\Users\24567\Documents\Codex\codex-original-chatgpt-bridge\current\.chatgpt-sources-manifest.json`。
+记录 `bridge_recovery_blocked=true`；未删除/覆盖现有 package，未自动上传。
