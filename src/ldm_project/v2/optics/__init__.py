@@ -9,6 +9,7 @@ from .devices import IdealAmplitudeSLM, IdentityOLS, identity_ols
 from .fiber_operator import FiberArrayOLS, FiberArraySpec, FiberTransportEnsembleOLS, lp01_radial_profile
 from .few_mode_fiber_operator import FewModeFiberArrayOLS, FewModeFiberArraySpec
 from .fiber_pool import FiberResearchSpec, FiberTransportPool
+from .nested_multimode_fiber_operator import NestedMultimodeFiberArrayOLS, NestedMultimodeFiberArraySpec
 from .operator import OpticalLatentOperator
 from .propagation import angular_spectrum_propagate, reference_angular_spectrum_propagate
 from .relays import ABCDMatrix, CoherentImagingRelay, NearConjugateRelay, reference_b0_imaging, reference_near_conjugate_lens_relay
@@ -35,6 +36,8 @@ __all__ = [
     "FiberArraySpec",
     "FewModeFiberArrayOLS",
     "FewModeFiberArraySpec",
+    "NestedMultimodeFiberArrayOLS",
+    "NestedMultimodeFiberArraySpec",
     "FiberTransportEnsembleOLS",
     "FiberResearchSpec",
     "FiberTransportPool",

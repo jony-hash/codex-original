@@ -1206,3 +1206,31 @@ Bridge closeout: `refresh` stopped fail-closed with
 `invalid Sources manifest: C:\Users\24567\Documents\Codex\codex-original-chatgpt-bridge\current\.chatgpt-sources-manifest.json`;
 `status=invalid` returned the same reason. `bridge_recovery_blocked=true`; the existing package was
 not deleted or overwritten, and no automatic upload occurred.
+
+## H-LOMA-CBOGT-FIBER-MMF-M6（2026-09-03，diagnostic-only）
+
+本次 bounded implementation 在分支
+`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`、起始/结束 HEAD
+`daf9d7f5871eedc8950833e90ca2ff95d3ad56e6` 上完成；起始工作树 clean，结束工作树只包含
+本 operator、导出和专项测试的实现增量，以及本状态登记和迁移附录。SMF、FMF、formal
+IdentityOLS、MPCDAR、S7/S8/S9/S9V/S10 和既有 outputs 均未修改。
+
+新增 `NestedMultimodeFiberArraySpec` / `NestedMultimodeFiberArrayOLS`，固定为
+`synthetic_nested_mmf_m6_second_order_identity_transport`、`diagnostic_only=true` 的合成嵌套
+MMF 诊断 operator。它复用现有 FMF 的 200-mode prefix，再按 degree-2 candidate block
+追加 `ETA1/XI2/XIETA/ETA2`，mode bank 为 `[600,100,100]`、transport 为
+`[600,600]` complex64 identity；registered buffers 的静态大小为两个各 `48,000,000`
+bytes 的 mode bank 加 `2,880,000` bytes transport。无 fiber length、beta、dispersion、loss、
+random/learned coupling 或 propagation。
+
+验证结果：M6 专项 `9 passed`；既有 SMF `4 passed`；既有 FMF M2 `8 passed`。SMF/FM F
+回归使用当前 Windows Conda 环境；FMF 文件测试为解决默认 `tmp_path` 的 Windows ACL
+问题显式指定了任务临时根，未改变测试或生产代码。changed modules/tests 的 compileall、
+Ruff 和 `git diff --check` 均通过。该结果只消费于人工审查和拒绝后续 VIS1/训练/晋升的
+边界决策，不产生 experiment output 或正式 evidence。
+
+Gate=`synthetic_mmf_m6_operator_implemented_and_validated`。下一动作唯一为
+`manual_review_synthetic_mmf_m6_implementation`；`mainline_state=closed_at_current_evidence_boundary`、
+`training_authorized=false`、`formal_promotion=false`、`generation_readiness=not_ready`
+保持不变。该 operator 不代表 real MMF propagation、physical guided-mode count、hardware
+MMF、real capacity 或 generation readiness。

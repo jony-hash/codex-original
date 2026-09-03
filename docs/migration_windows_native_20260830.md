@@ -397,6 +397,25 @@ classification=`descriptive_visualization_completed`、forward consistency max r
 promotion 权限。定向测试=`9 passed`，父级/全套回归在该 checkpoint 通过；Bridge 仍为
 `invalid / cloud_sources_sync_blocked`，未上传。S9V 后下一动作为 S10 implementation contract。
 
+## 迁移后当前工作区登记（2026-09-03）
+
+本登记只更新迁移后 Windows 工作区的当前状态，不改写 2026-08-30 的迁移、归档或恢复
+事实。当前分支为 `research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`，当前 HEAD
+为 `daf9d7f5871eedc8950833e90ca2ff95d3ad56e6`；本次起始工作树 clean。新增的诊断性
+MMF M6 operator 位于 `src/ldm_project/v2/optics/nested_multimode_fiber_operator.py`，
+导出位于 `src/ldm_project/v2/optics/__init__.py`，专项测试位于
+`tests/v2/test_nested_multimode_fiber_operator.py`；SMF/FM F/formal path、训练、CUDA、
+outputs 和冻结 evidence 均未触碰。
+
+当前验证为 M6 `9 passed`、SMF `4 passed`、FMF M2 `8 passed`，changed modules/tests 的
+compileall、Ruff、`git diff --check` 通过。FMF 回归为 Windows ACL 下显式临时根的
+bounded test invocation。MMF M6 仅作为
+`synthetic_nested_mmf_m6_second_order_identity_transport`、`diagnostic_only` 的人工审查
+输入；其拒绝决策消费者为后续 VIS1、训练和 formal promotion gate，均不得由本实现自动
+授权。唯一下一动作为 `manual_review_synthetic_mmf_m6_implementation`，治理 flags
+`mainline_state=closed_at_current_evidence_boundary`、`training_authorized=false`、
+`formal_promotion=false`、`generation_readiness=not_ready` 未改变。
+
 ## H-LOMA-CBOGT-S10-MPCDAR-R16-RUNTIME-PQ（2026-09-03）
 
 S10 在 S9V closeout 后以 starting HEAD=`8680c12be955df72906b955433e6daeabfdfec4a` 完成冻结
