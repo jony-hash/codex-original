@@ -78,6 +78,11 @@ EXPECTED_TRAINABLE = ("system.encoder.phase", "system.decoder.phase")
 FORBIDDEN_ELECTRONIC_VAE_KEYS = {"mu", "logvar", "reparameterization", "active_latent_injector", "posterior_head"}
 UNIT_AWARE_CALIBRATION_SCHEMA = "scaled_chen_bogt_calibration.v2"
 UNIT_AWARE_CALIBRATION_CONTRACT_VERSION = "unit_aware_raw_mean_v2"
+ENERGY_DISTANCE_LOGICAL_BATCH_SIZE = 10
+ENERGY_DISTANCE_PRIOR_BATCH_SIZE = 10
+TRAINING_PRIOR_BASE_SEED = 1238
+REGISTRATION_PRIOR_NAMESPACE = 10_000
+REGISTRATION_PANEL_COUNT = 3
 
 
 @dataclass(frozen=True)
@@ -788,6 +793,137 @@ def two_pass_bogt_surrogate(z: torch.Tensor, *, eps: float = 1.0e-8) -> torch.Te
     gradient = torch.autograd.grad(first_value, first, create_graph=False)[0].detach()
     linear = (z * gradient).sum()
     return first_value.detach() + linear - linear.detach()
+
+
+def _validate_energy_distance_batches(z: torch.Tensor, prior: torch.Tensor) -> None:
+    if z.ndim != 2 or prior.ndim != 2:
+        raise ValueError("energy-distance logical batch must be two-dimensional")
+    if z.shape != (ENERGY_DISTANCE_LOGICAL_BATCH_SIZE, PORT_COUNT) or prior.shape != (
+        ENERGY_DISTANCE_PRIOR_BATCH_SIZE,
+        PORT_COUNT,
+    ):
+        raise ValueError("energy-distance logical batch must be [10,100]")
+    if not torch.is_floating_point(z) or not torch.is_floating_point(prior):
+        raise ValueError("energy-distance batches must be real floating-point tensors")
+    if z.dtype != prior.dtype or z.device != prior.device:
+        raise ValueError("energy-distance batches must share dtype and device")
+    if not torch.isfinite(z).all() or not torch.isfinite(prior).all():
+        raise ValueError("energy-distance batches must be finite")
+
+
+def _pairwise_distance(left: torch.Tensor, right: torch.Tensor) -> torch.Tensor:
+    """Return the unsmoothed Euclidean distance matrix before normalization."""
+    return torch.linalg.vector_norm(left[:, None, :] - right[None, :, :], dim=-1)
+
+
+def energy_distance(z: torch.Tensor, prior: torch.Tensor) -> torch.Tensor:
+    """Compute the fixed [10, 100] empirical Energy Distance U-statistic.
+
+    The two within-sample terms are ordered off-diagonal U-statistics.  The
+    prior-prior term is retained in the value even when ``prior`` is detached
+    at the training boundary.  This estimator is finite-sample unbiased and
+    is intentionally allowed to return a finite negative value.
+    """
+    _validate_energy_distance_batches(z, prior)
+    cross = _pairwise_distance(z, prior)
+    within_z = _pairwise_distance(z, z)
+    within_prior = _pairwise_distance(prior, prior)
+    n = z.shape[0]
+    m = prior.shape[0]
+    z_off_diagonal = within_z.sum() - torch.diagonal(within_z).sum()
+    prior_off_diagonal = within_prior.sum() - torch.diagonal(within_prior).sum()
+    return (
+        2.0 * cross.sum() / (n * m)
+        - z_off_diagonal / (n * (n - 1))
+        - prior_off_diagonal / (m * (m - 1))
+    ) / math.sqrt(PORT_COUNT)
+
+
+def two_pass_energy_distance_surrogate(
+    z: torch.Tensor,
+    prior: torch.Tensor,
+    *,
+    microbatch_size: int = 1,
+) -> torch.Tensor:
+    """Preserve full-batch ED value while replaying its latent VJP by chunks.
+
+    The detached first pass builds the complete joint geometry and obtains
+    ``dL_ED/dz_i``.  The live pass uses only the corresponding linear VJP for
+    each optical microbatch; it never averages independent batch-size-one ED
+    objectives and never uses a detached scalar as a training surrogate.
+    """
+    _validate_energy_distance_batches(z, prior)
+    if not isinstance(microbatch_size, int) or microbatch_size <= 0 or microbatch_size > z.shape[0]:
+        raise ValueError("energy-distance logical batch microbatch size is invalid")
+    detached_z = z.detach().requires_grad_(True)
+    detached_prior = prior.detach()
+    full_value = energy_distance(detached_z, detached_prior)
+    latent_gradient = torch.autograd.grad(full_value, detached_z, create_graph=False)[0].detach()
+    linear_terms: list[torch.Tensor] = []
+    for start in range(0, z.shape[0], microbatch_size):
+        stop = min(start + microbatch_size, z.shape[0])
+        linear_terms.append((z[start:stop] * latent_gradient[start:stop]).sum())
+    linear = torch.stack(linear_terms).sum()
+    return full_value.detach() + linear - linear.detach()
+
+
+def training_prior_seed(global_step: int, *, base_seed: int = TRAINING_PRIOR_BASE_SEED) -> int:
+    """Return the registered deterministic seed for a future T2 step."""
+    if not isinstance(global_step, int) or isinstance(global_step, bool) or global_step < 0:
+        raise ValueError("training prior global step must be a non-negative integer")
+    if not isinstance(base_seed, int) or isinstance(base_seed, bool) or base_seed <= 0:
+        raise ValueError("training prior base seed must be a positive integer")
+    return base_seed * 100_000 + global_step
+
+
+def registration_panel_seed(
+    panel_id: int,
+    *,
+    base_seed: int = TRAINING_PRIOR_BASE_SEED,
+    namespace: int = REGISTRATION_PRIOR_NAMESPACE,
+) -> int:
+    """Return a seed in the disjoint registration-panel namespace."""
+    if not isinstance(panel_id, int) or isinstance(panel_id, bool) or not 0 <= panel_id < REGISTRATION_PANEL_COUNT:
+        raise ValueError("registration panel id is invalid")
+    if not isinstance(namespace, int) or isinstance(namespace, bool) or namespace <= 0:
+        raise ValueError("registration prior namespace must be positive")
+    return base_seed * 100_000 + namespace + panel_id
+
+
+def sample_training_prior(
+    global_step: int,
+    *,
+    logical_batch_size: int = ENERGY_DISTANCE_PRIOR_BATCH_SIZE,
+    dtype: torch.dtype = torch.float32,
+) -> torch.Tensor:
+    """Draw a deterministic CPU prior batch for one future training step."""
+    if logical_batch_size != ENERGY_DISTANCE_PRIOR_BATCH_SIZE:
+        raise ValueError("training prior logical batch must be exactly 10")
+    generator = torch.Generator(device="cpu").manual_seed(training_prior_seed(global_step))
+    return truncated_normal_sample(
+        (logical_batch_size, PORT_COUNT),
+        generator=generator,
+        device="cpu",
+        dtype=dtype,
+    )
+
+
+def registration_panel_prior(
+    panel_id: int,
+    *,
+    logical_batch_size: int = ENERGY_DISTANCE_PRIOR_BATCH_SIZE,
+    dtype: torch.dtype = torch.float32,
+) -> torch.Tensor:
+    """Draw the fixed deterministic prior batch for one registration panel."""
+    if logical_batch_size != ENERGY_DISTANCE_PRIOR_BATCH_SIZE:
+        raise ValueError("registration prior logical batch must be exactly 10")
+    generator = torch.Generator(device="cpu").manual_seed(registration_panel_seed(panel_id))
+    return truncated_normal_sample(
+        (logical_batch_size, PORT_COUNT),
+        generator=generator,
+        device="cpu",
+        dtype=dtype,
+    )
 
 
 def lop_from_powers(powers: Sequence[torch.Tensor], references: torch.Tensor, *, eps: float = 1.0e-12) -> torch.Tensor:
