@@ -81,4 +81,3 @@ def test_t2_interpretation_is_not_semantic_generation_authority() -> None:
     assert interpretation["code8_to_ols"] in {"partial", "unresolved"}
     assert interpretation["global_power_track"] == "closed_after_this_canary"
     assert interpretation["next_action"] == "PLAN_S1_OLS_SEMANTIC_REPRESENTATION_AUDIT"
-
