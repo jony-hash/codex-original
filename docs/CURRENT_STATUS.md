@@ -1888,3 +1888,53 @@ T2-SAAO-PF targeted 与 R2/RCR-A/PCR/BOGT 直接依赖回归=`81 passed`；compi
 治理继续为 `mainline_state=closed_at_current_evidence_boundary`、`reconstruction_manifold_supported=false`、
 `generative_manifold_supported=false`、`generation_readiness=not_ready`、`training_authorized=false`、
 `formal_promotion=false`。
+
+## H-LOMA-GEN-T2-SAAC：SCAM normalized-power controllability canary（2026-09-04，Windows-native，diagnostic-only）
+
+本轮在同一专用入口完成已 preflight 的唯一一次 T2 bounded canary：从固定 step-5000 parent 恢复
+registered Adam state，使用 repaired calibration `scaled_chen_bogt_calibration.v2` /
+`unit_aware_raw_mean_v2`、registered prior、Energy-Distance 与
+`beta=0.0014299609134309638`，固定 1000 steps 到 logical step 6000。`alpha_BOGT=0`、`gamma=0`、
+logical/prior batch=`10`、microbatch=`1`、two-pass gradient、optimizer、horizon、seed=`1234` 和
+既有 Gate 均保持不变；唯一 trainable parameters 为 `system.encoder.phase` 与
+`system.decoder.phase`。没有重新选择样本，没有 MMD/SWD/SCED/Chamfer/Sinkhorn、新 prior、新 beta 或
+第二次 global-power objective，也没有 prior generation、semantic OLS audit、G2、bridge、formal
+runtime 或 promotion。
+
+新增实现/config/tests 的 clean execution boundary 为
+`2665b9d13aedef898eff7e2b567f1988feeccf9b`；同入口 3-step real-update preflight 通过，冻结 parent
+negative control 正确拒绝 primary Gate。正式 write-once authority 为
+`outputs/20260904_v2/runs/lightgen_scaled_chen_support_aware_alignment_canary_v1_attempt_01/`，
+10 个 JSON/PT 文件、`17357744` bytes；training manifest SHA-256=`8b46943ce884143ebe24b0a10f782738d7ec0517b79f5efba0ac343c173807b2`，
+end checkpoint SHA-256=`c1a834c755f7eef27b8e1b3ed7ce5b1f154eca7fe775ccd5ea65e05d14fa82a8`，compact report
+SHA-256=`1d7d1a6473e141b85c2f15d92bf7ff83c97c1ae744f9bf93eec0d5377cb9a738`。逐文件 artifact
+reference hash/size、目录树、无 TIFF/隐藏文件/`.tmp` 检查均通过；same-entrypoint preflight JSON
+SHA-256=`e7efd967b5762ccb792a40f278e2a000f08388151a8620367e91014938582f43`，上游 T2-SAAO-PF
+manifest SHA-256=`a9055ec7dfbccad92e683e3569ba4517becbda5d05565966ab22430d806df18a`。
+
+正式训练实际完成 5001–6000 共 1000 steps，runtime=`676.8129 s`、peak CUDA allocation=`2814739456`
+bytes；learned-state digest 从
+`cdbf06f03b611f4df38324c1546686bc5fc614644a64130c95cd3a76012e27b5` 变为
+`c3fbb90378dd06ec76cb6b72d05bd6d9fde57c0f64209fc6edcfad90df8a1abc`，OLS unchanged，只有注册
+phase 参数改变，optimizer endpoint 为 step 6000。
+
+T2 observer 明确是 `z_j=|c_j|^2/s_j` 的 `normalized_power_coordinate_observer`；物理 OLS 状态
+仍为 `c∈C^100`，包含 amplitude 与 phase。结果为有效
+`T2_SUPPORT_AWARE_ALIGNMENT_NOT_SUPPORTED`：R50=`1.7548616`，95% CI=`[1.7309163,1.7764292]`
+（R50 CI-separated 条件通过）；R95=`1.0573063`，95% CI=`[1.0348356,1.0767013]`
+（R95 条件未通过）。paired prior `ΔP50=0.0070921`、upper95=`0.0076903`，`ΔP95=0.0287672`、
+upper95=`0.0293099`，均未满足 upper95<0；parent-relative MSE mean delta=`-0.0010066`、
+95% CI=`[-0.0010208,-0.0009922]`，mean safety 与 rank safety 通过。因此这是当前
+global normalized-power geometry 的 canary not-supported 结果，不推出 semantic OLS generation
+失败或 OLS generation impossible。
+
+SCAM architecture authority=`OLS_INPUT_CONTRACT_HIERARCHICAL_CONTROLLER_RECOMMENDED`，
+plan=`SCAM_PLAN_READY`；`SCAM authority=FAIL` 仅对应本次 T2 Gate。`complex semantic OLS`、
+`label-to-OLS` 和 `8D-to-OLS` 结论分别为 `UNESTABLISHED`、`UNRESOLVED`、`PARTIAL / UNRESOLVED`；
+global-prior family=`CLOSED_AFTER_THIS_CANARY`。无论本次 valid FAIL，唯一下一动作统一为
+`PLAN_S1_OLS_SEMANTIC_REPRESENTATION_AUDIT`。
+
+新 T2-SAAC 回归与既有 T2-SAAO-PF 直接依赖测试=`17 passed`；compileall、Ruff、`git diff --check`
+通过。治理保持 `mainline_state=closed_at_current_evidence_boundary`、
+`reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、
+`generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false`。

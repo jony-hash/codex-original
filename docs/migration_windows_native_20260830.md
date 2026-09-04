@@ -942,3 +942,34 @@ direct dependencies=`81 passed`，compileall、Ruff、`git diff --check` 均通�
 治理保持 `mainline_state=closed_at_current_evidence_boundary`、`reconstruction_manifold_supported=false`、
 `generative_manifold_supported=false`、`generation_readiness=not_ready`、`training_authorized=false`、
 `formal_promotion=false`。唯一下一动作固定为 `IMPLEMENT_SUPPORT_AWARE_ALIGNMENT_CANARY`。
+
+## 2026-09-04：H-LOMA-GEN-T2-SAAC SCAM architecture delta and canary
+
+T2-SAAC implementation/config/tests 的 clean execution boundary 为
+`2665b9d13aedef898eff7e2b567f1988feeccf9b`。同入口 3-step real-update preflight 通过后，只执行一次
+fixed step-5000→6000、1000-step Windows-native CUDA canary；没有重选样本、第二次 global-power
+objective、MMD/SWD/SCED/Chamfer/Sinkhorn、新 prior、新 beta、prior generation、semantic OLS audit、
+G2、bridge 或 formal promotion。registered parent、R2 calibration、prior、Energy-Distance、
+`beta=0.0014299609134309638`、`alpha_BOGT=0`、`gamma=0`、Adam、horizon、four primary Gate 与 safety
+contract 全部保持不变。
+
+输出 authority 为
+`outputs/20260904_v2/runs/lightgen_scaled_chen_support_aware_alignment_canary_v1_attempt_01/`，10 个 JSON/PT、
+`17357744` bytes；training manifest SHA-256=`8b46943ce884143ebe24b0a10f782738d7ec0517b79f5efba0ac343c173807b2`，
+end checkpoint SHA-256=`c1a834c755f7eef27b8e1b3ed7ce5b1f154eca7fe775ccd5ea65e05d14fa82a8`，无 TIFF、隐藏文件
+或 `.tmp`。运行完成 1000 steps，runtime=`676.8129 s`，peak CUDA=`2814739456` bytes；只有 registered
+encoder/decoder phase 参数改变，OLS unchanged。
+
+结果为有效 `T2_SUPPORT_AWARE_ALIGNMENT_NOT_SUPPORTED`：R50=`1.7548616`、95% CI=`[1.7309163,1.7764292]`
+的严格分离改善条件通过；R95=`1.0573063`、95% CI=`[1.0348356,1.0767013]` 未通过；paired prior
+ΔP50/ΔP95 upper95=`0.0076903/0.0293099` 未通过；parent-relative MSE upper95=`-0.0009922`、
+mean/rank safety 通过。故 global normalized-power geometry canary 不支持，但不推出 semantic OLS
+generation failure 或 OLS generation impossible。
+
+SCAM authority 保持 `OLS_INPUT_CONTRACT_HIERARCHICAL_CONTROLLER_RECOMMENDED` / `SCAM_PLAN_READY`；
+observer 仅为 `z_j=|c_j|²/s_j` normalized power，物理 `c∈C^100` 的 complex semantic 状态仍未审查。
+`semantic OLS=UNESTABLISHED`、`label-to-OLS=UNRESOLVED`、`8D-to-OLS=PARTIAL / UNRESOLVED`、
+`global-prior family=CLOSED_AFTER_THIS_CANARY`。唯一下一动作为
+`PLAN_S1_OLS_SEMANTIC_REPRESENTATION_AUDIT`；治理继续为
+`mainline_state=closed_at_current_evidence_boundary`、reconstruction/generative unsupported、
+generation not ready、training/promotion=false。

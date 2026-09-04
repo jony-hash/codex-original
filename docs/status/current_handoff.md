@@ -2327,3 +2327,26 @@ template control=`0.04197700`，cyclic control=`0.07559964`。
 promotion。GAC focused regression=`42 passed`，compileall、Ruff、`git diff --check` 通过。治理仍为
 `mainline_state=closed_at_current_evidence_boundary`、reconstruction/generative unsupported、
 generation not ready、training/promotion=false；唯一下一动作为 `REVIEW_ALIGNMENT_TRADEOFF_FAILURE`。
+
+## H-LOMA-GEN-T2-SAAC：SCAM normalized-power controllability canary（2026-09-04）
+
+T2-SAAC 在 clean implementation boundary `2665b9d13aedef898eff7e2b567f1988feeccf9b` 上完成同入口
+3-step real-update preflight 后，执行唯一一次固定 step-5000→6000、1000-step bounded canary。目标为
+`L_total=L_MSE+beta*L_ED`，`beta=0.0014299609134309638`、`alpha_BOGT=0`、`gamma=0`；parent、repaired
+calibration、registered prior、Energy-Distance、optimizer、horizon、seed、four primary gates 与 safety
+gates 均不变。只更新 encoder/decoder phase，OLS 保持冻结；无 prior decoding、semantic OLS audit、
+MMD/SWD/SCED/Chamfer/Sinkhorn、new prior/beta、G2、bridge 或 promotion。
+
+正式 authority：`outputs/20260904_v2/runs/lightgen_scaled_chen_support_aware_alignment_canary_v1_attempt_01/`，
+10 个 JSON/PT、`17357744` bytes，training manifest SHA-256=`8b46943ce884143ebe24b0a10f782738d7ec0517b79f5efba0ac343c173807b2`，
+end checkpoint SHA-256=`c1a834c755f7eef27b8e1b3ed7ce5b1f154eca7fe775ccd5ea65e05d14fa82a8`。R50=`1.7548616`
+（CI `[1.7309163,1.7764292]`，该项通过），R95=`1.0573063`（CI `[1.0348356,1.0767013]`，该项未通过）；
+paired prior ΔP50/ΔP95 upper95=`0.0076903/0.0293099`，未通过；parent-relative MSE upper95=
+`-0.0009922`，通过；mean/rank safety 通过。有效 Gate=`T2_SUPPORT_AWARE_ALIGNMENT_NOT_SUPPORTED`。
+
+SCAM 只把 `z_j=|c_j|²/s_j` 解释为 `normalized_power_coordinate_observer`，不是完整
+`c∈C^100` complex semantic OLS latent。`SCAM authority=FAIL` 仅为本次 canary Gate；semantic OLS=
+`UNESTABLISHED`，label-to-OLS=`UNRESOLVED`，8D-to-OLS=`PARTIAL / UNRESOLVED`，global-prior family=
+`CLOSED_AFTER_THIS_CANARY`。治理保持 closed evidence boundary、reconstruction/generative unsupported、
+generation not ready、training/promotion=false；唯一下一动作：
+`PLAN_S1_OLS_SEMANTIC_REPRESENTATION_AUDIT`。
