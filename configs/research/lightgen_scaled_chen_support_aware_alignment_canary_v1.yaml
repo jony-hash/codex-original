@@ -53,7 +53,7 @@ dataset:
   input_shape: [1, 28, 28]
   rendered_shape: [1, 200, 200]
   mra_manifest_sha256: 520f7743bb317fabf891734ad899c84f2cec7639dbe02f65642670a8a1e64ebb
-  confirmation_indices_sha256: ff7ab50b95d96e727c240edc2baa916d1e6c11402b8f4f9c2ce6e2e5e2218a
+  confirmation_indices_sha256: ff7ab50b95d96e727c240edc2baa916d1e6c11402b8f4f9c2ce6e2e7e5e2218a
   train_support_count: 55000
   confirmation_count: 5000
 
