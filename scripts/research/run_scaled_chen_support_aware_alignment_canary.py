@@ -681,7 +681,8 @@ def _load_authorities(config: Mapping[str, Any]) -> dict[str, Any]:
     prior = distances.get("d_prior_to_train")
     if not torch.is_tensor(holdout) or not torch.is_tensor(prior) or holdout.shape != (CONFIRMATION_COUNT,) or prior.shape != (CONFIRMATION_COUNT,):
         raise ValueError("T2-SAAC parent distance vectors have invalid shapes")
-    panel = sources["parent"]["panel"]
+    registered_sources = sources["sources"]
+    panel = registered_sources["parent"]["panel"]
     parent_mse = _mapping(_mapping(panel["per_sample_mse"], "parent MRA per-sample MSE")["confirmation"], "parent confirmation MSE").get(config["parent"]["mra_parent_mse_key"])
     if not torch.is_tensor(parent_mse) or parent_mse.shape != (CONFIRMATION_COUNT,) or not torch.isfinite(parent_mse).all():
         raise ValueError("T2-SAAC parent MSE endpoint is invalid")
@@ -693,7 +694,7 @@ def _load_authorities(config: Mapping[str, Any]) -> dict[str, Any]:
         "calibration": calibration,
         "parent_distances": {"holdout": holdout, "prior": prior},
         "parent_mse": parent_mse,
-        "parent_metrics": sources["rcr_metrics"],
+        "parent_metrics": registered_sources["rcr_metrics"],
     }
 
 
@@ -1037,7 +1038,7 @@ def preflight(
     torch.cuda.manual_seed_all(SEED)
     torch.cuda.reset_peak_memory_stats(device)
     started = time.perf_counter()
-    formal = authorities["sources"]["parent"]["formal"]
+    formal = authorities["sources"]["sources"]["parent"]["formal"]
     model = _build_model(formal, authorities["checkpoint"], device)
     optimizer, parent_optimizer_digest, loaded_optimizer_digest = _load_optimizer(model, authorities["checkpoint"])
     state_before = _state_digest(model)
@@ -1114,7 +1115,7 @@ def run(
     torch.cuda.manual_seed_all(SEED)
     torch.cuda.reset_peak_memory_stats(device)
     started = time.perf_counter()
-    formal = authorities["sources"]["parent"]["formal"]
+    formal = authorities["sources"]["sources"]["parent"]["formal"]
     model = _build_model(formal, authorities["checkpoint"], device)
     start_state_digest = _state_digest(model)
     if start_state_digest != PARENT_STATE_DIGEST:
