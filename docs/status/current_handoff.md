@@ -2232,3 +2232,32 @@ attempt-01 保留且未覆盖。六个输出文件共 `159393` bytes，无 TIFF�
 training 或 formal promotion。治理仍为 `mainline_state=closed_at_current_evidence_boundary`、
 reconstruction/generative unsupported、generation not ready、training/promotion=false。唯一下一动作：
 `PLAN_REPAIRED_COORDINATE_REPLAY`。
+
+## H-LOMA-GEN-RCR-A：Repaired-Coordinate MRA Replay（2026-09-04）
+
+本轮 initial state 为 clean，branch=`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`，starting
+HEAD=`ef1b336984b701f1905a06fc868c68c4b4892057`。RCR-A harness/config/tests 已独立提交为
+`c0bbe12db909d4ceb5176f72dbdb69df5c6c8ff5`。正式 Stage A 使用 parent MRA attempt-05 的固定 panel/索引和
+step-5000 checkpoint SHA-256=`ccb89f98cc11725eb80d66c61f4fdef62b24acdf9f6d739f78373f462d10e5de`，仅替换
+calibration identity 为 R2 `scaled_chen_bogt_calibration.v2` / `unit_aware_raw_mean_v2`；R2 payload SHA-256=
+`ce31dd816691a08ca9388e0ec086be0e2e3ebd40005598c1ef44a1ba79a9fd07`，manifest SHA-256=
+`0cf707fe4f146c1a1c3190256fad8ec8e4bc72e33674d374e75f40b161b3fce6`。
+
+repaired coordinate 的 selection/confirmation z mean 为 `1.0060573/0.9250944`，variance 为
+`1.5498618/1.4546335`；Gaussian KL 为 `3.2833059/2.8498273`，numerical truncated-normal KL 为
+`3.2492599/2.7428405`。旧 MRA formal values 由 audit.json 精确读取；complex rank
+`12.2361650/12.8739576` 与同一前缀 replay 一致，power rank 变为 `7.2165284/7.3683505`，仅作为
+coordinate-dependent 指标。两组 mean 均满足 descriptive `±0.10` 对齐，但 variance 是 registered prior
+`0.25` 的 `6.1994×/5.8185×`，且 variance-shape term 在两组 Gaussian-KL 分解中均主导，故 Gate=
+`MRA_PRIOR_CONTRACT_REVIEW_REQUIRED`，dominant assumption=`unconditional_truncated_normal_variance=0.25_with_lower=0.0`。
+
+唯一完整 authority 为
+`outputs/20260904_v2/runs/lightgen_scaled_chen_repaired_coordinate_mra_v1_attempt_02/`，manifest SHA-256=
+`10a5469468357c8490446ff4c9d1fc86bc1041bba4cfa6fa51af4fc8f01f70da`；4 个 JSON 共 `53575` bytes，无 TIFF、
+隐藏文件或 `.tmp`。attempt-01 是首次发布顺序缺陷留下的 3 个中间 JSON，保留但不消费。state digest
+before/after=`cdbf06f03b611f4df38324c1546686bc5fc614644a64130c95cd3a76012e27b5`，decoder/relay/CMOS/MPCDAR、
+prior generation、optimizer、backward、training、refit 均未执行；Stage B G1-SA 未执行。RCR-A/直接依赖测试
+`46 passed`，compileall、Ruff、diff-check 通过；peak CUDA=`1599782400` bytes，runtime=`39.8108 s`。
+
+治理继续为 `mainline_state=closed_at_current_evidence_boundary`、reconstruction/generative manifold unsupported、
+generation not ready、training/promotion=false。下一动作固定为 `PLAN_PRIOR_SHAPE_CONTRACT_REVIEW`。

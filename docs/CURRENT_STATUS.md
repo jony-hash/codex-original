@@ -1516,6 +1516,47 @@ observer/test、两份状态文档、当前 VIS2 renderer/test；未发现额外
 `formal_promotion=false`、`bridge=invalid / cloud_sources_sync_blocked`。本轮未运行 CUDA、训练、refit、
 rank search、formal runtime 或 bridge；唯一下一动作固定为 `manual_review_VIS2_figures`。
 
+## H-LOMA-GEN-RCR-A：Repaired-Coordinate MRA Replay（2026-09-04，Stage A，diagnostic-only）
+
+在初始 clean state（branch=`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`、starting
+HEAD=`ef1b336984b701f1905a06fc868c68c4b4892057`）完成 RCR-A harness/config/tests 独立提交后，使用
+冻结的 step-5000 checkpoint（SHA-256=`ccb89f98cc11725eb80d66c61f4fdef62b24acdf9f6d739f78373f462d10e5de`）和
+不可变 parent MRA attempt-05 panel，执行 repaired-coordinate Stage A latent-prefix CUDA replay。只改变
+calibration identity：旧 `scaled_chen_bogt_calibration.v1`（epsilon-dominated）对比新
+`scaled_chen_bogt_calibration.v2` / `unit_aware_raw_mean_v2`，新 payload SHA-256=
+`ce31dd816691a08ca9388e0ec086be0e2e3ebd40005598c1ef44a1ba79a9fd07`，R2 manifest SHA-256=
+`0cf707fe4f146c1a1c3190256fad8ec8e4bc72e33674d374e75f40b161b3fce6`。calibration indices、dataset、mode bank、
+zero-phase reference 和 pre-OLS plane identity 均通过显式绑定；不允许 v1 fallback。
+
+Stage A 只执行 `SLM → front → encoder layer 1/2 → pre-OLS → complex coefficients`，未进入 decoder、relay、
+CMOS、MPCDAR、evaluator、prior generation、optimizer、backward、training 或 refit。selection 的 repaired
+`z` mean/variance=`1.0060573 / 1.5498618`，confirmation 为 `0.9250944 / 1.4546335`；per-port mean range
+分别为 `[0.0882697, 0.7385800, 3.6657655]` 与 `[0.0805473, 0.7471590, 3.0567923]`，per-port variance range
+分别为 `[0.0073358, 0.6374792, 16.5289917]` 与 `[0.0066992, 0.5816780, 12.8238106]`。Gaussian KL 为
+`3.2833059 / 2.8498273`，numerical truncated-normal KL 为 `3.2492599 / 2.7428405`，均较旧坐标降低；
+power rank 为 `7.2165284 / 7.3683505`，为 coordinate-dependent 描述，不作为新 material-improvement Gate。
+complex rank 保持精确旧 MRA 值 `12.2361650 / 12.8739576`，raw coefficient/power 由同一前缀复用；checkpoint
+hash 和 learned-state digest 均保持不变（state digest=`cdbf06f03b611f4df38324c1546686bc5fc614644a64130c95cd3a76012e27b5`）。
+
+新的完整 write-once authority 为
+`outputs/20260904_v2/runs/lightgen_scaled_chen_repaired_coordinate_mra_v1_attempt_02/`，manifest SHA-256=
+`10a5469468357c8490446ff4c9d1fc86bc1041bba4cfa6fa51af4fc8f01f70da`，含 4 个 JSON 文件、总计 `53575` bytes，
+无 TIFF、隐藏文件或 `.tmp`。attempt-01 因首次实现的 manifest 发布顺序错误仅保留 3 个中间 JSON，不作为
+authority，未被删除或覆盖；attempt-02 为唯一完整审计结果。
+
+两组 panel 的 mean 均在 descriptive tolerance `±0.10` 内，但 variance 分别为注册 prior variance `0.25` 的
+`6.1994×` 与 `5.8185×`；两组 Gaussian-KL 分解均由 variance-shape term 主导，且 numerical KL=`3.2493/2.7428`。
+因此 Gate=`MRA_PRIOR_CONTRACT_REVIEW_REQUIRED`，dominant assumption 为
+`unconditional_truncated_normal_variance=0.25_with_lower=0.0`，下一步为 `PLAN_PRIOR_SHAPE_CONTRACT_REVIEW`；
+这不等同于 replay invalid，也不自动启动 Stage B G1-SA。RCR-A targeted/直接依赖回归=`46 passed`；compileall、
+Ruff、`git diff --check` 通过。CUDA 资源记录为 free-before=`5368709120` bytes、peak allocated=`1599782400`
+bytes、runtime=`39.8108 s`，全程 `stage_b_g1_replay_executed=false`。
+
+RCR-A harness/config/tests 独立 commit 为 `c0bbe12db909d4ceb5176f72dbdb69df5c6c8ff5`；当前治理保持
+`mainline_state=closed_at_current_evidence_boundary`、`reconstruction_manifold_supported=false`、
+`generative_manifold_supported=false`、`generation_readiness=not_ready`、`training_authorized=false`、
+`formal_promotion=false`。唯一下一动作固定为 `PLAN_PRIOR_SHAPE_CONTRACT_REVIEW`。
+
 ## H-LOMA-GEN-P1-R2-UACR unit-aware calibration contract repair attempt-02（2026-09-04，Windows-native，calibration-only）
 
 R2 只修复 C6 已确认的 modal coefficient-power calibration contract：旧 v1 的
