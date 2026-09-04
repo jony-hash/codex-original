@@ -839,3 +839,25 @@ formal values，power rank=`7.2165284/7.3683505` 仅为 coordinate-dependent 描
 `cdbf06f03b611f4df38324c1546686bc5fc614644a64130c95cd3a76012e27b5`，peak CUDA=`1599782400` bytes，runtime=
 `39.8108 s`。治理仍为 closed evidence boundary、reconstruction/generative unsupported、generation not ready、
 training/promotion=false。
+
+## H-LOMA-GEN-T1-RCWV repaired-coordinate BOGT weight validity canary attempt-01（2026-09-04）
+
+完成初始 clean preflight 后，在固定 step-5000 parent、注册三组 panel 与已批准 R2 v2 calibration
+上执行 no-update CUDA gradient measurement；没有 optimizer、optimizer.step、training、checkpoint、
+prior generation、decoder/CMOS/MPCDAR 或 refit。branch=`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`，
+starting/ending HEAD=`47b9aa0896cae88516b3872e6f3355ff12434054`。
+
+旧 alpha=`0.002996375650268832` 的 provenance、parameter subset、norm/ratio formula、batch/microbatch
+与三组 panel identity 均闭合。注册旧 preflight effective ratios=`0.1102407/0.0855945/0.1081556`；同一
+step-5000 parent 的 v1 replay=`0.1864269/0.1105396/0.1395263`；repaired v2 replay=
+`1.9516949/1.5488551/1.5754461`，median/min/max=`1.5754461/1.5488551/1.9516949`。Gate=
+`RC_ALPHA_TOO_STRONG`，仅说明该 registered alpha 在 repaired coordinate 下超出 `[0.05,0.40]`，不授权
+训练或 generation，也不实施 weight repair。
+
+write-once authority 为
+`outputs/20260904_v2/runs/lightgen_scaled_chen_repaired_coordinate_bogt_weight_validity_v1_attempt_01/`，
+4 个 JSON、`38814` bytes；artifact reference hashes、hidden/temporary-file 检查通过。optimizer recovery
+state=`AVAILABLE_AND_BOUND`（只读），checkpoint/state digest 前后一致，所有 no-update isolation flags
+通过。T1-RCWV targeted tests=`8 passed`；compileall、Ruff、`git diff --check` 通过。治理保持
+closed evidence boundary、reconstruction/generative unsupported、generation not ready、training/promotion
+false。唯一下一动作固定为 `PLAN_REPAIRED_COORDINATE_ALIGNMENT_WEIGHT_REGISTRATION`。

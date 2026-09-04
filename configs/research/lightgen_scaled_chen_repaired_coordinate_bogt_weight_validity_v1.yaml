@@ -1,0 +1,113 @@
+schema: lightgen_scaled_chen_repaired_coordinate_bogt_weight_validity_v1
+task_id: H-LOMA-GEN-T1-RCWV
+hypothesis: H-LOMA-GEN-T1-RCWV
+
+parent_bogt:
+  config: configs/research/lightgen_optical_manifold_smf_bogt_v1.yaml
+  config_sha256: e3d1b536aa081a8298b21b0b608f232463444a2863e138f941765adf96d8a701
+  review_contract: configs/research/lightgen_optical_manifold_smf_bogt_review_v1.json
+  review_sha256: 4978686212b164f281cf1cb5c070119929fa111ea34e92a77d4b1d5ae2ce10f6
+  preflight: outputs/20260829_v2/runs/lightgen_optical_manifold_smf_bogt_v1_attempt_04/preflight.json
+  preflight_sha256: 2570df7cf4fe7a2b8fbca5e8bddce3cba259984e038347c74b5e3855b6106d9b
+  pilot_review: outputs/20260829_v2/runs/lightgen_optical_manifold_smf_bogt_v1_attempt_04/pilot_review.json
+  pilot_review_sha256: 50a4bd770a7287d8993f06d64ed925450b2d09e009ed0cacdadf4d7742ad6095
+  gradient_panels: outputs/20260829_v2/runs/lightgen_optical_manifold_smf_bogt_v1_attempt_04/scaled_chen_bogt_gradient_panels.pt
+  gradient_panels_sha256: b12d616cbb34297aed5fa7b3d941964a4ac02cb2de6c1fce1b6cf1bb5de0f7b1
+  calibration: outputs/20260829_v2/runs/lightgen_optical_manifold_smf_bogt_v1_attempt_04/scaled_chen_bogt_calibration.pt
+  calibration_sha256: d871a6319e4a4efcc7746378305b3bdc678e93c876b9af9d4e875a7e59a2ed11
+  source_commit: cefaa19a257b836f22ad04594ec3748c027b0eec
+  source_branch: research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1
+  dataset_manifest_sha256: e3f9c39b9f2fc6278f93f688e6ad7735cfad9a4dfbb9e74ba32d36ac10da33c2
+  schedule_sha256: 73b77c379267fd4535188d96075ec14db9cfc2a53e9bdcb49fc0a0e3c4cd3145
+  panel_indices_sha256:
+    - 822948f09ebdad5f3fb36da36f45ae1dc0b9d65b6ff79675405aeec763f55861
+    - 635817ff273289883881c3447115ff0db05a20aa08448e0e2095e4c420df836f
+    - 2340114e34809126e683aca958f4590e195f3911aa42697ef94d6ab4940a0202
+  alpha: 0.002996375650268832
+  gamma: 0.02969130038500517
+  target_ratio: 0.10
+  ratio_formula: alpha_times_bogt_gradient_norm_divided_by_mse_gradient_norm
+  registered_boundary: [0.05, 0.40]
+  registered_panel_rule: all_three_panels_and_each_registered_objective_ratio
+
+repaired_calibration:
+  config: configs/research/lightgen_scaled_chen_bogt_calibration_contract_repair_v2.json
+  config_sha256: b8c1efab6fd49c0e68696bc7a466cf6eaeeb499a842c6efa66fe080254b867a9
+  config_canonical_sha256: c9de9505a6cf64432e4f2c350bfc5dfa188bc9563cdf8f89c274193123045deb
+  manifest: outputs/20260904_v2/runs/lightgen_scaled_chen_bogt_calibration_contract_repair_v2_attempt_02/calibration_manifest.json
+  manifest_sha256: 0cf707fe4f146c1a1c3190256fad8ec8e4bc72e33674d374e75f40b161b3fce6
+  payload: outputs/20260904_v2/runs/lightgen_scaled_chen_bogt_calibration_contract_repair_v2_attempt_02/repaired_calibration.pt
+  payload_sha256: ce31dd816691a08ca9388e0ec086be0e2e3ebd40005598c1ef44a1ba79a9fd07
+  schema: scaled_chen_bogt_calibration.v2
+  contract_version: unit_aware_raw_mean_v2
+  dataset_manifest_sha256: 741e6402da754a740a677dbb343d48c35983f62b59911bbc129dfcc44f9e9ae9
+  calibration_indices_sha256: 369c5bded5673f901ae5236eaa51a0c8da17934dc2fab139a205c9fce41d5543
+  mode_bank_sha256: 75fb38eee956a1d177486e00b22e0b62f0c1bf29e94eb398851bed18d6288ba9
+  parent_v1_sha256: a9a871405e216597b2c6058e8c52cd86a242659f8f6729fe06b85d0ef0f32959
+
+checkpoint:
+  path: outputs/20260829_v2/runs/lightgen_optical_manifold_smf_bogt_horizon_v2_attempt_03/checkpoints/scaled_chen_horizon_step_5000.pt
+  sha256: ccb89f98cc11725eb80d66c61f4fdef62b24acdf9f6d739f78373f462d10e5de
+  schema: scaled_chen_bogt_horizon_checkpoint.v1
+  global_step: 5000
+
+dataset:
+  dataset_root: data
+  images_sha256: cc86acbde125e1596a9d290165c4345cff2294032e1bb5cf4aeaf8c6467322f0
+  labels_sha256: 5b15b6a6d7cf9f282941280ffeb569aca7640d0d7e78be939a9b1723e4f83549
+  calibration_indices_sha256: 369c5bded5673f901ae5236eaa51a0c8da17934dc2fab139a205c9fce41d5543
+  schedule_sha256: 73b77c379267fd4535188d96075ec14db9cfc2a53e9bdcb49fc0a0e3c4cd3145
+  old_manifest_sha256: e3f9c39b9f2fc6278f93f688e6ad7735cfad9a4dfbb9e74ba32d36ac10da33c2
+  repaired_manifest_sha256: 741e6402da754a740a677dbb343d48c35983f62b59911bbc129dfcc44f9e9ae9
+  panel_indices_sha256:
+    - 822948f09ebdad5f3fb36da36f45ae1dc0b9d65b6ff79675405aeec763f55861
+    - 635817ff273289883881c3447115ff0db05a20aa08448e0e2095e4c420df836f
+    - 2340114e34809126e683aca958f4590e195f3911aa42697ef94d6ab4940a0202
+  panel_count: 3
+  schedule_seed: 1234
+  logical_batch_size: 10
+  microbatch_size: 1
+
+objective:
+  parent: mse_only
+  candidate: mse_kl
+  alpha: 0.002996375650268832
+  gamma: 0.0
+  latent: z_j_equals_abs_c_j_squared_divided_by_s_j_v2
+  prior:
+    kind: truncated_normal
+    mean: 1.0
+    variance: 0.25
+    lower: 0.0
+    unconditional: true
+
+execution:
+  device: cuda
+  require_cublas_workspace_config: ':4096:8'
+  min_free_cuda_bytes: 4294967296
+  max_peak_cuda_bytes: 5368709120
+  min_disk_free_bytes: 10737418240
+  max_storage_bytes: 536870912
+  no_update: true
+  optimizer_step: false
+  backward_training: false
+  checkpoint_created: false
+
+authorization:
+  diagnostic_only: true
+  training_authorized: false
+  formal_promotion: false
+  support_alignment_training: false
+  prior_generation: false
+  decoder_generation: false
+
+governance:
+  mainline_state: closed_at_current_evidence_boundary
+  reconstruction_manifold_supported: false
+  generative_manifold_supported: false
+  generation_readiness: not_ready
+  training_authorized: false
+  formal_promotion: false
+
+output:
+  base: outputs/20260904_v2/runs/lightgen_scaled_chen_repaired_coordinate_bogt_weight_validity_v1_attempt_01

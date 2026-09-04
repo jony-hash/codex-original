@@ -1514,7 +1514,7 @@ observer/test、两份状态文档、当前 VIS2 renderer/test；未发现额外
 `mainline_state=closed_at_current_evidence_boundary`、`reconstruction_manifold_supported=false`、
 `generative_manifold_supported=false`、`generation_readiness=not_ready`、`training_authorized=false`、
 `formal_promotion=false`、`bridge=invalid / cloud_sources_sync_blocked`。本轮未运行 CUDA、训练、refit、
-rank search、formal runtime 或 bridge；唯一下一动作固定为 `manual_review_VIS2_figures`。
+ rank search、formal runtime 或 bridge；唯一下一动作固定为 `manual_review_VIS2_figures`。
 
 
 ## H-LOMA-GEN-PCR-PSD：Repaired-Coordinate Prior Shape Decomposition Observer（2026-09-04，Windows-native，diagnostic-only）
@@ -1722,3 +1722,38 @@ validator=`18 PASS/0 FAIL/3 WARN`，WARN 仅为既有 renderer 的 300 dpi、宽
 `generative_manifold_supported=false`、`generation_readiness=not_ready`、`training_authorized=false`、
 `formal_promotion=false`、`bridge=invalid / cloud_sources_sync_blocked`。本轮未运行 CUDA、训练、refit、
 rank search、formal runtime 或 bridge；唯一下一动作固定为 `manual_review_VIS2_figures`。
+
+## H-LOMA-GEN-T1-RCWV repaired-coordinate BOGT weight validity canary attempt-01（2026-09-04）
+
+在 branch=`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`、starting HEAD=
+`47b9aa0896cae88516b3872e6f3355ff12434054` 的初始 clean preflight 后，使用固定
+step-5000 parent checkpoint 与同一注册三组 panel，执行唯一允许的 no-update CUDA gradient
+measurement。只比较旧 calibration.v1 与已批准的 `scaled_chen_bogt_calibration.v2` /
+`unit_aware_raw_mean_v2` 坐标；alpha=`0.002996375650268832`、gamma=`0.0`、目标比值=`0.10`、
+注册边界为 `[0.05, 0.40]`，gradient norm 仍为
+`sqrt(sum(parameter_gradient**2))` over `system.encoder.phase` and `system.decoder.phase`。
+
+旧 alpha 的 immutable provenance 已闭合：旧 preflight/pilot/panel artifact、旧 calibration、formal
+config、review、dataset/schedule/panel indices、batch=`10`、microbatch=`1`、Adam/lr=`0.001` 与
+三组 panel identity 全部匹配。注册旧 preflight ratios 为
+`[0.1102407, 0.0855945, 0.1081556]`；在同一 step-5000 parent 上的 v1 replay ratios 为
+`[0.1864269, 0.1105396, 0.1395263]`。修复坐标的同一 parent replay ratios 为
+`[1.9516949, 1.5488551, 1.5754461]`，median/min/max=`1.5754461 / 1.5488551 / 1.9516949`。
+因此 Gate=`RC_ALPHA_TOO_STRONG`：当前 alpha 在 repaired coordinate 下超出注册上界，不把该结果
+解释为唯一 training/BOGT 失败，也不实施 alignment 或训练。
+
+当前 write-once 结果为
+`outputs/20260904_v2/runs/lightgen_scaled_chen_repaired_coordinate_bogt_weight_validity_v1_attempt_01/`，
+包含 `weight_validity_manifest.json`、`gradient_panel_metrics.json`、`old_new_gradient_comparison.json`
+和 `compact_report.json`，共 `38814` bytes；manifest 引用 hash 全部通过，无隐藏文件、`.tmp`、
+checkpoint 或生成图像。repaired payload SHA-256=`ce31dd816691a08ca9388e0ec086be0e2e3ebd40005598c1ef44a1ba79a9fd07`，
+parent checkpoint SHA-256=`ccb89f98cc11725eb80d66c61f4fdef62b24acdf9f6d739f78373f462d10e5de`。
+
+optimizer state 只读检查为 `AVAILABLE_AND_BOUND`，但没有创建 optimizer；state digest、checkpoint
+hash、learned-state digest 前后一致，`optimizer_step_called=false`、`optimizer_state_mutated=false`、
+`checkpoint_created=false`、`phase_updated=false`、`refit=false`、`training=false`、
+`prior_generation=false`。T1-RCWV targeted regression=`8 passed`；compileall、Ruff 与
+`git diff --check` 通过。治理继续为 `mainline_state=closed_at_current_evidence_boundary`、
+`reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、
+`generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false`。
+唯一下一动作固定为 `PLAN_REPAIRED_COORDINATE_ALIGNMENT_WEIGHT_REGISTRATION`。
