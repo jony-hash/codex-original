@@ -1840,3 +1840,51 @@ generation readiness。formal end evaluation 无 optimizer update；general trai
 `mainline_state=closed_at_current_evidence_boundary`、`reconstruction_manifold_supported=false`、
 `generative_manifold_supported=false`、`generation_readiness=not_ready`、`training_authorized=false`、
 `formal_promotion=false`。唯一下一动作固定为 `REVIEW_ALIGNMENT_TRADEOFF_FAILURE`。
+
+## H-LOMA-GEN-T2-SAAO-PF Support-Aware Energy-Distance Objective Preflight（2026-09-04，Windows-native，diagnostic-only）
+
+本轮只完成 repaired-coordinate support-aware Energy Distance objective 的 preflight。实现提交为
+`51edbe216a8000eb944daa6e66ae41a3dc934cb1`；随后在 clean HEAD 上使用一次受限 CUDA no-update
+gradient-panel measurement，固定 parent step-5000 checkpoint（SHA-256=
+`ccb89f98cc11725eb80d66c61f4fdef62b24acdf9f6d739f78373f462d10e5de`）、R2
+`unit_aware_raw_mean_v2` calibration（payload SHA-256=
+`ce31dd816691a08ca9388e0ec086be0e2e3ebd40005598c1ef44a1ba79a9fd07`）、RCR-B distance artifact
+（SHA-256=`d288beb4bd57a1db2a9a864dd8db1be5ef22f75f14702fa13f01b01623671466`）和 parent MRA
+panel（SHA-256=`842f5cfd41909a666f19f3c88e7e7199a825b255bd111a44953e53351fd28724`）。未训练、未创建
+optimizer、未调用 backward、未写 checkpoint、未改变 phase/calibration/prior、未进入 decoder/CMOS/
+MPCDAR/generation。
+
+目标函数冻结为 `L_total=L_MSE+beta*L_ED+gamma*L_OP+alpha_BOGT*L_BOGT`，其中 ED 是
+`[10,100]` logical batch 与 `[10,100]` prior batch 上的 ordered unbiased U-statistic，包含两个
+off-diagonal within terms 与 prior-prior term，最终统一除以 `sqrt(100)`；允许有限负值且不做
+epsilon smoothing。microbatch=`1` 只通过完整 logical-batch 的 latent VJP 重放，未把独立的 batch-1
+ED 平均成替代目标。ED gradient boundary 为 encoder live、decoder zero direct gradient；未来 canary
+contract 保留 `alpha_BOGT=0`、`gamma=0` 和日志 `[mse, ed, weighted_ed, total, encoder_grad_norm,
+decoder_grad_norm, finite, z_mean, z_variance, optimizer_telemetry]`。
+
+三组 T1-RCWV 注册 panel 的 `(G_MSE, G_ED, beta_i)` 分别为
+`(0.0003082343, 0.0213519670, 0.0014435873)`、
+`(0.0004745822, 0.0298346393, 0.0015907087)`、
+`(0.0003725952, 0.0296749882, 0.0012555868)`。唯一 analytic registration 为
+`beta_registered=0.0014299609134309638`；replay ratios=`0.0990561/0.0898946/0.1138879`，
+min/median/max=`0.0898946/0.0990561/0.1138879`，全部通过 inclusive `[0.05,0.40]`。
+CPU reference 与 optical panel-0 的 scalar/parameter-gradient equivalence 均通过；optical scalar
+absolute delta=`2.98e-8`，parameter-gradient max absolute delta=`0`。
+
+prior stream 已隔离：evaluation seed=`1237`、count=`5000`、sample SHA-256=
+`c11402193afd71d176468760024ce7dec0d4e4ee3d6d206ac7293ca8ee77fd3e`；future training base seed=`1238`
+按 `1238*100000+global_step`，panel namespace=`10000`，三组 panel seeds=`123810000/123810001/123810002`。
+paired-prior endpoint 与 parent-relative MSE endpoint 均标记 ready，但尚未执行 canary，也不提供训练后
+改善结论。write-once authority 为
+`outputs/20260904_v2/runs/lightgen_scaled_chen_support_aware_energy_distance_preflight_v1_attempt_01/`，
+9 个 JSON/PT 文件、`29852` bytes；无 TIFF、隐藏文件或 `.tmp`，manifest SHA-256=
+`a9055ec7dfbccad92e683e3569ba4517becbda5d05565966ab22430d806df18a`。
+
+T2-SAAO-PF targeted 与 R2/RCR-A/PCR/BOGT 直接依赖回归=`81 passed`；compileall、Ruff、`git diff --check`
+通过。七个 gate 全部通过：`ENERGY_DISTANCE_OBJECTIVE_VALID`、`FULL_BATCH_GRADIENT_EQUIVALENCE_PASS`、
+`PRIOR_STREAM_CONTRACT_PASS`、`ED_BETA_REGISTRATION_PASS`、`PAIRED_PRIOR_ENDPOINT_READY`、
+`PARENT_RELATIVE_SAFETY_ENDPOINT_READY`、`STATE_ISOLATION_PASS`；最终 classification=
+`SUPPORT_AWARE_OBJECTIVE_PREFLIGHT_PASS`，唯一下一动作固定为 `IMPLEMENT_SUPPORT_AWARE_ALIGNMENT_CANARY`。
+治理继续为 `mainline_state=closed_at_current_evidence_boundary`、`reconstruction_manifold_supported=false`、
+`generative_manifold_supported=false`、`generation_readiness=not_ready`、`training_authorized=false`、
+`formal_promotion=false`。

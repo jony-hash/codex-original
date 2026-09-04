@@ -913,3 +913,32 @@ MSE=`0.05678915`、template control=`0.04197700`、cyclic control=`0.07559964`�
 结论。GAC focused/直接依赖回归=`42 passed`；compileall、Ruff、`git diff --check` 通过。
 治理继续为 closed evidence boundary、reconstruction/generative unsupported、generation not ready、
 training/promotion false；唯一下一动作固定为 `REVIEW_ALIGNMENT_TRADEOFF_FAILURE`。
+
+## 2026-09-04：H-LOMA-GEN-T2-SAAO-PF Windows-native objective preflight
+
+T2-SAAO-PF implementation/config/tests 已独立提交为
+`51edbe216a8000eb944daa6e66ae41a3dc934cb1`。在该 clean HEAD 上只执行一次 bounded CUDA
+no-update gradient panel；没有 optimizer、optimizer.step、backward、training、checkpoint、
+refit、prior generation、decoder、CMOS、MPCDAR 或 bridge 操作。固定消费 step-5000 parent、R2
+repaired calibration、RCR-B support-distance artifact、parent MRA panel 和 T1-RCWV 三组 panel，
+不重新选择 endpoint 样本。
+
+ED contract 为 ordered unbiased U-statistic、`[10,100]` logical/prior batches、`microbatch=1`、
+`divide_by_sqrt_100`、包含 prior-prior term、允许 finite negative、无 epsilon smoothing；future
+objective 明确为 `mse_plus_support_aware_energy_distance`，`alpha_BOGT=0`、`gamma=0`。三组
+`G_MSE/G_ED` 为 `0.0003082343/0.0213519670`、`0.0004745822/0.0298346393`、
+`0.0003725952/0.0296749882`；analytic `beta_registered=0.0014299609134309638`，replay
+ratios=`0.0990561/0.0898946/0.1138879`，inclusive ratio gate=`PASS`。CPU 与 optical panel-0
+direct/two-pass value/gradient equivalence=`PASS`，ED decoder direct gradient=`None`，state digest
+before/after 均为 `cdbf06f03b611f4df38324c1546686bc5fc614644a64130c95cd3a76012e27b5`。
+
+正式 write-once preflight authority 为
+`outputs/20260904_v2/runs/lightgen_scaled_chen_support_aware_energy_distance_preflight_v1_attempt_01/`，
+9 个 JSON/PT 文件、`29852` bytes；artifact tree 无 TIFF、隐藏文件或 `.tmp`。七个 gates 全部通过，
+classification=`SUPPORT_AWARE_OBJECTIVE_PREFLIGHT_PASS`；paired-prior 与 parent-relative-MSE
+endpoints 仅完成 authority readiness，不代表 canary 已运行。T2 targeted + R2/RCR-A/PCR/BOGT
+direct dependencies=`81 passed`，compileall、Ruff、`git diff --check` 均通过。
+
+治理保持 `mainline_state=closed_at_current_evidence_boundary`、`reconstruction_manifold_supported=false`、
+`generative_manifold_supported=false`、`generation_readiness=not_ready`、`training_authorized=false`、
+`formal_promotion=false`。唯一下一动作固定为 `IMPLEMENT_SUPPORT_AWARE_ALIGNMENT_CANARY`。
