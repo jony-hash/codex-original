@@ -1516,6 +1516,27 @@ observer/test、两份状态文档、当前 VIS2 renderer/test；未发现额外
 `formal_promotion=false`、`bridge=invalid / cloud_sources_sync_blocked`。本轮未运行 CUDA、训练、refit、
 rank search、formal runtime 或 bridge；唯一下一动作固定为 `manual_review_VIS2_figures`。
 
+
+## H-LOMA-GEN-PCR-PSD：Repaired-Coordinate Prior Shape Decomposition Observer（2026-09-04，Windows-native，diagnostic-only）
+
+本轮只执行 `IMPLEMENT_PRIOR_SHAPE_DECOMPOSITION_OBSERVER`。初始状态为 clean，branch=`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`，starting/ending HEAD=`02fb1f636aa17e0e2f7f01a3fa70275b8f19dbdf`；实现、config、tests 及本状态记录为本轮新增 dirty paths，未创建 Git commit。没有训练、optimizer、backward、refit、checkpoint creation、prior modification/fitting、G1-SA support-bank replay、prior decoder、generation、CMOS、MPCDAR、FID、classifier、rank search 或 architecture search。
+
+观测严格复用 RCR-A selection/confirmation panel、dataset identity、MNIST preprocessing、100-port OLS、mode bank 与 repaired coordinate；没有重新选择 panel，也没有扩大到 G1 55k support。冻结 step-5000 checkpoint SHA-256=`ccb89f98cc11725eb80d66c61f4fdef62b24acdf9f6d739f78373f462d10e5de`；R2 calibration 为 `scaled_chen_bogt_calibration.v2` / `unit_aware_raw_mean_v2`，payload SHA-256=`ce31dd816691a08ca9388e0ec086be0e2e3ebd40005598c1ef44a1ba79a9fd07`；RCR-A manifest SHA-256=`10a5469468357c8490446ff4c9d1fc86bc1041bba4cfa6fa51af4fc8f01f70da`，RCR-A metrics SHA-256=`5d2cc5c0c7b6e80f80d4f07239bb737f87327860381c0bf151cbaa686001b612`。RCR-A parent panel SHA-256=`842f5cfd41909a666f19f3c88e7e7199a825b255bd111a44953e53351fd28724`。
+
+registered prior sanity 通过：base Normal=`N(1.0, 0.25)`、lower=`0`、factorized/unconditional；exact truncated moments 为 mean=`1.0276239313`、variance=`0.2216129871`、skew=`0.2209357048`，q01/q50/q95/q99=`0.0775265/1.0142585/1.8279922/2.1674849`。固定 sampler sanity sample count=`5000`、seed=`260903`，KL identity 为零。正式观测使用 selection=`1000`、confirmation=`5000`；matched-size CPU null 使用 seeds=`260904/260905`、replicates=`128`、central interval=`99%`，不保存 replica samples。
+
+selection 的 per-port mean heterogeneity std/range=`0.7455607/3.5774960`；within/between/total pooled variance=`1.5498618/0.5558607/2.1057225`，between fraction=`0.2639763`。confirmation 对应为 std/range=`0.6458730/2.9762450`，within/between/total=`1.4546335/0.4171519/1.8717854`，between fraction=`0.2228631`。per-port variance ratio median 为 selection/confirmation=`2.8765427/2.6247470`，范围最大值为 `74.5849404/57.8657887`。两 panel 的 covariance decomposition identity residual 均为数值零。
+
+cross-port dependence 的 mean absolute off-diagonal correlation 为 selection/confirmation=`0.1600160/0.1617629`，p95=`0.4607387/0.4692335`，max=`0.8836253/0.8846894`，off-diagonal covariance fraction=`0.7362989/0.7411037`。prior-null central-99% reference 的 primary percentile position 两 panel 均为 `100%`，但该 null 只作为 finite-sample diagnostic calibration，不把超出 percentile 自动解释为 prior contract bug。
+
+prior-defined tail masses（thresholds 固定为 prior q01/q99，另记录 q95 exceedance）selection 的 lower/upper/central/q95=`0.156820/0.134430/0.708750/0.168730`，confirmation=`0.168390/0.114900/0.716710/0.147722`；两 panel 均相对 matched-size prior null 显示同一方向的 tail/quantile deviation。最终 decomposition 为 `P-S3_SUPPORTED`、`P-S4_SUPPORTED`、`P-S5_SUPPORTED`，三者 replication status 均为 `REPLICATED_DIRECTION`。
+
+最终分类为 `PCR1_PRIOR_CONTRACT_INTERNALLY_COHERENT`：这表示 registered factorized truncated-normal target 在 sampler/config/KL/coordinate 语义上内部一致，同时 frozen step-5000 `mse_only` q(z) 通过 port-wise marginal heterogeneity、cross-port dependence 和 marginal tail mismatch 偏离该 target；不表示 q 已匹配 p，不授权 per-port prior fitting、prior 修改或训练。
+
+权威新输出为 `outputs/20260904_v2/runs/lightgen_scaled_chen_prior_shape_decomposition_v1_attempt_01/`，manifest SHA-256=`228679fda073b2e4e1e46c931b743b490930dc895313e5c201283d244e22d97a`，metrics SHA-256=`4ea665c5a021a09c9ce2d44adfc31ed0cdb593de30b0ed3dbb3b10986bfbe9d2`，compact report SHA-256=`cbd0ceda6a878bcf295ef0252936edf35a6525937b76472610f2c9e384d85f94`；8 个 artifact 共 `639294` bytes，包含完整 per-port moments/quantiles、covariance、correlation、prior-null summary 与 compact report，无隐藏文件、`.tmp` 或 TIFF。learned-state digest before/after 均为 `cdbf06f03b611f4df38324c1546686bc5fc614644a64130c95cd3a76012e27b5`，state unchanged；optimizer/backward/refit/checkpoint/prior_fitted/decoder/CMOS/MPCDAR/training 全部 false。
+
+新增 PSD 定向测试=`7 passed`；PSD+RCR-A+Scaled-Chen BOGT 相关回归=`36 passed`；compileall、Ruff、`git diff --check` 均通过。单次 bounded no-update CUDA prefix extraction runtime=`48.7801 s`，peak allocation=`1599782400` bytes；CPU prior-null runtime=`6.9309 s`。治理继续保持 `mainline_state=closed_at_current_evidence_boundary`、`reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、`generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false`。唯一下一动作固定为 `IMPLEMENT_REPAIRED_COORDINATE_G1_SA_REPLAY`。
+
 ## H-LOMA-GEN-RCR-A：Repaired-Coordinate MRA Replay（2026-09-04，Stage A，diagnostic-only）
 
 在初始 clean state（branch=`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`、starting

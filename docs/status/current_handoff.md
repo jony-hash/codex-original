@@ -2261,3 +2261,13 @@ prior generation、optimizer、backward、training、refit 均未执行；Stage 
 
 治理继续为 `mainline_state=closed_at_current_evidence_boundary`、reconstruction/generative manifold unsupported、
 generation not ready、training/promotion=false。下一动作固定为 `PLAN_PRIOR_SHAPE_CONTRACT_REVIEW`。
+
+## H-LOMA-GEN-PCR-PSD：Repaired-Coordinate Prior Shape Decomposition Observer（2026-09-04）
+
+本轮只执行 `IMPLEMENT_PRIOR_SHAPE_DECOMPOSITION_OBSERVER`。正式 output=`outputs/20260904_v2/runs/lightgen_scaled_chen_prior_shape_decomposition_v1_attempt_01/`，PCR Gate=`PCR1_PRIOR_CONTRACT_INTERNALLY_COHERENT`；P-S3、P-S4、P-S5 均为 `SUPPORTED`，selection/confirmation 均为 `REPLICATED_DIRECTION`。该结论表示 registered factorized truncated-normal target 在 sampler/config/KL/coordinate 语义上内部一致，而 frozen step-5000 `mse_only` q(z) 的 port-wise marginal heterogeneity、cross-port dependence 和 marginal tail mismatch 已被量化；不表示 prior 错误、q 已匹配 p，也不授权 prior fitting 或 training。
+
+starting/ending HEAD=`02fb1f636aa17e0e2f7f01a3fa70275b8f19dbdf`，branch=`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`。只复用 RCR-A selection/confirmation panel、dataset identity、100-port OLS、mode bank 与 R2 repaired coordinate；checkpoint SHA-256=`ccb89f98cc11725eb80d66c61f4fdef62b24acdf9f6d739f78373f462d10e5de`，R2 payload SHA-256=`ce31dd816691a08ca9388e0ec086be0e2e3ebd40005598c1ef44a1ba79a9fd07`，RCR-A manifest SHA-256=`10a5469468357c8490446ff4c9d1fc86bc1041bba4cfa6fa51af4fc8f01f70da`。selection/confirmation counts=`1000/5000`；CPU prior-null seeds=`260904/260905`、replicates=`128`、99% central interval，未保存 replica samples。
+
+selection mean heterogeneity std/range=`0.7455607/3.5774960`、within/between/total=`1.5498618/0.5558607/2.1057225`；confirmation 对应为 `0.6458730/2.9762450`、`1.4546335/0.4171519/1.8717854`。mean absolute off-diagonal correlation=`0.1600160/0.1617629`，p95=`0.4607387/0.4692335`，max=`0.8836253/0.8846894`，off-diagonal covariance fraction=`0.7362989/0.7411037`；prior-null primary percentile 两 panel 均为 `100%`。prior-defined lower/upper/central tail masses=`0.156820/0.134430/0.708750`（selection）与 `0.168390/0.114900/0.716710`（confirmation）。
+
+manifest SHA-256=`228679fda073b2e4e1e46c931b743b490930dc895313e5c201283d244e22d97a`，metrics SHA-256=`4ea665c5a021a09c9ce2d44adfc31ed0cdb593de30b0ed3dbb3b10986bfbe9d2`，8 个 artifact 共 `639294` bytes；无隐藏文件、`.tmp` 或 TIFF。learned-state digest before/after=`cdbf06f03b611f4df38324c1546686bc5fc614644a64130c95cd3a76012e27b5`，unchanged；optimizer/backward/refit/checkpoint/prior_fitted/decoder/CMOS/MPCDAR/training 均 false。PSD 定向测试=`7 passed`，PSD+RCR-A+Scaled-Chen BOGT 相关回归=`36 passed`，compileall/Ruff/diff-check 通过；唯一下一动作：`IMPLEMENT_REPAIRED_COORDINATE_G1_SA_REPLAY`。治理仍保持 reconstruction/generative unsupported、generation not ready、training/promotion=false。
