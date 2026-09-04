@@ -1567,3 +1567,21 @@ Bridge closeout is `status=invalid` with `bridge_recovery_blocked=true`: clean-H
 stopped fail-closed because the existing manifest
 `C:\Users\24567\Documents\Codex\codex-original-chatgpt-bridge\current\.chatgpt-sources-manifest.json`
 is invalid. No package was deleted or overwritten and no automatic upload occurred.
+
+## H-LOMA-GEN-T1-GAC：repaired-coordinate generative alignment canary（2026-09-04）
+
+该条目是独立 generative track 的 bounded evidence，不重新打开已经 closed 的 reconstruction mainline。
+在 exact step-5000 parent 上恢复绑定的 Adam state，使用 RCAWR 注册的 repaired-coordinate BOGT alpha，
+固定训练 1000 steps 到 step 6000；3-step real-update preflight、phase-only update、OLS freeze、finite
+与 frozen-parent negative control 均通过。正式 write-once output 为
+`outputs/20260904_v2/runs/lightgen_scaled_chen_repaired_coordinate_generative_alignment_canary_v1_attempt_01/`，
+不含生成内容。
+
+端点 G1-SA 的 R50=`1.8142581`（95% CI upper=`1.8446554`）和 R95=`1.0970011`（95% CI upper=`1.1168799`）
+均未低于 parent CI lower=`1.8142740/1.0679024`；mean-scale、complex/power rank safety 通过，但
+current-sample same-route safety 因 paired MSE=`0.05678915` 高于 template control=`0.04197700` 而失败。
+权威分类为 `T1_ALIGNMENT_HARMFUL`，即该固定 bounded intervention 的 trade-off failure；它不支持
+generative manifold、generation readiness、prior decoder accessibility 或 formal promotion。治理 flags
+保持 `reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、
+`generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false`，唯一下一动作
+为 `REVIEW_ALIGNMENT_TRADEOFF_FAILURE`。

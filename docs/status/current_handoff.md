@@ -2292,3 +2292,38 @@ step-5000 replay context。
 治理保持 reconstruction/generative manifold unsupported、generation not ready、training/promotion
 false，下一动作是 `IMPLEMENT_GENERATIVE_ALIGNMENT_CANARY`；下一步仍需新的 canary 授权，不得由
 本次 weight registration 自动进入 training。
+
+## H-LOMA-GEN-T1-GAC：Repaired-Coordinate Generative Alignment Canary（2026-09-04）
+
+GAC 是 RCAWR 注册 alpha 的唯一 bounded single-intervention training-direction consumer，不是
+generation 或 formal promotion consumer。任务初始 clean preflight 为 branch=
+`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`、HEAD=
+`88a09b5f737f4eb9246ad97351b367a5e3a20841`；新增 harness/config/tests 已先独立提交为
+`5913a045b0bd932aff11e335f41a1f246b78a0f3`，正式 canary 在该 implementation HEAD 上执行。唯一
+允许的 intervention 是 exact step-5000 parent → 1000-step continuation → fixed step-6000 endpoint，
+恢复 parent Adam state，alpha=`0.00017905883237862847`、gamma=`0`、objective=`mse_kl`；旧 alpha
+`0.002996375650268832` 未消费，calibration/prior/latent/BOGT formula/optics/OLS/fiber/architecture/
+MPCDAR 均未修改。
+
+3-step real-update preflight 与冻结 parent negative control 均通过。正式 write-once output 为
+`outputs/20260904_v2/runs/lightgen_scaled_chen_repaired_coordinate_generative_alignment_canary_v1_attempt_01/`，
+10 个 JSON/PT、`17055800` bytes；training manifest SHA-256=`48d3e883355b329c80072c50cb2b06187d4cc7454911556f9b124115ab927630`，
+end checkpoint SHA-256=`b8ed605d0ed4506c0415f8199ac16fd1f4274cc7efa419f00af785a2ce4f9542`。训练实际完成
+5001–6000 共 1000 steps，runtime=`1694.4757 s`，peak CUDA=`2330944000` bytes；start/end learned-state
+digest=`cdbf06f03b611f4df38324c1546686bc5fc614644a64130c95cd3a76012e27b5` /
+`e8fa50507e500a7f82ce5675080bd769f0bc5c8edcf59ae6e43c841e0fa7d1c0`，OLS unchanged，只有 encoder/
+decoder phase 参数改变。
+
+端点 G1-SA：R50=`1.8142581`，95% CI=`[1.7888644,1.8446554]`；R95=`1.0970011`，95% CI=
+`[1.0733978,1.1168799]`。parent R50 CI lower=`1.8142740`、R95 CI lower=`1.0679024`，故严格
+CI-separated primary Gate 未通过。MRA selection/confirmation z mean=`1.0134035/0.9309632`，
+variance=`1.4821789/1.3868347`，Gaussian KL=`3.0508981/2.6405313`，numerical KL=
+`2.9807997/2.5035856`，complex rank=`12.2222137/12.8533897`，power rank=`8.2595968/8.4111090`；
+mean-scale 与 rank safety 通过。current-sample same-route safety 未通过：paired MSE=`0.05678915`，
+template control=`0.04197700`，cyclic control=`0.07559964`。
+
+最终 Gate/classification=`T1_ALIGNMENT_HARMFUL`。这是固定 canary 的有效 trade-off failure，不是
+全局训练失败或 generative-manifold 结论；没有 prior/decoder/CMOS generation、FID、G2 或 formal
+promotion。GAC focused regression=`42 passed`，compileall、Ruff、`git diff --check` 通过。治理仍为
+`mainline_state=closed_at_current_evidence_boundary`、reconstruction/generative unsupported、
+generation not ready、training/promotion=false；唯一下一动作为 `REVIEW_ALIGNMENT_TRADEOFF_FAILURE`。

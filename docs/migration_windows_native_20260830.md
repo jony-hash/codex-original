@@ -878,3 +878,38 @@ RCAWR Gate=`RCAWR_REGISTRATION_PASS`；predicted ratios=`0.1166303093/0.09255721
 不覆盖任何既有 attempt。Windows-native RCAWR focused tests、compileall、Ruff 与 `git diff --check`
 通过；最终 Git commit 与 clean-head 状态由本轮收尾核验返回。唯一下一动作是
 `IMPLEMENT_GENERATIVE_ALIGNMENT_CANARY`，training/promotion 仍未授权。
+
+## H-LOMA-GEN-T1-GAC repaired-coordinate generative alignment canary（2026-09-04）
+
+Windows-native GAC 的初始 clean preflight 为 branch=
+`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`、HEAD=
+`88a09b5f737f4eb9246ad97351b367a5e3a20841`。实现/config/tests 先独立提交为
+`5913a045b0bd932aff11e335f41a1f246b78a0f3`；formal training manifest 因而记录该 implementation HEAD，
+没有隐藏修改。环境首次调用只因未按 Windows-native 规则加入 Conda 的 `bin/Library/bin/Scripts/torch/lib`
+路径而缺少 `nvrtc-builtins64_121.dll`；补齐同一受支持环境路径后，3-step real-update preflight 通过，
+没有产生正式训练结果。首次 post-canary pytest 只遇到既有 `C:\TEMP\pytest-of-24567` ACL，改用工作区
+显式可写 basetemp 后 focused suite 通过。
+
+正式运行严格从 step-5000 parent continuation 恢复 Adam state，使用 repaired calibration
+`scaled_chen_bogt_calibration.v2` / `unit_aware_raw_mean_v2`（payload SHA-256=
+`ce31dd816691a08ca9388e0ec086be0e2e3ebd40005598c1ef44a1ba79a9fd07`）、RCAWR 注册 alpha=
+`0.00017905883237862847`、gamma=`0`、`mse_kl`，仅训练 encoder/decoder phase，固定 1000 steps 到
+logical step 6000。runtime=`1694.4757 s`，peak CUDA=`2330944000` bytes；start/end state digest=
+`cdbf06f03b611f4df38324c1546686bc5fc614644a64130c95cd3a76012e27b5` /
+`e8fa50507e500a7f82ce5675080bd769f0bc5c8edcf59ae6e43c841e0fa7d1c0`，OLS unchanged。
+
+write-once authority 为
+`outputs/20260904_v2/runs/lightgen_scaled_chen_repaired_coordinate_generative_alignment_canary_v1_attempt_01/`，
+10 个 JSON/PT、`17055800` bytes；training manifest SHA-256=
+`48d3e883355b329c80072c50cb2b06187d4cc7454911556f9b124115ab927630`，end checkpoint SHA-256=
+`b8ed605d0ed4506c0415f8199ac16fd1f4274cc7efa419f00af785a2ce4f9542`。无 prior/decoder/CMOS generation、
+FID、G2、额外 steps 或 best-checkpoint selection；无隐藏文件或 `.tmp`。
+
+G1 endpoint R50=`1.8142581`，95% CI=`[1.7888644,1.8446554]`；R95=`1.0970011`，95% CI=
+`[1.0733978,1.1168799]`，均未满足相对于 parent CI lower=`1.8142740/1.0679024` 的严格联合 Gate。
+MRA mean-scale 与 rank safety 通过，但 confirmation same-route current-sample safety 未通过：paired
+MSE=`0.05678915`、template control=`0.04197700`、cyclic control=`0.07559964`。因此结果为
+`T1_ALIGNMENT_HARMFUL`，属于有效 bounded canary trade-off failure，不是 global training 或 generation
+结论。GAC focused/直接依赖回归=`42 passed`；compileall、Ruff、`git diff --check` 通过。
+治理继续为 closed evidence boundary、reconstruction/generative unsupported、generation not ready、
+training/promotion false；唯一下一动作固定为 `REVIEW_ALIGNMENT_TRADEOFF_FAILURE`。

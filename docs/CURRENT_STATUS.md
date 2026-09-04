@@ -1787,3 +1787,56 @@ compileall、Ruff 与 `git diff --check` 均通过；当前治理继续为
 `generative_manifold_supported=false`、`generation_readiness=not_ready`、
 `training_authorized=false`、`formal_promotion=false`。唯一下一动作固定为
 `IMPLEMENT_GENERATIVE_ALIGNMENT_CANARY`。
+
+## H-LOMA-GEN-T1-GAC：Repaired-Coordinate Generative Alignment Canary（2026-09-04，Windows-native，diagnostic-only）
+
+本轮只执行一个预注册的 bounded single-intervention canary：从 exact step-5000 parent continuation，
+恢复绑定的 Adam state，使用 RCAWR attempt-02 登记的 repaired-coordinate BOGT alpha，训练固定 1000
+steps 至 logical step 6000；没有 alpha/horizon/seed sweep、best-checkpoint selection、追加训练、
+calibration/prior/latent/BOGT/optical/OLS/fiber/architecture/MPCDAR 修改，也没有 prior/decoder/CMOS
+generation、FID/classifier/diversity/novelty 或 G2。正式 canary 执行时的 clean implementation HEAD
+为 `5913a045b0bd932aff11e335f41a1f246b78a0f3`；任务最初 preflight 的 clean starting HEAD 为
+`88a09b5f737f4eb9246ad97351b367a5e3a20841`。
+
+3-step real-update preflight 输出为
+`outputs/20260904_v2/runs/lightgen_scaled_chen_repaired_coordinate_generative_alignment_canary_v1_preflight_attempt_01/preflight.json`，
+status=`passed`；5001–5003 的 phase 参数真实更新、OLS 保持冻结、Adam state 从 parent step 5000
+恢复并推进到 5003，finite/resource 检查通过；冻结 parent negative control 按预期拒绝严格 primary
+Gate。正式 write-once authority 为
+`outputs/20260904_v2/runs/lightgen_scaled_chen_repaired_coordinate_generative_alignment_canary_v1_attempt_01/`，
+共 10 个 JSON/PT 文件、`17055800` bytes；training manifest SHA-256=
+`48d3e883355b329c80072c50cb2b06187d4cc7454911556f9b124115ab927630`，end checkpoint SHA-256=
+`b8ed605d0ed4506c0415f8199ac16fd1f4274cc7efa419f00af785a2ce4f9542`，compact report SHA-256=
+`85d296f5419d8c85b2ba71dae03c80d597a1126c9c547f908823073b38cc6af6`。输出无隐藏文件、`.tmp` 或
+生成内容。
+
+训练 contract 保持 `scaled_chen_bogt_calibration.v2` / `unit_aware_raw_mean_v2`，payload SHA-256=
+`ce31dd816691a08ca9388e0ec086be0e2e3ebd40005598c1ef44a1ba79a9fd07`；parent step-5000 checkpoint
+SHA-256=`ccb89f98cc11725eb80d66c61f4fdef62b24acdf9f6d739f78373f462d10e5de`；prior 仍为
+unconditional factorized truncated normal `(mean=1.0, variance=0.25, lower=0)`；alpha 为注册值
+`0.00017905883237862847`（旧 alpha `0.002996375650268832` 被拒绝），gamma=`0`，objective=`mse_kl`，
+唯一 trainable parameters 为 `system.encoder.phase` 与 `system.decoder.phase`。seed=`1234`，Adam
+`lr=0.001`、scheduler=`none`；runtime=`1694.4757 s`，peak CUDA allocation=`2330944000` bytes。
+start/end learned-state digest 为
+`cdbf06f03b611f4df38324c1546686bc5fc614644a64130c95cd3a76012e27b5` /
+`e8fa50507e500a7f82ce5675080bd769f0bc5c8edcf59ae6e43c841e0fa7d1c0`；OLS 未变，只有注册的 phase
+参数发生变化，end optimizer step=`6000`。
+
+端点 G1-SA 为 R50=`1.8142581`，95% CI=`[1.7888644,1.8446554]`；R95=`1.0970011`，95% CI=
+`[1.0733978,1.1168799]`。frozen parent baseline 为 R50=`1.8389779`、CI lower=`1.8142740`，
+R95=`1.0954389`、CI lower=`1.0679024`；两个严格 CI-separated 条件均未通过。端点 MRA selection/
+confirmation 的 `(z_mean, z_variance, Gaussian KL, numerical KL, complex rank, power rank)` 分别为
+`(1.0134035,1.4821789,3.0508981,2.9807997,12.2222137,8.2595968)` /
+`(0.9309632,1.3868347,2.6405313,2.5035856,12.8533897,8.4111090)`。mean-scale safety 与 0.90
+rank-retention safety 均通过；current-sample confirmation same-route safety 未通过：paired MSE=
+`0.05678915` 高于 template control=`0.04197700`（低于 cyclic control=`0.07559964`），虽 finite。
+
+因此最终 classification=`T1_ALIGNMENT_HARMFUL`，Gate 依据是 primary support-alignment 未通过且
+current-sample safety failure；这只是该固定 1000-step canary 的 trade-off 结论，不把结果升级为
+training failure、BOGT objective 唯一失败、generative manifold、prior decoder accessibility 或
+generation readiness。formal end evaluation 无 optimizer update；general training authorization 在
+任务结束后恢复为 false。GAC focused/直接依赖回归=`42 passed`（首次运行仅受既有 pytest temp ACL
+影响，使用显式可写 basetemp 后通过）；compileall、Ruff 与 `git diff --check` 通过。治理继续为
+`mainline_state=closed_at_current_evidence_boundary`、`reconstruction_manifold_supported=false`、
+`generative_manifold_supported=false`、`generation_readiness=not_ready`、`training_authorized=false`、
+`formal_promotion=false`。唯一下一动作固定为 `REVIEW_ALIGNMENT_TRADEOFF_FAILURE`。

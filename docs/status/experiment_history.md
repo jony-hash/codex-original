@@ -2288,3 +2288,41 @@ authority path 为
 均记录 source binding、provenance、state isolation 和 governance。下一动作固定为
 `IMPLEMENT_GENERATIVE_ALIGNMENT_CANARY`，治理仍为 closed evidence boundary、reconstruction/
 generative unsupported、generation not ready、training/promotion=false。
+
+## 2026-09-04：H-LOMA-GEN-T1-GAC repaired-coordinate generative alignment canary
+
+This was one preregistered, bounded single-intervention CUDA canary. The initial clean task state was
+branch `research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1` at HEAD
+`88a09b5f737f4eb9246ad97351b367a5e3a20841`; implementation/config/test commit
+`5913a045b0bd932aff11e335f41a1f246b78a0f3` was created before the formal run. The run then consumed only
+the exact step-5000 parent checkpoint, restored its bound Adam state, and trained 1000 steps to fixed
+logical step 6000. No sweep, best-checkpoint choice, additional steps, calibration/prior/latent/BOGT/optical
+change, prior/decoder/CMOS generation, FID/classifier/diversity/novelty, or G2 was performed.
+
+The three-step real-update preflight passed, including phase-only updates, frozen OLS, exact optimizer
+continuation, finite/resource checks, and a frozen-parent negative control that rejected the strict primary
+Gate. The write-once authority is
+`outputs/20260904_v2/runs/lightgen_scaled_chen_repaired_coordinate_generative_alignment_canary_v1_attempt_01/`;
+it contains 10 JSON/PT files and `17055800` bytes. Training manifest SHA256 is
+`48d3e883355b329c80072c50cb2b06187d4cc7454911556f9b124115ab927630`; end checkpoint SHA256 is
+`b8ed605d0ed4506c0415f8199ac16fd1f4274cc7efa419f00af785a2ce4f9542`. Runtime was `1694.4757 s` and
+peak CUDA allocation was `2330944000` bytes. The repaired calibration payload remained
+`ce31dd816691a08ca9388e0ec086be0e2e3ebd40005598c1ef44a1ba79a9fd07`; the only trainable parameters were
+`system.encoder.phase` and `system.decoder.phase`; start/end learned-state digests differed and OLS was
+unchanged.
+
+Endpoint G1-SA was R50=`1.8142581`, 95% CI=`[1.7888644,1.8446554]`, and R95=`1.0970011`, 95% CI=
+`[1.0733978,1.1168799]`. The frozen parent lower bounds were `1.8142740` and `1.0679024`; therefore
+the preregistered joint CI-separated primary Gate failed. Endpoint MRA selection/confirmation z means
+were `1.0134035/0.9309632`, variances `1.4821789/1.3868347`, Gaussian KLs `3.0508981/2.6405313`,
+numerical KLs `2.9807997/2.5035856`, complex ranks `12.2222137/12.8533897`, and power ranks
+`8.2595968/8.4111090`. Mean-scale and rank safety passed. Current-sample safety failed because paired
+MSE=`0.05678915` was above the template control=`0.04197700` (while below cyclic control=`0.07559964`).
+
+The valid final classification is `T1_ALIGNMENT_HARMFUL`, with next action
+`REVIEW_ALIGNMENT_TRADEOFF_FAILURE`. This is bounded training-direction/trade-off evidence only; it does
+not establish a global training failure, a generative manifold, prior decoder accessibility, generation
+readiness, or formal promotion. GAC and direct-dependency regression was `42 passed`; compileall, Ruff,
+and `git diff --check` passed. Governance remains closed at the current evidence boundary with
+reconstruction/generative support false, generation not ready, training authorization false, and formal
+promotion false.
