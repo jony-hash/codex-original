@@ -245,6 +245,85 @@ FULL_PATH_DISPLAY_ROTATED_KEYS = frozenset(FULL_PATH_DISPLAY_ROTATED_ORDER)
 FULL_PATH_NATIVE_DISPLAY_KEYS = ("slm_output", "cmos_field")
 FULL_PATH_MAIN_FIGURE_WIDTH = 7.2
 
+HISTORY_CURRENT_LAYOUT_SCHEMA = (
+    "full_optical_path_historical_current_side_by_side_v1"
+)
+HISTORY_CURRENT_STAGE_KEYS = FULL_PATH_STAGE_KEYS
+HISTORY_CURRENT_STAGE_ALIASES = {
+    "pre_ols": "encoder_layer_2",
+    "post_ols": "ols_output",
+    "cmos_field": "camera",
+}
+HISTORY_CURRENT_STAGE_LABELS = (
+    "SLM output\n(native coordinate)",
+    "Front 4f\n/ encoder input",
+    "Encoder layer 1",
+    "Encoder layer 2\n/ Pre-OLS",
+    "OLS output\n/ Decoder input",
+    "Decoder layer 1",
+    "Decoder layer 2",
+    "Camera incident\nfield (native)",
+)
+HISTORY_CURRENT_PAGE_DIGITS = FULL_PATH_PAGE_DIGITS
+HISTORY_CURRENT_STATES = ("historical", "current")
+HISTORY_CURRENT_DISPLAY_ROTATED_ORDER = FULL_PATH_DISPLAY_ROTATED_ORDER
+HISTORY_CURRENT_DISPLAY_ROTATED_KEYS = FULL_PATH_DISPLAY_ROTATED_KEYS
+HISTORY_CURRENT_NATIVE_DISPLAY_KEYS = FULL_PATH_NATIVE_DISPLAY_KEYS
+HISTORY_CURRENT_FIGURE_WIDTH_IN = 14.4
+HISTORY_CURRENT_PANEL_WIDTH_IN = 7.2
+HISTORY_CURRENT_PHASE_TOLERANCE = 1.0e-6
+HISTORY_CURRENT_TASK = "H-LOMA-CBOGT-S9V-FULL-PATH-HISTORY-CURRENT"
+HISTORY_CURRENT_SOURCE_MANIFEST = Path(
+    "outputs/20260827_v2/runs/20260827_hsced_fiber_counterfactual_digits0_9_v1/manifest.json"
+)
+HISTORY_CURRENT_SOURCE_MANIFEST_SHA256 = (
+    "1e0c4bfc85b504b8fa5d28d03f62390b6a3d55338b58c24647c724bf839f1045"
+)
+HISTORY_CURRENT_TRACE = Path(
+    "outputs/20260821_v2/runs/20260821_fiber_image_attribution_v1/measurements/S0/4242/representative_trace.pt"
+)
+HISTORY_CURRENT_TRACE_SHA256 = (
+    "d5357d55ee7b48d8a50890e96d8a8691a2b4b156b35880a4cc2ed37ab11ce586"
+)
+HISTORY_CURRENT_CODES = Path(
+    "outputs/20260821_v2/runs/20260821_fiber_image_attribution_v1/measurements/S0/4242/codes.pt"
+)
+HISTORY_CURRENT_CODES_SHA256 = (
+    "f71f83213b3fcd7660c52b62398f564f33a005037cbcd8a928d7b556f9b1d0b9"
+)
+HISTORY_CURRENT_LABELS = Path(
+    "outputs/20260821_v2/runs/20260821_fiber_image_attribution_v1/measurements/S0/4242/labels.pt"
+)
+HISTORY_CURRENT_LABELS_SHA256 = (
+    "5daa71b482fd9d987728c0214c81a1724454a4f879f882fbcffa7b0ff1d767d0"
+)
+HISTORY_CURRENT_GENERATOR = Path(
+    "outputs/20260812_v2/runs/20260812_012817_770553_formal_v2_identity_logit_amplitude_finite_crop_identity/conditional_optical_generator.pt"
+)
+HISTORY_CURRENT_GENERATOR_SHA256 = (
+    "423328bf472bb7468f131b351850d1b6f7c5a282796444ecbec5e10bad12c2b9"
+)
+HISTORY_CURRENT_FORMAL_CONFIG = Path(
+    "configs/v2/current/formal_identity_logit_amplitude_finite_crop_identity.yaml"
+)
+HISTORY_CURRENT_FORMAL_CONFIG_SHA256 = (
+    "0c42035c1a525e27ff787d013ca27b0f5ae91338329eb0607c7042ebc5ae8905"
+)
+HISTORY_CURRENT_CURRENT_MANIFEST = FULL_PATH_OUTPUT / "visualization_manifest.json"
+HISTORY_CURRENT_CURRENT_MANIFEST_SHA256 = (
+    "393ebefe6c11537f5e1841a905eb0eed4365d7db57879cd823d477338b146703"
+)
+HISTORY_CURRENT_LEGACY_TO_CANONICAL = {
+    "slm_output": "slm_output",
+    "encoder_input": "encoder_input",
+    "encoder_layer_1": "encoder_layer_1",
+    "encoder_layer_2": "pre_ols",
+    "ols_output": "post_ols",
+    "decoder_layer_1": "decoder_layer_1",
+    "decoder_layer_2": "decoder_layer_2",
+    "camera": "cmos_field",
+}
+
 # These are deliberately explicit because a visualization must not imply a
 # phase measurement where the source is real-valued or the sensor has already
 # performed square-law detection.  The complex incident field immediately
@@ -1059,6 +1138,164 @@ def _read_exact_json(path: Path, expected_sha256: str, label: str) -> dict[str, 
     return payload
 
 
+def _historical_trace_positions() -> dict[int, int]:
+    """Return the immutable 8/21 interleaved trace position for each digit."""
+    return {digit: 2 * digit for digit in range(10)}
+
+
+def _select_historical_trace_digits(
+    trace: Sequence[Mapping[str, Any]],
+) -> tuple[dict[int, dict[str, torch.Tensor]], list[dict[str, Any]]]:
+    """Select 8/21 S0 fields using the registered trace[2 * digit] rule."""
+    if len(trace) != 20:
+        raise RuntimeError(f"historical S0 trace must contain 20 entries, got {len(trace)}")
+    expected_legacy = set(HISTORY_CURRENT_LEGACY_TO_CANONICAL)
+    selected: dict[int, dict[str, torch.Tensor]] = {}
+    records: list[dict[str, Any]] = []
+    for digit, position in _historical_trace_positions().items():
+        entry = trace[position]
+        if not isinstance(entry, Mapping):
+            raise RuntimeError(f"historical trace entry {position} is not a mapping")
+        fields = entry.get("fields")
+        if not isinstance(fields, Sequence) or isinstance(fields, (str, bytes)):
+            raise RuntimeError(f"historical trace entry {position} has no field sequence")
+        by_canonical: dict[str, torch.Tensor] = {}
+        source_ids: list[str] = []
+        for field in fields:
+            if not isinstance(field, Mapping) or not isinstance(field.get("plane"), Mapping):
+                raise RuntimeError(f"historical trace entry {position} has malformed field metadata")
+            plane_id = field["plane"].get("plane_id")
+            tensor = field.get("tensor")
+            plane_id_text = str(plane_id)
+            if plane_id_text in HISTORY_CURRENT_LEGACY_TO_CANONICAL:
+                canonical_id = HISTORY_CURRENT_LEGACY_TO_CANONICAL[plane_id_text]
+            elif plane_id_text in HISTORY_CURRENT_STAGE_KEYS:
+                canonical_id = plane_id_text
+            else:
+                raise RuntimeError(f"historical trace entry {position} has an unknown or non-tensor field")
+            if not torch.is_tensor(tensor):
+                raise RuntimeError(f"historical trace entry {position} has an unknown or non-tensor field")
+            source_ids.append(plane_id_text)
+            if canonical_id in by_canonical:
+                raise RuntimeError(f"historical trace entry {position} repeats stage {canonical_id}")
+            if tensor.ndim != 4 or tuple(tensor.shape[:2]) != (1, 1):
+                raise RuntimeError(
+                    f"historical trace entry {position} stage {canonical_id} has shape {tuple(tensor.shape)}"
+                )
+            if not torch.is_complex(tensor) or not bool(torch.isfinite(tensor).all()):
+                raise RuntimeError(f"historical trace entry {position} stage {canonical_id} is not finite complex data")
+            by_canonical[canonical_id] = tensor.detach().cpu().clone()
+        if set(source_ids) not in (expected_legacy, set(HISTORY_CURRENT_STAGE_KEYS)) or set(by_canonical) != set(HISTORY_CURRENT_STAGE_KEYS):
+            raise RuntimeError(f"historical trace entry {position} does not expose the registered eight stages")
+        selected[digit] = {
+            stage_id: by_canonical[stage_id] for stage_id in HISTORY_CURRENT_STAGE_KEYS
+        }
+        records.append(
+            {
+                "digit": digit,
+                "trace_position": position,
+                "source_stage_ids": source_ids,
+                "canonical_stage_order": list(HISTORY_CURRENT_STAGE_KEYS),
+            }
+        )
+    return selected, records
+
+
+def _history_current_display_values(
+    values: Mapping[str, torch.Tensor],
+) -> dict[str, torch.Tensor]:
+    """Make CPU/display copies while applying only the registered view rotation."""
+    if tuple(values) != HISTORY_CURRENT_STAGE_KEYS:
+        raise RuntimeError("history/current stage values are not in the registered order")
+    displayed: dict[str, torch.Tensor] = {}
+    for stage_id in HISTORY_CURRENT_STAGE_KEYS:
+        value = values[stage_id]
+        if not torch.is_tensor(value):
+            raise RuntimeError(f"history/current stage {stage_id} is not a tensor")
+        copied = value.detach().clone()
+        if stage_id in HISTORY_CURRENT_DISPLAY_ROTATED_KEYS:
+            copied = copied.flip((-2, -1)).contiguous()
+        displayed[stage_id] = copied
+    return displayed
+
+
+def _history_current_phase(value: torch.Tensor) -> torch.Tensor:
+    """Return the raw phase without changing the supplied tensor."""
+    if not torch.is_tensor(value):
+        raise TypeError("phase input must be a tensor")
+    return torch.angle(value)
+
+
+def _load_history_current_source_manifest(
+    path: Path, expected_sha256: str
+) -> dict[str, Any]:
+    """Load a hash-bound source manifest for the history/current comparison."""
+    return _read_exact_json(path, expected_sha256, "source manifest hash")
+
+
+def _verify_history_current_output_files(output_dir: Path) -> None:
+    """Reject non-figure, hidden, and temporary files at the output boundary."""
+    if not output_dir.is_dir():
+        raise RuntimeError(f"forbidden output boundary is missing: {output_dir}")
+    allowed_suffixes = {".png", ".pdf", ".svg", ".json"}
+    files = [path for path in output_dir.rglob("*") if path.is_file()]
+    for path in files:
+        relative = path.relative_to(output_dir)
+        if any(part.startswith(".") for part in relative.parts) or ".tmp" in path.name.lower():
+            raise RuntimeError(f"forbidden output file: {path}")
+        if path.suffix.lower() not in allowed_suffixes:
+            raise RuntimeError(f"forbidden output file: {path}")
+    if not files:
+        raise RuntimeError(f"forbidden output boundary is empty: {output_dir}")
+
+
+def _history_current_views(
+    values_by_state: Mapping[str, Mapping[str, torch.Tensor]],
+    *,
+    sample_positions: Sequence[int],
+) -> tuple[dict[str, dict[str, dict[int, dict[str, Any]]]], dict[str, float]]:
+    """Build shared-scale amplitude/phase views for both frozen states."""
+    if tuple(values_by_state) != HISTORY_CURRENT_STATES:
+        raise RuntimeError("history/current values must contain historical then current state")
+    displayed = {
+        state: _history_current_display_values(values_by_state[state])
+        for state in HISTORY_CURRENT_STATES
+    }
+    views: dict[str, dict[str, dict[int, dict[str, Any]]]] = {
+        state: {stage_id: {} for stage_id in HISTORY_CURRENT_STAGE_KEYS}
+        for state in HISTORY_CURRENT_STATES
+    }
+    scales: dict[str, float] = {}
+    for stage_id in HISTORY_CURRENT_STAGE_KEYS:
+        arrays = [
+            _display_array(displayed[state][stage_id], position)
+            for state in HISTORY_CURRENT_STATES
+            for position in sample_positions
+        ]
+        scale = _shared_p995(arrays)
+        scales[stage_id] = scale
+        for state in HISTORY_CURRENT_STATES:
+            for position in sample_positions:
+                raw = _display_array(displayed[state][stage_id], position)
+                amplitude = np.abs(raw)
+                if stage_id == "slm_output":
+                    phase = np.zeros_like(amplitude, dtype=np.float32)
+                    threshold = 0.0
+                    valid_fraction = 1.0
+                else:
+                    phase = np.asarray(np.angle(raw), dtype=np.float32)
+                    threshold = max(float(amplitude.max()) * FULL_PATH_PHASE_ALPHA, FULL_PATH_PHASE_FLOOR)
+                    phase = np.where(amplitude >= threshold, phase, np.nan)
+                    valid_fraction = float(np.isfinite(phase).mean())
+                views[state][stage_id][position] = {
+                    "amplitude": np.clip(amplitude / max(scale, FULL_PATH_PHASE_FLOOR), 0.0, 1.0),
+                    "phase": phase,
+                    "phase_threshold": threshold,
+                    "phase_valid_fraction": valid_fraction,
+                }
+    return views, scales
+
+
 def _load_full_path_contract(config_path: Path) -> tuple[dict[str, Any], dict[str, Any], Path, Path]:
     resolved_config = _repo_path(config_path)
     expected_config = _repo_path(FULL_PATH_CONFIG)
@@ -1487,6 +1724,173 @@ def _render_full_path_plate(
     )
     amp_cbar_ax = figure.add_axes([0.968, 0.55, 0.010, 0.22])
     phase_cbar_ax = figure.add_axes([0.968, 0.24, 0.010, 0.22])
+    amp_cbar = figure.colorbar(
+        ScalarMappable(norm=Normalize(0.0, 1.0), cmap="magma"), cax=amp_cbar_ax
+    )
+    phase_cbar = figure.colorbar(
+        ScalarMappable(norm=Normalize(-np.pi, np.pi), cmap="twilight"), cax=phase_cbar_ax
+    )
+    amp_cbar.set_label("display |E|", fontsize=5.0)
+    phase_cbar.set_label("phase [rad]", fontsize=5.0)
+    for cbar in (amp_cbar, phase_cbar):
+        cbar.ax.tick_params(labelsize=5, width=0.5, length=2)
+    return _save_figure_bundle(
+        figure,
+        output_base,
+        axes=[axis for row in axes for axis in row],
+        panel_ids=panel_ids,
+        row_groups=row_groups,
+        column_groups=column_groups,
+        colorbar_axes=[amp_cbar.ax, phase_cbar.ax],
+        require_panel_labels=False,
+        raster_dpi=300,
+        include_tiff=False,
+    )
+
+
+def _render_history_current_plate(
+    views: Mapping[str, Mapping[str, Mapping[int, Mapping[str, Any]]]],
+    output_base: Path,
+    *,
+    positions: Sequence[int],
+    labels: Sequence[int],
+    historical_records: Sequence[Mapping[str, Any]],
+    current_indices: Sequence[int],
+    page_label: str,
+) -> list[Path]:
+    """Render the two-state, eight-stage, same-digit comparison plate."""
+    if not (len(positions) == len(labels) == len(historical_records) == len(current_indices)):
+        raise ValueError("history/current plate metadata lengths do not match")
+    if not positions:
+        raise ValueError("history/current plate requires at least one digit")
+    if tuple(views) != HISTORY_CURRENT_STATES:
+        raise ValueError("history/current plate states are not in the registered order")
+    columns_per_state = len(HISTORY_CURRENT_STAGE_KEYS)
+    columns = len(HISTORY_CURRENT_STATES) * columns_per_state
+    rows = len(positions) * 2
+    figure, axes = plt.subplots(
+        rows,
+        columns,
+        figsize=(HISTORY_CURRENT_FIGURE_WIDTH_IN, max(7.0, rows * 0.72 + 1.5)),
+        squeeze=False,
+    )
+    figure.subplots_adjust(
+        left=0.036,
+        right=0.972,
+        bottom=0.105,
+        top=0.82,
+        wspace=0.035,
+        hspace=0.20,
+    )
+    panel_ids: list[str] = []
+    row_groups: list[list[str]] = []
+    column_groups: list[list[str]] = [[] for _ in range(columns)]
+    accents = {"historical": "#1f77b4", "current": "#d95f02"}
+    for row_position, (position, label, record, current_index) in enumerate(
+        zip(positions, labels, historical_records, current_indices, strict=True)
+    ):
+        if int(record["digit"]) != int(label):
+            raise ValueError("historical record digit does not match comparison row")
+        for phase_row in (False, True):
+            row = row_position * 2 + int(phase_row)
+            row_ids: list[str] = []
+            for state_offset, state in enumerate(HISTORY_CURRENT_STATES):
+                for stage_offset, (stage_id, title) in enumerate(
+                    zip(HISTORY_CURRENT_STAGE_KEYS, HISTORY_CURRENT_STAGE_LABELS, strict=True)
+                ):
+                    column = state_offset * columns_per_state + stage_offset
+                    axis = axes[row, column]
+                    view = views[state][stage_id][position]
+                    if phase_row:
+                        phase = view["phase"]
+                        if phase is None:
+                            _render_phase_unavailable(axis, "phase N/A")
+                        else:
+                            axis.imshow(
+                                phase,
+                                cmap="twilight",
+                                vmin=-np.pi,
+                                vmax=np.pi,
+                                origin="lower",
+                                interpolation="nearest",
+                                aspect="equal",
+                            )
+                    else:
+                        axis.imshow(
+                            view["amplitude"],
+                            cmap="magma",
+                            vmin=0.0,
+                            vmax=1.0,
+                            origin="lower",
+                            interpolation="nearest",
+                            aspect="equal",
+                        )
+                    axis.set_aspect("equal", adjustable="box")
+                    if row == 0:
+                        axis.set_title(title, fontsize=5.0, pad=2)
+                    axis.set_xticks([])
+                    axis.set_yticks([])
+                    axis.set_frame_on(True)
+                    for spine in axis.spines.values():
+                        spine.set_visible(True)
+                        spine.set_color(accents[state])
+                        spine.set_linewidth(0.25)
+                    panel_id = (
+                        f"{state}_digit_{int(label)}_"
+                        f"{'phase' if phase_row else 'amplitude'}_{stage_id}"
+                    )
+                    panel_ids.append(panel_id)
+                    row_ids.append(panel_id)
+                    column_groups[column].append(panel_id)
+            row_groups.append(row_ids)
+        axes[row_position * 2, 0].set_ylabel(
+            f"digit {int(label)}\n|E|", fontsize=5.2, labelpad=2
+        )
+        axes[row_position * 2 + 1, 0].set_ylabel("phase", fontsize=5.0, labelpad=2)
+        axes[row_position * 2, columns_per_state].set_ylabel(
+            f"digit {int(label)}\n|E|", fontsize=5.2, labelpad=2
+        )
+        axes[row_position * 2 + 1, columns_per_state].set_ylabel(
+            "phase", fontsize=5.0, labelpad=2
+        )
+    figure.suptitle(
+        f"{HISTORY_CURRENT_TASK} | eight-stage historical/current comparison | {page_label}",
+        fontsize=8.0,
+        y=0.985,
+    )
+    figure.text(
+        0.265,
+        0.945,
+        "8/21 S0 synthetic SMF-LP01\nhistorical reference",
+        ha="center",
+        va="center",
+        fontsize=6.5,
+        color=accents["historical"],
+        fontweight="bold",
+    )
+    figure.text(
+        0.735,
+        0.945,
+        "Scaled-Chen step-5000\ncurrent replay",
+        ha="center",
+        va="center",
+        fontsize=6.5,
+        color=accents["current"],
+        fontweight="bold",
+    )
+    figure.text(
+        0.5,
+        0.035,
+        "Amplitude = abs(E), shared per-stage p99.5 display scale; phase = angle(E), raw [−π,π]. "
+        "SLM is amplitude-only: SLM-output phase is fixed 0, not independent phase control. "
+        "Intermediate six planes are display-only 180° flips; raw tensors are unchanged. "
+        "Same digit label, different instance.",
+        ha="center",
+        va="center",
+        fontsize=5.0,
+    )
+    amp_cbar_ax = figure.add_axes([0.982, 0.55, 0.008, 0.20])
+    phase_cbar_ax = figure.add_axes([0.982, 0.24, 0.008, 0.20])
     amp_cbar = figure.colorbar(
         ScalarMappable(norm=Normalize(0.0, 1.0), cmap="magma"), cax=amp_cbar_ax
     )
@@ -1961,7 +2365,17 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--visualization-config", type=Path, default=FULL_PATH_CONFIG)
     parser.add_argument("--dataset-root", type=Path, default=Path("data"))
     parser.add_argument("--sample-index", type=int, default=55008, help="confirmation-panel train index; default is a held-out digit 3")
-    parser.add_argument("--view", choices=("single", "fiber-chain", "full-path-reconstruction"), default="single", help="single legacy plate, encoder/fiber/decoder plate, or the S9V full-path/reconstruction checkpoint")
+    parser.add_argument(
+        "--view",
+        choices=(
+            "single",
+            "fiber-chain",
+            "full-path-reconstruction",
+            "full-path-history-current-comparison",
+        ),
+        default="single",
+        help="single legacy plate, encoder/fiber/decoder plate, S9V full path, or history/current comparison",
+    )
     parser.add_argument("--checkpoint-step", type=int, choices=CHECKPOINT_STEPS, default=5000)
     parser.add_argument("--hero-index", type=int, default=55008, help="fixed confirmation-panel index used by the fiber cutaway")
     parser.add_argument("--device", default="cuda")
@@ -1971,6 +2385,24 @@ def _parse_args() -> argparse.Namespace:
         default=[],
         help="repo-relative dirty path allowed by the visualization preflight; repeat for each path",
     )
+    parser.add_argument(
+        "--current-manifest",
+        type=Path,
+        default=HISTORY_CURRENT_CURRENT_MANIFEST,
+        help="hash-bound attempt_02 full-path manifest for the current state",
+    )
+    parser.add_argument(
+        "--historical-reference-manifest",
+        type=Path,
+        default=HISTORY_CURRENT_SOURCE_MANIFEST,
+        help="hash-bound 8/27 source manifest for the 8/21 historical trace",
+    )
+    parser.add_argument(
+        "--historical-trace",
+        type=Path,
+        default=HISTORY_CURRENT_TRACE,
+        help="hash-bound 8/21 S0 representative trace",
+    )
     parser.add_argument("--output-dir", type=Path, default=None)
     return parser.parse_args()
 
@@ -1978,6 +2410,11 @@ def _parse_args() -> argparse.Namespace:
 def _default_output_dir(view: str) -> Path:
     if view == "full-path-reconstruction":
         return FULL_PATH_OUTPUT
+    if view == "full-path-history-current-comparison":
+        return Path(
+            "outputs/20260904_v2/visualizations/"
+            "scaled_chen_full_path_historical_current_comparison_v1_attempt_01"
+        )
     if view == "fiber-chain":
         return Path("outputs/20260831_v2/visualizations/scaled_chen_encoder_fiber_decoder_step5000_v1_attempt_01")
     return Path("outputs/20260831_v2/visualizations/scaled_chen_step5000_full_pipeline_v1_attempt_01")
@@ -2354,6 +2791,445 @@ def _run_fiber_chain(args: argparse.Namespace, output_dir: Path) -> int:
     return 0
 
 
+def _verify_history_current_historical_source(
+    source_manifest_path: Path, trace_path: Path
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    """Verify the immutable 8/21 S0 source and its 8/27 provenance manifest."""
+    source_manifest = _load_history_current_source_manifest(
+        source_manifest_path, HISTORY_CURRENT_SOURCE_MANIFEST_SHA256
+    )
+    reference = source_manifest.get("reference")
+    pairing = source_manifest.get("pairing")
+    fiber = source_manifest.get("fiber")
+    if (
+        source_manifest.get("schema") != "hsced_fiber_counterfactual_visualization_digits0_9.v1"
+        or source_manifest.get("status") != "diagnostic_only_frozen_counterfactual"
+        or not isinstance(reference, Mapping)
+        or not isinstance(pairing, Mapping)
+        or not isinstance(fiber, Mapping)
+        or reference.get("route") != "8/21 S0 synthetic SMF-LP01"
+        or fiber.get("variant") != "S0"
+        or pairing.get("labels") != list(range(10))
+        or pairing.get("sample_indices") != [50 * digit for digit in range(10)]
+    ):
+        raise RuntimeError("historical 8/21 source manifest identity is mismatched")
+    if _repo_path(trace_path) != _repo_path(HISTORY_CURRENT_TRACE):
+        raise RuntimeError("historical trace path is not the registered 8/21 S0 trace")
+    if not trace_path.is_file() or file_sha256(trace_path) != HISTORY_CURRENT_TRACE_SHA256:
+        raise RuntimeError("historical trace is missing, stale, or tampered")
+
+    expected_references = {
+        "trace": (HISTORY_CURRENT_TRACE, HISTORY_CURRENT_TRACE_SHA256),
+        "codes": (HISTORY_CURRENT_CODES, HISTORY_CURRENT_CODES_SHA256),
+        "labels": (HISTORY_CURRENT_LABELS, HISTORY_CURRENT_LABELS_SHA256),
+        "generator_checkpoint": (HISTORY_CURRENT_GENERATOR, HISTORY_CURRENT_GENERATOR_SHA256),
+        "config": (HISTORY_CURRENT_FORMAL_CONFIG, HISTORY_CURRENT_FORMAL_CONFIG_SHA256),
+    }
+    verified: dict[str, Any] = {}
+    for name, (expected_path, expected_hash) in expected_references.items():
+        recorded = reference.get(name)
+        resolved = _repo_path(recorded) if isinstance(recorded, str) else None
+        if resolved != _repo_path(expected_path) or not resolved.is_file():
+            raise RuntimeError(f"historical reference {name} path is mismatched")
+        actual_hash = file_sha256(resolved)
+        if expected_hash is not None and actual_hash != expected_hash:
+            raise RuntimeError(f"historical reference {name} hash is mismatched")
+        if name != "config" and reference.get(f"{name}_sha256") != actual_hash:
+            raise RuntimeError(f"historical reference {name} manifest hash is mismatched")
+        verified[name] = {"path": str(resolved), "sha256": actual_hash}
+
+    codes = safe_torch_load(
+        _repo_path(HISTORY_CURRENT_CODES),
+        expected_sha256=HISTORY_CURRENT_CODES_SHA256,
+        map_location="cpu",
+    )
+    labels = safe_torch_load(
+        _repo_path(HISTORY_CURRENT_LABELS),
+        expected_sha256=HISTORY_CURRENT_LABELS_SHA256,
+        map_location="cpu",
+    )
+    if (
+        not torch.is_tensor(codes)
+        or tuple(codes.shape) != (500, 8)
+        or not torch.is_tensor(labels)
+        or tuple(labels.shape) != (500,)
+        or not torch.equal(labels[:500].reshape(-1)[::50], torch.arange(10, dtype=torch.long))
+    ):
+        raise RuntimeError("historical codes/labels do not match the registered 8/21 panel")
+    verified["codes_tensor"] = {"shape": list(codes.shape), "dtype": str(codes.dtype)}
+    verified["labels_tensor"] = {"shape": list(labels.shape), "dtype": str(labels.dtype)}
+    return source_manifest, verified, reference
+
+
+def _verify_history_current_current_source(
+    current_manifest_path: Path,
+    current_manifest: Mapping[str, Any],
+    contract: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Verify that attempt_02 is the exact current replay source."""
+    if _repo_path(current_manifest_path) != _repo_path(HISTORY_CURRENT_CURRENT_MANIFEST):
+        raise RuntimeError("current manifest path is not the registered attempt_02 manifest")
+    required = (
+        current_manifest.get("schema") == "lightgen_optical_manifold_smf_bogt_full_path_visualization.v2",
+        current_manifest.get("task_id") == FULL_PATH_TASK,
+        current_manifest.get("status") == "completed",
+        current_manifest.get("diagnostic_only") is True,
+        current_manifest.get("layout_schema") == FULL_PATH_LAYOUT_SCHEMA,
+        current_manifest.get("cuda_replay") is True,
+        current_manifest.get("optical_data_changed") is False,
+        current_manifest.get("stage_order") == list(HISTORY_CURRENT_STAGE_KEYS),
+        current_manifest.get("git", {}).get("branch") == contract["branch"],
+        current_manifest.get("git", {}).get("commit") == contract["expected_head"],
+    )
+    if not all(required):
+        raise RuntimeError("current attempt_02 manifest identity is mismatched")
+    if _repo_path(current_manifest["config_path"]) != _repo_path(FULL_PATH_CONFIG):
+        raise RuntimeError("current attempt_02 config path is mismatched")
+    if current_manifest.get("config_sha256") != file_sha256(_repo_path(FULL_PATH_CONFIG)):
+        raise RuntimeError("current attempt_02 config hash is mismatched")
+    if _repo_path(current_manifest["review_path"]) != _repo_path(FULL_PATH_REVIEW):
+        raise RuntimeError("current attempt_02 review path is mismatched")
+    if current_manifest.get("review_sha256") != file_sha256(_repo_path(FULL_PATH_REVIEW)):
+        raise RuntimeError("current attempt_02 review hash is mismatched")
+    sample_panel = current_manifest.get("sample_panel")
+    expected_indices = {str(digit): DIGIT_CONFIRMATION_INDICES[digit] for digit in range(10)}
+    if (
+        not isinstance(sample_panel, Mapping)
+        or sample_panel.get("count") != 10
+        or sample_panel.get("order") != list(range(10))
+        or sample_panel.get("labels") != list(range(10))
+        or sample_panel.get("indices_by_label") != expected_indices
+        or sample_panel.get("locked_before_prediction_replay") is not True
+        or sample_panel.get("error_selection") is not False
+        or sample_panel.get("random_sampling") is not False
+    ):
+        raise RuntimeError("current attempt_02 sample panel is mismatched")
+    display = current_manifest.get("display_contract")
+    if (
+        not isinstance(display, Mapping)
+        or display.get("display_rotation_keys") != list(HISTORY_CURRENT_DISPLAY_ROTATED_ORDER)
+        or display.get("native_coordinate_keys") != list(HISTORY_CURRENT_NATIVE_DISPLAY_KEYS)
+        or display.get("front_relay_magnification") != -0.4
+        or display.get("back_relay_magnification") != -2.5
+        or display.get("net_magnification") != 1.0
+    ):
+        raise RuntimeError("current attempt_02 display orientation contract is mismatched")
+    rmal_source = current_manifest.get("rmal")
+    if not isinstance(rmal_source, Mapping) or not isinstance(contract.get("rmal"), Mapping):
+        raise RuntimeError("current attempt_02 RMAL source binding is missing")
+    if (
+        _repo_path(rmal_source.get("checkpoint")) != _repo_path(contract["rmal"]["checkpoint"])
+        or rmal_source.get("checkpoint_sha256") != contract["rmal"]["checkpoint_sha256"]
+        or rmal_source.get("target") != "camera_intensity_same_fov"
+        or rmal_source.get("target_shape") != [1, 200, 200]
+    ):
+        raise RuntimeError("current attempt_02 checkpoint binding is mismatched")
+    state_hashes = current_manifest.get("state_hashes")
+    if (
+        not isinstance(state_hashes, Mapping)
+        or state_hashes.get("unchanged") is not True
+        or state_hashes.get("model_before") != state_hashes.get("model_after")
+        or state_hashes.get("ols_before") != state_hashes.get("ols_after")
+    ):
+        raise RuntimeError("current attempt_02 state digest contract is mismatched")
+    return {
+        "manifest_path": str(_repo_path(current_manifest_path)),
+        "manifest_sha256": HISTORY_CURRENT_CURRENT_MANIFEST_SHA256,
+        "config_path": str(_repo_path(current_manifest["config_path"])),
+        "config_sha256": str(current_manifest["config_sha256"]),
+        "review_path": str(_repo_path(current_manifest["review_path"])),
+        "review_sha256": str(current_manifest["review_sha256"]),
+        "checkpoint_path": str(_repo_path(rmal_source["checkpoint"])),
+        "checkpoint_sha256": str(rmal_source["checkpoint_sha256"]),
+        "sample_panel": sample_panel,
+        "state_hashes": dict(state_hashes),
+    }
+
+
+def _load_current_parameter_lineage(
+    config_path: Path, current_source: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Hash and schema-check step-0/step-5000 without constructing an optimizer."""
+    spec = mra._load_spec(_repo_path(config_path))
+    paths = mra._source_paths(spec)
+    lineage: dict[str, Any] = {}
+    for name, step in (("scaled_chen_step_0", 0), ("scaled_chen_step_5000", 5000)):
+        path = paths[name]
+        expected_sha256 = mra.SOURCE_HASHES[name]
+        payload = safe_torch_load(path, expected_sha256=expected_sha256, map_location="cpu")
+        if (
+            not isinstance(payload, Mapping)
+            or payload.get("schema") != "scaled_chen_bogt_horizon_checkpoint.v1"
+            or int(payload.get("global_step", -1)) != step
+        ):
+            raise RuntimeError(f"current {name} checkpoint schema or step is mismatched")
+        if name == "scaled_chen_step_5000":
+            if (
+                _repo_path(path) != _repo_path(current_source["checkpoint_path"])
+                or expected_sha256 != current_source["checkpoint_sha256"]
+            ):
+                raise RuntimeError("current step-5000 checkpoint is not bound to attempt_02")
+        lineage[name] = {
+            "path": str(path),
+            "sha256": expected_sha256,
+            "global_step": step,
+            "role": "parameter_audit_only" if step == 0 else "replayed_current_state",
+        }
+    return lineage
+
+
+def _validate_fixed_zero_slm_phase(values: Mapping[str, torch.Tensor], state: str) -> None:
+    phase = _history_current_phase(values["slm_output"])
+    if not bool(torch.isfinite(phase).all()):
+        raise RuntimeError(f"{state} SLM output phase is non-finite")
+    maximum = float(phase.abs().max().detach().cpu())
+    if maximum > HISTORY_CURRENT_PHASE_TOLERANCE:
+        raise RuntimeError(f"{state} SLM output phase is not fixed at zero: {maximum}")
+
+
+def _run_history_current_comparison(args: argparse.Namespace, output_dir: Path) -> int:
+    if args.device != "cuda" or not torch.cuda.is_available():
+        raise RuntimeError("history/current full-path comparison requires CUDA; CPU is not a substitute")
+    _check_output_boundary(output_dir)
+    contract, _review, config_path, review_path = _load_full_path_contract(args.visualization_config)
+    current_manifest_path = _repo_path(args.current_manifest)
+    current_manifest = _load_history_current_source_manifest(
+        current_manifest_path, HISTORY_CURRENT_CURRENT_MANIFEST_SHA256
+    )
+    current_source = _verify_history_current_current_source(
+        current_manifest_path, current_manifest, contract
+    )
+    historical_manifest_path = _repo_path(args.historical_reference_manifest)
+    historical_trace_path = _repo_path(args.historical_trace)
+    historical_manifest, historical_files, historical_reference = _verify_history_current_historical_source(
+        historical_manifest_path, historical_trace_path
+    )
+    git_state = _git_state()
+    implementation_paths = (
+        "configs/research/lightgen_scaled_chen_repaired_coordinate_g1_sa_v1.yaml",
+        "scripts/research/replay_scaled_chen_repaired_coordinate_g1_sa.py",
+        "tests/v2/test_scaled_chen_repaired_coordinate_g1_sa.py",
+        "scripts/visualization/render_scaled_chen_full_pipeline.py",
+        "tests/v2/test_scaled_chen_full_path_history_current_comparison.py",
+        "docs/CURRENT_STATUS.md",
+        "docs/migration_windows_native_20260830.md",
+    )
+    allowed_dirty_paths = _verify_allowed_dirty_paths(
+        git_state["status"], tuple(dict.fromkeys((*args.allow_dirty_path, *implementation_paths)))
+    )
+
+    trace = safe_torch_load(
+        historical_trace_path,
+        expected_sha256=HISTORY_CURRENT_TRACE_SHA256,
+        map_location="cpu",
+    )
+    if not isinstance(trace, Sequence) or isinstance(trace, (str, bytes)):
+        raise RuntimeError("historical trace payload is not a sequence")
+    selected_historical, historical_records = _select_historical_trace_digits(trace)
+    historical_values = {
+        stage_id: torch.cat(
+            [selected_historical[digit][stage_id] for digit in range(10)], dim=0
+        )
+        for stage_id in HISTORY_CURRENT_STAGE_KEYS
+    }
+    _validate_fixed_zero_slm_phase(historical_values, "historical")
+
+    device = torch.device(args.device)
+    authority = _load_full_path_authority(contract, args.dataset_root, device)
+    train_images, train_labels = base.load_local_mnist(args.dataset_root, train=True)
+    images, labels, fixed_indices = _select_confirmation_digits(train_images, train_labels)
+    expected_indices = {
+        digit: int(current_source["sample_panel"]["indices_by_label"][str(digit)])
+        for digit in range(10)
+    }
+    if fixed_indices != expected_indices or labels.tolist() != list(range(10)):
+        raise RuntimeError("current confirmation panel does not match attempt_02")
+    rendered = base.render_intensity_batch(images)
+    amplitude = rendered.amplitude.to(device)
+    target = rendered.target.to(device)
+    model = authority["model"]
+    model_state_before = _module_state_digest(model)
+    ols_state_before = _module_state_digest(model.ols)
+    expected_state_hashes = current_source["state_hashes"]
+    if (
+        model_state_before != expected_state_hashes["model_before"]
+        or ols_state_before != expected_state_hashes["ols_before"]
+    ):
+        raise RuntimeError("current replay model state does not match attempt_02")
+    with torch.no_grad():
+        current_raw_values, diagnostics, camera_intensity, consistency = _trace_fiber_batch(
+            model, amplitude, target
+        )
+    model_state_after = _module_state_digest(model)
+    ols_state_after = _module_state_digest(model.ols)
+    if model_state_before != model_state_after or ols_state_before != ols_state_after:
+        raise RuntimeError("current history/current replay changed frozen model or OLS state")
+    if consistency > 1.0e-7:
+        raise RuntimeError(f"current history/current replay consistency exceeded contract: {consistency}")
+    if not all(torch.isfinite(value).all() for value in current_raw_values.values()):
+        raise RuntimeError("current history/current replay contains a non-finite value")
+    if not torch.equal(current_raw_values["cmos_detector_intensity"], camera_intensity):
+        raise RuntimeError("current CMOS intensity is not the explicit traced detector readout")
+    current_values = {
+        "slm_output": current_raw_values["slm_output"],
+        "encoder_input": current_raw_values["encoder_input"],
+        "encoder_layer_1": current_raw_values["encoder_layer_1"],
+        "pre_ols": current_raw_values["fiber_input"],
+        "post_ols": current_raw_values["fiber_output"],
+        "decoder_layer_1": current_raw_values["decoder_layer_1"],
+        "decoder_layer_2": current_raw_values["decoder_layer_2"],
+        "cmos_field": current_raw_values["cmos_field"],
+    }
+    current_values = {key: value.detach().cpu() for key, value in current_values.items()}
+    _validate_fixed_zero_slm_phase(current_values, "current")
+    lineage = _load_current_parameter_lineage(args.config, current_source)
+    values_by_state = {"historical": historical_values, "current": current_values}
+    views, scales = _history_current_views(values_by_state, sample_positions=range(10))
+
+    output_dir.mkdir(parents=True, exist_ok=False)
+    saved: list[Path] = []
+    records_by_digit = {int(record["digit"]): record for record in historical_records}
+    for page_number, page_digits in enumerate(HISTORY_CURRENT_PAGE_DIGITS, start=1):
+        page_label = f"digits {page_digits[0]}–{page_digits[-1]}"
+        saved.extend(
+            _render_history_current_plate(
+                views,
+                output_dir / f"{page_number:02d}_history_current_digits_{page_digits[0]}_{page_digits[-1]}",
+                positions=page_digits,
+                labels=page_digits,
+                historical_records=tuple(records_by_digit[digit] for digit in page_digits),
+                current_indices=tuple(fixed_indices[digit] for digit in page_digits),
+                page_label=page_label,
+            )
+        )
+
+    output_files = sorted(path for path in output_dir.rglob("*") if path.is_file())
+    output_bytes = sum(path.stat().st_size for path in output_files)
+    if output_bytes > 512 * 1024**2:
+        raise RuntimeError(f"history/current visualization output exceeds 512 MiB: {output_bytes}")
+    manifest = {
+        "schema": "lightgen_optical_manifold_smf_bogt_full_path_historical_current_comparison.v1",
+        "task_id": HISTORY_CURRENT_TASK,
+        "status": "completed",
+        "classification": "descriptive_visualization_completed",
+        "diagnostic_only": True,
+        "layout_schema": HISTORY_CURRENT_LAYOUT_SCHEMA,
+        "stage_order": list(HISTORY_CURRENT_STAGE_KEYS),
+        "stage_labels": list(HISTORY_CURRENT_STAGE_LABELS),
+        "stage_aliases": HISTORY_CURRENT_STAGE_ALIASES,
+        "pages": [list(page) for page in HISTORY_CURRENT_PAGE_DIGITS],
+        "states": list(HISTORY_CURRENT_STATES),
+        "columns_per_state": len(HISTORY_CURRENT_STAGE_KEYS),
+        "total_stage_columns": len(HISTORY_CURRENT_STAGE_KEYS) * len(HISTORY_CURRENT_STATES),
+        "pairing": {
+            "same_digit": True,
+            "same_instance": False,
+            "causal_claim": False,
+            "mapping": [
+                {
+                    "digit": digit,
+                    "historical_trace_position": 2 * digit,
+                    "current_confirmation_index": fixed_indices[digit],
+                }
+                for digit in range(10)
+            ],
+        },
+        "historical": {
+            "route": "8/21 S0 synthetic SMF-LP01",
+            "source_manifest": str(historical_manifest_path),
+            "source_manifest_sha256": HISTORY_CURRENT_SOURCE_MANIFEST_SHA256,
+            "trace": str(historical_trace_path),
+            "trace_sha256": HISTORY_CURRENT_TRACE_SHA256,
+            "codes": historical_files["codes"],
+            "labels": historical_files["labels"],
+            "generator_checkpoint": historical_files["generator_checkpoint"],
+            "formal_config": historical_files["config"],
+            "trace_positions": _historical_trace_positions(),
+            "reference_record": dict(historical_reference),
+            "source_manifest_schema": historical_manifest["schema"],
+        },
+        "current": {
+            **current_source,
+            "attempt": "attempt_02",
+            "route": "current Scaled-Chen step-5000",
+            "confirmation_indices_by_digit": {
+                str(digit): fixed_indices[digit] for digit in range(10)
+            },
+        },
+        "parameter_lineage": lineage,
+        "cuda_replay": True,
+        "training": False,
+        "optical_parameters_changed": False,
+        "display_contract": {
+            "amplitude": "abs(E), shared linear p99.5 scale per stage across both states and all ten digits",
+            "phase": "angle(E), raw fixed [-pi,pi], no shift/unwrap/gauge normalization",
+            "slm": "IdealAmplitudeSLM amplitude modulation; SLM-output phase is fixed zero and is not an independent control channel",
+            "display_rotation": "display-only 180 degrees on the six intermediate optical maps",
+            "display_rotation_keys": list(HISTORY_CURRENT_DISPLAY_ROTATED_ORDER),
+            "native_coordinate_keys": list(HISTORY_CURRENT_NATIVE_DISPLAY_KEYS),
+            "front_relay_magnification": -0.4,
+            "back_relay_magnification": -2.5,
+            "net_magnification": 1.0,
+            "raw_complex_traces_unchanged": True,
+            "scales_by_stage": scales,
+        },
+        "replay": {
+            "current_forward_consistency_max_abs": consistency,
+            "current_model_state_before": model_state_before,
+            "current_model_state_after": model_state_after,
+            "current_ols_state_before": ols_state_before,
+            "current_ols_state_after": ols_state_after,
+            "current_state_unchanged": True,
+            "historical_replayed": False,
+            "optimizer_created": False,
+            "backward_called": False,
+        },
+        "governance": {
+            "diagnostic_only": True,
+            "training_authorized": False,
+            "formal_promotion": False,
+            "causal_claim": False,
+            "next_action": "manual_review_FULL_PATH_BEFORE_AFTER_COMPARISON",
+        },
+        "config_path": str(config_path),
+        "config_sha256": file_sha256(config_path),
+        "review_path": str(review_path),
+        "review_sha256": file_sha256(review_path),
+        "git": git_state,
+        "preflight": {
+            "expected_branch": contract["branch"],
+            "source_attempt_02_commit": contract["expected_head"],
+            "live_commit": git_state["commit"],
+            "allowed_dirty_paths": allowed_dirty_paths,
+            "unexpected_dirty_paths": [],
+        },
+        "outputs": [
+            {"path": str(path.resolve()), "sha256": file_sha256(path), "bytes": path.stat().st_size}
+            for path in output_files
+        ],
+        "output_bytes_before_manifest": output_bytes,
+    }
+    metadata_path = output_dir / "comparison_manifest.json"
+    if metadata_path.exists():
+        raise FileExistsError(f"refusing to overwrite comparison manifest: {metadata_path}")
+    metadata_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    _verify_history_current_output_files(output_dir)
+    print(
+        json.dumps(
+            {
+                "output_dir": str(output_dir.resolve()),
+                "manifest": str(metadata_path.resolve()),
+                "classification": "descriptive_visualization_completed",
+                "pages": [list(page) for page in HISTORY_CURRENT_PAGE_DIGITS],
+                "output_bytes": output_bytes,
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+    )
+    return 0
+
+
 def _run_full_path(args: argparse.Namespace, output_dir: Path) -> int:
     if args.device != "cuda" or not torch.cuda.is_available():
         raise RuntimeError("full-path visualization requires CUDA; CPU is not a substitute")
@@ -2660,6 +3536,8 @@ def main() -> int:
     output_dir = args.output_dir if args.output_dir is not None else _default_output_dir(args.view)
     if args.view == "full-path-reconstruction":
         return _run_full_path(args, output_dir)
+    if args.view == "full-path-history-current-comparison":
+        return _run_history_current_comparison(args, output_dir)
     if args.view == "fiber-chain":
         return _run_fiber_chain(args, output_dir)
     _check_output_boundary(output_dir)
