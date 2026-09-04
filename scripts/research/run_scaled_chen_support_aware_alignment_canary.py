@@ -670,6 +670,9 @@ def _load_authorities(config: Mapping[str, Any]) -> dict[str, Any]:
     ):
         if file_sha256(parent_dir / name) != expected:
             raise ValueError("T2-SAAC RCR-B authority hash is stale")
+    parent_metrics = _json_file(parent_dir / config["parent"]["rcr_b_metrics"], expected_sha256=config["parent"]["rcr_b_metrics_sha256"])
+    if parent_metrics.get("task_id") != "H-LOMA-GEN-RCR-B" or parent_metrics.get("status") != "completed" or parent_metrics.get("gate", {}).get("classification") != "P4_SUPPORTED_REPAIRED":
+        raise ValueError("T2-SAAC RCR-B support metrics authority is invalid")
     distances = safe_torch_load(
         parent_dir / config["parent"]["rcr_b_distances"],
         expected_sha256=RCR_B_DISTANCES_SHA256,
@@ -694,7 +697,7 @@ def _load_authorities(config: Mapping[str, Any]) -> dict[str, Any]:
         "calibration": calibration,
         "parent_distances": {"holdout": holdout, "prior": prior},
         "parent_mse": parent_mse,
-        "parent_metrics": registered_sources["rcr_metrics"],
+        "parent_metrics": parent_metrics,
     }
 
 
