@@ -861,3 +861,20 @@ state=`AVAILABLE_AND_BOUND`（只读），checkpoint/state digest 前后一致�
 通过。T1-RCWV targeted tests=`8 passed`；compileall、Ruff、`git diff --check` 通过。治理保持
 closed evidence boundary、reconstruction/generative unsupported、generation not ready、training/promotion
 false。唯一下一动作固定为 `PLAN_REPAIRED_COORDINATE_ALIGNMENT_WEIGHT_REGISTRATION`。
+## 2026-09-04：H-LOMA-GEN-T1-RCAWR Windows-native closeout
+
+在 branch=`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`、starting HEAD
+`7d7bae60d78ebdf80615c08e19a0ab435bfd34d3` 的 clean preflight 后，新增并验证 RCAWR
+registration script/config/focused tests 及本次状态记录。实现仅消费冻结 RCWV/R2/历史 BOGT
+artifact，使用 Decimal analytic replay 登记
+`alpha_repaired=0.00017905883237862847`；没有 CUDA、模型 forward、gradient measurement、
+optimizer、training、checkpoint、prior generation、refit、decoder、CMOS 或 MPCDAR。
+
+RCAWR Gate=`RCAWR_REGISTRATION_PASS`；predicted ratios=`0.1166303093/0.0925572168/0.0941462530`，
+均在 `[0.05,0.40]`。attempt-01 因 manifest 发布顺序检查过早而只留下 4 个中间 JSON，保留但不消费；
+正式 write-once output 为
+`outputs/20260904_v2/runs/lightgen_scaled_chen_repaired_coordinate_bogt_weight_registration_v1_attempt_02/`，
+只含 5 个 JSON，manifest 记录 source hashes、Set A/B provenance、state isolation 与 governance，
+不覆盖任何既有 attempt。Windows-native RCAWR focused tests、compileall、Ruff 与 `git diff --check`
+通过；最终 Git commit 与 clean-head 状态由本轮收尾核验返回。唯一下一动作是
+`IMPLEMENT_GENERATIVE_ALIGNMENT_CANARY`，training/promotion 仍未授权。

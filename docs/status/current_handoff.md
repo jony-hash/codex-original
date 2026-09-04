@@ -1,4 +1,4 @@
-# 当前主线交接（2026-09-03）
+# 当前主线交接（2026-09-04）
 
 本文件是当前执行状态的稳定入口。最终主线已在当前 evidence boundary 收口；当前没有下一科学
 实验。架构合同见 [v2 runtime](../architecture/v2_runtime.md)，收口边界见
@@ -2271,3 +2271,24 @@ starting/ending HEAD=`02fb1f636aa17e0e2f7f01a3fa70275b8f19dbdf`，branch=`resear
 selection mean heterogeneity std/range=`0.7455607/3.5774960`、within/between/total=`1.5498618/0.5558607/2.1057225`；confirmation 对应为 `0.6458730/2.9762450`、`1.4546335/0.4171519/1.8717854`。mean absolute off-diagonal correlation=`0.1600160/0.1617629`，p95=`0.4607387/0.4692335`，max=`0.8836253/0.8846894`，off-diagonal covariance fraction=`0.7362989/0.7411037`；prior-null primary percentile 两 panel 均为 `100%`。prior-defined lower/upper/central tail masses=`0.156820/0.134430/0.708750`（selection）与 `0.168390/0.114900/0.716710`（confirmation）。
 
 manifest SHA-256=`228679fda073b2e4e1e46c931b743b490930dc895313e5c201283d244e22d97a`，metrics SHA-256=`4ea665c5a021a09c9ce2d44adfc31ed0cdb593de30b0ed3dbb3b10986bfbe9d2`，8 个 artifact 共 `639294` bytes；无隐藏文件、`.tmp` 或 TIFF。learned-state digest before/after=`cdbf06f03b611f4df38324c1546686bc5fc614644a64130c95cd3a76012e27b5`，unchanged；optimizer/backward/refit/checkpoint/prior_fitted/decoder/CMOS/MPCDAR/training 均 false。PSD 定向测试=`7 passed`，PSD+RCR-A+Scaled-Chen BOGT 相关回归=`36 passed`，compileall/Ruff/diff-check 通过；唯一下一动作：`IMPLEMENT_REPAIRED_COORDINATE_G1_SA_REPLAY`。治理仍保持 reconstruction/generative unsupported、generation not ready、training/promotion=false。
+## H-LOMA-GEN-T1-RCAWR：Repaired-Coordinate BOGT alignment weight registration（2026-09-04）
+
+本轮 scope 仅为从冻结 RCWV attempt-01 登记 repaired-coordinate BOGT alpha；不运行 CUDA 或
+gradient measurement，不改变 calibration/prior，不创建 optimizer，不执行 training、checkpoint、
+refit、generation、decoder、CMOS 或 MPCDAR。consumer 绑定 R2
+`scaled_chen_bogt_calibration.v2` / `unit_aware_raw_mean_v2`、step-5000 parent checkpoint 和
+RCWV artifact identity；Set B 是 registered preflight global-alpha replay authority，Set A 是
+step-5000 replay context。
+
+冻结 RCWV raw norm/effective-ratio identity 经 Decimal replay 得到
+`alpha_repaired=0.00017905883237862847`，canonical Decimal 为
+`0.000179058832378628469663887774247392581098542509215070071798828`。三 panel predicted ratios
+为 `0.1166303093/0.0925572168/0.0941462530`，通过 inclusive `[0.05,0.40]`，Gate=
+`RCAWR_REGISTRATION_PASS`。attempt-01 因 manifest 发布顺序检查过早而只留下 4 个中间 JSON，保留但
+不消费；正式 write-once authority 为
+`outputs/20260904_v2/runs/lightgen_scaled_chen_repaired_coordinate_bogt_weight_registration_v1_attempt_02/`；
+输出只含 5 个 JSON，manifest 绑定 source hashes 与 no-update state。
+
+治理保持 reconstruction/generative manifold unsupported、generation not ready、training/promotion
+false，下一动作是 `IMPLEMENT_GENERATIVE_ALIGNMENT_CANARY`；下一步仍需新的 canary 授权，不得由
+本次 weight registration 自动进入 training。

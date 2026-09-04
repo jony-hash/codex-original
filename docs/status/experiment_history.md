@@ -2267,3 +2267,24 @@ After the final clean-head check, the bridge `refresh` stopped fail-closed with
 `invalid Sources manifest: C:\Users\24567\Documents\Codex\codex-original-chatgpt-bridge\current\.chatgpt-sources-manifest.json`;
 `status` remained `invalid` for the same reason. `bridge_recovery_blocked=true`; no automatic upload
 occurred and the existing package was not deleted or overwritten.
+## H-LOMA-GEN-T1-RCAWR：Repaired-Coordinate BOGT Weight Registration（2026-09-04）
+
+RCAWR 是 RCWV 的 analytic-only consumer。它只读取并 hash-bind R2 v2 calibration、historical
+Set B preflight registration、Set A step-5000 replay context、parent step-5000 checkpoint identity
+和 RCWV attempt-01；没有重新运行正式 gradient measurement，也没有 optimizer/backward/update、
+training、checkpoint、refit、prior generation 或 decoder/CMOS/MPCDAR。
+
+对 RCWV repaired v2 的三组 panel，先用 raw `G_BOGT/G_MSE` 验证冻结 effective ratio，再以冻结
+serialized ratio 作为跨进程 Decimal source 重建 `K_i`。历史注册规则为
+`alpha_i=0.10/K_i`、`alpha_registered=mean(alpha_i)`；结果为
+`alpha=0.00017905883237862847`，三组 predicted ratios=`0.1166303093/0.0925572168/0.0941462530`，
+全部通过 `[0.05,0.40]`，classification=`RCAWR_REGISTRATION_PASS`。这只是 repaired-coordinate
+weight registration，不是 training readiness 或 generative-manifold evidence。
+
+attempt-01 因 manifest 发布顺序检查过早而只留下 4 个中间 JSON，保留但不消费；正式 write-once
+authority path 为
+`outputs/20260904_v2/runs/lightgen_scaled_chen_repaired_coordinate_bogt_weight_registration_v1_attempt_02/`，
+输出树严格为 5 个 JSON；manifest、metrics、panel details、old/new comparison 与 compact report
+均记录 source binding、provenance、state isolation 和 governance。下一动作固定为
+`IMPLEMENT_GENERATIVE_ALIGNMENT_CANARY`，治理仍为 closed evidence boundary、reconstruction/
+generative unsupported、generation not ready、training/promotion=false。

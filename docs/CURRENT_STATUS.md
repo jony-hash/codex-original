@@ -1,6 +1,6 @@
 # 当前项目状态
 
-更新时间：2026-09-03
+更新时间：2026-09-04
 
 ## FINAL_MAINLINE_CLOSEOUT：H-LOMA-CBOGT Scaled-Chen reconstruction-repair mainline（2026-09-03）
 
@@ -1757,3 +1757,33 @@ hash、learned-state digest 前后一致，`optimizer_step_called=false`、`opti
 `reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、
 `generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false`。
 唯一下一动作固定为 `PLAN_REPAIRED_COORDINATE_ALIGNMENT_WEIGHT_REGISTRATION`。
+## H-LOMA-GEN-T1-RCAWR：Repaired-Coordinate BOGT Alignment Weight Registration（2026-09-04）
+
+本轮只登记 repaired-coordinate BOGT alignment weight；没有修改 calibration/prior、没有创建
+optimizer、没有执行 backward/gradient measurement、training、checkpoint、refit、prior generation
+或 decoder/CMOS/MPCDAR。registration consumer 严格绑定 R2
+`scaled_chen_bogt_calibration.v2` / `unit_aware_raw_mean_v2`（payload SHA-256=
+`ce31dd816691a08ca9388e0ec086be0e2e3ebd40005598c1ef44a1ba79a9fd07`）、step-5000 parent checkpoint
+（SHA-256=`ccb89f98cc11725eb80d66c61f4fdef62b24acdf9f6d739f78373f462d10e5de`）和冻结 RCWV
+attempt-01。历史 Set B registered preflight global-alpha replay 是 registration authority；Set A
+step-5000 replay 只作 context。
+
+从 RCWV repaired panel 的冻结 effective ratios 与 raw norm identity 重建
+`K_i=G_BOGT/G_MSE`，按历史规则 `alpha_i=0.10/K_i` 并取三 panel 算术平均，得到
+`alpha_repaired=0.00017905883237862847`（canonical Decimal=
+`0.000179058832378628469663887774247392581098542509215070071798828`）。三组预测 effective
+ratios=`0.1166303093/0.0925572168/0.0941462530`，均落在 inclusive `[0.05,0.40]`，Gate=
+`RCAWR_REGISTRATION_PASS`。该 Gate 只登记一个候选 alpha，不授权 training 或 generation。
+
+首次 attempt-01 因 manifest 发布顺序检查过早而只留下 4 个中间 JSON，保留但不消费；正式
+write-once output 为
+`outputs/20260904_v2/runs/lightgen_scaled_chen_repaired_coordinate_bogt_weight_registration_v1_attempt_02/`，
+仅含 `weight_registration_manifest.json`、`weight_registration_metrics.json`、
+`panel_registration_details.json`、`old_new_alpha_comparison.json` 和 `compact_report.json`，无图像。
+manifest 记录所有源 artifact/path/hash、Set A/B provenance、alpha 推导、state isolation 和
+governance；若目录已存在只能递增到下一个 attempt，禁止覆盖。RCAWR focused regression、
+compileall、Ruff 与 `git diff --check` 均通过；当前治理继续为
+`mainline_state=closed_at_current_evidence_boundary`、`reconstruction_manifold_supported=false`、
+`generative_manifold_supported=false`、`generation_readiness=not_ready`、
+`training_authorized=false`、`formal_promotion=false`。唯一下一动作固定为
+`IMPLEMENT_GENERATIVE_ALIGNMENT_CANARY`。
