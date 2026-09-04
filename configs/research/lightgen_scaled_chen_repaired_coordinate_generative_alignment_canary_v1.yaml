@@ -1,0 +1,151 @@
+schema: lightgen_scaled_chen_repaired_coordinate_generative_alignment_canary_v1
+task_id: H-LOMA-GEN-T1-GAC
+hypothesis: H-LOMA-GEN-T1-GAC
+
+parent:
+  rcr_b:
+    config: configs/research/lightgen_scaled_chen_repaired_coordinate_g1_sa_v1.yaml
+    config_sha256: daff74ffa5f21efa6d17d35647d5f6d6016da0fd2b5cfc73495318151834ccd5
+    config_canonical_sha256: 0397739ce8a6937e023bc4c0160f78ce3cf0db00c8eefbbe0ecffc99f355ed53
+    output_directory: outputs/20260904_v2/runs/lightgen_scaled_chen_g1_prior_support_accessibility_repaired_coordinate_v1_attempt_01
+    manifest: observer_manifest.json
+    manifest_sha256: f1159ea754741798d690be8365e9bb73b9b9fb5db0a1368b06767dac3a58ddba
+    metrics: support_metrics.json
+    metrics_sha256: 0afe577ce50d0d2063e2c7d69915724eac468bf6deb777acb3f20dd95e6b96a1
+    compact_report: compact_report.json
+    compact_report_sha256: 13131c87599cee9675c60954a6ca20ad21a04ee1cdfcc3074c10ed52b4c9acc8
+    support_distances_sha256: d288beb4bd57a1db2a9a864dd8db1be5ef22f75f14702fa13f01b01623671466
+    gate: P4_SUPPORTED_REPAIRED
+  checkpoint:
+    path: outputs/20260829_v2/runs/lightgen_optical_manifold_smf_bogt_horizon_v2_attempt_03/checkpoints/scaled_chen_horizon_step_5000.pt
+    sha256: ccb89f98cc11725eb80d66c61f4fdef62b24acdf9f6d739f78373f462d10e5de
+    schema: scaled_chen_bogt_horizon_checkpoint.v1
+    global_step: 5000
+  learned_state_digest: cdbf06f03b611f4df38324c1546686bc5fc614644a64130c95cd3a76012e27b5
+  baseline:
+    r50: 1.8389778625915822
+    r50_ci: [1.8142740175004783, 1.8698541783522564]
+    r95: 1.0954389476597146
+    r95_ci: [1.067902362924707, 1.1147610065899916]
+
+calibration:
+  schema: scaled_chen_bogt_calibration.v2
+  contract_version: unit_aware_raw_mean_v2
+  payload: outputs/20260904_v2/runs/lightgen_scaled_chen_bogt_calibration_contract_repair_v2_attempt_02/repaired_calibration.pt
+  payload_sha256: ce31dd816691a08ca9388e0ec086be0e2e3ebd40005598c1ef44a1ba79a9fd07
+  manifest: outputs/20260904_v2/runs/lightgen_scaled_chen_bogt_calibration_contract_repair_v2_attempt_02/calibration_manifest.json
+  manifest_sha256: 0cf707fe4f146c1a1c3190256fad8ec8e4bc72e33674d374e75f40b161b3fce6
+  calibration_indices_sha256: 369c5bded5673f901ae5236eaa51a0c8da17934dc2fab139a205c9fce41d5543
+  dataset_manifest_sha256: 741e6402da754a740a677dbb343d48c35983f62b59911bbc129dfcc44f9e9ae9
+  mode_bank_sha256: 75fb38eee956a1d177486e00b22e0b62f0c1bf29e94eb398851bed18d6288ba9
+  zero_phase_reference: independent_train_only_zero_phase
+  plane_identity: pre_ols_plane_power_reference_v1
+
+dataset:
+  root: data
+  mra_manifest_sha256: 520f7743bb317fabf891734ad899c84f2cec7639dbe02f65642670a8a1e64ebb
+  horizon_manifest_sha256: 741e6402da754a740a677dbb343d48c35983f62b59911bbc129dfcc44f9e9ae9
+  confirmation_indices_sha256: ff7ab50b95d96e727c240edc2baa916d1e6c11402b8f4f9c2ce6e2e7e5e2218a
+  input_shape: [1, 28, 28]
+  rendered_shape: [1, 200, 200]
+
+prior:
+  kind: truncated_normal
+  mean: 1.0
+  variance: 0.25
+  lower: 0.0
+  unconditional: true
+  class_conditioned: false
+  phase: fixed_calibrated_zero_residual
+  sample_count: 5000
+  seed: 1237
+  sampler: bogt.truncated_normal_sample_inverse_cdf
+
+training:
+  parent_step: 5000
+  start_step: 5000
+  steps: 1000
+  end_step: 6000
+  objective: mse_plus_repaired_coordinate_bogt
+  arm: mse_kl
+  mse_weight: 1.0
+  alpha: 0.00017905883237862847
+  gamma: 0.0
+  old_alpha: 0.002996375650268832
+  optimizer: Adam
+  learning_rate: 0.001
+  scheduler: none
+  seed: 1234
+  logical_batch_size: 10
+  microbatch_size: 1
+  gradient_accumulation_steps: 1
+  schedule: registered_horizon_seed_1234_continuation_5000_to_5999
+  checkpoint_policy: fixed_end_checkpoint_only
+  endpoint_selection: fixed_before_training_no_best_selection
+  logging: [mse, bogt, weighted_bogt, total, encoder_grad_norm, decoder_grad_norm, finite, z_mean, z_variance, optimizer_telemetry]
+
+evaluation:
+  mra:
+    selection_source: mnist_test_indices_5000_9999
+    selection_count: 1000
+    confirmation_source: horizon_heldout_train_indices_55000_59999
+    confirmation_count: 5000
+    metrics: [z_mean, z_variance, gaussian_kl, numerical_truncated_normal_kl, complex_effective_rank, power_effective_rank]
+  g1:
+    train_support_start: 0
+    train_support_count: 55000
+    heldout_count: 5000
+    prior_count: 5000
+    prior_seed: 1237
+    bootstrap_seed: 1236
+    bootstrap_replicates: 2000
+    confidence_level: 0.95
+    distance_metric: exact_normalized_euclidean
+    normalization: divide_by_sqrt_100
+    query_chunk_size: 128
+    support_chunk_size: 4096
+    approximate_search: false
+  mean_safety:
+    lower: 0.90
+    upper: 1.10
+  rank_safety:
+    retention: 0.90
+    reference: frozen_parent_rcr_b_mra_context
+    metrics: [complex_effective_rank, power_effective_rank]
+  current_sample_safety:
+    route: confirmation_same_route_full_forward
+    controls: [cyclic_mse, template_control_mse]
+    criterion: paired_mse_finite_and_below_both_controls
+  primary_gate:
+    name: SUPPORT_ALIGNMENT_DIRECTION_SUPPORTED
+    r50_upper_strictly_below_parent_ci_lower: 1.8142740175004783
+    r95_upper_strictly_below_parent_ci_lower: 1.067902362924707
+
+execution:
+  device: cuda
+  required_cublas_workspace_config: ':4096:8'
+  min_free_cuda_bytes: 4294967296
+  max_peak_cuda_bytes: 5368709120
+  min_disk_free_bytes: 10737418240
+  max_storage_bytes: 2147483648
+  preflight_steps: 3
+  preflight_max_seconds: 600.0
+
+authorization:
+  diagnostic_only: true
+  training_scope: one_bounded_1000_step_repaired_coordinate_canary
+  training_authorized: bounded_canary_only
+  prior_generation: false
+  decoder_generation: false
+  cmos_generation: false
+  mpcdar: false
+  g2: false
+  formal_promotion: false
+
+governance:
+  mainline_state: closed_at_current_evidence_boundary
+  reconstruction_manifold_supported: false
+  generative_manifold_supported: false
+  generation_readiness: not_ready
+  training_authorized_after_canary: false
+  formal_promotion: false
