@@ -1,0 +1,58 @@
+schema: lightgen_scaled_chen_output_semantic_evaluator_prediction_identity_v1
+task_id: H-LOMA-GEN-S2-OSERA-VPIM
+hypothesis: H-LOMA-GEN-S2-OSERA-VPIM
+
+source:
+  fosea_manifest: outputs/20260904_v2/runs/lightgen_scaled_chen_frozen_output_semantic_evaluator_v1_attempt_01/evaluator_manifest.json
+  fosea_manifest_sha256: c8e144da2dd02e9f4ee78f7e8829782800651ec835adb1ae6fd781b1921c1d0f
+  checkpoint: outputs/20260904_v2/runs/lightgen_scaled_chen_frozen_output_semantic_evaluator_v1_attempt_01/frozen_output_semantic_evaluator.pt
+  checkpoint_sha256: a6ac0b4644a459bad21bc7cf3071465d5306af31ad2081fe7acb6f81e87c47e6
+  corpus: outputs/20260904_v2/runs/lightgen_scaled_chen_frozen_output_semantic_evaluator_v1_attempt_01/output_domain_corpus.pt
+  corpus_sha256: 787b1b4e256f54ccebb55bb5582308f92148dc595d4cab4f632d3e87d72907b7
+  output_identity_manifest: outputs/20260904_v2/runs/lightgen_scaled_chen_frozen_output_semantic_evaluator_v1_attempt_01/output_identity_manifest.json
+  output_identity_manifest_sha256: db8f03d977a55e2c82ec557b8b359f55f27048c413e31e04c2f76134dfcbb04d
+  qualification_metrics: outputs/20260904_v2/runs/lightgen_scaled_chen_frozen_output_semantic_evaluator_v1_attempt_01/qualification_metrics.json
+  qualification_metrics_sha256: 2fed6db88c0b5003458077198375f746eb995a88be4a9350c2d70cd38acb8568
+  data_identity_manifest: outputs/20260904_v2/runs/lightgen_scaled_chen_frozen_output_semantic_evaluator_v1_attempt_01/data_identity_manifest.json
+  data_identity_manifest_sha256: 8ae23bf1f247124a1f1f9689a2a4cfb507860c49704d334adec158808d093dc4
+  output_domain_contract: outputs/20260904_v2/runs/lightgen_scaled_chen_frozen_output_semantic_evaluator_v1_attempt_01/output_domain_contract.json
+  output_domain_contract_sha256: 515137bd66c71ba6b1b1f4e21fa99d4f2527aca286e11ff079b4b7dfd2fbce56
+  training_contract: outputs/20260904_v2/runs/lightgen_scaled_chen_frozen_output_semantic_evaluator_v1_attempt_01/training_contract.json
+  training_contract_sha256: e84ad034e5fc726810f8813409dd438242d38aafdae735bfba83c14c53487f25
+
+validation:
+  source_dataset: mnist_train
+  source_index_start: 50000
+  source_index_stop: 55000
+  count: 5000
+  shape: [5000, 1, 28, 28]
+  indices_sha256: 5370b35f304a779cde7f978df6392b9974faaf4296e9edf75f9edf8202db02fa
+  labels_sha256: 13d90706eef49c3c9f17ccd39c002dc18a79eca1378e780548ea6b29adc6ec29
+
+replay:
+  device: cpu
+  batch_size: 256
+  shuffle: false
+  logit_tolerance: 1.0e-7
+  null_seed: 2053
+  bootstrap_seed: 1236
+  bootstrap_replicates: 2000
+
+output:
+  path: outputs/20260906_v2/runs/lightgen_scaled_chen_output_semantic_evaluator_prediction_identity_v1_attempt_01
+
+authorization:
+  evaluator_replay: cpu_only
+  evaluator_training: false
+  optical_forward: false
+  s2_execution: false
+  osera_final_gate: false
+  formal_promotion: false
+
+governance:
+  mainline_state: closed_at_current_evidence_boundary
+  reconstruction_manifold_supported: false
+  generative_manifold_supported: false
+  generation_readiness: not_ready
+  training_authorized: false
+  formal_promotion: false
