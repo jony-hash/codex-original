@@ -1085,3 +1085,38 @@ reconstruction/generative unsupported、generation not ready、training/promotio
 
 VPIM + FOSEA focused tests=`15 passed`（仅既有 pytest cache ACL warning）；compileall、Ruff、
 `git diff --check` 通过。唯一下一动作：`IMPLEMENT_OUTPUT_SEMANTIC_EVALUATOR_REQUALIFICATION_AUTHORITY`。
+
+## H-LOMA-GEN-S2-OSERA Output Semantic Evaluator Requalification（2026-09-06，Windows-native，diagnostic-only）
+
+从 clean HEAD=`c0f23202839810698c9a1e5068f07d8627c4e4f7` 开始完成唯一一次 scope-limited OSERA
+requalification；实现/config/tests 提交为
+`9382b54ab76d439a2ac277c6b42e966acdd6655a`。本轮只消费 VPIM attempt-01 pointwise predictions、
+已登记 label-only permutation 和 FOSEA provenance metadata，没有 evaluator forward、checkpoint
+load/retrain、CUDA、optical execution、S2 replay/measurement、prediction correction、calibration、
+generation 或 promotion。
+
+FOSEA historical authority 仍为 `FROZEN_OUTPUT_SEMANTIC_EVALUATOR_NOT_QUALIFIED`，generic threshold
+仍为 `0.985`，accuracy=`0.9712`；VPIM 绑定为
+`OSERA_VALIDATION_PREDICTION_IDENTITY_READY`，checkpoint SHA-256=
+`a6ac0b4644a459bad21bc7cf3071465d5306af31ad2081fe7acb6f81e87c47e6`，prediction identity SHA-256=
+`572e270d17c5e0a1dbb1aaf4010fd1d06d03739ce86f06b945f956d27dfa484a`，sample order SHA-256=
+`aedcb0f58651c77518ae01ca6f908ad2126a81395a7a431a233bd0497b60601e`；aggregate、replay、state
+isolation gates 均 PASS。
+
+正式 write-once authority 为
+`outputs/20260906_v2/runs/lightgen_scaled_chen_output_semantic_evaluator_requalification_v1_attempt_01/`，
+8 个 JSON、`23012` bytes；manifest SHA-256=`c6a37a637917f0b32fb96d5f3c51827798696d3bd7924d31c3c441421402850d`。
+目录逐文件 hash/size、无隐藏文件、`.tmp` 或 TIFF，FOSEA/VPIM artifacts 未被修改。
+
+10 类 diagonal dominance 全部通过；margin bootstrap 使用 seed=`1236`、2000 replicates、stratified
+percentile 95% CI，minimum lower95=`0.8752188`。固定 null seed=`2053` 的 real/shuffled accuracy
+为 `0.9712/0.1004`，Δ=`0.8708`，95% CI=`[0.8616,0.8800]`，global-null Gate PASS。错误模型冻结
+为 `SEMANTIC_INSTRUMENT_ERROR_MODEL_V1`，error rate=`0.0288`，无 prediction correction 或 calibration。
+
+最终 Gate=`OUTPUT_SEMANTIC_EVALUATOR_REQUALIFICATION_PASS`，classification=
+`FROZEN_OUTPUT_SEMANTIC_EVALUATOR_REQUALIFIED_FOR_PAIRED_S2`。该结果只授权 paired-S2 semantic
+measurement instrument，不是 FOSEA 0.985 PASS、generic evaluator qualification、S2 supported 或
+generation readiness。OSERA + VPIM + FOSEA focused=`27 passed`；compileall、Ruff、
+`git diff --check` 通过。治理继续为 closed evidence boundary、reconstruction/generative unsupported、
+generation not ready、training/promotion=false。唯一下一动作：
+`IMPLEMENT_S2_DIRECT_OLS_SEMANTIC_DECODE_CANARY`。

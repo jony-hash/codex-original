@@ -2082,3 +2082,58 @@ requalification 或 semantic generation readiness。治理继续保持
 VPIM targeted + FOSEA focused regression=`15 passed`（仅既有 pytest cache ACL warning）；Windows-native
 compileall、Ruff 与 `git diff --check` 均通过。唯一下一动作固定为
 `IMPLEMENT_OUTPUT_SEMANTIC_EVALUATOR_REQUALIFICATION_AUTHORITY`。
+
+## H-LOMA-GEN-S2-OSERA Output Semantic Evaluator Requalification（2026-09-06，Windows-native，diagnostic-only）
+
+本轮从 clean starting HEAD=`c0f23202839810698c9a1e5068f07d8627c4e4f7` 开始，完成唯一一次
+scope-limited OSERA requalification；实现/config/tests 独立提交为
+`9382b54ab76d439a2ac277c6b42e966acdd6655a`。只消费 VPIM attempt-01 的 5000 条 frozen pointwise
+predictions、已登记的 seed=`2053` label-only permutation 和历史 FOSEA clean provenance metadata；
+没有 evaluator forward、checkpoint load/retrain、CUDA、optical execution、S2 replay/measurement、
+prediction correction、post-hoc calibration、generation 或 formal promotion。
+
+历史 authority 不变：FOSEA classification=`FROZEN_OUTPUT_SEMANTIC_EVALUATOR_NOT_QUALIFIED`，
+historical generic threshold=`0.985`，validation accuracy=`0.9712`。VPIM binding 保持
+`OSERA_VALIDATION_PREDICTION_IDENTITY_READY`、aggregate=`OSERA_PREDICTION_AGGREGATE_EXACT_MATCH`、
+replay=`FROZEN_PREDICTION_REPLAY_PASS`、state isolation=`OSERA_VPIM_STATE_ISOLATION_PASS`；
+checkpoint SHA-256=`a6ac0b4644a459bad21bc7cf3071465d5306af31ad2081fe7acb6f81e87c47e6`，pointwise
+prediction identity SHA=`572e270d17c5e0a1dbb1aaf4010fd1d06d03739ce86f06b945f956d27dfa484a`，
+sample-order SHA=`aedcb0f58651c77518ae01ca6f908ad2126a81395a7a431a233bd0497b60601e`。
+
+正式 write-once authority 为
+`outputs/20260906_v2/runs/lightgen_scaled_chen_output_semantic_evaluator_requalification_v1_attempt_01/`，
+共 8 个 JSON、`23012` bytes；`osera_manifest.json` SHA-256=
+`c6a37a637917f0b32fb96d5f3c51827798696d3bd7924d31c3c441421402850d`。authority binding、历史
+leakage/domain/freeze/preprocessing/state gates 全部 PASS；输出目录逐文件 hash/size、无隐藏文件、
+`.tmp` 或 TIFF，且 FOSEA/VPIM write-once artifacts 未被修改。
+
+per-class semantic-identifiability 结果（`margin = p_correct - p_wrong_max`；括号为 bootstrap
+95% CI）为：
+
+`0: 0.9860558 [0.9721116,0.9960159]`，`1: 0.9868914 [0.9737828,0.9962547]`，
+`2: 0.9657948 [0.9436620,0.9818913]`，`3: 0.9616123 [0.9385797,0.9788868]`，
+`4: 0.9731405 [0.9524793,0.9876033]`，`5: 0.9102845 [0.8752188,0.9409190]`，
+`6: 0.9835052 [0.9670103,0.9938144]`，`7: 0.9810247 [0.9639469,0.9943074]`，
+`8: 0.9262136 [0.8951456,0.9533981]`，`9: 0.9142259 [0.8786611,0.9414226]`。
+10 类均为 diagonal unique maximum，minimum bootstrap lower95=`0.8752188`，per-class Gate PASS。
+
+全局 shuffled-label null 使用已登记 permutation seed=`2053`（未改变 predictions 或 sample order），
+bootstrap seed=`1236`、replicates=`2000`、stratified percentile 95% CI；real accuracy=`0.9712`，
+shuffled accuracy=`0.1004`，Δ=`0.8708`，95% CI=`[0.8616,0.8800]`，global-null Gate PASS。
+错误模型冻结为 `SEMANTIC_INSTRUMENT_ERROR_MODEL_V1`：overall error rate=`0.0288`，保留原始
+confusion/per-class recall/dominant wrong-class；未执行 correction 或 calibration。
+
+最终 primary Gate=`OUTPUT_SEMANTIC_EVALUATOR_REQUALIFICATION_PASS`，classification=
+`FROZEN_OUTPUT_SEMANTIC_EVALUATOR_REQUALIFIED_FOR_PAIRED_S2`。这是仅限 paired-S2 semantic
+measurement instrument 的 requalification，不是 `FOSEA_0985_PASS`、generic MNIST evaluator
+qualified、S2 supported、OLS decode supported 或 generation ready。未来 S2 仍必须先通过
+`DIRECT_REEMIT_FIDELITY_PASS`，并同时报告 full/direct source-label accuracy、direct/full agreement、
+paired correctness delta、source-label null separation 与 per-class confusion；不得声称 evaluator
+errors exactly cancel，也不得修正 raw predictions。
+
+OSERA targeted + VPIM + FOSEA focused regression=`27 passed`（仅既有 pytest cache ACL warning）；
+Windows-native compileall、Ruff 与 `git diff --check` 均通过。治理继续为
+`mainline_state=closed_at_current_evidence_boundary`、`reconstruction_manifold_supported=false`、
+`generative_manifold_supported=false`、`generation_readiness=not_ready`、
+`training_authorized=false`、`formal_promotion=false`。唯一下一动作固定为
+`IMPLEMENT_S2_DIRECT_OLS_SEMANTIC_DECODE_CANARY`。
