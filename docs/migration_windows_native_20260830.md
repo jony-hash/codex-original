@@ -1042,3 +1042,46 @@ fallback。FOSEA + S1/T2 focused=`36 passed`，compileall、Ruff、diff-check �
 `EVALUATOR_BUILD_AUTHORIZED` 已关闭；治理 flags 保持 closed evidence boundary、reconstruction/
 generative unsupported、generation not ready、training/promotion=false。唯一下一动作：
 `REVIEW_FROZEN_OUTPUT_SEMANTIC_EVALUATOR_FAILURE`。
+
+## H-LOMA-GEN-S2-OSERA-VPIM Validation prediction identity materialization（2026-09-06，Windows-native，diagnostic-only）
+
+在 clean starting HEAD=`7ccff3dcf05209b12dd9345b9b30fcc73df087d5` 上完成一次 CPU-only、deterministic
+validation prediction identity replay；实现/config/tests 提交为
+`681ef548267697adb2c79ed1924cb4e053c1f90a`。本轮只消费既有 FOSEA frozen evaluator checkpoint、
+processed validation corpus 与 output identity manifest；没有 CUDA、optical forward、训练、optimizer/
+backward、checkpoint update、S2 replay/selection/confirmation、OSERA final bootstrap/null significance
+或 generation，也没有修改历史 FOSEA artifact。
+
+源 authority SHA-256：evaluator manifest=`c8e144da2dd02e9f4ee78f7e8829782800651ec835adb1ae6fd781b1921c1d0f`、
+checkpoint=`a6ac0b4644a459bad21bc7cf3071465d5306af31ad2081fe7acb6f81e87c47e6`、processed corpus=
+`787b1b4e256f54ccebb55bb5582308f92148dc595d4cab4f632d3e87d72907b7`、output identity manifest=
+`db8f03d977a55e2c82ec557b8b359f55f27048c413e31e04c2f76134dfcbb04d`、qualification=
+`2fed6db88c0b5003458077198375f746eb995a88be4a9350c2d70cd38acb8568`。validation 固定为
+`mnist_train` indices `[50000,55000)` 的 5000 条记录，未重新选样。
+
+正式 write-once output 为
+`outputs/20260906_v2/runs/lightgen_scaled_chen_output_semantic_evaluator_prediction_identity_v1_attempt_01/`，
+9 个文件、`1764887` bytes；manifest SHA-256=`eff78d5417961d908c148c08084f55485d0c68cd4abc53e2101c811c3eb84336`。
+输出包含逐条 prediction JSONL、CPU logits、sample-order authority、aggregate replay、null identity、
+state isolation 与 compact report，无 TIFF、隐藏文件或 `.tmp`。pointwise prediction/logits/correctness
+hash 分别为 `572e270d17c5e0a1dbb1aaf4010fd1d06d03739ce86f06b945f956d27dfa484a`、
+`ebd1a9c205697da2b4f3ba25ffe17c4ab613059c1658aa48b22fdffc87367cf1`、
+`e8936b2fbe33ac185099c61ae9c6065a1a4f2ade70376033ca8846f7faf04362`。
+
+replay Gate=`FROZEN_PREDICTION_REPLAY_PASS`；top-1=`0.9712`、errors=`144`；aggregate Gate=
+`OSERA_PREDICTION_AGGREGATE_EXACT_MATCH`，与 FOSEA qualification 的 confusion、class counts、
+per-class counts 和 accuracy exact match。sample-order hash=`aedcb0f58651c77518ae01ca6f908ad2126a81395a7a431a233bd0497b60601e`；
+null identity 使用 CPU `randperm` seed=`2053`、permutation hash=
+`1b3fa37d45fdd646b5b2478a904e5029a402c7b7061d2ecc42a8eeab21a80794`，只证明顺序/类别计数 materialization，
+没有计算 significance。bootstrap seed=`1236`、replicates=`2000` 仅作 future material，不代表 final
+bootstrap 已执行。
+
+state isolation=`OSERA_VPIM_STATE_ISOLATION_PASS`：evaluator/checkpoint unchanged，CUDA/optical
+forward/optimizer/backward/training steps 均为零。故 `OSERA_BLOCKED_PER_CLASS_STATISTICAL_AUTHORITY`
+清除为 `OSERA_VALIDATION_PREDICTION_IDENTITY_READY`；FOSEA
+`FROZEN_OUTPUT_SEMANTIC_EVALUATOR_NOT_QUALIFIED` 仍是原 authority，VPIM 不等于 evaluator
+requalification，不授权 semantic generation、S2 或 training。治理继续为 closed evidence boundary、
+reconstruction/generative unsupported、generation not ready、training/promotion=false。
+
+VPIM + FOSEA focused tests=`15 passed`（仅既有 pytest cache ACL warning）；compileall、Ruff、
+`git diff --check` 通过。唯一下一动作：`IMPLEMENT_OUTPUT_SEMANTIC_EVALUATOR_REQUALIFICATION_AUTHORITY`。
