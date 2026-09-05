@@ -1,0 +1,124 @@
+schema: lightgen_scaled_chen_direct_ols_semantic_decode_canary_v1
+task_id: H-LOMA-GEN-S2-DOSD
+hypothesis: H-LOMA-GEN-S2-DOSD
+
+s1:
+  config: configs/research/lightgen_scaled_chen_ols_semantic_representation_audit_v1.yaml
+  config_sha256: 60d57cd134a567c17602775ec16f11fff05f56ffe900ac730774abde3432c521
+  semantic_manifest: outputs/20260904_v2/runs/lightgen_scaled_chen_ols_semantic_representation_audit_v1_attempt_01/semantic_manifest.json
+  manifest_sha256: b0199040926618b17373edc4f167cc8bc4788f39f64de174e1a3fb225781833e
+  identity_manifest: outputs/20260904_v2/runs/lightgen_scaled_chen_ols_semantic_representation_audit_v1_attempt_01/identity_manifest.json
+  identity_manifest_sha256: 522ff5b00770ee34fe7b61b1f414775abe3310f398cc0fdf55049b30be2925e2
+  embeddings: outputs/20260904_v2/runs/lightgen_scaled_chen_ols_semantic_representation_audit_v1_attempt_01/ols_embeddings.pt
+  embeddings_sha256: 9375b08597f03fee3798e05798779556c3e7534db6a9d39033232f7278d32279
+  gate: S1_POWER_SEMANTICS_SUPPORTED
+  minimal_representation: R1_POWER
+  phase_attribution: PHASE_SEMANTIC_INCREMENT_SUPPORTED
+  phase_gauge: GLOBAL_PHASE_GAUGE_CONFIRMED
+
+optical:
+  formal_config: configs/v2/current/formal_identity_logit_amplitude_finite_crop_identity.yaml
+  formal_config_sha256: 0c42035c1a525e27ff787d013ca27b0f5ae91338329eb0607c7042ebc5ae8905
+  checkpoint: outputs/20260829_v2/runs/lightgen_optical_manifold_smf_bogt_horizon_v2_attempt_03/checkpoints/scaled_chen_horizon_step_5000.pt
+  checkpoint_sha256: ccb89f98cc11725eb80d66c61f4fdef62b24acdf9f6d739f78373f462d10e5de
+  checkpoint_schema: scaled_chen_bogt_horizon_checkpoint.v1
+  global_step: 5000
+  calibration_manifest: outputs/20260904_v2/runs/lightgen_scaled_chen_bogt_calibration_contract_repair_v2_attempt_02/calibration_manifest.json
+  calibration_manifest_sha256: 0cf707fe4f146c1a1c3190256fad8ec8e4bc72e33674d374e75f40b161b3fce6
+  calibration_payload: outputs/20260904_v2/runs/lightgen_scaled_chen_bogt_calibration_contract_repair_v2_attempt_02/repaired_calibration.pt
+  calibration_payload_sha256: ce31dd816691a08ca9388e0ec086be0e2e3ebd40005598c1ef44a1ba79a9fd07
+  mode_bank_sha256: 75fb38eee956a1d177486e00b22e0b62f0c1bf29e94eb398851bed18d6288ba9
+
+source:
+  dataset_root: data
+  data_manifest_sha256: 520f7743bb317fabf891734ad899c84f2cec7639dbe02f65642670a8a1e64ebb
+  selection_count: 1000
+  selection_indices_sha256: 11c076affa8511e883f595a0d1ee91e40f6d94747a351e21269520344d3f594f
+  selection_labels_sha256: 31fce460255bda46afc2bd6b6777793873e2e6ee33e23a681def3ab8af6693cb
+  selection_source: mnist_test_indices_5000_9999
+  confirmation_count: 5000
+  confirmation_indices_sha256: ff7ab50b95d96e727c240edc2baa916d1e6c11402b8f4f9c2ce6e2e7e5e2218a
+  confirmation_labels_sha256: b05112caa3014d6c2081423b371361eefe1ec7a9f531e54db016b89bfbb77b18
+  confirmation_source: horizon_heldout_train_indices_55000_59999
+  source_tensor: output.coefficients
+  source_dtype: torch.complex64
+  port_count: 100
+
+osera:
+  manifest: outputs/20260906_v2/runs/lightgen_scaled_chen_output_semantic_evaluator_requalification_v1_attempt_01/osera_manifest.json
+  manifest_sha256: c6a37a637917f0b32fb96d5f3c51827798696d3bd7924d31c3c441421402850d
+  error_model: outputs/20260906_v2/runs/lightgen_scaled_chen_output_semantic_evaluator_requalification_v1_attempt_01/semantic_instrument_error_model.json
+  error_model_sha256: 0adb941c0dea102b93cd0ce2814a76b43bcbe51a0af4d206a4a3c83a6775d028
+  gate: OUTPUT_SEMANTIC_EVALUATOR_REQUALIFICATION_PASS
+  classification: FROZEN_OUTPUT_SEMANTIC_EVALUATOR_REQUALIFIED_FOR_PAIRED_S2
+  evaluator_scope: PAIRED_S2_SEMANTIC_MEASUREMENT
+  historical_fosea_manifest: outputs/20260904_v2/runs/lightgen_scaled_chen_frozen_output_semantic_evaluator_v1_attempt_01/evaluator_manifest.json
+  historical_fosea_manifest_sha256: c8e144da2dd02e9f4ee78f7e8829782800651ec835adb1ae6fd781b1921c1d0f
+  evaluator_checkpoint: outputs/20260904_v2/runs/lightgen_scaled_chen_frozen_output_semantic_evaluator_v1_attempt_01/frozen_output_semantic_evaluator.pt
+  evaluator_checkpoint_sha256: a6ac0b4644a459bad21bc7cf3071465d5306af31ad2081fe7acb6f81e87c47e6
+  vpim_manifest: outputs/20260906_v2/runs/lightgen_scaled_chen_output_semantic_evaluator_prediction_identity_v1_attempt_01/prediction_identity_manifest.json
+  vpim_manifest_sha256: eff78d5417961d908c148c08084f55485d0c68cd4abc53e2101c811c3eb84336
+  vpim_null_permutation: outputs/20260906_v2/runs/lightgen_scaled_chen_output_semantic_evaluator_prediction_identity_v1_attempt_01/null_permutation_indices.pt
+  vpim_null_permutation_sha256: 34d6437efe47261183ce870d6b91123094c41c6fc72cc4b48b16b0bb39ce135a
+  vpim_null_permutation_tensor_sha256: 1b3fa37d45fdd646b5b2478a904e5029a402c7b7061d2ecc42a8eeab21a80794
+  vpim_null_seed: 2053
+
+evaluator:
+  schema: frozen_mnist_evaluator_v1
+  architecture: FrozenMNISTEvaluator
+  exposure_scale: 0.4913053810596466
+  preprocessing: global_exposure_scale_clamp_0_1_adaptive_avg_pool_28x28
+  per_sample_normalization: false
+  prediction_correction: false
+  threshold_adjustment: false
+  training: false
+
+fidelity:
+  rtol: 1.0e-5
+  atol: 1.0e-8
+  comparisons: [decoder_input, decoder_output, camera_output, evaluator_view]
+  gate: DIRECT_REEMIT_FIDELITY_PASS
+  no_posthoc_tolerance_relaxation: true
+
+statistics:
+  class_count: 10
+  bootstrap_seed: 1236
+  bootstrap_replicates: 2000
+  confidence_level: 0.95
+  interval: percentile
+  resampling: within_ground_truth_class_with_replacement
+  null_seed: 2053
+  paired_preservation_rule: lower95_paired_correctness_delta_greater_equal_zero
+  selection_positive_point_delta: true
+  confirmation_positive_lower95_delta: true
+
+global_prior:
+  status: CLOSED_AFTER_THIS_CANARY
+  new_objectives: false
+  prohibited: [MMD, SWD, SCED, Chamfer, Sinkhorn, new_prior, beta_tuning]
+
+authorization:
+  s2_execution: true
+  model_execution: true
+  optical_execution: true
+  evaluator_replay: true
+  training: false
+  optimizer: false
+  backward: false
+  checkpoint_creation: false
+  prior_generation: false
+  phase_update: false
+  generation: false
+  formal_promotion: false
+
+output:
+  path: outputs/20260906_v2/runs/lightgen_scaled_chen_direct_ols_semantic_decode_canary_v1_attempt_01
+  write_once: true
+
+governance:
+  mainline_state: closed_at_current_evidence_boundary
+  reconstruction_manifold_supported: false
+  generative_manifold_supported: false
+  generation_readiness: not_ready
+  training_authorized: false
+  formal_promotion: false
