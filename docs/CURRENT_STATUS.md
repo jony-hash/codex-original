@@ -1757,6 +1757,44 @@ hash、learned-state digest 前后一致，`optimizer_step_called=false`、`opti
 `reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、
 `generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false`。
 
+## 2026-09-05：H-LOMA-GEN-S2-FOSEA-BUILD Frozen output-semantic evaluator
+
+本轮完成一次受限的 frozen output-domain evaluator build，starting HEAD 为
+`da2db9dbb32cced2e6c1df4ef892f77420c5f400`，branch=
+`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`。只消费已注册的 step-5000
+Scaled-Chen parent（checkpoint SHA-256=`ccb89f98cc11725eb80d66c61f4fdef62b24acdf9f6d739f78373f462d10e5de`）
+做 frozen optical forward；没有 optical optimizer/backward/phase update、prior generation、S2
+direct replay、semantic measurement、architecture/seed/hyperparameter sweep 或 formal promotion。
+
+fit 使用 MNIST train indices `[0,50000)` 共 50000，validation 使用 `[50000,55000)` 共 5000；S2
+confirmation `[55000,60000)` 与 S2 selection test identities 均只登记为 reserved、forward/evaluator
+消费数为 0。identity namespace、三组 disjointness、source identity leakage、fixed exposure scale
+provenance 和 checkpoint identity 均通过。固定 exposure=`0.4913053810596466`，raw camera
+`[N,1,200,200]` 只经全局 exposure/clamp 与 `adaptive_avg_pool2d(28,28)` 得到 evaluator
+`[N,1,28,28]`；不保存 raw 200x200 副本，不做 per-sample normalization。
+
+三步真实更新 preflight 与 fixed-label-shift negative control 均通过；FrozenMNISTEvaluator 使用
+Adam、lr=`0.001`、batch=`128`、20 epochs、seed=`1234`、每 epoch order seed=`1234+epoch`，
+最终固定为 final epoch，未用 validation 选 checkpoint。正式 evaluator checkpoint、corpus、identity
+manifest、leakage audit、optical state isolation 和 freeze/reload replay 均写入唯一 write-once
+目录
+`outputs/20260904_v2/runs/lightgen_scaled_chen_frozen_output_semantic_evaluator_v1_attempt_01/`，
+总大小=`192817014` bytes，manifest SHA-256=`c8e144da2dd02e9f4ee78f7e8829782800651ec835adb1ae6fd781b1921c1d0f`；
+无 hidden、`.tmp` 或 TIFF 残留。
+
+validation top-1=`0.9712`（5000 samples），低于预注册 qualification threshold=`0.985`；所有
+contract/leakage/isolation/freeze gates 均通过，因此结果为有效
+`FROZEN_OUTPUT_SEMANTIC_EVALUATOR_NOT_QUALIFIED`，不是 invalid harness。该失败阻断
+`IMPLEMENT_S2_DIRECT_OLS_SEMANTIC_DECODE_CANARY`；不得换架构、换 seed、调 epochs/lr/batch、
+重新选择 split 或运行 S2。`EVALUATOR_BUILD_AUTHORIZED` 在本轮后关闭，仍保持
+`training_authorized=false`、`formal_promotion=false`、`generative_manifold_supported=false`、
+`generation_readiness=not_ready` 与 `mainline_state=closed_at_current_evidence_boundary`。
+
+FOSEA targeted + S1/T2 focused regression=`36 passed`；compileall、Ruff、`git diff --check` 与
+artifact tree/hash audit 通过。当前唯一下一动作是
+`REVIEW_FROZEN_OUTPUT_SEMANTIC_EVALUATOR_FAILURE`；不得把该 qualification failure 外推为
+semantic OLS 或 generation impossibility 结论。
+
 ## 2026-09-05：H-LOMA-GEN-S1-OLS-SRA OLS semantic representation audit
 
 本轮只执行冻结的 Scaled-Chen step-5000 OLS semantic representation audit。起始与结束

@@ -1015,3 +1015,29 @@ code8-to-OLS、generation 或 generative manifold。治理保持
 generation not ready、training/promotion=false。验证为 S1 + RCR-A/MRA/G1-SA/T2 focused=`42 passed`，
 compileall、Ruff、`git diff --check` 均通过；唯一下一动作固定为
 `PLAN_S2_DIRECT_OLS_SEMANTIC_DECODE_CANARY`。
+
+## H-LOMA-GEN-S2-FOSEA-BUILD Frozen Output-Semantic Evaluator（2026-09-05，Windows-native）
+
+完成一次 bounded evaluator-only build，starting HEAD=`da2db9dbb32cced2e6c1df4ef892f77420c5f400`，
+branch=`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`。冻结消费 step-5000 parent
+checkpoint（SHA-256=`ccb89f98cc11725eb80d66c61f4fdef62b24acdf9f6d739f78373f462d10e5de`）完成 fit/validation
+输出域转换；没有 optical update、S2 replay/measurement、prior/generation、sweep 或 promotion。
+
+evaluator fit/validation 分别为 MNIST train `[0,50000)` / `[50000,55000)`；confirmation
+`[55000,60000)` 与 test selection 只作 reserved identities，未进入 optical forward 或 evaluator。
+split/source leakage、固定 exposure provenance（`0.4913053810596466`）、raw `[N,1,200,200]` 到
+fixed `[N,1,28,28]` contract、无 per-sample normalization、optical state isolation 及 freeze/reload
+replay 全部通过。输出域 corpus 只保留处理后的 28x28 views 与 raw hash，不保存 raw 200x200 副本。
+
+三步真实更新 preflight/negative control 通过；FrozenMNISTEvaluator 固定 Adam `1e-3`、batch `128`、
+20 epochs、seed `1234`、epoch order `1234+epoch`、final-epoch checkpoint。write-once authority 为
+`outputs/20260904_v2/runs/lightgen_scaled_chen_frozen_output_semantic_evaluator_v1_attempt_01/`，
+总计=`192817014` bytes，manifest SHA-256=`c8e144da2dd02e9f4ee78f7e8829782800651ec835adb1ae6fd781b1921c1d0f`，
+无 hidden/`.tmp`/TIFF。
+
+validation top-1=`0.9712` < `0.985`，故 Gate=`FROZEN_OUTPUT_SEMANTIC_EVALUATOR_NOT_QUALIFIED`；
+这是有效 qualification failure，阻断 S2，不允许 second seed/architecture/hyperparameter 或 split
+fallback。FOSEA + S1/T2 focused=`36 passed`，compileall、Ruff、diff-check 与 artifact audit 通过。
+`EVALUATOR_BUILD_AUTHORIZED` 已关闭；治理 flags 保持 closed evidence boundary、reconstruction/
+generative unsupported、generation not ready、training/promotion=false。唯一下一动作：
+`REVIEW_FROZEN_OUTPUT_SEMANTIC_EVALUATOR_FAILURE`。
