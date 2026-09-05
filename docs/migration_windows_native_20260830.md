@@ -1120,3 +1120,35 @@ generation readiness。OSERA + VPIM + FOSEA focused=`27 passed`；compileall、R
 `git diff --check` 通过。治理继续为 closed evidence boundary、reconstruction/generative unsupported、
 generation not ready、training/promotion=false。唯一下一动作：
 `IMPLEMENT_S2_DIRECT_OLS_SEMANTIC_DECODE_CANARY`。
+
+## H-LOMA-GEN-S2-DOSD Direct OLS Semantic Decode Canary（2026-09-06，Windows-native，diagnostic-only）
+
+本轮在 clean implementation boundary HEAD=`4bcf18352f7e710f0df1088a177726f031e60a15` 上执行；DOSD
+实现/config/tests 独立提交为 `4bcf183`。preflight 验证 branch、clean worktree、冻结 parent、S1/OSERA/
+FOSEA/evaluator authority、样本身份、mode bank、CUDA 和磁盘资源均通过。只运行一次 formal CUDA
+full/direct replay；没有训练、optimizer、backward、checkpoint 写入、prior generation、phase ablation、
+decoder/OLS/fiber/relay/detector 修改或 S3/controller 工作。
+
+write-once output=`outputs/20260906_v2/runs/lightgen_scaled_chen_direct_ols_semantic_decode_canary_v1_attempt_01/`，
+13 个文件，manifest 逐文件 hash/size 与实际目录完全一致，无 hidden、`.tmp` 或 TIFF。exact observed
+complex `c` 的 selection/confirmation normalized R3 与 S1 逐元素一致；checkpoint SHA-256=
+`ccb89f98cc11725eb80d66c61f4fdef62b24acdf9f6d739f78373f462d10e5de`，S1 manifest SHA-256=
+`b0199040926618b17373edc4f167cc8bc4788f39f64de174e1a3fb225781833e`，OSERA manifest SHA-256=
+`c6a37a637917f0b32fb96d5f3c51827798696d3bd7924d31c3c441421402850d`。
+
+`DIRECT_REEMIT_FIDELITY_PASS`：decoder input/output、camera/output、evaluator view 在固定
+`rtol=1e-5`、`atol=1e-8` 下两个 split 全部 allclose，`max_abs=0`、`MSE=0`；existing
+`reemit_decoder` API equivalence 也 PASS。full/direct source-label accuracy 为 selection=`0.9730`、
+confirmation=`0.9754`，prediction agreement=`1.0`；paired correctness delta=`0.0`，95% CI 两个 split
+均为`[0.0,0.0]`，未发生 registered degradation。固定 null seed=`2053`、bootstrap seed=`1236`、
+replicates=`2000`：selection direct real/shuffled=`0.9730/0.1140`，Δ=`0.8590`，CI=`[0.8370,0.8830]`；
+confirmation=`0.9754/0.1066`，Δ=`0.8688`，CI=`[0.8588,0.8784]`。state isolation=`S2_STATE_ISOLATION_PASS`，
+before/after digests unchanged，optimizer/backward/training/checkpoint write 均为零。
+
+最终 Gate=`DIRECT_OLS_SEMANTIC_DECODE_SUPPORTED`，附加 classification=
+`DIRECT_OLS_REPLAY_SEMANTIC_ACCESSIBILITY_SUPPORTED`。该 Gate 只证明真实观测 complex OLS state 可经
+冻结 decoder 直接 replay 而保留 full path 已有的 semantic accessibility；不证明 controller writability、
+label-to-OLS semantics、8D-to-OLS control、novel generation、generative manifold 或 generation ready。
+治理继续保持 closed evidence boundary、reconstruction/generative unsupported、generation not ready、
+training/formal promotion=false。DOSD + S1/OSERA/VPIM/FOSEA focused=`34 passed`，compileall、Ruff、
+diff-check、artifact audit 全部通过。唯一下一动作：`PLAN_S3_CONTROL_TO_OLS_WRITABILITY_AUDIT`。

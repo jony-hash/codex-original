@@ -2137,3 +2137,51 @@ Windows-native compileall、Ruff 与 `git diff --check` 均通过。治理继续
 `generative_manifold_supported=false`、`generation_readiness=not_ready`、
 `training_authorized=false`、`formal_promotion=false`。唯一下一动作固定为
 `IMPLEMENT_S2_DIRECT_OLS_SEMANTIC_DECODE_CANARY`。
+
+## H-LOMA-GEN-S2-DOSD Direct OLS Semantic Decode Canary（2026-09-06，Windows-native，diagnostic-only）
+
+从 clean implementation boundary HEAD=`4bcf18352f7e710f0df1088a177726f031e60a15` 开始，完成且仅完成一次
+冻结 step-5000 parent 的 full/direct replay；实现、配置和回归测试由独立 commit
+`4bcf183` 收口。正式运行没有 optimizer、backward、training、checkpoint 写入、prior generation、phase
+ablation、decoder/OLS/fiber/relay/detector 修改或 S3/controller 工作。
+
+authority 绑定保持：S1 Gate=`S1_POWER_SEMANTICS_SUPPORTED`、minimal representation=`R1_POWER`、
+phase attribution=`PHASE_SEMANTIC_INCREMENT_SUPPORTED`、gauge=`GLOBAL_PHASE_GAUGE_CONFIRMED`，S1
+manifest SHA-256=`b0199040926618b17373edc4f167cc8bc4788f39f64de174e1a3fb225781833e`；OSERA
+Gate=`OUTPUT_SEMANTIC_EVALUATOR_REQUALIFICATION_PASS`、classification=
+`FROZEN_OUTPUT_SEMANTIC_EVALUATOR_REQUALIFIED_FOR_PAIRED_S2`，manifest SHA-256=
+`c6a37a637917f0b32fb96d5f3c51827798696d3bd7924d31c3c441421402850d`。FOSEA historical authority
+仍为`FROZEN_OUTPUT_SEMANTIC_EVALUATOR_NOT_QUALIFIED`，threshold=`0.985`，accuracy=`0.9712`；没有
+修改或重新训练 evaluator。
+
+正式 write-once authority 为
+`outputs/20260906_v2/runs/lightgen_scaled_chen_direct_ols_semantic_decode_canary_v1_attempt_01/`，
+包含 13 个文件（12 个 artifact + `s2_manifest.json`）；source complex coefficients 为 exact
+observed `output.coefficients`、`torch.complex64`、selection=`1000`、confirmation=`5000`，其 normalized
+R3 与 S1 两个 split 均逐元素 exact equal。checkpoint SHA-256=`ccb89f98cc11725eb80d66c61f4fdef62b24acdf9f6d739f78373f462d10e5de`，
+mode-bank SHA-256=`75fb38eee956a1d177486e00b22e0b62f0c1bf29e94eb398851bed18d6288ba9`。
+
+Direct/full fidelity Gate=`DIRECT_REEMIT_FIDELITY_PASS`：decoder input、decoder output、camera output
+和 fixed evaluator view 在 `rtol=1e-5`、`atol=1e-8` 下 selection/confirmation 全部 allclose，四类比较
+`max_abs=0`、`MSE=0`。现有 `reemit_decoder` API 首批核验同样 allclose。full-path 与 direct-replay
+source-label top-1 完全相同：selection=`0.9730`、confirmation=`0.9754`；direct/full prediction
+agreement=`1.0`，paired correctness delta point=`0.0`，stratified bootstrap 95% CI 两个 split 均
+`[0.0,0.0]`，registered rule=`lower95_paired_correctness_delta_greater_equal_zero`。
+
+固定 source-label null 只置换 labels，seed=`2053`，predictions、sample order 和 optical outputs 不变；
+bootstrap seed=`1236`、replicates=`2000`。direct real/shuffled accuracy 与 Δ/95% CI 为：selection
+`0.9730/0.1140`，Δ=`0.8590`，`[0.8370,0.8830]`；confirmation=`0.9754/0.1066`，Δ=`0.8688`，
+`[0.8588,0.8784]`。state isolation=`S2_STATE_ISOLATION_PASS`：model、encoder、decoder、OLS 和
+evaluator before/after digests unchanged，optimizer absent，backward=`0`，training steps=`0`，
+checkpoint created=`false`。
+
+最终 primary Gate=`DIRECT_OLS_SEMANTIC_DECODE_SUPPORTED`，并记录
+`DIRECT_OLS_REPLAY_SEMANTIC_ACCESSIBILITY_SUPPORTED`。结论仅限于：empirically observed complex OLS
+states can be directly re-emitted through the frozen decoder without losing the source semantic
+accessibility already present in the full path；这不是 semantic manipulation、novel generation、label-to-OLS
+controller semantics、8D control、generative manifold support 或 generation readiness。治理继续保持
+`mainline_state=closed_at_current_evidence_boundary`、`reconstruction_manifold_supported=false`、
+`generative_manifold_supported=false`、`generation_readiness=not_ready`、`training_authorized=false`、
+`formal_promotion=false`。DOSD focused + S1/OSERA/VPIM/FOSEA regression=`34 passed`；Windows-native
+compileall、Ruff、`git diff --check` 与 artifact tree/hash audit 均通过。唯一下一动作固定为
+`PLAN_S3_CONTROL_TO_OLS_WRITABILITY_AUDIT`。
