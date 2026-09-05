@@ -973,3 +973,45 @@ observer 仅为 `z_j=|c_j|²/s_j` normalized power，物理 `c∈C^100` 的 comp
 `PLAN_S1_OLS_SEMANTIC_REPRESENTATION_AUDIT`；治理继续为
 `mainline_state=closed_at_current_evidence_boundary`、reconstruction/generative unsupported、
 generation not ready、training/promotion=false。
+
+## 2026-09-05：H-LOMA-GEN-S1-OLS-SRA OLS semantic representation audit
+
+S1 实现、配置和回归测试均在 Windows-native 环境完成；starting HEAD 为
+`d551ce444c16fbd02a98d28ff92a7e28192239af`，本轮已由独立 S1 commit 收口。有效测量只对固定 step-5000
+parent 做 frozen forward，消费 encoder final field → fixed OLS modal projection →
+`output.coefficients`，没有进入 decoder/relay/CMOS/MPCDAR、optimizer、backward、training、
+prior generation 或 T1/T2 continuation。实现文件为
+`scripts/research/audit_scaled_chen_ols_semantic_representation.py`，配置为
+`configs/research/lightgen_scaled_chen_ols_semantic_representation_audit_v1.yaml`，测试为
+`tests/v2/test_scaled_chen_ols_semantic_representation_audit.py`。
+
+输入绑定完整：step-5000 checkpoint SHA-256=`ccb89f98cc11725eb80d66c61f4fdef62b24acdf9f6d739f78373f462d10e5de`；
+R2 payload SHA-256=`ce31dd816691a08ca9388e0ec086be0e2e3ebd40005598c1ef44a1ba79a9fd07`；fixed OLS
+mode-bank SHA-256=`75fb38eee956a1d177486e00b22e0b62f0c1bf29e94eb398851bed18d6288ba9`。fit/reference、
+selection、confirmation 分别为固定 train 1000（每类 100）、test 1000、held-out train 5000，
+索引和 label identity 均写入 `identity_manifest.json`；无重新选样。`sqrt(s_j)` 幅度契约、R1
+normalized power、R2 normalized amplitude、R2 raw descriptive amplitude、R3 normalized
+complex 与 global-phase gauge distance 均写入 `ols_representation_contract.json`。
+
+正式 authority：
+`outputs/20260904_v2/runs/lightgen_scaled_chen_ols_semantic_representation_audit_v1_attempt_01/`；
+manifest SHA-256=`b0199040926618b17373edc4f167cc8bc4788f39f64de174e1a3fb225781833e`，11 个 artifact，
+非 manifest storage=`17324564` bytes。目录树、逐文件 hash/size、无 TIFF/隐藏文件/`.tmp` 检查通过。
+global phase=`GLOBAL_PHASE_GAUGE_CONFIRMED`；state digest 前后均为
+`cdbf06f03b611f4df38324c1546686bc5fc614644a64130c95cd3a76012e27b5`，peak CUDA allocation=
+`1599782400` bytes，training steps=`0`。
+
+1-NN fixed-shuffle delta 的 95% CI：R1 power selection/confirmation=`[0.66,0.72] / [0.68,0.71]`；
+R2 amplitude=`[0.73,0.79] / [0.75,0.78]`；R3 gauge-complex=`[0.76,0.81] / [0.77,0.79]`。
+R1/R2 frozen ridge probes 同样相对 null 显著；R3 没有正式 gauge-fixed vector probe，linear
+accessibility=`UNRESOLVED`。paired phase increment selection/confirmation=`0.0300 [0.0140,0.0460] /
+0.0158 [0.0082,0.0234]`，classification=`PHASE_SEMANTIC_INCREMENT_SUPPORTED`，但 minimal
+selection 仍优先 R1。
+
+最终 Gate=`S1_POWER_SEMANTICS_SUPPORTED`，仅表示在注册的 frozen coordinate contract 下，OLS
+representation 包含 label semantic information；不授权 label-to-OLS controller semantics、
+code8-to-OLS、generation 或 generative manifold。治理保持
+`mainline_state=closed_at_current_evidence_boundary`、reconstruction/generative unsupported、
+generation not ready、training/promotion=false。验证为 S1 + RCR-A/MRA/G1-SA/T2 focused=`42 passed`，
+compileall、Ruff、`git diff --check` 均通过；唯一下一动作固定为
+`PLAN_S2_DIRECT_OLS_SEMANTIC_DECODE_CANARY`。

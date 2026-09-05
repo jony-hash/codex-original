@@ -1756,6 +1756,65 @@ hash、learned-state digest 前后一致，`optimizer_step_called=false`、`opti
 `git diff --check` 通过。治理继续为 `mainline_state=closed_at_current_evidence_boundary`、
 `reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、
 `generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false`。
+
+## 2026-09-05：H-LOMA-GEN-S1-OLS-SRA OLS semantic representation audit
+
+本轮只执行冻结的 Scaled-Chen step-5000 OLS semantic representation audit。起始与结束
+HEAD 均为 `d551ce444c16fbd02a98d28ff92a7e28192239af`，没有训练、optimizer、backward、phase
+update、checkpoint、prior alignment、prior generation、decoder、CMOS、MPCDAR 或 formal
+promotion。审计器只消费 encoder final field 经 fixed OLS modal projection 后的
+`output.coefficients`（`c∈C^100`），不把 decoder/CMOS/MPCDAR 输出当作语义特征。
+
+输入 authority 继续绑定 step-5000 checkpoint
+`outputs/20260829_v2/runs/lightgen_optical_manifold_smf_bogt_horizon_v2_attempt_03/checkpoints/scaled_chen_horizon_step_5000.pt`
+（SHA-256=`ccb89f98cc11725eb80d66c61f4fdef62b24acdf9f6d739f78373f462d10e5de`）、R2 repaired
+calibration `unit_aware_raw_mean_v2`（payload SHA-256=`ce31dd816691a08ca9388e0ec086be0e2e3ebd40005598c1ef44a1ba79a9fd07`，
+manifest SHA-256=`0cf707fe4f146c1a1c3190256fad8ec8e4bc72e33674d374e75f40b161b3fce6`）和固定
+mode-bank SHA-256=`75fb38eee956a1d177486e00b22e0b62f0c1bf29e94eb398851bed18d6288ba9`。fit/reference
+为固定 `1000` 个、每类 `100` 个 train states；selection 为已注册 test `1000` 个；confirmation
+为已注册 held-out train `5000` 个；无重新选样。幅度校验显式使用 `sqrt(s_j)`，R1=`|c|^2/s`、
+R2=`|c|/sqrt(s)`、R2 raw amplitude 仅作 descriptive，R3 使用 normalized complex `c/sqrt(s)`。
+
+一次有效 frozen forward 的 runtime=`49.6872 s`，peak CUDA allocation=`1599782400` bytes；
+state digest 前后均为
+`cdbf06f03b611f4df38324c1546686bc5fc614644a64130c95cd3a76012e27b5`，state unchanged，training
+steps=`0`。global phase audit=`GLOBAL_PHASE_GAUGE_CONFIRMED`：decoder→relay→CMOS intensity
+对 common coefficient phase 不变；没有正式 phase reference，因此 R3 primary geometry 使用
+gauge distance，不使用 raw Cartesian Euclidean geometry。
+
+1-NN 相对同一 fixed-label permutation（seed=`2053`）的 geometry delta（selection /
+confirmation，point delta；95% CI）为：R1 power=`0.69 [0.66,0.72] / 0.69 [0.68,0.71]`；
+R2 normalized amplitude=`0.76 [0.73,0.79] / 0.76 [0.75,0.78]`；R3 complex gauge=`0.79
+[0.76,0.81] / 0.78 [0.77,0.79]`。R1 frozen ridge probe 的 delta 为 selection=`0.82
+[0.79,0.84]`、confirmation=`0.79 [0.78,0.80]`；R2 为 selection=`0.80 [0.78,0.83]`、
+confirmation=`0.80 [0.78,0.81]`。R3 没有正式 gauge-fixed vector probe，linear accessibility
+保持 `UNRESOLVED`。paired phase attribution 为 selection delta=`0.0300 [0.0140,0.0460]`、
+confirmation delta=`0.0158 [0.0082,0.0234]`，故为 `PHASE_SEMANTIC_INCREMENT_SUPPORTED`；
+这不改变 minimal representation。
+
+按预注册最小充分表示优先级，最终 Gate=`S1_POWER_SEMANTICS_SUPPORTED`，即
+`OLS_CONTAINS_LABEL_SEMANTIC_INFORMATION=SUPPORTED` under the registered frozen coordinate
+contract。该结果不表示 `LABEL_TO_OLS_SEMANTICS_SUPPORTED`、`CODE8_OLS_CONTROL_SUPPORTED`、
+`GENERATION_READY` 或 `GENERATIVE_MANIFOLD_SUPPORTED`；complex semantic OLS 仍为
+`UNESTABLISHED`，label-to-OLS=`UNRESOLVED`，8D-to-OLS=`PARTIAL / UNRESOLVED`，global-prior
+family=`CLOSED_AFTER_T2_CANARY`。
+
+正式 write-once authority 为
+`outputs/20260904_v2/runs/lightgen_scaled_chen_ols_semantic_representation_audit_v1_attempt_01/`，
+包含 `semantic_manifest.json`、`ols_representation_contract.json`、`phase_gauge_audit.json`、
+`geometry_metrics.json`、`knn_metrics.json`、`linear_probe_metrics.json`、
+`null_control_metrics.json`、`phase_attribution.json`、`identity_manifest.json`、
+`compact_report.json` 和 `ols_embeddings.pt`；manifest SHA-256=
+`b0199040926618b17373edc4f167cc8bc4788f39f64de174e1a3fb225781833e`，非 manifest storage=
+`17324564` bytes。目录无 TIFF、隐藏文件或 `.tmp`，所有 artifact 相对路径、大小和 SHA-256
+均登记。S1 targeted + RCR-A/MRA/G1-SA/T2 focused regression=`42 passed`；compileall、Ruff、
+`git diff --check` 通过。本轮实现/config/test/status 文档已由独立 S1 commit 收口；post-commit
+worktree clean，无用户额外修改。
+
+治理保持 `mainline_state=closed_at_current_evidence_boundary`、
+`reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、
+`generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false`。
+唯一下一动作固定为 `PLAN_S2_DIRECT_OLS_SEMANTIC_DECODE_CANARY`。
 唯一下一动作固定为 `PLAN_REPAIRED_COORDINATE_ALIGNMENT_WEIGHT_REGISTRATION`。
 ## H-LOMA-GEN-T1-RCAWR：Repaired-Coordinate BOGT Alignment Weight Registration（2026-09-04）
 
