@@ -1020,6 +1020,7 @@ compileall、Ruff、`git diff --check` 均通过；唯一下一动作固定为
 
 完成一次 bounded evaluator-only build，starting HEAD=`da2db9dbb32cced2e6c1df4ef892f77420c5f400`，
 branch=`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`。冻结消费 step-5000 parent
+实现已由 commit=`3a8a0e972e93258eaca4fd12761bd8331ac564fb` 独立收口，提交后 worktree clean。
 checkpoint（SHA-256=`ccb89f98cc11725eb80d66c61f4fdef62b24acdf9f6d739f78373f462d10e5de`）完成 fit/validation
 输出域转换；没有 optical update、S2 replay/measurement、prior/generation、sweep 或 promotion。
 

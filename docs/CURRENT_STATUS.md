@@ -1762,6 +1762,7 @@ hash、learned-state digest 前后一致，`optimizer_step_called=false`、`opti
 本轮完成一次受限的 frozen output-domain evaluator build，starting HEAD 为
 `da2db9dbb32cced2e6c1df4ef892f77420c5f400`，branch=
 `research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`。只消费已注册的 step-5000
+实现已由 commit=`3a8a0e972e93258eaca4fd12761bd8331ac564fb` 独立收口，提交后 worktree clean。
 Scaled-Chen parent（checkpoint SHA-256=`ccb89f98cc11725eb80d66c61f4fdef62b24acdf9f6d739f78373f462d10e5de`）
 做 frozen optical forward；没有 optical optimizer/backward/phase update、prior generation、S2
 direct replay、semantic measurement、architecture/seed/hyperparameter sweep 或 formal promotion。
