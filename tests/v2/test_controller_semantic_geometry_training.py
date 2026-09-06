@@ -11,6 +11,7 @@ from torch import nn
 from ldm_project.v2.application.research.controller_semantic_geometry_training import (
     AUTHORIZATION_TOKEN,
     CONTROLLER_PARAMETER_NAMES,
+    IMPLEMENTATION_READY,
     build_controller_optimizer,
     capture_state_snapshot,
     class_moments,
@@ -153,3 +154,7 @@ def test_training_entrypoint_requires_explicit_authorization_before_mutation() -
 
 def test_authorization_token_is_exactly_the_next_gate() -> None:
     assert AUTHORIZATION_TOKEN == "AUTHORIZE_ONE_SHOT_CONTROLLER_SEMANTIC_GEOMETRY_TRAINING_CANARY"
+
+
+def test_preflight_status_requires_fresh_one_shot_reauthorization() -> None:
+    assert IMPLEMENTATION_READY == "IMPLEMENTATION_READY_FOR_ONE_SHOT_REAUTHORIZATION"
