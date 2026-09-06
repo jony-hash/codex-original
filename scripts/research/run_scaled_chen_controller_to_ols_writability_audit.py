@@ -1041,6 +1041,7 @@ def _target_split_report(
     values: Mapping[str, torch.Tensor | list[list[int]]],
     null_values: Mapping[str, torch.Tensor | list[list[int]]],
     labels: torch.Tensor,
+    null_labels: torch.Tensor,
 ) -> dict[str, Any]:
     target = values["target"]
     other = values["other"]
@@ -1049,7 +1050,7 @@ def _target_split_report(
     null_margin = null_values["margin"]
     predictions = values["predictions"]
     null_predictions = null_values["predictions"]
-    if not all(torch.is_tensor(item) for item in (target, other, margin, null_target, null_margin, predictions, null_predictions)):
+    if not all(torch.is_tensor(item) for item in (target, other, margin, null_target, null_margin, predictions, null_predictions)) or null_labels.shape != labels.shape:
         raise ValueError("target report values are invalid")
     per_class: dict[str, Any] = {}
     for label in range(CLASS_COUNT):
@@ -1064,12 +1065,12 @@ def _target_split_report(
             "margin_delta": _bootstrap_scalar_ci((margin - null_margin)[mask], seed=BOOTSTRAP_SEED + label),
             "target_distance_improvement": _bootstrap_scalar_ci((null_target - target)[mask], seed=BOOTSTRAP_SEED + 100 + label),
             "retrieval_accuracy": float((predictions[mask] == labels[mask]).to(torch.float64).mean()),
-            "null_retrieval_accuracy": float((null_predictions[mask] == labels[mask]).to(torch.float64).mean()),
+            "null_retrieval_accuracy": float((null_predictions[mask] == null_labels[mask]).to(torch.float64).mean()),
         }
     margin_delta = _stratified_bootstrap_delta(margin, null_margin, labels)
     target_improvement = _stratified_bootstrap_delta(null_target, target, labels)
     retrieval = (predictions == labels).to(torch.float64)
-    null_retrieval = (null_predictions == labels).to(torch.float64)
+    null_retrieval = (null_predictions == null_labels).to(torch.float64)
     retrieval_delta = _stratified_bootstrap_delta(retrieval, null_retrieval, labels)
     return {
         "split": split,
@@ -1112,7 +1113,13 @@ def _targeting_metrics(
         mask = split == split_id
         values = _distance_components(power[mask], labels[mask], reference_power, reference_labels)
         null_values = _distance_components(power[mask], null_labels[mask], reference_power, reference_labels)
-        report = _target_split_report(split_name, values, null_values, labels[mask])
+        report = _target_split_report(
+            split_name,
+            values,
+            null_values,
+            labels[mask],
+            null_labels[mask],
+        )
         reports[split_name] = report
         direction = direction and report["real_minus_null_margin"]["lower95"] > 0.0 and report["null_minus_real_target_distance"]["lower95"] > 0.0 and report["real_minus_null_retrieval"]["lower95"] > 0.0
         direction = direction and all(report["per_class"][str(label)]["margin"]["mean"] > 0.0 for label in range(CLASS_COUNT))
