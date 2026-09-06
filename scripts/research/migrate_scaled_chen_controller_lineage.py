@@ -118,6 +118,17 @@ def _git(repo_root: Path, *arguments: str) -> str:
     return result.stdout.strip()
 
 
+def _git_show_text(repo_root: Path, spec: str) -> str:
+    result = subprocess.run(
+        ["git", "show", spec],
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout
+
+
 def _repo_root(repo_root: Path | None) -> Path:
     if repo_root is not None:
         return repo_root.resolve()
@@ -257,7 +268,9 @@ def _flatten(value: Any, prefix: str = "") -> dict[str, Any]:
 
 
 def _semantic_config_equivalence(repo_root: Path, config_path: Path) -> dict[str, Any]:
-    old_yaml = _git(repo_root, "show", f"{SOURCE_COMMIT}:{CONFIG_RELATIVE.as_posix()}")
+    old_yaml = _git_show_text(
+        repo_root, f"{SOURCE_COMMIT}:{CONFIG_RELATIVE.as_posix()}"
+    )
     current_yaml = config_path.read_text(encoding="utf-8")
     old_payload = yaml.safe_load(old_yaml)
     current_payload = yaml.safe_load(current_yaml)
@@ -274,7 +287,9 @@ def _semantic_config_equivalence(repo_root: Path, config_path: Path) -> dict[str
         for field in fields
         if old_flat.get(field) != current_flat.get(field)
     ]
-    old_generator = _git(repo_root, "show", f"{SOURCE_COMMIT}:{GENERATOR_RELATIVE.as_posix()}")
+    old_generator = _git_show_text(
+        repo_root, f"{SOURCE_COMMIT}:{GENERATOR_RELATIVE.as_posix()}"
+    )
     current_generator = (repo_root / GENERATOR_RELATIVE).read_text(encoding="utf-8")
     result = {
         "schema": "semantic_config_equivalence.v1",
