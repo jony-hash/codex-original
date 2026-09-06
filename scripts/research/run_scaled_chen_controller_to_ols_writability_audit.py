@@ -1237,8 +1237,13 @@ def _code_effect_metrics(
         class_codes = base_codes
         distances = torch.cdist(class_power.to(torch.float64), class_power.to(torch.float64), p=2).square()
         upper = distances[torch.triu(torch.ones_like(distances, dtype=torch.bool), diagonal=1)]
-        variance = class_power.to(torch.float64).var(dim=0, unbiased=False)
-        class_sensitivity = class_power.to(torch.float64).std(dim=0, unbiased=False) / code_std
+        class_power64 = class_power.to(torch.float64)
+        variance = class_power64.var(dim=0, unbiased=False)
+        centered_codes = class_codes.to(torch.float64) - class_codes.to(torch.float64).mean(dim=0)
+        centered_power = class_power64 - class_power64.mean(dim=0)
+        covariance = centered_codes.T @ centered_power / class_codes.shape[0]
+        power_std = class_power64.std(dim=0, unbiased=False).clamp_min(1.0e-12)
+        class_sensitivity = (covariance / (code_std[:, None] * power_std[None, :])).abs().mean(dim=1)
         sensitivity += class_sensitivity
         pairwise_mean = float(upper.mean())
         variance_mean = float(variance.mean())
