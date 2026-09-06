@@ -96,7 +96,7 @@ governance:
   formal_promotion: false
 
 output:
-  directory: outputs/20260906_v2/runs/lightgen_scaled_chen_controller_to_ols_semantic_geometry_alignment_v1_attempt_01
+  directory: outputs/20260906_v2/runs/lightgen_scaled_chen_controller_to_ols_semantic_geometry_alignment_v1_attempt_02
   write_once: true
   json_only: true
   copy_frozen_corpus: false

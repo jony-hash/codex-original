@@ -72,6 +72,14 @@ S3_PANEL_IDENTITY_SHA256 = (
 S3_STATE_ARTIFACT_SHA256 = (
     "45f9b2b18c0cc67bf784ee206059d97164abaab08f0304892c368f53d218b19a"
 )
+PRIOR_ATTEMPT_OUTPUT_PATH = Path(
+    "outputs/20260906_v2/runs/"
+    "lightgen_scaled_chen_controller_to_ols_semantic_geometry_alignment_v1_attempt_01"
+)
+PRIOR_ATTEMPT_MANIFEST_PATH = PRIOR_ATTEMPT_OUTPUT_PATH / "geometry_alignment_manifest.json"
+PRIOR_ATTEMPT_MANIFEST_SHA256 = (
+    "4d64bededa2884e76a6112cc7f1efd76bb9548a5048d62b9f4b7152402b7a52b"
+)
 
 S1_CONFIG_PATH = Path(
     "configs/research/lightgen_scaled_chen_ols_semantic_representation_audit_v1.yaml"
@@ -118,7 +126,7 @@ DEFAULT_CONFIG_PATH = Path(
 )
 DEFAULT_OUTPUT_PATH = Path(
     "outputs/20260906_v2/runs/"
-    "lightgen_scaled_chen_controller_to_ols_semantic_geometry_alignment_v1_attempt_01"
+    "lightgen_scaled_chen_controller_to_ols_semantic_geometry_alignment_v1_attempt_02"
 )
 
 
@@ -1084,6 +1092,46 @@ def _validate_s3_source(config: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _validate_prior_attempt() -> dict[str, Any]:
+    directory = _resolve(PRIOR_ATTEMPT_OUTPUT_PATH)
+    manifest_path = _resolve(PRIOR_ATTEMPT_MANIFEST_PATH)
+    if not directory.is_dir() or not manifest_path.is_file():
+        raise ValueError("attempt_01 geometry diagnostic is missing")
+    if file_sha256(manifest_path) != PRIOR_ATTEMPT_MANIFEST_SHA256:
+        raise ValueError("attempt_01 geometry diagnostic manifest was modified")
+    manifest = _read_json(manifest_path)
+    if (
+        manifest.get("schema") != MANIFEST_SCHEMA
+        or manifest.get("task_id") != TASK_ID
+        or manifest.get("status") != "valid_completed"
+        or manifest.get("primary_mechanism")
+        != "S3_GEOMETRY_COMPRESSED_MANIFOLD_COVERAGE_PRIMARY"
+    ):
+        raise ValueError("attempt_01 geometry diagnostic identity is invalid")
+    artifacts = _mapping(manifest.get("artifacts"), "attempt_01 artifacts")
+    _assert_exact_tree(
+        directory,
+        set(artifacts) | {"geometry_alignment_manifest.json"},
+        "attempt_01 geometry diagnostic",
+    )
+    for name, ref_value in artifacts.items():
+        ref = _mapping(ref_value, f"attempt_01 artifact {name}")
+        path = directory / name
+        if (
+            ref.get("path") != name
+            or file_sha256(path) != ref.get("sha256")
+            or path.stat().st_size != int(ref.get("size_bytes", -1))
+        ):
+            raise ValueError(f"attempt_01 artifact changed: {name}")
+    return {
+        "directory": directory,
+        "manifest_path": manifest_path,
+        "manifest": manifest,
+        "manifest_sha256": PRIOR_ATTEMPT_MANIFEST_SHA256,
+        "immutable": True,
+    }
+
+
 def _validate_s1_source(config: Mapping[str, Any]) -> dict[str, Any]:
     binding = _mapping(config["s1_reference"], "s1_reference")
     config_path = _resolve(binding["config"])
@@ -1187,9 +1235,10 @@ def _git_preflight(*, require_clean: bool) -> dict[str, Any]:
 def _validate_authority(config: Mapping[str, Any]) -> dict[str, Any]:
     s3 = _validate_s3_source(config)
     s1 = _validate_s1_source(config)
+    prior_attempt = _validate_prior_attempt()
     if s3["manifest"]["s1_reference"]["semantic_manifest_sha256"] != S1_MANIFEST_SHA256:
         raise ValueError("S3/S1 semantic binding mismatch")
-    return {"s3": s3, "s1": s1}
+    return {"s3": s3, "s1": s1, "prior_attempt": prior_attempt}
 
 
 def _artifact_refs(directory: Path) -> dict[str, dict[str, Any]]:
@@ -1225,6 +1274,7 @@ def _assert_output_tree(directory: Path) -> None:
 
 def _authority_binding_payload(authority: Mapping[str, Any]) -> dict[str, Any]:
     s3 = authority["s3"]
+    prior_attempt = authority["prior_attempt"]
     return {
         "schema": AUTHORITY_SCHEMA,
         "task_id": TASK_ID,
@@ -1261,6 +1311,34 @@ def _authority_binding_payload(authority: Mapping[str, Any]) -> dict[str, Any]:
         "authority_binding_gate": "SEMANTIC_GEOMETRY_ALIGNMENT_AUTHORITY_BINDING_PASS",
         "s3_historical_result_preserved": True,
         "s3_retroactive_reclassification": False,
+        "attempt_01": {
+            "directory": _relative(PRIOR_ATTEMPT_OUTPUT_PATH),
+            "manifest": _relative(PRIOR_ATTEMPT_MANIFEST_PATH),
+            "manifest_sha256": prior_attempt["manifest_sha256"],
+            "classification": prior_attempt["manifest"]["primary_mechanism"],
+            "immutable": prior_attempt["immutable"],
+        },
+    }
+
+
+def _router_conformity_payload(prior_attempt: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "authorization": "AUTHORIZATION_GRANTED_FOR_GEOMETRY_ALIGNMENT_ROUTER_CONFORMITY_FIX_AND_WRITE_ONCE_ATTEMPT_02",
+        "kind": "router_conformity_correction",
+        "previous_attempt": _relative(PRIOR_ATTEMPT_OUTPUT_PATH),
+        "previous_manifest_sha256": prior_attempt["manifest_sha256"],
+        "exact_logic_delta": {
+            "before": "F2 required translation_effective and considered targeting degradation, inter-class distortion, or coverage compression; it did not inspect registered confirmation Q50/Q95 hard-criterion residuals.",
+            "after": "F2 is supported when the frozen confirmation hard criterion fails after translation (any registered per-class upper95(delta_q50_after)>0 or upper95(delta_q95_after)>0), or inter-class centroid geometry is distorted, or the existing translation-effective targeting condition holds.",
+            "coverage_only_trigger_removed": True,
+            "post_attempt_01_q50_gap_fraction_threshold_removed": True,
+            "new_metric": False,
+            "new_threshold": False,
+            "new_transform": False,
+        },
+        "frozen_inputs_unchanged": True,
+        "s1_authority_modified": False,
+        "s3_authority_modified": False,
     }
 
 
@@ -1280,13 +1358,24 @@ def _mechanism_decision(
     )
     targeting_decision = _mapping(targeting["confirmation"], "targeting decision")
     targeting_preserved = bool(targeting_decision["all_class_non_degradation"])
+    confirmation_hard_criterion_failure_classes = [
+        int(label)
+        for label, value in confirmation_reachability["per_class"].items()
+        if value["delta_q50_after"]["upper95"] > 0.0
+        or value["delta_q95_after"]["upper95"] > 0.0
+    ]
+    confirmation_hard_criterion_after_pass = not bool(
+        confirmation_hard_criterion_failure_classes
+    )
     interclass_distorted = any(
         item["qualitative_status"] == "INTER_CLASS_SEMANTIC_GEOMETRY_DISTORTED"
         for item in centroid_geometry.values()
     )
     coverage_compressed = bool(coverage["confirmation"]["compressed"])
     higher_order = bool(
-        translation_effective and (not targeting_preserved or interclass_distorted or coverage_compressed)
+        not confirmation_hard_criterion_after_pass
+        or interclass_distorted
+        or (translation_effective and not targeting_preserved)
     )
     if translation_effective and targeting_preserved and not higher_order:
         primary = "S3_GEOMETRY_ANCHOR_OFFSET_PRIMARY"
@@ -1302,7 +1391,11 @@ def _mechanism_decision(
         next_action = "PLAN_CONTROLLER_SEMANTIC_GEOMETRY_TRAINING_AUTHORITY"
     elif coverage_compressed:
         primary = "S3_GEOMETRY_COMPRESSED_MANIFOLD_COVERAGE_PRIMARY"
-        secondary = None
+        secondary = (
+            "S3_GEOMETRY_HIGHER_ORDER_MISMATCH_PRIMARY"
+            if higher_order
+            else None
+        )
         next_action = "REVIEW_CODE8_WITHIN_CLASS_MANIFOLD_COVERAGE"
     elif not translation_effective:
         primary = "S3_GEOMETRY_HIGHER_ORDER_MISMATCH_PRIMARY"
@@ -1317,6 +1410,8 @@ def _mechanism_decision(
         "targeting_preserved": targeting_preserved,
         "interclass_geometry_distorted": interclass_distorted,
         "coverage_compressed": coverage_compressed,
+        "confirmation_hard_criterion_after_pass": confirmation_hard_criterion_after_pass,
+        "confirmation_hard_criterion_failure_classes": confirmation_hard_criterion_failure_classes,
         "higher_order_mismatch_supported": higher_order,
         "primary_mechanism": primary,
         "secondary_mechanism": secondary,
@@ -1449,6 +1544,7 @@ def run(
         raise FileExistsError(f"refusing to reuse write-once geometry output: {_relative(output)}")
     s3 = authority["s3"]
     s1 = authority["s1"]
+    prior_attempt = authority["prior_attempt"]
     controller_power = s3["power"]
     controller_labels = s3["labels"]
     controller_split = s3["split"]
@@ -1683,6 +1779,7 @@ def run(
             "vectors": translation.tolist(),
         }
         primary = decision["primary_mechanism"]
+        router_conformity = _router_conformity_payload(prior_attempt)
         if primary == "S3_GEOMETRY_ANCHOR_OFFSET_PRIMARY":
             f1 = "SUPPORTED"
         else:
@@ -1714,6 +1811,7 @@ def run(
                 "formal_promotion": False,
             },
             "next_action": decision["next_action"],
+            "router_conformity_correction": router_conformity,
             "wall_clock_seconds_before_write": time.perf_counter() - started,
         }
     artifact_payloads: dict[str, Mapping[str, Any]] = {
@@ -1763,6 +1861,7 @@ def run(
                 "sha256": config_sha256,
                 "canonical_sha256": config_canonical_sha256,
             },
+            "output_directory": _relative(output),
             "git": {
                 "branch": state_before["branch"],
                 "starting_head": state_before["commit"],
@@ -1781,6 +1880,7 @@ def run(
                 "representation": R1_POWER,
                 "immutable": True,
             },
+            "router_conformity_correction": router_conformity,
             "diagnostic": {
                 "translation": "class_conditional_centroid_translation_only",
                 "selection_fit": True,

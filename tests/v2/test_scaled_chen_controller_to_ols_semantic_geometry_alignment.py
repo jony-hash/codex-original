@@ -115,6 +115,15 @@ def test_mechanism_decision_does_not_create_s3_gate() -> None:
         "confirmation": {
             "q50_shrinkage_positive_fraction": 1.0,
             "q95_shrinkage_positive_fraction": 1.0,
+            "per_class": {
+                str(label): {
+                    "q50_gap_after": 0.0,
+                    "delta_q50_after": {"upper95": -0.01},
+                    "q95_gap_after": 0.0,
+                    "delta_q95_after": {"upper95": -0.01},
+                }
+                for label in range(CLASS_COUNT)
+            },
         }
     }
     targeting = {"confirmation": {"all_class_non_degradation": False}}
@@ -136,6 +145,57 @@ def test_mechanism_decision_does_not_create_s3_gate() -> None:
 
     assert result["primary_mechanism"] == "S3_GEOMETRY_ANCHOR_PLUS_TANGENT_MISMATCH"
     assert result["new_s3_gate_created"] is False
+
+
+def test_f2_uses_registered_confirmation_hard_criterion_not_point_gap_alone() -> None:
+    base_per_class = {
+        str(label): {
+            "q50_gap_after": 0.1,
+            "delta_q50_after": {"upper95": -0.01},
+            "q95_gap_after": 0.1,
+            "delta_q95_after": {"upper95": -0.01},
+        }
+        for label in range(CLASS_COUNT)
+    }
+    reachability = {
+        "confirmation": {
+            "q50_shrinkage_positive_fraction": 1.0,
+            "q95_shrinkage_positive_fraction": 1.0,
+            "per_class": base_per_class,
+        }
+    }
+    targeting = {"confirmation": {"all_class_non_degradation": True}}
+    centroid = {
+        "selection": {"qualitative_status": "INTER_CLASS_SEMANTIC_GEOMETRY_PRESERVED"},
+        "confirmation": {"qualitative_status": "INTER_CLASS_SEMANTIC_GEOMETRY_PRESERVED"},
+    }
+    coverage = {"confirmation": {"compressed": False}}
+    anchor_result = _mechanism_decision(
+        reachability,
+        targeting,
+        centroid,
+        coverage,
+        {
+            "translation_effective_min_q50_shrinkage_fraction": 0.8,
+            "translation_effective_min_q95_shrinkage_fraction": 0.8,
+        },
+    )
+    assert anchor_result["higher_order_mismatch_supported"] is False
+
+    base_per_class["3"]["delta_q50_after"]["upper95"] = 0.01
+    f2_result = _mechanism_decision(
+        reachability,
+        targeting,
+        centroid,
+        coverage,
+        {
+            "translation_effective_min_q50_shrinkage_fraction": 0.8,
+            "translation_effective_min_q95_shrinkage_fraction": 0.8,
+        },
+    )
+    assert f2_result["higher_order_mismatch_supported"] is True
+    assert f2_result["primary_mechanism"] == "S3_GEOMETRY_ANCHOR_PLUS_TANGENT_MISMATCH"
+    assert f2_result["secondary_mechanism"] == "S3_GEOMETRY_HIGHER_ORDER_MISMATCH_PRIMARY"
 
 
 def test_output_tree_rejects_tiff_and_unknown_files(tmp_path: Path) -> None:
