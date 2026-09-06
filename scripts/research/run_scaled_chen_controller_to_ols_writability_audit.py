@@ -1123,6 +1123,21 @@ def _targeting_metrics(
         reports[split_name] = report
         direction = direction and report["real_minus_null_margin"]["lower95"] > 0.0 and report["null_minus_real_target_distance"]["lower95"] > 0.0 and report["real_minus_null_retrieval"]["lower95"] > 0.0
         direction = direction and all(report["per_class"][str(label)]["margin"]["mean"] > 0.0 for label in range(CLASS_COUNT))
+    overall_values = _distance_components(
+        power, labels, reference_power, reference_labels
+    )
+    overall_null_values = _distance_components(
+        power, null_labels, reference_power, reference_labels
+    )
+    overall = _target_split_report(
+        "overall",
+        overall_values,
+        overall_null_values,
+        labels,
+        null_labels,
+    )
+    reports["overall"] = overall
+    direction = direction and overall["real_minus_null_margin"]["lower95"] > 0.0 and overall["null_minus_real_target_distance"]["lower95"] > 0.0 and overall["real_minus_null_retrieval"]["lower95"] > 0.0
     reports["gate"] = "S3_LABEL_TARGETING_PASS" if direction else "S3_LABEL_TARGETING_FAIL"
     reports["registered_null"] = {
         "kind": "fixed_intended_label_permutation",
