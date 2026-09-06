@@ -2185,3 +2185,47 @@ controller semantics、8D control、generative manifold support 或 generation r
 `formal_promotion=false`。DOSD focused + S1/OSERA/VPIM/FOSEA regression=`34 passed`；Windows-native
 compileall、Ruff、`git diff --check` 与 artifact tree/hash audit 均通过。唯一下一动作固定为
 `PLAN_S3_CONTROL_TO_OLS_WRITABILITY_AUDIT`。
+
+## H-LOMA-GEN-S3-SPCLM State-preserving controller lineage migration（2026-09-06，Windows-native，diagnostic-only）
+
+本轮从 clean starting HEAD=`2cd8a736a55a83fcfcd08dc93faf9890b8e6fae8` 开始，只执行
+`IMPLEMENT_STATE_PRESERVING_CONTROLLER_LINEAGE_MIGRATION`。实现提交为 `64f284a`，源码
+provenance 修复提交为 `044dde1`，历史训练 provenance 绑定修复提交为
+`c9cf300593223f3063a43d7b499bbb1eea8ba17a`；没有执行 S3、controller forward、CUDA、OLS
+measurement、training、optimizer/backward、candidate reselection、generation 或 formal promotion。
+
+唯一 source 是
+`outputs/20260812_v2/runs/20260812_012817_770553_formal_v2_identity_logit_amplitude_finite_crop_identity/conditional_optical_generator.pt`，
+source commit=`ae3273da6f26dd2e8dab5e6ed4dd461cd86c5dca`，checkpoint SHA-256=
+`423328bf472bb7468f131b351850d1b6f7c5a282796444ecbec5e10bad12c2b9`，state content hash=
+`d36165ee1d5e9c2a66734ffdea0f8291cb8699e86df667e6a66ac169cd75e2fc`，state signature=
+`88d31ec03d88a7e471d651b49c6eb20770e0fd6db5afb71798486499f62068fa`。选择依据是同一
+controller lineage 上唯一最近的 trained-final predecessor，不是性能、时间或 S3 选择。
+
+正式 write-once output 为
+`outputs/20260906_v2/runs/lightgen_controller_lineage_migration_v1_attempt_01/`，共 10 个文件、
+`3573555` bytes；`controller_lineage_migration_manifest.json` SHA-256=
+`94b9e9cfc775d089e759627c16e3d829c45993861ca699618b8900c0bfed0569`；migrated envelope
+`conditional_optical_generator_current_lineage_migrated.pt` SHA-256=
+`572116dbb88464d0999a0391e7e94675cacd64ad5ae303bc2e0efb16e1f63ba2`。envelope 绑定当前
+canonical config hash=`edeefb801b563a4657cd621c86c725ed428bbd71678cddafb93fb629eb6ee030`、
+YAML SHA-256=`0c42035c1a525e27ff787d013ca27b0f5ae91338329eb0607c7042ebc5ae8905`、current
+runtime HEAD=`c9cf300593223f3063a43d7b499bbb1eea8ba17a`；historical/current config field diff=`0`，
+classification=`NONSEMANTIC_LINEAGE_PACKAGING_DRIFT`。
+
+state-preservation gate 全部通过：keys、shapes、dtypes、tensor bytes、canonical state hash
+和 signature 均 exact unchanged；new file identity 与 old file identity 不同，但 model parameter
+state 完全继承。current normal strict loader 在 CPU 下独立加载两次，
+`MIGRATED_CONTROLLER_STRICT_LOAD_PASS`、`CURRENT_FORMAL_CONTROLLER_BINDING_PASS`、
+`MIGRATED_CONTROLLER_STATE_REPLAY_PASS` 和 `HISTORICAL_CONTROLLER_ARTIFACT_IMMUTABLE_PASS`
+均 PASS；没有 config-hash override、manual remap、warning、forward、optimizer 或 backward。
+最终 Gate=`CONTROLLER_LINEAGE_MIGRATION_PASS`，state origin=
+`HISTORICAL_TRAINED_STATE_MIGRATED_WITHOUT_PARAMETER_CHANGE`，formal controller state 为
+`CURRENT_FORMAL_CONTROLLER_STATE_ESTABLISHED_BY_MIGRATION`。
+
+SPCLM focused tests=`4 passed`（使用仓库内 basetemp；默认 pytest cache ACL 环境问题未参与
+结果判断）；Windows-native compileall、Ruff、`git diff --check` 及最终目录/hash audit 均通过。
+治理继续保持 `mainline_state=closed_at_current_evidence_boundary`、
+`reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、
+`generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false`。
+CSAR 仍未登记；S3 仍未执行。唯一下一动作固定为 `RERUN_H-LOMA-GEN-S3-CSAR`。

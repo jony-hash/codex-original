@@ -1152,3 +1152,32 @@ label-to-OLS semantics、8D-to-OLS control、novel generation、generative manif
 治理继续保持 closed evidence boundary、reconstruction/generative unsupported、generation not ready、
 training/formal promotion=false。DOSD + S1/OSERA/VPIM/FOSEA focused=`34 passed`，compileall、Ruff、
 diff-check、artifact audit 全部通过。唯一下一动作：`PLAN_S3_CONTROL_TO_OLS_WRITABILITY_AUDIT`。
+
+## H-LOMA-GEN-S3-SPCLM State-preserving controller lineage migration（2026-09-06）
+
+在 clean starting HEAD=`2cd8a736a55a83fcfcd08dc93faf9890b8e6fae8` 上完成
+`IMPLEMENT_STATE_PRESERVING_CONTROLLER_LINEAGE_MIGRATION`。本轮只新增显式迁移脚本和 focused
+regression test（implementation commits=`64f284a`、`044dde1`、`c9cf300`），固定消费 20260812
+trained-final controller；未执行 CUDA、controller/OLS forward、S3、training、optimizer/backward、
+candidate selection、generation 或 formal promotion。
+
+source checkpoint=`outputs/20260812_v2/runs/20260812_012817_770553_formal_v2_identity_logit_amplitude_finite_crop_identity/conditional_optical_generator.pt`，
+SHA-256=`423328bf472bb7468f131b351850d1b6f7c5a282796444ecbec5e10bad12c2b9`，state hash=
+`d36165ee1d5e9c2a66734ffdea0f8291cb8699e86df667e6a66ac169cd75e2fc`，signature=
+`88d31ec03d88a7e471d651b49c6eb20770e0fd6db5afb71798486499f62068fa`。该 source 是同一
+controller lineage 上唯一最近 trained-final predecessor；历史 source 未被覆盖、重存或移动。
+
+write-once output=`outputs/20260906_v2/runs/lightgen_controller_lineage_migration_v1_attempt_01/`，
+10 files、`3573555` bytes；manifest SHA-256=
+`94b9e9cfc775d089e759627c16e3d829c45993861ca699618b8900c0bfed0569`，migrated envelope SHA-256=
+`572116dbb88464d0999a0391e7e94675cacd64ad5ae303bc2e0efb16e1f63ba2`。旧/新 envelope file
+identity 可不同，但 parameter state 的 keys、shape、dtype、bytes、state hash 和 signature exact
+一致；当前 config field diff=`0`，classification=`NONSEMANTIC_LINEAGE_PACKAGING_DRIFT`。
+
+当前 formal runtime normal strict loader（CPU、显式 `--checkpoint` checkpoint binding）两次 replay
+均 PASS，无 override、fallback、partial load、warning 或 manual remap；
+`CONTROLLER_LINEAGE_MIGRATION_PASS`、strict-load、runtime-binding、state-replay、historical-
+immutability gates 全部 PASS。测试=`4 passed`；compileall、Ruff、`git diff --check` 和最终
+tree/hash audit PASS。治理保持 closed evidence boundary、reconstruction/generative unsupported、
+generation not ready、training/promotion=false。当前 CSAR 仍 blocked/not registered，S3 未执行；
+唯一下一动作=`RERUN_H-LOMA-GEN-S3-CSAR`。
