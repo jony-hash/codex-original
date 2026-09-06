@@ -1,12 +1,41 @@
 # codex-original 项目记忆
 
-更新时间：2026-09-03
+更新时间：2026-09-07
 
 ## 目的与事实优先级
 
 这是 `codex-original` 的跨 ChatGPT/Codex 交接入口。它只保存稳定导航、当前边界和
 交接规则，不替代正式证据、实验报告或历史 transcript。云端 ChatGPT 项目使用它的
 受控上传副本；本文件本身仍以本地 Git 版本为准。
+
+## H-LOMA-GEN-S3 Controller semantic-geometry data authority materialization（2026-09-07）
+
+旧授权在 implementation HEAD=`e4e1a855f55a542d75ec5121b86dd242028c71b6` 上以
+`INVALID_HARNESS`、step 0 终止；没有 scientific result。新 registrar/safe-load/fail-closed consumer
+提交为 `23a0e5ae2454949b5963a3b240aa54e14004c5ed`，artifact binding 为
+`8d341914bdbfa355984b13c20bfd11b1f8d8c264`，reauthorization status contract 为
+`0f1126660a2d2d8c497c7c35d3ba01fd5c6d13d8`；旧 `f7136df`/`e4e1a855` 未 amend。
+
+专用 write-once authority run 为
+`outputs/20260907_v2/runs/lightgen_controller_semantic_geometry_data_firewall_v1_attempt_01/`。
+target bank SHA=`d0f29701e4f9818c48b222e1cbfd8706257ec38356842870f154cd3fc2c8ecb0`，partition manifest
+SHA=`1eae38d6086a7e395960177e24e8b1ccb7deb1312f2885c07321f3ebeb1cd7c4`，target-bank sidecar
+SHA=`9eb2f032de52ec68dfda69ad3abd217ded2774656ec83c217ebe7d22ebed7916`，data-firewall manifest
+SHA=`f5704a5108681a78273b918d3eda3ade3b0e68b8af6f4e98314037e1eb94d4d1`。frozen semantic partition
+identity=`b07a04d3c779e5952c06209c9d8cc8421b8193cd41f037db88f95c736ab35594`；physical manifest SHA
+单独记录，不能与 semantic identity 混用。S1 fit deterministic construction 重现全部 frozen component
+hashes；local canonical material digest=`2010a7541994c9422de26f5f646ae67e6c91f73ec49297a2a4f378589615c431`。
+历史代码/authority 未提供从该 material digest 推导 `b07…` 的 canonical-byte recipe，因此 b07 只作为
+冻结 semantic authority 被消费，不能声称已完成另一种未登记的 hash 变换。
+
+target bank 仅含 training/internal-validation R1、labels、indices，生产 safe-loader reload 通过；S1
+selection、S1 confirmation、S2 validation、S3 base-code 与 internal-validation code overlap 全为零。
+registration classification=`CONTROLLER_SEMANTIC_GEOMETRY_DATA_AUTHORITY_REGISTERED`，registration
+optimizer/backward/forward=`0/0/0`。clean HEAD=`0f1126660a2d2d8c497c7c35d3ba01fd5c6d13d8` 的 production
+no-update preflight=`PRETRAINING_HARNESS_PREFLIGHT_PASS`，implementation status=
+`IMPLEMENTATION_READY_FOR_ONE_SHOT_REAUTHORIZATION`，optimizer steps/backward/checkpoint writes=`0/0/0`。
+S3 仍为 `S3_CONTROL_TO_OLS_WRITABILITY_NOT_SUPPORTED`，training/promotion=false；等待新鲜授权
+`AUTHORIZE_ONE_SHOT_CONTROLLER_SEMANTIC_GEOMETRY_TRAINING_CANARY`。
 
 事实冲突时按以下顺序处理：
 

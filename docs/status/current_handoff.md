@@ -1,10 +1,38 @@
-# 当前主线交接（2026-09-04）
+# 当前主线交接（2026-09-07）
 
 本文件是当前执行状态的稳定入口。最终主线已在当前 evidence boundary 收口；当前没有下一科学
 实验。架构合同见 [v2 runtime](../architecture/v2_runtime.md)，收口边界见
 [capacity-map hypothesis ledger](capacity_map_hypothesis_ledger.md)，带日期的实验事实见
 [experiment history](experiment_history.md)。2026-08-24 重整前的完整长篇记录保存在
 [archived handoff](../archive/current_handoff_pre_sced_20260824.md)，仅供溯源。
+
+## H-LOMA-GEN-S3 Controller semantic-geometry data authority（2026-09-07）
+
+上一授权在 `e4e1a855f55a542d75ec5121b86dd242028c71b6` 上以 `INVALID_HARNESS`、step 0 结束；
+未发生 optimizer/backward/forward/CUDA/checkpoint/S3 rerun。data-authority registrar、safe-load 与
+fail-closed consumer 已提交：实现=`23a0e5ae2454949b5963a3b240aa54e14004c5ed`，artifact binding=
+`8d341914bdbfa355984b13c20bfd11b1f8d8c264`，fresh reauthorization status=`0f1126660a2d2d8c497c7c35d3ba01fd5c6d13d8`。
+
+专用 authority run：
+`outputs/20260907_v2/runs/lightgen_controller_semantic_geometry_data_firewall_v1_attempt_01/`。
+target bank SHA=`d0f29701e4f9818c48b222e1cbfd8706257ec38356842870f154cd3fc2c8ecb0`；partition manifest
+SHA=`1eae38d6086a7e395960177e24e8b1ccb7deb1312f2885c07321f3ebeb1cd7c4`；target-bank sidecar SHA=
+`9eb2f032de52ec68dfda69ad3abd217ded2774656ec83c217ebe7d22ebed7916`；data-firewall manifest SHA=
+`f5704a5108681a78273b918d3eda3ade3b0e68b8af6f4e98314037e1eb94d4d1`。semantic partition identity=
+`b07a04d3c779e5952c06209c9d8cc8421b8193cd41f037db88f95c736ab35594`，physical file SHA 已分离绑定；
+component hashes 与 S1 deterministic rule 全部复现，local material digest=
+`2010a7541994c9422de26f5f646ae67e6c91f73ec49297a2a4f378589615c431`。
+
+registration=`CONTROLLER_SEMANTIC_GEOMETRY_DATA_AUTHORITY_REGISTERED`，safe reload 通过，保护样本/code
+overlap 全为 0，registration counters=`optimizer 0 / backward 0 / forward 0`。在 clean implementation
+HEAD=`0f1126660a2d2d8c497c7c35d3ba01fd5c6d13d8` 上，production no-update preflight=
+`PRETRAINING_HARNESS_PREFLIGHT_PASS`，status=`IMPLEMENTATION_READY_FOR_ONE_SHOT_REAUTHORIZATION`，
+steps/backward/checkpoint writes=`0/0/0`。training_authorized=false、formal_promotion=false，S3
+仍为 `S3_CONTROL_TO_OLS_WRITABILITY_NOT_SUPPORTED`。
+
+下一唯一动作：等待新授权
+`AUTHORIZE_ONE_SHOT_CONTROLLER_SEMANTIC_GEOMETRY_TRAINING_CANARY`。未授权前禁止 3-step、492-step、
+CUDA training、S3 rerun、class9 repair、architecture/LR/seed/horizon/objective redesign。
 
 ## FINAL_MAINLINE_CLOSEOUT：H-LOMA-CBOGT Scaled-Chen（2026-09-03）
 

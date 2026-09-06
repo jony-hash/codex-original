@@ -1,6 +1,6 @@
 # 当前项目状态
 
-更新时间：2026-09-04
+更新时间：2026-09-07
 
 ## FINAL_MAINLINE_CLOSEOUT：H-LOMA-CBOGT Scaled-Chen reconstruction-repair mainline（2026-09-03）
 
@@ -2373,3 +2373,46 @@ dimension adequacy，继续 `KEEP_8D_PROVISIONALLY`。历史 geometry secondary
 Windows-native targeted tests=`4 passed`，compileall、Ruff、`git diff --check` 与 review
 artifact audit 均通过。唯一下一动作固定为
 `PLAN_CONTROLLER_SEMANTIC_GEOMETRY_TRAINING_AUTHORITY`；本轮不自动训练。
+
+## H-LOMA-GEN-S3 Controller semantic-geometry data authority materialization（2026-09-07，Windows-native）
+
+上一轮在 `e4e1a855f55a542d75ec5121b86dd242028c71b6` 上的授权执行仅得到
+`INVALID_HARNESS`，step/optimizer/backward/forward/checkpoint/S3 rerun 均为零；没有科学结果。
+本轮未沿用旧授权，新增 registrar 与 fail-closed consumer。实现提交为
+`23a0e5ae2454949b5963a3b240aa54e14004c5ed`，artifact hash binding 为
+`8d341914bdbfa355984b13c20bfd11b1f8d8c264`，fresh-reauthorization status contract 修复为
+`0f1126660a2d2d8c497c7c35d3ba01fd5c6d13d8`；未修改、未 amend `f7136df` 或 `e4e1a855`。
+
+正式 write-once data authority 位于
+`outputs/20260907_v2/runs/lightgen_controller_semantic_geometry_data_firewall_v1_attempt_01/`：
+
+- target bank=`controller_semantic_geometry_r1_target_bank.v1.pt`，SHA-256=
+  `d0f29701e4f9818c48b222e1cbfd8706257ec38356842870f154cd3fc2c8ecb0`；只含
+  `training`/`internal_validation` 的 R1、labels、source indices；
+- partition manifest=`controller_semantic_geometry_partition_manifest.v1.json`，SHA-256=
+  `1eae38d6086a7e395960177e24e8b1ccb7deb1312f2885c07321f3ebeb1cd7c4`；
+- target-bank sidecar SHA-256=
+  `9eb2f032de52ec68dfda69ad3abd217ded2774656ec83c217ebe7d22ebed7916`；
+- data-firewall manifest=`controller_semantic_geometry_data_firewall_manifest.v1.json`，SHA-256=
+  `f5704a5108681a78273b918d3eda3ade3b0e68b8af6f4e98314037e1eb94d4d1`。
+
+partition semantic identity 仍为 frozen `b07a04d3c779e5952c06209c9d8cc8421b8193cd41f037db88f95c736ab35594`，
+与 physical JSON file SHA 明确分离；确定性 S1 fit source→按 label、source index ascending、first/last 50
+构造重现了全部 frozen row-position/index/label/R1 component hashes。独立记录的 canonical material digest 为
+`2010a7541994c9422de26f5f646ae67e6c91f73ec49297a2a4f378589615c431`；仓库旧 authority 未提供一条可将
+该 material digest 再映射为 `b07…` 的历史 canonical-byte 规则，因此不把二者宣称为同一 hash。
+consumer 将 `b07…` 作为冻结 semantic authority，并对所有 component/file bindings fail-closed。
+
+registration classification=`CONTROLLER_SEMANTIC_GEOMETRY_DATA_AUTHORITY_REGISTERED`，registration
+optimizer/backward/forward counters 全为 `0`；target bank 通过同一 production safe-loader reload。
+S1 selection、S1 confirmation、S2 validation 与 S3 base-code/internal-validation code overlap 均为 `0`。
+定向测试=`24 passed`（仅既有 pytest cache ACL warning），compileall、Ruff、`git diff --check` 通过。
+
+在 clean HEAD=`0f1126660a2d2d8c497c7c35d3ba01fd5c6d13d8` 上运行 production no-update preflight，结果为
+`PRETRAINING_HARNESS_PREFLIGHT_PASS`；`implementation_status=`
+`IMPLEMENTATION_READY_FOR_ONE_SHOT_REAUTHORIZATION`，optimizer steps=`0`、backward=`0`、checkpoint
+writes=`0`，future training output 未创建。S3 仍为
+`S3_CONTROL_TO_OLS_WRITABILITY_NOT_SUPPORTED`，`training_authorized=false`、`formal_promotion=false`；
+唯一下一动作是新授权字符串
+`AUTHORIZE_ONE_SHOT_CONTROLLER_SEMANTIC_GEOMETRY_TRAINING_CANARY`，此前不得进行 3-step、492-step、CUDA、
+S3 rerun 或任何真实 optimizer update。
