@@ -170,11 +170,14 @@ def _compact_training_evidence(payload: Mapping[str, Any]) -> dict[str, Any]:
         context = {}
     return {
         "schema_version": payload.get("schema_version"),
+        "config_hash": payload.get("config_hash"),
+        "git_commit": payload.get("git_commit"),
+        "dirty_patch_hash": payload.get("dirty_patch_hash"),
         "evidence_kind": payload.get("evidence_kind"),
         "status": payload.get("status"),
         "tier": payload.get("tier"),
         "permitted_next_actions": payload.get("permitted_next_actions"),
-        "steps": payload.get("steps"),
+        "gates": payload.get("gates"),
         "input_hashes": payload.get("input_hashes"),
         "context": {
             "config_hash": context.get("config_hash"),
@@ -216,6 +219,9 @@ def _validate_source_provenance(
         evidence.get("evidence_kind") == "conditional_training"
         and evidence.get("status") == "passed"
         and evidence.get("tier") == "acceptance"
+        and evidence.get("config_hash") == SOURCE_CONFIG_HASH
+        and evidence.get("git_commit") == source_commit
+        and evidence.get("dirty_patch_hash") is None
         and isinstance(input_hashes, Mapping)
         and isinstance(context, Mapping),
         "CONTROLLER_LINEAGE_MIGRATION_PROVENANCE_INCOMPLETE",
@@ -233,7 +239,7 @@ def _validate_source_provenance(
     _require(
         input_hashes.get("initialization_state_hash")
         == EXPECTED_INITIALIZATION_STATE_HASH
-        and input_hashes.get("training_schedule_hash") == EXPECTED_TRAINING_SCHEDULE_HASH,
+        and input_hashes.get("schedule_contract") == EXPECTED_TRAINING_SCHEDULE_HASH,
         "CONTROLLER_LINEAGE_MIGRATION_PROVENANCE_INCOMPLETE",
         "source training evidence lineage hashes do not match the registration",
     )
