@@ -37,21 +37,26 @@ from ldm_project.v2.student.checkpoints import (
     state_content_hash,
     state_signature,
 )
-from scripts.research.migrate_scaled_chen_controller_lineage import (
-    CURRENT_CONFIG_FILE_SHA256,
-    CURRENT_CONFIG_HASH,
-    EXPECTED_GENERATOR_CONTRACT,
-    EXPECTED_SYSTEM_SIGNATURE,
-    MIGRATED_ENVELOPE_NAME,
-    SOURCE_RELATIVE,
-    SOURCE_SHA256,
-    SOURCE_STATE_HASH,
-    SOURCE_STATE_SIGNATURE,
-)
 
 
 TASK_ID = "H-LOMA-GEN-S3-CSAR"
 EXPECTED_BRANCH = "research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1"
+CURRENT_CONFIG_FILE_SHA256 = (
+    "0c42035c1a525e27ff787d013ca27b0f5ae91338329eb0607c7042ebc5ae8905"
+)
+CURRENT_CONFIG_HASH = "edeefb801b563a4657cd621c86c725ed428bbd71678cddafb93fb629eb6ee030"
+EXPECTED_GENERATOR_CONTRACT = "3c9855ff473de172f704d83b00637c09a05da230be4d50cd6807d86539f49e11"
+EXPECTED_SYSTEM_SIGNATURE = (
+    "f6aef9eca2bf789bbce9b0522f7c2618fd0f6adefb0f8b081c4a14c1df01ec63"
+)
+MIGRATED_ENVELOPE_NAME = "conditional_optical_generator_current_lineage_migrated.pt"
+SOURCE_RELATIVE = Path(
+    "outputs/20260812_v2/runs/20260812_012817_770553_formal_v2_identity_logit_amplitude_finite_crop_identity/"
+    "conditional_optical_generator.pt"
+)
+SOURCE_SHA256 = "423328bf472bb7468f131b351850d1b6f7c5a282796444ecbec5e10bad12c2b9"
+SOURCE_STATE_HASH = "d36165ee1d5e9c2a66734ffdea0f8291cb8699e86df667e6a66ac169cd75e2fc"
+SOURCE_STATE_SIGNATURE = "88d31ec03d88a7e471d651b49c6eb20770e0fd6db5afb71798486499f62068fa"
 CONFIG_RELATIVE = Path(
     "configs/v2/current/formal_identity_logit_amplitude_finite_crop_identity.yaml"
 )
