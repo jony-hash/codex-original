@@ -14,10 +14,11 @@ from ldm_project.v2.application.research.controller_semantic_geometry_training i
     load_config,
     load_target_bank,
     no_update_preflight,
+    register_data_authority,
     register_target_bank,
     resolve_path,
     train_authorized_controller,
-    _load_s1_reference,
+    _load_data_authority,
     validate_target_bank,
 )
 
@@ -40,6 +41,10 @@ def _parser() -> argparse.ArgumentParser:
     register.add_argument("--partition-manifest", type=Path, required=True)
     register.add_argument("--output", type=Path, required=True)
     register.add_argument("--manifest", type=Path)
+
+    authority = subparsers.add_parser("register-data-authority")
+    authority.add_argument("--output-dir", type=Path)
+    authority.add_argument("--expected-head")
 
     preflight = subparsers.add_parser("preflight")
     preflight.add_argument("--target-bank", type=Path, required=True)
@@ -69,6 +74,16 @@ def main(argv: list[str] | None = None) -> int:
             )
             print(json.dumps({"target_bank": str(output), "manifest": str(manifest)}, indent=2))
             return 0
+        if args.command == "register-data-authority":
+            result = register_data_authority(
+                config,
+                args.repo_root,
+                config_path=args.config,
+                output_dir=args.output_dir,
+                expected_head=args.expected_head,
+            )
+            print(json.dumps(result, indent=2, sort_keys=True))
+            return 0
         if args.command == "preflight":
             result = no_update_preflight(
                 args.config,
@@ -96,8 +111,16 @@ def main(argv: list[str] | None = None) -> int:
         device = torch.device(args.device)
         optical_model, calibration, _, _ = s3._load_optical_authority(s3_config, device)
         generator = s3._load_controller_generator(controller_state, device)
-        bank = load_target_bank(args.target_bank)
-        validate_target_bank(bank, _load_s1_reference(config, args.repo_root), config)
+        authority = _load_data_authority(config, args.repo_root, target_bank_path=args.target_bank)
+        bank = load_target_bank(args.target_bank, expected_sha256=authority["hashes"]["target_bank_sha256"])
+        validate_target_bank(
+            bank,
+            authority["reference"],
+            config,
+            expected_artifact_sha256=authority["hashes"]["target_bank_sha256"],
+            expected_partition_manifest_file_sha256=authority["hashes"]["partition_manifest_file_sha256"],
+            repo_root=args.repo_root,
+        )
         result = train_authorized_controller(
             generator,
             optical_model,

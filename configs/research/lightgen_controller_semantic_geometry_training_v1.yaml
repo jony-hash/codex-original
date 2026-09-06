@@ -13,11 +13,20 @@ data_firewall:
   training_count: 500
   validation_count: 500
   samples_per_class: 50
-  partition_identity: b07a04d3c779e5952c06209c9d8cc8421b8193cd41f037db88f95c736ab35594
-  partition_manifest_sha256: b07a04d3c779e5952c06209c9d8cc8421b8193cd41f037db88f95c736ab35594
+  partition_identity_sha256: b07a04d3c779e5952c06209c9d8cc8421b8193cd41f037db88f95c736ab35594
   runtime_resplit: false
   reselection: false
   target_bank_schema: controller_semantic_geometry_r1_target_bank.v1
+  authority:
+    run_directory: outputs/20260907_v2/runs/lightgen_controller_semantic_geometry_data_firewall_v1_attempt_01
+    partition_manifest: outputs/20260907_v2/runs/lightgen_controller_semantic_geometry_data_firewall_v1_attempt_01/controller_semantic_geometry_partition_manifest.v1.json
+    partition_manifest_file_sha256: null
+    target_bank: outputs/20260907_v2/runs/lightgen_controller_semantic_geometry_data_firewall_v1_attempt_01/controller_semantic_geometry_r1_target_bank.v1.pt
+    target_bank_sha256: null
+    target_bank_manifest: outputs/20260907_v2/runs/lightgen_controller_semantic_geometry_data_firewall_v1_attempt_01/controller_semantic_geometry_r1_target_bank.v1.manifest.json
+    target_bank_manifest_sha256: null
+    data_firewall_manifest: outputs/20260907_v2/runs/lightgen_controller_semantic_geometry_data_firewall_v1_attempt_01/controller_semantic_geometry_data_firewall_manifest.v1.json
+    data_firewall_manifest_sha256: null
   s1:
     semantic_manifest: outputs/20260904_v2/runs/lightgen_scaled_chen_ols_semantic_representation_audit_v1_attempt_01/semantic_manifest.json
     semantic_manifest_sha256: b0199040926618b17373edc4f167cc8bc4788f39f64de174e1a3fb225781833e
@@ -184,7 +193,6 @@ source:
   s3_geometry_diagnostic_sha256: 1112b8331b3a7a31cf4814ad50c6b3ea8b60217771ef222b7182e553d8284682
 
 output:
-  target_directory: outputs/20260906_v2/runs/lightgen_controller_semantic_geometry_s3_repair_v1_attempt_01
-  target_bank: controller_semantic_geometry_r1_target_bank.v1.pt
+  target_directory: outputs/20260907_v2/runs/lightgen_controller_semantic_geometry_s3_repair_v1_attempt_01
   final_checkpoint: controller_semantic_geometry_final_step_492.pt
   write_once: true

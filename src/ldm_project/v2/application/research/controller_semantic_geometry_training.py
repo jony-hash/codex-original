@@ -40,6 +40,7 @@ SCHEMA = "controller_semantic_geometry_training_harness.v1"
 TARGET_BANK_SCHEMA = "controller_semantic_geometry_r1_target_bank.v1"
 TARGET_BANK_MANIFEST_SCHEMA = "controller_semantic_geometry_r1_target_bank_manifest.v1"
 PARTITION_SCHEMA = "controller_semantic_geometry_r1_partition.v1"
+DATA_AUTHORITY_SCHEMA = "controller_semantic_geometry_data_firewall_manifest.v1"
 OBJECTIVE_FAMILY = "CLASS_CONDITIONED_R1_FIRST_SECOND_ORDER_GEOMETRY_ALIGNMENT"
 AUTHORIZATION_TOKEN = "AUTHORIZE_ONE_SHOT_CONTROLLER_SEMANTIC_GEOMETRY_TRAINING_CANARY"
 IMPLEMENTATION_READY = "IMPLEMENTATION_READY_FOR_ONE_SHOT_AUTHORIZATION"
@@ -69,6 +70,36 @@ S3_BASE_CODE_SHA256 = (
 PARTITION_IDENTITY = (
     "b07a04d3c779e5952c06209c9d8cc8421b8193cd41f037db88f95c736ab35594"
 )
+PARTITION_TRAINING_POSITION_SHA256 = (
+    "54fe39a51036f6b69cf4cb65cfc614e4043a92fb8a601c75f529da8f87122243"
+)
+PARTITION_VALIDATION_POSITION_SHA256 = (
+    "964724eddd503d596ec870ceea3b0145f151ade64f5903307352297372763a75"
+)
+PARTITION_TRAINING_INDEX_SHA256 = (
+    "99285b32a2c098de1788cd405bc317c3c7877bbd07bd1b63260fd9fd1cc93d18"
+)
+PARTITION_VALIDATION_INDEX_SHA256 = (
+    "96a367399d53a48078d7a3328a6063174c2f58031177da0f14953191620b5d80"
+)
+PARTITION_TRAINING_LABEL_SHA256 = (
+    "c8bacf260ae894e7da623586b9e04c67d95f628c16f52766cee0994ca2ceac19"
+)
+PARTITION_VALIDATION_LABEL_SHA256 = PARTITION_TRAINING_LABEL_SHA256
+PARTITION_TRAINING_R1_SHA256 = (
+    "453d207c1b87468f6ed0f3d36d27c650207019f25577ac0484e91be234e911ab"
+)
+PARTITION_VALIDATION_R1_SHA256 = (
+    "54cc0ae18a07e50fa11b6fe3aa7adba21c0f6651667f963054046d80e482143d"
+)
+PARTITION_ALGORITHM = {
+    "class_order": list(range(CLASS_COUNT)),
+    "within_class_order": "source_index_ascending",
+    "training_rule": "first_50",
+    "internal_validation_rule": "last_50",
+    "concatenation": "label_major",
+    "rng": "none",
+}
 OPTIMIZER_CONTRACT_SHA256 = (
     "c83a0232a418ca9faa0e3d74d16d62af39ea67a21312b1255896c372b944b2f7"
 )
@@ -140,6 +171,19 @@ class TargetBank:
     validation_indices: torch.Tensor
     manifest: Mapping[str, Any]
     artifact_sha256: str | None = None
+
+
+@dataclass(frozen=True)
+class FrozenPartition:
+    training_positions: torch.Tensor
+    internal_validation_positions: torch.Tensor
+    training_indices: torch.Tensor
+    internal_validation_indices: torch.Tensor
+    training_labels: torch.Tensor
+    internal_validation_labels: torch.Tensor
+    training_r1_sha256: str
+    internal_validation_r1_sha256: str
+    identity_material_sha256: str
 
 
 @dataclass(frozen=True)
@@ -235,10 +279,39 @@ def validate_config(config: Mapping[str, Any]) -> None:
         raise HarnessFailure("S3 classification may not be changed by the repair harness")
 
     firewall = _mapping(config["data_firewall"], "data_firewall")
-    if firewall.get("partition_identity") != PARTITION_IDENTITY:
-        raise HarnessFailure("data-firewall partition identity is not frozen")
-    if firewall.get("partition_manifest_sha256") != PARTITION_IDENTITY:
-        raise HarnessFailure("data-firewall partition manifest identity is not frozen")
+    if firewall.get("partition_identity_sha256") != PARTITION_IDENTITY:
+        raise HarnessFailure("data-firewall partition semantic identity is not frozen")
+    authority = _mapping(firewall.get("authority"), "data_firewall.authority")
+    if set(authority) != {
+        "run_directory",
+        "partition_manifest",
+        "partition_manifest_file_sha256",
+        "target_bank",
+        "target_bank_sha256",
+        "target_bank_manifest",
+        "target_bank_manifest_sha256",
+        "data_firewall_manifest",
+        "data_firewall_manifest_sha256",
+    }:
+        raise HarnessFailure("data-authority binding fields are invalid")
+    for name in (
+        "partition_manifest_file_sha256",
+        "target_bank_sha256",
+        "target_bank_manifest_sha256",
+        "data_firewall_manifest_sha256",
+    ):
+        value = authority.get(name)
+        if value is not None:
+            _sha(value, f"data_firewall.authority.{name}")
+    for name in (
+        "run_directory",
+        "partition_manifest",
+        "target_bank",
+        "target_bank_manifest",
+        "data_firewall_manifest",
+    ):
+        if not isinstance(authority.get(name), str) or not authority[name]:
+            raise HarnessFailure(f"data-firewall authority {name} is invalid")
     if firewall.get("runtime_resplit") is not False or firewall.get("reselection") is not False:
         raise HarnessFailure("data firewall permits runtime reselection or resplitting")
     if firewall.get("training_count") != REAL_COUNT or firewall.get("validation_count") != REAL_COUNT:
@@ -457,6 +530,85 @@ def _load_s1_reference(config: Mapping[str, Any], repo_root: str | Path) -> S1Re
     )
 
 
+def build_frozen_partition(reference: S1Reference) -> FrozenPartition:
+    """Materialize the registered S1-fit split without RNG or reselection."""
+    training_positions: list[torch.Tensor] = []
+    validation_positions: list[torch.Tensor] = []
+    for label in range(CLASS_COUNT):
+        rows = torch.nonzero(reference.fit_labels == label, as_tuple=False).flatten()
+        order = torch.argsort(reference.fit_indices[rows], stable=True)
+        rows = rows.index_select(0, order)
+        if rows.numel() != SAMPLES_PER_CLASS * 2:
+            raise HarnessFailure("DATA_FIREWALL_PARTITION_IDENTITY_MISMATCH")
+        training_positions.append(rows[:SAMPLES_PER_CLASS])
+        validation_positions.append(rows[SAMPLES_PER_CLASS:])
+    training_positions_tensor = torch.cat(training_positions).to(dtype=torch.long).contiguous()
+    validation_positions_tensor = torch.cat(validation_positions).to(dtype=torch.long).contiguous()
+    if torch.isin(training_positions_tensor, validation_positions_tensor).any():
+        raise HarnessFailure("DATA_FIREWALL_PARTITION_IDENTITY_MISMATCH")
+    if torch.cat((training_positions_tensor, validation_positions_tensor)).unique().numel() != len(reference.fit_indices):
+        raise HarnessFailure("DATA_FIREWALL_PARTITION_IDENTITY_MISMATCH")
+
+    training_indices = reference.fit_indices.index_select(0, training_positions_tensor)
+    validation_indices = reference.fit_indices.index_select(0, validation_positions_tensor)
+    training_labels = reference.fit_labels.index_select(0, training_positions_tensor)
+    validation_labels = reference.fit_labels.index_select(0, validation_positions_tensor)
+    training_r1 = reference.fit_r1.index_select(0, training_positions_tensor)
+    validation_r1 = reference.fit_r1.index_select(0, validation_positions_tensor)
+    expected = {
+        "training_positions": (tensor_sha256(training_positions_tensor), PARTITION_TRAINING_POSITION_SHA256),
+        "internal_validation_positions": (tensor_sha256(validation_positions_tensor), PARTITION_VALIDATION_POSITION_SHA256),
+        "training_indices": (tensor_sha256(training_indices), PARTITION_TRAINING_INDEX_SHA256),
+        "internal_validation_indices": (tensor_sha256(validation_indices), PARTITION_VALIDATION_INDEX_SHA256),
+        "training_labels": (tensor_sha256(training_labels), PARTITION_TRAINING_LABEL_SHA256),
+        "internal_validation_labels": (tensor_sha256(validation_labels), PARTITION_VALIDATION_LABEL_SHA256),
+        "training_r1": (tensor_sha256(training_r1), PARTITION_TRAINING_R1_SHA256),
+        "internal_validation_r1": (tensor_sha256(validation_r1), PARTITION_VALIDATION_R1_SHA256),
+    }
+    if any(actual != frozen for actual, frozen in expected.values()):
+        raise HarnessFailure("DATA_FIREWALL_PARTITION_IDENTITY_MISMATCH")
+    identity_material = {
+        "schema": PARTITION_SCHEMA,
+        "source": {
+            "dataset_identity": "mnist_train",
+            "semantic_source": "S1_fit_R1_POWER",
+            "source_artifact_sha256": reference.source_artifact_sha256,
+            "fit_indices_sha256": S1_FIT_INDICES_SHA256,
+            "fit_labels_sha256": S1_FIT_LABELS_SHA256,
+        },
+        "algorithm": PARTITION_ALGORITHM,
+        "training": {
+            "count": REAL_COUNT,
+            "per_class_count": SAMPLES_PER_CLASS,
+            "positions_sha256": PARTITION_TRAINING_POSITION_SHA256,
+            "indices_sha256": PARTITION_TRAINING_INDEX_SHA256,
+            "labels_sha256": PARTITION_TRAINING_LABEL_SHA256,
+            "r1_sha256": PARTITION_TRAINING_R1_SHA256,
+        },
+        "internal_validation": {
+            "count": REAL_COUNT,
+            "per_class_count": SAMPLES_PER_CLASS,
+            "positions_sha256": PARTITION_VALIDATION_POSITION_SHA256,
+            "indices_sha256": PARTITION_VALIDATION_INDEX_SHA256,
+            "labels_sha256": PARTITION_VALIDATION_LABEL_SHA256,
+            "r1_sha256": PARTITION_VALIDATION_R1_SHA256,
+        },
+        "runtime_resplit": False,
+        "reselection": False,
+    }
+    return FrozenPartition(
+        training_positions=training_positions_tensor,
+        internal_validation_positions=validation_positions_tensor,
+        training_indices=training_indices,
+        internal_validation_indices=validation_indices,
+        training_labels=training_labels,
+        internal_validation_labels=validation_labels,
+        training_r1_sha256=PARTITION_TRAINING_R1_SHA256,
+        internal_validation_r1_sha256=PARTITION_VALIDATION_R1_SHA256,
+        identity_material_sha256=canonical_sha256(identity_material),
+    )
+
+
 def _protected_sample_sets(
     reference: S1Reference,
     config: Mapping[str, Any],
@@ -646,6 +798,8 @@ def build_logical_batch(real_r1: torch.Tensor, real_labels: torch.Tensor, base_c
 
 def load_target_bank(path: str | Path, *, expected_sha256: str | None = None) -> TargetBank:
     artifact = Path(path)
+    if not artifact.is_file():
+        raise HarnessFailure(f"target bank artifact is missing: {artifact}")
     payload = safe_torch_load(artifact, expected_sha256=expected_sha256)
     if not isinstance(payload, Mapping):
         raise HarnessFailure("target bank artifact is not a mapping")
@@ -687,6 +841,7 @@ def validate_target_bank(
     config: Mapping[str, Any],
     *,
     expected_artifact_sha256: str | None = None,
+    expected_partition_manifest_file_sha256: str | None = None,
     repo_root: str | Path = ".",
 ) -> None:
     if expected_artifact_sha256 is not None and bank.artifact_sha256 != expected_artifact_sha256:
@@ -707,10 +862,15 @@ def validate_target_bank(
     manifest = bank.manifest
     if manifest.get("schema") != TARGET_BANK_MANIFEST_SCHEMA:
         raise HarnessFailure("target bank manifest schema is invalid")
-    if manifest.get("partition_identity") != PARTITION_IDENTITY:
+    if manifest.get("partition_identity_sha256") != PARTITION_IDENTITY:
         raise HarnessFailure("target bank partition identity mismatch")
-    if manifest.get("partition_manifest_sha256") != PARTITION_IDENTITY:
+    if not isinstance(manifest.get("partition_identity_material_sha256"), str):
+        raise HarnessFailure("target bank partition material identity is missing")
+    partition_file_sha256 = manifest.get("partition_manifest_file_sha256")
+    if expected_partition_manifest_file_sha256 is not None and partition_file_sha256 != expected_partition_manifest_file_sha256:
         raise HarnessFailure("target bank partition manifest binding mismatch")
+    if not isinstance(partition_file_sha256, str) or len(partition_file_sha256) != 64:
+        raise HarnessFailure("target bank partition manifest file identity is invalid")
     if manifest.get("observer_identity") != "R1_POWER:z_j=abs(c_j)^2/s_j":
         raise HarnessFailure("target bank observer identity mismatch")
     if manifest.get("source_artifact_sha256") != reference.source_artifact_sha256:
@@ -727,10 +887,444 @@ def validate_target_bank(
         raise HarnessFailure("target bank tensor identity mismatch")
     if manifest.get("protected_sample_identities") != {
         "s1_selection_indices_sha256": S1_SELECTION_INDICES_SHA256,
+        "s1_selection_labels_sha256": S1_SELECTION_LABELS_SHA256,
         "s1_confirmation_indices_sha256": S1_CONFIRMATION_INDICES_SHA256,
+        "s1_confirmation_labels_sha256": S1_CONFIRMATION_LABELS_SHA256,
         "s2_validation_indices_sha256": _mapping(_mapping(config["data_firewall"], "data_firewall")["s2_validation"], "data_firewall.s2_validation")["indices_sha256"],
+        "s2_validation_labels_sha256": _mapping(_mapping(config["data_firewall"], "data_firewall")["s2_validation"], "data_firewall.s2_validation")["labels_sha256"],
     }:
         raise HarnessFailure("target bank protected sample identity binding mismatch")
+
+
+def _relative_artifact_path(repo_root: str | Path, path: str | Path) -> str:
+    root = Path(repo_root).resolve()
+    target = Path(path).resolve()
+    try:
+        return str(target.relative_to(root)).replace("\\", "/")
+    except ValueError:
+        return str(target)
+
+
+def _authority_config_contract(config: Mapping[str, Any]) -> str:
+    firewall = dict(_mapping(config["data_firewall"], "data_firewall"))
+    authority = dict(_mapping(firewall["authority"], "data_firewall.authority"))
+    for name in (
+        "partition_manifest_file_sha256",
+        "target_bank_sha256",
+        "target_bank_manifest_sha256",
+        "data_firewall_manifest_sha256",
+    ):
+        authority[name] = None
+    firewall["authority"] = authority
+    return canonical_sha256(
+        {
+            "schema": config["schema"],
+            "task_id": config["task_id"],
+            "data_firewall": firewall,
+        }
+    )
+
+
+def _authority_config(config: Mapping[str, Any]) -> Mapping[str, Any]:
+    return _mapping(_mapping(config["data_firewall"], "data_firewall")["authority"], "data_firewall.authority")
+
+
+def _require_materialized_sha(value: Any, name: str) -> str:
+    if value is None:
+        raise HarnessFailure(f"{name} is not materialized")
+    return _sha(value, name)
+
+
+def _partition_manifest_payload(
+    reference: S1Reference,
+    partition: FrozenPartition,
+    *,
+    config_path: Path,
+    config_file_sha256: str,
+    config_contract_sha256: str,
+    git_head: str,
+) -> dict[str, Any]:
+    return {
+        "schema": PARTITION_SCHEMA,
+        "artifact_kind": "controller semantic geometry deterministic S1-fit partition",
+        "source": {
+            "dataset_identity": "mnist_train",
+            "semantic_source": "S1_fit_R1_POWER",
+            "observer_identity": "R1_POWER:z_j=abs(c_j)^2/s_j",
+            "source_artifact_sha256": reference.source_artifact_sha256,
+            "fit_indices_sha256": S1_FIT_INDICES_SHA256,
+            "fit_labels_sha256": S1_FIT_LABELS_SHA256,
+            "fit_count": 1000,
+            "fit_per_class_count": 100,
+        },
+        "algorithm": dict(PARTITION_ALGORITHM),
+        "runtime_resplit": False,
+        "reselection": False,
+        "class_order": list(range(CLASS_COUNT)),
+        "within_class_order": "source_index_ascending",
+        "training_positions": partition.training_positions.tolist(),
+        "internal_validation_positions": partition.internal_validation_positions.tolist(),
+        "training_indices": partition.training_indices.tolist(),
+        "internal_validation_indices": partition.internal_validation_indices.tolist(),
+        "training_labels": partition.training_labels.tolist(),
+        "internal_validation_labels": partition.internal_validation_labels.tolist(),
+        "counts": {
+            "training": REAL_COUNT,
+            "internal_validation": REAL_COUNT,
+            "per_class": SAMPLES_PER_CLASS,
+        },
+        "hashes": {
+            "training_positions_sha256": PARTITION_TRAINING_POSITION_SHA256,
+            "internal_validation_positions_sha256": PARTITION_VALIDATION_POSITION_SHA256,
+            "training_indices_sha256": PARTITION_TRAINING_INDEX_SHA256,
+            "internal_validation_indices_sha256": PARTITION_VALIDATION_INDEX_SHA256,
+            "training_labels_sha256": PARTITION_TRAINING_LABEL_SHA256,
+            "internal_validation_labels_sha256": PARTITION_VALIDATION_LABEL_SHA256,
+            "training_r1_sha256": PARTITION_TRAINING_R1_SHA256,
+            "internal_validation_r1_sha256": PARTITION_VALIDATION_R1_SHA256,
+        },
+        "partition_identity_sha256": PARTITION_IDENTITY,
+        "partition_identity_material_sha256": partition.identity_material_sha256,
+        "producer": {
+            "config_path": _relative_artifact_path(config_path.parent.parent.parent, config_path),
+            "config_file_sha256": config_file_sha256,
+            "config_contract_sha256": config_contract_sha256,
+            "git_head": git_head,
+            "module": "ldm_project.v2.application.research.controller_semantic_geometry_training",
+        },
+    }
+
+
+def _validate_partition_manifest(
+    partition_payload: Mapping[str, Any],
+    reference: S1Reference,
+    expected: FrozenPartition,
+    *,
+    expected_file_sha256: str,
+    expected_config_contract_sha256: str,
+) -> None:
+    if partition_payload.get("schema") != PARTITION_SCHEMA:
+        raise HarnessFailure("partition manifest schema is invalid")
+    if partition_payload.get("partition_identity_sha256") != PARTITION_IDENTITY:
+        raise HarnessFailure("partition manifest semantic identity mismatch")
+    if partition_payload.get("partition_identity_material_sha256") != expected.identity_material_sha256:
+        raise HarnessFailure("partition manifest canonical material identity mismatch")
+    if partition_payload.get("algorithm") != PARTITION_ALGORITHM:
+        raise HarnessFailure("partition manifest algorithm identity mismatch")
+    if partition_payload.get("runtime_resplit") is not False or partition_payload.get("reselection") is not False:
+        raise HarnessFailure("partition manifest permits runtime resplit or reselection")
+    source = _mapping(partition_payload.get("source"), "partition manifest source")
+    if source.get("dataset_identity") != "mnist_train" or source.get("semantic_source") != "S1_fit_R1_POWER":
+        raise HarnessFailure("partition manifest source identity mismatch")
+    if source.get("source_artifact_sha256") != reference.source_artifact_sha256:
+        raise HarnessFailure("partition manifest source artifact mismatch")
+    if partition_payload.get("training_positions") != expected.training_positions.tolist():
+        raise HarnessFailure("partition manifest training positions mismatch")
+    if partition_payload.get("internal_validation_positions") != expected.internal_validation_positions.tolist():
+        raise HarnessFailure("partition manifest internal-validation positions mismatch")
+    if partition_payload.get("training_indices") != expected.training_indices.tolist():
+        raise HarnessFailure("partition manifest training indices mismatch")
+    if partition_payload.get("internal_validation_indices") != expected.internal_validation_indices.tolist():
+        raise HarnessFailure("partition manifest internal-validation indices mismatch")
+    if partition_payload.get("training_labels") != expected.training_labels.tolist():
+        raise HarnessFailure("partition manifest training labels mismatch")
+    if partition_payload.get("internal_validation_labels") != expected.internal_validation_labels.tolist():
+        raise HarnessFailure("partition manifest internal-validation labels mismatch")
+    expected_hashes = {
+        "training_positions_sha256": PARTITION_TRAINING_POSITION_SHA256,
+        "internal_validation_positions_sha256": PARTITION_VALIDATION_POSITION_SHA256,
+        "training_indices_sha256": PARTITION_TRAINING_INDEX_SHA256,
+        "internal_validation_indices_sha256": PARTITION_VALIDATION_INDEX_SHA256,
+        "training_labels_sha256": PARTITION_TRAINING_LABEL_SHA256,
+        "internal_validation_labels_sha256": PARTITION_VALIDATION_LABEL_SHA256,
+        "training_r1_sha256": PARTITION_TRAINING_R1_SHA256,
+        "internal_validation_r1_sha256": PARTITION_VALIDATION_R1_SHA256,
+    }
+    if partition_payload.get("hashes") != expected_hashes:
+        raise HarnessFailure("partition manifest component hash mismatch")
+    producer = _mapping(partition_payload.get("producer"), "partition manifest producer")
+    if producer.get("config_contract_sha256") != expected_config_contract_sha256:
+        raise HarnessFailure("partition manifest config contract mismatch")
+    _sha(expected_file_sha256, "partition manifest file SHA-256")
+
+
+def _target_bank_manifest(
+    config: Mapping[str, Any],
+    reference: S1Reference,
+    partition: FrozenPartition,
+    *,
+    partition_manifest_file_sha256: str,
+    config_contract_sha256: str,
+    git_head: str,
+) -> dict[str, Any]:
+    training_r1 = reference.fit_r1.index_select(0, partition.training_positions)
+    validation_r1 = reference.fit_r1.index_select(0, partition.internal_validation_positions)
+    return {
+        "schema": TARGET_BANK_MANIFEST_SCHEMA,
+        "artifact_kind": "redacted controller semantic geometry R1 target bank",
+        "partition_identity_sha256": PARTITION_IDENTITY,
+        "partition_identity_material_sha256": partition.identity_material_sha256,
+        "partition_manifest_file_sha256": partition_manifest_file_sha256,
+        "source_artifact_sha256": reference.source_artifact_sha256,
+        "observer_identity": "R1_POWER:z_j=abs(c_j)^2/s_j",
+        "dataset_identity": "mnist_train",
+        "per_class_count": SAMPLES_PER_CLASS,
+        "protected_sample_identities": {
+            "s1_selection_indices_sha256": S1_SELECTION_INDICES_SHA256,
+            "s1_selection_labels_sha256": S1_SELECTION_LABELS_SHA256,
+            "s1_confirmation_indices_sha256": S1_CONFIRMATION_INDICES_SHA256,
+            "s1_confirmation_labels_sha256": S1_CONFIRMATION_LABELS_SHA256,
+            "s2_validation_indices_sha256": _mapping(_mapping(config["data_firewall"], "data_firewall")["s2_validation"], "data_firewall.s2_validation")["indices_sha256"],
+            "s2_validation_labels_sha256": _mapping(_mapping(config["data_firewall"], "data_firewall")["s2_validation"], "data_firewall.s2_validation")["labels_sha256"],
+        },
+        "training_r1_sha256": tensor_sha256(training_r1),
+        "training_labels_sha256": tensor_sha256(partition.training_labels),
+        "training_indices_sha256": tensor_sha256(partition.training_indices),
+        "internal_validation_r1_sha256": tensor_sha256(validation_r1),
+        "internal_validation_labels_sha256": tensor_sha256(partition.internal_validation_labels),
+        "internal_validation_indices_sha256": tensor_sha256(partition.internal_validation_indices),
+        "producer": {
+            "config_contract_sha256": config_contract_sha256,
+            "git_head": git_head,
+            "module": "ldm_project.v2.application.research.controller_semantic_geometry_training",
+        },
+    }
+
+
+def _build_target_bank_payload(
+    reference: S1Reference,
+    partition: FrozenPartition,
+    manifest: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        "schema": TARGET_BANK_SCHEMA,
+        "manifest": dict(manifest),
+        "training": {
+            "r1": reference.fit_r1.index_select(0, partition.training_positions),
+            "labels": partition.training_labels,
+            "indices": partition.training_indices,
+        },
+        "internal_validation": {
+            "r1": reference.fit_r1.index_select(0, partition.internal_validation_positions),
+            "labels": partition.internal_validation_labels,
+            "indices": partition.internal_validation_indices,
+        },
+    }
+
+
+def register_data_authority(
+    config: Mapping[str, Any],
+    repo_root: str | Path,
+    *,
+    config_path: str | Path,
+    output_dir: str | Path | None = None,
+    expected_head: str | None = None,
+) -> dict[str, Any]:
+    """Write the dedicated immutable data authority without creating an optimizer."""
+    root = Path(repo_root).resolve()
+    head, dirty = _git_state(root)
+    if dirty:
+        raise HarnessFailure("clean Git worktree is required for data-authority registration")
+    if expected_head is not None and head != expected_head:
+        raise HarnessFailure("registration HEAD does not match the expected clean HEAD")
+    reference = _load_s1_reference(config, root)
+    partition = build_frozen_partition(reference)
+    authority = _authority_config(config)
+    configured_dir = resolve_path(root, authority["run_directory"]).resolve()
+    target_dir = configured_dir if output_dir is None else Path(output_dir).resolve()
+    if target_dir != configured_dir:
+        raise HarnessFailure("registration output must match the configured dedicated authority run")
+    future_dir = resolve_path(root, _mapping(config["output"], "output")["target_directory"]).resolve()
+    if target_dir == future_dir or target_dir.is_relative_to(future_dir):
+        raise HarnessFailure("data authority cannot be stored in the future training run directory")
+    if target_dir.exists():
+        raise FileExistsError(f"refusing to overwrite data-authority run: {target_dir}")
+
+    config_target = Path(config_path).resolve()
+    config_file_sha256 = file_sha256(config_target)
+    config_contract_sha256 = _authority_config_contract(config)
+    target_dir.mkdir(parents=True, exist_ok=False)
+    partition_path = resolve_path(root, authority["partition_manifest"])
+    target_bank_path = resolve_path(root, authority["target_bank"])
+    target_bank_manifest_path = resolve_path(root, authority["target_bank_manifest"])
+    data_firewall_path = resolve_path(root, authority["data_firewall_manifest"])
+    expected_paths = (partition_path, target_bank_path, target_bank_manifest_path, data_firewall_path)
+    if any(not path.resolve().is_relative_to(target_dir) for path in expected_paths):
+        raise HarnessFailure("data-authority artifacts must remain inside their dedicated run")
+
+    partition_payload = _partition_manifest_payload(
+        reference,
+        partition,
+        config_path=config_target,
+        config_file_sha256=config_file_sha256,
+        config_contract_sha256=config_contract_sha256,
+        git_head=head,
+    )
+    atomic_write_new_json(partition_path, partition_payload, artifact_kind="controller semantic geometry partition manifest")
+    partition_file_sha256 = file_sha256(partition_path)
+    _validate_partition_manifest(
+        partition_payload,
+        reference,
+        partition,
+        expected_file_sha256=partition_file_sha256,
+        expected_config_contract_sha256=config_contract_sha256,
+    )
+
+    target_manifest = _target_bank_manifest(
+        config,
+        reference,
+        partition,
+        partition_manifest_file_sha256=partition_file_sha256,
+        config_contract_sha256=config_contract_sha256,
+        git_head=head,
+    )
+    target_payload = _build_target_bank_payload(reference, partition, target_manifest)
+    validate_target_bank(
+        TargetBank(
+            target_payload["training"]["r1"],
+            target_payload["training"]["labels"],
+            target_payload["training"]["indices"],
+            target_payload["internal_validation"]["r1"],
+            target_payload["internal_validation"]["labels"],
+            target_payload["internal_validation"]["indices"],
+            target_manifest,
+        ),
+        reference,
+        config,
+        expected_partition_manifest_file_sha256=partition_file_sha256,
+        repo_root=root,
+    )
+    atomic_torch_save_new(target_bank_path, target_payload, artifact_kind="controller semantic geometry target bank")
+    target_bank_sha256 = file_sha256(target_bank_path)
+    target_sidecar_payload = {
+        **target_manifest,
+        "artifact": {
+            "path": _relative_artifact_path(root, target_bank_path),
+            "sha256": target_bank_sha256,
+            "schema": TARGET_BANK_SCHEMA,
+        },
+    }
+    atomic_write_new_json(
+        target_bank_manifest_path,
+        target_sidecar_payload,
+        artifact_kind="controller semantic geometry target bank manifest",
+    )
+    target_bank_manifest_sha256 = file_sha256(target_bank_manifest_path)
+    reloaded = load_target_bank(target_bank_path, expected_sha256=target_bank_sha256)
+    validate_target_bank(
+        reloaded,
+        reference,
+        config,
+        expected_artifact_sha256=target_bank_sha256,
+        expected_partition_manifest_file_sha256=partition_file_sha256,
+        repo_root=root,
+    )
+
+    protected = _protected_sample_sets(reference, config, root)
+    s3_codes = _load_s3_base_codes(config, root)
+    internal_codes = internal_validation_codes()
+    stream_blocks, stream_meta = finite_training_stream(HORIZON)
+    stream_meta.update(validate_finite_stream_against_protected(stream_blocks, s3_codes, internal_codes))
+    data_firewall_payload = {
+        "schema": DATA_AUTHORITY_SCHEMA,
+        "artifact_kind": "controller semantic geometry immutable data firewall",
+        "authority_scope": "CONTROLLER_SEMANTIC_GEOMETRY_R1",
+        "source": {
+            "dataset_identity": "mnist_train",
+            "semantic_source": "S1_fit_R1_POWER",
+            "source_artifact_sha256": reference.source_artifact_sha256,
+            "semantic_manifest_sha256": _mapping(_mapping(config["data_firewall"], "data_firewall")["s1"], "data_firewall.s1")["semantic_manifest_sha256"],
+            "fit_indices_sha256": S1_FIT_INDICES_SHA256,
+            "fit_labels_sha256": S1_FIT_LABELS_SHA256,
+        },
+        "partition": {
+            "semantic_identity_sha256": PARTITION_IDENTITY,
+            "identity_material_sha256": partition.identity_material_sha256,
+            "path": _relative_artifact_path(root, partition_path),
+            "file_sha256": partition_file_sha256,
+        },
+        "target_bank": {
+            "path": _relative_artifact_path(root, target_bank_path),
+            "file_sha256": target_bank_sha256,
+            "manifest_path": _relative_artifact_path(root, target_bank_manifest_path),
+            "manifest_file_sha256": target_bank_manifest_sha256,
+            "schema": TARGET_BANK_SCHEMA,
+            "redacted_top_level_fields": ["schema", "manifest", "training", "internal_validation"],
+        },
+        "protected_sample_identities": {
+            "s1_selection": {
+                "dataset_namespace": "mnist_test",
+                "indices_sha256": S1_SELECTION_INDICES_SHA256,
+                "labels_sha256": S1_SELECTION_LABELS_SHA256,
+            },
+            "s1_confirmation": {
+                "dataset_namespace": "mnist_train",
+                "indices_sha256": S1_CONFIRMATION_INDICES_SHA256,
+                "labels_sha256": S1_CONFIRMATION_LABELS_SHA256,
+            },
+            "s2_validation": {
+                "dataset_namespace": "mnist_train",
+                "indices_sha256": S2_VALIDATION_INDICES_SHA256,
+                "labels_sha256": S2_VALIDATION_LABELS_SHA256,
+            },
+        },
+        "protected_code_identities": {
+            "s3_base_codes_sha256": tensor_sha256(s3_codes),
+            "s3_panel_identity_sha256": _mapping(_mapping(config["data_firewall"], "data_firewall")["s3_panel"], "data_firewall.s3_panel")["panel_identity_sha256"],
+            "internal_validation_codes_sha256": tensor_sha256(internal_codes),
+        },
+        "overlap_counts": {
+            "training_samples_s1_selection": 0,
+            "training_samples_s1_confirmation": 0,
+            "training_samples_s2_validation": 0,
+            "internal_validation_samples_s1_selection": 0,
+            "internal_validation_samples_s1_confirmation": 0,
+            "internal_validation_samples_s2_validation": 0,
+            "training_codes_s3_base": stream_meta["s3_overlap_count"],
+            "training_codes_internal_validation": stream_meta["internal_validation_overlap_count"],
+        },
+        "training_code_stream": stream_meta,
+        "producer": {
+            "config_path": _relative_artifact_path(root, config_target),
+            "config_file_sha256": config_file_sha256,
+            "config_contract_sha256": config_contract_sha256,
+            "git_head": head,
+            "module": "ldm_project.v2.application.research.controller_semantic_geometry_training",
+        },
+        "registration": {
+            "classification": "CONTROLLER_SEMANTIC_GEOMETRY_DATA_AUTHORITY_REGISTERED",
+            "optimizer_step_count": 0,
+            "backward_count": 0,
+            "forward_count": 0,
+            "cuda_training": False,
+            "write_once": True,
+        },
+        "consumer": "controller semantic geometry training no-update preflight",
+    }
+    bank_identity = _identity_set("mnist_train", partition.training_indices) | _identity_set(
+        "mnist_train", partition.internal_validation_indices
+    )
+    if any(bank_identity & protected_set for protected_set in protected.values()):
+        raise HarnessFailure("data authority protected sample overlap")
+    atomic_write_new_json(data_firewall_path, data_firewall_payload, artifact_kind="controller semantic geometry data firewall manifest")
+    data_firewall_manifest_sha256 = file_sha256(data_firewall_path)
+    return {
+        "classification": "CONTROLLER_SEMANTIC_GEOMETRY_DATA_AUTHORITY_REGISTERED",
+        "git_head": head,
+        "target_bank": str(target_bank_path),
+        "target_bank_sha256": target_bank_sha256,
+        "target_bank_manifest": str(target_bank_manifest_path),
+        "target_bank_manifest_sha256": target_bank_manifest_sha256,
+        "partition_manifest": str(partition_path),
+        "partition_manifest_file_sha256": partition_file_sha256,
+        "partition_identity_sha256": PARTITION_IDENTITY,
+        "partition_identity_material_sha256": partition.identity_material_sha256,
+        "data_firewall_manifest": str(data_firewall_path),
+        "data_firewall_manifest_sha256": data_firewall_manifest_sha256,
+        "optimizer_step_count": 0,
+        "backward_count": 0,
+        "forward_count": 0,
+    }
 
 
 def register_target_bank(
@@ -740,87 +1334,131 @@ def register_target_bank(
     output_path: str | Path,
     manifest_path: str | Path | None = None,
 ) -> tuple[Path, Path]:
-    reference = _load_s1_reference(config, repo_root)
-    partition_path = Path(partition_manifest_path)
-    with partition_path.open("r", encoding="utf-8") as handle:
-        partition = json.load(handle)
-    if file_sha256(partition_path) != PARTITION_IDENTITY:
-        raise HarnessFailure("partition manifest bytes do not match the registered identity")
-    if not isinstance(partition, Mapping) or partition.get("schema") != PARTITION_SCHEMA:
-        raise HarnessFailure("partition manifest schema is invalid")
-    if partition.get("partition_identity") != PARTITION_IDENTITY:
-        raise HarnessFailure("partition manifest identity mismatch")
-    positions = {}
-    for key in ("training_positions", "internal_validation_positions"):
-        values = partition.get(key)
-        if not isinstance(values, list) or any(not isinstance(value, int) for value in values):
-            raise HarnessFailure(f"{key} must be an explicit integer list")
-        positions[key] = torch.tensor(values, dtype=torch.long)
-        if positions[key].numel() != REAL_COUNT or bool((positions[key] < 0).any()) or bool((positions[key] >= 1000).any()):
-            raise HarnessFailure(f"{key} is not a 500-row S1-fit position list")
-        if torch.unique(positions[key]).numel() != REAL_COUNT:
-            raise HarnessFailure(f"{key} contains duplicate positions")
-    if torch.isin(positions["training_positions"], positions["internal_validation_positions"]).any():
-        raise HarnessFailure("partition positions overlap")
-    if torch.cat(tuple(positions.values())).unique().numel() != 1000:
-        raise HarnessFailure("partition does not cover the full S1 fit bank")
-    training_r1 = reference.fit_r1.index_select(0, positions["training_positions"])
-    validation_r1 = reference.fit_r1.index_select(0, positions["internal_validation_positions"])
-    training_labels = reference.fit_labels.index_select(0, positions["training_positions"])
-    validation_labels = reference.fit_labels.index_select(0, positions["internal_validation_positions"])
-    training_indices = reference.fit_indices.index_select(0, positions["training_positions"])
-    validation_indices = reference.fit_indices.index_select(0, positions["internal_validation_positions"])
-    manifest = {
-        "schema": TARGET_BANK_MANIFEST_SCHEMA,
-        "partition_identity": PARTITION_IDENTITY,
-        "partition_manifest_sha256": PARTITION_IDENTITY,
-        "source_artifact_sha256": reference.source_artifact_sha256,
-        "observer_identity": "R1_POWER:z_j=abs(c_j)^2/s_j",
-        "dataset_identity": "mnist_train",
-        "per_class_count": SAMPLES_PER_CLASS,
-        "protected_sample_identities": {
-            "s1_selection_indices_sha256": S1_SELECTION_INDICES_SHA256,
-            "s1_confirmation_indices_sha256": S1_CONFIRMATION_INDICES_SHA256,
-            "s2_validation_indices_sha256": _mapping(_mapping(config["data_firewall"], "data_firewall")["s2_validation"], "data_firewall.s2_validation")["indices_sha256"],
-        },
-        "optical_authority": dict(_mapping(config["optical_authority"], "optical_authority")),
-        "training_r1_sha256": tensor_sha256(training_r1),
-        "training_labels_sha256": tensor_sha256(training_labels),
-        "training_indices_sha256": tensor_sha256(training_indices),
-        "internal_validation_r1_sha256": tensor_sha256(validation_r1),
-        "internal_validation_labels_sha256": tensor_sha256(validation_labels),
-        "internal_validation_indices_sha256": tensor_sha256(validation_indices),
+    """Legacy target-bank-only entrypoint; dedicated authority is mandatory."""
+    raise HarnessFailure("target-bank-only registration is disabled; use register-data-authority")
+
+
+def _load_data_authority(
+    config: Mapping[str, Any],
+    repo_root: str | Path,
+    *,
+    target_bank_path: str | Path | None = None,
+) -> dict[str, Any]:
+    """Load and validate the dedicated immutable data-authority root."""
+    root = Path(repo_root).resolve()
+    authority = _authority_config(config)
+    hashes = {
+        name: _require_materialized_sha(authority.get(name), f"data_firewall.authority.{name}")
+        for name in (
+            "partition_manifest_file_sha256",
+            "target_bank_sha256",
+            "target_bank_manifest_sha256",
+            "data_firewall_manifest_sha256",
+        )
     }
-    payload = {
-        "schema": TARGET_BANK_SCHEMA,
-        "manifest": manifest,
-        "training": {"r1": training_r1, "labels": training_labels, "indices": training_indices},
-        "internal_validation": {"r1": validation_r1, "labels": validation_labels, "indices": validation_indices},
+    run_directory = resolve_path(root, authority["run_directory"]).resolve()
+    future_directory = resolve_path(root, _mapping(config["output"], "output")["target_directory"]).resolve()
+    if run_directory == future_directory or run_directory.is_relative_to(future_directory):
+        raise HarnessFailure("data authority is stored in the future training run directory")
+    paths = {
+        "partition": resolve_path(root, authority["partition_manifest"]).resolve(),
+        "target_bank": resolve_path(root, authority["target_bank"]).resolve(),
+        "target_bank_manifest": resolve_path(root, authority["target_bank_manifest"]).resolve(),
+        "data_firewall": resolve_path(root, authority["data_firewall_manifest"]).resolve(),
     }
-    validate_target_bank(
-        TargetBank(
-            training_r1,
-            training_labels,
-            training_indices,
-            validation_r1,
-            validation_labels,
-            validation_indices,
-            manifest,
-        ),
+    if any(not path.is_relative_to(run_directory) for path in paths.values()):
+        raise HarnessFailure("data-authority artifact escaped its dedicated run directory")
+    if target_bank_path is not None and Path(target_bank_path).resolve() != paths["target_bank"]:
+        raise HarnessFailure("consumer target-bank path is not the registered dedicated authority")
+    if file_sha256(paths["data_firewall"]) != hashes["data_firewall_manifest_sha256"]:
+        raise HarnessFailure("data-firewall manifest file hash mismatch")
+    with paths["data_firewall"].open("r", encoding="utf-8") as handle:
+        firewall_manifest = json.load(handle)
+    if not isinstance(firewall_manifest, Mapping) or firewall_manifest.get("schema") != DATA_AUTHORITY_SCHEMA:
+        raise HarnessFailure("data-firewall manifest schema is invalid")
+    if firewall_manifest.get("authority_scope") != "CONTROLLER_SEMANTIC_GEOMETRY_R1":
+        raise HarnessFailure("data-firewall authority scope is invalid")
+    if firewall_manifest.get("consumer") != "controller semantic geometry training no-update preflight":
+        raise HarnessFailure("data-firewall consumer identity is invalid")
+    producer = _mapping(firewall_manifest.get("producer"), "data-firewall producer")
+    if producer.get("config_contract_sha256") != _authority_config_contract(config):
+        raise HarnessFailure("data-firewall config contract identity mismatch")
+    partition_entry = _mapping(firewall_manifest.get("partition"), "data-firewall partition")
+    if partition_entry.get("path") != _relative_artifact_path(root, paths["partition"]):
+        raise HarnessFailure("data-firewall partition path binding mismatch")
+    if partition_entry.get("semantic_identity_sha256") != PARTITION_IDENTITY:
+        raise HarnessFailure("data-firewall partition semantic identity mismatch")
+    if partition_entry.get("file_sha256") != hashes["partition_manifest_file_sha256"]:
+        raise HarnessFailure("data-firewall partition file hash binding mismatch")
+    if file_sha256(paths["partition"]) != hashes["partition_manifest_file_sha256"]:
+        raise HarnessFailure("partition manifest file hash mismatch")
+
+    reference = _load_s1_reference(config, root)
+    expected_partition = build_frozen_partition(reference)
+    with paths["partition"].open("r", encoding="utf-8") as handle:
+        partition_manifest = json.load(handle)
+    _validate_partition_manifest(
+        partition_manifest,
         reference,
-        config,
-        repo_root=repo_root,
+        expected_partition,
+        expected_file_sha256=hashes["partition_manifest_file_sha256"],
+        expected_config_contract_sha256=_authority_config_contract(config),
     )
-    output = Path(output_path)
-    atomic_torch_save_new(output, payload, artifact_kind="controller semantic geometry target bank")
-    manifest_target = Path(manifest_path) if manifest_path is not None else output.with_suffix(".manifest.json")
-    manifest_payload = {
-        **manifest,
-        "artifact": {"path": str(output), "sha256": file_sha256(output), "schema": TARGET_BANK_SCHEMA},
-        "partition_manifest_sha256": file_sha256(partition_path),
+    target_entry = _mapping(firewall_manifest.get("target_bank"), "data-firewall target_bank")
+    if target_entry.get("path") != _relative_artifact_path(root, paths["target_bank"]):
+        raise HarnessFailure("data-firewall target-bank path binding mismatch")
+    if target_entry.get("file_sha256") != hashes["target_bank_sha256"]:
+        raise HarnessFailure("data-firewall target-bank hash binding mismatch")
+    if target_entry.get("manifest_path") != _relative_artifact_path(root, paths["target_bank_manifest"]):
+        raise HarnessFailure("data-firewall target-bank sidecar path binding mismatch")
+    if target_entry.get("manifest_file_sha256") != hashes["target_bank_manifest_sha256"]:
+        raise HarnessFailure("data-firewall target-bank sidecar hash binding mismatch")
+    if not paths["target_bank"].is_file() or file_sha256(paths["target_bank"]) != hashes["target_bank_sha256"]:
+        raise HarnessFailure("target-bank file hash mismatch")
+    if not paths["target_bank_manifest"].is_file() or file_sha256(paths["target_bank_manifest"]) != hashes["target_bank_manifest_sha256"]:
+        raise HarnessFailure("target-bank sidecar hash mismatch")
+    with paths["target_bank_manifest"].open("r", encoding="utf-8") as handle:
+        sidecar = json.load(handle)
+    sidecar_artifact = _mapping(sidecar.get("artifact"), "target-bank sidecar artifact")
+    if sidecar_artifact.get("sha256") != hashes["target_bank_sha256"] or sidecar_artifact.get("schema") != TARGET_BANK_SCHEMA:
+        raise HarnessFailure("target-bank sidecar artifact binding mismatch")
+
+    protected = _mapping(firewall_manifest.get("protected_sample_identities"), "protected sample identities")
+    expected_protected = {
+        "s1_selection": {
+            "dataset_namespace": "mnist_test",
+            "indices_sha256": S1_SELECTION_INDICES_SHA256,
+            "labels_sha256": S1_SELECTION_LABELS_SHA256,
+        },
+        "s1_confirmation": {
+            "dataset_namespace": "mnist_train",
+            "indices_sha256": S1_CONFIRMATION_INDICES_SHA256,
+            "labels_sha256": S1_CONFIRMATION_LABELS_SHA256,
+        },
+        "s2_validation": {
+            "dataset_namespace": "mnist_train",
+            "indices_sha256": S2_VALIDATION_INDICES_SHA256,
+            "labels_sha256": S2_VALIDATION_LABELS_SHA256,
+        },
     }
-    atomic_write_new_json(manifest_target, manifest_payload, artifact_kind="controller semantic geometry target bank manifest")
-    return output, manifest_target
+    if protected != expected_protected:
+        raise HarnessFailure("protected sample identity binding mismatch")
+    code_ids = _mapping(firewall_manifest.get("protected_code_identities"), "protected code identities")
+    s3_panel = _mapping(_mapping(config["data_firewall"], "data_firewall")["s3_panel"], "data_firewall.s3_panel")
+    if code_ids.get("s3_base_codes_sha256") != S3_BASE_CODE_SHA256 or code_ids.get("s3_panel_identity_sha256") != s3_panel["panel_identity_sha256"]:
+        raise HarnessFailure("protected S3 code identity binding mismatch")
+    if code_ids.get("internal_validation_codes_sha256") != tensor_sha256(internal_validation_codes()):
+        raise HarnessFailure("protected internal-validation code identity mismatch")
+    overlap_counts = _mapping(firewall_manifest.get("overlap_counts"), "data-firewall overlap counts")
+    if any(value != 0 for value in overlap_counts.values()):
+        raise HarnessFailure("protected overlap is nonzero")
+    return {
+        "manifest": firewall_manifest,
+        "reference": reference,
+        "partition": partition_manifest,
+        "paths": paths,
+        "hashes": hashes,
+    }
 
 
 def r1_power(coefficients: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
@@ -1137,9 +1775,17 @@ def no_update_preflight(
     if expected_head is not None and head != expected_head:
         raise HarnessFailure("implementation HEAD does not match the expected clean preflight HEAD")
     frozen_authorities = _validate_frozen_authority_files(config, repo_root)
-    reference = _load_s1_reference(config, repo_root)
-    bank = load_target_bank(target_bank_path)
-    validate_target_bank(bank, reference, config, repo_root=repo_root)
+    authority = _load_data_authority(config, repo_root, target_bank_path=target_bank_path)
+    reference = authority["reference"]
+    bank = load_target_bank(target_bank_path, expected_sha256=authority["hashes"]["target_bank_sha256"])
+    validate_target_bank(
+        bank,
+        reference,
+        config,
+        expected_artifact_sha256=authority["hashes"]["target_bank_sha256"],
+        expected_partition_manifest_file_sha256=authority["hashes"]["partition_manifest_file_sha256"],
+        repo_root=repo_root,
+    )
     s3_codes = _load_s3_base_codes(config, repo_root)
     blocks, stream_meta = finite_training_stream(HORIZON)
     stream_meta.update(validate_finite_stream_against_protected(blocks, s3_codes))
@@ -1165,6 +1811,8 @@ def no_update_preflight(
         "frozen_authorities": frozen_authorities,
         "target_bank_sha256": bank.artifact_sha256,
         "partition_identity": PARTITION_IDENTITY,
+        "partition_manifest_file_sha256": authority["hashes"]["partition_manifest_file_sha256"],
+        "data_firewall_manifest_sha256": authority["hashes"]["data_firewall_manifest_sha256"],
         "s3_base_code_sha256": tensor_sha256(s3_codes),
         "internal_validation_code_sha256": tensor_sha256(internal_validation_codes()),
         "optimizer_contract_sha256": OPTIMIZER_CONTRACT_SHA256,
@@ -1208,6 +1856,8 @@ __all__ = [
     "AUTHORIZATION_TOKEN",
     "CLASS_COUNT",
     "CONTROLLER_PARAMETER_NAMES",
+    "DATA_AUTHORITY_SCHEMA",
+    "FrozenPartition",
     "GeometryObjectiveResult",
     "HarnessFailure",
     "HORIZON",
@@ -1217,6 +1867,12 @@ __all__ = [
     "OBJECTIVE_FAMILY",
     "OPTIMIZER_CONTRACT_SHA256",
     "PARTITION_IDENTITY",
+    "PARTITION_TRAINING_INDEX_SHA256",
+    "PARTITION_TRAINING_POSITION_SHA256",
+    "PARTITION_TRAINING_R1_SHA256",
+    "PARTITION_VALIDATION_INDEX_SHA256",
+    "PARTITION_VALIDATION_POSITION_SHA256",
+    "PARTITION_VALIDATION_R1_SHA256",
     "PREFLIGHT_PASS",
     "REAL_COUNT",
     "S1Reference",
@@ -1228,6 +1884,7 @@ __all__ = [
     "TRAINING_FIRST_BLOCK_SHA256",
     "TrainingCodeStream",
     "build_controller_optimizer",
+    "build_frozen_partition",
     "build_logical_batch",
     "capture_state_snapshot",
     "class_moments",
@@ -1244,6 +1901,7 @@ __all__ = [
     "optimizer_parameter_names",
     "r1_power",
     "register_target_bank",
+    "register_data_authority",
     "resolve_path",
     "train_authorized_controller",
     "validate_config",

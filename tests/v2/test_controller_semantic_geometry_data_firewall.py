@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 
 import pytest
 import torch
@@ -17,12 +18,14 @@ from ldm_project.v2.application.research.controller_semantic_geometry_training i
     TARGET_BANK_MANIFEST_SCHEMA,
     TARGET_BANK_SCHEMA,
     build_logical_batch,
+    build_frozen_partition,
     code_overlap_count,
     finite_training_stream,
     internal_validation_codes,
     load_config,
     load_target_bank,
     no_update_preflight,
+    register_data_authority,
     validate_finite_stream_against_protected,
     validate_target_bank,
 )
@@ -66,14 +69,18 @@ def _bank(reference: S1Reference, *, bad_partition: bool = False) -> TargetBank:
     validation_labels = reference.fit_labels[validation_positions]
     manifest = {
         "schema": TARGET_BANK_MANIFEST_SCHEMA,
-        "partition_identity": "wrong" if bad_partition else PARTITION_IDENTITY,
-        "partition_manifest_sha256": PARTITION_IDENTITY,
+        "partition_identity_sha256": "wrong" if bad_partition else PARTITION_IDENTITY,
+        "partition_identity_material_sha256": "0" * 64,
+        "partition_manifest_file_sha256": "1" * 64,
         "source_artifact_sha256": reference.source_artifact_sha256,
         "observer_identity": "R1_POWER:z_j=abs(c_j)^2/s_j",
         "protected_sample_identities": {
             "s1_selection_indices_sha256": S1_SELECTION_INDICES_SHA256,
+            "s1_selection_labels_sha256": harness.S1_SELECTION_LABELS_SHA256,
             "s1_confirmation_indices_sha256": S1_CONFIRMATION_INDICES_SHA256,
+            "s1_confirmation_labels_sha256": harness.S1_CONFIRMATION_LABELS_SHA256,
             "s2_validation_indices_sha256": _config()["data_firewall"]["s2_validation"]["indices_sha256"],
+            "s2_validation_labels_sha256": _config()["data_firewall"]["s2_validation"]["labels_sha256"],
         },
     }
     training_r1 = reference.fit_r1[train_positions]
@@ -102,6 +109,25 @@ def _bank(reference: S1Reference, *, bad_partition: bool = False) -> TargetBank:
 def test_valid_target_bank_is_disjoint_and_class_balanced() -> None:
     reference = _reference()
     validate_target_bank(_bank(reference), reference, _config())
+
+
+def test_real_frozen_partition_reproduces_registered_component_hashes() -> None:
+    config = _config()
+    reference = harness._load_s1_reference(config, ".")
+    partition = build_frozen_partition(reference)
+    assert harness.tensor_sha256(partition.training_positions) == harness.PARTITION_TRAINING_POSITION_SHA256
+    assert harness.tensor_sha256(partition.internal_validation_positions) == harness.PARTITION_VALIDATION_POSITION_SHA256
+    assert harness.tensor_sha256(partition.training_indices) == harness.PARTITION_TRAINING_INDEX_SHA256
+    assert harness.tensor_sha256(partition.internal_validation_indices) == harness.PARTITION_VALIDATION_INDEX_SHA256
+    assert partition.training_r1_sha256 == harness.PARTITION_TRAINING_R1_SHA256
+    assert partition.internal_validation_r1_sha256 == harness.PARTITION_VALIDATION_R1_SHA256
+    assert partition.training_positions.numel() == 500
+    assert partition.internal_validation_positions.numel() == 500
+
+
+def test_missing_target_bank_is_rejected_before_safe_load(tmp_path) -> None:
+    with pytest.raises(ValueError, match="target bank artifact is missing"):
+        load_target_bank(tmp_path / "missing-target-bank.pt")
 
 
 def test_protected_sample_overlap_is_fail_closed() -> None:
@@ -221,6 +247,18 @@ def test_no_update_preflight_consumes_real_authority_without_update(tmp_path, mo
         encoding="utf-8",
     )
     monkeypatch.setattr(harness, "_git_state", lambda _root: ("synthetic-head", ()))
+    monkeypatch.setattr(
+        harness,
+        "_load_data_authority",
+        lambda _config, _root, target_bank_path=None: {
+            "reference": reference,
+            "hashes": {
+                "target_bank_sha256": file_sha256(target_bank),
+                "partition_manifest_file_sha256": "1" * 64,
+                "data_firewall_manifest_sha256": "2" * 64,
+            },
+        },
+    )
     result = no_update_preflight(
         "configs/research/lightgen_controller_semantic_geometry_training_v1.yaml",
         ".",
@@ -232,3 +270,52 @@ def test_no_update_preflight_consumes_real_authority_without_update(tmp_path, mo
     assert result["optimizer_step_count"] == 0
     assert result["backward_count"] == 0
     assert result["checkpoint_writes"] == 0
+
+
+def test_registration_writes_dedicated_redacted_authority_and_reloads(tmp_path, monkeypatch) -> None:
+    config = deepcopy(_config())
+    authority_dir = tmp_path / "data-authority"
+    future_dir = tmp_path / "future-training"
+    authority = config["data_firewall"]["authority"]
+    authority.update(
+        {
+            "run_directory": str(authority_dir),
+            "partition_manifest": str(authority_dir / "controller_semantic_geometry_partition_manifest.v1.json"),
+            "target_bank": str(authority_dir / "controller_semantic_geometry_r1_target_bank.v1.pt"),
+            "target_bank_manifest": str(authority_dir / "controller_semantic_geometry_r1_target_bank.v1.manifest.json"),
+            "data_firewall_manifest": str(authority_dir / "controller_semantic_geometry_data_firewall_manifest.v1.json"),
+        }
+    )
+    config["output"]["target_directory"] = str(future_dir)
+    monkeypatch.setattr(harness, "_git_state", lambda _root: ("synthetic-head", ()))
+    result = register_data_authority(
+        config,
+        ".",
+        config_path="configs/research/lightgen_controller_semantic_geometry_training_v1.yaml",
+        output_dir=authority_dir,
+    )
+    assert result["classification"] == "CONTROLLER_SEMANTIC_GEOMETRY_DATA_AUTHORITY_REGISTERED"
+    assert result["partition_identity_sha256"] == PARTITION_IDENTITY
+    assert result["partition_manifest_file_sha256"] != PARTITION_IDENTITY
+    assert result["optimizer_step_count"] == 0
+    assert result["backward_count"] == 0
+    config["data_firewall"]["authority"].update(
+        {
+            "partition_manifest_file_sha256": result["partition_manifest_file_sha256"],
+            "target_bank_sha256": result["target_bank_sha256"],
+            "target_bank_manifest_sha256": result["target_bank_manifest_sha256"],
+            "data_firewall_manifest_sha256": result["data_firewall_manifest_sha256"],
+        }
+    )
+    authority_loaded = harness._load_data_authority(config, ".", target_bank_path=result["target_bank"])
+    bank = load_target_bank(result["target_bank"], expected_sha256=result["target_bank_sha256"])
+    validate_target_bank(
+        bank,
+        authority_loaded["reference"],
+        config,
+        expected_artifact_sha256=result["target_bank_sha256"],
+        expected_partition_manifest_file_sha256=result["partition_manifest_file_sha256"],
+        repo_root=".",
+    )
+    payload = harness.safe_torch_load(result["target_bank"], expected_sha256=result["target_bank_sha256"])
+    assert set(payload) == {"schema", "manifest", "training", "internal_validation"}
