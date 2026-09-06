@@ -2283,3 +2283,51 @@ Windows-native compileall、Ruff、`git diff --check` 与 authority/migration/so
 `generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false`。
 S3 状态仍为 `NOT_TESTED / BLOCKED_CONTROLLER_STATE_AUTHORITY`，唯一下一动作固定为
 `IMPLEMENT_S3_CONTROL_TO_OLS_WRITABILITY_AUDIT`。
+
+## H-LOMA-GEN-S3-COWA Controller-to-OLS writability audit（2026-09-06，Windows-native，diagnostic-only）
+
+本轮从 S3 实现前 clean HEAD=`def4dff0a938c3b33f9a3af8c4b38f2b46363517` 开始，先完成静态
+authority/resource preflight，再以已登记的 controller、step-5000 Scaled-Chen optical checkpoint、
+R2 calibration 和 S1 `R1_POWER` reference 执行一次有效的 no-update CUDA audit。S3
+实现/config/test 独立提交链为 `bd13e65`、`e236cec`、`1fee1b3`、`a564c16`、`2a205cc`；后续
+修复均只涉及 S3 harness/report，不改变 panel、metric、threshold、controller 或 optical data。
+未进入 decoder、relay、camera、OSERA/evaluator、S2 rerun、training、optimizer、backward、
+checkpoint update、prior generation 或 formal promotion。
+
+controller authority 绑定为 CSAR `CONTROLLER_STATE_AUTHORITY_PASS`：migrated envelope SHA-256=
+`572116dbb88464d0999a0391e7e94675cacd64ad5ae303bc2e0efb16e1f63ba2`，state content hash=
+`d36165ee1d5e9c2a66734ffdea0f8291cb8699e86df667e6a66ac169cd75e2fc`，state signature=
+`88d31ec03d88a7e471d651b49c6eb20770e0fd6db5afb71798486499f62068fa`；controller 为
+`IdentityAnchoredConditionalAmplitudeGenerator`，`conditional_identity_logit_amplitude_v2`，
+code_dim=`8`、hidden_dim=`64`、command_gain=`0.5`。固定 panel 是 seed=`1234` 的 `Uniform([-1,1]^8)`，
+100 个 base codes 复用于 10 个 labels，label-major 共 1000 states，panel identity SHA-256=
+`8a9dd1c7e3e2b674a152e6c96ac8b47976ff1f8d27428a18477e89795b940f47`；null 仅使用 seed=`2053`
+的 intended-label permutation。
+
+正式 write-once authority 为
+`outputs/20260906_v2/runs/lightgen_scaled_chen_controller_to_ols_writability_audit_v1_attempt_03/`，
+13 files（12 JSON + `controller_ols_states.pt`）、`161486031` bytes；manifest SHA-256=
+`0779d8d0ffb0a9958064bb3c05d451058cdd7a670a732d6ae1d4ba49c11eb5e6`。递归 tree/hash audit 通过，
+无 hidden、`.tmp` 或 TIFF；manifest 的 12 个 artifact refs 与实际文件 hash/size 完全一致。attempt_01
+与 attempt_02 均保留为不可变历史记录，未覆盖；attempt_03 是修正 null retrieval 报告并显式包含
+overall targeting 后的当前 authority。
+
+科学结果：interface=`S3_CONTROLLER_TO_SEMANTIC_OLS_INTERFACE_PASS`；targeting overall
+real-minus-null semantic-margin delta=`66.3976`，95% CI=`[63.0880,69.5726]`；selection/confirmation
+nearest retrieval real/null 分别为 `0.816/0.104`、`0.778/0.114`，但 class 9 的 per-class
+semantic margin mean 分别为 `-9.5368`、`-8.9775`，故 targeting=`S3_LABEL_TARGETING_FAIL`。
+absolute reachability=`S3_ABSOLUTE_REACHABILITY_FAIL`：selection direction 不一致，confirmation
+all-class `upper95(ΔQ50)` 与 `upper95(ΔQ95)` hard criterion 未通过。fixed-label code effect
+为 nondegenerate，exact R1/complex duplicate count 均为 `0`，no-class-collapse=`true`；
+deterministic autograd `J_power=dz/du` 每类及 aggregate 均为 `CODE8_LOCAL_CONTROL_FULL_RANK`
+（threshold=`1e-6`）。state isolation=`S3_STATE_ISOLATION_PASS`，peak CUDA allocation=`1602685952`
+bytes，decoder/relay/camera/evaluator/optimizer/training/parameter update/checkpoint write 均为零。
+
+因此本轮 valid completed 但 primary gate=`CONTROL_TO_OLS_WRITABILITY_NOT_SUPPORTED`，最终分类为
+`S3_CONTROL_TO_OLS_WRITABILITY_NOT_SUPPORTED`。这不是 OLS 表达能力或 generation impossibility
+结论；它只表示在当前正式 controller、固定 panel 和 preregistered S1 empirical neighborhood
+criterion 下，未同时建立十类 label targeting 与 absolute semantic-manifold reachability。治理继续
+保持 `mainline_state=closed_at_current_evidence_boundary`、`reconstruction_manifold_supported=false`、
+`generative_manifold_supported=false`、`generation_readiness=not_ready`、`training_authorized=false`、
+`formal_promotion=false`。唯一下一动作固定为 `REVIEW_S3_CONTROLLER_TO_OLS_WRITABILITY_AUDIT`，不得
+自动进入 S4 或 training。

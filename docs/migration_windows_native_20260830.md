@@ -1214,3 +1214,33 @@ Ruff、`git diff --check` 和最终 authority/migration/source tree/hash audit P
 evidence boundary、reconstruction/generative unsupported、generation not ready、training/promotion=false。
 S3 仍为 `NOT_TESTED / BLOCKED_CONTROLLER_STATE_AUTHORITY`；唯一下一动作=
 `IMPLEMENT_S3_CONTROL_TO_OLS_WRITABILITY_AUDIT`。
+
+## H-LOMA-GEN-S3-COWA Controller-to-OLS writability audit（2026-09-06）
+
+S3 实现/config/test 在 clean branch 上完成独立提交链 `bd13e65`、`e236cec`、`1fee1b3`、
+`a564c16`、`2a205cc`，measurement HEAD=`2a205ccd6fefb23870e69ebf30e49e43f664ede4`。Windows-native
+静态 authority/resource preflight 通过；CSAR、migrated controller state、固定 step-5000 optical
+checkpoint、mode bank、R2 calibration 和 S1 semantic reference hash 均 exact。未执行 decoder、
+relay/camera、OSERA/evaluator、S2 rerun、training、optimizer/backward、checkpoint update、prior
+generation、visualization 或 formal promotion。
+
+固定 S3 panel identity SHA-256=`8a9dd1c7e3e2b674a152e6c96ac8b47976ff1f8d27428a18477e89795b940f47`；
+formal output=`outputs/20260906_v2/runs/lightgen_scaled_chen_controller_to_ols_writability_audit_v1_attempt_03/`，
+13 files、161486031 bytes，manifest SHA-256=`0779d8d0ffb0a9958064bb3c05d451058cdd7a670a732d6ae1d4ba49c11eb5e6`。递归
+tree/hash audit、artifact refs、hidden/`.tmp`/TIFF 检查全部 PASS；attempt_01/02 保留且未覆盖，
+attempt_03 为修正后的当前 authority。
+
+结果：interface=`S3_CONTROLLER_TO_SEMANTIC_OLS_INTERFACE_PASS`；targeting overall margin delta
+`66.3976`，95% CI `[63.0880,69.5726]`，selection/confirmation real-vs-null retrieval 分别为
+`0.816/0.104`、`0.778/0.114`，但 class 9 per-class margin direction 失败，所以
+`S3_LABEL_TARGETING_FAIL`。absolute reachability=`S3_ABSOLUTE_REACHABILITY_FAIL`，selection
+direction 与 confirmation all-class hard criterion 均未通过。code effect nondegenerate、no class
+collapse、exact duplicate count 0；autograd Jacobian aggregate=`CODE8_LOCAL_CONTROL_FULL_RANK`；
+state isolation=`S3_STATE_ISOLATION_PASS`，peak CUDA=`1602685952` bytes。
+
+最终 classification=`S3_CONTROL_TO_OLS_WRITABILITY_NOT_SUPPORTED`，primary gate=
+`CONTROL_TO_OLS_WRITABILITY_NOT_SUPPORTED`。该 valid failed gate 仅约束当前 controller-to-OLS
+writability evidence，不推出 OLS generation impossible、semantic representation failure 或
+training authorization。治理保持 closed evidence boundary、reconstruction/generative unsupported、
+generation not ready、training/formal promotion=false；唯一下一动作=
+`REVIEW_S3_CONTROLLER_TO_OLS_WRITABILITY_AUDIT`。
