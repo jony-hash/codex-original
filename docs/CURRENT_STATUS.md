@@ -2204,8 +2204,9 @@ controller lineage 上唯一最近的 trained-final predecessor，不是性能�
 
 正式 write-once output 为
 `outputs/20260906_v2/runs/lightgen_controller_lineage_migration_v1_attempt_01/`，共 10 个文件、
-`3573555` bytes；`controller_lineage_migration_manifest.json` SHA-256=
-`94b9e9cfc775d089e759627c16e3d829c45993861ca699618b8900c0bfed0569`；migrated envelope
+`3573555` bytes；`controller_lineage_migration_manifest.json` file SHA-256=
+`f41f2ac04462b8be8be77f20833e6dadc21133f2473244143bb32eda4cddd212`（canonical self-hash=
+`94b9e9cfc775d089e759627c16e3d829c45993861ca699618b8900c0bfed0569`）；migrated envelope
 `conditional_optical_generator_current_lineage_migrated.pt` SHA-256=
 `572116dbb88464d0999a0391e7e94675cacd64ad5ae303bc2e0efb16e1f63ba2`。envelope 绑定当前
 canonical config hash=`edeefb801b563a4657cd621c86c725ed428bbd71678cddafb93fb629eb6ee030`、
@@ -2228,4 +2229,57 @@ SPCLM focused tests=`4 passed`（使用仓库内 basetemp；默认 pytest cache 
 治理继续保持 `mainline_state=closed_at_current_evidence_boundary`、
 `reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、
 `generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false`。
-CSAR 仍未登记；S3 仍未执行。唯一下一动作固定为 `RERUN_H-LOMA-GEN-S3-CSAR`。
+当时 CSAR 仍未登记；S3 仍未执行。唯一下一动作固定为 `RERUN_H-LOMA-GEN-S3-CSAR`。
+
+## H-LOMA-GEN-S3-CSAR Controller State Authority Registration（2026-09-06，Windows-native，diagnostic-only）
+
+本轮从 clean starting HEAD=`262acd1a5fc1c2b0b23540d1cb5670aac42f2c59` 开始，仅执行
+`RERUN_H-LOMA-GEN-S3-CSAR`。CSAR registration 实现与 focused test 独立提交为
+`41a8e6f`，standalone CLI import 修复为 `496f8f4`；没有重新选择 historical checkpoint，
+没有修改 migration envelope、controller parameters、runtime CLI，未运行 S3、controller
+scientific forward、CUDA、OLS measurement、training、optimizer/backward、generation 或 formal promotion。
+
+唯一 current source 是已通过 migration 的
+`outputs/20260906_v2/runs/lightgen_controller_lineage_migration_v1_attempt_01/conditional_optical_generator_current_lineage_migrated.pt`，
+SHA-256=`572116dbb88464d0999a0391e7e94675cacd64ad5ae303bc2e0efb16e1f63ba2`；对应 migration
+manifest file SHA-256=`f41f2ac04462b8be8be77f20833e6dadc21133f2473244143bb32eda4cddd212`，canonical
+self-hash=`94b9e9cfc775d089e759627c16e3d829c45993861ca699618b8900c0bfed0569`。migration gate、
+historical immutability、tensor identity、strict loader 和 runtime binding 均重新核验为 PASS，
+未读取 historical checkpoint 作为 current state。
+
+正式 write-once CSAR authority 为
+`outputs/20260906_v2/runs/lightgen_controller_state_authority_v1_attempt_01/`，共 7 个 JSON、
+`30535` bytes；`controller_state_authority.json` file SHA-256=
+`57942dcd4a425960b637bff99299dd6e1260198a22456fa5ef1ca133600302a8`，authority canonical
+self-hash=`82a7d7d843f0928daf4f172c632ed3fe5fb79f4cadcc452dd4ebf8a2584f2f0d`。authority
+classification=`CURRENT_FORMAL_CONTROLLER_STATE_AUTHORITY_REGISTERED`，state source type=
+`MIGRATED_HISTORICAL_TRAINED_STATE`；controller 为
+`IdentityAnchoredConditionalAmplitudeGenerator`，architecture=`conditional_identity_logit_amplitude_v2`，
+code_dim=`8`、hidden_dim=`64`、command_gain=`0.5`，contract hash=
+`3c9855ff473de172f704d83b00637c09a05da230be4d50cd6807d86539f49e11`。
+
+当前 state inventory 为 6 keys、765632 parameters；state content hash=
+`d36165ee1d5e9c2a66734ffdea0f8291cb8699e86df667e6a66ac169cd75e2fc`，signature=
+`88d31ec03d88a7e471d651b49c6eb20770e0fd6db5afb71798486499f62068fa`。current config 为
+`configs/v2/current/formal_identity_logit_amplitude_finite_crop_identity.yaml`，canonical hash=
+`edeefb801b563a4657cd621c86c725ed428bbd71678cddafb93fb629eb6ee030`。current formal runtime
+通过显式 `--checkpoint` 绑定 migrated envelope，`CURRENT_CONTROLLER_RUNTIME_BINDING_PASS`；
+没有 default fallback、alternate controller checkpoint 或 silent initialization fallback。
+
+uniqueness gate=`CURRENT_CONTROLLER_STATE_UNIQUE_PASS`：current-config-bound formal controller
+source 恰好一个，即 migrated envelope；历史 checkpoint 不计入 current authority。两次 current
+normal strict-load replay 均得到相同 key/shape/dtype inventory、state hash 和 signature，
+`CONTROLLER_STATE_REPLAY_PASS`。state isolation=`CONTROLLER_STATE_ISOLATION_PASS`：optimizer
+absent、backward=`0`、training_steps=`0`、parameter mutation=`0`、checkpoint write=`0`、
+scientific forward=`false`。
+
+最终 Gate=`CONTROLLER_STATE_AUTHORITY_PASS`。这只表示 current formal runtime 现在拥有唯一、
+可审计且经 state-preserving migration 建立的 trained controller parameter state；不表示
+`CONTROLLER_WRITABILITY_SUPPORTED`、`LABEL_PLUS_8D_ADEQUATE` 或 `GENERATION_READY`。CSAR
+focused tests=`4 passed`（仅 pytest `cache_dir` 配置 warning，非 strict-loader warning）；
+Windows-native compileall、Ruff、`git diff --check` 与 authority/migration/source tree/hash audit
+均通过。治理继续保持 `mainline_state=closed_at_current_evidence_boundary`、
+`reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、
+`generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false`。
+S3 状态仍为 `NOT_TESTED / BLOCKED_CONTROLLER_STATE_AUTHORITY`，唯一下一动作固定为
+`IMPLEMENT_S3_CONTROL_TO_OLS_WRITABILITY_AUDIT`。

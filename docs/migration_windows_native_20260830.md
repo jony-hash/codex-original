@@ -1168,8 +1168,9 @@ SHA-256=`423328bf472bb7468f131b351850d1b6f7c5a282796444ecbec5e10bad12c2b9`，sta
 controller lineage 上唯一最近 trained-final predecessor；历史 source 未被覆盖、重存或移动。
 
 write-once output=`outputs/20260906_v2/runs/lightgen_controller_lineage_migration_v1_attempt_01/`，
-10 files、`3573555` bytes；manifest SHA-256=
-`94b9e9cfc775d089e759627c16e3d829c45993861ca699618b8900c0bfed0569`，migrated envelope SHA-256=
+10 files、`3573555` bytes；manifest file SHA-256=
+`f41f2ac04462b8be8be77f20833e6dadc21133f2473244143bb32eda4cddd212`（canonical self-hash=
+`94b9e9cfc775d089e759627c16e3d829c45993861ca699618b8900c0bfed0569`），migrated envelope SHA-256=
 `572116dbb88464d0999a0391e7e94675cacd64ad5ae303bc2e0efb16e1f63ba2`。旧/新 envelope file
 identity 可不同，但 parameter state 的 keys、shape、dtype、bytes、state hash 和 signature exact
 一致；当前 config field diff=`0`，classification=`NONSEMANTIC_LINEAGE_PACKAGING_DRIFT`。
@@ -1181,3 +1182,35 @@ immutability gates 全部 PASS。测试=`4 passed`；compileall、Ruff、`git di
 tree/hash audit PASS。治理保持 closed evidence boundary、reconstruction/generative unsupported、
 generation not ready、training/promotion=false。当前 CSAR 仍 blocked/not registered，S3 未执行；
 唯一下一动作=`RERUN_H-LOMA-GEN-S3-CSAR`。
+
+## H-LOMA-GEN-S3-CSAR Controller State Authority Registration（2026-09-06）
+
+在 clean starting HEAD=`262acd1a5fc1c2b0b23540d1cb5670aac42f2c59` 上完成
+`RERUN_H-LOMA-GEN-S3-CSAR`。本轮只新增 CSAR registration 实现/test（commits=`41a8e6f`、
+`496f8f4`）并消费唯一 migrated envelope；未搜索或重新选择 historical candidate，未修改
+migration envelope、controller state 或 CLI，未执行 S3、scientific forward、CUDA、OLS measurement、
+training、optimizer/backward、generation 或 promotion。
+
+迁移 authority 保持 `CONTROLLER_LINEAGE_MIGRATION_PASS`；migration manifest file SHA-256=
+`f41f2ac04462b8be8be77f20833e6dadc21133f2473244143bb32eda4cddd212`，canonical self-hash=
+`94b9e9cfc775d089e759627c16e3d829c45993861ca699618b8900c0bfed0569`；migrated envelope SHA-256=
+`572116dbb88464d0999a0391e7e94675cacd64ad5ae303bc2e0efb16e1f63ba2`。source/migration tree、
+state identity、strict loader、runtime binding 和 historical immutability 均 PASS。
+
+CSAR write-once authority=`outputs/20260906_v2/runs/lightgen_controller_state_authority_v1_attempt_01/`，
+7 JSON、`30535` bytes；authority file SHA-256=
+`57942dcd4a425960b637bff99299dd6e1260198a22456fa5ef1ca133600302a8`，canonical self-hash=
+`82a7d7d843f0928daf4f172c632ed3fe5fb79f4cadcc452dd4ebf8a2584f2f0d`。最终
+`CONTROLLER_STATE_AUTHORITY_PASS` / `CURRENT_FORMAL_CONTROLLER_STATE_AUTHORITY_REGISTERED`。
+controller architecture、contract hash、current config hash、migrated checkpoint SHA、6-key state
+inventory、state hash/signature 均登记；current runtime 仅接受显式 `--checkpoint` migrated
+envelope，`CURRENT_CONTROLLER_RUNTIME_BINDING_PASS`。
+
+uniqueness=`CURRENT_CONTROLLER_STATE_UNIQUE_PASS`：只有一个 current-config-bound formal source，
+historical checkpoints 不计入；state replay=`CONTROLLER_STATE_REPLAY_PASS`，CPU strict loader 两次
+replay exact 一致；state isolation=`CONTROLLER_STATE_ISOLATION_PASS`，optimizer/backward/training/
+parameter mutation/checkpoint write/scientific forward 均为零。CSAR focused=`4 passed`；compileall、
+Ruff、`git diff --check` 和最终 authority/migration/source tree/hash audit PASS。治理保持 closed
+evidence boundary、reconstruction/generative unsupported、generation not ready、training/promotion=false。
+S3 仍为 `NOT_TESTED / BLOCKED_CONTROLLER_STATE_AUTHORITY`；唯一下一动作=
+`IMPLEMENT_S3_CONTROL_TO_OLS_WRITABILITY_AUDIT`。
