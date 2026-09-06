@@ -1244,3 +1244,23 @@ writability evidence，不推出 OLS generation impossible、semantic representa
 training authorization。治理保持 closed evidence boundary、reconstruction/generative unsupported、
 generation not ready、training/formal promotion=false；唯一下一动作=
 `REVIEW_S3_CONTROLLER_TO_OLS_WRITABILITY_AUDIT`。
+
+## H-LOMA-GEN-S3-C8 Code8 within-class coverage review（2026-09-06）
+
+在 S3 geometry alignment attempt_02 完成后，以 Windows-native CPU-only consumer 执行
+`REVIEW_CODE8_WITHIN_CLASS_MANIFOLD_COVERAGE`。review 只读取冻结 CSAR、S3 attempt_03、S1
+R1 reference、controller panel/state 与 geometry attempt_02；未执行 scientific forward、CUDA、
+Jacobian recomputation、decoder、training、new panel/code/checkpoint 或 authority overwrite。
+
+review output=`outputs/20260906_v2/runs/lightgen_scaled_chen_code8_coverage_review_v1_attempt_01/`，
+manifest SHA-256=`d8f073987eda234ac9b85731dad66e9d9ffc92eaf896f700ff84ba4de17263fd`，tree/hash audit
+PASS。100-code panel classification=`CODE_PANEL_DOMAIN_COVERAGE_ADEQUATE`；attempt_02 within-class
+trace compression reproduction PASS，median=`0.0772202`、min/max=`0.0417654/0.263087`。
+
+最终 review classification=`CODE8_COVERAGE_MIXED_GAIN_AND_GEOMETRY`：gain compression 与
+normalized covariance/tangent-shape mismatch 同时有 descriptive support；Jacobian gain compression
+保持 `UNRESOLVED`，因为没有独立 scale authority；full-J tangent alignment 也为 `UNRESOLVED`。
+不得解释为 `8D_TOO_SMALL`、`100D_REQUIRED` 或 intrinsic-dimension authority。治理保持 closed
+evidence boundary、reconstruction/generative unsupported、generation not ready、training/formal
+promotion=false。targeted tests=`4 passed`，compileall、Ruff、`git diff --check`、authority/tree/hash
+audit PASS。唯一下一动作=`PLAN_CONTROLLER_SEMANTIC_GEOMETRY_TRAINING_AUTHORITY`。

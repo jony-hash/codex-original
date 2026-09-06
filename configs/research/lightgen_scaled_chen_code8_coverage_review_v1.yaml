@@ -1,0 +1,58 @@
+schema: lightgen_scaled_chen_code8_coverage_review_v1
+task_id: H-LOMA-GEN-S3-C8
+hypothesis: CODE8_WITHIN_CLASS_MANIFOLD_COVERAGE
+authorities:
+  csar:
+    directory: outputs/20260906_v2/runs/lightgen_controller_state_authority_v1_attempt_01
+    authority: controller_state_authority.json
+    authority_sha256: 57942dcd4a425960b637bff99299dd6e1260198a22456fa5ef1ca133600302a8
+    gate: CONTROLLER_STATE_AUTHORITY_PASS
+  s3:
+    directory: outputs/20260906_v2/runs/lightgen_scaled_chen_controller_to_ols_writability_audit_v1_attempt_03
+    manifest: outputs/20260906_v2/runs/lightgen_scaled_chen_controller_to_ols_writability_audit_v1_attempt_03/s3_manifest.json
+    manifest_sha256: 0779d8d0ffb0a9958064bb3c05d451058cdd7a670a732d6ae1d4ba49c11eb5e6
+    state_artifact_sha256: 45f9b2b18c0cc67bf784ee206059d97164abaab08f0304892c368f53d218b19a
+    panel_identity_sha256: 8a9dd1c7e3e2b674a152e6c96ac8b47976ff1f8d27428a18477e89795b940f47
+    classification: S3_CONTROL_TO_OLS_WRITABILITY_NOT_SUPPORTED
+  s1:
+    directory: outputs/20260904_v2/runs/lightgen_scaled_chen_ols_semantic_representation_audit_v1_attempt_01
+    manifest: outputs/20260904_v2/runs/lightgen_scaled_chen_ols_semantic_representation_audit_v1_attempt_01/semantic_manifest.json
+    manifest_sha256: b0199040926618b17373edc4f167cc8bc4788f39f64de174e1a3fb225781833e
+    representation: R1_POWER
+    classification: S1_POWER_SEMANTICS_SUPPORTED
+  geometry:
+    directory: outputs/20260906_v2/runs/lightgen_scaled_chen_controller_to_ols_semantic_geometry_alignment_v1_attempt_02
+    manifest: outputs/20260906_v2/runs/lightgen_scaled_chen_controller_to_ols_semantic_geometry_alignment_v1_attempt_02/geometry_alignment_manifest.json
+    manifest_sha256: 1112b8331b3a7a31cf4814ad50c6b3ea8b60217771ef222b7182e553d8284682
+    classification: S3_GEOMETRY_COMPRESSED_MANIFOLD_COVERAGE_PRIMARY
+    secondary: S3_GEOMETRY_HIGHER_ORDER_MISMATCH_PRIMARY
+  code_effect:
+    artifact: code_effect_metrics.json
+    sha256: 335df460cffea83da6ef01a3f4a46fb4597feb4535141df6395b6bea321a6c39
+  jacobian:
+    artifact: jacobian_metrics.json
+    sha256: 0d93a22fb97bbcb807cda800ffb183ef3b6d62a4cb362d6cb0d0185b30d05c27
+review:
+  device: cpu
+  deterministic: true
+  controller_forward: false
+  optical_forward: false
+  jacobian_recompute: false
+  decoder: false
+  training: false
+  checkpoint_write: false
+  new_panel: false
+  new_codes: false
+  new_transform: false
+  new_hard_gate: false
+output:
+  directory: outputs/20260906_v2/runs/lightgen_scaled_chen_code8_coverage_review_v1_attempt_01
+  write_once: true
+  json_only: true
+governance:
+  mainline_state: closed_at_current_evidence_boundary
+  reconstruction_manifold_supported: false
+  generative_manifold_supported: false
+  generation_readiness: not_ready
+  training_authorized: false
+  formal_promotion: false

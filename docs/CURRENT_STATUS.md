@@ -2331,3 +2331,45 @@ criterion 下，未同时建立十类 label targeting 与 absolute semantic-mani
 `generative_manifold_supported=false`、`generation_readiness=not_ready`、`training_authorized=false`、
 `formal_promotion=false`。唯一下一动作固定为 `REVIEW_S3_CONTROLLER_TO_OLS_WRITABILITY_AUDIT`，不得
 自动进入 S4 或 training。
+
+## H-LOMA-GEN-S3-C8 Code8 within-class manifold coverage review（2026-09-06，Windows-native，diagnostic-only）
+
+本轮执行 `REVIEW_CODE8_WITHIN_CLASS_MANIFOLD_COVERAGE`，只消费冻结的 CSAR、S3
+attempt_03、S1 `R1_POWER` reference 与 geometry alignment attempt_02；未执行 CUDA、controller
+forward、optical forward、Jacobian 重算、decoder、training、new panel、new codes、new
+transform 或 checkpoint write。新增 review consumer/config/test 尚未提交；当前 HEAD=
+`2ae080646b4736e76e7714a765692cafb5970f68`，worktree 仅包含本轮 5 个 review/status paths。
+
+冻结 authority 绑定与 tree/hash audit 全部通过：S3 manifest SHA-256=
+`0779d8d0ffb0a9958064bb3c05d451058cdd7a670a732d6ae1d4ba49c11eb5e6`，S1 semantic manifest
+SHA-256=`b0199040926618b17373edc4f167cc8bc4788f39f64de174e1a3fb225781833e`，geometry
+attempt_02 manifest SHA-256=`1112b8331b3a7a31cf4814ad50c6b3ea8b60217771ef222b7182e553d8284682`，
+CSAR authority SHA-256=`57942dcd4a425960b637bff99299dd6e1260198a22456fa5ef1ca133600302a`。
+新的只读 review artifact 为
+`outputs/20260906_v2/runs/lightgen_scaled_chen_code8_coverage_review_v1_attempt_01/`，manifest
+SHA-256=`d8f073987eda234ac9b85731dad66e9d9ffc92eaf896f700ff84ba4de17263fd`；共 12 个 JSON，
+无 hidden、`.tmp` 或 TIFF，artifact refs 与实际 hash/size 一致。
+
+冻结 100-code panel 每维 observed range=`1.9299–1.9854`，code covariance condition=`2.3017`，
+pairwise code-distance median=`2.1745`，故 `CODE_PANEL_DOMAIN_COVERAGE_ADEQUATE`（仅描述 frozen
+panel，不是对整个 `[-1,1]^8` 的 covering proof）。attempt_02 compression reproduction
+为 PASS：within-class trace ratio median=`0.0772202`、min/max=`0.0417654/0.263087`。
+全部 8 个 code dimensions 均保留非零 variation 与既有 sensitivity。
+
+mechanism classification：`C1_PANEL_UNDERCOVERAGE=NOT_SUPPORTED`、
+`C2_CODE_COVERAGE_GAIN_COMPRESSION=SUPPORTED`、`C3_LOCAL_JACOBIAN_GAIN_COMPRESSION=UNRESOLVED`
+（无独立 scale authority）、`C4_GLOBAL_CONTROLLER_MAP_CONFINEMENT=SUPPORTED`、
+`C5_CODE_TANGENT_MISALIGNMENT=SUPPORTED`、`C6_CLASS_CONDITIONAL_COVERAGE_COMPRESSION=SUPPORTED`。
+保存的 Jacobian singular values 仅用于 magnitude descriptive audit；full Jacobian matrix 不存在，
+`LOCAL_TANGENT_ALIGNMENT=UNRESOLVED`。最终 review classification=
+`CODE8_COVERAGE_MIXED_GAIN_AND_GEOMETRY`；不推出 `8D_TOO_SMALL`、`100D_REQUIRED` 或 intrinsic
+dimension adequacy，继续 `KEEP_8D_PROVISIONALLY`。历史 geometry secondary
+`S3_GEOMETRY_HIGHER_ORDER_MISMATCH_PRIMARY` 与 S3 formal classification
+`S3_CONTROL_TO_OLS_WRITABILITY_NOT_SUPPORTED` 均保持不变。
+
+治理继续保持 `mainline_state=closed_at_current_evidence_boundary`、
+`reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、
+`generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false`。
+Windows-native targeted tests=`4 passed`，compileall、Ruff、`git diff --check` 与 review
+artifact audit 均通过。唯一下一动作固定为
+`PLAN_CONTROLLER_SEMANTIC_GEOMETRY_TRAINING_AUTHORITY`；本轮不自动训练。
