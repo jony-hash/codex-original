@@ -43,6 +43,7 @@ from ldm_project.v2.student.checkpoints import (
 from ldm_project.v2.student.identity_generator import (
     IdentityAnchoredConditionalAmplitudeGenerator,
 )
+from ldm_project.v2.optics.propagation import clear_production_transfer_cache
 from scripts.research import audit_scaled_chen_ols_semantic_representation as s1
 from scripts.research import replay_scaled_chen_repaired_coordinate_mra as rcr
 
@@ -1784,6 +1785,11 @@ def run(
         panel["base_codes"],
         panel["labels"],
     )
+    # The forward-only capture intentionally uses inference mode.  Its ASM
+    # transfer cache therefore contains inference tensors; clear that cache
+    # before the separate autograd Jacobian probe so the probe builds ordinary
+    # differentiable transfer tensors without changing the registered optics.
+    clear_production_transfer_cache()
     jacobian = _jacobian_metrics(
         generator,
         model,
