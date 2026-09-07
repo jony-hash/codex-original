@@ -8,6 +8,15 @@
 交接规则，不替代正式证据、实验报告或历史 transcript。云端 ChatGPT 项目使用它的
 受控上传副本；本文件本身仍以本地 Git 版本为准。
 
+研究交接的风险层、HARD_BLOCKER、FACT/MODEL_ASSUMPTION/DESIGN_DECISION/AUTHORIZATION
+词汇、semantic evidence alias 与 one-outer-Gate 规则统一见
+[`delta_one_gate_short_prompt.md`](operations/delta_one_gate_short_prompt.md)。本文件只保留
+稳定入口与 durable decision，不复制 child hash 表。
+
+`RESEARCH_GOVERNANCE_SIMPLIFICATION_V1_ESTABLISHED`：本轮只改变 research planning、
+evidence handoff 与 provenance presentation；formal/high-risk evidence、training authorization、
+data firewall、checkpoint validation、formal runtime 与历史 artifact 均未改变。
+
 ## H-LOMA-GEN OLS-native research branch genesis（2026-09-07）
 
 `OLS_NATIVE_RESEARCH_BRANCH_ESTABLISHED` 已完成。active research branch 为
@@ -39,8 +48,9 @@ novel OLS valid 或 generation supported。
 sampling、optimizer、backward、CUDA、optical forward、evaluator 或 semantic generation。
 `training_authorized=false`、`generation_readiness=not_ready`、`formal_promotion=false` 保持。
 legacy controller/Code8/one-shot repair、旧 factorized BOGT prior 与 global-prior alignment
-仍为历史或已关闭 lineage，不作为 active N3 implementation。下一唯一 Gate：
-`PLAN_REGISTER_LOW_RANK_PRODUCER_POSITIVITY_AUTHORITY`。
+仍为历史或已关闭 lineage，不作为 active N3 implementation。下一 outer planning task（仅规划，
+不构成执行授权）为 `DEFINE_N3_LOW_RANK_MODEL_ORDER_CONTRACT_V1`；positivity、candidate
+enumeration、tie-break 与 one-shot semantics 在该 contract 内部一次性决定。
 
 ## H-LOMA-GEN-N3 OLS producer data authority（2026-09-07）
 
@@ -79,8 +89,8 @@ identity 未进入 authority 或 manifest。
 本轮只建立 immutable producer data authority；不声明 producer trained、rank selected、novel
 OLS supported 或 semantic generation supported。training_authorized=false、
 formal_promotion=false、generation_readiness=not_ready 保持。producer contract 与
-diagonal-Gaussian score baseline 已分别登记；下一唯一 Gate：
-PLAN_REGISTER_LOW_RANK_PRODUCER_POSITIVITY_AUTHORITY。首次本地物化的错误 attempt 已隔离为
+diagonal-Gaussian score baseline 已分别登记；下一 outer planning task（仅规划，不构成执行授权）为
+`DEFINE_N3_LOW_RANK_MODEL_ORDER_CONTRACT_V1`。首次本地物化的错误 attempt 已隔离为
 invalid quarantine，只有上述 attempt_01 是 authority。
 
 ## H-LOMA-GEN-S3 Controller semantic-geometry one-shot repair postmortem（2026-09-07）

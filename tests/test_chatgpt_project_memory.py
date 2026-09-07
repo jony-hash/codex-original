@@ -53,6 +53,37 @@ class ChatGPTProjectMemoryTests(unittest.TestCase):
         for relative, content in project_sources.items():
             target = self.project / Path(*relative.split("/"))
             target.write_text(content, encoding="utf-8")
+        evidence = self.project / "docs" / "test-evidence.json"
+        evidence.write_text(
+            json.dumps({"schema": "test.evidence.v1", "status": "valid"}) + "\n",
+            encoding="utf-8",
+        )
+        state = {
+            "schema_version": 1,
+            "kind": "research_governance_state",
+            "active_objective": "TEST_OBJECTIVE",
+            "authorization_tier": "R1",
+            "hard_blocker": None,
+            "evidence_aliases": {
+                "TEST_EVIDENCE_V1": {
+                    "kind": "machine_evidence",
+                    "path": "docs/test-evidence.json",
+                    "role": "test evidence",
+                    "schema": "test.evidence.v1",
+                    "sha256": MEMORY.sha256_bytes(evidence.read_bytes()),
+                    "verification": "verified",
+                },
+                "TEST_MODEL_ASSUMPTION_V1": {
+                    "kind": "model_assumption",
+                    "path": "docs/PROJECT_MEMORY.md",
+                    "role": "test model assumption",
+                    "verification": "not_required",
+                },
+            },
+        }
+        (self.project / "docs" / "status" / "research_governance_state.json").write_text(
+            json.dumps(state, indent=2) + "\n", encoding="utf-8"
+        )
         (self.history / "HISTORY_CONTEXT.md").write_text(
             "# 历史上下文\n仅作导航。\n", encoding="utf-8"
         )
@@ -139,6 +170,14 @@ class ChatGPTProjectMemoryTests(unittest.TestCase):
         self.assertIsNotNone(result)
         return result or {}
 
+    def _governance(self, command: str, *arguments: str) -> tuple[int, dict[str, object] | None, str]:
+        return self._invoke(
+            command,
+            "--project-root",
+            str(self.project),
+            *arguments,
+        )
+
     def test_refresh_emits_snapshot_and_status_is_current(self) -> None:
         code, result, error = self._invoke(*self._common_arguments("refresh"))
         self.assertEqual((code, error), (0, ""))
@@ -154,6 +193,42 @@ class ChatGPTProjectMemoryTests(unittest.TestCase):
         self.assertIn(f"snapshot_id: {payload['snapshot_id']}", package_memory)
         self.assertIn(f"git_head: {payload['git_head']}", package_memory)
         self.assertEqual(self._status()["status"], "current")
+
+    def test_governance_summary_and_alias_verification_are_compact_and_fail_closed(self) -> None:
+        code, result, error = self._governance("summary")
+        self.assertEqual((code, error), (0, ""))
+        self.assertEqual(result["branch"], MEMORY._run_git(self.project, "branch", "--show-current").strip())
+        self.assertEqual(result["worktree"], "clean")
+        self.assertEqual(result["active_objective"], "TEST_OBJECTIVE")
+        self.assertEqual(
+            result["evidence_aliases"],
+            ["TEST_EVIDENCE_V1", "TEST_MODEL_ASSUMPTION_V1"],
+        )
+        self.assertNotIn("sha256", result)
+
+        code, result, error = self._governance("verify-evidence", "TEST_EVIDENCE_V1")
+        self.assertEqual((code, error), (0, ""))
+        self.assertEqual(result["status"], "verified")
+        self.assertNotIn("sha256", result)
+
+        code, result, error = self._governance(
+            "verify-evidence", "TEST_MODEL_ASSUMPTION_V1"
+        )
+        self.assertEqual((code, error), (0, ""))
+        self.assertEqual(result["status"], "not_required")
+        self.assertIn("MODEL_ASSUMPTION", result["claim_boundary"])
+
+        code, result, error = self._governance(
+            "verify-evidence", "TEST_EVIDENCE_V1", "--verbose"
+        )
+        self.assertEqual((code, error), (0, ""))
+        self.assertRegex(result["sha256"], r"^[0-9a-f]{64}$")
+
+        evidence = self.project / "docs" / "test-evidence.json"
+        evidence.write_text(evidence.read_text(encoding="utf-8") + "tamper\n", encoding="utf-8")
+        code, _, error = self._governance("verify-evidence", "TEST_EVIDENCE_V1")
+        self.assertEqual(code, 2)
+        self.assertIn("semantic evidence hash mismatch", error)
 
     def test_status_distinguishes_missing_stale_and_invalid(self) -> None:
         self.assertEqual(self._status()["status"], "missing")

@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "kind": "research_governance_state",
+  "policy_id": "RESEARCH_GOVERNANCE_SIMPLIFICATION_V1",
+  "active_objective": "DEFINE_N3_LOW_RANK_MODEL_ORDER_CONTRACT_V1",
+  "authorization_tier": "R1",
+  "hard_blocker": null,
+  "evidence_aliases": {
+    "DIAGONAL_GAUSSIAN_LOW_RANK_SCORE_BASELINE_V1": {
+      "kind": "model_assumption",
+      "path": "docs/PROJECT_MEMORY.md",
+      "role": "registered low-rank score-law baseline",
+      "verification": "not_required"
+    },
+    "OLS_PRODUCER_DATA_V1": {
+      "kind": "machine_evidence",
+      "path": "outputs/20260907_v2/runs/lightgen_ols_producer_data_authority_v1_attempt_01/ols_producer_source_manifest.v1.json",
+      "role": "immutable OLS producer data authority source manifest",
+      "schema": "ols_producer_source_manifest.v1",
+      "sha256": "d07fc3fa927796e97254fa09a8c0eceb18d6555a99590db43217a685bf0d1687",
+      "verification": "verified"
+    }
+  }
+}

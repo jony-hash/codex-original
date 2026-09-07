@@ -26,6 +26,8 @@ from typing import Any, Iterable, Sequence
 SCHEMA_VERSION = 2
 MANIFEST_FILENAME = ".chatgpt-sources-manifest.json"
 PACKAGE_KIND = "chatgpt_project_sources"
+GOVERNANCE_STATE_SCHEMA_VERSION = 1
+GOVERNANCE_STATE_KIND = "research_governance_state"
 
 
 class ProjectMemoryError(RuntimeError):
@@ -85,6 +87,7 @@ SECRET_PATTERNS = (
 SESSION_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 SNAPSHOT_ID_PATTERN = re.compile(r"^[0-9a-f]{12}-[0-9T:.Z-]{16,64}$")
+SEMANTIC_ID_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]{2,127}$")
 
 
 def _strip_extended_prefix(value: str | os.PathLike[str]) -> str:
@@ -338,6 +341,118 @@ def _git_state(project_root: Path) -> dict[str, Any]:
     )
     dirty_paths = sorted(entry for entry in raw_status.split("\0") if entry)
     return {"git_head": head.lower(), "dirty_paths": dirty_paths}
+
+
+def _governance_state_path(project_root: Path, value: str) -> Path:
+    raw = Path(_strip_extended_prefix(value))
+    candidate = raw if raw.is_absolute() else project_root / raw
+    resolved = _resolve_file(candidate, "research governance state")
+    if not _is_within(resolved, project_root):
+        raise ProjectMemoryError("research governance state must be inside the project root")
+    return resolved
+
+
+def _validate_governance_state(state: dict[str, Any]) -> None:
+    if state.get("schema_version") != GOVERNANCE_STATE_SCHEMA_VERSION:
+        raise ProjectMemoryError("unsupported or missing research governance state schema")
+    if state.get("kind") != GOVERNANCE_STATE_KIND:
+        raise ProjectMemoryError("unexpected research governance state kind")
+    if not isinstance(state.get("active_objective"), str) or not state["active_objective"]:
+        raise ProjectMemoryError("research governance state active_objective is invalid")
+    if state.get("authorization_tier") not in {"R0", "R1", "R2", "R3"}:
+        raise ProjectMemoryError("research governance state authorization_tier is invalid")
+    blocker = state.get("hard_blocker")
+    if blocker is not None and (not isinstance(blocker, str) or not blocker):
+        raise ProjectMemoryError("research governance state hard_blocker is invalid")
+    aliases = state.get("evidence_aliases")
+    if not isinstance(aliases, dict):
+        raise ProjectMemoryError("research governance state evidence_aliases is invalid")
+    for semantic_id, entry in aliases.items():
+        if not isinstance(semantic_id, str) or not SEMANTIC_ID_PATTERN.fullmatch(semantic_id):
+            raise ProjectMemoryError("research governance state contains an invalid semantic ID")
+        if not isinstance(entry, dict):
+            raise ProjectMemoryError(f"evidence alias {semantic_id} is invalid")
+        if entry.get("verification") not in {"required", "verified", "not_required"}:
+            raise ProjectMemoryError(f"evidence alias {semantic_id} verification is invalid")
+        if not isinstance(entry.get("role"), str) or not entry["role"]:
+            raise ProjectMemoryError(f"evidence alias {semantic_id} role is invalid")
+        path = entry.get("path")
+        if path is not None:
+            _safe_relative(path, f"evidence alias {semantic_id} path")
+        if entry.get("kind") == "machine_evidence":
+            if path is None:
+                raise ProjectMemoryError(f"machine evidence alias {semantic_id} requires a path")
+            _hash_entry(entry.get("sha256"), f"evidence alias {semantic_id} hash")
+        elif entry.get("kind") == "model_assumption":
+            if entry.get("verification") != "not_required":
+                raise ProjectMemoryError(
+                    f"model assumption alias {semantic_id} cannot require evidence verification"
+                )
+        else:
+            raise ProjectMemoryError(f"evidence alias {semantic_id} kind is invalid")
+
+
+def _load_governance_state(project_root: Path, state_file: str) -> tuple[dict[str, Any], Path]:
+    path = _governance_state_path(project_root, state_file)
+    state = _json_load(path, "research governance state")
+    _validate_governance_state(state)
+    return state, path
+
+
+def _governance_summary(project_root_arg: str, state_file: str) -> dict[str, Any]:
+    project_root = _resolve_directory(project_root_arg, "project root")
+    state, _ = _load_governance_state(project_root, state_file)
+    git_state = _git_state(project_root)
+    branch = _run_git(project_root, "branch", "--show-current").strip()
+    if not branch:
+        raise ProjectMemoryError("Git branch is detached; governance summary requires a branch")
+    return {
+        "status": "summary_ok",
+        "branch": branch,
+        "git_head": git_state["git_head"],
+        "worktree": "dirty" if git_state["dirty_paths"] else "clean",
+        "active_objective": state["active_objective"],
+        "evidence_aliases": sorted(state["evidence_aliases"]),
+        "authorization_tier": state["authorization_tier"],
+        "hard_blocker": state["hard_blocker"],
+    }
+
+
+def _verify_semantic_evidence(
+    project_root_arg: str,
+    state_file: str,
+    semantic_id: str,
+    verbose: bool,
+) -> dict[str, Any]:
+    project_root = _resolve_directory(project_root_arg, "project root")
+    state, _ = _load_governance_state(project_root, state_file)
+    if not SEMANTIC_ID_PATTERN.fullmatch(semantic_id):
+        raise ProjectMemoryError(f"invalid semantic evidence ID: {semantic_id!r}")
+    entry = state["evidence_aliases"].get(semantic_id)
+    if entry is None:
+        raise ProjectMemoryError(f"semantic evidence ID is not registered: {semantic_id}")
+    result: dict[str, Any] = {
+        "status": entry["verification"],
+        "semantic_id": semantic_id,
+        "kind": entry["kind"],
+        "role": entry["role"],
+    }
+    if entry["kind"] == "model_assumption":
+        result["claim_boundary"] = "MODEL_ASSUMPTION; no scientific support or authorization"
+        return result
+
+    target = _governance_state_path(project_root, entry["path"])
+    actual_hash = sha256_bytes(_read_bytes(target, f"evidence alias {semantic_id}"))
+    if actual_hash != entry["sha256"]:
+        raise ProjectMemoryError(f"semantic evidence hash mismatch: {semantic_id}")
+    if entry.get("schema"):
+        payload = _json_load(target, f"evidence alias {semantic_id}")
+        if payload.get("schema") != entry["schema"]:
+            raise ProjectMemoryError(f"semantic evidence schema mismatch: {semantic_id}")
+    result.update({"path": entry["path"], "schema": entry.get("schema"), "status": "verified"})
+    if verbose:
+        result["sha256"] = actual_hash
+    return result
 
 
 def _json_load(path: Path, label: str) -> dict[str, Any]:
@@ -1047,6 +1162,34 @@ def _parser() -> argparse.ArgumentParser:
         help="report whether a Sources package is current, stale, missing, or invalid",
     )
     _add_common_arguments(status_parser)
+
+    summary_parser = subparsers.add_parser(
+        "summary",
+        help="report the compact research governance state",
+    )
+    summary_parser.add_argument("--project-root", required=True)
+    summary_parser.add_argument(
+        "--state-file",
+        default="docs/status/research_governance_state.json",
+        help="explicit project-relative governance state JSON",
+    )
+
+    evidence_parser = subparsers.add_parser(
+        "verify-evidence",
+        help="verify one registered semantic evidence alias",
+    )
+    evidence_parser.add_argument("semantic_id")
+    evidence_parser.add_argument("--project-root", required=True)
+    evidence_parser.add_argument(
+        "--state-file",
+        default="docs/status/research_governance_state.json",
+        help="explicit project-relative governance state JSON",
+    )
+    evidence_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="include the verified full SHA-256",
+    )
     return parser
 
 
@@ -1070,6 +1213,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.output_root,
                 args.session_id,
                 args.allow_dirty,
+            )
+        elif args.command == "summary":
+            result = _governance_summary(args.project_root, args.state_file)
+        elif args.command == "verify-evidence":
+            result = _verify_semantic_evidence(
+                args.project_root,
+                args.state_file,
+                args.semantic_id,
+                args.verbose,
             )
         else:
             result = _status(args.project_root, args.history_root, args.output_root)

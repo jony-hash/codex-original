@@ -30,8 +30,8 @@
   score sampling, optimizer/backward/CUDA, forward, evaluator, or generation.
 - training_authorized=false; generation_readiness=not_ready;
   formal_promotion=false.
-- next single Gate:
-  `PLAN_REGISTER_LOW_RANK_PRODUCER_POSITIVITY_AUTHORITY`
+- next outer planning task (planning only; not execution authorization):
+  `DEFINE_N3_LOW_RANK_MODEL_ORDER_CONTRACT_V1`
 
 ## H-LOMA-GEN-N3 OLS producer data authority（2026-09-07）
 
@@ -66,8 +66,8 @@
   generation occurred; training_authorized=false, formal_promotion=false,
   generation_readiness=not_ready.
 - producer contract and diagonal-Gaussian score baseline are registered; next
-  single Gate:
-  PLAN_REGISTER_LOW_RANK_PRODUCER_POSITIVITY_AUTHORITY
+  outer planning task (planning only; not execution authorization):
+  DEFINE_N3_LOW_RANK_MODEL_ORDER_CONTRACT_V1
 
 ## FINAL_MAINLINE_CLOSEOUT：H-LOMA-CBOGT Scaled-Chen reconstruction-repair mainline（2026-09-03）
 

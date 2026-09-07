@@ -1,7 +1,7 @@
 # Delta + One Gate + Short Codex Prompt
 
-版本：v1.0
-更新时间：2026-08-31
+版本：v1.1
+更新时间：2026-09-07
 性质：GPT → Codex 的项目治理与交接协议，不是科研证据、训练授权或 formal promotion 合同。
 
 ## 1. 目的与边界
@@ -12,7 +12,7 @@
 - 一个任务同时携带多个独立科研问题，导致执行代理重新规划；
 - 交接提示重复粘贴已知规则、历史正文和可由本地核验的事实。
 
-协议只压缩交接和上下文，不压缩必须保留的目标、证据、阈值、授权边界、失败语义或停止条件。它不改变 AGENTS.md、scoped AGENTS.md、科研 hypothesis ledger、正式 evidence、训练 Gate 或 outputs 管理规则。
+协议只压缩交接和上下文，不压缩必须保留的目标、证据、阈值、授权边界、失败语义或停止条件。它不改变 AGENTS.md、scoped AGENTS.md、科研 hypothesis ledger、正式 evidence、训练 Gate 或 outputs 管理规则。普通研究交接采用风险分层、语义 evidence alias 和一个外层 Gate；R3 formal/high-risk 仍使用现有严格的 fail-closed 合同。
 
 权威顺序仍由 AGENTS.md 定义：本地执行合同、当前 Git/源码/配置/测试/evidence、当前状态与 handoff、项目记忆、历史导航，最后才是云端 ChatGPT 与 Sources。Sources 是带 Git 快照的只读规划材料，不是实时工作树。
 
@@ -113,6 +113,22 @@ ChatGPT 只做以下压缩：
 - 正式 evidence 和 Sources bridge manifest 中已经存在的 Hash 是 provenance
   与完整性边界，继续保留；本规则只禁止把无关 Hash 清单复制进每次交接。
 
+本节的固定政策 ID 为 `HASH_ON_TRUST_BOUNDARY`。人类交接只显示 semantic authority ID、
+branch、适量的 Git HEAD、evidence bundle ID 与 verification status；不重复 child artifact
+的完整 SHA-256 表。外部不可变数据、data partition/firewall、calibration payload、
+checkpoint、不可变 experiment artifact 和 evidence bundle 仍由其 machine manifest/registry
+保存完整 SHA-256。Git-tracked source/docs 通常由 Git lineage 标识，除非已有 consumer 明确
+要求逐文件 digest。
+
+当前审计分类如下；分类只改变呈现与停止语义，不删除历史 evidence：
+
+| 类别 | 当前用途 |
+| --- | --- |
+| `MACHINE_REQUIRED` | `research_run_manifest.v1` 的输入、`EvidenceRecordV2.input_hashes`/context、`ArtifactRefV2`、data firewall、checkpoint、不可变 artifact 与 Sources manifest 的完整性校验 |
+| `HUMAN_DISPLAY_ONLY` | branch、HEAD、dirty scope、semantic evidence ID、consumer、verification status 和短反馈 |
+| `DUPLICATED` | 在 PROJECT_MEMORY、CURRENT_STATUS、current_handoff 与 handoff prompt 中重复出现且没有 consumer 读取的 child SHA 表、未变化 flags 与 unsupported-conclusion catalog |
+| `NOT_REQUIRED` | R0 讨论设计中的 hash、普通 Git-tracked 文档的逐文件 SHA，以及 hash 数量/文件数量本身作为成功标准 |
+
 ### 4.2 Sources 活动快照选择
 
 - 六个 Sources 文件必须作为同一个 `snapshot_id + git_head` 的完整集合处理；不能把
@@ -121,6 +137,74 @@ ChatGPT 只做以下压缩：
   要求用完整六文件集合替换；不能按时间戳自动选择“最新”文件。
 - 本地 bridge manifest 是集合完整性校验材料，不上传到 ChatGPT Sources；人工上传时
   只选择该 manifest 对应的六个 Markdown 文件。
+
+### 4.3 风险分层、Gate 分类与 HARD_BLOCKER
+
+普通研究按以下风险层执行；风险层是执行边界，不是新的科研结论：
+
+| 层级 | 名称 | 必需保护 |
+| --- | --- | --- |
+| `R0` | `DISCUSSION_DESIGN` | 不写 artifact、不做 scientific execution、不要求 Hash；不需要 Gate，假设可直接声明 |
+| `R1` | `READ_ONLY_ANALYSIS` | 核验 branch/HEAD/worktree；使用 semantic input authority ID；只有 consumer 要求时才核验精确 Hash；一个外层科研决策 |
+| `R2` | `ARTIFACT_PRODUCING_RESEARCH` | immutable output manifest、Git/code identity、data/config/RNG identity、root evidence bundle digest 与严格 lineage |
+| `R3` | `FORMAL_HIGH_RISK` | training authorization、official/confirmation evaluation、formal evidence consumption、candidate export/promotion、hardware 或 destructive action；继续使用现有 exact evidence 和 fail-closed 规则 |
+
+现有 Gate 按消费者分类为：`HIGH_RISK_AUTHORIZATION`（formal gate、训练授权、promotion
+或硬件动作）、`SCIENTIFIC_DECISION`（完整测量改变下游科学动作）、`MODEL_ASSUMPTION`
+（可证伪模型假设）和 `INTERNAL_CHECK`（finite、lineage、冻结状态、资源与静态检查）。
+后两类不能仅因名称带有 authority 就自动升级为 R3 或新 Gate；正式消费者仍只能通过
+`src/ldm_project/v2/application/current/gates.py` 及其既有 evidence readers。
+
+`HARD_BLOCKER` 仅限以下五类：
+
+1. required input identity 无法解析；
+2. 会造成 scientific data leakage 或 invalid comparison；
+3. destructive/high-cost/formal action 缺少明确 authorization；
+4. 当前 authoritative contract 与 proposed action 冲突；
+5. 必需计算在数学或技术上未定义。
+
+未被历史 evidence 证明的 model family、distribution、数学 convention、falsifiable baseline
+assumption 或 descriptive ambiguity，不自动是 blocker；它们分别登记为 `MODEL_ASSUMPTION`
+或 `DESIGN_DECISION`，并写出 claim boundary。已批准的 bounded task 只有遇到上述
+`HARD_BLOCKER` 才提前停止；`valid_failed` 仍表示有效测量失败并停止下游，不得改写成模型成功。
+
+### 4.4 规范词汇与 Gate 预算
+
+| 词汇 | 语义 | 允许的结论边界 |
+| --- | --- | --- |
+| `FACT` | 已由 registered evidence 支持的事实 | 可被 consumer 直接消费 |
+| `MODEL_ASSUMPTION` | 构造候选模型所需的、可证伪的 modeling choice | 可登记为 test baseline，不得冒充 FACT |
+| `DESIGN_DECISION` | project-specific 的实现或数学 convention | 只约束该 contract，不声称普遍真理 |
+| `AUTHORIZATION` | 执行 bounded high-risk 或 evidence-producing action 的许可 | 不能由 FACT/assumption 名称自动产生 |
+
+普通 Codex research task 只允许一个 outer Gate，最多五个未命名的 internal checks/decisions，
+最多返回一个 `HARD_BLOCKER`。内部的 model vocabulary、domain、candidate enumeration、
+deterministic tie-break 和 assumption registration 在同一 model contract 内闭合，不得递归创建
+`PLAN_REGISTER_*` 任务。只有当新的 `HARD_BLOCKER` 需要外部 evidence、执行授权或不同
+decision consumer 时，才可创建新的 named Gate。Gate 的定义是“结果改变下游授权的决策”；
+单纯的 model definition 不是 Gate。
+
+### 4.5 Semantic evidence alias 与现有 bundle
+
+本项目不新增与现有 evidence/manifest 并行的全局 evidence registry。`research_run_manifest.v1` 的
+manifest input binding、`EvidenceRecordV2` 的 context/input hashes、`ArtifactRefV2` 的
+path/role/sha256，以及 `canonical_sha256`/`file_sha256` 是现有 machine authority primitives。
+`docs/status/research_governance_state.json` 只是这些既有 machine artifacts 的紧凑 alias
+index，不承载或替代 evidence。人类可以使用稳定 alias，例如 `OLS_PRODUCER_DATA_V1` 或
+`LOW_RANK_SCORE_MODEL_V1`；实际 consumer 必须把 alias 解析到一个明确的 manifest/evidence
+record，而不是自动选择 latest。
+
+当 alias 被 machine consumer 注册时，解析记录至少包含：
+
+- semantic ID、exact path、role、schema；
+- producer/parent lineage；
+- child digest（仅 machine manifest）；
+- root/canonical digest（该 bundle 有此概念时）；
+- verification status 与允许的 consumer。
+
+人类 handoff 只需写 `input_authority=<semantic-id>` 和
+`verification=required|verified|not_required`。若没有真实 consumer 需要 alias index，不得为
+展示目的新建 registry 或复制 child hash 表；full Hash 仍留在原 machine manifest。
 
 ## 5. One Gate 科研决策合同
 
@@ -163,42 +247,38 @@ Gate：
 推荐的可复制交接格式如下：
 
 ~~~
-模式：
-- MODE=<VERIFY|PLAN|IMPLEMENT|REPORT>
-- 若为 IMPLEMENT：计划已批准；一次 preflight 后只允许执行或 BLOCKED，不重新规划。
-
-状态增量：
-- 云端基准：
-- 本地核验：
-- 决策相关变化：
-- 保持不变：
-- 权威性：
-
-One Gate：
-- ID/单一问题：
-- 决策消费者：
-- 精确输入及 producer/lineage（Hash 按需核验）：
-- 指标/阈值：
-- 通过或失败后的唯一下一动作：
-
-执行边界：
-- 允许：
-- 禁止：
-- 不得自动扩大到：
-
-验收与停止：
-- 必须验证：
-- 停止条件：
-- 缺失输入或失败时返回：
-
-反馈格式：
-结果；本地增量核验；Gate 判定与唯一下一动作；修改文件；
-验证结果；未验证内容与已知风险；项目记忆与 Sources 状态。
+MODE: <VERIFY|PLAN|IMPLEMENT|REPORT>
+LOCAL DELTA:
+- cloud snapshot (if known): <snapshot_id @ git_head | unknown>
+- local branch/HEAD/worktree: <Codex verifies; do not guess>
+- decision-changing changes: <at most five>
+OBJECTIVE: <one bounded objective>
+INPUT AUTHORITIES:
+- <semantic-id>; verification=<required|verified|not_required>
+- <producer/lineage only when it changes the decision>
+OUTER GATE:
+- ID/question: <one decision consumer>
+- metric/threshold or decision rule: <exact>
+- passed/valid_failed/invalid_harness/resource_aborted/blocked -> <single next action>
+ASSUMPTIONS:
+- <MODEL_ASSUMPTION or DESIGN_DECISION; claim boundary>
+ALLOWED:
+- <bounded actions and required checks>
+FORBIDDEN:
+- <scientific, formal, destructive, or unrelated actions>
+HARD STOP CONDITIONS:
+- <only the five HARD_BLOCKER classes in policy; no child hash table>
+ACCEPTANCE:
+- <evidence, state, and safety checks that determine the consumer decision>
+RETURN:
+- <result, local delta, Gate decision/next action, modified files, validation,
+  unverified risks, memory/Sources publication state>
 ~~~
 
-短提示只携带本地不能安全推导的决定。路径、符号、helper 和当前状态由 Codex 按最小搜索核验；
-已明确的科研选择不重新讨论。Hash、失败分类、发布资格和完整反馈字段属于固定协议，
-不需要每次重新粘贴。
+短提示只携带本地不能安全推导且会改变本轮决策的变量。路径、符号、helper、当前状态和
+producer digest 由 Codex 按最小搜索核验；已明确的科研选择不重新讨论。完整 child SHA 表、
+重复 unchanged flags、unsupported-conclusion catalog 和递归 single-next-Gate prose 不属于
+默认 handoff。Hash、失败分类、发布资格和完整反馈字段由本协议固定，不需要每次重新粘贴。
 
 ## 7. Token 与上下文预算
 
@@ -303,8 +383,12 @@ Gate 判定与唯一下一动作：
 
 ## 11. 本项目的落地边界
 
-- 本协议的完整规范位于 docs/operations/；PROJECT_MEMORY.md 只保存短模板和入口。
-- docs/status/current_handoff.md 只记录科研状态、证据和唯一下一动作，不承载通用提示协议。
+- 本协议的完整规范位于 docs/operations/；PROJECT_MEMORY.md 只保存稳定导航、durable
+  decisions 和本协议入口，不保存每次 handoff 的完整 telemetry。
+- CURRENT_STATUS.md 记录当前 branch、objective、state 与 high-level governance；
+  docs/status/current_handoff.md 只记录相对上一次交接的 delta、immediate objective/blocker
+  与唯一下一动作；详细历史 Hash、telemetry 和 child lineage 留在 machine evidence registry
+  或 experiment history。历史正文不因压缩而删除。
 - 六文件 Sources 合同保持不变：PROJECT_MEMORY.md、CURRENT_STATUS.md、CURRENT_HANDOFF.md、V2_RUNTIME.md、HISTORY_CONTEXT.md、CHAT_INDEX.md。
 - 六个文件必须作为同一 `snapshot_id + git_head` 的活动集合；旧副本不调和，重复或混合集合按无效处理。
 - Short Prompt 不要求复制 bridge manifest 或正式 evidence 的完整 Hash；这些 Hash
@@ -312,3 +396,24 @@ Gate 判定与唯一下一动作：
 - 修改记忆或当前状态后，只有在工作树 clean、bridge `refresh_ok`、`status=current` 且
   `allow_dirty=false`（即 `publication_state=current_clean`）时，才允许用户人工替换云端 Sources。
 - 如果 bridge 目录缺失、不可读、过期、dirty 或含未知文件，保持 fail-closed；本地文档可以交付，但不能声称已同步。
+
+### 11.1 现有维护工具与 compact report
+
+`scripts/maintenance/chatgpt_project_memory.py` 继续负责六文件 Sources 的
+`build|verify|status|refresh` 和其 fail-closed manifest，并新增只读 `summary` 与
+`verify-evidence <semantic-id>`。`summary` 只输出 branch、HEAD、clean/dirty、active
+objective、semantic evidence aliases、authorization tier 和 HARD_BLOCKER；它不从自由文本
+推断状态，也不自动选择 latest artifact。`verify-evidence` 只解析
+`docs/status/research_governance_state.json` 中的一个已声明 alias，复用现有 manifest
+identity，full Hash 仅在 `--verbose` 或 machine manifest output 中出现。本轮不改变 bridge
+或 formal consumer。
+
+### 11.2 N3 planning representation
+
+当前 N3 的低秩相关微 Gate 不再逐项展开为
+`PLAN_REGISTER_LOW_RANK_*` 链。未来唯一 planning task 为
+`DEFINE_N3_LOW_RANK_MODEL_ORDER_CONTRACT_V1`；其内部一次性决定 low-rank family/domain、
+admissible rank candidates、selection statistic、complexity handling、deterministic tie-break、
+positivity interaction 和 one-shot semantics。实际 rank selection 只有在另行授权并产生新
+evidence 时才执行；本规划标签本身不授权 fit、SVD、sampling、forward、CUDA、training、
+generation 或 evaluator。

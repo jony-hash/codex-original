@@ -6,6 +6,17 @@
 [experiment history](experiment_history.md)。2026-08-24 重整前的完整长篇记录保存在
 [archived handoff](../archive/current_handoff_pre_sced_20260824.md)，仅供溯源。
 
+## Research governance simplification（2026-09-07）
+
+`RESEARCH_GOVERNANCE_SIMPLIFICATION_V1_ESTABLISHED`：本轮只改变 research planning、evidence
+handoff 与 provenance presentation；不改变 scientific result、formal/high-risk evidence、
+training authorization 或 historical artifact。
+
+普通交接采用 [`delta_one_gate_short_prompt.md`](../operations/delta_one_gate_short_prompt.md)
+的 R0–R3 风险层、one-outer-Gate 和 semantic authority ID；完整 child Hash 只留在其
+machine consumer。当前 N3 只把下一步表示为 `DEFINE_N3_LOW_RANK_MODEL_ORDER_CONTRACT_V1`
+的 future planning task，不执行 fit、SVD、rank selection、sampling、forward、CUDA 或 generation。
+
 ## H-LOMA-GEN OLS-native research branch genesis（2026-09-07）
 
 `OLS_NATIVE_RESEARCH_BRANCH_ESTABLISHED`：当前 active branch 为
@@ -29,8 +40,8 @@ novel OLS 与 generation 均未完成。branch genesis 未执行 positivity、fi
 sampling、optimizer/backward/CUDA、forward 或 evaluator。
 
 全局 flags 继续为 `training_authorized=false`、`generation_readiness=not_ready`、
-`formal_promotion=false`。下一唯一 Gate：
-`PLAN_REGISTER_LOW_RANK_PRODUCER_POSITIVITY_AUTHORITY`。
+`formal_promotion=false`。下一 outer planning task（仅规划，不构成执行授权）：
+`DEFINE_N3_LOW_RANK_MODEL_ORDER_CONTRACT_V1`。
 
 ## H-LOMA-GEN-N3 OLS producer data authority（2026-09-07）
 
@@ -64,8 +75,8 @@ identity 未进入 authority/manifest。
 本轮不包含 optical forward、CUDA、optimizer、backward、producer fitting 或
 novel OLS generation；不得解释为 producer trained、rank selected 或 generation
 supported。training_authorized=false、formal_promotion=false、
-generation_readiness=not_ready 保持。producer contract 与 score baseline 已登记；下一唯一 Gate：
-PLAN_REGISTER_LOW_RANK_PRODUCER_POSITIVITY_AUTHORITY。第一次错误 materialization
+generation_readiness=not_ready 保持。producer contract 与 score baseline 已登记；下一 outer planning task
+（仅规划，不构成执行授权）：`DEFINE_N3_LOW_RANK_MODEL_ORDER_CONTRACT_V1`。第一次错误 materialization
 已隔离为 invalid quarantine，不是 authority。
 
 ## H-LOMA-GEN-S3 Controller semantic-geometry one-shot repair postmortem（2026-09-07）
