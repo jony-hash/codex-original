@@ -2066,8 +2066,9 @@ def validate_training_preflight(
     if payload.get("evaluator_calls") != 0 or payload.get("decoder_entered") is not False or payload.get("checkpoint_writes") != 0:
         raise HarnessFailure("training preflight crossed a prohibited boundary")
     resource = _mapping(payload.get("resource"), "training preflight resource")
+    resource_device = resource.get("device")
     if (
-        resource.get("device") != "cuda"
+        resource_device not in ("cuda", "cuda:0")
         or resource.get("max_peak_cuda_bytes") != expected_max_peak_cuda_bytes
         or int(resource.get("peak_cuda_bytes", -1)) > expected_max_peak_cuda_bytes
         or resource.get("memory_passed") is not True
