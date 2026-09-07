@@ -1463,11 +1463,22 @@ def _state_isolation(
     before: Mapping[str, Any],
     *,
     peak_cuda_bytes: int,
+    candidate_path: Path | None = None,
+    candidate_sha256: str | None = None,
+    candidate_state_hash: str | None = None,
 ) -> dict[str, Any]:
+    if (candidate_path is None) != (candidate_sha256 is None):
+        raise ValueError("candidate path and SHA must be bound together")
     after_controller_hash = state_content_hash(controller_state)
     after_signature = state_signature(controller_state)
     after_model_digest = rcr.state_digest(model)
     after_generator_hash = canonical_sha256({name: tensor_sha256(value) for name, value in sorted(generator.state_dict().items())})
+    candidate_after = file_sha256(candidate_path) if candidate_path is not None else None
+    candidate_state_after = after_generator_hash if candidate_state_hash is not None else None
+    candidate_unchanged = bool(
+        candidate_path is None
+        or (candidate_after == candidate_sha256 and candidate_state_after == candidate_state_hash)
+    )
     authority_after = file_sha256(authority_path)
     migrated_after = file_sha256(migrated_path)
     checkpoint_after = file_sha256(checkpoint_path)
@@ -1483,8 +1494,9 @@ def _state_isolation(
         and before["checkpoint_sha256"] == checkpoint_after
         and before["calibration_sha256"] == calibration_after
         and before["mode_bank_sha256"] == mode_after
+        and candidate_unchanged
     )
-    return {
+    result = {
         "schema": ISOLATION_SCHEMA,
         "gate": "S3_STATE_ISOLATION_PASS" if unchanged else "S3_STATE_ISOLATION_FAIL",
         "controller_authority_sha256_before": before["authority_sha256"],
@@ -1518,6 +1530,17 @@ def _state_isolation(
         "state_unchanged": unchanged,
         "finite": True,
     }
+    if candidate_path is not None:
+        result.update(
+            {
+                "candidate_checkpoint_sha256_before": candidate_sha256,
+                "candidate_checkpoint_sha256_after": candidate_after,
+                "candidate_controller_state_hash_before": candidate_state_hash,
+                "candidate_controller_state_hash_after": candidate_state_after,
+                "candidate_state_unchanged": candidate_unchanged,
+            }
+        )
+    return result
 
 
 def _generator_state_hash(generator: IdentityAnchoredConditionalAmplitudeGenerator) -> str:
@@ -1569,8 +1592,9 @@ def _controller_contract(
     authority: Mapping[str, Any],
     controller_state: Mapping[str, torch.Tensor],
     model: bogt.ScaledChenBOGTModel,
+    candidate_binding: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    return {
+    contract = {
         "schema": CONTROLLER_CONTRACT_SCHEMA,
         "authority_gate": authority["gate"],
         "authority_classification": authority["classification"],
@@ -1599,6 +1623,9 @@ def _controller_contract(
         "decoder_entered": False,
         "training": False,
     }
+    if candidate_binding is not None:
+        contract["controller_candidate"] = dict(candidate_binding)
+    return contract
 
 
 def _artifact_refs(output_path: Path) -> dict[str, dict[str, Any]]:
@@ -1737,7 +1764,35 @@ def _preflight(
 def run(
     config_path: str | Path = DEFAULT_CONFIG_PATH,
     output_path: str | Path = DEFAULT_OUTPUT_PATH,
+    *,
+    controller_state_override: Mapping[str, torch.Tensor] | None = None,
+    controller_candidate: Mapping[str, Any] | None = None,
+    controller_candidate_path: str | Path | None = None,
+    internal_validation: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
+    if (controller_state_override is None) != (controller_candidate is None):
+        raise ValueError("candidate state and candidate binding must be supplied together")
+    if controller_candidate is None and controller_candidate_path is not None:
+        raise ValueError("candidate path requires a candidate binding")
+    candidate_path = _resolve(controller_candidate_path) if controller_candidate_path is not None else None
+    candidate_sha256 = None
+    candidate_state_hash = None
+    if controller_candidate is not None:
+        if candidate_path is None:
+            raise ValueError("candidate binding requires a candidate path")
+        if controller_candidate.get("path") != _relative(candidate_path):
+            raise ValueError("candidate path binding is stale")
+        candidate_sha256 = controller_candidate.get("sha256")
+        candidate_state_hash = controller_candidate.get("final_controller_state_hash")
+        if not isinstance(candidate_sha256, str) or not isinstance(candidate_state_hash, str):
+            raise ValueError("candidate binding is missing artifact or state identity")
+        if file_sha256(candidate_path) != candidate_sha256:
+            raise ValueError("candidate artifact changed before S3 run")
+        if controller_state_override is None or any(
+            not isinstance(name, str) or name.startswith("generator.") or not torch.is_tensor(value)
+            for name, value in controller_state_override.items()
+        ):
+            raise ValueError("candidate state boundary is invalid")
     started = time.perf_counter()
     state_before = _git_preflight(require_clean=True)
     _, config, config_sha256, config_canonical_sha256 = load_config(config_path)
@@ -1752,7 +1807,13 @@ def run(
     null_labels = fixed_label_permutation(panel["labels"], seed=NULL_SEED)
     device = torch.device(str(config["execution"]["device"]))
     model, calibration, checkpoint, formal_path = _load_optical_authority(config, device)
-    generator = _load_controller_generator(controller_state, device)
+    if controller_state_override is None:
+        generator = _load_controller_generator(controller_state, device)
+    else:
+        generator = _load_controller_generator(
+            {f"generator.{name}": value for name, value in controller_state_override.items()},
+            device,
+        )
     scale = calibration.port_scale.detach().cpu().contiguous()
     if not torch.equal(scale, calibration.raw_port_mean.detach().cpu()):
         raise ValueError("registered calibration scale is not raw raw_port_mean")
@@ -1832,6 +1893,9 @@ def run(
         controller_state,
         before,
         peak_cuda_bytes=peak_cuda_bytes,
+        candidate_path=candidate_path,
+        candidate_sha256=candidate_sha256,
+        candidate_state_hash=candidate_state_hash,
     )
     finite = bool(
         torch.isfinite(amplitudes).all()
@@ -1889,7 +1953,7 @@ def run(
         "generation_readiness": "not_ready",
         "next_action": next_action,
     }
-    controller_contract = _controller_contract(authority, controller_state, model)
+    controller_contract = _controller_contract(authority, controller_state, model, controller_candidate)
     semantic_reference = _semantic_reference_contract(reference)
     states_payload = {
         "schema": "lightgen_scaled_chen_controller_ols_states.v1",
@@ -2019,6 +2083,10 @@ def run(
             },
             "artifacts": artifact_refs,
         }
+        if controller_candidate is not None:
+            manifest["controller_candidate"] = dict(controller_candidate)
+        if internal_validation is not None:
+            manifest["internal_validation"] = dict(internal_validation)
         atomic_write_new_json(staging / "s3_manifest.json", manifest, artifact_kind="S3 manifest")
         _assert_output_tree(staging)
         staging.replace(output)
@@ -2026,7 +2094,7 @@ def run(
     final_manifest = _read_json(output / "s3_manifest.json")
     if final_manifest.get("artifacts") != _artifact_refs(output):
         raise ValueError("S3 manifest artifact bindings do not verify")
-    return {
+    result = {
         "task_id": TASK_ID,
         "output_dir": _relative(output),
         "status": final_manifest["status"],
@@ -2043,6 +2111,11 @@ def run(
         "peak_cuda_bytes": peak_cuda_bytes,
         "wall_clock_seconds": time.perf_counter() - started,
     }
+    if controller_candidate is not None:
+        result["controller_candidate"] = dict(controller_candidate)
+    if internal_validation is not None:
+        result["internal_validation"] = dict(internal_validation)
+    return result
 
 
 def _parse_args() -> argparse.Namespace:
