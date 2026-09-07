@@ -1,0 +1,1229 @@
+"""Attribute the frozen N3 amplitude-producer validation mismatch.
+
+This consumer is diagnostic-only.  It compares the immutable fit and
+internal-validation banks, decomposes pooled versus class-local structure, and
+describes score tails and dependence under the already frozen r=99 basis.  It
+does not fit, sample, refit, select rank, or invoke an optical/evaluator path.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import shutil
+import subprocess
+import tempfile
+from pathlib import Path
+from typing import Any, Mapping
+
+import torch
+
+from ldm_project.v2.evidence import (
+    atomic_write_new_json,
+    file_sha256,
+    safe_torch_load,
+    tensor_sha256,
+)
+
+
+TASK_ID = "ATTRIBUTE_N3_PRODUCER_MISMATCH_AND_SELECT_NEXT_FAMILY_V1"
+GATE = "ATTRIBUTE_N3_PRODUCER_MISMATCH_AND_SELECT_NEXT_FAMILY_V1"
+REPORT_SCHEMA = "n3_producer_mismatch_attribution_report.v1"
+EXPECTED_BRANCH = "research/lightgen-ols-native-semantic-generation-v1"
+
+DATA_DIR = Path(
+    "outputs/20260907_v2/runs/"
+    "lightgen_ols_producer_data_authority_v1_attempt_01"
+)
+SOURCE_MANIFEST = DATA_DIR / "ols_producer_source_manifest.v1.json"
+PARTITION_MANIFEST = DATA_DIR / "ols_producer_partition_manifest.v1.json"
+FIREWALL_MANIFEST = DATA_DIR / "ols_producer_data_firewall_manifest.v1.json"
+FIT_BANK = DATA_DIR / "ols_producer_fit_bank.v1.pt"
+VALIDATION_BANK = DATA_DIR / "ols_producer_internal_validation_bank.v1.pt"
+
+MODEL_ORDER_RESULT = Path(
+    "outputs/20260907_v2/runs/"
+    "lightgen_n3_low_rank_model_order_selection_v1_attempt_01/"
+    "model_order_result.v1.json"
+)
+PRODUCER_STATE = Path(
+    "outputs/20260907_v2/runs/"
+    "lightgen_n3_amplitude_producer_baseline_v1_attempt_01/"
+    "n3_amplitude_producer_state.v1.pt"
+)
+PRODUCER_MANIFEST = Path(
+    "outputs/20260907_v2/runs/"
+    "lightgen_n3_amplitude_producer_baseline_v1_attempt_01/"
+    "n3_amplitude_producer_state_manifest.v1.json"
+)
+FAILED_VALIDATION_REPORT = Path(
+    "outputs/20260908_v2/runs/"
+    "lightgen_n3_amplitude_producer_validation_v1_attempt_01/"
+    "n3_amplitude_producer_validation_report.v1.json"
+)
+
+EXPECTED_SOURCE_MANIFEST_SHA256 = (
+    "d07fc3fa927796e97254fa09a8c0eceb18d6555a99590db43217a685bf0d1687"
+)
+EXPECTED_SOURCE_ARTIFACT_SHA256 = (
+    "9375b08597f03fee3798e05798779556c3e7534db6a9d39033232f7278d32279"
+)
+EXPECTED_SOURCE_SEMANTIC_MANIFEST_SHA256 = (
+    "b0199040926618b17373edc4f167cc8bc4788f39f64de174e1a3fb225781833e"
+)
+EXPECTED_SOURCE_INDEX_SHA256 = (
+    "532f05aa60d235499fdc5c078ad9c3c95c36a0c61f2c8e9d64a8309c1741255d"
+)
+EXPECTED_SOURCE_LABEL_SHA256 = (
+    "1f376234300ef9c7a60a5e895c2dabb52550292724c4b806adf5315e8ab5f251"
+)
+EXPECTED_SOURCE_R3_SHA256 = (
+    "dcade4dca73f86f7bdc8d9be8fe183a8eda6a5f3fe2b810986d846ddf4c12fd3"
+)
+EXPECTED_PARTITION_MANIFEST_SHA256 = (
+    "409b598aacae921da631adea553b339b56560231f9cb2cf75ce8d7e5b439242b"
+)
+EXPECTED_FIREWALL_MANIFEST_SHA256 = (
+    "b711e9d3443f3a86c803ff1f8cae1ff266634439ebe0c0d31c04e807c3841837"
+)
+EXPECTED_FIT_BANK_SHA256 = (
+    "21b989a13cbea8f24d3298424b200eb1727de8d04809bfbc77e1901daa888f77"
+)
+EXPECTED_FIT_R3_SHA256 = (
+    "f507dcaad007963178a07fcb13b55c267529b2adecc745df6c465316aa8732c0"
+)
+EXPECTED_FIT_ROW_POSITION_SHA256 = (
+    "54fe39a51036f6b69cf4cb65cfc614e4043a92fb8a601c75f529da8f87122243"
+)
+EXPECTED_FIT_SOURCE_INDEX_SHA256 = (
+    "99285b32a2c098de1788cd405bc317c3c7877bbd07bd1b63260fd9fd1cc93d18"
+)
+EXPECTED_VALIDATION_BANK_SHA256 = (
+    "8397c886db73bb260723debd6d4eab332b6172972a055b28f770e7ca2bf3ee25"
+)
+EXPECTED_VALIDATION_R3_SHA256 = (
+    "0c3887331553c474f5a39ab3653c8b0094ce7db8f416cff279627e001d68102c"
+)
+EXPECTED_VALIDATION_ROW_POSITION_SHA256 = (
+    "964724eddd503d596ec870ceea3b0145f151ade64f5903307352297372763a75"
+)
+EXPECTED_VALIDATION_SOURCE_INDEX_SHA256 = (
+    "96a367399d53a48078d7a3328a6063174c2f58031177da0f14953191620b5d80"
+)
+EXPECTED_LABEL_SHA256 = (
+    "c8bacf260ae894e7da623586b9e04c67d95f628c16f52766cee0994ca2ceac19"
+)
+EXPECTED_PARTITION_IDENTITY_SHA256 = (
+    "d1eaf777c27b98eb607e98ca41d2360115eb0b070156b29d21805c7332981d6d"
+)
+EXPECTED_MODEL_ORDER_SHA256 = (
+    "aeb66fe308b42eb1c7ffa313790f762837df00f6255cefcec79a6210bce78f93"
+)
+EXPECTED_PRODUCER_STATE_SHA256 = (
+    "cd70756674660470786b92f59d27414cbc379cb61b02ad255ed3d596c6362722"
+)
+EXPECTED_PRODUCER_MANIFEST_SHA256 = (
+    "2f8766943eca79e37b4e72b4e1bff37cff7c8f9ce09469bce2daebbb481df373"
+)
+EXPECTED_FAILED_VALIDATION_REPORT_SHA256 = (
+    "16435dd72babf1f6abe537aa766c27fad79065f1cdf0ebfa6a9f54c4837aa6a0"
+)
+
+CLASS_COUNT = 10
+DIMENSION = 100
+FIT_COUNT = 500
+VALIDATION_COUNT = 500
+RANK = 99
+ROWS_PER_CLASS = 50
+HALF_ROWS_PER_CLASS = 25
+QUANTILE_PROBABILITIES = (0.05, 0.50, 0.95)
+ORTHOGONALITY_RTOL = 1.0e-9
+ORTHOGONALITY_ATOL = 1.0e-9
+REPORT_NAME = "n3_producer_mismatch_attribution_report.v1.json"
+
+CLASSIFICATION_SELECTED = "N3_NEXT_PRODUCER_FAMILY_HYPOTHESIS_SELECTED"
+CLASSIFICATION_MIXED = "N3_PRODUCER_MISMATCH_ATTRIBUTION_MIXED"
+CLASSIFICATION_PARTITION = "DATA_PARTITION_STABILITY_CONFOUND"
+
+
+def _require(condition: bool, message: str) -> None:
+    if not condition:
+        raise ValueError(message)
+
+
+def _mapping(value: Any, name: str) -> Mapping[str, Any]:
+    _require(isinstance(value, Mapping), f"{name} must be a mapping")
+    return value
+
+
+def _relative(repo_root: Path, path: Path) -> str:
+    return path.resolve().relative_to(repo_root.resolve()).as_posix()
+
+
+def _read_json_exact(path: Path, expected_sha256: str, label: str) -> dict[str, Any]:
+    _require(path.is_file(), f"{label} is missing: {path}")
+    _require(file_sha256(path) == expected_sha256, f"{label} hash changed: {path}")
+    return dict(_mapping(json.loads(path.read_text(encoding="utf-8")), label))
+
+
+def _git_state(repo_root: Path) -> dict[str, Any]:
+    branch = subprocess.run(
+        ["git", "-C", str(repo_root), "branch", "--show-current"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    head = subprocess.run(
+        ["git", "-C", str(repo_root), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    status = subprocess.run(
+        ["git", "-C", str(repo_root), "status", "--porcelain"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    dirty_paths = [line[3:] if len(line) >= 4 else line for line in status]
+    return {"branch": branch, "head": head, "dirty_paths": dirty_paths}
+
+
+def _summary(value: torch.Tensor) -> dict[str, float]:
+    view = value.detach().to(torch.float64).cpu().reshape(-1)
+    _require(view.numel() > 0 and bool(torch.isfinite(view).all()), "summary input is invalid")
+    quantiles = torch.quantile(
+        view,
+        torch.tensor(QUANTILE_PROBABILITIES, dtype=torch.float64),
+    )
+    return {
+        "min": float(view.min()),
+        "p05": float(quantiles[0]),
+        "median": float(quantiles[1]),
+        "mean": float(view.mean()),
+        "p95": float(quantiles[2]),
+        "max": float(view.max()),
+    }
+
+
+def _quantiles(value: torch.Tensor) -> list[float]:
+    view = value.detach().to(torch.float64).cpu().reshape(-1)
+    _require(view.numel() > 0 and bool(torch.isfinite(view).all()), "quantile input is invalid")
+    return [
+        float(item)
+        for item in torch.quantile(
+            view,
+            torch.tensor(QUANTILE_PROBABILITIES, dtype=torch.float64),
+        )
+    ]
+
+
+def _covariance_and_correlation(value: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    view = value.detach().to(torch.float64).cpu().contiguous()
+    _require(view.ndim == 2 and view.shape[0] >= 2, "covariance input shape is invalid")
+    centered = view - view.mean(dim=0, keepdim=True)
+    covariance = centered.transpose(0, 1).mm(centered).div(float(view.shape[0] - 1))
+    diagonal = torch.diagonal(covariance)
+    _require(
+        bool(torch.isfinite(covariance).all()) and bool(diagonal.gt(0.0).all()),
+        "covariance is invalid",
+    )
+    correlation = covariance / torch.sqrt(diagonal[:, None] * diagonal[None, :])
+    _require(bool(torch.isfinite(correlation).all()), "correlation is invalid")
+    return covariance.contiguous(), correlation.contiguous()
+
+
+def _off_diagonal_summary(covariance: torch.Tensor, correlation: torch.Tensor) -> dict[str, float]:
+    dimension = covariance.shape[0]
+    mask = ~torch.eye(dimension, dtype=torch.bool)
+    abs_corr = correlation.abs()[mask]
+    offdiag_covariance = covariance[mask]
+    total_energy = covariance.square().sum()
+    offdiag_energy = offdiag_covariance.square().sum()
+    _require(bool(total_energy.gt(0.0)), "covariance energy is zero")
+    return {
+        "mean_abs_cross_correlation": float(abs_corr.mean()),
+        "median_abs_cross_correlation": float(torch.quantile(abs_corr, 0.50)),
+        "p95_abs_cross_correlation": float(torch.quantile(abs_corr, 0.95)),
+        "maximum_abs_cross_correlation": float(abs_corr.max()),
+        "off_diagonal_covariance_fraction": float(offdiag_energy / total_energy),
+    }
+
+
+def _energy_distance(first: torch.Tensor, second: torch.Tensor) -> float:
+    left = first.detach().to(torch.float64).cpu().contiguous()
+    right = second.detach().to(torch.float64).cpu().contiguous()
+    _require(
+        left.ndim == 2 and right.ndim == 2 and left.shape[1] == right.shape[1],
+        "energy inputs are invalid",
+    )
+    cross = torch.cdist(left, right, p=2.0).mean()
+    within_left = torch.cdist(left, left, p=2.0).mean()
+    within_right = torch.cdist(right, right, p=2.0).mean()
+    value = 2.0 * cross - within_left - within_right
+    _require(bool(torch.isfinite(value)), "energy distance is non-finite")
+    _require(float(value) >= -1.0e-10, "energy distance is materially negative")
+    return max(0.0, float(value))
+
+
+def _q_pair_metrics(first: torch.Tensor, second: torch.Tensor) -> dict[str, float]:
+    left = first.detach().to(torch.float64).cpu().contiguous()
+    right = second.detach().to(torch.float64).cpu().contiguous()
+    _require(left.ndim == 2 and right.ndim == 2 and left.shape[1] == right.shape[1], "q pair shapes differ")
+    left_cov, left_corr = _covariance_and_correlation(left)
+    right_cov, right_corr = _covariance_and_correlation(right)
+    left_mean = left.mean(dim=0)
+    right_mean = right.mean(dim=0)
+    left_std = left.std(dim=0, unbiased=True)
+    right_std = right.std(dim=0, unbiased=True)
+    left_quantiles = torch.quantile(
+        left,
+        torch.tensor(QUANTILE_PROBABILITIES, dtype=torch.float64),
+        dim=0,
+    )
+    right_quantiles = torch.quantile(
+        right,
+        torch.tensor(QUANTILE_PROBABILITIES, dtype=torch.float64),
+        dim=0,
+    )
+    trace_left = torch.trace(left_cov)
+    trace_right = torch.trace(right_cov)
+    _require(bool(trace_left.gt(0.0)) and bool(trace_right.gt(0.0)), "q covariance trace is zero")
+    shape_left = left_cov / trace_left
+    shape_right = right_cov / trace_right
+    left_norm = left.norm(dim=1)
+    right_norm = right.norm(dim=1)
+    left_energy = left.square().sum(dim=1)
+    right_energy = right.square().sum(dim=1)
+    left_offdiag = _off_diagonal_summary(left_cov, left_corr)
+    right_offdiag = _off_diagonal_summary(right_cov, right_corr)
+    return {
+        "mean_l2": float((left_mean - right_mean).norm()),
+        "standard_deviation_l2": float((left_std - right_std).norm()),
+        "per_mode_quantile_l2": float((left_quantiles - right_quantiles).norm()),
+        "covariance_relative_frobenius": float(
+            (left_cov - right_cov).norm().square() / right_cov.norm().square()
+        ),
+        "correlation_frobenius": float((left_corr - right_corr).norm()),
+        "trace_normalized_covariance_shape_frobenius": float(
+            (shape_left - shape_right).norm()
+        ),
+        "off_diagonal_covariance_fraction_abs_delta": abs(
+            left_offdiag["off_diagonal_covariance_fraction"]
+            - right_offdiag["off_diagonal_covariance_fraction"]
+        ),
+        "norm_quantile_l2": float(
+            torch.tensor(_quantiles(left_norm), dtype=torch.float64)
+            .sub(torch.tensor(_quantiles(right_norm), dtype=torch.float64))
+            .norm()
+        ),
+        "energy_quantile_l2": float(
+            torch.tensor(_quantiles(left_energy), dtype=torch.float64)
+            .sub(torch.tensor(_quantiles(right_energy), dtype=torch.float64))
+            .norm()
+        ),
+        "energy_distance": _energy_distance(left, right),
+    }
+
+
+def _score_statistics(value: torch.Tensor) -> dict[str, Any]:
+    view = value.detach().to(torch.float64).cpu().contiguous()
+    covariance, correlation = _covariance_and_correlation(view)
+    mean = view.mean(dim=0)
+    variance = view.var(dim=0, unbiased=True)
+    centered = view - mean
+    standard_deviation = torch.sqrt(variance)
+    skew = centered.pow(3).mean(dim=0) / standard_deviation.pow(3)
+    excess_kurtosis = centered.pow(4).mean(dim=0) / variance.square() - 3.0
+    radial = view.square().sum(dim=1)
+    identity = torch.eye(view.shape[1], dtype=torch.float64)
+    return {
+        "count": int(view.shape[0]),
+        "dimension": int(view.shape[1]),
+        "mean_abs_summary": _summary(mean.abs()),
+        "variance_summary": _summary(variance),
+        "covariance_identity_frobenius": float((covariance - identity).norm()),
+        "correlation_identity_frobenius": float((correlation - identity).norm()),
+        "cross_correlation": _off_diagonal_summary(covariance, correlation),
+        "skew_abs_summary": _summary(skew.abs()),
+        "excess_kurtosis_abs_summary": _summary(excess_kurtosis.abs()),
+        "radial_r2_summary": _summary(radial),
+        "radial_r2_mean": float(radial.mean()),
+        "radial_r2_variance": float(radial.var(unbiased=True)),
+        "gaussian_radial_reference": {
+            "degrees_of_freedom": RANK,
+            "mean": float(RANK),
+            "variance": float(2 * RANK),
+        },
+        "finite": True,
+    }
+
+
+def _score_pair_metrics(first: torch.Tensor, second: torch.Tensor) -> dict[str, float]:
+    left = first.detach().to(torch.float64).cpu().contiguous()
+    right = second.detach().to(torch.float64).cpu().contiguous()
+    _require(left.shape == right.shape and left.ndim == 2, "score pair shapes differ")
+    left_cov, left_corr = _covariance_and_correlation(left)
+    right_cov, right_corr = _covariance_and_correlation(right)
+    left_mean = left.mean(dim=0)
+    right_mean = right.mean(dim=0)
+    left_variance = left.var(dim=0, unbiased=True)
+    right_variance = right.var(dim=0, unbiased=True)
+    left_radial = left.square().sum(dim=1)
+    right_radial = right.square().sum(dim=1)
+    left_std = torch.sqrt(left_variance)
+    right_std = torch.sqrt(right_variance)
+    left_skew = (left - left_mean).pow(3).mean(dim=0) / left_std.pow(3)
+    right_skew = (right - right_mean).pow(3).mean(dim=0) / right_std.pow(3)
+    left_offdiag = _off_diagonal_summary(left_cov, left_corr)
+    right_offdiag = _off_diagonal_summary(right_cov, right_corr)
+    return {
+        "mean_l2": float((left_mean - right_mean).norm()),
+        "variance_l2": float((left_variance - right_variance).norm()),
+        "correlation_frobenius": float((left_corr - right_corr).norm()),
+        "off_diagonal_covariance_fraction_abs_delta": abs(
+            left_offdiag["off_diagonal_covariance_fraction"]
+            - right_offdiag["off_diagonal_covariance_fraction"]
+        ),
+        "radial_mean_abs_delta": float((left_radial.mean() - right_radial.mean()).abs()),
+        "radial_variance_abs_delta": float(
+            (left_radial.var(unbiased=True) - right_radial.var(unbiased=True)).abs()
+        ),
+        "radial_quantile_l2": float(
+            torch.tensor(_quantiles(left_radial), dtype=torch.float64)
+            .sub(torch.tensor(_quantiles(right_radial), dtype=torch.float64))
+            .norm()
+        ),
+        "mean_abs_skew_delta": float(
+            (left_skew.abs().mean() - right_skew.abs().mean()).abs()
+        ),
+        "energy_distance": _energy_distance(left, right),
+    }
+
+
+def _standardized_scores(
+    q: torch.Tensor,
+    mu_fit: torch.Tensor,
+    W_99: torch.Tensor,
+    lambda_values: torch.Tensor,
+) -> torch.Tensor:
+    scores = (q - mu_fit).mm(W_99)
+    result = scores / torch.sqrt(lambda_values)
+    _require(bool(torch.isfinite(result).all()), "standardized scores are non-finite")
+    return result.contiguous()
+
+
+def _load_bank(
+    repo_root: Path,
+    path: Path,
+    expected_file_sha256: str,
+    expected_role: str,
+    expected_r3_sha256: str,
+    expected_row_position_sha256: str,
+    expected_source_index_sha256: str,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, dict[str, Any]]:
+    payload = safe_torch_load(repo_root / path, expected_sha256=expected_file_sha256)
+    bank = _mapping(payload, expected_role)
+    _require(bank.get("schema") == "ols_producer_bank.v1", f"{expected_role} schema changed")
+    _require(bank.get("role") == expected_role, f"{expected_role} role changed")
+    _require(bank.get("producer_lineage") == "OLS_LATENT_PRODUCER_V1", f"{expected_role} lineage changed")
+    _require(bank.get("source_coordinate") == "PROJECT_COMPLEX_OLS_V1 / R3_COMPLEX", f"{expected_role} coordinate changed")
+    _require(bank.get("count") == FIT_COUNT and bank.get("N") == DIMENSION, f"{expected_role} shape changed")
+    _require(bank.get("dtype") == "torch.complex64" and bank.get("shape") == [FIT_COUNT, DIMENSION], f"{expected_role} dtype changed")
+    partition = _mapping(bank.get("partition"), f"{expected_role} partition")
+    _require(partition.get("semantic_identity_sha256") == EXPECTED_PARTITION_IDENTITY_SHA256, f"{expected_role} partition changed")
+    r3 = bank.get("r3_complex")
+    source_indices = bank.get("source_indices")
+    row_positions = bank.get("source_row_positions")
+    labels = bank.get("labels")
+    for value, shape, dtype, name in (
+        (r3, (FIT_COUNT, DIMENSION), torch.complex64, "R3"),
+        (source_indices, (FIT_COUNT,), torch.int64, "source indices"),
+        (row_positions, (FIT_COUNT,), torch.int64, "row positions"),
+        (labels, (FIT_COUNT,), torch.int64, "labels"),
+    ):
+        _require(torch.is_tensor(value) and tuple(value.shape) == shape and value.dtype == dtype, f"{expected_role} {name} changed")
+    _require(bool(torch.isfinite(r3).all()), f"{expected_role} R3 is non-finite")
+    _require(tensor_sha256(r3) == expected_r3_sha256, f"{expected_role} R3 identity changed")
+    _require(tensor_sha256(source_indices) == expected_source_index_sha256, f"{expected_role} source-index identity changed")
+    _require(tensor_sha256(row_positions) == expected_row_position_sha256, f"{expected_role} row-position identity changed")
+    _require(tensor_sha256(labels) == EXPECTED_LABEL_SHA256, f"{expected_role} label identity changed")
+    _require(
+        torch.equal(
+            torch.bincount(labels, minlength=CLASS_COUNT),
+            torch.full((CLASS_COUNT,), ROWS_PER_CLASS, dtype=torch.int64),
+        ),
+        f"{expected_role} class balance changed",
+    )
+    q = r3.abs().to(torch.float64).contiguous()
+    _require(bool(torch.isfinite(q).all()) and bool(q.ge(0.0).all()), f"{expected_role} q is invalid")
+    return q, labels.cpu().contiguous(), source_indices.cpu().contiguous(), row_positions.cpu().contiguous(), {
+        "path": _relative(repo_root, repo_root / path),
+        "sha256": expected_file_sha256,
+        "schema": bank["schema"],
+        "role": expected_role,
+        "count": FIT_COUNT,
+        "dimension": DIMENSION,
+        "per_class": ROWS_PER_CLASS,
+        "r3_sha256": expected_r3_sha256,
+        "source_index_sha256": expected_source_index_sha256,
+        "row_position_sha256": expected_row_position_sha256,
+        "label_sha256": EXPECTED_LABEL_SHA256,
+    }
+
+
+def _class_balanced_split(
+    labels: torch.Tensor,
+    source_row_positions: torch.Tensor,
+) -> dict[str, torch.Tensor]:
+    counters = [0] * CLASS_COUNT
+    half_a: list[int] = []
+    half_b: list[int] = []
+    for bank_index, label in enumerate(labels.tolist()):
+        local_position = counters[int(label)]
+        counters[int(label)] += 1
+        (half_a if local_position % 2 == 0 else half_b).append(bank_index)
+    _require(counters == [ROWS_PER_CLASS] * CLASS_COUNT, "class-balanced split input changed")
+    result = {
+        "half_a": torch.tensor(half_a, dtype=torch.int64),
+        "half_b": torch.tensor(half_b, dtype=torch.int64),
+    }
+    for value in result.values():
+        selected_labels = labels.index_select(0, value)
+        _require(
+            torch.equal(
+                torch.bincount(selected_labels, minlength=CLASS_COUNT),
+                torch.full((CLASS_COUNT,), HALF_ROWS_PER_CLASS, dtype=torch.int64),
+            ),
+            "class-balanced split is not balanced",
+        )
+    result["half_a_source_rows"] = source_row_positions.index_select(0, result["half_a"])
+    result["half_b_source_rows"] = source_row_positions.index_select(0, result["half_b"])
+    return result
+
+
+def _class_decomposition(q: torch.Tensor, labels: torch.Tensor) -> dict[str, Any]:
+    view = q.to(torch.float64).cpu().contiguous()
+    total_mean = view.mean(dim=0)
+    total_cov, total_corr = _covariance_and_correlation(view)
+    class_means: list[torch.Tensor] = []
+    class_covariances: list[torch.Tensor] = []
+    class_counts: list[int] = []
+    for label in range(CLASS_COUNT):
+        class_view = view[labels == label]
+        _require(class_view.shape[0] == ROWS_PER_CLASS, f"class {label} count changed")
+        class_mean = class_view.mean(dim=0)
+        class_covariance, _ = _covariance_and_correlation(class_view)
+        class_means.append(class_mean)
+        class_covariances.append(class_covariance)
+        class_counts.append(int(class_view.shape[0]))
+    class_mean_tensor = torch.stack(class_means).contiguous()
+    class_covariance_tensor = torch.stack(class_covariances).contiguous()
+    within = torch.zeros_like(total_cov)
+    between = torch.zeros_like(total_cov)
+    for label in range(CLASS_COUNT):
+        count = class_counts[label]
+        within = within + float(count - 1) * class_covariance_tensor[label]
+        delta = class_mean_tensor[label] - total_mean
+        between = between + float(count) * torch.outer(delta, delta)
+    within = within.div(float(view.shape[0] - 1)).contiguous()
+    between = between.div(float(view.shape[0] - 1)).contiguous()
+    decomposition_residual = total_cov - within - between
+    _require(bool(torch.isfinite(decomposition_residual).all()), "covariance decomposition is non-finite")
+    trace_total = torch.trace(total_cov)
+    trace_within = torch.trace(within)
+    trace_between = torch.trace(between)
+    _require(bool(trace_total.gt(0.0)), "total covariance trace is zero")
+    class_mean_deviation_norms = (class_mean_tensor - total_mean).norm(dim=1)
+    class_covariance_traces = torch.diagonal(class_covariance_tensor, dim1=1, dim2=2).sum(dim=1)
+    class_offdiag_fractions = torch.tensor(
+        [
+            _off_diagonal_summary(covariance, _covariance_and_correlation(view[labels == label])[1])[
+                "off_diagonal_covariance_fraction"
+            ]
+            for label, covariance in enumerate(class_covariance_tensor)
+        ],
+        dtype=torch.float64,
+    )
+    return {
+        "class_counts": class_counts,
+        "class_mean_vectors": [[float(item) for item in row] for row in class_mean_tensor.tolist()],
+        "class_mean_tensor_sha256": tensor_sha256(class_mean_tensor),
+        "class_mean_norm_summary": _summary(class_mean_tensor.norm(dim=1)),
+        "class_mean_deviation_norm_summary": _summary(class_mean_deviation_norms),
+        "class_covariance_trace_summary": _summary(class_covariance_traces),
+        "class_covariance_off_diagonal_fraction_summary": _summary(class_offdiag_fractions),
+        "pooled": {
+            "mean_summary": _summary(total_mean),
+            "covariance_trace": float(trace_total),
+            "covariance_frobenius": float(total_cov.norm()),
+            "cross_correlation": _off_diagonal_summary(total_cov, total_corr),
+        },
+        "within_class": {
+            "covariance_trace": float(trace_within),
+            "trace_fraction_of_total": float(trace_within / trace_total),
+            "covariance_frobenius": float(within.norm()),
+        },
+        "between_class": {
+            "covariance_trace": float(trace_between),
+            "trace_fraction_of_total": float(trace_between / trace_total),
+            "covariance_frobenius": float(between.norm()),
+        },
+        "decomposition_residual_frobenius": float(decomposition_residual.norm()),
+        "identity": {
+            "formula": "C_total=C_within+C_between with N-1 pooled denominator",
+            "covariance_denominator": "N-1",
+            "class_covariance_denominator": "n_class-1",
+        },
+    }
+
+
+def _per_class_score_diagnostics(
+    scores: torch.Tensor,
+    labels: torch.Tensor,
+) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    for label in range(CLASS_COUNT):
+        class_scores = scores[labels == label]
+        statistics = _score_statistics(class_scores)
+        result.append(
+            {
+                "label": label,
+                "count": statistics["count"],
+                "radial_r2_mean": statistics["radial_r2_mean"],
+                "radial_r2_variance": statistics["radial_r2_variance"],
+                "radial_r2_p95": statistics["radial_r2_summary"]["p95"],
+                "maximum_abs_cross_correlation": statistics["cross_correlation"]["maximum_abs_cross_correlation"],
+                "off_diagonal_covariance_fraction": statistics["cross_correlation"]["off_diagonal_covariance_fraction"],
+                "excess_kurtosis_abs_mean": statistics["excess_kurtosis_abs_summary"]["mean"],
+            }
+        )
+    return result
+
+
+def _class_centering_effect(
+    global_statistics: Mapping[str, Any],
+    centered_statistics: Mapping[str, Any],
+) -> dict[str, Any]:
+    global_values = {
+        "radial_mean_abs_error": abs(global_statistics["radial_r2_mean"] - RANK),
+        "radial_variance_abs_error": abs(global_statistics["radial_r2_variance"] - 2 * RANK),
+        "covariance_identity_frobenius": global_statistics["covariance_identity_frobenius"],
+        "correlation_identity_frobenius": global_statistics["correlation_identity_frobenius"],
+        "off_diagonal_covariance_fraction": global_statistics["cross_correlation"]["off_diagonal_covariance_fraction"],
+    }
+    centered_values = {
+        "radial_mean_abs_error": abs(centered_statistics["radial_r2_mean"] - RANK),
+        "radial_variance_abs_error": abs(centered_statistics["radial_r2_variance"] - 2 * RANK),
+        "covariance_identity_frobenius": centered_statistics["covariance_identity_frobenius"],
+        "correlation_identity_frobenius": centered_statistics["correlation_identity_frobenius"],
+        "off_diagonal_covariance_fraction": centered_statistics["cross_correlation"]["off_diagonal_covariance_fraction"],
+    }
+    return {
+        name: {
+            "global": float(global_values[name]),
+            "class_centered": float(centered_values[name]),
+            "reduction_global_minus_class_centered": float(global_values[name] - centered_values[name]),
+        }
+        for name in global_values
+    }
+
+
+def _compare_stability(
+    cross_bank: Mapping[str, float],
+    fit_within: Mapping[str, float],
+    validation_within: Mapping[str, float],
+    primary_metrics: tuple[str, ...],
+) -> dict[str, Any]:
+    rows: dict[str, Any] = {}
+    for name in primary_metrics:
+        cross_value = float(cross_bank[name])
+        fit_value = float(fit_within[name])
+        validation_value = float(validation_within[name])
+        reference = max(fit_value, validation_value)
+        rows[name] = {
+            "fit_vs_validation": cross_value,
+            "fit_half_a_vs_fit_half_b": fit_value,
+            "validation_half_a_vs_validation_half_b": validation_value,
+            "max_within_bank_reference": reference,
+            "cross_exceeds_both_within_references": cross_value > fit_value and cross_value > validation_value,
+            "cross_to_max_within_ratio": float(cross_value / reference) if reference > 0.0 else (0.0 if cross_value == 0.0 else None),
+        }
+    dominant = all(row["cross_exceeds_both_within_references"] for row in rows.values())
+    return {
+        "primary_metrics": list(primary_metrics),
+        "metrics": rows,
+        "dominant_rule": "all primary fit-vs-validation discrepancies exceed both deterministic within-bank references",
+        "dominant_across_all_primary_metrics": dominant,
+    }
+
+
+def _load_and_verify_inputs(repo_root: Path) -> dict[str, Any]:
+    source = _read_json_exact(repo_root / SOURCE_MANIFEST, EXPECTED_SOURCE_MANIFEST_SHA256, "source manifest")
+    partition = _read_json_exact(repo_root / PARTITION_MANIFEST, EXPECTED_PARTITION_MANIFEST_SHA256, "partition manifest")
+    firewall = _read_json_exact(repo_root / FIREWALL_MANIFEST, EXPECTED_FIREWALL_MANIFEST_SHA256, "firewall manifest")
+    _require(source.get("schema") == "ols_producer_source_manifest.v1", "source schema changed")
+    _require(source.get("producer_lineage") == "OLS_LATENT_PRODUCER_V1", "source lineage changed")
+    _require(source.get("source_coordinate") == "PROJECT_COMPLEX_OLS_V1 / R3_COMPLEX", "source coordinate changed")
+    source_artifact = _mapping(source.get("source_artifact"), "source artifact")
+    _require(
+        source_artifact.get("sha256") == EXPECTED_SOURCE_ARTIFACT_SHA256
+        and source_artifact.get("semantic_manifest_sha256") == EXPECTED_SOURCE_SEMANTIC_MANIFEST_SHA256
+        and source_artifact.get("index_sha256") == EXPECTED_SOURCE_INDEX_SHA256
+        and source_artifact.get("label_sha256") == EXPECTED_SOURCE_LABEL_SHA256
+        and source_artifact.get("r3_complex_sha256") == EXPECTED_SOURCE_R3_SHA256
+        and source_artifact.get("dataset") == "mnist_train"
+        and source_artifact.get("count") == 1000
+        and source_artifact.get("per_class") == 100
+        and source_artifact.get("shape") == [1000, DIMENSION]
+        and source_artifact.get("dtype") == "torch.complex64",
+        "source artifact contract changed",
+    )
+    _require(partition.get("schema") == "ols_producer_partition_manifest.v1", "partition schema changed")
+    _require(partition.get("source_artifact_sha256") == EXPECTED_SOURCE_ARTIFACT_SHA256, "partition source binding changed")
+    _require(partition.get("algorithm") == "label_major; within_class_source_index_ascending; first_50_fit_last_50_validation", "partition algorithm changed")
+    _require(partition.get("rng") == "none", "partition RNG changed")
+    _require(partition.get("runtime_resplit") is False and partition.get("runtime_reselection") is False, "partition runtime mutation changed")
+    _require(partition.get("fit_count_per_class") == ROWS_PER_CLASS and partition.get("validation_count_per_class") == ROWS_PER_CLASS, "partition balance changed")
+    overlap = _mapping(partition.get("overlap"), "partition overlap")
+    _require(
+        overlap.get("fit_validation_row_position_count") == 0
+        and overlap.get("fit_validation_source_index_count") == 0
+        and overlap.get("union_source_row_count") == 1000,
+        "fit-validation partition overlap changed",
+    )
+    _require(partition.get("partition_identity", {}).get("semantic_identity_sha256") == EXPECTED_PARTITION_IDENTITY_SHA256, "partition identity changed")
+    _require(firewall.get("schema") == "ols_producer_data_firewall_manifest.v1" and firewall.get("firewall_pass") is True, "firewall is not passing")
+    future_consumer = _mapping(firewall.get("future_consumer"), "firewall future consumer")
+    _require(
+        future_consumer.get("must_verify_target_bank_identity") is True
+        and future_consumer.get("runtime_membership_mutation") is False
+        and future_consumer.get("runtime_reselection") is False
+        and future_consumer.get("runtime_resplit") is False,
+        "firewall consumer contract changed",
+    )
+    protected = {
+        item.get("canonical_name"): item
+        for item in firewall.get("protected_identities", [])
+        if isinstance(item, Mapping)
+    }
+    for name in ("S1_SELECTION", "S1_CONFIRMATION", "S2_VALIDATION", "FORMAL_S3_PROTECTED_PANEL"):
+        entry = _mapping(protected.get(name), f"protected identity {name}")
+        _require(entry.get("status") == "PASS_ZERO_OVERLAP", f"protected identity {name} is not isolated")
+        _require(entry.get("fit_overlap_count") == 0 and entry.get("validation_overlap_count") == 0, f"protected identity {name} overlap changed")
+
+    model_order = _read_json_exact(repo_root / MODEL_ORDER_RESULT, EXPECTED_MODEL_ORDER_SHA256, "model-order result")
+    _require(model_order.get("classification") == "N3_LOW_RANK_MODEL_ORDER_SELECTED", "model-order classification changed")
+    _require(model_order.get("selection", {}).get("r_selected") == RANK, "model-order rank changed")
+    _require(model_order.get("semantic_inputs", {}).get("coordinate") == "R2_AMPLITUDE", "model-order coordinate changed")
+
+    producer_manifest = _read_json_exact(repo_root / PRODUCER_MANIFEST, EXPECTED_PRODUCER_MANIFEST_SHA256, "producer manifest")
+    _require(producer_manifest.get("classification") == "N3_AMPLITUDE_PRODUCER_BASELINE_FITTED", "producer classification changed")
+    _require(_mapping(producer_manifest.get("artifact"), "producer artifact").get("sha256") == EXPECTED_PRODUCER_STATE_SHA256, "producer state binding changed")
+    producer_fit = _mapping(producer_manifest.get("fit"), "producer fit")
+    _require(producer_fit.get("validation_parameter_leakage") is False and producer_fit.get("parameter_source") == "fit bank only", "producer fit leakage contract changed")
+    state_payload = safe_torch_load(repo_root / PRODUCER_STATE, expected_sha256=EXPECTED_PRODUCER_STATE_SHA256)
+    state = _mapping(state_payload, "producer state")
+    _require(state.get("schema") == "n3_amplitude_producer_state.v1", "producer state schema changed")
+    _require(state.get("coordinate") == "R2_AMPLITUDE" and state.get("r") == RANK and state.get("d") == DIMENSION and state.get("n_fit") == FIT_COUNT, "producer state dimensions changed")
+    _require(state.get("score_model") == "DIAGONAL_GAUSSIAN_LOW_RANK_SCORE_BASELINE_V1", "producer score model changed")
+    _require(state.get("validation_parameter_leakage") is False and state.get("rng") == "NONE", "producer state leakage/RNG contract changed")
+    mu_fit = state.get("mu_fit")
+    W_99 = state.get("W_99")
+    lambda_values = state.get("lambda_1_to_99")
+    for value, shape, name in (
+        (mu_fit, (DIMENSION,), "mu_fit"),
+        (W_99, (DIMENSION, RANK), "W_99"),
+        (lambda_values, (RANK,), "lambda"),
+    ):
+        _require(torch.is_tensor(value) and tuple(value.shape) == shape and value.dtype == torch.float64, f"{name} state changed")
+        _require(bool(torch.isfinite(value).all()), f"{name} state non-finite")
+    _require(bool(lambda_values.gt(0.0).all()), "lambda is not positive")
+    _require(bool(torch.allclose(W_99.T.mm(W_99), torch.eye(RANK, dtype=torch.float64), rtol=ORTHOGONALITY_RTOL, atol=ORTHOGONALITY_ATOL)), "W_99 is not orthonormal")
+    tensor_identities = _mapping(producer_manifest.get("tensor_identities"), "producer tensor identities")
+    _require(tensor_sha256(mu_fit) == tensor_identities.get("mu_fit_sha256"), "mu identity changed")
+    _require(tensor_sha256(W_99) == tensor_identities.get("W_99_sha256"), "W identity changed")
+    _require(tensor_sha256(lambda_values) == tensor_identities.get("lambda_1_to_99_sha256"), "lambda identity changed")
+
+    failed_report = _read_json_exact(repo_root / FAILED_VALIDATION_REPORT, EXPECTED_FAILED_VALIDATION_REPORT_SHA256, "failed baseline validation report")
+    _require(failed_report.get("status") == "valid_completed", "failed baseline report status changed")
+    _require(failed_report.get("classification") == "N3_AMPLITUDE_PRODUCER_BASELINE_NOT_SUPPORTED", "failed baseline classification changed")
+    _require(failed_report.get("frozen_producer", {}).get("r") == RANK, "failed baseline producer rank changed")
+    _require(failed_report.get("validation_bank", {}).get("sha256") == EXPECTED_VALIDATION_BANK_SHA256, "failed baseline validation binding changed")
+
+    q_fit, fit_labels, fit_indices, fit_positions, fit_identity = _load_bank(
+        repo_root, FIT_BANK, EXPECTED_FIT_BANK_SHA256, "OLS_PRODUCER_FIT_BANK_V1",
+        EXPECTED_FIT_R3_SHA256, EXPECTED_FIT_ROW_POSITION_SHA256, EXPECTED_FIT_SOURCE_INDEX_SHA256,
+    )
+    q_validation, validation_labels, validation_indices, validation_positions, validation_identity = _load_bank(
+        repo_root, VALIDATION_BANK, EXPECTED_VALIDATION_BANK_SHA256, "OLS_PRODUCER_INTERNAL_VALIDATION_BANK_V1",
+        EXPECTED_VALIDATION_R3_SHA256, EXPECTED_VALIDATION_ROW_POSITION_SHA256, EXPECTED_VALIDATION_SOURCE_INDEX_SHA256,
+    )
+    _require(set(fit_indices.tolist()).isdisjoint(validation_indices.tolist()), "fit/validation source indices overlap")
+    _require(set(fit_positions.tolist()).isdisjoint(validation_positions.tolist()), "fit/validation source rows overlap")
+    _require(set(fit_positions.tolist()) | set(validation_positions.tolist()) == set(range(1000)), "fit/validation source rows do not cover 1000 rows")
+    _require(torch.equal(fit_labels.unique(sorted=True), validation_labels.unique(sorted=True)), "fit/validation class domains differ")
+    return {
+        "source_manifest": {"path": _relative(repo_root, repo_root / SOURCE_MANIFEST), "sha256": EXPECTED_SOURCE_MANIFEST_SHA256},
+        "partition_manifest": {"path": _relative(repo_root, repo_root / PARTITION_MANIFEST), "sha256": EXPECTED_PARTITION_MANIFEST_SHA256, "semantic_identity_sha256": EXPECTED_PARTITION_IDENTITY_SHA256},
+        "firewall_manifest": {"path": _relative(repo_root, repo_root / FIREWALL_MANIFEST), "sha256": EXPECTED_FIREWALL_MANIFEST_SHA256, "firewall_pass": True},
+        "model_order": {"path": _relative(repo_root, repo_root / MODEL_ORDER_RESULT), "sha256": EXPECTED_MODEL_ORDER_SHA256, "r": RANK},
+        "producer_manifest": {"path": _relative(repo_root, repo_root / PRODUCER_MANIFEST), "sha256": EXPECTED_PRODUCER_MANIFEST_SHA256, "state_sha256": EXPECTED_PRODUCER_STATE_SHA256},
+        "failed_validation_report": {"path": _relative(repo_root, repo_root / FAILED_VALIDATION_REPORT), "sha256": EXPECTED_FAILED_VALIDATION_REPORT_SHA256, "classification": failed_report["classification"]},
+        "fit_bank": fit_identity,
+        "internal_validation_bank": validation_identity,
+        "producer": {"coordinate": "R2_AMPLITUDE", "r": RANK, "d": DIMENSION, "n_fit": FIT_COUNT, "lambda_denominator": FIT_COUNT - 1, "mu_fit_sha256": tensor_sha256(mu_fit), "W_99_sha256": tensor_sha256(W_99), "lambda_sha256": tensor_sha256(lambda_values)},
+        "mu_fit": mu_fit,
+        "W_99": W_99,
+        "lambda_values": lambda_values,
+        "q_fit": q_fit,
+        "q_validation": q_validation,
+        "fit_labels": fit_labels,
+        "validation_labels": validation_labels,
+        "fit_positions": fit_positions,
+        "validation_positions": validation_positions,
+    }
+
+
+def _stability_report(
+    q_fit: torch.Tensor,
+    q_validation: torch.Tensor,
+    z_fit: torch.Tensor,
+    z_validation: torch.Tensor,
+    fit_split: Mapping[str, torch.Tensor],
+    validation_split: Mapping[str, torch.Tensor],
+) -> dict[str, Any]:
+    fit_a_q = q_fit.index_select(0, fit_split["half_a"])
+    fit_b_q = q_fit.index_select(0, fit_split["half_b"])
+    validation_a_q = q_validation.index_select(0, validation_split["half_a"])
+    validation_b_q = q_validation.index_select(0, validation_split["half_b"])
+    fit_a_z = z_fit.index_select(0, fit_split["half_a"])
+    fit_b_z = z_fit.index_select(0, fit_split["half_b"])
+    validation_a_z = z_validation.index_select(0, validation_split["half_a"])
+    validation_b_z = z_validation.index_select(0, validation_split["half_b"])
+    q_pairs = {
+        "FIT_VS_VALIDATION": _q_pair_metrics(q_fit, q_validation),
+        "FIT_HALF_A_VS_FIT_HALF_B": _q_pair_metrics(fit_a_q, fit_b_q),
+        "VALIDATION_HALF_A_VS_VALIDATION_HALF_B": _q_pair_metrics(validation_a_q, validation_b_q),
+    }
+    score_pairs = {
+        "FIT_VS_VALIDATION": _score_pair_metrics(z_fit, z_validation),
+        "FIT_HALF_A_VS_FIT_HALF_B": _score_pair_metrics(fit_a_z, fit_b_z),
+        "VALIDATION_HALF_A_VS_VALIDATION_HALF_B": _score_pair_metrics(validation_a_z, validation_b_z),
+    }
+    q_primary = (
+        "mean_l2",
+        "covariance_relative_frobenius",
+        "energy_distance",
+        "norm_quantile_l2",
+        "energy_quantile_l2",
+    )
+    score_primary = (
+        "mean_l2",
+        "variance_l2",
+        "correlation_frobenius",
+        "radial_mean_abs_delta",
+        "radial_variance_abs_delta",
+        "radial_quantile_l2",
+        "energy_distance",
+    )
+    q_stability = _compare_stability(
+        q_pairs["FIT_VS_VALIDATION"],
+        q_pairs["FIT_HALF_A_VS_FIT_HALF_B"],
+        q_pairs["VALIDATION_HALF_A_VS_VALIDATION_HALF_B"],
+        q_primary,
+    )
+    score_stability = _compare_stability(
+        score_pairs["FIT_VS_VALIDATION"],
+        score_pairs["FIT_HALF_A_VS_FIT_HALF_B"],
+        score_pairs["VALIDATION_HALF_A_VS_VALIDATION_HALF_B"],
+        score_primary,
+    )
+    return {
+        "split_convention": "within each bank and class, local class occurrence positions 0,2,...,48 form half A; 1,3,...,49 form half B",
+        "q_space": {"pair_metrics": q_pairs, "stability_comparison": q_stability},
+        "score_space": {"pair_metrics": score_pairs, "stability_comparison": score_stability},
+        "partition_stability_confound": bool(
+            q_stability["dominant_across_all_primary_metrics"]
+            and score_stability["dominant_across_all_primary_metrics"]
+        ),
+        "partition_stability_rule": "DATA_PARTITION_STABILITY_CONFOUND requires cross-bank dominance across every primary q-space and score-space metric; otherwise partition instability is not treated as the dominant attribution",
+    }
+
+
+def _class_observer_report(
+    q_fit: torch.Tensor,
+    q_validation: torch.Tensor,
+    fit_labels: torch.Tensor,
+    validation_labels: torch.Tensor,
+    z_fit: torch.Tensor,
+    z_validation: torch.Tensor,
+    mu_fit: torch.Tensor,
+    W_99: torch.Tensor,
+    lambda_values: torch.Tensor,
+) -> dict[str, Any]:
+    fit_decomposition = _class_decomposition(q_fit, fit_labels)
+    validation_decomposition = _class_decomposition(q_validation, validation_labels)
+    fit_class_means = torch.tensor(fit_decomposition["class_mean_vectors"], dtype=torch.float64)
+    validation_class_means = torch.tensor(validation_decomposition["class_mean_vectors"], dtype=torch.float64)
+    fit_centered_q = q_fit - fit_class_means.index_select(0, fit_labels)
+    validation_centered_q = q_validation - validation_class_means.index_select(0, validation_labels)
+    fit_centered_z = _standardized_scores(fit_centered_q, mu_fit * 0.0, W_99, lambda_values)
+    validation_centered_z = _standardized_scores(validation_centered_q, mu_fit * 0.0, W_99, lambda_values)
+    fit_global_stats = _score_statistics(z_fit)
+    validation_global_stats = _score_statistics(z_validation)
+    fit_centered_stats = _score_statistics(fit_centered_z)
+    validation_centered_stats = _score_statistics(validation_centered_z)
+    class_mean_fit_vs_validation = {
+        "per_class_l2": [
+            float((fit_class_means[label] - validation_class_means[label]).norm())
+            for label in range(CLASS_COUNT)
+        ],
+        "summary": _summary(
+            torch.stack(
+                [fit_class_means[label] - validation_class_means[label] for label in range(CLASS_COUNT)]
+            ).norm(dim=1)
+        ),
+    }
+    return {
+        "fit": {
+            "covariance_decomposition": fit_decomposition,
+            "pooled_score": fit_global_stats,
+            "class_centered_score": fit_centered_stats,
+            "per_class_pooled_score": _per_class_score_diagnostics(z_fit, fit_labels),
+            "per_class_class_centered_score": _per_class_score_diagnostics(fit_centered_z, fit_labels),
+            "class_centering_effect": _class_centering_effect(fit_global_stats, fit_centered_stats),
+        },
+        "validation": {
+            "covariance_decomposition": validation_decomposition,
+            "pooled_score": validation_global_stats,
+            "class_centered_score": validation_centered_stats,
+            "per_class_pooled_score": _per_class_score_diagnostics(z_validation, validation_labels),
+            "per_class_class_centered_score": _per_class_score_diagnostics(validation_centered_z, validation_labels),
+            "class_centering_effect": _class_centering_effect(validation_global_stats, validation_centered_stats),
+        },
+        "fit_vs_validation_class_mean_observer": class_mean_fit_vs_validation,
+        "label_role": "diagnostic observer only; labels are not producer inputs or future generation conditions",
+    }
+
+
+def _select_family(
+    partition_confounded: bool,
+    class_observer: Mapping[str, Any],
+) -> dict[str, Any]:
+    if partition_confounded:
+        return {
+            "classification": CLASSIFICATION_PARTITION,
+            "selected_family": None,
+            "rule": "partition stability confound takes precedence over family selection",
+        }
+    fit_effect = class_observer["fit"]["class_centering_effect"]
+    validation_effect = class_observer["validation"]["class_centering_effect"]
+    class_centering_metrics = (
+        "covariance_identity_frobenius",
+        "radial_mean_abs_error",
+        "off_diagonal_covariance_fraction",
+    )
+    fit_reductions = [fit_effect[name]["reduction_global_minus_class_centered"] for name in class_centering_metrics]
+    validation_reductions = [validation_effect[name]["reduction_global_minus_class_centered"] for name in class_centering_metrics]
+    fit_between = class_observer["fit"]["covariance_decomposition"]["between_class"]["trace_fraction_of_total"]
+    validation_between = class_observer["validation"]["covariance_decomposition"]["between_class"]["trace_fraction_of_total"]
+    fit_within = class_observer["fit"]["covariance_decomposition"]["within_class"]["trace_fraction_of_total"]
+    validation_within = class_observer["validation"]["covariance_decomposition"]["within_class"]["trace_fraction_of_total"]
+    mixture_selected = bool(
+        all(value > 0.0 for value in fit_reductions)
+        and all(value > 0.0 for value in validation_reductions)
+        and fit_between > fit_within
+        and validation_between > validation_within
+    )
+    centered_validation_score = class_observer["validation"]["class_centered_score"]
+    centered_dependence_remains = bool(
+        centered_validation_score["correlation_identity_frobenius"] > 0.0
+        and centered_validation_score["cross_correlation"]["maximum_abs_cross_correlation"] > 0.0
+    )
+    radial_mismatch_remains = bool(
+        centered_validation_score["radial_r2_mean"] != RANK
+        or centered_validation_score["radial_r2_variance"] != 2 * RANK
+    )
+    heavy_tail_selected = bool(
+        not mixture_selected
+        and radial_mismatch_remains
+        and not centered_dependence_remains
+    )
+    non_gaussian_dependence_selected = bool(
+        not mixture_selected
+        and centered_dependence_remains
+        and radial_mismatch_remains
+        and all(value <= 0.0 for value in validation_reductions)
+    )
+    if mixture_selected:
+        selected_family = "UNSUPERVISED_MIXTURE_LOCAL_FACTOR_AMPLITUDE_PRODUCER_V1"
+        classification = CLASSIFICATION_SELECTED
+    elif heavy_tail_selected:
+        selected_family = "MULTIVARIATE_T_OR_SCALE_MIXTURE_SCORE_BASELINE_V1"
+        classification = CLASSIFICATION_SELECTED
+    elif non_gaussian_dependence_selected:
+        selected_family = "NON_GAUSSIAN_INDEPENDENT_SCORE_PRODUCER_V1"
+        classification = CLASSIFICATION_SELECTED
+    else:
+        selected_family = None
+        classification = CLASSIFICATION_MIXED
+    return {
+        "classification": classification,
+        "selected_family": selected_family,
+        "candidate_rules": {
+            "partition": "all primary q and score fit-vs-validation discrepancies exceed both within-bank references",
+            "mixture_local": "all three class-centering reductions are strictly positive in both banks and between-class trace exceeds within-class trace in both banks",
+            "heavy_tail": "mixture rule is false, radial mismatch remains, and centered dependence is absent",
+            "non_gaussian_dependence": "mixture rule is false, centered dependence and radial mismatch remain, and all validation class-centering reductions are non-positive",
+        },
+        "candidate_observations": {
+            "fit_class_centering_reductions": {name: float(value) for name, value in zip(class_centering_metrics, fit_reductions)},
+            "validation_class_centering_reductions": {name: float(value) for name, value in zip(class_centering_metrics, validation_reductions)},
+            "fit_between_trace_fraction": float(fit_between),
+            "fit_within_trace_fraction": float(fit_within),
+            "validation_between_trace_fraction": float(validation_between),
+            "validation_within_trace_fraction": float(validation_within),
+            "centered_dependence_remains": centered_dependence_remains,
+            "radial_mismatch_remains": radial_mismatch_remains,
+        },
+        "candidate_status": {
+            "MULTIVARIATE_T_OR_SCALE_MIXTURE_SCORE_BASELINE_V1": heavy_tail_selected,
+            "UNSUPERVISED_MIXTURE_LOCAL_FACTOR_AMPLITUDE_PRODUCER_V1": mixture_selected,
+            "NON_GAUSSIAN_INDEPENDENT_SCORE_PRODUCER_V1": non_gaussian_dependence_selected,
+            "DATA_PARTITION_STABILITY_REASSESSMENT": False,
+        },
+    }
+
+
+def _write_report(repo_root: Path, output_dir: Path, report: Mapping[str, Any]) -> Path:
+    if output_dir.exists():
+        raise FileExistsError(f"refusing to reuse write-once attribution output: {output_dir}")
+    output_dir.parent.mkdir(parents=True, exist_ok=True)
+    temporary = Path(tempfile.mkdtemp(prefix=f".{output_dir.name}.", dir=output_dir.parent))
+    try:
+        target = temporary / REPORT_NAME
+        atomic_write_new_json(target, report, artifact_kind="N3 producer mismatch attribution report")
+        _require(sorted(path.name for path in temporary.iterdir()) == [REPORT_NAME], "attribution output layout changed")
+        if output_dir.exists():
+            raise FileExistsError(f"write-once attribution output appeared: {output_dir}")
+        os.replace(temporary, output_dir)
+    finally:
+        if temporary.exists():
+            shutil.rmtree(temporary)
+    return output_dir / REPORT_NAME
+
+
+def execute(repo_root: Path, output_dir: Path) -> dict[str, Any]:
+    git = _git_state(repo_root)
+    _require(git["branch"] == EXPECTED_BRANCH, "current branch is not the N3 authority branch")
+    _require(not git["dirty_paths"], f"worktree must be clean: {git['dirty_paths']}")
+    input_hashes_before = {
+        "fit_bank": file_sha256(repo_root / FIT_BANK),
+        "validation_bank": file_sha256(repo_root / VALIDATION_BANK),
+        "producer_state": file_sha256(repo_root / PRODUCER_STATE),
+    }
+    _require(input_hashes_before["fit_bank"] == EXPECTED_FIT_BANK_SHA256, "fit bank hash changed")
+    _require(input_hashes_before["validation_bank"] == EXPECTED_VALIDATION_BANK_SHA256, "validation bank hash changed")
+    _require(input_hashes_before["producer_state"] == EXPECTED_PRODUCER_STATE_SHA256, "producer state hash changed")
+    authorities = _load_and_verify_inputs(repo_root)
+    q_fit = authorities.pop("q_fit")
+    q_validation = authorities.pop("q_validation")
+    fit_labels = authorities.pop("fit_labels")
+    validation_labels = authorities.pop("validation_labels")
+    fit_positions = authorities.pop("fit_positions")
+    validation_positions = authorities.pop("validation_positions")
+    mu_fit = authorities.pop("mu_fit")
+    W_99 = authorities.pop("W_99")
+    lambda_values = authorities.pop("lambda_values")
+    z_fit = _standardized_scores(q_fit, mu_fit, W_99, lambda_values)
+    z_validation = _standardized_scores(q_validation, mu_fit, W_99, lambda_values)
+    fit_split = _class_balanced_split(fit_labels, fit_positions)
+    validation_split = _class_balanced_split(validation_labels, validation_positions)
+    split_identity = {
+        "algorithm": "within-bank class-local occurrence positions even->half_a, odd->half_b",
+        "rng": "NONE",
+        "runtime_resplit": False,
+        "fit": {
+            "half_a_count": int(fit_split["half_a"].numel()),
+            "half_b_count": int(fit_split["half_b"].numel()),
+            "half_a_bank_row_sha256": tensor_sha256(fit_split["half_a"]),
+            "half_b_bank_row_sha256": tensor_sha256(fit_split["half_b"]),
+            "half_a_source_row_sha256": tensor_sha256(fit_split["half_a_source_rows"]),
+            "half_b_source_row_sha256": tensor_sha256(fit_split["half_b_source_rows"]),
+        },
+        "validation": {
+            "half_a_count": int(validation_split["half_a"].numel()),
+            "half_b_count": int(validation_split["half_b"].numel()),
+            "half_a_bank_row_sha256": tensor_sha256(validation_split["half_a"]),
+            "half_b_bank_row_sha256": tensor_sha256(validation_split["half_b"]),
+            "half_a_source_row_sha256": tensor_sha256(validation_split["half_a_source_rows"]),
+            "half_b_source_row_sha256": tensor_sha256(validation_split["half_b_source_rows"]),
+        },
+    }
+    stability = _stability_report(q_fit, q_validation, z_fit, z_validation, fit_split, validation_split)
+    class_observer = _class_observer_report(
+        q_fit,
+        q_validation,
+        fit_labels,
+        validation_labels,
+        z_fit,
+        z_validation,
+        mu_fit,
+        W_99,
+        lambda_values,
+    )
+    selection = _select_family(stability["partition_stability_confound"], class_observer)
+    input_hashes_after = {
+        "fit_bank": file_sha256(repo_root / FIT_BANK),
+        "validation_bank": file_sha256(repo_root / VALIDATION_BANK),
+        "producer_state": file_sha256(repo_root / PRODUCER_STATE),
+    }
+    _require(input_hashes_before == input_hashes_after, "frozen diagnostic input changed during attribution")
+    report = {
+        "schema": REPORT_SCHEMA,
+        "version": 1,
+        "task_id": TASK_ID,
+        "gate": GATE,
+        "status": "valid_completed",
+        "classification": selection["classification"],
+        "selected_next_family": selection["selected_family"],
+        "semantic_inputs": {
+            "producer_data": "OLS_PRODUCER_DATA_V1",
+            "model_order": "N3_LOW_RANK_MODEL_ORDER_SELECTED",
+            "producer_baseline": "N3_AMPLITUDE_PRODUCER_BASELINE_FITTED",
+            "failed_validation": "N3_AMPLITUDE_PRODUCER_BASELINE_NOT_SUPPORTED",
+            "coordinate": "R2_AMPLITUDE",
+            "score_basis": "frozen W_99 and lambda from fitted producer; no refit",
+            "labels": "diagnostic observer only",
+            "authorities": authorities,
+        },
+        "split_identity": split_identity,
+        "empirical_fit_vs_validation_stability": stability,
+        "pooled_covariance_decomposition": {
+            "fit": class_observer["fit"]["covariance_decomposition"],
+            "validation": class_observer["validation"]["covariance_decomposition"],
+            "identity": "C_total=C_within+C_between; pooled N-1 denominator and per-class n-1 denominator",
+        },
+        "within_class_vs_between_class_structure": {
+            "fit": {
+                "between_trace_fraction": class_observer["fit"]["covariance_decomposition"]["between_class"]["trace_fraction_of_total"],
+                "within_trace_fraction": class_observer["fit"]["covariance_decomposition"]["within_class"]["trace_fraction_of_total"],
+                "class_mean_deviation_norm_summary": class_observer["fit"]["covariance_decomposition"]["class_mean_deviation_norm_summary"],
+                "class_covariance_trace_summary": class_observer["fit"]["covariance_decomposition"]["class_covariance_trace_summary"],
+            },
+            "validation": {
+                "between_trace_fraction": class_observer["validation"]["covariance_decomposition"]["between_class"]["trace_fraction_of_total"],
+                "within_trace_fraction": class_observer["validation"]["covariance_decomposition"]["within_class"]["trace_fraction_of_total"],
+                "class_mean_deviation_norm_summary": class_observer["validation"]["covariance_decomposition"]["class_mean_deviation_norm_summary"],
+                "class_covariance_trace_summary": class_observer["validation"]["covariance_decomposition"]["class_covariance_trace_summary"],
+            },
+        },
+        "class_centered_score_effect": {
+            "fit": class_observer["fit"]["class_centering_effect"],
+            "validation": class_observer["validation"]["class_centering_effect"],
+        },
+        "per_class_score_diagnostics": {
+            "fit_pooled": class_observer["fit"]["per_class_pooled_score"],
+            "fit_class_centered": class_observer["fit"]["per_class_class_centered_score"],
+            "validation_pooled": class_observer["validation"]["per_class_pooled_score"],
+            "validation_class_centered": class_observer["validation"]["per_class_class_centered_score"],
+        },
+        "radial_heavy_tail_evidence": {
+            "fit_pooled": class_observer["fit"]["pooled_score"],
+            "fit_class_centered": class_observer["fit"]["class_centered_score"],
+            "validation_pooled": class_observer["validation"]["pooled_score"],
+            "validation_class_centered": class_observer["validation"]["class_centered_score"],
+            "interpretation": "descriptive radial, skew, and kurtosis evidence only; no Student-t, scale-mixture, or tail parameter was fitted",
+        },
+        "residual_score_dependence_evidence": {
+            "fit_pooled_cross_correlation": class_observer["fit"]["pooled_score"]["cross_correlation"],
+            "fit_class_centered_cross_correlation": class_observer["fit"]["class_centered_score"]["cross_correlation"],
+            "validation_pooled_cross_correlation": class_observer["validation"]["pooled_score"]["cross_correlation"],
+            "validation_class_centered_cross_correlation": class_observer["validation"]["class_centered_score"]["cross_correlation"],
+            "interpretation": "descriptive residual dependence evidence only; no ICA, mixture, flow, or non-Gaussian fit was executed",
+        },
+        "failure_attribution": selection,
+        "claims": {
+            "partition_stability_is_not_redefined": True,
+            "labels_not_used_as_producer_inputs": True,
+            "next_family_is_model_assumption_only": selection["selected_family"] is not None,
+            "intrinsic_ols_dimension_supported": False,
+            "full_complex_ols_distribution_supported": False,
+            "semantic_generation_supported": False,
+            "n4_selector_supported": False,
+            "novel_ols_valid": False,
+            "generation_readiness": "not_ready",
+        },
+        "integrity_checks": {
+            "source_partition_firewall_verified": True,
+            "protected_overlap_zero_verified": True,
+            "fit_validation_disjoint_verified": True,
+            "producer_state_verified": True,
+            "failed_validation_report_verified": True,
+            "diagnostic_tensors_finite": True,
+            "frozen_inputs_unchanged": True,
+        },
+        "git": {
+            "branch": git["branch"],
+            "head": git["head"],
+            "dirty_paths": git["dirty_paths"],
+            "consumer_script": _relative(repo_root, Path(__file__).resolve()),
+            "consumer_script_sha256": file_sha256(Path(__file__).resolve()),
+        },
+        "governance": {
+            "training_authorized": False,
+            "formal_promotion": False,
+            "generation_readiness": "not_ready",
+        },
+        "not_executed": [
+            "producer_refit",
+            "rank_reselection",
+            "validation_data_training",
+            "score_sampling_for_new_family",
+            "mixture_fitting",
+            "Student_t_fitting",
+            "ICA_fitting",
+            "normalizing_flow_training",
+            "label_conditioned_producer",
+            "phase_source_selection",
+            "novel_complex_OLS",
+            "optical_generator",
+            "evaluator",
+            "CUDA",
+            "optimizer",
+            "backward",
+            "training",
+        ],
+    }
+    artifact = _write_report(repo_root, output_dir, report)
+    return {
+        "status": report["status"],
+        "classification": report["classification"],
+        "selected_next_family": report["selected_next_family"],
+        "artifact": _relative(repo_root, artifact),
+        "artifact_sha256": file_sha256(artifact),
+        "git_head": git["head"],
+    }
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path(
+            "outputs/20260908_v2/runs/"
+            "lightgen_n3_producer_mismatch_attribution_v1_attempt_01"
+        ),
+        help="fresh write-once attribution output directory",
+    )
+    args = parser.parse_args()
+    repo_root = Path(__file__).resolve().parents[2]
+    output_dir = args.output_dir if args.output_dir.is_absolute() else repo_root / args.output_dir
+    print(json.dumps(execute(repo_root, output_dir), indent=2, sort_keys=True))
+
+
+if __name__ == "__main__":
+    main()
