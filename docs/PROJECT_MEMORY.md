@@ -8,6 +8,29 @@
 交接规则，不替代正式证据、实验报告或历史 transcript。云端 ChatGPT 项目使用它的
 受控上传副本；本文件本身仍以本地 Git 版本为准。
 
+## H-LOMA-GEN-S3 Controller semantic-geometry one-shot repair postmortem（2026-09-07）
+
+`S3_ONE_SHOT_REPAIR_POSTMORTEM_COMPLETE` 已正式登记。该只读 postmortem 消费并核对 historical
+S3 authority=`0779d8d0ffb0a9958064bb3c05d451058cdd7a670a732d6ae1d4ba49c11eb5e6`、historical
+geometry diagnostic=`1112b8331b3a7a31cf4814ad50c6b3ea8b60217771ef222b7182e553d8284682`、Code8
+review=`d8f073987eda234ac9b85731dad66e9d9ffc92eaf896f700ff84ba4de17263fd`、one-shot final-step-492
+checkpoint=`4d7c574d98078df38f9866734ad60bacd82c5a7e18dc9d1737fd70e1f42d8d84`，以及 post-training
+S3 manifest=`e13603745ed9fc70ae4f47975241d7653629000090e89aef5cb38b5357e5018c`。
+
+primary attribution=`FIRST_SECOND_ORDER_GEOMETRY_OBJECTIVE_INSUFFICIENT_SUPPORTED`：first-order
+centroid alignment 与 second-order covariance magnitude/coverage 均改善，但 selection/confirmation
+absolute reachability 仍失败；covariance shape/tangent residual、gain compression 与 class-conditioned
+compression 仍未关闭。local Code8 actuation 保持 `CODE8_LOCAL_CONTROL_FULL_RANK`，无新的 global-folding
+或 parameterization-limitation 证据，因此不得登记 `CURRENT_CONTROLLER_PARAMETERIZATION_LIMITATION_SUPPORTED`。
+class9 targeting/reachability 有改善但仍为 secondary，不能单独改变全局 Gate。`S3` 仍为
+`S3_CONTROL_TO_OLS_WRITABILITY_NOT_SUPPORTED`，`KEEP_8D_PROVISIONALLY` 保持。
+
+exact one-shot repair 已关闭：不 retune、不 second canary、不 S3 rerun、不 class9 repair，S4 仍 blocked；
+`training_authorized=false`、`formal_promotion=false`、`generation_readiness=not_ready` 保持。唯一下一
+research question 是：在冻结当前 8D、S3 panel、optical front-end 与 OLS 的条件下，哪些未被
+first/second-order class moments 约束的 map-level higher-order/support/tangent quantities 决定剩余
+absolute reachability failure？本条不把 residual tangent/folding 解释为已证明的 topology failure。
+
 ## H-LOMA-GEN-S3 Controller semantic-geometry post-step-492 frozen S3 consumer（2026-09-07）
 
 本轮只消费已完成的 post-step-492 candidate，未重新训练、未创建 optimizer、未 backward、未写 candidate

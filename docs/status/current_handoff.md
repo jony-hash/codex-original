@@ -6,6 +6,28 @@
 [experiment history](experiment_history.md)。2026-08-24 重整前的完整长篇记录保存在
 [archived handoff](../archive/current_handoff_pre_sced_20260824.md)，仅供溯源。
 
+## H-LOMA-GEN-S3 Controller semantic-geometry one-shot repair postmortem（2026-09-07）
+
+当前正式状态为 `S3_ONE_SHOT_REPAIR_POSTMORTEM_COMPLETE`，primary attribution 为
+`FIRST_SECOND_ORDER_GEOMETRY_OBJECTIVE_INSUFFICIENT_SUPPORTED`。只读比较绑定 historical S3
+authority=`0779d8d0ffb0a9958064bb3c05d451058cdd7a670a732d6ae1d4ba49c11eb5e6`、geometry diagnostic=
+`1112b8331b3a7a31cf4814ad50c6b3ea8b60217771ef222b7182e553d8284682`、Code8 review=
+`d8f073987eda234ac9b85731dad66e9d9ffc92eaf896f700ff84ba4de17263fd`、final-step-492 checkpoint=
+`4d7c574d98078df38f9866734ad60bacd82c5a7e18dc9d1737fd70e1f42d8d84` 与 post-training S3 manifest=
+`e13603745ed9fc70ae4f47975241d7653629000090e89aef5cb38b5357e5018c`。
+
+结论：centroid alignment 改善，covariance magnitude/coverage 改善，但 absolute reachability 仍失败；
+covariance shape/tangent residual、gain compression 与 class-conditioned compression 仍存在。local
+Code8 actuation 仍为 `CODE8_LOCAL_CONTROL_FULL_RANK`。class9 改善但保持 secondary；没有足够证据支持
+`CURRENT_CONTROLLER_PARAMETERIZATION_LIMITATION_SUPPORTED` 或 global-folding/topology failure。S3 仍为
+`S3_CONTROL_TO_OLS_WRITABILITY_NOT_SUPPORTED`，`KEEP_8D_PROVISIONALLY`。
+
+exact one-shot repair line 已 closed；不 retune、不 second canary、不 S3 rerun、不 class9 repair，S4
+blocked。`training_authorized=false`、`formal_promotion=false`、`generation_readiness=not_ready` 保持。
+唯一下一 research question：在冻结当前 8D、S3 panel、optical front-end 与 OLS 的条件下，哪些未被
+first/second-order class moments 约束的 map-level higher-order/support/tangent quantities 决定剩余
+absolute reachability failure？
+
 ## H-LOMA-GEN-S3 Controller semantic-geometry post-step-492 frozen S3 consumer（2026-09-07）
 
 已完成一次有效的 frozen S3 consumer；不重新训练、不创建 optimizer、不 backward、不写 candidate checkpoint，

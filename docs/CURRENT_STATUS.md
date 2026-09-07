@@ -2500,3 +2500,27 @@ hash 全部一致，optimizer/backward/training/checkpoint write/decoder/evaluat
 调参、class9 repair 或 S3 rerun。治理保持 `mainline_state=closed_at_current_evidence_boundary`、
 `reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、
 `generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false`。
+
+## H-LOMA-GEN-S3 Controller semantic-geometry one-shot repair postmortem（2026-09-07，Windows-native）
+
+本轮仅登记已完成的只读 postmortem，不运行新 scientific experiment。状态为
+`S3_ONE_SHOT_REPAIR_POSTMORTEM_COMPLETE`，primary attribution 为
+`FIRST_SECOND_ORDER_GEOMETRY_OBJECTIVE_INSUFFICIENT_SUPPORTED`。证据身份为：historical S3 authority
+`0779d8d0ffb0a9958064bb3c05d451058cdd7a670a732d6ae1d4ba49c11eb5e6`；historical S3 geometry diagnostic
+`1112b8331b3a7a31cf4814ad50c6b3ea8b60217771ef222b7182e553d8284682`；Code8 review
+`d8f073987eda234ac9b85731dad66e9d9ffc92eaf896f700ff84ba4de17263fd`；one-shot final-step-492 checkpoint
+`4d7c574d98078df38f9866734ad60bacd82c5a7e18dc9d1737fd70e1f42d8d84`；post-training S3 manifest
+`e13603745ed9fc70ae4f47975241d7653629000090e89aef5cb38b5357e5018c`。
+
+postmortem 比较确认：first-order centroid alignment 改善，second-order covariance magnitude/coverage
+改善，但 S3 absolute reachability 仍失败；covariance shape/tangent residual、gain compression 与
+class-conditioned compression 仍未关闭。local Code8 actuation 仍为 `CODE8_LOCAL_CONTROL_FULL_RANK`。
+class9 的 targeting/reachability 有改善但仍为 secondary；不得把 residual tangent/folding 解释为已证明的
+topology failure，也不得登记 `CURRENT_CONTROLLER_PARAMETERIZATION_LIMITATION_SUPPORTED`。
+
+因此 S3 继续为 `S3_CONTROL_TO_OLS_WRITABILITY_NOT_SUPPORTED`，`KEEP_8D_PROVISIONALLY` 保持；exact
+one-shot repair line 已 closed。不得 retune、second canary、S3 rerun、class9 repair 或进入 S4；
+`training_authorized=false`、`formal_promotion=false`、`generation_readiness=not_ready` 保持。
+唯一下一 research question：在冻结当前 8D、S3 panel、optical front-end 与 OLS 的条件下，哪些未被
+first/second-order class moments 约束的 map-level higher-order/support/tangent quantities 决定剩余
+absolute reachability failure？
