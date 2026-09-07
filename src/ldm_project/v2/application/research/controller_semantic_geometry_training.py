@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
@@ -45,6 +46,10 @@ OBJECTIVE_FAMILY = "CLASS_CONDITIONED_R1_FIRST_SECOND_ORDER_GEOMETRY_ALIGNMENT"
 AUTHORIZATION_TOKEN = "AUTHORIZE_ONE_SHOT_CONTROLLER_SEMANTIC_GEOMETRY_TRAINING_CANARY"
 IMPLEMENTATION_READY = "IMPLEMENTATION_READY_FOR_ONE_SHOT_REAUTHORIZATION"
 PREFLIGHT_PASS = "PRETRAINING_HARNESS_PREFLIGHT_PASS"
+TRAINING_PREFLIGHT_SCHEMA = "controller_semantic_geometry_training_preflight.v1"
+TRAINING_PREFLIGHT_GATE = "CONTROLLER_SEMANTIC_GEOMETRY_3_STEP_PREFLIGHT_PASS"
+TRAINING_PREFLIGHT_STEPS = 3
+TRAINING_PREFLIGHT_MAX_SECONDS = 600.0
 INVALID_HARNESS = "invalid_harness"
 
 CLASS_COUNT = 10
@@ -1687,6 +1692,391 @@ def controller_logical_r1(
     return torch.cat(chunks, dim=0)
 
 
+def _controller_clone(
+    generator: IdentityAnchoredConditionalAmplitudeGenerator,
+) -> IdentityAnchoredConditionalAmplitudeGenerator:
+    device = next(generator.parameters()).device
+    clone = IdentityAnchoredConditionalAmplitudeGenerator().to(device)
+    clone.load_state_dict(
+        {name: value.detach().clone() for name, value in generator.state_dict().items()},
+        strict=True,
+    )
+    clone.train(generator.training)
+    return clone
+
+
+def _controller_geometry_update_step(
+    generator: IdentityAnchoredConditionalAmplitudeGenerator,
+    optical_model: torch.nn.Module,
+    optimizer: torch.optim.Optimizer,
+    real_r1: torch.Tensor,
+    real_labels: torch.Tensor,
+    base_codes: torch.Tensor,
+    scale: torch.Tensor,
+) -> tuple[GeometryObjectiveResult, dict[str, Any]]:
+    parameter_items = controller_parameter_items(generator)
+    parameter_before = {
+        name: parameter.detach().clone()
+        for name, parameter in parameter_items
+    }
+    batch = build_logical_batch(real_r1, real_labels, base_codes)
+    controller_r1 = controller_logical_r1(generator, optical_model, batch, scale)
+    result = geometry_alignment_loss(
+        batch.real_r1.to(real_r1.device),
+        controller_r1,
+        batch.real_labels.to(real_r1.device),
+        batch.controller_labels.to(real_r1.device),
+    )
+    if not torch.isfinite(result.loss):
+        raise HarnessFailure(INVALID_HARNESS)
+    optimizer.zero_grad(set_to_none=True)
+    result.loss.backward()
+    gradient_norms: dict[str, float] = {}
+    for name, parameter in parameter_items:
+        gradient = parameter.grad
+        if gradient is None or not torch.isfinite(gradient).all():
+            raise HarnessFailure(f"missing or non-finite gradient for {name}")
+        gradient_norms[name] = float(torch.linalg.vector_norm(gradient.detach().float()).cpu())
+    optimizer.step()
+    update_norms: dict[str, float] = {}
+    for name, parameter in parameter_items:
+        if not torch.isfinite(parameter).all():
+            raise HarnessFailure(f"non-finite controller parameter after optimizer step: {name}")
+        update_norms[name] = float(
+            torch.linalg.vector_norm(parameter.detach() - parameter_before[name]).cpu()
+        )
+    metrics = {
+        "loss": float(result.loss.detach().cpu()),
+        "mean_anchor": float(result.mean_anchor.detach().cpu()),
+        "mean_covariance": float(result.mean_covariance.detach().cpu()),
+        "gradient_norms": gradient_norms,
+        "update_norms": update_norms,
+        "finite": True,
+    }
+    return result, metrics
+
+
+def _controller_geometry_frozen_step(
+    generator: IdentityAnchoredConditionalAmplitudeGenerator,
+    optical_model: torch.nn.Module,
+    real_r1: torch.Tensor,
+    real_labels: torch.Tensor,
+    base_codes: torch.Tensor,
+    scale: torch.Tensor,
+) -> dict[str, Any]:
+    batch = build_logical_batch(real_r1, real_labels, base_codes)
+    with torch.no_grad():
+        controller_r1 = controller_logical_r1(generator, optical_model, batch, scale)
+        result = geometry_alignment_loss(
+            batch.real_r1.to(real_r1.device),
+            controller_r1,
+            batch.real_labels.to(real_r1.device),
+            batch.controller_labels.to(real_r1.device),
+        )
+    if not torch.isfinite(result.loss):
+        raise HarnessFailure(INVALID_HARNESS)
+    return {
+        "loss": float(result.loss.detach().cpu()),
+        "mean_anchor": float(result.mean_anchor.detach().cpu()),
+        "mean_covariance": float(result.mean_covariance.detach().cpu()),
+        "finite": True,
+    }
+
+
+def training_update_preflight(
+    generator: IdentityAnchoredConditionalAmplitudeGenerator,
+    optical_model: torch.nn.Module,
+    target_bank: TargetBank,
+    scale: torch.Tensor,
+    *,
+    authorization: str | None,
+    frozen_file_paths: Mapping[str, str | Path],
+    s3_base_codes: torch.Tensor,
+    max_peak_cuda_bytes: int,
+) -> dict[str, Any]:
+    """Run the fixed CUDA representative update and its frozen-control check."""
+    if authorization != AUTHORIZATION_TOKEN:
+        raise HarnessFailure("explicit one-shot training authorization is required")
+    if max_peak_cuda_bytes <= 0:
+        raise HarnessFailure("preflight memory authority is invalid")
+    device = next(generator.parameters()).device
+    if device.type != "cuda" or not torch.cuda.is_available():
+        raise HarnessFailure("BLOCKED_CUDA_UNAVAILABLE")
+    freeze_optical_model(optical_model)
+    for _, parameter in controller_parameter_items(generator):
+        parameter.requires_grad_(False)
+    original_before = capture_state_snapshot(generator, optical_model, frozen_file_paths)
+    real_r1 = target_bank.training_r1.to(device)
+    real_labels = target_bank.training_labels.to(device)
+    real_means, real_covariances = class_moments(real_r1, real_labels)
+    _validate_real_moments(real_means, real_covariances)
+    stream = TrainingCodeStream()
+    stream_blocks = torch.stack(
+        [stream.next_block() for _ in range(TRAINING_PREFLIGHT_STEPS)],
+        dim=0,
+    )
+    stream_meta = validate_finite_stream_against_protected(
+        stream_blocks,
+        s3_base_codes,
+        internal_validation_codes(),
+    )
+    update_generator = _controller_clone(generator)
+    for _, parameter in controller_parameter_items(update_generator):
+        parameter.requires_grad_(True)
+    optimizer = build_controller_optimizer(update_generator)
+    if optimizer_parameter_names(optimizer, update_generator) != CONTROLLER_PARAMETER_NAMES:
+        raise HarnessFailure("controller optimizer coverage failed")
+    update_before = capture_state_snapshot(update_generator, optical_model, frozen_file_paths)
+    update_history: list[dict[str, Any]] = []
+    torch.cuda.reset_peak_memory_stats(device)
+    started = time.perf_counter()
+    for step in range(1, TRAINING_PREFLIGHT_STEPS + 1):
+        _, metrics = _controller_geometry_update_step(
+            update_generator,
+            optical_model,
+            optimizer,
+            real_r1,
+            real_labels,
+            stream_blocks[step - 1].to(device),
+            scale.to(device=device, dtype=torch.float32),
+        )
+        metrics["step"] = step
+        update_history.append(metrics)
+    update_after = capture_state_snapshot(update_generator, optical_model, frozen_file_paths)
+    validate_frozen_state(update_before, update_after, update_generator, optical_model, optimizer)
+
+    frozen_generator = _controller_clone(generator)
+    for _, parameter in controller_parameter_items(frozen_generator):
+        parameter.requires_grad_(False)
+    frozen_generator.eval()
+    frozen_before = capture_state_snapshot(frozen_generator, optical_model, frozen_file_paths)
+    frozen_history = [
+        {
+            "step": step,
+            **_controller_geometry_frozen_step(
+                frozen_generator,
+                optical_model,
+                real_r1,
+                real_labels,
+                stream_blocks[step - 1].to(device),
+                scale.to(device=device, dtype=torch.float32),
+            ),
+        }
+        for step in range(1, TRAINING_PREFLIGHT_STEPS + 1)
+    ]
+    frozen_after = capture_state_snapshot(frozen_generator, optical_model, frozen_file_paths)
+    original_after = capture_state_snapshot(generator, optical_model, frozen_file_paths)
+    if torch.cuda.is_available():
+        torch.cuda.synchronize(device)
+    elapsed = time.perf_counter() - started
+    peak_cuda_bytes = int(torch.cuda.max_memory_allocated(device))
+    update_gradients_nonzero = all(
+        all(value > 0.0 for value in step["gradient_norms"].values())
+        for step in update_history
+    )
+    update_norms_nonzero = all(
+        all(value > 0.0 for value in step["update_norms"].values())
+        for step in update_history
+    )
+    update_state_changed = update_before.controller_state_hash != update_after.controller_state_hash
+    frozen_control_unchanged = (
+        frozen_before.controller_state_hash == frozen_after.controller_state_hash
+        and frozen_before.frozen_model_state_hash == frozen_after.frozen_model_state_hash
+        and frozen_before.frozen_parameter_hashes == frozen_after.frozen_parameter_hashes
+        and frozen_before.file_hashes == frozen_after.file_hashes
+    )
+    original_unchanged = (
+        original_before.controller_state_hash == original_after.controller_state_hash
+        and original_before.frozen_model_state_hash == original_after.frozen_model_state_hash
+        and original_before.frozen_parameter_hashes == original_after.frozen_parameter_hashes
+        and original_before.file_hashes == original_after.file_hashes
+    )
+    frozen_optical_unchanged = (
+        update_before.frozen_model_state_hash == update_after.frozen_model_state_hash
+        and update_before.frozen_parameter_hashes == update_after.frozen_parameter_hashes
+        and update_before.file_hashes == update_after.file_hashes
+    )
+    memory_passed = peak_cuda_bytes <= max_peak_cuda_bytes
+    wall_passed = elapsed <= TRAINING_PREFLIGHT_MAX_SECONDS
+    passed = all(
+        (
+            all(step["finite"] for step in update_history),
+            all(step["finite"] for step in frozen_history),
+            update_gradients_nonzero,
+            update_norms_nonzero,
+            update_state_changed,
+            frozen_control_unchanged,
+            original_unchanged,
+            frozen_optical_unchanged,
+            memory_passed,
+            wall_passed,
+        )
+    )
+    return {
+        "schema": TRAINING_PREFLIGHT_SCHEMA,
+        "gate": TRAINING_PREFLIGHT_GATE if passed else INVALID_HARNESS,
+        "status": "passed" if passed else INVALID_HARNESS,
+        "passed": passed,
+        "objective_family": OBJECTIVE_FAMILY,
+        "authorization": AUTHORIZATION_TOKEN,
+        "preflight_steps": TRAINING_PREFLIGHT_STEPS,
+        "authorized_horizon": HORIZON,
+        "optimizer_contract_sha256": OPTIMIZER_CONTRACT_SHA256,
+        "objective_contract_sha256": OBJECTIVE_CONTRACT_SHA256,
+        "training_code_stream": {
+            **stream_meta,
+            "shape": list(stream_blocks.shape),
+            "first_block_sha256": tensor_sha256(stream_blocks[0]),
+            "finite_training_stream_sha256": tensor_sha256(stream_blocks),
+        },
+        "update_arm": {
+            "optimizer_parameter_names": list(CONTROLLER_PARAMETER_NAMES),
+            "optimizer_step_count": TRAINING_PREFLIGHT_STEPS,
+            "controller_state_hash_before": update_before.controller_state_hash,
+            "controller_state_hash_after": update_after.controller_state_hash,
+            "state_changed": update_state_changed,
+            "gradient_nonzero": update_gradients_nonzero,
+            "update_nonzero": update_norms_nonzero,
+            "steps": update_history,
+        },
+        "frozen_controller_negative_control": {
+            "kind": "frozen_controller_same_batches",
+            "expected_decision": "reject_primary_update",
+            "controller_state_hash_before": frozen_before.controller_state_hash,
+            "controller_state_hash_after": frozen_after.controller_state_hash,
+            "unchanged": frozen_control_unchanged,
+            "steps": frozen_history,
+            "passed": frozen_control_unchanged,
+        },
+        "state_isolation": {
+            "original_controller_state_hash_before": original_before.controller_state_hash,
+            "original_controller_state_hash_after": original_after.controller_state_hash,
+            "original_controller_unchanged": original_unchanged,
+            "frozen_optical_unchanged": frozen_optical_unchanged,
+            "frozen_model_state_hash_before": update_before.frozen_model_state_hash,
+            "frozen_model_state_hash_after": update_after.frozen_model_state_hash,
+            "frozen_parameter_hashes_before": dict(update_before.frozen_parameter_hashes),
+            "frozen_parameter_hashes_after": dict(update_after.frozen_parameter_hashes),
+            "frozen_file_hashes_before": dict(update_before.file_hashes),
+            "frozen_file_hashes_after": dict(update_after.file_hashes),
+        },
+        "resource": {
+            "device": str(device),
+            "peak_cuda_bytes": peak_cuda_bytes,
+            "max_peak_cuda_bytes": max_peak_cuda_bytes,
+            "memory_passed": memory_passed,
+            "wall_clock_seconds": elapsed,
+            "max_wall_clock_seconds": TRAINING_PREFLIGHT_MAX_SECONDS,
+            "wall_passed": wall_passed,
+        },
+        "evaluator_calls": 0,
+        "decoder_entered": False,
+        "checkpoint_writes": 0,
+    }
+
+
+def validate_training_preflight(
+    path: str | Path,
+    *,
+    expected_git_head: str,
+    expected_config_sha256: str,
+    expected_s3_config_sha256: str,
+    expected_target_bank_sha256: str,
+    expected_data_firewall_manifest_sha256: str,
+    expected_s3_base_code_sha256: str,
+    expected_internal_validation_code_sha256: str,
+    expected_max_peak_cuda_bytes: int,
+    frozen_file_paths: Mapping[str, str | Path],
+) -> str:
+    evidence_path = Path(path)
+    if not evidence_path.is_file():
+        raise HarnessFailure(f"training preflight evidence is missing: {evidence_path}")
+    with evidence_path.open("r", encoding="utf-8") as handle:
+        payload = json.load(handle)
+    if not isinstance(payload, Mapping):
+        raise HarnessFailure("training preflight evidence is not a mapping")
+    if (
+        payload.get("schema") != TRAINING_PREFLIGHT_SCHEMA
+        or payload.get("gate") != TRAINING_PREFLIGHT_GATE
+        or payload.get("status") != "passed"
+        or payload.get("passed") is not True
+        or payload.get("authorization") != AUTHORIZATION_TOKEN
+        or payload.get("preflight_steps") != TRAINING_PREFLIGHT_STEPS
+        or payload.get("authorized_horizon") != HORIZON
+        or payload.get("objective_family") != OBJECTIVE_FAMILY
+        or payload.get("optimizer_contract_sha256") != OPTIMIZER_CONTRACT_SHA256
+        or payload.get("objective_contract_sha256") != OBJECTIVE_CONTRACT_SHA256
+    ):
+        raise HarnessFailure("training preflight evidence is stale or unauthorized")
+    for name, expected in (
+        ("git_head", expected_git_head),
+        ("config_sha256", expected_config_sha256),
+        ("s3_config_sha256", expected_s3_config_sha256),
+        ("target_bank_sha256", expected_target_bank_sha256),
+        ("data_firewall_manifest_sha256", expected_data_firewall_manifest_sha256),
+        ("s3_base_code_sha256", expected_s3_base_code_sha256),
+        ("internal_validation_code_sha256", expected_internal_validation_code_sha256),
+    ):
+        if payload.get(name) != expected:
+            raise HarnessFailure(f"training preflight {name} binding mismatch")
+    update_arm = _mapping(payload.get("update_arm"), "training preflight update arm")
+    if payload.get("task_id") != "H-LOMA-GEN-S3-CONTROLLER-SEMANTIC-GEOMETRY-REPAIR":
+        raise HarnessFailure("training preflight task identity mismatch")
+    if update_arm.get("optimizer_parameter_names") != list(CONTROLLER_PARAMETER_NAMES):
+        raise HarnessFailure("training preflight optimizer parameter boundary mismatch")
+    update_steps = update_arm.get("steps")
+    if not isinstance(update_steps, list) or any(not isinstance(step, Mapping) for step in update_steps):
+        raise HarnessFailure("training preflight update steps are invalid")
+    if (
+        update_arm.get("optimizer_step_count") != TRAINING_PREFLIGHT_STEPS
+        or update_arm.get("state_changed") is not True
+        or update_arm.get("gradient_nonzero") is not True
+        or update_arm.get("update_nonzero") is not True
+        or len(update_steps) != TRAINING_PREFLIGHT_STEPS
+        or any(
+            step.get("finite") is not True
+            or any(float(value) <= 0.0 for value in step.get("gradient_norms", {}).values())
+            or any(float(value) <= 0.0 for value in step.get("update_norms", {}).values())
+            for step in update_steps
+        )
+    ):
+        raise HarnessFailure("training preflight optimizer step count mismatch")
+    stream = _mapping(payload.get("training_code_stream"), "training preflight code stream")
+    if stream.get("s3_overlap_count") != 0 or stream.get("internal_validation_overlap_count") != 0:
+        raise HarnessFailure("training preflight code firewall is invalid")
+    negative = _mapping(
+        payload.get("frozen_controller_negative_control"),
+        "training preflight frozen-controller negative control",
+    )
+    if (
+        negative.get("expected_decision") != "reject_primary_update"
+        or negative.get("unchanged") is not True
+        or negative.get("passed") is not True
+    ):
+        raise HarnessFailure("training preflight frozen-controller negative control is invalid")
+    isolation = _mapping(payload.get("state_isolation"), "training preflight state isolation")
+    if any(
+        isolation.get(name) is not True
+        for name in ("original_controller_unchanged", "frozen_optical_unchanged")
+    ):
+        raise HarnessFailure("training preflight state isolation is invalid")
+    expected_files = {name: file_sha256(file_path) for name, file_path in frozen_file_paths.items()}
+    if isolation.get("frozen_file_hashes_before") != expected_files or isolation.get("frozen_file_hashes_after") != expected_files:
+        raise HarnessFailure("training preflight frozen file identity changed")
+    if payload.get("evaluator_calls") != 0 or payload.get("decoder_entered") is not False or payload.get("checkpoint_writes") != 0:
+        raise HarnessFailure("training preflight crossed a prohibited boundary")
+    resource = _mapping(payload.get("resource"), "training preflight resource")
+    if (
+        resource.get("device") != "cuda"
+        or resource.get("max_peak_cuda_bytes") != expected_max_peak_cuda_bytes
+        or int(resource.get("peak_cuda_bytes", -1)) > expected_max_peak_cuda_bytes
+        or resource.get("memory_passed") is not True
+        or resource.get("wall_passed") is not True
+    ):
+        raise HarnessFailure("training preflight resource gate is invalid")
+    return file_sha256(evidence_path)
+
+
 def train_authorized_controller(
     generator: IdentityAnchoredConditionalAmplitudeGenerator,
     optical_model: torch.nn.Module,
@@ -1696,9 +2086,15 @@ def train_authorized_controller(
     *,
     authorization: str | None,
     frozen_file_paths: Mapping[str, str | Path] | None = None,
+    preflight_evidence_sha256: str | None = None,
 ) -> dict[str, Any]:
     if authorization != AUTHORIZATION_TOKEN:
         raise HarnessFailure("explicit one-shot training authorization is required")
+    if preflight_evidence_sha256 is None:
+        raise HarnessFailure("passed 3-step training preflight evidence is required")
+    output = Path(output_path)
+    if output.exists():
+        raise HarnessFailure("training output target is not a fresh write-once path")
     freeze_optical_model(optical_model)
     for _, parameter in controller_parameter_items(generator):
         parameter.requires_grad_(True)
@@ -1714,17 +2110,15 @@ def train_authorized_controller(
     last_result: GeometryObjectiveResult | None = None
     for _step in range(1, HORIZON + 1):
         base_codes = stream.next_block().to(next(generator.parameters()).device)
-        batch = build_logical_batch(real_r1, real_labels, base_codes)
-        controller_r1 = controller_logical_r1(generator, optical_model, batch, scale.to(real_r1.device))
-        last_result = geometry_alignment_loss(
-            batch.real_r1.to(real_r1.device),
-            controller_r1,
-            batch.real_labels.to(real_r1.device),
-            batch.controller_labels.to(real_r1.device),
+        last_result, _ = _controller_geometry_update_step(
+            generator,
+            optical_model,
+            optimizer,
+            real_r1,
+            real_labels,
+            base_codes,
+            scale.to(real_r1.device),
         )
-        optimizer.zero_grad(set_to_none=True)
-        last_result.loss.backward()
-        optimizer.step()
     if last_result is None:
         raise HarnessFailure("authorized horizon produced no update")
     after = capture_state_snapshot(generator, optical_model, frozen_file_paths)
@@ -1737,6 +2131,7 @@ def train_authorized_controller(
         "controller_state": {name: value.detach().cpu() for name, value in generator.state_dict().items()},
         "controller_state_hash": _module_state_hash(generator),
         "training_authorization": AUTHORIZATION_TOKEN,
+        "preflight_evidence_sha256": preflight_evidence_sha256,
         "training_authorized": True,
         "formal_promotion": False,
         "s3_classification": "S3_CONTROL_TO_OLS_WRITABILITY_NOT_SUPPORTED",
@@ -1744,8 +2139,8 @@ def train_authorized_controller(
         "mean_covariance": float(last_result.mean_covariance.detach().cpu()),
         "loss": float(last_result.loss.detach().cpu()),
     }
-    atomic_torch_save_new(output_path, payload, artifact_kind="controller semantic geometry final checkpoint")
-    return {"checkpoint": str(output_path), "checkpoint_sha256": file_sha256(output_path), **{key: value for key, value in payload.items() if key != "controller_state"}}
+    atomic_torch_save_new(output, payload, artifact_kind="controller semantic geometry final checkpoint")
+    return {"checkpoint": str(output), "checkpoint_sha256": file_sha256(output), **{key: value for key, value in payload.items() if key != "controller_state"}}
 
 
 def _git_state(repo_root: str | Path) -> tuple[str, tuple[str, ...]]:
@@ -1874,6 +2269,9 @@ __all__ = [
     "PARTITION_VALIDATION_POSITION_SHA256",
     "PARTITION_VALIDATION_R1_SHA256",
     "PREFLIGHT_PASS",
+    "TRAINING_PREFLIGHT_GATE",
+    "TRAINING_PREFLIGHT_SCHEMA",
+    "TRAINING_PREFLIGHT_STEPS",
     "REAL_COUNT",
     "S1Reference",
     "SAMPLES_PER_CLASS",
@@ -1904,6 +2302,8 @@ __all__ = [
     "register_data_authority",
     "resolve_path",
     "train_authorized_controller",
+    "training_update_preflight",
+    "validate_training_preflight",
     "validate_config",
     "validate_finite_stream_against_protected",
     "validate_frozen_state",

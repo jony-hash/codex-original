@@ -152,6 +152,24 @@ def test_training_entrypoint_requires_explicit_authorization_before_mutation() -
         )
 
 
+def test_training_entrypoint_requires_passed_update_preflight_before_mutation() -> None:
+    generator = IdentityAnchoredConditionalAmplitudeGenerator()
+    optical = nn.Sequential(nn.Linear(2, 2), nn.ReLU())
+    values, labels = _balanced_values()
+    from ldm_project.v2.application.research.controller_semantic_geometry_training import TargetBank
+
+    bank = TargetBank(values[:500], labels, torch.arange(500), values[:500], labels, torch.arange(500), {})
+    with pytest.raises(ValueError, match="passed 3-step training preflight evidence"):
+        train_authorized_controller(
+            generator,
+            optical,
+            bank,
+            torch.ones(100, dtype=torch.float32),
+            "unused.pt",
+            authorization=AUTHORIZATION_TOKEN,
+        )
+
+
 def test_authorization_token_is_exactly_the_next_gate() -> None:
     assert AUTHORIZATION_TOKEN == "AUTHORIZE_ONE_SHOT_CONTROLLER_SEMANTIC_GEOMETRY_TRAINING_CANARY"
 
