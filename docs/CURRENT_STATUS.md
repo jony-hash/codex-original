@@ -169,9 +169,9 @@ provenance，不能作为当前 Windows 路径解析器或 formal acceptance 输
 - no phase-source selection, novel complex OLS, optical forward, evaluator,
   CUDA, optimizer, backward, or training occurred; training_authorized=false,
   formal_promotion=false, generation_readiness=not_ready
-- next research question (planning only): a new producer-family hypothesis for
-  the held-out score/joint-amplitude support mismatch, with the current bank,
-  frozen producer state, and data firewall preserved
+- next step: consume the read-only mismatch attribution below before any new
+  producer-family hypothesis; the current bank, frozen producer state, and data
+  firewall remain preserved
 
 ## H-LOMA-GEN-N3 producer mismatch attribution（2026-09-08，Windows-native）
 

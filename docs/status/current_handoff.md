@@ -132,8 +132,8 @@ Gaussianity theorem 或完整 complex OLS failure proof。
 结论：当前 `r=99` producer 冻结为 valid tested baseline，不在同一 validation bank 上 retune
 rank、参数或 proposal budget。结果不授权 phase-source、novel complex OLS、semantic generation、
 evaluator 或 formal promotion；`training_authorized=false`、`formal_promotion=false`、
-`generation_readiness=not_ready` 保持。唯一下一 research question 是规划针对 held-out score/joint
-amplitude support mismatch 的新 producer-family hypothesis；不包含实现或再次验证。
+`generation_readiness=not_ready` 保持。下一步先消费下述 read-only mismatch attribution；在 attribution
+唯一支持某个 family 之前，不得直接规划或实现新的 producer-family hypothesis。
 
 ## H-LOMA-GEN-N3 producer mismatch attribution（2026-09-08）
 

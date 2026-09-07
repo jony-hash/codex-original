@@ -162,9 +162,9 @@ complex OLS distribution 的定理性结论。
 因此冻结当前 `r=99` state 作为 valid tested baseline；不得在同一 validation bank 上 retune
 rank、producer 参数或 positivity budget。当前结果不授权 phase-source、novel complex OLS、
 semantic generation、evaluator 或 formal promotion。`training_authorized=false`、
-`formal_promotion=false`、`generation_readiness=not_ready` 保持。唯一下一研究问题是：在冻结
-当前数据 firewall、`r=99` state 与既有 authority 的前提下，规划一个针对 held-out score/joint
-amplitude support mismatch 的新 producer-family hypothesis；本问题不包含实现或再次验证。
+`formal_promotion=false`、`generation_readiness=not_ready` 保持。下一步先消费下述只读 mismatch
+attribution；在 attribution 唯一支持某个 family 之前，不得直接规划或实现新的 producer-family
+hypothesis。
 
 ## H-LOMA-GEN-N3 producer mismatch attribution（2026-09-08）
 
