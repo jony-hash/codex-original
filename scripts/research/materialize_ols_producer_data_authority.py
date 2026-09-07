@@ -670,7 +670,9 @@ def _load_s3_panel(repo_root: Path, directory: Path, manifest_sha: str, state_sh
         _require(internal.get("base_code_count") == 100, "internal validation base-code count changed")
         _require(internal.get("base_codes_sha256") == INTERNAL_CODE_BASE_SHA256, "internal validation base-code identity changed")
         _require(internal.get("panel_code_sha256") == INTERNAL_CODE_PANEL_SHA256, "internal validation panel-code identity changed")
-        _require(internal.get("internal_validation_labels_sha256") == INTERNAL_CODE_LABEL_SHA256, "internal validation label identity changed")
+        _require(internal.get("internal_validation_labels_sha256") == PARTITION_LABEL_SHA256, "internal validation target-label identity changed")
+        _require(INTERNAL_CODE_LABEL_SHA256 == S3_PANEL_LABEL_SHA256, "internal code-panel label authority diverged")
+        _require(INTERNAL_CODE_SPLIT_SHA256 == S3_PANEL_SPLIT_SHA256, "internal code-panel split authority diverged")
     scale_path, _, scale = _load_calibration(repo_root)
     del scale_path
     normalized = (coefficients / torch.sqrt(scale)).contiguous()
