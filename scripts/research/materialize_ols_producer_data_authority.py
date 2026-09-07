@@ -154,7 +154,7 @@ INTERNAL_CODE_BASE_SHA256 = (
     "d6ff3077066bd0b7d809925ff94f7cc0e602fadc933a3246af80d0853945f356"
 )
 INTERNAL_CODE_PANEL_SHA256 = (
-    "4a11c82e4235521c318158522bd0e8df1e92d34c49adaad29e6a7502f217f58695"
+    "4a11c82e4235521c3181585220e8df1e92d34c49adaad29e6a7502f217f58695"
 )
 INTERNAL_CODE_LABEL_SHA256 = (
     "1f376234300ef9c7a60a5e895c2dabb52550292724c4b806adf5315e8ab5f251"
@@ -660,6 +660,16 @@ def _load_s3_panel(repo_root: Path, directory: Path, manifest_sha: str, state_sh
     _require(tensor_sha256(codes) == S3_PANEL_CODE_SHA256, "S3 state code tensor changed")
     _require(tensor_sha256(labels) == S3_PANEL_LABEL_SHA256, "S3 state label tensor changed")
     _require(tensor_sha256(split) == S3_PANEL_SPLIT_SHA256, "S3 state split tensor changed")
+    internal_validation = manifest.get("internal_validation")
+    if internal_validation is not None:
+        internal = _mapping(internal_validation, "S3 internal validation")
+        _require(internal.get("schema") == "controller_semantic_geometry_internal_validation.v1", "internal validation schema changed")
+        _require(internal.get("descriptive_only") is True, "internal validation is not descriptive-only")
+        _require(internal.get("complex_states_saved") is False, "internal validation complex-state status changed")
+        _require(internal.get("base_code_count") == 100, "internal validation base-code count changed")
+        _require(internal.get("base_codes_sha256") == INTERNAL_CODE_BASE_SHA256, "internal validation base-code identity changed")
+        _require(internal.get("panel_code_sha256") == INTERNAL_CODE_PANEL_SHA256, "internal validation panel-code identity changed")
+        _require(internal.get("internal_validation_labels_sha256") == INTERNAL_CODE_LABEL_SHA256, "internal validation label identity changed")
     scale_path, _, scale = _load_calibration(repo_root)
     del scale_path
     normalized = (coefficients / torch.sqrt(scale)).contiguous()
@@ -933,8 +943,8 @@ def _build_firewall(
                     "complex_states_saved": False,
                 },
                 "comparison_method": "not a source-index or saved-complex producer data domain",
-                "fit_overlap_count": 0,
-                "validation_overlap_count": 0,
+                "fit_overlap_count": None,
+                "validation_overlap_count": None,
                 "independently_required": False,
                 "subsumed_by": None,
                 "status": "NOT_APPLICABLE",
