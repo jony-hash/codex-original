@@ -6,6 +6,32 @@
 [experiment history](experiment_history.md)。2026-08-24 重整前的完整长篇记录保存在
 [archived handoff](../archive/current_handoff_pre_sced_20260824.md)，仅供溯源。
 
+## H-LOMA-GEN OLS-native research branch genesis（2026-09-07）
+
+`OLS_NATIVE_RESEARCH_BRANCH_ESTABLISHED`：当前 active branch 为
+`research/lightgen-ols-native-semantic-generation-v1`，parent branch 为
+`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`，branch point 为
+`113ca1c2d1e2e2ffa458ebd9c2fb7ddf898c4831`。旧 branch 与其
+Scaled-Chen/BOGT、S1-S3、Code8、controller-writer 和 OLS-discovery evidence
+lineage 保持不变；formal v2 仍是 legacy baseline，`formal_v3=false`。
+
+active hierarchy：N1 `PROJECT_COMPLEX_OLS_V1` complete；N2
+`OLS_CONSUMER_REPLAY` bounded complete；N3 `OLS_LATENT_PRODUCER` active；N4
+`SEMANTIC_SELECTOR` unresolved；N5 `NOVEL_OLS_TO_GENERATOR_SEMANTIC_GENERATION`
+blocked/future；N6 `PHYSICAL_OLS_REALIZATION` separate frozen boundary。
+
+N3 继承 `OLS_PRODUCER_DATA_AUTHORITY_MATERIALIZED`、
+`SELECT_LOW_RANK_JOINT_AMPLITUDE_PRODUCER`、coordinate
+`R2_AMPLITUDE=|c|/sqrt(s)` 与 `OBSERVED_RELATIVE_PHASE_INHERITANCE_V1`。
+`DIAGONAL_GAUSSIAN_LOW_RANK_SCORE_BASELINE_V1` 已登记，但仅是
+`MODEL_ASSUMPTION_REGISTERED_FOR_TEST`；不是 scientifically supported，且 rank、fit、
+novel OLS 与 generation 均未完成。branch genesis 未执行 positivity、fit/SVD、rank selection、
+sampling、optimizer/backward/CUDA、forward 或 evaluator。
+
+全局 flags 继续为 `training_authorized=false`、`generation_readiness=not_ready`、
+`formal_promotion=false`。下一唯一 Gate：
+`PLAN_REGISTER_LOW_RANK_PRODUCER_POSITIVITY_AUTHORITY`。
+
 ## H-LOMA-GEN-N3 OLS producer data authority（2026-09-07）
 
 OLS_PRODUCER_DATA_AUTHORITY_MATERIALIZED 已完成，authority attempt 为
@@ -38,8 +64,8 @@ identity 未进入 authority/manifest。
 本轮不包含 optical forward、CUDA、optimizer、backward、producer fitting 或
 novel OLS generation；不得解释为 producer trained、rank selected 或 generation
 supported。training_authorized=false、formal_promotion=false、
-generation_readiness=not_ready 保持。下一唯一 Gate：
-PLAN_LOW_RANK_JOINT_AMPLITUDE_PRODUCER_CONTRACT。第一次错误 materialization
+generation_readiness=not_ready 保持。producer contract 与 score baseline 已登记；下一唯一 Gate：
+PLAN_REGISTER_LOW_RANK_PRODUCER_POSITIVITY_AUTHORITY。第一次错误 materialization
 已隔离为 invalid quarantine，不是 authority。
 
 ## H-LOMA-GEN-S3 Controller semantic-geometry one-shot repair postmortem（2026-09-07）

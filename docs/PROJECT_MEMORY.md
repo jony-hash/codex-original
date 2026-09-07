@@ -8,6 +8,40 @@
 交接规则，不替代正式证据、实验报告或历史 transcript。云端 ChatGPT 项目使用它的
 受控上传副本；本文件本身仍以本地 Git 版本为准。
 
+## H-LOMA-GEN OLS-native research branch genesis（2026-09-07）
+
+`OLS_NATIVE_RESEARCH_BRANCH_ESTABLISHED` 已完成。active research branch 为
+`research/lightgen-ols-native-semantic-generation-v1`，从 parent branch
+`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1` 的 branch point
+`113ca1c2d1e2e2ffa458ebd9c2fb7ddf898c4831` 建立。旧 branch 保留为
+Scaled-Chen/BOGT、S1-S3、Code8、controller-writer 与 OLS-discovery 的历史证据 lineage，
+未被删除、改写或重命名。
+
+本 branch 是 `OLS_NATIVE_RESEARCH_MAINLINE`，不是 formal v3：
+`formal_v3=false`，formal v2 retained as legacy baseline。active hierarchy 为
+N1 `PROJECT_COMPLEX_OLS_V1` complete、N2 `OLS_CONSUMER_REPLAY` bounded complete、
+N3 `OLS_LATENT_PRODUCER` active、N4 `SEMANTIC_SELECTOR` unresolved、N5
+`NOVEL_OLS_TO_GENERATOR_SEMANTIC_GENERATION` blocked/future、N6
+`PHYSICAL_OLS_REALIZATION` separate frozen boundary。
+
+active N3 authority 继承 `PROJECT_COMPLEX_OLS_V1`、
+`OLS_PRODUCER_DATA_AUTHORITY_MATERIALIZED` 与
+`SELECT_LOW_RANK_JOINT_AMPLITUDE_PRODUCER`；producer coordinate 为
+`R2_AMPLITUDE=|c|/sqrt(s)`，phase authority 为
+`OBSERVED_RELATIVE_PHASE_INHERITANCE_V1`。已登记
+`REGISTER_DIAGONAL_GAUSSIAN_LOW_RANK_SCORE_BASELINE`，其 identity 为
+`DIAGONAL_GAUSSIAN_LOW_RANK_SCORE_BASELINE_V1`，仅为
+`MODEL_ASSUMPTION_REGISTERED_FOR_TEST`，不是
+`MODEL_DISTRIBUTION_SCIENTIFICALLY_SUPPORTED`。rank 尚未选择；不得解释为 producer fitted、
+novel OLS valid 或 generation supported。
+
+本次 branch genesis 不包含 positivity implementation、PCA/SVD/fit、rank selection、score
+sampling、optimizer、backward、CUDA、optical forward、evaluator 或 semantic generation。
+`training_authorized=false`、`generation_readiness=not_ready`、`formal_promotion=false` 保持。
+legacy controller/Code8/one-shot repair、旧 factorized BOGT prior 与 global-prior alignment
+仍为历史或已关闭 lineage，不作为 active N3 implementation。下一唯一 Gate：
+`PLAN_REGISTER_LOW_RANK_PRODUCER_POSITIVITY_AUTHORITY`。
+
 ## H-LOMA-GEN-N3 OLS producer data authority（2026-09-07）
 
 OLS_PRODUCER_DATA_AUTHORITY_MATERIALIZED 已正式登记。只消费既有 S1 fit
@@ -44,8 +78,9 @@ identity 未进入 authority 或 manifest。
 
 本轮只建立 immutable producer data authority；不声明 producer trained、rank selected、novel
 OLS supported 或 semantic generation supported。training_authorized=false、
-formal_promotion=false、generation_readiness=not_ready 保持。下一唯一 Gate：
-PLAN_LOW_RANK_JOINT_AMPLITUDE_PRODUCER_CONTRACT。首次本地物化的错误 attempt 已隔离为
+formal_promotion=false、generation_readiness=not_ready 保持。producer contract 与
+diagonal-Gaussian score baseline 已分别登记；下一唯一 Gate：
+PLAN_REGISTER_LOW_RANK_PRODUCER_POSITIVITY_AUTHORITY。首次本地物化的错误 attempt 已隔离为
 invalid quarantine，只有上述 attempt_01 是 authority。
 
 ## H-LOMA-GEN-S3 Controller semantic-geometry one-shot repair postmortem（2026-09-07）

@@ -2,6 +2,37 @@
 
 更新时间：2026-09-07
 
+## H-LOMA-GEN OLS-native research branch genesis（2026-09-07）
+
+- classification: `OLS_NATIVE_RESEARCH_BRANCH_ESTABLISHED`
+- active research branch:
+  `research/lightgen-ols-native-semantic-generation-v1`
+- parent branch:
+  `research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`
+- branch point:
+  `113ca1c2d1e2e2ffa458ebd9c2fb7ddf898c4831`
+- formal v3: `false`; formal v2 retained as legacy baseline.
+- branch purpose: OLS-native semantic-generation research mainline; N3 is the
+  active stage. N1 is complete, N2 bounded complete, N4 unresolved, N5
+  blocked/future, and N6 remains a separate frozen physical boundary.
+- active N3 authority: `PROJECT_COMPLEX_OLS_V1`,
+  `OLS_PRODUCER_DATA_AUTHORITY_MATERIALIZED`,
+  `SELECT_LOW_RANK_JOINT_AMPLITUDE_PRODUCER`, coordinate
+  `R2_AMPLITUDE=|c|/sqrt(s)`, and
+  `OBSERVED_RELATIVE_PHASE_INHERITANCE_V1`.
+- score baseline: `DIAGONAL_GAUSSIAN_LOW_RANK_SCORE_BASELINE_V1`, registered
+  by `REGISTER_DIAGONAL_GAUSSIAN_LOW_RANK_SCORE_BASELINE` as
+  `MODEL_ASSUMPTION_REGISTERED_FOR_TEST` only; it is not scientifically
+  supported, fitted, rank-selected, or a novel-OLS/generation result.
+- old Scaled-Chen/BOGT/S1-S3/Code8/controller-writer/OLS-discovery branch and
+  evidence remain preserved as legacy lineage; no formal v2 contract was changed.
+- branch genesis performed no positivity implementation, fit/SVD, rank selection,
+  score sampling, optimizer/backward/CUDA, forward, evaluator, or generation.
+- training_authorized=false; generation_readiness=not_ready;
+  formal_promotion=false.
+- next single Gate:
+  `PLAN_REGISTER_LOW_RANK_PRODUCER_POSITIVITY_AUTHORITY`
+
 ## H-LOMA-GEN-N3 OLS producer data authority（2026-09-07）
 
 - classification: OLS_PRODUCER_DATA_AUTHORITY_MATERIALIZED
@@ -34,8 +65,9 @@
 - no optical forward, CUDA, optimizer, backward, producer fitting or novel OLS
   generation occurred; training_authorized=false, formal_promotion=false,
   generation_readiness=not_ready.
-- next single Gate:
-  PLAN_LOW_RANK_JOINT_AMPLITUDE_PRODUCER_CONTRACT
+- producer contract and diagonal-Gaussian score baseline are registered; next
+  single Gate:
+  PLAN_REGISTER_LOW_RANK_PRODUCER_POSITIVITY_AUTHORITY
 
 ## FINAL_MAINLINE_CLOSEOUT：H-LOMA-CBOGT Scaled-Chen reconstruction-repair mainline（2026-09-03）
 
