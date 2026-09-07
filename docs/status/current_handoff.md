@@ -103,7 +103,8 @@ SHA=`cd70756674660470786b92f59d27414cbc379cb61b02ad255ed3d596c6362722`；manifes
 strictly positive、fit reconstruction finite、RNG=`NONE` 与 input unchanged 均通过。
 
 `r=99` 只表示 near-full-dimensional strict-proper-subspace baseline，不是 compact low-rank 或
-intrinsic OLS dimension；Gaussianity、positivity/support validation、novel OLS 与 generation 仍未建立。
+intrinsic OLS dimension；fit 本身不建立 Gaussianity 或 positivity/support validity，后续 validation
+由独立 consumer 登记；novel OLS 与 generation 仍未建立。
 `training_authorized=false`、`formal_promotion=false`、`generation_readiness=not_ready` 保持。后续
 score sampling、novel OLS、semantic selector 或 generation 需要独立 consumer authority。
 

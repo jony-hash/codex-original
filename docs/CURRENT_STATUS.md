@@ -123,8 +123,9 @@ provenance，不能作为当前 Windows 路径解析器或 formal acceptance 输
   unchanged input bank all passed
 - interpretation boundary: `r=99` is a near-full-dimensional strict-proper-
   subspace baseline, not compact low-rank structure or intrinsic OLS dimension;
-  Gaussianity, positivity/support validation, novel OLS, and generation remain
-  unestablished
+  the fit itself did not establish Gaussianity or positivity/support validity;
+  those are handled by the separate validation consumer below. Novel OLS and
+  generation remain unestablished
 - `training_authorized=false`; `formal_promotion=false`;
   `generation_readiness=not_ready`
 - next downstream score-sampling/novel-OLS/generation consumer requires separate

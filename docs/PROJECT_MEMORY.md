@@ -117,7 +117,8 @@ structure、intrinsic dimension、Gaussianity、novel OLS 或 generation。
 完整性通过：`mu_fit[100]`、`W_99[100,99]`、`lambda[99]` 均为 `torch.float64`，`W_99` 正交，
 lambda finite 且 strictly positive，fit reconstruction finite，RNG=`NONE`，validation rows 未加载或
 用于参数估计。`r=99` 仅描述 near-full-dimensional strict-proper-subspace baseline，不是 compact
-low-rank、intrinsic OLS dimension 或 Gaussian/positivity/support validation 结论。score law 仍是
+low-rank 或 intrinsic OLS dimension 结论；本次 fit 本身也不建立 Gaussianity 或 positivity/support
+validity，后续 validation 由独立 consumer 单独登记。score law 仍是
 `DIAGONAL_GAUSSIAN_LOW_RANK_SCORE_BASELINE_V1` 的 registered model assumption；
 `training_authorized=false`、`formal_promotion=false`、`generation_readiness=not_ready` 保持。
 
