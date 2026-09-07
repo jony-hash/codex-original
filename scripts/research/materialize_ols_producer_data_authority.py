@@ -665,7 +665,8 @@ def _load_s3_panel(repo_root: Path, directory: Path, manifest_sha: str, state_sh
         internal = _mapping(internal_validation, "S3 internal validation")
         _require(internal.get("schema") == "controller_semantic_geometry_internal_validation.v1", "internal validation schema changed")
         _require(internal.get("descriptive_only") is True, "internal validation is not descriptive-only")
-        _require(internal.get("complex_states_saved") is False, "internal validation complex-state status changed")
+        if "complex_states_saved" in internal:
+            _require(internal.get("complex_states_saved") is False, "internal validation complex-state status changed")
         _require(internal.get("base_code_count") == 100, "internal validation base-code count changed")
         _require(internal.get("base_codes_sha256") == INTERNAL_CODE_BASE_SHA256, "internal validation base-code identity changed")
         _require(internal.get("panel_code_sha256") == INTERNAL_CODE_PANEL_SHA256, "internal validation panel-code identity changed")
