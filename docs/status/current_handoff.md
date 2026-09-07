@@ -6,6 +6,37 @@
 [experiment history](experiment_history.md)。2026-08-24 重整前的完整长篇记录保存在
 [archived handoff](../archive/current_handoff_pre_sced_20260824.md)，仅供溯源。
 
+## H-LOMA-GEN-S3 Controller semantic-geometry one-shot canary（2026-09-07）
+
+显式授权 `AUTHORIZE_ONE_SHOT_CONTROLLER_SEMANTIC_GEOMETRY_TRAINING_CANARY` 已消费一次，
+并在 clean implementation HEAD
+`169fd515b7d6ff6d862222c066c44a39dc373879` 上完成已注册的 controller-only、frozen-optical、
+fixed-horizon canary。attempt-01 的 preflight 通过但旧 consumer 在 optimizer 前拒绝
+`cuda:0` alias，未产生任何更新或 checkpoint；该 write-once 尝试保留且不消费。
+
+attempt-02 的 3-step preflight gate=
+`CONTROLLER_SEMANTIC_GEOMETRY_3_STEP_PREFLIGHT_PASS`；证据为
+`outputs/20260907_v2/runs/lightgen_controller_semantic_geometry_s3_repair_v1_attempt_02/preflight.json`，
+SHA=`ed44ba642252a7ecb08faa2541af9af55f9b7d1a72c9ea8696afd8fc689c1835`。随后准确执行
+`492` logical optimizer/backward steps，唯一 final-step-only checkpoint 为
+`outputs/20260907_v2/runs/lightgen_controller_semantic_geometry_s3_repair_v1_attempt_02/controller_semantic_geometry_final_step_492.pt`，
+SHA=`4d7c574d98078df38f9866734ad60bacd82c5a7e18dc9d1737fd70e1f42d8d84`；loss=
+`0.34952232241630554`、mean_anchor=`0.19811758399009705`、
+mean_covariance=`0.5009270906448364`。
+
+state isolation 通过：generator state hash 从
+`3d06989ba6c5f9154e4d05b64cef42bd4c94b02686ff5b2120a953d9f87a7931` 变为
+`cccefcb25c674b11f64653fe1f97a0193d4896bc69c4fe01cf3812daffda1b99`；final payload 只有
+四个 generator state groups，冻结 optical/evaluator/controller authority bindings 未变。
+run 目录仅含 preflight 与 final checkpoint，Git execution HEAD clean。
+
+结果是 `bounded_controller_semantic_geometry_canary_completed`，不是 S3 efficacy 或
+generation/promotion 结论。S3 classification 仍为
+`S3_CONTROL_TO_OLS_WRITABILITY_NOT_SUPPORTED`；无 evaluator、decoder、S3 rerun、generation
+metrics 或 formal promotion。全局治理仍保持 `training_authorized=false`、
+`formal_promotion=false`、`generation_readiness=not_ready`。后续任何 S3 效果判断须另行授权
+新的 write-once S3 rerun；本次授权不成为持久 training authority。
+
 ## H-LOMA-GEN-S3 Controller semantic-geometry data authority（2026-09-07）
 
 上一授权在 `e4e1a855f55a542d75ec5121b86dd242028c71b6` 上以 `INVALID_HARNESS`、step 0 结束；

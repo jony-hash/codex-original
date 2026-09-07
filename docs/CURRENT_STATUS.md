@@ -2416,3 +2416,42 @@ writes=`0`，future training output 未创建。S3 仍为
 唯一下一动作是新授权字符串
 `AUTHORIZE_ONE_SHOT_CONTROLLER_SEMANTIC_GEOMETRY_TRAINING_CANARY`，此前不得进行 3-step、492-step、CUDA、
 S3 rerun 或任何真实 optimizer update。
+
+## H-LOMA-GEN-S3 Controller semantic-geometry one-shot canary（2026-09-07，Windows-native）
+
+本轮消费显式授权 `AUTHORIZE_ONE_SHOT_CONTROLLER_SEMANTIC_GEOMETRY_TRAINING_CANARY`，仅执行已注册的
+controller-only、frozen-optical、fixed-horizon canary。尝试-01 的 3-step preflight 已通过，但旧
+training consumer 因 evidence 中的 `cuda:0` alias 未被接受，在加载 optical model/创建 optimizer
+前停止；该 write-once 记录无 optimizer/backward/forward/checkpoint/S3 结果，保持不消费。
+
+attempt-02 从 clean implementation HEAD=`169fd515b7d6ff6d862222c066c44a39dc373879` 执行，使用
+`configs/research/lightgen_controller_semantic_geometry_training_v1_attempt_02.yaml`。3-step CUDA
+preflight gate=`CONTROLLER_SEMANTIC_GEOMETRY_3_STEP_PREFLIGHT_PASS`，证据为
+`outputs/20260907_v2/runs/lightgen_controller_semantic_geometry_s3_repair_v1_attempt_02/preflight.json`，
+SHA-256=`ed44ba642252a7ecb08faa2541af9af55f9b7d1a72c9ea8696afd8fc689c1835`；3/3 steps 的四个
+registered generator parameter groups 均有 finite nonzero gradient/update，frozen-controller negative
+control、optical/file identity、evaluator/decoder isolation 与零 preflight checkpoint writes 均通过。
+preflight peak CUDA=`2159626752` bytes，registered max=`5368709120`，wall=`52.8974838 s`。
+
+随后固定执行 `492` 个 logical optimizer/backward steps，未进行 sweep、validation/S3 selection 或
+任何 runtime horizon 切换。唯一 checkpoint 为
+`outputs/20260907_v2/runs/lightgen_controller_semantic_geometry_s3_repair_v1_attempt_02/controller_semantic_geometry_final_step_492.pt`，
+SHA-256=`4d7c574d98078df38f9866734ad60bacd82c5a7e18dc9d1737fd70e1f42d8d84`；schema=
+`controller_semantic_geometry_final_controller_state.v1`，checkpoint selection=
+`FINAL_AUTHORIZED_STEP_ONLY`，step=`492`。final payload metrics：loss=`0.34952232241630554`，
+mean_anchor=`0.19811758399009705`，mean_covariance=`0.5009270906448364`。
+
+controller-only state isolation 通过：starting generator state hash=
+`3d06989ba6c5f9154e4d05b64cef42bd4c94b02686ff5b2120a953d9f87a7931`，final generator state hash=
+`cccefcb25c674b11f64653fe1f97a0193d4896bc69c4fe01cf3812daffda1b99`；final checkpoint 仅含四个
+generator state groups，formal optical checkpoint、calibration、calibration manifest、evaluator identity、
+controller authority 与 migrated controller 的 frozen hashes 均保持一致。run 目录仅有 preflight.json
+与 final checkpoint；当前 Git HEAD 仍为上述 implementation HEAD 且 worktree clean。
+
+结果分类为 `bounded_controller_semantic_geometry_canary_completed`，不构成 S3 efficacy 结论；S3
+classification 仍为 `S3_CONTROL_TO_OLS_WRITABILITY_NOT_SUPPORTED`，没有 evaluator、decoder、S3
+rerun、generation metrics 或 formal promotion，治理 flags 继续为
+`training_authorized=false`、`formal_promotion=false`、`generation_readiness=not_ready`。
+controller harness 定向测试=`25 passed`，compileall、Ruff、git diff-check 与上述只读 artifact
+验收通过。后续若需判断 S3 效果，必须另行授权并建立新的 write-once S3 rerun；本次 one-shot
+authorization 不转化为持久 training authority。

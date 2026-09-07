@@ -8,6 +8,45 @@
 交接规则，不替代正式证据、实验报告或历史 transcript。云端 ChatGPT 项目使用它的
 受控上传副本；本文件本身仍以本地 Git 版本为准。
 
+## H-LOMA-GEN-S3 Controller semantic-geometry one-shot canary（2026-09-07）
+
+显式授权 `AUTHORIZE_ONE_SHOT_CONTROLLER_SEMANTIC_GEOMETRY_TRAINING_CANARY` 已被消费一次，
+仅用于已注册的 controller-only、frozen-optical、fixed-horizon canary。实现链为
+`1b3b14f8a50f06d0201622f3a4a3fc6fa278943a`、
+`43b1a4250e6b4839d0a32ca0e2ba0ed351335f00`、
+`169fd515b7d6ff6d862222c066c44a39dc373879`；最后一个是运行时 clean implementation HEAD。
+attempt-01 preflight 虽通过，但训练 consumer 因 `cuda:0` alias 校验缺陷在 optimizer 之前停止，
+无 optimizer/backward/forward/checkpoint/S3 result，write-once 记录保留且不消费。
+
+attempt-02 使用
+`configs/research/lightgen_controller_semantic_geometry_training_v1_attempt_02.yaml`。3-step CUDA
+preflight gate=`CONTROLLER_SEMANTIC_GEOMETRY_3_STEP_PREFLIGHT_PASS`，证据 path=
+`outputs/20260907_v2/runs/lightgen_controller_semantic_geometry_s3_repair_v1_attempt_02/preflight.json`，
+SHA=`ed44ba642252a7ecb08faa2541af9af55f9b7d1a72c9ea8696afd8fc689c1835`；peak CUDA=
+`2159626752/5368709120` bytes（actual/registered maximum），wall=`52.8974838 s`，四个
+generator parameter groups 的 finite nonzero gradient/update、frozen negative control、
+optical/file identity 与 evaluator/decoder isolation 均通过。
+
+随后准确完成 `492` logical optimizer/backward steps。final-step-only checkpoint path=
+`outputs/20260907_v2/runs/lightgen_controller_semantic_geometry_s3_repair_v1_attempt_02/controller_semantic_geometry_final_step_492.pt`，
+SHA=`4d7c574d98078df38f9866734ad60bacd82c5a7e18dc9d1737fd70e1f42d8d84`；schema=
+`controller_semantic_geometry_final_controller_state.v1`，step=`492`，metrics 为
+loss=`0.34952232241630554`、mean_anchor=`0.19811758399009705`、
+mean_covariance=`0.5009270906448364`。preflight SHA 被嵌入 checkpoint。
+
+controller-only isolation 通过：generator state hash 从
+`3d06989ba6c5f9154e4d05b64cef42bd4c94b02686ff5b2120a953d9f87a7931` 变为
+`cccefcb25c674b11f64653fe1f97a0193d4896bc69c4fe01cf3812daffda1b99`；final payload 只有四个
+generator state groups，formal optical/checkpoint、calibration、evaluator identity、controller
+authority 与 migrated controller bindings 未变。run directory 只有 preflight.json 与 final
+checkpoint；Git execution HEAD clean，当前 S3 classification 不变。
+
+该结果只记为 `bounded_controller_semantic_geometry_canary_completed`，不是 S3 efficacy、
+generation 或 promotion 结论。没有 evaluator、decoder、S3 rerun、generation metrics 或 formal
+promotion；全局治理仍为 `training_authorized=false`、`formal_promotion=false`、
+`generation_readiness=not_ready`。后续若要判断 S3 效果，必须另行授权新的 write-once S3 rerun；
+本次 one-shot authorization 不成为持久 training authority。
+
 ## H-LOMA-GEN-S3 Controller semantic-geometry data authority materialization（2026-09-07）
 
 旧授权在 implementation HEAD=`e4e1a855f55a542d75ec5121b86dd242028c71b6` 上以

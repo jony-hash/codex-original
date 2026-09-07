@@ -4,10 +4,13 @@ This file records the implementation boundary for the bounded intervention
 after `S3_CONTROL_TO_OLS_WRITABILITY_NOT_SUPPORTED`. It is not an S3 success
 record and does not authorize training or formal promotion.
 
-The implementation is registered by
-`configs/research/lightgen_controller_semantic_geometry_training_v1.yaml` and
-is consumed by
+The implementation contract is registered by
+`configs/research/lightgen_controller_semantic_geometry_training_v1.yaml` (the
+attempt-02 execution config is
+`configs/research/lightgen_controller_semantic_geometry_training_v1_attempt_02.yaml`) and is consumed by
 `src/ldm_project/v2/application/research/controller_semantic_geometry_training.py`.
+The authorized run was performed from clean implementation HEAD
+`169fd515b7d6ff6d862222c066c44a39dc373879`.
 
 ## Materialized data authority (2026-09-07)
 
@@ -76,6 +79,58 @@ authorization value other than:
 
 `AUTHORIZE_ONE_SHOT_CONTROLLER_SEMANTIC_GEOMETRY_TRAINING_CANARY`
 
-No training, 492-step canary, or S3 rerun is part of this implementation
-commit. Scientific success remains undecided until the original frozen S3
-contract is rerun under a separately authorized write-once attempt.
+The authorized execution is now complete. Attempt-01 first passed its 3-step
+preflight but its training consumer rejected the recorded device alias
+`cuda:0` before loading the optical model or creating an optimizer; it wrote
+no optimizer update, backward, forward, checkpoint, or S3 result. That
+write-once attempt remains preserved at
+`outputs/20260907_v2/runs/lightgen_controller_semantic_geometry_s3_repair_v1_attempt_01/`.
+
+## Authorized bounded canary (2026-09-07)
+
+Attempt-02 used the fixed execution config
+`configs/research/lightgen_controller_semantic_geometry_training_v1_attempt_02.yaml`
+from clean implementation HEAD
+`169fd515b7d6ff6d862222c066c44a39dc373879`. The device-alias consumer fix was
+`43b1a4250e6b4839d0a32ca0e2ba0ed351335f00`; the attempt-02 config registration
+was `169fd515b7d6ff6d862222c066c44a39dc373879`.
+
+The production 3-step CUDA preflight passed with gate
+`CONTROLLER_SEMANTIC_GEOMETRY_3_STEP_PREFLIGHT_PASS`. Its write-once evidence is
+`outputs/20260907_v2/runs/lightgen_controller_semantic_geometry_s3_repair_v1_attempt_02/preflight.json`
+with SHA-256
+`ed44ba642252a7ecb08faa2541af9af55f9b7d1a72c9ea8696afd8fc689c1835`; peak CUDA
+allocation was `2159626752` bytes against the registered maximum
+`5368709120`, and preflight wall time was `52.8974838` seconds. All three
+steps had finite nonzero gradients and updates for the four registered
+generator parameter groups; frozen-controller negative control, optical/file
+identity, evaluator/decoder isolation, and zero preflight checkpoint writes
+passed.
+
+The authorized run then completed exactly `492` logical optimizer/backward
+steps, consuming the fixed class-balanced R1 geometry batch/code stream. The
+only run outputs are `preflight.json` and the final-step checkpoint
+`outputs/20260907_v2/runs/lightgen_controller_semantic_geometry_s3_repair_v1_attempt_02/controller_semantic_geometry_final_step_492.pt`,
+SHA-256
+`4d7c574d98078df38f9866734ad60bacd82c5a7e18dc9d1737fd70e1f42d8d84`. Its
+schema is `controller_semantic_geometry_final_controller_state.v1`, step is
+`492`, and selection is `FINAL_AUTHORIZED_STEP_ONLY`. The payload records
+`loss=0.34952232241630554`, `mean_anchor=0.19811758399009705`, and
+`mean_covariance=0.5009270906448364`.
+
+Controller-only isolation passed: starting generator state hash was
+`3d06989ba6c5f9154e4d05b64cef42bd4c94b02686ff5b2120a953d9f87a7931`, final
+generator state hash was
+`cccefcb25c674b11f64653fe1f97a0193d4896bc69c4fe01cf3812daffda1b99`, and
+the final checkpoint contains only the four generator state groups. The
+formal optical checkpoint, calibration, calibration manifest, evaluator
+identity, controller authority, and migrated controller hashes all matched
+their frozen bindings. No evaluator, decoder, S3 rerun, generation metric,
+or formal promotion was performed.
+
+This is a completed bounded controller training canary, not an S3 efficacy
+claim. The classification remains
+`S3_CONTROL_TO_OLS_WRITABILITY_NOT_SUPPORTED`; `formal_promotion=false`, and
+the one-shot authorization is not persistent project-wide training authority.
+Any scientific effect on the original S3 contract requires a separately
+authorized, write-once S3 rerun.
