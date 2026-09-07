@@ -1,6 +1,6 @@
 # 当前项目状态
 
-更新时间：2026-09-07
+更新时间：2026-09-08
 
 ## 恢复后 outputs 语义合同修订（2026-09-07）
 
@@ -129,6 +129,48 @@ provenance，不能作为当前 Windows 路径解析器或 formal acceptance 输
   `generation_readiness=not_ready`
 - next downstream score-sampling/novel-OLS/generation consumer requires separate
   authority; this fit does not authorize it
+
+## H-LOMA-GEN-N3 amplitude producer baseline validation（2026-09-08，Windows-native）
+
+- gate: `VALIDATE_N3_AMPLITUDE_PRODUCER_BASELINE_V1`
+- status: `valid_completed`
+- classification: `N3_AMPLITUDE_PRODUCER_BASELINE_NOT_SUPPORTED`
+- implementation/consumer commit: `07e51c9620592ed596c46581c137580c25c97503`
+- report:
+  `outputs/20260908_v2/runs/lightgen_n3_amplitude_producer_validation_v1_attempt_01/n3_amplitude_producer_validation_report.v1.json`
+- report SHA:
+  `16435dd72babf1f6abe537aa766c27fad79065f1cdf0ebfa6a9f54c4837aa6a0`
+- sample-bank SHA:
+  `b9996c30b32176f77486204eb4bbca9931d4fe63e09e2f70705263e7f3b9340d`
+- frozen input: producer state SHA
+  `cd70756674660470786b92f59d27414cbc379cb61b02ad255ed3d596c6362722`,
+  `r=99`, `d=100`, `n_fit=500`, lambda denominator `499`; validation bank SHA
+  `8397c886db73bb260723debd6d4eab332b6172972a055b28f770e7ca2bf3ee25`
+- axis classifications:
+  `SCORE_STRUCTURE=CALIBRATED_MISMATCH`,
+  `GAUSSIAN_BASELINE=CALIBRATED_MISMATCH`,
+  `POSITIVITY_FEASIBILITY=SUPPORTED`,
+  `AMPLITUDE_SUPPORT=CALIBRATED_MISMATCH`
+- positivity: fixed CPU seed `100001`; 2,744 proposals, 500 accepted,
+  2,244 rejected, acceptance fraction `0.1822157434`; all accepted q finite
+  and elementwise nonnegative
+- held-out score: standardized radial `R^2` mean/variance
+  `136.6551453/2591.1898268` versus standard-normal reference `99/198`;
+  maximum absolute cross-score correlation `0.3270498`
+- model-calibrated failures: score radial-mean delta
+  `36.7426481` versus model-model `0.4122661`; q-space energy distance
+  `0.7437482` versus `0.0277687`; covariance relative Frobenius
+  `0.7302877` versus `0.0559168`
+- interpretation: freeze the `r=99` producer as a valid tested baseline;
+  do not retune rank, producer parameters, or proposal budget on this bank.
+  This does not support Gaussianity, intrinsic OLS dimension, full complex OLS
+  distribution, semantic generation, or generation readiness.
+- no phase-source selection, novel complex OLS, optical forward, evaluator,
+  CUDA, optimizer, backward, or training occurred; training_authorized=false,
+  formal_promotion=false, generation_readiness=not_ready
+- next research question (planning only): a new producer-family hypothesis for
+  the held-out score/joint-amplitude support mismatch, with the current bank,
+  frozen producer state, and data firewall preserved
 
 ## FINAL_MAINLINE_CLOSEOUT：H-LOMA-CBOGT Scaled-Chen reconstruction-repair mainline（2026-09-03）
 

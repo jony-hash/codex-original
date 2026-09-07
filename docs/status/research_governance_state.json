@@ -2,7 +2,7 @@
   "schema_version": 1,
   "kind": "research_governance_state",
   "policy_id": "RESEARCH_GOVERNANCE_SIMPLIFICATION_V1",
-  "active_objective": "FIT_N3_AMPLITUDE_PRODUCER_BASELINE_V1",
+  "active_objective": "VALIDATE_N3_AMPLITUDE_PRODUCER_BASELINE_V1",
   "authorization_tier": "R1",
   "hard_blocker": null,
   "evidence_aliases": {
@@ -35,6 +35,17 @@
       "schema": "n3_amplitude_producer_state_manifest.v1",
       "sha256": "2f8766943eca79e37b4e72b4e1bff37cff7c8f9ce09469bce2daebbb481df373",
       "state_sha256": "cd70756674660470786b92f59d27414cbc379cb61b02ad255ed3d596c6362722",
+      "verification": "verified"
+    },
+    "N3_AMPLITUDE_PRODUCER_BASELINE_VALIDATED": {
+      "kind": "machine_evidence",
+      "path": "outputs/20260908_v2/runs/lightgen_n3_amplitude_producer_validation_v1_attempt_01/n3_amplitude_producer_validation_report.v1.json",
+      "role": "bounded independent validation of frozen r=99 amplitude producer",
+      "schema": "n3_amplitude_producer_validation_report.v1",
+      "sha256": "16435dd72babf1f6abe537aa766c27fad79065f1cdf0ebfa6a9f54c4837aa6a0",
+      "sample_bank_path": "outputs/20260908_v2/runs/lightgen_n3_amplitude_producer_validation_v1_attempt_01/n3_amplitude_producer_validation_sample_banks.v1.pt",
+      "sample_bank_sha256": "b9996c30b32176f77486204eb4bbca9931d4fe63e09e2f70705263e7f3b9340d",
+      "classification": "N3_AMPLITUDE_PRODUCER_BASELINE_NOT_SUPPORTED",
       "verification": "verified"
     }
   }

@@ -1,6 +1,6 @@
 # codex-original 项目记忆
 
-更新时间：2026-09-07
+更新时间：2026-09-08
 
 ## 目的与事实优先级
 
@@ -123,6 +123,47 @@ low-rank、intrinsic OLS dimension 或 Gaussian/positivity/support validation �
 
 后续 score sampling、novel OLS、semantic selector 或 generation 均需独立 consumer authority，不由
 本次 fit 自动授权。
+
+## H-LOMA-GEN-N3 amplitude producer baseline validation（2026-09-08）
+
+`VALIDATE_N3_AMPLITUDE_PRODUCER_BASELINE_V1` 已在 clean consumer HEAD
+`07e51c9620592ed596c46581c137580c25c97503` 上有效完成一次 bounded independent validation。
+consumer 只读取冻结的 `r=99` producer state 与独立 internal-validation bank；没有 refit
+`mu/W/lambda`、rank reselection、optimizer、backward、training、CUDA、optical forward、
+evaluator、phase-source selection 或 novel complex OLS。
+
+权威 report 为
+`outputs/20260908_v2/runs/lightgen_n3_amplitude_producer_validation_v1_attempt_01/`
+下的 `n3_amplitude_producer_validation_report.v1.json`，SHA=
+`16435dd72babf1f6abe537aa766c27fad79065f1cdf0ebfa6a9f54c4837aa6a0`；sample-bank SHA=
+`b9996c30b32176f77486204eb4bbca9931d4fe63e09e2f70705263e7f3b9340d`。validation 输入仍绑定
+internal-validation bank SHA=`8397c886db73bb260723debd6d4eab332b6172972a055b28f770e7ca2bf3ee25`、
+producer state SHA=`cd70756674660470786b92f59d27414cbc379cb61b02ad255ed3d596c6362722`，
+`r=99`、`d=100`、lambda 分母为 499。
+
+outer gate status=`valid_completed`，classification=
+`N3_AMPLITUDE_PRODUCER_BASELINE_NOT_SUPPORTED`。四轴结果为：
+`SCORE_STRUCTURE=CALIBRATED_MISMATCH`、`GAUSSIAN_BASELINE=CALIBRATED_MISMATCH`、
+`POSITIVITY_FEASIBILITY=SUPPORTED`、`AMPLITUDE_SUPPORT=CALIBRATED_MISMATCH`。固定 CPU seed
+`100001` 下 2,744 proposals 得到 500 个 finite、elementwise `q>=0` samples，acceptance
+fraction=`0.1822157434`；这只证明 bounded positivity operation 可执行，不证明 distribution
+或 generation readiness。
+
+held-out standardized score 的 descriptive radial `R^2` mean/variance 为
+`136.6551453/2591.1898268`，standard-normal reference 为 `99/198`；最大绝对 cross-score
+correlation=`0.3270498`。按预注册的 model-calibrated 规则（每个
+`DATA_VS_MODEL` discrepancy 必须不大于对应 `MODEL_VS_MODEL` fluctuation），score 与 amplitude
+均失败：score radial-mean delta=`36.7426481` 对 `0.4122661`，q-space energy distance=
+`0.7437482` 对 `0.0277687`，covariance relative Frobenius=`0.7302877` 对 `0.0559168`。
+这些是 finite-sample compatibility failures，不是 Gaussianity、intrinsic dimension 或完整
+complex OLS distribution 的定理性结论。
+
+因此冻结当前 `r=99` state 作为 valid tested baseline；不得在同一 validation bank 上 retune
+rank、producer 参数或 positivity budget。当前结果不授权 phase-source、novel complex OLS、
+semantic generation、evaluator 或 formal promotion。`training_authorized=false`、
+`formal_promotion=false`、`generation_readiness=not_ready` 保持。唯一下一研究问题是：在冻结
+当前数据 firewall、`r=99` state 与既有 authority 的前提下，规划一个针对 held-out score/joint
+amplitude support mismatch 的新 producer-family hypothesis；本问题不包含实现或再次验证。
 
 ## H-LOMA-GEN-S3 Controller semantic-geometry one-shot repair postmortem（2026-09-07）
 

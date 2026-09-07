@@ -1,4 +1,4 @@
-# 当前主线交接（2026-09-07）
+# 当前主线交接（2026-09-08）
 
 本文件是当前执行状态的稳定入口。最终主线已在当前 evidence boundary 收口；当前没有下一科学
 实验。架构合同见 [v2 runtime](../architecture/v2_runtime.md)，收口边界见
@@ -106,6 +106,33 @@ strictly positive、fit reconstruction finite、RNG=`NONE` 与 input unchanged �
 intrinsic OLS dimension；Gaussianity、positivity/support validation、novel OLS 与 generation 仍未建立。
 `training_authorized=false`、`formal_promotion=false`、`generation_readiness=not_ready` 保持。后续
 score sampling、novel OLS、semantic selector 或 generation 需要独立 consumer authority。
+
+## H-LOMA-GEN-N3 amplitude producer baseline validation（2026-09-08）
+
+`VALIDATE_N3_AMPLITUDE_PRODUCER_BASELINE_V1` 在 clean consumer HEAD
+`07e51c9620592ed596c46581c137580c25c97503` 上一次有效完成。权威目录为
+`outputs/20260908_v2/runs/lightgen_n3_amplitude_producer_validation_v1_attempt_01/`；
+report SHA=`16435dd72babf1f6abe537aa766c27fad79065f1cdf0ebfa6a9f54c4837aa6a0`，
+sample-bank SHA=`b9996c30b32176f77486204eb4bbca9931d4fe63e09e2f70705263e7f3b9340d`。
+输入绑定 producer state SHA=`cd70756674660470786b92f59d27414cbc379cb61b02ad255ed3d596c6362722`、
+internal-validation bank SHA=`8397c886db73bb260723debd6d4eab332b6172972a055b28f770e7ca2bf3ee25`，
+固定 `r=99`、`d=100`、lambda 分母 499。
+
+classification=`N3_AMPLITUDE_PRODUCER_BASELINE_NOT_SUPPORTED`，四轴为：
+`SCORE_STRUCTURE=CALIBRATED_MISMATCH`、`GAUSSIAN_BASELINE=CALIBRATED_MISMATCH`、
+`POSITIVITY_FEASIBILITY=SUPPORTED`、`AMPLITUDE_SUPPORT=CALIBRATED_MISMATCH`。CPU seed=`100001`
+下 2,744 proposals 产生 500 accepted finite/nonnegative q，acceptance=`0.1822157434`。
+held-out `R^2` mean/variance=`136.6551453/2591.1898268`，标准正态 reference=`99/198`；
+score radial delta=`36.7426481` 对 model-model=`0.4122661`，q-space energy distance=
+`0.7437482` 对 `0.0277687`，covariance relative Frobenius=`0.7302877` 对 `0.0559168`。
+上述 comparison 使用固定的 `DATA_VS_MODEL <= MODEL_VS_MODEL` finite-sample rule；不等同于
+Gaussianity theorem 或完整 complex OLS failure proof。
+
+结论：当前 `r=99` producer 冻结为 valid tested baseline，不在同一 validation bank 上 retune
+rank、参数或 proposal budget。结果不授权 phase-source、novel complex OLS、semantic generation、
+evaluator 或 formal promotion；`training_authorized=false`、`formal_promotion=false`、
+`generation_readiness=not_ready` 保持。唯一下一 research question 是规划针对 held-out score/joint
+amplitude support mismatch 的新 producer-family hypothesis；不包含实现或再次验证。
 
 ## H-LOMA-GEN-S3 Controller semantic-geometry one-shot repair postmortem（2026-09-07）
 
