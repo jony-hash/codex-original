@@ -16,6 +16,14 @@
 - `configs/research/` contains active research-only lifecycle configurations.
   They cannot authorize the formal identity runtime or hardware promotion.
 - `scripts/maintenance/` and `scripts/visualization/` contain version-neutral utilities.
+- `outputs/` is a managed artifact tree with separate roles: current
+  Windows-native runs, protected `outputs/final_pt/`, and the materialized view
+  of restored historical outputs. The restored view is bounded by
+  `outputs/_wsl_restore_metadata_v4/restore-plan.json`, `restore-state.json`,
+  and `path-map.jsonl`; it is provenance material, not an active runtime input.
+- `outputs/version_index.json` and `outputs/version_index.md` are historical
+  WSL-generated indexes. Their original absolute paths may be retained for
+  provenance and must not be used by current Windows path resolution.
 
 ## Research reference assets
 

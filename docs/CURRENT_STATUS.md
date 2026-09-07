@@ -2,6 +2,22 @@
 
 更新时间：2026-09-07
 
+## 恢复后 outputs 语义合同修订（2026-09-07）
+
+本次只修订 outputs 的治理与说明文档，不修改任何恢复的 checkpoint、图像、JSON、
+日志、索引或 `_wsl_restore_metadata_v4`。只读核验确认 restore plan 的
+163/163 个 archive 状态为 `complete`，声明的源文件数为 `33117`、源字节数为
+`240556414616`、path mapping 为 `46`。恢复历史内容到 `20260829_v2` 为止；
+`20260830_v2` 及之后的日期目录是当前 Windows-native 运行空间，最终归属以
+restore plan 而不是目录修改时间推断。
+
+`outputs/version_index.json` 和 `.md` 保留原 WSL `/home/...` 路径，只能作为历史
+provenance，不能作为当前 Windows 路径解析器或 formal acceptance 输入。修改文件为
+`AGENTS.md`、`README.md`、`docs/repository_taxonomy.md`、
+`docs/operations/output_artifact_notes.md`、本文件和迁移记录；
+`git diff --check` 通过，未运行 CUDA 或完整 pytest。下一步是继续使用恢复元数据
+区分历史与当前 outputs，不进行输出清理或自动重解析。
+
 ## H-LOMA-GEN OLS-native research branch genesis（2026-09-07）
 
 - classification: `OLS_NATIVE_RESEARCH_BRANCH_ESTABLISHED`

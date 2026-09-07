@@ -78,11 +78,12 @@ v1 研究线已冻结在 v79：固定 label-only normalization 的八维 support
 | `tests/diagnostics/` | 当前 diagnostic boundary 验证；版本专用测试在 archive |
 | `docs/` | 架构、运行指南、输出语义和历史证据 |
 | `scripts/` | 版本中立的维护与展示辅助脚本 |
-| `outputs/` | 按真实日期前缀版本目录分组的 managed run artifacts；`outputs/final_pt/` 保持固定 |
+| `outputs/` | 当前 Windows-native runs 与已恢复历史 outputs 的可见树；恢复元数据位于 `outputs/_wsl_restore_metadata_v4/`，`outputs/final_pt/` 保持固定 |
 | `data/raw/` | 不可变原始数据 |
-| `legacy/` | 历史实现；不得混入 LDM core package |
 
 训练、诊断和 pre-acceptance run 默认写入 `outputs/YYYYMMDD_<version>/runs/<run>/`；`<version>` 从 run-name 或 config 文件名提取，缺省为 `unversioned`。目录名前缀使用该版本当前已知最早 run 日期；若这是一个新版本，则首次创建时使用当天日期。`outputs/runs/` 已移除。
+
+恢复历史目录由 `outputs/_wsl_restore_metadata_v4/` 的 restore plan、state 和 path map 界定；它们只用于历史溯源，不能自动作为当前 formal acceptance 输入。恢复的 `version_index.json/.md` 保留原 WSL 索引路径，不能作为当前 Windows 路径解析器。
 
 ## Documentation
 

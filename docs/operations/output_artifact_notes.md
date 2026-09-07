@@ -2,6 +2,23 @@
 
 本文件只解释生成图片、tensor bundle 和光学诊断。v1 Stage 命令见 [Stage Guide](stage_guide.md)，v2 current 命令见 [v2 runtime](../architecture/v2_runtime.md)，完整文档导航见 [Documentation](../README.md)。
 
+## 恢复历史 outputs
+
+当前 Windows 工作区的 `outputs/` 同时包含两类内容：当前 Windows-native
+运行结果，以及从不可变 WSL tar 归档恢复的历史可见副本。恢复副本中的
+checkpoint、图像、JSON evidence、日志和诊断文件仍保持原始历史身份；它们不
+自动进入当前 runtime、formal acceptance 或 checkpoint resolution。
+
+恢复完整性以 `outputs/_wsl_restore_metadata_v4/` 下的
+`restore-plan.json`、`restore-state.json` 和 `path-map.jsonl` 为准。文件数量、
+磁盘占用或目录修改时间只是描述性指标，不能替代恢复验证。原始 tar、index
+和 manifest 位于外部不可变归档位置，不得由当前工作区改写。
+
+`outputs/version_index.json` 与 `outputs/version_index.md` 是恢复的历史 WSL
+索引，可能包含 `/home/...` 绝对路径；它们只能用于 provenance，当前 Windows
+工具必须使用显式 Windows 路径或当前 run 元数据，不能自动把这些路径解析为
+当前工作区文件。
+
 ## v2 Conditional Artifacts
 
 v2 current run 在 `outputs/YYYYMMDD_v2/runs/<run>/` 下保存 evaluator、identity

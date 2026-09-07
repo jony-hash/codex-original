@@ -1264,3 +1264,16 @@ normalized covariance/tangent-shape mismatch 同时有 descriptive support；Jac
 evidence boundary、reconstruction/generative unsupported、generation not ready、training/formal
 promotion=false。targeted tests=`4 passed`，compileall、Ruff、`git diff --check`、authority/tree/hash
 audit PASS。唯一下一动作=`PLAN_CONTROLLER_SEMANTIC_GEOMETRY_TRAINING_AUTHORITY`。
+
+## 恢复后 outputs 语义合同同步（2026-09-07）
+
+在当前 HEAD=`c208667`、branch=`research/lightgen-ols-native-semantic-generation-v1`
+上，仅同步治理文档对恢复 outputs 的描述。outputs 仍保持“当前 Windows-native
+结果 + 已恢复历史可见副本”的双重角色；163/163 个 restore archive、33117 个源文件、
+240556414616 个源字节和 46 个 path mappings 的恢复声明保持不变。
+
+本次修改只涉及 `AGENTS.md`、`README.md`、`docs/repository_taxonomy.md`、
+`docs/operations/output_artifact_notes.md`、`docs/CURRENT_STATUS.md` 和本记录。
+恢复树、`_wsl_restore_metadata_v4`、外部 tar/index/manifest 均未写入；历史
+`version_index.json/.md` 的 WSL 绝对路径也未改写。验证为 `git diff --check` 和
+只读恢复元数据检查通过；没有运行 CUDA 或完整 pytest，因为本次不包含行为代码修改。
