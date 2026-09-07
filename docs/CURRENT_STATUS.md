@@ -85,6 +85,51 @@ provenance，不能作为当前 Windows 路径解析器或 formal acceptance 输
   outer planning task (planning only; not execution authorization):
   DEFINE_N3_LOW_RANK_MODEL_ORDER_CONTRACT_V1
 
+## H-LOMA-GEN-N3 low-rank model-order selection（2026-09-07，Windows-native）
+
+- classification: `N3_LOW_RANK_MODEL_ORDER_SELECTED`
+- result: `valid_completed`; coordinate `R2_AMPLITUDE=|c|/sqrt(s)`
+- fit/internal-validation banks: 500/500 rows, `d=100`, CPU `float64`
+- candidate domain: `r=1..99`; `r_min=99`; one-SE acceptable set=`[99]`;
+  selected `r=99`
+- result artifact:
+  `outputs/20260907_v2/runs/lightgen_n3_low_rank_model_order_selection_v1_attempt_01/model_order_result.v1.json`
+- artifact SHA:
+  `aeb66fe308b42eb1c7ffa313790f762837df00f6255cefcec79a6210bce78f93`
+- this supports only `MODEL_ORDER_SELECTED_FOR_LOW_RANK_AMPLITUDE_BASELINE=99`;
+  it does not support intrinsic dimension, compact latent structure, Gaussianity,
+  novel OLS, or generation.
+
+## H-LOMA-GEN-N3 amplitude producer baseline fit（2026-09-07，Windows-native）
+
+- classification: `N3_AMPLITUDE_PRODUCER_BASELINE_FITTED`
+- implementation HEAD:
+  `8f7bc19c98576f9d4d7428fc2efa426e19d71b92`
+- fixed state: `r=99`, `d=100`, `n_fit=500`; only the authorized fit bank was
+  used; internal-validation rows were not loaded or used for parameter estimation
+- fitted state:
+  `mu_fit[100]`, `W_99[100,99]`, `lambda_1_to_99[99]`, all `torch.float64`
+- lambda convention: `lambda_k=sigma_k^2/(n_fit-1)=sigma_k^2/499`
+- state artifact:
+  `outputs/20260907_v2/runs/lightgen_n3_amplitude_producer_baseline_v1_attempt_01/n3_amplitude_producer_state.v1.pt`
+- state SHA:
+  `cd70756674660470786b92f59d27414cbc379cb61b02ad255ed3d596c6362722`
+- manifest:
+  `outputs/20260907_v2/runs/lightgen_n3_amplitude_producer_baseline_v1_attempt_01/n3_amplitude_producer_state_manifest.v1.json`
+- manifest SHA:
+  `2f8766943eca79e37b4e72b4e1bff37cff7c8f9ce09469bce2daebbb481df373`
+- integrity: finite/nonnegative fit q and mean, finite SVD, orthonormal `W_99`,
+  finite strictly-positive lambda, finite fit reconstruction, RNG=`NONE`, and
+  unchanged input bank all passed
+- interpretation boundary: `r=99` is a near-full-dimensional strict-proper-
+  subspace baseline, not compact low-rank structure or intrinsic OLS dimension;
+  Gaussianity, positivity/support validation, novel OLS, and generation remain
+  unestablished
+- `training_authorized=false`; `formal_promotion=false`;
+  `generation_readiness=not_ready`
+- next downstream score-sampling/novel-OLS/generation consumer requires separate
+  authority; this fit does not authorize it
+
 ## FINAL_MAINLINE_CLOSEOUT：H-LOMA-CBOGT Scaled-Chen reconstruction-repair mainline（2026-09-03）
 
 - Current phase: `MAINLINE CLOSEOUT`

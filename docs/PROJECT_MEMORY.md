@@ -41,7 +41,7 @@ active N3 authority 继承 `PROJECT_COMPLEX_OLS_V1`、
 `REGISTER_DIAGONAL_GAUSSIAN_LOW_RANK_SCORE_BASELINE`，其 identity 为
 `DIAGONAL_GAUSSIAN_LOW_RANK_SCORE_BASELINE_V1`，仅为
 `MODEL_ASSUMPTION_REGISTERED_FOR_TEST`，不是
-`MODEL_DISTRIBUTION_SCIENTIFICALLY_SUPPORTED`。rank 尚未选择；不得解释为 producer fitted、
+`MODEL_DISTRIBUTION_SCIENTIFICALLY_SUPPORTED`。branch genesis 时 rank 尚未选择；不得解释为 producer fitted、
 novel OLS valid 或 generation supported。
 
 本次 branch genesis 不包含 positivity implementation、PCA/SVD/fit、rank selection、score
@@ -92,6 +92,37 @@ formal_promotion=false、generation_readiness=not_ready 保持。producer contra
 diagonal-Gaussian score baseline 已分别登记；下一 outer planning task（仅规划，不构成执行授权）为
 `DEFINE_N3_LOW_RANK_MODEL_ORDER_CONTRACT_V1`。首次本地物化的错误 attempt 已隔离为
 invalid quarantine，只有上述 attempt_01 是 authority。
+
+## H-LOMA-GEN-N3 low-rank model-order selection（2026-09-07）
+
+`N3_LOW_RANK_MODEL_ORDER_SELECTED` 已在冻结 contract 下有效完成。consumer 只消费既有
+OLS producer fit/internal-validation bank authority；coordinate 为
+`R2_AMPLITUDE=|c|/sqrt(s)`，fit mean 与 centered full SVD 在 CPU `float64` 中完成，候选域为
+`r=1..99`。`r_min=99`，one-standard-error acceptable set=`[99]`，selected rank=`99`。
+model-order result SHA=`aeb66fe308b42eb1c7ffa313790f762837df00f6255cefcec79a6210bce78f93`。
+
+这只登记 `MODEL_ORDER_SELECTED_FOR_LOW_RANK_AMPLITUDE_BASELINE=99`；不支持 compact latent
+structure、intrinsic dimension、Gaussianity、novel OLS 或 generation。
+
+## H-LOMA-GEN-N3 amplitude producer baseline fit（2026-09-07）
+
+`N3_AMPLITUDE_PRODUCER_BASELINE_FITTED` 已在 clean implementation HEAD
+`8f7bc19c98576f9d4d7428fc2efa426e19d71b92` 上有效完成。固定 `r=99`、`d=100`、`n_fit=500`，
+只用 fit bank 拟合 `mu_fit`、`W_99` 与 `lambda_1_to_99`；
+`lambda_k=sigma_k^2/(n_fit-1)=sigma_k^2/499`。state SHA=
+`cd70756674660470786b92f59d27414cbc379cb61b02ad255ed3d596c6362722`，manifest SHA=
+`2f8766943eca79e37b4e72b4e1bff37cff7c8f9ce09469bce2daebbb481df373`，均位于
+`outputs/20260907_v2/runs/lightgen_n3_amplitude_producer_baseline_v1_attempt_01/`。
+
+完整性通过：`mu_fit[100]`、`W_99[100,99]`、`lambda[99]` 均为 `torch.float64`，`W_99` 正交，
+lambda finite 且 strictly positive，fit reconstruction finite，RNG=`NONE`，validation rows 未加载或
+用于参数估计。`r=99` 仅描述 near-full-dimensional strict-proper-subspace baseline，不是 compact
+low-rank、intrinsic OLS dimension 或 Gaussian/positivity/support validation 结论。score law 仍是
+`DIAGONAL_GAUSSIAN_LOW_RANK_SCORE_BASELINE_V1` 的 registered model assumption；
+`training_authorized=false`、`formal_promotion=false`、`generation_readiness=not_ready` 保持。
+
+后续 score sampling、novel OLS、semantic selector 或 generation 均需独立 consumer authority，不由
+本次 fit 自动授权。
 
 ## H-LOMA-GEN-S3 Controller semantic-geometry one-shot repair postmortem（2026-09-07）
 

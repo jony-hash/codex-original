@@ -79,6 +79,34 @@ generation_readiness=not_ready 保持。producer contract 与 score baseline 已
 （仅规划，不构成执行授权）：`DEFINE_N3_LOW_RANK_MODEL_ORDER_CONTRACT_V1`。第一次错误 materialization
 已隔离为 invalid quarantine，不是 authority。
 
+## H-LOMA-GEN-N3 low-rank model-order selection（2026-09-07）
+
+`N3_LOW_RANK_MODEL_ORDER_SELECTED` 已有效完成。固定 coordinate 为
+`R2_AMPLITUDE=|c|/sqrt(s)`，fit/internal-validation 各 500 rows、`d=100`，CPU `float64`，
+候选域 `r=1..99`。`r_min=99`，one-SE acceptable set=`[99]`，selected rank=`99`。
+model-order result SHA=`aeb66fe308b42eb1c7ffa313790f762837df00f6255cefcec79a6210bce78f93`。
+该结果只支持 `MODEL_ORDER_SELECTED_FOR_LOW_RANK_AMPLITUDE_BASELINE=99`，不支持 intrinsic
+dimension、compact latent structure、Gaussianity、novel OLS 或 generation。
+
+## H-LOMA-GEN-N3 amplitude producer baseline fit（2026-09-07）
+
+`N3_AMPLITUDE_PRODUCER_BASELINE_FITTED` 已在 clean implementation HEAD
+`8f7bc19c98576f9d4d7428fc2efa426e19d71b92` 上有效完成。固定 `r=99`、`d=100`、`n_fit=500`，
+仅用 authorized fit bank materialize `mu_fit`、`W_99` 与 `lambda_1_to_99`；validation rows 未加载、
+未参与参数估计。lambda convention 为
+`lambda_k=sigma_k^2/(n_fit-1)=sigma_k^2/499`。
+
+state=`outputs/20260907_v2/runs/lightgen_n3_amplitude_producer_baseline_v1_attempt_01/n3_amplitude_producer_state.v1.pt`，
+SHA=`cd70756674660470786b92f59d27414cbc379cb61b02ad255ed3d596c6362722`；manifest SHA=
+`2f8766943eca79e37b4e72b4e1bff37cff7c8f9ce09469bce2daebbb481df373`。`mu_fit[100]`、
+`W_99[100,99]`、`lambda[99]` 均为 `torch.float64`；finite、非负 mean、`W_99` 正交、lambda
+strictly positive、fit reconstruction finite、RNG=`NONE` 与 input unchanged 均通过。
+
+`r=99` 只表示 near-full-dimensional strict-proper-subspace baseline，不是 compact low-rank 或
+intrinsic OLS dimension；Gaussianity、positivity/support validation、novel OLS 与 generation 仍未建立。
+`training_authorized=false`、`formal_promotion=false`、`generation_readiness=not_ready` 保持。后续
+score sampling、novel OLS、semantic selector 或 generation 需要独立 consumer authority。
+
 ## H-LOMA-GEN-S3 Controller semantic-geometry one-shot repair postmortem（2026-09-07）
 
 当前正式状态为 `S3_ONE_SHOT_REPAIR_POSTMORTEM_COMPLETE`，primary attribution 为

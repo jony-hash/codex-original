@@ -2,7 +2,7 @@
   "schema_version": 1,
   "kind": "research_governance_state",
   "policy_id": "RESEARCH_GOVERNANCE_SIMPLIFICATION_V1",
-  "active_objective": "DEFINE_N3_LOW_RANK_MODEL_ORDER_CONTRACT_V1",
+  "active_objective": "FIT_N3_AMPLITUDE_PRODUCER_BASELINE_V1",
   "authorization_tier": "R1",
   "hard_blocker": null,
   "evidence_aliases": {
@@ -18,6 +18,23 @@
       "role": "immutable OLS producer data authority source manifest",
       "schema": "ols_producer_source_manifest.v1",
       "sha256": "d07fc3fa927796e97254fa09a8c0eceb18d6555a99590db43217a685bf0d1687",
+      "verification": "verified"
+    },
+    "N3_LOW_RANK_MODEL_ORDER_SELECTED": {
+      "kind": "machine_evidence",
+      "path": "outputs/20260907_v2/runs/lightgen_n3_low_rank_model_order_selection_v1_attempt_01/model_order_result.v1.json",
+      "role": "frozen r=99 low-rank amplitude model-order result",
+      "schema": "n3_low_rank_model_order_selection_result.v1",
+      "sha256": "aeb66fe308b42eb1c7ffa313790f762837df00f6255cefcec79a6210bce78f93",
+      "verification": "verified"
+    },
+    "N3_AMPLITUDE_PRODUCER_BASELINE_FITTED": {
+      "kind": "machine_evidence",
+      "path": "outputs/20260907_v2/runs/lightgen_n3_amplitude_producer_baseline_v1_attempt_01/n3_amplitude_producer_state_manifest.v1.json",
+      "role": "immutable r=99 low-rank amplitude producer state manifest",
+      "schema": "n3_amplitude_producer_state_manifest.v1",
+      "sha256": "2f8766943eca79e37b4e72b4e1bff37cff7c8f9ce09469bce2daebbb481df373",
+      "state_sha256": "cd70756674660470786b92f59d27414cbc379cb61b02ad255ed3d596c6362722",
       "verification": "verified"
     }
   }
