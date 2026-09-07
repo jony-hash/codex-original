@@ -246,6 +246,10 @@ def _run_internal_validation(
     )
     if not unchanged:
         raise ValueError("internal-validation mutated frozen state")
+    if device.type == "cuda":
+        torch.cuda.synchronize(device)
+        del model, calibration, generator
+        torch.cuda.empty_cache()
     return {
         "schema": "controller_semantic_geometry_internal_validation.v1",
         "status": "descriptive_completed",
