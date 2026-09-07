@@ -135,6 +135,26 @@ evaluator 或 formal promotion；`training_authorized=false`、`formal_promotion
 `generation_readiness=not_ready` 保持。唯一下一 research question 是规划针对 held-out score/joint
 amplitude support mismatch 的新 producer-family hypothesis；不包含实现或再次验证。
 
+## H-LOMA-GEN-N3 producer mismatch attribution（2026-09-08）
+
+`ATTRIBUTE_N3_PRODUCER_MISMATCH_AND_SELECT_NEXT_FAMILY_V1` 在 clean consumer HEAD
+`567b05d97cdba9246e5d570ab01a7f6c8d1388b9` 上有效完成；report SHA=
+`47d810b79d800df7c6a5a54337d10b95f43d87f905419e62137185a46003c457`。
+结果为 `N3_PRODUCER_MISMATCH_ATTRIBUTION_MIXED`，没有选择新的 producer family。
+
+odd/even within-class observer split 显示 q covariance relative discrepancy=`0.09503`，
+within-bank references=`0.07706/0.04829`；score radial-mean discrepancy=`37.8531`，
+references=`1.1681/1.1771`，但 score correlation discrepancy 未超过两组 within-bank reference，
+所以不能把问题唯一归因于 partition drift。between-class trace fraction fit/validation 为
+`0.32362/0.27776`，低于 within-class `0.67638/0.72224`。class-centering 只改善 validation
+的部分 radial/covariance/off-diagonal mismatch，fit 侧恶化，且 centered validation dependence
+与 radial mismatch 仍在。
+
+因此 A heavy-tail、B unsupervised local mixture、C residual non-Gaussian dependence、D partition
+reassessment 均未达到唯一选择条件。当前只冻结失败 baseline、partition 与 firewall；labels 仅作
+observer。不得 fit 新 family、重选 rank、进入 N4、phase-source 或 novel OLS。下一步先规划一个
+只读 attribution-resolution task。
+
 ## H-LOMA-GEN-S3 Controller semantic-geometry one-shot repair postmortem（2026-09-07）
 
 当前正式状态为 `S3_ONE_SHOT_REPAIR_POSTMORTEM_COMPLETE`，primary attribution 为

@@ -173,6 +173,39 @@ provenance，不能作为当前 Windows 路径解析器或 formal acceptance 输
   the held-out score/joint-amplitude support mismatch, with the current bank,
   frozen producer state, and data firewall preserved
 
+## H-LOMA-GEN-N3 producer mismatch attribution（2026-09-08，Windows-native）
+
+- gate: `ATTRIBUTE_N3_PRODUCER_MISMATCH_AND_SELECT_NEXT_FAMILY_V1`
+- status: `valid_completed`
+- classification: `N3_PRODUCER_MISMATCH_ATTRIBUTION_MIXED`
+- consumer commit: `567b05d97cdba9246e5d570ab01a7f6c8d1388b9`
+- report:
+  `outputs/20260908_v2/runs/lightgen_n3_producer_mismatch_attribution_v1_attempt_01/n3_producer_mismatch_attribution_report.v1.json`
+- report SHA:
+  `47d810b79d800df7c6a5a54337d10b95f43d87f905419e62137185a46003c457`
+- deterministic observer split: within each class, local occurrence positions
+  even → half A and odd → half B; no runtime resplit or producer-data change
+- partition confound: not dominant under the rule requiring all primary q and
+  score discrepancies to exceed both within-bank references. q covariance
+  relative discrepancy=`0.09503` versus references `0.07706/0.04829`; score
+  radial-mean discrepancy=`37.8531` versus `1.1681/1.1771`, while score
+  correlation discrepancy was not cross-bank dominant
+- covariance decomposition: between-class trace fraction fit/validation
+  `0.32362/0.27776`; within-class fraction `0.67638/0.72224`
+- class-centering: validation radial mean error `37.6551→24.2010`, covariance
+  identity `11.7604→10.3410`, off-diagonal fraction `0.34848→0.32770`; fit
+  reductions were negative and centered validation dependence/radial mismatch
+  remained
+- next family: none selected. A heavy-tail, B unsupervised local-mixture, C
+  non-Gaussian dependence, and D partition reassessment were not uniquely
+  supported; this is mixed attribution, not a new scientific model claim
+- labels remain diagnostic observers only; no label-conditioned producer,
+  refit, rank reselection, score sampling, mixture/t-tail/ICA/flow fitting,
+  phase-source, novel OLS, CUDA, optimizer, training, or evaluator occurred
+- freeze current failed baseline, partition and firewall. Next planning task is
+  a read-only attribution-resolution step before any new family fit; N4 and
+  generation remain blocked
+
 ## FINAL_MAINLINE_CLOSEOUT：H-LOMA-CBOGT Scaled-Chen reconstruction-repair mainline（2026-09-03）
 
 - Current phase: `MAINLINE CLOSEOUT`

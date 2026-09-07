@@ -2,7 +2,7 @@
   "schema_version": 1,
   "kind": "research_governance_state",
   "policy_id": "RESEARCH_GOVERNANCE_SIMPLIFICATION_V1",
-  "active_objective": "VALIDATE_N3_AMPLITUDE_PRODUCER_BASELINE_V1",
+  "active_objective": "ATTRIBUTE_N3_PRODUCER_MISMATCH_AND_SELECT_NEXT_FAMILY_V1",
   "authorization_tier": "R1",
   "hard_blocker": null,
   "evidence_aliases": {
@@ -46,6 +46,16 @@
       "sample_bank_path": "outputs/20260908_v2/runs/lightgen_n3_amplitude_producer_validation_v1_attempt_01/n3_amplitude_producer_validation_sample_banks.v1.pt",
       "sample_bank_sha256": "b9996c30b32176f77486204eb4bbca9931d4fe63e09e2f70705263e7f3b9340d",
       "classification": "N3_AMPLITUDE_PRODUCER_BASELINE_NOT_SUPPORTED",
+      "verification": "verified"
+    },
+    "N3_PRODUCER_MISMATCH_ATTRIBUTION": {
+      "kind": "machine_evidence",
+      "path": "outputs/20260908_v2/runs/lightgen_n3_producer_mismatch_attribution_v1_attempt_01/n3_producer_mismatch_attribution_report.v1.json",
+      "role": "read-only attribution of frozen N3 amplitude-producer mismatch",
+      "schema": "n3_producer_mismatch_attribution_report.v1",
+      "sha256": "47d810b79d800df7c6a5a54337d10b95f43d87f905419e62137185a46003c457",
+      "classification": "N3_PRODUCER_MISMATCH_ATTRIBUTION_MIXED",
+      "selected_next_family": null,
       "verification": "verified"
     }
   }

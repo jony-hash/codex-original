@@ -166,6 +166,37 @@ semantic generation、evaluator 或 formal promotion。`training_authorized=fals
 当前数据 firewall、`r=99` state 与既有 authority 的前提下，规划一个针对 held-out score/joint
 amplitude support mismatch 的新 producer-family hypothesis；本问题不包含实现或再次验证。
 
+## H-LOMA-GEN-N3 producer mismatch attribution（2026-09-08）
+
+`ATTRIBUTE_N3_PRODUCER_MISMATCH_AND_SELECT_NEXT_FAMILY_V1` 已在 clean consumer HEAD
+`567b05d97cdba9246e5d570ab01a7f6c8d1388b9` 上完成只读归因，report SHA=
+`47d810b79d800df7c6a5a54337d10b95f43d87f905419e62137185a46003c457`，输入仍绑定既有 fit/validation
+bank、partition、firewall、frozen `r=99` state 与失败 validation report。
+
+classification=`N3_PRODUCER_MISMATCH_ATTRIBUTION_MIXED`。within-class odd/even observer split
+下，partition confound 未按预注册的“所有主要 q-space 与 score-space cross discrepancy 均同时超过
+两组 within-bank reference”规则成立，但也未被证明完全不存在：q covariance relative discrepancy
+为 `0.09503`，fit/validation half references 为 `0.07706/0.04829`；q energy distance 为
+`0.06445`，references 为 `0.04601/0.03498`；score radial-mean discrepancy 为 `37.8531`，
+references 为 `1.1681/1.1771`，而 score correlation discrepancy 未超过 within-bank references。
+
+pooled covariance decomposition 的 between-class trace fraction 为 fit=`0.32362`、validation=
+`0.27776`，均低于 within-class fraction=`0.67638/0.72224`。class-centering 对 validation 的
+radial mean error、covariance-identity Frobenius 与 off-diagonal fraction 分别改善
+`37.6551→24.2010`、`11.7604→10.3410`、`0.34848→0.32770`，但 fit bank 同三项均恶化；
+class-centered validation 仍保留 score dependence 与 radial mismatch。因而 pooled/local
+heterogeneity、radial heavy-tail、residual non-Gaussian dependence 和 partition drift 不能由
+当前证据唯一分离。
+
+没有选择 A `MULTIVARIATE_T_OR_SCALE_MIXTURE_SCORE_BASELINE_V1`、B
+`UNSUPERVISED_MIXTURE_LOCAL_FACTOR_AMPLITUDE_PRODUCER_V1`、C
+`NON_GAUSSIAN_INDEPENDENT_SCORE_PRODUCER_V1` 或 D
+`DATA_PARTITION_STABILITY_REASSESSMENT`。当前结果只登记 mixed attribution，不注册新的
+producer-family model assumption；labels 仍仅为 diagnostic observer，不成为 N3 producer input。
+冻结失败的 diagonal-Gaussian baseline、fit/validation partition 与 firewall。下一步只能先做一个
+新的只读 attribution-resolution 规划，区分 partition drift、local heterogeneity、radial tail 与
+residual dependence；不得直接 fit 新 family、改变 rank 或进入 N4/novel OLS。
+
 ## H-LOMA-GEN-S3 Controller semantic-geometry one-shot repair postmortem（2026-09-07）
 
 `S3_ONE_SHOT_REPAIR_POSTMORTEM_COMPLETE` 已正式登记。该只读 postmortem 消费并核对 historical
