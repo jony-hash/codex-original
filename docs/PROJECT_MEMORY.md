@@ -8,6 +8,46 @@
 交接规则，不替代正式证据、实验报告或历史 transcript。云端 ChatGPT 项目使用它的
 受控上传副本；本文件本身仍以本地 Git 版本为准。
 
+## H-LOMA-GEN-N3 OLS producer data authority（2026-09-07）
+
+OLS_PRODUCER_DATA_AUTHORITY_MATERIALIZED 已正式登记。只消费既有 S1 fit
+R3_COMPLEX source，不重新 optical encode，不运行 forward、CUDA、optimizer 或 training。
+source artifact SHA=9375b08597f03fee3798e05798779556c3e7534db6a9d39033232f7278d32279，
+S1 semantic manifest SHA=b0199040926618b17373edc4f167cc8bc4788f39f64de174e1a3fb225781833e，
+canonical checkpoint SHA=ccb89f98cc11725eb80d66c61f4fdef62b24acdf9f6d739f78373f462d10e5de，
+mode-bank SHA=75fb38eee956a1d177486e00b22e0b62f0c1bf29e94eb398851bed18d6288ba9，
+calibration payload SHA=ce31dd816691a08ca9388e0ec086be0e2e3ebd40005598c1ef44a1ba79a9fd07。
+
+write-once attempt=outputs/20260907_v2/runs/lightgen_ols_producer_data_authority_v1_attempt_01/。
+fit bank file SHA=21b989a13cbea8f24d3298424b200eb1727de8d04809bfbc77e1901daa888f77，
+R3 tensor SHA=f507dcaad007963178a07fcb13b55c267529b2adecc745df6c465316aa8732c0；
+internal-validation bank file SHA=8397c886db73bb260723debd6d4eab332b6172972a055b28f770e7ca2bf3ee25，
+R3 tensor SHA=0c3887331553c474f5a39ab3653c8b0094ce7db8f416cff279627e001d68102c。两者均为
+500 x 100、torch.complex64、50/class，labels 仅用于 balance、partition 和 provenance，
+不属于 future producer input。
+
+partition manifest SHA=409b598aacae921da631adea553b339b56560231f9cb2cf75ce8d7e5b439242b；
+frozen semantic partition identity=d1eaf777c27b98eb607e98ca41d2360115eb0b070156b29d21805c7332981d6d。
+manifest 同时记录全部 row-position/source-index/label/R3 component hashes、fit/validation
+strict disjointness 和 full 1000-row union；local component material digest 与 frozen semantic
+identity 分开保存，不将未登记的 canonical-byte recipe 伪称为 semantic hash。
+
+data-firewall manifest SHA=b711e9d3443f3a86c803ff1f8cae1ff266634439ebe0c0d31c04e807c3841837，
+firewall_pass=true。S1 selection、S1 confirmation、S2 validation 与 formal S3 protected
+panel 的 independent overlap 均为 0；S2 selection/confirmation、historical/post S3 与 Code8
+按 alias/provenance SUBSUMED。controller-repair internal code panel 的真实 namespace 是
+CONTROLLER_CODE_SPACE，complex_states_saved=false，对 N3 source-bank overlap 为
+NOT_APPLICABLE（不伪造 overlap=0）；其 base/panel code SHA 分别为
+d6ff3077066bd0b7d809925ff94f7cc0e602fadc933a3246af80d0853945f356 与
+4a11c82e4235521c3181585220e8df1e92d34c49adaad29e6a7502f217f58695。未注册的外部候选
+identity 未进入 authority 或 manifest。
+
+本轮只建立 immutable producer data authority；不声明 producer trained、rank selected、novel
+OLS supported 或 semantic generation supported。training_authorized=false、
+formal_promotion=false、generation_readiness=not_ready 保持。下一唯一 Gate：
+PLAN_LOW_RANK_JOINT_AMPLITUDE_PRODUCER_CONTRACT。首次本地物化的错误 attempt 已隔离为
+invalid quarantine，只有上述 attempt_01 是 authority。
+
 ## H-LOMA-GEN-S3 Controller semantic-geometry one-shot repair postmortem（2026-09-07）
 
 `S3_ONE_SHOT_REPAIR_POSTMORTEM_COMPLETE` 已正式登记。该只读 postmortem 消费并核对 historical

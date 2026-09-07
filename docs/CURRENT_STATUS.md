@@ -2,6 +2,41 @@
 
 更新时间：2026-09-07
 
+## H-LOMA-GEN-N3 OLS producer data authority（2026-09-07）
+
+- classification: OLS_PRODUCER_DATA_AUTHORITY_MATERIALIZED
+- materialized attempt:
+  outputs/20260907_v2/runs/lightgen_ols_producer_data_authority_v1_attempt_01/
+- source: existing S1 fit R3_COMPLEX, source artifact SHA
+  9375b08597f03fee3798e05798779556c3e7534db6a9d39033232f7278d32279,
+  semantic manifest SHA
+  b0199040926618b17373edc4f167cc8bc4788f39f64de174e1a3fb225781833e
+- fit bank SHA:
+  21b989a13cbea8f24d3298424b200eb1727de8d04809bfbc77e1901daa888f77
+- internal-validation bank SHA:
+  8397c886db73bb260723debd6d4eab332b6172972a055b28f770e7ca2bf3ee25
+- both banks: 500 rows, 50/class, N=100, torch.complex64, exact saved
+  PROJECT_COMPLEX_OLS_V1 / R3_COMPLEX; labels are provenance/partition metadata only.
+- partition manifest SHA:
+  409b598aacae921da631adea553b339b56560231f9cb2cf75ce8d7e5b439242b
+- partition semantic identity:
+  d1eaf777c27b98eb607e98ca41d2360115eb0b070156b29d21805c7332981d6d
+- data-firewall manifest SHA:
+  b711e9d3443f3a86c803ff1f8cae1ff266634439ebe0c0d31c04e807c3841837
+- firewall: true; S1 selection, S1 confirmation, S2 validation and formal S3
+  panel independent overlap all 0; S2 aliases and historical/provenance
+  records are SUBSUMED.
+- controller-repair internal code panel is NOT_APPLICABLE for N3 data overlap,
+  not a zero-overlap claim; complex_states_saved=false. The unregistered
+  external candidate identity was excluded from authority and manifest.
+- canonical checkpoint SHA:
+  ccb89f98cc11725eb80d66c61f4fdef62b24acdf9f6d739f78373f462d10e5de
+- no optical forward, CUDA, optimizer, backward, producer fitting or novel OLS
+  generation occurred; training_authorized=false, formal_promotion=false,
+  generation_readiness=not_ready.
+- next single Gate:
+  PLAN_LOW_RANK_JOINT_AMPLITUDE_PRODUCER_CONTRACT
+
 ## FINAL_MAINLINE_CLOSEOUT：H-LOMA-CBOGT Scaled-Chen reconstruction-repair mainline（2026-09-03）
 
 - Current phase: `MAINLINE CLOSEOUT`
