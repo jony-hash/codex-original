@@ -2455,3 +2455,48 @@ rerun、generation metrics 或 formal promotion，治理 flags 继续为
 controller harness 定向测试=`25 passed`，compileall、Ruff、git diff-check 与上述只读 artifact
 验收通过。后续若需判断 S3 效果，必须另行授权并建立新的 write-once S3 rerun；本次 one-shot
 authorization 不转化为持久 training authority。
+
+## H-LOMA-GEN-S3 Controller semantic-geometry post-step-492 frozen S3 consumer（2026-09-07，Windows-native）
+
+本轮只消费已完成的 post-step-492 controller candidate，不重新训练、不创建 optimizer、不 backward、
+不写 candidate checkpoint，也不改变 frozen S3 panel、metric、threshold 或 optical authority。候选绑定为
+`outputs/20260907_v2/runs/lightgen_controller_semantic_geometry_s3_repair_v1_attempt_02/`，candidate SHA-256=
+`4d7c574d98078df38f9866734ad60bacd82c5a7e18dc9d1737fd70e1f42d8d84`，preflight SHA-256=
+`ed44ba642252a7ecb08faa2541af9af55f9b7d1a72c9ea8696afd8fc689c1835`，final controller state hash=
+`cccefcb25c674b11f64653fe1f97a0193d4896bc69c4fe01cf3812daffda1b99`，step=`492`，selection=
+`FINAL_AUTHORIZED_STEP_ONLY`，objective=`CLASS_CONDITIONED_R1_FIRST_SECOND_ORDER_GEOMETRY_ALIGNMENT`。
+
+第一次 wrapper invocation 在 internal-validation 后因 allocator cache 使同进程资源 preflight 低于既有
+4 GiB 门槛而停止，未写入 S3 artifact；清理 CUDA model/generator 并 `empty_cache` 的最小 harness 修复为
+`83436fc`。随后在 clean execution HEAD=`83436fcccafb0c760ed81424976fe627a3ef3e2d` 上完成唯一有效
+S3 attempt。write-once authority 为
+`outputs/20260907_v2/runs/lightgen_controller_semantic_geometry_s3_post_step_492_v1_attempt_01/`，包含
+12 个 JSON 与 `controller_ols_states.pt`；manifest SHA-256=
+`e13603745ed9fc70ae4f47975241d7653629000090e89aef5cb38b5357e5018c`。manifest/artifact refs、candidate
+path/SHA/state hash、starting/ending HEAD 与 clean-worktree binding 全部通过。
+
+internal-validation 使用 seed=`100000` 的独立 100-base-code、1000-state panel，
+`s3_base_code_overlap_count=0`，仅 descriptive，finite，candidate state unchanged；不参与 selection、
+checkpoint 选择或 S3 feedback。正式 S3 仍固定使用 seed=`1234`、`Uniform([-1,1]^8)`、100 base codes、
+10 labels、same codes across labels、1000 states；base-code SHA-256=
+`2c83f8fca3d1fde7d5c694f69b602dbc3d43b4e41cfb8159d1af1914efef8c86`，panel identity SHA-256=
+`8a9dd1c7e3e2b674a152e6c96ac8b47976ff1f8d27428a18477e89795b940f47`。
+
+科学结果为 `valid_completed`，但 primary gate=`CONTROL_TO_OLS_WRITABILITY_NOT_SUPPORTED`，最终分类仍为
+`S3_CONTROL_TO_OLS_WRITABILITY_NOT_SUPPORTED`：interface=`S3_CONTROLLER_TO_SEMANTIC_OLS_INTERFACE_PASS`；
+targeting=`S3_LABEL_TARGETING_FAIL`，selection/confirmation real-vs-null retrieval=`0.832/0.106`、
+`0.812/0.098`，overall direction consistency=`false`；absolute reachability=
+`S3_ABSOLUTE_REACHABILITY_FAIL`，selection direction 与 confirmation all-class hard criterion 均未通过。
+candidate 相对 historical S3 的 targeting retrieval 仅作描述性比较：overall selection/confirmation 从
+`0.816/0.778` 变为 `0.832/0.812`，class 9 从 `0.10/0.06` 变为 `0.44/0.40`，但未改变 Gate。
+
+code effect=`nondegenerate=true`、`no_class_collapse=true`、exact R1/complex duplicate=`0`、unique
+R1/complex states=`1000/1000`；Jacobian 每类 effective rank=`8`，aggregate=
+`CODE8_LOCAL_CONTROL_FULL_RANK`。state isolation=`S3_STATE_ISOLATION_PASS`：candidate、historical
+controller authority、migrated controller、optical checkpoint、calibration 与 mode bank before/after
+hash 全部一致，optimizer/backward/training/checkpoint write/decoder/evaluator/parameter update 均为零。
+
+因此 controller semantic-geometry repair line 在当前 evidence boundary 关闭；不得自动进入 S4、再次训练、
+调参、class9 repair 或 S3 rerun。治理保持 `mainline_state=closed_at_current_evidence_boundary`、
+`reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、
+`generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false`。

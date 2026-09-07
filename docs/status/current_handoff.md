@@ -6,6 +6,31 @@
 [experiment history](experiment_history.md)。2026-08-24 重整前的完整长篇记录保存在
 [archived handoff](../archive/current_handoff_pre_sced_20260824.md)，仅供溯源。
 
+## H-LOMA-GEN-S3 Controller semantic-geometry post-step-492 frozen S3 consumer（2026-09-07）
+
+已完成一次有效的 frozen S3 consumer；不重新训练、不创建 optimizer、不 backward、不写 candidate checkpoint，
+不改变 panel、metric、threshold 或 optical authority。candidate SHA=`4d7c574d98078df38f9866734ad60bacd82c5a7e18dc9d1737fd70e1f42d8d84`，
+preflight SHA=`ed44ba642252a7ecb08faa2541af9af55f9b7d1a72c9ea8696afd8fc689c1835`，final state hash=
+`cccefcb25c674b11f64653fe1f97a0193d4896bc69c4fe01cf3812daffda1b99`，step=`492`。第一次 invocation 因
+internal-validation 后 allocator cache 影响同进程资源门而停止、未写 artifact；`83436fc` 释放 CUDA cache 后，
+在 clean HEAD=`83436fcccafb0c760ed81424976fe627a3ef3e2d` 上完成有效 attempt。
+
+write-once output=`outputs/20260907_v2/runs/lightgen_controller_semantic_geometry_s3_post_step_492_v1_attempt_01/`，
+manifest SHA=`e13603745ed9fc70ae4f47975241d7653629000090e89aef5cb38b5357e5018c`。internal-validation 是
+seed=`100000`、与 S3 base-code overlap=`0` 的 descriptive panel；正式 S3 仍是 seed=`1234`、
+`Uniform([-1,1]^8)`、100 base codes×10 labels、1000 states。
+
+结果：`valid_completed`，classification=`S3_CONTROL_TO_OLS_WRITABILITY_NOT_SUPPORTED`。interface pass；
+targeting fail（selection/confirmation retrieval real-vs-null=`0.832/0.106`、`0.812/0.098`，direction=false）；
+reachability fail（selection direction=false，confirmation hard criterion=false）；code effect nondegenerate、
+no class collapse、duplicate=`0`、unique R1 states=`1000`；Jacobian 每类/aggregate=`CODE8_LOCAL_CONTROL_FULL_RANK`；
+state isolation pass，candidate/optical/controller hashes unchanged，optimizer/backward/training/checkpoint/
+decoder/evaluator/parameter update 全为零。相对 historical S3 的小幅 retrieval 变化仅 descriptive，不是选优。
+
+当前唯一治理结论：controller semantic-geometry repair line 在本 evidence boundary 关闭；不自动进入 S4、
+再训练、调参、class9 repair 或 S3 rerun。`mainline_state=closed_at_current_evidence_boundary`、
+`generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false` 保持不变。
+
 ## H-LOMA-GEN-S3 Controller semantic-geometry one-shot canary（2026-09-07）
 
 显式授权 `AUTHORIZE_ONE_SHOT_CONTROLLER_SEMANTIC_GEOMETRY_TRAINING_CANARY` 已消费一次，

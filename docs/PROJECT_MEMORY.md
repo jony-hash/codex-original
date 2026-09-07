@@ -8,6 +8,35 @@
 交接规则，不替代正式证据、实验报告或历史 transcript。云端 ChatGPT 项目使用它的
 受控上传副本；本文件本身仍以本地 Git 版本为准。
 
+## H-LOMA-GEN-S3 Controller semantic-geometry post-step-492 frozen S3 consumer（2026-09-07）
+
+本轮只消费已完成的 post-step-492 candidate，未重新训练、未创建 optimizer、未 backward、未写 candidate
+checkpoint，也未改变 frozen S3 contract。候选 SHA=`4d7c574d98078df38f9866734ad60bacd82c5a7e18dc9d1737fd70e1f42d8d84`，
+preflight SHA=`ed44ba642252a7ecb08faa2541af9af55f9b7d1a72c9ea8696afd8fc689c1835`，final state hash=
+`cccefcb25c674b11f64653fe1f97a0193d4896bc69c4fe01cf3812daffda1b99`，step=`492`，objective=
+`CLASS_CONDITIONED_R1_FIRST_SECOND_ORDER_GEOMETRY_ALIGNMENT`。第一次 wrapper invocation 只因
+internal-validation 后的 CUDA allocator cache 触发资源门而停止、未写 artifact；cleanup 修复提交为
+`83436fc`。
+
+有效 S3 execution 在 clean HEAD=`83436fcccafb0c760ed81424976fe627a3ef3e2d` 完成。write-once output=
+`outputs/20260907_v2/runs/lightgen_controller_semantic_geometry_s3_post_step_492_v1_attempt_01/`，manifest
+SHA=`e13603745ed9fc70ae4f47975241d7653629000090e89aef5cb38b5357e5018c`。internal-validation 使用
+seed=`100000` 的独立 panel，S3 code overlap=`0`，仅 descriptive；正式 S3 仍为 seed=`1234`、
+`Uniform([-1,1]^8)`、100 base codes×10 labels、1000 states，base-code SHA=`2c83f8fca3d1fde7d5c694f69b602dbc3d43b4e41cfb8159d1af1914efef8c86`，
+panel identity SHA=`8a9dd1c7e3e2b674a152e6c96ac8b47976ff1f8d27428a18477e89795b940f47`。
+
+结果为 `valid_completed` 但 `S3_CONTROL_TO_OLS_WRITABILITY_NOT_SUPPORTED`：interface pass；targeting
+fail（selection/confirmation real-vs-null retrieval=`0.832/0.106`、`0.812/0.098`，overall direction consistency=false）；
+reachability fail（selection direction 与 confirmation hard criterion 均未通过）。code effect nondegenerate、
+no class collapse、duplicate=`0`、unique states=`1000`；Jacobian 每类与 aggregate 均为
+`CODE8_LOCAL_CONTROL_FULL_RANK`；state isolation pass，optimizer/backward/training/checkpoint write/decoder/
+evaluator/parameter update 全为零。相对历史 S3 的 retrieval 变化仅作描述性记录，不构成选优或 repair authority。
+
+该结果关闭当前 controller semantic-geometry repair line；不自动进入 S4、再训练、调参、class9 repair 或
+S3 rerun。治理继续为 `mainline_state=closed_at_current_evidence_boundary`、
+`reconstruction_manifold_supported=false`、`generative_manifold_supported=false`、
+`generation_readiness=not_ready`、`training_authorized=false`、`formal_promotion=false`。
+
 ## H-LOMA-GEN-S3 Controller semantic-geometry one-shot canary（2026-09-07）
 
 显式授权 `AUTHORIZE_ONE_SHOT_CONTROLLER_SEMANTIC_GEOMETRY_TRAINING_CANARY` 已被消费一次，
