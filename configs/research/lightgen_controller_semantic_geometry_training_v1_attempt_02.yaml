@@ -1,0 +1,198 @@
+schema: controller_semantic_geometry_training_harness.v1
+task_id: H-LOMA-GEN-S3-CONTROLLER-SEMANTIC-GEOMETRY-REPAIR
+
+governance:
+  mainline_state: closed_at_current_evidence_boundary
+  training_authorized: false
+  formal_promotion: false
+  s3_classification: S3_CONTROL_TO_OLS_WRITABILITY_NOT_SUPPORTED
+  scientific_success_gate: frozen_original_s3_contract_only
+
+data_firewall:
+  source: S1_fit_R1_POWER
+  training_count: 500
+  validation_count: 500
+  samples_per_class: 50
+  partition_identity_sha256: b07a04d3c779e5952c06209c9d8cc8421b8193cd41f037db88f95c736ab35594
+  runtime_resplit: false
+  reselection: false
+  target_bank_schema: controller_semantic_geometry_r1_target_bank.v1
+  authority:
+    run_directory: outputs/20260907_v2/runs/lightgen_controller_semantic_geometry_data_firewall_v1_attempt_01
+    partition_manifest: outputs/20260907_v2/runs/lightgen_controller_semantic_geometry_data_firewall_v1_attempt_01/controller_semantic_geometry_partition_manifest.v1.json
+    partition_manifest_file_sha256: 1eae38d6086a7e395960177e24e8b1ccb7deb1312f2885c07321f3ebeb1cd7c4
+    target_bank: outputs/20260907_v2/runs/lightgen_controller_semantic_geometry_data_firewall_v1_attempt_01/controller_semantic_geometry_r1_target_bank.v1.pt
+    target_bank_sha256: d0f29701e4f9818c48b222e1cbfd8706257ec38356842870f154cd3fc2c8ecb0
+    target_bank_manifest: outputs/20260907_v2/runs/lightgen_controller_semantic_geometry_data_firewall_v1_attempt_01/controller_semantic_geometry_r1_target_bank.v1.manifest.json
+    target_bank_manifest_sha256: 9eb2f032de52ec68dfda69ad3abd217ded2774656ec83c217ebe7d22ebed7916
+    data_firewall_manifest: outputs/20260907_v2/runs/lightgen_controller_semantic_geometry_data_firewall_v1_attempt_01/controller_semantic_geometry_data_firewall_manifest.v1.json
+    data_firewall_manifest_sha256: f5704a5108681a78273b918d3eda3ade3b0e68b8af6f4e98314037e1eb94d4d1
+  s1:
+    semantic_manifest: outputs/20260904_v2/runs/lightgen_scaled_chen_ols_semantic_representation_audit_v1_attempt_01/semantic_manifest.json
+    semantic_manifest_sha256: b0199040926618b17373edc4f167cc8bc4788f39f64de174e1a3fb225781833e
+    embeddings: outputs/20260904_v2/runs/lightgen_scaled_chen_ols_semantic_representation_audit_v1_attempt_01/ols_embeddings.pt
+    embeddings_sha256: 9375b08597f03fee3798e05798779556c3e7534db6a9d39033232f7278d32279
+    fit_source: mnist_train_indices_0_54999
+    fit_count: 1000
+    fit_per_class: 100
+  s2_validation:
+    dataset: mnist_train
+    start: 50000
+    stop: 55000
+    count: 5000
+    indices_sha256: 5370b35f304a779cde7f978df6392b9974faaf4296e9edf75f9edf8202db02fa
+    labels_sha256: 13d90706eef49c3c9f17ccd39c002dc18a79eca1378e780548ea6b29adc6ec29
+    labels_artifact: data/MNIST/processed/training.pt
+    labels_artifact_sha256: 8151bbd33f70ee47d9557adaaa667bb878b38cf4015dcac206d1411fb0d0effd
+  s3_panel:
+    states: outputs/20260906_v2/runs/lightgen_scaled_chen_controller_to_ols_writability_audit_v1_attempt_03/controller_ols_states.pt
+    states_sha256: 45f9b2b18c0cc67bf784ee206059d97164abaab08f0304892c368f53d218b19a
+    manifest: outputs/20260906_v2/runs/lightgen_scaled_chen_controller_to_ols_writability_audit_v1_attempt_03/s3_manifest.json
+    manifest_sha256: 0779d8d0ffb0a9958064bb3c05d451058cdd7a670a732d6ae1d4ba49c11eb5e6
+    panel_identity_artifact: outputs/20260906_v2/runs/lightgen_scaled_chen_controller_to_ols_writability_audit_v1_attempt_03/controller_panel_identity.json
+    panel_identity_artifact_sha256: 517d2a826ebfcff44473d33dcf6abb15da68d69c9debe59b761179aa211ce5ec
+    panel_identity_sha256: 8a9dd1c7e3e2b674a152e6c96ac8b47976ff1f8d27428a18477e89795b940f47
+    base_code_seed: 1234
+    base_code_count: 100
+    base_code_sha256: 2c83f8fca3d1fde7d5c694f69b602dbc3d43b4e41cfb8159d1af1914efef8c86
+    code_dim: 8
+    distribution: uniform[-1,1]^8
+    external_scientific_evaluation_only: true
+
+training_code:
+  seed: 1239212442827321870
+  seed_material_sha256: 11329126aff7720ef6352006f9eb29627643c2fe1ff86819f0e8dc9a86efa277
+  distribution: uniform[-1,1]^8
+  dtype: torch.float32
+  code_dim: 8
+  base_codes_per_logical_step: 50
+  generator_device: cpu
+  initialization: single_generator_manual_seed_once
+  reseed: false
+  skip: false
+  replay: false
+  fallback: false
+  seed_sweep: false
+
+optimizer:
+  contract_sha256: c83a0232a418ca9faa0e3d74d16d62af39ea67a21312b1255896c372b944b2f7
+  family: Adam
+  parameter_names:
+    - generator.class_carrier_logits
+    - generator.global_modes
+    - generator.code_projection.weight
+    - generator.class_heads
+  lr: 0.0002
+  betas: [0.9, 0.999]
+  eps: 0.00000001
+  weight_decay: 0.0
+  amsgrad: false
+  foreach: true
+  maximize: false
+  capturable: false
+  differentiable: false
+  fused: false
+  state: fresh
+  scheduler: none
+  constant_lr: true
+  no_sweep: true
+
+batch:
+  real_samples_per_class: 50
+  real_count: 500
+  controller_base_code_count: 50
+  controller_count: 500
+  controller_layout: label_major_row=label*50+code_index
+  paired: false
+  physical_microbatch_size: 1
+  statistics_before_backward: true
+  optimizer_steps_per_logical_batch: 1
+
+objective:
+  family: CLASS_CONDITIONED_R1_FIRST_SECOND_ORDER_GEOMETRY_ALIGNMENT
+  contract_sha256: bfc372e6803140c68b739656332b2d6f47ade06ba44044bf852ebead9baabfcb
+  r1_observer: z_j=abs(c_j)^2/s_j
+  dimension: 100
+  samples_per_class: 50
+  covariance_denominator: N_MINUS_1
+  dtype: torch.float32
+  autocast: false
+  mechanism_weights: [0.5, 0.5]
+  class_reduction: mean
+  global_multiplier: 1.0
+  epsilon: none
+  covariance_scale: real_frobenius_squared
+  anchor_scale: real_trace
+  prohibited_auxiliary:
+    - pixel_mse
+    - decoder_loss
+    - cmos_loss
+    - classification
+    - evaluator_loss
+    - sinkhorn
+    - energy_distance
+    - mmd
+    - swd
+    - chamfer
+    - diversity
+    - saturation
+    - phase_tv
+    - command_gain_regularizer
+    - code_norm_penalty
+    - global_prior
+    - class9_term
+  optimality_supported: false
+  unbiased_estimator_superiority_claim: false
+
+horizon:
+  logical_steps: 492
+  reference_formal_steps: 4920
+  reference_formal_logical_batch: 50
+  reference_controller_state_exposure: 246000
+  geometry_logical_batch: 500
+  basis: minimal_delta_preserve_current_formal_controller_state_exposure
+  sweep: false
+  extension: false
+  early_stop: false
+  train_until_s3_pass: false
+
+checkpoint:
+  selection: FINAL_AUTHORIZED_STEP_ONLY
+  step: 492
+  best_loss: false
+  best_validation: false
+  s3_selected: false
+  rollback: false
+
+optical_authority:
+  prefix: slm_to_front_to_encoder_to_pre_ols_to_complex_coefficients
+  decoder_entered: false
+  checkpoint: outputs/20260829_v2/runs/lightgen_optical_manifold_smf_bogt_horizon_v2_attempt_03/checkpoints/scaled_chen_horizon_step_5000.pt
+  checkpoint_sha256: ccb89f98cc11725eb80d66c61f4fdef62b24acdf9f6d739f78373f462d10e5de
+  checkpoint_global_step: 5000
+  formal_config: configs/v2/current/formal_identity_logit_amplitude_finite_crop_identity.yaml
+  formal_config_sha256: 0c42035c1a525e27ff787d013ca27b0f5ae91338329eb0607c7042ebc5ae8905
+  calibration: outputs/20260904_v2/runs/lightgen_scaled_chen_bogt_calibration_contract_repair_v2_attempt_02/repaired_calibration.pt
+  calibration_sha256: ce31dd816691a08ca9388e0ec086be0e2e3ebd40005598c1ef44a1ba79a9fd07
+  calibration_manifest: outputs/20260904_v2/runs/lightgen_scaled_chen_bogt_calibration_contract_repair_v2_attempt_02/calibration_manifest.json
+  calibration_manifest_sha256: 0cf707fe4f146c1a1c3190256fad8ec8e4bc72e33674d374e75f40b161b3fce6
+  mode_bank_sha256: 75fb38eee956a1d177486e00b22e0b62f0c1bf29e94eb398851bed18d6288ba9
+  controller_authority: outputs/20260906_v2/runs/lightgen_controller_state_authority_v1_attempt_01/controller_state_authority.json
+  controller_authority_sha256: 57942dcd4a425960b637bff99299dd6e1260198a22456fa5ef1ca133600302a8
+  migrated_controller: outputs/20260906_v2/runs/lightgen_controller_lineage_migration_v1_attempt_01/conditional_optical_generator_current_lineage_migrated.pt
+  migrated_controller_sha256: 572116dbb88464d0999a0391e7e94675cacd64ad5ae303bc2e0efb16e1f63ba2
+  evaluator_identity_manifest: outputs/20260904_v2/runs/lightgen_scaled_chen_frozen_output_semantic_evaluator_v1_attempt_01/data_identity_manifest.json
+  evaluator_identity_manifest_sha256: 9bc924604b6b1388f042842e62bd856e1a29124fa077fe5617d281b9d60ab252
+  evaluator_identity_manifest_file_sha256: 8ae23bf1f247124a1f1f9689a2a4cfb507860c49704d334adec158808d093dc4
+
+source:
+  s1_semantic_manifest_sha256: b0199040926618b17373edc4f167cc8bc4788f39f64de174e1a3fb225781833e
+  s2_identity_manifest_sha256: 9bc924604b6b1388f042842e62bd856e1a29124fa077fe5617d281b9d60ab252
+  s3_manifest_sha256: 0779d8d0ffb0a9958064bb3c05d451058cdd7a670a732d6ae1d4ba49c11eb5e6
+  code8_manifest_sha256: d8f073987eda234ac9b85731dad66e9d9ffc92eaf896f700ff84ba4de17263fd
+  s3_geometry_diagnostic_sha256: 1112b8331b3a7a31cf4814ad50c6b3ea8b60217771ef222b7182e553d8284682
+
+output:
+  target_directory: outputs/20260907_v2/runs/lightgen_controller_semantic_geometry_s3_repair_v1_attempt_02
+  final_checkpoint: controller_semantic_geometry_final_step_492.pt
+  write_once: true
