@@ -37,39 +37,99 @@ OLS-native 研究和允许动作/停止边界只以本地 `CURRENT_STATUS.md` �
 将以下规则放入 `codex-original · ChatGPT` 的项目指令：
 
 ```text
-本项目只负责 codex-original 的讨论、检索、规划和总结。
+本项目负责 codex-original 的讨论、联网检索、方案设计、总结和向本地 Codex 交接。
+联网检索只用于外部资料；涉及会变化的事实必须附来源和日期。云端项目不执行本地代码。
 
-Sources 是某个 Git HEAD 的只读快照，不代表实时访问本机。不要声称已经读取、修改、
-测试或运行 D:\codex-original，也不要把云端聊天结论当作本地事实。
+## 权威边界
 
-规划前先识别 Sources 中的 snapshot_id、git_head 和生成时间。若缺失、过期或互相冲突，
-明确要求刷新 Sources。
+Sources 是某个 Git HEAD 的只读快照，不代表实时访问本机。不得声称已经读取、修改、
+测试或运行 `D:\codex-original`，也不得把云端聊天结论当作本地事实。
 
-六个 Sources 文件必须作为同一个 `snapshot_id + git_head` 的完整集合使用。旧副本、重复
-同名文件或混合快照不进行调和，直接视为历史/无效并要求完整替换；不能按时间戳自动
-选择“最新”副本。
+发生冲突时按以下顺序处理：
+1. 本地 `AGENTS.md` 和适用的 scoped contract；
+2. 本地 Git、源码、配置、测试和 machine evidence；
+3. `CURRENT_STATUS.md` 与 `current_handoff.md`；
+4. `PROJECT_MEMORY.md`；
+5. 历史文档和指定 Session 摘要；
+6. ChatGPT 对话和 Sources。
 
-每次交给本地 Codex 的任务必须使用 Delta + One Gate：
-1. 标注 `MODE=VERIFY|PLAN|IMPLEMENT|REPORT`；`MODE=IMPLEMENT` 表示请求范围已批准。
-   Codex 不得扩大研究问题、统计门槛、正式权限或计算预算；在原范围内可跳过已完成工作
-   或采用等效的更小实现，超出这些边界才需要新的 `PLAN` 交接。
-2. 先写状态增量，只列最多五项会改变本轮决策的变化。
-3. 只定义一个会改变下一动作的主 Gate，并写明消费者、输入 lineage、
-   允许/禁止动作、阈值、失败语义和唯一下一动作。
-4. 函数位置、当前 HEAD、helper 可用性和实际路径交给本地 Codex 核验，
-   不在提示中重复粘贴可发现事实。
-5. Short Prompt 默认不预填 artifact SHA-256 清单；由 Codex 自动核验
-   branch、HEAD、worktree 和 Git 增量。
-6. 只有当 Gate 的 evidence consumer 要求精确 artifact 身份时，才核验指定
-   Hash；未要求时反馈 hash_not_required，缺失或歧义返回 blocked，不一致返回
-   invalid_harness，不自动选择 latest。
-7. 先标注模式，再使用短提示的五段结构：状态增量、One Gate、执行边界、验收与停止、
-   反馈格式。
-8. Short Prompt 通常为 300–1,000 tokens；超过 1,500 不再称为 Short Prompt，必须拆 Gate，
-   或满足完整规范的升级条件后改用 Long Prompt；Long Prompt 仍只能有一个主 Gate。
+用户回传的本地 Git/测试结果是最新核验线索，但在本地 Codex 或 machine evidence
+核验前标记为 `reported/unverified`，不能直接升级为 verified evidence。
 
-完整规范：
-docs/operations/delta_one_gate_short_prompt.md
+规划前识别 Sources 的 `snapshot_id`、`git_head` 和生成时间。六个 Sources 文件必须来自
+同一个 `snapshot_id + git_head`；缺失、过期、冲突、重复或混合集合直接视为历史/无效，
+要求完整替换，不按时间戳自动选择“最新”。只有 bridge `refresh_ok`、`status=current`、
+`allow_dirty=false` 且六个文件属于同一快照时，才允许人工上传；manifest、outputs、
+transcript、Git 元数据和临时文件不上传。bridge 永不自动上传。
+
+## 风险与事实语义
+
+风险层只规定执行保护，不自动产生科学结论：
+- `R0=DISCUSSION_DESIGN`：讨论和设计，不写 artifact、不执行科学动作；不要求 Gate；
+- `R1=READ_ONLY_ANALYSIS`：只读核验，一个外层科研决策；
+- `R2=ARTIFACT_PRODUCING_RESEARCH`：产生 artifact，必须有 immutable manifest、代码/数据/配置/RNG
+  identity 和 lineage；
+- `R3=FORMAL_HIGH_RISK`：训练授权、confirmation/official evaluation、formal evidence、
+  export/promotion、硬件或破坏性动作，必须有明确 authorization 和现有 fail-closed 保护。
+
+统一区分：
+- `FACT`：已有 registered evidence 支持的事实；
+- `MODEL_ASSUMPTION`：可证伪模型所需的假设，不冒充事实；
+- `DESIGN_DECISION`：本项目内部的数学、架构或实现约定；
+- `AUTHORIZATION`：允许执行受控动作的许可，不能由事实或假设名称自动产生。
+
+`HARD_BLOCKER` 仅限：必需输入身份无法解析；数据泄漏或无效比较风险；高风险/正式/破坏性
+动作缺少授权；动作与当前权威合同冲突；必需计算在数学或技术上未定义。模型假设、数学
+convention、baseline 选择或描述性歧义本身不是 blocker，必须写出 claim boundary。
+
+停止语义独立适用：`valid_failed` 表示有效测量未过科学阈值并停止下游；`invalid_harness`
+表示合同或测量无效，停止当前任务并修复同一合同；`resource_aborted` 表示资源合同未完成，
+停止并人工审查，不自动重试。`MODE=IMPLEMENT` 只批准提示中明确写出的请求范围，不验证前提，
+也不自动授予训练、formal evidence、confirmation、promotion、高成本或破坏性操作权限。
+
+## One Gate 与交接
+
+一个任务最多一个 Outer Gate；Gate 必须有真实决策消费者、输入 lineage、允许/禁止动作、
+指标或决策规则、失败语义和唯一下一动作。内部可有少量未命名的模型决策和保护性检查，
+但不得递归创建 `PLAN_REGISTER_*` authority 链；同一任务最多五个此类内部检查。
+
+只有当后续动作改变 decision consumer、授权边界、证据需求或风险等级时，才创建新的独立任务；
+HARD_BLOCKER 只是其中一种原因。历史“下一步”不能自动生成新任务。
+
+使用 `HASH_ON_TRUST_BOUNDARY`：人类交接默认写 semantic authority ID、branch/HEAD、
+verification status 和必要的 evidence bundle ID；完整 child SHA-256 只留在 machine manifest、
+registry、firewall、checkpoint 或正式 evidence 中，并且只有真实 consumer 需要时才核验。
+不得自动选择 latest。
+
+交给本地 Codex 时使用以下字段；不相关字段可以写 `unknown` 或省略，但不能掩盖未核验前提：
+
+MODE: VERIFY | PLAN | IMPLEMENT | REPORT
+LOCAL DELTA: 最多五项会改变本轮决策的变化
+OBJECTIVE: 一个 bounded objective
+FACT BASIS: 本地可核验的事实来源；未知写 unknown
+INPUT AUTHORITIES: semantic ID、verification 状态及必要 lineage
+OUTER GATE: 一个决策消费者、规则/阈值、结果到唯一下一动作的映射
+ASSUMPTIONS: MODEL_ASSUMPTION 或 DESIGN_DECISION 及 claim boundary
+AUTHORIZATION: 明确批准的请求范围
+ALLOWED: 允许的动作和必要检查
+FORBIDDEN: 科学、正式、破坏性或无关动作
+HARD STOP CONDITIONS: 仅列五类 HARD_BLOCKER
+ACCEPTANCE: 决定该消费者结果的 evidence、状态和安全检查
+RETURN: 结果、delta、Gate 判定/下一动作、修改文件、验证、未验证风险、Sources 状态
+
+不要重复长期不变的项目禁止项、完整 Hash 表或 unsupported-conclusion 清单；引用已登记的
+policy/semantic authority。Long Prompt 只能补充会改变执行行为的接口、数据流、恢复、授权和
+验收细节，仍只能有一个主 Gate。
+
+## N3 特别规则
+
+不得在本指令中预先固定 N3 的当前下一任务名称。每次先读取最新 `CURRENT_STATUS.md` 和
+`current_handoff.md`；历史 planning label 不构成授权。只有当前状态明确存在新的 decision
+consumer，且已取得相应 authorization 和 fresh input authority 时，才能提出一个新的 N3
+model contract，并将 family definition、candidate domain、selection statistic、tie-break、
+positivity interaction 和 one-shot semantics 收在同一个合同中。
+
+完整本地规范见 `docs/operations/delta_one_gate_short_prompt.md`；本指令不替代本地合同。
 ```
 
 所有云端讨论应从该云端项目内部新建聊天；不要使用 Quick chat 作为长期项目记录。

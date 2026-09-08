@@ -12,8 +12,8 @@
 
 - 正式运行时基线：v2 `conditional_identity_logit_amplitude_v2`；正式 promotion、generation
   readiness 和 current training authorization 均未建立。
-- 活动研究主线：`research/lightgen-ols-native-semantic-generation-v1`（HEAD
-  `848083ee5e2ee2f6d0e3f0630fc6eeebcdb30f74`）；N1/N2 完成，N3 producer
+- 活动研究主线：`research/lightgen-ols-native-semantic-generation-v1`（精确 HEAD 与
+  worktree 以本地 Git/bridge manifest 核验；当前 Sources 交付为 `current_clean`）；N1/N2 完成，N3 producer
   baseline 与 selector calibration 已完成但未支持新 producer family，N4 未决，N5 blocked，N6
   保持独立冻结。
 - 最新 N3 selector calibration V2 为 `N3_ATTRIBUTION_SELECTOR_CALIBRATION_MIXED_V2`。

@@ -2,8 +2,8 @@
 
 更新时间：2026-09-08
 
-Git 基线：`research/lightgen-ols-native-semantic-generation-v1`，HEAD
-`848083ee5e2ee2f6d0e3f0630fc6eeebcdb30f74`；本轮工作树保持 dirty，未自动提交。
+Git 状态：`research/lightgen-ols-native-semantic-generation-v1`；精确 HEAD、dirty scope
+和 clean/dirty 状态以本地 Git 与 bridge manifest 为准；当前交付按 `current_clean` 规则生成。
 
 ## 当前决策摘要
 
