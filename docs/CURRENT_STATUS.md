@@ -66,6 +66,22 @@ full complex OLS distribution、semantic generation 或 generation readiness。`
 消费。后续若继续 producer research，必须另立最小、独立的 research question 与 authority，
 不得把本次失败变成调参、第二个 canary 或 selector V3 授权。
 
+## N3 unsupervised local location mixture contract（2026-09-08）
+
+`DEFINE_N3_UNSUPERVISED_LOCAL_LOCATION_MIXTURE_PRODUCER_CONTRACT_V1` 已完成，
+classification=`DEFINE_N3_UNSUPERVISED_LOCAL_LOCATION_MIXTURE_PRODUCER_CONTRACT_V1_READY`。
+Contract 固定一个无条件、无标签的 shared-covariance location mixture，候选
+`K={2,4,8}`；共享 covariance 复用上一轮已实现并测试的 analytic shrinkage convention，
+初始化、CPU float64 EM、component canonicalization、collapse/failure、positivity sampling、
+model-vs-model compatibility 和 smallest-K selection 均已冻结。它复用上一轮 5-fold assignment
+SHA=`90277c16a0d96b895e218264f35a822564b3a46570cab73a1a1e823f063e9e32`。
+权威 contract 为
+[`n3_unsupervised_local_location_mixture_producer_contract.v1.json`](../outputs/20260908_v2/runs/n3_unsupervised_local_location_mixture_producer_contract_v1_attempt_01/n3_unsupervised_local_location_mixture_producer_contract.v1.json)，
+SHA-256=`38cb0c549d8f943123f0ab3304adf5a01e9b3b5edb63daa384c7f4c7bac20449`。
+当前只允许 claim=`N3_LOCAL_LOCATION_MIXTURE_MODEL_ASSUMPTION_DEFINED`；没有真实 N3
+mixture fit、K selection、sampling 或 confirmation。`training_authorized=false`、
+`formal_promotion=false`、`generation_readiness=not_ready` 不变。
+
 ## 本轮文档与研究导航治理（2026-09-08）
 
 本轮先完成治理/导航精简，再修复一个不改变公共合同的 evidence I/O 防御性问题。文档/导航变更

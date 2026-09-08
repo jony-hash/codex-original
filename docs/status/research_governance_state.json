@@ -2,7 +2,7 @@
   "schema_version": 1,
   "kind": "research_governance_state",
   "policy_id": "RESEARCH_GOVERNANCE_SIMPLIFICATION_V1",
-  "active_objective": "N3_MINIMAL_PRODUCER_BASELINES_CLOSED_NOT_SUPPORTED",
+  "active_objective": "N3_LOCAL_LOCATION_MIXTURE_CONTRACT_DEFINED_NOT_EXECUTED",
   "authorization_tier": "R0",
   "hard_blocker": "N3_MINIMAL_PRODUCER_BASELINES_NOT_SUPPORTED",
   "evidence_aliases": {
@@ -90,6 +90,23 @@
       "classification": "N3_MINIMAL_PRODUCER_BASELINES_NOT_SUPPORTED",
       "selected_candidate": null,
       "selection_scope": "DEVELOPMENT_ONLY",
+      "sealed_confirmation_consumed": false,
+      "verification": "verified"
+    },
+    "N3_LOCAL_LOCATION_MIXTURE_CONTRACT": {
+      "kind": "machine_evidence",
+      "path": "outputs/20260908_v2/runs/n3_unsupervised_local_location_mixture_producer_contract_v1_attempt_01/n3_unsupervised_local_location_mixture_producer_contract.v1.json",
+      "role": "frozen shared-covariance unsupervised local-location mixture producer contract",
+      "schema": "n3_unsupervised_local_location_mixture_producer_contract.v1",
+      "sha256": "38cb0c549d8f943123f0ab3304adf5a01e9b3b5edb63daa384c7f4c7bac20449",
+      "classification": "DEFINE_N3_UNSUPERVISED_LOCAL_LOCATION_MIXTURE_PRODUCER_CONTRACT_V1_READY",
+      "claim_classification": "N3_LOCAL_LOCATION_MIXTURE_MODEL_ASSUMPTION_DEFINED",
+      "candidate_K": [
+        2,
+        4,
+        8
+      ],
+      "real_n3_fit_executed": false,
       "sealed_confirmation_consumed": false,
       "verification": "verified"
     }

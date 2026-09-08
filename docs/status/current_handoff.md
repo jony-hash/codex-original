@@ -37,10 +37,16 @@
   与 covariance/norm guardrails，结果为
   `N3_MINIMAL_PRODUCER_BASELINES_NOT_SUPPORTED`，没有 selected candidate。Report SHA 为
   `af7611cfbca211e666d7773e81b230a1b380b91583817c3c4ab80925f2a16440`。
+- `DEFINE_N3_UNSUPERVISED_LOCAL_LOCATION_MIXTURE_PRODUCER_CONTRACT_V1` 已完成并冻结
+  shared-covariance local-mixture contract，候选 `K={2,4,8}`，复用同一 frozen fold assignment；
+  contract classification 为
+  `DEFINE_N3_UNSUPERVISED_LOCAL_LOCATION_MIXTURE_PRODUCER_CONTRACT_V1_READY`，SHA 为
+  `38cb0c549d8f943123f0ab3304adf5a01e9b3b5edb63daa384c7f4c7bac20449`。这只是
+  `N3_LOCAL_LOCATION_MIXTURE_MODEL_ASSUMPTION_DEFINED`，尚未 fit、sampling 或选择 K。
 - 恢复 outputs、历史 evidence、producer、rank、partition、formal v2 和全局 flags 均保持不变。
-- 当前允许的下一项：无 selector-refinement continuation、无候选冻结、无 sealed materialization。
-  后续 producer-family confirmation 必须有独立 frozen-producer contract，并一次性消费该 manifest；
-  本 comparison 不授权调参、第二个 canary、selector V3 或 generation。
+- 当前允许的下一项：若继续，只能执行这个已冻结 contract 的一次 development-only consumer；
+  不得增加 K、改初始化/阈值、消费 sealed source、启动 selector V3 或 generation。即使未来
+  development K 通过，也必须另立 producer freeze 与 confirmation consumer contract。
 
 ## 本轮 evidence I/O 修复（2026-09-08）
 

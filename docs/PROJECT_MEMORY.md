@@ -33,7 +33,8 @@ selector calibration。最新 V2 classification 为
 `N3_ATTRIBUTION_SELECTOR_CALIBRATION_MIXED_V2`；selector refinement 在 MIXED 边界关闭，不创建
 V3，随后在既有 development pool 上的两候选 minimal producer comparison 为
 `N3_MINIMAL_PRODUCER_BASELINES_NOT_SUPPORTED`，没有候选冻结；N4/N5 与 generation 的 formal
-flags 不变。
+flags 不变。其后仅定义了 shared-covariance unsupervised local-location mixture contract，候选
+`K={2,4,8}`；contract 已 ready 但尚未执行，不能解释为 family supported 或 K selected。
 
 这些稳定边界和当前入口分别见 [`CURRENT_STATUS.md`](CURRENT_STATUS.md) 与
 [`status/current_handoff.md`](status/current_handoff.md)；所有日期化事实、结果、被取代的下一步和

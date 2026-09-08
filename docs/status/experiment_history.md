@@ -2502,6 +2502,25 @@ complex OLS distribution、semantic generation 或 generation readiness。sealed
 仍为 `RESERVED_NOT_MATERIALIZED`，未被读取或 materialize；training、CUDA、optimizer、backward、
 optical/evaluator、selector V3 和 historical r=99 refit/reselection 均未执行。
 
+### H-LOMA-GEN-N3 unsupervised local location mixture contract（2026-09-08）
+
+`DEFINE_N3_UNSUPERVISED_LOCAL_LOCATION_MIXTURE_PRODUCER_CONTRACT_V1` 在上一轮 valid
+development comparison failure 之后，只读地定义了一个无条件、无标签的 shared-covariance
+local-location mixture producer contract；候选模型阶数固定为 `K={2,4,8}`，不在 contract
+阶段选择 K。共享 covariance 复用上一轮已验证的 analytic shrinkage convention；初始化、
+CPU float64 EM、确定性 component canonicalization、collapse/failure 语义、positivity sampling、
+model-vs-model compatibility 与 smallest-compatible-K 规则均已冻结。
+
+该 contract 复用同一 frozen 5-fold assignment，assignment SHA 为
+`90277c16a0d96b895e218264f35a822564b3a46570cab73a1a1e823f063e9e32`。权威 machine contract
+位于 `outputs/20260908_v2/runs/n3_unsupervised_local_location_mixture_producer_contract_v1_attempt_01/`
+`n3_unsupervised_local_location_mixture_producer_contract.v1.json`，SHA-256 为
+`38cb0c549d8f943123f0ab3304adf5a01e9b3b5edb63daa384c7f4c7bac20449`，classification 为
+`DEFINE_N3_UNSUPERVISED_LOCAL_LOCATION_MIXTURE_PRODUCER_CONTRACT_V1_READY`，claim 仅为
+`N3_LOCAL_LOCATION_MIXTURE_MODEL_ASSUMPTION_DEFINED`。没有执行真实 N3 fit、K selection、sampling
+或 confirmation；sealed confirmation 仍为 `RESERVED_NOT_MATERIALIZED`，training、CUDA、
+optimizer、backward、optical/evaluator、selector V3 与 generation 均未执行。
+
 ## 2026-09-07：H-LOMA-GEN-S3 controller semantic-geometry lineage
 
 本节补录 2026-09-07 的 S3 controller-only 研究事实；它们属于已关闭的历史/diagnostic lineage，
