@@ -78,9 +78,27 @@ SHA=`90277c16a0d96b895e218264f35a822564b3a46570cab73a1a1e823f063e9e32`。
 权威 contract 为
 [`n3_unsupervised_local_location_mixture_producer_contract.v1.json`](../outputs/20260908_v2/runs/n3_unsupervised_local_location_mixture_producer_contract_v1_attempt_01/n3_unsupervised_local_location_mixture_producer_contract.v1.json)，
 SHA-256=`38cb0c549d8f943123f0ab3304adf5a01e9b3b5edb63daa384c7f4c7bac20449`。
-当前只允许 claim=`N3_LOCAL_LOCATION_MIXTURE_MODEL_ASSUMPTION_DEFINED`；没有真实 N3
-mixture fit、K selection、sampling 或 confirmation。`training_authorized=false`、
-`formal_promotion=false`、`generation_readiness=not_ready` 不变。
+Contract-definition phase 只允许 claim=`N3_LOCAL_LOCATION_MIXTURE_MODEL_ASSUMPTION_DEFINED`；该阶段
+没有执行真实 N3 mixture fit、K selection、sampling 或 confirmation。随后执行结果见下节；
+`training_authorized=false`、`formal_promotion=false`、`generation_readiness=not_ready` 不变。
+
+## N3 local-location mixture development selection（2026-09-08）
+
+`EXECUTE_N3_LOCAL_LOCATION_MIXTURE_SELECTION_V1` 严格消费上述 frozen contract，在同一 5-fold
+development split 上执行了 `K={2,4,8}`。三个 K 均为 5/5 folds operationally valid；每个 fold 的
+CPU float64 EM 均收敛，positivity-conditioned data/model banks 均达到固定 target，未发生
+component collapse。可是每个 K 的 5/5 folds 都未同时通过 primary q-space energy 与 covariance/norm
+compatibility guardrails，因此没有 candidate compatible，结果为
+`N3_LOCAL_LOCATION_MIXTURE_NOT_SUPPORTED`，`K_selected=null`。
+
+各 K 的 aggregate primary / covariance / norm-energy guardrail summary 分别为：K=2
+`0.724299 / 0.794114 / 12.014982`，K=4 `0.757225 / 0.662969 / 13.119141`，K=8
+`0.730527 / 0.677692 / 12.682548`；相对较小的单项数值不构成 compatibility 或模型选择。
+权威 report 为
+[`n3_local_location_mixture_selection_report.v1.json`](../outputs/20260908_v2/runs/n3_local_location_mixture_selection_v1_attempt_01/n3_local_location_mixture_selection_report.v1.json)，
+SHA-256=`5064ee87cbc9846f0194ba0afcea4687647ceefb454d2abb20b8b56d632a9080`。
+该结果是 development-only valid failure；没有执行 final all-1000-row producer fit、sealed
+confirmation、independent confirmation、novel OLS 或 generation。
 
 ## 本轮文档与研究导航治理（2026-09-08）
 

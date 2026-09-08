@@ -2521,6 +2521,25 @@ model-vs-model compatibility 与 smallest-compatible-K 规则均已冻结。
 或 confirmation；sealed confirmation 仍为 `RESERVED_NOT_MATERIALIZED`，training、CUDA、
 optimizer、backward、optical/evaluator、selector V3 与 generation 均未执行。
 
+### H-LOMA-GEN-N3 local-location mixture development selection（2026-09-08）
+
+`EXECUTE_N3_LOCAL_LOCATION_MIXTURE_SELECTION_V1` 严格消费上一条 frozen contract，复用同一
+1000-row N3 development pool 与 assignment SHA
+`90277c16a0d96b895e218264f35a822564b3a46570cab73a1a1e823f063e9e32`。对 `K=2,4,8` 的每个
+fold，shared covariance 只由 800 fitting rows 估计，CPU float64 EM 只估计 component weights
+与 means；200 held-out rows 只用于 evaluation。15 个 K/fold executions 全部 operationally valid，
+EM 均收敛、positivity banks 均达到固定目标、无 component collapse。
+
+但是三个 K 均在 5/5 folds 同时未通过 primary q-space energy 与 covariance/norm guardrails，
+因此没有 development-compatible K，classification 为
+`N3_LOCAL_LOCATION_MIXTURE_NOT_SUPPORTED`，`K_selected=null`。权威 report 位于
+`outputs/20260908_v2/runs/n3_local_location_mixture_selection_v1_attempt_01/`
+`n3_local_location_mixture_selection_report.v1.json`，SHA-256 为
+`5064ee87cbc9846f0194ba0afcea4687647ceefb454d2abb20b8b56d632a9080`。这是 valid development
+failure，不是 harness/resource failure；没有执行 final all-1000-row producer fit、sealed
+confirmation、independent confirmation、novel OLS、generator、evaluator、CUDA、optimizer、
+backward 或 training。
+
 ## 2026-09-07：H-LOMA-GEN-S3 controller semantic-geometry lineage
 
 本节补录 2026-09-07 的 S3 controller-only 研究事实；它们属于已关闭的历史/diagnostic lineage，

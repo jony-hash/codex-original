@@ -2,9 +2,9 @@
   "schema_version": 1,
   "kind": "research_governance_state",
   "policy_id": "RESEARCH_GOVERNANCE_SIMPLIFICATION_V1",
-  "active_objective": "N3_LOCAL_LOCATION_MIXTURE_CONTRACT_DEFINED_NOT_EXECUTED",
+  "active_objective": "N3_LOCAL_LOCATION_MIXTURE_NOT_SUPPORTED",
   "authorization_tier": "R0",
-  "hard_blocker": "N3_MINIMAL_PRODUCER_BASELINES_NOT_SUPPORTED",
+  "hard_blocker": "N3_LOCAL_LOCATION_MIXTURE_NOT_SUPPORTED",
   "evidence_aliases": {
     "DIAGONAL_GAUSSIAN_LOW_RANK_SCORE_BASELINE_V1": {
       "kind": "model_assumption",
@@ -108,6 +108,26 @@
       ],
       "real_n3_fit_executed": false,
       "sealed_confirmation_consumed": false,
+      "verification": "verified"
+    },
+    "N3_LOCAL_LOCATION_MIXTURE_SELECTION": {
+      "kind": "machine_evidence",
+      "path": "outputs/20260908_v2/runs/n3_local_location_mixture_selection_v1_attempt_01/n3_local_location_mixture_selection_report.v1.json",
+      "role": "one-shot development-only selection of frozen unsupervised shared-covariance local-location mixture",
+      "schema": "n3_local_location_mixture_selection_report.v1",
+      "sha256": "5064ee87cbc9846f0194ba0afcea4687647ceefb454d2abb20b8b56d632a9080",
+      "contract_sha256": "38cb0c549d8f943123f0ab3304adf5a01e9b3b5edb63daa384c7f4c7bac20449",
+      "classification": "N3_LOCAL_LOCATION_MIXTURE_NOT_SUPPORTED",
+      "candidate_K": [
+        2,
+        4,
+        8
+      ],
+      "selected_K": null,
+      "all_candidates_operationally_valid": true,
+      "compatible_K": [],
+      "sealed_confirmation_consumed": false,
+      "selection_scope": "DEVELOPMENT_ONLY",
       "verification": "verified"
     }
   }
