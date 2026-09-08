@@ -66,6 +66,7 @@ GENERATED_BANK_SIZE = comparison.TARGET_ACCEPTED
 DATA_VS_MODEL_REPLICATES = comparison.DATA_VS_MODEL_REPLICATES
 MODEL_VS_MODEL_REPLICATES = comparison.MODEL_VS_MODEL_REPLICATES
 COMPATIBILITY_Q = comparison.Q95
+EXPECTED_FOLD_ASSIGNMENT_SHA256 = "90277c16a0d96b895e218264f35a822564b3a46570cab73a1a1e823f063e9e32"
 REPORT_NAME = "n3_empirical_marginal_gaussian_copula_producer_contract.v1.json"
 
 
@@ -210,7 +211,7 @@ def _load_development_identity(contract: Mapping[str, Any]) -> dict[str, Any]:
     fold = _mapping(development.get("fold_assignment"), "previous fold assignment")
     _require(development.get("count") == POOL_COUNT, "development pool count changed")
     _require(development.get("per_class") == comparison.ROWS_PER_CLASS, "development class balance changed")
-    _require(fold.get("assignment_sha256") == comparison._expected_fold_assignment_sha256(), "frozen fold assignment changed")
+    _require(fold.get("assignment_sha256") == EXPECTED_FOLD_ASSIGNMENT_SHA256, "frozen fold assignment changed")
     _require(fold.get("fold_count") == FOLD_COUNT, "fold count changed")
     _require(fold.get("q_values_used") is False and fold.get("ols_values_used") is False, "fold identity used producer values")
     development["q_values_loaded_by_this_definition_consumer"] = False
