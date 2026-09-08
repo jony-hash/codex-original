@@ -2540,6 +2540,25 @@ failure，不是 harness/resource failure；没有执行 final all-1000-row prod
 confirmation、independent confirmation、novel OLS、generator、evaluator、CUDA、optimizer、
 backward 或 training。
 
+### H-LOMA-GEN-N3 local shrinkage-covariance mixture contract（2026-09-08）
+
+`DEFINE_N3_UNSUPERVISED_LOCAL_SHRINKAGE_COVARIANCE_MIXTURE_CONTRACT_V1` 在上一条
+`N3_LOCAL_LOCATION_MIXTURE_NOT_SUPPORTED` 之后定义了唯一新增机制
+`UNSUPERVISED_LOCAL_COVARIANCE_HETEROGENEITY`。contract 保留上一 family 的
+`K={2,4,8}`、frozen five-fold assignment、positivity rule 和 finite-sample compatibility。
+Stage-1 使用上一 contract 的 shared-covariance local-location fit；收敛后以 canonical
+responsibility argmax 固定 hard assignment。Stage-2 只对 assigned fitting rows 估计 local mean
+与同一 analytic shrinkage covariance；`n_k<2` 为
+`LOCAL_COVARIANCE_COMPONENT_INSUFFICIENT`，不 merge、不 restart、不改 K、不运行第二次 EM。
+
+权威 machine contract 位于
+`outputs/20260908_v2/runs/n3_unsupervised_local_shrinkage_covariance_mixture_producer_contract_v1_attempt_01/`
+`n3_unsupervised_local_shrinkage_covariance_mixture_producer_contract.v1.json`，SHA-256 为
+`2cb596abe61deeaa847b90c74654c5abe0e94aae18a6f252170f8149ad1c1550`，classification 为
+`DEFINE_N3_UNSUPERVISED_LOCAL_SHRINKAGE_COVARIANCE_MIXTURE_CONTRACT_V1_READY`，claim 仅为
+`N3_LOCAL_COVARIANCE_HETEROGENEITY_MODEL_ASSUMPTION_DEFINED`。没有执行 real local-covariance
+fit、K selection、sampling、sealed confirmation 或 generation。
+
 ## 2026-09-07：H-LOMA-GEN-S3 controller semantic-geometry lineage
 
 本节补录 2026-09-07 的 S3 controller-only 研究事实；它们属于已关闭的历史/diagnostic lineage，

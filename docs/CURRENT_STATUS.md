@@ -100,6 +100,22 @@ SHA-256=`5064ee87cbc9846f0194ba0afcea4687647ceefb454d2abb20b8b56d632a9080`。
 该结果是 development-only valid failure；没有执行 final all-1000-row producer fit、sealed
 confirmation、independent confirmation、novel OLS 或 generation。
 
+## N3 unsupervised local shrinkage-covariance mixture contract（2026-09-08）
+
+在 `N3_LOCAL_LOCATION_MIXTURE_NOT_SUPPORTED` 之后，
+`DEFINE_N3_UNSUPERVISED_LOCAL_SHRINKAGE_COVARIANCE_MIXTURE_CONTRACT_V1` 已完成并冻结一个
+只改变 local covariance geometry 的下一 family。它保留上一 contract 的无监督 local-location
+partition、`K={2,4,8}`、5-fold identity、positivity sampling 和 model-vs-model compatibility；
+Stage-1 仍使用既有 shared-covariance local mixture，Stage-2 对 hard-assigned fitting rows
+分别使用同一 analytic shrinkage convention 构造 `Sigma_k`，`n_k<2` 为
+`LOCAL_COVARIANCE_COMPONENT_INSUFFICIENT`，不得 merge/restart/change K，也不运行第二次 EM。
+
+权威 contract 为
+[`n3_unsupervised_local_shrinkage_covariance_mixture_producer_contract.v1.json`](../outputs/20260908_v2/runs/n3_unsupervised_local_shrinkage_covariance_mixture_producer_contract_v1_attempt_01/n3_unsupervised_local_shrinkage_covariance_mixture_producer_contract.v1.json)，
+SHA-256=`2cb596abe61deeaa847b90c74654c5abe0e94aae18a6f252170f8149ad1c1550`。
+当前只允许 claim=`N3_LOCAL_COVARIANCE_HETEROGENEITY_MODEL_ASSUMPTION_DEFINED`；没有执行
+local-covariance fit、K selection、sampling、sealed confirmation 或 generation。
+
 ## 本轮文档与研究导航治理（2026-09-08）
 
 本轮先完成治理/导航精简，再修复一个不改变公共合同的 evidence I/O 防御性问题。文档/导航变更

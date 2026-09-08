@@ -36,6 +36,8 @@ V3，随后在既有 development pool 上的两候选 minimal producer compariso
 flags 不变。其后仅定义了 shared-covariance unsupervised local-location mixture contract，候选
 `K={2,4,8}`；contract 已执行一次 development-only selection，但三个 K 均未通过五折 compatibility，
 结果为 `N3_LOCAL_LOCATION_MIXTURE_NOT_SUPPORTED`，不能解释为 family supported 或 K selected。
+随后定义了保留该 local partition、但为每个 hard-assigned component 引入 analytic shrinkage
+covariance 的 contract；它已 ready 但尚未执行，不能解释为 covariance heterogeneity supported 或 K selected。
 
 这些稳定边界和当前入口分别见 [`CURRENT_STATUS.md`](CURRENT_STATUS.md) 与
 [`status/current_handoff.md`](status/current_handoff.md)；所有日期化事实、结果、被取代的下一步和

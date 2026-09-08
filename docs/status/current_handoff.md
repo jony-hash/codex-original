@@ -16,7 +16,8 @@
   worktree 以本地 Git/bridge manifest 核验；本轮 comparison consumer、report 与状态文档变更后尚未
   refresh Sources，不声明 publication 为 `current_clean`）；N1/N2 完成，N3 producer
   baseline、selector calibration、两候选 minimal producer comparison 与 frozen local-location
-  mixture selection 已完成但均未支持新 producer family，N4 未决，N5 blocked，N6 保持独立冻结。
+  mixture selection 已完成但均未支持新 producer family；新的 local-shrinkage-covariance contract
+  已定义但尚未执行，N4 未决，N5 blocked，N6 保持独立冻结。
 - 最新 N3 selector calibration V2 为 `N3_ATTRIBUTION_SELECTOR_CALIBRATION_MIXED_V2`。
   独立 synthetic confirmation 为 NULL=`0/200` false positives、partition=`100/100`、
   radial=`100/100`、nonlinear=`82/100`、local=`78/100`；local 未达到预注册 `0.80`
@@ -48,10 +49,16 @@
   `N3_LOCAL_LOCATION_MIXTURE_NOT_SUPPORTED`，没有 selected K。Report SHA 为
   `5064ee87cbc9846f0194ba0afcea4687647ceefb454d2abb20b8b56d632a9080`；这是 development-only
   valid failure，不授权 final all-1000 fit、sealed confirmation 或 generation。
+- `DEFINE_N3_UNSUPERVISED_LOCAL_SHRINKAGE_COVARIANCE_MIXTURE_CONTRACT_V1` 已完成并冻结下一
+  minimal family：保留 Stage-1 unsupervised local partition，Stage-2 对 assigned fitting rows
+  使用 component-local analytic shrinkage covariance。classification 为
+  `DEFINE_N3_UNSUPERVISED_LOCAL_SHRINKAGE_COVARIANCE_MIXTURE_CONTRACT_V1_READY`，SHA 为
+  `2cb596abe61deeaa847b90c74654c5abe0e94aae18a6f252170f8149ad1c1550`。这只是
+  `N3_LOCAL_COVARIANCE_HETEROGENEITY_MODEL_ASSUMPTION_DEFINED`，尚未 fit、sampling 或选择 K。
 - 恢复 outputs、历史 evidence、producer、rank、partition、formal v2 和全局 flags 均保持不变。
-- 当前允许的下一项：local-location mixture selection line 已关闭；不得增加 K、改初始化/阈值、
-  重跑该 consumer、消费 sealed source、启动 selector V3 或 generation。若继续 producer research，
-  必须另立独立 research question 与 frozen authority。
+- 当前允许的下一项：若继续，只能执行这个新 frozen contract 的一次 development-only consumer；
+  不得修改 Stage-1 partition、增加 K、改变 `n_k<2` 语义、消费 sealed source、启动 selector V3
+  或 generation。此前 local-location line 不得重跑或调参。
 
 ## 本轮 evidence I/O 修复（2026-09-08）
 

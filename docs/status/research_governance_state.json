@@ -2,7 +2,7 @@
   "schema_version": 1,
   "kind": "research_governance_state",
   "policy_id": "RESEARCH_GOVERNANCE_SIMPLIFICATION_V1",
-  "active_objective": "N3_LOCAL_LOCATION_MIXTURE_NOT_SUPPORTED",
+  "active_objective": "N3_LOCAL_SHRINKAGE_COVARIANCE_MIXTURE_CONTRACT_DEFINED_NOT_EXECUTED",
   "authorization_tier": "R0",
   "hard_blocker": "N3_LOCAL_LOCATION_MIXTURE_NOT_SUPPORTED",
   "evidence_aliases": {
@@ -128,6 +128,25 @@
       "compatible_K": [],
       "sealed_confirmation_consumed": false,
       "selection_scope": "DEVELOPMENT_ONLY",
+      "verification": "verified"
+    },
+    "N3_LOCAL_SHRINKAGE_COVARIANCE_MIXTURE_CONTRACT": {
+      "kind": "machine_evidence",
+      "path": "outputs/20260908_v2/runs/n3_unsupervised_local_shrinkage_covariance_mixture_producer_contract_v1_attempt_01/n3_unsupervised_local_shrinkage_covariance_mixture_producer_contract.v1.json",
+      "role": "frozen two-stage unsupervised local-partition plus component-local analytic-shrinkage covariance contract",
+      "schema": "n3_unsupervised_local_shrinkage_covariance_mixture_producer_contract.v1",
+      "sha256": "2cb596abe61deeaa847b90c74654c5abe0e94aae18a6f252170f8149ad1c1550",
+      "parent_contract_sha256": "38cb0c549d8f943123f0ab3304adf5a01e9b3b5edb63daa384c7f4c7bac20449",
+      "parent_selection_sha256": "5064ee87cbc9846f0194ba0afcea4687647ceefb454d2abb20b8b56d632a9080",
+      "classification": "DEFINE_N3_UNSUPERVISED_LOCAL_SHRINKAGE_COVARIANCE_MIXTURE_CONTRACT_V1_READY",
+      "claim_classification": "N3_LOCAL_COVARIANCE_HETEROGENEITY_MODEL_ASSUMPTION_DEFINED",
+      "candidate_K": [
+        2,
+        4,
+        8
+      ],
+      "real_n3_selection_executed": false,
+      "sealed_confirmation_consumed": false,
       "verification": "verified"
     }
   }
