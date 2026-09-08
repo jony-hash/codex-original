@@ -1,0 +1,39 @@
+from __future__ import annotations
+
+import torch
+
+from scripts.research import execute_n3_empirical_marginal_gaussian_copula_producer_v1 as producer
+
+
+def test_empirical_quantile_has_frozen_endpoint_and_linear_semantics() -> None:
+    old_dimension = producer.DIMENSION
+    producer.DIMENSION = 2
+    try:
+        sorted_values = torch.tensor([[0.0, 10.0], [2.0, 20.0], [6.0, 30.0], [10.0, 40.0]], dtype=torch.float64)
+        probabilities = torch.tensor([[0.0, 1.0], [0.5, 0.5]], dtype=torch.float64)
+        result = producer._empirical_quantile_batch(sorted_values, probabilities)
+        assert torch.equal(result[0], torch.tensor([0.0, 40.0], dtype=torch.float64))
+        assert torch.equal(result[1], torch.tensor([4.0, 25.0], dtype=torch.float64))
+    finally:
+        producer.DIMENSION = old_dimension
+
+
+def test_midrank_fit_is_stable_and_strictly_interior() -> None:
+    old_dimension = producer.DIMENSION
+    producer.DIMENSION = 2
+    try:
+        values = torch.tensor([[2.0, 4.0], [1.0, 4.0], [2.0, 8.0], [3.0, 8.0]], dtype=torch.float64)
+        positions, sorted_values, summary = producer._midrank_positions(values)
+        assert sorted_values[:, 0].tolist() == [1.0, 2.0, 2.0, 3.0]
+        assert positions[:, 0].tolist() == [0.5, 0.125, 0.5, 0.875]
+        assert summary["coordinates_with_ties"] == 2
+        assert bool(positions.gt(0.0).all()) and bool(positions.lt(1.0).all())
+    finally:
+        producer.DIMENSION = old_dimension
+
+
+def test_rng_substreams_are_deterministic_and_role_separated() -> None:
+    first = producer._seed("data-vs-model", 2, 1)
+    assert first == producer._seed("data-vs-model", 2, 1)
+    assert first != producer._seed("model-vs-model", 2, 1)
+    assert first != producer._seed("data-vs-model", 3, 1)

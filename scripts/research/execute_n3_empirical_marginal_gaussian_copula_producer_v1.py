@@ -1,0 +1,801 @@
+"""Execute the frozen N3 empirical-marginal Gaussian-copula contract once.
+
+This is a CPU-only, development-only consumer.  It loads only the existing
+N3 development banks, reuses the frozen five-fold assignment, fits empirical
+marginals and one regularized Gaussianized-score dependence matrix per fold,
+and writes one immutable comparison report.  It does not read the sealed
+confirmation source, create OLS states, invoke optics/evaluation, or train.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import shutil
+import subprocess
+import tempfile
+from pathlib import Path
+from typing import Any, Mapping
+
+import torch
+
+from ldm_project.v2.evidence import atomic_write_new_json, file_sha256, tensor_sha256
+from scripts.research import compare_n3_minimal_competing_producer_baselines_v1 as comparison
+
+
+TASK_ID = "EXECUTE_N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_PRODUCER_V1"
+GATE = TASK_ID
+REPORT_SCHEMA = "n3_empirical_marginal_gaussian_copula_producer_report.v1"
+REPORT_NAME = "n3_empirical_marginal_gaussian_copula_producer_report.v1.json"
+EXPECTED_BRANCH = "research/lightgen-ols-native-semantic-generation-v1"
+
+CONTRACT_PATH = Path(
+    "outputs/20260908_v2/runs/"
+    "n3_empirical_marginal_gaussian_copula_producer_contract_v1_attempt_01/"
+    "n3_empirical_marginal_gaussian_copula_producer_contract.v1.json"
+)
+EXPECTED_CONTRACT_SHA256 = "3edc9fee006f68eff6ba41205b7e4e6b6cbea3205080c4cb333689e554fba7a4"
+EXPECTED_AUTHORITY_BASE_HEAD = "7dbb52032a2fa6e0b1a180c59aac034608c6f9d8"
+EXPECTED_FOLD_ASSIGNMENT_SHA256 = "90277c16a0d96b895e218264f35a822564b3a46570cab73a1a1e823f063e9e32"
+SHRINKAGE_SOURCE_SCRIPT = Path("scripts/research/compare_n3_minimal_competing_producer_baselines_v1.py")
+EXPECTED_SHRINKAGE_SOURCE_SHA256 = "5e49a45e88eb4b5308fb24975aac6fda5e5031e38c46c939170c55ffddbc83f0"
+
+CLASSIFICATION_SUPPORTED = "N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_DEVELOPMENT_SUPPORTED"
+CLASSIFICATION_NOT_SUPPORTED = "N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_NOT_SUPPORTED"
+CLASSIFICATION_INCONCLUSIVE = "N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_INCONCLUSIVE"
+
+CLASS_COUNT = comparison.CLASS_COUNT
+DIMENSION = comparison.DIMENSION
+POOL_COUNT = comparison.POOL_COUNT
+FOLD_COUNT = comparison.FOLD_COUNT
+FIT_COUNT_PER_FOLD = comparison.FIT_COUNT_PER_FOLD
+HELDOUT_COUNT_PER_FOLD = comparison.HELDOUT_COUNT_PER_FOLD
+GENERATED_BANK_SIZE = comparison.TARGET_ACCEPTED
+DATA_VS_MODEL_REPLICATES = comparison.DATA_VS_MODEL_REPLICATES
+MODEL_VS_MODEL_REPLICATES = comparison.MODEL_VS_MODEL_REPLICATES
+COMPATIBILITY_Q = comparison.Q95
+RNG_NAMESPACE = "N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_PRODUCER_CONTRACT_V1_CPU"
+DIAGONAL_ATOL = float(torch.finfo(torch.float64).eps * 256.0)
+
+JOINT_METRICS = (
+    "energy_distance",
+    "covariance_relative_frobenius",
+    "norm_energy_distance",
+    "squared_norm_energy_distance",
+)
+MARGINAL_METRICS = (
+    "marginal_mean_l2",
+    "marginal_std_l2",
+    "marginal_energy_distance_mean",
+    "marginal_energy_distance_max",
+)
+SCALAR_METRICS = JOINT_METRICS + MARGINAL_METRICS
+
+
+def _require(condition: bool, message: str) -> None:
+    if not condition:
+        raise ValueError(message)
+
+
+def _mapping(value: Any, name: str) -> Mapping[str, Any]:
+    _require(isinstance(value, Mapping), f"{name} must be a mapping")
+    return value
+
+
+def _relative(repo_root: Path, path: Path) -> str:
+    return path.resolve().relative_to(repo_root.resolve()).as_posix()
+
+
+def _read_json_exact(repo_root: Path, path: Path, expected_sha256: str, name: str) -> dict[str, Any]:
+    target = repo_root / path
+    _require(target.is_file(), f"{name} is missing: {target}")
+    _require(file_sha256(target) == expected_sha256, f"{name} hash changed: {target}")
+    return dict(_mapping(json.loads(target.read_text(encoding="utf-8")), name))
+
+
+def _git_state(repo_root: Path) -> dict[str, Any]:
+    branch = subprocess.run(
+        ["git", "-C", str(repo_root), "branch", "--show-current"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    head = subprocess.run(
+        ["git", "-C", str(repo_root), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    status = subprocess.run(
+        ["git", "-C", str(repo_root), "status", "--porcelain"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    return {
+        "branch": branch,
+        "head": head,
+        "dirty_paths": [line[3:] if len(line) >= 4 else line for line in status],
+        "worktree_clean": not status,
+    }
+
+
+def _load_contract(repo_root: Path) -> dict[str, Any]:
+    contract = _read_json_exact(repo_root, CONTRACT_PATH, EXPECTED_CONTRACT_SHA256, "frozen copula contract")
+    _require(contract.get("schema") == "n3_empirical_marginal_gaussian_copula_producer_contract.v1", "contract schema changed")
+    _require(contract.get("task_id") == "DEFINE_N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_PRODUCER_CONTRACT_V1", "contract task changed")
+    _require(contract.get("gate") == contract["task_id"], "contract gate changed")
+    _require(contract.get("classification") == "DEFINE_N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_PRODUCER_CONTRACT_V1_READY", "contract is not ready")
+    _require(contract.get("claim_classification") == "N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_MODEL_ASSUMPTION_DEFINED", "contract claim boundary changed")
+
+    git = _mapping(contract.get("git"), "contract git")
+    _require(git.get("starting_committed_head") == EXPECTED_AUTHORITY_BASE_HEAD, "contract authority base changed")
+    _require(file_sha256(repo_root / SHRINKAGE_SOURCE_SCRIPT) == EXPECTED_SHRINKAGE_SOURCE_SHA256, "shrinkage source changed")
+
+    family = _mapping(contract.get("family"), "contract family")
+    for key, expected in {
+        "name": "N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_AMPLITUDE_V1",
+        "coordinate": "R2_AMPLITUDE",
+        "dimension": DIMENSION,
+        "marginal_model": "fit-only empirical plotting-position marginal Q_j",
+        "dependence_model": "one regularized Gaussianized-score dependence matrix R_shrunk",
+        "labels_as_inputs": False,
+        "mixture_K": False,
+        "local_components": False,
+        "rank_selection": False,
+        "neural_network": False,
+        "normalizing_flow": False,
+    }.items():
+        _require(family.get(key) == expected, f"contract family field changed: {key}")
+
+    marginal = _mapping(contract.get("marginal_cdf_quantile_contract"), "marginal contract")
+    _require(marginal.get("fit_rows_per_fold") == FIT_COUNT_PER_FOLD, "marginal fit count changed")
+    _require(marginal.get("plotting_positions") == "p_i=(i-0.5)/n for i=1,...,n", "plotting positions changed")
+    _require(marginal.get("quantile_interpolation") == "piecewise-linear interpolation between adjacent (p_i,q_(i)) pairs", "quantile interpolation changed")
+    _require(marginal.get("below_first_position") == "return q_(1)" and marginal.get("above_last_position") == "return q_(n)", "quantile tail semantics changed")
+    _require(marginal.get("outside_support_extrapolation") is False and marginal.get("fit_only") is True, "marginal leakage or extrapolation changed")
+
+    ties = _mapping(contract.get("tie_convention"), "tie convention")
+    for key, expected in {
+        "sorting": "stable value-then-original-row-index order",
+        "rank_definition": "for a tied block with one-based ranks L through U, average_rank=(L+U)/2",
+        "gaussianization_plotting_position": "u_ij=(average_rank_ij-0.5)/n",
+        "strict_interior": True,
+        "epsilon_clamp": False,
+        "heldout_tie_reinterpretation": False,
+    }.items():
+        _require(ties.get(key) == expected, f"tie convention changed: {key}")
+
+    gaussianization = _mapping(contract.get("gaussianization_contract"), "gaussianization contract")
+    _require(gaussianization.get("transform") == "z_ij=Phi^{-1}(u_ij), standard normal inverse CDF", "Gaussianization transform changed")
+    _require(gaussianization.get("finite_required") is True and gaussianization.get("epsilon_clamp") is False, "Gaussianization finite policy changed")
+
+    dependence = _mapping(contract.get("dependence_contract"), "dependence contract")
+    for key, expected in {
+        "standard_deviation": "s_j=sqrt(sum_i z_centered_ij^2/(n-1))",
+        "standard_deviation_denominator": "n-1",
+        "empirical_dependence": "R_emp=(Y^T Y)/(n-1)",
+        "dependence_denominator": "n-1",
+        "tau": "trace(R_emp)/d",
+        "alpha": "alpha=0 if delta=0, otherwise clip(beta/delta,0,1)",
+        "regularized_matrix": "R_shrunk=(1-alpha)R_emp+alpha*tau I",
+        "symmetrization": "replace R_shrunk by (R_shrunk+R_shrunk^T)/2 exactly",
+        "final_matrix_used_for_sampling": "R_shrunk directly",
+    }.items():
+        _require(dependence.get(key) == expected, f"dependence contract changed: {key}")
+    _require(dependence.get("unit_diagonal_renormalization") is False, "unit-diagonal renormalization is enabled")
+    _require(dependence.get("heldout_parameter_leakage") is False, "held-out dependence leakage is enabled")
+
+    sampling = _mapping(contract.get("sampling_contract"), "sampling contract")
+    for key, expected in {
+        "law": "z_new~Normal(0,R_shrunk); u_new,j=Phi(z_new,j); q_new,j=Q_j(u_new,j)",
+        "rng_device": "cpu",
+        "dtype": "float64",
+        "rng_generator": "torch.Generator(device='cpu')",
+        "rng_namespace": RNG_NAMESPACE,
+        "generated_bank_size": GENERATED_BANK_SIZE,
+        "data_vs_model_replicates": DATA_VS_MODEL_REPLICATES,
+        "model_vs_model_replicates": MODEL_VS_MODEL_REPLICATES,
+        "proposal_rejection": False,
+        "positivity_acceptance_fraction": 1.0,
+        "finite_and_nonnegative_required": True,
+        "clamp": False,
+        "abs": False,
+        "relu": False,
+        "softplus": False,
+        "epsilon_repair": False,
+        "samplewise_normalization": False,
+    }.items():
+        _require(sampling.get(key) == expected, f"sampling contract changed: {key}")
+
+    evaluation = _mapping(contract.get("development_evaluation_contract"), "development evaluation contract")
+    _require(evaluation.get("fit_rows") == FIT_COUNT_PER_FOLD and evaluation.get("heldout_rows") == HELDOUT_COUNT_PER_FOLD, "development split changed")
+    _require(evaluation.get("labels_as_model_inputs") is False and evaluation.get("optical_forward") is False and evaluation.get("evaluator") is False, "evaluation boundary changed")
+    _require(evaluation.get("sealed_confirmation") is False, "sealed confirmation is enabled")
+    marginal_summary = _mapping(evaluation.get("per_coordinate_marginal_summary"), "per-coordinate marginal summary")
+    _require(marginal_summary.get("vector_length") == DIMENSION and marginal_summary.get("coordinate_vector_role") == "diagnostic attribution only", "per-coordinate marginal role changed")
+
+    compatibility = _mapping(contract.get("compatibility_contract"), "compatibility contract")
+    for key, expected in {
+        "q": COMPATIBILITY_Q,
+        "absolute_metric_thresholds": False,
+        "own_model_reference_required": True,
+        "all_folds_required": True,
+        "less_bad_than_failed_prior_family_is_sufficient": False,
+    }.items():
+        _require(compatibility.get(key) == expected, f"compatibility contract changed: {key}")
+    _require("q-space primary plus covariance/norm and aggregate marginal guardrails" in str(compatibility.get("rule")), "compatibility rule changed")
+
+    sealed = _mapping(contract.get("sealed_confirmation_firewall"), "sealed firewall")
+    _require(sealed.get("status") == "RESERVED_NOT_MATERIALIZED", "sealed confirmation status changed")
+    _require(sealed.get("sample_values_loaded") is False and sealed.get("confirmation_evaluation_authorized") is False, "sealed confirmation firewall changed")
+    governance = _mapping(contract.get("governance"), "contract governance")
+    _require(governance.get("training_authorized") is False and governance.get("formal_promotion") is False, "contract governance changed")
+    _require(contract.get("one_shot_semantics", {}).get("no_post_result_marginal_change") is True, "one-shot marginal freeze changed")
+    _require(contract.get("one_shot_semantics", {}).get("no_post_result_dependence_change") is True, "one-shot dependence freeze changed")
+    return contract
+
+
+def _verify_development_identity(
+    repo_root: Path,
+    contract: Mapping[str, Any],
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, dict[str, Any], dict[str, Any]]:
+    q, source_indices, labels, pool_identity = comparison._load_development_pool(repo_root)
+    fold_ids, fold_identity = comparison._assign_folds(source_indices, labels)
+    development = _mapping(contract.get("development_identity"), "contract development identity")
+    _require(development.get("count") == POOL_COUNT and development.get("per_class") == comparison.ROWS_PER_CLASS, "development pool identity changed")
+    _require(development.get("source_indices_sha256") == pool_identity["source_indices_sha256"], "development source indices changed")
+    _require(development.get("labels_sha256") == pool_identity["labels_sha256"], "development labels changed")
+    contract_fold = _mapping(development.get("fold_assignment"), "contract fold identity")
+    _require(contract_fold.get("assignment_sha256") == EXPECTED_FOLD_ASSIGNMENT_SHA256, "contract fold assignment changed")
+    _require(fold_identity.get("assignment_sha256") == EXPECTED_FOLD_ASSIGNMENT_SHA256, "runtime fold assignment changed")
+    _require(fold_identity == contract_fold, "runtime fold identity differs from contract")
+    _require(tuple(q.shape) == (POOL_COUNT, DIMENSION), "development q shape changed")
+    _require(bool(torch.isfinite(q).all()) and bool(q.ge(0.0).all()), "development q is invalid")
+    return q, source_indices, labels, fold_ids, pool_identity, fold_identity
+
+
+def _seed(role: str, fold: int, replicate: int) -> int:
+    material = f"{RNG_NAMESPACE}|{role}|fold={fold}|replicate={replicate}".encode("utf-8")
+    return int.from_bytes(hashlib.sha256(material).digest()[:8], "big") & ((1 << 63) - 1)
+
+
+def _midrank_positions(values: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, dict[str, Any]]:
+    view = values.to(dtype=torch.float64).contiguous()
+    _require(view.ndim == 2 and view.shape[0] >= 2 and view.shape[1] == DIMENSION, "fit marginal shape is invalid")
+    _require(bool(torch.isfinite(view).all()) and bool(view.ge(0.0).all()), "fit marginal values are invalid")
+    n = int(view.shape[0])
+    positions = torch.empty_like(view)
+    sorted_values = torch.empty_like(view)
+    tie_blocks = 0
+    tied_rows = 0
+    max_tie_block = 1
+    coordinates_with_ties = 0
+    for coordinate in range(DIMENSION):
+        order = torch.argsort(view[:, coordinate], stable=True)
+        ordered = view.index_select(0, order)[:, coordinate]
+        sorted_values[:, coordinate] = ordered
+        cursor = 0
+        coordinate_had_tie = False
+        while cursor < n:
+            end = cursor + 1
+            while end < n and bool(ordered[end] == ordered[cursor]):
+                end += 1
+            block_size = end - cursor
+            if block_size > 1:
+                coordinate_had_tie = True
+                tie_blocks += 1
+                tied_rows += block_size
+                max_tie_block = max(max_tie_block, block_size)
+            average_rank = (float(cursor + 1) + float(end)) / 2.0
+            plotting_position = (average_rank - 0.5) / float(n)
+            positions[order[cursor:end], coordinate] = plotting_position
+            cursor = end
+        coordinates_with_ties += int(coordinate_had_tie)
+    _require(bool(positions.gt(0.0).all()) and bool(positions.lt(1.0).all()), "fit plotting positions are not strictly interior")
+    return positions, sorted_values, {
+        "sorting": "stable value-then-original-row-index order",
+        "fit_rows": n,
+        "coordinates": DIMENSION,
+        "coordinates_with_ties": coordinates_with_ties,
+        "tie_block_count": tie_blocks,
+        "tied_row_count": tied_rows,
+        "maximum_tie_block": max_tie_block,
+        "strictly_interior": True,
+        "epsilon_clamp": False,
+    }
+
+
+def _empirical_quantile_batch(sorted_values: torch.Tensor, probabilities: torch.Tensor) -> torch.Tensor:
+    values = sorted_values.to(dtype=torch.float64).contiguous()
+    probs = probabilities.to(dtype=torch.float64).contiguous()
+    _require(values.ndim == 2 and values.shape[1] == DIMENSION, "quantile table shape is invalid")
+    _require(probs.ndim == 2 and probs.shape[1] == DIMENSION, "quantile probability shape is invalid")
+    _require(bool(torch.isfinite(values).all()) and bool(torch.isfinite(probs).all()), "quantile inputs are non-finite")
+    n = int(values.shape[0])
+    _require(n >= 2, "quantile table is too small")
+    positions = (torch.arange(n, dtype=torch.float64) + 0.5) / float(n)
+    result = torch.empty_like(probs)
+    first_position = positions[0]
+    last_position = positions[-1]
+    for coordinate in range(DIMENSION):
+        probability = probs[:, coordinate].contiguous()
+        low = probability.le(first_position)
+        high = probability.ge(last_position)
+        upper = torch.searchsorted(positions, probability, right=True).clamp(min=1, max=n - 1)
+        lower = upper - 1
+        lower_position = positions.index_select(0, lower)
+        upper_position = positions.index_select(0, upper)
+        fraction = (probability - lower_position) / (upper_position - lower_position)
+        interpolated = values[:-1, coordinate].index_select(0, lower) + fraction * (
+            values[1:, coordinate].index_select(0, lower) - values[:-1, coordinate].index_select(0, lower)
+        )
+        result[:, coordinate] = torch.where(low, values[0, coordinate], torch.where(high, values[-1, coordinate], interpolated))
+    _require(bool(torch.isfinite(result).all()) and bool(result.ge(0.0).all()), "empirical quantile output is invalid")
+    return result
+
+
+def _numeric_summary(value: torch.Tensor) -> dict[str, float]:
+    view = value.detach().to(dtype=torch.float64).reshape(-1)
+    _require(view.numel() > 0 and bool(torch.isfinite(view).all()), "numeric summary input is invalid")
+    return {
+        "min": float(view.min()),
+        "mean": float(view.mean()),
+        "max": float(view.max()),
+    }
+
+
+def _fit_dependence(z: torch.Tensor) -> dict[str, Any]:
+    scores = z.to(dtype=torch.float64).contiguous()
+    _require(scores.ndim == 2 and tuple(scores.shape) == (FIT_COUNT_PER_FOLD, DIMENSION), "Gaussianized fit shape is invalid")
+    _require(bool(torch.isfinite(scores).all()), "Gaussianized fit scores are non-finite")
+    n = int(scores.shape[0])
+    mean_fit = scores.mean(dim=0)
+    centered = scores - mean_fit
+    standard_deviation = torch.sqrt(centered.square().sum(dim=0).div(float(n - 1)))
+    _require(bool(torch.isfinite(standard_deviation).all()) and bool(standard_deviation.gt(0.0).all()), "Gaussianized marginal standard deviation is undefined")
+    standardized = centered / standard_deviation
+    empirical = standardized.transpose(0, 1).mm(standardized).div(float(n - 1))
+    tau = torch.trace(empirical).div(float(DIMENSION))
+    identity = torch.eye(DIMENSION, dtype=torch.float64)
+    target = tau * identity
+    quadratic = (standardized.mm(empirical) * standardized).sum(dim=1)
+    beta = (
+        standardized.square().sum(dim=1).square().sum()
+        - 2.0 * quadratic.sum()
+        + float(n) * empirical.square().sum()
+    ).div(float(n * n))
+    _require(bool(torch.isfinite(beta)) and bool(torch.isfinite(tau)), "analytic shrinkage plug-in is non-finite")
+    beta = beta.clamp_min(0.0)
+    delta = (empirical - target).square().sum()
+    _require(bool(torch.isfinite(delta)), "analytic shrinkage target distance is non-finite")
+    if float(delta) == 0.0:
+        alpha = torch.zeros((), dtype=torch.float64)
+    else:
+        alpha = (beta / delta).clamp(0.0, 1.0)
+    shrunk = ((1.0 - alpha) * empirical + alpha * target).contiguous()
+    shrunk = (shrunk + shrunk.transpose(0, 1)).mul(0.5).contiguous()
+    _require(bool(torch.isfinite(shrunk).all()), "R_shrunk is non-finite")
+    cholesky, info = torch.linalg.cholesky_ex(shrunk, check_errors=False)
+    _require(int(info.item()) == 0, "R_shrunk is not positive definite")
+    eigenvalues = torch.linalg.eigvalsh(shrunk)
+    _require(bool(torch.isfinite(eigenvalues).all()) and bool(eigenvalues.gt(0.0).all()), "R_shrunk spectrum is invalid")
+    diagonal = torch.diagonal(shrunk)
+    diagonal_error = (diagonal - 1.0).abs().max()
+    _require(bool(torch.isfinite(diagonal_error)) and float(diagonal_error) <= DIAGONAL_ATOL, "R_shrunk unit diagonal invariant failed")
+    return {
+        "z": scores,
+        "z_mean": mean_fit,
+        "z_centered": centered,
+        "standard_deviation": standard_deviation,
+        "standardized": standardized,
+        "R_emp": empirical,
+        "tau": tau,
+        "beta": beta,
+        "delta": delta,
+        "alpha": alpha,
+        "R_shrunk": shrunk,
+        "cholesky": cholesky,
+        "eigenvalues": eigenvalues,
+        "diagonal": diagonal,
+        "diagonal_error": diagonal_error,
+    }
+
+
+def _fit_fold(q_fit: torch.Tensor) -> dict[str, Any]:
+    u, sorted_values, tie_summary = _midrank_positions(q_fit)
+    z = torch.special.ndtri(u)
+    _require(bool(torch.isfinite(z).all()), "Gaussianization produced non-finite scores")
+    dependence = _fit_dependence(z)
+    return {
+        "sorted_values": sorted_values,
+        "plotting_positions": u,
+        "z": z,
+        "tie_summary": tie_summary,
+        "dependence": dependence,
+    }
+
+
+def _sample_bank(fit: Mapping[str, Any], *, role: str, fold: int, replicate: int) -> tuple[torch.Tensor, dict[str, Any]]:
+    seed = _seed(role, fold, replicate)
+    generator = torch.Generator(device="cpu").manual_seed(seed)
+    noise = torch.randn((GENERATED_BANK_SIZE, DIMENSION), generator=generator, dtype=torch.float64)
+    dependence = _mapping(fit["dependence"], "fold dependence")
+    z_new = noise.mm(dependence["cholesky"].transpose(0, 1))
+    u_new = torch.special.ndtr(z_new)
+    q_new = _empirical_quantile_batch(fit["sorted_values"], u_new)
+    _require(bool(torch.isfinite(q_new).all()) and bool(q_new.ge(0.0).all()), "sampled q violates finite/nonnegative contract")
+    return q_new, {
+        "role": role,
+        "fold": fold,
+        "replicate": replicate,
+        "seed": seed,
+        "rng": "torch.Generator(device='cpu')",
+        "bank_size": GENERATED_BANK_SIZE,
+        "z_finite": bool(torch.isfinite(z_new).all()),
+        "u_finite": bool(torch.isfinite(u_new).all()),
+        "q_finite": bool(torch.isfinite(q_new).all()),
+        "q_nonnegative": bool(q_new.ge(0.0).all()),
+        "positivity_acceptance_fraction": 1.0,
+        "rejection": False,
+        "z_sha256": tensor_sha256(z_new),
+        "u_sha256": tensor_sha256(u_new),
+        "q_sha256": tensor_sha256(q_new),
+        "q_summary": _numeric_summary(q_new),
+    }
+
+
+def _pair_metrics(first: torch.Tensor, second: torch.Tensor) -> dict[str, Any]:
+    base = comparison._pair_metrics(first, second)
+    per_coordinate = [
+        comparison.validated_energy_distance(first[:, coordinate : coordinate + 1], second[:, coordinate : coordinate + 1])
+        for coordinate in range(DIMENSION)
+    ]
+    _require(all(torch.isfinite(torch.tensor(value, dtype=torch.float64)) for value in per_coordinate), "per-coordinate marginal energy is non-finite")
+    base["per_coordinate_marginal_energy_distance"] = [float(value) for value in per_coordinate]
+    base["marginal_energy_distance_mean"] = float(sum(per_coordinate) / DIMENSION)
+    base["marginal_energy_distance_max"] = float(max(per_coordinate))
+    return base
+
+
+def _mean_metrics(metrics: list[Mapping[str, Any]]) -> dict[str, Any]:
+    _require(metrics, "metric list is empty")
+    result = {
+        name: float(sum(float(item[name]) for item in metrics) / len(metrics))
+        for name in SCALAR_METRICS
+    }
+    vector = torch.tensor(
+        [item["per_coordinate_marginal_energy_distance"] for item in metrics],
+        dtype=torch.float64,
+    ).mean(dim=0)
+    result["per_coordinate_marginal_energy_distance"] = [float(value) for value in vector]
+    return result
+
+
+def _q95_metrics(metrics: list[Mapping[str, Any]]) -> dict[str, Any]:
+    _require(metrics, "reference metric list is empty")
+    result = {
+        name: float(torch.quantile(torch.tensor([float(item[name]) for item in metrics], dtype=torch.float64), COMPATIBILITY_Q))
+        for name in SCALAR_METRICS
+    }
+    vector = torch.quantile(
+        torch.tensor([item["per_coordinate_marginal_energy_distance"] for item in metrics], dtype=torch.float64),
+        COMPATIBILITY_Q,
+        dim=0,
+    )
+    result["per_coordinate_marginal_energy_distance"] = [float(value) for value in vector]
+    return result
+
+
+def _fit_summary(fit: Mapping[str, Any], fold: int) -> dict[str, Any]:
+    dependence = _mapping(fit["dependence"], "fold dependence")
+    eigenvalues = dependence["eigenvalues"]
+    return {
+        "fold": fold,
+        "fit_rows": FIT_COUNT_PER_FOLD,
+        "heldout_rows": HELDOUT_COUNT_PER_FOLD,
+        "sorted_values_sha256": tensor_sha256(fit["sorted_values"]),
+        "plotting_positions_sha256": tensor_sha256(fit["plotting_positions"]),
+        "z_sha256": tensor_sha256(fit["z"]),
+        "tie_summary": fit["tie_summary"],
+        "z_summary": _numeric_summary(fit["z"]),
+        "z_mean_sha256": tensor_sha256(dependence["z_mean"]),
+        "z_standard_deviation_summary": _numeric_summary(dependence["standard_deviation"]),
+        "z_standard_deviation_sha256": tensor_sha256(dependence["standard_deviation"]),
+        "R_emp_sha256": tensor_sha256(dependence["R_emp"]),
+        "R_shrunk_sha256": tensor_sha256(dependence["R_shrunk"]),
+        "cholesky_sha256": tensor_sha256(dependence["cholesky"]),
+        "tau": float(dependence["tau"]),
+        "beta": float(dependence["beta"]),
+        "delta": float(dependence["delta"]),
+        "alpha": float(dependence["alpha"]),
+        "R_shrunk_trace": float(torch.trace(dependence["R_shrunk"])),
+        "R_shrunk_min_eigenvalue": float(eigenvalues.min()),
+        "R_shrunk_max_eigenvalue": float(eigenvalues.max()),
+        "finite": True,
+        "positive_definite": True,
+    }
+
+
+def _evaluate_fold(q: torch.Tensor, fold_ids: torch.Tensor, fold: int, fit: Mapping[str, Any]) -> dict[str, Any]:
+    heldout_positions = (fold_ids == fold).nonzero(as_tuple=False).reshape(-1)
+    fit_positions = (fold_ids != fold).nonzero(as_tuple=False).reshape(-1)
+    _require(int(heldout_positions.numel()) == HELDOUT_COUNT_PER_FOLD, "held-out fold count changed")
+    _require(int(fit_positions.numel()) == FIT_COUNT_PER_FOLD, "fit fold count changed")
+    union = torch.cat([fit_positions, heldout_positions])
+    _require(torch.unique(union).numel() == POOL_COUNT, "fit and held-out positions overlap")
+    heldout = q.index_select(0, heldout_positions).contiguous()
+
+    data_banks: list[torch.Tensor] = []
+    data_sampling: list[dict[str, Any]] = []
+    for replicate in range(DATA_VS_MODEL_REPLICATES):
+        bank, sampling = _sample_bank(fit, role="data-vs-model", fold=fold, replicate=replicate)
+        data_banks.append(bank)
+        data_sampling.append(sampling)
+    model_banks: list[torch.Tensor] = []
+    model_sampling: list[dict[str, Any]] = []
+    for replicate in range(MODEL_VS_MODEL_REPLICATES):
+        bank, sampling = _sample_bank(fit, role="model-vs-model", fold=fold, replicate=replicate)
+        model_banks.append(bank)
+        model_sampling.append(sampling)
+
+    data_metrics = [_pair_metrics(heldout, bank) for bank in data_banks]
+    reference_pairs = [
+        _pair_metrics(model_banks[index], model_banks[index + 1])
+        for index in range(0, MODEL_VS_MODEL_REPLICATES, 2)
+    ]
+    data_mean = _mean_metrics(data_metrics)
+    reference_q95 = _q95_metrics(reference_pairs)
+    compatibility_components = {
+        name: float(data_mean[name]) <= float(reference_q95[name])
+        for name in SCALAR_METRICS
+    }
+    vector_component = [
+        float(data_mean["per_coordinate_marginal_energy_distance"][coordinate])
+        <= float(reference_q95["per_coordinate_marginal_energy_distance"][coordinate])
+        for coordinate in range(DIMENSION)
+    ]
+    marginal_compatible = all(compatibility_components[name] for name in MARGINAL_METRICS)
+    joint_compatible = all(compatibility_components[name] for name in JOINT_METRICS)
+    if not marginal_compatible and not joint_compatible:
+        interpretation = "MARGINAL_MISMATCH_REMAINS"
+    elif marginal_compatible and not joint_compatible:
+        interpretation = "MARGINALS_IMPROVED_JOINT_DEPENDENCE_REMAINS"
+    elif marginal_compatible and joint_compatible:
+        interpretation = "NO_RESIDUAL_FAILURE"
+    else:
+        interpretation = "MIXED"
+    return {
+        "fold": fold,
+        "operationally_valid": True,
+        "fit_heldout_disjoint": True,
+        "fit_summary": _fit_summary(fit, fold),
+        "data_sampling": data_sampling,
+        "model_sampling": model_sampling,
+        "sampling_all_finite": True,
+        "sampling_all_nonnegative": True,
+        "data_vs_model_replicates": data_metrics,
+        "data_vs_model_mean": data_mean,
+        "model_vs_model_reference_pairs": reference_pairs,
+        "model_vs_model_reference_q95": reference_q95,
+        "compatibility_rule": "fixed-replicate mean DATA_VS_MODEL <= q95 MODEL_VS_MODEL for primary, joint and aggregate marginal guardrails",
+        "compatibility_components": compatibility_components,
+        "compatibility": all(compatibility_components.values()),
+        "per_coordinate_marginal_q95_checks": vector_component,
+        "per_coordinate_vector_role": "diagnostic attribution only; not a separate compatibility gate",
+        "marginal_compatible": marginal_compatible,
+        "joint_compatible": joint_compatible,
+        "marginal_vs_joint_interpretation": interpretation,
+    }
+
+
+def _overall_interpretation(classification: str, fold_results: list[Mapping[str, Any]]) -> str:
+    if classification == CLASSIFICATION_SUPPORTED:
+        return "NO_RESIDUAL_FAILURE"
+    interpretations = [str(item["marginal_vs_joint_interpretation"]) for item in fold_results]
+    if interpretations and all(value == "MARGINAL_MISMATCH_REMAINS" for value in interpretations):
+        return "MARGINAL_MISMATCH_REMAINS"
+    if interpretations and all(value == "MARGINALS_IMPROVED_JOINT_DEPENDENCE_REMAINS" for value in interpretations):
+        return "MARGINALS_IMPROVED_JOINT_DEPENDENCE_REMAINS"
+    return "MIXED"
+
+
+def _write_report(repo_root: Path, output_dir: Path, report: Mapping[str, Any]) -> Path:
+    if output_dir.exists():
+        raise FileExistsError(f"refusing to reuse write-once output: {output_dir}")
+    output_dir.parent.mkdir(parents=True, exist_ok=True)
+    temporary = Path(tempfile.mkdtemp(prefix=f".{output_dir.name}.", dir=output_dir.parent))
+    try:
+        atomic_write_new_json(temporary / REPORT_NAME, report, artifact_kind="N3 empirical-marginal Gaussian-copula producer report")
+        if output_dir.exists():
+            raise FileExistsError(f"write-once output appeared during execution: {output_dir}")
+        os.replace(temporary, output_dir)
+    finally:
+        if temporary.exists():
+            shutil.rmtree(temporary)
+    return output_dir / REPORT_NAME
+
+
+def execute(repo_root: Path, output_dir: Path) -> dict[str, Any]:
+    git = _git_state(repo_root)
+    _require(git["branch"] == EXPECTED_BRANCH, "current branch is not the N3 research authority branch")
+    _require(git["worktree_clean"], "consumer must start from a clean committed state")
+    ancestry = subprocess.run(
+        ["git", "-C", str(repo_root), "merge-base", "--is-ancestor", EXPECTED_AUTHORITY_BASE_HEAD, git["head"]],
+        check=False,
+        capture_output=True,
+    )
+    _require(ancestry.returncode == 0, "current implementation HEAD is not descended from the N3 authority base")
+    contract = _load_contract(repo_root)
+    authorities = comparison._verify_authorities(repo_root)
+    boundaries = comparison._verify_historical_boundaries(repo_root)
+    contract_authorities = _mapping(contract.get("authorities"), "contract authorities")
+    runtime_authorities = {
+        "producer_data_authority": authorities,
+        "historical_boundaries": boundaries,
+        "development_bank_artifacts": {
+            "fit_bank_path": _relative(repo_root, repo_root / comparison.FIT_BANK),
+            "fit_bank_sha256": comparison.EXPECTED_FIT_BANK_SHA256,
+            "internal_validation_bank_path": _relative(repo_root, repo_root / comparison.INTERNAL_VALIDATION_BANK),
+            "internal_validation_bank_sha256": comparison.EXPECTED_INTERNAL_VALIDATION_BANK_SHA256,
+            "q_values_loaded_by_this_definition_consumer": False,
+        },
+    }
+    _require(runtime_authorities == contract_authorities, "runtime input authorities differ from frozen contract")
+    q, _source_indices, _labels, fold_ids, pool_identity, fold_identity = _verify_development_identity(repo_root, contract)
+
+    with torch.no_grad():
+        fits = []
+        for fold in range(FOLD_COUNT):
+            fit_positions = (fold_ids != fold).nonzero(as_tuple=False).reshape(-1)
+            fits.append(_fit_fold(q.index_select(0, fit_positions).contiguous()))
+        fold_results = [_evaluate_fold(q, fold_ids, fold, fits[fold]) for fold in range(FOLD_COUNT)]
+
+    _require(all(bool(item["operationally_valid"]) for item in fold_results), "execution did not complete on every frozen fold")
+    classification = (
+        CLASSIFICATION_SUPPORTED
+        if all(bool(item["compatibility"]) for item in fold_results)
+        else CLASSIFICATION_NOT_SUPPORTED
+    )
+    script_path = Path(__file__).resolve()
+    report = {
+        "schema": REPORT_SCHEMA,
+        "version": 1,
+        "task_id": TASK_ID,
+        "gate": GATE,
+        "status": "valid_completed",
+        "classification": classification,
+        "git": {
+            **git,
+            "consumer_script": _relative(repo_root, script_path),
+            "consumer_script_sha256": file_sha256(script_path),
+        },
+        "contract": {
+            "path": _relative(repo_root, repo_root / CONTRACT_PATH),
+            "sha256": EXPECTED_CONTRACT_SHA256,
+            "classification": contract["classification"],
+            "claim_classification": contract["claim_classification"],
+            "starting_committed_head": contract["git"]["starting_committed_head"],
+            "contract_script_sha256": contract["git"]["contract_script_sha256"],
+        },
+        "input_authorities": runtime_authorities,
+        "historical_boundaries": boundaries,
+        "development_pool": {
+            **pool_identity,
+            "source_indices_loaded": True,
+            "labels_loaded": True,
+            "q_coordinate": "R2_AMPLITUDE",
+            "q_values_used_for_fit_and_evaluation": True,
+        },
+        "development_fold_identity": fold_identity,
+        "execution_settings": {
+            "device": "cpu",
+            "dtype": "float64",
+            "class_count": CLASS_COUNT,
+            "dimension": DIMENSION,
+            "fold_count": FOLD_COUNT,
+            "fit_rows_per_fold": FIT_COUNT_PER_FOLD,
+            "heldout_rows_per_fold": HELDOUT_COUNT_PER_FOLD,
+            "generated_bank_size": GENERATED_BANK_SIZE,
+            "data_vs_model_replicates": DATA_VS_MODEL_REPLICATES,
+            "model_vs_model_replicates": MODEL_VS_MODEL_REPLICATES,
+            "compatibility_q": COMPATIBILITY_Q,
+            "rng_namespace": RNG_NAMESPACE,
+            "seed_derivation": "sha256(namespace|role|fold|replicate) first 64 bits masked to signed 63-bit",
+            "ambient_rng_used": False,
+            "diagonal_check_atol": DIAGONAL_ATOL,
+            "diagonal_check_rtol": 0.0,
+            "diagonal_check_tolerance_basis": "torch.float64 machine epsilon multiplied by 256; check only, no renormalization",
+            "labels_as_model_inputs": False,
+            "heldout_parameter_leakage": False,
+            "positivity_rejection": False,
+            "samplewise_normalization": False,
+        },
+        "fold_execution": fold_results,
+        "marginal_vs_joint_interpretation": {
+            "joint_metrics": list(JOINT_METRICS),
+            "marginal_metrics": list(MARGINAL_METRICS),
+            "fold_interpretations": [item["marginal_vs_joint_interpretation"] for item in fold_results],
+            "overall": _overall_interpretation(classification, fold_results),
+            "descriptive_only": True,
+        },
+        "comparison_with_previous_families": contract["previous_gaussian_family_lineage"],
+        "claim_boundary": {
+            "development_candidate_compatibility": True,
+            "development_only": True,
+            "marginal_vs_joint_interpretation_descriptive_only": True,
+            "independent_confirmation": False,
+            "marginal_population_truth": False,
+            "dependence_solved_in_general": False,
+            "full_complex_OLS_distribution": False,
+            "amplitude_phase_compatibility": False,
+            "novel_OLS": False,
+            "semantic_generation": False,
+            "generation_readiness": "not_ready",
+        },
+        "governance": {
+            "training_authorized": False,
+            "formal_promotion": False,
+            "selection_scope": "DEVELOPMENT_ONLY",
+            "one_shot_execution_count": 1,
+        },
+        "sealed_confirmation": {
+            "status": "RESERVED_NOT_MATERIALIZED",
+            "consumed": False,
+            "materialized": False,
+            "sample_values_loaded": False,
+            "future_use_requires_separate_frozen_producer_confirmation_contract": True,
+        },
+        "not_executed": [
+            "final all-1000-row producer fit",
+            "sealed confirmation source loading or materialization",
+            "independent confirmation",
+            "historical r=99 refit or reselection",
+            "previous local-covariance family repair or rerun",
+            "selector V3",
+            "label-conditioned producer",
+            "mixture K",
+            "local mixture/MFA",
+            "ICA",
+            "normalizing flow",
+            "phase-source work",
+            "novel complex OLS",
+            "generator",
+            "evaluator",
+            "CUDA",
+            "optimizer",
+            "backward",
+            "training",
+        ],
+    }
+    report_path = _write_report(repo_root, output_dir, report)
+    return {
+        "classification": classification,
+        "report": _relative(repo_root, report_path),
+        "report_sha256": file_sha256(report_path),
+        "git_head": git["head"],
+        "worktree_clean_at_run": git["worktree_clean"],
+    }
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path(
+            "outputs/20260908_v2/runs/"
+            "n3_empirical_marginal_gaussian_copula_producer_v1_attempt_01"
+        ),
+        help="fresh write-once output directory",
+    )
+    args = parser.parse_args()
+    repo_root = Path(__file__).resolve().parents[2]
+    output_dir = args.output_dir if args.output_dir.is_absolute() else repo_root / args.output_dir
+    print(json.dumps(execute(repo_root, output_dir), indent=2, sort_keys=True))
+
+
+if __name__ == "__main__":
+    main()
