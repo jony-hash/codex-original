@@ -17,7 +17,8 @@
   refresh Sources，不声明 publication 为 `current_clean`）；N1/N2 完成，N3 producer
   baseline、selector calibration、两候选 minimal producer comparison 与 frozen local-location
   mixture selection 已完成但均未支持新 producer family；新的 local-shrinkage-covariance contract
-  已定义但尚未执行，N4 未决，N5 blocked，N6 保持独立冻结。
+  已执行一次 development-only selection，但结果为 inconclusive 且没有 selected K；N4 未决，
+  N5 blocked，N6 保持独立冻结。
 - 最新 N3 selector calibration V2 为 `N3_ATTRIBUTION_SELECTOR_CALIBRATION_MIXED_V2`。
   独立 synthetic confirmation 为 NULL=`0/200` false positives、partition=`100/100`、
   radial=`100/100`、nonlinear=`82/100`、local=`78/100`；local 未达到预注册 `0.80`
@@ -55,10 +56,18 @@
   `DEFINE_N3_UNSUPERVISED_LOCAL_SHRINKAGE_COVARIANCE_MIXTURE_CONTRACT_V1_READY`，SHA 为
   `2cb596abe61deeaa847b90c74654c5abe0e94aae18a6f252170f8149ad1c1550`。这只是
   `N3_LOCAL_COVARIANCE_HETEROGENEITY_MODEL_ASSUMPTION_DEFINED`，尚未 fit、sampling 或选择 K。
-- 恢复 outputs、历史 evidence、producer、rank、partition、formal v2 和全局 flags 均保持不变。
-- 当前允许的下一项：若继续，只能执行这个新 frozen contract 的一次 development-only consumer；
-  不得修改 Stage-1 partition、增加 K、改变 `n_k<2` 语义、消费 sealed source、启动 selector V3
-  或 generation。此前 local-location line 不得重跑或调参。
+- `EXECUTE_N3_LOCAL_SHRINKAGE_COVARIANCE_MIXTURE_SELECTION_V1` 已严格执行一次。Stage-1 的
+  15/15 candidate-fold 均收敛；Stage-2 的 `n_k<2` 在 K=2/4/8 分别造成 1/2/4 个 fold
+  failure，剩余 operational folds 均未通过 primary/covariance/norm compatibility。最终为
+  `N3_LOCAL_SHRINKAGE_COVARIANCE_MIXTURE_INCONCLUSIVE`、`K_selected=null`。Report SHA 为
+  `cbd16bff7f4e382f6db702099e87da4468d3213d2959492001997e4e0fb1da5a`。
+- 恢复 outputs、历史 evidence、producer、rank、partition、formal v2 和全局 flags 均保持不变；
+  sealed confirmation 仍为 `RESERVED_NOT_MATERIALIZED`，`training_authorized=false`、
+  `formal_promotion=false`、`generation_readiness=not_ready`。
+- 当前没有自动后续 N3 family action：不得将 inconclusive 结果改写为 selected 或
+  NOT_SUPPORTED，不得修改 Stage-1/Stage-2 合同、增加 K、改变 `n_k<2` 语义、消费 sealed
+  source、启动 selector V3、generation 或重跑此前 local-location line。任何后续研究必须先有
+  独立 planning Gate。
 
 ## 本轮 evidence I/O 修复（2026-09-08）
 

@@ -37,7 +37,11 @@ flags 不变。其后仅定义了 shared-covariance unsupervised local-location 
 `K={2,4,8}`；contract 已执行一次 development-only selection，但三个 K 均未通过五折 compatibility，
 结果为 `N3_LOCAL_LOCATION_MIXTURE_NOT_SUPPORTED`，不能解释为 family supported 或 K selected。
 随后定义了保留该 local partition、但为每个 hard-assigned component 引入 analytic shrinkage
-covariance 的 contract；它已 ready 但尚未执行，不能解释为 covariance heterogeneity supported 或 K selected。
+covariance 的 contract；随后严格执行了一次 development-only selection。Stage-1 的 15/15
+candidate-fold 均收敛，但 Stage-2 的 `n_k<2` 在 K=2/4/8 分别造成 1/2/4 个 fold failure，
+其余 operational folds 也均未通过 frozen primary/covariance/norm compatibility；结果为
+`N3_LOCAL_SHRINKAGE_COVARIANCE_MIXTURE_INCONCLUSIVE`，没有 selected K，不能解释为 covariance
+heterogeneity supported 或 producer family established。
 
 这些稳定边界和当前入口分别见 [`CURRENT_STATUS.md`](CURRENT_STATUS.md) 与
 [`status/current_handoff.md`](status/current_handoff.md)；所有日期化事实、结果、被取代的下一步和

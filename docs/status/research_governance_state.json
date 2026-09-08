@@ -2,7 +2,7 @@
   "schema_version": 1,
   "kind": "research_governance_state",
   "policy_id": "RESEARCH_GOVERNANCE_SIMPLIFICATION_V1",
-  "active_objective": "N3_LOCAL_SHRINKAGE_COVARIANCE_MIXTURE_CONTRACT_DEFINED_NOT_EXECUTED",
+  "active_objective": "N3_LOCAL_SHRINKAGE_COVARIANCE_MIXTURE_INCONCLUSIVE",
   "authorization_tier": "R0",
   "hard_blocker": "N3_LOCAL_LOCATION_MIXTURE_NOT_SUPPORTED",
   "evidence_aliases": {
@@ -147,6 +147,36 @@
       ],
       "real_n3_selection_executed": false,
       "sealed_confirmation_consumed": false,
+      "verification": "verified"
+    },
+    "N3_LOCAL_SHRINKAGE_COVARIANCE_MIXTURE_SELECTION": {
+      "kind": "machine_evidence",
+      "path": "outputs/20260908_v2/runs/n3_local_shrinkage_covariance_mixture_selection_v1_attempt_01/n3_local_shrinkage_covariance_mixture_selection_report.v1.json",
+      "role": "one-shot development-only selection of frozen local-shrinkage-covariance mixture",
+      "schema": "n3_local_shrinkage_covariance_mixture_selection_report.v1",
+      "sha256": "cbd16bff7f4e382f6db702099e87da4468d3213d2959492001997e4e0fb1da5a",
+      "contract_sha256": "2cb596abe61deeaa847b90c74654c5abe0e94aae18a6f252170f8149ad1c1550",
+      "classification": "N3_LOCAL_SHRINKAGE_COVARIANCE_MIXTURE_INCONCLUSIVE",
+      "candidate_K": [
+        2,
+        4,
+        8
+      ],
+      "selected_K": null,
+      "stage1_all_candidate_folds_converged": true,
+      "operationally_valid_fold_count_by_K": {
+        "2": 4,
+        "4": 3,
+        "8": 1
+      },
+      "component_insufficiency_fold_count_by_K": {
+        "2": 1,
+        "4": 2,
+        "8": 4
+      },
+      "compatible_K": [],
+      "sealed_confirmation_consumed": false,
+      "selection_scope": "DEVELOPMENT_ONLY",
       "verification": "verified"
     }
   }

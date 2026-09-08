@@ -27,6 +27,13 @@ promotion。当前 flags 仍为 `training_authorized=false`、`generation_readin
 frozen spec SHA=`9ee5b7ad64221b323f1b182c2f4d74edddfad89599bdf30b352ef33cc5b4c25b`，
 report SHA=`77c0a9f632b6870579a338d84dd6650530849fa6b74892acb1345567ffa8dae5`。
 
+最新 N3 local-shrinkage-covariance development selection 为
+`N3_LOCAL_SHRINKAGE_COVARIANCE_MIXTURE_INCONCLUSIVE`，没有 selected K。Stage-1 的 15/15
+candidate-fold 均收敛；Stage-2 因 `n_k<2` 在 K=2/4/8 分别有 1/2/4 个 fold
+`LOCAL_COVARIANCE_COMPONENT_INSUFFICIENT`，其余 operational folds 均未通过 frozen
+primary/covariance/norm compatibility。该结果是 valid development-only inconclusive，不能
+解释为 covariance heterogeneity supported、K selected 或 producer family established。
+
 本文件后续带日期或明确标为历史的段落是不可覆盖的历史事实；其中的“下一步”只表示当时的状态，
 不覆盖本摘要。详细数值与输入绑定由对应 machine evidence 和 experiment history 维护。
 
@@ -115,6 +122,23 @@ Stage-1 仍使用既有 shared-covariance local mixture，Stage-2 对 hard-assig
 SHA-256=`2cb596abe61deeaa847b90c74654c5abe0e94aae18a6f252170f8149ad1c1550`。
 当前只允许 claim=`N3_LOCAL_COVARIANCE_HETEROGENEITY_MODEL_ASSUMPTION_DEFINED`；没有执行
 local-covariance fit、K selection、sampling、sealed confirmation 或 generation。
+
+## N3 local shrinkage-covariance mixture development selection（2026-09-08）
+
+`EXECUTE_N3_LOCAL_SHRINKAGE_COVARIANCE_MIXTURE_SELECTION_V1` 严格消费上述 frozen contract，
+只使用同一 1000-row development pool、5-fold assignment 和 CPU float64 Stage-1/Stage-2
+规则。K=2/4/8 的 operational folds 分别为 4/3/1；所有 operational folds 的
+`energy_distance`、`covariance_relative_frobenius`、`norm_energy_distance` 和
+`squared_norm_energy_distance` compatibility checks 均未通过。由于存在
+`LOCAL_COVARIANCE_COMPONENT_INSUFFICIENT` candidate/fold failures，按 frozen selection
+rule 返回 `N3_LOCAL_SHRINKAGE_COVARIANCE_MIXTURE_INCONCLUSIVE`，`K_selected=null`。
+
+权威 report 为
+[`n3_local_shrinkage_covariance_mixture_selection_report.v1.json`](../outputs/20260908_v2/runs/n3_local_shrinkage_covariance_mixture_selection_v1_attempt_01/n3_local_shrinkage_covariance_mixture_selection_report.v1.json)，
+SHA-256=`cbd16bff7f4e382f6db702099e87da4468d3213d2959492001997e4e0fb1da5a`。
+该 execution 仅为 development-only selection；sealed confirmation 仍为
+`RESERVED_NOT_MATERIALIZED`，未执行 final all-1000-row fit、独立 confirmation、novel OLS、
+generator、evaluator、CUDA、optimizer、backward 或 training。
 
 ## 本轮文档与研究导航治理（2026-09-08）
 

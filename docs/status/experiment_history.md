@@ -2559,6 +2559,31 @@ responsibility argmax 固定 hard assignment。Stage-2 只对 assigned fitting r
 `N3_LOCAL_COVARIANCE_HETEROGENEITY_MODEL_ASSUMPTION_DEFINED`。没有执行 real local-covariance
 fit、K selection、sampling、sealed confirmation 或 generation。
 
+### H-LOMA-GEN-N3 local shrinkage-covariance mixture development selection（2026-09-08）
+
+`EXECUTE_N3_LOCAL_SHRINKAGE_COVARIANCE_MIXTURE_SELECTION_V1` 是该 contract 的唯一一次
+development-only consumer。它使用同一 1000-row N3 development pool、冻结的五折 assignment
+（SHA-256=`90277c16a0d96b895e218264f35a822564b3a46570cab73a1a1e823f063e9e32`）以及未改变的
+CPU float64 Stage-1 shared-covariance EM；15/15 candidate-fold 均收敛。Stage-2 只对 final-E-step
+hard-assigned fitting rows 估计 component-local analytic shrinkage covariance，不运行第二次
+EM；K=2/4/8 的 `n_k<2` failure 数为 1/2/4。
+
+剩余 operational folds 的 primary energy、covariance relative Frobenius、norm-energy 和
+squared-norm-energy 均未达到各自 model-vs-model q95 compatibility reference；因此按冻结规则
+没有任何 K 可选，但由于存在 candidate/fold scientific failures，最终 classification 为
+`N3_LOCAL_SHRINKAGE_COVARIANCE_MIXTURE_INCONCLUSIVE`，不是 `NOT_SUPPORTED`，也不是 harness
+invalid。权威 report 位于
+`outputs/20260908_v2/runs/n3_local_shrinkage_covariance_mixture_selection_v1_attempt_01/`
+`n3_local_shrinkage_covariance_mixture_selection_report.v1.json`，SHA-256 为
+`cbd16bff7f4e382f6db702099e87da4468d3213d2959492001997e4e0fb1da5a`。
+
+与前一 shared-covariance local-location family 的比较只作 descriptive context：当前 family
+在同一可比较 folds 上部分改善 energy/norm metrics，但 covariance shape discrepancy 并未一致
+改善，且 component assignment insufficiency 使全五折 compatibility 无法完成。不得由相对改善
+替代 frozen compatibility。sealed confirmation 仍为 `RESERVED_NOT_MATERIALIZED`；未执行 final
+all-1000 fit、独立 confirmation、novel OLS、generator、evaluator、CUDA、optimizer、backward
+或 training。
+
 ## 2026-09-07：H-LOMA-GEN-S3 controller semantic-geometry lineage
 
 本节补录 2026-09-07 的 S3 controller-only 研究事实；它们属于已关闭的历史/diagnostic lineage，
