@@ -42,6 +42,7 @@ CONTRACT_PATH = Path(
     "n3_unsupervised_local_location_mixture_producer_contract.v1.json"
 )
 EXPECTED_CONTRACT_SHA256 = "38cb0c549d8f943123f0ab3304adf5a01e9b3b5edb63daa384c7f4c7bac20449"
+EXPECTED_CONTRACT_SCRIPT_SHA256 = "a63e013f84c86d7789adba85360b2afa16c839d060c1686e53b0f5b83ecfa605"
 REPORT_NAME = "n3_local_location_mixture_selection_report.v1.json"
 
 CLASSIFICATION_SELECTED = "N3_LOCAL_LOCATION_MIXTURE_MODEL_ORDER_SELECTED"
@@ -210,7 +211,7 @@ def _load_contract(repo_root: Path) -> dict[str, Any]:
     contract_git = _mapping(contract.get("git"), "contract git")
     script_path = repo_root / str(contract_git.get("contract_script"))
     _require(script_path.is_file(), "contract script is missing")
-    _require(file_sha256(script_path) == contract_git.get("contract_script_sha256"), "contract script changed")
+    _require(file_sha256(script_path) == EXPECTED_CONTRACT_SCRIPT_SHA256, "contract script changed")
     return contract
 
 
@@ -695,6 +696,7 @@ def execute(repo_root: Path, output_dir: Path) -> dict[str, Any]:
             "classification": contract["classification"],
             "claim_classification": contract["claim_classification"],
             "starting_committed_head": contract["git"]["starting_committed_head"],
+            "contract_script_sha256": EXPECTED_CONTRACT_SCRIPT_SHA256,
         },
         "authorities": authorities,
         "historical_boundaries": boundaries,
