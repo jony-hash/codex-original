@@ -2475,6 +2475,33 @@ classification=`N3_SEALED_CONFIRMATION_SOURCE_RESERVED`，状态为
 overlap 为 0。该记录只建立 data-firewall 和一次性 future-consumer reservation，不是 OLS、
 producer、rank/family、selector 或 generation 结果；完整 lineage 以 manifest 为准。
 
+### H-LOMA-GEN-N3 minimal competing producer baselines（2026-09-08）
+
+`COMPARE_N3_MINIMAL_COMPETING_PRODUCER_BASELINES_V1` 在既有 1000-row N3 development
+pool 上建立了新的 output-independent 5-fold assignment，并只比较两个无条件
+`R2_AMPLITUDE` producer family：`SHRINKAGE_ELLIPTICAL_GAUSSIAN_AMPLITUDE_V1` 与
+`RADIAL_SCALE_MIXTURE_AMPLITUDE_V1`。fold identity 使用 source index/label 与固定 semantic
+salt 的 class-wise SHA-256 sort/round-robin；assignment SHA 为
+`90277c16a0d96b895e218264f35a822564b3a46570cab73a1a1e823f063e9e32`。fit 只使用每 fold
+的 800 rows，held-out 为每类 20 rows；labels 只用于 balanced partition，不是 model input。
+
+两个 candidate 在 5/5 folds 均 operationally valid，固定 CPU substreams、200 accepted target
+和 1,000,000 proposal budget 下所有 data-vs-model 与 model-vs-model banks 均完成；B 的
+径向 extension 在每个 fold 都由 fit-only `V_R>2d` 识别。可是两者在每个 fold 的 primary
+q-space energy discrepancy 都高于各自 model-vs-model q95 reference，covariance relative
+Frobenius 与 q-norm/energy guardrails 也未通过。B 的 aggregate primary 比 A 低（约
+`0.5456` 对 `0.7404`），但仍不能满足 compatibility，故没有利用“相对较好”强行选择。
+
+权威 report 为
+`outputs/20260908_v2/runs/n3_minimal_competing_producer_baselines_v1_attempt_01/`
+`n3_minimal_competing_producer_baselines_report.v1.json`，SHA-256 为
+`af7611cfbca211e666d7773e81b230a1b380b91583817c3c4ab80925f2a16440`，classification 为
+`N3_MINIMAL_PRODUCER_BASELINES_NOT_SUPPORTED`。这是 valid development comparison failure，
+不是 harness/resource failure，也不支持新 producer family、independent confirmation、full
+complex OLS distribution、semantic generation 或 generation readiness。sealed confirmation
+仍为 `RESERVED_NOT_MATERIALIZED`，未被读取或 materialize；training、CUDA、optimizer、backward、
+optical/evaluator、selector V3 和 historical r=99 refit/reselection 均未执行。
+
 ## 2026-09-07：H-LOMA-GEN-S3 controller semantic-geometry lineage
 
 本节补录 2026-09-07 的 S3 controller-only 研究事实；它们属于已关闭的历史/diagnostic lineage，

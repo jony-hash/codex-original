@@ -2,9 +2,9 @@
   "schema_version": 1,
   "kind": "research_governance_state",
   "policy_id": "RESEARCH_GOVERNANCE_SIMPLIFICATION_V1",
-  "active_objective": "N3_SELECTOR_REFINEMENT_CLOSED_AT_MIXED_V2",
+  "active_objective": "N3_MINIMAL_PRODUCER_BASELINES_CLOSED_NOT_SUPPORTED",
   "authorization_tier": "R0",
-  "hard_blocker": "N3_ATTRIBUTION_SELECTOR_CALIBRATION_MIXED_V2",
+  "hard_blocker": "N3_MINIMAL_PRODUCER_BASELINES_NOT_SUPPORTED",
   "evidence_aliases": {
     "DIAGONAL_GAUSSIAN_LOW_RANK_SCORE_BASELINE_V1": {
       "kind": "model_assumption",
@@ -79,6 +79,18 @@
       "null_false_positive_rate": 0.0,
       "real_data_attribution_executed": false,
       "selected_next_family": null,
+      "verification": "verified"
+    },
+    "N3_MINIMAL_PRODUCER_BASELINES": {
+      "kind": "machine_evidence",
+      "path": "outputs/20260908_v2/runs/n3_minimal_competing_producer_baselines_v1_attempt_01/n3_minimal_competing_producer_baselines_report.v1.json",
+      "role": "fixed five-fold development comparison of two minimal unconditional amplitude producer families",
+      "schema": "n3_minimal_competing_producer_baselines_report.v1",
+      "sha256": "af7611cfbca211e666d7773e81b230a1b380b91583817c3c4ab80925f2a16440",
+      "classification": "N3_MINIMAL_PRODUCER_BASELINES_NOT_SUPPORTED",
+      "selected_candidate": null,
+      "selection_scope": "DEVELOPMENT_ONLY",
+      "sealed_confirmation_consumed": false,
       "verification": "verified"
     }
   }

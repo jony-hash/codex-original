@@ -13,9 +13,10 @@
 - 正式运行时基线：v2 `conditional_identity_logit_amplitude_v2`；正式 promotion、generation
   readiness 和 current training authorization 均未建立。
 - 活动研究主线：`research/lightgen-ols-native-semantic-generation-v1`（精确 HEAD 与
-  worktree 以本地 Git/bridge manifest 核验；当前 Sources 交付为 `current_clean`）；N1/N2 完成，N3 producer
-  baseline 与 selector calibration 已完成但未支持新 producer family，N4 未决，N5 blocked，N6
-  保持独立冻结。
+  worktree 以本地 Git/bridge manifest 核验；本轮 comparison consumer、report 与状态文档变更后尚未
+  refresh Sources，不声明 publication 为 `current_clean`）；N1/N2 完成，N3 producer
+  baseline、selector calibration 与两候选 minimal producer comparison 已完成但未支持新 producer
+  family，N4 未决，N5 blocked，N6 保持独立冻结。
 - 最新 N3 selector calibration V2 为 `N3_ATTRIBUTION_SELECTOR_CALIBRATION_MIXED_V2`。
   独立 synthetic confirmation 为 NULL=`0/200` false positives、partition=`100/100`、
   radial=`100/100`、nonlinear=`82/100`、local=`78/100`；local 未达到预注册 `0.80`
@@ -29,9 +30,17 @@
   必须使用 fresh confirmation source；当前 internal-validation bank 仅为 N3 development bank。
 - `DEFINE_N3_SEALED_CONFIRMATION_SOURCE_V1` 已完成；reservation 状态为
   `RESERVED_NOT_MATERIALIZED`。Manifest 与完整 lineage 见 [machine manifest](../../outputs/20260908_v2/runs/n3_sealed_confirmation_source_v1_attempt_01/n3_sealed_confirmation_source_manifest.v1.json)。
+- `COMPARE_N3_MINIMAL_COMPETING_PRODUCER_BASELINES_V1` 已在既有 1000-row development
+  pool 上完成固定 5-fold、A/B 两候选 comparison；fold assignment SHA 为
+  `90277c16a0d96b895e218264f35a822564b3a46570cab73a1a1e823f063e9e32`。两候选均可运行并
+  达到固定 positivity bank，但均在 5/5 folds 超出自身 model-vs-model q95 primary reference
+  与 covariance/norm guardrails，结果为
+  `N3_MINIMAL_PRODUCER_BASELINES_NOT_SUPPORTED`，没有 selected candidate。Report SHA 为
+  `af7611cfbca211e666d7773e81b230a1b380b91583817c3c4ab80925f2a16440`。
 - 恢复 outputs、历史 evidence、producer、rank、partition、formal v2 和全局 flags 均保持不变。
-- 当前允许的下一项：无 selector-refinement continuation；该 reservation 不授权 materialization。
-  后续 producer-family confirmation 必须有独立 frozen-producer contract，并一次性消费该 manifest。
+- 当前允许的下一项：无 selector-refinement continuation、无候选冻结、无 sealed materialization。
+  后续 producer-family confirmation 必须有独立 frozen-producer contract，并一次性消费该 manifest；
+  本 comparison 不授权调参、第二个 canary、selector V3 或 generation。
 
 ## 本轮 evidence I/O 修复（2026-09-08）
 

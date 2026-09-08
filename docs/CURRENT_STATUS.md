@@ -3,15 +3,17 @@
 更新时间：2026-09-08
 
 Git 状态：`research/lightgen-ols-native-semantic-generation-v1`；精确 HEAD、dirty scope
-和 clean/dirty 状态以本地 Git 与 bridge manifest 为准；当前交付按 `current_clean` 规则生成。
+和 clean/dirty 状态以本地 Git 与 bridge manifest 为准；本轮 comparison consumer、report 与状态
+文档变更后尚未执行 bridge refresh，不声明 publication 为 `current_clean`。
 
 ## 当前决策摘要
 
 正式 reconstruction mainline 已在当前 evidence boundary 收口；独立的
 OLS-native semantic-generation research line 仍在活动分支
 `research/lightgen-ols-native-semantic-generation-v1` 上，但不构成 formal v3。
-N1/N2 已完成，N3 producer baseline 与 selector calibration 已完成但未支持新
-producer family，N4 未决，N5 与 generation blocked，N6 保持独立冻结。
+N1/N2 已完成，N3 producer baseline、selector calibration 与两候选 minimal
+producer comparison 均已完成但未支持新 producer family，N4 未决，N5 与 generation
+blocked，N6 保持独立冻结。
 
 最新 N3 selector calibration V2 classification=`N3_ATTRIBUTION_SELECTOR_CALIBRATION_MIXED_V2`。
 冻结 selector 在独立 synthetic confirmation 上 NULL=`0/200` false positives，
@@ -40,6 +42,29 @@ report SHA=`77c0a9f632b6870579a338d84dd6650530849fa6b74892acb1345567ffa8dae5`。
 不是 OLS、producer、rank/family、selector 或 generation 结果。它只允许未来已冻结 N3
 producer confirmation consumer 一次性消费；完整选择规则和 firewall 输入以 machine manifest
 为准，日期化 provenance 见 [experiment history](status/experiment_history.md)。
+
+## N3 minimal competing producer baselines（2026-09-08）
+
+`COMPARE_N3_MINIMAL_COMPETING_PRODUCER_BASELINES_V1` 在既有 1000-row N3 development
+pool 上完成了固定、output-independent 的 5-fold comparison；没有读取或 materialize
+sealed confirmation source。新的 fold assignment SHA 为
+`90277c16a0d96b895e218264f35a822564b3a46570cab73a1a1e823f063e9e32`。Candidate A
+`SHRINKAGE_ELLIPTICAL_GAUSSIAN_AMPLITUDE_V1` 与 Candidate B
+`RADIAL_SCALE_MIXTURE_AMPLITUDE_V1` 均在 5/5 folds operationally valid，固定 positivity
+budget 下每个 data-vs-model 与 model-vs-model bank 均达到 200 accepted；但每个 fold 的
+primary q-space energy discrepancy 都超出各自 model-vs-model q95，covariance/norm
+guardrails 也未通过。因此结果为
+`N3_MINIMAL_PRODUCER_BASELINES_NOT_SUPPORTED`，没有冻结候选。B 的 aggregate primary
+较 A 低（约 `0.5456` vs `0.7404`），但仍不兼容，不能因相对较好而选择。
+
+权威 report 为
+[`n3_minimal_competing_producer_baselines_report.v1.json`](../outputs/20260908_v2/runs/n3_minimal_competing_producer_baselines_v1_attempt_01/n3_minimal_competing_producer_baselines_report.v1.json)，
+SHA-256=`af7611cfbca211e666d7773e81b230a1b380b91583817c3c4ab80925f2a16440`。
+该结果仅是 development comparison；不支持新 producer family、independent confirmation、
+full complex OLS distribution、semantic generation 或 generation readiness。`training_authorized=false`、
+`formal_promotion=false` 与 `generation_readiness=not_ready` 保持；sealed reservation 仍不授权
+消费。后续若继续 producer research，必须另立最小、独立的 research question 与 authority，
+不得把本次失败变成调参、第二个 canary 或 selector V3 授权。
 
 ## 本轮文档与研究导航治理（2026-09-08）
 
