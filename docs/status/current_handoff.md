@@ -14,8 +14,9 @@ training authorization 或 historical artifact。
 
 普通交接采用 [`delta_one_gate_short_prompt.md`](../operations/delta_one_gate_short_prompt.md)
 的 R0–R3 风险层、one-outer-Gate 和 semantic authority ID；完整 child Hash 只留在其
-machine consumer。N3 的 `RESOLVE_N3_SCORE_GEOMETRY_ATTRIBUTION_V1` 已完成只读归因；当前下一步是
-`PLAN_N3_PARTITION_MOMENT_STABILITY_AUDIT`，仍不执行 fit、SVD、rank selection、sampling、forward、CUDA 或 generation。
+machine consumer。N3 的 `RESOLVE_N3_SCORE_GEOMETRY_ATTRIBUTION_V1` 与后续
+`CALIBRATE_N3_ATTRIBUTION_DECISION_RULE_V1` 已完成；当前下一步是
+`PLAN_N3_ATTRIBUTION_SELECTOR_CALIBRATION_REPAIR`，仍不执行 fit、SVD、rank selection、sampling、forward、CUDA 或 generation。
 
 ## H-LOMA-GEN OLS-native research branch genesis（2026-09-07）
 
@@ -40,9 +41,9 @@ novel OLS 与 generation 均未完成。branch genesis 未执行 positivity、fi
 sampling、optimizer/backward/CUDA、forward 或 evaluator。
 
 全局 flags 继续为 `training_authorized=false`、`generation_readiness=not_ready`、
-`formal_promotion=false`。后续 N3 model-order、producer validation 与 score-geometry attribution
-均已由后文登记；当前下一 outer planning task（仅规划，不构成执行授权）为
-`PLAN_N3_PARTITION_MOMENT_STABILITY_AUDIT`。
+`formal_promotion=false`。后续 N3 model-order、producer validation、score-geometry attribution 与
+selector calibration 均已由后文登记；当前下一 outer planning task（仅规划，不构成执行授权）为
+`PLAN_N3_ATTRIBUTION_SELECTOR_CALIBRATION_REPAIR`。
 
 ## H-LOMA-GEN-N3 OLS producer data authority（2026-09-07）
 
@@ -184,6 +185,30 @@ rank、producer state、score law 或 firewall；没有 fit/sample/mixture/tail/
 backward/training/N4。治理 flags 仍为 `training_authorized=false`、`formal_promotion=false`、
 `generation_readiness=not_ready`，N4 与 generation 继续 blocked。唯一下一 planning task：
 `PLAN_N3_PARTITION_MOMENT_STABILITY_AUDIT`。
+
+## H-LOMA-GEN-N3 attribution decision-rule calibration（2026-09-08）
+
+`CALIBRATE_N3_ATTRIBUTION_DECISION_RULE_V1` 的 immutable report 为
+`outputs/20260908_v2/runs/lightgen_n3_attribution_decision_rule_calibration_v1_attempt_01/`
+`n3_attribution_decision_rule_calibration_report.v1.json`，SHA-256=
+`7e884a99cb3b44a12fd1399c2f0b98c9476b2f8ec85370e1d83af2246d5b3fe5`；classification=
+`N3_ATTRIBUTION_SELECTOR_CALIBRATION_MIXED`。该 report 只来自完整的 synthetic
+`d=100`、fit/validation=`500/500`、`r=99` CPU float64 pipeline；NULL calibration/evaluation
+各 20 replicate，mechanism 各 10 replicate，seed 全部显式登记。阈值只由 NULL calibration q99
+派生，真实 N3 banks 未用于阈值或 metric。
+
+partition drift 10/10 recovered，但 held-out NULL 有 6/20 false partition triggers（FPR=`0.30`）；
+radial/local/dependence 正确选择分别为 2/10、2/10、1/10，均有错误 family selections。因而不能
+声称 selector calibrated，也不能用该结果选择新 producer family 或重新解释 frozen real N3
+failure。exact-zero/equality 与 fit-PCA 后 unconditional class-centering improvement 要求已从新
+consumer rule 移除；dependence 使用全局 calibrated squared-correlation statistics，local 使用
+跨 bank reproducible observer-group profile。旧 selector、producer、历史 reports 均未修改，real-data
+attribution 未执行。
+
+当前 stop：不得以同一失败 mechanism cases 反向放宽规则；先做独立的
+`PLAN_N3_ATTRIBUTION_SELECTOR_CALIBRATION_REPAIR`，重新登记足够的 NULL precision 与机制控制。
+在该 Gate 前不得 fit 新 family、重选 rank、改变 producer、进入 N4 或 generation；
+`training_authorized=false`、`formal_promotion=false`、`generation_readiness=not_ready` 保持。
 
 ## H-LOMA-GEN-S3 Controller semantic-geometry one-shot repair postmortem（2026-09-07）
 

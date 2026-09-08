@@ -232,6 +232,36 @@ score law、N4 与 generation 均不变；`training_authorized=false`、`formal_
 `generation_readiness=not_ready` 保持。下一 planning task 为
 `PLAN_N3_PARTITION_MOMENT_STABILITY_AUDIT`，在其通过前不得 fit 新 family。
 
+## H-LOMA-GEN-N3 attribution decision-rule calibration（2026-09-08）
+
+`CALIBRATE_N3_ATTRIBUTION_DECISION_RULE_V1` 已完成一次 bounded CPU-only synthetic calibration，
+但 Gate classification=`N3_ATTRIBUTION_SELECTOR_CALIBRATION_MIXED`。唯一 immutable report 为
+`outputs/20260908_v2/runs/lightgen_n3_attribution_decision_rule_calibration_v1_attempt_01/`
+`n3_attribution_decision_rule_calibration_report.v1.json`，SHA-256=
+`7e884a99cb3b44a12fd1399c2f0b98c9476b2f8ec85370e1d83af2246d5b3fe5`；consumer script SHA-256=
+`03e86baddfe23d60e61a8339cc5eeea0de2978868eb5266bc24f8e3252ea02a2`，旧 selector audit SHA-256=
+`5f3fb3527ac0f8004e69f5d923c2c91da92ac67e9b474c9905f1bb1531b7f621d`。
+
+校准严格复用 `d=100`、`n_fit=500`、`n_validation=500`、`r=99` 的 fit-mean→centered-SVD→fit-
+spectrum/standardize→validation-score 流程；固定 seed、无 ambient RNG；NULL calibration/evaluation
+各 20 个 replicate，机制各 10 个。阈值只由 NULL calibration 的 q99 reference 派生，未读取真实
+N3 fit/validation bank 来选择阈值。新 consumer 移除了 exact-zero/equality 判断，也不要求
+fit-PCA 已强制接近 identity 后 class-centering 必须继续改善；local evidence 改用跨 bank 可复现的
+observer-group profile，dependence 用全局 squared-correlation max 与 top-k share 的联合 NULL reference。
+
+结果：partition drift=`10/10` recovered；但 held-out NULL evaluation 有 `6/20` 被误报为
+`PARTITION_OR_MOMENT_DRIFT`，false-positive rate=`0.30`。radial scale mixture=`2/10`、local
+mixture=`2/10`、nonlinear dependence=`1/10` 正确选择，并分别出现错误 family 选择，因此不能把
+selector 宣称为 calibrated 或从 synthetic result 选择新 producer family。该结果是 selector
+calibration mixed，不是对 frozen real N3 failure 的重新归因；旧 mismatch/score-geometry reports
+保持不变，real-data attribution 未执行，历史 reports 未修改。不得用本轮失败 mechanism cases
+反向放宽阈值或选择 family。
+
+`training_authorized=false`、`formal_promotion=false`、`generation_readiness=not_ready`、N4 与
+generation blocked 保持。下一步只能规划一个独立的 selector-calibration repair，先重新登记
+NULL-reference precision 与机制可分辨性，再考虑任何 real-data attribution；不得 fit 新 family、
+重选 rank、修改 producer、进入 N4 或运行 generation。
+
 ## H-LOMA-GEN-S3 Controller semantic-geometry one-shot repair postmortem（2026-09-07）
 
 `S3_ONE_SHOT_REPAIR_POSTMORTEM_COMPLETE` 已正式登记。该只读 postmortem 消费并核对 historical

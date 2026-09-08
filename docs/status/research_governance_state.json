@@ -2,7 +2,7 @@
   "schema_version": 1,
   "kind": "research_governance_state",
   "policy_id": "RESEARCH_GOVERNANCE_SIMPLIFICATION_V1",
-  "active_objective": "RESOLVE_N3_SCORE_GEOMETRY_ATTRIBUTION_V1",
+  "active_objective": "PLAN_N3_ATTRIBUTION_SELECTOR_CALIBRATION_REPAIR",
   "authorization_tier": "R1",
   "hard_blocker": null,
   "evidence_aliases": {
@@ -66,6 +66,18 @@
       "sha256": "7d64726110eac066d62258dd7d2e50c80304a4e73b200f0c211c34422c117f11",
       "classification": "N3_SCORE_GEOMETRY_ATTRIBUTION_UNRESOLVED",
       "dominant_mechanism": "DATA_PARTITION_OR_MOMENT_STABILITY_CONFOUND",
+      "selected_next_family": null,
+      "verification": "verified"
+    },
+    "N3_ATTRIBUTION_SELECTOR_CALIBRATION": {
+      "kind": "machine_evidence",
+      "path": "outputs/20260908_v2/runs/lightgen_n3_attribution_decision_rule_calibration_v1_attempt_01/n3_attribution_decision_rule_calibration_report.v1.json",
+      "role": "synthetic finite-sample calibration of the N3 mismatch-attribution selector",
+      "schema": "n3_attribution_decision_rule_calibration_report.v1",
+      "sha256": "7e884a99cb3b44a12fd1399c2f0b98c9476b2f8ec85370e1d83af2246d5b3fe5",
+      "classification": "N3_ATTRIBUTION_SELECTOR_CALIBRATION_MIXED",
+      "null_false_positive_rate": 0.3,
+      "real_data_attribution_executed": false,
       "selected_next_family": null,
       "verification": "verified"
     }

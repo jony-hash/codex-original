@@ -253,6 +253,38 @@ provenance，不能作为当前 Windows 路径解析器或 formal acceptance 输
   `generation_readiness=not_ready` 保持。唯一下一 planning task 是
   `PLAN_N3_PARTITION_MOMENT_STABILITY_AUDIT`；在该 gate 前不得选择或实现新的 producer family。
 
+## H-LOMA-GEN-N3 attribution decision-rule calibration（2026-09-08，Windows-native）
+
+- gate: `CALIBRATE_N3_ATTRIBUTION_DECISION_RULE_V1`
+- status: `valid_completed`
+- classification: `N3_ATTRIBUTION_SELECTOR_CALIBRATION_MIXED`
+- report:
+  `outputs/20260908_v2/runs/lightgen_n3_attribution_decision_rule_calibration_v1_attempt_01/n3_attribution_decision_rule_calibration_report.v1.json`
+- report SHA-256:
+  `7e884a99cb3b44a12fd1399c2f0b98c9476b2f8ec85370e1d83af2246d5b3fe5`
+- consumer script SHA-256:
+  `03e86baddfe23d60e61a8339cc5eeea0de2978868eb5266bc24f8e3252ea02a2`
+- frozen pipeline: `d=100`、fit/validation=`500/500`、`r=99`、fit mean、centered
+  SVD、fit spectrum/scale、validation transform；all synthetic CPU `float64`、fixed
+  explicit seeds、no ambient RNG
+- reference: 20 NULL calibration replicates only，q99 thresholds；20 independent
+  NULL evaluation replicates；real N3 banks were not loaded for metric or threshold
+  selection
+- recovery: partition drift=`10/10` recovered；radial=`2/10`、local=`2/10`、
+  nonlinear dependence=`1/10`，with wrong-family selections；NULL false-positive
+  rate=`6/20=0.30`，mostly false partition triggers
+- rule repair verified: no exact-zero/equality condition；no unconditional
+  class-centering-improvement requirement；dependence uses calibrated global
+  squared-correlation statistics and local uses reproducible cross-bank profiles
+- interpretation: selector calibration is mixed and cannot authorize real-data
+  re-attribution or a new producer family；historical N3 reports and frozen
+  producer remain unchanged；real-data attribution was not executed
+- next action: independently plan a selector-calibration repair with a
+  preregistered adequate NULL reference; do not weaken this rule using the same
+  failed mechanism cases
+- flags: `training_authorized=false`、`formal_promotion=false`、
+  `generation_readiness=not_ready`；N4/generation remain blocked
+
 ## FINAL_MAINLINE_CLOSEOUT：H-LOMA-CBOGT Scaled-Chen reconstruction-repair mainline（2026-09-03）
 
 - Current phase: `MAINLINE CLOSEOUT`
