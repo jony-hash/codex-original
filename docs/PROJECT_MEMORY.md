@@ -62,6 +62,15 @@ family supported；report SHA 为
 CUDA、optimizer、backward、training 均未执行。后续必须先经独立 planning Gate，不能把本次
 相对历史 family 的改善替代 frozen all-fold compatibility。
 
+随后，针对 attribution 因缺少历史 generated-bank tensors 而产生的 blocker，完成了唯一一次
+严格 deterministic recovery。Recovery semantic authority 为
+`FROZEN_N3_COPULA_GENERATED_BANKS_V1`；60/60 banks 与原 copula report 中的 q hashes 完全相等，
+manifest SHA 为 `4ed6ac4839cdb075f98d07be3162ac560ea29cc260fcbd0e272a342aed04297c`，tensor
+artifact SHA 为 `6b9da40cf868fb9033e5c45aa05778c27199867430d2ec5627b36875d284b42b`。这只是历史
+sample identity recovery，不是新 evidence、producer rerun 或 attribution result；sealed
+confirmation 仍未 materialize。后续若继续，只能由原
+`RESOLVE_N3_COPULA_FAILURE_MARGINAL_VS_DEPENDENCE_V1` read-only consumer 消费该 authority。
+
 这些稳定边界和当前入口分别见 [`CURRENT_STATUS.md`](CURRENT_STATUS.md) 与
 [`status/current_handoff.md`](status/current_handoff.md)；所有日期化事实、结果、被取代的下一步和
 machine-evidence 路径集中见 [`experiment_history.md`](status/experiment_history.md)。本文件不复制

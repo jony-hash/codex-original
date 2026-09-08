@@ -87,6 +87,15 @@
   `RESERVED_NOT_MATERIALIZED`、`consumed=false`，不授权 final all-1000 fit、confirmation、
   novel OLS、generation 或 training。当前没有自动后续 producer family action；下一动作只能
   是独立 planning Gate，明确剩余 marginal/tail 与 joint-dependence mismatch 的研究问题。
+- `RECOVER_FROZEN_N3_COPULA_BANK_AUTHORITY_V1` 已解除此前 attribution 的 numerical-bank blocker。
+  既有 output roots 中没有可消费的完整 copula bank artifact；旧 r=99 tensors 未消费。一次且
+  仅一次 exact deterministic rematerialization 成功，recovery manifest SHA 为
+  `4ed6ac4839cdb075f98d07be3162ac560ea29cc260fcbd0e272a342aed04297c`，tensor artifact SHA 为
+  `6b9da40cf868fb9033e5c45aa05778c27199867430d2ec5627b36875d284b42b`，60/60 q hashes 完全相等，
+  semantic authority=`FROZEN_N3_COPULA_GENERATED_BANKS_V1`。该动作只恢复历史 sample identity，
+  没有重算 metrics、修改原 report 或完成 attribution；sealed confirmation 仍为
+  `RESERVED_NOT_MATERIALIZED`。唯一后续入口是原
+  `RESOLVE_N3_COPULA_FAILURE_MARGINAL_VS_DEPENDENCE_V1` read-only consumer。
 
 ## 本轮 evidence I/O 修复（2026-09-08）
 

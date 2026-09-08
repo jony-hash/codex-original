@@ -181,6 +181,30 @@ confirmation、novel OLS、generator、evaluator、CUDA、optimizer、backward �
 frozen compatibility。当前唯一后续入口是独立 planning Gate，用于决定如何归因剩余 marginal/tail
 与 joint-dependence mismatch；不得自动 repair、调参、重跑或消费 sealed source。
 
+## Frozen N3 copula generated-bank authority recovery（2026-09-08）
+
+此前 `RESOLVE_N3_COPULA_FAILURE_MARGINAL_VS_DEPENDENCE_V1` 因历史 execution report 只有每个
+bank 的 q hash、没有可复用 tensor 而停止。按独立 recovery authority，先搜索了注册的
+2026-09-07/08 N3 output roots；发现的旧 r=99 producer/validation tensors 与本次 report identity
+不匹配，未消费。随后严格按原 frozen contract、800-row fit、tie/Gaussianization/shrinkage、
+CPU float64 RNG namespace、seed/substream、200-row bank 和原 sampling order 做了一次、且仅一次
+deterministic rematerialization；没有重算 scientific metrics。
+
+Recovery manifest 为
+[`n3_frozen_copula_generated_banks_manifest.v1.json`](../outputs/20260908_v2/runs/n3_frozen_copula_bank_recovery_v1_attempt_01/n3_frozen_copula_generated_banks_manifest.v1.json)，
+SHA-256=`4ed6ac4839cdb075f98d07be3162ac560ea29cc260fcbd0e272a342aed04297c`；tensor artifact
+[`n3_frozen_copula_generated_banks.v1.pt`](../outputs/20260908_v2/runs/n3_frozen_copula_bank_recovery_v1_attempt_01/n3_frozen_copula_generated_banks.v1.pt)，
+SHA-256=`6b9da40cf868fb9033e5c45aa05778c27199867430d2ec5627b36875d284b42b`。Semantic authority
+为 `FROZEN_N3_COPULA_GENERATED_BANKS_V1`，recovery mode 为
+`EXACT_DETERMINISTIC_REMATERIALIZATION`；全部 60 个 historical banks 的 expected/observed
+`q_sha256` 完全相等，shape/dtype 与 finite/nonnegative checks 均通过。
+
+该 recovery 只恢复历史 numerical sample identity，不是第二次 producer experiment，也不改变
+`N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_NOT_SUPPORTED`。未完成 marginal-vs-dependence
+attribution；下一独立 consumer 可读取该 authority。sealed confirmation 仍为
+`RESERVED_NOT_MATERIALIZED`、`consumed=false`，`training_authorized=false`、
+`formal_promotion=false` 与 `generation_readiness=not_ready` 保持。
+
 ## 本轮文档与研究导航治理（2026-09-08）
 
 本轮先完成治理/导航精简，再修复一个不改变公共合同的 evidence I/O 防御性问题。文档/导航变更

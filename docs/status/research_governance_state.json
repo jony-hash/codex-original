@@ -212,6 +212,24 @@
       "sealed_confirmation_consumed": false,
       "selection_scope": "DEVELOPMENT_ONLY",
       "verification": "verified"
+    },
+    "N3_FROZEN_COPULA_GENERATED_BANKS": {
+      "kind": "machine_evidence",
+      "path": "outputs/20260908_v2/runs/n3_frozen_copula_bank_recovery_v1_attempt_01/n3_frozen_copula_generated_banks_manifest.v1.json",
+      "artifact_path": "outputs/20260908_v2/runs/n3_frozen_copula_bank_recovery_v1_attempt_01/n3_frozen_copula_generated_banks.v1.pt",
+      "role": "recovered exact historical generated-bank numerical authority for later read-only copula attribution",
+      "schema": "n3_frozen_copula_generated_banks_manifest.v1",
+      "sha256": "4ed6ac4839cdb075f98d07be3162ac560ea29cc260fcbd0e272a342aed04297c",
+      "artifact_sha256": "6b9da40cf868fb9033e5c45aa05778c27199867430d2ec5627b36875d284b42b",
+      "semantic_authority_id": "FROZEN_N3_COPULA_GENERATED_BANKS_V1",
+      "source_contract_sha256": "3edc9fee006f68eff6ba41205b7e4e6b6cbea3205080c4cb333689e554fba7a4",
+      "source_execution_report_sha256": "78b8e40f21015af8d704a89a83bb6b4043c0208386032b41b1ced4dd9bdeba7d",
+      "fold_assignment_sha256": "90277c16a0d96b895e218264f35a822564b3a46570cab73a1a1e823f063e9e32",
+      "recovery_mode": "EXACT_DETERMINISTIC_REMATERIALIZATION",
+      "bank_count": 60,
+      "historical_evidence_unchanged": true,
+      "sealed_confirmation_consumed": false,
+      "verification": "verified"
     }
   }
 }

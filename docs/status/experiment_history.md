@@ -2644,6 +2644,33 @@ confirmation、novel complex OLS、generator、evaluator、CUDA、optimizer、ba
 必须先登记一个独立的 planning Gate，回答剩余 marginal/tail 与 joint-dependence mismatch 的
 单一研究问题。
 
+### H-LOMA-GEN-N3 frozen copula generated-bank authority recovery（2026-09-08）
+
+此前 `RESOLVE_N3_COPULA_FAILURE_MARGINAL_VS_DEPENDENCE_V1` 因历史 copula execution report
+仅记录 per-bank q hashes、没有 numerical bank tensors 而正确停止。Recovery consumer 先搜索
+注册的 2026-09-07/08 N3 output roots；旧 r=99 amplitude producer state 与 validation sample
+bank 没有本次 historical report identity，因此没有被消费。
+
+随后按 recovery contract 只做了一次 `EXACT_DETERMINISTIC_REMATERIALIZATION`：复用原 contract、
+同一 development source/fold identity、fit-only empirical marginal、Gaussianization、analytic
+shrinkage、CPU float64 RNG namespace、seed/substream 与 sampling order。60 个 bank（5 folds ×
+4 DATA-vs-MODEL + 8 MODEL-vs-MODEL）逐个通过 shape=`[200,100]`、dtype=`torch.float64`、
+finite/nonnegative 与 expected/observed q hash equality。
+
+Recovery classification 为 `FROZEN_N3_COPULA_BANK_AUTHORITY_RECOVERED`，semantic authority 为
+`FROZEN_N3_COPULA_GENERATED_BANKS_V1`。manifest 位于
+`outputs/20260908_v2/runs/n3_frozen_copula_bank_recovery_v1_attempt_01/`
+`n3_frozen_copula_generated_banks_manifest.v1.json`，SHA-256 为
+`4ed6ac4839cdb075f98d07be3162ac560ea29cc260fcbd0e272a342aed04297c`；tensor artifact SHA-256 为
+`6b9da40cf868fb9033e5c45aa05778c27199867430d2ec5627b36875d284b42b`。原 copula report、历史
+scientific classification 与 contract 均未修改；本动作不是第二次 producer experiment，也不
+产生新的 scientific metrics。
+
+sealed confirmation 仍为 `RESERVED_NOT_MATERIALIZED`，未执行 attribution、producer selection、
+new family、novel OLS、generator、evaluator、CUDA、optimizer、backward 或 training。Recovery
+只授权后续原 `RESOLVE_N3_COPULA_FAILURE_MARGINAL_VS_DEPENDENCE_V1` read-only consumer 消费
+这些历史 bank，不自动启动该 consumer。
+
 ## 2026-09-07：H-LOMA-GEN-S3 controller semantic-geometry lineage
 
 本节补录 2026-09-07 的 S3 controller-only 研究事实；它们属于已关闭的历史/diagnostic lineage，
