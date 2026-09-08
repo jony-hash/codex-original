@@ -6,6 +6,11 @@ revision and never a silent architecture-version bump. Rows that describe
 O1--O5 are historical preregistration context only: O0 failed and no physical
 capacity attribution is currently permitted.
 
+本 ledger 不承载当前 OLS-native N3 的活动状态；N3 的唯一当前入口、selector calibration
+阻塞和下一规划动作（或明确停止边界）见 [`current_handoff.md`](current_handoff.md) 与
+`research_governance_state.json`。本文件各条目中的 “next action” 只属于其日期所在的
+历史决策，不能覆盖当前入口或自动打开已关闭路线。
+
 The 2026-08-23 electronic latent-transport branch is also closed at the
 pre-optical gate. Its empirical-posterior upper bound localized the remaining
 issue to the standard-Gaussian-to-encoded-posterior transport contract, but a

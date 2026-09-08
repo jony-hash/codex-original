@@ -9,15 +9,20 @@
 checkpoint、图像、JSON evidence、日志和诊断文件仍保持原始历史身份；它们不
 自动进入当前 runtime、formal acceptance 或 checkpoint resolution。
 
+恢复内容的主要类别是：checkpoint（模型或控制器状态）、图像（样本和可视化）、
+JSON evidence（报告、manifest 和 provenance）以及诊断文件（张量、日志和中间检查）。
+这些类别描述“保存了什么”，不改变其历史或当前资格；是否可被某个 consumer 使用，
+仍由该 consumer 的显式输入绑定和状态判定决定。
+
 恢复完整性以 `outputs/_wsl_restore_metadata_v4/` 下的
 `restore-plan.json`、`restore-state.json` 和 `path-map.jsonl` 为准。文件数量、
 磁盘占用或目录修改时间只是描述性指标，不能替代恢复验证。原始 tar、index
 和 manifest 位于外部不可变归档位置，不得由当前工作区改写。
 
 `outputs/version_index.json` 与 `outputs/version_index.md` 是恢复的历史 WSL
-索引，可能包含 `/home/...` 绝对路径；它们只能用于 provenance，当前 Windows
+索引，可能包含 `/home/...` 绝对路径；它们只能用于 provenance。当前 Windows
 工具必须使用显式 Windows 路径或当前 run 元数据，不能自动把这些路径解析为
-当前工作区文件。
+当前工作区文件，也不能把索引中的“最新”条目当作 acceptance 输入。
 
 ## v2 Conditional Artifacts
 
@@ -67,6 +72,10 @@ SLM command、generator desired intensity、target code、mask transmittance 和
 ## Raw Tensor Bundle
 
 `*_optical_fields.pt` 只保存严格光场链的原始 `real/imag`、shape 和 provenance；renderer 由这些 tensor 现场计算 `abs(E)` 与 `angle(E)`。`one_shot_sample_tensors.pt`、`one_shot_distill_eval_tensors.pt` 和训练 artifact 仍可保存 control、mask、intensity 与其他 raw diagnostics，但它们不是严格复光场证据。
+
+正式光场 artifact 的 provenance 还必须绑定 pixel pitch、physical FOV、wavelength、
+upstream plane、propagation distance 和 operation；tensor equality 不能替代物理坐标
+校验，formal path 禁止 generic complex resize。
 
 v1 写入责任已收敛到 `ldm_project.v1.student.artifacts`（预览与 device diagnostics）和 `ldm_project.v1.student.evaluation`（strict field provenance）；v1 `application/` 只提供 run manager/输出布局，不改变 artifact 字段语义。v2 current/research 使用自己的 evidence 和 lifecycle writers，不能与这些 v1 tensor bundle 名称互相推断兼容性。
 

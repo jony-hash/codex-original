@@ -1,16 +1,17 @@
 # ChatGPT ↔ Codex Windows 双项目桥接手册
 
-更新时间：2026-08-31
+更新时间：2026-09-08
 
-本手册描述当前的双项目工作流。它解决“本地 Codex 项目不能直接进行普通 ChatGPT 对话”的
-界面限制，但不把两个项目伪装成实时共享上下文。
+本手册描述双项目的传输与职责边界。它不记录当前科研结论；当前 formal runtime、活动
+OLS-native 研究和允许动作/停止边界只以本地 `CURRENT_STATUS.md` 与 `current_handoff.md`
+为准，也不把两个项目伪装成实时共享上下文。
 
 ## 两个项目的职责
 
 | 项目 | 类型 | 用途 |
 | --- | --- | --- |
 | `codex-original · ChatGPT` | 云端 ChatGPT 项目 | 讨论、联网检索、方案设计、总结和交接块 |
-| `codex-original · Windows` | GPT App 本地 Codex 项目 | 源码、Git、测试、CUDA、实现和本地事实核验 |
+| `codex-original · Windows` | GPT App 本地 Codex 项目 | 源码、Git、测试、CUDA、实现和本地事实核验；formal runtime 与活动 research 均在此核验 |
 
 本地项目的主文件夹是 `D:\codex-original`，辅助文件夹是
 `C:\Users\24567\Documents\Codex\codex-original-history-context`。云端项目不能直接
@@ -49,8 +50,9 @@ Sources 是某个 Git HEAD 的只读快照，不代表实时访问本机。不�
 选择“最新”副本。
 
 每次交给本地 Codex 的任务必须使用 Delta + One Gate：
-1. 标注 `MODE=VERIFY|PLAN|IMPLEMENT|REPORT`；`MODE=IMPLEMENT` 表示计划已批准，
-   Codex 不得重新规划，只有人工批准的新交接才能进入 `PLAN`。
+1. 标注 `MODE=VERIFY|PLAN|IMPLEMENT|REPORT`；`MODE=IMPLEMENT` 表示请求范围已批准。
+   Codex 不得扩大研究问题、统计门槛、正式权限或计算预算；在原范围内可跳过已完成工作
+   或采用等效的更小实现，超出这些边界才需要新的 `PLAN` 交接。
 2. 先写状态增量，只列最多五项会改变本轮决策的变化。
 3. 只定义一个会改变下一动作的主 Gate，并写明消费者、输入 lineage、
    允许/禁止动作、阈值、失败语义和唯一下一动作。
@@ -82,7 +84,8 @@ docs/operations/delta_one_gate_short_prompt.md
 5. Codex 读取 `AGENTS.md`、`docs\PROJECT_MEMORY.md`、当前 Git 状态和适用的 scoped 合同，
    只按 Gate 需要读取状态小节和命名 evidence。
 6. Codex 只执行一次 bounded preflight：核对 branch/HEAD/worktree、Gate 输入 lineage、
-   授权和保护条件；之后只允许执行或返回 `BLOCKED`，不得静默转入重新规划。
+   授权和保护条件；之后执行已授权范围、在原权限内缩小/跳过，或返回 `BLOCKED`/差异报告，
+   不得静默转入重新规划。
 7. Codex 先核对真实 HEAD、branch、dirty scope、lineage 和授权；快照冲突时以本地事实为准。
    Hash 仅按 Gate consumer 需要定向核验，不自动选择 latest。
 8. Codex 只执行授权范围，运行最小充分验证，并按固定反馈格式返回。

@@ -2,9 +2,9 @@
   "schema_version": 1,
   "kind": "research_governance_state",
   "policy_id": "RESEARCH_GOVERNANCE_SIMPLIFICATION_V1",
-  "active_objective": "PLAN_N3_ATTRIBUTION_SELECTOR_CALIBRATION_REPAIR",
-  "authorization_tier": "R1",
-  "hard_blocker": null,
+  "active_objective": "N3_SELECTOR_REFINEMENT_CLOSED_AT_MIXED_V2",
+  "authorization_tier": "R0",
+  "hard_blocker": "N3_ATTRIBUTION_SELECTOR_CALIBRATION_MIXED_V2",
   "evidence_aliases": {
     "DIAGONAL_GAUSSIAN_LOW_RANK_SCORE_BASELINE_V1": {
       "kind": "model_assumption",
@@ -71,12 +71,12 @@
     },
     "N3_ATTRIBUTION_SELECTOR_CALIBRATION": {
       "kind": "machine_evidence",
-      "path": "outputs/20260908_v2/runs/lightgen_n3_attribution_decision_rule_calibration_v1_attempt_01/n3_attribution_decision_rule_calibration_report.v1.json",
-      "role": "synthetic finite-sample calibration of the N3 mismatch-attribution selector",
-      "schema": "n3_attribution_decision_rule_calibration_report.v1",
-      "sha256": "7e884a99cb3b44a12fd1399c2f0b98c9476b2f8ec85370e1d83af2246d5b3fe5",
-      "classification": "N3_ATTRIBUTION_SELECTOR_CALIBRATION_MIXED",
-      "null_false_positive_rate": 0.3,
+      "path": "outputs/20260908_v2/runs/lightgen_n3_attribution_selector_v2_calibration_attempt_01/n3_attribution_selector_v2_calibration_report.v1.json",
+      "role": "synthetic finite-sample V2 calibration of the N3 mismatch-attribution selector",
+      "schema": "n3_attribution_selector_v2_calibration_report.v1",
+      "sha256": "77c0a9f632b6870579a338d84dd6650530849fa6b74892acb1345567ffa8dae5",
+      "classification": "N3_ATTRIBUTION_SELECTOR_CALIBRATION_MIXED_V2",
+      "null_false_positive_rate": 0.0,
       "real_data_attribution_executed": false,
       "selected_next_family": null,
       "verification": "verified"

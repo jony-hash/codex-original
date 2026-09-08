@@ -1,12 +1,15 @@
 # v2 Teacher-Free Conditional Runtime
 
-v2 当前主线是 `conditional_identity_logit_amplitude_v2`，入口仍为：
+v2 正式 teacher-free runtime 基线是 `conditional_identity_logit_amplitude_v2`，入口仍为：
 
 ```bash
 python -m ldm_project.v2 --help
 ```
 
 它不替换 v1 的 `train.py`，也不导入 LDM teacher。正式物理链保持不变：
+
+OLS-native semantic-generation 是另一个研究分支；它可以复用本文件描述的物理边界，
+但不改变本 formal runtime，也不能从研究状态推导 acceptance 或 generation readiness。
 
 ```text
 label + 8D code
@@ -26,6 +29,14 @@ label + 8D code
 [`formal_identity_logit_amplitude_finite_crop_identity.yaml`](../../configs/v2/current/formal_identity_logit_amplitude_finite_crop_identity.yaml)。
 它锁定 532 nm、200×200 SLM、100×100 @ 2 µm metasurface、2+2 phase-only、
 1.50 mm spacing、finite-crop、identity OLS、固定曝光和 8D code。
+
+### 物理边界语义
+
+`finite_crop` 是“传播后裁剪”的理想硬孔径计算合同，不是对打印玻璃不透光的
+材料声明。`transparent_identity` 只用于诊断：它表示全传播网格上的零厚度相位
+表面与 identity exterior，成对诊断训练前必须通过适用的收敛门。未来以实物或
+标定矩阵替换 identity OLS 时，必须保留复场接口并单独验证，不能把诊断变体直接
+提升为当前 formal runtime。
 
 generator 的 identity anchor 为：
 

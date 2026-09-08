@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import pickle
 from dataclasses import asdict, dataclass, fields, is_dataclass
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -15,7 +16,7 @@ import torch
 def _canonical_value(value: Any) -> Any:
     """Convert checkpoint-era dataclasses and tensors to stable JSON values."""
     if is_dataclass(value):
-        return {field.name: _canonical_value(getattr(value, field.name)) for field in fields(value) if hasattr(value, field.name)}
+        return {field.name: _canonical_value(getattr(value, field.name)) for field in fields(value)}
     if isinstance(value, Path):
         return str(value)
     if isinstance(value, Mapping):
@@ -26,7 +27,10 @@ def _canonical_value(value: Any) -> Any:
         return {"shape": list(value.shape), "dtype": str(value.dtype), "sha256": tensor_sha256(value)}
     if isinstance(value, (str, int, float, bool)) or value is None:
         return value
-    if hasattr(value, "__dict__"):
+    if isinstance(value, torch.optim.Optimizer):
+        # One historical diagnostic consumer hashes an optimizer's state. Keep
+        # that explicit compatibility boundary while rejecting arbitrary
+        # objects whose __dict__ would otherwise silently become a schema.
         return _canonical_value(vars(value))
     raise TypeError(f"cannot canonically serialize {type(value)!r}")
 
@@ -56,7 +60,7 @@ def safe_torch_load(
         raise ValueError(f"artifact content no longer matches {target}")
     try:
         return torch.load(target, map_location=map_location, weights_only=True)
-    except Exception as exc:
+    except pickle.UnpicklingError as exc:
         raise ValueError(f"artifact {target} is not safely loadable") from exc
 
 
@@ -75,13 +79,11 @@ class ArtifactRefV2:
     def validate(self) -> None:
         target = Path(self.path)
         if self.shape is not None or self.dtype is not None:
+            if file_sha256(target) != self.sha256:
+                raise ValueError(f"artifact content no longer matches {self.role}")
             try:
-                value = safe_torch_load(target, expected_sha256=self.sha256)
+                value = safe_torch_load(target)
             except ValueError as exc:
-                if "content no longer matches" in str(exc):
-                    raise ValueError(f"artifact content no longer matches {self.role}") from exc
-                raise ValueError(f"tensor artifact {self.role} is not safely loadable") from exc
-            except Exception as exc:
                 raise ValueError(f"tensor artifact {self.role} is not safely loadable") from exc
             if not torch.is_tensor(value):
                 raise ValueError(f"tensor artifact {self.role} is no longer a tensor")
@@ -90,7 +92,7 @@ class ArtifactRefV2:
             if self.dtype is not None and str(value.dtype) != self.dtype:
                 raise ValueError(f"tensor artifact {self.role} dtype changed")
             return
-        if not target.is_file() or file_sha256(target) != self.sha256:
+        if file_sha256(target) != self.sha256:
             raise ValueError(f"artifact content no longer matches {self.role}")
 
 
@@ -98,7 +100,7 @@ def tensor_artifact_ref(path: str | Path, *, role: str, git_commit: str | None =
     target = Path(path)
     try:
         value = safe_torch_load(target)
-    except Exception as exc:
+    except ValueError as exc:
         raise ValueError(f"{target} is not safely loadable as a tensor") from exc
     if not torch.is_tensor(value):
         raise ValueError(f"{target} must contain one tensor")

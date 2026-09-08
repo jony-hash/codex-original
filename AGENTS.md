@@ -6,198 +6,175 @@ Primary execution contract for this repository. This file overrides `docs/`; sco
 
 ## 1. Scope Router
 
-Before changing a scoped path, read its local contract:
-
-- `src/ldm_project/v1/**` -> read `src/ldm_project/AGENTS.md` and `src/ldm_project/v1/AGENTS.md`
-- `src/ldm_project/v2/**` -> read `src/ldm_project/AGENTS.md` and `src/ldm_project/v2/AGENTS.md`
-- root compatibility facades -> `src/ldm_project/AGENTS.md`
-- `configs/**` -> `configs/AGENTS.md`
-- `tests/**`, or repository verification work -> `tests/AGENTS.md`
-- `experiments/**` -> `experiments/AGENTS.md`
-- Cross-scope work -> read every applicable local contract.
+Before changing a scoped path, read its local contract: v1 paths require
+`src/ldm_project/AGENTS.md` and `src/ldm_project/v1/AGENTS.md`; v2 paths require
+the parent and `v2/AGENTS.md`; root facades require the parent; `configs/`,
+`tests/` or verification, and `experiments/` require their respective contracts.
+Cross-scope work reads every applicable contract.
 
 This explicit routing is required when Codex starts at the repository root, because child instructions are not assumed to be loaded automatically.
 
 ## 2. Execution Rules
 
-1. Start with the answer or action; do not fabricate.
-2. Resolve ambiguity from the local source of truth; state material uncertainty and tradeoffs, and ask when interpretations materially change the result.
-3. Make the smallest change that satisfies the request. Touch only required files, add no speculative behavior, and clean only problems introduced by the current change.
-4. Missing required inputs, checkpoints, datasets, CUDA, hardware, external resources, or valid gates block the formal task. Do not substitute another path without explicit user approval; report the blocker, smallest unblock action, and lost guarantee. An approved weaker run is `diagnostic-only` and cannot satisfy acceptance.
-5. Use focused searches and the smallest sufficient verification. Do not reread large logs or rerun fresh green checks without a relevant change.
-6. A valid failed acceptance gate stops downstream training or promotion; repair and revalidate an invalid gate before drawing a model conclusion.
-7. Do not claim success without verification. State exactly what could not be verified.
-
-8. Governance artifacts must identify a real consumer, rejection decision, or
-   compatibility contract. Test counts, line counts, digest counts, and archive
-   entry counts are measurements only and cannot independently define success.
-
-9. Before a medium- or high-risk modification, record its substantive
-   consequence, real consumer or rejection decision, affected scope, preserved
-   invariants, smallest adequate verification, and stop condition. Classify by
-   behavioral impact: a local implementation fix that changes no public contract,
-   runtime semantics, or scientific decision is medium risk even if it is under
-   training or evaluation. High-risk changes are public interfaces, acceptance
-   boundaries, training/evaluation semantics, optical or hardware behavior,
-   checkpoint/output policy, or scientific claims. If no substantive loss or
-   rejected decision exists, stop without modifying the repository. High-risk
-work requires a no-update preflight, independent reference or negative control,
-explicit gates, and fail-closed stops. If verification is unavailable, report
-the blocker and lost guarantee; do not silently downgrade the result.
+1. Start with the answer or action; do not fabricate. Resolve ambiguity from the
+   local source of truth, state material uncertainty or tradeoffs, and ask when
+   the interpretation materially changes the result.
+2. Make the smallest scoped change: touch only required files, add no speculative
+   behavior, and clean only problems introduced by the current change.
+3. Missing inputs, checkpoints, data, hardware, resources or valid gates block the
+   formal task. Do not substitute a weaker path without approval; report the
+   smallest unblock action and lost guarantee. An approved weaker run is
+   `diagnostic-only` and cannot satisfy acceptance.
+4. Use focused searches and the smallest sufficient verification; do not reread
+   large logs or rerun unchanged green checks. A valid failed gate blocks downstream
+   training/promotion; repair invalid harnesses before drawing conclusions.
+5. Never claim success without verification; state what remains unverified.
+   Governance artifacts need a real consumer, rejection decision or compatibility
+   contract; counts and digests are measurements, not success criteria.
+6. Classify risk by behavioral impact, not file location. For medium/high-risk
+   changes record consequence, consumer, scope, invariants, verification and stop
+   condition. High-risk work also needs a no-update preflight, independent
+   reference or negative control, explicit gates and fail-closed stops; with no
+   substantive loss or rejected decision, do not modify the repository.
+   If verification is unavailable, report the blocker and lost guarantee; never
+   silently downgrade the result.
+7. Plan-driven or cross-product work follows the existing
+   [Delta + One Gate + Short Codex Prompt](docs/operations/delta_one_gate_short_prompt.md):
+   classify goal/facts/assumptions/parameters/authorization, run one bounded
+   preflight, execute only the named consumer's action, and return acceptance or
+   stop results. Its documentation write-set rule is mandatory: machine evidence
+   does not by itself authorize edits to every memory/status entry. This is
+   provenance control, not a second scientific gate.
 
 ### Turn Opening Compliance
 
-At the beginning of every repository task that may inspect, modify, or run
-code, write exactly `Agent effective: AGENTS.md`. Do not expand this opening
-line into a scope, task, or tier inventory. Hashes and evidence still require
-a named consumer and rejection decision; a hash, count, or digest alone is
-never a success criterion.
+At the beginning of every repository task that may inspect, modify, or run code,
+write exactly `Agent effective: AGENTS.md`; do not expand it into a scope or tier
+inventory. Hashes and evidence still require a named consumer and rejection
+decision; a hash, count or digest alone is never a success criterion.
 
 ### Long-Training Gate
 
-Every repository training path uses the smallest safe preflight before a long
-run (at least 15 GPU-minutes, 30 wall-clock minutes, or any run that selects a
-model, supports a scientific claim, or authorizes a downstream stage). The
-required order is: static/lineage checks, a representative three-step real
-update through the same entrypoint, and—when comparison or scientific
-direction is claimed—a domain-appropriate negative control. Check finite
-values, intended parameter updates, frozen/evaluator isolation, semantics,
-and memory. If recovery will be claimed, verify one interrupted/resumed
-segment as well. A failed preflight is `invalid_harness` and blocks the run;
+Every training path uses the smallest safe preflight before a run of at least 15
+GPU-minutes, 30 wall-clock minutes, or one that selects a model, supports a claim
+or authorizes a downstream stage. Run static/lineage checks, a representative
+three-step real update through the same entrypoint, and a domain-appropriate
+negative control when direction matters. The update must exercise declared
+trainable groups and frozen/evaluator isolation; reduced surrogates and
+automatic-latest shortcuts are invalid. A failed preflight is `invalid_harness`;
 an explicit scientific gate failure is `valid_failed` and blocks promotion.
-
-Use the thresholds, evidence fields, checkpoint rules, and counterfactual
-templates in [long-training-preflight.md](docs/operations/long-training-preflight.md).
-The preflight must fit the smaller of five minutes or 5% of planned runtime
-(ten minutes or 10% for high-risk acceptance work). Do not replace a failed
-representative trial with a CPU, reduced-model, or automatic-latest-output
-shortcut, and do not add a generic framework solely to satisfy this rule.
+Use [long-training-preflight.md](docs/operations/long-training-preflight.md) for
+budgets, evidence, checkpoint recovery and counterfactual details.
 
 ### Minimal Implementation And Failure Semantics
 
-- Trust documented internal types, framework guarantees, and established
-  invariants. Validate user input, CLI/file/checkpoint/evidence inputs,
-  external APIs, network, hardware, and other process boundaries. Inside
-  trusted code, use direct access and let invariant violations fail immediately.
-- Use fail-closed checks at real acceptance or external boundaries. Use
-  fail-fast behavior for internal programming and execution errors.
-- Do not catch broad exceptions or convert execution, configuration, or
-  programming errors into scientific/model gate failures. A failed scientific
-  evidence record requires a complete, valid measurement whose explicit gate
-  failed.
-- Do not add test-only production branches, `hasattr`/`getattr` compatibility
-  fallbacks, silent defaults, null substitutes, automatic latest-output
-  resolution, or impossible-state recovery solely to keep callers or tests
-  working.
-- Do not create a helper, registry, schema, manifest, wrapper, or compatibility
-  layer for one call site unless it represents an existing public boundary.
-- Add a digest only when a mutable artifact crosses a process or run boundary
-  and a named consumer compares it to make a rejection decision. Compute it
-  once per operation. Do not add digest inventories, digest-count gates,
-  duplicate bindings, nested hash-of-hashes, or speculative component
-  fingerprints.
-- Tests must exercise the production contract; production code must not
-  contain a weaker path solely for tests. For one rejection mechanism, prefer
-  one valid case and one representative negative case unless different inputs
-  cause materially different decisions.
+Validate user input, CLI/file/checkpoint/evidence inputs and other process
+boundaries; trust documented internal invariants. Use fail-closed checks at
+acceptance/external boundaries and fail-fast behavior for internal errors. Only a
+complete, valid measurement may produce a scientific gate failure. Do not turn
+broad execution/configuration/programming exceptions into scientific gates,
+or add test-only branches, compatibility fallbacks, silent defaults,
+automatic-latest resolution or impossible-state recovery. Do not create one-call
+helpers/registries/schemas/wrappers without a public boundary. Add a digest only
+when a mutable artifact crosses a process/run boundary and a named consumer uses
+it for rejection; compute it once, without inventories or nested fingerprints.
+Tests exercise the production contract; prefer one valid and one representative
+negative case per rejection mechanism unless inputs cause different decisions.
 
 For long optical-training or one-shot readability debugging, follow the **Experimental Debugging Decision Policy** in `docs/operations/stage_guide.md`.
 
 ## 3. Skill Policy
 
-- Use matching built-in skills; do not install, enable, or depend on third-party skills or plugins for repository work.
-- Skills must not create worktrees, branches, commits, subagents, long CUDA jobs, external calls, or broad rewrites unless the user explicitly requests that action.
-- Root and scoped AGENTS contracts take precedence over skill workflow suggestions.
+Use matching built-in skills; do not install, enable or depend on third-party skills
+or plugins for repository work. Skills may not create worktrees, branches, commits,
+subagents, long CUDA jobs, external calls or broad rewrites unless explicitly
+requested. Root and scoped AGENTS contracts take precedence over skill suggestions.
 
 ## 4. Project Contract
 
-This repository contains two intentionally separate runtimes. v1 preserves the
-LDM-teacher distillation line behind `train.py`; v2 is the current teacher-free
-conditional optical-generation line behind `python -m ldm_project.v2`. v1
-history remains reproducible, but it does not define the v2 training contract.
+Two intentionally separate runtimes are maintained: v1 preserves the LDM-teacher
+line behind `train.py`; v2 is the teacher-free conditional runtime behind
+`python -m ldm_project.v2`. v1 history does not define v2. Canonical stages and
+boundaries live in [v1_single_shot_distillation.md](docs/architecture/v1_single_shot_distillation.md)
+and [v2_runtime.md](docs/architecture/v2_runtime.md).
 
-The current v2 inference path is `label + 8D code -> identity-anchored
-electronic amplitude generator -> amplitude SLM command -> encoder metasurface
--> linear identity OLS -> decoder metasurface -> CMOS single exposure`. The
-formal optical contract has no fiber; a future fiber variant must preserve the
-complex-field interface and be separately validated. The frozen evaluator is a
-training/acceptance instrument only and is not part of final optical inference.
+The v2 formal chain is `label + 8D code -> amplitude SLM -> encoder metasurface
+-> identity OLS -> decoder metasurface -> CMOS single exposure`; it has no fiber,
+and its frozen evaluator is not final optical inference. Keep lower-level optics/
+neutral modules below the selected runtime and application; v2 must not import v1
+teacher/target or prototype/capacity/diagnostic artifacts, and root shims are
+compatibility facades.
 
-Dependency direction is `optics -> (none)`, v1 teacher/student -> optics and
-neutral modules, v2 conditional student -> optics and neutral evaluation, and
-application -> the selected runtime. v2 current code must not import v1 teacher,
-teacher targets, prototype basis, capacity artifacts, or diagnostics. Root shims
-are compatibility facades only. Archived files are reference-only.
-
-Formal optical-field artifacts must carry shape, pixel pitch, physical FOV, wavelength, upstream plane, propagation distance, and operation. Tensor equality alone is not physical-coordinate validation; generic complex resize is forbidden in the formal path.
-
-Diagnostic variants, LightGen comparisons, and historical experiment numbers
-are status or archive material only; they cannot authorize a current v2 run.
-
-The formal D2NN boundary is `finite_crop`, meaning a propagation-after-crop ideal hard-aperture computation contract; it is not a claim that printed glass is opaque. `transparent_identity` is diagnostic-only: it models a zero-thickness phase surface with an identity exterior on a full propagation grid and requires its applicable convergence gate before paired diagnostic training.
-
-- Neither runtime may require diffusion denoising, iterative latent sampling,
-  software-only VAE decoding, or inference-time optimization at final inference.
-- Direct MNIST `one_shot` is a v1 baseline/smoke. v2 conditional MNIST is a
-  separate teacher-free training contract and must not be routed through v1.
-- v1 design and stages are documented in `docs/architecture/v1_single_shot_distillation.md`;
-  v2 current stages are documented in `docs/architecture/v2_runtime.md`.
+Formal field artifacts require physical-coordinate metadata; tensor equality is
+insufficient and generic complex resize is forbidden. `finite_crop` is the formal
+D2NN boundary; `transparent_identity`, LightGen and historical variants are
+diagnostic/reference only. Neither runtime may require diffusion denoising,
+iterative latent sampling, software-only VAE decoding or inference-time optimization.
 
 ## 5. Repository And Artifacts
 
-- Python requirement comes from `pyproject.toml` (`>=3.11`). The logical Conda environment name in `environment.yml` is `optical-generative-models`; the only supported environment for this Windows checkout is `D:\ANACONDA\envs\optical-generative-models-win`. Canonical source is `src/ldm_project/v1/` and `src/ldm_project/v2/`; root modules are compatibility facades; tests are in `tests/`; the entrypoint is `train.py`; configs are in `configs/`.
-- Explicit CLI checkpoint paths win. Omitted teacher checkpoints resolve first from `outputs/final_pt/`; one-shot sampling requires an explicit student checkpoint unless a documented resolver exists.
-- Generated runs write to `outputs/YYYYMMDD_<version>/runs/...`, with `<version>` derived from the run name or config filename and falling back to `unversioned`; new runs remain in an existing real prefixed version directory.
-- Diagnostic and pre-acceptance runs use persistent versioned `outputs/` paths but remain `diagnostic-only`. Do not modify `outputs/final_pt/`, non-run root files under `outputs/`, `data/raw/`, repository `.tmp/`, or legacy namespaces; `outputs/runs/` must not be reintroduced.
+Python is `>=3.11` from `pyproject.toml`; the supported Windows environment is
+`D:\ANACONDA\envs\optical-generative-models-win`. Canonical source is
+`src/ldm_project/v1/` and `src/ldm_project/v2/`; root modules are facades,
+tests are in `tests/`, and `train.py` is the entrypoint. Explicit CLI checkpoint
+paths win; omitted teachers resolve first from `outputs/final_pt/`, while one-shot
+sampling needs an explicit student unless a documented resolver exists.
+
+New runs use `outputs/YYYYMMDD_<version>/runs/...`; diagnostic and pre-acceptance
+runs remain `diagnostic-only`, and promotion requires a named consumer. Never
+modify `outputs/final_pt/`, non-run roots, `data/raw/`, `.tmp/` or legacy
+namespaces; never restore `outputs/runs/`.
+See [output_artifact_notes.md](docs/operations/output_artifact_notes.md).
 
 ## 6. Commands And Verification
 
-- Verification commands for repository tests live in `tests/AGENTS.md`.
-- Run targeted checks during iteration; run the full suite after targeted checks
-  for shared/final changes, and rerun only checks invalidated by a corrective
-  edit.
-- Use CUDA for formal training and acceptance, CPU only for labeled smoke tests, and `auto` only for compatibility checks. Codex prepares long CUDA/hardware jobs for the user unless explicitly delegated.
+Verification commands live in `tests/AGENTS.md`. Run targeted checks during
+iteration and the full suite for shared/final changes, rerunning only invalidated
+checks. Use CUDA for formal training/acceptance, CPU only for labeled smoke and
+`auto` only for compatibility; Codex prepares long hardware jobs unless delegated.
 
 ## 7. Boundaries
 
-- Do not hardcode interpreter, Conda, Windows, or machine-specific paths; do not mutate `sys.path`; use `pip install -e .`.
-- Do not mix `legacy` optical VAE code into the LDM core package, present teacher image quality as student hardware readiness, or call iterative software inference single-exposure.
-- Ask before an unapproved change to stages, public CLI, teacher/student boundaries, SLM control, metasurface trainability, OLS behavior, CMOS calibration, checkpoint policy, or managed output policy.
+Do not hardcode interpreter/Conda/machine paths in runtime code or mutate `sys.path`;
+use `pip install -e .`. Do not mix legacy optical VAE code into LDM core, present
+teacher quality as hardware readiness, or call iterative software inference
+single-exposure. Ask before changing stages, public CLI, teacher/student boundaries,
+SLM/metasurface behavior, OLS/CMOS calibration, checkpoint or output policy.
 
 ## 8. Capacity-map Research Lifecycle
 
-Capacity-map lifecycle rules and the current hypothesis ledger live in
-`docs/status/capacity_map_hypothesis_ledger.md`; research failures remain
-variant-local and cannot authorize formal acceptance.
+Lifecycle labels and the current hypothesis ledger live in
+`docs/status/capacity_map_hypothesis_ledger.md`; variant failures never authorize
+formal acceptance.
+
 ## Windows-native migration operating rules
 
-- The primary workspace is `D:\codex-original`; use PowerShell 7 and the Conda environment `D:\ANACONDA\envs\optical-generative-models-win` for development, tests, training, and Git operations.
-- Do not use bare `python`, bare `pytest`, or the legacy environment for this repository: an unactivated shell currently resolves system Python 3.14, and the legacy environment has a separate editable install. Use the current environment's `python.exe` explicitly (or activate that exact environment) and invoke tests as `python -m pytest`.
-- The legacy environment `D:\ANACONDA\envs\optical-generative-models` (PyTorch 2.4.1, editable install targeting the former `D:\chenyitong fuxian\LDM-CODE\4.21 original\codex original` copy) is retained for recovery/reference only; do not delete it or use it for current work.
-- When Codex invokes the current environment directly, prepend its root, `bin`, `Library\bin`, `Scripts`, and `torch\lib` to `PATH`; this avoids Conda activation's sandbox-sensitive OpenCL temporary-file side effect. A normal user PowerShell activation of the same environment is equivalent.
-- Historical outputs are preserved in `D:\LDM-Archive\codex-original\outputs` as verified per-directory tar archives. Do not expand or modify those archives unless a task explicitly requires restoring a named historical artifact.
-- Tests that directly require those archive-only artifacts use the `historical_artifact` pytest marker. The default pytest lane excludes this marker; use `python -m pytest -q -o addopts="" -m historical_artifact --collect-only` to inspect the preserved historical lane before an explicitly authorized temporary restore.
-- `D:\codex-original\outputs` has two deliberate roles: current Windows-native runs and a materialized view of restored historical outputs. Restore membership and Linux-to-Windows path mappings are authoritative only from `outputs/_wsl_restore_metadata_v4/restore-plan.json`, `restore-state.json`, and `path-map.jsonl`.
-- Restored historical entries, their restore metadata, and historical root indexes must not be overwritten or deleted, and must not be automatically resolved as current formal artifacts. `outputs/version_index.json` and `outputs/version_index.md` are historical WSL-generated indexes and may contain `/home/...` paths; use them for provenance only, not as Windows path resolvers.
-- Current runs still write to `outputs/YYYYMMDD_<version>/runs/...`; use a distinct run directory for smoke tests and never place new work inside an entry identified as restored historical content.
-- The Ubuntu WSL distribution was unregistered after the final audit on 2026-08-30; its `D:\WSL\Ubuntu\ext4.vhdx` no longer exists. Do not treat the former WSL checkout as a current or available workspace; future recovery requires a new WSL installation and the preserved archives.
-- `docker-desktop` is the only remaining WSL distribution and is not the project runtime. Keep D: above the 10 GiB safety floor before large jobs, and use the Windows-native environment for development, tests, training, and Git operations.
-- Keep `docs\CURRENT_STATUS.md` and the migration record up to date with the current commit, changed files, validation results, experiment paths, and next step.
+Use `D:\codex-original` and `D:\ANACONDA\envs\optical-generative-models-win` for
+development, tests, training and Git. Do not use bare `python`/`pytest` or the
+legacy environment; runtime code remains path-portable. PATH setup, migration and
+historical-test details live in [Windows-native migration](docs/migration_windows_native_20260830.md).
 
-## Codex history operating rules
+`outputs/` combines Windows runs with restored historical views. Restore membership
+and Linux-to-Windows mappings come only from
+`outputs/_wsl_restore_metadata_v4/{restore-plan.json,restore-state.json,path-map.jsonl}`.
+Restored entries, metadata, indexes and external archives are immutable and never
+auto-resolved as current artifacts; `version_index` is provenance only. New runs
+need a distinct non-restored child path; see [output_artifact_notes.md](docs/operations/output_artifact_notes.md).
 
-- The legacy WSL Codex session archive is `D:\LDM-Archive\codex-original\backup\wsl-codex-history.tar`; treat it as immutable reference data.
-- The native Windows Codex Home is `%USERPROFILE%\.codex`. Do not copy the WSL Home over it and do not hand-edit its SQLite files.
-- Use `scripts\maintenance\codex_history_migration.py` for the explicitly approved, snapshot-first session merge. It must run only with ChatGPT, Codex CLI, and VS Code closed, and it must pass the canary gate before the complete phase.
-- The external sanitized context layer is `C:\Users\24567\Documents\Codex\codex-original-history-context`; it is a navigation aid and is not a substitute for the original session transcript. Its history entry point is `HISTORY_CONTEXT.md`, deliberately distinct from the authoritative repository file `docs\PROJECT_MEMORY.md`.
-- For historical questions, prefer `docs\CURRENT_STATUS.md`, Git, the external `HISTORY_CONTEXT.md`, and the imported session ID in that order. Never treat an old WSL path recorded inside historical tool output as the current working directory.
+Ubuntu WSL is unavailable and `docker-desktop` is not the runtime. Keep the D:
+safety floor, keep `docs/CURRENT_STATUS.md` current, and change the migration
+record only for migration, environment, restore or bridge events.
 
-## ChatGPT/Codex project memory operating rules
+## Codex history and project memory operating rules
 
-- Before a cross-product task, read `docs\PROJECT_MEMORY.md`; it is the stable bridge entry, not a replacement for this contract or formal evidence.
-- The workflow has two deliberately separate projects: cloud ChatGPT project `codex-original · ChatGPT` for discussion/planning, and local Codex project `codex-original · Windows` with `D:\codex-original` as its primary folder and the external history directory as its auxiliary folder.
-- The cloud project is connected to the local project only through a controlled six-file Sources snapshot and the standard handoff block. Matching names do not create automatic synchronization; every current fact must be checked against local Git and verification.
-- ChatGPT may discuss, plan, summarize, and propose memory updates, but must not claim local-file access or treat an uploaded Sources package as fresher than the local Git/evidence state. Codex is the only writer of authoritative project memory after checking the working tree, Git, and required verification.
-- `scripts\maintenance\chatgpt_project_memory.py refresh` builds and verifies the upload package at `C:\Users\24567\Documents\Codex\codex-original-chatgpt-bridge\current`; `status` reports `current`, `stale`, `missing`, or `invalid`. The tool does not upload files or edit ChatGPT project state.
-- The default Sources upload is exactly six Markdown files. Do not upload the internal manifest, raw transcripts, the full summary set, `.pytest-tmp` artifacts, `.codex` data, outputs, or the old deleted project copy. A selected Session summary is temporary and must be explicitly requested.
-- A stale, modified, secret-bearing, or unknown-file package is rejected. Do not silently redact authoritative files, modify `.codex` databases, rebuild session indexes, or convert a ChatGPT discussion into training or promotion authority.
+Before a cross-product task, read `docs/PROJECT_MEMORY.md`; local Git, source and
+evidence outrank Sources. WSL history immutability, snapshot-first migration and
+old-path handling live in [codex_history_migration.md](docs/codex_history_migration.md)
+and [Windows-native migration](docs/migration_windows_native_20260830.md); old WSL
+paths are never current roots, and the archive/SQLite must not be edited.
+
+Bridge refresh/status and the controlled six-file Sources contract live in
+[chatgpt_codex_workflow.md](docs/chatgpt_codex_workflow.md). Cloud and local projects
+remain separate; Codex writes authoritative memory only after verification, and no
+automatic upload, database/index edit or conversion of discussion into
+training/promotion authority is permitted.

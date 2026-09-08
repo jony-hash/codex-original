@@ -1,7 +1,7 @@
 # Delta + One Gate + Short Codex Prompt
 
-版本：v1.1
-更新时间：2026-09-07
+版本：v1.2
+更新时间：2026-09-08
 性质：GPT → Codex 的项目治理与交接协议，不是科研证据、训练授权或 formal promotion 合同。
 
 ## 1. 目的与边界
@@ -38,13 +38,43 @@ Codex 不得因为发现更多背景、历史或可能性而重新设计 Gate。
 `MODE=IMPLEMENT` 任务只执行一次 bounded preflight。预检只允许核对：
 
 1. branch、HEAD、worktree 和交接基准之后的 Git 增量；
-2. Gate 明确列出的输入、producer/lineage 和授权；
-3. 本任务直接适用的 scoped contract；
+2. Gate 明确列出的输入、producer/lineage、授权，以及现有实现是否已经覆盖目标；
+3. 本任务直接适用的 scoped contract，以及原权限内可采用的更小等效实现；
 4. 必须的安全、资源、finite 和负控保护条件。
 
-预检结束后只允许进入 `IMPLEMENT` 或 `BLOCKED`：满足条件就执行已批准动作；不满足
-就返回最小解阻动作。禁止第二轮开放式项目初始化、为“更全面理解”继续搜索历史，或
-从 `IMPLEMENT` 静默转入 `PLAN`。
+预检结束后的处理按事实核验结果区分：满足条件就执行已批准动作；缺少必需输入、权限、
+资源或安全条件就返回最小解阻动作；若发现计划事实已过时、任务已经完成、现有实现已
+覆盖目标，或存在能满足原目标的更小等效实现，则返回差异报告，并可在原权限内调整执行
+范围或跳过已完成工作。只有改变研究问题、统计门槛、正式权限或计算预算时，才重新进入
+`PLAN` 或请求新交接。不得为了“更全面理解”无边界搜索历史，也不能从 `IMPLEMENT` 静默
+扩大科研范围。
+
+### 2.2 计划事实、必要性与真实性核对
+
+网页计划进入本地时，先把内容分成五类；分类是交接解释，不是新的证据或授权机制。真正
+的本地执行消费者是当前任务的代码、evidence reader、状态 closeout 或明确的后续拒绝决策。
+无法指出消费者和失败后的动作时，只保留为观察/建议，不新增执行 Gate。
+
+| 计划内容 | 本地处理 | 不能由它自动推出 |
+| --- | --- | --- |
+| 用户目标 | 保留原目标及其范围，检查是否仍有真实消费者 | 目标本身不证明事实、假设或方案必要 |
+| 本地事实 | 用 Git、相关输入、已有实现和 evidence 定向核对；未知可写 `unknown` 后再查证 | 文件存在、计数或名称不证明科学结论 |
+| 模型假设 | 标为 `MODEL_ASSUMPTION`，记录可证伪边界 | 假设不能冒充 `FACT` 或已通过 Gate |
+| 建议参数 | 标为未批准候选值，除非已有明确授权和证据 | 建议值不等于预注册阈值、预算或执行权限 |
+| 执行授权 | 只解释允许的动作、资源和停止条件；`MODE=IMPLEMENT` 只表示请求范围获准 | 授权不证明计划前提正确，也不扩大研究问题 |
+
+每次本地核对至少覆盖同一决策所需的五项：
+
+1. 当前 branch、HEAD、worktree 增量及相互冲突的活动修改；
+2. 计划点名的输入、producer/lineage、已有实现和实际 evidence consumer；
+3. 请求工作是否已经完成、被后续结果取代，或已有更小的等效实现；
+4. 每个新增 Gate 将改变的决策、真实消费者以及失败后的动作；
+5. 原权限内的允许动作、验收条件和明确停止点。
+
+哈希一致只证明跨边界内容完整性，不证明模型、数据或科学结论有效。只有在新事实会
+改变本轮决策时，才追加定向检查；不因一次预检而禁止必要调查，也不重新初始化整个项目。
+改变研究问题、统计门槛、正式权限或计算预算必须独立授权；其他等效的更小实现可在原目标
+和权限内采用，并在反馈中说明。
 
 ## 3. 标准生命周期
 
@@ -246,6 +276,10 @@ Gate：
 
 推荐的可复制交接格式如下：
 
+短交接固定表达五类信息：目标与真实消费者、已知基线、事实依据、允许动作、验收与停止
+条件。它们不是新增机器 schema；不相关字段可以省略，但不能用省略来掩盖未知或未批准的
+前提。`unknown` 是可核验状态，不是对事实的猜测。
+
 ~~~
 MODE: <VERIFY|PLAN|IMPLEMENT|REPORT>
 LOCAL DELTA:
@@ -253,6 +287,8 @@ LOCAL DELTA:
 - local branch/HEAD/worktree: <Codex verifies; do not guess>
 - decision-changing changes: <at most five>
 OBJECTIVE: <one bounded objective>
+FACT BASIS:
+- <local Git/file/evidence basis; unknown is allowed until Codex verifies>
 INPUT AUTHORITIES:
 - <semantic-id>; verification=<required|verified|not_required>
 - <producer/lineage only when it changes the decision>
@@ -262,6 +298,8 @@ OUTER GATE:
 - passed/valid_failed/invalid_harness/resource_aborted/blocked -> <single next action>
 ASSUMPTIONS:
 - <MODEL_ASSUMPTION or DESIGN_DECISION; claim boundary>
+AUTHORIZATION:
+- <approved request scope; MODE=IMPLEMENT does not validate its premises>
 ALLOWED:
 - <bounded actions and required checks>
 FORBIDDEN:
@@ -387,8 +425,13 @@ Gate 判定与唯一下一动作：
   decisions 和本协议入口，不保存每次 handoff 的完整 telemetry。
 - CURRENT_STATUS.md 记录当前 branch、objective、state 与 high-level governance；
   docs/status/current_handoff.md 只记录相对上一次交接的 delta、immediate objective/blocker
-  与唯一下一动作；详细历史 Hash、telemetry 和 child lineage 留在 machine evidence registry
+  与下一允许动作或明确停止边界；详细历史 Hash、telemetry 和 child lineage 留在 machine evidence registry
   或 experiment history。历史正文不因压缩而删除。
+- 每次执行前必须声明本次 documentation write set。machine manifest、artifact 或
+  verification 结果本身不自动触发所有文档同步：PROJECT_MEMORY.md 只有在长期目标、稳定边界或
+  durable decision 改变，或用户明确要求记忆更新时才修改；CURRENT_STATUS.md 只写当前摘要，
+  current_handoff.md 只写最新 delta/阻塞/允许动作，日期化过程统一写入 experiment history。
+  同一事件不得把完整选择规则、child hash 表或 telemetry 复制到多个入口。
 - 六文件 Sources 合同保持不变：PROJECT_MEMORY.md、CURRENT_STATUS.md、CURRENT_HANDOFF.md、V2_RUNTIME.md、HISTORY_CONTEXT.md、CHAT_INDEX.md。
 - 六个文件必须作为同一 `snapshot_id + git_head` 的活动集合；旧副本不调和，重复或混合集合按无效处理。
 - Short Prompt 不要求复制 bridge manifest 或正式 evidence 的完整 Hash；这些 Hash
@@ -410,10 +453,12 @@ identity，full Hash 仅在 `--verbose` 或 machine manifest output 中出现。
 
 ### 11.2 N3 planning representation
 
-当前 N3 的低秩相关微 Gate 不再逐项展开为
-`PLAN_REGISTER_LOW_RANK_*` 链。未来唯一 planning task 为
-`DEFINE_N3_LOW_RANK_MODEL_ORDER_CONTRACT_V1`；其内部一次性决定 low-rank family/domain、
-admissible rank candidates、selection statistic、complexity handling、deterministic tie-break、
-positivity interaction 和 one-shot semantics。实际 rank selection 只有在另行授权并产生新
-evidence 时才执行；本规划标签本身不授权 fit、SVD、sampling、forward、CUDA、training、
-generation 或 evaluator。
+N3 的低秩相关微 Gate 不再逐项展开为 `PLAN_REGISTER_LOW_RANK_*` 链。历史
+`PLAN_N3_ATTRIBUTION_SELECTOR_CALIBRATION_REPAIR` 已由
+`CALIBRATE_AND_CONFIRM_N3_ATTRIBUTION_SELECTOR_V2` 采用并执行；V2 classification 为
+`N3_ATTRIBUTION_SELECTOR_CALIBRATION_MIXED_V2`，因此当前没有 selector-refinement planning
+task，也没有真实 N3 re-attribution 或新 producer-family 授权。若要重新开始，必须以 fresh
+confirmation source 另立独立合同；历史 planning 标签本身不提供执行权限。
+
+实际 rank selection、fit、SVD、sampling、forward、CUDA、training、generation 或 evaluator
+均需要新的 evidence consumer authority；当前停止边界不因文档合并而改变。

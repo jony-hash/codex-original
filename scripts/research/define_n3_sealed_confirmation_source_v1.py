@@ -1,0 +1,646 @@
+"""Reserve a fresh, output-independent N3 producer confirmation source.
+
+This consumer reads only source labels and existing source-index/firewall
+metadata.  It never loads OLS values, optical checkpoints, evaluator outputs,
+or image tensors for the reservation, and it publishes one immutable JSON
+reservation for a future frozen-producer confirmation consumer.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+from pathlib import Path
+from typing import Any, Mapping
+
+import torch
+
+from ldm_project.v2.evidence import (
+    atomic_write_new_json,
+    canonical_sha256,
+    file_sha256,
+    safe_torch_load,
+    tensor_sha256,
+)
+
+
+TASK_ID = "DEFINE_N3_SEALED_CONFIRMATION_SOURCE_V1"
+GATE = TASK_ID
+SCHEMA = "n3_sealed_confirmation_source_manifest.v1"
+SEMANTIC_AUTHORITY_ID = "N3_SEALED_CONFIRMATION_SOURCE_V1"
+SEMANTIC_ROLE = "N3_SEALED_CONFIRMATION_V1"
+STATUS = "RESERVED_NOT_MATERIALIZED"
+EXPECTED_BRANCH = "research/lightgen-ols-native-semantic-generation-v1"
+
+CLASS_COUNT = 10
+SOURCE_COUNT = 60_000
+SAMPLE_COUNT = 500
+SAMPLES_PER_CLASS = 50
+SELECTION_SEED = 20_260_908
+
+SOURCE_LABELS_PATH = Path("data/MNIST/processed/training.pt")
+SOURCE_LABELS_FILE_SHA256 = (
+    "8151bbd33f70ee47d9557adaaa667bb878b38cf4015dcac206d1411fb0d0effd"
+)
+SOURCE_LABELS_TENSOR_SHA256 = (
+    "5b15b6a6d7cf9f282941280ffeb569aca7640d0d7e78be939a9b1723e4f83549"
+)
+SOURCE_IMAGES_SHA256 = (
+    "cc86acbde125e1596a9d290165c4345cff2294032e1bb5cf4aeaf8c6467322f0"
+)
+SOURCE_DATA_IDENTITY_MANIFEST_SHA256 = (
+    "8ae23bf1f247124a1f1f9689a2a4cfb507860c49704d334adec158808d093dc4"
+)
+SOURCE_DATASET_MANIFEST_SHA256 = (
+    "520f7743bb317fabf891734ad899c84f2cec7639dbe02f65642670a8a1e64ebb"
+)
+
+PRODUCER_DIR = Path(
+    "outputs/20260907_v2/runs/"
+    "lightgen_ols_producer_data_authority_v1_attempt_01"
+)
+PRODUCER_SOURCE_MANIFEST = PRODUCER_DIR / "ols_producer_source_manifest.v1.json"
+PRODUCER_PARTITION_MANIFEST = PRODUCER_DIR / "ols_producer_partition_manifest.v1.json"
+PRODUCER_FIREWALL_MANIFEST = PRODUCER_DIR / "ols_producer_data_firewall_manifest.v1.json"
+PRODUCER_SOURCE_MANIFEST_SHA256 = (
+    "d07fc3fa927796e97254fa09a8c0eceb18d6555a99590db43217a685bf0d1687"
+)
+PRODUCER_PARTITION_MANIFEST_SHA256 = (
+    "409b598aacae921da631adea553b339b56560231f9cb2cf75ce8d7e5b439242b"
+)
+PRODUCER_FIREWALL_MANIFEST_SHA256 = (
+    "b711e9d3443f3a86c803ff1f8cae1ff266634439ebe0c0d31c04e807c3841837"
+)
+
+S1_SELECTION_INDEX_SHA256 = (
+    "11c076affa8511e883f595a0d1ee91e40f6d94747a351e21269520344d3f594f"
+)
+S1_CONFIRMATION_INDEX_SHA256 = (
+    "ff7ab50b95d96e727c240edc2baa916d1e6c11402b8f4f9c2ce6e2e7e5e2218a"
+)
+S1_CONFIRMATION_LABEL_SHA256 = (
+    "b05112caa3014d6c2081423b371361eefe1ec7a9f531e54db016b89bfbb77b18"
+)
+S2_VALIDATION_INDEX_SHA256 = (
+    "5370b35f304a779cde7f978df6392b9974faaf4296e9edf75f9edf8202db02fa"
+)
+S2_VALIDATION_LABEL_SHA256 = (
+    "13d90706eef49c3c9f17ccd39c002dc18a79eca1378e780548ea6b29adc6ec29"
+)
+S3_FORMAL_PANEL_IDENTITY_SHA256 = (
+    "8a9dd1c7e3e2b674a152e6c96ac8b47976ff1f8d27428a18477e89795b940f47"
+)
+CODE8_REVIEW_MANIFEST_SHA256 = (
+    "d8f073987eda234ac9b85731dad66e9d9ffc92eaf896f700ff84ba4de17263fd"
+)
+
+OUTPUT_DIR = Path(
+    "outputs/20260908_v2/runs/"
+    "n3_sealed_confirmation_source_v1_attempt_01"
+)
+OUTPUT_NAME = "n3_sealed_confirmation_source_manifest.v1.json"
+
+
+def _require(condition: bool, message: str) -> None:
+    if not condition:
+        raise ValueError(message)
+
+
+def _resolve(repo_root: Path, path: str | Path) -> Path:
+    candidate = Path(path)
+    return candidate if candidate.is_absolute() else repo_root / candidate
+
+
+def _relative(repo_root: Path, path: str | Path) -> str:
+    target = _resolve(repo_root, path)
+    return target.relative_to(repo_root).as_posix()
+
+
+def _read_json(repo_root: Path, path: str | Path) -> dict[str, Any]:
+    target = _resolve(repo_root, path)
+    with target.open("r", encoding="utf-8") as handle:
+        value = json.load(handle)
+    _require(isinstance(value, dict), f"{target} must contain a JSON object")
+    return value
+
+
+def _git_state(repo_root: Path) -> dict[str, Any]:
+    branch = subprocess.run(
+        ["git", "-C", str(repo_root), "branch", "--show-current"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    head = subprocess.run(
+        ["git", "-C", str(repo_root), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    status = subprocess.run(
+        ["git", "-C", str(repo_root), "status", "--porcelain"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    return {
+        "branch": branch,
+        "head": head,
+        "dirty_paths": [line[3:] if len(line) >= 4 else line for line in status],
+        "worktree_clean": not status,
+    }
+
+
+def _int_tensor(values: Any, name: str) -> torch.Tensor:
+    tensor = torch.tensor(values, dtype=torch.long)
+    _require(tensor.ndim == 1, f"{name} must be one-dimensional")
+    _require(torch.unique(tensor).numel() == tensor.numel(), f"{name} contains duplicates")
+    return tensor.contiguous()
+
+
+def _label_tensor(values: Any, name: str) -> torch.Tensor:
+    tensor = torch.tensor(values, dtype=torch.long)
+    _require(tensor.ndim == 1, f"{name} must be one-dimensional")
+    return tensor.contiguous()
+
+
+def _load_source_labels(repo_root: Path) -> torch.Tensor:
+    path = _resolve(repo_root, SOURCE_LABELS_PATH)
+    _require(file_sha256(path) == SOURCE_LABELS_FILE_SHA256, "MNIST labels artifact changed")
+    payload = safe_torch_load(path, expected_sha256=SOURCE_LABELS_FILE_SHA256)
+    _require(isinstance(payload, (tuple, list)) and len(payload) == 2, "MNIST training payload changed")
+    labels = payload[1]
+    _require(torch.is_tensor(labels), "MNIST training labels are missing")
+    _require(labels.shape == (SOURCE_COUNT,), "MNIST training label count changed")
+    _require(labels.dtype == torch.long, "MNIST training label dtype changed")
+    labels = labels.detach().cpu().contiguous()
+    _require(tensor_sha256(labels) == SOURCE_LABELS_TENSOR_SHA256, "MNIST training label identity changed")
+    _require(torch.equal(torch.unique(labels), torch.arange(CLASS_COUNT)), "MNIST labels are not 0..9")
+    return labels
+
+
+def _range_indices(start: int, stop: int) -> torch.Tensor:
+    return torch.arange(start, stop, dtype=torch.long)
+
+
+def _validate_range(
+    labels: torch.Tensor,
+    *,
+    name: str,
+    start: int,
+    stop: int,
+    expected_index_sha256: str,
+    expected_label_sha256: str,
+) -> tuple[torch.Tensor, dict[str, Any]]:
+    indices = _range_indices(start, stop)
+    selected_labels = labels.index_select(0, indices).contiguous()
+    _require(tensor_sha256(indices) == expected_index_sha256, f"{name} index identity changed")
+    _require(tensor_sha256(selected_labels) == expected_label_sha256, f"{name} label identity changed")
+    return indices, {
+        "dataset": "mnist_train",
+        "source_index_range": [start, stop],
+        "count": int(indices.numel()),
+        "index_sha256": tensor_sha256(indices),
+        "label_sha256": tensor_sha256(selected_labels),
+        "class_counts": torch.bincount(selected_labels, minlength=CLASS_COUNT).tolist(),
+    }
+
+
+def _load_n3_development_identity(repo_root: Path) -> tuple[torch.Tensor, dict[str, Any]]:
+    partition = _read_json(repo_root, PRODUCER_PARTITION_MANIFEST)
+    _require(
+        partition.get("schema") == "ols_producer_partition_manifest.v1",
+        "N3 producer partition schema changed",
+    )
+    fit = partition.get("fit")
+    validation = partition.get("internal_validation")
+    _require(isinstance(fit, Mapping) and isinstance(validation, Mapping), "N3 partition roles missing")
+    fit_indices = _int_tensor(fit.get("source_indices"), "N3 fit source indices")
+    validation_indices = _int_tensor(
+        validation.get("source_indices"), "N3 internal-validation source indices"
+    )
+    fit_labels = _label_tensor(fit.get("labels"), "N3 fit labels")
+    validation_labels = _label_tensor(validation.get("labels"), "N3 internal-validation labels")
+    _require(fit_indices.numel() == 500 and validation_indices.numel() == 500, "N3 bank size changed")
+    _require(torch.isin(fit_indices, validation_indices).sum().item() == 0, "N3 fit/validation overlap")
+    for name, indices, labels, role in (
+        ("fit", fit_indices, fit_labels, fit),
+        ("internal_validation", validation_indices, validation_labels, validation),
+    ):
+        _require(labels.numel() == indices.numel(), f"N3 {name} labels are not aligned")
+        _require(torch.bincount(labels, minlength=CLASS_COUNT).tolist() == [50] * CLASS_COUNT, f"N3 {name} is not balanced")
+        _require(tensor_sha256(indices) == role.get("source_index_sha256"), f"N3 {name} index hash changed")
+        _require(tensor_sha256(labels) == role.get("label_sha256"), f"N3 {name} label hash changed")
+    source = _read_json(repo_root, PRODUCER_SOURCE_MANIFEST)
+    _require(source.get("schema") == "ols_producer_source_manifest.v1", "N3 source schema changed")
+    source_artifact = source.get("source_artifact")
+    _require(isinstance(source_artifact, Mapping), "N3 source artifact identity missing")
+    _require(source_artifact.get("count") == 1000, "N3 source count changed")
+    _require(source_artifact.get("dataset") == "mnist_train", "N3 source dataset changed")
+    union = torch.cat((fit_indices, validation_indices))
+    sorted_union = torch.sort(union).values
+    return union, {
+        "canonical_name": "N3_DEVELOPMENT_BANK",
+        "dataset": "mnist_train",
+        "role": "current N3 development bank; permanently ineligible for sealed confirmation",
+        "count": int(union.numel()),
+        "source_index_sha256": tensor_sha256(sorted_union),
+        "source_artifact_index_sha256": source_artifact.get("index_sha256"),
+        "source_artifact_label_sha256": source_artifact.get("label_sha256"),
+        "partition_manifest_sha256": file_sha256(_resolve(repo_root, PRODUCER_PARTITION_MANIFEST)),
+        "partition_identity_sha256": partition.get("partition_identity", {}).get("semantic_identity_sha256"),
+        "fit_count_per_class": fit.get("count_per_class"),
+        "validation_count_per_class": validation.get("count_per_class"),
+    }
+
+
+def _validate_firewall(repo_root: Path) -> tuple[dict[str, Any], dict[str, Any]]:
+    path = _resolve(repo_root, PRODUCER_FIREWALL_MANIFEST)
+    _require(file_sha256(path) == PRODUCER_FIREWALL_MANIFEST_SHA256, "producer firewall artifact changed")
+    firewall = _read_json(repo_root, PRODUCER_FIREWALL_MANIFEST)
+    _require(firewall.get("schema") == "ols_producer_data_firewall_manifest.v1", "firewall schema changed")
+    _require(firewall.get("firewall_pass") is True, "producer firewall is not passing")
+    future_consumer = firewall.get("future_consumer")
+    _require(isinstance(future_consumer, Mapping), "producer future-consumer firewall missing")
+    for key in ("runtime_membership_mutation", "runtime_reselection", "runtime_resplit"):
+        _require(future_consumer.get(key) is False, f"producer firewall {key} changed")
+    entries = firewall.get("protected_identities")
+    _require(isinstance(entries, list), "protected identity list missing")
+    by_name = {entry.get("canonical_name"): entry for entry in entries if isinstance(entry, Mapping)}
+    required = {
+        "S1_SELECTION",
+        "S1_CONFIRMATION",
+        "S2_SELECTION_REFERENCE",
+        "S2_CONFIRMATION_REFERENCE",
+        "S2_VALIDATION",
+        "FORMAL_S3_PROTECTED_PANEL",
+        "HISTORICAL_S3_MANIFEST",
+        "POST_S3_MANIFEST",
+        "CODE8_REVIEW",
+        "CONTROLLER_REPAIR_INTERNAL_CODE_PANEL",
+    }
+    _require(required.issubset(by_name), "protected identity authority is incomplete")
+    references = firewall.get("source_references")
+    _require(isinstance(references, Mapping), "firewall source references missing")
+    _require(references.get("s1_selection_index_sha256") == S1_SELECTION_INDEX_SHA256, "S1 selection authority changed")
+    _require(references.get("s1_confirmation_index_sha256") == S1_CONFIRMATION_INDEX_SHA256, "S1 confirmation authority changed")
+    _require(references.get("s2_validation_index_sha256") == S2_VALIDATION_INDEX_SHA256, "S2 validation authority changed")
+    _require(references.get("s3_formal_panel_identity_sha256") == S3_FORMAL_PANEL_IDENTITY_SHA256, "S3 panel authority changed")
+    _require(references.get("code8_review_manifest_sha256") == CODE8_REVIEW_MANIFEST_SHA256, "Code8 authority changed")
+    return firewall, {
+        "manifest_path": _relative(repo_root, PRODUCER_FIREWALL_MANIFEST),
+        "manifest_sha256": file_sha256(path),
+        "protected_canonical_names": sorted(required),
+        "future_consumer_contract": dict(future_consumer),
+    }
+
+
+def _select_indices(labels: torch.Tensor, excluded: set[int]) -> tuple[torch.Tensor, torch.Tensor, dict[str, Any]]:
+    selected: list[torch.Tensor] = []
+    seed_by_class: dict[str, int] = {}
+    eligible_counts: dict[str, int] = {}
+    for label in range(CLASS_COUNT):
+        candidates = torch.tensor(
+            [index for index, value in enumerate(labels.tolist()) if value == label and index not in excluded],
+            dtype=torch.long,
+        )
+        eligible_counts[str(label)] = int(candidates.numel())
+        _require(candidates.numel() >= SAMPLES_PER_CLASS, f"class {label} lacks eligible source rows")
+        seed = SELECTION_SEED + label
+        seed_by_class[str(label)] = seed
+        generator = torch.Generator(device="cpu").manual_seed(seed)
+        order = torch.randperm(candidates.numel(), generator=generator)
+        selected.append(candidates.index_select(0, order[:SAMPLES_PER_CLASS]))
+    indices = torch.cat(selected).contiguous()
+    selected_labels = labels.index_select(0, indices).contiguous()
+    _require(indices.numel() == SAMPLE_COUNT, "sealed confirmation sample count changed")
+    _require(torch.unique(indices).numel() == SAMPLE_COUNT, "sealed confirmation contains duplicates")
+    _require(torch.bincount(selected_labels, minlength=CLASS_COUNT).tolist() == [SAMPLES_PER_CLASS] * CLASS_COUNT, "sealed confirmation is not balanced")
+    return indices, selected_labels, {
+        "algorithm": "classwise eligible-index ascending list; CPU torch.randperm; seed=base_seed+class; first 50",
+        "base_seed": SELECTION_SEED,
+        "seed_by_class": seed_by_class,
+        "eligible_count_by_class": eligible_counts,
+        "class_order": list(range(CLASS_COUNT)),
+        "output_independent": True,
+        "ols_values_observed": False,
+        "q_values_observed": False,
+        "evaluator_observed": False,
+        "image_quality_observed": False,
+    }
+
+
+def _protected_entry(
+    *,
+    name: str,
+    dataset: str,
+    role: str,
+    count: int | None,
+    index_sha256: str | None,
+    overlap_count: int | None,
+    status: str,
+    **extra: Any,
+) -> dict[str, Any]:
+    value: dict[str, Any] = {
+        "canonical_name": name,
+        "dataset_coordinate": dataset,
+        "role": role,
+        "count": count,
+        "index_sha256": index_sha256,
+        "overlap_count_with_reserved_source": overlap_count,
+        "status": status,
+    }
+    value.update(extra)
+    return value
+
+
+def build_manifest(repo_root: Path) -> dict[str, Any]:
+    git = _git_state(repo_root)
+    _require(git["branch"] == EXPECTED_BRANCH, "current branch is not the N3 authority branch")
+    labels = _load_source_labels(repo_root)
+    partition_path = _resolve(repo_root, PRODUCER_PARTITION_MANIFEST)
+    source_path = _resolve(repo_root, PRODUCER_SOURCE_MANIFEST)
+    _require(file_sha256(partition_path) == PRODUCER_PARTITION_MANIFEST_SHA256, "producer partition artifact changed")
+    _require(file_sha256(source_path) == PRODUCER_SOURCE_MANIFEST_SHA256, "producer source artifact changed")
+    firewall, firewall_identity = _validate_firewall(repo_root)
+    n3_development, n3_identity = _load_n3_development_identity(repo_root)
+    s2_validation, s2_identity = _validate_range(
+        labels,
+        name="S2 validation",
+        start=50_000,
+        stop=55_000,
+        expected_index_sha256=S2_VALIDATION_INDEX_SHA256,
+        expected_label_sha256=S2_VALIDATION_LABEL_SHA256,
+    )
+    s1_confirmation, s1_confirmation_identity = _validate_range(
+        labels,
+        name="S1 confirmation",
+        start=55_000,
+        stop=60_000,
+        expected_index_sha256=S1_CONFIRMATION_INDEX_SHA256,
+        expected_label_sha256=S1_CONFIRMATION_LABEL_SHA256,
+    )
+    n3_set = set(int(value) for value in n3_development.tolist())
+    s2_set = set(int(value) for value in s2_validation.tolist())
+    s1_set = set(int(value) for value in s1_confirmation.tolist())
+    _require(not n3_set & s2_set, "N3 development overlaps S2 validation")
+    _require(not n3_set & s1_set, "N3 development overlaps S1 confirmation")
+    _require(not s2_set & s1_set, "S2 validation overlaps S1 confirmation")
+    protected_train = n3_set | s2_set | s1_set
+    _require(len(protected_train) == 11_000, "protected train source union is not exact")
+    indices, selected_labels, selection_rule = _select_indices(labels, protected_train)
+    selected_set = set(int(value) for value in indices.tolist())
+    _require(not selected_set & protected_train, "sealed confirmation overlaps protected train source")
+    selected_index_sha256 = tensor_sha256(indices)
+    selected_label_sha256 = tensor_sha256(selected_labels)
+    sorted_development = torch.sort(n3_development).values
+    identity_payload = {
+        "semantic_role": SEMANTIC_ROLE,
+        "dataset": "mnist_train",
+        "source_split": "mnist_train_indices_0_59999",
+        "source_labels_sha256": SOURCE_LABELS_TENSOR_SHA256,
+        "selected_indices": indices.tolist(),
+        "selected_labels": selected_labels.tolist(),
+        "selection_rule": selection_rule,
+        "protected_source_index_sha256": {
+            "N3_DEVELOPMENT_BANK": tensor_sha256(sorted_development),
+            "S2_VALIDATION": S2_VALIDATION_INDEX_SHA256,
+            "S1_CONFIRMATION": S1_CONFIRMATION_INDEX_SHA256,
+        },
+    }
+    semantic_id = f"{SEMANTIC_AUTHORITY_ID}:{canonical_sha256(identity_payload)}"
+    firewall_entries = firewall["protected_identities"]
+    by_name = {entry["canonical_name"]: entry for entry in firewall_entries}
+    protected_identities = [
+        _protected_entry(
+            name="N3_DEVELOPMENT_BANK",
+            dataset="mnist_train",
+            role=n3_identity["role"],
+            count=1000,
+            index_sha256=n3_identity["source_index_sha256"],
+            overlap_count=0,
+            status="PASS_ZERO_OVERLAP",
+            source_artifact_index_sha256=n3_identity["source_artifact_index_sha256"],
+            partition_manifest_sha256=n3_identity["partition_manifest_sha256"],
+        ),
+        _protected_entry(
+            name="S2_VALIDATION",
+            dataset="mnist_train",
+            role="frozen evaluator validation; protected by current producer firewall",
+            count=5000,
+            index_sha256=s2_identity["index_sha256"],
+            overlap_count=0,
+            status="PASS_ZERO_OVERLAP",
+            authority_index_sha256=by_name["S2_VALIDATION"]["artifact_source_identity"]["index_sha256"],
+        ),
+        _protected_entry(
+            name="S1_CONFIRMATION",
+            dataset="mnist_train",
+            role="protected scientific confirmation; protected by current producer firewall",
+            count=5000,
+            index_sha256=s1_confirmation_identity["index_sha256"],
+            overlap_count=0,
+            status="PASS_ZERO_OVERLAP",
+            authority_index_sha256=by_name["S1_CONFIRMATION"]["artifact_source_identity"]["index_sha256"],
+        ),
+        _protected_entry(
+            name="S1_SELECTION",
+            dataset="mnist_test",
+            role="protected scientific selection in a different dataset-qualified namespace",
+            count=by_name["S1_SELECTION"]["artifact_source_identity"]["count"],
+            index_sha256=by_name["S1_SELECTION"]["artifact_source_identity"]["index_sha256"],
+            overlap_count=0,
+            status="PASS_ZERO_OVERLAP_DIFFERENT_DATASET_NAMESPACE",
+        ),
+        _protected_entry(
+            name="S2_SELECTION_REFERENCE",
+            dataset="mnist_test",
+            role="alias of S1 selection; no independent source membership",
+            count=None,
+            index_sha256=S1_SELECTION_INDEX_SHA256,
+            overlap_count=0,
+            status="SUBSUMED_BY_S1_SELECTION",
+            alias_of="S1_SELECTION",
+        ),
+        _protected_entry(
+            name="S2_CONFIRMATION_REFERENCE",
+            dataset="mnist_train",
+            role="alias of S1 confirmation; no independent source membership",
+            count=None,
+            index_sha256=S1_CONFIRMATION_INDEX_SHA256,
+            overlap_count=0,
+            status="SUBSUMED_BY_S1_CONFIRMATION",
+            alias_of="S1_CONFIRMATION",
+        ),
+        _protected_entry(
+            name="FORMAL_S3_PROTECTED_PANEL",
+            dataset="CONTROLLER_CODE_SPACE_AND_SAVED_COMPLEX_OLS_STATE_SPACE",
+            role="external scientific evaluation panel; not a source-index domain",
+            count=None,
+            index_sha256=None,
+            overlap_count=None,
+            status="NOT_APPLICABLE_SOURCE_INDEX_NAMESPACE",
+            panel_identity_sha256=S3_FORMAL_PANEL_IDENTITY_SHA256,
+        ),
+        _protected_entry(
+            name="CODE8_REVIEW",
+            dataset="CONTROLLER_CODE_SPACE",
+            role="Code8 provenance under the formal S3 panel identity",
+            count=None,
+            index_sha256=None,
+            overlap_count=None,
+            status="NOT_APPLICABLE_SOURCE_INDEX_NAMESPACE",
+            manifest_sha256=CODE8_REVIEW_MANIFEST_SHA256,
+        ),
+    ]
+    protected_identities.sort(key=lambda item: item["canonical_name"])
+    return {
+        "schema": SCHEMA,
+        "task_id": TASK_ID,
+        "gate": GATE,
+        "semantic_authority_id": SEMANTIC_AUTHORITY_ID,
+        "semantic_confirmation_id": semantic_id,
+        "semantic_role": SEMANTIC_ROLE,
+        "status": STATUS,
+        "local_state": git,
+        "source": {
+            "dataset": "mnist_train",
+            "split_identity": "mnist_train_indices_0_59999",
+            "source_index_range": [0, SOURCE_COUNT],
+            "count": SOURCE_COUNT,
+            "labels_artifact_path": _relative(repo_root, SOURCE_LABELS_PATH),
+            "labels_artifact_sha256": SOURCE_LABELS_FILE_SHA256,
+            "labels_tensor_sha256": SOURCE_LABELS_TENSOR_SHA256,
+            "images_content_sha256_recorded_only": SOURCE_IMAGES_SHA256,
+            "source_data_identity_manifest_sha256": SOURCE_DATA_IDENTITY_MANIFEST_SHA256,
+            "source_dataset_manifest_sha256": SOURCE_DATASET_MANIFEST_SHA256,
+            "class_counts": torch.bincount(labels, minlength=CLASS_COUNT).tolist(),
+        },
+        "selection": {
+            "count": SAMPLE_COUNT,
+            "per_class": SAMPLES_PER_CLASS,
+            "class_balance": torch.bincount(selected_labels, minlength=CLASS_COUNT).tolist(),
+            "source_indices": indices.tolist(),
+            "labels": selected_labels.tolist(),
+            "source_index_sha256": selected_index_sha256,
+            "label_sha256": selected_label_sha256,
+            "selection_order_frozen": True,
+            **selection_rule,
+        },
+        "protected_identities_checked": protected_identities,
+        "protected_source_union": {
+            "dataset": "mnist_train",
+            "count": len(protected_train),
+            "source_index_sha256": tensor_sha256(torch.tensor(sorted(protected_train), dtype=torch.long)),
+            "members": ["N3_DEVELOPMENT_BANK", "S2_VALIDATION", "S1_CONFIRMATION"],
+            "overlap_with_reserved_source_count": 0,
+        },
+        "firewall": {
+            "source_index_overlap_count": 0,
+            "pairwise_protected_source_overlap_counts": {
+                "N3_DEVELOPMENT_BANK__S2_VALIDATION": 0,
+                "N3_DEVELOPMENT_BANK__S1_CONFIRMATION": 0,
+                "S2_VALIDATION__S1_CONFIRMATION": 0,
+            },
+            "dataset_qualified_namespace_checks": {
+                "mnist_train__mnist_test": "DISJOINT_NAMESPACE",
+                "controller_code_space__mnist_train": "NOT_APPLICABLE",
+                "saved_complex_ols_state_space__mnist_train": "NOT_APPLICABLE",
+            },
+            "fail_closed": True,
+            "future_consumer_must_reject_any_identity_or_hash_mismatch": True,
+        },
+        "authority_inputs": {
+            "producer_source_manifest_path": _relative(repo_root, PRODUCER_SOURCE_MANIFEST),
+            "producer_source_manifest_sha256": PRODUCER_SOURCE_MANIFEST_SHA256,
+            "producer_partition_manifest_path": _relative(repo_root, PRODUCER_PARTITION_MANIFEST),
+            "producer_partition_manifest_sha256": PRODUCER_PARTITION_MANIFEST_SHA256,
+            "producer_firewall_manifest_path": _relative(repo_root, PRODUCER_FIREWALL_MANIFEST),
+            "producer_firewall_manifest_sha256": PRODUCER_FIREWALL_MANIFEST_SHA256,
+            "source_data_identity_manifest_sha256": SOURCE_DATA_IDENTITY_MANIFEST_SHA256,
+            "source_dataset_manifest_sha256": SOURCE_DATASET_MANIFEST_SHA256,
+        },
+        "materialization": {
+            "current_status": STATUS,
+            "ols_states_materialized": False,
+            "complex_ols_values_loaded": False,
+            "optical_forward_executed": False,
+            "evaluator_executed": False,
+            "producer_candidate_consumed": False,
+        },
+        "future_consumer": {
+            "allowed_consumer": "FUTURE_FROZEN_N3_PRODUCER_CONFIRMATION_ONLY",
+            "candidate_must_be_frozen_before_consumption": True,
+            "one_time_consumption": True,
+            "must_verify_semantic_authority_id": SEMANTIC_AUTHORITY_ID,
+            "must_verify_manifest_file_sha256": True,
+            "must_verify_source_index_sha256": selected_index_sha256,
+            "must_verify_label_sha256": selected_label_sha256,
+            "runtime_membership_mutation": False,
+            "runtime_reselection": False,
+            "runtime_resplit": False,
+            "rank_selection": False,
+            "producer_family_selection": False,
+            "parameter_fitting": False,
+            "attribution_threshold_design": False,
+            "selector_calibration": False,
+        },
+        "governance": {
+            "training_authorized": False,
+            "formal_promotion": False,
+            "generation_readiness": "not_ready",
+        },
+        "claims_boundary": {
+            "supported": ["fresh balanced confirmation source reserved", "source-index firewall established"],
+            "not_supported": [
+                "confirmation OLS generated",
+                "new producer supported",
+                "Gaussian failure repaired",
+                "novel OLS supported",
+                "generation readiness",
+            ],
+        },
+    }
+
+
+def execute(repo_root: Path) -> dict[str, Any]:
+    output_dir = _resolve(repo_root, OUTPUT_DIR)
+    output_path = output_dir / OUTPUT_NAME
+    _require(not output_dir.exists(), f"refusing to reuse reservation output directory: {output_dir}")
+    manifest = build_manifest(repo_root)
+    atomic_write_new_json(
+        output_path,
+        manifest,
+        artifact_kind="N3 sealed confirmation source reservation",
+    )
+    return {
+        "gate": GATE,
+        "classification": "N3_SEALED_CONFIRMATION_SOURCE_RESERVED",
+        "manifest_path": _relative(repo_root, output_path),
+        "manifest_sha256": file_sha256(output_path),
+        "semantic_authority_id": manifest["semantic_authority_id"],
+        "semantic_role": manifest["semantic_role"],
+        "status": manifest["status"],
+        "sample_count": manifest["selection"]["count"],
+        "per_class": manifest["selection"]["per_class"],
+        "source_index_sha256": manifest["selection"]["source_index_sha256"],
+        "label_sha256": manifest["selection"]["label_sha256"],
+        "ols_states_materialized": manifest["materialization"]["ols_states_materialized"],
+    }
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--repo-root",
+        type=Path,
+        default=Path(__file__).resolve().parents[2],
+    )
+    args = parser.parse_args()
+    result = execute(args.repo_root.resolve())
+    print(json.dumps(result, indent=2, sort_keys=True))
+
+
+if __name__ == "__main__":
+    main()

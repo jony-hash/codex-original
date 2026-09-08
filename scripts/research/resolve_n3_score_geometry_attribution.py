@@ -683,7 +683,7 @@ def _select_family(
             "selection_rule": "source-position confound blocks producer-family selection; otherwise select exactly one producer candidate only when its full conjunction is true",
         },
         "alternatives_rejected": {
-            FAMILY_PARTITION: "requires a same-sign all-class source-position trend and no post-normalization radial residual",
+            FAMILY_PARTITION: "requires a same-sign all-class source-position trend; radial residual is descriptive and does not enter partition selection",
             FAMILY_RADIAL: "requires residual radial structure with non-dominant angular discrepancy and no reproducible local signature",
             FAMILY_LOCAL: "requires residual radial structure, dominant global angular discrepancy, and reproducible class-local signature",
             FAMILY_DEPENDENCE: "requires residual radial structure, dominant global angular discrepancy, and no reproducible class-local signature",

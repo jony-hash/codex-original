@@ -1,6 +1,6 @@
 # v68–v79 原始主线交接归档
 
-> 此文件完整保留提交 `e21dba1`（v79 snapshot）中的 `current_handoff.md` 原文，仅作为历史证据读取；它不定义当前执行合同。当前状态见 [当前主线交接](../status/current_handoff.md)，按阶段查阅摘要见 [实验与验收历史](../status/experiment_history.md)。
+> 此文件完整保留提交 `e21dba1`（v79 snapshot）中的 `current_handoff.md` 原文，仅作为历史证据读取；它不定义当前执行合同。当前状态见 [当前正式基线与活动研究交接](../status/current_handoff.md)，按阶段查阅摘要见 [实验与验收历史](../status/experiment_history.md)。
 
 # 当前主线交接：v69 code-distillation（v68 已关闭，静态/CUDA smoke 已通过）
 

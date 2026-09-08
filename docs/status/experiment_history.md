@@ -221,7 +221,7 @@ primary `0.090–0.102`，30 个 Jacobian 点均为 rank 8，deterministic repla
 电子图像流形仍未通过 qualified dual-evaluator semantic contract，不能外推为
 单模/少模/多模光纤性能结论；outputs 仅作运行证据，未提交。
 
-本文件保存带日期的实验事实和验收证据，不定义当前执行契约。迁移或续接当前主线时先读 [当前主线交接（v79 冻结与 v2）](current_handoff.md)；当前架构见 [D2NN 单次曝光蒸馏主线](../architecture/v1_single_shot_distillation.md)，stage 命令与输入要求见 [Stage Guide](../operations/stage_guide.md)，完整导航见 [Documentation](../README.md)。本文件的“当前/下一步”均表示各记录当时的结论；历史证据保留，不应覆盖现行合同。
+本文件保存带日期的实验事实和验收证据，不定义当前执行契约。迁移或续接当前工作时先读 [当前正式基线与活动研究交接](current_handoff.md)；当前架构见 [D2NN 单次曝光蒸馏主线](../architecture/v1_single_shot_distillation.md)，stage 命令与输入要求见 [Stage Guide](../operations/stage_guide.md)，完整导航见 [Documentation](../README.md)。本文件的“当前/下一步”均表示各记录当时的结论；历史证据保留，不应覆盖现行合同。
 
 ## 2026-08-22：synthetic fiber route formally archived without E1
 
@@ -2326,3 +2326,183 @@ readiness, or formal promotion. GAC and direct-dependency regression was `42 pas
 and `git diff --check` passed. Governance remains closed at the current evidence boundary with
 reconstruction/generative support false, generation not ready, training authorization false, and formal
 promotion false.
+
+## 2026-09-04：H-LOMA-GEN-PCR-PSD repaired-coordinate prior shape decomposition observer
+
+本条补录从旧当前状态入口迁出的唯一 PCR-PSD 历史事实。该观测只执行
+`IMPLEMENT_PRIOR_SHAPE_DECOMPOSITION_OBSERVER`，起始/结束 HEAD 为
+`02fb1f636aa17e0e2f7f01a3fa70275b8f19dbdf`，复用 RCR-A 的 selection/confirmation panel、数据身份、
+MNIST preprocessing、100-port OLS、mode bank 与 repaired coordinate；没有重新选择 panel，也没有扩大到
+G1 55k support。冻结 step-5000 checkpoint SHA 为
+`ccb89f98cc11725eb80d66c61f4fdef62b24acdf9f6d739f78373f462d10e5de`，R2 calibration payload SHA 为
+`ce31dd816691a08ca9388e0ec086be0e2e3ebd40005598c1ef44a1ba79a9fd07`，RCR-A manifest/metrics/parent
+panel SHA 分别为
+`10a5469468357c8490446ff4c9d1fc86bc1041bba4cfa6fa51af4fc8f01f70da`、
+`5d2cc5c0c7b6e80f80d4f07239bb737f87327860381c0bf151cbaa686001b612`、
+`842f5cfd41909a666f19f3c88e7e7199a825b255bd111a44953e53351fd28724`。
+
+registered factorized truncated-normal prior 的 sampler/config/KL/coordinate 语义检查通过；正式观测使用
+selection=`1000`、confirmation=`5000`，matched-size CPU null 使用 seeds=`260904/260905`、
+`128` replicates 和 `99%` central interval。两 panel 都显示 per-port marginal heterogeneity、
+cross-port dependence 与 prior-defined tail/quantile deviation：between-variance fraction 为
+`0.2639763/0.2228631`，最大 off-diagonal correlation 为 `0.8836253/0.8846894`，prior-null primary
+percentile position 均为 `100%`。decomposition 为 `P-S3_SUPPORTED`、`P-S4_SUPPORTED`、
+`P-S5_SUPPORTED`，replication status 均为 `REPLICATED_DIRECTION`。
+
+最终 classification=`PCR1_PRIOR_CONTRACT_INTERNALLY_COHERENT`：registered prior contract 在
+sampler/config/KL/coordinate 语义上内部一致，而 frozen step-5000 `mse_only` q(z) 不匹配该 target；
+这不是 q 已匹配 p 的结论，不授权 per-port prior fitting、prior 修改或训练。权威输出目录为
+`outputs/20260904_v2/runs/lightgen_scaled_chen_prior_shape_decomposition_v1_attempt_01/`，manifest、
+metrics、compact report SHA 分别为
+`228679fda073b2e4e1e46c931b743b490930dc895313e5c201283d244e22d97a`、
+`4ea665c5a021a09c9ce2d44adfc31ed0cdb593de30b0ed3dbb3b10986bfbe9d2`、
+`cbd0ceda6a878bcf295ef0252936edf35a6525937b76472610f2c9e384d85f94`；state unchanged，
+optimizer/backward/refit/checkpoint/prior_fitted/decoder/CMOS/MPCDAR/training 全部为 false。专项测试
+`7 passed`，相关回归 `36 passed`，compileall、Ruff 和 `git diff --check` 均通过；历史下一动作
+`IMPLEMENT_REPAIRED_COORDINATE_G1_SA_REPLAY` 仅表示当时状态，不能覆盖当前 N3 阻塞或授予执行权限。
+
+## 2026-09-07—09-08：H-LOMA-GEN N3 OLS-native research line
+
+本节集中维护 N3 研究链的日期化事实、结果和被取代的下一步。`CURRENT_STATUS.md` 只保留当前
+决策摘要，`current_handoff.md` 只保留最新增量与允许动作，`PROJECT_MEMORY.md` 只保留稳定导航；
+它们不再复制本节的逐项实验正文。以下记录均为 research/diagnostic evidence，不改变 formal v2、
+training authorization、generation readiness 或 promotion 边界。
+
+### H-LOMA-GEN OLS-native branch genesis（2026-09-07）
+
+`OLS_NATIVE_RESEARCH_BRANCH_ESTABLISHED` 建立活动分支
+`research/lightgen-ols-native-semantic-generation-v1`，父分支为
+`research/v2-lightgen-optical-manifold-scaled-chen-bogt-v1`，branch point 为
+`113ca1c2d1e2e2ffa458ebd9c2fb7ddf898c4831`。该分支是 OLS-native research mainline，
+不是 formal v3；N1/N2 已完成，N3 是活动阶段，N4 未决，N5 blocked/future，N6 是独立冻结的
+物理实现边界。建立动作没有执行 positivity、fit/SVD、rank selection、sampling、CUDA、forward、
+evaluator 或 generation。旧 Scaled-Chen/BOGT、S1-S3、Code8、controller-writer 与
+OLS-discovery lineage 保持为历史参考。`DEFINE_N3_LOW_RANK_MODEL_ORDER_CONTRACT_V1` 仅为
+当时的下一规划，已被后续 N3 记录取代。
+
+### H-LOMA-GEN-N3 producer data authority（2026-09-07）
+
+`OLS_PRODUCER_DATA_AUTHORITY_MATERIALIZED` 只读复用既有 S1 `R3_COMPLEX` source，物化了
+500/500 行、50/class、`N=100` 的 `torch.complex64` fit 与 internal-validation banks。
+partition manifest、data firewall、source/provenance alias 和 canonical checkpoint 均绑定在
+`outputs/20260907_v2/runs/lightgen_ols_producer_data_authority_v1_attempt_01/`；S1 selection、
+S1 confirmation、S2 validation 与 formal S3 panel 的独立 overlap 为 0，controller-repair
+internal panel 对 N3 为 `NOT_APPLICABLE`。本条没有 optical forward、CUDA、optimizer、
+backward、producer fitting 或 novel OLS generation；labels 仍是 provenance/partition metadata，
+不是 producer input。
+
+### H-LOMA-GEN-N3 low-rank model-order selection（2026-09-07）
+
+`N3_LOW_RANK_MODEL_ORDER_SELECTED` 在冻结的
+`R2_AMPLITUDE=|c|/sqrt(s)` 坐标、`d=100`、候选 `r=1..99` 和 CPU `float64` 下有效完成。
+`r_min=99`，one-standard-error acceptable set=`[99]`，selected rank=`99`；结果入口为
+`outputs/20260907_v2/runs/lightgen_n3_low_rank_model_order_selection_v1_attempt_01/model_order_result.v1.json`。
+这只登记低秩振幅 baseline 的模型阶数，不支持 intrinsic dimension、compact latent structure、
+Gaussianity、novel OLS 或 generation。
+
+### H-LOMA-GEN-N3 amplitude producer fit and validation（2026-09-07—09-08）
+
+`N3_AMPLITUDE_PRODUCER_BASELINE_FITTED` 固定 `r=99`、`d=100`、`n_fit=500`，只使用 fit bank
+拟合 `mu_fit`、`W_99` 与 `lambda_1_to_99`；state 与 manifest 位于
+`outputs/20260907_v2/runs/lightgen_n3_amplitude_producer_baseline_v1_attempt_01/`。这是 near-full-
+dimensional strict-proper-subspace baseline，不是 compact low-rank 结构或 intrinsic dimension
+结论，也没有自动授权 downstream sampling。
+
+独立 validation `VALIDATE_N3_AMPLITUDE_PRODUCER_BASELINE_V1` 为 `valid_completed`，classification
+为 `N3_AMPLITUDE_PRODUCER_BASELINE_NOT_SUPPORTED`。四轴为
+`SCORE_STRUCTURE=CALIBRATED_MISMATCH`、`GAUSSIAN_BASELINE=CALIBRATED_MISMATCH`、
+`POSITIVITY_FEASIBILITY=SUPPORTED`、`AMPLITUDE_SUPPORT=CALIBRATED_MISMATCH`；positivity 只证明
+固定 proposal 操作可执行，不能推出 distribution、semantic generation 或 generation readiness。
+producer state、rank、fit/validation partition、score law 和 data firewall 均冻结，不在该 bank 上
+retune。
+
+### H-LOMA-GEN-N3 mismatch attribution and score geometry（2026-09-08）
+
+`ATTRIBUTE_N3_PRODUCER_MISMATCH_AND_SELECT_NEXT_FAMILY_V1` 的 classification 为
+`N3_PRODUCER_MISMATCH_ATTRIBUTION_MIXED`。within-class even/odd observer split 下，partition
+confound 没有按预注册规则成为唯一 dominant mechanism；class-centering 能改善部分 validation
+radial/covariance 指标，但 centered dependence 与 radial mismatch 仍在。A/B/C/D 均未被唯一支持，
+没有选择新 producer family；labels 仍是 diagnostic observers，未执行 label-conditioned producer、
+refit、rank reselection、score sampling、phase-source、novel OLS 或 training。
+
+`RESOLVE_N3_SCORE_GEOMETRY_ATTRIBUTION_V1` 的 authority 是
+`outputs/20260908_v2/runs/lightgen_n3_score_geometry_attribution_v1_attempt_02/`，classification
+为 `N3_SCORE_GEOMETRY_ATTRIBUTION_UNRESOLVED`，dominant mechanism observer 为
+`DATA_PARTITION_OR_MOMENT_STABILITY_CONFOUND`。在 `z=(q-mu_fit)W_99/sqrt(lambda)`、`r=99` 下，
+validation `R^2` excess 为 `37.6551453`，其中 population mean-shift 为 `1.4180415`、variance-
+scale 为 `36.2371038`；来源顺序呈现每类一致的正向位置趋势（10/10 classes），因此不能把差异
+唯一解释为 radial-mixture family。moment normalization 后仍有高阶 radial/dependence residual，
+class-profile stability 也不足以选择 local-mixture 或 non-Gaussian-dependence family。没有注册
+新的 producer family；N4、novel OLS 与 generation 继续 blocked。
+
+前一轮 attempt-01 保留为 write-once provenance，但不被消费：post-run self-audit 发现 `N-1` 与
+population radial identity 实现错误且 family-selection predicate 过宽；attempt-02 是唯一 authority。
+这不改变原始 firewall、membership、rank、producer state 或任何历史 report。
+
+### H-LOMA-GEN-N3 selector calibration lineage（2026-09-08）
+
+旧的 `CALIBRATE_N3_ATTRIBUTION_DECISION_RULE_V1` 是 synthetic-only bounded calibration，
+classification=`N3_ATTRIBUTION_SELECTOR_CALIBRATION_MIXED`，NULL false-positive 为 `6/20=0.30`，
+真实 N3 未加载，也未授权 real-data re-attribution。
+
+随后执行的 `CALIBRATE_AND_CONFIRM_N3_ATTRIBUTION_SELECTOR_V2` 采用了历史 planning 草案中建议的
+`200/200/100` replicate 预算、NULL FPR `≤0.05`、单侧 95% 上界 `≤0.10`、机制正确率 `≥0.80` 与
+单侧下界 `≥0.60`；这些数值的权威来源是该 V2 consumer 的合同和报告，不是草案本身，也不因
+文档合并而追溯授予下一阶段权限。V2 使用 synthetic-only、disjoint development/confirmation
+seeds，在 confirmation 前冻结 selector specification；真实 OLS/N3 未加载。
+
+V2 machine report 位于
+`outputs/20260908_v2/runs/lightgen_n3_attribution_selector_v2_calibration_attempt_01/n3_attribution_selector_v2_calibration_report.v1.json`，
+classification=`N3_ATTRIBUTION_SELECTOR_CALIBRATION_MIXED_V2`：NULL=`0/200` false positives，
+partition=`100/100`，radial=`100/100`，nonlinear=`82/100`，local=`78/100`，local 未达到预注册
+`0.80` correct-rate target。因而 selector 不能声明 calibrated，不能消费真实 N3 做 family
+selection，不创建 V3；当前 selector-refinement line 在该 MIXED 边界关闭。
+
+### Durable boundary after N3 selector V2
+
+没有 producer-family confirmation、真实 N3 attribution、new fit、rank/producer change、N4、
+phase-source、novel OLS、optical forward、CUDA、optimizer、backward、training、evaluator 或
+generation。`training_authorized=false`、`generation_readiness=not_ready`、
+`formal_promotion=false` 保持。若未来重新研究来源归因，必须使用 fresh confirmation source，
+另立独立合同；当前交接入口不提供该科学授权。
+
+### H-LOMA-GEN-N3 sealed confirmation source reservation（2026-09-08）
+
+`DEFINE_N3_SEALED_CONFIRMATION_SOURCE_V1` 登记了一个 fresh balanced confirmation source，
+classification=`N3_SEALED_CONFIRMATION_SOURCE_RESERVED`，状态为
+`RESERVED_NOT_MATERIALIZED`。权威 machine manifest 位于
+`outputs/20260908_v2/runs/n3_sealed_confirmation_source_v1_attempt_01/`；适用 source-index
+overlap 为 0。该记录只建立 data-firewall 和一次性 future-consumer reservation，不是 OLS、
+producer、rank/family、selector 或 generation 结果；完整 lineage 以 manifest 为准。
+
+## 2026-09-07：H-LOMA-GEN-S3 controller semantic-geometry lineage
+
+本节补录 2026-09-07 的 S3 controller-only 研究事实；它们属于已关闭的历史/diagnostic lineage，
+不定义当前 N3 研究动作。完整 machine evidence、checkpoint 和 manifest 仍由各自 immutable
+output 目录维护。
+
+### Data authority and canary
+
+`CONTROLLER_SEMANTIC_GEOMETRY_DATA_AUTHORITY_REGISTERED` 完成 safe reload、protected sample/code
+overlap=0 以及 no-update registration；此前 step-0 `INVALID_HARNESS` attempt 没有 optimizer、
+backward、forward、CUDA 或 checkpoint 写入。其后一次显式授权的 controller-only、frozen-optical、
+fixed-horizon canary 通过三步真实更新 preflight，执行 492 个 logical optimizer/backward steps，
+只写 final-step checkpoint；仅 generator phase 参数更新，冻结 optical/evaluator/controller authority
+保持隔离。首次 invocation 在 optimizer 前因 CUDA alias/allocator 条件停止，未写 artifact，保留为
+write-once 非权威 attempt。
+
+### Frozen S3 consumer and postmortem
+
+独立 frozen S3 consumer 未训练、未创建 optimizer、未写 candidate checkpoint，classification 为
+`S3_CONTROL_TO_OLS_WRITABILITY_NOT_SUPPORTED`。interface pass，但 selection/confirmation targeting
+与 reachability 仍 fail；code effect 非退化、无 class collapse、duplicate=0、unique states=1000，
+Jacobian 为 `CODE8_LOCAL_CONTROL_FULL_RANK`，state isolation 和 authority hashes 未变。相对历史
+S3 的小幅 retrieval 变化只作 descriptive evidence，不作选优。
+
+postmortem classification=`S3_ONE_SHOT_REPAIR_POSTMORTEM_COMPLETE`，primary attribution 为
+`FIRST_SECOND_ORDER_GEOMETRY_OBJECTIVE_INSUFFICIENT_SUPPORTED`：centroid alignment 与 covariance
+magnitude/coverage 改善，但 absolute reachability、covariance shape/tangent residual、gain
+compression 与 class-conditioned compression 仍未关闭。没有足够证据支持全局 folding/topology 或
+当前 controller parameterization limitation；class9 改善仅为 secondary。exact one-shot repair line
+关闭，不 retune、second canary、S3 rerun 或 class9 repair，S4 blocked；`KEEP_8D_PROVISIONALLY`、
+`training_authorized=false`、`generation_readiness=not_ready` 与 `formal_promotion=false` 保持。

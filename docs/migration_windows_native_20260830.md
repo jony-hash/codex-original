@@ -407,6 +407,9 @@ MMF M6 operator 位于 `src/ldm_project/v2/optics/nested_multimode_fiber_operato
 `tests/v2/test_nested_multimode_fiber_operator.py`；SMF/FM F/formal path、训练、CUDA、
 outputs 和冻结 evidence 均未触碰。
 
+历史兼容标识：`H-LOMA-CBOGT-FIBER-MMF-M6`。该 diagnostic-only operator 的核心事实与
+evidence boundary 保留在本节；它不是当前 formal runtime，也不授权后续 VIS1、训练或 promotion。
+
 当前验证为 M6 `9 passed`、SMF `4 passed`、FMF M2 `8 passed`，changed modules/tests 的
 compileall、Ruff、`git diff --check` 通过。FMF 回归为 Windows ACL 下显式临时根的
 bounded test invocation。MMF M6 仅作为

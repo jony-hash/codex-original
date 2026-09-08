@@ -2,7 +2,7 @@
 
 ## What This Repository Builds
 
-本项目保留两条并行运行时：v1 将 LDM teacher 蒸馏到 D2NN one-shot student；当前 v2 使用无 LDM 蒸馏的 conditional generator，在单次光学传播和单次 CMOS 曝光中完成生成。v1 和 v2 共享正式物理合同，但不共享训练输入或 evidence。
+本项目保留两条有意分离的运行时：v1 将 LDM teacher 蒸馏到 D2NN one-shot student；正式 v2 是无 LDM 蒸馏的 conditional generator 合同。OLS-native 是独立的活动研究分支，不等于 formal v3，也不改变 v2 正式合同。v1 和 v2 共享物理边界定义，但不共享训练输入或 evidence。
 
 ```text
 noise/code + optional label -> generator_e -> amplitude SLM command
@@ -10,7 +10,7 @@ noise/code + optional label -> generator_e -> amplitude SLM command
 -> CMOS single exposure -> generated image
 ```
 
-最终路径不依赖 diffusion denoising、迭代 latent sampling、software-only VAE decoding 或 inference-time optimization。
+这是正式路径的设计合同示意，不是“生成能力已通过”的证据。最终路径不依赖 diffusion denoising、迭代 latent sampling、software-only VAE decoding 或 inference-time optimization。
 
 ## Supported Workflow
 
@@ -25,16 +25,19 @@ Teacher stages 只提供 v1 训练基础设施。加载 student checkpoint 的 `
 
 ## Quick Start
 
-Python 要求和依赖来自 `pyproject.toml`。激活项目环境：
+Python 要求和依赖来自 `pyproject.toml`。Windows-native 项目环境（PowerShell）：
 
-```bash
-source "$(conda info --base)/etc/profile.d/conda.sh" && conda activate optical-generative-models
+```powershell
+Set-Location D:\codex-original
+$envRoot = 'D:\ANACONDA\envs\optical-generative-models-win'
+$env:Path = "$envRoot;$envRoot\bin;$envRoot\Library\bin;$envRoot\Scripts;$envRoot\Lib\site-packages\torch\lib;$env:Path"
+$py = Join-Path $envRoot 'python.exe'
 ```
 
 运行 CUDA compatibility smoke：
 
-```bash
-python train.py --train-config configs/v1/smoke/train_one_shot_d2nn_smoke.yaml \
+```powershell
+& $py train.py --train-config configs/v1/smoke/train_one_shot_d2nn_smoke.yaml `
   --stage one_shot --device cuda
 ```
 
@@ -48,11 +51,13 @@ python train.py --train-config configs/v1/smoke/train_one_shot_d2nn_smoke.yaml \
 - Teacher audit、readability filter 和单环节诊断不能替代 `one_shot_sample` 与 `one_shot_distill_eval`。
 - 正式 CUDA 训练和验收所需 checkpoint、dataset 或硬件缺失时应视为 blocker，不应静默降级。
 
-## Current Mainline Status
+## Formal Runtime Baseline And Active Research Status
 
-当前正式物理合同是 `532 nm`、identity OLS、完整 SLM FOV 的相干 4f `-0.4` relay、`100 × 100 @ 2 µm` phase-only D2NN、`1.50 mm` 层间距，以及后端 `-2.5` relay。理想两镜 4f 的实际 ABCD 为 `A=-0.4, B=0, C=0`；物理前向合同、raw-CMOS 人眼 gate 与严格 provenance 均保持有效。当前 v2 架构是 `conditional_identity_logit_amplitude_v2`。
+正式 v2 物理合同是 `532 nm`、identity OLS、完整 SLM FOV 的相干 4f `-0.4` relay、`100 × 100 @ 2 µm` phase-only D2NN、`1.50 mm` 层间距，以及后端 `-2.5` relay。理想两镜 4f 的实际 ABCD 为 `A=-0.4, B=0, C=0`；物理前向合同、raw-CMOS 人眼 gate 与严格 provenance 均保持有效。正式 v2 架构是 `conditional_identity_logit_amplitude_v2`。
 
-v1 研究线已冻结在 v79：固定 label-only normalization 的八维 supported-basis capacity arm 仅得到 physical-SLM code factor `0.05455 < 0.25`，且 clipping `0.20547 > 0.08`。这不是 harness failure，而是当前 basis 家族的有效 capacity gate 失败；learned code transport 未证明，因而没有可 promotion 的 student checkpoint。完整当前状态、停止规则和下一允许动作见 [当前主线交接](docs/status/current_handoff.md)。
+v1 研究线已冻结在 v79：固定 label-only normalization 的八维 supported-basis capacity arm 仅得到 physical-SLM code factor `0.05455 < 0.25`，且 clipping `0.20547 > 0.08`。这不是 harness failure，而是当前 basis 家族的有效 capacity gate 失败；learned code transport 未证明，因而没有可 promotion 的 student checkpoint。
+
+活动研究分支为 `research/lightgen-ols-native-semantic-generation-v1`：N1/N2 已完成，N3 producer baseline 与两轮 selector calibration 均未得到可用的新模型族，N4 未决，N5 与生成仍 blocked，N6 物理实现保持独立冻结。最新 V2 校准已登记为 `MIXED_V2`（NULL false-positive rate `0/200`；local target 未达成），因此不存在可直接继续的 selector-refinement 任务；若要重新研究来源归因，必须另立独立合同并重新绑定 evidence。详见 [当前交接](docs/status/current_handoff.md)。
 
 `v9.10 label-template inverse prototype baseline` 仅是历史 label-template prototype：它明确忽略 code，不能证明 code-conditioned 多样性或最终 generative student readiness。历史证据见 [v9.10 record](docs/archive/acceptance_v9_10_label_template_inverse_20260622.json)。
 
@@ -70,18 +75,21 @@ v1 研究线已冻结在 v79：固定 label-only normalization 的八维 support
 | `configs/v1/` | v1 活动配置 |
 | `configs/v2/current/` | 当前 identity v2 配置 |
 | `configs/v2/legacy/`, `configs/v2/diagnostic/` | v2 兼容和诊断配置，不授权当前 acceptance |
-| `configs/research/` | 活动 research-only lifecycle 配置；不授权 formal promotion |
+| `configs/research/` | 研究生命周期配置；按活动、冻结可复现或历史参考分类，不授权 formal promotion |
 | `experiments/archive/` | 不可 promotion 的历史配置/工具及其 manifest |
 | `tests/student/` | Student model、objective、config、checkpoint 和训练/评估测试 |
 | `tests/teacher/` | Teacher distillation export、audit、filter、readable split 和兼容测试 |
 | `tests/application/` | stage runtime、CLI、输出和 checkpoint resolution 测试 |
 | `tests/diagnostics/` | 当前 diagnostic boundary 验证；版本专用测试在 archive |
 | `docs/` | 架构、运行指南、输出语义和历史证据 |
-| `scripts/` | 版本中立的维护与展示辅助脚本 |
+| `scripts/maintenance/`, `scripts/visualization/` | 维护、桥接和展示辅助脚本 |
+| `scripts/research/` | 绑定明确 evidence consumer 的研究脚本；不自动选择 latest |
 | `outputs/` | 当前 Windows-native runs 与已恢复历史 outputs 的可见树；恢复元数据位于 `outputs/_wsl_restore_metadata_v4/`，`outputs/final_pt/` 保持固定 |
 | `data/raw/` | 不可变原始数据 |
 
 训练、诊断和 pre-acceptance run 默认写入 `outputs/YYYYMMDD_<version>/runs/<run>/`；`<version>` 从 run-name 或 config 文件名提取，缺省为 `unversioned`。目录名前缀使用该版本当前已知最早 run 日期；若这是一个新版本，则首次创建时使用当天日期。`outputs/runs/` 已移除。
+
+研究和 artifact 生命周期只有三种有效阅读方式：活动条目有当前 consumer 与下一决策；冻结条目只用于可复现比较；历史条目只用于 provenance。文件名、日期、磁盘占用或测试计数不能单独把条目标为废弃。
 
 恢复历史目录由 `outputs/_wsl_restore_metadata_v4/` 的 restore plan、state 和 path map 界定；它们只用于历史溯源，不能自动作为当前 formal acceptance 输入。恢复的 `version_index.json/.md` 保留原 WSL 索引路径，不能作为当前 Windows 路径解析器。
 
@@ -91,8 +99,8 @@ v1 研究线已冻结在 v79：固定 label-only normalization 的八维 support
 - [Architecture And Boundaries](docs/architecture/v1_single_shot_distillation.md)：最终推理契约、模块职责和硬件化顺序。
 - [Stage Guide](docs/operations/stage_guide.md)：stage 分类、命令模板、checkpoint 和验收规则。
 - [Output Guide](docs/operations/output_artifact_notes.md)：图片、tensor bundle 和光学诊断语义。
-- [Current Handoff](docs/status/current_handoff.md)：当前合同、有效证据、停止规则和下一决策门。
-- [Capacity-map Hypothesis Ledger](docs/status/capacity_map_hypothesis_ledger.md)：当前 research 假设、归因边界和唯一下一动作。
+- [Current Handoff](docs/status/current_handoff.md)：当前正式基线、活动研究、有效证据、允许动作或停止边界；其中带日期的旧条目仅作历史 provenance。
+- [Capacity-map Hypothesis Ledger](docs/status/capacity_map_hypothesis_ledger.md)：已关闭 O0/H-SCED capacity 假设的历史归因与边界；当前 N3 入口见 Current Handoff。
 - [Fiber / Electronic O0 Status](docs/status/v2_fiber_image_generation_v1.md)：fiber 路线状态；electronic O0 当前决策以 capacity ledger 为准。
 - [Experiment History](docs/status/experiment_history.md)：历史 baseline、负实验、seed sweep 和复验记录。
 - [Git Branch Management](docs/operations/git_branch_management.md)：稳定分支治理、现场核验与安全回档。

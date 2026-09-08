@@ -27,7 +27,7 @@ main (660763e, scaffold)
 `ae3273d` 以有效 evaluation failure 收口，维护提交不会推送或整合到远端。旧 v2
 teacher/prototype/capacity 内容仍可从 archive 追溯，但不再是当前命令来源。
 
-为便于不切换分支地查阅证据，`e21dba1` 中原有的 v68–v79 交接全文已逐字归档到 [v68–v79 原始主线交接归档](../archive/current_handoff_v68_v79_archive.md)。归档不定义当前行为；当前状态仍以 [当前主线交接](../status/current_handoff.md) 为准。
+为便于不切换分支地查阅证据，`e21dba1` 中原有的 v68–v79 交接全文已逐字归档到 [v68–v79 原始主线交接归档](../archive/current_handoff_v68_v79_archive.md)。归档不定义当前行为；当前状态仍以 [当前正式基线与活动研究交接](../status/current_handoff.md) 为准。
 
 ## 本地分支
 

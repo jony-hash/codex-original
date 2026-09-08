@@ -2,7 +2,7 @@
 
 本路径保留为稳定入口，不再重复维护会过时的“当前状态”正文。
 
-- 当前正式状态、关闭路线和唯一下一动作：
+- 当前正式状态、关闭路线和允许动作/停止边界：
   [current handoff](current_handoff.md)
 - 当前 capacity-map 假设、状态和归因边界：
   [capacity-map hypothesis ledger](capacity_map_hypothesis_ledger.md)

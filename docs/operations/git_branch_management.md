@@ -36,7 +36,7 @@ git log --oneline --decorate -20
 - 默认使用 `git show` 或 detached read-only inspection 查看历史，不覆盖当前工作树。
 - 工作树有修改时，不运行 `reset --hard`、`checkout -- <path>` 或会丢失改动的清理命令。
 - 回档前明确目标 ref、涉及路径、需要保留的用户修改和恢复方式；只回退请求范围内内容。
-- `outputs/`、`data/raw/`、`.tmp/`、`legacy/` 和未提交研究工件不随 Git ref 操作清理。
+- `outputs/`、`data/raw/`、`.tmp/`、显式标记的 legacy namespaces 和未提交研究工件不随 Git ref 操作清理。
 - 历史 evidence 只能由其原合同消费；切到旧 commit 不会自动恢复当前 acceptance 权限。
 
 ## 发布规则

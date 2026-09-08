@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 import torch
+import ldm_project.v2.evidence.io as evidence_io
 
 from ldm_project.v2.evidence import (
     EvidenceContextV2,
@@ -13,6 +14,7 @@ from ldm_project.v2.evidence import (
     GateResult,
     atomic_write_json,
     atomic_write_new_json,
+    canonical_sha256,
     file_sha256,
     require_input_hashes,
     safe_torch_load,
@@ -84,6 +86,54 @@ def test_safe_artifact_load_checks_digest_before_deserialization(tmp_path: Path)
     assert torch.equal(safe_torch_load(path, expected_sha256=file_sha256(path)), torch.ones(2))
     with pytest.raises(ValueError, match="content no longer matches"):
         safe_torch_load(path, expected_sha256="0" * 64)
+
+
+def test_safe_artifact_load_preserves_loader_operational_errors(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    path = tmp_path / "tensor.pt"
+    path.write_bytes(b"placeholder")
+
+    def raise_operational_error(*args: object, **kwargs: object) -> object:
+        raise OSError("device unavailable")
+
+    monkeypatch.setattr(evidence_io.torch, "load", raise_operational_error)
+    with pytest.raises(OSError, match="device unavailable"):
+        safe_torch_load(path)
+
+
+def test_tensor_artifact_ref_preserves_loader_operational_errors(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    path = tmp_path / "tensor.pt"
+    path.write_bytes(b"placeholder")
+
+    def raise_operational_error(*args: object, **kwargs: object) -> object:
+        raise RuntimeError("loader unavailable")
+
+    monkeypatch.setattr(evidence_io, "safe_torch_load", raise_operational_error)
+    with pytest.raises(RuntimeError, match="loader unavailable"):
+        tensor_artifact_ref(path, role="tensor")
+
+
+def test_artifact_validation_preserves_loader_operational_errors(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    path = tmp_path / "tensor.pt"
+    torch.save(torch.ones(2), path)
+    artifact = tensor_artifact_ref(path, role="tensor")
+
+    def raise_operational_error(*args: object, **kwargs: object) -> object:
+        raise RuntimeError("loader bug")
+
+    monkeypatch.setattr(evidence_io, "safe_torch_load", raise_operational_error)
+    with pytest.raises(RuntimeError, match="loader bug"):
+        artifact.validate()
+
+
+def test_canonical_sha256_rejects_unsupported_object() -> None:
+    with pytest.raises(TypeError, match="cannot canonically serialize"):
+        canonical_sha256(_UnsafeCheckpointPayload())
+
+
+def test_canonical_sha256_preserves_optimizer_compatibility() -> None:
+    parameter = torch.nn.Parameter(torch.ones(2))
+    optimizer = torch.optim.Adam([parameter], lr=0.001)
+    assert canonical_sha256(optimizer) == canonical_sha256(vars(optimizer))
 
 
 def test_tensor_artifact_validation_rejects_tampering(tmp_path: Path) -> None:
