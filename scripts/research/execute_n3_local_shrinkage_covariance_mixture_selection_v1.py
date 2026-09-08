@@ -150,7 +150,7 @@ def _load_contract(repo_root: Path) -> dict[str, Any]:
     _require(contract.get("schema") == "n3_unsupervised_local_shrinkage_covariance_mixture_producer_contract.v1", "contract schema changed")
     _require(contract.get("task_id") == "DEFINE_N3_UNSUPERVISED_LOCAL_SHRINKAGE_COVARIANCE_MIXTURE_CONTRACT_V1", "contract task changed")
     _require(contract.get("gate") == contract["task_id"], "contract gate changed")
-    _require(contract.get("classification") == "DEFINE_N3_UNSUPERVISED_LOCAL_SHRINKAGE_COVARIANCE_MIXTURE_PRODUCER_CONTRACT_V1_READY", "contract is not ready")
+    _require(contract.get("classification") == "DEFINE_N3_UNSUPERVISED_LOCAL_SHRINKAGE_COVARIANCE_MIXTURE_CONTRACT_V1_READY", "contract is not ready")
     _require(contract.get("claim_classification") == "N3_LOCAL_COVARIANCE_HETEROGENEITY_MODEL_ASSUMPTION_DEFINED", "contract claim boundary changed")
 
     domain = _mapping(contract.get("component_count_domain"), "component_count_domain")
