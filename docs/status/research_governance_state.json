@@ -2,9 +2,9 @@
   "schema_version": 1,
   "kind": "research_governance_state",
   "policy_id": "RESEARCH_GOVERNANCE_SIMPLIFICATION_V1",
-  "active_objective": "N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_PRODUCER_CONTRACT_DEFINED_NOT_EXECUTED",
+  "active_objective": "N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_PRODUCER_EXECUTED_NOT_SUPPORTED",
   "authorization_tier": "R0",
-  "hard_blocker": "N3_LOCAL_SHRINKAGE_COVARIANCE_MIXTURE_INCONCLUSIVE",
+  "hard_blocker": "N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_NOT_SUPPORTED",
   "evidence_aliases": {
     "DIAGONAL_GAUSSIAN_LOW_RANK_SCORE_BASELINE_V1": {
       "kind": "model_assumption",
@@ -193,6 +193,24 @@
       "real_n3_copula_fit_executed": false,
       "q_values_loaded_by_definition_consumer": false,
       "sealed_confirmation_consumed": false,
+      "verification": "verified"
+    },
+    "N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_PRODUCER": {
+      "kind": "machine_evidence",
+      "path": "outputs/20260908_v2/runs/n3_empirical_marginal_gaussian_copula_producer_v1_attempt_01/n3_empirical_marginal_gaussian_copula_producer_report.v1.json",
+      "role": "one-shot five-fold development execution of the frozen empirical-marginal Gaussian-copula producer",
+      "schema": "n3_empirical_marginal_gaussian_copula_producer_report.v1",
+      "sha256": "78b8e40f21015af8d704a89a83bb6b4043c0208386032b41b1ced4dd9bdeba7d",
+      "contract_sha256": "3edc9fee006f68eff6ba41205b7e4e6b6cbea3205080c4cb333689e554fba7a4",
+      "classification": "N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_NOT_SUPPORTED",
+      "compatible_folds": [
+        1,
+        4
+      ],
+      "all_folds_required": true,
+      "marginal_vs_joint_interpretation": "MIXED",
+      "sealed_confirmation_consumed": false,
+      "selection_scope": "DEVELOPMENT_ONLY",
       "verification": "verified"
     }
   }

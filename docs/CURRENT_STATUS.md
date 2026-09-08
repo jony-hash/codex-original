@@ -157,6 +157,30 @@ SHA-256=`3edc9fee006f68eff6ba41205b7e4e6b6cbea3205080c4cb333689e554fba7a4`，cla
 marginal fit、Gaussianization、dependence shrinkage、sampling、model selection 或 sealed
 confirmation。
 
+## N3 empirical-marginal Gaussian-copula producer execution（2026-09-08）
+
+`EXECUTE_N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_PRODUCER_V1` 已严格消费上述
+frozen contract、同一 1000-row development pool 与五折 assignment；每 fold 只用 800 fitting
+rows 建立 100 个 `R2_AMPLITUDE` empirical marginals，200 rows 仅作 held-out evaluation。
+五个 fold 的 Gaussianization、analytic `R_shrunk`、正定性和单位对角 invariant 均通过；四个
+DATA-vs-MODEL 与八个 MODEL-vs-MODEL bank 均 finite/nonnegative，且没有 positivity rejection。
+
+权威 report 为
+[`n3_empirical_marginal_gaussian_copula_producer_report.v1.json`](../outputs/20260908_v2/runs/n3_empirical_marginal_gaussian_copula_producer_v1_attempt_01/n3_empirical_marginal_gaussian_copula_producer_report.v1.json)，
+SHA-256=`78b8e40f21015af8d704a89a83bb6b4043c0208386032b41b1ced4dd9bdeba7d`，classification 为
+`N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_NOT_SUPPORTED`。只有 fold 1 和 fold 4 通过完整
+compatibility；fold 0、fold 2、fold 3 未通过，因此 all-five-fold rule 不允许 development support。
+描述性 decomposition 为 `MIXED`：fold 0/3 的 marginal 与 joint 均有残差，fold 2 的 joint
+metrics 通过但 marginal guardrails 仍失败，fold 1/4 未见该 frozen comparison 的残余失败。
+这不是对 Gaussian-copula family 的 confirmation，也不是对任何后续 intervention 的授权。
+
+sealed confirmation 仍为 `RESERVED_NOT_MATERIALIZED` 且未消费；未执行 final all-1000 fit、独立
+confirmation、novel OLS、generator、evaluator、CUDA、optimizer、backward 或 training。
+`training_authorized=false`、`formal_promotion=false` 与 `generation_readiness=not_ready` 保持。
+此前 local-shrinkage-covariance family 的 `INCONCLUSIVE` 结果保持原样，不能以本次相对表现替代
+frozen compatibility。当前唯一后续入口是独立 planning Gate，用于决定如何归因剩余 marginal/tail
+与 joint-dependence mismatch；不得自动 repair、调参、重跑或消费 sealed source。
+
 ## 本轮文档与研究导航治理（2026-09-08）
 
 本轮先完成治理/导航精简，再修复一个不改变公共合同的 evidence I/O 防御性问题。文档/导航变更

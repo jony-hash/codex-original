@@ -48,8 +48,19 @@ fit-only plotting-position empirical quantile，ties 使用 deterministic averag
 scores 使用 `n-1` 标准化与同一 analytic shrinkage dependence family，sampling 直接使用
 `R_shrunk`。Contract SHA 为
 `3edc9fee006f68eff6ba41205b7e4e6b6cbea3205080c4cb333689e554fba7a4`，claim 仅为
-`N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_MODEL_ASSUMPTION_DEFINED`；它只定义模型假设，尚未
-执行 real fit、sampling、selection 或 confirmation。
+`N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_MODEL_ASSUMPTION_DEFINED`。随后唯一一次
+`EXECUTE_N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_PRODUCER_V1` 在同一 frozen five-fold
+development evaluation 上完成：5/5 folds 的 computation、positive-definite 与 sampling
+integrity 均通过，但只有 2/5 folds 通过完整 compatibility，因此结果为
+`N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_NOT_SUPPORTED`。marginal-vs-joint decomposition
+为 `MIXED`，不能把结果解释成 marginal population truth、dependence solved 或新 producer
+family supported；report SHA 为
+`78b8e40f21015af8d704a89a83bb6b4043c0208386032b41b1ced4dd9bdeba7d`。
+
+该 one-shot 只使用 development 数据，sealed confirmation 仍为
+`RESERVED_NOT_MATERIALIZED`；final all-1000 fit、confirmation、novel OLS、generation、
+CUDA、optimizer、backward、training 均未执行。后续必须先经独立 planning Gate，不能把本次
+相对历史 family 的改善替代 frozen all-fold compatibility。
 
 这些稳定边界和当前入口分别见 [`CURRENT_STATUS.md`](CURRENT_STATUS.md) 与
 [`status/current_handoff.md`](status/current_handoff.md)；所有日期化事实、结果、被取代的下一步和

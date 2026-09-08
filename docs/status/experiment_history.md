@@ -2610,6 +2610,40 @@ diagnostics，并使用该模型自身 model-vs-model q95 reference；相对已�
 q values，未执行 real marginal/dependence fit、sampling、model selection、sealed confirmation、
 novel OLS、generator、evaluator、CUDA、optimizer、backward 或 training。
 
+### H-LOMA-GEN-N3 empirical-marginal Gaussian-copula producer execution（2026-09-08）
+
+`EXECUTE_N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_PRODUCER_V1` 是上述 frozen contract 的唯一
+development consumer。它严格复用 1000-row N3 development authority、800/200 五折 fit/held-out
+语义和 assignment SHA-256=`90277c16a0d96b895e218264f35a822564b3a46570cab73a1a1e823f063e9e32`，
+没有使用 sealed confirmation。每 fold 的 100 个 empirical marginal 使用 fit-only
+plotting-position quantiles；Gaussianized scores、`R_emp`、analytic shrinkage、对称化后的
+`R_shrunk` 和 CPU float64 sampling 均按 contract 执行。
+
+五个 fold 的 marginal fit/Gaussianization 均有限；`R_shrunk` 均通过 Cholesky、严格正特征值和
+单位对角 machine-epsilon check；四个 DATA-vs-MODEL 与八个 MODEL-vs-MODEL banks 均为
+finite/nonnegative，positivity acceptance fraction 固定为 1.0。该 execution 因此是 valid
+completed，而不是 invalid harness。完整 frozen compatibility 只有 fold 1、4 通过，fold 0、2、3
+未通过，最终 classification 为
+`N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_NOT_SUPPORTED`，不是 `INCONCLUSIVE`，因为 execution
+完整且 all-five-fold rule 给出了明确失败。权威 report 位于
+`outputs/20260908_v2/runs/n3_empirical_marginal_gaussian_copula_producer_v1_attempt_01/`
+`n3_empirical_marginal_gaussian_copula_producer_report.v1.json`，SHA-256 为
+`78b8e40f21015af8d704a89a83bb6b4043c0208386032b41b1ced4dd9bdeba7d`。
+
+该结果的 descriptive decomposition 为 `MIXED`：fold 0/3 的 marginal 与 joint guardrails
+均有残差；fold 2 的 joint metrics 在自身 model-vs-model q95 内，但 marginal guardrails
+仍有失败；fold 1/4 的 marginal 与 joint guardrails 均在 reference 内。这个 decomposition
+不改变总体 frozen classification，也不能把 empirical marginal 或 Gaussian copula 解释为
+科学支持。相对历史 diagonal-Gaussian baseline 的改善、以及 local-shrinkage-covariance
+mixture 的既有 `INCONCLUSIVE` 结果，都不能替代本次 all-fold compatibility。
+
+sealed confirmation 仍为 `RESERVED_NOT_MATERIALIZED`；没有 final all-1000 fit、independent
+confirmation、novel complex OLS、generator、evaluator、CUDA、optimizer、backward 或 training。
+`training_authorized=false`、`formal_promotion=false`、`generation_readiness=not_ready` 保持。
+本 research line 不自动启动 repair、调参、第二次 execution 或 sealed consumption；后续若继续，
+必须先登记一个独立的 planning Gate，回答剩余 marginal/tail 与 joint-dependence mismatch 的
+单一研究问题。
+
 ## 2026-09-07：H-LOMA-GEN-S3 controller semantic-geometry lineage
 
 本节补录 2026-09-07 的 S3 controller-only 研究事实；它们属于已关闭的历史/diagnostic lineage，

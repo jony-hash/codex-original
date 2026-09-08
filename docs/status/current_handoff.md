@@ -76,6 +76,17 @@
   `N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_MODEL_ASSUMPTION_DEFINED`；未执行 real fit、sampling、
   model selection 或 confirmation。未来 execution 需要独立明确授权，不得在看到结果后改变
   marginal、copula、shrinkage 或 compatibility semantics。
+- `EXECUTE_N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_PRODUCER_V1` 已按该 contract 严格执行一次，
+  report SHA 为 `78b8e40f21015af8d704a89a83bb6b4043c0208386032b41b1ced4dd9bdeba7d`，结果为
+  `N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_NOT_SUPPORTED`。五个 fold 均完成 finite/PD/单位对角
+  与 finite/nonnegative sampling 检查，但仅 fold 1、4 通过完整 compatibility；fold 0、2、3
+  失败，故不满足 all-five-fold rule。描述性 marginal-vs-joint 结果为 `MIXED`：fold 0/3
+  同时有 marginal/joint 残差，fold 2 主要剩余 marginal guardrail，fold 1/4 无残余失败。
+  这不是 harness failure，也不改变此前 local-covariance `INCONCLUSIVE` 结果。
+- 本次 execution 仍是 development-only；sealed confirmation 保持
+  `RESERVED_NOT_MATERIALIZED`、`consumed=false`，不授权 final all-1000 fit、confirmation、
+  novel OLS、generation 或 training。当前没有自动后续 producer family action；下一动作只能
+  是独立 planning Gate，明确剩余 marginal/tail 与 joint-dependence mismatch 的研究问题。
 
 ## 本轮 evidence I/O 修复（2026-09-08）
 
