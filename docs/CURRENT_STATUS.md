@@ -140,6 +140,23 @@ SHA-256=`cbd16bff7f4e382f6db702099e87da4468d3213d2959492001997e4e0fb1da5a`。
 `RESERVED_NOT_MATERIALIZED`，未执行 final all-1000-row fit、独立 confirmation、novel OLS、
 generator、evaluator、CUDA、optimizer、backward 或 training。
 
+## N3 empirical-marginal Gaussian-copula producer contract（2026-09-08）
+
+在 local-shrinkage-covariance family 于当前 evidence boundary `INCONCLUSIVE` 后，
+`DEFINE_N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_PRODUCER_CONTRACT_V1` 定义了一个唯一候选的
+non-Gaussian-marginal amplitude producer。每个 `R2_AMPLITUDE` 坐标只从 800-row fitting bank
+建立 plotting-position empirical marginal；ties 使用 average rank，`Phi^{-1}` 不使用 epsilon
+clamp。Gaussianized scores 使用 `n-1` 做标准化与 dependence matrix，复用既有 analytic
+shrinkage，sampling 直接使用 `R_shrunk`，不做 unit-diagonal re-normalization。
+
+权威 contract 为
+[`n3_empirical_marginal_gaussian_copula_producer_contract.v1.json`](../outputs/20260908_v2/runs/n3_empirical_marginal_gaussian_copula_producer_contract_v1_attempt_01/n3_empirical_marginal_gaussian_copula_producer_contract.v1.json)，
+SHA-256=`3edc9fee006f68eff6ba41205b7e4e6b6cbea3205080c4cb333689e554fba7a4`，classification 为
+`DEFINE_N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_PRODUCER_CONTRACT_V1_READY`，claim 仅为
+`N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_MODEL_ASSUMPTION_DEFINED`。本轮没有执行 real N3
+marginal fit、Gaussianization、dependence shrinkage、sampling、model selection 或 sealed
+confirmation。
+
 ## 本轮文档与研究导航治理（2026-09-08）
 
 本轮先完成治理/导航精简，再修复一个不改变公共合同的 evidence I/O 防御性问题。文档/导航变更

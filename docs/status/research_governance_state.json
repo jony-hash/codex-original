@@ -2,9 +2,9 @@
   "schema_version": 1,
   "kind": "research_governance_state",
   "policy_id": "RESEARCH_GOVERNANCE_SIMPLIFICATION_V1",
-  "active_objective": "N3_LOCAL_SHRINKAGE_COVARIANCE_MIXTURE_INCONCLUSIVE",
+  "active_objective": "N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_PRODUCER_CONTRACT_DEFINED_NOT_EXECUTED",
   "authorization_tier": "R0",
-  "hard_blocker": "N3_LOCAL_LOCATION_MIXTURE_NOT_SUPPORTED",
+  "hard_blocker": "N3_LOCAL_SHRINKAGE_COVARIANCE_MIXTURE_INCONCLUSIVE",
   "evidence_aliases": {
     "DIAGONAL_GAUSSIAN_LOW_RANK_SCORE_BASELINE_V1": {
       "kind": "model_assumption",
@@ -177,6 +177,22 @@
       "compatible_K": [],
       "sealed_confirmation_consumed": false,
       "selection_scope": "DEVELOPMENT_ONLY",
+      "verification": "verified"
+    },
+    "N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_CONTRACT": {
+      "kind": "machine_evidence",
+      "path": "outputs/20260908_v2/runs/n3_empirical_marginal_gaussian_copula_producer_contract_v1_attempt_01/n3_empirical_marginal_gaussian_copula_producer_contract.v1.json",
+      "role": "frozen one-shot empirical-marginal Gaussian-copula producer contract",
+      "schema": "n3_empirical_marginal_gaussian_copula_producer_contract.v1",
+      "sha256": "3edc9fee006f68eff6ba41205b7e4e6b6cbea3205080c4cb333689e554fba7a4",
+      "parent_local_covariance_contract_sha256": "2cb596abe61deeaa847b90c74654c5abe0e94aae18a6f252170f8149ad1c1550",
+      "parent_local_covariance_selection_sha256": "cbd16bff7f4e382f6db702099e87da4468d3213d2959492001997e4e0fb1da5a",
+      "classification": "DEFINE_N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_PRODUCER_CONTRACT_V1_READY",
+      "claim_classification": "N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_MODEL_ASSUMPTION_DEFINED",
+      "candidate_family_count": 1,
+      "real_n3_copula_fit_executed": false,
+      "q_values_loaded_by_definition_consumer": false,
+      "sealed_confirmation_consumed": false,
       "verification": "verified"
     }
   }

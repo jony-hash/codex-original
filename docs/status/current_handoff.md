@@ -68,6 +68,14 @@
   NOT_SUPPORTED，不得修改 Stage-1/Stage-2 合同、增加 K、改变 `n_k<2` 语义、消费 sealed
   source、启动 selector V3、generation 或重跑此前 local-location line。任何后续研究必须先有
   独立 planning Gate。
+- `DEFINE_N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_PRODUCER_CONTRACT_V1` 已完成并冻结一个
+  单一 candidate family：fit-only empirical marginal quantile functions 加一个 regularized
+  Gaussianized-score dependence matrix。Contract SHA 为
+  `3edc9fee006f68eff6ba41205b7e4e6b6cbea3205080c4cb333689e554fba7a4`，classification 为
+  `DEFINE_N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_PRODUCER_CONTRACT_V1_READY`，claim 仅为
+  `N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_MODEL_ASSUMPTION_DEFINED`；未执行 real fit、sampling、
+  model selection 或 confirmation。未来 execution 需要独立明确授权，不得在看到结果后改变
+  marginal、copula、shrinkage 或 compatibility semantics。
 
 ## 本轮 evidence I/O 修复（2026-09-08）
 

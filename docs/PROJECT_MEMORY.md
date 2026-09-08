@@ -43,6 +43,14 @@ candidate-fold 均收敛，但 Stage-2 的 `n_k<2` 在 K=2/4/8 分别造成 1/2/
 `N3_LOCAL_SHRINKAGE_COVARIANCE_MIXTURE_INCONCLUSIVE`，没有 selected K，不能解释为 covariance
 heterogeneity supported 或 producer family established。
 
+随后定义了唯一的 empirical-marginal Gaussian-copula candidate：每个 `R2_AMPLITUDE` 坐标使用
+fit-only plotting-position empirical quantile，ties 使用 deterministic average rank，Gaussianized
+scores 使用 `n-1` 标准化与同一 analytic shrinkage dependence family，sampling 直接使用
+`R_shrunk`。Contract SHA 为
+`3edc9fee006f68eff6ba41205b7e4e6b6cbea3205080c4cb333689e554fba7a4`，claim 仅为
+`N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_MODEL_ASSUMPTION_DEFINED`；它只定义模型假设，尚未
+执行 real fit、sampling、selection 或 confirmation。
+
 这些稳定边界和当前入口分别见 [`CURRENT_STATUS.md`](CURRENT_STATUS.md) 与
 [`status/current_handoff.md`](status/current_handoff.md)；所有日期化事实、结果、被取代的下一步和
 machine-evidence 路径集中见 [`experiment_history.md`](status/experiment_history.md)。本文件不复制

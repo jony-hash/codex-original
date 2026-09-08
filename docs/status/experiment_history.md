@@ -2584,6 +2584,32 @@ invalid。权威 report 位于
 all-1000 fit、独立 confirmation、novel OLS、generator、evaluator、CUDA、optimizer、backward
 或 training。
 
+### H-LOMA-GEN-N3 empirical-marginal Gaussian-copula producer contract（2026-09-08）
+
+在 local-shrinkage-covariance mixture 于当前 development evidence boundary 得到
+`N3_LOCAL_SHRINKAGE_COVARIANCE_MIXTURE_INCONCLUSIVE` 后，
+`DEFINE_N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_PRODUCER_CONTRACT_V1` 登记了一个单一、无
+model-order sweep 的候选 family。它保留同一 1000-row development authority 与 frozen five-fold
+assignment，未来每 fold 仅用 800 fitting rows 为每个 100 维 `R2_AMPLITUDE` 坐标建立
+plotting-position empirical marginal：`p_i=(i-0.5)/n`，quantile 在相邻点间 piecewise-linear，
+尾部返回 observed endpoint；ties 以 average rank 产生严格 interior 的 Gaussianization position。
+
+Gaussianized scores 的 coordinate standardization 与 dependence matrix 均冻结为 `n-1` 分母，
+依赖既有 analytic shrinkage family；最终 sampling 直接使用对称化后的 `R_shrunk`，不做
+unit-diagonal re-normalization、epsilon repair 或 positivity rejection。未来 evaluation 仍为
+800/200、q-space energy primary、covariance/norm/energy 与 aggregate/per-coordinate marginal
+diagnostics，并使用该模型自身 model-vs-model q95 reference；相对已失败 family 的改善不能
+替代 compatibility。
+
+权威 contract 位于
+`outputs/20260908_v2/runs/n3_empirical_marginal_gaussian_copula_producer_contract_v1_attempt_01/`
+`n3_empirical_marginal_gaussian_copula_producer_contract.v1.json`，SHA-256 为
+`3edc9fee006f68eff6ba41205b7e4e6b6cbea3205080c4cb333689e554fba7a4`，classification 为
+`DEFINE_N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_PRODUCER_CONTRACT_V1_READY`，claim 仅为
+`N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_MODEL_ASSUMPTION_DEFINED`。definition consumer 未加载
+q values，未执行 real marginal/dependence fit、sampling、model selection、sealed confirmation、
+novel OLS、generator、evaluator、CUDA、optimizer、backward 或 training。
+
 ## 2026-09-07：H-LOMA-GEN-S3 controller semantic-geometry lineage
 
 本节补录 2026-09-07 的 S3 controller-only 研究事实；它们属于已关闭的历史/diagnostic lineage，
