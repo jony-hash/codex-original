@@ -26,7 +26,7 @@ CONTRACT_SCHEMA = "n3_empirical_marginal_gaussian_copula_producer_contract.v1"
 CLAIM_CLASSIFICATION = "N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_MODEL_ASSUMPTION_DEFINED"
 EXPECTED_READY_CLASSIFICATION = "DEFINE_N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_PRODUCER_CONTRACT_V1_READY"
 EXPECTED_BRANCH = "research/lightgen-ols-native-semantic-generation-v1"
-EXPECTED_STARTING_HEAD = "633914703fad3585afc90226f31de3d5711a5632"
+EXPECTED_AUTHORITY_BASE_HEAD = "7dbb52032a2fa6e0b1a180c59aac034608c6f9d8"
 
 PREVIOUS_LOCAL_COVARIANCE_CONTRACT = Path(
     "outputs/20260908_v2/runs/"
@@ -238,7 +238,7 @@ def _contract_payload(
             **git,
             "contract_script": _relative(repo_root, script_path),
             "contract_script_sha256": file_sha256(script_path),
-            "starting_committed_head": EXPECTED_STARTING_HEAD,
+            "starting_committed_head": EXPECTED_AUTHORITY_BASE_HEAD,
         },
         "authorities": authorities,
         "development_identity": development,
@@ -476,8 +476,13 @@ def _write_contract(repo_root: Path, output_dir: Path, payload: Mapping[str, Any
 def execute(repo_root: Path, output_dir: Path) -> dict[str, Any]:
     git = _git_state(repo_root)
     _require(git["branch"] == EXPECTED_BRANCH, "current branch is not the N3 research authority branch")
-    _require(git["head"] == EXPECTED_STARTING_HEAD, "contract must start from the current clean N3 authority commit")
     _require(git["worktree_clean"], "contract definition must start from a clean committed state")
+    ancestry = subprocess.run(
+        ["git", "-C", str(repo_root), "merge-base", "--is-ancestor", EXPECTED_AUTHORITY_BASE_HEAD, git["head"]],
+        check=False,
+        capture_output=True,
+    )
+    _require(ancestry.returncode == 0, "current implementation HEAD is not descended from the N3 authority base")
 
     local_covariance_contract, local_covariance_selection, local_location_selection = _validate_previous_lineage(repo_root)
     authorities = comparison._verify_authorities(repo_root)
