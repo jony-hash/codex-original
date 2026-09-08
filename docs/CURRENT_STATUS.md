@@ -206,6 +206,53 @@ provenance，不能作为当前 Windows 路径解析器或 formal acceptance 输
   a read-only attribution-resolution step before any new family fit; N4 and
   generation remain blocked
 
+## H-LOMA-GEN-N3 score-geometry attribution resolution（2026-09-08，Windows-native）
+
+- gate: `RESOLVE_N3_SCORE_GEOMETRY_ATTRIBUTION_V1`
+- status: `valid_completed`
+- classification: `N3_SCORE_GEOMETRY_ATTRIBUTION_UNRESOLVED`
+- dominant mechanism observer: `DATA_PARTITION_OR_MOMENT_STABILITY_CONFOUND`
+- consumer commits: `5bd318b3d2ebf9c1502b4fd9a7f778e51c3b5e17`（初版）与
+  `fbd7c1a4bcc69fc5d005a2e83a4afa1934e4bdbf`（修正后 authority）
+- authoritative report:
+  `outputs/20260908_v2/runs/lightgen_n3_score_geometry_attribution_v1_attempt_02/n3_score_geometry_attribution_report.v1.json`
+- report SHA: `7d64726110eac066d62258dd7d2e50c80304a4e73b200f0c211c34422c117f11`
+- inputs remain frozen: OLS source=`d07fc3fa927796e97254fa09a8c0eceb18d6555a99590db43217a685bf0d1687`，
+  partition=`409b598aacae921da631adea553b339b56560231f9cb2cf75ce8d7e5b439242b`，
+  firewall=`b711e9d3443f3a86c803ff1f8cae1ff266634439ebe0c0d31c04e807c3841837`，
+  fit/validation banks=`21b989a13cbea8f24d3298424b200eb1727de8d04809bfbc77e1901daa888f77` /
+  `8397c886db73bb260723debd6d4eab332b6172972a055b28f770e7ca2bf3ee25`，producer state=`cd70756674660470786b92f59d27414cbc379cb61b02ad255ed3d596c6362722`。
+- frozen score decomposition uses `z=(q-mu_fit)W_99/sqrt(lambda)`，`r=99`。validation
+  `R^2` mean=`136.6551453`，excess over `99`=`37.6551453`；population-covariance identity
+  residual=`0`，mean-shift contribution=`1.4180415`（`3.7659%`），population variance-scale
+  contribution=`36.2371038`（`96.2341%`）。For the producer's `N-1` lambda convention，unbiased
+  variance-scale contribution is `36.5081201`；`rho_k` median/p05/p95=`1.29065/0.89308/2.10449`，
+  `79/99` coordinates exceed one. This is descriptive and not a new loss or score-law fit.
+- registered source ordering exposes a systematic observer trend: all `10/10` classes have positive
+  last-50 minus first-50 `R^2` mean，all `10/10` position Spearman signs are positive，pooled
+  class-stratified position association is Pearson/Spearman=`0.42148/0.44729`；score-norm
+  last-minus-first is positive in every class. This blocks interpreting the fit/validation radial
+  difference as a uniquely supported radial-mixture family.
+- diagnostic `z_tilde=(z-mean_val)/std_val` removes marginal first/second moments by construction，
+  but validation `R^2` variance remains=`1229.4863` versus chi-square-99 reference `198`，p05/p95
+  are `43.0759/159.99997` versus `77.0463/123.2252`，and maximum absolute cross-correlation is
+  `0.32705`；higher-order radial/dependence residual remains.
+- raw angular fit/validation discrepancy is covariance=`0.07762` and pairwise cosine mean/std
+  deltas=`0.01027/0.02823`；it does not dominate every within-bank reference. Strict class-local
+  reproducibility also fails because fit/validation class-profile deltas exceed both within-bank
+  references，so neither local-mixture nor non-Gaussian-dependence producer is uniquely selected.
+- no next producer family is registered（`selected_next_family=null`）；candidate status is A=true，
+  B/C/D=false. The source-position result is a confound/stability finding，not a claim that the
+  original firewall or membership is invalid. Labels remain observers only；no split membership，rank，
+  producer state，score law，or validation authority changed.
+- attempt-01 is write-once retained but not consumed: post-run self-audit found an incorrect
+  `N-1`/population radial identity implementation and an over-permissive family-selection rule。
+  It has no governance alias；attempt-02 is the only authoritative report.
+- no fit、sampling、mixture/tail/dependence model、rank reselection、N4、novel OLS、forward、CUDA、
+  optimizer、backward 或 training occurred。`training_authorized=false`、`formal_promotion=false`、
+  `generation_readiness=not_ready` 保持。唯一下一 planning task 是
+  `PLAN_N3_PARTITION_MOMENT_STABILITY_AUDIT`；在该 gate 前不得选择或实现新的 producer family。
+
 ## FINAL_MAINLINE_CLOSEOUT：H-LOMA-CBOGT Scaled-Chen reconstruction-repair mainline（2026-09-03）
 
 - Current phase: `MAINLINE CLOSEOUT`

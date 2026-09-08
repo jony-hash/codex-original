@@ -2,7 +2,7 @@
   "schema_version": 1,
   "kind": "research_governance_state",
   "policy_id": "RESEARCH_GOVERNANCE_SIMPLIFICATION_V1",
-  "active_objective": "ATTRIBUTE_N3_PRODUCER_MISMATCH_AND_SELECT_NEXT_FAMILY_V1",
+  "active_objective": "RESOLVE_N3_SCORE_GEOMETRY_ATTRIBUTION_V1",
   "authorization_tier": "R1",
   "hard_blocker": null,
   "evidence_aliases": {
@@ -55,6 +55,17 @@
       "schema": "n3_producer_mismatch_attribution_report.v1",
       "sha256": "47d810b79d800df7c6a5a54337d10b95f43d87f905419e62137185a46003c457",
       "classification": "N3_PRODUCER_MISMATCH_ATTRIBUTION_MIXED",
+      "selected_next_family": null,
+      "verification": "verified"
+    },
+    "N3_SCORE_GEOMETRY_ATTRIBUTION": {
+      "kind": "machine_evidence",
+      "path": "outputs/20260908_v2/runs/lightgen_n3_score_geometry_attribution_v1_attempt_02/n3_score_geometry_attribution_report.v1.json",
+      "role": "read-only frozen-score radial/angular and source-position attribution",
+      "schema": "n3_score_geometry_attribution_report.v1",
+      "sha256": "7d64726110eac066d62258dd7d2e50c80304a4e73b200f0c211c34422c117f11",
+      "classification": "N3_SCORE_GEOMETRY_ATTRIBUTION_UNRESOLVED",
+      "dominant_mechanism": "DATA_PARTITION_OR_MOMENT_STABILITY_CONFOUND",
       "selected_next_family": null,
       "verification": "verified"
     }

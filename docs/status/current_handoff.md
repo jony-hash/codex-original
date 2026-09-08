@@ -14,8 +14,8 @@ training authorization 或 historical artifact。
 
 普通交接采用 [`delta_one_gate_short_prompt.md`](../operations/delta_one_gate_short_prompt.md)
 的 R0–R3 风险层、one-outer-Gate 和 semantic authority ID；完整 child Hash 只留在其
-machine consumer。当前 N3 只把下一步表示为 `DEFINE_N3_LOW_RANK_MODEL_ORDER_CONTRACT_V1`
-的 future planning task，不执行 fit、SVD、rank selection、sampling、forward、CUDA 或 generation。
+machine consumer。N3 的 `RESOLVE_N3_SCORE_GEOMETRY_ATTRIBUTION_V1` 已完成只读归因；当前下一步是
+`PLAN_N3_PARTITION_MOMENT_STABILITY_AUDIT`，仍不执行 fit、SVD、rank selection、sampling、forward、CUDA 或 generation。
 
 ## H-LOMA-GEN OLS-native research branch genesis（2026-09-07）
 
@@ -40,8 +40,9 @@ novel OLS 与 generation 均未完成。branch genesis 未执行 positivity、fi
 sampling、optimizer/backward/CUDA、forward 或 evaluator。
 
 全局 flags 继续为 `training_authorized=false`、`generation_readiness=not_ready`、
-`formal_promotion=false`。下一 outer planning task（仅规划，不构成执行授权）：
-`DEFINE_N3_LOW_RANK_MODEL_ORDER_CONTRACT_V1`。
+`formal_promotion=false`。后续 N3 model-order、producer validation 与 score-geometry attribution
+均已由后文登记；当前下一 outer planning task（仅规划，不构成执行授权）为
+`PLAN_N3_PARTITION_MOMENT_STABILITY_AUDIT`。
 
 ## H-LOMA-GEN-N3 OLS producer data authority（2026-09-07）
 
@@ -154,6 +155,35 @@ references=`1.1681/1.1771`，但 score correlation discrepancy 未超过两组 w
 reassessment 均未达到唯一选择条件。当前只冻结失败 baseline、partition 与 firewall；labels 仅作
 observer。不得 fit 新 family、重选 rank、进入 N4、phase-source 或 novel OLS。下一步先规划一个
 只读 attribution-resolution task。
+
+## H-LOMA-GEN-N3 score-geometry attribution resolution（2026-09-08）
+
+本 Gate=`RESOLVE_N3_SCORE_GEOMETRY_ATTRIBUTION_V1` 在 clean HEAD
+`fbd7c1a4bcc69fc5d005a2e83a4afa1934e4bdbf` 上有效完成。唯一 authoritative report 为
+`outputs/20260908_v2/runs/lightgen_n3_score_geometry_attribution_v1_attempt_02/n3_score_geometry_attribution_report.v1.json`，
+SHA-256=`7d64726110eac066d62258dd7d2e50c80304a4e73b200f0c211c34422c117f11`，classification=
+`N3_SCORE_GEOMETRY_ATTRIBUTION_UNRESOLVED`。dominant mechanism observer 为
+`DATA_PARTITION_OR_MOMENT_STABILITY_CONFOUND`，不是 producer-family selection。
+
+冻结 score `z=(q-mu_fit)W_99/sqrt(lambda)` 的 validation `R^2` mean=`136.6551453`，excess=`37.6551453`；
+population covariance identity residual=`0`，mean-shift/variance-scale contributions=`1.4180415/36.2371038`
+（`3.7659%/96.2341%`）。按 producer `N-1` lambda calibration 的 unbiased variance contribution
+为=`36.5081201`；`rho_k` p05/median/p95=`0.89308/1.29065/2.10449`，`79/99` coordinates >1。
+
+最强的可复核 observer 是 source-index position：10/10 classes 的 last-50 minus first-50 `R^2`
+均为正，10/10 position Spearman 均为正，pooled class-stratified Pearson/Spearman=
+`0.42148/0.44729`；score norm 的同一差值也 10/10 为正。`z_tilde` 去除 marginal mean/std 后，
+validation radial variance=`1229.4863` 仍远离 reference `198`，p05/p95=`43.0759/159.99997`，
+max cross-correlation=`0.32705`，所以 higher-order residual 仍是 descriptive fact；但它不能在该
+partition-position confound 未先解决时支持 radial scale-mixture family。angular discrepancy 未对
+所有 within-bank references 占优，strict class-local reproducibility 也未通过。
+
+candidate A=true、B/C/D=false，`selected_next_family=null`。attempt-01 因初版 population/N-1
+identity 与过宽 family gate 仅保留、不消费；attempt-02 才是 authority。没有修改 split membership、
+rank、producer state、score law 或 firewall；没有 fit/sample/mixture/tail/forward/CUDA/optimizer/
+backward/training/N4。治理 flags 仍为 `training_authorized=false`、`formal_promotion=false`、
+`generation_readiness=not_ready`，N4 与 generation 继续 blocked。唯一下一 planning task：
+`PLAN_N3_PARTITION_MOMENT_STABILITY_AUDIT`。
 
 ## H-LOMA-GEN-S3 Controller semantic-geometry one-shot repair postmortem（2026-09-07）
 

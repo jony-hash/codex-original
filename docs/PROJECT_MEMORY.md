@@ -197,6 +197,41 @@ producer-family model assumption；labels 仍仅为 diagnostic observer，不成
 新的只读 attribution-resolution 规划，区分 partition drift、local heterogeneity、radial tail 与
 residual dependence；不得直接 fit 新 family、改变 rank 或进入 N4/novel OLS。
 
+## H-LOMA-GEN-N3 score-geometry attribution resolution（2026-09-08）
+
+`RESOLVE_N3_SCORE_GEOMETRY_ATTRIBUTION_V1` 在 clean authority HEAD
+`fbd7c1a4bcc69fc5d005a2e83a4afa1934e4bdbf` 上完成。权威 report 为
+`outputs/20260908_v2/runs/lightgen_n3_score_geometry_attribution_v1_attempt_02/n3_score_geometry_attribution_report.v1.json`，
+SHA-256=`7d64726110eac066d62258dd7d2e50c80304a4e73b200f0c211c34422c117f11`；
+classification=`N3_SCORE_GEOMETRY_ATTRIBUTION_UNRESOLVED`，dominant mechanism observer=
+`DATA_PARTITION_OR_MOMENT_STABILITY_CONFOUND`。它只消费 OLS_PRODUCER_DATA_V1、冻结
+`r=99` diagonal-Gaussian amplitude baseline、失败 validation report、前一轮 mixed attribution
+与 source-index/class metadata；所有输入 hash 前后不变。
+
+对冻结 score `z=(q-mu_fit)W_99/sqrt(lambda)`，validation `R^2` mean=`136.6551453`，
+excess=`37.6551453`。用 population covariance 的 exact identity
+`E||z||²=||m||²+trace(C)`，identity residual=`0`；mean-shift contribution=`1.4180415`，
+variance-scale contribution=`36.2371038`，对应 `3.7659%/96.2341%`。按 producer `N-1` lambda
+calibration 另报 unbiased contribution=`36.5081201`，`rho_k` p05/median/p95=`0.89308/1.29065/2.10449`，
+`79/99` coordinates exceed one；没有据此拟合或注册 scale law。
+
+按已注册的每类 source-index ascending order，10 个 class 的 last-50 minus first-50 `R^2`
+均为正，10 个 position/R² Spearman 也均为正；pooled class-stratified Pearson/Spearman=
+`0.42148/0.44729`，score norm 的 last-minus-first 在 10 个 class 也均为正。因此 source-position
+drift/stability confound 必须先于任何 producer-family interpretation 消费。observer normalization
+去除 marginal mean/std 后，validation radial variance 仍为=`1229.4863`（Gaussian reference=`198`），
+p05/p95=`43.0759/159.99997`（reference=`77.0463/123.2252`），max cross-correlation=`0.32705`；
+higher-order radial/dependence residual 仍存在。angular cross-bank discrepancy 没有对所有
+within-bank reference 同时占优，class-local strict reproducibility 也未通过。
+
+因此 candidate A 仅作为 dominant confound observer，B radial scale mixture、C local mixture、D
+non-Gaussian dependence 均为 false；`selected_next_family=null`，不注册新的 producer model
+assumption。attempt-01 因初版 population/N-1 identity 与 family gate harness 缺陷保留但不消费；
+attempt-02 是唯一 authority。labels 仍为 observer，partition membership、rank、producer state、
+score law、N4 与 generation 均不变；`training_authorized=false`、`formal_promotion=false`、
+`generation_readiness=not_ready` 保持。下一 planning task 为
+`PLAN_N3_PARTITION_MOMENT_STABILITY_AUDIT`，在其通过前不得 fit 新 family。
+
 ## H-LOMA-GEN-S3 Controller semantic-geometry one-shot repair postmortem（2026-09-07）
 
 `S3_ONE_SHOT_REPAIR_POSTMORTEM_COMPLETE` 已正式登记。该只读 postmortem 消费并核对 historical
