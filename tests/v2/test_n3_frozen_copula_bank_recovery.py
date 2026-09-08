@@ -15,11 +15,17 @@ def test_historical_report_exposes_complete_unique_bank_identity() -> None:
     assert len({item["expected_q_sha256"] for item in records}) == 60
 
 
-def test_existing_search_does_not_consume_unrelated_tensor_artifacts() -> None:
+def test_existing_search_only_accepts_exact_historical_bank_artifacts() -> None:
     repo_root = Path(__file__).resolve().parents[2]
     search = recovery._search_existing_artifacts(repo_root)
-    assert search["complete_existing_artifact_available"] is False
     assert search["partial_or_unverified_candidates_consumed"] is False
+    assert search["complete_existing_artifact_available"] is (
+        len(search["complete_exact_historical_matches"]) == 1
+    )
+    assert all(
+        path.endswith("n3_frozen_copula_generated_banks.v1.pt")
+        for path in search["complete_exact_historical_matches"]
+    )
 
 
 def test_bank_key_binds_fold_role_and_replicate() -> None:
