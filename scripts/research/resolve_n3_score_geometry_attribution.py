@@ -192,7 +192,7 @@ def _radial_profile(scores: torch.Tensor) -> dict[str, Any]:
     radial = view.square().sum(dim=1)
     covariance, correlation = _covariance_and_correlation(view)
     reference_quantiles = _chi_square_quantiles(RADIAL_PROBABILITIES)
-    quantiles = _quantile_map(radial, torch.tensor(RADIAL_PROBABILITIES, dtype=torch.float64))
+    quantiles = _quantile_map(radial, RADIAL_PROBABILITIES)
     return {
         "count": int(view.shape[0]),
         "dimension": int(view.shape[1]),
@@ -228,23 +228,27 @@ def _radial_mean_decomposition(
     view = scores.to(torch.float64).cpu().contiguous()
     h = latent_coordinates.to(torch.float64).cpu().contiguous()
     lambdas = lambda_values.to(torch.float64).cpu().contiguous()
-    covariance, _ = _covariance_and_correlation(view)
+    centered = view - view.mean(dim=0, keepdim=True)
+    covariance_population = centered.T.mm(centered).div(float(view.shape[0]))
+    covariance_unbiased = centered.T.mm(centered).div(float(view.shape[0] - 1))
     mean = view.mean(dim=0)
     radial = view.square().sum(dim=1)
-    trace = float(torch.trace(covariance))
+    population_trace = float(torch.trace(covariance_population))
+    unbiased_trace = float(torch.trace(covariance_unbiased))
     mean_shift = float(mean.square().sum())
-    variance_contribution = trace - float(RANK)
+    variance_contribution = population_trace - float(RANK)
     radial_mean = float(radial.mean())
     excess = radial_mean - float(RANK)
-    identity_residual = radial_mean - (mean_shift + trace)
+    identity_residual = radial_mean - (mean_shift + population_trace)
     fractions = None
     if abs(excess) > 1.0e-12:
         fractions = {
             "mean_shift_fraction_of_excess": mean_shift / excess,
             "variance_scale_fraction_of_excess": variance_contribution / excess,
         }
-    rho = h.var(dim=0, unbiased=True) / lambdas
-    positive_excess = (rho - 1.0).clamp_min(0.0)
+    rho_unbiased = h.var(dim=0, unbiased=True) / lambdas
+    rho_population = h.var(dim=0, unbiased=False) / lambdas
+    positive_excess = (rho_unbiased - 1.0).clamp_min(0.0)
     order = torch.argsort(positive_excess, descending=True)
     total_positive = float(positive_excess.sum())
     top_shares: dict[str, float | None] = {}
@@ -256,21 +260,24 @@ def _radial_mean_decomposition(
     else:
         top_shares = {f"top_{count}_positive_variance_excess_share": None for count in (1, 5, 10)}
     return {
-        "formula": "E[||z||^2] = ||E[z]||^2 + trace(C_z), C_z=(z-E[z])^T(z-E[z])/(N-1)",
+        "formula": "E[||z||^2] = ||E[z]||^2 + trace(C_z), C_z=(z-E[z])^T(z-E[z])/N",
         "count": int(view.shape[0]),
         "dimension": int(view.shape[1]),
         "radial_r2_mean": radial_mean,
         "radial_r2_excess_over_rank": excess,
         "mean_shift_norm_squared": mean_shift,
-        "variance_trace": trace,
+        "variance_trace_population": population_trace,
+        "variance_trace_unbiased_N_minus_1": unbiased_trace,
         "variance_scale_contribution_trace_minus_rank": variance_contribution,
+        "variance_scale_contribution_unbiased_trace_minus_rank": unbiased_trace - float(RANK),
         "identity_residual": identity_residual,
         "identity_residual_abs": abs(identity_residual),
         "contribution_fractions_of_radial_excess": fractions,
-        "rho_k_definition": "Var(h_k)_bank / lambda_k, h=(q-mu_fit)W_99",
-        "rho_k_summary": _summary(rho),
-        "rho_k_fraction_greater_than_one": float((rho > 1.0).to(torch.float64).mean()),
-        "rho_k_count_greater_than_one": int((rho > 1.0).sum()),
+        "rho_k_definition": "unbiased Var(h_k)_bank / lambda_k, h=(q-mu_fit)W_99; lambda uses n_fit-1",
+        "rho_k_summary": _summary(rho_unbiased),
+        "rho_k_population_summary": _summary(rho_population),
+        "rho_k_fraction_greater_than_one": float((rho_unbiased > 1.0).to(torch.float64).mean()),
+        "rho_k_count_greater_than_one": int((rho_unbiased > 1.0).sum()),
         "rho_k_positive_variance_excess_summary": _summary(positive_excess),
         "rho_k_positive_excess_concentration": top_shares,
         "rho_k_positive_excess_count": int((positive_excess > 0.0).sum()),
@@ -651,31 +658,36 @@ def _select_family(
     radial_residual = bool(normalized_radial["higher_order_radial_residual_present_after_normalization"])
     angular_dominant = bool(angular_raw["cross_bank_dominates_all_angular_metrics"])
     local_reproducible = bool(class_reproducibility["reproducible_local_signature_supported"])
+    # A source-position trend is a confound/authority problem, not evidence for
+    # a new score law.  It therefore blocks producer-family selection until a
+    # separate stability/partition gate resolves it.
     candidates = {
-        FAMILY_PARTITION: source_supported and not radial_residual,
-        FAMILY_RADIAL: radial_residual and not angular_dominant and not local_reproducible,
-        FAMILY_LOCAL: radial_residual and angular_dominant and local_reproducible,
-        FAMILY_DEPENDENCE: radial_residual and angular_dominant and not local_reproducible,
+        FAMILY_PARTITION: source_supported,
+        FAMILY_RADIAL: (not source_supported) and radial_residual and not angular_dominant and not local_reproducible,
+        FAMILY_LOCAL: (not source_supported) and radial_residual and angular_dominant and local_reproducible,
+        FAMILY_DEPENDENCE: (not source_supported) and radial_residual and angular_dominant and not local_reproducible,
     }
     supported = [name for name, value in candidates.items() if value]
-    selected = supported[0] if len(supported) == 1 else None
+    selected = supported[0] if len(supported) == 1 and supported[0] != FAMILY_PARTITION else None
+    dominant_mechanism = FAMILY_PARTITION if source_supported else (selected or None)
     return {
         "classification": "N3_NEXT_PRODUCER_FAMILY_HYPOTHESIS_SELECTED" if selected else CLASSIFICATION_UNRESOLVED,
         "selected_family": selected,
+        "dominant_mechanism": dominant_mechanism,
         "candidate_status": candidates,
         "decision_basis": {
             "source_position_trend_supported": source_supported,
             "higher_order_radial_residual_after_marginal_normalization": radial_residual,
             "fit_validation_angular_discrepancy_dominates_within_references": angular_dominant,
             "class_local_signature_reproducible": local_reproducible,
-            "selection_rule": "select exactly one candidate only when its full conjunction is true; otherwise unresolved",
+            "selection_rule": "source-position confound blocks producer-family selection; otherwise select exactly one producer candidate only when its full conjunction is true",
         },
         "alternatives_rejected": {
             FAMILY_PARTITION: "requires a same-sign all-class source-position trend and no post-normalization radial residual",
             FAMILY_RADIAL: "requires residual radial structure with non-dominant angular discrepancy and no reproducible local signature",
             FAMILY_LOCAL: "requires residual radial structure, dominant global angular discrepancy, and reproducible class-local signature",
             FAMILY_DEPENDENCE: "requires residual radial structure, dominant global angular discrepancy, and no reproducible class-local signature",
-            CLASSIFICATION_UNRESOLVED: "retained whenever zero or multiple candidate conjunctions are true",
+            CLASSIFICATION_UNRESOLVED: "retained for a partition confound or whenever zero or multiple producer candidate conjunctions are true",
         },
         "no_family_fit_or_sampling": True,
     }
@@ -856,7 +868,8 @@ def execute(repo_root: Path, output_dir: Path) -> dict[str, Any]:
         },
         "mechanism_attribution": selection,
         "claims": {
-            "score_geometry_attribution_resolved": selection["selected_family"] is not None,
+            "score_geometry_attribution_resolved": selection["dominant_mechanism"] is not None,
+            "producer_family_hypothesis_selected": selection["selected_family"] is not None,
             "next_family_is_model_assumption_only": selection["selected_family"] is not None,
             "labels_not_used_as_producer_inputs": True,
             "partition_membership_unchanged": True,
