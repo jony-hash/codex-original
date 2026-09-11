@@ -13,7 +13,9 @@ import argparse
 import importlib.util
 import json
 import math
+import os
 import shutil
+import sys
 import time
 import traceback
 from datetime import datetime, timezone
@@ -40,7 +42,7 @@ RAW_OUTPUT_SCHEMA = "lightgen_2d_fixed_ols_class_direction_to_optical_output_tra
 BOOTSTRAP_SCHEMA = "lightgen_2d_fixed_ols_class_direction_to_optical_output_transfer_bootstrap.v1"
 
 EXPECTED_BRANCH = "research/lightgen-ols-native-semantic-generation-v1"
-EXPECTED_CONSUMER_HEAD = "054026ad3b44558b108888178ac2fb58aebb2f52"
+EXPECTED_CONSUMER_HEAD = "a7cd8e082ad1b09c16c5c70fb38f0459cc583779"
 V4_DIAGNOSTIC_HELPER_PATH = Path("scripts/research/diagnose_lightgen_2d_fixed_ols_generator_conditionality_v1.py")
 V4_DIAGNOSTIC_HELPER_SHA256 = "e338320d0b64d144a58177217cf8eee6f2ef8ca4855f0554accaa138644f7464"
 
@@ -117,6 +119,49 @@ def _relative(root: Path, path: Path) -> str:
     return path.resolve().relative_to(root.resolve()).as_posix()
 
 
+def _prepare_cuda_runtime_dll_search_path() -> dict[str, Any]:
+    """Expose the installed CUDA runtime DLLs to this Python process only."""
+
+    if os.name != "nt":
+        return {"status": "not_applicable", "scope": "current_python_process_only"}
+    cuda_build = torch.version.cuda
+    if not isinstance(cuda_build, str) or len(cuda_build.split(".")) != 2 or not all(part.isdigit() for part in cuda_build.split(".")):
+        raise DiagnosisBlocked(
+            "CUDA_RUNTIME_ENVIRONMENT_BLOCKER_CONFIRMED",
+            "cuda_dll_search_path",
+            "PyTorch CUDA build cannot identify its environment DLL name",
+            cuda_build=cuda_build,
+        )
+    major, minor = cuda_build.split(".")
+    environment_bin = (Path(sys.prefix) / "bin").resolve()
+    dll_path = environment_bin / f"nvrtc-builtins64_{major}{minor}.dll"
+    if not environment_bin.is_dir() or not dll_path.is_file():
+        raise DiagnosisBlocked(
+            "CUDA_RUNTIME_ENVIRONMENT_BLOCKER_CONFIRMED",
+            "cuda_dll_search_path",
+            "the installed environment does not expose the required NVRTC builtins DLL",
+            cuda_build=cuda_build,
+            environment_bin=str(environment_bin),
+            expected_dll=dll_path.name,
+            expected_dll_exists=dll_path.is_file(),
+        )
+    current_path = os.environ.get("PATH", "")
+    normalized_bin = os.path.normcase(os.path.normpath(str(environment_bin)))
+    path_entries = [entry for entry in current_path.split(os.pathsep) if entry]
+    already_present = any(os.path.normcase(os.path.normpath(entry)) == normalized_bin for entry in path_entries)
+    if not already_present:
+        os.environ["PATH"] = str(environment_bin) + (os.pathsep + current_path if current_path else "")
+    return {
+        "status": "already_present" if already_present else "prepended",
+        "scope": "current_python_process_only",
+        "cuda_build": cuda_build,
+        "environment_bin": str(environment_bin),
+        "expected_dll": dll_path.name,
+        "expected_dll_exists": True,
+        "path_changed": not already_present,
+    }
+
+
 def _load_v4_diagnostic_helper(root: Path) -> Any:
     path = _path(root, V4_DIAGNOSTIC_HELPER_PATH)
     _require(path.is_file(), "reviewed V4 diagnostic helper is unavailable")
@@ -155,6 +200,69 @@ def _summary(values: torch.Tensor) -> dict[str, float]:
 
 def _runtime_digest(v4: Any, consumer: Any) -> str:
     return v4._digest_tree(v4._cpu_tree(consumer.runtime.state_dict()))
+
+
+@torch.inference_mode()
+def _synthetic_runtime_smoke(v4: Any, consumer: Any, device: torch.device) -> dict[str, Any]:
+    """Exercise the production OLS-to-CMOS path without opening any data role."""
+
+    _require(device.type == "cuda", "synthetic runtime smoke requires the CUDA production device")
+    _require(int(consumer.runtime.config.propagation_grid_size) == PRODUCTION_GRID, "synthetic runtime smoke is not using the production propagation grid")
+    real = torch.linspace(-0.75, 0.75, 200, dtype=torch.float32).reshape(2, 100)
+    imag = torch.linspace(0.75, -0.75, 200, dtype=torch.float32).reshape(2, 100)
+    z = torch.complex(real, imag).to(device=device).contiguous()
+    before = _runtime_digest(v4, consumer)
+    try:
+        result = consumer.runtime.forward_from_ols(z)
+        raw = result.raw_camera.tensor
+        torch.cuda.synchronize(device)
+    except Exception as error:
+        diagnostic_text = " ".join(str(error).splitlines())
+        if "nvrtc-builtins64" in diagnostic_text.lower():
+            raise DiagnosisBlocked(
+                "CUDA_RUNTIME_ENVIRONMENT_BLOCKER_CONFIRMED",
+                "synthetic_runtime_smoke",
+                "the actual LightGen optical runtime still cannot execute its CUDA complex path",
+                error_type=type(error).__name__,
+                error=diagnostic_text,
+                data_roles_opened=False,
+            ) from error
+        raise
+    after = _runtime_digest(v4, consumer)
+    _require(result.z_ols.source == "external_generated", "synthetic OLS state crossed the image encoder boundary")
+    _require(tuple(result.z_ols.coefficients.shape) == (2, 100) and result.z_ols.coefficients.dtype == torch.complex64, "synthetic OLS state shape/dtype changed")
+    generator_input = result.generator_input_field.tensor
+    _finite_complex(generator_input, "synthetic generator input field")
+    _require(generator_input.device == device and tuple(generator_input.shape[-2:]) == (100, 100), "synthetic modal re-emission output changed")
+    _require(result.generator_input_field.provenance.operation == "lightgen_ols_coefficient_transmission_and_modal_reemission", "synthetic path did not use shared W_OLS")
+    _require(result.generator_input_field.provenance.parameters.get("transport") == "T=I_100_coefficient_space", "synthetic path did not use T=I_100")
+    _require(torch.equal(consumer.runtime.ols.transport.detach().cpu(), OLS_TRANSPORT), "synthetic path changed the fixed OLS transport")
+    _require(len(result.generator_records) == 2, "synthetic path did not execute the two generator phase layers")
+    _require(tuple(raw.shape) == (2, 1, 200, 200) and raw.dtype == torch.float32 and raw.device == device, "synthetic raw CMOS shape/dtype/device changed")
+    _finite(raw, "synthetic raw CMOS")
+    raw_std = float(raw.detach().std(unbiased=False).cpu())
+    _require(raw_std > 0.0, "synthetic raw CMOS output is constant")
+    _require(before == after, "synthetic runtime smoke changed the runtime state")
+    _require(all(parameter.grad is None for parameter in consumer.runtime.parameters()), "synthetic runtime smoke produced a parameter gradient")
+    return {
+        "status": "passed",
+        "data_role": "synthetic_no_data",
+        "data_roles_opened": False,
+        "input": {"shape": list(z.shape), "dtype": str(z.dtype), "device": str(z.device), "finite": True},
+        "runtime": {
+            "propagation_grid": int(consumer.runtime.config.propagation_grid_size),
+            "modal_projection_reemission": True,
+            "transport": "T=I_100_coefficient_space",
+            "shared_w_ols": True,
+            "generator_layers": len(result.generator_records),
+        },
+        "raw_cmos": {"shape": list(raw.shape), "dtype": str(raw.dtype), "device": str(raw.device), "finite": True, "nonconstant": True, "std": raw_std},
+        "state_unchanged": True,
+        "gradients_none": True,
+        "optimizer_created": False,
+        "backward_executed": False,
+        "optical_update_executed": False,
+    }
 
 
 def _validate_z(z: torch.Tensor, batch_size: int, name: str) -> None:
@@ -668,7 +776,23 @@ def run_diagnosis(repo_root: Path | None = None, output_dir: Path | None = None)
         v4_diag = _load_v4_diagnostic_helper(root)
         v4 = v4_diag._load_module(root)
         preflight, _contract, contract_authorities, v3_authority, _preflight_authority, v4_authority = v4_diag._resolve_authorities(root, v4, started)
-        device, device_facts = preflight._cuda_device_facts()
+        cuda_environment = _prepare_cuda_runtime_dll_search_path()
+        payload["runtime_readiness"] = {"cuda_dll_search_path": cuda_environment, "scientific_data_accessed": False}
+        try:
+            device, device_facts = preflight._cuda_device_facts()
+        except Exception as error:
+            details = getattr(error, "details", {})
+            diagnostic_text = " ".join(str(details.get("error", error)).splitlines())
+            if "nvrtc-builtins64" in diagnostic_text.lower():
+                raise DiagnosisBlocked(
+                    "CUDA_RUNTIME_ENVIRONMENT_BLOCKER_CONFIRMED",
+                    "cuda_backend",
+                    "CUDA device facts and the actual runtime share an unavailable NVRTC builtins DLL",
+                    error_type=type(error).__name__,
+                    error=diagnostic_text,
+                    data_roles_opened=False,
+                ) from error
+            raise
         _require(tuple(device_facts.get("compute_capability", ())) == EXPECTED_COMPUTE_CAPABILITY, "diagnosis target compute capability changed")
         _require(int(device_facts.get("vram_bytes", 0)) >= EXPECTED_VRAM_BYTES, "diagnosis target VRAM is below the accepted V4 target")
         _require(shutil.disk_usage(target.parent).free >= MIN_FREE_BYTES_FOR_OUTPUT, "insufficient output storage headroom")
@@ -679,6 +803,8 @@ def run_diagnosis(repo_root: Path | None = None, output_dir: Path | None = None)
         frozen.eval()
         smooth.eval()
         smooth_identity = v4_diag._validate_smooth_evaluator_identity(contract_authorities, evaluator_states)
+        payload["runtime_readiness"]["synthetic_runtime_smoke"] = _synthetic_runtime_smoke(v4, consumer, device)
+        payload["runtime_readiness"]["ready_before_scientific_data"] = True
         authorities = _authority_payload(root, v4_diag, v4, preflight, contract_authorities, v3_authority, v4_authority, smooth_identity)
         images, labels, train_indices, development_indices, selection_indices, dataset = v4._load_roles(root, preflight)
         _require(selection_indices.numel() == DEVELOPMENT_SELECTION_ROWS, "fixed DEV selection row count changed")

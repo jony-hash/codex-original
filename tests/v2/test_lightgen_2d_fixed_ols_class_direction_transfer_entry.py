@@ -119,6 +119,17 @@ def test_pre_scientific_entry_smoke_uses_canonical_v4_evaluator_loader(monkeypat
     monkeypatch.setattr(entrypoint, "_load_v4_diagnostic_helper", lambda root: v4_diag)
     monkeypatch.setattr(
         entrypoint,
+        "_prepare_cuda_runtime_dll_search_path",
+        lambda: calls.append("cuda_environment") or {"status": "fixture", "scope": "current_python_process_only"},
+    )
+    monkeypatch.setattr(
+        entrypoint,
+        "_synthetic_runtime_smoke",
+        lambda v4, consumer, device: calls.append("synthetic_runtime_smoke")
+        or {"status": "passed", "data_role": "synthetic_no_data", "data_roles_opened": False},
+    )
+    monkeypatch.setattr(
+        entrypoint,
         "git_facts",
         lambda root: {
             "branch": entrypoint.EXPECTED_BRANCH,
@@ -156,6 +167,7 @@ def test_pre_scientific_entry_smoke_uses_canonical_v4_evaluator_loader(monkeypat
     assert calls == [
         "v4_module",
         "authority_resolution",
+        "cuda_environment",
         "device_preflight",
         "v2_contract",
         "runtime_assembly",
@@ -164,7 +176,70 @@ def test_pre_scientific_entry_smoke_uses_canonical_v4_evaluator_loader(monkeypat
         "frozen_eval",
         "smooth_eval",
         "smooth_identity",
+        "synthetic_runtime_smoke",
         "roles_entry",
     ]
     assert captured["smooth_identity"]["cross_domain_equality_required"] is False
     assert captured["authority_payload_smooth_identity"] == captured["smooth_identity"]
+
+
+def test_cuda_runtime_dll_search_path_is_environment_local(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    entrypoint = _load_entrypoint()
+    environment_bin = tmp_path / "bin"
+    environment_bin.mkdir()
+    (environment_bin / "nvrtc-builtins64_121.dll").write_bytes(b"fixture")
+    monkeypatch.setattr(entrypoint.os, "name", "nt")
+    monkeypatch.setattr(entrypoint.sys, "prefix", str(tmp_path))
+    monkeypatch.setattr(entrypoint.torch.version, "cuda", "12.1")
+    monkeypatch.setenv("PATH", "fixture-existing-path")
+
+    result = entrypoint._prepare_cuda_runtime_dll_search_path()
+
+    assert result["status"] == "prepended"
+    assert result["scope"] == "current_python_process_only"
+    assert result["expected_dll"] == "nvrtc-builtins64_121.dll"
+    assert result["expected_dll_exists"] is True
+    assert result["path_changed"] is True
+    assert result["environment_bin"] == str(environment_bin.resolve())
+    assert entrypoint.os.environ["PATH"].split(entrypoint.os.pathsep)[0] == str(environment_bin.resolve())
+
+
+def test_cuda_runtime_dll_search_path_missing_is_fail_closed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    entrypoint = _load_entrypoint()
+    monkeypatch.setattr(entrypoint.os, "name", "nt")
+    monkeypatch.setattr(entrypoint.sys, "prefix", str(tmp_path))
+    monkeypatch.setattr(entrypoint.torch.version, "cuda", "12.1")
+
+    with pytest.raises(entrypoint.DiagnosisBlocked) as caught:
+        entrypoint._prepare_cuda_runtime_dll_search_path()
+
+    assert caught.value.classification == "CUDA_RUNTIME_ENVIRONMENT_BLOCKER_CONFIRMED"
+    assert caught.value.stage == "cuda_dll_search_path"
+    assert caught.value.details["expected_dll"] == "nvrtc-builtins64_121.dll"
+    assert caught.value.details["expected_dll_exists"] is False
+
+
+def test_synthetic_runtime_smoke_maps_nvrtc_failure_to_blocker(monkeypatch: pytest.MonkeyPatch) -> None:
+    if not torch.cuda.is_available():
+        pytest.skip("requires the CUDA device used by the real runtime smoke")
+    entrypoint = _load_entrypoint()
+
+    class FailingRuntime:
+        config = SimpleNamespace(propagation_grid_size=entrypoint.PRODUCTION_GRID)
+
+        def forward_from_ols(self, z):
+            raise RuntimeError("nvrtc: error: failed to open nvrtc-builtins64_121.dll")
+
+        def parameters(self):
+            return ()
+
+    consumer = SimpleNamespace(runtime=FailingRuntime())
+    v4 = SimpleNamespace()
+    monkeypatch.setattr(entrypoint, "_runtime_digest", lambda v4, consumer: "state")
+
+    with pytest.raises(entrypoint.DiagnosisBlocked) as caught:
+        entrypoint._synthetic_runtime_smoke(v4, consumer, torch.device("cuda:0"))
+
+    assert caught.value.classification == "CUDA_RUNTIME_ENVIRONMENT_BLOCKER_CONFIRMED"
+    assert caught.value.stage == "synthetic_runtime_smoke"
+    assert caught.value.details["data_roles_opened"] is False
