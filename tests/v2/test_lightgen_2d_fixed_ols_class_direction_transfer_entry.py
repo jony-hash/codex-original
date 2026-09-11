@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import importlib.util
+import inspect
+import json
+import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -235,7 +238,7 @@ def test_synthetic_runtime_smoke_maps_nvrtc_failure_to_blocker(monkeypatch: pyte
 
     consumer = SimpleNamespace(runtime=FailingRuntime())
     v4 = SimpleNamespace()
-    monkeypatch.setattr(entrypoint, "_runtime_digest", lambda v4, consumer: "state")
+    monkeypatch.setattr(entrypoint, "_runtime_digest", lambda consumer: "state")
 
     with pytest.raises(entrypoint.DiagnosisBlocked) as caught:
         entrypoint._synthetic_runtime_smoke(v4, consumer, torch.device("cuda:0"))
@@ -243,3 +246,166 @@ def test_synthetic_runtime_smoke_maps_nvrtc_failure_to_blocker(monkeypatch: pyte
     assert caught.value.classification == "CUDA_RUNTIME_ENVIRONMENT_BLOCKER_CONFIRMED"
     assert caught.value.stage == "synthetic_runtime_smoke"
     assert caught.value.details["data_roles_opened"] is False
+
+
+def test_missing_raw_summary_binding_fails_before_scientific_authorization(monkeypatch: pytest.MonkeyPatch) -> None:
+    entrypoint = _load_entrypoint()
+    monkeypatch.setattr(entrypoint, "_raw_summary", None)
+
+    with pytest.raises(entrypoint.InvalidDiagnosis, match="_raw_summary"):
+        entrypoint._validate_execution_core_bindings()
+
+
+def test_class_direction_critical_path_uses_resolved_local_helpers() -> None:
+    entrypoint = _load_entrypoint()
+    entrypoint._validate_execution_core_bindings()
+    source = "\n".join(
+        (
+            inspect.getsource(entrypoint.run_class_direction_diagnosis_core),
+            inspect.getsource(entrypoint._raw_change_summary),
+            inspect.getsource(entrypoint._bootstrap),
+        )
+    )
+    assert "v4._" not in source
+    assert "v4_diag._" not in source
+    for name in (
+        "_validate_runtime_result",
+        "_raw_summary",
+        "_bootstrap_deltas",
+        "run_class_direction_diagnosis_core",
+        "_write_report_and_lineage",
+    ):
+        assert callable(getattr(entrypoint, name))
+
+
+def test_full_path_synthetic_core_reaches_report_lineage_and_reload(monkeypatch: pytest.MonkeyPatch) -> None:
+    entrypoint = _load_entrypoint()
+    forbidden_calls: list[str] = []
+    monkeypatch.setattr(entrypoint, "_load_v4_diagnostic_helper", lambda root: forbidden_calls.append("helper"))
+
+    samples_per_class = 4
+    train_labels = torch.arange(10, dtype=torch.long).repeat_interleave(samples_per_class)
+    selection_labels = train_labels.clone()
+    train_count = int(train_labels.numel())
+    selection_count = int(selection_labels.numel())
+    pixel_grid = torch.linspace(0.0, 1.0, 28, dtype=torch.float32)
+    image_base = pixel_grid.reshape(1, 1, 28) + pixel_grid.reshape(1, 28, 1)
+    train_images = (0.02 * train_labels[:, None, None, None].to(torch.float32) + 0.01 * image_base).clamp(0.0, 1.0)
+    selection_images = (0.03 * selection_labels[:, None, None, None].to(torch.float32) + 0.015 * image_base).clamp(0.0, 1.0)
+    coordinates = torch.linspace(-1.0, 1.0, 100, dtype=torch.float32)
+    train_real = 0.05 * train_labels[:, None].to(torch.float32) + 0.001 * torch.arange(train_count, dtype=torch.float32)[:, None] + coordinates[None]
+    train_imag = 0.03 * train_labels[:, None].to(torch.float32) - 0.0005 * torch.arange(train_count, dtype=torch.float32)[:, None] - coordinates[None]
+    train_z = torch.complex(train_real, train_imag).to(torch.complex64)
+    selection_real = 0.05 * selection_labels[:, None].to(torch.float32) + 0.002 * torch.arange(selection_count, dtype=torch.float32)[:, None] + coordinates[None]
+    selection_imag = 0.03 * selection_labels[:, None].to(torch.float32) - 0.001 * torch.arange(selection_count, dtype=torch.float32)[:, None] - coordinates[None]
+    selection_z = torch.complex(selection_real, selection_imag).to(torch.complex64)
+    raw_x = torch.linspace(0.0, 1.0, 200, dtype=torch.float32).reshape(1, 1, 200, 1)
+    raw_y = torch.linspace(1.0, 0.0, 200, dtype=torch.float32).reshape(1, 1, 1, 200)
+
+    def fake_generator(z: torch.Tensor) -> torch.Tensor:
+        sample = z.real[:, 0].reshape(-1, 1, 1, 1)
+        contrast = z.imag[:, 1].reshape(-1, 1, 1, 1)
+        return (0.1 + 0.02 * raw_x + 0.03 * raw_y + 0.002 * sample + 0.001 * contrast).expand(-1, 1, 200, 200).contiguous()
+
+    calls = {"canonical": 0, "shifted": 0, "smooth": 0}
+
+    def canonical_forward(images: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, dict[str, float]]:
+        calls["canonical"] += 1
+        assert images is selection_images
+        z = selection_z.clone()
+        return z, fake_generator(z), {"canonical_replay_max_abs_difference": 0.0}
+
+    def shifted_forward(z: torch.Tensor) -> torch.Tensor:
+        calls["shifted"] += 1
+        return fake_generator(z)
+
+    def smooth_forward(raw: torch.Tensor) -> torch.Tensor:
+        calls["smooth"] += 1
+        mean = raw.flatten(1).mean(dim=1)
+        return torch.stack([mean * float(index + 1) for index in range(10)], dim=1)
+
+    temporary_root = tempfile.TemporaryDirectory(prefix="cg_")
+    artifact_root = Path(temporary_root.name)
+    run_dir = artifact_root / "synthetic-run"
+    run_dir.mkdir()
+
+    def persist(observations, metadata):
+        return entrypoint._save_sufficient_observations(artifact_root, run_dir, observations, metadata)
+
+    core = entrypoint.run_class_direction_diagnosis_core(
+        train_z=train_z,
+        train_images=train_images,
+        train_labels=train_labels,
+        selection_images=selection_images,
+        selection_labels=selection_labels,
+        canonical_forward=canonical_forward,
+        shifted_forward=shifted_forward,
+        smooth_forward=smooth_forward,
+        selection_indices=torch.arange(selection_count, dtype=torch.long),
+        samples_per_class=samples_per_class,
+        bootstrap_replicates=17,
+        bootstrap_seed=271828,
+        persist_sufficient_observations=persist,
+    )
+
+    assert forbidden_calls == []
+    assert calls == {"canonical": 1, "shifted": 1, "smooth": 2}
+    assert core["classification"] in entrypoint.CLASSIFICATIONS
+    assert len(core["report_fields"]["directional_consistency"]["pairs"]) == 10
+    assert all(item["sample_count"] == samples_per_class for item in core["report_fields"]["directional_consistency"]["pairs"])
+    observation_ref = core["observation_artifact"]
+    assert observation_ref["schema"] == entrypoint.SUFFICIENT_OBSERVATIONS_SCHEMA
+    observation_path = run_dir / entrypoint.SUFFICIENT_OBSERVATIONS_NAME
+    loaded_observations = entrypoint.safe_torch_load(observation_path, expected_sha256=observation_ref["sha256"], map_location="cpu")
+    assert loaded_observations["schema"] == entrypoint.SUFFICIENT_OBSERVATIONS_SCHEMA
+    assert sorted(loaded_observations["protocol"]["observation_tensors"]) == observation_ref["observation_tensors"]
+
+    payload = {
+        "schema": entrypoint.REPORT_SCHEMA,
+        "version": 1,
+        "task_id": entrypoint.TASK_ID,
+        "outer_gate": entrypoint.OUTER_GATE,
+        "result": "VALID_COMPLETED",
+        "status": "valid_completed",
+        "classification": core["classification"],
+        "entrypoint": {"path": "synthetic", "sha256": "0" * 64},
+        "authorities": {"semantic_authority_id": "synthetic_no_data"},
+        "git_provenance": {"consumer": {"branch": "synthetic", "head": "0" * 40}},
+        "provenance": {"git_start": {"branch": "synthetic", "head": "0" * 40}},
+        "claim_boundary": {"optimizer_created": False, "backward_executed": False, "optical_update_executed": False, "training_executed": False},
+        "runtime": {"data_role": "synthetic_no_data", "production_cuda_smoke": "separate_required_check"},
+        "data": {"synthetic_train_rows": train_count, "synthetic_dev_rows": selection_count, "real_project_data_accessed": False},
+        "governance": {"training_authorized": False, "stage_b_authorized": False, "generation_readiness": "not_ready", "formal_promotion": False},
+    }
+    payload.update(entrypoint._core_report_fields(core))
+    report_ref, lineage_ref = entrypoint._write_report_and_lineage(artifact_root, run_dir, payload)
+    report = json.loads((artifact_root / report_ref["path"]).read_text(encoding="utf-8"))
+    lineage = json.loads((artifact_root / lineage_ref["path"]).read_text(encoding="utf-8"))
+    assert report["schema"] == entrypoint.REPORT_SCHEMA
+    assert report["classification"] == core["classification"]
+    assert lineage["schema"] == entrypoint.LINEAGE_SCHEMA
+    assert lineage["artifacts"]["report"]["sha256"] == report_ref["sha256"]
+
+
+@pytest.mark.scheduled_diagnostic
+def test_production_like_cuda_runtime_smoke_passes_without_data_roles() -> None:
+    if not torch.cuda.is_available():
+        pytest.skip("requires the configured CUDA device")
+    entrypoint = _load_entrypoint()
+    v4_diag = entrypoint._load_v4_diagnostic_helper(ROOT)
+    v4 = v4_diag._load_module(ROOT)
+    started = entrypoint.git_facts(ROOT)
+    preflight, _contract, authorities, _v3, _preflight_authority, v4_authority = v4_diag._resolve_authorities(ROOT, v4, started)
+    entrypoint._prepare_cuda_runtime_dll_search_path()
+    device, _device_facts = preflight._cuda_device_facts()
+    v2_contract = v4._load_v2_contract_before_seed(ROOT)
+    consumer = v4_diag._load_runtime(ROOT, v4, preflight, v2_contract, v4_authority["state"], device)
+    try:
+        result = entrypoint._synthetic_runtime_smoke(v4, consumer, device)
+    finally:
+        del consumer
+        torch.cuda.empty_cache()
+    assert result["status"] == "passed"
+    assert result["data_roles_opened"] is False
+    assert result["raw_cmos"]["shape"] == [2, 1, 200, 200]
+    assert authorities is not None

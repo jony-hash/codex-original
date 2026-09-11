@@ -10,6 +10,8 @@ protected/test/sealed role, or performs generation or promotion.
 from __future__ import annotations
 
 import argparse
+import copy
+import hashlib
 import importlib.util
 import json
 import math
@@ -20,7 +22,7 @@ import time
 import traceback
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 import torch
 from torch.nn import functional as F
@@ -40,9 +42,10 @@ INPUT_SCHEMA = "lightgen_2d_fixed_ols_class_direction_to_optical_output_transfer
 LINEAGE_SCHEMA = "lightgen_2d_fixed_ols_class_direction_to_optical_output_transfer_lineage.v1"
 RAW_OUTPUT_SCHEMA = "lightgen_2d_fixed_ols_class_direction_to_optical_output_transfer_raw_outputs.v1"
 BOOTSTRAP_SCHEMA = "lightgen_2d_fixed_ols_class_direction_to_optical_output_transfer_bootstrap.v1"
+SUFFICIENT_OBSERVATIONS_SCHEMA = "lightgen_2d_fixed_ols_class_direction_to_optical_output_transfer_sufficient_observations.v1"
 
 EXPECTED_BRANCH = "research/lightgen-ols-native-semantic-generation-v1"
-EXPECTED_CONSUMER_HEAD = "a7cd8e082ad1b09c16c5c70fb38f0459cc583779"
+EXPECTED_CONSUMER_HEAD = "9f239d9dd1971872a7d5b2345ae11130574d48e4"
 V4_DIAGNOSTIC_HELPER_PATH = Path("scripts/research/diagnose_lightgen_2d_fixed_ols_generator_conditionality_v1.py")
 V4_DIAGNOSTIC_HELPER_SHA256 = "e338320d0b64d144a58177217cf8eee6f2ef8ca4855f0554accaa138644f7464"
 
@@ -57,6 +60,7 @@ REPORT_NAME = "lightgen_2d_fixed_ols_class_direction_to_optical_output_transfer_
 LINEAGE_NAME = "lightgen_2d_fixed_ols_class_direction_to_optical_output_transfer_lineage.v1.json"
 RAW_OUTPUT_NAME = "lightgen_2d_fixed_ols_class_direction_to_optical_output_transfer_raw_outputs.v1.pt"
 BOOTSTRAP_NAME = "lightgen_2d_fixed_ols_class_direction_to_optical_output_transfer_bootstrap.v1.pt"
+SUFFICIENT_OBSERVATIONS_NAME = "lightgen_2d_fixed_ols_class_direction_to_optical_output_transfer_sufficient_observations.v1.pt"
 
 CLASS_COUNT = 10
 ALPHA = 1.0
@@ -183,6 +187,39 @@ def _finite_complex(value: torch.Tensor, name: str) -> None:
     _finite(value.imag, f"{name}.imag")
 
 
+def _cpu_tree(value: Any) -> Any:
+    if torch.is_tensor(value):
+        return value.detach().cpu().clone()
+    if isinstance(value, Mapping):
+        return {key: _cpu_tree(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_cpu_tree(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_cpu_tree(item) for item in value)
+    return copy.deepcopy(value)
+
+
+def _digest_tree(value: Any) -> str:
+    digest = hashlib.sha256()
+
+    def visit(item: Any, prefix: str) -> None:
+        if torch.is_tensor(item):
+            digest.update(prefix.encode("utf-8"))
+            digest.update(tensor_sha256(item).encode("ascii"))
+        elif isinstance(item, Mapping):
+            for key in sorted(item, key=str):
+                visit(item[key], f"{prefix}.{key}")
+        elif isinstance(item, (list, tuple)):
+            for index, child in enumerate(item):
+                visit(child, f"{prefix}[{index}]")
+        else:
+            digest.update(prefix.encode("utf-8"))
+            digest.update(repr(item).encode("utf-8"))
+
+    visit(value, "root")
+    return digest.hexdigest()
+
+
 def _summary(values: torch.Tensor) -> dict[str, float]:
     values = values.detach().cpu().to(torch.float64).flatten()
     _finite(values, "summary values")
@@ -198,12 +235,12 @@ def _summary(values: torch.Tensor) -> dict[str, float]:
     }
 
 
-def _runtime_digest(v4: Any, consumer: Any) -> str:
-    return v4._digest_tree(v4._cpu_tree(consumer.runtime.state_dict()))
+def _runtime_digest(consumer: Any) -> str:
+    return _digest_tree(_cpu_tree(consumer.runtime.state_dict()))
 
 
 @torch.inference_mode()
-def _synthetic_runtime_smoke(v4: Any, consumer: Any, device: torch.device) -> dict[str, Any]:
+def _synthetic_runtime_smoke(_v4: Any, consumer: Any, device: torch.device) -> dict[str, Any]:
     """Exercise the production OLS-to-CMOS path without opening any data role."""
 
     _require(device.type == "cuda", "synthetic runtime smoke requires the CUDA production device")
@@ -211,7 +248,7 @@ def _synthetic_runtime_smoke(v4: Any, consumer: Any, device: torch.device) -> di
     real = torch.linspace(-0.75, 0.75, 200, dtype=torch.float32).reshape(2, 100)
     imag = torch.linspace(0.75, -0.75, 200, dtype=torch.float32).reshape(2, 100)
     z = torch.complex(real, imag).to(device=device).contiguous()
-    before = _runtime_digest(v4, consumer)
+    before = _runtime_digest(consumer)
     try:
         result = consumer.runtime.forward_from_ols(z)
         raw = result.raw_camera.tensor
@@ -228,7 +265,7 @@ def _synthetic_runtime_smoke(v4: Any, consumer: Any, device: torch.device) -> di
                 data_roles_opened=False,
             ) from error
         raise
-    after = _runtime_digest(v4, consumer)
+    after = _runtime_digest(consumer)
     _require(result.z_ols.source == "external_generated", "synthetic OLS state crossed the image encoder boundary")
     _require(tuple(result.z_ols.coefficients.shape) == (2, 100) and result.z_ols.coefficients.dtype == torch.complex64, "synthetic OLS state shape/dtype changed")
     generator_input = result.generator_input_field.tensor
@@ -270,20 +307,58 @@ def _validate_z(z: torch.Tensor, batch_size: int, name: str) -> None:
     _finite_complex(z, name)
 
 
+def _validate_runtime_result(result: Any, batch_size: int, *, external: bool) -> torch.Tensor:
+    if external:
+        _require(
+            result.image_input is None
+            and result.ols_input_field is None
+            and result.z_ols.source == "external_generated",
+            "external path crossed image/encoder boundary",
+        )
+    else:
+        _require(
+            result.image_input is not None
+            and result.ols_input_field is not None
+            and result.z_ols.source == "real_encoded",
+            "canonical path lost encoder boundary",
+        )
+        _require(
+            result.ols_input_field.provenance.parameters.get("modal_projection_boundary") is True,
+            "modal projection boundary is inactive",
+        )
+    _require(
+        result.generator_input_field.provenance.operation
+        == "lightgen_ols_coefficient_transmission_and_modal_reemission",
+        "W_OLS provenance changed",
+    )
+    _require(
+        result.generator_input_field.provenance.parameters.get("transport")
+        == "T=I_100_coefficient_space",
+        "T=I_100 provenance changed",
+    )
+    raw = result.raw_intensity
+    _require(
+        tuple(raw.shape) == (batch_size, 1, 200, 200) and raw.dtype == torch.float32,
+        "raw CMOS shape/dtype changed",
+    )
+    _finite(raw, "raw CMOS")
+    return raw
+
+
 @torch.inference_mode()
-def _encode_train_z(v4: Any, consumer: Any, train_images: torch.Tensor, device: torch.device) -> torch.Tensor:
-    before = _runtime_digest(v4, consumer)
+def _encode_train_z(consumer: Any, train_images: torch.Tensor, device: torch.device) -> torch.Tensor:
+    before = _runtime_digest(consumer)
     parts: list[torch.Tensor] = []
     for start in range(0, train_images.shape[0], LOGICAL_BATCH_SIZE):
         batch = train_images[start : start + LOGICAL_BATCH_SIZE].to(device)
         result = consumer.runtime.forward_from_image(batch)
-        raw = v4._validate_result(result, int(batch.shape[0]), external=False)
+        raw = _validate_runtime_result(result, int(batch.shape[0]), external=False)
         z = result.z_ols.coefficients.detach()
         _validate_z(z, int(batch.shape[0]), "TRAIN z")
         parts.append(z.cpu().contiguous())
         del batch, result, raw, z
     torch.cuda.synchronize(device)
-    after = _runtime_digest(v4, consumer)
+    after = _runtime_digest(consumer)
     _require(before == after, "TRAIN encoder forward changed the frozen runtime state")
     result = torch.cat(parts, dim=0)
     _require(tuple(result.shape) == (55_000, 100) and result.dtype == torch.complex64, "TRAIN z collection shape/dtype changed")
@@ -292,25 +367,25 @@ def _encode_train_z(v4: Any, consumer: Any, train_images: torch.Tensor, device: 
 
 
 @torch.inference_mode()
-def _collect_dev_base(v4: Any, consumer: Any, selection_images: torch.Tensor, device: torch.device) -> tuple[torch.Tensor, torch.Tensor, float]:
-    before = _runtime_digest(v4, consumer)
+def _collect_dev_base(consumer: Any, selection_images: torch.Tensor, device: torch.device) -> tuple[torch.Tensor, torch.Tensor, float]:
+    before = _runtime_digest(consumer)
     raw_parts: list[torch.Tensor] = []
     z_parts: list[torch.Tensor] = []
     max_replay_difference = 0.0
     for start in range(0, selection_images.shape[0], LOGICAL_BATCH_SIZE):
         batch = selection_images[start : start + LOGICAL_BATCH_SIZE].to(device)
         canonical = consumer.runtime.forward_from_image(batch)
-        raw = v4._validate_result(canonical, int(batch.shape[0]), external=False)
+        raw = _validate_runtime_result(canonical, int(batch.shape[0]), external=False)
         z = canonical.z_ols.coefficients.detach()
         _validate_z(z, int(batch.shape[0]), "DEV canonical z")
         replay = consumer.runtime.forward_from_ols(z)
-        replay_raw = v4._validate_result(replay, int(batch.shape[0]), external=True)
+        replay_raw = _validate_runtime_result(replay, int(batch.shape[0]), external=True)
         max_replay_difference = max(max_replay_difference, float((raw - replay_raw).abs().max().cpu()))
         raw_parts.append(raw.cpu().contiguous())
         z_parts.append(z.cpu().contiguous())
         del batch, canonical, raw, z, replay, replay_raw
     torch.cuda.synchronize(device)
-    after = _runtime_digest(v4, consumer)
+    after = _runtime_digest(consumer)
     _require(before == after, "DEV canonical forward changed the frozen runtime state")
     raw_cpu = torch.cat(raw_parts, dim=0)
     z_cpu = torch.cat(z_parts, dim=0)
@@ -322,17 +397,17 @@ def _collect_dev_base(v4: Any, consumer: Any, selection_images: torch.Tensor, de
 
 
 @torch.inference_mode()
-def _forward_shifted(v4: Any, consumer: Any, z_shift: torch.Tensor, device: torch.device) -> torch.Tensor:
-    before = _runtime_digest(v4, consumer)
+def _forward_shifted(consumer: Any, z_shift: torch.Tensor, device: torch.device) -> torch.Tensor:
+    before = _runtime_digest(consumer)
     parts: list[torch.Tensor] = []
     for start in range(0, z_shift.shape[0], LOGICAL_BATCH_SIZE):
         batch_z = z_shift[start : start + LOGICAL_BATCH_SIZE].to(device)
         result = consumer.runtime.forward_from_ols(batch_z)
-        raw = v4._validate_result(result, int(batch_z.shape[0]), external=True)
+        raw = _validate_runtime_result(result, int(batch_z.shape[0]), external=True)
         parts.append(raw.cpu().contiguous())
         del batch_z, result, raw
     torch.cuda.synchronize(device)
-    after = _runtime_digest(v4, consumer)
+    after = _runtime_digest(consumer)
     _require(before == after, "shifted forward changed the frozen runtime state")
     result = torch.cat(parts, dim=0)
     _require(tuple(result.shape) == (DEVELOPMENT_SELECTION_ROWS, 1, 200, 200) and result.dtype == torch.float32, "DEV shifted raw shape/dtype changed")
@@ -340,8 +415,14 @@ def _forward_shifted(v4: Any, consumer: Any, z_shift: torch.Tensor, device: torc
     return result
 
 
-def _train_centroids(z_train: torch.Tensor, train_labels: torch.Tensor) -> torch.Tensor:
-    _validate_z(z_train, 55_000, "TRAIN z")
+def _train_centroids(z_train: torch.Tensor, train_labels: torch.Tensor, *, expected_rows: int | None = None) -> torch.Tensor:
+    _require(z_train.ndim == 2 and z_train.shape[1] == 100, "TRAIN z shape changed")
+    if expected_rows is not None:
+        _require(z_train.shape[0] == expected_rows, "TRAIN z row count changed")
+    _require(train_labels.shape == (z_train.shape[0],), "TRAIN z labels shape changed")
+    _require(train_labels.dtype == torch.long, "TRAIN z labels dtype changed")
+    _finite(train_labels.to(torch.float32), "TRAIN z labels")
+    _finite_complex(z_train, "TRAIN z")
     centroids: list[torch.Tensor] = []
     counts: list[int] = []
     for digit in range(CLASS_COUNT):
@@ -355,8 +436,13 @@ def _train_centroids(z_train: torch.Tensor, train_labels: torch.Tensor) -> torch
     return result
 
 
-def _train_templates(train_images: torch.Tensor, train_labels: torch.Tensor) -> torch.Tensor:
-    _require(tuple(train_images.shape) == (55_000, 1, 28, 28) and train_images.dtype == torch.float32, "TRAIN template image shape/dtype changed")
+def _train_templates(train_images: torch.Tensor, train_labels: torch.Tensor, *, expected_rows: int | None = None) -> torch.Tensor:
+    _require(train_images.ndim == 4 and tuple(train_images.shape[1:]) == (1, 28, 28) and train_images.dtype == torch.float32, "TRAIN template image shape/dtype changed")
+    if expected_rows is not None:
+        _require(train_images.shape[0] == expected_rows, "TRAIN template image row count changed")
+    _require(train_labels.shape == (train_images.shape[0],), "TRAIN template labels shape changed")
+    _require(train_labels.dtype == torch.long, "TRAIN template labels dtype changed")
+    _finite(train_labels.to(torch.float32), "TRAIN template labels")
     templates: list[torch.Tensor] = []
     for digit in range(CLASS_COUNT):
         values = train_images[train_labels == digit]
@@ -368,13 +454,13 @@ def _train_templates(train_images: torch.Tensor, train_labels: torch.Tensor) -> 
     return result
 
 
-def _template_direction(
+def _template_components(
     base_raw: torch.Tensor,
     shifted_raw: torch.Tensor,
     templates: torch.Tensor,
     source_labels: torch.Tensor,
     target_labels: torch.Tensor,
-) -> tuple[torch.Tensor, dict[str, Any]]:
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     base_view = F.adaptive_avg_pool2d(base_raw.clamp(0.0, 1.0), (28, 28))
     shifted_view = F.adaptive_avg_pool2d(shifted_raw.clamp(0.0, 1.0), (28, 28))
     source_templates = templates.index_select(0, source_labels)
@@ -387,6 +473,23 @@ def _template_direction(
     shifted_margin = shifted_source - shifted_target
     delta = shifted_margin - base_margin
     _finite(delta, "Delta_template")
+    return base_margin, shifted_margin, delta
+
+
+def _template_direction(
+    base_raw: torch.Tensor,
+    shifted_raw: torch.Tensor,
+    templates: torch.Tensor,
+    source_labels: torch.Tensor,
+    target_labels: torch.Tensor,
+) -> tuple[torch.Tensor, dict[str, Any]]:
+    base_margin, shifted_margin, delta = _template_components(
+        base_raw,
+        shifted_raw,
+        templates,
+        source_labels,
+        target_labels,
+    )
     return delta, {
         "distance": "mean squared pixel distance after raw CMOS clamp [0,1] and adaptive_avg_pool2d to 28x28",
         "base_margin_definition": "d(base, tau_source) - d(base, tau_target)",
@@ -423,6 +526,19 @@ def _class_score_margin(logits: torch.Tensor, source_labels: torch.Tensor, targe
     return margin
 
 
+def _smooth_components(
+    base_logits: torch.Tensor,
+    shifted_logits: torch.Tensor,
+    source_labels: torch.Tensor,
+    target_labels: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    base_margin = _class_score_margin(base_logits, source_labels, target_labels)
+    shifted_margin = _class_score_margin(shifted_logits, source_labels, target_labels)
+    delta = shifted_margin - base_margin
+    _finite(delta, "Delta_smooth")
+    return base_margin, shifted_margin, delta
+
+
 def _ranks(scores: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
     order = torch.argsort(scores, dim=1, descending=True, stable=True)
     ranks = torch.empty_like(order)
@@ -449,10 +565,12 @@ def _smooth_direction(
     source_labels: torch.Tensor,
     target_labels: torch.Tensor,
 ) -> tuple[torch.Tensor, dict[str, Any]]:
-    base_margin = _class_score_margin(base_logits, source_labels, target_labels)
-    shifted_margin = _class_score_margin(shifted_logits, source_labels, target_labels)
-    delta = shifted_margin - base_margin
-    _finite(delta, "Delta_smooth")
+    base_margin, shifted_margin, delta = _smooth_components(
+        base_logits,
+        shifted_logits,
+        source_labels,
+        target_labels,
+    )
     target_base_rank = _ranks(base_logits, target_labels)
     target_shifted_rank = _ranks(shifted_logits, target_labels)
     source_base_rank = _ranks(base_logits, source_labels)
@@ -501,14 +619,21 @@ def _group_summary(values: torch.Tensor, labels: torch.Tensor) -> list[dict[str,
     return result
 
 
-def _pair_summary(delta_template: torch.Tensor, delta_smooth: torch.Tensor, source_labels: torch.Tensor, target_labels: torch.Tensor) -> list[dict[str, Any]]:
+def _pair_summary(
+    delta_template: torch.Tensor,
+    delta_smooth: torch.Tensor,
+    source_labels: torch.Tensor,
+    target_labels: torch.Tensor,
+    *,
+    samples_per_class: int,
+) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
     for source in range(CLASS_COUNT):
         target = (source + 1) % CLASS_COUNT
         mask = (source_labels == source) & (target_labels == target)
         template_values = delta_template[mask]
         smooth_values = delta_smooth[mask]
-        _require(template_values.numel() == DEVELOPMENT_SELECTION_PER_CLASS, f"pair {source}->{target} sample count changed")
+        _require(template_values.numel() == samples_per_class, f"pair {source}->{target} sample count changed")
         result.append(
             {
                 "source_class": source,
@@ -523,30 +648,113 @@ def _pair_summary(delta_template: torch.Tensor, delta_smooth: torch.Tensor, sour
     return result
 
 
-def _bootstrap(v4: Any, delta_template: torch.Tensor, delta_smooth: torch.Tensor, labels: torch.Tensor) -> tuple[dict[str, Any], dict[str, torch.Tensor]]:
-    summaries, tensors = v4._bootstrap_deltas(
-        {"delta_template": delta_template, "delta_smooth": delta_smooth},
-        labels,
-    )
-    _require(set(summaries) == {"delta_template", "delta_smooth"}, "bootstrap metrics changed")
-    return summaries, tensors
+def _bootstrap_deltas(
+    deltas: Mapping[str, torch.Tensor],
+    labels: torch.Tensor,
+    *,
+    samples_per_class: int,
+    replicates: int,
+    seed: int,
+) -> tuple[dict[str, Any], dict[str, torch.Tensor]]:
+    generator = torch.Generator(device="cpu").manual_seed(seed)
+    draws: list[torch.Tensor] = []
+    values: dict[str, list[torch.Tensor]] = {name: [] for name in deltas}
+    for digit in range(CLASS_COUNT):
+        matches = torch.nonzero(labels == digit, as_tuple=False).flatten()
+        _require(matches.numel() == samples_per_class, f"bootstrap class count changed for {digit}")
+        draw = torch.randint(0, samples_per_class, (replicates, samples_per_class), generator=generator)
+        draws.append(draw)
+        for name, delta in deltas.items():
+            values[name].append(delta.index_select(0, matches)[draw].mean(dim=1))
+    macro: dict[str, torch.Tensor] = {
+        name: torch.stack(items, dim=0).mean(dim=0) for name, items in values.items()
+    }
+    summaries: dict[str, Any] = {}
+    for name, sample in macro.items():
+        q = torch.quantile(
+            sample.to(torch.float64),
+            torch.tensor([0.025, 0.975], dtype=torch.float64),
+            interpolation="linear",
+        )
+        summaries[name] = {
+            "mean": float(sample.mean()),
+            "ci_lower": float(q[0]),
+            "ci_upper": float(q[1]),
+            "tensor_sha256": tensor_sha256(sample),
+        }
+    return summaries, {"draws": torch.stack(draws, dim=0), "macro_deltas": macro}
 
 
-def _raw_change_summary(v4: Any, base_raw: torch.Tensor, shifted_raw: torch.Tensor) -> dict[str, Any]:
+def _raw_summary(
+    raw: torch.Tensor,
+    *,
+    expected_batch_size: int | None = None,
+    expected_spatial: tuple[int, int] = (200, 200),
+) -> dict[str, Any]:
+    detached = raw.detach()
+    per_image = detached.flatten(1)
+    variance = per_image.var(dim=1, unbiased=False)
+    if expected_batch_size is not None:
+        _require(tuple(detached.shape) == (expected_batch_size, 1, *expected_spatial), "raw summary shape changed")
+    return {
+        "shape": list(detached.shape),
+        "dtype": str(detached.dtype),
+        "finite": bool(torch.isfinite(detached).all()),
+        "mean": float(detached.mean().cpu()),
+        "std": float(detached.std(unbiased=False).cpu()),
+        "per_image_variance_min": float(variance.min().cpu()),
+        "per_image_variance_max": float(variance.max().cpu()),
+        "structured": bool((variance > 0.0).all()),
+        "nonconstant": bool(float(detached.std(unbiased=False).cpu()) > 0.0),
+        "tensor_sha256": tensor_sha256(detached),
+    }
+
+
+def _raw_change_values(base_raw: torch.Tensor, shifted_raw: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     difference = shifted_raw.to(torch.float64) - base_raw.to(torch.float64)
     absolute = difference.square().flatten(1).mean(dim=1).sqrt()
     base_rms = base_raw.to(torch.float64).square().flatten(1).mean(dim=1).sqrt()
     relative = absolute / base_rms.clamp_min(1.0e-12)
     _finite(absolute, "absolute raw RMS change")
     _finite(relative, "relative raw RMS change")
+    return absolute, relative
+
+
+def _raw_change_summary(
+    base_raw: torch.Tensor,
+    shifted_raw: torch.Tensor,
+    *,
+    expected_batch_size: int | None = None,
+) -> dict[str, Any]:
+    absolute, relative = _raw_change_values(base_raw, shifted_raw)
     return {
         "absolute_definition": "RMS(raw_shift - raw_base) over the 200x200 raw CMOS pixels",
         "relative_definition": "RMS(raw_shift - raw_base) / RMS(raw_base), per sample",
         "absolute_rms_change": {"summary": _summary(absolute), "tensor_sha256": tensor_sha256(absolute)},
         "relative_rms_change": {"summary": _summary(relative), "tensor_sha256": tensor_sha256(relative)},
-        "raw_base": v4._raw_summary(base_raw),
-        "raw_shifted": v4._raw_summary(shifted_raw),
+        "raw_base": _raw_summary(base_raw, expected_batch_size=expected_batch_size),
+        "raw_shifted": _raw_summary(shifted_raw, expected_batch_size=expected_batch_size),
     }
+
+
+def _bootstrap(
+    delta_template: torch.Tensor,
+    delta_smooth: torch.Tensor,
+    labels: torch.Tensor,
+    *,
+    samples_per_class: int,
+    replicates: int,
+    seed: int,
+) -> tuple[dict[str, Any], dict[str, torch.Tensor]]:
+    summaries, tensors = _bootstrap_deltas(
+        {"delta_template": delta_template, "delta_smooth": delta_smooth},
+        labels,
+        samples_per_class=samples_per_class,
+        replicates=replicates,
+        seed=seed,
+    )
+    _require(set(summaries) == {"delta_template", "delta_smooth"}, "bootstrap metrics changed")
+    return summaries, tensors
 
 
 def _save_raw_artifact(
@@ -617,6 +825,58 @@ def _save_bootstrap_artifact(root: Path, target: Path, summaries: Mapping[str, A
     return {"path": _relative(root, path), "sha256": digest, "schema": BOOTSTRAP_SCHEMA, "replicates": BOOTSTRAP_REPLICATES, "seed": BOOTSTRAP_SEED, "summaries": dict(summaries)}
 
 
+def _save_sufficient_observations(
+    root: Path,
+    target: Path,
+    observations: Mapping[str, torch.Tensor],
+    metadata: Mapping[str, Any],
+) -> dict[str, Any]:
+    path = target / SUFFICIENT_OBSERVATIONS_NAME
+    tensor_payload = {
+        name: value.detach().cpu().contiguous()
+        for name, value in observations.items()
+    }
+    _require(tensor_payload, "sufficient-observation payload is empty")
+    payload = {
+        "schema": SUFFICIENT_OBSERVATIONS_SCHEMA,
+        "version": 1,
+        "task_id": TASK_ID,
+        "outer_gate": OUTER_GATE,
+        "protocol": {
+            "purpose": "reproduce frozen raw/template/Smooth aggregate statistics without optical scientific forward",
+            "target_rule": "target=(source+1) mod 10",
+            "alpha": ALPHA,
+            "renormalization": "none",
+            "bootstrap": {
+                "replicates": int(metadata["bootstrap_replicates"]),
+                "seed": int(metadata["bootstrap_seed"]),
+                "type": "paired, class-stratified",
+            },
+            "observation_tensors": sorted(tensor_payload),
+        },
+        "metadata": dict(metadata),
+        "observations": tensor_payload,
+    }
+    atomic_torch_save_new(path, payload, artifact_kind="OLS class-direction sufficient observations")
+    digest = file_sha256(path)
+    loaded = _mapping(
+        safe_torch_load(path, expected_sha256=digest, map_location="cpu"),
+        "class-direction sufficient observations",
+    )
+    _require(loaded.get("schema") == SUFFICIENT_OBSERVATIONS_SCHEMA, "sufficient-observation schema changed on reload")
+    loaded_observations = _mapping(loaded.get("observations"), "reloaded sufficient observations")
+    _require(set(loaded_observations) == set(tensor_payload), "sufficient-observation tensor set changed on reload")
+    for name, value in tensor_payload.items():
+        reloaded = loaded_observations.get(name)
+        _require(torch.is_tensor(reloaded) and tensor_sha256(reloaded) == tensor_sha256(value), f"sufficient observation changed on reload: {name}")
+    return {
+        "path": _relative(root, path),
+        "sha256": digest,
+        "schema": SUFFICIENT_OBSERVATIONS_SCHEMA,
+        "observation_tensors": sorted(tensor_payload),
+    }
+
+
 def _classify(
     template_summary: Mapping[str, Any],
     smooth_summary: Mapping[str, Any],
@@ -657,6 +917,287 @@ def _classify(
         "pair_dominated": pair_dominated,
         "primary_evidence_rule": "mean > 0 and paired bootstrap 95% CI lower bound > 0",
     }
+
+
+def run_class_direction_diagnosis_core(
+    *,
+    train_z: torch.Tensor,
+    train_images: torch.Tensor,
+    train_labels: torch.Tensor,
+    selection_images: torch.Tensor,
+    selection_labels: torch.Tensor,
+    canonical_forward: Callable[[torch.Tensor], tuple[torch.Tensor, torch.Tensor, Mapping[str, Any]]],
+    shifted_forward: Callable[[torch.Tensor], torch.Tensor],
+    smooth_forward: Callable[[torch.Tensor], torch.Tensor],
+    selection_indices: torch.Tensor | None = None,
+    samples_per_class: int = DEVELOPMENT_SELECTION_PER_CLASS,
+    bootstrap_replicates: int = BOOTSTRAP_REPLICATES,
+    bootstrap_seed: int = BOOTSTRAP_SEED,
+    persist_sufficient_observations: Callable[[Mapping[str, torch.Tensor], Mapping[str, Any]], Mapping[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Run the frozen class-direction computation through injectable forward paths.
+
+    Production supplies the real LightGen encoder/generator callbacks; synthetic
+    acceptance supplies deterministic callbacks without opening project data.
+    The intervention, metrics, bootstrap and classification remain identical for
+    the production defaults.
+    """
+
+    _require(samples_per_class > 0 and bootstrap_replicates > 0, "synthetic/core sample or bootstrap count is invalid")
+    _require(train_z.ndim == 2 and train_z.shape[1] == 100 and train_z.dtype == torch.complex64, "core TRAIN z shape/dtype changed")
+    _require(train_images.ndim == 4 and tuple(train_images.shape[1:]) == (1, 28, 28) and train_images.dtype == torch.float32, "core TRAIN image shape/dtype changed")
+    _require(train_labels.ndim == 1 and train_labels.shape[0] == train_z.shape[0] == train_images.shape[0] and train_labels.dtype == torch.long, "core TRAIN role shape/dtype changed")
+    _require(selection_images.ndim == 4 and tuple(selection_images.shape[1:]) == (1, 28, 28) and selection_images.dtype == torch.float32, "core DEV image shape/dtype changed")
+    _require(selection_labels.ndim == 1 and selection_labels.shape[0] == selection_images.shape[0] and selection_labels.dtype == torch.long, "core DEV role shape/dtype changed")
+    _require(selection_labels.shape[0] == CLASS_COUNT * samples_per_class, "core DEV selection row count changed")
+    _finite_complex(train_z, "core TRAIN z")
+    _finite(train_images, "core TRAIN images")
+    _finite(train_labels.to(torch.float32), "core TRAIN labels")
+    _finite(selection_images, "core DEV images")
+    _finite(selection_labels.to(torch.float32), "core DEV labels")
+    for digit in range(CLASS_COUNT):
+        _require(int((train_labels == digit).sum()) > 0, f"core TRAIN class {digit} is empty")
+        _require(int((selection_labels == digit).sum()) == samples_per_class, f"core DEV class count changed for {digit}")
+
+    if selection_indices is None:
+        selection_indices = torch.arange(selection_labels.shape[0], dtype=torch.long)
+    _require(selection_indices.shape == selection_labels.shape and selection_indices.dtype == torch.long, "core selection identity shape/dtype changed")
+
+    centroids = _train_centroids(train_z, train_labels, expected_rows=train_z.shape[0])
+    templates = _train_templates(train_images, train_labels, expected_rows=train_images.shape[0])
+    target_labels = ((selection_labels + 1) % CLASS_COUNT).contiguous()
+    canonical_result = canonical_forward(selection_images)
+    _require(isinstance(canonical_result, tuple) and len(canonical_result) == 3, "canonical forward callback schema changed")
+    z, base_raw, canonical_metadata = canonical_result
+    _require(isinstance(canonical_metadata, Mapping), "canonical forward metadata schema changed")
+    _validate_z(z, int(selection_labels.shape[0]), "core DEV canonical z")
+    _require(tuple(base_raw.shape) == (selection_labels.shape[0], 1, 200, 200) and base_raw.dtype == torch.float32, "core DEV base raw shape/dtype changed")
+    _finite(base_raw, "core DEV base raw CMOS")
+    shifted_source = centroids.index_select(0, selection_labels)
+    shifted_target = centroids.index_select(0, target_labels)
+    direction = (shifted_target - shifted_source).contiguous()
+    z_shift = (z - shifted_source + (ALPHA * direction)).contiguous()
+    _validate_z(z_shift, int(selection_labels.shape[0]), "core DEV shifted z")
+    shifted_raw = shifted_forward(z_shift)
+    _require(tuple(shifted_raw.shape) == tuple(base_raw.shape) and shifted_raw.dtype == torch.float32, "core DEV shifted raw shape/dtype changed")
+    _finite(shifted_raw, "core DEV shifted raw CMOS")
+    base_logits = smooth_forward(base_raw)
+    shifted_logits = smooth_forward(shifted_raw)
+    for name, logits in (("core base", base_logits), ("core shifted", shifted_logits)):
+        _require(tuple(logits.shape) == (selection_labels.shape[0], CLASS_COUNT) and not torch.is_complex(logits), f"{name} Smooth logits shape/dtype changed")
+        _finite(logits, f"{name} Smooth logits")
+
+    raw_detail = _raw_change_summary(base_raw, shifted_raw, expected_batch_size=int(selection_labels.shape[0]))
+    absolute_rms, relative_rms = _raw_change_values(base_raw, shifted_raw)
+    template_delta, template_detail = _template_direction(base_raw, shifted_raw, templates, selection_labels, target_labels)
+    template_base_margin, template_shifted_margin, template_delta_observed = _template_components(base_raw, shifted_raw, templates, selection_labels, target_labels)
+    smooth_delta, smooth_detail = _smooth_direction(base_logits, shifted_logits, selection_labels, target_labels)
+    smooth_base_margin, smooth_shifted_margin, smooth_delta_observed = _smooth_components(base_logits, shifted_logits, selection_labels, target_labels)
+    _require(torch.equal(template_delta, template_delta_observed), "template observation delta changed")
+    _require(torch.equal(smooth_delta, smooth_delta_observed), "Smooth observation delta changed")
+    z_norm = torch.linalg.vector_norm(z.to(torch.complex128), dim=1)
+    z_shift_norm = torch.linalg.vector_norm(z_shift.to(torch.complex128), dim=1)
+    direction_norm = torch.linalg.vector_norm(direction.to(torch.complex128), dim=1)
+    _finite(z_norm, "core z norm")
+    _finite(z_shift_norm, "core shifted z norm")
+    _finite(direction_norm, "core centroid direction norm")
+    observation_tensors = {
+        "selection_indices": selection_indices,
+        "source_labels": selection_labels,
+        "target_labels": target_labels,
+        "z_norm": z_norm,
+        "z_shift_norm": z_shift_norm,
+        "centroid_direction_norm": direction_norm,
+        "raw_absolute_rms_change": absolute_rms,
+        "raw_relative_rms_change": relative_rms,
+        "template_base_margin": template_base_margin,
+        "template_shifted_margin": template_shifted_margin,
+        "smooth_base_logits": base_logits,
+        "smooth_shifted_logits": shifted_logits,
+    }
+    observation_metadata = {
+        "samples_per_class": samples_per_class,
+        "bootstrap_replicates": bootstrap_replicates,
+        "bootstrap_seed": bootstrap_seed,
+        "canonical_replay_max_abs_difference": float(canonical_metadata.get("canonical_replay_max_abs_difference", 0.0)),
+        "raw_base_summary": raw_detail["raw_base"],
+        "raw_shifted_summary": raw_detail["raw_shifted"],
+    }
+    observation_artifact = None
+    if persist_sufficient_observations is not None:
+        observation_artifact = dict(persist_sufficient_observations(observation_tensors, observation_metadata))
+
+    bootstrap_summaries, bootstrap_tensors = _bootstrap(
+        template_delta,
+        smooth_delta,
+        selection_labels,
+        samples_per_class=samples_per_class,
+        replicates=bootstrap_replicates,
+        seed=bootstrap_seed,
+    )
+    pair_summaries = _pair_summary(
+        template_delta,
+        smooth_delta,
+        selection_labels,
+        target_labels,
+        samples_per_class=samples_per_class,
+    )
+    template_groups = {
+        "by_source_class": _group_summary(template_delta, selection_labels),
+        "by_target_class": _group_summary(template_delta, target_labels),
+    }
+    smooth_groups = {
+        "by_source_class": _group_summary(smooth_delta, selection_labels),
+        "by_target_class": _group_summary(smooth_delta, target_labels),
+    }
+    classification, decision = _classify(
+        bootstrap_summaries["delta_template"],
+        bootstrap_summaries["delta_smooth"],
+        pair_summaries,
+    )
+    _require(classification in CLASSIFICATIONS, "core classification is not one of the frozen primary classifications")
+    report_fields = {
+        "ols_intervention": {
+            "class_centroids_constructed": True,
+            "centroid_rule": "all frozen TRAIN complex z grouped by label; class mean in torch.complex64",
+            "class_counts": [int((train_labels == digit).sum()) for digit in range(CLASS_COUNT)],
+            "centroid_tensor_sha256": tensor_sha256(centroids),
+            "z_tensor_sha256": tensor_sha256(z),
+            "z_shift_tensor_sha256": tensor_sha256(z_shift),
+            "z_norm": _summary(z_norm),
+            "z_shift_norm": _summary(z_shift_norm),
+            "centroid_direction_norm": _summary(direction_norm),
+            "finite_domain_validity": {
+                "z_finite": bool(torch.isfinite(z.real).all() and torch.isfinite(z.imag).all()),
+                "z_shift_finite": bool(torch.isfinite(z_shift.real).all() and torch.isfinite(z_shift.imag).all()),
+                "centroids_finite": bool(torch.isfinite(centroids.real).all() and torch.isfinite(centroids.imag).all()),
+                "templates_finite": bool(torch.isfinite(templates).all()),
+                "raw_base_finite": bool(torch.isfinite(base_raw).all()),
+                "raw_shifted_finite": bool(torch.isfinite(shifted_raw).all()),
+                "modal_projection_boundary": True,
+                "transport_T_equals_I_100": True,
+                "shared_W_OLS": True,
+            },
+            "alpha": ALPHA,
+            "renormalization": "none",
+        },
+        "raw_response": raw_detail,
+        "template_direction": {
+            **template_detail,
+            "bootstrap": bootstrap_summaries["delta_template"],
+            "positive_fraction": float((template_delta > 0.0).to(torch.float64).mean()),
+            "by_source_class": template_groups["by_source_class"],
+            "by_target_class": template_groups["by_target_class"],
+            "primary_pass": decision["template_primary_pass"],
+        },
+        "smooth_direction": {
+            **smooth_detail,
+            "bootstrap": bootstrap_summaries["delta_smooth"],
+            "positive_fraction": float((smooth_delta > 0.0).to(torch.float64).mean()),
+            "by_source_class": smooth_groups["by_source_class"],
+            "by_target_class": smooth_groups["by_target_class"],
+            "primary_pass": decision["smooth_primary_pass"],
+        },
+        "directional_consistency": {
+            "pairs": pair_summaries,
+            "positive_template_pair_means": decision["positive_template_pair_means"],
+            "positive_smooth_pair_means": decision["positive_smooth_pair_means"],
+            "broad_or_pair_dominated": "broad" if not decision["pair_dominated"] else "pair-dominated",
+            "decision": decision,
+        },
+        "decision": {
+            "outer_gate": OUTER_GATE,
+            "classification": classification,
+            **decision,
+            "unresolved_alternatives": [
+                "template morphology may not transfer to independent Smooth semantic scores" if not decision["smooth_primary_pass"] else "none under the frozen directional rule",
+                "this diagnosis does not establish generator capacity or layer sufficiency",
+            ],
+        },
+        "artifacts": {"sufficient_observations": observation_artifact} if observation_artifact is not None else {},
+    }
+    return {
+        "classification": classification,
+        "report_fields": report_fields,
+        "selection_indices": selection_indices,
+        "centroids": centroids,
+        "templates": templates,
+        "z": z,
+        "z_shift": z_shift,
+        "base_raw": base_raw,
+        "shifted_raw": shifted_raw,
+        "base_logits": base_logits,
+        "shifted_logits": shifted_logits,
+        "template_delta": template_delta,
+        "smooth_delta": smooth_delta,
+        "bootstrap_summaries": bootstrap_summaries,
+        "bootstrap_tensors": bootstrap_tensors,
+        "source_labels": selection_labels,
+        "target_labels": target_labels,
+        "observation_artifact": observation_artifact,
+        "canonical_replay_max_abs_difference": float(canonical_metadata.get("canonical_replay_max_abs_difference", 0.0)),
+    }
+
+
+def _core_report_fields(
+    core_result: Mapping[str, Any],
+    *,
+    raw_artifact: Mapping[str, Any] | None = None,
+    bootstrap_artifact: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    fields = dict(_mapping(core_result.get("report_fields"), "class-direction core report fields"))
+    artifacts = dict(_mapping(fields.get("artifacts"), "class-direction core artifacts"))
+    if raw_artifact is not None:
+        artifacts["raw_outputs"] = dict(raw_artifact)
+    if bootstrap_artifact is not None:
+        artifacts["bootstrap"] = dict(bootstrap_artifact)
+    fields["artifacts"] = artifacts
+    return fields
+
+
+def _json_default(value: Any) -> Any:
+    if torch.is_tensor(value):
+        return value.detach().cpu().tolist()
+    raise TypeError(f"unsupported report value: {type(value).__name__}")
+
+
+def _write_report_and_lineage(root: Path, target: Path, payload: Mapping[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    serialized = json.loads(json.dumps(dict(payload), default=_json_default))
+    report_path = target / REPORT_NAME
+    atomic_write_new_json(report_path, serialized, artifact_kind="OLS class-direction transfer report")
+    report_ref = {"path": _relative(root, report_path), "sha256": file_sha256(report_path)}
+    lineage = {
+        "schema": LINEAGE_SCHEMA,
+        "version": 1,
+        "task_id": TASK_ID,
+        "outer_gate": OUTER_GATE,
+        "result": serialized["result"],
+        "status": serialized["status"],
+        "classification": serialized["classification"],
+        "entrypoint": serialized["entrypoint"],
+        "authorities": serialized.get("authorities"),
+        "git_provenance": serialized.get("git_provenance"),
+        "provenance": serialized["provenance"],
+        "artifacts": {**serialized.get("artifacts", {}), "report": report_ref},
+        "claim_boundary": serialized["claim_boundary"],
+        "lineage_self_hash": "not_embedded_to_avoid_self_reference",
+    }
+    lineage_path = target / LINEAGE_NAME
+    atomic_write_new_json(lineage_path, lineage, artifact_kind="OLS class-direction transfer lineage")
+    lineage_ref = {"path": _relative(root, lineage_path), "sha256": file_sha256(lineage_path)}
+    return report_ref, lineage_ref
+
+
+def _validate_execution_core_bindings() -> None:
+    required = (
+        "_validate_runtime_result",
+        "_raw_summary",
+        "_bootstrap_deltas",
+        "run_class_direction_diagnosis_core",
+        "_write_report_and_lineage",
+    )
+    for name in required:
+        _require(callable(globals().get(name)), f"class-direction execution core symbol is unavailable: {name}")
 
 
 def _base_payload(root: Path, started: Mapping[str, Any], entrypoint_sha256: str) -> dict[str, Any]:
@@ -766,7 +1307,6 @@ def run_diagnosis(repo_root: Path | None = None, output_dir: Path | None = None)
     entrypoint_sha256 = file_sha256(Path(__file__).resolve())
     payload = _base_payload(root, started, entrypoint_sha256)
     input_ref: dict[str, Any] | None = None
-    artifact_refs: dict[str, Any] = {}
     diagnosis_started = False
     scientific_forward_count = 0
     measurement_started: float | None = None
@@ -805,13 +1345,13 @@ def run_diagnosis(repo_root: Path | None = None, output_dir: Path | None = None)
         smooth_identity = v4_diag._validate_smooth_evaluator_identity(contract_authorities, evaluator_states)
         payload["runtime_readiness"]["synthetic_runtime_smoke"] = _synthetic_runtime_smoke(v4, consumer, device)
         payload["runtime_readiness"]["ready_before_scientific_data"] = True
+        _validate_execution_core_bindings()
         authorities = _authority_payload(root, v4_diag, v4, preflight, contract_authorities, v3_authority, v4_authority, smooth_identity)
         images, labels, train_indices, development_indices, selection_indices, dataset = v4._load_roles(root, preflight)
         _require(selection_indices.numel() == DEVELOPMENT_SELECTION_ROWS, "fixed DEV selection row count changed")
         _require(tensor_sha256(selection_indices) == v4_diag.SELECTION_INDICES_SHA256, "fixed DEV selection identity changed")
         selection_images = images.index_select(0, selection_indices).contiguous()
         selection_labels = labels.index_select(0, selection_indices).contiguous()
-        target_labels = ((selection_labels + 1) % CLASS_COUNT).contiguous()
         train_images = images.index_select(0, train_indices).contiguous()
         train_labels = labels.index_select(0, train_indices).contiguous()
         _require(train_images.shape[0] == 55_000 and train_labels.shape[0] == 55_000, "TRAIN role row count changed")
@@ -867,46 +1407,52 @@ def run_diagnosis(repo_root: Path | None = None, output_dir: Path | None = None)
         input_ref = {"path": _relative(root, input_path), "sha256": file_sha256(input_path)}
         diagnosis_started = True
         measurement_started = time.perf_counter()
-        train_z = _encode_train_z(v4_diag, consumer, train_images, device)
+        train_z = _encode_train_z(consumer, train_images, device)
         scientific_forward_count += 5_500
-        centroids = _train_centroids(train_z, train_labels)
-        templates = _train_templates(train_images, train_labels)
-        base_raw, z, canonical_replay_difference = _collect_dev_base(v4_diag, consumer, selection_images, device)
-        scientific_forward_count += 200
-        source_centroids = centroids.index_select(0, selection_labels)
-        target_centroids = centroids.index_select(0, target_labels)
-        direction = (target_centroids - source_centroids).contiguous()
-        z_shift = (z - source_centroids + (ALPHA * direction)).contiguous()
-        _validate_z(z, DEVELOPMENT_SELECTION_ROWS, "DEV canonical z")
-        _validate_z(z_shift, DEVELOPMENT_SELECTION_ROWS, "DEV shifted z")
-        shifted_raw = _forward_shifted(v4_diag, consumer, z_shift, device)
-        scientific_forward_count += 100
-        base_logits = _smooth_logits(smooth, base_raw, device)
-        shifted_logits = _smooth_logits(smooth, shifted_raw, device)
-        finite_domain = {
-            "z_finite": bool(torch.isfinite(z.real).all() and torch.isfinite(z.imag).all()),
-            "z_shift_finite": bool(torch.isfinite(z_shift.real).all() and torch.isfinite(z_shift.imag).all()),
-            "centroids_finite": bool(torch.isfinite(centroids.real).all() and torch.isfinite(centroids.imag).all()),
-            "templates_finite": bool(torch.isfinite(templates).all()),
-            "raw_base_finite": bool(torch.isfinite(base_raw).all()),
-            "raw_shifted_finite": bool(torch.isfinite(shifted_raw).all()),
-            "modal_projection_boundary": True,
-            "transport_T_equals_I_100": True,
-            "shared_W_OLS": True,
-        }
-        _require(all(finite_domain.values()), "OLS intervention/domain validity check failed")
-        template_delta, template_detail = _template_direction(base_raw, shifted_raw, templates, selection_labels, target_labels)
-        smooth_delta, smooth_detail = _smooth_direction(base_logits, shifted_logits, selection_labels, target_labels)
-        bootstrap_summaries, bootstrap_tensors = _bootstrap(v4_diag, template_delta, smooth_delta, selection_labels)
-        raw_detail = _raw_change_summary(v4_diag, base_raw, shifted_raw)
-        raw_artifact = _save_raw_artifact(root, target, centroids, templates, z, z_shift, base_raw, shifted_raw, selection_labels, target_labels, base_logits, shifted_logits, selection_indices)
+        def canonical_forward(batch_images: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, Mapping[str, Any]]:
+            nonlocal scientific_forward_count
+            base_raw, z, replay_difference = _collect_dev_base(consumer, batch_images, device)
+            scientific_forward_count += 200
+            return z, base_raw, {"canonical_replay_max_abs_difference": replay_difference}
+
+        def shifted_forward(batch_z: torch.Tensor) -> torch.Tensor:
+            nonlocal scientific_forward_count
+            shifted_raw = _forward_shifted(consumer, batch_z, device)
+            scientific_forward_count += 100
+            return shifted_raw
+
+        def smooth_forward(raw: torch.Tensor) -> torch.Tensor:
+            return _smooth_logits(smooth, raw, device)
+
+        def persist_sufficient_observations(observations: Mapping[str, torch.Tensor], metadata: Mapping[str, Any]) -> Mapping[str, Any]:
+            return _save_sufficient_observations(root, target, observations, metadata)
+
+        core_result = run_class_direction_diagnosis_core(
+            train_z=train_z,
+            train_images=train_images,
+            train_labels=train_labels,
+            selection_images=selection_images,
+            selection_labels=selection_labels,
+            canonical_forward=canonical_forward,
+            shifted_forward=shifted_forward,
+            smooth_forward=smooth_forward,
+            selection_indices=selection_indices,
+            persist_sufficient_observations=persist_sufficient_observations,
+        )
+        centroids = core_result["centroids"]
+        templates = core_result["templates"]
+        z = core_result["z"]
+        z_shift = core_result["z_shift"]
+        base_raw = core_result["base_raw"]
+        shifted_raw = core_result["shifted_raw"]
+        base_logits = core_result["base_logits"]
+        shifted_logits = core_result["shifted_logits"]
+        bootstrap_summaries = core_result["bootstrap_summaries"]
+        bootstrap_tensors = core_result["bootstrap_tensors"]
+        raw_artifact = _save_raw_artifact(root, target, centroids, templates, z, z_shift, base_raw, shifted_raw, selection_labels, core_result["target_labels"], base_logits, shifted_logits, selection_indices)
         bootstrap_artifact = _save_bootstrap_artifact(root, target, bootstrap_summaries, bootstrap_tensors, selection_labels)
-        artifact_refs.update({"raw_outputs": raw_artifact, "bootstrap": bootstrap_artifact})
-        pair_summaries = _pair_summary(template_delta, smooth_delta, selection_labels, target_labels)
-        template_groups = {"by_source_class": _group_summary(template_delta, selection_labels), "by_target_class": _group_summary(template_delta, target_labels)}
-        smooth_groups = {"by_source_class": _group_summary(smooth_delta, selection_labels), "by_target_class": _group_summary(smooth_delta, target_labels)}
-        classification, decision = _classify(bootstrap_summaries["delta_template"], bootstrap_summaries["delta_smooth"], pair_summaries)
-        _require(classification in CLASSIFICATIONS, "classification is not one of the frozen primary classifications")
+        core_fields = _core_report_fields(core_result, raw_artifact=raw_artifact, bootstrap_artifact=bootstrap_artifact)
+        classification = core_result["classification"]
         v4_endpoint = _mapping(_mapping(v4_authority["report"].get("trajectory"), "V4 trajectory").get("300"), "V4 endpoint")
         v4_smooth_endpoint = _mapping(v4_endpoint.get("smooth_evaluator"), "V4 Smooth endpoint")
         base_predictions = base_logits.argmax(dim=1)
@@ -914,7 +1460,7 @@ def run_diagnosis(repo_root: Path | None = None, output_dir: Path | None = None)
         base_macro = float(sum(base_per_class) / CLASS_COUNT)
         _require(math.isclose(base_macro, float(v4_smooth_endpoint["macro_recall"]), rel_tol=0.0, abs_tol=1.0e-7), "base Smooth endpoint does not reproduce valid V4 attempt-02")
         _require(all(math.isclose(a, b, rel_tol=0.0, abs_tol=1.0e-7) for a, b in zip(base_per_class, v4_smooth_endpoint["per_class_recall"], strict=True)), "base Smooth per-class endpoint does not reproduce valid V4 attempt-02")
-        provider_after = {"frozen_state_sha256": v4_diag._digest_tree(v4_diag._cpu_tree(frozen.state_dict())), "smooth_state_sha256": v4_diag._digest_tree(v4_diag._cpu_tree(smooth.state_dict()))}
+        provider_after = {"frozen_state_sha256": _digest_tree(_cpu_tree(frozen.state_dict())), "smooth_state_sha256": _digest_tree(_cpu_tree(smooth.state_dict()))}
         _require(provider_after["frozen_state_sha256"] == evaluator_states["frozen_state_sha256"] and provider_after["smooth_state_sha256"] == evaluator_states["smooth_state_sha256"], "evaluator state changed during diagnosis")
         _require(all(parameter.grad is None for evaluator in (frozen, smooth) for parameter in evaluator.parameters()), "evaluator received a diagnosis gradient")
         payload.update(
@@ -925,22 +1471,16 @@ def run_diagnosis(repo_root: Path | None = None, output_dir: Path | None = None)
                 "authorities": authorities,
                 "git_provenance": authorities["git_provenance"],
                 "device": device_facts,
-                "runtime": {"grid": PRODUCTION_GRID, "batch": LOGICAL_BATCH_SIZE, "transport": "T=I_100_coefficient_space", "modal_projection_boundary": True, "shared_w_ols": True, "canonical_replay_max_abs_difference": canonical_replay_difference, "optimizer_created": False, "backward_executed": False, "optical_update_executed": False},
+                "runtime": {"grid": PRODUCTION_GRID, "batch": LOGICAL_BATCH_SIZE, "transport": "T=I_100_coefficient_space", "modal_projection_boundary": True, "shared_w_ols": True, "canonical_replay_max_abs_difference": core_result["canonical_replay_max_abs_difference"], "optimizer_created": False, "backward_executed": False, "optical_update_executed": False},
                 "data": {**dataset, "train_complex_centroid_rows": int(train_images.shape[0]), "train_image_template_rows": int(train_images.shape[0]), "development_selection_rows": int(selection_images.shape[0]), "calibration_rows_read": 0, "protected_rows_read": 0, "test_rows_read": 0, "sealed_rows_read": 0},
                 "execution": {"diagnosis_executed": True, "scientific_forward_count": scientific_forward_count, "train_encoder_forwards": 5_500, "dev_canonical_forwards": 100, "dev_replay_forwards": 100, "dev_shifted_forwards": 100, "smooth_evaluations": 200, "runtime": "LightGen 2D complex-OLS aligned runtime", "device": device_facts},
-                "ols_intervention": {"class_centroids_constructed": True, "centroid_rule": "all frozen TRAIN complex z grouped by label; class mean in torch.complex64", "class_counts": [int(value) for value in torch.bincount(train_labels, minlength=CLASS_COUNT).tolist()], "centroid_tensor_sha256": tensor_sha256(centroids), "z_tensor_sha256": tensor_sha256(z), "z_shift_tensor_sha256": tensor_sha256(z_shift), "z_norm": _summary(torch.linalg.vector_norm(z.to(torch.complex128), dim=1)), "z_shift_norm": _summary(torch.linalg.vector_norm(z_shift.to(torch.complex128), dim=1)), "centroid_direction_norm": _summary(torch.linalg.vector_norm(direction.to(torch.complex128), dim=1)), "finite_domain_validity": finite_domain, "alpha": ALPHA, "renormalization": "none"},
-                "raw_response": raw_detail,
-                "template_direction": {**template_detail, "bootstrap": bootstrap_summaries["delta_template"], "positive_fraction": float((template_delta > 0.0).to(torch.float64).mean()), "by_source_class": template_groups["by_source_class"], "by_target_class": template_groups["by_target_class"], "primary_pass": decision["template_primary_pass"]},
-                "smooth_direction": {**smooth_detail, "bootstrap": bootstrap_summaries["delta_smooth"], "positive_fraction": float((smooth_delta > 0.0).to(torch.float64).mean()), "by_source_class": smooth_groups["by_source_class"], "by_target_class": smooth_groups["by_target_class"], "primary_pass": decision["smooth_primary_pass"]},
-                "directional_consistency": {"pairs": pair_summaries, "positive_template_pair_means": decision["positive_template_pair_means"], "positive_smooth_pair_means": decision["positive_smooth_pair_means"], "broad_or_pair_dominated": "broad" if not decision["pair_dominated"] else "pair-dominated", "decision": decision},
-                "decision": {"outer_gate": OUTER_GATE, "classification": classification, **decision, "unresolved_alternatives": ["template morphology may not transfer to independent Smooth semantic scores" if not decision["smooth_primary_pass"] else "none under the frozen directional rule", "this diagnosis does not establish generator capacity or layer sufficiency"]},
-                "artifacts": {**artifact_refs, "input": input_ref},
+                **core_fields,
+                "artifacts": {**core_fields["artifacts"], "input": input_ref},
                 "governance": {"diagnosis_executed": True, "optimizer_created": False, "backward_executed": False, "optical_update_executed": False, "training_executed": False, "v4_retry_executed": False, "stage_b_executed": False, "scale_extraction_executed": False, "prior_work_executed": False, "sampled_generation_executed": False, "generation_acceptance": False, "protected_read": False, "test_read": False, "sealed_read": False, "training_authorized": False, "stage_b_authorized": False, "generation_readiness": "not_ready", "formal_promotion": False},
                 "measurement_elapsed_seconds": time.perf_counter() - measurement_started,
                 "next": "no_retry; this diagnosis does not authorize training, Stage B, generation or formal promotion",
             }
         )
-        del consumer, frozen, smooth
         torch.cuda.empty_cache()
     except DiagnosisBlocked as blocked:
         payload.update(blocked.details)
@@ -962,34 +1502,8 @@ def run_diagnosis(repo_root: Path | None = None, output_dir: Path | None = None)
         payload["artifacts"].setdefault("input", input_ref)
         payload["artifacts"]["report_self_hash"] = "not_embedded_to_avoid_self_reference"
 
-    def _json_default(value: Any) -> Any:
-        if torch.is_tensor(value):
-            return value.detach().cpu().tolist()
-        raise TypeError(f"unsupported report value: {type(value).__name__}")
-
-    payload = json.loads(json.dumps(payload, default=_json_default))
-    report_path = target / REPORT_NAME
-    atomic_write_new_json(report_path, payload, artifact_kind="OLS class-direction transfer report")
-    report_ref = {"path": _relative(root, report_path), "sha256": file_sha256(report_path)}
-    lineage = {
-        "schema": LINEAGE_SCHEMA,
-        "version": 1,
-        "task_id": TASK_ID,
-        "outer_gate": OUTER_GATE,
-        "result": payload["result"],
-        "status": payload["status"],
-        "classification": payload["classification"],
-        "entrypoint": payload["entrypoint"],
-        "authorities": payload.get("authorities"),
-        "git_provenance": payload.get("git_provenance"),
-        "provenance": payload["provenance"],
-        "artifacts": {**payload.get("artifacts", {}), "report": report_ref},
-        "claim_boundary": payload["claim_boundary"],
-        "lineage_self_hash": "not_embedded_to_avoid_self_reference",
-    }
-    lineage_path = target / LINEAGE_NAME
-    atomic_write_new_json(lineage_path, lineage, artifact_kind="OLS class-direction transfer lineage")
-    result = {"result": payload["result"], "status": payload["status"], "classification": payload["classification"], "task_id": TASK_ID, "outer_gate": OUTER_GATE, "report": report_ref, "lineage": {"path": _relative(root, lineage_path), "sha256": file_sha256(lineage_path)}, "diagnosis_executed": payload["claim_boundary"]["diagnosis_executed"], "scientific_forward_count": payload["claim_boundary"]["scientific_forward_count"], "optimizer_created": False, "backward_executed": False, "optical_update_executed": False, "stage_b_executed": False, "generation_readiness": "not_ready", "formal_promotion": False, "next": payload.get("next")}
+    report_ref, lineage_ref = _write_report_and_lineage(root, target, payload)
+    result = {"result": payload["result"], "status": payload["status"], "classification": payload["classification"], "task_id": TASK_ID, "outer_gate": OUTER_GATE, "report": report_ref, "lineage": lineage_ref, "diagnosis_executed": payload["claim_boundary"]["diagnosis_executed"], "scientific_forward_count": payload["claim_boundary"]["scientific_forward_count"], "optimizer_created": False, "backward_executed": False, "optical_update_executed": False, "stage_b_executed": False, "generation_readiness": "not_ready", "formal_promotion": False, "next": payload.get("next")}
     print(json.dumps(result, indent=2, ensure_ascii=False))
     return result
 
