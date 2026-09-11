@@ -167,6 +167,18 @@ condition。Hash mismatch 只有在该 Hash 是同一身份域的 authoritative 
 formal evidence 或 write-once manifest boundary 时，才可触发 fail-closed rejection；不能仅因
 两个摘要字符串不同而升级为 `HARD_BLOCKER`。
 
+历史 contract 的 `branch`、`git_head`、`source_head`、`producer_head` 或其 `git.head` 字段默认是
+该 contract/artifact 的 producer/source provenance，不是永久的 current-consumer HEAD lock。Consumer
+必须分别记录自己的 branch/HEAD；producer 与 consumer HEAD 不同本身不构成 invalid。只有 contract
+明确声明 `consumer_head_exact_required=true`（或已有等价 exact-source-lock 字段）时，才按该字段
+要求 exact consumer HEAD，并在 mismatch 时 fail-closed。若 producer 与 consumer 的冻结 scientific
+semantics 不兼容，应报告 semantic incompatibility，而不是把 HEAD 字符串差异当成原因。
+
+One-shot 还要区分“科学前 invalid”与“已消费的 scientific attempt”：若在 contract-defined forward/data
+evaluation 开始前即因 authority/harness 失败，scientific forward 与 data-role reads 必须为零，不能
+产出 SUPPORTED/NOT_SUPPORTED 科学分类；该 invalid attempt 仍不能在没有新授权时自动重跑。进入
+contract-defined forward/data evaluation 后，attempt 按自身 one-shot 规则消费，不得因结果不理想而重跑。
+
 当前审计分类如下；分类只改变呈现与停止语义，不删除历史 evidence：
 
 | 类别 | 当前用途 |

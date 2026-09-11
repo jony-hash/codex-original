@@ -19,7 +19,11 @@ file byte SHA、state_dict/tree SHA、tensor-content SHA、semantic-state identi
 普通研究默认使用 semantic authority + producer task/attempt + Git branch/HEAD；只有真实 consumer
 在同一身份域要求时才核验 Hash。该治理不改变公共函数签名、formal/high-risk evidence、training
 authorization、data firewall、checkpoint validation、formal runtime 或历史 artifact；V1 标记仅作
-历史 provenance 保留。
+历史 provenance 保留。Contract 的历史 `git_head`/`source_head`/`producer_head`/`git.head` 默认
+属于 producer/source provenance；consumer branch/HEAD 单独记录，只有明确
+`consumer_head_exact_required=true` 或等价 exact-source-lock 才要求 exact consumer HEAD。
+Forward/data evaluation 前的 authority/harness failure 只记 pre-scientific INVALID（reads=`0`），
+不产生科学分类，也不绕过新授权重跑；进入 scientific evaluation 后按 one-shot 规则消费。
 
 ## 唯一活动研究主线：LightGen 输入与 OLS 对齐的语义生成原型
 

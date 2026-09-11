@@ -18,6 +18,7 @@ import time
 import traceback
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Mapping
 
 import torch
@@ -41,7 +42,6 @@ RAW_OUTPUT_SCHEMA = "lightgen_2d_fixed_ols_generator_conditionality_raw_outputs.
 BOOTSTRAP_SCHEMA = "lightgen_2d_fixed_ols_generator_conditionality_bootstrap.v1"
 
 EXPECTED_BRANCH = "research/lightgen-ols-native-semantic-generation-v1"
-PRIOR_HEAD = "383197a930dd48f98294120f8cf867444f994f85"
 
 V4_ENTRYPOINT_PATH = Path("scripts/research/execute_lightgen_2d_fixed_ols_generator_recoverability_v4_scientific.py")
 V4_ENTRYPOINT_SHA256 = "a2a54556348deddc21a5ae0caf5c1343c9f6736f73d211aa33a1958ffb33375b"
@@ -204,6 +204,56 @@ def _read_json_ref(root: Path, relative: str | Path, expected_sha256: str, name:
     return dict(_mapping(value, name))
 
 
+def _git_head(value: object, name: str) -> str:
+    _require(
+        isinstance(value, str)
+        and len(value) == 40
+        and all(character in "0123456789abcdef" for character in value.lower()),
+        f"{name} is not a valid Git commit identity",
+    )
+    return value
+
+
+def _bind_contract_git_provenance(contract: Mapping[str, Any], consumer_git: Mapping[str, Any]) -> dict[str, Any]:
+    """Keep historical producer Git provenance separate from the current consumer."""
+
+    historical_git = contract.get("git")
+    if historical_git is None:
+        historical_git = contract
+    historical_git = _mapping(historical_git, "historical contract Git provenance")
+    producer_branch = historical_git.get("branch", contract.get("branch"))
+    producer_head = historical_git.get("head")
+    if producer_head is None:
+        for field in ("producer_head", "source_head", "git_head"):
+            candidate = historical_git.get(field, contract.get(field))
+            if candidate is not None:
+                producer_head = candidate
+                break
+    _require(isinstance(producer_branch, str) and bool(producer_branch), "historical producer branch is unavailable")
+    producer_head = _git_head(producer_head, "historical producer HEAD")
+
+    consumer_branch = consumer_git.get("branch")
+    consumer_head = _git_head(consumer_git.get("head"), "current consumer HEAD")
+    _require(isinstance(consumer_branch, str) and bool(consumer_branch), "current consumer branch is unavailable")
+    _require(consumer_branch == EXPECTED_BRANCH, "current consumer branch differs from the authorized diagnosis branch")
+
+    exact_required = contract.get("consumer_head_exact_required", False)
+    _require(isinstance(exact_required, bool), "consumer_head_exact_required must be boolean when declared")
+    required_consumer_head = contract.get("consumer_head", producer_head)
+    if exact_required:
+        required_consumer_head = _git_head(required_consumer_head, "required consumer HEAD")
+        _require(consumer_head == required_consumer_head, "exact consumer HEAD mismatch")
+
+    return {
+        "producer": {"branch": producer_branch, "head": producer_head},
+        "consumer": {"branch": consumer_branch, "head": consumer_head},
+        "consumer_head_exact_required": exact_required,
+        "required_consumer_head": required_consumer_head if exact_required else None,
+        "head_equal": consumer_head == producer_head,
+        "producer_head_is_provenance_only": not exact_required,
+    }
+
+
 def _validate_smooth_evaluator_identity(contract_authorities: Mapping[str, Any], evaluator_states: Mapping[str, Any]) -> dict[str, Any]:
     """Bind the loaded evaluator to its semantic/file authority without cross-domain equality."""
 
@@ -230,10 +280,19 @@ def _validate_smooth_evaluator_identity(contract_authorities: Mapping[str, Any],
     }
 
 
-def _resolve_authorities(root: Path, v4: Any) -> tuple[Any, Any, dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
+def _resolve_authorities(root: Path, v4: Any, consumer_git: Mapping[str, Any]) -> tuple[Any, Any, dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
     preflight = v4._load_preflight_module(root)
-    contract, _, current_authorities, v3_authority, preflight_authority = v4._validate_v4_authority(root, preflight)
+    contract = _read_json_ref(root, V4_CONTRACT_PATH, V4_CONTRACT_SHA256, "V4 contract")
     contract_authorities = dict(_mapping(contract.get("authorities"), "V4 contract authorities"))
+    git_provenance = _bind_contract_git_provenance(contract, consumer_git)
+    # The reviewed V4 validator asks its preflight module for current authorities;
+    # that module also interprets the historical producer HEAD as a live lock. The
+    # diagnosis binds that historical field above, then reuses the validator's
+    # remaining immutable artifact/semantic checks through the contract view.
+    historical_contract_view = SimpleNamespace(
+        _load_contract=lambda _root: (contract, None, contract_authorities)
+    )
+    _, _, current_authorities, v3_authority, preflight_authority = v4._validate_v4_authority(root, historical_contract_view)
     v4_report = _read_json_ref(root, V4_SCIENTIFIC_REPORT_PATH, V4_SCIENTIFIC_REPORT_SHA256, "V4 scientific report")
     _require(v4_report.get("result") == "VALID_COMPLETED", "V4 scientific report is not valid completed")
     _require(v4_report.get("classification") == "FIXED_OLS_GENERATOR_RECOVERABILITY_NOT_SUPPORTED", "V4 scientific classification changed")
@@ -253,7 +312,7 @@ def _resolve_authorities(root: Path, v4: Any) -> tuple[Any, Any, dict[str, Any],
     _require(tensor_sha256(state["generator.phase"]) == "83aa74b701049c09c5efb63dbd6d3a6d181184a964d3d3c0c06665ca97da5afe", "V4 generator identity changed")
     _require(torch.equal(state["ols.operator.transport"], OLS_TRANSPORT), "V4 OLS transport is not T=I_100")
     _require(file_sha256(_path(root, V4_RUNTIME_PATH)) == V4_RUNTIME_SHA256, "LightGen runtime identity changed")
-    return preflight, contract, contract_authorities, v3_authority, preflight_authority, {"report": v4_report, "lineage": v4_lineage, "checkpoint": checkpoint, "state": state, "current_authorities": current_authorities}
+    return preflight, contract, contract_authorities, v3_authority, preflight_authority, {"report": v4_report, "lineage": v4_lineage, "checkpoint": checkpoint, "state": state, "current_authorities": current_authorities, "git_provenance": git_provenance}
 
 
 def _load_runtime(root: Path, v4: Any, preflight: Any, v2_contract: Any, state: Mapping[str, Any], device: torch.device) -> Any:
@@ -483,10 +542,9 @@ def run_diagnosis(repo_root: Path | None = None, output_dir: Path | None = None)
     artifact_refs: dict[str, Any] = {}
     diagnosis_started = False
     try:
-        _require(started.get("branch") == EXPECTED_BRANCH, "active Git branch differs from frozen diagnosis")
-        _require(started.get("head") != PRIOR_HEAD, "diagnosis must run after the trust-boundary governance commit")
+        _require(started.get("branch") == EXPECTED_BRANCH, "active Git branch differs from authorized diagnosis branch")
         v4 = _load_module(root)
-        preflight, contract, contract_authorities, v3_authority, preflight_authority, v4_authority = _resolve_authorities(root, v4)
+        preflight, contract, contract_authorities, v3_authority, preflight_authority, v4_authority = _resolve_authorities(root, v4, started)
         device, device_facts = preflight._cuda_device_facts()
         _require(tuple(device_facts.get("compute_capability", ())) == EXPECTED_COMPUTE_CAPABILITY and int(device_facts.get("vram_bytes", 0)) >= EXPECTED_VRAM_BYTES, "diagnosis target device differs from accepted V4 target")
         _require(shutil.disk_usage(target.parent).free >= MIN_FREE_BYTES_FOR_OUTPUT, "insufficient output storage headroom")
@@ -502,6 +560,7 @@ def run_diagnosis(repo_root: Path | None = None, output_dir: Path | None = None)
         within_permutation, cross_permutation, within_labels, cross_labels = _permutations(selection_labels)
         input_payload = {"schema": INPUT_SCHEMA, "version": 1, "task_id": TASK_ID, "outer_gate": OUTER_GATE, "entrypoint": {"path": _relative(root, Path(__file__).resolve()), "sha256": entrypoint_sha256}, "authorities": {"v4_contract": {"path": V4_CONTRACT_PATH.as_posix(), "sha256": V4_CONTRACT_SHA256}, "v4_preflight_report": {"path": V4_PREFLIGHT_REPORT_PATH.as_posix(), "sha256": V4_PREFLIGHT_REPORT_SHA256}, "v4_preflight_lineage": {"path": V4_PREFLIGHT_LINEAGE_PATH.as_posix(), "sha256": V4_PREFLIGHT_LINEAGE_SHA256}, "v4_scientific_report": {"path": V4_SCIENTIFIC_REPORT_PATH.as_posix(), "sha256": V4_SCIENTIFIC_REPORT_SHA256}, "v4_scientific_lineage": {"path": V4_SCIENTIFIC_LINEAGE_PATH.as_posix(), "sha256": V4_SCIENTIFIC_LINEAGE_SHA256}, "v4_step_300_checkpoint": {"path": V4_STEP_300_CHECKPOINT_PATH.as_posix(), "sha256": V4_STEP_300_CHECKPOINT_SHA256}, "runtime": {"path": V4_RUNTIME_PATH.as_posix(), "sha256": V4_RUNTIME_SHA256}, "smooth_evaluator": {"sha256": SMOOTH_EVALUATOR_SHA256}}, "protocol": {"matched": "fixed DEV x -> frozen encoder -> z in C^100 -> modal projection -> T=I_100 -> shared W_OLS -> V4 step-300 generator", "within_class_permutation": "for each class, map frozen per-class selection order k to (k+1) mod 100", "cross_class_permutation": "for target class d and position k, map to donor class (d+1) mod 10 at the same position k", "labels_used_only_for": ["deterministic permutations", "TRAIN-only global/class mean templates", "descriptive Smooth target/donor metrics"], "mse": "per-sample mean squared error in contract-defined 200x200 SLM-intensity target space", "material_mse_margin": MATERIAL_MSE_MARGIN, "ranking_materiality_threshold": RANKING_THRESHOLD, "bootstrap": {"replicates": BOOTSTRAP_REPLICATES, "seed": BOOTSTRAP_SEED, "type": "paired, class-stratified over 100 examples per class", "quantile_convention": "torch.quantile interpolation=linear"}, "classification_rules": {"collapse": "within and cross bootstrap CI upper bounds <= material_mse_margin", "class": "within CI upper <= margin, cross CI lower > margin, and cross-minus-within CI lower > margin", "instance": "within and cross CI lower > margin, with both ranking fractions > 0.5", "otherwise": "mixed_or_unresolved"}, "template_view": "raw CMOS clamp [0,1] then adaptive_avg_pool2d to 28x28; TRAIN means only"}, "data_roles": {"train_rows_for_templates": 55000, "development_role_rows": 5000, "development_selection_rows": 1000, "calibration_rows": 0, "protected_rows": 0, "test_rows": 0, "sealed_rows": 0}, "claim_boundary": {"optimizer_created": False, "backward_executed": False, "optical_update_executed": False, "stage_b_executed": False, "protected_accessed": False, "test_accessed": False, "sealed_accessed": False}, "input_self_hash": "not_embedded_to_avoid_self_reference"}
         input_payload["authorities"]["smooth_evaluator"].update(smooth_identity)
+        input_payload["git_provenance"] = v4_authority["git_provenance"]
         input_path = target / INPUT_NAME
         atomic_write_new_json(input_path, input_payload, artifact_kind="V4 generator conditionality input")
         input_ref = {"path": _relative(root, input_path), "sha256": file_sha256(input_path)}
@@ -552,6 +611,7 @@ def run_diagnosis(repo_root: Path | None = None, output_dir: Path | None = None)
         _require(all(parameter.grad is None for evaluator in (frozen, smooth) for parameter in evaluator.parameters()), "evaluator received a diagnosis gradient")
         payload.update({"result": "VALID_COMPLETED", "status": "valid_completed", "classification": classification, "authorities": {"v4_contract": {"path": V4_CONTRACT_PATH.as_posix(), "sha256": V4_CONTRACT_SHA256}, "v4_preflight_report": {"path": V4_PREFLIGHT_REPORT_PATH.as_posix(), "sha256": V4_PREFLIGHT_REPORT_SHA256}, "v4_preflight_lineage": {"path": V4_PREFLIGHT_LINEAGE_PATH.as_posix(), "sha256": V4_PREFLIGHT_LINEAGE_SHA256}, "v4_scientific_report": {"path": V4_SCIENTIFIC_REPORT_PATH.as_posix(), "sha256": V4_SCIENTIFIC_REPORT_SHA256}, "v4_scientific_lineage": {"path": V4_SCIENTIFIC_LINEAGE_PATH.as_posix(), "sha256": V4_SCIENTIFIC_LINEAGE_SHA256}, "v4_step_300_checkpoint": {"path": V4_STEP_300_CHECKPOINT_PATH.as_posix(), "sha256": V4_STEP_300_CHECKPOINT_SHA256, "runtime_state_sha256": _digest_tree(v4_authority["state"])}, "runtime": {"path": V4_RUNTIME_PATH.as_posix(), "sha256": V4_RUNTIME_SHA256}, "smooth_evaluator": {"sha256": SMOOTH_EVALUATOR_SHA256}, "v4_endpoint_smooth_macro": float(v4_smooth["macro_recall"])}, "device": device_facts, "protocol": input_payload["protocol"], "runtime": {"grid": PRODUCTION_GRID, "batch": LOGICAL_BATCH_SIZE, "transport": "T=I_100_coefficient_space", "modal_projection_boundary": True, "shared_w_ols": True, "canonical_replay_max_abs_difference": canonical_replay_difference, "optimizer_created": False, "backward_executed": False, "optical_update_executed": False}, "data": {**dataset, "diagnostic_train_template_rows": int(train_images.shape[0]), "diagnostic_dev_selection_rows": int(selection_images.shape[0]), "calibration_rows_read": 0, "protected_rows_read": 0, "test_rows_read": 0, "sealed_rows_read": 0}, "permutations": {"within_class": {"rule": "per-class frozen selection order +1 modulo 100", "indices_sha256": tensor_sha256(within_permutation), "donor_labels_sha256": tensor_sha256(within_labels)}, "cross_class": {"rule": "donor class (target class+1) modulo 10 at same per-class position", "indices_sha256": tensor_sha256(cross_permutation), "donor_labels_sha256": tensor_sha256(cross_labels)}}, "matched": {"per_sample_reconstruction_mse": matched_mse.cpu().tolist(), "mse_summary": _summary(matched_mse), "raw_cmos": v4._raw_summary(matched_raw), "raw_tensor_sha256": tensor_sha256(matched_raw), "smooth": {key: value for key, value in matched_smooth.items() if key != "_predictions"}}, "within_class": {"per_sample_reconstruction_mse": within_mse.cpu().tolist(), "mse_summary": _summary(within_mse), "paired_delta_summary": _summary(delta_within), "paired_bootstrap": within_ci, "ranking_fraction_matched_lower_mse": rank_within, "raw_rms_change_vs_matched": {"summary": within_rms["summary"], "tensor_sha256": within_rms["tensor_sha256"]}, "raw_cmos": v4._raw_summary(within_raw), "raw_tensor_sha256": tensor_sha256(within_raw), "smooth": {key: value for key, value in within_smooth.items() if key != "_predictions"}}, "cross_class": {"per_sample_reconstruction_mse": cross_mse.cpu().tolist(), "mse_summary": _summary(cross_mse), "paired_delta_summary": _summary(delta_cross), "paired_bootstrap": cross_ci, "ranking_fraction_matched_lower_mse": rank_cross, "raw_rms_change_vs_matched": {"summary": cross_rms["summary"], "tensor_sha256": cross_rms["tensor_sha256"]}, "raw_cmos": v4._raw_summary(cross_raw), "raw_tensor_sha256": tensor_sha256(cross_raw), "smooth": {key: value for key, value in cross_smooth.items() if key != "_predictions"}}, "conditioning": {"delta_within_definition": "L_within-L_matched", "delta_cross_definition": "Delta_cross-Delta_within", "cross_minus_within_definition": "Delta_cross-Delta_within", "delta_within_summary": _summary(delta_within), "delta_cross_summary": _summary(delta_cross), "cross_minus_within_summary": _summary(delta_cross_minus_within), "paired_bootstrap_cross_minus_within": cross_within_ci, "material_mse_margin": MATERIAL_MSE_MARGIN, "ranking_threshold": RANKING_THRESHOLD, "decision_checks": {"collapse": collapse, "class_conditioning": class_conditioning, "instance_conditioning": instance_conditioning}, "primary_classification": classification}, "template_collapse": template, "secondary_findings": {"smooth_target_label": {"matched": matched_smooth["target_label"], "within_class": within_smooth["target_label"], "cross_class": cross_smooth["target_label"]}, "smooth_donor_label": {"matched": matched_smooth["target_label"], "within_class": within_smooth["target_label"], "cross_class": cross_smooth["target_label"]}, "smooth_prediction_agreement_with_matched": {"within_class": within_smooth["agreement_with_matched_prediction"], "cross_class": cross_smooth["agreement_with_matched_prediction"]}, "unresolved": ["independent Smooth semantics remain unestablished", "template collapse is descriptive attribution only"]}, "artifacts": {**artifact_refs, "input": input_ref}, "governance": {"diagnosis_executed": True, "optimizer_created": False, "backward_executed": False, "optical_update_executed": False, "retraining_executed": False, "stage_b_executed": False, "scale_extraction_executed": False, "prior_work_executed": False, "sampled_generation_executed": False, "generation_acceptance": False, "protected_read": False, "test_read": False, "sealed_read": False, "training_authorized": False, "stage_b_authorized": False, "generation_readiness": "not_ready", "formal_promotion": False}, "measurement_elapsed_seconds": time.perf_counter() - started_measurement, "next": "no_retry; retain diagnosis; V4 scientific result remains NOT_SUPPORTED; no Stage B or generation"})
         payload["authorities"]["smooth_evaluator"].update(smooth_identity)
+        payload["git_provenance"] = v4_authority["git_provenance"]
         payload["cross_class"]["paired_bootstrap"] = cross_ci
         payload["conditioning"]["delta_cross_definition"] = "L_cross-L_matched"
         payload["secondary_findings"]["smooth_donor_label"] = {"matched": matched_smooth["donor_label"], "within_class": within_smooth["donor_label"], "cross_class": cross_smooth["donor_label"]}
@@ -583,7 +643,7 @@ def run_diagnosis(repo_root: Path | None = None, output_dir: Path | None = None)
     report_path = target / REPORT_NAME
     atomic_write_new_json(report_path, payload, artifact_kind="V4 generator conditionality report")
     report_ref = {"path": _relative(root, report_path), "sha256": file_sha256(report_path)}
-    lineage = {"schema": LINEAGE_SCHEMA, "version": 1, "task_id": TASK_ID, "outer_gate": OUTER_GATE, "result": payload["result"], "status": payload["status"], "classification": payload["classification"], "entrypoint": payload["entrypoint"], "authorities": payload.get("authorities"), "provenance": payload["provenance"], "artifacts": {**payload.get("artifacts", {}), "report": report_ref}, "claim_boundary": payload["claim_boundary"], "lineage_self_hash": "not_embedded_to_avoid_self_reference"}
+    lineage = {"schema": LINEAGE_SCHEMA, "version": 1, "task_id": TASK_ID, "outer_gate": OUTER_GATE, "result": payload["result"], "status": payload["status"], "classification": payload["classification"], "entrypoint": payload["entrypoint"], "authorities": payload.get("authorities"), "git_provenance": payload.get("git_provenance"), "provenance": payload["provenance"], "artifacts": {**payload.get("artifacts", {}), "report": report_ref}, "claim_boundary": payload["claim_boundary"], "lineage_self_hash": "not_embedded_to_avoid_self_reference"}
     lineage_path = target / LINEAGE_NAME
     atomic_write_new_json(lineage_path, lineage, artifact_kind="V4 generator conditionality lineage")
     result = {"result": payload["result"], "status": payload["status"], "classification": payload["classification"], "task_id": TASK_ID, "outer_gate": OUTER_GATE, "report": report_ref, "lineage": {"path": _relative(root, lineage_path), "sha256": file_sha256(lineage_path)}, "diagnosis_executed": payload["claim_boundary"]["diagnosis_executed"], "optimizer_created": False, "backward_executed": False, "stage_b_executed": False, "generation_readiness": "not_ready", "formal_promotion": False, "next": payload.get("next")}

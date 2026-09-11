@@ -103,6 +103,13 @@ manifest、registry、firewall、checkpoint 或正式 evidence 中，并且只�
 和 manifest SHA 不互换，也不得自动选择 latest；未被 consumer 要求的 hash 写
 `NOT_REQUIRED` / `NOT_APPLICABLE`。
 
+Contract 中的历史 `git_head`/`source_head`/`producer_head`/`git.head` 是 producer provenance；当前
+consumer 的 branch/HEAD 必须单独记录。除非 contract 明确声明
+`consumer_head_exact_required=true` 或等价 exact-source-lock 字段，否则 producer/consumer HEAD
+差异允许，不得仅据此判为 invalid。authority resolution 在 forward/data evaluation 之前失败时，
+该 one-shot 只记录 pre-scientific INVALID（forward/data reads=`0`），不产生科学分类；一旦开始
+contract-defined scientific evaluation，attempt 即按 one-shot 规则消费。
+
 交给本地 Codex 时使用以下字段；不相关字段可以写 `unknown` 或省略，但不能掩盖未核验前提：
 
 MODE: VERIFY | PLAN | IMPLEMENT | REPORT

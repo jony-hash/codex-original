@@ -37,3 +37,36 @@ def test_smooth_file_sha_and_loaded_state_tree_sha_are_distinct_domains() -> Non
 def test_required_same_domain_file_sha_mismatch_still_fails() -> None:
     with pytest.raises(diagnosis.InvalidDiagnosis, match="test artifact SHA mismatch"):
         diagnosis._read_json_ref(Path(__file__).resolve().parents[2], "AGENTS.md", "0" * 64, "test artifact")
+
+
+def test_historical_producer_head_does_not_lock_compatible_consumer() -> None:
+    producer_head = "3" * 40
+    consumer_head = "4" * 40
+    contract = {
+        "git": {
+            "branch": diagnosis.EXPECTED_BRANCH,
+            "head": producer_head,
+        }
+    }
+
+    binding = diagnosis._bind_contract_git_provenance(
+        contract,
+        {"branch": diagnosis.EXPECTED_BRANCH, "head": consumer_head},
+    )
+
+    assert binding["producer"]["head"] == producer_head
+    assert binding["consumer"]["head"] == consumer_head
+    assert binding["consumer_head_exact_required"] is False
+    assert binding["head_equal"] is False
+
+
+def test_explicit_exact_consumer_head_lock_rejects_mismatch() -> None:
+    producer_head = "3" * 40
+    with pytest.raises(diagnosis.InvalidDiagnosis, match="exact consumer HEAD mismatch"):
+        diagnosis._bind_contract_git_provenance(
+            {
+                "git": {"branch": diagnosis.EXPECTED_BRANCH, "head": producer_head},
+                "consumer_head_exact_required": True,
+            },
+            {"branch": diagnosis.EXPECTED_BRANCH, "head": "4" * 40},
+        )
