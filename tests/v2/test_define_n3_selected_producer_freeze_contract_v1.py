@@ -1,0 +1,187 @@
+"""Focused tests for the definition-only N3 selected-producer contract."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from ldm_project.v2.evidence import file_sha256
+from scripts.research import define_n3_selected_producer_freeze_contract_v1 as definition
+
+
+CONTRACT_SHA256 = "4d8d3f5dc81a7eff2d92a0acde0a0d0639788bb0dee75e6d88db745f642b60a3"
+
+
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[2]
+
+
+def _published() -> tuple[Path, dict]:
+    root = _repo_root()
+    path = root / definition.OUTPUT_DIR / definition.CONTRACT_NAME
+    return root, json.loads(path.read_text(encoding="utf-8"))
+
+
+def test_published_contract_selects_only_v3_gaussian_and_freezes_future_scope() -> None:
+    root, contract = _published()
+    path = root / definition.OUTPUT_DIR / definition.CONTRACT_NAME
+
+    assert file_sha256(path) == CONTRACT_SHA256
+    assert contract["schema"] == definition.CONTRACT_SCHEMA
+    assert contract["status"] == "valid_completed"
+    assert contract["result"] == "VALID_COMPLETED"
+    assert contract["classification"] == definition.READY_CLASSIFICATION
+    assert contract["selection"] == {
+        "descriptive_v3_guardrails_used_as_tiebreak": False,
+        "frozen_producer_state": None,
+        "posthoc_selection": False,
+        "project_selected_producer": None,
+        "secondary_metric_ranking_required": False,
+        "selected_candidate_id": definition.GAUSSIAN_CANDIDATE_ID,
+        "selected_development_producer_candidate": definition.SELECTED_DEVELOPMENT_CANDIDATE,
+        "selection_basis": "sole V3 development-supported candidate on the frozen V2 bank",
+        "v3_gaussian_classification": "N3_EMPIRICAL_GAUSSIAN_COPULA_V3_DEVELOPMENT_SUPPORTED",
+        "v3_gaussian_fold_pattern": [True, True, True, True, True],
+        "v3_student_t_classification": "N3_FIXED_R_STUDENT_T_COPULA_V3_NOT_SUPPORTED",
+        "v3_student_t_fold_pattern": [True, True, False, True, True],
+    }
+    assert contract["historical_immutability"] == {
+        "gaussian_v2_classification": "N4_Q_PRODUCER_COMPARISON_NO_CANDIDATE_SUPPORTED",
+        "gaussian_v2_fold_pattern": [True, True, True, True, False],
+        "student_t_v2_classification": "N3_FIXED_R_STUDENT_T_COPULA_NOT_SUPPORTED",
+        "student_t_v2_fold_pattern": [True, True, False, True, True],
+        "v2_reports_modified": False,
+        "v3_gaussian_support_retained": True,
+        "v3_student_t_not_supported_retained": True,
+    }
+
+    fit = contract["full_development_fit"]
+    assert fit["authorized_future_consumer"] == "EXECUTE_N3_SELECTED_PRODUCER_FULL_DEVELOPMENT_FIT_V1"
+    assert fit["fit_scope"] == {
+        "all_development_rows": True,
+        "authority_id": "N3_DEVELOPMENT_BANK_V2",
+        "coordinate": "R2_AMPLITUDE",
+        "device": "cpu",
+        "dtype": "torch.float64",
+        "fit_execution_count": 1,
+        "fold_evidence_role": "prior model selection only",
+        "folds_used_for_fit": False,
+        "heldout_rows_used": False,
+        "labels_as_inputs": False,
+        "row_count": 5000,
+        "rows_per_class": 500,
+    }
+    assert fit["empirical_marginal_algorithm"]["fit_rows"] == 5000
+    assert fit["empirical_marginal_algorithm"]["tie_rule"] == "average one-based ranks L..U as (L+U)/2"
+    assert fit["empirical_marginal_algorithm"]["plotting_position"] == "(average_rank-0.5)/n_fit"
+    assert fit["empirical_marginal_algorithm"]["quantile_interpolation"] == "piecewise-linear between adjacent table positions"
+    assert fit["dependence_algorithm"]["R_emp"] == "y.T @ y/(n_fit-1)"
+    assert fit["dependence_algorithm"]["alpha"] == "0 when delta==0; otherwise clamp(beta/delta,0,1)"
+    assert fit["dependence_algorithm"]["renormalization"] is False
+    assert fit["failure_semantics"]["classification"] == "INVALID_HARNESS"
+    assert fit["failure_semantics"]["state_authority_on_failure"] is False
+
+
+def test_state_and_sampling_contract_are_defined_but_not_materialized() -> None:
+    root, contract = _published()
+    state = contract["producer_state_contract"]
+    assert state["semantic_authority_id"] == definition.PRODUCER_STATE_SEMANTIC_ID
+    assert state["schema"] == definition.PRODUCER_STATE_SCHEMA
+    assert state["state_exists_now"] is False
+    assert state["frozen_producer_state"] is None
+    assert state["serialization"]["format"] == "torch.save mapping"
+    assert state["serialization"]["atomic_publication"] is True
+    assert state["serialization"]["write_once"] is True
+    assert state["serialization"]["no_sealed_information"] is True
+    assert state["state_identity"]["producer_state_sha256"] is None
+    assert state["state_identity"]["self_reference"] is False
+    assert set(state["required_sampling_tensors"]) == {
+        "sorted_values",
+        "quantile_table_positions",
+        "cholesky",
+    }
+    assert state["required_sampling_tensors"]["sorted_values"]["shape"] == [5000, 100]
+    assert state["required_sampling_tensors"]["quantile_table_positions"]["shape"] == [5000]
+    assert state["required_sampling_tensors"]["cholesky"]["shape"] == [100, 100]
+
+    sampling = contract["standalone_sampling_interface"]
+    assert sampling["schema"] == definition.SAMPLING_INTERFACE_SCHEMA
+    assert sampling["inputs"]["requested_sample_count"] == {
+        "hidden_cap": False,
+        "minimum": 1,
+        "type": "positive integer",
+    }
+    assert sampling["inputs"]["rng_namespace"]["must_equal"] == definition.RNG_NAMESPACE
+    assert sampling["inputs"]["seed"]["hidden_derivation"] is False
+    assert sampling["output"] == {
+        "dtype": "torch.float64",
+        "finite": True,
+        "nonnegative": True,
+        "object": "CPU torch.Tensor",
+        "persisted_mapping_keys": [
+            "q",
+            "producer_state_sha256",
+            "rng_namespace",
+            "seed",
+            "requested_sample_count",
+        ],
+        "q_definition": "R2_AMPLITUDE",
+        "shape": ["requested_sample_count", 100],
+    }
+    assert not any(path.name.endswith(".pt") for path in (root / definition.OUTPUT_DIR).iterdir())
+    assert contract["governance"] == {
+        "formal_promotion": False,
+        "frozen_producer_state": None,
+        "generation_readiness": "not_ready",
+        "governance_transition": "candidate selection is recorded; project producer and state remain unfrozen",
+        "pre_contract_governance_snapshot_sha256": contract["governance"]["pre_contract_governance_snapshot_sha256"],
+        "sealed_confirmation_consumed": False,
+        "sealed_confirmation_status": "RESERVED_NOT_MATERIALIZED",
+        "selected_producer": None,
+        "selected_producer_candidate": definition.SELECTED_DEVELOPMENT_CANDIDATE,
+        "training_authorized": False,
+    }
+
+
+def test_contract_totality_is_pure_and_does_not_load_q_or_sealed() -> None:
+    result = definition._contract_totality_checks()
+    assert result["status"] == "passed"
+    assert result["q_values_loaded"] is False
+    assert result["sealed_values_loaded"] is False
+    assert result["fit_executed"] is False
+    assert result["sampling_executed"] is False
+
+
+def test_governance_alias_records_candidate_selection_without_state_authority() -> None:
+    root = _repo_root()
+    state = json.loads((root / definition.GOVERNANCE_STATE_PATH).read_text(encoding="utf-8"))
+    assert state["active_objective"] == "N3_SELECTED_PRODUCER_SEALED_CONFIRMATION_CONTRACT_READY"
+    assert state["hard_blocker"] == "N3_SELECTED_PRODUCER_SEALED_CONFIRMATION_EXECUTION_REQUIRED"
+    alias = state["evidence_aliases"]["N3_SELECTED_PRODUCER_FREEZE_CONTRACT_V1"]
+    assert alias["sha256"] == CONTRACT_SHA256
+    assert alias["selected_development_producer_candidate"] == definition.SELECTED_DEVELOPMENT_CANDIDATE
+    assert alias["producer_state_semantic_authority"] == definition.PRODUCER_STATE_SEMANTIC_ID
+    assert alias["frozen_producer_state"] is None
+    assert alias["selected_producer"] is None
+    assert alias["training_authorized"] is False
+    assert alias["formal_promotion"] is False
+    assert alias["generation_readiness"] == "not_ready"
+    assert alias["sealed_confirmation_status"] == "RESERVED_NOT_MATERIALIZED"
+    assert alias["sealed_confirmation_consumed"] is False
+    assert alias["next_action"] == "EXECUTE_N3_SELECTED_PRODUCER_FULL_DEVELOPMENT_FIT_V1"
+    confirmation = state["evidence_aliases"]["N3_SELECTED_PRODUCER_SEALED_CONFIRMATION_CONTRACT_V1"]
+    assert confirmation["sha256"] == "e0e29a62bce4eaaa48346ce65d1d7d6dcc2892df4d8e9ace73681579232c1200"
+    assert confirmation["producer_state_sha256"] == "752db16087e7bdf8343e4499202182370b376a1a2d5925a383f411fd4a15bb88"
+    assert confirmation["sealed_manifest_sha256"] == "6475474f157d31591a3b0252f27320323d84ea93803c61ee6a365420a8ebb08e"
+    assert confirmation["sealed_confirmation_status"] == "RESERVED_NOT_MATERIALIZED"
+    assert confirmation["sealed_confirmation_consumed"] is False
+    assert confirmation["next_action"] == "EXECUTE_N3_SELECTED_PRODUCER_SEALED_CONFIRMATION_V1"
+
+
+def test_stale_v3_authority_rejects_before_any_contract_write(monkeypatch: pytest.MonkeyPatch) -> None:
+    root = _repo_root()
+    monkeypatch.setattr(definition, "V3_REPLAY_REPORT_SHA256", "0" * 64)
+    with pytest.raises(definition.InvalidHarnessError, match="V3 replay report hash changed"):
+        definition._validate_v3_selection(root)

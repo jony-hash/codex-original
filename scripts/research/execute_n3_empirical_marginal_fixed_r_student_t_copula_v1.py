@@ -1,0 +1,1362 @@
+"""Execute the frozen N3 fixed-R empirical-marginal Student-t copula once.
+
+This is a CPU-only, development-only consumer.  It performs the exact N4
+candidate-fold action for one frozen family: fit on the 4000-row fitting side,
+sample one fixed 200-row model bank, and compare it with the 1000-row held-out
+side using the V2 empirical-ceiling q95 and all eight raw-q guardrails.  It
+never reads sealed confirmation values, changes the contract, selects a
+producer, invokes optics, or trains.
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import hashlib
+import json
+import math
+import os
+import shutil
+import subprocess
+import tempfile
+from pathlib import Path
+from typing import Any, Callable, Mapping
+
+import torch
+
+from ldm_project.v2.evidence import (
+    atomic_torch_save_new,
+    atomic_write_new_json,
+    canonical_sha256,
+    file_sha256,
+    tensor_sha256,
+)
+from scripts.research import (
+    define_n3_empirical_marginal_fixed_r_student_t_copula_contract_v1 as contract_definition,
+    execute_n3_development_bank_v2_empirical_ceiling as v2_ceiling,
+    execute_n3_empirical_marginal_gaussian_copula_producer_v1 as gaussian,
+)
+
+
+TASK_ID = "EXECUTE_N3_EMPIRICAL_MARGINAL_FIXED_R_STUDENT_T_COPULA_V1"
+GATE = TASK_ID
+REPORT_SCHEMA = "n3_empirical_marginal_fixed_r_student_t_copula_producer_report.v1"
+FIT_MANIFEST_SCHEMA = "n3_empirical_marginal_fixed_r_student_t_copula_fit_manifest.v1"
+FOLD_COMPATIBILITY_SCHEMA = "n3_empirical_marginal_fixed_r_student_t_copula_fold_compatibility.v1"
+LEDGER_SCHEMA = "n3_empirical_marginal_fixed_r_student_t_copula_evaluator_exposure_ledger.v1"
+LINEAGE_SCHEMA = "n3_empirical_marginal_fixed_r_student_t_copula_lineage_manifest.v1"
+FITTED_ARTIFACT_SCHEMA = "n3_empirical_marginal_fixed_r_student_t_copula_fitted_producer.v1"
+MODEL_ARTIFACT_SCHEMA = "n3_empirical_marginal_fixed_r_student_t_copula_sampled_model_q.v1"
+
+EXPECTED_BRANCH = "research/lightgen-ols-native-semantic-generation-v1"
+EXPECTED_STARTING_HEAD = "a5c07512614944d4be6392ae29d48e0b189bea4b"
+EXPECTED_CONTRACT_SCRIPT_SHA256 = "0e3ea58c69e5f7190cbb1e78f76d2082756e7ebf56868e73298d0cf30483298a"
+
+CONTRACT_PATH = contract_definition.OUTPUT_DIR / contract_definition.CONTRACT_NAME
+EXPECTED_CONTRACT_SHA256 = "0f18dccf35758e590255fac07436eb968c866ddc11a3e19df7b02e25770be1d7"
+CONTRACT_SCRIPT = Path("scripts/research/define_n3_empirical_marginal_fixed_r_student_t_copula_contract_v1.py")
+
+SOURCE_MANIFEST = Path(
+    "outputs/20260909_v2/runs/"
+    "n3_development_bank_v2_source_manifest_v1_attempt_01/"
+    "n3_development_bank_v2_source_manifest.v1.json"
+)
+Q_ARTIFACT = Path(
+    "outputs/20260909_v2/runs/"
+    "n3_development_bank_v2_q_materialization_v1_attempt_01/"
+    "n3_development_bank_v2_q.v1.pt"
+)
+FOLD_MANIFEST = Path(
+    "outputs/20260909_v2/runs/"
+    "n3_development_bank_v2_five_fold_protocol_v1_attempt_01/"
+    "n3_development_bank_v2_fold_manifest.v1.json"
+)
+CEILING_REPORT = Path(
+    "outputs/20260909_v2/runs/"
+    "n3_development_bank_v2_empirical_ceiling_v1_attempt_01/"
+    "n3_development_bank_v2_empirical_ceiling_report.v1.json"
+)
+GOVERNANCE_STATE = Path("docs/status/research_governance_state.json")
+
+AUTHORITY_SHA256 = {
+    SOURCE_MANIFEST.as_posix(): "4bc251af91b3a6cd0235fe113117443d871a564bd05634fa9e61b5ab0b36f812",
+    Q_ARTIFACT.as_posix(): "fe48c8fdb9bb2bf732076fabdf475288baa6f7d628ca10039a83bbda54fcfcbf",
+    FOLD_MANIFEST.as_posix(): "4898a0e477d583b9a9e60c83238e6d8524d43967efe24277a952089e8adc447e",
+    CEILING_REPORT.as_posix(): "731cf826dc081e7cc5629790ba2fb74946f7cc41f1a7f0035bf3a3ca96a31826",
+}
+Q_TENSOR_SHA256 = "d660fd8dc449725edab081d00c8f553f151029cddef9210360a7a6fad4281209"
+FOLD_ASSIGNMENT_SHA256 = "43ee0ce28e143fffdf2bcac98394625ccd766166ea717f23db66ed8770ef18a9"
+
+N4_REGISTRY = Path(
+    "outputs/20260909_v2/runs/"
+    "n4_q_producer_candidate_registry_v1_attempt_02/"
+    "n4_q_producer_candidate_registry.v1.json"
+)
+N4_REPORT = Path(
+    "outputs/20260909_v2/runs/"
+    "n4_q_producer_development_comparison_v1_attempt_02/"
+    "n4_q_producer_comparison_report.v1.json"
+)
+N4_LINEAGE = Path(
+    "outputs/20260909_v2/runs/"
+    "n4_q_producer_development_comparison_v1_attempt_02/"
+    "n4_q_producer_lineage_manifest.v1.json"
+)
+N4_REGISTRY_SHA256 = "0329b23675a7d306c88f26c80a4757ce83d39c8c68b718bf7a1d966f53f4f27b"
+N4_REPORT_SHA256 = "393d84617ec7b1e6c60b8c654b859dc3afe822f5dee207ca93816e232fea78be"
+N4_LINEAGE_SHA256 = "4c40fcd64c7856722fe3c3ca9bf61ef1ad2362d10f1f05d349038edc45a2cce5"
+
+GAUSSIAN_IMPLEMENTATION = Path(
+    "scripts/research/execute_n3_empirical_marginal_gaussian_copula_producer_v1.py"
+)
+GAUSSIAN_IMPLEMENTATION_SHA256 = "5f1fa3fa6be35e96f345c3b7f7c6cce5ca0b45fe4619b1ead4455e86dcae538a"
+GAUSSIAN_CONTRACT = Path(
+    "outputs/20260908_v2/runs/"
+    "n3_empirical_marginal_gaussian_copula_producer_contract_v1_attempt_01/"
+    "n3_empirical_marginal_gaussian_copula_producer_contract.v1.json"
+)
+GAUSSIAN_REPORT = Path(
+    "outputs/20260908_v2/runs/"
+    "n3_empirical_marginal_gaussian_copula_producer_v1_attempt_01/"
+    "n3_empirical_marginal_gaussian_copula_producer_report.v1.json"
+)
+GAUSSIAN_CONTRACT_SHA256 = "3edc9fee006f68eff6ba41205b7e4e6b6cbea3205080c4cb333689e554fba7a4"
+GAUSSIAN_REPORT_SHA256 = "78b8e40f21015af8d704a89a83bb6b4043c0208386032b41b1ced4dd9bdeba7d"
+
+OUTPUT_DIR = Path(
+    "outputs/20260909_v2/runs/"
+    "n3_empirical_marginal_fixed_r_student_t_copula_producer_v1_attempt_01"
+)
+FIT_MANIFEST_NAME = "n3_empirical_marginal_fixed_r_student_t_copula_fit_manifest.v1.json"
+FOLD_COMPATIBILITY_NAME = "n3_empirical_marginal_fixed_r_student_t_copula_fold_compatibility.v1.json"
+REPORT_NAME = "n3_empirical_marginal_fixed_r_student_t_copula_producer_report.v1.json"
+LEDGER_NAME = "n3_empirical_marginal_fixed_r_student_t_copula_evaluator_exposure_ledger.v1.json"
+LINEAGE_NAME = "n3_empirical_marginal_fixed_r_student_t_copula_lineage_manifest.v1.json"
+
+CANDIDATE_ID = "EMPIRICAL_MARGINAL_FIXED_R_STUDENT_T_COPULA_V1"
+CLASS_COUNT = contract_definition.CLASS_COUNT
+DIMENSION = contract_definition.DIMENSION
+POOL_COUNT = contract_definition.POOL_COUNT
+ROWS_PER_CLASS = contract_definition.ROWS_PER_CLASS
+FOLD_COUNT = contract_definition.FOLD_COUNT
+FIT_COUNT_PER_FOLD = contract_definition.FIT_COUNT_PER_FOLD
+HELDOUT_COUNT_PER_FOLD = contract_definition.HELDOUT_COUNT_PER_FOLD
+FIT_PER_CLASS_PER_FOLD = contract_definition.FIT_PER_CLASS_PER_FOLD
+HELDOUT_PER_CLASS_PER_FOLD = contract_definition.HELDOUT_PER_CLASS_PER_FOLD
+MODEL_SAMPLE_COUNT = contract_definition.MODEL_SAMPLE_COUNT
+COMPATIBILITY_Q = contract_definition.COMPATIBILITY_Q
+MODEL_REFERENCE_PAIRS = contract_definition.MODEL_REFERENCE_PAIRS
+RNG_NAMESPACE = contract_definition.RNG_NAMESPACE
+NU_LOWER = contract_definition.NU_LOWER
+NU_UPPER = contract_definition.NU_UPPER
+ETA_LOWER = contract_definition.ETA_LOWER
+ETA_UPPER = contract_definition.ETA_UPPER
+OPTIMIZER_ABS_TOLERANCE = contract_definition.OPTIMIZER_ABS_TOLERANCE
+OPTIMIZER_REL_TOLERANCE = contract_definition.OPTIMIZER_REL_TOLERANCE
+OPTIMIZER_MAX_ITERATIONS = contract_definition.OPTIMIZER_MAX_ITERATIONS
+OBJECTIVE_TIE_TOLERANCE = contract_definition.OBJECTIVE_TIE_TOLERANCE
+T_CDF_TOLERANCE = contract_definition.T_CDF_TOLERANCE
+T_CDF_MAX_ITERATIONS = contract_definition.T_CDF_MAX_ITERATIONS
+T_CDF_DENOMINATOR_FLOOR = contract_definition.T_CDF_DENOMINATOR_FLOOR
+T_QUANTILE_ABS_TOLERANCE = contract_definition.T_QUANTILE_ABS_TOLERANCE
+T_QUANTILE_REL_TOLERANCE = contract_definition.T_QUANTILE_REL_TOLERANCE
+T_QUANTILE_MAX_ITERATIONS = contract_definition.T_QUANTILE_MAX_ITERATIONS
+T_QUANTILE_BRACKET = contract_definition.T_QUANTILE_BRACKET
+JOINT_METRICS = tuple(v2_ceiling.JOINT_METRICS)
+MARGINAL_METRICS = tuple(v2_ceiling.MARGINAL_METRICS)
+SCALAR_METRICS = tuple(v2_ceiling.SCALAR_METRICS)
+DIAGONAL_ATOL = float(torch.finfo(torch.float64).eps * 256.0)
+
+CLASSIFICATION_SUPPORTED = "N3_FIXED_R_STUDENT_T_COPULA_DEVELOPMENT_SUPPORTED"
+CLASSIFICATION_NOT_SUPPORTED = "N3_FIXED_R_STUDENT_T_COPULA_NOT_SUPPORTED"
+CLASSIFICATION_INVALID = "N3_FIXED_R_STUDENT_T_COPULA_INVALID"
+
+
+class InvalidHarnessError(RuntimeError):
+    """A declared authority, numerical, or evaluator boundary failed."""
+
+
+def _invalid(condition: bool, message: str) -> None:
+    if not condition:
+        raise InvalidHarnessError(message)
+
+
+def _mapping(value: Any, name: str) -> Mapping[str, Any]:
+    _invalid(isinstance(value, Mapping), f"{name} must be a mapping")
+    return value
+
+
+def _relative(repo_root: Path, path: Path) -> str:
+    return path.resolve().relative_to(repo_root.resolve()).as_posix()
+
+
+def _read_json_exact(repo_root: Path, path: Path, expected_sha256: str, name: str) -> dict[str, Any]:
+    target = repo_root / path
+    _invalid(target.is_file(), f"{name} is missing: {target}")
+    _invalid(file_sha256(target) == expected_sha256, f"{name} hash changed: {target}")
+    try:
+        value = json.loads(target.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise InvalidHarnessError(f"{name} is not valid JSON: {target}") from exc
+    return dict(_mapping(value, name))
+
+
+def _git_state(repo_root: Path) -> dict[str, Any]:
+    branch = subprocess.run(
+        ["git", "-C", str(repo_root), "branch", "--show-current"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    head = subprocess.run(
+        ["git", "-C", str(repo_root), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    status = subprocess.run(
+        ["git", "-C", str(repo_root), "status", "--porcelain"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    return {
+        "branch": branch,
+        "head": head,
+        "dirty_paths": [line[3:] if len(line) >= 4 else line for line in status],
+        "worktree_clean": not status,
+    }
+
+
+def _validate_contract(repo_root: Path) -> dict[str, Any]:
+    contract = _read_json_exact(repo_root, CONTRACT_PATH, EXPECTED_CONTRACT_SHA256, "frozen Student-t contract")
+    _invalid(contract.get("schema") == contract_definition.CONTRACT_SCHEMA, "contract schema changed")
+    _invalid(contract.get("task_id") == contract_definition.TASK_ID, "contract task changed")
+    _invalid(contract.get("gate") == contract_definition.GATE, "contract gate changed")
+    _invalid(contract.get("result") == "READY", "contract is not ready")
+    _invalid(contract.get("status") == "valid_completed", "contract status changed")
+    _invalid(contract.get("classification") == contract_definition.READY_CLASSIFICATION, "contract classification changed")
+    _invalid(contract.get("claim_classification") == contract_definition.CLAIM_CLASSIFICATION, "contract claim changed")
+
+    git = _mapping(contract.get("git"), "contract git")
+    _invalid(git.get("branch") == EXPECTED_BRANCH, "contract branch changed")
+    _invalid(git.get("starting_committed_head") == EXPECTED_STARTING_HEAD, "contract starting HEAD changed")
+    _invalid(git.get("contract_script") == CONTRACT_SCRIPT.as_posix(), "contract script path changed")
+    _invalid(git.get("contract_script_sha256") == EXPECTED_CONTRACT_SCRIPT_SHA256, "contract script digest changed")
+    _invalid(file_sha256(repo_root / CONTRACT_SCRIPT) == EXPECTED_CONTRACT_SCRIPT_SHA256, "contract script source changed")
+
+    family = _mapping(contract.get("family"), "contract family")
+    for key, expected in {
+        "family_id": CANDIDATE_ID,
+        "candidate_family_count": 1,
+        "coordinate": "R2_AMPLITUDE",
+        "dimension": DIMENSION,
+        "new_fitted_parameter": "nu",
+        "new_fitted_scalar_count_per_fold": 1,
+        "class_conditioning": False,
+        "mixture": False,
+        "vine": False,
+        "flow": False,
+        "neural_density": False,
+        "optical_forward": False,
+    }.items():
+        _invalid(family.get(key) == expected, f"contract family changed: {key}")
+
+    marginal = _mapping(contract.get("marginal_contract"), "contract marginal")
+    for key, expected in {
+        "fit_rows_per_fold": FIT_COUNT_PER_FOLD,
+        "fit_only": True,
+        "heldout_parameter_leakage": False,
+        "strict_interior": True,
+        "epsilon_clamp": False,
+        "labels_as_model_inputs": False,
+        "outside_support_extrapolation": False,
+    }.items():
+        _invalid(marginal.get(key) == expected, f"contract marginal changed: {key}")
+
+    dependence = _mapping(contract.get("baseline_dependence_contract"), "contract dependence")
+    for key, expected in {
+        "fixed_R": "R=R_shrunk from the baseline Gaussianized fit; it is never refit as a function of nu",
+        "heldout_parameter_leakage": False,
+        "unit_diagonal_renormalization": False,
+        "factorization": "L=torch.linalg.cholesky(R) lower factor; all quadratic forms use triangular solves, never a pseudoinverse",
+    }.items():
+        _invalid(dependence.get(key) == expected, f"contract dependence changed: {key}")
+
+    fit_contract = _mapping(contract.get("student_t_copula_fit_contract"), "contract Student-t fit")
+    _invalid(fit_contract.get("fit_rows_only") is True, "Student-t fit is not fit-only")
+    _invalid(fit_contract.get("R_refit") is False, "Student-t refits R")
+    _invalid(fit_contract.get("marginal_refit_under_nu") is False, "Student-t refits marginals")
+    nu_domain = _mapping(fit_contract.get("nu_domain"), "contract nu domain")
+    _invalid(nu_domain.get("lower") == NU_LOWER and nu_domain.get("upper") == NU_UPPER, "nu domain changed")
+    optimizer = _mapping(fit_contract.get("optimizer"), "contract optimizer")
+    for key, expected in {
+        "algorithm": "deterministic bounded golden-section maximization of ell(2+exp(eta))",
+        "absolute_interval_tolerance": OPTIMIZER_ABS_TOLERANCE,
+        "relative_interval_tolerance": OPTIMIZER_REL_TOLERANCE,
+        "max_iterations": OPTIMIZER_MAX_ITERATIONS,
+        "objective_tie_tolerance": OBJECTIVE_TIE_TOLERANCE,
+        "endpoint_evaluated": True,
+        "one_nu_per_fold": True,
+        "heldout_selected_grid": False,
+        "post_result_retuning": False,
+    }.items():
+        _invalid(optimizer.get(key) == expected, f"contract optimizer changed: {key}")
+
+    numerical = _mapping(contract.get("student_t_numerical_contract"), "contract Student-t numerics")
+    _invalid(numerical.get("device") == "CPU only" and numerical.get("dtype") == "IEEE-754 binary64 / float64 throughout fit, CDF, inverse-CDF, factorization and accumulation", "Student-t numerical device/dtype changed")
+    cdf = _mapping(numerical.get("t_cdf"), "contract Student-t CDF")
+    _invalid(cdf.get("tolerance") == T_CDF_TOLERANCE and cdf.get("max_iterations") == T_CDF_MAX_ITERATIONS, "Student-t CDF controls changed")
+    inverse = _mapping(numerical.get("t_inverse_cdf"), "contract Student-t inverse CDF")
+    _invalid(inverse.get("fixed_bracket") == [-T_QUANTILE_BRACKET, T_QUANTILE_BRACKET], "Student-t inverse bracket changed")
+    _invalid(inverse.get("absolute_x_tolerance") == T_QUANTILE_ABS_TOLERANCE and inverse.get("relative_x_tolerance") == T_QUANTILE_REL_TOLERANCE, "Student-t inverse tolerances changed")
+    _invalid(inverse.get("probability_tolerance") == T_CDF_TOLERANCE and inverse.get("max_iterations") == T_QUANTILE_MAX_ITERATIONS, "Student-t inverse controls changed")
+
+    sampling = _mapping(contract.get("sampling_contract"), "contract sampling")
+    for key, expected in {
+        "rng_device": "cpu",
+        "dtype": "float64",
+        "rng_generator": "torch.Generator(device='cpu')",
+        "rng_namespace": RNG_NAMESPACE,
+        "generated_bank_size": MODEL_SAMPLE_COUNT,
+        "bank_level_rejection": False,
+        "best_of_n": False,
+        "samplewise_normalization": False,
+        "heldout_seed_tuning": False,
+        "post_evaluation_resampling": False,
+        "finite_and_nonnegative_required": True,
+        "cdf_endpoint_clamp": False,
+    }.items():
+        _invalid(sampling.get(key) == expected, f"contract sampling changed: {key}")
+
+    evaluation = _mapping(contract.get("future_development_evaluation_contract"), "contract evaluation")
+    for key, expected in {
+        "selection_scope": "DEVELOPMENT_ONLY",
+        "fold_count": FOLD_COUNT,
+        "fit_rows_per_fold": FIT_COUNT_PER_FOLD,
+        "heldout_rows_per_fold": HELDOUT_COUNT_PER_FOLD,
+        "fit_per_class_per_fold": FIT_PER_CLASS_PER_FOLD,
+        "heldout_per_class_per_fold": HELDOUT_PER_CLASS_PER_FOLD,
+        "model_sample_count": MODEL_SAMPLE_COUNT,
+        "model_vs_model_q": COMPATIBILITY_Q,
+        "strict_five_of_five": True,
+        "four_of_five_supported": False,
+        "relative_improvement_vs_n4_gaussian": "descriptive only; never a support, selection or promotion rule",
+        "heldout_parameter_tuning": False,
+        "sealed_confirmation": False,
+        "optical_forward": False,
+        "image_or_generator_metric": False,
+    }.items():
+        _invalid(evaluation.get(key) == expected, f"contract evaluation changed: {key}")
+    _invalid(evaluation.get("guardrails") == list(SCALAR_METRICS), "contract guardrails changed")
+    _invalid(evaluation.get("model_reference_pairs") == [list(pair) for pair in MODEL_REFERENCE_PAIRS], "contract reference pairs changed")
+
+    boundary = _mapping(contract.get("execution_boundary"), "contract execution boundary")
+    for key in (
+        "q_tensor_deserialized_by_this_consumer",
+        "q_values_loaded_by_this_consumer",
+        "fit_q_values_loaded_by_this_consumer",
+        "heldout_q_values_loaded_by_this_consumer",
+        "heldout_evaluation_executed",
+        "new_candidate_results_observed",
+        "real_nu_fit_executed",
+        "real_producer_sampling_executed",
+        "sealed_confirmation_manifest_read",
+        "sealed_confirmation_consumed",
+        "cuda",
+        "evaluator",
+        "training",
+        "promotion",
+    ):
+        _invalid(boundary.get(key) is False, f"contract execution boundary opened: {key}")
+    return contract
+
+
+def _call_contract_authority(repo_root: Path, function: Callable[[Path], dict[str, Any]], name: str) -> dict[str, Any]:
+    try:
+        return function(repo_root)
+    except (ValueError, KeyError, TypeError, StopIteration, OSError) as exc:
+        raise InvalidHarnessError(f"{name} authority validation failed: {exc}") from exc
+
+
+def _validate_fold_partition(fold_ids: torch.Tensor) -> None:
+    values = fold_ids.to(dtype=torch.int64).reshape(-1)
+    _invalid(tuple(values.shape) == (POOL_COUNT,), "fold assignment shape changed")
+    expected = torch.tensor(
+        [fold for fold in range(FOLD_COUNT) for _ in range(POOL_COUNT // FOLD_COUNT)],
+        dtype=torch.int64,
+    )
+    _invalid(torch.equal(torch.sort(values).values, expected), "fold assignment counts changed")
+    for fold in range(FOLD_COUNT):
+        heldout = (values == fold).nonzero(as_tuple=False).reshape(-1)
+        fit = (values != fold).nonzero(as_tuple=False).reshape(-1)
+        _invalid(heldout.numel() == HELDOUT_COUNT_PER_FOLD, f"fold {fold} heldout count changed")
+        _invalid(fit.numel() == FIT_COUNT_PER_FOLD, f"fold {fold} fit count changed")
+        _invalid(not bool(torch.isin(fit, heldout).any()), f"fold {fold} fit/heldout overlap")
+
+
+def _validate_metric_mapping(metrics: Mapping[str, Any], name: str) -> None:
+    for metric in SCALAR_METRICS:
+        value = metrics.get(metric)
+        _invalid(isinstance(value, (int, float)), f"{name} is missing {metric}")
+        numeric = torch.tensor(float(value), dtype=torch.float64)
+        _invalid(bool(torch.isfinite(numeric)) and float(value) >= 0.0, f"{name} has invalid {metric}")
+    vector = metrics.get("per_coordinate_marginal_energy_distance")
+    _invalid(isinstance(vector, list) and len(vector) == DIMENSION, f"{name} marginal vector changed")
+    _invalid(all(float(value) >= 0.0 and math.isfinite(float(value)) for value in vector), f"{name} marginal vector is invalid")
+
+
+def _validate_preflight(repo_root: Path, contract: Mapping[str, Any], output_dir: Path) -> dict[str, Any]:
+    starting_git = _git_state(repo_root)
+    _invalid(starting_git["branch"] == EXPECTED_BRANCH, "current branch changed")
+    _invalid(starting_git["head"] == EXPECTED_STARTING_HEAD, "current HEAD changed")
+    contract_git = _mapping(contract.get("git"), "contract git")
+    recorded_dirty = set(str(value) for value in contract_git.get("dirty_paths", []))
+    execution_delta = {
+        _relative(repo_root, Path(__file__).resolve()),
+        "tests/v2/test_execute_n3_empirical_marginal_fixed_r_student_t_copula_v1.py",
+    }
+    expected_dirty = recorded_dirty | execution_delta
+    _invalid(set(starting_git["dirty_paths"]) == expected_dirty, "current dirty worktree scope differs from contract provenance")
+    _invalid(not output_dir.exists(), f"candidate output already exists: {output_dir}")
+
+    v2_authority = _call_contract_authority(repo_root, contract_definition._validate_v2_authority, "V2")
+    n4_authority = _call_contract_authority(repo_root, contract_definition._validate_n4_authority, "N4")
+    current_governance = _call_contract_authority(repo_root, contract_definition._validate_current_governance, "current governance")
+    contract_authorities = _mapping(contract.get("authorities"), "contract authorities")
+    _invalid(contract_authorities.get("v2_development") == v2_authority, "V2 runtime authority differs from frozen contract")
+    _invalid(contract_authorities.get("n4_result") == n4_authority, "N4 runtime authority differs from frozen contract")
+    snapshot = _mapping(contract_authorities.get("current_governance_snapshot"), "contract governance snapshot")
+    for key in ("active_objective", "authorization_tier", "hard_blocker", "flags_closed"):
+        _invalid(current_governance.get(key) == snapshot.get(key), f"current governance changed: {key}")
+    _invalid(current_governance.get("n4_alias", {}).get("selected_producer") is None, "N4 selected a producer")
+    _invalid(current_governance.get("n4_alias", {}).get("training_authorized") is False, "N4 training opened")
+    _invalid(current_governance.get("n4_alias", {}).get("formal_promotion") is False, "N4 promotion opened")
+    _invalid(current_governance.get("n4_alias", {}).get("generation_readiness") == "not_ready", "N4 readiness opened")
+
+    source, fold, rows, fold_ids, q_meta = v2_ceiling._validate_source_and_fold(repo_root)
+    _validate_fold_partition(fold_ids)
+    _invalid(q_meta.get("artifact_sha256") == AUTHORITY_SHA256[Q_ARTIFACT.as_posix()], "q metadata hash changed")
+    _invalid(q_meta.get("tensor_sha256") == Q_TENSOR_SHA256, "q metadata tensor hash changed")
+    _invalid(q_meta.get("values_loaded") is False, "q values loaded during preflight")
+    ceiling = _read_json_exact(repo_root, CEILING_REPORT, AUTHORITY_SHA256[CEILING_REPORT.as_posix()], "V2 empirical ceiling report")
+    ceiling_folds = _mapping(ceiling.get("empirical_ceiling"), "V2 empirical ceiling").get("fold_results")
+    _invalid(isinstance(ceiling_folds, list) and len(ceiling_folds) == FOLD_COUNT, "V2 threshold folds are incomplete")
+    thresholds: list[dict[str, Any]] = []
+    for fold_index, item_value in enumerate(ceiling_folds):
+        item = _mapping(item_value, f"V2 threshold fold {fold_index}")
+        _invalid(item.get("fold") == fold_index and item.get("operationally_valid") is True and item.get("compatibility") is True, f"V2 threshold fold {fold_index} is not valid")
+        threshold = dict(_mapping(item.get("model_vs_model_reference_q95"), f"V2 threshold fold {fold_index}"))
+        _validate_metric_mapping(threshold, f"V2 threshold fold {fold_index}")
+        thresholds.append(threshold)
+
+    n4_sealed = _mapping(n4_authority.get("sealed_confirmation"), "N4 sealed boundary")
+    _invalid(n4_sealed.get("status") == "RESERVED_NOT_MATERIALIZED", "sealed confirmation is not reserved")
+    _invalid(n4_sealed.get("consumed") is False and n4_sealed.get("values_loaded") is False, "sealed confirmation was consumed")
+    _invalid(n4_sealed.get("manifest_read_by_this_consumer") is False, "sealed manifest was read")
+    return {
+        "starting_git": starting_git,
+        "v2_authority": v2_authority,
+        "n4_authority": n4_authority,
+        "current_governance": current_governance,
+        "source": source,
+        "fold": fold,
+        "rows": rows,
+        "fold_ids": fold_ids,
+        "q_meta": q_meta,
+        "ceiling": ceiling,
+        "thresholds": thresholds,
+    }
+
+
+def _load_q_after_preflight(repo_root: Path, preflight: Mapping[str, Any]) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, list[str], dict[str, Any]]:
+    q, source_indices, labels, identities, loaded_identity = v2_ceiling._load_q_after_preflight(repo_root, preflight)
+    _invalid(file_sha256(repo_root / Q_ARTIFACT) == AUTHORITY_SHA256[Q_ARTIFACT.as_posix()], "q authority changed after load")
+    _invalid(tensor_sha256(q) == Q_TENSOR_SHA256, "loaded q tensor identity changed")
+    _invalid(tuple(q.shape) == (POOL_COUNT, DIMENSION), "loaded q shape changed")
+    _invalid(q.dtype == torch.float64 and bool(torch.isfinite(q).all()) and bool(q.ge(0.0).all()), "loaded q values are invalid")
+    _invalid(loaded_identity.get("q_values_loaded_after_preflight") is True, "q was not loaded after preflight")
+    return q, source_indices, labels, identities, loaded_identity
+
+
+def _seed(role: str, fold: int, replicate: int) -> int:
+    material = f"{RNG_NAMESPACE}|{role}|fold={fold}|replicate={replicate}".encode("utf-8")
+    return int.from_bytes(hashlib.sha256(material).digest()[:8], "big") & ((1 << 63) - 1)
+
+
+def _regularized_incomplete_beta(a: float, b: float, x: torch.Tensor) -> torch.Tensor:
+    values = x.to(dtype=torch.float64).contiguous()
+    _invalid(values.numel() > 0 and bool(torch.isfinite(values).all()) and bool(values.gt(0.0).all()) and bool(values.le(1.0).all()), "Student-t beta argument is invalid")
+    def continued_fraction(first_a: float, second_b: float, argument: torch.Tensor) -> torch.Tensor:
+        floor = torch.full_like(argument, T_CDF_DENOMINATOR_FLOOR)
+        qab = first_a + second_b
+        qap = first_a + 1.0
+        qam = first_a - 1.0
+        c = torch.ones_like(argument)
+        d = 1.0 - qab * argument / qap
+        d = torch.where(d.abs().lt(floor), floor, d).reciprocal()
+        h = d.clone()
+        active = torch.ones_like(argument, dtype=torch.bool)
+        for iteration in range(1, T_CDF_MAX_ITERATIONS + 1):
+            m = float(iteration)
+            m2 = 2.0 * m
+            aa = m * (second_b - m) * argument / ((qam + m2) * (first_a + m2))
+            d1 = 1.0 + aa * d
+            d1 = torch.where(d1.abs().lt(floor), floor, d1).reciprocal()
+            c1 = 1.0 + aa / c
+            c1 = torch.where(c1.abs().lt(floor), floor, c1)
+            h1 = h * d1 * c1
+            aa = -(first_a + m) * (qab + m) * argument / ((first_a + m2) * (qap + m2))
+            d2 = 1.0 + aa * d1
+            d2 = torch.where(d2.abs().lt(floor), floor, d2).reciprocal()
+            c2 = 1.0 + aa / c1
+            c2 = torch.where(c2.abs().lt(floor), floor, c2)
+            delta = d2 * c2
+            h2 = h1 * delta
+            # The contract tolerance is the acceptance requirement.  Carry
+            # the continued fraction to the float64 roundoff floor so that
+            # the subsequent symmetric-tail reconstruction can still meet
+            # the inverse-CDF residual requirement.
+            converged = delta.sub(1.0).abs().le(min(T_CDF_TOLERANCE, torch.finfo(torch.float64).eps))
+            h = torch.where(active, h2, h)
+            d = torch.where(active, d2, d)
+            c = torch.where(active, c2, c)
+            active = active & ~converged
+            if not bool(active.any()):
+                break
+        _invalid(not bool(active.any()), "Student-t CDF continued fraction did not converge")
+        return h
+
+    def log_inverse_beta() -> torch.Tensor:
+        larger = max(a, b)
+        smaller = min(a, b)
+        if smaller == 0.5 and larger >= 10_000.0:
+            z = torch.tensor(larger, dtype=torch.float64)
+            # Stable float64 evaluation of log(Gamma(z+1/2)/Gamma(z)).
+            # The omitted next term is below float64 resolution at this
+            # threshold; this is the same gamma ratio, not a distributional
+            # approximation.
+            ratio = 0.5 * torch.log(z) - 0.5 * torch.log(torch.tensor(math.pi, dtype=torch.float64))
+            ratio = ratio - 1.0 / (8.0 * z) + 1.0 / (192.0 * z.pow(3))
+            return ratio
+        return (
+            torch.special.gammaln(torch.tensor(a + b, dtype=torch.float64))
+            - torch.special.gammaln(torch.tensor(a, dtype=torch.float64))
+            - torch.special.gammaln(torch.tensor(b, dtype=torch.float64))
+        )
+
+    threshold = (a + 1.0) / (a + b + 2.0)
+    lower = values.lt(threshold)
+    # For the large-b central Student-t tail, keep the lower-tail form while
+    # its continued fraction remains well-conditioned (b*x <= 5); this avoids
+    # a cancellation-prone complement without changing the frozen beta law.
+    lower = lower | ((a == 0.5) and b >= 1_000.0 and values.le(5.0 / b))
+    result = torch.empty_like(values)
+    if bool(lower.any()):
+        lower_x = values[lower]
+        log_beta_term = log_inverse_beta() + a * torch.log(lower_x) + b * torch.log1p(-lower_x)
+        result[lower] = torch.exp(log_beta_term) * continued_fraction(a, b, lower_x) / a
+    if bool((~lower).any()):
+        upper_x = values[~lower]
+        complement = 1.0 - upper_x
+        log_beta_term = log_inverse_beta() + a * torch.log(upper_x) + b * torch.log1p(-upper_x)
+        result[~lower] = 1.0 - torch.exp(log_beta_term) * continued_fraction(b, a, complement) / b
+    _invalid(bool(torch.isfinite(result).all()), "Student-t regularized beta is non-finite")
+    return result
+
+
+def _student_t_cdf(values: torch.Tensor, nu: float, *, strict: bool = True) -> torch.Tensor:
+    scores = values.to(dtype=torch.float64).contiguous()
+    _invalid(math.isfinite(nu) and NU_LOWER <= nu <= NU_UPPER, "Student-t nu is outside the frozen domain")
+    _invalid(scores.numel() > 0 and bool(torch.isfinite(scores).all()), "Student-t scores are non-finite")
+    squared = scores.square()
+    x = torch.tensor(nu, dtype=torch.float64) / (torch.tensor(nu, dtype=torch.float64) + squared)
+    _invalid(bool(torch.isfinite(x).all()) and bool(x.gt(0.0).all()) and bool(x.le(1.0).all()), "Student-t beta transform is invalid")
+    result = torch.empty_like(scores)
+    at_zero = scores.eq(0.0) | x.eq(1.0)
+    result[at_zero] = 0.5
+    interior = ~at_zero
+    if bool(interior.any()):
+        # Evaluate the mathematically identical opposite-tail form.  It
+        # avoids subtracting an almost-one I_x value before applying the
+        # 0.5 factor, while retaining the same regularized-beta/Lentz
+        # tolerance and endpoint policy.
+        # Compute t^2/(nu+t^2) directly.  Forming it as 1-x would erase
+        # central-tail resolution when x rounds to one in float64.
+        opposite_tail_argument = squared[interior] / (torch.tensor(nu, dtype=torch.float64) + squared[interior])
+        beta_value = _regularized_incomplete_beta(0.5, nu / 2.0, opposite_tail_argument)
+        signed_scores = scores[interior]
+        result[interior] = torch.where(signed_scores.lt(0.0), 0.5 * (1.0 - beta_value), 0.5 * (1.0 + beta_value))
+    _invalid(bool(torch.isfinite(result).all()) and bool(result.ge(0.0).all()) and bool(result.le(1.0).all()), "Student-t CDF is invalid")
+    if strict:
+        _invalid(bool(result.gt(0.0).all()) and bool(result.lt(1.0).all()), "Student-t CDF reached an endpoint")
+    return result
+
+
+def _student_t_ppf(probabilities: torch.Tensor, nu: float) -> tuple[torch.Tensor, int, int]:
+    values = probabilities.to(dtype=torch.float64).contiguous()
+    _invalid(values.numel() > 0 and bool(torch.isfinite(values).all()) and bool(values.gt(0.0).all()) and bool(values.lt(1.0).all()), "Student-t inverse probability is invalid")
+    unique, inverse = torch.unique(values.reshape(-1), sorted=True, return_inverse=True)
+    left = torch.full_like(unique, -T_QUANTILE_BRACKET)
+    right = torch.full_like(unique, T_QUANTILE_BRACKET)
+    left_cdf = _student_t_cdf(left, nu, strict=False)
+    right_cdf = _student_t_cdf(right, nu, strict=False)
+    _invalid(bool(left_cdf.le(unique).all()) and bool(unique.le(right_cdf).all()), "Student-t inverse probability is outside the fixed bracket")
+    for iteration in range(1, T_QUANTILE_MAX_ITERATIONS + 1):
+        midpoint = (left + right) * 0.5
+        midpoint_cdf = _student_t_cdf(midpoint, nu, strict=False)
+        go_right = midpoint_cdf.lt(unique)
+        left = torch.where(go_right, midpoint, left)
+        right = torch.where(go_right, right, midpoint)
+        width = right - left
+        width_tolerance = max(
+            T_QUANTILE_ABS_TOLERANCE,
+            T_QUANTILE_REL_TOLERANCE * max(1.0, T_QUANTILE_BRACKET),
+        )
+        residual = (midpoint_cdf - unique).abs()
+        if bool((width.le(width_tolerance) & residual.le(T_CDF_TOLERANCE)).all()):
+            result = midpoint.index_select(0, inverse).reshape(values.shape).contiguous()
+            _invalid(bool(torch.isfinite(result).all()), "Student-t inverse result is non-finite")
+            return result, iteration, int(unique.numel())
+    raise InvalidHarnessError(
+        "Student-t inverse CDF did not converge: "
+        f"max_width={float(width.max())}, max_residual={float(residual.max())}, "
+        f"unconverged_count={int((~(width.le(width_tolerance) & residual.le(T_CDF_TOLERANCE))).sum())}, "
+        f"worst_probability={float(unique[int(residual.argmax())])}, "
+        f"worst_cdf={float(midpoint_cdf[int(residual.argmax())])}"
+    )
+
+
+def _golden_section_maximize(objective: Callable[[float], float]) -> dict[str, Any]:
+    left = float(ETA_LOWER)
+    right = float(ETA_UPPER)
+
+    def evaluate(value: float) -> float:
+        result = float(objective(float(value)))
+        _invalid(math.isfinite(result), "Student-t pseudo-likelihood is non-finite")
+        return result
+
+    golden = (math.sqrt(5.0) - 1.0) / 2.0
+    endpoint_values = {left: evaluate(left), right: evaluate(right)}
+    c = right - golden * (right - left)
+    d = left + golden * (right - left)
+    fc = evaluate(c)
+    fd = evaluate(d)
+    evaluations = 4
+    iterations = 0
+
+    def interval_tolerance(first: float, second: float) -> float:
+        return max(OPTIMIZER_ABS_TOLERANCE, OPTIMIZER_REL_TOLERANCE * max(1.0, abs(first), abs(second)))
+
+    def right_is_better(value_right: float, value_left: float, x_right: float, x_left: float) -> bool:
+        tie = OBJECTIVE_TIE_TOLERANCE * max(1.0, abs(value_right), abs(value_left))
+        if value_right > value_left + tie:
+            return True
+        return abs(value_right - value_left) <= tie and x_right > x_left
+
+    while right - left > interval_tolerance(left, right):
+        if iterations >= OPTIMIZER_MAX_ITERATIONS:
+            raise InvalidHarnessError("Student-t bounded optimizer did not converge")
+        iterations += 1
+        if right_is_better(fd, fc, d, c):
+            left = c
+            c = d
+            fc = fd
+            d = left + golden * (right - left)
+            fd = evaluate(d)
+        else:
+            right = d
+            d = c
+            fd = fc
+            c = right - golden * (right - left)
+            fc = evaluate(c)
+        evaluations += 1
+
+    midpoint = (left + right) * 0.5
+    candidates = [(left, evaluate(left)), (midpoint, evaluate(midpoint)), (right, evaluate(right))]
+    evaluations += 3
+    candidates.extend(endpoint_values.items())
+    best_x, best_value = candidates[0]
+    for candidate_x, candidate_value in candidates[1:]:
+        if right_is_better(candidate_value, best_value, float(candidate_x), float(best_x)):
+            best_x, best_value = float(candidate_x), float(candidate_value)
+    return {
+        "eta": float(best_x),
+        "nu": _nu_from_eta(float(best_x)),
+        "objective": float(best_value),
+        "iterations": iterations,
+        "evaluations": evaluations,
+        "boundary_hit": bool(best_x == ETA_LOWER or best_x == ETA_UPPER),
+    }
+
+
+def _nu_from_eta(eta: float) -> float:
+    # Preserve both legal closed-domain endpoints despite the final ulp of
+    # exp(log(NU_UPPER-2)) on some float64 libm implementations.
+    if eta == ETA_LOWER:
+        return NU_LOWER
+    if eta == ETA_UPPER:
+        return NU_UPPER
+    return float(2.0 + math.exp(eta))
+
+
+def _log_pseudo_likelihood(
+    u_unique: torch.Tensor,
+    inverse: torch.Tensor,
+    nu: float,
+    cholesky: torch.Tensor,
+    log_determinant: torch.Tensor,
+) -> tuple[float, int, int]:
+    x_unique, inverse_iterations, unique_count = _student_t_ppf(u_unique, nu)
+    x = x_unique.index_select(0, inverse).reshape(-1, DIMENSION)
+    solved = torch.linalg.solve_triangular(cholesky, x.transpose(0, 1), upper=False).transpose(0, 1)
+    quadratic = solved.square().sum(dim=1)
+    _invalid(bool(torch.isfinite(x).all()) and bool(torch.isfinite(quadratic).all()) and bool(quadratic.ge(0.0).all()), "Student-t quadratic form is invalid")
+    nu_tensor = torch.tensor(nu, dtype=torch.float64)
+    dimension_tensor = torch.tensor(float(DIMENSION), dtype=torch.float64)
+    log_multivariate = (
+        torch.special.gammaln((nu_tensor + dimension_tensor) / 2.0)
+        - torch.special.gammaln(nu_tensor / 2.0)
+        - dimension_tensor * torch.log(nu_tensor * torch.pi) / 2.0
+        - log_determinant / 2.0
+        - (nu_tensor + dimension_tensor) / 2.0 * torch.log1p(quadratic / nu_tensor)
+    )
+    log_univariate = (
+        torch.special.gammaln((nu_tensor + 1.0) / 2.0)
+        - torch.special.gammaln(nu_tensor / 2.0)
+        - torch.log(nu_tensor * torch.pi) / 2.0
+        - (nu_tensor + 1.0) / 2.0 * torch.log1p(x.square() / nu_tensor)
+    ).sum(dim=1)
+    terms = log_multivariate - log_univariate
+    _invalid(bool(torch.isfinite(terms).all()), "Student-t pseudo-likelihood terms are invalid")
+    return float(terms.mean()), inverse_iterations, unique_count
+
+
+def _fit_fold(q_fit: torch.Tensor) -> dict[str, Any]:
+    # The frozen Gaussian implementation predates V2 and carries its old
+    # fit-row constant.  N4's registered consumer adapts that constant only
+    # at this call boundary; the implementation and all formulas remain
+    # byte-bound to the historical Gaussian source.
+    previous_fit_count = gaussian.FIT_COUNT_PER_FOLD
+    gaussian.FIT_COUNT_PER_FOLD = FIT_COUNT_PER_FOLD
+    try:
+        baseline_fit = gaussian._fit_fold(q_fit)
+    finally:
+        gaussian.FIT_COUNT_PER_FOLD = previous_fit_count
+    dependence = _mapping(baseline_fit["dependence"], "baseline dependence")
+    u = baseline_fit["plotting_positions"].to(dtype=torch.float64).contiguous()
+    unique_u, inverse = torch.unique(u.reshape(-1), sorted=True, return_inverse=True)
+    cholesky = dependence["cholesky"]
+    log_determinant = 2.0 * torch.log(torch.diagonal(cholesky)).sum()
+    _invalid(bool(torch.isfinite(log_determinant)), "fixed R log determinant is invalid")
+
+    def objective(eta: float) -> float:
+        nu = _nu_from_eta(float(eta))
+        value, _iterations, _unique_count = _log_pseudo_likelihood(
+            unique_u,
+            inverse,
+            nu,
+            cholesky,
+            log_determinant,
+        )
+        return value
+
+    optimizer = _golden_section_maximize(objective)
+    nu = float(optimizer["nu"])
+    objective_value, inverse_iterations, unique_count = _log_pseudo_likelihood(
+        unique_u,
+        inverse,
+        nu,
+        cholesky,
+        log_determinant,
+    )
+    _invalid(NU_LOWER <= nu <= NU_UPPER and math.isfinite(objective_value), "fitted nu is outside the frozen domain")
+    _invalid(abs(objective_value - float(optimizer["objective"])) <= OBJECTIVE_TIE_TOLERANCE * max(1.0, abs(objective_value), abs(float(optimizer["objective"]))), "selected nu objective changed")
+    return {
+        "baseline": baseline_fit,
+        "nu": nu,
+        "optimizer": {**optimizer, "objective": objective_value},
+        "inverse_cdf_iterations_at_selected_nu": inverse_iterations,
+        "unique_probability_count": unique_count,
+        "log_determinant": float(log_determinant),
+        "marginal_identity_verified": True,
+        "R_identity_verified": True,
+    }
+
+
+def _numeric_summary(value: torch.Tensor) -> dict[str, float]:
+    view = value.to(dtype=torch.float64).reshape(-1)
+    _invalid(view.numel() > 0 and bool(torch.isfinite(view).all()), "numeric summary input is invalid")
+    return {"min": float(view.min()), "mean": float(view.mean()), "max": float(view.max())}
+
+
+def _fit_summary(fit: Mapping[str, Any], fold: int, fit_q: torch.Tensor, heldout_count: int) -> dict[str, Any]:
+    baseline_fit = _mapping(fit["baseline"], "Student-t baseline fit")
+    dependence = _mapping(baseline_fit["dependence"], "Student-t dependence")
+    eigenvalues = dependence["eigenvalues"]
+    return {
+        "fold": fold,
+        "fit_rows": int(fit_q.shape[0]),
+        "heldout_rows": heldout_count,
+        "fit_q_sha256": tensor_sha256(fit_q),
+        "sorted_values_sha256": tensor_sha256(baseline_fit["sorted_values"]),
+        "plotting_positions_sha256": tensor_sha256(baseline_fit["plotting_positions"]),
+        "z_sha256": tensor_sha256(baseline_fit["z"]),
+        "tie_summary": baseline_fit["tie_summary"],
+        "z_summary": _numeric_summary(baseline_fit["z"]),
+        "R_emp_sha256": tensor_sha256(dependence["R_emp"]),
+        "R_shrunk_sha256": tensor_sha256(dependence["R_shrunk"]),
+        "cholesky_sha256": tensor_sha256(dependence["cholesky"]),
+        "R_shrunk_trace": float(torch.trace(dependence["R_shrunk"])),
+        "R_shrunk_min_eigenvalue": float(eigenvalues.min()),
+        "R_shrunk_max_eigenvalue": float(eigenvalues.max()),
+        "nu": float(fit["nu"]),
+        "nu_domain": [NU_LOWER, NU_UPPER],
+        "optimizer": dict(fit["optimizer"]),
+        "inverse_cdf_iterations_at_selected_nu": int(fit["inverse_cdf_iterations_at_selected_nu"]),
+        "unique_probability_count": int(fit["unique_probability_count"]),
+        "marginal_identity_verification": {
+            "baseline_implementation": GAUSSIAN_IMPLEMENTATION.as_posix(),
+            "baseline_implementation_sha256": GAUSSIAN_IMPLEMENTATION_SHA256,
+            "unchanged_fit_only_empirical_marginals": bool(fit["marginal_identity_verified"]),
+            "unchanged_ties_and_interpolation": True,
+        },
+        "R_identity_verification": {
+            "unchanged_gaussianized_score_and_analytic_shrinkage": bool(fit["R_identity_verified"]),
+            "fixed_for_nu": True,
+            "unit_diagonal_renormalization": False,
+            "pseudoinverse": False,
+        },
+        "finite": True,
+        "positive_definite": True,
+    }
+
+
+def _sample_bank(fit: Mapping[str, Any], *, role: str, fold: int, replicate: int) -> tuple[torch.Tensor, dict[str, Any]]:
+    nu = float(fit["nu"])
+    baseline_fit = _mapping(fit["baseline"], "Student-t baseline fit")
+    dependence = _mapping(baseline_fit["dependence"], "Student-t dependence")
+    seed = _seed(role, fold, replicate)
+    generator = torch.Generator(device="cpu").manual_seed(seed)
+    epsilon = torch.randn((MODEL_SAMPLE_COUNT, DIMENSION), generator=generator, dtype=torch.float64)
+    gaussian_latent = epsilon.mm(dependence["cholesky"].transpose(0, 1))
+    shape = torch.full((MODEL_SAMPLE_COUNT,), nu / 2.0, dtype=torch.float64)
+    gamma_unit = torch._standard_gamma(shape, generator=generator)
+    radial = gamma_unit * (2.0 / nu)
+    _invalid(bool(torch.isfinite(radial).all()) and bool(radial.gt(0.0).all()), "Student-t radial draw is invalid")
+    latent = gaussian_latent / torch.sqrt(radial).unsqueeze(1)
+    probabilities = _student_t_cdf(latent, nu)
+    q_new = gaussian._empirical_quantile_batch(baseline_fit["sorted_values"], probabilities)
+    _invalid(tuple(q_new.shape) == (MODEL_SAMPLE_COUNT, DIMENSION), "Student-t model bank shape changed")
+    _invalid(bool(torch.isfinite(q_new).all()) and bool(q_new.ge(0.0).all()), "Student-t model bank violates support")
+    return q_new.contiguous(), {
+        "candidate_id": CANDIDATE_ID,
+        "role": role,
+        "fold": fold,
+        "replicate": replicate,
+        "seed": seed,
+        "rng": "torch.Generator(device='cpu')",
+        "rng_namespace": RNG_NAMESPACE,
+        "dtype": "float64",
+        "bank_size": MODEL_SAMPLE_COUNT,
+        "nu": nu,
+        "normal_draw_then_radial_gamma": True,
+        "epsilon_sha256": tensor_sha256(epsilon),
+        "gaussian_latent_sha256": tensor_sha256(gaussian_latent),
+        "gamma_unit_sha256": tensor_sha256(gamma_unit),
+        "radial_sha256": tensor_sha256(radial),
+        "latent_sha256": tensor_sha256(latent),
+        "u_sha256": tensor_sha256(probabilities),
+        "q_sha256": tensor_sha256(q_new),
+        "q_summary": _numeric_summary(q_new),
+        "finite": True,
+        "nonnegative": True,
+        "bank_level_rejection": False,
+        "best_of_n": False,
+        "seed_retry": False,
+        "heldout_seed_tuning": False,
+        "post_evaluation_resampling": False,
+    }
+
+
+def _data_identity(repo_root: Path, q: torch.Tensor, source_indices: torch.Tensor, labels: torch.Tensor, identities: list[str], positions: torch.Tensor) -> dict[str, Any]:
+    heldout_q = q.index_select(0, positions).contiguous()
+    heldout_source = source_indices.index_select(0, positions).contiguous()
+    heldout_labels = labels.index_select(0, positions).contiguous()
+    heldout_identities = [identities[int(value)] for value in positions.tolist()]
+    return {
+        "row_positions": [int(value) for value in positions.tolist()],
+        "source_indices": [int(value) for value in heldout_source.tolist()],
+        "stable_source_row_identities": heldout_identities,
+        "row_positions_sha256": tensor_sha256(positions),
+        "source_indices_sha256": tensor_sha256(heldout_source),
+        "labels_sha256": tensor_sha256(heldout_labels),
+        "stable_source_row_identity_sha256": canonical_sha256(heldout_identities),
+        "q_tensor_sha256": tensor_sha256(heldout_q),
+        "heldout_rows": int(heldout_q.shape[0]),
+    }
+
+
+def _artifact_ref(repo_root: Path, final_path: Path, *, source_path: Path, role: str, schema: str, fold: int | None = None) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "path": _relative(repo_root, final_path),
+        "sha256": file_sha256(source_path),
+        "role": role,
+        "schema": schema,
+    }
+    if fold is not None:
+        result["candidate_id"] = CANDIDATE_ID
+        result["fold"] = fold
+    return result
+
+
+def _write_torch(temporary: Path, relative_path: Path, payload: Mapping[str, Any]) -> Path:
+    path = temporary / relative_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    atomic_torch_save_new(path, payload, artifact_kind=f"N3 fixed-R Student-t {relative_path.name}")
+    return path
+
+
+def _write_json(temporary: Path, name: str, payload: Mapping[str, Any]) -> Path:
+    path = temporary / name
+    atomic_write_new_json(path, payload, artifact_kind=f"N3 fixed-R Student-t {name}")
+    return path
+
+
+def _fit_artifact(repo_root: Path, contract: Mapping[str, Any], preflight: Mapping[str, Any], git: Mapping[str, Any], fold: int, fit_q: torch.Tensor, fit_positions: torch.Tensor, fit_source_indices: torch.Tensor, fit_labels: torch.Tensor, fit_identities: list[str], heldout_positions: torch.Tensor, fit: Mapping[str, Any], created_at: str) -> dict[str, Any]:
+    baseline_fit = _mapping(fit["baseline"], "Student-t baseline fit")
+    dependence = _mapping(baseline_fit["dependence"], "Student-t dependence")
+    return {
+        "schema": FITTED_ARTIFACT_SCHEMA,
+        "version": 1,
+        "task_id": TASK_ID,
+        "gate": GATE,
+        "status": "FIT_COMPLETED",
+        "created_at_utc": created_at,
+        "git": {"branch": git["branch"], "head": git["head"]},
+        "candidate_id": CANDIDATE_ID,
+        "fold": fold,
+        "contract": {"path": _relative(repo_root, repo_root / CONTRACT_PATH), "sha256": EXPECTED_CONTRACT_SHA256},
+        "source_lineage": {
+            "q_artifact": {"path": _relative(repo_root, repo_root / Q_ARTIFACT), "sha256": AUTHORITY_SHA256[Q_ARTIFACT.as_posix()]},
+            "fold_manifest": {"path": _relative(repo_root, repo_root / FOLD_MANIFEST), "sha256": AUTHORITY_SHA256[FOLD_MANIFEST.as_posix()], "assignment_sha256": FOLD_ASSIGNMENT_SHA256},
+        },
+        "fit_source": {
+            "row_positions": [int(value) for value in fit_positions.tolist()],
+            "source_indices": [int(value) for value in fit_source_indices.tolist()],
+            "labels": [int(value) for value in fit_labels.tolist()],
+            "stable_source_row_identities": fit_identities,
+            "row_positions_sha256": tensor_sha256(fit_positions),
+            "source_indices_sha256": tensor_sha256(fit_source_indices),
+            "labels_sha256": tensor_sha256(fit_labels),
+            "stable_source_row_identity_sha256": canonical_sha256(fit_identities),
+            "fit_q_sha256": tensor_sha256(fit_q),
+            "heldout_row_positions_sha256": tensor_sha256(heldout_positions),
+            "heldout_excluded": True,
+        },
+        "fit": {
+            "sorted_values": baseline_fit["sorted_values"],
+            "plotting_positions": baseline_fit["plotting_positions"],
+            "z": baseline_fit["z"],
+            "R_emp": dependence["R_emp"],
+            "R_shrunk": dependence["R_shrunk"],
+            "cholesky": dependence["cholesky"],
+            "nu": float(fit["nu"]),
+            "optimizer": dict(fit["optimizer"]),
+            "log_determinant": float(fit["log_determinant"]),
+            "marginal_identity_verified": True,
+            "R_identity_verified": True,
+        },
+        "fit_q_values_serialized": False,
+        "heldout_q_values_serialized": False,
+        "heldout_values_used_for_fit": False,
+    }
+
+
+def _model_artifact(repo_root: Path, git: Mapping[str, Any], fold: int, model_q: torch.Tensor, sampling: Mapping[str, Any], created_at: str) -> dict[str, Any]:
+    return {
+        "schema": MODEL_ARTIFACT_SCHEMA,
+        "version": 1,
+        "task_id": TASK_ID,
+        "gate": GATE,
+        "status": "SAMPLE_COMPLETED",
+        "created_at_utc": created_at,
+        "git": {"branch": git["branch"], "head": git["head"]},
+        "candidate_id": CANDIDATE_ID,
+        "fold": fold,
+        "contract": {"path": _relative(repo_root, repo_root / CONTRACT_PATH), "sha256": EXPECTED_CONTRACT_SHA256},
+        "source_lineage": {
+            "q_artifact": {"path": _relative(repo_root, repo_root / Q_ARTIFACT), "sha256": AUTHORITY_SHA256[Q_ARTIFACT.as_posix()]},
+            "fold_manifest": {"path": _relative(repo_root, repo_root / FOLD_MANIFEST), "sha256": AUTHORITY_SHA256[FOLD_MANIFEST.as_posix()], "assignment_sha256": FOLD_ASSIGNMENT_SHA256},
+        },
+        "model_q": model_q,
+        "model_q_shape": list(model_q.shape),
+        "model_q_sha256": tensor_sha256(model_q),
+        "sampling": dict(sampling),
+        "heldout_values_used_for_sampling": False,
+        "best_of_n": False,
+        "resampling_after_evaluation": False,
+    }
+
+
+def _evaluate_fold(repo_root: Path, q: torch.Tensor, source_indices: torch.Tensor, labels: torch.Tensor, identities: list[str], fold_ids: torch.Tensor, fold: int, threshold: Mapping[str, Any], preflight: Mapping[str, Any], git: Mapping[str, Any], contract: Mapping[str, Any], temporary: Path, output_dir: Path, created_at: str, exposure_records: list[dict[str, Any]]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    print(json.dumps({"stage": TASK_ID, "fold": fold, "status": "started"}), flush=True)
+    heldout_positions = (fold_ids == fold).nonzero(as_tuple=False).reshape(-1)
+    fit_positions = (fold_ids != fold).nonzero(as_tuple=False).reshape(-1)
+    _invalid(heldout_positions.numel() == HELDOUT_COUNT_PER_FOLD and fit_positions.numel() == FIT_COUNT_PER_FOLD, f"fold {fold} partition counts changed")
+    _invalid(torch.equal(torch.sort(torch.cat((fit_positions, heldout_positions))).values, torch.arange(POOL_COUNT, dtype=torch.int64)), f"fold {fold} partition is incomplete")
+    fit_labels = labels.index_select(0, fit_positions).contiguous()
+    heldout_labels = labels.index_select(0, heldout_positions).contiguous()
+    _invalid(torch.equal(torch.bincount(fit_labels, minlength=CLASS_COUNT), torch.full((CLASS_COUNT,), FIT_PER_CLASS_PER_FOLD, dtype=torch.int64)), f"fold {fold} fit class balance changed")
+    _invalid(torch.equal(torch.bincount(heldout_labels, minlength=CLASS_COUNT), torch.full((CLASS_COUNT,), HELDOUT_PER_CLASS_PER_FOLD, dtype=torch.int64)), f"fold {fold} heldout class balance changed")
+    fit_q = q.index_select(0, fit_positions).contiguous()
+    heldout_q = q.index_select(0, heldout_positions).contiguous()
+    fit_source_indices = source_indices.index_select(0, fit_positions).contiguous()
+    fit_identities = [identities[int(value)] for value in fit_positions.tolist()]
+
+    fit = _fit_fold(fit_q)
+    fit_summary = _fit_summary(fit, fold, fit_q, int(heldout_q.shape[0]))
+    fit_relative = Path("artifacts") / CANDIDATE_ID.lower() / f"fold_{fold:02d}_fitted_producer.v1.pt"
+    fit_path = _write_torch(
+        temporary,
+        fit_relative,
+        _fit_artifact(
+            repo_root,
+            contract,
+            preflight,
+            git,
+            fold,
+            fit_q,
+            fit_positions,
+            fit_source_indices,
+            fit_labels,
+            fit_identities,
+            heldout_positions,
+            fit,
+            created_at,
+        ),
+    )
+    fit_final = repo_root / output_dir / fit_relative
+    fit_ref = _artifact_ref(repo_root, fit_final, source_path=fit_path, role="fitted producer", schema=FITTED_ARTIFACT_SCHEMA, fold=fold)
+
+    model_q, sampling = _sample_bank(fit, role="data-vs-model", fold=fold, replicate=0)
+    model_relative = Path("artifacts") / CANDIDATE_ID.lower() / f"fold_{fold:02d}_sampled_model_q.v1.pt"
+    model_path = _write_torch(
+        temporary,
+        model_relative,
+        _model_artifact(repo_root, git, fold, model_q, sampling, created_at),
+    )
+    model_final = repo_root / output_dir / model_relative
+    model_ref = _artifact_ref(repo_root, model_final, source_path=model_path, role="sampled model q", schema=MODEL_ARTIFACT_SCHEMA, fold=fold)
+
+    metrics = v2_ceiling._pair_metrics_raw_q(heldout_q, model_q)
+    _validate_metric_mapping(metrics, f"Student-t fold {fold} metrics")
+    threshold_out = dict(threshold)
+    _validate_metric_mapping(threshold_out, f"Student-t fold {fold} threshold")
+    components = {name: float(metrics[name]) <= float(threshold_out[name]) for name in SCALAR_METRICS}
+    margins = {name: float(threshold_out[name]) - float(metrics[name]) for name in SCALAR_METRICS}
+    margins["per_coordinate_marginal_energy_distance"] = [
+        float(right) - float(left)
+        for left, right in zip(
+            metrics["per_coordinate_marginal_energy_distance"],
+            threshold_out["per_coordinate_marginal_energy_distance"],
+            strict=True,
+        )
+    ]
+    exposure_number = len(exposure_records) + 1
+    _invalid(exposure_number <= FOLD_COUNT, "candidate evaluator exposure exceeded the frozen allowance")
+    exposure_records.append(
+        {
+            "candidate_id": CANDIDATE_ID,
+            "fold": fold,
+            "evaluator_call_number": exposure_number,
+            "evaluator_call_timestamp_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
+            "metric": "frozen V2/N4 biased raw-q metrics against V2 model-vs-model q95",
+            "metric_result_sha256": canonical_sha256(metrics),
+            "result_visibility": "visible_to_this_comparison_after_call",
+            "result_caused_code_or_config_change": False,
+            "model_sample_sha256": tensor_sha256(model_q),
+        }
+    )
+    compatibility = all(components.values())
+    marginal_compatible = all(components[name] for name in MARGINAL_METRICS)
+    joint_compatible = all(components[name] for name in JOINT_METRICS)
+    if marginal_compatible and joint_compatible:
+        interpretation = "NO_RESIDUAL_FAILURE"
+    elif marginal_compatible:
+        interpretation = "MARGINALS_PASS_JOINT_GUARDRAIL_REMAINS"
+    elif joint_compatible:
+        interpretation = "JOINT_PASS_MARGINAL_GUARDRAIL_REMAINS"
+    else:
+        interpretation = "MARGINAL_AND_JOINT_GUARDRAILS_REMAIN"
+    result = {
+        "candidate_id": CANDIDATE_ID,
+        "fold": fold,
+        "operationally_valid": True,
+        "fit_heldout_disjoint": True,
+        "class_counts": {"fit": torch.bincount(fit_labels, minlength=CLASS_COUNT).tolist(), "heldout": torch.bincount(heldout_labels, minlength=CLASS_COUNT).tolist()},
+        "fit": {**fit_summary, "fit_source_row_positions_sha256": tensor_sha256(fit_positions), "fit_source_indices_sha256": tensor_sha256(fit_source_indices), "fit_labels_sha256": tensor_sha256(fit_labels), "heldout_excluded_from_fit": True, "fit_artifact": fit_ref},
+        "data": _data_identity(repo_root, q, source_indices, labels, identities, heldout_positions),
+        "model": {"sample_count": MODEL_SAMPLE_COUNT, "sample_artifact": model_ref, "sample_seed": sampling["seed"], "sampling": dict(sampling), "model_q_sha256": tensor_sha256(model_q), "heldout_values_used_for_sampling": False, "best_of_n": False, "resampling_after_evaluation": False},
+        "evaluator_call_index": exposure_number,
+        "metrics": metrics,
+        "threshold": threshold_out,
+        "margin": margins,
+        "compatibility_components": components,
+        "compatibility": compatibility,
+        "fold_pass": compatibility,
+        "terminal_status": "evaluated",
+        "marginal_compatible": marginal_compatible,
+        "joint_compatible": joint_compatible,
+        "marginal_vs_joint_interpretation": interpretation,
+        "per_coordinate_marginal_q95_checks": [
+            float(left) <= float(right)
+            for left, right in zip(metrics["per_coordinate_marginal_energy_distance"], threshold_out["per_coordinate_marginal_energy_distance"], strict=True)
+        ],
+        "per_coordinate_vector_role": "descriptive only; not a compatibility gate",
+        "threshold_source": {"path": _relative(repo_root, repo_root / CEILING_REPORT), "sha256": AUTHORITY_SHA256[CEILING_REPORT.as_posix()], "q95": COMPATIBILITY_Q, "recomputed": False},
+        "known_finite_sample_limitation": "DATA-vs-MODEL uses 1000 vs 200 rows while the frozen MODEL-vs-MODEL reference uses 200 vs 200 rows under biased empirical ED",
+    }
+    print(json.dumps({"stage": TASK_ID, "fold": fold, "status": "completed", "compatible": compatibility}), flush=True)
+    return result, [fit_ref, model_ref]
+
+
+def _validate_exposure(records: list[Mapping[str, Any]]) -> None:
+    _invalid(len(records) == FOLD_COUNT, "not every frozen fold received exactly one evaluator exposure")
+    keys = [(str(item.get("candidate_id")), int(item.get("fold"))) for item in records]
+    _invalid(keys == [(CANDIDATE_ID, fold) for fold in range(FOLD_COUNT)], "candidate-fold exposure order or identity changed")
+    _invalid([int(item.get("evaluator_call_number")) for item in records] == list(range(1, FOLD_COUNT + 1)), "evaluator exposure numbers are not contiguous")
+    _invalid(all(item.get("result_caused_code_or_config_change") is False for item in records), "adaptive exposure was recorded")
+
+
+def _write_output(repo_root: Path, output_dir: Path, payloads: Mapping[str, Mapping[str, Any]], torch_payloads: Mapping[Path, Mapping[str, Any]]) -> None:
+    if output_dir.exists():
+        raise FileExistsError(f"refusing to reuse write-once output: {output_dir}")
+    output_dir.parent.mkdir(parents=True, exist_ok=True)
+    temporary = Path(tempfile.mkdtemp(prefix=f".{output_dir.name}.", dir=output_dir.parent))
+    try:
+        for name, payload in payloads.items():
+            atomic_write_new_json(temporary / name, payload, artifact_kind=f"N3 fixed-R Student-t {name}")
+        for relative_path, payload in torch_payloads.items():
+            atomic_torch_save_new(temporary / relative_path, payload, artifact_kind=f"N3 fixed-R Student-t {relative_path.name}")
+        if output_dir.exists():
+            raise FileExistsError(f"candidate output appeared during execution: {output_dir}")
+        os.replace(temporary, output_dir)
+    finally:
+        if temporary.exists():
+            shutil.rmtree(temporary)
+
+
+def execute(repo_root: Path, output_dir: Path = OUTPUT_DIR) -> dict[str, Any]:
+    if output_dir.exists():
+        raise FileExistsError(f"refusing to reuse write-once output: {output_dir}")
+    contract = _validate_contract(repo_root)
+    preflight = _validate_preflight(repo_root, contract, output_dir)
+    print(json.dumps({"stage": TASK_ID, "status": "preflight_passed", "q_tensor_loaded": False, "sealed_confirmation_consumed": False}), flush=True)
+    q, source_indices, labels, identities, loaded_identity = _load_q_after_preflight(repo_root, preflight)
+    git = preflight["starting_git"]
+    created_at = dt.datetime.now(dt.timezone.utc).isoformat()
+    temporary = Path(tempfile.mkdtemp(prefix=f".{output_dir.name}.", dir=output_dir.parent))
+    exposure_records: list[dict[str, Any]] = []
+    fold_results: list[dict[str, Any]] = []
+    artifact_refs: list[dict[str, Any]] = []
+    try:
+        for fold in range(FOLD_COUNT):
+            fold_result, refs = _evaluate_fold(
+                repo_root,
+                q,
+                source_indices,
+                labels,
+                identities,
+                preflight["fold_ids"],
+                fold,
+                preflight["thresholds"][fold],
+                preflight,
+                git,
+                contract,
+                temporary,
+                output_dir,
+                created_at,
+                exposure_records,
+            )
+            fold_results.append(fold_result)
+            artifact_refs.extend(refs)
+        _validate_exposure(exposure_records)
+        _invalid(file_sha256(repo_root / Q_ARTIFACT) == AUTHORITY_SHA256[Q_ARTIFACT.as_posix()], "q authority changed during execution")
+        ending_before_publication = _git_state(repo_root)
+        _invalid(ending_before_publication["dirty_paths"] == git["dirty_paths"], "unrelated local changes appeared during execution")
+        _invalid(ending_before_publication["head"] == git["head"], "HEAD changed during execution")
+        supported = all(bool(item["fold_pass"]) for item in fold_results)
+        classification = CLASSIFICATION_SUPPORTED if supported else CLASSIFICATION_NOT_SUPPORTED
+        failures = [
+            {"fold": item["fold"], "failed_metrics": [name for name, passed in item["compatibility_components"].items() if not passed], "reason": "one or more frozen scalar compatibility components failed"}
+            for item in fold_results
+            if not item["fold_pass"]
+        ]
+        fit_records = [
+            {
+                "candidate_id": CANDIDATE_ID,
+                "fold": item["fold"],
+                "fit_rows": FIT_COUNT_PER_FOLD,
+                "fit_q_sha256": item["fit"]["fit_q_sha256"],
+                "fit_source_indices_sha256": item["fit"]["fit_source_indices_sha256"],
+                "fit_row_positions_sha256": item["fit"]["fit_source_row_positions_sha256"],
+                "fit_labels_sha256": item["fit"]["fit_labels_sha256"],
+                "fit_artifact": item["fit"]["fit_artifact"],
+                "heldout_excluded_from_fit": True,
+            }
+            for item in fold_results
+        ]
+        fold_collection = {"candidate_id": CANDIDATE_ID, "candidate_family": CANDIDATE_ID, "folds": fold_results}
+        fit_manifest = {
+            "schema": FIT_MANIFEST_SCHEMA,
+            "version": 1,
+            "task_id": TASK_ID,
+            "gate": GATE,
+            "status": "valid_completed",
+            "created_at_utc": created_at,
+            "git": {"branch": git["branch"], "head": git["head"], "starting_dirty_paths": git["dirty_paths"], "ending_dirty_paths": ending_before_publication["dirty_paths"]},
+            "contract": {"path": _relative(repo_root, repo_root / CONTRACT_PATH), "sha256": EXPECTED_CONTRACT_SHA256},
+            "candidate_id": CANDIDATE_ID,
+            "fit_contract": {"fit_rows_per_fold": FIT_COUNT_PER_FOLD, "heldout_rows_per_fold": HELDOUT_COUNT_PER_FOLD, "one_nu_per_fold": True, "fit_rows_only": True, "heldout_values_used": False, "fit_call_count": len(fit_records)},
+            "fit_records": fit_records,
+            "governance": {"selected_producer": None, "training_authorized": False, "formal_promotion": False, "generation_readiness": "not_ready"},
+        }
+        fold_compatibility = {
+            "schema": FOLD_COMPATIBILITY_SCHEMA,
+            "version": 1,
+            "task_id": TASK_ID,
+            "gate": GATE,
+            "status": "valid_completed",
+            "created_at_utc": created_at,
+            "git": fit_manifest["git"],
+            "contract": fit_manifest["contract"],
+            "candidate_folds": [fold_collection],
+            "threshold_authority": {"path": _relative(repo_root, repo_root / CEILING_REPORT), "sha256": AUTHORITY_SHA256[CEILING_REPORT.as_posix()], "q95": COMPATIBILITY_Q, "recomputed": False},
+            "package_rule": "all eight fixed N4 candidate-fold raw-q metrics <= the frozen V2 fold-local model-vs-model q95; all five folds required",
+            "governance": {"selected_producer": None, "training_authorized": False, "formal_promotion": False, "generation_readiness": "not_ready"},
+        }
+        ledger = {
+            "schema": LEDGER_SCHEMA,
+            "version": 1,
+            "task_id": TASK_ID,
+            "gate": GATE,
+            "status": "valid_completed",
+            "created_at_utc": created_at,
+            "git": fit_manifest["git"],
+            "contract": fit_manifest["contract"],
+            "candidate_id": CANDIDATE_ID,
+            "planned_candidate_fold_exposures": FOLD_COUNT,
+            "total_evaluator_calls": len(exposure_records),
+            "max_evaluator_calls": FOLD_COUNT,
+            "adaptive_development_exposure": False,
+            "result_to_code_or_config_change": False,
+            "call_records": exposure_records,
+            "unexposed_candidate_folds": [],
+            "governance": {"selected_producer": None, "training_authorized": False, "formal_promotion": False, "generation_readiness": "not_ready"},
+        }
+        fit_manifest_path = temporary / FIT_MANIFEST_NAME
+        fold_compatibility_path = temporary / FOLD_COMPATIBILITY_NAME
+        ledger_path = temporary / LEDGER_NAME
+        atomic_write_new_json(fit_manifest_path, fit_manifest, artifact_kind="N3 fixed-R Student-t fit manifest")
+        atomic_write_new_json(fold_compatibility_path, fold_compatibility, artifact_kind="N3 fixed-R Student-t fold compatibility")
+        atomic_write_new_json(ledger_path, ledger, artifact_kind="N3 fixed-R Student-t evaluator exposure ledger")
+        artifact_refs.extend([
+            _artifact_ref(repo_root, repo_root / output_dir / FIT_MANIFEST_NAME, source_path=fit_manifest_path, role="fit manifest", schema=FIT_MANIFEST_SCHEMA),
+            _artifact_ref(repo_root, repo_root / output_dir / FOLD_COMPATIBILITY_NAME, source_path=fold_compatibility_path, role="fold compatibility", schema=FOLD_COMPATIBILITY_SCHEMA),
+            _artifact_ref(repo_root, repo_root / output_dir / LEDGER_NAME, source_path=ledger_path, role="evaluator exposure ledger", schema=LEDGER_SCHEMA),
+        ])
+        lineage = {
+            "schema": LINEAGE_SCHEMA,
+            "version": 1,
+            "task_id": TASK_ID,
+            "gate": GATE,
+            "status": "valid_completed",
+            "created_at_utc": created_at,
+            "git": fit_manifest["git"],
+            "contract": fit_manifest["contract"],
+            "candidate_id": CANDIDATE_ID,
+            "authorities": [
+                {"path": _relative(repo_root, repo_root / path), "sha256": sha256}
+                for path, sha256 in AUTHORITY_SHA256.items()
+            ],
+            "n4_baseline": {"registry": {"path": _relative(repo_root, repo_root / N4_REGISTRY), "sha256": N4_REGISTRY_SHA256}, "report": {"path": _relative(repo_root, repo_root / N4_REPORT), "sha256": N4_REPORT_SHA256}, "lineage": {"path": _relative(repo_root, repo_root / N4_LINEAGE), "sha256": N4_LINEAGE_SHA256}},
+            "sealed_confirmation": {"status": "RESERVED_NOT_MATERIALIZED", "consumed": False, "values_loaded": False, "manifest_read_by_this_consumer": False},
+            "artifacts": artifact_refs,
+            "all_artifacts_write_once": True,
+            "source_row_lineage_recorded": True,
+            "consumer_report_is_not_self_referenced": True,
+        }
+        lineage_path = temporary / LINEAGE_NAME
+        atomic_write_new_json(lineage_path, lineage, artifact_kind="N3 fixed-R Student-t lineage manifest")
+        lineage_ref = _artifact_ref(repo_root, repo_root / output_dir / LINEAGE_NAME, source_path=lineage_path, role="lineage manifest", schema=LINEAGE_SCHEMA)
+
+        report = {
+            "schema": REPORT_SCHEMA,
+            "version": 1,
+            "task_id": TASK_ID,
+            "gate": GATE,
+            "status": "valid_completed",
+            "result": "VALID_COMPLETED",
+            "classification": classification,
+            "development_supported": supported,
+            "created_at_utc": created_at,
+            "git": {"branch": git["branch"], "starting_head": git["head"], "ending_head": ending_before_publication["head"], "starting_dirty_paths": git["dirty_paths"], "ending_dirty_paths": ending_before_publication["dirty_paths"], "worktree_clean": False, "consumer_script": _relative(repo_root, Path(__file__).resolve()), "consumer_script_sha256": file_sha256(Path(__file__).resolve())},
+            "contract": {"path": _relative(repo_root, repo_root / CONTRACT_PATH), "sha256": EXPECTED_CONTRACT_SHA256, "family_id": CANDIDATE_ID, "classification": contract["classification"]},
+            "input_verification": {"model_contract_sha256": EXPECTED_CONTRACT_SHA256, "v2_development_bank": preflight["v2_authority"], "package_n4": preflight["n4_authority"], "sealed_untouched": True, "q_loaded_only_after_preflight": True, "loaded_q_identity": loaded_identity},
+            "execution_settings": {"device": "cpu", "dtype": "float64", "class_count": CLASS_COUNT, "dimension": DIMENSION, "fold_count": FOLD_COUNT, "fit_rows_per_fold": FIT_COUNT_PER_FOLD, "heldout_rows_per_fold": HELDOUT_COUNT_PER_FOLD, "model_sample_count": MODEL_SAMPLE_COUNT, "candidate_bank_count_per_fold": 1, "threshold_reference": "frozen V2 empirical-ceiling MODEL-vs-MODEL q95", "threshold_reference_data_vs_model_replicates": 4, "threshold_reference_model_vs_model_replicates": 8, "threshold_reference_pairs": [list(pair) for pair in MODEL_REFERENCE_PAIRS], "compatibility_q": COMPATIBILITY_Q, "rng_namespace": RNG_NAMESPACE, "heldout_parameter_leakage": False, "heldout_seed_tuning": False, "best_of_n": False, "seed_retry": False, "post_evaluation_resampling": False},
+            "candidate": {"candidate_id": CANDIDATE_ID, "candidate_family_count": 1, "one_nu_per_fold": True, "nu_domain": [NU_LOWER, NU_UPPER], "fit_rows_only": True, "marginal_identity_preserved": True, "R_identity_preserved": True},
+            "fold_results": fold_results,
+            "fold_compatibility": {"fold_count": FOLD_COUNT, "fold_pass_pattern": [bool(item["fold_pass"]) for item in fold_results], "compatible_fold_count": sum(bool(item["fold_pass"]) for item in fold_results), "strict_five_of_five": True, "failure_taxonomy": failures},
+            "comparison_with_n4_gaussian_baseline": {"baseline_classification": "N4_Q_PRODUCER_COMPARISON_NO_CANDIDATE_SUPPORTED", "baseline_gaussian_compatible_folds": 4, "baseline_gaussian_fold_pattern": [True, True, True, True, False], "student_t_compatible_folds": [bool(item["fold_pass"]) for item in fold_results], "fold_4_previous_norm_failures": ["norm_energy_distance", "squared_norm_energy_distance"], "student_t_fold_4_norm_failures_persist": [name for name, passed in fold_results[4]["compatibility_components"].items() if not passed and name in {"norm_energy_distance", "squared_norm_energy_distance"}], "relative_improvement_is_descriptive_only": True, "producer_selection": False},
+            "evaluator_exposure": {"total_evaluator_calls": len(exposure_records), "planned_evaluator_calls": FOLD_COUNT, "clean_one_shot": True, "adaptive_development_exposure": False, "ledger_path": _relative(repo_root, repo_root / output_dir / LEDGER_NAME)},
+            "artifact_manifests": {"fit_manifest": _artifact_ref(repo_root, repo_root / output_dir / FIT_MANIFEST_NAME, source_path=fit_manifest_path, role="fit manifest", schema=FIT_MANIFEST_SCHEMA), "fold_compatibility": _artifact_ref(repo_root, repo_root / output_dir / FOLD_COMPATIBILITY_NAME, source_path=fold_compatibility_path, role="fold compatibility", schema=FOLD_COMPATIBILITY_SCHEMA), "evaluator_exposure_ledger": _artifact_ref(repo_root, repo_root / output_dir / LEDGER_NAME, source_path=ledger_path, role="evaluator exposure ledger", schema=LEDGER_SCHEMA), "lineage_manifest": lineage_ref},
+            "governance": {"selected_producer": None, "training_authorized": False, "formal_promotion": False, "generation_readiness": "not_ready", "sealed_confirmation_consumed": False},
+            "claim_boundary": {"development_q_distribution_compatibility_only": True, "marginal_vs_joint_interpretation_descriptive_only": True, "independent_confirmation": False, "image_generation": False, "optical_forward": False, "semantic_generation": False, "training_authorization": False, "formal_promotion": False, "generation_readiness": "not_ready"},
+            "limitations": ["DATA-vs-MODEL uses 1000 vs 200 rows while the frozen MODEL-vs-MODEL reference uses 200 vs 200 rows under biased empirical ED.", "The empirical q95 is a development threshold, not a calibrated 95% confidence bound.", "Four of five folds is NOT_SUPPORTED; no mean-score or margin override applies.", "The result concerns only q-space development compatibility and does not establish stationarity, optical compatibility, image generation, training readiness, or producer selection."],
+            "sealed_confirmation": {"status": "RESERVED_NOT_MATERIALIZED", "consumed": False, "materialized": False, "values_loaded": False},
+            "not_executed": ["final all-development fit", "sealed confirmation", "producer selection", "semantic selector", "N5/N6", "optical/image-space evaluation", "CUDA", "training", "backward", "formal promotion"],
+        }
+        report_path = temporary / REPORT_NAME
+        atomic_write_new_json(report_path, report, artifact_kind="N3 fixed-R Student-t producer report")
+        _invalid(not output_dir.exists(), "candidate output appeared before publication")
+        os.replace(temporary, output_dir)
+        temporary = Path()
+    finally:
+        if temporary != Path() and temporary.exists():
+            shutil.rmtree(temporary)
+    final_git = _git_state(repo_root)
+    _invalid(final_git["head"] == git["head"] and final_git["dirty_paths"] == git["dirty_paths"], "worktree changed during publication")
+    return {
+        "result": "VALID_COMPLETED",
+        "classification": classification,
+        "development_supported": supported,
+        "report": _relative(repo_root, output_dir / REPORT_NAME),
+        "report_sha256": file_sha256(output_dir / REPORT_NAME),
+        "lineage": _relative(repo_root, output_dir / LINEAGE_NAME),
+        "lineage_sha256": file_sha256(output_dir / LINEAGE_NAME),
+        "fold_pass_pattern": [bool(item["fold_pass"]) for item in fold_results],
+        "compatible_fold_count": sum(bool(item["fold_pass"]) for item in fold_results),
+        "total_evaluator_calls": len(exposure_records),
+        "selected_producer": None,
+        "training_authorized": False,
+        "formal_promotion": False,
+        "generation_readiness": "not_ready",
+        "sealed_confirmation_consumed": False,
+        "starting_head": git["head"],
+        "ending_head": final_git["head"],
+        "worktree_before_after_equal": git["dirty_paths"] == final_git["dirty_paths"],
+    }
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output-dir", type=Path, default=OUTPUT_DIR)
+    args = parser.parse_args()
+    repo_root = Path(__file__).resolve().parents[2]
+    output_dir = args.output_dir if args.output_dir.is_absolute() else repo_root / args.output_dir
+    print(json.dumps(execute(repo_root, output_dir), indent=2, sort_keys=True))
+
+
+if __name__ == "__main__":
+    main()

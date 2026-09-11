@@ -1,0 +1,114 @@
+"""Focused checks for the frozen N3 development-bank V2 authority and gate."""
+
+from __future__ import annotations
+
+import json
+
+import pytest
+import torch
+
+from scripts.research import define_n3_development_bank_v2 as source_definition
+from scripts.research import define_n3_development_bank_v2_five_fold_protocol as fold_definition
+from scripts.research import execute_n3_development_bank_v2_empirical_ceiling as execution
+
+
+def test_frozen_v2_source_manifest_is_balanced_and_development_only() -> None:
+    path = source_definition.OUTPUT_DIR / source_definition.ARTIFACT_NAME
+    if not path.is_file():
+        pytest.skip("V2 source manifest is published by the bounded implementation task")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    source_definition.validate_source_manifest_payload(payload)
+    assert payload["identity"]["class_counts"] == [500] * 10
+    assert payload["selection"]["q_values_used"] is False
+    assert payload["selection"]["ols_values_used"] is False
+    assert payload["materialization_boundary"]["sealed_confirmation_values_loaded"] is False
+    assert payload["materialization_boundary"]["generation_readiness"] == "not_ready"
+
+
+def test_frozen_v2_five_fold_manifest_has_exact_class_conditioned_sizes() -> None:
+    path = fold_definition.OUTPUT_DIR / fold_definition.ARTIFACT_NAME
+    if not path.is_file():
+        pytest.skip("V2 five-fold manifest is published by the bounded implementation task")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    fold_definition.validate_fold_manifest_payload(payload)
+    assert payload["protocol"]["assignment_sha256"] == execution.FOLD_ASSIGNMENT_SHA256
+    for item in payload["fold_identity"]["folds"]:
+        assert item["fit_count"] == 4000
+        assert item["heldout_count"] == 1000
+        assert item["fit_per_class"] == 400
+        assert item["heldout_per_class"] == 100
+
+
+def test_empirical_seed_and_complete_row_bootstrap_are_deterministic() -> None:
+    fit_q = torch.arange(execution.FIT_COUNT_PER_FOLD * execution.DIMENSION, dtype=torch.float64).reshape(
+        execution.FIT_COUNT_PER_FOLD,
+        execution.DIMENSION,
+    )
+    source_indices = torch.arange(execution.FIT_COUNT_PER_FOLD, dtype=torch.int64)
+    first, first_record = execution._sample_empirical_bank(
+        fit_q,
+        source_indices,
+        role="data-vs-model",
+        fold=0,
+        replicate=0,
+    )
+    second, second_record = execution._sample_empirical_bank(
+        fit_q,
+        source_indices,
+        role="data-vs-model",
+        fold=0,
+        replicate=0,
+    )
+    assert torch.equal(first, second)
+    assert first_record == second_record
+    assert first.shape == (200, execution.DIMENSION)
+    assert first_record["sampling_unit"] == "complete q row"
+    assert first_record["with_replacement"] is True
+    assert first_record["independent_dimension_sampling"] is False
+
+
+def test_raw_q_metric_adapter_preserves_unequal_heldout_shape() -> None:
+    heldout = torch.linspace(0.1, 1.0, steps=1000 * execution.DIMENSION, dtype=torch.float64).reshape(
+        1000,
+        execution.DIMENSION,
+    )
+    bank = torch.linspace(0.2, 1.1, steps=200 * execution.DIMENSION, dtype=torch.float64).reshape(
+        200,
+        execution.DIMENSION,
+    )
+    metrics = execution._pair_metrics_raw_q(heldout, bank)
+    assert set(execution.SCALAR_METRICS).issubset(metrics)
+    assert len(metrics["per_coordinate_marginal_energy_distance"]) == execution.DIMENSION
+
+
+def test_published_v2_empirical_ceiling_has_one_complete_five_fold_result() -> None:
+    path = execution.REPORT_OUTPUT_DIR / execution.REPORT_NAME
+    if not path.is_file():
+        pytest.skip("V2 empirical ceiling report is published by the bounded implementation task")
+    report = json.loads(path.read_text(encoding="utf-8"))
+    assert report["schema"] == execution.REPORT_SCHEMA
+    assert report["result"] == "VALID_COMPLETED"
+    assert report["classification"] in {
+        execution.CLASSIFICATION_VALIDATED,
+        execution.CLASSIFICATION_NOT_VALIDATED,
+    }
+    assert report["aggregate"]["fold_count"] == execution.FOLD_COUNT
+    assert len(report["empirical_ceiling"]["fold_results"]) == execution.FOLD_COUNT
+    for fold, result in enumerate(report["empirical_ceiling"]["fold_results"]):
+        assert result["fold"] == fold
+        assert result["operationally_valid"] is True
+        assert result["class_counts"]["fit"] == [400] * execution.CLASS_COUNT
+        assert result["class_counts"]["heldout"] == [100] * execution.CLASS_COUNT
+        assert set(result["guardrails"]["compatibility_components"]) == set(execution.SCALAR_METRICS)
+        assert result["per_coordinate_vector_role"].startswith("descriptive only")
+    assert report["execution_settings"]["generated_bank_size"] == 200
+    assert report["execution_settings"]["data_vs_model_replicates"] == 4
+    assert report["execution_settings"]["model_vs_model_replicates"] == 8
+    assert report["execution_settings"]["model_reference_pairs"] == [[0, 1], [2, 3], [4, 5], [6, 7]]
+    assert report["execution_settings"]["with_replacement"] is True
+    assert report["execution_settings"]["independent_dimension_sampling"] is False
+    assert report["governance"]["selected_producer"] is None
+    assert report["governance"]["sealed_confirmation_consumed"] is False
+    assert report["governance"]["training_authorized"] is False
+    assert report["governance"]["formal_promotion"] is False
+    assert report["governance"]["generation_readiness"] == "not_ready"

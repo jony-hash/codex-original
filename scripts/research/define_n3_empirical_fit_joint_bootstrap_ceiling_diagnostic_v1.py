@@ -1,0 +1,651 @@
+"""Freeze the N3 empirical-fit joint-bootstrap ceiling diagnostic contract.
+
+The definition consumer binds the current N3 development authorities and the
+existing compatibility implementation, then publishes a write-once contract.
+It deliberately does not load q values, fit a producer, sample banks, or read
+the sealed confirmation source values.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import shutil
+import subprocess
+import tempfile
+from pathlib import Path
+from typing import Any, Mapping
+
+from ldm_project.v2.evidence import atomic_write_new_json, file_sha256
+from scripts.research import compare_n3_minimal_competing_producer_baselines_v1 as comparison
+from scripts.research import define_n3_oracle_guided_minimal_intervention_contract_v1 as lineage
+from scripts.research import execute_n3_empirical_marginal_gaussian_copula_producer_v1 as compatibility
+
+
+TASK_ID = "DEFINE_N3_EMPIRICAL_FIT_JOINT_BOOTSTRAP_CEILING_DIAGNOSTIC_V1"
+GATE = TASK_ID
+CONTRACT_SCHEMA = "n3_empirical_fit_joint_bootstrap_ceiling_diagnostic_contract.v1"
+READY_CLASSIFICATION = "DEFINE_N3_EMPIRICAL_FIT_JOINT_BOOTSTRAP_CEILING_DIAGNOSTIC_V1_READY"
+CLAIM_CLASSIFICATION = "N3_EMPIRICAL_FIT_JOINT_BOOTSTRAP_CEILING_DIAGNOSTIC_DEFINED"
+EXPECTED_BRANCH = "research/lightgen-ols-native-semantic-generation-v1"
+EXPECTED_STARTING_HEAD = "a5c07512614944d4be6392ae29d48e0b189bea4b"
+
+LATEST_COMPARISON_REPORT = Path(
+    "outputs/20260909_v2/runs/"
+    "n3_oracle_guided_minimal_intervention_comparison_v2_attempt_01/"
+    "n3_oracle_guided_minimal_intervention_comparison_report.v2.json"
+)
+LATEST_COMPARISON_REPORT_SHA256 = "19d4d933f28200010373ed8210f31f343ae40d6474f6bdfb05e7fcb0c5fcf192"
+LATEST_COMPARISON_CONTRACT_SHA256 = "f297a1ffbf84bec84a15525be97ba1a5fd897d32beefd0fe22138bff0012ce2e"
+
+OUTPUT_DIR = Path(
+    "outputs/20260909_v2/runs/"
+    "n3_empirical_fit_joint_bootstrap_ceiling_diagnostic_v1_attempt_01"
+)
+CONTRACT_NAME = "n3_empirical_fit_joint_bootstrap_ceiling_diagnostic_contract.v1.json"
+
+FOLD_ASSIGNMENT_SHA256 = "90277c16a0d96b895e218264f35a822564b3a46570cab73a1a1e823f063e9e32"
+CLASS_COUNT = comparison.CLASS_COUNT
+DIMENSION = comparison.DIMENSION
+POOL_COUNT = comparison.POOL_COUNT
+FOLD_COUNT = comparison.FOLD_COUNT
+FIT_COUNT_PER_FOLD = comparison.FIT_COUNT_PER_FOLD
+HELDOUT_COUNT_PER_FOLD = comparison.HELDOUT_COUNT_PER_FOLD
+GENERATED_BANK_SIZE = comparison.TARGET_ACCEPTED
+DATA_VS_MODEL_REPLICATES = comparison.DATA_VS_MODEL_REPLICATES
+MODEL_VS_MODEL_REPLICATES = comparison.MODEL_VS_MODEL_REPLICATES
+MODEL_REFERENCE_PAIRS = ((0, 1), (2, 3), (4, 5), (6, 7))
+COMPATIBILITY_Q = comparison.Q95
+RNG_NAMESPACE = "N3_EMPIRICAL_FIT_JOINT_BOOTSTRAP_CEILING_DIAGNOSTIC_V1_CPU"
+
+JOINT_METRICS = tuple(compatibility.JOINT_METRICS)
+MARGINAL_METRICS = tuple(compatibility.MARGINAL_METRICS)
+SCALAR_METRICS = JOINT_METRICS + MARGINAL_METRICS
+
+PRIMARY_METRIC_SOURCE = lineage.PRIMARY_METRIC_SOURCE
+PRIMARY_METRIC_SOURCE_SHA256 = lineage.PRIMARY_METRIC_SOURCE_SHA256
+PAIR_METRIC_SOURCE = lineage.DEPENDENCE_SOURCE
+PAIR_METRIC_SOURCE_SHA256 = lineage.DEPENDENCE_SOURCE_SHA256
+COMPATIBILITY_SOURCE = lineage.BASELINE_EXECUTION_SOURCE
+COMPATIBILITY_SOURCE_SHA256 = lineage.BASELINE_EXECUTION_SOURCE_SHA256
+
+SAFE_DIRTY_PATHS = set(lineage.SAFE_DIRTY_PATHS) | {
+    "scripts/research/define_n3_oracle_guided_minimal_intervention_contract_v2.py",
+    "scripts/research/execute_n3_oracle_guided_minimal_intervention_comparison_v1.py",
+    "scripts/research/execute_n3_oracle_guided_minimal_intervention_comparison_v2.py",
+    "scripts/research/define_n3_empirical_fit_joint_bootstrap_ceiling_diagnostic_v1.py",
+    "scripts/research/execute_n3_empirical_fit_joint_bootstrap_ceiling_diagnostic_v1.py",
+    "tests/v2/test_execute_n3_oracle_guided_minimal_intervention_comparison_v1.py",
+    "tests/v2/test_execute_n3_oracle_guided_minimal_intervention_comparison_v2.py",
+    "tests/v2/test_n3_oracle_guided_minimal_intervention_contract_v2.py",
+    "tests/v2/test_n3_empirical_fit_joint_bootstrap_ceiling_diagnostic_v1.py",
+}
+
+
+def _require(condition: bool, message: str) -> None:
+    if not condition:
+        raise ValueError(message)
+
+
+def _mapping(value: Any, name: str) -> Mapping[str, Any]:
+    _require(isinstance(value, Mapping), f"{name} must be a mapping")
+    return value
+
+
+def _sequence(value: Any, name: str) -> list[Any]:
+    _require(isinstance(value, list), f"{name} must be a list")
+    return value
+
+
+def _relative(repo_root: Path, path: Path) -> str:
+    return path.resolve().relative_to(repo_root.resolve()).as_posix()
+
+
+def _read_json_exact(
+    repo_root: Path,
+    path: Path,
+    expected_sha256: str,
+    name: str,
+) -> dict[str, Any]:
+    target = repo_root / path
+    _require(target.is_file(), f"{name} is missing: {target}")
+    _require(file_sha256(target) == expected_sha256, f"{name} hash changed: {target}")
+    value = json.loads(target.read_text(encoding="utf-8"))
+    return dict(_mapping(value, name))
+
+
+def _verify_file_hash(repo_root: Path, path: Path, expected_sha256: str, name: str) -> None:
+    target = repo_root / path
+    _require(target.is_file(), f"{name} is missing: {target}")
+    _require(file_sha256(target) == expected_sha256, f"{name} hash changed: {target}")
+
+
+def _git_state(repo_root: Path) -> dict[str, Any]:
+    branch = subprocess.run(
+        ["git", "-C", str(repo_root), "branch", "--show-current"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    head = subprocess.run(
+        ["git", "-C", str(repo_root), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    status = subprocess.run(
+        ["git", "-C", str(repo_root), "status", "--porcelain"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    return {
+        "branch": branch,
+        "head": head,
+        "dirty_paths": [line[3:] if len(line) >= 4 else line for line in status],
+        "worktree_clean": not status,
+    }
+
+
+def _validate_current_state(repo_root: Path) -> dict[str, Any]:
+    paths = (Path("docs/CURRENT_STATUS.md"), Path("docs/status/current_handoff.md"))
+    markers = (
+        "NO_MINIMAL_INTERVENTION_SUPPORTED",
+        "training_authorized=false",
+        "formal_promotion=false",
+        "generation_readiness=not_ready",
+    )
+    for path in paths:
+        target = repo_root / path
+        _require(target.is_file(), f"current state file is missing: {target}")
+        text = target.read_text(encoding="utf-8")
+        for marker in markers:
+            _require(marker in text, f"current state marker is missing from {path}: {marker}")
+    return {
+        "paths": [_relative(repo_root, repo_root / path) for path in paths],
+        "required_markers": list(markers),
+        "state_conflict": False,
+    }
+
+
+def _validate_latest_comparison(repo_root: Path) -> dict[str, Any]:
+    report = _read_json_exact(
+        repo_root,
+        LATEST_COMPARISON_REPORT,
+        LATEST_COMPARISON_REPORT_SHA256,
+        "latest V2 comparison report",
+    )
+    _require(report.get("schema") == "n3_oracle_guided_minimal_intervention_comparison_report.v2", "latest comparison schema changed")
+    _require(report.get("status") == "valid_completed" and report.get("result") == "VALID_COMPLETED", "latest comparison is incomplete")
+    _require(report.get("classification") == "NO_MINIMAL_INTERVENTION_SUPPORTED", "latest comparison classification changed")
+    contract = _mapping(report.get("contract"), "latest comparison contract")
+    _require(contract.get("sha256") == LATEST_COMPARISON_CONTRACT_SHA256, "latest comparison contract identity changed")
+    comparison_result = _mapping(report.get("comparison"), "latest comparison result")
+    _require(comparison_result.get("m2_compatible_folds") == 0, "latest M2 compatibility count changed")
+    _require(comparison_result.get("d_compatible_folds") == 1, "latest D compatibility count changed")
+    _require(comparison_result.get("all_five_folds_required") is True, "latest fold criterion changed")
+    for candidate in ("candidate_M2", "candidate_D"):
+        candidate_result = _mapping(report.get(candidate), f"latest {candidate} result")
+        _require(candidate_result.get("fold_count") == FOLD_COUNT, f"latest {candidate} fold count changed")
+        _require(len(_sequence(candidate_result.get("fold_results"), f"latest {candidate} fold results")) == FOLD_COUNT, f"latest {candidate} fold records are incomplete")
+    selection = _mapping(report.get("selection"), "latest comparison selection")
+    _require(selection.get("selected_candidate") is None, "latest comparison selected a candidate")
+    governance = _mapping(report.get("governance"), "latest comparison governance")
+    for key, expected in {
+        "comparison_executed": True,
+        "candidate_selected": False,
+        "sealed_confirmation_consumed": False,
+        "training_authorized": False,
+        "formal_promotion": False,
+        "generation_readiness": "not_ready",
+    }.items():
+        _require(governance.get(key) == expected, f"latest comparison governance changed: {key}")
+    settings = _mapping(report.get("execution_settings"), "latest comparison settings")
+    for key, expected in {
+        "generated_bank_size": GENERATED_BANK_SIZE,
+        "data_vs_model_replicates": DATA_VS_MODEL_REPLICATES,
+        "model_vs_model_replicates": MODEL_VS_MODEL_REPLICATES,
+        "compatibility_q": COMPATIBILITY_Q,
+    }.items():
+        _require(settings.get(key) == expected, f"latest comparison setting changed: {key}")
+    return {
+        "path": _relative(repo_root, repo_root / LATEST_COMPARISON_REPORT),
+        "sha256": LATEST_COMPARISON_REPORT_SHA256,
+        "schema": report["schema"],
+        "contract_sha256": LATEST_COMPARISON_CONTRACT_SHA256,
+        "classification": report["classification"],
+        "m2_compatible_folds": comparison_result["m2_compatible_folds"],
+        "d_compatible_folds": comparison_result["d_compatible_folds"],
+        "selected_candidate": None,
+    }
+
+
+def _validate_fold_authority(repo_root: Path, producer_report: Mapping[str, Any]) -> dict[str, Any]:
+    fold_identity = _mapping(producer_report.get("development_fold_identity"), "producer fold identity")
+    _require(fold_identity.get("assignment_sha256") == FOLD_ASSIGNMENT_SHA256, "fold assignment changed")
+    _require(fold_identity.get("fold_count") == FOLD_COUNT, "fold count changed")
+    folds = _sequence(fold_identity.get("folds"), "producer fold records")
+    _require(len(folds) == FOLD_COUNT, "fold records are incomplete")
+    for fold, item in enumerate(folds):
+        record = _mapping(item, f"fold record {fold}")
+        _require(record.get("fold") == fold, f"fold order changed at {fold}")
+        _require(record.get("fit_count") == FIT_COUNT_PER_FOLD, f"fit count changed at fold {fold}")
+        _require(record.get("heldout_count") == HELDOUT_COUNT_PER_FOLD, f"held-out count changed at fold {fold}")
+        _require(record.get("fit_heldout_disjoint") is True, f"fit/held-out overlap at fold {fold}")
+    return dict(fold_identity)
+
+
+def _validate_compatibility_framework(repo_root: Path) -> dict[str, Any]:
+    _require(tuple(compatibility.JOINT_METRICS) == JOINT_METRICS, "joint metric authority changed")
+    _require(tuple(compatibility.MARGINAL_METRICS) == MARGINAL_METRICS, "marginal metric authority changed")
+    _require(len(SCALAR_METRICS) == 8, "scalar guardrail count changed")
+    _require(MODEL_REFERENCE_PAIRS == ((0, 1), (2, 3), (4, 5), (6, 7)), "model reference pairing changed")
+    for path, expected, name in (
+        (PRIMARY_METRIC_SOURCE, PRIMARY_METRIC_SOURCE_SHA256, "primary metric source"),
+        (PAIR_METRIC_SOURCE, PAIR_METRIC_SOURCE_SHA256, "pair metric source"),
+        (COMPATIBILITY_SOURCE, COMPATIBILITY_SOURCE_SHA256, "compatibility source"),
+    ):
+        _verify_file_hash(repo_root, path, expected, name)
+    return {
+        "primary_metric": {
+            "name": "validated_biased_empirical_energy_distance_euclidean_q_space",
+            "implementation": "scripts.research.validate_n3_amplitude_producer_baseline._energy_distance",
+            "source_path": PRIMARY_METRIC_SOURCE.as_posix(),
+            "source_sha256": PRIMARY_METRIC_SOURCE_SHA256,
+        },
+        "pair_metric_implementation": {
+            "source_path": PAIR_METRIC_SOURCE.as_posix(),
+            "source_sha256": PAIR_METRIC_SOURCE_SHA256,
+            "function": "scripts.research.compare_n3_minimal_competing_producer_baselines_v1._pair_metrics",
+        },
+        "compatibility_execution_source": {
+            "source_path": COMPATIBILITY_SOURCE.as_posix(),
+            "source_sha256": COMPATIBILITY_SOURCE_SHA256,
+            "functions": ["_pair_metrics", "_mean_metrics", "_q95_metrics"],
+        },
+        "joint_metrics": list(JOINT_METRICS),
+        "marginal_metrics": list(MARGINAL_METRICS),
+        "scalar_metrics": list(SCALAR_METRICS),
+        "scalar_metric_count": len(SCALAR_METRICS),
+    }
+
+
+def validate_contract_payload(contract: Mapping[str, Any]) -> None:
+    """Validate the frozen semantic surface without loading scientific q values."""
+
+    _require(contract.get("schema") == CONTRACT_SCHEMA, "contract schema changed")
+    _require(contract.get("version") == 1, "contract version changed")
+    _require(contract.get("task_id") == TASK_ID and contract.get("gate") == GATE, "contract task changed")
+    _require(contract.get("classification") == READY_CLASSIFICATION, "contract readiness changed")
+    _require(contract.get("claim_classification") == CLAIM_CLASSIFICATION, "contract claim changed")
+    _require(contract.get("definition_only") is True, "definition boundary changed")
+
+    diagnostic = _mapping(contract.get("diagnostic"), "diagnostic")
+    for key, expected in {
+        "name": "EMPIRICAL_FIT_JOINT_BOOTSTRAP_CEILING",
+        "distribution": "uniform empirical distribution over exact fitting q rows",
+        "complete_row_sampling": True,
+        "with_replacement": True,
+        "independent_dimension_sampling": False,
+        "labels_condition_sampling": False,
+        "producer": False,
+        "generation_evidence": False,
+        "confirmation_evidence": False,
+    }.items():
+        _require(diagnostic.get(key) == expected, f"diagnostic semantic changed: {key}")
+
+    sampling = _mapping(contract.get("sampling_contract"), "sampling contract")
+    for key, expected in {
+        "fit_rows_per_fold": FIT_COUNT_PER_FOLD,
+        "bank_size": GENERATED_BANK_SIZE,
+        "data_vs_model_replicates": DATA_VS_MODEL_REPLICATES,
+        "model_vs_model_replicates": MODEL_VS_MODEL_REPLICATES,
+        "rng_device": "cpu",
+        "rng_generator": "torch.Generator(device='cpu')",
+        "rng_namespace": RNG_NAMESPACE,
+        "seed_retry": False,
+        "best_bank_selection": False,
+        "samplewise_normalization": False,
+    }.items():
+        _require(sampling.get(key) == expected, f"sampling contract changed: {key}")
+    _require(sampling.get("law") == "I_k~Uniform{0,...,799} with replacement; q_new[k,:]=q_fit[I_k,:]", "row bootstrap law changed")
+    _require(sampling.get("duplicate_row_rate_formula") == "(200-unique(sampled_fit_local_row_indices))/200", "duplicate-rate semantics changed")
+
+    evaluation = _mapping(contract.get("development_evaluation_contract"), "evaluation contract")
+    for key, expected in {
+        "fold_count": FOLD_COUNT,
+        "fit_rows_per_fold": FIT_COUNT_PER_FOLD,
+        "heldout_rows_per_fold": HELDOUT_COUNT_PER_FOLD,
+        "fold_assignment_sha256": FOLD_ASSIGNMENT_SHA256,
+        "labels_as_model_inputs": False,
+        "optical_forward": False,
+        "evaluator": False,
+        "sealed_confirmation": False,
+    }.items():
+        _require(evaluation.get(key) == expected, f"evaluation contract changed: {key}")
+
+    framework = _mapping(contract.get("compatibility_framework"), "compatibility framework")
+    _require(framework.get("scalar_metrics") == list(SCALAR_METRICS), "compatibility metrics changed")
+    _require(framework.get("scalar_metric_count") == 8, "compatibility guardrail count changed")
+    _require(framework.get("all_eight_scalar_guardrails_required") is True, "guardrails were weakened")
+    _require(framework.get("all_eight_scalar_guardrails_applicable_to_row_bootstrap") is True, "row-bootstrap applicability changed")
+    _require(framework.get("omitted_guardrails") == [], "a guardrail was omitted")
+    _require(framework.get("all_five_folds_required") is True, "five-fold rule changed")
+    _require(framework.get("equality_is_pass") is True, "compatibility equality boundary changed")
+    _require(framework.get("absolute_thresholds") is False, "absolute threshold introduced")
+    _require(framework.get("relative_score_used") is False, "relative score entered selection")
+    _require(framework.get("per_coordinate_marginal_vector_role") == "descriptive only; not a compatibility gate", "per-coordinate role changed")
+    _require(framework.get("model_reference_pairs") == [list(pair) for pair in MODEL_REFERENCE_PAIRS], "model reference pairs changed")
+
+    governance = _mapping(contract.get("governance"), "contract governance")
+    for key, expected in {
+        "training_authorized": False,
+        "formal_promotion": False,
+        "generation_readiness": "not_ready",
+        "sealed_confirmation_consumed": False,
+        "producer_selection": False,
+    }.items():
+        _require(governance.get(key) == expected, f"contract governance changed: {key}")
+    execution_boundary = _mapping(contract.get("execution_boundary"), "execution boundary")
+    _require(execution_boundary.get("q_values_loaded_by_definition_consumer") is False, "definition loaded q values")
+    _require(execution_boundary.get("sealed_confirmation_values_loaded") is False, "definition loaded sealed values")
+    totality = _mapping(contract.get("contract_totality"), "contract totality")
+    _require(totality.get("status") == "passed", "contract totality did not pass")
+
+
+def _build_payload(
+    repo_root: Path,
+    git: Mapping[str, Any],
+    state: Mapping[str, Any],
+    latest: Mapping[str, Any],
+    baseline: Mapping[str, Any],
+    oracle: Mapping[str, Any],
+    attribution: Mapping[str, Any],
+    boundaries: Mapping[str, Any],
+    fold_identity: Mapping[str, Any],
+    framework: Mapping[str, Any],
+) -> dict[str, Any]:
+    producer_report = baseline["report"]
+    development_data = baseline["data_authority"]
+    payload: dict[str, Any] = {
+        "schema": CONTRACT_SCHEMA,
+        "version": 1,
+        "task_id": TASK_ID,
+        "gate": GATE,
+        "status": "valid_completed",
+        "classification": READY_CLASSIFICATION,
+        "claim_classification": CLAIM_CLASSIFICATION,
+        "semantic_authority_id": TASK_ID,
+        "definition_only": True,
+        "git": {
+            "branch": git["branch"],
+            "starting_committed_head": git["head"],
+            "contract_script": _relative(repo_root, Path(__file__).resolve()),
+            "contract_script_sha256": file_sha256(Path(__file__).resolve()),
+            "dirty_paths": git["dirty_paths"],
+            "worktree_clean": git["worktree_clean"],
+        },
+        "authorities": {
+            "current_project_state": dict(state),
+            "latest_minimal_intervention_comparison_v2": dict(latest),
+            "original_empirical_marginal_gaussian_copula": {
+                "contract": dict(baseline["contract"]),
+                "report": dict(producer_report),
+                "compatible_fold_count": 2,
+                "fold_count": FOLD_COUNT,
+            },
+            "oracle_diagnostic": dict(oracle),
+            "attribution": dict(attribution),
+            "development_data": dict(development_data),
+            "fold_assignment": {
+                "assignment_sha256": FOLD_ASSIGNMENT_SHA256,
+                "fold_count": FOLD_COUNT,
+                "fit_rows_per_fold": FIT_COUNT_PER_FOLD,
+                "heldout_rows_per_fold": HELDOUT_COUNT_PER_FOLD,
+                "identity": dict(fold_identity),
+            },
+            "compatibility_framework": dict(framework),
+            "sealed_confirmation": dict(boundaries["sealed_confirmation"]),
+        },
+        "diagnostic": {
+            "name": "EMPIRICAL_FIT_JOINT_BOOTSTRAP_CEILING",
+            "distribution": "uniform empirical distribution over exact fitting q rows",
+            "complete_row_sampling": True,
+            "with_replacement": True,
+            "independent_dimension_sampling": False,
+            "labels_condition_sampling": False,
+            "producer": False,
+            "generation_evidence": False,
+            "confirmation_evidence": False,
+            "interpretive_question": "Can each fold's empirical distribution over its 800 fitting rows satisfy the frozen held-out compatibility criteria?",
+        },
+        "development_identity": {
+            "count": POOL_COUNT,
+            "dimension": DIMENSION,
+            "coordinate": "R2_AMPLITUDE",
+            "fit_rows_per_fold": FIT_COUNT_PER_FOLD,
+            "heldout_rows_per_fold": HELDOUT_COUNT_PER_FOLD,
+            "fold_assignment_sha256": FOLD_ASSIGNMENT_SHA256,
+            "q_values_loaded_by_definition_consumer": False,
+            "fold_identity": dict(fold_identity),
+        },
+        "sampling_contract": {
+            "law": "I_k~Uniform{0,...,799} with replacement; q_new[k,:]=q_fit[I_k,:]",
+            "complete_row_unit": "one sampled fit-local row index selects all 100 q coordinates",
+            "fit_rows_per_fold": FIT_COUNT_PER_FOLD,
+            "bank_size": GENERATED_BANK_SIZE,
+            "data_vs_model_replicates": DATA_VS_MODEL_REPLICATES,
+            "model_vs_model_replicates": MODEL_VS_MODEL_REPLICATES,
+            "rng_device": "cpu",
+            "rng_dtype": "torch.int64 row indices; source q remains float64",
+            "rng_generator": "torch.Generator(device='cpu')",
+            "rng_namespace": RNG_NAMESPACE,
+            "seed_derivation": "sha256(namespace|role|fold|replicate) first 64 bits masked to signed 63-bit",
+            "seed_retry": False,
+            "best_bank_selection": False,
+            "samplewise_normalization": False,
+            "duplicate_row_rate_formula": "(200-unique(sampled_fit_local_row_indices))/200",
+            "duplicate_row_rate_role": "descriptive only; cannot affect metrics, compatibility, or classification",
+            "labels_as_inputs": False,
+            "cross_fold_pooling": False,
+        },
+        "compatibility_framework": {
+            **dict(framework),
+            "q": COMPATIBILITY_Q,
+            "data_vs_model_aggregation": "arithmetic mean over four fixed DATA-vs-MODEL banks for each scalar metric",
+            "model_reference_pairs": [list(pair) for pair in MODEL_REFERENCE_PAIRS],
+            "model_vs_model_aggregation": "four fixed pairs from eight MODEL-vs-MODEL banks; torch.quantile(values, 0.95) with default linear interpolation",
+            "rule": "all eight fixed-replicate mean DATA_VS_MODEL metrics <= own fold-local q95 MODEL_VS_MODEL reference metrics",
+            "all_eight_scalar_guardrails_required": True,
+            "all_eight_scalar_guardrails_applicable_to_row_bootstrap": True,
+            "omitted_guardrails": [],
+            "all_five_folds_required": True,
+            "equality_is_pass": True,
+            "absolute_thresholds": False,
+            "relative_score_used": False,
+            "per_coordinate_marginal_vector_role": "descriptive only; not a compatibility gate",
+            "duplicate_rate_role": "descriptive only; not a compatibility gate",
+        },
+        "development_evaluation_contract": {
+            "fold_count": FOLD_COUNT,
+            "fold_assignment_sha256": FOLD_ASSIGNMENT_SHA256,
+            "fit_rows_per_fold": FIT_COUNT_PER_FOLD,
+            "heldout_rows_per_fold": HELDOUT_COUNT_PER_FOLD,
+            "labels_as_model_inputs": False,
+            "optical_forward": False,
+            "evaluator": False,
+            "sealed_confirmation": False,
+            "no_resplit": True,
+            "no_cross_fold_pooling": True,
+            "no_best_bank_selection": True,
+            "exact_five_fold_execution": True,
+        },
+        "interpretation_contract": {
+            "pass_classification": "N3_FIT_HELDOUT_EMPIRICAL_CEILING_SUPPORTED",
+            "pass_interpretation": "The frozen fitting rows contain sufficient empirical joint structure to reproduce held-out compatibility under this diagnostic; the remaining gap is consistent with producer approximation/modeling, but no producer is selected.",
+            "fail_classification": "N3_FIT_HELDOUT_EMPIRICAL_CEILING_NOT_SUPPORTED",
+            "fail_interpretation": "Direct resampling of the fitting empirical joint distribution does not achieve the frozen held-out compatibility requirement; this is evidence consistent with fit-to-heldout distribution stability or finite-development sampling limitation, not proof that no population-level producer exists.",
+            "duplicate_rate_is_descriptive_only": True,
+        },
+        "contract_totality": {
+            "status": "passed",
+            "validated_domains": [
+                "authority hashes and report classifications",
+                "exact five-fold 800/200 identity",
+                "complete-row with-replacement bootstrap",
+                "deterministic CPU seed schedule",
+                "all eight guardrail applicability",
+                "q95 and equality boundary",
+                "5/5 compatibility classification mapping",
+                "sealed confirmation exclusion",
+            ],
+            "scientific_classification_requires": "one later valid execution of all five folds under this immutable contract",
+        },
+        "execution_boundary": {
+            "q_values_loaded_by_definition_consumer": False,
+            "scientific_bootstrap_executed": False,
+            "sealed_confirmation_values_loaded": False,
+            "producer_fit": False,
+            "producer_selection": False,
+            "optical_forward": False,
+            "evaluator": False,
+            "cuda": False,
+            "training": False,
+        },
+        "claim_boundary": {
+            "allowed": [CLAIM_CLASSIFICATION],
+            "not_allowed": [
+                "empirical-fit ceiling supported before execution",
+                "producer family selected or frozen",
+                "population distribution truth",
+                "producer approximation gap proven",
+                "fit-to-heldout instability proven as the only cause",
+                "sealed confirmation evidence",
+                "complex OLS support",
+                "N4/N5/N6 support",
+                "semantic generation",
+            ],
+        },
+        "governance": {
+            "training_authorized": False,
+            "formal_promotion": False,
+            "generation_readiness": "not_ready",
+            "sealed_confirmation_consumed": False,
+            "producer_selection": False,
+        },
+        "not_executed": [
+            "q value loading",
+            "empirical row bootstrap",
+            "scientific metrics",
+            "fold compatibility classification",
+            "producer family fit or selection",
+            "final all-1000 fit",
+            "sealed confirmation loading or materialization",
+            "complex OLS",
+            "N4/N5/N6",
+            "CUDA",
+            "training",
+            "generation",
+        ],
+        "artifact_policy": {
+            "write_once": True,
+            "immutable_after_publish": True,
+            "q_values_embedded": False,
+            "existing_authorities_modified": False,
+            "sealed_confirmation_modified": False,
+        },
+    }
+    validate_contract_payload(payload)
+    return payload
+
+
+def _write_contract(repo_root: Path, output_dir: Path, payload: Mapping[str, Any]) -> Path:
+    if output_dir.exists():
+        raise FileExistsError(f"refusing to reuse write-once contract output: {output_dir}")
+    output_dir.parent.mkdir(parents=True, exist_ok=True)
+    temporary = Path(tempfile.mkdtemp(prefix=f".{output_dir.name}.", dir=output_dir.parent))
+    try:
+        atomic_write_new_json(
+            temporary / CONTRACT_NAME,
+            payload,
+            artifact_kind="N3 empirical-fit joint-bootstrap ceiling contract",
+        )
+        if output_dir.exists():
+            raise FileExistsError(f"write-once output appeared during contract definition: {output_dir}")
+        os.replace(temporary, output_dir)
+    finally:
+        if temporary.exists():
+            shutil.rmtree(temporary)
+    return output_dir / CONTRACT_NAME
+
+
+def execute(repo_root: Path, output_dir: Path = OUTPUT_DIR) -> dict[str, Any]:
+    git = _git_state(repo_root)
+    _require(git["branch"] == EXPECTED_BRANCH, "current branch is not the N3 authority branch")
+    _require(git["head"] == EXPECTED_STARTING_HEAD, "starting committed HEAD changed")
+    unexpected_dirty = [path for path in git["dirty_paths"] if path not in SAFE_DIRTY_PATHS]
+    _require(not unexpected_dirty, f"unrelated local changes invalidate provenance: {unexpected_dirty}")
+    _require(not output_dir.exists(), f"write-once contract output already exists: {output_dir}")
+
+    state = _validate_current_state(repo_root)
+    latest = _validate_latest_comparison(repo_root)
+    oracle = lineage._validate_oracle_inputs(repo_root)
+    attribution = lineage._validate_attribution_inputs(repo_root)
+    baseline = lineage._validate_baseline_inputs(repo_root)
+    boundaries = comparison._verify_historical_boundaries(repo_root)
+    producer_report = _read_json_exact(
+        repo_root,
+        lineage.PRODUCER_REPORT,
+        lineage.PRODUCER_REPORT_SHA256,
+        "original empirical copula report",
+    )
+    _require(producer_report.get("classification") == "N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_NOT_SUPPORTED", "original copula classification changed")
+    _require(sum(bool(item.get("compatibility")) for item in _sequence(producer_report.get("fold_execution"), "original fold execution")) == 2, "original copula compatible-fold count changed")
+    fold_identity = _validate_fold_authority(repo_root, producer_report)
+    framework = _validate_compatibility_framework(repo_root)
+    payload = _build_payload(
+        repo_root,
+        git,
+        state,
+        latest,
+        baseline,
+        oracle,
+        attribution,
+        boundaries,
+        fold_identity,
+        framework,
+    )
+    contract_path = _write_contract(repo_root, output_dir, payload)
+    contract = _read_json_exact(repo_root, output_dir / CONTRACT_NAME, file_sha256(contract_path), "new diagnostic contract")
+    validate_contract_payload(contract)
+    return {
+        "result": "READY",
+        "classification": READY_CLASSIFICATION,
+        "claim_classification": CLAIM_CLASSIFICATION,
+        "contract": _relative(repo_root, contract_path),
+        "contract_sha256": file_sha256(contract_path),
+        "git_branch": git["branch"],
+        "git_starting_head": git["head"],
+        "git_ending_head": _git_state(repo_root)["head"],
+        "q_values_loaded": False,
+        "scientific_execution": False,
+        "sealed_confirmation_consumed": False,
+        "training_authorized": False,
+        "formal_promotion": False,
+        "generation_readiness": "not_ready",
+    }
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--repo-root", type=Path, default=Path(__file__).resolve().parents[2])
+    parser.add_argument("--output-dir", type=Path, default=OUTPUT_DIR)
+    args = parser.parse_args()
+    repo_root = args.repo_root.resolve()
+    output_dir = args.output_dir if args.output_dir.is_absolute() else repo_root / args.output_dir
+    print(json.dumps(execute(repo_root, output_dir), indent=2, sort_keys=True))
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,448 @@
+"""Define the V2 delta that completes the N3 copula attribution contract.
+
+The V2 definition consumer reads the immutable V1 contract and its existing
+JSON authorities, then adds only the three conventions exposed by the blocked
+execution preflight.  It does not load recovered q tensors or compute any
+attribution metric.
+"""
+
+from __future__ import annotations
+
+import argparse
+import copy
+import json
+import os
+import shutil
+import subprocess
+import tempfile
+from pathlib import Path
+from typing import Any, Mapping
+
+from ldm_project.v2.evidence import atomic_write_new_json, file_sha256
+from scripts.research import define_n3_copula_failure_attribution_contract_v1 as v1
+
+
+TASK_ID = "DEFINE_N3_COPULA_FAILURE_ATTRIBUTION_CONTRACT_V2"
+GATE = TASK_ID
+CONTRACT_SCHEMA = "n3_copula_failure_attribution_contract.v2"
+READY_CLASSIFICATION = "DEFINE_N3_COPULA_FAILURE_ATTRIBUTION_CONTRACT_V2_READY"
+CLAIM_CLASSIFICATION = "N3_COPULA_FAILURE_ATTRIBUTION_CONTRACT_V2_DEFINED"
+EXPECTED_BRANCH = v1.EXPECTED_BRANCH
+EXPECTED_STARTING_HEAD = v1.EXPECTED_STARTING_HEAD
+
+BASE_CONTRACT = v1.OUTPUT_DIR / v1.CONTRACT_NAME
+BASE_CONTRACT_SHA256 = "333b51abe2a6b1f3e96558273d4b6037267aa80678199d3bf6d0c300bb3508df"
+OUTPUT_DIR = Path(
+    "outputs/20260908_v2/runs/"
+    "n3_copula_failure_attribution_contract_v2_attempt_01"
+)
+CONTRACT_NAME = "n3_copula_failure_attribution_contract.v2.json"
+
+MODEL_BANK_ORDER = (
+    ("data-vs-model", 0),
+    ("data-vs-model", 1),
+    ("data-vs-model", 2),
+    ("data-vs-model", 3),
+    ("model-vs-model", 0),
+    ("model-vs-model", 1),
+    ("model-vs-model", 2),
+    ("model-vs-model", 3),
+    ("model-vs-model", 4),
+    ("model-vs-model", 5),
+    ("model-vs-model", 6),
+    ("model-vs-model", 7),
+)
+DATA_MODEL_MODEL_BANK_ORDER = MODEL_BANK_ORDER[:4]
+UNCHANGED_SEMANTIC_PATHS = (
+    "authorities",
+    "scope",
+    "marginal_failure_authority",
+    "bank_role_contract",
+    "self_rank_transform",
+    "primary_dependence_observer",
+    "secondary_dependence_diagnostics",
+    "support_tail_diagnostics",
+    "fold_attribution",
+    "aggregate_attribution",
+    "claim_boundary",
+    "execution_boundary",
+)
+ALLOWED_CHANGED_ROOTS = {
+    "schema",
+    "version",
+    "task_id",
+    "gate",
+    "classification",
+    "claim_classification",
+    "semantic_authority_id",
+    "supersession",
+    "base_contract_sha256",
+    "delta_only",
+    "v1_primary_semantics_unchanged",
+    "git",
+    "authorities",
+    "v2_delta",
+    "semantic_diff_validation",
+}
+SAFE_DIRTY_PATHS = {
+    "docs/CURRENT_STATUS.md",
+    "docs/status/current_handoff.md",
+    "docs/status/experiment_history.md",
+    "docs/status/research_governance_state.json",
+    "scripts/research/define_n3_copula_failure_attribution_contract_v1.py",
+    "tests/v2/test_n3_copula_failure_attribution_contract.py",
+    "scripts/research/define_n3_copula_failure_attribution_contract_v2.py",
+    "tests/v2/test_n3_copula_failure_attribution_contract_v2.py",
+}
+
+
+def _require(condition: bool, message: str) -> None:
+    if not condition:
+        raise ValueError(message)
+
+
+def _mapping(value: Any, name: str) -> Mapping[str, Any]:
+    _require(isinstance(value, Mapping), f"{name} must be a mapping")
+    return value
+
+
+def _relative(repo_root: Path, path: Path) -> str:
+    return path.resolve().relative_to(repo_root.resolve()).as_posix()
+
+
+def _read_json_exact(
+    repo_root: Path,
+    path: Path,
+    expected_sha256: str,
+    name: str,
+) -> dict[str, Any]:
+    target = repo_root / path
+    _require(target.is_file(), f"{name} is missing: {target}")
+    _require(file_sha256(target) == expected_sha256, f"{name} hash changed: {target}")
+    return dict(_mapping(json.loads(target.read_text(encoding="utf-8")), name))
+
+
+def _git_state(repo_root: Path) -> dict[str, Any]:
+    branch = subprocess.run(
+        ["git", "-C", str(repo_root), "branch", "--show-current"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    head = subprocess.run(
+        ["git", "-C", str(repo_root), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    status = subprocess.run(
+        ["git", "-C", str(repo_root), "status", "--porcelain"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    return {
+        "branch": branch,
+        "head": head,
+        "dirty_paths": [line[3:] if len(line) >= 4 else line for line in status],
+    }
+
+
+def _path_value(payload: Mapping[str, Any], dotted_path: str) -> Any:
+    value: Any = payload
+    for component in dotted_path.split("."):
+        value = _mapping(value, f"path {dotted_path}")[component]
+    return value
+
+
+def _deep_diff(left: Any, right: Any, path: str = "") -> list[str]:
+    if isinstance(left, Mapping) and isinstance(right, Mapping):
+        differences: list[str] = []
+        for key in sorted(set(left) | set(right)):
+            child_path = f"{path}.{key}" if path else str(key)
+            if key not in left or key not in right:
+                differences.append(child_path)
+            else:
+                differences.extend(_deep_diff(left[key], right[key], child_path))
+        return differences
+    if isinstance(left, list) and isinstance(right, list):
+        differences = []
+        if len(left) != len(right):
+            differences.append(path)
+        for index, (left_item, right_item) in enumerate(zip(left, right)):
+            differences.extend(_deep_diff(left_item, right_item, f"{path}[{index}]"))
+        return differences
+    return [] if left == right else [path]
+
+
+def _bank_key(fold: int, role: str, replicate: int) -> str:
+    return f"fold={fold}|role={role}|replicate={replicate}"
+
+
+def _ordered_keys(role_replicates: tuple[tuple[str, int], ...], fold: int) -> list[str]:
+    return [_bank_key(fold, role, replicate) for role, replicate in role_replicates]
+
+
+def _validate_v1_contract(repo_root: Path) -> dict[str, Any]:
+    base = _read_json_exact(repo_root, BASE_CONTRACT, BASE_CONTRACT_SHA256, "V1 attribution contract")
+    _require(base.get("schema") == "n3_copula_failure_attribution_contract.v1", "V1 schema changed")
+    _require(base.get("task_id") == "DEFINE_N3_COPULA_FAILURE_ATTRIBUTION_CONTRACT_V1", "V1 task changed")
+    _require(base.get("gate") == base["task_id"], "V1 gate changed")
+    _require(base.get("classification") == "DEFINE_N3_COPULA_FAILURE_ATTRIBUTION_CONTRACT_V1_READY", "V1 is not ready")
+    _require(base.get("claim_classification") == "N3_COPULA_FAILURE_ATTRIBUTION_CONTRACT_DEFINED", "V1 claim changed")
+    _require(base.get("new_contract") is True and base.get("historical_preregistration") is False, "V1 provenance boundary changed")
+
+    git = _mapping(base.get("git"), "V1 git")
+    _require(git.get("starting_committed_head") == EXPECTED_STARTING_HEAD, "V1 starting HEAD changed")
+    v1_script = repo_root / v1.__file__
+    _require(git.get("contract_script") == _relative(repo_root, v1_script), "V1 definition script path changed")
+    _require(git.get("contract_script_sha256") == file_sha256(v1_script), "V1 definition script hash changed")
+
+    producer_contract = v1._read_json_exact(repo_root, v1.PRODUCER_CONTRACT, v1.PRODUCER_CONTRACT_SHA256, "frozen producer contract")
+    producer_report = v1._read_json_exact(repo_root, v1.PRODUCER_REPORT, v1.PRODUCER_REPORT_SHA256, "original copula execution report")
+    recovery_manifest = v1._read_json_exact(repo_root, v1.RECOVERY_MANIFEST, v1.RECOVERY_MANIFEST_SHA256, "recovery manifest")
+    v1._validate_producer_contract(producer_contract)
+    report_info = v1._validate_producer_report(producer_report, producer_contract)
+    recovery_info = v1._validate_recovery_manifest(recovery_manifest, repo_root, producer_report)
+
+    primary = _mapping(base.get("primary_dependence_observer"), "V1 primary observer")
+    _require(primary.get("statistic") == "biased multivariate empirical energy distance after independent self-rank Gaussianization", "V1 primary statistic changed")
+    _require(primary.get("reference_quantile", {}).get("probability") == 0.95, "V1 primary q95 changed")
+    _require(primary.get("fold_rule") == "D=dependence_fail iff any of the four DATA-vs-MODEL comparisons fails; all four must pass for D=0", "V1 fold rule changed")
+    _require(primary.get("negative_or_nonfinite_policy") == "nonfinite or materially negative ED is invalid_harness; do not turn it into a scientific classification", "V1 blocked policy finding does not match")
+
+    secondary = _mapping(base.get("secondary_dependence_diagnostics"), "V1 secondary diagnostics")
+    _require(secondary.get("formal_gate_role") == "descriptive only; cannot change dependence_fail or final classification", "V1 secondary role changed")
+    spearman = _mapping(secondary.get("spearman"), "V1 Spearman diagnostic")
+    _require(spearman.get("discrepancy") == "Frobenius norm ||S_DATA-S_MODEL||_F, including zero diagonal differences", "V1 Spearman blocker finding does not match")
+    spectral = _mapping(secondary.get("spectral"), "V1 spectral diagnostic")
+    _require(spectral.get("summaries") == ["maximum eigenvalue", "median eigenvalue", "top-1 eigenvalue mass", "top-5 eigenvalue mass"], "V1 spectral summaries changed")
+    _require(spectral.get("comparison") == "L2 norm between the two sorted eigenvalue vectors and absolute differences of named mass summaries", "V1 spectral blocker finding does not match")
+
+    return {
+        "contract": base,
+        "producer_report": producer_report,
+        "report_info": report_info,
+        "recovery_info": recovery_info,
+    }
+
+
+def _v2_delta(base: Mapping[str, Any]) -> dict[str, Any]:
+    spectral = _mapping(base["secondary_dependence_diagnostics"], "V1 secondary diagnostics")["spectral"]
+    return {
+        "negative_nonfinite_policy": {
+            "applies_to": ["every D_DM[r]", "every D_MM[p]"],
+            "numeric_dtype": "CPU float64",
+            "raw_formula_terms": {
+                "cross": "C=mean_{i,k} d(X_i,Y_k)",
+                "within_left": "L=mean_{i,i'} d(X_i,X_i')",
+                "within_right": "R=mean_{k,k'} d(Y_k,Y_k')",
+                "raw_value": "value=2*C-L-R",
+            },
+            "scale": "scale=2*abs(C)+abs(L)+abs(R)",
+            "tolerance": "tau=1e-12*max(1.0,scale)",
+            "nonfinite_terms_or_value": {
+                "classification": "NUMERICAL_INVALID",
+                "execution_outcome": "BLOCKED",
+                "scientific_classification_emitted": False,
+                "partial_attribution_report_emitted": False,
+            },
+            "roundoff_interval": {
+                "condition": "-tau <= value < 0",
+                "action": "canonicalize value to exactly 0.0",
+            },
+            "material_negative_interval": {
+                "condition": "value < -tau",
+                "action": "classify NUMERICAL_INVALID and BLOCK the execution with no scientific classification",
+            },
+            "nonnegative_interval": {
+                "condition": "value >= 0",
+                "action": "retain value unchanged",
+            },
+            "registered_repository_convention_reused": False,
+            "threshold_selected_before_attribution_data": True,
+        },
+        "spearman_model_bank_semantics": {
+            "formal_gate_role": "descriptive only; cannot change dependence_fail, fold labels, or aggregate classification",
+            "data_matrix": "S_DATA is the Spearman matrix of the held-out DATA bank for fold f",
+            "per_bank_matrix": "S_MODEL_BANK[k] is computed independently from the average-rank matrix of model bank k",
+            "historical_model_bank_order": {
+                "within_each_fold": [
+                    {
+                        "role": "data-vs-model",
+                        "replicate_order": [0, 1, 2, 3],
+                    },
+                    {
+                        "role": "model-vs-model",
+                        "replicate_order": list(range(v1.MODEL_VS_MODEL_REPLICATES)),
+                    }
+                ],
+                "exact_keys_by_fold": {
+                    str(fold): _ordered_keys(MODEL_BANK_ORDER, fold)
+                    for fold in range(v1.FOLD_COUNT)
+                },
+                "interpretation": "the four data-vs-model model banks precede the eight model-vs-model reference banks; replicate order is ascending within each role",
+            },
+            "per_bank_discrepancy": "Delta_S[k]=||S_DATA-S_MODEL_BANK[k]||_F, with all 12 model-bank values emitted in the exact order above",
+            "aggregate_model_matrix": {
+                "name": "S_MODEL",
+                "source_role": "data-vs-model",
+                "source_replicates": [0, 1, 2, 3],
+                "source_keys_by_fold": {
+                    str(fold): _ordered_keys(DATA_MODEL_MODEL_BANK_ORDER, fold)
+                    for fold in range(v1.FOLD_COUNT)
+                },
+                "operation": "elementwise arithmetic mean",
+                "formula": "S_MODEL[j,k]=(1/4)*sum_{r=0..3} S_MODEL_BANK[data-vs-model,r][j,k]",
+            },
+            "data_model_discrepancies": "emit all four Delta_S[r] values for DATA-vs-MODEL replicates r=0..3",
+            "aggregate_discrepancy": "Delta_S_aggregate=||S_DATA-S_MODEL||_F",
+            "model_model_banks": "emit their eight individual matrices and Delta_S values descriptively, but exclude them from S_MODEL and every formal gate",
+            "weighting": "equal arithmetic weights only; no DATA-derived, learned, best-bank, or selector weighting",
+            "matrix_formula_preserved": "S_jk=sum_i((r_ij-mean_j)(r_ik-mean_k))/sqrt(sum_i(...^2)*sum_i(...^2))",
+        },
+        "spectral_median_and_model_aggregation": {
+            "formal_gate_role": "descriptive only; never overrides primary D or final attribution",
+            "representation_preserved_from_v1": spectral["representation"],
+            "eigenvalue_order_preserved_from_v1": spectral["eigenvalue_order"],
+            "median_convention": {
+                "dimension": v1.DIMENSION,
+                "ordering": "descending real eigenvalues lambda[0] >= ... >= lambda[99]",
+                "central_indices_zero_based": [49, 50],
+                "central_orders_one_based": [50, 51],
+                "formula": "median=(lambda[49]+lambda[50])/2",
+            },
+            "historical_model_bank_order": {
+                "exact_keys_by_fold": {
+                    str(fold): _ordered_keys(MODEL_BANK_ORDER, fold)
+                    for fold in range(v1.FOLD_COUNT)
+                },
+                "interpretation": "emit each of the four data-vs-model model banks followed by each of the eight model-vs-model reference banks, with ascending replicate order",
+            },
+            "per_bank_summaries": "compute maximum eigenvalue, the frozen median, top-1 eigenvalue mass, and top-5 eigenvalue mass independently for every historical model bank",
+            "aggregate_model_set": {
+                "role": "data-vs-model",
+                "replicates": [0, 1, 2, 3],
+                "keys_by_fold": {
+                    str(fold): _ordered_keys(DATA_MODEL_MODEL_BANK_ORDER, fold)
+                    for fold in range(v1.FOLD_COUNT)
+                },
+                "scalar_operation": "arithmetic mean across the four corresponding scalar summaries",
+                "ordered_spectrum_operation": "elementwise arithmetic mean across the four correspondingly ordered descending eigenvalue vectors",
+                "model_model_reference_banks_excluded": True,
+            },
+            "comparison": "emit per data-vs-model bank L2 and named-summary differences against S_DATA's spectrum, plus the same differences against the aggregate MODEL spectrum; no threshold",
+            "zero_variance": spectral["zero_variance"],
+        },
+    }
+
+
+def _build_payload(repo_root: Path, git: Mapping[str, Any], base_info: Mapping[str, Any]) -> dict[str, Any]:
+    base = base_info["contract"]
+    payload = copy.deepcopy(base)
+    payload.update(
+        {
+            "schema": CONTRACT_SCHEMA,
+            "version": 2,
+            "task_id": TASK_ID,
+            "gate": GATE,
+            "classification": READY_CLASSIFICATION,
+            "claim_classification": CLAIM_CLASSIFICATION,
+            "semantic_authority_id": TASK_ID,
+            "base_contract_sha256": BASE_CONTRACT_SHA256,
+            "delta_only": True,
+            "v1_primary_semantics_unchanged": True,
+            "supersession": {
+                "supersedes_schema": "n3_copula_failure_attribution_contract.v1",
+                "supersedes_task_id": "DEFINE_N3_COPULA_FAILURE_ATTRIBUTION_CONTRACT_V1",
+                "supersedes_path": _relative(repo_root, repo_root / BASE_CONTRACT),
+                "supersedes_sha256": BASE_CONTRACT_SHA256,
+                "reason": "close exactly the three execution-time undefined branches exposed by the valid V1 BLOCKED preflight",
+                "primary_scientific_semantics_changed": False,
+            },
+            "git": {
+                **dict(base["git"]),
+                "v2_definition_script": _relative(repo_root, Path(__file__).resolve()),
+                "v2_definition_script_sha256": file_sha256(Path(__file__).resolve()),
+                "v2_worktree_dirty_before_artifact": list(git["dirty_paths"]),
+            },
+            "v2_delta": _v2_delta(base),
+        }
+    )
+    changed_paths = _deep_diff(base, payload)
+    for changed_path in changed_paths:
+        root = changed_path.split(".", 1)[0].split("[", 1)[0]
+        _require(root in ALLOWED_CHANGED_ROOTS, f"V2 changed an unallowed V1 path: {changed_path}")
+    for semantic_path in UNCHANGED_SEMANTIC_PATHS:
+        _require(
+            _path_value(base, semantic_path) == _path_value(payload, semantic_path),
+            f"V2 changed frozen V1 semantics at {semantic_path}",
+        )
+    payload["semantic_diff_validation"] = {
+        "status": "passed",
+        "base_contract_sha256": BASE_CONTRACT_SHA256,
+        "compared_unchanged_paths": list(UNCHANGED_SEMANTIC_PATHS),
+        "changed_paths_are_delta_or_metadata_only": True,
+        "allowed_changed_roots": sorted(ALLOWED_CHANGED_ROOTS),
+        "changed_paths": changed_paths,
+        "primary_scientific_semantics_unchanged": True,
+    }
+    return payload
+
+
+def _write_contract(repo_root: Path, output_dir: Path, payload: Mapping[str, Any]) -> Path:
+    if output_dir.exists():
+        raise FileExistsError(f"refusing to reuse write-once output: {output_dir}")
+    output_dir.parent.mkdir(parents=True, exist_ok=True)
+    temporary = Path(tempfile.mkdtemp(prefix=f".{output_dir.name}.", dir=output_dir.parent))
+    try:
+        atomic_write_new_json(
+            temporary / CONTRACT_NAME,
+            payload,
+            artifact_kind="N3 copula failure attribution V2 contract",
+        )
+        if output_dir.exists():
+            raise FileExistsError(f"V2 output appeared during contract definition: {output_dir}")
+        os.replace(temporary, output_dir)
+    finally:
+        if temporary.exists():
+            shutil.rmtree(temporary)
+    return output_dir / CONTRACT_NAME
+
+
+def execute(repo_root: Path, output_dir: Path = OUTPUT_DIR) -> dict[str, Any]:
+    git = _git_state(repo_root)
+    _require(git["branch"] == EXPECTED_BRANCH, "current branch is not the N3 authority branch")
+    _require(git["head"] == EXPECTED_STARTING_HEAD, "starting committed HEAD changed")
+    unexpected_dirty = [path for path in git["dirty_paths"] if path not in SAFE_DIRTY_PATHS]
+    _require(not unexpected_dirty, f"unexpected dirty paths before V2 definition: {unexpected_dirty}")
+
+    base_info = _validate_v1_contract(repo_root)
+    payload = _build_payload(repo_root, git, base_info)
+    contract_path = _write_contract(repo_root, output_dir, payload)
+    return {
+        "classification": READY_CLASSIFICATION,
+        "semantic_authority": TASK_ID,
+        "base_contract_sha256": BASE_CONTRACT_SHA256,
+        "contract": _relative(repo_root, contract_path),
+        "contract_sha256": file_sha256(contract_path),
+        "git_head": git["head"],
+        "worktree_dirty_before_artifact": git["dirty_paths"],
+        "attribution_metrics_computed": False,
+        "recovered_tensor_loaded_as_tensor": False,
+        "sealed_confirmation_consumed": False,
+    }
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--repo-root", type=Path, default=Path(__file__).resolve().parents[2])
+    parser.add_argument("--output-dir", type=Path, default=OUTPUT_DIR)
+    args = parser.parse_args()
+    repo_root = args.repo_root.resolve()
+    output_dir = args.output_dir if args.output_dir.is_absolute() else repo_root / args.output_dir
+    print(json.dumps(execute(repo_root, output_dir), indent=2, sort_keys=True))
+
+
+if __name__ == "__main__":
+    main()

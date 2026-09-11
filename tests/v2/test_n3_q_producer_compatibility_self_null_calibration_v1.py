@@ -1,0 +1,137 @@
+"""Focused checks for the frozen q-producer self-null calibration."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from ldm_project.v2.evidence import file_sha256
+from scripts.research import (
+    define_n3_q_producer_compatibility_self_null_calibration_v1 as contract,
+    execute_n3_q_producer_compatibility_self_null_calibration_v1 as execution,
+)
+
+
+def _fold_summary(pass_rate: float, false_fail_rate: float) -> dict[str, object]:
+    return {
+        "total_pass_rate": pass_rate,
+        "implied_five_fold_all_pass_probability": pass_rate**5,
+        "guardrail_false_failures": {
+            name: {"false_fail_rate": false_fail_rate}
+            for name in contract.SCALAR_METRICS
+        },
+    }
+
+
+def _producer_summary(product: float) -> dict[str, object]:
+    return {"implied_five_fold_all_pass_probability": product}
+
+
+def test_contract_is_total_and_freezes_exact_two_producers() -> None:
+    totality = contract._run_contract_totality_checks()
+    assert totality["producer_count"] == 2
+    assert totality["fold_count"] == 5
+    assert totality["trial_count_per_producer_fold"] == 20
+    assert totality["guardrail_count"] == 8
+    assert totality["thresholds_nonoverlapping"] is True
+    assert contract.PRODUCER_IDS == (
+        "EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_AMPLITUDE_V1",
+        "EMPIRICAL_MARGINAL_FIXED_R_STUDENT_T_COPULA_V1",
+    )
+    assert contract.PSEUDO_DATA_SAMPLE_COUNT == 1000
+    assert contract.MODEL_SAMPLE_COUNT == 200
+    assert contract.DATA_VS_MODEL_REPLICATES == 4
+    assert contract.MODEL_VS_MODEL_REPLICATES == 8
+
+
+def test_rng_namespaces_are_deterministic_and_disjoint() -> None:
+    first = execution.validate_seed_namespace(execution.PRODUCER_IDS[0], 0, 0)
+    second = execution.validate_seed_namespace(execution.PRODUCER_IDS[0], 0, 0)
+    other_role = execution.validate_seed_namespace(execution.PRODUCER_IDS[0], 0, 1)
+    other_producer = execution.validate_seed_namespace(execution.PRODUCER_IDS[1], 0, 0)
+
+    assert first == second
+    assert len(first) == 13
+    assert len(set(first)) == 13
+    assert set(first).isdisjoint(other_role)
+    assert set(first).isdisjoint(other_producer)
+
+
+def test_classification_uses_frozen_pre_registered_boundaries() -> None:
+    classification_contract = {
+        "stable_if": {
+            "every_producer_fold_pass_rate_at_least": contract.STABLE_MIN_FOLD_PASS_RATE,
+            "every_producer_fold_guardrail_false_fail_rate_at_most": contract.STABLE_MAX_GUARDRAIL_FALSE_FAIL_RATE,
+            "every_producer_implied_five_fold_probability_at_least": contract.STABLE_MIN_IMPLIED_FIVE_FOLD_PROBABILITY,
+        },
+        "false_fail_limitation_if": {
+            "any_producer_fold_pass_rate_at_most": contract.LIMITATION_MAX_FOLD_PASS_RATE,
+            "or_any_producer_fold_guardrail_false_fail_rate_at_least": contract.LIMITATION_MIN_GUARDRAIL_FALSE_FAIL_RATE,
+            "or_any_producer_implied_five_fold_probability_at_most": contract.LIMITATION_MAX_IMPLIED_FIVE_FOLD_PROBABILITY,
+        },
+    }
+    stable_folds = [_fold_summary(0.95, 0.05) for _ in range(5)]
+    assert execution.classify_self_null(
+        stable_folds,
+        [_producer_summary(0.95**5)],
+        classification_contract,
+    ) == execution.CLASSIFICATION_STABLE
+
+    limitation_folds = [_fold_summary(0.75, 0.25)] + [_fold_summary(0.95, 0.05) for _ in range(4)]
+    assert execution.classify_self_null(
+        limitation_folds,
+        [_producer_summary(0.75**5)],
+        classification_contract,
+    ) == execution.CLASSIFICATION_FALSE_FAIL_LIMITATION
+
+
+def test_published_contract_is_immutable_and_closed() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    path = repo_root / contract.OUTPUT_DIR / contract.CONTRACT_NAME
+    if not path.is_file():
+        return
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    assert file_sha256(path) == execution.EXPECTED_CONTRACT_SHA256
+    assert payload["producer_set"]["identities"] == list(execution.PRODUCER_IDS)
+    assert payload["simulation"]["sample_size_asymmetry"]["pseudo_data_vs_model"] == [1000, 200]
+    assert payload["simulation"]["sample_size_asymmetry"]["model_vs_model_reference"] == [200, 200]
+    assert payload["simulation"]["sample_size_asymmetry"]["exact_current_v2_structure"] is True
+    assert payload["evaluator"]["all_eight_scalar_guardrails"] == list(execution.SCALAR_METRICS)
+    assert payload["firewalls"]["sealed_confirmation_values_loaded"] is False
+    assert payload["firewalls"]["selected_producer"] is None
+
+
+def test_published_report_covers_both_producers_and_all_folds() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    path = repo_root / execution.OUTPUT_DIR / execution.REPORT_NAME
+    if not path.is_file():
+        return
+    report = json.loads(path.read_text(encoding="utf-8"))
+    assert report["schema"] == execution.REPORT_SCHEMA
+    assert report["status"] == "valid_completed"
+    assert report["result"] == "VALID_COMPLETED"
+    assert report["classification"] in execution.ALLOWED_CLASSIFICATIONS
+    assert report["contract"]["sha256"] == execution.EXPECTED_CONTRACT_SHA256
+    assert report["execution_settings"]["total_trials"] == 200
+    assert len(report["producer_fold_summaries"]) == 10
+    for item in report["producer_fold_summaries"]:
+        assert item["trials"] == execution.TRIAL_COUNT_PER_PRODUCER_FOLD
+        assert set(item["guardrail_false_failures"]) == set(execution.SCALAR_METRICS)
+        assert len(item["trial_records"]) == execution.TRIAL_COUNT_PER_PRODUCER_FOLD
+    assert len(report["producer_summaries"]) == 2
+    assert report["firewalls"] == {
+        "heldout_q_values_used_for_fit": False,
+        "heldout_q_values_used_for_metric": False,
+        "heldout_q_values_used_for_sampling": False,
+        "sealed_confirmation_values_loaded": False,
+        "new_producer_family_evaluated": False,
+        "nu_changed": False,
+        "marginals_changed": False,
+        "R_changed": False,
+        "optical_or_image_evaluation": False,
+        "cuda_or_training": False,
+        "selected_producer": None,
+        "training_authorized": False,
+        "formal_promotion": False,
+        "generation_readiness": "not_ready",
+    }

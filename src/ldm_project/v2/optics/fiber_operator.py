@@ -226,7 +226,7 @@ class FiberArrayOLS(nn.Module):
     def _banks(self, field: ComplexField) -> tuple[torch.Tensor, torch.Tensor]:
         return self.input_modes.to(field.tensor), self.output_modes.to(field.tensor)
 
-    def forward(self, field: ComplexField) -> ComplexField:
+    def _validated_values(self, field: ComplexField) -> torch.Tensor:
         if (field.plane.shape != self.input_plane.shape or field.plane.pixel_pitch_m != self.input_plane.pixel_pitch_m or abs(field.plane.wavelength_m - self.input_plane.wavelength_m) > 1.0e-15 or field.plane.fov_m != self.input_plane.fov_m):
             raise ValueError("fiber input plane mismatch")
         if field.tensor.ndim not in {3, 4} or (field.tensor.ndim == 4 and field.tensor.shape[1] != 1):
@@ -234,11 +234,39 @@ class FiberArrayOLS(nn.Module):
         values = field.tensor[:, 0] if field.tensor.ndim == 4 else field.tensor
         if not torch.isfinite(values).all():
             raise ValueError("fiber OLS input must be finite")
-        input_modes, output_modes = self._banks(field)
+        return values
+
+    def project_coefficients(self, field: ComplexField) -> torch.Tensor:
+        """Return differentiable complex LP01 overlaps in the fixed port order."""
+        values = self._validated_values(field)
+        input_modes, _ = self._banks(field)
         area = self.input_plane.pixel_pitch_m[0] * self.input_plane.pixel_pitch_m[1]
-        coefficients = torch.einsum("mhw,bhw->bm", input_modes.conj(), values) * area
-        output_coefficients = coefficients @ self.transport.to(values).T
-        output_values = torch.einsum("bm,mhw->bhw", output_coefficients, output_modes)
+        return torch.einsum("mhw,bhw->bm", input_modes.conj(), values) * area
+
+    def transmit_coefficients(self, coefficients: torch.Tensor) -> torch.Tensor:
+        """Apply the explicit coefficient-space transport ``y = T z``."""
+        if coefficients.ndim != 2 or coefficients.shape[1] != 100:
+            raise ValueError("fiber coefficients must have shape [batch,100]")
+        if not torch.is_complex(coefficients) or not torch.isfinite(coefficients).all():
+            raise TypeError("fiber coefficients must be finite complex values")
+        return coefficients @ self.transport.to(coefficients).T
+
+    def reemit_coefficients(self, coefficients: torch.Tensor) -> torch.Tensor:
+        """Re-emit coefficient rows through the output single-mode bank."""
+        if coefficients.ndim != 2 or coefficients.shape[1] != 100:
+            raise ValueError("fiber coefficients must have shape [batch,100]")
+        if not torch.is_complex(coefficients) or not torch.isfinite(coefficients).all():
+            raise TypeError("fiber coefficients must be finite complex values")
+        output_modes = self.output_modes.to(coefficients)
+        return torch.einsum("bm,mhw->bhw", coefficients, output_modes)
+
+    def forward(self, field: ComplexField) -> ComplexField:
+        values = self._validated_values(field)
+        input_modes, _ = self._banks(field)
+        area = self.input_plane.pixel_pitch_m[0] * self.input_plane.pixel_pitch_m[1]
+        coefficients = self.project_coefficients(field)
+        output_coefficients = self.transmit_coefficients(coefficients)
+        output_values = self.reemit_coefficients(output_coefficients)
         input_energy = values.abs().square().sum(dim=(-2, -1)) * area
         output_energy = output_values.abs().square().sum(dim=(-2, -1)) * area
         if torch.any(output_energy > input_energy * (1.0 + 1.0e-5) + 1.0e-12):

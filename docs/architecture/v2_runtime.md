@@ -1,5 +1,11 @@
 # v2 Teacher-Free Conditional Runtime
 
+> 本文描述保留的正式兼容 runtime，不是当前活动研究主线的设计目标。
+> 当前研究主线是 **LightGen 输入与 OLS 对齐的 OLS-native 语义生成原型**，见
+> [项目记忆](../PROJECT_MEMORY.md#唯一活动研究主线lightgen-输入与-ols-对齐的语义生成原型) 和
+> [当前状态](../CURRENT_STATUS.md)。下文的 label + 8D、identity OLS 和执行顺序仅适用于本正式合同；
+> 研究线的模式投影 OLS、generator-only 输入和论文对齐要求不能由本文件替代，亦未晋级 formal v3。
+
 v2 正式 teacher-free runtime 基线是 `conditional_identity_logit_amplitude_v2`，入口仍为：
 
 ```bash

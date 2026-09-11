@@ -1,0 +1,873 @@
+"""Define one minimal q-conditioned phase-coupling contract.
+
+This is a definition-only consumer.  It binds the already validated V2,
+PROJECT_COMPLEX_OLS, selected-producer, and prior complex-joint authorities,
+then freezes exactly one K=1 nearest-fitting-q phase-donor assumption.  It
+does not load q/complex values, execute a heldout evaluation, reuse sealed
+content, or mutate machine governance.
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import hashlib
+import json
+import os
+import shutil
+import subprocess
+import tempfile
+from pathlib import Path
+from typing import Any, Mapping
+
+import torch
+
+from ldm_project.v2.evidence import atomic_write_new_json, file_sha256
+from scripts.research import (
+    define_n3_complex_ols_amplitude_phase_joint_compatibility_contract_v1 as prior_definition,
+)
+
+
+TASK_ID = "DEFINE_ONE_MINIMAL_Q_CONDITIONED_PHASE_COUPLING_MODEL_CONTRACT_V1"
+GATE = TASK_ID
+CONTRACT_SCHEMA = "n3_minimal_q_conditioned_phase_coupling_contract.v1"
+READY_CLASSIFICATION = "DEFINE_ONE_MINIMAL_Q_CONDITIONED_PHASE_COUPLING_MODEL_CONTRACT_V1_READY"
+EXPECTED_BRANCH = "research/lightgen-ols-native-semantic-generation-v1"
+EXPECTED_STARTING_HEAD = "a5c07512614944d4be6392ae29d48e0b189bea4b"
+
+OUTPUT_DIR = Path(
+    "outputs/20260910_v2/runs/"
+    "n3_minimal_q_conditioned_phase_coupling_contract_v1_attempt_01"
+)
+CONTRACT_NAME = "n3_minimal_q_conditioned_phase_coupling_contract.v1.json"
+
+CANDIDATE_ID = "Q_CONDITIONED_NEAREST_PHASE_DONOR_V1"
+K = 1
+CLASS_COUNT = 10
+DIMENSION = 100
+DEVELOPMENT_ROWS = 5000
+FIT_ROWS_PER_FOLD = 4000
+HELDOUT_ROWS_PER_FOLD = 1000
+FOLD_COUNT = 5
+MODEL_BANK_COUNT = 4
+MODEL_BANK_SIZE = 200
+CALIBRATION_TRIAL_COUNT = 999
+FAMILY_ALPHA = 0.05
+PER_FOLD_ALPHA = 0.01
+PRIMARY_METRIC = "energy_distance"
+RNG_NAMESPACE = "N3_COMPLEX_OLS_Q_CONDITIONED_NEAREST_PHASE_DONOR_V1_CPU"
+MAX_SIGNED_63 = (1 << 63) - 1
+
+PREVIOUS_CONTRACT_PATH = Path(
+    "outputs/20260910_v2/runs/"
+    "n3_complex_ols_amplitude_phase_joint_compatibility_contract_v1_attempt_01/"
+    "n3_complex_ols_amplitude_phase_joint_compatibility_contract.v1.json"
+)
+PREVIOUS_CONTRACT_SHA256 = "52e07263343d765db13022fbcf56f74e7431a9dced16f8bfa31ca07ecc6bd726"
+PREVIOUS_REPORT_PATH = Path(
+    "outputs/20260910_v2/runs/"
+    "n3_complex_ols_amplitude_phase_joint_compatibility_v1_attempt_01/"
+    "n3_complex_ols_amplitude_phase_joint_compatibility_report.v1.json"
+)
+PREVIOUS_REPORT_SHA256 = "9989b89dea8a8d299da9a89b8c5566376a27a21c250a5ca22c07202dfa938429"
+PREVIOUS_LINEAGE_PATH = Path(
+    "outputs/20260910_v2/runs/"
+    "n3_complex_ols_amplitude_phase_joint_compatibility_v1_attempt_01/"
+    "n3_complex_ols_amplitude_phase_joint_compatibility_lineage.v1.json"
+)
+PREVIOUS_LINEAGE_SHA256 = "238d6638a16fcfa86e48216db2b886b45c9038f8ea017b7f51a55c1f18090aa0"
+PREVIOUS_EXECUTION_ID = "EXECUTE_N3_COMPLEX_OLS_AMPLITUDE_PHASE_JOINT_COMPATIBILITY_V1"
+NEXT_ACTION = "EXECUTE_N3_Q_CONDITIONED_NEAREST_PHASE_DONOR_V1"
+CURRENT_PLANNING_ACTION = "DEFINE_ONE_MINIMAL_Q_CONDITIONED_PHASE_COUPLING_MODEL_CONTRACT"
+
+GOVERNANCE_STATE_PATH = prior_definition.GOVERNANCE_STATE_PATH
+CURRENT_STATUS_PATH = prior_definition.CURRENT_STATUS_PATH
+CURRENT_HANDOFF_PATH = prior_definition.CURRENT_HANDOFF_PATH
+
+InvalidHarnessError = prior_definition.InvalidHarnessError
+
+
+def _require(condition: bool, message: str) -> None:
+    if not condition:
+        raise InvalidHarnessError(message)
+
+
+def _mapping(value: Any, name: str) -> Mapping[str, Any]:
+    _require(isinstance(value, Mapping), f"{name} must be a mapping")
+    return value
+
+
+def _relative(repo_root: Path, path: Path) -> str:
+    return path.resolve().relative_to(repo_root.resolve()).as_posix()
+
+
+def _read_json(
+    repo_root: Path,
+    path: Path,
+    name: str,
+    expected_sha256: str | None = None,
+) -> dict[str, Any]:
+    return prior_definition._read_json(repo_root, path, name, expected_sha256)
+
+
+def _ref(
+    repo_root: Path,
+    path: Path,
+    role: str,
+    expected_sha256: str | None = None,
+) -> dict[str, Any]:
+    return prior_definition._ref(repo_root, path, role, expected_sha256)
+
+
+def _git_state(repo_root: Path) -> dict[str, Any]:
+    def _run(*args: str) -> str:
+        result = subprocess.run(
+            ["git", "-C", str(repo_root), *args],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return result.stdout.strip()
+
+    status_result = subprocess.run(
+        ["git", "-C", str(repo_root), "status", "--porcelain"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    status = status_result.stdout.splitlines()
+    return {
+        "branch": _run("branch", "--show-current"),
+        "head": _run("rev-parse", "HEAD"),
+        "dirty_paths": [line[3:] if len(line) >= 4 else line for line in status],
+        "worktree_clean": not status,
+    }
+
+
+def _validate_current_state(repo_root: Path) -> dict[str, Any]:
+    path = repo_root / GOVERNANCE_STATE_PATH
+    governance_sha256 = file_sha256(path)
+    governance = _read_json(repo_root, GOVERNANCE_STATE_PATH, "current governance state", governance_sha256)
+    _require(
+        governance.get("active_objective") == "N3_COMPLEX_OLS_INDEPENDENT_PHASE_INHERITANCE_NOT_SUPPORTED",
+        "current objective is not the completed independent-phase rejection",
+    )
+    _require(
+        governance.get("hard_blocker") == "N3_COMPLEX_OLS_MINIMAL_Q_CONDITIONED_PHASE_COUPLING_CONTRACT_REQUIRED",
+        "current blocker is not the q-conditioned phase-coupling contract",
+    )
+    _require(governance.get("authorization_tier") == "R3", "current governance tier is not R3")
+    aliases = _mapping(governance.get("evidence_aliases"), "governance evidence aliases")
+    _require(
+        CANDIDATE_ID not in aliases
+        and TASK_ID not in aliases
+        and "N3_MINIMAL_Q_CONDITIONED_PHASE_COUPLING_MODEL_CONTRACT_V1" not in aliases,
+        "q-conditioned phase-coupling contract already has a governance alias",
+    )
+    previous_contract_alias = _mapping(
+        aliases.get("N3_COMPLEX_OLS_AMPLITUDE_PHASE_JOINT_COMPATIBILITY_CONTRACT_V1"),
+        "previous complex-joint contract alias",
+    )
+    _require(
+        previous_contract_alias.get("sha256") == PREVIOUS_CONTRACT_SHA256
+        and previous_contract_alias.get("result") == "READY",
+        "previous complex-joint contract alias is not the frozen READY authority",
+    )
+    previous_execution_alias = _mapping(
+        aliases.get("N3_COMPLEX_OLS_AMPLITUDE_PHASE_JOINT_COMPATIBILITY_V1"),
+        "previous complex-joint execution alias",
+    )
+    _require(
+        previous_execution_alias.get("sha256") == PREVIOUS_REPORT_SHA256
+        and previous_execution_alias.get("lineage_manifest_sha256") == PREVIOUS_LINEAGE_SHA256
+        and previous_execution_alias.get("classification")
+        == "N3_COMPLEX_OLS_INDEPENDENT_PHASE_INHERITANCE_NOT_SUPPORTED",
+        "previous complex-joint execution alias is not the completed result",
+    )
+    _require(
+        previous_execution_alias.get("training_authorized") is False
+        and previous_execution_alias.get("formal_promotion") is False
+        and previous_execution_alias.get("generation_readiness") == "not_ready",
+        "previous execution opened a downstream boundary",
+    )
+    for path_value, name in ((CURRENT_STATUS_PATH, "CURRENT_STATUS"), (CURRENT_HANDOFF_PATH, "current handoff")):
+        text = (repo_root / path_value).read_text(encoding="utf-8")
+        _require(CURRENT_PLANNING_ACTION in text, f"{name} does not name the current contract action")
+        _require("training_authorized=false" in text, f"{name} changed training authorization")
+        _require("generation_readiness=not_ready" in text, f"{name} changed generation readiness")
+    return {
+        "governance": _ref(repo_root, GOVERNANCE_STATE_PATH, "current governance snapshot", governance_sha256),
+        "current_status": _ref(repo_root, CURRENT_STATUS_PATH, "current status snapshot"),
+        "current_handoff": _ref(repo_root, CURRENT_HANDOFF_PATH, "current handoff snapshot"),
+        "active_objective": governance["active_objective"],
+        "hard_blocker": governance["hard_blocker"],
+        "authorization_tier": governance["authorization_tier"],
+        "state_mutation_allowed": False,
+    }
+
+
+def _validate_previous_joint_execution(repo_root: Path) -> dict[str, Any]:
+    contract = _read_json(repo_root, PREVIOUS_CONTRACT_PATH, "previous complex-joint contract", PREVIOUS_CONTRACT_SHA256)
+    _require(contract.get("schema") == prior_definition.CONTRACT_SCHEMA, "previous contract schema changed")
+    _require(
+        contract.get("status") == "valid_completed"
+        and contract.get("result") == "READY"
+        and contract.get("classification") == prior_definition.READY_CLASSIFICATION
+        and contract.get("definition_only") is True,
+        "previous complex-joint contract is not a valid definition-only READY authority",
+    )
+    _require(contract.get("next_action") == PREVIOUS_EXECUTION_ID, "previous contract next action changed")
+
+    evaluation = _mapping(contract.get("evaluation"), "previous complex-joint evaluator")
+    embedding = _mapping(evaluation.get("real_embedding"), "previous real embedding")
+    _require(
+        embedding.get("formula") == "concat(real(z^canonical), imag(z^canonical), dim=1)"
+        and embedding.get("shape") == ["N", 2 * DIMENSION]
+        and embedding.get("dtype") == "torch.float64"
+        and embedding.get("phase_unwrapped_euclidean") is False
+        and embedding.get("raw_complex_euclidean_primary") is False,
+        "previous complex-joint embedding semantics changed",
+    )
+    primary = _mapping(evaluation.get("primary"), "previous primary metric")
+    _require(primary.get("name") == PRIMARY_METRIC and primary.get("role") == "HARD_PRIMARY", "previous primary metric changed")
+    _require(
+        evaluation.get("model_bank_count") == MODEL_BANK_COUNT
+        and evaluation.get("model_bank_size") == MODEL_BANK_SIZE,
+        "previous model-bank structure changed",
+    )
+    calibration = _mapping(contract.get("model_self_calibration"), "previous model-self calibration")
+    _require(
+        calibration.get("trials") == CALIBRATION_TRIAL_COUNT
+        and calibration.get("model_bank_count") == MODEL_BANK_COUNT
+        and calibration.get("model_bank_size") == MODEL_BANK_SIZE
+        and calibration.get("pseudo_data_rows") == HELDOUT_ROWS_PER_FOLD,
+        "previous calibration structure changed",
+    )
+    decision = _mapping(contract.get("decision"), "previous decision contract")
+    _require(
+        decision.get("p_value") == "p_MC=(1+count(T_b>=T_obs))/(B+1)"
+        and decision.get("inequality") == "greater-than-or-equal, including ties"
+        and decision.get("fold_pass") == "p_MC>=0.01"
+        and decision.get("aggregate_pass") == "all five folds pass (5/5)",
+        "previous decision semantics changed",
+    )
+
+    report = _read_json(repo_root, PREVIOUS_REPORT_PATH, "previous complex-joint report", PREVIOUS_REPORT_SHA256)
+    _require(
+        report.get("schema") == "n3_complex_ols_amplitude_phase_joint_compatibility_report.v1"
+        and report.get("task_id") == PREVIOUS_EXECUTION_ID
+        and report.get("status") == "valid_completed"
+        and report.get("result") == "VALID_COMPLETED"
+        and report.get("classification") == "N3_COMPLEX_OLS_INDEPENDENT_PHASE_INHERITANCE_NOT_SUPPORTED",
+        "previous complex-joint report is not the completed result",
+    )
+    _require(report.get("contract", {}).get("sha256") == PREVIOUS_CONTRACT_SHA256, "previous report contract binding changed")
+    control = _mapping(report.get("control"), "previous control result")
+    control_aggregate = _mapping(control.get("aggregate"), "previous control aggregate")
+    _require(
+        control_aggregate.get("fold_count") == FOLD_COUNT
+        and control_aggregate.get("passed_fold_count") == FOLD_COUNT
+        and control_aggregate.get("fold_pass_pattern") == [True] * FOLD_COUNT
+        and control_aggregate.get("primary_metric") == PRIMARY_METRIC
+        and control_aggregate.get("per_fold_alpha") == PER_FOLD_ALPHA
+        and control_aggregate.get("strict_five_of_five") is True,
+        "previous 5/5 complex control authority changed",
+    )
+    candidate_aggregate = _mapping(report.get("candidate"), "previous candidate result").get("aggregate")
+    candidate_aggregate = _mapping(candidate_aggregate, "previous candidate aggregate")
+    _require(
+        candidate_aggregate.get("passed_fold_count") == 0
+        and candidate_aggregate.get("fold_pass_pattern") == [False] * FOLD_COUNT,
+        "previous independent-phase rejection changed",
+    )
+    sealed = _mapping(report.get("sealed_confirmation"), "previous sealed boundary")
+    _require(
+        sealed.get("consumed") is True
+        and sealed.get("values_loaded") is False
+        and sealed.get("reused") is False
+        and sealed.get("new_sealed_authority") is False,
+        "previous sealed boundary changed",
+    )
+    _require(
+        report.get("governance", {}).get("training_authorized") is False
+        and report.get("governance", {}).get("formal_promotion") is False
+        and report.get("governance", {}).get("generation_readiness") == "not_ready",
+        "previous report opened downstream governance",
+    )
+
+    lineage = _read_json(repo_root, PREVIOUS_LINEAGE_PATH, "previous complex-joint lineage", PREVIOUS_LINEAGE_SHA256)
+    _require(
+        lineage.get("schema") == "n3_complex_ols_amplitude_phase_joint_compatibility_lineage.v1"
+        and lineage.get("status") == "valid_completed"
+        and lineage.get("result") == "VALID_COMPLETED"
+        and lineage.get("gate") == PREVIOUS_EXECUTION_ID
+        and lineage.get("next_action") == "DEFINE_ONE_MINIMAL_Q_CONDITIONED_PHASE_COUPLING_MODEL_CONTRACT",
+        "previous lineage is not the completed authority",
+    )
+    lineage_control = _mapping(lineage.get("control"), "previous lineage control")
+    _require(
+        lineage_control.get("aggregate", {}).get("passed_fold_count") == FOLD_COUNT,
+        "previous lineage control is not 5/5",
+    )
+    return {
+        "contract": _ref(repo_root, PREVIOUS_CONTRACT_PATH, "previous complex-joint contract", PREVIOUS_CONTRACT_SHA256),
+        "report": _ref(repo_root, PREVIOUS_REPORT_PATH, "previous complex-joint report", PREVIOUS_REPORT_SHA256),
+        "lineage": _ref(repo_root, PREVIOUS_LINEAGE_PATH, "previous complex-joint lineage", PREVIOUS_LINEAGE_SHA256),
+        "classification": report["classification"],
+        "control": {
+            "id": "FULL_COMPLEX_ROW_EMPIRICAL_BOOTSTRAP_CONTROL",
+            "result": "5/5",
+            "fold_pass_pattern": [True] * FOLD_COUNT,
+            "primary_metric": PRIMARY_METRIC,
+            "per_fold_alpha": PER_FOLD_ALPHA,
+            "model_bank_count": MODEL_BANK_COUNT,
+            "model_bank_size": MODEL_BANK_SIZE,
+            "calibration_trials": CALIBRATION_TRIAL_COUNT,
+            "reused_without_rerun": True,
+        },
+        "evaluator_semantics": {
+            "representation": embedding,
+            "primary": primary,
+            "model_bank_count": MODEL_BANK_COUNT,
+            "model_bank_size": MODEL_BANK_SIZE,
+            "calibration_trials": CALIBRATION_TRIAL_COUNT,
+            "p_value": decision["p_value"],
+            "fold_pass": decision["fold_pass"],
+            "aggregate_pass": decision["aggregate_pass"],
+        },
+        "sealed": {
+            "consumed": True,
+            "values_loaded_by_this_definition": False,
+            "reused_by_this_definition": False,
+        },
+    }
+
+
+def _validate_authorities(repo_root: Path) -> dict[str, Any]:
+    current = _validate_current_state(repo_root)
+    previous_joint = _validate_previous_joint_execution(repo_root)
+    prior = prior_definition._validate_prior_provenance(repo_root)
+    v2 = prior_definition._validate_v2_authority(repo_root)
+    complex_ols = prior_definition._validate_complex_ols_authority(repo_root)
+    metrics = prior_definition._validate_metric_authority(repo_root)
+    return {
+        "current": current,
+        "previous_joint": previous_joint,
+        "prior": prior,
+        "v2": v2,
+        "complex_ols": complex_ols,
+        "metrics": metrics,
+    }
+
+
+def _validate_q_matrix(value: Any, name: str) -> torch.Tensor:
+    _require(torch.is_tensor(value), f"{name} must be a tensor")
+    _require(value.ndim == 2 and value.shape[1] == DIMENSION, f"{name} must have shape [N,{DIMENSION}]")
+    view = value.detach().to(device="cpu", dtype=torch.float64).contiguous()
+    _require(torch.isfinite(view).all().item() and view.ge(0.0).all().item(), f"{name} is not finite/nonnegative")
+    return view
+
+
+def _gaussianized_q_coordinates(q: torch.Tensor, sorted_fit_values: torch.Tensor) -> torch.Tensor:
+    """Apply the frozen fit-only empirical-CDF cross-section to arbitrary q.
+
+    This helper is exercised only on a synthetic totality probe during
+    definition.  The future evaluator must use the contract's same rule.
+    """
+
+    query = _validate_q_matrix(q, "query q")
+    sorted_values = _validate_q_matrix(sorted_fit_values, "sorted fitting q")
+    _require(sorted_values.shape[0] >= 2, "sorted fitting q is too small")
+    _require(bool((sorted_values[1:] >= sorted_values[:-1]).all()), "sorted fitting q is not monotone")
+    n_fit = int(sorted_values.shape[0])
+    positions = (torch.arange(n_fit, dtype=torch.float64) + 0.5) / float(n_fit)
+    result = torch.empty_like(query)
+    for row_index in range(query.shape[0]):
+        for coordinate in range(DIMENSION):
+            column = sorted_values[:, coordinate]
+            x = query[row_index, coordinate]
+            equal = torch.nonzero(column == x, as_tuple=False).reshape(-1)
+            if equal.numel():
+                u = positions.index_select(0, equal).mean()
+            elif bool(x <= column[0]):
+                u = positions[0]
+            elif bool(x >= column[-1]):
+                u = positions[-1]
+            else:
+                upper = int(torch.searchsorted(column, x, right=False).item())
+                lower = upper - 1
+                fraction = (x - column[lower]) / (column[upper] - column[lower])
+                u = positions[lower] + fraction * (positions[upper] - positions[lower])
+            result[row_index, coordinate] = torch.special.ndtri(u)
+    _require(torch.isfinite(result).all().item(), "Gaussianized q coordinates are non-finite")
+    return result.contiguous()
+
+
+def _nearest_donor_index(query_y: torch.Tensor, donor_y: torch.Tensor, donor_ids: list[str]) -> int:
+    _require(query_y.ndim == 1 and donor_y.ndim == 2 and donor_y.shape[1] == query_y.numel(), "nearest-donor shapes are invalid")
+    _require(len(donor_ids) == donor_y.shape[0], "nearest-donor identities are incomplete")
+    distances = torch.linalg.vector_norm(donor_y - query_y.unsqueeze(0), dim=1)
+    _require(torch.isfinite(distances).all().item(), "nearest-donor distances are non-finite")
+    minimum = distances.min()
+    tied = torch.nonzero(distances == minimum, as_tuple=False).reshape(-1).tolist()
+    _require(tied, "nearest-donor candidate set is empty")
+    return min(tied, key=lambda index: donor_ids[index])
+
+
+def _contract_totality_checks() -> dict[str, Any]:
+    _require(K == 1, "model order is not frozen at K=1")
+    _require(DIMENSION == 100 and FOLD_COUNT == 5, "contract dimensions changed")
+    _require(MODEL_BANK_COUNT == 4 and MODEL_BANK_SIZE == 200, "model-bank dimensions changed")
+    _require(CALIBRATION_TRIAL_COUNT == 999, "calibration trials changed")
+    _require(FAMILY_ALPHA == 0.05 and PER_FOLD_ALPHA == 0.01, "alpha values changed")
+
+    sorted_values = torch.linspace(0.1, 1.0, DIMENSION, dtype=torch.float64).reshape(1, -1).repeat(4, 1)
+    sorted_values[1, 5] = sorted_values[0, 5]
+    sorted_values[2, 5] = sorted_values[0, 5]
+    sorted_values[:, 6:] = torch.maximum(sorted_values[:, 6:], sorted_values[:, 5:6] + 0.1)
+    query = sorted_values[0:1].clone()
+    query[0, 0] = 0.0
+    query[0, 1] = 2.0
+    query[0, 2] = (sorted_values[0, 2] + sorted_values[3, 2]) / 2.0
+    coordinates = _gaussianized_q_coordinates(query, sorted_values)
+    _require(coordinates.shape == (1, DIMENSION), "q-distance representation probe shape changed")
+    donor_y = torch.zeros((2, DIMENSION), dtype=torch.float64)
+    donor_ids = ["stable-row-z", "stable-row-a"]
+    selected = _nearest_donor_index(torch.zeros(DIMENSION, dtype=torch.float64), donor_y, donor_ids)
+    _require(selected == 1, "exact-distance tie-break is not smallest stable identity")
+    seed_values = {
+        hashlib.sha256(
+            f"{RNG_NAMESPACE}|role=CANDIDATE_Q_SAMPLE|fold={fold}|trial=none|bank={bank}".encode("utf-8")
+        ).hexdigest()
+        for fold in range(FOLD_COUNT)
+        for bank in range(MODEL_BANK_COUNT)
+    }
+    _require(len(seed_values) == FOLD_COUNT * MODEL_BANK_COUNT, "future RNG streams are not disjoint")
+    return {
+        "status": "passed",
+        "candidate_id": CANDIDATE_ID,
+        "K": K,
+        "q_distance_representation": "100-D Euclidean distance on fit-derived Gaussianized q coordinates",
+        "unique_empirical_cdf_cross_section": True,
+        "exact_tie_break_probe": "passed",
+        "model_order_search": False,
+        "q_values_loaded": False,
+        "complex_ols_values_loaded": False,
+        "sealed_values_loaded": False,
+        "scientific_evaluation_executed": False,
+        "training_executed": False,
+        "cuda_used": False,
+        "governance_mutated": False,
+    }
+
+
+def _build_payload(
+    repo_root: Path,
+    git: Mapping[str, Any],
+    authorities: Mapping[str, Any],
+    totality: Mapping[str, Any],
+) -> dict[str, Any]:
+    definition_ref = _ref(
+        repo_root,
+        Path(__file__).resolve().relative_to(repo_root.resolve()),
+        "this q-conditioned phase-coupling contract definition consumer",
+    )
+    previous_joint = _mapping(authorities["previous_joint"], "previous joint authority")
+    prior = _mapping(authorities["prior"], "prior authority")
+    v2 = _mapping(authorities["v2"], "V2 authority")
+    return {
+        "schema": CONTRACT_SCHEMA,
+        "version": 1,
+        "task_id": TASK_ID,
+        "gate": GATE,
+        "status": "valid_completed",
+        "result": "READY",
+        "classification": READY_CLASSIFICATION,
+        "definition_only": True,
+        "created_at_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "git": dict(git),
+        "semantic_authority": "N3_MINIMAL_Q_CONDITIONED_PHASE_COUPLING_MODEL_CONTRACT_V1",
+        "authorities": {
+            "current_state": dict(authorities["current"]),
+            "previous_complex_joint_contract_and_execution": dict(previous_joint),
+            "selected_producer_and_prior_confirmation": dict(prior),
+            "v2_development": dict(v2),
+            "project_complex_ols": dict(authorities["complex_ols"]),
+            "metric_and_evaluator": dict(authorities["metrics"]),
+            "definition_implementation": definition_ref,
+        },
+        "model_assumption": {
+            "kind": "MODEL_ASSUMPTION",
+            "id": CANDIDATE_ID,
+            "statement": "independent phase inheritance failed because local dependence between q amplitude and relative phase may be missing",
+            "falsifiable": True,
+            "status": "project_model_assumption_only",
+            "not_a_fact": True,
+            "not_a_chen_lightgen_mechanism_claim": True,
+        },
+        "candidate": {
+            "id": CANDIDATE_ID,
+            "family_count": 1,
+            "only_candidate_family": True,
+            "selection_scope": "DEVELOPMENT_ONLY",
+            "model_order": {
+                "K": K,
+                "search": False,
+                "choice_type": "DESIGN_DECISION",
+                "rationale": "minimum q-conditioned intervention after rejected independent phase inheritance",
+                "optimality_claim": False,
+            },
+            "q_producer": {
+                "family_id": "EMPIRICAL_GAUSSIAN_COPULA",
+                "candidate_id": "EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_AMPLITUDE_V1",
+                "semantic_authority_id": "N3_SELECTED_EMPIRICAL_GAUSSIAN_COPULA_PRODUCER_V1",
+                "fit_scope": "each fold's 4000 fitting q rows only",
+                "labels_as_inputs": False,
+                "semantics_unchanged": True,
+                "fit_transform": "stable fit-only empirical marginal average-rank plotting positions, torch.special.ndtri, n-1 standardization, analytic R_emp then alpha-shrunk R_shrunk",
+                "sampling": "CPU torch.float64 Gaussian-copula sample followed by the existing empirical inverse-quantile table",
+                "new_amplitude_family": False,
+            },
+            "per_fold_algorithm": [
+                "fit the unchanged selected Gaussian copula on that fold's fitting q rows",
+                "materialize a donor table from that fold's fitting row identity, fitting q, and complete frozen relative-phase vector",
+                "generate q_new from that fold-local Gaussian copula",
+                "map q_new and every fitting donor q into the frozen 100-D Gaussianized representation",
+                "select exactly one nearest fitting donor with K=1",
+                "copy that donor's complete relative-phase vector",
+                "construct z_new=q_new*exp(i*phi_donor) and canonicalize under the existing global-phase quotient",
+            ],
+            "dimensionwise_phase_resampling": False,
+            "phase_interpolation": False,
+            "phase_averaging": False,
+            "q_dependent_donor_selection": True,
+            "conditional_phase_distribution_fit": False,
+        },
+        "donor_table": {
+            "source": "same fold's V2 fitting rows only",
+            "rows_per_fold": FIT_ROWS_PER_FOLD,
+            "fields": ["stable_fitting_row_identity", "fitting_q", "complete_relative_phase_vector"],
+            "stable_identity_source": "N3_DEVELOPMENT_BANK_V2 stable_source_row_identity",
+            "one_donor_per_generated_row": True,
+            "donor_replacement": "the same fitting donor may be selected for multiple generated rows",
+            "donor_pool_is_fit_only": True,
+        },
+        "q_distance_representation": {
+            "name": "FIT_EMPIRICAL_GAUSSIANIZED_Q_EUCLIDEAN_V1",
+            "dimension": DIMENSION,
+            "fit_only": True,
+            "formula": "d(q_a,q_b)=sqrt(sum_j((y_a,j-y_b,j)^2)); y_j=Phi^{-1}(u_j)",
+            "source": "the exact fitting-q marginal state used by the fold-local selected Gaussian copula",
+            "empirical_cdf": {
+                "sorted_values": "fit q values sorted ascending by value with stable original fitting-row order for ties",
+                "fit_tie_rule": "tied block one-based ranks L..U uses average_rank=(L+U)/2",
+                "fit_plotting_position": "u=(average_rank-0.5)/n_fit",
+                "arbitrary_q_exact_fit_value": "use the average of the frozen p_i=(i+0.5)/n_fit positions across the complete equal-value block",
+                "arbitrary_q_between_distinct_values": "piecewise-linear interpolation between the adjacent distinct sorted fit values and their p positions",
+                "lower_endpoint": "q<=q_(1) returns p_1",
+                "upper_endpoint": "q>=q_(n_fit) returns p_n",
+                "outside_support_extrapolation": False,
+                "strict_interior_u": True,
+                "epsilon_clamp": False,
+                "unique_for_arbitrary_finite_q": True,
+            },
+            "metric": "ordinary Euclidean distance in the 100-D y representation",
+            "learned_metric": False,
+            "mahalanobis_metric": False,
+            "coordinate_weights": False,
+            "labels_in_distance": False,
+            "phase_in_distance": False,
+            "heldout_covariance": False,
+        },
+        "nearest_neighbor_rule": {
+            "K": K,
+            "select_exactly_one": True,
+            "argmin": "minimum frozen Euclidean distance over all fitting donors in the same fold",
+            "distance_comparison": "exact float64 distance equality defines a tie",
+            "tie_break": "smallest stable fitting-row identity under bytewise UTF-8 lexicographic order",
+            "rng_tie_break": False,
+            "donor_identity_is_not_bank_position": True,
+            "no_weighting": True,
+            "no_interpolation": True,
+        },
+        "phase_semantics": {
+            "donor_unit": "one complete 100-coordinate relative-phase vector",
+            "source": "canonicalized fitting R3_COMPLEX row under the existing global-phase quotient",
+            "canonicalization": "first exact argmax(abs(z)) anchor, ties by smallest coordinate index, multiply by conjugate(anchor)/abs(anchor), set anchor exact nonnegative real",
+            "representation": "torch.atan2(Im(z_canonical), Re(z_canonical))",
+            "wrap_interval": "[-pi,pi]",
+            "complete_vector_preserved": True,
+            "zero_policy": "any exact-zero observed/fitting complex coordinate or generated amplitude coordinate is INVALID_HARNESS",
+            "near_zero_policy": "strictly positive finite coordinates retained without threshold, mask, floor, or epsilon",
+            "signed_zero_and_pi_boundary": "retain torch.atan2 principal-interval result without remapping",
+            "phase_interpolation": False,
+            "phase_angle_averaging": False,
+            "coordinatewise_donor_mixing": False,
+            "phase_perturbation": False,
+            "new_phase_synthesis": False,
+            "physical_phase_reference_invented": False,
+        },
+        "complex_construction": {
+            "amplitude": "A_j(q_new)=q_new,j",
+            "formula": "z_new,j=q_new,j*exp(i*phi_donor,j)",
+            "input_q_dtype": "torch.float64",
+            "phase_dtype": "torch.float64",
+            "canonical_complex_dtype": "torch.complex128",
+            "post_construction": "canonicalize under existing GLOBAL_PHASE_GAUGE_CONFIRMED quotient before [Re,Im] embedding",
+            "generic_complex_resize": False,
+        },
+        "development_isolation": {
+            "authority": "N3_DEVELOPMENT_BANK_V2",
+            "fold_count": FOLD_COUNT,
+            "fit_rows_per_fold": FIT_ROWS_PER_FOLD,
+            "heldout_rows_per_fold": HELDOUT_ROWS_PER_FOLD,
+            "allowed_donor_rows": "fitting rows of the current fold only",
+            "heldout_rows_used_for": [],
+            "heldout_phase_donors": False,
+            "other_external_panels": False,
+            "consumed_sealed_rows": False,
+            "protected_confirmation_rows": False,
+            "cross_fold_donors": False,
+            "labels_as_inputs": False,
+            "runtime_reselection": False,
+            "runtime_resplit": False,
+            "heldout_dependent_choice": False,
+        },
+        "control": {
+            "id": "FULL_COMPLEX_ROW_EMPIRICAL_BOOTSTRAP_CONTROL",
+            "status": "historical_input_authority",
+            "prior_result": "5/5",
+            "prior_report": previous_joint["report"],
+            "prior_lineage": previous_joint["lineage"],
+            "rerun_in_this_definition": False,
+            "reused_without_duplication": True,
+            "semantic_equivalence_required": True,
+            "equivalence": {
+                "representation": "canonical complex z -> float64 [Re(z), Im(z)]",
+                "primary_metric": PRIMARY_METRIC,
+                "model_bank_count": MODEL_BANK_COUNT,
+                "model_bank_size": MODEL_BANK_SIZE,
+                "data_rows_per_fold": HELDOUT_ROWS_PER_FOLD,
+                "model_self_calibration_trials": CALIBRATION_TRIAL_COUNT,
+                "per_fold_alpha": PER_FOLD_ALPHA,
+                "strict_aggregate": "5/5",
+                "secondary_diagnostics": "DESCRIPTIVE_ONLY",
+            },
+            "mismatch_action": "HARD_STOP; do not treat the historical control as equivalent",
+        },
+        "future_evaluation": {
+            "candidate_only": True,
+            "representation": "canonical complex z -> contiguous CPU torch.float64 [Re(z), Im(z)]",
+            "hard_statistic": PRIMARY_METRIC,
+            "secondary_diagnostics": {
+                "role": "DESCRIPTIVE_ONLY",
+                "items": [
+                    "nearest-donor distance distribution",
+                    "donor reuse rate",
+                    "number of unique donors used",
+                    "q-space nearest-neighbor distance by fold",
+                    "amplitude discrepancy",
+                    "phase discrepancy",
+                    "q-phase dependence summaries",
+                ],
+                "may_change_decision": False,
+            },
+            "data_rows_per_fold": HELDOUT_ROWS_PER_FOLD,
+            "model_bank_count": MODEL_BANK_COUNT,
+            "model_bank_size": MODEL_BANK_SIZE,
+            "calibration_trials": CALIBRATION_TRIAL_COUNT,
+            "per_fold_alpha": PER_FOLD_ALPHA,
+            "strict_aggregate": "5/5",
+            "metric_or_threshold_change": False,
+            "control_rerun": False,
+        },
+        "model_self_calibration": {
+            "required_before_heldout": True,
+            "candidate_specific": True,
+            "same_candidate_for_pseudo_and_model": True,
+            "pseudo_data_rows": HELDOUT_ROWS_PER_FOLD,
+            "model_bank_count": MODEL_BANK_COUNT,
+            "model_bank_size": MODEL_BANK_SIZE,
+            "trials": CALIBRATION_TRIAL_COUNT,
+            "statistic": "T=mean_k energy_distance(embedding(data), embedding(model_bank_k))",
+            "p_value": "p_MC=(1+count(T_b>=T_obs))/(B+1)",
+            "tie_convention": ">= ties included in exceedance count",
+            "rng": {
+                "namespace": RNG_NAMESPACE,
+                "device": "cpu",
+                "dtype": "torch.float64",
+                "seed_rule": "sha256(namespace|role=<role>|fold=<0..4>|trial=<index_or_none>|bank=<index_or_none>) first 64 bits masked to signed 63-bit",
+                "roles": [
+                    "CANDIDATE_Q_SAMPLE",
+                    "CANDIDATE_MODEL_BANK",
+                    "CANDIDATE_PSEUDO_DATA",
+                ],
+                "explicit_generator_per_stream": True,
+                "no_global_rng": True,
+                "no_retry": True,
+                "no_early_stop": True,
+                "best_of_n": False,
+                "rng_tie_break": False,
+            },
+        },
+        "decision": {
+            "fold_pass": "p_MC>=0.01",
+            "aggregate_pass": "all five folds pass (5/5)",
+            "family_alpha": FAMILY_ALPHA,
+            "per_fold_alpha": PER_FOLD_ALPHA,
+            "outcomes": {
+                "supported": "N3_COMPLEX_OLS_Q_CONDITIONED_NEAREST_PHASE_DONOR_SUPPORTED",
+                "not_supported": "N3_COMPLEX_OLS_Q_CONDITIONED_NEAREST_PHASE_DONOR_NOT_SUPPORTED",
+                "invalid_measurement_or_authority": "INVALID_HARNESS",
+            },
+            "four_of_five_is_supported": False,
+            "no_automatic_repair": True,
+            "no_best_of_n": True,
+        },
+        "claim_boundary": {
+            "if_supported": "a generated q amplitude combined with the complete relative-phase vector of its nearest fitting-q donor is compatible with heldout complex OLS under this development contract",
+            "support_interpretation": "supports preserving local q-phase dependence relative to the rejected independent-donor baseline",
+            "if_not_supported": "the minimal K=1 local q-conditioned phase-donor mechanism is insufficient under the current complex-joint development Gate",
+            "not_established": [
+                "the true conditional distribution p(phi|q)",
+                "novel phase generation",
+                "Chen/LightGen phase-generation mechanism",
+                "physical phase SLM realizability",
+                "semantic generation",
+                "image-generation readiness",
+                "population or OOD generalization",
+                "training authorization",
+                "formal promotion",
+            ],
+        },
+        "forbidden": {
+            "model_order_search": True,
+            "distance_metric_search": True,
+            "mahalanobis_or_learned_metric": True,
+            "knn_weighting": True,
+            "phase_interpolation": True,
+            "conditional_gaussian_phase_model": True,
+            "phase_mixture_or_flow": True,
+            "neural_phase_producer": True,
+            "class_conditioning": True,
+            "heldout_tuning": True,
+            "sealed_reuse": True,
+            "amplitude_producer_modification": True,
+            "new_amplitude_family": True,
+            "semantic_or_image_evaluation": True,
+            "optical_forward": True,
+            "cuda": True,
+            "training": True,
+        },
+        "hard_stop_conditions": [
+            "exact q-to-complex-row correspondence unresolved",
+            "fit-derived Gaussianized q-distance representation cannot be applied uniquely to arbitrary generated q",
+            "phase donor stable identity cannot be frozen",
+            "previous 5/5 control authority is not semantically reusable",
+            "fold isolation cannot be enforced",
+            "zero/near-zero phase convention unresolved",
+            "future candidate-specific model-self calibration incomplete",
+            "a new model-order choice is required",
+            "consumed sealed data would be needed",
+        ],
+        "firewalls": {
+            "q_values_loaded_by_definition": False,
+            "complex_ols_values_loaded_by_definition": False,
+            "sealed_values_loaded_by_definition": False,
+            "scientific_evaluation_executed": False,
+            "training": False,
+            "cuda": False,
+            "governance_mutated": False,
+            "selected_producer_modified": False,
+            "new_amplitude_family": False,
+            "heldout_dependent_choice": False,
+            "phase_donor_dimension_mixing": False,
+        },
+        "governance": {
+            "state_mutation": False,
+            "state_sha256_before": authorities["current"]["governance"]["sha256"],
+            "state_sha256_must_remain_unchanged": True,
+            "selected_producer_confirmation": "PASSED",
+            "independent_phase_inheritance": "NOT_SUPPORTED_0_OF_5",
+            "sealed_consumed": True,
+            "sealed_reused": False,
+            "training_authorized": False,
+            "formal_promotion": False,
+            "generation_readiness": "not_ready",
+            "next_action": NEXT_ACTION,
+        },
+        "contract_totality": dict(totality),
+        "next_action": NEXT_ACTION,
+    }
+
+
+def execute(repo_root: Path, output_dir: Path = OUTPUT_DIR) -> dict[str, Any]:
+    _require(not output_dir.exists(), f"refusing to reuse write-once contract output: {output_dir}")
+    git = _git_state(repo_root)
+    _require(git["branch"] == EXPECTED_BRANCH, "current branch is not the authority branch")
+    _require(git["head"] == EXPECTED_STARTING_HEAD, "current committed HEAD is not the frozen authority base")
+    authorities = _validate_authorities(repo_root)
+    totality = _contract_totality_checks()
+    payload = _build_payload(repo_root, git, authorities, totality)
+    governance_before = file_sha256(repo_root / GOVERNANCE_STATE_PATH)
+    _require(governance_before == authorities["current"]["governance"]["sha256"], "governance changed during preflight")
+
+    output_dir.parent.mkdir(parents=True, exist_ok=True)
+    temporary = Path(tempfile.mkdtemp(prefix=f".{output_dir.name}.", dir=output_dir.parent))
+    try:
+        atomic_write_new_json(
+            temporary / CONTRACT_NAME,
+            payload,
+            artifact_kind="N3 minimal q-conditioned phase-coupling contract",
+        )
+        if output_dir.exists():
+            raise FileExistsError(f"contract output appeared during definition: {output_dir}")
+        os.replace(temporary, output_dir)
+    finally:
+        if temporary.exists():
+            shutil.rmtree(temporary)
+
+    git_after = _git_state(repo_root)
+    governance_after = file_sha256(repo_root / GOVERNANCE_STATE_PATH)
+    _require(git_after["branch"] == git["branch"] and git_after["head"] == git["head"], "branch or committed HEAD changed")
+    _require(governance_after == governance_before, "governance changed during definition")
+    contract_path = output_dir / CONTRACT_NAME
+    return {
+        "status": "valid_completed",
+        "result": "READY",
+        "classification": READY_CLASSIFICATION,
+        "semantic_authority": "N3_MINIMAL_Q_CONDITIONED_PHASE_COUPLING_MODEL_CONTRACT_V1",
+        "candidate_id": CANDIDATE_ID,
+        "K": K,
+        "contract": _relative(repo_root, contract_path),
+        "contract_sha256": file_sha256(contract_path),
+        "previous_control": "FULL_COMPLEX_ROW_EMPIRICAL_BOOTSTRAP_CONTROL=5/5 reused",
+        "q_values_loaded": False,
+        "complex_ols_values_loaded": False,
+        "sealed_values_loaded": False,
+        "scientific_evaluation_executed": False,
+        "training_authorized": False,
+        "formal_promotion": False,
+        "generation_readiness": "not_ready",
+        "governance_unchanged": True,
+        "next_action": NEXT_ACTION,
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--repo-root", type=Path, default=Path(__file__).resolve().parents[2])
+    parser.add_argument("--output-dir", type=Path, default=OUTPUT_DIR)
+    args = parser.parse_args()
+    repo_root = args.repo_root.resolve()
+    output_dir = args.output_dir if args.output_dir.is_absolute() else repo_root / args.output_dir
+    try:
+        print(json.dumps(execute(repo_root, output_dir), indent=2, sort_keys=True))
+        return 0
+    except (InvalidHarnessError, prior_definition.InvalidHarnessError) as exc:
+        print(json.dumps({"status": "invalid", "result": "INVALID_HARNESS", "reason": str(exc)}, indent=2, sort_keys=True))
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

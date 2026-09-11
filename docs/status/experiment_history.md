@@ -1,5 +1,357 @@
 # D2NN 实验与验收历史
 
+## 2026-09-10：LightGen 2D V2 TRAIN source authority resolution
+
+按 `RESOLVE_LIGHTGEN_2D_SEMANTIC_COMPLEX_OLS_V2_TRAINING_SOURCE_AUTHORITY_V1` 完成一次只读 provenance
+resolution。结果为 `VALID_COMPLETED`，classification=`TRAINING_SOURCE_AUTHORITY_CONTRACT_TRANSCRIPTION_ERROR_CONFIRMED`。
+correction authority 为
+[`lightgen_2d_semantic_complex_ols_v2_training_source_authority_correction.v1.json`](../../outputs/20260910_v2/runs/lightgen_2d_semantic_complex_ols_v2_training_source_authority_correction_v1_attempt_01/lightgen_2d_semantic_complex_ols_v2_training_source_authority_correction.v1.json)，
+SHA-256=`fdf03a0a8568db947011549e7869ff11ab972e19c1e01fbc3e7d2e9d850dbeb0`；corrected contract 为
+[`lightgen_2d_semantic_complex_ols_training_contract.v2_corrected.v1.json`](../../outputs/20260910_v2/runs/lightgen_2d_semantic_complex_ols_v2_training_source_authority_correction_v1_attempt_01/lightgen_2d_semantic_complex_ols_training_contract.v2_corrected.v1.json)，
+SHA-256=`aaa3cc409a9a4775be4bf48ef566fce8615f75b72277ca79194d36bd1f56c9cf`。
+
+原 V2 contract（SHA=`b85fce30b70643638c1ea276d78dc58174c90980e420414cafc3f1947155de53`）的
+`data_contract.source_artifacts.training.sha256` 为 63 位 malformed transcription
+`8151bb33f70ee47d9557adaaa667bb878b38cf4015dcac206d1411fb0d0effd`；当前未修改的
+`data/MNIST/processed/training.pt` 完整 SHA-256 为
+`8151bbd33f70ee47d9557adaaa667bb878b38cf4015dcac206d1411fb0d0effd`，大小=`47,521,438` bytes，schema 为
+`60000×28×28 uint8` images + `60000 int64` labels。N3 development source manifest、V1 training
+contract/consumer/preflight/training report/lineage 及 post-training contract 的 exact-source claims
+全部指向该 canonical SHA，repository search 未发现 competing valid digest；因此确认是合同转录错误，
+不是 source file drift。
+
+corrected contract 保持原 schema/version/classification，仅修正 source SHA 并增加 correction lineage；与原合同
+semantic normal form 相同（SHA=`cb90ac1bb33d56b155abf1cb2b01776983af356babbc45ccb8dded9ebd203203`），原合同和 source
+均保留。当前 V2 consumer 仍绑定原合同，必须先 rebind 到 corrected contract，再以新 attempt 重跑
+`PREFLIGHT_LIGHTGEN_2D_SEMANTIC_COMPLEX_OLS_LONG_TRAINING_V2`。本次 CUDA、optimizer steps、scientific
+training、generation 均为 `0`，未读取 protected/test/sealed；`training_authorized=false`、
+`formal_promotion=false`、`generation_readiness=not_ready` 保持。该 correction 不自动授权训练。
+
+## 2026-09-10：LightGen 2D semantic complex-OLS post-training evaluation contract definition
+
+完成 `DEFINE_LIGHTGEN_2D_SEMANTIC_COMPLEX_OLS_POST_TRAINING_EVALUATION_CONTRACT_V1` 的一次且仅一次
+definition-only consumer。结果为 `valid_completed/READY`，classification=`DEFINE_LIGHTGEN_2D_SEMANTIC_COMPLEX_OLS_POST_TRAINING_EVALUATION_CONTRACT_V1_READY`。
+契约 artifact 为
+[`lightgen_2d_semantic_complex_ols_post_training_evaluation_contract.v1.json`](../../outputs/20260910_v2/runs/lightgen_2d_semantic_complex_ols_post_training_evaluation_contract_v1_attempt_01/lightgen_2d_semantic_complex_ols_post_training_evaluation_contract.v1.json)，
+SHA-256=`b750bafd9c3866707a7d492c55c12ee08ab4775da9f6878805317feccb937a1d`。
+
+该契约冻结唯一 step-100 training checkpoint、独立 acceptance-tier `FrozenMNISTEvaluator v1`、raw CMOS 到
+`28×28` 的唯一 project view、4000-row development calibration reserve、1000-row protected panel、完整 complex
+OLS compatibility、direct `P_target` generation、semantic feature distribution、diversity 与 novelty 的执行顺序。
+只定义一个 semantic-distribution HARD primary；不执行 FID/KID/MMD。diversity/novelty 使用固定 B=`999`、alpha=`0.01`
+的 real-null one-sided tests，所有生成样本保留，不做 retry、best-of-N、human selection 或 sample removal。
+
+本次未读取 protected/test 数值，未执行 CUDA、training、scientific generation、heldout evaluation 或任何 scientific
+statistic；sealed 仍不可用且不重用。`training_authorized=false`、`formal_promotion=false`、
+`generation_readiness=not_ready` 保持。下一 bounded action 是取得独立明确授权后执行
+`EXECUTE_LIGHTGEN_2D_SEMANTIC_COMPLEX_OLS_POST_TRAINING_EVALUATION_V1`，不能由本 READY 自动推导。
+
+## 2026-09-10：LightGen 2D semantic complex-OLS post-training evaluation execution
+
+在上述 READY contract 和用户独立明确授权下，完成
+`EXECUTE_LIGHTGEN_2D_SEMANTIC_COMPLEX_OLS_POST_TRAINING_EVALUATION_V1` 一次且仅一次。结果为
+`VALID_COMPLETED`，classification=`LIGHTGEN_2D_SEMANTIC_COMPLEX_OLS_POST_TRAINING_CONTROL_NOT_ESTABLISHED`。
+
+本次使用固定 step-100 training checkpoint，SHA-256=`6cfcc82831b575d83c097648a78b6507b32900e578d00c446d76ccd29130e149`。
+evaluation report 为
+[`lightgen_2d_semantic_complex_ols_post_training_evaluation_report.v1.json`](../../outputs/20260910_v2/runs/lightgen_2d_semantic_complex_ols_post_training_evaluation_v1_attempt_01/lightgen_2d_semantic_complex_ols_post_training_evaluation_report.v1.json)，
+SHA-256=`4048de57a35a1899240a231cfbeec70ed5950275b2014fbcb1dfc96c664c4996`；lineage 为
+[`lightgen_2d_semantic_complex_ols_post_training_evaluation_lineage.v1.json`](../../outputs/20260910_v2/runs/lightgen_2d_semantic_complex_ols_post_training_evaluation_v1_attempt_01/lightgen_2d_semantic_complex_ols_post_training_evaluation_lineage.v1.json)，
+SHA-256=`9f1a89bafa8f57f2d6cd4242de2153a2cd5d4c02ac2d2ad82a652680a204f19a`；control artifact 为
+[`lightgen_2d_semantic_complex_ols_post_training_evaluation_control.v1.pt`](../../outputs/20260910_v2/runs/lightgen_2d_semantic_complex_ols_post_training_evaluation_v1_attempt_01/lightgen_2d_semantic_complex_ols_post_training_evaluation_control.v1.pt)，
+SHA-256=`c5b2cf0bd2d98b5eceb4a53881312c1397bda91e68a87def788364d72244a7a3`。
+
+Stage 1 完整执行了 10000-row protected real-path positive control：clean calibration macro recall=`0.987`，
+冻结 threshold=`0.937`，protected real-path macro recall=`0.16177222311773765`，control=`FAIL`。
+因此 latent compatibility、direct `P_target` generation、semantic distribution、diversity 和 novelty
+均未执行，最终仅能归类为 control not established；没有 retraining、optimizer/backward、checkpoint search、
+threshold tuning、generation acceptance 或 sealed load/reuse。`training_authorized=false`、
+`formal_promotion=false`、`generation_readiness=not_ready` 保持。
+
+下一步是围绕 protected real-path control failure 的 bounded diagnosis；不得自动重跑评估、重训、调阈值或打开 sealed。
+
+## 2026-09-10：LightGen 2D real-path control failure diagnosis
+
+在 post-training control `LIGHTGEN_2D_SEMANTIC_COMPLEX_OLS_POST_TRAINING_CONTROL_NOT_ESTABLISHED` 后，按用户独立明确授权完成
+`DIAGNOSE_LIGHTGEN_2D_SEMANTIC_REAL_PATH_CONTROL_FAILURE_V1` 一次且仅一次。结果为 `VALID_COMPLETED`，primary diagnosis 为
+`REAL_PATH_FAILURE_ENCODER_OLS_SEMANTIC_COLLAPSE_SUPPORTED`。
+
+本次严格绑定 step-100 checkpoint SHA-256=`6cfcc82831b575d83c097648a78b6507b32900e578d00c446d76ccd29130e149`、training report
+SHA-256=`f3f5fa876567513ec70cac67a6888aad6b55d140299992a535d0f9656bb4aa06`、post-training evaluation report/lineage/control
+SHA-256 分别为 `4048de57a35a1899240a231cfbeec70ed5950275b2014fbcb1dfc96c664c4996`、
+`9f1a89bafa8f57f2d6cd4242de2153a2cd5d4c02ac2d2ad82a652680a204f19a`、
+`c5b2cf0bd2d98b5eceb4a53881312c1397bda91e68a87def788364d72244a7a3`。
+
+诊断使用固定非 protected 角色：train balanced 100/class、checkpoint-selection development 100/class、完整 calibration
+400/class；三者均使用同一 aligned image path、同一 frozen evaluator preprocessing。原始图像 macro recall 为
+`train=0.998`、`development=0.990`、`calibration=0.987`；real-path macro recall 为
+`train=0.158`、`development=0.170`、`calibration=0.16775`。因此 evaluator/domain-interface mismatch 与
+train/dev/protected shift 均不支持为主要解释。
+
+real-path raw CMOS 仍保留非零空间方差和样本间距离；三角色 MSE 均约 `0.071`，不是 exact numerical/image collapse。
+calibration complex OLS mean power=`2.2122145782e-10`，冻结 prior mean power=`1.0001851933e-6`，ratio=`2.2118049667e-4`；
+gauge-invariant effective rank=`16.4476411`，between/within class-centroid distance ratio=`0.9402647`，
+full-complex gauge-invariant MMD=`0.0512237255`。该模式支持 encoder/complex-OLS semantic collapse。
+
+same-`W_OLS`/generator structural replay 在允许 batch 上 post-OLS 输入、generator output 与 raw CMOS 的最大绝对误差均为 `0`，
+排除 encoded/direct route divergence；generator-side decode 仍因禁止 alternate latent/probe 而 unresolved。训练轨迹中
+`L_image` 从 `0.0863005221` 到 `0.0671276972`、`L_latent` 从 `0.0949956179` 到 `0.0888864994`，
+`L_optical=0`；step-100 相比 step-50 的 development image/total loss 均下降。无 optimizer，三角色无更新 backward 诊断的
+encoder image-vs-latent gradient cosine=`0.0349641`，latent/image weighted norm ratio=`0.0257622`，不支持 active latent
+regularization conflict；checkpoint objective mismatch 与 insufficient bounded progress 保持 unresolved。
+
+diagnosis report 为
+[`lightgen_2d_semantic_real_path_control_failure_diagnosis_report.v1.json`](../../outputs/20260910_v2/runs/lightgen_2d_semantic_real_path_control_failure_diagnosis_v1_attempt_01/lightgen_2d_semantic_real_path_control_failure_diagnosis_report.v1.json)，
+SHA-256=`8b98dbcb2955417ca4dacd2298144bfdc006fd697dc1dc36eb49ff63dadcda86`；lineage 为
+[`lightgen_2d_semantic_real_path_control_failure_diagnosis_lineage.v1.json`](../../outputs/20260910_v2/runs/lightgen_2d_semantic_real_path_control_failure_diagnosis_v1_attempt_01/lightgen_2d_semantic_real_path_control_failure_diagnosis_lineage.v1.json)，
+SHA-256=`ce3f8a5101a300a764d4d005f9ca2eecfccc4db3c4a1a2dd1ca3860e511ba914`。
+
+本次未重新 forward protected/test，未执行 retraining、optimizer step、checkpoint replacement、prior-to-generator
+generation、semantic generation evaluation、FID/KID、evaluator/threshold tuning 或 sealed load/reuse；protected value load count=`0`。
+`training_authorized=false`、`formal_promotion=false`、`generation_readiness=not_ready` 保持。下一 bounded action 只能是另行定义
+一个针对 encoder/complex-OLS semantic collapse 的修正 training contract，不自动训练。
+
+## 2026-09-10：LightGen 2D semantic complex-OLS training contract definition
+
+在 aligned input/OLS runtime 已 IMPLEMENTED 且结构性验证通过后，完成
+`DEFINE_LIGHTGEN_2D_SEMANTIC_COMPLEX_OLS_TRAINING_CONTRACT_V1` 的一次且仅一次
+definition-only consumer。结果为 `valid_completed/READY`，classification 为
+`DEFINE_LIGHTGEN_2D_SEMANTIC_COMPLEX_OLS_TRAINING_CONTRACT_V1_READY`。契约 artifact 为
+[`lightgen_2d_semantic_complex_ols_training_contract.v1.json`](../../outputs/20260910_v2/runs/lightgen_2d_semantic_complex_ols_training_contract_v1_attempt_01/lightgen_2d_semantic_complex_ols_training_contract.v1.json)，
+SHA-256=`7d384fe9a73acc8f883badc4973926ab0e58bfce737067d4764deef10ee1d16f`。
+
+契约冻结的 future training 边界为：完整 `z∈C^100` 是唯一权威 latent；real encoded OLS 与 generated
+OLS 共用同一 `W_OLS` 和同一 generator；modal projection、coefficient-space `T=I_100` 与 modal
+re-emission 均为强制边界；仅 aligned runtime 的 `encoder.phase` 和 `generator.phase` 可训练。目标分布
+为 native complex isotropic Gaussian，latent loss 为固定 bandwidth 的 full-complex gauge-invariant MMD，
+图像项为 raw CMOS intensity MSE；q、q→phase reconstruction、历史 phase producer、电子 decoder 和
+sealed 数值不进入 aligned mainline。
+
+本次仅定义合同，未执行 CUDA、optimizer、backward、training、heldout scientific evaluation、generation
+acceptance 或 promotion。`training_authorized=false`、`formal_promotion=false`、
+`generation_readiness=not_ready` 保持；下一 bounded action 是实现/验证 training consumer，不能从 READY
+自动推导训练授权。
+
+## 2026-09-10：LightGen 2D semantic complex-OLS training consumer implementation/preflight
+
+按上述 hash-bound training contract 完成
+`IMPLEMENT_LIGHTGEN_2D_SEMANTIC_COMPLEX_OLS_TRAINING_CONSUMER_V1`，结果为
+`valid_completed/IMPLEMENTED`，classification=`LIGHTGEN_2D_SEMANTIC_COMPLEX_OLS_TRAINING_CONSUMER_V1_IMPLEMENTED`。
+consumer 为
+[`lightgen_2d_semantic_complex_ols_training.py`](../../src/ldm_project/v2/application/research/lightgen_2d_semantic_complex_ols_training.py)，
+preflight 入口为
+[`execute_lightgen_2d_semantic_complex_ols_training_v1.py`](../../scripts/research/execute_lightgen_2d_semantic_complex_ols_training_v1.py)。
+
+preflight-input artifact 为
+[`lightgen_2d_semantic_complex_ols_training_preflight_input.v1.json`](../../outputs/20260910_v2/runs/lightgen_2d_semantic_complex_ols_training_consumer_v1_attempt_01/lightgen_2d_semantic_complex_ols_training_preflight_input.v1.json)，
+SHA-256=`c16dc2b5a1ed1c8a4f0ba0fc2e5a3e90154620e3f053d54d79342cc434e85aa7`。CPU engineering smoke 用真实
+train-role 数据完成 3 个更新；只允许 `encoder.phase`、`generator.phase`，共 40,000 个 float32 参数；
+modal projection 与 `W_OLS` 均通过实际 autograd path 检查；full-complex prior、固定 gauge-invariant MMD、
+raw CMOS MSE、固定 total-loss decomposition、Adam 参数 manifest、梯度/冻结状态防火墙均通过。
+
+smoke checkpoint 为
+`lightgen_2d_semantic_complex_ols_training_smoke_checkpoint.v1.pt`，SHA-256=
+`6df6254196e24dec1cd7f902ca178de07efa022634c380326765a29250bce7be`，明确为 smoke-only 且
+`accepted_training_checkpoint=false`。safe reload 后参数、optimizer、CPU/prior RNG、sampler continuation
+和 next-step 结果均一致。本次未执行 100-step future training、CUDA long compute、heldout evaluation、
+generation acceptance、formal promotion 或 sealed reuse；下一 bounded action 是
+`PREFLIGHT_LIGHTGEN_2D_SEMANTIC_COMPLEX_OLS_LONG_TRAINING_V1`，不得自动开始训练。
+
+## 2026-09-10：LightGen 2D semantic complex-OLS long-training preflight
+
+按 READY training contract 完成一次且仅一次
+`PREFLIGHT_LIGHTGEN_2D_SEMANTIC_COMPLEX_OLS_LONG_TRAINING_V1`。结果为
+`valid_completed/AUTHORIZABLE`，classification=`LIGHTGEN_2D_SEMANTIC_COMPLEX_OLS_LONG_TRAINING_AUTHORIZABLE`。
+唯一报告为
+[`lightgen_2d_semantic_complex_ols_long_training_preflight.v1.json`](../../outputs/20260910_v2/runs/lightgen_2d_semantic_complex_ols_long_training_preflight_v1_attempt_01/lightgen_2d_semantic_complex_ols_long_training_preflight.v1.json)，
+SHA-256=`365573edb0a3b4525bb571e31241bba6ba4243b9b2a3f591a8d1aea722c48d8a`。它 hash-bind 训练合同
+SHA=`7d384fe9a73acc8f883badc4973926ab0e58bfce737067d4764deef10ee1d16f`、consumer input SHA=
+`c16dc2b5a1ed1c8a4f0ba0fc2e5a3e90154620e3f053d54d79342cc434e85aa7` 及当前 consumer、entrypoint、aligned runtime
+身份；未修改 machine governance。
+
+preflight 在目标单 GPU `NVIDIA GeForce RTX 3060 Laptop GPU`（compute capability=`8.6`，VRAM=`6441926656` bytes）
+上使用 production grid=`2048`、exact logical batch=`10`，完成 3 个真实 CUDA forward/loss/backward/optimizer-step
+updates。PyTorch=`2.5.1`、CUDA build=`12.1`，NVRTC、complex exp/FFT/polar backend probes 均通过；所有 loss、
+complex prior、raw CMOS、梯度与参数 finite，modal projection 与 `W_OLS` active，仅 `encoder.phase`/`generator.phase`
+更新，冻结状态保持不变。forward peak allocated=`2753601536` bytes，backward peak allocated=`2461667840` bytes，
+minimum observed free=`2436896624` bytes。
+
+target-device smoke checkpoint 为
+[`lightgen_2d_semantic_complex_ols_long_training_preflight_smoke_checkpoint.v1.pt`](../../outputs/20260910_v2/runs/lightgen_2d_semantic_complex_ols_long_training_preflight_v1_attempt_01/lightgen_2d_semantic_complex_ols_long_training_preflight_smoke_checkpoint.v1.pt)，
+SHA-256=`2ad10fd883cd4044627a7ae0d4ddc42754e3510e9dc13c78edfcb2ef6487d8aa`，明确
+`smoke_only=true`、`accepted_training_checkpoint=false`。save→reload→continuation 恢复 parameter、optimizer、
+CPU/CUDA/prior RNG、sampler、contract/runtime identity；next-step loss/parameter diff=`0.0`。non-identity coefficient
+transport negative control 按预期被 `T=I_100` firewall 拒绝。
+
+仅使用 local MNIST train split 与 development selection（500/class、selection 1000、seed=`4321`）；official test
+split 未读取，heldout/sealed 均未读取/复用。该结果不是训练结果、generation acceptance 或 promotion，当前 flags 仍为
+`training_authorized=false`、`formal_promotion=false`、`generation_readiness=not_ready`。下一 bounded action 是在
+取得独立训练授权后执行 `EXECUTE_LIGHTGEN_2D_SEMANTIC_COMPLEX_OLS_TRAINING_V1`，不得从 `AUTHORIZABLE` 自动推导授权。
+
+## 2026-09-10：LightGen 2D semantic complex-OLS formal training execution
+
+按用户对唯一 scope `EXECUTE_LIGHTGEN_2D_SEMANTIC_COMPLEX_OLS_TRAINING_V1` 的明确授权，使用冻结 training
+contract、已通过的 target-device preflight 与当前 production consumer，完成一次且仅一次正式 100-step
+CUDA training。结果为 `VALID_COMPLETED`，status=`valid_completed`，classification=
+`LIGHTGEN_2D_SEMANTIC_COMPLEX_OLS_TRAINING_V1_VALID_COMPLETED`；100/100 updates 完成，运行约 `67.36 s`。
+
+正式 report 为
+[`lightgen_2d_semantic_complex_ols_training_report.v1.json`](../../outputs/20260910_v2/runs/lightgen_2d_semantic_complex_ols_training_v1_attempt_01/lightgen_2d_semantic_complex_ols_training_report.v1.json)，
+SHA-256=`f3f5fa876567513ec70cac67a6888aad6b55d140299992a535d0f9656bb4aa06`；lineage 为
+[`lightgen_2d_semantic_complex_ols_training_lineage.v1.json`](../../outputs/20260910_v2/runs/lightgen_2d_semantic_complex_ols_training_v1_attempt_01/lightgen_2d_semantic_complex_ols_training_lineage.v1.json)，
+SHA-256=`9c6eacb921b59788062236d9ba8354529f97bcf86de23813ba594e0fb7582c12`。step-50 checkpoint 为
+[`lightgen_2d_semantic_complex_ols_training_checkpoint_step_050.v1.pt`](../../outputs/20260910_v2/runs/lightgen_2d_semantic_complex_ols_training_v1_attempt_01/lightgen_2d_semantic_complex_ols_training_checkpoint_step_050.v1.pt)，
+SHA-256=`c467749eba3199fa4bc3815c76119a68571cac20167ea05cc735b1b04b1c23ff`；step-100 checkpoint 为
+[`lightgen_2d_semantic_complex_ols_training_checkpoint_step_100.v1.pt`](../../outputs/20260910_v2/runs/lightgen_2d_semantic_complex_ols_training_v1_attempt_01/lightgen_2d_semantic_complex_ols_training_checkpoint_step_100.v1.pt)，
+SHA-256=`6cfcc82831b575d83c097648a78b6507b32900e578d00c446d76ccd29130e149`。两者均 safe-load 验证通过，
+step-100 按固定 dev selection 规则被选为 training checkpoint，尚未接受为 formal/generation checkpoint。
+
+目标设备为 `NVIDIA GeForce RTX 3060 Laptop GPU`、compute capability=`8.6`，production grid=`2048`、
+exact logical batch=`10`；只更新 `encoder.phase`、`generator.phase`，共 `40,000` 个参数。full complex
+`z∈C^100`、mandatory modal projection、`T=I_100`、`W_OLS`、full-complex gauge-invariant MMD 与 raw CMOS
+MSE 均按冻结合同生效；所有 trace finite，冻结状态未变。初始 train `L_total=0.18129613995552063`，
+最终 `0.15601420402526855`；step-50 dev `0.12443317954406738`，step-100 dev
+`0.12301895964050293`，因此选择 step 100。
+
+数据仅使用 frozen train/dev roles与 development selection；official test、heldout、sealed 均未读取或复用。
+本轮未执行 post-training evaluation、scientific generation、formal promotion 或 generation-readiness promotion；
+当前 flags 仍为 `formal_promotion=false`、`generation_readiness=not_ready`，训练合同定义 artifact 的
+`training_authorized=false` 未被改写。下一 bounded action 为定义
+`DEFINE_LIGHTGEN_2D_SEMANTIC_COMPLEX_OLS_POST_TRAINING_EVALUATION_CONTRACT_V1`，不得自动评估或生成。
+
+## 2026-09-10：LightGen 2D semantic-generation input/OLS alignment runtime implementation
+
+按 LightGen 2D input/OLS alignment contract（SHA=`6f3859d87e9e3f38d141943ae3fac23607cc446fe2c58b99c9b5b4c379a3a72e`）
+完成 `IMPLEMENT_LIGHTGEN_2D_SEMANTIC_GENERATION_INPUT_OLS_ALIGNMENT_RUNTIME_V1`，结果为
+`valid_completed/IMPLEMENTED`，classification=`LIGHTGEN_2D_SEMANTIC_GENERATION_INPUT_OLS_ALIGNMENT_RUNTIME_V1_IMPLEMENTED`。
+runtime 为
+[`lightgen_2d_semantic_generation_input_ols_alignment.py`](../../src/ldm_project/v2/application/research/lightgen_2d_semantic_generation_input_ols_alignment.py)，
+SHA=`d01a234f6486a99c7ac2307b1b4021ed2ffccb53812a0a858675617a9023c3ce`；OLS primitive 的最小因子化位于
+[`fiber_operator.py`](../../src/ldm_project/v2/optics/fiber_operator.py)，SHA=`6e941d6610c282aeb9f54cb39ea200c868f7b0eb14c3bc41b692ee505f4cf295`。
+
+runtime 冻结 `forward_from_image(X)` 与 `forward_from_ols(z)` 两条路径：前者经显式 image→amplitude SLM→
+illuminated complex field→coherent relay→2-layer encoder→single-mode projection 得到 `z_real∈C^100`；
+后者只接收 canonical complex OLS。两条路径都经同一个 `w_ols`，在系数空间应用 `T=I_100`，通过单模 output
+bank 重发射到同一个 generator entrance plane，再进入同一个 2-layer phase-only generator 和 raw CMOS
+`|E_out|²` 输出。没有 label+8D、q-only、phase repair、电子 decoder 或 whole-field identity bypass。
+
+结构性验证消费者为
+[`verify_lightgen_2d_semantic_generation_input_ols_alignment_runtime_v1.py`](../../scripts/research/verify_lightgen_2d_semantic_generation_input_ols_alignment_runtime_v1.py)，
+报告为
+[`lightgen_2d_semantic_generation_input_ols_alignment_runtime_report.v1.json`](../../outputs/20260910_v2/runs/lightgen_2d_semantic_generation_input_ols_alignment_runtime_v1_attempt_02/lightgen_2d_semantic_generation_input_ols_alignment_runtime_report.v1.json)，
+SHA=`e26d24654e1d9c8707e9a6b93b5c5ee66f1172fb0ae7cd686d24ea03c9263af4`。新测试 7/7，相关回归 30/30，Ruff、
+py_compile 与 `git diff --check` 均通过；report 的 CPU 128-grid 仅为非科学 structural smoke，生产默认仍为 2048。
+未执行 CUDA、training、heldout scientific generation、generation acceptance、FID/classifier、formal promotion 或
+sealed reuse；`training_authorized=false`、`formal_promotion=false`、`generation_readiness=not_ready` 保持。下一步
+为 `DEFINE_LIGHTGEN_2D_SEMANTIC_COMPLEX_OLS_TRAINING_CONTRACT_V1`，不自动训练。
+
+## 2026-09-10：LightGen 2D semantic-generation input/OLS alignment contract definition
+
+在最新 N3 higher-expressivity q-conditioned complex-phasor candidate=`0/5`、full-complex control=`5/5`
+之后，按 bounded architectural decision 采用 `LIGHTGEN_INPUT_OLS_ALIGNMENT_FIRST`，完成一次且仅一次
+definition-only consumer。契约为
+`outputs/20260910_v2/runs/lightgen_2d_semantic_generation_input_ols_alignment_contract_v1_attempt_01/`
+`lightgen_2d_semantic_generation_input_ols_alignment_contract.v1.json`，SHA-256=
+`6f3859d87e9e3f38d141943ae3fac23607cc446fe2c58b99c9b5b4c379a3a72e`，status/result=`valid_completed/READY`，
+classification=`DEFINE_LIGHTGEN_2D_SEMANTIC_GENERATION_INPUT_OLS_ALIGNMENT_CONTRACT_V1_READY`。
+
+契约只覆盖 2D semantic image generation，冻结输入链
+`X → explicit amplitude SLM mapping → illuminated complex field → coherent input relay → optical encoder →
+z_real∈C^100 → W_OLS(z_real) → photonic generator → raw CMOS intensity`，以及同一接口的生成链
+`z_generated∈C^100 → W_OLS(z_generated) → same photonic generator → raw CMOS intensity`。权威 OLS 状态为
+完整复数 `z∈C^100`，端口固定为 row-major `j=10*r+c` 的 10×10 single-mode interface；投影为
+`z_j=<E_encoder,u_j>`，传输为系数空间 `T=I_100`，重发为 `W_OLS(z)=sum_j(Tz)_j v_j`。modal projection、
+coefficient transmission 与 modal re-emission 均为 mandatory；整幅场 identity bypass 不合规。
+
+纸面事实、论文未披露细节和项目决策已在契约中分列。`sqrt(image)`、scaled LP01 参数、row-major port
+order、`T=I_100` 与当前 2+2 diffractive baseline 均明确为 `PROJECT_DECISION`，不是 Chen fact；芯径、NA、
+MFD、端口间距、串扰、插损、100-port complex transfer matrix、精确数字映射和完整 BOGT 实现继续为
+`CHEN_UNRESOLVED`。现有 `FiberArrayOLS`/`FiberModeBankV2`、`CoherentImagingRelay`、PlaneSpec/ComplexField
+和 phase-only stack 仅作为可复用实现骨架，N3 amplitude/phase producer 结果保留为历史基线，不进入对齐主线。
+
+本次没有 CUDA、training、heldout scientific evaluation、generation acceptance、formal promotion 或 sealed
+reuse；`training_authorized=false`、`formal_promotion=false`、`generation_readiness=not_ready` 保持。下一步
+是 `IMPLEMENT_LIGHTGEN_2D_SEMANTIC_GENERATION_INPUT_OLS_ALIGNMENT_RUNTIME_V1`，仅进行输入 + complex-OLS
+runtime 的实现/验证，不自动授权训练。
+
+## 2026-09-10：N3 higher-expressivity q-conditioned complex-phasor residual-bootstrap execution
+
+在 higher-expressivity q-conditioned phase contract（SHA=`8f19c3dbb6b9bc17560276e7f1cf61004fd4b0583a3c8a15792b4a86fa05c29f`）下，按唯一授权动作
+`EXECUTE_N3_Q_CONDITIONED_COMPLEX_PHASOR_LINEAR_RESIDUAL_BOOTSTRAP_V1` 完成一次且仅一次 CPU-only
+development execution。report 为
+`outputs/20260910_v2/runs/n3_q_conditioned_complex_phasor_linear_residual_bootstrap_v1_attempt_01/n3_q_conditioned_complex_phasor_linear_residual_bootstrap_report.v1.json`，
+SHA=`ae60752a27d3fb655b9354ace5591cb7f092db2aebb6206774853fa82cd025fe`；lineage 为
+`outputs/20260910_v2/runs/n3_q_conditioned_complex_phasor_linear_residual_bootstrap_v1_attempt_01/n3_q_conditioned_complex_phasor_linear_residual_bootstrap_lineage.v1.json`，
+SHA=`503c5afa463403d237768e5eee1c5e130939394486e1c8348716ef553041a9de`；candidate artifact SHA=`e944a96e4f751db35ec84440b779cb7a8825145a78ea725703f839e3c4f9c587`。
+
+唯一 candidate `Q_CONDITIONED_COMPLEX_PHASOR_LINEAR_RESIDUAL_BOOTSTRAP_V1` 固定使用同折 fitting-only
+Gaussianized-q、101 列 `[1,x]` complex-phasor OLS、`rcond=1e-12`、完整 100-D complex residual vector
+with replacement、unit projection epsilon=`1e-12` 与既有 gauge。五折 phase fit 均 rank=`101/101`，condition
+number 约为 `22.28–22.62`，projection invalid coordinates=`0`；但冻结 `energy_distance` primary、
+`B=999`、per-fold alpha=`0.01`、strict `5/5` 下，五折均 exceedance=`0`、`p_MC=0.001`，candidate=`0/5`，
+分类为 `N3_COMPLEX_OLS_Q_CONDITIONED_COMPLEX_PHASOR_LINEAR_RESIDUAL_NOT_SUPPORTED`：
+
+| fold | T_candidate | exceedance | p_MC | pass |
+| ---: | ---: | ---: | ---: | :--- |
+| 0 | 0.2222192429 | 0 | 0.001 | false |
+| 1 | 0.2399564571 | 0 | 0.001 | false |
+| 2 | 0.2419473636 | 0 | 0.001 | false |
+| 3 | 0.2473423824 | 0 | 0.001 | false |
+| 4 | 0.2703857960 | 0 | 0.001 | false |
+
+历史 `FULL_COMPLEX_ROW_EMPIRICAL_BOOTSTRAP_CONTROL=5/5` 作为已验证 authority 复用、未重跑；sealed
+confirmation 已消费但本次 `values_loaded=false`、`reused=false`。该结果只拒绝当前固定线性 complex-phasor
+conditional mean + complete-vector residual 假设，不推出所有 conditional phase models、LightGen 输入对齐、
+论文机制或物理 generation 失败。全程未执行 CUDA、optimizer、backward、training、generator、image/semantic
+evaluation、optical forward 或 formal promotion；`training_authorized=false`、`formal_promotion=false`、
+`generation_readiness=not_ready` 与 machine governance 保持。下一规划动作为
+`PLAN_BOUNDED_ARCHITECTURAL_DECISION_DIRECT_COMPLEX_JOINT_VS_LIGHTGEN_INPUT_ALIGNMENT`，不得自动开启另一 phase family。
+
+## 2026-09-10：N3 higher-expressivity q-conditioned complex-phasor contract definition
+
+在上一轮 q-conditioned nearest phase-donor candidate `0/5`、full-complex control `5/5` 后，按唯一规划动作
+`DEFINE_ONE_HIGHER_EXPRESSIVITY_Q_CONDITIONED_PHASE_MODEL_CONTRACT_V1` 完成一次 definition-only consumer。
+合同为
+`outputs/20260910_v2/runs/n3_q_conditioned_complex_phasor_linear_residual_bootstrap_contract_v1_attempt_01/n3_q_conditioned_complex_phasor_linear_residual_bootstrap_contract.v1.json`，
+SHA=`8f19c3dbb6b9bc17560276e7f1cf61004fd4b0583a3c8a15792b4a86fa05c29f`，status/result=`valid_completed/READY`，
+classification=`DEFINE_ONE_HIGHER_EXPRESSIVITY_Q_CONDITIONED_PHASE_MODEL_CONTRACT_V1_READY`。
+
+唯一冻结 candidate 为 `Q_CONDITIONED_COMPLEX_PHASOR_LINEAR_RESIDUAL_BOOTSTRAP_V1`：输入是同折
+fitting-only Gaussianized-q representation；目标是完整 100-D complex unit phasor，不回归 wrapped
+angles；条件均值是固定 `[1,x]` 的 101 列 multivariate OLS。solver 冻结为 CPU float64 thin SVD
+pseudoinverse，`rcond=1e-12`，rank<101 为 `HARD_STOP`；残差池为完整 100-D complex vectors，
+uniform with replacement 抽取一个；unit projection 的 `abs(V)<=1e-12` 或 nonfinite 为
+`INVALID_HARNESS`，不 retry/fallback。`A(q)=q` 与现有 gauge/evaluator 不变。
+
+本次只绑定既有 authorities，未加载 q/complex/sealed values，未执行 heldout evaluation、CUDA、training、
+generation 或 evaluator redesign。full-complex control `5/5` 只语义等价复用、不重跑；machine governance
+未修改，`training_authorized=false`、`formal_promotion=false`、`generation_readiness=not_ready` 保持。
+下一唯一动作是 `EXECUTE_N3_Q_CONDITIONED_COMPLEX_PHASOR_LINEAR_RESIDUAL_BOOTSTRAP_V1`，不自动开始。
+
+## 2026-09-10：N3 q-conditioned nearest phase-donor execution
+
+在冻结的 q-conditioned phase-coupling contract（SHA=`14f4f3cd5d1046eb648b3410593d778910f8b8d33262528f9e0f12ba94250434`）下，按唯一授权动作
+`EXECUTE_N3_Q_CONDITIONED_NEAREST_PHASE_DONOR_V1` 完成一次 CPU-only development
+execution。report 为
+`outputs/20260910_v2/runs/n3_q_conditioned_nearest_phase_donor_v1_attempt_01/n3_q_conditioned_nearest_phase_donor_report.v1.json`，
+SHA=`d17a472558349b043da07bc51310e7a350263608c059f37361237b1000318bcb`；lineage 为同目录
+`n3_q_conditioned_nearest_phase_donor_lineage.v1.json`，SHA=`735fc652d334b2c4cc2a7b70a57c100d242149a17f72bb9d82a2de5b92f79c67`。
+
+上一轮 `FULL_COMPLEX_ROW_EMPIRICAL_BOOTSTRAP_CONTROL` 的 `5/5` 被验证为语义等价 authority
+并原样复用，未重跑；唯一 candidate `Q_CONDITIONED_NEAREST_PHASE_DONOR_V1` 在五折均为
+calibration-valid，但 `T_candidate` 分别为 `0.1324989195`、`0.1422853270`、`0.1595676023`、
+`0.1545405207`、`0.1536020389`，每折 exceedance=`0`、`p_MC=0.001`，因此 candidate=`0/5`，
+分类为 `N3_COMPLEX_OLS_Q_CONDITIONED_NEAREST_PHASE_DONOR_NOT_SUPPORTED`。
+
+该结果只拒绝当前 K=1、fit-derived Gaussianized-q nearest、完整 relative-phase donor 继承的
+最小联合兼容性假设；不推出所有 conditional phase model、振幅 producer、论文机制或物理 phase
+SLM 失败。donor reuse、unique donor、nearest distance 与其他 complex/q-phase 指标均为
+`DESCRIPTIVE_ONLY`。全程未重用 sealed、未改 selected producer、未执行 CUDA、training、generator、
+image/semantic evaluation、optical forward 或 formal promotion；machine governance 未修改。
+
+下一规划最多定义一个更高表达力的 q-conditioned phase model contract：
+`DEFINE_ONE_HIGHER_EXPRESSIVITY_Q_CONDITIONED_PHASE_MODEL_CONTRACT_V1`；不自动开始。
+
 ## 2026-08-24：H-SCED lifecycle screen closeout与 H-PGC 注册
 
 `H-SCED` 注册为 H-SWAE 之后的新 electronic O0 假设。唯一变量是把每类小批量
@@ -2671,6 +3023,1072 @@ new family、novel OLS、generator、evaluator、CUDA、optimizer、backward 或
 只授权后续原 `RESOLVE_N3_COPULA_FAILURE_MARGINAL_VS_DEPENDENCE_V1` read-only consumer 消费
 这些历史 bank，不自动启动该 consumer。
 
+### H-LOMA-GEN-N3 copula failure attribution contract definition（2026-09-08）
+
+此前 attribution consumer 因没有 frozen attribution contract/spec/consumer 而正确停止；本次
+只执行 `DEFINE_N3_COPULA_FAILURE_ATTRIBUTION_CONTRACT_V1`，定义一个新的 development-only、
+write-once 数学合同。它绑定 frozen producer contract SHA=`3edc9fee006f68eff6ba41205b7e4e6b6cbea3205080c4cb333689e554fba7a4`、
+原 execution report SHA=`78b8e40f21015af8d704a89a83bb6b4043c0208386032b41b1ced4dd9bdeba7d`、
+fold assignment SHA=`90277c16a0d96b895e218264f35a822564b3a46570cab73a1a1e823f063e9e32` 与
+recovered-bank manifest SHA=`4ed6ac4839cdb075f98d07be3162ac560ea29cc260fcbd0e272a342aed04297c`。
+
+合同冻结 `M` 只取原 report 的 aggregate marginal compatibility fields，不以 per-coordinate、
+support 或 tail diagnostic 改写；每个 DATA/MODEL bank 独立 average-rank 后使用
+`u=(rank-0.5)/n`、`Phi^-1(u)`，不 pooling、不 clamp。Primary dependence observer 是
+self-rank Gaussianized data/model banks 上的 biased multivariate energy distance；reference 是
+同 fold 四个 model-model value 的 linear q95（m=4 时为排序值的 `0.15*v[2]+0.85*v[3]`），四个
+data-model comparison 采用 any-fail。Spearman、eigen/spectral、fit-support/tail 与原 marginal
+failure-coordinate overlap 都仅为 descriptive diagnostics；support exceedance 保留 unchanged
+continuous-population 的 finite-sample caveat。fold labels 与三类 conservative aggregate
+classification 已固定，不定义 `DATA_INSTABILITY_DOMINANT`。
+
+Definition consumer 只读取和校验 JSON、manifest 与 byte hash；未加载 recovered q tensor，未计算
+任何 attribution metric，未 fit/sampling/选择 producer family，未消费 sealed confirmation。Machine
+contract 位于 `outputs/20260908_v2/runs/n3_copula_failure_attribution_contract_v1_attempt_01/`
+`n3_copula_failure_attribution_contract.v1.json`，SHA-256 为
+`333b51abe2a6b1f3e96558273d4b6037267aa80678199d3bf6d0c300bb3508df`，classification 为
+`DEFINE_N3_COPULA_FAILURE_ATTRIBUTION_CONTRACT_V1_READY`，claim 为
+`N3_COPULA_FAILURE_ATTRIBUTION_CONTRACT_DEFINED`。这不是 attribution result、producer selection
+或后续训练/OLS/generation 授权；sealed confirmation 仍为
+`RESERVED_NOT_MATERIALIZED`、`consumed=false`。
+
+### H-LOMA-GEN-N3 attribution contract V1 preflight blocked and V2 completeness contract（2026-09-09）
+
+针对上一条 V1 contract 启动的 `EXECUTE_N3_COPULA_FAILURE_ATTRIBUTION_V1` 在读取 recovered q
+tensor 或计算 attribution metric 之前即返回 `BLOCKED`。这不是 scientific attribution failure；
+V1 preflight 判定三个执行分支尚未被定义为可复现的 fail-closed contract：
+
+1. `primary_dependence_observer.negative_or_nonfinite_policy` 只描述了 materially negative，
+   没有固定 `value=2*C-L-R` 的数值阈值、non-finite 行为与 near-zero negative canonicalization。
+2. Spearman diagnostic 没有固定四个 DATA-vs-MODEL model-bank 的 per-bank 输出及 aggregate
+   `S_MODEL` 语义，无法确定 model-bank selection/averaging 是否会改变 descriptive result。
+3. spectral diagnostic 没有固定 eigenvalue median 的索引/公式，也没有固定 per-bank 与
+   aggregate model-bank 输出集合。
+
+随后只执行了 `DEFINE_N3_COPULA_FAILURE_ATTRIBUTION_CONTRACT_V2`。V2 machine contract 位于
+`outputs/20260908_v2/runs/n3_copula_failure_attribution_contract_v2_attempt_01/`
+`n3_copula_failure_attribution_contract.v2.json`，SHA-256 为
+`5c85c4e949e5850de337d776f6782bdc791493b333ab9dd7982269e9f214eb95`，base V1 contract SHA-256 为
+`333b51abe2a6b1f3e96558273d4b6037267aa80678199d3bf6d0c300bb3508df`，classification 为
+`DEFINE_N3_COPULA_FAILURE_ATTRIBUTION_CONTRACT_V2_READY`，claim 为
+`N3_COPULA_FAILURE_ATTRIBUTION_CONTRACT_V2_DEFINED`。
+
+这是 write-once、delta-only 的 completeness revision，V1 primary semantics unchanged。新增
+negative/non-finite policy 在预先选择的 CPU float64 规则中以
+`scale=2*abs(C)+abs(L)+abs(R)`、`tau=1e-12*max(1,scale)` 区分 non-finite numerical invalid、
+`[-tau,0)` 的零归一化与 `<-tau` block；Spearman 固定 4 个 DATA-vs-MODEL 与 8 个
+MODEL-vs-MODEL bank 的确定顺序，`S_MODEL` 仅为四个 DATA-vs-MODEL model matrices 的等权逐元素
+均值；spectral 固定降序 100 个实特征值的 `[49,50]` 算术均值 median，并仅以四个
+DATA-vs-MODEL model banks 构成 model aggregate，8 个 MODEL-vs-MODEL banks 只作 descriptive
+reference。
+
+V2 definition consumer 只读取和校验 JSON、manifest 与 byte hash；未加载 recovered q tensor，未
+计算 attribution metric，未 fit/sampling/选择 producer family，未消费 sealed confirmation。
+V1 artifact、原 producer/report/recovery authority 与 `N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_NOT_SUPPORTED`
+均未改变；本动作不产生 attribution result，不授权 P1、producer selection、novel OLS、generator、
+evaluator、CUDA、optimizer、backward 或 training。sealed confirmation 仍为
+`RESERVED_NOT_MATERIALIZED`、`consumed=false`。
+
+### H-LOMA-GEN-N3 copula failure attribution measurement（2026-09-09）
+
+`EXECUTE_N3_COPULA_FAILURE_ATTRIBUTION_V1` 在 V2 completeness contract 完成后通过完整
+authority、lineage、bank identity 与 numerical preflight，并在既有固定 development pool 上
+完成一次 CPU-only、read-only attribution measurement。V2 contract SHA-256 为
+`5c85c4e949e5850de337d776f6782bdc791493b333ab9dd7982269e9f214eb95`，base V1 SHA-256 为
+`333b51abe2a6b1f3e96558273d4b6037267aa80678199d3bf6d0c300bb3508df`。唯一 report 位于
+`outputs/20260909_v2/runs/n3_copula_failure_attribution_v1_attempt_01/`
+`n3_copula_failure_attribution_report.v1.json`，SHA-256 为
+`e9a834150baa006c619256b8306340e31593e1c9562a37ea46955b34ae86cac8`，Gate result 为
+`VALID_COMPLETED`。
+
+原始 producer report 的 marginal `M` 被原样保留为
+`fold 0/2/3=1`、`fold 1/4=0`。V2 self-rank Gaussianized primary observer 的五个 fold
+均为 `D=1`。各 fold 的 `D_DM`（data-vs-model 四个 replicate）、`D_MM`（model-vs-model
+四个 frozen reference pair）、linear q95 与 label 如下：
+
+- fold 0：`D_DM=[0.0823898713,0.0793619415,0.0794051750,0.0881707733]`，
+  `D_MM=[0.0664338775,0.0680883252,0.0655577808,0.0696028752]`，
+  `q95=0.0693756927`，`MARGINAL_AND_DEPENDENCE`。
+- fold 1：`D_DM=[0.0776015165,0.0759841767,0.0758716956,0.0761610991]`，
+  `D_MM=[0.0650852582,0.0665293547,0.0661004057,0.0687697588]`，
+  `q95=0.0684336982`，`DEPENDENCE_ONLY`。
+- fold 2：`D_DM=[0.0783549426,0.0777060184,0.0761385481,0.0781339918]`，
+  `D_MM=[0.0665500410,0.0678903733,0.0687543951,0.0635112773]`，
+  `q95=0.0686247919`，`MARGINAL_AND_DEPENDENCE`。
+- fold 3：`D_DM=[0.0749432633,0.0758186577,0.0752880896,0.0771581566]`，
+  `D_MM=[0.0662750206,0.0650790647,0.0682764654,0.0648962109]`，
+  `q95=0.0679762487`，`MARGINAL_AND_DEPENDENCE`。
+- fold 4：`D_DM=[0.0818641660,0.0808437172,0.0817228713,0.0794931017]`，
+  `D_MM=[0.0647735924,0.0655164597,0.0669951632,0.0672283360]`，
+  `q95=0.0671933600`，`DEPENDENCE_ONLY`。
+
+所有 fold 的四个 `D_DM` 均超过其 fold-local q95，因此控制 folds 1、4 也不是
+`NO_RESIDUAL_ATTRIBUTED_FAILURE`。V2 fold pattern 为
+`0/2/3=MARGINAL_AND_DEPENDENCE`、`1/4=DEPENDENCE_ONLY`，按冻结的 conservative aggregate
+mapping 得到精确 classification=`N3_COPULA_FAILURE_MARGINAL_AND_DEPENDENCE_MIXED`；这不是
+新的 `DATA_INSTABILITY` 类别，也没有使用 learned weight、selector 或 secondary observer。
+
+V2 descriptive-only 输出同时保留了每 fold 的 support-affected coordinate count/
+original-failure overlap=`37/14、39/6、40/8、35/6、28/5`，Spearman aggregate
+`Delta_S`=`8.4099923407、7.4471961620、7.9368346667、7.7423882594、8.2804204251`，以及
+aggregate MODEL spectral median=`0.2675920709、0.2587905290、0.2683464369、0.2608905828、
+0.2646623294`；这些量不进入 M/D 或 aggregate Gate。
+
+输入只来自 `FROZEN_N3_COPULA_GENERATED_BANKS_V1` 的 60/60 exact historical bank identities、
+冻结五折 assignment 与 R2 amplitude development pool，每 fold fit/held-out=`800/200`。
+报告明确记录固定 1000-row development pool 的 reuse limitation；没有读取或 materialize
+sealed confirmation，未执行 producer fit/sampling、bank rematerialization、P1 execution、
+selector V3、CUDA、optimizer/backward/training、complex OLS 或 generation promotion。
+`N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_NOT_SUPPORTED`、`training_authorized=false`、
+`formal_promotion=false`、`generation_readiness=not_ready` 与 sealed
+`RESERVED_NOT_MATERIALIZED`/`consumed=false` 均保持不变。唯一允许的后续方向是另行授权的
+P1 planning；本 measurement 本身不授权 P1 execution 或 producer selection。
+
+### H-LOMA-GEN-N3 raw-q mixed component-swap diagnostic contract definition（2026-09-09）
+
+在既有 N3 attribution report 完成且 aggregate=`N3_COPULA_FAILURE_MARGINAL_AND_DEPENDENCE_MIXED`
+之后，本次只执行 `DEFINE_N3_COPULA_MIXED_COMPONENT_SWAP_DIAGNOSTIC_CONTRACT_V1`，没有执行
+component swap 或科学测量。Definition consumer 绑定 attribution V2 contract SHA=
+`5c85c4e949e5850de337d776f6782bdc791493b333ab9dd7982269e9f214eb95`、latest attribution report
+SHA=`e9a834150baa006c619256b8306340e31593e1c9562a37ea46955b34ae86cac8`、原始 producer
+contract/report SHA=`3edc9fee006f68eff6ba41205b7e4e6b6cbea3205080c4cb333689e554fba7a4`/
+`78b8e40f21015af8d704a89a83bb6b4043c0208386032b41b1ced4dd9bdeba7d`、recovery manifest SHA=
+`4ed6ac4839cdb075f98d07be3162ac560ea29cc260fcbd0e272a342aed04297c` 与 fold assignment SHA=
+`90277c16a0d96b895e218264f35a822564b3a46570cab73a1a1e823f063e9e32`。sealed confirmation source
+不是 input，仍为 `RESERVED_NOT_MATERIALIZED`/`consumed=false`。
+
+Machine authority 位于
+`outputs/20260909_v2/runs/n3_copula_mixed_component_swap_diagnostic_contract_v1_attempt_01/`
+`n3_copula_mixed_component_swap_diagnostic_contract.v1.json`，SHA-256 为
+`d46c4d8e8d8dbc41f325f2e1d7f001d645479a60deef08e5d514a80bada22763`，classification 为
+`DEFINE_N3_COPULA_MIXED_COMPONENT_SWAP_DIAGNOSTIC_CONTRACT_V1_READY`，claim 为
+`N3_COPULA_MIXED_COMPONENT_SWAP_DIAGNOSTIC_CONTRACT_DEFINED`。
+
+该 contract 固定原始五折 pairing 与每折四个 DATA-vs-MODEL comparisons；MODEL-vs-MODEL
+reference pairs 为 `(0,1),(2,3),(4,5),(6,7)`，q95 只读取原始 producer report 的
+`fold_execution[f].model_vs_model_reference_q95.energy_distance`。ordinal rank 以每个 bank
+每坐标的 numeric ascending、exact tie 的 original row index ascending 构成，明确给出
+`H_MARG[i,j]=sorted_D[r_M(i,j),j]` 与 `H_DEP[i,j]=sorted_M[r_D(i,j),j]`，并冻结
+model/data self-reconstruction、shape/dtype/finite/nonnegative、无 RNG 与 deterministic identity
+failure stop。pair eligibility 绑定原始 report 的四个独立
+`data_vs_model_replicates[r].energy_distance > q95`，不把 fold-level compatibility failure
+推断为四个 pair 全部失败；oracle pair labels、`CONTROL_FOLD`/`FOLD_MIXED` 与五类
+oracle-only aggregate mapping 已定义为 total function。
+
+Definition consumer 只读取 JSON/manifest 与 byte hashes；未加载 q tensor，未计算
+`E_BASE`、`E_MARG`、`E_DEP`，未观察 oracle outcomes，未执行 producer fit/sampling、sealed
+confirmation、CUDA、optimizer/backward/training、complex OLS、N4/N5/N6 或 generation。现有
+attribution report、`N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_NOT_SUPPORTED` 与全局 flags 均未变。
+该 artifact 只是后续独立授权 diagnostic 的 semantic authority，不产生 producer-support
+classification 或任何 training/generation 授权。
+
+### H-LOMA-GEN-N3 raw-q mixed component-swap diagnostic execution（2026-09-09）
+
+`EXECUTE_N3_COPULA_MIXED_COMPONENT_SWAP_DIAGNOSTIC_V1` 在上述 write-once contract 下通过
+完整 static authority、lineage、pairing、bank identity 与 numerical preflight，并完成唯一一次
+CPU-only、development-only、read-only measurement。Component-swap contract SHA-256 为
+`d46c4d8e8d8dbc41f325f2e1d7f001d645479a60deef08e5d514a80bada22763`；唯一 report 位于
+`outputs/20260909_v2/runs/n3_copula_mixed_component_swap_diagnostic_v1_attempt_01/`
+`n3_copula_mixed_component_swap_diagnostic_report.v1.json`，SHA-256 为
+`fc139cb6ec9754babeb9e4ac6c03f08ef339cbdd6148362bb05b44c08daeaecc`，Gate result 为
+`VALID_COMPLETED`。
+
+精确 aggregate classification 为
+`N3_COPULA_PRIMARY_BOTH_ORACLES_SUFFICIENT`。5 个 fold labels 为
+`0/1/2/3=BOTH_ORACLES`、`4=CONTROL_FOLD`；固定 pairing 的 20 个 DATA-vs-MODEL comparisons
+全部发出 pair label，其中原始 primary-failing pair 为 `9` 个且 `9/9=BOTH_ORACLES`，原始
+passing controls 为 `11` 个且 `11/11=BOTH_ORACLES`。Controls 只作 descriptive 输出，
+不进入 original-failure sufficiency aggregate；fold 4 因没有 original primary failure 映射
+为 `CONTROL_FOLD`。每折 q95 直接复用 original producer report 的 frozen fold-local
+`model_vs_model_reference_q95.energy_distance`，没有把 hybrid 值纳入 q95，也没有把
+fold-level compatibility 重新解释成 pair failure。
+
+Ordinal rank 使用 frozen numeric ascending、exact-tie original row index ascending。5/5
+held-out DATA banks 与 60/60 MODEL banks 的 rank-per-coordinate permutation、self-reconstruction、
+tie-order、shape/dtype/finite/nonnegative 与 deterministic/no-RNG identity 均通过；20/20
+重算 `E_BASE` 与 original report 对应字段精确相等。`H_MARG` 与 `H_DEP` 只用于原始 q-space
+ED diagnostic，且每个 hybrid 都标注 `DIAGNOSTIC_ONLY`、`ORACLE_USES_HELDOUT_DATA`、
+`NOT_A_PRODUCER`、`NOT_GENERATION_EVIDENCE`。
+
+这不是 producer-support 或 generation evidence：没有 producer family fit/sampling、bank
+rematerialization、new pairing/rank selection、sealed confirmation、P1 execution、CUDA、
+optimizer/backward/training、complex OLS、N4/N5/N6 或 generation promotion。原始 producer
+classification=`N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_NOT_SUPPORTED`、attribution aggregate
+`N3_COPULA_FAILURE_MARGINAL_AND_DEPENDENCE_MIXED`、`training_authorized=false`、
+`formal_promotion=false`、`generation_readiness=not_ready` 与 sealed
+`RESERVED_NOT_MATERIALIZED`/`consumed=false` 均保持不变。该结果最多说明两个理想化 held-out-data
+component intervention 在冻结 raw primary metric 下均可修复这 9 个历史 primary failures；不
+说明可学习 producer、generalization、copula/tail validity、confirmation、complex OLS support
+或 semantic generation readiness，也不授权 P1 execution。
+
+### H-LOMA-GEN-N3 oracle-guided minimal intervention contract definition（2026-09-09）
+
+在 component-swap oracle diagnostic 得到
+`N3_COPULA_PRIMARY_BOTH_ORACLES_SUFFICIENT` 后，本次只执行
+`DEFINE_N3_ORACLE_GUIDED_MINIMAL_INTERVENTION_CONTRACT_V1`，没有拟合或采样候选。Definition
+consumer 绑定 oracle contract/report SHA=`d46c4d8e8d8dbc41f325f2e1d7f001d645479a60deef08e5d514a80bada22763`/
+`fc139cb6ec9754babeb9e4ac6c03f08ef339cbdd6148362bb05b44c08daeaecc`、attribution V2/report
+SHA=`5c85c4e949e5850de337d776f6782bdc791493b333ab9dd7982269e9f214eb95`/
+`e9a834150baa006c619256b8306340e31593e1c9562a37ea46955b34ae86cac8`、original producer
+contract/report SHA=`3edc9fee006f68eff6ba41205b7e4e6b6cbea3205080c4cb333689e554fba7a4`/
+`78b8e40f21015af8d704a89a83bb6b4043c0208386032b41b1ced4dd9bdeba7d` 与 frozen fold assignment
+SHA=`90277c16a0d96b895e218264f35a822564b3a46570cab73a1a1e823f063e9e32`。sealed confirmation
+不是 input，仍为 `RESERVED_NOT_MATERIALIZED`/`consumed=false`。
+
+Machine authority 位于
+`outputs/20260909_v2/runs/n3_oracle_guided_minimal_intervention_contract_v1_attempt_01/`
+`n3_oracle_guided_minimal_intervention_contract.v1.json`，SHA-256 为
+`d640335c298afed696c64250acd15ed4767e8222a8e962f54fe6cd05c8a0f6b1`，classification 为
+`DEFINE_N3_ORACLE_GUIDED_MINIMAL_INTERVENTION_CONTRACT_V1_READY`，claim 为
+`N3_ORACLE_GUIDED_MINIMAL_INTERVENTION_CONTRACT_DEFINED`。
+
+Contract 只定义两个 development-only competing interventions。Candidate M 使用逐坐标
+`Y_j=log1p(q_j)~Normal(mu_j,sigma_j^2)`，以 fit-only `800` rows、`n-1` standard deviation
+和解析 `Q_M,j(u)=expm1(mu_j+sigma_j Phi^-1(u))` 替换 marginal，保持既有
+Gaussianized-score、analytic-shrinkage 与 `R_shrunk` 完全不变。Candidate D 使用 fixed
+`nu=5` Student-t copula：保持同一 `R_shrunk` 与 empirical plotting-position quantile，
+仅以一个全局径向 scale `W=(e_1^2+...+e_5^2)/5`、`T=G/sqrt(W)` 与明确的 `F_t5` CDF
+替换 Gaussian copula dependence；`nu=5` 不拟合、不扫描。两者均无 optimizer、label
+conditioning、mixture/grid、flow 或 neural density；数值边界均 fail-closed 为
+`INVALID_HARNESS`，没有 clamp/repair。
+
+未来 comparison 已冻结为一次五折 `800/200`、每候选每折 `4` 个 DATA-vs-MODEL 与 `8` 个
+MODEL-vs-MODEL banks，使用 raw q-space primary ED、covariance/norm 与 aggregate marginal
+guardrails；每候选必须以自己的 fold-local MODEL-vs-MODEL q95 作 reference，8 个标量指标和
+全部五折都通过才 development-supported。复杂度 tuple 为 M=`5250`、D=`85050`，双方通过时
+预先选择 M；neither/only-M/only-D 的输出分别为
+`NO_MINIMAL_INTERVENTION_SUPPORTED`/`SELECT_MARGINAL_ONLY`/`SELECT_DEPENDENCE_ONLY`，
+不引入 post-result weighted score。Definition consumer 只读取 JSON/manifest 与 byte hashes，
+未加载 q tensor、未拟合/采样 M/D、未观察新候选结果；oracle/attribution/current copula
+classification 与 `training_authorized=false`、`formal_promotion=false`、
+`generation_readiness=not_ready` 均保持不变。该 artifact 不是支持结果，也不授权后续
+comparison、producer freeze、confirmation、N4/N5/N6、training 或 generation。
+
+### H-LOMA-GEN-N3 oracle-guided minimal intervention comparison execution（2026-09-09）
+
+`EXECUTE_N3_ORACLE_GUIDED_MINIMAL_INTERVENTION_COMPARISON_V1` 先完成了冻结 comparison
+contract（SHA=`d640335c298afed696c64250acd15ed4767e8222a8e962f54fe6cd05c8a0f6b1`）、全部上游
+authority、五折 assignment 与 development-data lineage 的静态校验，然后按 contract 进入
+CPU-only 一次性执行。执行没有调用 CUDA、optimizer、backward、training、sealed confirmation
+或任何 final/confirmation consumer。
+
+该执行在 Candidate M 的 fold `0`、`DATA-vs-MODEL`、replicate `0` 停止。M 的冻结
+`log1p` Gaussian inverse quantile `expm1(mu+sigma*Phi^-1(u))` 在 `200×100` 输出中产生
+`351` 个负值（`q_min=-0.42263710721584474`、`q_max=7.528838701593836`、non-finite=`0`）。
+Contract 要求输出 finite/nonnegative，且明确禁止 clamp、abs、ReLU、softplus、epsilon repair
+和 proposal rejection；因此该事件按 contract 为 `INVALID_HARNESS`，必须在 fold compatibility、
+5/5 support 与 selection 之前停止。Candidate D 未执行，没有 partial candidate result、
+compatible-fold count、scientific comparison classification 或 selected candidate。
+
+唯一 write-once machine report 为
+`outputs/20260909_v2/runs/n3_oracle_guided_minimal_intervention_comparison_v1_attempt_01/`
+`n3_oracle_guided_minimal_intervention_comparison_report.v1.json`，SHA-256 为
+`ff8404e4c6b26b66d9292e728e30031cc5b14b7c1d1396d5713e6a2bdae77c17`，status=`blocked`、
+result=`BLOCKED`、classification=`null`。这是 contract/harness boundary block，不是
+`NO_MINIMAL_INTERVENTION_SUPPORTED`，也不授权修订 contract、定义 V2、final all-development
+fit、sealed confirmation、P1、N4/N5/N6、producer promotion、training 或 generation。全局
+`training_authorized=false`、`formal_promotion=false`、`generation_readiness=not_ready` 与
+sealed `RESERVED_NOT_MATERIALIZED`/`consumed=false` 保持不变。
+
+### H-LOMA-GEN-N3 oracle-guided minimal intervention contract V2 definition（2026-09-09）
+
+针对 V1 Candidate M 在非负输出边界上的 `INVALID_HARNESS`，本次只执行
+`DEFINE_N3_ORACLE_GUIDED_MINIMAL_INTERVENTION_CONTRACT_V2`。V2 绑定并验证 V1 contract
+SHA=`d640335c298afed696c64250acd15ed4767e8222a8e962f54fe6cd05c8a0f6b1` 与 V1 blocked report
+SHA=`ff8404e4c6b26b66d9292e728e30031cc5b14b7c1d1396d5713e6a2bdae77c17`；两者均保持 immutable。
+V2 definition consumer 未读取 development q/outcome、未读取 sealed confirmation、未拟合或
+采样 M2/D，也没有改写 V1 的 `INVALID_HARNESS` 结论。
+
+唯一 V2 machine authority 为
+`outputs/20260909_v2/runs/n3_oracle_guided_minimal_intervention_contract_v2_attempt_01/`
+`n3_oracle_guided_minimal_intervention_contract.v2.json`，SHA-256 为
+`f297a1ffbf84bec84a15525be97ba1a5fd897d32beefd0fe22138bff0012ce2e`，classification 为
+`DEFINE_N3_ORACLE_GUIDED_MINIMAL_INTERVENTION_CONTRACT_V2_READY`，claim 为
+`N3_ORACLE_GUIDED_MINIMAL_INTERVENTION_CONTRACT_V2_DEFINED`。
+
+V2 只将 Candidate M 改为 `M2=ZERO_TRUNCATED_LOG1P_GAUSSIAN_MARGINAL_V1`。它保留 V1 的
+`log1p(q)`、`mu_j`/`sigma_j`、Gaussian copula dependence 与 RNG namespace，并固定
+`alpha_j=Phi(-mu_j/sigma_j)`、`p_j=alpha_j+(1-alpha_j)u_j`、
+`y_j=mu_j+sigma_j Phi^-1(p_j)`、`q_j=expm1(y_j)`。由于 `p_j>=alpha_j`、正态逆 CDF 单调且
+`Phi^-1(alpha_j)=-mu_j/sigma_j`，解析上 `y_j>=0`、`q_j>=0`。数值策略冻结为
+`sigma>0`（V1 registered threshold=`0.0`）、`alpha` finite 且 `<1`、`p` strict interior；
+`q_raw`/`y_raw` 仅在 `1e-12` 零边界内 canonicalize 到 `0.0`，material negative 仍为
+`INVALID_HARNESS`，没有 hidden clamp/rejection/repair。
+
+5 个 deterministic synthetic boundary/support cases（含近 0、近 1、不同 finite mu/sigma、
+q=0 boundary 与重复确定性）通过；semantic diff 与 contract-totality 通过。Candidate D
+保持 byte/semantic-equivalent，comparison 的 fold、`800/200`、`4/8` banks、raw-q ED、8 个
+guardrails、q95、5/5 support 与 selection mapping 未变；复杂度为 M2=`5250`、D=`85050`，
+双方通过时仅按 `5250 < 85050` 选择 M2。该 V2 artifact 仍只是 definition authority，新的
+M2-vs-D development comparison、final all-development fit、sealed confirmation、P1、N4/N5/N6、
+training 与 generation 均未执行且未获授权；全局 flags 保持关闭。
+
+### H-LOMA-GEN-N3 oracle-guided minimal intervention comparison V2 execution（2026-09-09）
+
+随后在 V2 contract 下，按独立授权只执行一次
+`EXECUTE_N3_ORACLE_GUIDED_MINIMAL_INTERVENTION_COMPARISON_V2`。Execution consumer 绑定 V2
+contract SHA=`f297a1ffbf84bec84a15525be97ba1a5fd897d32beefd0fe22138bff0012ce2e`，并同时绑定
+V1 contract SHA=`d640335c298afed696c64250acd15ed4767e8222a8e962f54fe6cd05c8a0f6b1`、V1
+`INVALID_HARNESS` report SHA=`ff8404e4c6b26b66d9292e728e30031cc5b14b7c1d1396d5713e6a2bdae77c17`；
+V1 authority 与 blocked report 均未改写。执行前完成 branch/HEAD、contract semantic diff、
+lineage、fold identity、代码编译与 targeted tests preflight；执行为 CPU-only，未调用 CUDA、
+optimizer、backward、training 或生成路径。
+
+唯一 write-once machine report 位于
+`outputs/20260909_v2/runs/n3_oracle_guided_minimal_intervention_comparison_v2_attempt_01/`
+`n3_oracle_guided_minimal_intervention_comparison_report.v2.json`，SHA-256 为
+`19d4d933f28200010373ed8210f31f343ae40d6474f6bdfb05e7fcb0c5fcf192`，status=`valid_completed`、
+result=`VALID_COMPLETED`。M2 与 D 均完成 fresh fit/sample/evaluate；每候选均生成五折、每折
+4 个 DATA-vs-MODEL 与 8 个 MODEL-vs-MODEL banks，raw-q primary ED、8 个 scalar guardrails、
+q95 与 fold support 均有完整 finite/nonnegative measurement。
+
+M2 五折全部 operationally valid，material negative 总数为 `0`、`1e-12` roundoff
+canonicalization 总数为 `0`，但 `0/5` folds compatible；fold 3 虽 joint guardrails 通过，
+仍有 aggregate marginal guardrails 失败。D 五折全部 operationally valid，fixed `nu=5` 在五折
+均验证通过，只有 fold 3 同时满足 marginal、joint、primary 与全部 8 个 guardrails，故为
+`1/5` compatible。双方均未使用 relative score 或 weighted score；按冻结的 5/5 totality，
+development-supported 为 false，精确 classification=`NO_MINIMAL_INTERVENTION_SUPPORTED`，
+selected candidate=`null`。
+
+该结果只关闭 V2 development comparison，不授权 producer freeze、final all-development fit、
+sealed confirmation、P1、N4/N5/N6、complex OLS、training 或 generation；
+`training_authorized=false`、`formal_promotion=false`、`generation_readiness=not_ready` 与
+sealed `RESERVED_NOT_MATERIALIZED`/`consumed=false` 保持不变。
+
+### H-LOMA-GEN-N3 empirical-fit joint bootstrap ceiling diagnostic（2026-09-09）
+
+在 V2 minimal-intervention comparison 完成后，本次按独立授权只定义并执行一次
+`N3_EMPIRICAL_FIT_JOINT_BOOTSTRAP_CEILING_DIAGNOSTIC_V1`，目的仅是区分
+`PRODUCER_APPROXIMATION_GAP` 与 `FIT_HELDOUT_DISTRIBUTION_STABILITY_LIMITATION`。合同 definition
+consumer 绑定当前 V2 comparison report SHA=`19d4d933f28200010373ed8210f31f343ae40d6474f6bdfb05e7fcb0c5fcf192`、
+原始 empirical-marginal Gaussian-copula report SHA=`78b8e40f21015af8d704a89a83bb6b4043c0208386032b41b1ced4dd9bdeba7d`、
+oracle/attribution authorities 与 frozen fold assignment SHA=`90277c16a0d96b895e218264f35a822564b3a46570cab73a1a1e823f063e9e32`。
+合同为唯一 write-once machine artifact：
+`outputs/20260909_v2/runs/n3_empirical_fit_joint_bootstrap_ceiling_diagnostic_v1_attempt_01/`
+`n3_empirical_fit_joint_bootstrap_ceiling_diagnostic_contract.v1.json`，SHA-256 为
+`fc24ca4c863fded5f23dacc69b13bb16f44224b96d47888d62cb9a3f0f70a38d`。Definition 阶段完成
+contract-totality 校验，未加载 scientific q values。
+
+合同冻结每折 P_EMPIRICAL_FIT 为 exact `800` fitting q rows 上的 uniform empirical distribution；
+每个 model bank 以 CPU `torch.Generator` 依据冻结 seed schedule 有放回抽取 `200` 个完整 q 行，
+不按维度独立抽样、不重分折、不跨折 pooling、不使用 labels condition sampling、不 retry seed、
+不选 best bank。每折固定 `4` 个 DATA-vs-MODEL 与 `8` 个 MODEL-vs-MODEL banks，reference pairs
+为 `(0,1),(2,3),(4,5),(6,7)`。现有 raw-q energy distance、covariance/norm 与 aggregate
+marginal 共 8 个 scalar guardrails 均预先判定为适用；per-coordinate marginal vector 与
+duplicate-row rate 只作 descriptive，不能改变 compatibility 或 classification。
+
+唯一 report 位于
+`outputs/20260909_v2/runs/n3_empirical_fit_joint_bootstrap_ceiling_diagnostic_execution_v1_attempt_01/`
+`n3_empirical_fit_joint_bootstrap_ceiling_diagnostic_report.v1.json`，SHA-256 为
+`c4557d44c8d1b40adeb2f362a4f81f0f28d9feb398428fbb1b13c035b043e12c`，status=`valid_completed`、
+result=`VALID_COMPLETED`，classification=`N3_FIT_HELDOUT_EMPIRICAL_CEILING_NOT_SUPPORTED`。
+五折均 operationally valid；fold 的 primary `DATA-vs-MODEL mean ED / MODEL-vs-MODEL q95`、
+compatibility 与失败 guardrail 如下：
+
+- fold 0：`0.0697057720 / 0.0797288600`，`false`，仅 `marginal_std_l2` 失败；
+- fold 1：`0.0559347173 / 0.0898967185`，`true`；
+- fold 2：`0.0662504869 / 0.0952121402`，`false`，仅 `marginal_energy_distance_max` 失败；
+- fold 3：`0.0689992654 / 0.0913000623`，`true`；
+- fold 4：`0.0583398880 / 0.0802141875`，`true`。
+
+因此 empirical fitting joint resampling 通过 `3/5`，未达到冻结的 `5/5` development criterion。
+FACT 是拟合经验联合分布本身未通过 held-out compatibility；MODEL_ASSUMPTION 是该失败与
+fit-to-heldout distribution stability / finite-development sampling limitation 一致，但不证明
+不存在 population-level producer。duplicate-row rate 保持 descriptive-only；每折 12 个 bank
+的折内平均约为 `0.1071/0.1146/0.1054/0.1129/0.1150`。
+
+该诊断不是 producer、novel generation 或 confirmation evidence，不选择 producer family；未执行
+M3、新 copula、KDE、mixture、vine、flow/neural density、hyperparameter search、final all-1000
+fit、sealed confirmation、complex OLS、N4/N5/N6、CUDA 或 training。原始 minimal-intervention
+classification=`NO_MINIMAL_INTERVENTION_SUPPORTED`、selected candidate=`null` 与全局
+`training_authorized=false`、`formal_promotion=false`、`generation_readiness=not_ready`、sealed
+`RESERVED_NOT_MATERIALIZED`/`consumed=false` 均保持不变。下一规划目标是 development
+sampling/stationarity contract，不升级 producer family。
+
+### H-LOMA-GEN-N3 development-sampling stationarity diagnostic（2026-09-09）
+
+在 empirical-fit ceiling diagnostic 之后，本次按独立 bounded authorization 定义并执行一次
+`N3_DEVELOPMENT_SAMPLING_STATIONARITY_DIAGNOSTIC_V1`，主 Gate 是判断 frozen 1000-row N3
+development bank 与既有 `800/200` five-fold protocol 是否可作为继续 producer-family selection
+的稳定/exchangeable comparison domain。输入只包括 development data authority、frozen fold
+assignment、既有 source-position authority 与 empirical-ceiling report；sealed confirmation 不是
+输入，也未被读取。
+
+Definition-only contract 绑定 development source/partition/firewall manifests、原始五折 assignment
+SHA=`90277c16a0d96b895e218264f35a822564b3a46570cab73a1a1e823f063e9e32`、source-position report
+SHA=`7d64726110eac066d62258dd7d2e50c80304a4e73b200f0c211c34422c117f11` 与 empirical-ceiling report
+SHA=`c4557d44c8d1b40adeb2f362a4f81f0f28d9feb398428fbb1b13c035b043e12c`。唯一 contract 为
+`outputs/20260909_v2/runs/n3_development_sampling_stationarity_diagnostic_v1_attempt_01/`
+`n3_development_sampling_stationarity_diagnostic_contract.v1.json`，SHA-256=
+`05c0c5cb318566d59e4d46da9693cede0cbf9958b69656510b6deaf3e6e18380`，contract-totality=`passed`。
+Contract 冻结三个 raw-q fit-vs-heldout moment：coordinate mean L2、coordinate unbiased-std L2
+与 row-radial mean/std L2；并冻结每次保持十类平衡的 `1000` 个随机五折 references，global
+quantile=`q95`、class-conditioned quantile=`q99`、CPU `torch.Generator` seed schedule。官方折不
+重分、不重选、不 pooling；class composition 差异不进入解释。
+
+第一次 execution attempt 在 scientific classification 前因参考统计的一阶/二阶和相减造成
+浮点负方差，以 `INVALID_HARNESS` blocked；该 report 保持 immutable，未产生科学分类。修复为
+直接对冻结 fit/held-out 子集计算 moment 后，未改变 contract、阈值、seed、partition scheme 或
+classification rule。唯一有效 machine report 为
+`outputs/20260909_v2/runs/n3_development_sampling_stationarity_diagnostic_execution_v1_attempt_02/`
+`n3_development_sampling_stationarity_diagnostic_report.v1.json`，SHA-256=
+`625b4edda39066a4c414337fc0ba7d06d64fda77b6d41d8241806c715ee871a3`，status=`valid_completed`、
+result=`VALID_COMPLETED`，精确 classification=
+`N3_DEVELOPMENT_SAMPLING_STABILITY_LIMITATION_SUPPORTED`。
+
+官方 fold 的 raw-q moment 与随机分区 reference 均相容，因而 `exceptional_folds=0`；fold 0/2
+均未被 frozen finite-partition reference 判为 statistically exceptional。五折的
+`coordinate_mean_l2` 为 `0.333390/0.199075/0.407468/0.297724/0.239533`，
+`coordinate_std_l2` 为 `0.215446/0.176665/0.266582/0.252756/0.259172`，
+`radial_moment_l2` 为 `0.111403/0.028738/0.105054/0.167771/0.099436`；对应三组 reference
+percentiles 依次为
+`0.6734/0.0056/0.9090/0.4584/0.0898`、`0.1944/0.0076/0.7072/0.5828/0.6438`、
+`0.4526/0.0412/0.4190/0.7300/0.3852`，均为 descriptive percentile/compatibility evidence。
+Class-conditioned q99 仅 fold 1 的 label 6 exceptional，未满足冻结 class-drift rule；
+exceptional label counts 为 `0/1/0/0/0`，composition difference=`false`，pattern=`CONCENTRATED`。
+
+Source-position 使用既有 within-class ascending source-index convention 与 registered frozen-score
+`r2` observer，不创建新 selector：pooled class-stratified r2 Spearman=`0.4472886`，超过冻结
+`0.25` threshold；既有 class-conditioned sign coherence 为 `10/10` positive half-difference 与
+`10/10` positive Spearman。该 source-position drift 使 aggregate 判为
+`N3_DEVELOPMENT_SAMPLING_STABILITY_LIMITATION_SUPPORTED`，不是 producer-support result，也没有
+改写 empirical-ceiling 的 `false/true/false/true/true` linkage。
+
+FACT 是五折 raw-q moment discrepancy 与有限随机分区 reference 相容、source-position drift 被
+registered authority 支持、class composition 不能解释本比较；MODEL_ASSUMPTION 是应先 repair
+development sampling/stationarity protocol，但这不证明 population exchangeability、不证明
+producer approximation gap，也不证明 fold 0/2 的唯一原因。没有执行 producer family、M3、new
+copula、KDE、mixture、flow/neural density、new official split、sealed confirmation、image/generator
+metrics、N4/N5/N6、CUDA 或 training；`training_authorized=false`、`formal_promotion=false`、
+`generation_readiness=not_ready` 与 sealed `RESERVED_NOT_MATERIALIZED`/`consumed=false` 保持不变。
+唯一下一动作是停止 producer-family escalation，先 redefine/repair development sampling/stationarity
+protocol。
+
+### H-LOMA-GEN-N3 source-position-balanced development protocol and empirical ceiling（2026-09-09）
+
+在 stationarity limitation 之后，本次按单一 bounded authorization 定义并冻结
+`N3_SOURCE_POSITION_BALANCED_DEVELOPMENT_PROTOCOL_V1`，并在该 artifact 冻结后只执行一次新的
+`N3_SOURCE_POSITION_BALANCED_EMPIRICAL_CEILING_V1`。protocol artifact 位于
+`outputs/20260909_v2/runs/n3_source_position_balanced_development_protocol_v1_attempt_01/`
+`n3_source_position_balanced_development_protocol.v1.json`，SHA-256=
+`5700ebb3b4b163d6d911763ce70ef77ca85f1c3ef387b7b0fdaed153e36e0904`；其完整 row→fold assignment
+SHA=`07d91587683792ba307f35dc06761ef3c55be49c52f05d0ddab0c3912d54e4d8`。定义阶段只读取既有
+partition manifest 中的 row identity、class identity 与 frozen source-position identity，未加载 q；
+旧 fold authority SHA=`90277c16a0d96b895e218264f35a822564b3a46570cab73a1a1e823f063e9e32` 保持历史不可变。
+
+新 protocol 对每个 class 的 100 行按 frozen `source_index` ascending 排序，精确 tie 以原始
+development-row identity ascending，使用 `fold=rank mod 5`。无 RNG、无候选 split、无 split
+optimization。五折全部满足每类 `20` heldout、每折 `200` heldout / `800` fit，且每类在每折覆盖
+rank `0..99` 的固定 residue。
+
+唯一新的 empirical ceiling report 位于
+`outputs/20260909_v2/runs/n3_source_position_balanced_empirical_ceiling_v1_attempt_01/`
+`n3_source_position_balanced_empirical_ceiling_report.v1.json`，SHA-256=
+`f9f86842aa063e67264a5be54a242eb37e9403756c9001b1f8b9f5e653dfd989`，status=`valid_completed`、
+result=`VALID_COMPLETED`，classification=
+`SOURCE_POSITION_BALANCED_DEVELOPMENT_PROTOCOL_NOT_SUPPORTED`，compatible=`0/5`。五折均
+operationally valid；raw-q ED/q95 分别为 `0.056833/0.070078`、`0.055111/0.072053`、
+`0.076349/0.068817`、`0.076026/0.073709`、`0.077991/0.090075`。旧 empirical ceiling 的
+complete-row with-replacement sampling、4 DATA-vs-MODEL、8 MODEL-vs-MODEL、8 项 guardrails、
+fold-local q95、equality-is-pass 与严格 `5/5` aggregate rule 均原样复用；duplicate-row rate
+只作 descriptive，未参与 classification。
+
+该 valid failure 是外层科学门失败，不是 invalid harness：source-position-balanced protocol
+在当前 1000-row bank 上没有恢复一折完整 compatibility。FACT 是五折均 operationally valid 但
+`0/5` compatible；MODEL_ASSUMPTION 是 source-position balancing alone 不足以形成稳定 development
+authority，因此下一规划目标为 replacement/expanded N3 development-data authority。未评估任何
+producer、M2、Student-t、KDE/flow/mixture、alternate split、sealed confirmation、CUDA、training、
+generation 或 N4/N5/N6；旧 empirical `3/5` 与 stationarity limitation 保持原样，selected producer
+仍为 null。
+
+### H-LOMA-GEN-N3 replacement development bank V2 and empirical ceiling（2026-09-09）
+
+在 source-position-balanced protocol 的 `0/5` valid failure 之后，按单一 bounded authorization
+定义并冻结 replacement development authority `N3_DEVELOPMENT_BANK_V2`。source manifest 为
+`outputs/20260909_v2/runs/n3_development_bank_v2_source_manifest_v1_attempt_01/`
+`n3_development_bank_v2_source_manifest.v1.json`，SHA-256=`4bc251af91b3a6cd0235fe113117443d871a564bd05634fa9e61b5ab0b36f812`，
+bank semantic SHA=`bdb5a11c6800b4a5d0a994d5448bbf7de3e29c7bf8c0709f7d34be1cb31c91aa`，row manifest
+SHA=`ba3149357dc90f14ad692a486593ce944d48453f2b561ad10a9323b9fe7fb957`。Definition 使用完整
+eligible `mnist_train` source domain；eligible count=`48500`，per-class counts=
+`[4782,5528,4818,4951,4709,4356,4801,5025,4692,4838]`，排除 union=`11500`，与 old N3、
+S2、S1 和 sealed reservation 的 overlap 全为 `0`。逐类 source-index ascending eligible rank
+使用 inclusive-endpoint evenly-spaced formula，未使用 q/OLS/image 值，最终为 `5000` 行且
+`500/class`；selected source-index SHA=`8e6859cbe0ad10090b1d5d7c55de28232f9db30c45093078dbf29f8545473a0e`，
+selected-label SHA=`d28f06d6ecde9d08797f954e60041f79b512e2ad61480e21d5702cb841fabef3`。
+
+随后仅对该冻结 bank 在现有 frozen OLS authority 上做 CPU q materialization。q manifest 为
+`outputs/20260909_v2/runs/n3_development_bank_v2_q_materialization_v1_attempt_01/`
+`n3_development_bank_v2_q_materialization_manifest.v1.json`，SHA-256=`422d8c65b78bc459197ed46504399cb9c87ba8f7184eb2405e0faa85353995d8`；
+q artifact SHA=`fe48c8fdb9bb2bf732076fabdf475288baa6f7d628ca10039a83bbda54fcfcbf`，q tensor
+SHA=`d660fd8dc449725edab081d00c8f553f151029cddef9210360a7a6fad4281209`。坐标固定为
+`R2_AMPLITUDE = abs(c/sqrt(s)) = abs(R3_COMPLEX)`，model state unchanged；未读取或物化
+sealed confirmation q/images，未进入 decoder/evaluator/optimizer/backward/training。
+
+在 q artifact 完成后，五折 protocol 先冻结再验证。fold manifest 为
+`outputs/20260909_v2/runs/n3_development_bank_v2_five_fold_protocol_v1_attempt_01/`
+`n3_development_bank_v2_fold_manifest.v1.json`，SHA-256=`4898a0e477d583b9a9e60c83238e6d8524d43967efe24277a952089e8adc447e`，
+assignment SHA=`43ee0ce28e143fffdf2bcac98394625ccd766166ea717f23db66ed8770ef18a9`。规则为
+within-class source-order rank mod 5；每折为 `100/class` heldout、`1000` heldout、
+`400/class` fit、`4000` fit，fit/heldout disjoint，完整 bank 每折覆盖一次。
+
+之后只执行一次 empirical complete-row bootstrap ceiling。每折使用 exact frozen `1000`-row
+heldout DATA，并从 `4000` fitting q rows 有放回抽取 `200` 行完整 q-row banks；固定 `4` 个
+DATA-vs-MODEL、`8` 个 MODEL-vs-MODEL、reference pairs `(0,1),(2,3),(4,5),(6,7)`、冻结
+RNG namespace `N3_EMPIRICAL_FIT_JOINT_BOOTSTRAP_CEILING_DIAGNOSTIC_V1_CPU`、q95、raw-q
+energy distance 和全部 8 个 scalar guardrails。由于新协议要求 unequal `1000/200` 样本数，
+实现只移除历史 pair-metric 的 equal-row-count computational precondition；covariance、ED、
+norm、marginal formulas 与 equality-is-pass decision rule 未变。无 dimensionwise resampling、
+seed retry、best-bank selection 或 producer evaluation。
+
+唯一 report 为
+`outputs/20260909_v2/runs/n3_development_bank_v2_empirical_ceiling_v1_attempt_01/`
+`n3_development_bank_v2_empirical_ceiling_report.v1.json`，SHA-256=`731cf826dc081e7cc5629790ba2fb74946f7cc41f1a7f0035bf3a3ca96a31826`，
+status/result=`VALID_COMPLETED`。五折 primary `DATA-vs-MODEL mean ED / MODEL-vs-MODEL q95 ED`
+分别为 `0.0417341727/0.0751950320`、`0.0389906643/0.0726604040`、
+`0.0430130667/0.0667172126`、`0.0510921941/0.1176919572`、
+`0.0365313227/0.0759391666`，五折均通过全部 guardrails，pattern=`[true,true,true,true,true]`。
+最终 classification=`N3_DEVELOPMENT_BANK_V2_VALIDATED`，即 replacement bank 通过该
+development stability gate，可用于后续 N3 producer development selection 的 development
+authority；这不是 producer-support result，也没有选择 producer。
+
+old 1000-row authority remains immutable historical evidence；旧 `3/5` ceiling、stationarity
+limitation 与 source-position `0/5` 结果未被重标。sealed confirmation 仍为
+`RESERVED_NOT_MATERIALIZED`/`consumed=false`，`selected_producer=null`、
+`training_authorized=false`、`formal_promotion=false`、`generation_readiness=not_ready` 保持不变。
+下一动作是停止 data/stationarity diagnostics，规划一次基于 V2 authority 的 producer-development
+comparison；不启动 N4/N5/N6 或 generation。
+
+### H-LOMA-GEN-N4 q-producer development comparison（2026-09-09）
+
+在 `N3_DEVELOPMENT_BANK_V2_VALIDATED` 的冻结 source/q/five-fold/ceiling authority 上，按
+独立 bounded authorization 先定义候选 registry，再执行唯一一次 CPU-only、development-only
+q-producer comparison。registry 位于
+`outputs/20260909_v2/runs/n4_q_producer_candidate_registry_v1_attempt_02/`
+`n4_q_producer_candidate_registry.v1.json`，SHA-256=`0329b23675a7d306c88f26c80a4757ce83d39c8c68b718bf7a1d966f53f4f27b`。
+它冻结三个既有 q/amplitude implementation：`SHRINKAGE_ELLIPTICAL_GAUSSIAN_AMPLITUDE_V1`、
+`RADIAL_SCALE_MIXTURE_AMPLITUDE_V1` 与 `EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_AMPLITUDE_V1`；
+registry 在第一次 evaluator call 前冻结。由于 preflight 在第一次比较前发现 sealed reservation
+字段解释与 registry attempt-01 不一致，attempt-01 (`3f62986cf9e513b16878b88ab6bdf74bebbe412ce12cb06e59ac9ae585bd45bb`) 保留为
+write-once、未消费 provenance；attempt-02 是实际 comparison 使用的 registry，未发生 attempt-01
+下的 q loading、fit、sampling 或 evaluator call。
+
+唯一 comparison report 位于
+`outputs/20260909_v2/runs/n4_q_producer_development_comparison_v1_attempt_02/`
+`n4_q_producer_comparison_report.v1.json`，SHA-256=`393d84617ec7b1e6c60b8c654b859dc3afe822f5dee207ca93816e232fea78be`，
+status/result=`VALID_COMPLETED`，classification=`N4_Q_PRODUCER_COMPARISON_NO_CANDIDATE_SUPPORTED`。
+严格候选准入规则是每个 candidate 的五个 fold 均通过八个 scalar raw-q compatibility component；
+shrinkage elliptical Gaussian 为 `0/5`，radial scale mixture 为 `0/5`，empirical marginal
+Gaussian copula 为 `4/5`。copula 通过 fold 0–3，但 fold 4 的
+`norm_energy_distance` 与 `squared_norm_energy_distance` 失败，因此“最接近”不等于 supported，
+也不触发 producer selection。
+
+本次总 evaluator exposure 为 `15/15`，每个 candidate/fold 恰好一次；registry SHA 在调用前后
+一致，adaptive development exposure=`false`，无 heldout tuning、best-of-N、seed retry 或
+post-evaluation resampling。fit manifest SHA=`9c8aae1781787d7744f846d519ac4c3c59abf07b562201a2c6e102eb45fdc1a3`，
+fold compatibility SHA=`d8a273f4291ebf1e29a39b1f45e2f47a3dd919b503fbcf8256c81c69892d4ba5`，exposure
+ledger SHA=`694003034bcbe49f82d7d3ebcf7d2bd014eb711f4fde292606f62b078a818f15`，lineage manifest
+SHA=`4c40fcd64c7856722fe3c3ca9bf61ef1ad2362d10f1f05d349038edc45a2cce5`。lineage 绑定 30 个
+candidate/fold `.pt` artifacts 与 3 个中间 JSON；post-run audit 确认所有 artifact hashes、
+`4000/1000` fit/heldout disjointness、`200×100` float64 finite/nonnegative model-q 与 sealed
+boundary 均有效。
+
+该 gate 是 `valid_completed` 的科学失败，不是 invalid harness：当前 V2 development authority
+上没有候选满足 all-five-fold support。它只说明 raw-q `R2_AMPLITUDE` compatibility，不说明
+image/semantic/optical/full-complex generation、training、promotion 或 readiness。最终保持
+`selected_producer=null`、`training_authorized=false`、`formal_promotion=false`、
+`generation_readiness=not_ready`，sealed confirmation 为 `RESERVED_NOT_MATERIALIZED`/
+`consumed=false`；N4 之后不启动下一 package、sealed consumption、training、promotion 或
+generation。
+
+### H-LOMA-GEN-N3 fixed-R Student-t copula contract definition（2026-09-09）
+
+N4 的 `N4_Q_PRODUCER_COMPARISON_NO_CANDIDATE_SUPPORTED` 之后，仅执行了一次
+definition-only contract action，冻结唯一下一候选族
+`EMPIRICAL_MARGINAL_FIXED_R_STUDENT_T_COPULA_V1`。Machine artifact 为
+`outputs/20260909_v2/runs/n3_empirical_marginal_fixed_r_student_t_copula_contract_v1_attempt_01/`
+`n3_empirical_marginal_fixed_r_student_t_copula_contract.v1.json`，SHA-256=`0f18dccf35758e590255fac07436eb968c866ddc11a3e19df7b02e25770be1d7`，
+status/result=`valid_completed/READY`，classification=`DEFINE_N3_EMPIRICAL_MARGINAL_FIXED_R_STUDENT_T_COPULA_CONTRACT_V1_READY`，
+claim=`N3_EMPIRICAL_MARGINAL_FIXED_R_STUDENT_T_COPULA_MODEL_ASSUMPTION_DEFINED`。
+
+该 contract 保留 N4/V2 的 `R2_AMPLITUDE`、fit-only empirical marginal quantile table、stable
+tie/interpolation、Gaussianized-score analytic shrinkage 与同一 fitting-derived `R_shrunk`，
+只将 `z~Normal(0,R)` 改为 `z~t_d(nu,0,R)`，并按每 fold fit-only copula pseudo-likelihood
+拟合一个且仅一个 global `nu`。`nu` 的闭区间为 `[2.01,1000000]`，优化变量为
+`eta=log(nu-2)`；golden-section bounds/tolerance/max-iteration、Student-t CDF/inverse-CDF、
+float64 CPU、Cholesky/triangular solve、Gamma radial sampler、endpoint/nonfinite/failure
+semantics 均已完全冻结，没有 heldout-selected grid、R refit、mixture/vine/flow/neural 或
+新的 marginal choice。
+
+定义 consumer 只校验既有 JSON/manifest 与 byte hashes；V2 q artifact 只作 digest boundary，
+没有反序列化 q、读取 fit/heldout q、执行 nu fit、sampling 或 evaluator，也没有读取 sealed
+confirmation。未来若另行授权，必须复用 V2 的 `5` folds、`4000/1000` fit/heldout、`200` model
+bank、4/8 replicates、四组 model-reference pairs、raw-q biased ED、q95 与八个 guardrails，
+并要求严格 `5/5`；`4/5` 不支持，relative improvement 仅 descriptive。当前
+`selected_producer=null`、`training_authorized=false`、`formal_promotion=false`、
+`generation_readiness=not_ready` 与 sealed `RESERVED_NOT_MATERIALIZED` 保持不变；合同 READY
+不等于 producer support，也不授权未来 execution。
+
+### H-LOMA-GEN-N3 fixed-R Student-t copula producer comparison execution（2026-09-09）
+
+在上述 definition-only contract 之后，按独立 Gate
+`EXECUTE_N3_EMPIRICAL_MARGINAL_FIXED_R_STUDENT_T_COPULA_V1` 对唯一冻结 family
+`EMPIRICAL_MARGINAL_FIXED_R_STUDENT_T_COPULA_V1` 完成一次 CPU-only、development-only
+producer comparison。execution 使用同一 V2 `R2_AMPLITUDE` q authority、五折 assignment、
+fit-only empirical marginal quantile/interpolation 与 fitting-derived analytic-shrinkage
+`R_shrunk`；每 fold 只拟合一个 global `nu`，并以 fixed `R_shrunk` 的 Student-t copula
+pseudo-likelihood 在 `[2.01,1000000]` 内按 deterministic bounded golden-section optimizer
+求解。没有 heldout parameter tuning、R refit、nu grid、mixture/vine/flow/neural path、seed
+retry、best-of-N 或 post-evaluation resampling。
+
+唯一有效 report 位于
+`outputs/20260909_v2/runs/n3_empirical_marginal_fixed_r_student_t_copula_producer_v1_attempt_01/`
+`n3_empirical_marginal_fixed_r_student_t_copula_producer_report.v1.json`，SHA-256=`4a938b883d1a0cf3386b7e2a5f4c900a236cfed031364c4a1273ea3ebe6d77dd`，
+status/result=`valid_completed/VALID_COMPLETED`，classification=
+`N3_FIXED_R_STUDENT_T_COPULA_NOT_SUPPORTED`。五个 fold 均 operationally valid；兼容 pattern 为
+`[true,true,false,true,true]`、`4/5`，严格 five-of-five gate 因此失败。各 fold 的 `nu` 为
+`118.35972638524892`、`118.04632498600743`、`117.03308605630197`、`118.47406043505019`、
+`119.33122553612606`。唯一 scientific failure 为 fold 2 的
+`energy_distance`、`marginal_mean_l2` 与 `marginal_energy_distance_mean`；其余七个 scalar
+guardrails 在该 fold 通过，其他四 fold 的全部 guardrails 通过。
+
+每 fold 使用一个固定 `200×100` float64 model-q bank，并复用冻结 V2 empirical-ceiling
+MODEL-vs-MODEL q95 与全部八个 raw-q guardrails；planned/actual evaluator exposure=`5/5`，
+`clean_one_shot=true`、adaptive exposure=`false`。lineage manifest 位于同一 run，SHA-256=
+`f2f943dab288726db6aaf3fb6c90acfe516ac7869fa9203a2c2a083731cf88da`，绑定 10 个 fold
+fit/sample artifacts 与 3 个 execution JSON artifacts；fit/heldout disjointness、artifact
+lineage、finite/nonnegative model-q 与 frozen authority identities 均通过审计。
+
+相对 N4 empirical-marginal Gaussian copula 的 descriptive pattern `[true,true,true,true,false]`，
+本次 Student-t 的 fold 4 `norm_energy_distance` 与 `squared_norm_energy_distance` 不再失败，
+但 fold 2 出现新的 scalar failures；该变化不参与 support、selection 或 promotion。最终保持
+`selected_producer=null`、`training_authorized=false`、`formal_promotion=false`、
+`generation_readiness=not_ready`，sealed confirmation 为 `RESERVED_NOT_MATERIALIZED`/
+`consumed=false`；没有 CUDA、optical forward、training、image/semantic generation 或
+promotion。该结果是 valid scientific failure，不是 invalid harness。
+
+### H-LOMA-GEN-N3 q-producer compatibility self-null calibration（2026-09-09）
+
+N4 Gaussian 与 fixed-R Student-t 都出现 isolated `4/5` compatibility failures 后，按新的单一
+bounded Gate `N3_Q_PRODUCER_COMPATIBILITY_SELF_NULL_CALIBRATION_V1` 先冻结 contract，再测量
+当前 V2 evaluator 的 model-self null 行为。contract artifact 为
+`outputs/20260909_v2/runs/n3_q_producer_compatibility_self_null_calibration_contract_v1_attempt_01/`
+`n3_q_producer_compatibility_self_null_calibration_contract.v1.json`，SHA-256=`32ba12a8f09a850f0126bf528741928a247d957cf0a2105bd4329d102a97662c`，
+status/result=`valid_completed/READY`，classification=`N3_Q_PRODUCER_COMPATIBILITY_SELF_NULL_CALIBRATION_V1_READY`。
+
+contract 只纳入已经执行过的两个 producer：`EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_AMPLITUDE_V1`
+与 `EMPIRICAL_MARGINAL_FIXED_R_STUDENT_T_COPULA_V1`；每个 producer/fold 固定 `20` trials，
+总计 `200`。每个 trial 由同一 fold-fit producer 独立生成一个 `1000`-row pseudo-DATA、四个
+`200`-row DATA-vs-MODEL bank，以及八个 `200`-row MODEL-vs-MODEL reference bank，pairs 为
+`(0,1),(2,3),(4,5),(6,7)`。这完全复用现有 V2 `_pair_metrics_raw_q`、四个 DATA mean、四个
+reference q95、raw-q biased ED 与八项 scalar guardrails；per-coordinate vector 只记录、不另加
+gate。`20` 而非 preferred `200` 是在 simulation 前按 exact evaluator 的 CPU cost 固定的，
+Monte Carlo precision limitation 同样冻结；无 early stop、retry、best-of-N 或根据结果改变
+threshold。
+
+唯一 report 为
+`outputs/20260909_v2/runs/n3_q_producer_compatibility_self_null_calibration_v1_attempt_01/`
+`n3_q_producer_compatibility_self_null_calibration_report.v1.json`，SHA-256=`0e69db97c52cb6e72383d2cd24227a0e9937b4aafb88413af6a9216ce93860fb`，
+status/result=`valid_completed/VALID_COMPLETED`，classification=
+`N3_Q_COMPATIBILITY_SELF_NULL_MIXED_OR_UNRESOLVED`。逐 producer/fold 的完整 pass rate 为：
+
+| producer | fold 0 | fold 1 | fold 2 | fold 3 | fold 4 | pooled | implied five-fold product |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| empirical Gaussian copula | 0.80 | 0.90 | 1.00 | 0.90 | 0.90 | 0.90 | 0.5832 |
+| fixed-R Student-t copula | 0.95 | 0.95 | 0.90 | 1.00 | 0.95 | 0.95 | 0.7716375 |
+
+两 producer 的 primary `energy_distance` false-fail rate 均为 `0`。Gaussian self-null false
+failures 主要为 fold 0 的 `norm_energy_distance=0.15`、`squared_norm_energy_distance=0.15`，
+以及少量 `marginal_mean_l2`/fold 1 `marginal_energy_distance_max`；Student-t 主要为 fold 2
+的 `norm_energy_distance=0.10`、`squared_norm_energy_distance=0.10`，另有 fold 0
+`marginal_mean_l2=0.05`。全部每-fold guardrail counts、每 trial q95/reference metrics、failure
+combinations 与 2600 个 unique RNG bank seeds 均写入 report。没有读取 held-out q 做 self-null
+metric，也没有读取 sealed confirmation、改变 nu/marginal/R、评估新 producer 或开启 optical/
+CUDA/training。
+
+这是 FACT：在固定有限模拟下，同 producer 的 pseudo-DATA/MODEL/reference 通过率和 false-fail
+行为如上。预注册 aggregate class 的 stable 条件要求所有 producer/fold pass rate 至少 `0.95`、
+各 guardrail false-fail 至多 `0.05` 且五折乘积至少 `0.75`；false-fail limitation 条件要求
+任一 fold pass 至多 `0.75`、任一 guardrail false-fail 至少 `0.25` 或任一五折乘积至多 `0.25`。
+观察结果两类条件都未满足，因此为 `MIXED_OR_UNRESOLVED`。MODEL_ASSUMPTION 仍未关闭：不能
+把 isolated `4/5` failures 归因成纯 model mismatch，也不能归因成纯 evaluator noise。按该
+class 的唯一下一动作是对这个单一 self-null uncertainty 做一个 bounded decision；停止 family
+escalation，不重复 Gaussian/Student-t，不进入第三 producer family，不改变 N4 语义。
+
+### H-LOMA-GEN-N3 q-compatibility guardrail calibration V1（2026-09-09）
+
+在前一项 q-producer compatibility self-null calibration 的
+`N3_Q_COMPATIBILITY_SELF_NULL_MIXED_OR_UNRESOLVED` 边界之后，按独立 Gate
+`CALIBRATE_N3_Q_COMPATIBILITY_GUARDRAIL_GATE_V1` 只校准 evaluator guardrail 角色，不评估
+新 producer、不重跑历史 heldout，也不消费 sealed confirmation。definition-only contract 为
+`outputs/20260909_v2/runs/n3_q_compatibility_guardrail_gate_contract_v1_attempt_01/`
+`n3_q_compatibility_guardrail_gate_contract.v1.json`，SHA-256=`a87979f9689159eee6d769f10eb6b7e30bcdc9803c4b72b108225a6ea22935b4`，
+status/result=`valid_completed/READY`，classification=`DEFINE_N3_Q_COMPATIBILITY_GUARDRAIL_GATE_V1_READY`。
+
+合同在 simulation 前冻结了两个已存在的近边界 family：
+`EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_AMPLITUDE_V1` 与
+`EMPIRICAL_MARGINAL_FIXED_R_STUDENT_T_COPULA_V1`；五折、fit-only `4000` q rows、每个
+producer/fold `200` trials（共 `2000`）、pseudo-DATA=`1000`、DATA-vs-MODEL=`4×200`、
+MODEL-vs-MODEL reference=`8×200`，以及现有 V2 raw-q metric、mean、q95 和八项 scalar
+semantics 均保持不变。`500` 是 preferred precision，但因每个 pair 还含 `100` 个坐标级
+ED，按允许 fallback 预注册为 `200`；无 early stop、retry、best-of-N。guardrail eligibility
+冻结为：对每个 producer×fold cell 计算单侧 `95%` exact Clopper–Pearson false-fail 上界，
+取十个 cell 的最大上界，只有 `≤0.01` 才独立 eligible；所有 independently eligible guardrail
+必须纳入，不能 post hoc 搜索 subset。五折 reliability 按相同 trial index 直接计算，目标为两
+个 producer 均 `≥0.80`。
+
+唯一 calibration report 为
+`outputs/20260909_v2/runs/n3_q_compatibility_guardrail_gate_v1_attempt_01/`
+`n3_q_compatibility_guardrail_calibration_report.v1.json`，SHA-256=`7135b07fd532ee5dd2dba7900ad6028c9a6d558924691e4d65eac56330367789`，
+status/result=`valid_completed/VALID_COMPLETED`，classification=
+`N3_Q_COMPATIBILITY_GUARDRAIL_CALIBRATION_READY`。每个 metric 的 pooled false-fail 与最坏
+cell upper bound 为：
+
+| metric | pooled false-fail | worst-cell CP upper bound | V3 role |
+|---|---:|---:|---|
+| `energy_distance` | `0/2000 = 0.0000` | `0.014867` | `HARD_PRIMARY_UNCHANGED` |
+| `covariance_relative_frobenius` | `0/2000 = 0.0000` | `0.014867` | `DESCRIPTIVE_ONLY` |
+| `norm_energy_distance` | `101/2000 = 0.0505` | `0.101357` | `DESCRIPTIVE_ONLY` |
+| `squared_norm_energy_distance` | `101/2000 = 0.0505` | `0.101357` | `DESCRIPTIVE_ONLY` |
+| `marginal_mean_l2` | `7/2000 = 0.0035` | `0.038310` | `DESCRIPTIVE_ONLY` |
+| `marginal_std_l2` | `2/2000 = 0.0010` | `0.023498` | `DESCRIPTIVE_ONLY` |
+| `marginal_energy_distance_mean` | `0/2000 = 0.0000` | `0.014867` | `DESCRIPTIVE_ONLY` |
+| `marginal_energy_distance_max` | `14/2000 = 0.0070` | `0.045180` | `DESCRIPTIVE_ONLY` |
+
+`energy_distance` 的 model-self false-fail 为 `0`，但作为 primary 不参与 guardrail selection，
+其实现、样本数和 scientific role 未变。当前完整八项 gate 的 per-fold pass rates 为 Gaussian
+`[0.960,0.940,0.930,0.955,0.925]`、Student-t `[0.920,0.945,0.925,0.930,0.935]`；按相同
+trial index 直接计算的 all-five-fold full-gate pass 为 Gaussian `144/200=0.72`、Student-t
+`141/200=0.705`。最终唯一 HARD set 为 `[energy_distance]`，V3 calibrated gate 的直接
+all-five-fold pass 为两者均 `200/200=1.0`，达到冻结 `0.80` target。其余七项因最坏-cell
+上界均大于 `0.01` 转为 `DESCRIPTIVE_ONLY`；其中 zero-count 指标也没有因不确定性不足而晋升。
+
+V3 evaluator artifact 为
+`outputs/20260909_v2/runs/n3_q_compatibility_guardrail_gate_v1_attempt_01/`
+`n3_q_compatibility_evaluator_v3.v1.json`，SHA-256=`4fbc831e383897802134ea2ce1aaef6446629130a7c799630254a86b8dcff3cc`。
+它保持 V2 primary `energy_distance`、metric formulas、sample-size semantics、development/
+heldout authorities 与 finite-sample limitations 不变，只改变非 primary guardrail 的 HARD/
+descriptive role。`26000` sampling seeds 全部唯一，JSON/SHA、targeted tests、compile、Ruff 与
+`git diff --check` 通过。
+
+这是 evaluator authority 的 `READY`，不是 producer support 或 producer selection。N4 的
+`N4_Q_PRODUCER_COMPARISON_NO_CANDIDATE_SUPPORTED`、Gaussian 的
+`N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_NOT_SUPPORTED` 与 Student-t 的
+`N3_FIXED_R_STUDENT_T_COPULA_NOT_SUPPORTED` 均保持不变；`selected_producer=null`、
+`training_authorized=false`、`formal_promotion=false`、`generation_readiness=not_ready`，sealed
+confirmation 仍为 `RESERVED_NOT_MATERIALIZED/consumed=false`。任何未来 V3 producer evaluation
+仍需独立授权。
+
+### H-LOMA-GEN-N3 apply calibrated V3 evaluator to frozen candidate banks（2026-09-09）
+
+在 `CALIBRATE_N3_Q_COMPATIBILITY_GUARDRAIL_GATE_V1` 完成并发布 V3 evaluator 后，按独立 Gate
+`APPLY_N3_Q_COMPATIBILITY_EVALUATOR_V3_TO_FROZEN_CANDIDATES_V1` 执行一次 evaluator-only
+replay。V3 evaluator SHA-256=`4fbc831e383897802134ea2ce1aaef6446629130a7c799630254a86b8dcff3cc`，
+calibration contract SHA-256=`a87979f9689159eee6d769f10eb6b7e30bcdc9803c4b72b108225a6ea22935b4`，
+calibration report SHA-256=`7135b07fd532ee5dd2dba7900ad6028c9a6d558924691e4d65eac56330367789` 均经
+预检核验。primary `energy_distance` 的实现、raw-q formula、q95/reference、sample-size
+semantics、V2 development DATA 与五折 assignment 均未改变；其余七项只作
+`DESCRIPTIVE_ONLY`，不能否决 primary support。
+
+本次只复用了已经写入 N4 与 fixed-R Student-t run 的 exact fitted-producer/sample-bank
+artifacts：Gaussian 与 Student-t 各 5 个 fold，共 10 个 fit artifacts、10 个 `200×100`
+model-q sample banks。逐折 DATA identity、fit/heldout exclusion、file/tensor SHA、sample seed、
+fold/role 均与历史记录一致；所有 10 个 fold 的 replay metrics 与历史记录逐项精确相等。没有
+producer refit、new q bank、resampling、seed retry、best-of-N、heldout tuning、CUDA、training
+或 sealed confirmation access。
+
+唯一 report 为
+`outputs/20260909_v2/runs/n3_q_compatibility_evaluator_v3_frozen_candidate_replay_v1_attempt_01/`
+`n3_q_compatibility_evaluator_v3_frozen_candidate_replay_report.v1.json`，SHA-256=`cf6e6d62e6d2a7b35822d2d3727d08e5cbd59d51778bf794ec30ce297ffd0195`，
+status/result=`valid_completed/VALID_COMPLETED`，classification=
+`N3_Q_COMPATIBILITY_EVALUATOR_V3_FROZEN_CANDIDATE_REPLAY_COMPLETE`。对应 lineage manifest 为
+`n3_q_compatibility_evaluator_v3_frozen_candidate_replay_lineage.v1.json`，SHA-256=
+`d49800c12ce5f7e4931aca301410d5f0c47ca301350324fdfae3a73526d19ee4`；其 20 个 frozen artifact
+bindings 均可复核。
+
+| candidate | fold 0 | fold 1 | fold 2 | fold 3 | fold 4 | V3 support | V3 classification |
+|---|---:|---:|---:|---:|---:|---:|---|
+| empirical Gaussian copula | 0.0492015423 ≤ 0.0751950320 | 0.0531102928 ≤ 0.0726604040 | 0.0463874651 ≤ 0.0667172126 | 0.0399628736 ≤ 0.1176919572 | 0.0454373059 ≤ 0.0759391666 | `5/5` | `N3_EMPIRICAL_GAUSSIAN_COPULA_V3_DEVELOPMENT_SUPPORTED` |
+| fixed-R Student-t copula | 0.0435850918 ≤ 0.0751950320 | 0.0405141845 ≤ 0.0726604040 | 0.0708070262 > 0.0667172126 | 0.0386181261 ≤ 0.1176919572 | 0.0505271345 ≤ 0.0759391666 | `4/5` | `N3_FIXED_R_STUDENT_T_COPULA_V3_NOT_SUPPORTED` |
+
+Gaussian 原始 V2 记录仍为 `4/5 NOT_SUPPORTED`，fold 4 的
+`norm_energy_distance` 与 `squared_norm_energy_distance` 仍作为历史/descriptive failure；
+在 V3 中它们不再是 HARD veto。Student-t 原始 V2 记录仍为 `4/5 NOT_SUPPORTED`，fold 2 的
+primary `energy_distance` 仍失败，同时 `marginal_mean_l2` 与
+`marginal_energy_distance_mean` 仅作 descriptive failures。严格 V3 support 规则为五折全部
+通过 primary，故唯一 `development_supported_candidate` 仅是 Gaussian；这不是 post-hoc producer
+selection，也不设置 project-level `selected_producer`。
+
+该结果的 claim 仅为：冻结 candidate samples 在 N3 Development Bank V2 上通过 calibrated
+V3 raw-q development compatibility gate。它不建立 stationarity、OOD、sealed confirmation、
+complex OLS、amplitude-phase compatibility、semantic/image/optical generation、training 或
+promotion。`selected_producer=null`、`training_authorized=false`、`formal_promotion=false`、
+`generation_readiness=not_ready`，sealed 保持 `RESERVED_NOT_MATERIALIZED/consumed=false`。
+由于恰有一个 candidate 获得 V3 development support，下一动作是独立的
+producer-selection/freeze contract；不自动执行 final fit 或 sealed consumption。
+
+### H-LOMA-GEN-N3 selected producer freeze contract definition（2026-09-09）
+
+在上述 V3 replay 完成后，按独立 Gate
+`DEFINE_N3_SELECTED_PRODUCER_FREEZE_CONTRACT_V1` 执行 definition-only consumer。它只读取并
+校验既有 V2 source/q/fold/ceiling authorities、N4 Gaussian candidate definition、N4 historical
+comparison、V3 calibration 与 V3 frozen-candidate replay；没有加载 q tensor，没有读取
+`N3_SEALED_CONFIRMATION_SOURCE_V1`，没有拟合、采样或训练。
+
+唯一 machine contract 为
+`outputs/20260909_v2/runs/n3_selected_producer_freeze_contract_v1_attempt_01/`
+`n3_selected_producer_freeze_contract.v1.json`，SHA-256=
+`4d8d3f5dc81a7eff2d92a0acde0a0d0639788bb0dee75e6d88db745f642b60a3`，status/result=
+`valid_completed/VALID_COMPLETED`，classification=
+`DEFINE_N3_SELECTED_PRODUCER_FREEZE_CONTRACT_V1_READY`。selection 只由 frozen V3 primary
+support 结果产生：`EMPIRICAL_GAUSSIAN_COPULA` 是唯一 `5/5` development-supported candidate；
+Student-t 为 `4/5 NOT_SUPPORTED`。没有使用 descriptive guardrails 做 tie-break，也没有覆盖
+历史 V2 classification：Gaussian 的 N4 `4/5 NOT_SUPPORTED` 与 Student-t 的 V2
+`4/5 NOT_SUPPORTED` 均保持 immutable。
+
+contract 冻结后续唯一的 `EXECUTE_N3_SELECTED_PRODUCER_FULL_DEVELOPMENT_FIT_V1`：消费
+`N3_DEVELOPMENT_BANK_V2` 全部 `5000` 个 `R2_AMPLITUDE` q rows、`500/class`，无 heldout/fold
+fit、无 labels conditioning；五折只作 prior selection evidence。stable value-then-original-row
+sort、average midrank、`(rank-0.5)/n_fit`、无 epsilon clamp 的 `ndtri`、piecewise-linear
+empirical inverse quantile、`R_emp`/analytic shrinkage、Cholesky/positive-eigenvalue 与
+unit-diagonal fail-closed semantics 均沿用 Gaussian candidate，没有新增 model/hyperparameter
+choice。数值或序列化不完整时分类为 `INVALID_HARNESS`，不产生 producer-state authority。
+
+未来 producer state 的 semantic authority 为
+`N3_SELECTED_EMPIRICAL_GAUSSIAN_COPULA_PRODUCER_V1`，schema 为
+`n3_selected_empirical_gaussian_copula_producer_state.v1`；契约冻结了 CPU `float64`
+`torch.save` mapping、完整 artifact SHA-256 与 standalone sampling 输入（frozen state、正整数
+sample count、显式 namespace/seed）及输出 q tensor 约束。定义时
+`frozen_producer_state=null`，未发生 all-5000 fit、state serialization、new all-development
+sampling、sealed confirmation、training 或 promotion。下一步仅授权 full-development fit；
+sealed confirmation 仍需另一个独立 contract。
+
+### H-LOMA-GEN-N3 selected producer full development fit and state freeze（2026-09-10）
+
+按上述 freeze contract 的唯一授权动作
+`EXECUTE_N3_SELECTED_PRODUCER_FULL_DEVELOPMENT_FIT_V1`，完成一次且仅一次
+`N3_DEVELOPMENT_BANK_V2` 全量拟合。执行前以 metadata/hash-only preflight 核对了 immutable
+freeze contract、V2 source/q/fold/ceiling authorities、5000 个唯一且 `500/class` 的 source
+row identity、既有 manifest 的 zero-overlap 结果以及 sealed reservation 状态；q artifact 只在
+所有 authority 检查通过后加载。拟合输入为 CPU `float64` 的 `R2_AMPLITUDE` q `[5000,100]`，
+无 fold/heldout 子集、无 labels conditioning；五折仅保留 prior selection evidence。
+
+执行结果为 `valid_completed/VALID_COMPLETED`，classification=
+`N3_SELECTED_PRODUCER_FULL_DEVELOPMENT_FIT_COMPLETED`。lineage/manifest 为
+`outputs/20260910_v2/runs/n3_selected_producer_full_development_fit_v1_attempt_01/`
+`n3_selected_producer_full_development_fit_lineage.v1.json`，SHA-256=
+`9244df01c95e44005207cb1dc188fc7de2961665e13055beebf55f0f5cdd2267`。它绑定唯一的
+producer state
+`n3_selected_empirical_gaussian_copula_producer_state.v1.pt`，semantic authority 为
+`N3_SELECTED_EMPIRICAL_GAUSSIAN_COPULA_PRODUCER_V1`，state artifact SHA-256=
+`752db16087e7bdf8343e4499202182370b376a1a2d5925a383f411fd4a15bb88`。
+
+state 中仅保留 sorted empirical marginal table、quantile-table positions、Cholesky factor
+以及约定的 audit tensors/scalars；不保留 raw q row matrix、sealed values、fold condition 或
+labels tensor。stable average-rank/tie、strict plotting position、`ndtri`、analytic shrinkage、
+positive spectrum、Cholesky reconstruction 和 unit-diagonal invariants 均通过；`R_shrunk`
+最小/最大特征值为 `0.0401643351`/`18.4033362231`，unit-diagonal error 为
+`5.995204332975845e-15`，冻结容差为 `5.684341886080801e-14`。safe-load 后 tensor identity
+保持一致，standalone sampler 仅使用 state 与显式 namespace/seed 的 3-sample deterministic
+smoke 通过；该 smoke 不是 compatibility 或 scientific evaluation。
+
+本次没有执行 full-fit compatibility、sealed confirmation、new optical/semantic/OLS/CMOS
+generation、CUDA、optimizer/backward、training 或 formal promotion。治理只将
+`EMPIRICAL_GAUSSIAN_COPULA` 与该 state 登记为 development-only selected-producer authority；
+`training_authorized=false`、`formal_promotion=false`、`generation_readiness=not_ready`，sealed
+仍为 `RESERVED_NOT_MATERIALIZED/consumed=false`。唯一下一动作是定义新的
+`DEFINE_N3_SELECTED_PRODUCER_SEALED_CONFIRMATION_CONTRACT_V1`；不得把 state freeze 解释为
+confirmation、population generalization 或 optical readiness。
+
+### H-LOMA-GEN-N3 selected producer sealed confirmation contract definition（2026-09-10）
+
+按 full-development fit 的唯一下一 Gate
+`DEFINE_N3_SELECTED_PRODUCER_SEALED_CONFIRMATION_CONTRACT_V1`，执行 definition-only
+consumer。它读取并 hash-核验冻结的 producer state/lineage、selected-producer freeze
+contract、V2 source/q metadata、V3 evaluator/calibration authority 与既有 sealed
+reservation manifest；没有读取、materialize、decode、transform 或 evaluate sealed source
+content，也没有加载 development q artifact、refit/修改 producer、采样 model bank、训练或
+进入 optical/semantic generation。
+
+契约 artifact 位于
+`outputs/20260910_v2/runs/n3_selected_producer_sealed_confirmation_contract_v1_attempt_01/`
+`n3_selected_producer_sealed_confirmation_contract.v1.json`，SHA-256=
+`e0e29a62bce4eaaa48346ce65d1d7d6dcc2892df4d8e9ace73681579232c1200`，
+status/result=`valid_completed/READY`，classification=
+`DEFINE_N3_SELECTED_PRODUCER_SEALED_CONFIRMATION_CONTRACT_V1_READY`。它精确绑定
+`N3_SELECTED_EMPIRICAL_GAUSSIAN_COPULA_PRODUCER_V1` state SHA=
+`752db16087e7bdf8343e4499202182370b376a1a2d5925a383f411fd4a15bb88` 与 full-fit lineage
+SHA=`9244df01c95e44005207cb1dc188fc7de2961665e13055beebf55f0f5cdd2267`；sealed authority
+为 `N3_SEALED_CONFIRMATION_SOURCE_V1`，manifest SHA=
+`6475474f157d31591a3b0252f27320323d84ea93803c61ee6a365420a8ebb08e`，固定 500 rows、
+50/class、exact manifest order、identity/balance metadata 与 zero-overlap firewall。
+
+q materialization 复用既有 V2 authority 的 source→q semantics：固定 OLS/calibration 下
+`R2_AMPLITUDE=abs(c/sqrt(s))=abs(R3_COMPLEX)`，raw IDX row 归一化到 CPU
+`torch.float32`，输出 CPU `torch.float64` `[500,100]`，只允许 finite/nonnegative，禁止
+clipping/samplewise normalization；未来 q artifact 必须把每个 q row 绑定到冻结的
+source-index/label identity。V3 的 HARD primary `energy_distance` 与 validated
+implementation 不变；`T` 是 4 个 200-row model banks 上的 V3 `_mean_metrics` arithmetic
+mean。由于 development DATA sample size 不同，V3 q95 不复用；确认前先完成完全匹配
+500-row DATA 结构的 B=`999` model-self trials，固定 `alpha=0.05` 和
+`p_MC=(1+count(T_b >= T_sealed))/(B+1)`，ties 纳入计数。其余七项 metric 仅为
+`DESCRIPTIVE_ONLY`，不能改变 primary decision。
+
+契约还冻结了 disjoint seed streams、model-bank seeds、pre-sealed arming checklist 及
+consumption marker：first protected-content read 前必须原子发布 write-once `consumed=true`；
+exposure 前失败为 `BLOCKED` 且保持 `consumed=false`，exposure 后失败只能为
+`SEALED_CONFIRMATION_INVALID_CONSUMED`，不得 reset/retry。定义完成后治理仍保持
+`training_authorized=false`、`formal_promotion=false`、`generation_readiness=not_ready`，
+sealed 仍为 `RESERVED_NOT_MATERIALIZED/consumed=false`。唯一下一动作是
+`EXECUTE_N3_SELECTED_PRODUCER_SEALED_CONFIRMATION_V1`；不得把 contract READY 解释为
+confirmation、population generalization 或 optical readiness。
+
+### H-LOMA-GEN-N3 selected producer sealed confirmation execution（2026-09-10）
+
+按上述 contract 唯一授权的
+`EXECUTE_N3_SELECTED_PRODUCER_SEALED_CONFIRMATION_V1` 完成一次且仅一次正式 execution。
+执行前再次核对 contract SHA=`e0e29a62bce4eaaa48346ce65d1d7d6dcc2892df4d8e9ace73681579232c1200`、
+producer state SHA=`752db16087e7bdf8343e4499202182370b376a1a2d5925a383f411fd4a15bb88`、
+producer lineage SHA=`9244df01c95e44005207cb1dc188fc7de2961665e13055beebf55f0f5cdd2267` 与
+sealed reservation manifest SHA=`6475474f157d31591a3b0252f27320323d84ea93803c61ee6a365420a8ebb08e`；
+reservation 仍按 exact membership 为 `500` rows、`50/class`。没有修改 producer/evaluator，
+没有 CUDA、optimizer、backward、training 或新的 scientific choice。
+
+pre-sealed 阶段完成了完全匹配 `500`-row DATA / `4×200` MODEL 结构的 `B=999` model-self
+calibration，artifact SHA=`78decff273e666e43e25e19a9b908196bb51349ac9009f54cc5a83a7f4d249ae`；
+随后冻结 observed MODEL banks，artifact SHA=`b87415f2652c7a8ac48e45fbef3f7aeadfd890c7c4656f461804fb033568ac75`，
+并通过 `SEALED_CONFIRMATION_ARMED`。marker 在 first protected read 前一次性发布为
+`consumed=true`，marker SHA=`48faa3bc6aadc1d5210b164ed15d09ff465cd8683726cac1d1a86d7fe7b8dbe6`；
+同一 sealed authority 不允许 reset 或 retry。
+
+随后只 materialize exact reservation 并生成冻结 sealed q：q artifact SHA=
+`a79a9ea32d1cd971aaa02cd09fba5443f2b432f1c6172e5ee2dec1eb2d8ba6cc`，q-materialization
+manifest SHA=`650b3ff69f81d7dc1c34288377bfee4bb27f2d2d903a590e96d3b28b5d3f9dd0`，q tensor
+SHA=`f4ac51df0da0e69166d6709976d95c144f51753b447a5285a2f3ca08ae559eac`。V3 HARD primary
+`energy_distance` 只计算一次：per-bank `T` 为
+`[0.049855965358334586, 0.044472486680926515, 0.04357895430879832, 0.04779235600704013]`，
+arithmetic mean `T_sealed=0.04642494058877489`；MC exceedance=`473`，
+`p_MC=(1+473)/1000=0.474`，`alpha=0.05`，因此结果为
+`valid_completed/VALID_COMPLETED`、classification=`N3_SELECTED_PRODUCER_SEALED_CONFIRMATION_PASSED`。
+
+七项 secondary metrics 在 primary classification 之后才计算，全部标记为
+`DESCRIPTIVE_ONLY`：`covariance_relative_frobenius=0.09038233487117897`、
+`norm_energy_distance=0.009716937764942757`、
+`squared_norm_energy_distance=0.18827648522625218`、
+`marginal_mean_l2=0.3361683794741101`、`marginal_std_l2=0.3038214025509136`、
+`marginal_energy_distance_mean=0.002974553201990177`、
+`marginal_energy_distance_max=0.01664184907545732`；它们不参与 PASS/FAIL。
+
+唯一 lineage 为
+`outputs/20260910_v2/runs/n3_selected_producer_sealed_confirmation_v1_attempt_01/`
+`n3_selected_producer_sealed_confirmation_lineage.v1.json`，SHA-256=
+`a8e8dc3ed3b4c2a5eb274aa0d089e6697aed8fdda83bf513c36bfdf548210bb7`。治理结果为
+`selected_producer=EMPIRICAL_GAUSSIAN_COPULA`、
+`n3_amplitude_producer_confirmation=PASSED`、sealed `consumed=true`，但
+`training_authorized=false`、`formal_promotion=false`、`generation_readiness=not_ready`。
+该结果只支持冻结 Gaussian q/amplitude producer 在这一 exact independent sealed contract 下
+通过；不支持 complete complex OLS、amplitude-phase joint compatibility、semantic/optical
+generation 或 population/OOD generalization。N3 amplitude/q producer work 关闭，下一规划边界
+为 `DEFINE_N3_COMPLEX_OLS_AMPLITUDE_PHASE_JOINT_COMPATIBILITY_CONTRACT_V1`，不自动启动。
+
+### H-LOMA-GEN-N3 complete complex OLS amplitude/phase joint-compatibility contract（2026-09-10）
+
+按 sealed confirmation 之后的唯一规划边界完成
+`DEFINE_N3_COMPLEX_OLS_AMPLITUDE_PHASE_JOINT_COMPATIBILITY_CONTRACT_V1` 的 definition-only
+consumer。契约 artifact 位于
+`outputs/20260910_v2/runs/n3_complex_ols_amplitude_phase_joint_compatibility_contract_v1_attempt_01/`
+`n3_complex_ols_amplitude_phase_joint_compatibility_contract.v1.json`，SHA-256=
+`52e07263343d765db13022fbcf56f74e7431a9dced16f8bfa31ca07ecc6bd726`，status/result=
+`valid_completed/READY`，classification=
+`N3_COMPLEX_OLS_AMPLITUDE_PHASE_JOINT_COMPATIBILITY_CONTRACT_V1_READY`。
+
+该定义绑定既有 `PROJECT_COMPLEX_OLS_V1` 的 `R3_COMPLEX` 语义、S1
+`GLOBAL_PHASE_GAUGE_CONFIRMED`/`PHASE_SEMANTIC_INCREMENT_SUPPORTED` evidence、V2 source/q/five-fold
+authority 与冻结 assignment；V2 q→complex-amplitude mapping 固定为
+`A_j(q)=q_j=abs(c_j/sqrt(s_j))`，d=`100`。相位 authority
+`OBSERVED_RELATIVE_PHASE_INHERITANCE_V1` 在此仅表示 contract-local observed complete-vector
+inheritance assumption，不是新 physical gauge 或新 phase producer。canonicalization 是既有
+global-phase quotient 的确定性数值 cross-section：最大幅值最小索引 anchor、保持 anchor real/nonnegative，
+phase 为完整 100-coordinate `torch.float64` `atan2` principal `[-pi,pi]`；exact-zero coordinate
+为 `INVALID_HARNESS`，正 near-zero 保留且不 threshold/mask/epsilon。
+
+未来 execution 的顺序固定为不可选的
+`FULL_COMPLEX_ROW_EMPIRICAL_BOOTSTRAP_CONTROL`，再在 control=`5/5` 时执行唯一 candidate
+`OBSERVED_PHASE_INDEPENDENT_INHERITANCE_V1`。candidate 每折只使用 4000 fitting q rows 与对应
+4000 fitting complex OLS rows，独立有放回抽取一个完整相位 donor vector；不使用 heldout phase donor、
+不做 q-dependent phase selection。比较空间是 canonical complex row 到 float64 `[Re,Im]` embedding，
+唯一 HARD primary 为 `energy_distance`；amplitude/q、phase、dependence summaries 均为
+`DESCRIPTIVE_ONLY`。每折/方法先做 `4×200` model-self calibration，`B=999`，family alpha=`0.05`、
+Bonferroni per-fold alpha=`0.01`，strict `5/5`。control 失败、candidate 通过/失败和 invalid measurement
+的分类映射均已冻结。
+
+定义阶段只 hash/读取 authority metadata，没有加载 q 或 complex OLS values，没有读取或复用已消费
+sealed 内容，没有执行 scientific joint evaluation、CUDA、training、N4/N5/N6 或 amplitude-producer
+修改。当前仍 `training_authorized=false`、`formal_promotion=false`、`generation_readiness=not_ready`；
+旧 complex OLS artifact 只有历史 1000 rows，V2 对应 5000-row complex artifact 必须由未来 consumer
+按冻结 source identity 确定性物化，不在此定义中虚构。唯一下一动作是
+`EXECUTE_N3_COMPLEX_OLS_AMPLITUDE_PHASE_JOINT_COMPATIBILITY_V1`。
+
+### H-LOMA-GEN-N3 complete complex OLS amplitude/phase joint-compatibility execution（2026-09-10）
+
+按冻结的 `N3_COMPLEX_OLS_AMPLITUDE_PHASE_JOINT_COMPATIBILITY_CONTRACT_V1`，完成一次且仅一次
+`EXECUTE_N3_COMPLEX_OLS_AMPLITUDE_PHASE_JOINT_COMPATIBILITY_V1` CPU-only consumer。执行结果为
+`status/result=VALID_COMPLETED/VALID_COMPLETED`，report 位于
+`outputs/20260910_v2/runs/n3_complex_ols_amplitude_phase_joint_compatibility_v1_attempt_01/`
+`n3_complex_ols_amplitude_phase_joint_compatibility_report.v1.json`，SHA-256=
+`9989b89dea8a8d299da9a89b8c5566376a27a21c250a5ca22c07202dfa938429`；唯一 lineage 为同目录
+`n3_complex_ols_amplitude_phase_joint_compatibility_lineage.v1.json`，SHA-256=
+`238d6638a16fcfa86e48216db2b886b45c9038f8ea017b7f51a55c1f18090aa0`。
+
+consumer 先执行不可选的 `FULL_COMPLEX_ROW_EMPIRICAL_BOOTSTRAP_CONTROL`。其五折 primary
+`energy_distance` 均通过：fold 0–4 的 `(T, p_MC)` 分别为
+`(0.06498448, 0.115)`、`(0.06364414, 0.447)`、`(0.05216700, 0.375)`、
+`(0.06325216, 0.077)`、`(0.05835439, 0.419)`，合计 `5/5`。因此按合同继续执行唯一
+candidate `OBSERVED_PHASE_INDEPENDENT_INHERITANCE_V1`；其五折 `(T, p_MC)` 分别为
+`(0.61614069, 0.001)`、`(0.56453534, 0.001)`、`(0.65288760, 0.001)`、
+`(0.70127020, 0.001)`、`(0.66455420, 0.001)`，合计 `0/5`。严格五折门槛未满足，最终
+classification=`N3_COMPLEX_OLS_INDEPENDENT_PHASE_INHERITANCE_NOT_SUPPORTED`。
+
+本次 exact V2 complex OLS materialization 为 `torch.complex64`、shape=`[5000,100]`，且
+`q=abs(z)` 位级一致；历史 1000-row OLS artifact 未作为 row source。control 与 candidate
+均使用每折 `B=999` model-self calibration，family alpha=`0.05`、per-fold alpha=`0.01`；
+其他 amplitude/q、phase 与 dependence 数值只作 descriptive，不改变 primary decision。
+该结果拒绝当前“Gaussian q/amplitude 与独立抽取 observed complete phase vector 联合”的
+候选假设，不证明不存在 q-conditioned phase model，也不证明论文实现或物理 generation 失败。
+
+sealed confirmation 维持 `consumed=true`、`values_loaded=false`、`reused=false`，selected
+producer `EMPIRICAL_GAUSSIAN_COPULA` 未改变；`training_authorized=false`、
+`formal_promotion=false`、`generation_readiness=not_ready` 保持。下一动作冻结为
+`DEFINE_ONE_MINIMAL_Q_CONDITIONED_PHASE_COUPLING_MODEL_CONTRACT`，不自动定义或执行。
+
+### H-LOMA-GEN-N3 minimal q-conditioned phase-coupling contract（2026-09-10）
+
+按上一 joint-compatibility rejection 的唯一下一动作完成 definition-only consumer。
+合同 artifact 位于
+`outputs/20260910_v2/runs/n3_minimal_q_conditioned_phase_coupling_contract_v1_attempt_01/`
+`n3_minimal_q_conditioned_phase_coupling_contract.v1.json`，SHA-256=
+`14f4f3cd5d1046eb648b3410593d778910f8b8d33262528f9e0f12ba94250434`，status/result=
+`valid_completed/READY`，classification=
+`DEFINE_ONE_MINIMAL_Q_CONDITIONED_PHASE_COUPLING_MODEL_CONTRACT_V1_READY`。
+
+该合同只冻结一个项目 `MODEL_ASSUMPTION`：`Q_CONDITIONED_NEAREST_PHASE_DONOR_V1`。
+每折使用同折 4000 个 fitting q rows，沿用选定 `EMPIRICAL_GAUSSIAN_COPULA` 的冻结拟合/采样
+语义生成 q；将 q_new 与 fitting donor q 映射到由 fit-only empirical CDF、既有平均秩/端点约定
+和 `torch.special.ndtri` 定义的 100-D Gaussianized representation，以普通 Euclidean distance
+选择恰好一个最近 donor（`K=1`）。完全相同距离按 stable fitting-row identity 的 UTF-8 字节序
+选最小者；复制该 donor 的完整 100 维 frozen relative-phase vector，禁止逐坐标混合、相位插值、
+角度平均和加权 KNN。该假设不是 Chen/LightGen 的 phase-generation mechanism 声称。
+
+合同绑定既有 V2 source/q/five-fold authority、`PROJECT_COMPLEX_OLS_V1`、冻结 Gaussian producer、
+上一 joint contract 及其 `FULL_COMPLEX_ROW_EMPIRICAL_BOOTSTRAP_CONTROL=5/5`；control 在本轮
+仅作为等价语义的历史输入 authority 复用，不重复执行。未来 candidate evaluator 仍固定为
+canonical complex → float64 `[Re,Im]`、`energy_distance` 唯一 HARD primary、`B=999`、
+per-fold alpha=`0.01`、strict `5/5`，其余诊断仅 `DESCRIPTIVE_ONLY`。
+
+本次未加载 q/complex/sealed values，未执行 heldout scientific evaluation、CUDA 或 training，
+machine governance 未修改，`sealed consumed=true` 且不可复用，`training_authorized=false`、
+`formal_promotion=false`、`generation_readiness=not_ready` 保持。唯一下一动作是
+`EXECUTE_N3_Q_CONDITIONED_NEAREST_PHASE_DONOR_V1`，不自动执行。
+
 ## 2026-09-07：H-LOMA-GEN-S3 controller semantic-geometry lineage
 
 本节补录 2026-09-07 的 S3 controller-only 研究事实；它们属于已关闭的历史/diagnostic lineage，
@@ -2702,3 +4120,99 @@ compression 与 class-conditioned compression 仍未关闭。没有足够证据�
 当前 controller parameterization limitation；class9 改善仅为 secondary。exact one-shot repair line
 关闭，不 retune、second canary、S3 rerun 或 class9 repair，S4 blocked；`KEEP_8D_PROVISIONALLY`、
 `training_authorized=false`、`generation_readiness=not_ready` 与 `formal_promotion=false` 保持。
+
+## 2026-09-10：LightGen 2D semantic complex-OLS training consumer V2 implementation
+
+在 `LIGHTGEN_INPUT_OLS_ALIGNMENT_FIRST` 架构决策、aligned input/OLS runtime 和 V2 training contract
+均已冻结后，按用户授权完成一次且仅一次
+`IMPLEMENT_LIGHTGEN_2D_SEMANTIC_COMPLEX_OLS_TRAINING_CONSUMER_V2`。V2 contract artifact 为
+`outputs/20260910_v2/runs/lightgen_2d_semantic_complex_ols_training_contract_v2_attempt_01/`
+`lightgen_2d_semantic_complex_ols_training_contract.v2.json`，SHA-256=
+`b85fce30b70643638c1ea276d78dc58174c90980e420414cafc3f1947155de53`。
+
+实现结果为 `valid_completed/IMPLEMENTED`，classification=
+`LIGHTGEN_2D_SEMANTIC_COMPLEX_OLS_TRAINING_CONSUMER_V2_IMPLEMENTED`。consumer source SHA-256=
+`d8b80121faf9da618a1710644b28fbf22755615aafba4d92cb0facb777f5fe97`；最终 write-once implementation
+report 位于 `outputs/20260910_v2/runs/lightgen_2d_semantic_complex_ols_training_consumer_v2_attempt_02/`
+`lightgen_2d_semantic_complex_ols_training_consumer_v2_implementation_report.v1.json`，SHA-256=
+`8c6a07e9abf302a2060b4e65b91b65d5c514cdf1257576eba5936f734e28ebbe`；同目录 preflight input
+`lightgen_2d_semantic_complex_ols_long_training_preflight_v2.v1.json` 的 SHA-256=
+`93773f3f88daf8be73ba576e6264acfd093e02eb77af877818e6798d0b6a588c`。
+
+consumer 实现并冻结了 Stage A/B 各 300 steps、100/200/300 checkpoints、`.937` semantic firewall、
+Stage-A 纯 `L_image`、train-only `s_j=mean_train |z_j|^2`（float64 accumulation）、Stage-B normalized
+full-complex gauge-invariant MMD 与唯一 raw physical scale anchor、精确 `CN(0,I_100)` prior、A→B Adam
+optimizer reset、state machine、checkpoint/resume identity 以及 modal projection/`W_OLS` autograd firewall。
+真实 encoded OLS 与 future sampled OLS 继续进入同一 `forward_from_ols`/generator interface；q-only latent、
+amplitude-first phase repair 和 alternate electronic decoder 未进入 aligned mainline。
+
+implementation smoke 为明确标记的 `NON_SCIENTIFIC_SMOKE`：CPU 128-grid，Stage A/B 各 1 synthetic update，
+并验证 scale/prior/state/selection/checkpoint/reload 及 forbidden-role rejection；scientific steps=`0`，
+real data rows=`0`，protected/test rows=`0`，sealed rows=`0`。没有执行 CUDA、真实 300+300 training、
+heldout evaluation、generation acceptance 或 promotion；`training_authorized=false`、
+`formal_promotion=false`、`generation_readiness=not_ready` 保持。attempt-01 保留为 write-once 历史，
+attempt-02 是当前源码绑定的最新实现报告。唯一下一动作是
+`PREFLIGHT_LIGHTGEN_2D_SEMANTIC_COMPLEX_OLS_LONG_TRAINING_V2`，不得自动启动训练。
+
+### LightGen 2D semantic complex-OLS long-training preflight V2：authority blocker（2026-09-10）
+
+按 V2 consumer 的 preflight input 执行一次新建 `attempt-02` 的
+`PREFLIGHT_LIGHTGEN_2D_SEMANTIC_COMPLEX_OLS_LONG_TRAINING_V2`。结果为
+`valid_failed/BLOCKED`，classification=
+`BLOCKED_TRAINING_SOURCE_AUTHORITY_MISMATCH`。报告位于
+`outputs/20260910_v2/runs/lightgen_2d_semantic_complex_ols_long_training_preflight_v2_attempt_02/`
+`lightgen_2d_semantic_complex_ols_long_training_preflight_v2_report.v1.json`，SHA-256=
+`2fbea9060fc96a2634201366dc2cb5bb549491581cc4fca3aa518a033750f7b3`；lineage SHA-256=
+`1f9abc34454ef26734081c2b5c86352d624970b359558ccc8542ce2f71ddae74`。
+
+冻结 V2 contract SHA-256=`b85fce30b70643638c1ea276d78dc58174c90980e420414cafc3f1947155de53` 绑定的
+`data/MNIST/processed/training.pt` SHA-256 为
+`8151bb33f70ee47d9557adaaa667bb878b38cf4015dcac206d1411fb0d0effd`，而当前本地文件实际 SHA-256 为
+`8151bbd33f70ee47d9557adaaa667bb878b38cf4015dcac206d1411fb0d0effd`。合同、consumer 与 implementation
+preflight input 的 authority 彼此一致，但冻结 authority 与实际输入不一致；因此没有替换合同 digest，
+也没有修改数据文件。该冲突在训练张量加载前触发硬停止，故目标 CUDA/backend、Stage A/B smoke、DEV
+semantic firewall、55,000-row scale、normalized prior、optimizer reset、checkpoint/resume 与内存/存储
+后续 gate 均未执行，不能据此推断 CUDA 或模型可训练性失败。
+
+本次没有读取 protected/test/sealed，没有生成 preflight scale/checkpoint，没有 scientific training、generation
+或 promotion；`training_authorized=false`、`formal_promotion=false`、`generation_readiness=not_ready` 保持。
+下一动作只能是解析/恢复冻结 source authority，或在独立新 authority 定义后重新执行完整 preflight；不得绕过
+authority gate 直接运行 V2 训练。attempt-01 的 `INVALID_PREFLIGHT_HARNESS` 输出保持不可变，本次 attempt-02 是
+有效阻断证据。
+
+## 2026-09-11：LightGen 2D semantic complex-OLS long-training preflight V2 authority repair rerun
+
+按独立 authority correction 完成 V2 consumer/preflight provenance-only rebind，并从头重跑同一
+`PREFLIGHT_LIGHTGEN_2D_SEMANTIC_COMPLEX_OLS_LONG_TRAINING_V2`。active corrected contract SHA-256=
+`aaa3cc409a9a4775be4bf48ef566fce8615f75b72277ca79194d36bd1f56c9cf`；correction authority SHA-256=
+`fdf03a0a8568db947011549e7869ff11ab972e19c1e01fbc3e7d2e9d850dbeb0`；canonical
+`data/MNIST/processed/training.pt` SHA-256=`8151bbd33f70ee47d9557adaaa667bb878b38cf4015dcac206d1411fb0d0effd`；原 malformed
+contract SHA-256=`b85fce30b70643638c1ea276d78dc58174c90980e420414cafc3f1947155de53` 保留且未覆盖。original/corrected
+contract 的 scientific semantic normal form 相同，SHA-256=`cb90ac1bb33d56b155abf1cb2b01776983af356babbc45ccb8dded9ebd203203`；
+没有修改科学字段或 `training.pt`。
+
+最终 write-once attempt-07 位于
+`outputs/20260910_v2/runs/lightgen_2d_semantic_complex_ols_long_training_preflight_v2_attempt_07/`，结果为
+`valid_completed/AUTHORIZABLE`，classification=
+`LIGHTGEN_2D_SEMANTIC_COMPLEX_OLS_LONG_TRAINING_V2_AUTHORIZABLE`。preflight input SHA-256=
+`2e090926b057f70ed9cacc63473d16786336aa39b9371da2dcfdbccfead94b1d`；report SHA-256=
+`b7bc2482d55af70ad8fc7a1b204c636425e9bca64448feda9e11e0111b5d64a4`；lineage SHA-256=
+`30913cd07ad318fbd94d2e5a4a346da6ca8390087e47a0b145d2c08b54b2d3bd`。
+
+目标设备为 RTX 3060 Laptop GPU、compute capability=`8.6`、PyTorch=`2.5.1`、CUDA build=`12.1`、VRAM=`6,441,926,656`
+bytes。严格 `grid=2048`、`batch=10`、Adam `lr=1e-3` 下，Stage A 与 Stage B 均完成 3-step CUDA engineering smoke；
+Stage-A `L_image`-only/MMD-disabled firewall、modal projection → `T=I_100` → `W_OLS` → generator 路径，Stage-B
+normalized full-complex MMD on `z_tilde`、raw-z `L_scale`、frozen scale 与 trainable firewall 均通过。完整 55,000 TRAIN-only
+scale traversal 通过，耗时 `649.1178496` s、约 `84.7304` rows/s，float64 accumulation，epsilon=`1e-12`；deterministic
+probe 相等。`NON_SCIENTIFIC_PREFLIGHT_SCALE` 和包含该 scale 的 preflight checkpoint 均被 formal loader 拒绝。
+
+normalized prior/mapping、A→B model carry-over、Adam optimizer reset、Stage-A/B checkpoint/resume 均通过；resume 的 loss
+与 parameter 最大绝对差异均为 `0.0`，optimizer state 等价，scale identity 保持。peak reserved VRAM=`4,592,762,880` bytes，
+minimum observed free=`557,125,632` bytes，storage feasible。data firewall 记录 TRAIN=`55,000`、DEV semantic smoke=`1,000`、
+calibration/protected/test/sealed=`0`；没有 scientific 300+300 training、heldout evaluation、generation 或 promotion，
+`training_authorized=false`、`formal_promotion=false`、`generation_readiness=not_ready` 保持。
+
+attempt-02 的 `BLOCKED_TRAINING_SOURCE_AUTHORITY_MISMATCH` 保持为 historical/superseded-by-authority-correction，未被
+删除或 invalidated。attempt-03 至 attempt-06 是本次 rerun 过程中发现并修复的 preflight harness 边界 artifacts，全部保留
+为历史记录；最终 accepted preflight evidence 仅以 attempt-07 为准。下一动作只能是独立明确授权后的
+`EXECUTE_LIGHTGEN_2D_SEMANTIC_COMPLEX_OLS_TRAINING_V2`，AUTHORIZABLE preflight 不自动授予训练授权。

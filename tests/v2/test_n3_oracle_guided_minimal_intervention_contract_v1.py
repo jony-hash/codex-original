@@ -1,0 +1,165 @@
+from __future__ import annotations
+
+import itertools
+import json
+from pathlib import Path
+
+from ldm_project.v2.evidence import file_sha256
+from scripts.research import define_n3_oracle_guided_minimal_intervention_contract_v1 as contract
+
+
+EXPECTED_ARTIFACT_SHA256 = "d640335c298afed696c64250acd15ed4767e8222a8e962f54fe6cd05c8a0f6b1"
+
+
+def _load_artifact() -> dict[str, object]:
+    repo_root = Path(__file__).resolve().parents[2]
+    path = repo_root / contract.OUTPUT_DIR / contract.CONTRACT_NAME
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def test_artifact_is_immutable_definition_authority() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    path = repo_root / contract.OUTPUT_DIR / contract.CONTRACT_NAME
+    artifact = _load_artifact()
+
+    assert file_sha256(path) == EXPECTED_ARTIFACT_SHA256
+    assert artifact["schema"] == contract.CONTRACT_SCHEMA
+    assert artifact["semantic_authority_id"] == contract.TASK_ID
+    assert artifact["classification"] == contract.READY_CLASSIFICATION
+    assert artifact["claim_classification"] == contract.CLAIM_CLASSIFICATION
+    assert artifact["definition_only"] is True
+    assert artifact["contract_totality"]["status"] == "passed"
+    assert artifact["contract_totality"]["future_runtime_math_choices"] == []
+    assert artifact["git"]["contract_script_sha256"] == file_sha256(Path(contract.__file__))
+
+
+def test_candidate_component_isolation_and_math_are_exactly_defined() -> None:
+    artifact = _load_artifact()
+    candidate_m = artifact["candidate_M"]
+    candidate_d = artifact["candidate_D"]
+
+    assert artifact["scope"]["candidate_ids"] == [contract.CANDIDATE_M, contract.CANDIDATE_D]
+    assert artifact["scope"]["candidate_family_count"] == 2
+    assert candidate_m["family"] == contract.CANDIDATE_M_FAMILY
+    assert candidate_d["family"] == contract.CANDIDATE_D_FAMILY
+    assert candidate_m["changed_component"] == "marginal representation only"
+    assert candidate_d["changed_component"] == "dependence representation only"
+    assert candidate_m["unchanged_component"]["dependence_parameter_leakage"] is False
+    assert candidate_d["unchanged_component"]["marginal_parameter_leakage"] is False
+
+    m_parameters = candidate_m["parameterization"]
+    assert m_parameters["parameters_per_coordinate"] == ["mu_j", "sigma_j"]
+    assert m_parameters["new_fitted_scalar_count"] == 2 * contract.DIMENSION
+    assert m_parameters["quantile"] == "Q_M,j(u)=expm1(mu_j+sigma_j*Phi^-1(u)) for 0<u<1"
+    assert candidate_m["fitting"]["optimizer"] is False
+    assert candidate_m["fitting"]["rows"] == contract.FIT_COUNT_PER_FOLD
+
+    d_parameters = candidate_d["parameterization"]
+    assert d_parameters["degrees_of_freedom"] == 5
+    assert d_parameters["degrees_of_freedom_status"].startswith("pre-frozen fixed hyperparameter")
+    assert d_parameters["additional_fitted_scalar_count"] == 0
+    assert "F_t5" in d_parameters["student_t_cdf_formula"]
+    assert candidate_d["fitting"]["optimizer"] is False
+    assert candidate_d["sampling"]["draw_order"] == (
+        "draw G0 standard-normal noise first, then E radial noise, using the same CPU Generator"
+    )
+
+    for candidate in (candidate_m, candidate_d):
+        assert candidate["candidate_count_in_family"] == 1
+        assert candidate["sampling"]["generated_bank_size"] == contract.GENERATED_BANK_SIZE
+        assert candidate["sampling"]["data_vs_model_replicates"] == contract.DATA_VS_MODEL_REPLICATES
+        assert candidate["sampling"]["model_vs_model_replicates"] == contract.MODEL_VS_MODEL_REPLICATES
+        assert candidate["sampling"]["proposal_rejection"] is False
+        assert candidate["sampling"]["clamp"] is False
+        assert candidate["sampling"]["epsilon_repair"] is False
+        assert candidate["numerical_failure_semantics"]["invalid_status"] == "INVALID_HARNESS"
+        assert candidate["numerical_failure_semantics"]["fallbacks"] is False
+
+
+def test_complexity_ordering_and_selection_mapping_are_total() -> None:
+    artifact = _load_artifact()
+    complexity = artifact["complexity"]
+    assert complexity["candidate_M"]["total_effective_fitted_scalar_count"] == 5250
+    assert complexity["candidate_D"]["total_effective_fitted_scalar_count"] == 85050
+    assert complexity["candidate_ordering_tuples"]["M"] < complexity["candidate_ordering_tuples"]["D"]
+    assert complexity["preferred_candidate_if_both_supported"] == contract.CANDIDATE_M
+    assert complexity["post_result_subjective_score"] is False
+    assert complexity["numerical_failure_surface_used_for_ordering"] is False
+    assert contract.complexity_preferred_candidate() == contract.CANDIDATE_M
+
+    expected = {
+        (False, False): "NO_MINIMAL_INTERVENTION_SUPPORTED",
+        (True, False): "SELECT_MARGINAL_ONLY",
+        (False, True): "SELECT_DEPENDENCE_ONLY",
+        (True, True): "SELECT_COMPLEXITY_PREFERRED_MINIMAL_INTERVENTION",
+    }
+    for marginal_supported, dependence_supported in itertools.product((False, True), repeat=2):
+        assert contract.selection_label(marginal_supported, dependence_supported) == expected[
+            (marginal_supported, dependence_supported)
+        ]
+    assert artifact["selection"]["both_supported_result"].endswith("selected_candidate=M")
+    assert artifact["selection"]["no_weighted_score"] is True
+
+
+def test_development_comparison_reuses_frozen_all_fold_protocol() -> None:
+    artifact = _load_artifact()
+    evaluation = artifact["development_evaluation"]
+    assert evaluation["fold_count"] == contract.FOLD_COUNT
+    assert evaluation["fold_assignment_sha256"] == contract.FOLD_ASSIGNMENT_SHA256
+    assert evaluation["fit_rows_per_fold"] == contract.FIT_COUNT_PER_FOLD
+    assert evaluation["heldout_rows_per_fold"] == contract.HELDOUT_COUNT_PER_FOLD
+    assert evaluation["resplit"] is False
+    assert evaluation["sealed_confirmation"] is False
+    assert evaluation["labels_as_model_inputs"] is False
+    assert evaluation["generated_bank_size"] == contract.GENERATED_BANK_SIZE
+    assert evaluation["data_vs_model_replicates"] == 4
+    assert evaluation["model_vs_model_replicates"] == 8
+    assert evaluation["model_reference_pairs"] == [
+        {"pair_index": 0, "left_replicate": 0, "right_replicate": 1},
+        {"pair_index": 1, "left_replicate": 2, "right_replicate": 3},
+        {"pair_index": 2, "left_replicate": 4, "right_replicate": 5},
+        {"pair_index": 3, "left_replicate": 6, "right_replicate": 7},
+    ]
+    compatibility = evaluation["fold_compatibility"]
+    assert compatibility["scalar_metric_count"] == 8
+    assert compatibility["all_joint_metrics_required"] is True
+    assert compatibility["all_aggregate_marginal_guardrails_required"] is True
+    assert compatibility["per_coordinate_vector_separate_gate"] is False
+    assert compatibility["equality_is_pass"] is True
+    assert evaluation["candidate_support"]["all_five_folds_required"] is True
+    assert evaluation["candidate_support"]["relative_improvement_sufficient"] is False
+
+
+def test_definition_consumer_has_no_candidate_result_or_tensor_path() -> None:
+    source = Path(contract.__file__).read_text(encoding="utf-8")
+    assert "import torch" not in source
+    assert "torch.load" not in source
+    assert "safe_torch_load" not in source
+    artifact = _load_artifact()
+    boundary = artifact["execution_boundary"]
+    assert boundary["q_tensor_loaded_by_this_definition_consumer"] is False
+    assert boundary["candidate_M_fit"] is False
+    assert boundary["candidate_M_sampling"] is False
+    assert boundary["candidate_D_fit"] is False
+    assert boundary["candidate_D_sampling"] is False
+    assert boundary["new_candidate_results_observed"] is False
+    assert boundary["new_candidate_q_results_read"] is False
+    assert boundary["sealed_confirmation_read"] is False
+    assert boundary["cuda"] is False
+    assert boundary["training"] is False
+
+
+def test_project_state_and_authorities_are_unchanged() -> None:
+    artifact = _load_artifact()
+    authorities = artifact["authorities"]
+    assert authorities["oracle_diagnostic_report"]["sha256"] == contract.ORACLE_REPORT_SHA256
+    assert authorities["attribution_report"]["sha256"] == contract.ATTRIBUTION_REPORT_SHA256
+    assert authorities["original_producer_report"]["sha256"] == contract.PRODUCER_REPORT_SHA256
+    assert artifact["governance"]["oracle_classification"] == "N3_COPULA_PRIMARY_BOTH_ORACLES_SUFFICIENT"
+    assert artifact["governance"]["attribution_classification"] == "N3_COPULA_FAILURE_MARGINAL_AND_DEPENDENCE_MIXED"
+    assert artifact["governance"]["current_copula_classification"] == "N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_NOT_SUPPORTED"
+    assert artifact["governance"]["sealed_confirmation_status"] == "RESERVED_NOT_MATERIALIZED"
+    assert artifact["governance"]["sealed_confirmation_consumed"] is False
+    assert artifact["governance"]["training_authorized"] is False
+    assert artifact["governance"]["formal_promotion"] is False
+    assert artifact["governance"]["generation_readiness"] == "not_ready"

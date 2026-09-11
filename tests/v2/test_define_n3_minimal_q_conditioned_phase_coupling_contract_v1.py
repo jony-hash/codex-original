@@ -1,0 +1,68 @@
+"""Targeted tests for the definition-only q-conditioned phase contract."""
+
+from __future__ import annotations
+
+import unittest
+
+import torch
+
+from scripts.research import define_n3_minimal_q_conditioned_phase_coupling_contract_v1 as contract
+
+
+class MinimalQConditionedPhaseContractTests(unittest.TestCase):
+    def test_contract_order_and_future_gate_are_frozen(self) -> None:
+        self.assertEqual(contract.CANDIDATE_ID, "Q_CONDITIONED_NEAREST_PHASE_DONOR_V1")
+        self.assertEqual(contract.K, 1)
+        self.assertEqual(contract.NEXT_ACTION, "EXECUTE_N3_Q_CONDITIONED_NEAREST_PHASE_DONOR_V1")
+        self.assertEqual(contract.MODEL_BANK_COUNT, 4)
+        self.assertEqual(contract.MODEL_BANK_SIZE, 200)
+        self.assertEqual(contract.CALIBRATION_TRIAL_COUNT, 999)
+        self.assertEqual(contract.PER_FOLD_ALPHA, 0.01)
+
+    def test_fit_derived_gaussianized_q_coordinates_are_total_and_finite(self) -> None:
+        sorted_values = torch.linspace(0.1, 1.0, contract.DIMENSION, dtype=torch.float64).reshape(1, -1).repeat(4, 1)
+        sorted_values[1, 5] = sorted_values[0, 5]
+        sorted_values[2, 5] = sorted_values[0, 5]
+        sorted_values[:, 6:] = torch.maximum(sorted_values[:, 6:], sorted_values[:, 5:6] + 0.1)
+        query = sorted_values[0:1].clone()
+        query[0, 0] = 0.0
+        query[0, 1] = 2.0
+        query[0, 2] = (sorted_values[0, 2] + sorted_values[3, 2]) / 2.0
+        result = contract._gaussianized_q_coordinates(query, sorted_values)
+        self.assertEqual(tuple(result.shape), (1, contract.DIMENSION))
+        self.assertEqual(result.dtype, torch.float64)
+        self.assertTrue(torch.isfinite(result).all().item())
+
+    def test_invalid_q_distance_inputs_fail_closed(self) -> None:
+        sorted_values = torch.ones((4, contract.DIMENSION), dtype=torch.float64)
+        invalid_query = torch.ones((1, contract.DIMENSION), dtype=torch.float64)
+        invalid_query[0, 3] = -0.1
+        with self.assertRaises(contract.InvalidHarnessError):
+            contract._gaussianized_q_coordinates(invalid_query, sorted_values)
+        nonmonotone = sorted_values.clone()
+        nonmonotone[2, 4] = 0.5
+        with self.assertRaises(contract.InvalidHarnessError):
+            contract._gaussianized_q_coordinates(torch.ones((1, contract.DIMENSION), dtype=torch.float64), nonmonotone)
+
+    def test_nearest_donor_tie_uses_smallest_stable_identity_without_rng(self) -> None:
+        query = torch.zeros(contract.DIMENSION, dtype=torch.float64)
+        donors = torch.zeros((2, contract.DIMENSION), dtype=torch.float64)
+        selected = contract._nearest_donor_index(query, donors, ["stable-row-z", "stable-row-a"])
+        self.assertEqual(selected, 1)
+
+    def test_definition_totality_has_no_scientific_or_governance_side_effect(self) -> None:
+        totality = contract._contract_totality_checks()
+        self.assertEqual(totality["status"], "passed")
+        self.assertEqual(totality["candidate_id"], contract.CANDIDATE_ID)
+        self.assertFalse(totality["model_order_search"])
+        self.assertFalse(totality["q_values_loaded"])
+        self.assertFalse(totality["complex_ols_values_loaded"])
+        self.assertFalse(totality["sealed_values_loaded"])
+        self.assertFalse(totality["scientific_evaluation_executed"])
+        self.assertFalse(totality["training_executed"])
+        self.assertFalse(totality["cuda_used"])
+        self.assertFalse(totality["governance_mutated"])
+
+
+if __name__ == "__main__":
+    unittest.main()

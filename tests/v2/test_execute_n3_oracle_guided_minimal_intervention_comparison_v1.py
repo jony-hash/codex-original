@@ -1,0 +1,108 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from ldm_project.v2.evidence import file_sha256
+from scripts.research import execute_n3_oracle_guided_minimal_intervention_comparison_v1 as execution
+
+
+EXPECTED_REPORT_SHA256 = "ff8404e4c6b26b66d9292e728e30031cc5b14b7c1d1396d5713e6a2bdae77c17"
+
+
+def _load_report() -> dict[str, object]:
+    repo_root = Path(__file__).resolve().parents[2]
+    path = repo_root / execution.OUTPUT_DIR / execution.REPORT_NAME
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def test_report_is_write_once_blocked_execution_authority() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    path = repo_root / execution.OUTPUT_DIR / execution.REPORT_NAME
+    report = _load_report()
+
+    assert file_sha256(path) == EXPECTED_REPORT_SHA256
+    assert report["schema"] == execution.REPORT_SCHEMA
+    assert report["task_id"] == execution.TASK_ID
+    assert report["gate"] == execution.GATE
+    assert report["status"] == "blocked"
+    assert report["result"] == "BLOCKED"
+    assert report["classification"] is None
+    assert report["scientific_classification_emitted"] is False
+    assert report["contract"]["sha256"] == execution.CONTRACT_SHA256
+    assert report["contract"]["classification"] == "DEFINE_N3_ORACLE_GUIDED_MINIMAL_INTERVENTION_CONTRACT_V1_READY"
+    assert report["input_verification"]["q_loaded_after_static_preflight"] is True
+    assert report["input_verification"]["sealed_confirmation_read"] is False
+    assert report["input_verification"]["sealed_confirmation_consumed"] is False
+    assert report["blocker"]["type"] == "INVALID_HARNESS"
+    assert report["blocker"]["details"] == {
+        "candidate": "M",
+        "contract_action": "stop before scientific compatibility or selection",
+        "failure_semantics": "INVALID_HARNESS",
+        "fold": 0,
+        "invalid_count": 351,
+        "negative_count": 351,
+        "nonfinite_count": 0,
+        "q_max": 7.528838701593836,
+        "q_min": -0.42263710721584474,
+        "replicate": 0,
+        "role": "data-vs-model",
+    }
+
+
+def test_blocked_report_has_no_partial_candidate_results_or_banks() -> None:
+    report = _load_report()
+    assert report["candidate_results"] is None
+    assert report["comparison"] == {
+        "d_compatible_folds": None,
+        "m_compatible_folds": None,
+        "no_partial_candidate_selection": True,
+        "selection_applied": False,
+        "support_classification_applied": False,
+    }
+    assert report["selection"]["classification"] is None
+    assert report["selection"]["selected_candidate"] is None
+    assert report["selection"]["selection_applied"] is False
+
+
+def test_frozen_contract_and_execution_boundary_remain_closed() -> None:
+    report = _load_report()
+    assert report["execution_settings"]["device"] == "cpu"
+    assert report["execution_settings"]["dtype"] == "float64"
+    assert report["execution_settings"]["cuda"] is False
+    assert report["execution_settings"]["optimizer"] is False
+    assert report["execution_settings"]["backward"] is False
+    assert report["execution_settings"]["training"] is False
+    assert report["governance"]["comparison_executed"] is False
+    assert report["governance"]["candidate_selected"] is False
+    assert report["outer_gate"]["final_all_development_fit_authorized"] is False
+    assert report["outer_gate"]["sealed_confirmation_authorized"] is False
+    assert report["outer_gate"]["p1_execution_authorized"] is False
+
+
+def test_blocker_does_not_promote_relative_or_compatibility_evidence() -> None:
+    report = _load_report()
+    assert report["claim_boundary"]["development_candidate_compatibility"] is False
+    assert report["claim_boundary"]["scientific_comparison_classification"] is False
+    assert report["blocker"]["repair_attempted"] is False
+    assert report["blocker"]["fallback_used"] is False
+    assert "candidate support classification" in report["not_executed"]
+    assert "candidate selection" in report["not_executed"]
+
+
+def test_project_state_and_governance_boundary_remain_closed() -> None:
+    report = _load_report()
+    assert report["outer_gate"]["result"] == "BLOCKED"
+    assert report["outer_gate"]["final_all_development_fit_authorized"] is False
+    assert report["outer_gate"]["sealed_confirmation_authorized"] is False
+    assert report["outer_gate"]["p1_execution_authorized"] is False
+    assert report["governance"]["training_authorized"] is False
+    assert report["governance"]["formal_promotion"] is False
+    assert report["governance"]["generation_readiness"] == "not_ready"
+    assert report["governance"]["sealed_confirmation_status"] == "RESERVED_NOT_MATERIALIZED"
+    assert report["governance"]["sealed_confirmation_consumed"] is False
+    assert report["project_state"]["oracle_classification"] == "N3_COPULA_PRIMARY_BOTH_ORACLES_SUFFICIENT"
+    assert report["project_state"]["attribution_classification"] == "N3_COPULA_FAILURE_MARGINAL_AND_DEPENDENCE_MIXED"
+    assert report["project_state"]["original_copula_classification"] == "N3_EMPIRICAL_MARGINAL_GAUSSIAN_COPULA_NOT_SUPPORTED"
+    assert report["project_state"]["minimal_intervention_comparison_classification"] is None
+    assert report["project_state"]["selected_development_candidate"] is None

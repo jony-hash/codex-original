@@ -1,6 +1,6 @@
 # codex-original 项目记忆
 
-更新时间：2026-09-08
+更新时间：2026-09-10
 
 ## 目的与事实优先级
 
@@ -18,12 +18,48 @@ evidence handoff 与 provenance presentation；随后 evidence I/O 的局部异�
 函数签名、formal/high-risk evidence、training authorization、data firewall、checkpoint validation、
 formal runtime 或历史 artifact。
 
+## 唯一活动研究主线：LightGen 输入与 OLS 对齐的语义生成原型
+
+用户于 2026-09-10 明确研究目标：学习光学系统的语义流形，尽快得到可检查的初步生成效果；
+允许衍射层架构有项目差异，但输入和 OLS 处理必须以陈一同等人的 LightGen 原文为对齐依据。
+这是目标与设计约束，不是已经完成的论文复现，也不是训练或物理架构变更授权。
+
+| 路线 | 地位 | 如何使用 |
+| --- | --- | --- |
+| LightGen 输入/OLS 对齐的 OLS-native 语义生成 | 唯一活动研究主线 | 以真实光学输出检验语义生成；先明确训练输入、生成输入和完整 OLS 接口 |
+| N3 Gaussian copula 与复 OLS 兼容性研究 | 主线已有候选组件及证据 | 保留成果；其项目自建假设不得自动写成论文方法，是否纳入对齐实现需审查 |
+| 正式 v2 `label + 8D` / field identity OLS | 保留的正式兼容基线 | 解释现有 CLI/代码合同，不定义当前研究目标，不自动恢复训练 |
+| Scaled-Chen 重建、rank-16 电子读出、旧 S1–S3 controller | 历史证据或已关闭路线 | 可作对照；旧下一步与 `mainline_state=closed...` 只约束原路线 |
+| v1 LDM teacher | 历史复现运行时 | 与当前 teacher-free 研究分离 |
+
+### 输入和 OLS 的稳定对齐约束
+
+- 学习/重建路径：图像 → 振幅 SLM → optical encoder → 模式耦合 OLS → optical generator → CMOS。
+  生成路径可直接从表示 OLS 的输入进入 generator；不把旧 `label + 8D` controller 设为必要前置。
+- OLS 区分完整复系数、振幅和强度；保留模式投影、相对相位与模式重发。
+  端口传输 `T=I` 不等于整幅光场原样通过的 identity OLS。
+- 论文明确的事实与项目假设分列：`sqrt(intensity)` 的精确输入预处理、生成时的相位写入、
+  缩尺度 LP01 参数、逐端口归一化、KL 统计轴及参数、经验 copula 和独立相位继承，
+  均不得在缺少原文/作者实现依据时称为已对齐。
+- 论文 BOGT 在训练中结合分布约束、重建与光功率约束；冻结 encoder 后拟合分布不自动等同 BOGT。
+  具体未披露实现保持 unknown；不能为迅速出图静默换成软件解码或不可实现的任意复场注入。
+- 真实 OLS 重放、生成的新样本、raw CMOS 和电子读出分别报告；类别可识别、视觉质量、
+  多样性与新颖性不能相互替代。图像验收及执行预算须在相应实验合同中明确。
+
+论文依据为 [已登记补充材料](../research_assets/lightgen/science_adv7434/paper/sciencesm.pdf)
+第 2–3 页、第 6–9 页、第 10 页及图 S2；使用前按其 [manifest](../research_assets/lightgen/science_adv7434/manifest.json)
+确认版本。当前 numerical results 与既有实验下一动作只维护在 [当前状态](CURRENT_STATUS.md)；
+[当前交接](status/current_handoff.md) 负责新目标与既有执行合同之间的差异。
+
 ## 当前状态入口
 
 本文件只维护稳定目标、长期决策和导航；当前正式基线、活动研究快照、数值结论、阻塞以及
 允许动作或停止边界只在 [`CURRENT_STATUS.md`](CURRENT_STATUS.md) 与
 [`status/current_handoff.md`](status/current_handoff.md) 维护。下面带日期或明确标为历史的段落保留
 决策 provenance，不是当前执行指令；其中的历史“下一步”不能覆盖上述两个当前入口。
+
+<details>
+<summary>历史 N3 导航快照（2026-09-08；不代表当前状态或下一动作）</summary>
 
 ## OLS-native N3 research navigation
 
@@ -83,6 +119,8 @@ this stable memory records only the durable boundary: the minimal A/B developmen
 frozen unsupervised local-location mixture selection did not support a producer family, reservation
 is not execution authorization, and no confirmation, final producer fit, OLS or generation is opened.
 
+</details>
+
 ## S3 历史研究导航
 
 2026-09-07 的 controller semantic-geometry data authority、one-shot canary、frozen S3 consumer
@@ -106,7 +144,7 @@ one-shot repair line closed、S4 blocked。日期化证据和历史“下一步�
 - formal D2NN boundary 是 `finite_crop`；`transparent_identity` 仅为 diagnostic-only。
 - 不把旧 WSL checkout、`.codex` 旧项目副本、历史输出归档或原始 transcript 当作当前工作树。
 
-## 正式架构边界、禁止事项与主线收口
+## 正式兼容边界与历史重建主线收口
 
 - 当前 formal identity 链的有效结果是 `closed_historical_valid_failure`；它没有
   `formal_promotion` 权限，也不能授权 manual review、candidate export、memorization、

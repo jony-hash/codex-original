@@ -1,0 +1,151 @@
+"""Focused tests for the one-shot fixed-R Student-t copula consumer."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+import torch
+
+from ldm_project.v2.evidence import file_sha256, safe_torch_load, tensor_sha256
+from scripts.research import execute_n3_empirical_marginal_fixed_r_student_t_copula_v1 as execution
+
+
+def test_contract_is_consumed_at_the_declared_identity() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    contract = execution._validate_contract(repo_root)
+
+    assert contract["schema"] == "n3_empirical_marginal_fixed_r_student_t_copula_contract.v1"
+    assert contract["result"] == "READY"
+    assert contract["family"]["family_id"] == execution.CANDIDATE_ID
+    assert contract["family"]["candidate_family_count"] == 1
+    assert contract["student_t_copula_fit_contract"]["nu_domain"] == {
+        "lower": execution.NU_LOWER,
+        "upper": execution.NU_UPPER,
+        "closed_interval": True,
+        "variance_finite": True,
+        "upper_boundary_role": "finite Gaussian-limit approximation; legal fitted boundary, not infinity",
+    }
+
+
+def test_student_t_inverse_cdf_is_deterministic_and_round_trips() -> None:
+    probabilities = torch.tensor(
+        [[0.0005, 0.05, 0.5, 0.95, 0.9995]], dtype=torch.float64
+    )
+    first, first_iterations, first_unique = execution._student_t_ppf(probabilities, 5.0)
+    second, second_iterations, second_unique = execution._student_t_ppf(probabilities, 5.0)
+    recovered = execution._student_t_cdf(first, 5.0)
+
+    assert torch.equal(first, second)
+    assert first_iterations == second_iterations
+    assert first_unique == second_unique == probabilities.numel()
+    assert torch.allclose(recovered, probabilities, atol=execution.T_CDF_TOLERANCE, rtol=0.0)
+
+
+def test_student_t_sampling_is_deterministic_without_rejection() -> None:
+    sorted_values = torch.linspace(0.0, 1.0, execution.FIT_COUNT_PER_FOLD, dtype=torch.float64)
+    sorted_values = sorted_values.unsqueeze(1).expand(-1, execution.DIMENSION).contiguous()
+    fit = {
+        "nu": 5.0,
+        "baseline": {
+            "sorted_values": sorted_values,
+            "dependence": {"cholesky": torch.eye(execution.DIMENSION, dtype=torch.float64)},
+        },
+    }
+
+    first, first_record = execution._sample_bank(
+        fit, role="data-vs-model", fold=0, replicate=0
+    )
+    second, second_record = execution._sample_bank(
+        fit, role="data-vs-model", fold=0, replicate=0
+    )
+
+    assert torch.equal(first, second)
+    assert first_record == second_record
+    assert tuple(first.shape) == (execution.MODEL_SAMPLE_COUNT, execution.DIMENSION)
+    assert first.dtype == torch.float64
+    assert bool(torch.isfinite(first).all())
+    assert bool(first.ge(0.0).all())
+    assert first_record["bank_level_rejection"] is False
+    assert first_record["seed_retry"] is False
+    assert first_record["heldout_seed_tuning"] is False
+
+
+def test_exposure_order_and_governance_are_fail_closed() -> None:
+    records = [
+        {
+            "candidate_id": execution.CANDIDATE_ID,
+            "fold": 0,
+            "evaluator_call_number": 1,
+            "result_caused_code_or_config_change": False,
+        }
+    ]
+    with pytest.raises(execution.InvalidHarnessError, match="exactly one evaluator exposure"):
+        execution._validate_exposure(records)
+
+
+def test_published_execution_has_strict_five_fold_state() -> None:
+    report_path = execution.OUTPUT_DIR / execution.REPORT_NAME
+    if not report_path.is_file():
+        pytest.skip("Student-t execution report is published by the bounded execution task")
+
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["schema"] == execution.REPORT_SCHEMA
+    assert report["status"] == "valid_completed"
+    assert report["result"] == "VALID_COMPLETED"
+    assert report["candidate"]["candidate_family_count"] == 1
+    assert len(report["fold_results"]) == execution.FOLD_COUNT
+    assert report["evaluator_exposure"]["total_evaluator_calls"] == execution.FOLD_COUNT
+    assert report["evaluator_exposure"]["planned_evaluator_calls"] == execution.FOLD_COUNT
+    assert report["evaluator_exposure"]["adaptive_development_exposure"] is False
+    assert report["governance"] == {
+        "selected_producer": None,
+        "training_authorized": False,
+        "formal_promotion": False,
+        "generation_readiness": "not_ready",
+        "sealed_confirmation_consumed": False,
+    }
+    for fold in report["fold_results"]:
+        assert set(fold["compatibility_components"]) == set(execution.SCALAR_METRICS)
+        assert len(fold["per_coordinate_marginal_q95_checks"]) == execution.DIMENSION
+        assert fold["fit"]["heldout_excluded_from_fit"] is True
+        assert fold["model"]["heldout_values_used_for_sampling"] is False
+
+
+def test_published_artifacts_are_hash_bound_and_support_safe() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    report_path = execution.OUTPUT_DIR / execution.REPORT_NAME
+    if not report_path.is_file():
+        pytest.skip("Student-t execution artifacts are published by the bounded execution task")
+
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    lineage_path = execution.OUTPUT_DIR / execution.LINEAGE_NAME
+    lineage = json.loads(lineage_path.read_text(encoding="utf-8"))
+    assert lineage["all_artifacts_write_once"] is True
+    assert lineage["source_row_lineage_recorded"] is True
+    assert len(lineage["artifacts"]) == execution.FOLD_COUNT * 2 + 3
+    assert report["artifact_manifests"]["lineage_manifest"]["sha256"] == file_sha256(lineage_path)
+
+    for reference in lineage["artifacts"]:
+        artifact_path = repo_root / reference["path"]
+        assert file_sha256(artifact_path) == reference["sha256"]
+        if reference["role"] == "fitted producer":
+            payload = safe_torch_load(
+                artifact_path, expected_sha256=reference["sha256"], map_location="cpu"
+            )
+            assert payload["candidate_id"] == execution.CANDIDATE_ID
+            assert payload["fit"]["nu"] >= execution.NU_LOWER
+            assert payload["fit"]["nu"] <= execution.NU_UPPER
+            assert payload["fit_source"]["heldout_excluded"] is True
+        elif reference["role"] == "sampled model q":
+            payload = safe_torch_load(
+                artifact_path, expected_sha256=reference["sha256"], map_location="cpu"
+            )
+            model_q = payload["model_q"]
+            assert tuple(model_q.shape) == (execution.MODEL_SAMPLE_COUNT, execution.DIMENSION)
+            assert model_q.dtype == torch.float64
+            assert bool(torch.isfinite(model_q).all())
+            assert bool(model_q.ge(0.0).all())
+            assert tensor_sha256(model_q) == payload["model_q_sha256"]
+            assert payload["heldout_values_used_for_sampling"] is False

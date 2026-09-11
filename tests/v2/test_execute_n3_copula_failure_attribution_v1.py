@@ -1,0 +1,75 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+import torch
+
+from scripts.research import execute_n3_copula_failure_attribution_v1 as attribution
+
+
+def test_q95_uses_the_frozen_linear_four_reference_quantile() -> None:
+    result = attribution._q95([1.0, 2.0, 3.0, 4.0], "test")
+
+    assert result["sorted_values"] == [1.0, 2.0, 3.0, 4.0]
+    assert result["lower_index"] == 2
+    assert result["upper_index"] == 3
+    assert result["weight"] == 0.8499999999999996
+    assert result["value"] == pytest.approx(3.85)
+
+
+def test_energy_distance_consumer_is_cpu_float64_and_canonicalizes_zero() -> None:
+    values = torch.tensor([[0.0, 1.0], [2.0, 3.0]], dtype=torch.float32)
+
+    result = attribution._energy_terms(values, values, "test")
+
+    assert result["value"] == 0.0
+    assert result["raw_value"] == 0.0
+    assert result["numerical_validity"] == "valid"
+    assert result["roundoff_negative_canonicalized"] is False
+    assert result["tau"] > 1.0e-12
+
+
+def test_spearman_and_spectral_helpers_preserve_v2_shapes_and_frozen_median() -> None:
+    ranks = torch.arange(200 * 4, dtype=torch.float64).reshape(200, 4)
+    spectral_input = torch.arange(200 * attribution.DIMENSION, dtype=torch.float64).reshape(
+        200, attribution.DIMENSION
+    )
+    spearman = attribution._spearman_matrix(ranks, "test")
+    spectrum = attribution._spectrum_summary(spectral_input, "test")
+
+    assert tuple(spearman.shape) == (4, 4)
+    assert torch.allclose(spearman, spearman.transpose(0, 1))
+    assert torch.allclose(torch.diagonal(spearman), torch.ones(4, dtype=torch.float64))
+    assert len(spectrum["eigenvalues_descending"]) == attribution.DIMENSION
+    assert spectrum["median_indices_zero_based"] == [49, 50]
+    assert spectrum["representation"].startswith("C=diag(s)^(-1/2)")
+
+
+def test_support_rate_is_an_exceeding_row_rate_not_a_coordinate_flag() -> None:
+    fit = torch.arange(800 * attribution.DIMENSION, dtype=torch.float64).reshape(800, attribution.DIMENSION)
+    heldout = fit[:200].clone()
+    heldout[0, 0] = fit[:, 0].min() - 1.0
+    heldout[1, 0] = fit[:, 0].min() - 2.0
+    heldout[0, 1] = fit[:, 1].max() + 1.0
+
+    result = attribution._support_tail(fit, heldout, [0, 1])
+    coordinate_zero = result["per_coordinate"][0]
+    coordinate_one = result["per_coordinate"][1]
+
+    assert coordinate_zero["support_count"] == 2
+    assert coordinate_zero["support_rate"] == 2 / 200
+    assert coordinate_one["support_count"] == 1
+    assert coordinate_one["support_rate"] == 1 / 200
+
+
+def test_consumer_is_pinned_to_the_canonical_write_once_report_location() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+
+    assert attribution.OUTPUT_DIR.as_posix() == (
+        "outputs/20260909_v2/runs/n3_copula_failure_attribution_v1_attempt_01"
+    )
+    assert (repo_root / attribution.OUTPUT_DIR).parent.name == "runs"
+    source = Path(attribution.__file__).read_text(encoding="utf-8")
+    assert "safe_torch_load" in source
+    assert "torch.save" not in source

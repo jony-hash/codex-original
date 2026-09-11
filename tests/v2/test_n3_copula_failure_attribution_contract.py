@@ -1,0 +1,44 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from scripts.research import define_n3_copula_failure_attribution_contract_v1 as attribution
+
+
+def test_fold_attribution_mapping_covers_all_boolean_pairs() -> None:
+    assert attribution.fold_attribution_label(False, False) == "NO_RESIDUAL_ATTRIBUTED_FAILURE"
+    assert attribution.fold_attribution_label(True, False) == "MARGINAL_ONLY"
+    assert attribution.fold_attribution_label(False, True) == "DEPENDENCE_ONLY"
+    assert attribution.fold_attribution_label(True, True) == "MARGINAL_AND_DEPENDENCE"
+
+
+def test_aggregate_attribution_is_conservative_and_has_no_data_instability_class() -> None:
+    marginal = {0: "MARGINAL_ONLY", 1: "NO_RESIDUAL_ATTRIBUTED_FAILURE", 2: "MARGINAL_ONLY", 3: "MARGINAL_ONLY", 4: "NO_RESIDUAL_ATTRIBUTED_FAILURE"}
+    dependence = {0: "DEPENDENCE_ONLY", 1: "NO_RESIDUAL_ATTRIBUTED_FAILURE", 2: "DEPENDENCE_ONLY", 3: "DEPENDENCE_ONLY", 4: "NO_RESIDUAL_ATTRIBUTED_FAILURE"}
+    mixed = {0: "MARGINAL_AND_DEPENDENCE", 1: "NO_RESIDUAL_ATTRIBUTED_FAILURE", 2: "MARGINAL_ONLY", 3: "DEPENDENCE_ONLY", 4: "NO_RESIDUAL_ATTRIBUTED_FAILURE"}
+
+    assert attribution.aggregate_attribution_labels(marginal) == "N3_COPULA_FAILURE_MARGINAL_SUPPORT_TAIL_DOMINANT"
+    assert attribution.aggregate_attribution_labels(dependence) == "N3_COPULA_FAILURE_DEPENDENCE_DOMINANT"
+    assert attribution.aggregate_attribution_labels(mixed) == "N3_COPULA_FAILURE_MARGINAL_AND_DEPENDENCE_MIXED"
+
+
+def test_aggregate_attribution_rejects_incomplete_fold_evidence() -> None:
+    with pytest.raises(ValueError, match="all five folds"):
+        attribution.aggregate_attribution_labels({0: "MARGINAL_ONLY"})
+
+
+def test_frozen_definition_artifact_records_boundary_without_metrics_or_tensor_load() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    artifact_path = repo_root / attribution.OUTPUT_DIR / attribution.CONTRACT_NAME
+    artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
+    assert artifact["classification"] == "DEFINE_N3_COPULA_FAILURE_ATTRIBUTION_CONTRACT_V1_READY"
+    assert artifact["claim_classification"] == "N3_COPULA_FAILURE_ATTRIBUTION_CONTRACT_DEFINED"
+    assert [item["marginal_fail"] for item in artifact["marginal_failure_authority"]["expected_original_values"]] == [True, False, True, True, False]
+    assert artifact["execution_boundary"]["metrics_computed_by_this_definition_consumer"] is False
+    assert artifact["execution_boundary"]["recovered_tensor_loaded_as_tensor_by_this_definition_consumer"] is False
+    assert artifact["governance"]["sealed_confirmation_consumed"] is False
+    assert "import torch" not in Path(attribution.__file__).read_text(encoding="utf-8")
+    assert "torch.load" not in Path(attribution.__file__).read_text(encoding="utf-8")
