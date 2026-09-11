@@ -135,20 +135,37 @@ ChatGPT 只做以下压缩：
   但不必预先填写 producer digest。Codex 从本地权威状态和 evidence 解析
   producer/lineage，并且不自动选择 latest。
 - 只有当 Gate 的 evidence consumer 要求精确 artifact 身份时，Codex 才核验
-  指定 artifact 的 Hash；该操作在本次任务中只做一次。反馈在本地增量核验中
-  写 hash_verified。
+  指定 artifact 的 Hash，并先确定该 Hash 的身份域；该操作在本次任务中只做一次。
+  反馈在本地增量核验中写 hash_verified。
 - Gate 不要求 Hash 时，反馈写 hash_not_required。要求 Hash 但输入缺失或有
-  歧义时返回 blocked；记录的 Hash 与实际 artifact 不一致时返回
-  invalid_harness，不得解释为模型科学失败。
+  歧义时返回 blocked；只有同一身份域的必需 Hash 与实际 artifact 不一致时才返回
+  invalid_harness。跨身份域的 Hash 不一致不是 harness failure，也不得解释为模型科学失败。
 - 正式 evidence 和 Sources bridge manifest 中已经存在的 Hash 是 provenance
   与完整性边界，继续保留；本规则只禁止把无关 Hash 清单复制进每次交接。
 
-本节的固定政策 ID 为 `HASH_ON_TRUST_BOUNDARY`。人类交接只显示 semantic authority ID、
-branch、适量的 Git HEAD、evidence bundle ID 与 verification status；不重复 child artifact
-的完整 SHA-256 表。外部不可变数据、data partition/firewall、calibration payload、
-checkpoint、不可变 experiment artifact 和 evidence bundle 仍由其 machine manifest/registry
-保存完整 SHA-256。Git-tracked source/docs 通常由 Git lineage 标识，除非已有 consumer 明确
-要求逐文件 digest。
+本节现行固定政策 ID 为 `HASH_ON_TRUST_BOUNDARY_V2`；它取代旧的
+`HASH_ON_TRUST_BOUNDARY` 呈现规则，但不改写历史 evidence。人类交接只显示 semantic
+authority ID、producer task/attempt、branch、适量的 Git HEAD、verification status 与必要的
+explicit artifact path；不重复 child artifact 的完整 SHA-256 表。普通研究可由
+semantic authority + producer attempt + Git HEAD 定位；只有真实 consumer 需要时才定向核验
+Hash。外部不可变数据、data partition/firewall、calibration payload、checkpoint、不可变
+experiment artifact 和 evidence bundle 仍由其 machine manifest/registry 保存完整 SHA-256。
+Git-tracked source/docs 通常由 Git lineage 标识，除非已有 consumer 明确要求逐文件 digest。
+
+Hash 身份域不可互换，除非具体 contract 明确定义了同一域：
+
+| 身份域 | 含义 | 允许的 equality check |
+| --- | --- | --- |
+| `file_byte_sha256` | 文件原始字节的 SHA-256 | 只与同一文件字节 authority 比较 |
+| `state_dict_tree_sha256` | 加载后 state_dict/tree 的内容摘要 | 只与同一 state-dict/tree authority 比较 |
+| `tensor_content_sha256` | 指定 tensor 的形状、dtype 与内容摘要 | 只与同一 tensor authority 比较 |
+| `semantic_state_identity` | semantic authority、producer、role、schema、loadability 与 verification 状态 | 按 contract 的语义字段比较，不与任一字节 SHA 直接等价 |
+| `manifest_sha256` | machine manifest 文件本身的字节摘要 | 只与同一 manifest 文件 authority 比较 |
+
+因此，跨域 Hash 关系必须记录为 `NOT_REQUIRED` / `NOT_APPLICABLE`，而不是 equality
+condition。Hash mismatch 只有在该 Hash 是同一身份域的 authoritative input、checkpoint transfer、
+formal evidence 或 write-once manifest boundary 时，才可触发 fail-closed rejection；不能仅因
+两个摘要字符串不同而升级为 `HARD_BLOCKER`。
 
 当前审计分类如下；分类只改变呈现与停止语义，不删除历史 evidence：
 
@@ -157,7 +174,7 @@ checkpoint、不可变 experiment artifact 和 evidence bundle 仍由其 machine
 | `MACHINE_REQUIRED` | `research_run_manifest.v1` 的输入、`EvidenceRecordV2.input_hashes`/context、`ArtifactRefV2`、data firewall、checkpoint、不可变 artifact 与 Sources manifest 的完整性校验 |
 | `HUMAN_DISPLAY_ONLY` | branch、HEAD、dirty scope、semantic evidence ID、consumer、verification status 和短反馈 |
 | `DUPLICATED` | 在 PROJECT_MEMORY、CURRENT_STATUS、current_handoff 与 handoff prompt 中重复出现且没有 consumer 读取的 child SHA 表、未变化 flags 与 unsupported-conclusion catalog |
-| `NOT_REQUIRED` | R0 讨论设计中的 hash、普通 Git-tracked 文档的逐文件 SHA，以及 hash 数量/文件数量本身作为成功标准 |
+| `NOT_REQUIRED / NOT_APPLICABLE` | 未被真实 consumer 要求的 hash、跨身份域 equality、普通 Git-tracked 文档的逐文件 SHA，以及 hash 数量/文件数量本身作为成功标准 |
 
 ### 4.2 Sources 活动快照选择
 

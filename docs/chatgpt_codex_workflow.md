@@ -96,10 +96,12 @@ convention、baseline 选择或描述性歧义本身不是 blocker，必须写�
 只有当后续动作改变 decision consumer、授权边界、证据需求或风险等级时，才创建新的独立任务；
 HARD_BLOCKER 只是其中一种原因。历史“下一步”不能自动生成新任务。
 
-使用 `HASH_ON_TRUST_BOUNDARY`：人类交接默认写 semantic authority ID、branch/HEAD、
-verification status 和必要的 evidence bundle ID；完整 child SHA-256 只留在 machine manifest、
-registry、firewall、checkpoint 或正式 evidence 中，并且只有真实 consumer 需要时才核验。
-不得自动选择 latest。
+使用 `HASH_ON_TRUST_BOUNDARY_V2`：人类交接默认写 semantic authority ID、producer task/attempt、
+branch/HEAD、verification status 和必要的 evidence bundle ID；完整 child SHA-256 只留在 machine
+manifest、registry、firewall、checkpoint 或正式 evidence 中，并且只有真实 consumer 需要时才按
+同一身份域核验。file byte SHA、state_dict/tree SHA、tensor-content SHA、semantic-state identity
+和 manifest SHA 不互换，也不得自动选择 latest；未被 consumer 要求的 hash 写
+`NOT_REQUIRED` / `NOT_APPLICABLE`。
 
 交给本地 Codex 时使用以下字段；不相关字段可以写 `unknown` 或省略，但不能掩盖未核验前提：
 

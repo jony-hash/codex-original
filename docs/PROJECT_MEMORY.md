@@ -1,6 +1,6 @@
 # codex-original 项目记忆
 
-更新时间：2026-09-10
+更新时间：2026-09-11
 
 ## 目的与事实优先级
 
@@ -13,10 +13,13 @@
 [`delta_one_gate_short_prompt.md`](operations/delta_one_gate_short_prompt.md)。本文件只保留
 稳定入口与 durable decision，不复制 child hash 表。
 
-`RESEARCH_GOVERNANCE_SIMPLIFICATION_V1_ESTABLISHED`：本轮治理只改变 research planning、
-evidence handoff 与 provenance presentation；随后 evidence I/O 的局部异常语义修复不改变公共
-函数签名、formal/high-risk evidence、training authorization、data firewall、checkpoint validation、
-formal runtime 或历史 artifact。
+`RESEARCH_GOVERNANCE_SIMPLIFICATION_V2_ESTABLISHED`：在既有 research planning、evidence
+handoff 与 provenance presentation 简化之上，现行 `HASH_ON_TRUST_BOUNDARY_V2` 明确区分
+file byte SHA、state_dict/tree SHA、tensor-content SHA、semantic-state identity 与 manifest SHA。
+普通研究默认使用 semantic authority + producer task/attempt + Git branch/HEAD；只有真实 consumer
+在同一身份域要求时才核验 Hash。该治理不改变公共函数签名、formal/high-risk evidence、training
+authorization、data firewall、checkpoint validation、formal runtime 或历史 artifact；V1 标记仅作
+历史 provenance 保留。
 
 ## 唯一活动研究主线：LightGen 输入与 OLS 对齐的语义生成原型
 
@@ -349,8 +352,9 @@ Short Prompt 通常为 300–1,000 tokens，不要求为了达到下限填充固
 完整 Long Prompt 目标为 1,500–3,000 tokens，超过 4,000 tokens 应引用规范或拆分。
 一个任务只能有一个主 Gate；完整预算和失败映射见上述操作规范。
 未要求 Hash 时反馈 hash_not_required；必需 Hash 缺失或输入有歧义返回 blocked；
-记录 Hash 与实际 artifact 不一致返回
-invalid_harness；不把 Hash 不一致转换为 valid_failed。正式 evidence 和 bridge manifest
+只有同一身份域中、且由真实 consumer 明确要求的 Hash 与实际 artifact 不一致时才返回
+invalid_harness。跨域 Hash 不一致标记为 `NOT_REQUIRED` / `NOT_APPLICABLE`，不自动升级为
+HARD_BLOCKER，也不把 Hash 不一致转换为 valid_failed。正式 evidence 和 bridge manifest
 中的 Hash 保持不变。
 
 Sources 发布资格由 bridge 的 `status` 与 manifest 的 `allow_dirty` 联合判断：
