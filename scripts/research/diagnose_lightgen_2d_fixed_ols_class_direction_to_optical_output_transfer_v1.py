@@ -45,7 +45,7 @@ BOOTSTRAP_SCHEMA = "lightgen_2d_fixed_ols_class_direction_to_optical_output_tran
 SUFFICIENT_OBSERVATIONS_SCHEMA = "lightgen_2d_fixed_ols_class_direction_to_optical_output_transfer_sufficient_observations.v1"
 
 EXPECTED_BRANCH = "research/lightgen-ols-native-semantic-generation-v1"
-EXPECTED_CONSUMER_HEAD = "9f239d9dd1971872a7d5b2345ae11130574d48e4"
+EXPECTED_CONSUMER_HEAD = "9a72e0bcf2de12ab9a0caa7151f273de76768dc7"
 V4_DIAGNOSTIC_HELPER_PATH = Path("scripts/research/diagnose_lightgen_2d_fixed_ols_generator_conditionality_v1.py")
 V4_DIAGNOSTIC_HELPER_SHA256 = "e338320d0b64d144a58177217cf8eee6f2ef8ca4855f0554accaa138644f7464"
 

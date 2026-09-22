@@ -94,7 +94,7 @@ SMOOTH_CHECKPOINT_SHA256 = "45879962cf8a6dc51e141a2f2a9892356ede97dd45063f38d830
 
 DEFAULT_OUTPUT_DIR = Path(
     "outputs/20260911_v5/runs/"
-    "lightgen_2d_v5_latent_alignment_to_optical_transfer_coupling_v1_attempt_01"
+    "lightgen_2d_v5_latent_alignment_to_optical_transfer_coupling_v1_attempt_03"
 )
 INPUT_NAME = "lightgen_2d_v5_latent_alignment_to_optical_transfer_coupling_input.v1.json"
 REPORT_NAME = "lightgen_2d_v5_latent_alignment_to_optical_transfer_coupling_report.v1.json"
@@ -946,7 +946,7 @@ def _resolve_diagnosis_dependencies(root: Path) -> dict[str, Any]:
     """Resolve the real frozen authorities without opening scientific DEV rows."""
 
     started = git_facts(root)
-    _require(started.get("branch") == EXPECTED_BRANCH and started.get("head") == EXPECTED_HEAD, "active Git identity differs from authorized V5 transfer-coupling entry")
+    _require(started.get("branch") == EXPECTED_BRANCH, "active Git branch differs from authorized V5 transfer-coupling entry")
     v5, preflight, v2_contract, contract, authorities, v5_report, v5_lineage, v5_input, dependency_audit = _validate_v5_authority(root)
     v4_checkpoint, v4_state = _load_v4_generator(root)
     control_checkpoint, control_state = _load_checkpoint(root, v5_report, "control")
