@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import importlib
 import importlib.util
 import tempfile
@@ -11,6 +12,17 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class RepoLayoutTests(unittest.TestCase):
+    @staticmethod
+    def _project_imports(path: Path) -> set[str]:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        imports: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imports.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                imports.add(node.module)
+        return {name for name in imports if name == "ldm_project" or name.startswith("ldm_project.")}
+
     def test_active_scripts_are_not_import_path_mutators(self) -> None:
         script_dirs = (ROOT / "scripts" / "maintenance", ROOT / "scripts" / "visualization")
 
@@ -46,12 +58,16 @@ class RepoLayoutTests(unittest.TestCase):
         forbidden = []
         for namespace in ("v1", "v2"):
             for path in (package_root / namespace).rglob("*.py"):
-                content = path.read_text(encoding="utf-8")
-                if "from ldm_project." in content or "import ldm_project." in content:
-                    if path == package_root / "v2" / "application" / "legacy_adapter.py":
-                        self.assertIn("ldm_project.v1.config", content)
-                        continue
-                    forbidden.append(str(path.relative_to(ROOT)))
+                imports = self._project_imports(path)
+                if path == package_root / "v2" / "application" / "legacy_adapter.py":
+                    self.assertIn("ldm_project.v1.config", imports)
+                    imports.discard("ldm_project.v1.config")
+                forbidden.extend(
+                    f"{path.relative_to(ROOT)} imports {name}"
+                    for name in sorted(imports)
+                    if (namespace == "v1" and name.startswith("ldm_project.v2"))
+                    or (namespace == "v2" and name.startswith("ldm_project.v1"))
+                )
         self.assertEqual(forbidden, [])
 
     def test_current_runtime_is_physically_isolated_and_split(self) -> None:

@@ -1,6 +1,6 @@
 # codex-original 项目记忆
 
-更新时间：2026-09-11
+更新时间：2026-09-17
 
 ## 目的与事实优先级
 
@@ -24,6 +24,17 @@ authorization、data firewall、checkpoint validation、formal runtime 或历史
 `consumer_head_exact_required=true` 或等价 exact-source-lock 才要求 exact consumer HEAD。
 Forward/data evaluation 前的 authority/harness failure 只记 pre-scientific INVALID（reads=`0`），
 不产生科学分类，也不绕过新授权重跑；进入 scientific evaluation 后按 one-shot 规则消费。
+
+`RESEARCH_FAST_PATH_AND_LONG_RUN_RESILIENCE_V1_ESTABLISHED`（2026-09-17）：普通 `R0/R1/R2`
+research task 只有一个 Outer Gate 和一个 authorization；bounded preflight 的 `READY` 沿用到
+execution，`CHECK_*`/`INVARIANT_*` 是内部检查。工程错误在原 task/authorization 内修复并重检，
+历史 Gate/status 只有在明确 `INPUT_AUTHORITIES` 时才可消费。dirty worktree 可以运行，但需一次
+相关 execution source manifest；branch/HEAD/dirty 与 manifest exact ID 是 provenance，resume 只
+锁定 task/run/trajectory/scientific-attempt 和 execution-source semantics。heartbeat 默认 60 秒、
+stale 只告警；progress/status/recovery 是 operational artifacts，recovery 每 10 分钟或 25 steps
+保留最近 3 个，不能替代 scientific checkpoint 或产生科学结论。本次只建立治理与当前 Chen executor
+的工程韧性接口，没有科学训练、生成、evidence 或 current mainline 变更；项目级 next action 仍由
+`CURRENT_STATUS.md` 与 `status/current_handoff.md` 明确为 `NONE`。
 
 ## 唯一活动研究主线：LightGen 输入与 OLS 对齐的语义生成原型
 
@@ -57,6 +68,10 @@ Forward/data evaluation 前的 authority/harness failure 只记 pre-scientific I
 第 2–3 页、第 6–9 页、第 10 页及图 S2；使用前按其 [manifest](../research_assets/lightgen/science_adv7434/manifest.json)
 确认版本。当前 numerical results 与既有实验下一动作只维护在 [当前状态](CURRENT_STATUS.md)；
 [当前交接](status/current_handoff.md) 负责新目标与既有执行合同之间的差异。
+
+路线身份、`DATA_DIST`/latent/semantic/power taxonomy、统一 objective matrix 与 claim 边界由本文件、
+`CURRENT_STATUS.md`、`status/current_handoff.md` 和 `repository_taxonomy.md` 分层维护；本文件只保留
+稳定目标和 durable navigation，不依赖未跟踪的 route-registry 草稿，也不提供高于当前状态/交接的 authority。
 
 ## 当前状态入口
 
@@ -248,8 +263,10 @@ no automatic upload occurred.
 - 旧 WSL 路径只表示历史记录。`session_meta`/`turn_context` 的修复已将项目路径统一
   到 Windows 目标；`event_msg` 的历史命令位置保留原样，不能把它解释为当前 cwd。
 - 外部历史上下文目录是导航层，不是原始 transcript 的替代品；其入口是
-  `HISTORY_CONTEXT.md`，刻意不与本仓库的 `docs/PROJECT_MEMORY.md` 同名。历史只能按
-  Session ID 选择摘要，默认不把全部摘要上传到 ChatGPT Sources。
+  `C:\Users\24567\Documents\Codex\codex-original-history-context\HISTORY_CONTEXT.md`；旧聊天索引是同目录的
+  `CHAT_INDEX.md`。二者刻意不与本仓库的 `docs/PROJECT_MEMORY.md` 同名。历史只能按
+  Session ID 选择摘要，默认不把全部摘要上传到 ChatGPT Sources；正式 v2 架构的 canonical path 是
+  `docs/architecture/v2_runtime.md`，不是 `docs/V2_RUNTIME.md`。
 - Ubuntu 注销前增量审计仅发现 5 个 WSL Codex 日志/缓存文件；它们已在 C: 独立 tar
   中保留并通过目录读取校验。2026-08-30 已执行精确的 `wsl.exe --unregister Ubuntu`；
   Ubuntu 注册项、`D:\WSL\Ubuntu` 目录和 `ext4.vhdx` 均已消失，`docker-desktop` 保留。

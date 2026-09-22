@@ -1,7 +1,7 @@
 # Delta + One Gate + Short Codex Prompt
 
-版本：v1.2
-更新时间：2026-09-08
+版本：v1.3
+更新时间：2026-09-17
 性质：GPT → Codex 的项目治理与交接协议，不是科研证据、训练授权或 formal promotion 合同。
 
 ## 1. 目的与边界
@@ -265,6 +265,37 @@ record，而不是自动选择 latest。
 `verification=required|verified|not_required`。若没有真实 consumer 需要 alias index，不得为
 展示目的新建 registry 或复制 child hash 表；full Hash 仍留在原 machine manifest。
 
+### 4.6 Ordinary research fast path：一个 Outer Gate、一个授权
+
+普通 `R0/R1/R2` research task 采用一个 Outer Gate 和一个 execution authorization。授权从
+bounded preflight 的 `READY` 原样传入执行；不得为同一任务再创建第二个 authorization 或
+child Gate。`authority`、runtime/data role、tiny forward/loss/gradient/optimizer/update、
+checkpoint save/reload 等只是名为 `CHECK_*` 或 `INVARIANT_*` 的内部检查，不单独改变任务身份。
+
+批准任务只受 4.3 节定义的五类 `HARD_BLOCKER` 中断：required input identity 无法解析、
+data leakage/invalid comparison、受控动作缺少 authorization、与 authoritative contract 冲突、
+或必需计算未定义。普通工程错误或预检未 READY 在原任务和原授权内修复并重检；scientific
+update 之前的重试只记工程事件，不创建 attempt。
+历史 Gate、status 或 report 只有在本轮 `INPUT_AUTHORITIES` 明确列出时才可被消费。这套
+fast path 不放宽现有 `R3` formal/high-risk 或 long-training contract。
+
+### 4.7 Long-run resilience：可观察、可恢复、不可混淆
+
+长任务的默认 heartbeat 间隔为 `60 s`，超过 `300 s` 只产生 stale warning，不自动 kill 或
+restart。`progress.jsonl` 采用 append+flush；`latest_status.json` 采用 atomic replace。
+阶段值限定为 `PREPARING`、`STATISTICS`、`CALIBRATION`、`TRAINING`、`POST_TRAIN_FIT`、
+`FINALIZING`、`COMPLETED`、`INTERRUPTED`。
+
+运行每 `10 min` 或 `25` steps（先到者）写一个 operational recovery checkpoint，最多保留
+最近 `3` 个；rotation 不得删除 scientific checkpoint。SIGINT/SIGTERM 只在 safe boundary
+写 recovery、flush heartbeat 并标记 `INTERRUPTED`。resume 必须保持同一 task/run/trajectory/
+scientific-attempt 及 execution-source semantics；branch、HEAD、dirty status、无关文档和
+跨 hash domain 的差异只是 provenance。dirty worktree 可以执行，但必须记录一次相关 source
+manifest；exact hash 仅在命名的 machine artifact / same-domain consumer 边界使用。
+
+Operational artifact（heartbeat、status、recovery）与 scientific artifact（预注册 checkpoint、
+evidence、result）分离；前者不能单独产生 scientific classification、promotion 或 next action。
+
 ## 5. One Gate 科研决策合同
 
 一个任务只能有一个会改变下一动作的主科研问题。以下字段必须在交接中给出：
@@ -461,7 +492,11 @@ Gate 判定与唯一下一动作：
   durable decision 改变，或用户明确要求记忆更新时才修改；CURRENT_STATUS.md 只写当前摘要，
   current_handoff.md 只写最新 delta/阻塞/允许动作，日期化过程统一写入 experiment history。
   同一事件不得把完整选择规则、child hash 表或 telemetry 复制到多个入口。
-- 六文件 Sources 合同保持不变：PROJECT_MEMORY.md、CURRENT_STATUS.md、CURRENT_HANDOFF.md、V2_RUNTIME.md、HISTORY_CONTEXT.md、CHAT_INDEX.md。
+- 六文件 Sources 的输出名保持不变：PROJECT_MEMORY.md、CURRENT_STATUS.md、CURRENT_HANDOFF.md、V2_RUNTIME.md、HISTORY_CONTEXT.md、CHAT_INDEX.md。
+- 其 canonical source path 为 `docs/PROJECT_MEMORY.md`、`docs/CURRENT_STATUS.md`、
+  `docs/status/current_handoff.md`、`docs/architecture/v2_runtime.md`，以及外部
+  `C:\Users\24567\Documents\Codex\codex-original-history-context\HISTORY_CONTEXT.md` 和同目录的
+  `CHAT_INDEX.md`；外部两个文件只作 legacy navigation，不是当前项目事实源。
 - 六个文件必须作为同一 `snapshot_id + git_head` 的活动集合；旧副本不调和，重复或混合集合按无效处理。
 - Short Prompt 不要求复制 bridge manifest 或正式 evidence 的完整 Hash；这些 Hash
   只在其既有完整性/复现消费者需要时由 Codex 定向核验。

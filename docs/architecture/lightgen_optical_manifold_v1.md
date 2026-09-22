@@ -5,6 +5,8 @@ manifold autoencoder. It is an independent v2 research line; it is not a
 resumption of Package B3 and it does not replace the formal
 `label + 8D code` current runtime.
 
+> **Scope:** `HISTORICAL_RECORD` / `SUPERSEDED` for the current project route. Historical facts in this document remain valid for `H-LOMA-I0`; its old current/next actions are superseded by the M0 authority in `docs/CURRENT_STATUS.md` and `docs/status/current_handoff.md`.
+
 ## Pinned paper evidence
 
 The user-provided Science supplement and extracted figure-source CSV files are

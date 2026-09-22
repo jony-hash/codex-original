@@ -61,6 +61,7 @@ class ChatGPTProjectMemoryTests(unittest.TestCase):
         state = {
             "schema_version": 1,
             "kind": "research_governance_state",
+            "scope_note": "Test governance state is scoped to the fixture only.",
             "active_objective": "TEST_OBJECTIVE",
             "authorization_tier": "R1",
             "hard_blocker": None,
@@ -199,6 +200,7 @@ class ChatGPTProjectMemoryTests(unittest.TestCase):
         self.assertEqual((code, error), (0, ""))
         self.assertEqual(result["branch"], MEMORY._run_git(self.project, "branch", "--show-current").strip())
         self.assertEqual(result["worktree"], "clean")
+        self.assertEqual(result["scope_note"], "Test governance state is scoped to the fixture only.")
         self.assertEqual(result["active_objective"], "TEST_OBJECTIVE")
         self.assertEqual(
             result["evidence_aliases"],

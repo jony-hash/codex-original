@@ -4,6 +4,8 @@ This document defines the research-only `scaled_chen_bogt` path. It is not a
 replacement for the formal v2 `label + 8D` runtime and cannot change the
 existing SMF/FMF evidence or authorize promotion.
 
+> **Scope:** `HISTORICAL_RECORD` / `SUPERSEDED` for the current project route. Historical facts in this document remain valid for the Scaled-Chen line; its old current/next actions are superseded by the M0 authority in `docs/CURRENT_STATUS.md` and `docs/status/current_handoff.md`.
+
 The optical chain is `MNIST -> sqrt-intensity amplitude SLM -> front 4f ->
 2 encoder phase layers -> fixed 10x10 LP01 OLS -> 2 decoder phase layers ->
 inferred 3 mm coherent imaging relay -> CMOS`. The metasurface is 100x100 at

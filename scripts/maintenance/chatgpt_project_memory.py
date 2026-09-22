@@ -411,6 +411,7 @@ def _governance_summary(project_root_arg: str, state_file: str) -> dict[str, Any
         "branch": branch,
         "git_head": git_state["git_head"],
         "worktree": "dirty" if git_state["dirty_paths"] else "clean",
+        "scope_note": state.get("scope_note"),
         "active_objective": state["active_objective"],
         "evidence_aliases": sorted(state["evidence_aliases"]),
         "authorization_tier": state["authorization_tier"],

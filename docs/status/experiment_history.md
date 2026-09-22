@@ -1,5 +1,63 @@
 # D2NN 实验与验收历史
 
+## 2026-09-22：step9000 hybrid batched-VJP 续训工程预检
+
+按用户授权 `AUTHORIZED_EXECUTE_JOINT_STRUCTURAL_SEMANTIC_CONTINUATION_V1` 准备从 accepted
+step9000 structural checkpoint 重新开始联合结构-语义续训。科学合同保持不变：只更新
+`generator.phase`，`L_S/L_I/L_C` 使用三路 batched-VJP，结构/重建/光学梯度使用 scalar VJP，
+不消费旧 attempt-03 的 step9046 recovery，不重新计算已接受的 step9000 DEV/S1 公共 baseline。
+
+本轮只完成工程实现和严格 preflight，没有启动科学长训练。首次子进程因缺少项目根目录
+`PYTHONPATH` 失败；随后修复为根目录加 `src`。过严的 `q_joint` 逐元素比较改为已冻结方向 cosine
+检查；20-row batched direction sanity 的显存请求导致 6GB GPU OOM，改为固定 10-row sanity。
+`torch.stack` 版 batched-VJP 触发 vmap fallback，约比 scalar 慢 78%；改为 tuple-of-three scalar
+outputs、`is_grads_batched=True`、semantic VJP 最后执行后，最终固定 benchmark 仍为：scalar
+median=`0.43308600000091 s`，batched median=`0.45924589999959 s`，speedup=`-6.04%`。
+
+预注册性能门槛为 batched 至少比 scalar 快 `10%`、推算 3000-step 小于 12 小时、峰值显存不超过
+设备容量 90%。由于速度条件未满足，结果为工程 preflight blocked；没有创建新 attempt-01、
+没有科学 checkpoint/report、没有改变 outputs、没有科学结论、没有恢复旧 attempt-03，也没有
+创建活动 heartbeat。该结果不构成 scientific failure 或 promotion decision。
+
+## 2026-09-18：Chen-inspired BOGT on complex OLS bounded training
+
+按用户明确授权完成一次固定 bounded scientific scope：CUDA `300` optimizer updates，随后完成 final TRAIN collection、wrapped-phase model fit 与 generation-ready bundle。结果=`VALID_COMPLETED_GENERATION_BUNDLE_READY`，Outer classification=`A`。step-300 DEV diagnostic semantic macro recall=`0.1474`，低于 Stage-A diagnostic threshold=`0.937`；因此未执行 sampling/generation、visualization、protected/test/sealed read 或 formal promotion。
+
+- [run report](../../outputs/20260917_chen_bogt_complex_ols_v1/runs/attempt_01/report.json)；[generation-ready bundle](../../outputs/20260917_chen_bogt_complex_ols_v1/runs/attempt_01/generation_ready_bundle.pt)。
+- 项目主线仍为 `M0_LIGHTGEN_INPUT_OLS_ALIGNED_GENERATION`，当前授权 next action 为 `NONE`；本条记录不改变既有 scientific classification 或历史事实。
+
+## 2026-09-16：4L Linear optimization-ceiling continuation
+
+从已验证的 C=`4L Linear` local step=`2000` checkpoint 做唯一 bounded continuation，目标先到 C3000，只有满足预注册 stopping rule 才能进入 C4000。preflight attempt-01/02 在 scientific update 前为 `invalid_harness` 并保留；attempt-03=`AUTHORIZABLE`。随后完成 `1000` 个 CUDA updates（local/global=`2000/2600 → 3000/3600`），只更新 `generator.phase`；A/B/D、ReLU、adapter、encoder、OLS、`W_OLS`、linear facet、objective、geometry、数据角色和 C2000 Adam moments 未改变。
+
+- [contract](../../outputs/20260916_4l_linear_optimization_ceiling_v1/runs/4l_linear_optimization_ceiling_v1_contract_attempt_03/4l_linear_optimization_ceiling_v1_contract.v1.json)，SHA-256=`5a18f32c7e8f66566b6554f0a6adc189a93087528a40820c266c9793a68e201e`；[preflight report](../../outputs/20260916_4l_linear_optimization_ceiling_v1/runs/4l_linear_optimization_ceiling_v1_preflight_attempt_03/4l_linear_optimization_ceiling_v1_preflight_report.v1.json)，SHA-256=`09a797e8155ef01dde45be656c65a7a0002f95b652260075ee854f49cbdf643c`；lineage SHA-256=`df3aadcbb65e12224e1d0ecd8ae07188c5390e39ffe4bea787757fc962723bee`。
+- [aggregate report](../../outputs/20260916_4l_linear_optimization_ceiling_v1/runs/4l_linear_optimization_ceiling_v1_aggregate_attempt_01/4l_linear_optimization_ceiling_v1_aggregate_report.v1.json)，SHA-256=`8687ac41431917485806ea3b3f188673544e6e6945808915db10f07212b96793`；[lineage](../../outputs/20260916_4l_linear_optimization_ceiling_v1/runs/4l_linear_optimization_ceiling_v1_aggregate_attempt_01/4l_linear_optimization_ceiling_v1_aggregate_lineage.v1.json)，SHA-256=`a6eca15e88ff59851379498389a52a67ea03c2c890b13420d5c5bb3fe70ac6bc`。
+- [C3000 checkpoint](../../outputs/20260916_4l_linear_optimization_ceiling_v1/runs/4l_linear_optimization_ceiling_v1_c_linear_continuation_attempt_01/c_4l_linear_continuation_step_03000_checkpoint.v1.pt)，SHA-256=`b5369c6ad16391adf772ba8aa42ea9642048a52041b07d50ad0e3c4928cc6270c`。
+
+| endpoint | Smooth macro recall | DEV `L_image` | raw CMOS mean power | validity |
+| --- | ---: | ---: | ---: | --- |
+| C2000 parent | 0.5774 | 0.0467247652 | 7606.3509 | raw/cyclic pass/pass |
+| C3000 | 0.5790 | 0.0469439335 | 7628.1403 | raw/cyclic pass/pass |
+
+主比较 `Delta_R=+0.0016`，paired bootstrap（`999` replicates，seed=`271828`）95% CI=`[-0.0002,+0.0034]`，`p_positive=0.95095`；`Delta_L_image=+0.0002191683`。C3000 gate 条件为 gain=`false`、CI lower=`false`、image=`true`、raw=`true`、cyclic=`true`，故 `continue_to_4000=false`，结果=`VALID_COMPLETED`，classification=`4L_LINEAR_CONTINUATION_PLATEAU_SUPPORTED`。逐类 C2000→C3000 delta：`[0:+0.000, 1:+0.000, 2:+0.002, 3:+0.002, 4:+0.004, 5:+0.008, 6:+0.010, 7:-0.008, 8:+0.000, 9:-0.002]`；1 类 recall 仍为零。
+
+续训实际约 `924.07 s`，RTX 3060 Laptop、production grid=`2048`，每 200 步保存中间 checkpoint/block/progress。preflight 的 3-step real update、generator-only trainability、冻结组 negative control、sampler/RNG resume exact match 通过。未执行 C4000、ReLU/D/A/B 重训、Stage B、generation、physical Te validation、protected/test/sealed read 或 formal promotion；本结果只判断当前固定 generator-only 优化路径的 plateau，不证明全局最优或真实 Te 材料可行性。
+
+## 2026-09-15：Strict TRAIN-calibrated ReLU90 successor
+
+按用户明确授权 `EXECUTE_STRICT_TRAIN_CALIBRATED_RELU90_GAIN_V2`，完成一次有效 successor scientific scope。当前分支为
+`research/lightgen-ols-native-semantic-generation-v1`、HEAD=`a9cd1749adfa690e282fd52a6425564fc2cf102c`。attempt-01/02 在 scientific update 前因 harness 校验错误停止；attempt-03 的 bounded preflight=`AUTHORIZABLE`，未读取 protected、official-test 或 sealed。
+
+该 successor 与前一轮 nominal ideal-facet run 分开记录：A 没有重训，而是通过 exact-reuse audit 复用前一轮 `A_LINEAR` endpoint（`R2000=0.6170`、`DEV L_image=0.04578155`）；B 以固定 TRAIN-only partition 标定单一全局 ReLU90 threshold，calibration=`1000=10×100`、disjoint TRAIN validation=`1000=10×100`，`tau=0.10682560942718147`、`eta_cal=0.9000000000`、`eta_train_valid=0.9015109995`，随后完成 `2000` 个 CUDA updates。Geometry、rank=`9`、objective、Adam、batch=`10`、sampler seed=`1234`、1600-step stage switch 与既有 schedule 保持不变；不使用 full OLS cache，不做 threshold sweep、rank/loss/lambda/lr 调整或额外 arm。
+
+- [strict contract](../../outputs/20260915_strict_train_calibrated_relu90_gain_v2/runs/strict_train_calibrated_relu90_gain_v2_contract_attempt_03/strict_train_calibrated_relu90_gain_v2_contract.v2.json)，SHA-256=`b4488885997f65ad21a2c34c97613f25d3dd9a82f3d95c63ec0838d5537bfb1b`。
+- [strict B report](../../outputs/20260915_strict_train_calibrated_relu90_gain_v2/runs/strict_train_calibrated_relu90_gain_v2_b_relu90_attempt_03/strict_train_calibrated_relu90_gain_v2_b_relu90_scientific_report.v2.json)，SHA-256=`51865886651d5a92a5ee6b2333750bd59066954f4c99bf423d557cbe93aa74a4`。
+- [strict aggregate](../../outputs/20260915_strict_train_calibrated_relu90_gain_v2/runs/strict_train_calibrated_relu90_gain_v2_aggregate_attempt_03/strict_train_calibrated_relu90_gain_v2_aggregate_report.v2.json)，SHA-256=`def0a60c7176b82bbb776b4c6989da8185b744c5d4504b1eec1995b9d4344ca7`；结果=`VALID_COMPLETED`，classification=`STRICT_TRAIN_CALIBRATED_RELU90_NOT_SUPPORTED`。
+
+B 的 Smooth macro recall 为 `R0=0.5454`、`R2000=0.6138`；相对复用 A 的 `R2000=0.6170`，主比较 `Delta_R=-0.0032`，paired bootstrap 95% CI=`[-0.00641,0]`，未达到 `Delta_R>=+0.05` 且 CI lower `>0`。B 的 DEV image loss 为 `0.04967835→0.04630363`，相对 A final `Delta_L_image=+0.00052208`，cyclic template/Smooth transfer 与 raw validity 均通过。facet retention 为 `eta0=0.94923530`、`eta2000=0.95656532`；active fraction 为 `0.57471181→0.60559027`，suppressed fraction 为 `0.42528817→0.39440971`。结论是严格 TRAIN 标定的 ideal ReLU90 surrogate 未支持语义增益，不是 physical Te film validation。
+
+Stage-A firewall 仍失败：两臂最高 `R=0.6170<0.937`；Stage B、generation、protected/test/sealed、physical Te validation 和 formal promotion 均未开放。该结果不改写前一轮 nominal experiment，也不自动授权下一实验或可视化后处理。
+
 ## 2026-09-10：LightGen 2D V2 TRAIN source authority resolution
 
 按 `RESOLVE_LIGHTGEN_2D_SEMANTIC_COMPLEX_OLS_V2_TRAINING_SOURCE_AUTHORITY_V1` 完成一次只读 provenance

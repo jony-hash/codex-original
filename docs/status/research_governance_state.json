@@ -2,6 +2,7 @@
   "schema_version": 1,
   "kind": "research_governance_state",
   "policy_id": "RESEARCH_GOVERNANCE_SIMPLIFICATION_V1",
+  "scope_note": "Human-readable scope: this governance snapshot applies only to the N3 complex-OLS phase-inheritance scope. It cannot override the project-level CURRENT_STATUS.md or status/current_handoff.md, and it does not authorize a project-wide next action. The producer low-rank r=99 evidence alias is distinct from the LightGen adapter model-order ranks 1..9; these are different concepts and must not be interchanged.",
   "active_objective": "N3_COMPLEX_OLS_INDEPENDENT_PHASE_INHERITANCE_NOT_SUPPORTED",
   "authorization_tier": "R3",
   "hard_blocker": "N3_COMPLEX_OLS_MINIMAL_Q_CONDITIONED_PHASE_COUPLING_CONTRACT_REQUIRED",

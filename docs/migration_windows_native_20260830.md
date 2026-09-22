@@ -99,8 +99,10 @@ WSL 工作区。
 测试或训练；未激活终端中的裸 `python`/`pytest` 可能解析到系统 Python，因此操作手册
 要求使用当前环境的显式解释器。
 
-外部历史入口已从 `PROJECT_MEMORY.md` 改为 `HISTORY_CONTEXT.md`，仓库权威入口仍为
-`docs\PROJECT_MEMORY.md`。Sources 生成器现在读取新的历史文件名；活动桥接输出固定为
+外部历史入口已从 `PROJECT_MEMORY.md` 改为
+`C:\Users\24567\Documents\Codex\codex-original-history-context\HISTORY_CONTEXT.md`；旧聊天索引为同目录的
+`CHAT_INDEX.md`，二者均不是仓库事实源。正式 v2 架构的 canonical path 是
+`docs\architecture\v2_runtime.md`，仓库权威入口仍为 `docs\PROJECT_MEMORY.md`。Sources 生成器现在读取新的历史文件名；活动桥接输出固定为
 `C:\Users\24567\Documents\Codex\codex-original-chatgpt-bridge\current`，支持
 `refresh`/`status`，且只有 `status=current` 的快照才允许人工上传。ACL 异常的旧 Sources 派生目录已移入
 `C:\Users\24567\Documents\Codex\codex-original-closure-quarantine-20260830`，

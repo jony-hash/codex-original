@@ -66,6 +66,18 @@ an explicit scientific gate failure is `valid_failed` and blocks promotion.
 Use [long-training-preflight.md](docs/operations/long-training-preflight.md) for
 budgets, evidence, checkpoint recovery and counterfactual details.
 
+### Ordinary Research Fast Path
+
+Ordinary `R0/R1/R2` research uses one Outer Gate and one authorization carried
+from `READY` preflight into execution. Authority, lineage, runtime/data roles,
+tiny updates, checkpoint reload and similar `CHECK_*`/`INVARIANT_*` items are
+internal checks, not additional gates; ordinary engineering failures are fixed
+and rechecked under the same task identity. Historical gate/status artifacts
+are consumed only when explicitly named as `INPUT_AUTHORITIES`. The shared
+heartbeat, progress, recovery and resume contract is defined in
+[delta_one_gate_short_prompt.md](docs/operations/delta_one_gate_short_prompt.md);
+this does not relax formal/high-risk or long-training rules above.
+
 ### Minimal Implementation And Failure Semantics
 
 Validate user input, CLI/file/checkpoint/evidence inputs and other process

@@ -1,5 +1,12 @@
 # v2 Teacher-Free Conditional Runtime
 
+> **Canonical path:** `docs/architecture/v2_runtime.md`. Project-level current
+> route, latest result, blocker and allowed action are maintained in
+> `docs/CURRENT_STATUS.md` and `docs/status/current_handoff.md`; this file is
+> the formal v2 compatibility specification. Legacy WSL history is external
+> navigation only: `C:\Users\24567\Documents\Codex\codex-original-history-context\HISTORY_CONTEXT.md`
+> and the sibling `CHAT_INDEX.md` are not current project facts.
+
 > 本文描述保留的正式兼容 runtime，不是当前活动研究主线的设计目标。
 > 当前研究主线是 **LightGen 输入与 OLS 对齐的 OLS-native 语义生成原型**，见
 > [项目记忆](../PROJECT_MEMORY.md#唯一活动研究主线lightgen-输入与-ols-对齐的语义生成原型) 和

@@ -238,8 +238,8 @@ Production readiness: not established
 
 后续更新时，优先核对：
 
-- [v2 Runtime](/home/dingzhen/projects/codex-original/docs/architecture/v2_runtime.md)
-- [v1 Architecture](/home/dingzhen/projects/codex-original/docs/architecture/v1_single_shot_distillation.md)
-- [Current Handoff](/home/dingzhen/projects/codex-original/docs/status/current_handoff.md)
-- [Stage Guide](/home/dingzhen/projects/codex-original/docs/operations/stage_guide.md)
-- [Output Artifact Notes](/home/dingzhen/projects/codex-original/docs/operations/output_artifact_notes.md)
+- [v2 Runtime](docs/architecture/v2_runtime.md)
+- [v1 Architecture](docs/architecture/v1_single_shot_distillation.md)
+- [Current Handoff](docs/status/current_handoff.md)
+- [Stage Guide](docs/operations/stage_guide.md)
+- [Output Artifact Notes](docs/operations/output_artifact_notes.md)

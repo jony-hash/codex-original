@@ -1,11 +1,1060 @@
-# 当前研究交接（2026-09-10）
+# 当前研究交接（2026-09-22；step9000 hybrid batched-VJP 预检阻断）
+
+## 当前活动执行（2026-09-22；联合结构-语义续训 batched-VJP 预检）
+
+当前没有活动运行目录。用户已授权从 accepted step9000 重新启动
+`AUTHORIZED_EXECUTE_JOINT_STRUCTURAL_SEMANTIC_CONTINUATION_V1`，目标目录为
+`../../outputs/20260922_joint_structural_semantic_continuation_batched_vjp_v1/runs/attempt_01/`，
+但严格性能预检未通过。
+本节是交接文件唯一的实时活动摘要；下方日期化内容保留为历史交接，不产生新的执行授权。
+
+- 旧 attempt-03 最后停在 step9046；其 recovery checkpoint 只作不可变 provenance，不用于当前续训。
+- 新 attempt-01 尚未创建；没有 scientific checkpoint、report、latest_status 或 progress 文件。
+- 当前引擎固定为 `HYBRID_SEMANTIC_BATCHED_VJP`，禁止运行时静默退回 scalar reference。
+- 最终固定 benchmark：scalar median=`0.43308600000091 s`，batched median=`0.45924589999959 s`，speedup=`-6.04%`；预注册要求至少 `+10%`，因此 preflight blocked，长训练未启动。
+- 旧 stack-based batched 实现约慢 `78%`，20-row direction sanity 在 6GB GPU 上 OOM；已改为 tuple-based 输出和 10-row sanity，但仍需继续工程优化或解释性能不足。
+- 当前没有训练进程，也没有活动 heartbeat；不得因为用户已授权就跳过失败的性能门槛。
+- Sources bridge 当前为 `invalid`（manifest ACL 拒绝读取）；本次工作区收口后再重新生成 clean 六文件包。
+- 当前唯一允许的下一步是同一授权下修复并重跑严格 preflight；不改科学参数、不消费 step9046 recovery、不启动长训练。
+- step6000 DEV 的 `E_S/E_I/E_C/E_D=0.1908/0.5098/0.7332/0.5678`、S1 E_D requested-class macro recall=`0.6250`，与 canonical DEV 结构支持率=`0.9504`、real OLS/S1=`0.0` 同时成立；这保留了分类器分歧和结构支持缺口。
+- step9000 结构损失改善但 `E_C/E_D` 回落至 `0.4714/0.3678`，分类为 `STRUCTURAL_RECOVERY_WITH_CLASSIFIER_SEMANTIC_TRADEOFF`；当前 step6000/9000 只作局部诊断，固定 raw CMOS、多评价器一致性和最终生成仍待联合验收。
+- 审计时源码和引用快照：[activity-chain audit](../../outputs/20260921_activity_chain_audit_v1/runs/audit_01/audit_manifest.json)，并附 [静态依赖审计](../../outputs/20260921_activity_chain_audit_v1/runs/audit_01/static_dependency_audit.json)。快照不证明进程启动时源码完全一致，且不复制大型 checkpoint。
+- ChatGPT Sources bridge 当前不可读：`codex-original-chatgpt-bridge/current/.chatgpt-sources-manifest.json` 返回 `PermissionError`；本轮不调整权限、不刷新发布包、不上传。
+- 上游 authority 标识在活动摘要中继续显式保留：`PROJECT MAINLINE=M0_LIGHTGEN_INPUT_OLS_ALIGNED_GENERATION`、`CURRENT_AUTHORIZED_NEXT_ACTION=NONE`、`CROSS_EVALUATOR_SEMANTIC_DIVERGENCE_ATTRIBUTED`、`GENERATOR_SEMANTIC_CONTROLLABILITY_ATTRIBUTION_RESOLVED`、`CHEN_BOGT_PHASE_COMPLETION_REPAIR_V1_RESOLVED`、`VALID_COMPLETED_GENERATION_BUNDLE_READY`、`CONFLICT_AWARE_GENERATOR_SEMANTIC_RECOVERY_V1_RESOLVED`、`MINIMAL_GENERATOR_CAPACITY_EXPANSION_V1_RESOLVED`。这些仅是历史输入标识，不代表当前续训已完成。
+- 第二批修复已完成：HeartbeatWriter 现在区分 liveness 与 scientific progress；恢复入口仅接受显式 `--resume-checkpoint`，先做执行语义、Adam/RNG/sampler/游标/历史/Stage-1/source snapshot 兼容性检查，且 source snapshot 必须完整覆盖 manifest 中的 Python 执行依赖；报告写入并重读验证后才进入 `COMPLETED`。
+- [diagnostic-only CUDA 报告](../../outputs/20260922_joint_structural_semantic_continuation_v1_diagnostic/runs/preflight_02/diagnostic_report.json) 已验证真实三步更新、DEV/S1 评估和恢复重载，step9003 checkpoint 的 generator、encoder、Adam、sampler、RNG 均恢复一致，方向负控 `rejected=true`，源码快照包含 `41` 个 Python 依赖；`scientific_result_valid=false`，没有 `report.json`/`COMPLETED`。最终新增的快照集合完整性拒绝只完成快速 CPU 回归；按用户要求未重新执行长 CUDA 预检，因此当前源码的 CUDA 集成验证标为未重跑。
+- 原 attempt-03 checkpoint 因当前执行语义漂移而被 fail-closed 拒绝；保留为工程轨迹，不自动续训。此前定向范围 `52 passed`；最终收尾补丁的两个直接相关测试文件 `29 passed`，Ruff/compile/diff-check 通过；完整套件的 14 个失败属于既有 CUDA/HEAD/write-once 前置条件，待独立环境处理。
+
+## 历史 current block（2026-09-20；Three-evaluator robust semantic continuation）
+
+按用户明确授权 `AUTHORIZED_EXECUTE_THREE_EVALUATOR_ROBUST_SEMANTIC_CONTINUATION_V1`，消费 accepted step3000 Generator、SIC attribution、冻结 E_D 独立确认 evaluator 与冻结 S1 sampler，完成唯一 Outer Gate=`THREE_EVALUATOR_ROBUST_SEMANTIC_CONTINUATION_V1_RESOLVED`。结果=`VALID_COMPLETED`，`outer_gate_passed=true`，classification=`THREE_EVALUATOR_ROBUST_SEMANTIC_CONTINUATION_SUPPORTED`，mechanism=`SEMANTIC_REALIZATION_GAIN_TRANSFERS_TO_REPAIRED_SAMPLED_MANIFOLD`。
+
+`PROJECT MAINLINE=M0_LIGHTGEN_INPUT_OLS_ALIGNED_GENERATION`；`CURRENT_AUTHORIZED_NEXT_ACTION=NONE`。
+
+- [report](../../outputs/20260920_three_evaluator_robust_semantic_continuation_v1/runs/attempt_02/report.json)，SHA-256=`1d195aad5307108509349c451aa48f7015b8e27a00bfb66c8e42a56d4c4a0f92`；[step6000 checkpoint](../../outputs/20260920_three_evaluator_robust_semantic_continuation_v1/runs/attempt_02/scientific_step_006000.pt)，SHA-256=`3387e104f7d33e19051a23444b0dabf1eb387c5faca3ce7150bbd1a2212c9986`。
+- Stage 1 step3000→3300 完成 `300` updates，E_D delta=`+0.0207770`、paired 95% CI=`[+0.0145900,+0.0270100]`，全部预注册条件通过；Stage 2 随后条件执行至 step6000，额外 `2700` updates。step6000 DEV E_S/E_I/E_C/E_D macro recall=`0.1908/0.5098/0.7332/0.5678`，reconstruction delta=`-0.0036397`，光学有效性通过。
+- 冻结 S1 balanced bank 的长程描述性 E_D requested-class macro recall=`0.6250`，`R_raw=1.6869`、`R_feature=0.2968`；latent S1 support=`0.962`（CI lower=`0.953975`）。E_D 仅作 forward-only confirmation/descriptive evaluator，未进入 backward、optimizer 或 checkpoint selection。
+- 仅 `generator.phase` 更新；其余 optical/runtime/evaluator/sampler 状态冻结，Adam state 从 step3000 精确恢复；TRAIN/DEV 角色保持不变，protected/test/sealed=`0/0/0`。attempt-01 是 `INVALID_HARNESS` provenance，attempt-02 是唯一有效科学结果。
+- 结论边界：支持“语义实现增益转移到已修复的 sampled manifold”这一本次分类；不宣称最终生成质量、硬件 readiness、架构 acceptance 或 promotion。`CURRENT_AUTHORIZED_NEXT_ACTION=NONE`；promotion 前需要新的确认 authority。
+- [executor](../../scripts/research/execute_lightgen_2d_three_evaluator_robust_semantic_continuation_v1.py) 与 focused test 已通过 compile、focused pytest（`4 passed`）；未提交 commit，既有 dirty worktree 保留。
+
+## 历史 current block（2026-09-20；SIC independent confirmation evaluator）
+
+按用户明确授权 `AUTHORIZED_ESTABLISH_SIC_INDEPENDENT_CONFIRMATION_EVALUATOR_V1`，消费已接受的
+`BLOCKED_NEW_INDEPENDENT_CONFIRMATION_AUTHORITY_UNRESOLVED` 定义结果，执行唯一 Outer Gate=`SIC_INDEPENDENT_CONFIRMATION_EVALUATOR_ESTABLISHED`。
+结果=`VALID_COMPLETED`，`outer_gate_passed=true`，classification=`SIC_INDEPENDENT_CONFIRMATION_EVALUATOR_ESTABLISHED`。
+
+`PROJECT MAINLINE=M0_LIGHTGEN_INPUT_OLS_ALIGNED_GENERATION`；`CURRENT_AUTHORIZED_NEXT_ACTION=NONE`；推荐但未授权的下一动作=`AUTHORIZED_EXECUTE_THREE_EVALUATOR_ROBUST_SEMANTIC_CONTINUATION_V1`。
+
+- [report](../../outputs/20260920_sic_independent_confirmation_evaluator_v1/runs/attempt_01/report.json)，SHA-256=`01a875ba775accc5903b58428c1a1e9468e186276ea21ffadf521dc5d8ce5db8`；[frozen E_D candidate](../../outputs/20260920_sic_independent_confirmation_evaluator_v1/runs/attempt_01/final_epoch_candidate.pt)，SHA-256=`b8ece3e3bacedd5b5bec63073bee02ce7489161030b835740c681a1ebd3f9ff9`。
+- `E_D=SIC_INDEPENDENT_CONFIRMATION_EVALUATOR_D_V1`，架构为预注册 `PixelMLPConfirmationEvaluatorV1`；架构独立性审计通过，未读取 Generator/optical/CMOS。canonical TRAIN-only FIT/QUALIFICATION=`49,500/5,500`，split seed=`2026092003`，training seed=`2026092004`。
+- preflight=`READY`；20 epochs 完整，qualification 一次完成并通过：accuracy/macro recall=`0.9810909/0.9810909`，minimum class recall=`0.9636364`。E_D 未参与 E_S/E_I/E_C/SI/SIC attribution、sampler selection 或 optical hyperparameter selection。
+- data firewall：generated CMOS/optical outputs/P2Q2/S1/official test/protected/sealed=`0/0/0/0/0/0/0`；step3000 continuation authority 未消费。下一步必须由新的用户授权启动已定义的 SIC continuation；不得在本任务内自动训练。
+
+## 历史 current block（2026-09-19；Cross-evaluator semantic divergence attribution）
+
+按用户明确授权 `AUTHORIZED_ATTRIBUTE_CROSS_EVALUATOR_SEMANTIC_DIVERGENCE_V1`，从 accepted clean 2L step-0 与 Smooth-guided step-300 完成唯一 Outer Gate=`CROSS_EVALUATOR_SEMANTIC_DIVERGENCE_ATTRIBUTED` 的 TRAIN-only、no-update 归因。结果=`VALID_COMPLETED`，`outer_gate_passed=true`，classification=`SHARED_CROSS_EVALUATOR_LOCAL_SEMANTIC_DIRECTION_SUPPORTED`。
+
+`PROJECT MAINLINE=M0_LIGHTGEN_INPUT_OLS_ALIGNED_GENERATION`；`INPUT_AUTHORITY=CROSS_EVALUATOR_SEMANTIC_DIVERGENCE_ATTRIBUTED`；`CURRENT_AUTHORIZED_NEXT_ACTION=NONE`。
+
+- [report](../../outputs/20260919_cross_evaluator_semantic_divergence_v1/runs/attempt_03/report.json)，SHA-256=`c4c390df298ba82563505bec5988b0383709b57e342dfdd623efef9e70425951`；[gradient vectors](../../outputs/20260919_cross_evaluator_semantic_divergence_v1/runs/attempt_03/gradient_vectors.pt)，SHA-256=`75dbe22a1af37e9caa7d6c6e414ff13cf9f66eaa1bedd97953f42b3d5a0107d2`；[directional probes](../../outputs/20260919_cross_evaluator_semantic_divergence_v1/runs/attempt_03/directional_probes.json)，SHA-256=`89597dddfa54a0a58c62c5b5cdca2a73daf8f9f04f6fe67a79d93f5ef4e914bf`。
+- Smooth positive control strong (`0.988`)；独立 FrozenMNISTEvaluator canonical validation accuracy=`0.98939997`；两者本轮均为 `DEVELOPMENT_DIAGNOSTIC`，没有 evaluator 进入 training teacher 角色。
+- A/B TRAIN bank 各 `20` 行、class-balanced/disjoint；A 构造 output/parameter gradients，B 做 `1e-4/3e-4/1e-3` 对称 phase probes；TRAIN=`810`，DEV/protected/test/sealed=`0/0/0/0`。
+- `cos(h_S,h_I)=0.1448393→0.1523234`，`cos(g_S,g_I)=0.3132313→0.0954316`（step-0→step-300）。两个 checkpoint 的 equal-weight normalized joint bisector 都在 B 上同时改善 `L_S` 与 `L_I`，joint optical validity 与 restoration 通过；step-300 单 evaluator directions 有交叉效应。
+- no-update：optimizer 未创建、updates=`0`、每次 probe 后恢复且最终恢复 step-0。结论仅为当前冻结 runtime 的局部 shared direction 证据，不是全局训练/硬件/promotion 结论。推荐 successor=`DEFINE_EVALUATOR_ROBUST_SEMANTIC_TRAINING_V1`，不自动执行。
+- attempt-01 为 `INVALID_HARNESS` 工程 provenance；attempt-03 为当前消费结果。executor 与 [focused test](../../tests/v2/test_lightgen_2d_attribute_cross_evaluator_semantic_divergence_v1.py) 已通过 compile、Ruff、pytest（`5 passed`）。
+
+## 历史 current block（2026-09-19；Canonical Smooth alignment with independent confirmation）
+
+按用户明确授权 `AUTHORIZED_TRAIN_CANONICAL_SEMANTIC_ALIGNMENT_WITH_INDEPENDENT_CONFIRMATION_V1`，从 accepted clean conflict-aware 2L Generator step-0 完成唯一 Outer Gate=`CANONICAL_SEMANTIC_ALIGNMENT_WITH_INDEPENDENT_CONFIRMATION_V1_RESOLVED` 的 `300`-update Generator-only arm。结果=`VALID_COMPLETED`，`outer_gate_passed=false`，classification=`SMOOTH_GUIDED_ALIGNMENT_WITHOUT_INDEPENDENT_CONFIRMATION`（Case B）。
+
+`PROJECT MAINLINE=M0_LIGHTGEN_INPUT_OLS_ALIGNED_GENERATION`；`INPUT_AUTHORITY=CANONICAL_SEMANTIC_REALIZATION_FAILURE_ATTRIBUTED`；`CURRENT_AUTHORIZED_NEXT_ACTION=NONE`。
+
+- [report](../../outputs/20260919_canonical_semantic_alignment_with_independent_confirmation_v1/runs/attempt_01/report.json)，SHA-256=`440230967def4f758a9d72a7999aac34d6127bce487fb078a2320a9b02ab4423`；[preflight](../../outputs/20260919_canonical_semantic_alignment_with_independent_confirmation_v1/runs/attempt_01/preflight.json)，SHA-256=`d38ec15f75dc1d4cf1a9fc9433c934312068843f2be4a6d39970443d3d307d7c`；[step-300](../../outputs/20260919_canonical_semantic_alignment_with_independent_confirmation_v1/runs/attempt_01/scientific_step_000300.pt)，SHA-256=`5efdcfeef9c10a403223c43ae76c464591279261fc593e8e3c1c42016efc1843`。
+- 唯一独立 confirmation evaluator=`FrozenMNISTEvaluator v1`，checkpoint SHA=`16a42fad849ed9af249fa65bed9567a8fabc011fcc9d107061f69cdb27f21684`，canonical validation accuracy=`0.98939997`；current teacher 因参与既有 teacher objective 排除，Smooth 因本轮训练 oracle 排除，Shape evaluator 因 `0.9234` qualification failure 排除。confirmation 只测 step `0/300`，未进入 backward/probe。
+- Smooth canonical loss=`1.0439515→0.9424558`，Smooth DEV macro recall=`0.1030→0.1088`，paired feature distance delta=`-0.0513843`，centroid matched-nearest delta=`0`；independent confirmation=`0.1698→0.1456`，delta=`-0.0242`，paired bootstrap 95% CI=`[-0.0322,-0.01599]`，因此不支持 independent transfer。
+- reconstruction delta=`-0.0016350`（`+0.005` constraint pass）；raw validity 通过；P2+Q2 secondary final `R_raw=2.5831490`、`R_feature=8.2150978`。TRAIN=`3000`、DEV=`20000`、preflight TRAIN=`30`，protected/test/sealed=`0/0/0`；CUDA preflight=`READY`；仅 `generator.phase` 更新。
+- 结论边界：只支持 Smooth development objective 的局部改善，不支持 canonical semantic recovery、generation success、architecture/teacher optimality、physical readiness 或 promotion。保持 `CURRENT_AUTHORIZED_NEXT_ACTION=NONE`，不自动追加训练、调参、evaluator search、架构变更或 promotion。
+- [executor](../../scripts/research/execute_lightgen_2d_train_canonical_semantic_alignment_with_independent_confirmation_v1.py) 与 [focused test](../../tests/v2/test_lightgen_2d_train_canonical_semantic_alignment_with_independent_confirmation_v1.py) 已通过 compile、Ruff、pytest（`5 passed`）。
+
+## 历史 current block（2026-09-19；Canonical semantic realization failure attribution）
+
+按用户明确授权 `AUTHORIZED_ATTRIBUTE_CANONICAL_SEMANTIC_REALIZATION_FAILURE_V1`，消费 accepted target-image semantic-alignment result、clean step-0 与 failed step-300 Generator checkpoint、FrozenMNISTEvaluator、SmoothMNISTEvaluator 及 TRAIN OLS/sample/target identity，完成唯一 Outer Gate=`CANONICAL_SEMANTIC_REALIZATION_FAILURE_ATTRIBUTED`。结果=`VALID_COMPLETED`，classification=`TEACHER_TO_CANONICAL_OBJECTIVE_TRANSFER_MISMATCH_SUPPORTED`。
+
+`PROJECT MAINLINE=M0_LIGHTGEN_INPUT_OLS_ALIGNED_GENERATION`；`INPUT_AUTHORITY=CANONICAL_SEMANTIC_REALIZATION_FAILURE_ATTRIBUTED`；`CURRENT_AUTHORIZED_NEXT_ACTION=NONE`。
+
+- [report](../../outputs/20260919_canonical_semantic_realization_failure_attribution_v1/runs/attempt_03/report.json)，SHA-256=`0efe156ac0bbdf6e7a7d1cfe40f6fd98483fa855f4e7746570f4511fef7668e2`；[gradient vectors](../../outputs/20260919_canonical_semantic_realization_failure_attribution_v1/runs/attempt_03/gradient_vectors.pt)，SHA-256=`c3f1e0f0f4e0abed71946cbc025c254387e9987bc8a6f4301aea4e3c39bf7c43`；[directional probes](../../outputs/20260919_canonical_semantic_realization_failure_attribution_v1/runs/attempt_03/directional_probes.json)，SHA-256=`6271db595c55bebeaebb5f411824b866318e393bd6851a73823d08647068738d`。
+- TRAIN-only deterministic class-balanced bank：A/B 各 `20` 行、disjoint、`BANK_SEED=2026091901`；没有 DEV read。`cos(h_T,h_S)=+0.07631/+0.07338`（step-0/300），`cos(g_T,g_S)=+0.15877/+0.10191`，`cos(g_total,g_S)=+0.29854/+0.30322`。
+- B symmetric probes show `d_T` transfers to teacher `L_T` but not canonical Smooth `L_S`；`d_S` improves Smooth `L_S` at both step-0 and step-300. Therefore current evidence supports teacher-to-canonical objective transfer mismatch, not absence of a transferable clean-2L canonical local direction.
+- `SMOOTH_ROLE_AFTER_ATTRIBUTION=DEVELOPMENT_DIAGNOSTIC`。此前 Smooth measurement remains valid；推荐 successor=`DEFINE_CANONICAL_ALIGNMENT_TRAINING_WITH_INDEPENDENT_CONFIRMATION_V1`，不自动训练，且 successor 必须预注册 distinct independent confirmation evaluator。
+- no-update：optimizer 未创建、updates=`0`、probe 参数未持久化、每次 probe 后恢复且最终恢复 step-0；preflight=`READY`。data reads：TRAIN=`800`、DEV/protected/test/sealed=`0/0/0/0`。
+- attempt-01/02 为 execution harness stops（无 scientific report/classification），attempt-03 为唯一有效结果。后续保持 `CURRENT_AUTHORIZED_NEXT_ACTION=NONE`，不得自动 teacher search、调参、续训、改架构、替换 evaluator 或 promotion。
+- [executor](../../scripts/research/execute_lightgen_2d_attribute_canonical_semantic_realization_failure_v1.py) 与 [focused test](../../tests/v2/test_lightgen_2d_attribute_canonical_semantic_realization_failure_v1.py) 已通过 compile、Ruff、pytest（`3 passed`）。
+
+## 历史 current block（2026-09-19；Generator target-image semantic alignment）
+
+按用户明确授权 `AUTHORIZED_TRAIN_GENERATOR_TARGET_IMAGE_SEMANTIC_ALIGNMENT_V1`，从 accepted clean conflict-aware 2L Generator step-0 执行唯一 Outer Gate=`GENERATOR_TARGET_IMAGE_SEMANTIC_ALIGNMENT_V1_RESOLVED` 的 300-update Generator-only arm。结果=`VALID_COMPLETED`，`outer_gate_passed=false`，classification=`TARGET_FEATURE_ALIGNMENT_WITHOUT_INDEPENDENT_SEMANTIC_TRANSFER`（Case B）。
+
+`PROJECT MAINLINE=M0_LIGHTGEN_INPUT_OLS_ALIGNED_GENERATION`；`INPUT_AUTHORITY=GENERATOR_SEMANTIC_CONTROLLABILITY_ATTRIBUTION_RESOLVED`；`CURRENT_AUTHORIZED_NEXT_ACTION=NONE`。
+
+- [report](../../outputs/20260919_generator_target_image_semantic_alignment_v1/runs/attempt_01/report.json)，SHA-256=`500289c9e17e28500e5b103a5d9bfcd7b92b1ace5bd16fdccd9dea683e570f68`；[preflight](../../outputs/20260919_generator_target_image_semantic_alignment_v1/runs/attempt_01/preflight.json)，SHA-256=`a379e1679263b6be41b8adc3e02ce5a1bb30cf3e7a48427c3293edf40f073bfc`；[step-300](../../outputs/20260919_generator_target_image_semantic_alignment_v1/runs/attempt_01/scientific_step_000300.pt)，SHA-256=`7b51f01e0965295f059e0b7f52de1b7c68cdb5cb9ec438c4bca69d4052adcacf`。
+- TRAIN `FrozenMNISTEvaluator v1` 的固定 128D pre-classifier feature loss `L_align=` `1.078848→1.046632`；canonical DEV positive control=`0.9876`。仅 `generator.phase` 更新；Encoder/OLS/W/P2/Q2/evaluators 冻结；`delta_align=0.0245538596` 由一次 TRAIN calibration 固定。
+- 独立 Smooth DEV=`0.1030→0.1030`，delta=`0.0000`，paired 95% CI=`[-0.0008,+0.0008]`；Smooth paired feature distance=`1.0121→0.9999`，但 centroid matched-nearest=`0.1→0.1` 且仍全部最近 class 8。reconstruction delta=`-0.0014505`，raw validity 通过；P2+Q2 `R_feature=3.0552→3.2780` 未改善。
+- role integrity：TRAIN=`3000`、DEV=`20000`，protected/test/sealed=`0/0/0`；preflight=`READY`，updates=`300`，checkpoints/evaluations=`0/100/200/300`，latest=`COMPLETED`。不自动 teacher search、调参、续训、架构变更或 promotion。
+- [executor](../../scripts/research/execute_lightgen_2d_generator_target_image_semantic_alignment_v1.py) 与 [focused test](../../tests/v2/test_lightgen_2d_generator_target_image_semantic_alignment_v1.py) 已通过 Ruff、compile、pytest（`5 passed`）。
+
+## Previous current block（2026-09-19；CMOS→Smooth semantic realization）
+
+`PROJECT MAINLINE=M0_LIGHTGEN_INPUT_OLS_ALIGNED_GENERATION`；`CURRENT_AUTHORIZED_NEXT_ACTION=NONE`。
+`INPUT_AUTHORITY=GENERATOR_SEMANTIC_CONTROLLABILITY_ATTRIBUTION_RESOLVED`。
+
+按用户明确授权 `AUTHORIZED_RESOLVE_CMOS_TO_SMOOTH_SEMANTIC_REALIZATION_V1`，消费 accepted 的同一 5000-row DEV images/labels、raw CMOS、CMOS probe、Smooth checkpoint 与 preprocessing contract，完成唯一 Outer Gate=`CMOS_TO_SMOOTH_SEMANTIC_REALIZATION_RESOLVED`。结果=`VALID_COMPLETED`，最终 classification=`CMOS_CLASS_CODE_PRESERVED_BUT_IMAGE_SEMANTIC_REALIZATION_FAILED`。
+
+- [final report](../../outputs/20260919_cmos_to_smooth_semantic_realization_v1/runs/attempt_04/report.json)，SHA-256=`46fcfd60e5d240a92a9c4ca472f8bb88a90c641474ba11eea9db9da7236dba65`；[finalization manifest](../../outputs/20260919_cmos_to_smooth_semantic_realization_v1/runs/attempt_04/source_manifest.json)，SHA-256=`76299a681ed9a710ec4431152ee1f142553f05b0126de424ee40601fb72871e8`。attempt-04 只修正 attempt-02 的分类谓词，复用 immutable measurement artifacts，没有新 forward。
+- Smooth positive control macro recall/accuracy=`0.9880/0.9880`；同一 frozen contract 在 DEV raw CMOS 上 exact reproduce Smooth macro recall=`0.1030`，class-8 recall=`0.998`。contract audit 未发现 double/missing normalization、range/channel/pooling/class-map/order/checkpoint mismatch。
+- accepted CMOS linear probe DEV macro recall=`0.9708`；matched transitions：`probe-correct/Smooth-wrong=4359`、反向=`20`。固定 Smooth final embedding 的 normalized feature distances：paired=`1.0121`、same-class reference=`1.0361`、different-class=`1.0655`；CMOS centroids 的 matched-nearest fraction=`0.1`，全部最近 real class 8。最终机制是 class code 仍可线性解码，但 CMOS 未实现 Smooth 所需的 canonical image-semantic manifold。
+- role integrity：DEV=`5000`；仅读取 accepted TRAIN raw CMOS=`55000` 以复现既有 probe TRAIN-only standardization；protected/test/sealed=`0/0/0`；optical forward regeneration/backward/update=`false/false/0`；evaluator/probe retraining=`false/false`。optional nonlinear 200-row artifact 未消费，因无 exact 5000-row binding。
+- 推荐但未执行的 single successor=`TRAIN_GENERATOR_TARGET_IMAGE_SEMANTIC_ALIGNMENT_V1`；本轮 `CURRENT_AUTHORIZED_NEXT_ACTION=NONE`，不自动训练、调参、续训或 promotion。attempt-01/03 为 aborted provenance；attempt-02 旧分类 report 已被 attempt-04 supersede。
+- [executor](../../scripts/research/execute_lightgen_2d_resolve_cmos_to_smooth_semantic_realization_v1.py) 与 [focused test](../../tests/v2/test_lightgen_2d_resolve_cmos_to_smooth_semantic_realization_v1.py) 已通过 Ruff、compile、pytest（`6 passed`）。
+
+## Previous current block（2026-09-19；OLS→CMOS semantic localization）
+
+按用户明确授权 `AUTHORIZED_RESUME_LOCALIZE_OLS_TO_CMOS_SEMANTIC_INFORMATION_V1`，完成一次且仅一次 frozen semantic-localization consumer。唯一 Outer Gate=`OLS_TO_CMOS_SEMANTIC_INFORMATION_LOCALIZED`，结果=`VALID_COMPLETED`，classification=`SEMANTIC_INFORMATION_LOCALIZATION_MIXED`。该 consumer 只物化 clean TRAIN raw CMOS、拟合固定 TRAIN-only multinomial logistic + L2 probes，并在匹配 DEV 上测量；未执行 optical training、parameter update、optimizer/backward through optics、generation 或 promotion。
+
+- [report](../../outputs/20260919_ols_to_cmos_semantic_information_localization_v1/runs/attempt_01/report.json)，SHA-256=`17b7d19ef2528dd2039f94e5e97f7d5e24b54a4dd70047413e9e9daf200c7d98`；[probe metrics](../../outputs/20260919_ols_to_cmos_semantic_information_localization_v1/runs/attempt_01/probe_metrics.json)，SHA-256=`0c63c0485eded59d40fd3cc6374b0912dad8786b143488f5ed1b705c37056724`。
+- [TRAIN raw CMOS authority](../../outputs/20260919_ols_to_cmos_semantic_information_localization_v1/runs/attempt_01/train_raw_cmos.pt)：`[55000,1,200,200]` float32，file SHA-256=`1271ba91c396f2a5d730b72f5ab425eff9127b7f987b371e0a0ab13f9f9494cd`，tensor SHA-256=`63efe4bd678440af0a01718a13d7c4dccbb574c4be9c420c84ff47ceaefe3ac8`；clean 2L authority、TRAIN ordering/labels、zero/constant checks 均通过。
+- DEV macro recall：OLS=`0.9226`、CMOS=`0.9708`、Smooth=`0.1030`；OLS negative control=`0.1190`。OLS-correct→CMOS-wrong=`56`，反向=`297`；CMOS probe 没有相对 OLS 的可见语义损失，Smooth 则表现为 class-8-dominant output decision mismatch，但在不引入任意 cutoff 的情况下保留 mixed classification。
+- data-role integrity：TRAIN=`55000` materialized/consumed，DEV=`5000` measured，protected/test/sealed=`0/0/0`；Smooth 从已物化 DEV CMOS 重算并复现 accepted clean step-0 reference，未重跑 optical model。partial-task resume、流式大 tensor 验证与 dimension harness 修复均为同一 authorization 下的工程 provenance。
+- [executor](../../scripts/research/execute_lightgen_2d_ols_to_cmos_semantic_information_localization_v1.py) 与 [focused test](../../tests/v2/test_lightgen_2d_ols_to_cmos_semantic_information_localization_v1.py) 已通过 Ruff、compile、pytest（`5 passed`）。`CURRENT_AUTHORIZED_NEXT_ACTION=NONE`；不得自动启动 coupling repair、encoder retraining、evaluator replacement、generation 或 promotion。
+
+## Previous current block（2026-09-18；latest bounded execution before OLS→CMOS localization）
+
+按用户明确授权 `AUTHORIZED_EXECUTE_MINIMAL_NEAR_IDENTITY_NONLINEAR_GENERATOR_V1`，从 accepted clean 2L conflict-aware Generator step-0（不消费失败/线性 3L endpoint）完成一次 bounded near-identity nonlinear Generator successor。唯一新增变量是在第一层 Generator endpoint 与第二个 phase plane 之间加入冻结 `I_ref` 的 scalar `eta` 算法相位算子：`rho=|E|^2/(I_ref+1e-12)`、`N_eta(E)=E*exp(i*eta*rho)`；`eta=0` 为 exact identity。没有新增 propagation/FFT/crop/aperture/relay/normalization；phase、encoder、OLS、P2/Q2、evaluators、loss weights、数据顺序、Adam family 与 frozen context 均保持不变。它是 MODEL_ASSUMPTION/algorithmic surrogate，不是 Kerr/Te/fiber/hardware validation。结果=`VALID_COMPLETED`，Outer Gate=`MINIMAL_NEAR_IDENTITY_NONLINEAR_GENERATOR_V1_RESOLVED`，`outer_gate_passed=false`，classification=`NONLINEAR_LOCAL_GAIN_WITHOUT_DATASET_RECOVERY`（Case B）。
+
+- [report](../../outputs/20260918_minimal_near_identity_nonlinear_generator_v1/runs/attempt_02/report.json)，SHA-256=`d2526b49540d6ea03483f51413587b09b8195440af3c72cd1925f3673c7f5673`；[preflight](../../outputs/20260918_minimal_near_identity_nonlinear_generator_v1/runs/attempt_02/preflight.json)，SHA-256=`fc1bf02eb6dd62ffd1b4d61b671172c8af85069fe456a5c78b1ceda232179b08`；[step-300](../../outputs/20260918_minimal_near_identity_nonlinear_generator_v1/runs/attempt_02/scientific_step_000300.pt)，SHA-256=`630447422b1cac7ad900a98b25712ed53642b2c98f4ca64e7bde3617694bd32a`。
+- 起点 authority：conflict-aware report SHA=`dc05742fae2333e21a1d123fd93d4032b9e67676ae4e424ea3c68e5d6db8c904`、accepted clean step-0 SHA=`a61dd84728aa220aa567ab6cd5f9daa788b21e76be3c506054c2b7c0a23dcd34`；failed/linear 3L step-300 未加载。`I_ref=0.9120797964019747`，fixed TRAIN calibration bank=`10`，insertion=`lightgen_generator_layer_1` at `z=0.6295 m`。
+- eta=0 function-preserving=`accepted_for_stage1=true`，所有报告的 field/raw/evaluator/reconstruction 比较 `max_abs=0`。Stage 1 A/B eta gradients=`-0.4071133/-1.1347258`，方向=`+1`，同号且 beneficial；B 三组 symmetric probe Smooth slopes=`-1.4567375/-1.1968613/-1.1153221`，raw validity 全通过。对应 [gradient artifact](../../outputs/20260918_minimal_near_identity_nonlinear_generator_v1/runs/attempt_02/stage1_gradient_vectors.pt)，SHA-256=`14b83d3ae8b2fc3c16ca283d789d7fbdae7ce393677a6b01b33fbf0f667d001b`。
+- `READY` preflight、3-step real update、negative control、frozen firewall、optimizer state boundary 均通过；300 updates，checkpoints/DEV=`0/100/200/300`，CUDA=`true`；reads：TRAIN=`10+30+3000`，DEV=`20000`，protected/test/sealed=`0`。
+- Smooth DEV=`0.1030→0.1028→0.1028→0.1024`，delta=`-0.0006`，paired 95% CI=`[-0.0020,+0.0006]`，dataset semantic recovery unsupported；reconstruction=`0.0687409→0.0671431`，delta=`-0.0015977`，约束通过。P2+Q2 transfer：`R_feature=3.0552277→1.5064399`，但 `R_raw=1.5288204→1.8741536`；raw finite/nonconstant=`1.0/1.0`、zero-image=`0`。
+- attempt-01 在科学更新前因 logical-batch harness 边界 fail-closed（scientific=`0`）并保留；最小执行器修复后 attempt-02 完成，不构成新的 scientific arm。无 retry/sweep/调参/续训；不支持 generation success、physical hardware validity 或 promotion。`CURRENT_AUTHORIZED_NEXT_ACTION=NONE`。
+- [executor](../../scripts/research/execute_lightgen_2d_minimal_near_identity_nonlinear_generator_v1.py) 与 [focused test](../../tests/v2/test_lightgen_2d_minimal_near_identity_nonlinear_generator_v1.py) 已通过 compile/lint/pytest（`3 passed`）。
+
+## Minimal Generator capacity expansion（2026-09-18；previous bounded execution）
+
+按用户明确授权 `AUTHORIZED_EXECUTE_MINIMAL_GENERATOR_CAPACITY_EXPANSION_V1`，从 accepted 2L conflict-aware Generator endpoint 完成一次且仅一次 minimal 3L capacity-expansion successor。唯一结构变量是把现有第二个 `1.50 mm` interval 对称拆为 `0.75 mm + 0.75 mm`，插入初始为零的 trainable phase plane；其余 optical/runtime/frozen context、数据顺序与 optimizer family 均冻结，旧 Adam moments 复制、新平面 moments 置零。结果=`VALID_COMPLETED`，Outer Gate=`MINIMAL_GENERATOR_CAPACITY_EXPANSION_V1_RESOLVED`，`outer_gate_passed=false`，classification=`LOCAL_CONTROLLABILITY_GAIN_WITHOUT_DATASET_RECOVERY`（Case B）。
+
+- [report](../../outputs/20260918_minimal_generator_capacity_expansion_v1/runs/attempt_01/report.json)，SHA-256=`ea8fb6b3e766a667461cfa061d9d22f42306d34eb0757aeb0d0e87d6202b817f`；[preflight](../../outputs/20260918_minimal_generator_capacity_expansion_v1/runs/attempt_01/preflight.json)；[step-300 checkpoint](../../outputs/20260918_minimal_generator_capacity_expansion_v1/runs/attempt_01/scientific_step_000300.pt)，SHA-256=`7ee9c3782b3b5ddff1ebf064eef4836d7e18a63385fff0dbf64bbb3b2cbac517`。
+- function-preserving check=`accepted_for_stage1=true`；Stage 1 `supported=true`，new-plane Smooth gradient norm=`0.1424059`，3L/2L fixed-scale Smooth response ratios=`1.1105/1.0947/1.1173`；preflight=`READY`，CUDA=`true`，TRAIN/DEV=`3000/20000`，protected/test/sealed=`0`。
+- Smooth DEV=`0.1030→0.1036→0.1034→0.1032`，delta=`+0.0002`，paired 95% CI=`[-0.0004,+0.0008]`，semantic gate 未支持；reconstruction=`0.0687409→0.0663280`，delta=`-0.0024129`，约束通过；raw validity=`pass`。
+- exact P2+Q2 transfer：`R_raw=1.5288204→2.0526421`、`R_feature=3.0552277→3.6763498`，而 `R_u=1.5095471`、`R_z=1.8283132` 保持；expanded CMOS SHA-256=`ebe6e7b1bae3df94d474fbb4d6e4299e2bd1671e769c2d68697e5d7fdc1c968c`。
+- 结论仅为当前 frozen Generator 的局部 controllability gain；不支持 dataset-level semantic recovery、global capacity sufficiency、generation success 或 promotion。`CURRENT_AUTHORIZED_NEXT_ACTION=NONE`；不自动追加新 arm、sweep、调参、续训或架构变更。未完成 preflight 目录保留为 aborted provenance，不作为科学结果。
+
+## Conflict-aware Generator semantic recovery（2026-09-18；previous bounded execution）
+
+按用户明确授权 `AUTHORIZED_EXECUTE_CONFLICT_AWARE_GENERATOR_SEMANTIC_RECOVERY_V1`，从 accepted frozen-latent semantic-recovery successor step-0 启动一次且仅一次 conflict-aware Generator-only successor。唯一科学变量是 gradient composition：`g_total=g_sem+g_rec_safe+g_op_safe`；固定 `eps_proj=1e-12`，仅移除与 semantic gradient 负内积的 reconstruction/optical-power 分量。结果=`VALID_COMPLETED`，Outer Gate=`CONFLICT_AWARE_GENERATOR_SEMANTIC_RECOVERY_V1_RESOLVED`，classification=`CONFLICT_AWARE_SEMANTIC_RECOVERY_NOT_SUPPORTED`（Case C）。
+
+- [report](../../outputs/20260918_conflict_aware_generator_semantic_recovery_v1/runs/attempt_01/report.json)，SHA-256=`dc05742fae2333e21a1d123fd93d4032b9e67676ae4e424ea3c68e5d6db8c904`；[preflight](../../outputs/20260918_conflict_aware_generator_semantic_recovery_v1/runs/attempt_01/preflight.json)；[step-300 checkpoint](../../outputs/20260918_conflict_aware_generator_semantic_recovery_v1/runs/attempt_01/scientific_step_000300.pt)，SHA-256=`9e561f4a95da2a6962e6e6bcf0ac3ebb0680e974a8ef85c2c99cf18425b73d35`；[P2+Q2 CMOS](../../outputs/20260918_conflict_aware_generator_semantic_recovery_v1/runs/attempt_01/successor_p2q2_generated_cmos.pt)，SHA-256=`dfc6eb2e1744314f4518aef3b3c734c60ce80b728293741421c4d923c3fa7f44`。
+- `READY` preflight、3-step real update、negative control、frozen firewall、same optimizer state/data order/weights、projection orthogonality 全通过；`beta=2.4509953404`、`gamma=0.5330424285`、`delta=0.0065783691`；old TN/scalar weighted-sum backward=`false`。
+- Smooth=`0.1030→0.1034→0.1038→0.1036`，delta=`+0.0006`，paired 95% CI=`[0,+0.00121]`；CI lower 未 `>0`。reconstruction=`0.0687409→0.0673604`，delta=`-0.0013805`；constraint/raw validity=`pass/pass`。
+- P2+Q2 `R_raw=1.5288204→1.5574754`、`R_feature=3.0552277→3.1940135`，feature 未下降；class histogram=`[1,3,48,68,0,44,1,18,10,7]`、dominant=`0.34`、normalized entropy=`0.71321`。TRAIN/DEV=`3000/20000`，protected/test/sealed=`0`。
+- 结论只支持：在当前 frozen Generator 参数化下，移除局部 auxiliary gradient conflict 不足以恢复 dataset-level semantics；不自动修改 architecture。`CURRENT_AUTHORIZED_NEXT_ACTION=NONE`。
+
+## Generator semantic-controllability attribution（2026-09-18；accepted input authority）
+
+按 accepted semantic-recovery result 完成一次且仅一次 no-update attribution consumer。结果=`VALID_COMPLETED`，Outer Gate=`GENERATOR_SEMANTIC_CONTROLLABILITY_ATTRIBUTION_RESOLVED`，primary=`GENERATOR_SEMANTIC_CONTROLLABILITY_MIXED`，secondary=`RECONSTRUCTION_SEMANTIC_GRADIENT_CONFLICT_SUPPORTED`。结论只覆盖 accepted calibration batch 与 frozen runtime；不构成 global architecture、generation acceptance、physical validity 或 promotion 结论。
+
+- [attribution report](../../outputs/20260918_generator_semantic_controllability_attribution_v1/runs/attempt_01/report.json)，SHA-256=`3304262b2cd5fbff22e423c415984c14eeb1a2906871ad45e3a62265479d89b5`；[gradient vectors](../../outputs/20260918_generator_semantic_controllability_attribution_v1/runs/attempt_01/gradient_vectors.pt)，SHA-256=`ae4515640b0005b9e3c56328d022c430e97ecc3cdba0a9dcce5f6b29c7289da1`；[directional probes](../../outputs/20260918_generator_semantic_controllability_attribution_v1/runs/attempt_01/directional_probes.json)，SHA-256=`fce20780ae2c194b3e81880acbeb4a6c2a5d9fec352b8559487da3ccbc9e0c18`。
+- step-0 norms=`0.0005866184 / 0.2936746160 / 0.2829194241`（reconstruction / TRAIN semantic / Smooth semantic）；step-300=`0.0005759371 / 0.2730509876 / 0.2779645008`。cosines step-0=`C_train_smooth +0.18470490`、`C_rec_smooth -0.06370815`、`C_rec_train +0.07054067`；step-300=`+0.11107681`、`-0.08296854`、`+0.04521843`。
+- `eps={1e-4,3e-4,1e-3}` symmetric probes 全部恢复；`-g_rec` 改善 reconstruction 但恶化 Smooth，`-g_sem_train`/`-g_sem_smooth` 改善 Smooth；raw validity=`finite/nonconstant 1.0/1.0`、zero-image=`0`。
+- mismatch/controllability 均未被局部证据单独隔离；机制保持 mixed。推荐 single repair direction=`NONE`，不自动训练、调参、续训或 promotion。no-update=`optimizer false / updates 0 / runtime restored true`；TRAIN calibration reads=`10`，DEV/protected/test/sealed=`0`。
+- [executor](../../scripts/research/execute_lightgen_2d_generator_semantic_controllability_attribution_v1.py) 与 [focused test](../../tests/v2/test_lightgen_2d_generator_semantic_controllability_attribution_v1.py) 已通过 compile/lint/pytest。`PROJECT MAINLINE=M0_LIGHTGEN_INPUT_OLS_ALIGNED_GENERATION`；`CURRENT_AUTHORIZED_NEXT_ACTION=NONE`。
+
+## Frozen latent Generator semantic-recovery successor（2026-09-18；accepted input authority）
+
+本轮用户明确授权 `AUTHORIZED_EXECUTE_FROZEN_LATENT_GENERATOR_SEMANTIC_RECOVERY_V1`，从接受版 Chen BOGT step-300 状态完成一次且仅一次 frozen-latent semantic-recovery successor。仅 `generator.phase` 可训练；encoder/OLS/scale/`T=I_100`/`W_OLS`/latent normalization/P2/Q2/evaluators 冻结；执行 `300` 个 TRAIN updates，并在 `0/100/200/300` 完成 full DEV 诊断。结果=`VALID_COMPLETED`，Outer Gate=`FROZEN_LATENT_GENERATOR_SEMANTIC_RECOVERY_V1_RESOLVED`，classification=`GENERATOR_SEMANTIC_RECOVERY_NOT_SUPPORTED`。
+
+- [successor report](../../outputs/20260918_frozen_latent_generator_semantic_recovery_v1/runs/attempt_01/report.json)，SHA-256=`fcb85e17e4b3d258fbe76d975103869e8d18a11252965dd5581f02a0acdb19b3`；[preflight](../../outputs/20260918_frozen_latent_generator_semantic_recovery_v1/runs/attempt_01/preflight.json)；[step-300 checkpoint](../../outputs/20260918_frozen_latent_generator_semantic_recovery_v1/runs/attempt_01/scientific_step_000300.pt)。
+- preflight=`READY`：3-step real update 通过，full-runtime optimizer negative control 被拒绝；Adam 仅更新 `generator.phase`，并恢复接受版 generator moments。目标为 `L_recovery=beta*L_rec+gamma*L_op+delta*L_sem`，`beta=2.4509953404`、`gamma=0.5330424285`、`delta=0.0065783691`；旧 TN term 未进入 backward。
+- 独立 Smooth DEV macro recall=`0.1030→0.1034`，delta=`+0.0004`，paired bootstrap `B=999`、seed=`271828`、95% CI=`[-0.0004,+0.0012]`，语义支持失败；reconstruction=`0.0687409→0.0673416`，delta=`-0.0013992`，约束通过。
+- exact P2+Q2/real-control transfer 的 `R_raw=1.5288204→1.5524823`、`R_feature=3.0552277→3.2092072`，R_feature 未下降；raw finite/nonconstant=`1.0/1.0`、zero-image=`0`，光学 validity 通过。TRAIN/DEV reads=`3000/20000`，protected/test/sealed=`0`。
+- 未改变 architecture、OLS、P2/Q2、evaluators，也未触及 promotion；[executor](../../scripts/research/execute_lightgen_2d_frozen_latent_generator_semantic_recovery_v1.py) 与 [focused test](../../tests/v2/test_lightgen_2d_frozen_latent_generator_semantic_recovery_v1.py) 已通过 compile/lint/pytest。该结果只覆盖当前 frozen-latent、generator-only、300-update scope，不支持 semantic recovery 或 promotion。
+- `PROJECT MAINLINE=M0_LIGHTGEN_INPUT_OLS_ALIGNED_GENERATION`；phase authority=`CHEN_BOGT_PHASE_COMPLETION_REPAIR_V1_RESOLVED` 保持有效；`CURRENT_AUTHORIZED_NEXT_ACTION=NONE`。不自动追加 arm、调参、续训或 promotion。
+
+## Chen BOGT phase-completion repair（2026-09-18；accepted input authority）
+
+本 successor 消费的 phase authority 是已接受的 frozen-model downstream propagation diagnostic：Stage 1 在 CPU 上完成 Q0/Q1/Q2/Q3 与 Q4 control 的 `B=999` within-pair calibration，Stage 2 对选中的 Q2 完成 `200` 个 selected-generated direct Generator forwards，并 exact reuse `200` 个 real-control CMOS；未训练、未 refit `B/C/L`、未改变 P2/OLS/Generator/evaluator。
+
+- [phase repair report](../../outputs/20260918_chen_bogt_phase_completion_repair_v1/runs/attempt_01/phase_completion_repair_report.json)；[phase selection](../../outputs/20260918_chen_bogt_phase_completion_repair_v1/runs/attempt_01/phase_selection.json)；[selected latent bank](../../outputs/20260918_chen_bogt_phase_completion_repair_v1/runs/attempt_01/selected_phase_completion_latent_bank.pt)。
+- 选中 Q2=`ANCHOR-CONDITIONED_JOINT_UNCONDITIONAL`；冻结 P2+Q0 → Q2 的 `R_u=1.5095→1.5095`、`R_phi=7.1200→0.9937`、`R_z=19.0598→1.8283`、`R_raw=2.1189→1.5288`、`R_feature=7.4096→3.0552`，classification=`DOWNSTREAM_DIRECTIONALLY_IMPROVED`。
+- selected raw validity 为 finite/nonconstant=`1.0/1.0`、zero-image=`0`；该 authority 只覆盖当前 frozen model/frozen bank 的 downstream propagation，不构成 generation acceptance、physical validity 或 promotion。
+
+## Chen latent-prior support decomposition（2026-09-18；historical source authority, superseded by the compatibility calibration above）
+
+attempt_08 的 frozen TRAIN-derived decomposition 事实保持有效：`R_TN=94.4553`、`R_independent=9.3665`、`R_copula=1.7113`、`R_real_row_control=1.2407`，描述性 marginal/dependence reduction=`0.9105`/`0.9150`；其 strict-Pareto primary diagnosis=`UNRESOLVED`、candidate=`NONE` 只表示上一轮 selector 的结果，已被本轮预先定义的 finite-sample primary compatibility rule supersede，不代表 P1/P2 工件被修改。
+
+## Chen BOGT sampled-generation canary（2026-09-18；historical input authority, superseded by the compatibility calibration above）
+
+此前固定 `N_LATENT=1000`、`N_OPTICAL=200` 的 canary 事实保持有效；其 primary diagnosis=`MULTI_STAGE_MISMATCH`，prior/support `R_u=85.1354`，phase `R_phi=7.1200`，full-complex-z `R_z=27.7766`，raw/feature `R_raw=2.8473`/`R_feature=8.2326`。该 canary 是本轮 P0 identity 的冻结输入，不再代表当前 latest bounded execution；其 raw CMOS validity/diversity 与无 labels 因而未计算 accuracy/recall 的事实保持不变。
+
+## Chen BOGT training / generation-ready bundle（2026-09-18；historical, superseded by the current compatibility calibration above）
+
+前一轮固定 `300`-update training、final TRAIN collection、wrapped-phase model fit 与 generation-ready bundle 事实保持有效；其 `VALID_COMPLETED_GENERATION_BUNDLE_READY` 只描述 bundle-ready 状态，已被上方 compatibility calibration 的 current block supersede。step-300 DEV diagnostic semantic macro recall=`0.1474<0.937` 的历史事实不变；本节不得覆盖上方 current block。
+
+## 当前 research fast path / long-run resilience（2026-09-17；governance-only；historical）
+
+本轮 Outer Gate=`RESEARCH_FAST_PATH_AND_LONG_RUN_RESILIENCE_V1_ESTABLISHED`；只把普通 `R0/R1/R2` research 的一个 Outer Gate、一个授权、工程预检、heartbeat、
+progress、operational recovery 与同轨迹 resume 规则落到共享 harness，并迁移当前 Chen executor
+的工程入口；没有 scientific update/run、generation、CUDA 或 evidence（仅运行工程预检 tiny checks）。项目主线仍是
+`M0_LIGHTGEN_INPUT_OLS_ALIGNED_GENERATION`，当前授权 next action 仍为 `NONE`。下方历史 details
+保留原事实，不得覆盖本节或本页的 current block。
+
+## 4L Linear optimization-ceiling continuation（2026-09-16，VALID_COMPLETED；C3000 plateau）
+
+已从已验证的 C=`4L Linear` local step=`2000` 唯一续训 `1000` 个 CUDA updates 到 step=`3000`；仅 `generator.phase` 可训练，4 层 generator、3 mm 层间距、2048 grid、linear facet、rank-9 adapter、encoder、complex 100-port OLS、`W_OLS`、objective、数据角色和 C2000 Adam moments 均保持不变。每 200 步 checkpoint/block/progress 均已保留；C3000 DEV=`5000`、cyclic=`1000` 完整评估，未进入 C4000。preflight attempt-01/02 为训练前 `invalid_harness` 历史，attempt-03=`AUTHORIZABLE`。
+
+- [contract](../../outputs/20260916_4l_linear_optimization_ceiling_v1/runs/4l_linear_optimization_ceiling_v1_contract_attempt_03/4l_linear_optimization_ceiling_v1_contract.v1.json)，SHA-256=`5a18f32c7e8f66566b6554f0a6adc189a93087528a40820c266c9793a68e201e`；[preflight](../../outputs/20260916_4l_linear_optimization_ceiling_v1/runs/4l_linear_optimization_ceiling_v1_preflight_attempt_03/4l_linear_optimization_ceiling_v1_preflight_report.v1.json)，SHA-256=`09a797e8155ef01dde45be656c65a7a0002f95b652260075ee854f49cbdf643c`。
+- [aggregate](../../outputs/20260916_4l_linear_optimization_ceiling_v1/runs/4l_linear_optimization_ceiling_v1_aggregate_attempt_01/4l_linear_optimization_ceiling_v1_aggregate_report.v1.json)，SHA-256=`8687ac41431917485806ea3b3f188673544e6e6945808915db10f07212b96793`；lineage SHA-256=`a6eca15e88ff59851379498389a52a67ea03c2c890b13420d5c5bb3fe70ac6bc`。
+- [C3000 checkpoint](../../outputs/20260916_4l_linear_optimization_ceiling_v1/runs/4l_linear_optimization_ceiling_v1_c_linear_continuation_attempt_01/c_4l_linear_continuation_step_03000_checkpoint.v1.pt)，SHA-256=`b5369c6ad16391adf772ba8aa42ea9642048a52041b07d50ad0e3c4928cc6270c`。
+
+结果：`R2000=0.5774 → R3000=0.5790`，`Delta_R=+0.0016`，paired bootstrap 95% CI=`[-0.0002,+0.0034]`；`L_image=0.0467247652→0.0469439335`（delta=`+0.0002191683`）；raw validity/cyclic transfer=`pass/pass`。由于 C3000 未达到 `Delta_R>=+0.010` 且 CI lower `>0`，预注册 decision=`continue_to_4000=false`、classification=`4L_LINEAR_CONTINUATION_PLATEAU_SUPPORTED`。各类 recall 变化为 `0:+0.000`、`1:+0.000`、`2:+0.002`、`3:+0.002`、`4:+0.004`、`5:+0.008`、`6:+0.010`、`7:-0.008`、`8:+0.000`、`9:-0.002`；1 类仍为零。
+
+实际续训耗时约 `924.07 s`，RTX 3060 Laptop、grid=`2048`；未执行 ReLU、Stage B、generation、physical Te validation、protected/test/sealed 或 formal promotion。结论只覆盖当前 generator-only 优化路径，不声称全局优化最优或真实 Te 薄膜可行。实验完成后已关闭半小时 heartbeat 监控；后续材料参数实验需新的 contract/授权。
+
+## Strict TRAIN-calibrated ReLU90 successor（2026-09-15，VALID_COMPLETED；Outer Gate NOT_SUPPORTED）
+
+按用户明确授权 `EXECUTE_STRICT_TRAIN_CALIBRATED_RELU90_GAIN_V2` 完成一次有效 successor：attempt-03 preflight=`AUTHORIZABLE`，A 复用上一轮 nominal `A_LINEAR` 的完整 exact-reuse authority，B 使用 disjoint TRAIN-only 标定的全局 ReLU90 facet 完成 `2000` updates。attempt-01/02 仅为训练前 harness INVALID 历史，未发生 scientific update。
+
+- [contract](../../outputs/20260915_strict_train_calibrated_relu90_gain_v2/runs/strict_train_calibrated_relu90_gain_v2_contract_attempt_03/strict_train_calibrated_relu90_gain_v2_contract.v2.json)，SHA-256=`b4488885997f65ad21a2c34c97613f25d3dd9a82f3d95c63ec0838d5537bfb1b`；[preflight](../../outputs/20260915_strict_train_calibrated_relu90_gain_v2/runs/strict_train_calibrated_relu90_gain_v2_preflight_attempt_03/strict_train_calibrated_relu90_gain_v2_preflight_report.v2.json)，SHA-256=`14ae74b7f7a0dedc7da8261b4bb475d758b46fc3202a78fa4d883d0c00dc71de`。
+- TRAIN calibration=`1000`、disjoint TRAIN validation=`1000`，`tau=0.10682560942718147`，`eta_cal=0.9000000000`，`eta_train_valid=0.9015109995`；无 DEV threshold selection、无 OLS full cache。
+- A reuse authority：`R2000=0.6170`、`L_image=0.04578155`。B：`R0=0.5454`、`R2000=0.6138`、`L_image 0.04967835→0.04630363`。
+- [aggregate](../../outputs/20260915_strict_train_calibrated_relu90_gain_v2/runs/strict_train_calibrated_relu90_gain_v2_aggregate_attempt_03/strict_train_calibrated_relu90_gain_v2_aggregate_report.v2.json)，SHA-256=`def0a60c7176b82bbb776b4c6989da8185b744c5d4504b1eec1995b9d4344ca7`；classification=`STRICT_TRAIN_CALIBRATED_RELU90_NOT_SUPPORTED`；`Delta_R=-0.0032`，paired 95% CI=`[-0.00641,0]`，`Delta_L_image=+0.00052208`，cyclic/raw=`pass/pass`。
+
+当前解释边界：ideal algorithmic ReLU surrogate 的严格 TRAIN 标定没有支持相对 nominal A 的语义增益；facet activation 不是实测 Te 曲线。Stage-A 最高 `R=0.6170<0.937`，Stage B、generation、physical Te validation、protected/test/sealed 与 promotion 均继续关闭。当前没有待执行的自动 follow-up，因此 `CURRENT_AUTHORIZED_NEXT_ACTION=NONE`；如需继续，必须另行定义并授权新的 Gate。
+
+## N6 nonlinear fiber-facet activation canary（2026-09-14，VALID_COMPLETED；Outer Gate NOT_SUPPORTED；one-shot A/B）
+
+N5-V2 已作为线性 optical-depth 主线终止：`OPTIMIZATION_HORIZON_DOMINANT_TRUE_DEPTH_NOT_SUPPORTED`，不再追加线性深度候选。按用户明确授权 `EXECUTE_N6_NONLINEAR_FIBER_FACET_ACTIVATION_CANARY_V1`，在
+`research/lightgen-ols-native-semantic-generation-v1`、HEAD=`a9cd1749adfa690e282fd52a6425564fc2cf102c` 上，复用 exact N5-A step-300 endpoint（global step=`600`），完成一次且仅一次 A/B CUDA scientific scope，各 `300` updates，global step=`600→900`。A 是 linear continuation control；B 是放在 canonical `lightgen_generator_entrance` facet 的固定 algorithmic nonlinear surrogate，不是实测材料曲线，不能据此宣称 physical material validation。两臂 rank=`9`，encoder/OLS/`W_OLS` 冻结，仅 adapter 与现有 generator phase 更新。
+
+- authority=`DEFINE_N6_NONLINEAR_FIBER_FACET_ACTIVATION_CANARY_V1`；[contract](../../outputs/20260914_n6/runs/lightgen_2d_nonlinear_fiber_facet_activation_canary_contract_v1_attempt_02/lightgen_2d_nonlinear_fiber_facet_activation_canary_contract.v1.json)，SHA-256=`1943c9327076e57451923ef3d0bc6815b9f336a5e7fc8efc2b6348702192bfd5`。
+- preflight attempt-01/02/03=`INVALID_HARNESS`（scientific=`0`，保留为工程历史）；attempt-04=`AUTHORIZABLE`；[report](../../outputs/20260914_n6/runs/lightgen_2d_nonlinear_fiber_facet_activation_canary_preflight_v1_attempt_04/lightgen_2d_nonlinear_fiber_facet_activation_canary_preflight_report.v1.json) SHA-256=`b16742d3b3805293ff2cc8a06d92b32c494cab0e07837fa22056cac55f634aa6`；lineage SHA-256=`7d1c63c360a45a813575aeb3b5a3d47d265073f85f86e10154007a6ef983f07c`。
+- A [report](../../outputs/20260914_n6/runs/lightgen_2d_nonlinear_fiber_facet_activation_canary_a_attempt_01/lightgen_2d_nonlinear_fiber_facet_activation_canary_a_linear_continuation_control_scientific_report.v1.json) SHA-256=`7ec8e7c0d02f46cef6ac36dbaa24cf1a8a70a8ebbbce05a7057a76501510bc8c`；B [report](../../outputs/20260914_n6/runs/lightgen_2d_nonlinear_fiber_facet_activation_canary_b_attempt_01/lightgen_2d_nonlinear_fiber_facet_activation_canary_b_nonlinear_facet_scientific_report.v1.json) SHA-256=`8763b1547f8f9a4db102f0d987bca8ac1c76048cb688aaf6031e52b1784233c7`。
+- [aggregate report](../../outputs/20260914_n6/runs/lightgen_2d_nonlinear_fiber_facet_activation_canary_aggregate_v1_attempt_01/lightgen_2d_nonlinear_fiber_facet_activation_canary_aggregate_report.v1.json) SHA-256=`56534572368253dd0c488a695e31050a240a4b3e09535c8241eeff4c4a676ce7`；[lineage](../../outputs/20260914_n6/runs/lightgen_2d_nonlinear_fiber_facet_activation_canary_aggregate_v1_attempt_01/lightgen_2d_nonlinear_fiber_facet_activation_canary_aggregate_lineage.v1.json) SHA-256=`ad31df72f6edc00d8d6ad8e8d6166f7160c614ab5d270f0aee1d9a7cfa7a560b`；classification=`N6_NONLINEAR_FIBER_FACET_ACTIVATION_NOT_SUPPORTED`，aggregate `VALID_COMPLETED`。
+
+关键结果：
+
+| candidate | Smooth 0/100/200/300 | DEV `L_image` 0→300 | `R300` | cyclic/raw |
+| --- | --- | ---: | ---: | --- |
+| A linear control | 0.5526 / 0.5518 / 0.5630 / 0.5788 | 0.05241717→0.04968191（Δ=-0.00273526） | 0.5788 | pass / pass |
+| B nonlinear facet | 0.5514 / 0.5530 / 0.5632 / 0.5800 | 0.05093504→0.04988193（Δ=-0.00105311） | 0.5800 | pass / pass |
+
+`Delta_NL=+0.0012`，paired bootstrap 95% CI=`[-0.0014,+0.0040]`，未达到 `+0.05` 与 CI lower `>0`，Outer Gate 不支持。B facet step-300 activation=`0.66219`、suppressed=`0.33781`、mean power ratio=`0.97556`；B reconstruction 约束通过。Stage-A firewall 独立失败：A=`0.5788<0.937`、B=`0.5800<0.937`；Stage B、generation、promotion 继续关闭。无 retry、无新 optical depth、无 rank/loss/lambda/lr 调整、无 protected/test/sealed read。
+
+## N5 V2 true-optical-depth comparison（2026-09-14，VALID_COMPLETED；one-shot A/B）
+
+用户明确授权 `EXECUTE_N5_SUCCESSOR_TRUE_OPTICAL_DEPTH_COMPARISON_V2`。在
+`research/lightgen-ols-native-semantic-generation-v1`、HEAD=`a9cd1749adfa690e282fd52a6425564fc2cf102c`
+上完成一次且仅一次 V2 bounded preflight、A/B 各 `300` 个 CUDA updates 与冻结 paired
+aggregate。V2 是 V1 `INVALID_N5_SCIENTIFIC_UNEXPECTED_EXECUTION_ERROR` 的独立 successor，
+不是 retry/continuation；V1 scientific metrics 与未持久化 observations 均未消费。A 为
+continued C1（rank-9 OLS interface + 当前 2-layer generator）；B 在相同起点上加入
+full-`2048` grid、`0.75 mm` midpoint phase、`0.75 mm` propagation factorization。encoder、
+OLS、`W_OLS`、Smooth evaluator、数据角色、objective、optimizer、顺序与预算均冻结。
+
+- authority=`DEFINE_N5_SUCCESSOR_TRUE_OPTICAL_DEPTH_COMPARISON_V2_CONTRACT`；[contract](../../outputs/20260914_n5_v2/runs/lightgen_2d_true_optical_depth_comparison_v2_contract_v1_attempt_01/lightgen_2d_true_optical_depth_comparison_v2_contract.v1.json)，SHA-256=`f7928d640093d8133380233c0ee451221b93f1ee03236b381227228a5c1df9fb`。
+- preflight attempt-03 [report](../../outputs/20260914_n5_v2/runs/lightgen_2d_true_optical_depth_comparison_v2_preflight_v1_attempt_03/lightgen_2d_true_optical_depth_comparison_v2_preflight_report.v1.json)，SHA-256=`86933442d9051d6a11210b08c14cb59b9c9e1f2f229d2feaa75f0ed2a2d11992`；lineage SHA-256=`8a0f169fa41edceca19ffd271118b55cc5455badd6e24772aa4849665218d519`；`AUTHORIZABLE`，scientific=`0`。
+- A [report](../../outputs/20260914_n5_v2/runs/lightgen_2d_true_optical_depth_comparison_v2_candidate_a_attempt_01/lightgen_2d_true_optical_depth_comparison_v2_a_continued_c1_scientific_report.v1.json)，SHA-256=`ed796d14971aa8cf44f708ba3dc274601f38db46b82559dc4572bcd202d14fca`；lineage SHA-256=`a77fb0b58afc6f8d0a53c45cc68f362051f1a153abc119b413183cdab70361f8`；`VALID_COMPLETED`。
+- B [report](../../outputs/20260914_n5_v2/runs/lightgen_2d_true_optical_depth_comparison_v2_candidate_b_attempt_01/lightgen_2d_true_optical_depth_comparison_v2_b_true_depth_c1_scientific_report.v1.json)，SHA-256=`8f3bc38c927a64f97431325504860bd71c622cd989e248022fe736706c685681`；lineage SHA-256=`d092f47bef7021c9bae73423a4a8af19b54b1449ac448beebca691265dfe91e5`；`VALID_COMPLETED`。
+- [aggregate report](../../outputs/20260914_n5_v2/runs/lightgen_2d_true_optical_depth_comparison_v2_aggregate_v1_attempt_01/lightgen_2d_true_optical_depth_comparison_v2_aggregate_report.v1.json)，SHA-256=`78fc9061dacac1f68180b2d4619ca35cb3356b7c4b007cfe37f21a8092cfd002`；[lineage](../../outputs/20260914_n5_v2/runs/lightgen_2d_true_optical_depth_comparison_v2_aggregate_v1_attempt_01/lightgen_2d_true_optical_depth_comparison_v2_aggregate_lineage.v1.json)，SHA-256=`1662dabded7fda151bfb017c45b73de89cf75b745fd296c7b4074a770a8a8e67`；classification=`OPTIMIZATION_HORIZON_DOMINANT_TRUE_DEPTH_NOT_SUPPORTED`；Outer Gate=`N5_V2_TRUE_OPTICAL_DEPTH_COMPARISON_RESOLVED`。
+
+关键结果：
+
+| candidate | Smooth 0/100/200/300 | `R300-0.4838` | paired 95% CI | DEV image delta |
+| --- | --- | ---: | --- | ---: |
+| A continued C1 | 0.4838 / 0.5254 / 0.5294 / 0.5526 | +0.0688 | [+0.0612,+0.0768] | +0.00256892 |
+| B true depth C1 | 0.4838 / 0.5240 / 0.5278 / 0.5504 | +0.0666 | [+0.0582,+0.0746] | +0.00249731 |
+
+主比较 `Delta_depth=R_B300-R_A300=-0.0022`，paired bootstrap 95% CI=`[-0.0042,-0.0002]`；
+预注册的 `Delta_depth>=+0.05` 与 CI lower `>0` 均不满足，故 V2 结论是固定 `300`-update
+窗口内 `OPTIMIZATION_HORIZON_DOMINANT_TRUE_DEPTH_NOT_SUPPORTED`。两臂 DEV reconstruction、
+cyclic template/Smooth transfer、raw validity 均通过。A 的 trainable count=`23,600`；B 的
+trainable count=`33,600`，其中额外 `10,000` 为 midpoint depth phase。step-300 adapter
+residual Fro 为 A=`5.39799668`、B=`5.40529312`；generator phase-change Fro 为 A=`12.30389625`、
+B=`11.55147097`；B midpoint phase-change Fro=`7.82456298`。
+
+Stage-A firewall 独立保持 `0.937`：A=`0.5526<0.937`、B=`0.5504<0.937`，均为
+`STAGE_A_FIREWALL_FAILED`，`stage_b_authorized=false`。实际更新仅限声明的 adapter/generator
+(B 含 midpoint phase)，encoder、OLS、`W_OLS` 未更新；没有 retry、rank/loss/lambda/lr 调整、
+Stage B、generation、protected/test/sealed read 或 promotion。原 N4 aggregate 仍 unresolved，
+V1 INVALID artifact 未被改写或消费。
+
+## N4 OLS-interface/synthesis model-family comparison（2026-09-13/14，INVALID；C1 one-shot harness stop，C2 valid candidate only）
+
+用户明确授权 `EXECUTE_N4_OLS_INTERFACE_SYNTHESIS_MODEL_FAMILY_COMPARISON_V1`。在
+`research/lightgen-ols-native-semantic-generation-v1`、HEAD=`a9cd1749adfa690e282fd52a6425564fc2cf102c`
+上完成 bounded preflight，以及 C1/C2 各自唯一一次 scientific scope。C0 沿用 V11 rank-9
+endpoint；C1 为 rank-9 adapter + 可训练当前 2-layer generator；C2 为 rank-9 adapter +
+当前 2-layer propagation stack + 可训练 co-planar entrance phase screen。encoder、OLS、
+`W_OLS`、Smooth evaluator 与数据角色冻结；无 retry、调参、Stage B、generation、protected/
+test/sealed read 或 promotion。
+
+- authority=`DEFINE_N4_OLS_INTERFACE_SYNTHESIS_MODEL_FAMILY_CONTRACT_V1`；continuation contract [contract](../../outputs/20260913_n4/runs/lightgen_2d_ols_interface_synthesis_model_family_contract_v1_attempt_05/lightgen_2d_ols_interface_synthesis_model_family_contract.v1.json)，SHA-256=`ae3b90bb84e7748094217ff04ef8e9141c9dd1ab5e89a21376efc73978ee2cd3`。
+- continuation preflight [report](../../outputs/20260913_n4/runs/lightgen_2d_ols_interface_synthesis_model_family_preflight_n4_attempt_05/lightgen_2d_n4_model_family_preflight_report.v1.json)，SHA-256=`3fec74d08145d5b368647d94cf9ceb69754a8f7c73abceed51f3ebbafc530510`；`AUTHORIZABLE`，scientific=`0`。
+- C1 [report](../../outputs/20260913_n4/runs/lightgen_2d_ols_interface_synthesis_model_family_c1_attempt_01/lightgen_2d_n4_c1_scientific_report.v1.json)，SHA-256=`2b6b8c9d4b5bbe2c48eab18ee0d855c95f699cc0abeb93202bfe6340e51c6e61`；`INVALID/invalid_harness`，classification=`INVALID_N4_SCIENTIFIC_UNEXPECTED_EXECUTION_ERROR`。C1 完成 `300` updates，但末端 resume probe 请求耗尽 sampler 的下一批，报告未形成可接受的 C1 scientific metrics；没有 retry。
+- C2 [report](../../outputs/20260913_n4/runs/lightgen_2d_ols_interface_synthesis_model_family_c2_attempt_01/lightgen_2d_n4_c2_scientific_report.v1.json)，SHA-256=`660454787c3df9d5b6aa69facfd9ec94acc67c19ac08cff1e23cdcf754b81003`；lineage SHA-256=`21c6840d62012a9fa7a9cca6ffd2cc377aa3be3e2832223f5aead1499763edbd`；`VALID_COMPLETED/N4_CANDIDATE_ADEQUATE`。
+
+C2：Smooth `0.3056→0.4844`，delta=`+0.1788`，paired 95% CI=`[+0.16759,+0.18980]`；DEV
+image `0.0531686321→0.0487769855`，delta=`-0.00439165`；cyclic template/Smooth transfer、
+broad/not-pair-dominated 与 raw validity 均通过。C2 单臂满足 candidate criteria，但 C1
+invalid 使对称 aggregate 无法成立；因此不得声称 N4 comparative Gate resolved，不正式
+选择 C2。C2 Stage-A 仍失败：`0.4844<0.937`。
+
+当前边界：N4 不开放 Stage B、generation、scale/prior、protected/test/sealed read 或
+formal promotion。末端 sampler harness 修复已进入未提交 N4 脚本并由 continuation
+preflight 验证，但不改写 C1 immutable report；没有重跑 C1，也没有执行新的 aggregate。
+
+## N3 low-rank model-order selection（2026-09-12，VALID_COMPLETED；一次性候选执行）
+
+用户明确授权 `授权执行 N3 model-order selection`。在
+`research/lightgen-ols-native-semantic-generation-v1`、HEAD=`a9cd1749adfa690e282fd52a6425564fc2cf102c`
+上完成 N3 contract、bounded preflight 与 rank=`1..9` 的 model-order selection：rank=`1..8`
+各一次新的 `300`-update CUDA arm，rank=`9` 复用已核验等价的 V11 authority；未执行
+rank=0、rank>9、rank sweep 之外的扩展、retry、second arm、调参或任何下游阶段。
+
+- N3 semantic authority=`DEFINE_N3_LOW_RANK_MODEL_ORDER_CONTRACT_V1`；contract SHA-256=`d2b72ce978e4f28fdbb89441a0e84bc7e7792726def310beac129e94b9b4b181`。
+- preflight attempt-01/02=`INVALID_HARNESS`（scientific=`0`）；修正 rank-specific gradient probe 后 attempt-03=`AUTHORIZABLE`，report SHA=`cb77e170cb3814533df9c73c1571cbd50e548527d82ed6ecf650ed8d32345af8`，lineage SHA=`7e9e1502455c62096f71f6dd4c0615c4c192f9e87e721afa6ca48173794b323e`。
+- aggregate report SHA=`1b6bd6af18462f717fa19532e1a981e872a4e48fe6498ed561890f6570ae89de`，lineage SHA=`93c3d4ffcfad5e68b435d7063e6e6c834b700cde2e4b3ccd95391f3bee8b8a8f`；classification/Outer Gate=`N3_LOW_RANK_MODEL_ORDER_RESOLVED`。
+
+冻结 V11 条件：`T_r=I_100+U_rV_r^H`、nested `U0=0.01*[e0..e_(r-1)]`、`V0=0`，
+semantic/image objective、`lambda_image=13.353282014834436`、encoder/generator/OLS/
+`W_OLS`、数据角色、optimizer、seed、batch 与 budget 全部保持固定，仅 adapter U/V
+可训练。首次 controller 在 rank-1 完整有效报告之后发生 assembly read bug；修正后
+消费该已有报告并继续 rank=`2..8`，没有重跑 rank-1。
+
+| rank | R300 | Delta Smooth | CI lower | DEV image Delta | cyclic | adequacy |
+| ---: | ---: | ---: | ---: | ---: | --- | --- |
+| 1 | 0.2464 | +0.1428 | +0.13559 | -0.011420 | 10/10 broad | pass |
+| 2 | 0.2504 | +0.1468 | +0.13960 | -0.011015 | 10/10 broad | pass |
+| 3 | 0.2518 | +0.1482 | +0.14100 | -0.010788 | 10/10 broad | pass |
+| 4 | 0.2534 | +0.1498 | +0.14219 | -0.011470 | 10/10 broad | pass |
+| 5 | 0.2572 | +0.1536 | +0.14600 | -0.011971 | 10/10 broad | pass |
+| 6 | 0.2614 | +0.1578 | +0.15000 | -0.012548 | 10/10 broad | pass |
+| 7 | 0.2668 | +0.1632 | +0.15540 | -0.013109 | 10/10 broad | pass |
+| 8 | 0.2760 | +0.1724 | +0.16420 | -0.013594 | 10/10 broad | pass |
+| 9（V11 reuse） | 0.3056 | +0.2020 | +0.19360 | -0.013893 | 10/10 broad | pass |
+
+全部 rank=`1..9` 均满足候选 adequacy；按最低可行阶规则选择 `r*=1`，不是按最大
+Smooth 或复杂度惩罚选择。rank-9 的 residual Fro step-300=`3.02419`，selected rank-1
+为 `2.04873`；完整 singular-value 向量保存在 aggregate/candidate artifacts 中。
+
+Stage-A firewall 仍独立失败：selected rank-1 `R300=0.2464<0.937`，rank-9 也仅
+`0.3056<0.937`。因此 `N3_LOW_RANK_MODEL_ORDER_RESOLVED` 不授权 Stage B、generation、
+scale/prior、protected/test/sealed read 或 formal promotion；generation readiness 仍
+`not_ready`。
+
+## V11 low-rank semantic/reconstruction compatibility（2026-09-12，VALID_COMPLETED；一次且仅一次）
+
+用户明确授权 `EXECUTE_LIGHTGEN_2D_LOW_RANK_SEMANTIC_RECONSTRUCTION_COMPATIBILITY_V11`。
+在 `research/lightgen-ols-native-semantic-generation-v1`、HEAD=`a9cd1749adfa690e282fd52a6425564fc2cf102c`
+上完成 V11 READY contract、`AUTHORIZABLE` bounded preflight 与唯一一次 `300`-update CUDA
+scientific arm；没有 retry、second arm、rank sweep、lambda/lr tuning 或下游阶段。
+
+- contract SHA-256=`6c49a0cff4e08622351438529cebafe9388537d713a5b78b9fabbc953904efff`；preflight report SHA=`b5078cdd61664f447ab880ad32f57b6f0d4287ea88f446c111414560f6743386`，lineage SHA=`4910a4de5b928f97c4c1ecf9af178ad66e3cf54ad94e22f5899a4f3f9fe4f695`。
+- scientific input SHA=`b0c5c6a80f0cd58be385762f5bf17b703e0f790a76aefb91586705874601b37a`；report SHA=`bc603b7a3b7ef1590bc354cb0b62464f3ececcb2390834d864d58bfbe9158184`；lineage SHA=`2c7d7c99a48c6a5a60d6524a38aa9facd6b7e0203138689f3830dcc7308ac9c8`。
+- objective：`L_V11=L_sem+lambda_image*L_image`，`L_sem=L_anchor+28.48464149920509*L_transfer`；same initial TRAIN batch gave `g_sem=0.0016925142105153586`、`g_image=0.00012674892923566114`、frozen `lambda_image=13.353282014834436`。V11 factor width/rank=`9`，`U0=0.01*I_9`、`V0=0`；only adapter 3,600 real parameters trainable，encoder/generator/OLS/`W_OLS`/prototypes/templates/Smooth frozen。
+
+| step | DEV L_image | Smooth macro | template-anchor macro | correct-template margin |
+| ---: | ---: | ---: | ---: | ---: |
+| 0 | 0.06706161 | 0.1036 | 0.1706 | -0.00810254 |
+| 100 | 0.05742796 | 0.2488 | 0.5156 | 0.00154549 |
+| 200 | 0.05274165 | 0.2478 | 0.5530 | 0.00209791 |
+| 300 | 0.05316863 | 0.3056 | 0.5980 | 0.00338574 |
+
+V11 Outer Gate=`V11_LOW_RANK_SEMANTIC_RECONSTRUCTION_COMPATIBILITY_SUPPORTED`：
+Smooth `Delta_R=+0.2020`，paired 95% CI=`[+0.1936,+0.2102]`；DEV image delta=`-0.013893`
+（阈值 `<=+0.005`）；known cyclic template/Smooth transfer 均 retained，且均 `10/10`
+positive pair、raw validity=`true`。step-300 `UV^H` residual Fro=`3.02419035`、spectral=`2.67642540`；前 9 个 singular values=`2.67642540,1.40705576,0.05017205,0.01090476,0.00563522,0.00061744,0.00037506,0.00014226,0.00008291`，理论 residual rank=`9`，numerical rank=`100` 仅是 float32 noise 诊断。
+
+Stage-A 独立 firewall 仍失败：`R300=0.3056 < 0.937`，`STAGE_A_FIREWALL_FAILED`。因此 Stage B、generation、scale/prior、protected/test/sealed、formal promotion 均关闭；本次确认 adapter update=`YES`，encoder/generator update=`NO`，rank sweep/retry/second arm=`NO`。
+
+报告保持 write-once；执行后仅修正了 V11 executor 的 future report-assembly 元数据覆盖，不改写本次 report/lineage，不构成 scientific retry 或新证据。
+
+## V10.1 low-rank OLS-to-generator remap canary（2026-09-12，VALID_COMPLETED；唯一一次）
+
+V10.1 authority `DEFINE_LIGHTGEN_2D_LOW_RANK_OLS_TO_GENERATOR_REMAP_CANARY_CONTRACT_V10_1` 仅修正旧 V10 不可能的 step-0 初始化：`T_adapt=I_100+UV^H`、factor width=`9`、`U0=0.01*I_9`、`V0=0`；其余 V10 scientific semantics、V9 anchor+transfer objective、数据角色、Outer Gate 与 Stage-A firewall 保持不变。旧 V10 attempt-01/02 未改、未重跑。
+
+- contract SHA-256=`45210d92e00ba01255a4340dfc837c514c110640097aa20821d8d5b6e0efab3d`；preflight=`AUTHORIZABLE`，report SHA=`e651e51a3d022b4ec041107e313a6e774a8740b7cd9dbd34f6a50c57ef670bf0`，lineage SHA=`1eb2508d6a8965d78ed4070b508718b2cdb69084bc3d5ff4bdeeec84cd3cf5d1`。
+- preflight：`||U0||F=0.03`、`||V0||F=0`、`T0=I`；production synthetic canonical/identity-adapter raw allclose=`true`；`grad_U=0` allowed，anchor `grad_V=0.0010775054`，combined total=`0.0016925142`；one-step `||T-I||F=0.0004217633`；CUDA smoke、checkpoint/resume、exact-core synthetic=`PASS`。
+- scientific report SHA-256=`0eb96990db673c82526c2ea37bd15afadb9094870eb0afe3ff7af84788b6b4212`；lineage SHA-256=`4b835f4fd7cae36750a7e28ba324cb07453440d68ee12187982db85a0704766f`；唯一一次 `300` updates，classification=`V10_LOW_RANK_OLS_TO_GENERATOR_REMAP_SUPPORTED`。
+- Smooth `R0=0.1036`、`R300=0.3336`、`Delta_R=+0.2300`、paired 95% CI=`[+0.22099,+0.23960]`；cyclic transfer retained=`true`，10/10 pair positive，raw validity=`true`。DEV image loss `0.0670616→0.2914308`，说明语义提升伴随图像重建恶化。
+- Stage-A 独立 firewall：`R300=0.3336 < 0.937`，`STAGE_A_FIREWALL_FAILED`；Stage B、generation、scale/prior、protected/test/sealed、formal promotion 均关闭。adapter residual step-0=`0`；step-300 Fro=`6.42947`、spectral=`6.06980`；默认 numerical rank=`100` 是 float32 identity-subtraction noise 下的诊断值，factor width/theoretical residual rank 仍为 `9`。
+- 边界：branch/HEAD start=end=`research/lightgen-ols-native-semantic-generation-v1` / `a9cd1749adfa690e282fd52a6425564fc2cf102c`，worktree status unchanged；adapter update=`YES` only，encoder/generator/OLS/W_OLS update=`NO`，retry/second arm/rank sweep=`NO`，protected/test/sealed=`NO`，Stage B/generation/promotion=`NO`。
+
+## V10 low-rank OLS-to-generator remap canary（2026-09-12，INVALID；one-shot preflight stop）
+
+用户明确授权 `EXECUTE_LIGHTGEN_2D_LOW_RANK_OLS_TO_GENERATOR_REMAP_CANARY_V10`。在
+`research/lightgen-ols-native-semantic-generation-v1`、HEAD=`a9cd1749adfa690e282fd52a6425564fc2cf102c` 上完成 V10 contract 物化；唯一一次 bounded preflight 在 scientific forward 前以 `INVALID_HARNESS` 停止。授权明确禁止 retry，因此没有重跑 preflight，也没有进入 300-step scientific training、DEV 或 cyclic scientific evaluation。
+
+- [V10 contract](../../outputs/20260912_v10/runs/lightgen_2d_low_rank_ols_to_generator_remap_canary_contract_v10_attempt_01/lightgen_2d_low_rank_ols_to_generator_remap_canary_contract.v10.json)，SHA-256=`5efeb9d4b8e5e1e29fee3e3c445a52a201fbfabdd7f696a183284c71832ca0f1`，READY/valid_completed；semantic authority=`DEFINE_LIGHTGEN_2D_LOW_RANK_OLS_TO_GENERATOR_REMAP_CANARY_CONTRACT_V10`，父 authority 为 V9。
+- [preflight report](../../outputs/20260912_v10/runs/lightgen_2d_low_rank_ols_to_generator_remap_canary_preflight_v10_attempt_01/lightgen_2d_low_rank_ols_to_generator_remap_canary_v10_preflight_report.v1.json)，SHA-256=`c0d1cf193de37c7ed40e0d979769ae93dc3c08193d57e43955a1260fecb25f00`；[lineage](../../outputs/20260912_v10/runs/lightgen_2d_low_rank_ols_to_generator_remap_canary_preflight_v10_attempt_01/lightgen_2d_low_rank_ols_to_generator_remap_canary_v10_preflight_lineage.v1.json)，SHA-256=`fc3585925c0720ef532df8251c660ef6cb47b249360139020c464014b249458f`；classification=`INVALID_V10_PREFLIGHT_HARNESS`。
+
+失败原因为入口 harness 的参数名 double-prefix：firewall probe 将已有 `adapter.` 前缀再次添加，导致 `V10 combined probe u_real gradient missing`；同时已修正 complex gradient norm helper 的 imaginary 分量处理。修复未再次执行，故不产生科学结论。attempt-01 事实边界：scientific forward/update=`0`、branch/HEAD 未变、worktree status 未变、protected/test/sealed=`0`、retry=`NO`。V10 Outer Gate 与 Stage-A eligibility unresolved；Stage B、generation、formal promotion 未开放。
+
+## V10 low-rank OLS-to-generator remap canary attempt-02（2026-09-12，INVALID；one-shot preflight stop）
+
+用户授权覆盖修复后的 V10 engineering/preflight attempt-02，并规定仅当 preflight=`AUTHORIZABLE` 才进入唯一一次 scientific run。实际在同一 READY contract、branch=`research/lightgen-ols-native-semantic-generation-v1`、HEAD=`a9cd1749adfa690e282fd52a6425564fc2cf102c` 上执行后，入口在 scientific forward 前的 step-0 identity probe 以 `INVALID_V10_PREFLIGHT_HARNESS` 停止；因此没有进入 scientific training、DEV 或 cyclic evaluation，也没有重试。
+
+- [preflight report](../../outputs/20260912_v10/runs/lightgen_2d_low_rank_ols_to_generator_remap_canary_preflight_v10_attempt_02/lightgen_2d_low_rank_ols_to_generator_remap_canary_v10_preflight_report.v1.json)，SHA-256=`cf50ae067c28de08b9bf27eb88294b34998842b84833eaa464eb27a7ab119d74`；[lineage](../../outputs/20260912_v10/runs/lightgen_2d_low_rank_ols_to_generator_remap_canary_preflight_v10_attempt_02/lightgen_2d_low_rank_ols_to_generator_remap_canary_v10_preflight_lineage.v1.json)，SHA-256=`b599330fe454ea31d466a9c657b205ac6b530eeb1ae67f57215c7ac23bb746e4`。
+- 失败原因：`V10 step-0 adapter changed encoded coefficients`。rank-9 adapter 的 identity-preserving initialization 未通过 frozen tolerance；故不能把 attempt-01 的 double-prefix 与 complex-gradient-norm 修复视为已通过，也不产生 V10 scientific classification。
+- attempt-02 边界：scientific forward=`0`、scientific updates=`0`、scientific checkpoint=`0`、protected/official-test/sealed=`0`；branch、HEAD、worktree status 未改变。V10 Outer Gate 与 Stage-A eligibility unresolved；Stage B、generation、formal promotion 继续关闭。
+
+## V10 step-0 identity engineering stabilization（2026-09-12，BLOCKED；冻结合同代数不一致）
+
+在不读取 scientific TRAIN/DEV、不创建 attempt-03、且不修改 attempt-01/02 的前提下，对实际生产 `LowRankAdapter` 做了只读 algebraic/synthetic identity audit。attempt-02 probe 比较同一批 `encoded_result.z_ols.coefficients` 与实际 `adapter(z)` 输出；形状和复数表示一致，故不是不同表示或 port-order 混比。
+
+冻结合同的 `U=s[e_0,...,e_8]`、`V=s[e_9,...,e_17]`、`s=0.01` 与 `T=I+UV^H` 在当前参数化下给出 9 个 `1e-4` 非零残差，`||UV^H||_F=3e-4`，实测 `max_abs(T-I)=1e-4`，identity allclose 失败。所谓“orthogonal-support”是行支持，不会令同列配对的 `UV^H` 为零；修复必须改变初始化/参数化或有效列支持，超出本任务范围。
+
+因此 exact step-0 identity 与冻结的 rank-9 双非零因子初始化不能同时成立；identity tolerance、adapter、rank、objective、lambda 和 contract 均未修改。本稳定化任务为 `BLOCKED`，V10 attempt-03 未执行，scientific updates=`0`，V10 Outer Gate 仍 unresolved。
+
+## V9 joint semantic remapping warmup scientific execution（2026-09-12，VALID_COMPLETED；一次且仅一次）
+
+用户明确授权 `EXECUTE_LIGHTGEN_2D_JOINT_SEMANTIC_REMAPPING_WARMUP_V9`。在
+`research/lightgen-ols-native-semantic-generation-v1` 上，start/end HEAD 均为
+`a9cd1749adfa690e282fd52a6425564fc2cf102c`；工作区既有 dirty 状态保持，scientific
+provenance 的 `worktree_status_unchanged=true`。V9 contract 已 READY，bounded preflight
+为 `AUTHORIZABLE`，随后完成且仅完成一次 300-step CUDA joint scientific arm；没有 retry、第二
+arm、超预算、Stage B、generation 或 formal promotion。
+
+- [V9 contract](../../outputs/20260912_v9/runs/lightgen_2d_joint_semantic_remapping_warmup_contract_v9_attempt_01/lightgen_2d_joint_semantic_remapping_warmup_contract.v9.json)，SHA-256=`4d0fb81bfa6152995aad4484c83487c20335616283097b394757f4616bf41fca`；semantic authority=`DEFINE_LIGHTGEN_2D_JOINT_SEMANTIC_REMAPPING_WARMUP_CONTRACT_V9`，父合同为 V8。
+- preflight [report](../../outputs/20260912_v9/runs/lightgen_2d_joint_semantic_remapping_warmup_preflight_v9_attempt_01/lightgen_2d_joint_semantic_remapping_warmup_v9_preflight_report.v1.json)，SHA-256=`8baa04ac089ff82aebf3fefb9de9ff70a0d495022b5c19e852ab8eb82926e2f8`；[lineage](../../outputs/20260912_v9/runs/lightgen_2d_joint_semantic_remapping_warmup_preflight_v9_attempt_01/lightgen_2d_joint_semantic_remapping_warmup_v9_preflight_lineage.v1.json)，SHA-256=`002fd2d5303682f30f6b0b54f580acd99f6bd8456d2d55c441215855e0e7fb7c`；`scientific_300_step_executed=false`。
+- [scientific input](../../outputs/20260912_v9/runs/lightgen_2d_joint_semantic_remapping_warmup_v9_scientific_attempt_01/lightgen_2d_joint_semantic_remapping_warmup_v9_scientific_input.v1.json)，SHA-256=`6cfedfb607834bd99784f7082535628c727436c9006216e67781afbe326b4345`；[report](../../outputs/20260912_v9/runs/lightgen_2d_joint_semantic_remapping_warmup_v9_scientific_attempt_01/lightgen_2d_joint_semantic_remapping_warmup_v9_scientific_report.v1.json)，SHA-256=`280cd33abbe3195856798989d7f300c9fcc618e57906149c3abc0abdfd3d7465`；[lineage](../../outputs/20260912_v9/runs/lightgen_2d_joint_semantic_remapping_warmup_v9_scientific_attempt_01/lightgen_2d_joint_semantic_remapping_warmup_v9_scientific_lineage.v1.json)，SHA-256=`47d8768165b5d5207df8a190547b56223b49f4a9cf89e7da9158be43f05fa418`。
+- [sufficient observations](../../outputs/20260912_v9/runs/lightgen_2d_joint_semantic_remapping_warmup_v9_scientific_attempt_01/lightgen_2d_joint_semantic_remapping_warmup_v9_sufficient_observations.v1.pt)，SHA-256=`48cff565de6144d941715dd497c47c6fccc956e6e0117ad896b49e76b82f33ff`；[cyclic raw](../../outputs/20260912_v9/runs/lightgen_2d_joint_semantic_remapping_warmup_v9_scientific_attempt_01/lightgen_2d_joint_semantic_remapping_warmup_v9_step300_cyclic_raw_outputs.v1.pt)，SHA-256=`8556a1e8db945d73cf4dab680348b5b7eec8af737655d5561828a7a416c1784f`；sufficient/raw/report/lineage reload=`PASS`。
+
+V9 与 V8 只改变一个主自由度：初始状态仍为 exact V3 CONTROL encoder + exact V4 valid generator，但 `encoder.phase` 和 `generator.phase` 均 trainable（各 `20,000`，合计 `40,000`）；OLS、`T=I_100`、`W_OLS`、prototypes、templates、Smooth v2.1 与其余 runtime 全冻结。目标仍为
+`L_V9=L_anchor+28.48464149920509*L_transfer`，`s_tau=0.02919053753794475`；image loss、prototype loss 与 Smooth/Frozen evaluator 均没有训练梯度。设备为 RTX 3060 Laptop、compute capability `8.6`、PyTorch `2.5.1`、CUDA `12.1`。
+
+| step | TRAIN L_anchor | TRAIN L_transfer | TRAIN L_total | TRAIN L_image | DEV L_image | Smooth macro | anchor macro | anchor margin | OLS margin |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 0 | 2.22846563 | 0.69342184 | 21.98033819 | 0.07510780 | 0.06706161 | 0.1036 | 0.1706 | -0.00810254 | 0.00208249 |
+| 100 | 2.20848503 | 0.69193470 | 21.91799689 | 0.06499042 | 0.06625223 | 0.1054 | 0.2050 | -0.00670630 | 0.00206976 |
+| 200 | 2.20736347 | 0.68992402 | 21.85960196 | 0.06401648 | 0.06622797 | 0.1100 | 0.2386 | -0.00568535 | 0.00204236 |
+| 300 | 2.16701212 | 0.68808337 | 21.76682022 | 0.06836181 | 0.06666521 | 0.1184 | 0.2670 | -0.00486589 | 0.00200970 |
+
+自然 Smooth `Delta_R=+0.014800`，paired 95% CI=`[+0.011400,+0.018610]`：CI lower 为正，
+但预注册 `Delta_R>=+0.05` 未通过。template-anchor macro=`0.1706→0.2670`，correct-class
+margin=`-0.00810254→-0.00486589`；OLS margin Delta=`-0.0000727933`；这些均是描述性机制指标。
+
+已知 cyclic transfer retained=`true`：template mean/median=`0.01088561/0.00826996`，CI
+`[0.01061948,0.01115307]`；Smooth mean/median=`3.10276725/2.93491745`，CI
+`[2.99842256,3.20315371]`；10/10 positive pairs，`broad=true`、`pair_dominated=false`。
+十个 pair 的 template/Smooth means 为：
+
+| pair | template | Smooth |
+| --- | ---: | ---: |
+| 0→1 | 0.02981124 | 4.79306646 |
+| 1→2 | 0.01347965 | 4.17880627 |
+| 2→3 | 0.00287232 | 0.27432058 |
+| 3→4 | 0.01103936 | 5.93916874 |
+| 4→5 | 0.00493736 | 2.87124777 |
+| 5→6 | 0.00494553 | 1.57296430 |
+| 6→7 | 0.00854289 | 3.56916991 |
+| 7→8 | 0.00844004 | 2.67373318 |
+| 8→9 | 0.00521505 | 1.36521842 |
+| 9→0 | 0.01957267 | 3.78997682 |
+
+所有 checkpoint 与 cyclic raw 均 finite/shape-valid/structured/nonconstant；step-0/300 exact
+duplicate=`0`、unique=`5000`。因此 V9 primary criteria 为：natural Smooth=`FAIL`、known
+cyclic transfer=`PASS`、raw validity=`PASS`，最终分类为
+`V9_JOINT_SEMANTIC_REMAPPING_NOT_SUPPORTED`，Outer Gate
+`V9_JOINT_SEMANTIC_REMAPPING_SUPPORTED` 未通过。该结果只支持小幅正向 bounded evidence，
+不构成 Stage-A semantic eligibility。
+
+Stage-A firewall 独立仍为 `R300=0.1184 < 0.937`，`STAGE_A_FIREWALL_FAILED`。本次确认
+encoder update=`YES`、generator update=`YES`、L_image/prototype/Smooth gradient=`NO`；
+retry、Stage B、generation、protected/test/sealed、formal promotion 全部=`NO`。下一步不由
+该结果自动开放任何下游执行。
+
+## V8 absolute-anchor plus transfer warmup scientific execution（2026-09-12，VALID_COMPLETED；一次且仅一次）
+
+用户已明确授权 `EXECUTE_LIGHTGEN_2D_ABSOLUTE_ANCHOR_PLUS_TRANSFER_WARMUP_V8`。在
+`research/lightgen-ols-native-semantic-generation-v1`、start/end HEAD=`a9cd1749adfa690e282fd52a6425564fc2cf102c` 上完成 V8 READY contract、一次 `AUTHORIZABLE` engineering preflight 与唯一一次 300-step CUDA scientific arm；worktree 原有 dirty 状态、branch、HEAD 和 status line 均保持不变。
+
+结果=`VALID_COMPLETED/valid_completed`，唯一科学分类=`V8_ABSOLUTE_ANCHOR_PLUS_TRANSFER_NOT_SUPPORTED`；Outer Gate `V8_ABSOLUTE_ANCHOR_PLUS_TRANSFER_SUPPORTED` 未满足。preflight [report](../../outputs/20260911_v8/runs/lightgen_2d_absolute_anchor_plus_transfer_warmup_preflight_v8_attempt_01/lightgen_2d_absolute_anchor_plus_transfer_warmup_v8_preflight_report.v1.json) SHA-256=`e197bff80ea4fbb42d2a0c141028ecf7cabe34416d5816df6a95620cc9a3faad`、[lineage](../../outputs/20260911_v8/runs/lightgen_2d_absolute_anchor_plus_transfer_warmup_preflight_v8_attempt_01/lightgen_2d_absolute_anchor_plus_transfer_warmup_v8_preflight_lineage.v1.json) SHA-256=`c2dcd73581143d288b5e536252f7188cfeabb82c624d6756444ec868fbf9b2c2`，均 `AUTHORIZABLE`/reload 通过且 `scientific_300_step_executed=false`。
+
+- [V8 contract](../../outputs/20260911_v8/runs/lightgen_2d_absolute_anchor_plus_transfer_warmup_contract_v8_attempt_01/lightgen_2d_absolute_anchor_plus_transfer_warmup_contract.v8.json)，SHA-256=`02cef2918ff89eafaa53cf52f7a7492b3091e84acba3c351b6142b94b703a85d`，READY/valid_completed。
+- [scientific input](../../outputs/20260911_v8/runs/lightgen_2d_absolute_anchor_plus_transfer_warmup_v8_scientific_attempt_01/lightgen_2d_absolute_anchor_plus_transfer_warmup_v8_scientific_input.v1.json)，SHA-256=`4942c79d1ed4df92ddbee5cfbcb9771e749750c3ceeaffac652869c2e4b8673d`；[report](../../outputs/20260911_v8/runs/lightgen_2d_absolute_anchor_plus_transfer_warmup_v8_scientific_attempt_01/lightgen_2d_absolute_anchor_plus_transfer_warmup_v8_scientific_report.v1.json)，SHA-256=`5d534f9f7e7192c807a3c927a0815680c17b5d00d7f9edaf8c9987cf3bd39806`；[lineage](../../outputs/20260911_v8/runs/lightgen_2d_absolute_anchor_plus_transfer_warmup_v8_scientific_attempt_01/lightgen_2d_absolute_anchor_plus_transfer_warmup_v8_scientific_lineage.v1.json)，SHA-256=`69cfcf2e34e02d192c1f7cbca5f98bc960c163371a28404d3fc0fff9a0fad121`。
+- [sufficient observations](../../outputs/20260911_v8/runs/lightgen_2d_absolute_anchor_plus_transfer_warmup_v8_scientific_attempt_01/lightgen_2d_absolute_anchor_plus_transfer_warmup_v8_sufficient_observations.v1.pt)，SHA-256=`dd3848bdcf85c85d06eb0ca220b9f4149ff8df52701989416aa563bb6441a415`；[cyclic raw outputs](../../outputs/20260911_v8/runs/lightgen_2d_absolute_anchor_plus_transfer_warmup_v8_scientific_attempt_01/lightgen_2d_absolute_anchor_plus_transfer_warmup_v8_step300_cyclic_raw_outputs.v1.pt)，SHA-256=`9599e0f52bfef49cbf74c615a39be12460454cf16c65e4a1c115049fe4814ce5`；reload 均通过。
+
+冻结 objective=`L_V8=L_anchor+lambda_transfer*L_transfer`，仅 `encoder.phase` 训练；V3 CONTROL encoder、V4 generator、100-port complex OLS、`T=I_100`、`W_OLS`、V5 TRAIN prototypes、历史 TRAIN templates 与 Smooth evaluator 冻结。`s_tau=0.02919053753794475`；初始 `g_anchor=0.0082287618885706`、`g_transfer=0.00028888416448265975`，固定 `lambda_transfer=28.48464149920509`，无裁剪/调参/重算。preflight 覆盖真实 3-step CUDA、encoder-only/frozen/generator/Smooth firewall、negative controls、no-data smoke、checkpoint/reload/resume 与 exact-core synthetic；未访问 protected/test/sealed。
+
+| step | TRAIN L_anchor | TRAIN L_transfer | TRAIN L_total | DEV L_image | Smooth macro | OLS margin | anchor macro |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 0 | 2.22846563 | 0.69342184 | 21.98033819 | 0.06706161 | 0.1036 | 0.00208249 | 0.1706 |
+| 100 | 2.23859913 | 0.69290392 | 21.97571897 | 0.06671077 | 0.1040 | 0.00206943 | 0.1826 |
+| 200 | 2.24820785 | 0.69156806 | 21.94727610 | 0.06650268 | 0.1062 | 0.00203811 | 0.1914 |
+| 300 | 2.22151052 | 0.69053010 | 21.89101275 | 0.06643724 | 0.1086 | 0.00199363 | 0.2022 |
+
+Natural Smooth `Delta_R=+0.005000`，95% CI=`[+0.002800,+0.007400]`，但未达到 `+0.05`；cyclic transfer retained=true，template mean=`0.00583127524` CI lower=`0.00562985606`，Smooth mean=`1.94132099` CI lower=`1.83938933`，positive pairs=`10/10`，broad=true，pair-dominated=false。anchor macro 为描述性指标，不构成额外 Gate；raw validity 全通过。Stage-A firewall 仍为 `R300=0.1086 < 0.937`，故 Stage B 不开放。
+
+FACT：该结果只支持在固定 optical/runtime、预算与 frozen authorities 下的 bounded V8 outcome；MODEL_ASSUMPTION：absolute image anchor 与 transfer coupling 可能改善 natural semantic reconstruction；DESIGN_DECISION：anchor 使用历史 TRAIN templates 与冻结 `s_tau`，`lambda_transfer` 按初始首批梯度一次性配平，step-0 为 matched baseline。没有 retry、second arm、Stage B、scale/prior/generation、protected/test/sealed read 或 formal promotion；`V5_LATENT_TO_OPTICAL_TRANSFER_MECHANISM_RESOLVED` 仍 unresolved。
+
+## V5 class-direction transfer operating-point stability diagnosis（2026-09-11，VALID_COMPLETED；一次且仅一次）
+
+按明确授权 `DIAGNOSE_V5_CLASS_DIRECTION_TRANSFER_OPERATING_POINT_STABILITY_V1`，在 `research/lightgen-ols-native-semantic-generation-v1`、start/end HEAD=`a9cd1749adfa690e282fd52a6425564fc2cf102c` 上完成一次 forward-only/no-update diagnosis。历史有效 authority `OLS_CLASS_DIRECTION_TO_OPTICAL_OUTPUT_TRANSFER_SUPPORTED`、冻结 V5 CONTROL/CANDIDATE step-300 checkpoints、V5 选择索引与固定 cyclic rule `t=(y+1) mod 10` 均通过验证；未执行 optimizer、backward、parameter/optical update、V5 retry、Stage B、generation 或 protected/test/sealed read。
+
+结果=`VALID_COMPLETED/valid_completed`，唯一分类=`V5_CONTROL_OPERATING_POINT_TRANSFER_LOSS_SUPPORTED`；Outer Gate `V5_CLASS_DIRECTION_TRANSFER_OPERATING_POINT_STABILITY_RESOLVED` 已满足。该结果只证明本次固定操作点的 bounded transfer-loss stability，不改变 V5 latent-to-optical transfer-coupling 的 unresolved 状态，也不构成训练、Stage B、generation 或 formal promotion authorization。
+
+- [`input`](../../outputs/20260911_v5/runs/lightgen_2d_v5_class_direction_transfer_operating_point_stability_v1_attempt_01/lightgen_2d_v5_class_direction_transfer_operating_point_stability_input.v1.json)，SHA-256=`2d4dce07d24b8e6b32a37e3570c6ec1bdc6ab1b2f18dc11999cf434ef7e85aed`；[`report`](../../outputs/20260911_v5/runs/lightgen_2d_v5_class_direction_transfer_operating_point_stability_v1_attempt_01/lightgen_2d_v5_class_direction_transfer_operating_point_stability_report.v1.json)，SHA-256=`1d8e0e232d9a5ef05fa964688c11847d960466d6b7e50cef71d7162b7d953ee`；
+- [`lineage`](../../outputs/20260911_v5/runs/lightgen_2d_v5_class_direction_transfer_operating_point_stability_v1_attempt_01/lightgen_2d_v5_class_direction_transfer_operating_point_stability_lineage.v1.json)，SHA-256=`67f1b77594e944b5313b82f72574dde7ff21d2da54c3bcd97efd7386f34fea20`；sufficient observations SHA-256=`7d0281d66426906a648fc8d9aa284e563b6492cdd3011b06ddfb68db84c93a25`；attempt-03 audit artifact SHA-256=`c137313ecc5c3a0f8056a5be213bf5d4b1e1565316ecb5eeeb85aa5f7f2f0612`，audit=`PASS`。
+- scientific forward count=`600`；Smooth evaluations=`400`；selection=`1000/100`，seed=`4321`；paired bootstrap=`B=999, seed=271828`，raw/sufficient/bootstrap reload 均为 `PASS`。
+
+| operating point | template Δ mean [95% CI] | Smooth Δ mean [95% CI] | template transfer | Smooth transfer |
+| --- | ---: | ---: | --- | --- |
+| CONTROL | `-0.00099143 [-0.00113745, -0.00084232]` | `-0.05296442 [-0.15229365, 0.03803239]` | `false` | `false` |
+| CANDIDATE | `-0.00127322 [-0.00142480, -0.00111903]` | `-0.09730077 [-0.19547855, -0.00736787]` | `false` | `false` |
+
+两操作点 raw endpoint 均 finite、shape-valid、structured、nonconstant；本次只记录 bounded operating-point stability，未开放训练、Stage B、generation 或 formal promotion。
+
+## V6 proto-only semantic warmup scientific execution（2026-09-11，VALID_COMPLETED；一次且仅一次）
+
+按明确授权 EXECUTE_LIGHTGEN_2D_PROTO_ONLY_SEMANTIC_WARMUP_V6，在
+research/lightgen-ols-native-semantic-generation-v1、start/end HEAD=a9cd1749adfa690e282fd52a6425564fc2cf102c 上完成 bounded preflight 后执行唯一一次 300-step scientific arm。preflight attempt-01/02 均在 scientific forward 前因 harness 问题停止并保持 immutable；attempt-03=AUTHORIZABLE 后未重跑 scientific arm。工作区原有 dirty 状态保持不变，branch/HEAD 未改变。
+
+- 冻结 [V6 contract](../../outputs/20260911_v6/runs/lightgen_2d_proto_only_semantic_warmup_contract_v6_attempt_01/lightgen_2d_proto_only_semantic_warmup_contract.v6.json)，SHA-256=4b849632b67bd68f4075816e061bb3db0664abe31ab757a7137bfcd4c8f9f441，READY/valid_completed。
+- preflight attempt-03 [report](../../outputs/20260911_v6/runs/lightgen_2d_proto_only_semantic_warmup_preflight_v6_attempt_03/lightgen_2d_proto_only_semantic_warmup_v6_preflight_report.v1.json)，SHA-256=d45082a1384f1001a63b69972203bf99d4d9095243c6ef5217f6d68a258559be；[lineage](../../outputs/20260911_v6/runs/lightgen_2d_proto_only_semantic_warmup_preflight_v6_attempt_03/lightgen_2d_proto_only_semantic_warmup_v6_preflight_lineage.v1.json)，SHA-256=15fef1def813b9ea6fd3f5dd33bf65c76e56fd7a782dc67b16a629474050054e；scientific_300_step_executed=false。
+- scientific input SHA-256=c27d02af5acfd684136a01e857123c2d58872072ea0bb27cb238fb3be57b9550；[report](../../outputs/20260911_v6/runs/lightgen_2d_proto_only_semantic_warmup_v6_scientific_attempt_01/lightgen_2d_proto_only_semantic_warmup_v6_scientific_report.v1.json)，SHA-256=67918a6fe1dc4200b389a0ca2c4b419a6c150fb2f11288c1adc00e72605d09e9；[lineage](../../outputs/20260911_v6/runs/lightgen_2d_proto_only_semantic_warmup_v6_scientific_attempt_01/lightgen_2d_proto_only_semantic_warmup_v6_scientific_lineage.v1.json)，SHA-256=40153c45103e870c9ee3188feab18e141bfae31f18b98c611f21b6e8a5be1ac1。
+
+冻结初值与配置：V3 CONTROL step-300 encoder、V4 valid step-300 generator、V5 TRAIN-only prototypes、s_mu=0.00555040966719389；仅 encoder.phase 可训练，generator/OLS/Smooth/prototypes 冻结；Adam lr=1e-3、batch=10、300 updates；L_V6=L_proto，image MSE 仅 evaluation-only；DEV=5000 rows，step=0/100/200/300；cyclic=1000/100，seed=4321，t=(y+1) mod 10。
+
+| step | evaluation L_image | Smooth macro recall | OLS margin mean |
+| ---: | ---: | ---: | ---: |
+| 0 | 0.06706161 | 0.1036 | 0.00208249 |
+| 100 | 0.06742571 | 0.1030 | 0.00211740 |
+| 200 | 0.06777967 | 0.1030 | 0.00214080 |
+| 300 | 0.06808599 | 0.1030 | 0.00215925 |
+
+step-300 相对 step-0：Delta_L_image=+0.0010243780；OLS margin Delta=+7.67765e-5，95% CI=[+7.32591e-5,+8.00236e-5]；Smooth recall Delta=-0.0005960，95% CI=[-0.0014,0.0]。cyclic template Delta=-0.00172974 [-0.00188013,-0.00157520]、Smooth Delta=-0.17172088 [-0.26391294,-0.07869869]，两者 pass 均为 false；positive pairs 为 template 1/10、Smooth 4/10，known_cyclic_transfer_retained=false。
+
+结果=VALID_COMPLETED/valid_completed，唯一分类=V6_PROTO_ONLY_SEMANTIC_WARMUP_NOT_SUPPORTED；Outer Gate V6_PROTO_ONLY_SEMANTIC_WARMUP_SUPPORTED 未满足。raw_validity_pass=true、ols_mechanism_pass=true，但 natural_smooth_pass=false、cyclic transfer 未保留。Stage-A firewall 独立为 R300=0.103 < 0.937，状态=STAGE_A_FIREWALL_FAILED；Stage B、generation、formal promotion 均关闭。
+
+报告记录 training_authorized=false（仅表示该 bounded one-shot 已结束，不产生后续训练授权）、retry=false、generator_update=false、optical_update=false、protected=false、sealed=false。未执行 retry、第二 arm、scale/prior/generation、架构/OLS/W_OLS 修改或 protected/test/sealed read。V5 latent-to-optical transfer-coupling mechanism 仍 unresolved。
+
+## V7 transfer-aware semantic warmup scientific execution（2026-09-11，VALID_COMPLETED；一次且仅一次）
+
+按明确授权 EXECUTE_LIGHTGEN_2D_TRANSFER_AWARE_SEMANTIC_WARMUP_V7，在
+research/lightgen-ols-native-semantic-generation-v1、start/end HEAD=a9cd1749adfa690e282fd52a6425564fc2cf102c 上完成 contract、bounded preflight 与唯一一次 300-step scientific arm。preflight attempt-01/02 均在 scientific forward 前因 synthetic harness 错误停止并保持 immutable；attempt-03=AUTHORIZABLE 后未重跑 scientific。工作区原有 dirty 状态保持不变，branch/HEAD 未改变。
+
+- [V7 contract](../../outputs/20260911_v7/runs/lightgen_2d_transfer_aware_semantic_warmup_contract_v7_attempt_01/lightgen_2d_transfer_aware_semantic_warmup_contract.v7.json)，SHA-256=974d6dc560d2f4427cc75e5dc3d3404140d6e2a84439d800f6af10e299bc7766，READY/valid_completed。
+- preflight attempt-03 [report](../../outputs/20260911_v7/runs/lightgen_2d_transfer_aware_semantic_warmup_preflight_v7_attempt_03/lightgen_2d_transfer_aware_semantic_warmup_v7_preflight_report.v1.json)，SHA-256=18ea57a4bd2baa5b9a975a5902f899e9bb8d377964ecbfde9dd01b3165aa332e；[lineage](../../outputs/20260911_v7/runs/lightgen_2d_transfer_aware_semantic_warmup_preflight_v7_attempt_03/lightgen_2d_transfer_aware_semantic_warmup_v7_preflight_lineage.v1.json)，SHA-256=fb1644c17fd1c6ae308ab5e9e5822e5196a165098f91ff34d8bc6cfe456da79f；scientific_300_step_executed=false。
+- scientific input SHA-256=2f1ff0a200d6e7ef42859276ec2727aaf2ce36fe73d16f5fa6d4f8fa3d25ceb3；[report](../../outputs/20260911_v7/runs/lightgen_2d_transfer_aware_semantic_warmup_v7_scientific_attempt_01/lightgen_2d_transfer_aware_semantic_warmup_v7_scientific_report.v1.json)，SHA-256=ca06e5efe91c51f3b2ebff5125986e6599e607100f9c5932c4d504d55a2482fc；[lineage](../../outputs/20260911_v7/runs/lightgen_2d_transfer_aware_semantic_warmup_v7_scientific_attempt_01/lightgen_2d_transfer_aware_semantic_warmup_v7_scientific_lineage.v1.json)，SHA-256=4bac18f7b0bb588bb29cc75ab2087193ab2c44b26a7dc4e73f605085fe300139。
+
+配置：exact V3 CONTROL step-300 encoder；exact V4 step-300 generator、V5 TRAIN-only prototypes、历史 TRAIN templates、OLS/T/W_OLS/Smooth 全冻结；仅 encoder.phase 可训练；Adam lr=1e-3、batch=10、300 updates、grid=2048；L_V7=L_transfer=mean(softplus(-Delta_template))；z_shift=z-mu_y+mu_t；t=(y+1) mod 10；image/prototype/Smooth loss 无梯度；DEV=5000，cyclic=1000/100，seed=4321。
+
+运行设备：cuda:0，NVIDIA GeForce RTX 3060 Laptop GPU，compute capability=8.6，VRAM=6441926656 bytes，PyTorch=2.5.1，CUDA build=12.1。
+
+| step | TRAIN L_transfer | TRAIN L_image | DEV L_image | Smooth macro | OLS margin mean |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 0 | 0.69342184 | 0.07510780 | 0.06706161 | 0.1036 | 0.00208249 |
+| 100 | 0.69244408 | 0.06457431 | 0.06692999 | 0.1036 | 0.00207652 |
+| 200 | 0.69080558 | 0.06446711 | 0.06679273 | 0.1036 | 0.00205580 |
+| 300 | 0.68953269 | 0.06921547 | 0.06668990 | 0.1042 | 0.00202175 |
+
+Natural Smooth Delta_R=+0.000600，95% CI=[-0.000600,+0.001800]，未达到 +0.05 Gate；DEV image Delta=-0.000371713；TRAIN transfer Delta=-0.00388916；OLS margin Delta=-6.07760e-5（secondary）。
+
+cyclic transfer retained=true：template mean/median=0.00816400/0.00616277，95% CI=[0.00792898,0.00840002]；Smooth mean/median=2.53695471/2.49440956，95% CI=[2.43122264,2.64568621]；positive pair counts=10/10，broad=true，pair_dominated=false。十个 pair 的 template/Smooth means 依次为：0->1 0.02126103/2.63885640，1->2 0.01058828/3.32051782，2->3 0.00196776/0.22176126，3->4 0.00748423/4.37591817，4->5 0.00402526/2.81977525，5->6 0.00586092/2.10184672，6->7 0.00844589/3.64366655，7->8 0.00417849/1.49608160，8->9 0.00312327/1.42380861，9->0 0.01470491/3.32731475。
+
+结果=VALID_COMPLETED/valid_completed，唯一分类=V7_TRANSFER_AWARE_SEMANTIC_WARMUP_NOT_SUPPORTED；Outer Gate V7_TRANSFER_AWARE_SEMANTIC_WARMUP_SUPPORTED 未满足。raw validity=true，但 natural Smooth primary=false；Stage-A firewall=R300=0.1042 < 0.937，STAGE_A_FIREWALL_FAILED。Stage B、generation、formal promotion 关闭。
+
+preflight 与 scientific firewall 均确认 image-loss gradient=NO、prototype-loss gradient=NO、Smooth/Frozen gradient=NO、generator update=NO；negative-control transfer gradient finite/nonzero；无 retry、second arm、调参、target/magnitude sweep、scale/prior/generation、protected/test/sealed read 或 formal promotion。V5 latent-to-optical transfer-coupling mechanism 仍 unresolved。
+
+## V5 latent-to-optical transfer-coupling diagnosis attempt-03（2026-09-11，VALID_COMPLETED；唯一科学分类）
+
+按一次且仅一次明确授权 `DIAGNOSE_V5_LATENT_ALIGNMENT_TO_OPTICAL_TRANSFER_COUPLING_V1 attempt-03`，在
+`research/lightgen-ols-native-semantic-generation-v1`、start/end HEAD=`a9cd1749adfa690e282fd52a6425564fc2cf102c` 上完成 forward-only/no-update scientific diagnosis。入口在 authority chain 中消费冻结 producer HEAD，但按授权不因 producer HEAD 与当前 consumer HEAD 不同而停止。
+
+结果=`VALID_COMPLETED/valid_completed`，唯一科学分类=`V5_LATENT_TO_OPTICAL_TRANSFER_MIXED_OR_UNRESOLVED`；`V5_LATENT_TO_OPTICAL_TRANSFER_MECHANISM_RESOLVED` 仍 unresolved。attempt-01/02 的 INVALID report/lineage 保持 immutable，未重写、未重试。
+
+- [`attempt-03 report`](../../outputs/20260911_v5/runs/lightgen_2d_v5_latent_alignment_to_optical_transfer_coupling_v1_attempt_03/lightgen_2d_v5_latent_alignment_to_optical_transfer_coupling_report.v1.json)，SHA-256=`b759edd433cf53961d8b1a4f9cf61a341fd5a75a56c0e2985969bcf1799f791e`；
+- [`attempt-03 lineage`](../../outputs/20260911_v5/runs/lightgen_2d_v5_latent_alignment_to_optical_transfer_coupling_v1_attempt_03/lightgen_2d_v5_latent_alignment_to_optical_transfer_coupling_lineage.v1.json)，SHA-256=`71c11240c87b79478c047fd9d6688f0e2f5a789e3d76a2e616bccd72d22eb6bc`；
+- [`sufficient observations`](../../outputs/20260911_v5/runs/lightgen_2d_v5_latent_alignment_to_optical_transfer_coupling_v1_attempt_03/lightgen_2d_v5_latent_alignment_to_optical_transfer_coupling_sufficient_observations.v1.pt)，SHA-256=`8985d1b48cb96e1f684ee263ebc050144802cf610c9806bed9cd21fc1c49b6ef`，schema reload=`PASS`；
+- selection=`1000/100 per class`，`SELECTION_SEED=4321` reconstructed exact frozen selection-index SHA=`4acbae34a68778753d770f2cac955a8e109e438fb4df9f41e83b15df46890bb8`，producer omitted the seed field but identity matched；DEV scientific reads=`1000`；scientific forward=`600`（control encoder 100、candidate encoder 100、4 endpoints ×100）；Smooth endpoint evaluations=`400`。
+
+全局几何摘要：`||delta_V||` mean/median=`8.618106e-6/8.632646e-6`（q05–q95=`5.653216e-6–1.161482e-5`）；`||delta_class||` mean/median=`6.110225e-5/6.064601e-5`；norm ratio mean/median=`0.152174/0.151641`；class-subspace `rho` mean/median=`0.228568/0.216745`；delta alignment mean/median=`0.089892/0.108981`。方向一致性为 `broad`，但不是正向 Smooth 证据。
+
+| intervention | ΔS mean | median | paired 95% CI | positive fraction | primary flag |
+|---|---:|---:|---:|---:|---|
+| actual | -0.140839 | -0.086932 | [-0.154794, -0.125540] | 0.000 | false |
+| matched-norm | -0.070122 | -0.071359 | [-0.084865, -0.056285] | 0.000 | false |
+| full class-direction | -0.502025 | -0.485210 | [-0.620633, -0.398167] | 0.000 | false |
+
+四个 raw endpoint 均 finite、shape=`[1000,1,200,200]`、structured、nonconstant。实际/匹配/完整方向相对 baseline 的 absolute RMS mean 分别为 `0.008265/0.008009/0.063604`，relative RMS mean 分别为 `0.062283/0.061172/0.540107`。Argmax recall 仅作描述：baseline/actual/match/full macro recall=`0.105/0.104/0.105/0.106`。
+
+`ACTUAL_CONTINUOUS_SEMANTIC_GAIN=false`、`MATCHED_NORM_SEMANTIC_GAIN=false`、`FULL_CLASS_DIRECTION_SEMANTIC_GAIN=false`，所以不能支持 subthreshold、direction-misalignment 或 magnitude-limited 三个排他解释；按预注册规则归入 mixed/unresolved。没有 optimizer、backward、update、training、V5 retry、V6、Stage B、generation、protected/test/sealed access 或 formal promotion。
+
+## V5 transfer-coupling production entry stabilization（2026-09-11，VALID_COMPLETED；非 scientific execution）
+
+在 `research/lightgen-ols-native-semantic-generation-v1` 上完成一次 bounded engineering stabilization；起始 HEAD=`9a72e0bcf2de12ab9a0caa7151f273de76768dc7`，focused commit=`a9cd1749adfa690e282fd52a6425564fc2cf102c`，当前 HEAD=`a9cd1749adfa690e282fd52a6425564fc2cf102c`。入口文件当前 SHA-256=`ca7d0a987f6e2f01d6819511b4124980b91fa7fb02885e2a013ba31682f73c02`。
+
+- [`stabilized V5 transfer-coupling entry`](../../scripts/research/diagnose_lightgen_2d_v5_latent_alignment_to_optical_transfer_coupling_v1.py) 已通过真实 authority schema dry-run：accepted preflight 的嵌套 `accepted_preflight.input.sha256`、valid V5 scientific attempt-01、注册 class-direction selection authority、V4 generator、V5 control/candidate checkpoint、Smooth v2.1、V2 runtime 均可解析；注册 selection producer 未声明 `selection_seed`，入口按已冻结 `SELECTION_SEED=4321` 与不可变 selection-index SHA 绑定，并记录 `seed_declared_by_producer=false`。
+- production wrapper 的 deterministic synthetic acceptance 使用与未来真实路径相同的 resolved runtime/evaluator/核心统计，仅替换数据边界；12 次 wrapper forward、8 次 Smooth batch evaluation、sufficient/report/lineage reload 均通过。synthetic classification 仅为工程验收，scientific meaning=`none`。
+- focused tests=`7 passed`；`py_compile`、Ruff、`git diff --check` 均通过。此次没有读取真实 TRAIN/DEV scientific rows，没有 scientific diagnosis forward，没有 optimizer/backward/update/training，也没有修改 attempt-01/02 report/lineage。
+
+该工程稳定化在当时不产生 V5 transfer mechanism classification；随后 attempt-03 已在新的明确授权下完成并记录于上方。V5 mechanism 仍 unresolved，不开放 V6、Stage B、generation 或 formal promotion。
+
+## V5 latent-to-optical transfer-coupling diagnosis attempt-02（2026-09-11，INVALID；不重试）
+
+按新的明确授权 `DIAGNOSE_V5_LATENT_ALIGNMENT_TO_OPTICAL_TRANSFER_COUPLING_V1 attempt-02`，在
+`research/lightgen-ols-native-semantic-generation-v1`、HEAD=`9a72e0bcf2de12ab9a0caa7151f273de76768dc7` 上执行一次；attempt-01 未修改。修复后的 authority binding 已通过静态检查，但入口因调用 accepted preflight 中不存在的 `_load_evaluators` 再次停止，结果=`INVALID/invalid_harness`，classification=`INVALID_V5_TRANSFER_COUPLING_UNEXPECTED_EXECUTION_ERROR`。
+
+- [`attempt-02 diagnosis report`](../../outputs/20260911_v5/runs/lightgen_2d_v5_latent_alignment_to_optical_transfer_coupling_v1_attempt_02/lightgen_2d_v5_latent_alignment_to_optical_transfer_coupling_report.v1.json)，SHA-256=`0389608886eb7e8ac7c83e7560ba55447484548403d120c5209d4f73f55204d8`；
+- [`attempt-02 diagnosis lineage`](../../outputs/20260911_v5/runs/lightgen_2d_v5_latent_alignment_to_optical_transfer_coupling_v1_attempt_02/lightgen_2d_v5_latent_alignment_to_optical_transfer_coupling_lineage.v1.json)，SHA-256=`85fdcdb668974e545d65b740d0cb062048e109956397da4888071265a323e37f`；
+- attempt-02 执行时入口 SHA-256=`233e98e7036f71c36ed4c83c97dc2c4d5478a5dbea93304cce00fca529d361cd`，失败后修复后的当前入口 SHA-256=`8ef136a8e369e0ab81b0fc16fe53cd660e2d92950d6def1cd9f9b373cd8d1571`。
+
+失败发生在 scientific forward 前：`diagnosis_executed=false`、`scientific_forward_count=0`、`diagnosis_started=false`；无 optimizer/backward/update/training，无 TRAIN/DEV scientific read，无 protected/official-test/sealed read，无 semantic classification。Outer Gate=`V5_LATENT_TO_OPTICAL_TRANSFER_MECHANISM_RESOLVED` remains unresolved。
+
+失败后仅改为现有权威 `_load_smooth` 并保持 Smooth evaluator 冻结，未重写 attempt-01/02 历史报告或 lineage，未重跑。若继续必须重新授权新 attempt；本 attempt 不开放 V6、Stage B、generation 或 formal promotion。
+
+## V5 latent-to-optical transfer-coupling diagnosis attempt-01（2026-09-11，INVALID；不重试）
+
+按明确授权 `DIAGNOSE_V5_LATENT_ALIGNMENT_TO_OPTICAL_TRANSFER_COUPLING_V1`，在
+`research/lightgen-ols-native-semantic-generation-v1`、HEAD=`9a72e0bcf2de12ab9a0caa7151f273de76768dc7` 上执行一次且仅一次入口诊断。synthetic exact-core preflight 已通过；真实 scientific 入口在 authority resolution 阶段因新 harness 错误停止，结果=`INVALID/invalid_harness`，classification=`INVALID_V5_TRANSFER_COUPLING_HARNESS`。
+
+- [`diagnosis report`](../../outputs/20260911_v5/runs/lightgen_2d_v5_latent_alignment_to_optical_transfer_coupling_v1_attempt_01/lightgen_2d_v5_latent_alignment_to_optical_transfer_coupling_report.v1.json)，SHA-256=`49236400f58c8a15da6d87632a7601c7e936fd2fe1280be1be37713f03611eb0`；
+- [`diagnosis lineage`](../../outputs/20260911_v5/runs/lightgen_2d_v5_latent_alignment_to_optical_transfer_coupling_v1_attempt_01/lightgen_2d_v5_latent_alignment_to_optical_transfer_coupling_lineage.v1.json)，SHA-256=`74552a2a1fdb8d94cf30616dd51ebbee759d3c85bae7205cb0089046da43937d`；
+- diagnosis entrypoint 在该 attempt 中的 SHA-256=`14a04ca9988e554629447404aa749ee0c68581c021055678c12686c41f0dc1cb`。
+
+失败原因为入口错误读取 V5 scientific input 的 preflight authority 字段：实际为 `accepted_preflight.input.sha256`，入口却读取 `accepted_preflight.sha256`，所以在 scientific forward 前触发 `V5 input preflight binding changed`。`diagnosis_executed=false`、`scientific_forward_count=0`、`diagnosis_started=false`；无 optimizer/backward/update/training，无 TRAIN/DEV scientific read，无 protected/official-test/sealed read，无 semantic classification。Outer Gate=`V5_LATENT_TO_OPTICAL_TRANSFER_MECHANISM_RESOLVED` remains unresolved。
+
+失败后仅修复了入口字段绑定，未改写本次 report/lineage，未重跑；若继续，需新的明确授权重新消费 one-shot diagnosis。该 INVALID attempt 不支持任何 V5 transfer mechanism classification，不开放 V6、Stage B、generation 或 formal promotion。
+
+## V5 scientific execution 结果：direct complex-OLS semantic alignment（2026-09-11；历史 support snapshot）
+
+按明确授权 `EXECUTE_LIGHTGEN_2D_COMPLEX_OLS_SEMANTIC_ALIGNMENT_V5`，在
+`research/lightgen-ols-native-semantic-generation-v1`、HEAD=`9a72e0bcf2de12ab9a0caa7151f273de76768dc7` 上完成且仅完成一次 matched CUDA comparison：control/candidate 各 300 个真实更新，checkpoint 为 100/200/300；无 retry、调参、预算扩展或下游阶段。
+
+结果=`VALID_COMPLETED/valid_completed`，classification=`V5_OLS_SEMANTIC_ALIGNMENT_NOT_SUPPORTED`；Outer Gate=`V5_OLS_SEMANTIC_ALIGNMENT_SUPPORTED` 未通过。
+
+- [`scientific report`](../../outputs/20260911_v5/runs/lightgen_2d_complex_ols_semantic_alignment_v5_scientific_attempt_01/lightgen_2d_complex_ols_semantic_alignment_v5_scientific_report.v1.json)，SHA-256=`41aeb6e5ae5d1736521b164f2c8e9267bc3687801ab99b7142692112f8d85ce8`；
+- [`scientific lineage`](../../outputs/20260911_v5/runs/lightgen_2d_complex_ols_semantic_alignment_v5_scientific_attempt_01/lightgen_2d_complex_ols_semantic_alignment_v5_scientific_lineage.v1.json)，SHA-256=`89e00a5f67dc082b0d2f37042a66a796cae71f14b1f676e8a27e94caaeed4c50`；
+- [`scientific entrypoint`](../../scripts/research/execute_lightgen_2d_complex_ols_semantic_alignment_v5_scientific.py)，执行时 SHA-256=`b48d9f8ae9f128d9b2f7563e5892be8b82d7dc973ef9f56196a0ccf4571fae0f`；
+- [`scientific input`](../../outputs/20260911_v5/runs/lightgen_2d_complex_ols_semantic_alignment_v5_scientific_attempt_01/lightgen_2d_complex_ols_semantic_alignment_v5_scientific_input.v1.json)，SHA-256=`91607325a08883479d49e69adac2d6a2c8ea6251ed86da5b45664aa0a7179b77`；paired bootstrap SHA-256=`2ded3c474df42c9188304669150977fcd2fa30b26ba493b40be3863ad6e46772`；sufficient observations SHA-256=`82104162a4058b789fc62a6028ba2d064bb6104c3d07732c05c2b42f6af138d9`。
+
+固定 control=`L_image`、candidate=`L_image + 0.09573533218209243*L_proto`，仅训练 `encoder.phase`；generator、100-port complex OLS、`T=I_100`、shared `W_OLS` 与 Smooth evaluator 均冻结。TRAIN prototypes=`55,000`，`s_mu=0.00555040966719389`；DEV=`5,000`（每类 500）仅 evaluation；calibration/protected/test/sealed=`0`。运行环境为 RTX 3060 Laptop/compute capability `8.6`/PyTorch `2.5.1`/CUDA `12.1`/grid `2048`/batch `10`/Adam `lr=1e-3`。
+
+| arm | step-100 `L_image` / Smooth / OLS margin | step-200 `L_image` / Smooth / OLS margin | step-300 `L_image` / Smooth / OLS margin |
+| --- | --- | --- | --- |
+| control | `0.0664125154` / `0.1040` / `0.0020675604` | `0.0658696759` / `0.1046` / `0.0020476440` | `0.0654365251` / `0.1044` / `0.0020292227` |
+| candidate | `0.0668724473` / `0.1038` / `0.0021049360` | `0.0667107936` / `0.1042` / `0.0021195124` | `0.0665877977` / `0.1042` / `0.0021336675` |
+
+step-300：Smooth Delta=`-0.0002000`，paired bootstrap `B=999`/seed=`271828`/95% CI=`[-0.0010,0.0004]`，最大 per-class degradation=`-0.004`；OLS margin Delta=`+0.0001044448`，CI=`[0.0001008631,0.0001078032]`；image-loss Delta=`+0.0011512727`（在 `+0.005` 容差内）；两端 raw-CMOS panel 均 finite/structurally valid/nonconstant 且 reload 通过。未通过项是 Smooth Delta `>=0.05` 与 Smooth CI 下界 `>0`，故整体 objective-correction classification 为 `NOT_SUPPORTED`。
+
+candidate step-300 Smooth macro=`0.1042 < 0.937`，Stage-A firewall=`STAGE_A_FIREWALL_FAILED`。该结果是有效 bounded comparison failure，不是 harness INVALID；不授权 Stage B、formal scale、prior、sampled generation、generation acceptance 或 formal promotion，`generation_readiness=not_ready`。工作区原有未提交变更保持，未自动 commit。
+
+## V5 状态增量：direct complex-OLS semantic alignment definition 与工程预检（科学执行前 authority）
+
+V5 semantic authority=`DEFINE_LIGHTGEN_2D_COMPLEX_OLS_SEMANTIC_ALIGNMENT_CONTRACT_V5` 已完成 definition-only 合同，结果为
+`READY/valid_completed`，classification=`DEFINE_LIGHTGEN_2D_COMPLEX_OLS_SEMANTIC_ALIGNMENT_CONTRACT_V5_READY`；未来 Outer Gate 为
+`V5_OLS_SEMANTIC_ALIGNMENT_SUPPORTED`。合同证据为
+[`V5 contract`](../../outputs/20260911_v5/runs/lightgen_2d_complex_ols_semantic_alignment_contract_v5_attempt_01/lightgen_2d_complex_ols_semantic_alignment_contract.v5.json)，
+SHA-256=`e2d57fa96e0a020abf23cbd889188d74d4893a6e9c48ac7a1d24d7156cf21b61`。
+
+合同冻结 V3 CONTROL step-300 encoder、有效 V4 step-300 fixed-OLS generator、complex `C^100` OLS、modal projection/re-emission、
+`T=I_100`、shared `W_OLS`、现有 gauge/distance 与 ten TRAIN prototypes；两臂只训练 `encoder.phase`，control=`L_image`，candidate=`L_image + lambda_proto*L_proto`。
+TRAIN 原型使用 `55,000` 行，`s_mu=0.00555040966719389`；首个 TRAIN batch 一次性校准
+`g_image=0.0005046187151008359`、`g_proto=0.005270976801389226`、`lambda_proto=0.09573533218209243`，不调参、不重算。
+
+最终 bounded engineering preflight 为 attempt-05，结果=`valid_completed/AUTHORIZABLE`，classification=
+`LIGHTGEN_2D_COMPLEX_OLS_SEMANTIC_ALIGNMENT_V5_AUTHORIZABLE`：
+
+- [`input`](../../outputs/20260911_v5/runs/lightgen_2d_complex_ols_semantic_alignment_preflight_v5_attempt_05/lightgen_2d_complex_ols_semantic_alignment_preflight_input.v1.json)，SHA-256=`9c734a76b5ceb03fe6405faadfaf7d2fa27eefe21d5a077ab3f0e46d926569f8`；
+- [`report`](../../outputs/20260911_v5/runs/lightgen_2d_complex_ols_semantic_alignment_preflight_v5_attempt_05/lightgen_2d_complex_ols_semantic_alignment_preflight_report.v1.json)，SHA-256=`7fab2789b36491597462ce092bc98dc5784cc269245a2cab3b07a4878543c551`；
+- [`lineage`](../../outputs/20260911_v5/runs/lightgen_2d_complex_ols_semantic_alignment_preflight_v5_attempt_05/lightgen_2d_complex_ols_semantic_alignment_preflight_lineage.v1.json)，SHA-256=`e5d72fce35784ea3c25fc98a5c4a7ad20538594f491f9065123a94f5892387dc`。
+
+该预检已通过 RTX 3060 Laptop/8.6/PyTorch 2.5.1/CUDA 12.1 的 production 2048-grid no-data smoke；control/candidate 各真实 CUDA 三步，
+encoder-only、generator/OLS freeze、candidate prototype gradient、raw CMOS 与 checkpoint/resume identity 均通过，resume 的 next batch、optimizer、
+runtime、raw、trace 差异为 `0`。`lambda_proto` 已按固定梯度规则得到，非科学 synthetic exact-core 也覆盖了 prototypes/scale/loss、两臂、firewall、
+checkpoint/evaluator/margin/bootstrap/statistics/sufficient-observation reload/schema。TRAIN=`60,000` loaded / `55,000` used / each arm `30` update rows；
+DEV scientific values=`0`，protected/test/sealed=`0`；CUDA DLL 仅在当前进程使用 `sys.prefix\\bin` 修复。
+
+`AUTHORIZABLE` 只表示工程入口可执行，不是 `V5_OLS_SEMANTIC_ALIGNMENT_SUPPORTED`、Stage-A eligibility、Stage-B authorization、generation readiness 或 formal promotion；上方已记录随后一次 scientific execution 的有效结果。
+`stage_b_authorized=false`、`generation_readiness=not_ready`、`formal_promotion=false` 保持。attempt-01 至 attempt-04 的 harness INVALID 结果均保留为 immutable 历史，不覆盖 attempt-05，且不构成科学结论。
 
 ## 本次目标增量
 
 用户明确要求：输入与 OLS 对齐陈一同等人的 LightGen，衍射层架构可以不同；尽快得到语义生成原型。
 唯一活动研究主线及路线地位见 [项目记忆](../PROJECT_MEMORY.md#唯一活动研究主线lightgen-输入与-ols-对齐的语义生成原型)，
 已完成科学结果统一查 [当前状态](../CURRENT_STATUS.md)。不把正式 `label + 8D` 基线或历史 reconstruction
-closeout 当成当前研究目标；也不把 N3 分布支持当成 LightGen 输入/OLS 对齐完成。
+closeout 当成当前研究目标；也不把 N3 分布支持当成 LightGen 输入/OLS 对齐完成。当前交接增量是：基于 V2
+Stage-A attempt-02 与 warmup diagnosis attempt-02，定义并完成一项固定架构的 V3 semantic objective-correction 工程 preflight；随后按独立授权完成一次 V3 scientific run 与一次 no-update failure attribution，V3 结果为有效科学失败，归因为 provider-specific alignment；在此基础上定义 V4 fixed-OLS generator-recoverability contract，完成修复后 accepted engineering preflight，并按新的独立授权完成 V4 scientific attempt-02，结果为有效科学失败 `FIXED_OLS_GENERATOR_RECOVERABILITY_NOT_SUPPORTED`。attempt-01 的 `INVALID_HARNESS` 保留为历史证据，不重复 V2/V3。
+随后按独立授权启动一次 `DIAGNOSE_COMPLEX_OLS_CLASS_DIRECTION_TO_OPTICAL_OUTPUT_TRANSFER_V1`；attempt-01 在任何 TRAIN/DEV 科学读取或 forward 前因 stale loader harness 错误 INVALID，修复后 attempt-02 又在 CUDA device preflight 因 NVRTC DLL 不可用 INVALID；readiness 核查通过后，attempt-03 进入 scientific forward，但在 raw-response 汇总时因缺失 `_raw_summary` helper 以 `INVALID/invalid_harness` 停止。三次 one-shot 均已消费且不重试。随后在稳定化 runner 上按独立 replication 授权完成一次冻结语义 replication，结果为 `VALID_COMPLETED / OLS_CLASS_DIRECTION_TO_OPTICAL_OUTPUT_TRANSFER_SUPPORTED`。后续工程核查确认实际 2048 LightGen optical path 同样触发该环境 DLL 搜索问题；使用当前 `sys.prefix/bin` 已有 DLL 的进程级 PATH 修复后，真实合成 no-data readiness smoke 与 replication 均通过，Stage B/generation/promotion 仍关闭。
+
+## 当前状态增量：V2 Stage-A attempt-02 与 diagnosis（2026-09-11）
+
+V2 Stage-A attempt-02 已按 corrected authority 完成 300 个真实更新，结果为
+`VALID_COMPLETED/valid_failed`，classification=`LIGHTGEN_2D_SEMANTIC_COMPLEX_OLS_V2_SEMANTIC_WARMUP_NOT_ESTABLISHED`。
+报告、lineage 与 diagnosis 为：
+
+- [`V2 training report`](../../outputs/20260911_v2/runs/lightgen_2d_semantic_complex_ols_training_v2_attempt_02/lightgen_2d_semantic_complex_ols_training_v2_report.v1.json)，SHA-256=`de55a0f307675ded10aca5726f9ac09474633b2c9a5f8bfb1890075de53a530d`；lineage SHA-256=`899aa78daff4bbe2f70cf72e01080e323e24d791f4937ca35fefc8c9b30394dc`；
+- [`warmup diagnosis report`](../../outputs/20260911_v2/runs/lightgen_2d_semantic_ols_warmup_failure_diagnosis_v1_attempt_02/lightgen_2d_semantic_ols_warmup_failure_diagnosis_report.v1.json)，SHA-256=`f05eb4e6dfd7c8c3ce1865ff8097fdef2dfa649b3e3dab3352f5282fa544f3da`；diagnosis lineage SHA-256=`ef72fcaf191fc147d34fc460fb0d0f147614b2d696d677feae7d5d501f40b763`。
+
+DEV macro recall=`0.170 → 0.160 → 0.136`，DEV image loss=`0.0711633662 → 0.0689440685 → 0.0673580589`，checkpoint 为 100/200/300；Stage B、
+generation、protected/test/sealed read 均为 0。诊断 primary 为
+`SEMANTIC_WARMUP_FAILURE_IMAGE_OBJECTIVE_MISMATCH_SUPPORTED`；梯度有限且非零，故只支持 objective mismatch，不支持容量、OLS 或 Stage-B 结论。
+此前交接条目中“下一步执行 V2 training”的文字是历史状态，已被本段的 V3 objective-correction 定义取代；历史事件本身不覆盖。
+
+## 当前 V3 definition：semantic objective correction（2026-09-11）
+
+V3 semantic authority ID=`DEFINE_LIGHTGEN_2D_SEMANTIC_COMPLEX_OLS_OBJECTIVE_CORRECTION_CONTRACT_V3`，结果为
+`READY/valid_completed`，classification=`DEFINE_LIGHTGEN_2D_SEMANTIC_COMPLEX_OLS_OBJECTIVE_CORRECTION_CONTRACT_V3_READY`。
+合同为
+[`lightgen_2d_semantic_complex_ols_objective_correction_contract.v3.json`](../../outputs/20260911_v2/runs/lightgen_2d_semantic_complex_ols_objective_correction_contract_v3_attempt_01/lightgen_2d_semantic_complex_ols_objective_correction_contract.v3.json)，
+SHA-256=`e537fbf4b856519a71e48c16a48c149fadd327e2ad12db84f64c953413fb53f6`；Outer Gate=
+`V3_SEMANTIC_OBJECTIVE_CORRECTION_SUPPORTED`。
+
+control 固定为纯 `L_image`，candidate 固定为 `L_image + lambda_feature*L_feature`；provider 是冻结的 128D
+`FrozenMNISTEvaluator v1` embedding，独立 `SmoothMNISTEvaluator v2.1` 只作 metric corroboration。λ 在共享初始状态的 TRAIN step-1 batch 上按
+`min(10, max(0.1, g_image/g_feature))` 预先计算一次；两臂共享零 phase 初始化、同一 batch schedule、Adam、300-step Stage-A budget 和 100/200/300 checkpoints。
+主要支持条件为 step-300 Smooth macro recall 提升至少 `0.05`、999 次 paired stratified bootstrap 95% CI 下界大于 0、无 per-class 下降超过 `0.10`、
+image loss 容差 `+0.005` 内，且 raw-CMOS endpoint panel 有限/结构有效/非恒定。未满足则返回
+`V3_SEMANTIC_OBJECTIVE_CORRECTION_NOT_SUPPORTED`；这不等价于 Stage-A eligibility。
+
+Stage-A→B firewall 继续固定为 Frozen evaluator macro recall `>=0.937`，不降低、不补偿；本定义不授权 training、Stage B、generation、scale extraction 或 formal promotion。
+后续仅在独立明确授权后执行 V3 future entrypoint 的 bounded engineering preflight，先验证三步真实 CUDA 更新、梯度/冻结参数 firewall、matched pair、disabled-term 与
+detached-provider negative controls、以及 checkpoint/resume identity。
+
+## 当前 V3 bounded engineering preflight 结果（2026-09-11）
+
+按 V3 READY contract 完成最终 attempt-09 的工程 preflight，结果为
+`valid_completed/AUTHORIZABLE`，classification=`LIGHTGEN_2D_SEMANTIC_COMPLEX_OLS_OBJECTIVE_CORRECTION_V3_AUTHORIZABLE`。
+`AUTHORIZABLE` 仅表示冻结的未来 paired Stage-A 入口在当前环境中技术上可执行；不表示
+`V3_SEMANTIC_OBJECTIVE_CORRECTION_SUPPORTED`，不授权 scientific training、Stage-A eligibility、Stage B、generation 或 promotion。
+
+证据为：
+
+- [`preflight input`](../../outputs/20260911_v3/runs/lightgen_2d_semantic_complex_ols_objective_correction_v3_preflight_attempt_09/lightgen_2d_semantic_complex_ols_objective_correction_v3_preflight_input.v1.json)，SHA-256=`631eb85792062f00e2e59344d091a6aac203225e05c56e1a4c27150859772d36`；
+- [`preflight report`](../../outputs/20260911_v3/runs/lightgen_2d_semantic_complex_ols_objective_correction_v3_preflight_attempt_09/lightgen_2d_semantic_complex_ols_objective_correction_v3_preflight_report.v1.json)，SHA-256=`265e9b80582161872a207041cd5edc2279b6f72c5729aa6f5406f9646e354468`；
+- [`preflight lineage`](../../outputs/20260911_v3/runs/lightgen_2d_semantic_complex_ols_objective_correction_v3_preflight_attempt_09/lightgen_2d_semantic_complex_ols_objective_correction_v3_preflight_lineage.v1.json)，SHA-256=`f600bf924c3494f0b348fccde19aa6d49d5b33923cff622d5a5722394cb08e31`；
+- [`preflight entrypoint`](../../scripts/research/execute_lightgen_2d_semantic_complex_ols_objective_correction_v3.py)。
+- [`control checkpoint`](../../outputs/20260911_v3/runs/lightgen_2d_semantic_complex_ols_objective_correction_v3_preflight_attempt_09/lightgen_2d_semantic_complex_ols_objective_correction_v3_control_checkpoint.v1.pt)，SHA-256=`ac4d1e2521d4f265472aa4ba36673e19d42e16c8972b5bde24c24b5273a79c3a`；
+- [`candidate checkpoint`](../../outputs/20260911_v3/runs/lightgen_2d_semantic_complex_ols_objective_correction_v3_preflight_attempt_09/lightgen_2d_semantic_complex_ols_objective_correction_v3_candidate_checkpoint.v1.pt)，SHA-256=`b16011a5b443f16b31399c0e0b4d3a220402725b51e49eb1df52b449bc9b8c7f`。
+
+目标设备为 RTX 3060 Laptop GPU、compute capability=`8.6`、PyTorch=`2.5.1`、CUDA build=`12.1`、VRAM=`6,441,926,656` bytes；
+grid=`2048`、batch=`10`、Adam lr=`1e-3`。control 为 `L_image`，candidate 为
+`L_image + lambda_feature*L_feature`；FrozenMNISTEvaluator v1 的 128D normalized embedding 作为冻结 provider，SmoothMNISTEvaluator v2.1
+仅保留为未来独立 metric corroboration。λ 在共享初始状态/首个 TRAIN batch、任何 optimizer update 前一次性计算：
+`g_image=0.0012350937723848974`、`g_feature=0.0631487965185555`、ratio=`0.01955846889373387`，固定得到
+`lambda_feature=0.1`。
+
+control 与 candidate 各完成 3 次真实 CUDA 更新；两组 trainable phase 均有限且非零更新，candidate semantic input gradient 三步均有限非零，
+modal projection → `T=I_100` → `W_OLS` → generator 路径通过。disabled-term control 通过；detached-provider negative control 的 feature forward
+仍有限但 semantic gradient 被移除，按合同标记为应拒绝的 `invalid_harness`。provider、independent evaluator 和 runtime non-phase state 未更新。
+step-2 checkpoint 的 save/reload/resume 中 next batch、sampler、RNG、lambda、provider identity 通过；candidate 的 trace 最大差异约
+`5.62e-10`、trainable parameter 最大差异约 `1.65e-8`，在预检确定性容差内通过。
+
+本次 preflight 没有执行 300-step scientific Stage-A、科学 control/candidate comparison、DEV semantic selection、Stage B、scale/prior/generation、
+protected/test/sealed read 或 promotion；`training_authorized=false`、`stage_b_authorized=false`、`generation_readiness=not_ready`、
+`formal_promotion=false` 保持。attempt-01/02 为 harness 适配修复，attempt-03 为 CUDA DLL 环境阻断，attempt-04 至 attempt-08 为恢复比较器修复；
+均为 immutable 历史 artifacts，不覆盖 attempt-09 的最终 preflight 结果。V3 scientific 已在其后按独立授权一次性完成，结果见下一节。
+
+## 当前 V3 Stage-A scientific objective comparison 结果（2026-09-11）
+
+执行 scope=`EXECUTE_LIGHTGEN_2D_SEMANTIC_COMPLEX_OLS_OBJECTIVE_CORRECTION_V3` 已从冻结零 phase 初始状态完成一次 control/candidate 各 300 个真实 CUDA updates；
+没有重试、参数重选、Stage B、scale/prior/generation 或 protected/test/sealed read。结果为 `VALID_COMPLETED`，classification=
+`V3_SEMANTIC_OBJECTIVE_CORRECTION_NOT_SUPPORTED`。
+
+- [`scientific report`](../../outputs/20260911_v3/runs/lightgen_2d_semantic_complex_ols_objective_correction_v3_scientific_attempt_01/lightgen_2d_semantic_complex_ols_objective_correction_v3_scientific_report.v1.json)，SHA-256=`8d7930449a1872e685ad39dafa499d89fdcc1d6bb5a9317e7ba06c554f54f31a`；
+- [`scientific lineage`](../../outputs/20260911_v3/runs/lightgen_2d_semantic_complex_ols_objective_correction_v3_scientific_attempt_01/lightgen_2d_semantic_complex_ols_objective_correction_v3_scientific_lineage.v1.json)，SHA-256=`00127edfad105e077342a8eb270447ea577cd4c48b816fb0435c0e6edbfc237d`；
+- [`scientific entrypoint`](../../scripts/research/execute_lightgen_2d_semantic_complex_ols_objective_correction_v3_scientific.py)，SHA-256=`ca9eb8db3c7360f31da8d08ed6d0f61fa3bc61e8f0ce3de0f5a952803ff44ae4`。
+
+step-300 primary endpoint：Smooth control/candidate=`0.103/0.107`，`Delta_smooth=+0.004`；paired bootstrap `B=999`、seed=`271828` 的 95% CI=`[0, 0.009]`；
+image loss control/candidate=`0.0673580589/0.0726336428`，差值=`+0.0052755839`；Smooth per-class 最大下降未超过 `0.10`，raw-CMOS panels 均有效且非恒定。
+Frozen evaluator macro recall control/candidate=`0.136/0.283`，但 candidate 仍低于不可补偿的 `0.937` firewall，故 Stage-A firewall=`FAILED`。
+
+因此本次只证明该冻结 single-term feature objective 在本预算/条件下未达到预注册 objective-correction 支持标准；不支持 Stage-A eligibility 或 Stage-B。
+6 个 checkpoint、6 个固定 `[1000,1,200,200]` raw-CMOS panels 与 bootstrap artifact 已回读并通过 hash/shape/finite 核验。
+`training_authorized=false`、`stage_b_authorized=false`、`generation_readiness=not_ready`、`formal_promotion=false` 保持；不得自动重试或由失败结果进入下一阶段，
+任何新 objective/weight/architecture 实验必须重新定义合同并取得独立授权。
+
+## 当前 V3 no-update failure attribution 结果（2026-09-11）
+
+在上述有效科学失败之后，按 `RESOLVE_V3_OBJECTIVE_CORRECTION_FAILURE_ATTRIBUTION_V1` 对同一批冻结的 step-300
+control/candidate checkpoint 完成一次且仅一次 forward-only 诊断。Outer Gate=`V3_OBJECTIVE_FAILURE_ATTRIBUTION_RESOLVED`，结果为
+`VALID_COMPLETED`，classification=`PROVIDER_SPECIFIC_ALIGNMENT_SUPPORTED`。
+
+- [`attribution input`](../../outputs/20260911_v3/runs/lightgen_2d_semantic_complex_ols_objective_correction_failure_attribution_v1_attempt_05/lightgen_2d_semantic_complex_ols_objective_correction_failure_attribution_input.v1.json)，SHA-256=`0c4945ca91641e89de44af3c131106d5b8fa55d42dbe842244b57e1b40ced794`；
+- [`attribution report`](../../outputs/20260911_v3/runs/lightgen_2d_semantic_complex_ols_objective_correction_failure_attribution_v1_attempt_05/lightgen_2d_semantic_complex_ols_objective_correction_failure_attribution_report.v1.json)，SHA-256=`b3175da21e50448c5e6eeb0c2c36042f6b620c2510865c5059de26eb43277393`；
+- [`attribution lineage`](../../outputs/20260911_v3/runs/lightgen_2d_semantic_complex_ols_objective_correction_failure_attribution_v1_attempt_05/lightgen_2d_semantic_complex_ols_objective_correction_failure_attribution_lineage.v1.json)，SHA-256=`21c095047ce119f69795cb543acb5ac5fac5199380c383024ec8e6638cda9be5`。
+
+Matched fixed DEV：Frozen macro=`0.136→0.283`，Delta=`+0.147`，CI=`[0.119,0.17005]`；独立 Smooth macro=`0.103→0.107`，
+Delta=`+0.004`，CI=`[0,0.009]`；Frozen 128D feature distance Delta=`-0.1388709251`，CI=`[-0.1496474,-0.1278142]`。
+2×2 cross-swap 的 Smooth macro 为 `0.103/0.107/0.102/0.107`（control+control/candidate+candidate/candidate+control/control+candidate），
+四条 raw-CMOS 路径均 finite/structurally valid/nonconstant。gauge `S(z)∈R^200` effective rank=`15.5868/15.8340`，between/within ratio=`0.959968/0.961896`；
+固定 TRAIN centroid→DEV nearest-centroid macro=`0.761→0.763`，Delta=`+0.002`，CI=`[-0.005,0.010]`。因此 provider 的改善没有转移到独立 evaluator，
+且 centroid/geometry 未建立 material latent semantic gain；这只是 failure attribution，不是语义生成、Stage-A eligibility 或 Stage-B 证据。
+
+诊断无 optimizer、backward 或 optical update；TRAIN centroid 使用每类 source-index-sorted 前 100 行，DEV 使用原固定 1000 行，calibration/protected/test/sealed read 均为 0。
+Frozen Stage-A firewall 仍为 `0.937`，candidate=`0.283`，`stage_b_authorized=false`；不得自动重训、重试、scale/prior/generation 或 formal promotion。
+
+## 当前 V4 fixed-OLS generator-recoverability contract 与工程预检（2026-09-11）
+
+V3 scientific failure 与 attribution 已解析后，定义了一个且仅一个 fixed-OLS generator-recoverability experiment。它冻结 V3
+CONTROL step-300 encoder 与真实复数 `z∈C^100`，恢复 corrected-V2 runtime 的原始 zero-phase generator，仅训练
+`generator.phase`，目标固定为 `L_generator=L_image`。100-port complex OLS、mandatory modal projection/re-emission、
+`T=I_100`、shared `W_OLS`、2048 grid、TRAIN order、Adam `lr=1e-3` 与不可降低的 `0.937` Stage-A firewall 均不变；semantic
+provider 不提供训练梯度，仅作 frozen/evaluation-only smoke。
+
+V4 authority ID=`DEFINE_LIGHTGEN_2D_FIXED_OLS_GENERATOR_RECOVERABILITY_CONTRACT_V4`，结果为
+`READY/valid_completed`，classification=`DEFINE_LIGHTGEN_2D_FIXED_OLS_GENERATOR_RECOVERABILITY_CONTRACT_V4_READY`，
+Outer Gate=`FIXED_OLS_GENERATOR_RECOVERABILITY_SUPPORTED`。合同为
+[`lightgen_2d_fixed_ols_generator_recoverability_contract.v4.json`](../../outputs/20260911_v4/runs/lightgen_2d_fixed_ols_generator_recoverability_contract_v4_attempt_01/lightgen_2d_fixed_ols_generator_recoverability_contract.v4.json)，
+SHA-256=`d46740ded4db58d7d9f0caa8acaf40942d03dc3407d9611d24efcaa12d3036b8`。
+
+合同绑定 V3 CONTROL checkpoint SHA-256=`a42a43fdf99cf12d9abd1917a6d025fc2fcb9ecee39f0c05429dd8d7a8870079`、encoder.phase
+SHA-256=`61648ce609ce4e62f890112faf3f3f91ffa5c018e630ec2d451a3d19c11ed9ca`；fresh original zero-phase runtime state
+SHA-256=`0f90086cf26a179905a27a5a519f7599de256e4f4225f7798f24aeed086eb813`，generator.phase zero tensor SHA-256=
+`68c468f955fb6606cd38278ff4ee4fb9f4a0c6c14337f59c72fc9be2eabb32d9`。V4 trainable surface 只有 `generator.phase` 的
+`20,000` 参数；encoder `20,000` 参数、OLS frozen state `2,010,000` scalars 均冻结。该 contract 是 definition-only，
+`training_authorized=false`，不打开 scientific run、Stage B、generation 或 promotion。
+
+最终 accepted engineering preflight 为 attempt-02，结果为
+`valid_completed/AUTHORIZABLE`，classification=`FIXED_OLS_GENERATOR_RECOVERABILITY_PREFLIGHT_AUTHORIZABLE`：
+
+- [`input`](../../outputs/20260911_v4/runs/lightgen_2d_fixed_ols_generator_recoverability_preflight_v4_attempt_02/lightgen_2d_fixed_ols_generator_recoverability_preflight_input.v1.json)，SHA-256=`ef3388a575c1eb648baef1c60e8932d6d0d51805af09a784d68dc14e7739e626`；
+- [`report`](../../outputs/20260911_v4/runs/lightgen_2d_fixed_ols_generator_recoverability_preflight_v4_attempt_02/lightgen_2d_fixed_ols_generator_recoverability_preflight_report.v1.json)，SHA-256=`c2b0d852e1178915523ceee21172b10b8d462b6d0096ecf87c8443c410c7b7fb`；
+- [`lineage`](../../outputs/20260911_v4/runs/lightgen_2d_fixed_ols_generator_recoverability_preflight_v4_attempt_02/lightgen_2d_fixed_ols_generator_recoverability_preflight_lineage.v1.json)，SHA-256=`139fd231c73cb5d8f90e74508e6d8d13645b7a6c9c30d839ad7311cbba642da8`；
+- [`step-2 checkpoint`](../../outputs/20260911_v4/runs/lightgen_2d_fixed_ols_generator_recoverability_preflight_v4_attempt_02/lightgen_2d_fixed_ols_generator_recoverability_preflight_step_2_checkpoint.v1.pt)，SHA-256=`00bd0af0f2c8bbcded39215bb6cf53bfc0fcd64efb952d4b693557ca0308dcec`；
+- [`preflight entrypoint`](../../scripts/research/execute_lightgen_2d_fixed_ols_generator_recoverability_v4.py)，SHA-256=`8f99e098e121ab3dc8b667ddcd9c1dfbf57d1687fbfd8b87e166cf3bbb2d5b73`。
+
+3-step continuous generator-only CUDA trace 通过：generator gradient norm=`0.0009246/0.0006487/0.0008156`，encoder gradient=`None`，
+generator update norm=`0.13147/0.10217/0.08960`，encoder/OLS 每步 unchanged，modal projection/T=I_100/W_OLS provenance 有效。
+canonical frozen-encoder z 与 cached-z replay 最大差异=`0`，raw replay 最大差异=`0`；step-2 save/reload/resume 的 step-3 loss、gradient、
+update、raw、runtime state 与 optimizer-state 最大差异均=`0`。Frozen/Smooth evaluator 只作 TRAIN smoke no-grad forward，状态未变且无梯度；
+TRAIN consumed 30 rows，DEV values、protected/test/sealed 均未读。
+
+attempt-01 因 complex state comparator 的校验实现发出不完整复数比较警告，不作为最终证据；修复后 attempt-02 才是 accepted authority。
+V4 preflight 仅证明未来 bounded scientific entrypoint 的工程边界可执行，不是 `FIXED_OLS_GENERATOR_RECOVERABILITY_SUPPORTED` 科学结果，
+不证明 final LightGen/BOGT/generation readiness，不授权 Stage B、scale/prior/generation 或 formal promotion。下一步若要执行科学 300-step
+实验，必须基于本 V4 contract 取得独立明确授权；不得自动启动。
+
+## 当前 V4 scientific attempt-02 结果（2026-09-11）
+
+用户随后独立明确授权 `EXECUTE_LIGHTGEN_2D_FIXED_OLS_GENERATOR_RECOVERABILITY_V4`，授权仅限新的
+scientific attempt-02。attempt-01 保留为不可覆盖的 `BLOCKED/INVALID_HARNESS`，scientific steps=`0/300`；其 report SHA-256=
+`9887f93bd942c9e4cf21017aa5e443864bc4bcc8862390bf41023f13184f62b2`，lineage SHA-256=`70780327719c6314c7515db3386d23d806294b5be5021baca6f81225b875ec81`。
+修复后的 entrypoint SHA-256=`a2a54556348deddc21a5ae0caf5c1343c9f6736f73d211aa33a1958ffb33375b`；bounded reopening check 的
+contract、preflight、V3 CONTROL、zero-phase 与 RNG identity 全部通过。
+
+attempt-02 精确完成 300 个真实 CUDA generator-only updates，结果为
+`VALID_COMPLETED`，classification=`FIXED_OLS_GENERATOR_RECOVERABILITY_NOT_SUPPORTED`。产物为：
+
+- [`scientific input`](../../outputs/20260911_v4/runs/lightgen_2d_fixed_ols_generator_recoverability_scientific_attempt_02/lightgen_2d_fixed_ols_generator_recoverability_scientific_input.v1.json)，SHA-256=`8acd28ef99983e97d37f1d97a7ca39bf50d159ad358da520dbdfdae04a4ba2f9`；
+- [`scientific report`](../../outputs/20260911_v4/runs/lightgen_2d_fixed_ols_generator_recoverability_scientific_attempt_02/lightgen_2d_fixed_ols_generator_recoverability_scientific_report.v1.json)，SHA-256=`fdfeb8d800a2d806f3ecc56503ef8d66cc68f06de6cd9e47aa4eab7c93ca2784`；
+- [`scientific lineage`](../../outputs/20260911_v4/runs/lightgen_2d_fixed_ols_generator_recoverability_scientific_attempt_02/lightgen_2d_fixed_ols_generator_recoverability_scientific_lineage.v1.json)，SHA-256=`6089bc41797580aa95149b0478a0e25190a450e00ec4a47c886b756f0187f9e6`。
+
+运行条件为 RTX 3060 Laptop GPU、compute capability=`8.6`、PyTorch=`2.5.1`、CUDA build=`12.1`、grid=`2048`、
+batch=`10`、Adam `lr=1e-3`；仅 `generator.phase` 的 `20,000` 参数可训练，encoder、OLS/runtime、Frozen/Smooth evaluator
+均保持冻结/unchanged，semantic provider gradient=`false`。初始 RNG digest 与冻结 authority 均为
+`6241d4343843975f8306769ff6ff05c0cb6af5b86956b545892592cf0e65ea30`，CPU/CUDA state identity 与
+`cuda_available=true` 均通过。
+
+固定 DEV trajectory：step 100/200/300 的 TRAIN image loss 为
+`0.0656021386/0.0654420778/0.0698628575`，DEV image loss 为
+`0.0693966536/0.0682117225/0.0673444915`，Smooth macro 为
+`0.105/0.104/0.103`。step-300 相对 V3 CONTROL 的 Smooth=`0.103→0.103`，delta=`0`，paired bootstrap
+95% CI=`[0,0]`，per-class delta 全部为 `0`，最大 degradation=`0`；DEV image-loss delta=`-0.0000135674`；raw-CMOS
+finite/shape/structured/nonconstant 全部通过。
+
+Gate 判定为：Smooth improvement=`FAIL`（`0 < 0.05`）；bootstrap lower=`FAIL`（`0` 不大于 `0`）；per-class preservation=`PASS`；
+image-loss tolerance=`PASS`；raw-CMOS validity=`PASS`。因此 fixed-OLS recoverability Outer Gate 未通过。独立 Stage-A
+firewall 为 Smooth=`0.103 < 0.937`，`STAGE_A_FIREWALL_FAILED`；Stage B 仍未授权。
+
+数据 firewall：TRAIN optimization=`55,000`，DEV evaluation selection=`1,000`（DEV role=`5,000`），calibration/protected/
+test/sealed=`0`。没有执行 Stage B、formal scale extraction、prior shaping、sampled-OLS generation、generation acceptance 或
+formal promotion；`training_authorized=false`、`stage_b_authorized=false`、`generation_readiness=not_ready`、
+`formal_promotion=false`。合同规定的 attempt-02 已完成且不得 retry；任何后续 objective、architecture 或 generation 动作必须新定义合同并重新取得独立授权。
+
+## 当前 research provenance 治理：HASH_ON_TRUST_BOUNDARY_V2（2026-09-11）
+
+本轮治理增量不执行 V4 conditionality diagnosis。普通 research handoff 现在默认使用 semantic authority ID、producer
+task/attempt 与 Git branch/HEAD；完整 child SHA-256 仍保留在 machine manifest/registry、formal evidence、checkpoint
+transfer 与 write-once artifact boundary，只有真实 consumer 要求且身份域相同时才核验。
+
+`file_byte_sha256`、`state_dict_tree_sha256`、`tensor_content_sha256`、`semantic_state_identity` 与 `manifest_sha256`
+互不等价。未被 consumer 要求的 hash 关系记录为 `NOT_REQUIRED` / `NOT_APPLICABLE`；跨域 hash 不一致不再自动变成
+`INVALID_HARNESS` 或 `HARD_BLOCKER`，同域且明确要求的 authoritative mismatch 仍 fail-closed。
+
+V4 conditionality diagnosis attempt-01 的 immutable 结果保持 `INVALID`：`diagnosis_executed=false`、scientific forward=`0`、
+TRAIN/DEV diagnostic reads=`0`。入口的错误 Smooth file-SHA/state-tree-SHA equality 已修正，并由 focused regression tests 覆盖；
+没有 retry、没有科学结论，`V4_GENERATOR_CONDITIONALITY_RESOLVED` 仍 unresolved。
+
+Phase A 已在新治理 HEAD `1338ef5bad1936edd1f98fb3577933ed9bbd524a` 形成唯一 focused commit。随后按授权对
+`DIAGNOSE_V4_FIXED_OLS_GENERATOR_CONDITIONALITY_V1` 执行 attempt-02 一次；它在 authority resolution 阶段发现不可变 V4
+contract 仍要求旧 HEAD `383197a930dd48f98294120f8cf867444f994f85`，故结果为 `INVALID`，没有写入 diagnosis input、
+scientific forward=`0`、TRAIN/DEV diagnostic reads=`0`，没有 semantic classification。report SHA-256=
+`db2d6cfbe98cf7a0b732d6c9ae09d69931e63e77c7250149cdd3ce44d479d29c`，lineage SHA-256=
+`8f23bca691b459d1ee24e78dd3e6131e3bb3cde1139a536ab52fcb0373ce09ba`。该不可变 attempt-02 不重试；
+`V4_GENERATOR_CONDITIONALITY_RESOLVED` 仍 unresolved，未授权 training、Stage B、generation 或 formal promotion。
+
+随后完成的 provenance consumer 修复已在 HEAD `1338ef5bad1936edd1f98fb3577933ed9bbd524a` 上验证：历史 V4
+contract 的 `git.head` 作为 producer/contract provenance 保留，consumer branch/HEAD 单独记录；没有显式
+`consumer_head_exact_required=true`（或等价 exact-source-lock）时，producer/consumer HEAD 差异允许。显式 exact lock
+仍 fail-closed；V4 contract 及 attempt-01/02 immutable artifacts 未修改。本轮没有执行 V4 diagnosis 或任何 scientific
+forward/data read，仅完成 focused tests、compile、Ruff 和 diff check；`V4_GENERATOR_CONDITIONALITY_RESOLVED` 仍 unresolved。
+
+## 当前 V4 generator conditionality diagnosis attempt-03（2026-09-11）
+
+按独立授权执行 `DIAGNOSE_V4_FIXED_OLS_GENERATOR_CONDITIONALITY_V1` attempt-03 一次且仅一次；consumer HEAD=
+`054026ad3b44558b108888178ac2fb58aebb2f52`，历史 V4 contract producer HEAD=`383197a930dd48f98294120f8cf867444f994f85`，
+`consumer_head_exact_required=false`，两者分离记录。结果为 `VALID_COMPLETED`，primary classification=
+`V4_GENERATOR_CONDITIONALITY_MIXED_OR_UNRESOLVED`。
+
+Matched MSE mean/median=`0.0673444926/0.0652310392`；within pairing `Delta` mean/median=`0.0056112921/0.0023668033`，
+CI=`[0.0048836686,0.0063864972]`，ranking=`0.632`，raw RMS mean=`0.0961877042`；cross pairing `Delta` mean/median=
+`0.0093417037/0.0059634257`，CI=`[0.0083926659,0.0102811366]`，ranking=`0.720`，raw RMS mean=`0.1161952598`；
+`Delta_class` mean=`0.0037304116`，CI=`[0.0030554547,0.0044253468]`。预注册 checks 为 collapse=false、
+class_conditioning=false、instance_conditioning=false，因此不能唯一判定 class-level 或 instance-level conditioning。
+Smooth 仅 descriptive：matched/within/cross target-label macro=`0.103/0.103/0.098`，independent semantic rendering
+仍未建立。TRAIN template=`55,000`、DEV role=`5,000`、selection=`1,000`，calibration/protected/test/sealed=`0`。
+
+运行边界保持：CUDA:0、RTX 3060 Laptop、8.6、torch 2.5.1/CUDA 12.1、grid=`2048`、batch=`10`、modal projection、
+`T=I_100` 与 shared `W_OLS` 均通过；optimizer/backward/optical update/retraining/Stage B/scale/prior/generation/
+formal promotion 均未执行。report SHA-256=`93623cdc1d91f7418afd06ef49e53677c8f0c001801d8ae99c97aae738902e50`，
+lineage SHA-256=`2ac4a8d23d5bc0228032597f94d541e12f7ebd8a60c501cb6b1313ec06c47aea`，input SHA-256=
+`604cb8cef33e64e51a1e95a70fc5f3e3fe751849cbbdef0cddd1fd680f597b7b`。attempt-01/02 不变，不 retry；
+`V4_GENERATOR_CONDITIONALITY_RESOLVED` 仍 unresolved。
+
+## 当前 OLS class-direction transfer diagnosis attempt-01（2026-09-11）
+
+用户独立授权 `DIAGNOSE_COMPLEX_OLS_CLASS_DIRECTION_TO_OPTICAL_OUTPUT_TRANSFER_V1` 一次且仅一次，范围为
+forward-only/no-update。当前 consumer HEAD=`054026ad3b44558b108888178ac2fb58aebb2f52`，branch 匹配；
+历史 producer HEAD 与 consumer HEAD 按 `HASH_ON_TRUST_BOUNDARY_V2` 分离记录。新入口在 authority/runtime loading
+阶段调用不存在的 `_load_evaluators` helper，尚未进入 TRAIN/DEV role reconstruction、encoder forward、OLS centroid
+construction、generator forward 或 Smooth evaluation，故结果为 `INVALID/invalid_harness`，classification=
+`INVALID_OLS_CLASS_DIRECTION_TRANSFER_UNEXPECTED_EXECUTION_ERROR`，不是四类科学分类。
+
+本次 `diagnosis_executed=false`、scientific forward=`0`、TRAIN/DEV diagnostic reads=`0`、input 未写入；optimizer、
+backward、optical update、training、V4 retry、Stage B、scale/prior/sampled generation、protected/test/sealed read
+与 formal promotion 均为 NO。按 one-shot 规则不修复后重跑；Outer Gate
+`OLS_CLASS_DIRECTION_TO_OPTICAL_OUTPUT_TRANSFER_RESOLVED` 未作科学判定，V4
+`V4_GENERATOR_CONDITIONALITY_RESOLVED` 继续 unresolved。
+
+产物：[`report`](../../outputs/20260911_v4/runs/lightgen_2d_fixed_ols_class_direction_to_optical_output_transfer_v1_attempt_01/lightgen_2d_fixed_ols_class_direction_to_optical_output_transfer_report.v1.json)，
+SHA-256=`25f2fc26a0aee688721e6ae9a2229db52a0b5d4b101cc0f9bbbf254e7dc2bae7`；[`lineage`](../../outputs/20260911_v4/runs/lightgen_2d_fixed_ols_class_direction_to_optical_output_transfer_v1_attempt_01/lightgen_2d_fixed_ols_class_direction_to_optical_output_transfer_lineage.v1.json)，
+SHA-256=`bffda2cc3210fa7fad63d5d9df9af1971ea2037a8288831be97333f810fec73c`。执行时入口
+[`script`](../../scripts/research/diagnose_lightgen_2d_fixed_ols_class_direction_to_optical_output_transfer_v1.py)
+SHA-256=`95b85722fff33c09da83ac56024a7faa381c22f4cc24a83984d72fcf4a500697`。未改写任何既有 V3/V4 contract、
+checkpoint、scientific report 或 INVALID history；未来若要修复并重开，必须重新授权并新建 attempt。
+
+## 当前 OLS class-direction transfer diagnosis attempt-02（2026-09-11）
+
+用户随后明确授权 `DIAGNOSE_COMPLEX_OLS_CLASS_DIRECTION_TO_OPTICAL_OUTPUT_TRANSFER_V1` scientific attempt-02 一次且仅一次；
+consumer HEAD=`a7cd8e082ad1b09c16c5c70fb38f0459cc583779`，入口已改用 canonical V4 scientific consumer evaluator loader。authority resolution
+完成后，入口在 CUDA device preflight 的 complex/FFT probe 停止，底层 `nvrtc-builtins64_121.dll` 无法打开，结果为
+`INVALID/invalid_harness`，没有科学分类。
+
+本次 `diagnosis_executed=false`、scientific forward=`0`、TRAIN/DEV scientific reads=`0`、input 未写入；optimizer、backward、optical update、
+training、V4 retry、Stage B、scale/prior/sampled generation、protected/test/sealed read 与 formal promotion 均为 NO。attempt-02 按
+one-shot 规则消费且不重试；Outer Gate `OLS_CLASS_DIRECTION_TO_OPTICAL_OUTPUT_TRANSFER_RESOLVED` 仍未作科学判定，
+`V4_GENERATOR_CONDITIONALITY_RESOLVED` 继续 unresolved。
+
+产物：[`report`](../../outputs/20260911_v4/runs/lightgen_2d_fixed_ols_class_direction_to_optical_output_transfer_v1_attempt_02/lightgen_2d_fixed_ols_class_direction_to_optical_output_transfer_report.v1.json)，
+SHA-256=`e35b3f00de4b3dc48394a384c91627169a4c835809e2951211eee0ebd67243c2`；[`lineage`](../../outputs/20260911_v4/runs/lightgen_2d_fixed_ols_class_direction_to_optical_output_transfer_v1_attempt_02/lightgen_2d_fixed_ols_class_direction_to_optical_output_transfer_lineage.v1.json)，
+SHA-256=`c70a8fef611e683da7e4b245f48b0daf95ac396f209608a2d041cca208c4cc64`。执行时入口工作树 SHA-256=`59e7a882e324378ab2011d940f979d7a7f24ff07139a19a9ab65b34da74f835d`；
+attempt-01 及其修复历史保持 immutable。
+
+## 当前 class-direction 运行时工程 readiness 核查（2026-09-11）
+
+本轮没有重试 class-direction attempt-02，也没有执行 attempt-03。隔离复现显示 `_cuda_device_facts` 的具体失败操作是 CUDA complex
+`torch.exp(complex_probe)`；complex allocation、`torch.polar` 与 complex FFT 均通过。真实 LightGen-aligned runtime 的 `[2,100]` 合成
+complex OLS 前向在未修复环境中也因同一 `nvrtc-builtins64_121.dll` 失败，位置落在实际 generator complex path；故这是 CUDA runtime DLL 搜索路径
+问题，不是非代表性的 device-facts microprobe。
+
+当前环境的 `sys.prefix/bin` 已有 `nvrtc-builtins64_121.dll`。class-direction 入口现只在当前 Python 进程把该目录加入 `PATH`，不下载/替换 DLL、
+不重装 PyTorch/CUDA；目录或 DLL 缺失时 fail-closed 为 `CUDA_RUNTIME_ENVIRONMENT_BLOCKER_CONFIRMED`。修复后按
+authority resolution → CUDA facts → V4 step-300 checkpoint/runtime assembly → Frozen/Smooth evaluator load → synthetic smoke 顺序完成 readiness：
+production grid=`2048`，真实 `W_OLS`、`T=I_100`、modal projection/re-emission、两层 generator 与 output relay 均执行；raw CMOS 为
+`cuda:0/[2,1,200,200]/float32`，finite/nonconstant，runtime state unchanged，gradients none。
+
+该 smoke 只使用纯合成 complex OLS，科学数据角色未打开；TRAIN/DEV/calibration/protected/test/sealed reads=`0`，scientific forward=`0`，
+optimizer/backward/optical update=`0`，并在科学数据入口前停止。新增 focused regression 覆盖环境路径、缺失 DLL fail-closed、NVRTC runtime failure blocker
+映射和 readiness stop；focused tests=`8 passed`，`py_compile`、Ruff、`git diff --check` 通过。此结果仅为工程 readiness，不是科学 class-direction 结果，
+不改变 `OLS_CLASS_DIRECTION_TO_OPTICAL_OUTPUT_TRANSFER_RESOLVED` 未判定、`V4_GENERATOR_CONDITIONALITY_RESOLVED` unresolved、training/Stage B/
+generation/formal promotion 关闭的状态。
+
+本轮从 HEAD=`a7cd8e082ad1b09c16c5c70fb38f0459cc583779` 完成 focused commit
+`9f239d9dd1971872a7d5b2345ae11130574d48e4`（`research: add CUDA runtime readiness smoke`）。既有状态文档修改与 7 个此前未跟踪研究脚本仍保持未提交，未被本轮提交或清理。
+
+## 当前 OLS class-direction transfer diagnosis attempt-03（2026-09-11）
+
+用户独立明确授权一次且仅一次
+`DIAGNOSE_COMPLEX_OLS_CLASS_DIRECTION_TO_OPTICAL_OUTPUT_TRANSFER_V1_ATTEMPT_03`。在旧入口 self-binding
+`a7cd8e…` 与授权当前 consumer HEAD 不一致的情况下，仅将入口自绑定重绑定到当前 HEAD=
+`9f239d9dd1971872a7d5b2345ae11130574d48e4`；没有改变冻结 intervention、数据角色、统计或 acceptance 规则。
+authority resolution、CUDA facts、V4 step-300 runtime/evaluator assembly 与 production-grid synthetic readiness 通过后，
+科学阶段执行了 `5,800` 次 forward（TRAIN encoder=`5,500`，DEV canonical/replay/shifted 路径已进入）。
+
+入口随后在 raw-response summary 计算中调用 V4 helper 的不存在属性 `_raw_summary`，错误为
+`AttributeError: module 'lightgen_v4_conditionality_helper_for_class_direction' has no attribute '_raw_summary'`。
+因此结果为 `INVALID/invalid_harness`，classification=`INVALID_OLS_CLASS_DIRECTION_TRANSFER_UNEXPECTED_EXECUTION_ERROR`；
+这是 partial scientific execution 的 harness 失败，不构成四类科学分类。没有可用的 raw/template/Smooth summary、bootstrap、十个 pair summary
+或 broad-vs-pair-dominated 结论；Outer Gate=`OLS_CLASS_DIRECTION_TO_OPTICAL_OUTPUT_TRANSFER_RESOLVED` 未判定。
+
+不可变产物：
+
+- [`input`](../../outputs/20260911_v4/runs/lightgen_2d_fixed_ols_class_direction_to_optical_output_transfer_v1_attempt_03/lightgen_2d_fixed_ols_class_direction_to_optical_output_transfer_input.v1.json)，SHA-256=`7b73020e355badbc279b2b1edfe346bdaef6019620bf5f2dc467b789dd631841`；
+- [`report`](../../outputs/20260911_v4/runs/lightgen_2d_fixed_ols_class_direction_to_optical_output_transfer_v1_attempt_03/lightgen_2d_fixed_ols_class_direction_to_optical_output_transfer_report.v1.json)，SHA-256=`a0b1032428c78c9f02b7db005732886186c1f68d3335c35602d1d01d2f6c025c`；
+- [`lineage`](../../outputs/20260911_v4/runs/lightgen_2d_fixed_ols_class_direction_to_optical_output_transfer_v1_attempt_03/lightgen_2d_fixed_ols_class_direction_to_optical_output_transfer_lineage.v1.json)，SHA-256=`03eb6a38d010a59de06ad18274ef186fc847c8fe94deb6553646389fc28f4876`。
+
+Input role boundary: source=`60,000` loaded、TRAIN=`55,000`、DEV role=`5,000`、fixed selection=`1,000`；calibration/protected/official test/sealed=`0`。
+Runtime target was CUDA:0 / RTX 3060 Laptop / capability=`8.6` / PyTorch=`2.5.1` / CUDA build=`12.1` / grid=`2048`，with frozen
+`T=I_100`、shared `W_OLS`、modal projection/re-emission and V4 generator. `optimizer_created=false`、`backward_executed=false`、
+`optical_update_executed=false`、`training_executed=false`；Stage B、scale/prior/sampled generation、protected/test/sealed read 与 formal promotion 均未执行。
+
+attempt-03 已按 one-shot 规则消费，不重试；`training_authorized=false`、`stage_b_authorized=false`、`generation_readiness=not_ready`、
+`formal_promotion=false` 保持，`V4_GENERATOR_CONDITIONALITY_RESOLVED` 仍 unresolved。任何修复/重开必须重新定义 bounded contract、取得独立授权并使用新 attempt；
+本次 partial forward 不能授权训练、Stage B、generation 或 formal promotion。
+
+## 当前交接结果：OLS class-direction transfer harness-failure replication（2026-09-11）
+
+用户独立明确授权
+`REPLICATE_COMPLEX_OLS_CLASS_DIRECTION_TO_OPTICAL_OUTPUT_TRANSFER_AFTER_HARNESS_FAILURE_V1`，仅执行一次冻结语义的
+forward-only/no-update replication。它不是 attempt-03 retry；attempt-03 的 `INVALID/invalid_harness`、scientific forward=`5800` 与
+`ATTEMPT03_NO_FORWARD_RECOVERY_UNAVAILABLE` 保持 immutable。replication 从稳定化 runner consumer HEAD=
+`9a72e0bcf2de12ab9a0caa7151f273de76768dc7` 执行，starting/ending HEAD 相同，历史 attempt-01/02/03 未改写。
+
+唯一结果为 `VALID_COMPLETED`，classification=`OLS_CLASS_DIRECTION_TO_OPTICAL_OUTPUT_TRANSFER_SUPPORTED`，Outer Gate=
+`OLS_CLASS_DIRECTION_TO_OPTICAL_OUTPUT_TRANSFER_RESOLVED`。前置 authority resolution、canonical evaluator loader、CUDA readiness、真实
+`2048` production-grid synthetic LightGen smoke 与 fresh write-once output path 均通过；设备为 CUDA:0、RTX 3060 Laptop、capability=`8.6`、
+PyTorch=`2.5.1`、CUDA build=`12.1`。固定 runtime 为 modal projection/re-emission、`T=I_100`、shared `W_OLS` 与 V4 step-300 generator。
+
+数据边界为 source=`60,000` loaded、TRAIN=`55,000`、DEV role=`5,000`、fixed selection=`1,000`（每类 `100`）；calibration/protected/official
+test/sealed 均为 `0`。总 scientific forward=`5,800`，其中 TRAIN encoder=`5,500`、DEV canonical/replay/shifted=`100/100/100`，Smooth evaluations=`200`。
+optimizer/backward/optical update/training/Stage B/scale/prior/sampled generation/protected/test/sealed/formal promotion 均为 NO。
+
+冻结 intervention 为 `t=(y+1) mod 10`、`z_shift=z-mu_y+mu_t`、`alpha=1.0`、无 renormalization。z、z_shift、centroid direction 与 raw outputs 均 finite；
+raw absolute RMS change mean/median=`0.1127222995/0.1075329755`，relative mean/median=`0.8655350143/0.8446657972`，raw shape=`[1000,1,200,200]`，
+structured/nonconstant=true。Template Delta mean/median=`0.0035271140/0.0021154392`，95% CI=`[0.0029781869,0.0040915711]`，fraction >0=`0.600`；
+Smooth Delta mean/median=`0.8398663402/1.4927580953`，95% CI=`[0.6562327564,1.0271191061]`，fraction >0=`0.605`；两者 primary pass 均为 true。
+十个 pair 中 template 与 Smooth 均有 `7/10` 正向 pair means，broadness=`broad`、非 pair-dominated；完整 pair 表见 [当前状态](../CURRENT_STATUS.md)。
+
+Sufficient observations 已在 bootstrap/classification/report assembly 前 write-once 写入并回读验证：
+[`artifact`](../../outputs/20260911_v4/runs/lightgen_2d_fixed_ols_class_direction_to_optical_output_transfer_replication_v1_attempt_01/lightgen_2d_fixed_ols_class_direction_to_optical_output_transfer_sufficient_observations.v1.pt)，
+SHA-256=`0cce9236ef8ad79cb4898b4ed9c3dec121d50e9060d7dffdbf1bcb4274f0e87e`；1000 samples、每类 100、selection identity、target rule、12 个 tensor 的
+schema/shape/set/hash/reload 均通过。完整 report/lineage 为：
+[`report`](../../outputs/20260911_v4/runs/lightgen_2d_fixed_ols_class_direction_to_optical_output_transfer_replication_v1_attempt_01/lightgen_2d_fixed_ols_class_direction_to_optical_output_transfer_report.v1.json)，
+SHA-256=`798e5af37f9d5e477fc395bd8230d17f25a20e56b0371f7376cfd1fbb7189883`；
+[`lineage`](../../outputs/20260911_v4/runs/lightgen_2d_fixed_ols_class_direction_to_optical_output_transfer_replication_v1_attempt_01/lightgen_2d_fixed_ols_class_direction_to_optical_output_transfer_lineage.v1.json)，
+SHA-256=`d81c3829c8ae911d4aa0fd7620fca06d6dbecc16b3ee0292e024af5a76fa4496`。显式记录 replication identity、attempt-03 关系、历史事实及
+FACT / MODEL_ASSUMPTION / DESIGN_DECISION 的 write-once envelope 为：
+[`replication report`](../../outputs/20260911_v4/runs/lightgen_2d_fixed_ols_class_direction_to_optical_output_transfer_replication_v1_attempt_01/lightgen_2d_fixed_ols_class_direction_to_optical_output_transfer_replication_report.v1.json)，
+SHA-256=`f5b1b252b5815578fd09367258df66e7ba8f3ea008fc889cb30c23ec8d18c249`；
+[`replication lineage`](../../outputs/20260911_v4/runs/lightgen_2d_fixed_ols_class_direction_to_optical_output_transfer_replication_v1_attempt_01/lightgen_2d_fixed_ols_class_direction_to_optical_output_transfer_replication_lineage.v1.json)，
+SHA-256=`7a75ddb6008a65057c86e658104b6ccf61b14bd9091382f2101d55dae70440e7`。
+
+FACT：上述数据边界、forward count、finite/shape/raw、Delta、bootstrap、pair 与治理标志是本次 measured observations；attempt-03 是 post-forward harness INVALID，且不可由其旧 artifacts recovery。
+MODEL_ASSUMPTION：两类 evidence 的 broad 正向响应支持 class-direction transfer interpretation，但不证明 generator capacity、V4 conditionality、语义生成或 Stage-A/Stage-B eligibility。
+DESIGN_DECISION：固定 `t=(y+1) mod 10`、`alpha=1`、centroid replacement、full complex `C^100` gauge、无 renormalization 与原统计/分类规则。
+V4 `V4_GENERATOR_CONDITIONALITY_RESOLVED` 仍 unresolved；本 replication 不授权 training、Stage B、generation、scale extraction 或 formal promotion。
 
 ## 当前交接结果：LightGen 2D real-path control diagnosis 已完成
 
@@ -78,8 +1127,9 @@ minimum free=`557,125,632` bytes，storage feasible。
 本次 data firewall 为 TRAIN=`55,000`、DEV semantic smoke=`1,000`、calibration/protected/test/sealed=`0`，没有 300+300
 scientific training、generation、heldout evaluation 或 promotion。`training_authorized=false`、`formal_promotion=false`、
 `generation_readiness=not_ready` 不变。attempt-02 的 authority blocker 仍保持 historical/superseded-by-authority-correction，
-attempt-03 至 attempt-06 的 harness 修复 artifacts 也未覆盖。下一动作只能是独立明确授权后的
-`EXECUTE_LIGHTGEN_2D_SEMANTIC_COMPLEX_OLS_TRAINING_V2`，不得自动启动。
+attempt-03 至 attempt-06 的 harness 修复 artifacts 也未覆盖。本段末尾“下一动作是
+`EXECUTE_LIGHTGEN_2D_SEMANTIC_COMPLEX_OLS_TRAINING_V2`”仅是该 preflight 时点的历史记录；V2 Stage-A attempt-02 已完成，当前动作以顶部
+V3 objective-correction contract 为准，且不得自动启动。
 
 ## 最新实现结果：LightGen 2D semantic complex-OLS training consumer V2（2026-09-10）
 
@@ -428,6 +1478,8 @@ candidate artifacts；保留已有研究修改，不改 machine governance、run
 
 以下完整保留整理前正文。内部“当前”“下一步”和各阶段 flags 都属于原记录时点，
 不覆盖上方目标增量、当前状态页或机器证据。后续交接只更新本页上方，逐次实验正文进入实验历史。
+
+> **Scope:** `HISTORICAL_RECORD` / `SUPERSEDED_CURRENT_TEXT`。以下 details 只保留其原记录时点的 provenance；其中的“当前”“下一步”和 flags 不得覆盖本页顶部 2026-09-18 current block，也不构成当前执行授权。
 
 <details>
 <summary>展开整理前交接（历史状态与证据导航）</summary>
@@ -909,6 +1961,8 @@ score-geometry resolution 与两轮 selector calibration 均已迁移到唯一�
 允许动作和合同入口；S3 条目中的历史“下一步”不构成当前授权。
 
 ## FINAL_MAINLINE_CLOSEOUT：H-LOMA-CBOGT Scaled-Chen（2026-09-03）
+
+> **Scope:** `HISTORICAL_CLOSED` / `SUPERSEDED` for the project-level current route. The closeout facts remain valid for the Scaled-Chen line; its “current phase” and “next scientific task” are historical as of 2026-09-03 and are superseded by the M0 authority at the top of this document.
 
 ### Final state
 

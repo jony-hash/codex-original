@@ -219,6 +219,12 @@ HISTORY_CONTEXT.md
 CHAT_INDEX.md
 ```
 
+上述是 Sources 包内的输出文件名；canonical source path 分别为
+`docs/PROJECT_MEMORY.md`、`docs/CURRENT_STATUS.md`、
+`docs/status/current_handoff.md`、`docs/architecture/v2_runtime.md`，以及外部
+`C:\Users\24567\Documents\Codex\codex-original-history-context\HISTORY_CONTEXT.md` 和同目录的
+`CHAT_INDEX.md`。外部两个文件是 legacy navigation，不是当前项目事实源。
+
 不要上传 `.chatgpt-sources-manifest.json`、`CHAT_CATALOG.jsonl`、原始 transcript、全部
 历史摘要、`.codex` 数据、Git 元数据、outputs、临时目录或隔离目录。
 
