@@ -1,0 +1,196 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="760" viewBox="0 0 1600 760" role="img" aria-labelledby="figure-title figure-desc" data-figure-mode="hypothesis">
+  <title id="figure-title">光学语义生成性能瓶颈的机制分岔图</title>
+  <desc id="figure-desc">从输入图像经衍射编码器、10×10 SMF 光学表示、端面非线性层、衍射解码器到输出图像的主流程，以及四个标记为待验证的候选机制分支。</desc>
+
+  <defs>
+    <marker id="flow-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#3E6F9E"/>
+    </marker>
+    <marker id="branch-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10" fill="none" stroke="#C38A43" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <pattern id="smf-cores" width="11" height="11" patternUnits="userSpaceOnUse">
+      <circle cx="5.5" cy="5.5" r="2.2" fill="#3E6F9E"/>
+    </pattern>
+    <style>
+      .stage-card { fill:#FBFCFD; stroke:#B8C6D1; stroke-width:1.7; }
+      .stage-card-strong { fill:#F6F9FB; stroke:#71869A; stroke-width:1.9; }
+      .module-label { fill:#17365D; font-family:'DengXian','Noto Sans SC','Microsoft YaHei','PingFang SC',Arial,sans-serif; font-size:21px; font-weight:600; letter-spacing:0.2px; }
+      .module-label-small { fill:#17365D; font-family:'DengXian','Noto Sans SC','Microsoft YaHei','PingFang SC',Arial,sans-serif; font-size:19px; font-weight:600; }
+      .module-meta { fill:#71869A; font-family:'DengXian','Noto Sans SC','Microsoft YaHei','PingFang SC',Arial,sans-serif; font-size:13px; font-weight:500; letter-spacing:0.2px; }
+      .flow-line { fill:none; stroke:#3E6F9E; stroke-width:2.5; stroke-linecap:round; marker-end:url(#flow-arrow); }
+      .diffraction-plane { fill:#EAF1F6; stroke:#3E6F9E; stroke-width:1.6; }
+      .diffraction-edge { stroke:#17365D; stroke-width:2.1; stroke-linecap:round; }
+      .diffraction-dot { fill:#3E6F9E; }
+      .branch-line { fill:none; stroke:#C38A43; stroke-width:1.9; stroke-dasharray:6 7; stroke-linecap:round; stroke-linejoin:round; opacity:0.82; marker-end:url(#branch-arrow); }
+      .hyp-card { fill:#FFFDFC; stroke:#D1B58C; stroke-width:1.5; stroke-dasharray:6 5; }
+      .hyp-title { fill:#263746; font-family:'Noto Sans CJK SC','Microsoft YaHei','PingFang SC',Arial,sans-serif; font-size:21px; font-weight:600; }
+      .hyp-body { fill:#536777; font-family:'Noto Sans CJK SC','Microsoft YaHei','PingFang SC',Arial,sans-serif; font-size:16px; font-weight:400; }
+      .uncertainty { fill:#C38A43; }
+      .uncertainty-text { fill:#FFFFFF; font-family:'DengXian','Noto Sans SC','Microsoft YaHei','PingFang SC',Arial,sans-serif; font-size:16px; font-weight:700; }
+      .status-text { fill:#9B6C2F; font-family:'DengXian','Noto Sans SC','Microsoft YaHei','PingFang SC',Arial,sans-serif; font-size:14px; font-weight:600; }
+      .next-step { fill:#17365D; font-family:'DengXian','Noto Sans SC','Microsoft YaHei','PingFang SC',Arial,sans-serif; font-size:20px; font-weight:600; letter-spacing:0.2px; }
+      .soft-rule { stroke:#D7DEE5; stroke-width:1.2; }
+    </style>
+  </defs>
+
+  <!-- Transparent canvas; the SVG remains editable and has no background fill. -->
+  <rect width="1600" height="760" fill="#FFFFFF" fill-opacity="0"/>
+
+  <!-- Main optical chain: input image → encoder → SMF representation → nonlinear facet → decoder → output image. -->
+  <g data-stage="input" aria-label="输入图像">
+    <rect class="stage-card" x="45" y="135" width="180" height="205" rx="16"/>
+    <rect x="84" y="178" width="102" height="72" rx="7" fill="#F4F7F9" stroke="#71869A" stroke-width="1.4"/>
+    <g fill="#D7DEE5">
+      <rect x="92" y="186" width="9" height="9"/><rect x="105" y="186" width="9" height="9"/><rect x="118" y="186" width="9" height="9"/><rect x="131" y="186" width="9" height="9"/><rect x="144" y="186" width="9" height="9"/><rect x="157" y="186" width="9" height="9"/><rect x="170" y="186" width="9" height="9"/>
+      <rect x="92" y="199" width="9" height="9"/><rect x="105" y="199" width="9" height="9"/><rect x="118" y="199" width="9" height="9"/><rect x="131" y="199" width="9" height="9"/><rect x="144" y="199" width="9" height="9"/><rect x="157" y="199" width="9" height="9"/><rect x="170" y="199" width="9" height="9"/>
+      <rect x="92" y="212" width="9" height="9"/><rect x="105" y="212" width="9" height="9"/><rect x="118" y="212" width="9" height="9"/><rect x="131" y="212" width="9" height="9"/><rect x="144" y="212" width="9" height="9"/><rect x="157" y="212" width="9" height="9"/><rect x="170" y="212" width="9" height="9"/>
+      <rect x="92" y="225" width="9" height="9"/><rect x="105" y="225" width="9" height="9"/><rect x="118" y="225" width="9" height="9"/><rect x="131" y="225" width="9" height="9"/><rect x="144" y="225" width="9" height="9"/><rect x="157" y="225" width="9" height="9"/><rect x="170" y="225" width="9" height="9"/>
+      <rect x="92" y="238" width="9" height="9"/><rect x="105" y="238" width="9" height="9"/><rect x="118" y="238" width="9" height="9"/><rect x="131" y="238" width="9" height="9"/><rect x="144" y="238" width="9" height="9"/><rect x="157" y="238" width="9" height="9"/><rect x="170" y="238" width="9" height="9"/>
+    </g>
+    <g fill="#3E6F9E">
+      <rect x="157" y="186" width="9" height="9"/><rect x="157" y="199" width="9" height="9"/><rect x="144" y="212" width="9" height="9"/><rect x="157" y="212" width="9" height="9"/><rect x="170" y="212" width="9" height="9"/><rect x="157" y="225" width="9" height="9"/><rect x="157" y="238" width="9" height="9"/>
+    </g>
+    <text class="module-label" x="135" y="292" text-anchor="middle">输入图像</text>
+    <text class="module-meta" x="135" y="316" text-anchor="middle">语义输入</text>
+  </g>
+
+  <g data-stage="encoder" aria-label="衍射编码器">
+    <rect class="stage-card-strong" x="270" y="135" width="220" height="205" rx="16"/>
+    <g aria-label="两层衍射面">
+      <rect class="diffraction-plane" x="320" y="174" width="25" height="75" rx="3"/>
+      <rect class="diffraction-plane" x="414" y="174" width="25" height="75" rx="3"/>
+      <line class="diffraction-edge" x1="332" y1="181" x2="332" y2="242"/>
+      <line class="diffraction-edge" x1="426" y1="181" x2="426" y2="242"/>
+      <circle class="diffraction-dot" cx="328" cy="190" r="3"/><circle class="diffraction-dot" cx="337" cy="205" r="2.4"/><circle class="diffraction-dot" cx="329" cy="222" r="2.7"/><circle class="diffraction-dot" cx="337" cy="236" r="2.2"/>
+      <circle class="diffraction-dot" cx="422" cy="198" r="2.4"/><circle class="diffraction-dot" cx="431" cy="211" r="3"/><circle class="diffraction-dot" cx="422" cy="226" r="2.2"/><circle class="diffraction-dot" cx="431" cy="239" r="2.7"/>
+      <line x1="345" y1="211" x2="414" y2="211" stroke="#B8C6D1" stroke-width="1.2" stroke-dasharray="4 5"/>
+      <text class="module-meta" x="379" y="166" text-anchor="middle">1.5 mm</text>
+    </g>
+    <rect x="354" y="269" width="52" height="23" rx="11.5" fill="#EAF1F6" stroke="#B8C6D1" stroke-width="1"/>
+    <text class="module-meta" x="380" y="285" text-anchor="middle">2 层</text>
+    <text class="module-label" x="380" y="312" text-anchor="middle">衍射编码器</text>
+    <text class="module-meta" x="380" y="331" text-anchor="middle">100×100 · 2 μm</text>
+  </g>
+
+  <g data-stage="smf" aria-label="10×10 SMF 光学表示">
+    <rect class="stage-card" x="570" y="135" width="220" height="205" rx="16"/>
+    <rect x="625" y="166" width="110" height="110" rx="5" fill="#F4F7F9" stroke="#71869A" stroke-width="1.3"/>
+    <rect x="625" y="166" width="110" height="110" rx="5" fill="url(#smf-cores)"/>
+    <rect x="625" y="166" width="110" height="110" rx="5" fill="none" stroke="#71869A" stroke-width="1.3"/>
+    <text class="module-label-small" x="680" y="302" text-anchor="middle">10×10 SMF</text>
+    <text class="module-label-small" x="680" y="326" text-anchor="middle">光学表示</text>
+  </g>
+
+  <g data-stage="nonlinear-facet" aria-label="端面非线性层">
+    <rect class="stage-card-strong" x="855" y="135" width="190" height="205" rx="16"/>
+    <g aria-label="端面与薄膜">
+      <rect x="919" y="174" width="36" height="80" rx="2" fill="#EAF1F6" stroke="#71869A" stroke-width="1.3"/>
+      <rect x="955" y="174" width="7" height="80" fill="#C96F3B"/>
+      <line x1="962" y1="174" x2="962" y2="254" stroke="#9B4E2A" stroke-width="1"/>
+      <line x1="910" y1="260" x2="971" y2="260" stroke="#B8C6D1" stroke-width="1.2"/>
+      <path d="M910 255 L910 265 M971 255 L971 265" stroke="#B8C6D1" stroke-width="1.2"/>
+      <text class="module-meta" x="941" y="284" text-anchor="middle" fill="#9B6C2F">薄膜贴合端面</text>
+    </g>
+    <text class="module-label-small" x="950" y="315" text-anchor="middle">端面非线性层</text>
+  </g>
+
+  <g data-stage="decoder" aria-label="衍射解码器">
+    <rect class="stage-card-strong" x="1105" y="135" width="220" height="205" rx="16"/>
+    <g aria-label="两层衍射面">
+      <rect class="diffraction-plane" x="1155" y="174" width="25" height="75" rx="3"/>
+      <rect class="diffraction-plane" x="1249" y="174" width="25" height="75" rx="3"/>
+      <line class="diffraction-edge" x1="1167" y1="181" x2="1167" y2="242"/>
+      <line class="diffraction-edge" x1="1261" y1="181" x2="1261" y2="242"/>
+      <circle class="diffraction-dot" cx="1163" cy="191" r="2.7"/><circle class="diffraction-dot" cx="1172" cy="205" r="2.2"/><circle class="diffraction-dot" cx="1163" cy="221" r="3"/><circle class="diffraction-dot" cx="1172" cy="237" r="2.4"/>
+      <circle class="diffraction-dot" cx="1257" cy="198" r="2.2"/><circle class="diffraction-dot" cx="1266" cy="212" r="2.8"/><circle class="diffraction-dot" cx="1257" cy="228" r="2.4"/><circle class="diffraction-dot" cx="1266" cy="240" r="3"/>
+      <line x1="1180" y1="211" x2="1249" y2="211" stroke="#B8C6D1" stroke-width="1.2" stroke-dasharray="4 5"/>
+      <text class="module-meta" x="1214" y="166" text-anchor="middle">1.5 mm</text>
+    </g>
+    <rect x="1189" y="269" width="52" height="23" rx="11.5" fill="#EAF1F6" stroke="#B8C6D1" stroke-width="1"/>
+    <text class="module-meta" x="1215" y="285" text-anchor="middle">2 层</text>
+    <text class="module-label" x="1215" y="312" text-anchor="middle">衍射解码器</text>
+    <text class="module-meta" x="1215" y="331" text-anchor="middle">100×100 · 2 μm</text>
+  </g>
+
+  <g data-stage="output" aria-label="输出图像">
+    <rect class="stage-card" x="1390" y="135" width="165" height="205" rx="16"/>
+    <rect x="1421" y="178" width="103" height="72" rx="7" fill="#F4F7F9" stroke="#71869A" stroke-width="1.4"/>
+    <g fill="#D7DEE5">
+      <rect x="1429" y="186" width="9" height="9"/><rect x="1442" y="186" width="9" height="9"/><rect x="1455" y="186" width="9" height="9"/><rect x="1468" y="186" width="9" height="9"/><rect x="1481" y="186" width="9" height="9"/><rect x="1494" y="186" width="9" height="9"/><rect x="1507" y="186" width="9" height="9"/>
+      <rect x="1429" y="199" width="9" height="9"/><rect x="1442" y="199" width="9" height="9"/><rect x="1455" y="199" width="9" height="9"/><rect x="1468" y="199" width="9" height="9"/><rect x="1481" y="199" width="9" height="9"/><rect x="1494" y="199" width="9" height="9"/><rect x="1507" y="199" width="9" height="9"/>
+      <rect x="1429" y="212" width="9" height="9"/><rect x="1442" y="212" width="9" height="9"/><rect x="1455" y="212" width="9" height="9"/><rect x="1468" y="212" width="9" height="9"/><rect x="1481" y="212" width="9" height="9"/><rect x="1494" y="212" width="9" height="9"/><rect x="1507" y="212" width="9" height="9"/>
+      <rect x="1429" y="225" width="9" height="9"/><rect x="1442" y="225" width="9" height="9"/><rect x="1455" y="225" width="9" height="9"/><rect x="1468" y="225" width="9" height="9"/><rect x="1481" y="225" width="9" height="9"/><rect x="1494" y="225" width="9" height="9"/><rect x="1507" y="225" width="9" height="9"/>
+      <rect x="1429" y="238" width="9" height="9"/><rect x="1442" y="238" width="9" height="9"/><rect x="1455" y="238" width="9" height="9"/><rect x="1468" y="238" width="9" height="9"/><rect x="1481" y="238" width="9" height="9"/><rect x="1494" y="238" width="9" height="9"/><rect x="1507" y="238" width="9" height="9"/>
+    </g>
+    <g fill="#3E6F9E">
+      <rect x="1429" y="186" width="9" height="9"/><rect x="1442" y="186" width="9" height="9"/><rect x="1429" y="199" width="9" height="9"/><rect x="1429" y="212" width="9" height="9"/><rect x="1429" y="225" width="9" height="9"/><rect x="1442" y="238" width="9" height="9"/><rect x="1455" y="238" width="9" height="9"/><rect x="1468" y="238" width="9" height="9"/><rect x="1481" y="238" width="9" height="9"/><rect x="1494" y="238" width="9" height="9"/><rect x="1507" y="238" width="9" height="9"/>
+    </g>
+    <text class="module-label" x="1472" y="292" text-anchor="middle">输出图像</text>
+    <text class="module-meta" x="1472" y="316" text-anchor="middle">可识别输出</text>
+  </g>
+
+  <!-- Main propagation arrows. -->
+  <g aria-label="主流程箭头">
+    <path class="flow-line" d="M225 235 H260"/>
+    <path class="flow-line" d="M490 235 H560"/>
+    <path class="flow-line" d="M790 235 H845"/>
+    <path class="flow-line" d="M1045 235 H1095"/>
+    <path class="flow-line" d="M1325 235 H1380"/>
+  </g>
+
+  <!-- Candidate mechanisms: all connectors are dashed and terminate at explicitly uncertain nodes. -->
+  <g data-stage="hypotheses" aria-label="四个待验证候选机制">
+    <path class="branch-line" d="M530 235 C505 300 360 386 210 434"/>
+    <circle cx="530" cy="235" r="4" fill="#C38A43"/>
+    <path class="branch-line" d="M680 340 C655 380 620 405 600 434"/>
+    <circle cx="680" cy="340" r="4" fill="#C38A43"/>
+    <path class="branch-line" d="M950 340 C960 382 978 408 990 434"/>
+    <circle cx="950" cy="340" r="4" fill="#C38A43"/>
+    <path class="branch-line" d="M1360 235 C1370 305 1382 380 1390 434"/>
+    <circle cx="1360" cy="235" r="4" fill="#C38A43"/>
+
+    <g data-hypothesis="H1" aria-label="H1 编码表示不足，待验证">
+      <rect class="hyp-card" x="45" y="434" width="330" height="176" rx="15"/>
+      <circle class="uncertainty" cx="76" cy="469" r="15"/>
+      <text class="uncertainty-text" x="76" y="475" text-anchor="middle">?</text>
+      <text class="status-text" x="103" y="474">待验证</text>
+      <text class="hyp-title" x="69" y="520">H1 编码表示不足</text>
+      <text class="hyp-body" x="69" y="553">输入语义未被充分压缩到</text>
+      <text class="hyp-body" x="69" y="577">低维光学表示</text>
+    </g>
+
+    <g data-hypothesis="H2" aria-label="H2 光纤表示失配，待验证">
+      <rect class="hyp-card" x="435" y="434" width="330" height="176" rx="15"/>
+      <circle class="uncertainty" cx="466" cy="469" r="15"/>
+      <text class="uncertainty-text" x="466" y="475" text-anchor="middle">?</text>
+      <text class="status-text" x="493" y="474">待验证</text>
+      <text class="hyp-title" x="459" y="520">H2 光纤表示失配</text>
+      <text class="hyp-body" x="459" y="553">模式耦合或低维表示</text>
+      <text class="hyp-body" x="459" y="577">结构不足</text>
+    </g>
+
+    <g data-hypothesis="H3" aria-label="H3 非线性无效，待验证">
+      <rect class="hyp-card" x="825" y="434" width="330" height="176" rx="15"/>
+      <circle class="uncertainty" cx="856" cy="469" r="15"/>
+      <text class="uncertainty-text" x="856" y="475" text-anchor="middle">?</text>
+      <text class="status-text" x="883" y="474">待验证</text>
+      <text class="hyp-title" x="849" y="520">H3 非线性无效</text>
+      <text class="hyp-body" x="849" y="553">当前非线性机制或工作区间</text>
+      <text class="hyp-body" x="849" y="577">可能不足以带来性能增益</text>
+    </g>
+
+    <g data-hypothesis="H4" aria-label="H4 解码合成不足，待验证">
+      <rect class="hyp-card" x="1215" y="434" width="330" height="176" rx="15"/>
+      <circle class="uncertainty" cx="1246" cy="469" r="15"/>
+      <text class="uncertainty-text" x="1246" y="475" text-anchor="middle">?</text>
+      <text class="status-text" x="1273" y="474">待验证</text>
+      <text class="hyp-title" x="1239" y="520">H4 解码合成不足</text>
+      <text class="hyp-body" x="1239" y="553">低维光学表示无法被充分映射</text>
+      <text class="hyp-body" x="1239" y="577">回可识别输出</text>
+    </g>
+  </g>
+
+  <line class="soft-rule" x1="45" y1="662" x2="1555" y2="662"/>
+  <text class="next-step" x="800" y="707" text-anchor="middle">下一步：通过架构 × 非线性的 2×2 对照缩小机制范围</text>
+</svg>
