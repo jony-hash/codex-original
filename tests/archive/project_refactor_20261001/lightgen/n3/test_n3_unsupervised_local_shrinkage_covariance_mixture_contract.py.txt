@@ -1,0 +1,57 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+import torch
+
+from scripts.research.lightgen.n3 import define_n3_unsupervised_local_shrinkage_covariance_mixture_contract_v1 as contract
+
+
+def test_contract_freezes_covariance_heterogeneity_without_new_complexity() -> None:
+    assert contract.K_DOMAIN == (2, 4, 8)
+    assert contract.LOCAL_COVARIANCE_COMPONENT_INSUFFICIENT == "LOCAL_COVARIANCE_COMPONENT_INSUFFICIENT"
+    assert contract.TARGET_ACCEPTED == 200
+    assert contract.PROPOSAL_BUDGET == 1_000_000
+    assert contract.RNG_NAMESPACE.endswith("_CPU")
+
+
+def test_hard_assignment_is_canonical_and_tie_breaks_to_lowest_component() -> None:
+    responsibilities = torch.tensor(
+        [
+            [0.5, 0.5],
+            [0.1, 0.9],
+            [0.8, 0.2],
+        ],
+        dtype=torch.float64,
+    )
+    assert contract.hard_assignment_from_responsibilities(responsibilities).tolist() == [0, 1, 0]
+
+
+def test_component_insufficiency_is_fail_closed() -> None:
+    assert contract.component_insufficiency_status(0) == contract.LOCAL_COVARIANCE_COMPONENT_INSUFFICIENT
+    assert contract.component_insufficiency_status(1) == contract.LOCAL_COVARIANCE_COMPONENT_INSUFFICIENT
+    assert contract.component_insufficiency_status(2) == "LOCAL_COVARIANCE_COMPONENT_ELIGIBLE"
+    with pytest.raises(ValueError, match="assigned count is negative"):
+        contract.component_insufficiency_status(-1)
+
+
+def test_previous_selection_lineage_is_not_supported_and_unselected() -> None:
+    repo_root = Path(__file__).resolve().parents[4]
+    previous = contract._read_json_exact(
+        repo_root,
+        contract.PREVIOUS_CONTRACT,
+        contract.PREVIOUS_CONTRACT_SHA256,
+        "previous local-location contract",
+    )
+    selection = contract._read_json_exact(
+        repo_root,
+        contract.PREVIOUS_SELECTION_REPORT,
+        contract.PREVIOUS_SELECTION_REPORT_SHA256,
+        "previous local-location selection",
+    )
+    contract._validate_previous_lineage(previous, selection)
+    with pytest.raises(ValueError, match="previous local-location result changed"):
+        modified = dict(selection)
+        modified["classification"] = "N3_LOCAL_LOCATION_MIXTURE_MODEL_ORDER_SELECTED"
+        contract._validate_previous_lineage(previous, modified)

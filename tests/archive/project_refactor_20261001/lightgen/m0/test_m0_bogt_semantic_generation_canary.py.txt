@@ -1,0 +1,196 @@
+from __future__ import annotations
+
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+import torch
+
+from scripts.research.lightgen.m0 import execute_lightgen_2d_m0_bogt_semantic_generation_canary_v1 as m0
+
+
+REPO_ROOT = Path(__file__).resolve().parents[4]
+
+
+def test_fixed_authorities_and_source_paths_are_bound_before_model_setup(monkeypatch: pytest.MonkeyPatch) -> None:
+    authorities = m0._authority_files(REPO_ROOT)
+    assert authorities["parent_report"]["sha256"] == m0.PARENT_REPORT_SHA256
+    assert authorities["step300_checkpoint"]["sha256"] == m0.START_CHECKPOINT_SHA256
+    assert authorities["s1_winner"]["sha256"] == m0.S1_WINNER_SHA256
+    assert all(path.is_file() for path in m0._source_paths(REPO_ROOT))
+
+    monkeypatch.setattr(m0, "S1_WINNER_SHA256", "0" * 64)
+    with pytest.raises(m0.M0ExecutionError, match="identity changed"):
+        m0._authority_files(REPO_ROOT)
+
+
+def test_continuation_sampler_preserves_step300_class_permutations() -> None:
+    labels = torch.arange(10, dtype=torch.long).repeat_interleave(650)
+    train_indices = torch.arange(labels.numel(), dtype=torch.long)
+    permutations = [torch.nonzero(labels == digit, as_tuple=False).flatten() for digit in range(10)]
+    parent_state = {
+        "schema": m0.bogt.SAMPLER_SCHEMA,
+        "seed": 1234,
+        "steps": m0.START_STEP,
+        "cursor": m0.START_STEP,
+        "class_count": 10,
+        "rows_per_class": [650] * 10,
+        "permutations": permutations,
+    }
+    sampler = m0.M0ContinuationSampler(train_indices, labels, parent_state)
+
+    indices, batch_labels = sampler.next_batch()
+
+    assert torch.equal(indices, torch.stack([row[m0.START_STEP] for row in permutations]))
+    assert torch.equal(batch_labels, torch.arange(10))
+    assert sampler.cursor == m0.START_STEP + 1
+
+    bad_state = dict(parent_state)
+    bad_state["permutations"] = [row.clone() for row in permutations]
+    bad_state["permutations"][0][0] = bad_state["permutations"][0][1]
+    with pytest.raises(m0.M0ExecutionError, match="permutation"):
+        m0.M0ContinuationSampler(train_indices, labels, bad_state)
+
+
+def test_outer_gate_accepts_only_all_thresholds_and_separates_harness_failure() -> None:
+    passing = m0._gate_conditions(
+        raw_validity={
+            "finite": True,
+            "all_nonconstant": True,
+            "all_nonzero": True,
+            "count": m0.GENERATION_COUNT,
+        },
+        ed_metrics={"macro_recall": 0.50, "per_class_recall": [0.10] * 10},
+        dev_delta=0.005,
+        optical_power_finite=True,
+        lineage_and_roles_valid=True,
+    )
+    assert m0._resolve_outer_gate(passing) == ("COMPLETED", m0.CLASSIFICATION_SUPPORTED)
+
+    failing = {**passing, "ED_macro_recall": False}
+    assert m0._resolve_outer_gate(failing) == ("VALID_FAILED", "VALID_FAILED")
+
+    invalid_lineage = {**passing, "lineage_freeze_and_data_roles": False}
+    with pytest.raises(m0.M0ExecutionError, match="lineage"):
+        m0._resolve_outer_gate(invalid_lineage)
+
+
+def test_complete_output_with_nonfinite_or_degenerate_images_fails_the_gate(monkeypatch: pytest.MonkeyPatch) -> None:
+    images = torch.zeros((2, 1, 200, 200), dtype=torch.float32)
+    images[1, 0, 0, 0] = 1.0
+    images[1, 0, 0, 1] = float("nan")
+
+    monkeypatch.setattr(m0, "GENERATION_COUNT", 2)
+    validity = m0._raw_cmos_validity(images)
+
+    assert validity["count"] == 2
+    assert validity["finite"] is False
+    assert validity["nonfinite_value_count"] == 1
+    assert validity["all_nonconstant"] is False
+    assert validity["all_nonzero"] is False
+
+
+def test_post_training_progress_keeps_heartbeat_step_in_training_range(tmp_path: Path) -> None:
+    heartbeat = m0.HeartbeatWriter(
+        tmp_path,
+        m0.RUN_ID,
+        total_steps=m0.END_STEP,
+        interval_seconds=0.0,
+    )
+
+    m0._record_post_training_progress(
+        heartbeat,
+        phase="POST_TRAIN_FIT",
+        completed=5_000,
+        force=True,
+    )
+
+    status = m0._read_json(tmp_path / "latest_status.json")
+    assert status["step"] == m0.END_STEP
+    assert status["total_steps"] == m0.END_STEP
+    assert status["latest_losses"] == {
+        "phase": "POST_TRAIN_FIT",
+        "items_completed": 5_000,
+    }
+
+
+def test_s1_fit_rows_are_sliced_in_concatenated_bank_coordinates() -> None:
+    positions_by_class = [
+        torch.tensor([digit + 30, digit + 300], dtype=torch.long)
+        for digit in range(10)
+    ]
+    split = {
+        "fit_positions": torch.cat(positions_by_class),
+        "fit_positions_by_class": positions_by_class,
+    }
+    fit_x = torch.arange(40, dtype=torch.float64).reshape(20, 2)
+
+    result = m0._standardized_fit_by_class(fit_x, split)
+
+    assert len(result) == 10
+    assert torch.equal(result[0], fit_x[0:2])
+    assert torch.equal(result[1], fit_x[2:4])
+    assert torch.equal(result[9], fit_x[18:20])
+
+
+def test_generated_power_uses_only_the_direct_ols_generator_path() -> None:
+    field = SimpleNamespace(
+        tensor=torch.ones((2, 2, 2), dtype=torch.complex64),
+        plane=SimpleNamespace(pixel_pitch_m=(2.0, 3.0)),
+    )
+    result = SimpleNamespace(
+        encoder_records=(),
+        generator_input_field=field,
+        generator_records=(field, field),
+    )
+
+    powers = m0._generated_path_plane_powers(result)
+
+    assert powers.shape == (2, 3)
+    assert torch.equal(powers, torch.full((2, 3), 24.0, dtype=torch.float64))
+
+
+def test_large_tensor_summary_uses_bounded_deterministic_quantiles(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(m0, "MAX_QUANTILE_SAMPLE_VALUES", 4)
+    values = torch.arange(10, dtype=torch.float64)
+
+    first = m0._summarize_tensor(values)
+    second = m0._summarize_tensor(values)
+
+    assert first["count"] == 10
+    assert first["quantile_method"] == "deterministic_uniform_sample"
+    assert first["quantile_sample_count"] == 4
+    assert first["q50"] == 4.5
+    assert first["q95"] == second["q95"]
+
+
+def test_exact_tensor_summary_preserves_existing_metadata_shape(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(m0, "MAX_QUANTILE_SAMPLE_VALUES", 4)
+
+    summary = m0._summarize_tensor(torch.arange(4, dtype=torch.float64))
+
+    assert summary["q50"] == 1.5
+    assert "quantile_method" not in summary
+    assert "quantile_sample_count" not in summary
+
+
+def test_saved_raw_cmos_validation_binds_source_role_and_requested_labels(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(m0, "GENERATION_COUNT", 2)
+    requested = torch.tensor([3, 7], dtype=torch.long)
+    payload = {
+        "schema": "m0_generated_raw_cmos.v1",
+        "raw_cmos": torch.ones((2, 1, 200, 200), dtype=torch.float32),
+        "requested_labels": requested.clone(),
+        "prediction_labels": torch.tensor([3, 7], dtype=torch.long),
+        "source_step": m0.END_STEP,
+        "data_role": m0.TRAIN_ROLE,
+        "sampler_family": "S1",
+    }
+
+    assert m0._validate_saved_raw_cmos(payload, requested) is payload["raw_cmos"]
+
+    stale = {**payload, "source_step": m0.END_STEP - 1}
+    with pytest.raises(m0.M0ExecutionError, match="source, shape, role, or label identity"):
+        m0._validate_saved_raw_cmos(stale, requested)

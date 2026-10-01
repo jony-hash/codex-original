@@ -1,0 +1,207 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from ldm_project.v2.evidence import file_sha256
+from scripts.research.lightgen.n3 import define_n3_empirical_marginal_fixed_r_student_t_copula_contract_v1 as contract
+
+
+EXPECTED_ARTIFACT_SHA256 = "0f18dccf35758e590255fac07436eb968c866ddc11a3e19df7b02e25770be1d7"
+
+
+def _artifact_path() -> Path:
+    repo_root = Path(__file__).resolve().parents[4]
+    return repo_root / contract.OUTPUT_DIR / contract.CONTRACT_NAME
+
+
+def _load_artifact() -> dict[str, object]:
+    path = _artifact_path()
+    if not path.is_file():
+        pytest.skip("contract artifact is published by the bounded definition task")
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def test_contract_identity_and_totality_are_frozen() -> None:
+    artifact = _load_artifact()
+    path = _artifact_path()
+
+    assert file_sha256(path) == EXPECTED_ARTIFACT_SHA256
+    assert artifact["schema"] == contract.CONTRACT_SCHEMA
+    assert artifact["task_id"] == contract.TASK_ID
+    assert artifact["gate"] == contract.GATE
+    assert artifact["status"] == "valid_completed"
+    assert artifact["result"] == "READY"
+    assert artifact["classification"] == contract.READY_CLASSIFICATION
+    assert artifact["claim_classification"] == contract.CLAIM_CLASSIFICATION
+    assert artifact["semantic_authority_id"] == contract.TASK_ID
+    assert artifact["definition_only"] is True
+    assert artifact["contract_totality"]["status"] == "passed"
+    assert artifact["contract_totality"]["future_runtime_math_choices"] == []
+
+
+def test_exactly_one_family_and_only_nu_changes_the_baseline() -> None:
+    artifact = _load_artifact()
+    family = artifact["family"]
+    fit = artifact["student_t_copula_fit_contract"]
+
+    assert family["family_id"] == contract.FAMILY_ID
+    assert family["candidate_family_count"] == 1
+    assert family["candidate_ids"] == [contract.FAMILY_ID]
+    assert family["new_fitted_parameter"] == "nu"
+    assert family["new_fitted_scalar_count_per_fold"] == 1
+    assert family["changed_component"] == "copula radial law and one fitted global degrees-of-freedom scalar nu"
+    assert family["unchanged_components"] == [
+        "fit-only empirical marginal order statistics and inverse quantiles",
+        "stable tie and interpolation convention",
+        "Gaussianized-score construction used to derive R_shrunk",
+        "analytic shrinkage formula and the fitting-derived matrix R_shrunk",
+        "V2 development bank, fold assignment, count and class balance",
+        "raw-q evaluator and all eight compatibility guardrails",
+    ]
+    assert fit["R_refit"] is False
+    assert fit["marginal_refit_under_nu"] is False
+    assert fit["fit_rows_only"] is True
+    assert fit["nu_domain"] == {
+        "lower": contract.NU_LOWER,
+        "upper": contract.NU_UPPER,
+        "closed_interval": True,
+        "variance_finite": True,
+        "upper_boundary_role": "finite Gaussian-limit approximation; legal fitted boundary, not infinity",
+    }
+    assert "log c_nu(u_i;R)=log f_t_d(x_i;nu,R)-sum_j log f_t_1(x_ij;nu)" in fit["copula_density"]
+
+
+def test_marginal_and_fixed_r_contracts_match_the_n4_baseline() -> None:
+    artifact = _load_artifact()
+    marginal = artifact["marginal_contract"]
+    dependence = artifact["baseline_dependence_contract"]
+
+    assert marginal["fit_rows_per_fold"] == contract.FIT_COUNT_PER_FOLD
+    assert marginal["fit_only"] is True
+    assert marginal["tie_sorting"] == "stable value-then-original-fit-row-index order"
+    assert marginal["tie_rank"] == "for a tied block with one-based ranks L..U, average_rank=(L+U)/2"
+    assert marginal["plotting_position"] == "u_ij=(average_rank_ij-0.5)/n"
+    assert marginal["epsilon_clamp"] is False
+    assert marginal["outside_support_extrapolation"] is False
+    assert marginal["heldout_parameter_leakage"] is False
+
+    assert dependence["fixed_R"] == "R=R_shrunk from the baseline Gaussianized fit; it is never refit as a function of nu"
+    assert dependence["unit_diagonal_renormalization"] is False
+    assert dependence["heldout_parameter_leakage"] is False
+    assert "alpha=0 if delta=0 else clip(beta/delta,0,1)" in dependence["shrinkage"]
+
+
+def test_optimizer_and_numerical_semantics_are_total() -> None:
+    artifact = _load_artifact()
+    optimizer = artifact["student_t_copula_fit_contract"]["optimizer"]
+    numerical = artifact["student_t_numerical_contract"]
+
+    assert optimizer["algorithm"] == "deterministic bounded golden-section maximization of ell(2+exp(eta))"
+    assert optimizer["max_iterations"] == contract.OPTIMIZER_MAX_ITERATIONS
+    assert optimizer["endpoint_evaluated"] is True
+    assert optimizer["boundary_rule"].startswith("include both endpoints")
+    assert optimizer["heldout_selected_grid"] is False
+    assert optimizer["post_result_retuning"] is False
+    assert numerical["dtype"] == "IEEE-754 binary64 / float64 throughout fit, CDF, inverse-CDF, factorization and accumulation"
+    assert numerical["device"] == "CPU only"
+    assert numerical["t_cdf"]["max_iterations"] == contract.T_CDF_MAX_ITERATIONS
+    assert numerical["t_cdf"]["nonconvergence"] == "INVALID_HARNESS"
+    assert numerical["t_inverse_cdf"]["bracket_expansion"] is False
+    assert numerical["t_inverse_cdf"]["max_iterations"] == contract.T_QUANTILE_MAX_ITERATIONS
+    assert numerical["repair_policy"] == {
+        "clamp": False,
+        "abs": False,
+        "relu": False,
+        "softplus": False,
+        "epsilon_repair": False,
+        "adaptive_resampling": False,
+        "seed_retry": False,
+    }
+
+    assert contract._run_contract_totality_checks() == artifact["contract_totality"]
+
+
+def test_sampling_and_future_v2_evaluation_are_frozen() -> None:
+    artifact = _load_artifact()
+    sampling = artifact["sampling_contract"]
+    evaluation = artifact["future_development_evaluation_contract"]
+
+    assert sampling["rng_namespace"] == contract.RNG_NAMESPACE
+    assert sampling["dtype"] == "float64"
+    assert sampling["rng_device"] == "cpu"
+    assert sampling["generated_bank_size"] == contract.MODEL_SAMPLE_COUNT
+    assert sampling["data_vs_model_replicates"] == contract.DATA_VS_MODEL_REPLICATES
+    assert sampling["model_vs_model_replicates"] == contract.MODEL_VS_MODEL_REPLICATES
+    assert sampling["bank_level_rejection"] is False
+    assert sampling["best_of_n"] is False
+    assert sampling["heldout_seed_tuning"] is False
+    assert sampling["post_evaluation_resampling"] is False
+
+    assert evaluation["fold_count"] == contract.FOLD_COUNT
+    assert evaluation["fit_rows_per_fold"] == contract.FIT_COUNT_PER_FOLD
+    assert evaluation["heldout_rows_per_fold"] == contract.HELDOUT_COUNT_PER_FOLD
+    assert evaluation["model_sample_count"] == contract.MODEL_SAMPLE_COUNT
+    assert evaluation["guardrails"] == list(contract.SCALAR_METRICS)
+    assert evaluation["strict_five_of_five"] is True
+    assert evaluation["four_of_five_supported"] is False
+    assert evaluation["q95_is_calibrated_confidence"] is False
+    assert evaluation["relative_improvement_vs_n4_gaussian"].startswith("descriptive only")
+    assert evaluation["sealed_confirmation"] is False
+
+
+def test_authority_chain_and_n4_result_are_bound_without_new_evaluation() -> None:
+    artifact = _load_artifact()
+    authorities = artifact["authorities"]
+    v2 = authorities["v2_development"]
+    n4 = authorities["n4_result"]
+
+    assert v2["q_values_loaded_by_definition_consumer"] is False
+    assert v2["heldout_values_loaded_by_definition_consumer"] is False
+    assert v2["q_artifact"]["deserialized_by_this_consumer"] is False
+    assert v2["q_artifact"]["sha256"] == contract.V2_Q_ARTIFACT_SHA256
+    assert v2["fold_manifest"]["assignment_sha256"] == contract.V2_FOLD_ASSIGNMENT_SHA256
+    assert v2["empirical_ceiling_report"]["fold_pattern"] == [True] * contract.FOLD_COUNT
+    assert n4["comparison_report"]["classification"] == "N4_Q_PRODUCER_COMPARISON_NO_CANDIDATE_SUPPORTED"
+    assert n4["comparison_report"]["gaussian_candidate_compatible_folds"] == 4
+    assert n4["comparison_report"]["gaussian_candidate_fold_pattern"] == [True, True, True, True, False]
+    assert n4["lineage_manifest"]["artifact_hashes_rechecked"] is False
+    assert n4["sealed_confirmation"]["status"] == "RESERVED_NOT_MATERIALIZED"
+    assert n4["sealed_confirmation"]["manifest_read_by_this_consumer"] is False
+
+
+def test_definition_source_has_no_tensor_deserialization_or_heldout_execution() -> None:
+    source = Path(contract.__file__).read_text(encoding="utf-8")
+    assert "import torch" not in source
+    assert "torch.load" not in source
+    assert "safe_torch_load" not in source
+    artifact = _load_artifact()
+    boundary = artifact["execution_boundary"]
+    assert boundary["q_tensor_deserialized_by_this_consumer"] is False
+    assert boundary["q_values_loaded_by_this_consumer"] is False
+    assert boundary["fit_q_values_loaded_by_this_consumer"] is False
+    assert boundary["heldout_q_values_loaded_by_this_consumer"] is False
+    assert boundary["heldout_evaluation_executed"] is False
+    assert boundary["real_nu_fit_executed"] is False
+    assert boundary["real_producer_sampling_executed"] is False
+    assert boundary["sealed_confirmation_manifest_read"] is False
+    assert boundary["cuda"] is False
+    assert boundary["training"] is False
+
+
+def test_governance_remains_closed_and_definition_does_not_select_a_producer() -> None:
+    artifact = _load_artifact()
+    governance = artifact["governance"]
+
+    assert governance["active_objective_remains"] == "N4_Q_PRODUCER_COMPARISON_NO_CANDIDATE_SUPPORTED"
+    assert governance["hard_blocker_remains"] == "N4_Q_PRODUCER_COMPARISON_NO_CANDIDATE_SUPPORTED"
+    assert governance["selected_producer"] is None
+    assert governance["training_authorized"] is False
+    assert governance["formal_promotion"] is False
+    assert governance["generation_readiness"] == "not_ready"
+    assert governance["sealed_confirmation_status"] == "RESERVED_NOT_MATERIALIZED"
+    assert governance["sealed_confirmation_consumed"] is False
+    assert governance["definition_ready_does_not_authorize_future_execution"] is True
+    assert governance["future_execution_requires_separate_gate"] is True

@@ -1,0 +1,342 @@
+from __future__ import annotations
+
+import json
+from types import SimpleNamespace
+
+import pytest
+import torch
+from torch import nn
+
+from scripts.research.lightgen.m0 import diagnose_lightgen_2d_m0_bogt_renderability_localization_v1 as localization
+
+
+def test_balanced_train_pairs_are_interleaved_and_disjoint() -> None:
+    context = SimpleNamespace(
+        train_indices=torch.arange(300),
+        labels=torch.arange(10).repeat_interleave(30),
+    )
+
+    fit, observation = localization._balanced_selection(context)
+
+    assert fit.shape == (200,)
+    assert observation.shape == (100,)
+    assert not torch.isin(fit, observation).any()
+    assert torch.bincount(context.labels[fit], minlength=10).tolist() == [20] * 10
+    assert torch.bincount(context.labels[observation], minlength=10).tolist() == [10] * 10
+    assert context.labels[fit].reshape(20, 10).tolist() == [list(range(10))] * 20
+
+
+def test_canonical_loss_balances_foreground_and_background_per_image() -> None:
+    target = torch.tensor([[[[1.0, 0.0], [0.0, 0.0]]], [[[1.0, 1.0], [1.0, 0.0]]]])
+    output = torch.tensor([[[[0.0, 0.0], [0.0, 0.0]]], [[[0.5, 0.5], [0.5, 0.5]]]])
+
+    total, foreground, background = localization._canonical_pixel_loss(output, target)
+
+    assert float(foreground) == pytest.approx(0.625)
+    assert float(background) == pytest.approx(0.125)
+    assert float(total) == pytest.approx(0.375)
+
+
+def test_step900_authority_rejects_report_status_or_checkpoint_mismatch() -> None:
+    report = {
+        "task_id": "M0_BOGT_CANONICAL_IMAGE_RESCUE_V1",
+        "result": localization.RUN_VALID_FAILED,
+        "outer_gate": "M0_BOGT_CANONICAL_IMAGE_RESCUE_RESOLVED",
+        "training": {"end_step": 900},
+        "artifacts": {"step900_checkpoint": {"sha256": localization.STEP900_CHECKPOINT_SHA256}},
+    }
+    status = {"state": localization.RUN_VALID_FAILED}
+
+    localization._validate_step900_authority(report, status)
+    with pytest.raises(localization.LocalizationError, match="step900 comparison authority"):
+        localization._validate_step900_authority({**report, "result": localization.RUN_COMPLETED}, status)
+    with pytest.raises(localization.LocalizationError, match="step900 comparison authority"):
+        localization._validate_step900_authority(report, {"state": localization.RUN_COMPLETED})
+    changed = {**report, "artifacts": {"step900_checkpoint": {"sha256": "0" * 64}}}
+    with pytest.raises(localization.LocalizationError, match="does not bind its checkpoint"):
+        localization._validate_step900_authority(changed, status)
+
+
+def test_step900_checkpoint_uses_global_step_and_report_delta_authority() -> None:
+    checkpoint = {
+        "schema": localization.rescue.CHECKPOINT_SCHEMA,
+        "starting_step": 600,
+        "completed_updates": 900,
+        "sampler_state": {"cursor": 900},
+    }
+    report = {"training": {"start_step": 600, "end_step": 900, "updates": 300}}
+
+    localization._validate_step900_checkpoint_payload(checkpoint, report)
+    with pytest.raises(localization.LocalizationError) as error:
+        localization._validate_step900_checkpoint_payload({**checkpoint, "completed_updates": 300}, report)
+    assert error.value.failure_id == localization.STEP900_CHECKPOINT_METADATA_FAILURE
+    changed = {**checkpoint, "sampler_state": {"cursor": 899}}
+    with pytest.raises(localization.LocalizationError) as error:
+        localization._validate_step900_checkpoint_payload(changed, report)
+    assert error.value.failure_id == localization.STEP900_CHECKPOINT_METADATA_FAILURE
+    with pytest.raises(localization.LocalizationError):
+        localization._validate_step900_checkpoint_payload(checkpoint, {"training": {"start_step": 600, "end_step": 900, "updates": 299}})
+
+
+def test_registered_step900_checkpoint_and_report_satisfy_corrected_invariant() -> None:
+    root = localization._root()
+    report = localization._read_json(root / localization.STEP900_REPORT)
+    checkpoint = localization.safe_torch_load(
+        root / localization.STEP900_CHECKPOINT,
+        expected_sha256=localization.STEP900_CHECKPOINT_SHA256,
+        map_location="cpu",
+    )
+
+    localization._validate_step900_checkpoint_payload(checkpoint, report)
+    assert checkpoint["starting_step"] == 600
+    assert checkpoint["completed_updates"] == 900
+    assert checkpoint["sampler_state"]["cursor"] == 900
+    assert report["training"]["updates"] == 300
+
+
+def test_reviewed_retry_binds_both_retained_failures_and_authorities() -> None:
+    root = localization._root()
+
+    payload = localization._root_cause_review_payload(root)
+
+    assert payload["failure_id"] == localization.STEP900_CHECKPOINT_METADATA_FAILURE
+    assert payload["evidence"]["preflight_01"]["failure_id"] == payload["evidence"]["preflight_02"]["failure_id"]
+    assert payload["corrected_invariant"]["completed_updates_global_step"] == 900
+    assert payload["corrected_invariant"]["report_incremental_updates"] == 300
+    assert payload["continuation"]["preflight_sequence"] == 3
+    assert payload["evidence"]["preflight_01"]["sha256"] == localization.HISTORICAL_PREFLIGHT_SHA256[0]
+    assert payload["evidence"]["preflight_02"]["sha256"] == localization.HISTORICAL_PREFLIGHT_SHA256[1]
+
+
+def test_historical_failure_id_uses_stable_hash_and_not_reason_wording() -> None:
+    root = localization._root()
+    path = root / localization.RUNS_ROOT / "preflight_01.json"
+    report = localization._read_json(path)
+    expected_hash = localization.HISTORICAL_PREFLIGHT_SHA256[0]
+
+    assert localization._legacy_preflight_failure_id(
+        {**report, "reason": "a different human-readable message"},
+        actual_sha256=expected_hash,
+        expected_sha256=expected_hash,
+    ) == localization.STEP900_CHECKPOINT_METADATA_FAILURE
+    assert localization._legacy_preflight_failure_id(
+        report,
+        actual_sha256="0" * 64,
+        expected_sha256=expected_hash,
+    ) is None
+
+
+def _target_batch(batch: int) -> torch.Tensor:
+    target = torch.zeros((batch, 1, 28, 28))
+    target[:, :, 8:20, 10:18] = 1.0
+    return target
+
+
+class _FakeRuntime(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        self.encoder = nn.Module()
+        self.generator = nn.Module()
+        self.encoder.register_parameter("phase", nn.Parameter(torch.tensor(0.2)))
+        self.generator.register_parameter("phase", nn.Parameter(torch.tensor(0.1)))
+
+    def forward_from_ols(self, coefficients: torch.Tensor) -> SimpleNamespace:
+        level = coefficients.real[:, 0] + self.generator.phase
+        raw = level.reshape(-1, 1, 1, 1).expand(-1, 1, 200, 200)
+        return SimpleNamespace(raw_camera=SimpleNamespace(intensity=raw))
+
+
+class _FakeConsumer:
+    def __init__(self) -> None:
+        self.runtime = _FakeRuntime()
+
+
+def test_generator_arm_updates_only_generator_phase() -> None:
+    consumer = _FakeConsumer()
+    parameters = dict(consumer.runtime.named_parameters())
+    parameters["encoder.phase"].requires_grad_(False)
+    parameters["generator.phase"].requires_grad_(True)
+    before_encoder = parameters["encoder.phase"].detach().clone()
+    before_generator = parameters["generator.phase"].detach().clone()
+    z = torch.ones((10, 100), dtype=torch.complex64) * (0.2 + 0.0j)
+    optimizer = localization._adam([parameters["generator.phase"]])
+
+    localization._train_generator_step(consumer, optimizer, z, _target_batch(10), torch.arange(10))
+
+    assert not torch.equal(before_generator, parameters["generator.phase"].detach())
+    assert torch.equal(before_encoder, parameters["encoder.phase"].detach())
+    assert parameters["encoder.phase"].grad is None
+
+
+def test_ols_arm_updates_only_complex_input() -> None:
+    consumer = _FakeConsumer()
+    for parameter in consumer.runtime.parameters():
+        parameter.requires_grad_(False)
+    runtime_before = {name: value.detach().clone() for name, value in consumer.runtime.state_dict().items()}
+    z = nn.Parameter(torch.ones((10, 100), dtype=torch.complex64) * (0.2 + 0.0j))
+    z_before = z.detach().clone()
+    optimizer = localization._adam([z])
+
+    localization._train_ols_step(consumer, optimizer, z, _target_batch(10), 0, 10)
+
+    assert not torch.equal(z_before, z.detach())
+    assert all(torch.equal(value, consumer.runtime.state_dict()[name]) for name, value in runtime_before.items())
+    assert all(parameter.grad is None for parameter in consumer.runtime.parameters())
+
+
+def test_arm_thresholds_and_fixed_classification_boundaries() -> None:
+    passing = {
+        "pixel": {"relative_reduction": {"foreground": 0.50, "background": 0.50}},
+        "E_D": {"macro_recall": 0.50, "per_class_recall": [0.10] * 10},
+    }
+    failing = {
+        "pixel": {"relative_reduction": {"foreground": 0.49, "background": 0.50}},
+        "E_D": {"macro_recall": 0.50, "per_class_recall": [0.10] * 10},
+    }
+
+    assert localization._arm_reaches_target(passing)
+    assert not localization._arm_reaches_target(failing)
+    assert localization._classify_arms(passing, passing) == "BOTH_RENDERABILITY_UPPER_BOUNDS_REACHED"
+    assert localization._classify_arms(passing, failing) == "FIXED_OLS_TO_GENERATOR_MAPPING_REACHED"
+    assert localization._classify_arms(failing, passing) == "GENERATOR_REGION_REACHED_ONLY_BY_OLS_OPTIMIZATION"
+    assert localization._classify_arms(failing, failing) == "NEITHER_BOUNDED_UPPER_BOUND_REACHED"
+
+
+def test_valid_measurement_classification_fails_closed_on_invalid_raw_cmos() -> None:
+    evaluator = nn.Linear(1, 1, bias=False)
+    evaluator.requires_grad_(False)
+    state = localization._state_snapshot(evaluator)
+    arm = {"updates": 300, "encoder_frozen": True, "generator_changed": True, "generator_frozen": True, "runtime_frozen": True, "end": {
+        "pixel": {"relative_reduction": {"foreground": 0.50, "background": 0.50}},
+        "E_D": {"macro_recall": 0.50, "per_class_recall": [0.10] * 10},
+    }}
+    raw_record = {"raw_cmos": {"all_finite": True, "all_nonconstant": True, "all_nonzero": True}}
+
+    classification = localization._resolve_valid_classification(
+        arm,
+        arm,
+        [raw_record],
+        evaluator=evaluator,
+        evaluator_state_before=state,
+        runtime_identity_before="frozen-runtime",
+        runtime_identity_after="frozen-runtime",
+        data_reads={"protected": 0, "test": 0, "sealed": 0},
+    )
+
+    assert classification == "BOTH_RENDERABILITY_UPPER_BOUNDS_REACHED"
+    with pytest.raises(localization.LocalizationError, match="CMOS population"):
+        localization._resolve_valid_classification(
+            arm,
+            arm,
+            [{"raw_cmos": {"all_finite": True, "all_nonconstant": False, "all_nonzero": True}}],
+            evaluator=evaluator,
+            evaluator_state_before=state,
+            runtime_identity_before="frozen-runtime",
+            runtime_identity_after="frozen-runtime",
+            data_reads={"protected": 0, "test": 0, "sealed": 0},
+        )
+
+
+def test_recovery_tree_comparison_and_terminal_status_write(tmp_path) -> None:
+    start = torch.nn.Parameter(torch.tensor(0.25))
+    optimizer = torch.optim.Adam([start], lr=localization.LEARNING_RATE, betas=localization.ADAM_BETAS, eps=localization.ADAM_EPSILON)
+    for _ in range(3):
+        optimizer.zero_grad(set_to_none=True)
+        (start - 1.0).square().backward()
+        optimizer.step()
+    expected_parameter = start.detach().clone()
+    expected_optimizer = optimizer.state_dict()
+
+    resumed = torch.nn.Parameter(torch.tensor(0.25))
+    resumed_optimizer = torch.optim.Adam([resumed], lr=localization.LEARNING_RATE, betas=localization.ADAM_BETAS, eps=localization.ADAM_EPSILON)
+    for _ in range(1):
+        resumed_optimizer.zero_grad(set_to_none=True)
+        (resumed - 1.0).square().backward()
+        resumed_optimizer.step()
+    recovery_payload = {"phase": "GENERATOR_ONLY", "cursor": 1, "parameter": resumed.detach().clone(), "optimizer": resumed_optimizer.state_dict()}
+    recovery_dir = tmp_path / "attempt" / "recovery"
+    localization._save_recovery_checkpoint(recovery_dir, recovery_payload, source_manifest_id="source-1")
+    recovery = localization._load_recovery_checkpoint(recovery_dir, source_manifest_id="source-1")
+    resumed.data.copy_(recovery["parameter"])
+    resumed_optimizer.load_state_dict(recovery["optimizer"])
+    for _ in range(2):
+        resumed_optimizer.zero_grad(set_to_none=True)
+        (resumed - 1.0).square().backward()
+        resumed_optimizer.step()
+
+    assert torch.equal(expected_parameter, resumed.detach())
+    assert localization._tree_equal(expected_optimizer, resumed_optimizer.state_dict())
+
+    status_path = tmp_path / "status.json"
+    localization._write_status(status_path, localization.RUN_COMPLETED, "COMPLETE", completed_updates=600)
+    saved = json.loads(status_path.read_text(encoding="utf-8"))
+    assert saved["state"] == localization.RUN_COMPLETED
+    assert saved["completed_updates"] == 600
+
+
+def test_recovery_checkpoint_rejects_wrong_source_and_rotates_three_slots(tmp_path) -> None:
+    recovery_dir = tmp_path / "attempt" / "recovery"
+    for cursor in range(4):
+        localization._save_recovery_checkpoint(
+            recovery_dir,
+            {"phase": "OLS_INPUT_ONLY", "cursor": cursor, "coefficients": torch.tensor([cursor], dtype=torch.float32)},
+            source_manifest_id="source-1",
+        )
+
+    loaded = localization._load_recovery_checkpoint(recovery_dir, source_manifest_id="source-1")
+
+    assert loaded["cursor"] == 3
+    assert len(list(recovery_dir.glob("recovery_slot_*.pt"))) == localization.RECOVERY_SLOT_COUNT
+    with pytest.raises(localization.LocalizationError, match="not bound"):
+        localization._load_recovery_checkpoint(recovery_dir, source_manifest_id="source-2")
+
+
+def test_metrics_include_per_sample_losses_and_evaluator_predictions() -> None:
+    class _Evaluator(nn.Module):
+        def forward(self, images: torch.Tensor) -> torch.Tensor:
+            score = images.mean(dim=(1, 2, 3))
+            logits = torch.zeros((len(images), 10), dtype=images.dtype, device=images.device)
+            logits[:, 0] = score
+            logits[:, 1] = -score
+            return logits
+
+    raw = torch.zeros((2, 1, 200, 200))
+    raw[1, :, 20:180, 20:180] = 0.75
+    targets = torch.zeros((2, 1, 28, 28))
+    targets[:, :, 8:20, 10:18] = 1.0
+    metrics = localization._metrics_for_raw(raw, targets, torch.tensor([0, 1]), _Evaluator())
+
+    assert len(metrics["per_sample"]["foreground_mse"]) == 2
+    assert len(metrics["per_sample"]["background_mse"]) == 2
+    assert len(metrics["per_sample"]["balanced_mse"]) == 2
+    assert metrics["per_sample"]["E_D_prediction"] == [0, 0]
+
+
+def test_finite_difference_component_matches_real_and_imaginary_gradients() -> None:
+    real_parameter = nn.Parameter(torch.tensor([0.7], dtype=torch.float32))
+    real_loss = (real_parameter - 0.2).square().sum()
+    real_gradient = torch.autograd.grad(real_loss, real_parameter)[0]
+    real_check = localization._finite_difference_component(
+        real_parameter,
+        0,
+        "real",
+        float(real_gradient[0]),
+        (1.0e-2, 5.0e-3),
+        lambda: (real_parameter - 0.2).square().sum(),
+        name="test real",
+    )
+    complex_parameter = nn.Parameter(torch.tensor([0.4 + 0.3j], dtype=torch.complex64))
+    complex_loss = ((complex_parameter.real - 0.1).square() + 2.0 * (complex_parameter.imag + 0.2).square()).sum()
+    complex_gradient = torch.autograd.grad(complex_loss, complex_parameter)[0]
+    imag_check = localization._finite_difference_component(
+        complex_parameter,
+        0,
+        "imag",
+        float(complex_gradient.imag[0]),
+        (1.0e-2, 5.0e-3),
+        lambda: ((complex_parameter.real - 0.1).square() + 2.0 * (complex_parameter.imag + 0.2).square()).sum(),
+        name="test imaginary",
+    )
+
+    assert real_check["finite_difference"]["relative_error"] <= 0.20
+    assert imag_check["finite_difference"]["relative_error"] <= 0.20

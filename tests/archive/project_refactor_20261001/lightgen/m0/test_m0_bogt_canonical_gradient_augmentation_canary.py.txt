@@ -1,0 +1,969 @@
+from __future__ import annotations
+
+import math
+import gc
+import copy
+import json
+import shutil
+import weakref
+from types import SimpleNamespace
+
+import pytest
+import torch
+
+from scripts.research.lightgen.m0 import execute_lightgen_2d_m0_bogt_canonical_gradient_augmentation_canary_v1 as canary
+
+
+def test_joint_canonical_operator_normalizes_over_the_concatenated_parameters() -> None:
+    gradients = {
+        "E_S": (torch.tensor([3.0, 4.0]), torch.tensor([12.0])),
+        "E_I": (torch.tensor([0.0, 2.0]), torch.tensor([0.0])),
+        "E_C": (torch.tensor([1.0, 0.0]), torch.tensor([2.0])),
+    }
+
+    combined, metrics = canary._joint_canonical_gradient(gradients, delta_sic=1.0)
+
+    expected_units = [
+        (torch.tensor([3.0, 4.0]) / 13.0, torch.tensor([12.0]) / 13.0),
+        (torch.tensor([0.0, 2.0]) / 2.0, torch.tensor([0.0])),
+        (torch.tensor([1.0, 0.0]) / math.sqrt(5.0), torch.tensor([2.0]) / math.sqrt(5.0)),
+    ]
+    summed = tuple(sum(unit[index] for unit in expected_units) for index in range(2))
+    rms = math.sqrt(sum(float(value.square().sum()) for value in summed) / 3.0)
+    assert torch.allclose(combined[0], summed[0] / rms)
+    assert torch.allclose(combined[1], summed[1] / rms)
+    assert metrics["normalization_scope"] == "joint_encoder_generator_vector"
+    assert "L_canonical" not in metrics
+
+
+def test_kappa_is_the_median_of_exact_batchwise_weighted_reconstruction_ratios() -> None:
+    rec = [(torch.tensor([3.0 * float(index + 1)]), torch.tensor([0.0])) for index in range(20)]
+    canonical = [(torch.tensor([2.0]), torch.tensor([0.0])) for _ in range(20)]
+
+    first, rows = canary._calibrate_kappa_from_gradients(rec, canonical, beta=3.0)
+    second, rows_again = canary._calibrate_kappa_from_gradients(rec, canonical, beta=3.0)
+
+    assert first == second
+    assert rows == rows_again
+    assert len(rows) == 20
+    assert rows[0]["ratio"] == 1.5
+    assert first == 15.75
+
+
+def test_recovery_tensor_diff_reports_registered_float32_roundoff() -> None:
+    expected = torch.tensor([0.25, 1.0], dtype=torch.float32)
+    replayed = torch.tensor([0.25 + 2.9802322e-8, 1.0], dtype=torch.float32)
+
+    report = canary._tensor_equivalence_metrics(
+        expected,
+        replayed,
+        rtol=canary.accepted_canonical.RECOVERY_UPDATE_RTOL,
+        atol=canary.accepted_canonical.RECOVERY_UPDATE_ATOL,
+    )
+
+    assert report["exact"] is False
+    assert report["within_tolerance"] is True
+    assert report["max_abs_diff"] == pytest.approx(2.9802322e-8)
+    assert report["rtol"] == canary.accepted_canonical.RECOVERY_UPDATE_RTOL
+    assert report["atol"] == canary.accepted_canonical.RECOVERY_UPDATE_ATOL
+    outside = torch.tensor([0.25 + 2.0e-6, 1.0], dtype=torch.float32)
+    assert not canary._tensor_equivalence_metrics(
+        expected,
+        outside,
+        rtol=canary.accepted_canonical.RECOVERY_UPDATE_RTOL,
+        atol=canary.accepted_canonical.RECOVERY_UPDATE_ATOL,
+    )["within_tolerance"]
+
+
+def test_combined_gradient_is_vector_addition_and_not_a_loss_surrogate() -> None:
+    bogt_gradient = (torch.tensor([1.0, -2.0]), torch.tensor([4.0]))
+    canonical_gradient = (torch.tensor([0.5, 3.0]), torch.tensor([-1.0]))
+
+    combined = canary._add_gradient_vectors(bogt_gradient, canonical_gradient, kappa=2.0)
+
+    assert torch.equal(combined[0], torch.tensor([2.0, 4.0]))
+    assert torch.equal(combined[1], torch.tensor([2.0]))
+
+
+def test_optimizer_consumes_the_joint_gradient_sum_once() -> None:
+    class Group(torch.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.phase = torch.nn.Parameter(torch.tensor([1.0, -1.0]))
+
+    class Runtime(torch.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.encoder = Group()
+            self.generator = Group()
+
+    class Consumer:
+        def __init__(self) -> None:
+            self.runtime = Runtime()
+
+    consumer = Consumer()
+    parameters = [parameter for _, parameter in consumer.runtime.named_parameters()]
+    optimizer = torch.optim.Adam(parameters, lr=1.0e-3)
+    bogt_gradient = (torch.tensor([1.0, 2.0]), torch.tensor([-1.0, 3.0]))
+    canonical_gradient = (torch.tensor([0.5, -0.5]), torch.tensor([2.0, -2.0]))
+
+    result = canary._apply_update_vectors(consumer, optimizer, G_BOGT=bogt_gradient, G_canonical=canonical_gradient, kappa=2.0)
+
+    assert torch.equal(result["G_total"][0], torch.tensor([2.0, 1.0]))
+    assert torch.equal(result["G_total"][1], torch.tensor([3.0, -1.0]))
+    assert all(int(state["step"].item()) == 1 for state in optimizer.state.values())
+    assert all(value > 0.0 for value in result["group_update_norms"].values())
+
+
+def test_optimizer_step_identity_is_read_from_both_parameter_states() -> None:
+    checkpoint = {"optimizer_state": {"state": {0: {"step": torch.tensor(600.0)}, 1: {"step": 600}}}}
+    assert canary._optimizer_steps(checkpoint) == [600, 600]
+
+
+def _legacy_step600_checkpoint() -> dict[str, object]:
+    # Mirrors the accepted m0_bogt_semantic_generation_checkpoint.v1 contract:
+    # frozen_runtime_state_sha256 is absent, but the producer records runtime identity.
+    return {
+        "schema": "m0_bogt_semantic_generation_checkpoint.v1",
+        "trainable_parameter_state": {
+            "encoder.phase": torch.zeros(1),
+            "generator.phase": torch.zeros(1),
+        },
+        "run_identity": {
+            "config_identity": {
+                "runtime": {
+                    "frozen": ["OLS", "W_OLS", "optical geometry", "training evaluator", "independent E_D"],
+                    "propagation_grid_size": 2048,
+                    "trainable_parameter_names": ["encoder.phase", "generator.phase"],
+                }
+            },
+            "model_identity": {
+                "runtime": "LIGHTGEN_2D_CHEN_BOGT_COMPLEX_OLS_CONSUMER_V1",
+                "trainable": ["encoder.phase", "generator.phase"],
+                "training_evaluator": "FrozenMNISTEvaluator v1",
+                "independent_evaluator": "SIC_INDEPENDENT_CONFIRMATION_EVALUATOR_D_V1",
+            },
+        },
+    }
+
+
+def _runtime_contract_consumer(frozen_hash: str = "frozen-digest") -> SimpleNamespace:
+    encoder = torch.nn.Parameter(torch.zeros(1))
+    generator = torch.nn.Parameter(torch.zeros(1))
+    transport = torch.eye(100, dtype=torch.complex64)
+    runtime = SimpleNamespace(
+        ols=SimpleNamespace(transport=transport),
+        named_parameters=lambda: (("encoder.phase", encoder), ("generator.phase", generator)),
+        parameters=lambda: (encoder, generator),
+        eval=lambda: None,
+    )
+    return SimpleNamespace(
+        runtime=runtime,
+        frozen_state_sha256=frozen_hash,
+        runtime_identity=lambda: {
+            "identity": "LIGHTGEN_2D_SEMANTIC_GENERATION_INPUT_OLS_ALIGNMENT_RUNTIME_V1",
+            "module_sha256": "runtime-module-digest",
+            "config": {"propagation_grid_size": 2048},
+            "transport": "T=I_100 coefficient space",
+            "transport_sha256": "transport-digest",
+            "production_propagation_grid": 2048,
+        },
+        trainable_state_dict=lambda: {"encoder.phase": encoder, "generator.phase": generator},
+        create_optimizer=lambda: pytest.fail("identity-only baseline must not create an optimizer"),
+    )
+
+
+def test_legacy_step600_without_serialized_frozen_hash_uses_source_bound_runtime_contract() -> None:
+    checkpoint = _legacy_step600_checkpoint()
+    proof = canary._validate_step600_runtime_contract(checkpoint, _runtime_contract_consumer())
+
+    assert proof["serialized_frozen_runtime_digest_present"] is False
+    assert proof["frozen_runtime_digest_source"] == "reconstructed_from_source_bound_runtime_contract"
+    assert proof["frozen_runtime_state_sha256"] == "frozen-digest"
+
+
+@pytest.mark.parametrize(
+    ("mutate", "message"),
+    [
+        (lambda checkpoint: checkpoint["run_identity"]["config_identity"]["runtime"].update(propagation_grid_size=128), "runtime contract"),
+        (lambda checkpoint: checkpoint["run_identity"]["model_identity"].update(trainable=["generator.phase"]), "model identity"),
+    ],
+)
+def test_legacy_step600_runtime_contract_rejects_wrong_grid_or_trainable_scope(mutate, message: str) -> None:
+    checkpoint = _legacy_step600_checkpoint()
+    mutate(checkpoint)
+
+    with pytest.raises(canary.CanaryError, match=message):
+        canary._validate_step600_runtime_contract(checkpoint, _runtime_contract_consumer())
+
+
+def test_legacy_step600_rejects_a_present_but_mismatched_frozen_hash() -> None:
+    checkpoint = _legacy_step600_checkpoint()
+    checkpoint["frozen_runtime_state_sha256"] = "wrong-digest"
+
+    with pytest.raises(canary.CanaryError, match="serialized step600 frozen runtime digest"):
+        canary._validate_step600_runtime_contract(checkpoint, _runtime_contract_consumer())
+
+
+@pytest.mark.parametrize(
+    ("serialized_hash", "runtime_grid", "should_pass", "digest_source"),
+    [
+        (None, 2048, True, "reconstructed_from_source_bound_runtime_contract"),
+        (None, 128, False, None),
+        ("frozen-digest", 2048, True, "serialized_checkpoint_field"),
+        ("wrong-digest", 2048, False, None),
+    ],
+)
+def test_production_step600_dev_baseline_setup_uses_authoritative_runtime_identity(
+    monkeypatch, tmp_path, serialized_hash, runtime_grid: int, should_pass: bool, digest_source: str | None
+) -> None:
+    checkpoint = _legacy_step600_checkpoint()
+    checkpoint["optimizer_state"] = {"state": {"step": torch.tensor(600)}}
+    checkpoint["rng_state"] = {}
+    if serialized_hash is None:
+        assert "frozen_runtime_state_sha256" not in checkpoint
+    else:
+        checkpoint["frozen_runtime_state_sha256"] = serialized_hash
+    consumer = _runtime_contract_consumer()
+    base_runtime_identity = consumer.runtime_identity
+
+    def runtime_identity():
+        result = base_runtime_identity()
+        result["config"]["propagation_grid_size"] = runtime_grid
+        result["production_propagation_grid"] = runtime_grid
+        return result
+
+    consumer.runtime_identity = runtime_identity
+    parameters_before = [parameter.detach().clone() for _, parameter in consumer.runtime.named_parameters()]
+    optimizer_state_before = copy.deepcopy(checkpoint.get("optimizer_state"))
+    resolver_calls: list[dict[str, object]] = []
+    measurement_calls: list[str] = []
+    weights_reads: list[str] = []
+
+    def resolve(_root, observed_checkpoint, _context):
+        resolver_calls.append({"checkpoint": observed_checkpoint, "optimizer_created": False})
+        return consumer, canary._validate_step600_runtime_contract(observed_checkpoint, consumer)
+
+    def measure_optical(*args, **kwargs):
+        measurement_calls.append("optical")
+        assert kwargs["expected_frozen_runtime_state_sha256"] == "frozen-digest"
+        assert all(torch.equal(before, parameter.detach()) for before, (_, parameter) in zip(parameters_before, consumer.runtime.named_parameters(), strict=True))
+        return {"L_rec": 0.066799}, torch.ones(1)
+
+    monkeypatch.setattr(canary, "_load_step600_runtime_with_identity", resolve, raising=False)
+    monkeypatch.setattr(canary.readout, "_step600_external_weights", lambda *_args, **_kwargs: (weights_reads.append("read") or object(), object()))
+    monkeypatch.setattr(canary.readout, "_measure_dev_optical", measure_optical)
+
+    def measure_ed(evaluator, raw, labels, **_kwargs):
+        assert all(not parameter.requires_grad and parameter.grad is None for parameter in evaluator.parameters())
+        assert labels.shape == (canary.DEV_ROWS,)
+        measurement_calls.append("E_D")
+        return {"rows": canary.DEV_ROWS, "macro_recall": 0.1318}
+
+    monkeypatch.setattr(canary.readout, "_measure_ed_on_raw", measure_ed)
+    monkeypatch.setattr(canary, "_write_json_or_compare", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(canary, "file_sha256", lambda _path: "step600-checkpoint")
+    monkeypatch.setattr(canary.torch.cuda, "is_available", lambda: False)
+    independent_evaluator = torch.nn.Linear(1, 1)
+    for parameter in independent_evaluator.parameters():
+        parameter.requires_grad_(False)
+
+    class BaselineContext:
+        def __init__(self, evaluator):
+            self.data_identity = {"identity": "accepted"}
+            self.independent_evaluator = evaluator
+            self.dataset_accesses: list[str] = []
+
+        @property
+        def labels(self):
+            self.dataset_accesses.append("labels")
+            return torch.zeros(canary.DEV_ROWS, dtype=torch.long)
+
+        @property
+        def development_indices(self):
+            self.dataset_accesses.append("development_indices")
+            return torch.arange(canary.DEV_ROWS)
+
+    context = BaselineContext(independent_evaluator)
+    attempt = tmp_path / "attempt"
+    attempt.mkdir()
+    monkeypatch.setattr(canary, "_load_training_evaluators", lambda *_args, **_kwargs: (torch.nn.Identity(), torch.nn.Identity(), torch.nn.Identity()))
+    monkeypatch.setattr(canary.bogt, "restore_rng_state", lambda _state: None)
+
+    if should_pass:
+        _consumer, optimizer, _evaluators = canary._load_training_runtime(tmp_path, checkpoint, context, create_optimizer=False)
+        assert optimizer is None
+        assert len(resolver_calls) == 1
+        report = canary._measure_full_dev(
+            tmp_path,
+            checkpoint,
+            context,
+            {},
+            SimpleNamespace(sample=lambda *_args, **_kwargs: None),
+            attempt,
+            "source-manifest",
+            step=canary.START_STEP,
+            task_started=0.0,
+        )
+        assert report["runtime_identity"]["frozen_runtime_digest_source"] == digest_source
+        assert report["E_D"]["rows"] == canary.DEV_ROWS
+        assert measurement_calls == ["optical", "E_D"]
+        assert weights_reads == ["read"]
+        assert context.dataset_accesses == ["labels", "development_indices"]
+    else:
+        with pytest.raises(canary.CanaryError):
+            canary._measure_full_dev(
+                tmp_path,
+                checkpoint,
+                context,
+                {},
+                SimpleNamespace(sample=lambda *_args, **_kwargs: None),
+                attempt,
+                "source-manifest",
+                step=canary.START_STEP,
+                task_started=0.0,
+            )
+        assert measurement_calls == []
+        assert weights_reads == []
+        assert context.dataset_accesses == []
+    assert len(resolver_calls) == (2 if should_pass else 1)
+    assert all(call == {"checkpoint": checkpoint, "optimizer_created": False} for call in resolver_calls)
+    assert checkpoint.get("optimizer_state") == optimizer_state_before
+    assert all(parameter.grad is None for parameter in context.independent_evaluator.parameters())
+    assert all(torch.equal(before, parameter.detach()) for before, (_, parameter) in zip(parameters_before, consumer.runtime.named_parameters(), strict=True))
+
+
+def test_one_time_repair_record_consumes_only_the_preserved_preflight_failure() -> None:
+    repair = canary._validated_repair_history(canary._root(), allow_existing_attempt01=True)
+
+    assert repair["latest_review_id"] == "root_cause_review_07"
+    assert repair["current_authorization_id"] == canary.AUTHORIZATION_ID
+    assert repair["preflight_03_sha256"] == canary.PREFLIGHT_03_SHA256
+    assert repair["preflight_04_source_semantics_id"] == "ca7805ae433a11e36a5b65d7bbee6378f75080d207068a56e3da3a4586aee34a"
+    assert repair["preflight_04_kappa"] == pytest.approx(0.6936758440256018, abs=1.0e-12)
+    assert repair["root_cause_review_03_stable_signature"] == "recovery_next_batch_compared_against_previous_history_position"
+    assert repair["attempt_01_creation_permitted"] is False
+    assert repair["preflight_05_sha256"] == "1dfa3e2ec58ffbe5af11fb2e05738692c06f79cd0e0352e82902c790b2a4748f"
+    assert repair["root_cause_review_04_stable_signature"] == "step604_recovery_exact_tensor_tree_rejects_authorized_float32_equivalence"
+    assert repair["preflight_06_sha256"] == canary.file_sha256(canary._root() / canary.PREFLIGHT_06_PATH)
+    assert repair["preflight_07_sha256"] == canary.file_sha256(canary._root() / canary.PREFLIGHT_07_PATH)
+    assert repair["preflight_08_sha256"] == canary.file_sha256(canary._root() / canary.PREFLIGHT_08_PATH)
+    assert repair["failed_attempt_01_state_sha256"] == canary.file_sha256(canary._root() / canary.ATTEMPT_DIR / "status.json")
+    assert repair["allowed_recheck"] == "preflight_09_once; preserve attempt_01; attempt_02 only after READY"
+
+
+def test_repair_history_rejects_tampered_preflight_03_scope(tmp_path) -> None:
+    source_root = canary._root()
+    relative_inputs = (
+        canary.PREFLIGHT_01_PATH,
+        canary.PREFLIGHT_02_PATH,
+        canary.PREFLIGHT_03_PATH,
+        canary.PREFLIGHT_03_RESOURCE_TELEMETRY_PATH,
+        canary.ROOT_CAUSE_REVIEW_PATH,
+        canary.ROOT_CAUSE_REVIEW_02_PATH,
+        canary.readout.ATTEMPT_DIR / "gradient_analysis.json",
+    )
+    for relative in relative_inputs:
+        destination = tmp_path / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source_root / relative, destination)
+    review_path = tmp_path / canary.ROOT_CAUSE_REVIEW_02_PATH
+    review = json.loads(review_path.read_text(encoding="utf-8"))
+    review["repair_scope"]["fixed_calibration_batches"] = 19
+    review_path.write_text(json.dumps(review), encoding="utf-8")
+
+    with pytest.raises(canary.CanaryError, match="historical preflight_03 scope changed"):
+        canary._validated_repair_history(tmp_path)
+
+
+def test_repair_history_rejects_tampered_step604_review_binding(tmp_path) -> None:
+    source_root = canary._root()
+    shutil.copytree(source_root / canary.RUNS_DIR, tmp_path / canary.RUNS_DIR)
+    calibration = canary.readout.ATTEMPT_DIR / "gradient_analysis.json"
+    destination = tmp_path / calibration
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source_root / calibration, destination)
+    review_path = tmp_path / canary.ROOT_CAUSE_REVIEW_04_PATH
+    review = json.loads(review_path.read_text(encoding="utf-8"))
+    review["prior_preflight"]["sha256"] = "0" * 64
+    review_path.write_text(json.dumps(review), encoding="utf-8")
+
+    with pytest.raises(canary.CanaryError, match="root-cause review 04 is not bound"):
+        canary._validated_repair_history(tmp_path)
+
+
+def _toy_gradient_case():
+    class Group(torch.nn.Module):
+        def __init__(self, value: float) -> None:
+            super().__init__()
+            self.phase = torch.nn.Parameter(torch.tensor([value], dtype=torch.float32))
+
+    class Runtime(torch.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.encoder = Group(0.3)
+            self.generator = Group(-0.2)
+
+    class Consumer:
+        def __init__(self) -> None:
+            self.runtime = Runtime()
+            self.device = torch.device("cpu")
+            self.weights = SimpleNamespace(alpha=0.7, beta=1.2, gamma=0.4)
+            self.raw_refs: list[weakref.ReferenceType[torch.Tensor]] = []
+            self.forward_count = 0
+
+        def forward_loss(self, images: torch.Tensor, *, data_role: str):
+            assert data_role == canary.bogt.TRAIN_ROLE
+            self.forward_count += 1
+            encoder = self.runtime.encoder.phase
+            generator = self.runtime.generator.phase
+            axis = torch.linspace(0.0, 1.0, 28 * 28, dtype=images.dtype).reshape(1, 1, 28, 28)
+            raw = torch.sigmoid(encoder * axis + generator * axis.flip(-1) + 0.1).expand_as(images)
+            self.raw_refs.append(weakref.ref(raw))
+            l_dist = encoder.square().mean()
+            l_rec = (raw - images).square().mean()
+            l_op = generator.square().mean()
+            result = SimpleNamespace(raw_intensity=raw)
+            return SimpleNamespace(
+                result=result,
+                l_dist=l_dist,
+                l_rec=l_rec,
+                l_op=l_op,
+                l_total=self.weights.alpha * l_dist + self.weights.beta * l_rec + self.weights.gamma * l_op,
+            )
+
+    class Evaluator(torch.nn.Module):
+        def __init__(self, offset: float) -> None:
+            super().__init__()
+            weights = torch.arange(28 * 28 * 128, dtype=torch.float32).reshape(28 * 28, 128)
+            self.register_buffer("projection", torch.sin(weights * 0.00017 + offset))
+
+        def forward(self, images: torch.Tensor):
+            features = images.flatten(1) @ self.projection
+            return features, features
+
+    consumer = Consumer()
+    evaluators = tuple(Evaluator(offset).eval() for offset in (0.1, 0.4, 0.9))
+    for evaluator in evaluators:
+        for parameter in evaluator.parameters():
+            parameter.requires_grad_(False)
+            parameter.grad = None
+    images = torch.rand((10, 1, 28, 28), generator=torch.Generator().manual_seed(123))
+    return consumer, images, evaluators
+
+
+def test_gradient_buffer_snapshot_reports_parameter_and_element_support() -> None:
+    consumer, _, _ = _toy_gradient_case()
+    parameters = canary._parameter_tuple(consumer)
+    parameters[0].grad = torch.tensor([3.0])
+    parameters[1].grad = torch.tensor([0.0])
+
+    snapshot = canary._gradient_buffer_snapshot(consumer)
+
+    assert snapshot["trainable_parameter_tensor_count"] == 2
+    assert snapshot["grad_is_not_none_count"] == 2
+    assert snapshot["nonzero_grad_parameter_count"] == 1
+    assert snapshot["nonzero_grad_element_count"] == 1
+    assert snapshot["aggregate_grad_l2_norm"] == 3.0
+    assert snapshot["first_offending_parameter_names"] == ["encoder.phase", "generator.phase"]
+    assert snapshot["first_nonzero_parameter_names"] == ["encoder.phase"]
+    assert snapshot["clean"] is False
+
+
+def test_disposable_restore_clears_gradients_without_changing_restored_state(tmp_path) -> None:
+    class Group(torch.nn.Module):
+        def __init__(self, value: float) -> None:
+            super().__init__()
+            self.phase = torch.nn.Parameter(torch.tensor([value], dtype=torch.float32))
+
+    class Runtime(torch.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.encoder = Group(0.25)
+            self.generator = Group(-0.5)
+
+    class Consumer:
+        def __init__(self) -> None:
+            self.runtime = Runtime()
+
+        def trainable_state_dict(self):
+            return {name: parameter.detach().cpu().clone() for name, parameter in self.runtime.named_parameters()}
+
+        def load_trainable_state_dict(self, state):
+            with torch.no_grad():
+                for name, parameter in self.runtime.named_parameters():
+                    parameter.copy_(state[name])
+
+    class Sampler:
+        def __init__(self) -> None:
+            self.cursor = 600
+
+        def state_dict(self):
+            return {"cursor": self.cursor}
+
+        def load_state_dict(self, state):
+            self.cursor = int(state["cursor"])
+
+    consumer = Consumer()
+    parameters = canary._parameter_tuple(consumer)
+    optimizer = torch.optim.Adam(parameters, lr=1.0e-2)
+    sampler = Sampler()
+    original_parameters = canary._trainable_state(consumer)
+    original_optimizer = optimizer.state_dict()
+    original_sampler = sampler.state_dict()
+    original_rng = canary.bogt._rng_state_payload()
+
+    canary._set_gradients(parameters, (torch.tensor([1.0]), torch.tensor([-2.0])))
+    optimizer.step()
+    sampler.cursor = 601
+    assert all(parameter.grad is not None for parameter in parameters)
+
+    # Reproduce the previous restore contract: model/Adam/cursor/RNG load leaves .grad behind.
+    consumer.load_trainable_state_dict(original_parameters)
+    optimizer.load_state_dict(original_optimizer)
+    sampler.load_state_dict(original_sampler)
+    canary.bogt.restore_rng_state(original_rng)
+    assert all(parameter.grad is not None for parameter in parameters)
+
+    ledger_path = tmp_path / "gradient_buffers.jsonl"
+    recorder = canary.PhaseResourceRecorder(torch.device("cpu"), gradient_ledger_path=ledger_path)
+    restored = canary._restore_disposable_preflight_state(
+        consumer,
+        optimizer,
+        sampler,
+        trainable_state=original_parameters,
+        optimizer_state=original_optimizer,
+        sampler_state=original_sampler,
+        rng_state=original_rng,
+        recorder=recorder,
+        phase_prefix="negative_control_restore",
+    )
+
+    assert restored["pre_clear_grad_is_not_none_count"] == 2
+    assert restored["post_clear_grad_is_not_none_count"] == 0
+    assert restored["parameters_unchanged_by_clear"] is True
+    assert restored["optimizer_state_unchanged_by_clear"] is True
+    assert restored["clean_after_restore"] is True
+    assert sampler.cursor == 600
+    assert canary._tree_equal(canary._trainable_state(consumer), original_parameters)
+    assert canary._tree_equal(optimizer.state_dict(), original_optimizer)
+    assert all(parameter.grad is None for parameter in parameters)
+    rows = [json.loads(line) for line in ledger_path.read_text(encoding="utf-8").splitlines()]
+    assert rows[0]["phase"].endswith("before_grad_clear")
+    assert rows[0]["unexpected_nonclean_state"] is True
+    assert rows[0]["gradient_buffers"]["grad_is_not_none_count"] == 2
+    assert rows[1]["gradient_buffers"]["clean"] is True
+
+
+def test_kappa_receipt_binds_exact_fixed_batches_and_is_deterministic() -> None:
+    batches = [torch.arange(index * 10, (index + 1) * 10) for index in range(20)]
+    labels = torch.arange(200) % 10
+    rows = [
+        {"batch_index": index, "weighted_reconstruction_norm": float(index + 2), "canonical_gradient_norm": 2.0, "ratio": float(index + 2) / 2.0, "row_indices_sha256": canary.tensor_sha256(batch)}
+        for index, batch in enumerate(batches)
+    ]
+    calibration = {
+        "kappa": canary.statistics.median(row["ratio"] for row in rows),
+        "batch_rows": rows,
+        "batch_start_cursor": canary.readout.GRADIENT_BATCH_START,
+        "batch_count": 20,
+        "calibration_data_role": canary.bogt.TRAIN_ROLE,
+    }
+    source = {"source_manifest_id": "manifest-test", "execution_source_semantics_id": "semantics-test"}
+
+    first = canary._kappa_receipt_payload(calibration, batches, labels, source)
+    second = canary._kappa_receipt_payload(calibration, batches, labels, source)
+
+    assert first == second
+    assert first["source_manifest_id"] == "manifest-test"
+    assert first["source_semantics_id"] == "semantics-test"
+    assert first["batch_count"] == 20
+    assert first["fixed_batches"][0]["row_indices"] == batches[0].tolist()
+    assert first["fixed_batches"][0]["labels"] == list(range(10))
+    assert first["fixed_batches"][0]["ratio"] == 1.0
+    assert first["final_median_kappa"] == calibration["kappa"]
+
+
+def test_repeated_disposable_train_updates_clear_prior_step_gradients() -> None:
+    consumer, images, evaluators = _toy_gradient_case()
+    parameters = canary._parameter_tuple(consumer)
+    optimizer = torch.optim.Adam(parameters, lr=1.0e-3)
+    for parameter in parameters:
+        optimizer.state[parameter] = {
+            "step": torch.tensor(float(canary.START_STEP)),
+            "exp_avg": torch.zeros_like(parameter),
+            "exp_avg_sq": torch.zeros_like(parameter),
+        }
+
+    class Ledger:
+        def record(self, role: str, rows: int) -> None:
+            assert role == canary.bogt.TRAIN_ROLE and rows == 10
+
+    class Context:
+        def __init__(self) -> None:
+            self.images = images
+            self.labels = torch.arange(10)
+            self.ledger = Ledger()
+            self.independent_evaluator = torch.nn.Identity()
+
+    class Sampler:
+        def __init__(self) -> None:
+            self.cursor = canary.START_STEP
+
+        def next_batch(self):
+            self.cursor += 1
+            return torch.arange(10), torch.arange(10)
+
+    recorder = canary.PhaseResourceRecorder(torch.device("cpu"))
+    recorder.sample = lambda *args, **kwargs: None
+    sampler = Sampler()
+    context = Context()
+    traces = []
+    for _ in range(2):
+        assert all(parameter.grad is None for parameter in parameters)
+        trace = canary._train_update(
+            consumer,
+            optimizer,
+            sampler,
+            context,
+            evaluators,
+            kappa=0.5,
+            recorder=recorder,
+        )
+        traces.append(trace)
+        assert trace["gradient_vectors"]["gradient_assignment_matches_G_total"] is True
+        assert trace["gradient_vectors"]["gradient_buffers_clean_after_update"] is True
+        assert all(parameter.grad is None for parameter in parameters)
+
+    assert sampler.cursor == canary.START_STEP + 2
+    assert canary._optimizer_steps_from_optimizer(optimizer) == [canary.START_STEP + 2] * 2
+    assert len(traces) == 2
+    assert recorder.first_unexpected_nonclean_transition is None
+    assert any(item["phase"] == "train_update_after_optimizer_step_before_clear" and item["gradient_buffers"]["clean"] is False for item in recorder.gradient_entries)
+    assert any(item["phase"] == "train_update_after_optimizer_zero_grad" and item["gradient_buffers"]["clean"] is True for item in recorder.gradient_entries)
+
+
+def test_sequential_canonical_gradient_matches_accepted_joint_operator() -> None:
+    consumer, images, evaluators = _toy_gradient_case()
+    parameters = canary._parameter_tuple(consumer)
+    initial_parameters = [parameter.detach().clone() for parameter in parameters]
+    evaluator_hashes = [canary._module_state_sha256(evaluator) for evaluator in evaluators]
+    rng_before = torch.random.get_rng_state().clone()
+
+    reference_forward = consumer.forward_loss(images, data_role=canary.bogt.TRAIN_ROLE)
+    reference_losses = canary._canonical_losses_from_raw(
+        reference_forward.result.raw_intensity, images, *evaluators
+    )
+    reference_components = {}
+    for index, name in enumerate(("E_S", "E_I", "E_C")):
+        gradients = torch.autograd.grad(
+            reference_losses[name], parameters, retain_graph=index < 2, allow_unused=True
+        )
+        reference_components[name] = canary._gradient_tuple(gradients, parameters)
+    reference, reference_metrics = canary._joint_canonical_gradient(
+        reference_components, delta_sic=canary.three.DELTA_SIC
+    )
+    del reference_forward, reference_losses
+    gc.collect()
+
+    sequential, metrics, losses, components = canary._sequential_canonical_gradient(
+        consumer, images, evaluators, keep_components=True
+    )
+
+    assert consumer.forward_count == 4  # one reference forward and one recompute per evaluator
+    assert torch.allclose(sequential[1], reference[1], rtol=2.0e-5, atol=2.0e-7)
+    assert torch.allclose(sequential[0], reference[0], rtol=2.0e-5, atol=2.0e-7)
+    for name in ("E_S", "E_I", "E_C"):
+        ref_unit = tuple(value / reference_metrics["evaluator_joint_gradient_norms"][name] for value in reference_components[name])
+        assert all(torch.allclose(actual, expected, rtol=2.0e-5, atol=2.0e-7) for actual, expected in zip(components[name], ref_unit, strict=True))
+        assert math.isclose(metrics["evaluator_joint_gradient_norms"][name], reference_metrics["evaluator_joint_gradient_norms"][name], rel_tol=2.0e-5, abs_tol=2.0e-7)
+    assert math.isclose(canary._joint_norm(sequential), canary._joint_norm(reference), rel_tol=2.0e-5, abs_tol=2.0e-7)
+    assert math.isclose(canary._joint_cosine(sequential, reference), 1.0, rel_tol=0.0, abs_tol=2.0e-6)
+    assert set(losses) == {"E_S", "E_I", "E_C"}
+    assert all(parameter.grad is None for parameter in parameters)
+    assert all(torch.equal(parameter, previous) for parameter, previous in zip(parameters, initial_parameters, strict=True))
+    assert evaluator_hashes == [canary._module_state_sha256(evaluator) for evaluator in evaluators]
+    assert torch.equal(torch.random.get_rng_state(), rng_before)
+
+
+def test_repeated_sequential_calls_release_raw_graphs_between_batches() -> None:
+    consumer, images, evaluators = _toy_gradient_case()
+
+    for _ in range(3):
+        gradient, metrics, losses, components = canary._sequential_canonical_gradient(
+            consumer, images, evaluators
+        )
+        assert all(value.grad_fn is None for value in gradient)
+        assert all(value.grad_fn is None for group in components.values() for value in group)
+        assert all(math.isfinite(value) for value in losses.values())
+        assert metrics["normalization_scope"] == "joint_encoder_generator_vector"
+        del gradient, metrics, losses, components
+        gc.collect()
+        assert all(reference() is None for reference in consumer.raw_refs)
+        consumer.raw_refs.clear()
+
+
+def test_twenty_batch_calibration_streams_scalar_norms_without_retaining_graphs() -> None:
+    consumer, images, evaluators = _toy_gradient_case()
+
+    class Ledger:
+        count = 0
+
+        def record(self, role: str, rows: int) -> None:
+            assert role == canary.bogt.TRAIN_ROLE
+            self.count += rows
+
+    class Context:
+        def __init__(self) -> None:
+            self.images = images.repeat(20, 1, 1, 1)
+            self.labels = torch.arange(10).repeat(20)
+            self.ledger = Ledger()
+
+    class Recorder:
+        def __init__(self) -> None:
+            self.phases: list[tuple[str, int | None, str | None]] = []
+
+        def sample(self, phase: str, *, batch_index=None, evaluator=None, **kwargs) -> None:
+            self.phases.append((phase, batch_index, evaluator))
+
+    context = Context()
+    recorder = Recorder()
+    batches = [torch.arange(index * 10, (index + 1) * 10) for index in range(20)]
+    result = canary._calibrate_kappa(
+        consumer,
+        context,
+        evaluators,
+        batches,
+        recorder,
+        started=canary.time.perf_counter(),
+    )
+    gc.collect()
+
+    assert result["batch_count"] == 20
+    assert len(result["batch_rows"]) == 20
+    assert [row["batch_index"] for row in result["batch_rows"]] == list(range(20))
+    assert all(row["ratio"] > 0.0 for row in result["batch_rows"])
+    assert context.ledger.count == 200
+    assert all(reference() is None for reference in consumer.raw_refs)
+    batch_starts = [batch_index for phase, batch_index, _ in recorder.phases if phase == "calibration_batch_start"]
+    assert batch_starts == list(range(20))
+
+
+def test_resource_stop_persists_snapshot_before_shared_resource_block(tmp_path) -> None:
+    import json
+
+    telemetry_path = tmp_path / "preflight_03_resource_telemetry.jsonl"
+    stop_path = tmp_path / "preflight_03_resource_stop.json"
+    recorder = canary.PhaseResourceRecorder(
+        torch.device("cuda:0"), telemetry_path=telemetry_path, stop_path=stop_path
+    )
+    observed = {
+        "global_used_bytes": 900,
+        "global_total_bytes": 1000,
+        "global_used_fraction": 0.90,
+        "current_process_gpu_bytes": 800,
+        "torch_allocated_bytes": 300,
+        "torch_reserved_bytes": 400,
+        "torch_peak_allocated_bytes": 350,
+        "torch_peak_reserved_bytes": 450,
+    }
+    original = canary._capture_resource_metrics
+    canary._capture_resource_metrics = lambda device: dict(observed)
+    try:
+        with pytest.raises(canary.ResourceBudgetExceeded, match="90%"):
+            recorder.sample("calibration_E_I_after_backward", batch_index=4, evaluator="E_I")
+    finally:
+        canary._capture_resource_metrics = original
+
+    entries = [json.loads(line) for line in telemetry_path.read_text(encoding="utf-8").splitlines()]
+    stop = json.loads(stop_path.read_text(encoding="utf-8"))
+    assert len(entries) == 1
+    assert entries[0]["global_used_fraction"] == 0.90
+    assert entries[0]["phase"] == "calibration_E_I_after_backward"
+    assert entries[0]["batch_index"] == 4 and entries[0]["evaluator"] == "E_I"
+    assert stop["final_snapshot"] == entries[0]
+    assert recorder.entries == entries
+
+
+def test_resource_exception_types_share_blocked_classification() -> None:
+    assert canary._is_resource_budget_error(canary.ResourceBudgetExceeded("local"))
+    assert canary._is_resource_budget_error(canary.readout.ResourceBudgetExceeded("shared"))
+    assert not canary._is_resource_budget_error(canary.CanaryError("harness"))
+
+
+def test_repair_preflight_selection_is_one_write_once_preflight_09() -> None:
+    assert canary._select_preflight_path(canary._root()) == canary.PREFLIGHT_09_PATH
+    assert canary.AUTHORIZATION_ID.endswith(":authorization:07")
+
+
+def test_scientific_entrypoint_is_bound_to_clean_attempt_02() -> None:
+    args = canary._build_parser().parse_args(["--run"])
+    assert args.run is True
+    assert canary.SCIENTIFIC_ATTEMPT_DIR.name == "attempt_02"
+    assert canary.SCIENTIFIC_ATTEMPT_ID.endswith(":attempt_02")
+    assert canary._select_preflight_path(canary._root()).name == "preflight_09.json"
+
+
+def test_scientific_entrypoint_rejects_missing_ready_before_loading_data(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(canary, "_root", lambda: tmp_path)
+    monkeypatch.setattr(canary, "_validate_output_root", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(canary, "_validate_authorities", lambda *_args: {"data_identity": {}})
+    monkeypatch.setattr(canary, "_source_manifest", lambda *_args: {"source_manifest_id": "source"})
+    monkeypatch.setattr(canary, "_identity", lambda *_args: object())
+    monkeypatch.setattr(canary, "_select_preflight_path", lambda *_args: canary.PREFLIGHT_09_PATH)
+    monkeypatch.setattr(canary.pure_bogt, "_prepare_cuda_dll_path", lambda: "unused")
+    monkeypatch.setattr(canary.torch.cuda, "is_available", lambda: False)
+    monkeypatch.setattr(canary.readout, "_load_cpu_context", lambda *_args: pytest.fail("data loaded before READY"))
+    (tmp_path / canary.ATTEMPT_DIR).mkdir(parents=True)
+
+    with pytest.raises(canary.CanaryError, match="source-bound READY"):
+        canary.main(["--run"])
+
+
+def test_optimizer_recovery_equivalence_allows_registered_float_roundoff_but_requires_exact_adam_step() -> None:
+    left = {
+        "parameter_groups": [{"parameter_names": ["encoder.phase"], "configuration": {"lr": 1.0e-3}}],
+        "states_by_parameter_name": {
+            "encoder.phase": {
+                "step": torch.tensor(604.0),
+                "exp_avg": torch.tensor([1.0, 0.5]),
+                "exp_avg_sq": torch.tensor([0.1, 0.2]),
+            }
+        },
+    }
+    within = {
+        "parameter_groups": [{"parameter_names": ["encoder.phase"], "configuration": {"lr": 1.0e-3}}],
+        "states_by_parameter_name": {
+            "encoder.phase": {
+                "step": torch.tensor(604.0),
+                "exp_avg": torch.tensor([1.0 + 2.9802322e-8, 0.5]),
+                "exp_avg_sq": torch.tensor([0.1, 0.2]),
+            }
+        },
+    }
+
+    assert canary._optimizer_recovery_equivalence(left, within)["passed"] is True
+    outside = copy.deepcopy(within)
+    outside["states_by_parameter_name"]["encoder.phase"]["step"] = torch.tensor(605.0)
+    report = canary._optimizer_recovery_equivalence(left, outside)
+    assert report["passed"] is False
+    assert report["state_by_parameter_name"]["encoder.phase"]["slots"]["step"]["exact"] is False
+
+
+def test_recovery_gradient_equivalence_uses_canonical_tolerance() -> None:
+    uninterrupted = {
+        "G_BOGT": (torch.tensor([1.0]), torch.tensor([2.0])),
+        "G_canonical": (torch.tensor([0.25]), torch.tensor([-0.5])),
+        "G_total": (torch.tensor([1.25]), torch.tensor([1.5])),
+    }
+    replayed = copy.deepcopy(uninterrupted)
+    replayed["G_canonical"] = (torch.tensor([0.25 + 2.9802322e-8]), torch.tensor([-0.5]))
+    replayed["G_total"] = (torch.tensor([1.25 + 2.9802322e-8]), torch.tensor([1.5]))
+
+    assert canary._gradient_recovery_equivalence(uninterrupted, replayed)["passed"] is True
+    replayed["G_total"] = (torch.tensor([1.25 + 1.0e-4]), torch.tensor([1.5]))
+    assert canary._gradient_recovery_equivalence(uninterrupted, replayed)["passed"] is False
+
+
+def _toy_authoritative_train_context_and_sampler():
+    counts = [canary.END_STEP] * 10
+    labels = torch.arange(10, dtype=torch.long).repeat_interleave(canary.END_STEP)
+    train_indices = torch.arange(sum(counts), dtype=torch.long)
+    permutations = [torch.arange(digit * canary.END_STEP, (digit + 1) * canary.END_STEP, dtype=torch.long) for digit in range(10)]
+    context = SimpleNamespace(labels=labels, train_indices=train_indices)
+    saved = {
+        "schema": canary.bogt.SAMPLER_SCHEMA,
+        "seed": 1234,
+        "steps": canary.START_STEP,
+        "cursor": canary.START_STEP,
+        "class_count": 10,
+        "rows_per_class": counts,
+        "permutations": permutations,
+    }
+    return context, saved, permutations
+
+
+def test_next_unconsumed_cursor_resolves_step604_not_previous_step603() -> None:
+    context, saved, permutations = _toy_authoritative_train_context_and_sampler()
+    sampler = canary.ExtendedTrainSampler(context, saved)
+    history = []
+    for position in range(canary.END_STEP):
+        indices = torch.stack([permutation[position] for permutation in permutations])
+        history.append({"step": position + 1, "train_indices_sha256": canary.tensor_sha256(indices)})
+
+    for _ in range(3):
+        sampler.next_batch()
+    assert sampler.cursor == 603
+    expected = canary._expected_train_record(history, sampler.cursor)
+    actual_step604 = torch.stack([permutation[sampler.cursor] for permutation in permutations])
+
+    assert expected["step"] == 604
+    assert expected["train_indices_sha256"] == canary.tensor_sha256(actual_step604)
+    assert history[sampler.cursor - 1]["step"] == 603
+    assert history[sampler.cursor - 1]["train_indices_sha256"] != canary.tensor_sha256(actual_step604)
+
+
+def test_authoritative_uninterrupted_and_saved_restored_rows_match_steps601_through608() -> None:
+    context, saved, permutations = _toy_authoritative_train_context_and_sampler()
+    history = []
+    authoritative = {}
+    for step in range(canary.START_STEP + 1, canary.START_STEP + 9):
+        position = step - 1
+        indices = torch.stack([permutation[position] for permutation in permutations])
+        authoritative[step] = indices.tolist()
+        history.append({"step": step, "train_indices_sha256": canary.tensor_sha256(indices)})
+    # Prefix rows are represented by earlier checkpoint history; append placeholder
+    # rows so the production history's global index remains aligned.
+    full_history = [{"step": index + 1, "train_indices_sha256": "prior"} for index in range(canary.START_STEP)] + history
+
+    uninterrupted = canary.ExtendedTrainSampler(context, saved)
+    rows_b = {}
+    for step in range(canary.START_STEP + 1, canary.START_STEP + 9):
+        cursor_before = uninterrupted.cursor
+        expected = canary._expected_train_record(full_history, cursor_before)
+        indices, labels = uninterrupted.next_batch()
+        assert expected["step"] == step
+        assert labels.tolist() == list(range(10))
+        rows_b[step] = indices.tolist()
+
+    resumed = canary.ExtendedTrainSampler(context, saved)
+    rows_c = {}
+    for _ in range(3):
+        step = resumed.cursor + 1
+        indices, _labels = resumed.next_batch()
+        rows_c[step] = indices.tolist()
+    saved_state = resumed.state_dict()
+    resumed = canary.ExtendedTrainSampler(context, saved)
+    resumed.load_state_dict(saved_state)
+    for step in range(canary.START_STEP + 4, canary.START_STEP + 9):
+        expected = canary._expected_train_record(full_history, resumed.cursor)
+        indices, _labels = resumed.next_batch()
+        assert expected["step"] == step
+        rows_c[step] = indices.tolist()
+
+    assert rows_b == authoritative
+    assert rows_c == authoritative
+    assert uninterrupted.cursor == resumed.cursor == canary.START_STEP + 8
+
+
+def test_preflight_only_cli_rejects_scientific_execution_mode() -> None:
+    parser = canary._build_parser()
+    assert parser.parse_args(["--preflight"]).preflight is True
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--execute"])
+
+
+@pytest.mark.parametrize(
+    ("values", "expected"),
+    [
+        ({"generation": True, "safe": True, "optical": True, "s1_delta": 0.0, "s1_ci_lower": 0.0, "dev_delta": 0.0, "dev_ci_lower": 0.0, "local": False}, "BOGT_CANONICAL_GRADIENT_GENERATION_SUPPORTED"),
+        ({"generation": False, "safe": True, "optical": True, "s1_delta": 0.05, "s1_ci_lower": 0.01, "dev_delta": 0.01, "dev_ci_lower": -0.01, "local": True}, "BOGT_CANONICAL_GRADIENT_TRANSFER_SUPPORTED"),
+        ({"generation": False, "safe": False, "optical": True, "s1_delta": 0.08, "s1_ci_lower": 0.01, "dev_delta": 0.02, "dev_ci_lower": 0.01, "local": True}, "BOGT_CANONICAL_GAIN_WITH_RECONSTRUCTION_OR_OPTICAL_TRADEOFF"),
+        ({"generation": False, "safe": True, "optical": True, "s1_delta": 0.01, "s1_ci_lower": -0.01, "dev_delta": 0.0, "dev_ci_lower": -0.01, "local": True}, "BOGT_CANONICAL_GRADIENT_LOCAL_RESPONSE_WITHOUT_GENERATION_TRANSFER"),
+        ({"generation": False, "safe": True, "optical": True, "s1_delta": -0.01, "s1_ci_lower": -0.04, "dev_delta": -0.01, "dev_ci_lower": -0.03, "local": False}, "BOGT_CANONICAL_GRADIENT_NO_ADVANTAGE"),
+        ({"generation": False, "safe": True, "optical": True, "s1_delta": 0.05, "s1_ci_lower": 0.01, "dev_delta": -0.01, "dev_ci_lower": -0.03, "local": False}, "M0_BOGT_CANONICAL_GRADIENT_MIXED"),
+    ],
+)
+def test_preregistered_classification_boundaries(values: dict[str, object], expected: str) -> None:
+    result = canary._classify_result(**values)
+    assert result == expected

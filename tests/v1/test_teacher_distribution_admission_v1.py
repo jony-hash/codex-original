@@ -11,7 +11,7 @@ from ldm_project.v1.application.teacher_distribution_admission import (
 )
 
 
-CONFIG = "configs/research/teacher_distribution_admission_v1.yaml"
+CONFIG = "configs/research/capacity/teacher_distribution_admission_v1.yaml"
 
 
 @pytest.mark.historical_artifact

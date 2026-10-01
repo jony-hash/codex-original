@@ -1,0 +1,287 @@
+from __future__ import annotations
+
+import json
+from types import SimpleNamespace
+
+import pytest
+import torch
+
+from scripts.research.lightgen.m0 import execute_lightgen_2d_m0_bogt_joint_generation_canary_v1 as canary
+
+
+def _sampler_fixture() -> tuple[SimpleNamespace, dict[str, object]]:
+    labels = torch.arange(10).repeat_interleave(1_300)
+    train_indices = torch.arange(labels.numel())
+    context = SimpleNamespace(labels=labels, train_indices=train_indices)
+    permutations = [torch.arange(digit * 1_300, (digit + 1) * 1_300) for digit in range(10)]
+    saved: dict[str, object] = {
+        "schema": canary.bogt.SAMPLER_SCHEMA,
+        "seed": 1234,
+        "steps": canary.START_STEP,
+        "cursor": canary.START_STEP,
+        "class_count": 10,
+        "rows_per_class": [1_300] * 10,
+        "permutations": permutations,
+    }
+    return context, saved
+
+
+def test_sampler_extends_stored_permutations_without_reshuffling() -> None:
+    context, saved = _sampler_fixture()
+    sampler = canary.ExtendedTrainSampler(context, saved)
+
+    expected = torch.tensor([saved["permutations"][digit][600] for digit in range(10)])
+    first_batch, labels = sampler.next_batch()
+
+    assert torch.equal(first_batch, expected)
+    assert torch.equal(labels, torch.arange(10))
+    assert sampler.cursor == 601
+    assert sampler.state_dict()["steps"] == 1_200
+    assert torch.equal(sampler.state_dict()["permutations"][0], saved["permutations"][0])
+
+
+def test_sampler_rejects_changed_training_population() -> None:
+    context, saved = _sampler_fixture()
+    saved["permutations"] = list(saved["permutations"])
+    saved["permutations"][4] = saved["permutations"][4][:-1]
+
+    with pytest.raises(canary.CanaryError, match="permutation shape changed"):
+        canary.ExtendedTrainSampler(context, saved)
+
+
+def test_recovery_sampler_rejects_cursor_or_schedule_drift() -> None:
+    context, saved = _sampler_fixture()
+    sampler = canary.ExtendedTrainSampler(context, saved)
+    state = sampler.state_dict()
+    state["cursor"] = 1_201
+
+    with pytest.raises(canary.CanaryError, match="cursor is invalid"):
+        sampler.load_state_dict(state)
+
+
+def test_train_ols_collection_checks_budget_before_first_batch(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        canary,
+        "_EXECUTION_STARTED",
+        canary.time.perf_counter() - canary.EXECUTION_BUDGET_SECONDS - 1.0,
+    )
+    consumer = SimpleNamespace(runtime=SimpleNamespace(eval=lambda: None), device=torch.device("cpu"))
+    context = SimpleNamespace(train_indices=torch.arange(10))
+    heartbeat = SimpleNamespace(update=lambda **_: None)
+    identity = SimpleNamespace(source_manifest_id="source-id")
+
+    with pytest.raises(canary.ResourceBudgetExceeded, match="four-hour total execution budget"):
+        canary._collect_train_ols(
+            consumer,
+            context,
+            tmp_path,
+            identity=identity,
+            endpoint_checkpoint_sha256="checkpoint-sha256",
+            heartbeat=heartbeat,
+        )
+
+
+def test_measure_phase_selects_cuda_device_before_resetting_peak_stats(monkeypatch) -> None:
+    events = []
+    monkeypatch.setattr(canary.torch.cuda, "set_device", lambda device: events.append(("set", device)))
+    monkeypatch.setattr(canary.torch.cuda, "reset_peak_memory_stats", lambda device: events.append(("reset", device)))
+    monkeypatch.setattr(canary, "_resource", lambda device: {"global_used_fraction": 0.1})
+    device = torch.device("cuda:0")
+
+    value, metrics = canary._measure_phase(device, "test_phase", lambda: events.append(("call", None)) or "measured")
+
+    assert value == "measured"
+    assert [event[0] for event in events] == ["set", "reset", "call"]
+    assert metrics["phase"] == "test_phase"
+
+
+def test_repaired_preflight_chain_binds_zero_update_attempt01(tmp_path) -> None:
+    first_path = tmp_path / canary.FIRST_PREFLIGHT_PATH
+    second_path = tmp_path / canary.SECOND_PREFLIGHT_PATH
+    latest_path = tmp_path / canary.PREVIOUS_PREFLIGHT_PATH
+    first_path.parent.mkdir(parents=True)
+    first_path.write_text(
+        json.dumps(
+            {
+                "task_id": canary.TASK_ID,
+                "outer_gate": canary.OUTER_GATE,
+                "authorization_id": canary.AUTHORIZATION_ID,
+                "status": "INVALID_HARNESS",
+                "attempt_created": False,
+                "failure": {"type": "RuntimeError", "message": "Invalid device argument "},
+                "elapsed_seconds": 0.7,
+            }
+        ),
+        encoding="utf-8",
+    )
+    first_record = {
+        "path": canary.FIRST_PREFLIGHT_PATH.as_posix(),
+        "sha256": canary.file_sha256(first_path),
+        "elapsed_seconds": 0.7,
+        "failure": "Invalid device argument ",
+    }
+    second_path.write_text(
+        json.dumps(
+            {
+                "task_id": canary.TASK_ID,
+                "outer_gate": canary.OUTER_GATE,
+                "authorization_id": canary.AUTHORIZATION_ID,
+                "status": "INVALID_HARNESS",
+                "attempt_created": False,
+                "source_semantics_id": "source-semantics",
+                "source_manifest": {"execution_source_semantics_id": "source-semantics"},
+                "previous_preflight": {"sha256": canary.file_sha256(first_path)},
+                "failure": {
+                    "phase": "TRAIN_OLS_S1_ED_forward_and_tensor_write_resource_probe",
+                    "type": "RuntimeError",
+                    "message": "Expected all tensors to be on the same device, but found at least two devices, cuda:0 and cpu!",
+                },
+                "elapsed_seconds": 9.0,
+            }
+        ),
+        encoding="utf-8",
+    )
+    second_record = {
+        "path": canary.SECOND_PREFLIGHT_PATH.as_posix(),
+        "sha256": canary.file_sha256(second_path),
+        "elapsed_seconds": 9.0,
+        "failure": "Expected all tensors to be on the same device, but found at least two devices, cuda:0 and cpu!",
+    }
+    repair_history = {
+        "records": [first_record, second_record],
+        "cumulative_elapsed_seconds": 9.7,
+        "repairs": [
+            "select cuda:0 before phase resource measurement",
+            "move the preflight OLS probe onto the frozen Generator device before forward",
+        ],
+    }
+    source = {
+        "execution_source_semantics_id": "source-semantics",
+        "source_manifest_id": "source-id",
+        "config_identity": {"repair_history": repair_history},
+    }
+    latest = {
+        "task_id": canary.TASK_ID,
+        "outer_gate": canary.OUTER_GATE,
+        "authorization_id": canary.AUTHORIZATION_ID,
+        "status": canary.PREFLIGHT_READY,
+        "source_semantics_id": "source-semantics",
+        "source_manifest_id": "source-id",
+        "source_manifest": source,
+        "previous_preflight": repair_history,
+        "step600_restored_adam_step": canary.START_STEP,
+        "three_real_updates": [{}, {}, {}],
+        "recovery_equivalence": {"status": "PASS"},
+        "elapsed_seconds": 18.9,
+    }
+    latest_path.write_text(json.dumps(latest), encoding="utf-8")
+
+    failed_dir = tmp_path / canary.FAILED_ATTEMPT_DIR
+    failed_dir.mkdir(parents=True)
+    (failed_dir / "status.json").write_text(
+        json.dumps(
+            {
+                "state": canary.RUN_INVALID_HARNESS,
+                "current_step": canary.START_STEP,
+                "error": "RunControlError: heartbeat phase is invalid: STEP600_BASELINE",
+                "source_manifest_id": "source-id",
+                "total_elapsed_seconds": 19.7,
+            }
+        ),
+        encoding="utf-8",
+    )
+    (failed_dir / "latest_status.json").write_text(
+        json.dumps({"state": canary.RUN_INVALID_HARNESS, "step": 0, "last_recovery_checkpoint": None}),
+        encoding="utf-8",
+    )
+    (failed_dir / "source_manifest.json").write_text(json.dumps(source), encoding="utf-8")
+    (failed_dir / "preflight.json").write_text(json.dumps(latest), encoding="utf-8")
+    (failed_dir / "execution_manifest.json").write_text(
+        json.dumps(
+            {
+                "starting_checkpoint_sha256": canary.START_CHECKPOINT_SHA256,
+                "scientific_adam_start_step": canary.START_STEP,
+                "run_identity": {"scientific_attempt_id": f"{canary.RUN_ID}:attempt_01"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (failed_dir / "execution_instance_01.json").write_text(
+        json.dumps({"pid": 2_147_483_647, "creation_identity": 1}),
+        encoding="utf-8",
+    )
+    (failed_dir / "resource_telemetry.jsonl").write_text(
+        json.dumps({"phase": "independent_scientific_runtime_reconstruction_from_accepted_step600"}) + "\n",
+        encoding="utf-8",
+    )
+    authority = canary._previous_preflight_authority(tmp_path)
+
+    assert len(authority["records"]) == 3
+    assert authority["cumulative_elapsed_seconds"] == pytest.approx(19.7)
+    assert authority["preserved_attempt_01"]["scientific_updates"] == 0
+    assert "heartbeat phases" in authority["repairs"][2]
+
+    latest["status"] = "INVALID_HARNESS"
+    latest_path.write_text(json.dumps(latest), encoding="utf-8")
+    with pytest.raises(canary.CanaryError, match="preflight_03"):
+        canary._previous_preflight_authority(tmp_path)
+
+
+def test_attempt_heartbeat_uses_only_shared_lifecycle_phases(tmp_path) -> None:
+    heartbeat = canary.HeartbeatWriter(tmp_path / "valid", "test-run", total_steps=600, interval_seconds=0.0)
+    heartbeat.update(state=canary.RUN_PREPARING, phase="STATISTICS", step=0, force=True)
+    heartbeat.update(state=canary.RUNNING, phase="TRAINING", step=0, force=True)
+    heartbeat.update(state=canary.RUNNING, phase="POST_TRAIN_COLLECTION", step=600, force=True)
+    heartbeat.update(state=canary.RUNNING, phase="FINALIZING", step=600, force=True)
+    heartbeat.update(state=canary.RUN_VALID_FAILED, phase=canary.RUN_VALID_FAILED, step=600, force=True)
+
+    invalid = canary.HeartbeatWriter(tmp_path / "invalid", "test-run-invalid", total_steps=600, interval_seconds=0.0)
+    with pytest.raises(ValueError, match="heartbeat phase is invalid"):
+        invalid.update(state=canary.RUN_PREPARING, phase="STEP600_BASELINE", step=0, force=True)
+
+
+def test_each_original_loss_term_changes_the_combined_gradient() -> None:
+    encoder = torch.nn.Parameter(torch.tensor([1.0, -0.5], dtype=torch.float64))
+    generator = torch.nn.Parameter(torch.tensor([0.25, 2.0], dtype=torch.float64))
+    terms = {
+        "alpha_L_dist": (encoder.square().sum() * 0.5),
+        "beta_L_rec": (generator.square().sum() * 0.3),
+        "gamma_L_op": ((encoder.sum() + generator.sum()).square() * 0.1),
+    }
+
+    result = canary._term_gradient_controls(terms, [encoder, generator], ["encoder.phase", "generator.phase"])
+
+    assert set(result["term_gradient_norms"]) == set(terms)
+    assert all(value > 0 for value in result["disabled_term_gradient_differences"].values())
+    assert all(value > 0 for value in result["full_gradient_norms"].values())
+
+
+def test_gate_requires_all_original_generation_conditions() -> None:
+    dev0 = {"L_rec": 0.05}
+    dev1 = {"L_rec": 0.054}
+    generated = {"E_D": {"evaluated": True, "macro_recall": 0.50, "per_class_recall": [0.10] * 10}, "optical_power_finite": True}
+    raw = {"finite": True, "all_nonzero": True, "all_nonconstant": True, "count": 2_000}
+
+    classification, conditions = canary._gate(dev0, dev1, generated, raw)
+
+    assert classification == canary.CLASSIFICATION_SUPPORTED
+    assert all(conditions.values())
+
+    generated["E_D"]["macro_recall"] = 0.499
+    classification, conditions = canary._gate(dev0, dev1, generated, raw)
+
+    assert classification == "VALID_FAILED"
+    assert not conditions["S1_ED_macro_recall_at_least_0_50"]
+
+
+def test_gate_rejects_background_reconstruction_tradeoff_and_invalid_cmos() -> None:
+    dev0 = {"L_rec": 0.05}
+    dev1 = {"L_rec": 0.0551}
+    generated = {"E_D": {"evaluated": True, "macro_recall": 0.9, "per_class_recall": [0.8] * 10}, "optical_power_finite": True}
+    raw = {"finite": True, "all_nonzero": True, "all_nonconstant": False, "count": 2_000}
+
+    classification, conditions = canary._gate(dev0, dev1, generated, raw)
+
+    assert classification == "VALID_FAILED"
+    assert not conditions["DEV_reconstruction_delta_at_most_0_005"]
+    assert not conditions["all_2000_raw_CMOS_finite_nonzero_nonconstant"]

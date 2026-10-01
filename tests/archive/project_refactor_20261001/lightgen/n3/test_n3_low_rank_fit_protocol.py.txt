@@ -1,0 +1,96 @@
+from __future__ import annotations
+
+from functools import lru_cache
+from pathlib import Path
+
+import pytest
+
+from scripts.research.lightgen.n3 import define_lightgen_2d_n3_low_rank_fit_protocol_v1 as protocol
+from scripts.research.lightgen.n3 import define_lightgen_2d_n3_low_rank_class_conditioned_structural_model_order_contract_v1 as contract
+
+
+ROOT = Path(__file__).resolve().parents[4]
+
+
+@lru_cache(maxsize=1)
+def _payload() -> dict[str, object]:
+    return protocol.build_protocol(ROOT)
+
+
+def test_protocol_is_unique_and_binds_the_immutable_contract() -> None:
+    payload = _payload()
+    assert payload["classification"] == "N3_LOW_RANK_FIT_PROTOCOL_DEFINED"
+    assert payload["outer_gate"] == "NONE"
+    assert payload["contract_authority"]["sha256"] == protocol.CONTRACT_SHA256
+    assert payload["prior_readiness_failure"]["sha256"] == protocol.READINESS_FAILURE_SHA256
+    assert payload["execution_boundary"]["required_execution_authorization"] == protocol.REQUIRED_AUTHORIZATION
+    assert payload["execution_boundary"]["authorization_consumed"] is False
+
+
+def test_initialization_and_lookup_are_fully_specified() -> None:
+    payload = _payload()
+    init = payload["initialization"]
+    assert init["B"]["element_formula"] == "B[j,k] = (-1)**((j >> k) & 1) / sqrt(20000)"
+    assert init["A"]["element_formula"] == "A[c,k] = 1e-6 * (-1)**bit_count(c & (1 << k))"
+    assert init["parameter_dtype"] == "torch.float32"
+    lookup = payload["class_lookup_and_injection"]
+    assert lookup["operation"] == "coeff = A.index_select(0, labels)"
+    assert lookup["correction_operation"] == "flat_delta = coeff @ B.T"
+    assert lookup["injection"].startswith("theta_c = theta_shared.unsqueeze(0) + correction")
+
+
+def test_rng_optimizer_and_sampler_reset_semantics_are_explicit() -> None:
+    payload = _payload()
+    rng = payload["rng_and_determinism"]
+    assert rng["rank_seeds"] == {"0": protocol.MASTER_SEED, "1": protocol.MASTER_SEED + protocol.RANK_SEED_STRIDE, "2": protocol.MASTER_SEED + 2 * protocol.RANK_SEED_STRIDE}
+    assert rng["sampler_rng"] is None
+    optimizer = payload["optimizer"]
+    assert optimizer["state_initialization"].startswith("fresh zero")
+    assert optimizer["reset_from_step9000"]["historical_adam_state_consumed"] is False
+    sampler = payload["sampler"]
+    assert sampler["initial_cursor"] == 0
+    assert sampler["batch_size"] == 10
+    assert sampler["forbidden_roles"] == ["N3_SELECT", "N3_CONFIRM", "DEV", "protected", "test", "sealed"]
+
+
+def test_objective_failure_and_recovery_semantics_are_not_ambiguous() -> None:
+    payload = _payload()
+    objective = payload["fit_objective"]
+    assert objective["fit_terms"] == ["L_struct"]
+    assert "L_S" in objective["excluded_fit_terms"]
+    assert "mean(" in objective["loss"]
+    failure = payload["technical_failure_semantics"]
+    assert failure["technical_status"] == "INVALID_HARNESS"
+    assert "any required rank technical-invalid" in failure["technical_scope"]
+    recovery = payload["checkpoint_and_recovery"]
+    assert recovery["recovery_interval_updates"] == 25
+    assert recovery["recovery_as_selection"] is False
+    assert recovery["checkpoint_selection"].startswith("none")
+
+
+def test_preflight_is_ordered_and_definition_has_no_execution_side_effects() -> None:
+    payload = _payload()
+    checks = payload["strict_preflight"]["ordered_checks"]
+    assert [item["order"] for item in checks] == list(range(1, 15))
+    assert payload["strict_preflight"]["expected_status"] == "READY"
+    boundary = payload["execution_boundary"]
+    assert boundary["candidate_fit_executed"] is False
+    assert boundary["rank_selection_executed"] is False
+    assert boundary["scientific_attempt_created"] is False
+    assert boundary["cuda_executed"] is False
+    assert boundary["optimizer_updates"] == 0
+    assert boundary["checkpoint_writes"] == 0
+
+
+def test_write_refuses_protocol_output_outside_outputs() -> None:
+    target = ROOT / "protocol-definition-outside-outputs"
+    with pytest.raises(protocol.ProtocolError):
+        protocol.write_protocol(ROOT, target)
+
+
+def test_contract_backend_and_domain_remain_frozen() -> None:
+    payload = _payload()
+    assert contract.RANK_DOMAIN == (0, 1, 2)
+    assert payload["model_family_binding"]["rank_domain"] == [0, 1, 2]
+    assert payload["model_family_binding"]["no_new_architecture"] is True
+    assert payload["fit_budget"]["equal_positive_rank_budget"] is True

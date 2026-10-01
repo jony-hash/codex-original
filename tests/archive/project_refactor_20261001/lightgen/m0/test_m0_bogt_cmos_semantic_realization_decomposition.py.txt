@@ -1,0 +1,144 @@
+from __future__ import annotations
+
+import inspect
+import json
+
+import pytest
+import torch
+
+from scripts.research.lightgen.m0 import execute_lightgen_2d_m0_bogt_cmos_semantic_realization_decomposition_v1 as decomposition
+from scripts.research.lightgen.m0 import execute_lightgen_2d_m0_bogt_generative_failure_localization_v1 as localization
+
+
+def _metric(passed: bool) -> dict[str, float]:
+    return {"macro_recall": 0.60 if passed else 0.40, "minimum_per_class_recall": 0.20 if passed else 0.05}
+
+
+def _prediction_labels(count_per_class: int = 20) -> torch.Tensor:
+    return torch.arange(10, dtype=torch.long).repeat_interleave(count_per_class)
+
+
+def test_registered_cpu_pooling_is_identical_for_chunked_raw_cmos() -> None:
+    raw = torch.linspace(0.0, 1.5, 20 * 200 * 200, dtype=torch.float32).reshape(20, 1, 200, 200)
+    streamed = torch.cat([decomposition._pool_raw_cpu(raw[start : start + 3]) for start in range(0, 20, 3)])
+    registered = decomposition.probe_convention._cmos_features(raw)
+    assert torch.equal(streamed.to(torch.float64), registered)
+
+
+def test_probe_fit_accepts_only_train_inputs_and_is_deterministic() -> None:
+    assert list(inspect.signature(decomposition._fit_probe).parameters) == ["train_features", "train_labels"]
+    generator = torch.Generator(device="cpu").manual_seed(20260926)
+    features = torch.randn((100, 784), generator=generator, dtype=torch.float32)
+    labels = _prediction_labels(10)
+    first = decomposition._fit_probe(features, labels)
+    second = decomposition._fit_probe(features, labels)
+    assert torch.equal(first[0]["weights"], second[0]["weights"])
+    assert torch.equal(first[0]["bias"], second[0]["bias"])
+    assert torch.equal(first[2]["mean"], second[2]["mean"])
+    assert torch.equal(first[2]["safe_std"], second[2]["safe_std"])
+    frozen_weights = first[0]["weights"].clone()
+    decomposition._apply_probe(first[0], first[2], torch.zeros((11, 784), dtype=torch.float32))
+    decomposition._apply_probe(first[0], first[2], torch.ones((13, 784), dtype=torch.float32))
+    assert torch.equal(first[0]["weights"], frozen_weights)
+
+
+def test_step600_train_ols_stale_checkpoint_binding_is_rejected() -> None:
+    payload = {
+        "schema": "m0_step600_train_ols.v1",
+        "selected_step": 600,
+        "selected_checkpoint_sha256": "stale-checkpoint",
+        "source_manifest_id": "manifest-1",
+        "data_identity": {"train_count": 55_000},
+        "z": torch.empty((55_000, 100), dtype=torch.complex64),
+    }
+    with pytest.raises(decomposition.DecompositionError, match="checkpoint lineage is stale"):
+        decomposition._validate_step600_train_bank_binding(
+            payload,
+            checkpoint_sha256="accepted-checkpoint",
+            source_manifest_id="manifest-1",
+            data_identity={"train_count": 55_000},
+        )
+
+
+def test_setup_only_recovery_refuses_any_started_measurement(tmp_path) -> None:
+    (tmp_path / "preflight.json").write_text(
+        json.dumps({"schema": decomposition.PREFLIGHT_SCHEMA, "status": "READY", "formal_attempt_created": False}),
+        encoding="utf-8",
+    )
+    (tmp_path / "source_manifest.json").write_text(
+        json.dumps({"schema": "research_execution_source_manifest.v1"}),
+        encoding="utf-8",
+    )
+    assert decomposition._setup_only_recheck_target(tmp_path)
+    (tmp_path / "progress.jsonl").write_text("{}\n", encoding="utf-8")
+    assert not decomposition._setup_only_recheck_target(tmp_path)
+
+
+def test_existing_s1_raw_cmos_label_order_is_bound_to_s1_ols() -> None:
+    labels = _prediction_labels(2)
+    payload = {
+        "schema": "m0_s1_generated_ols_coefficients.v1",
+        "source_step": 600,
+        "data_role": "train",
+        "sampler_family": "S1",
+        "source_train_ols_sha256": "accepted-train-ols",
+        "z": torch.zeros((20, 100), dtype=torch.complex64),
+        "requested_labels": labels,
+    }
+    raw_payload = {
+        "schema": "m0_generated_raw_cmos.v1",
+        "source_step": 600,
+        "data_role": "train",
+        "sampler_family": "S1",
+        "raw_cmos": torch.zeros((20, 1, 200, 200), dtype=torch.float32),
+        "requested_labels": labels.roll(1),
+        "prediction_labels": torch.zeros((20,), dtype=torch.long),
+    }
+    with pytest.raises(localization.LocalizationError, match="labels/order do not match"):
+        localization._validate_s1_lineage(payload, raw_payload, train_ols_sha256="accepted-train-ols", expected_rows=20)
+
+
+def test_confusion_matrix_and_class_stratified_bootstrap_are_reproducible() -> None:
+    labels = _prediction_labels(20)
+    predictions = (labels + 1) % 10
+    first = localization._metrics(predictions, labels, seed=2026092605, replicates=41)
+    second = localization._metrics(predictions, labels, seed=2026092605, replicates=41)
+    assert first == second
+    assert first["confusion_matrix_actual_rows_predicted_columns"][0][1] == 20
+    assert first["confusion_matrix_actual_rows_predicted_columns"][9][0] == 20
+    assert first["prediction_histogram"] == [20] * 10
+    assert first["bootstrap"]["method"].startswith("independent class-stratified row bootstrap")
+
+
+def test_accepted_e_d_fidelity_rejects_prediction_drift() -> None:
+    labels = _prediction_labels(2)
+    observed = localization._metrics(labels.clone(), labels, seed=2026092603, replicates=41)
+    passed = decomposition._e_d_fidelity(observed, labels, observed, name="test population")
+    assert passed["passed"] is True
+    stale = dict(observed)
+    stale["prediction_tensor_sha256"] = "changed"
+    with pytest.raises(decomposition.DecompositionError, match="did not reproduce"):
+        decomposition._e_d_fidelity(observed, labels, stale, name="test population")
+
+
+@pytest.mark.parametrize(
+    ("real_probe", "s1_probe", "real_ed", "s1_ed", "expected", "successor"),
+    [
+        (True, True, False, False, "CMOS_LINEAR_CLASS_CODE_PRESERVED_BUT_CANONICAL_REALIZATION_FAILED", "CANONICAL_SEMANTIC_REALIZATION_OBJECTIVE"),
+        (False, False, False, False, "CMOS_LINEAR_CLASS_CODE_PRESERVATION_NOT_SUPPORTED", "GENERATOR_OPTICAL_MAPPING_INFORMATION_TRANSFER"),
+        (True, False, True, True, "S1_GENERATOR_SUPPORT_MISMATCH_SUPPORTED", "S1_TO_GENERATOR_SUPPORT_MATCHING"),
+        (False, True, False, True, "M0_CMOS_SEMANTIC_REALIZATION_DECOMPOSITION_MIXED", None),
+    ],
+)
+def test_preregistered_classification_branches(
+    real_probe: bool,
+    s1_probe: bool,
+    real_ed: bool,
+    s1_ed: bool,
+    expected: str,
+    successor: str | None,
+) -> None:
+    classified = decomposition._classify(_metric(real_probe), _metric(s1_probe), _metric(real_ed), _metric(s1_ed))
+    assert classified["classification"] == expected
+    assert classified["successor_research_domain"] == successor
+    assert json.dumps(classified, allow_nan=False)

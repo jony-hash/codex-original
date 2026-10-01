@@ -1,0 +1,104 @@
+from __future__ import annotations
+
+import json
+
+import pytest
+import torch
+
+from scripts.research.lightgen.m0 import execute_lightgen_2d_m0_bogt_generative_failure_localization_v1 as diagnostic
+
+
+def _s1_payloads(*, train_ols_sha256: str = "a" * 64) -> tuple[dict[str, object], dict[str, object]]:
+    labels = torch.arange(10, dtype=torch.long).repeat_interleave(2)
+    ols = {
+        "schema": "m0_s1_generated_ols_coefficients.v1",
+        "z": torch.ones((20, 100), dtype=torch.complex64),
+        "requested_labels": labels,
+        "source_step": 600,
+        "source_train_ols_sha256": train_ols_sha256,
+        "data_role": "train",
+        "sampler_family": "S1",
+    }
+    raw = {
+        "schema": "m0_generated_raw_cmos.v1",
+        "raw_cmos": torch.ones((20, 1, 200, 200), dtype=torch.float32),
+        "requested_labels": labels.clone(),
+        "prediction_labels": torch.zeros(20, dtype=torch.long),
+        "source_step": 600,
+        "data_role": "train",
+        "sampler_family": "S1",
+    }
+    return ols, raw
+
+
+def _metric(macro: float, minimum: float) -> dict[str, float]:
+    return {"macro_recall": macro, "minimum_per_class_recall": minimum}
+
+
+def _matrix(*, real_ols: bool = True, s1_ols: bool = True, real_cmos: bool = True, s1_cmos: bool = True) -> dict[str, dict[str, float]]:
+    passed = {"real_ols": real_ols, "s1_ols": s1_ols, "real_cmos": real_cmos, "s1_cmos": s1_cmos}
+    return {name: _metric(0.8, 0.2) if value else _metric(0.2, 0.0) for name, value in passed.items()}
+
+
+def test_s1_lineage_binds_raw_cmos_to_train_bank_and_labels() -> None:
+    ols, raw = _s1_payloads()
+    result = diagnostic._validate_s1_lineage(ols, raw, train_ols_sha256="a" * 64, expected_rows=20)
+    assert result["z"].shape == (20, 100)
+    assert torch.equal(result["labels"], raw["requested_labels"])
+
+
+def test_stale_s1_train_bank_identity_is_rejected() -> None:
+    ols, raw = _s1_payloads()
+    with pytest.raises(diagnostic.LocalizationError, match="does not bind"):
+        diagnostic._validate_s1_lineage(ols, raw, train_ols_sha256="b" * 64, expected_rows=20)
+
+
+@pytest.mark.parametrize(
+    ("matrix", "expected"),
+    [
+        (_matrix(real_ols=True, s1_ols=False, real_cmos=True), "S1_OLS_SEMANTIC_MANIFOLD_TRANSFER_NOT_SUPPORTED"),
+        (_matrix(real_ols=True, s1_ols=True, real_cmos=False, s1_cmos=False), "OLS_TO_CMOS_SEMANTIC_REALIZATION_BOTTLENECK_SUPPORTED"),
+        (_matrix(real_ols=True, s1_ols=True, real_cmos=True, s1_cmos=False), "S1_OLS_TO_CMOS_SUPPORT_MISMATCH_SUPPORTED"),
+        (_matrix(real_ols=False), "CURRENT_STEP600_OLS_SEMANTIC_REPRESENTATION_WEAK"),
+        (_matrix(real_ols=True, s1_ols=True, real_cmos=False, s1_cmos=True), "M0_GENERATIVE_FAILURE_LOCALIZATION_MIXED"),
+    ],
+)
+def test_preregistered_localization_cases(matrix: dict[str, dict[str, float]], expected: str) -> None:
+    assert diagnostic._classify(matrix)["classification"] == expected
+
+
+def test_class_stratified_bootstrap_and_metrics_are_deterministic() -> None:
+    labels = torch.arange(10, dtype=torch.long).repeat_interleave(8)
+    predictions = labels.clone()
+    predictions[::5] = (predictions[::5] + 1).remainder(10)
+    first = diagnostic._metrics(predictions, labels, seed=41, replicates=101)
+    second = diagnostic._metrics(predictions, labels, seed=41, replicates=101)
+    assert first == second
+    assert first["rows"] == 80
+    assert first["bootstrap"]["method"].startswith("independent class-stratified")
+    assert len(first["confusion_matrix_actual_rows_predicted_columns"]) == 10
+    json.dumps(first, allow_nan=False)
+
+
+def test_fixed_ols_probe_uses_train_only_feature_convention() -> None:
+    generator = torch.Generator().manual_seed(7)
+    labels = torch.arange(10, dtype=torch.long).repeat_interleave(4)
+    features = torch.randn((40, 8), generator=generator, dtype=torch.float64)
+    features[torch.arange(40), labels.remainder(8)] += 2.0
+    train, evaluation, mean, standardizer = diagnostic._standardize_train_only(features, features[:10])
+    model, solver = diagnostic._fit_logistic(train, labels)
+    predictions = diagnostic._predict(model, evaluation)
+    assert mean.shape == (8,)
+    assert solver["C"] == 1.0
+    assert solver["fit_rows"] == 40
+    assert predictions.shape == (10,)
+    assert torch.isfinite(standardizer["std_tensor"]).all()
+
+
+def test_write_once_attempt_path_rejects_reuse(tmp_path) -> None:
+    target = tmp_path / diagnostic.DEFAULT_ATTEMPT
+    target.parent.mkdir(parents=True)
+    assert diagnostic._validate_target(tmp_path, diagnostic.DEFAULT_ATTEMPT) == target.resolve()
+    target.mkdir()
+    with pytest.raises(diagnostic.LocalizationError, match="already exists"):
+        diagnostic._validate_target(tmp_path, diagnostic.DEFAULT_ATTEMPT)

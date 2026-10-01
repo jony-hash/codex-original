@@ -1,0 +1,322 @@
+from __future__ import annotations
+
+import json
+from types import SimpleNamespace
+
+import pytest
+import torch
+from torch import nn
+import torch.nn.functional as F
+
+from scripts.research.lightgen.n3 import diagnose_lightgen_2d_n3_surrogate_hard_transfer_attribution_v1 as attribution
+from scripts.research.lightgen.n3 import execute_lightgen_2d_n3_low_rank_model_order_v1 as n3
+from ldm_project.v2.application.research.shared.research_run_control import HeartbeatWriter, PHASES, RUN_COMPLETED, RUN_INVALID_HARNESS, RUN_SCIENTIFIC_ACTIVE
+
+
+def test_diagnostic_bank_is_deterministic_and_excludes_all_frozen_rows() -> None:
+    labels = torch.arange(60_000, dtype=torch.long).remainder(10)
+    train = torch.arange(55_000, dtype=torch.long)
+    roles = {
+        "N3_FIT": torch.arange(0, 2_560, dtype=torch.long),
+        "N3_SELECT": torch.arange(2_560, 3_840, dtype=torch.long),
+        "N3_CONFIRM": torch.arange(3_840, 5_120, dtype=torch.long),
+    }
+    historical = torch.arange(5_120, 5_190, dtype=torch.long)
+
+    first = attribution.select_diagnostic_indices(train, labels, roles, historical)
+    second = attribution.select_diagnostic_indices(train, labels, roles, historical)
+
+    assert torch.equal(first, second)
+    assert first.shape == (1_280,)
+    assert torch.equal(torch.bincount(labels.index_select(0, first), minlength=10), torch.full((10,), 128))
+    forbidden = torch.cat((*roles.values(), historical))
+    assert not torch.isin(first, forbidden).any()
+    assert torch.isin(first, train).all()
+    assert attribution.tensor_sha256(first) == attribution.tensor_sha256(second)
+
+
+def test_diagnostic_index_sha_rejects_wrong_identity() -> None:
+    indices = torch.tensor([1, 2, 3], dtype=torch.long)
+    attribution._validate_fixed_index_hash(indices, attribution.tensor_sha256(indices))
+    with pytest.raises(attribution.AttributionError, match="index SHA256"):
+        attribution._validate_fixed_index_hash(indices, "0" * 64)
+
+
+def test_n3_outcome_and_rank2_endpoint_fail_closed_on_identity_change() -> None:
+    status = {"state": n3.RUN_VALID_FAILED, "classification": n3.CLASSIFICATION_NOT_ADEQUATE, "selected_rank": 2}
+    report = {
+        "schema": n3.REPORT_SCHEMA,
+        "result": n3.RUN_VALID_FAILED,
+        "classification": n3.CLASSIFICATION_NOT_ADEQUATE,
+        "authorization": {"authorization_id": n3.AUTHORIZATION_ID},
+        "selected_rank": 2,
+        "attempt": {"attempt_id": "lightgen-2d-n3-low-rank-model-order-v1:attempt_01"},
+        "continued_after_confirmation": False,
+        "execution_stopped_after_confirmation": True,
+        "confirmation": {"selected_rank": 2, "evaluations": 1, "checks": {"semantic_nonincrease": True}},
+        "selection": {"domain": "N3_SELECT", "lexicographic_trace": [{"rank": 0}, {"rank": 1}, {"rank": 2, "semantic_feasible": True}]},
+    }
+    attribution._validate_n3_status_report(status, report)
+    with pytest.raises(attribution.AttributionError, match="selected rank"):
+        attribution._validate_n3_status_report({**status, "selected_rank": 1}, report)
+    with pytest.raises(attribution.AttributionError, match="authorization identity"):
+        attribution._validate_n3_status_report(status, {**report, "authorization": {"authorization_id": "stale"}})
+
+    endpoint = {
+        "schema": n3.CHECKPOINT_SCHEMA,
+        "rank": 2,
+        "completed_updates": 300,
+        "scientific_artifact": True,
+        "operational_artifact": False,
+        "contract_sha256": n3.CONTRACT_SHA256,
+        "protocol_sha256": n3.PROTOCOL_SHA256,
+        "shared_generator_sha256": "baseline-sha",
+        "rank_seed": n3.rank_seed(2),
+        "sampler_cursor": 300 % n3.FIT_ROWS_PER_CLASS,
+        "history": [{} for _ in range(300)],
+        "A": torch.zeros((10, 2)),
+        "B": torch.zeros((n3.PARAMETER_DIMENSION, 2)),
+    }
+    attribution._validate_rank2_endpoint(endpoint, endpoint_sha256="endpoint-sha", expected_generator_sha256="baseline-sha")
+    with pytest.raises(attribution.AttributionError, match="update count"):
+        attribution._validate_rank2_endpoint({**endpoint, "completed_updates": 299}, endpoint_sha256="endpoint-sha", expected_generator_sha256="baseline-sha")
+
+
+def test_repair_slot_accepts_only_exact_attempt01_heartbeat_failure(tmp_path) -> None:
+    source_id = "source-semantics-01"
+    manifest = {
+        "branch": "research/lightgen-ols-native-semantic-generation-v1",
+        "head": "500045d6a92843c81ffeda010e01351f559e453b",
+        "dirty": True,
+        "source_manifest_id": "manifest-01",
+        "execution_source_semantics_id": source_id,
+        "dirty_patch_digest": "dirty-digest-01",
+    }
+    prior_indices = torch.arange(1_280, dtype=torch.long)
+    index_sha = attribution.tensor_sha256(prior_indices)
+    preflight_dir = tmp_path / attribution.PREVIOUS_PREFLIGHT_DIR
+    attempt = tmp_path / attribution.PREVIOUS_ATTEMPT_DIR
+    preflight_dir.mkdir(parents=True)
+    attempt.mkdir(parents=True)
+    (preflight_dir / "preflight.json").write_text(
+        json.dumps({
+            "status": "READY",
+            "preflight_receipt": {"authorization_id": attribution.AUTHORIZATION_ID, "source_semantics_id": source_id},
+            "source_manifest": manifest,
+            "check_groups": {attribution.CORRECTNESS_INVARIANTS: {"fixed_train_indices_sha256": index_sha}},
+        }),
+        encoding="utf-8",
+    )
+    (attempt / "execution_manifest.json").write_text(
+        json.dumps({"source_identity": manifest, "sample_indices_sha256": index_sha}), encoding="utf-8"
+    )
+    (attempt / "source_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    (attempt / "sample_indices.json").write_text(
+        json.dumps({"task_id": attribution.TASK_ID, "contract_sha256": n3.CONTRACT_SHA256, "indices_sha256": index_sha, "indices": prior_indices.tolist()}),
+        encoding="utf-8",
+    )
+    (attempt / "status.json").write_text(
+        json.dumps({"state": n3.RUN_INVALID_HARNESS, "phase": "DIAGNOSTIC_FAILED", "error_type": "RunControlError"}),
+        encoding="utf-8",
+    )
+    failure = {
+        "schema": "n3_surrogate_hard_transfer_diagnostic_failure.v1",
+        "task_id": attribution.TASK_ID,
+        "attempt_id": attribution.PREVIOUS_ATTEMPT_ID,
+        "error_type": "RunControlError",
+        "error": "heartbeat phase is invalid: RANK_0_INFERENCE",
+        "training_started": False,
+        "scientific_interpretation": "NONE_PARTIAL_DIAGNOSTIC_ONLY",
+        "protected_test_sealed_reads": {"protected": 0, "test": 0, "sealed": 0},
+    }
+    failure_path = attempt / "diagnostic_failure.json"
+    failure_path.write_text(json.dumps(failure), encoding="utf-8")
+
+    assert attribution._validate_prior_attempt_01(tmp_path) == index_sha
+    assert {"STATISTICS", "COMPLETED"}.issubset(PHASES)
+
+    (tmp_path / attribution.ATTEMPT_DIR).mkdir()
+    (tmp_path / attribution.PREFLIGHT_DIR).mkdir()
+    with pytest.raises(attribution.AttributionError, match="repair slot is already occupied"):
+        attribution._validate_prior_attempt_01(tmp_path)
+    assert attribution._validate_prior_attempt_01(tmp_path, require_repair_slot_free=False) == index_sha
+
+    failure["error"] = "another failure"
+    failure_path.write_text(json.dumps(failure), encoding="utf-8")
+    with pytest.raises(attribution.AttributionError, match="single repairable heartbeat-phase defect"):
+        attribution._validate_prior_attempt_01(tmp_path, require_repair_slot_free=False)
+
+
+def test_rank0_self_control_is_exact_zero() -> None:
+    values = torch.randn(1_280, dtype=torch.float64)
+    attribution._assert_rank0_self_control(values)
+
+
+def test_337d_feature_block_contributions_reconstruct_frozen_hard_distance() -> None:
+    generator = torch.Generator(device="cpu").manual_seed(321)
+    reference = torch.randn((19, 337), generator=generator, dtype=torch.float64)
+    queries = torch.randn((8, 337), generator=generator, dtype=torch.float64)
+    nearest = torch.tensor([0, 5, 18, 2, 11, 1, 6, 9], dtype=torch.long)
+    distance = (queries - reference.index_select(0, nearest)).square().sum(dim=1).div(337).sqrt()
+
+    contributions, reconstruction = attribution.block_distance_contributions(queries, reference, nearest, distance)
+
+    assert reconstruction["passed"] is True
+    assert contributions.shape == (8, 10)
+    assert torch.allclose(contributions.sum(dim=1), distance.square(), rtol=1e-9, atol=1e-10)
+    assert len(attribution.feature_blocks()) == 10
+
+
+def test_class_aggregation_and_bootstrap_are_balanced_and_repeatable() -> None:
+    labels = torch.arange(10).repeat_interleave(128)
+    before = labels.to(torch.float64) + 1.0
+    after = labels.to(torch.float64)
+
+    summary = attribution._class_summary(before - after, labels)
+    first = attribution._paired_bootstrap(labels, before, after)
+    second = attribution._paired_bootstrap(labels, before, after)
+
+    assert summary["macro_mean"] == 1.0
+    assert all(item["mean"] == 1.0 and item["count"] == 128 for item in summary["per_class"].values())
+    assert first == second
+    assert first["replicates"] == 999 and first["seed"] == 271828
+    assert first["estimate"] == 1.0 and first["ci95"] == {"lower": 1.0, "upper": 1.0}
+
+
+class _InferenceOnlyModel(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        self.runtime = nn.Linear(1, 1)
+        self.runtime.requires_grad_(False)
+        self.weight = nn.Parameter(torch.tensor(0.25, dtype=torch.float32))
+
+    def forward_from_image(self, images: torch.Tensor, labels: torch.Tensor) -> SimpleNamespace:
+        values = images.mean(dim=(1, 2, 3)).reshape(-1, 1, 1, 1)
+        raw = (self.weight + values).expand(-1, 1, 200, 200)
+        target = torch.zeros_like(raw)
+        return SimpleNamespace(raw_intensity=raw, image_input=SimpleNamespace(slm_intensity=target))
+
+
+def test_inference_sweep_does_not_update_parameters_or_create_gradients(monkeypatch: pytest.MonkeyPatch) -> None:
+    def cmos_view(values: torch.Tensor) -> torch.Tensor:
+        return F.adaptive_avg_pool2d(values, (28, 28)) if tuple(values.shape[-2:]) == (200, 200) else values
+
+    monkeypatch.setattr(attribution.surrogate.prior, "_cmos_view", cmos_view)
+    monkeypatch.setattr(attribution.surrogate, "_structural_surrogate", lambda values: values.flatten(1)[:, :336].to(torch.float64))
+    model = _InferenceOnlyModel()
+    before = {name: value.detach().clone() for name, value in model.state_dict().items()}
+    rows = torch.tensor([4, 8], dtype=torch.long)
+    images = torch.zeros((12, 28, 28), dtype=torch.uint8)
+    labels = torch.arange(12, dtype=torch.long).remainder(10)
+    class _Heartbeat:
+        def __init__(self) -> None:
+            self.phases: list[str] = []
+
+        def update(self, *, phase: str, **kwargs: object) -> None:
+            self.phases.append(phase)
+
+    heartbeat = _Heartbeat()
+
+    result = attribution._inference_sweep(
+        model,
+        images,
+        labels,
+        rows,
+        torch.zeros(336, dtype=torch.float64),
+        torch.ones(336, dtype=torch.float64),
+        torch.device("cpu"),
+        rank=2,
+        heartbeat=heartbeat,
+    )
+
+    assert result["parameter_updates"] == result["optimizer_updates"] == 0
+    assert result["model_state_sha256_before"] == result["model_state_sha256_after"]
+    assert all(torch.equal(before[name], value) for name, value in model.state_dict().items())
+    assert all(parameter.grad is None for parameter in model.parameters())
+    assert result["rows_evaluated"] == 2
+    assert heartbeat.phases and all(phase in PHASES for phase in heartbeat.phases)
+
+
+def test_running_and_terminal_heartbeat_phases_are_legal(tmp_path) -> None:
+    heartbeat = HeartbeatWriter(tmp_path, "heartbeat-lifecycle", total_steps=2, interval_seconds=0.0)
+    first = heartbeat.update(state=RUN_SCIENTIFIC_ACTIVE, phase="STATISTICS", step=0, force=True)
+    terminal = heartbeat.update(state=RUN_COMPLETED, phase=RUN_COMPLETED, step=2, force=True)
+
+    assert first is not None and first["state"] == RUN_SCIENTIFIC_ACTIVE and first["phase"] in PHASES
+    assert terminal is not None and terminal["state"] == RUN_COMPLETED and terminal["phase"] == RUN_COMPLETED
+
+
+def test_completed_report_closeout_writes_report_first_and_heartbeat_once(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    attempt = tmp_path / "attempt_01"
+    attempt.mkdir()
+    report_path = attempt / "report.json"
+    report_path.write_text('{"result":"VALID_COMPLETED_DIAGNOSTIC"}', encoding="utf-8")
+    events: list[str] = []
+
+    class _Heartbeat:
+        def stop_liveness(self) -> None:
+            events.append("stop_liveness")
+
+        def update(self, *, state: str, phase: str, step: int, force: bool, **kwargs: object) -> None:
+            assert report_path.is_file()
+            assert state == phase == RUN_COMPLETED and step == 2 and force is True
+            events.append("terminal_heartbeat")
+
+    class _Control:
+        state = RUN_SCIENTIFIC_ACTIVE
+
+        def complete(self) -> None:
+            assert events[-1] == "terminal_heartbeat"
+            self.state = RUN_COMPLETED
+            events.append("control_complete")
+
+    def record_status(path, payload) -> None:
+        assert path == attempt / "status.json"
+        assert payload["state"] == payload["phase"] == RUN_COMPLETED
+        events.append("terminal_status")
+
+    monkeypatch.setattr(attribution, "atomic_write_json", record_status)
+    attribution._close_completed_report(
+        attempt,
+        _Control(),
+        _Heartbeat(),
+        final_step=2,
+        classification="MEASURED_PATTERN_ONLY_NOT_CAUSAL_ATTRIBUTION",
+        result="VALID_COMPLETED_DIAGNOSTIC",
+    )
+
+    assert events == ["stop_liveness", "terminal_heartbeat", "control_complete", "terminal_status"]
+
+
+def test_invalid_harness_is_not_reported_as_completed_measurement(tmp_path) -> None:
+    attempt = tmp_path / "attempt_01"
+    attempt.mkdir()
+
+    class _Control:
+        state = RUN_SCIENTIFIC_ACTIVE
+
+        def invalid_harness(self) -> None:
+            self.state = RUN_INVALID_HARNESS
+
+    control = _Control()
+    attribution._mark_incomplete_attempt(attempt, control, RuntimeError("injected harness failure"))
+    status = json.loads((attempt / "status.json").read_text(encoding="utf-8"))
+
+    assert control.state == RUN_INVALID_HARNESS
+    assert status["state"] == RUN_INVALID_HARNESS
+    assert status["phase"] == RUN_INVALID_HARNESS
+    assert not (attempt / "report.json").exists()
+
+
+def test_prior_attempt_snapshot_is_read_only_and_covers_attempt01_and_02(tmp_path) -> None:
+    attempts_root = tmp_path / "runs"
+    for attempt_name in ("attempt_01", "attempt_02"):
+        attempt = attempts_root / attempt_name
+        attempt.mkdir(parents=True)
+        (attempt / "evidence.json").write_text(attempt_name, encoding="utf-8")
+
+    before = attribution._snapshot_prior_attempt_artifacts(attempts_root)
+    after = attribution._snapshot_prior_attempt_artifacts(attempts_root)
+
+    assert before == after
+    assert set(before) == {"attempt_01/evidence.json", "attempt_02/evidence.json"}

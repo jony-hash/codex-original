@@ -1,0 +1,601 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+import torch
+
+from scripts.research.archive.project_refactor_20261001.lightgen.m0 import execute_lightgen_2d_m0_bogt_class17_joint_mapping_attribution_v1 as task
+
+
+def _fixed_population() -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    fit_indices = torch.arange(200, dtype=torch.long)
+    fit_labels = torch.arange(10, dtype=torch.long).repeat(20)
+    observation_indices = torch.arange(200, 300, dtype=torch.long)
+    observation_labels = torch.arange(10, dtype=torch.long).repeat(10)
+    fit_targets = torch.zeros((200, 1, 28, 28), dtype=torch.float32)
+    return fit_indices, fit_labels, observation_indices, observation_labels, fit_targets
+
+
+def test_fixed_population_accepts_exact_class_interleaved_rows_and_rejects_reordering() -> None:
+    fit_indices, fit_labels, obs_indices, obs_labels, targets = _fixed_population()
+    task._validate_fixed_population(fit_indices, fit_labels, obs_indices, obs_labels, targets)
+
+    changed = fit_labels.clone()
+    changed[0], changed[1] = changed[1].clone(), changed[0].clone()
+    with pytest.raises(task.AttributionError, match="class-interleaved order"):
+        task._validate_fixed_population(fit_indices, changed, obs_indices, obs_labels, targets)
+
+
+def test_saved_measurement_projection_returns_only_fixed_train_rows(tmp_path: Path) -> None:
+    path = tmp_path / "combined_measurements.pt"
+    fit_indices, fit_labels, obs_indices, obs_labels, _ = _fixed_population()
+    torch.save(
+        {
+            "step": 2200,
+            "fit_indices": fit_indices,
+            "fit_labels": fit_labels,
+            "fit_predictions": fit_labels.clone(),
+            "fit_raw_cmos": torch.zeros((200, 1, 200, 200)),
+            "observation_indices": obs_indices,
+            "observation_labels": obs_labels,
+            "observation_predictions": obs_labels.clone(),
+            "observation_raw_cmos": torch.zeros((100, 1, 200, 200)),
+            "dev_labels": torch.full((5000,), 8),
+            "dev_predictions": torch.full((5000,), 8),
+        },
+        path,
+    )
+
+    loaded = task._load_saved_train_measurement(path, task.file_sha256(path))
+
+    assert set(loaded) == {
+        "step",
+        "fit_indices",
+        "fit_labels",
+        "fit_predictions",
+        "fit_raw_cmos",
+        "observation_indices",
+        "observation_labels",
+        "observation_predictions",
+        "observation_raw_cmos",
+    }
+    assert "dev_labels" not in loaded and "dev_predictions" not in loaded
+
+
+def test_step1200_saved_baseline_keeps_global_step_identity() -> None:
+    fit_indices, fit_labels, obs_indices, obs_labels, _ = _fixed_population()
+    payload = {
+        "step": 1200,
+        "artifact_kind": "fixed step1200 baseline measurements",
+        "source_manifest_id": "fixed-source",
+        "data_identity": {"dataset": "fixed-train"},
+        "fit_indices": fit_indices,
+        "fit_labels": fit_labels,
+        "observation_indices": obs_indices,
+        "observation_labels": obs_labels,
+    }
+
+    task._validate_saved_train_measurement_identity(
+        payload,
+        expected_step=1200,
+        expected_artifact_kind="fixed step1200 baseline measurements",
+        source_manifest_id="fixed-source",
+        data_identity={"dataset": "fixed-train"},
+        fit_indices=fit_indices,
+        fit_labels=fit_labels,
+        observation_indices=obs_indices,
+        observation_labels=obs_labels,
+    )
+    with pytest.raises(task.AttributionError, match="step0 TRAIN fixed-row measurements"):
+        task._validate_saved_train_measurement_identity(
+            payload,
+            expected_step=0,
+            expected_artifact_kind="fixed step1200 baseline measurements",
+            source_manifest_id="fixed-source",
+            data_identity={"dataset": "fixed-train"},
+            fit_indices=fit_indices,
+            fit_labels=fit_labels,
+            observation_indices=obs_indices,
+            observation_labels=obs_labels,
+        )
+
+
+def test_step2200_invalid_authority_uses_the_saved_string_failure_schema(tmp_path: Path) -> None:
+    status_path = tmp_path / "status.json"
+    checkpoint_path = tmp_path / "scientific_step_002200.pt"
+    checkpoint_path.write_bytes(b"step2200")
+    status = {
+        "state": task.run_control.RUN_INVALID_HARNESS,
+        "phase": "FINALIZING",
+        "failure": "CanaryError: saved S1 confirmation artifact has stale lineage",
+    }
+    status_path.write_text(json.dumps(status), encoding="utf-8")
+    report = {
+        "task_id": task.small_bank.TASK_ID,
+        "attempt": {
+            "state": task.run_control.RUN_INVALID_HARNESS,
+            "status_sha256": task.file_sha256(status_path),
+        },
+        "formal_outer_gate_status": task.run_control.RUN_INVALID_HARNESS,
+        "formal_scientific_classification": None,
+        "artifacts": {"attempt_artifact_sha256": {"scientific_step_002200.pt": task.file_sha256(checkpoint_path)}},
+    }
+
+    assert task._validate_step2200_evidence_binding(report, status, status_path, checkpoint_path) == task.file_sha256(checkpoint_path)
+
+    nested_failure_status = {**status, "failure": {"message": status["failure"]}}
+    status_path.write_text(json.dumps(nested_failure_status), encoding="utf-8")
+    changed_report = {
+        **report,
+        "attempt": {**report["attempt"], "status_sha256": task.file_sha256(status_path)},
+    }
+    with pytest.raises(task.AttributionError, match="step2200 invalid-attempt evidence"):
+        task._validate_step2200_evidence_binding(changed_report, nested_failure_status, status_path, checkpoint_path)
+
+
+def test_step2200_checkpoint_binding_uses_recovery_envelope_fields() -> None:
+    data_identity = {"dataset": "fixed-train"}
+    checkpoint = {
+        "schema": task.small_bank.CHECKPOINT_SCHEMA,
+        "checkpoint_kind": "SCIENTIFIC_TRAINING_STATE",
+        "task_id": task.small_bank.TASK_ID,
+        "outer_gate": task.small_bank.OUTER_GATE,
+        "authorization_id": task.small_bank.AUTHORIZATION_ID,
+        "source_manifest_id": "step2200-source",
+        "parent_checkpoint_sha256": "step1200-hash",
+        "phase": "TRAINING_COMPLETE",
+        "cursor": 1000,
+        "parent_global_step": 2200,
+        "data_identity": data_identity,
+        "row_update_counts": [50] * 200,
+        "optimizer_state": {"state": {"encoder": {"step": 2200}, "generator": {"step": 2200}}},
+        "read_ledger": {"protected": 0, "test": 0, "sealed": 0},
+    }
+    parent = {"data_identity": data_identity}
+    status = {"source_manifest_id": "step2200-source"}
+
+    task._validate_step2200_checkpoint_binding(checkpoint, parent, "step1200-hash", status)
+
+    checkpoint["parent_checkpoint_sha256"] = "different-parent"
+    with pytest.raises(task.AttributionError, match="saved step2200 research checkpoint"):
+        task._validate_step2200_checkpoint_binding(checkpoint, parent, "step1200-hash", status)
+
+
+def test_step2200_consumer_inherits_only_hash_bound_parent_references_and_weights() -> None:
+    data_identity = {"dataset": "fixed-train"}
+    accepted = {
+        "data_identity": data_identity,
+        "frozen_runtime_state_sha256": "frozen-runtime",
+        "references": {"schema": "refs.v1", "identity": "fixed-refs"},
+        "weights": {"schema": "weights.v1", "alpha": 1.0},
+    }
+    recovery = {
+        "schema": task.small_bank.CHECKPOINT_SCHEMA,
+        "checkpoint_kind": "SCIENTIFIC_TRAINING_STATE",
+        "parent_checkpoint_sha256": "accepted-step1200-hash",
+        "data_identity": data_identity,
+        "frozen_runtime_state_sha256": "frozen-runtime",
+        "trainable_parameter_state": {"encoder.phase": torch.zeros(1)},
+    }
+
+    view = task._runtime_checkpoint_view(recovery, accepted, "accepted-step1200-hash")
+
+    assert view["references"] is accepted["references"]
+    assert view["weights"] is accepted["weights"]
+    assert "references" not in recovery and "weights" not in recovery
+    with pytest.raises(task.AttributionError, match="cannot inherit BOGT references/weights"):
+        task._runtime_checkpoint_view(recovery, accepted, "different-parent-hash")
+
+
+def test_cumulative_preflight_budget_rejects_when_prior_failure_consumed_capacity() -> None:
+    assert task._cumulative_preflight_elapsed(10.7816133, 288.0) == pytest.approx(298.7816133)
+    with pytest.raises(task.ResourceLimitError, match="cumulative preflight exceeded"):
+        task._cumulative_preflight_elapsed(10.7816133, 290.0)
+
+
+def test_ready_preflight_roundtrip_requires_top_level_and_cumulative_elapsed() -> None:
+    ready = {
+        "elapsed_seconds": 14.4541044,
+        "cumulative_preflight_elapsed_seconds": 47.2436311,
+    }
+    assert task._ready_preflight_elapsed(ready, 32.7895267) == pytest.approx((14.4541044, 47.2436311))
+    with pytest.raises(task.ResourceLimitError, match="top-level elapsed_seconds"):
+        task._ready_preflight_elapsed({"cumulative_preflight_elapsed_seconds": 47.2436311}, 32.7895267)
+
+
+def test_canonical_gradient_telemetry_adapter_preserves_progress_fields() -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    class Recorder:
+        def sample(self, phase: str, *, progress: dict[str, object], started: float | None = None) -> dict[str, object]:
+            calls.append((phase, progress))
+            return {"phase": phase, "progress": progress}
+
+    adapter = task._CanonicalGradientRecorderAdapter(Recorder())  # type: ignore[arg-type]
+    result = adapter.sample("canonical_E_S_before_forward", batch_index=4, evaluator="E_S")
+
+    expected = {"batch_index": 4, "evaluator": "E_S", "data_role": task.bogt.TRAIN_ROLE}
+    assert result == {"phase": "canonical_E_S_before_forward", "progress": expected}
+    assert calls == [("canonical_E_S_before_forward", expected)]
+
+
+def test_current_authorization_does_not_reinterpret_historical_receipts() -> None:
+    assert task.AUTHORIZATION_ID.endswith(":authorization:02")
+    assert task.HISTORICAL_AUTHORIZATION_ID.endswith(":authorization:01")
+    assert task.HISTORICAL_AUTHORIZATION_ID != task.AUTHORIZATION_ID
+
+
+def test_repair_correction_accepts_hex_case_and_rejects_changed_pre_repair_identity(tmp_path: Path) -> None:
+    review = {
+        "schema": "m0_bogt_class17_repair_root_cause_review.v1",
+        "new_authorization_id": task.AUTHORIZATION_ID,
+        "new_preflight": "preflight_04.json",
+    }
+    review_path = tmp_path / "repair_root_cause_review_01.json"
+    review_path.write_text(json.dumps(review), encoding="utf-8")
+    preflight_path = tmp_path / "preflight_03.json"
+    attempt_status_path = tmp_path / "attempt_01_status.json"
+    preflight_path.write_text("preflight evidence", encoding="utf-8")
+    attempt_status_path.write_text("invalid attempt evidence", encoding="utf-8")
+    correction = {
+        "schema": "m0_bogt_class17_repair_root_cause_correction.v1",
+        "correction_id": "repair_root_cause_review_02",
+        "review_01_sha256": task.file_sha256(review_path).upper(),
+        "required_old_evidence": {
+            "preflight_03_sha256": task.file_sha256(preflight_path).upper(),
+            "attempt_01_status_sha256": task.file_sha256(attempt_status_path).upper(),
+        },
+        "corrected_pre_repair_executor": {
+            "path": "scripts/research/archive/project_refactor_20261001/lightgen/m0/execute_lightgen_2d_m0_bogt_class17_joint_mapping_attribution_v1.py",
+            "size_bytes": task.PRE_REPAIR_EXECUTOR_SIZE_BYTES,
+            "sha256": task.PRE_REPAIR_EXECUTOR_SHA256.upper(),
+        },
+    }
+
+    task._validate_repair_source_correction(
+        review,
+        correction,
+        review_path=review_path,
+        expected_executor_path=correction["corrected_pre_repair_executor"]["path"],
+        old_evidence_paths={
+            "preflight_03_sha256": preflight_path,
+            "attempt_01_status_sha256": attempt_status_path,
+        },
+    )
+
+    correction["required_old_evidence"]["attempt_01_status_sha256"] = "0" * 64
+    with pytest.raises(task.AttributionError, match="recorded pre-repair source identity"):
+        task._validate_repair_source_correction(
+            review,
+            correction,
+            review_path=review_path,
+            expected_executor_path=correction["corrected_pre_repair_executor"]["path"],
+            old_evidence_paths={
+                "preflight_03_sha256": preflight_path,
+                "attempt_01_status_sha256": attempt_status_path,
+            },
+        )
+    correction["required_old_evidence"]["attempt_01_status_sha256"] = task.file_sha256(attempt_status_path).upper()
+    correction["corrected_pre_repair_executor"]["sha256"] = "0" * 64
+    with pytest.raises(task.AttributionError, match="recorded pre-repair source identity"):
+        task._validate_repair_source_correction(
+            review,
+            correction,
+            review_path=review_path,
+            expected_executor_path=correction["corrected_pre_repair_executor"]["path"],
+            old_evidence_paths={
+                "preflight_03_sha256": preflight_path,
+                "attempt_01_status_sha256": attempt_status_path,
+            },
+        )
+
+
+def test_preflight_persists_authority_resolution_failure_without_opening_attempt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_dir = Path("runs")
+    monkeypatch.setattr(task, "RUNS_DIR", run_dir)
+    monkeypatch.setattr(task, "PREFLIGHT_PATH", run_dir / "preflight_04.json")
+    monkeypatch.setattr(task, "SOURCE_PATH", run_dir / "source_manifest_preflight_04.json")
+    monkeypatch.setattr(task, "RESOURCE_PATH", run_dir / "preflight_04_resource_telemetry.jsonl")
+    monkeypatch.setattr(task.torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(task.torch.cuda, "device_count", lambda: 1)
+
+    def reject_authorities(_root: Path) -> dict[str, object]:
+        raise task.AttributionError("authority record mismatch")
+
+    monkeypatch.setattr(task, "_load_authorities", reject_authorities)
+
+    with pytest.raises(task.AttributionError, match="authority record mismatch"):
+        task._preflight(tmp_path, token=task.AUTHORIZATION_TOKEN)
+
+    receipt = json.loads((tmp_path / run_dir / "preflight_04.json").read_text(encoding="utf-8"))
+    assert receipt["phase"] == "authority_resolution_and_runtime_load"
+    assert receipt["failure"]["message"] == "authority record mismatch"
+    assert receipt["source_manifest"] is None
+    assert receipt["attempt_created"] is False
+    assert receipt["optimizer_created"] is False
+    assert receipt["parameter_updates"] == 0
+    assert not (tmp_path / run_dir / "source_manifest_preflight_04.json").exists()
+
+
+def test_cumulative_preflight_includes_preflight03_and_rejects_a_stale_total() -> None:
+    history = {
+        "preflight_01": {"authorization_id": task.HISTORICAL_AUTHORIZATION_ID, "elapsed_seconds": 10.7816133},
+        "preflight_02": {"authorization_id": task.HISTORICAL_AUTHORIZATION_ID, "cumulative_preflight_elapsed_seconds": 25.2357177},
+        "ready_consumer_failure": {"authorization_id": task.HISTORICAL_AUTHORIZATION_ID, "wall_elapsed_seconds": 7.5538133},
+        "preflight_03": {"authorization_id": task.HISTORICAL_AUTHORIZATION_ID, "elapsed_seconds": 13.5367598, "cumulative_preflight_elapsed_seconds": 46.3262908},
+    }
+    historical_elapsed = task._validated_prior_preflight_elapsed(history)
+    assert historical_elapsed == pytest.approx(46.3262908)
+    assert task._cumulative_preflight_elapsed(
+        historical_elapsed,
+        task.PREFLIGHT_04_PRIOR_FAILED_INVOCATION_CHARGE_SECONDS,
+    ) == pytest.approx(61.3262908)
+    history["preflight_02"]["elapsed_seconds"] = 15.0
+    with pytest.raises(task.ResourceLimitError, match="preflight_02 elapsed duration conflicts"):
+        task._validated_prior_preflight_elapsed(history)
+    del history["preflight_02"]["elapsed_seconds"]
+    history["preflight_03"]["cumulative_preflight_elapsed_seconds"] = 32.789531
+    with pytest.raises(task.AttributionError, match="preflight_03 cumulative"):
+        task._validated_prior_preflight_elapsed(history)
+
+
+def test_probe_split_uses_the_fixed_disjoint_observation_bank() -> None:
+    fit_indices, fit_labels, observation_indices, observation_labels, _ = _fixed_population()
+    features = torch.arange(300, dtype=torch.float64).unsqueeze(1)
+
+    fit, fit_y, observed, observed_y = task._split_fixed_probe_rows(
+        features,
+        fit_indices,
+        fit_labels,
+        observation_indices,
+        observation_labels,
+    )
+
+    assert fit[:, 0].tolist() == list(range(200))
+    assert observed[:, 0].tolist() == list(range(200, 300))
+    assert torch.equal(fit_y, fit_labels)
+    assert torch.equal(observed_y, observation_labels)
+
+
+def test_class_gradient_specs_are_25_single_rows_from_original_batches() -> None:
+    fit_indices, fit_labels, observation_indices, observation_labels, fit_targets = _fixed_population()
+    inputs = {
+        "fit_indices": fit_indices,
+        "fit_labels": fit_labels,
+        "observation_indices": observation_indices,
+        "observation_labels": observation_labels,
+        "fit_targets": fit_targets,
+    }
+
+    specs = task._class_gradient_specs(inputs)
+
+    assert len(specs) == 25
+    assert all(spec["row_count"] == 1 for spec in specs)
+    assert [(spec["class"], spec["batch_index"]) for spec in specs[:5]] == [(1, 0), (7, 0), (0, 0), (4, 0), (8, 0)]
+    assert [(spec["class"], spec["batch_index"]) for spec in specs[::5]] == [(1, i) for i in range(5)]
+    assert all(int(fit_labels[spec["fit_position"]]) == spec["class"] for spec in specs)
+    assert all(int(observation_indices[spec["fit_position"]]) not in fit_indices.tolist() for spec in specs)
+
+
+def test_contact_sheet_contains_all_150_fixed_rows_without_clipping(tmp_path: Path) -> None:
+    fit_indices, fit_labels, observation_indices, observation_labels, fit_targets = _fixed_population()
+    inputs = {
+        "fit_indices": fit_indices,
+        "fit_labels": fit_labels,
+        "observation_indices": observation_indices,
+        "observation_labels": observation_labels,
+        "fit_targets": fit_targets,
+        "observation_targets": torch.zeros((100, 1, 28, 28)),
+    }
+    raw = torch.ones((300, 1, 28, 28))
+    measured = {step: {"raw_cmos": raw.clone()} for step in (1200, 2200)}
+
+    targets = torch.cat((fit_targets, inputs["observation_targets"]))
+    result = task._contact_sheet(inputs, measured, tmp_path / "fixed.png", targets)
+
+    assert len(result["original_row_indices"]) == 150
+    assert result["original_row_indices"] == [i for i, label in enumerate(torch.cat((fit_labels, observation_labels)).tolist()) if label in task.FOCUS_CLASSES]
+    image = task.Image.open(tmp_path / "fixed.png")
+    assert image.height >= 24 + 150 * (28 * 4 + 16)
+
+
+def test_write_or_validate_torch_artifact_recovers_only_matching_missing_sidecar(tmp_path: Path) -> None:
+    artifact = tmp_path / "rows.pt"
+    expected = {"indices": torch.arange(3), "value": 7}
+    task.atomic_torch_save_new(artifact, expected, artifact_kind="fixture")
+
+    task._write_or_validate_torch_artifact(
+        artifact,
+        expected,
+        source_manifest_id="source-1",
+        artifact_kind="fixed rows",
+        resume=True,
+    )
+
+    sidecar = json.loads(artifact.with_suffix(".pt.identity.json").read_text(encoding="utf-8"))
+    assert sidecar["source_manifest_id"] == "source-1"
+    assert sidecar["sha256"] == task.file_sha256(artifact)
+    with pytest.raises(task.AttributionError, match="existing artifact contents differ"):
+        task._write_or_validate_torch_artifact(
+            artifact,
+            {"indices": torch.arange(3), "value": 8},
+            source_manifest_id="source-1",
+            artifact_kind="fixed rows",
+            resume=True,
+        )
+
+
+def test_resource_recorder_resume_loads_valid_prior_phase_records(tmp_path: Path) -> None:
+    telemetry = tmp_path / "resource.jsonl"
+    row = {"phase": "prior", "global_used_fraction": 0.5, "global_used_bytes": 5, "global_total_bytes": 10, "torch_allocated_bytes": 1, "torch_reserved_bytes": 2, "torch_peak_allocated_bytes": 2, "torch_peak_reserved_bytes": 3, "elapsed_seconds": 1.0, "progress": {}, "allocator_peak_scope": "since_previous_resource_sample"}
+    telemetry.write_text(json.dumps(row) + "\n", encoding="utf-8")
+
+    recorder = task._resource_recorder(telemetry, allow_existing=True)
+
+    assert recorder.entries == [row]
+
+
+def test_source_compatibility_ignores_only_provenance_differences() -> None:
+    source = {
+        "task_id": task.TASK_ID,
+        "semantic_authority_id": task.SEMANTIC_AUTHORITY_ID,
+        "execution_source_semantics_id": "semantic-1",
+        "config_identity": {"fixed_rows": "rows-1"},
+        "relevant_source_identity": {"executor.py": "source-1"},
+        "source_manifest_id": "manifest-1",
+        "head": "head-1",
+        "dirty_patch_digest": "dirty-1",
+    }
+    changed_provenance = {**source, "source_manifest_id": "manifest-2", "head": "head-2", "dirty_patch_digest": "dirty-2"}
+
+    task._require_source_semantic_compatibility(source, changed_provenance)
+    with pytest.raises(task.AttributionError, match="semantic source identity"):
+        task._require_source_semantic_compatibility(source, {**changed_provenance, "config_identity": {"fixed_rows": "tampered"}})
+
+
+def test_source_manifest_binds_runtime_evaluator_and_probe_implementations(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    def capture(root: Path, **kwargs: object) -> SimpleNamespace:
+        captured["paths"] = {Path(path).resolve() for path in kwargs["relevant_paths"]}  # type: ignore[arg-type]
+        return SimpleNamespace(to_dict=lambda: {"execution_source_semantics_id": "semantic-1", "source_manifest_id": "manifest-1"})
+
+    monkeypatch.setattr(task.run_control, "capture_execution_source_manifest", capture)
+    inputs = {
+        "files": {},
+        "step1200_hash": "step1200",
+        "step2200_hash": "step2200",
+        "fit_indices": torch.arange(200),
+        "observation_indices": torch.arange(200, 300),
+        "data_identity": {"dataset": "fixed-train"},
+        "historical_preflight_elapsed_seconds": 46.3262907999806,
+        "prior_unreceipted_preflight_04_seconds": task.PREFLIGHT_04_PRIOR_FAILED_INVOCATION_CHARGE_SECONDS,
+    }
+
+    manifest = task._source_manifest(task._root(), inputs)
+
+    required = {
+        Path(task.decomposition.probe_convention.__file__).resolve(),
+        Path(task.m0.parent.__file__).resolve(),
+        Path(task.m0.ed_authority.__file__).resolve(),
+        Path(task.bogt.__file__).resolve().parent / "lightgen_2d_semantic_generation_input_ols_alignment.py",
+        task._root() / "src/ldm_project/v2/optics/propagation.py",
+        task._root() / "src/ldm_project/v2/student/evaluator.py",
+    }
+    assert required <= captured["paths"]  # type: ignore[operator]
+    assert manifest["execution_source_semantics_id"] == "semantic-1"
+
+
+def test_probe_standardization_uses_fit_rows_only() -> None:
+    labels = torch.arange(10, dtype=torch.long).repeat(2)
+    fit = torch.eye(10, dtype=torch.float64).repeat(2, 1)
+    observed_labels = torch.arange(10, dtype=torch.long)
+    observed = torch.eye(10, dtype=torch.float64) + 100.0
+
+    result = task._probe_one(fit, labels, observed, observed_labels)
+
+    assert torch.equal(result["standardizer"]["mean"], fit.mean(0))
+    assert torch.equal(result["standardizer"]["safe_std"], fit.std(0, unbiased=False))
+    assert result["fit_metrics"]["rows"] == 20
+    assert result["observation_metrics"]["rows"] == 10
+    assert set(result["observation_class_recall_intervals"]["by_class"]) == {str(i) for i in range(10)}
+    assert result["observation_class_recall_intervals"]["seed"] == task.BOOTSTRAP_SEED
+
+
+def test_fixed_seed_bootstraps_report_class_stratified_paired_uncertainty() -> None:
+    labels = torch.arange(10, dtype=torch.long).repeat(10)
+    before = labels.clone()
+    after = labels.clone()
+    after[labels == 1] = 0
+
+    result = task._paired_delta_ci(labels, before, after)
+
+    assert result["seed"] == 271_828
+    assert result["replicates"] == 2_000
+    assert result["by_class"]["1"]["n"] == 10
+    assert result["by_class"]["1"]["delta"] == -1.0
+    assert result["by_class"]["1"]["bootstrap_95_ci"] == [-1.0, -1.0]
+
+
+def test_gradient_summary_keeps_encoder_generator_groups_and_structural_zero() -> None:
+    zeros = torch.zeros(2, dtype=torch.float64)
+    components = {
+        "alpha_L_dist": ((torch.tensor([1.0, 0.0]),), (zeros,)),
+        "beta_L_rec": ((torch.tensor([0.0, 1.0]),), (torch.tensor([1.0, 0.0]),)),
+        "gamma_L_op": ((zeros, ), (torch.tensor([0.0, 1.0]),)),
+        "canonical_direction": ((torch.tensor([0.0, -1.0]),), (torch.tensor([1.0, 1.0]),)),
+    }
+
+    result = task._gradient_summary(components, kappa=0.5)
+
+    assert result["generator_dist_status"] == "STRUCTURALLY_ZERO"
+    assert result["groups"]["generator.phase"]["gradient_norms"]["alpha_L_dist"] == 0.0
+    assert result["groups"]["encoder.phase"]["gradient_norms"]["alpha_L_dist"] == 1.0
+    assert result["groups"]["encoder.phase"]["gradient_norms"]["combined"] == pytest.approx(1.25**0.5)
+
+
+def _candidate_inputs(ols: tuple[float, float], cmos: tuple[float, float], ed: tuple[float, float]) -> tuple[dict[int, dict], dict[int, dict], dict[int, dict]]:
+    def metrics(pair: tuple[float, float]) -> dict:
+        recalls = [0.0] * 10
+        recalls[1], recalls[7] = pair
+        return {"per_class_recall": recalls}
+
+    return (
+        {1200: {}, 2200: {"observation_metrics": metrics(ols)}},
+        {1200: {}, 2200: {"observation_metrics": metrics(cmos)}},
+        {1200: {}, 2200: {"observation_metrics": metrics(ed)}},
+    )
+
+
+def test_classification_boundaries_include_pixel_probe_interpretation() -> None:
+    ols, cmos, ed = _candidate_inputs((0.0, 0.0), (0.3, 0.4), (0.0, 0.0))
+    label, detail = task._classification(ols, cmos, ed)
+    assert label == "CONSISTENT_INPUT_SIDE_ATTRIBUTION_CANDIDATE"
+    assert detail["CMOS_probe_interpretation"] == "both classes remain readable by the fixed pixel probe"
+
+    ols, cmos, ed = _candidate_inputs((0.1, 0.2), (0.1, 0.0), (0.0, 0.0))
+    label, detail = task._classification(ols, cmos, ed)
+    assert label == "CONSISTENT_CMOS_REALIZATION_ATTRIBUTION_CANDIDATE"
+    assert detail["class_7_cmos_probe_observation_recall_at_least_0_10"] is False
+
+    ols, cmos, ed = _candidate_inputs((0.1, 0.0), (0.1, 0.1), (0.0, 0.0))
+    label, _ = task._classification(ols, cmos, ed)
+    assert label == "MIXED_OR_INSUFFICIENT_ATTRIBUTION"
+
+
+def test_completed_report_requires_source_bound_artifact_and_rejects_tampering(tmp_path: Path) -> None:
+    attempt = tmp_path / "attempt_01"
+    attempt.mkdir()
+    source = {"source_manifest_id": "source-1"}
+    artifact = attempt / "rows.pt"
+    artifact.write_bytes(b"fixed train rows")
+    sidecar = {
+        "source_manifest_id": source["source_manifest_id"],
+        "artifact_kind": "fixed rows",
+        "path": artifact.name,
+        "sha256": task.file_sha256(artifact),
+        "size_bytes": artifact.stat().st_size,
+    }
+    artifact.with_suffix(artifact.suffix + ".identity.json").write_text(json.dumps(sidecar), encoding="utf-8")
+    report = {
+        "schema": task.REPORT_SCHEMA,
+        "task_id": task.TASK_ID,
+        "outer_gate": task.OUTER_GATE,
+        "attempt_id": task.ATTEMPT_ID,
+        "source_manifest_id": source["source_manifest_id"],
+        "result": "VALID_COMPLETED",
+        "optimizer_created": False,
+        "updates": 0,
+        "artifacts": {"rows": {"path": artifact.name, "sha256": sidecar["sha256"], "size_bytes": sidecar["size_bytes"], "artifact_kind": "fixed rows"}},
+    }
+
+    task._validate_completed_report(attempt, report, source)
+    artifact.write_bytes(b"changed")
+    with pytest.raises(task.AttributionError, match="missing or changed"):
+        task._validate_completed_report(attempt, report, source)

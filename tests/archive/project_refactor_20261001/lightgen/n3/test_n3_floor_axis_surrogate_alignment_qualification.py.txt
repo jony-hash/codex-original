@@ -1,0 +1,493 @@
+from __future__ import annotations
+
+import hashlib
+import json
+from pathlib import Path
+
+import pytest
+import torch
+from ldm_project.v2.evidence import file_sha256
+
+from scripts.research.lightgen.n3 import execute_lightgen_2d_n3_floor_axis_surrogate_alignment_qualification_v1 as qualification
+
+
+ROOT = Path(__file__).resolve().parents[4]
+
+
+def _metrics(value: float = 2.0) -> dict[str, float]:
+    return {
+        "soft_floor_macro": value,
+        "hard_floor_macro": value,
+        "hard_floor_class8": value,
+        "hard_floor_class1": value,
+        "L_struct_336_macro": value,
+        "nonfloor_macro": value,
+        "hard_logrho_macro": value,
+    }
+
+
+def _controls() -> tuple[dict[str, object], dict[str, object]]:
+    optical = {
+        "passed": True,
+        "reconstruction_mse_before": 0.2,
+        "reconstruction_mse_after": 0.2,
+        "raw_cmos_finite": True,
+        "nonconstant_fraction": 1.0,
+        "zero_image_count": 0,
+    }
+    semantic = {name: 0.2 for name in ("L_S", "L_I", "L_C")}
+    return optical, qualification._semantic_control(semantic, semantic)
+
+
+def test_v2_is_exact_immutable_v1_overlay() -> None:
+    v1_path = ROOT / qualification.V1_PATH
+    v2_path = ROOT / qualification.V2_PATH
+    v1_bytes = v1_path.read_bytes()
+    v2 = json.loads(v2_path.read_text(encoding="utf-8"))
+    assert hashlib.sha256(v1_bytes).hexdigest() == qualification.V1_SHA256
+    assert hashlib.sha256(v2_path.read_bytes()).hexdigest() == qualification.V2_SHA256
+    assert v2["supersession"]["v1_sha256"] == qualification.V1_SHA256
+    assert v2["supersession"]["V1_edited"] is False
+    assert v2["inherited_scientific_definitions"]["frozen_floor_indices"] == [74, 165, 256, 285]
+    assert v2["official_full_hard_criterion"]["qualification_control"] == "macro official 337D log-rho"
+    assert v2["official_full_hard_criterion"]["raw_or_standardized_full_hard_distance"].startswith("SECONDARY_DIAGNOSTIC_ONLY")
+
+
+def test_q1_q7_and_controls_all_pass_qualifies() -> None:
+    optical, semantic = _controls()
+    result = qualification._decision(_metrics(), _metrics(1.0), optical, semantic, rollback_verified=True, evidence_valid=True)
+    assert result["attempt_status"] == "VALID_COMPLETED"
+    assert result["qualification_result"] == qualification.CLASSIFICATION_QUALIFIED
+    assert result["structural_core_pass"]
+    assert result["optical_control_pass"]
+    assert result["semantic_control_pass"]
+    assert result["final_qualification_pass"]
+    assert [row["id"] for row in result["q1_q7"]] == [f"Q{i}" for i in range(1, 8)]
+
+
+def test_optical_failure_is_valid_scientific_negative_not_harness_failure() -> None:
+    before = {**_metrics(), "reconstruction_mse": 0.2, "raw_cmos_finite": True, "nonconstant_fraction": 1.0, "zero_image_count": 0}
+    after = {**_metrics(1.0), "reconstruction_mse": 0.206, "raw_cmos_finite": True, "nonconstant_fraction": 1.0, "zero_image_count": 0}
+    optical = qualification._optical_control(before, after)
+    _, semantic = _controls()
+    result = qualification._decision(before, after, optical, semantic, rollback_verified=True, evidence_valid=True)
+    assert optical["passed"] is False
+    assert result["attempt_status"] == "VALID_COMPLETED"
+    assert result["qualification_result"] == qualification.CLASSIFICATION_NOT_QUALIFIED
+    assert result["failed_criteria"] == ["C_OPTICAL"]
+
+
+def test_semantic_failure_is_valid_scientific_negative() -> None:
+    optical, _ = _controls()
+    semantic = qualification._semantic_control(
+        {"L_S": 1.0, "L_I": 1.0, "L_C": 1.0},
+        {"L_S": 1.0001, "L_I": 1.0, "L_C": 1.0},
+    )
+    result = qualification._decision(_metrics(), _metrics(1.0), optical, semantic, rollback_verified=True, evidence_valid=True)
+    assert semantic["passed"] is False
+    assert result["attempt_status"] == "VALID_COMPLETED"
+    assert result["qualification_result"] == qualification.CLASSIFICATION_NOT_QUALIFIED
+    assert result["failed_criteria"] == ["C_SEMANTIC"]
+
+
+def test_structural_core_failure_and_multiple_failures_have_stable_trace_order() -> None:
+    optical, semantic = _controls()
+    optical["passed"] = False
+    semantic["passed"] = False
+    after = _metrics(1.0)
+    after["soft_floor_macro"] = 3.0
+    after["hard_floor_class8"] = 3.0
+    result = qualification._decision(_metrics(), after, optical, semantic, rollback_verified=True, evidence_valid=True)
+    assert result["attempt_status"] == "VALID_COMPLETED"
+    assert result["qualification_result"] == qualification.CLASSIFICATION_NOT_QUALIFIED
+    assert result["failed_criteria"] == ["Q1", "Q3", "C_OPTICAL", "C_SEMANTIC"]
+    assert result["final_qualification_pass"] is False
+
+
+def test_structural_failure_with_valid_controls_is_valid_not_qualified() -> None:
+    optical, semantic = _controls()
+    after = _metrics(1.0)
+    after["hard_floor_class8"] = 3.0
+    result = qualification._decision(_metrics(), after, optical, semantic, rollback_verified=True, evidence_valid=True)
+    assert result["attempt_status"] == "VALID_COMPLETED"
+    assert result["qualification_result"] == qualification.CLASSIFICATION_NOT_QUALIFIED
+    assert result["failed_criteria"] == ["Q3"]
+
+
+@pytest.mark.parametrize(
+    ("rollback_verified", "evidence_valid"),
+    [(False, True), (True, False)],
+)
+def test_incomplete_or_unrolled_measurement_is_invalid_harness(rollback_verified: bool, evidence_valid: bool) -> None:
+    optical, semantic = _controls()
+    result = qualification._decision(
+        _metrics(), _metrics(1.0), optical, semantic, rollback_verified=rollback_verified, evidence_valid=evidence_valid
+    )
+    assert result["attempt_status"] == qualification.RUN_INVALID_HARNESS
+    assert result["qualification_result"] == "NONE"
+    assert "q1_q7" not in result
+
+
+def test_evaluator_execution_failure_is_invalid_harness_not_a_scientific_negative() -> None:
+    optical, semantic = _controls()
+    result = qualification._decision(
+        _metrics(),
+        _metrics(1.0),
+        optical,
+        semantic,
+        rollback_verified=True,
+        evidence_valid=False,
+    )
+    assert result["attempt_status"] == qualification.RUN_INVALID_HARNESS
+    assert result["qualification_result"] == "NONE"
+
+
+def test_nonfinite_control_evidence_is_rejected_as_invalid() -> None:
+    population = {
+        **_metrics(),
+        "L_S": 0.1,
+        "L_I": 0.1,
+        "L_C": 0.1,
+        "semantic": {name: {"macro": 0.1} for name in ("L_S", "L_I", "L_C")},
+        "reconstruction_mse": 0.2,
+        "q95_macro": 1.0,
+        "nonconstant_fraction": float("nan"),
+        "zero_image_count": 0,
+        "class_hard_logrho": {"1": 0.0, "8": 0.0},
+        "class_hard_floor": {"1": 0.0, "8": 0.0},
+        "raw_cmos_finite": True,
+        "hard_distance_reconstruction": {"passed": True},
+    }
+    with pytest.raises(qualification.QualificationError, match="nonconstant_fraction is nonfinite"):
+        qualification._validate_q_evidence(population, population)
+
+
+def test_adam_effective_delta_geometry_is_relative_to_raw_descent_gradient() -> None:
+    geometry = qualification._adam_update_geometry(
+        [torch.tensor([3.0, 4.0]), torch.tensor([0.0, 2.0])],
+        [torch.tensor([-0.03, -0.04]), torch.tensor([0.0, -0.02])],
+        names=("B", "A"),
+    )
+    assert geometry["raw_gradient_l2"] == pytest.approx(29.0**0.5)
+    assert geometry["effective_update_l2"] == pytest.approx(0.01 * (29.0**0.5))
+    assert geometry["cosine_raw_descent_to_adam_delta"] == pytest.approx(1.0)
+    assert geometry["update_to_gradient_l2_ratio"] == pytest.approx(0.01)
+    assert geometry["per_parameter"]["B"]["cosine_raw_descent_to_adam_delta"] == pytest.approx(1.0)
+
+
+def test_preflight_loads_runtime_and_checks_noop_rollback_before_attempt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    events: list[str] = []
+
+    class FakeModule:
+        def __init__(self, name: str):
+            self.name = name
+            self.training = True
+            self.parameters_list: list[torch.nn.Parameter] = []
+
+        def eval(self) -> None:
+            self.training = False
+            events.append(f"eval:{self.name}")
+
+        def parameters(self) -> list[torch.nn.Parameter]:
+            return self.parameters_list
+
+    class FakeOptimizer:
+        def __init__(self, model: FakeModel):
+            self.state = {}
+            self.param_groups = [{
+                "params": [model.B, model.A],
+                "lr": qualification.n3.LEARNING_RATE,
+                "betas": qualification.n3.ADAM_BETAS,
+                "eps": qualification.n3.ADAM_EPS,
+                "weight_decay": qualification.n3.WEIGHT_DECAY,
+                "amsgrad": False,
+            }]
+
+        def state_dict(self) -> dict[str, object]:
+            return {"state": {}, "param_groups": []}
+
+    class FakeSampler:
+        def __init__(self, _indices: object):
+            self.cursor = 0
+
+    class FakeModel:
+        def __init__(self):
+            self.B = torch.nn.Parameter(torch.ones(1))
+            self.A = torch.nn.Parameter(torch.ones(1))
+
+        def train(self) -> FakeModel:
+            events.append("model")
+            return self
+
+        def named_parameters(self) -> list[tuple[str, torch.nn.Parameter]]:
+            return [("B", self.B), ("A", self.A)]
+
+        def state_dict(self) -> dict[str, torch.Tensor]:
+            return {"B": self.B.detach().clone(), "A": self.A.detach().clone()}
+
+    def runtime_snapshot(_model: FakeModel) -> dict[str, object]:
+        events.append("snapshot")
+        return {"model": _model.state_dict(), "training": True}
+
+    monkeypatch.setattr(qualification.n3, "_new_model", lambda *_args: FakeModel())
+    monkeypatch.setattr(qualification.n3, "_optimizer", lambda model: FakeOptimizer(model))
+    monkeypatch.setattr(qualification.n3, "N3FitSampler", FakeSampler)
+    monkeypatch.setattr(
+        qualification.n3,
+        "_load_evaluators",
+        lambda *_args: (FakeModule("S"), FakeModule("I"), FakeModule("C")),
+    )
+    monkeypatch.setattr(
+        qualification.n3,
+        "initialize_factors",
+        lambda *_args, **_kwargs: (torch.ones(1), torch.ones(1)),
+    )
+    monkeypatch.setattr(qualification, "_load_reference_and_mean", lambda *_args: ({}, torch.ones(336), torch.ones(336)))
+    monkeypatch.setattr(qualification.n3, "_runtime_snapshot", runtime_snapshot)
+    monkeypatch.setattr(qualification.n3, "_tensor_state_sha256", lambda _state: "state-sha")
+    monkeypatch.setattr(qualification, "_evaluator_grad_snapshot", lambda _evaluators: {"S": [], "I": [], "C": []})
+    monkeypatch.setattr(qualification.n3, "_rng_snapshot", lambda: {"rng": 1})
+    monkeypatch.setattr(qualification.n3, "_rng_equal", lambda _left, _right: True)
+    monkeypatch.setattr(qualification.n3, "_restore_rng", lambda _state: events.append("rng-restore"))
+
+    def rollback(*_args: object) -> dict[str, bool]:
+        events.append("rollback")
+        return {"passed": True, "model_runtime_exact": True, "optimizer_exact": True, "rng_exact": True}
+
+    monkeypatch.setattr(qualification, "_rollback_transaction", rollback)
+    previous_mean, previous_scale = qualification.n3._ACTIVE_MEAN, qualification.n3._ACTIVE_SCALE
+    prepared = qualification._prepare_runtime_transaction(
+        tmp_path,
+        {"checkpoint": {}, "indices_by_class": {}},
+        {},
+        torch.device("cpu"),
+    )
+
+    assert prepared["rollback_probe"]["passed"] is True
+    assert prepared["sampler"].cursor == 0
+    assert prepared["optimizer"].state == {}
+    assert events.index("model") < events.index("rollback")
+    assert not any(event.startswith("forward:") or event == "optimizer-step" for event in events)
+    assert qualification.n3._ACTIVE_MEAN is previous_mean
+    assert qualification.n3._ACTIVE_SCALE is previous_scale
+
+
+def test_ready_receipt_binds_pre_attempt_runtime_load_and_rollback() -> None:
+    runtime = {
+        "status": "READY",
+        "rollback_probe": {"passed": True, "full_runtime_exact": True},
+        "memory_after_runtime_load": {"free_gb": 3.0, "peak_reserved_gb": 1.0},
+    }
+    populations = {
+        "qualification_population_sha256": "a" * 64,
+        "future_paired_population_sha256": "b" * 64,
+    }
+    receipt = qualification._preflight_receipt(
+        {
+            "execution_source_semantics_id": "c" * 64,
+            "source_manifest_id": "d" * 64,
+            "branch": "branch",
+            "head": "head",
+            "dirty": True,
+            "dirty_patch_digest": "f" * 64,
+        },
+        runtime,
+        populations,
+        "e" * 64,
+    )
+    checks = receipt.to_dict()["checks"]
+    assert checks[qualification.CORRECTNESS_INVARIANTS]["checks"]["no_op_full_runtime_rollback"]["passed"] is True
+    assert checks[qualification.RESOURCE_ENVELOPE]["checks"]["runtime_loaded_before_attempt"] is True
+    assert checks[qualification.IMPLEMENTATION_SELECTION]["checks"]["runtime_preflight_persistent_updates"] == 0
+
+
+def test_optical_predicate_binds_frozen_n3_005_delta_semantics() -> None:
+    before = {"reconstruction_mse": 0.0, "raw_cmos_finite": True, "nonconstant_fraction": 1.0, "zero_image_count": 0}
+    at_boundary = {**before, "reconstruction_mse": 0.005}
+    passed = qualification._optical_control(before, at_boundary)
+    over_boundary = {**before, "reconstruction_mse": 0.0050001}
+    failed = qualification._optical_control(before, over_boundary)
+    assert passed["passed"] is True
+    assert failed["passed"] is False
+    assert passed["authority"]["predicate_function"] == "_confirm"
+    assert passed["authority"]["predicate_source_sha256"] == qualification.N3_OPTICAL_SOURCE_SHA256
+    assert passed["predicate"]["reconstruction_delta_after_minus_before_lte"] == 0.005
+
+
+def test_semantic_predicate_reuses_v1_scale_aware_tolerance() -> None:
+    before = {"L_S": 2.0, "L_I": 0.5, "L_C": 0.0}
+    after = {"L_S": 2.0 + 2e-9, "L_I": 0.5, "L_C": 0.0}
+    result = qualification._semantic_control(before, after)
+    assert result["metrics"]["L_S"]["tolerance"] == pytest.approx(2e-9)
+    assert result["metrics"]["L_S"]["passed"] is True
+    assert result["authority"]["v1_contract_sha256"] == qualification.V1_SHA256
+
+
+def test_fixed_population_selection_is_deterministic_disjoint_and_role_safe() -> None:
+    labels = torch.arange(10, dtype=torch.long).repeat_interleave(2050)
+    train_indices = torch.arange(labels.numel(), dtype=torch.long)
+    one_per_class = torch.tensor([digit * 2050 + 17 for digit in range(10)], dtype=torch.long)
+    roles = {
+        "N3_FIT": one_per_class,
+        "N3_SELECT": torch.empty(0, dtype=torch.long),
+        "N3_CONFIRM": torch.empty(0, dtype=torch.long),
+    }
+    reference = torch.tensor([digit * 2050 + 20 for digit in range(10)], dtype=torch.long)
+    first = qualification._select_fixed_populations(
+        labels, train_indices, roles, [], torch.empty(0, dtype=torch.long), torch.empty(0, dtype=torch.long), reference
+    )
+    second = qualification._select_fixed_populations(
+        labels, train_indices, roles, [], torch.empty(0, dtype=torch.long), torch.empty(0, dtype=torch.long), reference
+    )
+    assert torch.equal(first["qualification_indices"], second["qualification_indices"])
+    assert torch.equal(first["future_paired_evaluation_indices"], second["future_paired_evaluation_indices"])
+    assert first["qualification_indices"].numel() == 10_240
+    assert first["future_paired_evaluation_indices"].numel() == 10_240
+    assert not set(first["qualification_indices"].tolist()).intersection(roles["N3_FIT"].tolist())
+    assert not set(first["qualification_indices"].tolist()).intersection(first["future_paired_evaluation_indices"].tolist())
+    assert first["reference_independence_claim"] is False
+
+
+def test_reference_target_ties_use_smallest_canonical_source_index() -> None:
+    labels = torch.arange(10, dtype=torch.long)
+    query = torch.zeros((10, 337), dtype=torch.float64)
+    reference = {
+        "structural_fit": {
+            "labels": torch.tensor([0, 0, *range(1, 10)], dtype=torch.long),
+            "canonical_source_indices": torch.tensor([9, 3, *range(10, 19)], dtype=torch.long),
+            "standardized_signature": torch.zeros((11, 337), dtype=torch.float64),
+            "raw_signature": torch.zeros((11, 337), dtype=torch.float64),
+        },
+        "normalization": {"mean": torch.zeros(337, dtype=torch.float64), "population_std_clamped_scale": torch.ones(337, dtype=torch.float64)},
+    }
+    targets = qualification._reference_targets(query, labels, reference)
+    assert targets[0].item() == 1
+
+
+def test_soft_floor_features_keep_all_four_axes_and_are_differentiable() -> None:
+    image = torch.full((2, 1, 28, 28), 0.35, dtype=torch.float64, requires_grad=True)
+    features = qualification._soft_floor_features(image)
+    gradient = torch.autograd.grad(features.square().sum(), image)[0]
+    assert features.shape == (2, 4)
+    assert torch.isfinite(features).all()
+    assert torch.isfinite(gradient).all()
+
+
+def test_consumer_declares_no_persistent_updates_or_checkpoint_writes() -> None:
+    source = Path(qualification.__file__).read_text(encoding="utf-8")
+    assert "atomic_torch_save_new" not in source
+    assert '"persistent_update_count": 0' in source
+    assert '"checkpoint_write_count": 0' in source
+    assert qualification.FLOOR_INDICES == (74, 165, 256, 285)
+
+
+def test_preflight_failure_allows_one_recheck_then_requires_root_cause_review(tmp_path: Path) -> None:
+    source = {
+        "branch": "test-branch",
+        "head": "0" * 40,
+        "dirty": True,
+        "source_manifest_id": "source-id",
+        "execution_source_semantics_id": "semantics-id",
+        "dirty_patch_digest": "1" * 64,
+    }
+    ledger = qualification.n3.SampleReadLedger()
+
+    first = qualification._write_preflight_failure(
+        tmp_path, RuntimeError("same stable failure"), source=source, read_ledger=ledger, elapsed=1.25
+    )
+    second = qualification._write_preflight_failure(
+        tmp_path, RuntimeError("same stable failure"), source=source, read_ledger=ledger, elapsed=1.5
+    )
+
+    assert first["decision"] == "RECHECK_ALLOWED"
+    assert second["decision"] == "ROOT_CAUSE_REVIEW_REQUIRED"
+    assert first["scientific_attempt_created"] is second["scientific_attempt_created"] is False
+    assert first["persistent_update_count"] == second["persistent_update_count"] == 0
+    assert (tmp_path / qualification.RUNS_ROOT / "preflight_failure_01.json").is_file()
+    assert (tmp_path / qualification.RUNS_ROOT / "preflight_failure_02.json").is_file()
+
+
+def test_authorization_binds_source_authorities_and_both_populations(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(qualification, "AUTHORIZATION_PATH", Path("runs/authorization.json"))
+    source = {"source_manifest_id": "source-id", "execution_source_semantics_id": "semantics-id"}
+    populations = {
+        "qualification_population_sha256": "qualification-population",
+        "future_paired_population_sha256": "future-population",
+    }
+    payload = {
+        "schema": "n3_floor_axis_surrogate_alignment_execution_authorization.v1",
+        "authorization_id": qualification.AUTHORIZATION_ID,
+        "contract_v1_sha256": qualification.V1_SHA256,
+        "contract_v2_sha256": qualification.V2_SHA256,
+        "n3_contract_sha256": qualification.n3.CONTRACT_SHA256,
+        "active_fit_protocol_sha256": qualification.n3.PROTOCOL_SHA256,
+        "accepted_step9000_sha256": qualification.n3.START_CHECKPOINT_SHA256,
+        "frozen_structural_reference_sha256": qualification.n3.STRUCTURAL_REFERENCE_SHA256,
+        "surrogate_normalization_sha256": qualification.n3.SURROGATE_NORMALIZATION_SHA256,
+        **source,
+        **populations,
+    }
+    path = tmp_path / qualification.AUTHORIZATION_PATH
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    authorization, digest = qualification._load_authorization(tmp_path, source, populations)
+
+    assert authorization == payload
+    assert digest == file_sha256(path)
+    assert qualification._authorization_binding(authorization, source, populations)["contract_v2_sha256"] == qualification.V2_SHA256
+
+
+def test_stale_authorization_is_rejected_before_train_authorities_or_attempt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(qualification, "RUNS_ROOT", Path("runs"))
+    monkeypatch.setattr(qualification, "AUTHORIZATION_PATH", Path("runs/authorization.json"))
+    monkeypatch.setattr(qualification, "PREFLIGHT_DIR", Path("runs/preflight_01"))
+    monkeypatch.setattr(qualification, "PREFLIGHT_FAILURE_PATH", Path("runs/preflight_failure_01.json"))
+    monkeypatch.setattr(qualification, "ATTEMPT_DIR", Path("runs/attempt_01"))
+    source = {
+        "branch": "test-branch",
+        "head": "0" * 40,
+        "dirty": False,
+        "source_manifest_id": "source-id",
+        "execution_source_semantics_id": "semantics-id",
+        "dirty_patch_digest": "1" * 64,
+    }
+    payload = {
+        "schema": "n3_floor_axis_surrogate_alignment_execution_authorization.v1",
+        "authorization_id": qualification.AUTHORIZATION_ID,
+        "contract_v1_sha256": qualification.V1_SHA256,
+        "contract_v2_sha256": "stale-contract-sha",
+        "n3_contract_sha256": qualification.n3.CONTRACT_SHA256,
+        "active_fit_protocol_sha256": qualification.n3.PROTOCOL_SHA256,
+        "accepted_step9000_sha256": qualification.n3.START_CHECKPOINT_SHA256,
+        "frozen_structural_reference_sha256": qualification.n3.STRUCTURAL_REFERENCE_SHA256,
+        "surrogate_normalization_sha256": qualification.n3.SURROGATE_NORMALIZATION_SHA256,
+        "source_manifest_id": source["source_manifest_id"],
+        "execution_source_semantics_id": source["execution_source_semantics_id"],
+    }
+    auth_path = tmp_path / qualification.AUTHORIZATION_PATH
+    auth_path.parent.mkdir(parents=True)
+    auth_path.write_text(json.dumps(payload), encoding="utf-8")
+    monkeypatch.setattr(
+        qualification,
+        "_authority",
+        lambda _root: ({}, {"qualification_execution_authorization": {"id": qualification.AUTHORIZATION_ID}}, {}, object()),
+    )
+    monkeypatch.setattr(qualification, "_source_manifest", lambda _root: source)
+    train_load_called = False
+
+    def reject_train_load(*_args: object, **_kwargs: object) -> None:
+        nonlocal train_load_called
+        train_load_called = True
+        raise AssertionError("TRAIN authority load must follow valid authorization binding")
+
+    monkeypatch.setattr(qualification.n3, "_load_authorities", reject_train_load)
+    with pytest.raises(qualification.QualificationError, match="strict preflight RECHECK_ALLOWED"):
+        qualification.execute(repo_root=tmp_path)
+
+    assert train_load_called is False
+    assert not (tmp_path / qualification.PREFLIGHT_DIR).exists()
+    assert not (tmp_path / qualification.ATTEMPT_DIR).exists()
+    failure = json.loads((tmp_path / qualification.PREFLIGHT_FAILURE_PATH).read_text(encoding="utf-8"))
+    assert failure["scientific_attempt_created"] is False
+    assert failure["persistent_update_count"] == 0

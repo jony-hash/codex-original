@@ -1,0 +1,363 @@
+from __future__ import annotations
+
+import json
+from types import SimpleNamespace
+
+import pytest
+import torch
+
+from scripts.research.lightgen.n3 import diagnose_lightgen_2d_n3_surrogate_hard_transfer_precision_diagnostic_v1 as precision
+from ldm_project.v2.application.research.shared.research_run_control import HeartbeatWriter, RUN_INVALID_HARNESS, RUN_SCIENTIFIC_ACTIVE
+
+
+def test_fixed_population_is_hash_deterministic_and_uses_reference_disjoint_rows_when_possible() -> None:
+    labels = torch.arange(60_000, dtype=torch.long).remainder(10)
+    train = torch.arange(55_000, dtype=torch.long)
+    roles = {"N3_FIT": torch.arange(0, 1_000, dtype=torch.long)}
+    historical = torch.arange(1_000, 1_100, dtype=torch.long)
+    prior = torch.arange(2_000, 2_100, dtype=torch.long)
+    reference = torch.arange(3_000, 4_000, dtype=torch.long)
+
+    first, details = precision.select_precision_indices(train, labels, roles, historical, prior, reference)
+    second, _ = precision.select_precision_indices(train, labels, roles, historical, prior, reference)
+
+    assert torch.equal(first, second)
+    assert first.shape == (10_240,)
+    assert torch.equal(torch.bincount(labels[first], minlength=10), torch.full((10,), 1_024))
+    assert details["reference_disjoint_population_used"] is True
+    assert details["reference_overlap_rows"] == 0
+    assert not torch.isin(first, torch.cat((*roles.values(), historical, prior))).any()
+
+
+def test_fixed_population_records_intrinsic_reference_overlap_when_disjoint_1024_is_impossible() -> None:
+    labels = torch.arange(60_000, dtype=torch.long).remainder(10)
+    train = torch.arange(55_000, dtype=torch.long)
+    reference = torch.cat([torch.arange(digit, 49_000 + digit, 10) for digit in range(10)])
+
+    indices, details = precision.select_precision_indices(
+        train,
+        labels,
+        {},
+        torch.empty(0, dtype=torch.long),
+        torch.empty(0, dtype=torch.long),
+        reference,
+    )
+
+    assert indices.shape == (10_240,)
+    assert details["reference_disjoint_population_used"] is False
+    assert min(details["reference_disjoint_candidate_count_by_class"]) < 1_024
+    assert details["reference_overlap_rows"] > 0
+    assert details["reference_overlap_limitation"]
+
+
+def test_337d_feature_names_and_scale_floor_identities_match_frozen_layout() -> None:
+    names = precision._feature_dimension_names()
+
+    assert len(names) == 337
+    assert names[0]["feature"] == "mass_fraction"
+    assert names[64]["block"] == "threshold_0.25_binary_geometry"
+    assert names[131]["block"] == "threshold_0.25_topology"
+    assert names[135]["block"] == "threshold_0.25_spatial_morphology"
+    assert names[-1]["feature"] == "quadrant_r1_c1"
+
+
+def test_stratified_bootstrap_and_primary_classification_rules_are_preregistered() -> None:
+    labels = torch.arange(10).repeat_interleave(1_024)
+    delta = torch.ones(10_240, dtype=torch.float64)
+    bootstrap = precision._bootstrap_delta(labels, delta)
+    coupling_gap = {"all": {"spearman_primary": -0.1, "strict_sign_concordance_fraction": 0.4, "p_hard_improvement_given_proxy_improvement": 0.4}}
+    coupling_aligned = {"all": {"spearman_primary": 0.3, "strict_sign_concordance_fraction": 0.65, "p_hard_improvement_given_proxy_improvement": 0.7}}
+
+    assert bootstrap["estimate"] == 1.0
+    assert bootstrap["ci95"] == {"lower": 1.0, "upper": 1.0}
+    assert precision._primary_classification(bootstrap, bootstrap, coupling_gap)["classification"] == "N3_SURROGATE_TO_HARD_TRANSFER_SUPPORTED"
+    uncertain_hard = {**bootstrap, "estimate": 0.01, "ci95": {"lower": -0.02, "upper": 0.04}}
+    assert precision._primary_classification(bootstrap, uncertain_hard, coupling_gap)["classification"] == "N3_SURROGATE_HARD_ALIGNMENT_GAP_SUPPORTED"
+    assert precision._primary_classification(bootstrap, uncertain_hard, coupling_aligned)["classification"] == "N3_SURROGATE_HARD_TRANSFER_PRECISION_UNRESOLVED"
+
+
+def test_proxy_hard_coupling_reports_ties_and_empty_subgroups_without_nan() -> None:
+    summary = precision._coupling_summary(torch.tensor([1.0, 2.0, -1.0]), torch.tensor([2.0, 1.0, -1.0]))
+    empty = precision._coupling_summary(torch.empty(0), torch.empty(0))
+
+    assert summary["count"] == 3
+    assert summary["strict_sign_concordance_fraction"] == 1.0
+    assert summary["spearman_primary"] is not None
+    assert empty["count"] == 0 and empty["spearman_primary"] is None
+    assert empty["strict_sign_concordance_fraction"] is None
+
+
+def test_fixed_reference_distance_decomposition_reconstructs_actual_delta() -> None:
+    references = torch.zeros((2, 337), dtype=torch.float64)
+    references[1, 0] = 2.0
+    query0 = torch.zeros((2, 337), dtype=torch.float64)
+    query0[1, 0] = 0.5
+    query2 = torch.zeros((2, 337), dtype=torch.float64)
+    query2[1, 0] = 1.0
+    nearest0 = torch.tensor([0, 0])
+    nearest2 = torch.tensor([0, 1])
+    rank0_distance = precision._distance(query0, references, nearest0)
+    rank2_distance = precision._distance(query2, references, nearest2)
+    rank0 = {"standardized_signature": query0, "nearest_reference_index": nearest0, "distance": rank0_distance}
+    rank2 = {"standardized_signature": query2, "nearest_reference_index": nearest2, "distance": rank2_distance}
+
+    result = precision._distance_decomposition(rank0, rank2, {"standardized_signature": references})
+
+    assert result["checks"]["fixed_reference_components_reconstruct_actual_distance_change"]["passed"] is True
+    assert torch.allclose(result["feature_motion_component"] + result["reference_reassignment_component"], result["actual_total_distance_change"], rtol=1e-9, atol=1e-10)
+
+
+def test_reference_switch_summary_is_class_and_switch_stratified() -> None:
+    labels = torch.arange(10).repeat_interleave(2)
+    values = torch.arange(20, dtype=torch.float64)
+    switched = torch.zeros(20, dtype=torch.bool)
+    switched[::2] = True
+
+    summary = precision._switch_stratified_summary(values, labels, switched)
+
+    assert summary["reference_switched"]["overall"]["count"] == 10
+    assert summary["reference_unchanged"]["overall"]["count"] == 10
+    assert summary["reference_switched"]["per_class"]["0"]["count"] == 1
+    assert summary["reference_unchanged"]["per_class"]["9"]["count"] == 1
+
+
+def test_repeated_same_preflight_signature_requires_root_cause_review(tmp_path) -> None:
+    failure_path = tmp_path / precision.RUNS_ROOT / "preflight_failure_01.json"
+    failure_path.parent.mkdir(parents=True)
+    failure_path.write_text(json.dumps({"stage": "stage", "error_type": "ValueError", "error": "same"}), encoding="utf-8")
+
+    precision._save_preflight_failure(tmp_path, ValueError("same"), "stage", None)
+    result = json.loads((tmp_path / precision.PREFLIGHT_FAILURE).read_text(encoding="utf-8"))
+
+    assert result["failure_count_for_signature"] == 2
+    assert result["preflight_status"] == "ROOT_CAUSE_REVIEW_REQUIRED"
+
+
+def test_preflight_failure_signature_includes_immutable_failure_03(tmp_path) -> None:
+    failure_path = tmp_path / precision.RUNS_ROOT / "preflight_failure_03.json"
+    failure_path.parent.mkdir(parents=True)
+    failure_path.write_text(json.dumps({"stage": "stage", "error_type": "ValueError", "error": "same"}), encoding="utf-8")
+
+    precision._save_preflight_failure(tmp_path, ValueError("same"), "stage", {"source_manifest_id": "current"})
+    result = json.loads((tmp_path / precision.PREFLIGHT_FAILURE).read_text(encoding="utf-8"))
+
+    assert result["failure_count_for_signature"] == 2
+    assert result["preflight_status"] == "ROOT_CAUSE_REVIEW_REQUIRED"
+    assert result["source_manifest"] == {"source_manifest_id": "current"}
+
+
+def test_historical_and_nested_source_identity_normalize_to_same_form() -> None:
+    source_identity = {
+        "branch": "research/lightgen",
+        "head": "500045d6a92843c81ffeda010e01351f559e453b",
+        "dirty": True,
+        "source_manifest_id": "a" * 64,
+        "execution_source_semantics_id": "abd800346b0738206e5034ae3acf0d1415de52da39449e12a0dded6b2f6ded3a",
+        "dirty_patch_digest": "b" * 64,
+    }
+    source = source_identity | {"config_identity": {"diagnostic_indices_sha256": "c" * 64}, "schema": "execution_source_manifest.v1"}
+    historical = precision._normalise_execution_source_identity(
+        source,
+        semantic_aliases=(
+            ("attempt_01_top_level", source_identity["execution_source_semantics_id"]),
+            ("historical_ready_receipt", source_identity["execution_source_semantics_id"]),
+        ),
+        expected_semantics_id=source_identity["execution_source_semantics_id"],
+    )
+    nested = precision._normalise_execution_source_identity(
+        source,
+        nested_source_identity=source_identity,
+        semantic_aliases=(("execution_manifest", source_identity["execution_source_semantics_id"]),),
+    )
+
+    assert historical == nested == source_identity
+
+
+def test_source_identity_normalization_rejects_conflicting_manifest_and_wrong_expected_id() -> None:
+    source = {
+        "branch": "research/lightgen",
+        "head": "500045d6a92843c81ffeda010e01351f559e453b",
+        "dirty": True,
+        "source_manifest_id": "a" * 64,
+        "execution_source_semantics_id": "b" * 64,
+        "dirty_patch_digest": "c" * 64,
+    }
+    conflicting_manifest = {**source, "source_manifest_id": "d" * 64}
+
+    with pytest.raises(precision.PrecisionDiagnosticError, match="source identity conflicts"):
+        precision._normalise_execution_source_identity(source, source_aliases=(("READY manifest", conflicting_manifest),))
+    with pytest.raises(precision.PrecisionDiagnosticError, match="expected historical semantics ID"):
+        precision._normalise_execution_source_identity(
+            source,
+            expected_semantics_id="e" * 64,
+        )
+
+
+@pytest.mark.parametrize(
+    ("source", "semantic_aliases", "nested", "expected"),
+    [
+        ({"execution_source_semantics_id": "a" * 64}, (), None, None),
+        (
+            {
+                "branch": "research/lightgen",
+                "head": "500045d6a92843c81ffeda010e01351f559e453b",
+                "dirty": True,
+                "source_manifest_id": "a" * 64,
+                "execution_source_semantics_id": "b" * 64,
+                "dirty_patch_digest": "c" * 64,
+            },
+            (("attempt_01_top_level", "b" * 64), ("historical_ready_receipt", "d" * 64)),
+            None,
+            None,
+        ),
+        (
+            {
+                "branch": "research/lightgen",
+                "head": "500045d6a92843c81ffeda010e01351f559e453b",
+                "dirty": True,
+                "source_manifest_id": "a" * 64,
+                "execution_source_semantics_id": "b" * 64,
+                "dirty_patch_digest": "c" * 64,
+            },
+            (),
+            {"branch": "different", "head": "500045d6a92843c81ffeda010e01351f559e453b", "dirty": True, "source_manifest_id": "a" * 64, "execution_source_semantics_id": "b" * 64, "dirty_patch_digest": "c" * 64},
+            None,
+        ),
+    ],
+)
+def test_source_identity_normalization_fails_closed_on_missing_or_conflicting_authority(
+    source, semantic_aliases, nested, expected
+) -> None:
+    with pytest.raises(precision.PrecisionDiagnosticError):
+        precision._normalise_execution_source_identity(
+            source,
+            semantic_aliases=semantic_aliases,
+            nested_source_identity=nested,
+            expected_semantics_id=expected,
+        )
+
+
+def test_read_ledger_uses_frozen_reference_overlap_identity_path() -> None:
+    context = {
+        "sample": {"indices_sha256": "sample-sha", "row_count": 10_240, "rows_per_class": 1_024, "reference_overlap_rows": 8_900},
+        "reference_library": {"artifact_sha256": "reference-sha", "rows": 49_494, "source_index_label_mapping_valid": True, "source_indices_sha256": "source-sha"},
+        "role_index_rows": {"N3_FIT": 3},
+        "historical_exclusion_rows": 2,
+        "prior_diagnostic_index_rows": 4,
+        "previous_precision_attempt": {"attempt_id": "prior-precision", "failure_sha256": "f" * 64},
+        "rehearsal_only": False,
+    }
+
+    ledger = precision._read_ledger(context, {"attempt_id": "prior"})
+
+    assert ledger["reads"]["frozen_reference"]["diagnostic_reference_overlap_rows"] == 8_900
+    assert ledger["reads"]["diagnostic_population"]["forward_rows_by_rank"] == {"0": 10_240, "2": 10_240}
+
+
+def test_frozen_sample_payload_normalizes_legacy_nested_reference_overlap_once() -> None:
+    indices = torch.arange(20, dtype=torch.long)
+    payload = {
+        "row_count": 20,
+        "rows_per_class": 2,
+        "class_counts": [2] * 10,
+        "indices_sha256": precision.tensor_sha256(indices),
+        "indices": indices.tolist(),
+        "reference_overlap_rows": None,
+        "reference_overlap_status": {
+            "reference_overlap_rows": 5,
+            "reference_overlap_fraction": 0.25,
+            "rows_per_class": 2,
+        },
+    }
+
+    normalized = precision._normalise_sample_population(payload)
+
+    assert normalized["reference_overlap_rows"] == 5
+    assert normalized["public"]["reference_overlap_rows"] == 5
+    assert normalized["indices_sha256"] == precision.tensor_sha256(indices)
+
+
+def test_repaired_precision_run_uses_new_write_once_slots() -> None:
+    assert precision.PREFLIGHT_DIR.as_posix().endswith("preflight_04")
+    assert precision.PREFLIGHT_FAILURE.as_posix().endswith("preflight_failure_04.json")
+    assert precision.ATTEMPT_DIR.as_posix().endswith("attempt_02")
+    assert precision.ATTEMPT_ID.endswith(":attempt_02")
+
+
+def test_output_filesystem_probe_rejects_insufficient_capacity_before_writing(tmp_path, monkeypatch) -> None:
+    required_bytes = precision._minimum_output_free_bytes()
+    monkeypatch.setattr(precision.shutil, "disk_usage", lambda _path: SimpleNamespace(free=required_bytes - 1))
+
+    with pytest.raises(precision.PrecisionDiagnosticError, match="output filesystem free space"):
+        precision._output_filesystem_probe(tmp_path)
+
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_output_filesystem_probe_accepts_exact_capacity_and_removes_probe(tmp_path, monkeypatch) -> None:
+    required_bytes = precision._minimum_output_free_bytes()
+    monkeypatch.setattr(precision.shutil, "disk_usage", lambda _path: SimpleNamespace(free=required_bytes))
+
+    result = precision._output_filesystem_probe(tmp_path)
+
+    assert result["minimum_required_free_bytes"] == required_bytes
+    assert result["free_bytes_at_preflight"] == required_bytes
+    assert result["write_read_atomic_rename"] is True
+    assert result["temporary_probe_removed"] is True
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_synthetic_artifact_transaction_rehearsal_is_complete_and_non_scientific() -> None:
+    rehearsal = precision._artifact_transaction_rehearsal()
+
+    assert rehearsal["status"] == "PASS"
+    assert rehearsal["scientific_data_reads"] == 0
+    assert rehearsal["optimizer_updates"] == 0
+    assert rehearsal["checkpoint_writes"] == 0
+    assert rehearsal["classification_issued"] is False
+    assert rehearsal["terminal_completed_closeout_once"] is True
+    assert rehearsal["no_heartbeat_after_terminal_closeout"] is True
+    assert rehearsal["temporary_namespace_removed"] is True
+    assert {
+        "sample_indices.json",
+        "source_manifest.json",
+        "execution_manifest.json",
+        "read_ledger.json",
+        "per_sample_values.pt",
+        "reference_switch_decomposition.json",
+        "scale_floor_summary.json",
+        "runtime_telemetry.json",
+        "report.json",
+        "latest_status.json",
+        "progress.jsonl",
+        "status.json",
+    }.issubset(set(rehearsal["artifacts_validated"]))
+
+
+def test_invalid_harness_closeout_updates_heartbeat_to_terminal_state(tmp_path) -> None:
+    class _Control:
+        state = RUN_SCIENTIFIC_ACTIVE
+
+        def invalid_harness(self) -> None:
+            self.state = RUN_INVALID_HARNESS
+
+    attempt = tmp_path / "attempt_01"
+    attempt.mkdir()
+    heartbeat = HeartbeatWriter(attempt, "invalid-run", total_steps=10, interval_seconds=0.0)
+    heartbeat.update(state=RUN_SCIENTIFIC_ACTIVE, phase="STATISTICS", step=5, force=True)
+    control = _Control()
+
+    precision._mark_incomplete(attempt, control, OSError("injected artifact persistence failure"), heartbeat)
+
+    latest = json.loads(heartbeat.latest_status_path.read_text(encoding="utf-8"))
+    status = json.loads((attempt / "status.json").read_text(encoding="utf-8"))
+    progress = (attempt / "progress.jsonl").read_text(encoding="utf-8").splitlines()
+    assert control.state == RUN_INVALID_HARNESS
+    assert latest["state"] == latest["phase"] == RUN_INVALID_HARNESS
+    assert latest["step"] == 5
+    assert status["state"] == status["phase"] == RUN_INVALID_HARNESS
+    assert json.loads(progress[-1])["state"] == RUN_INVALID_HARNESS
+    failure = json.loads((attempt / "diagnostic_failure.json").read_text(encoding="utf-8"))
+    assert failure["classification"] is None
+    assert failure["error_type"] == "OSError"
+    assert not (attempt / "report.json").exists()

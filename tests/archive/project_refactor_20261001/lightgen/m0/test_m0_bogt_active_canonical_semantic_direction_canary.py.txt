@@ -1,0 +1,152 @@
+from __future__ import annotations
+
+import ast
+import json
+from pathlib import Path
+
+import pytest
+import torch
+
+from ldm_project.v2.application.research.lightgen import lightgen_2d_chen_bogt_complex_ols_training as bogt
+from scripts.research.lightgen.m0 import execute_lightgen_2d_m0_bogt_active_canonical_semantic_direction_canary_v1 as canary
+
+
+def test_step600_sampler_continues_saved_class_permutations_and_rejects_stale_rows() -> None:
+    labels = torch.arange(10, dtype=torch.long).repeat_interleave(1_000)
+    train_indices = torch.arange(labels.numel(), dtype=torch.long)
+    permutations = [
+        torch.arange(digit * 1_000, (digit + 1) * 1_000, dtype=torch.long)
+        for digit in range(10)
+    ]
+    state = {
+        "schema": bogt.SAMPLER_SCHEMA,
+        "seed": 1234,
+        "steps": 600,
+        "cursor": 600,
+        "class_count": 10,
+        "rows_per_class": [1_000] * 10,
+        "permutations": permutations,
+    }
+
+    sampler = canary.ContinuationSampler(train_indices, labels, state)
+    indices, batch_labels = sampler.next_batch()
+    assert indices.tolist() == [digit * 1_000 + 600 for digit in range(10)]
+    assert batch_labels.tolist() == list(range(10))
+    assert sampler.cursor == 601
+
+    stale = dict(state)
+    stale_rows = [row.clone() for row in permutations]
+    stale_rows[0] = permutations[1].clone()
+    stale["permutations"] = stale_rows
+    with pytest.raises(canary.ActiveCanaryError, match="permutation"):
+        canary.ContinuationSampler(train_indices, labels, stale)
+
+
+def test_generator_composition_projects_only_conflicting_auxiliary_and_semantic_off_is_zero() -> None:
+    q_sic = torch.tensor([1.0, -1.0, 0.5, -0.5])
+    g_rec = -2.0 * q_sic + torch.tensor([0.0, 0.0, 1.0, 1.0])
+    g_op = 0.25 * q_sic
+
+    active = canary._compose_generator_gradient(q_sic, g_rec, g_op, 0.5)
+    assert active["projection"]["L_rec"]["projected"] is True
+    assert active["projection"]["L_op"]["projected"] is False
+    assert canary._dot(active["g_total"], active["g_sem"]) > 0.0
+    assert torch.isfinite(active["g_total"]).all()
+
+    disabled = canary._compose_generator_gradient(
+        q_sic,
+        g_rec,
+        g_op,
+        0.0,
+        semantic_enabled=False,
+    )
+    assert torch.count_nonzero(disabled["g_sem"]).item() == 0
+    assert torch.equal(disabled["g_total"], g_rec + g_op)
+
+
+def test_stale_checkpoint_digest_is_rejected_before_model_or_optimizer_creation() -> None:
+    with pytest.raises(canary.ActiveCanaryError, match="identity changed"):
+        canary._verify_digest("a" * 64, "b" * 64, "step600 checkpoint")
+
+
+def test_s1_sampler_record_must_bind_the_current_step900_train_bank() -> None:
+    valid = {
+        "source_step": canary.END_STEP,
+        "source_train_ols_sha256": "a" * 64,
+        "data_role": bogt.TRAIN_ROLE,
+        "sampler_family": "S1",
+        "neighbor_count": 16,
+    }
+    canary._validate_s1_source_record(valid, "a" * 64)
+    with pytest.raises(canary.ActiveCanaryError, match="current step900"):
+        canary._validate_s1_source_record(valid, "b" * 64)
+
+
+def test_outer_gate_separates_complete_pass_and_valid_scientific_failure() -> None:
+    checks = {"dev": True, "s1": True, "output_validity": True}
+    assert canary._resolve_gate(checks) == (
+        canary.RUN_COMPLETED,
+        canary.CLASSIFICATION_SUPPORTED,
+        True,
+    )
+
+    checks["s1"] = False
+    assert canary._resolve_gate(checks) == (
+        canary.RUN_VALID_FAILED,
+        canary.RUN_VALID_FAILED,
+        False,
+    )
+
+
+def test_protected_test_or_sealed_reads_fail_the_data_firewall() -> None:
+    assert canary._firewall_clear({"protected": 0, "test": 0, "sealed": 0})
+    assert not canary._firewall_clear({"protected": 1, "test": 0, "sealed": 0})
+
+
+def test_terminal_status_writer_uses_shared_atomic_json_signature(tmp_path) -> None:
+    attempt = tmp_path / "attempt_01"
+    attempt.mkdir()
+
+    canary._write_status(attempt, state=canary.RUNNING, phase="TRAINING", step=700)
+    canary._write_status(
+        attempt,
+        state=canary.RUN_VALID_FAILED,
+        phase=canary.RUN_VALID_FAILED,
+        step=canary.END_STEP,
+        outer_gate_passed=False,
+    )
+
+    status = json.loads((attempt / "status.json").read_text(encoding="utf-8"))
+    assert status["state"] == canary.RUN_VALID_FAILED
+    assert status["completed_step"] == canary.END_STEP
+    assert status["outer_gate_passed"] is False
+
+
+def test_execute_transitions_run_control_once_after_persisting_the_report() -> None:
+    module = ast.parse(Path(canary.__file__).read_text(encoding="utf-8"))
+    execute = next(node for node in module.body if isinstance(node, ast.FunctionDef) and node.name == "_execute")
+    transitions = [
+        node
+        for node in ast.walk(execute)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "control"
+        and node.func.attr in {"complete", "valid_failed"}
+    ]
+    report_writes = [
+        node
+        for node in ast.walk(execute)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "atomic_write_new_json"
+        and node.args
+        and isinstance(node.args[0], ast.BinOp)
+        and isinstance(node.args[0].right, ast.Constant)
+        and node.args[0].right.value == "report.json"
+    ]
+
+    assert [node.func.attr for node in transitions].count("complete") == 1
+    assert [node.func.attr for node in transitions].count("valid_failed") == 1
+    assert len(report_writes) == 1
+    assert all(node.lineno > report_writes[0].lineno for node in transitions)

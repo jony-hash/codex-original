@@ -1,0 +1,479 @@
+from types import SimpleNamespace
+
+import pytest
+import torch
+
+from scripts.research.lightgen.m0 import execute_lightgen_2d_m0_bogt_small_bank_joint_fit_canary_v1 as canary
+
+
+def test_small_bank_schedule_visits_every_row_50_times() -> None:
+    rows = torch.cat([canary._row_indices(cursor) for cursor in range(canary.UPDATE_COUNT)])
+    counts = torch.bincount(rows, minlength=canary.FIT_ROWS)
+
+    assert counts.shape == (200,)
+    assert torch.equal(counts, torch.full((200,), 50, dtype=torch.long))
+    assert canary._expected_row_counts(1000) == [50] * 200
+    assert canary._row_indices(20).tolist() == list(range(0, 10))
+
+
+def test_optimizer_step_reader_uses_the_accepted_production_adapter() -> None:
+    parameters = [torch.nn.Parameter(torch.tensor([1.0])), torch.nn.Parameter(torch.tensor([2.0]))]
+    optimizer = torch.optim.Adam(parameters, lr=0.001)
+    for parameter in parameters:
+        parameter.grad = torch.ones_like(parameter)
+    optimizer.step()
+
+    assert canary._optimizer_steps(optimizer) == [1, 1]
+
+
+def test_run_identity_contains_required_source_optimizer_and_sampler_fields() -> None:
+    source = {"execution_source_semantics_id": "semantics", "source_manifest_id": "source"}
+    inputs = {
+        "checkpoint_sha256": "parent-hash",
+        "checkpoint": {"optimizer_configuration": {"learning_rate": 0.001}, "kappa": canary.SCIENTIFIC_KAPPA},
+        "context": SimpleNamespace(data_identity={"dataset": "fixed"}),
+        "fit_indices": torch.arange(canary.FIT_ROWS),
+        "observation_indices": torch.arange(canary.OBSERVATION_ROWS),
+    }
+
+    identity = canary._identity(source, inputs)
+
+    assert identity.execution_source_semantics_id == "semantics"
+    assert identity.source_manifest_id == "source"
+    assert identity.optimizer_identity == {"learning_rate": 0.001}
+    assert identity.sampler_identity["passes"] == canary.PASSES
+    assert identity.scientific_attempt_id == canary.ATTEMPT_ID
+
+
+def test_fixed_population_binds_rows_labels_and_target_images() -> None:
+    labels = torch.arange(10).repeat(32)
+    images = torch.arange(320, dtype=torch.float32).reshape(320, 1, 1, 1).expand(320, 1, 28, 28) / 320
+    context = SimpleNamespace(train_indices=torch.arange(320), labels=labels, images=images)
+    fit = torch.arange(200)
+    observation = torch.arange(200, 300)
+    fit_targets = torch.nn.functional.adaptive_avg_pool2d(images[fit].clamp(0, 1), (28, 28))
+    payload = {
+        "fit_indices": fit,
+        "observation_indices": observation,
+        "fit_labels": labels[fit],
+        "observation_labels": labels[observation],
+        "fit_targets_28x28": fit_targets,
+    }
+
+    result = canary._validate_fixed_population_identity(
+        context, payload, expected_fit=fit, expected_observation=observation
+    )
+
+    assert torch.equal(result["fit_indices"], fit)
+    assert torch.equal(result["observation_indices"], observation)
+    tampered = dict(payload, fit_indices=fit.roll(1))
+    with pytest.raises(canary.CanaryError, match="row identities"):
+        canary._validate_fixed_population_identity(
+            context, tampered, expected_fit=fit, expected_observation=observation
+        )
+    tampered = dict(payload, fit_targets_28x28=fit_targets + 0.01)
+    with pytest.raises(canary.CanaryError, match="target-image identity"):
+        canary._validate_fixed_population_identity(
+            context, tampered, expected_fit=fit, expected_observation=observation
+        )
+
+
+def test_dev_preflight_probe_is_class_stratified() -> None:
+    context = SimpleNamespace(
+        development_indices=torch.arange(20),
+        labels=torch.arange(10).repeat_interleave(2),
+    )
+
+    assert canary._balanced_dev_probe(context, rows_per_class=2).tolist() == list(range(20))
+    missing_class = SimpleNamespace(development_indices=torch.arange(9), labels=torch.arange(9))
+    with pytest.raises(canary.CanaryError, match="every class"):
+        canary._balanced_dev_probe(missing_class, rows_per_class=1)
+
+
+def test_s1_resource_probe_selects_every_class_from_class_major_requests() -> None:
+    requested = torch.arange(10).repeat_interleave(200)
+
+    positions = canary._class_balanced_positions(requested, rows_per_class=10)
+
+    assert positions.tolist() == [index for class_id in range(10) for index in range(class_id * 200, class_id * 200 + 10)]
+    with pytest.raises(canary.CanaryError, match="every requested class"):
+        canary._class_balanced_positions(requested[requested != 9], rows_per_class=10)
+
+
+def test_resource_summary_uses_global_usage_and_allocator_peaks_separately() -> None:
+    telemetry = [
+        {
+            "global_total_bytes": 6_442_450_944,
+            "global_used_bytes": 4_651_484_160,
+            "global_used_fraction": 0.721,
+            "torch_allocated_bytes": 1_827_305_920,
+            "torch_reserved_bytes": 2_850_029_568,
+            "torch_peak_allocated_bytes": 2_522_654_720,
+            "torch_peak_reserved_bytes": 2_850_029_568,
+        },
+        {
+            "global_total_bytes": 6_442_450_944,
+            "global_used_bytes": 4_300_000_000,
+            "global_used_fraction": 0.667,
+            "torch_allocated_bytes": 1_100_000_000,
+            "torch_reserved_bytes": 1_200_000_000,
+            "torch_peak_allocated_bytes": 2_800_000_000,
+            "torch_peak_reserved_bytes": 3_000_000_000,
+        },
+    ]
+
+    summary = canary._resource_summary_from_entries(telemetry)
+
+    assert summary["device_total_bytes"] == telemetry[0]["global_total_bytes"]
+    assert summary["peak_global_used_bytes"] == telemetry[0]["global_used_bytes"]
+    assert summary["max_global_used_fraction"] == telemetry[0]["global_used_fraction"]
+    assert summary["peak_torch_allocated_bytes"] == telemetry[1]["torch_peak_allocated_bytes"]
+    assert summary["peak_torch_reserved_bytes"] == telemetry[1]["torch_peak_reserved_bytes"]
+
+
+def test_resource_summary_rejects_missing_device_or_allocator_fields() -> None:
+    telemetry = [{"global_used_fraction": 0.5}]
+
+    with pytest.raises(canary.CanaryError, match="resource telemetry entry 0 is missing fields"):
+        canary._resource_summary_from_entries(telemetry)
+
+
+def test_historical_preflights_keep_their_original_authorization_identity() -> None:
+    old_failure = {
+        "schema": canary.PREFLIGHT_SCHEMA,
+        "task_id": canary.TASK_ID,
+        "outer_gate": canary.OUTER_GATE,
+        "authorization_id": canary.HISTORICAL_AUTHORIZATION_ID,
+        "status": canary.RUN_INVALID_HARNESS,
+        "phase": "resource_extrapolation",
+        "attempt_created": False,
+        "scientific_optimizer_updates": 0,
+    }
+    budget_stop = {
+        **old_failure,
+        "status": "PREFLIGHT_BLOCKED(resource)",
+        "phase": "cumulative_preflight_budget_admission",
+    }
+
+    canary._validate_historical_preflight(canary.Path("preflight_07.json"), old_failure)
+    canary._validate_historical_preflight(canary.Path("preflight_08.json"), budget_stop)
+    repair_failure = {
+        **old_failure,
+        "authorization_id": canary.PREVIOUS_AUTHORIZATION_ID,
+        "phase": "resolve_authorities_and_fixed_populations",
+    }
+    canary._validate_historical_preflight(canary.Path("preflight_10.json"), repair_failure)
+    ready = {
+        **old_failure,
+        "authorization_id": canary.PREVIOUS_AUTHORIZATION_ID,
+        "status": canary.PREFLIGHT_READY,
+        "phase": None,
+        "scientific_optimizer_updates": None,
+        "checks": {canary.CORRECTNESS_INVARIANTS: {"scientific_optimizer_updates": 0}},
+    }
+    canary._validate_historical_preflight(canary.Path("preflight_09.json"), ready)
+    previous_budget_stop = {
+        **old_failure,
+        "authorization_id": canary.PREVIOUS_AUTHORIZATION_ID,
+        "status": "PREFLIGHT_BLOCKED(resource)",
+        "phase": "remaining_total_budget_admission",
+    }
+    canary._validate_historical_preflight(canary.Path("preflight_11.json"), previous_budget_stop)
+    assert canary._has_zero_scientific_updates(ready)
+    assert canary._has_zero_scientific_updates({**ready, "checks": {"scientific_optimizer_updates": 0}})
+    with pytest.raises(canary.CanaryError, match="historical task identity"):
+        canary._validate_historical_preflight(
+            canary.Path("preflight_08.json"),
+            {**budget_stop, "authorization_id": canary.AUTHORIZATION_ID},
+        )
+
+
+def test_attempt01_harness_failure_is_reusable_only_as_zero_update_history() -> None:
+    payload = {
+        "schema": canary.REPORT_SCHEMA,
+        "task_id": canary.TASK_ID,
+        "outer_gate": canary.OUTER_GATE,
+        "authorization_id": canary.PREVIOUS_AUTHORIZATION_ID,
+        "source_manifest_id": "preflight09-source",
+        "state": canary.RUN_INVALID_HARNESS,
+        "phase": "STEP0_MEASUREMENT",
+        "local_completed_updates": 0,
+        "parent_global_step": canary.PARENT_STEP,
+        "failure": "CanaryError: accepted DEV labels is not a tensor",
+    }
+
+    canary._validate_failed_attempt_without_updates(payload, source_manifest_id="preflight09-source")
+    with pytest.raises(canary.CanaryError, match="zero-update DEV-label harness failure"):
+        canary._validate_failed_attempt_without_updates(
+            {**payload, "local_completed_updates": 1}, source_manifest_id="preflight09-source"
+        )
+
+
+def test_parent_dev_json_vectors_are_loaded_as_cpu_tensors() -> None:
+    labels = torch.arange(10).repeat_interleave(500).tolist()
+    predictions = labels.copy()
+
+    loaded_labels, loaded_predictions = canary._accepted_dev_vectors(
+        {"E_D": {"true_labels": labels, "prediction_labels": predictions}}
+    )
+
+    assert loaded_labels.device.type == "cpu" and loaded_labels.dtype == torch.long
+    assert torch.equal(loaded_labels, loaded_predictions)
+    with pytest.raises(canary.CanaryError, match="vectors are malformed"):
+        canary._accepted_dev_vectors({"E_D": {"true_labels": [0], "prediction_labels": [0]}})
+
+
+def test_new_authorization_has_a_fresh_preflight_cap_and_no_scientific_wall_clock_cap() -> None:
+    qualification_started = 1200.0
+
+    assert canary._preflight_within_window(
+        qualification_epoch=qualification_started,
+        now=qualification_started + canary.MAX_PREFLIGHT_SECONDS,
+    ) is True
+    assert canary._preflight_within_window(
+        qualification_epoch=qualification_started,
+        now=qualification_started + canary.MAX_PREFLIGHT_SECONDS + 0.1,
+    ) is False
+    assert canary._preflight_within_window(
+        qualification_epoch=qualification_started,
+        qualification_elapsed_before_seconds=590.0,
+        now=qualification_started + 10.1,
+    ) is False
+
+
+def test_scientific_workload_duration_is_reported_as_estimate_only() -> None:
+    workload_with_margin = 7070.952340108114
+
+    estimate = canary._workload_time_estimate(
+        estimated_workload_with_margin_seconds=workload_with_margin,
+        elapsed_seconds=5170.028600215912,
+    )
+
+    assert estimate["estimated_workload_with_margin_seconds"] == pytest.approx(workload_with_margin)
+    assert estimate["projected_elapsed_seconds"] == pytest.approx(12240.980940324026)
+    assert estimate["is_estimate_only"] is True
+    assert "allowed" not in estimate and "limit_seconds" not in estimate
+
+
+def test_new_authorization_freezes_steps_but_removes_wall_clock_cutoff() -> None:
+    authorization = canary._authorization_record()
+
+    assert authorization["authorization_id"] == f"{canary.TASK_ID}:authorization:03"
+    assert authorization["attempt_id"] == canary.ATTEMPT_ID
+    assert authorization["updates"] == 1000
+    assert authorization["wall_clock_policy"] == "unlimited_wall_clock_fixed_update_count"
+    assert authorization["preflight_limit_seconds"] == 600
+    assert authorization["device_memory_fraction_limit"] == pytest.approx(0.90)
+    assert canary.ATTEMPT_DIR.name == "attempt_02"
+
+
+def test_authorization_record_is_write_once_and_fixes_the_unlimited_wall_clock_scope(tmp_path) -> None:
+    root = tmp_path / "repo"
+    (root / canary.RUNS_DIR).mkdir(parents=True)
+
+    saved = canary._load_authorization(root, create_if_missing=True)
+    loaded = canary._load_authorization(root, create_if_missing=False)
+
+    assert saved == loaded == canary._authorization_record()
+    path = root / canary.AUTHORIZATION_RECORD_PATH
+    path.write_text('{"authorization_id":"tampered"}', encoding="utf-8")
+    with pytest.raises(canary.CanaryError, match="conflicts with the approved fixed task scope"):
+        canary._load_authorization(root, create_if_missing=False)
+
+
+def test_current_ready_source_compatibility_ignores_provenance_only_changes() -> None:
+    source = {
+        "source_manifest_id": "ready-source-id",
+        "execution_source_semantics_id": "execution-semantics",
+        "semantic_authority_id": canary.SEMANTIC_AUTHORITY_ID,
+        "config_identity": {"checkpoint": "fixed", "updates": 1000},
+        "relevant_source_identity": "source-bytes",
+        "relevant_source_paths": ["executor.py", "checkpoint.pt"],
+        "branch": "research/main",
+        "head": "abc123",
+        "dirty": True,
+        "dirty_patch_digest": "old-provenance",
+    }
+    current = {**source, "head": "def456", "dirty_patch_digest": "new-provenance"}
+
+    assert canary._source_manifest_compatible(current, source) is True
+    with pytest.raises(canary.CanaryError, match="source semantics or input identity"):
+        canary._source_manifest_compatible({**current, "execution_source_semantics_id": "changed"}, source)
+
+
+def test_step0_dev_baseline_reproduction_checks_saved_measurement_and_json_authority() -> None:
+    labels = torch.arange(10).repeat_interleave(500)
+    predictions = labels.clone()
+    payload = {
+        "dev_labels": labels,
+        "dev_predictions": predictions,
+        "dev_metrics": {"L_rec": 0.0636609132421875, "metrics": {"macro_recall": 0.2220}},
+    }
+    accepted = {
+        "L_rec": 0.0636609132421875,
+        "E_D": {
+            "true_labels": labels.tolist(),
+            "prediction_labels": predictions.tolist(),
+            "macro_recall": 0.2220,
+        },
+    }
+
+    evidence = canary._validate_step0_dev_reproduction(payload, accepted)
+
+    assert evidence["prediction_vector_equal"] is True
+    assert evidence["reconstruction_absolute_delta"] == 0.0
+    with pytest.raises(canary.CanaryError, match="did not reproduce"):
+        canary._validate_step0_dev_reproduction(
+            {**payload, "dev_predictions": predictions.roll(1)}, accepted
+        )
+
+
+def test_recovery_cursor_binds_schedule_history_and_parent_adam_step() -> None:
+    cursor = 20
+    payload = {
+        "schema": canary.CHECKPOINT_SCHEMA,
+        "task_id": canary.TASK_ID,
+        "outer_gate": canary.OUTER_GATE,
+        "authorization_id": canary.AUTHORIZATION_ID,
+        "source_manifest_id": "source-id",
+        "parent_checkpoint_sha256": "parent-hash",
+        "data_identity": {"train": "fixed"},
+        "cursor": cursor,
+        "parent_global_step": canary.PARENT_STEP + cursor,
+        "row_update_counts": canary._expected_row_counts(cursor),
+        "training_history": [{} for _ in range(cursor)],
+        "optimizer_step_vector": [canary.PARENT_STEP + cursor] * 2,
+    }
+
+    assert canary._validate_recovery_payload(
+        payload,
+        source_id="source-id",
+        parent_hash="parent-hash",
+        data_identity={"train": "fixed"},
+    ) == cursor
+
+    tampered = {**payload, "row_update_counts": [0] * canary.FIT_ROWS}
+    with pytest.raises(canary.CanaryError, match="recovery identity"):
+        canary._validate_recovery_payload(
+            tampered,
+            source_id="source-id",
+            parent_hash="parent-hash",
+            data_identity={"train": "fixed"},
+        )
+
+
+def test_recovery_adam_equivalence_uses_registered_float_tolerance_and_exact_step() -> None:
+    uninterrupted = {
+        "parameter_groups": [{"parameter_names": ["encoder.phase"], "configuration": {"lr": 1.0e-3}}],
+        "states_by_parameter_name": {
+            "encoder.phase": {
+                "step": torch.tensor(1221.0),
+                "exp_avg": torch.tensor([1.0, 0.5]),
+                "exp_avg_sq": torch.tensor([0.1, 0.2]),
+            }
+        },
+    }
+    resumed = {
+        "parameter_groups": [{"parameter_names": ["encoder.phase"], "configuration": {"lr": 1.0e-3}}],
+        "states_by_parameter_name": {
+            "encoder.phase": {
+                "step": torch.tensor(1221.0),
+                "exp_avg": torch.tensor([1.0 + 2.9802322e-8, 0.5]),
+                "exp_avg_sq": torch.tensor([0.1, 0.2]),
+            }
+        },
+    }
+
+    assert canary._optimizer_state_recovery_equivalence(uninterrupted, resumed)["passed"] is True
+    resumed["states_by_parameter_name"]["encoder.phase"]["step"] = torch.tensor(1222.0)
+    report = canary._optimizer_state_recovery_equivalence(uninterrupted, resumed)
+    assert report["passed"] is False
+    assert report["state_by_parameter_name"]["encoder.phase"]["slots"]["step"]["exact"] is False
+
+
+@pytest.mark.parametrize(
+    ("fixed", "transfer", "expected"),
+    [
+        (True, True, canary.CASE_BOTH),
+        (True, False, canary.CASE_FIXED),
+        (False, True, canary.CASE_TRANSFER),
+        (False, False, canary.CASE_NEITHER),
+    ],
+)
+def test_preregistered_gate_classification(fixed: bool, transfer: bool, expected: str) -> None:
+    classification, run_state = canary._classify_gate(fixed=fixed, transfer=transfer, safety=True)
+    assert classification == expected
+    assert run_state in {canary.RUN_COMPLETED, canary.RUN_VALID_FAILED}
+
+
+def test_safety_failure_precedes_scientific_classification() -> None:
+    classification, run_state = canary._classify_gate(fixed=True, transfer=True, safety=False)
+
+    assert classification == canary.SAFETY_FAILURE
+    assert run_state == canary.RUN_VALID_FAILED
+
+
+def test_s1_confirmation_payload_normalizes_first_write_and_reuse_shapes(tmp_path) -> None:
+    path = tmp_path / "s1-confirmation.pt"
+    source_id = "source-identity"
+    artifact_kind = "step2200 S1 raw CMOS and confirmation"
+    expected = {
+        "step": canary.END_STEP,
+        "data_role": canary.bogt.TRAIN_ROLE,
+        "z": torch.ones((canary.S1_ROWS, 100), dtype=torch.complex64),
+    }
+
+    first_write = canary._save_artifact(path, expected, source_id=source_id, artifact_kind=artifact_kind)
+    reopened = canary._sidecar_payload(path, source_id=source_id, kind=artifact_kind)
+
+    assert reopened is not None
+    first_payload = canary._s1_confirmation_payload(first_write)
+    reopened_payload = canary._s1_confirmation_payload(reopened)
+    assert first_payload["step"] == reopened_payload["step"] == canary.END_STEP
+    assert first_payload["data_role"] == reopened_payload["data_role"] == canary.bogt.TRAIN_ROLE
+    assert torch.equal(first_payload["z"], reopened_payload["z"])
+
+
+def test_ready_to_terminal_lifecycle_round_trip_uses_only_temporary_output() -> None:
+    source = {"source_manifest_id": "test-source"}
+    identity = canary.ResearchRunIdentity(
+        task_id=canary.TASK_ID,
+        run_id=canary.RUN_ID,
+        trajectory_id=canary.TRAJECTORY_ID,
+        semantic_authority_id=canary.SEMANTIC_AUTHORITY_ID,
+        data_role=canary.bogt.TRAIN_ROLE,
+        config_identity={},
+        model_identity={},
+        optimizer_identity={},
+        sampler_identity={},
+        execution_source_semantics_id="test-semantics",
+    )
+    receipt = canary.PreflightReceipt(
+        source_semantics_id="test-semantics",
+        authorization_id=canary.AUTHORIZATION_ID,
+        checks={
+            canary.CORRECTNESS_INVARIANTS: {"status": "PASS"},
+            canary.RESOURCE_ENVELOPE: {"status": "PASS"},
+            canary.IMPLEMENTATION_SELECTION: {"status": "FIXED"},
+        },
+        status=canary.PREFLIGHT_READY,
+    )
+    assert canary.PreflightReceipt.from_mapping(receipt.to_dict()).to_dict() == receipt.to_dict()
+
+    result = canary._preflight_lifecycle_smoke(identity, receipt, source)
+
+    assert result["status"] == "PASS"
+    assert result["attempt_opened_only_in_temporary_directory"]
+    assert result["report_status_terminal_roundtrip"]
+    assert result["scientific_output_attempt_created"] is False
+
+
+def test_paired_bootstrap_is_seeded_and_zero_for_identical_predictions() -> None:
+    labels = torch.arange(10).repeat(20)
+    predictions = labels.clone()
+    first = canary._paired_bootstrap(labels, predictions, predictions, replicates=100, seed=271828)
+    second = canary._paired_bootstrap(labels, predictions, predictions, replicates=100, seed=271828)
+
+    assert first == second
+    assert first["delta"] == 0.0
+    assert first["ci95"] == [0.0, 0.0]

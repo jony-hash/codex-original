@@ -1,0 +1,71 @@
+from __future__ import annotations
+
+from functools import lru_cache
+from pathlib import Path
+
+import pytest
+
+from scripts.research.lightgen.n3 import define_lightgen_2d_n3_low_rank_class_conditioned_structural_model_order_contract_v1 as contract
+
+
+ROOT = Path(__file__).resolve().parents[4]
+
+
+@lru_cache(maxsize=1)
+def _payload() -> dict[str, object]:
+    """Build the definition payload without depending on an ignored output file."""
+    return contract.build_contract(ROOT)
+
+
+def test_rank_domain_and_parameter_counts_are_frozen() -> None:
+    assert contract.RANK_DOMAIN == (0, 1, 2)
+    assert contract.parameter_count(0)["stored_trainable_correction_parameters"] == 0
+    assert contract.parameter_count(1)["stored_trainable_correction_parameters"] == 20_010
+    assert contract.parameter_count(2)["stored_trainable_correction_parameters"] == 40_020
+    with pytest.raises(contract.ContractError):
+        contract.parameter_count(3)
+
+
+def test_contract_freezes_rank_zero_and_one_shot_selection() -> None:
+    payload = _payload()
+    assert payload["classification"] == "N3_LOW_RANK_MODEL_ORDER_CONTRACT_DEFINED"
+    family = payload["model_family"]
+    assert family["rank_zero"].startswith("empty A/B correction")
+    assert payload["candidate_domain"]["frozen_before_fitting"] is True
+    assert payload["one_shot_selection"]["selection_result_in_definition"] is False
+    assert payload["execution_boundary"]["rank_selected"] is False
+
+
+def test_train_roles_are_balanced_disjoint_and_exclude_historical_rows() -> None:
+    payload = _payload()
+    roles = payload["data_roles"]["roles"]
+    assert roles["N3_FIT"]["count"] == 2_560
+    assert roles["N3_SELECT"]["count"] == 1_280
+    assert roles["N3_CONFIRM"]["count"] == 1_280
+    assert roles["N3_FIT"]["label_histogram"] == [256] * 10
+    assert roles["N3_SELECT"]["label_histogram"] == [128] * 10
+    assert roles["N3_CONFIRM"]["label_histogram"] == [128] * 10
+    all_rows = [
+        *roles["N3_FIT"]["indices"],
+        *roles["N3_SELECT"]["indices"],
+        *roles["N3_CONFIRM"]["indices"],
+    ]
+    assert len(all_rows) == len(set(all_rows))
+    excluded = payload["data_roles"]["historical_exclusions"]["union"]
+    assert not set(all_rows).intersection(excluded)
+
+
+def test_semantic_and_structural_rules_are_not_weighted_or_adaptive() -> None:
+    payload = _payload()
+    semantic = payload["semantic_feasibility"]
+    assert semantic["domain"] == "N3_SELECT"
+    assert "L_S(candidate)<=L_S(shared)" in semantic["rule"]
+    assert payload["structural_selection"]["numeric_rule"].startswith("finite float64")
+    assert payload["candidate_fit_procedure"]["rank_specific_tuning"] is False
+    assert payload["candidate_fit_procedure"]["early_stopping"] is False
+    assert payload["execution_boundary"]["optimizer_updates"] == 0
+    assert payload["execution_boundary"]["protected_test_sealed_reads"] == {
+        "protected": 0,
+        "test": 0,
+        "sealed": 0,
+    }

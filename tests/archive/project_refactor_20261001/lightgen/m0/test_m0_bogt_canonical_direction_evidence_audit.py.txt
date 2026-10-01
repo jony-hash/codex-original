@@ -1,0 +1,243 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+import torch
+
+from ldm_project.v2.application.research.shared import research_run_control
+from scripts.research.lightgen.m0 import audit_lightgen_2d_m0_bogt_canonical_direction_evidence_v1 as audit
+from scripts.research.lightgen.m0 import execute_lightgen_2d_m0_bogt_active_canonical_semantic_direction_canary_v1 as canary
+from ldm_project.v2.application.research.lightgen import lightgen_2d_chen_bogt_complex_ols_training as bogt
+
+
+def _identity() -> research_run_control.ResearchRunIdentity:
+    return research_run_control.ResearchRunIdentity(
+        task_id=audit.TASK_ID,
+        run_id=audit.RUN_ID,
+        trajectory_id=audit.TRAJECTORY_ID,
+        semantic_authority_id=audit.SEMANTIC_AUTHORITY_ID,
+        data_role="DEV_AND_FIXED_TRAIN_OLS_S1_INPUT",
+        config_identity={"optimizer": None},
+        model_identity={"step900": "a" * 64},
+        optimizer_identity={"optimizer": None, "backward": False, "updates": 0},
+        sampler_identity={"fixed": True},
+        execution_source_semantics_id="b" * 64,
+    )
+
+
+def _active_control(attempt_dir):
+    control = research_run_control.ResearchRunControl(_identity(), audit.AUTHORIZATION_ID)
+    receipt = research_run_control.PreflightReceipt(
+        source_semantics_id=control.identity.execution_source_semantics_id,
+        authorization_id=audit.AUTHORIZATION_ID,
+        checks={
+            research_run_control.CORRECTNESS_INVARIANTS: {"status": "PASS"},
+            research_run_control.RESOURCE_ENVELOPE: {"status": "PASS"},
+            research_run_control.IMPLEMENTATION_SELECTION: {"status": "PASS"},
+        },
+        selected_engine="test-inference",
+        resource={"test": True},
+    )
+    control.mark_preflight_ready(receipt)
+    control.start_execution()
+    control.open_scientific_attempt(attempt_dir, audit.ATTEMPT_ID, receipt)
+    return control
+
+
+def test_step900_checkpoint_requires_fixed_parent_and_exact_trainable_groups() -> None:
+    payload = {
+        "schema": canary.CHECKPOINT_SCHEMA,
+        "completed_updates": 900,
+        "starting_step": 600,
+        "parent_checkpoint_sha256": canary.START_CHECKPOINT_SHA256,
+        "authorization_id": canary.AUTHORIZATION_ID,
+        "frozen_runtime_state_sha256": "c" * 64,
+        "trainable_parameter_state": {"encoder.phase": torch.ones(1), "generator.phase": torch.ones(1)},
+    }
+    audit._validate_step900_checkpoint(payload)
+
+    payload["parent_checkpoint_sha256"] = "0" * 64
+    with pytest.raises(audit.AuditError, match="lineage"):
+        audit._validate_step900_checkpoint(payload)
+
+    payload["parent_checkpoint_sha256"] = canary.START_CHECKPOINT_SHA256
+    payload.pop("frozen_runtime_state_sha256")
+    with pytest.raises(audit.AuditError, match="frozen"):
+        audit._validate_step900_checkpoint(payload)
+
+
+def test_s1_source_record_binds_current_train_bank_and_fixed_sampler() -> None:
+    record = {
+        "source_step": 900,
+        "source_train_ols_sha256": "a" * 64,
+        "data_role": bogt.TRAIN_ROLE,
+        "sampler_family": "S1",
+        "neighbor_count": 16,
+        "search": False,
+    }
+    audit._validate_s1_source(record, "a" * 64)
+    with pytest.raises(audit.AuditError, match="TRAIN bank"):
+        audit._validate_s1_source(record, "b" * 64)
+
+
+def test_explicit_recovery_uses_a_new_write_once_directory_and_binds_failed_attempt(tmp_path) -> None:
+    attempt = tmp_path / audit.ATTEMPT_DIR
+    attempt.mkdir(parents=True)
+    status_path = attempt / "status.json"
+    failure_path = attempt / "failure_report.json"
+    progress_path = attempt / "progress.jsonl"
+    status_path.write_text(json.dumps({"state": research_run_control.RUN_INVALID_HARNESS, "detail": {"error": "forward contract mismatch"}}))
+    failure_path.write_text(json.dumps({"state": research_run_control.RUN_INVALID_HARNESS, "error": "forward contract mismatch", "automatic_recovery_permitted": False}))
+    progress_path.write_text(json.dumps({"elapsed_seconds": 123.0}) + "\n")
+    prior_preflight = tmp_path / audit._preflight_path(1)
+    prior_preflight.parent.mkdir(parents=True, exist_ok=True)
+    prior_preflight.write_text(json.dumps({"status": research_run_control.PREFLIGHT_READY, "elapsed_seconds": 9.0}))
+    original_status = status_path.read_bytes()
+
+    target, attempt_id, recovery = audit._resolve_audit_attempt(tmp_path, recovery=True, preflight_sequence=2)
+
+    assert target == audit.RECOVERY_DIR
+    assert attempt_id == f"{audit.ATTEMPT_ID}:recovery_01"
+    assert recovery["prior_elapsed_seconds"] == 132.0
+    assert recovery["status_sha256"]
+    assert status_path.read_bytes() == original_status
+    assert not (tmp_path / audit.RECOVERY_DIR).exists()
+
+
+def test_explicit_recovery_rejects_non_invalid_prior_audit(tmp_path) -> None:
+    attempt = tmp_path / audit.ATTEMPT_DIR
+    attempt.mkdir(parents=True)
+    (attempt / "status.json").write_text(json.dumps({"state": research_run_control.RUN_COMPLETED}))
+    (attempt / "failure_report.json").write_text(json.dumps({"state": research_run_control.RUN_INVALID_HARNESS}))
+    (attempt / "progress.jsonl").write_text(json.dumps({"elapsed_seconds": 1.0}) + "\n")
+
+    with pytest.raises(audit.AuditError, match="only a terminal INVALID_HARNESS"):
+        audit._resolve_audit_attempt(tmp_path, recovery=True, preflight_sequence=2)
+
+
+def test_tampered_file_hash_is_rejected_before_tensor_loading(tmp_path, monkeypatch) -> None:
+    path = tmp_path / "checkpoint.bin"
+    path.write_bytes(b"tampered")
+    called = False
+
+    def forbidden_load(*args, **kwargs):
+        nonlocal called
+        called = True
+        raise AssertionError("tensor loader must not run for a stale digest")
+
+    monkeypatch.setattr(audit, "safe_torch_load", forbidden_load)
+    with pytest.raises(audit.AuditError, match="identity changed"):
+        audit._verify_file(path, "f" * 64, "test checkpoint")
+    assert called is False
+
+
+def test_legacy_and_current_metric_shapes_normalize_to_same_counts() -> None:
+    labels = torch.arange(10).repeat_interleave(200)
+    predictions = labels.clone()
+    observed = audit._classification_metrics(labels, predictions)
+    legacy = {
+        "requested_count": 2_000,
+        "macro_recall": 1.0,
+        "per_class_recall": [1.0] * 10,
+        "confusion_matrix": torch.eye(10, dtype=torch.long).mul(200).tolist(),
+        "prediction_histogram": [200] * 10,
+    }
+    assert all(audit._compare_metrics(observed, legacy, "legacy S1").values())
+
+
+def test_independent_bootstraps_recompute_balanced_per_class_deltas() -> None:
+    dev_labels = torch.arange(10).repeat_interleave(500)
+    dev_before = torch.zeros(5_000, dtype=torch.bool)
+    dev_after = torch.zeros(5_000, dtype=torch.bool)
+    dev_after[dev_labels == 0] = True
+    dev_result = audit._paired_bootstrap(dev_labels, dev_before, dev_after)
+    assert dev_result["replicates"] == 2_000
+    assert dev_result["macro_delta"] == pytest.approx(0.1)
+    assert dev_result["ci95"] == {"lower": pytest.approx(0.1), "upper": pytest.approx(0.1)}
+
+    s1_labels = torch.arange(10).repeat_interleave(200)
+    s1_before = torch.full((2_000,), -1, dtype=torch.long)
+    s1_after = s1_labels.clone()
+    s1_result = audit._independent_bootstrap(s1_labels, s1_before, s1_after)
+    assert s1_result["replicates"] == 2_000
+    assert s1_result["macro_delta"] == pytest.approx(1.0)
+    assert s1_result["ci95"] == {"lower": pytest.approx(1.0), "upper": pytest.approx(1.0)}
+
+
+def test_exact_parameter_snapshot_detects_updates_and_preserves_frozen_state() -> None:
+    before = {"encoder.phase": torch.tensor([1.0]), "generator.phase": torch.tensor([2.0])}
+    after = {name: value.clone() for name, value in before.items()}
+    assert audit._same_tensor_tree(before, after)
+    after["generator.phase"][0] += 1.0
+    assert not audit._same_tensor_tree(before, after)
+
+
+@pytest.mark.parametrize(
+    ("passed", "expected_state", "expected_classification"),
+    [
+        (True, research_run_control.RUN_COMPLETED, audit.CLASSIFICATION_VERIFIED),
+        (False, research_run_control.RUN_VALID_FAILED, audit.CLASSIFICATION_DISCREPANCY),
+    ],
+)
+def test_terminal_result_is_written_once_after_status_and_transition(
+    tmp_path, monkeypatch, passed, expected_state, expected_classification
+) -> None:
+    attempt = tmp_path / "attempt_01"
+    control = _active_control(attempt)
+    events: list[str] = []
+    complete_calls = 0
+    original_new = audit.atomic_write_new_json
+    original_atomic = audit.atomic_write_json
+    original_complete = control.complete
+    original_valid_failed = control.valid_failed
+
+    def tracked_new(path, payload, *, artifact_kind):
+        result = original_new(path, payload, artifact_kind=artifact_kind)
+        events.append(Path(path).name)
+        return result
+
+    def tracked_atomic(path, payload):
+        result = original_atomic(path, payload)
+        events.append(Path(path).name)
+        return result
+
+    def tracked_complete():
+        nonlocal complete_calls
+        complete_calls += 1
+        return original_complete()
+
+    def tracked_valid_failed():
+        nonlocal complete_calls
+        complete_calls += 1
+        return original_valid_failed()
+
+    monkeypatch.setattr(audit, "atomic_write_new_json", tracked_new)
+    monkeypatch.setattr(audit, "atomic_write_json", tracked_atomic)
+    monkeypatch.setattr(control, "complete", tracked_complete)
+    monkeypatch.setattr(control, "valid_failed", tracked_valid_failed)
+
+    report = audit._persist_terminal_result(attempt, control, {"checks": {"all": passed}}, passed=passed, started=0.0)
+    saved = json.loads((attempt / "report.json").read_text(encoding="utf-8"))
+    status = json.loads((attempt / "status.json").read_text(encoding="utf-8"))
+    latest = json.loads((attempt / "latest_status.json").read_text(encoding="utf-8"))
+    assert report["result"] == saved["result"] == expected_state
+    assert report["classification"] == saved["classification"] == expected_classification
+    assert status["state"] == latest["state"] == control.state == expected_state
+    assert complete_calls == 1
+    assert events[-1] == "report.json"
+    assert (attempt / "progress.jsonl").is_file()
+
+
+def test_invalid_terminal_path_is_persisted_separately_without_report(tmp_path) -> None:
+    attempt = tmp_path / "attempt_01"
+    control = _active_control(attempt)
+    audit._terminalize_invalid(attempt, control, audit.AuditError("evaluator identity mismatch"))
+    failure = json.loads((attempt / "failure_report.json").read_text(encoding="utf-8"))
+    status = json.loads((attempt / "status.json").read_text(encoding="utf-8"))
+    run_control_state = research_run_control.RUN_INVALID_HARNESS
+    assert control.state == run_control_state
+    assert failure["state"] == status["state"] == run_control_state
+    assert failure["automatic_recovery_permitted"] is False
+    assert not (attempt / "report.json").exists()

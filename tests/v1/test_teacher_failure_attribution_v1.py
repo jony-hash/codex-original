@@ -11,7 +11,7 @@ from ldm_project.v1.application.teacher_failure_attribution import (
 from ldm_project.v1.application.teacher_distribution_admission import _noise
 
 
-CONFIG = "configs/research/teacher_failure_attribution_v1.yaml"
+CONFIG = "configs/research/capacity/teacher_failure_attribution_v1.yaml"
 
 
 def test_b2_config_locks_package_b_and_forbids_updates() -> None:

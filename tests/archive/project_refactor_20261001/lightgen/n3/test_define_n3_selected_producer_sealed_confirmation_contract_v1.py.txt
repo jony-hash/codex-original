@@ -1,0 +1,187 @@
+"""Focused tests for the definition-only N3 sealed-confirmation contract."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from ldm_project.v2.evidence import canonical_sha256, file_sha256
+from scripts.research.lightgen.n3 import define_n3_selected_producer_sealed_confirmation_contract_v1 as definition
+
+
+CONTRACT_SHA256 = "e0e29a62bce4eaaa48346ce65d1d7d6dcc2892df4d8e9ace73681579232c1200"
+
+
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[4]
+
+
+def _published() -> tuple[Path, dict]:
+    root = _repo_root()
+    path = root / definition.OUTPUT_DIR / definition.CONTRACT_NAME
+    return path, json.loads(path.read_text(encoding="utf-8"))
+
+
+def test_published_contract_binds_frozen_producer_and_exact_sealed_membership() -> None:
+    path, contract = _published()
+
+    assert file_sha256(path) == CONTRACT_SHA256
+    assert contract["schema"] == definition.CONTRACT_SCHEMA
+    assert contract["status"] == "valid_completed"
+    assert contract["result"] == "READY"
+    assert contract["classification"] == definition.READY_CLASSIFICATION
+    assert contract["producer"] == {
+        "candidate_id": definition.PRODUCER_CANDIDATE_ID,
+        "family_id": definition.PRODUCER_FAMILY_ID,
+        "lineage_path": "outputs/20260910_v2/runs/n3_selected_producer_full_development_fit_v1_attempt_01/n3_selected_producer_full_development_fit_lineage.v1.json",
+        "lineage_sha256": definition.PRODUCER_LINEAGE_SHA256,
+        "semantic_authority_id": definition.PRODUCER_STATE_SEMANTIC_ID,
+        "standalone_sampler": {
+            "explicit_seed_required": True,
+            "labels_as_inputs": False,
+            "requested_sample_count_minimum": 1,
+            "sampling_namespace": definition.PRODUCER_SAMPLING_NAMESPACE,
+            "state_only": True,
+        },
+        "state_path": "outputs/20260910_v2/runs/n3_selected_producer_full_development_fit_v1_attempt_01/n3_selected_empirical_gaussian_copula_producer_state.v1.pt",
+        "state_sha256": definition.PRODUCER_STATE_SHA256,
+    }
+
+    sealed = contract["sealed_source"]
+    assert sealed["reservation_authority"] == definition.SEALED_SEMANTIC_AUTHORITY_ID
+    assert sealed["manifest_sha256"] == definition.SEALED_MANIFEST_SHA256
+    assert sealed["semantic_confirmation_id"] == definition.SEALED_SEMANTIC_CONFIRMATION_ID
+    assert sealed["expected_status_on_entry"] == "RESERVED_NOT_MATERIALIZED"
+    assert sealed["expected_consumed_on_entry"] is False
+    membership = sealed["membership"]
+    assert membership["row_count"] == definition.SEALED_ROWS
+    assert membership["rows_per_class"] == definition.SEALED_ROWS_PER_CLASS
+    assert len(membership["source_indices"]) == definition.SEALED_ROWS
+    assert len(membership["labels_for_identity_only"]) == definition.SEALED_ROWS
+    assert len(membership["ordered_row_identity"]) == definition.SEALED_ROWS
+    assert canonical_sha256(membership["ordered_row_identity"]) == membership["ordered_row_identity_sha256"]
+    assert all(
+        row == {"position": position, "source_index": index, "label": label}
+        for position, (index, label, row) in enumerate(
+            zip(membership["source_indices"], membership["labels_for_identity_only"], membership["ordered_row_identity"], strict=True)
+        )
+    )
+    assert sealed["overlap_verification"]["n3_development_bank_v2_overlap_count"] == 0
+    assert sealed["content_observed_by_definition"] is False
+    assert sealed["substitution_or_resampling"] is False
+
+
+def test_confirmation_statistic_uses_v3_metric_and_sample_size_matched_calibration() -> None:
+    _, contract = _published()
+
+    statistic = contract["confirmation_statistic"]
+    assert statistic["primary_metric"] == "energy_distance"
+    assert statistic["data_shape"] == [definition.SEALED_ROWS, definition.DIMENSION]
+    assert statistic["model_bank_shape"] == [definition.MODEL_BANK_SIZE, definition.DIMENSION]
+    assert statistic["labels_used"] is False
+    assert statistic["development_q95_reused"] is False
+    assert statistic["threshold_source"] == "confirmation-sample-size-matched model-self Monte-Carlo null"
+    assert statistic["model_bank_aggregation"]["bank_count"] == definition.MODEL_BANK_COUNT
+    assert statistic["model_bank_aggregation"]["bank_size"] == definition.MODEL_BANK_SIZE
+    assert statistic["model_bank_aggregation"]["function"] == "_mean_metrics"
+    assert statistic["secondary_metrics"] == {
+        "may_be_reported_after_primary_decision": True,
+        "may_change_decision": False,
+        "names": list(definition.DESCRIPTIVE_ONLY_METRICS),
+        "new_metrics_after_exposure": False,
+        "role": "DESCRIPTIVE_ONLY",
+    }
+
+    decision = contract["monte_carlo_decision"]
+    assert decision["B"] == definition.CALIBRATION_TRIAL_COUNT == 999
+    assert decision["alpha"] == 0.05
+    assert decision["p_value"] == "p_MC=(1+count(T_b >= T_sealed))/(B+1)"
+    assert decision["inequality"] == "greater-than-or-equal, including ties"
+    assert decision["pass_if"] == "p_MC >= 0.05"
+    assert decision["fail_if"] == "p_MC < 0.05"
+    assert decision["no_threshold_reuse"] is True
+    calibration = contract["model_self_calibration"]
+    assert calibration["pseudo_data_rows"] == definition.SEALED_ROWS
+    assert calibration["model_bank_count"] == definition.MODEL_BANK_COUNT
+    assert calibration["model_bank_size"] == definition.MODEL_BANK_SIZE
+    assert calibration["trials"] == definition.CALIBRATION_TRIAL_COUNT
+    assert calibration["complete_before_arm"] is True
+    assert calibration["values_frozen_before_sealed_exposure"] is True
+
+
+def test_rng_banks_arming_and_irreversible_consumption_are_frozen() -> None:
+    _, contract = _published()
+
+    observed = contract["observed_model_banks"]
+    assert observed["bank_count"] == definition.MODEL_BANK_COUNT
+    assert observed["bank_size"] == definition.MODEL_BANK_SIZE
+    assert observed["rng"]["seeds"] == [
+        definition._seed("OBSERVED_MODEL_BANK", None, bank)
+        for bank in range(definition.MODEL_BANK_COUNT)
+    ]
+    assert observed["rng"]["no_replacement_bank"] is True
+    assert observed["rng"]["no_seed_retry"] is True
+    assert observed["complete_before_arm"] is True
+
+    arming = contract["pre_sealed_arming"]
+    assert arming["state"] == "SEALED_CONFIRMATION_NOT_ARMED"
+    assert arming["must_all_pass_before_first_protected_content_read"] is True
+    assert arming["armed_transition"] == "SEALED_CONFIRMATION_ARMED"
+    assert len(arming["conditions"]) == 11
+    assert arming["conditions"][3] == {
+        "condition": "confirmation_consumer_implementation_frozen",
+        "definition_frozen": False,
+        "future_required": True,
+        "id": 4,
+    }
+
+    consumption = contract["consumption_semantics"]
+    assert consumption["single_use"] is True
+    assert consumption["pre_exposure_failure"] == {
+        "classification": "BLOCKED",
+        "consumed": False,
+        "corrected_execution_allowed": True,
+        "sealed_content_read": False,
+        "source_status_remains": "RESERVED_NOT_MATERIALIZED",
+    }
+    assert consumption["post_exposure_failure"]["classification"] == "SEALED_CONFIRMATION_INVALID_CONSUMED"
+    assert consumption["post_exposure_failure"]["consumed"] is True
+    assert consumption["post_exposure_failure"]["reset_to_false_forbidden"] is True
+    assert set(consumption["valid_outcomes"]) == {
+        "N3_SELECTED_PRODUCER_SEALED_CONFIRMATION_PASSED",
+        "N3_SELECTED_PRODUCER_SEALED_CONFIRMATION_FAILED",
+        "SEALED_CONFIRMATION_INVALID_CONSUMED",
+    }
+
+    assert contract["governance"]["sealed_confirmation_consumed"] is False
+    assert contract["governance"]["training_authorized"] is False
+    assert contract["governance"]["formal_promotion"] is False
+    assert contract["governance"]["generation_readiness"] == "not_ready"
+    assert contract["next_action"] == "EXECUTE_N3_SELECTED_PRODUCER_SEALED_CONFIRMATION_V1"
+
+
+def test_contract_totality_is_pure_and_does_not_load_sealed_or_q_values() -> None:
+    result = definition._contract_totality_checks()
+
+    assert result["status"] == "passed"
+    assert result["q_values_loaded"] is False
+    assert result["sealed_values_loaded"] is False
+    assert result["fit_executed"] is False
+    assert result["sampling_executed"] is False
+    assert not any(path.name.endswith(".pt") for path in (_repo_root() / definition.OUTPUT_DIR).iterdir())
+
+
+def test_changed_sealed_manifest_hash_rejects_before_contract_write(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    root = _repo_root()
+    monkeypatch.setattr(definition, "SEALED_MANIFEST_SHA256", "0" * 64)
+
+    with pytest.raises(definition.InvalidHarnessError, match="sealed reservation manifest hash changed"):
+        definition._read_json_exact(
+            root,
+            definition.SEALED_MANIFEST_PATH,
+            definition.SEALED_MANIFEST_SHA256,
+            "sealed reservation manifest",
+        )
+    assert not (tmp_path / "contract-output").exists()

@@ -30,8 +30,8 @@ import numpy as np
 import torch
 from matplotlib.colors import Normalize
 
-from ldm_project.v2.application.research import optical_manifold as base
-from ldm_project.v2.application.research import optical_manifold_smf_bogt as bogt
+from ldm_project.v2.application.research.optical_manifold import optical_manifold as base
+from ldm_project.v2.application.research.optical_manifold import optical_manifold_smf_bogt as bogt
 from ldm_project.v2.contracts import ComplexField
 from ldm_project.v2.evidence import (
     atomic_torch_save_new,

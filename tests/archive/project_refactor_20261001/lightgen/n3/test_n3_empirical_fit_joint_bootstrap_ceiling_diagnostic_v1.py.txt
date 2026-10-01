@@ -1,0 +1,85 @@
+"""Focused tests for the empirical-fit joint-bootstrap ceiling diagnostic."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+import torch
+
+from scripts.research.lightgen.n3 import define_n3_empirical_fit_joint_bootstrap_ceiling_diagnostic_v1 as definition
+from scripts.research.lightgen.n3 import execute_n3_empirical_fit_joint_bootstrap_ceiling_diagnostic_v1 as execution
+
+
+def _fit_rows() -> tuple[torch.Tensor, torch.Tensor]:
+    values = torch.arange(definition.FIT_COUNT_PER_FOLD * definition.DIMENSION, dtype=torch.float64)
+    q = values.reshape(definition.FIT_COUNT_PER_FOLD, definition.DIMENSION)
+    source_indices = torch.arange(definition.FIT_COUNT_PER_FOLD, dtype=torch.int64)
+    return q, source_indices
+
+
+def test_bootstrap_samples_complete_rows_deterministically() -> None:
+    fit_q, source_indices = _fit_rows()
+    first, first_record = execution._sample_empirical_bank(
+        fit_q,
+        source_indices,
+        role="data-vs-model",
+        fold=0,
+        replicate=0,
+    )
+    second, second_record = execution._sample_empirical_bank(
+        fit_q,
+        source_indices,
+        role="data-vs-model",
+        fold=0,
+        replicate=0,
+    )
+    assert torch.equal(first, second)
+    assert first_record == second_record
+    assert first_record["sampling_unit"] == "complete q row"
+    assert first_record["with_replacement"] is True
+    assert first_record["independent_dimension_sampling"] is False
+    assert first_record["bank_size"] == definition.GENERATED_BANK_SIZE
+    for row in first:
+        assert bool(torch.any(torch.all(fit_q == row, dim=1)))
+
+
+def test_bootstrap_uses_fixed_roles_and_descriptive_duplicate_rate() -> None:
+    fit_q, source_indices = _fit_rows()
+    for role, count in (
+        ("data-vs-model", definition.DATA_VS_MODEL_REPLICATES),
+        ("model-vs-model", definition.MODEL_VS_MODEL_REPLICATES),
+    ):
+        records = [
+            execution._sample_empirical_bank(
+                fit_q,
+                source_indices,
+                role=role,
+                fold=2,
+                replicate=replicate,
+            )[1]
+            for replicate in range(count)
+        ]
+        assert len(records) == count
+        assert all(0.0 <= record["duplicate_row_rate"] <= 1.0 for record in records)
+        assert all(record["q_finite"] is True and record["q_nonnegative"] is True for record in records)
+
+
+def test_negative_metric_is_an_invalid_harness() -> None:
+    metrics = {name: 0.0 for name in definition.SCALAR_METRICS}
+    metrics["per_coordinate_marginal_energy_distance"] = [0.0] * definition.DIMENSION
+    metrics["energy_distance"] = -1.0
+    with pytest.raises(execution._InvalidHarnessError):
+        execution._validate_metrics(metrics, "negative")
+
+
+def test_published_contract_replays_totality_when_available() -> None:
+    path = Path("outputs/20260909_v2/runs/n3_empirical_fit_joint_bootstrap_ceiling_diagnostic_v1_attempt_01") / definition.CONTRACT_NAME
+    if not path.is_file():
+        pytest.skip("contract is published by the bounded implementation task")
+    contract = json.loads(path.read_text(encoding="utf-8"))
+    definition.validate_contract_payload(contract)
+    assert contract["contract_totality"]["status"] == "passed"
+    assert contract["sampling_contract"]["complete_row_unit"] == "one sampled fit-local row index selects all 100 q coordinates"
+    assert contract["compatibility_framework"]["omitted_guardrails"] == []

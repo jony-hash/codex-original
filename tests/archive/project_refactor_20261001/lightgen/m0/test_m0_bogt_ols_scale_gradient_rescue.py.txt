@@ -1,0 +1,233 @@
+from __future__ import annotations
+
+from types import SimpleNamespace
+
+import pytest
+import torch
+from torch import nn
+
+from scripts.research.lightgen.m0 import execute_lightgen_2d_m0_bogt_ols_scale_gradient_rescue_v1 as rescue
+from scripts.research.lightgen.m0 import diagnose_lightgen_2d_m0_bogt_renderability_localization_v2 as v2
+
+
+class _ForwardResult:
+    def __init__(self, raw_intensity: torch.Tensor) -> None:
+        self.raw_intensity = raw_intensity
+
+
+class _LinearRuntime(nn.Module):
+    def forward_from_ols(self, coefficients: torch.Tensor) -> _ForwardResult:
+        value = 0.1 + 100.0 * coefficients.real.sum(dim=1) + 70.0 * coefficients.imag.sum(dim=1)
+        raw = value[:, None, None, None].expand(-1, 1, 200, 200)
+        return _ForwardResult(raw)
+
+
+def _fixture() -> tuple[SimpleNamespace, torch.Tensor, torch.Tensor]:
+    coefficients = torch.full((rescue.FIT_ROWS, rescue.FEATURES), 1.0e-5 + 2.0e-5j, dtype=torch.complex64)
+    targets = torch.zeros((rescue.FIT_ROWS, 1, 28, 28), dtype=torch.float32)
+    targets[:, :, 7:21, 8:20] = 1.0
+    return SimpleNamespace(runtime=_LinearRuntime()), coefficients, targets
+
+
+def test_fixed_scale_and_projection_enforce_per_row_relative_radius() -> None:
+    _, coefficients, _ = _fixture()
+    scales = rescue._initial_scales(coefficients)
+    assert scales.shape == (rescue.FIT_ROWS,)
+    assert torch.allclose(scales, torch.linalg.vector_norm(coefficients.abs(), dim=1) / rescue.FEATURES**0.5)
+
+    candidates = torch.zeros_like(coefficients)
+    candidates[0] = 2.0 + 1.0j
+    candidates[1] = 0.5 - 0.25j
+    projected = rescue._project_dimensionless(candidates)
+    norms = torch.linalg.vector_norm(projected.abs().to(torch.float64), dim=1)
+    assert float(norms.max()) <= rescue.TRUST_RADIUS + 1.0e-6
+    assert torch.allclose(projected[1], candidates[1])
+    relative_offsets = scales * norms / torch.linalg.vector_norm(coefficients.abs().to(torch.float64), dim=1)
+    assert float(relative_offsets.max()) <= 1.0 + 1.0e-6
+
+
+def test_fixed_inputs_are_consumed_from_bound_train_artifact_only() -> None:
+    indices = torch.arange(rescue.FIT_ROWS, dtype=torch.long)
+    labels = torch.arange(rescue.FIT_ROWS, dtype=torch.long).remainder(10)
+    targets = torch.zeros((rescue.FIT_ROWS, 1, 28, 28), dtype=torch.float32)
+    targets[:, :, 8:20, 8:20] = 1.0
+    ols = torch.full((rescue.FIT_ROWS, rescue.FEATURES), 1.0e-5 + 2.0e-5j, dtype=torch.complex64)
+    data = rescue._fixed_data_from_prior(
+        {"fit_indices": indices, "fit_labels": labels, "fit_targets_28x28": targets, "fit_ols_step600": ols},
+        torch.device("cpu"),
+    )
+    assert torch.equal(data["fit_indices"], indices)
+    assert torch.equal(data["fit_targets"], targets)
+    assert torch.equal(data["fit_ols"], ols)
+    unbalanced_labels = labels.clone()
+    unbalanced_labels[0] = 1
+    changed = {"fit_indices": indices, "fit_labels": unbalanced_labels, "fit_targets_28x28": targets, "fit_ols_step600": ols}
+    with pytest.raises(rescue.ScaleRescueError, match="not class balanced"):
+        rescue._fixed_data_from_prior(changed, torch.device("cpu"))
+
+
+def test_schedule_updates_every_row_exactly_300_times() -> None:
+    counts = [0] * rescue.FIT_ROWS
+    for global_step in range(rescue.GLOBAL_UPDATES):
+        for row in rescue._scheduled_rows(global_step):
+            counts[row] += 1
+    assert counts == [rescue.UPDATES_PER_ROW] * rescue.FIT_ROWS
+    assert rescue._scheduled_rows(0) == list(range(10))
+    assert rescue._scheduled_rows(rescue.CHUNKS_PER_PASS) == list(range(10))
+    assert rescue._update_count_bounds(rescue.CHUNKS_PER_PASS - 1) == {"min": 0, "max": 1}
+    assert rescue._update_count_bounds(rescue.CHUNKS_PER_PASS) == {"min": 1, "max": 1}
+    assert rescue._update_count_bounds(rescue.GLOBAL_UPDATES) == {"min": 300, "max": 300}
+
+
+def test_production_update_changes_only_selected_rows_and_zero_loss_control() -> None:
+    consumer, coefficients, targets = _fixture()
+    scales = rescue._initial_scales(coefficients)
+    rows, optimizers = rescue._new_rows_and_optimizers(coefficients, torch.device("cpu"))
+    before = torch.stack([row.detach().clone() for row in rows])
+    result = rescue._apply_row_update(consumer, rows, optimizers, coefficients, scales, targets, list(range(rescue.BATCH_SIZE)))
+    after = torch.stack([row.detach() for row in rows])
+    assert result["zero_gradient_rows"] == 0
+    assert not torch.equal(before[:rescue.BATCH_SIZE], after[:rescue.BATCH_SIZE])
+    assert torch.equal(before[rescue.BATCH_SIZE:], after[rescue.BATCH_SIZE:])
+
+    control_rows, control_optimizers = rescue._new_rows_and_optimizers(coefficients, torch.device("cpu"))
+    control_before = torch.stack([row.detach().clone() for row in control_rows])
+    control = rescue._apply_row_update(consumer, control_rows, control_optimizers, coefficients, scales, targets, list(range(rescue.BATCH_SIZE)), enabled=False)
+    assert control["zero_gradient_rows"] == rescue.BATCH_SIZE
+    assert torch.equal(control_before, torch.stack([row.detach() for row in control_rows]))
+
+
+def test_real_complex_finite_difference_checks_use_production_call_path() -> None:
+    consumer, coefficients, targets = _fixture()
+    result = rescue._finite_difference_checks(consumer, coefficients, targets)
+    assert set(result["complex_ols"]) == {"real", "imag"}
+    assert all(item["finite_difference"]["relative_error"] <= 0.20 for item in result["complex_ols"].values())
+
+
+def _valid_prior_objects() -> tuple[dict[str, object], ...]:
+    return (
+        {
+            "status": "READY",
+            "task_id": v2.TASK_ID,
+            "checks": {
+                "static_lineage_and_historical_bindings": "PASS",
+                "step600_train_ols_bank_lineage_and_fixed_rows": "PASS",
+                "step600_train_ols_single_image_spot_checks": {"status": "PASS"},
+                "ols_three_real_cuda_updates": {"status": "PASS", "runtime_frozen": True, "E_D_frozen": True},
+                "recovery_next_update_equivalence": {"ols": "PASS", "production_checkpoint_io": True},
+            },
+        },
+        {
+            "task_id": v2.TASK_ID,
+            "outer_gate": v2.OUTER_GATE,
+            "classification": "NEITHER_BOUNDED_UPPER_BOUND_REACHED",
+            "run_identity": {"source_manifest_id": rescue.PRIOR_SOURCE_MANIFEST_ID, "execution_source_semantics_id": rescue.PRIOR_SOURCE_SEMANTICS_ID},
+            "step600_ols_bank_spot_checks": {"status": "PASS"},
+            "artifacts": {"measurement_tensors": {"path": rescue.PRIOR_RAW_PATH.name, "sha256": rescue.PRIOR_DIGESTS["raw_tensor"]}},
+        },
+        {
+            "state": rescue.RUN_COMPLETED,
+            "classification": "NEITHER_BOUNDED_UPPER_BOUND_REACHED",
+            "completed_updates": 6300,
+            "ols_global_steps": rescue.GLOBAL_UPDATES,
+            "ols_passes_completed": rescue.UPDATES_PER_ROW,
+        },
+        {"source_manifest_id": rescue.PRIOR_SOURCE_MANIFEST_ID, "execution_source_semantics_id": rescue.PRIOR_SOURCE_SEMANTICS_ID},
+        {"run_identity": {"source_manifest_id": rescue.PRIOR_SOURCE_MANIFEST_ID}, "preflight_receipt": {"status": "READY"}},
+    )
+
+
+def test_input_loader_returns_v2_report_used_by_preflight_identity(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    prior_preflight, prior_report, prior_status, prior_source, prior_manifest = _valid_prior_objects()
+    _, coefficients, targets = _fixture()
+    labels = torch.arange(rescue.FIT_ROWS, dtype=torch.long).remainder(10)
+    prior_raw = {
+        "fit_indices": torch.arange(rescue.FIT_ROWS, dtype=torch.long),
+        "fit_labels": labels,
+        "fit_targets_28x28": targets,
+        "fit_ols_step600": coefficients,
+    }
+    data_identity = {"source_sha256": "train-source", "train_indices_sha256": "train-indices"}
+    step600_config = {
+        "path": rescue.v2.STEP600_TRAIN_OLS_PATH.as_posix(),
+        "sha256": rescue.v2.STEP600_TRAIN_OLS_SHA256,
+        "source_manifest_id": rescue.v2.STEP600_TRAIN_OLS_SOURCE_MANIFEST_ID,
+        "report_path": rescue.v2.STEP600_TRAIN_OLS_REPORT_PATH.as_posix(),
+        "report_sha256": rescue.v2.STEP600_TRAIN_OLS_REPORT_SHA256,
+        "source_manifest_path": rescue.v2.STEP600_TRAIN_OLS_SOURCE_MANIFEST_PATH.as_posix(),
+        "source_manifest_sha256": rescue.v2.STEP600_TRAIN_OLS_SOURCE_MANIFEST_SHA256,
+    }
+    prior_report.update(
+        {
+            "data_identity": data_identity,
+            "data_reads": {"dev": 0, "protected": 0, "test": 0, "sealed": 0},
+            "run_identity": {
+                "config_identity": {
+                    "starting_checkpoint": {"path": rescue.v1.rescue.START_CHECKPOINT.as_posix(), "sha256": rescue.v1.rescue.START_CHECKPOINT_SHA256},
+                    "step600_train_ols_bank": step600_config,
+                    "fit_selection": {"rows": rescue.FIT_ROWS, "rows_per_class": 20, "seed": rescue.v1.FIT_SEED, "interleaved_class_batches": True},
+                    "E_D_checkpoint_sha256": rescue.v1.E_D_SHA256,
+                }
+            },
+        }
+    )
+    checkpoint = {
+        "schema": rescue.v1.rescue.m0.CUSTOM_CHECKPOINT_SCHEMA,
+        "step": 600,
+        "artifact_kind": "M0_SCIENTIFIC_CHECKPOINT",
+        "selected_checkpoint": True,
+        "parent_checkpoint_sha256": rescue.v1.rescue.m0.START_CHECKPOINT_SHA256,
+        "data_identity": data_identity,
+        "run_identity": {"model_identity": {"runtime": "LIGHTGEN_2D_CHEN_BOGT_COMPLEX_OLS_CONSUMER_V1", "trainable": ["encoder.phase", "generator.phase"]}},
+    }
+    monkeypatch.setattr(rescue, "_prior_bindings", lambda root: (prior_preflight, prior_report, prior_status, prior_source, prior_manifest))
+    monkeypatch.setattr(rescue, "_validate_retry_preflight", lambda root: {"path": rescue.PREFLIGHT_01_PATH.as_posix(), "sha256": rescue.PREFLIGHT_01_SHA256, "recheck_sequence": 2, "failure_signature": dict(rescue.PREFLIGHT_RETRY_SIGNATURE)})
+    monkeypatch.setattr(rescue, "_load_prior_raw", lambda root: prior_raw)
+    monkeypatch.setattr(rescue, "safe_torch_load", lambda *args, **kwargs: checkpoint)
+    loaded = rescue._load_inputs(tmp_path, torch.device("cpu"))
+    assert loaded["prior_report"] is prior_report
+    assert loaded["prior_preflight"] is prior_preflight
+    assert loaded["prior_status"] is prior_status
+    assert loaded["prior_source"] is prior_source
+    assert loaded["prior_manifest"] is prior_manifest
+    assert loaded["data"]["fit_ols"].shape == (rescue.FIT_ROWS, rescue.FEATURES)
+
+
+def test_prior_v2_lineage_accepts_bound_inputs_and_rejects_mutation() -> None:
+    objects = _valid_prior_objects()
+    rescue._validate_prior_objects(*objects)
+    changed_status = dict(objects[2])
+    changed_status["ols_global_steps"] = rescue.GLOBAL_UPDATES - 1
+    with pytest.raises(rescue.ScaleRescueError, match="identities disagree"):
+        rescue._validate_prior_objects(objects[0], objects[1], changed_status, objects[3], objects[4])
+
+
+def test_retry_preflight_accepts_only_the_bound_first_signature(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    path = tmp_path / rescue.PREFLIGHT_01_PATH
+    path.parent.mkdir(parents=True)
+    path.write_text("record", encoding="utf-8")
+    record = {
+        "schema": rescue.PREFLIGHT_SCHEMA,
+        "task_id": rescue.TASK_ID,
+        "outer_gate": rescue.OUTER_GATE,
+        "authorization_id": rescue.AUTHORIZATION_ID,
+        **rescue.PREFLIGHT_RETRY_SIGNATURE,
+    }
+    monkeypatch.setattr(rescue, "file_sha256", lambda candidate: rescue.PREFLIGHT_01_SHA256)
+    monkeypatch.setattr(rescue, "_read_json", lambda candidate: record)
+    assert rescue._validate_retry_preflight(tmp_path)["recheck_sequence"] == 2
+    record["reason"] = "KeyError: 'different field'"
+    with pytest.raises(rescue.ScaleRescueError, match="exact first source-bound harness failure"):
+        rescue._validate_retry_preflight(tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("metrics", "expected"),
+    [
+        ({"clipped_pixel_fraction": 0.02}, "SATURATION_PERSISTS_WITHIN_BOUND"),
+        ({"clipped_pixel_fraction": 0.01, "raw_valid": True, "offset_bound": True, "foreground_reduction_pass": True, "background_reduction_pass": True, "E_D_macro_pass": True, "E_D_per_class_pass": True}, "BOUNDED_OLS_RENDERABILITY_SUPPORTED"),
+        ({"clipped_pixel_fraction": 0.01, "raw_valid": False, "offset_bound": True, "foreground_reduction_pass": False, "background_reduction_pass": False, "E_D_macro_pass": False, "E_D_per_class_pass": False}, "SCALE_COLLAPSE_REMOVED_TARGET_NOT_REACHED"),
+    ],
+)
+def test_gate_classification_is_fail_closed(metrics: dict[str, object], expected: str) -> None:
+    assert rescue._gate_classification(metrics) == expected

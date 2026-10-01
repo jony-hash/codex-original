@@ -1,0 +1,828 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+import torch
+
+from scripts.research.lightgen.n3 import execute_lightgen_2d_n3_structural_actuation_target_correspondence_diagnostic_v1 as diagnostic
+
+
+ROOT = Path(__file__).resolve().parents[4]
+
+
+def test_contract_and_population_artifacts_are_pinned_and_machine_readable() -> None:
+    contract = diagnostic._load_contract(ROOT)
+    population_path = ROOT / diagnostic.POPULATION_PATH
+    population = json.loads(population_path.read_text(encoding="utf-8"))
+
+    assert contract["authorization"]["required_exact_id"] == diagnostic.AUTHORIZATION_ID
+    assert contract["source_semantics"]["consumer_head_exact_required"] is False
+    assert contract["arms"]["order_frozen"] == list(diagnostic.ARM_ORDER)
+    assert contract["evaluation"]["runtime_batch_size"] == diagnostic.BATCH_SIZE
+    assert contract["evaluation"]["batch_count"] == 2560 // diagnostic.BATCH_SIZE
+    assert diagnostic.file_sha256(population_path) == diagnostic.POPULATION_SHA256
+    assert population["population_identity_sha256"] == diagnostic.POPULATION_IDENTITY_SHA256
+    assert len(population["canonical_train_source_indices"]) == 2560
+    assert population["class_counts"] == {str(index): 256 for index in range(10)}
+
+
+def test_static_authority_chain_resolves_replay_terminal_and_ready_preflight() -> None:
+    identities = diagnostic._verify_static_authorities(ROOT)
+
+    assert identities["original_qualification"]["status"]["state"] == "VALID_FAILED"
+    assert identities["replay_terminal"]["state"] == "EVIDENCE_REPLAY_COMPLETED"
+    assert identities["replay_ready_preflight"]["status"] == "READY"
+
+
+def test_population_selector_reproduces_class_balance_and_reference_role_filter() -> None:
+    parent_indices = torch.arange(100, dtype=torch.long)
+    labels = parent_indices.remainder(10)
+    references = parent_indices + 1000
+    reserved_references = torch.tensor([1010, 1011], dtype=torch.long)
+
+    first = diagnostic._select_diagnostic_indices(
+        parent_indices=parent_indices,
+        parent_labels=labels,
+        fixed_reference_source_indices=references,
+        reserved_source_indices=reserved_references,
+        parent_population_sha256="frozen-parent",
+        rows_per_class=3,
+    )
+    second = diagnostic._select_diagnostic_indices(
+        parent_indices=parent_indices,
+        parent_labels=labels,
+        fixed_reference_source_indices=references,
+        reserved_source_indices=reserved_references,
+        parent_population_sha256="frozen-parent",
+        rows_per_class=3,
+    )
+
+    assert torch.equal(first, second)
+    assert first.tolist() == sorted(first.tolist())
+    assert torch.equal(torch.bincount(labels.index_select(0, first), minlength=10), torch.full((10,), 3))
+    assert not bool(torch.isin(references.index_select(0, first), reserved_references).any())
+
+
+def test_effective_phase_decomposition_reconstructs_all_class_updates() -> None:
+    B0 = torch.zeros((diagnostic.n3.PARAMETER_DIMENSION, 2), dtype=torch.float64)
+    B0[0, 0] = 1.0
+    B0[1, 1] = 1.0
+    A0 = torch.arange(20, dtype=torch.float64).reshape(10, 2) / 10
+    B1 = B0.clone()
+    A1 = A0.clone()
+    B1[17, 0] = 0.125
+    B1[41, 1] = -0.25
+    A1[4, 0] += 0.5
+    A1[8, 1] -= 0.75
+
+    terms = diagnostic._effective_phase_terms(B0, A0, B1, A1)
+    reconstructed = terms["term_B0_delta_A"] + terms["term_delta_B_A0"] + terms["term_delta_B_delta_A"]
+
+    assert terms["total_delta_phase"].shape == (10, *diagnostic.PHASE_SHAPE)
+    torch.testing.assert_close(reconstructed, terms["total_delta_phase"], rtol=0, atol=1e-12)
+    assert float(terms["reconstruction_error"].abs().max()) <= 1e-12
+    assert float(terms["total_delta_phase"][4].abs().max()) > 0
+    assert float(terms["total_delta_phase"][8].abs().max()) > 0
+
+
+def test_three_gradient_arms_keep_the_frozen_formula_and_order() -> None:
+    calibration = {
+        "g336": (torch.tensor([1.0]), torch.tensor([-2.0])),
+        "gfloor": (torch.tensor([3.0]), torch.tensor([4.0])),
+        "lambda_floor": 2.5,
+    }
+
+    arms = diagnostic._fresh_arm_gradients(calibration)
+
+    assert tuple(arms) == ("BASE_336", "FLOOR_ONLY_V1", "ALIGNED_V1")
+    torch.testing.assert_close(arms["BASE_336"][0], torch.tensor([1.0], dtype=torch.float64))
+    torch.testing.assert_close(arms["FLOOR_ONLY_V1"][1], torch.tensor([10.0], dtype=torch.float64))
+    torch.testing.assert_close(arms["ALIGNED_V1"][0], torch.tensor([8.5], dtype=torch.float64))
+    torch.testing.assert_close(arms["ALIGNED_V1"][1], torch.tensor([8.0], dtype=torch.float64))
+
+
+def test_starting_state_serializes_the_production_sampler_layout() -> None:
+    class TinyLowRankModel:
+        def __init__(self) -> None:
+            self.B = torch.nn.Parameter(torch.zeros((diagnostic.n3.PARAMETER_DIMENSION, 2)))
+            self.A = torch.nn.Parameter(torch.zeros((10, 2)))
+
+        def correction(self, labels: torch.Tensor) -> torch.Tensor:
+            return (self.A.index_select(0, labels) @ self.B.T).reshape(labels.numel(), *diagnostic.PHASE_SHAPE)
+
+        def state_dict(self) -> dict[str, torch.Tensor]:
+            return {"A": self.A.detach(), "B": self.B.detach()}
+
+    sampler = diagnostic.n3.N3FitSampler(
+        {str(digit): list(range(digit * 256, (digit + 1) * 256)) for digit in range(10)}
+    )
+    model = TinyLowRankModel()
+    prepared = {
+        "model": model,
+        "sampler": sampler,
+        "optimizer": torch.optim.Adam((model.B, model.A)),
+        "snapshot": {"rng": {"cpu": torch.tensor([1])}, "evaluator_gradients": {}},
+    }
+    calibration = {
+        "g336": (torch.zeros(1), torch.zeros(1)),
+        "gfloor": (torch.zeros(1), torch.zeros(1)),
+        "lambda_floor": 1.0,
+    }
+    arms = {name: (torch.zeros(1), torch.zeros(1)) for name in diagnostic.ARM_ORDER}
+
+    state = diagnostic._starting_state(prepared, calibration, arms)
+
+    assert state["sampler_state"]["cursor"] == 0
+    assert set(state["sampler_state"]["indices_by_class"]) == {str(digit) for digit in range(10)}
+    assert torch.equal(state["sampler_state"]["indices_by_class"]["9"], torch.arange(9 * 256, 10 * 256))
+
+
+def test_full_binary_support_census_and_reference_flips_are_retained() -> None:
+    before = torch.zeros((2, 1, 28, 28), dtype=torch.float32)
+    after = torch.zeros_like(before)
+    reference = torch.zeros_like(before)
+    before[0, 0, 0, 0] = 1
+    reference[0, 0, 0, 1] = 1
+    after[0, 0, 0, 1] = 1
+    before[1, 0, 2, 2] = 1
+    reference[1, 0, 2, 2] = 1
+    after[1, 0, 2, 3] = 1
+    labels = torch.tensor([0, 1], dtype=torch.long)
+
+    evidence = diagnostic._support_evidence(
+        {"raw_cmos_view": before, "reference_cmos_view": reference},
+        {"raw_cmos_view": after, "reference_cmos_view": reference},
+    )
+    metrics = evidence["binary_support_sample_metrics"]
+    summaries = diagnostic._summary_by_class_per_threshold(
+        metrics["bbox_before"],
+        labels,
+        ("xmin", "xmax", "ymin", "ymax", "width", "height", "aspect_ratio"),
+    )
+
+    assert evidence["binary_masks_before"].shape == (2, 3, 28, 28)
+    assert metrics["changed_pixel_count"].tolist() == [[2, 2, 2], [2, 2, 2]]
+    assert metrics["reference_mismatch_to_match_count"][:, 1].tolist() == [2, 0]
+    assert metrics["reference_match_to_mismatch_count"][:, 1].tolist() == [0, 2]
+    assert metrics["bbox_geometry_delta"].shape == (2, 3, 7)
+    assert metrics["bbox_center_shift"].shape == (2, 3, 2)
+    assert evidence["spatial_localization_sample_counts_by_pixel"]["intensity_changed"].sum().item() == 4
+    assert evidence["spatial_localization_sample_counts_by_pixel"]["threshold_state_changed"].sum().item() == 4
+    assert set(summaries["0.5"]) == {"xmin", "xmax", "ymin", "ymax", "width", "height", "aspect_ratio"}
+
+
+def test_each_arm_restarts_from_common_state_and_rollback_is_fail_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    model = SimpleNamespace(B=torch.tensor([1.0]), A=torch.tensor([2.0]))
+    sampler = SimpleNamespace(cursor=0)
+    evaluator_state = {"gradients": [None]}
+    rng_state = {"value": "start"}
+    snapshot = {
+        "runtime": {"B": torch.tensor([1.0]), "A": torch.tensor([2.0])},
+        "rng": {"value": "start"},
+        "sampler_cursor": 0,
+        "evaluator_gradients": {"gradients": [None]},
+    }
+
+    monkeypatch.setattr(diagnostic.n3, "_restore_runtime", lambda target, state: (target.B.copy_(state["B"]), target.A.copy_(state["A"])))
+    monkeypatch.setattr(diagnostic.n3, "_restore_rng", lambda state: (rng_state.clear(), rng_state.update(state)))
+    monkeypatch.setattr(diagnostic.n3, "_runtime_snapshot", lambda target: {"B": target.B.clone(), "A": target.A.clone()})
+    monkeypatch.setattr(
+        diagnostic.qualification,
+        "_evaluator_grad_restore",
+        lambda _evaluators, state: (evaluator_state.clear(), evaluator_state.update(state)),
+    )
+    monkeypatch.setattr(
+        diagnostic.qualification,
+        "_rollback_transaction",
+        lambda target, _optimizer, target_sampler, _evaluators, state: (
+            diagnostic.n3._restore_runtime(target, state["runtime"]),
+            diagnostic.n3._restore_rng(state["rng"]),
+            setattr(target_sampler, "cursor", state["sampler_cursor"]),
+            diagnostic.qualification._evaluator_grad_restore([], state["evaluator_gradients"]),
+            {"passed": True},
+        )[-1],
+    )
+
+    prepared = {"snapshot": snapshot, "sampler": sampler, "evaluators": []}
+    restored_states = []
+    for _arm in diagnostic.ARM_ORDER:
+        model.B.fill_(99)
+        model.A.fill_(-99)
+        rng_state["value"] = "mutated"
+        sampler.cursor = 7
+        evaluator_state["gradients"] = [torch.tensor([9.0])]
+        diagnostic._restore_common_arm_start(prepared, model)
+        restored_states.append((model.B.clone(), model.A.clone(), dict(rng_state), sampler.cursor))
+        rollback = diagnostic._rollback(prepared, model, object())
+        assert rollback["passed"] is True
+
+    assert all(torch.equal(value[0], restored_states[0][0]) and torch.equal(value[1], restored_states[0][1]) for value in restored_states)
+    assert all(value[2:] == restored_states[0][2:] for value in restored_states)
+    assert sampler.cursor == 0
+
+
+def test_role_ledger_uses_explicit_roles_and_rejects_reserved_overlap() -> None:
+    ledger = SimpleNamespace(
+        summary=lambda: {
+            "N3_SELECT": {"rows_consumed": 0},
+            "N3_CONFIRM": {"rows_consumed": 0},
+            "N3_FIT": {"rows_consumed": 0},
+        }
+    )
+    roles = {
+        "N3_FIT": torch.tensor([20]),
+        "N3_SELECT": torch.tensor([30]),
+        "N3_CONFIRM": torch.tensor([40]),
+    }
+    population = {"indices": torch.tensor([10]), "fixed_reference_source_indices": torch.tensor([11])}
+    report = diagnostic._read_ledger(ledger, population, torch.tensor([20]), roles)
+    assert report["N3_SELECT"]["rows_consumed"] == report["N3_CONFIRM"]["rows_consumed"] == 0
+    assert report["reserved_source_overlap"] == 0
+
+    population["fixed_reference_source_indices"] = torch.tensor([40])
+    with pytest.raises(diagnostic.DiagnosticError, match="reserved N3 role"):
+        diagnostic._read_ledger(ledger, population, torch.tensor([20]), roles)
+
+
+def test_resource_receipt_retains_both_late_raw_gpu_observations(monkeypatch: pytest.MonkeyPatch) -> None:
+    early = {"device_name": "RTX 3060", "used_bytes": 100, "free_bytes": 900, "timestamp_utc": "early"}
+    late = [
+        {"device_name": "RTX 3060", "used_bytes": 120, "free_bytes": 880, "timestamp_utc": "late-1"},
+        {"device_name": "RTX 3060", "used_bytes": 120, "free_bytes": 880, "timestamp_utc": "late-2"},
+    ]
+    monkeypatch.setattr(diagnostic.replay, "_measured_peak_bytes", lambda *_args: (200, 1000, "RTX 3060"))
+    monkeypatch.setattr(diagnostic.replay, "_gpu_capacity_check", lambda *_args, **_kwargs: {"status": "PASS"})
+    monkeypatch.setattr(diagnostic.replay, "_late_gpu_quiescence_result", lambda *_args, **_kwargs: {"status": "PASS"})
+
+    result = diagnostic._resource_envelope({}, {}, early, late)
+
+    assert result["status"] == "PASS"
+    assert result["early_raw_observation"] == early
+    assert result["late_raw_observations"] == late
+
+
+@pytest.mark.parametrize(
+    ("global_free_bytes", "reserved_bytes", "expected_status"),
+    [(100, 100, "PASS"), (99, 100, "RESOURCE_ABORTED")],
+)
+def test_resource_guard_reuses_same_process_cuda_reservation_without_weakening_peak_gate(
+    monkeypatch: pytest.MonkeyPatch,
+    global_free_bytes: int,
+    reserved_bytes: int,
+    expected_status: str,
+) -> None:
+    monkeypatch.setattr(diagnostic.replay, "_measured_peak_bytes", lambda *_args: (200, 1000, "RTX 3060"))
+    early = {
+        "device_name": "RTX 3060",
+        "used_bytes": 600,
+        "free_bytes": 400,
+        "total_bytes": 1000,
+        "timestamp_utc": "early",
+    }
+    late = [
+        {
+            "device_name": "RTX 3060",
+            "used_bytes": 900,
+            "free_bytes": global_free_bytes,
+            "total_bytes": 1000,
+            "timestamp_utc": f"late-{index}",
+            "process_local_cuda_memory": {"reserved_bytes": reserved_bytes},
+        }
+        for index in (1, 2)
+    ]
+
+    result = diagnostic._resource_envelope({}, {}, early, late)
+
+    assert result["status"] == expected_status
+    first_late = result["late_quiescence_check"]["first_capacity_check"]
+    assert first_late["observed_global_free_bytes"] == global_free_bytes
+    assert first_late["reusable_process_reserved_bytes"] == reserved_bytes
+    assert first_late["observed_effective_free_bytes"] == global_free_bytes + reserved_bytes
+    assert first_late["required_free_bytes"] == 200
+    assert result["late_raw_observations"] == late
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA index-device regression requires CUDA")
+def test_measurement_batch_labels_accept_cpu_indices_for_cuda_batch() -> None:
+    labels_cpu = torch.tensor([4, 1, 8], dtype=torch.long)
+    indices_cpu = torch.tensor([2, 0], dtype=torch.long)
+
+    labels = diagnostic._batch_labels(labels_cpu, indices_cpu, torch.device("cuda:0"))
+
+    assert labels.device.type == "cuda"
+    assert labels.tolist() == [8, 4]
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA measurement regression requires CUDA")
+def test_measure_state_uses_aligned_labels_on_the_first_production_batch(monkeypatch: pytest.MonkeyPatch) -> None:
+    device = torch.device("cuda:0")
+    observed: dict[str, object] = {}
+
+    def fit_objective_batch(_model, images, labels, _mean, _scale):
+        assert images.device == labels.device == device
+        observed["labels"] = labels.detach().cpu().tolist()
+        raw = torch.ones((2, 1, 4, 4), device=device)
+        raw_view = torch.ones((2, 1, 28, 28), device=device)
+        return None, torch.zeros(2, device=device), raw, raw_view, torch.zeros_like(raw), torch.zeros_like(raw_view)
+
+    def hard_measurement(raw_view, labels, _reference, _device):
+        assert labels.tolist() == [4, 2]
+        observed["hard_labels"] = labels.tolist()
+        rows = raw_view.shape[0]
+        signature = torch.zeros((rows, 337), dtype=torch.float64)
+        return {
+            "raw_signature": signature,
+            "distance": torch.ones(rows, dtype=torch.float64),
+            "log_rho": torch.zeros(rows, dtype=torch.float64),
+            "q95": torch.ones(rows, dtype=torch.float64),
+            "nearest_reference_index": torch.arange(rows),
+            "nearest_reference_source_index": torch.arange(rows),
+            "distance_reconstruction": {"passed": True},
+        }
+
+    monkeypatch.setattr(diagnostic.qualification, "_fit_objective_batch", fit_objective_batch)
+    monkeypatch.setattr(diagnostic.structural, "_structural_surrogate", lambda values: torch.zeros((2, 336), device=values.device))
+    monkeypatch.setattr(diagnostic.structural, "_normalized_surrogate", lambda values, _mean, _scale: values)
+    monkeypatch.setattr(diagnostic.qualification, "_soft_floor_features", lambda values: torch.zeros((2, 4), device=values.device))
+    monkeypatch.setattr(
+        diagnostic.n3,
+        "_semantic_row_losses",
+        lambda *_args: {name: torch.zeros(2, device=device) for name in ("L_S", "L_I", "L_C")},
+    )
+    monkeypatch.setattr(diagnostic.precision, "_hard_measurement", hard_measurement)
+    monkeypatch.setattr(
+        diagnostic.precision,
+        "_floor_contributions",
+        lambda *_args: {
+            "floor_squared_distance_contribution": torch.zeros(2, dtype=torch.float64),
+            "standardized_squared_distance_contribution": torch.zeros((2, 4), dtype=torch.float64),
+            "total_squared_distance": torch.ones(2, dtype=torch.float64),
+        },
+    )
+    monkeypatch.setattr(diagnostic.structural.prior, "_cmos_view", lambda values: torch.zeros((2, 1, 28, 28), device=values.device))
+
+    result = diagnostic._measure_state(
+        torch.nn.Linear(1, 1),
+        {"labels": torch.tensor([0, 1, 2, 3, 4, 2]), "images": torch.zeros((6, 1, 4, 4))},
+        torch.tensor([4, 2]),
+        torch.tensor([0, 1]),
+        torch.tensor([0, 1]),
+        {
+            "structural_fit": {"raw_signature": torch.zeros((2, 337), dtype=torch.float64)},
+            "normalization": {"population_std_clamped_scale": torch.ones(337, dtype=torch.float64)},
+        },
+        torch.zeros(336),
+        torch.ones(336),
+        (torch.nn.Identity(), torch.nn.Identity(), torch.nn.Identity()),
+        device,
+    )
+
+    assert observed["labels"] == [4, 2]
+    assert observed["hard_labels"] == [4, 2]
+    assert result["raw_cmos_view"].shape == (2, 1, 28, 28)
+
+
+def _seed_recoverable_attempt(root: Path) -> bytes:
+    old_source_id = "historical-ready-source"
+    old_source = {
+        "execution_source_semantics_id": old_source_id,
+        "source_manifest_id": "historical-source-manifest",
+        "config_identity": {
+            "diagnostic_contract_sha256": diagnostic.CONTRACT_SHA256,
+            "diagnostic_population_sha256": diagnostic.POPULATION_IDENTITY_SHA256,
+        },
+    }
+    old_preflight = {
+        "status": "READY",
+        "contract_sha256": diagnostic.CONTRACT_SHA256,
+        "population_identity_sha256": diagnostic.POPULATION_IDENTITY_SHA256,
+        "source_manifest": old_source,
+        "preflight_receipt": {
+            "status": "READY",
+            "source_semantics_id": old_source_id,
+            "authorization_id": diagnostic.AUTHORIZATION_ID,
+        },
+    }
+    preflight_path = root / diagnostic.PREFLIGHT_PATH
+    preflight_path.parent.mkdir(parents=True, exist_ok=True)
+    preflight_path.write_text(json.dumps(old_preflight), encoding="utf-8")
+    attempt = root / diagnostic.ATTEMPT_DIR
+    attempt.mkdir(parents=True)
+    (attempt / "source_manifest.json").write_text(json.dumps(old_source), encoding="utf-8")
+    (attempt / "starting_state.pt").write_bytes(b"starting state from the original episode")
+    status = {
+        "state": "INVALID_HARNESS",
+        "phase": "DIAGNOSTIC_INTERRUPTED",
+        "reason": "RuntimeError: Expected all tensors to be on the same device, cuda:0 and cpu, in index_select",
+        "persistent_updates": 0,
+        "checkpoint_writes": 0,
+    }
+    status_path = attempt / "status.json"
+    status_path.write_text(json.dumps(status), encoding="utf-8")
+    return status_path.read_bytes()
+
+
+def test_recovery_eligibility_preserves_pre_scientific_invalid_attempt(tmp_path: Path) -> None:
+    status_bytes = _seed_recoverable_attempt(tmp_path)
+
+    result = diagnostic._validate_recovery_origin(tmp_path)
+
+    assert result["parent_scientific_attempt"] == "attempt_01"
+    assert result["recovery_episode"] == 1
+    assert result["arms_completed"] == 0
+    assert result["temporary_updates"] == 0
+    assert (tmp_path / diagnostic.ATTEMPT_DIR / "status.json").read_bytes() == status_bytes
+
+
+@pytest.mark.parametrize("failure", ["temporary_update", "persistent_update", "arm_result"])
+def test_recovery_eligibility_rejects_any_scientific_arm_progress(tmp_path: Path, failure: str) -> None:
+    _seed_recoverable_attempt(tmp_path)
+    attempt = tmp_path / diagnostic.ATTEMPT_DIR
+    if failure in {"temporary_update", "persistent_update"}:
+        status_path = attempt / "status.json"
+        status = json.loads(status_path.read_text(encoding="utf-8"))
+        status["temporary_updates" if failure == "temporary_update" else "persistent_updates"] = 1
+        status_path.write_text(json.dumps(status), encoding="utf-8")
+    else:
+        (attempt / "arm_BASE_336.pt").write_bytes(b"arm evidence")
+
+    with pytest.raises(diagnostic.DiagnosticError, match="not eligible for pre-scientific recovery"):
+        diagnostic._validate_recovery_origin(tmp_path)
+
+
+def test_recovery_episode_is_append_only_under_the_same_scientific_attempt(tmp_path: Path) -> None:
+    status_bytes = _seed_recoverable_attempt(tmp_path)
+    source = diagnostic._source_manifest(ROOT)
+    receipt = diagnostic.PreflightReceipt(
+        source_semantics_id=source["execution_source_semantics_id"],
+        authorization_id=diagnostic.AUTHORIZATION_ID,
+        checks={
+            diagnostic.CORRECTNESS_INVARIANTS: {"status": "PASS"},
+            diagnostic.RESOURCE_ENVELOPE: {"status": "PASS"},
+            diagnostic.IMPLEMENTATION_SELECTION: {"status": "PASS"},
+        },
+    )
+    control = diagnostic._preflight_identity(tmp_path, source)
+    control.mark_preflight_ready(receipt)
+
+    recovery = diagnostic._open_recovery_episode(
+        tmp_path,
+        {"control": control, "source_manifest": source, "authorization_sha256": "authorization-sha"},
+        receipt,
+    )
+
+    assert recovery.name == "recovery_01"
+    assert diagnostic._read_json(recovery / "episode.json", "recovery episode")["parent_scientific_attempt"] == "attempt_01"
+    assert control.identity.scientific_attempt_id == diagnostic.ATTEMPT_ID
+    assert (tmp_path / diagnostic.ATTEMPT_DIR / "status.json").read_bytes() == status_bytes
+
+
+def test_recovery_preflight_accepts_ready_receipt_bound_to_repaired_source(tmp_path: Path) -> None:
+    source = {
+        "execution_source_semantics_id": "repaired-source",
+        "source_manifest_id": "repaired-source-manifest",
+    }
+    authorization_sha256 = "authorized-source"
+    receipt = diagnostic.PreflightReceipt(
+        source_semantics_id=source["execution_source_semantics_id"],
+        authorization_id=diagnostic.AUTHORIZATION_ID,
+        checks={
+            diagnostic.CORRECTNESS_INVARIANTS: {"status": "PASS"},
+            diagnostic.RESOURCE_ENVELOPE: {"status": "PASS"},
+            diagnostic.IMPLEMENTATION_SELECTION: {"status": "PASS"},
+        },
+        resource={
+            "execution_source_semantics_id": source["execution_source_semantics_id"],
+            "authorization_sha256": authorization_sha256,
+            "population_identity_sha256": diagnostic.POPULATION_IDENTITY_SHA256,
+        },
+    )
+    path = tmp_path / diagnostic.PREFLIGHT_RECHECK_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "status": "READY",
+                "contract_sha256": diagnostic.CONTRACT_SHA256,
+                "population_identity_sha256": diagnostic.POPULATION_IDENTITY_SHA256,
+                "authorization_id": diagnostic.AUTHORIZATION_ID,
+                "authorization_sha256": authorization_sha256,
+                "attempt_created": False,
+                "temporary_updates_before_attempt": 0,
+                "producer_vs_consumer_provenance": {"consumer_head_exact_required": False},
+                "source_manifest": source,
+                "preflight_receipt": receipt.to_dict(),
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    payload, restored = diagnostic._validate_recovery_preflight(
+        tmp_path,
+        source,
+        authorization_sha256,
+        original_source_semantics_id="historical-ready-source",
+    )
+
+    assert payload["status"] == "READY"
+    assert restored.source_semantics_id == "repaired-source"
+
+
+def test_recovery_preflight_rejects_the_historical_ready_source(tmp_path: Path) -> None:
+    source = {
+        "execution_source_semantics_id": "historical-ready-source",
+        "source_manifest_id": "historical-manifest",
+    }
+    receipt = diagnostic.PreflightReceipt(
+        source_semantics_id=source["execution_source_semantics_id"],
+        authorization_id=diagnostic.AUTHORIZATION_ID,
+        checks={
+            diagnostic.CORRECTNESS_INVARIANTS: {"status": "PASS"},
+            diagnostic.RESOURCE_ENVELOPE: {"status": "PASS"},
+            diagnostic.IMPLEMENTATION_SELECTION: {"status": "PASS"},
+        },
+    )
+    path = tmp_path / diagnostic.PREFLIGHT_RECHECK_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "status": "READY",
+                "contract_sha256": diagnostic.CONTRACT_SHA256,
+                "population_identity_sha256": diagnostic.POPULATION_IDENTITY_SHA256,
+                "authorization_id": diagnostic.AUTHORIZATION_ID,
+                "authorization_sha256": "auth-sha",
+                "attempt_created": False,
+                "temporary_updates_before_attempt": 0,
+                "producer_vs_consumer_provenance": {"consumer_head_exact_required": False},
+                "source_manifest": source,
+                "preflight_receipt": receipt.to_dict(),
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(diagnostic.DiagnosticError, match="old READY source was reused"):
+        diagnostic._validate_recovery_preflight(
+            tmp_path,
+            source,
+            "auth-sha",
+            original_source_semantics_id="historical-ready-source",
+        )
+
+
+def test_preflight_receipt_is_ready_only_with_passed_runtime_and_resource_envelope() -> None:
+    source = {"execution_source_semantics_id": "consumer-source", "source_manifest_id": "source-manifest"}
+    population = {"identity_sha256": diagnostic.POPULATION_IDENTITY_SHA256}
+    runtime = {"prepared": {"rollback_probe": {"passed": True}}, "runtime": {"status": "READY"}}
+    resources = {
+        "status": "PASS",
+        "early_raw_observation": {},
+        "early_capacity_check": {"status": "PASS"},
+        "late_raw_observations": [{}, {}],
+        "late_quiescence_check": {"status": "PASS"},
+        "measured_execution_peak_reserved_bytes": 100,
+    }
+    ledger = {"N3_SELECT": {"rows_consumed": 0}, "N3_CONFIRM": {"rows_consumed": 0}}
+    calibration = {"identity": {"lambda_floor": 1.0}, "rollback": {"passed": True}}
+
+    receipt = diagnostic._preflight_receipt(source, "authorization-hash", population, runtime, resources, ledger, calibration)
+
+    assert receipt.to_dict()["status"] == "READY"
+    assert receipt.to_dict()["authorization_id"] == diagnostic.AUTHORIZATION_ID
+
+
+def test_evidence_manifest_excludes_mutable_status_and_manifest_files(tmp_path: Path) -> None:
+    (tmp_path / "arm.pt").write_bytes(b"immutable-arm")
+    (tmp_path / "report.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "status.json").write_text("{\"state\":\"ACTIVE\"}", encoding="utf-8")
+    (tmp_path / "evidence_manifest.json").write_text("{}", encoding="utf-8")
+
+    files = diagnostic._immutable_file_entries(tmp_path)
+
+    assert set(files) == {"arm.pt", "report.json"}
+    assert files["arm.pt"]["sha256"] == diagnostic.file_sha256(tmp_path / "arm.pt")
+
+
+def test_actuation_chain_and_fixed_start_contrast_are_reported_without_additivity() -> None:
+    def summary(value: float) -> dict[str, float]:
+        return {"equal_class_mean": float(value)}
+
+    def threshold_summary(value: float) -> dict[str, float]:
+        return {"equal_class_mean_of_defined_values": float(value)}
+
+    arms = {}
+    for index, name in enumerate(diagnostic.ARM_ORDER, start=1):
+        arms[name] = {
+            "population_rows": 2,
+            "factor_update": {"combined_factor_delta_l2": float(index), "combined_factor_delta_rms": float(index) / 10},
+            "effective_phase": {
+                "classes": {
+                    str(digit): {
+                        "model_computed_delta_phase": {"rms": float(index) / 100, "max_abs": float(index) / 50},
+                        "total_delta_phase": {"rms": float(index) / 100, "max_abs": float(index) / 50},
+                    }
+                    for digit in range(10)
+                },
+                "model_vs_algebraic_delta_max_abs": 1e-7,
+            },
+            "raw_cmos_pixel_delta": {
+                "pixel_delta_rms": summary(index / 1000),
+                "pixel_delta_max_abs": summary(index / 100),
+            },
+            "threshold_support": {
+                "hamming_fraction": {str(threshold): threshold_summary(index / 100) for threshold in diagnostic.THRESHOLDS},
+                "changed_pixel_count": {str(threshold): threshold_summary(index) for threshold in diagnostic.THRESHOLDS},
+            },
+            "reference_support_correspondence": {
+                "reference_support_net_mismatch_change": {str(threshold): threshold_summary(-index) for threshold in diagnostic.THRESHOLDS}
+            },
+            "four_frozen_floor_features": {
+                "by_axis": {str(axis): {"unchanged_count": 2} for axis in diagnostic.FLOOR_INDICES}
+            },
+            "broad_336d_blocks": {
+                "block": {"nonzero_delta_count": 1, "delta_after_minus_before": summary(-index / 100)}
+            },
+            "official_337d_context": {"official_log_rho": {"delta_after_minus_before": summary(-index / 100)}},
+            "fixed_reference_337d_squared_distance": {"delta_after_minus_before": summary(-index / 100)},
+            "semantic": {
+                metric: {"delta_after_minus_before": summary(index / 1000)} for metric in ("L_S", "L_I", "L_C")
+            },
+            "semantic_control_pass": False,
+            "optical_control_pass": True,
+        }
+
+    result = diagnostic._result_classification(arms)
+
+    assert result["primary_classification"] == "STRUCTURAL_RESPONSE_NOT_CAPTURED_BY_FOUR_FLOOR_FEATURES"
+    assert result["fixed_start_arm_contrast"]["additivity_assumed"] is False
+    assert result["fixed_start_arm_contrast"]["difference_from_base_336"]["factor_delta_l2"] == {
+        "FLOOR_ONLY_V1": 1.0,
+        "ALIGNED_V1": 2.0,
+    }
+    assert result["actuation_chain_by_arm"]["FLOOR_ONLY_V1"]["semantic_control_pass"] is False
+
+
+def _patch_frozen_population_fixture(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> tuple[torch.Tensor, dict[str, object]]:
+    indices = torch.arange(2560, dtype=torch.long)
+    reference_rows = indices.clone()
+    reference_source_indices = torch.arange(60_000, dtype=torch.long) + 100_000
+    reference_sources = reference_source_indices.index_select(0, reference_rows)
+    parent_population_sha = "qualification-population"
+    population: dict[str, object] = {
+        "canonical_train_source_indices": indices.tolist(),
+        "class_counts": {str(digit): 256 for digit in range(10)},
+        "parent_qualification_population_sha256": parent_population_sha,
+    }
+    population["population_identity_sha256"] = diagnostic._canonical_sha(population)
+    targets = {
+        "qualification_source_indices_sha256": diagnostic.tensor_sha256(reference_sources),
+        "qualification_reference_row_indices": reference_rows.tolist(),
+        "qualification_reference_source_indices": reference_sources.tolist(),
+    }
+    monkeypatch.setattr(diagnostic, "POPULATION_PATH", Path("diagnostic_population.json"))
+    monkeypatch.setattr(diagnostic, "POPULATION_SHA256", "frozen-population-bytes")
+    monkeypatch.setattr(diagnostic, "POPULATION_IDENTITY_SHA256", population["population_identity_sha256"])
+    monkeypatch.setattr(diagnostic, "QUALIFICATION_POPULATION_SHA256", parent_population_sha)
+    monkeypatch.setattr(diagnostic.qualification, "ATTEMPT_DIR", Path("qualification_attempt_01"))
+    monkeypatch.setattr(diagnostic, "file_sha256", lambda _path: "frozen-population-bytes")
+    monkeypatch.setattr(
+        diagnostic,
+        "_read_json",
+        lambda _path, name: population if name == "frozen diagnostic population" else targets,
+    )
+    monkeypatch.setattr(diagnostic, "_select_diagnostic_indices", lambda **_kwargs: indices.clone())
+    authorities = {
+        "labels": torch.arange(10, dtype=torch.long).repeat_interleave(256),
+        "qualification_indices": indices,
+        "structural_reference": {"structural_fit": {"canonical_source_indices": reference_source_indices}},
+    }
+    roles = {"N3_SELECT": torch.empty(0, dtype=torch.long), "N3_CONFIRM": torch.empty(0, dtype=torch.long)}
+    result = diagnostic._frozen_population(tmp_path, authorities, roles, indices)
+    return indices, result
+
+
+def test_fixed_reference_target_hash_uses_reference_source_index_space(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    indices, population = _patch_frozen_population_fixture(monkeypatch, tmp_path)
+
+    assert population["indices"].equal(indices)
+    assert population["fixed_reference_source_indices"].tolist() == (indices + 100_000).tolist()
+    assert diagnostic.tensor_sha256(population["fixed_reference_source_indices"]) != diagnostic.tensor_sha256(indices)
+
+
+def test_fixed_reference_target_hash_rejects_corrupt_source_sequence(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    indices, _ = _patch_frozen_population_fixture(monkeypatch, tmp_path)
+    targets = diagnostic._read_json(tmp_path / "unused", "fixed qualification reference targets")
+    targets["qualification_source_indices_sha256"] = diagnostic.tensor_sha256(indices)
+
+    with pytest.raises(diagnostic.DiagnosticError, match="fixed reference target source-index identity changed"):
+        diagnostic._frozen_population(
+            tmp_path,
+            {
+                "labels": torch.arange(10, dtype=torch.long).repeat_interleave(256),
+                "qualification_indices": indices,
+                "structural_reference": {
+                    "structural_fit": {"canonical_source_indices": torch.arange(60_000, dtype=torch.long) + 100_000}
+                },
+            },
+            {"N3_SELECT": torch.empty(0, dtype=torch.long), "N3_CONFIRM": torch.empty(0, dtype=torch.long)},
+            indices,
+        )
+
+
+def test_existing_authorization_is_reused_without_rewriting(tmp_path: Path) -> None:
+    first = diagnostic._write_authorization(tmp_path, diagnostic.AUTHORIZATION_ID)
+    path = tmp_path / diagnostic.AUTHORIZATION_PATH
+    original_bytes = path.read_bytes()
+
+    second = diagnostic._write_authorization(tmp_path, diagnostic.AUTHORIZATION_ID)
+
+    assert second == first
+    assert path.read_bytes() == original_bytes
+
+
+def test_preflight_failures_allow_repair_once_then_require_root_cause_review(tmp_path: Path) -> None:
+    source = {"execution_source_semantics_id": "source-semantics", "source_manifest_id": "source-manifest"}
+    control = diagnostic._preflight_identity(tmp_path, source)
+    first = diagnostic._save_preflight_failure(
+        tmp_path,
+        control,
+        "strict_preflight",
+        diagnostic.DiagnosticError("example mismatch"),
+        source_manifest=source,
+        details={"fit_gradient_batch_count": 0},
+    )
+    first_path = tmp_path / diagnostic.OUTPUT_ROOT / "preflight_failure_01.json"
+    first_bytes = first_path.read_bytes()
+
+    recheck = diagnostic._preflight_identity(tmp_path, source)
+    second = diagnostic._save_preflight_failure(
+        tmp_path,
+        recheck,
+        "strict_preflight",
+        diagnostic.DiagnosticError("example mismatch"),
+        source_manifest=source,
+        details={"fit_gradient_batch_count": 0},
+    )
+
+    second_path = tmp_path / diagnostic.OUTPUT_ROOT / "preflight_failure_02.json"
+    assert first["status"] == "REPAIR_REQUIRED"
+    assert second["status"] == "ROOT_CAUSE_REVIEW_REQUIRED"
+    assert first_path.read_bytes() == first_bytes
+    assert second_path.is_file()
+
+
+def test_execute_rechecks_legacy_preflight_failure_under_same_authorization(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    output = Path("outputs/diagnostic")
+    monkeypatch.setattr(diagnostic, "OUTPUT_ROOT", output)
+    monkeypatch.setattr(diagnostic, "PREFLIGHT_PATH", output / "preflight_01/preflight.json")
+    monkeypatch.setattr(diagnostic, "PREFLIGHT_FAILURE_STATE", output / "execution_preflight_failure_state.json")
+    monkeypatch.setattr(diagnostic, "ATTEMPT_DIR", output / "attempt_01")
+    monkeypatch.setattr(diagnostic, "AUTHORIZATION_PATH", output / "authorization_01/authorization.json")
+    monkeypatch.setattr(diagnostic, "_load_contract", lambda _root: {})
+    monkeypatch.setattr(
+        diagnostic,
+        "_source_manifest",
+        lambda _root: {"execution_source_semantics_id": "repaired-source", "source_manifest_id": "repaired-manifest"},
+    )
+    monkeypatch.setattr(diagnostic, "_resource_snapshot", lambda: {"device_name": "synthetic"})
+    monkeypatch.setattr(
+        diagnostic,
+        "_verify_static_authorities",
+        lambda _root: (_ for _ in ()).throw(diagnostic.DiagnosticError("repaired-path probe")),
+    )
+    diagnostic._write_authorization(tmp_path, diagnostic.AUTHORIZATION_ID)
+    auth_path = tmp_path / diagnostic.AUTHORIZATION_PATH
+    auth_bytes = auth_path.read_bytes()
+    failure_path = tmp_path / output / "preflight_failure_01.json"
+    failure_path.parent.mkdir(parents=True, exist_ok=True)
+    prior_failure = {
+        "schema": "n3_structural_actuation_target_correspondence_preflight_failure.v1",
+        "status": "BLOCKED",
+        "component": "strict_preflight",
+        "reason": "legacy failure before consumer repair",
+        "contract_sha256": diagnostic.CONTRACT_SHA256,
+        "population_identity_sha256": diagnostic.POPULATION_IDENTITY_SHA256,
+    }
+    failure_path.write_text(json.dumps(prior_failure), encoding="utf-8")
+    failure_bytes = failure_path.read_bytes()
+
+    with pytest.raises(diagnostic.DiagnosticError, match="repaired-path probe"):
+        diagnostic.execute(repo_root=tmp_path, authorization_statement=diagnostic.AUTHORIZATION_ID)
+
+    retry_failure = tmp_path / output / "preflight_failure_02.json"
+    retry_payload = json.loads(retry_failure.read_text(encoding="utf-8"))
+    assert retry_payload["status"] == "REPAIR_REQUIRED"
+    assert retry_payload["reason"] == "DiagnosticError: repaired-path probe"
+    assert auth_path.read_bytes() == auth_bytes
+    assert failure_path.read_bytes() == failure_bytes
+    assert not (tmp_path / diagnostic.ATTEMPT_DIR).exists()

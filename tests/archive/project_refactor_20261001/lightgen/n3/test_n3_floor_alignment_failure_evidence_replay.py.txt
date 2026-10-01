@@ -1,0 +1,332 @@
+from __future__ import annotations
+
+import inspect
+import json
+from pathlib import Path
+
+import torch
+
+from scripts.research.lightgen.n3 import execute_lightgen_2d_n3_floor_alignment_failure_evidence_replay_v1 as replay, execute_lightgen_2d_n3_floor_axis_surrogate_alignment_qualification_v1 as qualification
+
+
+def _measurement(raw_signature: torch.Tensor, labels: torch.Tensor, reference_rows: torch.Tensor, soft_raw: torch.Tensor) -> dict[str, object]:
+    axes = torch.tensor(replay.AXES, dtype=torch.long)
+    reference = torch.zeros((raw_signature.shape[0], 337), dtype=torch.float64)
+    hard_residual = raw_signature.to(torch.float64).index_select(1, axes) - reference.index_select(0, reference_rows).index_select(1, axes)
+    hard_contribution = (hard_residual / 1.0e-6).square() / 337.0
+    soft_residual = soft_raw.to(torch.float64) - reference.index_select(0, reference_rows).index_select(1, axes)
+    return {
+        "labels": labels,
+        "fixed_reference_rows": reference_rows,
+        "raw_signature": raw_signature.to(torch.float64),
+        "official_reference_rows": reference_rows,
+        "official_reference_source_rows": reference_rows + 100,
+        "replay_soft_floor_raw_by_axis": soft_raw.to(torch.float64),
+        "soft_floor_error_by_axis": soft_residual.square(),
+        "hard_contribution_by_axis_tensor": hard_contribution,
+        "replay_nonfloor_by_sample": torch.tensor([3.0, 4.0, 5.0], dtype=torch.float64),
+        "replay_hard_logrho_by_sample": torch.tensor([0.1, 0.2, 0.3], dtype=torch.float64),
+        "replay_hard_q95_by_sample": torch.tensor([1.0, 1.1, 1.2], dtype=torch.float64),
+        "replay_threshold_margin_min_by_sample": torch.ones((3, 3), dtype=torch.float64) * 0.05,
+    }
+
+
+def test_qualification_measurement_evidence_capture_is_opt_in() -> None:
+    parameter = inspect.signature(qualification._measure_population).parameters["capture_replay_evidence"]
+    assert parameter.default is False
+
+
+def test_sample_evidence_binds_order_labels_references_and_axis_values() -> None:
+    labels = torch.tensor([1, 8, 1], dtype=torch.long)
+    rows = torch.tensor([0, 1, 2], dtype=torch.long)
+    source_indices = torch.tensor([100, 101, 102], dtype=torch.long)
+    before_raw = torch.zeros((3, 337), dtype=torch.float64)
+    axis_positions = torch.tensor(replay.AXES, dtype=torch.long)
+    before_raw[:, axis_positions] = torch.tensor([[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12]], dtype=torch.float64)
+    after_raw = before_raw.clone()
+    after_raw[1, 74] += 0.5
+    soft_before = torch.tensor([[0.1, 0.2, 0.3, 0.4], [0.2, 0.3, 0.4, 0.5], [0.3, 0.4, 0.5, 0.6]], dtype=torch.float64)
+    soft_after = soft_before.clone()
+    soft_after[1, 2] -= 0.05
+    reference = {
+        "structural_fit": {
+            "raw_signature": torch.zeros((3, 337), dtype=torch.float64),
+            "canonical_source_indices": source_indices,
+        },
+        "normalization": {"population_std_clamped_scale": torch.full((337,), 1.0e-6, dtype=torch.float64)},
+    }
+    before = _measurement(before_raw, labels, rows, soft_before)
+    after = _measurement(after_raw, labels, rows, soft_after)
+    populations = {"qualification_indices": torch.tensor([900, 901, 902], dtype=torch.long)}
+
+    authority_labels = torch.zeros(903, dtype=torch.long)
+    authority_labels[900:903] = labels
+    authorities = {"labels": authority_labels}
+    evidence = replay._build_sample_evidence(authorities, populations, reference, before, after)
+
+    assert evidence["qualification_row_position"].tolist() == [0, 1, 2]
+    assert evidence["canonical_train_source_index"].tolist() == [900, 901, 902]
+    assert evidence["class_label"].tolist() == [1, 8, 1]
+    assert evidence["soft_reference_source_index"].tolist() == [100, 101, 102]
+    assert evidence["hard_reference_source_index_before"].tolist() == [100, 101, 102]
+    assert evidence["soft_raw_before"].shape == (3, 4)
+    assert evidence["hard_raw_before"].shape == (3, 4)
+    assert evidence["hard_raw_delta"][1, 0] == 0.5
+    assert evidence["soft_axis_loss_after"][1, 2] < evidence["soft_axis_loss_before"][1, 2]
+    hard_raw = torch.tensor([[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12]], dtype=torch.float64)
+    assert torch.equal(evidence["hard_axis_contribution_before"], (hard_raw / 1.0e-6).square() / 337.0)
+    hard = replay._hard_summary(evidence, torch.ones(3, dtype=torch.bool), torch.arange(4))
+    assert hard["raw_feature_changed_count"] == 1
+    assert hard["contribution_unfavorable_count"] == 1
+    soft_delta = replay._summary(evidence["soft_loss_before"] - evidence["soft_loss_after"])
+    assert soft_delta["near_zero_threshold"] == qualification.TOL
+
+
+def test_fidelity_comparison_is_exact_and_does_not_apply_a_tolerance() -> None:
+    assert replay._exact_equal({"x": [1.0, 2.0]}, {"x": [1.0, 2.0]}) == (True, None)
+    equal, reason = replay._exact_equal({"x": 1.0}, {"x": 1.0 + 1.0e-15})
+    assert not equal
+    assert reason == "root.x: 1.0 != 1.000000000000001"
+
+
+def test_adam_vector_geometry_reports_separate_base_floor_and_span_projections() -> None:
+    g336 = torch.tensor([1.0, 0.0], dtype=torch.float64)
+    gfloor = torch.tensor([0.0, 1.0], dtype=torch.float64)
+    scaled_floor = gfloor.clone()
+    aligned = g336 + scaled_floor
+    delta = torch.tensor([-2.0, -3.0], dtype=torch.float64)
+
+    result = replay._vector_geometry(g336, gfloor, scaled_floor, aligned, delta, 1.0)
+
+    assert result["cosine_delta_adam_to_minus_g336"] == 2.0 / (13.0**0.5)
+    assert result["cosine_delta_adam_to_minus_lambda_gfloor_raw"] == 3.0 / (13.0**0.5)
+    assert result["projection_delta_onto_normalized_minus_g336"] == 2.0
+    assert result["projection_delta_onto_normalized_minus_lambda_gfloor_raw"] == 3.0
+    assert result["residual_norm_orthogonal_to_span_g336_and_lambda_gfloor"] == 0.0
+    assert result["first_order_predicted_improvement_minus_g336_dot_delta"] == 2.0
+    assert result["first_order_predicted_improvement_minus_gfloor_raw_dot_delta"] == 3.0
+
+
+def test_synthetic_artifact_transaction_rehearsal_is_complete_and_write_once(tmp_path: Path) -> None:
+    result = replay.rehearse_artifact_transaction(parent=tmp_path)
+    assert result["status"] == "ARTIFACT_TRANSACTION_REHEARSAL_PASS"
+    assert result["atomic_directory_publication"] is True
+    assert result["artifact_count"] == len(replay._JSON_ARTIFACT_NAMES) + len(replay._ARRAY_ARTIFACT_NAMES) + 1
+
+
+def test_attempt_inventory_keys_match_repo_relative_attempt_paths(tmp_path: Path) -> None:
+    attempt = tmp_path / replay.ORIGINAL_ATTEMPT
+    attempt.mkdir(parents=True)
+    evidence = attempt / "report.json"
+    evidence.write_text("immutable", encoding="utf-8")
+
+    inventory = replay._attempt_inventory(tmp_path, attempt)
+
+    assert inventory == {
+        f"{replay.ORIGINAL_ATTEMPT.as_posix()}/report.json": replay.file_sha256(evidence)
+    }
+
+
+def _write_json(path: Path, value: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(value, sort_keys=True), encoding="utf-8")
+
+
+def _interrupted_replay_01_fixture(root: Path) -> tuple[Path, dict[str, str]]:
+    attempt = root / replay.PREVIOUS_REPLAY_DIR
+    source = {"execution_source_semantics_id": "source-semantics-01", "source_manifest_id": "source-01"}
+    authorization = {
+        "authorization_id": replay.AUTHORIZATION_ID,
+        "scope": "one interrupted evidence replay",
+        "bindings": {
+            "source_manifest_id": source["source_manifest_id"],
+            "execution_source_semantics_id": source["execution_source_semantics_id"],
+            "accepted_step9000_sha256": replay.n3.START_CHECKPOINT_SHA256,
+            "n3_contract_sha256": replay.n3.CONTRACT_SHA256,
+            "fit_protocol_sha256": replay.n3.PROTOCOL_SHA256,
+        },
+    }
+    preflight = {
+        "status": "READY",
+        "authorization_id": replay.AUTHORIZATION_ID,
+        "authorization": authorization,
+        "authorization_sha256": replay._sha_json(authorization),
+        "source_manifest": source,
+        "preflight_receipt": {"status": "READY"},
+        "accepted_step9000_sha256": replay.n3.START_CHECKPOINT_SHA256,
+        "n3_contract_sha256": replay.n3.CONTRACT_SHA256,
+        "fit_protocol_sha256": replay.n3.PROTOCOL_SHA256,
+    }
+    interruption = {
+        "state": "INTERRUPTED",
+        "preflight_sha256": "",
+        "authorization_id": replay.AUTHORIZATION_ID,
+        "execution_source_semantics_id": source["execution_source_semantics_id"],
+        "scientific_measurement_complete": False,
+        "evidence_bundle_published": False,
+        "persistent_model_updates": 0,
+        "checkpoint_writes": 0,
+        "qualification_attempt_02_created": False,
+    }
+    _write_json(root / replay.PREVIOUS_AUTHORIZATION_PATH, authorization)
+    _write_json(root / replay.PREVIOUS_PREFLIGHT_PATH, preflight)
+    _write_json(attempt / "source_manifest.json", source)
+    interruption_path = attempt / "replay_interruption.json"
+    _write_json(interruption_path, interruption)
+    interruption["preflight_sha256"] = replay.file_sha256(root / replay.PREVIOUS_PREFLIGHT_PATH)
+    _write_json(interruption_path, interruption)
+    _write_json(
+        attempt / "status.json",
+        {
+            "state": "INTERRUPTED",
+            "phase": "EVIDENCE_REPLAY",
+            "replay_interruption_sha256": replay.file_sha256(interruption_path),
+        },
+    )
+    return attempt, replay._attempt_inventory(root, attempt)
+
+
+def test_replay_02_uses_fresh_slots_and_preserves_interrupted_replay_01(tmp_path: Path) -> None:
+    assert replay.REPLAY_DIR.name == "failure_evidence_replay_02"
+    assert replay.PREFLIGHT_DIR.name == "preflight_02"
+    assert replay.PREFLIGHT_FAILURE_PATH.name == "preflight_failure_02.json"
+    assert replay.AUTHORIZATION_PATH.parts[-2:] == ("authorization_02", "replay_authorization.json")
+
+    attempt, before = _interrupted_replay_01_fixture(tmp_path)
+    identity = replay._verify_interrupted_replay_01(tmp_path)
+
+    assert identity["state"] == "INTERRUPTED"
+    assert identity["persistent_model_updates"] == 0
+    assert replay._attempt_inventory(tmp_path, attempt) == before
+    replay._verify_replay_02_slots_absent(tmp_path)
+
+
+def test_replay_02_rejects_tampered_interrupted_replay_01(tmp_path: Path) -> None:
+    attempt, _ = _interrupted_replay_01_fixture(tmp_path)
+    (attempt / "replay_interruption.json").write_text("{}", encoding="utf-8")
+
+    try:
+        replay._verify_interrupted_replay_01(tmp_path)
+    except replay.ReplayError as error:
+        assert "interruption receipt hash" in str(error)
+    else:
+        raise AssertionError("tampered replay_01 interruption was accepted")
+
+
+def test_replay_02_authorization_instance_binds_the_replacement_and_old_history() -> None:
+    previous = {"state": "INTERRUPTED", "interruption_sha256": "interruption-01"}
+    source = {"source_manifest_id": "source-02", "execution_source_semantics_id": "semantics-02"}
+    authorization = replay._new_authorization(source, {}, "population", {}, previous)
+
+    assert authorization["authorization_id"] == replay.AUTHORIZATION_ID
+    assert authorization["authorization_instance"] == "failure_evidence_replay_02"
+    assert authorization["bindings"]["replay_slot"] == "failure_evidence_replay_02"
+    assert authorization["bindings"]["interrupted_replay_01_identity"] == previous
+    assert authorization["bindings"]["execution_source_semantics_id"] == "semantics-02"
+
+
+def _gpu_snapshot(used_mib: int, *, name: str = "NVIDIA GeForce RTX 3060 Laptop GPU") -> dict[str, object]:
+    total_mib = 6144
+    return {
+        "index": 0,
+        "device_name": name,
+        "used_mib": used_mib,
+        "total_mib": total_mib,
+        "used_bytes": used_mib * 1024**2,
+        "total_bytes": total_mib * 1024**2,
+        "free_bytes": (total_mib - used_mib) * 1024**2,
+    }
+
+
+def test_resource_guard_uses_frozen_peak_and_reports_no_invented_reserve() -> None:
+    peak = int(2.416015625 * 1024**3)
+    result = replay._gpu_capacity_check(
+        _gpu_snapshot(1000),
+        expected_peak_bytes=peak,
+        qualified_total_bytes=6 * 1024**3 - 524288,
+        qualified_device_name="NVIDIA GeForce RTX 3060 Laptop GPU",
+    )
+
+    assert result["status"] == "PASS"
+    assert result["measured_scientific_peak_reserved_bytes"] == peak
+    assert result["execution_reserve_bytes"] == 0
+    assert result["headroom_after_peak_bytes"] > 0
+
+
+def test_late_gpu_guard_requires_two_sufficient_stable_observations() -> None:
+    parameters = {
+        "expected_peak_bytes": int(2.416015625 * 1024**3),
+        "qualified_total_bytes": 6 * 1024**3 - 524288,
+        "qualified_device_name": "NVIDIA GeForce RTX 3060 Laptop GPU",
+    }
+    stable = replay._late_gpu_quiescence_result(_gpu_snapshot(1000), _gpu_snapshot(1000), **parameters)
+    rising = replay._late_gpu_quiescence_result(_gpu_snapshot(1000), _gpu_snapshot(1001), **parameters)
+    crowded = replay._late_gpu_quiescence_result(_gpu_snapshot(3800), _gpu_snapshot(3800), **parameters)
+
+    assert stable["status"] == "PASS"
+    assert stable["observation_count"] == 2
+    assert rising["status"] == "RESOURCE_ABORTED"
+    assert rising["used_memory_growth_bytes"] == 1024**2
+    assert crowded["status"] == "RESOURCE_ABORTED"
+
+
+def test_late_resource_abort_records_terminal_slot_without_measurement(tmp_path: Path) -> None:
+    context = {
+        "root": tmp_path,
+        "attempt": tmp_path / replay.REPLAY_DIR,
+        "source": {"execution_source_semantics_id": "semantics-02"},
+        "authorization_sha256": "auth-sha",
+        "initial_gpu_guard": {"status": "PASS"},
+    }
+    context["attempt"].parent.mkdir(parents=True)
+    _write_json(tmp_path / replay.PREFLIGHT_PATH, {"status": "READY"})
+    result = replay._record_resource_abort(context, {"status": "RESOURCE_ABORTED", "used_memory_growth_bytes": 10})
+
+    record = json.loads((context["attempt"] / "resource_contention.json").read_text(encoding="utf-8"))
+    status = json.loads((context["attempt"] / "status.json").read_text(encoding="utf-8"))
+    assert result["status"] == "RESOURCE_ABORTED"
+    assert status["state"] == "RESOURCE_ABORTED"
+    assert record["scientific_measurement_started"] is False
+    assert record["temporary_updates"] == record["persistent_model_updates"] == 0
+    assert not (context["attempt"] / "evidence").exists()
+
+
+def test_execute_late_resource_abort_does_not_open_measurement(tmp_path: Path, monkeypatch) -> None:
+    snapshot = _gpu_snapshot(1000)
+    previous = {"state": "INTERRUPTED", "interruption_sha256": "old"}
+    preflight_context = {
+        "attempt": tmp_path / replay.REPLAY_DIR,
+        "source": {"execution_source_semantics_id": "semantics-02"},
+        "authorization_sha256": "auth-sha",
+        "initial_gpu_guard": {"status": "PASS"},
+    }
+
+    monkeypatch.setattr(replay, "_verify_replay_02_slots_absent", lambda root: None)
+    monkeypatch.setattr(replay, "_verify_interrupted_replay_01", lambda root: previous)
+    monkeypatch.setattr(replay, "_read_json", lambda path, name: {"cuda_runtime": {"total_memory_bytes": 1, "device_name": "GPU"}})
+    monkeypatch.setattr(replay, "_original_authorities", lambda root: ({"report": {}}, {}))
+    monkeypatch.setattr(replay, "_measured_peak_bytes", lambda original, preflight: (100, 1, "GPU"))
+    monkeypatch.setattr(replay, "_nvidia_smi_snapshot", lambda: snapshot)
+    monkeypatch.setattr(replay, "_gpu_capacity_check", lambda *args, **kwargs: {"status": "PASS"})
+
+    def ready_preflight(root, **kwargs):
+        (root / replay.PREFLIGHT_PATH).parent.mkdir(parents=True, exist_ok=True)
+        (root / replay.PREFLIGHT_PATH).write_text("{}", encoding="utf-8")
+        return {
+            **preflight_context,
+            "root": root,
+            "expected_peak_bytes": 100,
+            "qualified_total_bytes": 1000,
+            "qualified_device_name": "GPU",
+        }
+
+    monkeypatch.setattr(replay, "_preflight", ready_preflight)
+    monkeypatch.setattr(replay, "_late_gpu_quiescence_result", lambda *args, **kwargs: {"status": "RESOURCE_ABORTED"})
+    monkeypatch.setattr(replay, "_open_attempt", lambda context: (_ for _ in ()).throw(AssertionError("measurement opened after resource abort")))
+
+    result = replay.execute(repo_root=tmp_path)
+
+    assert result["status"] == "RESOURCE_ABORTED"
+    assert result["scientific_measurement_started"] is False
+    assert (tmp_path / replay.REPLAY_DIR / "resource_contention.json").is_file()
+    assert not (tmp_path / replay.REPLAY_DIR / "evidence").exists()

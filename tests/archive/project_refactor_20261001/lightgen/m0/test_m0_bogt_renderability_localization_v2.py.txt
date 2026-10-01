@@ -1,0 +1,1132 @@
+from __future__ import annotations
+
+import ast
+import json
+import multiprocessing
+import shutil
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+import torch
+from torch import nn
+
+from scripts.research.lightgen.m0 import diagnose_lightgen_2d_m0_bogt_renderability_localization_v1 as v1
+from scripts.research.lightgen.m0 import diagnose_lightgen_2d_m0_bogt_renderability_localization_v2 as v2
+from ldm_project.v2.application.research.shared.research_run_control import CORRECTNESS_INVARIANTS, IMPLEMENTATION_SELECTION, PHASES, RESOURCE_ENVELOPE, PREFLIGHT_READY, ResearchRunControl, ResearchRunIdentity
+
+
+def test_v2_execution_heartbeat_phases_follow_run_control_contract() -> None:
+    tree = ast.parse(Path(v2.__file__).read_text(encoding="utf-8"))
+    phases = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+            continue
+        if not isinstance(node.func.value, ast.Name) or node.func.value.id != "heartbeat" or node.func.attr != "update":
+            continue
+        phase = next((keyword.value for keyword in node.keywords if keyword.arg == "phase"), None)
+        if isinstance(phase, ast.Constant) and isinstance(phase.value, str):
+            phases.append(phase.value)
+        else:
+            assert isinstance(phase, ast.Name) and phase.id == "interrupted_phase"
+
+    assert phases
+    assert set(phases) <= PHASES
+
+
+def test_heartbeat_production_write_probe_round_trips_terminal_paths() -> None:
+    v2._preflight_heartbeat_write_probe()
+
+
+def _copy_review_04_inputs(root: Path) -> None:
+    source_root = v2._root()
+    paths = (
+        v2.V2_ROOT_CAUSE_REVIEW_04,
+        v2.HISTORICAL_V2_RUNS_ROOT / "preflight_09.json",
+        v2.HISTORICAL_V2_ATTEMPT_DIR / "execution_manifest.json",
+        v2.HISTORICAL_V2_ATTEMPT_DIR / "latest_status.json",
+        v2.HISTORICAL_V2_ATTEMPT_DIR / "progress.jsonl",
+        v2.HISTORICAL_V2_ATTEMPT_DIR / "source_manifest.json",
+        v2.HISTORICAL_V2_ATTEMPT_DIR / "status.json",
+    )
+    for relative_path in paths:
+        destination = root / relative_path
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source_root / relative_path, destination)
+
+
+def test_review_04_binds_old_invalid_attempt_and_new_unopened_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    root = tmp_path / "review-04-root"
+    _copy_review_04_inputs(root)
+    assert v2._validate_root_cause_review_04(root)["authorized_continuation"]["authorization_id"] == v2.AUTHORIZATION_ID
+    monkeypatch.setattr(v2, "ROOT_CAUSE_REVIEW_04_SHA256", "0" * 64)
+    with pytest.raises(v2.RenderabilityV2Error, match="heartbeat root-cause review 04 is missing or changed"):
+        v2._validate_root_cause_review_04(root)
+
+
+def _legacy_v1_update_counts() -> list[int]:
+    counts = [0] * v2.FIT_ROWS
+    for global_step in range(v1.UPDATE_COUNT_PER_ARM):
+        chunk = global_step % v2.CHUNK_COUNT
+        start = chunk * v2.BATCH_SIZE
+        for row in range(start, start + v2.BATCH_SIZE):
+            counts[row] += 1
+    return counts
+
+
+def test_regression_old_ols_schedule_gave_each_row_only_fifteen_updates() -> None:
+    old_counts = _legacy_v1_update_counts()
+    assert len(set(old_counts)) == 1
+    assert set(old_counts) == {15}
+
+
+def test_v2_ols_schedule_gives_every_row_exactly_three_hundred_updates() -> None:
+    counts = [0] * v2.FIT_ROWS
+    schedule = v2._ols_schedule()
+    for _, chunk in schedule:
+        for row in range(chunk * v2.BATCH_SIZE, (chunk + 1) * v2.BATCH_SIZE):
+            counts[row] += 1
+
+    assert len(schedule) == 6000
+    assert set(counts) == {300}
+    assert v2.GENERATOR_STEPS == 300
+    assert v2._ols_completed(v2.OLS_STEPS) == 6300
+
+
+def test_preflight_check_summary_preserves_both_three_update_evidence_records() -> None:
+    completed_checks = {
+        "generator_three_update_cuda": {"status": "PASS", "updates": 3},
+        "ols_three_update_cuda": {"status": "PASS", "updates": 3},
+        "step600_train_ols_bank_lineage": "PASS",
+        "step600_train_ols_spot_checks": {"status": "PASS"},
+        "generator_zero_update_negative_control": {"status": "PASS"},
+        "ols_zero_update_negative_control": {"status": "PASS"},
+        "recovery_equivalence": {"generator": "PASS", "ols": "PASS"},
+        "full_fit_observation_measurement_and_artifact_write_probe": "PASS",
+        "execution_heartbeat_write_probe": "PASS",
+    }
+
+    summary = v2._preflight_check_summary(
+        completed_checks,
+        {"generator_phase": {"status": "PASS"}},
+        {"train": 300, "protected": 0, "test": 0, "sealed": 0},
+    )
+
+    assert summary["generator_three_real_cuda_updates"]["updates"] == 3
+    assert summary["ols_three_real_cuda_updates"]["updates"] == 3
+    assert summary["zero_update_negative_controls"] == {"generator": "PASS", "ols": "PASS"}
+    assert summary["protected_test_sealed_reads"] == 0
+
+
+@pytest.mark.parametrize("missing", ["generator_three_update_cuda", "ols_three_update_cuda"])
+def test_preflight_check_summary_rejects_missing_real_update_evidence(missing: str) -> None:
+    completed_checks = {
+        "generator_three_update_cuda": {"status": "PASS", "updates": 3},
+        "ols_three_update_cuda": {"status": "PASS", "updates": 3},
+        "step600_train_ols_bank_lineage": "PASS",
+        "step600_train_ols_spot_checks": {"status": "PASS"},
+        "generator_zero_update_negative_control": {"status": "PASS"},
+        "ols_zero_update_negative_control": {"status": "PASS"},
+        "recovery_equivalence": {"generator": "PASS", "ols": "PASS"},
+        "full_fit_observation_measurement_and_artifact_write_probe": "PASS",
+        "execution_heartbeat_write_probe": "PASS",
+    }
+    del completed_checks[missing]
+
+    with pytest.raises(v2.RenderabilityV2Error, match="three-step CUDA update evidence is incomplete"):
+        v2._preflight_check_summary(completed_checks, {}, {"protected": 0, "test": 0, "sealed": 0})
+
+
+def test_preflight_08_production_receipt_failure_is_reproduced_from_saved_checks() -> None:
+    preflight = json.loads((v2._root() / v2.HISTORICAL_V2_RUNS_ROOT / "preflight_08.json").read_text(encoding="utf-8"))
+
+    with pytest.raises(v2.RenderabilityV2Error, match="three-step CUDA update evidence is incomplete"):
+        v2._preflight_check_summary(preflight["completed_checks"], {}, {"protected": 0, "test": 0, "sealed": 0})
+
+
+def test_ready_receipt_serializes_and_reloads_the_complete_production_summary() -> None:
+    completed_checks = {
+        "generator_three_update_cuda": {"status": "PASS", "updates": 3},
+        "ols_three_update_cuda": {"status": "PASS", "updates": 3},
+        "step600_train_ols_bank_lineage": "PASS",
+        "step600_train_ols_spot_checks": {"status": "PASS"},
+        "generator_zero_update_negative_control": {"status": "PASS"},
+        "ols_zero_update_negative_control": {"status": "PASS"},
+        "recovery_equivalence": {"generator": "PASS", "ols": "PASS"},
+        "full_fit_observation_measurement_and_artifact_write_probe": "PASS",
+        "execution_heartbeat_write_probe": "PASS",
+    }
+    checks = v2._preflight_check_summary(
+        completed_checks,
+        {"generator_phase": {"status": "PASS"}, "complex_ols": {"real": {"status": "PASS"}, "imag": {"status": "PASS"}}},
+        {"train": 300, "protected": 0, "test": 0, "sealed": 0},
+    )
+    receipt = v2._make_ready_receipt(
+        {"execution_source_semantics_id": "source-semantics"},
+        checks,
+        {"status": "PASS", "projected_total_seconds_including_preflight": 1200},
+        recheck_count=8,
+    )
+    restored = v2.PreflightReceipt.from_mapping(receipt.to_dict())
+
+    assert restored.to_dict() == receipt.to_dict()
+    assert restored.authorization_id == v2.AUTHORIZATION_ID
+    assert restored.checks[CORRECTNESS_INVARIANTS]["generator_three_real_cuda_updates"]["updates"] == 3
+    assert restored.checks[CORRECTNESS_INVARIANTS]["ols_three_real_cuda_updates"]["updates"] == 3
+
+
+def test_root_cause_review_03_binds_the_preflight_08_failure_and_auth06(tmp_path: Path) -> None:
+    source_root = v2._root()
+    required = (
+        v2.V2_ROOT_CAUSE_REVIEW,
+        v2.V2_ROOT_CAUSE_REVIEW_03,
+        v2.RESOURCE_REVIEW,
+        v2.RESOURCE_REVIEW_CORRECTION_02,
+        v2.HISTORICAL_V2_RUNS_ROOT / "preflight_08.json",
+    )
+    for relative in required:
+        destination = tmp_path / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source_root / relative, destination)
+
+    review = v2._validate_root_cause_review_03(tmp_path)
+
+    assert review["review_id"] == "M0_BOGT_RENDERABILITY_LOCALIZATION_V2_RECEIPT_SUMMARY_REVIEW_03"
+    assert review["reviewed_failure"]["stable_failure_id"] == "M0_V2_PREFLIGHT_READY_SUMMARY_MISSING_REAL_UPDATE_EVIDENCE"
+    assert review["authorization_binding"]["authorization_id"] == f"{v2.TASK_ID}:authorization:06"
+    assert review["authorization_binding"]["prior_preflight_elapsed_seconds"] == pytest.approx(119.6857777001278)
+    assert not (tmp_path / v2.ATTEMPT_DIR).exists()
+
+
+def test_root_cause_review_03_rejects_changed_preflight_08(tmp_path: Path) -> None:
+    source_root = v2._root()
+    required = (
+        v2.V2_ROOT_CAUSE_REVIEW,
+        v2.V2_ROOT_CAUSE_REVIEW_03,
+        v2.RESOURCE_REVIEW,
+        v2.RESOURCE_REVIEW_CORRECTION_02,
+        v2.HISTORICAL_V2_RUNS_ROOT / "preflight_08.json",
+    )
+    for relative in required:
+        destination = tmp_path / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source_root / relative, destination)
+    (tmp_path / v2.HISTORICAL_V2_RUNS_ROOT / "preflight_08.json").write_text("{}", encoding="utf-8")
+
+    with pytest.raises(v2.RenderabilityV2Error, match="reviewed preflight_08 digest changed"):
+        v2._validate_root_cause_review_03(tmp_path)
+
+
+def test_preflight_09_recheck_is_limited_to_one_new_engineering_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    runs = tmp_path / v2.HISTORICAL_V2_RUNS_ROOT
+    runs.mkdir(parents=True)
+    source_root = v2._root()
+    for sequence in range(1, 9):
+        shutil.copyfile(source_root / v2.HISTORICAL_V2_RUNS_ROOT / f"preflight_{sequence:02d}.json", runs / f"preflight_{sequence:02d}.json")
+    preflight = {
+        "status": v2.RUN_INVALID_HARNESS,
+        "classification": v2.RUN_INVALID_HARNESS,
+        "scientific_attempt_opened": False,
+        "failure_component": "artifact_manifest_write",
+        "failure_signature": "artifact_manifest_write:TypeError",
+        "source_manifest": {"source_manifest_id": "source-manifest-09", "execution_source_semantics_id": "source-semantics-09"},
+    }
+    preflight_path = runs / "preflight_09.json"
+    preflight_path.write_text(json.dumps(preflight), encoding="utf-8")
+    review = {
+        "schema": "m0_bogt_renderability_localization_v2_preflight_recheck_review.v1",
+        "task_id": v2.TASK_ID,
+        "review_id": "M0_BOGT_RENDERABILITY_LOCALIZATION_V2_PREFLIGHT_09_RECHECK_REVIEW_01",
+        "outer_gate": v2.OUTER_GATE,
+        "status": "TARGETED_RECHECK_AUTHORIZED",
+        "reviewed_failure": {
+            "path": (v2.HISTORICAL_V2_RUNS_ROOT / "preflight_09.json").as_posix(),
+            "sha256": v2.file_sha256(preflight_path),
+            "status": preflight["status"],
+            "failure_component": preflight["failure_component"],
+            "failure_signature": preflight["failure_signature"],
+            "source_manifest_id": "source-manifest-09",
+            "execution_source_semantics_id": "source-semantics-09",
+        },
+        "root_cause": {"stable_failure_id": "new-manifest-serialization-defect", "regression_test": {"passed": True}},
+        "authorized_continuation": {
+            "authorization_id": v2.LEGACY_AUTHORIZATION_ID_06,
+            "preflight_sequence": 10,
+            "attempt_id": v2.HISTORICAL_V2_ATTEMPT_ID,
+            "attempt_opened": False,
+            "one_recheck_only": True,
+            "same_signature_recheck": "stop",
+        },
+    }
+    review_path = runs / v2.PREFLIGHT_09_RECHECK_REVIEW.name
+    review_path.write_text(json.dumps(review), encoding="utf-8")
+    monkeypatch.setattr(v2, "PREFLIGHT_09_RECHECK_REVIEW_SHA256", v2.file_sha256(review_path))
+
+    assert v2._validate_preflight_09_recheck_review(tmp_path) == review
+    preflight["failure_component"] = "gradient_and_finite_difference"
+    preflight["failure_signature"] = "gradient_and_finite_difference:LocalizationError"
+    preflight_path.write_text(json.dumps(preflight), encoding="utf-8")
+    with pytest.raises(v2.RenderabilityV2Error, match="not authorized for this preflight_09 failure"):
+        v2._validate_preflight_09_recheck_review(tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("cursor", "expected"),
+    [(0, {"min": 0, "max": 0}), (19, {"min": 0, "max": 1}), (20, {"min": 1, "max": 1}), (21, {"min": 1, "max": 2}), (6000, {"min": 300, "max": 300})],
+)
+def test_ols_progress_reports_per_row_count_bounds(cursor: int, expected: dict[str, int]) -> None:
+    assert v2._ols_update_count_bounds(cursor) == expected
+
+
+def test_history_binding_rejects_tampered_v1_preflight_hash() -> None:
+    records = {
+        name: {"sha256": digest.lower()}
+        for name, (_, digest) in v2.HISTORICAL_INPUTS.items()
+    }
+    v2._validate_history_records(records, {name: digest for name, (_, digest) in v2.HISTORICAL_INPUTS.items()})
+    records["preflight_03"]["sha256"] = "0" * 64
+    with pytest.raises(v2.RenderabilityV2Error, match="historical lineage mismatch"):
+        v2._validate_history_records(records, {name: digest for name, (_, digest) in v2.HISTORICAL_INPUTS.items()})
+
+
+def test_repeat_failure_signature_requires_root_cause_review_across_rechecks() -> None:
+    assert v2._same_failure_signature("input_lineage:OutOfMemoryError", "cuda_resource:OutOfMemoryError")
+    assert v2._same_failure_signature("fixed_train_ols_encoding:ValueError", "fixed_train_ols_encoding:ValueError")
+    assert not v2._same_failure_signature("fixed_train_ols_encoding:ValueError", "gradient_and_finite_difference:AttributeError")
+
+
+def test_ols_finite_difference_steps_scale_to_selected_coordinate() -> None:
+    coordinate = 3.07088e-5
+    epsilons = v2._ols_finite_difference_epsilons(coordinate)
+
+    assert epsilons == pytest.approx(tuple(coordinate * factor for factor in (0.5, 0.25, 0.125)))
+    assert epsilons[0] > epsilons[1] > epsilons[2] > 0
+
+
+def test_registered_v1_operational_history_matches_fixed_digests() -> None:
+    history = v2._validate_historical_bindings(v2._root())
+    v2._validate_history_records(history, {name: digest for name, (_, digest) in v2.HISTORICAL_INPUTS.items()})
+    assert history["preflight_03"]["status"] == v2.RUN_INVALID_HARNESS
+
+
+def test_v2_root_cause_review_binds_repeated_preflight_and_new_authorization() -> None:
+    review = v2._validate_root_cause_review(v2._root(), allow_attempt=True)
+
+    assert review["review_id"] == "M0_BOGT_RENDERABILITY_LOCALIZATION_V2_NONCONTIGUOUS_PARAMETER_REVIEW_02"
+    assert review["previous_review"]["review_id"] == "M0_BOGT_RENDERABILITY_LOCALIZATION_V2_COORDINATE_SCALE_REVIEW_01"
+    assert review["reviewed_failure"]["stable_failure_id"] == "M0_V2_OLS_FD_NONCONTIGUOUS_RESHAPE_COPY"
+    assert review["reviewed_failure"]["status"] == "ROOT_CAUSE_REVIEW_REQUIRED"
+    assert review["authorized_continuation"]["authorization_id"] == f"{v2.TASK_ID}:authorization:03"
+    assert review["authorized_continuation"]["preflight_sequence"] == 6
+
+
+def test_resource_review_binds_preflight_06_and_allows_only_reviewed_attempt_resume(tmp_path: Path) -> None:
+    source_root = v2._root()
+    relative_files = (
+        v2.V2_ROOT_CAUSE_REVIEW_01,
+        v2.V2_ROOT_CAUSE_REVIEW,
+        v2.RESOURCE_REVIEW_01,
+        *(v2.HISTORICAL_V2_RUNS_ROOT / f"preflight_{sequence:02d}.json" for sequence in range(1, 7)),
+    )
+    for relative in relative_files:
+        destination = tmp_path / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source_root / relative, destination)
+
+    root = tmp_path
+    review = v2._validate_resource_review_01(root)
+    assert review["reviewed_stop"]["path"].endswith("preflight_06.json")
+    assert review["authorized_continuation"]["authorization_id"] == f"{v2.TASK_ID}:authorization:04"
+    assert review["attempt_01"]["exists"] is False
+
+    attempt = root / v2.HISTORICAL_V2_ATTEMPT_DIR
+    attempt.mkdir(parents=True, exist_ok=True)
+    try:
+        with pytest.raises(v2.RenderabilityV2Error, match="remain unopened before READY"):
+            v2._validate_resource_review_01(root)
+        assert v2._validate_resource_review_01(root, allow_attempt=True) == review
+    finally:
+        attempt.rmdir()
+
+
+def test_resource_review_rejects_changed_budget_authority(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    source_root = v2._root()
+    relative_files = (
+        v2.V2_ROOT_CAUSE_REVIEW_01,
+        v2.V2_ROOT_CAUSE_REVIEW,
+        v2.RESOURCE_REVIEW_01,
+        *(v2.HISTORICAL_V2_RUNS_ROOT / f"preflight_{sequence:02d}.json" for sequence in range(1, 7)),
+    )
+    for relative in relative_files:
+        destination = tmp_path / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source_root / relative, destination)
+
+    review_path = tmp_path / v2.RESOURCE_REVIEW_01
+    review = json.loads(review_path.read_text(encoding="utf-8"))
+    review["authorized_continuation"]["total_budget_seconds"] += 1
+    review_path.write_text(json.dumps(review, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    monkeypatch.setattr(v2, "RESOURCE_REVIEW_01_SHA256", v2.file_sha256(review_path))
+
+    with pytest.raises(v2.RenderabilityV2Error, match="resource review 01 or authorization binding changed"):
+        v2._validate_resource_review_01(tmp_path)
+
+
+def test_resource_review_02_binds_preflight_07_and_new_authorization(tmp_path: Path) -> None:
+    source_root = v2._root()
+    relative_files = (
+        v2.V2_ROOT_CAUSE_REVIEW_01,
+        v2.V2_ROOT_CAUSE_REVIEW,
+        v2.RESOURCE_REVIEW_01,
+        v2.RESOURCE_REVIEW_02,
+        v2.RESOURCE_REVIEW_CORRECTION,
+        v2.RESOURCE_REVIEW_CORRECTION_02,
+        v2.STEP600_TRAIN_OLS_REPORT_PATH,
+        v2.STEP600_TRAIN_OLS_SOURCE_MANIFEST_PATH,
+        *(v2.HISTORICAL_V2_RUNS_ROOT / f"preflight_{sequence:02d}.json" for sequence in range(1, 8)),
+    )
+    for relative in relative_files:
+        destination = tmp_path / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source_root / relative, destination)
+
+    review = v2._validate_resource_review(tmp_path)
+
+    assert review["reviewed_stop"]["path"].endswith("preflight_07.json")
+    assert review["authorized_continuation"]["authorization_id"] == f"{v2.TASK_ID}:authorization:05"
+    assert review["authorized_continuation"]["preflight_sequence"] == 8
+    assert review["attempt_01"]["exists"] is False
+
+
+def test_resource_review_02_rejects_tampered_correction_02_payload(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    source_root = v2._root()
+    relative_files = (
+        v2.V2_ROOT_CAUSE_REVIEW_01,
+        v2.V2_ROOT_CAUSE_REVIEW,
+        v2.RESOURCE_REVIEW_01,
+        v2.RESOURCE_REVIEW_02,
+        v2.RESOURCE_REVIEW_CORRECTION,
+        v2.RESOURCE_REVIEW_CORRECTION_02,
+        v2.STEP600_TRAIN_OLS_REPORT_PATH,
+        v2.STEP600_TRAIN_OLS_SOURCE_MANIFEST_PATH,
+        *(v2.HISTORICAL_V2_RUNS_ROOT / f"preflight_{sequence:02d}.json" for sequence in range(1, 8)),
+    )
+    for relative in relative_files:
+        destination = tmp_path / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source_root / relative, destination)
+
+    correction_path = tmp_path / v2.RESOURCE_REVIEW_CORRECTION_02
+    correction = json.loads(correction_path.read_text(encoding="utf-8"))
+    correction["corrected_step600_bank_binding"]["bank_sha256"] = "0" * 64
+    correction_path.write_text(json.dumps(correction, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    monkeypatch.setattr(v2, "RESOURCE_REVIEW_CORRECTION_02_SHA256", v2.file_sha256(correction_path))
+
+    with pytest.raises(v2.RenderabilityV2Error, match="resource review 02 or authorization binding changed"):
+        v2._validate_resource_review(tmp_path)
+
+
+def test_step600_ols_bank_selects_rows_in_canonical_train_order() -> None:
+    train_indices = torch.tensor([11, 23, 47, 59])
+    bank = torch.arange(8, dtype=torch.float32).reshape(4, 2).to(torch.complex64)
+    selected_indices = torch.tensor([59, 11, 47])
+
+    selected = v2._select_train_ols_rows(bank, train_indices, selected_indices)
+
+    assert torch.equal(selected, bank[[3, 0, 2]])
+
+
+def test_step600_ols_bank_rejects_indices_outside_train_order() -> None:
+    train_indices = torch.tensor([11, 23, 47, 59])
+    bank = torch.zeros((4, 2), dtype=torch.complex64)
+
+    with pytest.raises(v2.RenderabilityV2Error, match="selected row is absent from canonical TRAIN order"):
+        v2._select_train_ols_rows(bank, train_indices, torch.tensor([60]))
+
+
+def test_step600_ols_authority_rejects_changed_report_binding(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    source_root = v2._root()
+    report_path = tmp_path / v2.STEP600_TRAIN_OLS_REPORT_PATH
+    source_path = tmp_path / v2.STEP600_TRAIN_OLS_SOURCE_MANIFEST_PATH
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(source_root / v2.STEP600_TRAIN_OLS_REPORT_PATH, report_path)
+    shutil.copyfile(source_root / v2.STEP600_TRAIN_OLS_SOURCE_MANIFEST_PATH, source_path)
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    source = json.loads(source_path.read_text(encoding="utf-8"))
+    context = SimpleNamespace(data_identity=source["config_identity"]["data_identity"])
+
+    authority = v2._validate_step600_train_ols_authority(tmp_path, context)
+    assert authority["selected_step"] == 600
+    assert authority["shape"] == [55_000, 100]
+
+    report["artifacts"]["train_ols"]["sha256"] = "0" * 64
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+    monkeypatch.setattr(v2, "STEP600_TRAIN_OLS_REPORT_SHA256", v2.file_sha256(report_path))
+    with pytest.raises(v2.RenderabilityV2Error, match="accepted step600 OLS report, source manifest, or TRAIN data identity changed"):
+        v2._validate_step600_train_ols_authority(tmp_path, context)
+
+
+def test_step600_ols_bank_loader_rejects_malformed_payload_before_row_use(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(v2, "safe_torch_load", lambda *args, **kwargs: {"schema": "tampered", "z": torch.zeros((1, 1), dtype=torch.complex64)})
+    context = SimpleNamespace(data_identity={"identity": "fixed"}, train_indices=torch.arange(55_000))
+    authority = {"schema": "m0_step600_train_ols.v1", "data_identity": context.data_identity, "source_manifest_id": v2.STEP600_TRAIN_OLS_SOURCE_MANIFEST_ID}
+
+    with pytest.raises(v2.RenderabilityV2Error, match="bank lineage, shape, or canonical order changed"):
+        v2._load_step600_train_ols_bank(tmp_path, context, authority)
+
+
+def test_step600_ols_spot_check_compares_each_class_in_fit_and_observation() -> None:
+    class _Runtime(nn.Module):
+        def forward_from_image(self, images: torch.Tensor) -> SimpleNamespace:
+            values = images[:, 0, 0, 0].to(torch.complex64).unsqueeze(1).expand(-1, 100)
+            return SimpleNamespace(z_ols=SimpleNamespace(coefficients=values))
+
+    class _Consumer:
+        def __init__(self) -> None:
+            self.runtime = _Runtime()
+
+    values = torch.arange(20, dtype=torch.float32)
+    fit_images = values[:10].reshape(10, 1, 1, 1)
+    observe_images = values[10:].reshape(10, 1, 1, 1)
+    data = {
+        "fit_images": fit_images,
+        "fit_labels": torch.arange(10),
+        "fit_ols": values[:10].to(torch.complex64).unsqueeze(1).expand(-1, 100).clone(),
+        "observe_images": observe_images,
+        "observe_labels": torch.arange(10),
+        "observe_ols": values[10:].to(torch.complex64).unsqueeze(1).expand(-1, 100).clone(),
+    }
+
+    result = v2._verify_step600_train_ols_spot_checks(_Consumer(), data)
+
+    assert result["rows_checked"] == 20
+    assert result["max_absolute_error"] == 0.0
+
+    data["observe_ols"][4, 0] += 1.0
+    with pytest.raises(v2.RenderabilityV2Error, match="step600 OLS bank spot check differs"):
+        v2._verify_step600_train_ols_spot_checks(_Consumer(), data)
+
+
+def test_tampered_v2_root_cause_review_is_rejected_before_execution(tmp_path: Path) -> None:
+    source_root = v2._root()
+    relative_files = (
+        v2.V2_ROOT_CAUSE_REVIEW_01,
+        v2.V2_ROOT_CAUSE_REVIEW,
+        v2.HISTORICAL_V2_RUNS_ROOT / "preflight_01.json",
+        v2.HISTORICAL_V2_RUNS_ROOT / "preflight_02.json",
+        v2.HISTORICAL_V2_RUNS_ROOT / "preflight_03.json",
+        v2.HISTORICAL_V2_RUNS_ROOT / "preflight_04.json",
+        v2.HISTORICAL_V2_RUNS_ROOT / "preflight_05.json",
+    )
+    for relative in relative_files:
+        destination = tmp_path / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source_root / relative, destination)
+
+    review_path = tmp_path / v2.V2_ROOT_CAUSE_REVIEW
+    review_path.write_text(review_path.read_text(encoding="utf-8") + " ", encoding="utf-8")
+
+    with pytest.raises(v2.RenderabilityV2Error, match="second root-cause review digest changed"):
+        v2._validate_root_cause_review(tmp_path)
+
+
+def test_v2_root_cause_review_rejects_previous_authorization(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    source_root = v2._root()
+    relative_files = (
+        v2.V2_ROOT_CAUSE_REVIEW_01,
+        v2.V2_ROOT_CAUSE_REVIEW,
+        v2.HISTORICAL_V2_RUNS_ROOT / "preflight_01.json",
+        v2.HISTORICAL_V2_RUNS_ROOT / "preflight_02.json",
+        v2.HISTORICAL_V2_RUNS_ROOT / "preflight_03.json",
+        v2.HISTORICAL_V2_RUNS_ROOT / "preflight_04.json",
+        v2.HISTORICAL_V2_RUNS_ROOT / "preflight_05.json",
+    )
+    for relative in relative_files:
+        destination = tmp_path / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source_root / relative, destination)
+
+    review_path = tmp_path / v2.V2_ROOT_CAUSE_REVIEW
+    review = json.loads(review_path.read_text(encoding="utf-8"))
+    review["authorized_continuation"]["authorization_id"] = f"{v2.TASK_ID}:authorization:01"
+    review_path.write_text(json.dumps(review, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    monkeypatch.setattr(v2, "ROOT_CAUSE_REVIEW_SHA256", v2.file_sha256(review_path))
+
+    with pytest.raises(v2.RenderabilityV2Error, match="root-cause review authorization changed"):
+        v2._validate_root_cause_review(tmp_path)
+
+
+def test_ready_preflight_rejects_source_and_authority_drift() -> None:
+    identity = ResearchRunIdentity(
+        task_id=v2.TASK_ID,
+        run_id=v2.RUN_ID,
+        trajectory_id=v2.TRAJECTORY_ID,
+        semantic_authority_id=v2.SEMANTIC_AUTHORITY_ID,
+        data_role="TRAIN",
+        config_identity={"fit_rows": 200},
+        model_identity="test-model",
+        optimizer_identity={"test": "optimizer"},
+        sampler_identity={"test": "sampler"},
+        execution_source_semantics_id="source-semantics-test",
+        source_manifest_id="source-manifest-test",
+        scientific_attempt_id=v2.ATTEMPT_ID,
+    )
+    source = {"execution_source_semantics_id": "source-semantics-test", "source_manifest_id": "source-manifest-test"}
+    config = {"fit_rows": 200}
+    authorities = {"step600": "fixed"}
+    preflight = {"source_manifest": source, "run_config": config, "run_identity": identity.to_dict(), "input_authorities": authorities}
+    v2._validate_preflight_binding(preflight, source=source, config=config, identity=identity, authority_hashes=authorities)
+
+    v2._validate_preflight_binding({**preflight, "source_manifest": {**source, "source_manifest_id": "provenance-only-drift"}}, source=source, config=config, identity=identity, authority_hashes=authorities)
+    with pytest.raises(v2.RenderabilityV2Error, match="execution source semantics changed"):
+        v2._validate_preflight_binding({**preflight, "source_manifest": {**source, "execution_source_semantics_id": "tampered"}}, source=source, config=config, identity=identity, authority_hashes=authorities)
+    with pytest.raises(v2.RenderabilityV2Error, match="input authorities changed"):
+        v2._validate_preflight_binding({**preflight, "input_authorities": {"step600": "tampered"}}, source=source, config=config, identity=identity, authority_hashes=authorities)
+
+
+def _resume_fixture(tmp_path: Path, *, state: str = v2.RUN_INTERRUPTED) -> tuple[Path, ResearchRunIdentity, dict[str, str], dict[str, int], dict[str, str], v2.PreflightReceipt]:
+    source = {"execution_source_semantics_id": "source-semantics-test", "source_manifest_id": "source-manifest-test"}
+    config = {"fit_rows": 200}
+    authority_hashes = {"step600": "accepted-step600"}
+    identity = ResearchRunIdentity(
+        task_id=v2.TASK_ID,
+        run_id=v2.RUN_ID,
+        trajectory_id=v2.TRAJECTORY_ID,
+        semantic_authority_id=v2.SEMANTIC_AUTHORITY_ID,
+        data_role="TRAIN",
+        config_identity=config,
+        model_identity="test-model",
+        optimizer_identity={"test": "optimizer"},
+        sampler_identity={"test": "sampler"},
+        execution_source_semantics_id=source["execution_source_semantics_id"],
+        source_manifest_id=source["source_manifest_id"],
+        scientific_attempt_id=v2.ATTEMPT_ID,
+    )
+    receipt = v2.PreflightReceipt(
+        source_semantics_id=source["execution_source_semantics_id"],
+        authorization_id=v2.AUTHORIZATION_ID,
+        checks={CORRECTNESS_INVARIANTS: {"status": "PASS"}, RESOURCE_ENVELOPE: {"status": "PASS"}, IMPLEMENTATION_SELECTION: {"status": "FIXED"}},
+        status=PREFLIGHT_READY,
+    )
+    target = tmp_path / "attempt_01"
+    target.mkdir()
+    v2._save_status(target / "status.json", state, "INTERRUPTED", completed_updates=25)
+    (target / "source_manifest.json").write_text(json.dumps(source), encoding="utf-8")
+    manifest = {
+        "schema": "m0_bogt_renderability_localization_execution_manifest.v2",
+        "task_id": v2.TASK_ID,
+        "outer_gate": v2.OUTER_GATE,
+        "authorization_id": v2.AUTHORIZATION_ID,
+        "run_identity": identity.to_dict(),
+        "source_manifest": source,
+        "preflight_receipt": receipt.to_dict(),
+        "run_config": config,
+        "input_authorities": authority_hashes,
+        "execution_started_epoch": 123.0,
+    }
+    (target / "execution_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    return target, identity, source, config, authority_hashes, receipt
+
+
+def test_resume_entry_accepts_reviewed_attempt_only_with_matching_identity_and_state(tmp_path: Path) -> None:
+    target, identity, source, config, authorities, receipt = _resume_fixture(tmp_path)
+    status, resumed_identity, resumed_source, started = v2._validate_resume_attempt(
+        target, identity=identity, source=source, config=config, authority_hashes=authorities, receipt=receipt
+    )
+    assert status["state"] == v2.RUN_INTERRUPTED
+    assert resumed_identity == identity
+    assert resumed_source == source
+    assert started == 123.0
+
+    v2._save_status(target / "status.json", v2.RUN_COMPLETED, "COMPLETE")
+    with pytest.raises(v2.RenderabilityV2Error, match="only an interrupted or crash-stale"):
+        v2._validate_resume_attempt(target, identity=identity, source=source, config=config, authority_hashes=authorities, receipt=receipt)
+
+
+def test_resume_entry_rejects_manifest_authority_drift(tmp_path: Path) -> None:
+    target, identity, source, config, authorities, receipt = _resume_fixture(tmp_path)
+    manifest_path = target / "execution_manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["input_authorities"]["step600"] = "tampered"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(v2.RenderabilityV2Error, match="source, preflight, configuration, or input authority changed"):
+        v2._validate_resume_attempt(target, identity=identity, source=source, config=config, authority_hashes=authorities, receipt=receipt)
+
+
+def _hold_attempt_lock(root: Path, acquired, release) -> None:
+    with v2._attempt_execution_lock(root):
+        acquired.set()
+        release.wait(timeout=10)
+
+
+def test_execution_lock_rejects_live_process_and_releases_after_process_exit(tmp_path: Path) -> None:
+    context = multiprocessing.get_context("spawn")
+    acquired = context.Event()
+    release = context.Event()
+    process = context.Process(target=_hold_attempt_lock, args=(tmp_path, acquired, release))
+    process.start()
+    try:
+        assert acquired.wait(timeout=10)
+        with pytest.raises(v2.RenderabilityV2Error, match="another process holds"):
+            with v2._attempt_execution_lock(tmp_path):
+                pytest.fail("a competing process acquired the execution lock")
+    finally:
+        release.set()
+        process.join(timeout=10)
+        if process.is_alive():
+            process.terminate()
+            process.join(timeout=5)
+    assert process.exitcode == 0
+    with v2._attempt_execution_lock(tmp_path):
+        pass
+
+
+def test_fixed_ols_selection_uses_bound_bank_without_reencoding() -> None:
+    class _Ledger:
+        def __init__(self) -> None:
+            self.records: list[tuple[str, int]] = []
+
+        def record(self, role: str, rows: int) -> None:
+            self.records.append((role, rows))
+
+    context = SimpleNamespace(images=torch.rand(300, 1, 4, 4), labels=torch.arange(300) % 10, train_indices=torch.arange(300), ledger=_Ledger())
+    fit_indices = torch.arange(200)
+    observation_indices = torch.arange(200, 300)
+    train_ols_bank = torch.arange(300 * 100, dtype=torch.float32).reshape(300, 100).to(torch.complex64)
+
+    data = v2._fixed_data(context, fit_indices, observation_indices, train_ols_bank, torch.device("cpu"))
+
+    assert torch.equal(data["fit_ols"], train_ols_bank[:200])
+    assert torch.equal(data["observe_ols"], train_ols_bank[200:])
+    assert data["fit_ols"].shape == (200, 100)
+    assert data["observe_ols"].shape == (100, 100)
+    assert context.ledger.records == [(v1.bogt.TRAIN_ROLE, 300)]
+
+
+def _target_batch(batch: int) -> torch.Tensor:
+    target = torch.zeros((batch, 1, 28, 28))
+    target[:, :, 7:21, 9:19] = 1.0
+    return target
+
+
+def test_finite_difference_uses_perturbed_ols_parameter_not_gradient(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _ScaledRuntime(nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.encoder = nn.Module()
+            self.generator = nn.Module()
+            self.encoder.register_parameter("phase", nn.Parameter(torch.tensor(0.2)))
+            self.generator.register_parameter("phase", nn.Parameter(torch.tensor(0.1)))
+
+        def forward_from_ols(self, coefficients: torch.Tensor) -> SimpleNamespace:
+            level = 1000.0 * coefficients.real[:, 0] + 600.0 * coefficients.imag[:, 0] + self.generator.phase
+            raw = level.reshape(-1, 1, 1, 1).expand(-1, 1, 200, 200)
+            return SimpleNamespace(raw_intensity=raw)
+
+    class _ScaledConsumer:
+        def __init__(self) -> None:
+            self.runtime = _ScaledRuntime()
+
+        def load_trainable_state_dict(self, state: dict[str, torch.Tensor]) -> None:
+            self.runtime.load_state_dict(state)
+
+    captured: dict[str, tuple[int, str, float, tuple[float, ...]]] = {}
+
+    def capture_finite_difference(
+        parameter: torch.Tensor,
+        index: int,
+        component: str,
+        analytic: float,
+        epsilon_candidates: tuple[float, ...],
+        objective: object,
+        *,
+        name: str,
+    ) -> dict[str, float]:
+        del objective
+        captured[name] = (index, component, analytic, epsilon_candidates)
+        return {"epsilon": epsilon_candidates[0]}
+
+    monkeypatch.setattr(v1, "_finite_difference_component", capture_finite_difference)
+    coefficients = torch.full((v2.BATCH_SIZE, 100), complex(3.0e-5, 1.6e-5), dtype=torch.complex64)
+    v2._finite_difference_checks(_ScaledConsumer(), coefficients, _target_batch(v2.BATCH_SIZE), torch.device("cpu"))
+
+    for component in ("real", "imag"):
+        index, observed_component, analytic, epsilons = captured[f"OLS {component}"]
+        assert observed_component == component
+        selected = coefficients.reshape(-1)[index]
+        parameter_coordinate = selected.real if component == "real" else selected.imag
+        expected = v2._ols_finite_difference_epsilons(float(parameter_coordinate))
+        assert epsilons == pytest.approx(expected)
+        assert abs(analytic) > 100.0 * abs(float(parameter_coordinate))
+
+
+def test_ols_finite_difference_perturbs_noncontiguous_complex_parameter() -> None:
+    class _ScaledRuntime(nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.encoder = nn.Module()
+            self.generator = nn.Module()
+            self.encoder.register_parameter("phase", nn.Parameter(torch.tensor(0.2)))
+            self.generator.register_parameter("phase", nn.Parameter(torch.tensor(0.1)))
+
+        def forward_from_ols(self, coefficients: torch.Tensor) -> SimpleNamespace:
+            level = 1000.0 * coefficients.real[:, 0] + 600.0 * coefficients.imag[:, 0] + self.generator.phase
+            raw = level.reshape(-1, 1, 1, 1).expand(-1, 1, 200, 200)
+            return SimpleNamespace(raw_intensity=raw)
+
+    class _ScaledConsumer:
+        def __init__(self) -> None:
+            self.runtime = _ScaledRuntime()
+
+        def load_trainable_state_dict(self, state: dict[str, torch.Tensor]) -> None:
+            self.runtime.load_state_dict(state)
+
+    coefficients = torch.full((100, v2.BATCH_SIZE), complex(3.0e-5, 1.6e-5), dtype=torch.complex64).transpose(0, 1)
+    original = coefficients.clone()
+    assert not coefficients.is_contiguous()
+
+    result = v2._finite_difference_checks(_ScaledConsumer(), coefficients, _target_batch(v2.BATCH_SIZE), torch.device("cpu"))
+
+    assert torch.equal(coefficients, original)
+    assert result["complex_ols"]["real"]["finite_difference"]["relative_error"] <= 0.20
+    assert result["complex_ols"]["imag"]["finite_difference"]["relative_error"] <= 0.20
+
+
+class _FakeRuntime(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        self.grad_enabled_during_forward: list[bool] = []
+        self.encoder = nn.Module()
+        self.generator = nn.Module()
+        self.encoder.register_parameter("phase", nn.Parameter(torch.tensor(0.2)))
+        self.generator.register_parameter("phase", nn.Parameter(torch.tensor(0.1)))
+
+    def forward_from_ols(self, coefficients: torch.Tensor) -> SimpleNamespace:
+        self.grad_enabled_during_forward.append(torch.is_grad_enabled())
+        level = coefficients.real[:, 0] + self.generator.phase
+        raw = level.reshape(-1, 1, 1, 1).expand(-1, 1, 200, 200)
+        return SimpleNamespace(raw_intensity=raw, raw_camera=SimpleNamespace(intensity=raw))
+
+
+class _FakeConsumer:
+    def __init__(self) -> None:
+        self.runtime = _FakeRuntime()
+
+
+def test_frozen_observation_forward_does_not_build_autograd_graph() -> None:
+    consumer = _FakeConsumer()
+    coefficients = torch.ones((2, 1), dtype=torch.complex64)
+
+    raw = v2._raw_from_ols(consumer, coefficients)
+
+    assert raw.device.type == "cpu"
+    assert not raw.requires_grad
+    assert consumer.runtime.grad_enabled_during_forward == [False]
+
+
+def test_existing_measurement_and_contact_artifacts_are_verified_without_overwrite(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    measurement = tmp_path / "measurements.pt"
+    payload = {"source_manifest_id": "source", "raw": torch.arange(4, dtype=torch.float32)}
+    v2._save_measurement_once(measurement, payload)
+    original_measurement_digest = v2.file_sha256(measurement)
+    v2._save_measurement_once(measurement, payload)
+    with pytest.raises(v2.RenderabilityV2Error, match="differs from the recovered measurement"):
+        v2._save_measurement_once(measurement, {**payload, "raw": torch.zeros(4)})
+    assert v2.file_sha256(measurement) == original_measurement_digest
+
+    contact = tmp_path / "contact.png"
+    monkeypatch.setattr(v1, "_save_contact_sheet", lambda path, *_args, **_kwargs: Path(path).write_bytes(b"same"))
+    view = torch.zeros((1, 1, 28, 28))
+    labels = torch.tensor([0])
+    v2._save_contact_sheet_once(contact, view, labels, scale=1.0, title="test", directory=tmp_path)
+    original_contact_digest = v2.file_sha256(contact)
+    v2._save_contact_sheet_once(contact, view, labels, scale=1.0, title="test", directory=tmp_path)
+    monkeypatch.setattr(v1, "_save_contact_sheet", lambda path, *_args, **_kwargs: Path(path).write_bytes(b"changed"))
+    with pytest.raises(v2.RenderabilityV2Error, match="existing V2 contact sheet changed"):
+        v2._save_contact_sheet_once(contact, view, labels, scale=1.0, title="test", directory=tmp_path)
+    assert v2.file_sha256(contact) == original_contact_digest
+
+
+def test_gradient_update_for_one_ols_row_is_independent_of_other_rows() -> None:
+    def update(second_target: float) -> torch.Tensor:
+        consumer = _FakeConsumer()
+        for parameter in consumer.runtime.parameters():
+            parameter.requires_grad_(False)
+        runtime_before = v1._state_snapshot(consumer.runtime)
+        rows = [nn.Parameter(torch.tensor([0.25 + 0.0j], dtype=torch.complex64)) for _ in range(v2.FIT_ROWS)]
+        optimizers = [v1._adam([row]) for row in rows]
+        targets = _target_batch(v2.BATCH_SIZE)
+        targets[1, :, 7:21, 9:19].fill_(second_target)
+        v2._train_ols_rows_step(consumer, optimizers, rows, targets, range(v2.BATCH_SIZE))
+        assert all(parameter.grad is None for parameter in consumer.runtime.parameters())
+        assert all(torch.equal(value, v1._state_snapshot(consumer.runtime)[name]) for name, value in runtime_before.items())
+        assert len(optimizers[0].state) == 1
+        assert len(optimizers[1].state) == 1
+        assert len(optimizers[10].state) == 0
+        return torch.stack([rows[0].detach(), rows[1].detach()])
+
+    first = update(0.2)
+    second = update(0.9)
+    assert torch.equal(first[0], second[0])
+    assert not torch.equal(first[1], second[1])
+
+
+def test_independent_ols_row_optimizers_resume_at_the_same_next_batch(tmp_path: Path) -> None:
+    def make_state() -> tuple[_FakeConsumer, list[nn.Parameter], list[torch.optim.Optimizer]]:
+        consumer = _FakeConsumer()
+        for parameter in consumer.runtime.parameters():
+            parameter.requires_grad_(False)
+        rows = [nn.Parameter(torch.tensor([0.25 + 0.0j], dtype=torch.complex64)) for _ in range(v2.FIT_ROWS)]
+        optimizers = [v1._adam([row]) for row in rows]
+        return consumer, rows, optimizers
+
+    targets = _target_batch(v2.BATCH_SIZE)
+    rows_index = range(v2.BATCH_SIZE)
+    consumer, rows, optimizers = make_state()
+    for _ in range(3):
+        v2._train_ols_rows_step(consumer, optimizers, rows, targets, rows_index)
+    expected_rows = [row.detach().clone() for row in rows]
+    expected_states = [optimizer.state_dict() for optimizer in optimizers]
+
+    consumer, rows, optimizers = make_state()
+    v2._train_ols_rows_step(consumer, optimizers, rows, targets, rows_index)
+    payload = {
+        "phase": "OLS_INPUT_ONLY",
+        "cursor": 1,
+        "trainable_parameter_state": {name: value.detach() for name, value in consumer.runtime.named_parameters()},
+        "complex_ols_rows": [row.detach() for row in rows],
+        "optimizer_states": [optimizer.state_dict() for optimizer in optimizers],
+        "rng_state": {"torch_cpu": torch.get_rng_state()},
+    }
+    source_id = "independent-ols-row-source"
+    v2._save_recovery_checkpoint(tmp_path / "ols_recovery", payload, source_manifest_id=source_id)
+    restored = v2._load_recovery_checkpoint(tmp_path / "ols_recovery", source_manifest_id=source_id)
+    for row, optimizer, saved_row, saved_optimizer in zip(rows, optimizers, restored["complex_ols_rows"], restored["optimizer_states"], strict=True):
+        row.data.copy_(saved_row)
+        optimizer.load_state_dict(saved_optimizer)
+    for _ in range(2):
+        v2._train_ols_rows_step(consumer, optimizers, rows, targets, rows_index)
+
+    assert all(torch.allclose(row.detach(), expected, rtol=0, atol=1e-7) for row, expected in zip(rows, expected_rows, strict=True))
+    assert all(v1._tree_equal(optimizer.state_dict(), expected, atol=1e-7) for optimizer, expected in zip(optimizers, expected_states, strict=True))
+
+
+def test_generator_arm_updates_generator_and_keeps_encoder_frozen() -> None:
+    consumer = _FakeConsumer()
+    params = dict(consumer.runtime.named_parameters())
+    params["encoder.phase"].requires_grad_(False)
+    params["generator.phase"].requires_grad_(True)
+    before_encoder = params["encoder.phase"].detach().clone()
+    before_generator = params["generator.phase"].detach().clone()
+    z = torch.ones((2, 1), dtype=torch.complex64) * (0.25 + 0.0j)
+    optimizer = v1._adam([params["generator.phase"]])
+
+    v2._train_generator_step(consumer, optimizer, z, _target_batch(2), torch.tensor([0, 1]))
+
+    assert torch.equal(before_encoder, params["encoder.phase"].detach())
+    assert not torch.equal(before_generator, params["generator.phase"].detach())
+    assert params["encoder.phase"].grad is None
+
+
+def test_recovery_checkpoint_round_trip_preserves_next_generator_update(tmp_path: Path) -> None:
+    consumer = _FakeConsumer()
+    params = dict(consumer.runtime.named_parameters())
+    generator = params["generator.phase"]
+    params["encoder.phase"].requires_grad_(False)
+    generator.requires_grad_(True)
+    z = torch.ones((2, 1), dtype=torch.complex64) * (0.25 + 0.0j)
+    targets = _target_batch(2)
+    indices = torch.tensor([0, 1])
+
+    uninterrupted_optimizer = v1._adam([generator])
+    for _ in range(3):
+        v2._train_generator_step(consumer, uninterrupted_optimizer, z, targets, indices)
+    expected_parameter = generator.detach().clone()
+    expected_optimizer = uninterrupted_optimizer.state_dict()
+
+    generator.data.fill_(0.1)
+    resumed_optimizer = v1._adam([generator])
+    for _ in range(2):
+        v2._train_generator_step(consumer, resumed_optimizer, z, targets, indices)
+    payload = {
+        "phase": "GENERATOR_ONLY",
+        "cursor": 2,
+        "generator_phase": generator.detach(),
+        "trainable_parameter_state": {"encoder.phase": params["encoder.phase"].detach(), "generator.phase": generator.detach()},
+        "optimizer_state": resumed_optimizer.state_dict(),
+        "data_binding": {"fixed_train": "same"},
+        "rng_state": {"torch_cpu": torch.get_rng_state()},
+    }
+    source_id = "v2-source-test"
+    pointer = v2._save_recovery_checkpoint(tmp_path / "recovery", payload, source_manifest_id=source_id)
+    restored = v2._load_recovery_checkpoint(tmp_path / "recovery", source_manifest_id=source_id)
+
+    generator.data.copy_(restored["generator_phase"])
+    resumed_optimizer.load_state_dict(restored["optimizer_state"])
+    v2._train_generator_step(consumer, resumed_optimizer, z, targets, indices)
+    assert torch.allclose(generator.detach(), expected_parameter, rtol=0, atol=1e-7)
+    assert v1._tree_equal(resumed_optimizer.state_dict(), expected_optimizer, atol=1e-7)
+    assert pointer["sha256"]
+    with pytest.raises(v2.RenderabilityV2Error, match="pointer is not bound"):
+        v2._load_recovery_checkpoint(tmp_path / "recovery", source_manifest_id="tampered-source")
+
+
+def _passing_metrics() -> dict[str, object]:
+    return {
+        "pixel": {"relative_reduction": {"foreground": 0.50, "background": 0.50}},
+        "E_D": {"macro_recall": 0.50, "per_class_recall": [0.10] * 10},
+    }
+
+
+def _failing_metrics() -> dict[str, object]:
+    return {
+        "pixel": {"relative_reduction": {"foreground": 0.49, "background": 0.50}},
+        "E_D": {"macro_recall": 0.50, "per_class_recall": [0.10] * 10},
+    }
+
+
+def test_four_classification_boundaries_use_the_fixed_gate() -> None:
+    passing = _passing_metrics()
+    failing = _failing_metrics()
+    assert v1._classify_arms(passing, passing) == "BOTH_RENDERABILITY_UPPER_BOUNDS_REACHED"
+    assert v1._classify_arms(passing, failing) == "FIXED_OLS_TO_GENERATOR_MAPPING_REACHED"
+    assert v1._classify_arms(failing, passing) == "GENERATOR_REGION_REACHED_ONLY_BY_OLS_OPTIMIZATION"
+    assert v1._classify_arms(failing, failing) == "NEITHER_BOUNDED_UPPER_BOUND_REACHED"
+
+
+def test_terminal_report_and_status_are_written_from_production_finalizer(tmp_path: Path) -> None:
+    identity = ResearchRunIdentity(
+        task_id=v2.TASK_ID,
+        run_id=v2.RUN_ID,
+        trajectory_id=v2.TRAJECTORY_ID,
+        semantic_authority_id=v2.SEMANTIC_AUTHORITY_ID,
+        data_role="TRAIN",
+        config_identity={"test": True},
+        model_identity="test-model",
+        optimizer_identity={"test": "optimizer"},
+        sampler_identity={"test": "sampler"},
+        execution_source_semantics_id="source-semantics-test",
+        source_manifest_id="source-manifest-test",
+        scientific_attempt_id=v2.ATTEMPT_ID,
+    )
+    control = ResearchRunControl(identity, v2.AUTHORIZATION_ID)
+    receipt = v2.PreflightReceipt(
+        source_semantics_id="source-semantics-test",
+        authorization_id=v2.AUTHORIZATION_ID,
+        checks={CORRECTNESS_INVARIANTS: {"status": "PASS"}, RESOURCE_ENVELOPE: {"status": "PASS"}, IMPLEMENTATION_SELECTION: {"status": "FIXED"}},
+        status=PREFLIGHT_READY,
+    )
+    control.mark_preflight_ready(receipt)
+    control.start_execution()
+    target = tmp_path / "attempt_01"
+    control.open_scientific_attempt(target, v2.ATTEMPT_ID, receipt)
+    classification = "NEITHER_BOUNDED_UPPER_BOUND_REACHED"
+    sheet_names = ("step600_fixed_ols", "step900_read_only", "generator_start", "generator_end", "ols_start", "ols_end", "real_train_fit")
+    artifacts: dict[str, object] = {"contact_sheets": {}}
+    tensor_path = target / "renderability_raw_tensors.pt"
+    tensor_path.write_bytes(b"measurement-evidence")
+    artifacts["measurement_tensors"] = {"path": tensor_path.name, "sha256": v2.file_sha256(tensor_path), "size_bytes": tensor_path.stat().st_size}
+    contact_sheets: dict[str, object] = {}
+    for name in sheet_names:
+        path = target / f"{name}_contact_sheet.png"
+        path.write_bytes(name.encode("utf-8"))
+        contact_sheets[name] = {"path": path.name, "sha256": v2.file_sha256(path), "size_bytes": path.stat().st_size}
+    artifacts["contact_sheets"] = contact_sheets
+    report = {
+        "schema": v2.REPORT_SCHEMA,
+        "task_id": v2.TASK_ID,
+        "outer_gate": v2.OUTER_GATE,
+        "classification": classification,
+        "run_identity": identity.to_dict(),
+        "source_manifest": {"source_manifest_id": "source-manifest-test"},
+        "preflight": {"status": PREFLIGHT_READY},
+        "data_identity": {"role": "TRAIN"},
+        "data_reads": {"protected": 0, "test": 0, "sealed": 0},
+        "update_accounting": {"generator_global_updates": 300, "ols_global_minibatch_updates": 6000},
+        "step600_fixed_input_baseline": {},
+        "step600_ols_bank_spot_checks": {"rows_checked": 20},
+        "step900_read_only_comparison": {},
+        "real_train_E_D_qualification": {},
+        "generator_only_arm": {},
+        "ols_input_only_arm": {},
+        "gate_checks": {},
+        "artifacts": artifacts,
+        "display_scale": {"per_image_rescaling": False},
+        "claim_boundary": {"fixed_train_pairs_only": True},
+    }
+    v2._save_status(target / "status.json", v2.RUNNING, "FINALIZING", completed_updates=6300, finalization_phase="CONTACT_SHEETS_COMPLETE")
+
+    v2._finalize_completed(target, report, classification, control, completed_updates=6300)
+
+    assert v2._read_json(target / "report.json") == report
+    status = v2._read_json(target / "status.json")
+    assert status["state"] == v2.RUN_COMPLETED
+    assert status["completed_updates"] == 6300
+    assert status["ols_updates_per_sample"] == 300
+    assert control.state == v2.RUN_COMPLETED
+    written_at = status["updated_at"]
+    v2._finalize_completed(target, report, classification, control, completed_updates=6300)
+    assert v2._read_json(target / "status.json")["updated_at"] == written_at
+
+
+def test_terminal_finalizer_rejects_missing_artifact_before_writing_report(tmp_path: Path) -> None:
+    identity = ResearchRunIdentity(
+        task_id=v2.TASK_ID,
+        run_id=v2.RUN_ID,
+        trajectory_id=v2.TRAJECTORY_ID,
+        semantic_authority_id=v2.SEMANTIC_AUTHORITY_ID,
+        data_role="TRAIN",
+        config_identity={"test": True},
+        model_identity="test-model",
+        optimizer_identity={"test": "optimizer"},
+        sampler_identity={"test": "sampler"},
+        execution_source_semantics_id="source-semantics-test",
+        source_manifest_id="source-manifest-test",
+        scientific_attempt_id=v2.ATTEMPT_ID,
+    )
+    control = ResearchRunControl(identity, v2.AUTHORIZATION_ID)
+    receipt = v2.PreflightReceipt(
+        source_semantics_id="source-semantics-test",
+        authorization_id=v2.AUTHORIZATION_ID,
+        checks={CORRECTNESS_INVARIANTS: {"status": "PASS"}, RESOURCE_ENVELOPE: {"status": "PASS"}, IMPLEMENTATION_SELECTION: {"status": "FIXED"}},
+        status=PREFLIGHT_READY,
+    )
+    control.mark_preflight_ready(receipt)
+    control.start_execution()
+    target = tmp_path / "attempt_01"
+    control.open_scientific_attempt(target, v2.ATTEMPT_ID, receipt)
+    classification = "NEITHER_BOUNDED_UPPER_BOUND_REACHED"
+    contact_sheets: dict[str, object] = {}
+    for name in ("step600_fixed_ols", "step900_read_only", "generator_start", "generator_end", "ols_start", "ols_end", "real_train_fit"):
+        path = target / f"{name}_contact_sheet.png"
+        path.write_bytes(name.encode("utf-8"))
+        contact_sheets[name] = {"path": path.name, "sha256": v2.file_sha256(path), "size_bytes": path.stat().st_size}
+    report = {
+        "schema": v2.REPORT_SCHEMA,
+        "task_id": v2.TASK_ID,
+        "outer_gate": v2.OUTER_GATE,
+        "classification": classification,
+        "run_identity": identity.to_dict(),
+        "source_manifest": {},
+        "preflight": {},
+        "data_identity": {},
+        "data_reads": {},
+        "update_accounting": {},
+        "step600_fixed_input_baseline": {},
+            "step600_ols_bank_spot_checks": {"rows_checked": 20},
+        "step900_read_only_comparison": {},
+        "real_train_E_D_qualification": {},
+        "generator_only_arm": {},
+        "ols_input_only_arm": {},
+        "gate_checks": {},
+        "artifacts": {"measurement_tensors": {"path": "missing.pt", "sha256": "0" * 64, "size_bytes": 1}, "contact_sheets": contact_sheets},
+        "display_scale": {},
+        "claim_boundary": {},
+    }
+    v2._save_status(target / "status.json", v2.RUNNING, "FINALIZING", completed_updates=6300, finalization_phase="CONTACT_SHEETS_COMPLETE")
+
+    with pytest.raises(v2.RenderabilityV2Error, match="references a missing or changed artifact"):
+        v2._finalize_completed(target, report, classification, control, completed_updates=6300)
+
+    assert not (target / "report.json").exists()
+    assert control.state == "SCIENTIFIC_ACTIVE"

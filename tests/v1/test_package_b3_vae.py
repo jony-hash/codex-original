@@ -13,7 +13,7 @@ from ldm_project.v1.teacher.software_vae import (
 )
 
 
-CONFIG = "configs/research/teacher_first_stage_recovery_v1.yaml"
+CONFIG = "configs/research/capacity/teacher_first_stage_recovery_v1.yaml"
 
 
 def test_b3_config_and_model_contract_are_locked() -> None:

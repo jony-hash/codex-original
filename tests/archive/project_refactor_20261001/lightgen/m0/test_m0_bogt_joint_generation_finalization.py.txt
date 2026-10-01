@@ -1,0 +1,137 @@
+from __future__ import annotations
+
+import copy
+from types import SimpleNamespace
+
+import pytest
+import torch
+
+from ldm_project.v2.application.research.shared.research_run_control import HeartbeatWriter
+from scripts.research.lightgen.m0 import finalize_lightgen_2d_m0_bogt_joint_generation_canary_v1 as finalizer
+
+
+def _endpoint_fixture() -> tuple[dict[str, object], dict[str, object]]:
+    state: dict[str, object] = {
+        "schema": finalizer.canary.CHECKPOINT_SCHEMA,
+        "task_id": finalizer.TASK_ID,
+        "outer_gate": finalizer.OUTER_GATE,
+        "authorization_id": finalizer.AUTHORIZATION_ID,
+        "parent_checkpoint_sha256": finalizer.canary.START_CHECKPOINT_SHA256,
+        "source_manifest_id": "source-id",
+        "source_manifest": {"source_manifest_id": "source-id"},
+        "run_identity": {"scientific_attempt_id": finalizer.canary.ATTEMPT_ID, "source_manifest_id": "source-id"},
+        "step": finalizer.canary.END_STEP,
+        "data_identity": {"split": "fixed"},
+        "trainable_parameter_state": {"encoder.phase": torch.tensor([1.0]), "generator.phase": torch.tensor([2.0])},
+        "optimizer_state": {"state": {0: {"step": torch.tensor(1200)}, 1: {"step": torch.tensor(1200)}}},
+        "optimizer_configuration": {"name": "Adam"},
+        "sampler_state": {"cursor": 1200, "steps": 1200},
+        "rng_state": {"cpu": torch.tensor([1], dtype=torch.uint8)},
+        "frozen_runtime_state_sha256": "frozen",
+        "references": {"identity": "references"},
+        "weights": {"identity": "weights"},
+        "training_history": [{"step": index} for index in range(1200)],
+        "read_ledger": {"train": 6000, "dev": 5000},
+        "cumulative_elapsed_seconds": 232.25,
+    }
+    recovery_state = copy.deepcopy(state)
+    recovery_state["cumulative_elapsed_seconds"] = 232.24
+    wrapper = {"step": 1200, "source_manifest_id": "source-id", "authorization_id": finalizer.AUTHORIZATION_ID, "run_identity": state["run_identity"], "payload": {"scientific_state": recovery_state}}
+    return state, wrapper
+
+
+def test_endpoint_must_match_latest_recovery_state_and_adam_step() -> None:
+    endpoint, wrapper = _endpoint_fixture()
+
+    result = finalizer._validate_endpoint_pair(endpoint, wrapper, endpoint_hash="endpoint-hash")
+
+    assert result["endpoint_global_step"] == 1200
+    assert result["adam_internal_steps"] == [1200, 1200]
+    assert result["endpoint_matches_latest_recovery_state"] is True
+    assert result["comparison_excludes_only_elapsed_counter"] is True
+
+
+def test_endpoint_rejects_mismatched_recovery_cursor() -> None:
+    endpoint, wrapper = _endpoint_fixture()
+    wrapper["payload"]["scientific_state"]["sampler_state"]["cursor"] = 1199
+
+    with pytest.raises(finalizer.FinalizationError, match="differs from endpoint in sampler_state"):
+        finalizer._validate_endpoint_pair(endpoint, wrapper, endpoint_hash="endpoint-hash")
+
+
+def test_endpoint_rejects_nonterminal_adam_step() -> None:
+    endpoint, wrapper = _endpoint_fixture()
+    endpoint["optimizer_state"]["state"][1]["step"] = torch.tensor(1199)
+    wrapper["payload"]["scientific_state"]["optimizer_state"]["state"][1]["step"] = torch.tensor(1199)
+
+    with pytest.raises(finalizer.FinalizationError, match="Adam internal steps are not both 1200"):
+        finalizer._validate_endpoint_pair(endpoint, wrapper, endpoint_hash="endpoint-hash")
+
+
+def test_frozen_measurement_consumer_never_creates_optimizer(tmp_path, monkeypatch) -> None:
+    class Runtime(torch.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.phase = torch.nn.Parameter(torch.tensor([1.0]))
+
+    class WeightsObject:
+        def identity(self):
+            return {"identity": "weights"}
+
+    class Consumer:
+        def __init__(self, *, device, propagation_grid_size) -> None:
+            self.runtime = Runtime().to(device)
+            self.device = torch.device(device)
+            self.references = None
+            self.weights = None
+            self.frozen_state_sha256 = "frozen"
+
+        def bind_references(self, references, *, for_scientific) -> None:
+            self.references = references
+
+        def bind_weights(self, weights, *, for_scientific) -> None:
+            self.weights = weights
+
+        def load_trainable_state_dict(self, state) -> None:
+            with torch.no_grad():
+                self.runtime.phase.copy_(state["generator.phase"].to(self.device))
+
+        def create_optimizer(self):
+            pytest.fail("measurement-only recovery must not create an optimizer")
+
+    class Identity:
+        def identity(self):
+            return {"identity": "references"}
+
+    monkeypatch.setattr(finalizer.bogt, "LightGen2DChenBOGTComplexOLSTrainingConsumer", Consumer)
+    monkeypatch.setattr(finalizer.bogt.FrozenBogtReferences, "from_payload", classmethod(lambda cls, payload: Identity()))
+    monkeypatch.setattr(finalizer.bogt.BogtLossWeights, "from_payload", classmethod(lambda cls, payload: WeightsObject()))
+    monkeypatch.setattr(finalizer.parent, "_load_references", lambda *args, **kwargs: Identity())
+    monkeypatch.setattr(finalizer.parent, "_load_weights", lambda *args, **kwargs: WeightsObject())
+    context = SimpleNamespace(
+        root=tmp_path,
+        data_identity={"split": "fixed"},
+        training_evaluator=torch.nn.Linear(1, 1),
+        independent_evaluator=torch.nn.Linear(1, 1),
+    )
+    endpoint = {
+        "references": {"identity": "references"},
+        "weights": {"identity": "weights"},
+        "frozen_runtime_state_sha256": "frozen",
+        "trainable_parameter_state": {"generator.phase": torch.tensor([3.0])},
+    }
+
+    result = finalizer._build_frozen_consumer(context, endpoint)
+
+    assert torch.equal(result.runtime.phase.detach().cpu(), torch.tensor([3.0]))
+    assert result.runtime.phase.requires_grad is False
+    assert result.runtime.phase.grad is None
+
+
+def test_finalization_uses_registered_post_training_heartbeat_phase(tmp_path) -> None:
+    heartbeat = HeartbeatWriter(tmp_path, "m0-bogt-joint-generation-canary-v1", total_steps=600)
+
+    heartbeat.update(state="RUNNING", phase="POST_TRAIN_COLLECTION", step=600, latest_losses={"global_step": 1200}, force=True)
+
+    with pytest.raises(ValueError, match="heartbeat phase is invalid"):
+        heartbeat.update(state="RUNNING", phase="POST_TRAIN_OLS_COLLECTION", step=600, latest_losses={}, force=True)

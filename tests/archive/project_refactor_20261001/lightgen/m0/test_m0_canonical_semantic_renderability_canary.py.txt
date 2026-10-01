@@ -1,0 +1,659 @@
+from __future__ import annotations
+
+import copy
+import gc
+import shutil
+from contextlib import nullcontext
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
+
+import pytest
+import torch
+from torch import nn
+
+from ldm_project.v2.application.research.shared.research_run_control import CORRECTNESS_INVARIANTS, IMPLEMENTATION_SELECTION, PREFLIGHT_READY, RESOURCE_ENVELOPE, HeartbeatWriter, PreflightReceipt, ResearchRunIdentity
+from scripts.research.lightgen.m0 import execute_lightgen_2d_m0_canonical_semantic_renderability_canary_v1 as canary
+
+
+def _metrics(*, improved: bool) -> dict[str, Any]:
+    base = 0.5 if improved else 0.4
+    return {name: {"macro_recall": base} for name in ("E_S", "E_I", "E_C")}
+
+
+def _fit_losses(*, improved: bool, partial: bool = False) -> dict[str, float]:
+    values = {name: 0.5 if improved else 1.0 for name in ("E_S", "E_I", "E_C")}
+    if partial:
+        values["E_S"] = 0.5
+        values["E_C"] = 1.1
+    return values
+
+
+def test_fixed_fit_scheduler_covers_300_updates_without_row_reordering() -> None:
+    assert canary._fit_batch_indices(0, torch.device("cpu")).tolist() == list(range(10))
+    assert canary._fit_batch_indices(19, torch.device("cpu")).tolist() == list(range(190, 200))
+    assert canary._fit_batch_indices(20, torch.device("cpu")).tolist() == list(range(10))
+    counts = torch.zeros(canary.FIT_ROWS, dtype=torch.long)
+    for update in range(canary.UPDATE_COUNT):
+        counts.index_add_(0, canary._fit_batch_indices(update, torch.device("cpu")), torch.ones(canary.BATCH_SIZE, dtype=torch.long))
+    assert torch.equal(counts, torch.full_like(counts, 15))
+
+
+def test_preregistered_classification_cases_are_disjoint() -> None:
+    fit0 = {"training_evaluator_feature_losses": _fit_losses(improved=False)}
+    fit_improved = {"training_evaluator_feature_losses": _fit_losses(improved=True)}
+    fit_partial = {"training_evaluator_feature_losses": _fit_losses(improved=False, partial=True)}
+    obs0 = _metrics(improved=False)
+    obs_improved = _metrics(improved=True)
+    positive = {"observed_macro_recall_delta": 0.06, "ci95": [0.01, 0.10]}
+    null = {"observed_macro_recall_delta": 0.0, "ci95": [-0.01, 0.01]}
+    negative = {"observed_macro_recall_delta": -0.01, "ci95": [-0.02, 0.0]}
+    safe = {"passed": True}
+    unsafe = {"passed": False}
+
+    assert canary._classify(fit0, fit_improved, obs0, obs0, positive, safe, True) == canary.CASE_A
+    assert canary._classify(fit0, fit0, obs0, obs_improved, null, safe, True) == canary.CASE_B
+    assert canary._classify(fit0, fit_improved, obs0, obs0, negative, safe, True) == canary.CASE_C
+    assert canary._classify(fit0, fit0, obs0, obs0, null, safe, True) == canary.CASE_D
+    assert canary._classify(fit0, fit_improved, obs0, obs0, positive, unsafe, True) == canary.CASE_E
+    assert canary._classify(fit0, fit_partial, obs0, obs0, null, safe, True) == canary.CASE_F
+
+
+def test_paired_class_bootstrap_is_seeded_and_row_paired() -> None:
+    labels = torch.arange(10).repeat_interleave(5)
+    before = torch.zeros(50, dtype=torch.bool)
+    after = before.clone()
+    after[::5] = True
+    first = canary._paired_bootstrap(labels, before, after, replicates=101, seed=47)
+    second = canary._paired_bootstrap(labels, before, after, replicates=101, seed=47)
+    assert first == second
+    assert first["observed_macro_recall_delta"] == pytest.approx(0.2)
+    assert first["ci95"][0] <= 0.2 <= first["ci95"][1]
+
+
+def test_recovery_requires_exact_checkpoint_restore_and_tolerates_float32_replay_roundoff() -> None:
+    expected = {"phase": torch.tensor([0.25, 1.0]), "adam": {"step": 4.0}, "trace": [{"loss": 0.5}]}
+    replayed = {"phase": torch.tensor([0.25 + 2.9802322e-8, 1.0]), "adam": {"step": 4.0}, "trace": [{"loss": 0.5 + 2.0e-8}]}
+    assert canary._tree_equal(expected, expected)
+    assert canary._tree_close(
+        replayed,
+        expected,
+        rtol=canary.RECOVERY_UPDATE_RTOL,
+        atol=canary.RECOVERY_UPDATE_ATOL,
+    )
+    outside = {"phase": torch.tensor([0.25 + 2.0e-6, 1.0]), "adam": {"step": 4.0}, "trace": [{"loss": 0.5}]}
+    assert not canary._tree_close(
+        outside,
+        expected,
+        rtol=canary.RECOVERY_UPDATE_RTOL,
+        atol=canary.RECOVERY_UPDATE_ATOL,
+    )
+    assert not canary._tree_close(
+        {"phase": torch.ones(2)},
+        {"phase": "wrong type"},
+        rtol=canary.RECOVERY_UPDATE_RTOL,
+        atol=canary.RECOVERY_UPDATE_ATOL,
+    )
+    assert not canary._tree_equal({"phase": torch.ones(2)}, {"phase": "wrong type"})
+
+
+def test_v2_report_histogram_is_reconstructed_from_fixed_row_predictions() -> None:
+    rows = [0] * 10 + [8] * 73 + [2] * 12 + [4] * 5
+    histogram = canary._prediction_histogram(rows)
+    confusion = [[0] * 10 for _ in range(10)]
+    for label, prediction in enumerate(rows):
+        confusion[label // 10][prediction] += 1
+    column_totals = [sum(confusion[row][column] for row in range(10)) for column in range(10)]
+    assert histogram == column_totals
+    with pytest.raises(canary.CanaryError, match="outside the ten-class range"):
+        canary._prediction_histogram([10])
+
+
+def test_phase_meter_initializes_cuda_context_before_resetting_peak_stats(monkeypatch: pytest.MonkeyPatch) -> None:
+    events: list[str] = []
+    snapshot = {
+        "total_bytes": 100,
+        "free_bytes": 90,
+        "device_used_bytes": 10,
+        "torch_allocated_bytes": 0,
+        "torch_reserved_bytes": 0,
+        "torch_peak_allocated_bytes": 0,
+        "torch_peak_reserved_bytes": 0,
+    }
+
+    def reset_peak_memory_stats() -> None:
+        assert events[:2] == ["current_device", "device_scope"]
+        events.append("reset_peaks")
+
+    monkeypatch.setattr(canary.torch.cuda, "current_device", lambda: events.append("current_device") or 0)
+    monkeypatch.setattr(canary.torch.cuda, "device", lambda _device: events.append("device_scope") or nullcontext())
+    monkeypatch.setattr(canary.torch.cuda, "reset_peak_memory_stats", reset_peak_memory_stats)
+    monkeypatch.setattr(canary, "_device_snapshot", lambda _device: dict(snapshot))
+
+    with canary._phase_meter(torch.device("cuda:0"), "test_phase") as phase:
+        assert phase["phase"] == "test_phase"
+        events.append("measured_work")
+
+    assert events == ["current_device", "device_scope", "reset_peaks", "measured_work"]
+
+
+def test_fixed_ols_power_vector_preserves_the_accepted_five_plane_order() -> None:
+    def field(value: torch.Tensor) -> Any:
+        return SimpleNamespace(tensor=value, plane=SimpleNamespace(pixel_pitch_m=(1.0, 1.0)))
+
+    result = SimpleNamespace(
+        generator_input_field=field(torch.tensor([[[2.0 + 0.0j]]], dtype=torch.complex64, requires_grad=True)),
+        generator_records=(
+            field(torch.tensor([[[3.0 + 0.0j]]], dtype=torch.complex64, requires_grad=True)),
+            field(torch.tensor([[[4.0 + 0.0j]]], dtype=torch.complex64, requires_grad=True)),
+        ),
+    )
+    encoder_powers = torch.tensor([[5.0, 6.0]], dtype=torch.float64)
+
+    combined = canary._fixed_ols_power_vector(result, encoder_powers)
+
+    assert combined.shape == (1, 5)
+    assert torch.equal(combined, torch.tensor([[5.0, 6.0, 4.0, 9.0, 16.0]], dtype=torch.float64))
+
+
+def test_model_loader_checks_frozen_bogt_binding_on_consumer(monkeypatch: pytest.MonkeyPatch) -> None:
+    class Runtime(nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.encoder = nn.Module()
+            self.encoder.register_parameter("phase", nn.Parameter(torch.zeros(1)))
+            self.generator = nn.Module()
+            self.generator.register_parameter("phase", nn.Parameter(torch.zeros(1)))
+
+    class Consumer:
+        def __init__(self) -> None:
+            self.runtime = Runtime()
+            self.references = object()
+            self.weights = object()
+
+    consumer = Consumer()
+    evaluators = [nn.Linear(1, 1) for _ in range(4)]
+    monkeypatch.setattr(canary.m0_rescue, "_load_models", lambda _root, _authorities, _device: (consumer, None, *evaluators))
+    monkeypatch.setattr(canary.three, "_frozen_runtime_state", lambda _consumer: {"frozen": torch.zeros(1)})
+
+    loaded = canary._load_run_models(
+        Path("."),
+        {"authorities": {"m0_authorities": {"references": {"identity": "accepted"}}}},
+        torch.device("cpu"),
+    )
+
+    assert loaded[0] is consumer
+    assert loaded[1] is evaluators[0]
+    assert loaded[2] is evaluators[1]
+    assert loaded[3] is evaluators[2]
+    assert loaded[4] is evaluators[3]
+    assert torch.equal(loaded[5]["runtime"]["frozen"], torch.zeros(1))
+    assert loaded[6].param_groups[0]["params"] == [dict(consumer.runtime.named_parameters())["generator.phase"]]
+    assert consumer.references is not None and consumer.weights is not None
+    assert not hasattr(consumer.runtime, "references")
+
+
+def test_fixed_population_authority_rejects_tampered_row_binding(monkeypatch: pytest.MonkeyPatch) -> None:
+    root = canary._root()
+    monkeypatch.setattr(canary, "_root", lambda: root)
+    original_history = canary._preflight_repair_history
+    monkeypatch.setattr(canary, "_preflight_repair_history", lambda path, resume: original_history(path, resume=False))
+    inputs = canary._load_inputs(root)
+    assert inputs["fit_indices"].numel() == 200
+    assert inputs["observation_indices"].numel() == 100
+    assert not bool(torch.isin(inputs["fit_indices"], inputs["observation_indices"]).any())
+    assert bool(torch.isin(inputs["fit_indices"], inputs["context"].train_indices).all())
+    config = canary._run_config(inputs)
+    assert config["authorization_id"] == canary.AUTHORIZATION_ID
+    assert config["run_preflight_record_path"] == canary.CLEAN_ATTEMPT_02_PREFLIGHT_PATH.as_posix()
+    assert config["updates"] == 300
+    del inputs
+
+    original_loader = canary.safe_torch_load
+    target_path = (root / canary.V2_TENSORS).resolve()
+
+    def tampered_loader(path: Path, **kwargs: Any) -> Any:
+        payload = original_loader(path, **kwargs)
+        if Path(path).resolve() == target_path:
+            payload = dict(payload)
+            payload["fit_indices"] = payload["fit_indices"].clone()
+            payload["fit_indices"][0] = (payload["fit_indices"][0] + 1) % 60_000
+        return payload
+
+    monkeypatch.setattr(canary, "safe_torch_load", tampered_loader)
+    with pytest.raises(canary.CanaryError, match="fit-bank row identity or order changed"):
+        canary._load_inputs(root)
+
+
+def test_v2_endpoint_predictions_must_match_report_confusion_matrix(monkeypatch: pytest.MonkeyPatch) -> None:
+    root = canary._root()
+    monkeypatch.setattr(canary, "_root", lambda: root)
+    original_history = canary._preflight_repair_history
+    monkeypatch.setattr(canary, "_preflight_repair_history", lambda path, resume: original_history(path, resume=False))
+    original_read = canary._json_read
+    report_path = (root / canary.V2_REPORT).resolve()
+
+    def tampered_read(path: Path) -> dict[str, Any]:
+        value = original_read(path)
+        if Path(path).resolve() == report_path:
+            value = copy.deepcopy(value)
+            predictions = value["generator_only_arm"]["observation_end"]["per_sample"]["E_D_prediction"]
+            predictions[0] = (predictions[0] + 1) % 10
+        return value
+
+    monkeypatch.setattr(canary, "_json_read", tampered_read)
+    with pytest.raises(canary.CanaryError, match="predictions disagree with the confusion matrix"):
+        canary._load_inputs(root)
+
+
+def test_attempt_step0_dev_record_is_bound_to_exact_dev_rows_and_predictions() -> None:
+    labels = torch.arange(10, dtype=torch.long).repeat(500)
+    context = SimpleNamespace(labels=labels, development_indices=torch.arange(5000, dtype=torch.long))
+    inputs = {"context": context}
+    source = {"source_manifest_id": "manifest", "execution_source_semantics_id": "semantics"}
+    metrics = canary._evaluator_predictions(labels, labels.clone(), label_source="canonical DEV label")
+    measurement = {"step": 0, "data_role": "DEV", "rows": 5000, "L_rec": 0.1, "L_op": 0.2, "E_D": metrics}
+    vectors = {"labels": labels, "predictions": labels.clone(), "correct": torch.ones(5000, dtype=torch.bool)}
+    stage = {"phase": "attempt_step0_full_DEV_E_D_baseline", "dev_rows": 5000}
+
+    record = canary._step0_dev_record(measurement, vectors, source, inputs, stage)
+    restored_metrics, restored_vectors, restored_stage = canary._validate_step0_dev_record(record, source, inputs)
+
+    assert restored_metrics == measurement
+    assert torch.equal(restored_vectors["predictions"], labels)
+    assert restored_stage == stage
+    tampered = copy.deepcopy(record)
+    tampered["vectors"]["predictions"][0] = 1
+    with pytest.raises(canary.CanaryError, match="fixed DEV rows"):
+        canary._validate_step0_dev_record(tampered, source, inputs)
+
+
+def test_exact_failed_preflight_is_consumed_as_history_for_one_repaired_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository_root = canary._root()
+    root = tmp_path
+    runs_root = root / canary.RUNS_ROOT
+    runs_root.mkdir(parents=True)
+    for preflight in (
+        canary.PREFLIGHT_PATH,
+        canary.REPAIRED_PREFLIGHT_PATH,
+        canary.CURRENT_PREFLIGHT_PATH,
+        canary.NEXT_PREFLIGHT_PATH,
+        canary.FINAL_PREFLIGHT_PATH,
+        canary.AFTER_FINAL_PREFLIGHT_PATH,
+        canary.NEXT_REPAIR_PREFLIGHT_PATH,
+        canary.CURRENT_REPAIR_PREFLIGHT_PATH,
+        canary.NEXT_SOURCE_REPAIR_PREFLIGHT_PATH,
+        canary.FINAL_SOURCE_REPAIR_PREFLIGHT_PATH,
+        canary.NEXT_PREFLIGHT_REPAIR_PATH,
+    ):
+        shutil.copy2(repository_root / preflight, root / preflight)
+    historical_attempt = root / canary.HISTORICAL_ATTEMPT_01_DIR
+    historical_attempt.mkdir()
+    for name in ("status.json", "report.json", "execution_manifest.json"):
+        shutil.copy2(repository_root / canary.HISTORICAL_ATTEMPT_01_DIR / name, historical_attempt / name)
+    history = canary._preflight_repair_history(root, resume=False)
+    assert history is not None and len(history) == 11
+    assert history[0]["sha256"] == canary.RECOVERABLE_PREFLIGHT_01_SHA256
+    assert history[0]["failure_type"] == "KeyError"
+    assert history[0]["failure"] == "'references'"
+    assert history[1]["sha256"] == canary.RECOVERABLE_PREFLIGHT_02_SHA256
+    assert history[1]["failure_type"] == "TrainingContractError"
+    assert history[1]["failure"] == "BOGT requires two encoder records"
+    assert history[2]["sha256"] == canary.RECOVERABLE_PREFLIGHT_03_SHA256
+    assert history[2]["failure_type"] == "KeyError"
+    assert history[2]["failure"] == "'L_L_S'"
+    assert history[3]["sha256"] == canary.RECOVERABLE_PREFLIGHT_04_SHA256
+    assert history[3]["failure_type"] == "KeyError"
+    assert history[3]["failure"] == "'observation_start'"
+    assert history[4]["sha256"] == canary.RECOVERABLE_PREFLIGHT_05_SHA256
+    assert history[4]["failure_type"] == "KeyError"
+    assert history[4]["failure"] == "'prediction_histogram'"
+    assert history[5]["sha256"] == canary.RECOVERABLE_PREFLIGHT_06_SHA256
+    assert history[5]["failure_type"] == "CanaryError"
+    assert history[5]["failure"] == "recovery next-update Generator state differs"
+    assert history[6]["sha256"] == canary.RECOVERABLE_PREFLIGHT_07_SHA256
+    assert history[6]["failure_type"] == "CanaryError"
+    assert history[6]["failure"] == "recovery next-update Generator state differs: max_abs_difference=2.9802322387695312e-08, differing_values=336"
+    assert history[7]["sha256"] == canary.RECOVERABLE_PREFLIGHT_08_SHA256
+    assert history[7]["failure_type"] == "RuntimeError"
+    assert history[7]["failure"] == "Boolean value of Tensor with more than one value is ambiguous"
+    assert history[8]["sha256"] == canary.RECOVERABLE_PREFLIGHT_09_SHA256
+    assert history[8]["failure_type"] == "RuntimeError"
+    assert history[8]["failure"] == "Boolean value of Tensor with more than one value is ambiguous"
+    assert history[9]["sha256"] == canary.RECOVERABLE_PREFLIGHT_10_SHA256
+    assert history[9]["failure_type"] == "RuntimeError"
+    assert history[9]["failure"] == "Boolean value of Tensor with more than one value is ambiguous"
+    assert history[10]["path"] == canary.NEXT_PREFLIGHT_REPAIR_PATH.as_posix()
+    assert history[10]["status"] == PREFLIGHT_READY
+    assert history[10]["authorization_id"] == canary.HISTORICAL_AUTHORIZATION_ID
+    assert sum(item["elapsed_seconds"] for item in history) > 0.0
+
+    config = {"run_preflight_record_path": canary.CLEAN_ATTEMPT_02_PREFLIGHT_PATH.as_posix()}
+    assert canary._active_preflight_path(root, config, resume=False) == root / canary.CLEAN_ATTEMPT_02_PREFLIGHT_PATH
+
+    original_hash = canary.file_sha256
+    previous = (root / canary.PREFLIGHT_PATH).resolve()
+
+    def changed_previous_hash(path: Path) -> str:
+        if Path(path).resolve() == previous:
+            return "0" * 64
+        return original_hash(path)
+
+    monkeypatch.setattr(canary, "file_sha256", changed_previous_hash)
+    with pytest.raises(canary.CanaryError, match="prior failed preflight identity changed"):
+        canary._preflight_repair_history(root, resume=False)
+
+
+def test_clean_attempt_02_rejects_mutation_of_immutable_attempt_01(monkeypatch: pytest.MonkeyPatch) -> None:
+    root = canary._root()
+    original_hash = canary.file_sha256
+    historical_status = (root / canary.HISTORICAL_ATTEMPT_01_DIR / "status.json").resolve()
+
+    def changed_attempt_hash(path: Path) -> str:
+        if Path(path).resolve() == historical_status:
+            return "0" * 64
+        return original_hash(path)
+
+    monkeypatch.setattr(canary, "file_sha256", changed_attempt_hash)
+    with pytest.raises(canary.CanaryError, match="historical attempt_01 immutable identity changed"):
+        canary._preflight_repair_history(root, resume=False)
+
+
+def test_recovery_restores_adam_and_rejects_changed_frozen_encoder(monkeypatch: pytest.MonkeyPatch) -> None:
+    class Runtime(nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.encoder = nn.Module()
+            self.generator = nn.Module()
+            self.encoder.register_parameter("phase", nn.Parameter(torch.tensor([3.0, 4.0])))
+            self.generator.register_parameter("phase", nn.Parameter(torch.tensor([0.0, 0.0])))
+
+    class Consumer:
+        def __init__(self) -> None:
+            self.runtime = Runtime()
+            self.device = torch.device("cpu")
+
+    monkeypatch.setattr(canary, "_restore_rng", lambda _state: None)
+    consumer = Consumer()
+    params = dict(consumer.runtime.named_parameters())
+    optimizer = torch.optim.Adam([params["generator.phase"]], lr=1.0e-3)
+    params["generator.phase"].grad = torch.tensor([1.0, -1.0])
+    optimizer.step()
+    config = {
+        "fixed_population": {
+            "fit_indices_sha256": "fit",
+            "observation_indices_sha256": "observation",
+            "fit_targets_sha256": "targets",
+            "fit_ols_sha256": "fit-ols",
+            "observation_ols_sha256": "observation-ols",
+        },
+        "starting_checkpoint": {"sha256": "step600"},
+    }
+    payload = {
+        "schema": canary.CHECKPOINT_SCHEMA,
+        "data_binding": canary._data_binding(config),
+        "cursor": 1,
+        "generator_phase": params["generator.phase"].detach().cpu().clone(),
+        "encoder_phase": params["encoder.phase"].detach().cpu().clone(),
+        "optimizer_state": copy.deepcopy(optimizer.state_dict()),
+        "trace": [{"step": 1}],
+        "measurement_phase_snapshots": {"0": torch.tensor([0.0, 0.0])},
+        "rng_state": {},
+    }
+    expected_generator = params["generator.phase"].detach().cpu().clone()
+    expected_encoder = params["encoder.phase"].detach().cpu().clone()
+    params["generator.phase"].data.zero_()
+    cursor, trace, phase_snapshots = canary._restore_recovery(consumer, optimizer, payload, config, expected_encoder)
+    assert cursor == 1
+    assert trace == [{"step": 1}]
+    assert torch.equal(phase_snapshots["0"], torch.tensor([0.0, 0.0]))
+    assert torch.equal(params["generator.phase"].detach().cpu(), expected_generator)
+    assert float(optimizer.state[params["generator.phase"]]["step"].item()) == 1.0
+
+    invalid = dict(payload)
+    invalid["encoder_phase"] = expected_encoder + 1.0
+    with pytest.raises(canary.CanaryError, match="accepted frozen state"):
+        canary._restore_recovery(consumer, optimizer, invalid, config, expected_encoder)
+    missing_snapshot = dict(payload)
+    missing_snapshot["measurement_phase_snapshots"] = {}
+    with pytest.raises(canary.CanaryError, match="snapshot set differs"):
+        canary._restore_recovery(consumer, optimizer, missing_snapshot, config, expected_encoder)
+
+
+def test_write_once_json_rejects_conflicting_finalization(tmp_path: Path) -> None:
+    path = tmp_path / "report.json"
+    canary._write_json_once(path, {"state": "complete", "updates": 300}, artifact_kind="report")
+    canary._write_json_once(path, {"state": "complete", "updates": 300}, artifact_kind="report")
+    with pytest.raises(canary.CanaryError, match="existing report differs"):
+        canary._write_json_once(path, {"state": "complete", "updates": 299}, artifact_kind="report")
+
+
+def test_production_lifecycle_smoke_uses_ready_receipt_and_writes_terminal_state(tmp_path: Path) -> None:
+    identity = ResearchRunIdentity(
+        task_id=canary.TASK_ID,
+        run_id=canary.RUN_ID,
+        trajectory_id=canary.TRAJECTORY_ID,
+        semantic_authority_id=canary.SEMANTIC_AUTHORITY_ID,
+        data_role="train",
+        config_identity={"updates": 300},
+        model_identity="step600",
+        optimizer_identity={"name": "Adam"},
+        sampler_identity={"fit_rows": 200},
+        execution_source_semantics_id="source-semantics",
+        source_manifest_id="source-manifest",
+        scientific_attempt_id=canary.ATTEMPT_ID,
+    )
+    receipt = PreflightReceipt(
+        source_semantics_id="source-semantics",
+        authorization_id=canary.AUTHORIZATION_ID,
+        checks={
+            CORRECTNESS_INVARIANTS: {"status": "READY"},
+            RESOURCE_ENVELOPE: {"status": "READY"},
+            IMPLEMENTATION_SELECTION: {"status": "READY"},
+        },
+        selected_engine="CUDA",
+        resource={"smoke": True},
+        status=PREFLIGHT_READY,
+    )
+    result = canary._smoke_lifecycle(identity, receipt, {"rows": 10}, tmp_path)
+    assert result["status"] == "PASS"
+    assert result["terminal_state"] == canary.RUN_COMPLETED
+    assert (tmp_path / "attempt_02" / "smoke_report.json").is_file()
+    status = canary._json_read(tmp_path / "attempt_02" / "status.json")
+    assert status["state"] == canary.RUN_COMPLETED
+    assert status["phase"] == "COMPLETED"
+
+
+def test_scientific_attempt_gets_fresh_zero_adam_after_preflight_smoke() -> None:
+    class Runtime(nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.encoder = nn.Module()
+            self.encoder.register_parameter("phase", nn.Parameter(torch.zeros(2)))
+            self.generator = nn.Module()
+            self.generator.register_parameter("phase", nn.Parameter(torch.ones(2)))
+
+    consumer = SimpleNamespace(runtime=Runtime())
+    evaluators = [nn.Linear(1, 1) for _ in range(4)]
+    optimizer = canary._freeze_models(consumer, *evaluators)
+    generator = dict(consumer.runtime.named_parameters())["generator.phase"]
+    for _ in range(4):
+        generator.grad = torch.ones_like(generator)
+        optimizer.step()
+        optimizer.zero_grad(set_to_none=True)
+    assert float(optimizer.state[generator]["step"].item()) == 4.0
+
+    attempt_optimizer = canary._fresh_attempt_optimizer(consumer, *evaluators)
+
+    assert attempt_optimizer is not optimizer
+    assert attempt_optimizer.state == {}
+    assert attempt_optimizer.param_groups[0]["params"] == [generator]
+    assert generator.requires_grad
+    assert not dict(consumer.runtime.named_parameters())["encoder.phase"].requires_grad
+    assert canary._optimizer_internal_step(attempt_optimizer, generator) == 0
+    generator.grad = torch.ones_like(generator)
+    attempt_optimizer.step()
+    assert canary._optimizer_internal_step(attempt_optimizer, generator) == 1
+
+
+def test_scientific_runtime_rebuild_requires_disposed_preflight_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Runtime(nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.encoder = nn.Module()
+            self.encoder.register_parameter("phase", nn.Parameter(torch.tensor([2.0])))
+            self.generator = nn.Module()
+            self.generator.register_parameter("phase", nn.Parameter(torch.tensor([3.0])))
+
+    preflight_consumer = SimpleNamespace(runtime=Runtime(), device=torch.device("cpu"))
+    preflight_evaluators = [nn.Linear(1, 1) for _ in range(4)]
+    preflight_optimizer = canary._freeze_models(preflight_consumer, *preflight_evaluators)
+    preflight_data = {"sample": torch.ones(1)}
+    preflight_refs = canary._preflight_state_references(
+        preflight_consumer,
+        preflight_optimizer,
+        *preflight_evaluators,
+        preflight_data,
+    )
+    with pytest.raises(canary.CanaryError, match="preflight mutable state is still alive"):
+        canary._reconstruct_scientific_state(Path("."), {}, torch.device("cpu"), preflight_refs)
+
+    del preflight_consumer, preflight_evaluators, preflight_optimizer, preflight_data
+    gc.collect()
+    assert all(reference() is None for reference in preflight_refs.values())
+
+    scientific_consumer = SimpleNamespace(runtime=Runtime(), device=torch.device("cpu"))
+    scientific_evaluators = [nn.Linear(1, 1) for _ in range(4)]
+    scientific_optimizer = canary._freeze_models(scientific_consumer, *scientific_evaluators)
+    expected_state = {
+        "encoder.phase": torch.tensor([2.0]),
+        "generator.phase": torch.tensor([3.0]),
+    }
+    monkeypatch.setattr(
+        canary,
+        "_load_run_models",
+        lambda _root, _inputs, _device: (
+            scientific_consumer,
+            *scientific_evaluators,
+            {"frozen": True},
+            scientific_optimizer,
+        ),
+    )
+    monkeypatch.setattr(canary, "_fixed_runtime_data", lambda _inputs, _consumer, _device: {"fixed": True})
+    monkeypatch.setattr(canary.three, "_restore_rng", lambda _state: None)
+    inputs = {"authorities": {"checkpoint": {"trainable_parameter_state": expected_state, "rng_state": {}}}}
+
+    rebuilt, isolation = canary._reconstruct_scientific_state(Path("."), inputs, torch.device("cpu"), preflight_refs)
+
+    assert rebuilt[0] is scientific_consumer
+    assert rebuilt[6] is scientific_optimizer
+    assert rebuilt[6].state == {}
+    assert isolation["preflight_mutable_state_destroyed"] is True
+    assert isolation["scientific_generator_matches_step600"] is True
+    assert isolation["scientific_adam_step_before_attempt"] == 0
+
+
+def test_terminal_heartbeat_uses_registered_completed_phase(tmp_path: Path) -> None:
+    heartbeat = HeartbeatWriter(tmp_path, canary.RUN_ID, total_steps=canary.UPDATE_COUNT, interval_seconds=0.0)
+    heartbeat.update(state=canary.RUNNING, phase="FINALIZING", step=canary.UPDATE_COUNT, force=True)
+
+    record = canary._write_completed_heartbeat(
+        heartbeat,
+        classification=canary.CASE_B,
+        step=canary.UPDATE_COUNT,
+    )
+
+    assert record is not None
+    assert record["state"] == canary.RUN_COMPLETED
+    assert record["phase"] == "COMPLETED"
+    assert record["step"] == canary.UPDATE_COUNT
+    assert canary._json_read(tmp_path / "latest_status.json")["phase"] == "COMPLETED"
+
+
+def test_invalid_attempt_status_clears_stale_success_fields(tmp_path: Path) -> None:
+    path = tmp_path / "status.json"
+    canary._attempt_status(
+        path,
+        "COMPLETE",
+        state=canary.RUN_COMPLETED,
+        result="VALID_COMPLETED",
+        classification=canary.CASE_B,
+        scientific_classification=canary.CASE_B,
+    )
+
+    canary._mark_invalid_attempt_status(
+        path,
+        failure_type="CanaryError",
+        failure="optimizer state began at a nonzero step",
+    )
+
+    status = canary._json_read(path)
+    assert status["state"] == canary.RUN_INVALID_HARNESS
+    assert status["phase"] == "INVALID_HARNESS"
+    assert status["result"] == canary.RUN_INVALID_HARNESS
+    assert status["classification"] is None
+    assert status["scientific_classification"] is None
+    assert status["failure_type"] == "CanaryError"
+
+
+def test_cumulative_preflight_time_includes_model_and_input_setup(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(canary.time, "perf_counter", lambda: 30.0)
+
+    fields = canary._preflight_elapsed_fields(
+        prior_seconds=536.977,
+        run_started=10.0,
+        receipt_started=25.0,
+    )
+
+    assert fields["elapsed_seconds"] == 5.0
+    assert fields["cumulative_preflight_elapsed_seconds"] == 556.977
+
+
+def test_completed_report_recovery_rejects_preflight_adam_steps_in_science_record(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(canary, "ATTEMPT_DIR", tmp_path)
+    identity = ResearchRunIdentity(
+        task_id=canary.TASK_ID,
+        run_id=canary.RUN_ID,
+        trajectory_id=canary.TRAJECTORY_ID,
+        semantic_authority_id=canary.SEMANTIC_AUTHORITY_ID,
+        data_role="train",
+        config_identity={"updates": 300},
+        model_identity="step600",
+        optimizer_identity={"name": "Adam"},
+        sampler_identity={"fit_rows": 200},
+        execution_source_semantics_id="source-semantics",
+        source_manifest_id="source-manifest",
+        scientific_attempt_id=canary.ATTEMPT_ID,
+    )
+    source = {"source_manifest_id": "source-manifest"}
+    inputs = {"input_authority_hashes": {}}
+    report = {
+        "schema": canary.REPORT_SCHEMA,
+        "task_id": canary.TASK_ID,
+        "outer_gate": canary.OUTER_GATE,
+        "result": "VALID_COMPLETED",
+        "outer_gate_passed": True,
+        "classification": canary.CASE_B,
+        "source_manifest": source,
+        "run_identity": identity.to_dict(),
+        "input_authorities": {},
+        "starting_authority": {"sha256": canary.m0_rescue.START_CHECKPOINT_SHA256},
+        "training_updates": {
+            "generator_phase": canary.UPDATE_COUNT,
+            "completed_updates": canary.UPDATE_COUNT,
+            "optimizer_state_internal_step": float(canary.UPDATE_COUNT + 4),
+            "trainable_groups": ["generator.phase"],
+        },
+    }
+    canary._write_json_once(tmp_path / "report.json", report, artifact_kind="report")
+
+    with pytest.raises(canary.CanaryError, match="update accounting is incomplete"):
+        canary._read_completed_report_for_recovery(source, inputs, identity)

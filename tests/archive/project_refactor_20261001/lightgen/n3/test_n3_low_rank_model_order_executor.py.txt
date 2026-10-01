@@ -1,0 +1,1639 @@
+from __future__ import annotations
+
+import ast
+import copy
+import hashlib
+import json
+import math
+import os
+import inspect
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+import torch
+
+from ldm_project.v2.application.research.shared.research_run_control import ResumeCompatibilityError
+from ldm_project.v2.contracts import ComplexField, OperationProvenance, PlaneSpec
+from ldm_project.v2.optics.propagation import (
+    _PRODUCTION_TRANSFER_CACHE,
+    angular_spectrum_propagate,
+    clear_production_transfer_cache,
+)
+from scripts.research.lightgen.n3 import execute_lightgen_2d_n3_low_rank_model_order_v1 as executor
+from scripts.research.lightgen.n3 import reconcile_lightgen_2d_n3_low_rank_fit_protocol_v1 as reconciler
+
+
+ROOT = Path(__file__).resolve().parents[4]
+
+
+def _fit_rows() -> dict[str, list[int]]:
+    return {str(label): [label * executor.FIT_ROWS_PER_CLASS + row for row in range(executor.FIT_ROWS_PER_CLASS)] for label in range(executor.CLASS_COUNT)}
+
+
+def _candidate(structural: list[float], semantic: tuple[float, float, float]) -> dict[str, object]:
+    return {
+        "L_struct_by_class": structural,
+        "semantic": dict(zip(("L_S", "L_I", "L_C"), semantic, strict=True)),
+    }
+
+
+def _source_manifest(source_semantics: str, source_manifest_id: str | None = None) -> dict[str, object]:
+    return {
+        "branch": "research/test",
+        "head": "1" * 40,
+        "dirty": True,
+        "dirty_patch_digest": f"patch-{source_semantics}",
+        "relevant_source_identity": f"source-{source_semantics}",
+        "execution_source_semantics_id": source_semantics,
+        "source_manifest_id": source_manifest_id or f"manifest-{source_semantics}",
+        "config_identity": {
+            "contract_sha256": executor.CONTRACT_SHA256,
+            "protocol_sha256": executor.PROTOCOL_SHA256,
+        },
+    }
+
+
+def _ready_receipt(source_semantics: str) -> executor.PreflightReceipt:
+    checks = {
+        executor.CORRECTNESS_INVARIANTS: {"status": "PASS"},
+        executor.RESOURCE_ENVELOPE: {"status": "PASS"},
+        executor.IMPLEMENTATION_SELECTION: {"status": "PASS"},
+    }
+    return executor.PreflightReceipt(
+        source_semantics_id=source_semantics,
+        authorization_id=executor.AUTHORIZATION_ID,
+        checks=checks,
+        selected_engine="SCALAR_REFERENCE_VJP",
+        resource={
+            "device": "test-only",
+            "execution_source_identity": {
+                "source_manifest_id": f"manifest-{source_semantics}",
+                "execution_source_semantics_id": source_semantics,
+                "dirty_patch_digest": f"patch-{source_semantics}",
+                "relevant_source_identity": f"source-{source_semantics}",
+                "branch": "research/test",
+                "head": "1" * 40,
+                "dirty": True,
+            },
+        },
+    )
+
+
+def _patch_output_paths(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(executor, "RUNS_ROOT", Path("runs"))
+    monkeypatch.setattr(executor, "ATTEMPT_DIR", Path("runs/attempt_01"))
+    monkeypatch.setattr(executor, "PREFLIGHT_DIR", Path("runs/preflight_01"))
+    monkeypatch.setattr(executor, "PREFLIGHT_FAILURE_STATE", Path("runs/execution_preflight_failure_state.json"))
+
+
+def test_factor_initialization_uses_canonical_row_major_basis_and_nested_rank_order() -> None:
+    b1, a1 = executor.initialize_factors(1)
+    b2, a2 = executor.initialize_factors(2)
+    expected_b2 = torch.zeros((executor.PARAMETER_DIMENSION, 2), dtype=torch.float32)
+    expected_b2[0, 0] = 1.0
+    expected_b2[1, 1] = 1.0
+    classes = torch.arange(executor.CLASS_COUNT, dtype=torch.int64)
+    expected_b1 = expected_b2[:, :1]
+    expected_a1 = executor.INIT_ALPHA * (1.0 - 2.0 * (classes & 1).to(torch.float32)).unsqueeze(1)
+    assert torch.equal(b1, expected_b1)
+    assert torch.equal(b2, expected_b2)
+    assert torch.equal(a1, expected_a1)
+    assert torch.equal(b2[:, :1], b1)
+    assert torch.equal(a2[:, :1], a1)
+    assert b1.dtype == a1.dtype == b2.dtype == a2.dtype == torch.float32
+    assert b1.device.type == a1.device.type == b2.device.type == a2.device.type == "cpu"
+
+
+def test_rank_zero_is_empty_and_untrainable_basis() -> None:
+    b0, a0 = executor.initialize_factors(0)
+    assert tuple(b0.shape) == (executor.PARAMETER_DIMENSION, 0)
+    assert tuple(a0.shape) == (executor.CLASS_COUNT, 0)
+    assert not b0.requires_grad and not a0.requires_grad
+
+
+def test_rank_seed_schedule_is_exact() -> None:
+    assert [executor.rank_seed(rank) for rank in (0, 1, 2)] == [20_260_923, 20_261_932, 20_262_941]
+    with pytest.raises(executor.N3ExecutionError):
+        executor.rank_seed(3)
+
+
+def test_sampler_maps_one_row_per_class_and_wraps_cyclic_cursor() -> None:
+    sampler = executor.N3FitSampler(_fit_rows())
+    indices, labels = sampler.next_batch()
+    assert indices.tolist() == [0, 256, 512, 768, 1024, 1280, 1536, 1792, 2048, 2304]
+    assert labels.tolist() == list(range(10))
+    assert sampler.cursor == 1
+    sampler.cursor = executor.FIT_ROWS_PER_CLASS - 1
+    final_indices, final_labels = sampler.next_batch()
+    assert final_indices.tolist() == [255, 511, 767, 1023, 1279, 1535, 1791, 2047, 2303, 2559]
+    assert final_labels.tolist() == list(range(10))
+    assert sampler.cursor == 0
+
+
+def test_sampler_rejects_wrong_class_map_or_cursor() -> None:
+    rows = _fit_rows()
+    with pytest.raises(executor.N3ExecutionError):
+        executor.N3FitSampler({key: value for key, value in rows.items() if key != "9"})
+    with pytest.raises(executor.N3ExecutionError):
+        executor.N3FitSampler(rows, cursor=executor.FIT_ROWS_PER_CLASS)
+
+
+def test_model_order_prefers_semantic_feasibility_before_structural_gain() -> None:
+    baseline = _candidate([10.0] * 10, (1.0, 1.0, 1.0))
+    rank1 = _candidate([0.0] * 10, (1.1, 0.8, 0.8))
+    rank2 = _candidate([9.0] * 10, (0.9, 0.9, 0.9))
+    selected, trace = executor._select_rank({0: baseline, 1: rank1, 2: rank2})
+    assert selected == 2
+    assert not trace[1]["semantic_feasible"]
+    assert trace[2]["semantic_feasible"]
+
+
+def test_model_order_uses_favorable_class_fraction_after_equal_macro_gain() -> None:
+    baseline = _candidate([0.0] * 10, (1.0, 1.0, 1.0))
+    rank1 = _candidate([-0.125] * 9 + [0.125], (0.9, 0.9, 0.9))
+    rank2 = _candidate([-0.125] * 6 + [-0.0625] * 4, (0.9, 0.9, 0.9))
+    selected, trace = executor._select_rank({0: baseline, 1: rank1, 2: rank2})
+    assert selected == 2
+    assert trace[1]["structural_improvement"] == pytest.approx(trace[2]["structural_improvement"])
+    assert trace[1]["favorable_class_fraction"] == 0.9
+    assert trace[2]["favorable_class_fraction"] == 1.0
+
+
+def test_model_order_uses_worst_class_degradation_then_lower_rank() -> None:
+    baseline = _candidate([0.0] * 10, (1.0, 1.0, 1.0))
+    rank1 = _candidate([-3.0 / 9.0] * 9 + [2.0], (0.9, 0.9, 0.9))
+    rank2 = _candidate([-1.5 / 9.0] * 9 + [0.5], (0.9, 0.9, 0.9))
+    selected, trace = executor._select_rank({0: baseline, 1: rank1, 2: rank2})
+    assert selected == 2
+    assert trace[1]["structural_improvement"] == pytest.approx(trace[2]["structural_improvement"])
+    assert trace[1]["favorable_class_fraction"] == trace[2]["favorable_class_fraction"]
+    assert trace[2]["worst_class_degradation"] < trace[1]["worst_class_degradation"]
+
+    tied, _ = executor._select_rank({0: baseline, 1: rank2, 2: rank2})
+    assert tied == 1
+
+
+def test_exact_equal_handles_nested_tensor_optimizer_state() -> None:
+    left = {"state": {0: {"step": torch.tensor(2.0), "avg": torch.ones(2)}}, "groups": [1, 2]}
+    right = {"state": {0: {"step": torch.tensor(2.0), "avg": torch.ones(2)}}, "groups": [1, 2]}
+    different = {"state": {0: {"step": torch.tensor(3.0), "avg": torch.ones(2)}}, "groups": [1, 2]}
+    assert executor._exact_equal(left, right)
+    assert not executor._exact_equal(left, different)
+
+
+def test_execution_source_manifest_resolves_all_relevant_paths() -> None:
+    manifest = executor._make_source_manifest(ROOT)
+    assert manifest["branch"]
+    assert manifest["head"]
+    assert manifest["dirty"] is True
+    assert "src/ldm_project/v2/evidence/io.py" in manifest["relevant_source_paths"]
+    assert "scripts/research/lightgen/n3/reconcile_lightgen_2d_n3_low_rank_fit_protocol_v1.py" in manifest["relevant_source_paths"]
+    assert manifest["execution_source_semantics_id"]
+
+
+def test_windows_dll_bootstrap_prepends_deduplicated_active_environment_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    prefix = tmp_path / "env"
+    directories = [prefix, prefix / "Library" / "bin", prefix / "bin", prefix / "Scripts"]
+    for directory in directories:
+        directory.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(
+        executor,
+        "sys",
+        SimpleNamespace(platform="win32", prefix=str(prefix), executable=str(prefix / "Scripts" / "python.exe")),
+    )
+    monkeypatch.setattr(executor, "_DLL_DIRECTORY_HANDLES", [])
+    monkeypatch.setattr(executor, "_DLL_DIRECTORY_KEYS", set())
+    registered: list[str] = []
+
+    def add_dll_directory(path: str) -> object:
+        registered.append(path)
+        return object()
+
+    monkeypatch.setattr(executor.os, "add_dll_directory", add_dll_directory, raising=False)
+    monkeypatch.setenv("PATH", os.pathsep.join((str(prefix / "bin"), str(prefix / "bin"), "C:\\Windows\\System32")))
+
+    result = executor._bootstrap_windows_cuda_dll_search()
+
+    assert result["python_prefix"] == str(prefix.resolve())
+    assert str((prefix / "bin").resolve()) in result["process_path_prepended"]
+    assert len(result["dll_search_directories"]) == len(set(os.path.normcase(path) for path in result["dll_search_directories"]))
+    assert len(registered) == len(result["dll_search_directories"])
+    current_path = os.environ["PATH"].split(os.pathsep)
+    normalized_path = [os.path.normcase(os.path.normpath(os.path.abspath(path))) for path in current_path]
+    assert len(normalized_path) == len(set(normalized_path))
+    assert normalized_path.count(os.path.normcase(os.path.normpath(os.path.abspath(str(prefix / "bin"))))) == 1
+
+
+def test_nvrtc_probe_requires_expected_in_environment_dll_and_loads_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert executor._expected_nvrtc_builtins_name("12.1") == "nvrtc-builtins64_121.dll"
+    prefix = tmp_path / "env"
+    bin_dir = prefix / "bin"
+    bin_dir.mkdir(parents=True)
+    runtime = {"python_prefix": str(prefix), "dll_search_directories": [str(bin_dir)]}
+    with pytest.raises(executor.N3ExecutionError, match="DLL is missing"):
+        executor._resolve_and_probe_nvrtc_builtins(runtime)
+
+    dll = bin_dir / "nvrtc-builtins64_121.dll"
+    dll.write_bytes(b"runtime-test")
+    loaded: list[str] = []
+    monkeypatch.setattr(executor.torch.version, "cuda", "12.1")
+    monkeypatch.setattr(executor.ctypes, "WinDLL", lambda path: loaded.append(path) or object(), raising=False)
+    probe = executor._resolve_and_probe_nvrtc_builtins(runtime)
+    assert probe["status"] == "PASS"
+    assert probe["dll_exists"] is True
+    assert probe["inside_active_environment"] is True
+    assert probe["dll_path"] == str(dll.resolve())
+    assert loaded == [str(dll.resolve())]
+
+
+def test_cuda_kernel_smoke_checks_complex_exp_and_runtime_failure_is_fail_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeTensor:
+        def item(self) -> complex:
+            return complex(math.e, 0.0)
+
+    synchronized: list[str] = []
+    monkeypatch.setattr(executor.torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(executor.torch.cuda, "device_count", lambda: 1)
+    monkeypatch.setattr(executor.torch.cuda, "get_device_name", lambda device: "NVIDIA GeForce RTX 3060 Laptop GPU")
+    monkeypatch.setattr(executor.torch.cuda, "synchronize", lambda device: synchronized.append(str(device)))
+    monkeypatch.setattr(executor.torch, "tensor", lambda *args, **kwargs: object())
+    monkeypatch.setattr(executor.torch, "exp", lambda value: FakeTensor())
+    smoke = executor._cuda_runtime_smoke({"dll_path": "env/bin/nvrtc-builtins64_121.dll"})
+    assert smoke["status"] == "PASS"
+    assert smoke["kernel_probe"] == "torch.exp(complex64[1])"
+    assert synchronized == ["cuda:0"]
+
+    monkeypatch.setattr(executor, "_bootstrap_windows_cuda_dll_search", lambda: {"status": "PASS"})
+    monkeypatch.setattr(executor, "_resolve_and_probe_nvrtc_builtins", lambda runtime: {"status": "PASS", "dll_path": "test.dll"})
+    monkeypatch.setattr(executor, "_cuda_runtime_smoke", lambda nvrtc: (_ for _ in ()).throw(RuntimeError("kernel failure")))
+    with pytest.raises(executor.N3RuntimeInitializationError, match="CUDA_KERNEL_SMOKE") as captured:
+        executor._prepare_cuda_runtime()
+    assert captured.value.runtime_provenance["status"] == "FAILED"
+    assert captured.value.runtime_provenance["failed_stage"] == "CUDA_KERNEL_SMOKE"
+
+
+def test_ready_receipt_binds_source_and_runtime_provenance() -> None:
+    manifest = _source_manifest("ready-source", "ready-manifest")
+    runtime = {"status": "READY", "cuda_smoke": {"device": "test-only"}}
+    result = {
+        "check_groups": {
+            executor.CORRECTNESS_INVARIANTS: {"status": "PASS"},
+            executor.RESOURCE_ENVELOPE: {"status": "PASS"},
+            executor.IMPLEMENTATION_SELECTION: {"status": "PASS"},
+        },
+        "resource": {"device": "test-only"},
+    }
+    receipt = executor._receipt(manifest, result, runtime)
+    assert receipt.resource["execution_source_identity"] == executor._source_identity_provenance(manifest)
+    assert receipt.resource["execution_source_identity"]["source_manifest_id"] == "ready-manifest"
+    assert receipt.resource["execution_source_identity"]["dirty_patch_digest"] == "patch-ready-source"
+    assert receipt.resource["runtime_provenance"] == runtime
+
+
+def test_recovery_roundtrip_binds_fit_history_and_cursor(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        executor,
+        "_rng_snapshot",
+        lambda: {"cpu": torch.arange(4, dtype=torch.uint8), "cuda": [], "cuda_available": False},
+    )
+    model = SimpleNamespace(rank=1, B=torch.nn.Parameter(torch.ones(3)), A=torch.nn.Parameter(torch.zeros(2, 1)))
+    optimizer = torch.optim.Adam([model.B, model.A], lr=executor.LEARNING_RATE)
+    for _ in range(executor.RECOVERY_INTERVAL):
+        optimizer.zero_grad(set_to_none=True)
+        (model.B.square().sum() + model.A.square().sum()).backward()
+        optimizer.step()
+    sampler = executor.N3FitSampler(_fit_rows(), cursor=executor.RECOVERY_INTERVAL)
+    history = [{"update": update} for update in range(1, executor.RECOVERY_INTERVAL + 1)]
+    manifest = _source_manifest("test-source")
+    ledger = executor.SampleReadLedger()
+    ledger.mark_backing_loaded()
+    ledger.enter_fit()
+    rank_dir = tmp_path / "rank_1"
+    rank_dir.mkdir()
+
+    recovery_path = executor._save_recovery(
+        rank_dir,
+        model,
+        optimizer,
+        sampler,
+        executor.RECOVERY_INTERVAL,
+        manifest,
+        history,
+        ledger=ledger,
+        attempt_id="test-attempt",
+    )
+    recovered = executor._load_recovery(recovery_path, 1, manifest, attempt_id="test-attempt")
+    assert recovered["sampler_cursor"] == executor.RECOVERY_INTERVAL
+    assert len(recovered["history"]) == executor.RECOVERY_INTERVAL
+    assert torch.equal(recovered["A"], model.A.detach())
+    assert torch.equal(recovered["B"], model.B.detach())
+    sidecar = executor._recovery_ledger_path(recovery_path)
+    assert json.loads(sidecar.read_text(encoding="utf-8"))["ledger_state"] == ledger.snapshot()
+
+
+def test_recovery_rejects_missing_or_tampered_ledger_credential(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        executor,
+        "_rng_snapshot",
+        lambda: {"cpu": torch.arange(4, dtype=torch.uint8), "cuda": [], "cuda_available": False},
+    )
+    model = SimpleNamespace(rank=1, B=torch.nn.Parameter(torch.ones(3)), A=torch.nn.Parameter(torch.zeros(2, 1)))
+    optimizer = torch.optim.Adam([model.B, model.A], lr=executor.LEARNING_RATE)
+    sampler = executor.N3FitSampler(_fit_rows(), cursor=executor.RECOVERY_INTERVAL)
+    history = [{"update": update} for update in range(1, executor.RECOVERY_INTERVAL + 1)]
+    manifest = _source_manifest("sidecar-source")
+    ledger = executor.SampleReadLedger()
+    ledger.mark_backing_loaded()
+    ledger.enter_fit()
+    rank_dir = tmp_path / "rank_1"
+    rank_dir.mkdir()
+    recovery = executor._save_recovery(
+        rank_dir, model, optimizer, sampler, executor.RECOVERY_INTERVAL, manifest, history,
+        ledger=ledger, attempt_id="attempt-01",
+    )
+    sidecar = executor._recovery_ledger_path(recovery)
+    sidecar.unlink()
+    with pytest.raises(executor.N3ExecutionError, match="ledger credential"):
+        executor._load_recovery(recovery, 1, manifest, attempt_id="attempt-01")
+
+    sidecar = executor._write_recovery_ledger(recovery, ledger, manifest, "attempt-01")
+    payload = json.loads(sidecar.read_text(encoding="utf-8"))
+    payload["source_semantics_id"] = "wrong-source"
+    sidecar.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(executor.N3ExecutionError, match="source semantics"):
+        executor._load_recovery(recovery, 1, manifest, attempt_id="attempt-01")
+
+
+def test_ledger_snapshot_merges_prior_process_counts_without_losing_identity() -> None:
+    before = executor.SampleReadLedger()
+    before.mark_backing_loaded()
+    before.enter_fit()
+    before.record_materialized("N3_FIT", torch.tensor([3, 7]), rank=1, purpose="fit_update")
+    before.record_evaluated("N3_FIT", torch.tensor([3, 7]), rank=1, purpose="fit_update")
+    snapshot = before.snapshot()
+
+    resumed = executor.SampleReadLedger()
+    resumed.mark_backing_loaded()
+    resumed.record_materialized("N3_FIT", torch.tensor([3, 7]), purpose="fit_label_identity")
+    resumed.merge(snapshot)
+    summary = resumed.summary()
+    assert resumed.phase == "FIT"
+    assert summary["N3_FIT"]["role_rows_materialized"] == 4
+    assert summary["N3_FIT"]["role_rows_evaluated"] == 2
+    assert summary["N3_FIT"]["unique_role_rows_materialized"] == 2
+    assert summary["N3_FIT"]["unique_role_rows_evaluated"] == 2
+    assert summary["protected"] == summary["test"] == summary["sealed"] == 0
+
+
+@pytest.mark.parametrize("selected_rank", [0, 2])
+def test_select_and_confirm_recovery_credentials_resume_without_domain_reevaluation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    selected_rank: int,
+) -> None:
+    root = tmp_path
+    attempt = root / executor.ATTEMPT_DIR
+    attempt.mkdir(parents=True)
+    manifest = _source_manifest(f"stage-source-{selected_rank}")
+    attempt_id = f"n3-attempt-{selected_rank}"
+    role_indices = {
+        "N3_FIT": torch.arange(8, dtype=torch.long),
+        "N3_SELECT": torch.arange(8, 16, dtype=torch.long),
+        "N3_CONFIRM": torch.arange(16, 24, dtype=torch.long),
+    }
+    endpoint_paths: dict[int, Path] = {}
+    for rank in (0, 1, 2):
+        path = attempt / f"rank_{rank}" / f"fit_final_rank_{rank}_step_{executor.FIT_UPDATES:05d}.pt"
+        path.parent.mkdir(parents=True)
+        path.write_bytes(f"frozen-endpoint-{rank}".encode())
+        endpoint_paths[rank] = path
+
+    ledger = executor.SampleReadLedger()
+    ledger.mark_backing_loaded()
+    ledger.enter_fit()
+    ledger.record_fit_endpoint(1, executor.FIT_UPDATES)
+    ledger.record_fit_endpoint(2, executor.FIT_UPDATES)
+    ledger.enter_selection()
+    select_rows = role_indices["N3_SELECT"]
+    for rank in (0, 1, 2):
+        ledger.record_materialized("N3_SELECT", select_rows, rank=rank, purpose="model_order_candidate")
+        ledger.record_evaluated("N3_SELECT", select_rows, rank=rank, purpose="model_order_candidate")
+    ledger.verify_selection_evaluations(select_rows.numel())
+    selection_document = {
+        "schema": "n3_low_rank_model_order_selection.v1",
+        "contract_sha256": executor.CONTRACT_SHA256,
+        "protocol_sha256": executor.PROTOCOL_SHA256,
+        "domain": "N3_SELECT",
+        "sample_count": int(select_rows.numel()),
+        "indices_sha256": executor.tensor_sha256(select_rows),
+        "rank_results": {str(rank): {"rank": rank} for rank in (0, 1, 2)},
+        "semantic_feasibility": {str(rank): {"L_S": True, "L_I": True, "L_C": True} for rank in (0, 1, 2)},
+        "lexicographic_trace": [{"rank": rank} for rank in (0, 1, 2)],
+        "selected_rank": selected_rank,
+        "selection_count": 1,
+    }
+    selection_path = attempt / "selection.json"
+    selection_path.write_text(json.dumps(selection_document), encoding="utf-8")
+    selection_bytes = selection_path.read_bytes()
+    executor._write_stage_recovery(root, attempt, "selection", selection_path, endpoint_paths, role_indices, ledger, manifest, attempt_id)
+    monkeypatch.setattr(executor, "_evaluate_domain", lambda *args, **kwargs: pytest.fail("recovered N3_SELECT must not evaluate again"))
+    selection_marker = executor._load_stage_recovery(root, attempt, "selection", selection_path, endpoint_paths, {"roles": role_indices}, manifest, attempt_id)
+    assert selection_path.read_bytes() == selection_bytes
+    assert selection_marker["ledger_state"]["phase"] == "SELECT"
+
+    resumed = executor.SampleReadLedger()
+    resumed.mark_backing_loaded()
+    resumed.merge(selection_marker["ledger_state"])
+    assert resumed.enter_confirmation(selection_path) == selected_rank
+    confirm_rows = role_indices["N3_CONFIRM"]
+    resumed.record_materialized("N3_CONFIRM", confirm_rows, rank=selected_rank, purpose="selected_candidate")
+    resumed.record_evaluated("N3_CONFIRM", confirm_rows, rank=selected_rank, purpose="selected_candidate")
+    if selected_rank != 0:
+        resumed.record_materialized("N3_CONFIRM", confirm_rows, rank=0, purpose="shared_baseline_reference")
+        resumed.record_evaluated("N3_CONFIRM", confirm_rows, rank=0, purpose="shared_baseline_reference")
+    resumed.verify_confirmation_evaluations(confirm_rows.numel())
+    confirmation_document = {
+        "schema": "n3_low_rank_model_order_confirmation.v1",
+        "contract_sha256": executor.CONTRACT_SHA256,
+        "protocol_sha256": executor.PROTOCOL_SHA256,
+        "domain": "N3_CONFIRM",
+        "indices_sha256": executor.tensor_sha256(confirm_rows),
+        "evaluations": 1,
+        "selected_rank": selected_rank,
+        "passed": False,
+    }
+    confirmation_path = attempt / "confirmation.json"
+    confirmation_path.write_text(json.dumps(confirmation_document), encoding="utf-8")
+    confirmation_bytes = confirmation_path.read_bytes()
+    confirmation_endpoints = {0: endpoint_paths[0]}
+    if selected_rank > 0:
+        confirmation_endpoints[selected_rank] = endpoint_paths[selected_rank]
+    executor._write_stage_recovery(root, attempt, "confirmation", confirmation_path, confirmation_endpoints, role_indices, resumed, manifest, attempt_id)
+    confirmation_marker = executor._load_stage_recovery(
+        root,
+        attempt,
+        "confirmation",
+        confirmation_path,
+        confirmation_endpoints,
+        {"roles": role_indices},
+        manifest,
+        attempt_id,
+    )
+    assert confirmation_path.read_bytes() == confirmation_bytes
+    assert confirmation_marker["ledger_state"]["phase"] == "CONFIRM"
+    assert confirmation_marker["ledger_state"]["selected_rank"] == selected_rank
+    assert confirmation_marker["ledger_state"]["evaluation_by_rank"]
+
+
+def test_interrupted_fit_resume_requires_and_uses_the_latest_credentialed_recovery(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        executor,
+        "_rng_snapshot",
+        lambda: {"cpu": torch.arange(4, dtype=torch.uint8), "cuda": [], "cuda_available": False},
+    )
+    root = tmp_path
+    attempt = root / executor.ATTEMPT_DIR
+    rank_dir = attempt / "rank_1"
+    baseline = attempt / "rank_0" / "shared_baseline_rank_0_step_00000.pt"
+    rank_dir.mkdir(parents=True)
+    baseline.parent.mkdir(parents=True)
+    baseline.write_bytes(b"accepted-shared-baseline-reference")
+    manifest = _source_manifest("fit-recovery-source")
+    attempt_id = "n3-attempt-fit-recovery"
+    model = SimpleNamespace(rank=1, B=torch.nn.Parameter(torch.ones(3)), A=torch.nn.Parameter(torch.zeros(2, 1)))
+    optimizer = torch.optim.Adam([model.B, model.A], lr=executor.LEARNING_RATE)
+    sampler = executor.N3FitSampler(_fit_rows(), cursor=executor.RECOVERY_INTERVAL)
+    history = [{"update": update} for update in range(1, executor.RECOVERY_INTERVAL + 1)]
+    ledger = executor.SampleReadLedger()
+    ledger.mark_backing_loaded()
+    ledger.enter_fit()
+    ledger.record_materialized("N3_FIT", torch.tensor([3, 7]), rank=1, purpose="fit_update_batch")
+    ledger.record_evaluated("N3_FIT", torch.tensor([3, 7]), rank=1, purpose="persistent_fit_update")
+    recovery = executor._save_recovery(
+        rank_dir,
+        model,
+        optimizer,
+        sampler,
+        executor.RECOVERY_INTERVAL,
+        manifest,
+        history,
+        ledger=ledger,
+        attempt_id=attempt_id,
+    )
+    credential = executor._recovery_ledger_path(recovery)
+    (attempt / "execution_manifest.json").write_text(
+        json.dumps(
+            {
+                "authorization_id": executor.AUTHORIZATION_ID,
+                "contract_sha256": executor.CONTRACT_SHA256,
+                "protocol_sha256": executor.PROTOCOL_SHA256,
+                "source_manifest": manifest,
+                "run_identity": {"scientific_attempt_id": attempt_id},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (attempt / "status.json").write_text(
+        json.dumps(
+            {
+                "state": "INTERRUPTED",
+                "phase": "FIT_RANK_1",
+                "step": executor.RECOVERY_INTERVAL,
+                "authorization_id": executor.AUTHORIZATION_ID,
+                "execution_source_semantics_id": manifest["execution_source_semantics_id"],
+                "boundary_credential": credential.name,
+                "boundary_credential_sha256": executor.file_sha256(credential),
+            }
+        ),
+        encoding="utf-8",
+    )
+    plan = executor._inspect_interrupted_attempt(root, attempt, manifest, {"roles": {}}, attempt_id, None)
+    assert plan["stage"] == "FIT"
+    assert plan["resume_checkpoint"] == recovery
+    assert plan["ledger_state"]["phase"] == "FIT"
+    with pytest.raises(executor.N3ExecutionError, match="latest validated same-attempt checkpoint"):
+        executor._inspect_interrupted_attempt(root, attempt, manifest, {"roles": {}}, attempt_id, rank_dir / "missing.pt")
+
+
+def test_same_attempt_resume_rejects_non_interrupted_status(tmp_path: Path) -> None:
+    attempt = tmp_path / executor.ATTEMPT_DIR
+    attempt.mkdir(parents=True)
+    manifest = _source_manifest("active-attempt-source")
+    (attempt / "status.json").write_text(
+        json.dumps(
+            {
+                "state": executor.RUN_SCIENTIFIC_ACTIVE,
+                "authorization_id": executor.AUTHORIZATION_ID,
+                "execution_source_semantics_id": manifest["execution_source_semantics_id"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(executor.N3ExecutionError, match="matching INTERRUPTED status"):
+        executor._inspect_interrupted_attempt(tmp_path, attempt, manifest, {"roles": {}}, "attempt", None)
+
+
+def test_same_attempt_resume_never_re_evaluates_uncredentialed_one_shot_evidence(tmp_path: Path) -> None:
+    attempt_id = "attempt-with-incomplete-select"
+    manifest = _source_manifest("incomplete-select-source")
+    attempt = tmp_path / executor.ATTEMPT_DIR
+    attempt.mkdir(parents=True)
+    (attempt / "execution_manifest.json").write_text(
+        json.dumps(
+            {
+                "authorization_id": executor.AUTHORIZATION_ID,
+                "contract_sha256": executor.CONTRACT_SHA256,
+                "protocol_sha256": executor.PROTOCOL_SHA256,
+                "source_manifest": manifest,
+                "run_identity": {"scientific_attempt_id": attempt_id},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (attempt / "status.json").write_text(
+        json.dumps(
+            {
+                "state": "INTERRUPTED",
+                "phase": "N3_SELECT_EVALUATION",
+                "authorization_id": executor.AUTHORIZATION_ID,
+                "execution_source_semantics_id": manifest["execution_source_semantics_id"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (attempt / "selection.json").write_text("{}", encoding="utf-8")
+    with pytest.raises(executor.N3ExecutionError, match="evidence/credential pair is incomplete"):
+        executor._inspect_interrupted_attempt(tmp_path, attempt, manifest, {"roles": {}}, attempt_id, None)
+
+
+def test_terminal_status_failure_does_not_relabel_or_remove_published_science(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    identity = executor._make_identity(_source_manifest("terminal-source"), attempt_id="n3-terminal-attempt")
+    control = executor.ResearchRunControl(
+        identity,
+        executor.AUTHORIZATION_ID,
+        preflight_status="READY",
+        state=executor.RUN_SCIENTIFIC_ACTIVE,
+        receipt=_ready_receipt("terminal-source"),
+    )
+    attempt = tmp_path / "attempt_01"
+    attempt.mkdir()
+    report = {
+        "schema": executor.REPORT_SCHEMA,
+        "outer_gate_passed": False,
+        "selected_rank": 1,
+        "classification": executor.CLASSIFICATION_NOT_ADEQUATE,
+    }
+
+    def fail_status(*args: object, **kwargs: object) -> None:
+        raise OSError("simulated operational status storage failure")
+
+    monkeypatch.setattr(executor, "atomic_write_json", fail_status)
+    with pytest.raises(executor.N3PostReportStatusError, match="report is durable"):
+        executor._publish_report_then_terminal_status(
+            attempt,
+            report,
+            control,
+            SimpleNamespace(update=lambda **kwargs: None),
+        )
+    assert json.loads((attempt / "report.json").read_text(encoding="utf-8")) == report
+    assert control.state == executor.RUN_VALID_FAILED
+    assert not (attempt / "status.json").exists()
+
+
+@pytest.mark.parametrize("resume_stage", ["selection", "confirmation"])
+def test_one_shot_stage_resume_never_replays_a_completed_domain(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, resume_stage: str
+) -> None:
+    root = tmp_path
+    runs_root = Path("runs")
+    attempt_rel = runs_root / "attempt_01"
+    preflight_rel = runs_root / "preflight_01"
+    monkeypatch.setattr(executor, "RUNS_ROOT", runs_root)
+    monkeypatch.setattr(executor, "ATTEMPT_DIR", attempt_rel)
+    monkeypatch.setattr(executor, "PREFLIGHT_DIR", preflight_rel)
+    monkeypatch.setattr(executor, "PREFLIGHT_FAILURE_STATE", runs_root / "execution_preflight_failure_state.json")
+    manifest = _source_manifest("confirm-resume-source")
+    attempt_id = "lightgen-2d-n3-low-rank-model-order-v1:attempt_01"
+    role_documents = {
+        "N3_FIT": {"indices": list(range(8))},
+        "N3_SELECT": {"indices": list(range(8, 16))},
+        "N3_CONFIRM": {"indices": list(range(16, 24))},
+    }
+    contract: dict[str, object] = {"data_roles": {"roles": role_documents}}
+    protocol = {"execution_boundary": {"required_execution_authorization": executor.AUTHORIZATION_ID, "authorization_consumed": False}}
+    authority_identity = executor.N3ActiveAuthorityIdentity(
+        contract_sha256=executor.CONTRACT_SHA256,
+        protocol_sha256=executor.PROTOCOL_SHA256,
+        protocol_classification=executor.ACTIVE_PROTOCOL_CLASSIFICATION,
+        semantic_authority_id=executor.ACTIVE_PROTOCOL_SEMANTIC_AUTHORITY_ID,
+        superseded_protocol_sha256=executor.SUPERSEDED_PROTOCOL_SHA256,
+        superseded_protocol_active_for_execution=False,
+        canonical_b_normal_form_verified=True,
+    )
+    monkeypatch.setattr(executor, "_load_contract_and_protocol", lambda repo_root: (contract, protocol, authority_identity))
+    monkeypatch.setattr(executor, "_make_source_manifest", lambda repo_root: manifest)
+    monkeypatch.setattr(executor, "_prepare_cuda_runtime", lambda: {"status": "READY", "cuda_smoke": {"device": "test-cuda"}})
+    monkeypatch.setattr(executor, "_verify_authority_file_identities", lambda *args, **kwargs: None)
+    monkeypatch.setattr(executor, "_evaluate_domain", lambda *args, **kwargs: pytest.fail("N3_SELECT/N3_CONFIRM must not be replayed"))
+    monkeypatch.setattr(executor, "_confirm", lambda *args, **kwargs: pytest.fail("N3_CONFIRM must not be replayed"))
+    monkeypatch.setattr(executor, "_fit_rank", lambda *args, **kwargs: pytest.fail("FIT must not resume after both endpoints"))
+    monkeypatch.setattr(executor, "_apply_update", lambda *args, **kwargs: pytest.fail("no optimizer update is allowed during report recovery"))
+    real_device = torch.device
+    monkeypatch.setattr(torch, "device", lambda value: real_device("cpu"))
+    monkeypatch.setattr(torch.cuda, "get_device_name", lambda device=None: "test-cuda")
+    monkeypatch.setattr(executor, "_cuda_memory", lambda device: {"peak_reserved_gb": 1.0, "allocated_gb": 0.5})
+
+    class FakeHeartbeat:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            self.updates: list[dict[str, object]] = []
+
+        def update(self, **kwargs: object) -> None:
+            self.updates.append(dict(kwargs))
+
+        def start_liveness(self, **kwargs: object) -> None:
+            return None
+
+        def stop_liveness(self) -> None:
+            return None
+
+    class FakeModel:
+        def eval(self) -> FakeModel:
+            return self
+
+        def load_trainable_state(self, state: dict[str, torch.Tensor]) -> None:
+            return None
+
+    monkeypatch.setattr(executor, "HeartbeatWriter", FakeHeartbeat)
+    monkeypatch.setattr(executor, "_new_model", lambda *args, **kwargs: FakeModel())
+
+    attempt = root / attempt_rel
+    preflight_dir = root / preflight_rel
+    attempt.mkdir(parents=True)
+    preflight_dir.mkdir(parents=True)
+    role_indices = {name: torch.tensor(value["indices"], dtype=torch.long) for name, value in role_documents.items()}
+    ledger = executor.SampleReadLedger()
+    ledger.mark_backing_loaded()
+    ledger.enter_fit()
+    role_fit_rows = role_indices["N3_FIT"]
+    ledger.record_materialized("N3_FIT", role_fit_rows, purpose="fit_label_identity")
+    baseline = attempt / "rank_0" / "shared_baseline_rank_0_step_00000.pt"
+    baseline.parent.mkdir(parents=True)
+    baseline.write_bytes(b"shared-baseline")
+    endpoint_paths: dict[int, Path] = {0: baseline}
+    for rank in (1, 2):
+        endpoint_path = attempt / f"rank_{rank}" / f"fit_final_rank_{rank}_step_{executor.FIT_UPDATES:05d}.pt"
+        endpoint_path.parent.mkdir(parents=True)
+        torch.save(
+            {
+                "schema": executor.CHECKPOINT_SCHEMA,
+                "rank": rank,
+                "completed_updates": executor.FIT_UPDATES,
+                "scientific_artifact": True,
+                "operational_artifact": False,
+                "contract_sha256": executor.CONTRACT_SHA256,
+                "protocol_sha256": executor.PROTOCOL_SHA256,
+                "fit_metrics": {"updates": executor.FIT_UPDATES, "last_update_L_struct": 0.1 * rank},
+                "A": torch.zeros((2, rank)),
+                "B": torch.zeros((3, rank)),
+            },
+            endpoint_path,
+        )
+        endpoint_paths[rank] = endpoint_path
+        ledger.record_fit_endpoint(rank, executor.FIT_UPDATES)
+        executor._write_fit_ledger_credential(
+            endpoint_path,
+            ledger,
+            manifest,
+            attempt_id,
+            rank=rank,
+            completed_updates=executor.FIT_UPDATES,
+            artifact_kind="FIT_ENDPOINT_LEDGER_CREDENTIAL",
+        )
+    ledger.enter_selection()
+    select_rows = role_indices["N3_SELECT"]
+    for rank in (0, 1, 2):
+        ledger.record_materialized("N3_SELECT", select_rows, rank=rank, purpose="model_order_candidate")
+        ledger.record_evaluated("N3_SELECT", select_rows, rank=rank, purpose="model_order_candidate")
+    ledger.verify_selection_evaluations(select_rows.numel())
+    selection_document = {
+        "schema": "n3_low_rank_model_order_selection.v1",
+        "contract_sha256": executor.CONTRACT_SHA256,
+        "protocol_sha256": executor.PROTOCOL_SHA256,
+        "domain": "N3_SELECT",
+        "sample_count": int(select_rows.numel()),
+        "indices_sha256": executor.tensor_sha256(select_rows),
+        "rank_results": {str(rank): {"rank": rank, "semantic": {"L_S": 1.0, "L_I": 1.0, "L_C": 1.0}} for rank in (0, 1, 2)},
+        "semantic_feasibility": {str(rank): {"L_S": True, "L_I": True, "L_C": True} for rank in (0, 1, 2)},
+        "lexicographic_trace": [{"rank": rank} for rank in (0, 1, 2)],
+        "selected_rank": 1,
+        "selection_count": 1,
+    }
+    selection_path = attempt / "selection.json"
+    selection_path.write_text(json.dumps(selection_document), encoding="utf-8")
+    selection_bytes = selection_path.read_bytes()
+    executor._write_stage_recovery(root, attempt, "selection", selection_path, endpoint_paths, role_indices, ledger, manifest, attempt_id)
+
+    def load_authorities(repo_root: Path, active_contract: object, active_protocol: object, read_ledger: executor.SampleReadLedger) -> dict[str, object]:
+        read_ledger.mark_backing_loaded()
+        return {
+            "roles": role_indices,
+            "mean": torch.zeros(1),
+            "scale": torch.ones(1),
+            "checkpoint": {},
+        }
+
+    monkeypatch.setattr(executor, "_load_authorities", load_authorities)
+    monkeypatch.setattr(executor, "_load_evaluators", lambda *args, **kwargs: (object(), object(), object()))
+    monkeypatch.setattr(executor, "_make_source_manifest", lambda repo_root: manifest)
+    if resume_stage == "selection":
+        def confirm_once(
+            selected_rank: int,
+            candidate: object,
+            baseline_model: object,
+            indices: torch.Tensor,
+            active_authorities: object,
+            evaluators: object,
+            device: object,
+            read_ledger: executor.SampleReadLedger,
+        ) -> dict[str, object]:
+            read_ledger.record_materialized("N3_CONFIRM", indices, rank=0, purpose="shared_baseline_reference")
+            read_ledger.record_evaluated("N3_CONFIRM", indices, rank=0, purpose="shared_baseline_reference")
+            read_ledger.record_materialized("N3_CONFIRM", indices, rank=selected_rank, purpose="selected_candidate")
+            read_ledger.record_evaluated("N3_CONFIRM", indices, rank=selected_rank, purpose="selected_candidate")
+            return {"selected_rank": selected_rank, "passed": False}
+
+        monkeypatch.setattr(executor, "_confirm", confirm_once)
+        boundary_credential = executor._stage_recovery_path(attempt, "selection")
+    else:
+        monkeypatch.setattr(executor, "_confirm", lambda *args, **kwargs: pytest.fail("N3_CONFIRM must not be replayed"))
+        confirm_rows = role_indices["N3_CONFIRM"]
+        assert ledger.enter_confirmation(selection_path) == 1
+        ledger.record_materialized("N3_CONFIRM", confirm_rows, rank=0, purpose="shared_baseline_reference")
+        ledger.record_evaluated("N3_CONFIRM", confirm_rows, rank=0, purpose="shared_baseline_reference")
+        ledger.record_materialized("N3_CONFIRM", confirm_rows, rank=1, purpose="selected_candidate")
+        ledger.record_evaluated("N3_CONFIRM", confirm_rows, rank=1, purpose="selected_candidate")
+        ledger.verify_confirmation_evaluations(confirm_rows.numel())
+        confirmation_document = {
+            "schema": "n3_low_rank_model_order_confirmation.v1",
+            "contract_sha256": executor.CONTRACT_SHA256,
+            "protocol_sha256": executor.PROTOCOL_SHA256,
+            "domain": "N3_CONFIRM",
+            "indices_sha256": executor.tensor_sha256(confirm_rows),
+            "evaluations": 1,
+            "selected_rank": 1,
+            "passed": False,
+        }
+        confirmation_path = attempt / "confirmation.json"
+        confirmation_path.write_text(json.dumps(confirmation_document), encoding="utf-8")
+        confirmation_bytes = confirmation_path.read_bytes()
+        executor._write_stage_recovery(
+            root,
+            attempt,
+            "confirmation",
+            confirmation_path,
+            {0: baseline, 1: endpoint_paths[1]},
+            role_indices,
+            ledger,
+            manifest,
+            attempt_id,
+        )
+        boundary_credential = executor._stage_recovery_path(attempt, "confirmation")
+
+    status = {
+        "state": "INTERRUPTED",
+        "phase": "N3_SELECT_COMPLETE" if resume_stage == "selection" else "N3_CONFIRM_COMPLETE",
+        "step": 2 * executor.FIT_UPDATES,
+        "authorization_id": executor.AUTHORIZATION_ID,
+        "execution_source_semantics_id": manifest["execution_source_semantics_id"],
+        "boundary_credential": boundary_credential.name,
+        "boundary_credential_sha256": executor.file_sha256(boundary_credential),
+    }
+    (attempt / "status.json").write_text(json.dumps(status), encoding="utf-8")
+    (attempt / "execution_manifest.json").write_text(
+        json.dumps(
+            {
+                "authorization_id": executor.AUTHORIZATION_ID,
+                "contract_sha256": executor.CONTRACT_SHA256,
+                "protocol_sha256": executor.PROTOCOL_SHA256,
+                "source_manifest": manifest,
+                "run_identity": executor._make_identity(manifest, attempt_id=attempt_id).to_dict(),
+            }
+        ),
+        encoding="utf-8",
+    )
+    receipt = _ready_receipt("confirm-resume-source")
+    preflight_ledger = executor.SampleReadLedger()
+    preflight_ledger.mark_backing_loaded()
+    (preflight_dir / "preflight.json").write_text(
+        json.dumps(
+            {
+                "status": "READY",
+                "source_manifest": manifest,
+                "preflight_receipt": receipt.to_dict(),
+                "ledger_state": preflight_ledger.snapshot(),
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    if resume_stage == "confirmation":
+        original_atomic_write_json = executor.atomic_write_json
+
+        def fail_one_terminal_write(path: Path, payload: object) -> None:
+            if Path(path).name == "status.json" and (attempt / "report.json").is_file():
+                raise OSError("simulated final status write failure")
+            original_atomic_write_json(path, payload)
+
+        monkeypatch.setattr(executor, "atomic_write_json", fail_one_terminal_write)
+        with pytest.raises(executor.N3PostReportStatusError, match="report is durable"):
+            executor.execute(repo_root=root, resume=True)
+        report_bytes = (attempt / "report.json").read_bytes()
+        monkeypatch.setattr(executor, "atomic_write_json", original_atomic_write_json)
+        monkeypatch.setattr(executor, "_prepare_cuda_runtime", lambda: pytest.fail("report-only recovery must not initialize CUDA"))
+        monkeypatch.setattr(executor, "_load_authorities", lambda *args, **kwargs: pytest.fail("report-only recovery must not reload role data"))
+        monkeypatch.setattr(executor, "_load_evaluators", lambda *args, **kwargs: pytest.fail("report-only recovery must not load evaluators"))
+        report = executor.execute(repo_root=root, resume=True)
+        assert (attempt / "report.json").read_bytes() == report_bytes
+    else:
+        report = executor.execute(repo_root=root, resume=True)
+
+    assert report["result"] == executor.RUN_VALID_FAILED
+    assert report["selected_rank"] == 1
+    assert (attempt / "report.json").is_file()
+    assert json.loads((attempt / "status.json").read_text(encoding="utf-8"))["state"] == executor.RUN_VALID_FAILED
+    assert selection_path.read_bytes() == selection_bytes
+    assert boundary_credential.is_file()
+    if resume_stage == "confirmation":
+        assert confirmation_path.read_bytes() == confirmation_bytes
+    else:
+        generated_confirmation = json.loads((attempt / "confirmation.json").read_text(encoding="utf-8"))
+        assert generated_confirmation["selected_rank"] == 1
+        assert generated_confirmation["domain"] == "N3_CONFIRM"
+
+
+def test_recovery_roundtrip_requires_named_authorities_boundary() -> None:
+    parameters = list(inspect.signature(executor._verify_recovery_roundtrip).parameters.values())
+    assert parameters[0].kind is inspect.Parameter.KEYWORD_ONLY
+    tree = ast.parse(inspect.getsource(executor._preflight))
+    call = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_verify_preflight_state_roundtrip"
+    )
+    assert {item.arg for item in call.keywords} == {
+        "authorities", "model", "optimizer", "sampler", "history", "manifest", "device", "ledger"
+    }
+
+
+def test_recovery_roundtrip_checks_the_25_step_restart_and_next_update(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class TinyModel:
+        def __init__(self) -> None:
+            self.rank = 1
+            self.B = torch.nn.Parameter(torch.tensor([0.1, -0.2]))
+            self.A = torch.nn.Parameter(torch.tensor([[0.3], [-0.4]]))
+
+        def state_dict(self) -> dict[str, torch.Tensor]:
+            return {"B": self.B.detach().clone(), "A": self.A.detach().clone()}
+
+        def train(self) -> TinyModel:
+            return self
+
+        def load_trainable_state(self, state: dict[str, torch.Tensor]) -> None:
+            with torch.no_grad():
+                self.B.copy_(state["n3_correction.B"])
+                self.A.copy_(state["n3_correction.A"])
+
+    rng_state = {"cpu": torch.arange(4, dtype=torch.uint8), "cuda": [], "cuda_available": False}
+    monkeypatch.setattr(executor, "_rng_snapshot", lambda: copy.deepcopy(rng_state))
+    monkeypatch.setattr(executor, "_restore_rng", lambda state: None)
+    monkeypatch.setattr(executor, "_new_model", lambda *args, **kwargs: TinyModel())
+    monkeypatch.setattr(executor, "_optimizer", lambda model: torch.optim.Adam([model.B, model.A], lr=executor.LEARNING_RATE))
+
+    def apply_update(model: TinyModel, optimizer: torch.optim.Adam, images: torch.Tensor, labels: torch.Tensor) -> dict[str, float]:
+        optimizer.zero_grad(set_to_none=True)
+        loss = (model.B.square().sum() + model.A.square().sum()) * images.sum().add(1.0)
+        loss.backward()
+        optimizer.step()
+        return {"loss": float(loss.detach()), "label_sum": float(labels.sum())}
+
+    monkeypatch.setattr(executor, "_apply_update", apply_update)
+    model = TinyModel()
+    optimizer = executor._optimizer(model)
+    sampler = executor.N3FitSampler(_fit_rows())
+    ledger = executor.SampleReadLedger()
+    ledger.mark_backing_loaded()
+    history = []
+    images = torch.arange(2560 * 2, dtype=torch.float32).reshape(2560, 2) / 1000.0
+    for _ in range(executor.RECOVERY_INTERVAL):
+        indices, labels = sampler.next_batch()
+        history.append(apply_update(model, optimizer, images.index_select(0, indices), labels))
+    authorities = {
+        "checkpoint": {},
+        "indices_by_class": _fit_rows(),
+        "images": images,
+    }
+    result = executor._verify_recovery_roundtrip(
+        authorities=authorities,
+        model=model,
+        optimizer=optimizer,
+        sampler=sampler,
+        history=history,
+        manifest=_source_manifest("roundtrip-source"),
+        device=torch.device("cpu"),
+        ledger=ledger,
+    )
+    assert result["passed"] is True
+    assert result["state_equal"] is True
+    assert result["optimizer_equal"] is True
+    assert result["cursor_equal"] is True
+    assert result["rng_equal"] is True
+    assert result["history_equal"] is True
+    assert result["next_update_equal"] is True
+    assert result["temporary_recovery_removed"] is True
+
+
+def test_preflight_resource_envelope_uses_both_rank_medians_and_inclusive_budget() -> None:
+    result = executor._preflight_resource_envelope(
+        rank1_update_seconds=[1.0, 2.0, 3.0],
+        rank2_update_seconds=[4.0, 5.0, 6.0],
+        recovery_write_seconds=0.5,
+        preflight_elapsed_seconds=211.2,
+        peak_reserved_gb=5.0,
+        total_vram_gb=6.0,
+        cuda_available=True,
+    )
+
+    assert result["rank1_median_update_seconds"] == 2.0
+    assert result["rank2_median_update_seconds"] == 5.0
+    assert result["projected_fit_seconds"] == 2100.0
+    assert result["projected_recovery_write_seconds"] == 12.0
+    assert result["projected_run_seconds"] == 2112.0
+    assert result["preflight_budget_seconds"] == pytest.approx(211.2)
+    assert result["budget_passed"] is True
+    assert result["cuda_viability_passed"] is True
+
+
+def test_preflight_resource_envelope_reports_time_and_vram_failures_separately() -> None:
+    rank1 = [1.0, 1.0, 1.0]
+    rank2 = [2.0, 2.0, 2.0]
+    common = {
+        "rank1_update_seconds": rank1,
+        "rank2_update_seconds": rank2,
+        "recovery_write_seconds": 0.25,
+        "peak_reserved_gb": 5.0,
+        "total_vram_gb": 6.0,
+        "cuda_available": True,
+    }
+
+    slow = executor._preflight_resource_envelope(
+        **common, preflight_elapsed_seconds=executor._preflight_resource_envelope(
+            **common, preflight_elapsed_seconds=0.0
+        )["preflight_budget_seconds"] + 0.01
+    )
+    high_memory = executor._preflight_resource_envelope(
+        **{**common, "peak_reserved_gb": 6.0}, preflight_elapsed_seconds=0.0
+    )
+
+    assert slow["budget_passed"] is False
+    assert slow["cuda_viability_passed"] is True
+    assert slow["failure_reasons"] == ["PREFLIGHT_BUDGET_EXCEEDED"]
+    assert high_memory["budget_passed"] is True
+    assert high_memory["cuda_viability_passed"] is False
+    assert high_memory["failure_reasons"] == ["CUDA_MEMORY_ENVELOPE_FAILED"]
+
+
+def test_resource_preflight_failure_records_operands_and_reuses_legacy_failure_family(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _patch_output_paths(monkeypatch)
+    monkeypatch.chdir(tmp_path)
+    manifest = _source_manifest("resource-failure-source")
+    state_path = tmp_path / executor.PREFLIGHT_FAILURE_STATE
+    state_path.parent.mkdir(parents=True)
+    legacy_signature = executor.hashlib.sha256(
+        b"N3ExecutionError:strict preflight cuda_viability failed"
+    ).hexdigest()
+    state_path.write_text(
+        json.dumps(
+            {
+                "schema": "n3_execution_preflight_failure_state.v1",
+                "failure_counts": {f"N3_STRICT_PREFLIGHT:{legacy_signature}": 1},
+                "last_decision": executor.PREFLIGHT_RECHECK_ALLOWED,
+            }
+        ),
+        encoding="utf-8",
+    )
+    control = executor._preflight_identity(tmp_path, manifest)
+    evidence = {
+        "failure_family": "RESOURCE_ENVELOPE",
+        "classification": "RESOURCE_ABORTED",
+        "failed_check": {"id": "operational_preflight_budget", "status": "FAIL"},
+        "ordered_checks_completed": [{"id": "data_firewall", "status": "PASS"}],
+        "resource": {"preflight_elapsed_seconds": 100.0, "preflight_budget_seconds": 99.0},
+    }
+    ledger_snapshot = {"schema": "n3_sample_read_ledger_state.v1", "evaluated_ids": {"N3_SELECT": [], "N3_CONFIRM": []}}
+
+    result = executor._write_preflight_failure(
+        tmp_path,
+        control,
+        executor.N3ExecutionError("strict preflight operational resource budget failed"),
+        "N3_STRICT_PREFLIGHT",
+        manifest=manifest,
+        preflight_evidence=evidence,
+        sample_read_ledger=ledger_snapshot,
+    )
+
+    failure = json.loads(
+        (tmp_path / executor.RUNS_ROOT / "preflight_failure_02" / "failure.json").read_text(encoding="utf-8")
+    )
+    assert result["signature"] == legacy_signature
+    assert result["decision"] == executor.PREFLIGHT_ROOT_CAUSE_REVIEW_REQUIRED
+    assert failure["classification"] == "RESOURCE_ABORTED"
+    assert failure["preflight_evidence"] == evidence
+    assert failure["sample_read_ledger"] == ledger_snapshot
+    assert failure["scientific_attempt_created"] is False
+    assert not (tmp_path / executor.ATTEMPT_DIR).exists()
+
+
+def test_preflight_temporary_state_roundtrip_compares_the_next_update(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class TinyModel:
+        def __init__(self) -> None:
+            self.rank = 1
+            self.B = torch.nn.Parameter(torch.tensor([0.1, -0.2]))
+            self.A = torch.nn.Parameter(torch.tensor([[0.3], [-0.4]]))
+
+        def state_dict(self) -> dict[str, torch.Tensor]:
+            return {"B": self.B.detach().clone(), "A": self.A.detach().clone()}
+
+        def train(self) -> TinyModel:
+            return self
+
+        def load_trainable_state(self, state: dict[str, torch.Tensor]) -> None:
+            with torch.no_grad():
+                self.B.copy_(state["n3_correction.B"])
+                self.A.copy_(state["n3_correction.A"])
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(executor, "_new_model", lambda *args, **kwargs: TinyModel())
+    monkeypatch.setattr(
+        executor,
+        "_optimizer",
+        lambda model: torch.optim.Adam([model.B, model.A], lr=executor.LEARNING_RATE),
+    )
+
+    def apply_update(
+        model: TinyModel,
+        optimizer: torch.optim.Adam,
+        images: torch.Tensor,
+        labels: torch.Tensor,
+    ) -> dict[str, float]:
+        optimizer.zero_grad(set_to_none=True)
+        loss = (model.B.square().sum() + model.A.square().sum()) * images.sum().add(1.0)
+        loss.backward()
+        optimizer.step()
+        return {"loss": float(loss.detach()), "label_sum": float(labels.sum())}
+
+    monkeypatch.setattr(executor, "_apply_update", apply_update)
+    model = TinyModel()
+    optimizer = executor._optimizer(model)
+    sampler = executor.N3FitSampler(_fit_rows())
+    ledger = executor.SampleReadLedger()
+    ledger.mark_backing_loaded()
+    images = torch.arange(2560 * 2, dtype=torch.float32).reshape(2560, 2) / 1000.0
+    history = []
+    for _ in range(executor.PREFLIGHT_UPDATE_COUNT):
+        indices, labels = sampler.next_batch()
+        history.append(apply_update(model, optimizer, images.index_select(0, indices), labels))
+
+    result = executor._verify_preflight_state_roundtrip(
+        authorities={"checkpoint": {}, "indices_by_class": _fit_rows(), "images": images},
+        model=model,
+        optimizer=optimizer,
+        sampler=sampler,
+        history=history,
+        manifest=_source_manifest("preflight-roundtrip-source"),
+        device=torch.device("cpu"),
+        ledger=ledger,
+    )
+
+    assert result["passed"] is True
+    assert result["state_equal"] is True
+    assert result["optimizer_equal"] is True
+    assert result["cursor_equal"] is True
+    assert result["rng_equal"] is True
+    assert result["history_equal"] is True
+    assert result["next_batch_equal"] is True
+    assert result["next_update_equal"] is True
+    assert result["temporary_state_removed"] is True
+
+
+def test_cuda_preflight_keeps_three_update_trials_separate_from_25_step_recovery() -> None:
+    source = inspect.getsource(executor._preflight)
+    assert source.count("range(1, PREFLIGHT_UPDATE_COUNT + 1)") == 2
+    assert "_verify_preflight_state_roundtrip(" in source
+    assert "_verify_recovery_roundtrip(" not in source
+    assert "RECOVERY_INTERVAL + 1" not in source
+    assert "PREFLIGHT_UPDATE_COUNT * 2 + 2" in source
+
+
+def test_preflight_no_grad_forward_does_not_leave_inference_transfer_kernel_for_backward() -> None:
+    clear_production_transfer_cache()
+    plane = PlaneSpec("source", (8, 8), (2e-6, 2e-6), 532e-9, 0.0, "unit")
+    phase = torch.randn((1, 1, 8, 8), dtype=torch.float32, requires_grad=True)
+    base = torch.ones((1, 1, 8, 8), dtype=torch.complex64)
+
+    # This reproduces the previous preflight behavior: inference-mode creates
+    # an inference tensor in the propagation cache, which backward cannot save.
+    with torch.inference_mode():
+        angular_spectrum_propagate(
+            ComplexField(base, plane, OperationProvenance("source", None, None)),
+            1e-3,
+            "inference-cache",
+        )
+    assert next(iter(_PRODUCTION_TRANSFER_CACHE.values())).is_inference()
+    with pytest.raises(RuntimeError, match="Inference tensors cannot be saved"):
+        field = ComplexField(base * torch.exp(1j * phase), plane, OperationProvenance("source", None, None))
+        angular_spectrum_propagate(field, 1e-3, "contaminated-backward").tensor.abs().square().sum().backward()
+
+    clear_production_transfer_cache()
+    with torch.no_grad():
+        angular_spectrum_propagate(
+            ComplexField(base, plane, OperationProvenance("source", None, None)),
+            1e-3,
+            "no-grad-cache",
+        )
+    field = ComplexField(base * torch.exp(1j * phase), plane, OperationProvenance("source", None, None))
+    output = angular_spectrum_propagate(field, 1e-3, "valid-backward")
+    output.tensor.abs().square().sum().backward()
+    assert phase.grad is not None and bool(torch.isfinite(phase.grad).all().item())
+    assert not next(iter(_PRODUCTION_TRANSFER_CACHE.values())).is_inference()
+    clear_production_transfer_cache()
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="strict CUDA pooling regression requires CUDA")
+def test_fit_structural_loss_has_strict_deterministic_cuda_backward(monkeypatch: pytest.MonkeyPatch) -> None:
+    device = torch.device("cuda")
+    prior_deterministic = torch.are_deterministic_algorithms_enabled()
+    prior_warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
+    prior_cudnn_deterministic = torch.backends.cudnn.deterministic
+    raw = torch.linspace(-0.1, 1.1, 200 * 200, device=device, dtype=torch.float32).reshape(1, 1, 200, 200).requires_grad_()
+    images = torch.linspace(0.0, 1.0, 200 * 200, device=device, dtype=torch.float32).reshape(1, 1, 200, 200)
+
+    class SyntheticModel:
+        def forward_from_image(self, batch: torch.Tensor, labels: torch.Tensor) -> SimpleNamespace:
+            del labels
+            return SimpleNamespace(
+                raw_intensity=raw,
+                image_input=SimpleNamespace(slm_intensity=batch),
+            )
+
+    monkeypatch.setattr(executor.structural_exec, "_structural_surrogate", lambda value: value.flatten(1).to(torch.float64))
+    monkeypatch.setattr(executor.structural_exec, "_normalized_surrogate", lambda value, mean, scale: value)
+    try:
+        torch.use_deterministic_algorithms(True, warn_only=False)
+        torch.backends.cudnn.deterministic = True
+        loss, _ = executor._structural_loss(
+            SyntheticModel(),
+            images,
+            torch.zeros((1,), dtype=torch.long, device=device),
+            torch.zeros((1,), dtype=torch.float64, device=device),
+            torch.ones((1,), dtype=torch.float64, device=device),
+        )
+        gradient = torch.autograd.grad(loss, raw)[0]
+        assert torch.are_deterministic_algorithms_enabled()
+        assert not torch.is_deterministic_algorithms_warn_only_enabled()
+        assert bool(torch.isfinite(gradient).all().item())
+    finally:
+        torch.use_deterministic_algorithms(prior_deterministic, warn_only=prior_warn_only)
+        torch.backends.cudnn.deterministic = prior_cudnn_deterministic
+
+
+@pytest.mark.parametrize("dtype,atol", [(torch.float32, 1.0e-7), (torch.float64, 1.0e-12)])
+def test_deterministic_cmos_view_matches_native_cpu_pooling(dtype: torch.dtype, atol: float) -> None:
+    values = torch.linspace(-0.1, 1.1, 200 * 200, dtype=dtype).reshape(1, 1, 200, 200)
+    values[0, 0, 0, :4] = torch.tensor([-0.1, 0.0, 1.0, 1.1], dtype=dtype)
+    upstream = torch.linspace(-1.0, 1.0, 28 * 28, dtype=dtype).reshape(1, 1, 28, 28)
+
+    native_input = values.clone().requires_grad_()
+    native_view = executor.structural_exec.prior._cmos_view(native_input)
+    native_gradient = torch.autograd.grad((native_view * upstream).sum(), native_input)[0]
+
+    custom_input = values.clone().requires_grad_()
+    custom_view = executor._deterministic_cmos_view(custom_input)
+    custom_gradient = torch.autograd.grad((custom_view * upstream).sum(), custom_input)[0]
+
+    assert torch.equal(custom_view, native_view)
+    torch.testing.assert_close(custom_gradient, native_gradient, rtol=0.0, atol=atol)
+    assert bool(torch.isfinite(custom_gradient).all().item())
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="strict deterministic pooling regression requires CUDA")
+def test_deterministic_cmos_view_cuda_gradient_is_bitwise_repeatable() -> None:
+    device = torch.device("cuda")
+    prior_deterministic = torch.are_deterministic_algorithms_enabled()
+    prior_warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
+    prior_cudnn_deterministic = torch.backends.cudnn.deterministic
+    values = torch.linspace(-0.1, 1.1, 200 * 200, device=device).reshape(1, 1, 200, 200)
+    values[0, 0, 0, :4] = torch.tensor([-0.1, 0.0, 1.0, 1.1], device=device)
+    gradients = []
+    try:
+        torch.use_deterministic_algorithms(True, warn_only=False)
+        torch.backends.cudnn.deterministic = True
+        for _ in range(2):
+            value = values.clone().requires_grad_()
+            view = executor._deterministic_cmos_view(value)
+            gradients.append(torch.autograd.grad(view.square().sum(), value)[0])
+        assert torch.are_deterministic_algorithms_enabled()
+        assert not torch.is_deterministic_algorithms_warn_only_enabled()
+        assert torch.equal(gradients[0], gradients[1])
+        assert bool(torch.isfinite(gradients[0]).all().item())
+    finally:
+        torch.use_deterministic_algorithms(prior_deterministic, warn_only=prior_warn_only)
+        torch.backends.cudnn.deterministic = prior_cudnn_deterministic
+
+
+def test_corrected_protocol_b_initialization_matches_contract_normal_form() -> None:
+    contract = json.loads((ROOT / executor.CONTRACT_PATH).read_text(encoding="utf-8"))
+    protocol = reconciler.build_corrected_protocol(ROOT)
+    assert protocol["classification"] == "N3_LOW_RANK_FIT_PROTOCOL_RECONCILED"
+    assert protocol["semantic_authority_id"] == reconciler.SEMANTIC_AUTHORITY_ID
+    assert protocol["execution_boundary"]["authorization_consumed"] is False
+    assert contract["candidate_fit_procedure"]["initialization"]["B"] == "first r canonical row-major unit vectors in R^20000"
+    assert protocol["initialization"]["B"]["element_formula"] == "B[j,k] = 1.0 if j == k else 0.0"
+    assert protocol["authority_reconciliation"]["supersedes_protocol_sha256"] == reconciler.OLD_PROTOCOL_SHA256
+    assert protocol["authority_reconciliation"]["supersession_reason"] == "CONFLICT_WITH_IMMUTABLE_N3_CONTRACT_B_INITIALIZATION"
+    assert protocol["supersedes_protocol_sha256"] == reconciler.OLD_PROTOCOL_SHA256
+    executor._validate_b_initialization(contract, protocol)
+
+    expected = [item["id"] for item in protocol["strict_preflight"]["ordered_checks"]]
+    actual = [item["id"] for item in executor._ordered_preflight_source()]
+    assert len(actual) == 14
+    assert actual == expected
+
+
+def test_executor_loads_exact_reconciled_contract_protocol_pair() -> None:
+    contract, protocol, identity = executor._load_contract_and_protocol(ROOT)
+    assert contract["classification"] == "N3_LOW_RANK_MODEL_ORDER_CONTRACT_DEFINED"
+    assert protocol["semantic_authority_id"] == reconciler.SEMANTIC_AUTHORITY_ID
+    assert protocol["supersedes_protocol_sha256"] == reconciler.OLD_PROTOCOL_SHA256
+    assert identity.contract_sha256 == executor.CONTRACT_SHA256
+    assert identity.protocol_sha256 == executor.PROTOCOL_SHA256
+    assert identity.protocol_classification == executor.ACTIVE_PROTOCOL_CLASSIFICATION
+    assert identity.semantic_authority_id == executor.ACTIVE_PROTOCOL_SEMANTIC_AUTHORITY_ID
+    assert identity.superseded_protocol_active_for_execution is False
+    assert identity.canonical_b_normal_form_verified is True
+
+
+def test_active_authority_rejects_superseded_classification_and_semantic_id() -> None:
+    contract = json.loads((ROOT / executor.CONTRACT_PATH).read_text(encoding="utf-8"))
+    active = reconciler.build_corrected_protocol(ROOT)
+
+    stale_classification = copy.deepcopy(active)
+    stale_classification["classification"] = "N3_LOW_RANK_FIT_PROTOCOL_DEFINED"
+    with pytest.raises(executor.N3ExecutionError, match="classification"):
+        executor._validated_active_authority_identity(
+            contract,
+            stale_classification,
+            contract_sha256=executor.CONTRACT_SHA256,
+            protocol_sha256=executor.PROTOCOL_SHA256,
+        )
+
+    wrong_semantic_id = copy.deepcopy(active)
+    wrong_semantic_id["semantic_authority_id"] = "N3_LOW_RANK_FIT_PROTOCOL_DEFINED"
+    with pytest.raises(executor.N3ExecutionError, match="semantic authority"):
+        executor._validated_active_authority_identity(
+            contract,
+            wrong_semantic_id,
+            contract_sha256=executor.CONTRACT_SHA256,
+            protocol_sha256=executor.PROTOCOL_SHA256,
+        )
+
+
+def test_active_authority_rejects_wrong_sha_and_superseded_protocol_document() -> None:
+    contract = json.loads((ROOT / executor.CONTRACT_PATH).read_text(encoding="utf-8"))
+    active = reconciler.build_corrected_protocol(ROOT)
+    with pytest.raises(executor.N3ExecutionError, match="protocol SHA"):
+        executor._validated_active_authority_identity(
+            contract,
+            active,
+            contract_sha256=executor.CONTRACT_SHA256,
+            protocol_sha256="0" * 64,
+        )
+
+    old_path = ROOT / reconciler.OLD_PROTOCOL_PATH
+    old_protocol = json.loads(old_path.read_text(encoding="utf-8"))
+    old_sha = hashlib.sha256(old_path.read_bytes()).hexdigest()
+    with pytest.raises(executor.N3ExecutionError, match="protocol SHA"):
+        executor._validated_active_authority_identity(
+            contract,
+            old_protocol,
+            contract_sha256=executor.CONTRACT_SHA256,
+            protocol_sha256=old_sha,
+        )
+
+    superseded_marked_active = copy.deepcopy(active)
+    superseded_marked_active["authority_reconciliation"]["superseded_protocol_active_for_execution"] = True
+    with pytest.raises(executor.N3ExecutionError, match="superseded protocol"):
+        executor._validated_active_authority_identity(
+            contract,
+            superseded_marked_active,
+            contract_sha256=executor.CONTRACT_SHA256,
+            protocol_sha256=executor.PROTOCOL_SHA256,
+        )
+
+
+def test_authority_failure_precedes_tensor_loaders_and_cuda_initialization(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _patch_output_paths(monkeypatch)
+    manifest = _source_manifest("repaired-source")
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        pytest.fail("scientific tensor or CUDA access occurred before authority bootstrap passed")
+
+    def authority_failure(root: Path) -> tuple[dict[str, object], dict[str, object], executor.N3ActiveAuthorityIdentity]:
+        raise executor.N3ExecutionError("injected authority identity failure")
+
+    monkeypatch.setattr(executor, "_make_source_manifest", lambda root: manifest)
+    monkeypatch.setattr(executor, "_load_contract_and_protocol", authority_failure)
+    monkeypatch.setattr(executor, "_load_authorities", forbidden)
+    monkeypatch.setattr(executor, "safe_torch_load", forbidden)
+    monkeypatch.setattr(executor, "_prepare_cuda_runtime", forbidden)
+    monkeypatch.setattr(torch, "load", forbidden)
+    monkeypatch.setattr(torch.cuda, "is_available", forbidden)
+    monkeypatch.setattr(torch.cuda, "device_count", forbidden)
+    monkeypatch.setattr(torch.cuda, "get_device_name", forbidden)
+
+    with pytest.raises(executor.N3ExecutionError, match="injected authority identity failure"):
+        executor.execute(repo_root=tmp_path)
+
+    failure = json.loads((tmp_path / executor.RUNS_ROOT / "preflight_failure_01" / "failure.json").read_text(encoding="utf-8"))
+    assert failure["scientific_attempt_created"] is False
+    assert failure["optimizer_updates"] == 0
+    assert not (tmp_path / executor.ATTEMPT_DIR).exists()
+    assert not (tmp_path / executor.PREFLIGHT_DIR).exists()
+    assert failure["execution_source_identity"] == executor._source_identity_provenance(manifest)
+    assert failure["runtime_provenance"]["status"] == "NOT_STARTED"
+
+
+def test_runtime_failure_is_recorded_before_checkpoint_or_train_load_and_does_not_open_attempt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _patch_output_paths(monkeypatch)
+    manifest = _source_manifest("runtime-source", "runtime-manifest")
+    monkeypatch.setattr(executor, "_make_source_manifest", lambda root: manifest)
+    monkeypatch.setattr(
+        executor,
+        "_load_contract_and_protocol",
+        lambda root: ({}, {"execution_boundary": {"required_execution_authorization": executor.AUTHORIZATION_ID, "authorization_consumed": False}}, object()),
+    )
+    env_prefix = tmp_path / "runtime_env"
+    bin_dir = env_prefix / "bin"
+    bin_dir.mkdir(parents=True)
+    monkeypatch.setattr(executor.torch.version, "cuda", "12.1")
+    monkeypatch.setattr(
+        executor,
+        "_bootstrap_windows_cuda_dll_search",
+        lambda: {"status": "PASS", "python_prefix": str(env_prefix), "dll_search_directories": [str(bin_dir)]},
+    )
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        pytest.fail("checkpoint or TRAIN loader ran before CUDA runtime readiness")
+
+    monkeypatch.setattr(executor, "_verify_authority_file_identities", forbidden)
+    monkeypatch.setattr(executor, "_load_authorities", forbidden)
+    monkeypatch.setattr(executor, "safe_torch_load", forbidden)
+    monkeypatch.setattr(torch, "load", forbidden)
+
+    with pytest.raises(executor.N3RuntimeInitializationError, match="DLL is missing"):
+        executor.execute(repo_root=tmp_path)
+
+    failure = json.loads((tmp_path / executor.RUNS_ROOT / "preflight_failure_01" / "failure.json").read_text(encoding="utf-8"))
+    assert failure["classification"] == "INVALID_HARNESS"
+    assert failure["execution_source_identity"] == executor._source_identity_provenance(manifest)
+    assert failure["runtime_provenance"]["failed_stage"] == "NVRTC_RESOLVE_AND_LOAD"
+    assert "DLL is missing" in failure["runtime_provenance"]["error"]
+    assert not (tmp_path / executor.ATTEMPT_DIR).exists()
+    assert not (tmp_path / executor.PREFLIGHT_DIR).exists()
+
+
+def test_cuda_runtime_ready_precedes_checkpoint_and_train_authority_loads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _patch_output_paths(monkeypatch)
+    manifest = _source_manifest("runtime-ready-source", "runtime-ready-manifest")
+    events: list[str] = []
+    runtime = {"status": "READY", "cuda_smoke": {"device": "NVIDIA GeForce RTX 3060 Laptop GPU"}}
+    monkeypatch.setattr(executor, "_make_source_manifest", lambda root: manifest)
+    monkeypatch.setattr(
+        executor,
+        "_load_contract_and_protocol",
+        lambda root: ({}, {"execution_boundary": {"required_execution_authorization": executor.AUTHORIZATION_ID, "authorization_consumed": False}}, object()),
+    )
+    monkeypatch.setattr(executor, "_prepare_cuda_runtime", lambda: events.append("runtime_ready") or runtime)
+    monkeypatch.setattr(executor, "_verify_authority_file_identities", lambda root, protocol: events.append("identity_hashes"))
+
+    def controlled_load(root: Path, contract: object, protocol: object, ledger: object) -> dict[str, object]:
+        events.append("checkpoint_train_loader")
+        raise executor.N3ExecutionError("controlled stop after loader boundary")
+
+    monkeypatch.setattr(executor, "_load_authorities", controlled_load)
+    with pytest.raises(executor.N3ExecutionError, match="controlled stop after loader boundary"):
+        executor.execute(repo_root=tmp_path)
+
+    assert events == ["runtime_ready", "identity_hashes", "checkpoint_train_loader"]
+    failure = json.loads((tmp_path / executor.RUNS_ROOT / "preflight_failure_01" / "failure.json").read_text(encoding="utf-8"))
+    assert failure["runtime_provenance"] == runtime
+    assert not (tmp_path / executor.ATTEMPT_DIR).exists()
+
+
+def test_repaired_source_recheck_binds_new_ready_receipt_and_preserves_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _patch_output_paths(monkeypatch)
+    original_source = _source_manifest("old-source", "old-manifest")
+    first_control = executor._preflight_identity(tmp_path, original_source)
+    first = executor._write_preflight_failure(
+        tmp_path,
+        first_control,
+        executor.N3ExecutionError("first harness failure"),
+        "N3_STRICT_PREFLIGHT",
+        manifest=original_source,
+        runtime_provenance={"status": "FAILED", "failed_stage": "CUDA_KERNEL_SMOKE"},
+    )
+    assert first["decision"] == executor.PREFLIGHT_RECHECK_ALLOWED
+    failure_path = tmp_path / executor.RUNS_ROOT / "preflight_failure_01" / "failure.json"
+    failure_bytes = failure_path.read_bytes()
+    original_failure = json.loads(failure_bytes)
+    assert original_failure["execution_source_identity"] == executor._source_identity_provenance(original_source)
+    assert original_failure["runtime_provenance"]["failed_stage"] == "CUDA_KERNEL_SMOKE"
+
+    repaired_source = _source_manifest("repaired-source", "repaired-manifest")
+    recheck_control = executor._preflight_identity(tmp_path, repaired_source)
+    assert recheck_control.identity.execution_source_semantics_id == "repaired-source"
+    assert recheck_control.authorization_id == executor.AUTHORIZATION_ID
+    assert json.loads(failure_path.read_text(encoding="utf-8"))["decision"] == executor.PREFLIGHT_RECHECK_ALLOWED
+
+    with pytest.raises(ResumeCompatibilityError, match="source semantics"):
+        recheck_control.mark_preflight_ready(_ready_receipt("old-source"))
+
+    repaired_receipt = _ready_receipt("repaired-source")
+    recheck_control.mark_preflight_ready(repaired_receipt)
+    assert repaired_receipt.resource["execution_source_identity"]["source_manifest_id"] == "manifest-repaired-source"
+    assert repaired_receipt.resource["execution_source_identity"]["dirty_patch_digest"] == "patch-repaired-source"
+    opened = recheck_control.open_scientific_attempt(
+        tmp_path / executor.ATTEMPT_DIR,
+        "n3-test-attempt-01",
+        repaired_receipt,
+    )
+    assert opened.execution_source_semantics_id == "repaired-source"
+    assert opened.scientific_attempt_id == "n3-test-attempt-01"
+    assert failure_path.read_bytes() == failure_bytes
+
+
+def test_sample_read_ledger_enforces_phase_boundaries_and_reports_storage_separately(tmp_path: Path) -> None:
+    ledger = executor.SampleReadLedger()
+    select_indices = torch.arange(1280, dtype=torch.long)
+    confirm_indices = torch.arange(2000, 3280, dtype=torch.long)
+
+    with pytest.raises(executor.N3ExecutionError, match="backing load"):
+        ledger.record_materialized("N3_FIT", torch.tensor([0]))
+    ledger.mark_backing_loaded()
+    with pytest.raises(executor.N3ExecutionError, match="PREFLIGHT"):
+        ledger.record_materialized("N3_SELECT", select_indices, rank=0, purpose="model_order_candidate")
+
+    ledger.enter_fit()
+    ledger.record_materialized("N3_FIT", torch.tensor([0]), rank=1, purpose="fit_update")
+    ledger.record_evaluated("N3_FIT", torch.tensor([0]), rank=1, purpose="fit_update")
+    with pytest.raises(executor.N3ExecutionError, match="FIT"):
+        ledger.record_evaluated("N3_SELECT", select_indices, rank=0, purpose="model_order_candidate")
+    with pytest.raises(executor.N3ExecutionError, match="FIT"):
+        ledger.record_evaluated("N3_CONFIRM", confirm_indices, rank=1, purpose="selected_candidate")
+    ledger.record_fit_endpoint(1, executor.FIT_UPDATES)
+    with pytest.raises(executor.N3ExecutionError, match="N3_SELECT preceded"):
+        ledger.enter_selection()
+    ledger.record_fit_endpoint(2, executor.FIT_UPDATES)
+    ledger.enter_selection()
+    for rank in (0, 1, 2):
+        ledger.record_materialized("N3_SELECT", select_indices, rank=rank, purpose="model_order_candidate")
+        ledger.record_evaluated("N3_SELECT", select_indices, rank=rank, purpose="model_order_candidate")
+    ledger.verify_selection_evaluations(int(select_indices.numel()))
+
+    selection_path = tmp_path / "selection.json"
+    selection_path.write_text(
+        json.dumps(
+            {
+                "domain": "N3_SELECT",
+                "selection_count": 1,
+                "contract_sha256": executor.CONTRACT_SHA256,
+                "protocol_sha256": executor.PROTOCOL_SHA256,
+                "selected_rank": 1,
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert ledger.enter_confirmation(selection_path) == 1
+    with pytest.raises(executor.N3ExecutionError, match="selected candidate"):
+        ledger.record_evaluated("N3_CONFIRM", confirm_indices, rank=2, purpose="selected_candidate")
+    ledger.record_materialized("N3_CONFIRM", confirm_indices, rank=1, purpose="selected_candidate")
+    ledger.record_evaluated("N3_CONFIRM", confirm_indices, rank=1, purpose="selected_candidate")
+    # The frozen contract defines confirmation as a paired comparison against
+    # theta_shared, so rank zero is allowed only as this named reference.
+    ledger.record_materialized("N3_CONFIRM", confirm_indices, rank=0, purpose="shared_baseline_reference")
+    ledger.record_evaluated("N3_CONFIRM", confirm_indices, rank=0, purpose="shared_baseline_reference")
+    ledger.verify_confirmation_evaluations(int(confirm_indices.numel()))
+
+    summary = ledger.summary()
+    for role in ledger.roles:
+        assert summary[role]["canonical_train_backing_loaded"] is True
+    assert summary["N3_SELECT"]["role_rows_materialized"] == 3840
+    assert summary["N3_SELECT"]["role_rows_evaluated"] == 3840
+    assert summary["N3_CONFIRM"]["role_rows_materialized"] == 2560
+    assert summary["N3_CONFIRM"]["role_rows_evaluated"] == 2560
+    assert summary["phase_access"]["FIT"]["N3_SELECT"]["role_rows_evaluated"] == 0
+    assert summary["phase_access"]["FIT"]["N3_CONFIRM"]["role_rows_evaluated"] == 0
+
+
+def test_dense_alternating_b_initialization_is_rejected() -> None:
+    contract = json.loads((ROOT / executor.CONTRACT_PATH).read_text(encoding="utf-8"))
+    protocol = reconciler.build_corrected_protocol(ROOT)
+    protocol["initialization"]["B"]["element_formula"] = "B[j,k] = (-1)**((j >> k) & 1) / sqrt(20000)"
+    with pytest.raises(executor.N3ExecutionError, match="contract/protocol B initialization conflict"):
+        executor._validate_b_initialization(contract, protocol)
+
+
+def test_equivalent_basis_notation_and_nonconflicting_refinement_are_accepted() -> None:
+    contract = json.loads((ROOT / executor.CONTRACT_PATH).read_text(encoding="utf-8"))
+    protocol = reconciler.build_corrected_protocol(ROOT)
+    protocol["initialization"]["B"]["element_formula"] = "B[:, k] = e_k"
+    protocol["initialization"]["B"]["normalization"] = "orthonormal canonical columns"
+    executor._validate_b_initialization(contract, protocol)
+
+
+def test_reconciliation_preserves_original_protocol_and_failure_artifacts() -> None:
+    paths_and_hashes = (
+        (ROOT / reconciler.CONTRACT_PATH, reconciler.CONTRACT_SHA256),
+        (ROOT / reconciler.OLD_PROTOCOL_PATH, reconciler.OLD_PROTOCOL_SHA256),
+        (ROOT / reconciler.READINESS_FAILURE_PATH, reconciler.READINESS_FAILURE_SHA256),
+    )
+    before = [hashlib.sha256(path.read_bytes()).hexdigest() for path, _ in paths_and_hashes]
+    payload = reconciler.build_corrected_protocol(ROOT)
+    after = [hashlib.sha256(path.read_bytes()).hexdigest() for path, _ in paths_and_hashes]
+    assert before == after == [expected for _, expected in paths_and_hashes]
+    assert payload["authority_reconciliation"]["active_for_execution"] is True
+    assert payload["authority_reconciliation"]["superseded_protocol_active_for_execution"] is False

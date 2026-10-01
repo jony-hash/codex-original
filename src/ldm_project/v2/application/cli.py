@@ -57,122 +57,120 @@ def _dispatch(args: argparse.Namespace) -> int:
 
             return int(dispatch(args) or 0)
         if args.research_program == "o0-feasibility":
-            from .research.o0_feasibility import dispatch
+            from ldm_project.v2.application.research.capacity.o0_feasibility import dispatch
 
             return int(dispatch(args) or 0)
         if args.research_program == "o0-identifiability":
-            from .research.o0_identifiability import dispatch
+            from ldm_project.v2.application.research.capacity.o0_identifiability import dispatch
 
             return int(dispatch(args) or 0)
         if args.research_program == "objective-o0":
-            from .research.objective_o0 import dispatch
+            from ldm_project.v2.application.research.capacity.objective_o0 import dispatch
 
             return int(dispatch(args) or 0)
         if args.research_program == "fiber-robustness":
-            from .research.fiber_robustness import dispatch
+            from ldm_project.v2.application.research.optical_manifold.fiber_robustness import dispatch
 
             return int(dispatch(args) or 0)
         if args.research_program == "fiber-image":
-            from .research.fiber_image_generation import dispatch
+            from ldm_project.v2.application.research.optical_manifold.fiber_image_generation import dispatch
 
             return int(dispatch(args) or 0)
         if args.research_program == "fiber-attribution":
-            from .research.fiber_attribution import dispatch
+            from ldm_project.v2.application.research.optical_manifold.fiber_attribution import dispatch
 
             return int(dispatch(args) or 0)
         if args.research_program == "fiber-interface-attribution":
-            from .research.fiber_interface_attribution import dispatch
+            from ldm_project.v2.application.research.optical_manifold.fiber_interface_attribution import dispatch
 
             return int(dispatch(args) or 0)
         if args.research_program == "fiber-loss-exposure-attribution":
-            from .research.fiber_loss_exposure_attribution import dispatch
+            from ldm_project.v2.application.research.optical_manifold.fiber_loss_exposure_attribution import dispatch
 
             return int(dispatch(args) or 0)
         if args.research_program == "fiber-decoder-controllability-attribution":
-            from .research.fiber_decoder_controllability_attribution import dispatch
+            from ldm_project.v2.application.research.optical_manifold.fiber_decoder_controllability_attribution import dispatch
 
             return int(dispatch(args) or 0)
         if args.research_program == "electronic-o0-wae":
-            from .research.electronic_o0_wae import dispatch
+            from ldm_project.v2.application.research.capacity.electronic_o0_wae import dispatch
 
             return int(dispatch(args) or 0)
         if args.research_program == "electronic-o0-latent-transport":
-            from .research.electronic_o0_latent_transport import dispatch
+            from ldm_project.v2.application.research.capacity.electronic_o0_latent_transport import dispatch
 
             return int(dispatch(args) or 0)
         if args.research_program == "electronic-o0-mixture-transport":
-            from .research.electronic_o0_mixture_transport import dispatch
+            from ldm_project.v2.application.research.capacity.electronic_o0_mixture_transport import dispatch
 
             return int(dispatch(args) or 0)
         if args.research_program == "electronic-o0-prior-native-swae":
-            from .research.electronic_o0_prior_native_swae import dispatch
+            from ldm_project.v2.application.research.capacity.electronic_o0_prior_native_swae import dispatch
 
             return int(dispatch(args) or 0)
         if args.research_program == "electronic-o0-prior-native-sced":
-            from .research.electronic_o0_prior_native_sced import dispatch
+            from ldm_project.v2.application.research.capacity.electronic_o0_prior_native_sced import dispatch
 
             return int(dispatch(args) or 0)
         if args.research_program == "electronic-o0-prior-gradient-conflict":
-            from .research.electronic_o0_prior_gradient_conflict import dispatch
+            from ldm_project.v2.application.research.capacity.electronic_o0_prior_gradient_conflict import dispatch
 
             return int(dispatch(args) or 0)
         if args.research_program == "electronic-o0-prior-trajectory-curvature":
-            from .research.electronic_o0_prior_trajectory_curvature import dispatch
+            from ldm_project.v2.application.research.capacity.electronic_o0_prior_trajectory_curvature import dispatch
 
             return int(dispatch(args) or 0)
         if args.research_program == "electronic-o0-prior-dense-local-attribution":
-            from .research.electronic_o0_prior_dense_local_attribution import dispatch
+            from ldm_project.v2.application.research.capacity.electronic_o0_prior_dense_local_attribution import dispatch
 
             return int(dispatch(args) or 0)
         if args.research_program == "electronic-o0-prior-cycle-composition":
-            from .research.electronic_o0_prior_cycle_composition import dispatch
+            from ldm_project.v2.application.research.capacity.electronic_o0_prior_cycle_composition import dispatch
 
             return int(dispatch(args) or 0)
         if args.research_program == "electronic-o0-direct-prior-capacity-canary":
-            from .research.electronic_o0_direct_prior_capacity_canary import dispatch
+            from ldm_project.v2.application.research.capacity.electronic_o0_direct_prior_capacity_canary import dispatch
 
             return int(dispatch(args) or 0)
         if args.research_program == "electronic-o0-direct-image-distribution":
-            from .research.electronic_o0_direct_image_distribution import dispatch
+            from ldm_project.v2.application.research.capacity.electronic_o0_direct_image_distribution import dispatch
 
             return int(dispatch(args) or 0)
         if args.research_program == "electronic-o0-semantic-code-factorial":
-            from .research.electronic_o0_semantic_code_factorial import dispatch
+            from ldm_project.v2.application.research.capacity.electronic_o0_semantic_code_factorial import dispatch
 
             return int(dispatch(args) or 0)
         if args.research_program == "electronic-o0-nonlinear-direct-manifold-capacity":
-            from .research.electronic_o0_nonlinear_direct_manifold_capacity import (
-                dispatch,
-            )
+            from ldm_project.v2.application.research.capacity.electronic_o0_nonlinear_direct_manifold_capacity import dispatch
 
             return int(dispatch(args) or 0)
         if args.research_program == "joint-quadrature-optical-capacity":
-            from .research.joint_quadrature_optical_capacity import dispatch
+            from ldm_project.v2.application.research.capacity.joint_quadrature_optical_capacity import dispatch
 
             return int(dispatch(args) or 0)
         if args.research_program == "electronic-distribution-recovery":
-            from .research.electronic_distribution_recovery import dispatch
+            from ldm_project.v2.application.research.capacity.electronic_distribution_recovery import dispatch
 
             return int(dispatch(args) or 0)
         if args.research_program == "teacher-distribution-admission":
-            from .research.teacher_distribution_admission import dispatch
+            from ldm_project.v2.application.research.capacity.teacher_distribution_admission import dispatch
 
             return int(dispatch(args) or 0)
         if args.research_program == "teacher-failure-attribution":
-            from .research.teacher_failure_attribution import dispatch
+            from ldm_project.v2.application.research.capacity.teacher_failure_attribution import dispatch
 
             return int(dispatch(args) or 0)
         if args.research_program == "teacher-first-stage-recovery":
-            from .research.teacher_first_stage_recovery import dispatch
+            from ldm_project.v2.application.research.capacity.teacher_first_stage_recovery import dispatch
 
             return int(dispatch(args) or 0)
         if args.research_program == "smf-modal-density-attribution":
-            from .research.smf_modal_density_attribution import dispatch
+            from ldm_project.v2.application.research.optical_manifold.smf_modal_density_attribution import dispatch
 
             return int(dispatch(args) or 0)
         if args.research_program != "capacity-map":
             raise RuntimeError(f"unknown research program {args.research_program}")
-        from .research.capacity_map import dispatch
+        from ldm_project.v2.application.research.capacity.capacity_map import dispatch
 
         return int(dispatch(args) or 0)
     config = _load_config(args)

@@ -30,12 +30,12 @@ from matplotlib.cm import ScalarMappable
 
 from ldm_project.v2.application.current import frozen_mpcdar_rank16_float32_readout as mpcdar_f32_runtime
 from ldm_project.v2.application.current import frozen_mpcdar_rank16_readout as mpcdar_f64_runtime
-from ldm_project.v2.application.research import optical_manifold as base
-from ldm_project.v2.application.research import optical_manifold_smf_bogt as bogt
-from ldm_project.v2.application.research import optical_manifold_smf_bogt_mean_preserving_centered_data_aware_readout_recovery as mpcdar
-from ldm_project.v2.application.research import optical_manifold_smf_bogt_manifold_readiness as mra
-from ldm_project.v2.application.research import optical_manifold_smf_bogt_reconstruction_mapping_alignment_localization as rmal
-from ldm_project.v2.application.research import optical_manifold_smf_bogt_reconstruction_manifold_failure as rmfa
+from ldm_project.v2.application.research.optical_manifold import optical_manifold as base
+from ldm_project.v2.application.research.optical_manifold import optical_manifold_smf_bogt as bogt
+from ldm_project.v2.application.research.optical_manifold import optical_manifold_smf_bogt_mean_preserving_centered_data_aware_readout_recovery as mpcdar
+from ldm_project.v2.application.research.optical_manifold import optical_manifold_smf_bogt_manifold_readiness as mra
+from ldm_project.v2.application.research.optical_manifold import optical_manifold_smf_bogt_reconstruction_mapping_alignment_localization as rmal
+from ldm_project.v2.application.research.optical_manifold import optical_manifold_smf_bogt_reconstruction_manifold_failure as rmfa
 from ldm_project.v2.contracts import ComplexField
 from ldm_project.v2.evidence import canonical_sha256, file_sha256, safe_torch_load
 
@@ -158,16 +158,16 @@ FULL_PATH_CONFIG_SCHEMA = "lightgen_optical_manifold_smf_bogt_full_path_visualiz
 FULL_PATH_LAYOUT_SCHEMA = "full_optical_path_eight_stage_upright_v1"
 FULL_PATH_EXPECTED_HEAD = "d07fdaa17aa91d9f3e5498e9b1f10d91db766777"
 FULL_PATH_CONFIG = Path(
-    "configs/research/lightgen_optical_manifold_smf_bogt_full_path_visualization_v2.yaml"
+    "configs/research/optical_manifold/lightgen_optical_manifold_smf_bogt_full_path_visualization_v2.yaml"
 )
 FULL_PATH_REVIEW = Path(
-    "configs/research/lightgen_optical_manifold_smf_bogt_full_path_visualization_review_v1.json"
+    "configs/research/optical_manifold/lightgen_optical_manifold_smf_bogt_full_path_visualization_review_v1.json"
 )
 FULL_PATH_RMAL_CONFIG = Path(
-    "configs/research/lightgen_optical_manifold_smf_bogt_reconstruction_mapping_alignment_localization_v1.yaml"
+    "configs/research/optical_manifold/lightgen_optical_manifold_smf_bogt_reconstruction_mapping_alignment_localization_v1.yaml"
 )
 FULL_PATH_S7_CONFIG = Path(
-    "configs/research/lightgen_optical_manifold_smf_bogt_mean_preserving_centered_data_aware_readout_recovery_v1.yaml"
+    "configs/research/optical_manifold/lightgen_optical_manifold_smf_bogt_mean_preserving_centered_data_aware_readout_recovery_v1.yaml"
 )
 FULL_PATH_OUTPUT = Path(
     "outputs/20260902_v2/visualizations/scaled_chen_full_path_reconstruction_v1_attempt_02"
@@ -2361,7 +2361,7 @@ def _render_fiber_metrics(
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--config", type=Path, default=Path("configs/research/lightgen_optical_manifold_smf_bogt_manifold_readiness_v1.yaml"))
+    parser.add_argument("--config", type=Path, default=Path("configs/research/optical_manifold/lightgen_optical_manifold_smf_bogt_manifold_readiness_v1.yaml"))
     parser.add_argument("--visualization-config", type=Path, default=FULL_PATH_CONFIG)
     parser.add_argument("--dataset-root", type=Path, default=Path("data"))
     parser.add_argument("--sample-index", type=int, default=55008, help="confirmation-panel train index; default is a held-out digit 3")
@@ -3006,8 +3006,8 @@ def _run_history_current_comparison(args: argparse.Namespace, output_dir: Path) 
     )
     git_state = _git_state()
     implementation_paths = (
-        "configs/research/lightgen_scaled_chen_repaired_coordinate_g1_sa_v1.yaml",
-        "scripts/research/replay_scaled_chen_repaired_coordinate_g1_sa.py",
+        "configs/research/scaled_chen/lightgen_scaled_chen_repaired_coordinate_g1_sa_v1.yaml",
+        "scripts/research/scaled_chen/replay_scaled_chen_repaired_coordinate_g1_sa.py",
         "tests/v2/test_scaled_chen_repaired_coordinate_g1_sa.py",
         "scripts/visualization/render_scaled_chen_full_pipeline.py",
         "tests/v2/test_scaled_chen_full_path_history_current_comparison.py",

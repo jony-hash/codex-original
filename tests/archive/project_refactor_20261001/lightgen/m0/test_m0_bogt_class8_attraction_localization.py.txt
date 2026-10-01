@@ -1,0 +1,227 @@
+from __future__ import annotations
+
+import json
+from types import SimpleNamespace
+
+import torch
+
+from scripts.research.lightgen.m0 import diagnose_lightgen_2d_m0_bogt_class8_attraction_localization_v1 as localization
+
+
+class _Control:
+    def __init__(self) -> None:
+        self.state = localization.run_control.RUN_SCIENTIFIC_ACTIVE
+        self.transitions: list[str] = []
+
+    def complete(self) -> None:
+        assert self.state == localization.run_control.RUN_SCIENTIFIC_ACTIVE
+        self.state = localization.run_control.RUN_COMPLETED
+        self.transitions.append("complete")
+
+    def valid_failed(self) -> None:
+        assert self.state == localization.run_control.RUN_SCIENTIFIC_ACTIVE
+        self.state = localization.run_control.RUN_VALID_FAILED
+        self.transitions.append("valid_failed")
+
+    def invalid_harness(self) -> None:
+        assert self.state == localization.run_control.RUN_SCIENTIFIC_ACTIVE
+        self.state = localization.run_control.RUN_INVALID_HARNESS
+        self.transitions.append("invalid_harness")
+
+
+def test_class_mean_accumulator_uses_only_supplied_rows() -> None:
+    sums = torch.zeros((10, 2), dtype=torch.float64)
+    counts = torch.zeros(10, dtype=torch.float64)
+    localization._accumulate_class_sums(
+        sums,
+        counts,
+        torch.tensor([[1.0, 3.0], [5.0, 7.0], [11.0, 13.0]]),
+        torch.tensor([0, 0, 1]),
+    )
+    centers = sums / counts[:, None].clamp_min(1)
+    assert torch.equal(counts[:2], torch.tensor([2.0, 1.0], dtype=torch.float64))
+    assert torch.equal(centers[0], torch.tensor([3.0, 5.0], dtype=torch.float64))
+    assert torch.equal(centers[1], torch.tensor([11.0, 13.0], dtype=torch.float64))
+
+
+def test_bootstrap_is_deterministic_and_stratifies_non8_errors() -> None:
+    labels = torch.tensor([0, 0, 1, 1, 8, 8, 9, 9])
+    predictions = torch.tensor([8, 8, 8, 2, 8, 8, 8, 8])
+    pixel_nearest = torch.tensor([8, 1, 8, 8, 8, 8, 9, 8])
+    feature_nearest = torch.tensor([8, 8, 3, 8, 8, 8, 8, 9])
+    first = localization._class8_bootstrap(labels, predictions, pixel_nearest, feature_nearest, replicates=200, seed=77)
+    second = localization._class8_bootstrap(labels, predictions, pixel_nearest, feature_nearest, replicates=200, seed=77)
+    assert first == second
+    assert first["candidate_count"] == 5
+    assert first["strata"] == {"0": 2, "1": 1, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0, "9": 2}
+    assert first["pixel_nearest8_fraction"] == 0.6
+    assert first["feature_nearest8_fraction"] == 0.6
+
+
+def test_classification_requires_both_populations_and_strict_bounds() -> None:
+    def metrics(pixel_low: float, pixel_high: float, feature_low: float, feature_high: float) -> dict[str, float]:
+        return {
+            "candidate_count": 12,
+            "pixel_ci95": {"lower": pixel_low, "upper": pixel_high},
+            "feature_ci95": {"lower": feature_low, "upper": feature_high},
+        }
+
+    assert localization._classify_alignment(metrics(.6, .8, .7, .9), metrics(.55, .75, .6, .8)) == localization.CLASSIFICATION_PIXEL_AND_FEATURE
+    assert localization._classify_alignment(metrics(.1, .4, .7, .9), metrics(.2, .45, .6, .8)) == localization.CLASSIFICATION_FEATURE_ONLY
+    assert localization._classify_alignment(metrics(.5, .8, .7, .9), metrics(.55, .75, .6, .8)) == localization.CLASSIFICATION_MIXED
+    assert localization._classify_alignment(metrics(.1, .4, .51, .9), metrics(.2, .45, .6, .8)) == localization.CLASSIFICATION_FEATURE_ONLY
+    empty = {"candidate_count": 0}
+    assert localization._classify_alignment(empty, metrics(.6, .8, .7, .9)) == localization.CLASSIFICATION_MIXED
+
+
+def test_empty_class8_error_set_has_no_scientific_interval() -> None:
+    result = localization._class8_bootstrap(
+        torch.tensor([0, 8]),
+        torch.tensor([0, 8]),
+        torch.tensor([0, 8]),
+        torch.tensor([0, 8]),
+        replicates=10,
+    )
+    assert result["candidate_count"] == 0
+    assert result["pixel_nearest8_fraction"] is None
+    assert result["feature_nearest8_fraction"] is None
+
+
+def test_mismatched_input_digest_is_rejected(tmp_path) -> None:
+    artifact = tmp_path / "authority.json"
+    artifact.write_text("{}", encoding="utf-8")
+    try:
+        localization._verify_file(tmp_path, artifact.relative_to(tmp_path), "0" * 64, "test authority")
+    except localization.LocalizationError as error:
+        assert "identity changed" in str(error)
+    else:
+        raise AssertionError("a stale authority digest must fail closed")
+
+
+def test_terminal_result_serializes_one_lifecycle_transition(tmp_path) -> None:
+    control = _Control()
+    report = {"localization_classification": localization.CLASSIFICATION_FEATURE_ONLY}
+    result = localization._terminalize_result(tmp_path, control, report, passed=True)
+    persisted = json.loads((tmp_path / "report.json").read_text(encoding="utf-8"))
+    status = json.loads((tmp_path / "status.json").read_text(encoding="utf-8"))
+    assert control.transitions == ["complete"]
+    assert result["result"] == persisted["result"] == localization.run_control.RUN_COMPLETED
+    assert status["state"] == localization.run_control.RUN_COMPLETED
+    assert persisted["classification"] == localization.CLASSIFICATION_FEATURE_ONLY
+
+
+def test_valid_mixed_measurement_writes_valid_failed_once(tmp_path) -> None:
+    control = _Control()
+    report = {"localization_classification": localization.CLASSIFICATION_MIXED}
+    result = localization._terminalize_result(tmp_path, control, report, passed=False)
+    assert control.transitions == ["valid_failed"]
+    assert result["result"] == localization.run_control.RUN_VALID_FAILED
+    assert result["classification"] == localization.CLASSIFICATION_MIXED
+
+
+def test_readonly_evaluator_forward_preserves_parameters_and_gradients() -> None:
+    ed = localization.ed_authority.PixelMLPConfirmationEvaluatorV1().eval()
+    for parameter in ed.parameters():
+        parameter.requires_grad_(False)
+    before = {name: value.detach().clone() for name, value in ed.state_dict().items()}
+    images = torch.rand((12, 1, 28, 28))
+    pixel_centers = torch.rand((10, 784))
+    feature_centers = torch.rand((10, 256))
+
+    output = localization._evaluate_views(
+        ed,
+        images,
+        torch.arange(12) % 10,
+        pixel_centers,
+        feature_centers,
+        device=torch.device("cpu"),
+    )
+
+    assert output["logits"].shape == (12, 10)
+    assert all(parameter.grad is None for parameter in ed.parameters())
+    assert all(torch.equal(before[name], value) for name, value in ed.state_dict().items())
+
+
+def test_step600_and_step900_dev_replay_share_the_same_rows(monkeypatch) -> None:
+    class _Runtime:
+        level = 0.0
+
+        def forward_from_image(self, images: torch.Tensor) -> SimpleNamespace:
+            raw = torch.full((images.shape[0], 1, 200, 200), self.level)
+            return SimpleNamespace(raw_intensity=raw)
+
+    consumer = SimpleNamespace(runtime=_Runtime())
+    monkeypatch.setattr(localization.audit, "DEV_COUNT", 1)
+    monkeypatch.setattr(localization.audit, "_load_state", lambda model, state: setattr(model.runtime, "level", float(state["level"])))
+    monkeypatch.setattr(localization, "_check_memory", lambda _device, peak: peak)
+    ed = localization.ed_authority.PixelMLPConfirmationEvaluatorV1().eval()
+    for parameter in ed.parameters():
+        parameter.requires_grad_(False)
+    context = SimpleNamespace(
+        development_indices=torch.tensor([0]),
+        labels=torch.tensor([4]),
+        images=torch.full((1, 1, 2, 2), 0.5),
+    )
+    pixel_centers = torch.zeros((10, 784))
+    feature_centers = torch.zeros((10, 256))
+    results = []
+    for level in (0.2, 0.8):
+        state = {"level": torch.tensor(level)}
+        with torch.inference_mode():
+            _, logits = localization._ed_features(ed, torch.full((1, 1, 28, 28), level))
+        results.append(localization._evaluate_dev(
+            consumer,
+            ed,
+            context,
+            state,
+            logits.argmax(1),
+            pixel_centers,
+            feature_centers,
+            device=torch.device("cpu"),
+            peak={"free_bytes": 1, "total_bytes": 1},
+        ))
+
+    assert torch.equal(results[0]["labels"], results[1]["labels"])
+    assert torch.equal(results[0]["labels"], torch.tensor([4]))
+    assert abs(consumer.runtime.level - 0.8) < 1e-6
+
+
+def test_saved_s1_banks_keep_independent_requested_labels() -> None:
+    ed = localization.ed_authority.PixelMLPConfirmationEvaluatorV1().eval()
+    for parameter in ed.parameters():
+        parameter.requires_grad_(False)
+    pixels = torch.zeros((10, 784))
+    features = torch.zeros((10, 256))
+    first_labels = torch.tensor([0, 1])
+    second_labels = torch.tensor([2, 3])
+    first = localization._evaluate_raw_bank(
+        ed,
+        torch.full((2, 1, 200, 200), 0.2),
+        first_labels,
+        pixels,
+        features,
+        device=torch.device("cpu"),
+    )
+    second = localization._evaluate_raw_bank(
+        ed,
+        torch.full((2, 1, 200, 200), 0.8),
+        second_labels,
+        pixels,
+        features,
+        device=torch.device("cpu"),
+    )
+
+    assert torch.equal(first["labels"], first_labels)
+    assert torch.equal(second["labels"], second_labels)
+    assert not torch.equal(first["labels"], second["labels"])
+
+
+def test_invalid_harness_terminal_record_is_written_once(tmp_path) -> None:
+    control = _Control()
+    error = localization.LocalizationError("lineage mismatch")
+    localization._terminalize_invalid(tmp_path, control, error)
+    failure = json.loads((tmp_path / "failure_report.json").read_text(encoding="utf-8"))
+    status = json.loads((tmp_path / "status.json").read_text(encoding="utf-8"))
+    assert control.transitions == ["invalid_harness"]
+    assert failure["state"] == localization.run_control.RUN_INVALID_HARNESS
+    assert status["state"] == localization.run_control.RUN_INVALID_HARNESS

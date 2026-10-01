@@ -30,11 +30,9 @@ import numpy as np
 import torch
 from matplotlib.colors import Normalize
 
-from ldm_project.v2.application.research import optical_manifold as base
-from ldm_project.v2.application.research import optical_manifold_smf_bogt as bogt
-from ldm_project.v2.application.research import (
-    optical_manifold_smf_bogt_manifold_readiness as mra,
-)
+from ldm_project.v2.application.research.optical_manifold import optical_manifold as base
+from ldm_project.v2.application.research.optical_manifold import optical_manifold_smf_bogt as bogt
+from ldm_project.v2.application.research.optical_manifold import optical_manifold_smf_bogt_manifold_readiness as mra
 from ldm_project.v2.evidence import (
     atomic_torch_save_new,
     atomic_write_new_json,
@@ -106,8 +104,8 @@ THREE_PHOTO_ALLOWED_DIRTY_PATHS = frozenset(
     {
         "docs/CURRENT_STATUS.md",
         "docs/migration_windows_native_20260830.md",
-        "configs/research/lightgen_optical_manifold_smf_bogt_prior_support_accessibility_v1.yaml",
-        "scripts/research/measure_scaled_chen_g1_prior_support_accessibility.py",
+        "configs/research/optical_manifold/lightgen_optical_manifold_smf_bogt_prior_support_accessibility_v1.yaml",
+        "scripts/research/scaled_chen/measure_scaled_chen_g1_prior_support_accessibility.py",
         "tests/v2/test_scaled_chen_g1_prior_support_accessibility.py",
         "scripts/visualization/render_scaled_chen_fiber_clear_full_pipeline.py",
         "tests/v2/test_scaled_chen_fiber_clear_full_pipeline.py",

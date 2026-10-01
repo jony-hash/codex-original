@@ -1,0 +1,403 @@
+"""Focused contracts for the read-only step1200 M0 evidence task."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+import torch
+
+from scripts.research.lightgen.m0 import execute_lightgen_2d_m0_bogt_joint_generation_canary_v1 as canary
+from scripts.research.lightgen.m0 import execute_lightgen_2d_m0_bogt_semantic_generation_canary_v1 as m0
+from scripts.research.lightgen.m0 import execute_lightgen_2d_m0_bogt_step1200_evidence_gradient_balance_v1 as task
+
+
+def test_gradient_batches_are_exactly_twenty_unique_class_balanced_saved_rows() -> None:
+    permutations = [torch.arange(1_300, dtype=torch.long) + class_id * 10_000 for class_id in range(10)]
+
+    batches = task.build_gradient_batches(permutations)
+
+    assert len(batches) == 20
+    assert all(batch.shape == (10,) for batch in batches)
+    assert [batch[0].item() for batch in batches] == list(range(1_200, 1_220))
+    assert len(set(torch.cat(batches).tolist())) == 200
+    assert all(torch.equal(batch.sort().values // 10_000, torch.arange(10)) for batch in batches)
+
+
+def test_gradient_batch_source_rejects_repeated_rows_and_insufficient_cursor() -> None:
+    repeated = [torch.arange(1_300, dtype=torch.long) for _ in range(10)]
+    with pytest.raises(task.EvidenceError, match="repeated TRAIN rows"):
+        task.build_gradient_batches(repeated)
+
+    too_short = [torch.arange(1_219, dtype=torch.long) + index * 10_000 for index in range(10)]
+    with pytest.raises(task.EvidenceError, match="does not cover gradient cursors"):
+        task.build_gradient_batches(too_short)
+
+
+def test_step600_authority_accepts_its_producing_gate_and_rejects_mismatch(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    data_identity = {"dataset": "fixed-mnist", "split": "train-dev-v1"}
+    checkpoint = {
+        "schema": "m0_bogt_semantic_generation_checkpoint.v1",
+        "artifact_kind": "M0_SCIENTIFIC_CHECKPOINT",
+        "selected_checkpoint": True,
+        "step": 600,
+        "sampler_state": {"cursor": 600, "steps": 600},
+        "optimizer_state": {"state": {"encoder": {"step": torch.tensor(600)}, "generator": {"step": torch.tensor(600)}}},
+        "training_history": [None] * 600,
+        "data_identity": data_identity,
+        "run_identity": {"config_identity": {"data_identity": data_identity}},
+        "references": {"data_identity": data_identity},
+    }
+    report = {
+        "result": task.RUN_VALID_FAILED,
+        "outer_gate": m0.OUTER_GATE,
+        "training": {"selected_step": 600, "optimizer_state_step": 600, "additional_updates": 300},
+    }
+    latest = {"step": 600, "state": task.RUN_VALID_FAILED}
+    sha_by_path = {
+        (tmp_path / task.START_CHECKPOINT).resolve(): task.START_CHECKPOINT_SHA256,
+        (tmp_path / task.START_REPORT).resolve(): task.START_REPORT_SHA256,
+    }
+
+    def fake_sha(path: str | Path) -> str:
+        return sha_by_path[Path(path).resolve()]
+
+    def fake_load(path: str | Path, *, map_location: str) -> dict[str, object]:
+        assert map_location == "cpu"
+        assert Path(path).as_posix().endswith(task.START_CHECKPOINT.as_posix())
+        return checkpoint
+
+    def fake_read(path: Path) -> dict[str, object]:
+        if path.as_posix().endswith(task.START_REPORT.as_posix()):
+            return report
+        return latest
+
+    monkeypatch.setattr(task, "file_sha256", fake_sha)
+    monkeypatch.setattr(task, "safe_torch_load", fake_load)
+    monkeypatch.setattr(task, "_read_json", fake_read)
+
+    accepted, accepted_report, _ = task._validate_step600(tmp_path)
+    assert accepted["step"] == 600
+    assert accepted_report["outer_gate"] == m0.OUTER_GATE
+
+    report["outer_gate"] = canary.OUTER_GATE
+    with pytest.raises(task.EvidenceError, match="producer report is not the accepted training authority"):
+        task._validate_step600(tmp_path)
+
+
+def test_component_gradients_are_read_only_and_preserve_structural_zero() -> None:
+    encoder = torch.nn.Parameter(torch.tensor([1.0, 2.0], dtype=torch.float32))
+    generator = torch.nn.Parameter(torch.tensor([3.0, 4.0], dtype=torch.float32))
+
+    class _Runtime:
+        def named_parameters(self) -> list[tuple[str, torch.nn.Parameter]]:
+            return [("encoder.phase", encoder), ("generator.phase", generator)]
+
+    weights = SimpleNamespace(alpha=2.0, beta=3.0, gamma=5.0)
+    consumer = SimpleNamespace(runtime=_Runtime(), weights=weights)
+    l_dist = encoder.square().sum()
+    l_rec = (encoder + generator).square().sum()
+    l_op = (generator - encoder).square().sum()
+    loss = SimpleNamespace(
+        l_dist=l_dist,
+        l_rec=l_rec,
+        l_op=l_op,
+        l_total=weights.alpha * l_dist + weights.beta * l_rec + weights.gamma * l_op,
+    )
+    before = (encoder.detach().clone(), generator.detach().clone())
+
+    vectors, losses = task._gradient_vectors(consumer, loss)
+    metrics = task._vector_metrics(vectors)
+
+    assert losses["L_total"] == pytest.approx(2 * losses["L_dist"] + 3 * losses["L_rec"] + 5 * losses["L_op"])
+    assert torch.count_nonzero(vectors["alpha_L_dist"]["generator.phase"]).item() == 0
+    assert metrics["generator.phase"]["L_dist_gradient_status"] == "STRUCTURALLY_ZERO"
+    assert encoder.grad is None and generator.grad is None
+    assert torch.equal(encoder.detach(), before[0]) and torch.equal(generator.detach(), before[1])
+
+
+def test_direction_classification_uses_exclusive_cases_and_generation_override() -> None:
+    none = {
+        "case_A_supported": False,
+        "case_B_gradient_condition_supported": False,
+        "case_C_supported": False,
+    }
+    a = {**none, "case_A_supported": True}
+    b = {**none, "case_B_gradient_condition_supported": True}
+    c = {**none, "case_C_supported": True}
+
+    assert task.classify_tuning_direction(
+        gradient_decisions=a, dev_reconstruction_delta=0.0, full_generation_numeric_conditions_met=False
+    ) == (task.CLASSIFICATION_A, "reduce_alpha_only", [task.CLASSIFICATION_A])
+    assert task.classify_tuning_direction(
+        gradient_decisions=b, dev_reconstruction_delta=0.005, full_generation_numeric_conditions_met=False
+    ) == (task.CLASSIFICATION_D, "NONE", [])
+    assert task.classify_tuning_direction(
+        gradient_decisions=b, dev_reconstruction_delta=0.005001, full_generation_numeric_conditions_met=False
+    ) == (task.CLASSIFICATION_B, "increase_beta_only", [task.CLASSIFICATION_B])
+    assert task.classify_tuning_direction(
+        gradient_decisions=c, dev_reconstruction_delta=0.0, full_generation_numeric_conditions_met=False
+    ) == (task.CLASSIFICATION_C, "reduce_gamma_only", [task.CLASSIFICATION_C])
+    assert task.classify_tuning_direction(
+        gradient_decisions={**a, "case_C_supported": True}, dev_reconstruction_delta=0.0, full_generation_numeric_conditions_met=False
+    ) == (task.CLASSIFICATION_E, "NONE", [task.CLASSIFICATION_A, task.CLASSIFICATION_C])
+    assert task.classify_tuning_direction(
+        gradient_decisions={**a, **c}, dev_reconstruction_delta=0.0, full_generation_numeric_conditions_met=True
+    ) == (task.CLASSIFICATION_D, "NONE", [])
+
+
+def test_gradient_support_threshold_requires_sixteen_of_twenty_consistent_batches() -> None:
+    def record(*, alpha: float, beta: float, gamma: float, alpha_rec_cos: float, rec_op_cos: float) -> dict[str, object]:
+        def group(a: float, b: float, g: float, ar: float, rg: float) -> dict[str, object]:
+            return {
+                "weighted_gradient_norms": {"alpha_L_dist": a, "beta_L_rec": b, "gamma_L_op": g},
+                "pairwise_cosines": {
+                    "alpha_L_dist_vs_beta_L_rec": ar,
+                    "beta_L_rec_vs_gamma_L_op": rg,
+                },
+            }
+
+        return {
+            "gradient_metrics": {
+                "encoder.phase": group(alpha, beta, gamma, alpha_rec_cos, rec_op_cos),
+                "generator.phase": group(0.0, beta, gamma, None, rec_op_cos),
+            }
+        }
+
+    a_only = record(alpha=2.0, beta=1.0, gamma=1.0, alpha_rec_cos=-0.1, rec_op_cos=0.1)
+    decisions_15 = task._gradient_decisions({"step1200": {"records": [a_only] * 15 + [record(alpha=1, beta=1, gamma=1, alpha_rec_cos=0.1, rec_op_cos=0.1)] * 5}})
+    decisions_16 = task._gradient_decisions({"step1200": {"records": [a_only] * 16 + [record(alpha=1, beta=1, gamma=1, alpha_rec_cos=0.1, rec_op_cos=0.1)] * 4}})
+
+    assert decisions_15["A_encoder_alpha_L_dist_vs_beta_L_rec_conflict_batches"] == 15
+    assert decisions_15["case_A_supported"] is False
+    assert decisions_16["A_encoder_alpha_L_dist_vs_beta_L_rec_conflict_batches"] == 16
+    assert decisions_16["case_A_supported"] is True
+
+
+def test_resource_limit_persists_phase_snapshot_before_blocking(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    metrics = {
+        "global_used_bytes": 91,
+        "global_total_bytes": 100,
+        "global_used_fraction": 0.91,
+        "torch_allocated_bytes": 20,
+        "torch_reserved_bytes": 30,
+        "torch_peak_allocated_bytes": 22,
+        "torch_peak_reserved_bytes": 33,
+    }
+    monkeypatch.setattr(task.canary, "_resource", lambda device: metrics)
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+    telemetry = tmp_path / "telemetry.jsonl"
+    recorder = task.ResourceRecorder(torch.device("cuda:0"), 0.90, 0.85, telemetry_path=telemetry)
+
+    with pytest.raises(task.ResourceBudgetExceeded) as raised:
+        recorder.sample("test_memory_stage", progress={"completed_rows": 100})
+
+    saved = json.loads(telemetry.read_text(encoding="utf-8").strip())
+    assert saved["phase"] == "test_memory_stage"
+    assert saved["progress"] == {"completed_rows": 100}
+    assert saved["global_used_fraction"] == 0.91
+    assert saved["torch_allocated_bytes"] == 20
+    assert saved["allocator_peak_scope"] == "since_previous_resource_sample"
+    assert raised.value.resource_records == [saved]
+
+
+def test_train_ols_resume_rejects_chunk_from_other_source(tmp_path: Path) -> None:
+    chunk_dir = tmp_path / "train_ols_chunks"
+    chunk_dir.mkdir()
+    torch.save(
+        {
+            "schema": "m0_bogt_step1200_train_ols_chunk.v1",
+            "start_row": 0,
+            "z": torch.zeros((task.OLS_CHUNK_ROWS, 100), dtype=torch.complex64),
+            "source_manifest_id": "stale-manifest",
+            "endpoint_checkpoint_sha256": "endpoint-hash",
+            "data_identity": {"dataset": "train"},
+            "selected_step": canary.END_STEP,
+            "data_role": task.bogt.TRAIN_ROLE,
+        },
+        chunk_dir / "train_ols_chunk_00000.pt",
+    )
+
+    with pytest.raises(task.EvidenceError, match="same-attempt artifact"):
+        task._load_train_ols_chunks(
+            tmp_path,
+            source_manifest_id="current-manifest",
+            endpoint_hash="endpoint-hash",
+            data_identity={"dataset": "train"},
+        )
+
+
+def test_bound_authority_hash_is_rechecked_and_tampering_is_rejected(tmp_path: Path) -> None:
+    source = tmp_path / "authority.bin"
+    source.write_bytes(b"accepted")
+    authorities = {"fixture": {"path": source.name, "sha256": task.file_sha256(source)}}
+
+    task._verify_authority_bytes(tmp_path, authorities)
+    source.write_bytes(b"changed")
+
+    with pytest.raises(task.EvidenceError, match="changed after resolution"):
+        task._verify_authority_bytes(tmp_path, authorities)
+
+
+def test_source_manifest_includes_the_bound_evaluator_implementation() -> None:
+    paths = task._source_paths(task._root())
+
+    assert (task._root() / m0.ED_IMPLEMENTATION).resolve() in paths
+
+
+def test_step600_frozen_runtime_is_checked_against_step1200_descendant_authority() -> None:
+    expected = "step1200-frozen-runtime-identity"
+
+    task._verify_frozen_runtime_identity({}, expected_sha256=expected, observed_sha256=expected)
+
+    with pytest.raises(task.EvidenceError, match="loaded frozen optical runtime identity differs"):
+        task._verify_frozen_runtime_identity({}, expected_sha256=expected, observed_sha256="changed")
+    with pytest.raises(task.EvidenceError, match="conflicts with step1200 authority"):
+        task._verify_frozen_runtime_identity(
+            {"frozen_runtime_state_sha256": "stale"}, expected_sha256=expected, observed_sha256=expected
+        )
+
+
+def test_previous_failed_preflight_is_bound_and_counts_toward_cumulative_budget(tmp_path: Path) -> None:
+    preflight01_path = tmp_path / task.PREVIOUS_PREFLIGHT_PATHS[0]
+    preflight02_path = tmp_path / task.PREVIOUS_PREFLIGHT_PATHS[1]
+    preflight02_path.parent.mkdir(parents=True)
+    preflight01 = {
+        "task_id": task.TASK_ID,
+        "outer_gate": task.OUTER_GATE,
+        "authorization_id": task.AUTHORIZATION_ID,
+        "status": task.RUN_INVALID_HARNESS,
+        "attempt_created": False,
+        "elapsed_seconds": 106.149,
+        "source_semantics_id": "old-source-id-1",
+        "source_manifest": {"execution_source_semantics_id": "old-source-id-1"},
+        "failure": {"type": "KeyError", "message": "'frozen_runtime_state_sha256'"},
+        "resource_phase_records": [],
+    }
+    preflight01_path.write_text(json.dumps(preflight01), encoding="utf-8")
+    prior_binding = {
+        "path": task.PREVIOUS_PREFLIGHT_PATHS[0].as_posix(),
+        "sha256": task.file_sha256(preflight01_path),
+        "status": task.RUN_INVALID_HARNESS,
+        "failure_signature": "step600_checkpoint_missing_frozen_runtime_state_sha256",
+        "elapsed_seconds": 106.149,
+        "attempt_created": False,
+    }
+    preflight02 = {
+        "task_id": task.TASK_ID,
+        "outer_gate": task.OUTER_GATE,
+        "authorization_id": task.AUTHORIZATION_ID,
+        "status": task.RUN_INVALID_HARNESS,
+        "attempt_created": False,
+        "elapsed_seconds": 214.207,
+        "source_semantics_id": "old-source-id-2",
+        "source_manifest": {"execution_source_semantics_id": "old-source-id-2"},
+        "failure": {"type": "EvidenceError", "message": "E_D comparison population is missing one or more classes"},
+        "resource_phase_records": [],
+        "previous_preflight_history": prior_binding,
+    }
+    preflight02_path.write_text(json.dumps(preflight02), encoding="utf-8")
+    preflight02_binding = {
+        "path": task.PREVIOUS_PREFLIGHT_PATHS[1].as_posix(),
+        "sha256": task.file_sha256(preflight02_path),
+        "status": task.RUN_INVALID_HARNESS,
+        "failure_signature": "preflight_evaluator_probe_required_full_class_population",
+        "elapsed_seconds": 214.207,
+        "attempt_created": False,
+    }
+    preflight03_path = tmp_path / task.PREVIOUS_PREFLIGHT_PATHS[2]
+    preflight03_path.write_text(
+        json.dumps(
+            {
+                "task_id": task.TASK_ID,
+                "outer_gate": task.OUTER_GATE,
+                "authorization_id": task.AUTHORIZATION_ID,
+                "status": task.PREFLIGHT_READY,
+                "attempt_created": False,
+                "elapsed_seconds": 330.354,
+                "source_semantics_id": "ready-source-id",
+                "source_manifest": {"execution_source_semantics_id": "ready-source-id"},
+                "receipt": task.PreflightReceipt(
+                    source_semantics_id="ready-source-id",
+                    authorization_id=task.AUTHORIZATION_ID,
+                    checks={task.CORRECTNESS_INVARIANTS: {}, task.RESOURCE_ENVELOPE: {}, task.IMPLEMENTATION_SELECTION: {}},
+                    selected_engine="CUDA",
+                    resource={},
+                ).to_dict(),
+                "previous_preflight_history": {"records": [prior_binding, preflight02_binding], "elapsed_seconds": 214.207, "attempt_created": False},
+                "resources": {"phases": [{}] * 88},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    history = task._load_previous_preflight_history(tmp_path)
+
+    assert history["elapsed_seconds"] == pytest.approx(330.354)
+    assert len(history["records"]) == 3
+    assert history["attempt_created"] is False
+    assert history["records"][0]["failure_signature"] == "step600_checkpoint_missing_frozen_runtime_state_sha256"
+    assert history["records"][1]["failure_signature"] == "preflight_evaluator_probe_required_full_class_population"
+    assert history["records"][2]["status"] == task.PREFLIGHT_READY
+
+    preflight02["failure"]["message"] = "different failure"
+    preflight02_path.write_text(json.dumps(preflight02), encoding="utf-8")
+    with pytest.raises(task.EvidenceError, match="not the reviewed execution-chain defect"):
+        task._load_previous_preflight_history(tmp_path)
+
+
+def test_s1_fixed_requests_allow_neighbors_to_be_refit_for_step1200_bank(monkeypatch: pytest.MonkeyPatch) -> None:
+    requested = torch.arange(10).repeat_interleave(200)
+    sample_indices = torch.arange(200).repeat(10)
+    seeds = torch.arange(2_000) + 90_000
+    anchors = (torch.arange(10) * 5_500).repeat_interleave(200)
+    neighbors = anchors + 1
+    old_neighbors = anchors + 2
+    arrays = {
+        "requested": requested,
+        "sample_indices": sample_indices,
+        "seeds": seeds,
+        "anchor_positions": anchors,
+        "neighbor_positions": neighbors,
+    }
+    context = SimpleNamespace(
+        labels=torch.arange(10).repeat_interleave(5_500),
+        train_indices=torch.arange(task.TRAIN_ROWS),
+    )
+    old = {
+        "requested_labels": requested.clone(),
+        "sample_indices": sample_indices.clone(),
+        "seeds": seeds.clone(),
+        "anchor_positions": anchors.clone(),
+        "neighbor_positions": old_neighbors,
+    }
+
+    monkeypatch.setattr(
+        task.m0,
+        "_fit_s1_and_generate_inputs",
+        lambda bank, _context: (torch.zeros((task.S1_ROWS, 100), dtype=torch.complex64), {}, arrays),
+    )
+    _, metadata, returned = task._s1_inputs(torch.zeros((1, 100), dtype=torch.complex64), context, old)
+
+    assert metadata["same_fixed_request_identity_as_step600"] is True
+    assert metadata["neighbor_positions_recomputed_for_current_step1200_bank"] is True
+    assert metadata["neighbor_positions_match_step600"] is False
+    assert torch.equal(returned["neighbor_positions"], neighbors)
+
+    old["sample_indices"] = sample_indices.roll(1)
+    with pytest.raises(task.EvidenceError, match="sample_indices do not refer to the same fixed requests"):
+        task._s1_inputs(torch.zeros((1, 100), dtype=torch.complex64), context, old)
+
+
+def test_write_once_json_recovery_accepts_same_payload_and_rejects_conflict(tmp_path: Path) -> None:
+    path = tmp_path / "attempt" / "terminal.json"
+    payload = {"state": task.RUN_COMPLETED, "classification": task.CLASSIFICATION_D}
+
+    task._write_json_or_compare(path, payload, "test terminal record")
+    task._write_json_or_compare(path, payload, "test terminal record")
+    assert json.loads(path.read_text(encoding="utf-8")) == payload
+
+    with pytest.raises(task.EvidenceError, match="existing immutable JSON differs"):
+        task._write_json_or_compare(path, {**payload, "classification": task.CLASSIFICATION_A}, "test terminal record")

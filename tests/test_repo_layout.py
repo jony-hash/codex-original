@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import ast
-import importlib
 import importlib.util
 import tempfile
 import unittest
@@ -33,6 +32,40 @@ class RepoLayoutTests(unittest.TestCase):
                     offenders.append(str(path.relative_to(ROOT)))
         self.assertEqual(offenders, [])
         self.assertTrue((ROOT / "experiments" / "archive" / "v57_v67" / "tools").is_dir())
+
+    def test_research_code_is_grouped_and_closed_families_are_archived(self) -> None:
+        families = {"lightgen", "scaled_chen", "optical_manifold", "capacity", "shared"}
+        scripts_root = ROOT / "scripts" / "research"
+        runtime_root = ROOT / "src" / "ldm_project" / "v2" / "application" / "research"
+        configs_root = ROOT / "configs" / "research"
+        tests_root = ROOT / "tests" / "research"
+
+        for directory in (scripts_root, runtime_root):
+            self.assertFalse(
+                [path.name for path in directory.glob("*.py") if path.name != "__init__.py"],
+                str(directory.relative_to(ROOT)),
+            )
+        for directory, expected_families in (
+            (scripts_root, families - {"shared"}),
+            (runtime_root, families - {"scaled_chen"}),
+            (configs_root, families),
+            (tests_root, families - {"shared"}),
+        ):
+            present = {
+                path.relative_to(directory).parts[0]
+                for path in directory.rglob("*")
+                if path.is_dir() and path.name != "__pycache__"
+            }
+            self.assertTrue(expected_families.issubset(present), str(directory.relative_to(ROOT)))
+
+        active_m0 = ROOT / "scripts" / "research" / "lightgen" / "m0"
+        archived_m0 = ROOT / "scripts" / "research" / "archive" / "project_refactor_20261001" / "lightgen" / "m0"
+        active_n3 = ROOT / "scripts" / "research" / "lightgen" / "n3"
+        archived_n3 = ROOT / "scripts" / "research" / "archive" / "project_refactor_20261001" / "lightgen" / "n3"
+        self.assertFalse(active_m0.exists())
+        self.assertTrue(any(path.name.endswith(".py.txt") for path in archived_m0.iterdir()))
+        self.assertFalse(active_n3.exists())
+        self.assertTrue(any(path.name.endswith(".py.txt") for path in archived_n3.iterdir()))
 
     def test_namespaces_and_legacy_facades_are_isolated(self) -> None:
         package_root = ROOT / "src" / "ldm_project"

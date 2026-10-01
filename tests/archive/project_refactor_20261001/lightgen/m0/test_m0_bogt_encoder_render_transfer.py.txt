@@ -1,0 +1,396 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+import torch
+import torch.nn.functional as F
+
+from ldm_project.v2.application.research.shared.research_run_control import CORRECTNESS_INVARIANTS, IMPLEMENTATION_SELECTION, PREFLIGHT_READY, RESOURCE_ENVELOPE, ResearchRunIdentity
+from scripts.research.lightgen.m0 import execute_lightgen_2d_m0_bogt_encoder_render_transfer_v1 as transfer
+
+
+def test_encoder_optimizer_resume_keeps_only_encoder_adam_moments() -> None:
+    state = {
+        "state": {
+            4: {"step": torch.tensor(600.0), "exp_avg": torch.tensor([1.0, 2.0]), "exp_avg_sq": torch.tensor([3.0, 4.0])},
+            9: {"step": torch.tensor(600.0), "exp_avg": torch.tensor([5.0]), "exp_avg_sq": torch.tensor([6.0])},
+        },
+        "param_groups": [{"params": [4, 9], "lr": 1.0e-3, "betas": (0.9, 0.999), "eps": 1.0e-8, "weight_decay": 0.0, "amsgrad": False}],
+    }
+
+    resumed = transfer._encoder_only_optimizer_state(state)
+
+    assert resumed["param_groups"][0]["params"] == [4]
+    assert set(resumed["state"]) == {4}
+    assert torch.equal(resumed["state"][4]["exp_avg"], state["state"][4]["exp_avg"])
+    assert float(resumed["state"][4]["step"]) == transfer.START_STEP
+
+
+def test_research_state_restore_reapplies_generator_freeze() -> None:
+    class Phase(torch.nn.Module):
+        def __init__(self, value: float) -> None:
+            super().__init__()
+            self.phase = torch.nn.Parameter(torch.tensor(value))
+
+    class Runtime(torch.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.encoder = Phase(0.0)
+            self.generator = Phase(1.0)
+
+    class Consumer:
+        def __init__(self) -> None:
+            self.runtime = Runtime()
+            self.runtime.generator.phase.requires_grad_(False)
+
+        def load_trainable_state_dict(self, state: dict[str, torch.Tensor]) -> None:
+            parameters = dict(self.runtime.named_parameters())
+            with torch.no_grad():
+                for name, value in state.items():
+                    parameters[name].copy_(value)
+            # Match the parent consumer firewall, which enables its full trainable surface.
+            for parameter in parameters.values():
+                parameter.requires_grad_(True)
+
+    consumer = Consumer()
+    transfer._restore_trainable_state(
+        consumer,
+        {"encoder.phase": torch.tensor(2.0), "generator.phase": torch.tensor(3.0)},
+    )
+
+    encoder, generator = transfer._encoder_parameters(consumer)
+    assert encoder.requires_grad
+    assert not generator.requires_grad
+    assert encoder.item() == 2.0
+    assert generator.item() == 3.0
+
+
+def test_render_objective_keeps_gradient_above_clamp() -> None:
+    raw = torch.zeros((1, 1, 28, 28), dtype=torch.float32, requires_grad=True)
+    with torch.no_grad():
+        raw[..., :14, :] = 1.5
+    target = torch.zeros_like(raw)
+    target[..., :14, :] = 1.0
+
+    losses = transfer._render_losses(raw, target)
+    overflow_gradient = torch.autograd.grad(losses["L_overflow"], raw, retain_graph=True)[0]
+    canonical_gradient = torch.autograd.grad(losses["L_canonical"], raw)[0]
+
+    assert losses["L_overflow"].item() > 0.0
+    assert torch.count_nonzero(overflow_gradient[raw.detach() > 1.0]).item() > 0
+    assert torch.count_nonzero(canonical_gradient[raw.detach() > 1.0]).item() == 0
+
+
+def test_encoder_render_gradient_uses_bogt_and_render_terms() -> None:
+    class Phase(torch.nn.Module):
+        def __init__(self, value: float) -> None:
+            super().__init__()
+            self.phase = torch.nn.Parameter(torch.tensor(value))
+
+    class Runtime(torch.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.encoder = Phase(1.5)
+            self.generator = Phase(0.25)
+
+    class Consumer:
+        def __init__(self) -> None:
+            self.runtime = Runtime()
+            self.runtime.generator.phase.requires_grad_(False)
+            self.device = torch.device("cpu")
+            self.weights = SimpleNamespace(alpha=0.5, beta=0.3, gamma=0.2)
+
+        def forward_loss(self, batch: torch.Tensor, *, data_role: str) -> SimpleNamespace:
+            assert data_role == transfer.bogt.TRAIN_ROLE
+            encoder = self.runtime.encoder.phase
+            raw = F.interpolate(batch * encoder, size=(200, 200), mode="nearest")
+            return SimpleNamespace(
+                result=SimpleNamespace(raw_intensity=raw),
+                l_dist=(encoder - 1.0).square(),
+                l_rec=(encoder - 0.8).square(),
+                l_op=(encoder - 0.6).square(),
+            )
+
+    consumer = Consumer()
+    target = torch.zeros((10, 1, 28, 28))
+    target[:, :, 6:22, 9:19] = 1.0
+
+    active = transfer._render_gradients(consumer, target, delta=0.25)
+    bogt_off = transfer._render_gradients(consumer, target, delta=0.25, bogt_enabled=False)
+    render_off = transfer._render_gradients(consumer, target, delta=0.25, render_enabled=False)
+
+    assert torch.isfinite(active["total"]).all()
+    assert active["components"]["g_bogt"].abs().sum() > 0
+    assert active["components"]["g_overflow"].abs().sum() > 0
+    assert not torch.allclose(active["total"], bogt_off["total"])
+    assert not torch.allclose(active["total"], render_off["total"])
+    assert not consumer.runtime.generator.phase.requires_grad
+
+
+def test_encoder_sampler_restores_the_next_class_balanced_batch() -> None:
+    per_class = 1_500
+    labels = torch.arange(10).repeat_interleave(per_class)
+    train_indices = torch.arange(labels.numel())
+    permutations = [torch.nonzero(labels == digit, as_tuple=False).flatten() for digit in range(10)]
+    saved = {
+        "schema": transfer.bogt.SAMPLER_SCHEMA,
+        "seed": 1234,
+        "steps": transfer.START_STEP,
+        "cursor": transfer.START_STEP,
+        "class_count": 10,
+        "permutations": permutations,
+    }
+    sampler = transfer.EncoderSampler(train_indices, labels, saved)
+    for _ in range(13):
+        sampler.next_batch()
+    checkpoint = sampler.state_dict()
+
+    expected_indices, expected_labels = sampler.next_batch()
+    sampler.load_state_dict(checkpoint)
+    resumed_indices, resumed_labels = sampler.next_batch()
+
+    assert torch.equal(resumed_indices, expected_indices)
+    assert torch.equal(resumed_labels, expected_labels)
+    assert torch.equal(labels.index_select(0, resumed_indices), resumed_labels)
+
+
+def test_ready_preflight_is_bound_to_current_authorization_and_source(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(transfer, "RUNS_ROOT", Path("runs"))
+    identity = ResearchRunIdentity(
+        task_id=transfer.TASK_ID,
+        run_id=transfer.RUN_ID,
+        trajectory_id=transfer.TRAJECTORY_ID,
+        semantic_authority_id=transfer.SEMANTIC_AUTHORITY_ID,
+        data_role=transfer.bogt.TRAIN_ROLE,
+        config_identity={"x": 1},
+        model_identity="test-model",
+        optimizer_identity={"name": "Adam"},
+        sampler_identity={"seed": 1},
+        execution_source_semantics_id="source-semantics-1",
+        source_manifest_id="source-manifest-1",
+        scientific_attempt_id=transfer.ATTEMPT_ID,
+    )
+    manifest = {
+        "execution_source_semantics_id": identity.execution_source_semantics_id,
+        "source_manifest_id": identity.source_manifest_id,
+    }
+    checks = {
+        CORRECTNESS_INVARIANTS: {"status": "PASS"},
+        RESOURCE_ENVELOPE: {"status": "PASS"},
+        IMPLEMENTATION_SELECTION: {"status": "PASS"},
+    }
+    receipt = transfer.PreflightReceipt(
+        source_semantics_id=identity.execution_source_semantics_id,
+        authorization_id=transfer.AUTHORIZATION_ID,
+        checks=checks,
+        status=PREFLIGHT_READY,
+    )
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    payload = {
+        "schema": transfer.PREFLIGHT_SCHEMA,
+        "task_id": transfer.TASK_ID,
+        "outer_gate": transfer.OUTER_GATE,
+        "authorization_id": transfer.AUTHORIZATION_ID,
+        "sequence": 1,
+        "status": PREFLIGHT_READY,
+        "source_manifest": manifest,
+        "run_identity": identity.to_dict(),
+        "receipt": receipt.to_dict(),
+    }
+    (runs / "preflight_01.json").write_text(json.dumps(payload), encoding="utf-8")
+
+    loaded, _ = transfer._verify_preflight(tmp_path, identity, manifest, sequence=1)
+    assert loaded["status"] == PREFLIGHT_READY
+
+    payload["source_manifest"] = {**manifest, "source_manifest_id": "tampered"}
+    (runs / "preflight_01.json").write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(transfer.EncoderTransferError, match="current-source READY receipt"):
+        transfer._verify_preflight(tmp_path, identity, manifest, sequence=1)
+
+
+def test_preflight_recheck_requires_exact_historical_failure_and_review(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(transfer, "RUNS_ROOT", Path("runs"))
+    monkeypatch.setattr(transfer, "PREFLIGHT_SEQUENCE", 2)
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    prior = {
+        "schema": transfer.PREFLIGHT_SCHEMA,
+        "task_id": transfer.TASK_ID,
+        "outer_gate": transfer.OUTER_GATE,
+        "authorization_id": transfer.AUTHORIZATION_ID,
+        "sequence": 1,
+        "status": transfer.RUN_INVALID_HARNESS,
+        "failure_type": "ActiveCanaryError",
+        "failure": "g_overflow is zero or invalid",
+    }
+    prior_path = runs / "preflight_01.json"
+    prior_path.write_text(json.dumps(prior), encoding="utf-8")
+    review = {
+        "schema": "m0_bogt_encoder_render_transfer_root_cause_review.v1",
+        "task_id": transfer.TASK_ID,
+        "outer_gate": transfer.OUTER_GATE,
+        "authorization_id": transfer.AUTHORIZATION_ID,
+        "retry": "one source-bound engineering recheck as preflight_02",
+        "prior_preflight": {
+            "path": "runs/preflight_01.json",
+            "sequence": 1,
+            "sha256": transfer.file_sha256(prior_path),
+            "status": transfer.RUN_INVALID_HARNESS,
+            "failure_type": "ActiveCanaryError",
+            "failure": "g_overflow is zero or invalid",
+        },
+        "attempt_01_existed": False,
+        "failed_source": {
+            "path": Path(transfer.__file__).resolve().relative_to(transfer._root()).as_posix(),
+            "sha256": "c" * 64,
+        },
+    }
+    (runs / "root_cause_review_01.json").write_text(json.dumps(review), encoding="utf-8")
+
+    identity = transfer._preflight_retry_identity(tmp_path)
+    assert identity["sequence"] == 2
+    assert identity["prior_failures"][0]["sha256"] == transfer.file_sha256(prior_path)
+
+    prior["failure"] = "different failure"
+    prior_path.write_text(json.dumps(prior), encoding="utf-8")
+    with pytest.raises(transfer.EncoderTransferError, match="failure or root-cause review identity changed"):
+        transfer._preflight_retry_identity(tmp_path)
+
+
+def test_delta_calibration_allows_zero_overflow_component_when_combined_render_gradient_is_nonzero(monkeypatch: pytest.MonkeyPatch) -> None:
+    class Phase(torch.nn.Module):
+        def __init__(self, value: float) -> None:
+            super().__init__()
+            self.phase = torch.nn.Parameter(torch.tensor(value))
+
+    class Runtime(torch.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.encoder = Phase(0.5)
+            self.generator = Phase(0.25)
+
+    class Consumer:
+        def __init__(self) -> None:
+            self.runtime = Runtime()
+            self.runtime.generator.phase.requires_grad_(False)
+            self.device = torch.device("cpu")
+            self.weights = SimpleNamespace(alpha=0.5, beta=0.3, gamma=0.2)
+
+        def forward_loss(self, batch: torch.Tensor, *, data_role: str) -> SimpleNamespace:
+            assert data_role == transfer.bogt.TRAIN_ROLE
+            encoder = self.runtime.encoder.phase
+            raw = F.interpolate(batch * encoder, size=(200, 200), mode="nearest")
+            return SimpleNamespace(
+                result=SimpleNamespace(raw_intensity=raw),
+                l_dist=(encoder - 0.9).square(),
+                l_rec=(encoder - 0.8).square(),
+                l_op=(encoder - 1.2).square(),
+            )
+
+    per_class = 1_201
+    labels = torch.arange(10).repeat_interleave(per_class)
+    indices = torch.arange(labels.numel())
+    permutations = [torch.nonzero(labels == digit, as_tuple=False).flatten() for digit in range(10)]
+    sampler = transfer.EncoderSampler(
+        indices,
+        labels,
+        {
+            "schema": transfer.bogt.SAMPLER_SCHEMA,
+            "seed": 1234,
+            "steps": transfer.START_STEP,
+            "cursor": transfer.START_STEP,
+            "class_count": 10,
+            "permutations": permutations,
+        },
+    )
+    image = torch.zeros((1, 1, 28, 28))
+    image[:, :, 7:21, 10:18] = 1.0
+    context = SimpleNamespace(labels=labels, images=image.expand(labels.numel(), -1, -1, -1).contiguous())
+    monkeypatch.setattr(transfer, "_rng_state", lambda: {"cpu": torch.tensor([1]), "cuda": [], "cuda_available": False})
+    monkeypatch.setattr(transfer, "_restore_rng", lambda state: None)
+
+    calibration = transfer._calibrate_delta(Consumer(), sampler, context)
+
+    assert calibration["delta"] > 0.0
+    assert calibration["gradient_norms"]["g_overflow"] == 0.0
+    assert calibration["gradient_norms"]["g_canonical"] > 0.0
+    assert sampler.cursor == transfer.START_STEP
+
+
+def test_step600_ols_bank_digest_tampering_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(transfer, "STEP600_TRAIN_OLS_SHA256", "0" * 64)
+
+    with pytest.raises(transfer.EncoderTransferError, match="identity changed"):
+        transfer._load_fixed_ols(Path(transfer._root()), {"checkpoint": {}})
+
+
+def _gate_inputs() -> tuple[dict, dict, dict, dict, dict, dict, dict[str, bool], dict[str, int]]:
+    baseline_dev = {"metrics": {"macro_recall": 0.13}, "losses": {"L_background": 0.01, "L_rec": 0.07}}
+    final_dev = {
+        "metrics": {"macro_recall": 0.20},
+        "raw_cmos": {"finite": True, "zero_images": 0, "nonconstant_images": 5_000, "overflow_pixel_fraction": 0.005},
+        "losses": {"L_background": 0.01, "L_rec": 0.07},
+        "power": {"finite": True},
+    }
+    baseline_s1 = {"macro_recall": 0.13}
+    final_s1 = {
+        "E_D": {"macro_recall": 0.20},
+        "raw_cmos_validity": {"finite": True, "all_nonzero": True, "all_nonconstant": True, "overflow_pixel_fraction": 0.005},
+        "power": {"finite": True},
+    }
+    bootstrap = {"ci95": {"lower": 0.01, "upper": 0.10}}
+    training = {"updates": True, "freeze": True}
+    reads = {"protected": 0, "test": 0, "sealed": 0}
+    return baseline_dev, final_dev, baseline_s1, final_s1, bootstrap, bootstrap, training, reads
+
+
+def test_outer_gate_requires_both_populations_and_overflow_threshold() -> None:
+    inputs = _gate_inputs()
+    state, classification, checks = transfer._resolve_gate(*inputs[:6], training_checks=inputs[6], data_reads=inputs[7])
+
+    assert state == transfer.RUN_COMPLETED
+    assert classification == transfer.CLASSIFICATION_SUPPORTED
+    assert all(checks.values())
+
+    inputs[3]["raw_cmos_validity"]["overflow_pixel_fraction"] = 0.02
+    state, classification, checks = transfer._resolve_gate(*inputs[:6], training_checks=inputs[6], data_reads=inputs[7])
+    assert state == transfer.RUN_VALID_FAILED
+    assert classification == transfer.RUN_VALID_FAILED
+    assert not checks["S1_overflow_fraction_at_most_1_percent"]
+
+
+def test_status_writer_records_nonterminal_recovery_cursor(tmp_path: Path) -> None:
+    transfer._write_status(tmp_path, state=transfer.RUNNING, phase="TRAINING", step=775, latest_checkpoint="scientific_step_000775.pt")
+
+    payload = json.loads((tmp_path / "status.json").read_text(encoding="utf-8"))
+    assert payload["completed_step"] == 775
+    assert payload["scientific_updates"] == 175
+    assert payload["latest_checkpoint"] == "scientific_step_000775.pt"
+
+
+def test_terminal_status_and_existing_json_are_write_once_verified(tmp_path: Path) -> None:
+    transfer._write_status(
+        tmp_path,
+        state=transfer.RUN_COMPLETED,
+        phase=transfer.RUN_COMPLETED,
+        step=transfer.END_STEP,
+        report_sha256="a" * 64,
+        outer_gate_passed=True,
+    )
+    status = json.loads((tmp_path / "status.json").read_text(encoding="utf-8"))
+    latest = json.loads((tmp_path / "latest_status.json").read_text(encoding="utf-8"))
+    assert status["state"] == transfer.RUN_COMPLETED
+    assert status["completed_step"] == transfer.END_STEP
+    assert status["outer_gate_passed"] is True
+    assert latest == status
+
+    artifact = tmp_path / "terminal_receipt.json"
+    payload = {"state": transfer.RUN_COMPLETED, "report_sha256": "a" * 64}
+    transfer._write_json_once(artifact, payload, "test terminal receipt")
+    transfer._write_json_once(artifact, payload, "test terminal receipt")
+    with pytest.raises(transfer.EncoderTransferError, match="existing JSON artifact content differs"):
+        transfer._write_json_once(artifact, {**payload, "report_sha256": "b" * 64}, "test terminal receipt")
