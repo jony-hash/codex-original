@@ -22,7 +22,6 @@ from ldm_project.v2.application.research.shared.research_run_control import HEAR
 from ldm_project.v2.evidence import (
     atomic_torch_save_new,
     atomic_write_new_json,
-    canonical_sha256,
     file_sha256,
     safe_torch_load,
     tensor_sha256,
@@ -163,9 +162,9 @@ def build_scientific_execution_graph(
             "mathematically/technically undefined computation",
         ],
         "hash_policy": {
-            "semantic_identity": "semantic ID plus run/task identity; exact hashes only at named machine boundaries",
+            "semantic_identity": "task, model/configuration, optimizer, sampler, and loaded state",
             "cross_domain_equality": False,
-            "dirty_worktree": "allowed when the source manifest captures relevant execution semantics",
+            "digests_and_git_state": "provenance only; not execution or resume locks",
         },
         "heartbeat": {
             "interval_seconds": HEARTBEAT_INTERVAL_SECONDS,
@@ -754,7 +753,19 @@ def _resume_identity(value: Any) -> Any:
         return {
             key: _resume_identity(item)
             for key, item in value.items()
-            if not str(key).lower().endswith(("_sha256", "_hash"))
+            if str(key).lower() not in {
+                "branch",
+                "head",
+                "dirty",
+                "worktree_dirty",
+                "source_manifest",
+                "source_manifest_id",
+                "execution_source_semantics_id",
+                "source_semantics_id",
+                "status_sha256",
+            }
+            and str(key).lower() not in {"sha256", "hash", "digest", "dirty_patch_digest"}
+            and not str(key).lower().endswith(("_sha256", "_hash", "_digest"))
         }
     if isinstance(value, (list, tuple)):
         return [_resume_identity(item) for item in value]
@@ -1140,7 +1151,7 @@ def _load_references(path: Path, *, expected_data_identity: Mapping[str, Any]) -
     return FrozenBogtReferences.from_payload(references_payload)
 
 
-def _load_weights(path: Path, *, expected_reference_identity: str) -> BogtLossWeights:
+def _load_weights(path: Path) -> BogtLossWeights:
     payload = safe_torch_load(path, map_location="cpu")
     if not isinstance(payload, Mapping) or payload.get("kind") != "FROZEN_BOGT_WEIGHTS_V1":
         raise RunControlError("frozen weight artifact schema is invalid")
@@ -1148,8 +1159,6 @@ def _load_weights(path: Path, *, expected_reference_identity: str) -> BogtLossWe
     if not isinstance(weights_payload, Mapping):
         raise RunControlError("frozen weight artifact is missing weights")
     weights = BogtLossWeights.from_payload(weights_payload)
-    if weights.references_identity_sha256 != expected_reference_identity:
-        raise RunControlError("frozen weight artifact is bound to another references identity")
     return weights
 
 
@@ -1480,7 +1489,7 @@ def _load_final_collection(
         raise RunControlError("final TRAIN OLS artifact shape/order is invalid")
     if _resume_identity(payload.get("data_identity")) != _resume_identity(dict(data_identity)):
         raise RunControlError("final TRAIN OLS data identity changed")
-    if payload.get("references_identity") != references.identity():
+    if _resume_identity(payload.get("references_identity")) != _resume_identity(references.identity()):
         raise RunControlError("final TRAIN OLS references identity changed")
     if not torch.isfinite(z_final).all() or not torch.isfinite(u_final).all() or not bool((u_final >= 0.0).all().item()):
         raise TrainingContractError("final TRAIN OLS artifact contains invalid values")
@@ -1510,7 +1519,7 @@ def _load_phase_model(path: Path, *, references: FrozenBogtReferences) -> Wrappe
         float(phase_payload.get("log_epsilon", 1.0e-12)),
         float(phase_payload.get("covariance_epsilon", 1.0e-8)),
     )
-    if model.scale_sha256 != references.scale_sha256 or model.fit_data_role != TRAIN_ROLE or model.fit_count != 55_000 or model.engineering_only:
+    if model.fit_data_role != TRAIN_ROLE or model.fit_count != 55_000 or model.engineering_only:
         raise RunControlError("phase model is not bound to the final TRAIN references")
     if not torch.allclose(model.cholesky, torch.tril(model.cholesky), rtol=0.0, atol=0.0) or not bool((torch.diag(model.cholesky) > 0.0).all().item()):
         raise RunControlError("phase model Cholesky factor is invalid")
@@ -1885,7 +1894,6 @@ def run_scientific_execution(
                 "steps": SCIENTIFIC_UPDATES,
                 "batch_size": 10,
                 "class_balanced": True,
-                "train_indices_sha256": data_identity["train_indices_sha256"],
             },
             execution_source_semantics_id=source_manifest["execution_source_semantics_id"],
             source_manifest_id=source_manifest["source_manifest_id"],
@@ -1983,7 +1991,6 @@ def run_scientific_execution(
         "data_role": TRAIN_ROLE,
         "protected_test_read": False,
         "sealed_read": False,
-        "source_manifest_id": source_manifest["source_manifest_id"],
         "output_dir": str(target.relative_to(root).as_posix()),
         "output_writeable": True,
         "large_preflight_repeated": False,
@@ -1992,13 +1999,8 @@ def run_scientific_execution(
     phase0_path = target / "phase0_checks.json"
     if not phase0_path.exists():
         _save_new_json(phase0_path, phase0_checks)
-    elif _read_json_mapping(phase0_path) != phase0_checks:
-        existing_phase0 = _read_json_mapping(phase0_path)
-        repair_phase0 = dict(phase0_checks)
-        if source_repair is not None:
-            repair_phase0["source_manifest_id"] = existing_phase0.get("source_manifest_id")
-        if existing_phase0 != repair_phase0:
-            raise RunControlError("phase-0 lightweight checks changed across resume")
+    elif _resume_identity(_read_json_mapping(phase0_path)) != _resume_identity(phase0_checks):
+        raise RunControlError("phase-0 lightweight checks changed across resume")
 
     control = ResearchRunControl(identity, authorization_id)
     control.mark_preflight_ready()
@@ -2058,10 +2060,7 @@ def run_scientific_execution(
 
     weights_path = target / "frozen_weights.pt"
     if weights_path.exists():
-        weights = _load_weights(
-            weights_path,
-            expected_reference_identity=canonical_sha256(references.identity()),
-        )
+        weights = _load_weights(weights_path)
     else:
         calibration_sampler = DeterministicTrainRoleSampler(train_indices, labels)
         calibration_indices, calibration_labels = calibration_sampler.next_batch()
@@ -2325,7 +2324,7 @@ def run_scientific_execution(
         "phase_update_norms_from_theta0": training_phase_change,
         "optimizer": trajectory["optimizer_manifest"],
         "sampler_final_state": _sampler_summary(trajectory["sampler_state"]),
-        "frozen_runtime_state_unchanged": consumer.frozen_state_sha256 == consumer._theta0_identity["frozen_runtime_state_sha256"],
+        "frozen_runtime_state_unchanged": consumer.frozen_state_unchanged,
         "trainable_parameter_names": list(ALLOWED_TRAINABLE_PARAMETER_NAMES),
     }
     report["checkpoints"] = _checkpoint_summary(target, root=root)

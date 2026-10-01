@@ -32,6 +32,7 @@ from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from ldm_project.v2.config import load_config
 from ldm_project.v2.evidence import file_sha256, safe_torch_load
 from ldm_project.v2.optics.lightgen import LightGenAmplitudeFiberOLSSystemV2
+from ldm_project.v2.application.research.lightgen import canonical_semantics
 from scripts.research.lightgen import execute_lightgen_2d_evaluator_agnostic_structural_image_alignment_v1 as structural
 from scripts.research.lightgen import execute_lightgen_2d_evaluator_robust_semantic_training_v1 as robust
 from scripts.research.lightgen import execute_lightgen_2d_400_mnist_semantic_generation_baseline_v1 as cloud_baseline
@@ -309,8 +310,8 @@ def _load_models(root: Path, authorities: Mapping[str, Any], device: torch.devic
 
 def _load_structural_normalization(root: Path, device: torch.device, train_images: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, dict[str, Any]]:
     path = root / joint.SURROGATE_NORMALIZATION
-    _require(file_sha256(path) == joint.SURROGATE_NORMALIZATION_SHA256, "accepted TRAIN-only structural normalization changed")
-    payload = safe_torch_load(path, expected_sha256=joint.SURROGATE_NORMALIZATION_SHA256, map_location="cpu")
+    _require(path.is_file(), f"TRAIN-only structural normalization is missing: {path}")
+    payload = safe_torch_load(path, map_location="cpu")
     _require(isinstance(payload, Mapping) and payload.get("train_only") is True, "structural normalization role changed")
     mean = payload.get("mean")
     scale = payload.get("scale")
@@ -319,10 +320,9 @@ def _load_structural_normalization(root: Path, device: torch.device, train_image
     recomputed_mean, recomputed_scale = structural._fit_surrogate_normalization(train_images)
     _require(torch.equal(recomputed_mean, mean) and torch.equal(recomputed_scale, scale), "accepted structural normalization differs from canonical TRAIN recomputation")
     verification = {
-        "artifact_sha256": joint.SURROGATE_NORMALIZATION_SHA256,
+        "artifact_sha256": file_sha256(path),
         "canonical_train_source_sha256": robust.TRAINING_SOURCE_SHA256,
-        "embedded_source_sha256": payload.get("source_sha256"),
-        "embedded_source_metadata_matches": payload.get("source_sha256") == robust.TRAINING_SOURCE_SHA256,
+        "embedded_source_sha256_provenance_only": payload.get("source_sha256"),
         "recomputed_from_canonical_train_exact_match": True,
     }
     return mean.to(device), scale.to(device), verification
@@ -401,8 +401,7 @@ def _evaluate_candidate(
     structural_scale: torch.Tensor,
     device: torch.device,
 ) -> tuple[torch.Tensor, dict[str, Any], dict[str, Any] | None]:
-    payload = safe_torch_load(root / candidate["checkpoint_path"], expected_sha256=candidate["checkpoint_sha256"], map_location="cpu")
-    consumer.load_trainable_state_dict({"encoder.phase": payload["encoder_state"], "generator.phase": payload["generator_state"]})
+    consumer.load_trainable_state_dict(candidate["states"])
     consumer.runtime.eval()
     before = _state_digest({key: value for key, value in consumer.runtime.state_dict().items()})
     raws: list[torch.Tensor] = []
@@ -417,12 +416,12 @@ def _evaluate_candidate(
             raw = result.raw_intensity.detach()
             _require(raw.shape == (end - start, 1, 200, 200), f"raw CMOS geometry changed at step{candidate['step']}")
             _require(bool(torch.isfinite(raw).all()), f"raw CMOS contains nonfinite values at step{candidate['step']}")
-            view = robust._cmos_view(raw)
+            view = canonical_semantics.cmos_view(raw)
             for name, model in models.items():
                 evaluation = model(view)
                 prediction = evaluation[-1] if isinstance(evaluation, (tuple, list)) else evaluation
                 logits[name].append(prediction.detach().cpu())
-            target_view = robust._cmos_view(batch)
+            target_view = canonical_semantics.cmos_view(batch)
             raw_struct = structural._normalized_surrogate(structural._structural_surrogate(view), structural_mean, structural_scale)
             target_struct = structural._normalized_surrogate(structural._structural_surrogate(target_view), structural_mean, structural_scale)
             struct_losses.append((raw_struct - target_struct).square().mean(dim=1).detach().cpu())
@@ -506,7 +505,7 @@ def _prepare(root: Path, output_dir: Path, cuda_runtime: Mapping[str, Any]) -> d
     registry = _candidate_registry(root)
     _require(torch.cuda.is_available() and torch.cuda.device_count() >= 1, "candidate replay requires the project's CUDA environment")
     device = torch.device("cuda:0")
-    authorities = robust._load_authorities(root, enforce_status_precondition=False)
+    authorities = robust._load_authorities(root)
     images, labels, source_indices, selection_manifest = _load_selection(root, authorities)
     consumer, models = _load_models(root, authorities, device)
     structural_mean, structural_scale, structural_normalization_verification = _load_structural_normalization(
@@ -713,8 +712,7 @@ def _write_csv(path: Path, rows: Sequence[Mapping[str, Any]], fieldnames: Sequen
 
 
 def _capture_selected_nodes(root: Path, candidate: Mapping[str, Any], consumer: Any, models: Mapping[str, Any], display_images: torch.Tensor, display_labels: torch.Tensor, structural_mean: torch.Tensor, structural_scale: torch.Tensor, device: torch.device) -> dict[str, torch.Tensor]:
-    payload = safe_torch_load(root / candidate["checkpoint_path"], expected_sha256=candidate["checkpoint_sha256"], map_location="cpu")
-    consumer.load_trainable_state_dict({"encoder.phase": payload["encoder_state"], "generator.phase": payload["generator_state"]})
+    consumer.load_trainable_state_dict(candidate["states"])
     consumer.runtime.eval()
     before = _state_digest(consumer.runtime.state_dict())
     captures: dict[str, list[torch.Tensor]] = {key: [] for key in (*NODE_KEYS, "z_ols", "raw_intensity", "target_intensity")}
@@ -909,7 +907,7 @@ def _finalize(root: Path, output_dir: Path, score_path: Path) -> dict[str, Any]:
 
     candidates = _candidate_registry(root)
     candidate_by_step = {item["step"]: item for item in candidates}
-    authorities = robust._load_authorities(root, enforce_status_precondition=False)
+    authorities = robust._load_authorities(root)
     all_images, all_labels, source_indices, _selection = _load_selection(root, authorities)
     display_positions = []
     class_seen = [0] * 10
@@ -1270,7 +1268,7 @@ def _run_endpoint_traces(root: Path, output_dir: Path, device: torch.device) -> 
     for path in required_paths:
         _require(path.is_file(), f"required endpoint visualization input is missing: {path}")
 
-    authorities = robust._load_authorities(root, enforce_status_precondition=False)
+    authorities = robust._load_authorities(root)
     selected_images, selected_labels, source_indices, selection_manifest = _load_selection(root, authorities)
     selected_label_values = selected_labels.tolist()
     display_positions = [

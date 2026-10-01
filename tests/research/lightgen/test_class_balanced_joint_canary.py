@@ -41,6 +41,50 @@ def test_contract_uses_producer_provenance_not_exact_consumer_lock() -> None:
     assert payload["git"]["producer"]["head"] == contract.HISTORICAL_PRODUCER_HEAD
 
 
+def test_artifact_digest_is_recorded_but_does_not_gate_loading(tmp_path: Path) -> None:
+    artifact = tmp_path / "authority.json"
+    artifact.write_text("changed content\n", encoding="utf-8")
+
+    reference = contract._artifact_ref(tmp_path, "authority.json", "authority")
+
+    assert reference["path"] == "authority.json"
+    assert reference["sha256"] == contract.file_sha256(artifact)
+    assert reference["role"] == "authority"
+
+
+def test_git_identity_is_provenance_even_when_branch_and_head_change(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(
+        contract,
+        "git_identity",
+        lambda _root: {
+            "branch": "working-branch",
+            "head": "changed-head",
+            "worktree_dirty": True,
+            "status_sha256": "changed-status",
+        },
+    )
+
+    git_record = contract._git_contract(tmp_path)
+
+    assert git_record["consumer"]["branch"] == "working-branch"
+    assert git_record["consumer"]["head"] == "changed-head"
+    assert git_record["consumer"]["worktree_dirty"] is True
+    assert git_record["producer_head_is_provenance_only"] is True
+
+
+def test_repeated_preflight_failures_are_recorded_without_a_retry_limit(tmp_path: Path) -> None:
+    target = tmp_path / "attempt_01"
+    errors = [canary.CanaryError("representative preflight defect") for _ in range(3)]
+
+    for error in errors:
+        with pytest.raises(canary.CanaryError, match="representative preflight defect"):
+            canary._record_preflight_failure(target, error)
+
+    records = sorted(canary._failure_state_dir(target).glob("failure_*.json"))
+    assert len(records) == 3
+    assert [json.loads(path.read_text(encoding="utf-8"))["count"] for path in records] == [1, 2, 3]
+
+
 def test_batch_balance_requires_ordered_one_row_per_class() -> None:
     result = canary._batch_balance(torch.arange(10))
     assert result["counts"] == [1] * 10

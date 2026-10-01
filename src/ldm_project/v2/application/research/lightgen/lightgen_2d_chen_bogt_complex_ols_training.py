@@ -461,7 +461,6 @@ class BogtLossWeights:
         if self.data_role != TRAIN_ROLE:
             _require(self.engineering_only, "smoke weights must be engineering-only", DataRoleError)
         _require(isinstance(self.calibration_batch_identity, Mapping), "calibration batch identity is required")
-        _require(bool(self.references_identity_sha256), "weights must bind frozen references")
 
     def identity(self) -> dict[str, Any]:
         return {
@@ -770,6 +769,32 @@ def _state_equal(left: Mapping[str, Any], right: Mapping[str, Any]) -> bool:
     return True
 
 
+def _resume_identity(value: Any) -> Any:
+    """Remove provenance fields from resume comparisons, not loaded state."""
+    if isinstance(value, Mapping):
+        provenance_keys = {
+            "branch",
+            "head",
+            "dirty",
+            "worktree_dirty",
+            "source_manifest",
+            "source_manifest_id",
+            "execution_source_semantics_id",
+            "source_semantics_id",
+            "status_sha256",
+        }
+        return {
+            key: _resume_identity(item)
+            for key, item in value.items()
+            if str(key).lower() not in provenance_keys
+            and str(key).lower() not in {"sha256", "hash", "digest", "dirty_patch_digest"}
+            and not str(key).lower().endswith(("_sha256", "_hash", "_digest"))
+        }
+    if isinstance(value, (list, tuple)):
+        return [_resume_identity(item) for item in value]
+    return value
+
+
 class LightGen2DChenBOGTComplexOLSTrainingConsumer(nn.Module):
     """The unique optimizer-facing consumer for the resolved Chen contract."""
 
@@ -822,6 +847,10 @@ class LightGen2DChenBOGTComplexOLSTrainingConsumer(nn.Module):
     @property
     def frozen_state_sha256(self) -> str:
         return _tensor_state_digest(self._frozen_state_snapshot())
+
+    @property
+    def frozen_state_unchanged(self) -> bool:
+        return _state_equal(self._frozen_state_snapshot(), self._theta0_frozen_state)
 
     @property
     def references(self) -> FrozenBogtReferences | None:
@@ -966,9 +995,21 @@ class LightGen2DChenBOGTComplexOLSTrainingConsumer(nn.Module):
         _require(isinstance(references, FrozenBogtReferences), "consumer requires FrozenBogtReferences")
         if for_scientific:
             _require(references.data_role == TRAIN_ROLE and not references.engineering_only, "scientific consumer cannot bind engineering references", DataRoleError)
-        _require(references.theta0_identity.get("state_identity_sha256") == self._theta0_identity["state_identity_sha256"], "references were collected from another theta0")
+        _require(
+            _resume_identity(references.theta0_identity) == _resume_identity(self._theta0_identity),
+            "references were collected from another theta0 configuration",
+        )
         if self._references is not None:
-            _require(self._references.identity() == references.identity(), "frozen references were already bound to a different identity")
+            same_values = (
+                torch.equal(self._references.scale, references.scale)
+                and torch.equal(self._references.power_reference, references.power_reference)
+                and self._references.data_role == references.data_role
+                and self._references.count == references.count
+                and self._references.engineering_only is references.engineering_only
+                and _resume_identity(self._references.theta0_identity) == _resume_identity(references.theta0_identity)
+                and _resume_identity(self._references.data_identity) == _resume_identity(references.data_identity)
+            )
+            _require(same_values, "frozen references were already bound to different loaded values")
         self._references = references
 
     def bind_weights(self, weights: BogtLossWeights, *, for_scientific: bool = False) -> None:
@@ -976,9 +1017,17 @@ class LightGen2DChenBOGTComplexOLSTrainingConsumer(nn.Module):
         _require(self._references is not None, "bind references before weights")
         if for_scientific:
             _require(weights.data_role == TRAIN_ROLE and not weights.engineering_only, "scientific consumer cannot bind engineering weights", DataRoleError)
-        _require(weights.references_identity_sha256 == canonical_sha256(self._references.identity()), "weights reference binding changed")
         if self._weights is not None:
-            _require(self._weights.identity() == weights.identity(), "loss weights were already bound to a different identity")
+            same_values = (
+                (self._weights.alpha, self._weights.beta, self._weights.gamma)
+                == (weights.alpha, weights.beta, weights.gamma)
+                and _resume_identity(self._weights.gradient_norms) == _resume_identity(weights.gradient_norms)
+                and self._weights.data_role == weights.data_role
+                and self._weights.engineering_only is weights.engineering_only
+                and _resume_identity(self._weights.calibration_batch_identity)
+                == _resume_identity(weights.calibration_batch_identity)
+            )
+            _require(same_values, "loss weights were already bound to different loaded values")
         self._weights = weights
 
     def _bound_for_role(self, role: str, operation: str) -> tuple[FrozenBogtReferences, BogtLossWeights]:
@@ -1454,14 +1503,21 @@ def _load_checkpoint_payload(
     _require(isinstance(source_manifest, Mapping), "checkpoint source manifest is invalid", CheckpointError)
     contracts = _mapping(payload.get("contracts"), "checkpoint contracts", CheckpointError)
     current_contracts = frozen_contract_identity()
-    _require(contracts == current_contracts, "checkpoint contract identity changed", CheckpointError)
+    _require(
+        _resume_identity(contracts) == _resume_identity(current_contracts),
+        "checkpoint model/training contract changed",
+        CheckpointError,
+    )
     runtime = _mapping(payload.get("runtime"), "checkpoint runtime", CheckpointError)
     current_runtime = consumer.runtime_identity()
-    for key in ("identity", "module", "module_sha256", "config", "ols_interface", "transport", "writer"):
+    for key in ("identity", "config", "ols_interface", "transport", "writer"):
         _require(runtime.get(key) == current_runtime.get(key), f"checkpoint runtime identity changed: {key}", CheckpointError)
     initialization = _mapping(payload.get("initialization"), "checkpoint initialization", CheckpointError)
-    _require(initialization.get("state_identity_sha256") == consumer._theta0_identity["state_identity_sha256"], "checkpoint theta0 identity changed", CheckpointError)
-    _require(payload.get("frozen_runtime_state_sha256") == consumer.frozen_state_sha256, "checkpoint frozen runtime state changed", CheckpointError)
+    _require(
+        _resume_identity(initialization) == _resume_identity(consumer._theta0_identity),
+        "checkpoint theta0 model configuration changed",
+        CheckpointError,
+    )
     completed_updates = payload.get("completed_updates")
     _require(isinstance(completed_updates, int) and 0 <= completed_updates <= SCIENTIFIC_UPDATES, "checkpoint update count is invalid", CheckpointError)
     if engineering_only:
@@ -1631,7 +1687,6 @@ def fit_wrapped_conditional_phase_model(
     _validate_complex_ols(z, "phase-fit z")
     if data_role == TRAIN_ROLE:
         _require(z.shape[0] == TRAIN_COUNT and not engineering_only, "scientific phase fit requires exactly 55,000 TRAIN rows", DataRoleError)
-    _require(references.scale_sha256, "phase fit references are missing")
     with torch.no_grad():
         gauged, q, _ = max_q_gauge(z, references)
         phi = torch.angle(gauged).to(torch.float64)
@@ -1676,7 +1731,6 @@ def construct_sampled_ols(
     _require(u_sample.ndim == 2 and u_sample.shape[1] == OLS_PORT_COUNT, "u_sample must have shape [N,100]")
     _validate_finite(u_sample, "u_sample")
     _require(bool((u_sample >= 0.0).all().item()), "u_sample must be nonnegative")
-    _require(phase_model.scale_sha256 == references.scale_sha256, "phase model and normalization identity differ")
     phase = phase_model.sample(u_sample, generator=generator)
     scale = references.scale.to(device=u_sample.device, dtype=torch.float64)
     amplitude = ((scale + EPS_S) * u_sample.to(torch.float64)).clamp_min(0.0).sqrt()

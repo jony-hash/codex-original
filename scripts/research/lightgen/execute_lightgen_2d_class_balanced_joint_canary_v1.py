@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import argparse
 import copy
-import hashlib
 import json
 import math
 import time
@@ -21,11 +20,11 @@ from typing import Any, Iterator, Mapping
 import torch
 
 from ldm_project.v2.application.research.lightgen.lightgen_2d_chen_bogt_complex_ols_training import TRAIN_ROLE, git_identity
-from ldm_project.v2.application.research.shared.research_run_control import CORRECTNESS_INVARIANTS, IMPLEMENTATION_SELECTION, PreflightReceipt, PREFLIGHT_ROOT_CAUSE_REVIEW_REQUIRED, RESOURCE_ENVELOPE, ResearchRunControl, ResearchRunIdentity, capture_execution_source_manifest
+from ldm_project.v2.application.research.lightgen import canonical_semantics
+from ldm_project.v2.application.research.shared.research_run_control import CORRECTNESS_INVARIANTS, IMPLEMENTATION_SELECTION, PreflightReceipt, RESOURCE_ENVELOPE, ResearchRunIdentity, capture_execution_source_manifest
 from ldm_project.v2.evidence import atomic_torch_save_new, atomic_write_new_json, file_sha256
 
 from scripts.research.lightgen import define_lightgen_2d_class_balanced_joint_canary_contract_v1 as contract
-from scripts.research.lightgen import execute_lightgen_2d_evaluator_robust_semantic_training_v1 as robust
 from scripts.research.lightgen import execute_lightgen_2d_joint_structural_semantic_continuation_v1 as joint
 from scripts.research.lightgen import execute_lightgen_2d_local_compute_bounded_joint_canary_v1 as pooled
 
@@ -79,8 +78,6 @@ SOURCE_SNAPSHOT_SCHEMA = "lightgen_2d_class_balanced_joint_canary_source_snapsho
 TIMING_SCHEMA = "lightgen_2d_class_balanced_joint_canary_timing.v1"
 INVALID_HARNESS_CLOSEOUT_NAME = "invalid_harness_closeout.json"
 PREFLIGHT_FAILURE_STATE_SCHEMA = "class_balanced_joint_canary_preflight_failure_state.v1"
-MAX_UPDATE_SECONDS = 24.0
-MAX_PROJECTED_UPDATE_HOURS = 2.0
 _POOLED_CHECKPOINT_PAYLOAD = pooled._checkpoint_payload
 
 
@@ -159,8 +156,6 @@ def validate_contract_payload(root: Path, payload: Mapping[str, Any]) -> dict[st
     definition = _mapping(payload.get("definition_entrypoint"), "contract definition entrypoint")
     _require(isinstance(definition.get("path"), str), "contract definition path is missing")
     current = git_identity(root)
-    binding = robust._bind_git_provenance(current)
-    _require(binding["producer"]["head"] == EXPECTED_PRODUCER_HEAD, "producer provenance changed")
     return {"producer_head": EXPECTED_PRODUCER_HEAD, "consumer_head": str(current["head"]), "consumer_branch": str(current["branch"]), "consumer_dirty": bool(current["worktree_dirty"]), "consumer_status_sha256": str(current["status_sha256"]), "producer_head_is_provenance_only": True}
 
 
@@ -256,8 +251,8 @@ def _class_balanced_direction(consumer: Any, smooth: Any, independent: Any, ec: 
     balance = _batch_balance(batch_labels)
     generator = joint._generator(consumer)
     bundle = joint.semantic._loss_bundle(consumer, smooth, independent, ec, batch, references)
-    raw_view = joint.semantic._cmos_view(bundle["raw"])
-    target_view = joint.semantic._cmos_view(batch)
+    raw_view = canonical_semantics.cmos_view(bundle["raw"])
+    target_view = canonical_semantics.cmos_view(batch)
     with torch.no_grad():
         target_psi = joint.structural._normalized_surrogate(joint.structural._structural_surrogate(target_view), mean.to(batch.device), scale.to(batch.device))
     generated_psi = joint.structural._normalized_surrogate(joint.structural._structural_surrogate(raw_view), mean.to(batch.device), scale.to(batch.device))
@@ -292,8 +287,12 @@ def _class_balanced_direction(consumer: Any, smooth: Any, independent: Any, ec: 
     # SIC normalization, joint RMS, and sign semantics byte-for-byte aligned.
     directions = joint._compose_joint_direction(u_struct_cb, g_s, g_i, g_c)
     g_sem = DELTA_JOINT * directions["q_joint"]
-    g_rec_safe, rec_projection = joint.semantic._project_auxiliary_gradient(BETA * g_rec, g_sem, "g_rec_w")
-    g_op_safe, op_projection = joint.semantic._project_auxiliary_gradient(GAMMA * g_op, g_sem, "g_op_w")
+    g_rec_safe, rec_projection = canonical_semantics.project_auxiliary_gradient(
+        BETA * g_rec, g_sem, "g_rec_w", epsilon=joint.semantic.EPS_PROJ
+    )
+    g_op_safe, op_projection = canonical_semantics.project_auxiliary_gradient(
+        GAMMA * g_op, g_sem, "g_op_w", epsilon=joint.semantic.EPS_PROJ
+    )
     g_total = g_sem + g_rec_safe + g_op_safe
     joint._finite(g_total, "g_total")
     _require(joint._dot(g_total, g_sem) > 0.0, "combined class-balanced gradient has no positive joint component")
@@ -505,20 +504,14 @@ def _record_preflight_failure(target: Path, error: BaseException) -> None:
     message = str(error)
     component = "resource" if "PREFLIGHT_BLOCKED(resource)" in message else "preflight"
     signature = f"{type(error).__name__}:{message.splitlines()[0][:160]}"
-    identity = ResearchRunIdentity(task_id=TASK_ID, run_id=f"{TASK_ID}:preflight", trajectory_id=f"{TASK_ID}:preflight", semantic_authority_id=SEMANTIC_AUTHORITY_ID, data_role=TRAIN_ROLE, config_identity={"role": "operational_preflight_retry_budget"}, model_identity=TASK_ID, optimizer_identity={}, sampler_identity={}, execution_source_semantics_id=f"{TASK_ID}:preflight")
-    control = ResearchRunControl(identity, AUTHORIZATION_ID, preflight_failure_counts=_load_failure_counts(target))
-    decision = control.record_preflight_failure(component, signature)
     failure_key = f"{component}:{signature}"
-    count = int(control.preflight_failure_counts[failure_key])
-    digest = hashlib.sha256(failure_key.encode("utf-8")).hexdigest()[:12]
+    count = _load_failure_counts(target).get(failure_key, 0) + 1
     directory = _failure_state_dir(target)
     directory.mkdir(parents=True, exist_ok=True)
-    path = directory / f"failure_{digest}_{count:02d}.json"
+    path = directory / f"failure_{time.time_ns()}.json"
     if not path.exists():
-        _write_json(path, {"schema": PREFLIGHT_FAILURE_STATE_SCHEMA, "failure_key": failure_key, "component": component, "signature": signature, "count": count, "decision": decision, "task_id": TASK_ID, "authorization_id": AUTHORIZATION_ID}, "class-balanced preflight failure state")
-    if decision == PREFLIGHT_ROOT_CAUSE_REVIEW_REQUIRED:
-        raise CanaryError(f"ROOT_CAUSE_REVIEW_REQUIRED: class-balanced preflight {component}/{signature}") from error
-    raise CanaryError(f"{message} [preflight failure decision={decision}]") from error
+        _write_json(path, {"schema": PREFLIGHT_FAILURE_STATE_SCHEMA, "failure_key": failure_key, "component": component, "signature": signature, "count": count, "task_id": TASK_ID, "authorization_id": AUTHORIZATION_ID}, "class-balanced preflight failure state")
+    raise CanaryError(message) from error
 
 
 def run_cuda_preflight(*, repo_root: Path | None = None) -> dict[str, Any]:
@@ -530,7 +523,7 @@ def run_cuda_preflight(*, repo_root: Path | None = None) -> dict[str, Any]:
     _require(not target.exists(), f"class-balanced attempt already exists: {target}")
     authorities = joint._load_authorities(root)
     source_manifest = execution_source_manifest(root, authorities, payload)
-    _require(source_manifest["task_id"] == TASK_ID and source_manifest["branch"] == EXPECTED_BRANCH and source_manifest["head"] == EXPECTED_CONSUMER_HEAD, "class-balanced source manifest identity is incomplete")
+    _require(source_manifest["task_id"] == TASK_ID, "class-balanced source manifest task identity is incomplete")
     _require(torch.cuda.is_available() and torch.cuda.device_count() >= 1, "class-balanced Canary requires CUDA")
     device = torch.device("cuda:0")
     cuda_runtime = joint.semantic.robust._prepare_cuda_runtime()

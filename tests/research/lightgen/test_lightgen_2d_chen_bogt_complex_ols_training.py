@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+import json
 import math
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import torch
 
 from ldm_project.v2.application.research.lightgen import lightgen_2d_chen_bogt_complex_ols_training as chen
 from scripts.research.lightgen import execute_lightgen_2d_chen_bogt_complex_ols_training_v1 as executor
+from scripts.research.lightgen import execute_lightgen_2d_semantic_complex_ols_training_v1 as complex_ols_executor
 
 
 def test_resume_input_comparison_ignores_digests_but_keeps_execution_fields() -> None:
@@ -25,6 +28,92 @@ def test_resume_input_comparison_ignores_digests_but_keeps_execution_fields() ->
 
     assert executor._resume_identity(before) == executor._resume_identity(after)
     assert executor._resume_identity(before) != executor._resume_identity({**after, "split_seed": 999})
+
+
+def test_train_loader_records_changed_file_digest_without_rejecting_valid_roles(monkeypatch, tmp_path: Path) -> None:
+    train_path = tmp_path / "data" / "MNIST" / "processed" / "training.pt"
+    train_path.parent.mkdir(parents=True)
+    train_path.write_bytes(b"local dataset payload differs from historical contract")
+
+    images = torch.zeros((1, 1, 28, 28), dtype=torch.uint8).expand(60_000, -1, -1, -1)
+    labels = torch.arange(60_000, dtype=torch.long).remainder(10)
+    monkeypatch.setattr(complex_ols_executor, "load_local_mnist", lambda *_args, **_kwargs: (images, labels))
+    contract_payload = {
+        "data_contract": {
+            "root": "data/MNIST",
+            "source_artifacts": {
+                "data/MNIST/processed/training.pt": {
+                    "path": "data/MNIST/processed/training.pt",
+                    "sha256": "historical-digest",
+                },
+                "data/MNIST/processed/test.pt": {
+                    "path": "data/MNIST/processed/test.pt",
+                    "sha256": "heldout-digest",
+                },
+            },
+        }
+    }
+
+    loaded_images, loaded_labels, train_rows, dev_rows, roles = complex_ols_executor._load_train_role(
+        tmp_path, contract_payload
+    )
+
+    assert loaded_images.shape == (60_000, 1, 28, 28)
+    assert loaded_labels.shape == (60_000,)
+    assert train_rows.numel() == 55_000
+    assert dev_rows.numel() == 5_000
+    assert roles["source_artifacts"]["training"]["contract_sha256"] == "historical-digest"
+    assert roles["source_artifacts"]["training"]["actual_sha256"] != "historical-digest"
+    assert roles["source_artifacts"]["official_test"]["read"] is False
+
+
+def test_preflight_records_git_changes_without_rejecting_them(monkeypatch, tmp_path: Path) -> None:
+    train_path = tmp_path / "data" / "MNIST" / "processed" / "training.pt"
+    train_path.parent.mkdir(parents=True)
+    train_path.write_bytes(b"training source")
+    runtime_path = tmp_path / complex_ols_executor.ALIGNMENT_RUNTIME_RELATIVE_PATH
+    runtime_path.parent.mkdir(parents=True)
+    runtime_path.write_text("runtime provenance fixture", encoding="utf-8")
+    images = torch.zeros((1, 1, 28, 28), dtype=torch.uint8).expand(60_000, -1, -1, -1)
+    labels = torch.arange(60_000, dtype=torch.long).remainder(10)
+    monkeypatch.setattr(complex_ols_executor, "load_local_mnist", lambda *_args, **_kwargs: (images, labels))
+    contract_payload = {
+        "data_contract": {
+            "root": "data/MNIST",
+            "source_artifacts": {
+                "data/MNIST/processed/training.pt": {
+                    "path": "data/MNIST/processed/training.pt",
+                    "sha256": "historical-digest",
+                },
+                "data/MNIST/processed/test.pt": {
+                    "path": "data/MNIST/processed/test.pt",
+                    "sha256": "heldout-digest",
+                },
+            },
+        }
+    }
+    fake_contract = SimpleNamespace(
+        payload=contract_payload,
+        identity=lambda _root: {"contract": "fixture"},
+    )
+    git_records = iter(
+        (
+            {"branch": "before", "head": "one", "worktree_dirty": False},
+            {"branch": "after", "head": "two", "worktree_dirty": True},
+        )
+    )
+    monkeypatch.setattr(complex_ols_executor, "load_frozen_training_contract", lambda repo_root: fake_contract)
+    monkeypatch.setattr(complex_ols_executor, "git_facts", lambda _root: next(git_records))
+    monkeypatch.setattr(complex_ols_executor, "validate_legacy_exclusion", lambda: {})
+    monkeypatch.setattr(complex_ols_executor, "_smoke", lambda **_kwargs: {"parameter_manifest": {"fixture": True}})
+
+    result = complex_ols_executor.run_preflight(tmp_path, tmp_path / "preflight")
+    payload = json.loads(Path(result["artifact"]).read_text(encoding="utf-8"))
+
+    assert payload["git"]["branch_unchanged"] is False
+    assert payload["git"]["head_unchanged"] is False
+    assert payload["git"]["starting"]["head"] == "one"
+    assert payload["git"]["ending"]["head"] == "two"
 
 
 def _images() -> torch.Tensor:
@@ -392,6 +481,34 @@ def test_checkpoint_resume_matches_uninterrupted_engineering_trajectory() -> Non
         for name, value in consumer_a.trainable_state_dict().items():
             assert torch.allclose(value, consumer_c.trainable_state_dict()[name], rtol=1.0e-5, atol=1.0e-6)
 
+        provenance_payload = chen.checkpoint_payload(
+            consumer_b,
+            optimizer_b,
+            completed_updates=1,
+            sampler_state=sampler_b.state_dict(),
+            training_history=[first.metrics()],
+            engineering_only=True,
+        )
+        provenance_payload["contracts"]["model"]["sha256"] = "changed-contract-digest"
+        provenance_payload["runtime"]["module_sha256"] = "changed-source-digest"
+        provenance_payload["initialization"]["state_identity_sha256"] = "changed-theta0-digest"
+        provenance_payload["frozen_runtime_state_sha256"] = "changed-frozen-state-digest"
+        provenance_payload["references"]["theta0_identity"]["state_identity_sha256"] = "changed-reference-digest"
+        provenance_payload["weights"]["references_identity_sha256"] = "changed-reference-binding"
+        provenance_checkpoint = Path(temporary) / "provenance-only.engineering.pt"
+        torch.save(provenance_payload, provenance_checkpoint)
+        consumer_d = chen.LightGen2DChenBOGTComplexOLSTrainingConsumer(
+            device="cpu", propagation_grid_size=chen.ENGINEERING_PROPAGATION_GRID
+        )
+        optimizer_d = consumer_d.create_optimizer()
+        provenance_loaded = chen.load_checkpoint(
+            provenance_checkpoint,
+            consumer_d,
+            optimizer_d,
+            expected_engineering_only=True,
+        )
+        assert provenance_loaded.completed_updates == 1
+
         bad_payload = chen.checkpoint_payload(
             consumer_b,
             optimizer_b,
@@ -480,6 +597,25 @@ def test_phase_fit_is_gauged_wrapped_and_deterministic() -> None:
     assert sampled.coefficients.dtype == torch.complex64
     assert torch.isfinite(sampled.coefficients).all()
     assert torch.allclose(chen.statistical_variable(sampled.coefficients, references), u[:3], atol=2.0e-5, rtol=2.0e-5)
+
+    stale_digest_model = chen.WrappedConditionalPhaseModel(
+        model_a.coefficients,
+        model_a.residual_mean,
+        model_a.covariance,
+        model_a.cholesky,
+        "historical-digest-only",
+        model_a.fit_data_role,
+        model_a.fit_count,
+        model_a.engineering_only,
+        model_a.data_identity,
+    )
+    same_sample = chen.construct_sampled_ols(
+        u[:3],
+        references,
+        stale_digest_model,
+        generator=torch.Generator(device="cpu").manual_seed(7),
+    )
+    assert torch.equal(sampled.coefficients, same_sample.coefficients)
 
 
 def test_real_and_generated_paths_share_the_same_w_ols_writer() -> None:

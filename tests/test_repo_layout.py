@@ -48,7 +48,6 @@ class RepoLayoutTests(unittest.TestCase):
         for directory, expected_families in (
             (scripts_root, families - {"shared"}),
             (runtime_root, families - {"scaled_chen"}),
-            (configs_root, families),
             (tests_root, families - {"shared"}),
         ):
             present = {
@@ -57,6 +56,14 @@ class RepoLayoutTests(unittest.TestCase):
                 if path.is_dir() and path.name != "__pycache__"
             }
             self.assertTrue(expected_families.issubset(present), str(directory.relative_to(ROOT)))
+
+        config_files = [path for path in configs_root.rglob("*") if path.is_file()]
+        self.assertFalse(
+            [path.name for path in configs_root.glob("*") if path.is_file()],
+            "research configs must be grouped by family",
+        )
+        config_families = {path.relative_to(configs_root).parts[0] for path in config_files}
+        self.assertTrue(config_families.issubset(families - {"shared"}))
 
         active_m0 = ROOT / "scripts" / "research" / "lightgen" / "m0"
         archived_m0 = ROOT / "scripts" / "research" / "archive" / "project_refactor_20261001" / "lightgen" / "m0"

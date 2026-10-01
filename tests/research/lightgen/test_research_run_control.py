@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import tempfile
 import time
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -150,6 +151,23 @@ def test_unrelated_provenance_does_not_invalidate_resume() -> None:
 
     assert result["compatible"] is True
     assert result["source_manifest_id"] == "NOT_REQUIRED"
+
+
+def test_nested_hashes_and_git_records_do_not_lock_resume_but_settings_do() -> None:
+    expected = replace(
+        _identity(),
+        config_identity={"grid": 128, "weights": {"sha256": "old"}, "git": {"head": "one", "dirty": True}},
+    )
+    actual = replace(
+        expected,
+        execution_source_semantics_id="new-source",
+        source_manifest_id="new-manifest",
+        config_identity={"grid": 128, "weights": {"sha256": "new"}, "git": {"head": "two", "dirty": False}},
+    )
+
+    assert control.check_resume_compatibility(expected, actual)["compatible"] is True
+    with pytest.raises(control.ResumeCompatibilityError):
+        control.check_resume_compatibility(expected, replace(actual, config_identity={"grid": 256, "weights": {"sha256": "new"}}))
 
 
 def test_source_semantics_difference_does_not_reject_resume() -> None:

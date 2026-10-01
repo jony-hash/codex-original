@@ -84,11 +84,11 @@ def test_repeated_preflight_failures_are_recorded_without_a_retry_quota() -> Non
         assert not target.exists()
 
 
-def test_historical_producer_head_is_recorded_without_locking_consumer() -> None:
+def test_git_heads_and_branch_are_provenance_not_locks() -> None:
     consumer_head = "500045d6a92843c81ffeda010e01351f559e453b"
     binding = robust._bind_git_provenance(
         {
-            "branch": robust.EXPECTED_BRANCH,
+            "branch": "a-different-branch",
             "head": consumer_head,
             "worktree_dirty": False,
             "status_sha256": "0" * 64,
@@ -97,25 +97,26 @@ def test_historical_producer_head_is_recorded_without_locking_consumer() -> None
 
     assert binding["producer"]["head"] == robust.EXPECTED_PRODUCER_HEAD
     assert binding["consumer"]["head"] == consumer_head
-    assert binding["consumer_head_exact_required"] is False
     assert binding["head_equal"] is False
+    assert binding["producer_head_is_provenance_only"] is True
 
 
-def test_explicit_consumer_head_lock_still_rejects_mismatch() -> None:
+def test_legacy_exact_head_contract_is_ignored_for_admission() -> None:
     consumer_head = "500045d6a92843c81ffeda010e01351f559e453b"
-    with pytest.raises(robust.RobustTrainingError, match="exact consumer HEAD mismatch"):
-        robust._bind_git_provenance(
-            {
-                "branch": robust.EXPECTED_BRANCH,
-                "head": consumer_head,
-                "worktree_dirty": False,
-                "status_sha256": "0" * 64,
-            },
-            contract={
-                "consumer_head_exact_required": True,
-                "consumer_head": robust.EXPECTED_PRODUCER_HEAD,
-            },
-        )
+    binding = robust._bind_git_provenance(
+        {
+            "branch": robust.EXPECTED_BRANCH,
+            "head": consumer_head,
+            "worktree_dirty": False,
+            "status_sha256": "0" * 64,
+        },
+        contract={
+            "consumer_head_exact_required": True,
+            "consumer_head": robust.EXPECTED_PRODUCER_HEAD,
+        },
+    )
+    assert binding["consumer"]["head"] == consumer_head
+    assert binding["producer_head_is_provenance_only"] is True
 
 
 def test_semantic_batched_vjp_rows_map_to_named_losses() -> None:
@@ -133,12 +134,12 @@ def test_semantic_batched_vjp_rows_map_to_named_losses() -> None:
     assert torch.allclose(gradients["g_C"], torch.tensor([2.0, 4.0]))
 
 
-def test_reused_baseline_digest_rejection_is_fail_closed() -> None:
+def test_reused_baseline_digest_is_not_an_execution_lock() -> None:
     with tempfile.TemporaryDirectory(prefix="joint-baseline-digest-") as temporary:
         path = continuation.Path(temporary) / "baseline.json"
-        path.write_text("{}", encoding="utf-8")
-        with pytest.raises(continuation.JointContinuationError, match="identity changed"):
-            continuation._load_reused_json(continuation.Path(temporary), continuation.Path("baseline.json"), "0" * 64, "baseline")
+        path.write_text('{"result":"historical"}', encoding="utf-8")
+        payload = continuation._load_reused_json(continuation.Path(temporary), continuation.Path("baseline.json"), "baseline")
+        assert payload == {"result": "historical"}
 
 
 def test_joint_direction_uses_equal_l2_then_joint_rms_normalization() -> None:
@@ -277,7 +278,7 @@ def test_report_serialization_failure_does_not_mark_completed() -> None:
     assert status["latest_losses"]["report"] == "WRITE_FAILED"
 
 
-def test_source_snapshot_requires_every_manifest_python_dependency() -> None:
+def test_source_snapshot_is_provenance_and_does_not_lock_source_content() -> None:
     with tempfile.TemporaryDirectory(prefix="joint-source-snapshot-") as temporary:
         snapshot_root = continuation.Path(temporary) / "source_snapshot"
         first = snapshot_root / "src" / "first.py"
@@ -285,11 +286,6 @@ def test_source_snapshot_requires_every_manifest_python_dependency() -> None:
         first.parent.mkdir(parents=True)
         first.write_text("FIRST = 1\n", encoding="utf-8")
         second.write_text("SECOND = 2\n", encoding="utf-8")
-        manifest = {
-            "source_manifest_id": "manifest",
-            "execution_source_semantics_id": "semantics",
-            "relevant_source_paths": ["src/first.py", "src/second.py", "authority.json"],
-        }
         entries = [
             {"path": "src/first.py", "sha256": continuation.file_sha256(first)},
             {"path": "src/second.py", "sha256": continuation.file_sha256(second)},
@@ -301,10 +297,16 @@ def test_source_snapshot_requires_every_manifest_python_dependency() -> None:
             "execution_source_semantics_id": "semantics",
             "files": entries,
         }
-        continuation._validate_source_snapshot(snapshot, manifest, snapshot_root)
+        continuation._validate_source_snapshot(snapshot, snapshot_root)
+        snapshot["source_manifest_id"] = "different-manifest"
+        snapshot["execution_source_semantics_id"] = "different-semantics"
+        first.write_text("EDITED = 3\n", encoding="utf-8")
+        continuation._validate_source_snapshot(snapshot, snapshot_root)
         snapshot["files"] = entries[:1]
-        with pytest.raises(run_control.ResumeCompatibilityError, match="snapshot is incomplete"):
-            continuation._validate_source_snapshot(snapshot, manifest, snapshot_root)
+        continuation._validate_source_snapshot(snapshot, snapshot_root)
+        snapshot["files"] = [{"path": "src/missing.py", "sha256": "ignored"}]
+        with pytest.raises(run_control.ResumeCompatibilityError, match="file is missing"):
+            continuation._validate_source_snapshot(snapshot, snapshot_root)
 
 
 def test_resume_validator_rejects_missing_operational_state_before_cuda(monkeypatch: pytest.MonkeyPatch) -> None:

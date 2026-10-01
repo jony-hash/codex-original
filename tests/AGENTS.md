@@ -11,17 +11,20 @@ model/config/step/optimizer state, data roles, frozen groups, and saved payloads
 do not require source-digest or dirty-patch equality.
 
 In Windows-native work, use the project environment and keep pytest temporary
-files outside the checkout:
+files outside the checkout. Use a dedicated child directory because pytest
+clears the selected `--basetemp` directory at startup:
 
 ```powershell
 $envRoot = 'D:\ANACONDA\envs\optical-generative-models-win'
 $env:Path = "$envRoot;$envRoot\bin;$envRoot\Library\bin;$envRoot\Scripts;$envRoot\Lib\site-packages\torch\lib;$env:Path"
 $py = Join-Path $envRoot 'python.exe'
-& $py -m pytest <focused-tests> -o cache_dir="$env:TEMP\codex-project-refactor-pytest-cache" --basetemp "$env:TEMP\codex-project-refactor-pytest-tmp"
+$testTemp = Join-Path $env:USERPROFILE 'Documents\Codex\codex-original-history-context\pytest-run'
+New-Item -ItemType Directory -Path $testTemp -Force | Out-Null
+& $py -m pytest <focused-tests> --basetemp $testTemp
 & $py -m compileall -q src tests scripts train.py
 & (Join-Path $envRoot 'Scripts\ruff.exe') check <changed-python-files>
 git diff --check
-& $py -m pytest -q -o cache_dir="$env:TEMP\codex-project-refactor-pytest-cache" --basetemp "$env:TEMP\codex-project-refactor-pytest-tmp"
+& $py -m pytest -q --basetemp $testTemp
 ```
 
 A CPU smoke verifies software behavior only; it does not replace hardware or

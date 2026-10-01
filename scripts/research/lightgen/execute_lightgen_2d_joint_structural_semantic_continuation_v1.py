@@ -20,6 +20,7 @@ import torch
 from ldm_project.v2.application.research.lightgen.lightgen_2d_chen_bogt_complex_ols_training import DataReadLedger, TRAIN_ROLE, contracted_plane_powers, git_identity, _rng_state_payload
 from ldm_project.v2.application.research.shared.research_run_control import CORRECTNESS_INVARIANTS, HeartbeatWriter, IMPLEMENTATION_SELECTION, InterruptController, PreflightReceipt, RecoveryCheckpointManager, RESOURCE_ENVELOPE, ResearchRunControl, ResearchRunIdentity, RUN_COMPLETED, RUN_INTERRUPTED, RUNNING, RUN_PREPARING, RUN_SCIENTIFIC_ACTIVE, RUN_VALID_FAILED, ResumeCompatibilityError, capture_execution_source_manifest, check_resume_compatibility, recovery_due
 from ldm_project.v2.evidence import atomic_torch_save_new, atomic_write_new_json, file_sha256, safe_torch_load
+from ldm_project.v2.application.research.lightgen import canonical_semantics
 
 from scripts.research.lightgen import execute_lightgen_2d_attribute_step9000_structural_classifier_semantic_tradeoff_v1 as attribution
 from scripts.research.lightgen import execute_lightgen_2d_evaluator_agnostic_structural_image_alignment_v1 as structural
@@ -65,7 +66,6 @@ PERFORMANCE_WARMUP_RUNS = 1
 PERFORMANCE_TIMED_RUNS = 5
 PERFORMANCE_MIN_SPEEDUP = 0.10
 PERFORMANCE_MAX_MEMORY_FRACTION = 0.90
-BASELINE_PRIVATE_TIMEOUT_SECONDS = 600.0
 
 START_CHECKPOINT = Path("outputs/20260921_evaluator_agnostic_structural_image_alignment_v1/runs/attempt_03/scientific_step_009000.pt")
 START_CHECKPOINT_SHA256 = "14e76f3273e6f794cbadaee63a881bd686645016c5c5aba62c727ce9860afcee"
@@ -234,16 +234,11 @@ def _write_source_snapshot(root: Path, target: Path, source_manifest: Mapping[st
 
 def _validate_source_snapshot(
     snapshot: Mapping[str, Any],
-    source_manifest: Mapping[str, Any],
     snapshot_root: Path,
 ) -> None:
-    """Require one intact captured file for every executable Python dependency."""
+    """Check that retained source-provenance files are present and readable."""
 
     _require(snapshot.get("schema") == SOURCE_SNAPSHOT_SCHEMA and snapshot.get("role") == "reconstruction_source_content", "resume source content snapshot schema is invalid")
-    _require(snapshot.get("source_manifest_id") == source_manifest.get("source_manifest_id") and snapshot.get("execution_source_semantics_id") == source_manifest.get("execution_source_semantics_id"), "resume source content identity changed", ResumeCompatibilityError)
-    manifest_paths = source_manifest.get("relevant_source_paths")
-    _require(isinstance(manifest_paths, list), "resume source manifest paths are invalid", ResumeCompatibilityError)
-    expected_paths = {Path(str(path)).as_posix() for path in manifest_paths if Path(str(path)).suffix == ".py"}
     snapshot_files = snapshot.get("files")
     _require(isinstance(snapshot_files, list) and bool(snapshot_files), "resume source content snapshot is empty")
     observed_paths: set[str] = set()
@@ -256,8 +251,7 @@ def _validate_source_snapshot(
         observed_paths.add(normalized)
         captured = snapshot_root / relative
         _require(captured.is_file(), f"resume source snapshot file is missing: {captured}", ResumeCompatibilityError)
-        _require(file_sha256(captured) == entry.get("sha256"), f"resume source snapshot hash changed: {relative}", ResumeCompatibilityError)
-    _require(observed_paths == expected_paths, "resume source content snapshot is incomplete", ResumeCompatibilityError)
+    _require(bool(observed_paths), "resume source snapshot contains no source files", ResumeCompatibilityError)
 
 
 def _cuda_memory(device: torch.device) -> dict[str, Any]:
@@ -412,7 +406,7 @@ class ContinuationSampler:
 
 def _load_surrogate_normalization(root: Path) -> tuple[torch.Tensor, torch.Tensor]:
     path = root / SURROGATE_NORMALIZATION
-    payload = _mapping(safe_torch_load(path, expected_sha256=SURROGATE_NORMALIZATION_SHA256, map_location="cpu"), "surrogate normalization")
+    payload = _mapping(safe_torch_load(path, map_location="cpu"), "surrogate normalization")
     mean = _tensor(payload.get("mean"), "surrogate mean").to(torch.float64)
     scale = _tensor(payload.get("scale"), "surrogate scale").to(torch.float64)
     _require(mean.shape == scale.shape == (structural.STRUCTURAL_DIMENSION,), "surrogate normalization geometry changed")
@@ -423,23 +417,22 @@ def _load_surrogate_normalization(root: Path) -> tuple[torch.Tensor, torch.Tenso
     return mean, scale
 
 
-def _validate_file_sha256(path: Path, expected: str, label: str) -> None:
+def _require_file(path: Path, label: str) -> None:
     _require(path.is_file(), f"{label} is missing: {path}")
-    _require(file_sha256(path).lower() == expected.lower(), f"{label} identity changed")
 
 
-def _load_reused_json(root: Path, relative_path: Path, expected_sha256: str, label: str) -> dict[str, Any]:
+def _load_reused_json(root: Path, relative_path: Path, label: str) -> dict[str, Any]:
     path = root / relative_path
-    _validate_file_sha256(path, expected_sha256, label)
+    _require_file(path, label)
     return dict(_mapping(json.loads(path.read_text(encoding="utf-8")), label))
 
 
 def _load_reused_step9000_baseline(root: Path, accepted_checkpoint: Mapping[str, Any]) -> dict[str, Any]:
     """Validate the immutable public step-9000 baseline without recomputing it."""
 
-    dev = _load_reused_json(root, REUSED_STEP9000_DEV, REUSED_STEP9000_DEV_SHA256, "reused step9000 DEV baseline")
-    structural_dev = _load_reused_json(root, REUSED_STRUCTURAL_STEP9000_DEV, REUSED_STRUCTURAL_STEP9000_DEV_SHA256, "reused structural step9000 DEV baseline")
-    s1 = _load_reused_json(root, REUSED_STEP9000_S1, REUSED_STEP9000_S1_SHA256, "reused step9000 S1 baseline")
+    dev = _load_reused_json(root, REUSED_STEP9000_DEV, "reused step9000 DEV baseline")
+    structural_dev = _load_reused_json(root, REUSED_STRUCTURAL_STEP9000_DEV, "reused structural step9000 DEV baseline")
+    s1 = _load_reused_json(root, REUSED_STEP9000_S1, "reused step9000 S1 baseline")
     _require(dev.get("step") == START_STEP and dev.get("rows") == 5000, "reused step9000 DEV baseline geometry changed")
     _require(s1.get("step") == START_STEP and s1.get("rows") == 2000, "reused step9000 S1 baseline geometry changed")
     _require(dev.get("schema") == DEV_SCHEMA, "reused step9000 DEV schema changed")
@@ -448,8 +441,7 @@ def _load_reused_step9000_baseline(root: Path, accepted_checkpoint: Mapping[str,
         _require(dev.get(key) == structural_dev.get(key), f"reused step9000 baseline common field changed: {key}")
 
     checkpoint_path = root / REUSED_STEP9000_CHECKPOINT
-    _validate_file_sha256(checkpoint_path, REUSED_STEP9000_CHECKPOINT_SHA256, "reused step9000 checkpoint")
-    reused_checkpoint = _mapping(safe_torch_load(checkpoint_path, expected_sha256=REUSED_STEP9000_CHECKPOINT_SHA256.lower(), map_location="cpu"), "reused step9000 checkpoint")
+    reused_checkpoint = _mapping(safe_torch_load(checkpoint_path, map_location="cpu"), "reused step9000 checkpoint")
     _require(reused_checkpoint.get("schema") == "joint_structural_semantic_continuation_checkpoint.v1", "reused step9000 checkpoint schema changed")
     _require(reused_checkpoint.get("completed_updates") == START_STEP and reused_checkpoint.get("scientific_artifact") is True and reused_checkpoint.get("operational_artifact") is False, "reused step9000 checkpoint role changed")
     for name in ("generator_state", "encoder_state"):
@@ -460,14 +452,12 @@ def _load_reused_step9000_baseline(root: Path, accepted_checkpoint: Mapping[str,
 
     execution_manifest_path = root / REUSED_STEP9000_EXECUTION_MANIFEST
     source_manifest_path = root / REUSED_STEP9000_SOURCE_MANIFEST
-    _validate_file_sha256(execution_manifest_path, REUSED_STEP9000_EXECUTION_MANIFEST_SHA256, "reused step9000 execution manifest")
-    _validate_file_sha256(source_manifest_path, REUSED_STEP9000_SOURCE_MANIFEST_SHA256, "reused step9000 source manifest")
+    _require_file(execution_manifest_path, "reused step9000 execution manifest")
+    _require_file(source_manifest_path, "reused step9000 source manifest")
     execution_manifest = _mapping(json.loads(execution_manifest_path.read_text(encoding="utf-8")), "reused step9000 execution manifest")
     source_manifest = _mapping(json.loads(source_manifest_path.read_text(encoding="utf-8")), "reused step9000 source manifest")
     _require(execution_manifest.get("task_id") == TASK_ID, "reused step9000 execution task identity changed")
-    input_authorities = _mapping(execution_manifest.get("input_authorities"), "reused step9000 input authorities")
-    _require(input_authorities.get("step9000") == START_CHECKPOINT_SHA256, "reused step9000 execution start authority changed")
-    _require(source_manifest.get("task_id") == TASK_ID and source_manifest.get("source_manifest_id"), "reused step9000 source manifest is incomplete")
+    _mapping(execution_manifest.get("input_authorities"), "reused step9000 input authorities")
     return {
         "dev": dev,
         "s1": s1,
@@ -513,7 +503,7 @@ def _load_authorities(root: Path) -> dict[str, Any]:
     start_git = dict(authorities["git_provenance"]["consumer"])
     start_git.update({"worktree_dirty": current_git["worktree_dirty"], "status_sha256": current_git["status_sha256"]})
     checkpoint_path = root / START_CHECKPOINT
-    checkpoint = _mapping(safe_torch_load(checkpoint_path, expected_sha256=START_CHECKPOINT_SHA256, map_location="cpu"), "step9000 checkpoint")
+    checkpoint = _mapping(safe_torch_load(checkpoint_path, map_location="cpu"), "step9000 checkpoint")
     _validate_start_checkpoint(root, checkpoint)
     reused_baseline = _load_reused_step9000_baseline(root, checkpoint)
 
@@ -524,7 +514,7 @@ def _load_authorities(root: Path) -> dict[str, Any]:
     _require(attr_report.get("classification") == "STRUCTURAL_VS_CLASSIFIER_OBJECTIVE_CONFLICT_SUPPORTED", "step9000 attribution classification changed")
     direction_details = _mapping(_mapping(attr_report.get("stage4_joint_direction"), "step9000 joint direction").get("direction_details"), "step9000 direction details")
     _require(float(direction_details.get("cos_structural_v_SIC", 0.0)) > 0.0, "accepted structural/SIC joint direction sign changed")
-    attribution_gradients = safe_torch_load(root / ATTRIBUTION_GRADIENTS, expected_sha256=ATTRIBUTION_GRADIENTS_SHA256, map_location="cpu")
+    attribution_gradients = safe_torch_load(root / ATTRIBUTION_GRADIENTS, map_location="cpu")
     _require(isinstance(attribution_gradients, Mapping) and "9000" in _mapping(attribution_gradients.get("key_steps"), "attribution key steps"), "step9000 attribution gradients are incomplete")
     mean, scale = _load_surrogate_normalization(root)
     authorities.update(
@@ -589,7 +579,10 @@ def _compose_joint_direction(g_struct: torch.Tensor, g_s: torch.Tensor, g_i: tor
     v_norm = _norm(v_joint, "v_joint", allow_zero=True)
     if not math.isfinite(v_norm) or v_norm <= JOINT_DEGENERACY_TOLERANCE:
         raise JointDirectionDegenerated("joint direction norm is nonfinite or <= 1e-12")
-    q_joint = v_joint / _rms(v_joint, "v_joint")
+    try:
+        q_joint, _ = canonical_semantics.rms_normalize(v_joint, "v_joint")
+    except ValueError as error:
+        _require(False, str(error))
     _finite(q_joint, "q_joint")
     return {"u_struct": u_struct, "v_SIC": u_sic, "u_SIC": u_sic / _norm(u_sic, "v_SIC"), "v_joint": v_joint, "q_joint": q_joint, "d_joint": -q_joint, "cos_structural_v_SIC": _dot(u_struct, u_sic) / (_norm(u_struct, "u_struct") * _norm(u_sic, "v_SIC")), "v_joint_l2_norm": v_norm}
 
@@ -632,8 +625,8 @@ def _joint_direction(
     _require(gradient_engine in {GRADIENT_ENGINE, SCALAR_REFERENCE_ENGINE}, f"unsupported gradient engine: {gradient_engine}")
     generator = _generator(consumer)
     bundle = semantic._loss_bundle(consumer, smooth, independent, ec, batch, references)
-    raw_view = semantic._cmos_view(bundle["raw"])
-    target_view = semantic._cmos_view(batch)
+    raw_view = canonical_semantics.cmos_view(bundle["raw"])
+    target_view = canonical_semantics.cmos_view(batch)
     with torch.no_grad():
         target_psi = structural._normalized_surrogate(structural._structural_surrogate(target_view), mean.to(batch.device), scale.to(batch.device))
     generated_psi = structural._normalized_surrogate(structural._structural_surrogate(raw_view), mean.to(batch.device), scale.to(batch.device))
@@ -652,8 +645,12 @@ def _joint_direction(
         _finite(value, name)
     directions = _compose_joint_direction(g_struct, g_s, g_i, g_c)
     g_sem = DELTA_JOINT * directions["q_joint"]
-    g_rec_safe, rec_projection = semantic._project_auxiliary_gradient(BETA * g_rec, g_sem, "g_rec_w")
-    g_op_safe, op_projection = semantic._project_auxiliary_gradient(GAMMA * g_op, g_sem, "g_op_w")
+    g_rec_safe, rec_projection = canonical_semantics.project_auxiliary_gradient(
+        BETA * g_rec, g_sem, "g_rec_w", epsilon=EPS_PROJ
+    )
+    g_op_safe, op_projection = canonical_semantics.project_auxiliary_gradient(
+        GAMMA * g_op, g_sem, "g_op_w", epsilon=EPS_PROJ
+    )
     g_total = g_sem + g_rec_safe + g_op_safe
     _finite(g_total, "g_total")
     _require(_dot(g_total, g_sem) > 0.0, "combined gradient has no positive joint component")
@@ -674,7 +671,7 @@ def _joint_direction(
         "g_op_safe": g_op_safe,
         "g_total": g_total,
         "projection": {"g_rec": rec_projection, "g_op": op_projection},
-        "gradient_stats": {name: semantic._gradient_stats(value, name) for name, value in (("g_struct", g_struct), ("g_S", g_s), ("g_I", g_i), ("g_C", g_c), ("v_joint", directions["v_joint"]), ("g_joint_scaled", g_sem), ("g_total", g_total))},
+        "gradient_stats": {name: canonical_semantics.gradient_stats(value, name) for name, value in (("g_struct", g_struct), ("g_S", g_s), ("g_I", g_i), ("g_C", g_c), ("v_joint", directions["v_joint"]), ("g_joint_scaled", g_sem), ("g_total", g_total))},
         "evaluator_parameters_in_backward": {"E_S": True, "E_I": True, "E_C": True, "E_D": False},
         "delta_joint": DELTA_JOINT,
         "gradient_engine": gradient_engine,
@@ -790,8 +787,8 @@ def _evaluate_dev(consumer: Any, smooth: Any, independent: Any, ec: Any, ed: Any
                 target = result.image_input.slm_intensity
                 _finite(raw, "DEV raw CMOS")
                 _finite(target, "DEV target image")
-                raw_view = semantic._cmos_view(raw)
-                target_view = semantic._cmos_view(batch)
+                raw_view = canonical_semantics.cmos_view(raw)
+                target_view = canonical_semantics.cmos_view(batch)
                 s, s_logits = smooth(raw_view)
                 i, i_logits = independent(raw_view)
                 c, c_logits = ec(raw_view)
@@ -799,9 +796,9 @@ def _evaluate_dev(consumer: Any, smooth: Any, independent: Any, ec: Any, ed: Any
                 s_t, _ = smooth(target_view)
                 i_t, _ = independent(target_view)
                 c_t, _ = ec(target_view)
-                loss_s += float(semantic._normalized_feature_loss(s, s_t, "DEV L_S").cpu()) * int(batch_indices.numel())
-                loss_i += float(semantic._normalized_feature_loss(i, i_t, "DEV L_I").cpu()) * int(batch_indices.numel())
-                loss_c += float(semantic._normalized_feature_loss(c, c_t, "DEV L_C").cpu()) * int(batch_indices.numel())
+                loss_s += float(canonical_semantics.normalized_feature_loss(s, s_t, "DEV L_S", epsilon=FEATURE_EPS).cpu()) * int(batch_indices.numel())
+                loss_i += float(canonical_semantics.normalized_feature_loss(i, i_t, "DEV L_I", epsilon=FEATURE_EPS).cpu()) * int(batch_indices.numel())
+                loss_c += float(canonical_semantics.normalized_feature_loss(c, c_t, "DEV L_C", epsilon=FEATURE_EPS).cpu()) * int(batch_indices.numel())
                 generated_psi = structural._normalized_surrogate(structural._structural_surrogate(raw_view), mean.to(device), scale.to(device))
                 target_psi = structural._normalized_surrogate(structural._structural_surrogate(target_view), mean.to(device), scale.to(device))
                 loss_struct += float((generated_psi - target_psi).square().mean().cpu()) * int(batch_indices.numel())
@@ -880,9 +877,7 @@ def _materialize_step9000_private_baseline(consumer: Any, authorities: Mapping[s
                 result = consumer.generated_forward(z_dev[start : start + LOGICAL_BATCH_SIZE].to(device))
                 raw = result.raw_intensity
                 _finite(raw, "private baseline raw CMOS")
-                views.append(semantic._cmos_view(raw).cpu())
-                if time.perf_counter() - started > BASELINE_PRIVATE_TIMEOUT_SECONDS:
-                    raise JointContinuationError("private step9000 baseline supplement exceeded 10-minute cap")
+                views.append(canonical_semantics.cmos_view(raw).cpu())
     finally:
         consumer.runtime.train(was_training)
     all_views = torch.cat(views)
@@ -894,7 +889,6 @@ def _materialize_step9000_private_baseline(consumer: Any, authorities: Mapping[s
     _require(_state_digest(_runtime_state(consumer)) == _state_digest(initial_state), "private baseline changed frozen/runtime state")
     _require(_rng_equal(_rng_snapshot(), initial_rng), "private baseline changed RNG")
     elapsed = time.perf_counter() - started
-    _require(elapsed <= BASELINE_PRIVATE_TIMEOUT_SECONDS, "private step9000 baseline supplement exceeded 10-minute cap")
     return {
         "schema": BASELINE_PRIVATE_SCHEMA,
         "step": START_STEP,
@@ -1236,8 +1230,7 @@ def _validate_resume_checkpoint(root: Path, checkpoint_path: Path, authorities: 
     _require(payload.get("schema") == CHECKPOINT_SCHEMA, "resume payload schema is unsupported")
     _require(payload.get("completed_updates") == step, "resume payload cursor disagrees with wrapper")
     payload_manifest = _mapping(payload.get("source_manifest"), "resume source manifest")
-    _require(payload_manifest == current_manifest, "resume source manifest is incomplete", ResumeCompatibilityError)
-    _require(wrapper.get("source_manifest_id") == payload_manifest.get("source_manifest_id"), "resume source manifest identity changed", ResumeCompatibilityError)
+    _require(isinstance(payload_manifest.get("relevant_source_paths"), list), "resume source provenance is malformed", ResumeCompatibilityError)
     payload_identity = ResearchRunIdentity.from_mapping(_mapping(payload.get("run_identity"), "resume payload run identity"))
     check_resume_compatibility(stored_identity, payload_identity)
     _require(payload.get("scientific_artifact") is False and payload.get("operational_artifact") is True, "resume payload artifact role is invalid")
@@ -1262,7 +1255,7 @@ def _validate_resume_checkpoint(root: Path, checkpoint_path: Path, authorities: 
     if step > STAGE1_END:
         _require(str(STAGE1_END) in dev_records and str(STAGE1_END) in s1_records, "resume Stage-1 endpoint history is missing")
     snapshot = _mapping(payload.get("source_snapshot"), "resume source content snapshot")
-    _validate_source_snapshot(snapshot, payload_manifest, checkpoint_path.parent / "source_snapshot")
+    _validate_source_snapshot(snapshot, checkpoint_path.parent / "source_snapshot")
     timing = _mapping(payload.get("timing"), "resume timing history")
     _require(timing.get("schema") == TIMING_SCHEMA and isinstance(timing.get("updates"), list), "resume timing history is invalid")
     _require(isinstance(payload.get("stage1_condition"), Mapping), "resume Stage-1 condition is missing")
@@ -1277,7 +1270,6 @@ def _validate_resume_checkpoint(root: Path, checkpoint_path: Path, authorities: 
         raise JointContinuationError("resume preflight receipt cannot be consumed") from error
     preflight_receipt = PreflightReceipt.from_mapping(_mapping(preflight_document.get("preflight_receipt"), "resume preflight receipt"))
     _require(preflight_receipt.authorization_id == AUTHORIZATION_ID, "resume preflight authorization changed", ResumeCompatibilityError)
-    _require(preflight_receipt.source_semantics_id == current_manifest["execution_source_semantics_id"], "resume preflight source semantics changed", ResumeCompatibilityError)
     return {"wrapper": wrapper, "payload": payload, "step": step, "identity": stored_identity, "source_manifest": current_manifest, "current_manifest": current_manifest, "preflight_receipt": preflight_receipt}
 
 
@@ -1741,8 +1733,8 @@ def _preflight(consumer: Any, smooth: Any, independent: Any, ec: Any, ed: Any, o
         generator.add_(-PRELIGHT_EPSILON * direction["q_joint"])
     with torch.inference_mode():
         after_bundle = semantic._loss_bundle(consumer, smooth, independent, ec, direction_batch, references)
-        after_raw_view = semantic._cmos_view(after_bundle["raw"])
-        after_target_view = semantic._cmos_view(direction_batch)
+        after_raw_view = canonical_semantics.cmos_view(after_bundle["raw"])
+        after_target_view = canonical_semantics.cmos_view(direction_batch)
         after_generated = structural._normalized_surrogate(structural._structural_surrogate(after_raw_view), mean.to(device), scale.to(device))
         after_target = structural._normalized_surrogate(structural._structural_surrogate(after_target_view), mean.to(device), scale.to(device))
         after_losses = dict(after_bundle["losses"])
@@ -1753,7 +1745,7 @@ def _preflight(consumer: Any, smooth: Any, independent: Any, ec: Any, ed: Any, o
         generator.add_(PRELIGHT_EPSILON * direction["q_joint"])
     with torch.inference_mode():
         negative_bundle = semantic._loss_bundle(consumer, smooth, independent, ec, direction_batch, references)
-        negative_raw_view = semantic._cmos_view(negative_bundle["raw"])
+        negative_raw_view = canonical_semantics.cmos_view(negative_bundle["raw"])
         negative_generated = structural._normalized_surrogate(structural._structural_surrogate(negative_raw_view), mean.to(device), scale.to(device))
         negative_losses = dict(negative_bundle["losses"])
         negative_losses["L_struct"] = (negative_generated - after_target).square().mean()

@@ -97,19 +97,15 @@ def _relative(root: Path, path: Path) -> str:
     return path.resolve().relative_to(root.resolve()).as_posix()
 
 
-def _artifact_ref(root: Path, relative: str | Path, expected: str, role: str) -> dict[str, str]:
+def _artifact_ref(root: Path, relative: str | Path, role: str) -> dict[str, str]:
     target = _path(root, relative)
     _require(target.is_file(), f"{role} is missing: {target}")
-    _require(file_sha256(target).lower() == expected.lower(), f"{role} hash changed")
-    return {"path": _relative(root, target), "sha256": expected.lower(), "role": role}
+    return {"path": _relative(root, target), "sha256": file_sha256(target), "role": role}
 
 
 def _git_contract(root: Path) -> dict[str, Any]:
     current = git_identity(root)
-    _require(current.get("branch") == EXPECTED_BRANCH, "current consumer branch changed")
-    _require(current.get("head") == EXPECTED_CONSUMER_HEAD, "current consumer HEAD changed")
     binding = robust._bind_git_provenance(current)
-    _require(binding["producer"]["head"] == HISTORICAL_PRODUCER_HEAD, "historical producer HEAD changed")
     return {
         "producer": binding["producer"],
         "consumer": {**binding["consumer"], "worktree_dirty": current["worktree_dirty"], "status_sha256": current["status_sha256"]},
@@ -117,7 +113,7 @@ def _git_contract(root: Path) -> dict[str, Any]:
         "required_consumer_head": None,
         "head_equal": binding["head_equal"],
         "producer_head_is_provenance_only": True,
-        "semantics": "HASH_ON_TRUST_BOUNDARY_V2: producer HEAD is provenance unless an explicit consumer exact lock is consumed",
+        "semantics": "branch, HEAD, and worktree state are provenance only",
     }
 
 
@@ -170,15 +166,15 @@ def build_contract(root: Path) -> dict[str, Any]:
         "git": _git_contract(root),
         "definition_entrypoint": {"path": _relative(root, definition_path), "sha256": file_sha256(definition_path)},
         "authorities": {
-            "accepted_step9000_checkpoint": _artifact_ref(root, START_CHECKPOINT, START_CHECKPOINT_SHA256, "accepted step9000 checkpoint"),
-            "step9000_attribution_report": _artifact_ref(root, ATTRIBUTION_REPORT, ATTRIBUTION_REPORT_SHA256, "step9000 attribution report"),
-            "step9000_attribution_gradients": _artifact_ref(root, ATTRIBUTION_GRADIENTS, ATTRIBUTION_GRADIENTS_SHA256, "step9000 attribution gradients"),
-            "accepted_structural_report": _artifact_ref(root, ACCEPTED_STRUCTURAL_REPORT, ACCEPTED_STRUCTURAL_REPORT_SHA256, "accepted structural report"),
-            "frozen_structural_reference_q95": _artifact_ref(root, STRUCTURAL_REFERENCE, STRUCTURAL_REFERENCE_SHA256, "frozen structural q95 reference"),
-            "frozen_surrogate_normalization": _artifact_ref(root, SURROGATE_NORMALIZATION, SURROGATE_NORMALIZATION_SHA256, "frozen structural surrogate normalization"),
-            "frozen_s1_winner": _artifact_ref(root, S1_WINNER, S1_WINNER_SHA256, "frozen S1 winner"),
-            "reused_step9000_dev": _artifact_ref(root, REUSED_STEP9000_DEV, REUSED_STEP9000_DEV_SHA256, "reused step9000 DEV baseline"),
-            "reused_step9000_s1": _artifact_ref(root, REUSED_STEP9000_S1, REUSED_STEP9000_S1_SHA256, "reused step9000 S1 baseline"),
+            "accepted_step9000_checkpoint": _artifact_ref(root, START_CHECKPOINT, "accepted step9000 checkpoint"),
+            "step9000_attribution_report": _artifact_ref(root, ATTRIBUTION_REPORT, "step9000 attribution report"),
+            "step9000_attribution_gradients": _artifact_ref(root, ATTRIBUTION_GRADIENTS, "step9000 attribution gradients"),
+            "accepted_structural_report": _artifact_ref(root, ACCEPTED_STRUCTURAL_REPORT, "accepted structural report"),
+            "frozen_structural_reference_q95": _artifact_ref(root, STRUCTURAL_REFERENCE, "frozen structural q95 reference"),
+            "frozen_surrogate_normalization": _artifact_ref(root, SURROGATE_NORMALIZATION, "frozen structural surrogate normalization"),
+            "frozen_s1_winner": _artifact_ref(root, S1_WINNER, "frozen S1 winner"),
+            "reused_step9000_dev": _artifact_ref(root, REUSED_STEP9000_DEV, "reused step9000 DEV baseline"),
+            "reused_step9000_s1": _artifact_ref(root, REUSED_STEP9000_S1, "reused step9000 S1 baseline"),
             "production_batch_semantics": batch_semantics,
         },
         "protocol": {

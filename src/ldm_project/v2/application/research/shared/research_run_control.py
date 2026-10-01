@@ -351,8 +351,10 @@ def check_resume_compatibility(
     expected_fields = expected.execution_semantics()
     actual_fields = observed.execution_semantics()
     for field_name, expected_value in expected_fields.items():
+        expected_value = _resume_semantics(expected_value)
+        actual_value = _resume_semantics(actual_fields[field_name])
         _require(
-            actual_fields[field_name] == expected_value,
+            actual_value == expected_value,
             f"resume execution identity changed: {field_name}",
             ResumeCompatibilityError,
         )
@@ -361,6 +363,32 @@ def check_resume_compatibility(
         "source_manifest_id": "NOT_REQUIRED",
         "branch_head_dirty": "provenance_only",
     }
+
+
+def _resume_semantics(value: Any) -> Any:
+    """Ignore recorded digests and repository state while retaining run settings."""
+    if isinstance(value, Mapping):
+        provenance_keys = {
+            "branch",
+            "head",
+            "dirty",
+            "worktree_dirty",
+            "status_sha256",
+            "source_manifest",
+            "source_manifest_id",
+            "execution_source_semantics_id",
+            "source_semantics_id",
+        }
+        return {
+            key: _resume_semantics(item)
+            for key, item in value.items()
+            if str(key).lower() not in provenance_keys
+            and str(key).lower() not in {"sha256", "hash", "digest", "dirty_patch_digest"}
+            and not str(key).lower().endswith(("_sha256", "_hash", "_digest"))
+        }
+    if isinstance(value, (list, tuple)):
+        return [_resume_semantics(item) for item in value]
+    return value
 
 
 @dataclass(frozen=True, init=False)
