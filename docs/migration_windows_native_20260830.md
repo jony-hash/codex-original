@@ -987,7 +987,7 @@ parent 做 frozen forward，消费 encoder final field → fixed OLS modal proje
 `output.coefficients`，没有进入 decoder/relay/CMOS/MPCDAR、optimizer、backward、training、
 prior generation 或 T1/T2 continuation。实现文件为
 `scripts/research/audit_scaled_chen_ols_semantic_representation.py`，配置为
-`configs/research/lightgen_scaled_chen_ols_semantic_representation_audit_v1.yaml`，测试为
+`configs/research/scaled_chen/lightgen_scaled_chen_ols_semantic_representation_audit_v1.yaml`，测试为
 `tests/v2/test_scaled_chen_ols_semantic_representation_audit.py`。
 
 输入绑定完整：step-5000 checkpoint SHA-256=`ccb89f98cc11725eb80d66c61f4fdef62b24acdf9f6d739f78373f462d10e5de`；

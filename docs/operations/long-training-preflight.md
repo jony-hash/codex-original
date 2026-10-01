@@ -4,21 +4,17 @@ This document is the operational companion to the mandatory rule in the root
 `AGENTS.md`. It applies to v1, v2, research, diagnostic, one-off, and newly
 added training entrypoints.
 
-## Applicability and budget
+## Applicability and startup checks
 
 A run is long when it is expected to use at least 15 GPU-minutes, 30 wall-clock
 minutes, or its result will select a model/objective, support a scientific
 claim, or authorize a downstream stage.
 
-Use the smallest applicable preflight budget:
-
-| Risk | Preflight cap | Required use |
-| --- | ---: | --- |
-| Ordinary long run | min(5 minutes, 5% of planned runtime) | representative update |
-| Scientific/acceptance run | min(10 minutes, 10% of planned runtime) | update plus counterfactual |
-
-If a representative trial cannot fit the cap, stop and report the compute
-blocker. CPU or reduced-model success is not a substitute.
+There is no elapsed-time cap for preflight or scientific execution. Use the
+smallest representative check, record its duration, and recheck only behavior
+changed by a repair. Estimates inform scheduling and do not reject execution.
+Approved update counts and scientific populations remain fixed. CPU or
+reduced-model success is not a substitute for required CUDA verification.
 
 ## Required sequence
 
@@ -41,13 +37,14 @@ blocker. CPU or reduced-model success is not a substitute.
 
 ## Evidence and invalidation
 
-Record the exact short-trial command, immutable input paths and hashes, commit,
+Record the exact short-trial command, explicit input paths and loaded identities, commit,
 runtime/device, seed, elapsed time, peak memory, observed gates,
 counterfactual result, recovery result, and the one long command authorized by
 the trial. A change to training, data selection, loss, optimizer, evaluator,
-checkpointing, device, dependencies, or scientific thresholds invalidates the
-authorization and requires the affected preflight again. Documentation-only
-or unrelated changes do not.
+checkpointing, device, dependencies, or scientific thresholds requires checking
+the affected production behavior again. Ordinary repairs remain under the same
+task authorization. Do not use hash or source-manifest equality as an execution
+lock. Documentation-only or unrelated changes do not require another preflight.
 
 The short trial authorizes only the predeclared long run; it does not predict
 final quality. Classify outcomes as:
@@ -55,9 +52,9 @@ final quality. Classify outcomes as:
 - `invalid_harness`: environment, lineage, update, semantics, recovery, or
   negative-control failure; repair and rerun the affected preflight.
 - `valid_failed`: complete valid measurement missed a scientific gate; stop the
-  registered branch without lowering thresholds, extending budget, or retuning
+  registered branch without lowering thresholds, increasing update counts, or retuning
   under the same contract.
-- `resource_aborted`: interruption or budget exhaustion; resume only from an
+- `resource_aborted`: interruption or an actual hardware resource failure; resume only from an
   explicitly verified checkpoint, otherwise stop and report.
 
 Use existing trainer controls and existing evidence boundaries. Do not create

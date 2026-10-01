@@ -5,9 +5,9 @@ after `S3_CONTROL_TO_OLS_WRITABILITY_NOT_SUPPORTED`. It is not an S3 success
 record and does not authorize training or formal promotion.
 
 The implementation contract is registered by
-`configs/research/lightgen_controller_semantic_geometry_training_v1.yaml` (the
+`configs/research/capacity/lightgen_controller_semantic_geometry_training_v1.yaml` (the
 attempt-02 execution config is
-`configs/research/lightgen_controller_semantic_geometry_training_v1_attempt_02.yaml`) and is consumed by
+`configs/research/capacity/lightgen_controller_semantic_geometry_training_v1_attempt_02.yaml`) and is consumed by
 `src/ldm_project/v2/application/research/controller_semantic_geometry_training.py`.
 The authorized run was performed from clean implementation HEAD
 `169fd515b7d6ff6d862222c066c44a39dc373879`.
@@ -89,7 +89,7 @@ write-once attempt remains preserved at
 ## Authorized bounded canary (2026-09-07)
 
 Attempt-02 used the fixed execution config
-`configs/research/lightgen_controller_semantic_geometry_training_v1_attempt_02.yaml`
+`configs/research/capacity/lightgen_controller_semantic_geometry_training_v1_attempt_02.yaml`
 from clean implementation HEAD
 `169fd515b7d6ff6d862222c066c44a39dc373879`. The device-alias consumer fix was
 `43b1a4250e6b4839d0a32ca0e2ba0ed351335f00`; the attempt-02 config registration

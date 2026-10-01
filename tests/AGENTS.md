@@ -1,52 +1,28 @@
-# Test And Acceptance Contract
+# Tests
 
-Scope: `tests/**` and verification for repository changes. Read the repository-root `AGENTS.md` first. This file adds test constraints and may not relax the root contract.
+Keep tests beside their runtime family. Research regressions live under
+`tests/research/{lightgen,scaled_chen,optical_manifold,capacity}`; shared
+research lifecycle tests live under `tests/research/lightgen` when their
+behavior is family-neutral. Formal v1/v2 tests remain in their current areas.
 
-## Test Selection
+Use the smallest tests that prove the changed behavior, then run the full suite
+once for shared or cross-package changes. Tests should validate actual inputs,
+model/config/step/optimizer state, data roles, frozen groups, and saved payloads;
+do not require source-digest or dirty-patch equality.
 
-- Test and pytest temporary roots must be outside the repository and use a
-  short, writable path. Never pass `--basetemp` to a path under the checkout;
-  this keeps ACL workarounds from leaving test fixtures in the source tree.
-  Tests that need a temporary directory must use pytest's `tmp_path` or
-  `tempfile.TemporaryDirectory` without a repository-root `dir=` override.
+In Windows-native work, use the project environment and keep pytest temporary
+files outside the checkout:
 
-- Before implementation, identify the affected behavior and the smallest
-  sufficient test set in the task or PR description. For a fix, first establish
-  a reproducer or regression test that fails against the relevant baseline; do
-  not select only convenient checks after the implementation is complete.
-- Start with tests nearest the changed behavior.
-- One-shot model, optics, visualization, config, or checkpoint changes normally require `tests/student/`, `tests/teacher/`, `tests/application/`, `tests/diagnostics/`, the compatibility smoke files, and `tests/test_repo_layout.py` as applicable.
-- Teacher/first-stage/diffusion changes normally require the matching conditioned, diffusion, data, or optical-path tests rather than an unrelated fixed bundle.
-- Docs-only and repository-instruction changes require `git diff --check`; do not run Python or CUDA tests unless behavior-bearing files also changed.
-- In the Windows-native checkout, set `$py` to `D:\ANACONDA\envs\optical-generative-models-win\python.exe` (with its DLL directories on `PATH`) and use `& $py -m compileall src tests train.py`; use that environment's `ruff.exe` for `ruff check src tests *.py`.
-- Run the full suite only after targeted checks pass for shared/final changes or a cross-package contract change. Local fixes may stop after their targeted tests, compile, and lint checks; rerun only checks invalidated by a corrective edit.
-- Keep architecture-boundary and lazy-stage assertions separate from physics/numerical assertions; legacy imports must resolve to canonical package implementations.
-- v2 conditional tests must separately cover current identity architecture,
-  legacy compatibility, evidence action/context binding, evaluator qualification,
-  candidate dataset status, and manual admission. A CPU smoke is diagnostic and
-  cannot stand in for CUDA or scientific acceptance.
-- Current evidence-consumer tests must prove one valid lineage path and one
-  representative stale, mismatched, or tampered-input rejection before
-  checkpoint loading, optimizer creation, run creation, or artifact writes.
-  Retain separate cases only when different inputs cause materially different
-  rejection decisions. Test observable artifact-binding behavior when a real
-  downstream consumer reads the artifact; do not prescribe a digest
-  representation, fingerprint registry, digest count, or hash call count.
-  Production code must not expose a weaker compatibility path solely for tests.
+```powershell
+$envRoot = 'D:\ANACONDA\envs\optical-generative-models-win'
+$env:Path = "$envRoot;$envRoot\bin;$envRoot\Library\bin;$envRoot\Scripts;$envRoot\Lib\site-packages\torch\lib;$env:Path"
+$py = Join-Path $envRoot 'python.exe'
+& $py -m pytest <focused-tests> -o cache_dir="$env:TEMP\codex-project-refactor-pytest-cache" --basetemp "$env:TEMP\codex-project-refactor-pytest-tmp"
+& $py -m compileall -q src tests scripts train.py
+& (Join-Path $envRoot 'Scripts\ruff.exe') check <changed-python-files>
+git diff --check
+& $py -m pytest -q -o cache_dir="$env:TEMP\codex-project-refactor-pytest-cache" --basetemp "$env:TEMP\codex-project-refactor-pytest-tmp"
+```
 
-## Acceptance Semantics
-
-- CPU smoke proves only local execution. It cannot replace CUDA, full-geometry, hardware, or strict-readability acceptance.
-- A valid failed gate stops downstream training or promotion. A malformed dataset, wrong checkpoint, invalid geometry, or broken evaluator invalidates the gate and must be repaired first.
-- Tests for formal train/eval layouts must keep `relay_identity` audit-only.
-- Use temporary directories for generated test artifacts. Do not write tests into existing `outputs/` runs.
-- Report skipped or unavailable verification precisely; do not convert it into a passing result.
-
-## Verification commands
-
-- Build: `& $py -m compileall src tests train.py`.
-- Lint: `& (Join-Path $envRoot 'Scripts\\ruff.exe') check src tests *.py`.
-- Full default lane: `& $py -m pytest -q`.
-- Scheduled diagnostic lane: `& $py -m pytest -q -o addopts='' -m scheduled_diagnostic`.
-- Metadata-only changes require `git diff --check`; do not run CUDA or formal
-  training as a substitute for unavailable acceptance inputs.
+A CPU smoke verifies software behavior only; it does not replace hardware or
+scientific acceptance.

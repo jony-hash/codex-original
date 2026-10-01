@@ -51,19 +51,19 @@ $py = Join-Path $envRoot 'python.exe'
 - Teacher audit、readability filter 和单环节诊断不能替代 `one_shot_sample` 与 `one_shot_distill_eval`。
 - 正式 CUDA 训练和验收所需 checkpoint、dataset 或硬件缺失时应视为 blocker，不应静默降级。
 
-## Formal Runtime Baseline And Active Research Status
+## Formal Runtime Baseline And Active Research
 
-正式 v2 物理合同是 `532 nm`、identity OLS、完整 SLM FOV 的相干 4f `-0.4` relay、`100 × 100 @ 2 µm` phase-only D2NN、`1.50 mm` 层间距，以及后端 `-2.5` relay。理想两镜 4f 的实际 ABCD 为 `A=-0.4, B=0, C=0`；物理前向合同、raw-CMOS 人眼 gate 与严格 provenance 均保持有效。正式 v2 架构是 `conditional_identity_logit_amplitude_v2`。
+正式 v2 物理合同是 `532 nm`、identity OLS、完整 SLM FOV 的相干 4f `-0.4` relay、`100 × 100 @ 2 µm` phase-only D2NN、`1.50 mm` 层间距，以及后端 `-2.5` relay。理想两镜 4f 的实际 ABCD 为 `A=-0.4, B=0, C=0`；物理前向合同、raw-CMOS 可读性条件与输入/数据角色核对均保持有效。摘要和运行记录可保留来源信息，但不作为执行锁。正式 v2 架构是 `conditional_identity_logit_amplitude_v2`。
 
 v1 研究线已冻结在 v79：固定 label-only normalization 的八维 supported-basis capacity arm 仅得到 physical-SLM code factor `0.05455 < 0.25`，且 clipping `0.20547 > 0.08`。这不是 harness failure，而是当前 basis 家族的有效 capacity gate 失败；learned code transport 未证明，因而没有可 promotion 的 student checkpoint。
 
-活动研究分支为 `research/lightgen-ols-native-semantic-generation-v1`：N1/N2 已完成，N3 producer baseline 与两轮 selector calibration 均未得到可用的新模型族，N4 未决，N5 与生成仍 blocked，N6 物理实现保持独立冻结。最新 V2 校准已登记为 `MIXED_V2`（NULL false-positive rate `0/200`；local target 未达成），因此不存在可直接继续的 selector-refinement 任务；若要重新研究来源归因，必须另立独立合同并重新绑定 evidence。详见 [当前交接](docs/status/current_handoff.md)。
+LightGen 当前研究问题仍是 BOGT 联合目标与 CMOS 语义呈现。规范梯度曾带来 DEV/S1 的改善，但完整生成门槛仍未达到；small-bank step2200 只作为研究证据，原 attempt 仍为 `INVALID_HARNESS`。类别1/7定位没有科学结论。已结束或停止的 M0 runner 移入日期归档；当前没有待执行的科学授权，以[当前状态](docs/CURRENT_STATUS.md)为准。
 
 `v9.10 label-template inverse prototype baseline` 仅是历史 label-template prototype：它明确忽略 code，不能证明 code-conditioned 多样性或最终 generative student readiness。历史证据见 [v9.10 record](docs/archive/acceptance_v9_10_label_template_inverse_20260622.json)。
 
 ## v2 Side-by-Side Runtime
 
-`ldm_project.v2` 是当前 teacher-free contract-first runtime，使用类型化 plane/field、identity-anchored 8D conditional generator、冻结 MNIST evaluator、严格 checkpoint/evidence manifest 和独立子命令 CLI。它保持 amplitude SLM、finite-crop、identity OLS 与现行正式几何，不替换 `train.py`。旧 teacher/prototype/capacity 与 LightGen 路径仍以显式 `legacy`/`diagnostic` 兼容实现存在，但不能签发 current acceptance；archive 保存不可授权的历史正文、配置和 evidence。使用说明见 [v2 runtime](docs/architecture/v2_runtime.md)。
+`ldm_project.v2` 是当前 teacher-free runtime，使用类型化 plane/field、identity-anchored 8D conditional generator、冻结 MNIST evaluator 和独立子命令 CLI。它保持 amplitude SLM、finite-crop、identity OLS 与现行正式几何，不替换 `train.py`。研究实验代码与 formal v2 runtime 分开维护。使用说明见 [v2 runtime](docs/architecture/v2_runtime.md)。
 
 ## Repository Map
 
@@ -71,11 +71,11 @@ v1 研究线已冻结在 v79：固定 label-only normalization 的八维 support
 | --- | --- |
 | `src/ldm_project/v1/` | v1 canonical runtime；根包模块仅为旧导入兼容 facade |
 | `src/ldm_project/v2/` | contract-first v2 runtime，以及隔离的 current、diagnostic、research、legacy 实现 |
-| `src/ldm_project/v2/application/research/` | research-only lifecycle 实现；不改变 formal identity 合同 |
+| `src/ldm_project/v2/application/research/{lightgen,capacity,optical_manifold,shared}/` | 按研究家族放置的实现；共享运行控制位于 `shared/` |
 | `configs/v1/` | v1 活动配置 |
 | `configs/v2/current/` | 当前 identity v2 配置 |
 | `configs/v2/legacy/`, `configs/v2/diagnostic/` | v2 兼容和诊断配置，不授权当前 acceptance |
-| `configs/research/` | 研究生命周期配置；按活动、冻结可复现或历史参考分类，不授权 formal promotion |
+| `configs/research/{lightgen,scaled_chen,optical_manifold,capacity}/` | 与研究代码同类分组的配置 |
 | `experiments/archive/` | 不可 promotion 的历史配置/工具及其 manifest |
 | `tests/student/` | Student model、objective、config、checkpoint 和训练/评估测试 |
 | `tests/teacher/` | Teacher distillation export、audit、filter、readable split 和兼容测试 |
@@ -83,13 +83,17 @@ v1 研究线已冻结在 v79：固定 label-only normalization 的八维 support
 | `tests/diagnostics/` | 当前 diagnostic boundary 验证；版本专用测试在 archive |
 | `docs/` | 架构、运行指南、输出语义和历史证据 |
 | `scripts/maintenance/`, `scripts/visualization/` | 维护、桥接和展示辅助脚本 |
-| `scripts/research/` | 绑定明确 evidence consumer 的研究脚本；不自动选择 latest |
+| `scripts/research/{lightgen,scaled_chen,optical_manifold,capacity}/` | 按研究家族组织的命令入口 |
+| `tests/research/{lightgen,scaled_chen,optical_manifold,capacity}/` | 与研究代码同类分组的测试 |
+| `scripts/research/archive/project_refactor_20261001/lightgen/m0/` | 已停止的 M0 执行器；保留供历史查阅，不是当前运行入口 |
+| `scripts/research/archive/project_refactor_20261001/lightgen/n3/` | 已关闭且无当前消费者的 N3 执行器；原文归档，结果仍在 `outputs/` |
+| `docs/archive/20261001_project_refactor/` | 精简前状态、交接、项目记忆和完整历史快照 |
 | `outputs/` | 当前 Windows-native runs 与已恢复历史 outputs 的可见树；恢复元数据位于 `outputs/_wsl_restore_metadata_v4/`，`outputs/final_pt/` 保持固定 |
 | `data/raw/` | 不可变原始数据 |
 
 训练、诊断和 pre-acceptance run 默认写入 `outputs/YYYYMMDD_<version>/runs/<run>/`；`<version>` 从 run-name 或 config 文件名提取，缺省为 `unversioned`。目录名前缀使用该版本当前已知最早 run 日期；若这是一个新版本，则首次创建时使用当天日期。`outputs/runs/` 已移除。
 
-研究和 artifact 生命周期只有三种有效阅读方式：活动条目有当前 consumer 与下一决策；冻结条目只用于可复现比较；历史条目只用于 provenance。文件名、日期、磁盘占用或测试计数不能单独把条目标为废弃。
+研究代码和正式运行时保持分离。新研究命令显式指定 checkpoint、config、数据与输出；历史文档和摘要用于查阅，不自动成为执行锁。
 
 恢复历史目录由 `outputs/_wsl_restore_metadata_v4/` 的 restore plan、state 和 path map 界定；它们只用于历史溯源，不能自动作为当前 formal acceptance 输入。恢复的 `version_index.json/.md` 保留原 WSL 索引路径，不能作为当前 Windows 路径解析器。
 
@@ -100,9 +104,10 @@ v1 研究线已冻结在 v79：固定 label-only normalization 的八维 support
 - [Stage Guide](docs/operations/stage_guide.md)：stage 分类、命令模板、checkpoint 和验收规则。
 - [Output Guide](docs/operations/output_artifact_notes.md)：图片、tensor bundle 和光学诊断语义。
 - [Current Handoff](docs/status/current_handoff.md)：当前正式基线、活动研究、有效证据、允许动作或停止边界；其中带日期的旧条目仅作历史 provenance。
-- [Capacity-map Hypothesis Ledger](docs/status/capacity_map_hypothesis_ledger.md)：已关闭 O0/H-SCED capacity 假设的历史归因与边界；当前 N3 入口见 Current Handoff。
+- [Capacity-map Hypothesis Ledger](docs/status/capacity_map_hypothesis_ledger.md)：已关闭 O0/H-SCED capacity 假设的历史归因与边界。
 - [Fiber / Electronic O0 Status](docs/status/v2_fiber_image_generation_v1.md)：fiber 路线状态；electronic O0 当前决策以 capacity ledger 为准。
 - [Experiment History](docs/status/experiment_history.md)：历史 baseline、负实验、seed sweep 和复验记录。
+- [Research Project Map](docs/research/project_map.md)：研究代码、配置、测试和历史文档迁移表。
 - [Git Branch Management](docs/operations/git_branch_management.md)：稳定分支治理、现场核验与安全回档。
 - [Long-Training Preflight](docs/operations/long-training-preflight.md)：长训练、模型选择和科学结论前的 fail-closed 预检。
 - [AGENTS.md](AGENTS.md)：仓库执行契约与不可变边界。

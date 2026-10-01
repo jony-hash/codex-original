@@ -4,6 +4,26 @@
 
 Primary execution contract for this repository. This file overrides `docs/`; scoped files may add constraints but may not relax this contract.
 
+## Current LightGen Research Policy (2026-10-01)
+
+The user's simplification instruction supersedes older research timing, hash-lock,
+and repair-quota rules in scoped contracts, plans, and documentation.
+
+- No elapsed-time upper limit applies to preflight, training, measurement,
+  recovery, or finalization. Record durations and estimates as observations;
+  keep the approved update counts, populations, and scientific thresholds.
+- Do not require hash/digest, source-manifest, or dirty-patch equality for
+  admission or resume. Use explicit input paths and validate the loaded model,
+  configuration, checkpoint step, optimizer state, sample rows, and data roles.
+  Preserve historical digest fields without using them as execution locks.
+- Keep one final scientific decision. Ordinary engineering repairs stay within
+  the authorized task; investigate repeated defects and recheck the affected
+  production path without imposing a retry quota or requesting another token.
+- Retain numerical validity, evaluator isolation, frozen/update scope, actual
+  hardware safety, checkpoint recovery, and protection of existing artifacts.
+- Keep plans short: question, inputs, action, final measurement, and stop point.
+  This policy does not authorize new scientific updates or successor experiments.
+
 ## 1. Scope Router
 
 Before changing a scoped path, read its local contract: v1 paths require
@@ -40,9 +60,9 @@ This explicit routing is required when Codex starts at the repository root, beca
    silently downgrade the result.
 7. Plan-driven or cross-product work follows the existing
    [Delta + One Gate + Short Codex Prompt](docs/operations/delta_one_gate_short_prompt.md):
-   classify goal/facts/assumptions/parameters/authorization, run one bounded
-   preflight, execute only the named consumer's action, and return acceptance or
-   stop results. Its documentation write-set rule is mandatory: machine evidence
+   keep one scientific decision, verify the required inputs, run the relevant
+   preflight without an elapsed-time cap, execute only the named action, and
+   return acceptance or stop results. Its documentation write-set rule is mandatory: machine evidence
    does not by itself authorize edits to every memory/status entry. This is
    provenance control, not a second scientific gate.
 
@@ -50,8 +70,9 @@ This explicit routing is required when Codex starts at the repository root, beca
 
 At the beginning of every repository task that may inspect, modify, or run code,
 write exactly `Agent effective: AGENTS.md`; do not expand it into a scope or tier
-inventory. Hashes and evidence still require a named consumer and rejection
-decision; a hash, count or digest alone is never a success criterion.
+inventory. For LightGen research, keep digest fields as provenance and do not
+use them to block admission or resume. Any retained digest needs a named
+reporting consumer; a digest alone is never a success criterion.
 
 ### Long-Training Gate
 
@@ -64,7 +85,7 @@ trainable groups and frozen/evaluator isolation; reduced surrogates and
 automatic-latest shortcuts are invalid. A failed preflight is `invalid_harness`;
 an explicit scientific gate failure is `valid_failed` and blocks promotion.
 Use [long-training-preflight.md](docs/operations/long-training-preflight.md) for
-budgets, evidence, checkpoint recovery and counterfactual details.
+startup checks, evidence, checkpoint recovery and counterfactual details.
 
 ### Ordinary Research Fast Path
 
@@ -87,9 +108,8 @@ complete, valid measurement may produce a scientific gate failure. Do not turn
 broad execution/configuration/programming exceptions into scientific gates,
 or add test-only branches, compatibility fallbacks, silent defaults,
 automatic-latest resolution or impossible-state recovery. Do not create one-call
-helpers/registries/schemas/wrappers without a public boundary. Add a digest only
-when a mutable artifact crosses a process/run boundary and a named consumer uses
-it for rejection; compute it once, without inventories or nested fingerprints.
+helpers/registries/schemas/wrappers without a public boundary. Do not add digest
+inventories or hash-based execution locks to research tasks.
 Tests exercise the production contract; prefer one valid and one representative
 negative case per rejection mechanism unless inputs cause different decisions.
 
