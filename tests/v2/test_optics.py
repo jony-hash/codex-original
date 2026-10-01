@@ -45,6 +45,25 @@ def test_production_asm_cache_is_physics_and_dtype_scoped() -> None:
     assert len(_PRODUCTION_TRANSFER_CACHE) == 2
 
 
+def test_transfer_cached_in_inference_mode_remains_backward_safe() -> None:
+    clear_production_transfer_cache()
+    field = _field()
+    with torch.inference_mode():
+        angular_spectrum_propagate(field, 1e-3, "frozen-measurement")
+
+    differentiable = ComplexField(
+        field.tensor.detach().requires_grad_(True),
+        field.plane,
+        field.provenance,
+    )
+    output = angular_spectrum_propagate(differentiable, 1e-3, "training-forward")
+    output.tensor.abs().square().mean().backward()
+
+    assert differentiable.tensor.grad is not None
+    assert torch.isfinite(differentiable.tensor.grad).all()
+    assert differentiable.tensor.grad.abs().sum() > 0
+
+
 def test_identity_ols_is_complex_linear() -> None:
     left, right = _field(), _field()
     scalar = torch.tensor(0.25 + 0.75j)

@@ -12,7 +12,7 @@ _PRODUCTION_TRANSFER_CACHE: dict[tuple[tuple[int, int], tuple[float, float], flo
 
 
 def clear_production_transfer_cache() -> None:
-    """Test/support hook; the reference implementation intentionally has no cache."""
+    """Clear cached production transfer functions, primarily for isolated tests."""
     _PRODUCTION_TRANSFER_CACHE.clear()
 
 
@@ -41,14 +41,17 @@ def angular_spectrum_propagate(field: ComplexField, distance_m: float, plane_id:
     key = (field.plane.shape, field.plane.pixel_pitch_m, field.plane.wavelength_m, distance_m, str(field.tensor.device), str(field.tensor.real.dtype))
     transfer = _PRODUCTION_TRANSFER_CACHE.get(key)
     if transfer is None:
-        transfer = _transfer_function(
-            field.plane.shape,
-            pixel_pitch_m=field.plane.pixel_pitch_m,
-            wavelength_m=field.plane.wavelength_m,
-            distance_m=distance_m,
-            device=field.tensor.device,
-            real_dtype=field.tensor.real.dtype,
-        )
+        # The cached kernel is constant. Build it outside inference mode so a
+        # prior frozen measurement cannot poison a later autograd forward.
+        with torch.inference_mode(False):
+            transfer = _transfer_function(
+                field.plane.shape,
+                pixel_pitch_m=field.plane.pixel_pitch_m,
+                wavelength_m=field.plane.wavelength_m,
+                distance_m=distance_m,
+                device=field.tensor.device,
+                real_dtype=field.tensor.real.dtype,
+            )
         _PRODUCTION_TRANSFER_CACHE[key] = transfer
     propagated = torch.fft.ifft2(torch.fft.fft2(field.tensor, norm="ortho") * transfer, norm="ortho")
     plane = field.plane.with_plane(plane_id, z_m=field.plane.z_m + distance_m)
