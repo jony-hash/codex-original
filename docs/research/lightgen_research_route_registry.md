@@ -1,13 +1,13 @@
 # LightGen 研究路线与 distribution 注册表
 
-更新时间：2026-09-17  
+更新时间：2026-10-02
 注册表版本：`LIGHTGEN_ROUTE_AND_DISTRIBUTION_REGISTRY_V1`
 
-文档状态：`DRAFT_NOT_AUTHORITY`（当前未跟踪草稿）  
-拟定文档角色：`STABLE_NAVIGATION`；在纳入 Git 前不属于项目 authority chain。
+文档状态：`STABLE_NAVIGATION`
+本文件是已跟踪的路线索引，不是执行授权或科研结果来源。
 
-> 本文件是项目路线与术语注册表的工作树草稿。本次内容只整理路线身份、分布对象、目标函数
-> 和 claim 边界；不新增科学证据，不改写历史报告，不授权训练、CUDA、采样、生成、物理验证
+> 本文件只整理路线身份、分布对象、目标函数和 claim 边界；不新增科学证据，不改写历史报告，
+> 不授权训练、CUDA、采样、生成、物理验证
 > 或 promotion。当前 latest、blocker、current next action 和执行授权仍以
 > `docs/CURRENT_STATUS.md`、`docs/status/current_handoff.md` 与根/作用域合同为准。
 
@@ -18,7 +18,7 @@
   [`current_handoff.md`](../status/current_handoff.md) 为准；日期化实验事实以
   [`experiment_history.md`](../status/experiment_history.md) 为准。
 - LightGen 主线的输入/OLS 边界由
-  [`lightgen_2d_semantic_generation_input_ols_alignment.py`](../../src/ldm_project/v2/application/research/lightgen_2d_semantic_generation_input_ols_alignment.py)
+  [`lightgen_2d_chen_bogt_complex_ols_training.py`](../../src/ldm_project/v2/application/research/lightgen/lightgen_2d_chen_bogt_complex_ols_training.py)
   定义：真实图像 → 振幅 SLM → optical encoder → `z∈C^100` 复 OLS 系数 →
   `W_OLS` 模式重发 → optical generator → raw CMOS。系数空间 `T=I_100` 不等于整幅
   光场 identity bypass。
@@ -65,7 +65,7 @@
 ```text
 MAINLINE
 └── M0_LIGHTGEN_INPUT_OLS_ALIGNED_GENERATION
-    proposed Chen-inspired BOGT-on-complex-OLS route; not executed
+    Chen-inspired BOGT-on-complex-OLS research route; training attempted, no accepted generation
 
 SUPPORT_BRANCHES
 ├── S1_COMPLEX_OLS_V1_FULL_COMPLEX_MMD
@@ -99,12 +99,12 @@ HISTORICAL_CLOSED
 每张路线卡都使用同一组字段。S2 和 S4 的子路线表登记了独立 `ROUTE_ID`；除覆盖项
 外，子路线继承其父卡的全部字段，因此不会因为压缩重复文本而丢失统一 schema。
 
-### 5.1 M0：LightGen 输入与 OLS 对齐的 proposed mainline
+### 5.1 M0：LightGen 输入与 OLS 对齐的当前研究主线
 
 ```text
 ROUTE_ID: M0_LIGHTGEN_INPUT_OLS_ALIGNED_GENERATION
 ROLE: MAINLINE
-STATUS: PROPOSED_NOT_EXECUTED
+STATUS: BOUNDED_TRAINING_ATTEMPTS_RECORDED_NO_GENERATION_ACCEPTANCE
 PARENT: LightGen input/OLS alignment definition and current research objective
 SCIENTIFIC_QUESTION: Can a project-declared Chen-inspired aggregate BOGT objective improve semantic optical generation at the complex OLS boundary while preserving raw CMOS reconstruction and optical-power constraints?
 PHYSICAL_LATENT: z∈C^100 complex modal OLS coefficients at the 10×10 interface; real-image encoding and future external z entry share the W_OLS/generator boundary
@@ -112,17 +112,15 @@ STATISTICAL_VARIABLE: UNKNOWN; must be declared on OLS coefficient, amplitude/po
 DATA_DIST: UNKNOWN for a new M0 contract; candidate input roles are declared MNIST TRAIN/DEV image-label samples
 LATENT_EMPIRICAL_DIST: UNKNOWN; must be measured from real encoded z at the OLS boundary
 LATENT_PRIOR_DIST: UNKNOWN; no S1, S2, S3, B0, or H1 law may be inherited automatically
-DISTRIBUTION_OBJECTIVE: PLANNED_ONLY; Chen-inspired aggregate constraint, with statistic, target, axis, and weight still unknown
-SEMANTIC_OBJECTIVE: PLANNED; task-label/recognizable content in raw CMOS, with evaluator and loss still unknown
-IMAGE_OBJECTIVE: PLANNED; raw CMOS intensity reconstruction constraint, exact contract still unknown
-OPTICAL_POWER_OBJECTIVE: PLANNED; optical-plane/operating-window power term, observable and weight still unknown
-TRAINABLE_PARAMETERS: UNKNOWN; a new bounded contract is required before any optimizer exists
-SAMPLING_MECHANISM: UNKNOWN; future external z producer must be specified and must share the declared W_OLS and generator interface
+OBJECTIVE: The project has executed bounded Chen-inspired BOGT and canonical-gradient training variants; historical task contracts define their individual terms and weights
+SEMANTIC_MEASUREMENT: Frozen E_D confirmation on fixed DEV and TRAIN-neighbor S1 populations; prior improvements did not meet the complete generation gate
+TRAINABLE_PARAMETERS: Encoder and Generator phase parameters in the named BOGT tasks; exact scope is task-specific
+SAMPLING_MECHANISM: Historical accepted S1 same-class 16-neighbor rule in named canaries; sampling evidence remains TRAIN-neighbor only
 GENERATION_EXECUTED: NO_ACCEPTED_M0_GENERATION
 SUPPORTED_CLAIM: The unique current research identity and a proposed route/question only
 FORBIDDEN_CLAIM: Successful LightGen generation, exact paper BOGT reproduction, current Scaled-Chen implementation, N3 as a complete generator, or hardware readiness
-CURRENT_NEXT_ACTION: No scientific action in this docs-only task; if resumed, define one bounded M0 contract before any run
-SOURCE_AUTHORITIES: lightgen_2d_semantic_generation_input_ols_alignment.py; PROJECT_MEMORY.md; CURRENT_STATUS.md; current_handoff.md; LightGen registered supplement
+CURRENT_NEXT_ACTION: No current scientific authorization; read CURRENT_STATUS.md and current_handoff.md before proposing work
+SOURCE_AUTHORITIES: src/ldm_project/v2/application/research/lightgen/lightgen_2d_chen_bogt_complex_ols_training.py; PROJECT_MEMORY.md; CURRENT_STATUS.md; current_handoff.md; LightGen registered supplement
 ```
 
 ### 5.2 S1：complex-OLS MMD baseline family
@@ -150,7 +148,7 @@ GENERATION_EXECUTED: NO_ACCEPTED_OPTICAL_GENERATION
 SUPPORTED_CLAIM: V1 training consumer and full-complex MMD contract were executed within the bounded route
 FORBIDDEN_CLAIM: MMD equals BOGT, prior samples equal optical generation, or semantic/physical readiness was established
 CURRENT_NEXT_ACTION: Closed; no automatic Stage B, prior generation, or promotion
-SOURCE_AUTHORITIES: lightgen_2d_semantic_complex_ols_training.py; lightgen_2d_semantic_generation_input_ols_alignment.py; CURRENT_STATUS.md; experiment_history.md
+SOURCE_AUTHORITIES: src/ldm_project/v2/application/research/lightgen/lightgen_2d_semantic_complex_ols_training.py; src/ldm_project/v2/application/research/lightgen/lightgen_2d_semantic_generation_input_ols_alignment.py; docs/CURRENT_STATUS.md; docs/status/experiment_history.md
 ```
 
 #### S1-V2：train-only normalized complex MMD
@@ -464,13 +462,11 @@ SOURCE_AUTHORITIES: v1_single_shot_distillation.md; train.py; src/ldm_project/v1
 `CURRENT_STATUS`/`current_handoff` 保留 2026-09-16 之后的数值和停止边界，历史文件继续
 保留日期化事实；三者分工不同，不把旧文档中的历史“下一步”解释为当前授权。
 
-## 8. 本次整理结果
+## 8. 注册表维护说明
 
 ```text
-RESULT: CREATED_CANONICAL_LIGHTGEN_ROUTE_AND_DISTRIBUTION_REGISTRY
-GIT_BRANCH: research/lightgen-ols-native-semantic-generation-v1
-GIT_HEAD: a9cd1749adfa690e282fd52a6425564fc2cf102c
-GIT_DIRTY: YES (pre-existing user changes preserved; current docs delta added)
-OUTER_GATE: LIGHTGEN_ROUTE_AND_DISTRIBUTION_REGISTRY_V1_CONSISTENT=PASS
-NEXT: no scientific execution; if continuing, define one bounded M0 contract before any training
+ROLE: stable route and terminology navigation
+SCIENCE: this document adds no evidence and does not change experiment status
+CURRENT_STATE: see CURRENT_STATUS.md and status/current_handoff.md
+NEXT: no scientific authorization is implied by this registry
 ```

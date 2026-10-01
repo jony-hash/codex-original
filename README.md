@@ -57,7 +57,7 @@ $py = Join-Path $envRoot 'python.exe'
 
 v1 研究线已冻结在 v79：固定 label-only normalization 的八维 supported-basis capacity arm 仅得到 physical-SLM code factor `0.05455 < 0.25`，且 clipping `0.20547 > 0.08`。这不是 harness failure，而是当前 basis 家族的有效 capacity gate 失败；learned code transport 未证明，因而没有可 promotion 的 student checkpoint。
 
-LightGen 当前研究问题仍是 BOGT 联合目标与 CMOS 语义呈现。规范梯度曾带来 DEV/S1 的改善，但完整生成门槛仍未达到；small-bank step2200 只作为研究证据，原 attempt 仍为 `INVALID_HARNESS`。类别1/7定位没有科学结论。已结束或停止的 M0 runner 移入日期归档；当前没有待执行的科学授权，以[当前状态](docs/CURRENT_STATUS.md)为准。
+LightGen 当前研究问题是 BOGT 联合目标如何经统一的 Encoder→复 OLS→Generator 映射呈现为可辨识 CMOS 图像。可复用的 BOGT 训练实现位于 [`lightgen_2d_chen_bogt_complex_ols_training.py`](src/ldm_project/v2/application/research/lightgen/lightgen_2d_chen_bogt_complex_ols_training.py)，三评价器规范梯度的共享数值函数位于 [`canonical_semantics.py`](src/ldm_project/v2/application/research/lightgen/canonical_semantics.py)。规范方向改善过 DEV/S1 读数，但完整生成门槛仍未达到；small-bank step2200 只作研究证据，原 attempt 仍为 `INVALID_HARNESS`。类别1/7定位没有科学结论。已停止 M0 执行器已归档；目前没有科学执行授权，详见[当前状态](docs/CURRENT_STATUS.md)。
 
 `v9.10 label-template inverse prototype baseline` 仅是历史 label-template prototype：它明确忽略 code，不能证明 code-conditioned 多样性或最终 generative student readiness。历史证据见 [v9.10 record](docs/archive/acceptance_v9_10_label_template_inverse_20260622.json)。
 
@@ -75,7 +75,7 @@ LightGen 当前研究问题仍是 BOGT 联合目标与 CMOS 语义呈现。规�
 | `configs/v1/` | v1 活动配置 |
 | `configs/v2/current/` | 当前 identity v2 配置 |
 | `configs/v2/legacy/`, `configs/v2/diagnostic/` | v2 兼容和诊断配置，不授权当前 acceptance |
-| `configs/research/{lightgen,scaled_chen,optical_manifold,capacity}/` | 与研究代码同类分组的配置 |
+| `configs/research/{scaled_chen,optical_manifold,capacity}/` | 当前有跟踪文件的研究配置；LightGen 研究入口没有单独的跟踪配置目录 |
 | `experiments/archive/` | 不可 promotion 的历史配置/工具及其 manifest |
 | `tests/student/` | Student model、objective、config、checkpoint 和训练/评估测试 |
 | `tests/teacher/` | Teacher distillation export、audit、filter、readable split 和兼容测试 |
